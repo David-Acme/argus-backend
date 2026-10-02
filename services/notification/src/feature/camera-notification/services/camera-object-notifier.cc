@@ -315,7 +315,9 @@ void subscribe(NatsBus& bus, CameraObjectNotifier& notifier)
                         notifier.handle(json_util::fromString(payload));
                       });
                 });
-  drogon::app().getLoop()->runEvery(
-      std::chrono::minutes(1), [&notifier]() { notifier.flushDigests(); });
+  drogon::app().getLoop()->runEvery(std::chrono::minutes(1), [&notifier]() {
+    drogon::app().getIOLoop(0)->runInLoop(
+        [&notifier]() { notifier.flushDigests(); });
+  });
 }
 }

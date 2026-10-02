@@ -159,6 +159,13 @@ with wrap, the digest produced once the window rolls, guard-heartbeat
 readiness and the fallback gate — `CameraObjectNotifier`, the
 `camera-fallback-log` repository and its `fallback-drop-reason` vocabulary.
 
+- **One loop owns the policy state.** The per-camera windows and the
+  heartbeat stamp have no lock: every reader and writer runs on IO loop 0.
+  The detection and heartbeat handlers were posted there, but the minutely
+  digest flush ran on the main loop and iterated the window map while a
+  detection could insert into it; the timer now posts the flush to the same
+  loop.
+
 - **Delivery is in-process.** `CameraObjectNotifier` calls
   `NotificationService::createManyAndEmit` with a `commandId` derived from the
   event, so camera notifications take the same durable
