@@ -133,7 +133,7 @@ static AudioCaptureResult captureReal(const AudioCaptureInput& input)
   }
 
   int pipeFds[2];
-  if (::pipe(pipeFds) != 0) {
+  if (::pipe2(pipeFds, O_CLOEXEC) != 0) {
     result.status = AudioCaptureStatus::SpawnFailed;
     result.error = std::strerror(errno);
     return result;
@@ -187,6 +187,9 @@ static AudioCaptureResult captureReal(const AudioCaptureInput& input)
                                                    : "capture read failed";
   }
 
+  if (outcome == ReadOutcome::Endpointed)
+    ::kill(child, SIGTERM);
+
   int childStatus = 0;
   ::waitpid(child, &childStatus, 0);
 
@@ -194,7 +197,8 @@ static AudioCaptureResult captureReal(const AudioCaptureInput& input)
     return result;
 
   const bool exitedCleanly =
-      WIFEXITED(childStatus) && WEXITSTATUS(childStatus) == 0;
+      outcome == ReadOutcome::Endpointed ||
+      (WIFEXITED(childStatus) && WEXITSTATUS(childStatus) == 0);
   if (!exitedCleanly) {
     result.status = AudioCaptureStatus::InvalidAudio;
     result.error = "ffmpeg exited without success";

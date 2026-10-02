@@ -559,6 +559,17 @@ conversation is half duplex: speak, stop, listen, never both at once. Video
 does not come from here either: RTSP is the documented, maintained path and
 one pull through go2rtc serves every viewer.
 
+**A capture that endpoints keeps what it heard.** The ffmpeg pull reads a
+live stream, so it never ends on its own before `-t`; when the endpoint
+detector closes the turn, the reader stops and ffmpeg is terminated, and
+its exit status no longer decides the result. Before, the closed pipe made
+ffmpeg exit with a write error and every endpointed capture - the normal
+case, a visitor who stops talking - came back `InvalidAudio` with its
+samples discarded. `camera-audio-capture-test` drives the real fork/exec
+path against a stand-in `ffmpeg` on `PATH` that streams a voice and then
+silence forever. The pipe is opened `O_CLOEXEC`, so a concurrent capture
+or the go2rtc spawn never inherits its write end.
+
 **Two budgets bound every consumer.** FAQ 2742 states the local limit: three
 concurrent live viewers, RTSP and ONVIF connections counted in. Overload
 surfaces as 401 or "Invalid authentication data" on the *new* connection
