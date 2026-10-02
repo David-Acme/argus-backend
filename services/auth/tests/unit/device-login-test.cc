@@ -583,6 +583,63 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   }
 }
 
+TEST_CASE("a refresh keeps the session on the device and agent it was issued to")
+{
+  Fixture& app = fixture();
+  REQUIRE(app.start());
+
+  AuthFeatureService authService(
+      {.jwtService = JwtService{},
+       .refreshTokenRepository = RefreshTokenRepository{},
+       .deviceCredentialRepository = DeviceCredentialRepository{},
+       .challengeRepository = DeviceLoginChallengeRepository{},
+       .identity = &app.identity()});
+
+  const std::string boundHash = DeviceFilter::credentialFingerprint(
+      kUa, DeviceFilter::sha256Hex(kSecret));
+  const auto seed = [&](const std::string& refresh) {
+    DbService::client()->execSqlSync(
+        "INSERT INTO refresh_token (user_id, access_token, refresh_token, "
+        "device_hash, user_agent, expires_at) VALUES (1, ?, ?, ?, ?, ?)",
+        JwtService().generateAccess({{"sub", "1"}}), refresh, boundHash, kUa,
+        static_cast<int64_t>(std::time(nullptr)) + 3600);
+  };
+  const auto refreshFrom = [&](const RefreshTokenInput& input) {
+    return refusalOf(authService.refreshToken(input));
+  };
+
+  ConfigService::setRuntimeString("device.identity_mode", "credential");
+
+  const auto stolen = JwtService().generateRefresh({{"sub", "1"}});
+  seed(stolen);
+  const auto noCredential = refreshFrom(
+      {.body = {.refreshToken = stolen}, .deviceHash = "", .userAgent = kUa});
+  REQUIRE(noCredential.has_value());
+  CHECK(noCredential->status == 401);
+
+  const auto noAgent = refreshFrom(
+      {.body = {.refreshToken = stolen}, .deviceHash = boundHash, .userAgent = ""});
+  REQUIRE(noAgent.has_value());
+  CHECK(noAgent->status == 401);
+
+  CHECK_FALSE(refreshFrom({.body = {.refreshToken = stolen},
+                           .deviceHash = boundHash,
+                           .userAgent = kUa})
+                  .has_value());
+
+  DbService::client()->execSqlSync("DELETE FROM refresh_token");
+  ConfigService::setRuntimeString("device.identity_mode", "ip");
+  const auto roaming = JwtService().generateRefresh({{"sub", "1"}});
+  seed(roaming);
+  CHECK_FALSE(refreshFrom({.body = {.refreshToken = roaming},
+                           .deviceHash = "another-network",
+                           .userAgent = kUa})
+                  .has_value());
+
+  DbService::client()->execSqlSync("DELETE FROM refresh_token");
+  ConfigService::setRuntimeString("device.identity_mode", "");
+}
+
 int main(int argc, char** argv)
 {
   doctest::Context context(argc, argv);

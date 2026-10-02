@@ -22,6 +22,13 @@ the user row behind a session comes from identity through
   crosses the wire.
 - Refresh tokens are single-use and rotated; `revokeUser` invalidates every
   session of a user in one statement, which is what a deactivated account gets.
+- A refresh is refused unless it comes from the agent the session was issued
+  to (a missing `User-Agent` is a mismatch, not a skipped check) and, in
+  `credential` identity mode, from the same device hash. A stolen refresh
+  token without its device credential used to mint a session bound to the
+  thief's hash. In `ip` mode the hash is not compared: it carries the IP,
+  and the refresh is exactly how a phone that changed network gets a session
+  for its new address.
 - The user context (name, last name, language, role, `isActive`) is resolved
   through identity and cached for `[auth] context_cache_seconds`.
 - A durable JetStream consumer on the identity change subject drops a cached

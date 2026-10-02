@@ -385,9 +385,10 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
   }
 
-  if (!existing->userAgent.empty() && !input.userAgent.empty() &&
-      existing->userAgent != input.userAgent) {
-    LOG_WARN << "Auth: user agent mismatch on refresh for user " << *userId;
+  const bool sameDevice = !DeviceFilter::credentialMode() ||
+                          existing->deviceHash == input.deviceHash;
+  if (existing->userAgent != input.userAgent || !sameDevice) {
+    LOG_WARN << "Auth: device mismatch on refresh for user " << *userId;
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
   }
 
