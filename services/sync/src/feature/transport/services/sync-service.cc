@@ -36,7 +36,7 @@ SyncService::handleConnect(const drogon::HttpRequestPtr& req,
   conn->setContext(std::make_shared<JwtContext>(ctx));
 
   std::vector<RoomId> rooms;
-  for (const auto table : role_access::readableTables(ctx.role))
+  for (const auto table : role_access::moduleTables(ctx.role))
     rooms.push_back(moduleRoom(table));
   rooms.push_back(userRoom(ctx.sub));
   roomManager_.joinMany(rooms, conn);

@@ -1,10 +1,12 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <drogon/HttpTypes.h>
 #include <auth/role-access.hxx>
 #include <sync/table-name.hxx>
 #include <auth/user-role.hxx>
+#include <vector>
 
 TEST_CASE("Owner has every permission on every table")
 {
@@ -257,4 +259,28 @@ TEST_CASE("guard administration is Owner-only")
       {.role = UserRole::Guard, .path = "/guard/incidents", .method = drogon::Get}));
   CHECK_FALSE(role_access::hasHttpAccess(
       {.role = UserRole::Guest, .path = "/guard/mode", .method = drogon::Post}));
+}
+
+TEST_CASE("only directory roles receive the user module stream")
+{
+  const auto contains = [](const std::vector<TableName>& tables,
+                           TableName table) {
+    return std::ranges::find(tables, table) != tables.end();
+  };
+
+  CHECK(role_access::readsUserDirectory(UserRole::Owner));
+  CHECK(role_access::readsUserDirectory(UserRole::Guard));
+  CHECK_FALSE(role_access::readsUserDirectory(UserRole::Resident));
+  CHECK_FALSE(role_access::readsUserDirectory(UserRole::Guest));
+
+  CHECK(contains(role_access::moduleTables(UserRole::Owner), TableName::User));
+  CHECK(contains(role_access::moduleTables(UserRole::Guard), TableName::User));
+  CHECK_FALSE(
+      contains(role_access::moduleTables(UserRole::Resident), TableName::User));
+  CHECK_FALSE(
+      contains(role_access::moduleTables(UserRole::Guest), TableName::User));
+  CHECK(contains(role_access::readableTables(UserRole::Resident),
+                 TableName::User));
+  CHECK(contains(role_access::moduleTables(UserRole::Resident),
+                 TableName::Reminder));
 }

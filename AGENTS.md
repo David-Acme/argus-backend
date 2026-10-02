@@ -193,7 +193,10 @@ Guest    → read-only permitted resources; user read is limited to their own
 ```
 
 Helpers: `hasAccess(role, table, perm)`, `readableTables(role)`,
-`tableFromPath(path)`, `permissionForMethod(method)`, `hasHttpAccess(...)`.
+`readsUserDirectory(role)`, `moduleTables(role)` (the module rooms a socket
+joins and the global audit tables it pages: `readableTables` minus `user` for
+the roles that read only their own row), `tableFromPath(path)`,
+`permissionForMethod(method)`, `hasHttpAccess(...)`.
 
 ### 7b. People, invitations and private portraits
 

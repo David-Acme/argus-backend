@@ -31,6 +31,12 @@ protocol could not regress by accident in the commit that changed the endpoint.
   `thread_local`) and the lifecycle object `main.cc` holds for as long as the
   process runs. Live frames reach connections through it; the audit *rows*
   never do — a client reads the journal through its own `Synchronize` page.
+  A socket joins the module rooms of `role_access::moduleTables(role)`, not
+  of every readable table: Resident and Guest read only their own `user`
+  row (rule 7b), and the identity enrollment's `Add` for a new user is a
+  module emit, so joining them to the `user` room broadcast every new
+  user's row to them. Their own row arrives through the scoped pull and
+  their own user room; the global audit page uses the same table set.
 - **The audit trail and the journal.** Five tables, one schema file
   (`database/schema.sql`): `audit_log` (module/global field diffs),
   `user_audit_log` (recipient-scoped diffs), `user_action_log` (the §3.5 action

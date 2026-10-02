@@ -212,7 +212,7 @@ std::vector<TableName> SynchronizedService::auditTablesForRole(UserRole role) co
   };
 
   std::vector<TableName> tables;
-  for (const auto table : role_access::readableTables(role)) {
+  for (const auto table : role_access::moduleTables(role)) {
     if (!kExcluded.contains(table))
       tables.push_back(table);
   }

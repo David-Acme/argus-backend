@@ -124,6 +124,19 @@ inline std::vector<TableName> readableTables(UserRole role)
   return out;
 }
 
+inline bool readsUserDirectory(UserRole role)
+{
+  return role == UserRole::Owner || role == UserRole::Guard;
+}
+
+inline std::vector<TableName> moduleTables(UserRole role)
+{
+  auto tables = readableTables(role);
+  if (!readsUserDirectory(role))
+    std::erase(tables, TableName::User);
+  return tables;
+}
+
 inline RolePermission permissionForMethod(drogon::HttpMethod method)
 {
   switch (method) {
