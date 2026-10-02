@@ -1183,3 +1183,32 @@ TEST_CASE("a crash during the notification RPC still flags the row ambiguous")
                "'ntq:1' AND did_notify = 0 AND dispatch_attempts > 0 AND "
                "legacy_would_notify = 1") == "1");
 }
+
+TEST_CASE("only effects that left count against the hourly caps")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  GuardRepository repository;
+  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const auto record = [&](const std::string& id, const std::string& status) {
+    drogon::sync_wait(repository.insertAction({.incidentId = 0,
+                                               .encounterId = 0,
+                                               .cameraId = 77,
+                                               .personId = 0,
+                                               .commandId = "cap:" + id,
+                                               .kind = "notify",
+                                               .status = status,
+                                               .detail = {},
+                                               .createdAt = now}));
+  };
+  record("1", "rejected");
+  record("2", "budget_denied");
+  record("3", "belief_suppressed");
+  record("4", "thread_suppressed");
+  record("5", "denied");
+  CHECK(drogon::sync_wait(repository.effectsSince(77, now - 3600)) == 0);
+
+  record("6", "succeeded");
+  record("7", "in_flight");
+  CHECK(drogon::sync_wait(repository.effectsSince(77, now - 3600)) == 2);
+}

@@ -43,16 +43,22 @@ inline constexpr std::string_view COUNT_PERSON_SINCE =
 inline constexpr std::string_view LAST_ACTION =
     "SELECT created_at FROM guard_action WHERE camera_id = ? AND person_id = ? "
     "AND kind IN ('announce', 'alarm', 'siren_arm', 'notify') "
+    "AND status IN ('succeeded', 'duplicate_succeeded', 'in_flight', "
+    "'pending', 'indeterminate') "
     "ORDER BY created_at DESC LIMIT 1";
 
 inline constexpr std::string_view COUNT_ACTIONS_SINCE =
     "SELECT COUNT(*) AS total FROM guard_action WHERE camera_id = ? "
     "AND kind IN ('announce', 'alarm', 'siren_arm', 'notify') "
+    "AND status IN ('succeeded', 'duplicate_succeeded', 'in_flight', "
+    "'pending', 'indeterminate') "
     "AND created_at >= ?";
 
 inline constexpr std::string_view COUNT_ENCOUNTER_ACTIONS_SINCE =
     "SELECT COUNT(*) AS total FROM guard_action WHERE encounter_id = ? "
     "AND kind IN ('announce', 'alarm', 'siren_arm', 'notify') "
+    "AND status IN ('succeeded', 'duplicate_succeeded', 'in_flight', "
+    "'pending', 'indeterminate') "
     "AND created_at >= ?";
 
 inline constexpr std::string_view SEL_STATE =

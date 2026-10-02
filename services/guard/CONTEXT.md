@@ -128,6 +128,15 @@ names the drain in the log.
 
 ## Action safety
 
+The per-camera hourly cap, the per-encounter hourly cap and the per-person
+cooldown count only effects that left: `succeeded`, `duplicate_succeeded`,
+`in_flight`, `pending` and `indeterminate`. Rows written for an effect that
+never ran (`rejected`, `denied`, `budget_denied`, `belief_suppressed`,
+`thread_suppressed`) used to count too, so one Critical event (notify,
+announce, alarm and a refused siren_arm) filled the camera's four effects an
+hour, and a sustained tamper retried every sweep and kept adding rows, so a
+real intrusion later that hour was capped.
+
 `arm_siren` defaults to false. Siren arming is a camera-side lease
 (`lease_seconds`): the camera disarms on expiry even if guard never sends the
 disarm command, and a startup/sweeper reconciliation covers restarts. The
