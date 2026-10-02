@@ -1,9 +1,47 @@
 #include "transaction.hxx"
 
+#include <mutex>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 namespace db_transaction
 {
+namespace
+{
+std::mutex& observersMutex()
+{
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::vector<CommitObserver*>& observers()
+{
+  static std::vector<CommitObserver*> list;
+  return list;
+}
+}
+
+CommitObserver::CommitObserver(std::function<void()> onCommitted)
+    : onCommitted_(std::move(onCommitted))
+{
+  std::lock_guard lock(observersMutex());
+  observers().push_back(this);
+}
+
+CommitObserver::~CommitObserver()
+{
+  std::lock_guard lock(observersMutex());
+  std::erase(observers(), this);
+}
+
+void CommitObserver::notifyAll()
+{
+  std::lock_guard lock(observersMutex());
+  for (auto* observer : observers())
+    observer->onCommitted_();
+}
+
 drogon::Task<std::shared_ptr<drogon::orm::Transaction>>
 begin(const drogon::orm::DbClientPtr& client)
 {

@@ -62,3 +62,10 @@ target_link_libraries(identity-client-test PRIVATE
     doctest::doctest)
 target_compile_options(identity-client-test PRIVATE -Wall -Wextra)
 add_test(NAME identity-client-test COMMAND identity-client-test)
+
+add_executable(commit-observer-test tests/unit/commit-observer-test.cc)
+target_link_libraries(commit-observer-test PRIVATE
+    argus::lib::sqlite
+    doctest::doctest)
+target_compile_options(commit-observer-test PRIVATE -Wall -Wextra)
+add_test(NAME commit-observer-test COMMAND commit-observer-test)

@@ -31,7 +31,11 @@ own.
   statement of a schema file, logging and skipping the ones that fail.
 - `src/sqlite/transaction.{cc,hxx}` — `db_transaction`: `begin` over a
   `DbClient`, the `Commit` awaiter a unit of work co_awaits (it resumes with
-  whether the commit landed) and `rollback`.
+  whether the commit landed), `rollback`, and `CommitObserver`: an RAII
+  registration whose callback runs after every commit that lands through
+  `Commit`. An outbox row only becomes visible to its drain at that commit,
+  so a drain woken from inside the transaction found nothing and slept its
+  retry period; the observer wakes it at the moment the rows appear.
 - `src/sqlite/sqlite-stmt.hxx` — `SqliteStmt`: move-only RAII over
   `sqlite3_stmt` (always finalized) and the blob binding it needs.
 - `src/sqlite/sql-escape.hxx` — `sql_util::escapeLiteral`.

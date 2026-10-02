@@ -3,10 +3,25 @@
 #include <coroutine>
 #include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
+#include <functional>
 #include <memory>
 
 namespace db_transaction
 {
+class CommitObserver
+{
+public:
+  explicit CommitObserver(std::function<void()> onCommitted);
+  ~CommitObserver();
+  CommitObserver(const CommitObserver&) = delete;
+  CommitObserver& operator=(const CommitObserver&) = delete;
+
+  static void notifyAll();
+
+private:
+  std::function<void()> onCommitted_;
+};
+
 drogon::Task<std::shared_ptr<drogon::orm::Transaction>>
 begin(const drogon::orm::DbClientPtr& client);
 
@@ -30,6 +45,8 @@ public:
     }
     transaction->setCommitCallback([this, handle](bool committed) {
       committed_ = committed;
+      if (committed)
+        CommitObserver::notifyAll();
       handle.resume();
     });
     transaction.reset();

@@ -23,6 +23,10 @@ both variants have to answer the same numbers.
   straight into a Drogon handler.
 - `src/runtime/cancellation-token.hxx` — `CancellationToken`: a shared atomic
   flag a long operation polls; `cancel`/`reset`/`cancelled`.
+- `src/runtime/wake-signal.hxx` — `WakeSignal`: `notify`/`waitFor`, a
+  condition variable with its own pending flag, so a notify that lands while
+  the worker is busy wakes its next wait instead of being lost. The outbox
+  drains sleep on it.
 - `src/runtime/ai-init.hxx` — `ai_init::llamaMutex()`: the single mutex that
   serialises access to the shared LLM/Vision context (rule 13d).
 - `src/runtime/thread-budget.{cc,hxx}` — `ThreadBudget`: `hardwareThreads`,
