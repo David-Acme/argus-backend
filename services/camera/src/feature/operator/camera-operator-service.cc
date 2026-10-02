@@ -730,6 +730,7 @@ void CameraOperatorService::processFrame(const ProcessFrameInput& input)
       state.pendingOther->rule = outcome.rule;
       state.pendingOther->severity = severityName(outcome.severity);
       state.pendingOther->escalated = outcome.escalated;
+      state.pendingOther->night = outcome.night;
       state.pendingOther->knownPersonId = outcome.knownPersonId;
       for (const auto& evaluated : outcome.objects)
         mergeObject({.event = *state.pendingOther,
@@ -886,6 +887,7 @@ void CameraOperatorService::mergePersonPending(const PersonPendingInput& input)
     event.escalated = input.outcome.escalated;
     event.knownPersonId = input.outcome.knownPersonId;
   }
+  event.night = event.night || input.outcome.night;
   event.dwellMs = input.dwellMs;
   event.trackId = input.trackId;
   for (const auto& evaluated : input.outcome.objects)

@@ -10,6 +10,7 @@ Json::Value object_event::toJson(const ObjectDetectedEvent& event)
   json["rule"] = event.rule;
   json["severity"] = event.severity;
   json["escalated"] = event.escalated;
+  json["night"] = event.night;
   if (event.knownPersonId)
     json["knownPersonId"] = Json::Int64(*event.knownPersonId);
   json["capturedAt"] = Json::Int64(event.capturedAtMs);

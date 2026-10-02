@@ -43,6 +43,7 @@ struct ObjectDetectedEvent
   std::string rule;
   std::string severity;
   bool escalated{false};
+  bool night{false};
   std::optional<int64_t> knownPersonId;
   int64_t capturedAtMs{0};
   int64_t detectedAtMs{0};

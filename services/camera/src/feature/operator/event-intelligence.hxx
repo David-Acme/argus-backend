@@ -66,6 +66,7 @@ struct EventIntelligenceOutcome
   std::string rule;
   EventSeverity severity{EventSeverity::Info};
   bool escalated{false};
+  bool night{false};
   std::optional<int64_t> knownPersonId{};
   std::vector<EvaluatedObject> objects{};
 };

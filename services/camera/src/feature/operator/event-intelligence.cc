@@ -207,6 +207,7 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
 
   const auto finalize = [&](EventIntelligenceOutcome outcome) {
     outcome.knownPersonId = knownPersonId;
+    outcome.night = input.night;
     outcome.objects = evaluated;
     return outcome;
   };

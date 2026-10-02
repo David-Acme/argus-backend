@@ -559,6 +559,12 @@ conversation is half duplex: speak, stop, listen, never both at once. Video
 does not come from here either: RTSP is the documented, maintained path and
 one pull through go2rtc serves every viewer.
 
+**Every event says whether it is night.** The object event carries
+`night`, the operator's own `night_start_hour`/`night_end_hour` verdict for
+the frame. The rule alone could not say it: `person_night` is only emitted
+for a person outside every zone, so an intruder in a monitor zone at 03:00
+looked like daytime to guard.
+
 **No face is not a stranger.** The known-person matcher maps identity's
 `face_found = false` to `Unobservable`: the person was scanned but no face
 was visible, so guard does not count them as a stranger, and auto-enrolment
