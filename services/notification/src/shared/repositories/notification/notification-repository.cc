@@ -5,6 +5,7 @@
 #include <ctime>
 #include <sync/sync-limits.hxx>
 #include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 #include <text/json-util.hxx>
 #include <text/sha256.hxx>
 #include <stdexcept>
@@ -23,39 +24,6 @@ int64_t nowMillis()
              std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
-class TransactionCommitAwaiter
-{
-public:
-  explicit TransactionCommitAwaiter(
-      std::shared_ptr<drogon::orm::Transaction> transaction)
-      : transaction_(std::move(transaction))
-  {
-  }
-
-  bool await_ready() const noexcept { return false; }
-
-  void await_suspend(std::coroutine_handle<> handle) noexcept
-  {
-    auto transaction = std::move(transaction_);
-    if (!transaction) {
-      committed_ = false;
-      handle.resume();
-      return;
-    }
-    transaction->setCommitCallback([this, handle](bool committed) {
-      committed_ = committed;
-      handle.resume();
-    });
-    transaction.reset();
-  }
-
-  bool await_resume() const noexcept { return committed_; }
-
-private:
-  std::shared_ptr<drogon::orm::Transaction> transaction_;
-  bool committed_{false};
-};
-
 std::string batchInsertSql(const std::vector<NotificationCreateInput>& inputs,
                            std::vector<std::string>& args)
 {
@@ -238,7 +206,7 @@ NotificationRepository::createManyWithCommand(
             co_await transaction->execSqlCoro(FIND_COMMAND.data(),
                                               input.commandId);
         const bool committed =
-            co_await TransactionCommitAwaiter(std::move(transaction));
+            co_await db_transaction::Commit(std::move(transaction));
         if (!committed)
           throw std::runtime_error("notification duplicate commit failed");
         const std::string stored =
@@ -307,7 +275,7 @@ NotificationRepository::createManyWithCommand(
     co_return result;
   }
 
-  if (!co_await TransactionCommitAwaiter(std::move(transaction)))
+  if (!co_await db_transaction::Commit(std::move(transaction)))
     throw std::runtime_error("notification batch commit failed");
   result.expectedCount = static_cast<int64_t>(normalized.size());
   result.created = schemasFromIds({.inputs = normalized,

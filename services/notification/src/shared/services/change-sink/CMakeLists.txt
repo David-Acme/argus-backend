@@ -8,6 +8,8 @@ argus_module(NAME notification-change-sink
         argus::contracts::sync
         argus::lib::errors
         argus::lib::nats
+        argus::lib::runtime
+        argus::lib::sqlite
         argus::lib::text
         argus::notification-change-outbox
         Drogon::Drogon

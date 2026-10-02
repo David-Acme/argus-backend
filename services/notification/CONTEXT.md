@@ -273,6 +273,13 @@ readiness and the fallback gate — `CameraObjectNotifier`, the
   could not mark `sent` also stays at the head rather than being republished on
   every tick. The batch is one read and not one per row: settlement is per row
   by construction, the PubAck is the whole point, but the read is not.
+- **The drain wakes at the commit.** `enqueue` runs inside the caller's
+  transaction, so its row is invisible until the commit; the sink's
+  `db_transaction::CommitObserver` wakes the drain when a commit lands and
+  its `WakeSignal` keeps a wake that arrives mid-pass. Before, the wake came
+  before the commit, the drain found nothing and every live change waited
+  the 500 ms retry period. The repository commits through the shared
+  `db_transaction::Commit` for the same reason, instead of its own copy.
 - **The sink is installed whenever NATS is configured**, connected or not: a
   broker that is down at boot is the case the outbox exists for, so the audit
   must be recorded then too. The drain waits out the disconnected bus and
