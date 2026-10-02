@@ -312,10 +312,8 @@ Json::Value JsonDiff::toJson(const ChangesDiff& changes)
   Json::Value out(Json::objectValue);
   for (const auto& [key, change] : changes) {
     Json::Value node(Json::objectValue);
-    if (!change.previous.isNull())
-      node["previous"] = change.previous;
-    if (!change.current.isNull())
-      node["current"] = change.current;
+    node["previous"] = change.previous;
+    node["current"] = change.current;
     out[key] = std::move(node);
   }
   return out;

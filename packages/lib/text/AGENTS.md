@@ -57,3 +57,8 @@ absorption.
 `tests/unit/sha256-test.cc` — the known-answer vectors, the block boundaries,
 chunked updates against a single update, and the length-prefixed field
 encode.
+
+`tests/unit/json-diff-test.cc` — the wire form of a diff: every entry carries
+both `previous` and `current`, null included, because a replica applies a
+change only when the `current` key is present and a field cleared to null
+must reach it.

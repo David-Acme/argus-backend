@@ -28,6 +28,11 @@ target_link_libraries(sha256-test PRIVATE argus::lib::text doctest::doctest)
 target_compile_options(sha256-test PRIVATE -Wall -Wextra)
 add_test(NAME sha256-test COMMAND sha256-test)
 
+add_executable(json-diff-test tests/unit/json-diff-test.cc)
+target_link_libraries(json-diff-test PRIVATE argus::lib::text doctest::doctest)
+target_compile_options(json-diff-test PRIVATE -Wall -Wextra)
+add_test(NAME json-diff-test COMMAND json-diff-test)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)
