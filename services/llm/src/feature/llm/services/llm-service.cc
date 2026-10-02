@@ -254,6 +254,9 @@ bool LlmService::prefill(const std::vector<int32_t>& promptTokens,
       --reuse;
   }
 
+  if (reuse > 0 && mem &&
+      !llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(reuse), -1))
+    reuse = 0;
   if (reuse == 0 && mem)
     llama_memory_clear(mem, true);
 

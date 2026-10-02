@@ -750,7 +750,7 @@ TEST_CASE("deadline and external cancellation stop generation")
   CHECK(cancelFinished.load());
 }
 
-TEST_CASE("a second call is refused while the only slot is held")
+TEST_CASE("a second call waits for the only slot instead of being refused")
 {
   std::counting_semaphore<1> entered{0};
   std::latch release(1);
@@ -764,14 +764,47 @@ TEST_CASE("a second call is refused while the only slot is held")
   std::jthread holder([&client, &held, &request] {
     held = client.chat(request);
   });
-  (void)entered.try_acquire_for(kEntryWait);
+  REQUIRE(entered.try_acquire_for(kEntryWait));
+
+  std::atomic<bool> queuedDone{false};
+  std::string queued;
+  std::jthread waiter([&client, &queued, &queuedDone, &request] {
+    queued = client.chat(request);
+    queuedDone = true;
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+  CHECK_FALSE(queuedDone.load());
+
+  release.count_down();
+  holder.join();
+  waiter.join();
+  CHECK(held == "late");
+  CHECK(queued == "late");
+  server.shutdown();
+}
+
+TEST_CASE("a queued call gives up when its deadline passes")
+{
+  std::counting_semaphore<1> entered{0};
+  std::latch release(1);
+  std::atomic<bool> finished{false};
+  const HeldEngine engine{
+      .entered = entered, .release = release, .finished = finished};
+  LlmRpcServer server(heldChat(engine));
+  Client client(clientConfig(server.port()));
+  Client impatient(clientConfig(server.port(), std::chrono::milliseconds(300)));
+  const ChatRequest request = ask();
+  std::string held;
+  std::jthread holder([&client, &held, &request] {
+    held = client.chat(request);
+  });
+  REQUIRE(entered.try_acquire_for(kEntryWait));
   {
     const LatchRelease releaseHold{release};
-    const auto busy = refusalOf([&client, &request] {
-      return client.chat(request);
+    const auto expired = refusalOf([&impatient, &request] {
+      return impatient.chat(request);
     });
-    CHECK(busy.status == 429);
-    CHECK(busy.code == "TOO_MANY_REQUESTS");
+    CHECK(expired.status == 504);
   }
   holder.join();
   CHECK(held == "late");

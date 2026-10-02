@@ -35,6 +35,7 @@ constexpr std::chrono::seconds kTimeoutHeaderRounding{1};
 constexpr auto kMaxDeadline = argus::llm::kMaxTimeout + kTimeoutHeaderRounding;
 constexpr int kMaxReceiveBytes = 8 * 1024 * 1024;
 constexpr std::size_t kMaxQueuedTokens = 64;
+constexpr std::chrono::milliseconds kSlotPoll{20};
 
 struct StreamQueue
 {
@@ -176,9 +177,8 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
           ResponseException(400, LlmErrors::InvalidRequest));
     if (stopped(*context))
       return argus::response::toRpcStatus(stoppedError(*context));
-    if (!slots_.try_acquire())
-      return argus::response::toRpcStatus(
-          ResponseException(429, LlmErrors::Busy));
+    if (!acquireSlot(*context))
+      return argus::response::toRpcStatus(stoppedError(*context));
     struct Release
     {
       std::counting_semaphore<>& slots;
@@ -213,9 +213,8 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
           ResponseException(400, LlmErrors::InvalidRequest));
     if (stopped(*context))
       return argus::response::toRpcStatus(stoppedError(*context));
-    if (!slots_.try_acquire())
-      return argus::response::toRpcStatus(
-          ResponseException(429, LlmErrors::Busy));
+    if (!acquireSlot(*context))
+      return argus::response::toRpcStatus(stoppedError(*context));
     struct Release
     {
       std::counting_semaphore<>& slots;
@@ -300,6 +299,15 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
     if (!writer->Write(final))
       return argus::response::toRpcStatus(stoppedError(*context));
     return grpc::Status::OK;
+  }
+
+  bool acquireSlot(const grpc::ServerContext& context)
+  {
+    while (!slots_.try_acquire_for(kSlotPoll)) {
+      if (stopped(context))
+        return false;
+    }
+    return true;
   }
 
   LlmRpcInput input_;

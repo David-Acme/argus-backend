@@ -32,7 +32,12 @@ scaffolds.
   sessions did in-process (the legacy semantics are unchanged, not fixed);
   alternating different prompts reuse 0 tokens each time. The
   `GET /llm/v1/config` leg exposes the last prefill stats so the thrash is
-  observable.
+  observable. Before a reused prefix is extended, the positions past it are
+  removed from the sequence (`llama_memory_seq_rm`); a full hit re-decodes
+  its last token to get fresh logits, and that position was still in the
+  cache, so the decode was rejected and the call answered empty. When the
+  memory cannot drop the tail (LFM2's recurrent layers cannot roll back),
+  the prefill starts clean instead.
 - **The last-prefill counters have a provenance limit.** `lastStats_` is the
   engine's MOST RECENT prefill (`std::atomic`, one store per `prefill()`), so
   while one generation runs every other reader sees its numbers, and the tool
@@ -90,7 +95,11 @@ scaffolds.
   `argus::llm::kMaxTimeout` — gRPC rounds the relative `grpc-timeout` header,
   so the flat two-minute ceiling the tts and stt servers carry would refuse
   the client's own maximum. A caller arriving while every
-  `ThreadBudget::inferenceSlots()` slot is held gets 429 `Busy`; the engine
+  `ThreadBudget::inferenceSlots()` slot is held waits for one, until its own
+  deadline or cancellation (504 / 499), instead of a 429 `Busy`: with fewer
+  than sixteen hardware threads there is one slot, and the generations are
+  serialized by the engine mutex anyway, so refusing only turned a second
+  speaker's turn into silence. The engine
   call is synchronous on the gRPC server's own thread, never on the Drogon
   loop. `ChatStream` runs the engine on a `std::jthread` producer into a
   64-token bounded queue (the TTS stream pattern, polling its condition
