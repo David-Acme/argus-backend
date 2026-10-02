@@ -10,6 +10,40 @@
 namespace guard_policy
 {
 
+namespace
+{
+
+GuardDanger companionRelaxation(const GuardContext& context)
+{
+  if (context.mode == GuardMode::Away || context.mode == GuardMode::Armed)
+    return GuardDanger::None;
+  if (context.inAlertZone || context.atNight || context.escalated)
+    return GuardDanger::None;
+  if (context.accompaniedByResident)
+    return GuardDanger::Low;
+  if (context.accompaniedByGuest)
+    return GuardDanger::Medium;
+  return GuardDanger::None;
+}
+
+GuardDanger hardFloor(const GuardContext& context)
+{
+  GuardDanger floor = GuardDanger::None;
+  if (context.mode == GuardMode::Away || context.mode == GuardMode::Armed)
+    floor = GuardDanger::Critical;
+  if (context.inAlertZone)
+    floor = GuardDanger::Critical;
+  if (context.atNight || context.escalated)
+    floor = std::max(floor, GuardDanger::High);
+  if (context.strangerCount >= 2)
+    floor = std::max(floor, GuardDanger::High);
+  if (context.visitCount >= 3)
+    floor = std::max(floor, GuardDanger::High);
+  return floor;
+}
+
+}
+
 GuardDanger evaluate(const GuardContext& context)
 {
   if (!context.hasUnknown) {
@@ -18,29 +52,77 @@ GuardDanger evaluate(const GuardContext& context)
     return GuardDanger::Low;
   }
 
-  GuardDanger danger = GuardDanger::Medium;
-  if (context.expectedGuest)
-    danger = GuardDanger::Low;
-  else if (context.mode == GuardMode::Away || context.mode == GuardMode::Armed)
-    danger = GuardDanger::Critical;
-  else if (context.inAlertZone)
-    danger = GuardDanger::Critical;
-  else if (context.atNight || context.escalated)
-    danger = GuardDanger::High;
+  GuardDanger soft =
+      context.expectedGuest ? GuardDanger::Low : GuardDanger::Medium;
+  const GuardDanger companion = companionRelaxation(context);
+  if (companion != GuardDanger::None && companion < soft)
+    soft = companion;
 
-  if (context.trustedCompanion && !context.inAlertZone && !context.atNight &&
-      context.mode != GuardMode::Away)
-    danger = GuardDanger::Low;
+  GuardDanger danger = std::max(soft, hardFloor(context));
 
-  if (context.visitCount >= 3 && danger < GuardDanger::High)
-    danger = GuardDanger::High;
-
-  if (context.severity == "critical" && danger < GuardDanger::High)
-    danger = GuardDanger::High;
-  else if (context.severity == "warning" && danger < GuardDanger::Medium)
-    danger = GuardDanger::Medium;
+  if (context.severity == "critical")
+    danger = std::max(danger, GuardDanger::High);
+  else if (context.severity == "warning")
+    danger = std::max(danger, GuardDanger::Medium);
 
   return danger;
+}
+
+namespace
+{
+
+GuardPersonSignals parsePerson(const Json::Value& object)
+{
+  GuardPersonSignals person;
+  person.trackId = object.get("trackId", 0).asInt64();
+  const int64_t personId = object.get("personId", 0).asInt64();
+  const std::string legacyIdentity = object.get("identity", "").asString();
+  const std::string stateName = object.get("identityState", "").asString();
+  const IdentityState state = identityStateFromString(stateName);
+  person.known = legacyIdentity == "known" && personId > 0 &&
+                 (stateName.empty() || state == IdentityState::Known);
+  person.personId = personId;
+  person.identityState = person.known ? IdentityState::Known : state;
+  person.identityAvailable = object.isMember("identityState");
+  person.identityConfidence =
+      object.get("identityConfidence", 0.0).asFloat();
+  person.identifyAttempts = object.get("identifyAttempts", 0).asInt();
+  person.scoreMedian = object.get("scoreMedian", 0.0).asDouble();
+  person.scoreSamples = object.get("scoreSamples", 0).asInt();
+  person.area = object["bbox"].get("w", 0.0).asDouble() *
+                object["bbox"].get("h", 0.0).asDouble();
+  person.zoneWindows = object.get("zoneWindows", 0).asInt();
+  person.trackWindows = object.get("trackWindows", 0).asInt();
+  person.areaSpread = object.get("areaSpread", 1.0).asDouble();
+  person.zoneKind = object.get("zoneKind", "").asString();
+  person.signature = object.get("signature", "").asString();
+  person.observationId = object.get("observationId", "").asString();
+  person.firstSeenMs = object.get("firstSeenMs", 0).asInt64();
+  person.dwellMs = object.get("dwellMs", 0).asInt64();
+  return person;
+}
+
+void adoptSubject(GuardEventSignals& signals, const GuardPersonSignals& person)
+{
+  signals.personId = person.personId;
+  signals.trackId = person.trackId;
+  signals.identityState = person.identityState;
+  signals.identityAvailable = person.identityAvailable;
+  signals.identityConfidence = person.identityConfidence;
+  signals.identifyAttempts = person.identifyAttempts;
+  signals.scoreMedian = person.scoreMedian;
+  signals.scoreSamples = person.scoreSamples;
+  signals.zoneWindows = person.zoneWindows;
+  signals.trackWindows = person.trackWindows;
+  signals.areaSpread = person.areaSpread;
+  signals.zoneKind = person.zoneKind;
+  signals.observationId = person.observationId;
+  signals.firstSeenMs = person.firstSeenMs;
+  signals.dwellMs = person.dwellMs;
+  if (!person.signature.empty())
+    signals.signature = person.signature;
+}
+
 }
 
 GuardEventSignals parseObjectEvent(const Json::Value& event)
@@ -55,62 +137,70 @@ GuardEventSignals parseObjectEvent(const Json::Value& event)
   bool personPresent = false;
   const int64_t primaryTrackId = event.get("trackId", 0).asInt64();
   const Json::Value& objects = event["objects"];
-
-  const Json::Value* primary = nullptr;
-  const Json::Value* largest = nullptr;
-  double largestArea = -1.0;
   if (objects.isArray()) {
     for (const auto& object : objects) {
       if (object.get("class", "").asString() != "person")
         continue;
       personPresent = true;
-      const int64_t trackId = object.get("trackId", 0).asInt64();
-      const double area = object["bbox"].get("w", 0.0).asDouble() *
-                          object["bbox"].get("h", 0.0).asDouble();
-      signals.viewScore = std::max(signals.viewScore, area);
-      if (area > largestArea) {
-        largestArea = area;
-        largest = &object;
-      }
-      if (primaryTrackId > 0 && trackId == primaryTrackId)
-        primary = &object;
+      signals.persons.push_back(parsePerson(object));
     }
   }
-  if (primary == nullptr)
-    primary = largest;
 
-  if (primary != nullptr) {
-    const int64_t personId = primary->get("personId", 0).asInt64();
-    const std::string legacyIdentity =
-        primary->get("identity", "").asString();
-    const std::string stateName =
-        primary->get("identityState", "").asString();
-    const IdentityState state = identityStateFromString(stateName);
-    const bool known = legacyIdentity == "known" && personId > 0 &&
-                       (stateName.empty() || state == IdentityState::Known);
-    signals.hasKnown = known;
-    signals.hasUnknown = !known;
-    signals.personId = personId;
-    signals.knownPersonId = known ? personId : 0;
-    signals.identityState = known ? IdentityState::Known : state;
-    signals.identityAvailable = primary->isMember("identityState");
-    signals.identifyAttempts = primary->get("identifyAttempts", 0).asInt();
-    signals.scoreMedian = primary->get("scoreMedian", 0.0).asDouble();
-    signals.scoreSamples = primary->get("scoreSamples", 0).asInt();
-    signals.zoneWindows = primary->get("zoneWindows", 0).asInt();
-    signals.trackWindows = primary->get("trackWindows", 0).asInt();
-    signals.areaSpread = primary->get("areaSpread", 1.0).asDouble();
-    signals.trackId = primary->get("trackId", 0).asInt64();
-    signals.firstSeenMs = primary->get("firstSeenMs", 0).asInt64();
-    signals.dwellMs = primary->get("dwellMs", 0).asInt64();
-    signals.observationId = primary->get("observationId", "").asString();
-    signals.zoneKind = primary->get("zoneKind", "").asString();
-    signals.identityConfidence =
-        primary->get("identityConfidence", 0.0).asFloat();
-    const std::string signature = primary->get("signature", "").asString();
-    if (!signature.empty())
-      signals.signature = signature;
+  for (const auto& person : signals.persons) {
+    if (person.known)
+      ++signals.knownCount;
+    else
+      ++signals.unknownCount;
+    if (!person.known && person.identityState == IdentityState::Unrecognized)
+      ++signals.strangerCount;
+    signals.viewScore = std::max(signals.viewScore, person.area);
   }
+  signals.hasKnown = signals.knownCount > 0;
+  signals.hasUnknown = signals.unknownCount > 0;
+
+  const GuardPersonSignals* subject = nullptr;
+  const GuardPersonSignals* primaryUnknown = nullptr;
+  const GuardPersonSignals* firstUnknown = nullptr;
+  const GuardPersonSignals* primaryPerson = nullptr;
+  const GuardPersonSignals* largest = nullptr;
+  for (const auto& person : signals.persons) {
+    if (!person.known) {
+      if (firstUnknown == nullptr)
+        firstUnknown = &person;
+      if (primaryTrackId > 0 && person.trackId == primaryTrackId &&
+          primaryUnknown == nullptr)
+        primaryUnknown = &person;
+    }
+    if (primaryTrackId > 0 && person.trackId == primaryTrackId &&
+        primaryPerson == nullptr)
+      primaryPerson = &person;
+    if (largest == nullptr || person.area > largest->area)
+      largest = &person;
+  }
+
+  if (primaryUnknown != nullptr)
+    subject = primaryUnknown;
+  else if (firstUnknown != nullptr)
+    subject = firstUnknown;
+  else if (primaryPerson != nullptr)
+    subject = primaryPerson;
+  else
+    subject = largest;
+
+  if (subject != nullptr) {
+    adoptSubject(signals, *subject);
+    if (subject->known)
+      signals.knownPersonId = subject->personId;
+  }
+  if (signals.knownPersonId == 0) {
+    for (const auto& person : signals.persons) {
+      if (person.known) {
+        signals.knownPersonId = person.personId;
+        break;
+      }
+    }
+  }
+
   if (signals.trackId == 0)
     signals.trackId = primaryTrackId;
   if (signals.dwellMs == 0)
@@ -120,7 +210,7 @@ GuardEventSignals parseObjectEvent(const Json::Value& event)
     signals.firstSeenMs = event.get("capturedAt", 0).asInt64();
   if (signals.rule.rfind("person", 0) == 0)
     personPresent = true;
-  if (primary == nullptr)
+  if (signals.persons.empty())
     signals.hasUnknown = personPresent;
   return signals;
 }

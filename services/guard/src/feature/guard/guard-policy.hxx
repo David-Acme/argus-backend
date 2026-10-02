@@ -10,6 +10,28 @@
 #include <string>
 #include <vector>
 
+struct GuardPersonSignals
+{
+  int64_t trackId{0};
+  int64_t personId{0};
+  bool known{false};
+  IdentityState identityState{IdentityState::Unrecognized};
+  bool identityAvailable{false};
+  float identityConfidence{0.0F};
+  int identifyAttempts{0};
+  double scoreMedian{0.0};
+  int scoreSamples{0};
+  double area{0.0};
+  int zoneWindows{0};
+  int trackWindows{0};
+  double areaSpread{1.0};
+  std::string zoneKind;
+  std::string signature;
+  std::string observationId;
+  int64_t firstSeenMs{0};
+  int64_t dwellMs{0};
+};
+
 struct GuardContext
 {
   GuardMode mode{GuardMode::Home};
@@ -17,7 +39,9 @@ struct GuardContext
   std::string severity;
   bool hasKnown{false};
   bool hasUnknown{false};
-  bool trustedCompanion{false};
+  int strangerCount{0};
+  bool accompaniedByResident{false};
+  bool accompaniedByGuest{false};
   bool expectedGuest{false};
   bool inAlertZone{false};
   bool atNight{false};
@@ -34,6 +58,10 @@ struct GuardEventSignals
   bool escalated{false};
   bool hasKnown{false};
   bool hasUnknown{false};
+  int unknownCount{0};
+  int knownCount{0};
+  int strangerCount{0};
+  std::vector<GuardPersonSignals> persons;
   int64_t personId{0};
   int64_t knownPersonId{0};
   int64_t trackId{0};

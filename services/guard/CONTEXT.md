@@ -12,8 +12,19 @@ deterministic danger level and raises only policy-authorized actions. It owns
   `guard_observation_inbox` and acknowledges after commit; the inbox plus the
   serialized observation queue make redelivery and restarts idempotent.
 - Evaluates the deterministic danger matrix (`guard-policy.cc`): hard floors
-  (unknown while away/armed, alert zone, night, escalation, repeats) plus a
-  severity raise; expected guests and trusted companions only lower soft cases.
+  (unknown while away/armed, alert zone, night, escalation, repeat visits of
+  one person, two strangers in one event) plus a severity raise; expected
+  guests and companions only lower soft cases - a resident companion to Low,
+  any other known companion to Medium - and never below a floor.
+- Every person in an event is counted, not only the primary track: a known
+  companion no longer hides a stranger, and the stranger is the event's
+  subject. A *stranger* is a face that was seen and not matched
+  (`Unrecognized`); a person whose face was never visible is unknown but not
+  a stranger, so two residents walking away from the camera do not reach the
+  two-strangers floor. An incident is `known` only when every person in it is.
+- `repeatVisits` (the unknown-signature counter) stays a calibration input
+  and is not a floor: it counts observations, not visits, and grows for as
+  long as the signature lives.
 - Merges bounded semantic evidence (`guard-risk.cc`) from a closed vocabulary
   of observable tags; unknown tags are dropped and the model can never lower a
   hard floor.

@@ -1114,7 +1114,6 @@ GuardService::checkpointToJson(const ObservationCheckpoint& checkpoint)
   Json::Value json(Json::objectValue);
   json["encounterChecks"] = checkpoint.encounterChecks;
   json["visitCount"] = checkpoint.visitCount;
-  json["signatureVisits"] = checkpoint.signatureVisits;
   json["expectedGuest"] = checkpoint.expectedGuest;
   json["guestId"] = Json::Int64(checkpoint.guestId);
   json["guestOneTime"] = checkpoint.guestOneTime;
@@ -1173,7 +1172,6 @@ GuardService::checkpointFromJson(const Json::Value& json)
     return checkpoint;
   checkpoint.encounterChecks = json.get("encounterChecks", 0).asInt();
   checkpoint.visitCount = json.get("visitCount", 0).asInt();
-  checkpoint.signatureVisits = json.get("signatureVisits", 0).asInt();
   checkpoint.expectedGuest = json.get("expectedGuest", false).asBool();
   checkpoint.guestId = json.get("guestId", 0).asInt64();
   checkpoint.guestOneTime = json.get("guestOneTime", false).asBool();
@@ -1273,9 +1271,7 @@ GuardService::applyObservation(const ObservationInput& input)
         signals.rule == "person_night" || signals.rule == "vehicle_night";
     context.escalated =
         signals.escalated || signals.rule == "presence_escalating";
-    context.signatureVisits = checkpoint.signatureVisits;
-    context.unknownCount = signals.unknownCount;
-    context.knownCount = signals.knownCount;
+    context.strangerCount = signals.strangerCount;
     if (signals.hasUnknown && signals.knownPersonId > 0 &&
         dependencies_.identity) {
       const auto known = co_await BlockingTask<std::optional<PersonProfile>>(
@@ -1340,7 +1336,9 @@ GuardService::applyObservation(const ObservationInput& input)
                           .danger = guard_policy::dangerToString(danger),
                           .severity = signals.severity,
                           .personId = signals.personId,
-                          .identity = signals.hasKnown ? "known" : "unknown",
+                          .identity = signals.hasKnown && !signals.hasUnknown
+                                       ? "known"
+                                       : "unknown",
                           .eventId = eventId,
                           .eventJson = json_util::toString(event),
                           .createdAt = now},
@@ -1917,7 +1915,6 @@ GuardService::applyObservation(const ObservationInput& input)
            .signature = signals.signature,
            .hasUnknown = signals.hasUnknown,
            .now = now});
-      checkpoint.signatureVisits = collected.repeatVisits;
       const HoldResult holds = co_await computeHolds(
           {.danger = danger, .legacyWouldNotify = legacyWould, .now = now});
       journalFresh = co_await journalDecision(

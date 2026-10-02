@@ -56,12 +56,97 @@ TEST_CASE("an unknown person at night is high")
   CHECK(guard_policy::evaluate(context) == GuardDanger::High);
 }
 
-TEST_CASE("an unknown companion of a trusted person is low")
+TEST_CASE("an unknown accompanied by a resident is low")
 {
   auto context = unknownPerson();
   context.hasKnown = true;
-  context.trustedCompanion = true;
+  context.accompaniedByResident = true;
   CHECK(guard_policy::evaluate(context) == GuardDanger::Low);
+}
+
+TEST_CASE("an unknown accompanied by a guest stays medium")
+{
+  auto context = unknownPerson();
+  context.hasKnown = true;
+  context.accompaniedByGuest = true;
+  CHECK(guard_policy::evaluate(context) == GuardDanger::Medium);
+}
+
+TEST_CASE("a companion never lowers the away floor")
+{
+  auto context = unknownPerson();
+  context.hasKnown = true;
+  context.accompaniedByResident = true;
+  context.mode = GuardMode::Away;
+  CHECK(guard_policy::evaluate(context) == GuardDanger::Critical);
+}
+
+TEST_CASE("a companion never lowers the armed floor")
+{
+  auto context = unknownPerson();
+  context.hasKnown = true;
+  context.accompaniedByResident = true;
+  context.mode = GuardMode::Armed;
+  CHECK(guard_policy::evaluate(context) == GuardDanger::Critical);
+}
+
+TEST_CASE("a companion never lowers an alert zone")
+{
+  auto context = unknownPerson();
+  context.hasKnown = true;
+  context.accompaniedByResident = true;
+  context.inAlertZone = true;
+  CHECK(guard_policy::evaluate(context) == GuardDanger::Critical);
+}
+
+TEST_CASE("a companion never lowers an escalation or the night")
+{
+  auto escalated = unknownPerson();
+  escalated.hasKnown = true;
+  escalated.accompaniedByResident = true;
+  escalated.escalated = true;
+  CHECK(guard_policy::evaluate(escalated) == GuardDanger::High);
+
+  auto night = unknownPerson();
+  night.hasKnown = true;
+  night.accompaniedByResident = true;
+  night.atNight = true;
+  CHECK(guard_policy::evaluate(night) == GuardDanger::High);
+}
+
+TEST_CASE("two strangers reach high")
+{
+  auto context = unknownPerson();
+  context.strangerCount = 2;
+  CHECK(guard_policy::evaluate(context) == GuardDanger::High);
+}
+
+TEST_CASE("only a seen, unmatched face counts as a stranger")
+{
+  const auto person = [](const char* state) {
+    Json::Value object(Json::objectValue);
+    object["class"] = "person";
+    object["identity"] = "unknown";
+    object["identityState"] = state;
+    return object;
+  };
+  Json::Value event(Json::objectValue);
+  event["cameraId"] = 3;
+  event["rule"] = "person_day";
+  Json::Value objects(Json::arrayValue);
+  objects.append(person("unobservable"));
+  objects.append(person("unobservable"));
+  event["objects"] = objects;
+
+  const auto backs = guard_policy::parseObjectEvent(event);
+  CHECK(backs.unknownCount == 2);
+  CHECK(backs.strangerCount == 0);
+
+  event["objects"][1] = person("unrecognized");
+  event["objects"][0] = person("unrecognized");
+  const auto faces = guard_policy::parseObjectEvent(event);
+  CHECK(faces.unknownCount == 2);
+  CHECK(faces.strangerCount == 2);
 }
 
 TEST_CASE("an expected guest is low")
@@ -95,7 +180,7 @@ TEST_CASE("mode parsing round-trips")
   CHECK(guard_policy::modeToString(GuardMode::Away) == "away");
 }
 
-TEST_CASE("the primary track alone decides known or unknown")
+TEST_CASE("every person in the event is counted and the stranger is the subject")
 {
   Json::Value event(Json::objectValue);
   event["cameraId"] = 3;
@@ -105,10 +190,12 @@ TEST_CASE("the primary track alone decides known or unknown")
   known["class"] = "person";
   known["identity"] = "known";
   known["personId"] = Json::Int64(7);
+  known["trackId"] = Json::Int64(21);
   Json::Value unknown(Json::objectValue);
   unknown["class"] = "person";
   unknown["identity"] = "unknown";
-  unknown["personId"] = Json::Int64(12);
+  unknown["personId"] = Json::Int64(0);
+  unknown["trackId"] = Json::Int64(22);
   Json::Value objects(Json::arrayValue);
   objects.append(known);
   objects.append(unknown);
@@ -116,9 +203,13 @@ TEST_CASE("the primary track alone decides known or unknown")
 
   const auto signals = guard_policy::parseObjectEvent(event);
   CHECK(signals.hasKnown);
-  CHECK_FALSE(signals.hasUnknown);
+  CHECK(signals.hasUnknown);
+  CHECK(signals.knownCount == 1);
+  CHECK(signals.unknownCount == 1);
+  CHECK(signals.persons.size() == 2);
+  CHECK(signals.personId == 0);
   CHECK(signals.knownPersonId == 7);
-  CHECK(signals.personId == 7);
+  CHECK(signals.trackId == 22);
 
   Json::Value bbox(Json::objectValue);
   bbox["w"] = 40.0;
@@ -127,10 +218,11 @@ TEST_CASE("the primary track alone decides known or unknown")
   objects[1] = unknown;
   event["objects"] = objects;
   const auto largerUnknown = guard_policy::parseObjectEvent(event);
-  CHECK_FALSE(largerUnknown.hasKnown);
+  CHECK(largerUnknown.hasKnown);
   CHECK(largerUnknown.hasUnknown);
-  CHECK(largerUnknown.personId == 12);
-  CHECK(largerUnknown.knownPersonId == 0);
+  CHECK(largerUnknown.personId == 0);
+  CHECK(largerUnknown.knownPersonId == 7);
+  CHECK(largerUnknown.trackId == 22);
 }
 
 TEST_CASE("a known companion never shields an unknown primary")
@@ -166,7 +258,9 @@ TEST_CASE("a known companion never shields an unknown primary")
 
   const auto signals = guard_policy::parseObjectEvent(event);
   CHECK(signals.hasUnknown);
-  CHECK_FALSE(signals.hasKnown);
+  CHECK(signals.hasKnown);
+  CHECK(signals.unknownCount == 1);
+  CHECK(signals.knownCount == 1);
   CHECK(signals.personId == 0);
   CHECK(signals.trackId == 22);
   CHECK(signals.zoneKind == "alert");
@@ -176,6 +270,7 @@ TEST_CASE("a known companion never shields an unknown primary")
   context.severity = signals.severity;
   context.hasKnown = signals.hasKnown;
   context.hasUnknown = signals.hasUnknown;
+  context.accompaniedByResident = true;
   context.inAlertZone = signals.zoneKind == "alert";
   CHECK(guard_policy::evaluate(context) == GuardDanger::Critical);
 }
