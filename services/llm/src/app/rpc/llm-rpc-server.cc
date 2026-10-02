@@ -14,6 +14,7 @@
 #include <deque>
 #include <iterator>
 #include <mutex>
+#include <optional>
 #include <semaphore>
 #include <stdexcept>
 #include <string>
@@ -177,8 +178,8 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
           ResponseException(400, LlmErrors::InvalidRequest));
     if (stopped(*context))
       return argus::response::toRpcStatus(stoppedError(*context));
-    if (!acquireSlot(*context))
-      return argus::response::toRpcStatus(stoppedError(*context));
+    if (const auto refusal = acquireSlot(*context))
+      return argus::response::toRpcStatus(*refusal);
     struct Release
     {
       std::counting_semaphore<>& slots;
@@ -213,8 +214,8 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
           ResponseException(400, LlmErrors::InvalidRequest));
     if (stopped(*context))
       return argus::response::toRpcStatus(stoppedError(*context));
-    if (!acquireSlot(*context))
-      return argus::response::toRpcStatus(stoppedError(*context));
+    if (const auto refusal = acquireSlot(*context))
+      return argus::response::toRpcStatus(*refusal);
     struct Release
     {
       std::counting_semaphore<>& slots;
@@ -301,13 +302,17 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
     return grpc::Status::OK;
   }
 
-  bool acquireSlot(const grpc::ServerContext& context)
+  std::optional<ResponseException>
+  acquireSlot(const grpc::ServerContext& context)
   {
+    const auto giveUpAt = Clock::now() + kMaxDeadline;
     while (!slots_.try_acquire_for(kSlotPoll)) {
       if (stopped(context))
-        return false;
+        return stoppedError(context);
+      if (Clock::now() >= giveUpAt)
+        return ResponseException(429, LlmErrors::Busy);
     }
-    return true;
+    return std::nullopt;
   }
 
   LlmRpcInput input_;

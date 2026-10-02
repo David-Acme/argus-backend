@@ -99,7 +99,9 @@ scaffolds.
   deadline or cancellation (504 / 499), instead of a 429 `Busy`: with fewer
   than sixteen hardware threads there is one slot, and the generations are
   serialized by the engine mutex anyway, so refusing only turned a second
-  speaker's turn into silence. The engine
+  speaker's turn into silence. A caller without a deadline waits at most
+  the longest deadline the server accepts and is then refused 429 `Busy`,
+  so no gRPC thread is parked forever. The engine
   call is synchronous on the gRPC server's own thread, never on the Drogon
   loop. `ChatStream` runs the engine on a `std::jthread` producer into a
   64-token bounded queue (the TTS stream pattern, polling its condition
