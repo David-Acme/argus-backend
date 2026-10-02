@@ -27,6 +27,11 @@ declare errors and this package formats them.
   straight from the catalog) and `validationError`.
 - `src/http/error-handler.hxx` — `ErrorHandler`: the one advice every service
   registers (`handleException`) plus `unmatchedRoute`, the framework's 404/405.
+  An exception that is neither a `ResponseException` nor a
+  `ValidationException` is logged with its method, path and text, and the
+  client receives the generic `InternalError`: its text is SQLite's,
+  storage's or the standard library's, which the caller cannot act on and
+  should not read.
 - `src/http/cors.hxx` — `Cors`: `apply` on a response, `handleOptions` for the
   preflight.
 - `src/http/details/http-errors.hxx` — the definitions this package refuses with, all of

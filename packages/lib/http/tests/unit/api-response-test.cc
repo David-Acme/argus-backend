@@ -10,6 +10,7 @@
 #include <http/error-handler.hxx>
 #include <http/details/http-errors.hxx>
 
+#include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <drogon/HttpTypes.h>
 #include <json/json.h>
@@ -42,7 +43,8 @@ Json::Value sampleData()
 drogon::HttpResponsePtr answerTo(const std::exception& error)
 {
   drogon::HttpResponsePtr response;
-  ErrorHandler::handleException(error, {}, [&](const auto& result) {
+  ErrorHandler::handleException(error, drogon::HttpRequest::newHttpRequest(),
+                                [&](const auto& result) {
     response = result;
   });
   return response;
@@ -168,7 +170,7 @@ TEST_CASE("the advice preserves error arrays at the HTTP boundary")
   CHECK(body["info"].isNull());
 }
 
-TEST_CASE("the advice turns an untyped exception into a 500 in its own words")
+TEST_CASE("the advice turns an untyped exception into a 500 that keeps its words in the log")
 {
   const auto response = answerTo(std::runtime_error("a broken invariant"));
   CHECK(response->getStatusCode() == drogon::k500InternalServerError);
@@ -176,7 +178,7 @@ TEST_CASE("the advice turns an untyped exception into a 500 in its own words")
   const auto body = bodyOf(response);
   CHECK(body["status"] == 500);
   CHECK(body["errors"]["code"] == "INTERNAL_ERROR");
-  CHECK(body["errors"]["message"] == "a broken invariant");
+  CHECK(body["errors"]["message"] == "Internal error");
 }
 
 TEST_CASE("the advice turns a validation failure into 422 field errors")

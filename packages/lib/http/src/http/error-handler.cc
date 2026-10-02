@@ -7,9 +7,10 @@
 
 #include <json/value.h>
 #include <string>
+#include <trantor/utils/Logger.h>
 
 void ErrorHandler::handleException(
-    const std::exception& e, const drogon::HttpRequestPtr&,
+    const std::exception& e, const drogon::HttpRequestPtr& req,
     std::function<void(const drogon::HttpResponsePtr&)>&& respCallback)
 {
   if (const auto* ve = dynamic_cast<const ValidationException*>(&e)) {
@@ -29,8 +30,9 @@ void ErrorHandler::handleException(
     return;
   }
 
-  respCallback(
-      ApiResponse::error(HttpErrors::InternalError.withMessage(e.what())));
+  LOG_ERROR << "Unhandled exception on " << req->methodString() << " "
+            << req->path() << ": " << e.what();
+  respCallback(ApiResponse::error(HttpErrors::InternalError));
 }
 
 drogon::HttpResponsePtr ErrorHandler::unmatchedRoute(drogon::HttpStatusCode status)
