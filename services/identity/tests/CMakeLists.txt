@@ -75,3 +75,11 @@ target_compile_options(identity-change-transaction-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-change-transaction-test)
 add_test(NAME identity-change-transaction-test
          COMMAND identity-change-transaction-test)
+
+add_executable(identity-face-slots-test unit/identity-face-slots-test.cc)
+target_link_libraries(identity-face-slots-test PRIVATE
+    argus::identity-shared
+    doctest::doctest)
+target_compile_options(identity-face-slots-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-face-slots-test)
+add_test(NAME identity-face-slots-test COMMAND identity-face-slots-test)

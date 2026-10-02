@@ -109,12 +109,18 @@ void FaceService::init()
   if (!impl_->init("models/face")) {
     impl_.reset();
     LOG_WARN << "FaceService: models missing, recognition disabled";
+    disable();
     return;
   }
 
   faceDb_.init();
   concurrency_.release(ThreadBudget::inferenceSlots());
   LOG_INFO << "FaceService initialized";
+}
+
+void FaceService::disable()
+{
+  concurrency_.release(ThreadBudget::inferenceSlots());
 }
 
 void FaceService::shutdown()

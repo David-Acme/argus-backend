@@ -115,8 +115,8 @@ argus-identity/
   database/schema.sql   this owner's eleven tables and their indices
   config.toml.example   identity keys + the peer targets; no AI keys
   tests/unit/           the config, migration, change-outbox,
-                        change-transaction, change-outbox-sink and sync-RPC
-                        suites
+                        change-transaction, change-outbox-sink, sync-RPC and
+                        face-slots suites
   tools/migrate-identity/  argus-migrate-identity (argus.db -> identity.db)
   scripts/provision.sh  the deploy-time provisioning of this service
   CONTEXT.md            purpose, ownership, wiring decisions
@@ -153,9 +153,11 @@ reached by its peers as `argus-identity:7040`. A request that arrives on the
 ./scripts/build-all.sh dev --only identity
 ```
 
-The six unit suites register in this service's standalone CTest graph;
+The seven unit suites register in this service's standalone CTest graph;
 `identity-config-test` covers this service's own config defaults, its section
 overrides and the non-loopback RPC listener's secret gate;
+`identity-face-slots-test` pins that a disabled face service answers instead
+of blocking its caller;
 `identity-sync-rpc-test` drives the `SyncService` pull leg end to end (the
 role gate, the rule-7b user scope, the tombstones and both sides of the
 fleet-secret gate) against a live Drogon loop and an in-process listener, and

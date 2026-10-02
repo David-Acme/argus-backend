@@ -30,6 +30,7 @@ public:
   static FaceService& instance();
 
   void init();
+  void disable();
   void shutdown();
   bool isLoaded() const;
 

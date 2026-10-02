@@ -38,6 +38,8 @@
 namespace
 {
 
+constexpr int kMaxRpcReceiveBytes = 12 * 1024 * 1024;
+
 struct DrogonConfigInput
 {
   const IdentityDbConfig& identityDb;
@@ -210,6 +212,7 @@ int main()
                                  .auth = filterAuthClient()});
   IdentitySyncRpcService syncRpcService({.fleetSecret = rpc.secret});
   grpc::ServerBuilder rpcBuilder;
+  rpcBuilder.SetMaxReceiveMessageSize(kMaxRpcReceiveBytes);
   rpcBuilder.AddListeningPort(rpc.listener.host + ":" +
                                   std::to_string(rpc.listener.port),
                               grpc::InsecureServerCredentials());
@@ -262,6 +265,7 @@ int main()
         LOG_WARN << "FaceService not loaded — facial login disabled";
     }
     else {
+      FaceService::instance().disable();
       LOG_INFO << "FaceService disabled by configuration";
     }
 

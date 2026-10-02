@@ -137,6 +137,18 @@ GetPerson, PromotePerson). `IdentitySyncRpcService` serves the same contract's
 rows `services/sync` pages when a client bootstraps, alongside the change feed
 this service publishes.
 
+The gRPC server raises its receive limit to 12 MiB: the auth DTOs accept a
+10 MB face image for login and registration, and gRPC's default 4 MiB limit
+answered a full-resolution phone photo with `RESOURCE_EXHAUSTED`, which the
+caller reported as an unrecognized face.
+
+The listener starts before `FaceService::init()` runs, so the inference slots
+start closed and a call that arrives during boot waits for the models.
+Either way the slots open: `init()` opens them whether the models loaded or
+not, and `disable()` opens them when `[face] enabled` is false. A call then
+answers `nullopt` instead of parking a thread forever, which is what the
+camera's matcher used to hit on every crop while recognition was off.
+
 The f7-3 pair ValidateToken and CheckDeviceCredential left with the session
 surface in Phase 3b-1/3b-2: argus-auth serves them now, and it is the single
 authoritative validation — JWT signature, the live user row (status always
