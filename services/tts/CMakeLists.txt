@@ -113,3 +113,9 @@ target_compile_options(tts-rpc-test PRIVATE -Wall -Wextra)
 set_target_properties(tts-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME tts-rpc-test COMMAND tts-rpc-test)
+
+add_executable(tts-speech-text-test tests/unit/tts-speech-text-test.cc)
+target_link_libraries(tts-speech-text-test PRIVATE argus::tts-speech-text doctest::doctest)
+target_compile_options(tts-speech-text-test PRIVATE -Wall -Wextra)
+set_target_properties(tts-speech-text-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME tts-speech-text-test COMMAND tts-speech-text-test)

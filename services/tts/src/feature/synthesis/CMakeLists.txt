@@ -1,3 +1,12 @@
+argus_module(NAME tts-speech-text
+    SOURCES
+        text/number-words.cc
+        text/text-normalizer.cc
+        text/prosodic-chunker.cc
+    INCLUDES ../..)
+
+target_compile_options(argus_tts-speech-text PRIVATE -Wall -Wextra)
+
 argus_module(NAME tts-synthesis
     SOURCES
         services/tts-service.cc
