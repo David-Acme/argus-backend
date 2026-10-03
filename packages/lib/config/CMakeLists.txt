@@ -15,6 +15,8 @@ argus_lib(NAME config
         src/config/service.hxx
         src/config/config-service.cc
         src/config/config-service.hxx
+        src/config/settings-registry.cc
+        src/config/settings-registry.hxx
     INCLUDES src
     DEPENDS
         Drogon::Drogon
@@ -41,6 +43,13 @@ target_link_libraries(config-service-test PRIVATE
     doctest::doctest)
 target_compile_options(config-service-test PRIVATE -Wall -Wextra)
 add_test(NAME config-service-test COMMAND config-service-test)
+
+add_executable(settings-registry-test tests/unit/settings-registry-test.cc)
+target_link_libraries(settings-registry-test PRIVATE
+    argus::lib::config
+    doctest::doctest)
+target_compile_options(settings-registry-test PRIVATE -Wall -Wextra)
+add_test(NAME settings-registry-test COMMAND settings-registry-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

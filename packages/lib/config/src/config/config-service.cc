@@ -1,5 +1,8 @@
 #include "config-service.hxx"
 
+#include <array>
+#include <charconv>
+#include <cmath>
 #include <drogon/drogon.h>
 #include <fstream>
 #include <json/reader.h>
@@ -399,7 +402,16 @@ bool ConfigService::setInt(const std::string& keyPath, int value)
 
 bool ConfigService::setDouble(const std::string& keyPath, double value)
 {
-  return applyValue(keyPath, std::to_string(value));
+  if (!std::isfinite(value))
+    return false;
+  std::array<char, 32> buffer{};
+  const auto [end, error] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+  if (error != std::errc{})
+    return false;
+  std::string literal(buffer.data(), end);
+  if (literal.find_first_of(".eE") == std::string::npos)
+    literal += ".0";
+  return applyValue(keyPath, literal);
 }
 
 std::vector<std::pair<std::string, std::string>>
