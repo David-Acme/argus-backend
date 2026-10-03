@@ -457,6 +457,15 @@ drogon::Task<int64_t> NotificationRepository::purgeProbes(
   co_return result.affectedRows();
 }
 
+drogon::Task<int64_t> NotificationRepository::purgeCommands(
+    int64_t olderThan) const
+{
+  auto client = DbService::client();
+  const auto result =
+      co_await client->execSqlCoro(PURGE_COMMANDS.data(), olderThan);
+  co_return result.affectedRows();
+}
+
 drogon::Task<int64_t> NotificationRepository::pendingDeliveryCount() const
 {
   auto client = DbService::client();

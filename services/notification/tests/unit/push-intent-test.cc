@@ -395,5 +395,18 @@ TEST_CASE("the create path publishes one intent per row")
             .front()["total"]
             .as<int64_t>() == 6);
 
+  const auto commands = [&client] {
+    return client->execSqlSync("SELECT COUNT(*) AS total FROM notification_command")
+        .front()["total"]
+        .as<int64_t>();
+  };
+  const int64_t kept = commands();
+  REQUIRE(kept >= 2);
+  client->execSqlSync("UPDATE notification_command SET created_at = 100 "
+                      "WHERE command_id = 'push-intent-fault'");
+  const NotificationRepository repository;
+  CHECK(drogon::sync_wait(repository.purgeCommands(1000)) == 1);
+  CHECK(commands() == kept - 1);
+
   drain(client);
 }

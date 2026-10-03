@@ -23,6 +23,7 @@ int64_t nowMillis()
 }
 
 constexpr int64_t kProbeRetentionS = 7LL * 24 * 3600;
+constexpr int64_t kCommandRetentionS = 30LL * 24 * 3600;
 }
 
 NotificationService::NotificationService(Dependencies dependencies)
@@ -202,6 +203,7 @@ drogon::Task<SelfTestState> NotificationService::runSelfTest() const
     co_await repository_.recordProbe(
         {.at = state.at, .ok = state.ok, .ms = state.ms});
     co_await repository_.purgeProbes(at - kProbeRetentionS);
+    co_await repository_.purgeCommands(at - kCommandRetentionS);
     if (!state.ok)
       LOG_WARN << "notification self-test probe did not settle (status '"
                << status << "')";

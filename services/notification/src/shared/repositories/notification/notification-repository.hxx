@@ -45,6 +45,7 @@ public:
   drogon::Task<bool> recordProbe(const ProbeRecordInput& input) const;
 
   drogon::Task<int64_t> purgeProbes(int64_t olderThan) const;
+  drogon::Task<int64_t> purgeCommands(int64_t olderThan) const;
 
   drogon::Task<std::vector<Json::Value>>
   findSync(const NotificationSyncFilter& filter) const;

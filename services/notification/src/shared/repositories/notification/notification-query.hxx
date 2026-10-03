@@ -158,6 +158,9 @@ inline constexpr std::string_view PURGE_PROBE_DELIVERIES =
     "DELETE FROM notification_delivery WHERE notification_id IN (SELECT id "
     "FROM notification WHERE type = 'probe' AND created_at < ?)";
 
+inline constexpr std::string_view PURGE_COMMANDS =
+    "DELETE FROM notification_command WHERE created_at < ?";
+
 inline constexpr std::string_view PURGE_PROBES =
     "DELETE FROM notification WHERE type = 'probe' AND created_at < ?";
 

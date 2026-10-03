@@ -318,7 +318,12 @@ dispatch-to-settle latency percentiles and the synthetic probe. The probe
 one user-0 `probe` row through create, broker publish and settle and
 records the outcome in `notification_selftest`; no device can see it, and
 a failed probe is a warn plus a row, never silent. Probe rows older than
-seven days are purged with their deliveries.
+seven days are purged with their deliveries, and the same step drops
+`notification_command` idempotency keys older than 30 days — a producer's
+retry never comes that late, and the table otherwise kept one row per
+command for ever. The user notifications themselves are not pruned here:
+they are synced creation-only with no tombstone, so a server-side delete
+would leave every device holding rows the server no longer has.
 
 ## No-NATS survival (Round 6, Gate A)
 
