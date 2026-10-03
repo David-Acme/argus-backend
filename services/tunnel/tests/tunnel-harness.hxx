@@ -52,6 +52,7 @@ struct HarnessOptions
   std::string secret{"f5-4-loopback-secret"};
   bool echoGateway{false};
   std::string gatewayReply;
+  bool gatewayCloseAfterReply{false};
   int slowGatewayReadMs{0};
   int gatewayRcvBuf{0};
   TunnelMux::Limits limits;
@@ -65,6 +66,7 @@ struct TestPeerConnectInput
   const std::string& ip;
   uint16_t port{0};
   int sndBuf{0};
+  int slowReadMs{0};
 };
 
 inline std::shared_ptr<TestPeer>
@@ -78,8 +80,18 @@ connectTestPeer(const TestPeerConnectInput& input)
   params.sndBuf = input.sndBuf;
   TcpPeer::Callbacks callbacks;
   callbacks.onConnected = [peer](TcpPeer&) { peer->connected.store(true); };
-  callbacks.onRead = [peer](TcpPeer&, const char* data, size_t size) {
+  callbacks.onRead = [peer, &loop = input.loop,
+                      slowMs = input.slowReadMs](TcpPeer& self,
+                                                 const char* data,
+                                                 size_t size) {
     peer->append(data, size);
+    if (slowMs <= 0)
+      return;
+    self.setReadPaused(true);
+    loop.runAfter(slowMs, [peer] {
+      if (peer->peer)
+        peer->peer->setReadPaused(false);
+    });
   };
   callbacks.onEof = [peer](TcpPeer&) { peer->eof.store(true); };
   callbacks.onClosed = [peer](TcpPeer&) { peer->closed.store(true); };
@@ -254,6 +266,8 @@ private:
     conn->peer = TcpPeer::adopt(params);
     if (!options_.gatewayReply.empty())
       conn->peer->send(options_.gatewayReply);
+    if (options_.gatewayCloseAfterReply)
+      conn->peer->closeWhenFlushed();
     std::lock_guard<std::mutex> lock(gatewayMutex_);
     gatewayConns_.push_back(conn);
   }

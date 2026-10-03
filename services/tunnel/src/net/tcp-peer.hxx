@@ -48,6 +48,7 @@ public:
   }
   void setCallbacks(Callbacks callbacks);
   void setReadPaused(bool paused);
+  void closeWhenFlushed();
   void close();
   bool closed() const { return closed_; }
   bool connected() const { return connected_ && !closed_; }
@@ -75,6 +76,8 @@ private:
   bool staged_{false};
   Callbacks stagedCallbacks_;
   std::string sendBuffer_;
+  bool closeWhenFlushed_{false};
+  bool writeShut_{false};
   size_t sendLimit_;
   size_t sendHardCap_;
   std::string ip_;

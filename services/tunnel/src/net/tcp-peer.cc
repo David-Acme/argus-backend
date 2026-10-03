@@ -143,6 +143,25 @@ void TcpPeer::flush()
     if (callbacks_.onDrained)
       callbacks_.onDrained(*this);
   }
+  if (sendBuffer_.empty() && closeWhenFlushed_ && !writeShut_ && !closed_) {
+    if (eofSeen_) {
+      close();
+      return;
+    }
+    writeShut_ = true;
+    ::shutdown(fd_.get(), SHUT_WR);
+  }
+}
+
+void TcpPeer::closeWhenFlushed()
+{
+  if (closed_ || closeWhenFlushed_)
+    return;
+  closeWhenFlushed_ = true;
+  readPaused_ = false;
+  flush();
+  if (!closed_)
+    updateInterest();
 }
 
 void TcpPeer::readAvailable()
@@ -153,9 +172,9 @@ void TcpPeer::readAvailable()
   while (true) {
     ssize_t received = ::recv(fd_.get(), chunk, sizeof(chunk), 0);
     if (received > 0) {
-      if (callbacks_.onRead)
+      if (callbacks_.onRead && !closeWhenFlushed_)
         callbacks_.onRead(*this, chunk, static_cast<size_t>(received));
-      if (closed_)
+      if (closed_ || readPaused_)
         return;
       continue;
     }
@@ -163,6 +182,8 @@ void TcpPeer::readAvailable()
       eofSeen_ = true;
       if (callbacks_.onEof)
         callbacks_.onEof(*this);
+      if (writeShut_ && !closed_)
+        close();
       return;
     }
     if (errno == EAGAIN || errno == EWOULDBLOCK)

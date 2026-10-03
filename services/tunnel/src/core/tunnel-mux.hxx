@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 #include <unordered_map>
 
 namespace tunnel
@@ -33,6 +34,7 @@ struct Stream
   std::string pendingToHome;
   std::chrono::steady_clock::time_point lastActivity;
   bool localReadPaused{false};
+  bool localEof{false};
 };
 
 class TunnelMux
@@ -102,6 +104,12 @@ private:
     size_t size{0};
   };
 
+  struct DrainingPeer
+  {
+    TcpPeer::Ptr peer;
+    Clock::time_point deadline;
+  };
+
   Stream* findStream(uint32_t streamId);
   void handleHomeRead(const HomeReadInput& input);
   void handleHomeDrained(TcpPeer& peer);
@@ -116,6 +124,7 @@ private:
   void resumeHomeRead();
   void sendFrameToHome(const FrameToHomeInput& input);
   void closeLocal(Stream& stream, CloseReason reason);
+  void releaseLocal(Stream& stream, CloseReason reason);
 
   PollLoop& loop_;
   Limits limits_;
@@ -124,6 +133,7 @@ private:
   FrameParser parser_;
   std::string authChallenge_;
   std::unordered_map<uint32_t, Stream> streams_;
+  std::vector<DrainingPeer> draining_;
   size_t globalPendingToHome_{0};
   size_t globalPendingToLocal_{0};
   uint32_t nextStreamId_{1};

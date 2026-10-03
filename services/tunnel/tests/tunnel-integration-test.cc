@@ -193,3 +193,40 @@ TEST_CASE("stalled gateway read applies back-pressure without byte loss")
   device->peer->close();
   harness.stop();
 }
+
+TEST_CASE("a reply the gateway closes right behind arrives whole")
+{
+  HarnessOptions options;
+  options.gatewayReply = makePayload(3 * 1024 * 1024, 91);
+  options.gatewayCloseAfterReply = true;
+  options.limits.socketSndBuf = 16 * 1024;
+  Harness harness(std::move(options));
+  REQUIRE(harness.start());
+
+  auto device = connectTestPeer({.loop = harness.loop,
+                                 .ip = "127.0.0.1",
+                                 .port = harness.relay->devicePort(),
+                                 .sndBuf = 0,
+                                 .slowReadMs = 20});
+  REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
+  postSend({.loop = harness.loop,
+            .peer = device->peer,
+            .data = std::string("GET / HTTP/1.1\r\n\r\n")});
+
+  const std::string& reply = harness.options_.gatewayReply;
+  waitFor([&] {
+    return device->bytes().size() >= reply.size() || device->eof.load() ||
+           device->closed.load();
+  }, 30000);
+  const std::string received = device->bytes();
+  CHECK(received.size() == reply.size());
+  const bool identical = received == reply;
+  CHECK(identical);
+  CHECK(waitFor([&] { return device->eof.load() || device->closed.load(); },
+                10000));
+  CHECK(waitFor([&] {
+    return harness.relay->streamCount() == 0 &&
+           harness.client->streamCount() == 0;
+  }, 10000));
+  harness.stop();
+}

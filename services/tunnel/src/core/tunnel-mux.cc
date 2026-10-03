@@ -7,6 +7,11 @@
 
 namespace tunnel
 {
+namespace
+{
+constexpr std::chrono::seconds kDrainGrace{30};
+}
+
 TunnelMux::TunnelMux(const Deps& deps)
     : loop_(deps.loop), limits_(deps.limits), delegate_(deps.delegate)
 {
@@ -187,6 +192,14 @@ void TunnelMux::sweep()
   }
   for (uint32_t id : idle)
     closeStream(id, CloseReason::IdleTimeout);
+  std::erase_if(draining_, [now](const DrainingPeer& draining) {
+    if (draining.peer->closed())
+      return true;
+    if (now < draining.deadline)
+      return false;
+    draining.peer->close();
+    return true;
+  });
 }
 
 void TunnelMux::handleHomeRead(const HomeReadInput& input)
@@ -382,7 +395,9 @@ void TunnelMux::handleLocalRead(const LocalReadInput& input)
 
 void TunnelMux::handleLocalEof(Stream& stream)
 {
-  closeStream(stream.id, CloseReason::Normal);
+  stream.localEof = true;
+  if (stream.pendingToHome.empty())
+    closeStream(stream.id, CloseReason::Normal);
 }
 
 void TunnelMux::flushToHome(Stream& stream)
@@ -397,6 +412,11 @@ void TunnelMux::flushToHome(Stream& stream)
                      .size = chunk});
     stream.pendingToHome.erase(0, chunk);
     globalPendingToHome_ -= chunk;
+  }
+  if (stream.localEof && stream.pendingToHome.empty()) {
+    closeStream(stream.id, CloseReason::Normal);
+    resumeLocalReads();
+    return;
   }
   if (stream.pendingToHome.empty() && stream.localReadPaused &&
       globalPendingToHome_ < limits_.globalPendingCap / 2 && stream.local) {
@@ -477,7 +497,22 @@ void TunnelMux::closeLocal(Stream& stream, CloseReason reason)
                      .payload = reinterpret_cast<const char*>(&reason),
                      .size = 1});
   if (moved.local)
-    moved.local->close();
+    releaseLocal(moved, reason);
   resumeHomeRead();
+}
+
+void TunnelMux::releaseLocal(Stream& stream, CloseReason reason)
+{
+  const TcpPeer::Ptr local = stream.local;
+  local->setCallbacks(TcpPeer::Callbacks{});
+  if (reason != CloseReason::Normal || local->closed()) {
+    local->close();
+    return;
+  }
+  if (!stream.pendingToLocal.empty())
+    local->send(stream.pendingToLocal);
+  local->closeWhenFlushed();
+  if (!local->closed())
+    draining_.push_back({.peer = local, .deadline = Clock::now() + kDrainGrace});
 }
 }

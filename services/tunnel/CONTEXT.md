@@ -110,17 +110,33 @@ public read-pause on TcpConnection, which the back-pressure valves need.
 - Peer send buffers: soft limit 256 KiB (congestion notification), hard cap
   4 MiB (peer dropped).
 - Resume thresholds are half the corresponding cap.
-- Pausing the home link only stops epoll reads; frames already fed into the
-  parser from the same read burst keep dispatching. `pumpHomeFrames()` gates
-  dispatch on the pause flag and is re-run on resume, so one burst can
-  overshoot a cap by at most one read chunk (64 KiB) — never past the 2x
-  kill threshold. Without the pump the "safety net" killed healthy streams
+- Pausing a peer stops its reads at once: `readAvailable` leaves its receive
+  loop after the read that paused it rather than draining the socket to
+  `EAGAIN` (which it used to, so a paused home link kept pouring frames into
+  the parser until a slow device's stream crossed the 2x threshold and was
+  killed as `Backpressure`). Frames already fed into the parser keep
+  dispatching only while unpaused: `pumpHomeFrames()` gates dispatch on the
+  pause flag and is re-run on resume, so one burst can overshoot a cap by at
+  most one read chunk (64 KiB) — never past the 2x kill threshold. Without the pump the "safety net" killed healthy streams
   mid-transfer, which would corrupt the carried TLS session.
 - `socket_snd_buf` (Limits, default 0 = kernel-managed) bounds SO_SNDBUF on
   every tunnel socket. With kernel autotuning, loopback absorbs ~2.5 MB per
   hop before the software valves ever see congestion, and a fully closed TCP
   window then drips at zero-window-probe pace; a bounded sndbuf keeps
   back-pressure in the software queues where it is observable and fair.
+
+- **A normal close never cuts bytes.** A local EOF keeps its stream until
+  the bytes it read are framed to the home link, then sends `Close`. A
+  `Close` with reason `Normal` hands the stream's queued bytes to its local
+  socket and releases it with `closeWhenFlushed`: the socket keeps writing,
+  sends FIN (`shutdown(SHUT_WR)`) behind the last byte, keeps reading and
+  discarding until the other side's EOF, then closes; `draining_` owns it
+  meanwhile and the sweep closes one still draining after 30 s. Closing at
+  once dropped the socket's unsent buffer, and closing with input unread
+  makes the kernel answer with RST, which can make the receiver discard what
+  it has not read yet — either way a response the backend sent and closed
+  behind arrived cut. Any other reason (error, idle, backpressure, busy)
+  still closes at once.
 
 ## Reconnect semantics (NatsBus-style)
 
