@@ -1,5 +1,6 @@
 #include "user-feature-service.hxx"
 
+#include <runtime/blocking-task.hxx>
 #include <auth/role-access.hxx>
 #include <auth/user-role.hxx>
 #include <errors/response-exception.hxx>
@@ -114,30 +115,29 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
     throw;
   }
 
-  if (roleChanged) {
-    if (const auto* control = sync_control::getSink()) {
-      const bool replaced = control->replaceRoleRooms(
-          {.userId = updated.id,
-           .oldRole = userRoleToString(existing->role),
-           .newRole = userRoleToString(updated.role)});
-      if (!replaced)
-        LOG_WARN << "Identity: role room replace failed for user "
-                 << updated.id;
-    }
-    emitAuthContextChanged(updated);
-  }
-
-  if (deactivated) {
-    SocketEmitDto context;
-    context.operation = SyncOperation::AuthContextChanged;
-    context.option = TableName::User;
-    context.obj = updated.toJson();
-    context.obj["resync"] = false;
-    if (const auto* control = sync_control::getSink()) {
-      const bool disconnected = control->disconnectUser(updated.id, context);
-      if (!disconnected)
-        LOG_WARN << "Identity: disconnect failed for user " << updated.id;
-    }
+  if (roleChanged || deactivated) {
+    co_await BlockingTask<void>([this, updated, oldRole = existing->role,
+                                 roleChanged, deactivated] {
+      const auto* control = sync_control::getSink();
+      if (roleChanged) {
+        if (control &&
+            !control->replaceRoleRooms({.userId = updated.id,
+                                        .oldRole = userRoleToString(oldRole),
+                                        .newRole = userRoleToString(updated.role)}))
+          LOG_WARN << "Identity: role room replace failed for user "
+                   << updated.id;
+        emitAuthContextChanged(updated);
+      }
+      if (deactivated && control) {
+        SocketEmitDto context;
+        context.operation = SyncOperation::AuthContextChanged;
+        context.option = TableName::User;
+        context.obj = updated.toJson();
+        context.obj["resync"] = false;
+        if (!control->disconnectUser(updated.id, context))
+          LOG_WARN << "Identity: disconnect failed for user " << updated.id;
+      }
+    });
   }
   co_return updated;
 }
