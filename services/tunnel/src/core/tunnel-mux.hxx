@@ -61,7 +61,7 @@ public:
 
   explicit TunnelMux(const Deps& deps);
 
-  void adoptHome(const TcpPeer::Ptr& peer);
+  [[nodiscard]] bool adoptHome(const TcpPeer::Ptr& peer);
   void sendAuth();
   bool openLocal(uint32_t streamId, const TcpPeer::Ptr& peer);
   uint32_t openRemote();

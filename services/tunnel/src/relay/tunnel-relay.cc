@@ -118,7 +118,11 @@ void TunnelRelay::onHomeAccepted(const PeerAcceptedInput& input)
   params.sndBuf = options_.limits.socketSndBuf;
   try {
     const TcpPeer::Ptr peer = TcpPeer::adopt(params);
-    mux_.adoptHome(peer);
+    if (!mux_.adoptHome(peer)) {
+      LOG_WARN << "argus-relay: refused a home connection from "
+               << input.peerIp << " while the authenticated link is alive";
+      peer->close();
+    }
   } catch (const std::exception& error) {
     LOG_WARN << "argus-relay: home adopt failed: " << error.what();
     ::close(input.fd);

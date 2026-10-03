@@ -202,3 +202,15 @@ service whose remote listener it wants is the tunnel's own unit of work
   policy lives in argus-notification.
 - The mobile app contracts are untouched: the app keeps talking TLS to the
   host it addresses through the tunnel's device port.
+
+## A live home link is not replaceable by a stranger (2026-10)
+
+The relay used to drop the authenticated home link as soon as any TCP
+connection reached its home port, before that connection proved anything,
+so whoever could reach the port could keep remote access down. While the
+authenticated link has carried a frame within `dead_link_timeout` (90 s),
+`TunnelMux::adoptHome` now refuses a new home connection and the relay
+closes it. A home that lost its link uncleanly reconnects once the old one
+is declared dead; a clean disconnect (EOF) frees the slot at once. The
+device side still accepts any connection, and frames after AUTH carry no
+MAC: both remain open items.

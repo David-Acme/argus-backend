@@ -18,8 +18,11 @@ Stream* TunnelMux::findStream(uint32_t streamId)
   return it == streams_.end() ? nullptr : &it->second;
 }
 
-void TunnelMux::adoptHome(const TcpPeer::Ptr& peer)
+bool TunnelMux::adoptHome(const TcpPeer::Ptr& peer)
 {
+  if (homePeer_ && homeActive_ && delegate_->validatesAuth() &&
+      Clock::now() - lastFrameAt_ < limits_.deadLinkTimeout)
+    return false;
   if (homePeer_)
     dropLink();
   homePeer_ = peer;
@@ -50,6 +53,7 @@ void TunnelMux::adoptHome(const TcpPeer::Ptr& peer)
   attachedAt_ = now;
   lastFrameAt_ = now;
   delegate_->onLinkUp();
+  return true;
 }
 
 void TunnelMux::sendAuth()

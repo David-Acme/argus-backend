@@ -60,7 +60,7 @@ void TunnelClient::connectHome()
   params.port = options_.relayPort;
   params.sndBuf = options_.limits.socketSndBuf;
   params.callbacks.onConnected = [this](TcpPeer& peer) {
-    mux_.adoptHome(peer.sharedFromThis());
+    static_cast<void>(mux_.adoptHome(peer.sharedFromThis()));
     pendingHome_.reset();
     homeConnected_.store(true);
   };
