@@ -1,6 +1,7 @@
 #include "vlm-config.hxx"
 
 #include <config/config-service.hxx>
+#include <settings/settings-rpc.hxx>
 
 #include <algorithm>
 
@@ -17,5 +18,7 @@ VlmRpcConfig VlmConfig::resolveRpc()
   std::erase_if(config.credentials, [](const auto& credential) {
     return credential.first.empty() || credential.second.empty();
   });
+  config.settingsCredentials = settingsCallers(config.credentials);
+  withoutSettingsCaller(config.credentials);
   return config;
 }

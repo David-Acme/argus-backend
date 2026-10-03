@@ -76,6 +76,8 @@ struct VlmRpcServer::Impl final : wire::Vision::Service
     builder.AddListeningPort(input_.address, grpc::InsecureServerCredentials(),
                              &port_);
     builder.RegisterService(this);
+    for (auto* service : input_.services)
+      builder.RegisterService(service);
     server_ = builder.BuildAndStart();
     if (!server_)
       throw std::runtime_error("VLM RPC listener failed");

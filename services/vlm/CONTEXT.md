@@ -125,3 +125,51 @@ The listener and the optional gRPC leg are resolved by
 `VlmConfig::resolveRpc()` (`rpc.address` plus the `rpc.callers` credential
 pairs, empty ones dropped). `main.cc` keeps `config.toml` loading,
 `drogonConfig` and the boot gate on the resolved address and credentials.
+
+## Owner settings
+
+`src/feature/settings/vlm-settings.cc` is the catalog an owner may change
+through `argus.settings.v1.Settings`, registered on the same gRPC listener as
+`argus.vlm.v1` (`argus::contracts::settings-wire`).
+
+Live, because they are per-request inputs to the generation and
+`main.cc` calls `VisionService::refreshDefaults()` when the registry reports
+a change:
+
+- `vision.max_input_px` (basic, 128..1024, fallback 384) — how much detail of
+  what the cameras see reaches the model; the main speed/detail knob,
+  read by `fitToBudget` on every description.
+- `vision.max_tokens` (basic, 8..512, fallback 64) — how long a
+  description may be, the default when a caller sends no `max_tokens`.
+- `vision.prompt` (advanced, text, fallback "Can you describe this image?")
+  — the default question when a caller sends none.
+- `vision.caption_cache_slots` (advanced, 1..64, fallback 8).
+
+`refreshDefaults()` takes the service's own `mutex_` (the one `run()` holds
+for a whole generation), so a refresh waits for the description in flight
+and the next one sees the new values. It also empties and resizes the
+caption cache: the cache key is the scaled pixels plus the prompt, and a
+caption cached under an older token budget must not answer after the budget
+changed. `maxInputPx_` and `defaultMaxTokens_` are atomics because
+`Capabilities` and `GET /vlm/v1/config` read them without the lock; both
+report the refreshed value on the next call.
+
+Restart, because they are read when the model, context and projector are
+built: `vision.image_max_tokens` (0..4096, fallback 0 = the projector's
+default), `vision.context_size` (2048..32768, fallback 8192),
+`vision.threads` (0..64, fallback 0 = `ThreadBudget`) and
+`vision.gpu_layers` (-1..999, fallback -1 = the hardware probe). Model and
+projector paths, ports, addresses and callers are never in the catalog.
+
+`resolveVisionDefaults()` and `resolveVisionEngineSettings()` are the one
+reading of `[vision]`, so the test compares every fallback with what the
+service runs on an empty config. Two code defaults disagreed with the
+template and now match it: an absent `max_tokens` used to clamp to 8 (it is
+64), and an absent `gpu_layers` used to mean 0 (it is -1, the probe, which
+resolves 0 in this build — see the tier note — so behaviour is unchanged).
+
+The `settings` entry of `[rpc.callers]` is the only credential the settings
+service accepts, and `VlmConfig::resolveRpc()` removes it from the vision
+callers: the settings caller cannot describe and the guard cannot change
+settings. `vlm-settings-test` checks both directions on a live listener and
+watches `Capabilities.max_input_px` follow a registry update.

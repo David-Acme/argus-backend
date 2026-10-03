@@ -38,6 +38,26 @@ struct VisionRunInput
   int32_t maxTokens{0};
 };
 
+struct VisionDefaults
+{
+  int32_t maxInputPx{384};
+  int32_t maxTokens{64};
+  std::string prompt;
+  int32_t cacheSlots{8};
+};
+
+struct VisionEngineSettings
+{
+  int32_t threads{0};
+  int32_t gpuLayers{-1};
+  int32_t contextSize{8192};
+  int32_t imageMaxTokens{0};
+};
+
+[[nodiscard]] VisionDefaults resolveVisionDefaults();
+
+[[nodiscard]] VisionEngineSettings resolveVisionEngineSettings();
+
 class VisionService
 {
 public:
@@ -49,6 +69,7 @@ public:
 
   void init();
   void shutdown();
+  void refreshDefaults();
 
   std::string describe(const VisionRequest& req);
   std::string describeMat(const VisionDescribeMatInput& input);
@@ -58,10 +79,11 @@ public:
 
   void cancel();
   bool isLoaded() const;
-  int maxInputPx() const { return maxInputPx_; }
-  int defaultMaxTokens() const { return defaultMaxTokens_; }
+  int maxInputPx() const { return maxInputPx_.load(std::memory_order_relaxed); }
+  int defaultMaxTokens() const { return defaultMaxTokens_.load(std::memory_order_relaxed); }
 
 private:
+  void loadDefaults();
   std::string run(const VisionRunInput& input);
   cv::Mat fitToBudget(const cv::Mat& src, bool srcIsBgr);
   const std::string* cacheLookup(uint64_t key);
@@ -75,8 +97,8 @@ private:
   std::atomic<bool> cancelled_{false};
   bool loaded_ = false;
 
-  int32_t defaultMaxTokens_ = 64;
-  int32_t maxInputPx_ = 384;
+  std::atomic<int32_t> defaultMaxTokens_{64};
+  std::atomic<int32_t> maxInputPx_{384};
   int32_t nBatch_ = 512;
   std::string defaultPrompt_;
 

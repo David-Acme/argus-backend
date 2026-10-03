@@ -2,6 +2,7 @@
 
 #include <feature/vlm/services/vision-service.hxx>
 #include <vlm/vlm-client.hxx>
+#include <grpcpp/impl/service_type.h>
 #include <functional>
 #include <memory>
 #include <string>
@@ -15,6 +16,7 @@ struct VlmRpcInput
   std::function<argus::vlm::Capabilities()> capabilities;
   std::function<std::string(const VisionDescribeMatInput&)> describe;
   int slots{1};
+  std::vector<grpc::Service*> services;
 };
 
 class VlmRpcServer

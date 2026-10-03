@@ -1,5 +1,6 @@
 #include <app/rpc/vlm-rpc-server.hxx>
 #include <config/vlm-config.hxx>
+#include <feature/settings/vlm-settings.hxx>
 #include <feature/vlm/controllers/vlm-controller.hxx>
 #include <drogon/drogon.h>
 #include <http/error-handler.hxx>
@@ -9,6 +10,7 @@
 #include <runtime/log-output.hxx>
 #include <vlm/vlm-client.hxx>
 #include <config/config-service.hxx>
+#include <settings/settings-rpc.hxx>
 
 #include <json/value.h>
 #include <llama.h>
@@ -60,9 +62,19 @@ int main()
     return 1;
   }
 
+  SettingsRegistry settings(vlmSettingsCatalog());
+  settings.onChange([&vlm](const std::vector<std::string>&) { vlm->service().refreshDefaults(); });
+
+  std::unique_ptr<SettingsRpcService> settingsRpc;
   std::unique_ptr<VlmRpcServer> rpc;
   const VlmRpcConfig rpcConfig = VlmConfig::resolveRpc();
   if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
+    std::vector<grpc::Service*> services;
+    if (!rpcConfig.settingsCredentials.empty()) {
+      settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
+          .service = "vlm", .registry = &settings, .credentials = rpcConfig.settingsCredentials});
+      services.push_back(settingsRpc.get());
+    }
     rpc = std::make_unique<VlmRpcServer>(VlmRpcInput{
         .address = rpcConfig.address,
         .credentials = rpcConfig.credentials,
@@ -75,7 +87,8 @@ int main()
         .describe = [&vlm](const VisionDescribeMatInput& input) {
           return vlm->service().describeMat(input);
         },
-        .slots = ThreadBudget::inferenceSlots()});
+        .slots = ThreadBudget::inferenceSlots(),
+        .services = std::move(services)});
   }
 
   if (rpc)

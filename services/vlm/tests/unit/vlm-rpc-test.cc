@@ -91,7 +91,8 @@ VlmRpcInput serverInput()
           .credentials = {{"guard", kSecret}},
           .capabilities = capabilities,
           .describe = described,
-          .slots = 1};
+          .slots = 1,
+          .services = {}};
 }
 
 constexpr auto kEntryWait = std::chrono::seconds(10);

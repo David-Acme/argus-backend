@@ -75,6 +75,11 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 endif()
 
+if(NOT COMMAND argus_settings_rpc_contract)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/settings
+                     ${CMAKE_BINARY_DIR}/contracts/settings)
+endif()
+
 find_package(doctest REQUIRED)
 
 file(GLOB VLM_FEATURE_MODULES CONFIGURE_DEPENDS
@@ -93,6 +98,7 @@ argus_service(NAME argus-vlm
         argus::vlm-config
         argus::vlm-rpc
         argus::vlm
+        argus::vlm-settings
         argus::lib::config
         argus::hardware-profile
         argus::lib::runtime
@@ -145,3 +151,15 @@ target_compile_options(vlm-rpc-test PRIVATE -Wall -Wextra)
 set_target_properties(vlm-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME vlm-rpc-test COMMAND vlm-rpc-test)
+
+add_executable(vlm-settings-test tests/unit/vlm-settings-test.cc)
+
+target_link_libraries(vlm-settings-test PRIVATE argus::vlm-rpc argus::vlm-settings
+    argus::vlm-config doctest::doctest)
+argus_runtime_rpath(vlm-settings-test)
+
+target_compile_options(vlm-settings-test PRIVATE -Wall -Wextra)
+
+set_target_properties(vlm-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME vlm-settings-test COMMAND vlm-settings-test)

@@ -31,12 +31,40 @@ uint64_t hashMatAndPrompt(const cv::Mat& m, const std::string& prompt)
       {.data = m.data, .len = static_cast<size_t>(m.total()) * m.elemSize(), .prompt = prompt});
 }
 
+constexpr int32_t kFallbackMaxInputPx = 384;
+constexpr int32_t kFallbackMaxTokens = 64;
+constexpr int32_t kFallbackCacheSlots = 8;
+constexpr int32_t kFallbackContextSize = 8192;
+
 void mtmdDeleter(mtmd_context* ctx)
 {
   if (ctx)
     mtmd_free(ctx);
 }
 
+}
+
+VisionDefaults resolveVisionDefaults()
+{
+  const int32_t maxInputPx = ConfigService::getInt("vision.max_input_px");
+  const int32_t maxTokens = ConfigService::getInt("vision.max_tokens");
+  std::string prompt = ConfigService::getString("vision.prompt");
+  const int32_t cacheSlots = ConfigService::getInt("vision.caption_cache_slots");
+  return {.maxInputPx = maxInputPx < 128 ? kFallbackMaxInputPx : maxInputPx,
+          .maxTokens = maxTokens <= 0 ? kFallbackMaxTokens : std::clamp(maxTokens, 8, 512),
+          .prompt = prompt.empty() ? std::string(kFallbackPrompt) : std::move(prompt),
+          .cacheSlots = cacheSlots <= 0 ? kFallbackCacheSlots : cacheSlots};
+}
+
+VisionEngineSettings resolveVisionEngineSettings()
+{
+  const int32_t contextSize = ConfigService::getInt("vision.context_size");
+  return {.threads = std::max(0, ConfigService::getInt("vision.threads")),
+          .gpuLayers = ConfigService::hasKey("vision.gpu_layers")
+                           ? std::max(-1, ConfigService::getInt("vision.gpu_layers"))
+                           : -1,
+          .contextSize = contextSize < 2048 ? kFallbackContextSize : contextSize,
+          .imageMaxTokens = std::max(0, ConfigService::getInt("vision.image_max_tokens"))};
 }
 
 VisionService::VisionService()
@@ -68,13 +96,9 @@ void VisionService::init()
     if (mmprojPath.empty())
       mmprojPath = kDefaultMmproj;
 
-    int threads = ThreadBudget::computeThreads();
-    if (const int cfg = ConfigService::getInt("vision.threads"); cfg > 0)
-      threads = cfg;
-
-    int gpuLayers = HardwareProbe::vlmGpuLayers();
-    if (const int cfg = ConfigService::getInt("vision.gpu_layers"); cfg >= 0)
-      gpuLayers = cfg;
+    const VisionEngineSettings engine = resolveVisionEngineSettings();
+    const int threads = engine.threads > 0 ? engine.threads : ThreadBudget::computeThreads();
+    const int gpuLayers = engine.gpuLayers >= 0 ? engine.gpuLayers : HardwareProbe::vlmGpuLayers();
 
     llama_model_params mp = llama_model_default_params();
     mp.n_gpu_layers = gpuLayers;
@@ -85,9 +109,7 @@ void VisionService::init()
       throw std::runtime_error("failed to load VLM: " + modelPath);
     model_.reset(rawModel);
 
-    int contextSize = ConfigService::getInt("vision.context_size");
-    if (contextSize < 2048)
-      contextSize = 8192;
+    const int contextSize = engine.contextSize;
 
     llama_context_params cp = llama_context_default_params();
     cp.n_ctx = static_cast<uint32_t>(contextSize);
@@ -109,8 +131,8 @@ void VisionService::init()
     params.print_timings = false;
     params.n_threads = threads;
     params.warmup = true;
-    if (const int v = ConfigService::getInt("vision.image_max_tokens"); v > 0)
-      params.image_max_tokens = v;
+    if (engine.imageMaxTokens > 0)
+      params.image_max_tokens = engine.imageMaxTokens;
 
     mtmd_context* rawMtmd =
         mtmd_init_from_file(mmprojPath.c_str(), model_.get(), params);
@@ -121,25 +143,15 @@ void VisionService::init()
     if (!mtmd_support_vision(mtmd_.get()))
       throw std::runtime_error("mmproj has no vision encoder");
 
-    defaultMaxTokens_ =
-        std::clamp(ConfigService::getInt("vision.max_tokens"), 8, 512);
-    maxInputPx_ = ConfigService::getInt("vision.max_input_px");
-    if (maxInputPx_ < 128)
-      maxInputPx_ = 384;
-    defaultPrompt_ = ConfigService::getString("vision.prompt");
-    if (defaultPrompt_.empty())
-      defaultPrompt_ = kFallbackPrompt;
-
-    int slots = ConfigService::getInt("vision.caption_cache_slots");
-    if (slots <= 0)
-      slots = 8;
-    cache_.assign(static_cast<size_t>(slots), CacheEntry{});
-    cacheNext_ = 0;
+    {
+      std::lock_guard<std::mutex> defaultsLock(mutex_);
+      loadDefaults();
+    }
 
     loaded_ = true;
     LOG_INFO << "Vision loaded: " << modelPath
              << " + mmproj (threads=" << threads << ", ctx=" << contextSize
-             << ", max_input_px=" << maxInputPx_ << ", gpu_layers=" << gpuLayers
+             << ", max_input_px=" << maxInputPx() << ", gpu_layers=" << gpuLayers
              << ")";
   }
   catch (const std::exception& e) {
@@ -157,6 +169,22 @@ void VisionService::shutdown()
   cache_.clear();
   loaded_ = false;
   LOG_INFO << "Vision shutdown";
+}
+
+void VisionService::refreshDefaults()
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  loadDefaults();
+}
+
+void VisionService::loadDefaults()
+{
+  VisionDefaults defaults = resolveVisionDefaults();
+  maxInputPx_.store(defaults.maxInputPx, std::memory_order_relaxed);
+  defaultMaxTokens_.store(defaults.maxTokens, std::memory_order_relaxed);
+  defaultPrompt_ = std::move(defaults.prompt);
+  cache_.assign(static_cast<size_t>(defaults.cacheSlots), CacheEntry{});
+  cacheNext_ = 0;
 }
 
 bool VisionService::isLoaded() const
@@ -187,14 +215,15 @@ void VisionService::cacheStore(uint64_t key, const std::string& caption)
 
 cv::Mat VisionService::fitToBudget(const cv::Mat& src, bool srcIsBgr)
 {
+  const int maxInputPx = maxInputPx_.load(std::memory_order_relaxed);
   const int longest = std::max(src.cols, src.rows);
   cv::Mat scaled;
 
-  if (longest > maxInputPx_) {
-    const double factor = static_cast<double>(maxInputPx_) / longest;
+  if (longest > maxInputPx) {
+    const double factor = static_cast<double>(maxInputPx) / longest;
     const cv::Size target(std::max(1, static_cast<int>(src.cols * factor)),
                           std::max(1, static_cast<int>(src.rows * factor)));
-    if (longest >= 2 * maxInputPx_) {
+    if (longest >= 2 * maxInputPx) {
       cv::Mat mid;
       cv::resize(src, mid, cv::Size(target.width * 2, target.height * 2), 0, 0,
                  cv::INTER_AREA);
@@ -232,7 +261,7 @@ std::string VisionService::run(const VisionRunInput& input)
   const std::string question =
       input.prompt.empty() ? defaultPrompt_ : input.prompt;
   const int32_t maxTokens =
-      input.maxTokens > 0 ? input.maxTokens : defaultMaxTokens_;
+      input.maxTokens > 0 ? input.maxTokens : defaultMaxTokens();
 
   const cv::Mat rgb = fitToBudget(src, input.srcIsBgr);
   const uint64_t key = hashMatAndPrompt(rgb, question);

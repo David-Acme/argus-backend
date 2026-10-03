@@ -7,6 +7,7 @@ address = ""
 
 [rpc.callers]
 guard = ""
+settings = ""
 
 [vision]
 model_path = "models/vision/lfm2vl-25/lm-Q8_0.gguf"

@@ -57,11 +57,14 @@ argus-vlm/
                           dtos/ (the describe DTO, validation DSL),
                           services/ (the LFM2.5-VL engine facade and the
                                      caption cache)
+  src/feature/settings/ argus::vlm-settings — the owner-editable catalog
   config.toml.example   [vision] engine keys + [server] + [rpc] only; no other domains
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
-There is one feature and two modules: `argus::vlm` compiles the engine facade,
+There are two features and three modules: `argus::vlm-settings` is the
+owner catalog (lib/config only, served by `argus.settings.v1` on the gRPC
+listener), `argus::vlm` compiles the engine facade,
 the DTOs and the HTTP surface together, `argus::vlm-rpc` compiles the gRPC
 server and links `argus::clients::vlm` and `argus::contracts::vlm-wire` PUBLIC
 so the executable reaches both, and `app/main.cc` registers the controller
