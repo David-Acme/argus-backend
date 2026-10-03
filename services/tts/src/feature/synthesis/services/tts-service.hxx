@@ -52,6 +52,7 @@ public:
   TtsQuality defaultQuality() const;
 
   float defaultSpeed() const;
+  void refreshDefaults();
 
   int sampleRate() const;
   std::vector<std::string> availableVoices() const;
@@ -61,6 +62,7 @@ public:
   static int effectiveStepsCap();
 
 private:
+  void loadDefaults();
   static int resolveSteps(TtsQuality quality);
   const Style& resolveVoice(const std::string& voiceId);
   static TtsQuality autoQuality(const std::string& text);

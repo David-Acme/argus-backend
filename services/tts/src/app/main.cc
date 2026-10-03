@@ -9,7 +9,9 @@
 #include <drogon/drogon.h>
 #include <auth/valid-json-filter.hxx>
 #include <config/config-service.hxx>
+#include <feature/settings/tts-settings.hxx>
 #include <feature/synthesis/services/tts-service.hxx>
+#include <settings/settings-rpc.hxx>
 
 #include <json/value.h>
 #include <cstdlib>
@@ -54,10 +56,20 @@ int main()
     return 1;
   }
 
+  SettingsRegistry settings(ttsSettingsCatalog());
+  settings.onChange([](const std::vector<std::string>&) { TtsService::instance().refreshDefaults(); });
+
   std::unique_ptr<TtsRpcServer> rpc;
+  std::unique_ptr<SettingsRpcService> settingsRpc;
   const TtsRpcConfig rpcConfig = TtsConfig::resolveRpc();
   if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
     auto& synthesis = TtsService::instance();
+    std::vector<grpc::Service*> services;
+    if (!rpcConfig.settingsCredentials.empty()) {
+      settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
+          .service = "tts", .registry = &settings, .credentials = rpcConfig.settingsCredentials});
+      services.push_back(settingsRpc.get());
+    }
     rpc = std::make_unique<TtsRpcServer>(TtsRpcInput{
         .address = rpcConfig.address,
         .credentials = rpcConfig.credentials,
@@ -69,7 +81,9 @@ int main()
         .synthesize = [&synthesis](TtsStreamInput input) {
           synthesis.synthesizeStream(std::move(input));
         },
-        .slots = ThreadBudget::inferenceSlots()});
+        .slots = ThreadBudget::inferenceSlots(),
+        .defaultSpeed = [&synthesis] { return synthesis.defaultSpeed(); },
+        .services = std::move(services)});
   }
 
   if (rpc)

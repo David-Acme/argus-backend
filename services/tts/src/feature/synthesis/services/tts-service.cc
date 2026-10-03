@@ -56,20 +56,7 @@ void TtsService::init()
     if (const int cfg = ConfigService::getInt("tts.threads"); cfg > 0)
       nThreads = cfg;
 
-    defaultSpeed_ = static_cast<float>(
-        std::clamp(ConfigService::getDouble("tts.speed"), 0.7, 2.0));
-    maxChunkLen_ =
-        std::clamp(ConfigService::getInt("tts.max_chunk_len"), 30, 2000);
-
-    const std::string q = ConfigService::getString("tts.quality");
-    if (q == "high")
-      defaultQuality_ = TtsQuality::High;
-    else if (q == "medium")
-      defaultQuality_ = TtsQuality::Medium;
-    else if (q == "low")
-      defaultQuality_ = TtsQuality::Low;
-    else
-      defaultQuality_ = TtsQuality::Auto;
+    loadDefaults();
 
     Ort::SessionOptions opts;
     opts.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
@@ -316,6 +303,27 @@ float TtsService::defaultSpeed() const
 {
   std::lock_guard lock(synthMutex_);
   return defaultSpeed_;
+}
+
+void TtsService::refreshDefaults()
+{
+  std::lock_guard lock(synthMutex_);
+  loadDefaults();
+}
+
+void TtsService::loadDefaults()
+{
+  defaultSpeed_ = static_cast<float>(std::clamp(ConfigService::getDouble("tts.speed"), 0.7, 2.0));
+  maxChunkLen_ = std::clamp(ConfigService::getInt("tts.max_chunk_len"), 30, 2000);
+  const std::string quality = ConfigService::getString("tts.quality");
+  if (quality == "high")
+    defaultQuality_ = TtsQuality::High;
+  else if (quality == "medium")
+    defaultQuality_ = TtsQuality::Medium;
+  else if (quality == "low")
+    defaultQuality_ = TtsQuality::Low;
+  else
+    defaultQuality_ = TtsQuality::Auto;
 }
 
 const std::vector<std::string>& TtsService::supportedLangs()

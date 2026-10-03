@@ -49,6 +49,11 @@ if(NOT TARGET argus::clients::tts)
                      ${CMAKE_BINARY_DIR}/clients/tts)
 endif()
 
+if(NOT COMMAND argus_settings_rpc_contract)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/settings
+                     ${CMAKE_BINARY_DIR}/contracts/settings)
+endif()
+
 find_package(doctest REQUIRED)
 
 file(GLOB TTS_FEATURE_MODULES CONFIGURE_DEPENDS

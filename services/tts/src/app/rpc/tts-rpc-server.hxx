@@ -3,6 +3,7 @@
 #include <tts/tts-client.hxx>
 #include <feature/synthesis/services/tts-service.hxx>
 #include <tts/tts-wire.hxx>
+#include <grpcpp/impl/service_type.h>
 #include <functional>
 #include <memory>
 #include <string>
@@ -16,6 +17,8 @@ struct TtsRpcInput
   argus::tts::Capabilities capabilities;
   std::function<void(TtsStreamInput)> synthesize;
   int slots{1};
+  std::function<float()> defaultSpeed;
+  std::vector<grpc::Service*> services;
 };
 
 class TtsRpcServer

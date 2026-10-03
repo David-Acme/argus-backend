@@ -8,6 +8,7 @@ address = ""
 [rpc.callers]
 voice = ""
 camera = ""
+settings = ""
 
 [tts]
 threads = 0

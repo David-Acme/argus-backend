@@ -73,6 +73,22 @@ The listener and the optional gRPC leg are resolved by
 pairs, empty ones dropped). `main.cc` keeps `config.toml` loading,
 `drogonConfig` and the boot gate on the resolved address and credentials.
 
+## Owner settings
+
+`src/feature/settings/tts-settings.cc` is the catalog an owner may change
+through `argus.settings.v1.Settings` (registered on the same gRPC listener
+as synthesis, `argus::contracts::settings-wire`). Speed and quality are
+basic; diffusion steps, the step cap and the chunk length are advanced; all
+of those apply live, because `main.cc` calls `TtsService::refreshDefaults()`
+when the registry reports a change, the step keys are already read per
+synthesis, and `Capabilities` reports the default speed through a function
+instead of the boot snapshot (voice and camera ask for it per call). The
+edge/join silences and the thread count are read when the engine is built
+and say "restart". The `settings` entry of `[rpc.callers]` is the only
+credential the settings service accepts, and it is removed from the
+synthesis callers: the settings caller cannot synthesize and a synthesis
+caller cannot change settings.
+
 ## Voice style ids
 
 A style id names a file under `voice_styles/`, so it may only hold letters,

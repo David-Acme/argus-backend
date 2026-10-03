@@ -41,7 +41,9 @@ TtsRpcInput serverInput()
             samples[0] = static_cast<float>(input.request.text.size());
             input.onChunk(samples);
           },
-          .slots = 1};
+          .slots = 1,
+          .defaultSpeed = {},
+          .services = {}};
 }
 
 ClientConfig clientConfig(int port)
@@ -138,6 +140,18 @@ TEST_CASE("capabilities reports engine metadata")
   CHECK(capabilities.voices[0] == "M3");
   REQUIRE(capabilities.languages.size() == 1);
   CHECK(capabilities.languages[0] == "en");
+}
+
+TEST_CASE("capabilities reports the live default speed, not the boot snapshot")
+{
+  float speed = 1.25F;
+  auto input = serverInput();
+  input.defaultSpeed = [&speed] { return speed; };
+  TtsRpcServer server(std::move(input));
+  Client client(clientConfig(server.port()));
+  CHECK(client.capabilities().defaultSpeed == doctest::Approx(1.25F));
+  speed = 1.6F;
+  CHECK(client.capabilities().defaultSpeed == doctest::Approx(1.6F));
 }
 
 TEST_CASE("synthesize streams owned chunks in sequence")

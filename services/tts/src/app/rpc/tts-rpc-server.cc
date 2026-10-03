@@ -78,9 +78,16 @@ struct TtsRpcServer::Impl final : wire::Synthesis::Service
     builder.SetMaxReceiveMessageSize(32768);
     builder.AddListeningPort(input_.address, grpc::InsecureServerCredentials(), &port_);
     builder.RegisterService(this);
+    for (auto* service : input_.services)
+      builder.RegisterService(service);
     server_ = builder.BuildAndStart();
     if (!server_)
       throw std::runtime_error("TTS RPC listener failed");
+  }
+
+  float currentSpeed() const
+  {
+    return input_.defaultSpeed ? input_.defaultSpeed() : input_.capabilities.defaultSpeed;
   }
 
   grpc::Status Capabilities(grpc::ServerContext* context,
@@ -92,7 +99,7 @@ struct TtsRpcServer::Impl final : wire::Synthesis::Service
     response->set_sample_rate(input_.capabilities.sampleRate);
     response->set_channels(input_.capabilities.channels);
     response->set_format(wire::SAMPLE_FORMAT_FLOAT32);
-    response->set_default_speed(input_.capabilities.defaultSpeed);
+    response->set_default_speed(currentSpeed());
     for (const auto& voice : input_.capabilities.voices)
       response->add_voices(voice);
     for (const auto& language : input_.capabilities.languages)
@@ -131,7 +138,7 @@ struct TtsRpcServer::Impl final : wire::Synthesis::Service
                                .voiceId = request->voice(),
                                .quality = static_cast<TtsQuality>(request->quality()),
                                .speed = request->speed() == 0
-                                   ? input_.capabilities.defaultSpeed : request->speed()};
+                                   ? currentSpeed() : request->speed()};
     StreamQueue queue;
     std::jthread producer([&, synthesis] {
       try {

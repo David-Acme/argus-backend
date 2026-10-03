@@ -54,6 +54,7 @@ argus-tts/
     dtos/               internal HTTP request DTO
     services/           TtsService facade, lifecycle, cache, async synthesis
     infra/supertonic/   ONNX engine, model/style loading, Unicode processing
+  src/feature/settings/ argus::tts-settings — the owner-editable catalog
   config.toml.example   [tts] engine keys, the [rpc]/[rpc.callers] gRPC gate,
                         [server], [drogon.app]; no other domains
   CONTEXT.md            purpose, ownership, wiring decisions
