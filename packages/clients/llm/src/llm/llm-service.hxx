@@ -1,11 +1,13 @@
 #pragma once
 
 #include <atomic>
+#include <auth/user-role.hxx>
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -30,6 +32,8 @@ struct ChatRequest
   std::string grammar;
   bool grammarRequired{false};
   int64_t userId{0};
+  UserRole role{UserRole::Guest};
+  std::string lang{};
 };
 
 using TokenCallback = std::function<void(const std::string& token, bool done)>;
@@ -46,6 +50,7 @@ struct LlmStreamInput
   ChatRequest request;
   TokenCallback onToken;
   LlmPrefillStats* stats{nullptr};
+  std::stop_token cancellation{};
 };
 
 struct GenerateInput

@@ -64,8 +64,8 @@ private:
     std::atomic<bool> speaking{false};
     std::atomic<bool> interrupt{false};
     std::atomic<bool> active{true};
-    std::mutex ttsMutex;
-    std::stop_source ttsStop;
+    std::mutex turnMutex;
+    std::stop_source turnStop;
     std::thread worker;
     std::mutex pcmMutex;
     std::condition_variable pcmCv;

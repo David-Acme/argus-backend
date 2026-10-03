@@ -25,6 +25,14 @@ message ChatMessage {
   string content = 2;
 }
 
+enum CallerRole {
+  CALLER_ROLE_UNSPECIFIED = 0;
+  CALLER_ROLE_OWNER = 1;
+  CALLER_ROLE_RESIDENT = 2;
+  CALLER_ROLE_GUARD = 3;
+  CALLER_ROLE_GUEST = 4;
+}
+
 message ChatRequest {
   repeated ChatMessage messages = 1;
   int32 max_tokens = 2;
@@ -34,6 +42,8 @@ message ChatRequest {
   int64 user_id = 6;
   string grammar = 7;
   bool grammar_required = 8;
+  CallerRole caller_role = 9;
+  string lang = 10;
 }
 
 message ChatResponse {

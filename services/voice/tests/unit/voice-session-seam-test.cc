@@ -9,6 +9,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -17,21 +18,16 @@ namespace
 struct FakeStt final : IVoiceStt
 {
   std::string transcript{"hola argus"};
-  int transcribeCalls{0};
-  int setLanguageCalls{0};
-  std::string lastLanguage;
+  std::atomic<int> transcribeCalls{0};
+  std::mutex mutex;
+  std::vector<std::string> languages;
 
-  std::string transcribe(const std::vector<float>&, int32_t) override
+  std::string transcribe(const VoiceTranscribeInput& input) override
   {
     ++transcribeCalls;
+    std::scoped_lock lock(mutex);
+    languages.push_back(input.language);
     return transcript;
-  }
-
-  bool setLanguage(const std::string& lang) override
-  {
-    ++setLanguageCalls;
-    lastLanguage = lang;
-    return true;
   }
 };
 
@@ -101,22 +97,54 @@ struct FakeLlm final : IVoiceLlm
   int chatStreamCalls{0};
   size_t lastPromptMessages{0};
   int64_t lastUserId{0};
+  UserRole lastRole{UserRole::Owner};
+  std::string lastLang;
 
-  void chatStream(const ChatRequest& req, TokenCallback onToken) override
+  void chatStream(LlmStreamInput input) override
   {
     ++chatStreamCalls;
-    lastPromptMessages = req.messages.size();
-    lastUserId = req.userId;
-    onToken("Hola de nuevo.", false);
-    onToken("", true);
+    lastPromptMessages = input.request.messages.size();
+    lastUserId = input.request.userId;
+    lastRole = input.request.role;
+    lastLang = input.request.lang;
+    input.onToken("Hola de nuevo.", false);
+    input.onToken("", true);
   }
 };
 
 struct FailingLlm final : IVoiceLlm
 {
-  void chatStream(const ChatRequest&, TokenCallback) override
+  void chatStream(LlmStreamInput) override
   {
     throw std::runtime_error("llm busy");
+  }
+};
+
+struct BlockingLlm final : IVoiceLlm
+{
+  std::atomic<bool> entered{false};
+  std::atomic<bool> cancelled{false};
+  std::atomic<int> calls{0};
+
+  void chatStream(LlmStreamInput input) override
+  {
+    if (calls.fetch_add(1) > 0) {
+      input.onToken("Sigo aqui.", false);
+      input.onToken("", true);
+      return;
+    }
+    input.onToken("Empiezo", false);
+    std::mutex mutex;
+    std::condition_variable_any ready;
+    std::unique_lock lock(mutex);
+    entered.store(true);
+    ready.wait_for(lock, input.cancellation, std::chrono::seconds(5),
+                   [] { return false; });
+    cancelled.store(input.cancellation.stop_requested());
+    if (input.cancellation.stop_requested())
+      throw std::runtime_error("argus-llm stream cancelled");
+    input.onToken(" tarde.", false);
+    input.onToken("", true);
   }
 };
 
@@ -193,9 +221,6 @@ TEST_CASE("Voice session start speaks the greeting through the injected seam")
   voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
   session.start(sink, voiceIdentity);
 
-  CHECK(stt.setLanguageCalls == 1);
-  CHECK(stt.lastLanguage == "es");
-
   CHECK(waitFor([&] {
     return sink.hasType("voice:assistant");
   }));
@@ -247,6 +272,12 @@ TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
   CHECK(llm.chatStreamCalls == 1);
   CHECK(llm.lastPromptMessages == 3);
   CHECK(llm.lastUserId == 7);
+  CHECK(llm.lastRole == UserRole::Resident);
+  CHECK(llm.lastLang == "es");
+  {
+    std::scoped_lock lock(stt.mutex);
+    CHECK(stt.languages == std::vector<std::string>{"es"});
+  }
 
   CHECK(tts.synthesizeCalls == 2);
   CHECK(tts.lastText == "Hola de nuevo.");
@@ -430,7 +461,94 @@ TEST_CASE("A second start on a live session keeps the first one")
 
   session.start(sink, voiceIdentity);
   CHECK(VoiceSessionTestAccess::sessionOf(session, sink) == first);
-  CHECK(stt.setLanguageCalls == 1);
 
   session.stop(sink);
+}
+
+TEST_CASE("Skip cancels the LLM generation and the next turn does not wait for it")
+{
+  FakeStt stt;
+  FakeTts tts;
+  BlockingLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  voiceIdentity.set_name("Ana");
+  service.start(sink, voiceIdentity);
+  auto sess = VoiceSessionTestAccess::sessionOf(service, sink);
+  CHECK(waitFor([&] { return tts.synthesizeCalls > 0 && !sess->speaking.load(); }));
+
+  const std::vector<float> samples(1600, 0.1F);
+  const auto started = std::chrono::steady_clock::now();
+  std::thread turn([&] {
+    VoiceSessionTestAccess::runTurn({.service = service, .session = *sess, .samples = samples});
+  });
+  CHECK(waitFor([&] { return llm.entered.load(); }, 1000));
+  service.skip(sink);
+  turn.join();
+  CHECK(llm.cancelled.load());
+  CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(2));
+  const int spokenAfterSkip = tts.synthesizeCalls;
+
+  VoiceSessionTestAccess::runTurn({.service = service, .session = *sess, .samples = samples});
+  CHECK(llm.calls.load() == 2);
+  CHECK(tts.synthesizeCalls == spokenAfterSkip + 1);
+  CHECK(tts.lastText == "Sigo aqui.");
+
+  service.stop(sink);
+}
+
+TEST_CASE("Concurrent sessions transcribe in their own language")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+
+  FakeVoiceSink spanishSink;
+  argus::voice::v1::VoiceIdentity spanish;
+  spanish.set_user_id(7);
+  spanish.set_role(argus::voice::v1::VOICE_ROLE_RESIDENT);
+  spanish.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  spanish.set_name("Ana");
+  service.start(spanishSink, spanish);
+
+  FakeVoiceSink englishSink;
+  argus::voice::v1::VoiceIdentity english;
+  english.set_user_id(8);
+  english.set_role(argus::voice::v1::VOICE_ROLE_GUEST);
+  english.set_language(argus::voice::v1::VOICE_LANGUAGE_EN);
+  english.set_name("Bob");
+  service.start(englishSink, english);
+
+  auto es = VoiceSessionTestAccess::sessionOf(service, spanishSink);
+  auto en = VoiceSessionTestAccess::sessionOf(service, englishSink);
+  CHECK(waitFor([&] {
+    return spanishSink.hasType("voice:assistant") &&
+           englishSink.hasType("voice:assistant") && !es->speaking.load() &&
+           !en->speaking.load();
+  }));
+
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = service, .session = *es, .samples = samples});
+  CHECK(llm.lastLang == "es");
+  CHECK(llm.lastRole == UserRole::Resident);
+  VoiceSessionTestAccess::runTurn({.service = service, .session = *en, .samples = samples});
+  CHECK(llm.lastLang == "en");
+  CHECK(llm.lastRole == UserRole::Guest);
+  VoiceSessionTestAccess::runTurn({.service = service, .session = *es, .samples = samples});
+
+  {
+    std::scoped_lock lock(stt.mutex);
+    CHECK(stt.languages == std::vector<std::string>{"es", "en", "es"});
+  }
+
+  service.stop(spanishSink);
+  service.stop(englishSink);
 }

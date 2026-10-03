@@ -4,6 +4,7 @@
 #include <drogon/drogon.h>
 #include <identity/identity-client.hxx>
 #include <config/config-service.hxx>
+#include <stdexcept>
 
 namespace
 {
@@ -51,30 +52,23 @@ GrpcVoiceIdentity::clientFor(const std::string& target)
   return client_;
 }
 
-std::string RemoteVoiceStt::transcribe(const std::vector<float>& audioSamples,
-                                       int32_t sampleRate)
+bool RemoteVoiceStt::supportsLanguage(const std::string& lang)
+{
+  return lang.empty() || lang == "es" || lang == "en" || lang == "auto";
+}
+
+std::string RemoteVoiceStt::transcribe(const VoiceTranscribeInput& input)
 {
   if (!client_.remote())
     throw std::runtime_error("stt.remote_url is not configured");
-  if (sampleRate != kWireSampleRate)
+  if (input.sampleRate != kWireSampleRate)
     throw std::runtime_error("argus-stt wire requires 16 kHz mono PCM");
-
-  std::string lang;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    lang = lang_;
-  }
-  return client_.transcribe(audioSamples, lang);
+  if (!supportsLanguage(input.language))
+    throw std::invalid_argument("argus-stt does not support language " +
+                                input.language);
+  return client_.transcribe(input.samples, input.language);
 }
 
-bool RemoteVoiceStt::setLanguage(const std::string& lang)
-{
-  if (lang != "es" && lang != "en" && lang != "auto")
-    return false;
-  std::lock_guard<std::mutex> lock(mutex_);
-  lang_ = lang;
-  return true;
-}
 std::shared_ptr<const LlmClient>
 RemoteVoiceLlm::clientFor(const LlmRemoteConfig& config)
 {
@@ -87,7 +81,7 @@ RemoteVoiceLlm::clientFor(const LlmRemoteConfig& config)
   return client_;
 }
 
-void RemoteVoiceLlm::chatStream(const ChatRequest& req, TokenCallback onToken)
+void RemoteVoiceLlm::chatStream(LlmStreamInput input)
 {
   const LlmRemoteConfig config = LlmRemoteConfig::resolve();
 
@@ -98,9 +92,6 @@ void RemoteVoiceLlm::chatStream(const ChatRequest& req, TokenCallback onToken)
   }
   if (!client->remote())
     throw std::runtime_error("llm.remote_url is not configured");
-  LlmStreamInput input;
-  input.request = req;
-  input.onToken = std::move(onToken);
   client->chatStream(input);
 }
 

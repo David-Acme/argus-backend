@@ -7,6 +7,7 @@
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/llm/services/tools/tool-validator.hxx>
 
+#include <algorithm>
 #include <json/value.h>
 #include <optional>
 #include <string>
@@ -251,4 +252,33 @@ TEST_CASE("the gate refuses every memory tool for a role with no Memory row")
     CHECK_FALSE(refused.ok);
     CHECK(refused.output == std::string("permission denied for tool: ") + name);
   }
+}
+
+TEST_CASE("only the tools a role may run are offered to the model")
+{
+  ToolRegistry registry;
+  registerMemoryTools(registry);
+  Probe probe;
+  registry.registerTool(probeDescriptor("probe.camera", probe, TableName::Camera,
+                                        RolePermission::Read));
+  const ToolExecutor executor(registry);
+
+  const auto namesFor = [&executor](UserRole role) {
+    std::vector<std::string> names;
+    for (const auto* descriptor : executor.permittedTools(role))
+      names.push_back(descriptor->name);
+    std::ranges::sort(names);
+    return names;
+  };
+
+  const std::vector<std::string> everything = {
+      "memory.forget", "memory.recall", "memory.remember", "memory.remind",
+      "probe.camera",  "procedure.run"};
+  CHECK(namesFor(UserRole::Owner) == everything);
+  CHECK(namesFor(UserRole::Resident) == everything);
+  CHECK(namesFor(UserRole::Guard) == std::vector<std::string>{"probe.camera"});
+  CHECK(namesFor(UserRole::Guest) == std::vector<std::string>{"probe.camera"});
+
+  for (const auto* descriptor : executor.permittedTools(UserRole::Guest))
+    CHECK(ToolExecutor::permits(*descriptor, UserRole::Guest));
 }

@@ -540,4 +540,27 @@ TEST_CASE("the chat body reaches the engine with every field it carried")
   CHECK(absent.userId == 0);
   CHECK(absent.grammar.empty());
   CHECK_FALSE(absent.grammarRequired);
+  CHECK(absent.role == UserRole::Guest);
+  CHECK(absent.lang.empty());
+
+  Json::Value caller;
+  REQUIRE(reader.parse(
+      R"({"messages":[{"role":"user","content":"Di hola"}],"role":"owner",)"
+      R"("lang":"en"})",
+      caller));
+  const ChatRequest declared = ChatCompletionDto::fromJson(caller).request();
+  CHECK(declared.role == UserRole::Owner);
+  CHECK(declared.lang == "en");
+
+  Json::Value unknownRole;
+  REQUIRE(reader.parse(
+      R"({"messages":[{"role":"user","content":"Di hola"}],"role":"admin"})",
+      unknownRole));
+  CHECK_THROWS(ChatCompletionDto::fromJson(unknownRole));
+
+  Json::Value unknownLang;
+  REQUIRE(reader.parse(
+      R"({"messages":[{"role":"user","content":"Di hola"}],"lang":"fr"})",
+      unknownLang));
+  CHECK_THROWS(ChatCompletionDto::fromJson(unknownLang));
 }

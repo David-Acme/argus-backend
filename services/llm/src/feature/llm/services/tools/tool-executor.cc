@@ -21,9 +21,7 @@ tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call,
     return result;
   }
 
-  if (!role_access::hasAccess({.role = role,
-                               .table = descriptor->accessTable,
-                               .perm = descriptor->accessPermission})) {
+  if (!permits(*descriptor, role)) {
     result.output = "permission denied for tool: " + call.name;
     return result;
   }
@@ -31,4 +29,24 @@ tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call,
   result = descriptor->handler(call);
   result.tool = call.name;
   return result;
+}
+
+bool ToolExecutor::permits(const tools::ToolDescriptor& descriptor,
+                           UserRole role)
+{
+  return role_access::hasAccess({.role = role,
+                                 .table = descriptor.accessTable,
+                                 .perm = descriptor.accessPermission});
+}
+
+std::vector<const tools::ToolDescriptor*>
+ToolExecutor::permittedTools(UserRole role) const
+{
+  std::vector<const tools::ToolDescriptor*> out;
+  for (const auto& name : registry_.names()) {
+    const auto* descriptor = registry_.find(name);
+    if (descriptor != nullptr && permits(*descriptor, role))
+      out.push_back(descriptor);
+  }
+  return out;
 }

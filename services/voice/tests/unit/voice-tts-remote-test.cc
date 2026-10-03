@@ -18,20 +18,18 @@ namespace
 
 struct FakeStt final : IVoiceStt
 {
-  std::string transcribe(const std::vector<float>&, int32_t) override
+  std::string transcribe(const VoiceTranscribeInput&) override
   {
     return "hola";
   }
-
-  bool setLanguage(const std::string&) override { return true; }
 };
 
 struct FakeLlm final : IVoiceLlm
 {
-  void chatStream(const ChatRequest&, TokenCallback onToken) override
+  void chatStream(LlmStreamInput input) override
   {
-    onToken("Hola.", false);
-    onToken("", true);
+    input.onToken("Hola.", false);
+    input.onToken("", true);
   }
 };
 

@@ -12,14 +12,19 @@
 #include <string>
 #include <vector>
 
+struct VoiceTranscribeInput
+{
+  const std::vector<float>& samples;
+  int32_t sampleRate{0};
+  std::string language;
+};
+
 class IVoiceStt
 {
 public:
   virtual ~IVoiceStt() = default;
 
-  virtual std::string transcribe(const std::vector<float>& audioSamples,
-                                 int32_t sampleRate) = 0;
-  virtual bool setLanguage(const std::string& lang) = 0;
+  virtual std::string transcribe(const VoiceTranscribeInput& input) = 0;
 };
 
 class IVoiceTts
@@ -41,7 +46,7 @@ class IVoiceLlm
 public:
   virtual ~IVoiceLlm() = default;
 
-  virtual void chatStream(const ChatRequest& req, TokenCallback onToken) = 0;
+  virtual void chatStream(LlmStreamInput input) = 0;
 };
 
 struct VoiceNameWrite
@@ -100,21 +105,18 @@ private:
 class RemoteVoiceStt final : public IVoiceStt
 {
 public:
-  std::string transcribe(const std::vector<float>& audioSamples,
-                         int32_t sampleRate) override;
+  std::string transcribe(const VoiceTranscribeInput& input) override;
 
-  bool setLanguage(const std::string& lang) override;
+  static bool supportsLanguage(const std::string& lang);
 
 private:
   SttClient client_;
-  mutable std::mutex mutex_;
-  std::string lang_;
 };
 
 class RemoteVoiceLlm final : public IVoiceLlm
 {
 public:
-  void chatStream(const ChatRequest& req, TokenCallback onToken) override;
+  void chatStream(LlmStreamInput input) override;
 
 private:
   std::shared_ptr<const LlmClient>

@@ -84,7 +84,24 @@ bool validRequest(const wire::ChatRequest& request)
   return request.max_tokens() >= 0 && request.max_tokens() <= kMaxTokensBound &&
          (!request.has_temperature() ||
           (request.temperature() >= -1.0F && request.temperature() <= 2.0F)) &&
-         request.grammar().size() <= kMaxGrammarBytes && request.user_id() >= 0;
+         request.grammar().size() <= kMaxGrammarBytes && request.user_id() >= 0 &&
+         (request.lang().empty() || request.lang() == "es" ||
+          request.lang() == "en");
+}
+
+UserRole callerRole(wire::CallerRole role)
+{
+  switch (role) {
+    case wire::CALLER_ROLE_OWNER:
+      return UserRole::Owner;
+    case wire::CALLER_ROLE_RESIDENT:
+      return UserRole::Resident;
+    case wire::CALLER_ROLE_GUARD:
+      return UserRole::Guard;
+    default:
+      break;
+  }
+  return UserRole::Guest;
 }
 
 ChatRequest chatRequest(const wire::ChatRequest& wireRequest)
@@ -102,6 +119,8 @@ ChatRequest chatRequest(const wire::ChatRequest& wireRequest)
   request.userId = wireRequest.user_id();
   request.grammar = wireRequest.grammar();
   request.grammarRequired = wireRequest.grammar_required();
+  request.role = callerRole(wireRequest.caller_role());
+  request.lang = wireRequest.lang();
   return request;
 }
 
@@ -240,7 +259,10 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
         if (stopped(*context))
           throw stoppedError(*context);
         input_.chatStream(
-            {.request = chat, .onToken = emit, .stats = &queue.stats});
+            {.request = chat,
+             .onToken = emit,
+             .stats = &queue.stats,
+             .cancellation = {}});
       }
       catch (const ResponseException& error) {
         std::scoped_lock lock(queue.mutex);

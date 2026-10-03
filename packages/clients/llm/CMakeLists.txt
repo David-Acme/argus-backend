@@ -5,6 +5,11 @@ if(NOT TARGET argus::contracts::sync)
                      ${CMAKE_BINARY_DIR}/contracts/sync)
 endif()
 
+if(NOT TARGET argus::contracts::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/auth
+                     ${CMAKE_BINARY_DIR}/contracts/auth)
+endif()
+
 if(NOT TARGET argus::lib::config)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../lib/config
                      ${CMAKE_CURRENT_BINARY_DIR}/config)
@@ -36,7 +41,8 @@ argus_clients(NAME llm
     INCLUDES
         src
     DEPENDS
-        argus::contracts::sync argus::lib::config argus::lib::errors
+        argus::contracts::auth argus::contracts::sync argus::lib::config
+        argus::lib::errors
         argus::contracts::llm
         Drogon::Drogon
         nlohmann_json::nlohmann_json)

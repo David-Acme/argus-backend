@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <stop_token>
 #include <utility>
 #include <vector>
 
@@ -55,12 +56,33 @@ bool validMessages(const std::vector<ChatMessage>& messages)
   });
 }
 
+bool validLang(const std::string& lang)
+{
+  return lang.empty() || lang == "es" || lang == "en";
+}
+
 bool validRequest(const ChatRequest& request)
 {
   return validMessages(request.messages) && request.maxTokens >= 0 &&
          request.maxTokens <= kMaxTokensBound && request.temperature >= -1.0F &&
          request.temperature <= 2.0F &&
-         request.grammar.size() <= kMaxGrammarBytes && request.userId >= 0;
+         request.grammar.size() <= kMaxGrammarBytes && request.userId >= 0 &&
+         validLang(request.lang);
+}
+
+wire::CallerRole wireRole(UserRole role)
+{
+  switch (role) {
+    case UserRole::Owner:
+      return wire::CALLER_ROLE_OWNER;
+    case UserRole::Resident:
+      return wire::CALLER_ROLE_RESIDENT;
+    case UserRole::Guard:
+      return wire::CALLER_ROLE_GUARD;
+    case UserRole::Guest:
+      break;
+  }
+  return wire::CALLER_ROLE_GUEST;
 }
 
 bool validCapabilities(const wire::CapabilitiesResponse& response)
@@ -95,6 +117,8 @@ wire::ChatRequest wireRequest(const ChatRequest& request)
   wire.set_user_id(request.userId);
   wire.set_grammar(request.grammar);
   wire.set_grammar_required(request.grammarRequired);
+  wire.set_caller_role(wireRole(request.role));
+  wire.set_lang(request.lang);
   return wire;
 }
 }
@@ -158,16 +182,20 @@ void Client::chatStream(const LlmStreamInput& input) const
 {
   if (!validRequest(input.request))
     throw ResponseException(400, LlmErrors::InvalidRequest);
+  if (input.cancellation.stop_requested())
+    throw ResponseException(499, LlmErrors::Cancelled);
   grpc::ClientContext context;
   const auto deadlineAt = Clock::now() + impl_->config.timeout;
   context.set_deadline(deadlineAt);
   argus::client::addCallerCredential(context, impl_->config.credential);
   const wire::ChatRequest wire = wireRequest(input.request);
+  const std::stop_callback cancel(input.cancellation,
+                                  [&context] { context.TryCancel(); });
   const auto reader = impl_->stub->ChatStream(&context, wire);
 
   wire::ChatToken token;
   bool sentinel = false;
-  while (reader->Read(&token)) {
+  while (!input.cancellation.stop_requested() && reader->Read(&token)) {
     if (!token.done()) {
       input.onToken(token.text(), false);
       continue;
@@ -179,6 +207,13 @@ void Client::chatStream(const LlmStreamInput& input) const
     }
     input.onToken("", true);
     sentinel = true;
+  }
+  if (input.cancellation.stop_requested()) {
+    context.TryCancel();
+    static_cast<void>(reader->Finish());
+    if (sentinel)
+      return;
+    throw ResponseException(499, LlmErrors::Cancelled);
   }
   check(reader->Finish(), deadlineAt);
   if (!sentinel)

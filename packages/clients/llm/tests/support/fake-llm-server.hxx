@@ -58,6 +58,12 @@ public:
     return requests_;
   }
 
+  std::string lastBody() const
+  {
+    std::lock_guard lock(mutex_);
+    return lastBody_;
+  }
+
   void stop()
   {
     if (listen_ < 0)
@@ -113,7 +119,8 @@ private:
   {
     size_t sent = 0;
     while (sent < data.size()) {
-      const auto n = ::send(fd, data.data() + sent, data.size() - sent, 0);
+      const auto n = ::send(fd, data.data() + sent, data.size() - sent,
+                            MSG_NOSIGNAL);
       if (n <= 0)
         return;
       sent += static_cast<size_t>(n);
@@ -158,6 +165,9 @@ private:
       {
         std::lock_guard lock(mutex_);
         requests_[method + " " + path]++;
+        const auto split = request.find("\r\n\r\n");
+        lastBody_ = split == std::string::npos ? std::string()
+                                               : request.substr(split + 4);
       }
 
       const std::string errorJson =
@@ -230,6 +240,7 @@ private:
   int port_{0};
   mutable std::mutex mutex_;
   std::map<std::string, int> requests_;
+  std::string lastBody_;
   std::thread thread_;
 };
 

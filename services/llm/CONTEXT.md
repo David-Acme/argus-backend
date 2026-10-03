@@ -90,7 +90,7 @@ scaffolds.
   end-of-stream marker, the role the HTTP sentinel line plays.
   Requests carry the same fields as the HTTP body (`messages`, `max_tokens`,
   `temperature`, `reset_context`, `tools`, `user_id`, `grammar`,
-  `grammar_required`), with `temperature` and `tools` declared proto3
+  `grammar_required`, the caller's role and `lang`), with `temperature` and `tools` declared proto3
   `optional` so an undeclared one takes the engine's default exactly as an
   omitted HTTP key does; the server re-checks every bound the client checks
   (the wire is a boundary, not everyone is the client) and refuses a
@@ -126,6 +126,18 @@ scaffolds.
   budget clamped to `argus::llm::kMaxTimeout`, and a non-positive budget takes
   that ceiling — the HTTP leg accepts a budget the typed leg's own gate would
   refuse, so the façade clamps instead of failing every call.
+- **Caller role and language**: a chat request names the role of the user it
+  speaks for (`caller_role` on the gRPC wire, `role` in the HTTP body) and the
+  turn's language (`lang`, `es`/`en`). Both are additive: an absent or
+  unknown wire role is `UserRole::Guest`, the least privileged role, never
+  Resident, and an absent `lang` keeps the tool runtime's Spanish default; a
+  `lang` outside `es`/`en` is refused. The tool loop used to run every turn
+  as a Resident in Spanish. Now the controller offers the model only the
+  tools `role_access::hasAccess` grants that role for each descriptor's
+  `accessTable`/`accessPermission` (`ToolExecutor::permittedTools`), and the
+  executor still checks every call, the routed ones included. A role with no
+  permitted tool (Guard and Guest have no `memory` row) gets the direct
+  engine path.
 - **Config**: `[llm]` (engine knobs, mirroring the legacy block) +
   `[intent]` (the router's model path and operating point) +
   `[server]` (loopback listener, default 7032) + `[rpc]`/`[rpc.callers]`

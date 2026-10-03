@@ -26,12 +26,10 @@ struct FakeTts final : IVoiceTts
 
 struct LocalFakeStt final : IVoiceStt
 {
-  std::string transcribe(const std::vector<float>&, int32_t) override
+  std::string transcribe(const VoiceTranscribeInput&) override
   {
     return "hola es";
   }
-
-  bool setLanguage(const std::string&) override { return true; }
 };
 
 void pointLlmAt(const std::string& url)
@@ -74,6 +72,14 @@ ChatRequest greetingRequest()
   return req;
 }
 
+LlmStreamInput streamInput(TokenCallback onToken)
+{
+  return {.request = greetingRequest(),
+          .onToken = std::move(onToken),
+          .stats = nullptr,
+          .cancellation = {}};
+}
+
 std::vector<argus::voice::v1::ServerFrame>
 assistantFrames(const FakeVoiceSink& sink)
 {
@@ -97,13 +103,12 @@ TEST_CASE("RemoteVoiceLlm serves the IVoiceLlm seam over the argus-llm wire")
 
   std::vector<std::string> arrived;
   bool done = false;
-  adapter.chatStream(greetingRequest(),
-                     [&](const std::string& token, bool atEnd) {
+  adapter.chatStream(streamInput([&](const std::string& token, bool atEnd) {
                        if (atEnd)
                          done = true;
                        else
                          arrived.push_back(token);
-                     });
+                     }));
   CHECK(done);
   CHECK(arrived == tokens);
   std::string joined;
@@ -133,13 +138,12 @@ TEST_CASE("RemoteVoiceLlm serves the IVoiceLlm seam over the argus-llm wire")
   pointLlmAt("http://127.0.0.1:" + std::to_string(coalesced.port()));
   std::vector<std::string> coalescedArrived;
   bool coalescedDone = false;
-  adapter.chatStream(greetingRequest(),
-                     [&](const std::string& token, bool atEnd) {
+  adapter.chatStream(streamInput([&](const std::string& token, bool atEnd) {
                        if (atEnd)
                          coalescedDone = true;
                        else
                          coalescedArrived.push_back(token);
-                     });
+                     }));
   CHECK(coalescedDone);
   std::string coalescedText;
   for (const auto& token : coalescedArrived)
@@ -149,30 +153,26 @@ TEST_CASE("RemoteVoiceLlm serves the IVoiceLlm seam over the argus-llm wire")
   FakeLlmServer second({.tokens = {"Adios"}});
   pointLlmAt("http://127.0.0.1:" + std::to_string(second.port()));
   std::string secondText;
-  adapter.chatStream(greetingRequest(),
-                     [&](const std::string& token, bool atEnd) {
+  adapter.chatStream(streamInput([&](const std::string& token, bool atEnd) {
                        if (!atEnd)
                          secondText += token;
-                     });
+                     }));
   CHECK(secondText == "Adios");
   CHECK(second.requests().at("POST /llm/v1/chat-stream") == 1);
   CHECK(coalesced.requests().at("POST /llm/v1/chat-stream") == 1);
 
   FakeLlmServer down({.tokens = tokens, .status = 503});
   pointLlmAt("http://127.0.0.1:" + std::to_string(down.port()));
-  CHECK_THROWS_AS(adapter.chatStream(greetingRequest(),
-                                     [](const std::string&, bool) {}),
+  CHECK_THROWS_AS(adapter.chatStream(streamInput([](const std::string&, bool) {})),
                   std::runtime_error);
 
   FakeLlmServer truncated({.tokens = tokens, .truncated = true});
   pointLlmAt("http://127.0.0.1:" + std::to_string(truncated.port()));
-  CHECK_THROWS_AS(adapter.chatStream(greetingRequest(),
-                                     [](const std::string&, bool) {}),
+  CHECK_THROWS_AS(adapter.chatStream(streamInput([](const std::string&, bool) {})),
                   std::runtime_error);
 
   pointLlmAt("");
-  CHECK_THROWS_AS(adapter.chatStream(greetingRequest(),
-                                     [](const std::string&, bool) {}),
+  CHECK_THROWS_AS(adapter.chatStream(streamInput([](const std::string&, bool) {})),
                   std::runtime_error);
 }
 

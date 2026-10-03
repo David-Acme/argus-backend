@@ -170,8 +170,13 @@ int main(int argc, char** argv)
                             .maxTokens = 512,
                             .temperature = 0.0F,
                             .resetContext = false,
+                            .toolsEnabled = true,
                             .stop = {},
-                            .grammar = {}};
+                            .grammar = {},
+                            .grammarRequired = false,
+                            .userId = 0,
+                            .role = UserRole::Guest,
+                            .lang = {}};
       std::cout << gLlm.chat(req) << "\n---\n";
     }
     return 0;

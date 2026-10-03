@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <drogon/drogon.h>
+#include <auth/user-role.hxx>
 #include <config/config-service.hxx>
 
 namespace
@@ -330,10 +331,6 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   session->denoiseGateRms = gateRms > 0.0 ? static_cast<float>(gateRms) : 0.0035F;
   session->history.push_back({"system", systemPrompt(session->lang)});
 
-  const std::string code = voiceLangToString(session->lang);
-  if (!code.empty())
-    stt_.setLanguage(code);
-
   const std::string greeting = greetingFor(session->lang, userName);
   session->history.push_back({"assistant", greeting});
 
@@ -393,9 +390,9 @@ void VoiceSessionService::stop(VoiceSessionSink& sink)
   }
   std::stop_source cancellation;
   {
-    std::lock_guard lock(session->ttsMutex);
+    std::lock_guard lock(session->turnMutex);
     session->active.store(false);
-    cancellation = session->ttsStop;
+    cancellation = session->turnStop;
   }
   cancellation.request_stop();
   session->pcmCv.notify_all();
@@ -469,17 +466,21 @@ void VoiceSessionService::workerLoop(std::shared_ptr<Session> session)
 void VoiceSessionService::processTurn(Session& session,
                                       const std::vector<float>& samples)
 {
+  std::stop_token cancellation;
   {
-    std::lock_guard lock(session.ttsMutex);
+    std::lock_guard lock(session.turnMutex);
     if (!session.active.load())
       return;
     session.interrupt.store(false);
-    session.ttsStop = std::stop_source{};
+    session.turnStop = std::stop_source{};
+    cancellation = session.turnStop.get_token();
   }
 
   std::string userText;
   try {
-    userText = stt_.transcribe(samples, 16000);
+    userText = stt_.transcribe({.samples = samples,
+                                .sampleRate = kTargetRate,
+                                .language = voiceLangToString(session.lang)});
   }
   catch (const std::exception& e) {
     LOG_WARN << "Voice: STT failed: " << e.what();
@@ -540,43 +541,52 @@ void VoiceSessionService::processTurn(Session& session,
   ChatRequest req;
   req.messages = session.history;
   req.userId = session.userId;
+  req.role = userRoleFromString(session.role);
+  req.lang = voiceLangToString(session.lang);
 
   std::string full;
   std::string pending;
   bool prefixStripped = false;
   bool firstSentenceSent = false;
 
+  const TokenCallback onToken = [&](const std::string& token, bool) {
+    if (!session.sink || !session.sink->connected())
+      return;
+    if (session.interrupt.load())
+      return;
+
+    full += token;
+    pending += token;
+    if (!prefixStripped && pending.size() >= 8) {
+      pending = stripPrefix(pending);
+      prefixStripped = true;
+    }
+
+    for (;;) {
+      const size_t cut = nextChunkEnd(pending, !firstSentenceSent);
+      if (cut == 0)
+        break;
+      const std::string sentence = pending.substr(0, cut);
+      pending.erase(0, cut);
+      firstSentenceSent = true;
+      speak(session, sentence);
+      if (session.interrupt.load()) {
+        pending.clear();
+        break;
+      }
+    }
+  };
   try {
-    llm_.chatStream(req, [&](const std::string& token, bool) {
-      if (!session.sink || !session.sink->connected())
-        return;
-      if (session.interrupt.load())
-        return;
-
-      full += token;
-      pending += token;
-      if (!prefixStripped && pending.size() >= 8) {
-        pending = stripPrefix(pending);
-        prefixStripped = true;
-      }
-
-      for (;;) {
-        const size_t cut = nextChunkEnd(pending, !firstSentenceSent);
-        if (cut == 0)
-          break;
-        const std::string sentence = pending.substr(0, cut);
-        pending.erase(0, cut);
-        firstSentenceSent = true;
-        speak(session, sentence);
-        if (session.interrupt.load()) {
-          pending.clear();
-          break;
-        }
-      }
-    });
+    llm_.chatStream({.request = req,
+                     .onToken = onToken,
+                     .stats = nullptr,
+                     .cancellation = cancellation});
   }
   catch (const std::exception& e) {
-    LOG_WARN << "Voice: LLM failed: " << e.what();
+    if (cancellation.stop_requested())
+      LOG_INFO << "Voice: LLM generation cancelled by an interrupt";
+    else
+      LOG_WARN << "Voice: LLM failed: " << e.what();
   }
   catch (...) {
     LOG_WARN << "Voice: LLM failed (unknown error)";
@@ -605,10 +615,10 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
     return;
   std::stop_token cancellation;
   {
-    std::lock_guard lock(session.ttsMutex);
+    std::lock_guard lock(session.turnMutex);
     if (!session.active.load() || session.interrupt.load())
       return;
-    cancellation = session.ttsStop.get_token();
+    cancellation = session.turnStop.get_token();
   }
   LOG_INFO << "Voice: speaking " << text.size() << " bytes";
   LOG_DEBUG << "Voice: speaking -> " << text.substr(0, 80);
@@ -674,9 +684,9 @@ void VoiceSessionService::skip(VoiceSessionSink& sink)
   LOG_INFO << "Voice: skip";
   std::stop_source cancellation;
   {
-    std::lock_guard lock(session->ttsMutex);
+    std::lock_guard lock(session->turnMutex);
     session->interrupt.store(true);
-    cancellation = session->ttsStop;
+    cancellation = session->turnStop;
   }
   cancellation.request_stop();
 }

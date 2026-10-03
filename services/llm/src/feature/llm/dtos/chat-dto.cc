@@ -36,6 +36,10 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
     dto.grammar = json["grammar"].asString();
   if (json.isMember("grammar_required") && json["grammar_required"].isBool())
     dto.grammarRequired = json["grammar_required"].asBool();
+  if (json.isMember("role") && json["role"].isString())
+    dto.role = json["role"].asString();
+  if (json.isMember("lang") && json["lang"].isString())
+    dto.lang = json["lang"].asString();
 
   START_VALIDATION(ChatCompletionDto, dto)
   ARRAY_NOT_EMPTY(messages, ChatMessageDto)
@@ -77,6 +81,8 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
       return "grammar is too long";
     return std::nullopt;
   })
+  IS_IN_OPTIONAL(role, "owner", "resident", "guard", "guest")
+  IS_IN_OPTIONAL(lang, "es", "en")
   END_VALIDATION()
   return dto;
 }
@@ -94,5 +100,7 @@ ChatRequest ChatCompletionDto::request() const
   req.userId = userId.value_or(0);
   req.grammar = grammar;
   req.grammarRequired = grammarRequired;
+  req.role = userRoleFromString(role.value_or(userRoleToString(UserRole::Guest)));
+  req.lang = lang.value_or(std::string());
   return req;
 }

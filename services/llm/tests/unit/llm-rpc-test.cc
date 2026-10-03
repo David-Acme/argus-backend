@@ -20,8 +20,10 @@
 #include <fstream>
 #include <latch>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <semaphore>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <utility>
@@ -378,7 +380,8 @@ TEST_CASE("a generation that produces no text is a legitimate answer")
                      .onToken = [&done](const std::string&, bool atEnd) {
                        done = atEnd;
                      },
-                     .stats = &stats});
+                     .stats = &stats,
+                     .cancellation = {}});
   CHECK(done);
   CHECK(stats.promptTokens == 5);
   CHECK(stats.reusedTokens == 5);
@@ -400,7 +403,8 @@ TEST_CASE("chat-stream streams tokens in sequence and closes with the counters")
                        else
                          arrived.push_back(token);
                      },
-                     .stats = &stats});
+                     .stats = &stats,
+                     .cancellation = {}});
   CHECK(done);
   CHECK(arrived == tokens());
   CHECK(stats.promptTokens == 7);
@@ -476,7 +480,8 @@ TEST_CASE("client rejects wrong credential")
                        .onToken = [&consumed](const std::string&, bool) {
                          consumed = true;
                        },
-                       .stats = nullptr});
+                       .stats = nullptr,
+                       .cancellation = {}});
   });
   CHECK(streaming.status == 401);
   CHECK(streaming.code == "UNAUTHORIZED");
@@ -512,7 +517,8 @@ TEST_CASE("server errors roundtrip typed response details")
   const auto streamRefused = refusalOf([&client, &request] {
     client.chatStream({.request = request,
                        .onToken = [](const std::string&, bool) {},
-                       .stats = nullptr});
+                       .stats = nullptr,
+                       .cancellation = {}});
   });
   CHECK(streamRefused.status == 503);
   CHECK(streamRefused.code == "LLM_NOT_LOADED");
@@ -553,7 +559,8 @@ TEST_CASE("failures outside the response contract are sanitized")
   const auto streamSanitized = refusalOf([&client, &request] {
     client.chatStream({.request = request,
                        .onToken = [](const std::string&, bool) {},
-                       .stats = nullptr});
+                       .stats = nullptr,
+                       .cancellation = {}});
   });
   CHECK(streamSanitized.status == 500);
   CHECK(streamSanitized.code == "INTERNAL_ERROR");
@@ -708,7 +715,8 @@ TEST_CASE("deadline and external cancellation stop generation")
     const auto expired = refusalOf([&deadlineClient, &request] {
       deadlineClient.chatStream({.request = request,
                                  .onToken = [](const std::string&, bool) {},
-                                 .stats = nullptr});
+                                 .stats = nullptr,
+                                 .cancellation = {}});
     });
     CHECK(expired.status == 504);
     CHECK(expired.code == "DEADLINE_EXCEEDED");
@@ -748,6 +756,129 @@ TEST_CASE("deadline and external cancellation stop generation")
   }
   cancelServer.shutdown();
   CHECK(cancelFinished.load());
+}
+
+TEST_CASE("the caller's role and language cross the wire, an absent role is a guest")
+{
+  std::mutex seenMutex;
+  std::vector<ChatRequest> seen;
+  auto input = serverInput();
+  input.chat = [&seen, &seenMutex](const ChatRequest& request) {
+    std::scoped_lock lock(seenMutex);
+    seen.push_back(request);
+    return LlmChatOutcome{.text = "ok",
+                          .hops = 0,
+                          .toolCalls = 0,
+                          .generateMs = 0,
+                          .toolMs = 0};
+  };
+  LlmRpcServer server(std::move(input));
+  Client client(clientConfig(server.port()));
+
+  ChatRequest owner = ask();
+  owner.role = UserRole::Owner;
+  owner.lang = "en";
+  CHECK(client.chat(owner) == "ok");
+  ChatRequest guard = ask();
+  guard.role = UserRole::Guard;
+  CHECK(client.chat(guard) == "ok");
+
+  const auto stub = rawStub(server.port());
+  CHECK(rawChat(*stub, {.input = ask()}) == "ok");
+
+  std::scoped_lock lock(seenMutex);
+  REQUIRE(seen.size() == 3);
+  CHECK(seen[0].role == UserRole::Owner);
+  CHECK(seen[0].lang == "en");
+  CHECK(seen[1].role == UserRole::Guard);
+  CHECK(seen[1].lang.empty());
+  CHECK(seen[2].role == UserRole::Guest);
+  CHECK(seen[2].lang.empty());
+}
+
+TEST_CASE("the wire refuses a language the tool runtime does not speak")
+{
+  LlmRpcServer server(serverInput());
+  const auto stub = rawStub(server.port());
+  grpc::ClientContext context;
+  context.set_deadline(Clock::now() + std::chrono::seconds(5));
+  argus::client::addCallerCredential(context, kSecret);
+  wire::ChatRequest request = wireRequest(ask());
+  request.set_lang("fr");
+  wire::ChatResponse response;
+  const auto status = stub->Chat(&context, request, &response);
+  REQUIRE_FALSE(status.ok());
+  CHECK(argus::response::fromRpcStatus(status).statusCode() == 400);
+}
+
+TEST_CASE("a client stop token cancels the stream and frees the slot for the next turn")
+{
+  std::atomic<bool> engineStopped{false};
+  std::atomic<int> engineCalls{0};
+  auto input = serverInput();
+  input.chatStream = [&engineStopped, &engineCalls](const LlmStreamInput& stream) {
+    if (engineCalls.fetch_add(1) > 0) {
+      stream.onToken("next", false);
+      stream.onToken("", true);
+      return;
+    }
+    try {
+      for (int i = 0; i < 400; ++i) {
+        stream.onToken(" palabra", false);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+    }
+    catch (...) {
+      engineStopped = true;
+      throw;
+    }
+    stream.onToken("", true);
+  };
+  LlmRpcServer server(std::move(input));
+  Client client(clientConfig(server.port(), std::chrono::seconds(30)));
+
+  std::stop_source stop;
+  int arrived = 0;
+  const auto started = std::chrono::steady_clock::now();
+  const auto cancelled = refusalOf([&] {
+    client.chatStream({.request = ask(),
+                       .onToken =
+                           [&](const std::string&, bool atEnd) {
+                             if (!atEnd && ++arrived == 3)
+                               stop.request_stop();
+                           },
+                       .stats = nullptr,
+                       .cancellation = stop.get_token()});
+  });
+  CHECK(cancelled.status == 499);
+  CHECK(cancelled.code == "CANCELLED");
+  CHECK(arrived == 3);
+  CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(2));
+
+  std::string next;
+  client.chatStream({.request = ask(),
+                     .onToken =
+                         [&next](const std::string& token, bool atEnd) {
+                           if (!atEnd)
+                             next += token;
+                         },
+                     .stats = nullptr,
+                     .cancellation = {}});
+  CHECK(next == "next");
+  CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(3));
+  CHECK(engineStopped.load());
+
+  std::stop_source early;
+  early.request_stop();
+  const auto refused = refusalOf([&] {
+    client.chatStream({.request = ask(),
+                       .onToken = [](const std::string&, bool) {},
+                       .stats = nullptr,
+                       .cancellation = early.get_token()});
+  });
+  CHECK(refused.status == 499);
+  CHECK(engineCalls.load() == 2);
+  server.shutdown();
 }
 
 TEST_CASE("a second call waits for the only slot instead of being refused")
@@ -878,7 +1009,8 @@ TEST_CASE("real engine answers through the gRPC leg")
                        else
                          streamedText += token;
                      },
-                     .stats = &stats});
+                     .stats = &stats,
+                     .cancellation = {}});
   CHECK(done);
   CHECK_FALSE(streamedText.empty());
   CHECK(stats.promptTokens > 0);

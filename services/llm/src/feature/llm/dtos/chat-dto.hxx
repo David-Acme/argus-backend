@@ -23,6 +23,8 @@ struct ChatCompletionDto
   std::optional<int64_t> userId;
   std::string grammar;
   bool grammarRequired{false};
+  std::optional<std::string> role;
+  std::optional<std::string> lang;
 
   static ChatCompletionDto fromJson(const Json::Value& json);
 

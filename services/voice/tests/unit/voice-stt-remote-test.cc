@@ -6,6 +6,7 @@
 #include <test-support/fake-voice-sink.hxx>
 #include <config/config-service.hxx>
 
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -25,10 +26,10 @@ struct FakeTts final : IVoiceTts
 
 struct FakeLlm final : IVoiceLlm
 {
-  void chatStream(const ChatRequest&, TokenCallback onToken) override
+  void chatStream(LlmStreamInput input) override
   {
-    onToken("Hola de nuevo.", false);
-    onToken("", true);
+    input.onToken("Hola de nuevo.", false);
+    input.onToken("", true);
   }
 };
 
@@ -69,26 +70,33 @@ TEST_CASE("RemoteVoiceStt serves the IVoiceStt seam over the argus-stt wire")
   RemoteVoiceStt adapter;
   const std::vector<float> samples(1600, 0.1F);
 
-  CHECK(adapter.transcribe(samples, 16000) == "hola default");
+  const auto transcribe = [&adapter, &samples](const std::string& language,
+                                                int32_t sampleRate) {
+    return adapter.transcribe(
+        {.samples = samples, .sampleRate = sampleRate, .language = language});
+  };
+
+  CHECK(transcribe("", 16000) == "hola default");
   CHECK(server.requests().at("POST /stt/v1/transcribe?lang=") == 1);
 
-  CHECK(adapter.setLanguage("es"));
-  CHECK(adapter.transcribe(samples, 16000) == "hola es");
+  CHECK(transcribe("es", 16000) == "hola es");
   CHECK(server.requests().at("POST /stt/v1/transcribe?lang=es") == 1);
 
-  CHECK(adapter.setLanguage("en"));
-  CHECK(adapter.transcribe(samples, 16000) == "hola en");
+  CHECK(transcribe("en", 16000) == "hola en");
   CHECK(server.requests().at("POST /stt/v1/transcribe?lang=en") == 1);
 
+  CHECK(transcribe("es", 16000) == "hola es");
+  CHECK(server.requests().at("POST /stt/v1/transcribe?lang=es") == 2);
+
   const auto before = server.requests();
-  CHECK_FALSE(adapter.setLanguage("fr"));
+  CHECK_THROWS_AS(transcribe("fr", 16000), std::invalid_argument);
   CHECK(server.requests() == before);
 
-  CHECK_THROWS_AS(adapter.transcribe(samples, 44100), std::runtime_error);
+  CHECK_THROWS_AS(transcribe("en", 44100), std::runtime_error);
 
   FakeSttServer secondServer;
   pointAt("http://127.0.0.1:" + std::to_string(secondServer.port()));
-  CHECK(adapter.transcribe(samples, 16000) == "hola en");
+  CHECK(transcribe("en", 16000) == "hola en");
   CHECK(secondServer.requests().at("POST /stt/v1/transcribe?lang=en") == 1);
   CHECK(server.requests().at("POST /stt/v1/transcribe?lang=en") == 1);
 

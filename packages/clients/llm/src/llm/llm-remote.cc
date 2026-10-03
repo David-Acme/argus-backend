@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cstring>
 #include <stdexcept>
+#include <stop_token>
 
 namespace
 {
@@ -265,6 +266,12 @@ bool parseSentinel(const std::string& line, LlmPrefillStats* stats)
   return true;
 }
 
+void throwIfCancelled(const std::stop_token& cancellation)
+{
+  if (cancellation.stop_requested())
+    throw std::runtime_error("argus-llm stream cancelled");
+}
+
 std::chrono::milliseconds rpcTimeout(int timeoutMs)
 {
   const auto ceiling = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -315,6 +322,11 @@ std::string LlmHttpClient::chatBody(const ChatRequest& request) const
     body["grammar"] = request.grammar;
     body["grammar_required"] = request.grammarRequired;
   }
+  if (request.userId > 0)
+    body["user_id"] = Json::Int64{request.userId};
+  body["role"] = userRoleToString(request.role);
+  if (!request.lang.empty())
+    body["lang"] = request.lang;
 
   Json::StreamWriterBuilder builder;
   builder["indentation"] = "";
@@ -360,12 +372,16 @@ std::string LlmHttpClient::chat(const ChatRequest& request) const
 
 void LlmHttpClient::chatStream(const LlmStreamInput& input) const
 {
+  throwIfCancelled(input.cancellation);
   const Address address = parseUrl(baseUrl_);
   const SocketGuard fd(connectLoopback({.host = address.host,
                                         .port = address.port,
                                         .timeoutMs = timeoutMs_}));
   if (fd.get() < 0)
     throw std::runtime_error("argus-llm unreachable at " + baseUrl_);
+  const std::stop_callback cancel(
+      input.cancellation, [socket = fd.get()] { ::shutdown(socket, SHUT_RDWR); });
+  throwIfCancelled(input.cancellation);
 
   const std::string body = chatBody(input.request);
   const std::string path = kChatStreamPath;
@@ -382,10 +398,12 @@ void LlmHttpClient::chatStream(const LlmStreamInput& input) const
 
   std::string wire;
   auto recvMore = [&]() -> bool {
+    throwIfCancelled(input.cancellation);
     if (std::chrono::steady_clock::now() >= deadline)
       return false;
     char buffer[16384];
     const auto n = ::recv(fd.get(), buffer, sizeof(buffer), 0);
+    throwIfCancelled(input.cancellation);
     if (n <= 0)
       return false;
     wire.append(buffer, static_cast<size_t>(n));

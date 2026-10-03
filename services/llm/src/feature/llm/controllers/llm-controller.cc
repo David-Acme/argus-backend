@@ -5,6 +5,7 @@
 #include <llm/llm-errors.hxx>
 #include <feature/llm/dtos/chat-dto.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
+#include <feature/llm/services/tools/tool-executor.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <runtime/blocking-task.hxx>
 
@@ -14,6 +15,7 @@
 #include <exception>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -31,25 +33,17 @@ drogon::HttpResponsePtr badRequest()
   throw ResponseException(LlmErrors::BodyNotJsonObject);
 }
 
+constexpr std::string_view kDefaultToolLang = "es";
+
 constexpr const char* kToolPolicy =
     "Eres Argus. Si el usuario pide guardar o recordar algo, usa "
     "memory.remember. Si no, responde brevemente.";
-
-std::vector<const tools::ToolDescriptor*> registeredTools()
-{
-  std::vector<const tools::ToolDescriptor*> out;
-  for (const auto& name : ToolRegistry::instance().names()) {
-    if (const auto* descriptor = ToolRegistry::instance().find(name))
-      out.push_back(descriptor);
-  }
-  return out;
-}
 
 std::vector<const tools::ToolDescriptor*> requestTools(const ChatRequest& request)
 {
   if (!request.toolsEnabled)
     return {};
-  return registeredTools();
+  return ToolExecutor(ToolRegistry::instance()).permittedTools(request.role);
 }
 
 struct ToolLoopInputArgs
@@ -64,12 +58,15 @@ ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
   ToolChatInput input;
   input.systemPrompt = kToolPolicy;
   input.tools = args.tools;
-  input.role = UserRole::Resident;
+  input.role = args.request.role;
   input.context = tools::ToolContext{.userId = args.request.userId,
-                                     .lang = "es",
+                                     .lang = args.request.lang.empty()
+                                                 ? std::string(kDefaultToolLang)
+                                                 : args.request.lang,
                                      .sessionId = {},
                                      .channel = "tool_result",
-                                     .utterance = {}};
+                                     .utterance = {},
+                                     .decided = false};
   input.maxHops = 3;
   input.temperature = args.request.temperature;
   input.resetContext = args.request.resetContext;
@@ -125,7 +122,10 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
   };
   try {
     job->owner->chatStreamSync(
-        {.request = job->request, .onToken = send, .stats = &job->stats});
+        {.request = job->request,
+         .onToken = send,
+         .stats = &job->stats,
+         .cancellation = {}});
   }
   catch (const ClientGone&) {
     LOG_INFO << "LLM stream: client left, generation stopped";

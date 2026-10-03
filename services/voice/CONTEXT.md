@@ -68,6 +68,27 @@ exact JSON/binary the app expects is argus-sync's
 - Every turn carries the session's `userId`; without it the memory tools of
   argus-llm refuse, and a routed memory turn fell into the tool loop and
   cost several extra generations before any audio.
+- Every turn also carries the session's role (`UserRole` from the
+  `VoiceStart` identity) and language: argus-llm offers and runs only the
+  tools that role may use (`role_access::hasAccess`), and an absent role on
+  its wire is a Guest. Before this the LLM ran every voice turn as a Resident
+  in Spanish, whoever spoke.
+- The STT language is a field of each transcription request
+  (`VoiceTranscribeInput::language`), not adapter state. The adapter used to
+  be a process-wide static with a language setter, so a Spanish and an
+  English session running at the same time overwrote each other's language.
+- `voice:skip` (and `stop`) cancel the whole turn, not only the speech: the
+  per-turn `turnStop` source feeds both the TTS calls and the LLM stream's
+  `LlmStreamInput::cancellation`, which `TryCancel`s the gRPC call (or shuts
+  the HTTP socket). argus-llm stops generating at the next token of a
+  cancelled call and frees its slot, so the next turn does not queue behind
+  an answer nobody will hear. A cancelled generation is logged at info, not
+  as an LLM failure.
+- A sentence's `voice:assistant` frame is sent AFTER its audio chunks, on
+  purpose: the app treats `voice:assistant` as the signal to flush and play
+  the PCM it has buffered for that sentence. Sending the text first would
+  flush an empty buffer and play each sentence's audio one frame late, so the
+  order stays as it is.
 - Silero v5 takes `[64 context | 512 new]`; the context of the next window
   is the tail of the current one (`window_.end() - 64`).
 - After a turn the VAD is reset but the PCM queue is NOT cleared: audio

@@ -10,6 +10,7 @@
 #include <llm/llm-errors.hxx>
 #include <llm/llm-remote.hxx>
 #include <llm/llm-service.hxx>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -268,8 +269,68 @@ TEST_CASE("The gRPC client validates its configuration before it dials")
   CHECK(refusalBy([&] {
           accepted.chatStream({.request = empty,
                                .onToken = [](const std::string&, bool) {},
-                               .stats = nullptr});
+                               .stats = nullptr,
+                               .cancellation = {}});
         }) == invalid);
+
+  ChatRequest unknownLang = greeting();
+  unknownLang.lang = "fr";
+  CHECK(refusalBy([&] { (void)accepted.chat(unknownLang); }) == invalid);
+}
+
+TEST_CASE("The llm http client carries the caller's user, role and language")
+{
+  FakeLlmServer server({.tokens = greetingTokens()});
+  const LlmHttpClient client("http://127.0.0.1:" + std::to_string(server.port()),
+                             5000);
+
+  ChatRequest request = greeting();
+  request.userId = 7;
+  request.role = UserRole::Owner;
+  request.lang = "en";
+  static_cast<void>(client.chat(request));
+  const std::string body = server.lastBody();
+  CHECK(body.find("\"user_id\":7") != std::string::npos);
+  CHECK(body.find("\"role\":\"owner\"") != std::string::npos);
+  CHECK(body.find("\"lang\":\"en\"") != std::string::npos);
+
+  static_cast<void>(client.chat(greeting()));
+  const std::string defaults = server.lastBody();
+  CHECK(defaults.find("\"role\":\"guest\"") != std::string::npos);
+  CHECK(defaults.find("\"lang\"") == std::string::npos);
+  CHECK(defaults.find("\"user_id\"") == std::string::npos);
+}
+
+TEST_CASE("A stop request ends the http stream without waiting for the generation")
+{
+  std::vector<std::string> many(40, " palabra");
+  FakeLlmServer server({.tokens = many, .tokenDelayMs = 50});
+  const LlmHttpClient client("http://127.0.0.1:" + std::to_string(server.port()),
+                             10000);
+
+  std::stop_source stop;
+  int arrived = 0;
+  const auto started = std::chrono::steady_clock::now();
+  CHECK_THROWS_WITH_AS(
+      client.chatStream({.request = greeting(),
+                         .onToken =
+                             [&](const std::string&, bool atEnd) {
+                               if (!atEnd && ++arrived == 2)
+                                 stop.request_stop();
+                             },
+                         .stats = nullptr,
+                         .cancellation = stop.get_token()}),
+      "argus-llm stream cancelled", std::runtime_error);
+  CHECK(arrived == 2);
+  CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(1));
+
+  std::stop_source early;
+  early.request_stop();
+  CHECK_THROWS_AS(client.chatStream({.request = greeting(),
+                                     .onToken = [](const std::string&, bool) {},
+                                     .stats = nullptr,
+                                     .cancellation = early.get_token()}),
+                  std::runtime_error);
 }
 
 TEST_CASE("The facade takes the gRPC leg when the knob is set")
@@ -298,7 +359,8 @@ TEST_CASE("The facade takes the gRPC leg when the knob is set")
   const Refusal streamUnreachable = refusalBy([&] {
     httpLeg.chatStream({.request = greeting(),
                         .onToken = [](const std::string&, bool) {},
-                        .stats = nullptr});
+                        .stats = nullptr,
+                        .cancellation = {}});
   });
   CHECK(streamUnreachable.status == 503);
   CHECK(streamUnreachable.code == "SERVICE_UNAVAILABLE");
