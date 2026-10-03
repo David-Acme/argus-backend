@@ -1,10 +1,12 @@
 #pragma once
 
+#include <grpc/grpc-server-identity.hxx>
 #include <http/listener-config.hxx>
 #include <shared/vocabulary/health-thresholds.hxx>
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 struct CameraDbConfig
 {
@@ -29,4 +31,5 @@ public:
   static std::string resolveGuardCallerSecret();
   static std::string resolveSyncCallerSecret();
   static std::string resolveLlmCallerSecret();
+  static std::vector<argus::client::CallerCredential> resolveSettingsCallers();
 };

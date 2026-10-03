@@ -67,6 +67,9 @@ argus-camera/
   src/feature/objects/  YOLO26n ncnn object detector
   src/feature/operator/ the operator loop, EventIntelligence, zone provider
                         and evidence upload, with the object-event outbox
+  src/feature/settings/ argus::camera-settings — the owner-editable catalog,
+                        served by argus.settings.v1 on the gRPC listener when
+                        `[grpc] caller_settings` is set
   src/feature/sync/     argus.camera.v1 SyncService owner and the
                         camera_stream repository and schema
   src/feature/zone/     /zone* HTTP surface
@@ -79,7 +82,9 @@ argus-camera/
                         reader is operator, the change sink's readers are
                         composition and the outbox suites, and geometry is
                         header-only)
-  config.toml.example   camera, streaming, YOLO object and operator settings
+  config.toml.example   camera, streaming, YOLO object and operator settings;
+                        [grpc] caller_guard, caller_sync, caller_llm and
+                        caller_settings
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
@@ -87,7 +92,7 @@ Every feature and the `app/rpc/` listener is a rule-25 module: the folder
 holds its own `CMakeLists.txt` declaring its sources and dependencies once,
 the root file discovers them (`feature/*/CMakeLists.txt`) and `argus-camera`
 links `argus::camera-{config,change-sink,actions,feature,camera-control,zone,
-media,health,sync,rpc-server,monitor,operator}` by name (`camera-objects`
+media,health,sync,rpc-server,monitor,operator,settings}` by name (`camera-objects`
 arrives through `camera-operator`, its only reader, and is deliberately not
 repeated). The
 executable links the feature modules
@@ -97,7 +102,9 @@ route depends on a static initializer reaching the binary. The three gRPC
 services stay in their features (`argus.camera.v1` in `feature/sync`,
 `argus.camera.v1.CameraActionService` in `feature/actions`, `grpc.health.v1`
 in `feature/health`); `src/app/rpc/` owns only the listener they register
-with.
+with. `argus.settings.v1.Settings` is the contract's own
+`SettingsRpcService` over the `feature/settings` catalog, registered on the
+same listener by `src/app/main.cc`.
 
 ## Build commands
 

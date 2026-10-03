@@ -28,6 +28,15 @@ public:
     virtual void onClosed(const StreamClosedInput& input) = 0;
   };
 
+  static constexpr int kDefaultViewersPerCamera = 4;
+  static constexpr int kDefaultTotalViewers = 8;
+
+  struct ViewerLimits
+  {
+    int perCamera{kDefaultViewersPerCamera};
+    int total{kDefaultTotalViewers};
+  };
+
   struct SubscribeInput
   {
     std::shared_ptr<ISink> sink;
@@ -45,6 +54,8 @@ public:
 
   void init();
   void shutdown();
+  void refreshViewerLimits();
+  [[nodiscard]] ViewerLimits viewerLimits();
 
   uint16_t subscribe(const SubscribeInput& input, std::string& error);
   void ack(uint16_t subId, int64_t bytes);
@@ -117,6 +128,6 @@ private:
   uint32_t nextSeq_ = 0;
   size_t chunkBytes_ = 16 * 1024;
   int64_t graceMs_ = 2000;
-  int maxViewersPerCamera_ = 4;
-  int maxTotalViewers_ = 8;
+  int maxViewersPerCamera_ = kDefaultViewersPerCamera;
+  int maxTotalViewers_ = kDefaultTotalViewers;
 };

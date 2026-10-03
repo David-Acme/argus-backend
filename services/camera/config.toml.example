@@ -116,6 +116,7 @@ enabled = false
 caller_guard = ""
 caller_sync = ""
 caller_llm = ""
+caller_settings = ""
 
 [health]
 enabled = true

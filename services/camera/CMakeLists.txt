@@ -111,6 +111,10 @@ if(NOT TARGET argus::lib::grpc-health)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/grpc
                      ${CMAKE_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
 endif()
+if(NOT COMMAND argus_settings_rpc_contract)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/settings
+                     ${CMAKE_BINARY_DIR}/contracts/settings)
+endif()
 if(NOT TARGET argus::clients::camera-actions)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-actions
                      ${CMAKE_BINARY_DIR}/clients/camera-actions EXCLUDE_FROM_ALL)
@@ -155,6 +159,8 @@ argus_service(NAME argus-camera
         argus::camera-rpc-server
         argus::camera-monitor
         argus::camera-operator
+        argus::camera-settings
+        argus::contracts::settings-wire
         argus::lib::auth
         argus::lib::http
         argus::lib::storage
@@ -392,3 +398,18 @@ target_compile_options(change-outbox-sink-test PRIVATE -Wall -Wextra)
 set_target_properties(change-outbox-sink-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 add_test(NAME change-outbox-sink-test COMMAND change-outbox-sink-test)
+
+add_executable(camera-settings-test tests/unit/camera-settings-test.cc)
+target_link_libraries(camera-settings-test PRIVATE
+    argus::camera-settings
+    argus::camera-config
+    argus::camera-actions
+    argus::camera-sync
+    argus::camera-stream
+    argus::camera-media
+    argus::contracts::settings-wire
+    doctest::doctest)
+target_compile_options(camera-settings-test PRIVATE -Wall -Wextra)
+set_target_properties(camera-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+argus_runtime_rpath(camera-settings-test)
+add_test(NAME camera-settings-test COMMAND camera-settings-test)

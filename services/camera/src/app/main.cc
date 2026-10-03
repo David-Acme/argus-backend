@@ -8,6 +8,7 @@
 #include <feature/zone/controllers/zone-controller.hxx>
 #include <feature/actions/camera-action-rpc-service.hxx>
 #include <feature/health/health-rpc-service.hxx>
+#include <feature/settings/camera-settings.hxx>
 #include <feature/sync/camera-sync-rpc-service.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
@@ -39,6 +40,7 @@
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <shared/services/stream/stream-hub.hxx>
 #include <runtime/blocking-task.hxx>
+#include <settings/settings-rpc.hxx>
 #include <runtime/shutdown-signal.hxx>
 #include <runtime/log-output.hxx>
 #include <nats/nats-bus.hxx>
@@ -47,6 +49,7 @@
 #include <json/value.h>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -105,9 +108,22 @@ int main()
            .secret = CameraConfig::resolveGuardCallerSecret()}},
        .transcriber = makeHttpSttTranscriber()});
   HealthRpcService healthRpc;
+  SettingsRegistry settings(cameraSettingsCatalog());
+  settings.onChange([](const std::vector<std::string>&) {
+    StreamHub::instance().refreshViewerLimits();
+  });
+  std::vector<grpc::Service*> rpcServices{&cameraSyncRpc, &cameraActionRpc,
+                                          &healthRpc};
+  std::unique_ptr<SettingsRpcService> settingsRpc;
+  if (auto callers = CameraConfig::resolveSettingsCallers(); !callers.empty()) {
+    settingsRpc = std::make_unique<SettingsRpcService>(
+        SettingsRpcInput{.service = "camera",
+                         .registry = &settings,
+                         .credentials = std::move(callers)});
+    rpcServices.push_back(settingsRpc.get());
+  }
 
-  CameraRpcServer rpc(
-      {.services = {&cameraSyncRpc, &cameraActionRpc, &healthRpc}});
+  CameraRpcServer rpc({.services = std::move(rpcServices)});
   if (!rpc.listening()) {
     LOG_FATAL << "gRPC server failed to listen on " << rpc.address();
     return 1;

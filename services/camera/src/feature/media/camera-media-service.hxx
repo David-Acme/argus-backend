@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <drogon/WebSocketController.h>
 #include <drogon/utils/coroutine.h>
 #include <sync/sync-forwarder.hxx>
@@ -64,6 +65,8 @@ class CameraMediaService
 {
 public:
   CameraMediaService();
+
+  [[nodiscard]] static int64_t streamWindowBytes();
 
   drogon::Task<bool> handleText(const SyncFrameInput& input);
   void handleClose(const drogon::WebSocketConnectionPtr& conn);

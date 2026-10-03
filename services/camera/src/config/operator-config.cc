@@ -89,15 +89,15 @@ OperatorConfig operator_config::resolveOperator()
       ConfigService::getInt("operator.aggregation_window_ms");
   if (config.aggregationWindowMs < 0)
     config.aggregationWindowMs = 5000;
-  config.cooldownMs = ConfigService::getInt("operator.cooldown_ms");
-  if (config.cooldownMs < 0)
-    config.cooldownMs = 30000;
-  config.nightStartHour = ConfigService::getInt("operator.night_start");
-  if (config.nightStartHour < 0)
-    config.nightStartHour = 22;
-  config.nightEndHour = ConfigService::getInt("operator.night_end");
-  if (config.nightEndHour < 0)
-    config.nightEndHour = 6;
+  const auto configuredAtLeastZero = [](const std::string& key, int fallback) {
+    if (!ConfigService::hasKey(key))
+      return fallback;
+    const int value = ConfigService::getInt(key);
+    return value >= 0 ? value : fallback;
+  };
+  config.cooldownMs = configuredAtLeastZero("operator.cooldown_ms", 30000);
+  config.nightStartHour = configuredAtLeastZero("operator.night_start", 22);
+  config.nightEndHour = configuredAtLeastZero("operator.night_end", 6);
   config.presenceEscalationFrames =
       ConfigService::getInt("operator.presence_escalation_frames");
   if (config.presenceEscalationFrames <= 0)

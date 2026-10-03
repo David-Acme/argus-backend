@@ -13,6 +13,13 @@ CameraMediaService::CameraMediaService()
     maxSubsPerClient_ = v;
 }
 
+int64_t CameraMediaService::streamWindowBytes()
+{
+  constexpr int64_t kDefaultWindowBytes = 128 * 1024;
+  const int64_t configured = ConfigService::getInt("streaming.hub_window_bytes");
+  return configured > 0 ? configured : kDefaultWindowBytes;
+}
+
 std::shared_ptr<CameraStreamSink>
 CameraMediaService::sinkFor(const drogon::WebSocketConnectionPtr& conn) const
 {
@@ -65,11 +72,7 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
 
     auto sink = sinkFor(conn);
     if (!sink) {
-      int64_t window = 128 * 1024;
-      if (const int64_t v = ConfigService::getInt("streaming.hub_window_bytes");
-          v > 0)
-        window = v;
-      sink = std::make_shared<CameraStreamSink>(conn, window);
+      sink = std::make_shared<CameraStreamSink>(conn, streamWindowBytes());
       storeSink(conn, sink);
     }
     if (StreamHub::instance().subscriptionsOf(sink.get()) >= maxSubsPerClient_)

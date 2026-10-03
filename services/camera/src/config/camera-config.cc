@@ -1,6 +1,10 @@
 #include "camera-config.hxx"
 
 #include <config/config-service.hxx>
+#include <settings/settings-rpc.hxx>
+
+#include <algorithm>
+#include <array>
 
 CameraDbConfig CameraConfig::resolveDb()
 {
@@ -54,4 +58,15 @@ std::string CameraConfig::resolveSyncCallerSecret()
 std::string CameraConfig::resolveLlmCallerSecret()
 {
   return ConfigService::getString("grpc.caller_llm");
+}
+
+std::vector<argus::client::CallerCredential> CameraConfig::resolveSettingsCallers()
+{
+  const std::string secret = ConfigService::getString("grpc.caller_settings");
+  const std::array otherCallers{resolveGuardCallerSecret(),
+                                resolveSyncCallerSecret(),
+                                resolveLlmCallerSecret()};
+  if (std::ranges::find(otherCallers, secret) != otherCallers.end())
+    return {};
+  return settingsCallers({{kSettingsCaller, secret}});
 }

@@ -742,3 +742,69 @@ Everything downstream — greeting, announcement, the assessment that follows
 The assessment's VLM and LLM runs stay where they were: they shape the
 decision and the spoken line's grounding, never the first reaction.
 
+## Owner settings
+
+`src/feature/settings/camera-settings.cc` (`argus::camera-settings`) is the
+catalog an owner may change through `argus.settings.v1.Settings`, registered
+on the camera gRPC listener (7036) beside the sync, action and health
+services (`argus::contracts::settings-wire`). Groups are `detection`,
+`alerts`, `actions`, `streaming` and `health`.
+
+| Key | Level | Applies | Group | Range | Fallback |
+|---|---|---|---|---|---|
+| `objects.enabled` | basic | restart | detection | toggle | false |
+| `objects.conf` | basic | restart | detection | 0.2-0.9 | 0.45 |
+| `operator.night_start` | basic | restart | alerts | 0-23 | 22 |
+| `operator.night_end` | basic | restart | alerts | 0-23 | 6 |
+| `operator.cooldown_ms` | advanced | restart | alerts | 1000-600000 | 30000 |
+| `operator.person_recheck_ms` | advanced | restart | alerts | 5000-600000 | 30000 |
+| `actions.enabled` | basic | live | actions | toggle | false |
+| `streaming.max_viewers_per_camera` | advanced | live | streaming | 1-16 | 4 |
+| `streaming.max_total_viewers` | advanced | live | streaming | 1-64 | 8 |
+| `streaming.hub_window_bytes` | advanced | next session | streaming | 32768-1048576 | 131072 |
+| `health.enabled` | basic | restart | health | toggle | true |
+| `health.interval_ms` | advanced | restart | health | 10000-3600000 | 60000 |
+| `health.dark_threshold` | advanced | restart | health | 1-127 | 25 |
+| `health.bright_threshold` | advanced | restart | health | 128-254 | 235 |
+| `health.blur_threshold` | advanced | restart | health | 1-200 | 18 |
+| `health.scene_diff` | advanced | restart | health | 0.05-0.95 | 0.35 |
+| `health.rebaseline_after_s` | advanced | restart | health | 60-86400 | 900 |
+
+How each key applies is what the code does with it, not a wish:
+
+- `actions.enabled` is read by `CameraActionRpcService::actionsEnabled()` on
+  every Announce, Alarm and SetSiren call, so it is live with no listener.
+  It is the owner's consent switch; who may trigger an action is unchanged
+  (argus-guard's capability credential only, rule 10).
+- The two viewer limits are read under `hubMutex_` on every subscribe; the
+  registry's `onChange` in `src/app/main.cc` calls
+  `StreamHub::refreshViewerLimits()`, which re-reads both keys under that
+  lock. A new limit applies to the next viewer; nobody already watching is
+  dropped.
+- `streaming.hub_window_bytes` is read by
+  `CameraMediaService::streamWindowBytes()` when a media connection creates
+  its sink, so it applies to the next media connection (next session); a
+  live connection keeps the credit window it started with.
+- The detector, the operator loop and the health monitor copy their config
+  once at boot (`resolveObjects`, `resolveOperator`, `resolveHealth`), and
+  the detector is built with its confidence; those keys are restart.
+
+A fallback is what the camera runs with when the key is absent, so two
+absent-key defaults now match `config.toml.example`: an absent
+`operator.night_start`/`night_end` resolves to 22/6 (it was 0/0, which
+disabled the night window), and an absent `operator.cooldown_ms` resolves to
+30000 (it was 0 for the operator while the object-event sink used 30000).
+`camera-settings-test` pins every fallback against the resolvers,
+`StreamHub` and `streamWindowBytes()`.
+
+Paths, binaries, the go2rtc addresses, the model directory, Vulkan, the
+database and schema, the Tapo ports, the remote URLs and every caller secret
+stay out of the catalog.
+
+`[grpc] caller_settings` is the only credential the settings service accepts
+(service name `settings`); `SyncService` keeps `caller_sync`/`caller_llm`
+and `CameraActionService` keeps `caller_guard`. An empty `caller_settings`,
+or one equal to any of the other three, registers no settings service.
+`camera-settings-test` checks the separation both ways on a live server
+holding all three services, using only refusals and the argument checks
+that run before any camera is touched (no action reaches hardware).

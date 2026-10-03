@@ -205,14 +205,32 @@ void StreamHub::init()
     chunkBytes_ = static_cast<size_t>(v);
   if (const int64_t v = ConfigService::getInt("streaming.hub_grace_ms"); v > 0)
     graceMs_ = v;
-  if (const int v = ConfigService::getInt("streaming.max_viewers_per_camera");
-      v > 0)
-    maxViewersPerCamera_ = v;
-  if (const int v = ConfigService::getInt("streaming.max_total_viewers"); v > 0)
-    maxTotalViewers_ = v;
+  refreshViewerLimits();
+  const ViewerLimits limits = viewerLimits();
   LOG_INFO << "StreamHub ready (chunk=" << chunkBytes_ << "B grace=" << graceMs_
-           << "ms viewers/camera=" << maxViewersPerCamera_
-           << " viewers/total=" << maxTotalViewers_ << ")";
+           << "ms viewers/camera=" << limits.perCamera
+           << " viewers/total=" << limits.total << ")";
+}
+
+void StreamHub::refreshViewerLimits()
+{
+  const auto configured = [](const std::string& key, int fallback) {
+    const int value = ConfigService::getInt(key);
+    return value > 0 ? value : fallback;
+  };
+  const ViewerLimits limits{
+      .perCamera = configured("streaming.max_viewers_per_camera",
+                              kDefaultViewersPerCamera),
+      .total = configured("streaming.max_total_viewers", kDefaultTotalViewers)};
+  std::lock_guard<std::mutex> lock(hubMutex_);
+  maxViewersPerCamera_ = limits.perCamera;
+  maxTotalViewers_ = limits.total;
+}
+
+StreamHub::ViewerLimits StreamHub::viewerLimits()
+{
+  std::lock_guard<std::mutex> lock(hubMutex_);
+  return {.perCamera = maxViewersPerCamera_, .total = maxTotalViewers_};
 }
 
 void StreamHub::shutdown()
