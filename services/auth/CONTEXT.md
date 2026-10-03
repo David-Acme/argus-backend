@@ -22,6 +22,12 @@ the user row behind a session comes from identity through
   crosses the wire.
 - Refresh tokens are single-use and rotated; `revokeUser` invalidates every
   session of a user in one statement, which is what a deactivated account gets.
+- `refresh_token` keeps the SHA-256 of both tokens, never the tokens: a copy
+  of `auth.db` hands out no session. Lookups hash what the caller presents
+  and also accept the presented value as stored, for rows written before the
+  change; those expire with their refresh window, so no session is cut and
+  no migration rewrites the table. The cross-device challenge keeps its
+  tokens in clear only until the waiting device claims them.
 - A refresh is refused unless it comes from the agent the session was issued
   to (a missing `User-Agent` is a mismatch, not a skipped check) and, in
   `credential` identity mode, from the same device hash. A stolen refresh

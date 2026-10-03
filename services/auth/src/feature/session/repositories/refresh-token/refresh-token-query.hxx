@@ -10,11 +10,13 @@ namespace refresh_token_query
 
 inline constexpr std::string_view FIND_BY_ACCESS_TOKEN =
     "SELECT * FROM refresh_token "
-    "WHERE user_id = ? AND access_token = ? AND is_valid = 1 AND is_used = 0";
+    "WHERE user_id = ? AND access_token IN (?, ?) AND is_valid = 1 "
+    "AND is_used = 0";
 
 inline constexpr std::string_view FIND_BY_REFRESH_TOKEN =
     "SELECT * FROM refresh_token "
-    "WHERE user_id = ? AND refresh_token = ? AND is_valid = 1 AND is_used = 0";
+    "WHERE user_id = ? AND refresh_token IN (?, ?) AND is_valid = 1 "
+    "AND is_used = 0";
 
 inline constexpr std::string_view INSERT =
     "INSERT INTO refresh_token "

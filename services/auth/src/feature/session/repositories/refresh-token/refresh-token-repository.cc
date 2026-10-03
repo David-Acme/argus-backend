@@ -3,6 +3,7 @@
 #include <ctime>
 #include <sqlite/db-service.hxx>
 #include <string>
+#include <text/sha256.hxx>
 
 using namespace refresh_token_query;
 
@@ -11,17 +12,18 @@ RefreshTokenRepository::create(const RefreshTokenCreateInput& input) const
 {
   const auto pooled = DbService::client();
   auto* client = input.client ? input.client : pooled.get();
+  const std::string accessHash = argus::hash::sha256Hex(input.accessToken);
+  const std::string refreshHash = argus::hash::sha256Hex(input.refreshToken);
   const auto result =
       co_await client->execSqlCoro(std::string(INSERT), input.userId,
-                                   input.accessToken, input.refreshToken,
-                                   input.deviceHash, input.userAgent,
-                                   input.expiresAt);
+                                   accessHash, refreshHash, input.deviceHash,
+                                   input.userAgent, input.expiresAt);
 
   RefreshTokenSchema schema;
   schema.id = static_cast<int64_t>(result.insertId());
   schema.userId = input.userId;
-  schema.accessToken = input.accessToken;
-  schema.refreshToken = input.refreshToken;
+  schema.accessToken = accessHash;
+  schema.refreshToken = refreshHash;
   schema.deviceHash = input.deviceHash;
   schema.userAgent = input.userAgent;
   schema.isValid = true;
@@ -37,7 +39,8 @@ RefreshTokenRepository::findByAccessToken(int64_t userId,
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(
-      std::string(FIND_BY_ACCESS_TOKEN), userId, accessToken);
+      std::string(FIND_BY_ACCESS_TOKEN), userId,
+      argus::hash::sha256Hex(accessToken), accessToken);
 
   if (result.empty())
     co_return std::nullopt;
@@ -50,7 +53,8 @@ RefreshTokenRepository::findByRefreshToken(
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(
-      std::string(FIND_BY_REFRESH_TOKEN), userId, refreshToken);
+      std::string(FIND_BY_REFRESH_TOKEN), userId,
+      argus::hash::sha256Hex(refreshToken), refreshToken);
 
   if (result.empty())
     co_return std::nullopt;

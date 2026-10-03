@@ -21,6 +21,7 @@
 #include <sync/sync-change.hxx>
 #include <sync/table-name.hxx>
 #include <text/json-util.hxx>
+#include <text/sha256.hxx>
 
 #include <atomic>
 #include <chrono>
@@ -207,6 +208,7 @@ struct SessionSeed
   int64_t userId{kUserId};
   std::string deviceHash{kDeviceHash};
   int64_t expiresAt{0};
+  bool hashed{true};
 };
 
 [[nodiscard]] std::string issueToken(int64_t userId)
@@ -221,11 +223,15 @@ struct SessionSeed
 [[nodiscard]] std::string seedSession(const SessionSeed& seed)
 {
   const std::string token = issueToken(seed.userId);
+  const std::string refresh = "refresh-" + token;
+  std::string storedAccess = seed.hashed ? argus::hash::sha256Hex(token) : token;
+  std::string storedRefresh =
+      seed.hashed ? argus::hash::sha256Hex(refresh) : refresh;
   DbService::client()->execSqlSync(
       "INSERT INTO refresh_token (user_id, access_token, refresh_token, "
       "device_hash, user_agent, is_valid, is_used, expires_at) "
       "VALUES (?, ?, ?, ?, '', 1, 0, ?)",
-      seed.userId, token, "refresh-" + token, seed.deviceHash, seed.expiresAt);
+      seed.userId, storedAccess, storedRefresh, seed.deviceHash, seed.expiresAt);
   return token;
 }
 
@@ -475,10 +481,14 @@ TEST_CASE("a revoked or rotated session row refuses on both paths")
   const int64_t now = std::time(nullptr);
   const std::string revoked = seedSession({.expiresAt = now + kHourSeconds});
   const std::string rotated = seedSession({.expiresAt = now + kHourSeconds});
+  std::string revokedHash = argus::hash::sha256Hex(revoked);
+  std::string rotatedHash = argus::hash::sha256Hex(rotated);
   DbService::client()->execSqlSync(
-      "UPDATE refresh_token SET is_valid = 0 WHERE access_token = ?", revoked);
+      "UPDATE refresh_token SET is_valid = 0 WHERE access_token = ?",
+      revokedHash);
   DbService::client()->execSqlSync(
-      "UPDATE refresh_token SET is_used = 1 WHERE access_token = ?", rotated);
+      "UPDATE refresh_token SET is_used = 1 WHERE access_token = ?",
+      rotatedHash);
 
   SessionService sessions({.jwtService = JwtService{},
                            .refreshTokenRepository = RefreshTokenRepository{},
@@ -505,6 +515,48 @@ TEST_CASE("a revoked or rotated session row refuses on both paths")
   const Verdict rotatedAccessOnly = askAccessOnly(client, rotated);
   REQUIRE(rotatedAccessOnly.answered);
   CHECK_FALSE(rotatedAccessOnly.valid);
+}
+
+TEST_CASE("tokens rest hashed, and a row written before that still verifies")
+{
+  Fixture& app = fixture();
+  REQUIRE(app.start());
+
+  const int64_t now = std::time(nullptr);
+  const std::string hashed = seedSession({.expiresAt = now + kHourSeconds});
+  const std::string legacy = seedSession(
+      {.expiresAt = now + kHourSeconds, .hashed = false});
+  CHECK(DbService::client()
+            ->execSqlSync("SELECT COUNT(*) AS total FROM refresh_token "
+                          "WHERE access_token = ?",
+                          hashed)
+            .front()["total"]
+            .as<int64_t>() == 0);
+
+  SessionService sessions({.jwtService = JwtService{},
+                           .refreshTokenRepository = RefreshTokenRepository{},
+                           .identity = &app.identity()},
+                          SessionService::Config{.contextCacheSeconds = 0});
+  DeviceCredentialRepository credentials;
+  AuthRpcHarness harness(sessions, credentials, {});
+  REQUIRE(harness.listening());
+  AuthClient client(harness.clientConfig());
+
+  CHECK(ask(client, hashed).valid);
+  CHECK(ask(client, legacy).valid);
+
+  const RefreshTokenSchema stored = drogon::sync_wait(
+      RefreshTokenRepository{}.create({.userId = kUserId,
+                                       .accessToken = "issued-access",
+                                       .refreshToken = "issued-refresh",
+                                       .deviceHash = kDeviceHash,
+                                       .userAgent = {},
+                                       .expiresAt = now + kHourSeconds,
+                                       .client = nullptr}));
+  CHECK(stored.accessToken == argus::hash::sha256Hex("issued-access"));
+  CHECK(drogon::sync_wait(RefreshTokenRepository{}.findByRefreshToken(
+                              kUserId, "issued-refresh"))
+            .has_value());
 }
 
 TEST_CASE("a revocation ends every session the user holds")
