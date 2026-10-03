@@ -13,10 +13,13 @@ SyncService::refreshContext(const drogon::WebSocketConnectionPtr& conn) const
 {
   auto& ctx = conn->getContextRef<JwtContext>();
 
-  std::optional<DirectoryUser> resolved;
+  DirectoryLookup found;
   if (userDirectory_)
-    resolved = co_await userDirectory_->findById(ctx.sub);
+    found = co_await userDirectory_->lookup(ctx.sub);
+  if (userDirectory_ && found.status == DirectoryLookupStatus::Unavailable)
+    throw ResponseException(SyncErrors::IdentitySyncUnavailable);
 
+  const auto& resolved = found.user;
   if (!resolved || !resolved->isActive)
     throw ResponseException(401, SyncErrors::UserAccountDisabled);
 
