@@ -324,3 +324,11 @@ read-only and identity's directory writable. The forward service cannot be run
 backwards — identity's directory is read-only there, so a swapped invocation
 could not create its target — and the rollback mounts `sync/` read-only for the
 same reason in the other direction.
+
+## Voice app actions and context
+
+`voice:action` (server to app) carries `{id, name, arguments}` with the
+arguments parsed into an object (anything unparsable becomes `{}`).
+`voice:context` (app to server) takes `{kind: "note" | "cameraEvent",
+text, camera}`, maps any other kind to a note and cuts each string at 300
+characters before it reaches argus-voice.

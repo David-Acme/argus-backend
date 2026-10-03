@@ -131,3 +131,37 @@ TEST_CASE("voice:start selects the duplex mode only when it asks for it")
   CHECK(modeOf(R"({"type":"voice:start","payload":null})") ==
         argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
 }
+
+TEST_CASE("an app action reaches the app as voice:action with its arguments as an object")
+{
+  argus::voice::v1::ServerFrame action;
+  action.mutable_action()->set_id(3);
+  action.mutable_action()->set_name("app.set_guard_mode");
+  action.mutable_action()->set_arguments(R"({"mode":"night"})");
+  CHECK(json_util::toString(VoiceGrpcRelay::renderServerFrame(action)) ==
+        R"({"payload":{"arguments":{"mode":"night"},"id":3,"name":"app.set_guard_mode"},"type":"voice:action"})");
+
+  action.mutable_action()->set_arguments("not json");
+  CHECK(VoiceGrpcRelay::renderServerFrame(action)["payload"]["arguments"] == Json::Value(Json::objectValue));
+}
+
+TEST_CASE("voice:context maps a camera event and a note, and bounds what it forwards")
+{
+  Json::Value camera(Json::objectValue);
+  camera["kind"] = "cameraEvent";
+  camera["camera"] = "Entrada";
+  camera["text"] = "una persona en la puerta";
+  const auto event = VoiceGrpcRelay::contextOf(camera);
+  CHECK(event.kind() == argus::voice::v1::VOICE_CONTEXT_CAMERA_EVENT);
+  CHECK(event.camera() == "Entrada");
+  CHECK(event.text() == "una persona en la puerta");
+
+  Json::Value note(Json::objectValue);
+  note["kind"] = "anything";
+  note["text"] = std::string(1000, 'x');
+  const auto noted = VoiceGrpcRelay::contextOf(note);
+  CHECK(noted.kind() == argus::voice::v1::VOICE_CONTEXT_NOTE);
+  CHECK(noted.text().size() == 300);
+
+  CHECK(VoiceGrpcRelay::contextOf(Json::Value("x")).text().empty());
+}

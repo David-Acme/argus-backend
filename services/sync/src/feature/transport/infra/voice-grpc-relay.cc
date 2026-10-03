@@ -6,6 +6,7 @@
 #include <config/config-service.hxx>
 #include <runtime/blocking-task.hxx>
 #include <sync/sync-errors.hxx>
+#include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
 #include <voice/reaction-contracts.hxx>
 
@@ -17,6 +18,7 @@ namespace
 {
 
 constexpr int kConnectProbeTimeoutMs = 500;
+constexpr std::size_t kMaxContextChars = 300;
 
 ReactionKind reactionKindFromProto(argus::voice::v1::ReactionKind reaction)
 {
@@ -57,6 +59,21 @@ VoiceGrpcConfig VoiceGrpcConfig::resolve()
   return config;
 }
 
+argus::voice::v1::VoiceContext VoiceGrpcRelay::contextOf(const Json::Value& payload)
+{
+  argus::voice::v1::VoiceContext context;
+  if (!payload.isObject())
+    return context;
+  const std::string kind = payload["kind"].isString() ? payload["kind"].asString() : std::string();
+  context.set_kind(kind == "cameraEvent" ? argus::voice::v1::VOICE_CONTEXT_CAMERA_EVENT
+                                         : argus::voice::v1::VOICE_CONTEXT_NOTE);
+  if (payload["text"].isString())
+    context.set_text(payload["text"].asString().substr(0, kMaxContextChars));
+  if (payload["camera"].isString())
+    context.set_camera(payload["camera"].asString().substr(0, kMaxContextChars));
+  return context;
+}
+
 Json::Value VoiceGrpcRelay::renderServerFrame(
     const argus::voice::v1::ServerFrame& frame)
 {
@@ -91,6 +108,15 @@ Json::Value VoiceGrpcRelay::renderServerFrame(
   else if (frame.has_interrupted()) {
     msg["type"] = "voice:interrupted";
     payload["id"] = static_cast<Json::Int64>(frame.interrupted().id());
+  }
+  else if (frame.has_action()) {
+    msg["type"] = "voice:action";
+    payload["id"] = static_cast<Json::Int64>(frame.action().id());
+    payload["name"] = frame.action().name();
+    Json::Value arguments = json_util::fromString(frame.action().arguments());
+    if (!arguments.isObject())
+      arguments = Json::Value(Json::objectValue);
+    payload["arguments"] = arguments;
   }
   msg["payload"] = payload;
   return msg;
@@ -262,6 +288,12 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(const SyncFrameInput& input)
   if (type == "voice:skip") {
     if (session->stream)
       session->stream->skip();
+    co_return true;
+  }
+
+  if (type == "voice:context") {
+    if (session->stream)
+      session->stream->sendContext(contextOf(message["payload"]));
     co_return true;
   }
 
