@@ -101,3 +101,7 @@ max_tokens = 512
 url = "nats://127.0.0.1:4222"
 reconnect_wait_ms = 2000
 max_reconnects = 60
+
+[camera]
+grpc_target = ""
+credential = ""

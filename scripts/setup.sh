@@ -205,6 +205,10 @@ ensure_local_config() {
     "$ROOT/services/productivity/config.toml" grpc caller_sync 32
   fill_config_pair "$ROOT/services/sync/config.toml" voice credential \
     "$ROOT/services/voice/config.toml" grpc caller_sync 32
+  fill_config_pair "$ROOT/services/sync/config.toml" camera credential \
+    "$ROOT/services/camera/config.toml" grpc caller_sync 32
+  fill_config_pair "$ROOT/services/llm/config.toml" camera credential \
+    "$ROOT/services/camera/config.toml" grpc caller_llm 32
   fill_config_pair "$ROOT/services/guard/config.toml" camera actions_credential \
     "$ROOT/services/camera/config.toml" grpc caller_guard 32
   fill_config_pair "$ROOT/services/guard/config.toml" notifications credential \

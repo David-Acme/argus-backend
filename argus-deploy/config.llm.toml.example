@@ -73,6 +73,7 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [camera]
 grpc_target = "argus-camera:7036"
+credential = "CHANGE_ME_LLM_CAMERA"
 
 [nats]
 url = "nats://nats:4222"

@@ -26,4 +26,6 @@ public:
   static ListenerConfig resolveListener();
   static CameraHealthConfig resolveHealth();
   static std::string resolveGuardCallerSecret();
+  static std::string resolveSyncCallerSecret();
+  static std::string resolveLlmCallerSecret();
 };

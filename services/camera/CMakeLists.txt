@@ -291,6 +291,15 @@ add_test(NAME tapo-talk-client-test COMMAND tapo-talk-client-test)
 
 add_subdirectory(tools/tapo-probe)
 
+add_executable(camera-sync-auth-test tests/unit/camera-sync-auth-test.cc)
+target_link_libraries(camera-sync-auth-test PRIVATE
+    argus::camera-sync
+    doctest::doctest)
+target_compile_options(camera-sync-auth-test PRIVATE -Wall -Wextra)
+set_target_properties(camera-sync-auth-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+argus_runtime_rpath(camera-sync-auth-test)
+add_test(NAME camera-sync-auth-test COMMAND camera-sync-auth-test)
+
 add_executable(camera-audio-capture-test
     tests/unit/camera-audio-capture-test.cc)
 target_link_libraries(camera-audio-capture-test PRIVATE

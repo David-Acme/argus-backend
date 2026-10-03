@@ -4,6 +4,7 @@
 #include <grpc/grpc-server-identity.hxx>
 #include <sync/sync-filter.hxx>
 #include <trantor/utils/Logger.h>
+#include <utility>
 
 namespace
 {
@@ -126,11 +127,23 @@ fill(const FillInput<TableRows, Repo>& input)
 
 }
 
+CameraSyncRpcService::CameraSyncRpcService(
+    std::vector<argus::client::CallerCredential> callers)
+    : callers_(std::move(callers))
+{
+}
+
 grpc::ServerUnaryReactor* CameraSyncRpcService::PullTable(
     grpc::CallbackServerContext* context,
     const argus::camera::v1::PullTableRequest* request,
     argus::camera::v1::PullTableResponse* response)
 {
+  if (!argus::client::authorizeCaller(context, callers_).has_value()) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "caller credential required"));
+    return reactor;
+  }
   if (!argus::client::callerUserId(context)) {
     auto* reactor = context->DefaultReactor();
     reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
@@ -189,6 +202,12 @@ grpc::ServerUnaryReactor* CameraSyncRpcService::ListCatalog(
     argus::camera::v1::ListCatalogResponse* response)
 {
   (void)request;
+  if (!argus::client::authorizeCaller(context, callers_).has_value()) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "caller credential required"));
+    return reactor;
+  }
   if (!argus::client::callerUserId(context)) {
     auto* reactor = context->DefaultReactor();
     reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,

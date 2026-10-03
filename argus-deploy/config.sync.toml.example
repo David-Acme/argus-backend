@@ -42,6 +42,7 @@ server_key = "certs/server.key"
 
 [camera]
 grpc_target = "argus-camera:7036"
+credential = "CHANGE_ME_SYNC_CAMERA"
 
 [identity]
 target = "argus-identity:7040"

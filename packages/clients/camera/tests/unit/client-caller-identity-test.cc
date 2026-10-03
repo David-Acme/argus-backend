@@ -59,7 +59,8 @@ TEST_CASE("caller identity metadata travels by presence, not by value")
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
   REQUIRE(server);
 
-  CameraSyncClient client("127.0.0.1:" + std::to_string(port));
+  CameraSyncClient client(
+      {.target = "127.0.0.1:" + std::to_string(port), .credential = ""});
   argus::camera::v1::PullTableRequest request;
   request.mutable_camera()->set_required_create(true);
 

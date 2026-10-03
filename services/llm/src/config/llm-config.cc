@@ -31,6 +31,11 @@ std::string LlmConfig::resolveCameraTarget()
   return ConfigService::getString("camera.grpc_target");
 }
 
+std::string LlmConfig::resolveCameraCredential()
+{
+  return ConfigService::getString("camera.credential");
+}
+
 LlmMemoryConfig LlmConfig::resolveMemory()
 {
   return {.observeCameraEvents =

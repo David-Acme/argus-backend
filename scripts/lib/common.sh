@@ -164,8 +164,10 @@ camera actions_credential
 notifications credential
 productivity credential
 voice credential
+camera credential
 grpc caller_guard
 grpc caller_sync
+grpc caller_llm
 mdns enabled
 EOF
 }
@@ -330,6 +332,10 @@ ensure_deploy_configs() {
     "$deploy_dir/config.productivity.toml" grpc caller_sync 32
   fill_config_pair "$deploy_dir/config.sync.toml" voice credential \
     "$deploy_dir/config.voice.toml" grpc caller_sync 32
+  fill_config_pair "$deploy_dir/config.sync.toml" camera credential \
+    "$deploy_dir/config.camera.toml" grpc caller_sync 32
+  fill_config_pair "$deploy_dir/config.llm.toml" camera credential \
+    "$deploy_dir/config.camera.toml" grpc caller_llm 32
 
   log "Deploy configs ready in $deploy_dir"
 }

@@ -1,5 +1,6 @@
 #include "camera-sync-gateway.hxx"
 
+#include <config/config-service.hxx>
 #include <errors/response-exception.hxx>
 #include <sync/sync-errors.hxx>
 #include <json/value.h>
@@ -341,7 +342,9 @@ private:
 };
 
 CameraSyncGateway::CameraSyncGateway(std::string target)
-    : client_(std::make_shared<CameraSyncClient>(std::move(target)))
+    : client_(std::make_shared<CameraSyncClient>(CameraSyncClientConfig{
+          .target = std::move(target),
+          .credential = ConfigService::getString("camera.credential")}))
 {
 }
 

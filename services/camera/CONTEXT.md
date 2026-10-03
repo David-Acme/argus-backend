@@ -223,7 +223,12 @@ sibling service: own binary, own CMake preset, own `camera.db`.
   required, the role was validated once upstream by `argus-sync` before the
   call, and
   the camera tables carry no userId row scoping. A grpc.health.v1 Health
-  service shares the listener (F6-3 shape).
+  service shares the listener (F6-3 shape). Because that metadata is plain
+  text, `PullTable` and `ListCatalog` first require a caller credential:
+  argus-sync's (`[grpc] caller_sync`, paired with sync's `[camera]
+  credential`) or argus-llm's for the catalog snapshot (`[grpc] caller_llm`,
+  paired with llm's `[camera] credential`). Without it any container could
+  read every camera row, credentials and stream URLs included.
 - No other service opens camera.db: `[camera] db` is this service's own key
   and no other config resolves it. argus-camera stays the single owner of the
   file.

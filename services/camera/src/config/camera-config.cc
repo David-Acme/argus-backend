@@ -42,3 +42,13 @@ std::string CameraConfig::resolveGuardCallerSecret()
 {
   return ConfigService::getString("grpc.caller_guard");
 }
+
+std::string CameraConfig::resolveSyncCallerSecret()
+{
+  return ConfigService::getString("grpc.caller_sync");
+}
+
+std::string CameraConfig::resolveLlmCallerSecret()
+{
+  return ConfigService::getString("grpc.caller_llm");
+}

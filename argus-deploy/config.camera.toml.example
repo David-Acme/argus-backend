@@ -99,6 +99,8 @@ improve_margin = 0.15
 
 [grpc]
 caller_guard = "CHANGE_ME_GUARD_CAMERA"
+caller_sync = "CHANGE_ME_SYNC_CAMERA"
+caller_llm = "CHANGE_ME_LLM_CAMERA"
 
 [objects]
 enabled = false

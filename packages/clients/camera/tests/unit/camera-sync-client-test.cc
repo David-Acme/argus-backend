@@ -78,7 +78,7 @@ TEST_CASE("a pull carries the caller's branch and cursor onto the wire")
   std::string target;
   auto server = startServer(service, target);
   REQUIRE(server);
-  const CameraSyncClient client(target);
+  const CameraSyncClient client({.target = target, .credential = ""});
 
   v1::PullTableRequest request;
   request.mutable_camera()->mutable_created()->set_start_id(41);
@@ -100,7 +100,7 @@ TEST_CASE("the catalog read leaves everything but the identity at home")
   std::string target;
   auto server = startServer(service, target);
   REQUIRE(server);
-  const CameraSyncClient client(target);
+  const CameraSyncClient client({.target = target, .credential = ""});
 
   const auto catalog =
       client.listCatalog({.userId = 7, .role = "owner", .device = "abc123"});
@@ -117,7 +117,7 @@ TEST_CASE("every call carries a deadline, and a refusal is not an empty table")
   std::string target;
   auto server = startServer(service, target);
   REQUIRE(server);
-  const CameraSyncClient client(target);
+  const CameraSyncClient client({.target = target, .credential = ""});
   const SyncIdentity identity{.userId = 7, .role = "owner", .device = "abc123"};
 
   v1::PullTableRequest request;
@@ -138,7 +138,7 @@ TEST_CASE("every call carries a deadline, and a refusal is not an empty table")
   service.status = grpc::Status(grpc::StatusCode::NOT_FOUND, "no zone");
   CHECK_FALSE(client.pullTable(request, identity).has_value());
   CHECK_FALSE(
-      CameraSyncClient("127.0.0.1:1").listCatalog(identity).has_value());
+      CameraSyncClient({.target = "127.0.0.1:1", .credential = ""}).listCatalog(identity).has_value());
 
   server->Shutdown();
 }

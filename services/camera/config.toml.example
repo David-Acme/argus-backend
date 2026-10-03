@@ -114,6 +114,8 @@ enabled = false
 
 [grpc]
 caller_guard = ""
+caller_sync = ""
+caller_llm = ""
 
 [health]
 enabled = true

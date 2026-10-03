@@ -1,15 +1,17 @@
 #include "camera-sync-client.hxx"
 
 #include <grpc/grpc-client-base.hxx>
+#include <utility>
 
 namespace
 {
 constexpr int kPullTimeoutMs = 5000;
 }
 
-CameraSyncClient::CameraSyncClient(std::string target)
-    : channel_(argus::client::makeChannel(target)),
-      stub_(argus::camera::v1::SyncService::NewStub(channel_))
+CameraSyncClient::CameraSyncClient(CameraSyncClientConfig config)
+    : channel_(argus::client::makeChannel(config.target)),
+      stub_(argus::camera::v1::SyncService::NewStub(channel_)),
+      credential_(std::move(config.credential))
 {
 }
 
@@ -22,6 +24,7 @@ CameraSyncClient::pullTable(const argus::camera::v1::PullTableRequest& request,
   argus::client::addCallerIdentity(context, {.userId = identity.userId,
                                           .role = identity.role,
                                           .device = identity.device});
+  argus::client::addCallerCredential(context, credential_);
 
   argus::camera::v1::PullTableResponse response;
   if (const grpc::Status status = stub_->PullTable(&context, request, &response);
@@ -38,6 +41,7 @@ CameraSyncClient::listCatalog(const SyncIdentity& identity) const
   argus::client::addCallerIdentity(context, {.userId = identity.userId,
                                           .role = identity.role,
                                           .device = identity.device});
+  argus::client::addCallerCredential(context, credential_);
 
   const argus::camera::v1::ListCatalogRequest request;
 

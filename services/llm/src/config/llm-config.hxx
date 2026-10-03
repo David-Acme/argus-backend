@@ -33,6 +33,7 @@ public:
   [[nodiscard]] static LlmIdentityConfig resolveIdentity();
 
   [[nodiscard]] static std::string resolveCameraTarget();
+  [[nodiscard]] static std::string resolveCameraCredential();
 
   [[nodiscard]] static LlmMemoryConfig resolveMemory();
 };

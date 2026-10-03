@@ -14,10 +14,16 @@ struct SyncIdentity
   std::string device;
 };
 
+struct CameraSyncClientConfig
+{
+  std::string target;
+  std::string credential;
+};
+
 class CameraSyncClient
 {
 public:
-  explicit CameraSyncClient(std::string target);
+  explicit CameraSyncClient(CameraSyncClientConfig config);
 
   CameraSyncClient(const CameraSyncClient&) = delete;
   CameraSyncClient& operator=(const CameraSyncClient&) = delete;
@@ -33,4 +39,5 @@ public:
 private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::camera::v1::SyncService::StubInterface> stub_;
+  std::string credential_;
 };

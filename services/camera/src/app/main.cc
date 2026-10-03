@@ -90,7 +90,13 @@ int main()
   const CameraDbConfig cameraDb = CameraConfig::resolveDb();
   const ListenerConfig listener = CameraConfig::resolveListener();
 
-  CameraSyncRpcService cameraSyncRpc;
+  CameraSyncRpcService cameraSyncRpc(
+      {argus::client::CallerCredential{
+           .service = "argus-sync",
+           .secret = CameraConfig::resolveSyncCallerSecret()},
+       argus::client::CallerCredential{
+           .service = "argus-llm",
+           .secret = CameraConfig::resolveLlmCallerSecret()}});
   CameraActionRpcService cameraActionRpc(
       {.callers = {argus::client::CallerCredential{
            .service = "argus-guard",

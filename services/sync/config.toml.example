@@ -42,6 +42,7 @@ server_key = "certs/server.key"
 
 [camera]
 grpc_target = "127.0.0.1:7036"
+credential = ""
 
 [identity]
 target = "127.0.0.1:7040"

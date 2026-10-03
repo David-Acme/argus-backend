@@ -69,7 +69,9 @@ CatalogReplica::Snapshot fetchCatalogSnapshot()
 
   const std::string cameraTarget = LlmConfig::resolveCameraTarget();
   if (!cameraTarget.empty()) {
-    const CameraSyncClient client(cameraTarget);
+    const CameraSyncClient client(
+        {.target = cameraTarget,
+         .credential = LlmConfig::resolveCameraCredential()});
     const SyncIdentity identity{
         .userId = 0, .role = "system", .device = "argus-llm"};
     if (const auto catalog = client.listCatalog(identity)) {
