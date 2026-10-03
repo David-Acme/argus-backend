@@ -11,6 +11,11 @@ deterministic danger level and raises only policy-authorized actions. It owns
   consumer (`ARGUS_CAMERA`), deduplicates by `eventId` in
   `guard_observation_inbox` and acknowledges after commit; the inbox plus the
   serialized observation queue make redelivery and restarts idempotent.
+  The queue is serialized per camera, not globally: one camera's greeting,
+  listen and reply (25-35 s) used to hold every other camera's intrusion
+  behind it. Observations of one camera stay in order; cameras run
+  concurrently on the loop, and a cross-camera encounter is still matched
+  through the encounter table.
 - Evaluates the deterministic danger matrix (`guard-policy.cc`): hard floors
   (unknown while away/armed, alert zone, night, escalation, repeat visits of
   one person, two strangers in one event) plus a severity raise; expected

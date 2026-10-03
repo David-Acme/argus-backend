@@ -858,30 +858,35 @@ int64_t GuardService::retryBackoffAt(int attempts, int64_t nowMs) const
 
 void GuardService::enqueue(QueueEntry entry)
 {
+  const int64_t cameraId =
+      json_util::fromString(entry.payload).get("cameraId", 0).asInt64();
   {
     std::scoped_lock lock(queueMutex_);
-    queue_.push_back(std::move(entry));
-    if (processing_)
+    QueueLane& lane = lanes_[cameraId];
+    lane.entries.push_back(std::move(entry));
+    if (lane.processing)
       return;
-    processing_ = true;
+    lane.processing = true;
   }
-  drogon::async_run(
-      [this]() -> drogon::Task<void> { co_await processQueue(); });
+  drogon::async_run([this, cameraId]() -> drogon::Task<void> {
+    co_await processQueue(cameraId);
+  });
 }
 
-drogon::Task<void> GuardService::processQueue()
+drogon::Task<void> GuardService::processQueue(int64_t cameraId)
 {
   const LifecycleGuard aliveGuard(lifecycle_);
   while (true) {
     QueueEntry entry;
     {
       std::scoped_lock lock(queueMutex_);
-      if (queue_.empty()) {
-        processing_ = false;
+      QueueLane& lane = lanes_[cameraId];
+      if (lane.entries.empty()) {
+        lanes_.erase(cameraId);
         co_return;
       }
-      entry = std::move(queue_.front());
-      queue_.pop_front();
+      entry = std::move(lane.entries.front());
+      lane.entries.pop_front();
     }
     if (!aliveGuard.alive()) {
       if (entry.nak)

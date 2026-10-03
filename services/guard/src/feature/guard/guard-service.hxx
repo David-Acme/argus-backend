@@ -356,7 +356,7 @@ private:
 
   void enqueue(QueueEntry entry);
 
-  drogon::Task<void> processQueue();
+  drogon::Task<void> processQueue(int64_t cameraId);
 
   struct HandleEventInput
   {
@@ -412,9 +412,14 @@ private:
   S3StorageService storage_;
   std::shared_ptr<GuardLifecycle> lifecycle_;
 
+  struct QueueLane
+  {
+    std::deque<QueueEntry> entries;
+    bool processing{false};
+  };
+
   std::mutex queueMutex_;
-  std::deque<QueueEntry> queue_;
-  bool processing_{false};
+  std::map<int64_t, QueueLane> lanes_;
 
   std::mutex lifecycleMutex_;
   std::vector<uint64_t> timerIds_;
