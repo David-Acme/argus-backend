@@ -64,8 +64,16 @@ public:
 
 namespace notification_delivery
 {
+inline constexpr const char* kProbeType = "probe";
+
 inline std::string messageId(int64_t deliveryId)
 {
   return "notification-delivery:" + std::to_string(deliveryId);
+}
+
+inline bool isProbe(const Json::Value& json)
+{
+  return json.isObject() && json.get("userId", 0).asInt64() == 0 &&
+         json.get("type", "").asString() == kProbeType;
 }
 }

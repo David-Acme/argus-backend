@@ -6,6 +6,7 @@
 #include <sqlite/db-service.hxx>
 #include <feature/fanout/repositories/delivery-inbox/notification-delivery-receipt.hxx>
 #include <nats/nats-subject.hxx>
+#include <text/json-util.hxx>
 #include <feature/fanout/services/notification-delivery-consumer.hxx>
 
 #include <atomic>
@@ -261,4 +262,17 @@ TEST_CASE("the sync delivery inbox is durable, exact and fail-closed")
         DurableDisposition::Term);
   CHECK(drogon::sync_wait(consumer.handlePayload("{\"deliveryId\":0}")) ==
         DurableDisposition::Term);
+
+  NotificationDeliveryEvent probe;
+  probe.deliveryId = 99;
+  probe.notificationId = 98;
+  probe.userId = 0;
+  probe.type = notification_delivery::kProbeType;
+  CHECK(drogon::sync_wait(consumer.handlePayload(
+            json_util::toString(probe.toJson()))) == DurableDisposition::Ack);
+  CHECK(scalar("SELECT COUNT(*) FROM notification_delivery_inbox "
+               "WHERE delivery_id = 99") == "0");
+  probe.type = "reminder";
+  CHECK(drogon::sync_wait(consumer.handlePayload(
+            json_util::toString(probe.toJson()))) == DurableDisposition::Term);
 }

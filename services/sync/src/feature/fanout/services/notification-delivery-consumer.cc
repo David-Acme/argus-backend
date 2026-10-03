@@ -77,8 +77,10 @@ void NotificationDeliveryConsumer::stop()
 drogon::Task<DurableDisposition>
 NotificationDeliveryConsumer::handlePayload(const std::string& payload)
 {
-  const auto event =
-      NotificationDeliveryEvent::fromJson(json_util::fromString(payload));
+  const Json::Value json = json_util::fromString(payload);
+  if (notification_delivery::isProbe(json))
+    co_return DurableDisposition::Ack;
+  const auto event = NotificationDeliveryEvent::fromJson(json);
   if (!event) {
     LOG_WARN << "Delivery consumer: dropped malformed payload";
     co_return DurableDisposition::Term;
