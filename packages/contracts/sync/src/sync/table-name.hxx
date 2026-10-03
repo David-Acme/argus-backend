@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -89,7 +90,7 @@ inline std::string tableNameToString(TableName t)
   return "user";
 }
 
-inline TableName tableNameFromString(const std::string& s)
+inline std::optional<TableName> findTableName(const std::string& s)
 {
   static const std::unordered_map<std::string, TableName> kMap = {
       {"user", TableName::User},
@@ -119,6 +120,11 @@ inline TableName tableNameFromString(const std::string& s)
   };
   const auto it = kMap.find(s);
   if (it == kMap.end())
-    return TableName::User;
+    return std::nullopt;
   return it->second;
+}
+
+inline TableName tableNameFromString(const std::string& s)
+{
+  return findTableName(s).value_or(TableName::User);
 }

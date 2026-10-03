@@ -37,6 +37,10 @@ inline constexpr ErrorDefinition VoiceUnavailable{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,
     .message = "Voice unavailable"};
+inline constexpr ErrorDefinition FrameFailed{
+    .code = ErrorCode::InternalError,
+    .status = 500,
+    .message = "The message could not be handled"};
 inline constexpr ErrorDefinition ReplicaTooOld{
     .code = ErrorCode::Conflict,
     .status = 409,

@@ -5,7 +5,9 @@
 #include <string>
 #include <string_view>
 #include <sync/sync-change.hxx>
+#include <json/value.h>
 #include <sync/sync-operation.hxx>
+#include <sync/table-name.hxx>
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
 #include <utility>
@@ -31,16 +33,24 @@ std::optional<Event> parseEvent(const Json::Value& json)
       !json["option"].isString())
     return std::nullopt;
 
+  const auto table = findTableName(json["option"].asString());
+  if (!table)
+    return std::nullopt;
+
   Event event;
   event.emit.operation = static_cast<SyncOperation>(json["operation"].asInt());
-  event.emit.option = tableNameFromString(json["option"].asString());
+  event.emit.option = *table;
   event.emit.obj = json["info"];
 
   if (json.isMember(sync_change::kUsersField) &&
       json[sync_change::kUsersField].isArray()) {
     std::vector<int64_t> users;
-    for (const auto& id : json[sync_change::kUsersField])
-      users.push_back(id.asInt64());
+    for (const auto& id : json[sync_change::kUsersField]) {
+      if (!id.isInt64())
+        return std::nullopt;
+      if (id.asInt64() > 0)
+        users.push_back(id.asInt64());
+    }
     event.users = std::move(users);
   }
 
@@ -48,12 +58,16 @@ std::optional<Event> parseEvent(const Json::Value& json)
       json.get(sync_change::kActionField, sync_change::kActionEmit).asString();
   if (action == sync_change::kActionDisconnect ||
       action == sync_change::kActionReplaceRoleRooms) {
-    if (!json.isMember(sync_change::kUserField))
+    if (!json.isMember(sync_change::kUserField) ||
+        !json[sync_change::kUserField].isInt64() ||
+        json[sync_change::kUserField].asInt64() <= 0)
       return std::nullopt;
     event.user = json[sync_change::kUserField].asInt64();
     if (action == sync_change::kActionReplaceRoleRooms) {
       if (!json.isMember(sync_change::kOldRoleField) ||
-          !json.isMember(sync_change::kNewRoleField))
+          !json.isMember(sync_change::kNewRoleField) ||
+          !json[sync_change::kOldRoleField].isString() ||
+          !json[sync_change::kNewRoleField].isString())
         return std::nullopt;
       event.oldRole =
           userRoleFromString(json[sync_change::kOldRoleField].asString());
@@ -113,28 +127,42 @@ void dispatchEvent(const Event& event)
 drogon::Task<DurableDisposition>
 handleChangePayload(const Json::Value& json, AuditFanOut& auditFanOut)
 {
-  const std::string kind = kindOf(json);
-  if (kind == sync_change::kKindIdentity)
-    co_return DurableDisposition::Ack;
-  if (kind == sync_change::kKindAudit)
-    co_return co_await auditFanOut.handleAuditChange(json)
-                  ? DurableDisposition::Ack
-                  : DurableDisposition::Term;
+  try {
+    const std::string kind = kindOf(json);
+    if (kind == sync_change::kKindIdentity)
+      co_return DurableDisposition::Ack;
+    if (kind == sync_change::kKindAudit)
+      co_return co_await auditFanOut.handleAuditChange(json)
+                    ? DurableDisposition::Ack
+                    : DurableDisposition::Term;
 
-  const auto event = parseEvent(json);
-  if (!event) {
-    LOG_WARN << "Sync fan-out: malformed change event refused";
+    const auto event = parseEvent(json);
+    if (!event) {
+      LOG_WARN << "Sync fan-out: malformed change event refused";
+      co_return DurableDisposition::Term;
+    }
+    dispatchEvent(*event);
+    co_return DurableDisposition::Ack;
+  }
+  catch (const Json::Exception& error) {
+    LOG_WARN << "Sync fan-out: change event with a malformed field refused: "
+             << error.what();
     co_return DurableDisposition::Term;
   }
-  dispatchEvent(*event);
-  co_return DurableDisposition::Ack;
 }
 
 drogon::Task<DurableDisposition> handleActionPayload(ActionPayloadInput input)
 {
-  co_return co_await input.auditFanOut.handleActionJournal(input.json,
-                                                           input.msgId)
-                ? DurableDisposition::Ack
-                : DurableDisposition::Term;
+  try {
+    co_return co_await input.auditFanOut.handleActionJournal(input.json,
+                                                             input.msgId)
+                  ? DurableDisposition::Ack
+                  : DurableDisposition::Term;
+  }
+  catch (const Json::Exception& error) {
+    LOG_WARN << "Action journal: event with a malformed field refused: "
+             << error.what();
+    co_return DurableDisposition::Term;
+  }
 }
 }

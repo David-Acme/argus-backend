@@ -3,6 +3,8 @@
 #include <drogon/utils/coroutine.h>
 #include <errors/response-exception.hxx>
 #include <errors/validation-exception.hxx>
+#include <feature/transport/dtos/socket-frame-dto.hxx>
+#include <sync/sync-errors.hxx>
 #include <text/json-util.hxx>
 #include <validation/validator.hxx>
 #include <trantor/utils/Logger.h>
@@ -32,10 +34,13 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
   catch (...) {
     return;
   }
+  const auto frame = SocketFrameDto::fromJson(json);
+  if (!frame)
+    return;
   LOG_DEBUG << "SyncSocket: text " << message.substr(0, 120);
 
   auto* self = this;
-  drogon::async_run([self, conn, json = std::move(json),
+  drogon::async_run([self, conn, json = std::move(json), type = frame->type,
                      raw = std::move(message)]() mutable
                     -> drogon::Task<> {
     try {
@@ -44,21 +49,22 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
     }
     catch (const ValidationException& ex) {
       sendSocketFrameError({.conn = conn,
-                            .type = json.get("type", "").asString(),
+                            .type = type,
                             .status = 422,
                             .error = ex.what()});
     }
     catch (const ResponseException& ex) {
       sendSocketFrameError({.conn = conn,
-                            .type = json.get("type", "").asString(),
+                            .type = type,
                             .status = ex.statusCode(),
                             .error = ex.what()});
     }
     catch (const std::exception& ex) {
+      LOG_ERROR << "SyncSocket: " << type << " failed: " << ex.what();
       sendSocketFrameError({.conn = conn,
-                            .type = json.get("type", "").asString(),
-                            .status = 500,
-                            .error = ex.what()});
+                            .type = type,
+                            .status = SyncErrors::FrameFailed.status,
+                            .error = std::string(SyncErrors::FrameFailed.message)});
     }
   });
 }

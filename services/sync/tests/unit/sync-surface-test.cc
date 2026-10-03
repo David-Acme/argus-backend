@@ -5,14 +5,18 @@
 #include <config/config-service.hxx>
 #include <drogon/drogon.h>
 #include <feature/fanout/services/sync-fan-out.hxx>
+#include <feature/transport/dtos/socket-frame-dto.hxx>
 #include <feature/transport/infra/sync-socket-registrar.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
+#include <string_view>
+#include <sync/module-audit-event.hxx>
 #include <sync/socket-emit-dto.hxx>
 #include <sync/sync-change.hxx>
 #include <sync/sync-operation.hxx>
 #include <sync/table-name.hxx>
+#include <sync/user-audit-event.hxx>
 #include <text/json-util.hxx>
 
 #include <chrono>
@@ -22,6 +26,7 @@
 #include <memory>
 #include <sqlite3.h>
 #include <stdexcept>
+#include <vector>
 
 namespace
 {
@@ -123,6 +128,61 @@ TEST_CASE("fan-out parses the sync-change wire contract")
   CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString("null")));
   CHECK_FALSE(sync_fan_out::parseEvent(
       json_util::fromString(R"({"action":"disconnect","operation":7,"option":"user","info":{}})")));
+}
+
+TEST_CASE("fan-out refuses what it cannot route instead of guessing the user room")
+{
+  CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString(
+      R"({"operation":4,"option":"camera_snapshot","info":{"id":3}})")));
+  CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString(
+      R"({"operation":4,"option":"notification","info":{},"users":["42"]})")));
+  CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString(
+      R"({"operation":7,"option":"user","info":{},"user":"7","action":"disconnect"})")));
+  CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString(
+      R"({"operation":7,"option":"user","info":{},"user":7,"action":"replace_role_rooms","old_role":{},"new_role":"guest"})")));
+
+  const auto filtered = sync_fan_out::parseEvent(json_util::fromString(
+      R"({"operation":4,"option":"notification","info":{},"users":[-999,0,42]})"));
+  REQUIRE(filtered);
+  REQUIRE(filtered->users);
+  CHECK(*filtered->users == std::vector<int64_t>{42});
+}
+
+TEST_CASE("audit events outside the vocabulary are refused")
+{
+  const auto event = [](std::string_view table, int priority) {
+    Json::Value json;
+    json["record_id"] = Json::Int64{5};
+    json["table_name"] = std::string(table);
+    json["changes"] = Json::objectValue;
+    json["event_timestamp"] = Json::Int64{1790000000};
+    json["priority"] = priority;
+    return json;
+  };
+  CHECK(ModuleAuditEvent::fromJson(event("project", 2)));
+  CHECK_FALSE(ModuleAuditEvent::fromJson(event("project", 7)));
+  CHECK_FALSE(ModuleAuditEvent::fromJson(event("no_such_table", 1)));
+
+  auto scoped = event("project_task", 1);
+  scoped["users"].append(Json::Int64{42});
+  CHECK(UserAuditEvent::fromJson(scoped));
+  scoped["users"].append("43");
+  CHECK_FALSE(UserAuditEvent::fromJson(scoped));
+}
+
+TEST_CASE("a socket frame must be an object, and its type is read without throwing")
+{
+  CHECK_FALSE(SocketFrameDto::fromJson(json_util::fromString("[]")));
+  CHECK_FALSE(SocketFrameDto::fromJson(json_util::fromString("5")));
+  CHECK_FALSE(SocketFrameDto::fromJson(json_util::fromString(R"("sync")")));
+
+  const auto objectType = SocketFrameDto::fromJson(json_util::fromString(R"({"type":{}})"));
+  REQUIRE(objectType);
+  CHECK(objectType->type.empty());
+
+  const auto sync = SocketFrameDto::fromJson(json_util::fromString(R"({"type":"sync","payload":{}})"));
+  REQUIRE(sync);
+  CHECK(sync->type == "sync");
 }
 
 TEST_CASE("identity change events never fan out to the client sockets")

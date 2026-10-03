@@ -54,12 +54,19 @@ struct ModuleAuditEvent
 
     ModuleAuditEvent event;
     event.recordId = json["record_id"].asInt64();
-    event.tableName = tableNameFromString(json["table_name"].asString());
+    const auto tableName = findTableName(json["table_name"].asString());
+    if (!tableName)
+      return std::nullopt;
+    event.tableName = *tableName;
     event.changes =
         JsonDiff::fromJsonString(json_util::toString(json["changes"]));
     event.eventTimestamp = json["event_timestamp"].asInt64();
-    if (json.isMember("priority") && json["priority"].isInt())
-      event.priority = static_cast<AuditLogPriority>(json["priority"].asInt());
+    if (json.isMember("priority") && json["priority"].isInt()) {
+      const auto priority = auditLogPriorityFromInt(json["priority"].asInt());
+      if (!priority)
+        return std::nullopt;
+      event.priority = *priority;
+    }
     if (json.isMember("create_user_id") && json["create_user_id"].isInt64())
       event.createUserId = json["create_user_id"].asInt64();
     return event;
