@@ -12,6 +12,7 @@ namespace
 {
 constexpr int kIdentityTimeoutMs = 5000;
 constexpr auto kTtsCapabilitiesTtl = std::chrono::seconds(10);
+constexpr int kSpeakerTimeoutMs = 800;
 
 std::string identityTarget()
 {
@@ -83,7 +84,8 @@ std::optional<VoiceSpeaker> GrpcVoiceSpeaker::identify(const VoiceSpeakerInput& 
   std::ranges::transform(input.samples, std::back_inserter(pcm), [](float sample) {
     return static_cast<int16_t>(std::clamp(sample, -1.0F, 1.0F) * 32767.0F);
   });
-  const auto answer = client->identify({.samples = pcm, .sampleRate = input.sampleRate});
+  const auto answer = client->identifyWithin(
+      {.sample = {.samples = pcm, .sampleRate = input.sampleRate}, .timeoutMs = kSpeakerTimeoutMs});
   if (!answer || answer->outcome() != argus::identity::v1::VOICEPRINT_OK || !answer->matched() ||
       answer->user_id() <= 0)
     return std::nullopt;

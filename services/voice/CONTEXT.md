@@ -245,10 +245,11 @@ A call belongs to the account that opened it (`VoiceStart.identity`), but a
 phone on the kitchen table hears the whole household. Every user turn with
 at least 2 s of audio is identified by voice while STT runs:
 `IVoiceSpeaker` (`GrpcVoiceSpeaker`, argus-identity's
-`VoiceprintService.Identify` through `argus::clients::identity`, at most the
-first 6 s of the turn, `identity.target` + `identity.rpc_secret`). The turn
-waits for it at most 300 ms after STT, so a slow identity never slows the
-answer; a probe still running when the next turn starts is not repeated.
+`VoiceprintService.Identify` through `argus::clients::identity`'s
+`identifyWithin`, an 800 ms deadline, at most the first 6 s of the turn,
+`identity.target` + `identity.rpc_secret`). The turn waits for it at most
+300 ms after STT, so a slow identity never slows the answer; a probe still
+running when the next turn starts is not repeated.
 
 The answer is a hint, never an identity. Only users who enrolled their voice
 with consent can match, and anything but a confident match
