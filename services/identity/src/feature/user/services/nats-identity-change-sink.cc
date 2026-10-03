@@ -277,6 +277,9 @@ void NatsIdentityChangeSink::flushLoop()
   while (!stopping_.load(std::memory_order_acquire)) {
     bool progressed = false;
     try {
+      if (!streamReady_.load(std::memory_order_acquire) && bus_ &&
+          bus_->isConnected())
+        streamReady_.store(ensureStream(), std::memory_order_release);
       for (const auto& row : outbox_.pendingBatch(kDrainBatch)) {
         if (stopping_.load(std::memory_order_acquire) || !flush(row))
           break;

@@ -376,6 +376,24 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
     }
 
     {
+      const std::string eager = stream + "-eager";
+      NatsProductivityChangeSink eagerSink(
+          liveBus, NatsProductivityChangeSink::Config{
+                       .retryMs = 20,
+                       .publishSubject = subject + ".eager",
+                       .streamName = eager});
+      eagerSink.reconcile();
+      bool created = false;
+      for (int attempt = 0; attempt < 200 && !created; ++attempt) {
+        created = liveBus->streamInfo(eager).has_value();
+        if (!created)
+          std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      }
+      CHECK(created);
+      CHECK_FALSE(hasPending(outbox));
+    }
+
+    {
       const std::string burstStream = stream + "-burst";
       const std::string burstSubject = subject + ".burst";
       NatsProductivityChangeSink bursts(

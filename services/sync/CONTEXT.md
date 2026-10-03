@@ -92,7 +92,12 @@ protocol could not regress by accident in the commit that changed the endpoint.
   cannot replay a week of already-recorded changes into duplicate audit rows —
   settles `durable_delivery`'s three dispositions (ack, nak on a throw, term on
   a payload it will never parse) and retries its attach every 5 s while its
-  stream does not exist yet. An audit frame persists
+  stream does not exist yet. Deliver-new is only safe because every producer's
+  outbox worker creates its stream as soon as its bus connects, not on its
+  first publish: when the stream was created by the first change itself, that
+  change landed before this durable existed and never reached the audit tables
+  or the clients (measured on a fresh sandbox: the first calendar event of a
+  new install was missing from every open app until its next bootstrap). An audit frame persists
   first and fans out the DB-assigned row (Ruling Y); a journal row is inserted
   verbatim, keyed by its `Nats-Msg-Id` so a redelivery is ignored; an emit
   frame becomes a room emit; an identity catalog frame belongs
