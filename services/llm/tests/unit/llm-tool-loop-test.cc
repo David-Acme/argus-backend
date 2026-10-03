@@ -323,6 +323,7 @@ TEST_CASE("explicit app commands become app calls and questions do not")
   CHECK(appCommandFor("show me the garage camera")->arguments["camera"].asString() == "garage");
   CHECK(appCommandFor("quiero ver la cámara 3")->arguments["camera"].asString() == "3");
   CHECK(appCommandFor("enséñame la cámara")->arguments["camera"].asString().empty());
+  CHECK(appCommandFor("checa la cámara 4")->arguments["camera"].asString() == "4");
   CHECK_FALSE(appCommandFor("quiero comprar una cámara nueva").has_value());
   CHECK_FALSE(appCommandFor("¿qué se ve en la cámara del patio?").has_value());
 

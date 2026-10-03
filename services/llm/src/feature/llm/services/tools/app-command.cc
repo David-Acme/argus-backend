@@ -32,8 +32,10 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 12> kModes{{
                                                                                {"armado", "armed"},
                                                                                {"armada", "armed"},
                                                                                {"armed", "armed"}}};
-constexpr std::array<std::string_view, 10> kShowVerbs{
-    "muestrame", "muestra", "ensename", "abre", "abreme", "pon", "ponme", "show", "open", "display"};
+constexpr std::array<std::string_view, 14> kShowVerbs{"muestrame", "muestra", "ensename", "abre",
+                                                     "abreme",    "pon",     "ponme",    "checa",
+                                                     "chequea",   "revisa",  "show",     "open",
+                                                     "display",   "check"};
 constexpr std::array<std::string_view, 4> kWantVerbs{"quiero", "dejame", "let", "want"};
 constexpr std::array<std::string_view, 2> kSeeVerbs{"ver", "see"};
 constexpr std::array<std::string_view, 9> kNameFillers{"de", "del", "la", "el", "los", "las", "en", "the", "a"};
