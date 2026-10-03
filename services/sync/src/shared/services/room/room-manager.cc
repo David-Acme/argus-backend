@@ -171,6 +171,7 @@ void RoomManager::emitLocalRoomsView(const std::vector<RoomId>& rooms,
 {
   std::unordered_set<drogon::WebSocketConnection*> seen;
   seen.reserve(64);
+  std::vector<drogon::WebSocketConnection*> dead;
 
   for (const auto room : rooms) {
     const auto it = g_local.rooms.find(room);
@@ -187,12 +188,14 @@ void RoomManager::emitLocalRoomsView(const std::vector<RoomId>& rooms,
 
       const auto sp = wIt->second.lock();
       if (!sp) {
-        pruneDeadConnection(raw);
+        dead.push_back(raw);
         continue;
       }
       sp->send(msg.data(), msg.size());
     }
   }
+  for (auto* raw : dead)
+    pruneDeadConnection(raw);
 }
 
 void RoomManager::broadcastToLocalThreads(

@@ -58,11 +58,10 @@ void AuditRetentionService::clearTimer(std::optional<uint64_t>& timer)
 
 void AuditRetentionService::runSweep()
 {
-  if (running_) {
+  if (running_.exchange(true, std::memory_order_acq_rel)) {
     LOG_WARN << "Audit retention: sweep already running; skipping this tick";
     return;
   }
-  running_ = true;
 
   const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::system_clock::now().time_since_epoch())
@@ -82,7 +81,7 @@ void AuditRetentionService::runSweep()
     catch (...) {
       LOG_WARN << "Audit retention: sweep failed with unknown error";
     }
-    running_ = false;
+    running_.store(false, std::memory_order_release);
   });
 }
 

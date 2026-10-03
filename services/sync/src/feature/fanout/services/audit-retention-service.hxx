@@ -4,6 +4,7 @@
 #include <feature/fanout/services/audit-log-service.hxx>
 #include <feature/fanout/services/user-audit-log-service.hxx>
 
+#include <atomic>
 #include <cstdint>
 #include <optional>
 
@@ -27,5 +28,5 @@ private:
   std::optional<uint64_t> dailyTimer_;
   int retentionDays_{0};
   bool started_{false};
-  bool running_{false};
+  std::atomic<bool> running_{false};
 };

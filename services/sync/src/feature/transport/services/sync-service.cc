@@ -21,6 +21,9 @@ SyncService::refreshContext(const drogon::WebSocketConnectionPtr& conn) const
     throw ResponseException(401, SyncErrors::UserAccountDisabled);
 
   ctx.name = resolved->name + " " + resolved->lastName;
+  if (resolved->role != ctx.role)
+    roomManager_.replaceRoleRooms(
+        {.userId = ctx.sub, .oldRole = ctx.role, .newRole = resolved->role});
   ctx.role = resolved->role;
   ctx.isActive = resolved->isActive;
   co_return;
