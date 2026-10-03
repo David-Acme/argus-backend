@@ -162,11 +162,11 @@ TEST_CASE("the fleet secret and the device leg are what this edge presents")
   CHECK(service.seenDeviceHash().empty());
 
   service.credentialActive = true;
-  CHECK(client.checkDeviceCredential("secret-hash"));
+  CHECK(client.checkDeviceCredential("secret-hash") == true);
   CHECK(service.seenDeviceHash() == "secret-hash");
 
   service.credentialActive = false;
-  CHECK_FALSE(client.checkDeviceCredential("secret-hash"));
+  CHECK(client.checkDeviceCredential("secret-hash") == false);
 
   server->Shutdown();
 }
@@ -185,5 +185,5 @@ TEST_CASE("a listener that never answers is not an answer this edge invents")
                                   .deviceHash = "",
                                   .hasDeviceContext = false})
                   .has_value());
-  CHECK_FALSE(client.checkDeviceCredential("secret-hash"));
+  CHECK_FALSE(client.checkDeviceCredential("secret-hash").has_value());
 }

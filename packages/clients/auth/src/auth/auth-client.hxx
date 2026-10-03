@@ -32,7 +32,7 @@ public:
   [[nodiscard]] virtual std::optional<argus::auth::v1::ValidateTokenResponse>
   validateToken(const ValidateSessionInput& input) const;
 
-  [[nodiscard]] virtual bool
+  [[nodiscard]] virtual std::optional<bool>
   checkDeviceCredential(const std::string& secretHash) const;
 
 private:

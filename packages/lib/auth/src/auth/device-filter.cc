@@ -9,6 +9,10 @@
 #include <config/config-service.hxx>
 #include <runtime/blocking-task.hxx>
 #include <stdexcept>
+#include <auth/auth-errors.hxx>
+#include <errors/response-exception.hxx>
+#include <optional>
+#include <string_view>
 
 namespace
 {
@@ -60,11 +64,13 @@ DeviceFilter::doFilter(const drogon::HttpRequestPtr& req)
     if (!credential.empty() && credential.size() <= kMaxCredentialLength) {
       const auto secretHash = sha256Hex(credential);
       const auto client = filterAuthClient();
-      const auto active = co_await BlockingTask<bool>(
+      const auto active = co_await BlockingTask<std::optional<bool>>(
           [client, secretHash]() {
             return client->checkDeviceCredential(secretHash);
           });
-      if (active)
+      if (!active)
+        throw ResponseException(AuthErrors::AuthUnavailable);
+      if (*active)
         deviceHash = credentialFingerprint(ua, secretHash);
     }
     ctx.deviceHash = deviceHash;
@@ -133,11 +139,26 @@ std::string DeviceFilter::resolveIp(const drogon::HttpRequestPtr& req)
   if (ConfigService::getBool("device.trust_forwarded_for") &&
       trustedProxy(peer)) {
     const auto forwarded = req->getHeader("X-Forwarded-For");
-    if (!forwarded.empty()) {
-      const auto comma = forwarded.find(',');
-      return comma != std::string::npos ? forwarded.substr(0, comma)
-                                        : forwarded;
+    std::string_view rest(forwarded);
+    std::string nearest;
+    while (!rest.empty()) {
+      const auto comma = rest.rfind(',');
+      std::string_view hop =
+          comma == std::string_view::npos ? rest : rest.substr(comma + 1);
+      rest = comma == std::string_view::npos ? std::string_view{}
+                                             : rest.substr(0, comma);
+      while (!hop.empty() && hop.front() == ' ')
+        hop.remove_prefix(1);
+      while (!hop.empty() && hop.back() == ' ')
+        hop.remove_suffix(1);
+      if (hop.empty())
+        continue;
+      nearest = std::string(hop);
+      if (!trustedProxy(nearest))
+        return nearest;
     }
+    if (!nearest.empty())
+      return nearest;
   }
   return peer;
 }

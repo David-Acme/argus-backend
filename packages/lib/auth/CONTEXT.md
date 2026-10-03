@@ -44,6 +44,16 @@ Two consequences worth keeping in mind:
   auth container used to sign every user out. Only a verdict that says
   invalid is a 401. A missing verdict covers every RPC failure, a wrong fleet
   secret included, because none of them is the user's fault.
+- In `credential` identity mode a failed `CheckDeviceCredential` RPC is the
+  same outage: `AuthClient::checkDeviceCredential` answers `nullopt` for a
+  transport failure (and `false` only for a credential auth says is not
+  active), and `DeviceFilter` refuses with 503 `AuthUnavailable` instead of
+  continuing with an empty device hash that ended in a device-mismatch 401.
+- With `trust_forwarded_for`, the client address is the right-most
+  `X-Forwarded-For` hop that is not itself a trusted proxy - the address the
+  nearest trusted proxy actually saw. The left-most entry is whatever the
+  client chose to send, and in `ip` mode the device hash is built from it,
+  so a stolen token could be replayed with the victim's address claimed.
 
 ## The two targets
 

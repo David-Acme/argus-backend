@@ -35,7 +35,8 @@ AuthClient::validateToken(const ValidateSessionInput& input) const
   return response;
 }
 
-bool AuthClient::checkDeviceCredential(const std::string& secretHash) const
+std::optional<bool>
+AuthClient::checkDeviceCredential(const std::string& secretHash) const
 {
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
@@ -48,6 +49,6 @@ bool AuthClient::checkDeviceCredential(const std::string& secretHash) const
   if (const grpc::Status status =
           stub_->CheckDeviceCredential(&context, request, &response);
       !status.ok())
-    return false;
+    return std::nullopt;
   return response.active();
 }

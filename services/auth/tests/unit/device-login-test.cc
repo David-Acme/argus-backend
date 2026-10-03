@@ -558,9 +558,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
     noSecret->addHeader("User-Agent", kDesktopUa);
     noSecret->addHeader("X-Argus-Device-Credential", polled.deviceSecret);
     noSecret->addHeader("Authorization", "Bearer " + polled.accessToken);
-    drogon::sync_wait(deviceFilter.doFilter(noSecret));
-    CHECK(deviceCtx(noSecret).deviceHash.empty());
-    const auto rejectedCall = refusalOf(jwtFilter.doFilter(noSecret));
+    const auto rejectedCall = refusalOf(deviceFilter.doFilter(noSecret));
     if (!rejectedCall.has_value()) {
       FAIL("the fleet-secret gate did not refuse an unqualified caller");
       return;
@@ -637,6 +635,21 @@ TEST_CASE("a refresh keeps the session on the device and agent it was issued to"
                   .has_value());
 
   DbService::client()->execSqlSync("DELETE FROM refresh_token");
+  ConfigService::setRuntimeString("device.identity_mode", "");
+}
+
+TEST_CASE("a forwarded address is the hop the trusted proxy saw, not the client's claim")
+{
+  setConfig();
+  ConfigService::setRuntimeString("device.identity_mode", "ip");
+  const auto keyFor = [](const std::string& forwarded) {
+    auto req = drogon::HttpRequest::newHttpRequest();
+    req->addHeader("User-Agent", kUa);
+    req->addHeader("X-Forwarded-For", forwarded);
+    return DeviceFilter::deviceKey(req);
+  };
+  CHECK(keyFor("6.6.6.6, 10.0.0.9") == keyFor("10.0.0.9"));
+  CHECK(keyFor("6.6.6.6, 10.0.0.9") != keyFor("6.6.6.6"));
   ConfigService::setRuntimeString("device.identity_mode", "");
 }
 

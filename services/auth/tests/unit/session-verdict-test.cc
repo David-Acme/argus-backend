@@ -600,7 +600,8 @@ TEST_CASE("the fleet secret gates every session verdict")
                                           .hasDeviceContext = true})
                   .has_value());
   CHECK_FALSE(
-      unauthorized.checkDeviceCredential(DeviceFilter::sha256Hex(kDeviceSecret)));
+      unauthorized.checkDeviceCredential(DeviceFilter::sha256Hex(kDeviceSecret))
+          .has_value());
 
   AuthClient wrongSecret({.target = gatedRpc.clientConfig().target,
                           .fleetSecret = "not-the-fleet-secret"});
@@ -614,7 +615,8 @@ TEST_CASE("the fleet secret gates every session verdict")
   REQUIRE(verdict.answered);
   CHECK(verdict.valid);
   CHECK(
-      authorized.checkDeviceCredential(DeviceFilter::sha256Hex(kDeviceSecret)));
+      authorized.checkDeviceCredential(DeviceFilter::sha256Hex(kDeviceSecret)) ==
+      true);
 }
 
 TEST_CASE("device credentials answer active only for a live secret hash")
@@ -633,10 +635,12 @@ TEST_CASE("device credentials answer active only for a live secret hash")
   REQUIRE(harness.listening());
   AuthClient client(harness.clientConfig());
 
-  CHECK(client.checkDeviceCredential(DeviceFilter::sha256Hex(kDeviceSecret)));
-  CHECK_FALSE(client.checkDeviceCredential(
-      DeviceFilter::sha256Hex("ffeeddccbbaa99887766554433221100")));
-  CHECK_FALSE(client.checkDeviceCredential(""));
+  CHECK(client.checkDeviceCredential(DeviceFilter::sha256Hex(kDeviceSecret)) ==
+        true);
+  CHECK(client.checkDeviceCredential(
+            DeviceFilter::sha256Hex("ffeeddccbbaa99887766554433221100")) ==
+        false);
+  CHECK(client.checkDeviceCredential("") == false);
 }
 
 TEST_CASE("an identity change drops the cached context")
