@@ -14,6 +14,7 @@
 #include <auth/jwt-filter.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
+#include <http/certificate-reload.hxx>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
@@ -172,6 +173,7 @@ int main()
       std::make_shared<CameraMediaSocket>());
 
   drogon::app().loadConfigJson(drogonConfig(cameraDb, listener));
+  certificate_reload::watch(listener);
 
   drogon::app().registerPostHandlingAdvice(
       [](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
