@@ -137,6 +137,7 @@ GuardPeerConfig GuardConfig::resolveActions()
 GuardAssessEndpoints GuardConfig::resolveAssessEndpoints()
 {
   return {.vlmUrl = ConfigService::getString("guard.assess.vlm_url"),
+          .vlmTarget = ConfigService::getString("vlm.grpc_target"),
           .llmUrl = ConfigService::getString("guard.assess.llm_url"),
           .llmTarget = ConfigService::getString("llm.grpc_target"),
           .timeoutMs = configIntOr("guard.assess.timeout_ms", 8000)};

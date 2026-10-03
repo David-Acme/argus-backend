@@ -104,7 +104,7 @@ int main()
 
   const GuardAssessEndpoints endpoints = GuardConfig::resolveAssessEndpoints();
   std::unique_ptr<VlmClient> vlm;
-  if (!endpoints.vlmUrl.empty())
+  if (!endpoints.vlmUrl.empty() || !endpoints.vlmTarget.empty())
     vlm = std::make_unique<VlmClient>(
         endpoints.vlmUrl, static_cast<double>(endpoints.timeoutMs) / 1000.0);
 

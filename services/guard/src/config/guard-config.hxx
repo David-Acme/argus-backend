@@ -26,6 +26,7 @@ struct GuardPeerConfig
 struct GuardAssessEndpoints
 {
   std::string vlmUrl;
+  std::string vlmTarget;
   std::string llmUrl;
   std::string llmTarget;
   int timeoutMs{8000};
