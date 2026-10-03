@@ -72,6 +72,9 @@ exact JSON/binary the app expects is argus-sync's
   is the tail of the current one (`window_.end() - 64`).
 - After a turn the VAD is reset but the PCM queue is NOT cleared: audio
   captured while the LLM was thinking may hold a real interjection.
+- The PCM queue holds at most 30 s of 16 kHz audio; past that the oldest
+  samples go. A worker stalled behind a slow turn cannot grow memory without
+  bound, and audio that old is no longer an interjection worth answering.
 
 ## Stream lifecycle decisions
 

@@ -10,6 +10,7 @@ namespace
 {
 
 constexpr int kTargetRate = 16000;
+constexpr size_t kMaxQueuedSamples = static_cast<size_t>(kTargetRate) * 30;
 
 float rmsOf(const std::vector<float>& samples)
 {
@@ -370,8 +371,11 @@ void VoiceSessionService::feedPcm(VoiceSessionSink& sink, const PcmFrame& pcm)
 
   {
     std::lock_guard<std::mutex> lock(session->pcmMutex);
-    session->pcmQueue.insert(session->pcmQueue.end(), floats.begin(),
-                             floats.end());
+    auto& queue = session->pcmQueue;
+    queue.insert(queue.end(), floats.begin(), floats.end());
+    if (queue.size() > kMaxQueuedSamples)
+      queue.erase(queue.begin(),
+                  queue.begin() + static_cast<std::ptrdiff_t>(queue.size() - kMaxQueuedSamples));
   }
   session->pcmCv.notify_one();
 }
