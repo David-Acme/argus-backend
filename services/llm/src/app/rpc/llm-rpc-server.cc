@@ -131,6 +131,7 @@ ChatRequest chatRequest(const wire::ChatRequest& wireRequest)
   request.lang = wireRequest.lang();
   request.clientActions = wireRequest.client_actions();
   request.sessionId = wireRequest.session_id();
+  request.prefillOnly = wireRequest.prefill_only();
   return request;
 }
 

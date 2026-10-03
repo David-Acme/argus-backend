@@ -329,6 +329,8 @@ std::string LlmHttpClient::chatBody(const ChatRequest& request) const
     body["lang"] = request.lang;
   if (!request.sessionId.empty())
     body["session_id"] = request.sessionId;
+  if (request.prefillOnly)
+    body["prefill_only"] = true;
 
   Json::StreamWriterBuilder builder;
   builder["indentation"] = "";

@@ -98,6 +98,7 @@ ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
   input.resetContext = args.request.resetContext;
   input.answerMaxTokens = args.request.maxTokens > 0 ? args.request.maxTokens
                                                      : args.defaultMaxTokens;
+  input.prefillOnly = args.request.prefillOnly;
   return input;
 }
 

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #include <drogon/drogon.h>
+#include <limits>
 #include <llama.h>
 #include <config/config-service.hxx>
 #include <runtime/ai-init.hxx>
@@ -17,6 +18,9 @@
 
 namespace
 {
+
+constexpr std::size_t kMaxCheckpoints = 8;
+constexpr std::size_t kCheckpointsPerPrefill = 3;
 
 ggml_type kvTypeFromConfig(const std::string& name)
 {
@@ -134,6 +138,10 @@ void LlmService::init()
     context_.reset(rawCtx);
 
     nBatch_ = static_cast<int32_t>(ctxParams.n_batch);
+    tailLocked_ = llama_model_is_recurrent(model_.get()) ||
+                  llama_model_is_hybrid(model_.get());
+    messageStart_ = specialToken("<|im_start|>");
+    toolCallStart_ = specialToken("<|tool_call_start|>");
     promptBatch_ =
         std::make_unique<llama_batch>(llama_batch_init(nBatch_, 0, 1));
     genBatch_ = std::make_unique<llama_batch>(llama_batch_init(1, 0, 1));
@@ -184,6 +192,7 @@ void LlmService::shutdown()
     genBatch_.reset();
   }
   cachedTokens_.clear();
+  checkpoints_.clear();
   context_.reset();
   model_.reset();
   loaded_ = false;
@@ -228,59 +237,126 @@ std::vector<int32_t> LlmService::tokenize(const std::string& text,
   return tokens;
 }
 
+int32_t LlmService::specialToken(const std::string& text)
+{
+  const auto tokens = tokenize(text, false);
+  return tokens.size() == 1 ? tokens.front() : -1;
+}
+
+void LlmService::forgetCache()
+{
+  cachedTokens_.clear();
+  checkpoints_.clear();
+  if (auto mem = llama_get_memory(context_.get()))
+    llama_memory_clear(mem, true);
+}
+
+std::size_t LlmService::rewind(std::size_t target)
+{
+  auto* ctx = context_.get();
+  auto mem = llama_get_memory(ctx);
+  if (target == 0 || !mem)
+    return 0;
+  if (target == cachedTokens_.size())
+    return target;
+  const auto keepUpTo = [this](std::size_t tokens) {
+    std::erase_if(checkpoints_, [tokens](const PrefixCheckpoint& checkpoint) {
+      return checkpoint.tokens > tokens;
+    });
+    cachedTokens_.resize(tokens);
+    return tokens;
+  };
+  if (llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(target), -1))
+    return keepUpTo(target);
+  for (auto it = checkpoints_.rbegin(); it != checkpoints_.rend(); ++it) {
+    if (it->tokens > target)
+      continue;
+    if (llama_state_seq_set_data_ext(ctx, it->state.data(), it->state.size(), 0,
+                                     LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY) == 0 ||
+        !llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(it->tokens), -1))
+      return 0;
+    return keepUpTo(it->tokens);
+  }
+  return 0;
+}
+
+void LlmService::checkpoint(std::size_t tokens)
+{
+  auto* ctx = context_.get();
+  const std::size_t size =
+      llama_state_seq_get_size_ext(ctx, 0, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
+  if (size == 0)
+    return;
+  PrefixCheckpoint taken{.tokens = tokens, .state = std::vector<std::uint8_t>(size)};
+  if (llama_state_seq_get_data_ext(ctx, taken.state.data(), size, 0,
+                                   LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY) != size)
+    return;
+  std::erase_if(checkpoints_, [tokens](const PrefixCheckpoint& existing) {
+    return existing.tokens >= tokens;
+  });
+  checkpoints_.push_back(std::move(taken));
+  if (checkpoints_.size() > kMaxCheckpoints)
+    checkpoints_.erase(checkpoints_.begin());
+}
+
 bool LlmService::prefill(const std::vector<int32_t>& promptTokens,
                          bool forceReset)
 {
   auto* ctx = context_.get();
-  auto mem = llama_get_memory(ctx);
 
-  size_t reuse = 0;
-  if (!forceReset) {
-    const size_t limit = std::min(cachedTokens_.size(), promptTokens.size());
-    while (reuse < limit && cachedTokens_[reuse] == promptTokens[reuse])
-      ++reuse;
-    if (reuse != cachedTokens_.size())
-      reuse = 0;
-    if (reuse == promptTokens.size() && reuse > 0)
-      --reuse;
+  std::size_t reuse = 0;
+  if (!forceReset && !promptTokens.empty()) {
+    const auto diverged = std::ranges::mismatch(cachedTokens_, promptTokens);
+    const auto common = static_cast<std::size_t>(diverged.in2 - promptTokens.begin());
+    reuse = rewind(std::min(common, promptTokens.size() - 1));
   }
-
-  if (reuse > 0 && mem &&
-      !llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(reuse), -1))
-    reuse = 0;
-  if (reuse == 0 && mem)
-    llama_memory_clear(mem, true);
+  if (reuse == 0)
+    forgetCache();
 
   lastStats_.store({.promptTokens = static_cast<int32_t>(promptTokens.size()),
                     .reusedTokens = static_cast<int32_t>(reuse),
                     .decodedTokens =
                         static_cast<int32_t>(promptTokens.size() - reuse)});
 
+  std::vector<std::size_t> cuts;
+  if (tailLocked_ && messageStart_ >= 0 && !promptTokens.empty()) {
+    for (std::size_t at = promptTokens.size() - 1;
+         at > reuse + 1 && cuts.size() < kCheckpointsPerPrefill; --at) {
+      if (promptTokens[at] == messageStart_)
+        cuts.push_back(at);
+    }
+    std::ranges::reverse(cuts);
+  }
+
   auto& batch = *promptBatch_;
-  const size_t total = promptTokens.size();
+  const std::size_t total = promptTokens.size();
+  auto nextCut = cuts.begin();
+  for (std::size_t start = reuse; start < total;) {
+    std::size_t end = std::min(start + static_cast<std::size_t>(nBatch_), total);
+    if (nextCut != cuts.end() && *nextCut < end)
+      end = *nextCut;
+    const bool lastChunk = end >= total;
 
-  for (size_t start = reuse; start < total;
-       start += static_cast<size_t>(nBatch_)) {
-    const size_t count = std::min(static_cast<size_t>(nBatch_), total - start);
-    const bool lastChunk = (start + count) >= total;
-
-    for (size_t j = 0; j < count; ++j) {
-      const size_t pos = start + j;
+    for (std::size_t pos = start; pos < end; ++pos) {
+      const std::size_t j = pos - start;
       batch.token[j] = promptTokens[pos];
       batch.pos[j] = static_cast<int32_t>(pos);
       batch.n_seq_id[j] = 1;
       batch.seq_id[j][0] = 0;
-      batch.logits[j] = (lastChunk && j == count - 1) ? 1 : 0;
+      batch.logits[j] = (lastChunk && pos + 1 == end) ? 1 : 0;
     }
-    batch.n_tokens = static_cast<int32_t>(count);
+    batch.n_tokens = static_cast<int32_t>(end - start);
 
     if (llama_decode(ctx, batch) != 0) {
       LOG_WARN << "LLM: prompt decode failed at offset " << start;
-      cachedTokens_.clear();
-      if (mem)
-        llama_memory_clear(mem, true);
+      forgetCache();
       return false;
     }
+    if (nextCut != cuts.end() && *nextCut == end) {
+      checkpoint(end);
+      ++nextCut;
+    }
+    start = end;
   }
 
   cachedTokens_ = promptTokens;
@@ -307,9 +383,7 @@ void LlmService::warmup()
   batch.n_tokens = 1;
   llama_decode(ctx, batch);
 
-  if (auto mem = llama_get_memory(ctx))
-    llama_memory_clear(mem, true);
-  cachedTokens_.clear();
+  forgetCache();
 }
 
 std::string
@@ -367,7 +441,13 @@ void LlmService::generateStream(const GenerateInput& input,
   const bool resetContext = input.resetContext;
   const std::vector<std::string>& stop = input.stop;
 
-  std::scoped_lock lock(mutex_);
+  std::unique_lock lock(mutex_, std::defer_lock);
+  if (!input.prefillOnly)
+    lock.lock();
+  else if (!lock.try_lock()) {
+    onToken("", true);
+    return;
+  }
   struct BusyGuard
   {
     ~BusyGuard() { owner->busy_.store(false); }
@@ -434,6 +514,12 @@ void LlmService::generateStream(const GenerateInput& input,
       LOG_WARN << "LLM: sampling unconstrained";
     }
   }
+  if (!input.toolCallsAllowed && toolCallStart_ >= 0) {
+    const llama_logit_bias ban{.token = toolCallStart_,
+                               .bias = -std::numeric_limits<float>::infinity()};
+    llama_sampler_chain_add(smpl.get(),
+                            llama_sampler_init_logit_bias(nVocab, 1, &ban));
+  }
   llama_sampler_chain_add(smpl.get(), llama_sampler_init_top_k(topK_));
   llama_sampler_chain_add(smpl.get(), llama_sampler_init_top_p(topP_, 1));
   llama_sampler_chain_add(smpl.get(), llama_sampler_init_temp(temperature));
@@ -476,16 +562,18 @@ void LlmService::generateStream(const GenerateInput& input,
       }
     }
 
-    cachedTokens_.push_back(newToken);
-
     batch.token[0] = newToken;
     batch.pos[0] = pos++;
     batch.n_seq_id[0] = 1;
     batch.seq_id[0][0] = 0;
     batch.logits[0] = 1;
     batch.n_tokens = 1;
-    if (llama_decode(ctx, batch) != 0)
+    if (llama_decode(ctx, batch) != 0) {
+      LOG_WARN << "LLM: token decode failed at position " << pos - 1;
+      forgetCache();
       break;
+    }
+    cachedTokens_.push_back(newToken);
   }
 
   onToken("", true);
@@ -501,37 +589,30 @@ std::string LlmService::generate(const GenerateInput& input)
   return result;
 }
 
+GenerateInput LlmService::generateInput(const ChatRequest& req)
+{
+  return {.formattedPrompt = buildPrompt(req.messages),
+          .temperature =
+              req.temperature >= 0.0F ? req.temperature : defaultTemperature_,
+          .maxTokens = req.prefillOnly ? 0
+                       : req.maxTokens > 0 ? req.maxTokens
+                                           : defaultMaxTokens_,
+          .resetContext = req.resetContext,
+          .stop = req.stop,
+          .grammar = req.grammar,
+          .grammarRequired = req.grammarRequired,
+          .toolCallsAllowed = req.toolCallsAllowed,
+          .prefillOnly = req.prefillOnly};
+}
+
 std::string LlmService::chat(const ChatRequest& req)
 {
-  std::string prompt = buildPrompt(req.messages);
-  const int32_t maxTokens =
-      req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
-  const float temp =
-      req.temperature >= 0.0F ? req.temperature : defaultTemperature_;
-  return generate({.formattedPrompt = prompt,
-                   .temperature = temp,
-                   .maxTokens = maxTokens,
-                   .resetContext = req.resetContext,
-                   .stop = req.stop,
-                   .grammar = req.grammar,
-                   .grammarRequired = req.grammarRequired});
+  return generate(generateInput(req));
 }
 
 void LlmService::chatStream(const ChatRequest& req, TokenCallback onToken)
 {
-  std::string prompt = buildPrompt(req.messages);
-  const int32_t maxTokens =
-      req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
-  const float temp =
-      req.temperature >= 0.0F ? req.temperature : defaultTemperature_;
-  generateStream({.formattedPrompt = prompt,
-                  .temperature = temp,
-                  .maxTokens = maxTokens,
-                  .resetContext = req.resetContext,
-                  .stop = req.stop,
-                  .grammar = req.grammar,
-                  .grammarRequired = req.grammarRequired},
-                 std::move(onToken));
+  generateStream(generateInput(req), std::move(onToken));
 }
 
 drogon::Task<std::string> LlmService::chatAsync(const ChatRequest& req)
@@ -550,19 +631,7 @@ drogon::Task<void> LlmService::chatStreamAsync(const ChatRequest& req,
           drogon::app().getLoop()->queueInLoop(
               [callback, token, done]() { callback(token, done); });
         };
-        std::string prompt = buildPrompt(req.messages);
-        const int32_t maxTokens =
-            req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
-        const float temp =
-            req.temperature >= 0.0F ? req.temperature : defaultTemperature_;
-        generateStream({.formattedPrompt = prompt,
-                        .temperature = temp,
-                        .maxTokens = maxTokens,
-                        .resetContext = req.resetContext,
-                        .stop = req.stop,
-                        .grammar = req.grammar,
-                        .grammarRequired = req.grammarRequired},
-                       std::move(wrapped));
+        generateStream(generateInput(req), std::move(wrapped));
       });
   co_return;
 }

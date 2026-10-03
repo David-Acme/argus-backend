@@ -293,12 +293,14 @@ TEST_CASE("The llm http client carries the caller's user, role and language")
   request.role = UserRole::Owner;
   request.lang = "en";
   request.sessionId = "voice-7-1700000000000";
+  request.prefillOnly = true;
   static_cast<void>(client.chat(request));
   const std::string body = server.lastBody();
   CHECK(body.find("\"user_id\":7") != std::string::npos);
   CHECK(body.find("\"role\":\"owner\"") != std::string::npos);
   CHECK(body.find("\"lang\":\"en\"") != std::string::npos);
   CHECK(body.find("\"session_id\":\"voice-7-1700000000000\"") != std::string::npos);
+  CHECK(body.find("\"prefill_only\":true") != std::string::npos);
 
   static_cast<void>(client.chat(greeting()));
   const std::string defaults = server.lastBody();
@@ -306,6 +308,7 @@ TEST_CASE("The llm http client carries the caller's user, role and language")
   CHECK(defaults.find("\"lang\"") == std::string::npos);
   CHECK(defaults.find("\"user_id\"") == std::string::npos);
   CHECK(defaults.find("\"session_id\"") == std::string::npos);
+  CHECK(defaults.find("\"prefill_only\"") == std::string::npos);
 }
 
 TEST_CASE("A stop request ends the http stream without waiting for the generation")

@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <auth/user-role.hxx>
+#include <cstddef>
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <functional>
@@ -36,6 +37,8 @@ struct ChatRequest
   std::string lang{};
   bool clientActions{false};
   std::string sessionId{};
+  bool toolCallsAllowed{true};
+  bool prefillOnly{false};
 };
 
 using TokenCallback = std::function<void(const std::string& token, bool done)>;
@@ -73,6 +76,14 @@ struct GenerateInput
   std::vector<std::string> stop;
   std::string grammar;
   bool grammarRequired{false};
+  bool toolCallsAllowed{true};
+  bool prefillOnly{false};
+};
+
+struct PrefixCheckpoint
+{
+  std::size_t tokens{0};
+  std::vector<std::uint8_t> state;
 };
 
 class LlmService
@@ -111,7 +122,12 @@ private:
   static std::string
   buildChatMlPrompt(const std::vector<ChatMessage>& messages);
   std::vector<int32_t> tokenize(const std::string& text, bool addSpecial);
+  int32_t specialToken(const std::string& text);
   bool prefill(const std::vector<int32_t>& promptTokens, bool forceReset);
+  std::size_t rewind(std::size_t target);
+  void checkpoint(std::size_t tokens);
+  void forgetCache();
+  GenerateInput generateInput(const ChatRequest& req);
   std::string generate(const GenerateInput& input);
   void generateStream(const GenerateInput& input, TokenCallback onToken);
 
@@ -120,6 +136,10 @@ private:
   std::unique_ptr<llama_batch> promptBatch_;
   std::unique_ptr<llama_batch> genBatch_;
   std::vector<int32_t> cachedTokens_;
+  std::vector<PrefixCheckpoint> checkpoints_;
+  bool tailLocked_ = false;
+  int32_t messageStart_ = -1;
+  int32_t toolCallStart_ = -1;
   std::string chatTemplate_;
   int64_t contextSize_ = 0;
   int32_t nBatch_ = 1024;

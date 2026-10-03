@@ -1,11 +1,13 @@
 #include "lfm-adapter.hxx"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstring>
 #include <drogon/drogon.h>
 #include <json/reader.h>
 #include <json/writer.h>
+#include <feature/llm/services/tools/tool-registry.hxx>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -28,6 +30,10 @@ std::string jsonType(const tools::ToolArgumentSpec& spec)
 
 Json::Value bareValue(const std::string& token)
 {
+  if (token == "True" || token == "true")
+    return Json::Value(true);
+  if (token == "False" || token == "false")
+    return Json::Value(false);
   try {
     std::size_t used = 0;
     if (token.find('.') != std::string::npos) {
@@ -46,96 +52,193 @@ Json::Value bareValue(const std::string& token)
   return Json::Value(token);
 }
 
-std::string trimKey(const std::string& raw)
+std::string trimKey(std::string_view raw)
 {
-  static const std::string junk = " \t\",";
+  static constexpr std::string_view junk = " \t\r\n\",'";
   const size_t begin = raw.find_first_not_of(junk);
-  if (begin == std::string::npos)
+  if (begin == std::string_view::npos)
     return {};
   const size_t end = raw.find_last_not_of(junk);
-  return raw.substr(begin, end - begin + 1);
+  return std::string(raw.substr(begin, end - begin + 1));
 }
 
-std::vector<tools::ToolCall> parsePythonic(const std::string& text)
+class PythonicScanner
 {
-  std::vector<tools::ToolCall> out;
-  size_t pos = 0;
-  while (true) {
-    const size_t open = text.find('[', pos);
-    if (open == std::string::npos)
-      break;
-    const size_t close = text.find(']', open);
-    if (close == std::string::npos)
-      break;
-    const std::string block = text.substr(open + 1, close - open - 1);
-    pos = close + 1;
+public:
+  explicit PythonicScanner(std::string_view text) : text_(text) {}
 
-    size_t start = 0;
-    while (start < block.size()) {
-      const size_t paren = block.find('(', start);
-      if (paren == std::string::npos)
+  std::vector<tools::ToolCall> calls()
+  {
+    std::vector<tools::ToolCall> out;
+    size_t from = 0;
+    while (true) {
+      const size_t open = text_.find('[', from);
+      if (open == std::string_view::npos)
         break;
-      const size_t end = block.find(')', paren);
-      if (end == std::string::npos)
-        break;
-      const std::string name = block.substr(start, paren - start);
-      const std::string body = block.substr(paren + 1, end - paren - 1);
-      start = end + 1;
-
-      std::string trimmed = name;
-      while (!trimmed.empty() &&
-             (trimmed.front() == ' ' || trimmed.front() == ','))
-        trimmed.erase(trimmed.begin());
-      while (!trimmed.empty() &&
-             (trimmed.back() == ' ' || trimmed.back() == ','))
-        trimmed.pop_back();
-      if (trimmed.empty())
-        continue;
-
-      tools::ToolCall call;
-      call.name = trimmed;
-      Json::Value args(Json::objectValue);
-      size_t argPos = 0;
-      while (argPos < body.size()) {
-        const size_t eq = body.find('=', argPos);
-        if (eq == std::string::npos)
-          break;
-        std::string key = trimKey(body.substr(argPos, eq - argPos));
-        size_t valueStart = eq + 1;
-        while (valueStart < body.size() && body[valueStart] == ' ')
-          ++valueStart;
-        if (valueStart >= body.size())
-          break;
-        std::string value;
-        if (body[valueStart] == '"' || body[valueStart] == '\'') {
-          const char quote = body[valueStart];
-          ++valueStart;
-          while (valueStart < body.size() && body[valueStart] != quote) {
-            if (body[valueStart] == '\\' && valueStart + 1 < body.size())
-              ++valueStart;
-            value += body[valueStart];
-            ++valueStart;
-          }
-          argPos = valueStart < body.size() ? valueStart + 1 : body.size();
-        }
-        else {
-          while (valueStart < body.size() && body[valueStart] != ',')
-            value += body[valueStart++];
-          argPos = valueStart;
-          args[key] = bareValue(value);
-          continue;
-        }
-        args[key] = value;
-        while (argPos < body.size() && body[argPos] != ',')
-          ++argPos;
-        if (argPos < body.size())
-          ++argPos;
+      at_ = open + 1;
+      std::vector<tools::ToolCall> listed;
+      if (callList(listed)) {
+        for (auto& call : listed)
+          out.push_back(std::move(call));
+        from = at_;
       }
-      call.arguments = args;
+      else {
+        from = open + 1;
+      }
+    }
+    return out;
+  }
+
+private:
+  [[nodiscard]] bool done() const { return at_ >= text_.size(); }
+
+  void skip(std::string_view chars)
+  {
+    while (!done() && chars.find(text_[at_]) != std::string_view::npos)
+      ++at_;
+  }
+
+  bool callList(std::vector<tools::ToolCall>& out)
+  {
+    while (true) {
+      skip(" \t\r\n,");
+      if (done())
+        return false;
+      if (text_[at_] == ']') {
+        ++at_;
+        return !out.empty();
+      }
+      tools::ToolCall call;
+      if (!callName(call.name) || !callArguments(call.arguments))
+        return false;
       out.push_back(std::move(call));
     }
   }
-  return out;
+
+  bool callName(std::string& name)
+  {
+    const size_t begin = at_;
+    while (!done() && (std::isalnum(static_cast<unsigned char>(text_[at_])) != 0 ||
+                       text_[at_] == '.' || text_[at_] == '_' || text_[at_] == '-'))
+      ++at_;
+    name = std::string(text_.substr(begin, at_ - begin));
+    skip(" \t");
+    if (name.empty() || done() || text_[at_] != '(')
+      return false;
+    ++at_;
+    return true;
+  }
+
+  bool callArguments(Json::Value& arguments)
+  {
+    arguments = Json::Value(Json::objectValue);
+    while (true) {
+      skip(" \t\r\n,");
+      if (done())
+        return false;
+      if (text_[at_] == ')') {
+        ++at_;
+        return true;
+      }
+      const size_t keyBegin = at_;
+      while (!done() && text_[at_] != '=' && text_[at_] != ')')
+        ++at_;
+      if (done())
+        return false;
+      if (text_[at_] == ')')
+        continue;
+      const std::string key = trimKey(text_.substr(keyBegin, at_ - keyBegin));
+      ++at_;
+      skip(" \t");
+      if (done())
+        return false;
+      Json::Value value;
+      if (!argumentValue(value))
+        return false;
+      if (!key.empty() && !value.isNull())
+        arguments[key] = std::move(value);
+    }
+  }
+
+  bool argumentValue(Json::Value& value)
+  {
+    const char first = text_[at_];
+    if (first == '"' || first == '\'')
+      return quoted(value);
+    if (first == '{' || first == '[')
+      return nested(value);
+    const size_t begin = at_;
+    while (!done() && text_[at_] != ',' && text_[at_] != ')')
+      ++at_;
+    const std::string token = trimKey(text_.substr(begin, at_ - begin));
+    if (token != "None" && token != "null")
+      value = bareValue(token);
+    return true;
+  }
+
+  bool quoted(Json::Value& value)
+  {
+    const char quote = text_[at_++];
+    std::string decoded;
+    while (!done() && text_[at_] != quote) {
+      char c = text_[at_++];
+      if (c == '\\' && !done()) {
+        c = text_[at_++];
+        if (c == 'n')
+          c = '\n';
+        else if (c == 'r')
+          c = '\r';
+        else if (c == 't')
+          c = '\t';
+      }
+      decoded += c;
+    }
+    if (done())
+      return false;
+    ++at_;
+    value = Json::Value(decoded);
+    return true;
+  }
+
+  bool nested(Json::Value& value)
+  {
+    const size_t begin = at_;
+    int depth = 0;
+    char quote = 0;
+    for (; !done(); ++at_) {
+      const char c = text_[at_];
+      if (quote != 0) {
+        if (c == '\\')
+          ++at_;
+        else if (c == quote)
+          quote = 0;
+        continue;
+      }
+      if (c == '"' || c == '\'')
+        quote = c;
+      else if (c == '{' || c == '[')
+        ++depth;
+      else if ((c == '}' || c == ']') && --depth == 0) {
+        ++at_;
+        const std::string raw(text_.substr(begin, at_ - begin));
+        Json::CharReaderBuilder builder;
+        std::string errors;
+        std::istringstream in(raw);
+        if (!Json::parseFromStream(builder, in, &value, &errors))
+          value = Json::Value(raw);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  std::string_view text_;
+  size_t at_{0};
+};
+
+std::vector<tools::ToolCall> parsePythonic(const std::string& text)
+{
+  return PythonicScanner(text).calls();
 }
 
 struct TryJsonInput
@@ -309,7 +412,9 @@ std::vector<tools::ToolCall> LfmAdapter::parseToolCalls(const std::string& text)
       parsed = true;
     }
     else {
-      const auto pythonic = parsePythonic(block);
+      const size_t first = block.find_first_not_of(" \t\r\n");
+      const bool bare = first != std::string::npos && block[first] != '[';
+      const auto pythonic = parsePythonic(bare ? "[" + block + "]" : block);
       if (!pythonic.empty()) {
         for (const auto& call : pythonic)
           calls.push_back(call);
@@ -361,7 +466,7 @@ std::string LfmAdapter::streamHop(const StreamHopInput& input)
   std::string reply;
   std::string held;
   input.streamed = false;
-  llm_.chatStream(input.request, [&](const std::string& token, bool done) {
+  engine_.chatStream(input.request, [&](const std::string& token, bool done) {
     if (done) {
       if (input.streamed)
         input.onToken("", true);
@@ -389,7 +494,8 @@ std::string lastUserMessage(const std::vector<ChatMessage>& history)
   const auto found = std::find_if(
       history.rbegin(), history.rend(),
       [](const ChatMessage& message) { return message.role == "user"; });
-  return found == history.rend() ? std::string() : found->content;
+  return found == history.rend() ? std::string()
+                                 : LfmAdapter::spokenText(found->content);
 }
 
 std::optional<tools::ToolCall> routedCall(intent::ToolIntent decided,
@@ -410,12 +516,116 @@ std::optional<tools::ToolCall> routedCall(intent::ToolIntent decided,
       call.name = "memory.remind";
       call.arguments["text"] = utterance;
       break;
+    case intent::ToolIntent::MemoryForget:
+      call.name = "memory.forget";
+      call.arguments["query"] = utterance;
+      break;
     default:
       return std::nullopt;
   }
   return call;
 }
 
+std::string quotedArgument(const std::string& value)
+{
+  std::string out = "'";
+  for (const char c : value) {
+    switch (c) {
+      case '\\':
+        out += "\\\\";
+        break;
+      case '\'':
+        out += "\\'";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      default:
+        out += c;
+    }
+  }
+  out += '\'';
+  return out;
+}
+
+std::string renderedArgument(const Json::Value& value)
+{
+  if (value.isString())
+    return quotedArgument(value.asString());
+  if (value.isBool())
+    return value.asBool() ? "True" : "False";
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, value);
+}
+
+}
+
+LfmAdapter::LfmAdapter(LlmService& llm, const IntentRouter* router)
+    : LfmAdapter(LfmAdapterInput{
+          .engine = {.chat = [&llm](const ChatRequest& request) { return llm.chat(request); },
+                     .chatStream =
+                         [&llm](const ChatRequest& request, TokenCallback onToken) {
+                           llm.chatStream(request, std::move(onToken));
+                         }},
+          .registry = ToolRegistry::instance(),
+          .router = router})
+{
+}
+
+LfmAdapter::LfmAdapter(LfmAdapterInput input)
+    : engine_(std::move(input.engine)), registry_(input.registry),
+      router_(input.router), executor_(input.registry)
+{
+}
+
+bool LfmAdapter::offered(const tools::ToolCall& call,
+                         const std::vector<const tools::ToolDescriptor*>& tools) const
+{
+  const auto* descriptor = registry_.find(call.name);
+  return descriptor != nullptr && std::ranges::find(tools, descriptor) != tools.end();
+}
+
+std::string LfmAdapter::spokenText(const std::string& content)
+{
+  std::string_view text(content);
+  const auto trimmed = [](std::string_view line) {
+    const size_t first = line.find_first_not_of(" \t\r\n");
+    if (first == std::string_view::npos)
+      return std::string_view();
+    const size_t last = line.find_last_not_of(" \t\r\n");
+    return line.substr(first, last - first + 1);
+  };
+  while (true) {
+    const std::string_view body = trimmed(text);
+    const size_t lineStart = body.rfind('\n');
+    if (lineStart == std::string_view::npos)
+      return std::string(body);
+    const std::string_view line = trimmed(body.substr(lineStart + 1));
+    if (line.size() < 2 || line.front() != '(' || line.back() != ')')
+      return std::string(body);
+    text = body.substr(0, lineStart);
+  }
+}
+
+std::string LfmAdapter::renderToolCall(const tools::ToolCall& call)
+{
+  std::string rendered = std::string(kToolOpen) + "[" + call.name + "(";
+  bool first = true;
+  if (call.arguments.isObject()) {
+    for (const auto& name : call.arguments.getMemberNames()) {
+      if (!first)
+        rendered += ", ";
+      first = false;
+      rendered += name + "=" + renderedArgument(call.arguments[name]);
+    }
+  }
+  rendered += ")]";
+  rendered += kToolClose;
+  return rendered;
 }
 
 bool LfmAdapter::routedTurn(ToolHopContext ctx)
@@ -432,7 +642,7 @@ bool LfmAdapter::routedTurn(ToolHopContext ctx)
     return false;
 
   auto call = routedCall(decision.intent, utterance);
-  if (!call || ToolRegistry::instance().find(call->name) == nullptr)
+  if (!call || !offered(*call, ctx.input.tools))
     return false;
 
   call->context = ctx.input.context;
@@ -444,7 +654,7 @@ bool LfmAdapter::routedTurn(ToolHopContext ctx)
   ctx.output.toolMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::steady_clock::now() - toolStart)
                           .count();
-  if (!executed.ok) {
+  if (!executed.ok && decision.intent == intent::ToolIntent::MemoryForget) {
     LOG_WARN << "LfmAdapter: routed tool '" << call->name
              << "' failed: " << executed.output << "; falling back to the "
              << "tool loop";
@@ -454,9 +664,10 @@ bool LfmAdapter::routedTurn(ToolHopContext ctx)
   LOG_INFO << "LfmAdapter: router picked '" << call->name << "' ("
            << intent::toolIntentToString(decision.intent) << " score "
            << decision.score << (decision.fromRules ? ", rules" : ", model")
-           << "): " << executed.output;
+           << (executed.ok ? "): " : ") and it failed: ") << executed.output;
   ctx.output.executed.push_back(*call);
   ctx.output.hops = 1;
+  ctx.history.push_back({.role = "assistant", .content = renderToolCall(*call)});
   ctx.history.push_back({.role = "tool", .content = executed.output});
   proseAnswer(ctx, ctx.input.toolTemperature);
   return true;
@@ -467,18 +678,19 @@ void LfmAdapter::proseAnswer(ToolHopContext ctx, float temperature)
   ChatRequest req;
   req.messages = hopMessages({.history = ctx.history,
                               .system = ctx.input.systemPrompt,
-                              .declarations = std::string()});
+                              .declarations = ctx.declarations});
   req.maxTokens =
       ctx.input.answerMaxTokens > 0 ? ctx.input.answerMaxTokens : 512;
   req.temperature = temperature;
   req.resetContext = false;
   req.stop = {};
+  req.toolCallsAllowed = false;
 
   const auto genStart = std::chrono::steady_clock::now();
   std::string reply;
   if (ctx.onToken != nullptr) {
     const TokenCallback& onToken = *ctx.onToken;
-    llm_.chatStream(req, [&reply, &onToken](const std::string& token,
+    engine_.chatStream(req, [&reply, &onToken](const std::string& token,
                                             bool done) {
       reply += token;
       onToken(token, done);
@@ -486,7 +698,7 @@ void LfmAdapter::proseAnswer(ToolHopContext ctx, float temperature)
     ctx.output.emitted = true;
   }
   else {
-    reply = llm_.chat(req);
+    reply = engine_.chat(req);
   }
   ctx.output.generateMs +=
       std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -496,46 +708,78 @@ void LfmAdapter::proseAnswer(ToolHopContext ctx, float temperature)
   ctx.history.push_back({.role = "assistant", .content = reply});
 }
 
-bool LfmAdapter::toolHops(ToolHopContext ctx, const std::string& declarations)
+ChatRequest LfmAdapter::hopRequest(const ToolHopContext& ctx) const
+{
+  ChatRequest req;
+  req.messages = hopMessages({.history = ctx.history,
+                              .system = ctx.input.systemPrompt,
+                              .declarations = ctx.declarations});
+  req.maxTokens = ctx.input.answerMaxTokens > 0 ? ctx.input.answerMaxTokens : 512;
+  req.temperature = ctx.input.toolTemperature;
+  req.resetContext = ctx.output.hops == 0 && ctx.input.resetContext;
+  if (!ctx.declarations.empty())
+    req.stop = {kToolClose};
+  req.prefillOnly = ctx.input.prefillOnly;
+  return req;
+}
+
+bool LfmAdapter::toolHops(ToolHopContext ctx)
 {
   const ToolChatInput& input = ctx.input;
   std::vector<ChatMessage>& history = ctx.history;
   ToolChatOutput& output = ctx.output;
   const TokenCallback* onToken = ctx.onToken;
-  const int32_t cap =
-      input.answerMaxTokens > 0 ? input.answerMaxTokens : 512;
+  std::vector<tools::ToolResult> succeeded;
   for (output.hops = 0; output.hops < input.maxHops; ++output.hops) {
-    ChatRequest req;
-    req.messages = hopMessages({.history = history,
-                                .system = input.systemPrompt,
-                                .declarations = declarations});
-    req.maxTokens = cap;
-    req.temperature = input.toolTemperature;
-    req.resetContext = output.hops == 0 && input.resetContext;
-    if (!declarations.empty())
-      req.stop = {kToolClose};
+    const ChatRequest req = hopRequest(ctx);
 
     bool streamed = false;
     const auto genStart = std::chrono::steady_clock::now();
     const std::string reply =
         onToken
             ? streamHop({.request = req, .onToken = *onToken, .streamed = streamed})
-            : llm_.chat(req);
+            : engine_.chat(req);
     output.generateMs += std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::steady_clock::now() - genStart)
                              .count();
     history.push_back({.role = "assistant", .content = reply});
 
-    const auto calls =
-        streamed ? std::vector<tools::ToolCall>{} : parseToolCalls(reply);
+    std::vector<tools::ToolCall> calls;
+    bool attempted = false;
+    if (!streamed) {
+      attempted = reply.find(kToolOpen) != std::string::npos;
+      for (auto& call : parseToolCalls(reply)) {
+        attempted = true;
+        if (offered(call, input.tools))
+          calls.push_back(std::move(call));
+        else
+          LOG_WARN << "LfmAdapter: dropped a call to '" << call.name
+                   << "', a tool this turn does not offer";
+      }
+    }
     if (calls.empty()) {
+      if (attempted) {
+        history.pop_back();
+        LOG_INFO << "LfmAdapter: the reply held no call this turn can run; "
+                    "answering in prose";
+        return false;
+      }
       output.reply = reply;
       output.emitted = streamed;
       return true;
     }
 
     const std::string utterance = lastUserMessage(history);
+    bool ranAny = false;
     for (auto call : calls) {
+      const auto earlier = std::ranges::find(succeeded, call.name, &tools::ToolResult::tool);
+      if (earlier != succeeded.end()) {
+        LOG_INFO << "LfmAdapter: '" << call.name
+                 << "' already ran this turn; its result is reused";
+        history.push_back({.role = "tool", .content = earlier->output});
+        continue;
+      }
+      ranAny = true;
       call.context = input.context;
       call.context.utterance = utterance;
       const auto toolStart = std::chrono::steady_clock::now();
@@ -543,9 +787,11 @@ bool LfmAdapter::toolHops(ToolHopContext ctx, const std::string& declarations)
       output.toolMs += std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - toolStart)
                            .count();
-      if (executed.ok)
+      if (executed.ok) {
         LOG_INFO << "LfmAdapter: tool '" << call.name
                  << "' ok: " << executed.output;
+        succeeded.push_back(executed);
+      }
       else {
         Json::StreamWriterBuilder builder;
         builder["indentation"] = "";
@@ -556,6 +802,11 @@ bool LfmAdapter::toolHops(ToolHopContext ctx, const std::string& declarations)
       output.executed.push_back(call);
       history.push_back({.role = "tool", .content = executed.output});
     }
+    if (!ranAny) {
+      LOG_INFO << "LfmAdapter: the model repeated a call it already made; "
+                  "answering in prose";
+      return false;
+    }
   }
   return false;
 }
@@ -564,20 +815,26 @@ ToolChatOutput LfmAdapter::chatWithTools(const ToolChatInput& input,
                                          std::vector<ChatMessage>& history)
 {
   ToolChatOutput output;
-  const ToolHopContext ctx{
-      .input = input, .history = history, .output = output, .onToken = nullptr};
-
-  if (routedTurn(ctx))
-    return output;
-
   const std::string declarations = input.tools.empty()
                                        ? std::string()
                                        : buildToolDeclarations(input.tools);
-  if (toolHops(ctx, declarations))
+  const ToolHopContext ctx{.input = input,
+                           .history = history,
+                           .output = output,
+                           .onToken = nullptr,
+                           .declarations = declarations};
+
+  if (input.prefillOnly) {
+    engine_.chat(hopRequest(ctx));
+    return output;
+  }
+  if (routedTurn(ctx))
+    return output;
+  if (toolHops(ctx))
     return output;
 
-  LOG_WARN << "LfmAdapter: tool loop exhausted after " << input.maxHops
-           << " hops";
+  LOG_WARN << "LfmAdapter: tool loop ended after " << output.hops
+           << " hops without a prose answer";
   proseAnswer(ctx, input.temperature);
   return output;
 }
@@ -590,18 +847,24 @@ ToolChatOutput LfmAdapter::chatWithToolsStream(
   const TokenCallback& onToken = args.onToken;
 
   ToolChatOutput output;
-  const ToolHopContext ctx{.input = input,
-                           .history = history,
-                           .output = output,
-                           .onToken = &onToken};
-
-  if (routedTurn(ctx))
-    return output;
-
   const std::string declarations = input.tools.empty()
                                        ? std::string()
                                        : buildToolDeclarations(input.tools);
-  if (toolHops(ctx, declarations)) {
+  const ToolHopContext ctx{.input = input,
+                           .history = history,
+                           .output = output,
+                           .onToken = &onToken,
+                           .declarations = declarations};
+
+  if (input.prefillOnly) {
+    engine_.chatStream(hopRequest(ctx), onToken);
+    output.emitted = true;
+    return output;
+  }
+  if (routedTurn(ctx))
+    return output;
+
+  if (toolHops(ctx)) {
     if (!output.emitted) {
       onToken(output.reply, false);
       onToken("", true);
@@ -609,8 +872,8 @@ ToolChatOutput LfmAdapter::chatWithToolsStream(
     return output;
   }
 
-  LOG_WARN << "LfmAdapter: tool loop exhausted after " << input.maxHops
-           << " hops";
+  LOG_WARN << "LfmAdapter: tool loop ended after " << output.hops
+           << " hops without a prose answer";
   proseAnswer(ctx, input.temperature);
   return output;
 }

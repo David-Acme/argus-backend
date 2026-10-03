@@ -172,6 +172,7 @@ wire::ChatRequest wireRequest(const ChatRequest& input)
   request.set_grammar(input.grammar);
   request.set_grammar_required(input.grammarRequired);
   request.set_session_id(input.sessionId);
+  request.set_prefill_only(input.prefillOnly);
   return request;
 }
 
@@ -828,6 +829,7 @@ TEST_CASE("the caller's role and language cross the wire, an absent role is a gu
   owner.role = UserRole::Owner;
   owner.lang = "en";
   owner.sessionId = "voice-7-1700000000000";
+  owner.prefillOnly = true;
   CHECK(client.chat(owner) == "ok");
   ChatRequest guard = ask();
   guard.role = UserRole::Guard;
@@ -841,7 +843,9 @@ TEST_CASE("the caller's role and language cross the wire, an absent role is a gu
   CHECK(seen[0].role == UserRole::Owner);
   CHECK(seen[0].lang == "en");
   CHECK(seen[0].sessionId == "voice-7-1700000000000");
+  CHECK(seen[0].prefillOnly);
   CHECK(seen[1].sessionId.empty());
+  CHECK_FALSE(seen[1].prefillOnly);
   CHECK(seen[1].role == UserRole::Guard);
   CHECK(seen[1].lang.empty());
   CHECK(seen[2].role == UserRole::Guest);

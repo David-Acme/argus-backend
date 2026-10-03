@@ -33,8 +33,10 @@ controller.
   RPCs and one **server-streaming** RPC — `Capabilities` (loaded, the engine's
   default token cap and temperature, the context size and the three last-prefill
   counters), `Chat` (the messages, the generation steering and the caller's
-  user id, the caller's `CallerRole` and `lang` in, the completion out;
-  `CALLER_ROLE_UNSPECIFIED` is read as a guest) and `ChatStream` (the same request in, a
+  user id, the caller's `CallerRole` and `lang`, the call's `session_id`
+  and `prefill_only` in, the completion out; `CALLER_ROLE_UNSPECIFIED` is
+  read as a guest, and `prefill_only` asks the engine to load the prompt into
+  its cache and answer an empty completion) and `ChatStream` (the same request in, a
   `ChatToken` per token out, terminated by a token whose `done` is set and
   which carries the prefill stats the HTTP leg's sentinel line carries). It is
   the second streaming RPC among the five boundary contracts (`response`,

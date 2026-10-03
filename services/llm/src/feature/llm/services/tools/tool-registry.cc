@@ -47,5 +47,6 @@ std::vector<std::string> ToolRegistry::names() const
   out.reserve(tools_.size());
   for (const auto& [name, descriptor] : tools_)
     out.push_back(name);
+  std::ranges::sort(out);
   return out;
 }

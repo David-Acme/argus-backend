@@ -420,6 +420,49 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
            << " tokens (" << static_cast<int>(historyMs) << " ms)");
   CHECK(afterHistory["info"]["lastReusedTokens"].asInt() > 0);
 
+  const std::string tornBody =
+      historyBody({.first = "Di exactamente: hola",
+                   .answer = "Hola, te interrumpo",
+                   .followUp = "Y ahora despidete"});
+  CHECK(envelope({0, postChat(port, tornBody)})["status"].asInt() == 200);
+  const Json::Value afterTorn = envelope(request(
+      {.port = port,
+       .method = "GET",
+       .path = "/llm/v1/config",
+       .body = "",
+       .contentType = ""}));
+  MESSAGE("a reply cut short reused "
+          << afterTorn["info"]["lastReusedTokens"].asInt() << " of "
+          << afterTorn["info"]["lastPromptTokens"].asInt() << " tokens");
+  CHECK(afterTorn["info"]["lastReusedTokens"].asInt() > 0);
+  CHECK(afterTorn["info"]["lastDecodedTokens"].asInt() <
+        afterTorn["info"]["lastPromptTokens"].asInt());
+
+  Json::Value primeBody;
+  REQUIRE(Json::Reader().parse(chatBody("Me llamo Ana y vivo en Quito"), primeBody));
+  primeBody["prefill_only"] = true;
+  Json::StreamWriterBuilder primeWriter;
+  primeWriter["indentation"] = "";
+  const Json::Value primed =
+      envelope({0, postChat(port, Json::writeString(primeWriter, primeBody))});
+  CHECK(primed["status"].asInt() == 200);
+  CHECK(primed["info"]["text"].asString().empty());
+  const std::string primedFollowUp =
+      historyBody({.first = "Me llamo Ana y vivo en Quito",
+                   .answer = "Encantado, Ana",
+                   .followUp = "Como me llamo?"});
+  CHECK(envelope({0, postChat(port, primedFollowUp)})["status"].asInt() == 200);
+  const Json::Value afterPrime = envelope(request(
+      {.port = port,
+       .method = "GET",
+       .path = "/llm/v1/config",
+       .body = "",
+       .contentType = ""}));
+  MESSAGE("the turn after a prefill-only call reused "
+          << afterPrime["info"]["lastReusedTokens"].asInt() << " of "
+          << afterPrime["info"]["lastPromptTokens"].asInt() << " tokens");
+  CHECK(afterPrime["info"]["lastReusedTokens"].asInt() > 0);
+
   const std::string divergentBody = chatBody("Cuantos dias tiene una semana?");
   const Json::Value divergentJson = envelope({0, postChat(port, divergentBody)});
   CHECK(divergentJson["status"].asInt() == 200);
@@ -437,8 +480,10 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   const StreamBody streamed = joinChunks(chunks);
   REQUIRE(streamed.sentinelFound);
   CHECK(streamed.sentinel["prompt_tokens"].asInt() > 0);
-  CHECK(streamed.sentinel["reused_tokens"].asInt() == 0);
+  CHECK(streamed.sentinel["reused_tokens"].asInt() > 0);
   CHECK(streamed.sentinel["decoded_tokens"].asInt() > 0);
+  CHECK(streamed.sentinel["decoded_tokens"].asInt() <
+        streamed.sentinel["prompt_tokens"].asInt());
   CHECK_FALSE(streamed.tokens.empty());
 
   CHECK(streamed.tokens == divergentText);
@@ -546,13 +591,15 @@ TEST_CASE("the chat body reaches the engine with every field it carried")
   Json::Value caller;
   REQUIRE(reader.parse(
       R"({"messages":[{"role":"user","content":"Di hola"}],"role":"owner",)"
-      R"("lang":"en","session_id":"voice-7-1700000000000"})",
+      R"("lang":"en","session_id":"voice-7-1700000000000","prefill_only":true})",
       caller));
   const ChatRequest declared = ChatCompletionDto::fromJson(caller).request();
   CHECK(declared.role == UserRole::Owner);
   CHECK(declared.lang == "en");
   CHECK(declared.sessionId == "voice-7-1700000000000");
+  CHECK(declared.prefillOnly);
   CHECK(absent.sessionId.empty());
+  CHECK_FALSE(absent.prefillOnly);
 
   Json::Value longSession = minimal;
   longSession["session_id"] = std::string(129, 's');

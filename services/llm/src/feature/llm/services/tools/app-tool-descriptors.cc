@@ -10,20 +10,23 @@ constexpr std::string_view kAppPrefix = "app.";
 struct AppActionInput
 {
   const tools::ToolCall& call;
-  std::string spoken;
+  std::string spokenEs;
+  std::string spokenEn;
 };
 
 tools::ToolResult emit(const AppActionInput& input)
 {
+  const bool english = input.call.context.lang == "en";
   tools::ToolResult result;
   result.tool = input.call.name;
   if (!input.call.context.emitAction) {
-    result.output = "la app no está conectada a esta conversación";
+    result.output = english ? "The app is not connected to this conversation."
+                            : "La app no está conectada a esta conversación.";
     return result;
   }
   input.call.context.emitAction(input.call.name, input.call.arguments);
   result.ok = true;
-  result.output = input.spoken;
+  result.output = english ? input.spokenEn : input.spokenEs;
   result.data = input.call.arguments;
   return result;
 }
@@ -54,7 +57,9 @@ std::vector<tools::ToolDescriptor> appToolDescriptors()
        .accessTable = TableName::Camera,
        .accessPermission = RolePermission::Read,
        .handler = [](const tools::ToolCall& call) {
-         return emit({.call = call, .spoken = "La app está mostrando la cámara."});
+         return emit({.call = call,
+                      .spokenEs = "La app está mostrando la cámara.",
+                      .spokenEn = "The app is showing the camera."});
        }});
   descriptors.push_back(
       {.name = "app.open",
@@ -64,7 +69,9 @@ std::vector<tools::ToolDescriptor> appToolDescriptors()
        .accessTable = TableName::Notification,
        .accessPermission = RolePermission::Read,
        .handler = [](const tools::ToolCall& call) {
-         return emit({.call = call, .spoken = "La app abrió la sección pedida."});
+         return emit({.call = call,
+                      .spokenEs = "La app abrió la sección pedida.",
+                      .spokenEn = "The app opened the requested section."});
        }});
   descriptors.push_back(
       {.name = "app.set_guard_mode",
@@ -74,7 +81,9 @@ std::vector<tools::ToolDescriptor> appToolDescriptors()
        .accessTable = TableName::Camera,
        .accessPermission = RolePermission::Update,
        .handler = [](const tools::ToolCall& call) {
-         return emit({.call = call, .spoken = "La app cambió el modo de vigilancia."});
+         return emit({.call = call,
+                      .spokenEs = "La app cambió el modo de vigilancia.",
+                      .spokenEn = "The app changed the guard mode."});
        }});
   return descriptors;
 }

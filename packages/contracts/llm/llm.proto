@@ -46,6 +46,7 @@ message ChatRequest {
   string lang = 10;
   bool client_actions = 11;
   string session_id = 12;
+  bool prefill_only = 13;
 }
 
 message ChatResponse {

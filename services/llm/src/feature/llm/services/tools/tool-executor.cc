@@ -15,14 +15,14 @@ tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call,
     return result;
   }
 
-  const auto error = tools::validateArguments(*descriptor, call);
-  if (error) {
-    result.output = *error;
+  if (!permits(*descriptor, role)) {
+    result.output = "permission denied for tool: " + call.name;
     return result;
   }
 
-  if (!permits(*descriptor, role)) {
-    result.output = "permission denied for tool: " + call.name;
+  const auto error = tools::validateArguments(*descriptor, call);
+  if (error) {
+    result.output = *error;
     return result;
   }
 

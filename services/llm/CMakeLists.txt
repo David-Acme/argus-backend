@@ -251,6 +251,16 @@ set_target_properties(llm-tool-parse-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-tool-parse-test COMMAND llm-tool-parse-test)
 
+add_executable(llm-tool-loop-test tests/unit/llm-tool-loop-test.cc)
+
+target_link_libraries(llm-tool-loop-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-tool-loop-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-tool-loop-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-tool-loop-test COMMAND llm-tool-loop-test)
+
 add_executable(llm-tool-runtime-test tests/unit/llm-tool-runtime-test.cc)
 
 target_link_libraries(llm-tool-runtime-test PRIVATE argus::llm

@@ -32,7 +32,10 @@ the `Chat` service `packages/contracts/llm/llm.proto` declares.
 
 - `src/llm/llm-service.hxx` — `ChatMessage`, `ChatRequest` (with `maxTokens`,
   `temperature`, `resetContext`, `toolsEnabled`, `stop`, `grammar`,
-  `grammarRequired` and `userId`), `TokenCallback`, `LlmPrefillStats`,
+  `grammarRequired`, `userId`, `role`, `lang`, `clientActions`, `sessionId`
+  (at most 128 bytes), `prefillOnly`, and the in-process-only
+  `toolCallsAllowed`, which never crosses a wire), `TokenCallback`,
+  `LlmPrefillStats`,
   `LlmStreamInput`,
   `GenerateInput`, and the `LlmService` in-process engine's own declaration;
   16 files include it.
@@ -86,7 +89,9 @@ the `Chat` service `packages/contracts/llm/llm.proto` declares.
   is not an error. `ChatRequest` carries the caller's `role` (default
   `UserRole::Guest`) and `lang` (`""`, `es` or `en`, anything else is 400);
   the HTTP body now sends `user_id`, `role` and `lang` as well, which it used
-  to drop.
+  to drop, plus `session_id` and `prefill_only` when they are set. A
+  `sessionId` over 128 bytes is refused locally with 400 before any channel
+  is used.
 - The stream's `done` token is the client's end-of-stream marker:
   `chatStream` delivers each token through `onToken(text, false)`, writes the
   three counters into `LlmStreamInput::stats` from the terminating token, then

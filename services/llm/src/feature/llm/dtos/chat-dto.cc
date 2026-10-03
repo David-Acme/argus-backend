@@ -43,6 +43,8 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
     dto.lang = json["lang"].asString();
   if (json.isMember("session_id") && json["session_id"].isString())
     dto.sessionId = json["session_id"].asString();
+  if (json.isMember("prefill_only") && json["prefill_only"].isBool())
+    dto.prefillOnly = json["prefill_only"].asBool();
 
   START_VALIDATION(ChatCompletionDto, dto)
   ARRAY_NOT_EMPTY(messages, ChatMessageDto)
@@ -112,5 +114,6 @@ ChatRequest ChatCompletionDto::request() const
   req.role = userRoleFromString(role.value_or(userRoleToString(UserRole::Guest)));
   req.lang = lang.value_or(std::string());
   req.sessionId = sessionId;
+  req.prefillOnly = prefillOnly;
   return req;
 }

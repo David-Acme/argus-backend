@@ -122,6 +122,7 @@ wire::ChatRequest wireRequest(const ChatRequest& request)
   wire.set_lang(request.lang);
   wire.set_client_actions(request.clientActions);
   wire.set_session_id(request.sessionId);
+  wire.set_prefill_only(request.prefillOnly);
   return wire;
 }
 }
