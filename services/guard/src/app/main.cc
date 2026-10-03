@@ -11,6 +11,7 @@
 #include <auth/jwt-filter.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
+#include <http/certificate-reload.hxx>
 #include <http/error-handler.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
@@ -213,6 +214,7 @@ int main()
 
   drogon::app().loadConfigJson(
       drogonConfig({.dbPath = db.dbPath, .listener = listener}));
+  certificate_reload::watch(listener);
 
   drogon::app().registerBeginningAdvice([&db]() {
     if (!guard_schema::migrate(db.schemaPath)) {

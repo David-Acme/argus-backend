@@ -8,6 +8,7 @@
 #include <auth/valid-json-filter.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
+#include <http/certificate-reload.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
@@ -78,6 +79,7 @@ int main()
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
 
   drogon::app().loadConfigJson(drogonConfig(notificationDb, listener));
+  certificate_reload::watch(listener);
 
   drogon::app().registerPreRoutingAdvice(
       [](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&& cb,
