@@ -76,6 +76,13 @@ private:
   {
     std::string spoken;
     std::string event;
+    std::string camera;
+  };
+
+  struct CameraOffer
+  {
+    std::string camera;
+    std::chrono::steady_clock::time_point at{};
   };
 
   struct SpeakOutcome
@@ -166,6 +173,7 @@ private:
     std::deque<std::pair<int64_t, std::string>> sentActions;
     std::chrono::steady_clock::time_point lastNoticeAt{};
     std::atomic<int64_t> actionSeq{0};
+    std::optional<CameraOffer> offer;
   };
 
   std::shared_ptr<Session> sessionOf(VoiceSessionSink& sink) const;
@@ -181,6 +189,7 @@ private:
   bool sendDuplexAssistant(Session& session, AssistantSend send);
   void processTurn(Session& session, const std::vector<float>& samples);
   static ChatRequest turnRequest(Session& session);
+  bool answerOffer(Session& session, const std::string& userText);
   void primeLlm(Session& session);
   void applyNotes(Session& session);
   std::optional<Notice> takeNotice(Session& session);

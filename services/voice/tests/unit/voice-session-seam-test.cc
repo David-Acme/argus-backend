@@ -1303,3 +1303,39 @@ TEST_CASE("The LLM is primed after the greeting with the prompt the first turn e
   CHECK(llm.primeCalls.load() == 1);
   session.stop(sink);
 }
+
+TEST_CASE("A yes to Argus's camera offer shows the camera without asking the model")
+{
+  DuplexConfig config(300);
+  FakeStt stt;
+  stt.transcript = "Sí, muéstramela.";
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+
+  argus::voice::v1::VoiceContext event = cameraEvent("Entrada");
+  event.set_text("De noche, en la entrada.");
+  session.context(sink, event);
+  CHECK(waitFor([&] { return spokeText(sink, "cámara Entrada: de noche, en la entrada. ¿Quieres"); }));
+  CHECK(waitFor([&] { return !sess->speaking.load(); }));
+
+  feed({.service = session, .sink = sink, .prob = 0.95F, .windows = 20});
+  feed({.service = session, .sink = sink, .prob = 0.0F, .windows = 14});
+  CHECK(waitFor([&] { return spokeText(sink, "Aquí la tienes."); }, 3000));
+  CHECK(llm.chatStreamCalls == 0);
+  bool shown = false;
+  for (const auto& frame : sink.snapshot())
+    shown = shown || (frame.has_action() && frame.action().name() == "app.show_camera" &&
+                      frame.action().arguments() == R"({"camera":"Entrada"})");
+  CHECK(shown);
+  CHECK(std::ranges::any_of(sess->history.entries(), [](const CallEntry& entry) {
+    return entry.kind == CallEntryKind::Event && entry.message.content == "The app is showing the Entrada camera.";
+  }));
+  session.stop(sink);
+}

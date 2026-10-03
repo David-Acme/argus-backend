@@ -10,6 +10,8 @@
 #include <drogon/drogon.h>
 #include <auth/user-role.hxx>
 #include <config/config-service.hxx>
+#include <feature/voice/offer-reply.hxx>
+#include <json/json.h>
 
 namespace
 {
@@ -155,6 +157,25 @@ constexpr size_t kMaxPendingFailures = 4;
 constexpr auto kNoticeFreshFor = std::chrono::seconds(20);
 constexpr auto kFailureFreshFor = std::chrono::seconds(30);
 constexpr auto kNoticeSpacing = std::chrono::seconds(30);
+constexpr auto kOfferAnswerWindow = std::chrono::seconds(45);
+
+std::string offerSummary(const std::string& summary)
+{
+  std::string text = summary;
+  while (!text.empty() && (text.back() == '.' || text.back() == ' '))
+    text.pop_back();
+  if (!text.empty() && text.front() >= 'A' && text.front() <= 'Z' &&
+      (text.size() < 2 || text[1] < 'A' || text[1] > 'Z'))
+    text.front() = static_cast<char>(text.front() - 'A' + 'a');
+  return text;
+}
+
+std::string compactJson(const Json::Value& value)
+{
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, value);
+}
 
 struct ActionLine
 {
@@ -210,9 +231,18 @@ std::string actionFailureEvent(const ActionFailureText& failure)
   return event;
 }
 
-std::string cameraOffer(VoiceLang lang, const std::string& camera, const std::string& summary)
+struct CameraOfferText
 {
-  if (lang == VoiceLang::En)
+  VoiceLang lang{VoiceLang::System};
+  std::string camera;
+  std::string summary;
+};
+
+std::string cameraOffer(const CameraOfferText& offer)
+{
+  const std::string summary = offerSummary(offer.summary);
+  const std::string& camera = offer.camera;
+  if (offer.lang == VoiceLang::En)
     return summary.empty()
                ? "Hey, something came up on the " + camera + " camera. Want me to show you?"
                : "Hey, something came up on the " + camera + " camera: " + summary + ". Want me to show you?";
@@ -794,6 +824,12 @@ void VoiceSessionService::processTurn(Session& session,
                                                    .systemAlert = false});
   session.history.addTone(ReactionEngine::toneNote(reaction, lang));
 
+  if (answerOffer(session, userText)) {
+    LOG_INFO << "Voice: turn latency stt_ms=" << elapsedMs(clock.detected, clock.transcribed)
+             << " answered_offer";
+    return;
+  }
+
   const ChatRequest req = turnRequest(session);
 
   std::string full;
@@ -891,6 +927,37 @@ void VoiceSessionService::processTurn(Session& session,
     session.vad.reset();
   if (trimmed)
     primeLlm(session);
+}
+
+bool VoiceSessionService::answerOffer(Session& session, const std::string& userText)
+{
+  const auto offer = std::exchange(session.offer, std::nullopt);
+  if (!offer || std::chrono::steady_clock::now() - offer->at > kOfferAnswerWindow)
+    return false;
+  const OfferReply reply = offerReplyOf(userText, session.lang);
+  if (reply == OfferReply::Other)
+    return false;
+  const bool en = session.lang == VoiceLang::En;
+  std::string line;
+  if (reply == OfferReply::Accept) {
+    Json::Value arguments(Json::objectValue);
+    arguments["camera"] = offer->camera;
+    rememberAction(session, {.name = "app.show_camera", .arguments = compactJson(arguments)});
+    session.history.addEvent("The app is showing the " + offer->camera + " camera.");
+    line = en ? "Here it is." : "Aquí la tienes.";
+  }
+  else {
+    line = en ? "Okay." : "Vale.";
+  }
+  const bool audible = speak(session, line).audible;
+  if (audible || reply == OfferReply::Accept)
+    session.history.addAssistant(line);
+  else
+    session.history.rollbackUser();
+  session.speaking = false;
+  if (session.history.trim())
+    primeLlm(session);
+  return true;
 }
 
 ChatRequest VoiceSessionService::turnRequest(Session& session)
@@ -1166,7 +1233,7 @@ VoiceSessionService::takeNotice(Session& session)
     if (now - failure.at > kFailureFreshFor)
       continue;
     const ActionFailureText text{.lang = session.lang, .name = failure.name, .detail = failure.detail};
-    return Notice{.spoken = actionFailureLine(text), .event = actionFailureEvent(text)};
+    return Notice{.spoken = actionFailureLine(text), .event = actionFailureEvent(text), .camera = {}};
   }
   auto camera = std::exchange(session.pendingCamera, std::nullopt);
   if (!camera)
@@ -1175,7 +1242,9 @@ VoiceSessionService::takeNotice(Session& session)
     return std::nullopt;
   session.lastNoticeAt = now;
   LOG_INFO << "Voice: offering camera " << camera->camera;
-  return Notice{.spoken = cameraOffer(session.lang, camera->camera, camera->summary), .event = {}};
+  return Notice{.spoken = cameraOffer({.lang = session.lang, .camera = camera->camera, .summary = camera->summary}),
+                .event = {},
+                .camera = camera->camera};
 }
 
 void VoiceSessionService::deliverNotice(Session& session, const Notice& notice)
@@ -1189,8 +1258,11 @@ void VoiceSessionService::deliverNotice(Session& session, const Notice& notice)
   }
   applyNotes(session);
   session.history.addEvent(notice.event);
-  if (speak(session, notice.spoken).audible)
+  if (speak(session, notice.spoken).audible) {
     session.history.addAssistant(notice.spoken);
+    if (!notice.camera.empty())
+      session.offer = CameraOffer{.camera = notice.camera, .at = std::chrono::steady_clock::now()};
+  }
   if (session.history.trim())
     primeLlm(session);
 }

@@ -272,6 +272,23 @@ duplex: no turn running and playback over; and in both, the VAD is not in
 the middle of the user's utterance), at most once every 30 s, and dropped
 when older than 20 s. Without the VAD check an offer started over a user who
 was mid-sentence, and in duplex the user's own speech then barged in on it.
+The summary loses its closing period and, unless it starts with an acronym,
+its capital, because it is spoken after a colon (guard copy arrives as a full
+sentence and used to read "…cámara Entrada: De noche… altavoz.. ¿Quieres…").
+
+The answer to an offer is voice's too. A spoken camera offer is remembered
+for 45 s; the next user turn, if it is a short reply (at most six words) that
+only accepts ("sí", "vale", "muéstramela", "yes, show me") or only declines
+("no", "ahora no", "not now"), never reaches the LLM: an acceptance emits
+`app.show_camera {"camera": <name>}` through the same action path as the
+model's (so the app runs it and reports the result), records the app event
+and says "Aquí la tienes." / "Here it is."; a refusal says "Vale." /
+"Okay.". Anything longer or mixed goes to the model, and any reply ends the
+offer. A live check showed why: the model answered "Sí, muéstramela" with
+"¡Claro!" and no tool call, so the camera never opened. The classifier
+(`offer-reply.{hxx,cc}`) folds case, accents and Spanish opening marks
+before matching whole words.
+
 Texts are trimmed to one line (notes 300, camera 64, summary 200
 characters; the situation keeps its lines, up to 900 characters); every
 cut lands on a UTF-8 character boundary, since a cut through "á" made the

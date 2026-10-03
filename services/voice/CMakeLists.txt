@@ -85,6 +85,7 @@ set(VOICE_ENGINE_SOURCES
 argus_module(NAME voice-core
     SOURCES
         src/feature/voice/call-history.cc
+        src/feature/voice/offer-reply.cc
         src/feature/voice/voice-session-service.cc
         src/feature/voice/voice-engine-seam.cc
         src/feature/voice/voice-rpc-service.cc
@@ -166,6 +167,19 @@ argus_runtime_rpath(voice-call-history-test)
 set_target_properties(voice-call-history-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-call-history-test COMMAND voice-call-history-test)
+
+add_executable(voice-offer-reply-test tests/unit/voice-offer-reply-test.cc)
+
+target_link_libraries(voice-offer-reply-test PRIVATE argus::voice-core
+    doctest::doctest)
+
+target_compile_options(voice-offer-reply-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-offer-reply-test)
+
+set_target_properties(voice-offer-reply-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-offer-reply-test COMMAND voice-offer-reply-test)
 
 add_executable(voice-rpc-auth-test tests/unit/voice-rpc-auth-test.cc)
 
