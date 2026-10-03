@@ -358,6 +358,22 @@ the sync RPC service is its only reader), so `argus_camera-sync` carries
   sustained-tamper check needs a continuous sample stream, and a
   transition-only feed goes permanently stale. One small JSON per camera
   per minute; no new key.
+- **The scene diff is a correlation, and the reference follows the camera.**
+  `sceneDiff` compares the z-scored 160×90 frames (mean absolute difference
+  over its value for an inverted image): 0 is the same view, ≈0.71 an
+  unrelated one, and the 0.35 threshold means a correlation below ≈0.75. It
+  replaced the raw grey difference, which a dimmer room or the IR switch
+  moved more than a re-aimed camera did (two unrelated textures of equal
+  brightness differ by ≈0.18 on that scale, under its 0.35). The reference
+  drifts toward frames well inside the threshold (1/8 per tick), so shadows
+  and furniture creep do not accumulate. A new view that holds — stable
+  against the previous frame — for `[health].rebaseline_after_s` (900 s)
+  becomes the reference: guard's `camera_tamper` needs 300 s of sustained
+  `moved`, so real tampering is still reported once, and a re-aimed camera is
+  not reported for ever. Aiming through Argus (a move, a preset goto, a
+  day/night change, privacy off, a new address) re-baselines at once through
+  `CameraSceneLog`, and a camera Argus put in privacy mode is not sampled.
+  What Argus did not do (the vendor app, auto-tracking) waits out the window.
 - The `insect` state was dropped (Round 14): whole-frame
   variance-of-Laplacian cannot separate an insect on the lens from a sharp
   static background, so the state fired on every healthy camera. Tape,

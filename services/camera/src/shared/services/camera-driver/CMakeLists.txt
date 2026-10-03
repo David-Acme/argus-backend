@@ -1,6 +1,7 @@
 argus_module(NAME camera-driver
     SOURCES
         camera-driver-registry.cc
+        camera-scene-log.cc
         tapo-driver.cc
     INCLUDES
         ../../..

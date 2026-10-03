@@ -3,6 +3,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <feature/operator/frame-source.hxx>
+#include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <sqlite/db-service.hxx>
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
@@ -12,12 +13,61 @@
 #include <cmath>
 #include <cstdlib>
 #include <exception>
+#include <span>
 #include <thread>
 
 namespace
 {
 constexpr int kSampleWidth = 160;
 constexpr int kSampleHeight = 90;
+
+constexpr double kInvertedSpread = 1.5957691216057308;
+constexpr double kFlatDeviation = 1.0;
+constexpr int kDriftWeight = 8;
+
+struct Spread
+{
+  double mean{0.0};
+  double deviation{0.0};
+};
+
+Spread spreadOf(std::span<const uint8_t> pixels)
+{
+  double sum = 0.0;
+  double squares = 0.0;
+  for (const uint8_t pixel : pixels) {
+    sum += pixel;
+    squares += static_cast<double>(pixel) * pixel;
+  }
+  const double count = static_cast<double>(pixels.size());
+  const double mean = sum / count;
+  return {.mean = mean, .deviation = std::sqrt(std::max(0.0, squares / count - mean * mean))};
+}
+
+double sceneDistance(std::span<const uint8_t> current, std::span<const uint8_t> reference)
+{
+  if (current.empty() || current.size() != reference.size())
+    return 0.0;
+  const Spread a = spreadOf(current);
+  const Spread b = spreadOf(reference);
+  double total = 0.0;
+  if (a.deviation < kFlatDeviation || b.deviation < kFlatDeviation) {
+    for (size_t i = 0; i < current.size(); ++i)
+      total += std::abs(static_cast<double>(current[i]) - reference[i]) / 255.0;
+    return total / static_cast<double>(current.size());
+  }
+  for (size_t i = 0; i < current.size(); ++i)
+    total += std::abs((current[i] - a.mean) / a.deviation -
+                      (reference[i] - b.mean) / b.deviation);
+  return std::min(1.0, total / static_cast<double>(current.size()) / kInvertedSpread);
+}
+
+void drift(std::vector<uint8_t>& reference, std::span<const uint8_t> current)
+{
+  for (size_t i = 0; i < reference.size(); ++i)
+    reference[i] = static_cast<uint8_t>(
+        (reference[i] * (kDriftWeight - 1) + current[i] + kDriftWeight / 2) / kDriftWeight);
+}
 
 int64_t nowMs()
 {
@@ -140,22 +190,47 @@ HealthMetrics CameraHealthMonitor::measure(const TickInput& input,
   cv::meanStdDev(laplacian, lapMean, lapStd);
   metrics.blur = lapStd[0] * lapStd[0];
 
+  const std::span<const uint8_t> current(input.rgb);
+  const bool sane = metrics.brightness >= config_.thresholds.dark &&
+                    metrics.brightness <= config_.thresholds.bright &&
+                    metrics.blur >= config_.thresholds.blur;
+  const auto adopt = [&state, &input] {
+    state.reference = input.rgb;
+    state.referenceAtMs = input.capturedAtMs;
+    state.newSceneSinceMs = 0;
+  };
+
+  if (CameraSceneLog::instance().sceneOf(input.camera.id).aimedAtMs > state.referenceAtMs)
+    state.reference.clear();
+
   if (state.reference.size() != input.rgb.size()) {
-    const bool sane = metrics.brightness >= config_.thresholds.dark &&
-                      metrics.brightness <= config_.thresholds.bright &&
-                      metrics.blur >= config_.thresholds.blur;
     if (sane)
-      state.reference = input.rgb;
+      adopt();
+    state.previous = input.rgb;
     metrics.sceneDiff = 0.0;
     return metrics;
   }
 
-  int64_t diff = 0;
-  for (size_t i = 0; i < input.rgb.size(); ++i)
-    diff += std::abs(static_cast<int>(input.rgb[i]) -
-                     static_cast<int>(state.reference[i]));
-  metrics.sceneDiff =
-      static_cast<double>(diff) / (255.0 * static_cast<double>(input.rgb.size()));
+  metrics.sceneDiff = sceneDistance(current, state.reference);
+  const double threshold = config_.thresholds.sceneDiff;
+  if (metrics.sceneDiff <= threshold) {
+    state.newSceneSinceMs = 0;
+    if (sane && metrics.sceneDiff <= threshold / 2.0)
+      drift(state.reference, current);
+  }
+  else if (!sane || sceneDistance(current, state.previous) > threshold / 2.0) {
+    state.newSceneSinceMs = input.capturedAtMs;
+  }
+  else if (state.newSceneSinceMs == 0) {
+    state.newSceneSinceMs = input.capturedAtMs;
+  }
+  else if (input.capturedAtMs - state.newSceneSinceMs >= config_.rebaselineAfterMs) {
+    LOG_INFO << "Camera health: " << input.camera.id
+             << " has kept its new view; it is the reference now";
+    adopt();
+    metrics.sceneDiff = 0.0;
+  }
+  state.previous = input.rgb;
   return metrics;
 }
 
@@ -193,6 +268,8 @@ drogon::Task<void> CameraHealthMonitor::run()
 
 drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
 {
+      if (CameraSceneLog::instance().sceneOf(camera.id).privacy)
+        co_return;
       auto frame = co_await dependencies_.source->grab(
           {.cameraId = camera.id, .cameraName = camera.name});
 
@@ -200,6 +277,7 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
       HealthMetrics metrics;
       int64_t capturedAt = nowMs();
       if (frame) {
+        capturedAt = frame->capturedAtMs;
         const cv::Mat raw = cv::imdecode(frame->jpeg, cv::IMREAD_COLOR);
         if (!raw.empty()) {
           cv::Mat small;
@@ -222,7 +300,6 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
                 state);
             status = health_monitor::classify(metrics, config_.thresholds);
           }
-          capturedAt = frame->capturedAtMs;
         }
       }
 

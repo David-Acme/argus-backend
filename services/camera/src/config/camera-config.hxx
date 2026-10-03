@@ -17,6 +17,7 @@ struct CameraHealthConfig
   bool enabled{true};
   int64_t intervalMs{60000};
   HealthThresholds thresholds;
+  int64_t rebaselineAfterMs{900000};
 };
 
 class CameraConfig

@@ -46,6 +46,9 @@ private:
   struct CameraState
   {
     std::vector<uint8_t> reference;
+    int64_t referenceAtMs{0};
+    std::vector<uint8_t> previous;
+    int64_t newSceneSinceMs{0};
     CameraHealthState lastStatus{CameraHealthState::Ok};
     int64_t lastPublishMs{0};
     bool published{false};

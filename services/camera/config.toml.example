@@ -124,6 +124,7 @@ dark_threshold = 25.0
 bright_threshold = 235.0
 blur_threshold = 18.0
 scene_diff = 0.35
+rebaseline_after_s = 900
 
 [stt]
 remote_url = "127.0.0.1:7030"

@@ -1,6 +1,24 @@
 #include "camera-control-feature-service.hxx"
 
 #include <runtime/blocking-task.hxx>
+#include <shared/services/camera-driver/camera-scene-log.hxx>
+
+#include <chrono>
+
+namespace
+{
+int64_t nowMs()
+{
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
+
+bool succeeded(const CameraControlResult& result)
+{
+  return result && result->ok;
+}
+}
 
 drogon::Task<CameraControlResult> CameraControlFeatureService::onDevice(
     int64_t cameraId,
@@ -48,23 +66,29 @@ CameraControlFeatureService::presets(int64_t cameraId) const
 drogon::Task<CameraControlResult>
 CameraControlFeatureService::move(int64_t cameraId, const CameraPtzDto& body) const
 {
-  co_return co_await onDevice(cameraId, [body](ICameraDriver& driver) {
+  auto result = co_await onDevice(cameraId, [body](ICameraDriver& driver) {
     return driver.move({.x = body.x, .y = body.y, .angle = body.angle});
   });
+  if (succeeded(result))
+    CameraSceneLog::instance().noteAimed(cameraId, nowMs());
+  co_return result;
 }
 
 drogon::Task<CameraControlResult>
 CameraControlFeatureService::preset(int64_t cameraId, const CameraPresetDto& body) const
 {
-  co_return co_await onDevice(cameraId, [body](ICameraDriver& driver) {
+  auto result = co_await onDevice(cameraId, [body](ICameraDriver& driver) {
     return driver.preset({.action = body.action, .id = body.id, .name = body.name});
   });
+  if (succeeded(result) && body.action != "save" && body.action != "delete")
+    CameraSceneLog::instance().noteAimed(cameraId, nowMs());
+  co_return result;
 }
 
 drogon::Task<CameraControlResult>
 CameraControlFeatureService::settings(int64_t cameraId, const CameraSettingsDto& body) const
 {
-  co_return co_await onDevice(cameraId, [body](ICameraDriver& driver) {
+  auto result = co_await onDevice(cameraId, [body](ICameraDriver& driver) {
     return driver.settings({.privacy = body.privacy,
                             .led = body.led,
                             .dayNight = body.dayNight,
@@ -75,6 +99,14 @@ CameraControlFeatureService::settings(int64_t cameraId, const CameraSettingsDto&
                             .alarmVolume = body.alarmVolume,
                             .sounding = std::nullopt});
   });
+  if (!succeeded(result))
+    co_return result;
+  auto& scenes = CameraSceneLog::instance();
+  if (body.privacy)
+    scenes.notePrivacy(cameraId, *body.privacy);
+  if ((body.privacy && !*body.privacy) || body.dayNight)
+    scenes.noteAimed(cameraId, nowMs());
+  co_return result;
 }
 
 drogon::Task<CameraControlResult>

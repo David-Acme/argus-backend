@@ -35,6 +35,9 @@ CameraHealthConfig CameraConfig::resolveHealth()
   config.thresholds.bright = threshold("health.bright_threshold", 235.0);
   config.thresholds.blur = threshold("health.blur_threshold", 18.0);
   config.thresholds.sceneDiff = threshold("health.scene_diff", 0.35);
+  if (const int seconds = ConfigService::getInt("health.rebaseline_after_s");
+      seconds > 0)
+    config.rebaselineAfterMs = static_cast<int64_t>(seconds) * 1000;
   return config;
 }
 

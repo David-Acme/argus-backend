@@ -4,6 +4,7 @@
 #include <ctime>
 #include <errors/response-exception.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
+#include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 #include <sqlite/db-service.hxx>
@@ -156,6 +157,9 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
     throw;
   }
   CameraDriverRegistry::instance().forget(id);
+  if (before.ip != row.ip || before.port != row.port)
+    CameraSceneLog::instance().noteAimed(
+        id, static_cast<int64_t>(std::time(nullptr)) * 1000);
   co_await syncSource(row);
   co_return row;
 }
@@ -189,6 +193,7 @@ drogon::Task<bool> CameraFeatureService::remove(int64_t id) const
     throw;
   }
   CameraDriverRegistry::instance().forget(id);
+  CameraSceneLog::instance().forget(id);
   SnapshotStore::instance().forget(id);
   co_await dropSource(id);
   co_return true;
