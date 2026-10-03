@@ -482,7 +482,7 @@ TEST_CASE("the decisions endpoint serves the journal rows")
        .assessMs = 0,
        .createdAt = 1700000000})));
 
-  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .schedule = {}});
+  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .siteDefaults = {}});
   const Json::Value decisions =
       drogon::sync_wait(feature.decisions({.limit = 200,
                                            .from = 0,
@@ -570,7 +570,7 @@ TEST_CASE("decisions filters narrow rows and paginate with a stable cursor")
                      .legacy = true,
                      .belief = false}));
 
-  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .schedule = {}});
+  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .siteDefaults = {}});
   const auto filtered = drogon::sync_wait(feature.decisions(
       {.limit = 200,
        .from = 0,
@@ -720,7 +720,7 @@ TEST_CASE("decisions summary aggregates in SQL over a bounded window")
                      .mode = "enforce",
                      .signals = "[\"detector_strong\",\"persistence_met\"]"}));
 
-  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .schedule = {}});
+  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .siteDefaults = {}});
   const Json::Value summary = drogon::sync_wait(
       feature.decisionsSummary({.from = 1799999999,
                                 .to = 1800000001,
@@ -897,7 +897,7 @@ TEST_CASE("malformed signal payloads do not break the summary")
       "1, 93, '93:1:100', 'high', 3, 0, 4, 'not-json{{', 3, 1, 1, 0, "
       "'shadow', 'none', '[]', 1800000300)");
 
-  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .schedule = {}});
+  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .siteDefaults = {}});
   const Json::Value summary = drogon::sync_wait(
       feature.decisionsSummary({.from = 1800000299,
                                 .to = 1800000301,
@@ -957,7 +957,7 @@ TEST_CASE("near misses surface below-threshold rows inside a margin")
   REQUIRE(insertRow(
       {.eventId = "nm:3", .score = 3, .threshold = 3, .belief = true}));
 
-  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .schedule = {}});
+  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .siteDefaults = {}});
   DecisionsFilterInput wide;
   wide.limit = 200;
   wide.cameraId = 95;
@@ -1015,7 +1015,7 @@ TEST_CASE("resident feedback labels one journal row")
        .assessMs = 0,
        .createdAt = 1800000500})));
 
-  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .schedule = {}});
+  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .siteDefaults = {}});
   CHECK_FALSE(drogon::sync_wait(feature.setFeedback("fb:1", "bogus")));
   CHECK_FALSE(drogon::sync_wait(feature.setFeedback("fb:missing", "useful")));
   CHECK(drogon::sync_wait(feature.setFeedback("fb:1", "false_alarm")));
@@ -1116,7 +1116,7 @@ TEST_CASE("decision rows carry a human summary")
        .assessMs = 0,
        .createdAt = 1800000600})));
 
-  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .schedule = {}});
+  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .siteDefaults = {}});
   const Json::Value decisions = drogon::sync_wait(feature.decisions(
       {.limit = 200,
        .from = 1800000600,
@@ -1201,7 +1201,7 @@ TEST_CASE("holds and baselines surface for calibration")
   CHECK(summary.quietHeld == 1);
   CHECK(summary.budgetHeld == 1);
 
-  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .schedule = {}});
+  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .siteDefaults = {}});
   const Json::Value windowed = drogon::sync_wait(feature.decisionsSummary(
       {.from = 1800000699, .to = 1800000701, .nearMissMargin = 0}));
   CHECK(windowed["quietHeld"].asInt64() == 1);

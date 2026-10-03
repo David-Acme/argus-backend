@@ -54,8 +54,11 @@ GuardDanger evaluate(const GuardContext& context)
     return GuardDanger::Low;
   }
 
-  if (context.publicPresent)
+  if (context.publicPresent || context.areaInUse)
     return context.inAlertZone ? GuardDanger::Medium : GuardDanger::Low;
+
+  if (context.passerby)
+    return context.visitCount >= 3 ? GuardDanger::Medium : GuardDanger::Low;
 
   GuardDanger soft =
       context.expectedGuest ? GuardDanger::Low : GuardDanger::Medium;
@@ -75,12 +78,50 @@ GuardDanger evaluate(const GuardContext& context)
   return danger;
 }
 
+std::vector<GuardReason> explain(const GuardContext& context)
+{
+  std::vector<GuardReason> reasons;
+  if (!context.hasUnknown)
+    return reasons;
+  const auto add = [&reasons](bool applies, GuardReason reason) {
+    if (applies)
+      reasons.push_back(reason);
+  };
+  if (context.publicPresent || context.areaInUse || context.passerby) {
+    add(context.publicPresent, GuardReason::PublicHours);
+    add(!context.publicPresent && context.areaInUse, GuardReason::AreaInUse);
+    add(context.passerby && !context.publicPresent && !context.areaInUse,
+        GuardReason::Passerby);
+    add(context.inAlertZone, GuardReason::AlertZone);
+    add(context.passerby && context.visitCount >= 3, GuardReason::RepeatVisits);
+    return reasons;
+  }
+  add(context.mode == GuardMode::Away && context.afterHours,
+      GuardReason::AfterHours);
+  add(context.mode == GuardMode::Away && !context.afterHours,
+      GuardReason::NobodyHome);
+  add(context.mode == GuardMode::Armed, GuardReason::Armed);
+  add(context.mode == GuardMode::Night ||
+          (context.atNight && !context.staffOnly),
+      GuardReason::Night);
+  add(context.inAlertZone, GuardReason::AlertZone);
+  add(context.strangerCount >= 2, GuardReason::SeveralStrangers);
+  add(context.visitCount >= 3, GuardReason::RepeatVisits);
+  add(context.escalated, GuardReason::Escalating);
+  add(context.staffOnly, GuardReason::StaffHours);
+  add(context.expectedGuest, GuardReason::ExpectedGuest);
+  add(context.accompaniedByResident, GuardReason::WithResident);
+  add(context.accompaniedByGuest && !context.accompaniedByResident,
+      GuardReason::WithGuest);
+  return reasons;
+}
+
 GuardDeterrence deterrence(const GuardDeterrenceInput& input)
 {
   const bool peoplePresent = input.publicPresent || input.staffOnly ||
                              input.mode == GuardMode::Home ||
                              input.mode == GuardMode::Night;
-  if (input.publicPresent || input.staffOnly ||
+  if (input.publicPresent || input.staffOnly || input.quietArea ||
       (input.weapon && peoplePresent))
     return {.voice = false, .alarm = false};
 
@@ -131,6 +172,7 @@ GuardPersonSignals parsePerson(const Json::Value& object)
   person.trackWindows = object.get("trackWindows", 0).asInt();
   person.areaSpread = object.get("areaSpread", 1.0).asDouble();
   person.zoneKind = object.get("zoneKind", "").asString();
+  person.zoneName = object.get("zoneName", "").asString();
   person.signature = object.get("signature", "").asString();
   person.observationId = object.get("observationId", "").asString();
   person.firstSeenMs = object.get("firstSeenMs", 0).asInt64();
@@ -152,6 +194,7 @@ void adoptSubject(GuardEventSignals& signals, const GuardPersonSignals& person)
   signals.trackWindows = person.trackWindows;
   signals.areaSpread = person.areaSpread;
   signals.zoneKind = person.zoneKind;
+  signals.zoneName = person.zoneName;
   signals.observationId = person.observationId;
   signals.firstSeenMs = person.firstSeenMs;
   signals.dwellMs = person.dwellMs;

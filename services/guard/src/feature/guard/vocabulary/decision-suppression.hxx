@@ -11,7 +11,9 @@ enum class DecisionSuppression : uint8_t
   Budget,
   LegacySilent,
   ThreadSuppressed,
-  Staging
+  Staging,
+  Grouped,
+  Held
 };
 
 inline std::string decisionSuppressionToString(DecisionSuppression reason)
@@ -29,6 +31,10 @@ inline std::string decisionSuppressionToString(DecisionSuppression reason)
       return "thread_suppressed";
     case DecisionSuppression::Staging:
       return "staging";
+    case DecisionSuppression::Grouped:
+      return "grouped";
+    case DecisionSuppression::Held:
+      return "held";
   }
   return "none";
 }
@@ -48,5 +54,9 @@ decisionSuppressionFromString(const std::string& value)
     return DecisionSuppression::ThreadSuppressed;
   if (value == "staging")
     return DecisionSuppression::Staging;
+  if (value == "grouped")
+    return DecisionSuppression::Grouped;
+  if (value == "held")
+    return DecisionSuppression::Held;
   return std::nullopt;
 }

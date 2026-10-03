@@ -3,9 +3,15 @@
 #include "guard-action.hxx"
 #include "guard-assessment.hxx"
 #include "guard-belief.hxx"
+#include "guard-context.hxx"
+#include "guard-copy.hxx"
 #include "guard-policy.hxx"
 #include "guard-repository.hxx"
 #include "guard-schedule.hxx"
+
+#include <feature/guard/repositories/camera-context/camera-context-repository.hxx>
+#include <feature/guard/repositories/episode/episode-repository.hxx>
+#include <feature/guard/repositories/guard-site/guard-site-repository.hxx>
 
 #include <atomic>
 #include <config/guard-config.hxx>
@@ -69,6 +75,8 @@ public:
 
   drogon::Task<void> flushEncounterOutbox();
 
+  drogon::Task<void> maybeSendDigests(int64_t now);
+
 private:
   struct QueueEntry
   {
@@ -94,29 +102,33 @@ private:
 
   void startSweeps();
 
+  struct NotifyContent
+  {
+    GuardNotice notice;
+    Json::Value data;
+  };
+
   struct NotifyInput
   {
     std::string commandId;
     std::string eventId;
     std::string payload;
-    std::string title;
-    std::string body;
-    Json::Value data;
+    NotifyContent content;
     int64_t cameraId{0};
-    std::string cameraName;
-    std::string rule;
     GuardDanger danger{GuardDanger::None};
-    int64_t incidentId{0};
     int64_t encounterId{0};
     int64_t now{0};
   };
 
-  struct NotifyContent
+  struct RecipientBatch
   {
-    std::string title;
-    std::string body;
-    Json::Value data;
+    std::string lang;
+    std::vector<int64_t> userIds;
   };
+
+  drogon::Task<std::optional<std::vector<RecipientBatch>>> recipientBatches();
+
+  std::string userLang(int64_t userId);
 
   struct EffectInput
   {
@@ -125,8 +137,6 @@ private:
     bool greetingEnabled{false};
     bool replyRequested{false};
     int64_t cameraId{0};
-    std::string cameraName{};
-    std::string rule{};
     int64_t incidentId{0};
     int64_t encounterId{0};
     int64_t personId{0};
@@ -211,6 +221,16 @@ private:
   struct ObservationCheckpoint
   {
     int encounterChecks{0};
+    bool areaInUse{false};
+    bool passerby{false};
+    bool expectedArea{false};
+    std::string cameraRole;
+    bool outdoor{false};
+    std::vector<std::string> reasons;
+    bool holdsComputed{false};
+    bool quietHold{false};
+    bool budgetHold{false};
+    int64_t groupedInto{-1};
     int visitCount{0};
     bool expectedGuest{false};
     int64_t guestId{0};
@@ -237,6 +257,7 @@ private:
     GuardDanger danger{GuardDanger::None};
     bool hardFloor{false};
     int& assessMs;
+    std::string profile;
   };
 
   drogon::Task<GuardDanger> assessInto(const AssessIntoInput& input);
@@ -303,6 +324,7 @@ private:
     std::string decisionMode;
     DecisionSuppression suppression{DecisionSuppression::None};
     std::vector<std::string> suppressedKinds;
+    std::vector<std::string> reasons;
     double noveltyScore{0.0};
     int repeatVisits{0};
     bool quietHold{false};
@@ -403,7 +425,31 @@ private:
 
   void publishHeartbeat();
 
-  GuardPosture postureAt(GuardMode manual, int64_t now) const;
+  struct PostureInput
+  {
+    const GuardSchedule& schedule;
+    GuardMode manual{GuardMode::Home};
+    int64_t now{0};
+  };
+
+  static GuardPosture postureAt(const PostureInput& input);
+
+  drogon::Task<GuardSite> activeSite() const;
+
+  void rememberCameraName(int64_t cameraId, const std::string& name);
+
+  std::string cameraName(int64_t cameraId) const;
+
+  struct DigestInput
+  {
+    int64_t from{0};
+    int64_t to{0};
+    bool afterQuiet{false};
+    std::string correlationId;
+    int64_t now{0};
+  };
+
+  drogon::Task<bool> sendDigest(const DigestInput& input);
 
   void trackTimer(uint64_t id);
   void stopTimers();
@@ -411,8 +457,10 @@ private:
   Dependencies dependencies_;
   mutable std::mutex configMutex_;
   std::shared_ptr<const Config> config_;
-  GuardSchedule schedule_;
   GuardRepository repository_;
+  GuardSiteRepository siteRepository_;
+  CameraContextRepository cameraContextRepository_;
+  EpisodeRepository episodeRepository_;
   S3StorageService storage_;
   std::shared_ptr<GuardLifecycle> lifecycle_;
 
@@ -449,6 +497,15 @@ private:
   };
   mutable std::mutex healthMutex_;
   std::map<int64_t, CameraHealth> healthByCamera_;
+  std::map<int64_t, std::string> cameraNames_;
+
+  struct LangEntry
+  {
+    std::string lang;
+    int64_t resolvedAt{0};
+  };
+  std::mutex langMutex_;
+  std::map<int64_t, LangEntry> langCache_;
 
   struct BeliefCacheEntry
   {

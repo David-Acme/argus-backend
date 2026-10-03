@@ -310,9 +310,10 @@ inline constexpr std::string_view INSERT_DECISION_JOURNAL =
     "incident_id, camera_id, observation_id, severity, severity_rank, "
     "hard_floor, belief_score, belief_signals, belief_threshold, "
     "legacy_would_notify, belief_would_notify, did_notify, decision_mode, "
-    "suppression_reason, suppressed_kinds, dispatch_attempts, novelty_score, "
-    "repeat_visits, quiet_hold, budget_hold, assess_ms, created_at) VALUES "
-    "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)";
+    "suppression_reason, suppressed_kinds, reasons, dispatch_attempts, "
+    "novelty_score, repeat_visits, quiet_hold, budget_hold, assess_ms, "
+    "created_at) VALUES "
+    "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)";
 
 inline constexpr std::string_view MARK_DECISION_NOTIFIED =
     "UPDATE guard_decision_journal SET did_notify = 1 WHERE event_id = ? AND "
@@ -693,6 +694,7 @@ struct DecisionJournalInput
   std::string decisionMode;
   DecisionSuppression suppression{DecisionSuppression::None};
   std::string suppressedKinds{"[]"};
+  std::string reasons{"[]"};
   double noveltyScore{0.0};
   int repeatVisits{0};
   bool quietHold{false};

@@ -46,3 +46,12 @@ inline int guardDangerRank(GuardDanger danger)
 {
   return static_cast<int>(danger);
 }
+
+inline GuardDanger guardDangerFromRank(int rank)
+{
+  if (rank <= 0)
+    return GuardDanger::None;
+  if (rank >= guardDangerRank(GuardDanger::Critical))
+    return GuardDanger::Critical;
+  return static_cast<GuardDanger>(rank);
+}

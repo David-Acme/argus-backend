@@ -76,7 +76,7 @@ Optional keys the template does not set:
 
 argus-guard deploy configuration. Copy to config.guard.toml (gitignored).
 
-- **`[guard.quiet_hours]`** — Quiet-hours demotion markers. Journal-only and default off: held rows still notify exactly as before, the journal only records what a future enforce mode would have held back.
+- **`[guard.quiet_hours]`** — Quiet hours and the daily notification budget, default off. When on, a medium-or-lower alert inside the window (`start_hour`..`end_hour`, wrapping midnight), or past `daily_budget` alerts since local midnight, is held instead of sent (journal suppression `held`, `quiet_hold`/`budget_hold` say which) and reported once in the "while you were resting" summary at `end_hour`. High and critical alerts are never held.
 - **`[guard.belief]`** — Deterministic belief engine: closed signal vocabulary with bounded integer weights summed into a score, compared against the asymmetric severity thresholds (critical 1 < high 3 < medium 5 < low 7). gate_scope selects which effect kinds enforce mode may suppress: "notify" (default), "communication" (notify + announce) or "all". Alarm and siren-arm additionally require no hard floor, so a hard floor always lets physical effects through regardless of scope.
 - **`[guard.belief.camera."1"]`** (optional, not in the template) — Per-camera overrides: any leaf above may be redefined per camera id.
 
@@ -86,6 +86,10 @@ argus-guard deploy configuration. Copy to config.guard.toml (gitignored).
 | `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
 | `guard.decision_mode` | Belief-gate mode: "shadow" journals the verdict without enforcing it, "enforce" lets the belief gate suppress effects. Unknown values fall back to shadow. decision_mode governs the belief gate only; per-encounter notification threading applies in both modes. |
 | `guard.tamper_sustained_s` | Sustained-tamper escalation window in seconds; a tamper-ish camera health state (moved, covered, blurred) held this long raises its own high-danger notification through the durable intent path. |
+| `guard.profile` / `[guard.schedule]` | The site's starting point (`home`, `office` or `commercial`, and its asleep/staffed/open hours). They seed the site until the owner edits it through `PATCH /guard/site`; from then on the `guard_site` row in guard.db wins and the keys are only the fallback. |
+| `guard.digest_hour` | Local hour of the daily security summary (routine activity that was never worth an alert, plus anything held), `-1` disables. A fallback like the schedule: the site's `digestHour` wins once the owner edits it. |
+| `guard.regroup_window_s` | A medium-or-lower first alert of a new episode on a camera that already alerted at the same or a higher tier inside this window joins that episode instead of notifying again (journal suppression `grouped`); `0` disables. Boot-bound. |
+| `guard.notify_lang` | Fallback notification language (`es`/`en`) for a recipient whose identity record carries no language; defaults to `announce_lang`. Each recipient otherwise reads the alert in the `lang` of their own user record. |
 | `storage.mode` | Private object storage (RustFS) for incident evidence records. provision-host.sh fills the endpoint and credentials. |
 
 Optional keys the template does not set:
@@ -285,7 +289,7 @@ Optional keys the template does not set:
 
 argus-guard configuration. Copy to config.toml (gitignored) to run.
 
-- **`[guard.quiet_hours]`** — Quiet-hours demotion markers. Journal-only and default off: held rows still notify exactly as before, the journal only records what a future enforce mode would have held back. Low and medium events inside the overnight window, or past the daily fired budget, are marked quiet_hold/budget_hold.
+- **`[guard.quiet_hours]`** — Quiet hours and the daily notification budget, default off. When on, a medium-or-lower alert inside the window (`start_hour`..`end_hour`, wrapping midnight), or past `daily_budget` alerts since local midnight, is held instead of sent (journal suppression `held`, `quiet_hold`/`budget_hold` say which) and reported once in the "while you were resting" summary at `end_hour`. High and critical alerts are never held.
 - **`[guard.belief]`** — Deterministic belief engine: closed signal vocabulary with bounded integer weights summed into a score, compared against the asymmetric severity thresholds (critical 1 < high 3 < medium 5 < low 7). gate_scope selects which effect kinds enforce mode may suppress: "notify" (default), "communication" (notify + announce) or "all". Alarm and siren-arm additionally require no hard floor, so a hard floor always lets physical effects through regardless of scope.
 - **`[guard.belief.camera."1"]`** (optional, not in the template) — Per-camera overrides: any leaf above may be redefined per camera id.
 
@@ -299,6 +303,10 @@ argus-guard configuration. Copy to config.toml (gitignored) to run.
 | `guard.belief_refresh_s` | Belief-config refresh window in seconds; per-camera configs are cached and re-resolved after this long. |
 | `guard.journal_retention_days` | Decision-journal retention in days; journal rows are decision metadata, not private evidence, so they are kept longer than evidence (90 days). Values <= 0 keep every row. |
 | `guard.tamper_sustained_s` | Sustained-tamper escalation window in seconds; a tamper-ish camera health state (moved, covered, blurred) held this long raises its own high-danger notification through the durable intent path. |
+| `guard.profile` / `[guard.schedule]` | The site's starting point (`home`, `office` or `commercial`, and its asleep/staffed/open hours). They seed the site until the owner edits it through `PATCH /guard/site`; from then on the `guard_site` row in guard.db wins and the keys are only the fallback. |
+| `guard.digest_hour` | Local hour of the daily security summary (routine activity that was never worth an alert, plus anything held), `-1` disables. A fallback like the schedule: the site's `digestHour` wins once the owner edits it. |
+| `guard.regroup_window_s` | A medium-or-lower first alert of a new episode on a camera that already alerted at the same or a higher tier inside this window joins that episode instead of notifying again (journal suppression `grouped`); `0` disables. Boot-bound. |
+| `guard.notify_lang` | Fallback notification language (`es`/`en`) for a recipient whose identity record carries no language; defaults to `announce_lang`. Each recipient otherwise reads the alert in the `lang` of their own user record. |
 | `camera.actions_credential` | Caller capability credential for the guard -> camera edge. |
 | `notifications.credential` | Caller capability credential for the guard -> notification edge. |
 

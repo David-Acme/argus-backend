@@ -271,9 +271,12 @@ and every spoken line (configured or generated) passes the code-side gate in
 `GET /guard/decisions?limit=N` (read-only decision journal),
 `GET /guard/decisions/summary?from=&to=&nearMissMargin=`,
 `POST /guard/decisions/{eventId}/feedback`,
-`GET|POST /guard/expected-guests`, `DELETE /guard/expected-guests?id=N` and
+`GET|POST /guard/expected-guests`, `DELETE /guard/expected-guests?id=N`,
 `POST /guard/person/{id}/promote` (forwards the owner bearer token and device
-fingerprint to argus-identity).
+fingerprint to argus-identity), `GET|PATCH /guard/site`, `GET /guard/cameras`,
+`PUT /guard/cameras/{id}`, `GET /guard/episodes?limit=&before=`,
+`GET /guard/episodes/{id}` and `POST /guard/episodes/{id}/review` (see "Site,
+camera context and episodes" below).
 Every `/guard` route runs the full `DeviceFilter → ValidJsonFilter → JwtFilter
 → RoleFilter` chain; `/guard` is outside the sync table map, so the role checks
 admit Owner and deny every other role. The listener terminates TLS with the
@@ -335,9 +338,9 @@ summary endpoints surfaces below-threshold rows for retrospective review.
 `POST /guard/decisions/{eventId}/feedback` stores resident labels that never
 retune anything live. `noveltyScore` (per-camera hour-of-week EMA),
 `repeatVisits` (unknown-signature clusters reusing the cross-camera
-machinery), `quiet_hold`/`budget_hold` (`[guard.quiet_hours]`, default off,
-markers only) and `assessMs` are journaled calibration inputs, never
-decision inputs. Sustained tamper (`moved`/`covered`/`blurred` past
+machinery), `quiet_hold`/`budget_hold` (`[guard.quiet_hours]`, default off;
+since 2026-10 they hold the alert when on, see below) and `assessMs` are
+journaled calibration inputs. Sustained tamper (`moved`/`covered`/`blurred` past
 `tamper_sustained_s`) notifies live once per episode as `camera_tamper`;
 there is no live danger floor from camera health (Round 13).
 
@@ -588,3 +591,153 @@ a registry update into a constructed `GuardService` (null peers, disabled, no
 NATS or camera) and checks the new snapshot, the untouched old snapshot and a
 boot-bound field that a hand edit could not move, and runs a live gRPC server
 where only the settings secret can List or Update.
+
+## Site, camera context and episodes (2026-10)
+
+The owner asked for a guard that does not flood the phone the way
+"motion detected" products do, that understands a home, an office and a
+restaurant differently, and that knows what each camera looks at. Four
+pieces answer it, all additive to guard.db and all on the owner-only API.
+
+**Principles adopted** (from the research recorded in the 2026-10 guard
+report): an alert must be actionable, everything else is an indication
+(ISA-18.2 / EEMUA 191 alarm rationalisation; their benchmark is about one
+alarm per ten minutes at worst); alerts and routine detections are two
+different products (Frigate's review items: *alerts* vs *detections*, one
+item per activity, not per frame); a dedup key turns repeats of one
+situation into updates of one incident (PagerDuty alert grouping); location
+and schedule context belong to the camera (Nest activity zones, UniFi
+Protect per-camera smart-detection zones and schedules, Ring motion
+schedules); response rates fall to the perceived reliability of the alarm
+(Bliss' cry-wolf studies), so precision and an honest "why" matter more
+than recall of the trivial; urgency is a property of the message, so the
+data carries an interruption level a push channel can map later (iOS
+passive / active / time-sensitive / critical, Android channel importance).
+
+**Site.** `guard_site` (one row, `id = 1`) holds the profile (`home`,
+`office`, `commercial`), the schedule (`schedule_enabled`, `asleep_hours`,
+`open_hours`, `staffed_hours`, `closed_mode`) and `digest_hour`. Until the
+owner edits it, guard reads `[guard] profile`, `[guard.schedule]` and
+`guard.digest_hour` exactly as before (`guard_schedule::siteDefaults`);
+`PATCH /guard/site` seeds the row from those values (`INSERT OR IGNORE`)
+and then updates only the fields it carries, so two quick edits from an
+optimistic UI cannot lose each other. The saga reads the row on every
+observation (one primary-key read beside the existing `mode` read), so an
+edit is live without a restart and without a cache to invalidate. The
+profile still only frames the assessment prompt and chooses copy: the
+service never assumes hours from it. The app offers per-profile presets,
+but only hours the owner confirms lower vigilance — the 2026-10 posture
+rule stands.
+
+**Camera context.** `guard_camera_context` (one row per camera id) holds the
+role (`entrance`, `perimeter`, `garage`, `living`, `kitchen`, `office`,
+`register`, `storage`, `public_area`, `other`), `outdoor`, `public_area`
+and optional `active_hours`. `guard_context::evaluate` (pure) turns it into
+two facts the policy reads:
+- *in use*: a work area (kitchen, office, register, storage) or a public
+  area while the site is staffed or open, or the camera's own active hours
+  while the effective mode is home (or a commercial site is closed and the
+  mode is away). Never in night, armed or a manual away. An unknown person
+  in an area in use is `Low`, `Medium` only inside an owner-drawn alert
+  zone — the same treatment the public already had during open hours.
+- *passer-by*: an outdoor public camera (street, shared path) outside any
+  alert zone. A passer-by is `Low` even at night or away; three visits of the
+  same identified person in the repeat window make it `Medium`. Lingering
+  still promotes it one tier through staging, so someone who stops in front
+  of the house is told; someone walking past is not.
+Both make the deterrence ladder silent: Argus never talks to staff,
+customers or the street. An unconfigured camera changes nothing.
+
+Staging no longer promotes expected activity. Before this, a customer or a
+waiter seen three times during open hours was promoted from `Low` to
+`Medium` and notified once per encounter, which contradicted the posture
+rule; now staging still holds the first checks but never promotes when the
+public is present or the area is in use.
+
+**Why, in words.** `guard_policy::explain` lists the reasons the policy
+applied (`after_hours`, `nobody_home`, `armed`, `night`, `alert_zone`,
+`several_strangers`, `repeat_visits`, `escalating`, and the lowering ones
+`public_hours`, `staff_hours`, `area_in_use`, `passerby`, `expected_guest`,
+`with_resident`, `with_guest`); the saga adds `weapon`, `lingering`,
+`face_hidden` and `brief`. They are journaled per observation
+(`guard_decision_journal.reasons`) and kept on the episode
+(`guard_encounter.reasons`, the reasons of its highest-ranked observation).
+
+**Notifications people read.** The deterministic English body
+("Unrecognized person in the alert zone for 18s (strong detection, …)") is
+replaced by `guard_copy::render`, a pure, table-driven es/en renderer of a
+structured `GuardNotice`: who (`Persona desconocida`, `Alguien sin
+identificar`, `3 personas desconocidas`, `… acompañada`), where (the camera
+name in the title, the role and the owner's zone name in the body), why (at
+most two raising reasons and the dwell) and what Argus is doing (speaker,
+camera alarm, greeted with or without an answer, silent because of a
+weapon, or watching). Example: "Persona desconocida · Jardín" / "En el
+exterior, de noche, desde hace 18 s. Argus le está avisando por el
+altavoz." A tier increase of the same episode reads as an update ("Sigue
+en Jardín · riesgo crítico"). Tamper reads "Revisa la cámara …" with what is
+wrong. Each recipient reads their own language: guard groups the notifiable
+users by the `lang` of their identity record (`GetUser`, cached ten
+minutes; `guard.notify_lang` when absent) and sends one `CreateNotifications`
+per language, command id `<commandId>:<lang>` when there is more than one.
+The batches, their titles and bodies are persisted in the action outbox
+payload before the first send, so a replay sends the same words to the same
+people (an old single-batch payload still replays). The belief phrases stay
+in the journal summary for the owner's calibration view.
+
+Notification `data` keeps every field it had and adds `cameraName`,
+`episodeId`, `kind` (`guard_episode`, `guard_tamper`, `guard_digest`),
+`phase` (`opened`, `escalated`, `daily`, `after_quiet`), `threadKey`
+(`guard:episode:<id>`, the key a client or a future push channel collapses
+on), `urgency` (`passive`, `active`, `time_sensitive`, `critical`),
+`action`, `role`, `outdoor`, `subject`, `people`, `reasons` and `lang`.
+There is deliberately no "resolved" notification: one per episode end would
+double the volume.
+
+**Episodes.** The encounter was already the stateful episode (observing →
+verifying/escalating → closed, revisioned transitions, one notification
+thread); it now also carries `subject`, `people`, `reasons`,
+`reasons_rank`, `group_id`, `review_label` and `reviewed_at`.
+`GET /guard/episodes` lists person episodes and camera-tamper incidents
+newest first with state (`active`/`resolved`), resolution (`left`,
+`recognized`, `recovered`), danger, whether and how often it notified,
+whether Argus spoke or sounded the alarm, and the reasons.
+`GET /guard/episodes/{id}` adds a condensed timeline (state changes,
+decisions with identical consecutive verdicts folded into one entry with a
+count, and every action including held and grouped notifications).
+`POST /guard/episodes/{id}/review` stores the owner's label on the episode
+and on every decision of it that notified, in one transaction — the same
+calibration population the per-decision feedback feeds; nothing is retuned
+live.
+
+**Grouping, quiet hours and digests.**
+- A medium-or-lower first alert of a new episode on a camera that already
+  alerted at the same or a higher tier within `regroup_window_s` (600 s)
+  joins that episode: journal `grouped`, action `grouped`, `group_id` set.
+  High and critical always alert on their own. The decision is persisted in
+  the checkpoint, so a replay does not regroup differently.
+- Quiet hours and the daily budget (`[guard.quiet_hours]`, still default
+  off) now hold medium-or-lower alerts instead of only marking them:
+  journal `held`, action `held` with `quiet_hours` or `daily_budget`. High
+  and critical are never held. The hold is computed once and persisted in
+  the checkpoint.
+- The encounter sweep (every minute) sends at most two summaries a day:
+  "Mientras descansabas" at `end_hour` when quiet hours are on (held alerts
+  and routine activity of the night), and "Resumen de vigilancia" at the
+  site's `digest_hour` (since the previous summary). Each is one passive
+  notification through the same durable intent path (correlation
+  `digest:quiet:<day>` / `digest:daily:<day>`), skipped when there is
+  nothing to say, and recorded in `guard_state` only once it settled.
+
+**Scenarios, measured** (`tests/unit/guard-scenario-test.cc`, default
+config, fakes for the camera and the notification service):
+
+| Scenario | Before | After |
+|---|---|---|
+| Home garden at night, one stranger, 4 observations | 1 alert "Jardín: person_night" / "Unrecognized person in the area for 18s (strong detection, lingering, steady track)" + 1 spoken line | 1 alert "Persona desconocida · Jardín" / "En el exterior, de noche, desde hace 18 s. Argus le está avisando por el altavoz." + 1 spoken line |
+| Restaurant kitchen while open, a cook seen 6 times | see the report | 0 alerts; counted in the daily summary |
+| Office after hours, 3 observations | see the report | 1 critical alert "Persona desconocida · Oficina" / "En la oficina, fuera de horario, desde hace 18 s. …" |
+| Street camera at night, 3 passers-by | see the report | 0 alerts, nothing said to the street |
+| Entrance, medium visit inside quiet hours | 1 alert | 0 alerts, held for the morning summary |
+
+The "before" column is filled from the same test run against the parent
+commit in the report that introduced this section.

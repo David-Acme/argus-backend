@@ -28,6 +28,8 @@ CREATE INDEX IF NOT EXISTS idx_guard_incident_person_created
     ON guard_incident (person_id, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_guard_incident_event
     ON guard_incident (event_id) WHERE event_id != '';
+CREATE INDEX IF NOT EXISTS idx_guard_incident_tamper
+    ON guard_incident (created_at DESC) WHERE rule = 'camera_tamper';
 
 CREATE TABLE IF NOT EXISTS guard_action (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
@@ -119,7 +121,16 @@ CREATE TABLE IF NOT EXISTS guard_encounter (
     last_action_at INTEGER NOT NULL  DEFAULT 0,
     notify_command_id TEXT NOT NULL DEFAULT '',
     notify_count      INTEGER NOT NULL DEFAULT 0,
-    notify_highest_rank INTEGER NOT NULL DEFAULT 0
+    notify_highest_rank INTEGER NOT NULL DEFAULT 0,
+    subject          TEXT    NOT NULL  DEFAULT '',
+    people           INTEGER NOT NULL  DEFAULT 0,
+    reasons          TEXT    NOT NULL  DEFAULT '[]',
+    reasons_rank     INTEGER NOT NULL  DEFAULT 0,
+    group_id         INTEGER NOT NULL  DEFAULT 0,
+    review_label     TEXT    NOT NULL  DEFAULT ''
+                             CHECK (review_label IN ('', 'useful', 'false_alarm',
+                                    'not_now')),
+    reviewed_at      INTEGER NOT NULL  DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_guard_encounter_last_seen
@@ -261,8 +272,10 @@ CREATE TABLE IF NOT EXISTS guard_decision_journal (
     suppression_reason  TEXT    NOT NULL DEFAULT 'none'
                           CHECK (suppression_reason IN ('none', 'belief_gate',
                                  'budget', 'legacy_silent',
-                                 'thread_suppressed', 'staging')),
+                                 'thread_suppressed', 'staging', 'grouped',
+                                 'held')),
     suppressed_kinds    TEXT    NOT NULL DEFAULT '[]',
+    reasons             TEXT    NOT NULL DEFAULT '[]',
     dispatch_attempts   INTEGER NOT NULL DEFAULT 0,
     novelty_score       REAL    NOT NULL DEFAULT 0,
     repeat_visits       INTEGER NOT NULL DEFAULT 0,
@@ -284,3 +297,30 @@ CREATE INDEX IF NOT EXISTS idx_guard_decision_journal_cursor
 
 CREATE INDEX IF NOT EXISTS idx_guard_decision_journal_camera_time
     ON guard_decision_journal (camera_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS guard_site (
+    id               INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+    profile          TEXT    NOT NULL DEFAULT 'home'
+                       CHECK (profile IN ('home', 'office', 'commercial')),
+    schedule_enabled INTEGER NOT NULL DEFAULT 0 CHECK (schedule_enabled IN (0, 1)),
+    asleep_hours     TEXT    NOT NULL DEFAULT '',
+    open_hours       TEXT    NOT NULL DEFAULT '',
+    staffed_hours    TEXT    NOT NULL DEFAULT '',
+    closed_mode      TEXT    NOT NULL DEFAULT 'away'
+                       CHECK (closed_mode IN ('away', 'armed')),
+    digest_hour      INTEGER NOT NULL DEFAULT 21
+                       CHECK (digest_hour >= -1 AND digest_hour <= 23),
+    updated_at       INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS guard_camera_context (
+    camera_id    INTEGER NOT NULL PRIMARY KEY,
+    role         TEXT    NOT NULL DEFAULT 'other'
+                   CHECK (role IN ('other', 'entrance', 'perimeter', 'garage',
+                          'living', 'kitchen', 'office', 'register', 'storage',
+                          'public_area')),
+    outdoor      INTEGER NOT NULL DEFAULT 0 CHECK (outdoor IN (0, 1)),
+    public_area  INTEGER NOT NULL DEFAULT 0 CHECK (public_area IN (0, 1)),
+    active_hours TEXT    NOT NULL DEFAULT '',
+    updated_at   INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);

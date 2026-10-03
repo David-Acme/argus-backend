@@ -37,6 +37,8 @@ guard	GET	/guard/incidents	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	s
 guard	GET	/guard/mode	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
 guard	POST	/guard/mode	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
 guard	POST	/guard/person/{1}/promote	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
+guard	GET	/guard/site	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
+guard	PATCH	/guard/site	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
 guard	GET	/health	-	-	services/guard/src/app/main.cc
 identity	GET	/invitation	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/invitation/controllers/invitation-controller.hxx
 identity	POST	/invitation	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/invitation/controllers/invitation-controller.hxx

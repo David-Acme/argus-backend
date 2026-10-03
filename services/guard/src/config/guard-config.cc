@@ -5,6 +5,7 @@
 #include <shared/vocabulary/guard-mode.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -255,6 +256,13 @@ GuardServiceConfig GuardConfig::resolveService()
   config.quietEndHour = configHourOr("guard.quiet_hours.end_hour", 7);
   config.quietDailyBudget =
       configIntOr("guard.quiet_hours.daily_budget", 30);
+  config.digestHour = ConfigService::hasKey("guard.digest_hour")
+                          ? std::clamp(ConfigService::getInt("guard.digest_hour"),
+                                       -1, 23)
+                          : 21;
+  config.regroupWindowS = configInt64Or("guard.regroup_window_s", 600);
+  config.notifyLang =
+      configOr({.key = "guard.notify_lang", .fallback = config.announceLang});
   config.tamperSustainedS = configInt64Or("guard.tamper_sustained_s", 300);
   return config;
 }

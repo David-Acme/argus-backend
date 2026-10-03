@@ -2,6 +2,7 @@
 
 #include <camera/identity-state.hxx>
 #include <feature/guard/vocabulary/guard-danger.hxx>
+#include <feature/guard/vocabulary/guard-reason.hxx>
 #include <shared/vocabulary/guard-mode.hxx>
 
 #include <cstdint>
@@ -26,6 +27,7 @@ struct GuardPersonSignals
   int trackWindows{0};
   double areaSpread{1.0};
   std::string zoneKind;
+  std::string zoneName;
   std::string signature;
   std::string observationId;
   int64_t firstSeenMs{0};
@@ -49,6 +51,9 @@ struct GuardContext
   int visitCount{0};
   bool publicPresent{false};
   bool staffOnly{false};
+  bool areaInUse{false};
+  bool passerby{false};
+  bool afterHours{false};
 };
 
 struct GuardDeterrenceInput
@@ -60,6 +65,7 @@ struct GuardDeterrenceInput
   bool weapon{false};
   bool inAlertZone{false};
   int encounterChecks{0};
+  bool quietArea{false};
 };
 
 struct GuardDeterrence
@@ -101,6 +107,7 @@ struct GuardEventSignals
   std::string signature;
   std::string observationId;
   std::string zoneKind;
+  std::string zoneName;
 };
 
 struct GuardEncounterCandidate
@@ -128,6 +135,8 @@ namespace guard_policy
 {
 
 GuardDanger evaluate(const GuardContext& context);
+
+std::vector<GuardReason> explain(const GuardContext& context);
 
 GuardDeterrence deterrence(const GuardDeterrenceInput& input);
 

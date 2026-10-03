@@ -929,7 +929,8 @@ drogon::Task<bool> GuardRepository::insertDecisionJournal(
         input.legacyWouldNotify ? 1 : 0, input.beliefWouldNotify ? 1 : 0,
         input.didNotify ? 1 : 0, input.decisionMode,
         decisionSuppressionToString(input.suppression), input.suppressedKinds,
-        input.noveltyScore, input.repeatVisits, input.quietHold ? 1 : 0,
+        input.reasons, input.noveltyScore, input.repeatVisits,
+        input.quietHold ? 1 : 0,
         input.budgetHold ? 1 : 0, input.assessMs, input.createdAt);
     co_return result.affectedRows() > 0;
   }
@@ -1531,7 +1532,7 @@ drogon::Task<bool> GuardRepository::closeStaleEncounters(
           encounter.bestCameraId, "", encounter.grade,
           guardDangerRank(grade), 0, 0, "[]", 0, 0, 0, 0, input.decisionMode,
           decisionSuppressionToString(DecisionSuppression::LegacySilent),
-          "[]", 0.0, 0, 0, 0, 0, input.closedAt);
+          "[]", "[]", 0.0, 0, 0, 0, 0, input.closedAt);
     }
   }
   catch (const std::exception& e) {

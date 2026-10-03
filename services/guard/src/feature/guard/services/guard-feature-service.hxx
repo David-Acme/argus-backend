@@ -4,8 +4,16 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/guard/dtos/create-expected-guest-dto.hxx>
 #include <feature/guard/dtos/list-decisions-dto.hxx>
+#include <feature/guard/dtos/list-episodes-dto.hxx>
+#include <feature/guard/dtos/update-camera-context-dto.hxx>
+#include <feature/guard/dtos/update-guard-site-dto.hxx>
 #include <feature/guard/guard-repository.hxx>
 #include <feature/guard/guard-schedule.hxx>
+#include <feature/guard/repositories/camera-context/camera-context-repository.hxx>
+#include <feature/guard/repositories/episode/episode-repository.hxx>
+#include <feature/guard/repositories/guard-site/guard-site-repository.hxx>
+#include <feature/guard/vocabulary/feedback-label.hxx>
+#include <optional>
 #include <json/value.h>
 #include <string>
 
@@ -15,7 +23,7 @@ struct GuardFeatureDependencies
 {
   IdentityClient* identity{nullptr};
   GuardMode defaultMode{GuardMode::Home};
-  GuardScheduleConfig schedule;
+  GuardSite siteDefaults;
 };
 
 class GuardFeatureService
@@ -53,9 +61,45 @@ public:
 
   drogon::Task<bool> removeGuest(int64_t id) const;
 
+  [[nodiscard]] drogon::Task<Json::Value> site() const;
+
+  [[nodiscard]] drogon::Task<Json::Value>
+  updateSite(const UpdateGuardSiteDto& input) const;
+
+  [[nodiscard]] drogon::Task<Json::Value> cameras() const;
+
+  struct CameraContextInput
+  {
+    int64_t cameraId{0};
+    const UpdateCameraContextDto& context;
+  };
+
+  [[nodiscard]] drogon::Task<Json::Value>
+  setCamera(const CameraContextInput& input) const;
+
+  [[nodiscard]] drogon::Task<Json::Value>
+  episodes(const ListEpisodesDto& query) const;
+
+  [[nodiscard]] drogon::Task<std::optional<Json::Value>>
+  episode(int64_t id) const;
+
+  struct ReviewInput
+  {
+    int64_t episodeId{0};
+    FeedbackLabel label{FeedbackLabel::Useful};
+  };
+
+  [[nodiscard]] drogon::Task<std::optional<Json::Value>>
+  reviewEpisode(const ReviewInput& input) const;
+
 private:
+  [[nodiscard]] drogon::Task<GuardSite> activeSite() const;
+
   IdentityClient* identity_{nullptr};
   GuardMode defaultMode_{GuardMode::Home};
-  GuardSchedule schedule_;
-  GuardRepository repository_;
+  GuardSite siteDefaults_;
+  GuardRepository guardRepository_;
+  GuardSiteRepository siteRepository_;
+  CameraContextRepository cameraContextRepository_;
+  EpisodeRepository episodeRepository_;
 };

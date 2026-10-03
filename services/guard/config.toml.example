@@ -78,6 +78,9 @@ health_stale_s = 300
 belief_refresh_s = 300
 journal_retention_days = 90
 tamper_sustained_s = 300
+digest_hour = 21
+regroup_window_s = 600
+notify_lang = "es"
 
 [guard.schedule]
 enabled = false

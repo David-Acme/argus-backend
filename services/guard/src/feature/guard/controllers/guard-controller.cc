@@ -9,7 +9,11 @@
 #include <feature/guard/dtos/create-expected-guest-dto.hxx>
 #include <feature/guard/dtos/feedback-decision-dto.hxx>
 #include <feature/guard/dtos/list-decisions-dto.hxx>
+#include <feature/guard/dtos/list-episodes-dto.hxx>
 #include <feature/guard/dtos/list-incidents-dto.hxx>
+#include <feature/guard/dtos/review-episode-dto.hxx>
+#include <feature/guard/dtos/update-camera-context-dto.hxx>
+#include <feature/guard/dtos/update-guard-site-dto.hxx>
 #include <feature/guard/dtos/summary-decisions-dto.hxx>
 #include <feature/guard/dtos/remove-expected-guest-dto.hxx>
 #include <feature/guard/dtos/update-guard-mode-dto.hxx>
@@ -120,4 +124,62 @@ drogon::Task<drogon::HttpResponsePtr> GuardController::removeGuest(
   Json::Value response;
   response["removed"] = true;
   co_return ApiResponse::ok(response);
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::site(
+    drogon::HttpRequestPtr)
+{
+  co_return ApiResponse::ok(co_await service_.site());
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::updateSite(
+    drogon::HttpRequestPtr req)
+{
+  const auto body = UpdateGuardSiteDto::fromJson(*req->getJsonObject());
+  co_return ApiResponse::ok(co_await service_.updateSite(body));
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::cameras(
+    drogon::HttpRequestPtr)
+{
+  co_return ApiResponse::ok(co_await service_.cameras());
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::setCamera(
+    drogon::HttpRequestPtr req, int64_t cameraId)
+{
+  if (cameraId <= 0)
+    throw ResponseException(GuardErrors::CameraIdInvalid);
+  const auto body = UpdateCameraContextDto::fromJson(*req->getJsonObject());
+  co_return ApiResponse::ok(
+      co_await service_.setCamera({.cameraId = cameraId, .context = body}));
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::episodes(
+    drogon::HttpRequestPtr req)
+{
+  const auto query = ListEpisodesDto::fromRequest(req);
+  co_return ApiResponse::ok(co_await service_.episodes(query));
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::episode(
+    drogon::HttpRequestPtr, int64_t episodeId)
+{
+  const auto found = co_await service_.episode(episodeId);
+  if (!found)
+    throw ResponseException(GuardErrors::EpisodeNotFound);
+  co_return ApiResponse::ok(*found);
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::reviewEpisode(
+    drogon::HttpRequestPtr req, int64_t episodeId)
+{
+  const auto body = ReviewEpisodeDto::fromJson(*req->getJsonObject());
+  const auto reviewed = co_await service_.reviewEpisode(
+      {.episodeId = episodeId,
+       .label = feedbackLabelFromString(body.label)
+                    .value_or(FeedbackLabel::Useful)});
+  if (!reviewed)
+    throw ResponseException(GuardErrors::EpisodeNotFound);
+  co_return ApiResponse::ok(*reviewed);
 }

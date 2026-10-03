@@ -116,6 +116,9 @@ struct GuardServiceConfig
   int quietStartHour{22};
   int quietEndHour{7};
   int quietDailyBudget{30};
+  int digestHour{21};
+  int64_t regroupWindowS{600};
+  std::string notifyLang{"es"};
   int64_t tamperSustainedS{300};
   int64_t healthStaleS{300};
   std::function<bool(const std::string&)> failPoint;

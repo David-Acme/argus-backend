@@ -3,6 +3,8 @@ argus_module(NAME guard
         guard-action.cc
         guard-assessment.cc
         guard-belief.cc
+        guard-context.cc
+        guard-copy.cc
         guard-dialogue.cc
         guard-policy.cc
         guard-repository.cc
@@ -14,10 +16,17 @@ argus_module(NAME guard
         dtos/create-expected-guest-dto.cc
         dtos/feedback-decision-dto.cc
         dtos/list-decisions-dto.cc
+        dtos/list-episodes-dto.cc
         dtos/list-incidents-dto.cc
         dtos/remove-expected-guest-dto.cc
+        dtos/review-episode-dto.cc
         dtos/summary-decisions-dto.cc
+        dtos/update-camera-context-dto.cc
         dtos/update-guard-mode-dto.cc
+        dtos/update-guard-site-dto.cc
+        repositories/camera-context/camera-context-repository.cc
+        repositories/episode/episode-repository.cc
+        repositories/guard-site/guard-site-repository.cc
         services/guard-feature-service.cc
     INCLUDES
         ../..

@@ -111,6 +111,21 @@ std::vector<GuardWindow> guard_schedule::parseWindows(const std::string& spec)
   return windows;
 }
 
+bool guard_schedule::validWindows(const std::string& spec)
+{
+  std::string_view rest(spec);
+  if (trim(rest).empty())
+    return true;
+  while (true) {
+    const auto comma = rest.find(',');
+    if (!parseWindow(rest.substr(0, comma)))
+      return false;
+    if (comma == std::string_view::npos)
+      return true;
+    rest.remove_prefix(comma + 1);
+  }
+}
+
 GuardSchedule guard_schedule::parse(const GuardScheduleConfig& spec)
 {
   return {.enabled = spec.enabled,
@@ -179,4 +194,28 @@ GuardPosture guard_schedule::resolve(const GuardPostureInput& input)
           .publicPresent = false,
           .staffOnly = false,
           .occupancy = "manual"};
+}
+
+GuardSite guard_schedule::siteDefaults(const GuardServiceConfig& config)
+{
+  return {.profile =
+              siteProfileFromString(config.profile).value_or(SiteProfile::Home),
+          .scheduleEnabled = config.schedule.enabled,
+          .asleep = config.schedule.asleep,
+          .open = config.schedule.open,
+          .staffed = config.schedule.staffed,
+          .closedMode = config.schedule.closedMode == "armed" ? GuardMode::Armed
+                                                              : GuardMode::Away,
+          .digestHour = config.digestHour,
+          .updatedAt = 0};
+}
+
+GuardSchedule guard_schedule::fromSite(const GuardSite& site)
+{
+  return parse({.enabled = site.scheduleEnabled,
+                .asleep = site.asleep,
+                .open = site.open,
+                .staffed = site.staffed,
+                .closedMode = site.closedMode == GuardMode::Armed ? "armed"
+                                                                  : "away"});
 }

@@ -38,6 +38,21 @@ public:
   ADD_METHOD_TO(GuardController::promotePerson, "/guard/person/{1}/promote",
                 drogon::Post, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
                 "RoleFilter");
+  ADD_METHOD_TO(GuardController::site, "/guard/site", drogon::Get,
+                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(GuardController::updateSite, "/guard/site", drogon::Patch,
+                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(GuardController::cameras, "/guard/cameras", drogon::Get,
+                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(GuardController::setCamera, "/guard/cameras/{1}", drogon::Put,
+                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(GuardController::episodes, "/guard/episodes", drogon::Get,
+                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(GuardController::episode, "/guard/episodes/{1}", drogon::Get,
+                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(GuardController::reviewEpisode, "/guard/episodes/{1}/review",
+                drogon::Post, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
+                "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> mode(drogon::HttpRequestPtr req);
@@ -55,6 +70,16 @@ public:
       drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> promotePerson(
       drogon::HttpRequestPtr req, int64_t personId);
+  drogon::Task<drogon::HttpResponsePtr> site(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> updateSite(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> cameras(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> setCamera(drogon::HttpRequestPtr req,
+                                                  int64_t cameraId);
+  drogon::Task<drogon::HttpResponsePtr> episodes(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> episode(drogon::HttpRequestPtr req,
+                                                int64_t episodeId);
+  drogon::Task<drogon::HttpResponsePtr> reviewEpisode(
+      drogon::HttpRequestPtr req, int64_t episodeId);
 
 private:
   GuardFeatureService service_;

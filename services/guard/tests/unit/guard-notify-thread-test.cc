@@ -408,15 +408,25 @@ TEST_CASE("first crossing notifies with a deterministic body")
   CHECK(harness.notifications.calls == 1);
   REQUIRE(harness.notifications.sent.size() == 1);
   CHECK(harness.notifications.sent.front().title ==
-        "front: person_in_alert_zone");
+        "Persona desconocida \u00b7 front");
   CHECK(harness.notifications.sent.front().body ==
-        "Unrecognized person in the alert zone for 18s (strong detection, "
-        "lingering, steady track)");
+        "En la zona de alerta, desde hace 18 s. Argus sigue observando.");
   const Json::Value data =
       json_util::fromString(harness.notifications.sent.front().data);
   CHECK(data["zoneKind"].asString() == "alert");
   CHECK(data["dwellS"].asInt64() == 18);
   CHECK(data["identityState"].asString() == "unrecognized");
+  CHECK(data["cameraName"].asString() == "front");
+  CHECK(data["kind"].asString() == "guard_episode");
+  CHECK(data["phase"].asString() == "opened");
+  CHECK(data["urgency"].asString() == "critical");
+  CHECK(data["action"].asString() == "watching");
+  CHECK(data["lang"].asString() == "es");
+  CHECK(data["episodeId"].asInt64() == data["encounterId"].asInt64());
+  CHECK(data["threadKey"].asString() ==
+        "guard:episode:" + std::to_string(data["encounterId"].asInt64()));
+  REQUIRE(data["reasons"].isArray());
+  CHECK(data["reasons"][0].asString() == "alert_zone");
   CHECK(threadField(20, "notify_count") == "1");
   CHECK(threadField(20, "notify_highest_rank") == "4");
 }
@@ -780,7 +790,7 @@ TEST_CASE("a lost settlement stays visible as ambiguous, never suppressed")
   CHECK(harness.notifications.calls == callsBefore + 1);
 }
 
-TEST_CASE("notification body and journal summary share one phrase set")
+TEST_CASE("notification reasons are the journal's reasons")
 {
   SharedBoot& boot = sharedBoot();
   (void)boot;
@@ -798,35 +808,14 @@ TEST_CASE("notification body and journal summary share one phrase set")
       1)));
   REQUIRE(harness.notifications.calls == 1);
   REQUIRE(harness.notifications.sent.size() == 1);
-  const std::string body = harness.notifications.sent.front().body;
-  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .schedule = {}});
-  const Json::Value decisions = drogon::sync_wait(feature.decisions(
-      {.limit = 200,
-       .from = 0,
-       .to = 0,
-       .cameraId = 49,
-       .severity = {},
-       .decisionMode = {},
-       .suppressionReason = {},
-       .divergentOnly = false,
-       .nearMissMargin = 0,
-       .afterCreatedAt = 0,
-       .afterEventId = {}}));
-  REQUIRE(decisions["rows"].size() == 1);
-  const std::string summary =
-      decisions["rows"][0]["summary"].asString();
-  REQUIRE_FALSE(summary.empty());
-  const auto paren = [](const std::string& text) {
-    const auto open = text.find('(');
-    const auto close = text.find(')', open);
-    if (open == std::string::npos || close == std::string::npos)
-      return std::string{};
-    return text.substr(open, close - open + 1);
-  };
-  CHECK(paren(body) == "(strong detection, lingering, steady track)");
-  CHECK(paren(summary) == paren(body));
-  CHECK(body.find("nrecognized person (unrecognized") == std::string::npos);
-  CHECK(body.find("nidentified person (unidentified") == std::string::npos);
+  const Json::Value data =
+      json_util::fromString(harness.notifications.sent.front().data);
+  const Json::Value journal =
+      json_util::fromString(journalField("phr:1", "reasons"));
+  REQUIRE(journal.isArray());
+  CHECK(json_util::toString(data["reasons"]) == json_util::toString(journal));
+  CHECK(harness.notifications.sent.front().body.find("strong detection") ==
+        std::string::npos);
 }
 
 TEST_CASE("staging observations journal without notifying")
@@ -1047,7 +1036,7 @@ TEST_CASE("an unknown health state is penalized but never escalates")
                "LIKE 'tamper:144:%'") == "0");
 }
 
-TEST_CASE("quiet-hours marks without silencing")
+TEST_CASE("quiet hours hold a medium alert for the morning summary")
 {
   SharedBoot& boot = sharedBoot();
   (void)boot;
@@ -1067,13 +1056,41 @@ TEST_CASE("quiet-hours marks without silencing")
                          .zoneKind = "monitor",
                          .signature = {}}),
       1)));
-  CHECK(harness.notifications.calls == 1);
-  CHECK(journalField("qhm:1", "did_notify") == "1");
+  CHECK(harness.notifications.calls == 0);
+  CHECK(journalField("qhm:1", "did_notify") == "0");
+  CHECK(journalField("qhm:1", "suppression_reason") == "held");
   CHECK(journalField("qhm:1", "quiet_hold") == "1");
   CHECK(journalField("qhm:1", "budget_hold") == "0");
+  CHECK(scalar("SELECT detail FROM guard_action WHERE camera_id = 45 AND "
+               "kind = 'notify' AND status = 'held'") == "quiet_hours");
 }
 
-TEST_CASE("an exhausted budget marks without silencing")
+TEST_CASE("quiet hours never hold a high alert")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  harness.config.quietHoursEnabled = true;
+  harness.config.quietStartHour = 0;
+  harness.config.quietEndHour = 24;
+  harness.config.quietDailyBudget = 1000;
+  auto service = harness.makeService();
+
+  REQUIRE(drogon::sync_wait(service->handle(
+      threadObservation({.eventId = "qhh:1",
+                         .cameraId = 245,
+                         .trackId = 1,
+                         .rule = "person_in_alert_zone",
+                         .severity = "critical",
+                         .zoneKind = "alert",
+                         .signature = {}}),
+      1)));
+  CHECK(harness.notifications.calls == 1);
+  CHECK(journalField("qhh:1", "did_notify") == "1");
+  CHECK(journalField("qhh:1", "quiet_hold") == "0");
+}
+
+TEST_CASE("an exhausted daily budget holds the next medium alert")
 {
   SharedBoot& boot = sharedBoot();
   (void)boot;
@@ -1081,7 +1098,17 @@ TEST_CASE("an exhausted budget marks without silencing")
   harness.config.quietHoursEnabled = true;
   harness.config.quietStartHour = 0;
   harness.config.quietEndHour = 0;
-  harness.config.quietDailyBudget = 1;
+  const std::time_t clock = std::time(nullptr);
+  std::tm local{};
+  localtime_r(&clock, &local);
+  const int64_t midnight = static_cast<int64_t>(clock) -
+                           (local.tm_hour * 3600 + local.tm_min * 60 +
+                            local.tm_sec);
+  harness.config.quietDailyBudget =
+      std::stoi(scalar("SELECT COUNT(*) FROM guard_decision_journal WHERE "
+                       "did_notify = 1 AND created_at >= " +
+                       std::to_string(midnight))) +
+      1;
   auto service = harness.makeService();
 
   REQUIRE(drogon::sync_wait(service->handle(
@@ -1102,8 +1129,9 @@ TEST_CASE("an exhausted budget marks without silencing")
                          .zoneKind = "monitor",
                          .signature = {}}),
       1)));
-  CHECK(harness.notifications.calls == 2);
-  CHECK(journalField("bdg:2", "did_notify") == "1");
+  CHECK(harness.notifications.calls == 1);
+  CHECK(journalField("bdg:2", "did_notify") == "0");
+  CHECK(journalField("bdg:2", "suppression_reason") == "held");
   CHECK(journalField("bdg:2", "quiet_hold") == "0");
   CHECK(journalField("bdg:2", "budget_hold") == "1");
 }

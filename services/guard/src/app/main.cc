@@ -4,6 +4,7 @@
 #include <feature/guard/controllers/guard-controller.hxx>
 #include <feature/guard/guard-assessment.hxx>
 #include <feature/guard/guard-repository.hxx>
+#include <feature/guard/guard-schedule.hxx>
 #include <feature/guard/guard-schema.hxx>
 #include <feature/guard/guard-service.hxx>
 #include <feature/settings/guard-settings.hxx>
@@ -201,9 +202,10 @@ int main()
   drogon::app().registerFilter(std::make_shared<JwtFilter>());
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
   drogon::app().registerController(std::make_shared<GuardController>(
-      GuardFeatureDependencies{.identity = identity.get(),
-                               .defaultMode = guardConfig.defaultMode,
-                               .schedule = guardConfig.schedule}));
+      GuardFeatureDependencies{
+          .identity = identity.get(),
+          .defaultMode = guardConfig.defaultMode,
+          .siteDefaults = guard_schedule::siteDefaults(guardConfig)}));
 
   drogon::app().setExceptionHandler(ErrorHandler::handleException);
 

@@ -339,6 +339,53 @@ bool migrateEncounterNotifyColumns()
   return true;
 }
 
+bool migrateEncounterEpisodeColumns()
+{
+  if (!tableExists("guard_encounter"))
+    return true;
+  if (!columnExists("guard_encounter", "subject") &&
+      !exec("ALTER TABLE guard_encounter ADD COLUMN subject TEXT NOT NULL "
+            "DEFAULT ''"))
+    return false;
+  if (!columnExists("guard_encounter", "people") &&
+      !exec("ALTER TABLE guard_encounter ADD COLUMN people INTEGER NOT NULL "
+            "DEFAULT 0"))
+    return false;
+  if (!columnExists("guard_encounter", "reasons") &&
+      !exec("ALTER TABLE guard_encounter ADD COLUMN reasons TEXT NOT NULL "
+            "DEFAULT '[]'"))
+    return false;
+  if (!columnExists("guard_encounter", "reasons_rank") &&
+      !exec("ALTER TABLE guard_encounter ADD COLUMN reasons_rank INTEGER NOT "
+            "NULL DEFAULT 0"))
+    return false;
+  if (!columnExists("guard_encounter", "group_id") &&
+      !exec("ALTER TABLE guard_encounter ADD COLUMN group_id INTEGER NOT NULL "
+            "DEFAULT 0"))
+    return false;
+  if (!columnExists("guard_encounter", "review_label") &&
+      !exec("ALTER TABLE guard_encounter ADD COLUMN review_label TEXT NOT NULL "
+            "DEFAULT '' CHECK (review_label IN ('', 'useful', 'false_alarm', "
+            "'not_now'))"))
+    return false;
+  if (!columnExists("guard_encounter", "reviewed_at") &&
+      !exec("ALTER TABLE guard_encounter ADD COLUMN reviewed_at INTEGER NOT "
+            "NULL DEFAULT 0"))
+    return false;
+  return true;
+}
+
+bool migrateJournalReasonsColumn()
+{
+  if (!tableExists("guard_decision_journal"))
+    return true;
+  if (!columnExists("guard_decision_journal", "reasons") &&
+      !exec("ALTER TABLE guard_decision_journal ADD COLUMN reasons TEXT NOT "
+            "NULL DEFAULT '[]'"))
+    return false;
+  return true;
+}
+
 bool migrateJournalDispatchColumn()
 {
   if (!tableExists("guard_decision_journal"))
@@ -505,7 +552,7 @@ bool journalTableIsCurrent()
     return true;
   const std::string sql = tableSql("guard_decision_journal");
   return sql.find("suppressed_kinds") != std::string::npos &&
-         sql.find("'staging'") != std::string::npos;
+         sql.find("'held'") != std::string::npos;
 }
 
 bool rebuildJournalTable(const std::string& schemaPath)
@@ -530,14 +577,14 @@ bool rebuildJournalTable(const std::string& schemaPath)
             "incident_id, camera_id, observation_id, severity, severity_rank, "
             "hard_floor, belief_score, belief_signals, belief_threshold, "
             "legacy_would_notify, belief_would_notify, did_notify, "
-            "decision_mode, suppression_reason, suppressed_kinds, "
+            "decision_mode, suppression_reason, suppressed_kinds, reasons, "
             "dispatch_attempts, novelty_score, repeat_visits, quiet_hold, "
             "budget_hold, assess_ms, feedback_label, feedback_at, created_at) "
             "SELECT event_id, encounter_id, incident_id, camera_id, "
             "observation_id, severity, severity_rank, hard_floor, belief_score, "
             "belief_signals, belief_threshold, legacy_would_notify, "
             "belief_would_notify, did_notify, decision_mode, "
-            "suppression_reason, suppressed_kinds, dispatch_attempts, "
+            "suppression_reason, suppressed_kinds, reasons, dispatch_attempts, "
             "novelty_score, repeat_visits, quiet_hold, budget_hold, assess_ms, "
             "feedback_label, feedback_at, created_at FROM "
             "guard_decision_journal_legacy") &&
@@ -593,8 +640,9 @@ bool guard_schema::migrate(const std::string& schemaPath)
   if (!migrateGuestColumns() || !migrateInboxColumns() ||
       !migrateIncidentColumns() || !migrateActionColumns() ||
       !migrateEncounterDialogueColumns() || !migrateAssessmentColumns() ||
-      !migrateEncounterNotifyColumns() || !migrateJournalDispatchColumn() ||
-      !migrateJournalRound11Columns() || !migrateOutboxColumns() ||
+      !migrateEncounterNotifyColumns() || !migrateEncounterEpisodeColumns() ||
+      !migrateJournalDispatchColumn() || !migrateJournalRound11Columns() ||
+      !migrateJournalReasonsColumn() || !migrateOutboxColumns() ||
       !ensureDeadLetterTable() || !ensureBaselineTables() ||
       !ensureEncounterOutboxTable() || !ensureEvidenceIndex())
     return false;

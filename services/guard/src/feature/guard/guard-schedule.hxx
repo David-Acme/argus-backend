@@ -1,6 +1,7 @@
 #pragma once
 
 #include <config/guard-config.hxx>
+#include <feature/guard/repositories/guard-site/guard-site-query.hxx>
 #include <shared/vocabulary/guard-mode.hxx>
 
 #include <cstdint>
@@ -44,10 +45,16 @@ namespace guard_schedule
 
 std::vector<GuardWindow> parseWindows(const std::string& spec);
 
+bool validWindows(const std::string& spec);
+
 GuardSchedule parse(const GuardScheduleConfig& spec);
 
 bool inWindows(const std::vector<GuardWindow>& windows, const std::tm& local);
 
 GuardPosture resolve(const GuardPostureInput& input);
+
+GuardSite siteDefaults(const GuardServiceConfig& config);
+
+GuardSchedule fromSite(const GuardSite& site);
 
 }
