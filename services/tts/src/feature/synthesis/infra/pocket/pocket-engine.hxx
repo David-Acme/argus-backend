@@ -5,6 +5,7 @@
 #include <onnxruntime_cxx_api.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -24,6 +25,7 @@ struct PocketGeneration
 {
   float temperature{0.3F};
   int lsdSteps{1};
+  std::uint32_t seed{0};
 };
 
 struct PocketStreamInput

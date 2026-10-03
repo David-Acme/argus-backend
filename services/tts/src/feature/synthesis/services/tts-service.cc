@@ -381,7 +381,9 @@ bool TtsService::streamPocket(const PocketStreamJob& job)
     chunks = chunkProsodic({.text = job.text,
                             .maxUnits = PocketEngine::kMaxChunkTokens,
                             .measure = [engine](std::string_view text) { return engine->tokenCount(text); }});
-    generation = {.temperature = configuredPocketTemperature(), .lsdSteps = configuredPocketLsdSteps()};
+    generation = {.temperature = configuredPocketTemperature(),
+                  .lsdSteps = configuredPocketLsdSteps(),
+                  .seed = static_cast<std::uint32_t>(std::max(0, ConfigService::getInt("tts.pocket_seed")))};
     targetRate = engine_ ? engine_->sampleRate() : engine->sampleRate();
   }
 

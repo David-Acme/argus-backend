@@ -559,6 +559,8 @@ void PocketEngine::stream(const PocketStreamInput& input)
     return;
   const auto tokenTotal = static_cast<std::int64_t>(tokens.size());
   auto embeddings = impl.condition(std::move(tokens));
+  if (input.generation.seed != 0)
+    impl.random.seed(input.generation.seed);
   impl.flowStates.loadVoice({.voice = input.voice, .length = input.voice.length});
   impl.mimiStates.resetSmall();
   static_cast<void>(impl.runMain({.sequence = {}, .text = embeddings}));

@@ -91,6 +91,8 @@ add_custom_command(TARGET argus-tts POST_BUILD
             ${CMAKE_CURRENT_SOURCE_DIR}/../../models
             $<TARGET_FILE_DIR:argus-tts>/models)
 
+add_subdirectory(tools/tts-preview)
+
 add_executable(tts-wire-test tests/unit/tts-wire-test.cc)
 
 target_compile_definitions(tts-wire-test PRIVATE

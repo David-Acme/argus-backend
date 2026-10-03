@@ -95,7 +95,7 @@ Synthesis stream(const StreamRun& run)
   Synthesis result;
   run.engine.stream({.text = run.text,
                      .voice = run.voice,
-                     .generation = {.temperature = 0.3F, .lsdSteps = 1},
+                     .generation = {.temperature = 0.3F, .lsdSteps = 1, .seed = 0},
                      .onAudio =
                          [&result](std::span<const float> samples) {
                            result.samples.insert(result.samples.end(), samples.begin(), samples.end());
@@ -242,6 +242,30 @@ TEST_CASE("the Pocket engine streams speech and honours cancellation")
   const auto stopped = stream({.engine = engine, .voice = voice, .text = "Hay una persona en la puerta principal.", .stopAfter = 1});
   CHECK(stopped.calls == 1);
   CHECK(stopped.samples.size() < full.samples.size());
+}
+
+TEST_CASE("a fixed seed makes Pocket speech reproducible")
+{
+  if (!provisioned("es-fast")) {
+    MESSAGE("Pocket models are not provisioned under " << pocketRoot().string() << "; skipped");
+    return;
+  }
+  Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "tts-pocket-seed-test");
+  PocketEngine engine({.env = env, .directory = pocketRoot() / "es-fast", .precision = "int8", .threads = 4});
+  const auto voice = engine.loadVoice(pocketRoot() / "es-fast" / "voices" / "lola.safetensors");
+  const auto speak = [&engine, &voice](std::uint32_t seed) {
+    std::vector<float> samples;
+    engine.stream({.text = "Buenas tardes.",
+                   .voice = voice,
+                   .generation = {.temperature = 0.3F, .lsdSteps = 1, .seed = seed},
+                   .onAudio = [&samples](std::span<const float> pcm) { samples.insert(samples.end(), pcm.begin(), pcm.end()); },
+                   .stopRequested = {}});
+    return samples;
+  };
+  const auto first = speak(7);
+  REQUIRE_FALSE(first.empty());
+  CHECK(speak(7) == first);
+  CHECK(speak(8) != first);
 }
 
 TEST_CASE("the service answers Pocket languages at the announced rate and falls back when Pocket is absent")
