@@ -3,6 +3,7 @@
 #include <ctime>
 #include <sqlite/db-service.hxx>
 #include <string>
+#include <vector>
 #include <sqlite/sqlite-stmt.hxx>
 #include <sqlite3.h>
 
@@ -59,10 +60,10 @@ FaceEmbeddingRepository::create(const FaceEmbeddingCreateInput& input) const
 {
   const auto pooled = DbService::client();
   auto* client = input.client ? input.client : pooled.get();
+  const std::vector<char> blob(input.embedding.begin(), input.embedding.end());
   const auto result =
-      co_await client->execSqlCoro(INSERT.data(), input.personId,
-                                   input.embedding, input.angleLabel,
-                                   input.quality);
+      co_await client->execSqlCoro(INSERT.data(), input.personId, blob,
+                                   input.angleLabel, input.quality);
 
   FaceEmbeddingSchema schema;
   schema.id = result.insertId();

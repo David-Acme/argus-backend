@@ -132,3 +132,17 @@ target_link_libraries(identity-voiceprint-test PRIVATE
 target_compile_options(identity-voiceprint-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-voiceprint-test)
 add_test(NAME identity-voiceprint-test COMMAND identity-voiceprint-test)
+
+add_executable(identity-face-embedding-test
+    unit/identity-face-embedding-test.cc)
+target_compile_definitions(identity-face-embedding-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(identity-face-embedding-test PRIVATE
+    argus::identity-shared
+    argus::lib::sqlite
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-face-embedding-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-face-embedding-test)
+add_test(NAME identity-face-embedding-test
+         COMMAND identity-face-embedding-test)

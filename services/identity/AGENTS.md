@@ -132,7 +132,8 @@ argus-identity/
   config.toml.example   identity keys + the peer targets; no AI keys
   tests/unit/           the config, migration, change-outbox,
                         change-transaction, change-outbox-sink, sync-RPC,
-                        face-slots, voiceprint-audio and voiceprint suites
+                        face-slots, face-embedding, voiceprint-audio and
+                        voiceprint suites
   tests/fixtures/voiceprint/  nine LibriSpeech clips (CC BY 4.0, raw PCM)
   tools/migrate-identity/  argus-migrate-identity (argus.db -> identity.db)
   scripts/provision.sh  the deploy-time provisioning of this service: the

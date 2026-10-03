@@ -348,6 +348,20 @@ the journal's redelivery key was re-minted at the same time so
 `user_action_log.msg_id` no longer borrows a row id from a table this owner
 writes. Nothing here owns, renames or drops those five tables any more.
 
+## Face embeddings are stored as BLOBs
+
+Drogon's SQLite binder sends a `std::string` parameter as TEXT with length -1,
+so SQLite reads it up to the first zero byte. The two writers of
+`face_embedding` (the enrollment feature and `FaceEmbeddingRepository::create`)
+passed the float bytes that way, and every canonical row was cut short —
+usually to nothing, since an embedding is full of zero bytes. Search never
+noticed because `face_vec` is written through the vec connection with a real
+blob bind; the loss would have surfaced the day an index was rebuilt from the
+canonical rows. Both writers now bind a `std::vector<char>` (Drogon's BLOB
+type), and `identity-face-embedding-test` pins that a row with zero bytes comes
+back whole and typed `blob`. Rows written before the fix stay truncated; the
+`face_vec` index still holds their real vectors.
+
 ## Voiceprints (speaker verification)
 
 A person's voice is linked to them **once**, and only under a confirmed
