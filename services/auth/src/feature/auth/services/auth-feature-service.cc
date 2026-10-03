@@ -312,8 +312,10 @@ AuthFeatureService::approveDeviceLogin(const std::string& challengeId,
 
   const auto answer =
       co_await fetchIdentityUser(dependencies_.identity, approvingUserId);
-  if (!answer || !answer->has_user() || !answer->user().is_active())
-    throw ResponseException(AuthErrors::FaceNotRecognized);
+  if (!answer)
+    throw ResponseException(AuthErrors::IdentityUnavailable);
+  if (!answer->has_user() || !answer->user().is_active())
+    throw ResponseException(AuthErrors::AccessDenied);
 
   std::map<std::string, std::string> claims;
   claims["sub"] = std::to_string(approvingUserId);

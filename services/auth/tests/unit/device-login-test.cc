@@ -574,6 +574,21 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK(secondPoller.status != DeviceLoginStatus::Approved);
   CHECK(secondPoller.accessToken.empty());
 
+  const auto refusedApproval = drogon::sync_wait(authService.createDeviceLogin(
+      {.device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa}, .pollHash = ""}));
+  app.identity().reachable = false;
+  const auto identityDown =
+      refusalOf(authService.approveDeviceLogin(refusedApproval.challengeId, 1));
+  REQUIRE(identityDown.has_value());
+  CHECK(identityDown->status == 503);
+  app.identity().reachable = true;
+  app.identity().isActive = false;
+  const auto inactiveApprover =
+      refusalOf(authService.approveDeviceLogin(refusedApproval.challengeId, 1));
+  REQUIRE(inactiveApprover.has_value());
+  CHECK(inactiveApprover->status == 403);
+  app.identity().isActive = true;
+
   ConfigService::setRuntimeString("auth.target", "127.0.0.1:1");
   auto unreachable = drogon::HttpRequest::newHttpRequest();
   unreachable->addHeader("User-Agent", kDesktopUa);
