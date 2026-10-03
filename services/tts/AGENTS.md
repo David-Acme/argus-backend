@@ -8,7 +8,7 @@ for this service only; other root rules remain binding.
 
 ## MUST-FOLLOW Rules
 
-1. **TTS capacity only** — this service runs the onnxruntime TTS engine and
+1. **TTS capacity only** — this service runs the onnxruntime TTS engines and
    nothing else (no face/llm/vlm/stt/vad code or symbols; verified with
    `nm -C`). The engine is THE capacity of this service (F4-2, Ruling BG).
 2. **Internal wire only** — the service serves the legacy adapters over
@@ -52,9 +52,13 @@ argus-tts/
     CMakeLists.txt      owns each production source once
     controllers/        transitional /tts/v1/* HTTP controller
     dtos/               internal HTTP request DTO
-    services/           TtsService facade, lifecycle, cache, async synthesis
+    services/           TtsService facade, per-language engine choice, cache, async synthesis
     infra/supertonic/   ONNX engine, model/style loading, Unicode processing
+    infra/pocket/       Kyutai Pocket TTS runtime (bundle, tokenizer, voices, engine, rate converter)
+    text/               argus::tts-speech-text — text normalizer + prosodic chunker (pure)
   src/feature/settings/ argus::tts-settings — the owner-editable catalog
+  scripts/provision.sh  Supertonic download + Pocket export with SHA-256 pins
+  tools/export-pocket.py  official Pocket weights -> parity-checked ONNX bundle
   config.toml.example   [tts] engine keys, the [rpc]/[rpc.callers] gRPC gate,
                         [server], [drogon.app]; no other domains
   CONTEXT.md            purpose, ownership, wiring decisions
@@ -88,9 +92,10 @@ Service-local consumers use `<feature/synthesis/services/tts-service.hxx>`;
 there is no duplicate implementation or old-path forwarding header.
 The gRPC transport (typed unary `Capabilities` + server-streaming
 `Synthesize`, credential-gated, float32 at the engine's own rate) is served
-by this pilot when `[rpc]` is configured; the Pocket engine is NOT
-implemented, and Supertonic remains the running engine with unchanged model
-settings.
+by this pilot when `[rpc]` is configured. Two engines run behind it, chosen
+per language: Kyutai Pocket TTS (default for es and en) and Supertonic 3
+(every other language, and the fallback when Pocket models are missing). The
+wire shape and the announced sample rate are unchanged (see CONTEXT.md).
 
 ## Build commands
 

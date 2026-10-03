@@ -172,6 +172,17 @@ argus-deploy argus-sync configuration. Copy to config.sync.toml (gitignored) nex
 
 argus-deploy argus-tts configuration. Copy to config.tts.toml (gitignored); the compose file bind-mounts it as the service's config.toml.
 
+| Key | Notes |
+|---|---|
+| `tts.engine_es` / `tts.engine_en` | `pocket` (default) or `supertonic`, live from the owner settings; every other language is Supertonic, and a Pocket language without installed models falls back to Supertonic. |
+| `tts.pocket_variant_es` | `fast` (6 layers, default) or `quality` (24 layers, ~3x slower); `quality` without its files falls back to `fast`. |
+| `tts.pocket_voice_es` / `tts.pocket_voice_en` | The predefined Pocket voice per language (`lola` / `alba`); replaces the request's Supertonic style id while Pocket answers. |
+| `tts.pocket_reference_es` / `tts.pocket_reference_en` | Optional voice-cloning reference: a `.wav` name inside `models/tts/pocket/references/` (no paths); needs a bundle exported with `--cloning` from the gated weights, otherwise ignored with a warning. |
+| `tts.pocket_temperature` / `tts.pocket_lsd_steps` | Sampling temperature (0.05-1, default 0.3) and flow steps (1-8, default 1). |
+| `tts.pocket_precision` | `int8` (default, the only provisioned graphs) or `fp32` for a self-exported fp32 bundle. Restart. |
+| `tts.pocket_models_dir` | Empty means `<models_dir>/pocket`. |
+| `tts.normalize_text` | Writes numbers, times, dates, money, units and abbreviations out in words (es/en) before either engine; default true. |
+
 ## `argus-deploy/config.tunnel.toml.example`
 
 argus-deploy tunnel-client configuration (Fase 5). Copy to config.tunnel.toml (gitignored) next to this file; the compose file bind-mounts it as argus-tunnel-client's config.toml.
@@ -379,6 +390,17 @@ argus-sync configuration. Copy to config.toml (gitignored) to run.
 ## `services/tts/config.toml.example`
 
 argus-tts configuration. Copy to config.toml (gitignored) to run.
+
+| Key | Notes |
+|---|---|
+| `tts.engine_es` / `tts.engine_en` | `pocket` (default) or `supertonic`, live from the owner settings; every other language is Supertonic, and a Pocket language without installed models falls back to Supertonic. |
+| `tts.pocket_variant_es` | `fast` (6 layers, default) or `quality` (24 layers, ~3x slower); `quality` without its files falls back to `fast`. |
+| `tts.pocket_voice_es` / `tts.pocket_voice_en` | The predefined Pocket voice per language (`lola` / `alba`); replaces the request's Supertonic style id while Pocket answers. |
+| `tts.pocket_reference_es` / `tts.pocket_reference_en` | Optional voice-cloning reference: a `.wav` name inside `models/tts/pocket/references/` (no paths); needs a bundle exported with `--cloning` from the gated weights, otherwise ignored with a warning. |
+| `tts.pocket_temperature` / `tts.pocket_lsd_steps` | Sampling temperature (0.05-1, default 0.3) and flow steps (1-8, default 1). |
+| `tts.pocket_precision` | `int8` (default, the only provisioned graphs) or `fp32` for a self-exported fp32 bundle. Restart. |
+| `tts.pocket_models_dir` | Empty means `<models_dir>/pocket`. |
+| `tts.normalize_text` | Writes numbers, times, dates, money, units and abbreviations out in words (es/en) before either engine; default true. |
 
 ## `services/tunnel/config.toml.example`
 
