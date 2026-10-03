@@ -267,11 +267,12 @@ GuardRepository::insertGuest(const GuardGuestInput& input) const
 }
 
 drogon::Task<std::optional<GuardGuest>>
-GuardRepository::activeGuest(int64_t at, int64_t cameraId) const
+GuardRepository::activeGuest(const GuardGuestLookupInput& input) const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(ACTIVE_GUEST.data(), at, at, cameraId);
+  const auto result = co_await client->execSqlCoro(
+      ACTIVE_GUEST.data(), input.at, input.at, input.cameraId, input.personId,
+      input.personId);
   if (result.empty())
     co_return std::nullopt;
   const auto& row = result.front();

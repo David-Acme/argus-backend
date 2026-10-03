@@ -87,7 +87,8 @@ inline constexpr std::string_view ACTIVE_GUEST =
     "FROM guard_expected_guest "
     "WHERE deleted_at IS NULL AND used_at = 0 AND valid_from <= ? AND "
     "valid_until >= ? AND (camera_id = 0 OR camera_id = ?) "
-    "ORDER BY created_at DESC LIMIT 1";
+    "AND (person_id = 0 OR person_id = ?) "
+    "ORDER BY person_id = ? DESC, created_at DESC LIMIT 1";
 
 inline constexpr std::string_view LIST_GUESTS =
     "SELECT id, description, camera_id, person_id, host_user_id, one_time, "
@@ -494,6 +495,13 @@ inline constexpr std::string_view RECORD_ENCOUNTER_NOTIFICATION =
     "notify_count + 1, notify_highest_rank = CASE WHEN ? > "
     "notify_highest_rank THEN ? ELSE notify_highest_rank END WHERE id = ?";
 }
+
+struct GuardGuestLookupInput
+{
+  int64_t at{0};
+  int64_t cameraId{0};
+  int64_t personId{0};
+};
 
 struct BaselineEmaRow
 {

@@ -153,7 +153,12 @@ full payload forever - up to thousands a day per camera.
 The research behind this (alarm fatigue, TMA AVS-01 levels, OSHA's silent
 robbery guidance, the EDPB position on face recognition of customers) is
 in the 2026-10 audit report; the per-profile defaults it suggests are the
-starting point for `[guard.schedule]`.
+starting point for `[guard.schedule]`. They stay a starting point the owner
+writes, not windows the service assumes from `profile`: an assumed `open`
+window marks every unknown as a customer, and a restaurant that closed early
+or a holiday would be guarded as if it were serving. Only the hours the
+owner states lower vigilance; `profile` itself only frames the assessment
+prompt.
 
 ## Why the identity hop
 
@@ -276,7 +281,11 @@ instance certificate and announces one `_argus-route._tcp` instance per logical
 route; the app reaches it directly, with no proxy in front (Phase 3d step 1c
 removed the gateway that used to relay `/guard`). Expected guests accept
 `cameraId`, `personId`, `hostUserId`, `oneTime` and an explicit window;
-one-time windows are consumed atomically on first match.
+one-time windows are consumed atomically on first match. The lookup takes
+every active pass for the camera and the person into account — an open pass
+(`personId` 0) or the visitor's own — and prefers the visitor's own. It used to
+read only the newest active pass and then compare the person, so a newer pass
+bound to someone else hid an older open one.
 
 ## Build
 

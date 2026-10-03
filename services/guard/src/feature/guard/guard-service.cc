@@ -1314,11 +1314,9 @@ GuardService::applyObservation(const ObservationInput& input)
           co_await repository_.repeatCount(signals.personId,
                                            now - config_.repeatWindowS);
     if (config_.expectedGuestsEnabled && signals.hasUnknown) {
-      const auto guest =
-          co_await repository_.activeGuest(now, signals.cameraId);
-      const bool personMatches = guest && (guest->personId == 0 ||
-                                           guest->personId == signals.personId);
-      if (guest && personMatches) {
+      const auto guest = co_await repository_.activeGuest(
+          {.at = now, .cameraId = signals.cameraId, .personId = signals.personId});
+      if (guest) {
         context.expectedGuest = true;
         if (guest->oneTime) {
           checkpoint.guestId = guest->id;

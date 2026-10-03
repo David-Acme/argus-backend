@@ -42,8 +42,8 @@ public:
 
   drogon::Task<int64_t> insertGuest(const GuardGuestInput& input) const;
 
-  drogon::Task<std::optional<GuardGuest>> activeGuest(int64_t at,
-                                                      int64_t cameraId) const;
+  drogon::Task<std::optional<GuardGuest>>
+  activeGuest(const GuardGuestLookupInput& input) const;
 
   drogon::Task<bool> consumeGuest(int64_t id, int64_t at) const;
 

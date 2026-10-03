@@ -394,6 +394,31 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
   CHECK(scalar("SELECT used_at FROM guard_expected_guest WHERE id = " +
                std::to_string(guestId)) == "250");
 
+  const int64_t openPass =
+      drogon::sync_wait(repository.insertGuest({.description = "anyone",
+                                                .cameraId = 0,
+                                                .personId = 0,
+                                                .hostUserId = 0,
+                                                .oneTime = false,
+                                                .validFrom = 100,
+                                                .validUntil = 1000}));
+  const int64_t boundPass =
+      drogon::sync_wait(repository.insertGuest({.description = "plumber",
+                                                .cameraId = 1,
+                                                .personId = 5,
+                                                .hostUserId = 0,
+                                                .oneTime = false,
+                                                .validFrom = 100,
+                                                .validUntil = 1000}));
+  const auto passFor = [&repository](int64_t personId) {
+    const auto guest = drogon::sync_wait(
+        repository.activeGuest({.at = 400, .cameraId = 1, .personId = personId}));
+    return guest ? guest->id : int64_t{0};
+  };
+  CHECK(passFor(7) == openPass);
+  CHECK(passFor(5) == boundPass);
+  CHECK(passFor(0) == openPass);
+
   CHECK(drogon::sync_wait(repository.claimObservation({.eventId = "enc:1",
                                                        .cameraId = 1,
                                                        .observationId = "enc:1",
