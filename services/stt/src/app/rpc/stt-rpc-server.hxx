@@ -25,7 +25,7 @@ class SttRpcServer
 public:
   explicit SttRpcServer(SttRpcInput input);
   ~SttRpcServer();
-  int port() const;
+  [[nodiscard]] int port() const;
   void shutdown();
 private:
   struct Impl;

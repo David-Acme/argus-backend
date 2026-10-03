@@ -80,7 +80,7 @@ void StreamHub::dispatchBox(const DispatchBoxInput& input)
   Upstream& up = input.up;
   std::string box = std::move(input.box);
   const bool keyframe = input.keyframe;
-  std::lock_guard<std::mutex> lock(up.mtx);
+  std::scoped_lock lock(up.mtx);
   for (auto& sub : up.subs) {
     if (!sub->sink)
       continue;
@@ -122,7 +122,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
                            .timeoutSec = 10});
   if (!conn.ok) {
     LOG_WARN << "StreamHub: upstream failed for " << up->name;
-    std::lock_guard<std::mutex> lock(up->mtx);
+    std::scoped_lock lock(up->mtx);
     for (auto& sub : up->subs) {
       if (sub->sink)
         sub->sink->onClosed({.subId = sub->subId, .reason = "upstream_failed"});
@@ -140,7 +140,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
   upstream_http::Fmp4Reader reader(
       {.chunked = upstream_http::isChunked(conn.headers)});
   reader.onInit = [&up](std::string box) {
-    std::lock_guard<std::mutex> lock(up->mtx);
+    std::scoped_lock lock(up->mtx);
     up->init = std::move(box);
     up->hasInit = true;
   };
@@ -170,7 +170,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
 
     bool empty = false;
     {
-      std::lock_guard<std::mutex> lock(up->mtx);
+      std::scoped_lock lock(up->mtx);
       empty = up->subs.empty();
     }
     if (empty) {
@@ -189,7 +189,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
 
   if (const int fd = up->fd.exchange(-1); fd >= 0)
     ::close(fd);
-  std::lock_guard<std::mutex> lock(up->mtx);
+  std::scoped_lock lock(up->mtx);
   for (auto& sub : up->subs) {
     if (sub->sink)
       sub->sink->onClosed({.subId = sub->subId, .reason = "upstream_closed"});
@@ -222,20 +222,20 @@ void StreamHub::refreshViewerLimits()
       .perCamera = configured("streaming.max_viewers_per_camera",
                               kDefaultViewersPerCamera),
       .total = configured("streaming.max_total_viewers", kDefaultTotalViewers)};
-  std::lock_guard<std::mutex> lock(hubMutex_);
+  std::scoped_lock lock(hubMutex_);
   maxViewersPerCamera_ = limits.perCamera;
   maxTotalViewers_ = limits.total;
 }
 
 StreamHub::ViewerLimits StreamHub::viewerLimits()
 {
-  std::lock_guard<std::mutex> lock(hubMutex_);
+  std::scoped_lock lock(hubMutex_);
   return {.perCamera = maxViewersPerCamera_, .total = maxTotalViewers_};
 }
 
 void StreamHub::shutdown()
 {
-  std::lock_guard<std::mutex> lock(hubMutex_);
+  std::scoped_lock lock(hubMutex_);
   for (auto& [name, up] : upstreams_)
     up->stopping.store(true, std::memory_order_relaxed);
   for (auto& [name, up] : upstreams_) {
@@ -255,7 +255,7 @@ StreamHub::getOrOpen(const SubscribeInput& input, std::string& error)
   }
 
   const std::string name = upstreamName(input.cameraId, input.quality);
-  std::lock_guard<std::mutex> lock(hubMutex_);
+  std::scoped_lock lock(hubMutex_);
   auto it = upstreams_.find(name);
   if (it != upstreams_.end()) {
     if (!it->second->dead.load(std::memory_order_acquire))
@@ -297,7 +297,7 @@ void StreamHub::countViewers(int64_t cameraId, int& perCamera, int& total)
   perCamera = 0;
   total = 0;
   for (const auto& [name, up] : upstreams_) {
-    std::lock_guard<std::mutex> upLock(up->mtx);
+    std::scoped_lock upLock(up->mtx);
     const int count = static_cast<int>(up->subs.size());
     total += count;
     if (up->cameraId == cameraId)
@@ -313,7 +313,7 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
   }
 
   {
-    std::lock_guard<std::mutex> hubLock(hubMutex_);
+    std::scoped_lock hubLock(hubMutex_);
     pruneLocked();
     int perCamera = 0;
     int total = 0;
@@ -334,7 +334,7 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
 
   auto sub = std::make_shared<Subscriber>();
   {
-    std::lock_guard<std::mutex> hubLock(hubMutex_);
+    std::scoped_lock hubLock(hubMutex_);
     int perCamera = 0;
     int total = 0;
     countViewers(input.cameraId, perCamera, total);
@@ -362,7 +362,7 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
     sub->subId = subId;
     sub->sink = input.sink;
     {
-      std::lock_guard<std::mutex> upLock(up->mtx);
+      std::scoped_lock upLock(up->mtx);
       up->subs.push_back(sub);
     }
     subToUpstream_[subId] = up;
@@ -376,7 +376,7 @@ void StreamHub::ack(uint16_t subId, int64_t bytes)
     return;
   std::shared_ptr<Upstream> up;
   {
-    std::lock_guard<std::mutex> hubLock(hubMutex_);
+    std::scoped_lock hubLock(hubMutex_);
     const auto it = subToUpstream_.find(subId);
     if (it == subToUpstream_.end())
       return;
@@ -385,7 +385,7 @@ void StreamHub::ack(uint16_t subId, int64_t bytes)
 
   std::shared_ptr<ISink> sink;
   {
-    std::lock_guard<std::mutex> upLock(up->mtx);
+    std::scoped_lock upLock(up->mtx);
     for (auto& sub : up->subs) {
       if (sub->subId == subId) {
         sink = sub->sink;
@@ -430,13 +430,13 @@ void StreamHub::closeAll(const ISink* sink)
 {
   std::vector<std::shared_ptr<Upstream>> ups;
   {
-    std::lock_guard<std::mutex> hubLock(hubMutex_);
+    std::scoped_lock hubLock(hubMutex_);
     for (const auto& [name, up] : upstreams_)
       ups.push_back(up);
   }
 
   for (auto& up : ups) {
-    std::lock_guard<std::mutex> upLock(up->mtx);
+    std::scoped_lock upLock(up->mtx);
     up->subs.erase(std::remove_if(up->subs.begin(), up->subs.end(),
                                   [&](const auto& s) {
                                     return s->sink.get() == sink;
@@ -447,7 +447,7 @@ void StreamHub::closeAll(const ISink* sink)
 
 int StreamHub::activeUpstreams()
 {
-  std::lock_guard<std::mutex> lock(hubMutex_);
+  std::scoped_lock lock(hubMutex_);
   int count = 0;
   for (const auto& [name, up] : upstreams_)
     if (!up->dead.load(std::memory_order_acquire))
@@ -457,10 +457,10 @@ int StreamHub::activeUpstreams()
 
 int StreamHub::activeSubscribers()
 {
-  std::lock_guard<std::mutex> hubLock(hubMutex_);
+  std::scoped_lock hubLock(hubMutex_);
   int total = 0;
   for (const auto& [name, up] : upstreams_) {
-    std::lock_guard<std::mutex> upLock(up->mtx);
+    std::scoped_lock upLock(up->mtx);
     total += static_cast<int>(up->subs.size());
   }
   return total;

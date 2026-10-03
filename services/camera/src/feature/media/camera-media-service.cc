@@ -23,7 +23,7 @@ int64_t CameraMediaService::streamWindowBytes()
 std::shared_ptr<CameraStreamSink>
 CameraMediaService::sinkFor(const drogon::WebSocketConnectionPtr& conn) const
 {
-  std::lock_guard<std::mutex> lock(sinksMutex_);
+  std::scoped_lock lock(sinksMutex_);
   const auto it = sinks_.find(conn.get());
   return it == sinks_.end() ? nullptr : it->second;
 }
@@ -32,14 +32,14 @@ void CameraMediaService::storeSink(
     const drogon::WebSocketConnectionPtr& conn,
     const std::shared_ptr<CameraStreamSink>& sink) const
 {
-  std::lock_guard<std::mutex> lock(sinksMutex_);
+  std::scoped_lock lock(sinksMutex_);
   sinks_[conn.get()] = sink;
 }
 
 void CameraMediaService::dropSink(
     const drogon::WebSocketConnectionPtr& conn) const
 {
-  std::lock_guard<std::mutex> lock(sinksMutex_);
+  std::scoped_lock lock(sinksMutex_);
   sinks_.erase(conn.get());
 }
 

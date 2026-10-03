@@ -40,14 +40,14 @@ public:
       endSession();
       return;
     }
-    handleFrame(std::move(read_));
+    handleFrame(read_);
     read_ = {};
     StartRead(&read_);
   }
 
   void OnWriteDone(bool ok) override
   {
-    std::lock_guard<std::mutex> lock(writeMutex_);
+    std::scoped_lock lock(writeMutex_);
     writing_ = false;
     if (!ok) {
       finished_ = true;
@@ -72,7 +72,7 @@ public:
 
   void sendServerFrame(argus::voice::v1::ServerFrame frame) override
   {
-    std::lock_guard<std::mutex> lock(writeMutex_);
+    std::scoped_lock lock(writeMutex_);
     if (finished_)
       return;
     if (queue_.size() >= kMaxPendingWrites) {
@@ -99,7 +99,7 @@ private:
     return user && role;
   }
 
-  void handleFrame(argus::voice::v1::ClientFrame frame)
+  void handleFrame(const argus::voice::v1::ClientFrame& frame)
   {
     switch (frame.body_case()) {
       case argus::voice::v1::ClientFrame::kStart:
@@ -129,7 +129,7 @@ private:
   {
     sessions_.stop(*this);
     drain();
-    std::lock_guard<std::mutex> lock(writeMutex_);
+    std::scoped_lock lock(writeMutex_);
     if (finishing_ || context_->IsCancelled())
       return;
     finishing_ = true;

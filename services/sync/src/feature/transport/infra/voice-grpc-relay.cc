@@ -210,14 +210,14 @@ void VoiceGrpcRelay::onConnect(const drogon::HttpRequestPtr& req,
     session->role = ctx.role;
   }
 
-  std::lock_guard<std::mutex> lock(sessionsMutex_);
+  std::scoped_lock lock(sessionsMutex_);
   sessions_[conn.get()] = std::move(session);
 }
 
 std::shared_ptr<VoiceGrpcRelay::Session>
 VoiceGrpcRelay::sessionFor(const drogon::WebSocketConnectionPtr& conn)
 {
-  std::lock_guard<std::mutex> lock(sessionsMutex_);
+  std::scoped_lock lock(sessionsMutex_);
   auto it = sessions_.find(conn.get());
   return it == sessions_.end() ? nullptr : it->second;
 }
@@ -225,7 +225,7 @@ VoiceGrpcRelay::sessionFor(const drogon::WebSocketConnectionPtr& conn)
 std::shared_ptr<VoiceGrpcRelay::Session>
 VoiceGrpcRelay::takeSession(const drogon::WebSocketConnectionPtr& conn)
 {
-  std::lock_guard<std::mutex> lock(sessionsMutex_);
+  std::scoped_lock lock(sessionsMutex_);
   auto it = sessions_.find(conn.get());
   if (it == sessions_.end())
     return nullptr;

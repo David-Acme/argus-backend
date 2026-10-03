@@ -58,7 +58,7 @@ LlmService& LlmService::instance()
 void LlmService::init()
 {
   try {
-    std::lock_guard<std::mutex> lock(ai_init::llamaMutex());
+    std::scoped_lock lock(ai_init::llamaMutex());
 
     llama_log_set(
         [](enum ggml_log_level level, const char* text, void*) {
@@ -174,7 +174,7 @@ void LlmService::init()
 
 void LlmService::shutdown()
 {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   if (promptBatch_) {
     llama_batch_free(*promptBatch_);
     promptBatch_.reset();
@@ -367,7 +367,7 @@ void LlmService::generateStream(const GenerateInput& input,
   const bool resetContext = input.resetContext;
   const std::vector<std::string>& stop = input.stop;
 
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   struct BusyGuard
   {
     ~BusyGuard() { owner->busy_.store(false); }

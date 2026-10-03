@@ -70,8 +70,16 @@ std::string valueOf(const std::vector<SettingEntry>& entries, std::string_view k
   return entry->value;
 }
 
-grpc::Status connectWith(const std::string& target, const std::string& secret)
+struct CallerProbe
 {
+  std::string target;
+  std::string secret;
+};
+
+grpc::Status connectWith(const CallerProbe& probe)
+{
+  const std::string& target = probe.target;
+  const std::string& secret = probe.secret;
   auto stub = argus::voice::v1::VoiceService::NewStub(
       grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
   grpc::ClientContext context;
@@ -83,8 +91,10 @@ grpc::Status connectWith(const std::string& target, const std::string& secret)
   return stream->Finish();
 }
 
-grpc::Status listWith(const std::string& target, const std::string& secret)
+grpc::Status listWith(const CallerProbe& probe)
 {
+  const std::string& target = probe.target;
+  const std::string& secret = probe.secret;
   auto stub = wire::Settings::NewStub(grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
   grpc::ClientContext context;
   argus::client::addCallerCredential(context, secret);
@@ -201,10 +211,10 @@ TEST_CASE("the settings caller and the sync caller cannot stand in for each othe
   REQUIRE(server);
   const std::string target = "127.0.0.1:" + std::to_string(port);
 
-  CHECK(listWith(target, kSettingsSecret).ok());
-  CHECK(listWith(target, kSyncSecret).error_code() == grpc::StatusCode::UNAUTHENTICATED);
-  CHECK(connectWith(target, kSettingsSecret).error_code() == grpc::StatusCode::UNAUTHENTICATED);
-  CHECK(connectWith(target, kSyncSecret).ok());
+  CHECK(listWith({.target = target, .secret = kSettingsSecret}).ok());
+  CHECK(listWith({.target = target, .secret = kSyncSecret}).error_code() == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(connectWith({.target = target, .secret = kSettingsSecret}).error_code() == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(connectWith({.target = target, .secret = kSyncSecret}).ok());
 
   server->Shutdown();
 }

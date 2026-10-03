@@ -78,9 +78,9 @@ public:
   drogon::Task<std::string> describeMatAsync(const VisionDescribeMatInput& input);
 
   void cancel();
-  bool isLoaded() const;
-  int maxInputPx() const { return maxInputPx_.load(std::memory_order_relaxed); }
-  int defaultMaxTokens() const { return defaultMaxTokens_.load(std::memory_order_relaxed); }
+  [[nodiscard]] bool isLoaded() const;
+  [[nodiscard]] int maxInputPx() const { return maxInputPx_.load(std::memory_order_relaxed); }
+  [[nodiscard]] int defaultMaxTokens() const { return defaultMaxTokens_.load(std::memory_order_relaxed); }
 
 private:
   void loadDefaults();

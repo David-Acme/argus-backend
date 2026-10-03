@@ -93,7 +93,7 @@ void RemoteVoiceLlm::chatStream(LlmStreamInput input)
 
   std::shared_ptr<const LlmClient> client;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     client = clientFor(config);
   }
   if (!client->remote())
@@ -112,7 +112,7 @@ void GrpcVoiceIdentity::updateUserName(const VoiceNameWrite& write)
 
   std::shared_ptr<const IdentityClient> client;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     client = clientFor(target);
   }
 

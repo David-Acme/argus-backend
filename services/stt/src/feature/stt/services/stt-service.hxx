@@ -10,7 +10,7 @@
 
 struct SherpaOnnxOfflineRecognizer;
 
-enum class SttEngine
+enum class SttEngine : std::uint8_t
 {
   Whisper,
   Canary,

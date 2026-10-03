@@ -122,7 +122,7 @@ bool persist(const SettingSpec& spec, const std::string& canonical)
   case SettingType::Integer:
     return ConfigService::setInt(spec.key, std::stoi(canonical));
   case SettingType::Decimal:
-    return ConfigService::setDouble(spec.key, *parseDecimal(canonical));
+    return ConfigService::setDouble(spec.key, parseDecimal(canonical).value_or(0.0));
   case SettingType::Choice:
   case SettingType::Text:
     return ConfigService::setString(spec.key, canonical);
@@ -176,7 +176,7 @@ SettingsUpdateResult SettingsRegistry::update(const std::vector<SettingChange>& 
 
   std::vector<Listener> listeners;
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     for (const auto& [spec, canonical] : accepted) {
       if (persist(*spec, canonical))
         result.applied.push_back(spec->key);
@@ -193,7 +193,7 @@ SettingsUpdateResult SettingsRegistry::update(const std::vector<SettingChange>& 
 
 void SettingsRegistry::onChange(Listener listener)
 {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   listeners_.push_back(std::move(listener));
 }
 

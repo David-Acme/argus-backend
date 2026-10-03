@@ -82,8 +82,16 @@ std::string valueOf(const std::vector<SettingEntry>& entries, std::string_view k
   return entry->value;
 }
 
-grpc::StatusCode listWith(const std::string& target, const std::string& secret)
+struct CallerProbe
 {
+  std::string target;
+  std::string secret;
+};
+
+grpc::StatusCode listWith(const CallerProbe& probe)
+{
+  const std::string& target = probe.target;
+  const std::string& secret = probe.secret;
   auto stub = wire::Settings::NewStub(grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
@@ -92,8 +100,10 @@ grpc::StatusCode listWith(const std::string& target, const std::string& secret)
   return stub->List(&context, {}, &catalog).error_code();
 }
 
-grpc::StatusCode pullWith(const std::string& target, const std::string& secret)
+grpc::StatusCode pullWith(const CallerProbe& probe)
 {
+  const std::string& target = probe.target;
+  const std::string& secret = probe.secret;
   auto stub = argus::camera::v1::SyncService::NewStub(
       grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
   grpc::ClientContext context;
@@ -104,8 +114,10 @@ grpc::StatusCode pullWith(const std::string& target, const std::string& secret)
   return stub->PullTable(&context, {}, &response).error_code();
 }
 
-grpc::StatusCode personCropWith(const std::string& target, const std::string& secret)
+grpc::StatusCode personCropWith(const CallerProbe& probe)
 {
+  const std::string& target = probe.target;
+  const std::string& secret = probe.secret;
   auto stub = argus::camera::v1::CameraActionService::NewStub(
       grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
   grpc::ClientContext context;
@@ -264,17 +276,17 @@ TEST_CASE("the settings caller and the camera's other callers cannot stand in fo
   REQUIRE(server);
   const std::string target = "127.0.0.1:" + std::to_string(port);
 
-  CHECK(listWith(target, kSettingsSecret) == grpc::StatusCode::OK);
-  CHECK(listWith(target, kGuardSecret) == grpc::StatusCode::UNAUTHENTICATED);
-  CHECK(listWith(target, kSyncSecret) == grpc::StatusCode::UNAUTHENTICATED);
-  CHECK(listWith(target, kLlmSecret) == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(listWith({.target = target, .secret = kSettingsSecret}) == grpc::StatusCode::OK);
+  CHECK(listWith({.target = target, .secret = kGuardSecret}) == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(listWith({.target = target, .secret = kSyncSecret}) == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(listWith({.target = target, .secret = kLlmSecret}) == grpc::StatusCode::UNAUTHENTICATED);
 
-  CHECK(pullWith(target, kSettingsSecret) == grpc::StatusCode::UNAUTHENTICATED);
-  CHECK(pullWith(target, kSyncSecret) == grpc::StatusCode::INVALID_ARGUMENT);
-  CHECK(pullWith(target, kLlmSecret) == grpc::StatusCode::INVALID_ARGUMENT);
+  CHECK(pullWith({.target = target, .secret = kSettingsSecret}) == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(pullWith({.target = target, .secret = kSyncSecret}) == grpc::StatusCode::INVALID_ARGUMENT);
+  CHECK(pullWith({.target = target, .secret = kLlmSecret}) == grpc::StatusCode::INVALID_ARGUMENT);
 
-  CHECK(personCropWith(target, kSettingsSecret) == grpc::StatusCode::UNAUTHENTICATED);
-  CHECK(personCropWith(target, kGuardSecret) == grpc::StatusCode::INVALID_ARGUMENT);
+  CHECK(personCropWith({.target = target, .secret = kSettingsSecret}) == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(personCropWith({.target = target, .secret = kGuardSecret}) == grpc::StatusCode::INVALID_ARGUMENT);
 
   server->Shutdown(std::chrono::system_clock::now());
 }

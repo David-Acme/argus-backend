@@ -24,7 +24,7 @@ class VlmRpcServer
 public:
   explicit VlmRpcServer(VlmRpcInput input);
   ~VlmRpcServer();
-  int port() const;
+  [[nodiscard]] int port() const;
   void shutdown();
 private:
   struct Impl;

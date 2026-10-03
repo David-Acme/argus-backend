@@ -221,7 +221,7 @@ std::string stripPrefix(const std::string& text)
   for (auto& c : lower)
     c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   for (std::string_view p : {"argus:", "argus "}) {
-    if (lower.compare(0, p.size(), p) == 0) {
+    if (lower.starts_with(p)) {
       out.erase(0, p.size());
       while (!out.empty() &&
              (std::isspace(static_cast<unsigned char>(out.front())) ||
@@ -405,7 +405,7 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
     workerLoop(session);
   });
 
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   sessions_[&sink] = std::move(session);
 }
 
@@ -413,7 +413,7 @@ void VoiceSessionService::feedPcm(VoiceSessionSink& sink, const PcmFrame& pcm)
 {
   std::shared_ptr<Session> session;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     auto it = sessions_.find(&sink);
     if (it == sessions_.end())
       return;
@@ -433,7 +433,7 @@ void VoiceSessionService::feedPcm(VoiceSessionSink& sink, const PcmFrame& pcm)
   }
 
   {
-    std::lock_guard<std::mutex> lock(session->pcmMutex);
+    std::scoped_lock lock(session->pcmMutex);
     auto& queue = session->pcmQueue;
     queue.insert(queue.end(), floats.begin(), floats.end());
     if (queue.size() > kMaxQueuedSamples)
@@ -447,7 +447,7 @@ void VoiceSessionService::stop(VoiceSessionSink& sink)
 {
   std::shared_ptr<Session> session;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     auto it = sessions_.find(&sink);
     if (it == sessions_.end())
       return;
@@ -456,7 +456,7 @@ void VoiceSessionService::stop(VoiceSessionSink& sink)
   }
   std::stop_source cancellation;
   {
-    std::lock_guard lock(session->turnMutex);
+    std::scoped_lock lock(session->turnMutex);
     session->active.store(false);
     cancellation = session->turnStop;
   }
@@ -696,7 +696,7 @@ void VoiceSessionService::processTurn(Session& session,
 {
   std::stop_token cancellation;
   {
-    std::lock_guard lock(session.turnMutex);
+    std::scoped_lock lock(session.turnMutex);
     if (!session.active.load())
       return;
     session.interrupt.store(false);
@@ -855,7 +855,7 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
     return;
   std::stop_token cancellation;
   {
-    std::lock_guard lock(session.turnMutex);
+    std::scoped_lock lock(session.turnMutex);
     if (!session.active.load() || session.interrupt.load())
       return;
     cancellation = session.turnStop.get_token();
@@ -927,7 +927,7 @@ void VoiceSessionService::skip(VoiceSessionSink& sink)
 {
   std::shared_ptr<Session> session;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     auto it = sessions_.find(&sink);
     if (it == sessions_.end())
       return;
@@ -936,7 +936,7 @@ void VoiceSessionService::skip(VoiceSessionSink& sink)
   LOG_INFO << "Voice: skip";
   std::stop_source cancellation;
   {
-    std::lock_guard lock(session->turnMutex);
+    std::scoped_lock lock(session->turnMutex);
     session->interrupt.store(true);
     cancellation = session->turnStop;
   }
@@ -952,7 +952,7 @@ void VoiceSessionService::context(VoiceSessionSink& sink,
 {
   std::shared_ptr<Session> session;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     auto it = sessions_.find(&sink);
     if (it == sessions_.end())
       return;
@@ -1001,9 +1001,9 @@ std::optional<VoiceSessionService::CameraNotice>
 VoiceSessionService::takeCameraNotice(Session& session)
 {
   std::scoped_lock lock(session.noticeMutex);
-  if (!session.pendingCamera)
+  auto notice = std::exchange(session.pendingCamera, std::nullopt);
+  if (!notice)
     return std::nullopt;
-  const auto notice = std::exchange(session.pendingCamera, std::nullopt);
   const auto now = std::chrono::steady_clock::now();
   if (now - notice->at > kNoticeFreshFor || now - session.lastNoticeAt < kNoticeSpacing)
     return std::nullopt;
@@ -1014,7 +1014,7 @@ VoiceSessionService::takeCameraNotice(Session& session)
 void VoiceSessionService::deliverCameraNotice(Session& session, const CameraNotice& notice)
 {
   {
-    std::lock_guard lock(session.turnMutex);
+    std::scoped_lock lock(session.turnMutex);
     if (!session.active.load())
       return;
     session.interrupt.store(false);

@@ -85,7 +85,7 @@ struct TtsRpcServer::Impl final : wire::Synthesis::Service
       throw std::runtime_error("TTS RPC listener failed");
   }
 
-  float currentSpeed() const
+  [[nodiscard]] float currentSpeed() const
   {
     return input_.defaultSpeed ? input_.defaultSpeed() : input_.capabilities.defaultSpeed;
   }
@@ -171,14 +171,14 @@ struct TtsRpcServer::Impl final : wire::Synthesis::Service
                            }});
       }
       catch (const ResponseException& error) {
-        std::lock_guard lock(queue.mutex);
+        std::scoped_lock lock(queue.mutex);
         queue.status = argus::response::toRpcStatus(error);
       }
       catch (...) {
-        std::lock_guard lock(queue.mutex);
+        std::scoped_lock lock(queue.mutex);
         queue.status = argus::response::toRpcStatus(ResponseException(500, TtsErrors::InternalError));
       }
-      std::lock_guard lock(queue.mutex);
+      std::scoped_lock lock(queue.mutex);
       queue.done = true;
       queue.ready.notify_all();
     });
@@ -209,7 +209,7 @@ struct TtsRpcServer::Impl final : wire::Synthesis::Service
       chunk.set_sequence(sequence++);
       chunk.mutable_samples()->Add(samples.begin(), samples.end());
       if (!writer->Write(chunk)) {
-        std::lock_guard stoppedLock(queue.mutex);
+        std::scoped_lock stoppedLock(queue.mutex);
         queue.stopped = true;
         queue.ready.notify_all();
         break;

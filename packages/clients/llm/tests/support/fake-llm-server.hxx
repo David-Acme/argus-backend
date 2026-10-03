@@ -54,13 +54,13 @@ public:
 
   std::map<std::string, int> requests() const
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return requests_;
   }
 
   std::string lastBody() const
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return lastBody_;
   }
 
@@ -163,7 +163,7 @@ private:
                                                         space2 - space1 - 1);
 
       {
-        std::lock_guard lock(mutex_);
+        std::scoped_lock lock(mutex_);
         requests_[method + " " + path]++;
         const auto split = request.find("\r\n\r\n");
         lastBody_ = split == std::string::npos ? std::string()

@@ -81,7 +81,7 @@ VisionService::~VisionService()
 void VisionService::init()
 {
   try {
-    std::lock_guard<std::mutex> lock(ai_init::llamaMutex());
+    std::scoped_lock lock(ai_init::llamaMutex());
 
     if (!HardwareProbe::vlmEnabled()) {
       LOG_WARN << "Vision: disabled on tier "
@@ -144,7 +144,7 @@ void VisionService::init()
       throw std::runtime_error("mmproj has no vision encoder");
 
     {
-      std::lock_guard<std::mutex> defaultsLock(mutex_);
+      std::scoped_lock defaultsLock(mutex_);
       loadDefaults();
     }
 
@@ -162,7 +162,7 @@ void VisionService::init()
 
 void VisionService::shutdown()
 {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   mtmd_.reset();
   context_.reset();
   model_.reset();
@@ -173,7 +173,7 @@ void VisionService::shutdown()
 
 void VisionService::refreshDefaults()
 {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   loadDefaults();
 }
 
@@ -255,7 +255,7 @@ std::string VisionService::run(const VisionRunInput& input)
   if (src.empty())
     return "";
 
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   cancelled_.store(false, std::memory_order_relaxed);
 
   const std::string question =
@@ -288,8 +288,8 @@ std::string VisionService::run(const VisionRunInput& input)
   text.add_special = true;
   text.parse_special = true;
 
-  const mtmd_bitmap* bitmaps[1] = {bitmap.ptr.get()};
-  if (mtmd_tokenize(mctx, chunks.ptr.get(), &text, bitmaps, 1) != 0) {
+  std::array<const mtmd_bitmap*, 1> bitmaps{bitmap.ptr.get()};
+  if (mtmd_tokenize(mctx, chunks.ptr.get(), &text, bitmaps.data(), bitmaps.size()) != 0) {
     LOG_ERROR << "Vision: mtmd_tokenize failed";
     return "";
   }

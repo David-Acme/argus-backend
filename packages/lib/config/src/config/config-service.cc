@@ -80,7 +80,7 @@ T parseRuntimeOverride(const std::string& raw)
 template <typename T>
 T getValue(const std::string& keyPath, T defaultVal)
 {
-  std::lock_guard lock(gConfigMutex);
+  std::scoped_lock lock(gConfigMutex);
   if (const auto it = gRuntimeOverrides.find(keyPath);
       it != gRuntimeOverrides.end())
     return parseRuntimeOverride<T>(it->second);
@@ -262,7 +262,7 @@ void collectPlaceholders(const toml::table& table, const std::string& prefix,
 
 bool applyValue(const std::string& keyPath, const std::string& literal)
 {
-  std::lock_guard lock(gConfigMutex);
+  std::scoped_lock lock(gConfigMutex);
   if (gConfigPath.empty())
     return false;
 
@@ -297,7 +297,7 @@ bool applyValue(const std::string& keyPath, const std::string& literal)
 void ConfigService::load(const std::string& path)
 {
   try {
-    std::lock_guard lock(gConfigMutex);
+    std::scoped_lock lock(gConfigMutex);
     toml::table parsed = toml::parse_file(path);
     std::vector<std::string> placeholders;
     collectPlaceholders(parsed, {}, placeholders);
@@ -330,7 +330,7 @@ void ConfigService::load(const std::string& path)
 void ConfigService::loadOverlay(const std::string& path)
 {
   try {
-    std::lock_guard lock(gConfigMutex);
+    std::scoped_lock lock(gConfigMutex);
     if (!gConfig)
       throw std::runtime_error("ConfigService: load a base config first");
     gOverlay = toml::parse_file(path);
@@ -352,7 +352,7 @@ void ConfigService::loadOverlay(const std::string& path)
 void ConfigService::setRuntimeString(const std::string& keyPath,
                                      const std::string& value)
 {
-  std::lock_guard lock(gConfigMutex);
+  std::scoped_lock lock(gConfigMutex);
   gRuntimeOverrides[keyPath] = value;
 }
 
@@ -378,7 +378,7 @@ double ConfigService::getDouble(const std::string& keyPath)
 
 bool ConfigService::hasKey(const std::string& keyPath)
 {
-  std::lock_guard lock(gConfigMutex);
+  std::scoped_lock lock(gConfigMutex);
   if (gRuntimeOverrides.count(keyPath) > 0)
     return true;
   return resolvePath(keyPath) != nullptr;
@@ -417,7 +417,7 @@ bool ConfigService::setDouble(const std::string& keyPath, double value)
 std::vector<std::pair<std::string, std::string>>
 ConfigService::getStringPairs(const std::string& keyPath)
 {
-  std::lock_guard lock(gConfigMutex);
+  std::scoped_lock lock(gConfigMutex);
   std::vector<std::pair<std::string, std::string>> result;
   const auto* node = resolvePath(keyPath);
   if (!node || !node->is_table())
@@ -433,7 +433,7 @@ ConfigService::getStringPairs(const std::string& keyPath)
 
 Json::Value ConfigService::drogonConfig()
 {
-  std::lock_guard lock(gConfigMutex);
+  std::scoped_lock lock(gConfigMutex);
   if (!gConfig)
     throw std::runtime_error("ConfigService: not loaded");
 

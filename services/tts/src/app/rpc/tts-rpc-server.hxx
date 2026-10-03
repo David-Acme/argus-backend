@@ -26,7 +26,7 @@ class TtsRpcServer
 public:
   explicit TtsRpcServer(TtsRpcInput input);
   ~TtsRpcServer();
-  int port() const;
+  [[nodiscard]] int port() const;
   void shutdown();
 private:
   struct Impl;

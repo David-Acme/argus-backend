@@ -16,31 +16,31 @@ class FakeVoiceSink final : public VoiceSessionSink
 public:
   bool connected() const override
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return open_;
   }
 
   void sendServerFrame(argus::voice::v1::ServerFrame frame) override
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     frames_.push_back(std::move(frame));
   }
 
   void close()
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     open_ = false;
   }
 
   std::vector<argus::voice::v1::ServerFrame> snapshot() const
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return frames_;
   }
 
   size_t size() const
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return frames_.size();
   }
 
@@ -88,7 +88,7 @@ struct FakeIdentity final : IVoiceIdentity
 
   void updateUserName(const VoiceNameWrite& write) override
   {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::scoped_lock lock(mutex);
     writes.push_back(write);
   }
 };

@@ -23,7 +23,7 @@ public:
     int fallbackRetentionDays{90};
   };
 
-  enum class FallbackDecision
+  enum class FallbackDecision : std::uint8_t
   {
     Notify,
     DropKnown,

@@ -20,12 +20,12 @@ class CollectingObserver final : public VoiceStreamObserver
 public:
   void onServerFrame(v1::ServerFrame frame) override
   {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::scoped_lock lock(mutex);
     frames.push_back(std::move(frame));
   }
   void onStreamClosed(const grpc::Status& status) override
   {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::scoped_lock lock(mutex);
     closed = true;
     closeStatus = status;
     cv.notify_all();
@@ -55,7 +55,7 @@ public:
                        FrameStream* stream) override
   {
     {
-      std::lock_guard<std::mutex> lock(mutex);
+      std::scoped_lock lock(mutex);
       context_ = context;
       for (const auto& [key, value] : context->client_metadata())
         metadata.emplace(std::string(key.begin(), key.end()),
@@ -66,7 +66,7 @@ public:
     while (stream->Read(&frame)) {
       const bool started = frame.has_start();
       {
-        std::lock_guard<std::mutex> lock(mutex);
+        std::scoped_lock lock(mutex);
         frames.push_back(frame);
       }
       if (started && !answered) {
@@ -77,7 +77,7 @@ public:
       }
     }
     {
-      std::lock_guard<std::mutex> lock(mutex);
+      std::scoped_lock lock(mutex);
       context_ = nullptr;
     }
     return grpc::Status::OK;
@@ -85,7 +85,7 @@ public:
 
   void cancelActiveCall()
   {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::scoped_lock lock(mutex);
     if (context_ != nullptr)
       context_->TryCancel();
   }
@@ -163,7 +163,7 @@ TEST_CASE("one stream carries the connect identity and the frames in order")
   REQUIRE(observer->frames.size() == 1);
   CHECK(observer->frames[0].done().session_id() == 4242);
 
-  std::lock_guard<std::mutex> lock(service.mutex);
+  std::scoped_lock lock(service.mutex);
   CHECK(service.metadata.at("x-argus-user") == "7");
   CHECK(service.metadata.at("x-argus-role") == "resident");
   CHECK(service.metadata.count("x-argus-device") == 0);

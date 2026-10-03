@@ -68,7 +68,7 @@ public:
 
   void finish() override
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (done_ || writesDone_)
       return;
     writesDone_ = true;
@@ -82,7 +82,7 @@ public:
       return;
     std::shared_ptr<VoiceStreamObserver> observer;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::scoped_lock lock(mutex_);
       observer = observer_;
     }
     if (!observer)
@@ -94,7 +94,7 @@ public:
 
   void OnWriteDone(bool ok) override
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (!ok)
       pending_.clear();
     else if (!pending_.empty())
@@ -112,7 +112,7 @@ public:
     std::shared_ptr<VoiceStreamImpl> self;
     std::shared_ptr<VoiceStreamObserver> observer;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::scoped_lock lock(mutex_);
       done_ = true;
       self = std::move(self_);
       observer = observer_;
@@ -128,7 +128,7 @@ public:
                     .role = voiceRoleToString(identity_.role())});
 
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::scoped_lock lock(mutex_);
       self_ = std::shared_ptr<VoiceStreamImpl>(this, [](VoiceStreamImpl*) {});
     }
     stub_->async()->Connect(context_.get(), this);
@@ -139,7 +139,7 @@ public:
 private:
   void writeFrame(argus::voice::v1::ClientFrame frame)
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (done_ || writesDone_)
       return;
     if (pending_.size() >= kMaxPendingWrites)

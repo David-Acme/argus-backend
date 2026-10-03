@@ -11,7 +11,7 @@ class ToolExecutor
 public:
   explicit ToolExecutor(ToolRegistry& registry) : registry_(registry) {}
 
-  tools::ToolResult execute(const tools::ToolCall& call, UserRole role) const;
+  [[nodiscard]] tools::ToolResult execute(const tools::ToolCall& call, UserRole role) const;
 
   static bool permits(const tools::ToolDescriptor& descriptor, UserRole role);
 

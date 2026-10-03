@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <drogon/HttpTypes.h>
 #include <optional>
@@ -77,17 +78,24 @@ struct GuardRouteAccess
 {
   std::string_view path;
   drogon::HttpMethod method;
-  std::unordered_set<UserRole> roles;
+  std::uint8_t roles;
 };
 
-inline const std::vector<GuardRouteAccess> kGuardAccess = {
-    {.path = "/guard/mode", .method = drogon::Get, .roles = {UserRole::Resident, UserRole::Guard}},
-    {.path = "/guard/mode", .method = drogon::Post, .roles = {UserRole::Resident}},
-    {.path = "/guard/incidents", .method = drogon::Get, .roles = {UserRole::Resident, UserRole::Guard}},
-    {.path = "/guard/expected-guests", .method = drogon::Get, .roles = {UserRole::Resident, UserRole::Guard}},
-    {.path = "/guard/expected-guests", .method = drogon::Post, .roles = {UserRole::Resident}},
-    {.path = "/guard/expected-guests", .method = drogon::Delete, .roles = {UserRole::Resident}},
-};
+constexpr std::uint8_t roleBit(UserRole role)
+{
+  return static_cast<std::uint8_t>(1U << static_cast<unsigned>(role));
+}
+
+inline constexpr std::uint8_t kResidentAndGuard = roleBit(UserRole::Resident) | roleBit(UserRole::Guard);
+
+inline constexpr std::array<GuardRouteAccess, 6> kGuardAccess = {{
+    {.path = "/guard/mode", .method = drogon::Get, .roles = kResidentAndGuard},
+    {.path = "/guard/mode", .method = drogon::Post, .roles = roleBit(UserRole::Resident)},
+    {.path = "/guard/incidents", .method = drogon::Get, .roles = kResidentAndGuard},
+    {.path = "/guard/expected-guests", .method = drogon::Get, .roles = kResidentAndGuard},
+    {.path = "/guard/expected-guests", .method = drogon::Post, .roles = roleBit(UserRole::Resident)},
+    {.path = "/guard/expected-guests", .method = drogon::Delete, .roles = roleBit(UserRole::Resident)},
+}};
 
 struct HasAccessInput
 {
@@ -227,7 +235,7 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
     const auto route = std::ranges::find_if(kGuardAccess, [&](const GuardRouteAccess& entry) {
       return entry.path == path && entry.method == method;
     });
-    return route != kGuardAccess.end() && route->roles.contains(role);
+    return route != kGuardAccess.end() && (route->roles & roleBit(role)) != 0;
   }
 
   const auto table = tableFromPath(path);

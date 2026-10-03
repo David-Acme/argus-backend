@@ -45,7 +45,7 @@ struct VoiceSessionTestAccess
   static std::shared_ptr<VoiceSessionService::Session>
   sessionOf(VoiceSessionService& service, VoiceSessionSink& sink)
   {
-    std::lock_guard<std::mutex> lock(service.mutex_);
+    std::scoped_lock lock(service.mutex_);
     return service.sessions_.at(&sink);
   }
 

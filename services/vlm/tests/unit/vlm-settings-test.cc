@@ -73,8 +73,16 @@ std::string callersConfig()
          "\"\nsettings = \"" + kSettingsSecret + "\"\n";
 }
 
-grpc::Status listWith(const std::string& target, const std::string& secret)
+struct CallerProbe
 {
+  std::string target;
+  std::string secret;
+};
+
+grpc::Status listWith(const CallerProbe& probe)
+{
+  const std::string& target = probe.target;
+  const std::string& secret = probe.secret;
   auto stub = wire::Settings::NewStub(grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
   grpc::ClientContext context;
   argus::client::addCallerCredential(context, secret);
@@ -205,8 +213,8 @@ TEST_CASE("the settings caller and a vision caller cannot stand in for each othe
   VlmRpcServer server(serverInput(rpc, vision, settings));
   const std::string target = "127.0.0.1:" + std::to_string(server.port());
 
-  CHECK(listWith(target, kSettingsSecret).ok());
-  CHECK(listWith(target, kGuardSecret).error_code() == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(listWith({.target = target, .secret = kSettingsSecret}).ok());
+  CHECK(listWith({.target = target, .secret = kGuardSecret}).error_code() == grpc::StatusCode::UNAUTHENTICATED);
   CHECK(capabilitiesStatusWith(server.port(), kSettingsSecret) == 401);
   CHECK(capabilitiesStatusWith(server.port(), kGuardSecret) == 200);
 

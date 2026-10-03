@@ -1,11 +1,12 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
 
-enum class SettingType
+enum class SettingType : std::uint8_t
 {
   Toggle,
   Integer,
@@ -14,20 +15,20 @@ enum class SettingType
   Text
 };
 
-enum class SettingLevel
+enum class SettingLevel : std::uint8_t
 {
   Basic,
   Advanced
 };
 
-enum class SettingApply
+enum class SettingApply : std::uint8_t
 {
   Live,
   NextSession,
   Restart
 };
 
-enum class SettingRejectionReason
+enum class SettingRejectionReason : std::uint8_t
 {
   Unknown,
   Invalid,

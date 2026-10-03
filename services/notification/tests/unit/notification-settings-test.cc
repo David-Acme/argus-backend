@@ -82,8 +82,16 @@ int64_t epochMsAtLocalHour(int hour)
   return static_cast<int64_t>(std::mktime(&local)) * 1000;
 }
 
-grpc::StatusCode listWith(const std::string& target, const std::string& secret)
+struct CallerProbe
 {
+  std::string target;
+  std::string secret;
+};
+
+grpc::StatusCode listWith(const CallerProbe& probe)
+{
+  const std::string& target = probe.target;
+  const std::string& secret = probe.secret;
   auto stub = wire::Settings::NewStub(grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
@@ -92,8 +100,10 @@ grpc::StatusCode listWith(const std::string& target, const std::string& secret)
   return stub->List(&context, {}, &catalog).error_code();
 }
 
-grpc::StatusCode createWith(const std::string& target, const std::string& secret)
+grpc::StatusCode createWith(const CallerProbe& probe)
 {
+  const std::string& target = probe.target;
+  const std::string& secret = probe.secret;
   auto stub = argus::notification::v1::NotificationService::NewStub(
       grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
   grpc::ClientContext context;
@@ -103,8 +113,10 @@ grpc::StatusCode createWith(const std::string& target, const std::string& secret
   return stub->CreateNotifications(&context, {}, &response).error_code();
 }
 
-grpc::Status pullWith(const std::string& target, const std::string& secret)
+grpc::Status pullWith(const CallerProbe& probe)
 {
+  const std::string& target = probe.target;
+  const std::string& secret = probe.secret;
   auto stub = argus::notification::v1::NotificationService::NewStub(
       grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
   grpc::ClientContext context;
@@ -239,17 +251,17 @@ TEST_CASE("the settings caller and the notification callers cannot stand in for 
   REQUIRE(server);
   const std::string target = "127.0.0.1:" + std::to_string(port);
 
-  CHECK(listWith(target, kSettingsSecret) == grpc::StatusCode::OK);
-  CHECK(listWith(target, kGuardSecret) == grpc::StatusCode::UNAUTHENTICATED);
-  CHECK(listWith(target, kSyncSecret) == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(listWith({.target = target, .secret = kSettingsSecret}) == grpc::StatusCode::OK);
+  CHECK(listWith({.target = target, .secret = kGuardSecret}) == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(listWith({.target = target, .secret = kSyncSecret}) == grpc::StatusCode::UNAUTHENTICATED);
 
-  CHECK(createWith(target, kSettingsSecret) == grpc::StatusCode::UNAUTHENTICATED);
-  CHECK(createWith(target, kGuardSecret) == grpc::StatusCode::INVALID_ARGUMENT);
+  CHECK(createWith({.target = target, .secret = kSettingsSecret}) == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(createWith({.target = target, .secret = kGuardSecret}) == grpc::StatusCode::INVALID_ARGUMENT);
 
-  const grpc::Status settingsPull = pullWith(target, kSettingsSecret);
+  const grpc::Status settingsPull = pullWith({.target = target, .secret = kSettingsSecret});
   CHECK(settingsPull.error_code() == grpc::StatusCode::UNAUTHENTICATED);
   CHECK(settingsPull.error_message() == kSyncRefusal);
-  const grpc::Status syncPull = pullWith(target, kSyncSecret);
+  const grpc::Status syncPull = pullWith({.target = target, .secret = kSyncSecret});
   CHECK(syncPull.error_code() == grpc::StatusCode::UNAUTHENTICATED);
   CHECK(syncPull.error_message() != kSyncRefusal);
 

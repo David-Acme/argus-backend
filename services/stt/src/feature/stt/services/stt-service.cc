@@ -179,7 +179,7 @@ void SttService::init()
 
 bool SttService::setLanguage(const std::string& lang)
 {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   if (!isSupportedLanguage(lang))
     return false;
   auto recognizer = createRecognizer(engine_, lang);
@@ -193,13 +193,13 @@ bool SttService::setLanguage(const std::string& lang)
 
 std::string SttService::language() const
 {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return currentLang_;
 }
 
 void SttService::shutdown()
 {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   recognizer_.reset();
   loaded_ = false;
 
@@ -224,7 +224,7 @@ std::string SttService::transcribe(const TranscribeRequest& request)
 std::string SttService::decode(const std::vector<float>& samples,
                                int32_t sampleRate)
 {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
 
   auto* recognizer = recognizer_.get();
   if (!recognizer)

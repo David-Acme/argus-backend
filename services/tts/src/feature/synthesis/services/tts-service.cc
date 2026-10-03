@@ -45,8 +45,8 @@ TtsService& TtsService::instance()
 
 void TtsService::init()
 {
-  std::lock_guard lifecycleLock(lifecycleMutex_);
-  std::lock_guard lock(synthMutex_);
+  std::scoped_lock lifecycleLock(lifecycleMutex_);
+  std::scoped_lock lock(synthMutex_);
   if (loaded_)
     return;
   try {
@@ -115,10 +115,10 @@ void TtsService::init()
 
 void TtsService::shutdown()
 {
-  std::lock_guard lifecycleLock(lifecycleMutex_);
+  std::scoped_lock lifecycleLock(lifecycleMutex_);
   stopping_.store(true);
   generation_.fetch_add(1);
-  std::lock_guard lock(synthMutex_);
+  std::scoped_lock lock(synthMutex_);
   engine_.reset();
   processor_.reset();
   voiceCache_.clear();
@@ -129,7 +129,7 @@ void TtsService::shutdown()
 
 bool TtsService::isLoaded() const
 {
-  std::lock_guard lock(synthMutex_);
+  std::scoped_lock lock(synthMutex_);
   return loaded_ && !stopping_.load();
 }
 
@@ -137,7 +137,7 @@ bool TtsService::isLoaded() const
 std::vector<float> TtsService::synthesize(const TtsRequest& req)
 {
   const auto generation = generation_.load();
-  std::lock_guard lock(synthMutex_);
+  std::scoped_lock lock(synthMutex_);
   if (stopping_.load() || generation != generation_.load() || !loaded_)
     throw std::runtime_error("TTS engine is not loaded");
   const auto& style = resolveVoice(req.voiceId);
@@ -269,7 +269,7 @@ drogon::Task<void> TtsService::synthesizeStreamAsync(const TtsRequest& req,
 void TtsService::loadVoice(const std::string& voiceId)
 {
   std::string path = modelsDir() + "/voice_styles/" + voiceId + ".json";
-  std::lock_guard lock(synthMutex_);
+  std::scoped_lock lock(synthMutex_);
   if (stopping_.load() || !loaded_)
     return;
   voiceCache_[voiceId] = loadVoiceStyle(path);
@@ -278,7 +278,7 @@ void TtsService::loadVoice(const std::string& voiceId)
 
 int TtsService::sampleRate() const
 {
-  std::lock_guard lock(synthMutex_);
+  std::scoped_lock lock(synthMutex_);
   return engine_ ? engine_->sampleRate() : 0;
 }
 
@@ -289,25 +289,25 @@ std::vector<std::string> TtsService::availableVoices() const
 
 void TtsService::setDefaultQuality(TtsQuality q)
 {
-  std::lock_guard lock(synthMutex_);
+  std::scoped_lock lock(synthMutex_);
   defaultQuality_ = q;
 }
 
 TtsQuality TtsService::defaultQuality() const
 {
-  std::lock_guard lock(synthMutex_);
+  std::scoped_lock lock(synthMutex_);
   return defaultQuality_;
 }
 
 float TtsService::defaultSpeed() const
 {
-  std::lock_guard lock(synthMutex_);
+  std::scoped_lock lock(synthMutex_);
   return defaultSpeed_;
 }
 
 void TtsService::refreshDefaults()
 {
-  std::lock_guard lock(synthMutex_);
+  std::scoped_lock lock(synthMutex_);
   loadDefaults();
 }
 
