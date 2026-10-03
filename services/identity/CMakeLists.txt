@@ -137,6 +137,7 @@ argus_service(NAME argus-identity
             argus::identity-invitation
             argus::identity-pairing
             argus::identity-enrollment
+            argus::identity-retention
             argus::identity-rpc
     DEPENDS argus::lib::http
             argus::lib::auth

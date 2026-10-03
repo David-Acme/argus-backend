@@ -83,3 +83,18 @@ target_link_libraries(identity-face-slots-test PRIVATE
 target_compile_options(identity-face-slots-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-face-slots-test)
 add_test(NAME identity-face-slots-test COMMAND identity-face-slots-test)
+
+add_executable(identity-candidate-retention-test
+    unit/identity-candidate-retention-test.cc)
+target_compile_definitions(identity-candidate-retention-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(identity-candidate-retention-test PRIVATE
+    argus::identity-retention
+    argus::lib::sqlite
+    argus::contracts::sync
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-candidate-retention-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-candidate-retention-test)
+add_test(NAME identity-candidate-retention-test
+         COMMAND identity-candidate-retention-test)

@@ -75,6 +75,9 @@ max_reconnects = 60
 enabled = true
 top_k = 5
 
+[retention]
+candidate_days = 30
+
 [storage]
 mode = "s3"
 

@@ -13,6 +13,7 @@
 #include <drogon/drogon.h>
 #include <feature/invitation/controllers/invitation-controller.hxx>
 #include <feature/pairing/controllers/pairing-controller.hxx>
+#include <feature/retention/services/candidate-retention-service.hxx>
 #include <feature/user/controllers/portrait-preview-controller.hxx>
 #include <feature/user/controllers/user-controller.hxx>
 #include <feature/user/services/nats-identity-change-sink.hxx>
@@ -276,12 +277,15 @@ int main()
   shutdown_signal::onQuit(
       [dbPath = identityDb.dbPath] { DbService::freezeClient(dbPath); });
 
+  CandidateRetentionService candidateRetention(IdentityConfig::resolveRetention());
   std::unique_ptr<MdnsService> mdnsService;
-  drogon::app().registerBeginningAdvice([&mdnsService, &listener]() {
-    mdnsService = std::make_unique<MdnsService>(
-        routeAnnouncements({.port = listener.port, .tls = listener.tls}));
-    mdnsService->initialize();
-  });
+  drogon::app().registerBeginningAdvice(
+      [&mdnsService, &listener, &candidateRetention]() {
+        mdnsService = std::make_unique<MdnsService>(
+            routeAnnouncements({.port = listener.port, .tls = listener.tls}));
+        mdnsService->initialize();
+        candidateRetention.start();
+      });
 
   drogon::app().setThreadNum(0).run();
 

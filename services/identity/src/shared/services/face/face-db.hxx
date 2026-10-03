@@ -4,6 +4,7 @@
 #include <mutex>
 #include <optional>
 #include <shared/repositories/face-embedding/face-embedding-repository.hxx>
+#include <span>
 #include <sqlite/vec-db.hxx>
 #include <string>
 #include <utility>
@@ -25,6 +26,7 @@ public:
   bool insert(const FaceInsertInput& input);
   std::optional<std::pair<int64_t, float>> search(const float* query);
   void remove(int64_t personId);
+  void removeEmbeddings(std::span<const int64_t> faceEmbeddingIds);
   size_t count();
 
 private:

@@ -29,6 +29,11 @@ struct IdentityFaceConfig
   bool enabled{false};
 };
 
+struct IdentityRetentionConfig
+{
+  int64_t candidateDays{30};
+};
+
 class IdentityConfig
 {
 public:
@@ -43,4 +48,6 @@ public:
   [[nodiscard]] static IdentitySyncControlConfig resolveSyncControl();
 
   [[nodiscard]] static IdentityFaceConfig resolveFace();
+
+  [[nodiscard]] static IdentityRetentionConfig resolveRetention();
 };

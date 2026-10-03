@@ -1,5 +1,6 @@
 #include "identity-config.hxx"
 
+#include <algorithm>
 #include <config/config-service.hxx>
 #include <cstdint>
 
@@ -57,5 +58,14 @@ IdentityFaceConfig IdentityConfig::resolveFace()
 {
   IdentityFaceConfig config;
   config.enabled = ConfigService::getBool("face.enabled");
+  return config;
+}
+
+IdentityRetentionConfig IdentityConfig::resolveRetention()
+{
+  IdentityRetentionConfig config;
+  if (ConfigService::hasKey("retention.candidate_days"))
+    config.candidateDays =
+        std::max(0, ConfigService::getInt("retention.candidate_days"));
   return config;
 }

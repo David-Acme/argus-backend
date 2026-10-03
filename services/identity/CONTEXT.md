@@ -269,6 +269,18 @@ optionally stores the JPEG crop in `person_snapshot`, and emits the `person`
 sync add. `person_tag` holds LLM tags. The face engine stays inside this
 process; argus-camera only ships crops.
 
+**Unknown faces expire.** Every distinct stranger the cameras crop becomes a
+candidate person with an embedding and, optionally, the JPEG crop — in a
+restaurant or an office that is every customer's biometrics, and the exact
+vec0 search grows with it. `CandidateRetentionService` (feature `retention`)
+retires, every six hours, the candidates nobody promoted and no user is linked
+to whose `last_seen_at` is older than `[retention] candidate_days` (default 30,
+`0` keeps them): one statement soft-deletes up to 200 rows and returns them,
+the same transaction deletes their embeddings, crop and tags and publishes
+the sync tombstone (`{id, deletedAt}`), and their `face_vec` rows go once it
+commits. A stranger who comes back after the window is a new candidate; a
+known person and a user's person are never touched.
+
 `PromotePerson` (candidate → known) is the one mutating call with a human gate:
 the owner bearer token plus the device fingerprint travel in the call, the
 service verifies the access token, requires an Owner actor with an active bound

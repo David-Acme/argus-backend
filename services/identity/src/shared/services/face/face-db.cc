@@ -101,6 +101,16 @@ void FaceDB::remove(int64_t personId)
     repository_.deleteVecRow(db, id);
 }
 
+void FaceDB::removeEmbeddings(std::span<const int64_t> faceEmbeddingIds)
+{
+  std::scoped_lock lock(vecMutex());
+  sqlite3* db = vecDb_.handle();
+  if (!db)
+    return;
+  for (const int64_t id : faceEmbeddingIds)
+    repository_.deleteVecRow(db, id);
+}
+
 size_t FaceDB::count()
 {
   std::scoped_lock lock(vecMutex());
