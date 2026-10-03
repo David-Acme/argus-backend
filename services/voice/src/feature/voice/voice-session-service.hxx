@@ -4,7 +4,9 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <deque>
 #include <functional>
+#include <feature/voice/call-history.hxx>
 #include <feature/voice/voice-engine-seam.hxx>
 #include <memory>
 #include <mutex>
@@ -52,6 +54,8 @@ public:
   void stop(VoiceSessionSink& sink);
   void skip(VoiceSessionSink& sink);
   void context(VoiceSessionSink& sink, const argus::voice::v1::VoiceContext& context);
+  void actionResult(VoiceSessionSink& sink, const argus::voice::v1::VoiceActionResult& result);
+  void mute(VoiceSessionSink& sink, bool muted);
 
 private:
   struct CameraNotice
@@ -59,6 +63,34 @@ private:
     std::string camera;
     std::string summary;
     std::chrono::steady_clock::time_point at{};
+  };
+
+  struct ActionFailure
+  {
+    std::string name;
+    std::string detail;
+    std::chrono::steady_clock::time_point at{};
+  };
+
+  struct Notice
+  {
+    std::string spoken;
+    std::string event;
+  };
+
+  struct SpeakOutcome
+  {
+    bool audible{false};
+    bool interrupted{false};
+    std::chrono::steady_clock::time_point firstAudioAt{};
+  };
+
+  struct TurnClock
+  {
+    std::chrono::steady_clock::time_point detected{};
+    std::chrono::steady_clock::time_point transcribed{};
+    std::chrono::steady_clock::time_point firstToken{};
+    std::chrono::steady_clock::time_point firstAudio{};
   };
 
   struct DuplexTurn
@@ -83,9 +115,18 @@ private:
     size_t samples{0};
   };
 
+  struct SessionInit
+  {
+    std::unique_ptr<VadModel> model;
+    VoiceLang lang{VoiceLang::System};
+  };
+
   struct Session
   {
-    explicit Session(std::unique_ptr<VadModel> model) : vad(std::move(model)) {}
+    explicit Session(SessionInit init)
+        : vad(std::move(init.model)), history(init.lang), lang(init.lang)
+    {
+    }
 
     VoiceSessionSink* sink{nullptr};
     VadService vad;
@@ -93,14 +134,17 @@ private:
     bool denoise{true};
     float denoiseGateRms{0.0035F};
     int denoiseLogCounter{0};
-    std::vector<ChatMessage> history;
+    CallHistory history;
     VoiceLang lang{VoiceLang::System};
+    std::string callId;
     int64_t userId{0};
     std::string role;
     bool nameKnown{false};
     std::atomic<bool> speaking{false};
     std::atomic<bool> interrupt{false};
     std::atomic<bool> active{true};
+    std::atomic<bool> muted{false};
+    std::atomic<bool> vadResetPending{false};
     std::mutex turnMutex;
     std::stop_source turnStop;
     std::thread worker;
@@ -114,27 +158,32 @@ private:
     DuplexTurn turn;
     std::mutex noticeMutex;
     std::vector<std::string> pendingNotes;
+    std::optional<std::string> pendingSituation;
     std::optional<CameraNotice> pendingCamera;
-    std::vector<std::string> notes;
+    std::deque<ActionFailure> pendingFailures;
+    std::deque<std::pair<int64_t, std::string>> sentActions;
     std::chrono::steady_clock::time_point lastNoticeAt{};
     std::atomic<int64_t> actionSeq{0};
   };
 
+  std::shared_ptr<Session> sessionOf(VoiceSessionSink& sink) const;
   void workerLoop(std::shared_ptr<Session> session);
   void duplexLoop(const std::shared_ptr<Session>& session);
+  static std::optional<std::vector<float>> nextBatch(Session& session);
   std::vector<float> cleanBatch(Session& session, std::vector<float>& batch);
   void launchTurn(const std::shared_ptr<Session>& session,
                   std::function<void(Session&)> body);
   ListenState listenState(Session& session);
   void bargeIn(Session& session);
-  void sendDuplexChunk(Session& session, argus::voice::v1::ServerFrame frame);
-  void sendDuplexAssistant(Session& session, AssistantSend send);
+  bool sendDuplexChunk(Session& session, argus::voice::v1::ServerFrame frame);
+  bool sendDuplexAssistant(Session& session, AssistantSend send);
   void processTurn(Session& session, const std::vector<float>& samples);
   void applyNotes(Session& session);
-  std::optional<CameraNotice> takeCameraNotice(Session& session);
-  void deliverCameraNotice(Session& session, const CameraNotice& notice);
+  std::optional<Notice> takeNotice(Session& session);
+  void deliverNotice(Session& session, const Notice& notice);
+  void rememberAction(Session& session, const ClientAction& action);
   Reaction emitReaction(Session& session, const ReactionSignals& signals);
-  void speak(Session& session, const std::string& text);
+  SpeakOutcome speak(Session& session, const std::string& text);
   void sendFrame(Session& session, argus::voice::v1::ServerFrame frame) const;
 
   mutable std::mutex mutex_;

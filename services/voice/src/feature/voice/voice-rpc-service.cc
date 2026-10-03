@@ -114,6 +114,12 @@ private:
       case argus::voice::v1::ClientFrame::kContext:
         sessions_.context(*this, frame.context());
         break;
+      case argus::voice::v1::ClientFrame::kActionResult:
+        sessions_.actionResult(*this, frame.action_result());
+        break;
+      case argus::voice::v1::ClientFrame::kMute:
+        sessions_.mute(*this, frame.mute().muted());
+        break;
       case argus::voice::v1::ClientFrame::kPcm:
         sessions_.feedPcm(*this, {.data = frame.pcm().data(),
                                   .size = static_cast<size_t>(

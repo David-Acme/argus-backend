@@ -5,6 +5,7 @@
 
 #include <config/config-service.hxx>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -103,6 +104,8 @@ struct FakeLlm final : IVoiceLlm
 {
   int chatStreamCalls{0};
   size_t lastPromptMessages{0};
+  std::vector<ChatMessage> lastMessages;
+  std::string lastSessionId;
   int64_t lastUserId{0};
   UserRole lastRole{UserRole::Owner};
   std::string lastLang;
@@ -111,6 +114,8 @@ struct FakeLlm final : IVoiceLlm
   {
     ++chatStreamCalls;
     lastPromptMessages = input.request.messages.size();
+    lastMessages = input.request.messages;
+    lastSessionId = input.request.sessionId;
     lastUserId = input.request.userId;
     lastRole = input.request.role;
     lastLang = input.request.lang;
@@ -451,7 +456,14 @@ TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
   CHECK(sttFrame.stt().final());
 
   CHECK(llm.chatStreamCalls == 1);
-  CHECK(llm.lastPromptMessages == 3);
+  REQUIRE(llm.lastPromptMessages >= 3);
+  CHECK(llm.lastMessages[0].role == "system");
+  CHECK(llm.lastMessages[1].role == "assistant");
+  CHECK(llm.lastMessages[2].role == "user");
+  CHECK(llm.lastMessages[2].content == "hola argus");
+  for (size_t i = 3; i < llm.lastMessages.size(); ++i)
+    CHECK(llm.lastMessages[i].role == "system");
+  CHECK(llm.lastSessionId.starts_with("voice-7-"));
   CHECK(llm.lastUserId == 7);
   CHECK(llm.lastRole == UserRole::Resident);
   CHECK(llm.lastLang == "es");
@@ -470,8 +482,9 @@ TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
       assistantFound = true;
   CHECK(assistantFound);
 
-  CHECK(sess->history.size() == 4);
-  CHECK(sess->history[3].content == "Hola de nuevo.");
+  CHECK(sess->history.entries().back().kind == CallEntryKind::Assistant);
+  CHECK(sess->history.entries().back().message.content == "Hola de nuevo.");
+  CHECK(sess->history.userTurns() == 1);
 
   session.stop(sink);
 }
@@ -583,7 +596,7 @@ TEST_CASE("A failed answer rolls the user turn back and says so")
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
 
   CHECK(sess->history.size() == 2);
-  CHECK(sess->history.back().role == "assistant");
+  CHECK(sess->history.entries().back().message.role == "assistant");
   CHECK(tts.synthesizeCalls == 2);
   CHECK(tts.lastText == "Perdona, ahora mismo no he podido responder.");
 
@@ -609,16 +622,18 @@ TEST_CASE("The history trims in whole turns and keeps the system prompt")
   CHECK(waitFor([&] { return tts.synthesizeCalls > 0 && !sess->speaking.load(); }));
 
   const std::vector<float> samples(1600, 0.1F);
-  for (int turn = 0; turn < 9; ++turn)
+  for (int turn = 0; turn < 10; ++turn)
     VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
-  CHECK(sess->history.size() == 20);
+  CHECK(sess->history.userTurns() == 10);
 
-  for (int turn = 0; turn < 3; ++turn)
+  for (int turn = 0; turn < 2; ++turn)
     VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
-  CHECK(sess->history.size() == 15);
-  CHECK(sess->history[0].role == "system");
-  CHECK(sess->history[1].role == "user");
-  CHECK(sess->history.back().role == "assistant");
+  CHECK(sess->history.userTurns() == 6);
+  const auto& entries = sess->history.entries();
+  CHECK(entries[0].message.role == "system");
+  CHECK(entries[0].message.content.find("Earlier in this call") != std::string::npos);
+  CHECK(entries[1].message.role == "user");
+  CHECK(entries.back().message.role == "assistant");
 
   session.stop(sink);
 }
@@ -676,10 +691,13 @@ TEST_CASE("Skip cancels the LLM generation and the next turn does not wait for i
   CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(2));
   const int spokenAfterSkip = tts.synthesizeCalls;
 
+  CHECK(sess->history.userTurns() == 0);
+
   VoiceSessionTestAccess::runTurn({.service = service, .session = *sess, .samples = samples});
   CHECK(llm.calls.load() == 2);
   CHECK(tts.synthesizeCalls == spokenAfterSkip + 1);
   CHECK(tts.lastText == "Sigo aqui.");
+  CHECK(sess->history.userTurns() == 1);
 
   service.stop(sink);
 }
@@ -1042,5 +1060,198 @@ TEST_CASE("A camera event is offered aloud once, while nobody is talking")
         return true;
     return false;
   }, 1500));
+  session.stop(sink);
+}
+
+namespace
+{
+struct SpeakThenBlockLlm final : IVoiceLlm
+{
+  std::atomic<bool> entered{false};
+
+  void chatStream(LlmStreamInput input) override
+  {
+    input.onToken("Primera frase. Y", false);
+    std::mutex mutex;
+    std::condition_variable_any ready;
+    std::unique_lock lock(mutex);
+    entered.store(true);
+    ready.wait_for(lock, input.cancellation, std::chrono::seconds(5), [] { return false; });
+    if (input.cancellation.stop_requested())
+      throw std::runtime_error("argus-llm stream cancelled");
+  }
+};
+
+argus::voice::v1::VoiceActionResult failedResult(int64_t id, const std::string& detail)
+{
+  argus::voice::v1::VoiceActionResult result;
+  result.set_id(id);
+  result.set_ok(false);
+  result.set_detail(detail);
+  return result;
+}
+
+bool spokeText(const FakeVoiceSink& sink, const std::string& fragment)
+{
+  return std::ranges::any_of(assistantTexts(sink), [&](const std::string& text) {
+    return text.find(fragment) != std::string::npos;
+  });
+}
+}
+
+TEST_CASE("A note after the first answer joins the end of the prompt and leaves the start untouched")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+  const std::vector<ChatMessage> first = llm.lastMessages;
+
+  argus::voice::v1::VoiceContext situation;
+  situation.set_kind(argus::voice::v1::VOICE_CONTEXT_SITUATION);
+  situation.set_text("Modo de vigilancia: fuera.\nAgenda de hoy: 18:00 cena.");
+  session.context(sink, situation);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+
+  const std::vector<ChatMessage>& second = llm.lastMessages;
+  REQUIRE(second.size() > first.size());
+  CHECK(second[0].content == first[0].content);
+  CHECK(std::ranges::any_of(second, [](const ChatMessage& message) {
+    return message.role == "system" &&
+           message.content == "Modo de vigilancia: fuera.\nAgenda de hoy: 18:00 cena.";
+  }));
+  CHECK(std::ranges::none_of(second, [](const ChatMessage& message) {
+    return message.role == "user" && message.content != "hola argus";
+  }));
+  session.stop(sink);
+}
+
+TEST_CASE("A failed app action is corrected aloud and joins the history")
+{
+  FakeStt stt;
+  FakeTts tts;
+  ActingLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+  REQUIRE(sink.hasType("voice:action"));
+
+  session.actionResult(sink, failedResult(99, "no existe"));
+  session.actionResult(sink, failedResult(1, "sin conexión"));
+  CHECK(waitFor([&] { return spokeText(sink, "No he podido mostrarte la cámara: sin conexión."); }));
+  CHECK_FALSE(spokeText(sink, "no existe"));
+  CHECK(waitFor([&] { return !sess->speaking.load(); }));
+
+  const auto& entries = sess->history.entries();
+  CHECK(std::ranges::any_of(entries, [](const CallEntry& entry) {
+    return entry.kind == CallEntryKind::Event &&
+           entry.message.content == "The app could not complete app.show_camera: sin conexión.";
+  }));
+  CHECK(entries.back().kind == CallEntryKind::Assistant);
+  CHECK(entries.back().message.content == "No he podido mostrarte la cámara: sin conexión.");
+  session.stop(sink);
+}
+
+TEST_CASE("An interrupted answer keeps in the history only what was spoken")
+{
+  FakeStt stt;
+  FakeTts tts;
+  SpeakThenBlockLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+
+  const std::vector<float> samples(1600, 0.1F);
+  std::thread turn([&] {
+    VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+  });
+  CHECK(waitFor([&] { return llm.entered.load(); }, 2000));
+  session.skip(sink);
+  turn.join();
+
+  const auto& entries = sess->history.entries();
+  CHECK(sess->history.userTurns() == 1);
+  CHECK(entries.back().kind == CallEntryKind::Assistant);
+  CHECK(entries.back().message.content == "Primera frase.");
+  session.stop(sink);
+}
+
+TEST_CASE("A camera offer waits until the user has finished speaking")
+{
+  DuplexConfig config(300);
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+
+  feed({.service = session, .sink = sink, .prob = 0.95F, .windows = 20});
+  CHECK(waitFor([&] { return vad.windows->load() >= 20; }, 2000));
+  session.context(sink, cameraEvent("Entrada"));
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  CHECK_FALSE(spokeText(sink, "cámara Entrada"));
+  CHECK(stt.transcribeCalls.load() == 0);
+
+  feed({.service = session, .sink = sink, .prob = 0.0F, .windows = 14});
+  CHECK(waitFor([&] { return stt.transcribeCalls.load() == 1; }, 3000));
+  CHECK(waitFor([&] { return spokeText(sink, "cámara Entrada: una persona en la puerta"); }, 3000));
+
+  const auto texts = assistantTexts(sink);
+  const auto answer = std::ranges::find(texts, std::string("Hola de nuevo."));
+  const auto offer = std::ranges::find_if(texts, [](const std::string& text) {
+    return text.find("cámara Entrada") != std::string::npos;
+  });
+  CHECK(answer < offer);
+  session.stop(sink);
+}
+
+TEST_CASE("Muting drops the half-said utterance instead of finishing it on unmute")
+{
+  DuplexConfig config(300);
+  RecordingStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+
+  feed({.service = session, .sink = sink, .prob = 0.95F, .windows = 20});
+  CHECK(waitFor([&] { return vad.windows->load() >= 20; }, 2000));
+  session.mute(sink, true);
+  feed({.service = session, .sink = sink, .prob = 0.0F, .windows = 14});
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  CHECK(vad.windows->load() == 20);
+
+  session.mute(sink, false);
+  feed({.service = session, .sink = sink, .prob = 0.0F, .windows = 14});
+  CHECK(waitFor([&] { return vad.windows->load() >= 34; }, 2000));
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  CHECK(stt.count() == 0);
   session.stop(sink);
 }

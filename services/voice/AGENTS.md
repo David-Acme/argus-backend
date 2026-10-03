@@ -59,7 +59,8 @@ argus-voice/
   src/main.cc           config load, listener boot, minimal /health, app run
   src/config/           argus::voice-config — the health (7035) and gRPC
                         (7034) listeners
-  src/feature/voice/    voice session, remote-only engine seam, VoiceService RPC
+  src/feature/voice/    voice session, the call's history (call-history),
+                        remote-only engine seam, VoiceService RPC
   src/feature/health/   grpc.health.v1 service
   src/feature/settings/ argus::voice-settings — the owner-editable catalog,
                         served by argus.settings.v1 on the gRPC listener

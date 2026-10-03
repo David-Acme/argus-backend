@@ -56,20 +56,21 @@ exact JSON/binary the app expects is argus-sync's
   later ones need `kMinSentenceChars`; `, ; :` split only past
   `kClauseMinChars` with a look-ahead tail; run-on text is cut at the last
   space past `kHardMaxChars`.
-- The history is append-only so argus-llm can reuse its KV cache: its prefix
-  cache only hits when the next prompt extends every token already decoded.
-  That is why the reaction tone note is appended to the stored user message
-  (a note sent once but not stored diverged the next prompt at that very
-  message), why the stored reply is the raw generated text (`full`, not the
-  spoken, prefix-stripped text), and why the history trims in one block —
-  past 21 messages it keeps the system prompt and the last 10 (five whole
-  turns) — instead of dropping a pair every turn, which re-prefilled the
-  whole prompt on every turn once the conversation was long.
-- A turn the LLM cannot answer is rolled back (the user message leaves the
-  history, so roles keep alternating) and a short localized line is spoken:
-  silence after speaking was indistinguishable from a broken session.
-- Every turn carries the session's `userId`; without it the memory tools of
-  argus-llm refuse, and a routed memory turn fell into the tool loop and
+- The conversation the LLM sees is `CallHistory`
+  (`src/feature/voice/call-history.{hxx,cc}`), described in "The call's
+  context" below. It is append-only so argus-llm can reuse its KV cache: its
+  prefix cache only hits when the next prompt extends every token already
+  decoded. That is why the stored reply is the raw generated text (`full`,
+  not the spoken, prefix-stripped text) when nothing interrupted it, and why
+  the history trims in one block instead of dropping a pair every turn, which
+  re-prefilled the whole prompt on every turn once the conversation was long.
+- A turn the LLM cannot answer is rolled back (the user message and its tone
+  note leave the history) and a short localized line is spoken: silence
+  after speaking was indistinguishable from a broken session.
+- Every turn carries the session's `userId` and the call's `sessionId`
+  (`voice-<userId>-<start ms>`, argus-llm's `ToolContext::sessionId`, the
+  source reference of what memory stores during the call); without the user
+  id the memory tools of argus-llm refuse, and a routed memory turn fell into the tool loop and
   cost several extra generations before any audio.
 - Every turn also carries the session's role (`UserRole` from the
   `VoiceStart` identity) and language: argus-llm offers and runs only the
@@ -96,6 +97,23 @@ exact JSON/binary the app expects is argus-sync's
   is the tail of the current one (`window_.end() - 64`).
 - After a turn the VAD is reset but the PCM queue is NOT cleared: audio
   captured while the LLM was thinking may hold a real interjection.
+- The worker waits for PCM at most 150 ms (`kIdleTick`) before it looks at
+  its notices again, so a camera offer or an action correction is delivered
+  even while the microphone is muted and no PCM arrives.
+- `voice:mute` drops the PCM queue and resets the VAD (the duplex worker
+  owns the VAD, so the reset is a flag it applies), and PCM is ignored while
+  muted. Before, the client only stopped sending; the server kept the
+  half-said utterance open and finished it with whatever came after the
+  unmute.
+- Each turn logs `Voice: turn latency stt_ms=… llm_first_token_ms=…
+  tts_first_audio_ms=… total_ms=…`, measured from the moment the VAD closed
+  the turn (the endpoint silence, `min_silence_frames` × 32 ms, comes before
+  that), so the budget of a slow answer is visible in the deploy's info log
+  without a transcript.
+- `RemoteVoiceTts` caches argus-tts's speed and sample rate for 10 s. Each
+  sentence used to ask for both before synthesizing, two round trips per
+  sentence on the path to first audio; the owner's speed setting still
+  reaches the next call within 10 s.
 - The PCM queue holds at most 30 s of 16 kHz audio; past that the oldest
   samples go. A worker stalled behind a slow turn cannot grow memory without
   bound, and audio that old is no longer an interjection worth answering.
@@ -173,6 +191,46 @@ The VAD model is a seam (`VadModel`, created through `IVoiceVad` in
 `VoiceEngineSeam`, Silero by default) so the suites drive barge-in with
 scripted probabilities instead of the ONNX model.
 
+## The call's context
+
+`CallHistory` owns the message list a turn sends to argus-llm and keeps one
+rule: a user message carries only what STT heard. argus-llm's router, its
+memory capture and the `utterance` its tools fall back to all read the last
+user message, so anything else written into it ends up stored as something
+the user said. The reaction tone note used to be appended to the user
+message, and a routed `memory.remember` saved "recuerda que mi hermana viene
+los domingos\n(Tono: cálido y corto.)".
+
+- Entry kinds: the prompt (history[0], role `system`), notes and the
+  situation (app context), events (what the app could not do), user, tone
+  (role `system`, right after its user message) and assistant. argus-llm
+  treats every `system` message after the first as a note, never as an
+  utterance.
+- Notes and the situation that arrive before the first LLM request fold into
+  history[0]: nothing is cached yet. After that they are appended as
+  `system` messages at the end, so the prompt stays a prefix of the next one;
+  rewriting history[0] for every note re-prefilled the whole prompt (about a
+  thousand tokens with the tool declarations) on the next turn. A repeated
+  note or an unchanged situation adds nothing.
+- The situation (`VOICE_CONTEXT_SITUATION`) is the app's own view of the
+  house, built from what the signed-in user may see: guard mode, today's
+  agenda, recent camera events and cameras that are offline. A new one
+  replaces the old in the trimmed prompt; until a trim both stay in history
+  and the newer one is simply the later message. argus-llm has no agenda or
+  guard read, so this is how "¿qué tengo hoy?" or "¿está armada la casa?"
+  gets an answer without a tool hop.
+- The trim counts whole turns: past 10 user turns it keeps the last 5 and
+  rebuilds history[0] as the persona, the notes, the latest situation and
+  "Earlier in this call, oldest first:" with one line per dropped user,
+  assistant or app event (at most 12 lines of 140 characters). The trim
+  re-prefills from the first message anyway, so rewriting history[0] there
+  costs nothing extra, and the call keeps what was asked, offered and
+  confirmed in the turns it drops. Tone notes are not kept.
+- An interrupted answer (barge-in or `voice:skip`) is stored as the sentences
+  that actually produced audio, not as everything the LLM generated: the
+  next turn must not assume the user heard words that were cut off. Nothing
+  audible means the user turn is rolled back.
+
 ## Conversation mode: app actions and camera offers
 
 During a call the assistant can drive the app. Every LLM request from a
@@ -183,18 +241,33 @@ to the app as a `VoiceAction` frame with a per-session id. The app
 executes it with the user's own token, so an action can never do more
 than the user could by hand, and the user can always undo it.
 
+The app executes each action and answers `VoiceActionResult {id, ok,
+detail}`. A success is only logged: the model already confirmed it aloud. A
+failure for an id this session sent (the last 32 are remembered; an unknown
+id is ignored) is queued, at most 4 and for 30 s, and delivered like a
+camera offer but before it: an `event` entry "The app could not complete
+app.set_guard_mode: <detail>." joins the history and a localized correction
+is spoken ("No he podido cambiar el modo de vigilancia: <detail>.") and
+stored as an assistant message. The model confirms the action before the app
+has run it, so without this a refusal was confirmed and never corrected.
+
 The app feeds the call through `VoiceContext` frames. A note (for example
-the names of the cameras) is queued and folded into the system prompt on
-the turn thread before the next answer. A camera event is offered aloud
+the names of the cameras) or a situation is queued and applied to the call's
+history on the turn thread before the next answer. A camera event is offered aloud
 by voice itself, not by the model: "Oye, tengo algo en la cámara X: ...
 ¿Quieres que te lo muestre?" goes through TTS and joins the history as an
 assistant turn, so a "sí" reaches the model with the offer in view and it
 calls `app.show_camera`. Asking the model to phrase the offer would re-run
 the router over the previous user message and could repeat its tool. An
 offer is spoken only while nobody is talking (half duplex: not speaking;
-duplex: no turn running and playback over), at most once every 30 s, and
-dropped when older than 20 s. Texts are trimmed to one line (notes 300,
-camera 64, summary 200 characters).
+duplex: no turn running and playback over; and in both, the VAD is not in
+the middle of the user's utterance), at most once every 30 s, and dropped
+when older than 20 s. Without the VAD check an offer started over a user who
+was mid-sentence, and in duplex the user's own speech then barged in on it.
+Texts are trimmed to one line (notes 300, camera 64, summary 200
+characters; the situation keeps its lines, up to 900 characters); every
+cut lands on a UTF-8 character boundary, since a cut through "á" made the
+LLM request an invalid protobuf string.
 
 ## Owner settings
 

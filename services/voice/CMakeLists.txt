@@ -84,6 +84,7 @@ set(VOICE_ENGINE_SOURCES
 
 argus_module(NAME voice-core
     SOURCES
+        src/feature/voice/call-history.cc
         src/feature/voice/voice-session-service.cc
         src/feature/voice/voice-engine-seam.cc
         src/feature/voice/voice-rpc-service.cc
@@ -152,6 +153,19 @@ argus_runtime_rpath(voice-session-seam-test)
 set_target_properties(voice-session-seam-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
+
+add_executable(voice-call-history-test tests/unit/voice-call-history-test.cc)
+
+target_link_libraries(voice-call-history-test PRIVATE argus::voice-core
+    doctest::doctest)
+
+target_compile_options(voice-call-history-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-call-history-test)
+
+set_target_properties(voice-call-history-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-call-history-test COMMAND voice-call-history-test)
 
 add_executable(voice-rpc-auth-test tests/unit/voice-rpc-auth-test.cc)
 

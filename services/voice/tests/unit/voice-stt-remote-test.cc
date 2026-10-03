@@ -192,7 +192,6 @@ TEST_CASE("An unreachable argus-stt degrades the turn, not the session")
     }
   CHECK(eventFound);
 
-  sess->history.clear();
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
   CHECK(sink.size() > framesBefore);
 

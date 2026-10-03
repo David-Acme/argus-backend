@@ -1,9 +1,11 @@
 #pragma once
 
 #include <argus/voice/v1/voice.pb.h>
+#include <chrono>
 #include <identity/identity-client.hxx>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <llm/llm-service.hxx>
 #include <llm/llm-remote.hxx>
 #include <shared/services/vad/vad-service.hxx>
@@ -84,15 +86,8 @@ class RemoteVoiceTts final : public IVoiceTts
 public:
   using IVoiceTts::synthesizeStream;
 
-  float defaultSpeed(std::stop_token cancellation = {}) const override
-  {
-    return client_.defaultSpeed(cancellation);
-  }
-
-  int sampleRate(std::stop_token cancellation = {}) const override
-  {
-    return client_.sampleRate(cancellation);
-  }
+  float defaultSpeed(std::stop_token cancellation = {}) const override;
+  int sampleRate(std::stop_token cancellation = {}) const override;
 
   void synthesizeStream(TtsRemoteStreamInput input) override
   {
@@ -100,7 +95,18 @@ public:
   }
 
 private:
+  struct Capabilities
+  {
+    float speed{1.0F};
+    int sampleRate{0};
+    std::chrono::steady_clock::time_point at{};
+  };
+
+  Capabilities capabilities(const std::stop_token& cancellation) const;
+
   TtsClient client_;
+  mutable std::mutex mutex_;
+  mutable std::optional<Capabilities> cached_;
 };
 
 class RemoteVoiceStt final : public IVoiceStt

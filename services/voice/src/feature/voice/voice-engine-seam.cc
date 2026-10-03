@@ -9,6 +9,7 @@
 namespace
 {
 constexpr int kIdentityTimeoutMs = 5000;
+constexpr auto kTtsCapabilitiesTtl = std::chrono::seconds(10);
 
 std::string identityTarget()
 {
@@ -56,6 +57,32 @@ GrpcVoiceIdentity::clientFor(const std::string& target)
     client_ = std::make_shared<IdentityClient>(target, secret);
   }
   return client_;
+}
+
+RemoteVoiceTts::Capabilities RemoteVoiceTts::capabilities(const std::stop_token& cancellation) const
+{
+  const auto now = std::chrono::steady_clock::now();
+  {
+    std::scoped_lock lock(mutex_);
+    if (cached_ && now - cached_->at < kTtsCapabilitiesTtl)
+      return *cached_;
+  }
+  const Capabilities fresh{.speed = client_.defaultSpeed(cancellation),
+                           .sampleRate = client_.sampleRate(cancellation),
+                           .at = now};
+  std::scoped_lock lock(mutex_);
+  cached_ = fresh;
+  return fresh;
+}
+
+float RemoteVoiceTts::defaultSpeed(std::stop_token cancellation) const
+{
+  return capabilities(cancellation).speed;
+}
+
+int RemoteVoiceTts::sampleRate(std::stop_token cancellation) const
+{
+  return capabilities(cancellation).sampleRate;
 }
 
 bool RemoteVoiceStt::supportsLanguage(const std::string& lang)
