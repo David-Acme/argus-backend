@@ -546,7 +546,7 @@ bool NatsBus::ensureJetStream()
     LOG_WARN << "NATS JetStream context failed: " << natsStatus_GetText(status);
     return false;
   }
-  js_.reset(raw);
+  js_ = JsCtxPtr(raw, JsCtxDeleter{});
   return true;
 }
 
@@ -557,9 +557,13 @@ bool NatsBus::publishWithMsgId(const PublishWithIdInput& input)
       input.msgId.empty())
     return false;
 
-  std::lock_guard lock(mutex_);
-  if (!connectedLocked() || !ensureJetStream())
-    return false;
+  JsCtxPtr js;
+  {
+    std::lock_guard lock(mutex_);
+    if (!connectedLocked() || !ensureJetStream())
+      return false;
+    js = js_;
+  }
 
   jsPubOptions options;
   jsPubOptions_Init(&options);
@@ -567,7 +571,7 @@ bool NatsBus::publishWithMsgId(const PublishWithIdInput& input)
   options.MaxWait = 2000;
   jsPubAck* rawAck = nullptr;
   const natsStatus status =
-      js_Publish(&rawAck, js_.get(), input.subject.c_str(), input.payload.data(),
+      js_Publish(&rawAck, js.get(), input.subject.c_str(), input.payload.data(),
                  static_cast<int>(input.payload.size()), &options, nullptr);
   if (rawAck != nullptr)
     jsPubAck_Destroy(rawAck);

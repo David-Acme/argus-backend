@@ -50,7 +50,10 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
   the broker's PubAck and never degrades to core NATS, so its false means the
   broker did not store the message and the caller must retain and retry it. The
   durable outboxes settle a row on exactly that return value — there the publish
-  result IS the acknowledgement.
+  result IS the acknowledgement. It waits for that ack (up to 2 s) outside the
+  bus mutex, on its own reference to the JetStream context, which retains the
+  connection: `isConnected()` answers health checks on the event loop and must
+  not queue behind a broker round trip, nor must another outbox's publish.
 - A durable consumer is created with `js_AddConsumer` and then bound
   (`jsSubOptions.Stream` + `.Consumer`), never left to the subscribe call to
   create. cnats deletes the consumer its own `js_Subscribe` created as soon as

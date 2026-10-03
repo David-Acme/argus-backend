@@ -140,7 +140,7 @@ private:
   using OptionsPtr = std::unique_ptr<natsOptions, OptionsDeleter>;
   using SubscriptionPtr = std::unique_ptr<natsSubscription, SubscriptionDeleter>;
   using SharedSubscriptionPtr = std::shared_ptr<natsSubscription>;
-  using JsCtxPtr = std::unique_ptr<jsCtx, JsCtxDeleter>;
+  using JsCtxPtr = std::shared_ptr<jsCtx>;
   using StreamInfoPtr = std::unique_ptr<jsStreamInfo, StreamInfoDeleter>;
   using InboxPtr = std::unique_ptr<natsInbox, InboxDeleter>;
 
