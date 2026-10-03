@@ -31,7 +31,7 @@ inline constexpr std::string_view SYNC_FIND_AFTER_FROM =
 inline constexpr std::string_view SYNC_FIND_ALL =
     "SELECT * FROM user_action_log ORDER BY created_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view SYNC_FIND_LAST =
-    "SELECT * FROM user_action_log ORDER BY created_at DESC LIMIT 1";
+    "SELECT * FROM user_action_log ORDER BY created_at DESC, id DESC LIMIT 1";
 
 inline constexpr std::string_view COUNT_TABLE =
     "SELECT COUNT(*) AS total FROM sqlite_master "

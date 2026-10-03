@@ -274,6 +274,33 @@ deleting the day's history, which is what the old delete-then-insert order did.
 `tests/unit/change-feed-consumer-test.cc` forces each statement to fail with a
 temporary trigger and pins both outcomes.
 
+**A message the fan-out cannot route is terminated, not retried** (2026-10).
+An unknown `option` or `table_name` used to fall back to `user` and broadcast
+into the user module room, which every Owner and Guard socket holds; it is now
+refused, as is a `users` element that is not an integer, a role that is not a
+string, an audit priority outside 0-2 and any jsoncpp type error inside the
+handler. Those used to nak and hold the ordered feed for the full 151 s
+described above, for a message no retry could ever write. Non-positive user
+ids are dropped from a user emit (`userRoom(-999)` wrapped to the user module
+room).
+
+**Retention folds a row only into its immediate successor** (2026-10). The
+sweep used to pair an old row with the nearest newer *old* row of the same
+record, skipping a recent row between them whenever event timestamps ran out
+of step with ids (a producer replay, a host that booted before NTP), so a
+client whose cursor sat between the two applied the recent value and then the
+older one folded on top of it. The pair is now the next row by id, and only
+when both are old; the daily merge likewise merges only into the record's
+newest row, and only when that row falls on the same UTC day.
+`tests/unit/audit-compaction-test.cc` pins the old-recent-old case.
+
+**The cursor queries seek instead of sorting.** Paging `audit_log` after an
+id reads the primary key (`+table_name` keeps the planner off the
+`(table_name, event_timestamp)` index that forced a sort of every row of the
+role's tables per page and per `findLast`), `user_audit_log` pages through
+`(user_id, id)` and `user_action_log` through `(created_at, id)`; the indexes
+are additive and appear at the next boot.
+
 **NATS is load-bearing for audit and journal persistence.** A deployment with
 no `[nats] url` loses live fan-out *and* the audit writes, because the writes
 are the fan-out's first act. The producers' durable outbox that removes this

@@ -188,7 +188,14 @@ TEST_CASE("the sync schema carries the five tables without a user reference")
   const auto indexes = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE "
       "'idx_%' ORDER BY name");
-  CHECK(indexes.size() == 6);
+  CHECK(indexes == std::vector<std::string>{"idx_audit_log_record",
+                                            "idx_audit_log_table_ts",
+                                            "idx_notification_delivery_inbox_status",
+                                            "idx_user_action_log_created",
+                                            "idx_user_action_log_msg_id",
+                                            "idx_user_audit_log_record",
+                                            "idx_user_audit_log_user_id",
+                                            "idx_user_audit_log_user_ts"});
 }
 
 TEST_CASE("the migration copies the five tables and verifies every row")

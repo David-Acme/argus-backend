@@ -15,10 +15,9 @@ inline constexpr std::string_view INSERT =
     "priority, event_timestamp) VALUES (?, ?, ?, ?, ?, ?)";
 
 inline constexpr std::string_view FIND_EXIST =
-    "SELECT * FROM audit_log INDEXED BY idx_audit_log_record "
-    "WHERE record_id = ? AND table_name = ? "
-    "AND event_timestamp >= ? AND event_timestamp <= ? "
-    "ORDER BY id DESC LIMIT 1";
+    "SELECT * FROM (SELECT * FROM audit_log INDEXED BY idx_audit_log_record "
+    "WHERE record_id = ? AND table_name = ? ORDER BY id DESC LIMIT 1) "
+    "WHERE event_timestamp >= ? AND event_timestamp <= ?";
 
 inline constexpr std::string_view REMOVE =
     "DELETE FROM audit_log WHERE id = ?";
@@ -41,24 +40,24 @@ inline constexpr std::string_view FIND_SYNC_ALL =
     "ORDER BY event_timestamp ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_AFTER_ID =
-    "SELECT * FROM audit_log WHERE table_name IN (%1%) AND id > ? "
+    "SELECT * FROM audit_log WHERE +table_name IN (%1%) AND id > ? "
     "ORDER BY id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_AFTER_ID_TO =
-    "SELECT * FROM audit_log WHERE table_name IN (%1%) AND id > ? AND id <= ? "
+    "SELECT * FROM audit_log WHERE +table_name IN (%1%) AND id > ? AND id <= ? "
     "ORDER BY id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_LAST_SYNC =
-    "SELECT * FROM audit_log WHERE table_name IN (%1%) "
+    "SELECT * FROM audit_log WHERE +table_name IN (%1%) "
     "ORDER BY id DESC LIMIT 1";
 
 inline constexpr std::string_view FIND_COMPACTION_PAIRS =
-    "SELECT o.id AS older_id, min(n.id) AS newer_id "
-    "FROM audit_log o JOIN audit_log n "
-    "ON n.record_id = o.record_id AND n.table_name = o.table_name "
-    "AND n.id > o.id AND n.event_timestamp < ? "
-    "WHERE o.event_timestamp < ? "
-    "GROUP BY o.id ORDER BY older_id ASC LIMIT ";
+    "SELECT o.id AS older_id, n.id AS newer_id "
+    "FROM audit_log o JOIN audit_log n ON n.id = ("
+    "SELECT min(x.id) FROM audit_log x WHERE x.record_id = o.record_id "
+    "AND x.table_name = o.table_name AND x.id > o.id) "
+    "WHERE n.event_timestamp < ? AND o.event_timestamp < ? "
+    "ORDER BY older_id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_COMPACTION_CHANGES =
     "SELECT id, changes FROM audit_log WHERE id IN (%1%)";

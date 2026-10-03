@@ -65,9 +65,13 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_table_ts ON audit_log (table_name, even
 
 CREATE INDEX IF NOT EXISTS idx_user_audit_log_user_ts ON user_audit_log (user_id, event_timestamp);
 CREATE INDEX IF NOT EXISTS idx_user_audit_log_record   ON user_audit_log (record_id, table_name);
+CREATE INDEX IF NOT EXISTS idx_user_audit_log_user_id  ON user_audit_log (user_id, id);
 
 CREATE INDEX IF NOT EXISTS idx_notification_delivery_inbox_status
     ON notification_delivery_inbox (status, delivery_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_action_log_msg_id
     ON user_action_log (msg_id) WHERE msg_id <> '';
+
+CREATE INDEX IF NOT EXISTS idx_user_action_log_created
+    ON user_action_log (created_at, id);

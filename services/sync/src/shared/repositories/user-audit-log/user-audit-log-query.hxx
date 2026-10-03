@@ -14,10 +14,11 @@ inline constexpr std::string_view INSERT =
     "priority, event_timestamp) VALUES (?, ?, ?, ?, ?, ?)";
 
 inline constexpr std::string_view FIND_EXIST =
-    "SELECT * FROM user_audit_log INDEXED BY idx_user_audit_log_record "
-    "WHERE user_id = ? AND record_id = ? "
-    "AND table_name = ? AND event_timestamp >= ? AND event_timestamp <= ? "
-    "ORDER BY id DESC LIMIT 1";
+    "SELECT * FROM (SELECT * FROM user_audit_log "
+    "INDEXED BY idx_user_audit_log_record "
+    "WHERE user_id = ? AND record_id = ? AND table_name = ? "
+    "ORDER BY id DESC LIMIT 1) "
+    "WHERE event_timestamp >= ? AND event_timestamp <= ?";
 
 inline constexpr std::string_view REMOVE =
     "DELETE FROM user_audit_log WHERE id = ?";
@@ -52,13 +53,14 @@ inline constexpr std::string_view FIND_LAST_SYNC =
     "ORDER BY id DESC LIMIT 1";
 
 inline constexpr std::string_view FIND_COMPACTION_PAIRS =
-    "SELECT o.id AS older_id, min(n.id) AS newer_id "
-    "FROM user_audit_log o JOIN user_audit_log n "
-    "ON n.user_id = o.user_id AND n.record_id = o.record_id "
-    "AND n.table_name = o.table_name "
-    "AND n.id > o.id AND n.event_timestamp < ? "
-    "WHERE o.event_timestamp < ? "
-    "GROUP BY o.id ORDER BY older_id ASC LIMIT ";
+    "SELECT o.id AS older_id, n.id AS newer_id "
+    "FROM user_audit_log o JOIN user_audit_log n ON n.id = ("
+    "SELECT min(x.id) FROM user_audit_log x INDEXED BY idx_user_audit_log_record "
+    "WHERE x.user_id = o.user_id "
+    "AND x.record_id = o.record_id AND x.table_name = o.table_name "
+    "AND x.id > o.id) "
+    "WHERE n.event_timestamp < ? AND o.event_timestamp < ? "
+    "ORDER BY older_id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_COMPACTION_CHANGES =
     "SELECT id, changes FROM user_audit_log WHERE id IN (%1%)";

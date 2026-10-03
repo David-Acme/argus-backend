@@ -284,11 +284,26 @@ TEST_CASE("retention compacts each audit table into its own newest rows")
                 .changes = R"({"l":{"previous":"one","current":"two"}})",
                 .priority = 1,
                 .eventTimestamp = cutoffMs});
+  seedAuditRow({.id = 15,
+                .recordId = 8,
+                .changes = R"({"m":{"previous":"a","current":"b"}})",
+                .priority = 1,
+                .eventTimestamp = kOldMs});
+  seedAuditRow({.id = 16,
+                .recordId = 8,
+                .changes = R"({"m":{"previous":"b","current":"c"}})",
+                .priority = 1,
+                .eventTimestamp = nowMs});
+  seedAuditRow({.id = 17,
+                .recordId = 8,
+                .changes = R"({"n":{"previous":"x","current":"y"}})",
+                .priority = 1,
+                .eventTimestamp = kOldMs});
 
   CHECK(drogon::sync_wait(auditService.compact(cutoffMs)) == 3);
 
   CHECK(scalar("SELECT COUNT(*) FROM audit_log WHERE id IN (1, 3, 4)") == "0");
-  CHECK(scalar("SELECT COUNT(*) FROM audit_log") == "11");
+  CHECK(scalar("SELECT COUNT(*) FROM audit_log") == "14");
 
   const Json::Value mergedIntoTwo = storedAuditChanges(2);
   CHECK(mergedIntoTwo["name"]["previous"].asString() == "Front");
@@ -311,7 +326,7 @@ TEST_CASE("retention compacts each audit table into its own newest rows")
   CHECK(scalar("SELECT event_timestamp FROM audit_log WHERE id = 5") ==
         std::to_string(kOldMs + 2000));
 
-  for (const int64_t untouched : {6, 7, 8, 9, 10, 11, 12, 13, 14})
+  for (const int64_t untouched : {6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17})
     CHECK(scalar("SELECT COUNT(*) FROM audit_log WHERE id = " +
                  std::to_string(untouched)) == "1");
   CHECK(storedAuditChanges(6)["d"]["current"].asString() == "two");
@@ -319,12 +334,14 @@ TEST_CASE("retention compacts each audit table into its own newest rows")
   CHECK(storedAuditChanges(9)["g"]["current"].asString() == "two");
   CHECK(storedAuditChanges(13)["k"]["previous"].asString() == "one");
   CHECK(storedAuditChanges(14)["l"]["previous"].asString() == "one");
+  CHECK(storedAuditChanges(17)["n"]["current"].asString() == "y");
+  CHECK_FALSE(storedAuditChanges(17).isMember("m"));
 
   CHECK(drogon::sync_wait(auditRepository.findCompactionFrontier()) == 4);
   CHECK(drogon::sync_wait(userAuditRepository.findCompactionFrontier()) == 0);
 
   CHECK(drogon::sync_wait(auditService.compact(cutoffMs)) == 0);
-  CHECK(scalar("SELECT COUNT(*) FROM audit_log") == "11");
+  CHECK(scalar("SELECT COUNT(*) FROM audit_log") == "14");
   CHECK(drogon::sync_wait(auditRepository.findCompactionFrontier()) == 4);
 
   drogon::sync_wait(auditRepository.advanceCompactionFrontier(2));
@@ -361,15 +378,15 @@ TEST_CASE("retention compacts each audit table into its own newest rows")
   DbService::client()->execSqlSync(auditBacklogInsert(backlogRows));
 
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") ==
-        std::to_string(11 + backlogRows));
+        std::to_string(14 + backlogRows));
   CHECK(drogon::sync_wait(auditService.compact(cutoffMs)) == pageSize);
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") ==
-        std::to_string(11 + backlogRows - pageSize));
+        std::to_string(14 + backlogRows - pageSize));
   CHECK(drogon::sync_wait(auditRepository.findCompactionFrontier()) ==
         kBacklogFirstId + 2 * (pageSize - 1));
   CHECK(drogon::sync_wait(auditService.compact(cutoffMs)) == 1);
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") ==
-        std::to_string(11 + backlogRows / 2));
+        std::to_string(14 + backlogRows / 2));
   CHECK(drogon::sync_wait(auditRepository.findCompactionFrontier()) ==
         kBacklogFirstId + 2 * pageSize);
   CHECK(storedAuditChanges(kBacklogFirstId + backlogRows - 1)["p"]["previous"]
