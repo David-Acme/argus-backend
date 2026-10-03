@@ -234,6 +234,21 @@ bool writeFileAtomically(const std::string& path, const std::string& content)
   return false;
 }
 
+void collectPlaceholders(const toml::table& table, const std::string& prefix,
+                         std::vector<std::string>& found)
+{
+  for (const auto& [key, node] : table) {
+    const std::string path =
+        prefix.empty() ? std::string(key.str())
+                       : prefix + "." + std::string(key.str());
+    if (const auto* nested = node.as_table())
+      collectPlaceholders(*nested, path, found);
+    else if (const auto* text = node.as_string();
+             text && text->get().find("CHANGE_ME") != std::string::npos)
+      found.push_back(path);
+  }
+}
+
 bool applyValue(const std::string& keyPath, const std::string& literal)
 {
   std::lock_guard lock(gConfigMutex);
@@ -268,7 +283,19 @@ void ConfigService::load(const std::string& path)
 {
   try {
     std::lock_guard lock(gConfigMutex);
-    gConfig = toml::parse_file(path);
+    toml::table parsed = toml::parse_file(path);
+    std::vector<std::string> placeholders;
+    collectPlaceholders(parsed, {}, placeholders);
+    if (!placeholders.empty()) {
+      std::string keys;
+      for (const auto& key : placeholders)
+        keys += (keys.empty() ? "" : ", ") + key;
+      LOG_FATAL << "Config " << path
+                << " still holds provisioning placeholders: " << keys
+                << "; run scripts/provision-host.sh";
+      throw std::runtime_error("ConfigService: unprovisioned " + keys);
+    }
+    gConfig = std::move(parsed);
     gOverlay.reset();
     gConfigPath = path;
     LOG_INFO << "Configuration loaded from " << path;

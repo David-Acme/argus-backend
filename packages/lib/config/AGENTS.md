@@ -42,6 +42,11 @@ not a local choice.
   leave a truncated `config.toml` holding the installation's secrets; when
   the file is a single-file bind mount (`rename` answers `EBUSY`/`EXDEV`, as
   in the deploy compose) it falls back to an fsynced in-place rewrite.
+- `load` refuses a file in which any string still contains `CHANGE_ME` (it
+  throws, the same way a parse error does) and names the keys: a deploy
+  template's placeholder is a publicly known secret, and `sync.control_secret`
+  shipped as one - the provisioning never filled it - so a fresh host
+  accepted a fleet secret anyone could read in the repository.
 - A missing key is not an error: the getters answer the empty string, `0`,
   `false` or `0.0`. A boot path that must tell "absent" from "empty" asks
   `hasKey`. A malformed file IS fatal — `load` logs `LOG_FATAL` and throws

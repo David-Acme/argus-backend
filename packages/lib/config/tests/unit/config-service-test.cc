@@ -246,3 +246,13 @@ paired = false
 
   std::remove(path.c_str());
 }
+
+TEST_CASE("a config that still holds a provisioning placeholder is refused")
+{
+  const std::string path = writeTemp("config-service-placeholder.toml", R"(
+[sync]
+control_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+)");
+  CHECK_THROWS_AS(ConfigService::load(path), std::runtime_error);
+  std::remove(path.c_str());
+}
