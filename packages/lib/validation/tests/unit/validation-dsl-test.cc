@@ -466,3 +466,23 @@ TEST_CASE("ValidationException defaults to 422")
     CHECK(exception.errors().at("field").size() == 1);
     CHECK(exception.errors().at("field")[0] == "must not be empty");
 }
+
+struct OptionalChoiceProbe
+{
+  std::optional<std::string> status;
+
+  void validate() const
+  {
+    START_VALIDATION(OptionalChoiceProbe, (*this))
+    IS_IN_OPTIONAL(status, "todo", "done")
+    END_VALIDATION()
+  }
+};
+
+TEST_CASE("validation-dsl restricts IS_IN_OPTIONAL only when the value is present")
+{
+  CHECK_NOTHROW(OptionalChoiceProbe{}.validate());
+  CHECK_NOTHROW(OptionalChoiceProbe{.status = "done"}.validate());
+  CHECK_THROWS_AS(OptionalChoiceProbe{.status = "archived"}.validate(),
+                  ValidationException);
+}

@@ -357,6 +357,30 @@ private:
   std::vector<std::string> allowed_;
 };
 
+template <typename DtoType>
+class IsOptionalInRule : public Validator<DtoType>::IRule
+{
+public:
+  IsOptionalInRule(OptionalFieldAccessor<DtoType> f,
+                   std::initializer_list<std::string> allowed)
+      : accessor_(std::move(f)), allowed_(allowed)
+  {
+  }
+  std::string field() const override { return accessor_.name; }
+  std::optional<std::string> validate(const DtoType& obj) const override
+  {
+    const auto& v = accessor_.get(obj);
+    if (v.has_value() &&
+        std::find(allowed_.begin(), allowed_.end(), *v) == allowed_.end())
+      return accessor_.name + " must be one of the allowed values";
+    return std::nullopt;
+  }
+
+private:
+  OptionalFieldAccessor<DtoType> accessor_;
+  std::vector<std::string> allowed_;
+};
+
 
 template <typename DtoType>
 class MinLengthRule : public Validator<DtoType>::IRule

@@ -19,6 +19,8 @@ UpdateProjectTaskDto UpdateProjectTaskDto::fromJson(const Json::Value& json)
   START_VALIDATION(UpdateProjectTaskDto, dto)
   IS_NOT_EMPTY_OPTIONAL(title)
   MAX_LENGTH_OPTIONAL(title, 200)
+  IS_IN_OPTIONAL(status, "backlog", "todo", "doing", "done", "canceled")
+  IS_IN_OPTIONAL(priority, "none", "low", "medium", "high", "urgent")
   IS_POSITIVE_TIMESTAMP_OPTIONAL(dueAt)
   END_VALIDATION()
   return dto;

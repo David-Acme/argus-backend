@@ -100,6 +100,16 @@
       std::initializer_list<std::string>{__VA_ARGS__});
 
 
+#define IS_IN_OPTIONAL(field, ...)                                             \
+  __v.template add<IsOptionalInRule<__D>>(                                     \
+      OptionalFieldAccessor<__D>{#field,                                       \
+                                 [](const __D& d)                              \
+                                     -> const std::optional<std::string>& {    \
+                                   return d.field;                             \
+                                 }},                                           \
+      std::initializer_list<std::string>{__VA_ARGS__});
+
+
 #define MIN_LENGTH(field, n)                                                   \
   __v.template add<MinLengthRule<__D>>(                                        \
       FieldAccessor<__D>{#field,                                               \
