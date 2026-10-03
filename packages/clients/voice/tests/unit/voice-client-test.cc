@@ -155,6 +155,12 @@ TEST_CASE("one stream carries the connect identity and the frames in order")
   stream->start(start);
   stream->sendPcm("a\0b", 3);
   stream->skip();
+  v1::VoiceActionResult result;
+  result.set_id(3);
+  result.set_ok(false);
+  result.set_detail("sin permiso");
+  stream->sendActionResult(result);
+  stream->sendMute(true);
   stream->stop();
   stream->finish();
   REQUIRE(observer->waitClosed(5000));
@@ -168,12 +174,18 @@ TEST_CASE("one stream carries the connect identity and the frames in order")
   CHECK(service.metadata.at("x-argus-role") == "resident");
   CHECK(service.metadata.count("x-argus-device") == 0);
   CHECK(service.metadata.count("x-argus-credential") == 0);
-  REQUIRE(service.frames.size() == 4);
+  REQUIRE(service.frames.size() == 6);
   REQUIRE(service.frames[0].has_start());
   CHECK(service.frames[0].start().identity().user_id() == 9);
   CHECK(service.frames[0].start().identity().role() == v1::VOICE_ROLE_OWNER);
   CHECK(service.frames[0].start().mode() == v1::VOICE_MODE_DUPLEX);
   CHECK(service.frames[1].pcm() == std::string("a\0b", 3));
   CHECK(service.frames[2].has_skip());
-  CHECK(service.frames[3].has_stop());
+  REQUIRE(service.frames[3].has_action_result());
+  CHECK(service.frames[3].action_result().id() == 3);
+  CHECK_FALSE(service.frames[3].action_result().ok());
+  CHECK(service.frames[3].action_result().detail() == "sin permiso");
+  REQUIRE(service.frames[4].has_mute());
+  CHECK(service.frames[4].mute().muted());
+  CHECK(service.frames[5].has_stop());
 }

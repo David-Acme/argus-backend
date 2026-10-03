@@ -44,6 +44,7 @@ enum VoiceContextKind
 {
   VOICE_CONTEXT_NOTE = 0;
   VOICE_CONTEXT_CAMERA_EVENT = 1;
+  VOICE_CONTEXT_SITUATION = 2;
 }
 
 message VoiceContext
@@ -51,6 +52,18 @@ message VoiceContext
   VoiceContextKind kind = 1;
   string text = 2;
   string camera = 3;
+}
+
+message VoiceActionResult
+{
+  int64 id = 1;
+  bool ok = 2;
+  string detail = 3;
+}
+
+message VoiceMute
+{
+  bool muted = 1;
 }
 
 message ClientFrame
@@ -62,6 +75,8 @@ message ClientFrame
     VoiceSkip skip = 3;
     bytes pcm = 4;
     VoiceContext context = 5;
+    VoiceActionResult action_result = 6;
+    VoiceMute mute = 7;
   }
 }
 

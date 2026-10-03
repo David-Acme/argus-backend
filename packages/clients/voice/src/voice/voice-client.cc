@@ -59,6 +59,20 @@ public:
     writeFrame(std::move(frame));
   }
 
+  void sendActionResult(const argus::voice::v1::VoiceActionResult& result) override
+  {
+    argus::voice::v1::ClientFrame frame;
+    *frame.mutable_action_result() = result;
+    writeFrame(std::move(frame));
+  }
+
+  void sendMute(bool muted) override
+  {
+    argus::voice::v1::ClientFrame frame;
+    frame.mutable_mute()->set_muted(muted);
+    writeFrame(std::move(frame));
+  }
+
   void sendPcm(const void* data, size_t size) override
   {
     argus::voice::v1::ClientFrame frame;

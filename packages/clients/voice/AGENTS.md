@@ -7,8 +7,8 @@ client frames up and server frames down.
 
 A module, not a service: one `argus_clients(NAME voice ...)`, a STATIC library
 whose include root is `src/`, so a consumer writes `<voice/voice-client.hxx>`
-and links `argus::clients::voice`. 351 lines of source (`voice-client.hxx` 51,
-`voice-client.cc` 214, `reaction-contracts.hxx` 86) behind a 37-line
+and links `argus::clients::voice`. 384 lines of source (`voice-client.hxx` 61,
+`voice-client.cc` 237, `reaction-contracts.hxx` 86) behind a 37-line
 CMakeLists. Three link lines in three CMakeLists: `argus-sync`'s
 `sync-transport` module
 (`services/sync/src/feature/transport/CMakeLists.txt:23`), argus-sync's own
@@ -33,7 +33,8 @@ This is the only client package that links `argus::contracts::auth`
 
 - `src/voice/voice-client.hxx` — the surface: `VoiceStreamObserver`
   (`onServerFrame`, `onStreamClosed`), `VoiceStream` (`start`, `stop`, `skip`,
-  `sendPcm`, `finish`), `VoiceClient` (`connect`, `waitConnected`) and
+  `sendPcm`, `sendContext`, `sendActionResult`, `sendMute`, `finish`),
+  `VoiceClient` (`connect`, `waitConnected`) and
   `voiceRoleToString`; 3 files include it.
 - `src/voice/voice-client.cc` — the streaming channel, the reactor, the frame
   encoding and the role vocabulary.
@@ -47,8 +48,11 @@ This is the only client package that links `argus::contracts::auth`
 - Rule 25: the folder IS the module. One `argus_clients(NAME voice ...)` with an
   explicit source list, never `file(GLOB)`.
 - The include prefix is load-bearing: `<voice/voice-client.hxx>`.
-- What a consumer sees: a `shared_ptr<VoiceStream>` and five calls on it — start
-  with a `VoiceStart` (identity and mode), PCM in, skip, stop, finish — plus the observer callbacks
+- What a consumer sees: a `shared_ptr<VoiceStream>` and eight calls on it —
+  start with a `VoiceStart` (identity and mode; a second start on the same
+  stream begins a new call once the previous one was stopped), PCM in, a
+  context note, an app action's result, mute, skip, stop, finish — plus the
+  observer callbacks
   for what came back and for the close. What it must not see: no
   `StubInterface`, no `grpc::Channel`, no target, no credential, no
   `ClientBidiReactor`, no generated service class, no retry policy. The frames
@@ -105,8 +109,9 @@ This is the only client package that links `argus::contracts::auth`
   vocabulary: four roles by name, and `static_cast<VoiceRole>(42)` answering
   `"guest"`. The second opens a real stream against an in-process server and
   pins what crosses it: `x-argus-user` 7 and `x-argus-role` `"resident"` from
-  the connect identity with no device and no credential header; four frames in
+  the connect identity with no device and no credential header; six frames in
   order — a start carrying `start()`'s identity (user 9, `VOICE_ROLE_OWNER`,
   not the one `connect()` got) and its `VOICE_MODE_DUPLEX` mode, PCM of exactly three bytes including an
-  embedded NUL, skip, stop; the server's `done` reaching the observer with
+  embedded NUL, skip, a failed action result (id 3, its detail), mute on,
+  stop; the server's `done` reaching the observer with
   `session_id` 4242; and `onStreamClosed` reporting an OK status.
