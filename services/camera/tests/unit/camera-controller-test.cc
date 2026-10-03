@@ -467,3 +467,15 @@ TEST_CASE("a removed camera leaves nothing behind in the snapshot store")
   CHECK_FALSE(SnapshotStore::instance().frame(4242).has_value());
   CHECK_FALSE(SnapshotStore::instance().latestPersonCrop(4242).has_value());
 }
+
+TEST_CASE("a stream sink admits one box larger than its window when idle")
+{
+  CameraStreamSink sink(nullptr, 100);
+  CHECK(sink.tryReserve(500));
+  CHECK_FALSE(sink.tryReserve(1));
+  sink.release(450);
+  CHECK(sink.tryReserve(50));
+  CHECK_FALSE(sink.tryReserve(1));
+  sink.release(100);
+  CHECK(sink.tryReserve(100));
+}

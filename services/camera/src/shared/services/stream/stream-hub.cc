@@ -55,14 +55,14 @@ void StreamHub::sendBox(const SendBoxInput& input)
   const std::shared_ptr<Subscriber>& sub = input.sub;
   const std::string& box = input.box;
   const bool keyframe = input.keyframe;
+  if (!sub->sink->tryReserve(box.size())) {
+    sub->skipUntilKeyframe = true;
+    return;
+  }
   size_t offset = 0;
   bool first = true;
   while (offset < box.size()) {
     const size_t part = std::min(chunkBytes_, box.size() - offset);
-    if (!sub->sink->tryReserve(part)) {
-      sub->skipUntilKeyframe = true;
-      return;
-    }
     sendFramed({.sub = sub,
                 .type = ws_frame::kTypeMedia,
                 .keyframe = keyframe && first,
@@ -187,8 +187,8 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
     }
   }
 
-  ::close(conn.fd);
-  up->fd.store(-1);
+  if (const int fd = up->fd.exchange(-1); fd >= 0)
+    ::close(fd);
   std::lock_guard<std::mutex> lock(up->mtx);
   for (auto& sub : up->subs) {
     if (sub->sink)
@@ -218,12 +218,8 @@ void StreamHub::init()
 void StreamHub::shutdown()
 {
   std::lock_guard<std::mutex> lock(hubMutex_);
-  for (auto& [name, up] : upstreams_) {
+  for (auto& [name, up] : upstreams_)
     up->stopping.store(true, std::memory_order_relaxed);
-    const int fd = up->fd.exchange(-1);
-    if (fd >= 0)
-      ::close(fd);
-  }
   for (auto& [name, up] : upstreams_) {
     if (up->reader.joinable())
       up->reader.join();
@@ -259,6 +255,25 @@ StreamHub::getOrOpen(const SubscribeInput& input, std::string& error)
   return up;
 }
 
+void StreamHub::pruneLocked()
+{
+  std::erase_if(subToUpstream_, [](const auto& entry) {
+    const auto& [subId, up] = entry;
+    std::lock_guard<std::mutex> upLock(up->mtx);
+    return std::ranges::none_of(up->subs, [subId](const auto& sub) {
+      return sub->subId == subId;
+    });
+  });
+  std::erase_if(upstreams_, [](auto& entry) {
+    auto& up = entry.second;
+    if (!up->dead.load(std::memory_order_acquire))
+      return false;
+    if (up->reader.joinable())
+      up->reader.join();
+    return true;
+  });
+}
+
 void StreamHub::countViewers(int64_t cameraId, int& perCamera, int& total)
 {
   perCamera = 0;
@@ -281,6 +296,7 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
 
   {
     std::lock_guard<std::mutex> hubLock(hubMutex_);
+    pruneLocked();
     int perCamera = 0;
     int total = 0;
     countViewers(input.cameraId, perCamera, total);

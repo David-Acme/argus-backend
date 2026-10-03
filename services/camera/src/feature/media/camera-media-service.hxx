@@ -30,7 +30,7 @@ public:
   bool tryReserve(size_t bytes) override
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (inFlight_ + static_cast<int64_t>(bytes) > window_)
+    if (inFlight_ > 0 && inFlight_ + static_cast<int64_t>(bytes) > window_)
       return false;
     inFlight_ += static_cast<int64_t>(bytes);
     return true;

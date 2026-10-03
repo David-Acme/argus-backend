@@ -64,7 +64,16 @@ sibling service: own binary, own CMake preset, own `camera.db`.
   `camera:subscribe` checks the camera row (404 Camera
   not found), subscribes through StreamHub fMP4 with the `0xA7` frame magic,
   and degrades to the legacy `503 go2rtc_not_running` envelope when go2rtc is
-  down. Go2rtcManager owns the go2rtc lifecycle here.
+  down. Go2rtcManager owns the go2rtc lifecycle here. A fragment is reserved
+  against the connection's credit window whole, then chunked: a refusal
+  skips it to the next keyframe instead of sending the head of a box, which
+  the player cannot append. An idle connection admits one fragment larger
+  than its window, since a 1080p keyframe can exceed the 128 KiB default.
+  Each subscribe prunes the id map of subscriptions the hub already dropped
+  (a dead upstream, a failed send, a closed socket) and joins dead upstreams;
+  they used to stay until the 16-bit id space ran out. The reader thread is
+  the only one that closes its upstream socket; shutdown sets `stopping` and
+  the one-second receive timeout does the rest.
 - **Identity reads (RPC-only since rule 27)**: this service opens no
   identity.db. `SyncService::refreshContext` resolves the connecting user
   through `IdentityUserDirectory` (injected into the sync socket), a

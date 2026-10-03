@@ -102,6 +102,7 @@ private:
 
   std::shared_ptr<Upstream> getOrOpen(const SubscribeInput& input,
                                       std::string& error);
+  void pruneLocked();
   void countViewers(int64_t cameraId, int& perCamera, int& total);
   static void sendFramed(const SendFramedInput& input);
   void sendBox(const SendBoxInput& input);
