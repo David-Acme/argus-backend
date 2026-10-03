@@ -6,6 +6,7 @@ argus_module(NAME llm
         services/lfm-adapter.cc
         services/llm-service.cc
         services/sampling-config.cc
+        services/tools/app-tool-descriptors.cc
         services/tools/tool-executor.cc
         services/tools/tool-registry.cc
         services/tools/tool-validator.cc

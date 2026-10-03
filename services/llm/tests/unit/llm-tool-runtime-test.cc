@@ -3,6 +3,7 @@
 
 #include <shared/vocabulary/tool-contracts.hxx>
 #include <feature/memory/services/memory/memory-tool-descriptors.hxx>
+#include <feature/llm/services/tools/app-tool-descriptors.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/llm/services/tools/tool-validator.hxx>
@@ -281,4 +282,48 @@ TEST_CASE("only the tools a role may run are offered to the model")
 
   for (const auto* descriptor : executor.permittedTools(UserRole::Guest))
     CHECK(ToolExecutor::permits(*descriptor, UserRole::Guest));
+}
+
+TEST_CASE("an app tool hands its validated call to the conversation and speaks a confirmation")
+{
+  ToolRegistry registry;
+  for (auto& descriptor : appToolDescriptors())
+    registry.registerTool(std::move(descriptor));
+  const ToolExecutor executor(registry);
+
+  std::vector<std::pair<std::string, Json::Value>> emitted;
+  tools::ToolCall call;
+  call.name = "app.set_guard_mode";
+  call.arguments["mode"] = "night";
+  call.context.emitAction = [&emitted](const std::string& name, const Json::Value& arguments) {
+    emitted.emplace_back(name, arguments);
+  };
+
+  const auto result = executor.execute(call, UserRole::Resident);
+  CHECK(result.ok);
+  REQUIRE(emitted.size() == 1);
+  CHECK(emitted[0].first == "app.set_guard_mode");
+  CHECK(emitted[0].second["mode"].asString() == "night");
+
+  call.arguments["mode"] = "party";
+  CHECK_FALSE(executor.execute(call, UserRole::Resident).ok);
+  CHECK(emitted.size() == 1);
+
+  call.arguments["mode"] = "away";
+  CHECK_FALSE(executor.execute(call, UserRole::Guard).ok);
+  CHECK(emitted.size() == 1);
+}
+
+TEST_CASE("an app tool without a connected app refuses instead of pretending")
+{
+  ToolRegistry registry;
+  for (auto& descriptor : appToolDescriptors())
+    registry.registerTool(std::move(descriptor));
+  tools::ToolCall call;
+  call.name = "app.open";
+  call.arguments["screen"] = "agenda";
+  const auto result = ToolExecutor(registry).execute(call, UserRole::Owner);
+  CHECK_FALSE(result.ok);
+  CHECK(isAppTool("app.open"));
+  CHECK_FALSE(isAppTool("memory.recall"));
 }

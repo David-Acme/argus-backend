@@ -1,5 +1,7 @@
 #include "llm-controller.hxx"
 
+#include <feature/llm/services/tools/app-tool-descriptors.hxx>
+
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
 #include <llm/llm-errors.hxx>
@@ -39,11 +41,20 @@ constexpr const char* kToolPolicy =
     "Eres Argus. Si el usuario pide guardar o recordar algo, usa "
     "memory.remember. Si no, responde brevemente.";
 
+constexpr const char* kClientActionPolicy =
+    " Estás en una llamada y la app del usuario está abierta: si pide ver una "
+    "cámara usa app.show_camera, si pide abrir una sección usa app.open, y si "
+    "pide cambiar la vigilancia o dice que se va, que duerme o que vuelve, usa "
+    "app.set_guard_mode. Confirma en una frase lo que hiciste.";
+
 std::vector<const tools::ToolDescriptor*> requestTools(const ChatRequest& request)
 {
   if (!request.toolsEnabled)
     return {};
-  return ToolExecutor(ToolRegistry::instance()).permittedTools(request.role);
+  auto tools = ToolExecutor(ToolRegistry::instance()).permittedTools(request.role);
+  if (!request.clientActions)
+    std::erase_if(tools, [](const tools::ToolDescriptor* tool) { return isAppTool(tool->name); });
+  return tools;
 }
 
 struct ToolLoopInputArgs
@@ -51,12 +62,26 @@ struct ToolLoopInputArgs
   const std::vector<const tools::ToolDescriptor*>& tools;
   ChatRequest request;
   int32_t defaultMaxTokens{0};
+  ActionCallback onAction{};
 };
+
+std::function<void(const std::string&, const Json::Value&)> actionEmitter(ActionCallback onAction)
+{
+  if (!onAction)
+    return {};
+  return [onAction = std::move(onAction)](const std::string& name, const Json::Value& arguments) {
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "";
+    onAction({.name = name, .arguments = Json::writeString(builder, arguments)});
+  };
+}
 
 ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
 {
   ToolChatInput input;
-  input.systemPrompt = kToolPolicy;
+  input.systemPrompt = args.request.clientActions
+                           ? std::string(kToolPolicy) + kClientActionPolicy
+                           : std::string(kToolPolicy);
   input.tools = args.tools;
   input.role = args.request.role;
   input.context = tools::ToolContext{.userId = args.request.userId,
@@ -66,7 +91,8 @@ ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
                                      .sessionId = {},
                                      .channel = "tool_result",
                                      .utterance = {},
-                                     .decided = false};
+                                     .decided = false,
+                                     .emitAction = actionEmitter(args.onAction)};
   input.maxHops = 3;
   input.temperature = args.request.temperature;
   input.resetContext = args.request.resetContext;
@@ -156,7 +182,7 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
     return outcome;
   }
   const ToolChatInput loop = toolLoopInput(
-      {.tools = tools, .request = request, .defaultMaxTokens = service_.defaultMaxTokens()});
+      {.tools = tools, .request = request, .defaultMaxTokens = service_.defaultMaxTokens(), .onAction = {}});
   std::vector<ChatMessage> history = request.messages;
   const ToolChatOutput output = adapter_.chatWithTools(loop, history);
   outcome.text = output.reply;
@@ -185,7 +211,8 @@ void LlmController::chatStreamSync(const LlmStreamInput& input)
   const ToolChatInput loop = toolLoopInput({.tools = tools,
                                             .request = input.request,
                                             .defaultMaxTokens =
-                                                service_.defaultMaxTokens()});
+                                                service_.defaultMaxTokens(),
+                                            .onAction = input.onAction});
   std::vector<ChatMessage> history = input.request.messages;
   const ToolChatOutput output = adapter_.chatWithToolsStream(
       {.input = loop, .history = history, .onToken = emit});

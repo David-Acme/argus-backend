@@ -18,6 +18,7 @@ struct ToolContext
   std::string channel = "tool_result";
   std::string utterance;
   bool decided = false;
+  std::function<void(const std::string& name, const Json::Value& arguments)> emitAction = {};
 };
 
 struct ToolCall

@@ -2,6 +2,7 @@
 #include <config/llm-config.hxx>
 #include <camera/camera-sync-client.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
+#include <feature/llm/services/tools/app-tool-descriptors.hxx>
 #include <feature/settings/llm-settings.hxx>
 #include <settings/settings-rpc.hxx>
 #include <drogon/drogon.h>
@@ -175,6 +176,8 @@ int main()
     return 1;
   }
   for (auto& descriptor : memory.toolDescriptors())
+    ToolRegistry::instance().registerTool(std::move(descriptor));
+  for (auto& descriptor : appToolDescriptors())
     ToolRegistry::instance().registerTool(std::move(descriptor));
 
   SettingsRegistry settings(llmSettingsCatalog());

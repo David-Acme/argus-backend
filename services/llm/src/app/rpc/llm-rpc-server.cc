@@ -38,11 +38,17 @@ constexpr int kMaxReceiveBytes = 8 * 1024 * 1024;
 constexpr std::size_t kMaxQueuedTokens = 64;
 constexpr std::chrono::milliseconds kSlotPoll{20};
 
+struct StreamItem
+{
+  std::string text;
+  std::optional<ClientAction> action;
+};
+
 struct StreamQueue
 {
   std::mutex mutex;
   std::condition_variable ready;
-  std::deque<std::string> tokens;
+  std::deque<StreamItem> tokens;
   bool done{false};
   bool stopped{false};
   grpc::Status status;
@@ -121,6 +127,7 @@ ChatRequest chatRequest(const wire::ChatRequest& wireRequest)
   request.grammarRequired = wireRequest.grammar_required();
   request.role = callerRole(wireRequest.caller_role());
   request.lang = wireRequest.lang();
+  request.clientActions = wireRequest.client_actions();
   return request;
 }
 
@@ -254,7 +261,14 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
           queue.ready.wait_for(lock, std::chrono::milliseconds(10));
         if (queue.stopped || stopped(*context))
           throw stoppedError(*context);
-        queue.tokens.push_back(token);
+        queue.tokens.push_back({.text = token, .action = std::nullopt});
+        queue.ready.notify_all();
+      };
+      const ActionCallback act = [&](const ClientAction& action) {
+        std::scoped_lock lock(queue.mutex);
+        if (queue.stopped)
+          return;
+        queue.tokens.push_back({.text = {}, .action = action});
         queue.ready.notify_all();
       };
       try {
@@ -264,7 +278,8 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
             {.request = chat,
              .onToken = emit,
              .stats = &queue.stats,
-             .cancellation = {}});
+             .cancellation = {},
+             .onAction = act});
       }
       catch (const ResponseException& error) {
         std::scoped_lock lock(queue.mutex);
@@ -302,7 +317,13 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
       lock.unlock();
       wire::ChatToken chunk;
       chunk.set_sequence(sequence++);
-      chunk.set_text(std::move(token));
+      if (token.action) {
+        chunk.mutable_action()->set_name(token.action->name);
+        chunk.mutable_action()->set_arguments(token.action->arguments);
+      }
+      else {
+        chunk.set_text(std::move(token.text));
+      }
       if (!writer->Write(chunk)) {
         std::scoped_lock stoppedLock(queue.mutex);
         queue.stopped = true;

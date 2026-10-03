@@ -462,3 +462,15 @@ catalog-snapshot fill and by the encounter consumer),
 `resolveCameraTarget()` (`camera.grpc_target`) and `resolveMemory()`
 (`memory.observe_camera_events`). `main.cc` keeps `config.toml` loading,
 `drogonConfig` and the `nats.url` gate on the optional bus.
+
+## App tools (conversation mode)
+
+`feature/llm/services/tools/app-tool-descriptors.cc` registers
+`app.show_camera` (camera read), `app.open` (any role) and
+`app.set_guard_mode` (camera update, i.e. owner and resident, matching the
+guard surface in `role-access.hxx`). They are offered only when the
+request sets `clientActions`, which only voice calls do; their handler
+hands the validated call to `ToolContext::emitAction`, which the
+controller turns into a `ClientAction` on the stream (`ChatToken.action`,
+ordered with the text tokens). Without an emitter the tool refuses, so a
+non-call caller never hears that something happened when nothing did.

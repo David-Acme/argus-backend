@@ -426,6 +426,50 @@ TEST_CASE("chat-stream streams tokens in sequence and closes with the counters")
   CHECK(undeclared.closing == 4);
 }
 
+TEST_CASE("a client action travels between tokens in order and only when asked for")
+{
+  auto input = serverInput();
+  bool asked = false;
+  input.chatStream = [&asked](const LlmStreamInput& stream) {
+    asked = stream.request.clientActions;
+    stream.onToken("Te ", false);
+    if (stream.onAction)
+      stream.onAction({.name = "app.show_camera", .arguments = R"({"camera":"Entrada"})"});
+    stream.onToken("la muestro", false);
+    stream.onToken("", true);
+  };
+  LlmRpcServer server(std::move(input));
+  Client client(clientConfig(server.port()));
+
+  std::vector<std::string> order;
+  ChatRequest request = ask();
+  request.clientActions = true;
+  client.chatStream({.request = request,
+                     .onToken = [&order](const std::string& token, bool atEnd) {
+                       if (!atEnd)
+                         order.push_back("text:" + token);
+                     },
+                     .stats = nullptr,
+                     .cancellation = {},
+                     .onAction = [&order](const ClientAction& action) {
+                       order.push_back("action:" + action.name + " " + action.arguments);
+                     }});
+  CHECK(asked);
+  CHECK(order == std::vector<std::string>{"text:Te ", R"(action:app.show_camera {"camera":"Entrada"})",
+                                          "text:la muestro"});
+
+  order.clear();
+  client.chatStream({.request = ask(),
+                     .onToken = [&order](const std::string& token, bool atEnd) {
+                       if (!atEnd)
+                         order.push_back("text:" + token);
+                     },
+                     .stats = nullptr,
+                     .cancellation = {},
+                     .onAction = {}});
+  CHECK_FALSE(asked);
+}
+
 TEST_CASE("an undeclared temperature and tools take the engine's defaults")
 {
   LlmRpcServer server(serverInput());
