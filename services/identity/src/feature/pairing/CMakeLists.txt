@@ -1,3 +1,7 @@
+if(NOT TARGET qr-code-generator::qrcodegencpp)
+    find_package(qr-code-generator CONFIG REQUIRED)
+endif()
+
 argus_module(NAME identity-pairing
     SOURCES
         controllers/pairing-controller.cc
@@ -5,6 +9,7 @@ argus_module(NAME identity-pairing
         dtos/response-pairing-dto.cc
         dtos/response-pairing-status-dto.cc
         services/pairing-feature-service.cc
+        infra/pairing-banner.cc
     INCLUDES ../..
     DEPENDS
         argus::identity-config
@@ -15,8 +20,11 @@ argus_module(NAME identity-pairing
         argus::lib::errors
         argus::lib::http
         argus::lib::validation
+        argus::lib::text
         argus::contracts::auth
         argus::contracts::identity
-        Drogon::Drogon)
+        Drogon::Drogon
+    SYSTEM_DEPENDS
+        qr-code-generator::qrcodegencpp)
 
 target_compile_options(argus_identity-pairing PRIVATE -Wall -Wextra)

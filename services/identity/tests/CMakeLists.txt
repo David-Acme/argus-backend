@@ -98,3 +98,11 @@ target_compile_options(identity-candidate-retention-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-candidate-retention-test)
 add_test(NAME identity-candidate-retention-test
          COMMAND identity-candidate-retention-test)
+
+add_executable(identity-pairing-banner-test unit/identity-pairing-banner-test.cc)
+target_link_libraries(identity-pairing-banner-test PRIVATE
+    argus::identity-pairing
+    doctest::doctest)
+target_compile_options(identity-pairing-banner-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-pairing-banner-test)
+add_test(NAME identity-pairing-banner-test COMMAND identity-pairing-banner-test)

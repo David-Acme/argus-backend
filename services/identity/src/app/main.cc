@@ -13,6 +13,7 @@
 #include <drogon/drogon.h>
 #include <feature/invitation/controllers/invitation-controller.hxx>
 #include <feature/pairing/controllers/pairing-controller.hxx>
+#include <feature/pairing/infra/pairing-banner.hxx>
 #include <feature/retention/services/candidate-retention-service.hxx>
 #include <feature/user/controllers/portrait-preview-controller.hxx>
 #include <feature/user/controllers/user-controller.hxx>
@@ -287,6 +288,7 @@ int main()
             routeAnnouncements({.port = listener.port, .tls = listener.tls}));
         mdnsService->initialize();
         candidateRetention.start();
+        pairing_banner::printWhenUnpaired(listener.port);
       });
 
   drogon::app().setThreadNum(0).run();
