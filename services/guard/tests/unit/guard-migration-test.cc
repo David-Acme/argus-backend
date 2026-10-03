@@ -261,6 +261,16 @@ TEST_CASE("a legacy guard database migrates in place without data loss")
   CHECK(std::stoi(columns("guard_action")) >= 10);
   CHECK(std::stoi(columns("guard_incident")) >= 10);
   CHECK(std::stoi(columns("guard_assessment")) >= 10);
+  CHECK(scalar("SELECT COUNT(*) FROM pragma_table_info('guard_encounter') "
+               "WHERE name IN ('subject', 'people', 'reasons', 'reasons_rank', "
+               "'group_id', 'review_label', 'reviewed_at')") == "7");
+  CHECK(scalar("SELECT reasons FROM guard_decision_journal WHERE event_id = "
+               "'legacy-journal'") == "[]");
+  CHECK(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND "
+               "name = 'guard_decision_journal' AND sql LIKE '%''held''%'") ==
+        "1");
+  CHECK(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND "
+               "name IN ('guard_site', 'guard_camera_context')") == "2");
   CHECK(scalar("SELECT stage FROM guard_observation_inbox "
                "WHERE event_id = 'old-event'") == "0");
   CHECK(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' "
