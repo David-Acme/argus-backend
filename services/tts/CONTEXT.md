@@ -22,7 +22,10 @@ and instead call it over the internal wire.
     `audio/x-argus-pcm-f32` + `X-Argus-Sample-Rate`.
   - `POST /tts/v1/synthesize-stream` → chunked float32 PCM with the same
     headers, one HTTP chunk per engine chunk; synthesis runs on a detached
-    producer thread that pushes through the async stream.
+    producer thread that pushes through the async stream. A client that
+    disconnects stops the synthesis at the next chunk boundary
+    (`TtsStreamInput::stopRequested`), so the shared engine is not held for
+    text nobody will hear.
   - `GET /tts/v1/config` → `{sampleRate, defaultSpeed, loaded}` so the
     legacy adapters can honor the engine's configured speed without a local
     engine (additive beyond Ruling BH's two endpoints — needed by the

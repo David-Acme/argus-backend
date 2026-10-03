@@ -37,18 +37,21 @@ void runStreamJob(const std::shared_ptr<PcmStreamJob>& job)
 {
   const auto t0 = std::chrono::steady_clock::now();
   try {
-    TtsService::instance().synthesizeStream(
-        job->request, [&job](const std::vector<float>& chunk) {
-          if (!job->stream)
-            return;
-          const auto bytes = pcmBytes(chunk);
-          if (!job->stream->send(bytes)) {
-            job->stream.reset();
-            return;
-          }
-          job->chunkCount++;
-          job->byteCount += bytes.size();
-        });
+    TtsService::instance().synthesizeStream(TtsStreamInput{
+        .request = job->request,
+        .onChunk =
+            [&job](std::vector<float> chunk) {
+              if (!job->stream)
+                return;
+              const auto bytes = pcmBytes(chunk);
+              if (!job->stream->send(bytes)) {
+                job->stream.reset();
+                return;
+              }
+              job->chunkCount++;
+              job->byteCount += bytes.size();
+            },
+        .stopRequested = [&job] { return !job->stream; }});
   }
   catch (const std::exception& e) {
     LOG_ERROR << "TTS stream synthesis failed: " << e.what();
