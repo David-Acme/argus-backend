@@ -1,5 +1,7 @@
 #pragma once
 
+#include <shared/services/stream/gop-cache.hxx>
+
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -42,7 +44,10 @@ public:
     std::shared_ptr<ISink> sink;
     int64_t cameraId{0};
     std::string quality;
+    bool fastStart{false};
   };
+
+  static constexpr size_t kDefaultGopCacheBytes = size_t{2} * 1024 * 1024;
 
   StreamHub() = default;
   ~StreamHub();
@@ -77,12 +82,15 @@ private:
 
   struct Upstream
   {
+    explicit Upstream(size_t gopCacheBytes) : gop(gopCacheBytes) {}
+
     std::string name;
     int64_t cameraId{0};
     std::mutex mtx;
     std::vector<std::shared_ptr<Subscriber>> subs;
     std::string init;
     bool hasInit{false};
+    GopCache gop;
     std::atomic<int> fd{-1};
     std::atomic<bool> stopping{false};
     std::atomic<bool> dead{false};
@@ -98,18 +106,12 @@ private:
     size_t len{0};
   };
 
-  struct SendBoxInput
-  {
-    const std::shared_ptr<Subscriber>& sub;
-    const std::string& box;
-    bool keyframe{false};
-  };
-
-  struct DispatchBoxInput
+  struct DeliverInput
   {
     Upstream& up;
-    std::string box;
-    bool keyframe{false};
+    const std::shared_ptr<Subscriber>& sub;
+    const CachedFragment& fragment;
+    bool reserved{false};
   };
 
   std::shared_ptr<Upstream> getOrOpen(const SubscribeInput& input,
@@ -117,8 +119,9 @@ private:
   void pruneLocked();
   void countViewers(int64_t cameraId, int& perCamera, int& total);
   static void sendFramed(const SendFramedInput& input);
-  void sendBox(const SendBoxInput& input);
-  void dispatchBox(const DispatchBoxInput& input);
+  void deliver(const DeliverInput& input);
+  void dispatch(Upstream& up, const CachedFragment& fragment);
+  void replayGop(Upstream& up, const std::shared_ptr<Subscriber>& sub);
   void runUpstream(std::shared_ptr<Upstream> up);
 
   std::mutex hubMutex_;
@@ -128,6 +131,7 @@ private:
   uint32_t nextSeq_ = 0;
   size_t chunkBytes_ = 16 * 1024;
   int64_t graceMs_ = 2000;
+  size_t gopCacheBytes_ = kDefaultGopCacheBytes;
   int maxViewersPerCamera_ = kDefaultViewersPerCamera;
   int maxTotalViewers_ = kDefaultTotalViewers;
 };

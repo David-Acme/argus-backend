@@ -50,13 +50,39 @@ void StreamHub::sendFramed(const SendFramedInput& input)
   }
 }
 
-void StreamHub::sendBox(const SendBoxInput& input)
+void StreamHub::deliver(const DeliverInput& input)
 {
   const std::shared_ptr<Subscriber>& sub = input.sub;
-  const std::string& box = input.box;
-  const bool keyframe = input.keyframe;
-  if (!sub->sink->tryReserve(box.size())) {
-    sub->skipUntilKeyframe = true;
+  if (!sub->sink)
+    return;
+  const auto kind = input.fragment.kind;
+  const bool video = kind != upstream_http::FragmentKind::Other;
+  const bool keyframe = kind == upstream_http::FragmentKind::VideoKey;
+  const auto admit = [&input, &sub](size_t bytes) {
+    return input.reserved || sub->sink->tryReserve(bytes);
+  };
+  if (sub->skipUntilKeyframe) {
+    if (!keyframe)
+      return;
+    if (!sub->sentInit && input.up.hasInit) {
+      if (!admit(input.up.init.size()))
+        return;
+      sendFramed({.sub = sub,
+                  .type = ws_frame::kTypeInit,
+                  .keyframe = true,
+                  .data = reinterpret_cast<const uint8_t*>(input.up.init.data()),
+                  .len = input.up.init.size()});
+      if (!sub->sink)
+        return;
+      sub->sentInit = true;
+    }
+    sub->skipUntilKeyframe = false;
+  }
+
+  const std::string& box = *input.fragment.bytes;
+  if (!admit(box.size())) {
+    if (video)
+      sub->skipUntilKeyframe = true;
     return;
   }
   size_t offset = 0;
@@ -75,40 +101,23 @@ void StreamHub::sendBox(const SendBoxInput& input)
   }
 }
 
-void StreamHub::dispatchBox(const DispatchBoxInput& input)
+void StreamHub::dispatch(Upstream& up, const CachedFragment& fragment)
 {
-  Upstream& up = input.up;
-  std::string box = std::move(input.box);
-  const bool keyframe = input.keyframe;
   std::scoped_lock lock(up.mtx);
-  for (auto& sub : up.subs) {
-    if (!sub->sink)
-      continue;
-    if (sub->skipUntilKeyframe) {
-      if (!keyframe)
-        continue;
-      sub->skipUntilKeyframe = false;
-      if (!sub->sentInit && up.hasInit) {
-        if (!sub->sink->tryReserve(up.init.size())) {
-          sub->skipUntilKeyframe = true;
-          continue;
-        }
-        sendFramed({.sub = sub,
-                    .type = ws_frame::kTypeInit,
-                    .keyframe = true,
-                    .data = reinterpret_cast<const uint8_t*>(up.init.data()),
-                    .len = up.init.size()});
-        if (!sub->sink)
-          continue;
-        sub->sentInit = true;
-      }
-    }
-    sendBox({.sub = sub, .box = box, .keyframe = keyframe});
-  }
+  up.gop.add(fragment);
+  for (const auto& sub : up.subs)
+    deliver({.up = up, .sub = sub, .fragment = fragment, .reserved = false});
+  std::erase_if(up.subs, [](const auto& s) { return !s->sink; });
+}
 
-  up.subs.erase(std::remove_if(up.subs.begin(), up.subs.end(),
-                               [](const auto& s) { return !s->sink; }),
-                up.subs.end());
+void StreamHub::replayGop(Upstream& up, const std::shared_ptr<Subscriber>& sub)
+{
+  const auto& fragments = up.gop.fragments();
+  if (fragments.empty() || !up.hasInit || !sub->sink)
+    return;
+  const bool reserved = sub->sink->tryReserve(up.init.size() + up.gop.bytes());
+  for (const CachedFragment& fragment : fragments)
+    deliver({.up = up, .sub = sub, .fragment = fragment, .reserved = reserved});
 }
 
 void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
@@ -144,8 +153,10 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
     up->init = std::move(box);
     up->hasInit = true;
   };
-  reader.onFragment = [this, &up](std::string box, bool keyframe) {
-    dispatchBox({.up = *up, .box = std::move(box), .keyframe = keyframe});
+  reader.onFragment = [this, &up](upstream_http::Fmp4Fragment fragment) {
+    dispatch(*up,
+             {.bytes = std::make_shared<const std::string>(std::move(fragment.bytes)),
+              .kind = fragment.kind});
   };
   if (!conn.leftover.empty())
     reader.feed(conn.leftover.data(), conn.leftover.size());
@@ -205,10 +216,14 @@ void StreamHub::init()
     chunkBytes_ = static_cast<size_t>(v);
   if (const int64_t v = ConfigService::getInt("streaming.hub_grace_ms"); v > 0)
     graceMs_ = v;
+  if (const int64_t v = ConfigService::getInt("streaming.hub_gop_cache_bytes");
+      v > 0)
+    gopCacheBytes_ = static_cast<size_t>(v);
   refreshViewerLimits();
   const ViewerLimits limits = viewerLimits();
   LOG_INFO << "StreamHub ready (chunk=" << chunkBytes_ << "B grace=" << graceMs_
-           << "ms viewers/camera=" << limits.perCamera
+           << "ms gop-cache=" << gopCacheBytes_
+           << "B viewers/camera=" << limits.perCamera
            << " viewers/total=" << limits.total << ")";
 }
 
@@ -265,7 +280,7 @@ StreamHub::getOrOpen(const SubscribeInput& input, std::string& error)
     upstreams_.erase(it);
   }
 
-  auto up = std::make_shared<Upstream>();
+  auto up = std::make_shared<Upstream>(gopCacheBytes_);
   up->name = name;
   up->cameraId = input.cameraId;
   up->reader = std::thread(&StreamHub::runUpstream, this, up);
@@ -364,6 +379,8 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
     {
       std::scoped_lock upLock(up->mtx);
       up->subs.push_back(sub);
+      if (input.fastStart)
+        replayGop(*up, sub);
     }
     subToUpstream_[subId] = up;
   }

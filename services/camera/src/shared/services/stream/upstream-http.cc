@@ -5,11 +5,12 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
-#include <functional>
+#include <optional>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <vector>
 
 namespace upstream_http
 {
@@ -106,31 +107,6 @@ bool isChunked(const std::string& headers)
 namespace
 {
 
-uint64_t boxSize(const uint8_t* data)
-{
-  const uint64_t size = (static_cast<uint64_t>(data[0]) << 24) |
-                        (static_cast<uint64_t>(data[1]) << 16) |
-                        (static_cast<uint64_t>(data[2]) << 8) |
-                        static_cast<uint64_t>(data[3]);
-  if (size == 1)
-    return (static_cast<uint64_t>(data[8]) << 56) |
-           (static_cast<uint64_t>(data[9]) << 48) |
-           (static_cast<uint64_t>(data[10]) << 40) |
-           (static_cast<uint64_t>(data[11]) << 32) |
-           (static_cast<uint64_t>(data[12]) << 24) |
-           (static_cast<uint64_t>(data[13]) << 16) |
-           (static_cast<uint64_t>(data[14]) << 8) |
-           static_cast<uint64_t>(data[15]);
-  return size;
-}
-
-uint32_t readBe32(const uint8_t* data)
-{
-  return (static_cast<uint32_t>(data[0]) << 24) |
-         (static_cast<uint32_t>(data[1]) << 16) |
-         (static_cast<uint32_t>(data[2]) << 8) | static_cast<uint32_t>(data[3]);
-}
-
 size_t parseChunkSize(const std::string& line, bool& ok)
 {
   ok = false;
@@ -151,65 +127,142 @@ size_t parseChunkSize(const std::string& line, bool& ok)
   return static_cast<size_t>(value);
 }
 
-bool syncFromSampleFlags(uint32_t flags)
+constexpr uint32_t kNonSyncSample = 0x00010000U;
+
+uint32_t be32(std::string_view data, size_t offset)
 {
-  return (flags & 0x00010000U) == 0;
+  if (offset + 4 > data.size())
+    return 0;
+  uint32_t value = 0;
+  for (size_t i = 0; i < 4; ++i)
+    value = (value << 8) | static_cast<uint8_t>(data[offset + i]);
+  return value;
 }
 
-bool moofIsKeyframe(const std::string& moof)
+struct Box
 {
-  bool found = false;
-  bool sync = true;
-  const auto* raw = reinterpret_cast<const uint8_t*>(moof.data());
-  const size_t total = moof.size();
+  std::string_view type;
+  std::string_view body;
+};
 
-  std::function<void(size_t, size_t)> walk = [&](size_t begin, size_t end) {
-    size_t offset = begin;
-    while (offset + 8 <= end) {
-      const uint64_t size = (static_cast<uint64_t>(raw[offset]) << 24) |
-                            (static_cast<uint64_t>(raw[offset + 1]) << 16) |
-                            (static_cast<uint64_t>(raw[offset + 2]) << 8) |
-                            static_cast<uint64_t>(raw[offset + 3]);
-      if (size < 8 || offset + size > end)
-        return;
-      const std::string type(moof, offset + 4, 4);
-      const size_t body = offset + 8;
-      if (type == "moof" || type == "traf")
-        walk(body, offset + size);
-      else if (type == "tfhd" && body + 8 <= end) {
-        const uint32_t tf = readBe32(raw + body) & 0x00FFFFFFU;
-        size_t cursor = body + 8;
-        if (tf & 0x000001U)
-          cursor += 8;
-        if (tf & 0x000002U)
-          cursor += 4;
-        if (tf & 0x000008U)
-          cursor += 4;
-        if (tf & 0x000010U)
-          cursor += 4;
-        if ((tf & 0x000020U) && cursor + 4 <= end) {
-          sync = syncFromSampleFlags(readBe32(raw + cursor));
-          found = true;
-        }
-      }
-      else if (type == "trun" && body + 8 <= end) {
-        const uint32_t tr = readBe32(raw + body) & 0x00FFFFFFU;
-        size_t cursor = body + 8;
-        if (tr & 0x000001U)
-          cursor += 4;
-        if ((tr & 0x000004U) && cursor + 4 <= end) {
-          sync = syncFromSampleFlags(readBe32(raw + cursor));
-          found = true;
-        }
-      }
-      offset += size;
+std::vector<Box> childrenOf(std::string_view data)
+{
+  std::vector<Box> boxes;
+  size_t offset = 0;
+  while (offset + 8 <= data.size()) {
+    const uint32_t size = be32(data, offset);
+    if (size < 8 || offset + size > data.size())
+      break;
+    boxes.push_back({.type = data.substr(offset + 4, 4),
+                     .body = data.substr(offset + 8, size - 8)});
+    offset += size;
+  }
+  return boxes;
+}
+
+uint32_t trackIdOf(std::string_view tkhd)
+{
+  const bool wide = !tkhd.empty() && static_cast<uint8_t>(tkhd[0]) == 1;
+  return be32(tkhd, wide ? 20 : 12);
+}
+
+bool isVideoMedia(std::string_view mdia)
+{
+  return std::ranges::any_of(childrenOf(mdia), [](const Box& box) {
+    return box.type == "hdlr" && box.body.size() >= 12 &&
+           box.body.substr(8, 4) == "vide";
+  });
+}
+
+struct TrackFragment
+{
+  uint32_t track{0};
+  bool sync{true};
+};
+
+TrackFragment trackFragmentOf(std::string_view traf)
+{
+  TrackFragment fragment;
+  std::optional<uint32_t> flags;
+  for (const Box& part : childrenOf(traf)) {
+    if (part.type == "tfhd") {
+      const uint32_t tf = be32(part.body, 0) & 0x00FFFFFFU;
+      fragment.track = be32(part.body, 4);
+      size_t cursor = 8;
+      if (tf & 0x000001U)
+        cursor += 8;
+      if (tf & 0x000002U)
+        cursor += 4;
+      if (tf & 0x000008U)
+        cursor += 4;
+      if (tf & 0x000010U)
+        cursor += 4;
+      if ((tf & 0x000020U) && cursor + 4 <= part.body.size())
+        flags = be32(part.body, cursor);
     }
-  };
-
-  walk(0, total);
-  return found ? sync : true;
+    else if (part.type == "trun") {
+      const uint32_t tr = be32(part.body, 0) & 0x00FFFFFFU;
+      const uint32_t samples = be32(part.body, 4);
+      size_t cursor = 8;
+      if (tr & 0x000001U)
+        cursor += 4;
+      if ((tr & 0x000004U) && cursor + 4 <= part.body.size()) {
+        flags = be32(part.body, cursor);
+      }
+      else if (samples > 0 && (tr & 0x000400U)) {
+        size_t sample = cursor;
+        if (tr & 0x000100U)
+          sample += 4;
+        if (tr & 0x000200U)
+          sample += 4;
+        if (sample + 4 <= part.body.size())
+          flags = be32(part.body, sample);
+      }
+    }
+  }
+  fragment.sync = !flags || (*flags & kNonSyncSample) == 0;
+  return fragment;
 }
 
+}
+
+uint32_t videoTrackOf(std::string_view moov)
+{
+  for (const Box& top : childrenOf(moov)) {
+    if (top.type != "moov")
+      continue;
+    for (const Box& trak : childrenOf(top.body)) {
+      if (trak.type != "trak")
+        continue;
+      uint32_t track = 0;
+      bool video = false;
+      for (const Box& part : childrenOf(trak.body)) {
+        if (part.type == "tkhd")
+          track = trackIdOf(part.body);
+        else if (part.type == "mdia")
+          video = isVideoMedia(part.body);
+      }
+      if (video && track != 0)
+        return track;
+    }
+  }
+  return 0;
+}
+
+FragmentKind fragmentKindOf(const FragmentKindInput& input)
+{
+  for (const Box& top : childrenOf(input.moof)) {
+    if (top.type != "moof")
+      continue;
+    for (const Box& traf : childrenOf(top.body)) {
+      if (traf.type != "traf")
+        continue;
+      const TrackFragment fragment = trackFragmentOf(traf.body);
+      if (input.videoTrack == 0 || fragment.track == input.videoTrack)
+        return fragment.sync ? FragmentKind::VideoKey : FragmentKind::VideoDelta;
+    }
+  }
+  return FragmentKind::Other;
 }
 
 Fmp4Reader::Fmp4Reader(Fmp4ReaderInput input) : chunked_(input.chunked) {}
@@ -272,6 +325,7 @@ void Fmp4Reader::emit(std::string box, const std::string& type)
     init_ += box;
     if (type == "moov") {
       initDone_ = true;
+      videoTrack_ = videoTrackOf(init_);
       if (onInit)
         onInit(std::move(init_));
       init_.clear();
@@ -281,7 +335,7 @@ void Fmp4Reader::emit(std::string box, const std::string& type)
 
   if (type == "moof") {
     fragment_ = std::move(box);
-    fragmentKeyframe_ = moofIsKeyframe(fragment_);
+    fragmentKind_ = fragmentKindOf({.moof = fragment_, .videoTrack = videoTrack_});
     hasMoof_ = true;
     return;
   }
@@ -290,7 +344,7 @@ void Fmp4Reader::emit(std::string box, const std::string& type)
     fragment_ += box;
     hasMoof_ = false;
     if (onFragment)
-      onFragment(std::move(fragment_), fragmentKeyframe_);
+      onFragment({.bytes = std::move(fragment_), .kind = fragmentKind_});
     fragment_.clear();
   }
 }
@@ -302,6 +356,8 @@ void Fmp4Reader::reset()
   fragment_.clear();
   initDone_ = false;
   hasMoof_ = false;
+  fragmentKind_ = FragmentKind::Other;
+  videoTrack_ = 0;
   chunked_ = false;
   lineBuf_.clear();
   chunkRemaining_ = 0;
@@ -310,11 +366,17 @@ void Fmp4Reader::reset()
 
 void Fmp4Reader::consume()
 {
+  constexpr uint64_t kMaxBoxBytes = 64ULL * 1024 * 1024;
   while (pending_.size() >= 8) {
-    const auto* raw = reinterpret_cast<const uint8_t*>(pending_.data());
-    const uint64_t size = boxSize(raw);
-    const size_t headerLen = size == 1 ? 16 : 8;
-    if (size == 0 || size < headerLen) {
+    const uint32_t compact = be32(pending_, 0);
+    uint64_t size = compact;
+    if (compact == 1) {
+      if (pending_.size() < 16)
+        return;
+      size = (static_cast<uint64_t>(be32(pending_, 8)) << 32) | be32(pending_, 12);
+    }
+    const uint64_t headerLen = compact == 1 ? 16 : 8;
+    if (size < headerLen || size > kMaxBoxBytes) {
       pending_.clear();
       return;
     }

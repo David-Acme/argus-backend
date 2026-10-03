@@ -22,6 +22,7 @@ argus-deploy argus-camera configuration. Copy to config.camera.toml (gitignored)
 | `health.enabled` | Occlusion/blur/moved detection from periodic image stats. |
 | `stt.remote_url` | Camera listen (guard agent) transcription through argus-stt. |
 | `storage.mode` | Private object storage (RustFS) for detection evidence snapshots. provision-host.sh fills the endpoint and credentials. |
+| `streaming.hub_gop_cache_bytes` | Bytes of the current group of pictures each live upstream keeps (default 2 MiB). A viewer that subscribes with `fastStart` receives the init segment and that GOP at once, so its first frame paints without waiting for the camera's next keyframe; a GOP larger than the cap is not kept. |
 
 Optional keys the template does not set:
 
@@ -260,6 +261,7 @@ argus-camera configuration. Copy to config.toml (gitignored) to run.
 | `grpc.caller_guard` | Caller capability credential for the guard -> camera edge; generated per installation and shared only with argus-guard. |
 | `health.enabled` | Occlusion/blur/moved detection from periodic image stats. |
 | `stt.remote_url` | Camera listen (guard agent) transcription through argus-stt. |
+| `streaming.hub_gop_cache_bytes` | Bytes of the current group of pictures each live upstream keeps (default 2 MiB). A viewer that subscribes with `fastStart` receives the init segment and that GOP at once, so its first frame paints without waiting for the camera's next keyframe; a GOP larger than the cap is not kept. |
 
 Optional keys the template does not set:
 

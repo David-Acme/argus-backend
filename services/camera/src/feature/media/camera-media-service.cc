@@ -78,12 +78,13 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
     if (StreamHub::instance().subscriptionsOf(sink.get()) >= maxSubsPerClient_)
       throw ResponseException(429, CameraErrors::TooManyCameraSubscriptions);
 
-    StreamHub::SubscribeInput input;
-    input.sink = sink;
-    input.cameraId = cameraId;
-    input.quality = quality;
     std::string error;
-    const uint16_t subId = StreamHub::instance().subscribe(input, error);
+    const uint16_t subId = StreamHub::instance().subscribe(
+        {.sink = sink,
+         .cameraId = cameraId,
+         .quality = quality,
+         .fastStart = payload["fastStart"].isBool() && payload["fastStart"].asBool()},
+        error);
     if (subId == 0) {
       const bool viewerLimit = error.rfind("too_many_viewers", 0) == 0;
       auto subscriptionError = viewerLimit ? CameraErrors::TooManyViewers

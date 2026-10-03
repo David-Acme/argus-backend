@@ -57,6 +57,7 @@ max_restarts = 8
 hub_window_bytes = 131072
 hub_chunk_bytes = 16384
 hub_grace_ms = 2000
+hub_gop_cache_bytes = 2097152
 hub_max_subs_per_client = 8
 max_viewers_per_camera = 4
 max_total_viewers = 8

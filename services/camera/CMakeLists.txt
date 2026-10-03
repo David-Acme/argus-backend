@@ -183,6 +183,7 @@ set(CAMERA_UNIT_TESTS
     camera-health-test
     event-intelligence-test
     camera-source-registrar-test
+    camera-stream-test
     camera-change-transaction-test
 )
 
@@ -236,6 +237,9 @@ target_link_libraries(event-intelligence-test PRIVATE
     argus::camera-operator)
 
 target_link_libraries(camera-source-registrar-test PRIVATE
+    argus::camera-stream)
+
+target_link_libraries(camera-stream-test PRIVATE
     argus::camera-stream)
 
 target_link_libraries(camera-change-transaction-test PRIVATE

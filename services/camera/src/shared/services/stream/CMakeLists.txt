@@ -1,6 +1,7 @@
 argus_module(NAME camera-stream
     SOURCES
         camera-source-registrar.cc
+        gop-cache.cc
         go2rtc-manager.cc
         snapshot-store.cc
         stream-hub.cc

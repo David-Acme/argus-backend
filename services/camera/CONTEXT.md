@@ -808,3 +808,37 @@ or one equal to any of the other three, registers no settings service.
 `camera-settings-test` checks the separation both ways on a live server
 holding all three services, using only refusals and the argument checks
 that run before any camera is touched (no action reaches hardware).
+
+## A viewer starts on a video keyframe, and can start on the last one
+
+go2rtc's MP4 consumer muxes the camera microphone as a FLAC track beside the
+video (`&mp4=flac`, above), one `moof`/`mdat` per sample and per track, and it
+flags every audio sample as a sync sample (`0x02000000` in `tfhd`'s default
+flags). The hub used to ask only "is the first sample of this fragment a sync
+sample?", so every audio fragment looked like a keyframe: a viewer joining a
+live upstream, or one resuming after a refused fragment, restarted on the next
+audio fragment and was sent video P-frames before any video keyframe — measured
+against a go2rtc test source, two joins out of three received a delta frame
+first. `Fmp4Reader` now reads the init segment's `moov` once, finds the video
+track by its `hdlr` (`vide`), and classifies each fragment by the track its
+`traf` carries (`FragmentKind::VideoKey`, `VideoDelta`, `Other`), reading the
+sample flags from `trun`'s first-sample flags, its per-sample flags or `tfhd`'s
+default, in that order. A viewer resumes only on a `VideoKey`; a refused audio
+fragment is dropped without forcing the video to wait for the next keyframe.
+With no video track identified (an audio-only source) the flags alone decide,
+as before. A 64-bit box header now waits for its sixteen bytes, and a box past
+64 MiB resets the reader instead of buffering it.
+
+Each upstream keeps the current group of pictures (`GopCache`: from the last
+video keyframe, audio included, bounded by `streaming.hub_gop_cache_bytes`,
+2 MiB; a GOP past the cap is dropped until the next keyframe). A subscriber that
+asks `camera:subscribe` with `fastStart: true` is sent the init segment and that
+GOP at once, reserved against its credit window as one burst (an idle window
+admits it, as it admits one oversized keyframe), and then joins the live
+fragments. Measured on the sandbox with a 640×360 / 15 fps / GOP 30 test
+source: a second viewer's first frame arrived after 60-110 ms with `fastStart`
+against 0.7-1.9 s without it. The replay is opt-in because a player that
+schedules frames by their timestamps (Android's ExoPlayer pipe) would carry
+the replayed GOP's age as permanent latency; the web player decodes and paints
+on arrival, so the burst simply catches up. The first viewer of a cold upstream
+still waits for go2rtc's first keyframe (300-700 ms on the same source).
