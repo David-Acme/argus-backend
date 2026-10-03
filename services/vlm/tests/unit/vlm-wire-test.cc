@@ -4,6 +4,7 @@
 #include <config/config-service.hxx>
 #include <drogon/drogon.h>
 #include <feature/vlm/controllers/vlm-controller.hxx>
+#include <feature/vlm/services/vision-hash.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 
@@ -337,6 +338,13 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   MESSAGE("engine caption (cache-busted): \"", engineCaption, "\"");
   CHECK_FALSE(engineCaption.empty());
 
+  const std::string shortCaption = vlm->service().describeMat(
+      {.bgr = decoded, .prompt = colorsPrompt, .maxTokens = 2});
+  const std::string longCaption = vlm->service().describeMat(
+      {.bgr = decoded, .prompt = colorsPrompt, .maxTokens = 32});
+  MESSAGE("2-token caption: \"", shortCaption, "\", 32-token caption: \"", longCaption, "\"");
+  CHECK(shortCaption.size() < longCaption.size());
+
   const auto t1 = std::chrono::steady_clock::now();
   const std::string cachedBody = postDescribe({.port = port,
                 .imageB64 = imageB64,
@@ -435,4 +443,18 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   vlm->shutdownEngine();
   llama_backend_free();
   std::remove(kScratchConfig);
+}
+
+TEST_CASE("the caption hash reads pixels at any offset the same way")
+{
+  std::vector<unsigned char> aligned(64);
+  for (std::size_t i = 0; i < aligned.size(); ++i)
+    aligned[i] = static_cast<unsigned char>(i * 7 + 3);
+  std::vector<unsigned char> shifted(aligned.size() + 1);
+  std::copy(aligned.begin(), aligned.end(), shifted.begin() + 1);
+  CHECK(visionHashBytes(aligned.data(), aligned.size()) ==
+        visionHashBytes(shifted.data() + 1, aligned.size()));
+  const std::string prompt = "who is at the door?";
+  CHECK(visionHashBytesAndPrompt({.data = aligned.data(), .len = aligned.size(), .prompt = prompt}) !=
+        visionHashBytes(aligned.data(), aligned.size()));
 }

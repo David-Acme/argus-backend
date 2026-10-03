@@ -173,3 +173,48 @@ service accepts, and `VlmConfig::resolveRpc()` removes it from the vision
 callers: the settings caller cannot describe and the guard cannot change
 settings. `vlm-settings-test` checks both directions on a live listener and
 watches `Capabilities.max_input_px` follow a registry update.
+
+## Real-time behaviour (measured 2026-10-03)
+
+Host: Ryzen 7 5825U (8 cores, 16 threads) with its Radeon Vega 8 iGPU
+(RADV RENOIR, Vulkan 1.4), prod build, `ThreadBudget::computeThreads()` = 8.
+Other agents were building at load average 11–17, so the absolute numbers
+are pessimistic. They are medians of three uncached describes over the HTTP
+leg, including the base64 upload and the JPEG decode.
+
+| `max_input_px` | backend | "describe in one sentence" | "is there a person?" ("No.") |
+|---|---|---|---|
+| 256 | CPU | 1.05–1.27 s | 0.79–0.88 s |
+| 384 (default) | CPU | 1.35–1.70 s | 1.01–1.61 s |
+| 512 | CPU | 1.38–1.98 s | 1.23–2.17 s |
+| 384 | Vulkan iGPU (`gpu_layers = 999`) | 0.80–0.98 s | 0.55–0.69 s |
+
+- The image encoder dominates: a one-word answer costs 60–75 % of a full
+  sentence. `max_input_px` is the speed knob, as `AGENTS.md` says. 256 px kept
+  the same captions on these scenes; 384 stays the default because camera
+  frames carry smaller subjects than these photos.
+- A cached caption answers in 8–130 ms. That time is the JPEG decode and the
+  hash of the scaled pixels, growing with the upload: 0.1 MB → 13 ms,
+  1 MB → 115 ms.
+- Offloading to the iGPU through Vulkan was 1.6–1.9× faster under that CPU
+  load. It also leaves the CPU cores to STT, the LLM and TTS during a call.
+  The build already compiles `GGML_VULKAN`. `HardwareProbe::vlmGpuLayers()`
+  resolves 0 because this service builds the probe without the GPU check, so
+  the offload is a deploy decision: `[vision] gpu_layers = 999`, plus the
+  container needs `/dev/dri`. It is not made here.
+- The HTTP leg decodes the JPEG on the Drogon loop thread before the
+  blocking leg: 5 ms for 720p and 25 ms for 4.5 MP (OpenCV, measured).
+  `IMREAD_REDUCED_COLOR_*` would save at most 9 ms of that, so the decode
+  stays as it is. The gRPC leg decodes on its own thread.
+
+Fixes in the same pass:
+- The caption cache key now includes the token budget. A caption generated
+  under `max_tokens = 2` answered a later request for 32 tokens with the same
+  two words.
+- The decode loop no longer accepts each token twice:
+  `llama_sampler_sample` already accepts it. That is harmless for the greedy
+  chain, but wrong the day a stateful sampler joins it.
+- `visionHashBytes` reads 8-byte words with `memcpy` instead of an
+  unaligned `uint64_t*` dereference, which is undefined behaviour.
+- `loaded_` is atomic, because `run()` and the capabilities callback read it
+  without the engine lock.

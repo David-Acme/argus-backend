@@ -25,10 +25,20 @@ constexpr const char* kDefaultMmproj =
     "models/vision/lfm2vl-25/mmproj-F16.gguf";
 constexpr const char* kFallbackPrompt = "Can you describe this image?";
 
-uint64_t hashMatAndPrompt(const cv::Mat& m, const std::string& prompt)
+struct CaptionKeyInput
 {
-  return visionHashBytesAndPrompt(
-      {.data = m.data, .len = static_cast<size_t>(m.total()) * m.elemSize(), .prompt = prompt});
+  const cv::Mat& image;
+  const std::string& prompt;
+  int32_t maxTokens{0};
+};
+
+uint64_t captionKey(const CaptionKeyInput& input)
+{
+  const std::string asked = input.prompt + '\x1f' + std::to_string(input.maxTokens);
+  return visionHashBytesAndPrompt({.data = input.image.data,
+                                   .len = static_cast<size_t>(input.image.total()) *
+                                          input.image.elemSize(),
+                                   .prompt = asked});
 }
 
 constexpr int32_t kFallbackMaxInputPx = 384;
@@ -264,7 +274,7 @@ std::string VisionService::run(const VisionRunInput& input)
       input.maxTokens > 0 ? input.maxTokens : defaultMaxTokens();
 
   const cv::Mat rgb = fitToBudget(src, input.srcIsBgr);
-  const uint64_t key = hashMatAndPrompt(rgb, question);
+  const uint64_t key = captionKey({.image = rgb, .prompt = question, .maxTokens = maxTokens});
   if (const std::string* hit = cacheLookup(key))
     return *hit;
 
@@ -338,8 +348,6 @@ std::string VisionService::run(const VisionRunInput& input)
                                        piece.size(), 0, true);
     if (n > 0)
       caption.append(piece.data(), static_cast<size_t>(n));
-
-    llama_sampler_accept(smpl.get(), token);
 
     batch.token[0] = token;
     batch.pos[0] = nPast++;

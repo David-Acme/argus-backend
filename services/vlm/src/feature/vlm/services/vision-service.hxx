@@ -95,7 +95,7 @@ private:
 
   std::mutex mutex_;
   std::atomic<bool> cancelled_{false};
-  bool loaded_ = false;
+  std::atomic<bool> loaded_{false};
 
   std::atomic<int32_t> defaultMaxTokens_{64};
   std::atomic<int32_t> maxInputPx_{384};
