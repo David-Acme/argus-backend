@@ -550,6 +550,14 @@ bool NatsBus::ensureJetStream()
   return true;
 }
 
+NatsBus::JsCtxPtr NatsBus::jetStream()
+{
+  std::scoped_lock lock(mutex_);
+  if (!connectedLocked() || !ensureJetStream())
+    return nullptr;
+  return js_;
+}
+
 bool NatsBus::publishWithMsgId(const PublishWithIdInput& input)
 {
   if (!nats_subject::isValidSubject(input.subject,
@@ -557,13 +565,9 @@ bool NatsBus::publishWithMsgId(const PublishWithIdInput& input)
       input.msgId.empty())
     return false;
 
-  JsCtxPtr js;
-  {
-    std::scoped_lock lock(mutex_);
-    if (!connectedLocked() || !ensureJetStream())
-      return false;
-    js = js_;
-  }
+  const JsCtxPtr js = jetStream();
+  if (js == nullptr)
+    return false;
 
   jsPubOptions options;
   jsPubOptions_Init(&options);
@@ -590,36 +594,34 @@ bool NatsBus::ensureStream(const StreamInput& input)
   if (input.name.empty() || input.subjects.empty())
     return false;
 
-  {
-    std::lock_guard lock(mutex_);
-    if (!connectedLocked() || !ensureJetStream())
-      return false;
+  const JsCtxPtr js = jetStream();
+  if (js == nullptr)
+    return false;
 
-    std::vector<const char*> subjects;
-    subjects.reserve(input.subjects.size());
-    for (const auto& subject : input.subjects)
-      subjects.push_back(subject.c_str());
+  std::vector<const char*> subjects;
+  subjects.reserve(input.subjects.size());
+  for (const auto& subject : input.subjects)
+    subjects.push_back(subject.c_str());
 
-    jsStreamConfig config;
-    jsStreamConfig_Init(&config);
-    config.Name = input.name.c_str();
-    config.Subjects = subjects.data();
-    config.SubjectsLen = static_cast<int>(subjects.size());
-    config.Retention = js_LimitsPolicy;
-    config.MaxAge = input.maxAgeNs;
-    config.Storage = js_FileStorage;
-    config.Duplicates = input.duplicatesNs;
+  jsStreamConfig config;
+  jsStreamConfig_Init(&config);
+  config.Name = input.name.c_str();
+  config.Subjects = subjects.data();
+  config.SubjectsLen = static_cast<int>(subjects.size());
+  config.Retention = js_LimitsPolicy;
+  config.MaxAge = input.maxAgeNs;
+  config.Storage = js_FileStorage;
+  config.Duplicates = input.duplicatesNs;
 
-    auto errorCode = jsErrCode(0);
-    const natsStatus status =
-        js_AddStream(nullptr, js_.get(), &config, nullptr, &errorCode);
-    if (status == NATS_OK)
-      return true;
-    if (errorCode != JSStreamNameExistErr) {
-      LOG_WARN << "JetStream stream " << input.name << " ensure failed (status="
-               << status << " err=" << errorCode << ")";
-      return false;
-    }
+  auto errorCode = jsErrCode(0);
+  const natsStatus status =
+      js_AddStream(nullptr, js.get(), &config, nullptr, &errorCode);
+  if (status == NATS_OK)
+    return true;
+  if (errorCode != JSStreamNameExistErr) {
+    LOG_WARN << "JetStream stream " << input.name << " ensure failed (status="
+             << status << " err=" << errorCode << ")";
+    return false;
   }
   return reconcileStream(input);
 }
@@ -629,12 +631,12 @@ NatsBus::streamInfo(const std::string& name)
 {
   if (name.empty())
     return std::nullopt;
-  std::lock_guard lock(mutex_);
-  if (!connectedLocked() || !ensureJetStream())
+  const JsCtxPtr js = jetStream();
+  if (js == nullptr)
     return std::nullopt;
   jsStreamInfo* rawInfo = nullptr;
   auto errorCode = jsErrCode(0);
-  if (js_GetStreamInfo(&rawInfo, js_.get(), name.c_str(), nullptr,
+  if (js_GetStreamInfo(&rawInfo, js.get(), name.c_str(), nullptr,
                        &errorCode) != NATS_OK ||
       rawInfo == nullptr || rawInfo->Config == nullptr) {
     StreamInfoPtr(rawInfo).reset();
@@ -673,12 +675,12 @@ bool NatsBus::reconcileStream(const StreamInput& input)
       existing->duplicatesNs == input.duplicatesNs)
     return true;
 
-  std::lock_guard lock(mutex_);
-  if (!connectedLocked() || !ensureJetStream())
+  const JsCtxPtr js = jetStream();
+  if (js == nullptr)
     return false;
   jsStreamInfo* rawInfo = nullptr;
   auto errorCode = jsErrCode(0);
-  if (js_GetStreamInfo(&rawInfo, js_.get(), input.name.c_str(), nullptr,
+  if (js_GetStreamInfo(&rawInfo, js.get(), input.name.c_str(), nullptr,
                        &errorCode) != NATS_OK ||
       rawInfo == nullptr || rawInfo->Config == nullptr) {
     StreamInfoPtr(rawInfo).reset();
@@ -707,7 +709,7 @@ bool NatsBus::reconcileStream(const StreamInput& input)
   config.Storage = js_FileStorage;
   config.Duplicates = input.duplicatesNs;
   const natsStatus status =
-      js_UpdateStream(nullptr, js_.get(), &config, nullptr, &errorCode);
+      js_UpdateStream(nullptr, js.get(), &config, nullptr, &errorCode);
   if (status != NATS_OK) {
     LOG_WARN << "JetStream stream " << input.name << " update failed (status="
              << status << " err=" << errorCode << ")";

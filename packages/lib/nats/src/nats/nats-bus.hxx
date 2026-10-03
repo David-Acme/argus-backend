@@ -166,6 +166,7 @@ private:
   };
 
   bool ensureJetStream();
+  [[nodiscard]] JsCtxPtr jetStream();
 
   bool connectedLocked() const;
 
