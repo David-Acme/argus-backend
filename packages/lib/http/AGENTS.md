@@ -31,7 +31,10 @@ declare errors and this package formats them.
   `ValidationException` is logged with its method, path and text, and the
   client receives the generic `InternalError`: its text is SQLite's,
   storage's or the standard library's, which the caller cannot act on and
-  should not read.
+  should not read. A `Json::LogicError` - jsoncpp refusing `asString()`/`asInt64()` on a
+  field of another type, which the DTO factories call - answers a 422 on
+  `body` and is logged as a warning: a request with `"isAllDay":"yes"` was
+  the client's mistake, not a server error.
 - `src/http/cors.hxx` — `Cors`: `apply` on a response, `handleOptions` for the
   preflight.
 - `src/http/details/http-errors.hxx` — the definitions this package refuses with, all of

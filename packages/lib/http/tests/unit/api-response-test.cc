@@ -251,3 +251,18 @@ TEST_CASE("Cors::handleOptions answers the pre-routing probe with no body")
   CHECK(response->getHeader("Access-Control-Allow-Origin") == "*");
   CHECK(response->getBody().empty());
 }
+
+TEST_CASE("a field of the wrong type is a 422, not a 500")
+{
+  Json::Value body(Json::objectValue);
+  body["title"] = Json::Value(Json::objectValue);
+  try {
+    static_cast<void>(body["title"].asString());
+    FAIL("jsoncpp accepted an object as a string");
+  }
+  catch (const std::exception& error) {
+    const auto response = answerTo(error);
+    CHECK(response->getStatusCode() == drogon::k422UnprocessableEntity);
+    CHECK(bodyOf(response)["status"] == 422);
+  }
+}
