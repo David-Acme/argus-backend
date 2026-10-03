@@ -55,6 +55,18 @@ every TLS handshake, and anyone who registered first after the pairing -
 the legitimate owner or not - became the Owner. An installation paired
 before this change has no `owner_device` and keeps working.
 
+The code is checked first, then the paired state. A repeat from the recorded
+owner device answers the same CA material again instead of 409: the server
+commits the pairing before the client has verified the reply, so a client
+that fails after that point (a dropped connection, an app killed mid-way)
+can pair again rather than leave the installation stuck until `[pairing]` is
+reset by hand. Any other device still gets 409. `GET /pairing/status`
+(`DeviceFilter` only) answers `{paired, hasOwner}`, which is how a signed-out
+app decides between owner enrolment and login; it replaces the gateway's old
+`/auth/has-admin`, which no service has answered since the gateway was
+deleted. It shares the `/pairing` prefix, so the remote gate keeps it on the
+LAN.
+
 ## The port the pairing and invitation answers publish
 
 `PairingController` and `InvitationFeatureService::resolve` both answer the

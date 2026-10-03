@@ -3,9 +3,12 @@ argus_module(NAME identity-pairing
         controllers/pairing-controller.cc
         dtos/pairing-dto.cc
         dtos/response-pairing-dto.cc
+        dtos/response-pairing-status-dto.cc
+        services/pairing-feature-service.cc
     INCLUDES ../..
     DEPENDS
         argus::identity-config
+        argus::identity-shared
         argus::lib::auth
         argus::lib::cert
         argus::lib::config
