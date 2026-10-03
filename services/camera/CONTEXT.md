@@ -933,3 +933,20 @@ last fragment is under 3 s old. The same run after the change: stall noticed
 by the client at 16 s, the upstream closed at 18 s, three refused attempts
 read as offline at 28 s, the camera back at 30.0 s and the picture again at
 33.1 s.
+
+## A still picture per camera, for the grid
+
+`GET /camera/{id}/snapshot` answers `{ image: "data:image/jpeg;base64,…",
+capturedAt }`: the operator's latest frame from `SnapshotStore` when it is
+under 10 s old, otherwise one frame grabbed from go2rtc's sub stream, the same
+source the operator and the health monitor read. A disabled camera, or one that
+sends no picture, is a 502 with its reason. Camera read permission covers it,
+exactly as it covers the live view. The app's camera grid refreshes the
+thumbnails of online cameras every 30 s while the grid is on screen and keeps
+them in memory only. Measured on the sandbox: a 640×360 sub-stream frame is
+18 KB of JPEG (24 KB as base64) and the call answered in about 1.4 s
+end to end, including the token refresh and go2rtc's decode.
+
+`Go2rtcFrameSource` and `IFrameSource` moved from `feature/operator` to
+`shared/services/stream`: the operator, the monitor and camera-control read
+them now, and the monitor no longer links the operator module to reach them.

@@ -1,13 +1,17 @@
 #include "camera-control-feature-service.hxx"
 
+#include <drogon/utils/Utilities.h>
 #include <runtime/blocking-task.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <shared/services/camera-driver/stream-only-driver.hxx>
+#include <shared/services/stream/snapshot-store.hxx>
 
 #include <chrono>
 
 namespace
 {
+constexpr int64_t kFreshSnapshotMs = 10000;
+
 int64_t nowMs()
 {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -144,4 +148,33 @@ CameraControlFeatureService::speak(int64_t cameraId, const CameraTalkDto& body) 
   co_return co_await onDevice(cameraId, [pcm, rate](ICameraDriver& driver) {
     return driver.speak({.samples = pcm, .sampleRate = rate});
   });
+}
+
+drogon::Task<CameraControlResult>
+CameraControlFeatureService::snapshot(int64_t cameraId) const
+{
+  const auto camera = co_await repository_.findById(cameraId);
+  if (!camera)
+    co_return std::nullopt;
+  if (!camera->isEnabled)
+    co_return DriverResult::failure("This camera is disabled");
+
+  CameraSnapshot picture;
+  if (auto stored = SnapshotStore::instance().frame(cameraId);
+      stored && nowMs() - stored->atMs <= kFreshSnapshotMs) {
+    picture = std::move(*stored);
+  }
+  else {
+    const auto frame =
+        co_await frames_.grab({.cameraId = cameraId, .cameraName = camera->name});
+    if (!frame || frame->jpeg.empty())
+      co_return DriverResult::failure("The camera sent no picture");
+    picture = {.jpeg = std::string(frame->jpeg.begin(), frame->jpeg.end()),
+               .atMs = frame->capturedAtMs};
+  }
+
+  Json::Value out;
+  out["image"] = "data:image/jpeg;base64," + drogon::utils::base64Encode(picture.jpeg);
+  out["capturedAt"] = Json::Int64(picture.atMs);
+  co_return DriverResult{.ok = true, .error = {}, .data = out};
 }

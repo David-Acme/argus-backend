@@ -8,7 +8,7 @@ argus_module(NAME camera-monitor
     DEPENDS
         argus::camera-config
         argus::camera-driver
-        argus::camera-operator
+        argus::camera-stream
         argus::camera-repositories
         argus::contracts::camera
         argus::contracts::sync

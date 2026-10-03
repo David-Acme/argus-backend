@@ -2,7 +2,7 @@
 
 #include <feature/objects/object-detector.hxx>
 #include <feature/operator/event-intelligence.hxx>
-#include <feature/operator/frame-source.hxx>
+#include <shared/services/stream/frame-source.hxx>
 #include <feature/operator/object-event-sink.hxx>
 #include <config/operator-config.hxx>
 #include <feature/operator/zone-source.hxx>

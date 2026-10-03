@@ -215,6 +215,7 @@ target_link_libraries(camera-config-test PRIVATE
     argus::lib::http)
 
 target_link_libraries(camera-controller-test PRIVATE
+    argus::camera-control
     argus::camera-feature
     argus::camera-zone
     argus::camera-media
@@ -231,8 +232,7 @@ target_link_libraries(camera-operator-test PRIVATE
     argus::camera-stream)
 
 target_link_libraries(camera-health-test PRIVATE
-    argus::camera-monitor
-    argus::camera-operator)
+    argus::camera-monitor)
 
 target_link_libraries(event-intelligence-test PRIVATE
     argus::camera-operator)

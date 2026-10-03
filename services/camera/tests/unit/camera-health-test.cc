@@ -3,7 +3,7 @@
 
 #include <feature/monitor/health-event.hxx>
 #include <feature/monitor/camera-health-monitor.hxx>
-#include <feature/operator/frame-source.hxx>
+#include <shared/services/stream/frame-source.hxx>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <shared/services/camera-driver/camera-scene-log.hxx>

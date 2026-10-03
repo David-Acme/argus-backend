@@ -1,4 +1,4 @@
-#include <feature/operator/go2rtc-frame-source.hxx>
+#include <shared/services/stream/go2rtc-frame-source.hxx>
 
 #include <drogon/HttpClient.h>
 #include <shared/services/stream/go2rtc-manager.hxx>

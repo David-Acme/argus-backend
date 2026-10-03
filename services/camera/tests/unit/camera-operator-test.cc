@@ -2,7 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <feature/operator/camera-operator-service.hxx>
-#include <feature/operator/frame-source.hxx>
+#include <shared/services/stream/frame-source.hxx>
 #include <feature/operator/identity-known-person-matcher.hxx>
 #include <feature/operator/known-person-matcher.hxx>
 #include <feature/operator/object-event-sink.hxx>

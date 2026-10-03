@@ -2,7 +2,6 @@ argus_module(NAME camera-operator
     SOURCES
         camera-operator-service.cc
         event-intelligence.cc
-        go2rtc-frame-source.cc
         identity-known-person-matcher.cc
         nats-object-event-sink.cc
         object-event.cc

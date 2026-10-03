@@ -27,7 +27,7 @@
 #include <feature/operator/services/evidence/evidence-uploader.hxx>
 #include <feature/objects/ncnn-object-detector.hxx>
 #include <feature/operator/camera-operator-service.hxx>
-#include <feature/operator/go2rtc-frame-source.hxx>
+#include <shared/services/stream/go2rtc-frame-source.hxx>
 #include <feature/operator/identity-known-person-matcher.hxx>
 #include <feature/operator/known-person-matcher.hxx>
 #include <feature/operator/nats-object-event-sink.hxx>

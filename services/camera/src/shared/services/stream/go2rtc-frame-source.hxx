@@ -1,6 +1,6 @@
 #pragma once
 
-#include <feature/operator/frame-source.hxx>
+#include <shared/services/stream/frame-source.hxx>
 
 #include <mutex>
 #include <string>

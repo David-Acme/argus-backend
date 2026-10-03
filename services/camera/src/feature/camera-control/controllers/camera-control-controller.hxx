@@ -25,6 +25,8 @@ public:
                 drogon::Get, "DeviceFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(CameraControlController::talk, "/camera/{1}/talk", drogon::Post,
                 "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(CameraControlController::snapshot, "/camera/{1}/snapshot",
+                drogon::Get, "DeviceFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> status(drogon::HttpRequestPtr req, int64_t id);
@@ -34,6 +36,7 @@ public:
   drogon::Task<drogon::HttpResponsePtr> settings(drogon::HttpRequestPtr req, int64_t id);
   drogon::Task<drogon::HttpResponsePtr> capabilities(drogon::HttpRequestPtr req, int64_t id);
   drogon::Task<drogon::HttpResponsePtr> talk(drogon::HttpRequestPtr req, int64_t id);
+  drogon::Task<drogon::HttpResponsePtr> snapshot(drogon::HttpRequestPtr req, int64_t id);
 
 private:
   CameraControlFeatureService service_;

@@ -11,6 +11,7 @@ argus_module(NAME camera-control
     DEPENDS
         argus::camera-driver
         argus::camera-repositories
+        argus::camera-stream
         argus::clients::tts
         argus::contracts::camera
         argus::lib::errors

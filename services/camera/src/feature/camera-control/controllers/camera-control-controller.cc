@@ -64,3 +64,9 @@ CameraControlController::talk(drogon::HttpRequestPtr req, int64_t id)
   const auto body = CameraTalkDto::fromJson(*req->getJsonObject());
   co_return respond(co_await service_.speak(id, body));
 }
+
+drogon::Task<drogon::HttpResponsePtr>
+CameraControlController::snapshot(drogon::HttpRequestPtr, int64_t id)
+{
+  co_return respond(co_await service_.snapshot(id));
+}

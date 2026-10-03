@@ -10,6 +10,7 @@
 #include <optional>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
+#include <shared/services/stream/go2rtc-frame-source.hxx>
 #include <tts/tts-remote.hxx>
 
 using CameraControlResult = std::optional<DriverResult>;
@@ -28,6 +29,7 @@ public:
   drogon::Task<CameraControlResult> speak(int64_t cameraId,
                                           const CameraTalkDto& body) const;
   drogon::Task<CameraControlResult> capabilities(int64_t cameraId) const;
+  drogon::Task<CameraControlResult> snapshot(int64_t cameraId) const;
 
 private:
   drogon::Task<CameraControlResult>
@@ -36,4 +38,5 @@ private:
 
   CameraRepository repository_;
   TtsClient tts_;
+  mutable Go2rtcFrameSource frames_;
 };

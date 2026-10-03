@@ -7,6 +7,7 @@
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
 #include <errors/validation-exception.hxx>
+#include <feature/camera-control/controllers/camera-control-controller.hxx>
 #include <feature/camera/controllers/camera-controller.hxx>
 #include <feature/camera/dtos/create-camera-dto.hxx>
 #include <feature/camera/dtos/update-camera-dto.hxx>
@@ -422,6 +423,20 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   const bool voiceIgnored = drogon::sync_wait(mediaService.handleText(
       {.conn = conn, .message = unknownMessage, .raw = std::string_view{}}));
   CHECK_FALSE(voiceIgnored);
+
+  CameraControlController controlController;
+  const auto stamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+  SnapshotStore::instance().putFrame(cameraId2, "jpeg", stamp);
+  const auto snapshot = drogon::sync_wait(controlController.snapshot(nullptr, cameraId2));
+  const Json::Value picture = body(snapshot)["info"];
+  CHECK(picture["image"].asString() == "data:image/jpeg;base64,anBlZw==");
+  CHECK(picture["capturedAt"].asInt64() == stamp);
+  const auto missingSnapshot = refusalOf(controlController.snapshot(nullptr, 999));
+  REQUIRE(missingSnapshot);
+  CHECK(missingSnapshot->status == 404);
+  SnapshotStore::instance().forget(cameraId2);
 
   CameraPresenceRecorder presence;
   const CameraRepository cameras;

@@ -2,7 +2,7 @@
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
-#include <feature/operator/frame-source.hxx>
+#include <shared/services/stream/frame-source.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <sqlite/db-service.hxx>
 #include <runtime/blocking-task.hxx>
