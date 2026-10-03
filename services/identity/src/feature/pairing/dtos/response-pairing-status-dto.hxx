@@ -7,5 +7,5 @@ struct ResponsePairingStatusDto
   bool paired{false};
   bool hasOwner{false};
 
-  Json::Value toJson() const;
+  [[nodiscard]] Json::Value toJson() const;
 };

@@ -15,7 +15,7 @@ public:
 
   static bool permits(const tools::ToolDescriptor& descriptor, UserRole role);
 
-  std::vector<const tools::ToolDescriptor*> permittedTools(UserRole role) const;
+  [[nodiscard]] std::vector<const tools::ToolDescriptor*> permittedTools(UserRole role) const;
 
 private:
   ToolRegistry& registry_;

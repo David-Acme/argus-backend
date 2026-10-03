@@ -18,8 +18,8 @@ struct PairingRequestInput
 class PairingFeatureService
 {
 public:
-  ResponsePairingDto pair(const PairingRequestInput& input) const;
-  drogon::Task<ResponsePairingStatusDto> status() const;
+  [[nodiscard]] ResponsePairingDto pair(const PairingRequestInput& input) const;
+  [[nodiscard]] drogon::Task<ResponsePairingStatusDto> status() const;
 
 private:
   UserRepository userRepository_;
