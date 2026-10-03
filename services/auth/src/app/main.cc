@@ -9,7 +9,7 @@
 #include <config/config-service.hxx>
 #include <drogon/drogon.h>
 #include <feature/auth/controllers/auth-controller.hxx>
-#include <feature/auth/infra/refresh-rate-gate.hxx>
+#include <feature/auth/infra/auth-rate-gate.hxx>
 #include <feature/device/repositories/device-credential/device-credential-repository.hxx>
 #include <feature/session/repositories/change-outbox/change-outbox-repository.hxx>
 #include <feature/session/repositories/refresh-token/refresh-token-repository.hxx>
@@ -129,7 +129,7 @@ int main()
   drogon::app().registerController(
       std::make_shared<AuthController>(identityClient.get()));
 
-  RefreshRateGate rateGate(AuthConfig::resolveRateLimit());
+  AuthRateGate rateGate(AuthConfig::resolveRateLimit());
   RemoteGate remoteGate(remote);
 
   drogon::app().registerPreRoutingAdvice(

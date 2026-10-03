@@ -1,6 +1,7 @@
-#include "refresh-rate-gate.hxx"
+#include "auth-rate-gate.hxx"
 
 #include <algorithm>
+#include <array>
 #include <auth/auth-errors.hxx>
 #include <auth/device-filter.hxx>
 #include <cctype>
@@ -14,7 +15,28 @@
 namespace
 {
 constexpr std::size_t kMaxTrackedKeys = 4096;
-constexpr std::string_view kGuardedPath = "/auth/refresh-token";
+
+struct GuardedRoute
+{
+  drogon::HttpMethod method;
+  std::string_view path;
+  std::string_view name;
+};
+
+constexpr std::array<GuardedRoute, 4> kGuardedRoutes = {{
+    {drogon::Patch, "/auth/refresh-token", "refresh"},
+    {drogon::Post, "/auth/login", "login"},
+    {drogon::Post, "/auth/register", "register"},
+    {drogon::Post, "/auth/device-login", "device-login"},
+}};
+
+bool samePath(std::string_view lhs, std::string_view rhs)
+{
+  return std::ranges::equal(lhs, rhs, [](char a, char b) {
+    return std::tolower(static_cast<unsigned char>(a)) ==
+           std::tolower(static_cast<unsigned char>(b));
+  });
+}
 
 std::chrono::steady_clock::time_point now()
 {
@@ -22,52 +44,46 @@ std::chrono::steady_clock::time_point now()
 }
 }
 
-RefreshRateGate::RefreshRateGate(AuthRateLimitConfig config) : config_(config)
+AuthRateGate::AuthRateGate(AuthRateLimitConfig config) : config_(config)
 {
 }
 
-bool RefreshRateGate::enabled() const
+bool AuthRateGate::enabled() const
 {
   return config_.enabled;
 }
 
-bool RefreshRateGate::isGuardedRoute(const drogon::HttpRequestPtr& req)
+std::string AuthRateGate::guardedRoute(const drogon::HttpRequestPtr& req)
 {
-  if (req->method() != drogon::Patch)
-    return false;
-  return std::ranges::equal(req->path(), kGuardedPath, [](char lhs, char rhs) {
-    return std::tolower(static_cast<unsigned char>(lhs)) ==
-           std::tolower(static_cast<unsigned char>(rhs));
-  });
+  for (const auto& route : kGuardedRoutes) {
+    if (req->method() == route.method && samePath(req->path(), route.path))
+      return std::string(route.name);
+  }
+  return {};
 }
 
-std::string RefreshRateGate::rateLimitKey(const drogon::HttpRequestPtr& req)
+std::string AuthRateGate::rateLimitKey(const drogon::HttpRequestPtr& req)
 {
-  try {
-    return DeviceFilter::deviceKey(req);
-  }
-  catch (const std::exception&) {
-    return "ip:" + req->getPeerAddr().toIp();
-  }
+  return guardedRoute(req) + "|" + DeviceFilter::resolveIp(req);
 }
 
 drogon::HttpResponsePtr
-RefreshRateGate::check(const drogon::HttpRequestPtr& req)
+AuthRateGate::check(const drogon::HttpRequestPtr& req)
 {
-  if (!enabled() || !isGuardedRoute(req))
+  if (!enabled() || guardedRoute(req).empty())
     return nullptr;
   if (admit(rateLimitKey(req), now()))
     return nullptr;
-  LOG_WARN << "Refresh-token rate limit refused a request";
+  LOG_WARN << "Auth rate limit refused a " << guardedRoute(req) << " request";
   auto response = ApiResponse::error(AuthErrors::TooManyAttempts);
   Cors::apply(response);
   return response;
 }
 
-void RefreshRateGate::recordOutcome(const drogon::HttpRequestPtr& req,
+void AuthRateGate::recordOutcome(const drogon::HttpRequestPtr& req,
                                     const drogon::HttpResponsePtr& resp)
 {
-  if (!enabled() || !isGuardedRoute(req))
+  if (!enabled() || guardedRoute(req).empty())
     return;
   const std::string key = rateLimitKey(req);
   if (resp->getStatusCode() < drogon::k400BadRequest) {
@@ -75,21 +91,19 @@ void RefreshRateGate::recordOutcome(const drogon::HttpRequestPtr& req,
     return;
   }
   if (recordFailure(key, now()))
-    LOG_WARN << "Refresh-token key locked out after consecutive failures";
+    LOG_WARN << "Auth rate limit locked a " << guardedRoute(req)
+             << " key out after consecutive failures";
 }
 
-bool RefreshRateGate::admit(const std::string& key,
+bool AuthRateGate::admit(const std::string& key,
                             std::chrono::steady_clock::time_point now)
 {
   const std::scoped_lock lock(mutex_);
   const auto windowStart = now - std::chrono::seconds(config_.windowSeconds);
   auto it = entries_.find(key);
   if (it == entries_.end()) {
-    if (entries_.size() >= kMaxTrackedKeys) {
-      pruneExpired(now);
-      if (entries_.size() >= kMaxTrackedKeys)
-        return false;
-    }
+    if (entries_.size() >= kMaxTrackedKeys && !makeRoom(now))
+      return false;
     it = entries_.emplace(key, Entry{}).first;
   }
   if (now < it->second.lockedUntil)
@@ -102,7 +116,7 @@ bool RefreshRateGate::admit(const std::string& key,
   return true;
 }
 
-void RefreshRateGate::recordSuccess(const std::string& key)
+void AuthRateGate::recordSuccess(const std::string& key)
 {
   const std::scoped_lock lock(mutex_);
   const auto it = entries_.find(key);
@@ -111,7 +125,7 @@ void RefreshRateGate::recordSuccess(const std::string& key)
   it->second.consecutiveFailures = 0;
 }
 
-bool RefreshRateGate::recordFailure(const std::string& key,
+bool AuthRateGate::recordFailure(const std::string& key,
                                     std::chrono::steady_clock::time_point now)
 {
   const std::scoped_lock lock(mutex_);
@@ -127,7 +141,7 @@ bool RefreshRateGate::recordFailure(const std::string& key,
   return true;
 }
 
-void RefreshRateGate::pruneExpired(std::chrono::steady_clock::time_point now)
+void AuthRateGate::pruneExpired(std::chrono::steady_clock::time_point now)
 {
   const auto windowStart = now - std::chrono::seconds(config_.windowSeconds);
   for (auto it = entries_.begin(); it != entries_.end();) {
@@ -139,4 +153,18 @@ void RefreshRateGate::pruneExpired(std::chrono::steady_clock::time_point now)
     else
       ++it;
   }
+}
+
+bool AuthRateGate::makeRoom(std::chrono::steady_clock::time_point now)
+{
+  pruneExpired(now);
+  if (entries_.size() < kMaxTrackedKeys)
+    return true;
+  const auto unlocked = std::ranges::find_if(entries_, [now](const auto& entry) {
+    return !(now < entry.second.lockedUntil);
+  });
+  if (unlocked == entries_.end())
+    return false;
+  entries_.erase(unlocked);
+  return true;
 }

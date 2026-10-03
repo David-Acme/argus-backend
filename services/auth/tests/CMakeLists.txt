@@ -51,8 +51,8 @@ target_compile_options(change-outbox-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(change-outbox-test)
 add_test(NAME change-outbox-test COMMAND change-outbox-test)
 
-add_executable(refresh-rate-gate-test unit/refresh-rate-gate-test.cc)
-target_link_libraries(refresh-rate-gate-test PRIVATE
+add_executable(auth-rate-gate-test unit/auth-rate-gate-test.cc)
+target_link_libraries(auth-rate-gate-test PRIVATE
     argus::auth-auth
     argus::auth-config
     argus::lib::config
@@ -61,9 +61,9 @@ target_link_libraries(refresh-rate-gate-test PRIVATE
     argus::contracts::auth
     Drogon::Drogon
     doctest::doctest)
-target_compile_options(refresh-rate-gate-test PRIVATE -Wall -Wextra)
-argus_runtime_rpath(refresh-rate-gate-test)
-add_test(NAME refresh-rate-gate-test COMMAND refresh-rate-gate-test)
+target_compile_options(auth-rate-gate-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(auth-rate-gate-test)
+add_test(NAME auth-rate-gate-test COMMAND auth-rate-gate-test)
 
 add_executable(auth-migration-test unit/auth-migration-test.cc)
 target_link_libraries(auth-migration-test PRIVATE

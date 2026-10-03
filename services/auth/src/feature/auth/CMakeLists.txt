@@ -9,7 +9,7 @@ argus_module(NAME auth-auth
         dtos/response-login-dto.cc
         dtos/response-refresh-token-dto.cc
         dtos/update-me-dto.cc
-        infra/refresh-rate-gate.cc
+        infra/auth-rate-gate.cc
         services/auth-feature-service.cc
     INCLUDES ../..
     DEPENDS

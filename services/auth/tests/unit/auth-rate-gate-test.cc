@@ -5,7 +5,7 @@
 #include <config/auth-config.hxx>
 #include <config/config-service.hxx>
 #include <drogon/drogon.h>
-#include <feature/auth/infra/refresh-rate-gate.hxx>
+#include <feature/auth/infra/auth-rate-gate.hxx>
 #include <http/api-response.hxx>
 
 #include <chrono>
@@ -38,12 +38,14 @@ void writeConfig(const ConfigWriteInput& input)
 }
 
 [[nodiscard]] drogon::HttpRequestPtr
-patchRequest(const std::string& userAgent)
+patchRequest(const std::string& userAgent,
+             const std::string& address = "10.0.0.5")
 {
   auto req = drogon::HttpRequest::newHttpRequest();
   req->setMethod(drogon::Patch);
   req->setPath("/auth/refresh-token");
   req->addHeader("User-Agent", userAgent);
+  req->addHeader("X-Forwarded-For", address);
   return req;
 }
 
@@ -83,6 +85,12 @@ void loadGateConfig(const std::string& extra)
                            "\n"
                            "[device]\n"
                            "fingerprint_secret = \"argus-rate-gate-fingerprint\"\n"
+                           "trust_forwarded_for = true\n"
+                           "trusted_proxy_ips = \"" +
+                           drogon::HttpRequest::newHttpRequest()
+                               ->getPeerAddr()
+                               .toIp() +
+                           "\"\n"
                            "\n") + extra});
   ConfigService::load(path);
   std::filesystem::remove(path);
@@ -95,7 +103,7 @@ TEST_CASE("rate limit config resolves defaults and honors overrides")
   loadGateConfig("");
   const AuthRateLimitConfig config = AuthConfig::resolveRateLimit();
 
-  CHECK_FALSE(config.enabled);
+  CHECK(config.enabled);
   CHECK(config.windowSeconds == 60);
   CHECK(config.maxRequests == 10);
   CHECK(config.lockoutThreshold == 5);
@@ -134,7 +142,7 @@ TEST_CASE("the gate admits within the window and refuses past it")
   loadGateConfig("");
 
   AuthRateLimitConfig config = windowConfig();
-  RefreshRateGate gate(config);
+  AuthRateGate gate(config);
 
   auto first = patchRequest("argus-app/1.0");
   CHECK_FALSE(gate.check(first));
@@ -152,7 +160,8 @@ TEST_CASE("the gate admits within the window and refuses past it")
   CHECK_FALSE((*body)["errors"]["message"].asString().empty());
   CHECK((*body)["info"].isNull());
 
-  CHECK_FALSE(gate.check(patchRequest("argus-tablet/1.0")));
+  REQUIRE(gate.check(patchRequest("argus-tablet/1.0")));
+  CHECK_FALSE(gate.check(patchRequest("argus-tablet/1.0", "10.0.0.6")));
 
   CHECK_FALSE(gate.check(requestWith(drogon::Post, "/auth/refresh-token")));
   CHECK_FALSE(gate.check(requestWith(drogon::Get, "/auth/refresh-token")));
@@ -167,7 +176,7 @@ TEST_CASE("the gate admits within the window and refuses past it")
 
 TEST_CASE("a disabled gate never refuses")
 {
-  RefreshRateGate gate(AuthRateLimitConfig{});
+  AuthRateGate gate(AuthRateLimitConfig{});
 
   for (int i = 0; i < 10; ++i)
     CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
@@ -183,7 +192,7 @@ TEST_CASE("the gate locks out a key after consecutive failures")
   AuthRateLimitConfig config = windowConfig();
   config.maxRequests = 100;
   config.lockoutThreshold = 3;
-  RefreshRateGate gate(config);
+  AuthRateGate gate(config);
 
   auto first = patchRequest("argus-app/1.0");
   auto second = patchRequest("argus-app/1.0");
@@ -200,12 +209,12 @@ TEST_CASE("the gate locks out a key after consecutive failures")
   const auto locked = gate.check(patchRequest("argus-app/1.0"));
   REQUIRE(locked);
   CHECK(locked->getStatusCode() == drogon::k429TooManyRequests);
-  CHECK_FALSE(gate.check(patchRequest("argus-tablet/1.0")));
+  CHECK_FALSE(gate.check(patchRequest("argus-tablet/1.0", "10.0.0.6")));
 
   AuthRateLimitConfig forgiving = windowConfig();
   forgiving.maxRequests = 100;
   forgiving.lockoutThreshold = 2;
-  RefreshRateGate resetGate(forgiving);
+  AuthRateGate resetGate(forgiving);
 
   auto failure = patchRequest("argus-app/1.0");
   auto success = patchRequest("argus-app/1.0");
@@ -224,7 +233,7 @@ TEST_CASE("an expired window admits the key again")
   AuthRateLimitConfig config = windowConfig();
   config.windowSeconds = 1;
   config.maxRequests = 1;
-  RefreshRateGate gate(config);
+  AuthRateGate gate(config);
 
   CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
   REQUIRE(gate.check(patchRequest("argus-app/1.0")));
@@ -242,7 +251,7 @@ TEST_CASE("an expired lockout admits the key again")
   config.maxRequests = 100;
   config.lockoutThreshold = 1;
   config.lockoutSeconds = 1;
-  RefreshRateGate gate(config);
+  AuthRateGate gate(config);
 
   CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
   gate.recordOutcome(patchRequest("argus-app/1.0"), refusal());
@@ -253,4 +262,26 @@ TEST_CASE("an expired lockout admits the key again")
 
   std::this_thread::sleep_for(std::chrono::milliseconds(600));
   CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
+}
+
+TEST_CASE("login, registration and device login are limited per address")
+{
+  loadGateConfig("");
+  AuthRateLimitConfig config = windowConfig();
+  config.maxRequests = 1;
+  AuthRateGate gate(config);
+
+  const auto post = [](const std::string& path, const std::string& agent) {
+    auto req = drogon::HttpRequest::newHttpRequest();
+    req->setMethod(drogon::Post);
+    req->setPath(path);
+    req->addHeader("User-Agent", agent);
+    req->addHeader("X-Forwarded-For", "10.0.0.9");
+    return req;
+  };
+  for (const char* path : {"/auth/login", "/auth/register", "/auth/device-login"}) {
+    CAPTURE(path);
+    CHECK_FALSE(gate.check(post(path, "agent-one")));
+    REQUIRE(gate.check(post(path, "agent-two")));
+  }
 }

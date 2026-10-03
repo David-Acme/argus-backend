@@ -70,7 +70,8 @@ AuthIdentityConfig AuthConfig::resolveIdentity()
 AuthRateLimitConfig AuthConfig::resolveRateLimit()
 {
   AuthRateLimitConfig config;
-  config.enabled = ConfigService::getBool("rate_limit.enabled");
+  config.enabled = !ConfigService::hasKey("rate_limit.enabled") ||
+                   ConfigService::getBool("rate_limit.enabled");
   config.windowSeconds =
       positiveOr(ConfigService::getInt("rate_limit.window_seconds"),
                  kDefaultRateLimitWindowSeconds);

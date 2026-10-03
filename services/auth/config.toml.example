@@ -61,7 +61,7 @@ control_target = "127.0.0.1:7041"
 control_secret = ""
 
 [rate_limit]
-enabled = false
+enabled = true
 window_seconds = 60
 max_requests = 10
 lockout_threshold = 5

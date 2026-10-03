@@ -9,10 +9,10 @@
 #include <string>
 #include <unordered_map>
 
-class RefreshRateGate
+class AuthRateGate
 {
 public:
-  explicit RefreshRateGate(AuthRateLimitConfig config);
+  explicit AuthRateGate(AuthRateLimitConfig config);
 
   [[nodiscard]] drogon::HttpResponsePtr
   check(const drogon::HttpRequestPtr& req);
@@ -29,7 +29,7 @@ private:
   };
 
   [[nodiscard]] bool enabled() const;
-  [[nodiscard]] static bool isGuardedRoute(const drogon::HttpRequestPtr& req);
+  [[nodiscard]] static std::string guardedRoute(const drogon::HttpRequestPtr& req);
   [[nodiscard]] static std::string
   rateLimitKey(const drogon::HttpRequestPtr& req);
   [[nodiscard]] bool admit(const std::string& key,
@@ -38,6 +38,7 @@ private:
   [[nodiscard]] bool recordFailure(const std::string& key,
                                    std::chrono::steady_clock::time_point now);
   void pruneExpired(std::chrono::steady_clock::time_point now);
+  [[nodiscard]] bool makeRoom(std::chrono::steady_clock::time_point now);
 
   AuthRateLimitConfig config_;
   std::mutex mutex_;

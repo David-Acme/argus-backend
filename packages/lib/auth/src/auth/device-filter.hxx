@@ -26,8 +26,9 @@ public:
 
   static bool credentialMode();
 
+  static std::string resolveIp(const drogon::HttpRequestPtr& req);
+
 private:
   static std::string hashFingerprint(const std::string& ua,
                                      const std::string& ip);
-  static std::string resolveIp(const drogon::HttpRequestPtr& req);
 };

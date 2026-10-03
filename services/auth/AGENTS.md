@@ -83,7 +83,7 @@ argus-auth/
     controllers/        the nine /auth routes
     dtos/               the request and response DTOs of that surface
     services/           AuthFeatureService: sessions, credentials, challenges
-    infra/              refresh-rate-gate: the [rate_limit] pre-routing gate
+    infra/              auth-rate-gate: the [rate_limit] pre-routing gate
   database/schema.sql   this owner's four tables — the three session tables
                         and the change outbox — with their five indexes
   config.toml.example   auth keys + the identity target; no AI keys

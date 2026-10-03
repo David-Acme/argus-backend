@@ -46,7 +46,19 @@ the user row behind a session comes from identity through
 the identity change consumer. `device` owns the device credential — its
 repository and mapping — because the lookup is a different question with a
 different table, and nothing in `session` needs the other's tables. `auth`
-owns the HTTP surface, its DTOs and the refresh limiter that guards it.
+owns the HTTP surface, its DTOs and the rate gate that guards it.
+
+`AuthRateGate` (`[rate_limit]`, on unless the key says otherwise) limits
+the unauthenticated entry points - `POST /auth/login`, `POST
+/auth/register`, `POST /auth/device-login` - and `PATCH
+/auth/refresh-token`, per route and per client address (the address
+`DeviceFilter::resolveIp` trusts), with a lockout after consecutive
+refusals. It used to guard the refresh alone, disabled by default and keyed
+by user agent and address, so a face login could be retried without limit
+and a rotated `User-Agent` skipped any limit; and once 4096 keys were
+tracked it refused everyone. A full table now evicts an entry that is not
+locked out. A household behind one address shares the budget (ten
+requests per route per minute by default).
 
 No feature reads another's repository, so rule 23's 2+ rule puts each of the
 three in its own feature and keeps `src/shared/` empty.

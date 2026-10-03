@@ -61,7 +61,7 @@ control_target = "argus-sync:7041"
 control_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [rate_limit]
-enabled = false
+enabled = true
 window_seconds = 60
 max_requests = 10
 lockout_threshold = 5
