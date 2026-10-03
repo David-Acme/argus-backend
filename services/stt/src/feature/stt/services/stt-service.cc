@@ -70,7 +70,7 @@ createRecognizer(SttEngine engine, const std::string& lang)
     encPath = modelDir + "/tiny-encoder.int8.onnx";
     decPath = modelDir + "/tiny-decoder.int8.onnx";
     tokPath = modelDir + "/tiny-tokens.txt";
-    langPath = lang;
+    langPath = lang == "auto" ? std::string() : lang;
     config.model_config.whisper.encoder = encPath.c_str();
     config.model_config.whisper.decoder = decPath.c_str();
     config.model_config.whisper.language = langPath.c_str();
@@ -141,6 +141,11 @@ std::string_view SttService::engineName(SttEngine engine)
   return "nemo_transducer";
 }
 
+bool SttService::languageBound(SttEngine engine)
+{
+  return engine == SttEngine::Whisper || engine == SttEngine::Canary;
+}
+
 bool SttService::isSupportedLanguage(const std::string& lang)
 {
   const auto& languages = supportedLanguages();
@@ -182,6 +187,10 @@ bool SttService::setLanguage(const std::string& lang)
   std::scoped_lock lock(mutex_);
   if (!isSupportedLanguage(lang))
     return false;
+  if (!languageBound(engine_)) {
+    currentLang_ = lang;
+    return true;
+  }
   auto recognizer = createRecognizer(engine_, lang);
   if (!recognizer)
     return false;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <memory>
@@ -43,6 +44,8 @@ public:
 
   static std::string_view engineName(SttEngine engine);
 
+  static bool languageBound(SttEngine engine);
+
   static bool isSupportedLanguage(const std::string& lang);
 
   static const std::vector<std::string>& supportedLanguages();
@@ -68,6 +71,6 @@ private:
       recognizer_;
   std::string currentLang_;
   SttEngine engine_ = SttEngine::NemoTransducer;
-  bool loaded_ = false;
+  std::atomic<bool> loaded_{false};
   mutable std::mutex mutex_;
 };

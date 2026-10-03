@@ -5,6 +5,7 @@ package argus.stt.v1;
 service Transcription {
   rpc Capabilities(CapabilitiesRequest) returns (CapabilitiesResponse);
   rpc Transcribe(TranscribeRequest) returns (TranscribeResponse);
+  rpc TranscribeStream(stream TranscribeChunk) returns (stream TranscribeUpdate);
 }
 
 message CapabilitiesRequest {}
@@ -25,4 +26,18 @@ message TranscribeRequest {
 
 message TranscribeResponse {
   string text = 1;
+}
+
+message TranscribeChunk {
+  repeated float samples = 1;
+  uint32 sample_rate = 2;
+  string language = 3;
+  bool flush = 4;
+}
+
+message TranscribeUpdate {
+  string text = 1;
+  bool final = 2;
+  uint64 samples = 3;
+  uint32 decode_ms = 4;
 }

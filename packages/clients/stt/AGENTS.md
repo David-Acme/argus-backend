@@ -36,9 +36,18 @@ façade; `services/stt` consumes the gRPC client to serve the protocol.
 - `src/stt/stt-client.hxx` — `argus::stt::Client` with `ClientConfig`
   (`target`, `credential`, `timeout` defaulting to 30 s), `Capabilities`,
   `TranscribeInput` (`samples`, `sampleRate`, `language`, `cancellation`):
-  both RPCs are unary — `capabilities()` and `transcribe(input)` — and the
-  sample form is float in [-1, 1], not the s16 the HTTP leg posts; 4 files
-  include it.
+  `capabilities()` and `transcribe(input)` are unary, and
+  `openStream(StreamInput)` opens `TranscribeStream` — `push(span)` sends
+  audio as it arrives, `flush()` asks for a partial (delivered to
+  `StreamInput::onPartial` on the stream's reader thread), `finish()` closes
+  the writes and returns the final `StreamUpdate`, `cancel()` or the
+  `cancellation` token ends it with 499. The stream deadline is the client's
+  `timeout`, counted from `openStream`. The sample form is float in [-1, 1],
+  not the s16 the HTTP leg posts.
+- `SttClient::openStream` is the façade's door to the stream: it returns the
+  gRPC stream when `stt.grpc_target` is set and `nullptr` otherwise, because
+  the HTTP leg has no streaming form; a caller that gets `nullptr` keeps the
+  one-shot `transcribe`.
 - `src/stt/stt-remote.hxx` — the wire contract (`kWireSampleRate` 16000 and
   `kPcmScale` 32768.0F, the voice session's float/int16 mapping),
   `SttRemoteConfig` with its `resolve()`, `SttWireRequest`,

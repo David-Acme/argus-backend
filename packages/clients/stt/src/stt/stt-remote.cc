@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
+#include <utility>
 
 namespace
 {
@@ -314,6 +315,14 @@ std::string SttClient::transcribe(const std::vector<float>& audioSamples,
   if (!config.enabled())
     throw std::runtime_error("stt.remote_url is not configured");
   return SttHttpClient(config.url, config.timeoutMs).transcribe(audioSamples, lang);
+}
+
+std::unique_ptr<argus::stt::TranscribeStream>
+SttClient::openStream(argus::stt::StreamInput input) const
+{
+  if (const auto client = rpcClient())
+    return client->openStream(std::move(input));
+  return nullptr;
 }
 
 bool SttClient::remote() const

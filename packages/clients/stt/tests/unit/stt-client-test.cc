@@ -11,6 +11,7 @@
 #include <stt/stt-errors.hxx>
 #include <string>
 #include <stt/stt-remote.hxx>
+#include <stop_token>
 #include <utility>
 #include <vector>
 
@@ -193,6 +194,20 @@ TEST_CASE("The stt gRPC client validates its configuration before it dials")
   CHECK(refused({0.1F}, 0) == badRequest);
   CHECK(refused({0.1F}, 7999) == badRequest);
   CHECK(refused({0.1F}, 192001) == badRequest);
+
+  const auto refusedStream = [&accepted](int sampleRate, std::stop_token cancellation) {
+    return refusalBy([&accepted, sampleRate, &cancellation] {
+      (void)accepted.openStream({.sampleRate = sampleRate,
+                                 .language = "es",
+                                 .onPartial = {},
+                                 .cancellation = cancellation});
+    });
+  };
+  CHECK(refusedStream(7999, {}) == badRequest);
+  CHECK(refusedStream(192001, {}) == badRequest);
+  std::stop_source stopped;
+  stopped.request_stop();
+  CHECK(refusedStream(16000, stopped.get_token()).status == 499);
 }
 
 TEST_CASE("The stt entry point selects its transport from the runtime knobs")
@@ -203,9 +218,18 @@ TEST_CASE("The stt entry point selects its transport from the runtime knobs")
   CHECK_FALSE(client.remote());
   CHECK(thrownBy([&] { (void)client.transcribe({0.1F}, "es"); }) ==
         "stt.remote_url is not configured");
+  CHECK(client.openStream({.sampleRate = 16000, .language = "es", .onPartial = {}, .cancellation = {}}) ==
+        nullptr);
 
   pointAtRpc("127.0.0.1:1");
   CHECK(client.remote());
+  const auto dead = client.openStream({.sampleRate = 16000, .language = "es", .onPartial = {}, .cancellation = {}});
+  REQUIRE(dead != nullptr);
+  const Refusal unreachable = refusalBy([&dead] {
+    dead->push(std::vector<float>{0.1F});
+    (void)dead->finish();
+  });
+  CHECK(unreachable.status == 503);
   const Refusal refused =
       refusalBy([&] { (void)client.transcribe({0.1F}, "es"); });
   CHECK(refused.status == 503);

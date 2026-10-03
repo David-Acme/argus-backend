@@ -129,3 +129,55 @@ service accepts, and `SttConfig::resolveRpc()` removes it from the
 transcription callers (`settingsCallers` / `withoutSettingsCaller`): the
 settings caller cannot transcribe and a transcription caller cannot change
 settings. `stt-settings-test` checks both directions on a live listener.
+
+## Real-time behaviour (measured 2026-10-03)
+
+Host: Ryzen 7 5825U (8 cores, 16 threads), CPU only, prod build,
+`nemo_transducer` (sherpa-onnx FastConformer RNN-T int8, en/de/es/fr),
+`ThreadBudget::computeThreads()` = 8. The machine was shared with other
+work, so the figures are medians of 5 runs over the HTTP leg, including the
+loopback round trip.
+
+| utterance | audio | median | RTF |
+|---|---|---|---|
+| es, 2.0 s | TTS voice | 101 ms | 0.051 |
+| es, 4.6 s | TTS voice | 184 ms | 0.040 |
+| es, 6.0 s | TTS voice | 204 ms | 0.034 |
+| en, 2.0 s | TTS voice | 109 ms | 0.055 |
+| en, 4.6 s | TTS voice | 158 ms | 0.034 |
+| en, 6.0 s | TTS voice | 209 ms | 0.035 |
+| en, 6.6 s | LibriSpeech `0.wav` | 214 ms | 0.032 |
+
+**Language switches no longer reload the model.** A request whose language
+differed from the loaded recognizer's rebuilt the recognizer inside the
+blocking leg, even for the engines that ignore the language
+(`nemo_transducer`, `nemo_ctc`, `omnilingual`: the transducer is one
+multilingual model). Alternating es/en requests cost 1378 ms each against
+96 ms for the same request in one language: the whole 131 MB encoder was
+loaded again every time. `SttService::languageBound()` names the two engines
+whose recognizer depends on the language (`whisper`, `canary`); for the
+others a switch only records the language. Two calls in different languages,
+or the camera's listen path beside a call, no longer pay a model load per
+turn. `whisper` now maps `auto` to its own auto-detect (an empty language)
+instead of an invalid code.
+
+**Streaming (`TranscribeStream`).** The engine is offline: FastConformer
+attends over the whole utterance, so it cannot emit a final transcript before
+the audio ends. The stream instead moves the decode off the end of the turn.
+The caller pushes audio while the user speaks and sends `flush` when its own
+VAD hears the pause begin. The server decodes everything received so far and
+answers a partial. If the pause becomes the endpoint, the final is that
+partial, returned without a second decode (`decode_ms = 0`). If speech
+resumes, the caller keeps pushing, including the pause audio it held back,
+and the final decodes all of it. The voice session's endpoint waits 700 ms of
+silence (`EndpointDetector`), so the decode at the pause (≈100–210 ms above)
+finishes inside that wait. The transcript is ready when the endpoint fires,
+instead of 100–210 ms after it. The cost is one extra decode when speech
+resumes after a flushed pause. A partial is best effort: when every slot is
+busy it repeats the last text instead of waiting, while the final waits for a
+slot until the stream's deadline. Streaming models with a true incremental
+encoder (sherpa-onnx online zipformer and NeMo streaming FastConformer) exist
+for English, and for Spanish only as a separate single-language model. That
+would mean two artifacts, a per-language accuracy regression against the
+offline model and a new provisioning path, so the offline model stays and
+only the decode moves.

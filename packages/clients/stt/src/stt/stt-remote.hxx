@@ -1,12 +1,12 @@
 #pragma once
 
+#include <stt/stt-client.hxx>
+
 #include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
-
-namespace argus::stt { class Client; }
 
 inline constexpr int32_t kWireSampleRate = 16000;
 inline constexpr float kPcmScale = 32768.0F;
@@ -54,6 +54,8 @@ class SttClient
 public:
   std::string transcribe(const std::vector<float>& audioSamples,
                          const std::string& lang) const;
+  [[nodiscard]] std::unique_ptr<argus::stt::TranscribeStream>
+  openStream(argus::stt::StreamInput input) const;
   bool remote() const;
 
 private:

@@ -17,8 +17,11 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <algorithm>
 #include <latch>
 #include <memory>
+#include <mutex>
+#include <span>
 #include <optional>
 #include <stop_token>
 #include <string>
@@ -553,6 +556,195 @@ TEST_CASE("a second call is refused while the only slot is held")
   CHECK(finished.load());
 }
 
+namespace
+{
+using argus::stt::StreamUpdate;
+
+struct CountingEngine
+{
+  std::atomic<int> calls{0};
+};
+
+SttRpcInput countingInput(CountingEngine& engine)
+{
+  auto input = serverInput();
+  input.transcribe = [&engine](const TranscribeRequest& request) {
+    ++engine.calls;
+    return "heard " + std::to_string(request.samples.size()) + " " + request.lang;
+  };
+  return input;
+}
+
+struct PartialLog
+{
+  std::mutex mutex;
+  std::vector<StreamUpdate> seen;
+};
+
+argus::stt::StreamInput streamInput(PartialLog& log, std::stop_token cancellation = {})
+{
+  return {.sampleRate = kWireSampleRate,
+          .language = "es",
+          .onPartial =
+              [&log](const StreamUpdate& update) {
+                std::scoped_lock lock(log.mutex);
+                log.seen.push_back(update);
+              },
+          .cancellation = std::move(cancellation)};
+}
+
+std::vector<float> halfSecond()
+{
+  return std::vector<float>(kWireSampleRate / 2, 0.25F);
+}
+}
+
+TEST_CASE("a stream answers a flush with a partial and its end with the same decode")
+{
+  CountingEngine engine;
+  SttRpcServer server(countingInput(engine));
+  Client client(clientConfig(server.port()));
+  PartialLog log;
+  const auto stream = client.openStream(streamInput(log));
+  const auto chunk = halfSecond();
+  stream->push(chunk);
+  stream->push(chunk);
+  stream->flush();
+  const StreamUpdate final = stream->finish();
+  CHECK(final.final);
+  CHECK(final.text == "heard 16000 es");
+  CHECK(final.samples == 16000);
+  CHECK(final.decodeMs == 0);
+  CHECK(engine.calls.load() == 1);
+  std::scoped_lock lock(log.mutex);
+  REQUIRE(log.seen.size() == 1);
+  CHECK_FALSE(log.seen.front().final);
+  CHECK(log.seen.front().text == "heard 16000 es");
+  CHECK(log.seen.front().samples == 16000);
+}
+
+TEST_CASE("audio that arrives after the last flush is decoded at the end")
+{
+  CountingEngine engine;
+  SttRpcServer server(countingInput(engine));
+  Client client(clientConfig(server.port()));
+  PartialLog log;
+  const auto stream = client.openStream(streamInput(log));
+  const auto chunk = halfSecond();
+  stream->push(chunk);
+  stream->flush();
+  stream->flush();
+  stream->push(chunk);
+  const StreamUpdate final = stream->finish();
+  CHECK(final.text == "heard 16000 es");
+  CHECK(final.samples == 16000);
+  CHECK(engine.calls.load() == 2);
+  std::scoped_lock lock(log.mutex);
+  REQUIRE(log.seen.size() == 2);
+  CHECK(log.seen[0].text == "heard 8000 es");
+  CHECK(log.seen[1].text == "heard 8000 es");
+  CHECK(log.seen[1].decodeMs == 0);
+}
+
+TEST_CASE("a stream without audio, with another language or another rate is refused")
+{
+  CountingEngine engine;
+  SttRpcServer server(countingInput(engine));
+  Client client(clientConfig(server.port()));
+  PartialLog log;
+
+  const auto silent = client.openStream(streamInput(log));
+  CHECK(refusalOf([&silent] { return silent->finish(); }).status == 400);
+
+  auto french = streamInput(log);
+  french.language = "fr";
+  const auto foreign = client.openStream(std::move(french));
+  const auto refused = refusalOf([&foreign] {
+    foreign->push(halfSecond());
+    return foreign->finish();
+  });
+  CHECK(refused.status == 400);
+
+  const auto stub = rawStub(server.port());
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+  argus::client::addCallerCredential(context, kSecret);
+  const auto io = stub->TranscribeStream(&context);
+  wire::TranscribeChunk first;
+  first.set_sample_rate(kWireSampleRate);
+  first.add_samples(0.25F);
+  io->Write(first);
+  wire::TranscribeChunk second;
+  second.set_sample_rate(8000);
+  second.add_samples(0.25F);
+  io->Write(second);
+  io->WritesDone();
+  wire::TranscribeUpdate ignored;
+  while (io->Read(&ignored)) {
+  }
+  const auto status = io->Finish();
+  REQUIRE_FALSE(status.ok());
+  CHECK(argus::response::fromRpcStatus(status).statusCode() == 400);
+  CHECK(engine.calls.load() == 0);
+
+  CHECK(refusalOf([&client, &log] {
+          auto slow = streamInput(log);
+          slow.sampleRate = 4000;
+          return client.openStream(std::move(slow));
+        }).status == 400);
+}
+
+TEST_CASE("a stream refuses an unlisted caller and stops on the caller's token")
+{
+  CountingEngine engine;
+  SttRpcServer server(countingInput(engine));
+  PartialLog log;
+
+  ClientConfig wrong = clientConfig(server.port());
+  wrong.credential = "wrong";
+  Client untrusted(wrong);
+  const auto rejected = untrusted.openStream(streamInput(log));
+  const auto refusal = refusalOf([&rejected] {
+    rejected->push(halfSecond());
+    return rejected->finish();
+  });
+  CHECK(refusal.status == 401);
+
+  Client client(clientConfig(server.port()));
+  std::stop_source stop;
+  const auto stream = client.openStream(streamInput(log, stop.get_token()));
+  stream->push(halfSecond());
+  stop.request_stop();
+  CHECK(refusalOf([&stream] { return stream->finish(); }).status == 499);
+  CHECK(engine.calls.load() == 0);
+}
+
+TEST_CASE("a language-agnostic engine changes language without reloading its model")
+{
+  CHECK(SttService::languageBound(SttEngine::Whisper));
+  CHECK(SttService::languageBound(SttEngine::Canary));
+  CHECK_FALSE(SttService::languageBound(SttEngine::NemoTransducer));
+  CHECK_FALSE(SttService::languageBound(SttEngine::NemoCtc));
+  CHECK_FALSE(SttService::languageBound(SttEngine::Omnilingual));
+
+  ConfigService::setRuntimeString("stt.models_dir", ARGUS_TEST_STT_MODELS_DIR);
+  ConfigService::setRuntimeString("stt.engine", "nemo_transducer");
+  auto& engine = SttService::instance();
+  engine.init();
+  REQUIRE(engine.isLoaded());
+  const auto started = std::chrono::steady_clock::now();
+  CHECK(engine.setLanguage("en"));
+  CHECK(engine.setLanguage("es"));
+  CHECK(engine.setLanguage("en"));
+  const auto switching = std::chrono::steady_clock::now() - started;
+  CHECK(engine.language() == "en");
+  CHECK(switching < std::chrono::milliseconds(50));
+  CHECK_FALSE(engine.setLanguage("fr"));
+  CHECK(engine.language() == "en");
+  engine.shutdown();
+  ConfigService::setRuntimeString("stt.engine", "");
+}
+
 TEST_CASE("real engine transcribes through the legacy client")
 {
   ConfigService::setRuntimeString("stt.models_dir", ARGUS_TEST_STT_MODELS_DIR);
@@ -590,6 +782,33 @@ TEST_CASE("real engine transcribes through the legacy client")
       {.samples = samples, .sampleRate = kWireSampleRate, .lang = "en"});
   CHECK(spoken == inProcess);
   CHECK_FALSE(spoken.empty());
+
+  PartialLog log;
+  const Client streaming(clientConfig(server.port()));
+  const auto stream = streaming.openStream(
+      {.sampleRate = kWireSampleRate,
+       .language = "en",
+       .onPartial =
+           [&log](const StreamUpdate& update) {
+             std::scoped_lock lock(log.mutex);
+             log.seen.push_back(update);
+           },
+       .cancellation = {}});
+  constexpr std::size_t kChunk = 1600;
+  for (std::size_t at = 0; at < samples.size(); at += kChunk)
+    stream->push(std::span<const float>(samples).subspan(
+        at, std::min(kChunk, samples.size() - at)));
+  stream->flush();
+  const StreamUpdate streamed = stream->finish();
+  CHECK(streamed.text == inProcess);
+  CHECK(streamed.samples == samples.size());
+  CHECK(streamed.decodeMs == 0);
+  {
+    std::scoped_lock lock(log.mutex);
+    REQUIRE(log.seen.size() == 1);
+    CHECK(log.seen.front().text == inProcess);
+    CHECK(log.seen.front().decodeMs > 0);
+  }
   server.shutdown();
   engine.shutdown();
   ConfigService::setRuntimeString("stt.grpc_target", "");

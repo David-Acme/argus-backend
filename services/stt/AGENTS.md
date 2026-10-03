@@ -89,7 +89,12 @@ request side, `Transcribe` refuses an empty sample vector, a rate outside
 8000..192000 and a language the engine does not accept with 400, and refuses a
 caller-declared deadline more than two minutes out with the same 400; a caller
 that sends no deadline at all is served, because the ceiling is a bound on what
-the caller asks for and not a requirement that it ask.
+the caller asks for and not a requirement that it ask. `TranscribeStream`
+applies the same gates to its first chunk, refuses a later chunk that changes
+the rate or the language, more than 120 s of audio and a stream that ends
+without audio with 400, takes a slot only for each decode (a partial skips
+when the slots are busy, the final waits for one until the deadline) and
+never holds one while it waits for audio.
 
 ## Build commands
 

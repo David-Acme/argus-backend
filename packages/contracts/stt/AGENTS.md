@@ -30,10 +30,14 @@ and the vocabulary for the engine and the controller.
 - `stt.proto` — `package argus.stt.v1`: one `Transcription` service with two
   **unary** RPCs, `Capabilities` (rate, loaded, current and default language and
   the languages the engine accepts) and `Transcribe` (`repeated float` samples,
-  a rate and an optional language in, the transcript out). No streaming RPC: a
-  turn is one buffer, not a chunk stream. It sits at the package root, not
-  under the group's shared `proto/` root, so the function passes this directory
-  as the single `PROTO_ROOT`.
+  a rate and an optional language in, the transcript out), and one
+  bidirectional `TranscribeStream`: `TranscribeChunk` (samples, the rate and
+  language on the first chunk, `flush`) in, `TranscribeUpdate` (`text`,
+  `final`, the `samples` the text covers, `decode_ms`) out. A flush answers a
+  partial over everything received so far; closing the writes answers exactly
+  one final, which reuses the last partial when no audio arrived after it. It
+  sits at the package root, not under the group's shared `proto/` root, so the
+  function passes this directory as the single `PROTO_ROOT`.
 - `CMakeLists.txt` — the vocabulary declaration and `argus_stt_rpc_contract()`,
   defined here because the wire belongs to the package that owns the schema.
 
