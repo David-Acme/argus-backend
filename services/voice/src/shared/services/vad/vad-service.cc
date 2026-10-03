@@ -106,30 +106,36 @@ std::unique_ptr<VadModel> makeSileroVadModel()
 
 VadService::VadService() : VadService(makeSileroVadModel()) {}
 
-VadService::VadService(std::unique_ptr<VadModel> model)
-    : model_(std::move(model)), pending_(static_cast<size_t>(kWindowSize) * 8),
-      window_(kEffectiveWindow)
+VadConfig resolveVadConfig()
 {
+  VadConfig cfg;
   if (const double v = ConfigService::getDouble("vad.threshold"); v > 0.0)
-    cfg_.threshold = static_cast<float>(v);
+    cfg.threshold = static_cast<float>(v);
   if (const double v = ConfigService::getDouble("vad.neg_threshold"); v > 0.0)
-    cfg_.negThreshold = static_cast<float>(v);
+    cfg.negThreshold = static_cast<float>(v);
   if (const int v = ConfigService::getInt("vad.min_speech_frames"); v > 0)
-    cfg_.minSpeechFrames = v;
+    cfg.minSpeechFrames = v;
   if (const int v = ConfigService::getInt("vad.min_silence_frames"); v > 0)
-    cfg_.minSilenceFrames = v;
+    cfg.minSilenceFrames = v;
   if (const int v = ConfigService::getInt("vad.max_turn_frames"); v > 0)
-    cfg_.maxTurnFrames = v;
+    cfg.maxTurnFrames = v;
   if (const int v = ConfigService::getInt("vad.pre_roll_frames"); v > 0)
-    cfg_.preRollFrames = v;
+    cfg.preRollFrames = v;
   if (const int v = ConfigService::getInt("vad.min_turn_ms"); v > 0)
-    cfg_.minTurnMs = v;
+    cfg.minTurnMs = v;
   if (const double v = ConfigService::getDouble("vad.min_mean_prob"); v > 0.0)
-    cfg_.minMeanProb = static_cast<float>(v);
+    cfg.minMeanProb = static_cast<float>(v);
   if (const double v = ConfigService::getDouble("vad.barge_threshold"); v > 0.0)
-    cfg_.bargeThreshold = static_cast<float>(v);
+    cfg.bargeThreshold = static_cast<float>(v);
   if (const int v = ConfigService::getInt("vad.barge_min_frames"); v > 0)
-    cfg_.bargeMinFrames = v;
+    cfg.bargeMinFrames = v;
+  return cfg;
+}
+
+VadService::VadService(std::unique_ptr<VadModel> model)
+    : cfg_(resolveVadConfig()), model_(std::move(model)),
+      pending_(static_cast<size_t>(kWindowSize) * 8), window_(kEffectiveWindow)
+{
   reset();
 }
 

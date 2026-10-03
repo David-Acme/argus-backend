@@ -173,6 +173,40 @@ The VAD model is a seam (`VadModel`, created through `IVoiceVad` in
 `VoiceEngineSeam`, Silero by default) so the suites drive barge-in with
 scripted probabilities instead of the ONNX model.
 
+## Owner settings
+
+`src/feature/settings/voice-settings.cc` (`argus::voice-settings`) is the
+catalog an owner may change through `argus.settings.v1.Settings`, registered
+on the same gRPC listener as `VoiceService` (`argus::contracts::settings-wire`).
+Basic: the default conversation language (`stt.language`, `es`/`en`, the
+languages `voiceLangFromString` accepts), how easily the user interrupts
+Argus (`vad.barge_threshold`) and how long Argus waits for the user to
+finish (`vad.min_silence_frames`, 32 ms windows). Advanced: the remaining
+turn-detection, barge-in and denoise keys of `[vad]`. Groups are
+`conversation`, `listening` and `noise`. The `*.remote_timeout_ms` keys,
+the remote URLs, the identity target and the caller secrets are plumbing and
+stay out of the catalog.
+
+Every key applies at the next session (`SettingApply::NextSession`): a
+session builds its `VadService` (`resolveVadConfig()`) and reads its
+denoise and barge-guard keys (`resolveVoiceListeningConfig()`) once in
+`VoiceSessionService::start`, and the VAD state of a live call is tuned to
+those numbers mid-utterance; swapping them under a running worker would mix
+two configurations in one turn. Nothing needs a listener: the registry
+persists to `config.toml`, and the next `voice:start` reads it.
+
+A fallback is the value the service runs with when the key is absent, so
+the code defaults match `config.toml.example`: `VadConfig` holds
+`min_turn_ms` 240 and `min_mean_prob` 0.35, and an absent `vad.denoise`
+means on. `voice-settings-test` pins every fallback against the resolution
+functions.
+
+`[grpc] caller_settings` is the only credential the settings service
+accepts (service name `settings`), and `VoiceService.Connect` accepts only
+`caller_sync`: the settings caller cannot open a voice session and argus-sync
+cannot change settings. An empty `caller_settings`, or one equal to
+`caller_sync`, registers no settings service at all.
+
 ## Stream lifecycle decisions
 
 - `Connect` requires argus-sync's caller credential before anything else.

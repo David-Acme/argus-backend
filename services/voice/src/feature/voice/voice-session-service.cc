@@ -12,7 +12,6 @@ namespace
 
 constexpr int kTargetRate = 16000;
 constexpr size_t kMaxQueuedSamples = static_cast<size_t>(kTargetRate) * 30;
-constexpr std::chrono::milliseconds kDefaultBargeGuard{300};
 
 float rmsOf(const std::vector<float>& samples)
 {
@@ -281,6 +280,18 @@ VoiceLang voiceSystemLang()
   return voiceLangFromString(ConfigService::getString("stt.language"));
 }
 
+VoiceListeningConfig resolveVoiceListeningConfig()
+{
+  VoiceListeningConfig config;
+  if (ConfigService::hasKey("vad.denoise"))
+    config.denoise = ConfigService::getBool("vad.denoise");
+  if (const double gateRms = ConfigService::getDouble("vad.denoise_gate_rms"); gateRms > 0.0)
+    config.denoiseGateRms = static_cast<float>(gateRms);
+  if (const int guardMs = ConfigService::getInt("vad.barge_guard_ms"); guardMs > 0)
+    config.bargeGuard = std::chrono::milliseconds(guardMs);
+  return config;
+}
+
 VoiceSessionService::VoiceSessionService(const VoiceEngineSeam& engines)
     : stt_(engines.stt), tts_(engines.tts), llm_(engines.llm),
       identity_(engines.identity), vad_(engines.vad)
@@ -338,14 +349,11 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   session->userId = identity.user_id();
   session->role = voiceRoleToString(identity.role());
   session->nameKnown = userName.size() >= 2;
-  session->denoise = ConfigService::getBool("vad.denoise");
-  const double gateRms = ConfigService::getDouble("vad.denoise_gate_rms");
-  session->denoiseGateRms = gateRms > 0.0 ? static_cast<float>(gateRms) : 0.0035F;
+  const VoiceListeningConfig listening = resolveVoiceListeningConfig();
+  session->denoise = listening.denoise;
+  session->denoiseGateRms = listening.denoiseGateRms;
   session->duplex = duplex;
-  if (const int guardMs = ConfigService::getInt("vad.barge_guard_ms"); guardMs > 0)
-    session->bargeGuard = std::chrono::milliseconds(guardMs);
-  else
-    session->bargeGuard = kDefaultBargeGuard;
+  session->bargeGuard = listening.bargeGuard;
   session->history.push_back({"system", systemPrompt(session->lang)});
 
   const std::string greeting = greetingFor(session->lang, userName);

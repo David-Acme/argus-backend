@@ -5,6 +5,7 @@ health_port = 7035
 
 [grpc]
 caller_sync = ""
+caller_settings = ""
 
 [identity]
 target = "127.0.0.1:7040"

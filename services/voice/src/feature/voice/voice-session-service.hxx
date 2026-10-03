@@ -132,3 +132,12 @@ private:
 };
 
 VoiceLang voiceSystemLang();
+
+struct VoiceListeningConfig
+{
+  bool denoise{true};
+  float denoiseGateRms{0.0035F};
+  std::chrono::milliseconds bargeGuard{300};
+};
+
+[[nodiscard]] VoiceListeningConfig resolveVoiceListeningConfig();

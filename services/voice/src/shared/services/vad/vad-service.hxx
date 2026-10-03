@@ -17,11 +17,13 @@ struct VadConfig
   int minSilenceFrames{12};
   int maxTurnFrames{750};
   int preRollFrames{10};
-  int minTurnMs{320};
-  float minMeanProb{0.55F};
+  int minTurnMs{240};
+  float minMeanProb{0.35F};
   float bargeThreshold{0.7F};
   int bargeMinFrames{8};
 };
+
+[[nodiscard]] VadConfig resolveVadConfig();
 
 struct VadTurn
 {

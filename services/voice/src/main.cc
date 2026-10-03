@@ -1,5 +1,6 @@
 #include <config/voice-config.hxx>
 #include <feature/health/health-rpc-service.hxx>
+#include <feature/settings/voice-settings.hxx>
 #include <feature/voice/voice-rpc-service.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
@@ -7,6 +8,7 @@
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <config/config-service.hxx>
+#include <settings/settings-rpc.hxx>
 
 #include <drogon/drogon.h>
 
@@ -43,12 +45,19 @@ int main()
 
   VoiceRpcService voiceRpc(VoiceConfig::resolveSyncCallerSecret());
   HealthRpcService healthRpc;
+  SettingsRegistry settings(voiceSettingsCatalog());
+  std::unique_ptr<SettingsRpcService> settingsRpc;
+  if (auto callers = VoiceConfig::resolveSettingsCallers(); !callers.empty())
+    settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
+        .service = "voice", .registry = &settings, .credentials = std::move(callers)});
 
   grpc::ServerBuilder builder;
   builder.AddListeningPort(hostPort(grpcListener.host, grpcListener.port),
                            grpc::InsecureServerCredentials());
   builder.RegisterService(&voiceRpc);
   builder.RegisterService(&healthRpc);
+  if (settingsRpc)
+    builder.RegisterService(settingsRpc.get());
   std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
   if (!server) {
     LOG_ERROR << "gRPC server failed to listen on "

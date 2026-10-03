@@ -69,6 +69,11 @@ if(NOT TARGET argus::clients::identity)
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
 
+if(NOT COMMAND argus_settings_rpc_contract)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/settings
+                     ${CMAKE_BINARY_DIR}/contracts/settings)
+endif()
+
 find_package(doctest REQUIRED)
 
 set(VOICE_ENGINE_SOURCES
@@ -121,10 +126,11 @@ endif()
 target_compile_options(argus_voice-core PRIVATE -Wall -Wextra)
 
 add_subdirectory(src/config)
+add_subdirectory(src/feature/settings)
 
 argus_service(NAME argus-voice
     MAIN src/main.cc
-    MODULES argus::voice-config argus::voice-core
+    MODULES argus::voice-config argus::voice-core argus::voice-settings
     PORTS 7034 7035)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
@@ -208,3 +214,16 @@ argus_runtime_rpath(voice-llm-remote-test)
 set_target_properties(voice-llm-remote-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-llm-remote-test COMMAND voice-llm-remote-test)
+
+add_executable(voice-settings-test tests/unit/voice-settings-test.cc)
+
+target_link_libraries(voice-settings-test PRIVATE argus::voice-core
+    argus::voice-settings argus::voice-config doctest::doctest)
+
+target_compile_options(voice-settings-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-settings-test)
+
+set_target_properties(voice-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-settings-test COMMAND voice-settings-test)

@@ -1,6 +1,7 @@
 #include "voice-config.hxx"
 
 #include <config/config-service.hxx>
+#include <settings/settings-rpc.hxx>
 
 ListenerConfig VoiceConfig::resolveHealthListener()
 {
@@ -15,4 +16,12 @@ GrpcListenerConfig VoiceConfig::resolveGrpcListener()
 std::string VoiceConfig::resolveSyncCallerSecret()
 {
   return ConfigService::getString("grpc.caller_sync");
+}
+
+std::vector<argus::client::CallerCredential> VoiceConfig::resolveSettingsCallers()
+{
+  const std::string secret = ConfigService::getString("grpc.caller_settings");
+  if (secret == resolveSyncCallerSecret())
+    return {};
+  return settingsCallers({{kSettingsCaller, secret}});
 }

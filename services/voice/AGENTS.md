@@ -8,7 +8,8 @@ that apply to voice-service code; when in doubt, the root file wins.
 
 1. **Pure gRPC service** — the only network surfaces are the
    `argus.voice.v1.VoiceService` + `grpc.health.v1.Health` gRPC listener and
-   the minimal `/health` HTTP listener. No `/sync`, no Drogon filters, no
+   the minimal `/health` HTTP listener, plus `argus.settings.v1.Settings`
+   on the same gRPC listener when `[grpc] caller_settings` is set. No `/sync`, no Drogon filters, no
    WebSocket, no HTTP routes to other services; all inter-service traffic is
    gRPC.
 2. **Zero database** — no db clients, no schema, no repositories. The
@@ -60,10 +61,13 @@ argus-voice/
                         (7034) listeners
   src/feature/voice/    voice session, remote-only engine seam, VoiceService RPC
   src/feature/health/   grpc.health.v1 service
+  src/feature/settings/ argus::voice-settings — the owner-editable catalog,
+                        served by argus.settings.v1 on the gRPC listener
   src/shared/services/  vad, noise suppression and the reaction engine
   src/shared/wrapper/   the ring the voice paths carry samples in
   src/test-support/     the fake voice sink the suites drive
-  config.toml.example   [server], [identity], [stt], [tts], [llm], [vad]
+  config.toml.example   [server], [grpc] (caller_sync, caller_settings),
+                        [identity], [stt], [tts], [llm], [vad]
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
