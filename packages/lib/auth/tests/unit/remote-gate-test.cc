@@ -166,6 +166,12 @@ TEST_CASE("remote gate rejects pairing and register for remote requests")
   CHECK(registerBody["status"].asInt() == 403);
   CHECK(registerBody["errors"]["code"] == "REMOTE_NOT_ALLOWED");
 
+  for (const char* variant : {"/PAIRING", "/Pairing", "/Auth/Register", "/AUTH/REGISTER"}) {
+    const auto refused = gate.check(testRequest(drogon::Post, variant), true);
+    REQUIRE(refused);
+    CHECK(parseBody(refused)["errors"]["code"] == "REMOTE_NOT_ALLOWED");
+  }
+
   CHECK_FALSE(gate.check(testRequest(drogon::Post, "/pairing"), false));
   CHECK_FALSE(gate.check(testRequest(drogon::Get, "/health"), true));
 

@@ -4,13 +4,29 @@
 #include <http/api-response.hxx>
 #include <http/cors.hxx>
 
-#include <string>
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <string_view>
 
 namespace
 {
-bool isRemoteRestrictedPath(const std::string& path)
+constexpr std::array<std::string_view, 2> kRemoteRestrictedPaths{"/pairing",
+                                                                 "/auth/register"};
+
+bool sameRoute(std::string_view path, std::string_view route)
 {
-  return path == "/pairing" || path == "/auth/register";
+  return std::ranges::equal(path, route, [](char left, char right) {
+    return std::tolower(static_cast<unsigned char>(left)) ==
+           std::tolower(static_cast<unsigned char>(right));
+  });
+}
+
+bool isRemoteRestrictedPath(std::string_view path)
+{
+  return std::ranges::any_of(kRemoteRestrictedPaths, [path](std::string_view route) {
+    return sameRoute(path, route);
+  });
 }
 }
 
