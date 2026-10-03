@@ -1,5 +1,7 @@
 #include "health-rpc-service.hxx"
 
+#include <atomic>
+
 grpc::ServerUnaryReactor*
 HealthRpcService::Check(grpc::CallbackServerContext* context,
                         const grpc::health::v1::HealthCheckRequest*,
@@ -24,12 +26,25 @@ public:
     StartWrite(&message_);
   }
 
-  void OnWriteDone(bool ok) override { (void)ok; }
+  void OnWriteDone(bool ok) override
+  {
+    if (!ok)
+      finish(grpc::Status::CANCELLED);
+  }
+
+  void OnCancel() override { finish(grpc::Status::CANCELLED); }
 
   void OnDone() override { delete this; }
 
 private:
+  void finish(const grpc::Status& status)
+  {
+    if (!finished_.exchange(true))
+      Finish(status);
+  }
+
   grpc::health::v1::HealthCheckResponse message_;
+  std::atomic<bool> finished_{false};
 };
 
 }

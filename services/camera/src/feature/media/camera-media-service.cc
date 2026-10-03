@@ -72,7 +72,7 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
       sink = std::make_shared<CameraStreamSink>(conn, window);
       storeSink(conn, sink);
     }
-    if (sink->subscriptions() >= maxSubsPerClient_)
+    if (StreamHub::instance().subscriptionsOf(sink.get()) >= maxSubsPerClient_)
       throw ResponseException(429, CameraErrors::TooManyCameraSubscriptions);
 
     StreamHub::SubscribeInput input;
@@ -89,7 +89,6 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
         subscriptionError.message = error;
       throw ResponseException(viewerLimit ? 429 : 503, subscriptionError);
     }
-    sink->addSubscription();
 
     Json::Value resp;
     resp["subId"] = subId;
@@ -112,9 +111,8 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
   if (type == "camera:unsubscribe") {
     const uint16_t subId =
         static_cast<uint16_t>(payload.get("subId", 0).asUInt());
-    StreamHub::instance().unsubscribe(subId);
     if (auto sink = sinkFor(conn))
-      sink->dropSubscription();
+      StreamHub::instance().unsubscribe(subId, sink.get());
     co_return true;
   }
 

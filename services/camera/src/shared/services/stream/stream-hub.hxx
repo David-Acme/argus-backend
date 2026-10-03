@@ -48,7 +48,8 @@ public:
 
   uint16_t subscribe(const SubscribeInput& input, std::string& error);
   void ack(uint16_t subId, int64_t bytes);
-  void unsubscribe(uint16_t subId);
+  void unsubscribe(uint16_t subId, const ISink* owner);
+  int subscriptionsOf(const ISink* sink);
   void closeAll(const ISink* sink);
   int activeUpstreams();
   int activeSubscribers();

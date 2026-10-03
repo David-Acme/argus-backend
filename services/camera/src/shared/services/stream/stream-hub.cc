@@ -259,7 +259,7 @@ void StreamHub::pruneLocked()
 {
   std::erase_if(subToUpstream_, [](const auto& entry) {
     const auto& [subId, up] = entry;
-    std::lock_guard<std::mutex> upLock(up->mtx);
+    std::scoped_lock upLock(up->mtx);
     return std::ranges::none_of(up->subs, [subId](const auto& sub) {
       return sub->subId == subId;
     });
@@ -379,24 +379,33 @@ void StreamHub::ack(uint16_t subId, int64_t bytes)
     sink->release(bytes);
 }
 
-void StreamHub::unsubscribe(uint16_t subId)
+void StreamHub::unsubscribe(uint16_t subId, const ISink* owner)
 {
-  std::shared_ptr<Upstream> up;
-  {
-    std::lock_guard<std::mutex> hubLock(hubMutex_);
-    const auto it = subToUpstream_.find(subId);
-    if (it == subToUpstream_.end())
+  std::scoped_lock hubLock(hubMutex_);
+  const auto it = subToUpstream_.find(subId);
+  if (it == subToUpstream_.end())
+    return;
+  Upstream& up = *it->second;
+  std::scoped_lock upLock(up.mtx);
+  const auto sub = std::ranges::find(up.subs, subId, &Subscriber::subId);
+  if (sub != up.subs.end()) {
+    if ((*sub)->sink && (*sub)->sink.get() != owner)
       return;
-    up = it->second;
-    subToUpstream_.erase(it);
+    up.subs.erase(sub);
   }
+  subToUpstream_.erase(it);
+}
 
-  std::lock_guard<std::mutex> upLock(up->mtx);
-  up->subs.erase(std::remove_if(up->subs.begin(), up->subs.end(),
-                                [&](const auto& s) {
-                                  return s->subId == subId;
-                                }),
-                 up->subs.end());
+int StreamHub::subscriptionsOf(const ISink* sink)
+{
+  std::scoped_lock hubLock(hubMutex_);
+  int count = 0;
+  for (const auto& [name, up] : upstreams_) {
+    std::scoped_lock upLock(up->mtx);
+    count += static_cast<int>(std::ranges::count_if(
+        up->subs, [sink](const auto& sub) { return sub->sink.get() == sink; }));
+  }
+  return count;
 }
 
 void StreamHub::closeAll(const ISink* sink)

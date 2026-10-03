@@ -44,7 +44,6 @@ public:
 
   void onClosed(const StreamHub::StreamClosedInput& input) override
   {
-    dropSubscription();
     if (!conn_ || conn_->disconnected())
       return;
     Json::Value j;
@@ -54,29 +53,10 @@ public:
     conn_->sendJson(j);
   }
 
-  int subscriptions() const
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return subscriptions_;
-  }
-
-  void addSubscription()
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    ++subscriptions_;
-  }
-
-  void dropSubscription()
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    subscriptions_ = std::max(0, subscriptions_ - 1);
-  }
-
 private:
   drogon::WebSocketConnectionPtr conn_;
   int64_t window_;
   int64_t inFlight_{0};
-  int subscriptions_{0};
   mutable std::mutex mutex_;
 };
 
