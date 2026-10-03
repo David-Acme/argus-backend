@@ -69,7 +69,26 @@ drogon::Task<void> ProjectMemberFeatureService::emitParent(
   co_await sink->emitUsers({.userIds = {input.userId},
                             .body = std::move(body),
                             .client = input.client});
-  co_return;
+
+  const auto tasks =
+      co_await taskRepository_.findByProject(parent->id, input.client);
+  for (const auto& task : tasks) {
+    SocketEmitDto taskBody;
+    taskBody.operation = operation;
+    taskBody.option = TableName::ProjectTask;
+    if (operation == SyncOperation::Delete) {
+      Json::Value tombstone;
+      tombstone["id"] = task.id;
+      tombstone["deletedAt"] = static_cast<Json::Int64>(std::time(nullptr));
+      taskBody.obj = tombstone;
+    }
+    else {
+      taskBody.obj = task.toJson();
+    }
+    co_await sink->emitUsers({.userIds = {input.userId},
+                              .body = std::move(taskBody),
+                              .client = input.client});
+  }
 }
 
 drogon::Task<ProjectMemberResult>

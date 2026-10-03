@@ -21,11 +21,13 @@ ProjectTaskRepository::findById(int64_t id, drogon::orm::DbClient* client) const
 }
 
 drogon::Task<std::vector<ProjectTaskSchema>>
-ProjectTaskRepository::findByProject(int64_t projectId) const
+ProjectTaskRepository::findByProject(int64_t projectId,
+                                     drogon::orm::DbClient* client) const
 {
-  auto client = DbService::productivityClient();
+  const auto pooled = DbService::productivityClient();
+  auto* resolved = client ? client : pooled.get();
   const auto result =
-      co_await client->execSqlCoro(FIND_BY_PROJECT.data(), projectId);
+      co_await resolved->execSqlCoro(FIND_BY_PROJECT.data(), projectId);
 
   std::vector<ProjectTaskSchema> data;
   for (const auto& row : result)

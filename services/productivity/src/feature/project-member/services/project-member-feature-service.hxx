@@ -7,6 +7,7 @@
 #include <feature/project-member/dtos/update-project-member-dto.hxx>
 #include <optional>
 #include <shared/repositories/project-member/project-member-repository.hxx>
+#include <shared/repositories/project-task/project-task-repository.hxx>
 #include <shared/repositories/project/project-repository.hxx>
 #include <shared/schemas/project-member/project-member-schema.hxx>
 #include <sync/user-change-sink.hxx>
@@ -56,5 +57,6 @@ private:
 
   ProjectMemberRepository repository_;
   ProjectRepository parentRepository_;
+  ProjectTaskRepository taskRepository_;
   IdentityUserDirectory directory_;
 };

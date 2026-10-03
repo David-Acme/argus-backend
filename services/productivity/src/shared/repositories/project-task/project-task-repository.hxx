@@ -19,7 +19,8 @@ public:
   drogon::Task<std::optional<ProjectTaskSchema>>
   findById(int64_t id, drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<std::vector<ProjectTaskSchema>>
-  findByProject(int64_t projectId) const;
+  findByProject(int64_t projectId,
+                drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<ProjectTaskSchema>
   create(const ProjectTaskCreateInput& input) const;
   drogon::Task<ProjectTaskSchema>
