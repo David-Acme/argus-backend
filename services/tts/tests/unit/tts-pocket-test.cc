@@ -90,6 +90,11 @@ struct StreamRun
   std::size_t stopAfter{0};
 };
 
+PocketVoiceResolution resolvedVoice(const PocketVoiceChoice& choice)
+{
+  return TtsService::resolvePocketVoice(choice).value_or(PocketVoiceResolution{.voice = "none", .fallback = false});
+}
+
 Synthesis stream(const StreamRun& run)
 {
   Synthesis result;
@@ -154,10 +159,9 @@ TEST_CASE("jean answers every request id by default in both languages, and the q
   for (const auto lang : {TtsLang::ES, TtsLang::EN}) {
     CHECK(TtsService::configuredPocketVoice(lang) == "jean");
     for (const auto* id : {"M1", "M2", "M3", "M4", "M5", "F1", "F2", "F3", "F4", "F5"}) {
-      const auto resolved = TtsService::resolvePocketVoice({.lang = lang, .requestVoiceId = id, .installed = everything});
-      REQUIRE(resolved.has_value());
-      CHECK(resolved->voice == "jean");
-      CHECK_FALSE(resolved->fallback);
+      const auto resolved = resolvedVoice({.lang = lang, .requestVoiceId = id, .installed = everything});
+      CHECK(resolved.voice == "jean");
+      CHECK_FALSE(resolved.fallback);
     }
   }
 }
@@ -167,19 +171,16 @@ TEST_CASE("without jean installed the Commons voice of each language answers")
   const ScopedConfig config("");
   const auto withoutJean = [](const std::string& voice) { return voice != "jean"; };
   for (const auto* id : {"M3", "F1"}) {
-    const auto spanish = TtsService::resolvePocketVoice({.lang = TtsLang::ES, .requestVoiceId = id, .installed = withoutJean});
-    REQUIRE(spanish.has_value());
-    CHECK(spanish->voice == "lola");
-    CHECK(spanish->fallback);
-    const auto english = TtsService::resolvePocketVoice({.lang = TtsLang::EN, .requestVoiceId = id, .installed = withoutJean});
-    REQUIRE(english.has_value());
-    CHECK(english->voice == "alba");
-    CHECK(english->fallback);
+    const auto spanish = resolvedVoice({.lang = TtsLang::ES, .requestVoiceId = id, .installed = withoutJean});
+    CHECK(spanish.voice == "lola");
+    CHECK(spanish.fallback);
+    const auto english = resolvedVoice({.lang = TtsLang::EN, .requestVoiceId = id, .installed = withoutJean});
+    CHECK(english.voice == "alba");
+    CHECK(english.fallback);
   }
   const auto onlyGiovanni = [](const std::string& voice) { return voice == "giovanni"; };
-  const auto last = TtsService::resolvePocketVoice({.lang = TtsLang::ES, .requestVoiceId = "M3", .installed = onlyGiovanni});
-  REQUIRE(last.has_value());
-  CHECK(last->voice == "giovanni");
+  const auto last = resolvedVoice({.lang = TtsLang::ES, .requestVoiceId = "M3", .installed = onlyGiovanni});
+  CHECK(last.voice == "giovanni");
   const auto nothing = [](const std::string&) { return false; };
   CHECK_FALSE(TtsService::resolvePocketVoice({.lang = TtsLang::ES, .requestVoiceId = "M3", .installed = nothing}).has_value());
   CHECK_FALSE(TtsService::resolvePocketVoice({.lang = TtsLang::FR, .requestVoiceId = "M3", .installed = withoutJean}).has_value());
@@ -190,15 +191,13 @@ TEST_CASE("the owner's voice choice wins, and a missing one keeps the requested 
   const ScopedConfig config("[tts]\npocket_voice_es = \"lola\"\npocket_voice_en = \"michael\"\n");
   const auto everything = [](const std::string&) { return true; };
   for (const auto* id : {"M3", "F2"})
-    CHECK(TtsService::resolvePocketVoice({.lang = TtsLang::ES, .requestVoiceId = id, .installed = everything})->voice == "lola");
+    CHECK(resolvedVoice({.lang = TtsLang::ES, .requestVoiceId = id, .installed = everything}).voice == "lola");
   const auto withoutMichael = [](const std::string& voice) { return voice != "michael"; };
-  const auto male = TtsService::resolvePocketVoice({.lang = TtsLang::EN, .requestVoiceId = "M1", .installed = withoutMichael});
-  REQUIRE(male.has_value());
-  CHECK(male->voice == "jean");
-  CHECK(male->fallback);
-  const auto female = TtsService::resolvePocketVoice({.lang = TtsLang::EN, .requestVoiceId = "F4", .installed = withoutMichael});
-  REQUIRE(female.has_value());
-  CHECK(female->voice == "alba");
+  const auto male = resolvedVoice({.lang = TtsLang::EN, .requestVoiceId = "M1", .installed = withoutMichael});
+  CHECK(male.voice == "jean");
+  CHECK(male.fallback);
+  const auto female = resolvedVoice({.lang = TtsLang::EN, .requestVoiceId = "F4", .installed = withoutMichael});
+  CHECK(female.voice == "alba");
   const ScopedConfig unknown("[tts]\npocket_voice_es = \"cosette\"\n");
   CHECK(TtsService::configuredPocketVoice(TtsLang::ES) == "jean");
 }

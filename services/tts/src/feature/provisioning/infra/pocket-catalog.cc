@@ -6,6 +6,7 @@
 #include <iterator>
 #include <optional>
 #include <ranges>
+#include <string>
 
 namespace
 {
@@ -13,10 +14,11 @@ constexpr std::size_t kMaxTokenLength = 32;
 
 std::optional<std::uint64_t> bytesOf(std::string_view text)
 {
+  const std::string digits(text);
   std::uint64_t value = 0;
-  const auto* last = text.data() + text.size();
-  const auto [end, error] = std::from_chars(text.data(), last, value);
-  if (text.empty() || error != std::errc{} || end != last || value == 0)
+  const auto* last = digits.data() + digits.size();
+  const auto [end, error] = std::from_chars(digits.data(), last, value);
+  if (digits.empty() || error != std::errc{} || end != last || value == 0)
     return std::nullopt;
   return value;
 }

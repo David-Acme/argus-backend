@@ -282,8 +282,8 @@ TEST_CASE("only what the changed keys now need is installed, once")
 TEST_CASE("the provisioning script is found only next to the models it would write")
 {
   const FakeRepository repository("exit 0\n");
-  REQUIRE(provisionScriptFor(repository.paths()).has_value());
-  CHECK(*provisionScriptFor(repository.paths()) == std::filesystem::canonical(repository.script()));
+  CHECK(provisionScriptFor(repository.paths()).value_or(std::filesystem::path()) ==
+        std::filesystem::canonical(repository.script()));
 
   auto elsewhere = repository.paths();
   elsewhere.pocketDir = std::filesystem::temp_directory_path();
