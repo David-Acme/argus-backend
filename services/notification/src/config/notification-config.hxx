@@ -1,8 +1,11 @@
 #pragma once
 
+#include <grpc/grpc-server-identity.hxx>
 #include <http/listener-config.hxx>
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 struct NotificationDbConfig
 {
@@ -23,4 +26,7 @@ public:
   static ListenerConfig resolveListener();
   static GrpcListenerConfig resolveRpcListener();
   static NotificationIdentityConfig resolveIdentity();
+  static std::vector<argus::client::CallerCredential> resolveSettingsCallers();
+  static int64_t resolveAckWindowS();
+  static int64_t resolveSelfTestIntervalS();
 };

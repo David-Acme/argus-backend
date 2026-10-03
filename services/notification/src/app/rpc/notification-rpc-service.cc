@@ -3,6 +3,7 @@
 #include <drogon/drogon.h>
 #include <grpc/grpc-server-identity.hxx>
 #include <config/config-service.hxx>
+#include <config/notification-config.hxx>
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
 #include <vector>
@@ -111,9 +112,7 @@ void NotificationRpcService::startSelfTestProber()
     LOG_INFO << "delivery self-test disabled: no delivery sink installed";
     return;
   }
-  int64_t intervalS = 300;
-  if (ConfigService::hasKey("notifications.selftest_interval_s"))
-    intervalS = ConfigService::getInt("notifications.selftest_interval_s");
+  const int64_t intervalS = NotificationConfig::resolveSelfTestIntervalS();
   if (intervalS <= 0) {
     LOG_INFO << "delivery self-test disabled by configuration";
     return;

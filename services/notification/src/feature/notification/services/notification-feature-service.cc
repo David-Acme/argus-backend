@@ -1,18 +1,10 @@
 #include "notification-feature-service.hxx"
 
 #include <ctime>
-#include <config/config-service.hxx>
+#include <config/notification-config.hxx>
 
 namespace
 {
-int64_t ackWindowS()
-{
-  if (!ConfigService::hasKey("notifications.ack_window_s"))
-    return 86400;
-  const int64_t window = ConfigService::getInt("notifications.ack_window_s");
-  return window > 0 ? window : 86400;
-}
-
 constexpr int64_t kDefaultSummaryWindowS = 24LL * 3600;
 }
 
@@ -36,7 +28,7 @@ drogon::Task<Json::Value> NotificationFeatureService::deliverySummary(
 {
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
   const DeliverySummary summary = co_await notificationService_.deliverySummary(
-      since > 0 ? since : now - kDefaultSummaryWindowS, ackWindowS());
+      since > 0 ? since : now - kDefaultSummaryWindowS, NotificationConfig::resolveAckWindowS());
   Json::Value response(Json::objectValue);
   response["pending"] = Json::Int64(summary.pending);
   response["unacked"] = Json::Int64(summary.unacked);

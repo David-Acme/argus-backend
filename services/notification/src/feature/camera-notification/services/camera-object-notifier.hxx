@@ -56,4 +56,6 @@ namespace camera_notifier
 CameraNotificationPolicy::Config resolveConfig();
 
 void subscribe(NatsBus& bus, CameraObjectNotifier& notifier);
+
+void refresh(CameraObjectNotifier& notifier);
 }

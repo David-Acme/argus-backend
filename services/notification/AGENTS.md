@@ -56,7 +56,9 @@ argus-notification/
   src/app/rpc/          argus.notification.v1 owner (create + pull) —
                         module argus::notification-rpc
   src/config/           argus::notification-config — notification.db, the TLS
-                        listener, the gRPC listener and the identity pair
+                        listener, the gRPC listener, the identity pair, the
+                        settings caller, the ack window and the self-test
+                        interval
   src/feature/notification/
                         controllers/, dtos/, repositories/, schemas/, services/
                         — the HTTP write-side surface, the delivery-proof
@@ -65,13 +67,17 @@ argus-notification/
   src/feature/camera-notification/
                         camera object policy + notifier and the fallback log;
                         module argus::notification-camera-notification
+  src/feature/settings/ argus::notification-settings — the owner-editable
+                        catalog, served by argus.settings.v1 on the gRPC
+                        listener when `[grpc] caller_settings` is set
   src/shared/           argus::notification-shared — the notification
                         repository, schema and delivery service both features
                         read — plus the change outbox and the change and
                         delivery sinks
   config.toml.example   the notification roster ([server], [drogon.app],
                         [notification], [notifications], [cert], [jwt],
-                        [device], [identity], [grpc], [nats], [push], [mdns]
+                        [device], [identity], [grpc] (caller_guard,
+                        caller_sync, caller_settings), [nats], [push], [mdns]
                         — the camera notifier resolves recipients from
                         [notifications]; no AI keys)
   CONTEXT.md            purpose, ownership, wiring decisions
@@ -80,8 +86,9 @@ argus-notification/
 Every feature and the `app/rpc/` owner is a rule-25 module: the folder holds
 its own `CMakeLists.txt` declaring its sources and dependencies once, the
 root file discovers them (`feature/*/CMakeLists.txt`) and the executable
-links `argus::notification-feature`, `argus::notification-rpc` and
-`argus::notification-camera-notification` by name. The feature module goes in
+links `argus::notification-feature`, `argus::notification-rpc`,
+`argus::notification-camera-notification` and
+`argus::notification-settings` by name. The feature module goes in
 **whole-archive** (`$<LINK_LIBRARY:WHOLE_ARCHIVE,argus::notification-feature>`)
 because its two HTTP controllers are Drogon `AutoCreation` controllers: their
 routes come from a static initializer, so a plain archive link would drop

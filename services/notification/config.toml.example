@@ -68,6 +68,7 @@ trusted_proxy_ips = ""
 [grpc]
 caller_guard = ""
 caller_sync = ""
+caller_settings = ""
 
 [nats]
 url = "nats://127.0.0.1:4222"

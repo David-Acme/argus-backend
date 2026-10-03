@@ -35,6 +35,8 @@ public:
 
   const Config& config() const { return config_; }
 
+  void reconfigure(const Config& config) { config_ = config; }
+
   bool shouldNotify(int64_t cameraId, int64_t nowMs);
 
   void countSuppressed(int64_t cameraId, const std::string& objectClass);

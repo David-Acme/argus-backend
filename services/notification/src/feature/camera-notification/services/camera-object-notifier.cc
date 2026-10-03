@@ -271,9 +271,11 @@ CameraNotificationPolicy::Config resolveConfig()
   config.budgetPerHour = ConfigService::getInt("notifications.budget_per_hour");
   if (config.budgetPerHour <= 0)
     config.budgetPerHour = 6;
-  config.silentStartHour =
-      ConfigService::getInt("notifications.silent_start");
-  config.silentEndHour = ConfigService::getInt("notifications.silent_end");
+  if (ConfigService::hasKey("notifications.silent_start"))
+    config.silentStartHour =
+        ConfigService::getInt("notifications.silent_start");
+  if (ConfigService::hasKey("notifications.silent_end"))
+    config.silentEndHour = ConfigService::getInt("notifications.silent_end");
   const int timeoutS =
       ConfigService::getInt("notifications.guard_heartbeat_timeout_s");
   config.guardTimeoutMs =
@@ -291,6 +293,14 @@ CameraNotificationPolicy::Config resolveConfig()
     config.fallbackRetentionDays =
         ConfigService::getInt("notifications.fallback_retention_days");
   return config;
+}
+
+void refresh(CameraObjectNotifier& notifier)
+{
+  drogon::app().getIOLoop(0)->runInLoop(
+      [&notifier, config = resolveConfig()]() {
+        notifier.policy().reconfigure(config);
+      });
 }
 
 void subscribe(NatsBus& bus, CameraObjectNotifier& notifier)

@@ -1,6 +1,7 @@
 #include <drogon/drogon.h>
 #include <feature/camera-notification/services/camera-object-notifier.hxx>
 #include <app/rpc/notification-rpc-service.hxx>
+#include <feature/settings/notification-settings.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/role-filter.hxx>
@@ -19,6 +20,7 @@
 #include <nats/nats-push-intent-sink.hxx>
 #include <nats/nats-subject.hxx>
 #include <runtime/shutdown-signal.hxx>
+#include <settings/settings-rpc.hxx>
 #include <runtime/log-output.hxx>
 #include <config/notification-config.hxx>
 #include <sync/user-change-sink.hxx>
@@ -28,6 +30,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -254,12 +257,26 @@ int main()
   });
 
   NotificationRpcService notificationRpc(deliveryDeps);
+  SettingsRegistry settings(notificationSettingsCatalog());
+  settings.onChange([cameraNotifier](const std::vector<std::string>&) {
+    if (cameraNotifier)
+      camera_notifier::refresh(*cameraNotifier);
+  });
+  std::unique_ptr<SettingsRpcService> settingsRpc;
+  if (auto callers = NotificationConfig::resolveSettingsCallers();
+      !callers.empty())
+    settingsRpc = std::make_unique<SettingsRpcService>(
+        SettingsRpcInput{.service = "notification",
+                         .registry = &settings,
+                         .credentials = std::move(callers)});
 
   grpc::ServerBuilder grpcBuilder;
   const std::string grpcAddress =
       grpcListener.host + ":" + std::to_string(grpcListener.port);
   grpcBuilder.AddListeningPort(grpcAddress, grpc::InsecureServerCredentials());
   grpcBuilder.RegisterService(&notificationRpc);
+  if (settingsRpc)
+    grpcBuilder.RegisterService(settingsRpc.get());
   std::unique_ptr<grpc::Server> grpcServer(grpcBuilder.BuildAndStart());
   if (!grpcServer) {
     LOG_FATAL << "gRPC server failed to listen on " << grpcAddress;

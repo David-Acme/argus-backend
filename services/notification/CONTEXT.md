@@ -363,3 +363,58 @@ its two NATS sinks are `src/shared/services/change-sink/` and
 but `config.toml` loading and the `nats.url` gate on the optional bus; the
 push gate it consults is `push_intent::enabledFromConfig()`, read where push
 is wired, not a config-module resolver.
+
+## Owner settings
+
+`src/feature/settings/notification-settings.cc`
+(`argus::notification-settings`) is the catalog an owner may change through
+`argus.settings.v1.Settings`, registered on the notification gRPC listener
+(7038) beside `NotificationService` (`argus::contracts::settings-wire`).
+Groups are `alerts`, `quiet`, `delivery` and `history`.
+
+| Key | Level | Applies | Group | Range | Fallback |
+|---|---|---|---|---|---|
+| `notifications.budget_per_hour` | basic | live | alerts | 1-60 | 6 |
+| `notifications.fallback_suppress_known` | basic | live | alerts | toggle | true |
+| `notifications.fallback_min_score_median` | advanced | live | alerts | 0.05-0.95 | 0.3 |
+| `notifications.fallback_min_dwell_ms` | advanced | live | alerts | 100-60000 | 1000 |
+| `notifications.guard_heartbeat_timeout_s` | advanced | live | alerts | 5-600 | 30 |
+| `notifications.silent_start` | basic | live | quiet | -1-23 | -1 |
+| `notifications.silent_end` | basic | live | quiet | -1-23 | -1 |
+| `notifications.ack_window_s` | advanced | live | delivery | 3600-604800 | 86400 |
+| `notifications.selftest_interval_s` | advanced | restart | delivery | 0-3600 | 300 |
+| `notifications.fallback_retention_days` | advanced | live | history | 1-3650 | 90 |
+
+`-1` in either quiet-hour bound means no quiet hours; the window is
+`[silent_start, silent_end)` in local time and may wrap midnight. A
+`selftest_interval_s` of 0 disables the delivery self-test.
+
+The camera policy keys are live through a refresh, not a re-read per use:
+`CameraNotificationPolicy` copies its `Config` and every reader of it
+(`handle`, the heartbeat mark, the digest flush and the fallback-log purge)
+runs on I/O loop 0. The registry's `onChange` in `src/app/main.cc` calls
+`camera_notifier::refresh`, which resolves the config again and posts
+`CameraNotificationPolicy::reconfigure` onto that same loop, so the swap
+never races a reader. Per-camera hourly windows, suppressed counts and the
+last guard heartbeat survive the swap; a lowered budget applies to the
+current hour's window. Without NATS there is no notifier and nothing to
+refresh. `ack_window_s` is read by `NotificationConfig::resolveAckWindowS()`
+on every delivery summary, so it needs no hook. `selftest_interval_s` sets
+the `runEvery` period once in `startSelfTestProber()`, so it is restart.
+
+A fallback is what the service runs with when the key is absent. One
+absent-key default changed to make that true: an absent `silent_start` or
+`silent_end` now resolves to -1 (it was 0, so setting only one bound made a
+quiet window up to midnight or from midnight). `notification-settings-test`
+pins every fallback against `camera_notifier::resolveConfig()` and the two
+`NotificationConfig` resolvers.
+
+The database and schema paths, the identity target and secret, NATS, push
+and the caller secrets stay out of the catalog.
+
+`[grpc] caller_settings` is the only credential the settings service accepts
+(service name `settings`); `CreateNotifications` keeps `caller_guard` and
+`PullNotifications` keeps `caller_sync`. An empty `caller_settings`, or one
+equal to either of the others, registers no settings service.
+`notification-settings-test` checks the separation both ways on a live
+server holding both services.

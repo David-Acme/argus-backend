@@ -14,6 +14,7 @@ argus_module(NAME notification-feature
     INCLUDES ../..
     DEPENDS
         argus::notification-shared
+        argus::notification-config
         argus::lib::auth
         argus::lib::config
         argus::lib::errors
