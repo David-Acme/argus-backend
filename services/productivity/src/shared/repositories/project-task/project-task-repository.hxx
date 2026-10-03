@@ -27,6 +27,8 @@ public:
   update(int64_t id, const ProjectTaskUpdateInput& input) const;
   drogon::Task<bool> remove(int64_t id,
                             drogon::orm::DbClient* client = nullptr) const;
+  drogon::Task<void> removeByProject(int64_t projectId,
+                                     drogon::orm::DbClient* client = nullptr) const;
 
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;

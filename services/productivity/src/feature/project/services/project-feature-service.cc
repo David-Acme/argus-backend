@@ -37,6 +37,38 @@ drogon::Task<void> ProjectFeatureService::emit(const EmitInput& input) const
   co_return;
 }
 
+drogon::Task<void>
+ProjectFeatureService::retireTasks(const EmitInput& input) const
+{
+  const ProjectSchema& project = input.row;
+  const auto tasks =
+      co_await taskRepository_.findByProject(project.id, input.client);
+  if (tasks.empty())
+    co_return;
+  co_await taskRepository_.removeByProject(project.id, input.client);
+
+  const auto* sink = user_change::getProductivitySink();
+  if (!sink) {
+    LOG_WARN << "user change sink not installed; drop project task tombstones";
+    co_return;
+  }
+  auto recipients = co_await memberRepository_.memberIds(project.id, input.client);
+  recipients.push_back(project.ownerId);
+  const auto deletedAt = static_cast<Json::Int64>(std::time(nullptr));
+  for (const auto& task : tasks) {
+    SocketEmitDto body;
+    body.operation = SyncOperation::Delete;
+    body.option = TableName::ProjectTask;
+    Json::Value tombstone;
+    tombstone["id"] = task.id;
+    tombstone["deletedAt"] = deletedAt;
+    body.obj = tombstone;
+    co_await sink->emitUsers({.userIds = recipients,
+                              .body = std::move(body),
+                              .client = input.client});
+  }
+}
+
 drogon::Task<bool>
 ProjectFeatureService::canEdit(const CanEditInput& input) const
 {
@@ -154,6 +186,9 @@ drogon::Task<bool> ProjectFeatureService::remove(int64_t id,
       co_return false;
     }
 
+    co_await retireTasks({.operation = SyncOperation::Delete,
+                          .row = before,
+                          .client = transaction.get()});
     co_await emit({.operation = SyncOperation::Delete,
                    .row = before,
                    .client = transaction.get()});

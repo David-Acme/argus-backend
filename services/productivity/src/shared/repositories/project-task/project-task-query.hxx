@@ -135,6 +135,11 @@ inline constexpr std::string_view REMOVE =
     "updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
 
+inline constexpr std::string_view REMOVE_BY_PROJECT =
+    "UPDATE project_task SET deleted_at = strftime('%s', 'now'), "
+    "updated_at = strftime('%s', 'now') "
+    "WHERE project_id = ? AND deleted_at IS NULL";
+
 }
 
 struct ProjectTaskCreateInput

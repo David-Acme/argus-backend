@@ -134,6 +134,15 @@ drogon::Task<bool> ProjectTaskRepository::remove(int64_t id,
   co_return result.affectedRows() > 0;
 }
 
+drogon::Task<void>
+ProjectTaskRepository::removeByProject(int64_t projectId,
+                                       drogon::orm::DbClient* client) const
+{
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
+  co_await effective->execSqlCoro(REMOVE_BY_PROJECT.data(), projectId);
+}
+
 drogon::Task<std::vector<Json::Value>>
 ProjectTaskRepository::find(const SyncFilter& filter) const
 {

@@ -7,6 +7,7 @@
 #include <feature/project/dtos/update-project-dto.hxx>
 #include <optional>
 #include <shared/repositories/project-member/project-member-repository.hxx>
+#include <shared/repositories/project-task/project-task-repository.hxx>
 #include <shared/repositories/project/project-repository.hxx>
 #include <shared/schemas/project/project-schema.hxx>
 #include <sync/user-change-sink.hxx>
@@ -43,8 +44,10 @@ private:
   };
 
   drogon::Task<void> emit(const EmitInput& input) const;
+  drogon::Task<void> retireTasks(const EmitInput& input) const;
   drogon::Task<bool> canEdit(const CanEditInput& input) const;
 
   ProjectRepository repository_;
   ProjectMemberRepository memberRepository_;
+  ProjectTaskRepository taskRepository_;
 };

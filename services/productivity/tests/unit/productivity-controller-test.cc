@@ -742,11 +742,21 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(eventGoneTwice->status == 404);
   CHECK(eventGoneTwice->message == "Calendar event not found");
 
+  const std::size_t emitsBeforeProjectGone = sink.emits.size();
   const auto projectGone =
       drogon::sync_wait(projectController.remove(ownerRequest(), projectId));
   CHECK(body(projectGone)["status"].asInt() == 200);
   CHECK(body(projectGone)["info"]["deleted"].asBool());
   CHECK(body(projectGone)["info"]["id"].asInt64() == projectId);
+  REQUIRE(sink.emits.size() == emitsBeforeProjectGone + 2);
+  CHECK(sink.emits.at(emitsBeforeProjectGone).option == "project_task");
+  CHECK(sink.emits.at(emitsBeforeProjectGone).operation ==
+        static_cast<int>(SyncOperation::Delete));
+  CHECK(sink.emits.at(emitsBeforeProjectGone).body["id"].asInt64() == taskId);
+  CHECK(sink.emits.back().option == "project");
+  const auto orphanedTask = refusalOf(taskController.remove(ownerRequest(), taskId));
+  REQUIRE(orphanedTask);
+  CHECK(orphanedTask->status == 404);
 
   user_change::setProductivitySink(nullptr);
   DbService::setProductivityClient(nullptr);
