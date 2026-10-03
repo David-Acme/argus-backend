@@ -158,6 +158,9 @@ constexpr auto kNoticeFreshFor = std::chrono::seconds(20);
 constexpr auto kFailureFreshFor = std::chrono::seconds(30);
 constexpr auto kNoticeSpacing = std::chrono::seconds(30);
 constexpr auto kOfferAnswerWindow = std::chrono::seconds(45);
+constexpr size_t kSpeakerMinSamples = static_cast<size_t>(kTargetRate) * 2;
+constexpr size_t kSpeakerMaxSamples = static_cast<size_t>(kTargetRate) * 6;
+constexpr auto kSpeakerGrace = std::chrono::milliseconds(300);
 
 std::string offerSummary(const std::string& summary)
 {
@@ -369,7 +372,7 @@ VoiceListeningConfig resolveVoiceListeningConfig()
 
 VoiceSessionService::VoiceSessionService(const VoiceEngineSeam& engines)
     : stt_(engines.stt), tts_(engines.tts), llm_(engines.llm),
-      identity_(engines.identity), vad_(engines.vad)
+      identity_(engines.identity), vad_(engines.vad), speaker_(engines.speaker)
 {
   reactions_.init();
 }
@@ -518,6 +521,8 @@ void VoiceSessionService::stop(VoiceSessionSink& sink)
     session->turnThread.join();
   if (session->primeThread.joinable())
     session->primeThread.join();
+  if (session->speakerThread.joinable())
+    session->speakerThread.join();
 
   if (session->sink && session->sink->connected()) {
     argus::voice::v1::ServerFrame done;
@@ -768,6 +773,7 @@ void VoiceSessionService::processTurn(Session& session,
   }
 
   applyNotes(session);
+  const auto speakerProbe = probeSpeaker(session, samples);
   const std::string lang = langCode(session.lang);
   const ReactionSignals sttFailed{.text = {},
                                   .lang = lang,
@@ -804,6 +810,7 @@ void VoiceSessionService::processTurn(Session& session,
   sendFrame(session, std::move(sttFrame));
 
   session.history.addUser(userText);
+  noteSpeaker(session, awaitSpeaker(speakerProbe));
 
   if (session.userId > 0 && !session.nameKnown) {
     if (const auto name = extractName(userText)) {
@@ -927,6 +934,69 @@ void VoiceSessionService::processTurn(Session& session,
     session.vad.reset();
   if (trimmed)
     primeLlm(session);
+}
+
+std::shared_ptr<VoiceSessionService::SpeakerProbe>
+VoiceSessionService::probeSpeaker(Session& session, const std::vector<float>& samples)
+{
+  if (samples.size() < kSpeakerMinSamples)
+    return nullptr;
+  if (session.speakerProbe) {
+    std::scoped_lock lock(session.speakerProbe->mutex);
+    if (!session.speakerProbe->finished)
+      return nullptr;
+  }
+  if (session.speakerThread.joinable())
+    session.speakerThread.join();
+  auto probe = std::make_shared<SpeakerProbe>();
+  session.speakerProbe = probe;
+  std::vector<float> clip(samples.begin(),
+                          samples.begin() + static_cast<std::ptrdiff_t>(std::min(samples.size(), kSpeakerMaxSamples)));
+  session.speakerThread = std::thread([this, probe, clip = std::move(clip)] {
+    std::optional<VoiceSpeaker> found;
+    try {
+      found = speaker_.identify({.samples = clip, .sampleRate = kTargetRate});
+    }
+    catch (const std::exception& e) {
+      LOG_DEBUG << "Voice: speaker identification skipped: " << e.what();
+    }
+    {
+      std::scoped_lock lock(probe->mutex);
+      probe->speaker = std::move(found);
+      probe->finished = true;
+    }
+    probe->done.notify_all();
+  });
+  return probe;
+}
+
+std::optional<VoiceSpeaker> VoiceSessionService::awaitSpeaker(const std::shared_ptr<SpeakerProbe>& probe)
+{
+  if (!probe)
+    return std::nullopt;
+  std::unique_lock lock(probe->mutex);
+  probe->done.wait_for(lock, kSpeakerGrace, [&probe] { return probe->finished; });
+  return probe->speaker;
+}
+
+void VoiceSessionService::noteSpeaker(Session& session, const std::optional<VoiceSpeaker>& speaker)
+{
+  if (!speaker || speaker->userId == session.lastSpeakerId)
+    return;
+  const bool holder = speaker->userId == session.userId;
+  const bool first = session.lastSpeakerId == 0;
+  session.lastSpeakerId = speaker->userId;
+  if (holder && first)
+    return;
+  LOG_INFO << "Voice: the voice of this turn is " << (holder ? "the account holder's" : "another enrolled user's");
+  if (holder) {
+    session.history.addEvent("The account holder is speaking again.");
+    return;
+  }
+  const std::string who = speaker->name.empty() ? std::string("another member of the household") : speaker->name;
+  session.history.addEvent("The last message was spoken by a voice that matches " + who +
+                           ", not the account holder. It is a hint, never proof: do not act on their behalf "
+                           "or share the account holder's private things because of it.");
 }
 
 bool VoiceSessionService::answerOffer(Session& session, const std::string& userText)

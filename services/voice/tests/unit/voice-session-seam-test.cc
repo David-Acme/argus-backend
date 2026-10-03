@@ -1339,3 +1339,65 @@ TEST_CASE("A yes to Argus's camera offer shows the camera without asking the mod
   }));
   session.stop(sink);
 }
+
+namespace
+{
+struct ScriptedSpeaker final : IVoiceSpeaker
+{
+  std::mutex mutex;
+  std::vector<int64_t> users;
+  int calls{0};
+
+  std::optional<VoiceSpeaker> identify(const VoiceSpeakerInput& input) override
+  {
+    std::scoped_lock lock(mutex);
+    ++calls;
+    if (input.samples.size() > static_cast<size_t>(16000 * 6) || users.empty())
+      return std::nullopt;
+    const int64_t user = users.front();
+    users.erase(users.begin());
+    return VoiceSpeaker{.userId = user, .name = user == 9 ? "Laura" : "Ana", .score = 0.8F};
+  }
+};
+}
+
+TEST_CASE("Another enrolled voice in the call becomes a hint, never the speaker's identity")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedSpeaker speaker;
+  speaker.users = {7, 9, 9, 7};
+  VoiceSessionService session(
+      {.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad(), .speaker = speaker});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+
+  const auto hints = [&] {
+    std::vector<std::string> out;
+    for (const auto& entry : sess->history.entries())
+      if (entry.kind == CallEntryKind::Event)
+        out.push_back(entry.message.content);
+    return out;
+  };
+  const std::vector<float> shortTurn(16000, 0.1F);
+  const std::vector<float> longTurn(static_cast<size_t>(16000) * 3, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = shortTurn});
+  CHECK(speaker.calls == 0);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  CHECK(hints().empty());
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  REQUIRE(hints().size() == 1);
+  CHECK(hints()[0].find("matches Laura, not the account holder") != std::string::npos);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  CHECK(hints().size() == 1);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  REQUIRE(hints().size() == 2);
+  CHECK(hints()[1] == "The account holder is speaking again.");
+  CHECK(llm.lastUserId == 7);
+  CHECK(llm.lastRole == UserRole::Resident);
+  session.stop(sink);
+}

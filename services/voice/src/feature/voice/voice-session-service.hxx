@@ -85,6 +85,14 @@ private:
     std::chrono::steady_clock::time_point at{};
   };
 
+  struct SpeakerProbe
+  {
+    std::mutex mutex;
+    std::condition_variable done;
+    bool finished{false};
+    std::optional<VoiceSpeaker> speaker;
+  };
+
   struct SpeakOutcome
   {
     bool audible{false};
@@ -174,6 +182,9 @@ private:
     std::chrono::steady_clock::time_point lastNoticeAt{};
     std::atomic<int64_t> actionSeq{0};
     std::optional<CameraOffer> offer;
+    std::shared_ptr<SpeakerProbe> speakerProbe;
+    std::thread speakerThread;
+    int64_t lastSpeakerId{0};
   };
 
   std::shared_ptr<Session> sessionOf(VoiceSessionSink& sink) const;
@@ -190,6 +201,9 @@ private:
   void processTurn(Session& session, const std::vector<float>& samples);
   static ChatRequest turnRequest(Session& session);
   bool answerOffer(Session& session, const std::string& userText);
+  std::shared_ptr<SpeakerProbe> probeSpeaker(Session& session, const std::vector<float>& samples);
+  static std::optional<VoiceSpeaker> awaitSpeaker(const std::shared_ptr<SpeakerProbe>& probe);
+  static void noteSpeaker(Session& session, const std::optional<VoiceSpeaker>& speaker);
   void primeLlm(Session& session);
   void applyNotes(Session& session);
   std::optional<Notice> takeNotice(Session& session);
@@ -207,6 +221,7 @@ private:
   IVoiceLlm& llm_;
   IVoiceIdentity& identity_;
   IVoiceVad& vad_;
+  IVoiceSpeaker& speaker_;
 
   friend struct VoiceSessionTestAccess;
 };

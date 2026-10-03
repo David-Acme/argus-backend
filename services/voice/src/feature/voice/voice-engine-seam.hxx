@@ -3,6 +3,7 @@
 #include <argus/voice/v1/voice.pb.h>
 #include <chrono>
 #include <identity/identity-client.hxx>
+#include <identity/voiceprint-client.hxx>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -65,6 +66,41 @@ public:
   virtual ~IVoiceIdentity() = default;
 
   virtual void updateUserName(const VoiceNameWrite& write) = 0;
+};
+
+struct VoiceSpeakerInput
+{
+  const std::vector<float>& samples;
+  int32_t sampleRate{0};
+};
+
+struct VoiceSpeaker
+{
+  int64_t userId{0};
+  std::string name;
+  float score{0.0F};
+};
+
+class IVoiceSpeaker
+{
+public:
+  virtual ~IVoiceSpeaker() = default;
+
+  [[nodiscard]] virtual std::optional<VoiceSpeaker> identify(const VoiceSpeakerInput& input) = 0;
+};
+
+class GrpcVoiceSpeaker final : public IVoiceSpeaker
+{
+public:
+  [[nodiscard]] std::optional<VoiceSpeaker> identify(const VoiceSpeakerInput& input) override;
+
+private:
+  std::shared_ptr<const VoiceprintClient> clientFor(const std::string& target);
+
+  mutable std::mutex mutex_;
+  std::string cachedTarget_;
+  std::string cachedSecret_;
+  std::shared_ptr<const VoiceprintClient> client_;
 };
 
 class GrpcVoiceIdentity final : public IVoiceIdentity
@@ -157,6 +193,7 @@ IVoiceTts& voiceTts();
 IVoiceLlm& voiceLlm();
 IVoiceIdentity& voiceIdentity();
 IVoiceVad& voiceVad();
+IVoiceSpeaker& voiceSpeaker();
 
 struct VoiceEngineSeam
 {
@@ -165,4 +202,5 @@ struct VoiceEngineSeam
   IVoiceLlm& llm = voiceLlm();
   IVoiceIdentity& identity = voiceIdentity();
   IVoiceVad& vad = voiceVad();
+  IVoiceSpeaker& speaker = voiceSpeaker();
 };

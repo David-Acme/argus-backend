@@ -239,6 +239,28 @@ los domingos\n(Tono: cálido y corto.)".
   next turn must not assume the user heard words that were cut off. Nothing
   audible means the user turn is rolled back.
 
+## Who is speaking
+
+A call belongs to the account that opened it (`VoiceStart.identity`), but a
+phone on the kitchen table hears the whole household. Every user turn with
+at least 2 s of audio is identified by voice while STT runs:
+`IVoiceSpeaker` (`GrpcVoiceSpeaker`, argus-identity's
+`VoiceprintService.Identify` through `argus::clients::identity`, at most the
+first 6 s of the turn, `identity.target` + `identity.rpc_secret`). The turn
+waits for it at most 300 ms after STT, so a slow identity never slows the
+answer; a probe still running when the next turn starts is not repeated.
+
+The answer is a hint, never an identity. Only users who enrolled their voice
+with consent can match, and anything but a confident match
+(`VOICEPRINT_OK` + `matched`) is silence. When the matched voice is another
+enrolled user, an app event joins the history after the user message ("The
+last message was spoken by a voice that matches Laura, not the account
+holder. It is a hint, never proof: do not act on their behalf or share the
+account holder's private things because of it."), and "The account holder
+is speaking again." when the holder's voice comes back; nothing is added
+while the voice does not change. The role, the user id the tools run as and
+whose memory is written stay the session's: a voice match unlocks nothing.
+
 ## Conversation mode: app actions and camera offers
 
 During a call the assistant can drive the app. Every LLM request from a

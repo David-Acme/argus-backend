@@ -1,7 +1,9 @@
 #include "voice-engine-seam.hxx"
 
+#include <algorithm>
 #include <chrono>
 #include <drogon/drogon.h>
+#include <iterator>
 #include <identity/identity-client.hxx>
 #include <config/config-service.hxx>
 #include <stdexcept>
@@ -45,6 +47,49 @@ IVoiceVad& voiceVad()
 {
   static SileroVoiceVad adapter;
   return adapter;
+}
+
+IVoiceSpeaker& voiceSpeaker()
+{
+  static GrpcVoiceSpeaker adapter;
+  return adapter;
+}
+
+std::shared_ptr<const VoiceprintClient>
+GrpcVoiceSpeaker::clientFor(const std::string& target)
+{
+  const auto secret = ConfigService::getString("identity.rpc_secret");
+  if (!client_ || target != cachedTarget_ || secret != cachedSecret_) {
+    cachedTarget_ = target;
+    cachedSecret_ = secret;
+    client_ = std::make_shared<VoiceprintClient>(
+        VoiceprintClientConfig{.target = target, .fleetSecret = secret});
+  }
+  return client_;
+}
+
+std::optional<VoiceSpeaker> GrpcVoiceSpeaker::identify(const VoiceSpeakerInput& input)
+{
+  const std::string target = identityTarget();
+  if (target.empty() || input.samples.empty())
+    return std::nullopt;
+  std::shared_ptr<const VoiceprintClient> client;
+  {
+    std::scoped_lock lock(mutex_);
+    client = clientFor(target);
+  }
+  std::vector<int16_t> pcm;
+  pcm.reserve(input.samples.size());
+  std::ranges::transform(input.samples, std::back_inserter(pcm), [](float sample) {
+    return static_cast<int16_t>(std::clamp(sample, -1.0F, 1.0F) * 32767.0F);
+  });
+  const auto answer = client->identify({.samples = pcm, .sampleRate = input.sampleRate});
+  if (!answer || answer->outcome() != argus::identity::v1::VOICEPRINT_OK || !answer->matched() ||
+      answer->user_id() <= 0)
+    return std::nullopt;
+  return VoiceSpeaker{.userId = answer->user_id(),
+                      .name = answer->has_name() ? answer->name() : std::string(),
+                      .score = answer->score()};
 }
 
 std::shared_ptr<const IdentityClient>
