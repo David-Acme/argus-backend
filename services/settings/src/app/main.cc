@@ -6,6 +6,7 @@
 #include <config/settings-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/settings/controllers/settings-controller.hxx>
+#include <http/certificate-reload.hxx>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
@@ -61,6 +62,7 @@ int main()
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
 
   drogon::app().loadConfigJson(drogonConfig(listener));
+  certificate_reload::watch(listener);
 
   drogon::app().registerPreRoutingAdvice(
       [](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&& cb, drogon::AdviceChainCallback&& chain) {
