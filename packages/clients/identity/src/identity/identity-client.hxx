@@ -21,6 +21,7 @@ struct RegisterUserInput
   std::string name;
   std::string invitationToken;
   std::string lang;
+  std::string deviceHash;
 };
 
 struct EnrollPersonInput

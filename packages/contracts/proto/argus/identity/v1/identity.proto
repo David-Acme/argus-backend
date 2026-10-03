@@ -29,6 +29,7 @@ message RegisterUserRequest
   optional string name = 2;
   optional string invitation_token = 3;
   optional string lang = 4;
+  optional string device_hash = 5;
 }
 
 enum RegisterUserOutcome

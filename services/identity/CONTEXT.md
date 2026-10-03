@@ -41,6 +41,20 @@ notifiable roster through `argus::clients::identity` instead of the tables it
 used to query. Phase 3d step 1c deleted the gateway and `identity.proxy_url`
 with it, so this service's own listener is the public API now.
 
+## Pairing and the first owner
+
+`POST /pairing` accepts the random code in `pairing.code` (see
+`packages/lib/cert`), under a process-wide lock so two callers cannot both
+pass the check-then-set, and records the paired device's hash
+(`DeviceFilter` now runs on the route) as `[pairing] owner_device`. The
+first registration of the installation becomes the Owner only from that
+same device: auth forwards the caller's device hash in
+`RegisterUserRequest.device_hash` and enrollment answers `NotPaired`
+otherwise. Before, the code was derivable from the CA certificate served in
+every TLS handshake, and anyone who registered first after the pairing -
+the legitimate owner or not - became the Owner. An installation paired
+before this change has no `owner_device` and keeps working.
+
 ## The port the pairing and invitation answers publish
 
 `PairingController` and `InvitationFeatureService::resolve` both answer the

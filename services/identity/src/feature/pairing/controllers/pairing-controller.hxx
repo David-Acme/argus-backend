@@ -10,7 +10,7 @@ class PairingController : public drogon::HttpController<PairingController, false
 public:
   METHOD_LIST_BEGIN
   ADD_METHOD_TO(PairingController::pair, "/pairing", drogon::Post,
-                "ValidJsonFilter");
+                "DeviceFilter", "ValidJsonFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> pair(drogon::HttpRequestPtr req);

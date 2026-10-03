@@ -87,6 +87,7 @@ secret_key = ""
 
 [pairing]
 paired = false
+owner_device = ""
 
 [remote]
 tunnel_port = 0

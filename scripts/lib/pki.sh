@@ -46,9 +46,15 @@ ensure_instance_certs() {
 
   local fingerprint
   fingerprint="$(openssl x509 -in "$cert_dir/ca.pem" -noout -fingerprint -sha256 | sed 's/.*=//; s/://g')"
-  echo "${fingerprint:0:8}" > "$cert_dir/pairing.code"
-  chmod 600 "$cert_dir/pairing.code"
+  local code_file="$cert_dir/pairing.code"
+  local code=""
+  [ -f "$code_file" ] && code="$(tr -d '[:space:]' < "$code_file")"
+  if [ -z "$code" ] || [ "$code" = "${fingerprint:0:8}" ]; then
+    code="$(openssl rand -hex 6 | tr 'a-f' 'A-F')"
+    (umask 077 && printf '%s\n' "$code" > "$code_file")
+  fi
+  chmod 600 "$code_file"
 
   log "CA fingerprint (SHA-256): $fingerprint"
-  log "Pairing code: ${fingerprint:0:8}"
+  log "Pairing code: $code"
 }

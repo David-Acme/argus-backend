@@ -235,6 +235,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::RegisterUser(
   input.name = request->name();
   input.invitationToken = request->invitation_token();
   input.lang = request->lang();
+  input.deviceHash = request->device_hash();
 
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;

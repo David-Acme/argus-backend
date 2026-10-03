@@ -205,7 +205,8 @@ AuthFeatureService::registerUser(RegisterDto body,
       {.image = std::move(body.image),
        .name = body.name,
        .invitationToken = body.inviteCode,
-       .lang = body.lang});
+       .lang = body.lang,
+       .deviceHash = device.deviceHash});
   if (!answer)
     throw ResponseException(AuthErrors::IdentityUnavailable);
 

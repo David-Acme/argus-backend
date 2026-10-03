@@ -103,6 +103,12 @@ EnrollmentFeatureService::registerUser(const EnrollmentInput& input) const
     lang = voiceLangFromString(ConfigService::getString("stt.language"));
 
   const bool isInitialOwner = !co_await userRepository_.hasAnyUser();
+  if (isInitialOwner) {
+    const std::string pairedDevice =
+        ConfigService::getString("pairing.owner_device");
+    if (!pairedDevice.empty() && pairedDevice != input.deviceHash)
+      co_return outcomeResult(EnrollmentOutcome::NotPaired);
+  }
   std::optional<UserInvitationSchema> invitation;
   std::string invitationHash;
   UserRole role = UserRole::Owner;

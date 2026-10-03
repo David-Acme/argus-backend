@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
+#include <algorithm>
 
 namespace
 {
@@ -145,9 +146,19 @@ std::string toUpper(std::string s)
   return s;
 }
 
-std::string deriveCode(const std::string& fingerprint)
+std::string loadPairingCode(const std::string& path)
 {
-  return fingerprint.size() >= 8 ? fingerprint.substr(0, 8) : std::string{};
+  std::ifstream in(path);
+  std::string code;
+  if (!(in >> code))
+    return {};
+  code = toUpper(code);
+  const bool hex = std::ranges::all_of(code, [](char c) {
+    return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F');
+  });
+  if (!hex || code.size() < 8 || code.size() > 12)
+    return {};
+  return code;
 }
 
 PKeyPtr generateEcKey()
@@ -350,7 +361,10 @@ bool CertService::init()
   gState.caPem = pemOf(ca.get());
   gState.caFingerprint = sha256Hex(ca.get());
   gState.serverFingerprint = sha256Hex(server.get());
-  gState.pairingCode = deriveCode(gState.caFingerprint);
+  gState.pairingCode = loadPairingCode(p.dir + "/pairing.code");
+  if (gState.pairingCode.empty())
+    LOG_WARN << "No pairing code in " << p.dir
+             << "/pairing.code - run scripts/setup.sh; pairing is disabled";
   gState.loaded.store(true);
 
   if (certDaysRemaining(server.get()) <= p.rotationThresholdDays) {
@@ -362,7 +376,7 @@ bool CertService::init()
   gState.rotationThread = std::thread(rotationLoop);
 
   LOG_INFO << "PKI loaded (instance " << gState.caFingerprint
-           << "), pairing code " << gState.pairingCode;
+           << ")";
   return true;
 }
 

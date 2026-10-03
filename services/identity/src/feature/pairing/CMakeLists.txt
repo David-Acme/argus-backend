@@ -6,11 +6,13 @@ argus_module(NAME identity-pairing
     INCLUDES ../..
     DEPENDS
         argus::identity-config
+        argus::lib::auth
         argus::lib::cert
         argus::lib::config
         argus::lib::errors
         argus::lib::http
         argus::lib::validation
+        argus::contracts::auth
         argus::contracts::identity
         Drogon::Drogon)
 

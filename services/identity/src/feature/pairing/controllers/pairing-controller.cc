@@ -7,20 +7,28 @@
 #include <identity/identity-errors.hxx>
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
+#include <auth/device-filter.hxx>
+#include <auth/request-context.hxx>
 #include <config/identity-config.hxx>
+#include <mutex>
 
 drogon::Task<drogon::HttpResponsePtr>
 PairingController::pair(drogon::HttpRequestPtr req)
 {
   const auto body = PairingDto::fromJson(*req->getJsonObject());
+  const auto& device =
+      req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
 
-  if (ConfigService::getBool("pairing.paired"))
-    throw ResponseException(IdentityErrors::ServerAlreadyPaired);
-
-  if (!CertService::verifyPairingCode(body.code))
-    throw ResponseException(IdentityErrors::InvalidPairingCode);
-
-  ConfigService::setBool("pairing.paired", true);
+  {
+    static std::mutex pairingMutex;
+    const std::scoped_lock lock(pairingMutex);
+    if (ConfigService::getBool("pairing.paired"))
+      throw ResponseException(IdentityErrors::ServerAlreadyPaired);
+    if (!CertService::verifyPairingCode(body.code))
+      throw ResponseException(IdentityErrors::InvalidPairingCode);
+    ConfigService::setString("pairing.owner_device", device.deviceHash);
+    ConfigService::setBool("pairing.paired", true);
+  }
 
   const int port = IdentityConfig::resolveAnnouncedPort();
 

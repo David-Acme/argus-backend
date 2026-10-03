@@ -36,7 +36,7 @@ identity	GET	/invitation	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/s
 identity	POST	/invitation	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/invitation/controllers/invitation-controller.hxx
 identity	POST	/invitation/resolve	ValidJsonFilter	-	services/identity/src/feature/invitation/controllers/invitation-controller.hxx
 identity	DELETE	/invitation/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/invitation/controllers/invitation-controller.hxx
-identity	POST	/pairing	ValidJsonFilter	-	services/identity/src/feature/pairing/controllers/pairing-controller.hxx
+identity	POST	/pairing	DeviceFilter,ValidJsonFilter	-	services/identity/src/feature/pairing/controllers/pairing-controller.hxx
 identity	GET	/portrait-preview/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/user/controllers/portrait-preview-controller.hxx
 identity	GET	/portrait-preview/{1}/content	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/user/controllers/portrait-preview-controller.hxx
 identity	GET	/user	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/user/controllers/user-controller.hxx

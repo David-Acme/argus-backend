@@ -52,6 +52,8 @@ IdentityClient::registerUser(const RegisterUserInput& input) const
     request.set_invitation_token(input.invitationToken);
   if (!input.lang.empty())
     request.set_lang(input.lang);
+  if (!input.deviceHash.empty())
+    request.set_device_hash(input.deviceHash);
 
   argus::identity::v1::RegisterUserResponse response;
   if (const grpc::Status status =

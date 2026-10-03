@@ -18,6 +18,7 @@ struct EnrollmentInput
   std::string name;
   std::string invitationToken;
   std::string lang;
+  std::string deviceHash;
 };
 
 enum class EnrollmentOutcome : uint8_t
