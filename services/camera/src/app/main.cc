@@ -285,8 +285,7 @@ int main()
         if (cameras.empty())
           co_return;
         co_await BlockingTask<void>([cameras = std::move(cameras)] {
-          for (const auto& camera : cameras)
-            cameraSourceRegistrar().apply(camera);
+          cameraSourceRegistrar().applyAll(cameras);
         });
       }
       catch (const std::exception& error) {

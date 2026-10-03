@@ -2,6 +2,11 @@
 #include <doctest/doctest.h>
 
 #include <shared/services/stream/camera-source-registrar.hxx>
+#include <shared/services/stream/go2rtc-manager.hxx>
+
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 #include <string>
 #include <utility>
@@ -12,18 +17,16 @@ namespace
 class RecordingSink : public ICameraSourceSink
 {
 public:
-  bool addSource(const std::string& name, const std::string& url) override
+  bool applySources(const CameraSourceChange& change) override
   {
-    added.emplace_back(name, url);
+    ++batches;
+    for (const auto& source : change.upserts)
+      added.emplace_back(source.name, source.url);
+    removed.insert(removed.end(), change.removals.begin(), change.removals.end());
     return true;
   }
 
-  bool removeSource(const std::string& name) override
-  {
-    removed.push_back(name);
-    return true;
-  }
-
+  int batches{0};
   std::vector<std::pair<std::string, std::string>> added;
   std::vector<std::string> removed;
 };
@@ -55,6 +58,7 @@ TEST_CASE("camera registrar syncs main and sub sources")
   CameraSourceRegistrar registrar(sink);
   registrar.apply(camera);
 
+  CHECK(sink.batches == 1);
   REQUIRE(sink.added.size() == 2);
   CHECK(sink.added[0].first == "cam3");
   CHECK(sink.added[0].second == "rtsp://admin:secret@10.0.0.7:554/stream1");
@@ -82,4 +86,62 @@ TEST_CASE("camera registrar removes sources when disabled")
   REQUIRE(sink.removed.size() == 2);
   CHECK(sink.removed[0] == "cam9");
   CHECK(sink.removed[1] == "cam9-sub");
+}
+
+TEST_CASE("camera registrar hands every camera at boot over in one batch")
+{
+  std::vector<CameraSchema> cameras(3);
+  for (int64_t i = 0; i < 3; ++i) {
+    cameras[static_cast<size_t>(i)].id = i + 1;
+    cameras[static_cast<size_t>(i)].ip = "10.0.0." + std::to_string(i + 1);
+    cameras[static_cast<size_t>(i)].isEnabled = i != 1;
+  }
+
+  RecordingSink sink;
+  CameraSourceRegistrar registrar(sink);
+  registrar.applyAll(cameras);
+
+  CHECK(sink.batches == 1);
+  CHECK(sink.added.size() == 4);
+  CHECK(sink.removed == std::vector<std::string>{"cam2", "cam2-sub"});
+
+  registrar.applyAll({});
+  CHECK(sink.batches == 1);
+}
+
+TEST_CASE("go2rtc rewrites its config only when a source really changed")
+{
+  const std::filesystem::path config = "go2rtc.yaml";
+  std::filesystem::remove(config);
+  const auto written = [&config] {
+    std::ifstream in(config);
+    std::stringstream body;
+    body << in.rdbuf();
+    return body.str();
+  };
+
+  Go2rtcManager manager;
+  const Go2rtcSource main{.name = "cam1", .url = "rtsp://10.0.0.1:554/stream1"};
+  CHECK(manager.applySources({.upserts = {main}, .removals = {}}));
+  CHECK(written().find("cam1: rtsp://10.0.0.1:554/stream1") != std::string::npos);
+
+  std::filesystem::remove(config);
+  CHECK(manager.applySources({.upserts = {main}, .removals = {}}));
+  CHECK_FALSE(std::filesystem::exists(config));
+  CHECK(manager.applySources({.upserts = {}, .removals = {"cam9"}}));
+  CHECK_FALSE(std::filesystem::exists(config));
+
+  CHECK(manager.applySources(
+      {.upserts = {{.name = "cam1", .url = "rtsp://10.0.0.2:554/stream1"}},
+       .removals = {}}));
+  CHECK(written().find("cam1: rtsp://10.0.0.2:554/stream1") != std::string::npos);
+
+  CHECK(manager.applySources(
+      {.upserts = {{.name = "cam2", .url = "rtsp://8.8.8.8:554/stream1"}},
+       .removals = {}}));
+  CHECK(written().find("cam2") == std::string::npos);
+
+  CHECK(manager.applySources({.upserts = {}, .removals = {"cam1"}}));
+  CHECK(written().find("cam1") == std::string::npos);
+  std::filesystem::remove(config);
 }

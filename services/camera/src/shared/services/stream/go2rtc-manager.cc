@@ -27,6 +27,7 @@ constexpr const char* kDefaultConfig = "go2rtc.yaml";
 constexpr const char* kDefaultApi = "127.0.0.1:1984";
 constexpr const char* kDefaultRtsp = "127.0.0.1:8554";
 constexpr const char* kSubStreamSuffix = "-sub";
+constexpr auto kHealthyResetAfter = std::chrono::seconds(60);
 
 bool isSubStreamName(const std::string& name)
 {
@@ -132,7 +133,7 @@ bool Go2rtcManager::writeConfig()
 {
   std::ofstream out(configPath_, std::ios::trunc);
   if (!out.is_open()) {
-    lastError_ = "cannot write " + configPath_;
+    setError("cannot write " + configPath_);
     return false;
   }
 
@@ -169,14 +170,14 @@ bool Go2rtcManager::writeConfig()
 bool Go2rtcManager::spawn()
 {
   if (::access(binPath_.c_str(), X_OK) != 0) {
-    lastError_ = "go2rtc binary not executable: " + binPath_;
-    LOG_ERROR << "Go2rtc: " << lastError_;
+    LOG_ERROR << "Go2rtc: binary not executable: " << binPath_;
+    setError("go2rtc binary not executable: " + binPath_);
     return false;
   }
 
   const pid_t pid = ::fork();
   if (pid < 0) {
-    lastError_ = std::string("fork failed: ") + std::strerror(errno);
+    setError(std::string("fork failed: ") + std::strerror(errno));
     return false;
   }
 
@@ -261,44 +262,48 @@ bool Go2rtcManager::waitReady(int maxMs)
       return true;
     std::this_thread::sleep_for(std::chrono::milliseconds(stepMs));
   }
-  lastError_ = "go2rtc did not become ready";
-  LOG_WARN << "Go2rtc: " << lastError_;
+  setError("go2rtc did not become ready");
+  LOG_WARN << "Go2rtc: did not become ready";
   return false;
 }
 
 void Go2rtcManager::supervise()
 {
   int backoffMs = 250;
+  auto healthySince = std::chrono::steady_clock::now();
   while (!stopping_.load(std::memory_order_relaxed)) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     if (stopping_.load(std::memory_order_relaxed))
       break;
 
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (stopping_.load(std::memory_order_relaxed))
+      break;
     const bool ok = healthCheck();
     healthy_.store(ok, std::memory_order_relaxed);
     if (ok) {
       backoffMs = 250;
+      if (std::chrono::steady_clock::now() - healthySince >= kHealthyResetAfter)
+        restarts_.store(0);
       continue;
     }
 
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (stopping_.load(std::memory_order_relaxed))
-      break;
-    if (restarts_ >= maxRestarts_) {
-      lastError_ = "go2rtc restart limit reached";
-      LOG_ERROR << "Go2rtc: " << lastError_ << " (" << restarts_
+    if (restarts_.load() >= maxRestarts_) {
+      setError("go2rtc restart limit reached");
+      LOG_ERROR << "Go2rtc: restart limit reached (" << restarts_.load()
                 << "); giving up until the next init()";
       return;
     }
 
-    ++restarts_;
-    LOG_WARN << "Go2rtc: unhealthy, restart " << restarts_ << "/"
+    const int restart = restarts_.fetch_add(1) + 1;
+    LOG_WARN << "Go2rtc: unhealthy, restart " << restart << "/"
              << maxRestarts_ << " in " << backoffMs << "ms";
     terminate();
     std::this_thread::sleep_for(std::chrono::milliseconds(backoffMs));
     backoffMs = std::min(backoffMs * 2, 30000);
     writeConfig();
     spawn();
+    healthySince = std::chrono::steady_clock::now();
   }
 }
 
@@ -322,10 +327,10 @@ void Go2rtcManager::init()
     maxRestarts_ = v;
 
   stopping_.store(false, std::memory_order_relaxed);
-  restarts_ = 0;
+  restarts_.store(0);
 
   if (!writeConfig()) {
-    LOG_ERROR << "Go2rtc: " << lastError_;
+    LOG_ERROR << "Go2rtc: cannot write " << configPath_;
     return;
   }
   if (!spawn())
@@ -356,62 +361,60 @@ Go2rtcStatus Go2rtcManager::status()
   Go2rtcStatus s;
   s.running = pid_ > 0;
   s.healthy = healthy_.load(std::memory_order_relaxed);
-  s.restarts = restarts_;
+  s.restarts = restarts_.load();
   s.pid = pid_;
+  std::lock_guard<std::mutex> lock(errorMutex_);
   s.lastError = lastError_;
   return s;
 }
 
-bool Go2rtcManager::addSource(const Go2rtcSource& source)
+void Go2rtcManager::setError(std::string error)
 {
-  if (!isSafeName(source.name)) {
-    LOG_WARN << "Go2rtc: rejected unsafe stream name";
-    return false;
-  }
-  if (!isSafeUrl(source.url)) {
-    LOG_WARN << "Go2rtc: rejected unsafe or non-private source url";
-    return false;
-  }
-
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto it = std::find_if(sources_.begin(), sources_.end(),
-                         [&](const Go2rtcSource& s) {
-                           return s.name == source.name;
-                         });
-  if (it != sources_.end())
-    it->url = source.url;
-  else
-    sources_.push_back(source);
-
-  if (!writeConfig())
-    return false;
-  if (pid_ > 0) {
-    terminate();
-    if (!spawn())
-      return false;
-    return waitReady(5000);
-  }
-  return true;
+  std::lock_guard<std::mutex> lock(errorMutex_);
+  lastError_ = std::move(error);
 }
 
-bool Go2rtcManager::removeSource(const std::string& name)
+bool Go2rtcManager::merge(const Go2rtcSourceChange& change)
+{
+  bool changed = false;
+  for (const auto& name : change.removals) {
+    const auto removed = std::erase_if(
+        sources_, [&](const Go2rtcSource& s) { return s.name == name; });
+    changed = changed || removed > 0;
+  }
+  for (const auto& source : change.upserts) {
+    if (!isSafeName(source.name)) {
+      LOG_WARN << "Go2rtc: rejected unsafe stream name";
+      continue;
+    }
+    if (!isSafeUrl(source.url)) {
+      LOG_WARN << "Go2rtc: rejected unsafe or non-private source url";
+      continue;
+    }
+    const auto it = std::ranges::find(sources_, source.name, &Go2rtcSource::name);
+    if (it == sources_.end()) {
+      sources_.push_back(source);
+      changed = true;
+    }
+    else if (it->url != source.url) {
+      it->url = source.url;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+bool Go2rtcManager::applySources(const Go2rtcSourceChange& change)
 {
   std::lock_guard<std::mutex> lock(mutex_);
-  const auto before = sources_.size();
-  sources_.erase(std::remove_if(sources_.begin(), sources_.end(),
-                                [&](const Go2rtcSource& s) {
-                                  return s.name == name;
-                                }),
-                 sources_.end());
-  if (sources_.size() == before)
-    return false;
+  if (!merge(change))
+    return true;
   if (!writeConfig())
     return false;
-  if (pid_ > 0) {
-    terminate();
-    if (!spawn())
-      return false;
-    return waitReady(5000);
-  }
-  return true;
+  if (pid_ <= 0)
+    return true;
+  terminate();
+  if (!spawn())
+    return false;
+  return waitReady(5000);
 }

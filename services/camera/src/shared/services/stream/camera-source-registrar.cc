@@ -35,17 +35,31 @@ std::string sourceName(int64_t cameraId, bool sub)
 class Go2rtcSourceSink : public ICameraSourceSink
 {
 public:
-  bool addSource(const std::string& name, const std::string& url) override
+  bool applySources(const CameraSourceChange& change) override
   {
-    return Go2rtcManager::instance().addSource(
-        Go2rtcSource{.name = name, .url = url});
-  }
-
-  bool removeSource(const std::string& name) override
-  {
-    return Go2rtcManager::instance().removeSource(name);
+    Go2rtcSourceChange sources;
+    sources.upserts.reserve(change.upserts.size());
+    for (const auto& source : change.upserts)
+      sources.upserts.push_back({.name = source.name, .url = source.url});
+    sources.removals = change.removals;
+    return Go2rtcManager::instance().applySources(sources);
   }
 };
+
+void collect(const CameraSchema& camera, CameraSourceChange& change)
+{
+  if (camera.id <= 0)
+    return;
+  if (!camera.isEnabled) {
+    change.removals.push_back(sourceName(camera.id, false));
+    change.removals.push_back(sourceName(camera.id, true));
+    return;
+  }
+  change.upserts.push_back({.name = sourceName(camera.id, false),
+                            .url = CameraSourceRegistrar::sourceUrl(camera, "stream1")});
+  change.upserts.push_back({.name = sourceName(camera.id, true),
+                            .url = CameraSourceRegistrar::sourceUrl(camera, "stream2")});
+}
 
 }
 
@@ -69,22 +83,25 @@ std::string CameraSourceRegistrar::sourceUrl(const CameraSchema& camera,
 
 void CameraSourceRegistrar::apply(const CameraSchema& camera) const
 {
-  if (camera.id <= 0)
-    return;
-  if (!camera.isEnabled) {
-    remove(camera.id);
-    return;
-  }
-  sink_.addSource(sourceName(camera.id, false), sourceUrl(camera, "stream1"));
-  sink_.addSource(sourceName(camera.id, true), sourceUrl(camera, "stream2"));
+  applyAll({camera});
+}
+
+void CameraSourceRegistrar::applyAll(const std::vector<CameraSchema>& cameras) const
+{
+  CameraSourceChange change;
+  for (const auto& camera : cameras)
+    collect(camera, change);
+  if (!change.upserts.empty() || !change.removals.empty())
+    sink_.applySources(change);
 }
 
 void CameraSourceRegistrar::remove(int64_t cameraId) const
 {
   if (cameraId <= 0)
     return;
-  sink_.removeSource(sourceName(cameraId, false));
-  sink_.removeSource(sourceName(cameraId, true));
+  sink_.applySources({.upserts = {},
+                      .removals = {sourceName(cameraId, false),
+                                   sourceName(cameraId, true)}});
 }
 
 CameraSourceRegistrar& cameraSourceRegistrar()

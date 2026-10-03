@@ -12,6 +12,12 @@ struct Go2rtcSource
   std::string url;
 };
 
+struct Go2rtcSourceChange
+{
+  std::vector<Go2rtcSource> upserts;
+  std::vector<std::string> removals;
+};
+
 struct Go2rtcStatus
 {
   bool running{false};
@@ -38,8 +44,7 @@ public:
   bool isRunning();
   Go2rtcStatus status();
 
-  bool addSource(const Go2rtcSource& source);
-  bool removeSource(const std::string& name);
+  bool applySources(const Go2rtcSourceChange& change);
 
   std::string apiBase();
   std::string rtspBase();
@@ -57,13 +62,16 @@ private:
   bool spawn();
   void terminate();
   void supervise();
+  void setError(std::string error);
+  bool merge(const Go2rtcSourceChange& change);
 
   std::vector<Go2rtcSource> sources_;
   std::mutex mutex_;
   std::atomic<bool> stopping_{false};
   std::atomic<bool> healthy_{false};
-  int64_t pid_ = 0;
-  int restarts_ = 0;
+  std::atomic<int64_t> pid_{0};
+  std::atomic<int> restarts_{0};
+  std::mutex errorMutex_;
   std::string lastError_;
   std::string binPath_;
   std::string configPath_;

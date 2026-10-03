@@ -76,8 +76,17 @@ sibling service: own binary, own CMake preset, own `camera.db`.
   `cam<id>`/`cam<id>-sub` sources at boot and on camera create/update/remove
   (disabled rows drop their sources). The URL derives from the camera row
   (`rtsp://user:pass@ip:port/stream1|stream2`, credentials percent-encoded).
-  go2rtc restarts per source change and the frame grab tolerates those
-  restarts, so neither the operator nor the HTTP loop is blocked by it.
+  A change reaches go2rtc as one batch (`applySources`): the boot hands every
+  enabled camera over at once, and an edit that leaves both URLs as they were
+  (a rename, a zone, a record mode) rewrites nothing and restarts nothing — a
+  restart drops every camera's stream and the operator's frames with it. Only
+  a real change restarts go2rtc, once per batch, off the event loop; the frame
+  grab tolerates that restart.
+- **Supervision**: the supervisor checks health under the manager's lock, so
+  the window an intended restart opens is never mistaken for a crash, and its
+  restart budget (`streaming.max_restarts`) is refilled after 60 s healthy.
+  It used to be a lifetime count, and supervision stopped for good after the
+  eighth blip.
 - **Explicit controller registration**: the camera, zone and camera-control
   controllers live in the shared static library, so their AutoCreation
   registration is linker-dropped there; this service registers them
