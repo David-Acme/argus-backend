@@ -112,8 +112,8 @@ the choice is per language rather than global:
 | Key | Choices | Level | Applies |
 |---|---|---|---|
 | `tts.engine_es`, `tts.engine_en` | `pocket`, `supertonic` (default `pocket`) | Basic | Live |
-| `tts.pocket_variant_es` | `fast` (6 layers), `quality` (24 layers), default `fast` | Basic | Live |
-| `tts.pocket_voice_es`, `tts.pocket_voice_en` | the predefined voices installed for that language | Advanced | Live |
+| `tts.pocket_variant_es` | `fast` (6 layers), `quality` (24 layers), default `quality` | Basic | Live |
+| `tts.pocket_voice_es`, `tts.pocket_voice_en` | `jean` (default) and the eight Commons voices of that language | Advanced | Live |
 | `tts.pocket_reference_es`, `tts.pocket_reference_en` | a `.wav` name inside `models/tts/pocket/references/`, empty for the predefined voice | Advanced | Live |
 | `tts.pocket_temperature` (0.3), `tts.pocket_lsd_steps` (1) | sampling knobs | Advanced | Live |
 | `tts.normalize_text` | toggle, default `true` | Advanced | Live |
@@ -126,15 +126,32 @@ speech. A `quality` choice without the 24-layer files installed falls back to
 `fast`.
 
 **Voices.** Callers keep sending Supertonic voice ids (`M1`..`F5`), which the
-wire validates unchanged. When Pocket answers a language, it uses the owner's
-configured Pocket voice for that language and ignores the request id, so the
-house has one voice per language instead of a random mapping. The installed
-voices are `lola` (the Spanish default, recorded in Spanish), `alba`, `eve`,
-`fantine`, `giovanni`, `marius`, `javert`, `michael` for Spanish and `alba` (the
-English default), `eve`, `jane`, `mary`, `marius`, `javert`, `michael`,
-`george` for English. All of them come from CC0 or CC BY recordings. Kyutai's
-`jean`, `cosette` and other voices built from non-commercial datasets (EARS,
-Expresso) are deliberately not installed.
+wire validates unchanged; in practice every caller sends the default `M3`.
+When Pocket answers a language, the owner's configured Pocket voice for that
+language answers every id, so the house has one voice per language and the
+setting is what the owner hears. The owner chose Kyutai's male voice `jean`
+for both languages (2026-10-03, "una voz M de Jean tanto para inglés como para
+español"), so `jean` is the default of `tts.pocket_voice_es` and
+`tts.pocket_voice_en` and every male id resolves to it. A rule that sent every
+`M*` id to `jean` regardless of the setting was rejected: since callers only
+send `M3`, it would have made the voice setting unreachable. The gender of the
+id matters only when the configured voice is missing from the variant that
+answers. Then an `M*` id falls back to `jean` and an `F*` id to the Commons
+voice of the language (`lola`, `alba`), then that Commons voice, then any
+installed voice, then Supertonic. The service logs each fallback once
+(`TtsService::resolvePocketVoice`, pure and tested).
+
+The selectable voices are `jean`, `lola`, `alba`, `eve`, `fantine`,
+`giovanni`, `marius`, `javert`, `michael` for Spanish and `jean`, `alba`,
+`eve`, `jane`, `mary`, `marius`, `javert`, `michael`, `george` for English.
+All of them except `jean` come from CC0 or CC BY recordings. **`jean` is
+built from the EARS dataset (speaker p010), licensed CC BY-NC 4.0: it is for
+non-commercial use only.** The owner accepted it for internal testing until
+he builds his own voice. Provisioning installs it only with the explicit
+opt-in described below, and `cosette` and the other non-commercial voices
+are not offered. Measured with argus-stt on the preview sentence, `jean`
+works with all three models: WER 0.00 on es fast and es quality and 0.17 on en
+("I am" for "Hi, I'm"), the same range as the Commons voices.
 
 **Wire shape unchanged.** Pocket produces 24 kHz audio. It is converted to the
 rate `Capabilities` already announces (Supertonic's 44.1 kHz) with
@@ -255,13 +272,104 @@ and full-length caches that cost 2x per step. PocketTTS.cpp's exporter cannot
 produce the multilingual models (see above). Committing ~500 MB of graphs is
 excluded by the rule that weights never enter git.
 
-Sizes on disk: es fast 125 MB of graphs plus 46 MB of voices, es quality 355 MB
-plus 189 MB, en 125 MB plus 50 MB. The 24-layer model is downloaded too
-(`ARGUS_TTS_POCKET_QUALITY=0` skips it, `ARGUS_TTS_POCKET=0` skips Pocket),
-so the Basic `quality` choice works on every installation that can afford the
-disk. RAM is only spent on a variant once it is used. Licence and attribution:
-`models/tts/pocket/NOTICE`. The runtime code is original (MIT upstream
-pocket-tts semantics, no PocketTTS.cpp source copied).
+Sizes on disk: es fast 125 MB of graphs, es quality 355 MB, en 125 MB; a voice
+state is 4-7 MB for the 6-layer models and 15-33 MB for the 24-layer one. The
+downloads that build them are the weights (es fast and en 219 MB, es quality
+672 MB) plus the one-time toolchain. RAM is only spent on a variant once it is
+used. Licence and attribution: `models/tts/pocket/NOTICE`. The runtime code is
+original (MIT upstream pocket-tts semantics, no PocketTTS.cpp source copied).
+
+### What gets installed
+
+Provisioning installs what the configuration selects and nothing else. It
+reads the `[tts]` config it provisions for: `services/tts/config.toml` from
+`setup.sh`, `argus-deploy/config.tts.toml` from `provision-host.sh`, or
+`ARGUS_TTS_CONFIG`. For each Pocket language it installs the variant that
+language needs (`es-quality` or `es-fast` per `tts.pocket_variant_es` when
+`tts.engine_es` is `pocket`, and `en` when `tts.engine_en` is `pocket`). Per
+variant it installs the configured voice and the Commons voice of the
+language (`lola`, `alba`), so a missing configured voice never leaves the
+language mute. `ARGUS_TTS_POCKET_VARIANTS` overrides the variant list,
+`ARGUS_TTS_POCKET_QUALITY=0` picks `es-fast`, and `ARGUS_TTS_POCKET=0` skips
+Pocket. `--plan` prints the selection without downloading.
+
+Anything else is added later, with the same pins:
+`services/tts/scripts/provision.sh --variant es-fast` (a variant and its
+selected voices) or `--voice en:george` (one voice). The app can also ask
+argus-tts to do it (next section). `--catalog` lists every installable
+component with its download size and licence, and every run writes it to
+`models/tts/pocket/catalog.txt`, which is how argus-tts knows sizes and
+licences without parsing the script.
+
+**Non-commercial voices are opt-in.** `jean` is pinned for all three models
+but installed only when `ARGUS_TTS_POCKET_NONCOMMERCIAL_VOICES=1` is set.
+`scripts/setup.sh dev` sets it for the owner's local development and prints a
+notice; `setup.sh prod` and `provision-host.sh` never set it. When `jean` is on
+disk, `NOTICE` gains a section with its source (EARS p010 via
+`kyutai/tts-voices`), its licence and how to remove it. A voice's staging is
+part of its variant's atomic rename, so a variant never appears without
+voices.
+
+## Installing on demand (`feature/provisioning/`, `argus::tts-provisioning`)
+
+The owner sees each option's state in Configuración before choosing it. The
+settings registry asks `PocketProvisioning::choiceStates` for the engine,
+Spanish variant and voice choices. Each answers with its availability, its
+download size from the catalog and the host command that installs it:
+
+| Availability | Meaning |
+|---|---|
+| `installed` | on disk (for the engine: a variant that `pocketSelection` would use) |
+| `installable` | this process can install it; choosing it starts the install |
+| `installing` | queued or running |
+| `failed` | the last attempt failed; choosing it again retries |
+| `hostOnly` | only the operator can install it, with the command shown; the registry refuses the choice as `notInstalled` |
+
+Whether this process may install anything is probed once at boot
+(`probeProvisioningHost`). The provisioning script must sit next to the
+models it would write: the canonical models dir must be `<root>/models/tts`,
+the Pocket dir `<root>/models/tts/pocket`, and the script
+`<root>/services/tts/scripts/provision.sh`. That is true for a native run (the
+build symlinks `models` next to the binary) and false in a container, where
+everything missing is therefore host-only. Voices also need `bash`, `curl` and
+a writable models dir; variants also need `uv` or the cached export toolchain.
+Non-commercial voices install on demand only when the host config says
+`tts.pocket_noncommercial_voices = true`. That key is not in the owner
+catalog, `setup.sh dev` writes it with the environment opt-in, and both
+templates ship `false`.
+
+When a settings change needs a missing, installable component (the variant
+and voice the new configuration selects), `PocketInstaller` queues it. One
+worker thread runs `bash provision.sh --variant|--voice <component>` through
+`posix_spawn`, never a shell string. Component names must match the catalog's
+charset. The child runs in its own process group, gets the service's absolute
+config path in `ARGUS_TTS_CONFIG` and none of the inherited `ARGUS_TTS_*`
+variables. Its output goes to the service log, and shutdown terminates the
+group. The choice is persisted at once; synthesis keeps its fallback (`quality`
+→ `fast`, a missing voice → the chain above) and picks up the new files on the
+next request, because variants and voices are found on disk per request. The
+app polls while a choice says `installing`.
+
+## Voice previews (`tools/tts-preview/`)
+
+The app plays a bundled clip for every engine, variant and voice option, so
+the owner can hear an option before installing it, offline and instantly.
+`make-previews.sh` builds them reproducibly. `argus-tts-preview` loads the
+shipped `config.toml.example`, sets the engine, variant and voice of each
+manifest line as runtime overrides and synthesizes through `TtsService`
+with `tts.pocket_seed = 7`, which seeds Pocket's sampling noise (0 keeps the
+per-process random seed). The sentences are "Hola, soy Argus. Tu reunión
+empieza a las 16:30." and "Hi, I'm Argus. Your meeting starts at 4:30 pm."
+The clips are Supertonic es/en with `M3` (the only Supertonic voice callers
+use, since no setting chooses another), and Pocket es fast, es quality and en
+with each of the nine selectable voices. Each is encoded as Opus 24 kbps in
+Ogg (web and desktop, which WebKitGTK decodes with stock GStreamer) and as
+AAC 32 kbps in M4A (Android and iOS). They go to the frontend's
+`src/assets/audio/tts-previews`: 29 clips of 3.2-7.6 s, 413 KiB Opus and
+618 KiB AAC. Rebuild after adding a voice or changing an engine:
+`./scripts/build-all.sh dev --only tts`, install every variant and voice
+(including `jean` with the opt-in), then run
+`services/tts/tools/tts-preview/make-previews.sh`.
 
 ## Measurements (Ryzen 7 5825U, 8 cores / 16 threads, `ThreadBudget::ttsThreads()` = 8)
 
@@ -288,5 +396,6 @@ Supertonic plus Pocket es fast and en loaded, 1.40 GB with Supertonic plus the
 24-layer Spanish model. ASR word error rate on the test sentences: Pocket es
 0.00 / 0.05, Pocket en 0.13 / 0.18, Supertonic es 0.00 / 0.00, Supertonic en
 0.13 / 0.06 (short / long). The 24-layer Spanish model is 3x slower than the
-6-layer one, with the same WER on these sentences, so `fast` is the default.
-Whether `quality` sounds better is for the owner's ears.
+6-layer one, with the same WER on these sentences. The owner listened and
+chose `quality` ("utilizar calidad máxima", 2026-10-03), so it is the default;
+`fast` stays one tap away.

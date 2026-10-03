@@ -38,6 +38,14 @@ for this service only; other root rules remain binding.
     the shared `models/tts` tree through `tts.models_dir`.
 14. **Build gate** — 0 errors AND 0 warnings (`-Wall -Wextra`) in Argus's
     own code; third-party includes are SYSTEM.
+15. **Installs run the pinned script only** — on-demand installation spawns
+    `scripts/provision.sh` with a catalog-checked component and no shell;
+    never a path, URL or command taken from a request or a setting, and never
+    a download without its SHA-256 pin.
+16. **Non-commercial voices stay opt-in** — `jean` (CC BY-NC 4.0) is
+    installed only with `ARGUS_TTS_POCKET_NONCOMMERCIAL_VOICES=1` or
+    `tts.pocket_noncommercial_voices = true`; templates and production keep
+    them off.
 
 ## Layout
 
@@ -57,8 +65,15 @@ argus-tts/
     infra/pocket/       Kyutai Pocket TTS runtime (bundle, tokenizer, voices, engine, rate converter)
     text/               argus::tts-speech-text — text normalizer + prosodic chunker (pure)
   src/feature/settings/ argus::tts-settings — the owner-editable catalog
-  scripts/provision.sh  Supertonic download + Pocket export with SHA-256 pins
+  src/feature/provisioning/ argus::tts-provisioning — per-choice install state
+                        (infra/: catalog reader, provision.sh probe + spawn;
+                        services/: choice states, PocketInstaller worker)
+  scripts/provision.sh  Supertonic download + the selected Pocket variants and
+                        voices with SHA-256 pins (--plan, --catalog, --variant,
+                        --voice; non-commercial voices opt-in)
   tools/export-pocket.py  official Pocket weights -> parity-checked ONNX bundle
+  tools/tts-preview/    argus-tts-preview + make-previews.sh: the app's
+                        seeded, reproducible voice preview clips
   config.toml.example   [tts] engine keys, the [rpc]/[rpc.callers] gRPC gate,
                         [server], [drogon.app]; no other domains
   CONTEXT.md            purpose, ownership, wiring decisions

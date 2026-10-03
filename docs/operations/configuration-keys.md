@@ -176,13 +176,15 @@ argus-deploy argus-tts configuration. Copy to config.tts.toml (gitignored); the 
 | Key | Notes |
 |---|---|
 | `tts.engine_es` / `tts.engine_en` | `pocket` (default) or `supertonic`, live from the owner settings; every other language is Supertonic, and a Pocket language without installed models falls back to Supertonic. |
-| `tts.pocket_variant_es` | `fast` (6 layers, default) or `quality` (24 layers, ~3x slower); `quality` without its files falls back to `fast`. |
-| `tts.pocket_voice_es` / `tts.pocket_voice_en` | The predefined Pocket voice per language (`lola` / `alba`); replaces the request's Supertonic style id while Pocket answers. |
+| `tts.pocket_variant_es` | `quality` (24 layers, default, ~3x slower than `fast`) or `fast` (6 layers); `quality` without its files falls back to `fast`. |
+| `tts.pocket_voice_es` / `tts.pocket_voice_en` | The predefined Pocket voice per language, default `jean` for both (CC BY-NC 4.0, installed only with the non-commercial opt-in); it answers every request id while Pocket speaks. A voice that is not installed falls back, with a warning: `M*` ids to `jean`, `F*` ids to the Commons voice, then `lola` (es) / `alba` (en), then any installed voice, then Supertonic. |
 | `tts.pocket_reference_es` / `tts.pocket_reference_en` | Optional voice-cloning reference: a `.wav` name inside `models/tts/pocket/references/` (no paths); needs a bundle exported with `--cloning` from the gated weights, otherwise ignored with a warning. |
 | `tts.pocket_temperature` / `tts.pocket_lsd_steps` | Sampling temperature (0.05-1, default 0.3) and flow steps (1-8, default 1). |
 | `tts.pocket_precision` | `int8` (default, the only provisioned graphs) or `fp32` for a self-exported fp32 bundle. Restart. |
 | `tts.pocket_models_dir` | Empty means `<models_dir>/pocket`. |
 | `tts.normalize_text` | Writes numbers, times, dates, money, units and abbreviations out in words (es/en) before either engine; default true. |
+| `tts.pocket_noncommercial_voices` | Host-only opt-in (never in the owner catalog) that lets argus-tts install voices licensed for non-commercial use (`jean`) on demand; default false, `scripts/setup.sh dev` sets it when it installs them. Provisioning itself follows `ARGUS_TTS_POCKET_NONCOMMERCIAL_VOICES=1`. |
+| `tts.pocket_seed` | Seeds Pocket's sampling noise for reproducible audio (the preview clips use 7); 0 or absent draws a new seed per process. |
 
 ## `argus-deploy/config.tunnel.toml.example`
 
@@ -396,13 +398,15 @@ argus-tts configuration. Copy to config.toml (gitignored) to run.
 | Key | Notes |
 |---|---|
 | `tts.engine_es` / `tts.engine_en` | `pocket` (default) or `supertonic`, live from the owner settings; every other language is Supertonic, and a Pocket language without installed models falls back to Supertonic. |
-| `tts.pocket_variant_es` | `fast` (6 layers, default) or `quality` (24 layers, ~3x slower); `quality` without its files falls back to `fast`. |
-| `tts.pocket_voice_es` / `tts.pocket_voice_en` | The predefined Pocket voice per language (`lola` / `alba`); replaces the request's Supertonic style id while Pocket answers. |
+| `tts.pocket_variant_es` | `quality` (24 layers, default, ~3x slower than `fast`) or `fast` (6 layers); `quality` without its files falls back to `fast`. |
+| `tts.pocket_voice_es` / `tts.pocket_voice_en` | The predefined Pocket voice per language, default `jean` for both (CC BY-NC 4.0, installed only with the non-commercial opt-in); it answers every request id while Pocket speaks. A voice that is not installed falls back, with a warning: `M*` ids to `jean`, `F*` ids to the Commons voice, then `lola` (es) / `alba` (en), then any installed voice, then Supertonic. |
 | `tts.pocket_reference_es` / `tts.pocket_reference_en` | Optional voice-cloning reference: a `.wav` name inside `models/tts/pocket/references/` (no paths); needs a bundle exported with `--cloning` from the gated weights, otherwise ignored with a warning. |
 | `tts.pocket_temperature` / `tts.pocket_lsd_steps` | Sampling temperature (0.05-1, default 0.3) and flow steps (1-8, default 1). |
 | `tts.pocket_precision` | `int8` (default, the only provisioned graphs) or `fp32` for a self-exported fp32 bundle. Restart. |
 | `tts.pocket_models_dir` | Empty means `<models_dir>/pocket`. |
 | `tts.normalize_text` | Writes numbers, times, dates, money, units and abbreviations out in words (es/en) before either engine; default true. |
+| `tts.pocket_noncommercial_voices` | Host-only opt-in (never in the owner catalog) that lets argus-tts install voices licensed for non-commercial use (`jean`) on demand; default false, `scripts/setup.sh dev` sets it when it installs them. Provisioning itself follows `ARGUS_TTS_POCKET_NONCOMMERCIAL_VOICES=1`. |
+| `tts.pocket_seed` | Seeds Pocket's sampling noise for reproducible audio (the preview clips use 7); 0 or absent draws a new seed per process. |
 
 ## `services/tunnel/config.toml.example`
 
