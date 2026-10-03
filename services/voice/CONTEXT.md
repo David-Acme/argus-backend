@@ -100,6 +100,11 @@ exact JSON/binary the app expects is argus-sync's
 - The worker waits for PCM at most 150 ms (`kIdleTick`) before it looks at
   its notices again, so a camera offer or an action correction is delivered
   even while the microphone is muted and no PCM arrives.
+- A `VoiceStart` with `resume` set is a call that continues after the app
+  lost its socket: the server side of the old call died with the socket, so
+  the session starts again with the same identity but does not greet, and
+  primes argus-llm at once. The app keeps its transcript and resends its
+  notes and situation; the conversation history before the cut is gone.
 - `voice:mute` drops the PCM queue and resets the VAD (the duplex worker
   owns the VAD, so the reset is a flag it applies), and PCM is ignored while
   muted. Before, the client only stopped sending; the server kept the

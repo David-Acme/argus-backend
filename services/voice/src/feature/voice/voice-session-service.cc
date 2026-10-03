@@ -404,6 +404,7 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
 {
   const argus::voice::v1::VoiceIdentity& identity = request.identity();
   const bool duplex = request.mode() == argus::voice::v1::VOICE_MODE_DUPLEX;
+  const bool resume = request.resume();
   {
     std::scoped_lock lock(mutex_);
     if (sessions_.contains(&sink)) {
@@ -420,7 +421,7 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   LOG_INFO << "Voice: session start user=" << identity.user_id()
            << " lang=" << voiceLangToString(lang)
            << " nameKnown=" << (userName.size() >= 2)
-           << " duplex=" << duplex;
+           << " duplex=" << duplex << " resume=" << resume;
 
   auto session = std::make_shared<Session>(SessionInit{.model = vad_.createModel(), .lang = lang});
   session->sink = &sink;
@@ -437,10 +438,19 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   session->duplex = duplex;
   session->bargeGuard = listening.bargeGuard;
 
-  const std::string greeting = greetingFor(session->lang, userName);
-  session->history.addAssistant(greeting);
+  const std::string greeting = resume ? std::string() : greetingFor(session->lang, userName);
+  if (!greeting.empty())
+    session->history.addAssistant(greeting);
 
   session->worker = std::thread([this, session, greeting] {
+    if (greeting.empty()) {
+      primeLlm(*session);
+      if (session->duplex)
+        duplexLoop(session);
+      else
+        workerLoop(session);
+      return;
+    }
     if (session->duplex) {
       launchTurn(session, [this, greeting](Session& turn) {
         speak(turn, greeting);

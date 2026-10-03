@@ -40,6 +40,7 @@ public:
   static Json::Value renderServerFrame(
       const argus::voice::v1::ServerFrame& frame);
   static argus::voice::v1::VoiceMode startModeOf(const Json::Value& message);
+  static bool resumeOf(const Json::Value& message);
   static argus::voice::v1::VoiceContext contextOf(const Json::Value& payload);
   static argus::voice::v1::VoiceActionResult actionResultOf(const Json::Value& payload);
   static bool mutedOf(const Json::Value& payload);
@@ -65,6 +66,7 @@ private:
     const drogon::WebSocketConnectionPtr& conn;
     const std::shared_ptr<Session>& session;
     argus::voice::v1::VoiceMode mode{argus::voice::v1::VOICE_MODE_HALF_DUPLEX};
+    bool resume{false};
   };
 
   static void deliver(Session& session, StreamOp op);

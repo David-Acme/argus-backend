@@ -217,3 +217,10 @@ TEST_CASE("voice:mute is on only when the payload says so")
   CHECK_FALSE(VoiceGrpcRelay::mutedOf(muted));
   CHECK_FALSE(VoiceGrpcRelay::mutedOf(Json::Value(Json::objectValue)));
 }
+
+TEST_CASE("voice:start resumes a cut call only when it says so")
+{
+  CHECK(VoiceGrpcRelay::resumeOf(json_util::fromString(R"({"type":"voice:start","payload":{"mode":"duplex","resume":true}})")));
+  CHECK_FALSE(VoiceGrpcRelay::resumeOf(json_util::fromString(R"({"type":"voice:start","payload":{"resume":"true"}})")));
+  CHECK_FALSE(VoiceGrpcRelay::resumeOf(json_util::fromString(R"({"type":"voice:start"})")));
+}

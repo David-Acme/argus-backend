@@ -193,6 +193,14 @@ argus::voice::v1::VoiceMode VoiceGrpcRelay::startModeOf(
   return argus::voice::v1::VOICE_MODE_HALF_DUPLEX;
 }
 
+bool VoiceGrpcRelay::resumeOf(const Json::Value& message)
+{
+  if (!message.isObject() || !message["payload"].isObject())
+    return false;
+  const Json::Value& resume = message["payload"]["resume"];
+  return resume.isBool() && resume.asBool();
+}
+
 class VoiceGrpcRelay::StreamObserver final : public VoiceStreamObserver
 {
 public:
@@ -308,7 +316,8 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(const SyncFrameInput& input)
     co_return true;
 
   if (type == "voice:start") {
-    co_await startStream({.conn = conn, .session = session, .mode = startModeOf(message)});
+    co_await startStream(
+        {.conn = conn, .session = session, .mode = startModeOf(message), .resume = resumeOf(message)});
     co_return true;
   }
 
@@ -366,6 +375,7 @@ drogon::Task<void> VoiceGrpcRelay::startStream(StartInput input)
   const auto session = input.session;
   const auto conn = input.conn;
   const auto mode = input.mode;
+  const bool resume = input.resume;
   std::shared_ptr<VoiceStream> stream;
   {
     std::scoped_lock lock(session->mutex);
@@ -386,6 +396,7 @@ drogon::Task<void> VoiceGrpcRelay::startStream(StartInput input)
     identity.set_language(voiceLangToProto(user->lang));
   }
   start.set_mode(mode);
+  start.set_resume(resume);
 
   if (stream) {
     stream->start(start);

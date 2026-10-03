@@ -34,6 +34,7 @@ message VoiceStart
 {
   VoiceIdentity identity = 1;
   VoiceMode mode = 2;
+  bool resume = 3;
 }
 
 message VoiceStop {}

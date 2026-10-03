@@ -135,6 +135,10 @@ protocol could not regress by accident in the commit that changed the endpoint.
   one mutex, because `forwardText` resumes on Drogon's main loop after its
   awaits while the stream observer and the binary path run on the socket's
   loop.
+- **A resumed call.** `voice:start` with `{"resume": true}` (a JSON `true`;
+  anything else is a new call) is sent as `VoiceStart.resume`: the app
+  reconnected after losing its socket mid-call, and argus-voice continues
+  without greeting again.
 - **A voice failure is the call's, not the socket's.** When the voice stream
   closes with an error the relay sends `voice:start_error` (503, `Voice
   unavailable`) - the app's router hands every `voice:*_error` to its voice

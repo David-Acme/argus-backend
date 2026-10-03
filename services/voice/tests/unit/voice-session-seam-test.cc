@@ -1401,3 +1401,23 @@ TEST_CASE("Another enrolled voice in the call becomes a hint, never the speaker'
   CHECK(llm.lastRole == UserRole::Resident);
   session.stop(sink);
 }
+
+TEST_CASE("A resumed call does not greet again and still primes the LLM")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceStart start;
+  *start.mutable_identity() = residentIdentity();
+  start.set_resume(true);
+  session.start(sink, start);
+  CHECK(waitFor([&] { return llm.primeCalls.load() == 1; }));
+  CHECK_FALSE(sink.hasType("voice:assistant"));
+  CHECK(tts.synthesizeCalls == 0);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(sess->history.size() == 1);
+  session.stop(sink);
+}
