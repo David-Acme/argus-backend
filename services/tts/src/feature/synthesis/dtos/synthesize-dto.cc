@@ -1,4 +1,6 @@
 #include "synthesize-dto.hxx"
+#include <algorithm>
+#include <cctype>
 
 namespace
 {
@@ -28,6 +30,12 @@ SynthesizeDto SynthesizeDto::fromJson(const Json::Value& json)
                 -> std::optional<std::string> {
     if (value.styleId.size() > 16)
       return "style_id must be at most 16 characters";
+    const bool safe = std::ranges::all_of(value.styleId, [](char c) {
+      return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' ||
+             c == '-';
+    });
+    if (!safe)
+      return "style_id may only hold letters, digits, '_' and '-'";
     return std::nullopt;
   })
   CUSTOM_LAMBDA(lang, [](const SynthesizeDto& value)

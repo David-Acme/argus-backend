@@ -13,6 +13,8 @@
 #include <chrono>
 #include <stdexcept>
 #include <thread>
+#include <algorithm>
+#include <cctype>
 
 namespace
 {
@@ -388,6 +390,14 @@ TtsQuality TtsService::autoQuality(const std::string& text)
 
 const Style& TtsService::resolveVoice(const std::string& voiceId)
 {
+  const bool safe =
+      !voiceId.empty() && voiceId.size() <= 16 &&
+      std::ranges::all_of(voiceId, [](char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' ||
+               c == '-';
+      });
+  if (!safe)
+    throw std::invalid_argument("unknown voice style");
   const auto it = voiceCache_.find(voiceId);
   if (it != voiceCache_.end())
     return *it->second;

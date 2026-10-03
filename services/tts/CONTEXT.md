@@ -69,3 +69,11 @@ The listener and the optional gRPC leg are resolved by
 `TtsConfig::resolveRpc()` (`rpc.address` plus the `rpc.callers` credential
 pairs, empty ones dropped). `main.cc` keeps `config.toml` loading,
 `drogonConfig` and the boot gate on the resolved address and credentials.
+
+## Voice style ids
+
+A style id names a file under `voice_styles/`, so it may only hold letters,
+digits, `_` and `-` (16 at most): the DTO refuses anything else with a 422
+and `TtsService::resolveVoice` refuses it on every path, gRPC included. A
+value such as `../../x` used to read any reachable `.json` file as a voice
+style.

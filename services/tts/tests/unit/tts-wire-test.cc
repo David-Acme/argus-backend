@@ -2,6 +2,8 @@
 #include <doctest/doctest.h>
 
 #include <feature/synthesis/controllers/tts-controller.hxx>
+#include <feature/synthesis/dtos/synthesize-dto.hxx>
+#include <errors/validation-exception.hxx>
 #include <drogon/drogon.h>
 #include <auth/valid-json-filter.hxx>
 #include <http/api-response.hxx>
@@ -394,4 +396,17 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   }
 
   std::remove(kScratchConfig);
+}
+
+TEST_CASE("a voice style id cannot name a path")
+{
+  Json::Value body(Json::objectValue);
+  body["text"] = "hola";
+  for (const char* style : {"../../etc", "a/b", "x.json", "M3 "}) {
+    CAPTURE(style);
+    body["style_id"] = style;
+    CHECK_THROWS_AS(SynthesizeDto::fromJson(body), ValidationException);
+  }
+  body["style_id"] = "M3";
+  CHECK(SynthesizeDto::fromJson(body).styleId == "M3");
 }
