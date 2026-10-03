@@ -597,6 +597,25 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(orphan->status == 404);
   CHECK(orphan->message == "Project not found");
 
+  const std::size_t emitsBeforeRegrant = sink.emits.size();
+  const auto regranted =
+      drogon::sync_wait(memberController.create(memberReq(7, "view")));
+  const int64_t regrantedId = body(regranted)["info"]["id"].asInt64();
+  REQUIRE(sink.emits.size() == emitsBeforeRegrant + 3);
+  CHECK(sink.emits.at(emitsBeforeRegrant + 1).option == "project");
+  CHECK(sink.emits.at(emitsBeforeRegrant + 2).option == "project_task");
+  CHECK(sink.emits.at(emitsBeforeRegrant + 2).operation ==
+        static_cast<int>(SyncOperation::Add));
+  CHECK(sink.emits.at(emitsBeforeRegrant + 2).users == std::vector<int64_t>{7});
+  CHECK(sink.emits.at(emitsBeforeRegrant + 2).body["id"].asInt64() == taskId);
+
+  drogon::sync_wait(memberController.remove(ownerRequest(), regrantedId));
+  REQUIRE(sink.emits.size() == emitsBeforeRegrant + 6);
+  CHECK(sink.emits.back().option == "project_task");
+  CHECK(sink.emits.back().operation == static_cast<int>(SyncOperation::Delete));
+  CHECK(sink.emits.back().users == std::vector<int64_t>{7});
+  CHECK(sink.emits.back().body["id"].asInt64() == taskId);
+
   CalendarEventController eventController;
 
   Json::Value eventBody;
@@ -626,7 +645,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK_FALSE(event["isAllDay"].asBool());
   CHECK(event["recurrenceRule"].isNull());
   CHECK(event.getMemberNames().size() == 15);
-  REQUIRE(sink.emits.size() == 7);
+  REQUIRE(sink.emits.size() == 13);
   CHECK(sink.emits.back().option == "calendar_event");
   CHECK(sink.emits.back().users == std::vector<int64_t>{42});
 
