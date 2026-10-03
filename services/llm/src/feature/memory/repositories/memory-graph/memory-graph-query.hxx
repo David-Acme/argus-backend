@@ -44,7 +44,7 @@ inline constexpr const char* INSERT_FACT =
 
 inline constexpr const char* CLOSE_FACT =
     "UPDATE memory_fact SET valid_to = ?, updated_at = ? "
-    "WHERE id = ? AND valid_to = 0";
+    "WHERE id = ? AND scope = 'user' AND ref_id = ? AND valid_to = 0";
 
 inline constexpr const char* FIND_FACTS_BY_ENTITY = R"(
     WITH RECURSIVE reach(id, hops) AS (

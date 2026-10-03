@@ -26,18 +26,39 @@ scaffolds.
   `llama_backend_init/free` with the legacy teardown order (tear the engine
   down BEFORE freeing the backend — skipping the ordered teardown segfaults
   in `llama_backend_free`).
-- **The KV-prefix cache (`cachedTokens_`) stays IN the service** —
-  per-process warm state. One llama context, one cache slot: concurrent
-  sessions with different prompts THRASH the cache exactly as two voice
-  sessions did in-process (the legacy semantics are unchanged, not fixed);
-  alternating different prompts reuse 0 tokens each time. The
-  `GET /llm/v1/config` leg exposes the last prefill stats so the thrash is
-  observable. Before a reused prefix is extended, the positions past it are
-  removed from the sequence (`llama_memory_seq_rm`); a full hit re-decodes
-  its last token to get fresh logits, and that position was still in the
-  cache, so the decode was rejected and the call answered empty. When the
-  memory cannot drop the tail (LFM2's recurrent layers cannot roll back),
-  the prefill starts clean instead.
+- **The KV-prefix cache (`cachedTokens_`) stays IN the service**: one llama
+  context, one sequence, per-process warm state. Concurrent sessions with
+  different prompts still evict each other, as two voice sessions did
+  in-process. A new prompt reuses the longest prefix it shares with what the
+  cache holds, which is the prompt and reply of the last generation. A
+  pure-attention model drops the tail past the shared prefix
+  (`llama_memory_seq_rm`). LFM2 cannot: ten of its sixteen layers are short
+  convolutions whose recurrent state has no history to roll back to, so its
+  tail removal fails. Before 2026-10-03 the cache was therefore only ever
+  reused when the new prompt extended the old one exactly. Any divergence,
+  including the one every tool turn produces (the call and tool result are in
+  the cache, but the voice history keeps only the spoken answer), threw away
+  the whole prefix.
+- **Prefix checkpoints (`PrefixCheckpoint`).** The recurrent state is small:
+  the two-token convolution window of ten layers, about 160 KB. While
+  prefilling, `LlmService` splits the batch at the last three message starts
+  (`<|im_start|>`) of the newly decoded range and copies that state with
+  `llama_state_seq_get_data_ext(…, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY)`. It
+  keeps up to eight checkpoints and drops those past any rewind. A divergent
+  prompt restores the newest checkpoint at or before the divergence and
+  removes the attention tail past it. Only the messages after that point are
+  decoded again. This is the llama-server "context checkpoint" technique
+  (ggml-org/llama.cpp server, `n_ctx_checkpoints`) placed at message
+  boundaries. A full hit (the same prompt again) restores the checkpoint
+  before the generation prompt instead of failing.
+- **Priming (`prefill_only`).** A chat request with `prefill_only` builds the
+  exact prompt the next turn starts from: persona, policy, declarations and
+  history, through the same hop path. It prefills that prompt and answers an
+  empty completion, without routing and without running a tool. The voice
+  session sends one after the greeting and after it rebuilds history[0], so
+  the first turn decodes only the user's message. A prefill-only call takes
+  the engine with `try_lock`: when a real generation holds the engine, the
+  priming is skipped rather than queued.
 - **The last-prefill counters have a provenance limit.** `lastStats_` is the
   engine's MOST RECENT prefill (`std::atomic`, one store per `prefill()`), so
   while one generation runs every other reader sees its numbers, and the tool
@@ -480,3 +501,62 @@ hands the validated call to `ToolContext::emitAction`, which the
 controller turns into a `ClientAction` on the stream (`ChatToken.action`,
 ordered with the text tokens). Without an emitter the tool refuses, so a
 non-call caller never hears that something happened when nothing did.
+
+## The tool loop in a call (2026-10-03)
+
+The voice session and argus-llm agreed this contract with the voice agent:
+
+- **Messages.** History[0] is the system persona with the stable call facts.
+  User messages carry only what STT heard. Every later `system` message is a
+  note: the tone note right after its user message, context notes appended
+  where they arrive. Notes are rendered in place and never read as the user's
+  words. The router and every tool read the last user message through
+  `LfmAdapter::spokenText`, which also drops a trailing parenthesized line,
+  the shape the tone note had when it was appended to the user's content.
+- **Same system prompt on every hop.** The routed prose answer, the prose
+  answer after an exhausted or repeated loop, and every tool hop carry the
+  same persona, policy and declarations, so their prompts share the cached
+  prefix. Prose answers are generated with `toolCallsAllowed = false`: the
+  sampler gives `<|tool_call_start|>` a −∞ logit bias, so the declarations
+  being present cannot make a prose answer open a call that would be spoken.
+- **A routed call is shown as a call.** The fast tier's call is rendered into
+  the history as the model would have written it
+  (`<|tool_call_start|>[memory.remember(text='…')]<|tool_call_end|>`, the
+  template's own pythonic form) before the tool's result, so the model
+  confirms a call it can see. A routed save, reminder or recall that fails is
+  answered from its failure. Before, it fell back to the tool loop, where the
+  model regularly answered "lo he guardado" without calling anything. A
+  routed forget that finds nothing still falls back, because a cancellation
+  may not be about memory at all.
+- **Each tool runs at most once per turn.** A tool that already succeeded in
+  this turn is not run again in a later hop: the model gets the earlier
+  result. A hop made only of repeats ends the loop with a prose answer.
+  Calls to a tool the turn did not offer are dropped. A reply that tried to
+  call but held nothing runnable is answered in prose instead of being spoken
+  with its markup.
+- **The parser reads the template's form exactly.** `PythonicScanner` is
+  quote-aware: brackets, parentheses and commas inside a quoted argument do
+  not end the call, and escapes decode. It accepts JSON arguments, `True`,
+  `False` and `None`, and a bare call without the list brackets.
+- **Memory writes keep to the user's words.** `memory.remember` and
+  `memory.remind` check the model-written `text` and `value` against the
+  user's utterance. When fewer than 60 % of the argument's words were said,
+  the utterance replaces the text and the triple is dropped. A fact copied
+  from a note or a camera offer, or the model's paraphrase, is never stored as
+  the user's fact, and "recuérdalo" alone stores nothing. An explicit request
+  ("recuerda que …") whose extraction comes back incomplete is stored from its
+  rule clause instead of being dropped.
+- **`memory.forget` takes a `query`**, the fact in the user's words, instead
+  of a `fact_id` the model could only invent. It closes the user's open fact
+  that shares the most words with the query. The close is scoped to the
+  caller (`scope = 'user' AND ref_id = ?`) and succeeds only when a row
+  changed. Before, any id of any user closed, and "olvidado" was answered
+  even when nothing matched.
+- **Tool outputs are spoken material**: localized to the call's language,
+  with no ids ("Guardado: mi hermana viene los domingos.", "Saved: …"). The
+  app tools answer in the call's language too. `memory.recall` honours the
+  owner's `memory.recall_top_k`; the tool path read a fixed 8.
+- **Permission before schema.** The executor refuses a role before it
+  validates arguments, so an unpermitted caller learns nothing about a tool's
+  shape. `ToolRegistry::names()` is sorted, so the declarations, and with them
+  the cached prefix, are the same in every process.

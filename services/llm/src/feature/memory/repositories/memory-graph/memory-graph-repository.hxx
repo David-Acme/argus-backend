@@ -31,12 +31,6 @@ struct CatalogRow
   int64_t catalogId;
 };
 
-struct FactCloseInput
-{
-  int64_t factId{0};
-  int64_t at{0};
-};
-
 struct FactSearchInput
 {
   std::string match;

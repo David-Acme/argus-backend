@@ -92,9 +92,9 @@ int64_t SqliteGraph::upsertFact(const FactUpsertInput& input)
   return repo_.upsertFact(db_.get(), input);
 }
 
-bool SqliteGraph::closeFact(int64_t factId, int64_t at)
+bool SqliteGraph::closeFact(const FactCloseInput& input)
 {
-  return repo_.closeFact(db_.get(), {.factId = factId, .at = at});
+  return repo_.closeFact(db_.get(), input);
 }
 
 std::vector<RecallHit>

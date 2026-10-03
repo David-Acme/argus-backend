@@ -232,14 +232,15 @@ MemoryFormation::observe(const Observation& obs,
                            .allowModel = obs.allowModel},
                           extracted);
 
-    if (!extracted.empty()) {
+    const bool usable = !extracted.empty() && [&] {
       const auto& first = extracted.front();
-      if (first.subject.empty() || first.predicate.empty() ||
-          (first.value.empty() && first.when.surface.empty()))
-        return std::nullopt;
-      if (ruleParser_.isFiller(first.predicate, obs.lang) ||
-          ruleParser_.isFiller(first.subject, obs.lang))
-        return std::nullopt;
+      return !first.subject.empty() && !first.predicate.empty() &&
+             (!first.value.empty() || !first.when.surface.empty()) &&
+             !ruleParser_.isFiller(first.predicate, obs.lang) &&
+             !ruleParser_.isFiller(first.subject, obs.lang);
+    }();
+    if (usable) {
+      const auto& first = extracted.front();
       subjectSurface = first.subject;
       predicate = first.predicate;
       value = first.value.empty() ? first.when.surface : first.value;
@@ -252,8 +253,9 @@ MemoryFormation::observe(const Observation& obs,
           first.tier == extract::ExtractTier::Lexicon ? "lexicon" : "model";
     }
     else {
-      if (extractor_ && !obs.decided)
+      if (extractor_ && !obs.decided && !explicitTrigger)
         return std::nullopt;
+      extracted.clear();
       value = clause;
       predicate = "nota";
       factType = factTypeFromMemoryType(memoryTypeToString(gate.type));

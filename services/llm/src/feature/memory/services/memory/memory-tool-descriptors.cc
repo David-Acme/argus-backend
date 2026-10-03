@@ -86,9 +86,10 @@ std::vector<tools::ToolDescriptor> memoryToolDescriptors()
        .handler = nullptr});
   descriptors.push_back(
       {.name = "memory.forget",
-       .description = "Olvida un hecho guardado por su id",
-       .arguments = {{.name = "fact_id",
-                      .type = "number",
+       .description = "Olvida un hecho guardado que el usuario pide olvidar; "
+                      "query describe ese hecho con sus palabras",
+       .arguments = {{.name = "query",
+                      .type = "string",
                       .required = true,
                       .enumValues = {},
                       .description = ""}},

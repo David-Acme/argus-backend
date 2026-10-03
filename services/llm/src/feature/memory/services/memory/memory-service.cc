@@ -5,6 +5,7 @@
 #include <cctype>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <cstdlib>
 #include <ctime>
 #include <deque>
@@ -964,11 +965,75 @@ int64_t MemoryService::recordProcedure(const ProcedureRecordInput& input)
   return graph_->recordProcedure(input);
 }
 
+namespace
+{
+
+bool english(const tools::ToolCall& call)
+{
+  return call.context.lang == "en";
+}
+
+std::string scopeRefusal(const tools::ToolCall& call)
+{
+  return english(call) ? "Memory is only available to identified users."
+                       : "La memoria solo está disponible para usuarios identificados.";
+}
+
+std::vector<std::string> contentWords(const std::string& text)
+{
+  return text_norm::words(text_norm::stripAccents(text), 3);
+}
+
+bool groundedIn(const std::string& candidate, const std::string& utterance)
+{
+  const auto words = contentWords(candidate);
+  if (words.empty())
+    return false;
+  const auto heard = text_norm::wordSet(text_norm::stripAccents(utterance), 3);
+  const auto found = std::ranges::count_if(
+      words, [&heard](const std::string& word) { return heard.contains(word); });
+  return found * 5 >= static_cast<std::ptrdiff_t>(words.size()) * 3;
+}
+
+std::ptrdiff_t sharedWords(const std::string& query, const std::string& canonical)
+{
+  const auto heard = text_norm::wordSet(text_norm::stripAccents(canonical), 4);
+  return std::ranges::count_if(contentWords(query), [&heard](const std::string& word) {
+    return word.size() >= 4 && heard.contains(word);
+  });
+}
+
+tools::ToolCall groundedCall(const tools::ToolCall& call)
+{
+  tools::ToolCall grounded = call;
+  const std::string& utterance = call.context.utterance;
+  if (utterance.empty() || !grounded.arguments.isObject())
+    return grounded;
+  const std::string text = grounded.arguments.get("text", "").asString();
+  if (text.empty() || !groundedIn(text, utterance))
+    grounded.arguments["text"] = utterance;
+  const std::string value = grounded.arguments.get("value", "").asString();
+  if (!value.empty() && !groundedIn(value, utterance)) {
+    grounded.arguments.removeMember("subject");
+    grounded.arguments.removeMember("predicate");
+    grounded.arguments.removeMember("value");
+  }
+  return grounded;
+}
+
+int recallLimit()
+{
+  const int topK = ConfigService::getInt("memory.recall_top_k");
+  return topK > 0 ? topK : 4;
+}
+
+}
+
 tools::ToolResult MemoryService::handleProcedureRun(const tools::ToolCall& call)
 {
   tools::ToolResult result;
   if (!hasUserScope(call.context.userId)) {
-    result.output = "memoria solo disponible para usuarios autenticados";
+    result.output = scopeRefusal(call);
     return result;
   }
   const std::string goal = call.arguments.get("goal", "").asString();
@@ -978,7 +1043,9 @@ tools::ToolResult MemoryService::handleProcedureRun(const tools::ToolCall& call)
     steps = graph_->findProcedure(goal);
   }
   if (!steps || steps->empty()) {
-    result.output = "no hay un procedimiento conocido para: " + goal;
+    result.output = (english(call) ? "There is no known procedure for: "
+                                   : "No hay un procedimiento conocido para: ") +
+                    goal;
     return result;
   }
   result.ok = true;
@@ -990,10 +1057,11 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
 {
   tools::ToolResult result;
   if (!hasUserScope(call.context.userId)) {
-    result.output = "memoria solo disponible para usuarios autenticados";
+    result.output = scopeRefusal(call);
     return result;
   }
-  const Json::Value& args = call.arguments;
+  const tools::ToolCall grounded = groundedCall(call);
+  const Json::Value& args = grounded.arguments;
   const std::string subject = args.get("subject", "").asString();
   const std::string predicate = args.get("predicate", "").asString();
   const std::string value = args.get("value", "").asString();
@@ -1015,14 +1083,14 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
                                .salient = false,
                                .decided = call.context.decided,
                                .typeHint = {}},
-                              call);
+                              grounded);
   };
   auto formed = observe(text);
   if (!formed && !call.context.utterance.empty() &&
       call.context.utterance != text)
     formed = observe(call.context.utterance);
   if (!formed) {
-    result.output = "no se pudo guardar el hecho";
+    result.output = english(call) ? "I could not save that." : "No pude guardar eso.";
     return result;
   }
   result.ok = true;
@@ -1037,7 +1105,7 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
               .preferIdle = false,
               .salient = false,
               .episode = false});
-  result.output = "hecho guardado (id " + std::to_string(formed->factId) + ")";
+  result.output = (english(call) ? "Saved: " : "Guardado: ") + formed->canonical + ".";
   return result;
 }
 
@@ -1045,14 +1113,15 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
 {
   tools::ToolResult result;
   if (!hasUserScope(call.context.userId)) {
-    result.output = "memoria solo disponible para usuarios autenticados";
+    result.output = scopeRefusal(call);
     return result;
   }
-  std::string text = call.arguments.get("text", "").asString();
+  const tools::ToolCall grounded = groundedCall(call);
+  std::string text = grounded.arguments.get("text", "").asString();
   if (text.empty())
     text = call.context.utterance;
   if (text.empty()) {
-    result.output = "no hay nada que recordar";
+    result.output = english(call) ? "There is nothing to remind." : "No hay nada que recordar.";
     return result;
   }
 
@@ -1068,9 +1137,10 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
                                           .salient = false,
                                           .decided = call.context.decided,
                                           .typeHint = "schedule"},
-                                         call);
+                                         grounded);
   if (!formed) {
-    result.output = "no se pudo guardar el recordatorio";
+    result.output = english(call) ? "I could not save the reminder."
+                                  : "No pude guardar el recordatorio.";
     return result;
   }
 
@@ -1086,8 +1156,8 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
               .preferIdle = false,
               .salient = false,
               .episode = false});
-  result.output =
-      "recordatorio guardado (id " + std::to_string(formed->factId) + ")";
+  result.output = (english(call) ? "Reminder saved: " : "Recordatorio guardado: ") +
+                  formed->canonical + ".";
   return result;
 }
 
@@ -1095,7 +1165,7 @@ tools::ToolResult MemoryService::handleRecall(const tools::ToolCall& call)
 {
   tools::ToolResult result;
   if (!hasUserScope(call.context.userId)) {
-    result.output = "memoria solo disponible para usuarios autenticados";
+    result.output = scopeRefusal(call);
     return result;
   }
   const std::string query = call.arguments.get("query", "").asString();
@@ -1104,11 +1174,12 @@ tools::ToolResult MemoryService::handleRecall(const tools::ToolCall& call)
                                              .scope = "user",
                                              .refId = call.context.userId,
                                              .maxHops = 1,
-                                             .limit = 8,
+                                             .limit = recallLimit(),
                                              .addresseeEntityId = 0,
                                              .activeEntityIds = {}});
   if (recalled.hits.empty()) {
-    result.output = "no hay recuerdos para esa consulta";
+    result.output = english(call) ? "I have nothing saved about that."
+                                  : "No tengo nada guardado sobre eso.";
     return result;
   }
   result.ok = true;
@@ -1124,24 +1195,39 @@ tools::ToolResult MemoryService::handleForget(const tools::ToolCall& call)
 {
   tools::ToolResult result;
   if (!hasUserScope(call.context.userId)) {
-    result.output = "memoria solo disponible para usuarios autenticados";
+    result.output = scopeRefusal(call);
     return result;
   }
-  const int64_t factId =
-      static_cast<int64_t>(call.arguments.get("fact_id", 0).asInt64());
-  if (factId <= 0) {
-    result.output = "fact_id invalido";
-    return result;
+  const std::string query = call.arguments.get("query", "").asString();
+  const auto recalled = graphRecall_.recall({.text = query,
+                                             .lang = call.context.lang,
+                                             .scope = "user",
+                                             .refId = call.context.userId,
+                                             .maxHops = 1,
+                                             .limit = 3,
+                                             .addresseeEntityId = 0,
+                                             .activeEntityIds = {}});
+  auto target = recalled.hits.end();
+  std::ptrdiff_t best = 0;
+  for (auto hit = recalled.hits.begin(); hit != recalled.hits.end(); ++hit) {
+    const std::ptrdiff_t shared = hit->factId > 0 ? sharedWords(query, hit->canonical) : 0;
+    if (shared > best) {
+      best = shared;
+      target = hit;
+    }
   }
-  const bool ok = [&] {
+  const bool closed = target != recalled.hits.end() && [&] {
     std::scoped_lock lock(graph_->mutex());
-    return graph_->closeFact(factId, std::time(nullptr));
+    return graph_->closeFact({.factId = target->factId,
+                              .refId = call.context.userId,
+                              .at = std::time(nullptr)});
   }();
-  if (!ok) {
-    result.output = "el hecho no existe o ya estaba cerrado";
+  if (!closed) {
+    result.output = english(call) ? "I found no such memory." : "No encontré ese recuerdo.";
     return result;
   }
   result.ok = true;
-  result.output = "hecho olvidado (id " + std::to_string(factId) + ")";
+  result.data["fact_id"] = static_cast<int64_t>(target->factId);
+  result.output = (english(call) ? "Forgotten: " : "Olvidado: ") + target->canonical + ".";
   return result;
 }

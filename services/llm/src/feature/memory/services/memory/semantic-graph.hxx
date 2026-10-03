@@ -52,6 +52,13 @@ struct FactUpsertInput
   std::optional<int64_t> sourceId;
 };
 
+struct FactCloseInput
+{
+  int64_t factId{0};
+  int64_t refId{0};
+  int64_t at{0};
+};
+
 struct RecallEntityInput
 {
   int64_t entityId;
@@ -126,7 +133,7 @@ public:
   virtual std::vector<AliasInfo> aliasesForEntity(int64_t entityId) = 0;
 
   virtual int64_t upsertFact(const FactUpsertInput& input) = 0;
-  virtual bool closeFact(int64_t factId, int64_t at) = 0;
+  virtual bool closeFact(const FactCloseInput& input) = 0;
   virtual std::vector<RecallHit>
   factsForEntity(const RecallEntityInput& input) = 0;
 

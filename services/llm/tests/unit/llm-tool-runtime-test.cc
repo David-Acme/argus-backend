@@ -59,7 +59,7 @@ tools::ToolCall callFor(const std::string& name)
   if (name == "procedure.run")
     call.arguments["goal"] = "apagar la luz";
   if (name == "memory.forget")
-    call.arguments["fact_id"] = 42;
+    call.arguments["query"] = "el dentista";
   return call;
 }
 
@@ -136,10 +136,10 @@ TEST_CASE("a call the schema rejects never reaches the handler")
   CHECK(enumRefused.output == "argument 'type' has an invalid value");
 
   auto wrongType = callFor("memory.forget");
-  wrongType.arguments["fact_id"] = "cuarenta y dos";
+  wrongType.arguments["query"] = 42;
   const auto typeRefused = executor.execute(wrongType, UserRole::Resident);
   CHECK_FALSE(typeRefused.ok);
-  CHECK(typeRefused.output == "argument 'fact_id' must be a number");
+  CHECK(typeRefused.output == "argument 'query' must be a string");
 
   auto notObject = callFor("memory.remember");
   notObject.arguments = Json::Value("guardalo");
@@ -218,7 +218,7 @@ TEST_CASE("the memory descriptors declare their required arguments")
     const char* argument;
   } required[] = {{"memory.recall", "query"},
                   {"procedure.run", "goal"},
-                  {"memory.forget", "fact_id"}};
+                  {"memory.forget", "query"}};
 
   for (const auto& expected : required) {
     const auto* descriptor = declaredByMemory(expected.name);

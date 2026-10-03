@@ -185,7 +185,8 @@ bool MemoryGraphRepository::closeFact(sqlite3* db, const FactCloseInput& input)
   stmt.bindInt64(1, input.at);
   stmt.bindInt64(2, input.at);
   stmt.bindInt64(3, input.factId);
-  return stmt.step() == SQLITE_DONE;
+  stmt.bindInt64(4, input.refId);
+  return stmt.step() == SQLITE_DONE && sqlite3_changes(db) > 0;
 }
 
 std::vector<RecallHit>

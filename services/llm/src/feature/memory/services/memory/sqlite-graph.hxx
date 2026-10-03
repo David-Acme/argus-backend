@@ -36,7 +36,7 @@ public:
   int64_t addAlias(const AliasCreateInput& input) override;
   std::vector<AliasInfo> aliasesForEntity(int64_t entityId) override;
   int64_t upsertFact(const FactUpsertInput& input) override;
-  bool closeFact(int64_t factId, int64_t at) override;
+  bool closeFact(const FactCloseInput& input) override;
   std::vector<RecallHit>
   factsForEntity(const RecallEntityInput& input) override;
   int64_t recordEpisode(const EpisodeCreateInput& input) override;
