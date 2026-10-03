@@ -117,10 +117,6 @@ inline constexpr ErrorDefinition InvalidInvitationId{
     .code = ErrorCode::BadRequest,
     .status = 400,
     .message = "Invalid invitation id"};
-inline constexpr ErrorDefinition ServerAlreadyPaired{
-    .code = ErrorCode::Conflict,
-    .status = 409,
-    .message = "Server already paired"};
 inline constexpr ErrorDefinition InvalidPairingCode{
     .code = ErrorCode::Forbidden,
     .status = 403,

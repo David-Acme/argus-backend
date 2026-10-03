@@ -67,12 +67,15 @@ CA it received, which an intermediary cannot forge without the code. The
 plain `{code}` body is still accepted for scripts and older clients. The
 code is upper-case hex, so both sides use it upper-cased as the HMAC key.
 
-The code is checked first, then the paired state. A repeat from the recorded
-owner device answers the same CA material again instead of 409: the server
-commits the pairing before the client has verified the reply, so a client
-that fails after that point (a dropped connection, an app killed mid-way)
-can pair again rather than leave the installation stuck until `[pairing]` is
-reset by hand. Any other device still gets 409. `GET /pairing/status`
+The code is checked first, then the paired state. Pairing only hands out
+the CA a device needs to trust the server; it opens no session (that takes a
+face login or an approval from a signed-in device). So every device that
+proves the code is paired, which is how a second phone or the desktop app
+joins after the first pairing, and only the first pairing records
+`owner_device`, the one device the first Owner may register from. It used to
+answer 409 to every device after the first, which left the desktop QR login
+- a flow that starts from a paired desktop - with no way in.
+`GET /pairing/status`
 (`DeviceFilter` only) answers `{paired, hasOwner}`, which is how a signed-out
 app decides between owner enrolment and login; it replaces the gateway's old
 `/auth/has-admin`, which no service has answered since the gateway was

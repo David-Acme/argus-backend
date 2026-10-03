@@ -15,7 +15,7 @@ struct CatalogEntry
   const char* message;
 };
 
-constexpr std::array<CatalogEntry, 31> kCatalog{{
+constexpr std::array<CatalogEntry, 30> kCatalog{{
     {.name = "FaceNotRecognized",
      .definition = &IdentityErrors::FaceNotRecognized,
      .code = ErrorCode::Unauthorized,
@@ -156,11 +156,6 @@ constexpr std::array<CatalogEntry, 31> kCatalog{{
      .code = ErrorCode::BadRequest,
      .status = 400,
      .message = "Invalid invitation id"},
-    {.name = "ServerAlreadyPaired",
-     .definition = &IdentityErrors::ServerAlreadyPaired,
-     .code = ErrorCode::Conflict,
-     .status = 409,
-     .message = "Server already paired"},
     {.name = "InvalidPairingCode",
      .definition = &IdentityErrors::InvalidPairingCode,
      .code = ErrorCode::Forbidden,
@@ -185,7 +180,7 @@ TEST_CASE("the identity catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 31);
+  CHECK(kCatalog.size() == 30);
 }
 
 TEST_CASE("every identity entry is legal on the wire")

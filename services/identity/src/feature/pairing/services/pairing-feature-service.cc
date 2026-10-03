@@ -19,11 +19,7 @@ ResponsePairingDto PairingFeatureService::pair(const PairingRequestInput& input)
             : CertService::verifyPairingProof({.nonce = input.nonce, .proof = input.proof});
     if (!proven)
       throw ResponseException(IdentityErrors::InvalidPairingCode);
-    if (ConfigService::getBool("pairing.paired")) {
-      if (ConfigService::getString("pairing.owner_device") != input.deviceHash)
-        throw ResponseException(IdentityErrors::ServerAlreadyPaired);
-    }
-    else {
+    if (!ConfigService::getBool("pairing.paired")) {
       ConfigService::setString("pairing.owner_device", input.deviceHash);
       ConfigService::setBool("pairing.paired", true);
     }
