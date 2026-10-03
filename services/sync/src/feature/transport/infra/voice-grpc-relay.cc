@@ -10,8 +10,10 @@
 #include <trantor/utils/Logger.h>
 #include <voice/reaction-contracts.hxx>
 
+#include <charconv>
 #include <cstdint>
 #include <optional>
+#include <system_error>
 #include <utility>
 
 namespace
@@ -19,6 +21,37 @@ namespace
 
 constexpr int kConnectProbeTimeoutMs = 500;
 constexpr std::size_t kMaxContextChars = 300;
+constexpr std::size_t kMaxSituationChars = 900;
+constexpr std::size_t kMaxResultDetailChars = 160;
+constexpr std::size_t kMaxPendingOps = 16;
+
+std::string utf8Prefix(const std::string& text, std::size_t maxBytes)
+{
+  if (text.size() <= maxBytes)
+    return text;
+  std::size_t end = maxBytes;
+  while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0U) == 0x80U)
+    --end;
+  return text.substr(0, end);
+}
+
+std::string stringField(const Json::Value& payload, const char* key, std::size_t maxBytes)
+{
+  const Json::Value& value = payload[key];
+  return value.isString() ? utf8Prefix(value.asString(), maxBytes) : std::string();
+}
+
+argus::voice::v1::VoiceContextKind contextKindOf(const Json::Value& payload)
+{
+  const Json::Value& kind = payload["kind"];
+  if (!kind.isString())
+    return argus::voice::v1::VOICE_CONTEXT_NOTE;
+  if (kind.asString() == "cameraEvent")
+    return argus::voice::v1::VOICE_CONTEXT_CAMERA_EVENT;
+  if (kind.asString() == "situation")
+    return argus::voice::v1::VOICE_CONTEXT_SITUATION;
+  return argus::voice::v1::VOICE_CONTEXT_NOTE;
+}
 
 ReactionKind reactionKindFromProto(argus::voice::v1::ReactionKind reaction)
 {
@@ -64,14 +97,38 @@ argus::voice::v1::VoiceContext VoiceGrpcRelay::contextOf(const Json::Value& payl
   argus::voice::v1::VoiceContext context;
   if (!payload.isObject())
     return context;
-  const std::string kind = payload["kind"].isString() ? payload["kind"].asString() : std::string();
-  context.set_kind(kind == "cameraEvent" ? argus::voice::v1::VOICE_CONTEXT_CAMERA_EVENT
-                                         : argus::voice::v1::VOICE_CONTEXT_NOTE);
-  if (payload["text"].isString())
-    context.set_text(payload["text"].asString().substr(0, kMaxContextChars));
-  if (payload["camera"].isString())
-    context.set_camera(payload["camera"].asString().substr(0, kMaxContextChars));
+  context.set_kind(contextKindOf(payload));
+  const std::size_t textLimit = context.kind() == argus::voice::v1::VOICE_CONTEXT_SITUATION
+                                    ? kMaxSituationChars
+                                    : kMaxContextChars;
+  context.set_text(stringField(payload, "text", textLimit));
+  context.set_camera(stringField(payload, "camera", kMaxContextChars));
   return context;
+}
+
+argus::voice::v1::VoiceActionResult VoiceGrpcRelay::actionResultOf(const Json::Value& payload)
+{
+  argus::voice::v1::VoiceActionResult result;
+  if (!payload.isObject())
+    return result;
+  const Json::Value& id = payload["id"];
+  if (id.isIntegral())
+    result.set_id(id.asInt64());
+  else if (id.isString()) {
+    const std::string& raw = id.asString();
+    int64_t parsed = 0;
+    const auto [end, error] = std::from_chars(raw.data(), raw.data() + raw.size(), parsed);
+    if (error == std::errc{} && end == raw.data() + raw.size())
+      result.set_id(parsed);
+  }
+  result.set_ok(payload["ok"].isBool() && payload["ok"].asBool());
+  result.set_detail(stringField(payload, "detail", kMaxResultDetailChars));
+  return result;
+}
+
+bool VoiceGrpcRelay::mutedOf(const Json::Value& payload)
+{
+  return payload.isObject() && payload["muted"].isBool() && payload["muted"].asBool();
 }
 
 Json::Value VoiceGrpcRelay::renderServerFrame(
@@ -170,14 +227,18 @@ public:
     if (!loop)
       return;
     loop->queueInLoop([conn = conn_, session = session_, status]() {
-      session->stream.reset();
+      {
+        std::scoped_lock lock(session->mutex);
+        session->stream.reset();
+      }
       if (session->closing || conn->disconnected())
         return;
       if (status.ok())
         return;
       LOG_WARN << "Voice relay: stream failed: " << status.error_message();
-      session->failed = true;
-      conn->shutdown(drogon::CloseCode::kNormalClosure);
+      const std::string type = "voice:start";
+      const std::string error(SyncErrors::VoiceUnavailable.message);
+      sendSocketFrameError({.conn = conn, .type = type, .status = 503, .error = error});
     });
   }
 
@@ -243,72 +304,128 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(const SyncFrameInput& input)
   auto session = sessionFor(conn);
   if (!session)
     co_return false;
-  if (session->failed)
-    throw ResponseException(503, SyncErrors::VoiceUnavailable);
   if (session->closing)
     co_return true;
 
   if (type == "voice:start") {
-    if (session->stream)
-      co_return true;
-
-    std::optional<DirectoryUser> user;
-    if (userDirectory_)
-      user = co_await userDirectory_->findById(session->userId);
-    argus::voice::v1::VoiceIdentity identity;
-    identity.set_user_id(session->userId);
-    identity.set_role(voiceRoleToProto(session->role));
-    if (user) {
-      identity.set_name(user->name);
-      identity.set_language(voiceLangToProto(user->lang));
-    }
-
-    const bool up = co_await BlockingTask<bool>{
-        [this] { return client_->waitConnected(kConnectProbeTimeoutMs); }};
-    if (!up)
-      throw ResponseException(503, SyncErrors::VoiceUnavailable);
-    if (session->closing || session->stream)
-      co_return true;
-
-    argus::voice::v1::VoiceStart start;
-    *start.mutable_identity() = identity;
-    start.set_mode(startModeOf(message));
-    session->stream = client_->connect(
-        identity, std::make_shared<StreamObserver>(conn, session));
-    session->stream->start(start);
+    co_await startStream({.conn = conn, .session = session, .mode = startModeOf(message)});
     co_return true;
   }
 
   if (type == "voice:stop") {
-    if (session->stream)
-      session->stream->stop();
+    deliver(*session, [](VoiceStream& stream) { stream.stop(); });
     co_return true;
   }
 
   if (type == "voice:skip") {
-    if (session->stream)
-      session->stream->skip();
+    deliver(*session, [](VoiceStream& stream) { stream.skip(); });
     co_return true;
   }
 
   if (type == "voice:context") {
-    if (session->stream)
-      session->stream->sendContext(contextOf(message["payload"]));
+    deliver(*session, [context = contextOf(message["payload"])](VoiceStream& stream) {
+      stream.sendContext(context);
+    });
+    co_return true;
+  }
+
+  if (type == "voice:action_result") {
+    deliver(*session, [result = actionResultOf(message["payload"])](VoiceStream& stream) {
+      stream.sendActionResult(result);
+    });
+    co_return true;
+  }
+
+  if (type == "voice:mute") {
+    deliver(*session, [muted = mutedOf(message["payload"])](VoiceStream& stream) {
+      stream.sendMute(muted);
+    });
     co_return true;
   }
 
   co_return false;
 }
 
+void VoiceGrpcRelay::deliver(Session& session, StreamOp op)
+{
+  std::shared_ptr<VoiceStream> stream;
+  {
+    std::scoped_lock lock(session.mutex);
+    stream = session.stream;
+    if (!stream) {
+      if (session.starting && session.pending.size() < kMaxPendingOps)
+        session.pending.push_back(std::move(op));
+      return;
+    }
+  }
+  op(*stream);
+}
+
+drogon::Task<void> VoiceGrpcRelay::startStream(StartInput input)
+{
+  const auto session = input.session;
+  const auto conn = input.conn;
+  const auto mode = input.mode;
+  std::shared_ptr<VoiceStream> stream;
+  {
+    std::scoped_lock lock(session->mutex);
+    stream = session->stream;
+    if (!stream)
+      session->starting = true;
+  }
+
+  std::optional<DirectoryUser> user;
+  if (userDirectory_)
+    user = co_await userDirectory_->findById(session->userId);
+  argus::voice::v1::VoiceStart start;
+  argus::voice::v1::VoiceIdentity& identity = *start.mutable_identity();
+  identity.set_user_id(session->userId);
+  identity.set_role(voiceRoleToProto(session->role));
+  if (user) {
+    identity.set_name(user->name);
+    identity.set_language(voiceLangToProto(user->lang));
+  }
+  start.set_mode(mode);
+
+  if (stream) {
+    stream->start(start);
+    co_return;
+  }
+
+  const bool up = co_await BlockingTask<bool>{
+      [this] { return client_->waitConnected(kConnectProbeTimeoutMs); }};
+  std::vector<StreamOp> pending;
+  {
+    std::scoped_lock lock(session->mutex);
+    session->starting = false;
+    pending.swap(session->pending);
+    if (up && !session->closing && !session->stream)
+      session->stream = client_->connect(
+          start.identity(), std::make_shared<StreamObserver>(conn, session));
+    stream = session->stream;
+  }
+  if (!up)
+    throw ResponseException(503, SyncErrors::VoiceUnavailable);
+  if (!stream)
+    co_return;
+  stream->start(start);
+  for (auto& op : pending)
+    op(*stream);
+}
+
 void VoiceGrpcRelay::forwardBinary(const drogon::WebSocketConnectionPtr& conn,
                                    const std::string& data)
 {
   auto session = sessionFor(conn);
-  if (!session || session->failed || session->closing)
+  if (!session || session->closing)
     return;
-  if (!session->stream)
-    return;
-  session->stream->sendPcm(data.data(), data.size());
+  std::shared_ptr<VoiceStream> stream;
+  {
+    std::scoped_lock lock(session->mutex);
+    stream = session->stream;
+  }
+  if (stream)
+    stream->sendPcm(data.data(), data.size());
 }
 
 void VoiceGrpcRelay::onClose(const drogon::WebSocketConnectionPtr& conn)
@@ -317,6 +434,12 @@ void VoiceGrpcRelay::onClose(const drogon::WebSocketConnectionPtr& conn)
   if (!session)
     return;
   session->closing = true;
-  if (session->stream)
-    session->stream->finish();
+  std::shared_ptr<VoiceStream> stream;
+  {
+    std::scoped_lock lock(session->mutex);
+    stream = std::move(session->stream);
+    session->pending.clear();
+  }
+  if (stream)
+    stream->finish();
 }

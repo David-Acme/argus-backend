@@ -5,10 +5,13 @@
 #include <sync/sync-forwarder.hxx>
 #include <grpcpp/grpcpp.h>
 #include <json/value.h>
+#include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 #include <auth/user-directory.hxx>
 #include <auth/user-role.hxx>
 #include <voice/voice-client.hxx>
@@ -38,19 +41,34 @@ public:
       const argus::voice::v1::ServerFrame& frame);
   static argus::voice::v1::VoiceMode startModeOf(const Json::Value& message);
   static argus::voice::v1::VoiceContext contextOf(const Json::Value& payload);
+  static argus::voice::v1::VoiceActionResult actionResultOf(const Json::Value& payload);
+  static bool mutedOf(const Json::Value& payload);
 
 private:
   class StreamObserver;
+  using StreamOp = std::function<void(VoiceStream&)>;
+
   struct Session
   {
     int64_t userId{0};
     UserRole role{UserRole::Guest};
     trantor::EventLoop* loop{nullptr};
+    std::atomic<bool> closing{false};
+    std::mutex mutex;
     std::shared_ptr<VoiceStream> stream;
-    bool failed{false};
-    bool closing{false};
+    bool starting{false};
+    std::vector<StreamOp> pending;
   };
 
+  struct StartInput
+  {
+    const drogon::WebSocketConnectionPtr& conn;
+    const std::shared_ptr<Session>& session;
+    argus::voice::v1::VoiceMode mode{argus::voice::v1::VOICE_MODE_HALF_DUPLEX};
+  };
+
+  static void deliver(Session& session, StreamOp op);
+  drogon::Task<void> startStream(StartInput input);
   std::shared_ptr<Session> sessionFor(const drogon::WebSocketConnectionPtr& conn);
   std::shared_ptr<Session> takeSession(const drogon::WebSocketConnectionPtr& conn);
 

@@ -165,3 +165,55 @@ TEST_CASE("voice:context maps a camera event and a note, and bounds what it forw
 
   CHECK(VoiceGrpcRelay::contextOf(Json::Value("x")).text().empty());
 }
+
+TEST_CASE("voice:context keeps whole UTF-8 characters and gives the situation a larger bound")
+{
+  Json::Value note(Json::objectValue);
+  note["kind"] = "note";
+  note["text"] = std::string(299, 'x') + "á";
+  CHECK(VoiceGrpcRelay::contextOf(note).text() == std::string(299, 'x'));
+
+  Json::Value situation(Json::objectValue);
+  situation["kind"] = "situation";
+  situation["text"] = std::string(2000, 'y');
+  const auto mapped = VoiceGrpcRelay::contextOf(situation);
+  CHECK(mapped.kind() == argus::voice::v1::VOICE_CONTEXT_SITUATION);
+  CHECK(mapped.text().size() == 900);
+}
+
+TEST_CASE("voice:action_result carries the id, the outcome and a bounded detail")
+{
+  Json::Value failed(Json::objectValue);
+  failed["id"] = 4;
+  failed["ok"] = false;
+  failed["detail"] = std::string(400, 'z');
+  const auto result = VoiceGrpcRelay::actionResultOf(failed);
+  CHECK(result.id() == 4);
+  CHECK_FALSE(result.ok());
+  CHECK(result.detail().size() == 160);
+
+  Json::Value done(Json::objectValue);
+  done["id"] = "12";
+  done["ok"] = true;
+  const auto ok = VoiceGrpcRelay::actionResultOf(done);
+  CHECK(ok.id() == 12);
+  CHECK(ok.ok());
+
+  Json::Value junk(Json::objectValue);
+  junk["id"] = "12x";
+  junk["ok"] = "yes";
+  const auto rejected = VoiceGrpcRelay::actionResultOf(junk);
+  CHECK(rejected.id() == 0);
+  CHECK_FALSE(rejected.ok());
+  CHECK(VoiceGrpcRelay::actionResultOf(Json::Value("x")).id() == 0);
+}
+
+TEST_CASE("voice:mute is on only when the payload says so")
+{
+  Json::Value muted(Json::objectValue);
+  muted["muted"] = true;
+  CHECK(VoiceGrpcRelay::mutedOf(muted));
+  muted["muted"] = "true";
+  CHECK_FALSE(VoiceGrpcRelay::mutedOf(muted));
+  CHECK_FALSE(VoiceGrpcRelay::mutedOf(Json::Value(Json::objectValue)));
+}

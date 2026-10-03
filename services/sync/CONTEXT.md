@@ -116,6 +116,31 @@ protocol could not regress by accident in the commit that changed the endpoint.
   exists, so the relay checks `closing` (and a stream a second start already
   opened) after the awaits instead of starting a stream nobody would finish —
   the observer and the session hold each other until the stream closes.
+- **One stream, many calls.** The gRPC stream outlives a call: `voice:stop`
+  ends the session in argus-voice but leaves the stream open, so a later
+  `voice:start` on the same socket is sent as a new `VoiceStart` on that
+  stream (argus-voice starts a new session once the previous one stopped).
+  The relay used to drop it because a stream existed, so every call after the
+  first on one socket - the retry button, a second call from the dashboard -
+  started nothing and the app waited on a silent call.
+- **Frames that race the start.** The app sends its first `voice:context`
+  notes right after `voice:start`, while the relay is still awaiting the
+  directory and the connect probe. The relay marks the session `starting`
+  before those awaits and queues what arrives meanwhile (context, action
+  results, mute, skip, stop; at most 16) to flush, in order, right after the
+  start frame; before, the first note of a call (the camera names) was
+  dropped and the model never knew the cameras. PCM is not queued: the call
+  greets first, so the first few hundred milliseconds of microphone carry no
+  turn. The session's stream, its `starting` flag and the queue sit behind
+  one mutex, because `forwardText` resumes on Drogon's main loop after its
+  awaits while the stream observer and the binary path run on the socket's
+  loop.
+- **A voice failure is the call's, not the socket's.** When the voice stream
+  closes with an error the relay sends `voice:start_error` (503, `Voice
+  unavailable`) - the app's router hands every `voice:*_error` to its voice
+  error listeners - and forgets the stream, so the next `voice:start` dials
+  again. It used to shut the whole `/sync` socket down, which also dropped
+  sync and every live emit until the app reconnected.
 - **The voice start mode.** `voice:start` may carry `{"mode":"duplex"}`; the
   relay reads it with `VoiceGrpcRelay::startModeOf` and sends it as
   `VoiceStart.mode` (`VOICE_MODE_DUPLEX`). Anything else - no payload, a
@@ -329,6 +354,17 @@ same reason in the other direction.
 
 `voice:action` (server to app) carries `{id, name, arguments}` with the
 arguments parsed into an object (anything unparsable becomes `{}`).
-`voice:context` (app to server) takes `{kind: "note" | "cameraEvent",
-text, camera}`, maps any other kind to a note and cuts each string at 300
-characters before it reaches argus-voice.
+`voice:context` (app to server) takes `{kind: "note" | "cameraEvent" |
+"situation", text, camera}`, maps any other kind to a note and cuts each
+string at 300 characters (the situation's text at 900, since it carries the
+guard mode, the day's agenda and recent camera events together) before it
+reaches argus-voice. Cuts land on a UTF-8 character boundary: a byte cut in
+the middle of "á" made the protobuf string invalid, and the receiving side
+refuses to parse such a frame.
+
+`voice:action_result` (app to server) reports what the app did with an
+action: `{id, ok, detail}`, `id` a number or a numeric string, `ok` true only
+for a JSON `true`, `detail` cut at 160 characters. `voice:mute`
+`{muted: true}` tells argus-voice the microphone is muted, so it drops the
+half-said utterance instead of finishing it after the unmute; any other
+payload is unmute.
