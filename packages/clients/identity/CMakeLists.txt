@@ -12,8 +12,10 @@ if(NOT TARGET argus::clients::identity)
       PROTO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/proto
       PROTO argus/identity/v1/identity.proto
             argus/identity/v1/sync.proto
+            argus/identity/v1/voiceprint.proto
       SOURCES src/identity/identity-client.cc
               src/identity/identity-sync-client.cc
+              src/identity/voiceprint-client.cc
       INCLUDES src)
 endif()
 
@@ -30,3 +32,17 @@ target_link_libraries(identity-grpc-client-test PRIVATE argus::clients::identity
 target_compile_options(identity-grpc-client-test PRIVATE -Wall -Wextra)
 
 add_test(NAME identity-grpc-client-test COMMAND identity-grpc-client-test)
+
+add_executable(identity-voiceprint-client-test
+    tests/unit/voiceprint-client-test.cc)
+
+set_target_properties(identity-voiceprint-client-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(identity-voiceprint-client-test PRIVATE
+    argus::clients::identity doctest::doctest)
+
+target_compile_options(identity-voiceprint-client-test PRIVATE -Wall -Wextra)
+
+add_test(NAME identity-voiceprint-client-test
+         COMMAND identity-voiceprint-client-test)

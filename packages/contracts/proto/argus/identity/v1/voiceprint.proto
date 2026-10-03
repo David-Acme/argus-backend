@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package argus.identity.v1;
+
+message VoiceClip
+{
+  bytes pcm16 = 1;
+  int32 sample_rate = 2;
+}
+
+enum VoiceprintOutcome
+{
+  VOICEPRINT_OUTCOME_UNSPECIFIED = 0;
+  VOICEPRINT_OK = 1;
+  VOICEPRINT_UNAVAILABLE = 2;
+  VOICEPRINT_NOT_ENROLLED = 3;
+  VOICEPRINT_STALE = 4;
+  VOICEPRINT_SAMPLE_INVALID = 5;
+  VOICEPRINT_SAMPLE_TOO_SHORT = 6;
+  VOICEPRINT_SAMPLE_TOO_NOISY = 7;
+  VOICEPRINT_SAMPLE_CLIPPED = 8;
+  VOICEPRINT_SAMPLES_INCONSISTENT = 9;
+  VOICEPRINT_SAMPLE_COUNT_INVALID = 10;
+  VOICEPRINT_ALREADY_ENROLLED = 11;
+  VOICEPRINT_VOICE_TAKEN = 12;
+  VOICEPRINT_CHALLENGE_INVALID = 13;
+  VOICEPRINT_CONSENT_REQUIRED = 14;
+  VOICEPRINT_FORBIDDEN = 15;
+  VOICEPRINT_FACE_NOT_VERIFIED = 16;
+  VOICEPRINT_USER_NOT_FOUND = 17;
+}
+
+message VoiceprintStatus
+{
+  bool enrolled = 1;
+  bool stale = 2;
+  string model = 3;
+  int32 sample_count = 4;
+  int64 enrolled_at = 5;
+  string method = 6;
+  string consent_version = 7;
+}
+
+message CreateVoiceprintChallengeRequest
+{
+  int64 user_id = 1;
+  optional string lang = 2;
+}
+
+message CreateVoiceprintChallengeResponse
+{
+  VoiceprintOutcome outcome = 1;
+  string challenge_id = 2;
+  repeated string phrases = 3;
+  int64 expires_at = 4;
+  string consent_version = 5;
+  string lang = 6;
+}
+
+message EnrollVoiceprintRequest
+{
+  int64 user_id = 1;
+  repeated VoiceClip samples = 2;
+  bool consent = 3;
+  string consent_version = 4;
+  string challenge_id = 5;
+  optional bytes face_image = 6;
+}
+
+message EnrollVoiceprintResponse
+{
+  VoiceprintOutcome outcome = 1;
+  VoiceprintStatus status = 2;
+  optional int32 failed_sample = 3;
+}
+
+message VerifyVoiceprintRequest
+{
+  int64 user_id = 1;
+  VoiceClip sample = 2;
+}
+
+message VerifyVoiceprintResponse
+{
+  VoiceprintOutcome outcome = 1;
+  bool matched = 2;
+  float score = 3;
+  float threshold = 4;
+}
+
+message IdentifyVoiceRequest
+{
+  VoiceClip sample = 1;
+}
+
+message IdentifyVoiceResponse
+{
+  VoiceprintOutcome outcome = 1;
+  bool matched = 2;
+  int64 user_id = 3;
+  float score = 4;
+  float threshold = 5;
+  optional int64 person_id = 6;
+  optional string name = 7;
+  optional string role = 8;
+}
+
+message DeleteVoiceprintRequest
+{
+  int64 user_id = 1;
+}
+
+message DeleteVoiceprintResponse
+{
+  VoiceprintOutcome outcome = 1;
+  bool deleted = 2;
+}
+
+message GetVoiceprintStatusRequest
+{
+  int64 user_id = 1;
+}
+
+message GetVoiceprintStatusResponse
+{
+  VoiceprintOutcome outcome = 1;
+  bool available = 2;
+  VoiceprintStatus status = 3;
+}
+
+service VoiceprintService
+{
+  rpc CreateChallenge(CreateVoiceprintChallengeRequest)
+      returns (CreateVoiceprintChallengeResponse) {}
+
+  rpc Enroll(EnrollVoiceprintRequest) returns (EnrollVoiceprintResponse) {}
+
+  rpc Verify(VerifyVoiceprintRequest) returns (VerifyVoiceprintResponse) {}
+
+  rpc Identify(IdentifyVoiceRequest) returns (IdentifyVoiceResponse) {}
+
+  rpc Delete(DeleteVoiceprintRequest) returns (DeleteVoiceprintResponse) {}
+
+  rpc GetStatus(GetVoiceprintStatusRequest)
+      returns (GetVoiceprintStatusResponse) {}
+}

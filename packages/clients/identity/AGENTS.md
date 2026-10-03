@@ -9,9 +9,10 @@ maps back, and the sync pull that reaches the same service.
 A module, not a service: one `argus_clients(NAME identity ...)`, a STATIC
 library whose include root is `src/`, so a consumer writes
 `<identity/identity-client.hxx>` and links `argus::clients::identity`. It
-compiles two protos (`argus/identity/v1/identity.proto` and
-`argus/identity/v1/sync.proto`) and two sources
-(`src/identity/identity-client.cc`, `src/identity/identity-sync-client.cc`).
+compiles three protos (`argus/identity/v1/identity.proto`,
+`argus/identity/v1/sync.proto` and `argus/identity/v1/voiceprint.proto`) and
+three sources (`src/identity/identity-client.cc`,
+`src/identity/identity-sync-client.cc`, `src/identity/voiceprint-client.cc`).
 Ten owner trees link it — `argus_lib_auth`
 (`packages/lib/auth/CMakeLists.txt:65`), `argus-auth` (`services/auth:98`)
 with its `auth-auth` (`src/feature/auth:19`) and `auth-session`
@@ -56,8 +57,18 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   production consumer is `services/sync`'s `identity-sync-gateway`,
   constructed at `services/sync/src/app/main.cc:80`; identity's own
   `identity-sync-rpc-test.cc` drives it directly against the served method.
-- Nothing else: the folder is CMakeLists.txt, the four sources, the suite and
-  this file. No `details/` directory: the channel, deadline, fleet secret and
+- `src/identity/voiceprint-client.hxx` — `VoiceprintClient`, the third stub
+  (`argus.identity.v1.VoiceprintService`): `createChallenge`, `enroll`,
+  `verify`, `identify`, `remove` and `status`, with the input structs
+  `VoiceClipView` (a `std::span<const int16_t>` and its sample rate — the
+  caller's samples are copied once, into the wire bytes),
+  `VoiceprintSession` (the bearer token and device hash a gated call
+  presents), `VoiceprintChallengeInput`, `VoiceprintEnrollInput`,
+  `VoiceprintVerifyInput` and `VoiceprintDeleteInput`, configured by
+  `VoiceprintClientConfig{target, fleetSecret}`. The voice relay (calls) and
+  guard (visitor dialogues) are the consumers it was written for.
+- Nothing else: the folder is CMakeLists.txt, the six sources, the two suites
+  and this file. No `details/` directory: the channel, deadline, fleet secret and
   metadata ride inline in the `.cc` files.
 
 ## Rules
@@ -65,9 +76,19 @@ header: the in-package suite, two in `packages/lib/auth`, five in
 - Rule 25: the folder IS the module. One `argus_clients(NAME identity ...)` with
   an explicit source list, never `file(GLOB)`.
 - The include prefix is load-bearing: `<identity/identity-client.hxx>`.
-- Two stubs, two clients, neither wrapping the other: the identity surface
-  (`IdentityService`) and the sync pull (`SyncService`). A consumer that needs
-  both holds both.
+- Three stubs, three clients, none wrapping another: the identity surface
+  (`IdentityService`), the sync pull (`SyncService`) and the voiceprint
+  surface (`VoiceprintService`). A consumer that needs more than one holds
+  each.
+- The voiceprint wire: a clip is mono 16-bit little-endian PCM at its own
+  rate (8-48 kHz), encoded byte by byte so the host's endianness never
+  leaks. `createChallenge`, `enroll` and `remove` are the human-gated calls:
+  they refuse locally without a bearer token, and send `authorization:
+  Bearer <token>` plus `x-argus-device` when a device hash is known — the
+  same pair `promotePerson` presents. `verify`, `identify` and `status` carry
+  the fleet secret only. `enroll` refuses an empty clip list, a clip with no
+  samples or an out-of-range rate, and an empty challenge id. One deadline
+  per call (5 s), 20 s for `enroll`, which extracts every sample.
 - What a consumer sees: twelve methods returning `std::optional` or `bool`,
   and `PersonProfile` as the one local DTO — `getPerson` always maps personId,
   name, alias, observation, role and tags, maps `userId` only when the wire
@@ -119,6 +140,12 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   carries `grpc` in its name because `packages/lib/sqlite` already registers a
   suite called `identity-client-test`; ctest allows the duplicate, and the
   rename keeps the ledger readable.
+- `tests/unit/voiceprint-client-test.cc` — three cases: the local refusals
+  (no call reaches the scripted server until a valid one does), the fleet
+  secret, bearer and device the gated calls present (and the bearer the
+  fleet-only `verify` does not), and the little-endian encoding of an
+  enrollment's clips with their rate and consent. Registered as
+  `identity-voiceprint-client-test`.
 - The CMakeLists registers it as `identity-grpc-client-test`, with
   `EXCLUDE_FROM_ALL FALSE` because six of the pulls that reach it are
   `EXCLUDE_FROM_ALL` (guard, llm, notification, productivity, sync, voice; auth
