@@ -51,6 +51,10 @@ public:
 
   void start();
 
+  [[nodiscard]] std::shared_ptr<const Config> currentConfig() const;
+
+  void refresh(const Config& fresh);
+
   void requestStop();
 
   [[nodiscard]] bool drained() const;
@@ -405,10 +409,10 @@ private:
   void stopTimers();
 
   Dependencies dependencies_;
-  Config config_;
+  mutable std::mutex configMutex_;
+  std::shared_ptr<const Config> config_;
   GuardSchedule schedule_;
   GuardRepository repository_;
-  GuardActionAuthorizer authorizer_;
   S3StorageService storage_;
   std::shared_ptr<GuardLifecycle> lifecycle_;
 

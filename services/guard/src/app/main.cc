@@ -6,6 +6,7 @@
 #include <feature/guard/guard-repository.hxx>
 #include <feature/guard/guard-schema.hxx>
 #include <feature/guard/guard-service.hxx>
+#include <feature/settings/guard-settings.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/role-filter.hxx>
@@ -23,10 +24,15 @@
 #include <nats/nats-bus.hxx>
 #include <runtime/shutdown-signal.hxx>
 #include <runtime/log-output.hxx>
+#include <settings/settings-rpc.hxx>
 #include <unistd.h>
 
+#include <grpcpp/grpcpp.h>
+
+#include <chrono>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -56,6 +62,46 @@ Json::Value drogonConfig(const GuardDrogonConfig& input)
 
   config["listeners"] = listenerJson(input.listener);
   return config;
+}
+
+struct SettingsListener
+{
+  std::unique_ptr<SettingsRpcService> service;
+  std::unique_ptr<grpc::Server> server;
+};
+
+SettingsListener startSettingsListener(SettingsRegistry& registry)
+{
+  GuardRpcConfig rpc = GuardConfig::resolveRpc();
+  if (rpc.address.empty())
+    return {};
+  if (rpc.settingsCredentials.empty()) {
+    LOG_WARN << "Guard settings listener not started: [rpc.callers] settings "
+                "is empty";
+    return {};
+  }
+  SettingsListener listener;
+  listener.service = std::make_unique<SettingsRpcService>(
+      SettingsRpcInput{.service = "guard",
+                       .registry = &registry,
+                       .credentials = std::move(rpc.settingsCredentials)});
+  grpc::ServerBuilder builder;
+  builder.AddListeningPort(rpc.address, grpc::InsecureServerCredentials());
+  builder.RegisterService(listener.service.get());
+  listener.server = builder.BuildAndStart();
+  if (!listener.server) {
+    LOG_FATAL << "Guard settings listener failed to listen on " << rpc.address;
+    _exit(1);
+  }
+  LOG_INFO << "Guard settings listener on " << rpc.address;
+  return listener;
+}
+
+void stopSettingsListener(const SettingsListener& listener)
+{
+  if (listener.server)
+    listener.server->Shutdown(std::chrono::system_clock::now() +
+                              std::chrono::milliseconds(500));
 }
 
 void registerHealth()
@@ -142,6 +188,12 @@ int main()
        .assessment = &assessment},
       guardConfig);
 
+  SettingsRegistry settings(guardSettingsCatalog());
+  settings.onChange([&guardService](const std::vector<std::string>&) {
+    guardService.refresh(GuardConfig::resolveService());
+  });
+  const SettingsListener settingsListener = startSettingsListener(settings);
+
   registerHealth();
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
@@ -184,6 +236,12 @@ int main()
 
   shutdown_signal::onQuit(
       [path = db.dbPath] { DbService::freezeClient(path); });
+  shutdown_signal::onStop(
+      {.name = "guard-settings",
+       .requestStop = [&settingsListener] {
+         stopSettingsListener(settingsListener);
+       },
+       .drained = [] { return true; }});
   shutdown_signal::onStop(shutdown_signal::drainOf(guardService, "guard"));
 
   std::unique_ptr<MdnsService> mdnsService;
@@ -194,5 +252,6 @@ int main()
   });
 
   drogon::app().setThreadNum(0).run();
+  stopSettingsListener(settingsListener);
   return 0;
 }

@@ -461,3 +461,130 @@ honoured rather than silently replaced by the struct default. The distinction
 is pinned by a case in `tests/unit/guard-belief-test.cc` ("belief keys are
 honoured whatever their sign"), which sets a negative per-camera weight, a
 zero weight and a negative global weight.
+
+## Owner settings
+
+`src/feature/settings/guard-settings.cc` (`argus::guard-settings`) is the
+catalog an owner may change through `argus.settings.v1.Settings`. Guard had no
+gRPC server before; it now opens one only for this, on `[rpc] address`
+(empty, the native default, means no listener; the deploy template uses
+`0.0.0.0:7139`), and registers `SettingsRpcService{.service = "guard"}` alone
+on it. The only credential it accepts is `[rpc.callers] settings` (service
+name `settings`, resolved by `GuardConfig::resolveRpc()` through
+`settingsCallers`); any other `[rpc.callers]` entry is ignored, and an address
+with an empty settings secret starts nothing and logs why.
+`ensure_settings_owners` wires the slot as `guard rpc.callers settings rpc`,
+like llm/tts/stt/vlm, so argus-settings' `[owners.guard]` target is
+`argus-guard:7139` in compose and stays empty natively while the address is.
+
+| Key | Level | Applies | Group | Range | Fallback |
+|---|---|---|---|---|---|
+| `guard.notify_level` | basic | live | response | 1-4 | 2 |
+| `guard.announce_level` | basic | live | response | 1-5 | 3 |
+| `guard.alarm_level` | basic | live | response | 1-5 | 4 |
+| `guard.alarm_seconds` | basic | live | alarm | 1-60 | 6 |
+| `guard.arm_siren` | basic | live | alarm | toggle | false |
+| `guard.siren_seconds` | basic | live | alarm | 1-300 | 20 |
+| `guard.greet_enabled` | basic | live | visitors | toggle | true |
+| `guard.greet_known` | basic | live | visitors | toggle | false |
+| `guard.expected_guests` | basic | live | visitors | toggle | true |
+| `guard.quiet_hours.enabled` | basic | live | quiet | toggle | false |
+| `guard.quiet_hours.start_hour` | basic | live | quiet | 0-23 | 22 |
+| `guard.quiet_hours.end_hour` | basic | live | quiet | 0-23 | 7 |
+| `guard.quiet_hours.daily_budget` | advanced | live | quiet | 1-500 | 30 |
+| `guard.decision_mode` | advanced | live | decisions | shadow, enforce | shadow |
+| `guard.belief.gate_scope` | advanced | live | decisions | notify, communication, all | notify |
+| `guard.belief.threshold_critical` | advanced | live | decisions | -12-12 | 1 |
+| `guard.belief.threshold_high` | advanced | live | decisions | -12-12 | 3 |
+| `guard.belief.threshold_medium` | advanced | live | decisions | -12-12 | 5 |
+| `guard.belief.threshold_low` | advanced | live | decisions | -12-12 | 7 |
+| `guard.belief.detector_strong` | advanced | live | decisions | 0.3-0.99 | 0.75 |
+| `guard.belief.detector_weak` | advanced | live | decisions | 0.05-0.9 | 0.35 |
+| `guard.belief.zone_dwell_alert_ms` | advanced | live | decisions | 500-120000 | 3000 |
+| `guard.belief.zone_dwell_monitor_ms` | advanced | live | decisions | 500-300000 | 12000 |
+| `guard.belief_refresh_s` | advanced | live | decisions | 10-3600 | 300 |
+| `guard.action_cooldown_s` | advanced | live | limits | 1-86400 | 120 |
+| `guard.repeat_window_s` | advanced | live | limits | 60-604800 | 86400 |
+| `guard.max_actions_per_hour` | advanced | live | limits | 1-60 | 4 |
+| `guard.max_dialogue_turns` | advanced | live | dialogue | 1-10 | 3 |
+| `guard.greet_listen_seconds` | advanced | live | dialogue | 1-10 | 6 |
+| `guard.greet_reply_enabled` | advanced | live | dialogue | toggle | true |
+| `guard.cross_camera_window_s` | advanced | live | tracking | 5-600 | 60 |
+| `guard.continuity_window_s` | advanced | live | tracking | 5-600 | 45 |
+| `guard.signature_min_similarity` | advanced | live | tracking | 0.5-0.99 | 0.82 |
+| `guard.loiter_checks` | advanced | live | tracking | 1-20 | 3 |
+| `guard.staging` | advanced | live | tracking | toggle | true |
+| `guard.encounter_timeout_s` | advanced | live | tracking | 30-3600 | 300 |
+| `guard.tamper_sustained_s` | advanced | live | health | 30-3600 | 300 |
+| `guard.health_stale_s` | advanced | live | health | 30-3600 | 300 |
+| `guard.journal_retention_days` | advanced | live | history | 1-3650 | 90 |
+
+The levels are danger ranks (1 low, 2 medium, 3 high, 4 critical): a response
+fires when the rank reaches its level. Announce and alarm accept 5, which no
+rank reaches (never); notify stops at 4 so a critical danger always notifies.
+Every minimum of a service key is 1 or more because `configIntOr` reads `0`
+as "absent" and would run the fallback instead of the owner's value; the
+belief thresholds use the presence-based belief readers, so they span the
+belief score's own range, negatives included.
+
+### How a change goes live
+
+`GuardService` no longer holds a plain `Config` member. It holds a
+`std::shared_ptr<const Config>` behind `configMutex_`; `currentConfig()`
+copies the pointer under that lock, and every member function that read
+`config_` takes one snapshot at its top (the encounter sweep takes it inside
+its timer coroutine, per tick). Readers run on Drogon's I/O loops, the NATS
+callback threads and the coroutines those spawn, with no common lock, so a
+snapshot is the only race-free shape; a running observation also keeps one
+coherent config from its first stage to its last instead of mixing values
+across a change. The action authorizer is built from the same snapshot per
+effect, so a level or `arm_siren` change reaches the next authorization.
+
+The registry's `onChange` in `src/app/main.cc` calls
+`guardService.refresh(GuardConfig::resolveService())`. `refresh` copies the
+current snapshot, overwrites exactly the catalog's fields from the fresh
+resolution, swaps the pointer under the lock, and then clears the
+per-camera belief cache under `beliefMutex_`. Clearing the cache is what
+makes the `[guard.belief]` keys live rather than "within
+`belief_refresh_s`": the next observation re-resolves its camera's belief
+config. A per-camera override (`[guard.belief.camera."<id>"]`) still wins over
+the global key the catalog edits, exactly as it does at boot.
+
+Everything outside the catalog is boot-bound even when a refresh runs: the
+enabled flag, profile, default mode and schedule (the controller and
+`GuardSchedule` copy them once), the NATS stream, subject and durable names,
+the heartbeat interval, `max_observation_attempts` (the consumer's
+`maxDeliver`), the retry backoff and lease, and the spoken texts, languages,
+`max_announce_words` and `veto_scope` (the last two are also baked into
+`GuardAssessment`'s own config). A hand edit of those keys followed by an
+owner change does not leak them into the running service; they apply on
+restart. The texts are left out of the catalog on purpose: they are
+multi-variant, language-bound strings better edited with the templates.
+
+`guard.enabled`, `guard.default_mode`, `guard.profile` and the schedule never
+appear (the mode is the owner's HTTP `PATCH`), nor do targets, URLs,
+credentials, database paths, consumer names or NATS subjects.
+
+`guard.quiet_hours.start_hour`/`end_hour` used to go through
+`configIntOr`, so an explicit `0` (midnight) silently became the fallback
+(22 / 7). They now read with a presence test, so `0` is midnight and an
+absent key is still 22 / 7.
+
+### Shutdown
+
+The settings server is a `shutdown_signal` drain registered before the guard
+drain: the stop request shuts it down with a 500 ms deadline (no new owner
+change can reach a stopping service), and `main` shuts it down again after
+`run()` returns, which is a no-op when the drain already ran. Both happen
+before `GuardService` is destroyed, so `onChange` never refreshes a dead
+service.
+
+### Tests
+
+`guard-settings-test` builds the catalog through `SettingsRegistry`, rejects
+plumbing fragments, pins every fallback against `resolveService()` and
+`resolveBelief()` with an empty config, checks the midnight quiet hour, drives
+a registry update into a constructed `GuardService` (null peers, disabled, no
+NATS or camera) and checks the new snapshot, the untouched old snapshot and a
+boot-bound field that a hand edit could not move, and runs a live gRPC server
+where only the settings secret can List or Update.

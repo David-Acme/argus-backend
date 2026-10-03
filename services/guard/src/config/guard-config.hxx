@@ -1,5 +1,6 @@
 #pragma once
 
+#include <grpc/grpc-server-identity.hxx>
 #include <http/listener-config.hxx>
 #include <nats/nats-subject.hxx>
 #include <shared/vocabulary/belief-config.hxx>
@@ -15,6 +16,12 @@ struct GuardDbConfig
 {
   std::string dbPath;
   std::string schemaPath;
+};
+
+struct GuardRpcConfig
+{
+  std::string address;
+  std::vector<argus::client::CallerCredential> settingsCredentials;
 };
 
 struct GuardPeerConfig
@@ -120,6 +127,8 @@ public:
   [[nodiscard]] static GuardDbConfig resolveDb();
 
   [[nodiscard]] static ListenerConfig resolveListener();
+
+  [[nodiscard]] static GuardRpcConfig resolveRpc();
 
   [[nodiscard]] static GuardPeerConfig resolveNotifications();
 

@@ -34,10 +34,11 @@ this service. The MUST-FOLLOW rules below restate the ones that apply.
 ```
 argus-guard/
   CMakeLists.txt        standalone buildable: module graph + test targets
-  src/app/main.cc       config load, guard.db wiring, app run
-  src/config/           argus::guard-config — db, listener, notifications,
-                          identity, actions, assessment, service and belief
-                          resolution
+  src/app/main.cc       config load, guard.db wiring, the settings gRPC
+                          listener, app run
+  src/config/           argus::guard-config — db, listener, settings rpc,
+                          notifications, identity, actions, assessment,
+                          service and belief resolution
   src/shared/vocabulary/
                         guard-mode, belief-gate-scope and belief-config —
                         the types the config module and the feature both read
@@ -45,13 +46,17 @@ argus-guard/
                           the domain (assessment, belief, policy, risk,
                           dialogue, action, repository, schema, service),
                           vocabulary/, controllers/, dtos/, services/
-  config.toml.example   guard-domain keys only
+  src/feature/settings/ argus::guard-settings — the owner-editable catalog,
+                          served by argus.settings.v1 on the `[rpc] address`
+                          listener when `[rpc.callers] settings` is set
+  config.toml.example   guard-domain keys plus [rpc] / [rpc.callers]
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
-There is one feature and two modules: `argus::guard` compiles the domain and
-the HTTP surface together, and `argus::guard-config` (`src/config/`) resolves
-what `main.cc` boots with, so `main.cc` holds composition and reads no key a
+There are two features and three modules: `argus::guard` compiles the domain
+and the HTTP surface together, `argus::guard-settings` holds the owner
+settings catalog (no dependency but `argus::lib::config`), and
+`argus::guard-config` (`src/config/`) resolves what `main.cc` boots with, so `main.cc` holds composition and reads no key a
 config module owns — its one `ConfigService::getString("nats.url")` is the
 gate on the optional bus, a key `NatsBus::connect()` resolves again itself.
 `main.cc` registers the controller explicitly

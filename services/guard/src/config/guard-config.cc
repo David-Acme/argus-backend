@@ -1,6 +1,7 @@
 #include "guard-config.hxx"
 
 #include <config/config-service.hxx>
+#include <settings/settings-rpc.hxx>
 #include <shared/vocabulary/guard-mode.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -70,8 +71,11 @@ std::vector<std::string> configVariantsOr(const std::string& key,
   return variants;
 }
 
-int clampHour(int hour, int fallback)
+int configHourOr(const std::string& key, int fallback)
 {
+  if (!ConfigService::hasKey(key))
+    return fallback;
+  const int hour = ConfigService::getInt(key);
   return hour < 0 || hour > 23 ? fallback : hour;
 }
 
@@ -119,6 +123,13 @@ GuardDbConfig GuardConfig::resolveDb()
 ListenerConfig GuardConfig::resolveListener()
 {
   return ListenerConfig::resolveServiceTls("guard", 7039);
+}
+
+GuardRpcConfig GuardConfig::resolveRpc()
+{
+  return {.address = ConfigService::getString("rpc.address"),
+          .settingsCredentials =
+              settingsCallers(ConfigService::getStringPairs("rpc.callers"))};
 }
 
 GuardPeerConfig GuardConfig::resolveNotifications()
@@ -240,10 +251,8 @@ GuardServiceConfig GuardConfig::resolveService()
   config.journalRetentionDays =
       configIntOr("guard.journal_retention_days", 90);
   config.quietHoursEnabled = configBoolOr("guard.quiet_hours.enabled", false);
-  config.quietStartHour =
-      clampHour(configIntOr("guard.quiet_hours.start_hour", 22), 22);
-  config.quietEndHour =
-      clampHour(configIntOr("guard.quiet_hours.end_hour", 7), 7);
+  config.quietStartHour = configHourOr("guard.quiet_hours.start_hour", 22);
+  config.quietEndHour = configHourOr("guard.quiet_hours.end_hour", 7);
   config.quietDailyBudget =
       configIntOr("guard.quiet_hours.daily_budget", 30);
   config.tamperSustainedS = configInt64Or("guard.tamper_sustained_s", 300);

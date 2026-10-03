@@ -15,6 +15,12 @@ enable_request_stream = false
 handle_sig_term = true
 relaunch_on_error = false
 
+[rpc]
+address = ""
+
+[rpc.callers]
+settings = ""
+
 [database]
 db = "database/guard.db"
 schema = "services/guard/database/schema.sql"

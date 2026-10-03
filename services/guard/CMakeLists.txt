@@ -86,6 +86,11 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 endif()
 
+if(NOT COMMAND argus_settings_rpc_contract)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/settings
+                     ${CMAKE_BINARY_DIR}/contracts/settings)
+endif()
+
 find_package(doctest REQUIRED)
 
 add_subdirectory(${GUARD_SRC_ROOT}/config)
@@ -102,6 +107,8 @@ argus_service(NAME argus-guard
     MODULES
         argus::guard
         argus::guard-config
+        argus::guard-settings
+        argus::contracts::settings-wire
         argus::lib::auth
         argus::lib::config
         argus::lib::http
@@ -153,6 +160,18 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
     endif()
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
+
+add_executable(guard-settings-test tests/unit/guard-settings-test.cc)
+set_target_properties(guard-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(guard-settings-test PRIVATE
+    argus::guard
+    argus::guard-config
+    argus::guard-settings
+    argus::contracts::settings-wire
+    doctest::doctest)
+target_compile_options(guard-settings-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(guard-settings-test)
+add_test(NAME guard-settings-test COMMAND guard-settings-test)
 
 add_executable(guard-dlq-service-live-test
     tests/unit/guard-dlq-service-live-test.cc)

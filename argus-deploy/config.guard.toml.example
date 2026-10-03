@@ -19,6 +19,12 @@ enable_request_stream = false
 handle_sig_term = true
 relaunch_on_error = false
 
+[rpc]
+address = "0.0.0.0:7139"
+
+[rpc.callers]
+settings = "CHANGE_ME_SETTINGS_GUARD"
+
 [database]
 db = "guard/guard.db"
 schema = "database/schema.sql"
