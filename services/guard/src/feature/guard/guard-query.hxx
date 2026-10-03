@@ -413,6 +413,39 @@ inline constexpr std::string_view SUMMARY_GROUP_SIGNAL =
 inline constexpr std::string_view PURGE_DECISIONS =
     "DELETE FROM guard_decision_journal WHERE created_at < ?";
 
+inline constexpr std::string_view PURGE_SETTLED_INBOX =
+    "DELETE FROM guard_observation_inbox WHERE status != 'processing' "
+    "AND MAX(completed_at, updated_at) < ?";
+
+inline constexpr std::string_view PURGE_INCIDENTS =
+    "DELETE FROM guard_incident WHERE created_at < ?";
+
+inline constexpr std::string_view PURGE_ASSESSMENTS =
+    "DELETE FROM guard_assessment WHERE created_at < ?";
+
+inline constexpr std::string_view PURGE_ACTIONS =
+    "DELETE FROM guard_action WHERE created_at < ?";
+
+inline constexpr std::string_view PURGE_SETTLED_ACTION_OUTBOX =
+    "DELETE FROM guard_action_outbox WHERE status NOT IN ('pending', "
+    "'in_flight', 'retryable_failed') AND updated_at < ?";
+
+inline constexpr std::string_view PURGE_CLOSED_TRANSITIONS =
+    "DELETE FROM guard_encounter_transition WHERE encounter_id IN (SELECT id "
+    "FROM guard_encounter WHERE state = 'closed' AND last_seen < ?)";
+
+inline constexpr std::string_view PURGE_CLOSED_ENCOUNTERS =
+    "DELETE FROM guard_encounter WHERE state = 'closed' AND last_seen < ?";
+
+inline constexpr std::string_view PURGE_DEAD_LETTERS =
+    "DELETE FROM guard_dead_letter WHERE created_at < ?";
+
+inline constexpr std::string_view PURGE_SIGNATURE_VISITS =
+    "DELETE FROM guard_signature_visit WHERE last_seen < ?";
+
+inline constexpr std::string_view PURGE_REMOVED_EVIDENCE =
+    "DELETE FROM guard_evidence WHERE deleted_at > 0 AND deleted_at < ?";
+
 inline constexpr std::string_view SET_DECISION_FEEDBACK =
     "UPDATE guard_decision_journal SET feedback_label = ?, feedback_at = ? "
     "WHERE event_id = ?";
@@ -1028,3 +1061,10 @@ struct GuardEvidenceRow
   int64_t id{0};
   std::string objectKey;
 };
+
+struct GuardHistoryPurgeInput
+{
+  int64_t historyBefore{0};
+  int64_t inboxBefore{0};
+};
+

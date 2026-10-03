@@ -1361,3 +1361,40 @@ TEST_CASE("a higher tier inside the cooldown still acts")
       1)));
   CHECK(harness.notifications.calls == 2);
 }
+
+TEST_CASE("the history purge removes only settled rows past the window")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  auto client = DbService::client();
+  client->execSqlSync(
+      "INSERT INTO guard_incident (camera_id, event_id, created_at) VALUES "
+      "(90, 'purge:old', 100), (90, 'purge:new', 9000000000)");
+  client->execSqlSync(
+      "INSERT INTO guard_observation_inbox (event_id, camera_id, status, "
+      "updated_at, completed_at) VALUES ('purge:done', 90, 'completed', 100, "
+      "100), ('purge:live', 90, 'processing', 100, 0)");
+  client->execSqlSync(
+      "INSERT INTO guard_action_outbox (command_id, camera_id, kind, status, "
+      "created_at, updated_at) VALUES ('purge:sent', 90, 'notify', "
+      "'succeeded', 100, 100), ('purge:retry', 90, 'notify', "
+      "'retryable_failed', 100, 100)");
+  client->execSqlSync(
+      "INSERT INTO guard_encounter (person_id, state, first_seen, last_seen) "
+      "VALUES (0, 'closed', 100, 100), (0, 'observing', 100, 100)");
+
+  GuardRepository repository;
+  const int64_t removed = drogon::sync_wait(
+      repository.purgeHistory({.historyBefore = 1000, .inboxBefore = 1000}));
+  CHECK(removed >= 4);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_incident WHERE event_id LIKE "
+               "'purge:%'") == "1");
+  CHECK(scalar("SELECT event_id FROM guard_observation_inbox WHERE event_id "
+               "LIKE 'purge:%'") == "purge:live");
+  CHECK(scalar("SELECT command_id FROM guard_action_outbox WHERE command_id "
+               "LIKE 'purge:%'") == "purge:retry");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_encounter WHERE last_seen = 100 "
+               "AND state = 'observing'") == "1");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_encounter WHERE last_seen = 100 "
+               "AND state = 'closed'") == "0");
+}

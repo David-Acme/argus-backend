@@ -2599,6 +2599,15 @@ drogon::Task<void> GuardService::runRetentionSweep()
       LOG_INFO << "Guard retention: purged " << removed
                << " decision journal row(s)";
   }
+  if (config_.journalRetentionDays > 0) {
+    const int64_t purged = co_await repository_.purgeHistory(
+        {.historyBefore =
+             now - static_cast<int64_t>(config_.journalRetentionDays) * 86400,
+         .inboxBefore = now - stream_retention::kRetentionSeconds});
+    if (purged > 0)
+      LOG_INFO << "Guard retention: purged " << purged
+               << " history row(s) past the retention window";
+  }
   const int64_t settled = co_await repository_.purgeSettledEncounterOutbox(
       now - stream_retention::kRetentionSeconds);
   if (settled > 0)

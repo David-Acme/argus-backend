@@ -138,6 +138,18 @@ because there the assessment may veto or raise.
   about every 30-35 s, so a 20 s window split one visit into several
   encounters, re-greeted the visitor and reset the staging count.
 
+**Retention.** The daily sweep that already purged the decision journal
+after `journal_retention_days` (90) now purges, in one transaction, the
+rest of guard's history past the same window: incidents (with their
+`event_json`), assessments, actions, settled action intents, closed
+encounters with their transitions, dead letters, signature visits and
+evidence rows whose object is already deleted. Settled inbox rows go after
+the stream's retention (the dedupe horizon), because a redelivery older
+than that cannot arrive. Rows still in flight (`processing` inbox rows,
+`pending`/`in_flight`/`retryable_failed` intents, open encounters) are
+never touched. Before this every observation left an inbox row with its
+full payload forever - up to thousands a day per camera.
+
 The research behind this (alarm fatigue, TMA AVS-01 levels, OSHA's silent
 robbery guidance, the EDPB position on face recognition of customers) is
 in the 2026-10 audit report; the per-profile defaults it suggests are the

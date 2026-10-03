@@ -10,6 +10,9 @@
 #include <text/json-util.hxx>
 #include <string>
 #include <trantor/utils/Logger.h>
+#include <array>
+#include <sqlite/transaction.hxx>
+#include <utility>
 
 using namespace guard_query;
 
@@ -1348,6 +1351,38 @@ drogon::Task<DecisionSummary> GuardRepository::summarizeDecisions(
     summary.assessMsP95 = co_await percentile(0.95);
   }
   co_return summary;
+}
+
+drogon::Task<int64_t>
+GuardRepository::purgeHistory(const GuardHistoryPurgeInput& input) const
+{
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  const std::array<std::pair<std::string_view, int64_t>, 10> statements = {{
+      {PURGE_SETTLED_INBOX, input.inboxBefore},
+      {PURGE_INCIDENTS, input.historyBefore},
+      {PURGE_ASSESSMENTS, input.historyBefore},
+      {PURGE_ACTIONS, input.historyBefore},
+      {PURGE_SETTLED_ACTION_OUTBOX, input.historyBefore},
+      {PURGE_CLOSED_TRANSITIONS, input.historyBefore},
+      {PURGE_CLOSED_ENCOUNTERS, input.historyBefore},
+      {PURGE_DEAD_LETTERS, input.historyBefore},
+      {PURGE_SIGNATURE_VISITS, input.historyBefore},
+      {PURGE_REMOVED_EVIDENCE, input.historyBefore},
+  }};
+  int64_t removed = 0;
+  try {
+    for (const auto& [sql, before] : statements) {
+      const auto result = co_await transaction->execSqlCoro(sql.data(), before);
+      removed += static_cast<int64_t>(result.affectedRows());
+    }
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  if (!co_await db_transaction::Commit(std::move(transaction)))
+    co_return 0;
+  co_return removed;
 }
 
 drogon::Task<int64_t> GuardRepository::purgeDecisions(int64_t olderThan) const
