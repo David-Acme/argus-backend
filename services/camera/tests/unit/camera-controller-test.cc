@@ -8,6 +8,7 @@
 #include <errors/validation-exception.hxx>
 #include <feature/camera/controllers/camera-controller.hxx>
 #include <feature/camera/dtos/create-camera-dto.hxx>
+#include <feature/camera/dtos/update-camera-dto.hxx>
 #include <feature/zone/controllers/zone-controller.hxx>
 #include <feature/zone/dtos/create-zone-dto.hxx>
 #include <auth/jwt-filter.hxx>
@@ -423,4 +424,35 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   std::remove((std::string(kCameraDb) + "-wal").c_str());
   std::remove((std::string(kCameraDb) + "-shm").c_str());
   std::filesystem::remove_all("/tmp/argus-camera-controller-test-upload");
+}
+
+TEST_CASE("a camera address must be a literal IP and a record mode a known one")
+{
+  const auto refusesField = [](const auto& parse, const char* field) {
+    try {
+      static_cast<void>(parse());
+    }
+    catch (const ValidationException& e) {
+      return e.errors().count(field) == 1;
+    }
+    return false;
+  };
+  Json::Value create;
+  create["name"] = "Door";
+  create["ip"] = "10.evil.example";
+  CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "ip"));
+  create["ip"] = "10.0.0.1@attacker.example";
+  CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "ip"));
+  create["ip"] = "192.168.1.40";
+  CHECK(CreateCameraDto::fromJson(create).ip == "192.168.1.40");
+
+  Json::Value update;
+  update["ip"] = "camera.local";
+  CHECK(refusesField([&] { return UpdateCameraDto::fromJson(update); }, "ip"));
+  update = Json::Value(Json::objectValue);
+  update["recordMode"] = "always";
+  CHECK(refusesField([&] { return UpdateCameraDto::fromJson(update); },
+                     "recordMode"));
+  update["recordMode"] = "continuous";
+  CHECK(UpdateCameraDto::fromJson(update).recordMode == "continuous");
 }

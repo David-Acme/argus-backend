@@ -564,6 +564,13 @@ conversation is half duplex: speak, stop, listen, never both at once. Video
 does not come from here either: RTSP is the documented, maintained path and
 one pull through go2rtc serves every viewer.
 
+**A camera address is a literal IP.** `ip` must parse as IPv4 or IPv6 on
+create and on update: it is concatenated into the RTSP URLs and the Tapo
+client's endpoint, and go2rtc's private-host check compares prefixes, so a
+Resident could set `10.evil.example` (or `10.0.0.1@attacker`) and send the
+camera's credentials to an outside host. `recordMode` on update is checked
+against its values instead of falling back to `events`.
+
 **Arming the siren sounds it.** `SetSiren` used to enable only the
 camera's detection alarm (`setAlertConfig`), which sounds on the camera's
 own motion trigger, so guard's siren effect was silent unless the camera

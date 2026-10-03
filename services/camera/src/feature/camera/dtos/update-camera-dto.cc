@@ -1,5 +1,18 @@
 #include "update-camera-dto.hxx"
 
+#include <arpa/inet.h>
+
+namespace
+{
+bool isLiteralAddress(const std::string& value)
+{
+  in_addr v4{};
+  in6_addr v6{};
+  return ::inet_pton(AF_INET, value.c_str(), &v4) == 1 ||
+         ::inet_pton(AF_INET6, value.c_str(), &v6) == 1;
+}
+}
+
 UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
 {
   UpdateCameraDto dto;
@@ -37,6 +50,12 @@ UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
   MAX_LENGTH_OPTIONAL(name, 120)
   IS_NOT_EMPTY_OPTIONAL(ip)
   MAX_LENGTH_OPTIONAL(ip, 64)
+  CUSTOM_LAMBDA(ip, [](const UpdateCameraDto& d) -> std::optional<std::string> {
+    if (!d.ip || isLiteralAddress(*d.ip))
+      return std::nullopt;
+    return "must be an IPv4 or IPv6 address";
+  })
+  IS_IN_OPTIONAL(recordMode, "events", "continuous")
   MAX_LENGTH_OPTIONAL(icon, 40)
   CUSTOM_LAMBDA(driver, [](const UpdateCameraDto& d) -> std::optional<std::string> {
     if (!d.driver)

@@ -1,5 +1,18 @@
 #include "create-camera-dto.hxx"
 
+#include <arpa/inet.h>
+
+namespace
+{
+bool isLiteralAddress(const std::string& value)
+{
+  in_addr v4{};
+  in6_addr v6{};
+  return ::inet_pton(AF_INET, value.c_str(), &v4) == 1 ||
+         ::inet_pton(AF_INET6, value.c_str(), &v6) == 1;
+}
+}
+
 CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
 {
   CreateCameraDto dto;
@@ -24,6 +37,11 @@ CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
   MAX_LENGTH(name, 120)
   IS_NOT_EMPTY(ip)
   MAX_LENGTH(ip, 64)
+  CUSTOM_LAMBDA(ip, [](const CreateCameraDto& d) -> std::optional<std::string> {
+    if (isLiteralAddress(d.ip))
+      return std::nullopt;
+    return "must be an IPv4 or IPv6 address";
+  })
   BETWEEN(port, 1, 65535)
   IS_IN(recordMode, "events", "continuous")
   IS_IN(driver, "tapo", "onvif", "rtsp")
