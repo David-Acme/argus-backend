@@ -60,10 +60,13 @@ argus-camera/
                         action-command repository
   src/feature/camera/   /camera* HTTP surface
   src/feature/camera-control/
-                        /camera PTZ, preset, settings and talk surface
+                        /camera PTZ, preset, settings and talk surface;
+                        RTSP/ONVIF cameras answer through the stream-only
+                        driver (every control false, streamOnly true)
   src/feature/health/   grpc.health.v1 service
   src/feature/media/    the camera media WebSocket and its service
-  src/feature/monitor/  camera health monitor and its NATS sink
+  src/feature/monitor/  camera health monitor, its NATS sink and the presence
+                        recorder that writes camera.is_online
   src/feature/objects/  YOLO26n ncnn object detector
   src/feature/operator/ the operator loop, EventIntelligence, zone provider
                         and evidence upload, with the object-event outbox
@@ -75,9 +78,12 @@ argus-camera/
   src/feature/zone/     /zone* HTTP surface
   src/shared/           the camera, zone and change-outbox repositories and
                         schemas plus the stream, camera-driver, change-sink
-                        and in-flight utils modules 2+ features read and the
-                        vocabulary the config module and a feature share
-                        (health thresholds, operator zones; tapo is
+                        and in-flight utils modules 2+ features read, the
+                        network-address utils (the one private-address
+                        predicate the DTOs and go2rtc's source guard share),
+                        and the vocabulary the config module and a feature
+                        share (health thresholds, operator zones, the RTSP
+                        stream paths a camera keeps in its config; tapo is
                         camera-driver's own protocol stack, event-stream's one
                         reader is operator, the change sink's readers are
                         composition and the outbox suites, and geometry is
