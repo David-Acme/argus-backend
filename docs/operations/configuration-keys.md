@@ -51,10 +51,11 @@ argus-deploy argus-identity configuration. Copy to config.identity.toml (gitigno
 
 | Key | Notes |
 |---|---|
-| `identity.port` | The TLS HTTP surface (7044). The compose publishes it on every interface, so the app dials the `/user`, `/invitation`, `/portrait-preview` and `/pairing` prefixes directly. It is also the port the pairing and invitation answers publish, and the one the app writes into every later invitation QR. |
+| `identity.port` | The TLS HTTP surface (7044). The compose publishes it on every interface, so the app dials the `/user`, `/invitation`, `/portrait-preview`, `/voiceprint` and `/pairing` prefixes directly. It is also the port the pairing and invitation answers publish, and the one the app writes into every later invitation QR. |
 | `identity.rpc_secret` | Gates the cleartext `argus.identity.v1` gRPC listener on `[server] grpc_port` (7040). Same value in every service's [identity] rpc_secret, or every call fails. Empty means loopback-only and ungated, and the service refuses to start when the listener is reachable beyond loopback without it. |
 | `identity.db` | `database/identity.db`, this owner's only database (rule 27). |
 | `face.enabled` | Face detection + recognition in this process; the engine never leaves it and argus-camera only ships crops. |
+| `voiceprint.enabled` / `voiceprint.model` | Speaker verification in this process (3D-Speaker ERes2Net through sherpa-onnx, provisioned into the read-only `models/speaker/` mount by `services/identity/scripts/provision.sh`). Disabled or missing, every voiceprint call answers *unavailable* and nothing else changes. The thresholds below are the template's defaults; see `services/identity/CONTEXT.md` for the measurements behind them. |
 | `storage.mode` | Private object storage (RustFS) for the portraits. provision-host.sh fills the endpoint and credentials. |
 | `pairing.paired` | The QR pairing state the frontend's onboarding reads; persisted at runtime, which is why this config bind is not read-only. |
 | `auth.target` | argus-auth's fleet-secret RPC listener: the session-verdict leg the shared `JwtFilter` asks before it trusts a token. |
@@ -226,11 +227,12 @@ argus-identity configuration. Copy to config.toml (gitignored) to run.
 - **`[drogon.app]`** — The HTTP listener and db_clients are built by the service itself.
 - **`[cert]`** — The instance CA and server certificate; the HTTPS surface needs both.
 - **`[face]`** — The face engine runs in this process: the vec0 index lives in identity.db and no crop leaves the host.
+- **`[voiceprint]`** — The speaker-verification engine runs in this process too: only the 192-value centroid of a confirmed enrollment is stored (`voiceprint` table, `voice_vec` vec0 index), never the audio.
 - **`[storage]`** — Private object storage for the portraits; `mode = "s3"` with the `[storage.s3]` keys.
 
 | Key | Notes |
 |---|---|
-| `identity.port` | The TLS HTTP surface (7044): the app-facing listener the `/user`, `/invitation`, `/portrait-preview` and `/pairing` prefixes serve on. It is also the port the pairing and invitation answers publish, and the one the app writes into every later invitation QR. |
+| `identity.port` | The TLS HTTP surface (7044): the app-facing listener the `/user`, `/invitation`, `/portrait-preview`, `/voiceprint` and `/pairing` prefixes serve on. It is also the port the pairing and invitation answers publish, and the one the app writes into every later invitation QR. |
 | `identity.db` / `identity.schema` | `database/identity.db` and this owner's `database/schema.sql`, applied at boot. |
 | `identity.rpc_secret` | Gates the gRPC listener; empty is legal only while `[server] host` is loopback, and the service refuses to start otherwise. |
 | `auth.target` / `auth.rpc_secret` | The session-verdict leg the filter chain asks (`argus-auth:7043`). |
@@ -240,6 +242,15 @@ argus-identity configuration. Copy to config.toml (gitignored) to run.
 | `jwt.secret` / `jwt.refresh_secret` | The shared `JwtService` constructor reads both and refuses to start on a missing, short or default-value one; the routes verify the access token with `jwt.secret`, and `argus-auth` stays the only minter. |
 | `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route, so the app discovers this service's port directly. |
 | `mdns.address` | The LAN address the announcements carry: empty enumerates the host's usable interfaces, and a value that is not an IP address falls back to the interfaces with a warning. provision-host.sh detects the host address (`--mdns-address`, `ARGUS_MDNS_ADDRESS`, `ip route get 1.1.1.1`, `hostname -I`) and writes it into every deploy config that carries the key. |
+| `voiceprint.enabled` | Loads the speaker model at boot; `false` answers every voiceprint call as unavailable. |
+| `voiceprint.model` | The ONNX speaker-embedding model. Its file stem is the model id every voiceprint row records, so swapping the file marks every existing voiceprint stale (re-enrollment), it never mixes embedding spaces. |
+| `voiceprint.verify_threshold` | Cosine score a 1:1 check must reach (0.50). Measured with 3-second clips: false-accept 0.36 % (English) / 0.50 % (Spanish), false-reject 2.3 % / 0 %. |
+| `voiceprint.identify_threshold` / `voiceprint.identify_margin` | 1:N identification: the best match must reach 0.55 and beat the runner-up by 0.05, because a household-sized search multiplies the false-accept rate by the number of enrolled people. |
+| `voiceprint.consistency_threshold` | Each enrollment sample against the centroid of the others (0.50): refuses a set that mixes two speakers. |
+| `voiceprint.min_speech_seconds` / `voiceprint.min_verify_speech_seconds` | Voiced speech required per enrollment sample (1.2 s) and per verification or identification clip (0.8 s). |
+| `voiceprint.min_snr_db` | Minimum estimated signal-to-noise ratio of a sample (12 dB). |
+| `voiceprint.samples_required` | Phrases an enrollment needs (3, between 3 and 10). |
+| `voiceprint.challenge_seconds` | Lifetime of an enrollment challenge (300 s): one use, bound to the user, the requester and the device. |
 
 Optional keys the template does not set:
 

@@ -2,10 +2,12 @@ argus_module(NAME identity-rpc
     SOURCES
         identity-rpc-service.cc
         identity-sync-rpc-service.cc
+        identity-voiceprint-rpc-service.cc
     INCLUDES ../..
     DEPENDS
         argus::identity-shared
         argus::identity-enrollment
+        argus::identity-voiceprint
         argus::lib::auth
         argus::lib::errors
         argus::lib::grpc-health

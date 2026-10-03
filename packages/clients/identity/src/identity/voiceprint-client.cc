@@ -1,9 +1,8 @@
 #include "voiceprint-client.hxx"
 
-#include <grpc/grpc-client-base.hxx>
-
 #include <algorithm>
 #include <bit>
+#include <grpc/grpc-client-base.hxx>
 
 namespace
 {
@@ -155,8 +154,7 @@ VoiceprintClient::identify(const VoiceClipView& sample) const
   fillClip(sample, request.mutable_sample());
 
   argus::identity::v1::IdentifyVoiceResponse response;
-  if (const grpc::Status status =
-          stub_->Identify(&context, request, &response);
+  if (const grpc::Status status = stub_->Identify(&context, request, &response);
       !status.ok())
     return std::nullopt;
   return response;

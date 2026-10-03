@@ -1,5 +1,6 @@
 #include <app/rpc/identity-rpc-service.hxx>
 #include <app/rpc/identity-sync-rpc-service.hxx>
+#include <app/rpc/identity-voiceprint-rpc-service.hxx>
 #include <auth/auth-access.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
@@ -18,6 +19,9 @@
 #include <feature/user/controllers/portrait-preview-controller.hxx>
 #include <feature/user/controllers/user-controller.hxx>
 #include <feature/user/services/nats-identity-change-sink.hxx>
+#include <feature/voiceprint/controllers/voiceprint-controller.hxx>
+#include <feature/voiceprint/services/embedding/speaker-embedding-service.hxx>
+#include <feature/voiceprint/services/index/voiceprint-index.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
@@ -95,6 +99,8 @@ int main()
   const IdentitySyncControlConfig syncControl =
       IdentityConfig::resolveSyncControl();
   const IdentityFaceConfig face = IdentityConfig::resolveFace();
+  const IdentityVoiceprintConfig voiceprint =
+      IdentityConfig::resolveVoiceprint();
 
   requireDistinctTunnelPort(listener, remote);
 
@@ -125,6 +131,7 @@ int main()
   drogon::app().registerController(std::make_shared<UserController>());
   drogon::app().registerController(
       std::make_shared<PortraitPreviewController>());
+  drogon::app().registerController(std::make_shared<VoiceprintController>());
 
   RemoteGate remoteGate(remote);
 
@@ -201,6 +208,16 @@ int main()
                                  status["loaded"] =
                                      FaceService::instance().isLoaded();
                                  return status;
+                               }},
+                              {"voiceprint", []() {
+                                 Json::Value status(Json::objectValue);
+                                 const auto& engine =
+                                     SpeakerEmbeddingService::instance();
+                                 status["loaded"] = engine.isLoaded();
+                                 status["model"] = engine.modelId();
+                                 status["indexed"] = static_cast<Json::UInt64>(
+                                     VoiceprintIndex::instance().size());
+                                 return status;
                                }}}}));
 
   if (rpc.reachableBeyondLoopback() && rpc.secret.empty()) {
@@ -215,6 +232,10 @@ int main()
                                  .fleetSecret = rpc.secret,
                                  .auth = filterAuthClient()});
   IdentitySyncRpcService syncRpcService({.fleetSecret = rpc.secret});
+  IdentityVoiceprintRpcService voiceprintRpcService(
+      {.fleetSecret = rpc.secret,
+       .auth = filterAuthClient(),
+       .voiceprint = voiceprint});
   grpc::ServerBuilder rpcBuilder;
   rpcBuilder.SetMaxReceiveMessageSize(kMaxRpcReceiveBytes);
   rpcBuilder.AddListeningPort(rpc.listener.host + ":" +
@@ -222,6 +243,7 @@ int main()
                               grpc::InsecureServerCredentials());
   rpcBuilder.RegisterService(&rpcService);
   rpcBuilder.RegisterService(&syncRpcService);
+  rpcBuilder.RegisterService(&voiceprintRpcService);
   std::unique_ptr<grpc::Server> rpcServer(rpcBuilder.BuildAndStart());
   if (rpcServer)
     LOG_INFO << "Identity RPC listening on " << rpc.listener.host << ":"
@@ -243,7 +265,8 @@ int main()
              << (remote.enabled ? " (remote requests allowed)"
                                 : " (remote pairing and registration refused)");
 
-  drogon::app().registerBeginningAdvice([&identityDb, &identitySink, &face]() {
+  drogon::app().registerBeginningAdvice([&identityDb, &identitySink, &face,
+                                         &voiceprint]() {
     DbService::installExtensions();
 
     if (!DbService::runScriptFile(identityDb.schemaPath)) {
@@ -273,6 +296,16 @@ int main()
       LOG_INFO << "FaceService disabled by configuration";
     }
 
+    auto& speaker = SpeakerEmbeddingService::instance();
+    if (!voiceprint.enabled) {
+      speaker.disable();
+      LOG_INFO << "Voice recognition disabled by configuration";
+    }
+    else if (speaker.init(voiceprint.modelPath)) {
+      VoiceprintIndex::instance().init(
+          {.dims = speaker.dims(), .model = speaker.modelId()});
+    }
+
     if (!CertService::init())
       LOG_WARN << "PKI not loaded — pairing disabled";
   });
@@ -295,5 +328,6 @@ int main()
 
   if (rpcServer)
     rpcServer->Shutdown();
+  SpeakerEmbeddingService::instance().shutdown();
   return 0;
 }

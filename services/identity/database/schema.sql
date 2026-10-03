@@ -112,6 +112,32 @@ CREATE TABLE IF NOT EXISTS portrait_preview_capability (
     created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS voiceprint (
+    id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL UNIQUE REFERENCES user(id) ON DELETE CASCADE,
+    model           TEXT    NOT NULL,
+    embedding       BLOB    NOT NULL,
+    sample_count    INTEGER NOT NULL CHECK (sample_count BETWEEN 1 AND 10),
+    speech_seconds  REAL    NOT NULL CHECK (speech_seconds > 0),
+    method          TEXT    NOT NULL CHECK (method IN ('self', 'owner_face')),
+    consent_version TEXT    NOT NULL,
+    enrolled_by     INTEGER REFERENCES user(id) ON DELETE SET NULL,
+    created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS voiceprint_challenge (
+    id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    token_hash      TEXT    NOT NULL UNIQUE,
+    user_id         INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    requester_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    device_hash     TEXT    NOT NULL,
+    lang            TEXT    NOT NULL CHECK (lang IN ('es', 'en')),
+    phrases         TEXT    NOT NULL,
+    expires_at      INTEGER NOT NULL,
+    consumed_at     INTEGER,
+    created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
 CREATE TABLE IF NOT EXISTS change_outbox (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     event_id    TEXT              UNIQUE,
@@ -154,6 +180,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_user_portrait_user_current
 
 CREATE INDEX IF NOT EXISTS idx_portrait_preview_capability_lookup
     ON portrait_preview_capability (token_hash, expires_at, consumed_at);
+
+CREATE INDEX IF NOT EXISTS idx_voiceprint_model
+    ON voiceprint (model);
+
+CREATE INDEX IF NOT EXISTS idx_voiceprint_challenge_expiry
+    ON voiceprint_challenge (expires_at);
 
 CREATE INDEX IF NOT EXISTS idx_change_outbox_status
     ON change_outbox (status, id);

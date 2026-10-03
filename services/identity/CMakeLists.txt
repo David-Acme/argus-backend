@@ -20,10 +20,15 @@ if(PROJECT_IS_TOP_LEVEL)
     find_package(nlohmann_json REQUIRED)
     find_package(OpenCV CONFIG REQUIRED)
     find_package(OpenSSL REQUIRED)
+    find_package(onnxruntime CONFIG REQUIRED)
 
     if(NOT TARGET argus::lib::runtime)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
+    endif()
+    if(NOT TARGET argus::lib::audio)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/audio
+                         ${CMAKE_BINARY_DIR}/audio)
     endif()
     if(NOT TARGET argus::lib::config)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
@@ -97,6 +102,33 @@ if(PROJECT_IS_TOP_LEVEL)
                          ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     endif()
     set(ARGUS_NCNN_TARGET ncnn)
+
+    if(NOT TARGET sherpa-onnx-c-api)
+        set(json_POPULATED TRUE CACHE BOOL "" FORCE)
+        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+        set(SHERPA_ONNX_ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
+        set(SHERPA_ONNX_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+        set(SHERPA_ONNX_ENABLE_CHECK OFF CACHE BOOL "" FORCE)
+        set(SHERPA_ONNX_ENABLE_PORTAUDIO OFF CACHE BOOL "" FORCE)
+        set(SHERPA_ONNX_ENABLE_JNI OFF CACHE BOOL "" FORCE)
+        set(SHERPA_ONNX_ENABLE_C_API ON CACHE BOOL "" FORCE)
+        set(SHERPA_ONNX_ENABLE_WEBSOCKET OFF CACHE BOOL "" FORCE)
+        set(SHERPA_ONNX_ENABLE_GPU OFF CACHE BOOL "" FORCE)
+        set(SHERPA_ONNX_ENABLE_BINARY OFF CACHE BOOL "" FORCE)
+        set(SHERPA_ONNX_ENABLE_TTS OFF CACHE BOOL "" FORCE)
+        get_target_property(ARGUS_IDENTITY_ONNX_INCLUDE_DIR
+                            onnxruntime::onnxruntime
+                            INTERFACE_INCLUDE_DIRECTORIES)
+        set(location_onnxruntime_header_dir "${ARGUS_IDENTITY_ONNX_INCLUDE_DIR}")
+        set(location_onnxruntime_lib "/__sherpa_use_conan_onnxruntime__")
+        set(onnxruntime_lib_files "")
+        add_library(onnxruntime INTERFACE IMPORTED)
+        target_include_directories(onnxruntime INTERFACE
+            "${ARGUS_IDENTITY_ONNX_INCLUDE_DIR}")
+        target_link_libraries(onnxruntime INTERFACE onnxruntime::onnxruntime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sherpa-onnx
+                         sherpa-onnx-build EXCLUDE_FROM_ALL)
+    endif()
 endif()
 
 if(NOT TARGET argus::clients::identity)
@@ -138,6 +170,7 @@ argus_service(NAME argus-identity
             argus::identity-pairing
             argus::identity-enrollment
             argus::identity-retention
+            argus::identity-voiceprint
             argus::identity-rpc
     DEPENDS argus::lib::http
             argus::lib::auth

@@ -1,7 +1,7 @@
 # argus_contracts_identity
 
-The identity boundary's refusals: the thirty-one answers the enrolment,
-pairing, login and portrait flows give.
+The identity boundary's refusals: the forty-five answers the enrolment,
+pairing, login, portrait and voiceprint flows give.
 
 ## What this is
 
@@ -10,16 +10,19 @@ declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes `<identity/identity-errors.hxx>` and links
 `argus::contracts::identity`. `services/identity` is the only consumer, and
 the only owner: the catalog is the identity boundary's own refusal list, and
-its thirty-one entries are thrown from the enrolment, invitation, pairing and
-portrait handlers inside that service.
+its forty-five entries are thrown from the enrolment, invitation, pairing,
+portrait and voiceprint handlers inside that service.
 
 ## Layout
 
-- `src/identity/identity-errors.hxx` — the thirty-one definitions in
+- `src/identity/identity-errors.hxx` — the forty-five definitions in
   `IdentityErrors`, in the header's own order: the face and enrolment answers,
   the pairing and invitation answers, the challenge and refresh-token answers,
   the portrait answers, the five the controllers refuse before any service
-  sees the request, and the answer a change that could not be recorded gives.
+  sees the request, the answer a change that could not be recorded gives, and
+  the fifteen voiceprint answers (engine unavailable, not enrolled, stale,
+  already enrolled, voice already linked, the six sample refusals, consent,
+  the challenge, the caller and the owner-assisted face check).
   11 files include it.
 
 ## Rules
@@ -42,6 +45,6 @@ portrait handlers inside that service.
 
 ## Tests
 
-- `tests/unit/identity-contract-catalog-test.cc` — the thirty-one refusals as a
+- `tests/unit/identity-contract-catalog-test.cc` — the forty-five refusals as a
   pinned table, each entry's wire legality, that no two say the same thing,
   and the two entries whose status contradicts their code.

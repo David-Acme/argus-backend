@@ -185,7 +185,10 @@ TEST_CASE("a voiceprint call the client cannot make never opens a socket")
   CHECK(service.calls() == 0);
 
   const auto status = client.status(7);
-  REQUIRE(status);
+  if (!status) {
+    FAIL("status answered nothing");
+    return;
+  }
   CHECK(status->available());
   CHECK(service.calls() == 1);
 
@@ -203,7 +206,10 @@ TEST_CASE("the gated calls carry the fleet secret, the bearer and the device")
   const auto removed = client.remove(
       {.userId = 7,
        .session = {.accessToken = "owner-token", .deviceHash = "phone-hash"}});
-  REQUIRE(removed);
+  if (!removed) {
+    FAIL("removed answered nothing");
+    return;
+  }
   CHECK(removed->deleted());
   auto presented = service.seen();
   CHECK(presented["x-argus-fleet"] == kFleetSecret);
@@ -212,7 +218,10 @@ TEST_CASE("the gated calls carry the fleet secret, the bearer and the device")
 
   const VoiceClipView clip{.samples = kClip, .sampleRate = 16000};
   const auto verdict = client.verify({.userId = 7, .sample = clip});
-  REQUIRE(verdict);
+  if (!verdict) {
+    FAIL("verdict answered nothing");
+    return;
+  }
   CHECK(verdict->matched());
   presented = service.seen();
   CHECK(presented["x-argus-fleet"] == kFleetSecret);
@@ -238,7 +247,10 @@ TEST_CASE("an enrollment travels as little-endian 16-bit samples")
                      .challengeId = "challenge",
                      .faceImage = "",
                      .session = {.accessToken = "token", .deviceHash = ""}});
-  REQUIRE(enrolled);
+  if (!enrolled) {
+    FAIL("enrolled answered nothing");
+    return;
+  }
   CHECK(enrolled->status().sample_count() == 3);
 
   const auto request = service.lastEnroll();

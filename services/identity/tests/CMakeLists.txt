@@ -106,3 +106,29 @@ target_link_libraries(identity-pairing-banner-test PRIVATE
 target_compile_options(identity-pairing-banner-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-pairing-banner-test)
 add_test(NAME identity-pairing-banner-test COMMAND identity-pairing-banner-test)
+
+add_executable(identity-voiceprint-audio-test
+    unit/identity-voiceprint-audio-test.cc)
+target_link_libraries(identity-voiceprint-audio-test PRIVATE
+    argus::identity-voiceprint
+    doctest::doctest)
+target_compile_options(identity-voiceprint-audio-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-voiceprint-audio-test)
+add_test(NAME identity-voiceprint-audio-test
+         COMMAND identity-voiceprint-audio-test)
+
+add_executable(identity-voiceprint-test unit/identity-voiceprint-test.cc)
+target_compile_definitions(identity-voiceprint-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql"
+    ARGUS_TEST_SPEAKER_MODEL="${CMAKE_CURRENT_SOURCE_DIR}/../../../models/speaker/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx"
+    ARGUS_TEST_VOICE_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/voiceprint")
+target_link_libraries(identity-voiceprint-test PRIVATE
+    argus::identity-rpc
+    argus::identity-voiceprint
+    argus::clients::identity
+    argus::lib::sqlite
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-voiceprint-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-voiceprint-test)
+add_test(NAME identity-voiceprint-test COMMAND identity-voiceprint-test)
