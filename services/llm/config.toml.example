@@ -9,6 +9,7 @@ address = ""
 guard = ""
 voice = ""
 memory = ""
+settings = ""
 
 [llm]
 model_path = "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"

@@ -5,6 +5,7 @@ argus_module(NAME llm
         services/intent-gate.cc
         services/lfm-adapter.cc
         services/llm-service.cc
+        services/sampling-config.cc
         services/tools/tool-executor.cc
         services/tools/tool-registry.cc
         services/tools/tool-validator.cc

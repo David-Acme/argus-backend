@@ -1,6 +1,7 @@
 #include "llm-config.hxx"
 
 #include <config/config-service.hxx>
+#include <settings/settings-rpc.hxx>
 
 #include <algorithm>
 
@@ -17,6 +18,8 @@ LlmRpcConfig LlmConfig::resolveRpc()
   std::erase_if(config.credentials, [](const auto& credential) {
     return credential.first.empty() || credential.second.empty();
   });
+  config.settingsCredentials = settingsCallers(config.credentials);
+  withoutSettingsCaller(config.credentials);
   return config;
 }
 

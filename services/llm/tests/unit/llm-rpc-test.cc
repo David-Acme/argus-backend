@@ -135,7 +135,8 @@ LlmRpcInput serverInput()
           .capabilities = capabilities,
           .chat = answered,
           .chatStream = streamed,
-          .slots = 1};
+          .slots = 1,
+          .services = {}};
 }
 
 ClientConfig clientConfig(int port,

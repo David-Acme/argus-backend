@@ -2,6 +2,8 @@
 #include <config/llm-config.hxx>
 #include <camera/camera-sync-client.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
+#include <feature/settings/llm-settings.hxx>
+#include <settings/settings-rpc.hxx>
 #include <drogon/drogon.h>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
@@ -175,9 +177,18 @@ int main()
   for (auto& descriptor : memory.toolDescriptors())
     ToolRegistry::instance().registerTool(std::move(descriptor));
 
+  SettingsRegistry settings(llmSettingsCatalog());
+
   const LlmRpcConfig rpcConfig = LlmConfig::resolveRpc();
   std::unique_ptr<LlmRpcServer> rpc;
+  std::unique_ptr<SettingsRpcService> settingsRpc;
   if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
+    std::vector<grpc::Service*> services;
+    if (!rpcConfig.settingsCredentials.empty()) {
+      settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
+          .service = "llm", .registry = &settings, .credentials = rpcConfig.settingsCredentials});
+      services.push_back(settingsRpc.get());
+    }
     rpc = std::make_unique<LlmRpcServer>(LlmRpcInput{
         .address = rpcConfig.address,
         .credentials = rpcConfig.credentials,
@@ -198,7 +209,8 @@ int main()
         .chatStream = [&llm](const LlmStreamInput& input) {
           llm->chatStreamSync(input);
         },
-        .slots = ThreadBudget::inferenceSlots()});
+        .slots = ThreadBudget::inferenceSlots(),
+        .services = std::move(services)});
     LOG_INFO << "argus-llm gRPC chat listening on " << rpcConfig.address;
   }
 

@@ -191,6 +191,41 @@ The docker compose must mount the shared `models/` tree (at least
 `models/llm`) into this service's working directory — the engine reads the
 GGUF relative to the `[llm]` config keys.
 
+## Owner settings
+
+`src/feature/settings/llm-settings.cc` is the catalog an owner may change
+through `argus.settings.v1.Settings`, registered on the same gRPC listener as
+`argus.llm.v1.Chat` (`argus::contracts::settings-wire`). It lists only
+owner-meaningful keys, in three groups: `sampling` (temperature and max
+tokens are basic; top-k, top-p, the four penalties and the seed are advanced),
+`memory` (recall top-k, recall deadline, recall token budget, extraction
+wait, compaction token budget, the camera-events toggle and embedding
+preload) and `engine` (context size, GPU layers, threads, batch threads, KV
+type, flash attention, n_batch, n_ubatch). Paths, model files, the database
+and schema, targets, credentials and the listener are never in it.
+
+The five memory knobs apply live: `MemoryService` and `GraphRecall` read them
+from `ConfigService` on every recall, extraction and compaction, so a
+persisted change is seen by the next one. The engine keys are read when the
+llama context is built and say "restart"; `memory.observe_camera_events` is
+read once by `main.cc` to decide whether the encounter consumer starts, and
+`memory.embedding_preload` once at embedding init, so both say "restart" too.
+
+The sampling keys say "restart" for now. `resolveSampling()`
+(`feature/llm/services/sampling-config.cc`) is the one reader of them and
+`LlmService::init()` copies its result into the engine's members, but those
+members and the inline `defaultTemperature()`/`defaultMaxTokens()` accessors
+are declared in `packages/clients/llm/src/llm/llm-service.hxx`. Making them
+live needs that header to hold the set as one guarded value with a
+`refreshSampling()` that `main.cc` calls from the registry's `onChange`; once
+it does, the nine sampling specs flip to `SettingApply::Live`.
+
+The `settings` entry of `[rpc.callers]` is the only credential the settings
+service accepts, and `LlmConfig::resolveRpc()` removes it from the chat
+callers: the settings caller cannot chat and a chat caller cannot change
+settings. The settings service rides the chat listener, so it is reachable
+only when `rpc.address` and at least one other caller are set.
+
 ## Constrained generation (chat path)
 
 - The chat DTO carries `tools` (default true), `grammar` (GBNF source, max 8

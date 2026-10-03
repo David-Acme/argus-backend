@@ -5,6 +5,7 @@ argus_module(NAME llm-config
         ..
     DEPENDS
         argus::lib::config
-        argus::lib::http)
+        argus::lib::http
+        argus::contracts::settings-wire)
 
 target_compile_options(argus_llm-config PRIVATE -Wall -Wextra)

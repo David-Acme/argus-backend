@@ -137,6 +137,11 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 endif()
 
+if(NOT COMMAND argus_settings_rpc_contract)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/settings
+                     ${CMAKE_BINARY_DIR}/contracts/settings)
+endif()
+
 find_package(doctest REQUIRED)
 
 file(GLOB LLM_FEATURE_MODULES CONFIGURE_DEPENDS
@@ -156,6 +161,8 @@ argus_service(NAME argus-llm
         argus::llm-config
         argus::llm-rpc
         argus::llm
+        argus::llm-settings
+        argus::contracts::settings-wire
         argus::llm-shared
         argus::encounter-closed
         argus::memory
@@ -221,6 +228,17 @@ target_compile_options(llm-rpc-test PRIVATE -Wall -Wextra)
 set_target_properties(llm-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-rpc-test COMMAND llm-rpc-test)
+
+add_executable(llm-settings-test tests/unit/llm-settings-test.cc)
+
+target_link_libraries(llm-settings-test PRIVATE argus::llm-settings argus::llm
+    doctest::doctest)
+
+target_compile_options(llm-settings-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-settings-test COMMAND llm-settings-test)
 
 add_executable(llm-tool-parse-test tests/unit/llm-tool-parse-test.cc)
 

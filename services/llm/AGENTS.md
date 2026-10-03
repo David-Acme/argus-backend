@@ -77,6 +77,8 @@ argus-llm/
                         argus::encounter-closed — the camera guard feed's
                           durable JetStream consumer, writing the memory
                           graph through the injected capture
+  src/feature/settings/ argus::llm-settings — the owner-editable catalog
+                          served by argus.settings.v1 on the gRPC leg
   src/shared/           argus::llm-shared — vocabulary 2+ features read
                           (vocabulary/tool-contracts.hxx)
   database/schema.sql   memory.db: graph tables, memory_vec partitions,
@@ -84,12 +86,13 @@ argus-llm/
   config.toml.example   listener, LLM, intent, [rpc], memory/extract/nats
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
-There are four features and six modules: `argus::llm` compiles the engine
+There are five features and seven modules: `argus::llm` compiles the engine
 facade, the DTOs, the tool runtime and the HTTP surface together,
 `argus::memory` the memory stack the tool loop calls in process,
 `argus::intent` the fastText router tier `argus::llm`'s gate drives,
 `argus::encounter-closed` the consumer `app/main.cc` starts on the beginning
-advice and stops before `memory.shutdown()`, `argus::llm-rpc` the gRPC
+advice and stops before `memory.shutdown()`, `argus::llm-settings` the
+owner settings catalog, `argus::llm-rpc` the gRPC
 server under `src/app/rpc/`, and `argus::llm-shared` the vocabulary two
 features read (`vocabulary/tool-contracts.hxx`). `app/main.cc` registers its
 controllers explicitly (Drogon `HttpController<…, false>`), so no route

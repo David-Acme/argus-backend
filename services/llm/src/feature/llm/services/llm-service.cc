@@ -1,4 +1,5 @@
 #include <llm/llm-service.hxx>
+#include "sampling-config.hxx"
 
 #include <algorithm>
 #include <array>
@@ -144,26 +145,16 @@ void LlmService::init()
       chatTemplate_.clear();
 
     contextSize_ = contextSize;
-    defaultMaxTokens_ =
-        std::clamp<int32_t>(ConfigService::getInt("llm.max_tokens"), 16, 4096);
-    defaultTemperature_ = static_cast<float>(
-        std::clamp(ConfigService::getDouble("llm.temperature"), 0.0, 2.0));
-
-    if (const int v = ConfigService::getInt("llm.top_k"); v > 0)
-      topK_ = v;
-    if (const double v = ConfigService::getDouble("llm.top_p"); v > 0.0)
-      topP_ = static_cast<float>(v);
-    if (const int v = ConfigService::getInt("llm.penalty_last_n"); v > 0)
-      penaltyLastN_ = v;
-    if (const double v = ConfigService::getDouble("llm.penalty_repeat");
-        v > 0.0)
-      penaltyRepeat_ = static_cast<float>(v);
-    penaltyFreq_ = static_cast<float>(
-        std::max(0.0, ConfigService::getDouble("llm.penalty_freq")));
-    penaltyPresent_ = static_cast<float>(
-        std::max(0.0, ConfigService::getDouble("llm.penalty_present")));
-    if (const int v = ConfigService::getInt("llm.seed"); v > 0)
-      seed_ = static_cast<uint32_t>(v);
+    const SamplingConfig sampling = resolveSampling();
+    defaultMaxTokens_ = sampling.maxTokens;
+    defaultTemperature_ = sampling.temperature;
+    topK_ = sampling.topK;
+    topP_ = sampling.topP;
+    penaltyLastN_ = sampling.penaltyLastN;
+    penaltyRepeat_ = sampling.penaltyRepeat;
+    penaltyFreq_ = sampling.penaltyFreq;
+    penaltyPresent_ = sampling.penaltyPresent;
+    seed_ = sampling.seed;
 
     warmup();
     loaded_ = true;

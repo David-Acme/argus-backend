@@ -1,0 +1,205 @@
+#include "llm-settings.hxx"
+
+#include <string>
+#include <utility>
+
+namespace
+{
+struct NumericSetting
+{
+  std::string key;
+  std::string group;
+  SettingType type{SettingType::Integer};
+  SettingLevel level{SettingLevel::Advanced};
+  SettingApply apply{SettingApply::Restart};
+  SettingRange range{};
+  std::string fallback;
+};
+
+SettingSpec numeric(NumericSetting setting)
+{
+  return {.key = std::move(setting.key),
+          .group = std::move(setting.group),
+          .type = setting.type,
+          .level = setting.level,
+          .apply = setting.apply,
+          .range = setting.range,
+          .choices = {},
+          .fallback = std::move(setting.fallback)};
+}
+
+SettingSpec choice(std::string key, std::vector<std::string> choices)
+{
+  return {.key = std::move(key),
+          .group = "engine",
+          .type = SettingType::Choice,
+          .level = SettingLevel::Advanced,
+          .apply = SettingApply::Restart,
+          .range = {},
+          .choices = std::move(choices),
+          .fallback = "auto"};
+}
+
+SettingSpec toggle(std::string key, bool enabled)
+{
+  return {.key = std::move(key),
+          .group = "memory",
+          .type = SettingType::Toggle,
+          .level = SettingLevel::Advanced,
+          .apply = SettingApply::Restart,
+          .range = {},
+          .choices = {},
+          .fallback = enabled ? "true" : "false"};
+}
+}
+
+std::vector<SettingSpec> llmSettingsCatalog()
+{
+  constexpr auto sampling = SettingApply::Restart;
+  return {
+      numeric({.key = "llm.temperature",
+               .group = "sampling",
+               .type = SettingType::Decimal,
+               .level = SettingLevel::Basic,
+               .apply = sampling,
+               .range = {.min = 0, .max = 2, .step = 0.05},
+               .fallback = "0.85"}),
+      numeric({.key = "llm.max_tokens",
+               .group = "sampling",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Basic,
+               .apply = sampling,
+               .range = {.min = 32, .max = 2048, .step = 32},
+               .fallback = "256"}),
+      numeric({.key = "llm.top_k",
+               .group = "sampling",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = sampling,
+               .range = {.min = 1, .max = 200, .step = 1},
+               .fallback = "20"}),
+      numeric({.key = "llm.top_p",
+               .group = "sampling",
+               .type = SettingType::Decimal,
+               .level = SettingLevel::Advanced,
+               .apply = sampling,
+               .range = {.min = 0.05, .max = 1, .step = 0.05},
+               .fallback = "0.8"}),
+      numeric({.key = "llm.penalty_last_n",
+               .group = "sampling",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = sampling,
+               .range = {.min = 1, .max = 1024, .step = 1},
+               .fallback = "64"}),
+      numeric({.key = "llm.penalty_repeat",
+               .group = "sampling",
+               .type = SettingType::Decimal,
+               .level = SettingLevel::Advanced,
+               .apply = sampling,
+               .range = {.min = 1, .max = 2, .step = 0.01},
+               .fallback = "1.1"}),
+      numeric({.key = "llm.penalty_freq",
+               .group = "sampling",
+               .type = SettingType::Decimal,
+               .level = SettingLevel::Advanced,
+               .apply = sampling,
+               .range = {.min = 0, .max = 2, .step = 0.05},
+               .fallback = "0"}),
+      numeric({.key = "llm.penalty_present",
+               .group = "sampling",
+               .type = SettingType::Decimal,
+               .level = SettingLevel::Advanced,
+               .apply = sampling,
+               .range = {.min = 0, .max = 2, .step = 0.05},
+               .fallback = "0"}),
+      numeric({.key = "llm.seed",
+               .group = "sampling",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = sampling,
+               .range = {.min = 0, .max = 2147483647, .step = 1},
+               .fallback = "0"}),
+      numeric({.key = "memory.recall_top_k",
+               .group = "memory",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Live,
+               .range = {.min = 1, .max = 16, .step = 1},
+               .fallback = "4"}),
+      numeric({.key = "memory.recall_deadline_ms",
+               .group = "memory",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Live,
+               .range = {.min = 50, .max = 2000, .step = 50},
+               .fallback = "200"}),
+      numeric({.key = "memory.recall_max_tokens",
+               .group = "memory",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Live,
+               .range = {.min = 64, .max = 2048, .step = 64},
+               .fallback = "512"}),
+      numeric({.key = "memory.extract_wait_ms",
+               .group = "memory",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Live,
+               .range = {.min = 1000, .max = 120000, .step = 1000},
+               .fallback = "15000"}),
+      numeric({.key = "memory.compact_max_tokens",
+               .group = "memory",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Live,
+               .range = {.min = 64, .max = 1024, .step = 32},
+               .fallback = "256"}),
+      numeric({.key = "llm.context_size",
+               .group = "engine",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Restart,
+               .range = {.min = 4096, .max = 128000, .step = 1024},
+               .fallback = "32768"}),
+      numeric({.key = "llm.gpu_layers",
+               .group = "engine",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Restart,
+               .range = {.min = -1, .max = 999, .step = 1},
+               .fallback = "-1"}),
+      numeric({.key = "llm.threads",
+               .group = "engine",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Restart,
+               .range = {.min = 0, .max = 64, .step = 1},
+               .fallback = "0"}),
+      numeric({.key = "llm.batch_threads",
+               .group = "engine",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Restart,
+               .range = {.min = 0, .max = 64, .step = 1},
+               .fallback = "0"}),
+      choice("llm.kv_type", {"auto", "f16", "q8_0", "q4_0"}),
+      choice("llm.flash_attn", {"auto", "on", "off"}),
+      numeric({.key = "llm.n_batch",
+               .group = "engine",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Restart,
+               .range = {.min = 256, .max = 4096, .step = 256},
+               .fallback = "1024"}),
+      numeric({.key = "llm.n_ubatch",
+               .group = "engine",
+               .type = SettingType::Integer,
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Restart,
+               .range = {.min = 256, .max = 4096, .step = 256},
+               .fallback = "512"}),
+      toggle("memory.observe_camera_events", false),
+      toggle("memory.embedding_preload", true),
+  };
+}
