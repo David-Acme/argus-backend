@@ -64,6 +64,8 @@ Json::Value object_event::toJson(const ObjectDetectedEvent& event)
     }
     if (!object.zoneKind.empty())
       entry["zoneKind"] = object.zoneKind;
+    if (!object.zoneName.empty())
+      entry["zoneName"] = object.zoneName;
     if (!object.signature.empty())
       entry["signature"] = object.signature;
     objects.append(entry);

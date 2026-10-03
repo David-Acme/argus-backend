@@ -35,6 +35,7 @@ struct EvaluatedObject
   std::string identityState;
   int identifyAttempts{0};
   std::string zoneKind;
+  std::string zoneName;
 };
 
 struct PersonDwellVerdict

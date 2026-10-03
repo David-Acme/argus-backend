@@ -947,6 +947,7 @@ TEST_CASE("schemaVersion 3 serializes the observation contract additively")
   object.lastSeenMs = 200;
   object.dwellMs = 100;
   object.zoneKind = "monitor";
+  object.zoneName = "Back door";
   object.observationId = "1:4:100";
   event.objects.push_back(object);
 
@@ -960,6 +961,8 @@ TEST_CASE("schemaVersion 3 serializes the observation contract additively")
   CHECK(entry["zoneWindows"].asInt() == 1);
   CHECK(entry["trackWindows"].asInt() == 2);
   CHECK(entry["areaSpread"].asDouble() == doctest::Approx(1.1));
+  CHECK(entry["zoneKind"].asString() == "monitor");
+  CHECK(entry["zoneName"].asString() == "Back door");
   CHECK_FALSE(entry.isMember("identity"));
   CHECK_FALSE(entry.isMember("personId"));
 }

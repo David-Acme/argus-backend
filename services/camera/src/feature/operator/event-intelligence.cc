@@ -46,18 +46,21 @@ struct ObjectInZoneKindInput
   int frameHeight{0};
 };
 
+const OperatorZone* zoneOfKind(const ObjectInZoneKindInput& input)
+{
+  const auto found = std::ranges::find_if(input.zones, [&input](const OperatorZone& zone) {
+    return zone.kind == input.kind &&
+           centerInZone({.object = input.object,
+                         .zone = zone,
+                         .frameWidth = input.frameWidth,
+                         .frameHeight = input.frameHeight});
+  });
+  return found == input.zones.end() ? nullptr : &*found;
+}
+
 bool objectInZoneKind(const ObjectInZoneKindInput& input)
 {
-  const DetectedObject& object = input.object;
-  const int frameWidth = input.frameWidth;
-  const int frameHeight = input.frameHeight;
-  for (const auto& zone : input.zones) {
-    if (zone.kind == input.kind &&
-        centerInZone({.object = object, .zone = zone,
-                      .frameWidth = frameWidth, .frameHeight = frameHeight}))
-      return true;
-  }
-  return false;
+  return zoneOfKind(input) != nullptr;
 }
 
 bool containsClass(const std::vector<DetectedObject>& objects,
@@ -158,7 +161,8 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
                          .identityConfidence = 0.0F,
                          .identityState = {},
                          .identifyAttempts = 0,
-                         .zoneKind = {}});
+                         .zoneKind = {},
+                         .zoneName = {}});
 
   std::optional<int64_t> knownPersonId;
   if (input.matcher && personDue && input.frameRgb) {
@@ -191,18 +195,18 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
   for (auto& entry : evaluated) {
     if (entry.object.name != "person")
       continue;
-    if (objectInZoneKind({.object = entry.object,
-                          .zones = input.zones,
-                          .kind = "alert",
-                          .frameWidth = input.frameWidth,
-                          .frameHeight = input.frameHeight}))
-      entry.zoneKind = "alert";
-    else if (objectInZoneKind({.object = entry.object,
-                               .zones = input.zones,
-                               .kind = "monitor",
-                               .frameWidth = input.frameWidth,
-                               .frameHeight = input.frameHeight}))
-      entry.zoneKind = "monitor";
+    for (const std::string kind : {"alert", "monitor"}) {
+      const OperatorZone* zone = zoneOfKind({.object = entry.object,
+                                             .zones = input.zones,
+                                             .kind = kind,
+                                             .frameWidth = input.frameWidth,
+                                             .frameHeight = input.frameHeight});
+      if (zone == nullptr)
+        continue;
+      entry.zoneKind = kind;
+      entry.zoneName = zone->name;
+      break;
+    }
   }
 
   const auto finalize = [&](EventIntelligenceOutcome outcome) {

@@ -153,6 +153,30 @@ TEST_CASE("rule 4: person inside a monitor zone is warning")
   CHECK(outcome.severity == EventSeverity::Warning);
 }
 
+TEST_CASE("the zone a person stands in travels by name beside its kind")
+{
+  auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
+  auto door = squareZone({.kind = "monitor", .fromX = 0.0f, .fromY = 0.0f,
+                          .toX = 1.0f, .toY = 1.0f});
+  door.name = "Back door";
+  auto porch = squareZone({.kind = "alert", .fromX = 0.25f, .fromY = 0.25f,
+                           .toX = 0.75f, .toY = 0.75f});
+  porch.name = "Porch";
+  input.zones = {door, porch};
+
+  const auto outcome = EventIntelligence::evaluate(input);
+  REQUIRE(outcome.objects.size() == 1);
+  CHECK(outcome.objects.front().zoneKind == "alert");
+  CHECK(outcome.objects.front().zoneName == "Porch");
+
+  auto outside = baseInput({personAt({.x = 0, .y = 0, .w = 20, .h = 20})});
+  outside.zones = {porch};
+  const auto outsideOutcome = EventIntelligence::evaluate(outside);
+  REQUIRE(outsideOutcome.objects.size() == 1);
+  CHECK(outsideOutcome.objects.front().zoneKind.empty());
+  CHECK(outsideOutcome.objects.front().zoneName.empty());
+}
+
 TEST_CASE("rules 5 and 6: person by the night schedule")
 {
   auto night = baseInput({personAt({.x = 0, .y = 0, .w = 80, .h = 160})});

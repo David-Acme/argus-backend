@@ -31,6 +31,7 @@ struct DetectedEventObject
   int64_t dwellMs{0};
   float identityConfidence{0};
   std::string zoneKind;
+  std::string zoneName;
   std::string observationId;
 };
 

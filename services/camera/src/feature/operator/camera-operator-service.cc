@@ -748,7 +748,8 @@ void CameraOperatorService::processFrame(const ProcessFrameInput& input)
                                  .identityConfidence = 0.0F,
                                  .identityState = {},
                                  .identifyAttempts = 0,
-                                 .zoneKind = {}},
+                                 .zoneKind = {},
+                                 .zoneName = {}},
                    .state = state,
                    .stamp = stamp});
     }
@@ -825,8 +826,10 @@ void CameraOperatorService::mergeObject(const MergeObjectInput& input)
         existing->areaSpread = trackAreaSpread(track->windowHistory);
       }
     }
-    if (!input.evaluated.zoneKind.empty())
+    if (!input.evaluated.zoneKind.empty()) {
       existing->zoneKind = input.evaluated.zoneKind;
+      existing->zoneName = input.evaluated.zoneName;
+    }
     return;
   }
 
@@ -844,6 +847,7 @@ void CameraOperatorService::mergeObject(const MergeObjectInput& input)
   entry.identityState = input.evaluated.identityState;
   entry.identifyAttempts = input.evaluated.identifyAttempts;
   entry.zoneKind = input.evaluated.zoneKind;
+  entry.zoneName = input.evaluated.zoneName;
   entry.trackId = object.trackId;
   if (track) {
     entry.firstSeenMs = track->firstSeenMs;

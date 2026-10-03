@@ -870,3 +870,12 @@ source treats an empty body as no frame.
 The operator and the monitor start after the boot's first source apply instead
 of before it: they used to sample a go2rtc that had no sources yet, so every
 boot published `unreachable` for every camera.
+
+## The zone a person stands in travels by name
+
+A person object carries `zoneName` beside `zoneKind`: the owner's name of the
+first alert zone (or, failing one, monitor zone) that contains the box centre,
+as `ZoneProvider` loaded it from camera.db. argus-guard asked for it to word its
+notifications ("in «Back door»" instead of "in the alert zone"); the key is
+additive and absent outside a zone, so a consumer that ignores it reads the
+event exactly as before, and `schemaVersion` stays 3.
