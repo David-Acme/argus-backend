@@ -45,6 +45,7 @@ message ChatRequest {
   CallerRole caller_role = 9;
   string lang = 10;
   bool client_actions = 11;
+  string session_id = 12;
 }
 
 message ChatResponse {

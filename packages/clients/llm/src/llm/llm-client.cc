@@ -41,6 +41,7 @@ constexpr std::size_t kMaxMessages = 64;
 constexpr std::size_t kMaxRoleBytes = 32;
 constexpr std::size_t kMaxContentBytes = std::size_t{32} * 1024;
 constexpr std::size_t kMaxGrammarBytes = std::size_t{8} * 1024;
+constexpr std::size_t kMaxSessionBytes = 128;
 constexpr int32_t kMaxTokensBound = 4096;
 constexpr int64_t kMaxContextSize = 1 << 22;
 constexpr int32_t kMaxPrefillTokens = 1 << 20;
@@ -67,7 +68,7 @@ bool validRequest(const ChatRequest& request)
          request.maxTokens <= kMaxTokensBound && request.temperature >= -1.0F &&
          request.temperature <= 2.0F &&
          request.grammar.size() <= kMaxGrammarBytes && request.userId >= 0 &&
-         validLang(request.lang);
+         validLang(request.lang) && request.sessionId.size() <= kMaxSessionBytes;
 }
 
 wire::CallerRole wireRole(UserRole role)
@@ -120,6 +121,7 @@ wire::ChatRequest wireRequest(const ChatRequest& request)
   wire.set_caller_role(wireRole(request.role));
   wire.set_lang(request.lang);
   wire.set_client_actions(request.clientActions);
+  wire.set_session_id(request.sessionId);
   return wire;
 }
 }

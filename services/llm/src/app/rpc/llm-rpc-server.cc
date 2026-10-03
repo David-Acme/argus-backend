@@ -31,6 +31,7 @@ constexpr std::size_t kMaxMessages = 64;
 constexpr std::size_t kMaxRoleBytes = 32;
 constexpr std::size_t kMaxContentBytes = std::size_t{32} * 1024;
 constexpr std::size_t kMaxGrammarBytes = std::size_t{8} * 1024;
+constexpr std::size_t kMaxSessionBytes = 128;
 constexpr int32_t kMaxTokensBound = 4096;
 constexpr std::chrono::seconds kTimeoutHeaderRounding{1};
 constexpr auto kMaxDeadline = argus::llm::kMaxTimeout + kTimeoutHeaderRounding;
@@ -92,7 +93,8 @@ bool validRequest(const wire::ChatRequest& request)
           (request.temperature() >= -1.0F && request.temperature() <= 2.0F)) &&
          request.grammar().size() <= kMaxGrammarBytes && request.user_id() >= 0 &&
          (request.lang().empty() || request.lang() == "es" ||
-          request.lang() == "en");
+          request.lang() == "en") &&
+         request.session_id().size() <= kMaxSessionBytes;
 }
 
 UserRole callerRole(wire::CallerRole role)
@@ -128,6 +130,7 @@ ChatRequest chatRequest(const wire::ChatRequest& wireRequest)
   request.role = callerRole(wireRequest.caller_role());
   request.lang = wireRequest.lang();
   request.clientActions = wireRequest.client_actions();
+  request.sessionId = wireRequest.session_id();
   return request;
 }
 

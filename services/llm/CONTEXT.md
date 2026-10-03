@@ -126,6 +126,12 @@ scaffolds.
   budget clamped to `argus::llm::kMaxTimeout`, and a non-positive budget takes
   that ceiling — the HTTP leg accepts a budget the typed leg's own gate would
   refuse, so the façade clamps instead of failing every call.
+- **Call session**: `session_id` (proto field 12, HTTP `session_id`,
+  `ChatRequest::sessionId`, at most 128 bytes on both legs and refused above
+  that) names the conversation a request belongs to. The voice session fills
+  it with its per-call id. It becomes `ToolContext::sessionId`, the turn
+  reference memory formation stores on the fact's source, so a fact saved
+  mid-call points back to the call that produced it.
 - **Caller role and language**: a chat request names the role of the user it
   speaks for (`caller_role` on the gRPC wire, `role` in the HTTP body) and the
   turn's language (`lang`, `es`/`en`). Both are additive: an absent or

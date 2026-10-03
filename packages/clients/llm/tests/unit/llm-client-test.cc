@@ -276,6 +276,10 @@ TEST_CASE("The gRPC client validates its configuration before it dials")
   ChatRequest unknownLang = greeting();
   unknownLang.lang = "fr";
   CHECK(refusalBy([&] { (void)accepted.chat(unknownLang); }) == invalid);
+
+  ChatRequest longSession = greeting();
+  longSession.sessionId = std::string(129, 's');
+  CHECK(refusalBy([&] { (void)accepted.chat(longSession); }) == invalid);
 }
 
 TEST_CASE("The llm http client carries the caller's user, role and language")
@@ -288,17 +292,20 @@ TEST_CASE("The llm http client carries the caller's user, role and language")
   request.userId = 7;
   request.role = UserRole::Owner;
   request.lang = "en";
+  request.sessionId = "voice-7-1700000000000";
   static_cast<void>(client.chat(request));
   const std::string body = server.lastBody();
   CHECK(body.find("\"user_id\":7") != std::string::npos);
   CHECK(body.find("\"role\":\"owner\"") != std::string::npos);
   CHECK(body.find("\"lang\":\"en\"") != std::string::npos);
+  CHECK(body.find("\"session_id\":\"voice-7-1700000000000\"") != std::string::npos);
 
   static_cast<void>(client.chat(greeting()));
   const std::string defaults = server.lastBody();
   CHECK(defaults.find("\"role\":\"guest\"") != std::string::npos);
   CHECK(defaults.find("\"lang\"") == std::string::npos);
   CHECK(defaults.find("\"user_id\"") == std::string::npos);
+  CHECK(defaults.find("\"session_id\"") == std::string::npos);
 }
 
 TEST_CASE("A stop request ends the http stream without waiting for the generation")

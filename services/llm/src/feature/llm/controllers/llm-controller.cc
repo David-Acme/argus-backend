@@ -88,7 +88,7 @@ ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
                                      .lang = args.request.lang.empty()
                                                  ? std::string(kDefaultToolLang)
                                                  : args.request.lang,
-                                     .sessionId = {},
+                                     .sessionId = args.request.sessionId,
                                      .channel = "tool_result",
                                      .utterance = {},
                                      .decided = false,

@@ -8,6 +8,7 @@ constexpr size_t kMaxRoleLength = 32;
 constexpr int kMaxTokensBound = 4096;
 constexpr size_t kMaxMessageLength = 32 * 1024;
 constexpr size_t kMaxGrammarLength = 8 * 1024;
+constexpr size_t kMaxSessionLength = 128;
 
 }
 
@@ -40,6 +41,8 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
     dto.role = json["role"].asString();
   if (json.isMember("lang") && json["lang"].isString())
     dto.lang = json["lang"].asString();
+  if (json.isMember("session_id") && json["session_id"].isString())
+    dto.sessionId = json["session_id"].asString();
 
   START_VALIDATION(ChatCompletionDto, dto)
   ARRAY_NOT_EMPTY(messages, ChatMessageDto)
@@ -81,6 +84,12 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
       return "grammar is too long";
     return std::nullopt;
   })
+  CUSTOM_LAMBDA(sessionId, [](const ChatCompletionDto& value)
+                    -> std::optional<std::string> {
+    if (value.sessionId.size() > kMaxSessionLength)
+      return "session_id is too long";
+    return std::nullopt;
+  })
   IS_IN_OPTIONAL(role, "owner", "resident", "guard", "guest")
   IS_IN_OPTIONAL(lang, "es", "en")
   END_VALIDATION()
@@ -102,5 +111,6 @@ ChatRequest ChatCompletionDto::request() const
   req.grammarRequired = grammarRequired;
   req.role = userRoleFromString(role.value_or(userRoleToString(UserRole::Guest)));
   req.lang = lang.value_or(std::string());
+  req.sessionId = sessionId;
   return req;
 }

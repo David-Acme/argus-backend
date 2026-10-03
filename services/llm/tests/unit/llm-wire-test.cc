@@ -546,11 +546,17 @@ TEST_CASE("the chat body reaches the engine with every field it carried")
   Json::Value caller;
   REQUIRE(reader.parse(
       R"({"messages":[{"role":"user","content":"Di hola"}],"role":"owner",)"
-      R"("lang":"en"})",
+      R"("lang":"en","session_id":"voice-7-1700000000000"})",
       caller));
   const ChatRequest declared = ChatCompletionDto::fromJson(caller).request();
   CHECK(declared.role == UserRole::Owner);
   CHECK(declared.lang == "en");
+  CHECK(declared.sessionId == "voice-7-1700000000000");
+  CHECK(absent.sessionId.empty());
+
+  Json::Value longSession = minimal;
+  longSession["session_id"] = std::string(129, 's');
+  CHECK_THROWS(ChatCompletionDto::fromJson(longSession));
 
   Json::Value unknownRole;
   REQUIRE(reader.parse(

@@ -171,6 +171,7 @@ wire::ChatRequest wireRequest(const ChatRequest& input)
   request.set_user_id(input.userId);
   request.set_grammar(input.grammar);
   request.set_grammar_required(input.grammarRequired);
+  request.set_session_id(input.sessionId);
   return request;
 }
 
@@ -688,6 +689,9 @@ TEST_CASE("the wire refuses what its own client would never send")
   ChatRequest negativeUser = good;
   negativeUser.userId = -1;
   CHECK(refused({.input = negativeUser}).status == 400);
+  ChatRequest longSession = good;
+  longSession.sessionId = std::string(129, 's');
+  CHECK(refused({.input = longSession}).status == 400);
   CHECK(refused({.input = good, .deadline = std::chrono::seconds(300)}).status ==
         400);
   CHECK(refused({.input = good, .deadline = std::chrono::seconds(125)}).status ==
@@ -823,6 +827,7 @@ TEST_CASE("the caller's role and language cross the wire, an absent role is a gu
   ChatRequest owner = ask();
   owner.role = UserRole::Owner;
   owner.lang = "en";
+  owner.sessionId = "voice-7-1700000000000";
   CHECK(client.chat(owner) == "ok");
   ChatRequest guard = ask();
   guard.role = UserRole::Guard;
@@ -835,6 +840,8 @@ TEST_CASE("the caller's role and language cross the wire, an absent role is a gu
   REQUIRE(seen.size() == 3);
   CHECK(seen[0].role == UserRole::Owner);
   CHECK(seen[0].lang == "en");
+  CHECK(seen[0].sessionId == "voice-7-1700000000000");
+  CHECK(seen[1].sessionId.empty());
   CHECK(seen[1].role == UserRole::Guard);
   CHECK(seen[1].lang.empty());
   CHECK(seen[2].role == UserRole::Guest);

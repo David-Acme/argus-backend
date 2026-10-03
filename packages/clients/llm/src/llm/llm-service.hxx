@@ -35,6 +35,7 @@ struct ChatRequest
   UserRole role{UserRole::Guest};
   std::string lang{};
   bool clientActions{false};
+  std::string sessionId{};
 };
 
 using TokenCallback = std::function<void(const std::string& token, bool done)>;
