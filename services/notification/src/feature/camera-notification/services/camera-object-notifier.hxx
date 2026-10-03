@@ -1,6 +1,7 @@
 #pragma once
 
 #include <feature/camera-notification/repositories/camera-fallback-log/camera-fallback-log-repository.hxx>
+#include <feature/camera-notification/services/camera-notification-copy.hxx>
 #include <feature/camera-notification/services/camera-notification-policy.hxx>
 #include <identity/identity-client.hxx>
 #include <json/value.h>
@@ -34,8 +35,7 @@ private:
   struct DeliverInput
   {
     const Json::Value& json;
-    const std::string& title;
-    const std::string& body;
+    const FallbackNotice& notice;
     const std::string& commandId;
   };
 

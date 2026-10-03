@@ -1,6 +1,7 @@
 argus_module(NAME notification-camera-notification
     SOURCES
         repositories/camera-fallback-log/camera-fallback-log-repository.cc
+        services/camera-notification-copy.cc
         services/camera-notification-policy.cc
         services/camera-object-notifier.cc
     DEPENDS

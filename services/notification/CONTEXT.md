@@ -418,3 +418,31 @@ and the caller secrets stay out of the catalog.
 equal to either of the others, registers no settings service.
 `notification-settings-test` checks the separation both ways on a live
 server holding both services.
+
+## Fallback alerts people can read (2026-10)
+
+The fallback path (guard silent, a hard camera signal) used to send
+"Front door: person_in_alert_zone" / "Severity critical; detected person"
+and an hourly "3 events suppressed (2 person, 1 car)" — the rule names and
+counters of the camera, in English, to every reader. It now renders through
+`camera-notification-copy` (pure, es/en): "Persona en la zona de alerta ·
+Front door" / "La vigilancia de Argus no responde, así que este aviso llega
+directo de la cámara. Echa un vistazo a la imagen." and, for the digest,
+"Mientras la vigilancia no respondía · Cámara 4" / "La cámara detectó 2
+personas y 2 vehículos que no se avisaron uno a uno." The policy's
+`takeDigest` returns the per-class counts instead of a sentence, so the
+words live in one place.
+
+Each recipient reads their own language: the notifier groups the roster by
+the `lang` of each user's identity record (`GetUser`) and creates one batch
+per language (command id `<commandId>:<lang>` when there is more than one);
+`[notifications] lang` (default `es`) covers a record with no language.
+`data` keeps the camera event and adds `kind` (`camera_fallback`,
+`camera_fallback_digest`), `threadKey` (`camera:fallback:<cameraId>`),
+`urgency` (`time_sensitive` for an alert, `passive` for a digest) and
+`lang`, the same shape argus-guard uses for its own notifications so a
+client can render, group and later push both the same way.
+
+The TLS listener also reloads a rotated instance certificate
+(`certificate_reload::watch`, lib/http 897c23bf) instead of failing 30 days
+after a rotation until restarted; argus-guard does the same.

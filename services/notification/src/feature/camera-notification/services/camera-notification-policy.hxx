@@ -21,6 +21,7 @@ public:
     int64_t fallbackMinDwellMs{1000};
     bool fallbackSuppressKnown{true};
     int fallbackRetentionDays{90};
+    std::string lang{"es"};
   };
 
   enum class FallbackDecision : std::uint8_t
@@ -43,7 +44,7 @@ public:
 
   std::vector<int64_t> trackedCameras() const;
 
-  std::string takeDigest(int64_t cameraId, int64_t nowMs);
+  std::map<std::string, int> takeDigest(int64_t cameraId, int64_t nowMs);
 
   bool guardReady(int64_t nowMs) const;
 

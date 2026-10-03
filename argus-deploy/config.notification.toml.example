@@ -49,6 +49,7 @@ fallback_min_score_median = 0.3
 fallback_min_dwell_ms = 1000
 fallback_suppress_known = true
 fallback_retention_days = 90
+lang = "es"
 
 [identity]
 target = "argus-identity:7040"

@@ -293,10 +293,10 @@ TEST_CASE("the digest summarizes suppressed events after the window closes")
 
   CHECK(policy.takeDigest(1, start + 1000).empty());
 
-  const std::string digest = policy.takeDigest(1, start + 3600000);
-  CHECK(digest.find("3 events suppressed") != std::string::npos);
-  CHECK(digest.find("2 person") != std::string::npos);
-  CHECK(digest.find("1 car") != std::string::npos);
+  const auto digest = policy.takeDigest(1, start + 3600000);
+  CHECK(digest.size() == 2);
+  CHECK(digest.at("person") == 2);
+  CHECK(digest.at("car") == 1);
 
   CHECK(policy.takeDigest(1, start + 7200000).empty());
 }
@@ -309,9 +309,9 @@ TEST_CASE("a digest flushes when the silent window ends")
   CHECK_FALSE(policy.shouldNotify(1, night));
   policy.countSuppressed(1, "person");
 
-  const std::string digest = policy.takeDigest(1, atLocalHour({.hour = 6, .minute = 0, .day = 16}));
-  CHECK(digest.find("1 events suppressed") != std::string::npos);
-  CHECK(digest.find("1 person") != std::string::npos);
+  const auto digest = policy.takeDigest(1, atLocalHour({.hour = 6, .minute = 0, .day = 16}));
+  CHECK(digest.size() == 1);
+  CHECK(digest.at("person") == 1);
 }
 
 TEST_CASE("a pending digest survives the hour-roll race")
@@ -324,10 +324,9 @@ TEST_CASE("a pending digest survives the hour-roll race")
   policy.countSuppressed(1, "car");
 
   CHECK(policy.shouldNotify(1, start + 3600000));
-  const std::string digest = policy.takeDigest(1, start + 3600001);
-  CHECK(digest.find("2 events suppressed") != std::string::npos);
-  CHECK(digest.find("1 person") != std::string::npos);
-  CHECK(digest.find("1 car") != std::string::npos);
+  const auto digest = policy.takeDigest(1, start + 3600001);
+  CHECK(digest.at("person") == 1);
+  CHECK(digest.at("car") == 1);
 
   CHECK(policy.takeDigest(1, start + 3600002).empty());
 }
@@ -344,10 +343,9 @@ TEST_CASE("counts suppressed inside silent hours carry until the window ends")
   policy.countSuppressed(1, "car");
   CHECK(policy.takeDigest(1, atLocalHour({.hour = 1, .minute = 0, .day = 16})).empty());
 
-  const std::string digest = policy.takeDigest(1, atLocalHour({.hour = 6, .minute = 0, .day = 16}));
-  CHECK(digest.find("2 events suppressed") != std::string::npos);
-  CHECK(digest.find("1 person") != std::string::npos);
-  CHECK(digest.find("1 car") != std::string::npos);
+  const auto digest = policy.takeDigest(1, atLocalHour({.hour = 6, .minute = 0, .day = 16}));
+  CHECK(digest.at("person") == 1);
+  CHECK(digest.at("car") == 1);
 }
 
 TEST_CASE("the guard heartbeat gates the raw fallback window")
@@ -388,9 +386,15 @@ TEST_CASE("the consumer applies the budget and records camera notifications")
         "ORDER BY id DESC LIMIT 1");
     REQUIRE(rows.size() == 1);
     CHECK(rows.front()["title"].as<std::string>() ==
-          "Front door: person_in_alert_zone");
+          "Persona en la zona de alerta \u00b7 Front door");
     CHECK(rows.front()["body"].as<std::string>() ==
-          "Severity critical; detected person");
+          "La vigilancia de Argus no responde, así que este aviso llega "
+          "directo de la cámara. Echa un vistazo a la imagen.");
+    const Json::Value data =
+        json_util::fromString(rows.front()["data"].as<std::string>());
+    CHECK(data["kind"].asString() == "camera_fallback");
+    CHECK(data["urgency"].asString() == "time_sensitive");
+    CHECK(data["lang"].asString() == "es");
     CHECK(json_util::fromString(rows.front()["data"].as<std::string>())
               ["cameraId"].asInt64() == 1);
   }
@@ -769,4 +773,24 @@ TEST_CASE("fallback retention purges only old rows")
                   "camera_id = 21") == 0);
   CHECK(countRows("SELECT COUNT(*) AS total FROM camera_fallback_event WHERE "
                   "camera_id = 22") == 1);
+}
+
+TEST_CASE("fallback copy speaks plainly in the reader's language")
+{
+  const FallbackNotice digest{.kind = FallbackNoticeKind::Digest,
+                              .cameraId = 4,
+                              .cameraName = {},
+                              .rule = {},
+                              .suppressed = {{"person", 2}, {"car", 1},
+                                             {"truck", 1}}};
+  const FallbackText spanish = camera_notification_copy::render(digest, "es");
+  CHECK(spanish.title == "Mientras la vigilancia no respondía · Cámara 4");
+  CHECK(spanish.body == "La cámara detectó 2 personas y 2 vehículos que no se "
+                        "avisaron uno a uno.");
+  const FallbackText english =
+      camera_notification_copy::render(digest, "en-GB");
+  CHECK(english.body ==
+        "The camera saw 2 people and 2 vehicles that weren't alerted one by one.");
+  CHECK(camera_notification_copy::normalizeLang(
+            {.requested = "de", .fallback = "en"}) == "en");
 }

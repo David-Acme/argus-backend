@@ -347,6 +347,7 @@ argus-notification configuration. Copy to config.toml (gitignored) to run.
 | `notifications.fallback_min_dwell_ms` | Minimum dwell a hard-signal track must show before the fallback forwards it (milliseconds). |
 | `notifications.fallback_suppress_known` | Whether a matched known identity suppresses a hard signal in the fallback path. |
 | `notifications.fallback_retention_days` | Fallback-record retention in days, matching the guard decision journal. Values <= 0 keep every row. |
+| `notifications.lang` | Fallback language (`es`/`en`) of the camera-fallback alerts and digests for a recipient whose identity record carries no language; each recipient otherwise reads them in their own user language. |
 | `identity.target` | The identity roster the camera notifier resolves its recipients from. Empty keeps the fallback record but reaches no recipient. |
 | `identity.rpc_secret` | Fleet secret the roster call carries; same value in every service. |
 | `nats.url` | The event bus the camera notifier subscribes on (`argus.camera.v1.object_detected`, `argus.guard.v1.heartbeat`); empty leaves the bus disabled and camera notifications off. |

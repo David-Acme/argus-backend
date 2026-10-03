@@ -12,30 +12,20 @@
 
 #include <ctime>
 #include <json/value.h>
+#include <map>
 #include <optional>
 #include <utility>
 #include <vector>
 
 namespace
 {
-std::string titleFor(const Json::Value& event)
+FallbackNotice alertNotice(const Json::Value& event)
 {
-  const std::string camera = event.get("cameraName", "").asString();
-  const std::string rule = event.get("rule", "").asString();
-  return (camera.empty() ? "Camera" : camera) + ": " + rule;
-}
-
-std::string bodyFor(const Json::Value& event)
-{
-  const std::string severity = event.get("severity", "info").asString();
-  std::string classes;
-  for (const auto& object : event.get("objects", Json::Value())) {
-    const std::string name = object.get("class", "").asString();
-    if (!name.empty() && classes.find(name) == std::string::npos)
-      classes += (classes.empty() ? "" : ", ") + name;
-  }
-  return "Severity " + severity +
-         (classes.empty() ? "" : "; detected " + classes);
+  return {.kind = FallbackNoticeKind::Alert,
+          .cameraId = event.get("cameraId", 0).asInt64(),
+          .cameraName = event.get("cameraName", "").asString(),
+          .rule = event.get("rule", "").asString(),
+          .suppressed = {}};
 }
 
 bool isHardSignal(const Json::Value& event)
@@ -154,10 +144,9 @@ void CameraObjectNotifier::handle(const Json::Value& json)
     return;
   }
 
-  deliver({.json = json,
-           .title = titleFor(json),
-           .body = bodyFor(json),
-           .commandId = eventCommandId(json, atMs)});
+  const FallbackNotice notice = alertNotice(json);
+  const std::string commandId = eventCommandId(json, atMs);
+  deliver({.json = json, .notice = notice, .commandId = commandId});
 }
 
 void CameraObjectNotifier::logFallback(const CameraFallbackLogInput& input)
@@ -196,67 +185,99 @@ void CameraObjectNotifier::flushDigests()
   const int64_t atMs = nowMs();
   purgeFallbackLog(atMs / 1000);
   for (const auto cameraId : policy_.trackedCameras()) {
-    const std::string summary = policy_.takeDigest(cameraId, atMs);
-    if (summary.empty())
+    std::map<std::string, int> suppressed = policy_.takeDigest(cameraId, atMs);
+    if (suppressed.empty())
       continue;
     Json::Value digest;
     digest["cameraId"] = cameraId;
-    deliver({.json = digest,
-             .title = "Camera activity digest",
-             .body = summary,
-             .commandId = digestCommandId(cameraId, atMs)});
+    const FallbackNotice notice{.kind = FallbackNoticeKind::Digest,
+                                .cameraId = cameraId,
+                                .cameraName = {},
+                                .rule = {},
+                                .suppressed = std::move(suppressed)};
+    const std::string commandId = digestCommandId(cameraId, atMs);
+    deliver({.json = digest, .notice = notice, .commandId = commandId});
   }
 }
 
 void CameraObjectNotifier::deliver(const DeliverInput& input)
 {
-  const Json::Value& json = input.json;
-  const std::string& title = input.title;
-  const std::string& body = input.body;
-  const std::string& commandId = input.commandId;
+  const FallbackNotice& notice = input.notice;
+  const std::string label =
+      notice.cameraName.empty() ? "camera " + std::to_string(notice.cameraId)
+                                : notice.cameraName;
   if (!identityClient_) {
     LOG_WARN << "Camera notifier: identity SDK not configured; notification "
                 "skipped ("
-             << title << ")";
+             << label << ")";
     return;
   }
 
-  drogon::async_run([this, json, title, body, commandId]()
+  drogon::async_run([this, json = input.json, notice, label,
+                     commandId = input.commandId,
+                     fallbackLang = policy_.config().lang]()
                         -> drogon::Task<void> {
     try {
-      const auto userIds =
-          co_await BlockingTask<std::optional<std::vector<int64_t>>>(
-              [this]() { return identityClient_->listNotifiableUsers(); });
-      if (!userIds) {
+      const auto batches = co_await BlockingTask<
+          std::optional<std::map<std::string, std::vector<int64_t>>>>(
+          [this, fallbackLang]()
+              -> std::optional<std::map<std::string, std::vector<int64_t>>> {
+            const auto userIds = identityClient_->listNotifiableUsers();
+            if (!userIds)
+              return std::nullopt;
+            std::map<std::string, std::vector<int64_t>> byLang;
+            for (const int64_t userId : *userIds) {
+              const auto user = identityClient_->getUser(userId);
+              byLang[camera_notification_copy::normalizeLang(
+                         {.requested = user && user->has_user()
+                                           ? user->user().lang()
+                                           : std::string{},
+                          .fallback = fallbackLang})]
+                  .push_back(userId);
+            }
+            return byLang;
+          });
+      if (!batches) {
         LOG_WARN << "Camera notifier: identity roster unavailable; "
                     "notification skipped ("
-                 << title << ")";
+                 << label << ")";
         co_return;
       }
-      if (userIds->empty()) {
+      if (batches->empty()) {
         LOG_WARN << "Camera notifier: no owner/guard users to notify";
         co_return;
       }
 
-      const NotificationCreateOutcome outcome =
-          co_await notificationService_.createManyAndEmit(
-              {.userIds = *userIds,
-               .notification = {.userId = 0,
-                                .type = "camera",
-                                .title = title,
-                                .body = body,
-                                .data = json},
-               .commandId = commandId});
-      if (outcome.duplicate) {
-        LOG_INFO << "Camera notifier: notification already recorded ("
-                 << title << ")";
-        co_return;
+      const bool digest = notice.kind == FallbackNoticeKind::Digest;
+      for (const auto& [lang, userIds] : *batches) {
+        const FallbackText text = camera_notification_copy::render(notice, lang);
+        Json::Value data = json;
+        data["kind"] = digest ? "camera_fallback_digest" : "camera_fallback";
+        data["threadKey"] =
+            "camera:fallback:" + std::to_string(notice.cameraId);
+        data["urgency"] = digest ? "passive" : "time_sensitive";
+        data["lang"] = lang;
+        const NotificationCreateOutcome outcome =
+            co_await notificationService_.createManyAndEmit(
+                {.userIds = userIds,
+                 .notification = {.userId = 0,
+                                  .type = "camera",
+                                  .title = text.title,
+                                  .body = text.body,
+                                  .data = data},
+                 .commandId = batches->size() == 1 ? commandId
+                                                   : commandId + ":" + lang});
+        if (outcome.duplicate) {
+          LOG_INFO << "Camera notifier: notification already recorded ("
+                   << label << ")";
+          continue;
+        }
+        LOG_INFO << "Camera notifier: notification created for "
+                 << outcome.createdCount << " users (" << label << ")";
       }
-      LOG_INFO << "Camera notifier: notification created for "
-               << outcome.createdCount << " users (" << title << ")";
     }
     catch (const std::exception& e) {
-      LOG_WARN << "Camera notifier: delivery failed (" << title
+      LOG_WARN << "Camera notifier: delivery failed (" << label
                << "): " << e.what();
     }
     co_return;
@@ -292,6 +313,9 @@ CameraNotificationPolicy::Config resolveConfig()
   if (ConfigService::hasKey("notifications.fallback_retention_days"))
     config.fallbackRetentionDays =
         ConfigService::getInt("notifications.fallback_retention_days");
+  const std::string lang = ConfigService::getString("notifications.lang");
+  config.lang =
+      camera_notification_copy::normalizeLang({.requested = lang, .fallback = "es"});
   return config;
 }
 

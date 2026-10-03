@@ -2,6 +2,7 @@
 
 #include <ctime>
 #include <json/value.h>
+#include <utility>
 
 namespace
 {
@@ -177,8 +178,8 @@ CameraNotificationPolicy::trackedCameras() const
   return ids;
 }
 
-std::string CameraNotificationPolicy::takeDigest(int64_t cameraId,
-                                                 int64_t nowMs)
+std::map<std::string, int>
+CameraNotificationPolicy::takeDigest(int64_t cameraId, int64_t nowMs)
 {
   auto it = windows_.find(cameraId);
   if (it == windows_.end() || it->second.suppressedByClass.empty())
@@ -196,14 +197,8 @@ std::string CameraNotificationPolicy::takeDigest(int64_t cameraId,
   if (!silentOver && !hourRolled)
     return {};
 
-  std::string summary;
-  int total = 0;
-  for (const auto& [objectClass, count] : state.suppressedByClass) {
-    total += count;
-    summary += (summary.empty() ? "" : ", ") + std::to_string(count) + " " +
-               objectClass;
-  }
+  std::map<std::string, int> suppressed = std::move(state.suppressedByClass);
   state.suppressedByClass.clear();
   state.digestDue = false;
-  return std::to_string(total) + " events suppressed (" + summary + ")";
+  return suppressed;
 }
