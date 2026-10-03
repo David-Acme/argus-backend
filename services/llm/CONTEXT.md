@@ -531,6 +531,27 @@ The voice session and argus-llm agreed this contract with the voice agent:
   The baseline's other failure, routed saves that formation dropped while
   the model claimed "lo he guardado", is fixed at its source: explicit
   requests now store.
+- **Explicit app commands are routed before the intent router**
+  (`feature/llm/services/tools/app-command.cc`) when the turn offers the app
+  tools, which only a call with `clientActions` does. Guard mode needs a
+  guard word (vigilancia, modo, guardia, alarma, seguridad, guard, mode,
+  security, alarm), a verb (pon, activa, cambia, pasa, set, switch, turn,
+  change) and a mode word. The word after "modo"/"mode" wins, otherwise the
+  first mode word, from noche, nocturno, fuera, ausente, casa, armado, night,
+  away, home and armed. `app.show_camera` needs a display verb (muéstrame,
+  enséñame, abre, pon, show, open, or "quiero/déjame ver") and a singular
+  cámara/camera. The name is taken from around that word: "la cámara del
+  garaje, por favor" → `garaje`, "the garage camera" → `garage`, an empty name
+  means the last notice. `app.open` needs an opening verb and a screen word.
+  An utterance with `?` is never routed. A live call showed the model
+  answering "¡Listo!" to "pon la vigilancia en modo noche" without calling
+  the tool. The call policy also forbids confirming an action that no tool
+  ran.
+- **A prose answer cannot end before it starts.** On the first sampled token
+  of a prose answer every end-of-generation token and `<|tool_call_start|>`
+  carry a −∞ bias. With greedy decoding (`toolTemperature` 0) the model
+  sometimes put `<|im_end|>` first after a routed call, and the call answered
+  "" or a stray "¡Hola!".
 - **Each tool runs at most once per turn.** A tool that already succeeded in
   this turn is not run again in a later hop: the model gets the earlier
   result. A hop made only of repeats ends the loop with a prose answer.
@@ -549,6 +570,18 @@ The voice session and argus-llm agreed this contract with the voice agent:
   the user's fact, and "recuérdalo" alone stores nothing. An explicit request
   ("recuerda que …") whose extraction comes back incomplete is stored from its
   rule clause instead of being dropped.
+- **Explicit means the user's words, not the router's confidence.** A
+  router-decided call counts as explicit only when the rule parser recognizes
+  a trigger or a statement, or when it is a reminder whose words name a time
+  (`TemporalResolver`). "Recuérdame mañana a las nueve llamar al dentista",
+  which has no "que", now stores the whole clause; before, an incomplete
+  extraction kept "llamar al". A reminder that names no one is the
+  speaker's: its subject is the user's own entity. "Enciende la luz de la cocina", routed by
+  fastText at 0.96, stores nothing; before, an empty extraction let it
+  through the rule path. The tool handlers extract with the lexicon tier
+  only (`allowModel = false`). NuExtract inside a call's turn measured 23 s
+  of `tool_ms` on a loaded machine. The deferred extract job still uses the
+  model.
 - **`memory.forget` takes a `query`**, the fact in the user's words, instead
   of a `fact_id` the model could only invent. It closes the user's open fact
   that shares the most words with the query. The close is scoped to the

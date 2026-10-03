@@ -13,6 +13,7 @@
 #include <iostream>
 #include <mutex>
 #include <set>
+#include <string_view>
 #include <config/config-service.hxx>
 #include <feature/memory/services/embedding/embedding-service.hxx>
 #include <llm/llm-service.hxx>
@@ -1021,6 +1022,13 @@ tools::ToolCall groundedCall(const tools::ToolCall& call)
   return grounded;
 }
 
+std::string spoken(std::string text)
+{
+  while (!text.empty() && std::string_view(" .,;:!?").find(text.back()) != std::string_view::npos)
+    text.pop_back();
+  return text + ".";
+}
+
 int recallLimit()
 {
   const int topK = ConfigService::getInt("memory.recall_top_k");
@@ -1079,7 +1087,7 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
                                .lang = call.context.lang,
                                .sessionId = call.context.sessionId,
                                .entitiesHint = {},
-                               .allowModel = true,
+                               .allowModel = false,
                                .salient = false,
                                .decided = call.context.decided,
                                .typeHint = {}},
@@ -1105,7 +1113,7 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
               .preferIdle = false,
               .salient = false,
               .episode = false});
-  result.output = (english(call) ? "Saved: " : "Guardado: ") + formed->canonical + ".";
+  result.output = (english(call) ? "Saved: " : "Guardado: ") + spoken(formed->canonical);
   return result;
 }
 
@@ -1133,7 +1141,7 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
                                           .lang = call.context.lang,
                                           .sessionId = call.context.sessionId,
                                           .entitiesHint = {},
-                                          .allowModel = true,
+                                          .allowModel = false,
                                           .salient = false,
                                           .decided = call.context.decided,
                                           .typeHint = "schedule"},
@@ -1157,7 +1165,7 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
               .salient = false,
               .episode = false});
   result.output = (english(call) ? "Reminder saved: " : "Recordatorio guardado: ") +
-                  formed->canonical + ".";
+                  spoken(formed->canonical);
   return result;
 }
 
@@ -1228,6 +1236,6 @@ tools::ToolResult MemoryService::handleForget(const tools::ToolCall& call)
   }
   result.ok = true;
   result.data["fact_id"] = static_cast<int64_t>(target->factId);
-  result.output = (english(call) ? "Forgotten: " : "Olvidado: ") + target->canonical + ".";
+  result.output = (english(call) ? "Forgotten: " : "Olvidado: ") + spoken(target->canonical);
   return result;
 }

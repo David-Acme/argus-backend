@@ -142,6 +142,12 @@ void LlmService::init()
                   llama_model_is_hybrid(model_.get());
     messageStart_ = specialToken("<|im_start|>");
     toolCallStart_ = specialToken("<|tool_call_start|>");
+    endTokens_.clear();
+    const auto* vocab = llama_model_get_vocab(model_.get());
+    for (int32_t token = 0; token < llama_vocab_n_tokens(vocab); ++token) {
+      if (llama_vocab_is_eog(vocab, token))
+        endTokens_.push_back(token);
+    }
     promptBatch_ =
         std::make_unique<llama_batch>(llama_batch_init(nBatch_, 0, 1));
     genBatch_ = std::make_unique<llama_batch>(llama_batch_init(1, 0, 1));
@@ -514,16 +520,35 @@ void LlmService::generateStream(const GenerateInput& input,
       LOG_WARN << "LLM: sampling unconstrained";
     }
   }
+  constexpr float kNever = -std::numeric_limits<float>::infinity();
   if (!input.toolCallsAllowed && toolCallStart_ >= 0) {
-    const llama_logit_bias ban{.token = toolCallStart_,
-                               .bias = -std::numeric_limits<float>::infinity()};
+    const llama_logit_bias ban{.token = toolCallStart_, .bias = kNever};
     llama_sampler_chain_add(smpl.get(),
                             llama_sampler_init_logit_bias(nVocab, 1, &ban));
   }
-  llama_sampler_chain_add(smpl.get(), llama_sampler_init_top_k(topK_));
-  llama_sampler_chain_add(smpl.get(), llama_sampler_init_top_p(topP_, 1));
-  llama_sampler_chain_add(smpl.get(), llama_sampler_init_temp(temperature));
-  llama_sampler_chain_add(smpl.get(), llama_sampler_init_dist(seed_));
+  const auto addTail = [this, temperature](llama_sampler* chain) {
+    llama_sampler_chain_add(chain, llama_sampler_init_top_k(topK_));
+    llama_sampler_chain_add(chain, llama_sampler_init_top_p(topP_, 1));
+    llama_sampler_chain_add(chain, llama_sampler_init_temp(temperature));
+    llama_sampler_chain_add(chain, llama_sampler_init_dist(seed_));
+  };
+  addTail(smpl.get());
+
+  std::unique_ptr<llama_sampler, void (*)(llama_sampler*)> opening(nullptr,
+                                                                   &llama_sampler_free);
+  if (!input.toolCallsAllowed) {
+    std::vector<llama_logit_bias> bans;
+    bans.reserve(endTokens_.size() + 1);
+    for (const int32_t token : endTokens_)
+      bans.push_back({.token = token, .bias = kNever});
+    if (toolCallStart_ >= 0)
+      bans.push_back({.token = toolCallStart_, .bias = kNever});
+    opening.reset(llama_sampler_chain_init(sparams));
+    llama_sampler_chain_add(opening.get(),
+                            llama_sampler_init_logit_bias(nVocab, static_cast<int32_t>(bans.size()),
+                                                          bans.data()));
+    addTail(opening.get());
+  }
 
   const llama_token eosToken = llama_vocab_eos(vocab);
   const llama_token eotToken = llama_vocab_eot(vocab);
@@ -536,7 +561,11 @@ void LlmService::generateStream(const GenerateInput& input,
     tailKeep = std::max(tailKeep, needle.size());
   tailKeep += 256;
   for (int32_t i = 0; i < maxTokens; ++i) {
-    const llama_token newToken = llama_sampler_sample(smpl.get(), ctx, -1);
+    const bool firstOfProse = i == 0 && opening;
+    const llama_token newToken =
+        llama_sampler_sample(firstOfProse ? opening.get() : smpl.get(), ctx, -1);
+    if (firstOfProse)
+      llama_sampler_accept(smpl.get(), newToken);
 
     if (newToken == eosToken || newToken == eotToken ||
         llama_vocab_is_eog(vocab, newToken))

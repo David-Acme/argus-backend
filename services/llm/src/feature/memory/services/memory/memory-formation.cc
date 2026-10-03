@@ -103,6 +103,21 @@ findSpanInClause(const FoldedView& view, const std::string& needle)
   return std::nullopt;
 }
 
+struct TimeProbe
+{
+  const std::string& text;
+  const std::string& lang;
+};
+
+bool namesATime(const TimeProbe& probe)
+{
+  static const TemporalResolver resolver;
+  return resolver
+             .resolve({.lang = probe.lang.empty() ? "es" : probe.lang,
+                       .normalized = TemporalResolver::normalize(probe.text)})
+             .kind != extract::TemporalKind::None;
+}
+
 }
 
 int64_t
@@ -217,7 +232,9 @@ MemoryFormation::observe(const Observation& obs,
     if (clause.empty())
       return std::nullopt;
 
-    const bool explicitTrigger = parsed.has_value() || statement.has_value();
+    const bool explicitTrigger =
+        parsed.has_value() || statement.has_value() ||
+        (obs.decided && obs.typeHint == "schedule" && namesATime({.text = obs.text, .lang = obs.lang}));
 
     if (!parsed.has_value() &&
         ruleParser_.isQuestion({.text = obs.text, .lang = obs.lang}))
@@ -253,7 +270,7 @@ MemoryFormation::observe(const Observation& obs,
           first.tier == extract::ExtractTier::Lexicon ? "lexicon" : "model";
     }
     else {
-      if (extractor_ && !obs.decided && !explicitTrigger)
+      if (extractor_ && !explicitTrigger)
         return std::nullopt;
       extracted.clear();
       value = clause;
@@ -330,7 +347,7 @@ MemoryFormation::observe(const Observation& obs,
 
   if (!obs.typeHint.empty())
     factType = obs.typeHint;
-  if (subjectSurface.empty() && mentionsFirstPerson(obs.text))
+  if (subjectSurface.empty() && (mentionsFirstPerson(obs.text) || obs.typeHint == "schedule"))
     subjectSurface = "usuario";
   if (subjectSurface.empty())
     return std::nullopt;

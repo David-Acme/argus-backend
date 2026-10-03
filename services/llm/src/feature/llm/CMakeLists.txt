@@ -6,6 +6,7 @@ argus_module(NAME llm
         services/lfm-adapter.cc
         services/llm-service.cc
         services/sampling-config.cc
+        services/tools/app-command.cc
         services/tools/app-tool-descriptors.cc
         services/tools/tool-executor.cc
         services/tools/tool-registry.cc
@@ -18,6 +19,7 @@ argus_module(NAME llm
         argus::lib::auth
         argus::hardware-profile
         argus::lib::phrase
+        argus::lib::text
         argus::lib::runtime
         argus::lib::validation
         argus::lib::http

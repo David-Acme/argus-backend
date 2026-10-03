@@ -140,6 +140,7 @@ private:
   bool tailLocked_ = false;
   int32_t messageStart_ = -1;
   int32_t toolCallStart_ = -1;
+  std::vector<int32_t> endTokens_;
   std::string chatTemplate_;
   int64_t contextSize_ = 0;
   int32_t nBatch_ = 1024;

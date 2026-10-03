@@ -198,6 +198,23 @@ TEST_CASE("memory writes keep to the user's own words and forgetting stays in sc
   CHECK(lowered(run(dog).output).find("toby") == std::string::npos);
   CHECK_FALSE(run(forget).ok);
 
+  auto timed = callFor("memory.remind", kSpeaker);
+  timed.context.utterance = "Recuérdame mañana a las nueve llamar al dentista.";
+  timed.arguments["text"] = timed.context.utterance;
+  timed.context.decided = true;
+  const auto timedSaved = run(timed);
+  INFO("timed output: " << timedSaved.output);
+  REQUIRE(timedSaved.ok);
+  CHECK(lowered(timedSaved.output).find("dentista") != std::string::npos);
+  CHECK(lowered(timedSaved.output).find("nueve") != std::string::npos);
+  CHECK(timedSaved.output.find("..") == std::string::npos);
+
+  auto command = callFor("memory.remember", kSpeaker);
+  command.context.utterance = "enciende la luz de la cocina";
+  command.arguments["text"] = command.context.utterance;
+  command.context.decided = true;
+  CHECK_FALSE(run(command).ok);
+
   auto nothing = callFor("memory.forget", kSpeaker);
   nothing.arguments["query"] = "el color favorito de la vecina";
   CHECK_FALSE(run(nothing).ok);

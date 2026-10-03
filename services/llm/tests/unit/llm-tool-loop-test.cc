@@ -4,6 +4,8 @@
 #include <feature/intent/services/intent-contracts.hxx>
 #include <feature/intent/services/intent-router.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
+#include <feature/llm/services/tools/app-command.hxx>
+#include <feature/llm/services/tools/app-tool-descriptors.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <phrase/phrase-catalog.hxx>
 
@@ -301,4 +303,62 @@ TEST_CASE("a routed call the tool refuses falls back to the model with every too
   CHECK(script.requests.front().toolCallsAllowed);
   CHECK(script.requests.front().messages.back().role == "user");
   CHECK(output.reply == "Claro, enciendo la luz de la cocina.");
+}
+
+TEST_CASE("explicit app commands become app calls and questions do not")
+{
+  const auto mode = appCommandFor("Pon la vigilancia en modo noche.");
+  REQUIRE(mode.has_value());
+  CHECK(mode->name == "app.set_guard_mode");
+  CHECK(mode->arguments["mode"].asString() == "night");
+  CHECK(appCommandFor("Activa el modo fuera, me voy")->arguments["mode"].asString() == "away");
+  CHECK(appCommandFor("set the guard mode to armed")->arguments["mode"].asString() == "armed");
+  CHECK_FALSE(appCommandFor("¿En qué modo está la vigilancia?").has_value());
+  CHECK_FALSE(appCommandFor("Me voy a dormir").has_value());
+
+  const auto garage = appCommandFor("Muéstrame la cámara del garaje, por favor.");
+  REQUIRE(garage.has_value());
+  CHECK(garage->name == "app.show_camera");
+  CHECK(garage->arguments["camera"].asString() == "garaje");
+  CHECK(appCommandFor("show me the garage camera")->arguments["camera"].asString() == "garage");
+  CHECK(appCommandFor("quiero ver la cámara 3")->arguments["camera"].asString() == "3");
+  CHECK(appCommandFor("enséñame la cámara")->arguments["camera"].asString().empty());
+  CHECK_FALSE(appCommandFor("quiero comprar una cámara nueva").has_value());
+  CHECK_FALSE(appCommandFor("¿qué se ve en la cámara del patio?").has_value());
+
+  const auto agenda = appCommandFor("Abre la agenda");
+  REQUIRE(agenda.has_value());
+  CHECK(agenda->name == "app.open");
+  CHECK(agenda->arguments["screen"].asString() == "agenda");
+  CHECK(appCommandFor("abre las cámaras")->arguments["screen"].asString() == "cameras");
+  CHECK_FALSE(appCommandFor("hola, ¿cómo estás?").has_value());
+}
+
+TEST_CASE("an app command runs before the model when the call offers app tools")
+{
+  ToolRegistry registry;
+  for (auto& descriptor : appToolDescriptors())
+    registry.registerTool(std::move(descriptor));
+  ScriptedEngine script;
+  script.replies = {"Listo, modo noche activado."};
+  LfmAdapter adapter({.engine = script.engine(), .registry = registry, .router = nullptr});
+
+  std::vector<std::string> actions;
+  auto input = loopInput({registry.find("app.set_guard_mode"), registry.find("app.show_camera")});
+  input.role = UserRole::Owner;
+  input.context.emitAction = [&actions](const std::string& name, const Json::Value&) {
+    actions.push_back(name);
+  };
+  std::vector<ChatMessage> history{{.role = "user", .content = "Pon la vigilancia en modo noche."}};
+  const auto output = adapter.chatWithTools(input, history);
+  REQUIRE(actions.size() == 1);
+  CHECK(actions.front() == "app.set_guard_mode");
+  REQUIRE(script.requests.size() == 1);
+  CHECK_FALSE(script.requests.front().toolCallsAllowed);
+  CHECK(output.reply == "Listo, modo noche activado.");
+
+  std::vector<ChatMessage> withoutApp{{.role = "user", .content = "Pon la vigilancia en modo noche."}};
+  script.replies = {"No puedo cambiarla desde aquí."};
+  adapter.chatWithTools(loopInput({}), withoutApp);
+  CHECK(actions.size() == 1);
 }

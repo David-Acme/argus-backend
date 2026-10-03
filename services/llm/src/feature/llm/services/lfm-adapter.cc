@@ -7,6 +7,7 @@
 #include <drogon/drogon.h>
 #include <json/reader.h>
 #include <json/writer.h>
+#include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <optional>
 #include <sstream>
@@ -630,18 +631,24 @@ std::string LfmAdapter::renderToolCall(const tools::ToolCall& call)
 
 bool LfmAdapter::routedTurn(ToolHopContext ctx)
 {
-  if (router_ == nullptr)
-    return false;
   const std::string utterance = lastUserMessage(ctx.history);
   if (utterance.empty())
     return false;
 
-  const intent::IntentDecision decision =
-      router_->decide(utterance, ctx.input.context.lang);
-  if (!decision.confident)
-    return false;
-
-  auto call = routedCall(decision.intent, utterance);
+  std::optional<tools::ToolCall> call;
+  std::string reason;
+  if (auto command = appCommandFor(utterance); command && offered(*command, ctx.input.tools)) {
+    call = std::move(command);
+    reason = "app command";
+  }
+  else if (router_ != nullptr) {
+    const intent::IntentDecision decision = router_->decide(utterance, ctx.input.context.lang);
+    if (!decision.confident)
+      return false;
+    call = routedCall(decision.intent, utterance);
+    reason = std::string(intent::toolIntentToString(decision.intent)) + " score " +
+             std::to_string(decision.score) + (decision.fromRules ? ", rules" : ", model");
+  }
   if (!call || !offered(*call, ctx.input.tools))
     return false;
 
@@ -661,9 +668,7 @@ bool LfmAdapter::routedTurn(ToolHopContext ctx)
     return false;
   }
 
-  LOG_INFO << "LfmAdapter: router picked '" << call->name << "' ("
-           << intent::toolIntentToString(decision.intent) << " score "
-           << decision.score << (decision.fromRules ? ", rules" : ", model")
+  LOG_INFO << "LfmAdapter: router picked '" << call->name << "' (" << reason
            << "): " << executed.output;
   ctx.output.executed.push_back(*call);
   ctx.output.hops = 1;
