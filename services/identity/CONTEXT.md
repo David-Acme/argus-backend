@@ -166,6 +166,11 @@ recognition is known to be off, a call answers before taking a slot or
 decoding the image; during boot it still waits, so a login that races the
 model load is not refused as an unrecognized face.
 
+A face image is refused before it is decoded when its header declares more
+than 12000 px on a side or 50 MP in total: OpenCV decodes a PNG at full size
+before scaling it, so a ~1 MB 20000x20000 PNG posted to the unauthenticated
+`/auth/login` allocated over a gigabyte and could get identity OOM-killed.
+
 `IdentifyPerson` sets `face_found` (an optional field added to the frozen
 contract, so older callers ignore it): whether the detector found a face
 in the crop at all. Without it a crop of someone's back and an unmatched

@@ -417,6 +417,8 @@ namespace
 
 constexpr int kScaledDecodeThreshold = 2048;
 constexpr int kScaledDecodeDeepThreshold = 4096;
+constexpr int kMaxDecodeSide = 12000;
+constexpr int64_t kMaxDecodePixels = int64_t{50} * 1000 * 1000;
 
 struct DecodedImage
 {
@@ -433,6 +435,11 @@ DecodedImage decodeToRgb(const std::string& imageBytes)
   stbi_info_from_memory(reinterpret_cast<const stbi_uc*>(imageBytes.data()),
                         static_cast<int>(imageBytes.size()), &origW, &origH,
                         &channels);
+
+  if (origW <= 0 || origH <= 0 || origW > kMaxDecodeSide ||
+      origH > kMaxDecodeSide ||
+      static_cast<int64_t>(origW) * origH > kMaxDecodePixels)
+    return {};
 
   const int maxSide = std::max(origW, origH);
 
