@@ -4,6 +4,7 @@
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <runtime/thread-budget.hxx>
+#include <runtime/log-output.hxx>
 #include <feature/synthesis/controllers/tts-controller.hxx>
 #include <drogon/drogon.h>
 #include <auth/valid-json-filter.hxx>
@@ -29,6 +30,7 @@ Json::Value drogonConfig(const ListenerConfig& listener)
 
 int main()
 {
+  log_output::flushEachLine();
   ConfigService::load("config.toml");
 
   const ListenerConfig listener = TtsConfig::resolveListener();

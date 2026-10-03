@@ -22,6 +22,7 @@
 #include <vlm/vlm-remote.hxx>
 #include <nats/nats-bus.hxx>
 #include <runtime/shutdown-signal.hxx>
+#include <runtime/log-output.hxx>
 #include <unistd.h>
 
 #include <memory>
@@ -75,6 +76,7 @@ void registerHealth()
 
 int main()
 {
+  log_output::flushEachLine();
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");

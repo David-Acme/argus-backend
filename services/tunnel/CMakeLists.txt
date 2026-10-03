@@ -26,6 +26,10 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
     endif()
+    if(NOT TARGET argus::lib::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
+                         ${CMAKE_BINARY_DIR}/runtime)
+    endif()
 endif()
 
 find_package(doctest REQUIRED)
@@ -44,7 +48,8 @@ add_library(tunnel-core STATIC
 
 target_include_directories(tunnel-core PUBLIC ${TUNNEL_SRC_ROOT})
 
-target_link_libraries(tunnel-core PUBLIC argus::lib::config argus::lib::http)
+target_link_libraries(tunnel-core PUBLIC argus::lib::config argus::lib::http
+    argus::lib::runtime)
 
 target_compile_options(tunnel-core PRIVATE -Wall -Wextra)
 

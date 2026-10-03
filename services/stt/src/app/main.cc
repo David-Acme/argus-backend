@@ -7,6 +7,7 @@
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <runtime/thread-budget.hxx>
+#include <runtime/log-output.hxx>
 #include <stt/stt-remote.hxx>
 #include <config/config-service.hxx>
 
@@ -30,6 +31,7 @@ Json::Value drogonConfig(const ListenerConfig& listener)
 
 int main()
 {
+  log_output::flushEachLine();
   ConfigService::load("config.toml");
 
   const ListenerConfig listener = SttConfig::resolveListener();

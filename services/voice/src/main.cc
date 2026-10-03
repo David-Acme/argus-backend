@@ -12,6 +12,7 @@
 
 #include <memory>
 #include <string>
+#include <runtime/log-output.hxx>
 
 namespace
 {
@@ -34,6 +35,7 @@ Json::Value drogonConfig(const ListenerConfig& listener)
 
 int main()
 {
+  log_output::flushEachLine();
   ConfigService::load("config.toml");
 
   const ListenerConfig healthListener = VoiceConfig::resolveHealthListener();

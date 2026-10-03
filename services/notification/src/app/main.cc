@@ -19,6 +19,7 @@
 #include <nats/nats-push-intent-sink.hxx>
 #include <nats/nats-subject.hxx>
 #include <runtime/shutdown-signal.hxx>
+#include <runtime/log-output.hxx>
 #include <config/notification-config.hxx>
 #include <sync/user-change-sink.hxx>
 #include <config/config-service.hxx>
@@ -58,6 +59,7 @@ Json::Value drogonConfig(const NotificationDbConfig& notificationDb,
 
 int main()
 {
+  log_output::flushEachLine();
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");

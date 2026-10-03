@@ -11,9 +11,11 @@
 
 #include <json/value.h>
 #include <thread>
+#include <runtime/log-output.hxx>
 
 int main()
 {
+  log_output::flushEachLine();
   ConfigService::load("config.toml");
 
   const ClientConfig config = ClientConfig::resolve();

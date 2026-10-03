@@ -50,6 +50,10 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/phrase
                          ${CMAKE_BINARY_DIR}/phrase)
     endif()
+    if(NOT TARGET argus::lib::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
+                         ${CMAKE_BINARY_DIR}/runtime)
+    endif()
 endif()
 
 if(NOT TARGET argus::clients::voice)
@@ -94,6 +98,7 @@ argus_module(NAME voice-core
         argus::contracts::voice
         argus::lib::config
         argus::lib::http
+        argus::lib::runtime
     SYSTEM_DEPENDS
         Drogon::Drogon
         nlohmann_json::nlohmann_json

@@ -40,6 +40,7 @@
 #include <shared/services/stream/stream-hub.hxx>
 #include <runtime/blocking-task.hxx>
 #include <runtime/shutdown-signal.hxx>
+#include <runtime/log-output.hxx>
 #include <nats/nats-bus.hxx>
 #include <unistd.h>
 
@@ -83,6 +84,7 @@ Go2rtcFrameSource& frameSource()
 
 int main()
 {
+  log_output::flushEachLine();
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");

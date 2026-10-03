@@ -28,6 +28,7 @@
 #include <memory>
 #include <nats/nats-bus.hxx>
 #include <runtime/shutdown-signal.hxx>
+#include <runtime/log-output.hxx>
 #include <shared/services/face/face-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
@@ -80,6 +81,7 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
 
 int main()
 {
+  log_output::flushEachLine();
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");

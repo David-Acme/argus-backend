@@ -10,6 +10,8 @@ argus_lib(NAME runtime
         src/runtime/thread-budget.hxx
         src/runtime/shutdown-signal.cc
         src/runtime/shutdown-signal.hxx
+        src/runtime/log-output.cc
+        src/runtime/log-output.hxx
         src/runtime/ai-init.hxx
         src/runtime/blocking-task.hxx
         src/runtime/cancellation-token.hxx
@@ -60,6 +62,12 @@ target_link_libraries(shutdown-quit-hook-test PRIVATE argus::lib::runtime
     doctest::doctest)
 target_compile_options(shutdown-quit-hook-test PRIVATE -Wall -Wextra)
 add_test(NAME shutdown-quit-hook-test COMMAND shutdown-quit-hook-test)
+
+add_executable(log-output-test tests/unit/log-output-test.cc)
+target_link_libraries(log-output-test PRIVATE argus::lib::runtime
+    doctest::doctest)
+target_compile_options(log-output-test PRIVATE -Wall -Wextra)
+add_test(NAME log-output-test COMMAND log-output-test)
 
 add_executable(wake-signal-test tests/unit/wake-signal-test.cc)
 target_link_libraries(wake-signal-test PRIVATE argus::lib::runtime

@@ -20,6 +20,7 @@
 #include <sqlite/vec-db.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <runtime/blocking-task.hxx>
+#include <runtime/log-output.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 
@@ -132,6 +133,7 @@ CatalogReplica::Snapshot fetchCatalogSnapshotWithRetry()
 
 int main()
 {
+  log_output::flushEachLine();
   ConfigService::load("config.toml");
 
   const ListenerConfig listener = LlmConfig::resolveListener();

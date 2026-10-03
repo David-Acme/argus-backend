@@ -21,6 +21,7 @@
 #include <shared/services/change-sink/nats-productivity-change-sink.hxx>
 #include <nats/nats-bus.hxx>
 #include <runtime/shutdown-signal.hxx>
+#include <runtime/log-output.hxx>
 #include <sync/user-change-sink.hxx>
 #include <config/config-service.hxx>
 #include <sqlite/db-service.hxx>
@@ -59,6 +60,7 @@ Json::Value drogonConfig(const ProductivityDbConfig& productivityDb,
 
 int main()
 {
+  log_output::flushEachLine();
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
