@@ -731,13 +731,14 @@ live.
 **Scenarios, measured** (`tests/unit/guard-scenario-test.cc`, default
 config, fakes for the camera and the notification service):
 
-| Scenario | Before | After |
+| Scenario | Before (527bfa2f) | After |
 |---|---|---|
-| Home garden at night, one stranger, 4 observations | 1 alert "Jardín: person_night" / "Unrecognized person in the area for 18s (strong detection, lingering, steady track)" + 1 spoken line | 1 alert "Persona desconocida · Jardín" / "En el exterior, de noche, desde hace 18 s. Argus le está avisando por el altavoz." + 1 spoken line |
-| Restaurant kitchen while open, a cook seen 6 times | see the report | 0 alerts; counted in the daily summary |
-| Office after hours, 3 observations | see the report | 1 critical alert "Persona desconocida · Oficina" / "En la oficina, fuera de horario, desde hace 18 s. …" |
-| Street camera at night, 3 passers-by | see the report | 0 alerts, nothing said to the street |
-| Entrance, medium visit inside quiet hours | 1 alert | 0 alerts, held for the morning summary |
+| Home garden at night, one stranger, 4 observations | 1 alert "Jardín: person_night" / "Unrecognized person in the area for 18s (strong detection, lingering, steady track)", 1 spoken line | 1 alert "Persona desconocida · Jardín" / "En el exterior, de noche, desde hace 18 s. Argus le está avisando por el altavoz.", 1 spoken line |
+| Restaurant kitchen while open, a cook seen 6 times | 1 alert "Cocina: person_day" / "Unidentified person in the area for 18s (…)" (staging promoted a customer-hours Low to Medium) | 0 alerts; counted in the daily summary |
+| Office after hours, 3 observations | 1 alert "Oficina: person_day" / "Unrecognized person in the area for 18s (…)", 1 spoken line | 1 critical alert "Persona desconocida · Oficina" / "En la oficina, fuera de horario, desde hace 18 s. Argus le está avisando por el altavoz.", 1 spoken line |
+| Street camera at night, 3 passers-by | 2 alerts "Calle: person_night" and 2 lines spoken to the street (the third was only stopped by the hourly cap) | 0 alerts, nothing said to the street |
+| Entrance, medium visit inside quiet hours | 1 alert "Entrada: person_in_monitor_zone" | 0 alerts, held for the morning summary |
 
-The "before" column is filled from the same test run against the parent
-commit in the report that introduced this section.
+The before column is the same test file built against 527bfa2f (the parent
+of the change) in a scratch worktree; the camera-context rows it inserts do
+not exist there, so the old guard saw the same events with no context.
