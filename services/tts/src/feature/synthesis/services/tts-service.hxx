@@ -106,6 +106,7 @@ public:
   [[nodiscard]] static float configuredPocketTemperature();
   [[nodiscard]] static int configuredPocketLsdSteps();
   [[nodiscard]] static bool normalizationEnabled();
+  [[nodiscard]] static std::filesystem::path modelsDirectory();
   [[nodiscard]] static std::filesystem::path pocketModelsDir();
   [[nodiscard]] static std::string speechText(const TtsRequest& req);
 

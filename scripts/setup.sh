@@ -253,6 +253,9 @@ provision_tts() {
     export ARGUS_TTS_POCKET_NONCOMMERCIAL_VOICES=1
     warn "Development setup: Kyutai's Pocket voice jean is licensed for non-commercial use only (CC BY-NC 4.0) and is installed for internal testing. ARGUS_TTS_POCKET_NONCOMMERCIAL_VOICES=0 skips it; prod and provision-host.sh never install it unless asked."
   fi
+  if [ "${ARGUS_TTS_POCKET_NONCOMMERCIAL_VOICES:-0}" = 1 ]; then
+    replace_toml_value tts pocket_noncommercial_voices true "$ROOT/services/tts/config.toml" literal
+  fi
   ARGUS_TTS_CONFIG="$ROOT/services/tts/config.toml" "$ROOT/services/tts/scripts/provision.sh"
 }
 

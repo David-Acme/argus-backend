@@ -727,6 +727,11 @@ bool TtsService::normalizationEnabled()
   return !ConfigService::hasKey("tts.normalize_text") || ConfigService::getBool("tts.normalize_text");
 }
 
+std::filesystem::path TtsService::modelsDirectory()
+{
+  return modelsDir();
+}
+
 std::filesystem::path TtsService::pocketModelsDir()
 {
   auto configured = ConfigService::getString("tts.pocket_models_dir");

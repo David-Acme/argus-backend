@@ -9,12 +9,14 @@
 #include <drogon/drogon.h>
 #include <auth/valid-json-filter.hxx>
 #include <config/config-service.hxx>
+#include <feature/provisioning/services/pocket-provisioning.hxx>
 #include <feature/settings/tts-settings.hxx>
 #include <feature/synthesis/services/tts-service.hxx>
 #include <settings/settings-rpc.hxx>
 
 #include <json/value.h>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 
 namespace
@@ -56,8 +58,16 @@ int main()
     return 1;
   }
 
+  PocketProvisioning provisioning({.paths = {.modelsDir = TtsService::modelsDirectory(),
+                                             .pocketDir = TtsService::pocketModelsDir(),
+                                             .toolchainPython = defaultToolchainPython()},
+                                   .configFile = std::filesystem::absolute("config.toml")});
   SettingsRegistry settings(ttsSettingsCatalog());
-  settings.onChange([](const std::vector<std::string>&) { TtsService::instance().refreshDefaults(); });
+  settings.describeChoices([&provisioning](const SettingSpec& spec) { return provisioning.choiceStates(spec); });
+  settings.onChange([&provisioning](const std::vector<std::string>& keys) {
+    TtsService::instance().refreshDefaults();
+    provisioning.installFor(keys);
+  });
 
   std::unique_ptr<TtsRpcServer> rpc;
   std::unique_ptr<SettingsRpcService> settingsRpc;
@@ -98,6 +108,7 @@ int main()
 
   if (rpc)
     rpc->shutdown();
+  provisioning.stop();
   TtsService::instance().shutdown();
   return 0;
 }

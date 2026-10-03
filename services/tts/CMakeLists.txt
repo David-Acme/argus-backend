@@ -72,7 +72,7 @@ add_subdirectory(src/app/rpc)
 
 argus_service(NAME argus-tts
     MAIN ${TTS_SRC_ROOT}/app/main.cc
-    MODULES argus::tts-config argus::tts-rpc argus::tts-synthesis-http)
+    MODULES argus::tts-config argus::tts-rpc argus::tts-synthesis-http argus::tts-provisioning)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
@@ -139,6 +139,13 @@ argus_runtime_rpath(tts-pocket-test)
 target_compile_options(tts-pocket-test PRIVATE -Wall -Wextra)
 set_target_properties(tts-pocket-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME tts-pocket-test COMMAND tts-pocket-test)
+
+add_executable(tts-provisioning-test tests/unit/tts-provisioning-test.cc)
+target_link_libraries(tts-provisioning-test PRIVATE argus::tts-provisioning argus::tts-settings doctest::doctest)
+argus_runtime_rpath(tts-provisioning-test)
+target_compile_options(tts-provisioning-test PRIVATE -Wall -Wextra)
+set_target_properties(tts-provisioning-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME tts-provisioning-test COMMAND tts-provisioning-test)
 
 find_program(TTS_BASH bash REQUIRED)
 add_test(NAME tts-provision-test
