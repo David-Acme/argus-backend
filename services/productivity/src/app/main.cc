@@ -14,6 +14,7 @@
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
+#include <http/certificate-reload.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
 #include <mdns/mdns-service.hxx>
@@ -91,6 +92,7 @@ int main()
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
 
   drogon::app().loadConfigJson(drogonConfig(productivityDb, listener));
+  certificate_reload::watch(listener);
 
   drogon::app().registerPreRoutingAdvice(
       [](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&& cb,

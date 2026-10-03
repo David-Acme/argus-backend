@@ -35,6 +35,15 @@ declare errors and this package formats them.
   field of another type, which the DTO factories call - answers a 422 on
   `body` and is logged as a warning: a request with `"isAllDay":"yes"` was
   the client's mistake, not a server error.
+- `src/http/certificate-reload.hxx` — `certificate_reload::watch(listener)`:
+  every ten minutes it compares the listener's certificate and key mtimes
+  and, once a rotated pair loads, matches and is not expired, calls
+  `drogon::app().reloadSSLFiles()`. identity rotates the shared leaf 30 days
+  before its 90-day expiry; without this a service that was not restarted
+  in that window kept serving the old leaf until TLS failed. A half-written
+  rotation (the key and the certificate land in two renames) is skipped and
+  retried, because trantor throws on the IO loop when a context does not
+  load. `usablePair` is the check.
 - `src/http/cors.hxx` — `Cors`: `apply` on a response, `handleOptions` for the
   preflight.
 - `src/http/details/http-errors.hxx` — the definitions this package refuses with, all of

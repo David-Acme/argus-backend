@@ -6,6 +6,8 @@ if(NOT TARGET Drogon::Drogon)
     find_package(Drogon CONFIG REQUIRED)
 endif()
 
+find_package(OpenSSL REQUIRED)
+
 if(NOT TARGET argus::lib::errors)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../errors
                      ${CMAKE_BINARY_DIR}/errors)
@@ -29,6 +31,7 @@ endif()
 argus_lib(NAME http
     SOURCES
         src/http/api-response.cc
+        src/http/certificate-reload.cc
         src/http/cors.cc
         src/http/error-handler.cc
         src/http/health-controller.cc
@@ -36,6 +39,7 @@ argus_lib(NAME http
         src/http/logical-routes.cc
         src/http/route-announcements.cc
         src/http/api-response.hxx
+        src/http/certificate-reload.hxx
         src/http/cors.hxx
         src/http/error-handler.hxx
         src/http/health-controller.hxx
@@ -49,7 +53,8 @@ argus_lib(NAME http
         argus::lib::config
         argus::lib::mdns
         argus::contracts::routes
-        Drogon::Drogon)
+        Drogon::Drogon
+        OpenSSL::Crypto)
 
 target_compile_options(argus_lib_http PRIVATE -Wall -Wextra)
 
@@ -74,3 +79,9 @@ target_link_libraries(logical-routes-test PRIVATE argus::lib::http doctest::doct
 target_compile_options(logical-routes-test PRIVATE -Wall -Wextra)
 
 add_test(NAME logical-routes-test COMMAND logical-routes-test)
+
+add_executable(certificate-reload-test tests/unit/certificate-reload-test.cc)
+target_link_libraries(certificate-reload-test PRIVATE argus::lib::http OpenSSL::Crypto doctest::doctest)
+target_compile_options(certificate-reload-test PRIVATE -Wall -Wextra)
+
+add_test(NAME certificate-reload-test COMMAND certificate-reload-test)

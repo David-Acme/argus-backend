@@ -17,6 +17,7 @@
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
+#include <http/certificate-reload.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
 #include <json/value.h>
@@ -111,6 +112,7 @@ int main()
                    : "; identity tables -> gRPC " + upstreams.identity);
 
   drogon::app().loadConfigJson(drogonConfig(syncDb, listener));
+  certificate_reload::watch(listener);
 
   drogon::app().registerPreRoutingAdvice(
       [](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&& cb,

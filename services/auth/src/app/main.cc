@@ -20,6 +20,7 @@
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
+#include <http/certificate-reload.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
 #include <identity/identity-client.hxx>
@@ -123,6 +124,7 @@ int main()
 
   drogon::app().loadConfigJson(
       drogonConfig({.authDb = authDb, .listener = listener, .remote = remote}));
+  certificate_reload::watch(listener);
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
