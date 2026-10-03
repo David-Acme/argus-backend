@@ -45,5 +45,6 @@ CalendarEventController::remove(drogon::HttpRequestPtr req, int64_t id)
 
   Json::Value result;
   result["deleted"] = true;
+  result["id"] = Json::Int64{id};
   co_return ApiResponse::ok(result);
 }

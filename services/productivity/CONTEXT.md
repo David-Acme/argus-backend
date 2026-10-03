@@ -99,6 +99,12 @@ own `productivity.db`.
   the sync feature and their own modules alone), no context_note table, no /sync socket
   (reads ride `argus-sync`'s `/sync` pull over this service's gRPC leg), no
   identity.db, no AI symbols (verified with `nm -C`), no alarm-triggering code.
+- **Every write answers with the record it names** (2026-10, for the app's
+  optimistic layer): a create and an update return the full row in `info`, so
+  `info.id` is the server id the app confirms its pending intent with, and a
+  delete returns `{deleted: true, id}`. The `id` on the delete answer is
+  additive; the app reconciles a pending create, update or delete by that id
+  and drops it when `/sync` delivers the same record.
 
 ## The productivity change feed (3a-2d)
 

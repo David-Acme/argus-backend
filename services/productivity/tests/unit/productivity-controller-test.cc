@@ -519,6 +519,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
       drogon::sync_wait(memberController.remove(ownerRequest(), memberId));
   CHECK(body(memberGone)["status"].asInt() == 200);
   CHECK(body(memberGone)["info"]["deleted"].asBool());
+  CHECK(body(memberGone)["info"]["id"].asInt64() == memberId);
   const auto memberGoneTwice =
       refusalOf(memberController.remove(ownerRequest(), memberId));
   REQUIRE(memberGoneTwice);
@@ -679,6 +680,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   const auto shareGone =
       drogon::sync_wait(shareController.remove(ownerRequest(), shareId));
   CHECK(body(shareGone)["status"].asInt() == 200);
+  CHECK(body(shareGone)["info"]["id"].asInt64() == shareId);
   const auto shareGoneTwice =
       refusalOf(shareController.remove(ownerRequest(), shareId));
   REQUIRE(shareGoneTwice);
@@ -689,6 +691,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
       drogon::sync_wait(eventController.remove(ownerRequest(), eventId));
   CHECK(body(eventGone)["status"].asInt() == 200);
   CHECK(body(eventGone)["info"]["deleted"].asBool());
+  CHECK(body(eventGone)["info"]["id"].asInt64() == eventId);
   const auto eventGoneTwice =
       refusalOf(eventController.remove(ownerRequest(), eventId));
   REQUIRE(eventGoneTwice);
@@ -699,6 +702,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
       drogon::sync_wait(projectController.remove(ownerRequest(), projectId));
   CHECK(body(projectGone)["status"].asInt() == 200);
   CHECK(body(projectGone)["info"]["deleted"].asBool());
+  CHECK(body(projectGone)["info"]["id"].asInt64() == projectId);
 
   user_change::setProductivitySink(nullptr);
   DbService::setProductivityClient(nullptr);
