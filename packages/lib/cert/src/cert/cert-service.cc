@@ -23,6 +23,10 @@
 #include <utility>
 #include <vector>
 #include <algorithm>
+#include <cerrno>
+#include <fcntl.h>
+#include <mutex>
+#include <sys/stat.h>
 
 namespace
 {
@@ -57,25 +61,45 @@ struct CertState
 
 CertState gState;
 
-bool writeFile(const std::string& path, const std::string& data)
+struct AtomicWriteInput
 {
-  std::ofstream out(path, std::ios::binary | std::ios::trunc);
-  if (!out)
-    return false;
-  out << data;
-  return static_cast<bool>(out);
-}
+  const std::string& path;
+  const std::string& data;
+  mode_t mode{0600};
+};
 
-bool writeFileAtomic(const std::string& path, const std::string& data)
+bool writeFileAtomic(const AtomicWriteInput& input)
 {
-  const std::string tmp = path + ".tmp";
-  if (!writeFile(tmp, data))
+  const std::string tmp = input.path + ".tmp";
+  ::unlink(tmp.c_str());
+  const int fd =
+      ::open(tmp.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, input.mode);
+  if (fd < 0)
     return false;
-  if (std::rename(tmp.c_str(), path.c_str()) != 0) {
-    std::remove(tmp.c_str());
+  size_t written = 0;
+  bool ok = true;
+  while (ok && written < input.data.size()) {
+    const ssize_t chunk = ::write(fd, input.data.data() + written,
+                                  input.data.size() - written);
+    if (chunk < 0 && errno == EINTR)
+      continue;
+    ok = chunk > 0;
+    if (ok)
+      written += static_cast<size_t>(chunk);
+  }
+  ok = ok && ::fchmod(fd, input.mode) == 0 && ::fsync(fd) == 0;
+  ::close(fd);
+  if (!ok || std::rename(tmp.c_str(), input.path.c_str()) != 0) {
+    ::unlink(tmp.c_str());
     return false;
   }
   return true;
+}
+
+std::mutex& fingerprintMutex()
+{
+  static std::mutex mutex;
+  return mutex;
 }
 
 std::string pemOf(X509* cert)
@@ -410,6 +434,7 @@ std::string CertService::caFingerprint()
 
 std::string CertService::serverFingerprint()
 {
+  const std::scoped_lock lock(fingerprintMutex());
   return gState.serverFingerprint;
 }
 
@@ -463,8 +488,11 @@ bool CertService::rotateServerCertificate()
 
   std::string chain = pemOf(leaf.get());
   chain += pemOf(ca.get());
-  if (!writeFileAtomic(gState.paths.serverCert, chain) ||
-      !writeFileAtomic(gState.paths.serverKey, keyPem(leafKey.get()))) {
+  const std::string keyData = keyPem(leafKey.get());
+  if (!writeFileAtomic(
+          {.path = gState.paths.serverKey, .data = keyData, .mode = 0600}) ||
+      !writeFileAtomic(
+          {.path = gState.paths.serverCert, .data = chain, .mode = 0644})) {
     LOG_ERROR << "cert rotation: atomic write failed";
     return false;
   }
@@ -477,11 +505,14 @@ bool CertService::rotateServerCertificate()
     return false;
   }
 
-  gState.serverFingerprint = sha256Hex(reloaded.get());
+  const std::string rotated = sha256Hex(reloaded.get());
+  {
+    const std::scoped_lock lock(fingerprintMutex());
+    gState.serverFingerprint = rotated;
+  }
   if (drogon::app().isRunning())
     drogon::app().reloadSSLFiles();
-  LOG_INFO << "server certificate rotated (fp " << gState.serverFingerprint
-           << ")";
+  LOG_INFO << "server certificate rotated (fp " << rotated << ")";
   return true;
 }
 
@@ -491,7 +522,7 @@ Json::Value CertService::health()
   value["loaded"] = gState.loaded.load();
   value["instanceId"] = gState.caFingerprint;
   value["caFingerprint"] = gState.caFingerprint;
-  value["serverFingerprint"] = gState.serverFingerprint;
+  value["serverFingerprint"] = serverFingerprint();
   value["pairingCodeSet"] = !gState.pairingCode.empty();
   X509Ptr server = loadX509(gState.paths.serverCert);
   value["serverExpiryDays"] = server ? certDaysRemaining(server.get()) : 0;

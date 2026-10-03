@@ -34,6 +34,13 @@ and migration closure it dragged into this project) went in Phase 2 step 4.
   secret `scripts/lib/pki.sh` writes 0600; it is never derived and never
   logged. It used to be the first 8 hex of the CA fingerprint, and the CA
   travels in every TLS handshake, so any LAN peer could compute it.
+- Rotation writes the new key and chain through a temporary created with
+  the final mode (the key 0600, the chain 0644), fsynced and renamed; the
+  key used to land 0644 under the default umask. The server fingerprint is
+  read and replaced under a lock, since the rotation thread writes it while
+  request threads read it. Only argus-identity rotates, so the deploy
+  compose mounts the certs directory writable for identity alone; the other
+  services pick the new leaf up on their next restart.
   `instanceSans()` and `buildSanString()` are where the SAN list is decided.
 
 ## Rules

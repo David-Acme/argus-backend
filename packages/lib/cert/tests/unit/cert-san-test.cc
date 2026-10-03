@@ -340,6 +340,11 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
   REQUIRE(CertService::isLoaded());
 
   REQUIRE(CertService::rotateServerCertificate());
+  CHECK((std::filesystem::status(dir / "server.key").permissions() &
+         std::filesystem::perms::all) ==
+        (std::filesystem::perms::owner_read | std::filesystem::perms::owner_write));
+  CHECK(CertService::serverFingerprint() ==
+        CertService::health()["serverFingerprint"].asString());
   const X509Ptr absentLeaf = firstCertFromPem(readFile(dir / "server.pem"));
   REQUIRE(absentLeaf);
   CHECK(sansOf(absentLeaf.get()) == baseSans());

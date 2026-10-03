@@ -84,7 +84,6 @@ services:
       - type: bind
         source: ${ARGUS_CERTS_DIR:-../certs}
         target: /opt/argus/certs
-        read_only: true
         bind:
           create_host_path: false
       - type: bind
