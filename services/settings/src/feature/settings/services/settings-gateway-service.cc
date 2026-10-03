@@ -23,6 +23,7 @@ std::string reasonCode(SettingRejectionReason reason)
   case SettingRejectionReason::OutOfRange: return "outOfRange";
   case SettingRejectionReason::NotAChoice: return "notAChoice";
   case SettingRejectionReason::WriteFailed: return "writeFailed";
+  case SettingRejectionReason::NotInstalled: return "notInstalled";
   }
   return "invalid";
 }

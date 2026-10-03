@@ -34,7 +34,17 @@ enum class SettingRejectionReason : std::uint8_t
   Invalid,
   OutOfRange,
   NotAChoice,
-  WriteFailed
+  WriteFailed,
+  NotInstalled
+};
+
+enum class ChoiceAvailability : std::uint8_t
+{
+  Installed,
+  Installable,
+  Installing,
+  HostOnly,
+  Failed
 };
 
 struct SettingRange
@@ -56,10 +66,19 @@ struct SettingSpec
   std::string fallback{};
 };
 
+struct ChoiceState
+{
+  std::string choice;
+  ChoiceAvailability availability{ChoiceAvailability::Installed};
+  double sizeMb{0};
+  std::string hostCommand{};
+};
+
 struct SettingEntry
 {
   SettingSpec spec;
   std::string value;
+  std::vector<ChoiceState> choiceStates{};
 };
 
 struct SettingChange
@@ -84,17 +103,21 @@ class SettingsRegistry
 {
 public:
   using Listener = std::function<void(const std::vector<std::string>&)>;
+  using ChoiceStates = std::function<std::vector<ChoiceState>(const SettingSpec&)>;
 
   explicit SettingsRegistry(std::vector<SettingSpec> specs);
 
   [[nodiscard]] std::vector<SettingEntry> list() const;
   SettingsUpdateResult update(const std::vector<SettingChange>& changes);
   void onChange(Listener listener);
+  void describeChoices(ChoiceStates describe);
 
 private:
   [[nodiscard]] const SettingSpec* find(const std::string& key) const;
+  [[nodiscard]] std::vector<ChoiceState> choiceStatesOf(const SettingSpec& spec) const;
 
   std::vector<SettingSpec> specs_;
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
   std::vector<Listener> listeners_;
+  ChoiceStates describe_;
 };

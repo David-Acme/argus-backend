@@ -271,3 +271,31 @@ TEST_CASE("an owner that cannot persist a change is a server failure, not a vali
           (void)gateway.update({.owner = "tts", .changes = {{.key = "tts.speed", .value = "1.5"}}, .userId = 1});
         }) == 500);
 }
+
+TEST_CASE("choice states pass through to the app, and a host-only choice is refused as not installed")
+{
+  loadConfig();
+  Owner voice("voice", voiceSpecs());
+  voice.registry.describeChoices([](const SettingSpec&) {
+    return std::vector<ChoiceState>{
+        {.choice = "es", .availability = ChoiceAvailability::Installed, .sizeMb = 0, .hostCommand = ""},
+        {.choice = "en", .availability = ChoiceAvailability::HostOnly, .sizeMb = 6.2, .hostCommand = "provision en"}};
+  });
+  const SettingsGatewayService gateway({.owners = {{.name = "voice", .target = voice.target(), .credential = kSecret}},
+                                        .timeouts = {.list = 1500ms, .update = 1500ms}});
+
+  const auto catalogs = gateway.catalogs();
+  REQUIRE(catalogs.size() == 1);
+  REQUIRE(catalogs[0].settings.size() == 1);
+  const auto& states = catalogs[0].settings[0].choiceStates;
+  REQUIRE(states.size() == 2);
+  CHECK(states[1].availability == ChoiceAvailability::HostOnly);
+  CHECK(states[1].hostCommand == "provision en");
+
+  const auto errors = rejectionsOf([&gateway] {
+    (void)gateway.update({.owner = "voice", .changes = {{.key = "voice.language", .value = "en"}}, .userId = 1});
+  });
+  CHECK(errors.at("voice.language") == std::vector<std::string>{"notInstalled"});
+  CHECK(ConfigService::getString("voice.language") == "es");
+  std::filesystem::remove(configPath());
+}

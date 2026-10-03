@@ -33,6 +33,23 @@ enum RejectionReason {
   REJECTION_REASON_OUT_OF_RANGE = 3;
   REJECTION_REASON_NOT_A_CHOICE = 4;
   REJECTION_REASON_WRITE_FAILED = 5;
+  REJECTION_REASON_NOT_INSTALLED = 6;
+}
+
+enum ChoiceAvailability {
+  CHOICE_AVAILABILITY_UNSPECIFIED = 0;
+  CHOICE_AVAILABILITY_INSTALLED = 1;
+  CHOICE_AVAILABILITY_INSTALLABLE = 2;
+  CHOICE_AVAILABILITY_INSTALLING = 3;
+  CHOICE_AVAILABILITY_HOST_ONLY = 4;
+  CHOICE_AVAILABILITY_FAILED = 5;
+}
+
+message ChoiceState {
+  string choice = 1;
+  ChoiceAvailability availability = 2;
+  double size_mb = 3;
+  string host_command = 4;
 }
 
 message Setting {
@@ -47,6 +64,7 @@ message Setting {
   repeated string choices = 9;
   string value = 10;
   string fallback = 11;
+  repeated ChoiceState choice_states = 12;
 }
 
 message ListSettingsRequest {}

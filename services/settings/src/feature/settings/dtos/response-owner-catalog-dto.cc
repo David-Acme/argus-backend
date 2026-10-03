@@ -31,6 +31,32 @@ std::string applyName(SettingApply apply)
   return "restart";
 }
 
+std::string availabilityName(ChoiceAvailability availability)
+{
+  switch (availability) {
+  case ChoiceAvailability::Installed: return "installed";
+  case ChoiceAvailability::Installable: return "installable";
+  case ChoiceAvailability::Installing: return "installing";
+  case ChoiceAvailability::HostOnly: return "hostOnly";
+  case ChoiceAvailability::Failed: return "failed";
+  }
+  return "installed";
+}
+
+Json::Value choiceStatesJson(const std::vector<ChoiceState>& states)
+{
+  Json::Value list(Json::arrayValue);
+  for (const auto& state : states) {
+    Json::Value entry(Json::objectValue);
+    entry["choice"] = state.choice;
+    entry["availability"] = availabilityName(state.availability);
+    entry["sizeMb"] = state.sizeMb;
+    entry["hostCommand"] = state.hostCommand;
+    list.append(std::move(entry));
+  }
+  return list;
+}
+
 Json::Value settingJson(const SettingEntry& entry)
 {
   Json::Value setting(Json::objectValue);
@@ -48,6 +74,8 @@ Json::Value settingJson(const SettingEntry& entry)
   setting["choices"] = std::move(choices);
   setting["value"] = entry.value;
   setting["fallback"] = entry.spec.fallback;
+  if (!entry.choiceStates.empty())
+    setting["choiceStates"] = choiceStatesJson(entry.choiceStates);
   return setting;
 }
 }

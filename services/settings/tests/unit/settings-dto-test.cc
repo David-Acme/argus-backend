@@ -3,6 +3,7 @@
 
 #include <errors/validation-exception.hxx>
 #include <feature/settings/dtos/response-list-settings-dto.hxx>
+#include <feature/settings/dtos/response-owner-catalog-dto.hxx>
 #include <feature/settings/dtos/response-update-settings-dto.hxx>
 #include <feature/settings/dtos/update-settings-dto.hxx>
 
@@ -60,7 +61,11 @@ OwnerCatalog ttsCatalog()
                                  .range = {},
                                  .choices = {"auto", "low"},
                                  .fallback = "auto"},
-                        .value = "low"}}};
+                        .value = "low",
+                        .choiceStates = {{.choice = "low",
+                                          .availability = ChoiceAvailability::HostOnly,
+                                          .sizeMb = 24.8,
+                                          .hostCommand = "services/tts/scripts/provision.sh --voice en:george"}}}}};
 }
 }
 
@@ -122,6 +127,16 @@ TEST_CASE("the catalog serializes every field the app reads, in camelCase")
   CHECK(quality["choices"][1].asString() == "low");
   CHECK(quality["value"].asString() == "low");
   CHECK(quality["fallback"].asString() == "auto");
+  REQUIRE(quality["choiceStates"].size() == 1);
+  const Json::Value& state = quality["choiceStates"][0];
+  CHECK(state["choice"].asString() == "low");
+  CHECK(state["availability"].asString() == "hostOnly");
+  CHECK(state["sizeMb"].asDouble() == doctest::Approx(24.8));
+  CHECK(state["hostCommand"].asString() == "services/tts/scripts/provision.sh --voice en:george");
+
+  OwnerCatalog plain = ttsCatalog();
+  plain.settings[0].choiceStates.clear();
+  CHECK_FALSE(ResponseOwnerCatalogDto{.catalog = plain}.toJson()["settings"][0].isMember("choiceStates"));
 
   const Json::Value& stt = info["owners"][1];
   CHECK(stt["service"].asString() == "stt");

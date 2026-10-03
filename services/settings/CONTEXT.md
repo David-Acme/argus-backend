@@ -30,6 +30,11 @@ errors}` envelope.
   empty `settings`.
 - A setting whose type this service does not know (an owner newer than it) is
   left out rather than failing the page.
+- A choice setting whose owner installs files per choice (argus-tts's engine,
+  Pocket variant and voices) also carries `choiceStates`: `[{ "choice",
+  "availability": "installed" | "installable" | "installing" | "hostOnly" |
+  "failed", "sizeMb", "hostCommand" }]`. The key is absent when the owner
+  reports none, so older clients see the same object as before.
 
 `PATCH /settings/{owner}` with `{ "changes": [ { "key", "value" } ] }`:
 
@@ -41,7 +46,8 @@ errors}` envelope.
   owner". An owner that cannot be reached, or refuses the call (deadline,
   credential, transport) → 503 `SERVICE_UNAVAILABLE`.
 - Rejected changes → 422 `VALIDATION_ERROR` whose `fields` maps each rejected
-  key to its reason: `unknownKey`, `invalid`, `outOfRange`, `notAChoice`. The
+  key to its reason: `unknownKey`, `invalid`, `outOfRange`, `notAChoice`, or
+  `notInstalled` (a choice only the host can install, see `choiceStates`). The
   owner's registry is all-or-nothing on validation, so nothing was applied.
 - A rejection with reason `writeFailed` (the owner could not persist its
   config file) → 500 `INTERNAL_ERROR`; the log names the keys.

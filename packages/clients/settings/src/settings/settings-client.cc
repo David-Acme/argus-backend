@@ -54,8 +54,37 @@ SettingRejectionReason reasonOf(wire::RejectionReason reason)
   case wire::REJECTION_REASON_OUT_OF_RANGE: return SettingRejectionReason::OutOfRange;
   case wire::REJECTION_REASON_NOT_A_CHOICE: return SettingRejectionReason::NotAChoice;
   case wire::REJECTION_REASON_WRITE_FAILED: return SettingRejectionReason::WriteFailed;
+  case wire::REJECTION_REASON_NOT_INSTALLED: return SettingRejectionReason::NotInstalled;
   default: return SettingRejectionReason::Invalid;
   }
+}
+
+std::optional<ChoiceAvailability> availabilityOf(wire::ChoiceAvailability availability)
+{
+  switch (availability) {
+  case wire::CHOICE_AVAILABILITY_INSTALLED: return ChoiceAvailability::Installed;
+  case wire::CHOICE_AVAILABILITY_INSTALLABLE: return ChoiceAvailability::Installable;
+  case wire::CHOICE_AVAILABILITY_INSTALLING: return ChoiceAvailability::Installing;
+  case wire::CHOICE_AVAILABILITY_HOST_ONLY: return ChoiceAvailability::HostOnly;
+  case wire::CHOICE_AVAILABILITY_FAILED: return ChoiceAvailability::Failed;
+  default: return std::nullopt;
+  }
+}
+
+std::vector<ChoiceState> choiceStatesOf(const wire::Setting& setting)
+{
+  std::vector<ChoiceState> states;
+  states.reserve(static_cast<std::size_t>(setting.choice_states_size()));
+  for (const auto& state : setting.choice_states()) {
+    const auto availability = availabilityOf(state.availability());
+    if (!availability)
+      continue;
+    states.push_back({.choice = state.choice(),
+                      .availability = *availability,
+                      .sizeMb = state.size_mb(),
+                      .hostCommand = state.host_command()});
+  }
+  return states;
 }
 
 SettingsCatalog catalogOf(const wire::SettingsCatalog& catalog)
@@ -75,7 +104,8 @@ SettingsCatalog catalogOf(const wire::SettingsCatalog& catalog)
                   .range = {.min = setting.min(), .max = setting.max(), .step = setting.step()},
                   .choices = {setting.choices().begin(), setting.choices().end()},
                   .fallback = setting.fallback()},
-         .value = setting.value()});
+         .value = setting.value(),
+         .choiceStates = choiceStatesOf(setting)});
   }
   return result;
 }

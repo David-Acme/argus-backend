@@ -167,3 +167,62 @@ TEST_CASE("a catalog with a duplicate key, a bare key or a bad fallback is refus
   fallback.front().fallback = "9";
   CHECK_THROWS_AS(SettingsRegistry{fallback}, std::invalid_argument);
 }
+
+TEST_CASE("a choice setting carries what its owner says about each choice, and nothing else does")
+{
+  const auto path = writeConfig("[llm]\n");
+  ConfigService::load(path);
+  SettingsRegistry registry(llmSpecs());
+  CHECK(entryOf(registry.list(), "llm.kv_type").choiceStates.empty());
+
+  std::vector<std::string> asked;
+  registry.describeChoices([&asked](const SettingSpec& spec) {
+    asked.push_back(spec.key);
+    return std::vector<ChoiceState>{
+        {.choice = "f16", .availability = ChoiceAvailability::Installed, .sizeMb = 0, .hostCommand = ""},
+        {.choice = "q8_0", .availability = ChoiceAvailability::Installable, .sizeMb = 219.3, .hostCommand = "run q8"},
+        {.choice = "q4", .availability = ChoiceAvailability::Installed, .sizeMb = 0, .hostCommand = ""}};
+  });
+  const auto entries = registry.list();
+  CHECK(asked == std::vector<std::string>{"llm.kv_type"});
+  const auto& states = entryOf(entries, "llm.kv_type").choiceStates;
+  REQUIRE(states.size() == 2);
+  CHECK(states[1].choice == "q8_0");
+  CHECK(states[1].availability == ChoiceAvailability::Installable);
+  CHECK(states[1].sizeMb == doctest::Approx(219.3));
+  CHECK(states[1].hostCommand == "run q8");
+  CHECK(entryOf(entries, "llm.temperature").choiceStates.empty());
+  std::remove(path.c_str());
+}
+
+TEST_CASE("a choice that only the host can install is refused; one the owner can install is applied")
+{
+  const auto path = writeConfig("[llm]\nkv_type = \"q8_0\"\n");
+  ConfigService::load(path);
+  SettingsRegistry registry(llmSpecs());
+  auto availability = ChoiceAvailability::HostOnly;
+  registry.describeChoices([&availability](const SettingSpec&) {
+    return std::vector<ChoiceState>{
+        {.choice = "f16", .availability = availability, .sizeMb = 12, .hostCommand = "provision f16"},
+        {.choice = "q8_0", .availability = ChoiceAvailability::HostOnly, .sizeMb = 0, .hostCommand = "provision q8"}};
+  });
+  std::vector<std::string> notified;
+  registry.onChange([&notified](const std::vector<std::string>& keys) { notified = keys; });
+
+  const auto refused = registry.update({{.key = "llm.kv_type", .value = "f16"}});
+  REQUIRE(refused.rejected.size() == 1);
+  CHECK(refused.rejected[0].reason == SettingRejectionReason::NotInstalled);
+  CHECK(notified.empty());
+  CHECK(ConfigService::getString("llm.kv_type") == "q8_0");
+
+  CHECK(registry.update({{.key = "llm.kv_type", .value = "q8_0"}}).rejected.empty());
+  CHECK(notified == std::vector<std::string>{"llm.kv_type"});
+
+  for (const auto state : {ChoiceAvailability::Installable, ChoiceAvailability::Failed, ChoiceAvailability::Installing}) {
+    availability = state;
+    CHECK(registry.update({{.key = "llm.kv_type", .value = "f16"}}).rejected.empty());
+    CHECK(ConfigService::getString("llm.kv_type") == "f16");
+    CHECK(registry.update({{.key = "llm.kv_type", .value = "auto"}}).rejected.empty());
+  }
+  std::remove(path.c_str());
+}

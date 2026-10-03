@@ -171,3 +171,36 @@ TEST_CASE("a refused credential, an empty update and a dead owner surface as res
   CHECK((status == 503 || status == 504));
   std::filesystem::remove(configPath());
 }
+
+TEST_CASE("the installation state of each choice and a not-installed refusal come back through the client")
+{
+  loadConfig("[tts]\nquality = \"auto\"\n");
+  Owner owner;
+  owner.registry.describeChoices([](const SettingSpec& spec) {
+    if (spec.key != "tts.quality")
+      return std::vector<ChoiceState>{};
+    return std::vector<ChoiceState>{
+        {.choice = "auto", .availability = ChoiceAvailability::Installed, .sizeMb = 0, .hostCommand = ""},
+        {.choice = "low", .availability = ChoiceAvailability::Installing, .sizeMb = 5.8, .hostCommand = "provision low"},
+        {.choice = "high", .availability = ChoiceAvailability::HostOnly, .sizeMb = 24.7, .hostCommand = "provision high"}};
+  });
+  const SettingsClient client({.target = owner.target(), .credential = kSecret, .timeout = std::chrono::seconds(5)});
+
+  const auto catalog = client.list();
+  REQUIRE(catalog.settings.size() == 2);
+  CHECK(catalog.settings[0].choiceStates.empty());
+  const auto& states = catalog.settings[1].choiceStates;
+  REQUIRE(states.size() == 3);
+  CHECK(states[0].availability == ChoiceAvailability::Installed);
+  CHECK(states[1].choice == "low");
+  CHECK(states[1].availability == ChoiceAvailability::Installing);
+  CHECK(states[1].sizeMb == doctest::Approx(5.8));
+  CHECK(states[1].hostCommand == "provision low");
+  CHECK(states[2].availability == ChoiceAvailability::HostOnly);
+
+  const auto refused = client.update({{.key = "tts.quality", .value = "high"}});
+  REQUIRE(refused.rejected.size() == 1);
+  CHECK(refused.rejected[0].reason == SettingRejectionReason::NotInstalled);
+  CHECK(refused.catalog.settings[1].value == "auto");
+  std::filesystem::remove(configPath());
+}

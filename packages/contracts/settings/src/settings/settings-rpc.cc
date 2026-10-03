@@ -47,8 +47,21 @@ wire::RejectionReason reasonOf(SettingRejectionReason reason)
   case SettingRejectionReason::OutOfRange: return wire::REJECTION_REASON_OUT_OF_RANGE;
   case SettingRejectionReason::NotAChoice: return wire::REJECTION_REASON_NOT_A_CHOICE;
   case SettingRejectionReason::WriteFailed: return wire::REJECTION_REASON_WRITE_FAILED;
+  case SettingRejectionReason::NotInstalled: return wire::REJECTION_REASON_NOT_INSTALLED;
   }
   return wire::REJECTION_REASON_UNSPECIFIED;
+}
+
+wire::ChoiceAvailability availabilityOf(ChoiceAvailability availability)
+{
+  switch (availability) {
+  case ChoiceAvailability::Installed: return wire::CHOICE_AVAILABILITY_INSTALLED;
+  case ChoiceAvailability::Installable: return wire::CHOICE_AVAILABILITY_INSTALLABLE;
+  case ChoiceAvailability::Installing: return wire::CHOICE_AVAILABILITY_INSTALLING;
+  case ChoiceAvailability::HostOnly: return wire::CHOICE_AVAILABILITY_HOST_ONLY;
+  case ChoiceAvailability::Failed: return wire::CHOICE_AVAILABILITY_FAILED;
+  }
+  return wire::CHOICE_AVAILABILITY_UNSPECIFIED;
 }
 
 grpc::ServerUnaryReactor* finish(grpc::CallbackServerContext* context, grpc::Status status)
@@ -133,5 +146,12 @@ void SettingsRpcService::fillCatalog(wire::SettingsCatalog& catalog) const
       setting->add_choices(choice);
     setting->set_value(entry.value);
     setting->set_fallback(entry.spec.fallback);
+    for (const auto& state : entry.choiceStates) {
+      auto* choice = setting->add_choice_states();
+      choice->set_choice(state.choice);
+      choice->set_availability(availabilityOf(state.availability));
+      choice->set_size_mb(state.sizeMb);
+      choice->set_host_command(state.hostCommand);
+    }
   }
 }

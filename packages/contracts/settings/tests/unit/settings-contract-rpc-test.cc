@@ -126,3 +126,59 @@ TEST_CASE("update applies valid changes and reports rejected ones with the fresh
   CHECK(harness.stub->Update(&empty, {}, &response).error_code() == grpc::StatusCode::INVALID_ARGUMENT);
   std::remove(path.c_str());
 }
+
+TEST_CASE("each choice's installation state reaches the wire, and a host-only choice is refused as not installed")
+{
+  const std::string path = "/tmp/settings-contract-rpc.toml";
+  std::ofstream(path) << "[tts]\npocket_variant_es = \"fast\"\n";
+  ConfigService::load(path);
+  SettingsRegistry registry({{.key = "tts.pocket_variant_es",
+                              .group = "engine",
+                              .type = SettingType::Choice,
+                              .level = SettingLevel::Basic,
+                              .apply = SettingApply::Live,
+                              .range = {},
+                              .choices = {"fast", "quality"},
+                              .fallback = "fast"}});
+  registry.describeChoices([](const SettingSpec&) {
+    return std::vector<ChoiceState>{
+        {.choice = "fast", .availability = ChoiceAvailability::Installed, .sizeMb = 0, .hostCommand = ""},
+        {.choice = "quality",
+         .availability = ChoiceAvailability::HostOnly,
+         .sizeMb = 672.4,
+         .hostCommand = "services/tts/scripts/provision.sh --variant es-quality"}};
+  });
+  SettingsRpcService service(
+      {.service = "tts", .registry = &registry, .credentials = {{.service = "settings", .secret = kSecret}}});
+  grpc::ServerBuilder builder;
+  builder.RegisterService(&service);
+  const auto server = builder.BuildAndStart();
+  const auto stub = wire::Settings::NewStub(server->InProcessChannel({}));
+
+  grpc::ClientContext listing;
+  authorize(listing, kSecret);
+  wire::SettingsCatalog catalog;
+  REQUIRE(stub->List(&listing, {}, &catalog).ok());
+  REQUIRE(catalog.settings_size() == 1);
+  const auto& states = catalog.settings(0).choice_states();
+  REQUIRE(states.size() == 2);
+  CHECK(states[0].choice() == "fast");
+  CHECK(states[0].availability() == wire::CHOICE_AVAILABILITY_INSTALLED);
+  CHECK(states[1].availability() == wire::CHOICE_AVAILABILITY_HOST_ONLY);
+  CHECK(states[1].size_mb() == doctest::Approx(672.4));
+  CHECK(states[1].host_command() == "services/tts/scripts/provision.sh --variant es-quality");
+
+  grpc::ClientContext updating;
+  authorize(updating, kSecret);
+  wire::UpdateSettingsRequest request;
+  auto* change = request.add_changes();
+  change->set_key("tts.pocket_variant_es");
+  change->set_value("quality");
+  wire::UpdateSettingsResponse response;
+  REQUIRE(stub->Update(&updating, request, &response).ok());
+  REQUIRE(response.rejected_size() == 1);
+  CHECK(response.rejected(0).reason() == wire::REJECTION_REASON_NOT_INSTALLED);
+  CHECK(response.catalog().settings(0).value() == "fast");
+  server->Shutdown();
+  std::remove(path.c_str());
+}

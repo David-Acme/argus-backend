@@ -114,6 +114,12 @@ std::string currentValue(const SettingSpec& spec)
   return spec.fallback;
 }
 
+bool hostOnly(const std::vector<ChoiceState>& states, const std::string& choice)
+{
+  const auto state = std::ranges::find(states, choice, &ChoiceState::choice);
+  return state != states.end() && state->availability == ChoiceAvailability::HostOnly;
+}
+
 bool persist(const SettingSpec& spec, const std::string& canonical)
 {
   switch (spec.type) {
@@ -149,8 +155,32 @@ std::vector<SettingEntry> SettingsRegistry::list() const
   std::vector<SettingEntry> entries;
   entries.reserve(specs_.size());
   for (const auto& spec : specs_)
-    entries.push_back({.spec = spec, .value = currentValue(spec)});
+    entries.push_back({.spec = spec, .value = currentValue(spec), .choiceStates = choiceStatesOf(spec)});
   return entries;
+}
+
+std::vector<ChoiceState> SettingsRegistry::choiceStatesOf(const SettingSpec& spec) const
+{
+  if (spec.type != SettingType::Choice)
+    return {};
+  ChoiceStates describe;
+  {
+    std::scoped_lock lock(mutex_);
+    describe = describe_;
+  }
+  if (!describe)
+    return {};
+  auto states = describe(spec);
+  std::erase_if(states, [&spec](const ChoiceState& state) {
+    return std::ranges::find(spec.choices, state.choice) == spec.choices.end();
+  });
+  return states;
+}
+
+void SettingsRegistry::describeChoices(ChoiceStates describe)
+{
+  std::scoped_lock lock(mutex_);
+  describe_ = std::move(describe);
 }
 
 SettingsUpdateResult SettingsRegistry::update(const std::vector<SettingChange>& changes)
@@ -167,6 +197,10 @@ SettingsUpdateResult SettingsRegistry::update(const std::vector<SettingChange>& 
     auto validation = validate(*spec, change.value);
     if (validation.rejection) {
       result.rejected.push_back({.key = change.key, .reason = *validation.rejection});
+      continue;
+    }
+    if (hostOnly(choiceStatesOf(*spec), validation.canonical) && validation.canonical != currentValue(*spec)) {
+      result.rejected.push_back({.key = change.key, .reason = SettingRejectionReason::NotInstalled});
       continue;
     }
     accepted.emplace_back(spec, std::move(validation.canonical));
