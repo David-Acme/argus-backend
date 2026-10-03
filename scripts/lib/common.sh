@@ -170,6 +170,7 @@ grpc caller_sync
 grpc caller_llm
 grpc caller_settings
 rpc.callers settings
+rpc address
 owners.llm target
 owners.llm credential
 owners.voice target
@@ -337,7 +338,7 @@ voice grpc caller_settings grpc
 tts rpc.callers settings rpc
 stt rpc.callers settings rpc
 vlm rpc.callers settings rpc
-guard grpc caller_settings grpc
+guard rpc.callers settings rpc
 camera grpc caller_settings grpc
 notification grpc caller_settings grpc
 OWNERS

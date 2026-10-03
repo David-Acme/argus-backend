@@ -276,7 +276,8 @@ argus-guard configuration. Copy to config.toml (gitignored) to run.
 
 | Key | Notes |
 |---|---|
-| `guard.host` / `guard.port` / `guard.plain` / `guard.min_protocol` | The app-facing TLS listener (`0.0.0.0:7039`); `[cert]` carries the certificate served and `[mdns]` (`enabled`, `name`) the per-route announcement. This service has no gRPC listener. |
+| `guard.host` / `guard.port` / `guard.plain` / `guard.min_protocol` | The app-facing TLS listener (`0.0.0.0:7039`); `[cert]` carries the certificate served and `[mdns]` (`enabled`, `name`) the per-route announcement. |
+| `rpc.address` / `rpc.callers.settings` | The settings-only gRPC listener: empty address = no listener. It serves `argus.settings.v1` alone and accepts only the `settings` caller, whose secret argus-settings holds as `[owners.guard] credential`. Deploy: `0.0.0.0:7139`. |
 | `guard.max_dialogue_turns` | Bounded dialogue turns and poison-message handling. |
 | `guard.decision_mode` | Belief-gate mode: "shadow" journals the verdict without enforcing it, "enforce" lets the belief gate suppress effects. Unknown values fall back to shadow. |
 | `guard.health_stale_s` | Freshness window for camera health readings used by the belief gate. |

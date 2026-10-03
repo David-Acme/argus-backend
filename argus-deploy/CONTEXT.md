@@ -627,11 +627,11 @@ configured owner publishes over `argus.settings.v1` and `PATCH
 /settings/{owner}` forwards a change to that owner, which validates it against
 its own registry and persists it into its own `config.toml`. That is why the
 config binds of the settings owners are writable: `argus-tts`, `argus-stt`,
-`argus-vlm`, `argus-llm` and `argus-voice` mount `config.<owner>.toml`
-without `read_only` (`ConfigService` rewrites the file in place when a rename
-over a bind-mounted file fails). Every other config bind stays read-only,
-`argus-settings`' own included; guard, camera and notification join the list
-when they publish a catalog.
+`argus-vlm`, `argus-llm`, `argus-voice`, `argus-guard`, `argus-camera` and
+`argus-notification` mount `config.<owner>.toml` without `read_only`
+(`ConfigService` rewrites the file in place when a rename over a bind-mounted
+file fails). Every other config bind stays read-only, `argus-settings`' own
+included.
 
 `provision-host.sh` (through `ensure_settings_owners` in
 `scripts/lib/common.sh`) mints one 32-byte secret per owner and writes it on

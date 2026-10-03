@@ -143,7 +143,6 @@ services:
       - type: bind
         source: ./config.camera.toml
         target: /opt/argus/config.toml
-        read_only: true
         bind:
           create_host_path: false
       - type: bind
@@ -262,7 +261,6 @@ services:
       - type: bind
         source: ./config.notification.toml
         target: /opt/argus/config.toml
-        read_only: true
         bind:
           create_host_path: false
       - type: bind
@@ -369,7 +367,6 @@ services:
       - type: bind
         source: ./config.guard.toml
         target: /opt/argus/config.toml
-        read_only: true
         bind:
           create_host_path: false
       - type: bind
