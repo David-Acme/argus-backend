@@ -15,7 +15,16 @@ namespace
 {
 
 constexpr double kPollSeconds = 0.05;
+constexpr double kSignalPollSeconds = 0.2;
 constexpr std::chrono::milliseconds kDeadline{10000};
+
+static_assert(std::atomic<bool>::is_always_lock_free);
+constinit std::atomic<bool> signalled{false};
+
+void noteSignal()
+{
+  signalled.store(true, std::memory_order_release);
+}
 
 std::mutex& registryMutex()
 {
@@ -122,8 +131,12 @@ void installHandlers()
 {
   static std::once_flag once;
   std::call_once(once, [] {
-    drogon::app().setTermSignalHandler([] { requestStop(); });
-    drogon::app().setIntSignalHandler([] { requestStop(); });
+    drogon::app().setTermSignalHandler(noteSignal);
+    drogon::app().setIntSignalHandler(noteSignal);
+    drogon::app().getLoop()->runEvery(kSignalPollSeconds, [] {
+      if (signalled.load(std::memory_order_acquire))
+        requestStop();
+    });
   });
 }
 
