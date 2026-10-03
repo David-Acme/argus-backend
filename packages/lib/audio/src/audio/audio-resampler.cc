@@ -15,10 +15,16 @@ double sinc(double cutoff, double t)
   return std::sin(2.0 * std::numbers::pi * cutoff * t) / (std::numbers::pi * t);
 }
 
-double blackman(int index, int taps)
+struct BlackmanInput
 {
-  const double n = static_cast<double>(index);
-  const double span = static_cast<double>(taps - 1);
+  int index{0};
+  int taps{0};
+};
+
+double blackman(const BlackmanInput& input)
+{
+  const auto n = static_cast<double>(input.index);
+  const auto span = static_cast<double>(input.taps - 1);
   return 0.42 - 0.5 * std::cos(2.0 * std::numbers::pi * n / span) +
          0.08 * std::cos(4.0 * std::numbers::pi * n / span);
 }
@@ -46,7 +52,7 @@ AudioResampler::AudioResampler(AudioResamplerInput input)
     for (int j = 0; j < kTaps; ++j)
       taps_[static_cast<size_t>(phase * kTaps + j)] =
           sinc(cutoff, static_cast<double>(j - kSincHalf) - fraction) *
-          blackman(j, kTaps);
+          blackman({.index = j, .taps = kTaps});
   }
   reset();
 }
@@ -58,9 +64,10 @@ void AudioResampler::reset()
   posFraction_ = 0;
 }
 
-int16_t AudioResampler::sampleAt(size_t whole, int64_t phase) const
+int16_t AudioResampler::sampleAt(const ResamplerTap& tap) const
 {
-  const double* weights = taps_.data() + phase * kTaps;
+  const size_t whole = tap.whole;
+  const double* weights = taps_.data() + tap.phase * kTaps;
   double acc = 0.0;
   double wsum = 0.0;
   for (int j = 0; j < kTaps; ++j) {
@@ -89,7 +96,8 @@ std::vector<int16_t> AudioResampler::process(const int16_t* samples,
   out.reserve(static_cast<size_t>(
       static_cast<double>(count) * targetRate_ / sourceRate_ + 2.0));
   while (posWhole_ + kSincHalf < history_.size()) {
-    out.push_back(sampleAt(posWhole_, posFraction_ * phases_ / denominator_));
+    out.push_back(sampleAt(
+        {.whole = posWhole_, .phase = posFraction_ * phases_ / denominator_}));
     posWhole_ += static_cast<size_t>(stepWhole_);
     posFraction_ += stepFraction_;
     if (posFraction_ >= denominator_) {

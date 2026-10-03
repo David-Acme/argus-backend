@@ -122,7 +122,7 @@ int64_t seedPerson(const PersonSeed& seed)
       "INSERT INTO person (user_id, status, last_seen_at) VALUES (?, ?, ?)",
       seed.linkedUser ? std::optional<int64_t>{1} : std::optional<int64_t>{},
       seed.status, seed.lastSeenAt);
-  const int64_t id = static_cast<int64_t>(inserted.insertId());
+  const auto id = static_cast<int64_t>(inserted.insertId());
   client->execSqlSync(
       "INSERT INTO face_embedding (person_id, embedding) VALUES (?, x'00')", id);
   client->execSqlSync(

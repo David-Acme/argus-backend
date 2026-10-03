@@ -10,7 +10,7 @@ public:
   void notify()
   {
     {
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       pending_ = true;
     }
     ready_.notify_all();

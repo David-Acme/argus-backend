@@ -271,7 +271,7 @@ GuardRepository::activeGuest(const GuardGuestLookupInput& input) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(
-      ACTIVE_GUEST.data(), input.at, input.at, input.cameraId, input.personId,
+      std::string(ACTIVE_GUEST), input.at, input.at, input.cameraId, input.personId,
       input.personId);
   if (result.empty())
     co_return std::nullopt;
@@ -1373,7 +1373,7 @@ GuardRepository::purgeHistory(const GuardHistoryPurgeInput& input) const
   int64_t removed = 0;
   try {
     for (const auto& [sql, before] : statements) {
-      const auto result = co_await transaction->execSqlCoro(sql.data(), before);
+      const auto result = co_await transaction->execSqlCoro(std::string(sql), before);
       removed += static_cast<int64_t>(result.affectedRows());
     }
   }

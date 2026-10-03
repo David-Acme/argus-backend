@@ -322,7 +322,7 @@ TapoResult TapoApi::manualAlarm(bool sounding)
   payload["method"] = "do";
   payload["msg_alarm"]["manual_msg_alarm"]["action"] =
       sounding ? "start" : "stop";
-  const auto result = callRaw(payload);
+  auto result = callRaw(payload);
   if (!result.ok)
     return result;
   if (result.data.isMember("error_code") &&

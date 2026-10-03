@@ -243,8 +243,18 @@ TEST_CASE("the health monitor reports drained while idle and stops on request")
 
 namespace
 {
-std::vector<uint8_t> texturedJpeg(uint32_t seed, double gain, double offset)
+struct Texture
 {
+  uint32_t seed{0};
+  double gain{1.0};
+  double offset{0.0};
+};
+
+std::vector<uint8_t> texturedJpeg(const Texture& texture)
+{
+  const uint32_t seed = texture.seed;
+  const double gain = texture.gain;
+  const double offset = texture.offset;
   cv::Mat image(90, 160, CV_8UC3);
   uint32_t state = seed;
   for (int row = 0; row < image.rows; row += 10) {
@@ -261,6 +271,12 @@ std::vector<uint8_t> texturedJpeg(uint32_t seed, double gain, double offset)
   return jpeg;
 }
 
+struct SceneSetup
+{
+  int64_t cameraId{0};
+  int64_t rebaselineAfterMs{0};
+};
+
 struct SceneRun
 {
   SyntheticHealthSource source;
@@ -268,13 +284,13 @@ struct SceneRun
   CameraHealthMonitor monitor;
   int64_t cameraId;
 
-  SceneRun(int64_t id, int64_t rebaselineAfterMs)
+  explicit SceneRun(const SceneSetup& setup)
       : monitor({.source = &source, .sink = &sink},
                 {.enabled = true,
                  .intervalMs = 1000,
                  .thresholds = thresholds(),
-                 .rebaselineAfterMs = rebaselineAfterMs}),
-        cameraId(id)
+                 .rebaselineAfterMs = setup.rebaselineAfterMs}),
+        cameraId(setup.cameraId)
   {
   }
 
@@ -291,42 +307,42 @@ struct SceneRun
 
 TEST_CASE("a re-aimed camera is moved and a dimmer room is not")
 {
-  const auto room = texturedJpeg(7, 1.0, 0.0);
-  SceneRun run(101, 900000);
+  const auto room = texturedJpeg({.seed = 7, .gain = 1.0, .offset = 0.0});
+  SceneRun run({.cameraId = 101, .rebaselineAfterMs = 900000});
   CHECK(run.show(room, 1000) == CameraHealthState::Ok);
-  CHECK(run.show(texturedJpeg(7, 0.6, 20.0), 2000) == CameraHealthState::Ok);
+  CHECK(run.show(texturedJpeg({.seed = 7, .gain = 0.6, .offset = 20.0}), 2000) == CameraHealthState::Ok);
   CHECK(run.sink.events.back().metrics.sceneDiff < 0.1);
-  CHECK(run.show(texturedJpeg(99, 1.0, 0.0), 3000) == CameraHealthState::Moved);
+  CHECK(run.show(texturedJpeg({.seed = 99, .gain = 1.0, .offset = 0.0}), 3000) == CameraHealthState::Moved);
   CHECK(run.sink.events.back().metrics.sceneDiff > 0.5);
 }
 
 TEST_CASE("a new view that holds past the window becomes the reference")
 {
-  const auto before = texturedJpeg(11, 1.0, 0.0);
-  const auto after = texturedJpeg(12, 1.0, 0.0);
-  SceneRun run(102, 5000);
+  const auto before = texturedJpeg({.seed = 11, .gain = 1.0, .offset = 0.0});
+  const auto after = texturedJpeg({.seed = 12, .gain = 1.0, .offset = 0.0});
+  SceneRun run({.cameraId = 102, .rebaselineAfterMs = 5000});
   CHECK(run.show(before, 1000) == CameraHealthState::Ok);
   CHECK(run.show(after, 2000) == CameraHealthState::Moved);
   CHECK(run.show(after, 6000) == CameraHealthState::Moved);
-  CHECK(run.show(texturedJpeg(13, 1.0, 0.0), 6500) == CameraHealthState::Moved);
-  CHECK(run.show(texturedJpeg(13, 1.0, 0.0), 11000) == CameraHealthState::Moved);
-  CHECK(run.show(texturedJpeg(13, 1.0, 0.0), 11500) == CameraHealthState::Ok);
+  CHECK(run.show(texturedJpeg({.seed = 13, .gain = 1.0, .offset = 0.0}), 6500) == CameraHealthState::Moved);
+  CHECK(run.show(texturedJpeg({.seed = 13, .gain = 1.0, .offset = 0.0}), 11000) == CameraHealthState::Moved);
+  CHECK(run.show(texturedJpeg({.seed = 13, .gain = 1.0, .offset = 0.0}), 11500) == CameraHealthState::Ok);
   CHECK(run.show(before, 12500) == CameraHealthState::Moved);
 }
 
 TEST_CASE("a view Argus aimed is the reference at once")
 {
-  SceneRun run(103, 900000);
-  CHECK(run.show(texturedJpeg(21, 1.0, 0.0), 1000) == CameraHealthState::Ok);
+  SceneRun run({.cameraId = 103, .rebaselineAfterMs = 900000});
+  CHECK(run.show(texturedJpeg({.seed = 21, .gain = 1.0, .offset = 0.0}), 1000) == CameraHealthState::Ok);
   CameraSceneLog::instance().noteAimed(103, 1500);
-  CHECK(run.show(texturedJpeg(22, 1.0, 0.0), 2000) == CameraHealthState::Ok);
-  CHECK(run.show(texturedJpeg(21, 1.0, 0.0), 3000) == CameraHealthState::Moved);
+  CHECK(run.show(texturedJpeg({.seed = 22, .gain = 1.0, .offset = 0.0}), 2000) == CameraHealthState::Ok);
+  CHECK(run.show(texturedJpeg({.seed = 21, .gain = 1.0, .offset = 0.0}), 3000) == CameraHealthState::Moved);
   CameraSceneLog::instance().forget(103);
 }
 
 TEST_CASE("a camera in privacy mode is not checked")
 {
-  SceneRun run(104, 900000);
+  SceneRun run({.cameraId = 104, .rebaselineAfterMs = 900000});
   CameraSceneLog::instance().notePrivacy(104, true);
   run.source.frame.capturedAtMs = 1000;
   drogon::sync_wait(run.monitor.tick({.id = 104, .name = "Scene"}));

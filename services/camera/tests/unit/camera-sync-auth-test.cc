@@ -14,9 +14,16 @@ namespace
 
 constexpr const char* kSyncSecret = "camera-sync-auth-test-secret";
 
-grpc::StatusCode pullWith(const std::string& target,
-                          const std::string& secret)
+struct PullProbe
 {
+  const std::string& target;
+  const std::string& secret;
+};
+
+grpc::StatusCode pullWith(const PullProbe& input)
+{
+  const std::string& target = input.target;
+  const std::string& secret = input.secret;
   auto stub = argus::camera::v1::SyncService::NewStub(
       grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
   grpc::ClientContext context;
@@ -45,9 +52,9 @@ TEST_CASE("the camera sync leg answers only a credentialed caller")
   REQUIRE(server);
   const std::string target = "127.0.0.1:" + std::to_string(port);
 
-  CHECK(pullWith(target, "") == grpc::StatusCode::UNAUTHENTICATED);
-  CHECK(pullWith(target, "guessed") == grpc::StatusCode::UNAUTHENTICATED);
-  CHECK(pullWith(target, kSyncSecret) == grpc::StatusCode::INVALID_ARGUMENT);
+  CHECK(pullWith({.target = target, .secret = ""}) == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(pullWith({.target = target, .secret = "guessed"}) == grpc::StatusCode::UNAUTHENTICATED);
+  CHECK(pullWith({.target = target, .secret = kSyncSecret}) == grpc::StatusCode::INVALID_ARGUMENT);
 
   server->Shutdown(std::chrono::system_clock::now());
 }

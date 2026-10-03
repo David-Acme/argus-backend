@@ -24,7 +24,7 @@ void SnapshotStore::putFrame(int64_t cameraId, const std::string& jpeg,
 
 void SnapshotStore::forget(int64_t cameraId)
 {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   frames_.erase(cameraId);
   crops_.erase(cameraId);
 }

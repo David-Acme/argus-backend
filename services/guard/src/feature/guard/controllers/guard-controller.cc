@@ -14,10 +14,9 @@
 #include <feature/guard/dtos/remove-expected-guest-dto.hxx>
 #include <feature/guard/dtos/update-guard-mode-dto.hxx>
 #include <auth/request-context.hxx>
-#include <utility>
 
-GuardController::GuardController(GuardFeatureDependencies dependencies)
-    : service_(std::move(dependencies))
+GuardController::GuardController(const GuardFeatureDependencies& dependencies)
+    : service_(dependencies)
 {
 }
 

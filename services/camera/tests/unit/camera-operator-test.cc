@@ -179,7 +179,7 @@ DetectedObject carObject()
 
 TEST_CASE("an unusable later crop keeps the cached known verdict")
 {
-  static std::vector<uint8_t> rgb(64 * 48 * 3, 100);
+  static std::vector<uint8_t> rgb(static_cast<size_t>(64) * 48 * 3, 100);
   auto client = std::make_unique<RecognizingIdentityClient>();
   const auto* clientPtr = client.get();
   IdentityKnownPersonMatcher matcher(matchConfig(), std::move(client));

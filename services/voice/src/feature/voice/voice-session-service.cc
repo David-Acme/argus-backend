@@ -303,7 +303,7 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
                                 const argus::voice::v1::VoiceIdentity& identity)
 {
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (sessions_.contains(&sink)) {
       LOG_WARN << "Voice: a second start on a live session is ignored";
       return;
@@ -591,7 +591,7 @@ void VoiceSessionService::processTurn(Session& session,
       speak(session, unansweredLine(session.lang));
   }
   else {
-    session.history.push_back({"assistant", full});
+    session.history.push_back({.role = "assistant", .content = full});
     trimHistory(session.history);
   }
   session.speaking = false;

@@ -669,7 +669,7 @@ bool openSocket(SocketSession& session, const OpenSocketInput& input,
   session.client->setConnectionClosedHandler(
       [&session](const drogon::WebSocketClientPtr&) {
         {
-          std::lock_guard<std::mutex> lock(session.closedMutex);
+          std::scoped_lock lock(session.closedMutex);
           session.closed = true;
         }
         session.closedCv.notify_all();

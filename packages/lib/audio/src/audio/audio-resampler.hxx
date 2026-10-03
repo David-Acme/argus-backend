@@ -10,6 +10,12 @@ struct AudioResamplerInput
   int targetRate;
 };
 
+struct ResamplerTap
+{
+  size_t whole{0};
+  int64_t phase{0};
+};
+
 class AudioResampler
 {
 public:
@@ -26,7 +32,7 @@ private:
   static constexpr int kTaps = 2 * kSincHalf + 1;
   static constexpr int64_t kMaxPhases = 1024;
 
-  int16_t sampleAt(size_t whole, int64_t phase) const;
+  int16_t sampleAt(const ResamplerTap& tap) const;
 
   int sourceRate_;
   int targetRate_;

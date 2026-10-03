@@ -1225,7 +1225,7 @@ TEST_CASE("only effects that left count against the hourly caps")
   SharedBoot& boot = sharedBoot();
   (void)boot;
   GuardRepository repository;
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const auto now = static_cast<int64_t>(std::time(nullptr));
   const auto record = [&](const std::string& id, const std::string& status) {
     drogon::sync_wait(repository.insertAction({.incidentId = 0,
                                                .encounterId = 0,

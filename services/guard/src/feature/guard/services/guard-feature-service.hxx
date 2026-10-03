@@ -28,7 +28,7 @@ public:
     std::string deviceHash;
   };
 
-  explicit GuardFeatureService(GuardFeatureDependencies dependencies);
+  explicit GuardFeatureService(const GuardFeatureDependencies& dependencies);
 
   drogon::Task<bool> promotePerson(const PromotePersonInput& input) const;
 

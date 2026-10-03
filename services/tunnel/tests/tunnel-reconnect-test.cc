@@ -105,7 +105,7 @@ TEST_CASE("an unauthenticated home connection cannot take over a live link")
                                  .ip = "127.0.0.1",
                                  .port = harness.relay->devicePort()});
   REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
-  const std::string payload = makePayload(4 * 1024, 7);
+  const std::string payload = makePayload(static_cast<size_t>(4) * 1024, 7);
   postSend({.loop = harness.loop, .peer = device->peer, .data = payload});
   REQUIRE(waitFor([&] { return device->bytes().size() == payload.size(); },
                   10000));

@@ -8,8 +8,16 @@
 
 namespace
 {
-std::string digestField(const std::string& header, const std::string& key)
+struct DigestFieldQuery
 {
+  const std::string& header;
+  const std::string& key;
+};
+
+std::string digestField(const DigestFieldQuery& input)
+{
+  const std::string& header = input.header;
+  const std::string& key = input.key;
   const std::string needle = key + "=\"";
   const size_t start = header.find(needle);
   if (start == std::string::npos)
@@ -42,7 +50,7 @@ TEST_CASE("the talk digest is computed in lowercase hex")
 {
   const std::string header =
       tapo_crypto::buildDigestHeader(digestInput("secret", "MD5"));
-  CHECK(digestField(header, "response") == "421fc6e14bbc0d952066e3825dd19391");
+  CHECK(digestField({.header = header, .key = "response"}) == "421fc6e14bbc0d952066e3825dd19391");
   CHECK(header.find("username=\"admin\"") != std::string::npos);
   CHECK(header.find("algorithm=MD5") != std::string::npos);
 }

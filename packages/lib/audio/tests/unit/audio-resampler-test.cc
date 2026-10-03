@@ -10,8 +10,18 @@
 namespace
 {
 
-std::vector<int16_t> tone(int rate, double hz, size_t count)
+struct ToneInput
 {
+  int rate{0};
+  double hz{0.0};
+  size_t count{0};
+};
+
+std::vector<int16_t> tone(const ToneInput& input)
+{
+  const int rate = input.rate;
+  const double hz = input.hz;
+  const size_t count = input.count;
   std::vector<int16_t> samples(count);
   for (size_t i = 0; i < count; ++i)
     samples[i] = static_cast<int16_t>(
@@ -42,7 +52,7 @@ TEST_CASE("common voice rates keep a tone within one percent")
 {
   for (const int source : {44100, 22050, 48000, 8000}) {
     AudioResampler resampler({.sourceRate = source, .targetRate = 16000});
-    const auto input = tone(source, 440.0, static_cast<size_t>(source) * 2);
+    const auto input = tone({.rate = source, .hz = 440.0, .count = static_cast<size_t>(source) * 2});
     const auto out = resampler.process(input.data(), input.size());
     CAPTURE(source);
     const auto filterDelay = static_cast<size_t>(32 * 16000 / source + 2);
@@ -53,7 +63,7 @@ TEST_CASE("common voice rates keep a tone within one percent")
 
 TEST_CASE("chunked input gives the same samples as one block")
 {
-  const auto input = tone(22050, 440.0, 22050);
+  const auto input = tone({.rate = 22050, .hz = 440.0, .count = 22050});
   AudioResampler whole({.sourceRate = 22050, .targetRate = 16000});
   const auto expected = whole.process(input.data(), input.size());
 
@@ -70,7 +80,7 @@ TEST_CASE("chunked input gives the same samples as one block")
 TEST_CASE("ten minutes of streaming keep the output count exact")
 {
   AudioResampler resampler({.sourceRate = 44100, .targetRate = 16000});
-  const auto second = tone(44100, 440.0, 44100);
+  const auto second = tone({.rate = 44100, .hz = 440.0, .count = 44100});
   size_t produced = 0;
   for (int i = 0; i < 600; ++i)
     produced += resampler.process(second.data(), second.size()).size();

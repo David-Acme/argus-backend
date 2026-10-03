@@ -116,9 +116,16 @@ struct TalkPassword
   std::string value;
 };
 
-std::vector<TalkPassword> talkPasswords(const std::string& encryptType,
-                                        const std::string& cloudPassword)
+struct TalkPasswordSource
 {
+  const std::string& encryptType;
+  const std::string& cloudPassword;
+};
+
+std::vector<TalkPassword> talkPasswords(const TalkPasswordSource& input)
+{
+  const std::string& encryptType = input.encryptType;
+  const std::string& cloudPassword = input.cloudPassword;
   const TalkPassword sha256{.variant = "sha256",
                             .value = tapo_crypto::sha256Hex(cloudPassword)};
   const TalkPassword md5{.variant = "md5",
@@ -161,7 +168,12 @@ TapoTalkClient::TapoTalkClient(TapoTalkConfig config)
 
 TapoTalkClient::~TapoTalkClient()
 {
-  close();
+  try {
+    close();
+  }
+  catch (...) {
+    LOG_WARN << "Tapo talk: closing the session failed";
+  }
 }
 
 bool TapoTalkClient::isOpen() const
@@ -262,7 +274,7 @@ TapoResult TapoTalkClient::authenticate()
     return TapoResult::failure("talk channel did not send a digest challenge");
 
   const std::vector<TalkPassword> candidates =
-      talkPasswords(challenge.encryptType, config_.cloudPassword);
+      talkPasswords({.encryptType = challenge.encryptType, .cloudPassword = config_.cloudPassword});
   std::string lastError = "digest authentication rejected";
   for (size_t index = 0; index < candidates.size(); ++index) {
     if (index > 0) {
@@ -585,10 +597,11 @@ void TapoTalkClient::stopSession()
   payload["seq"] = static_cast<Json::Int64>(seq_++);
   payload["type"] = "request";
   std::string body = json_util::toString(payload);
-  std::vector<TapoHttpHeader> headers = {{"Content-Type", "application/json"}};
+  std::vector<TapoHttpHeader> headers = {
+      {.name = "Content-Type", .value = "application/json"}};
   if (!cipherKey_.empty()) {
     body = encryptPart(body);
-    headers.push_back({"X-If-Encrypt", "1"});
+    headers.push_back({.name = "X-If-Encrypt", .value = "1"});
   }
   writePart(headers, body);
 }

@@ -18,7 +18,7 @@ namespace
 namespace wire = argus::vlm::v1;
 using Clock = std::chrono::system_clock;
 
-constexpr std::size_t kMaxImageBytes = 32 * 1024 * 1024;
+constexpr std::size_t kMaxImageBytes = std::size_t{32} * 1024 * 1024;
 constexpr std::size_t kMaxPromptBytes = 512;
 constexpr std::size_t kMaxCameraIdBytes = 64;
 constexpr int kMaxTokens = 4096;

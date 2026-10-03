@@ -559,7 +559,7 @@ bool NatsBus::publishWithMsgId(const PublishWithIdInput& input)
 
   JsCtxPtr js;
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (!connectedLocked() || !ensureJetStream())
       return false;
     js = js_;

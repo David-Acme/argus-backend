@@ -10,10 +10,16 @@
 
 namespace
 {
-std::string configOr(const std::string& key, const std::string& fallback)
+struct ConfigFallback
 {
-  const std::string value = ConfigService::getString(key);
-  return value.empty() ? fallback : value;
+  const std::string& key;
+  const std::string& fallback;
+};
+
+std::string configOr(const ConfigFallback& entry)
+{
+  const std::string value = ConfigService::getString(entry.key);
+  return value.empty() ? entry.fallback : value;
 }
 
 int configIntOr(const std::string& key, int fallback)
@@ -42,7 +48,7 @@ double configDoubleOr(const std::string& key, double fallback)
 std::vector<std::string> configVariantsOr(const std::string& key,
                                           const std::string& fallback)
 {
-  const std::string value = configOr(key, fallback);
+  const std::string value = configOr({.key = key, .fallback = fallback});
   std::vector<std::string> variants;
   size_t start = 0;
   while (start <= value.size()) {
@@ -97,7 +103,7 @@ std::string cameraLeafKey(int64_t cameraId, const std::string& leaf)
 
 std::string beliefLeafKey(int64_t cameraId, const std::string& leaf)
 {
-  const std::string overrideKey = cameraLeafKey(cameraId, leaf);
+  std::string overrideKey = cameraLeafKey(cameraId, leaf);
   if (ConfigService::hasKey(overrideKey))
     return overrideKey;
   return "guard.belief." + leaf;
@@ -106,9 +112,8 @@ std::string beliefLeafKey(int64_t cameraId, const std::string& leaf)
 
 GuardDbConfig GuardConfig::resolveDb()
 {
-  return {.dbPath = configOr("database.db", "database/guard.db"),
-          .schemaPath = configOr("database.schema",
-                                 "services/guard/database/schema.sql")};
+  return {.dbPath = configOr({.key = "database.db", .fallback = "database/guard.db"}),
+          .schemaPath = configOr({.key = "database.schema", .fallback = "services/guard/database/schema.sql"})};
 }
 
 ListenerConfig GuardConfig::resolveListener()
@@ -147,55 +152,53 @@ GuardAssessmentConfig GuardConfig::resolveAssessment()
 {
   return {
       .enabled = ConfigService::getBool("guard.assess.enabled"),
-      .mode = configOr("guard.assess.mode", "agent"),
-      .vetoScope = configOr("guard.veto_scope", "soft_only"),
+      .mode = configOr({.key = "guard.assess.mode", .fallback = "agent"}),
+      .vetoScope = configOr({.key = "guard.veto_scope", .fallback = "soft_only"}),
       .maxToolRounds = configIntOr("guard.assess.max_tool_rounds", 3),
       .maxAnnounceWords = configIntOr("guard.max_announce_words", 12),
-      .lang = configOr("guard.announce_lang", "es")};
+      .lang = configOr({.key = "guard.announce_lang", .fallback = "es"})};
 }
 
 GuardServiceConfig GuardConfig::resolveService()
 {
   GuardServiceConfig config;
   config.enabled = ConfigService::getBool("guard.enabled");
-  config.profile = configOr("guard.profile", "home");
+  config.profile = configOr({.key = "guard.profile", .fallback = "home"});
   config.defaultMode =
-      guardModeFromString(configOr("guard.default_mode", "home"));
+      guardModeFromString(configOr({.key = "guard.default_mode", .fallback = "home"}));
   config.schedule = {.enabled = configBoolOr("guard.schedule.enabled", false),
-                     .asleep = configOr("guard.schedule.asleep", ""),
-                     .open = configOr("guard.schedule.open", ""),
-                     .staffed = configOr("guard.schedule.staffed", ""),
+                     .asleep = configOr({.key = "guard.schedule.asleep", .fallback = ""}),
+                     .open = configOr({.key = "guard.schedule.open", .fallback = ""}),
+                     .staffed = configOr({.key = "guard.schedule.staffed", .fallback = ""}),
                      .closedMode =
-                         configOr("guard.schedule.closed_mode", "away")};
+                         configOr({.key = "guard.schedule.closed_mode", .fallback = "away"})};
   config.notifyLevel = configIntOr("guard.notify_level", 2);
   config.announceLevel = configIntOr("guard.announce_level", 3);
   config.alarmLevel = configIntOr("guard.alarm_level", 4);
   config.announceText =
-      configOr("guard.announce_text",
-               "Atención: está en una propiedad privada. El propietario ya ha "
-               "sido avisado.");
-  config.announceLang = configOr("guard.announce_lang", "es");
+      configOr({.key = "guard.announce_text", .fallback = "Atención: está en una propiedad privada. El propietario ya ha "
+               "sido avisado."});
+  config.announceLang = configOr({.key = "guard.announce_lang", .fallback = "es"});
   config.greetEnabled = configBoolOr("guard.greet_enabled", true);
   config.greetKnown = configBoolOr("guard.greet_known", false);
-  config.greetText = configOr("guard.greet_text", "Hola, ¿necesitas algo?");
+  config.greetText = configOr({.key = "guard.greet_text", .fallback = "Hola, ¿necesitas algo?"});
   config.greetTexts = configVariantsOr("guard.greet_texts", "");
   if (config.greetTexts.empty() && !config.greetText.empty())
     config.greetTexts.push_back(config.greetText);
   config.greetKnownText =
-      configOr("guard.greet_known_text", "Hola {name}, ¿necesitas algo?");
-  config.greetLang = configOr("guard.greet_lang", config.announceLang);
+      configOr({.key = "guard.greet_known_text", .fallback = "Hola {name}, ¿necesitas algo?"});
+  config.greetLang = configOr({.key = "guard.greet_lang", .fallback = config.announceLang});
   config.greetListenSeconds = configIntOr("guard.greet_listen_seconds", 6);
   config.greetReplyEnabled = configBoolOr("guard.greet_reply_enabled", true);
   config.greetReplyText =
-      configOr("guard.greet_reply_text", "Perfecto, dime, ¿en qué te ayudo?");
+      configOr({.key = "guard.greet_reply_text", .fallback = "Perfecto, dime, ¿en qué te ayudo?"});
   config.greetReplyTexts = configVariantsOr("guard.greet_reply_texts", "");
-  config.greetReplyLang = configOr("guard.greet_reply_lang", config.greetLang);
-  config.greetRepairText = configOr("guard.greet_repair_text",
-                                    "No te escuché bien. ¿Puedes repetirlo?");
+  config.greetReplyLang = configOr({.key = "guard.greet_reply_lang", .fallback = config.greetLang});
+  config.greetRepairText = configOr({.key = "guard.greet_repair_text", .fallback = "No te escuché bien. ¿Puedes repetirlo?"});
   config.alarmSeconds = configIntOr("guard.alarm_seconds", 6);
   config.armSiren = configBoolOr("guard.arm_siren", false);
   config.sirenSeconds = configIntOr("guard.siren_seconds", 20);
-  config.vetoScope = configOr("guard.veto_scope", "soft_only");
+  config.vetoScope = configOr({.key = "guard.veto_scope", .fallback = "soft_only"});
   config.actionCooldownS = configInt64Or("guard.action_cooldown_s", 120);
   config.repeatWindowS = configInt64Or("guard.repeat_window_s", 86400);
   config.maxActionsPerHour = configInt64Or("guard.max_actions_per_hour", 4);
@@ -212,20 +215,20 @@ GuardServiceConfig GuardConfig::resolveService()
   config.maxObservationAttempts =
       configIntOr("guard.max_observation_attempts", 5);
   config.maxAnnounceWords = configIntOr("guard.max_announce_words", 12);
-  config.consumerDurable = configOr("guard.consumer_durable", "argus-guard");
-  config.eventStream = configOr("guard.event_stream", "ARGUS_CAMERA");
+  config.consumerDurable = configOr({.key = "guard.consumer_durable", .fallback = "argus-guard"});
+  config.eventStream = configOr({.key = "guard.event_stream", .fallback = "ARGUS_CAMERA"});
   config.eventSubject = ConfigService::getString("guard.event_subject");
-  config.decisionMode = configOr("guard.decision_mode", "shadow");
+  config.decisionMode = configOr({.key = "guard.decision_mode", .fallback = "shadow"});
   if (config.decisionMode != "shadow" && config.decisionMode != "enforce") {
     LOG_WARN << "Unknown guard.decision_mode '" << config.decisionMode
              << "'; using shadow";
     config.decisionMode = "shadow";
   }
   const auto gateScope =
-      beliefGateScopeFromString(configOr("guard.belief.gate_scope", "notify"));
+      beliefGateScopeFromString(configOr({.key = "guard.belief.gate_scope", .fallback = "notify"}));
   if (!gateScope) {
     LOG_WARN << "Unknown guard.belief.gate_scope '"
-             << configOr("guard.belief.gate_scope", "notify")
+             << configOr({.key = "guard.belief.gate_scope", .fallback = "notify"})
              << "'; using notify";
     config.beliefGateScope = BeliefGateScope::Notify;
   }

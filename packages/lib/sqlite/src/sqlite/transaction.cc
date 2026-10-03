@@ -25,19 +25,19 @@ std::vector<CommitObserver*>& observers()
 CommitObserver::CommitObserver(std::function<void()> onCommitted)
     : onCommitted_(std::move(onCommitted))
 {
-  std::lock_guard lock(observersMutex());
+  std::scoped_lock lock(observersMutex());
   observers().push_back(this);
 }
 
 CommitObserver::~CommitObserver()
 {
-  std::lock_guard lock(observersMutex());
+  std::scoped_lock lock(observersMutex());
   std::erase(observers(), this);
 }
 
 void CommitObserver::notifyAll()
 {
-  std::lock_guard lock(observersMutex());
+  std::scoped_lock lock(observersMutex());
   for (auto* observer : observers())
     observer->onCommitted_();
 }

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -57,7 +58,10 @@ Args parse(int argc, char** argv)
     if (flag == "--host")
       args.host = next();
     else if (flag == "--port")
-      args.port = std::atoi(next().c_str());
+    {
+      const std::string value = next();
+      std::from_chars(value.data(), value.data() + value.size(), args.port);
+    }
     else if (flag == "--password-file")
       args.passwordFile = next();
     else if (flag == "--camera-user")
@@ -112,9 +116,16 @@ std::string exchange(const Args& args, const std::string& authorization)
   return answer;
 }
 
-std::optional<std::string> headerValue(const std::string& answer,
-                                       const std::string& key)
+struct HeaderQuery
 {
+  const std::string& answer;
+  const std::string& key;
+};
+
+std::optional<std::string> headerValue(const HeaderQuery& input)
+{
+  const std::string& answer = input.answer;
+  const std::string& key = input.key;
   std::istringstream in(answer);
   std::string line;
   const std::string needle = toLower(key) + ":";
@@ -185,7 +196,7 @@ int main(int argc, char** argv)
   }
 
   const std::string challengeAnswer = exchange(args, {});
-  const auto header = headerValue(challengeAnswer, "WWW-Authenticate");
+  const auto header = headerValue({.answer = challengeAnswer, .key = "WWW-Authenticate"});
   if (!header) {
     std::cerr << "no digest challenge from " << args.host << ":" << args.port
               << " ("
@@ -230,7 +241,7 @@ int main(int argc, char** argv)
   int accepted = 0;
   for (const auto& variant : variants) {
     const std::string fresh = exchange(args, {});
-    const auto freshHeader = headerValue(fresh, "WWW-Authenticate");
+    const auto freshHeader = headerValue({.answer = fresh, .key = "WWW-Authenticate"});
     if (!freshHeader) {
       std::cout << "user=" << variant.userLabel
                 << " pass=" << variant.passwordLabel

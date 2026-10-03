@@ -243,15 +243,15 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
             {.request = chat, .onToken = emit, .stats = &queue.stats});
       }
       catch (const ResponseException& error) {
-        std::lock_guard lock(queue.mutex);
+        std::scoped_lock lock(queue.mutex);
         queue.status = argus::response::toRpcStatus(error);
       }
       catch (...) {
-        std::lock_guard lock(queue.mutex);
+        std::scoped_lock lock(queue.mutex);
         queue.status = argus::response::toRpcStatus(
             ResponseException(500, LlmErrors::InternalError));
       }
-      std::lock_guard lock(queue.mutex);
+      std::scoped_lock lock(queue.mutex);
       queue.done = true;
       queue.ready.notify_all();
     });
@@ -280,7 +280,7 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
       chunk.set_sequence(sequence++);
       chunk.set_text(std::move(token));
       if (!writer->Write(chunk)) {
-        std::lock_guard stoppedLock(queue.mutex);
+        std::scoped_lock stoppedLock(queue.mutex);
         queue.stopped = true;
         queue.ready.notify_all();
         break;

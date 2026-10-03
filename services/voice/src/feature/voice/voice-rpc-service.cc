@@ -24,7 +24,7 @@ public:
   {
     if (!authorized()) {
       {
-        std::lock_guard<std::mutex> lock(writeMutex_);
+        std::scoped_lock lock(writeMutex_);
         finishing_ = true;
       }
       Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,

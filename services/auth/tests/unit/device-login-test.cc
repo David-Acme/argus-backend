@@ -620,13 +620,11 @@ TEST_CASE("a refresh keeps the session on the device and agent it was issued to"
   seed(stolen);
   const auto noCredential = refreshFrom(
       {.body = {.refreshToken = stolen}, .deviceHash = "", .userAgent = kUa});
-  REQUIRE(noCredential.has_value());
-  CHECK(noCredential->status == 401);
+  CHECK((noCredential.has_value() && noCredential->status == 401));
 
   const auto noAgent = refreshFrom(
       {.body = {.refreshToken = stolen}, .deviceHash = boundHash, .userAgent = ""});
-  REQUIRE(noAgent.has_value());
-  CHECK(noAgent->status == 401);
+  CHECK((noAgent.has_value() && noAgent->status == 401));
 
   CHECK_FALSE(refreshFrom({.body = {.refreshToken = stolen},
                            .deviceHash = boundHash,

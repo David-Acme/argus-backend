@@ -225,7 +225,7 @@ LlmController::chat(drogon::HttpRequestPtr req)
              << " ms=" << static_cast<int>(ms);
 
   Json::Value info(Json::objectValue);
-  info["text"] = std::move(outcome.text);
+  info["text"] = outcome.text;
   co_return ApiResponse::ok(info);
 }
 

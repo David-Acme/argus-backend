@@ -22,7 +22,7 @@ drogon::Task<std::vector<RetiredCandidate>>
 CandidateRetentionRepository::retireStale(const CandidateRetireInput& input) const
 {
   const auto result = co_await input.client->execSqlCoro(
-      RETIRE_STALE.data(), input.cutoff, input.limit);
+      std::string(RETIRE_STALE), input.cutoff, input.limit);
   std::vector<RetiredCandidate> retired;
   retired.reserve(result.size());
   for (const auto& row : result)
@@ -37,12 +37,12 @@ drogon::Task<RetiredBiometrics> CandidateRetentionRepository::purgeBiometrics(
 {
   const std::string ids = idList(retired);
   RetiredBiometrics purged;
-  const auto embeddings = co_await client->execSqlCoro(EMBEDDING_IDS.data(), ids);
+  const auto embeddings = co_await client->execSqlCoro(std::string(EMBEDDING_IDS), ids);
   purged.embeddingIds.reserve(embeddings.size());
   for (const auto& row : embeddings)
     purged.embeddingIds.push_back(row["id"].as<int64_t>());
-  co_await client->execSqlCoro(DELETE_EMBEDDINGS.data(), ids);
-  co_await client->execSqlCoro(DELETE_SNAPSHOTS.data(), ids);
-  co_await client->execSqlCoro(DELETE_TAGS.data(), ids);
+  co_await client->execSqlCoro(std::string(DELETE_EMBEDDINGS), ids);
+  co_await client->execSqlCoro(std::string(DELETE_SNAPSHOTS), ids);
+  co_await client->execSqlCoro(std::string(DELETE_TAGS), ids);
   co_return purged;
 }

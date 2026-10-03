@@ -203,8 +203,16 @@ bool writeAll(int fd, const std::string& content)
   return ::fsync(fd) == 0;
 }
 
-bool rewriteInPlace(const std::string& path, const std::string& content)
+struct ConfigFileWrite
 {
+  const std::string& path;
+  const std::string& content;
+};
+
+bool rewriteInPlace(const ConfigFileWrite& write)
+{
+  const std::string& path = write.path;
+  const std::string& content = write.content;
   const int fd = ::open(path.c_str(), O_WRONLY | O_TRUNC | O_CLOEXEC);
   if (fd < 0)
     return false;
@@ -222,7 +230,7 @@ bool writeFileAtomically(const std::string& path, const std::string& content)
   const int fd = ::open(temporary.c_str(),
                         O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode);
   if (fd < 0)
-    return rewriteInPlace(path, content);
+    return rewriteInPlace({.path = path, .content = content});
   const bool written = writeAll(fd, content);
   ::close(fd);
   if (written && ::rename(temporary.c_str(), path.c_str()) == 0)
@@ -230,7 +238,7 @@ bool writeFileAtomically(const std::string& path, const std::string& content)
   const int renameError = errno;
   ::unlink(temporary.c_str());
   if (written && (renameError == EBUSY || renameError == EXDEV))
-    return rewriteInPlace(path, content);
+    return rewriteInPlace({.path = path, .content = content});
   return false;
 }
 

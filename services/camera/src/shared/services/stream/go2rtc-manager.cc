@@ -276,7 +276,7 @@ void Go2rtcManager::supervise()
     if (stopping_.load(std::memory_order_relaxed))
       break;
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (stopping_.load(std::memory_order_relaxed))
       break;
     const bool ok = healthCheck();
@@ -363,14 +363,14 @@ Go2rtcStatus Go2rtcManager::status()
   s.healthy = healthy_.load(std::memory_order_relaxed);
   s.restarts = restarts_.load();
   s.pid = pid_;
-  std::lock_guard<std::mutex> lock(errorMutex_);
+  std::scoped_lock lock(errorMutex_);
   s.lastError = lastError_;
   return s;
 }
 
 void Go2rtcManager::setError(std::string error)
 {
-  std::lock_guard<std::mutex> lock(errorMutex_);
+  std::scoped_lock lock(errorMutex_);
   lastError_ = std::move(error);
 }
 

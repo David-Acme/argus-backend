@@ -39,7 +39,7 @@ Spread spreadOf(std::span<const uint8_t> pixels)
     sum += pixel;
     squares += static_cast<double>(pixel) * pixel;
   }
-  const double count = static_cast<double>(pixels.size());
+  const auto count = static_cast<double>(pixels.size());
   const double mean = sum / count;
   return {.mean = mean, .deviation = std::sqrt(std::max(0.0, squares / count - mean * mean))};
 }

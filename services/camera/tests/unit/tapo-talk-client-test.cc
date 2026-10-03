@@ -101,8 +101,16 @@ private:
   std::string pending_;
 };
 
-std::string headerValueOf(const std::string& head, const std::string& name)
+struct HeaderLookup
 {
+  const std::string& head;
+  const std::string& name;
+};
+
+std::string headerValueOf(const HeaderLookup& input)
+{
+  const std::string& head = input.head;
+  const std::string& name = input.name;
   const std::string needle = name + ": ";
   const size_t begin = head.find(needle);
   if (begin == std::string::npos)
@@ -114,9 +122,16 @@ std::string headerValueOf(const std::string& head, const std::string& name)
                          : end - begin - needle.size());
 }
 
-std::string digestFieldOf(const std::string& authorization,
-                          const std::string& name)
+struct DigestLookup
 {
+  const std::string& authorization;
+  const std::string& name;
+};
+
+std::string digestFieldOf(const DigestLookup& input)
+{
+  const std::string& authorization = input.authorization;
+  const std::string& name = input.name;
   const std::string needle = name + "=";
   const size_t begin = authorization.find(needle);
   if (begin == std::string::npos)
@@ -134,11 +149,11 @@ std::string digestFieldOf(const std::string& authorization,
 
 size_t contentLengthOf(const std::string& head)
 {
-  const std::string length = headerValueOf(head, "Content-Length");
+  const std::string length = headerValueOf({.head = head, .name = "Content-Length"});
   if (length.empty())
     return 0;
-  const size_t value = static_cast<size_t>(std::stoul(length));
-  if (value > 1024 * 1024)
+  const auto value = static_cast<size_t>(std::stoul(length));
+  if (value > static_cast<size_t>(1024) * 1024)
     return 0;
   return value;
 }
@@ -188,43 +203,43 @@ public:
 
   int connections() const
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return connections_;
   }
 
   std::string answeredAuthorization() const
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return answeredAuthorization_;
   }
 
   std::string challengeNonce() const
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return challengeNonce_;
   }
 
   std::string keyExchangeNonce() const
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return keyExchangeNonce_;
   }
 
   std::string sessionBody() const
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return sessionBody_;
   }
 
   bool stopEncrypted() const
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return stopEncrypted_;
   }
 
   std::string stopPlaintext() const
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (!stopEncrypted_)
       return stopBody_;
     const std::string nonce = keyExchangeNonce_;
@@ -270,7 +285,7 @@ private:
   {
     const std::string nonce = tapo_crypto::randomHex(32);
     {
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       keyExchangeNonce_ = nonce;
     }
     return "HTTP/1.0 200 OK\r\n"
@@ -289,7 +304,7 @@ private:
   {
     const std::string nonce = tapo_crypto::randomHex(32);
     {
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       keyExchangeNonce_ = nonce;
     }
     return "HTTP/1.0 200 OK\r\n"
@@ -306,14 +321,14 @@ private:
 
   bool digestMatches(const std::string& authorization) const
   {
-    const std::string username = digestFieldOf(authorization, "username");
-    const std::string realm = digestFieldOf(authorization, "realm");
-    const std::string nonce = digestFieldOf(authorization, "nonce");
-    const std::string uri = digestFieldOf(authorization, "uri");
-    const std::string nc = digestFieldOf(authorization, "nc");
-    const std::string cnonce = digestFieldOf(authorization, "cnonce");
-    const std::string qop = digestFieldOf(authorization, "qop");
-    const std::string response = digestFieldOf(authorization, "response");
+    const std::string username = digestFieldOf({.authorization = authorization, .name = "username"});
+    const std::string realm = digestFieldOf({.authorization = authorization, .name = "realm"});
+    const std::string nonce = digestFieldOf({.authorization = authorization, .name = "nonce"});
+    const std::string uri = digestFieldOf({.authorization = authorization, .name = "uri"});
+    const std::string nc = digestFieldOf({.authorization = authorization, .name = "nc"});
+    const std::string cnonce = digestFieldOf({.authorization = authorization, .name = "cnonce"});
+    const std::string qop = digestFieldOf({.authorization = authorization, .name = "qop"});
+    const std::string response = digestFieldOf({.authorization = authorization, .name = "response"});
     const std::string password =
         encryptType_ == "3" ? tapo_crypto::sha256Hex(kCloudPassword)
                             : tapo_crypto::md5Hex(kCloudPassword);
@@ -329,7 +344,7 @@ private:
   {
     const std::string nonce = tapo_crypto::randomHex(32);
     {
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       if (challengeNonce_.empty())
         challengeNonce_ = nonce;
     }
@@ -347,7 +362,7 @@ private:
       std::string body;
       if (bodyLength > 0)
         body = connection.readBody(bodyLength);
-      const std::string authorization = headerValueOf(head, "Authorization");
+      const std::string authorization = headerValueOf({.head = head, .name = "Authorization"});
 
       if (mode_ == Mode::Authless) {
         if (!connection.write(authlessHead()))
@@ -360,7 +375,7 @@ private:
       if (authorization.empty()) {
         issuedNonce = tapo_crypto::randomHex(32);
         {
-          std::lock_guard lock(mutex_);
+          std::scoped_lock lock(mutex_);
           if (challengeNonce_.empty())
             challengeNonce_ = issuedNonce;
         }
@@ -381,7 +396,7 @@ private:
       }
 
       {
-        std::lock_guard lock(mutex_);
+        std::scoped_lock lock(mutex_);
         answeredAuthorization_ = authorization;
       }
       if (!connection.write(acceptedHead()))
@@ -402,7 +417,7 @@ private:
     if (partBody > 0)
       payload = connection.readBody(partBody);
     {
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       sessionBody_ = payload;
     }
     if (!connection.write(sessionAnswer()))
@@ -416,9 +431,9 @@ private:
     if (stopBody > 0)
       stopPayload = connection.readBody(stopBody);
     {
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       stopBody_ = stopPayload;
-      stopEncrypted_ = headerValueOf(stop, "X-If-Encrypt") == "1";
+      stopEncrypted_ = headerValueOf({.head = stop, .name = "X-If-Encrypt"}) == "1";
     }
     return true;
   }
@@ -430,7 +445,7 @@ private:
       if (fd < 0)
         break;
       {
-        std::lock_guard lock(mutex_);
+        std::scoped_lock lock(mutex_);
         ++connections_;
       }
       FakeConnection connection(fd);

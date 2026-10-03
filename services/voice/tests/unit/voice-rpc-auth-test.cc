@@ -13,8 +13,16 @@ namespace
 
 constexpr const char* kSyncSecret = "voice-rpc-auth-test-secret";
 
-grpc::Status connectWith(const std::string& target, const std::string& secret)
+struct ConnectProbe
 {
+  const std::string& target;
+  const std::string& secret;
+};
+
+grpc::Status connectWith(const ConnectProbe& input)
+{
+  const std::string& target = input.target;
+  const std::string& secret = input.secret;
   auto stub = argus::voice::v1::VoiceService::NewStub(
       grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
   grpc::ClientContext context;
@@ -40,11 +48,11 @@ TEST_CASE("voice answers only the argus-sync caller credential")
   REQUIRE(server);
   const std::string target = "127.0.0.1:" + std::to_string(port);
 
-  CHECK(connectWith(target, "").error_code() ==
+  CHECK(connectWith({.target = target, .secret = ""}).error_code() ==
         grpc::StatusCode::UNAUTHENTICATED);
-  CHECK(connectWith(target, "a-guessed-secret").error_code() ==
+  CHECK(connectWith({.target = target, .secret = "a-guessed-secret"}).error_code() ==
         grpc::StatusCode::UNAUTHENTICATED);
-  CHECK(connectWith(target, kSyncSecret).ok());
+  CHECK(connectWith({.target = target, .secret = kSyncSecret}).ok());
 
   server->Shutdown();
 }

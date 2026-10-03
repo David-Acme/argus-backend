@@ -24,10 +24,10 @@ struct GuardedRoute
 };
 
 constexpr std::array<GuardedRoute, 4> kGuardedRoutes = {{
-    {drogon::Patch, "/auth/refresh-token", "refresh"},
-    {drogon::Post, "/auth/login", "login"},
-    {drogon::Post, "/auth/register", "register"},
-    {drogon::Post, "/auth/device-login", "device-login"},
+    {.method = drogon::Patch, .path = "/auth/refresh-token", .name = "refresh"},
+    {.method = drogon::Post, .path = "/auth/login", .name = "login"},
+    {.method = drogon::Post, .path = "/auth/register", .name = "register"},
+    {.method = drogon::Post, .path = "/auth/device-login", .name = "device-login"},
 }};
 
 bool samePath(std::string_view lhs, std::string_view rhs)

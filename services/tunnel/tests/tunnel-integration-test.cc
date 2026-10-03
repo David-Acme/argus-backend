@@ -197,7 +197,7 @@ TEST_CASE("stalled gateway read applies back-pressure without byte loss")
 TEST_CASE("a reply the gateway closes right behind arrives whole")
 {
   HarnessOptions options;
-  options.gatewayReply = makePayload(3 * 1024 * 1024, 91);
+  options.gatewayReply = makePayload(static_cast<size_t>(3) * 1024 * 1024, 91);
   options.gatewayCloseAfterReply = true;
   options.limits.socketSndBuf = 16 * 1024;
   Harness harness(std::move(options));

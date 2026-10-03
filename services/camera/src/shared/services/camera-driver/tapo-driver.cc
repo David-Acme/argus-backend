@@ -170,7 +170,7 @@ DriverResult TapoDriver::speak(const DriverSpeakInput& input)
   if (input.samples.empty())
     return DriverResult::failure("Nothing to say");
 
-  std::lock_guard<std::mutex> lock(talkMutex_);
+  std::scoped_lock lock(talkMutex_);
 
   if (!talkClient_)
     talkClient_ = std::make_unique<TapoTalkClient>(talkConfigOf(camera_));

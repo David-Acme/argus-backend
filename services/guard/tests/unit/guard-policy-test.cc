@@ -195,13 +195,13 @@ TEST_CASE("every person in the event is counted and the stranger is the subject"
   Json::Value known(Json::objectValue);
   known["class"] = "person";
   known["identity"] = "known";
-  known["personId"] = Json::Int64(7);
-  known["trackId"] = Json::Int64(21);
+  known["personId"] = static_cast<Json::Int64>(7);
+  known["trackId"] = static_cast<Json::Int64>(21);
   Json::Value unknown(Json::objectValue);
   unknown["class"] = "person";
   unknown["identity"] = "unknown";
-  unknown["personId"] = Json::Int64(0);
-  unknown["trackId"] = Json::Int64(22);
+  unknown["personId"] = static_cast<Json::Int64>(0);
+  unknown["trackId"] = static_cast<Json::Int64>(22);
   Json::Value objects(Json::arrayValue);
   objects.append(known);
   objects.append(unknown);

@@ -8,7 +8,8 @@
 #include <runtime/blocking-task.hxx>
 #include <feature/guard/vocabulary/feedback-label.hxx>
 
-GuardFeatureService::GuardFeatureService(GuardFeatureDependencies dependencies)
+GuardFeatureService::GuardFeatureService(
+    const GuardFeatureDependencies& dependencies)
     : identity_(dependencies.identity), defaultMode_(dependencies.defaultMode),
       schedule_(guard_schedule::parse(dependencies.schedule))
 {

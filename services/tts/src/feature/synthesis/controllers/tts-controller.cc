@@ -40,7 +40,7 @@ void runStreamJob(const std::shared_ptr<PcmStreamJob>& job)
     TtsService::instance().synthesizeStream(TtsStreamInput{
         .request = job->request,
         .onChunk =
-            [&job](std::vector<float> chunk) {
+            [&job](const std::vector<float>& chunk) {
               if (!job->stream)
                 return;
               const auto bytes = pcmBytes(chunk);
