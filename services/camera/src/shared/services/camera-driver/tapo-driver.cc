@@ -3,6 +3,7 @@
 #include <config/config-service.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
 #include <runtime/cancellation-token.hxx>
+#include <trantor/utils/Logger.h>
 
 namespace
 {
@@ -126,6 +127,12 @@ DriverResult TapoDriver::settings(const DriverSettingsInput& input)
                                                           : "high"));
   if (input.alarm)
     apply(api_->setAlarm({.enabled = *input.alarm}));
+  if (input.sounding) {
+    const auto sounded = api_->manualAlarm(*input.sounding);
+    if (!sounded.ok)
+      LOG_WARN << "Tapo driver: manual alarm " << (*input.sounding ? "start" : "stop")
+               << " refused: " << sounded.error;
+  }
 
   if (last.ok)
     last.data = api_->getStatus().toJson();

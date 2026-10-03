@@ -72,7 +72,8 @@ CameraControlFeatureService::settings(int64_t cameraId, const CameraSettingsDto&
                             .motionSensitivity = body.motionSensitivity,
                             .autoTrack = body.autoTrack,
                             .alarm = body.alarm,
-                            .alarmVolume = body.alarmVolume});
+                            .alarmVolume = body.alarmVolume,
+                            .sounding = std::nullopt});
   });
 }
 

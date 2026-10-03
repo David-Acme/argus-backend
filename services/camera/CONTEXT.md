@@ -559,6 +559,17 @@ conversation is half duplex: speak, stop, listen, never both at once. Video
 does not come from here either: RTSP is the documented, maintained path and
 one pull through go2rtc serves every viewer.
 
+**Arming the siren sounds it.** `SetSiren` used to enable only the
+camera's detection alarm (`setAlertConfig`), which sounds on the camera's
+own motion trigger, so guard's siren effect was silent unless the camera
+happened to detect motion itself. A siren request now also starts the
+camera's manual alarm (`{"method":"do","msg_alarm":{"manual_msg_alarm":
+{"action":"start"}}}`, the request pytapo's `startManualAlarm` sends) and
+the disarm - the explicit one or the lease sweeper's - stops it. A model
+that refuses the manual alarm is logged and still gets the detection
+alarm armed. Not exercised against the device here: sounding the siren is
+the owner's own test.
+
 **Every event says whether it is night.** The object event carries
 `night`, the operator's own `night_start_hour`/`night_end_hour` verdict for
 the frame. The rule alone could not say it: `person_night` is only emitted

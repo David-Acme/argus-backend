@@ -46,6 +46,7 @@ struct StubActuator final : ICameraDriver
   std::atomic<size_t> lastSamples{0};
   bool settingsCalled{false};
   std::optional<bool> alarm;
+  std::optional<bool> sounding;
   std::optional<int> alarmVolume;
   std::mutex speakMutex;
   std::condition_variable speakCv;
@@ -74,6 +75,7 @@ struct StubActuator final : ICameraDriver
     settingsCalled = true;
     alarm = input.alarm;
     alarmVolume = input.alarmVolume;
+    sounding = input.sounding;
     if (blockSettings) {
       std::unique_lock lock(settingsMutex);
       settingsCv.wait(lock, [this]() { return settingsReleased; });
@@ -392,6 +394,7 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
   CHECK(siren.succeeded());
   CHECK(actuator->settingsCalled);
   CHECK(actuator->alarm == true);
+  CHECK(actuator->sounding == true);
   REQUIRE(actuator->alarmVolume);
   CHECK(*actuator->alarmVolume == 100);
 

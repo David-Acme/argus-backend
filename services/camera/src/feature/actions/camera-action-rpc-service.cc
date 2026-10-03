@@ -673,7 +673,8 @@ CameraActionRpcService::SetSiren(grpc::CallbackServerContext* context,
                                        .motionSensitivity = std::nullopt,
                                        .autoTrack = std::nullopt,
                                        .alarm = enabled,
-                                       .alarmVolume = volume});
+                                       .alarmVolume = volume,
+                                       .sounding = enabled});
             });
         if (!enabled && result.ok &&
             !co_await commandRepository_.deleteLease(cameraId))
@@ -988,7 +989,8 @@ void CameraActionRpcService::startLeaseSweeper()
                                    .motionSensitivity = std::nullopt,
                                    .autoTrack = std::nullopt,
                                    .alarm = false,
-                                   .alarmVolume = std::nullopt});
+                                   .alarmVolume = std::nullopt,
+                                   .sounding = false});
         });
         if (!result.ok) {
           LOG_WARN << "Camera action: siren lease disarm failed for camera "

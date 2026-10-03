@@ -44,6 +44,7 @@ struct DriverSettingsInput
   std::optional<bool> autoTrack;
   std::optional<bool> alarm;
   std::optional<int> alarmVolume;
+  std::optional<bool> sounding;
 };
 
 struct DriverSpeakInput

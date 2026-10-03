@@ -117,6 +117,7 @@ public:
   TapoResult setAutoTrack(const TapoAutoTrackInput& input);
   TapoResult setAlarm(const TapoAlarmInput& input);
   TapoResult setAlarmVolume(const std::string& level);
+  TapoResult manualAlarm(bool sounding);
 
   TapoResult searchDetectionList(const TapoEventFilter& filter);
 

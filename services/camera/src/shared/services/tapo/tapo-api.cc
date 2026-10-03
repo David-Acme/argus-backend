@@ -316,6 +316,23 @@ TapoResult TapoApi::setAlarmVolume(const std::string& level)
   });
 }
 
+TapoResult TapoApi::manualAlarm(bool sounding)
+{
+  Json::Value payload(Json::objectValue);
+  payload["method"] = "do";
+  payload["msg_alarm"]["manual_msg_alarm"]["action"] =
+      sounding ? "start" : "stop";
+  const auto result = callRaw(payload);
+  if (!result.ok)
+    return result;
+  if (result.data.isMember("error_code") &&
+      result.data["error_code"].asInt() != 0)
+    return TapoResult::failure(
+        "the camera rejected the manual alarm (error " +
+        std::to_string(result.data["error_code"].asInt()) + ")");
+  return result;
+}
+
 TapoResult TapoApi::searchDetectionList(const TapoEventFilter& filter)
 {
   Json::Value params(Json::objectValue);
