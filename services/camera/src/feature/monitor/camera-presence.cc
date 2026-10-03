@@ -55,7 +55,7 @@ drogon::Task<bool> CameraPresenceRecorder::persist(PresenceChange change) const
       db_transaction::rollback(transaction);
       co_return true;
     }
-    const CameraSchema before = *found;
+    const CameraSchema& before = *found;
 
     CameraUpdateInput input;
     input.isOnline = change.online;

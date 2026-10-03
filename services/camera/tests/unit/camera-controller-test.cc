@@ -443,7 +443,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   const auto onlineOf = [&cameras](int64_t id) {
     const auto row = drogon::sync_wait(cameras.findById(id));
     REQUIRE(row.has_value());
-    return row->isOnline;
+    return row.value_or(CameraSchema{}).isOnline;
   };
   CHECK_FALSE(onlineOf(cameraId2));
   drogon::sync_wait(presence.record({.cameraId = cameraId2, .reachable = true}));
@@ -520,7 +520,7 @@ TEST_CASE("a camera lives on the local network and its stream paths are plain")
   const auto parsed = CreateCameraDto::fromJson(create);
   CHECK(parsed.streamPath == "/cam/realmonitor?channel=1&subtype=0");
   CHECK(parsed.subStreamPath == "/Streaming/Channels/102");
-  create["retentionDays"] = Json::Int64(-1);
+  create["retentionDays"] = static_cast<Json::Int64>(-1);
   CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "retentionDays"));
 
   Json::Value update;

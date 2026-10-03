@@ -175,6 +175,6 @@ CameraControlFeatureService::snapshot(int64_t cameraId) const
 
   Json::Value out;
   out["image"] = "data:image/jpeg;base64," + drogon::utils::base64Encode(picture.jpeg);
-  out["capturedAt"] = Json::Int64(picture.atMs);
+  out["capturedAt"] = static_cast<Json::Int64>(picture.atMs);
   co_return DriverResult{.ok = true, .error = {}, .data = out};
 }

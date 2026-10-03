@@ -30,7 +30,7 @@ Go2rtcFrameSource::grab(const FrameGrabRequest& request)
   if (!response || response->getStatusCode() != drogon::k200OK ||
       response->getBody().empty()) {
     const bool wasOk = [&] {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::scoped_lock lock(mutex_);
       const bool ok = lastOkByCamera_[request.cameraId];
       lastOkByCamera_[request.cameraId] = false;
       return ok;
@@ -42,7 +42,7 @@ Go2rtcFrameSource::grab(const FrameGrabRequest& request)
   }
 
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     lastOkByCamera_[request.cameraId] = true;
   }
 

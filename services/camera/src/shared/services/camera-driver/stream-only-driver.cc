@@ -1,6 +1,8 @@
 #include "stream-only-driver.hxx"
 
-StreamOnlyDriver::StreamOnlyDriver(const CameraSchema& camera) : camera_(camera) {}
+#include <utility>
+
+StreamOnlyDriver::StreamOnlyDriver(CameraSchema camera) : camera_(std::move(camera)) {}
 
 Json::Value StreamOnlyDriver::capabilities() const
 {

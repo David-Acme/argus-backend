@@ -5,7 +5,7 @@
 class StreamOnlyDriver final : public ICameraDriver
 {
 public:
-  explicit StreamOnlyDriver(const CameraSchema& camera);
+  explicit StreamOnlyDriver(CameraSchema camera);
 
   [[nodiscard]] Json::Value capabilities() const override;
   DriverResult status() override;
