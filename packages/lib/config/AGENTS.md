@@ -37,7 +37,11 @@ not a local choice.
   never written back; the `setBool`/`setString`/`setInt`/`setDouble` family is
   the persisting one and rewrites the file surgically. A test that wants to
   pin a value for one process uses the first; a provisioning tool uses the
-  second.
+  second. The rewrite goes to a sibling temporary (created with the file's
+  own mode), is fsynced and renamed over the file, so a crash can no longer
+  leave a truncated `config.toml` holding the installation's secrets; when
+  the file is a single-file bind mount (`rename` answers `EBUSY`/`EXDEV`, as
+  in the deploy compose) it falls back to an fsynced in-place rewrite.
 - A missing key is not an error: the getters answer the empty string, `0`,
   `false` or `0.0`. A boot path that must tell "absent" from "empty" asks
   `hasKey`. A malformed file IS fatal — `load` logs `LOG_FATAL` and throws

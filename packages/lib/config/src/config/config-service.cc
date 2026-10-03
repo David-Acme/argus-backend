@@ -13,6 +13,10 @@
 #include <toml++/toml.h>
 #include <type_traits>
 #include <vector>
+#include <cerrno>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace
 {
@@ -183,6 +187,53 @@ std::string patchContent(const PatchContentInput& input)
   return out.str();
 }
 
+bool writeAll(int fd, const std::string& content)
+{
+  size_t written = 0;
+  while (written < content.size()) {
+    const ssize_t chunk =
+        ::write(fd, content.data() + written, content.size() - written);
+    if (chunk < 0) {
+      if (errno == EINTR)
+        continue;
+      return false;
+    }
+    written += static_cast<size_t>(chunk);
+  }
+  return ::fsync(fd) == 0;
+}
+
+bool rewriteInPlace(const std::string& path, const std::string& content)
+{
+  const int fd = ::open(path.c_str(), O_WRONLY | O_TRUNC | O_CLOEXEC);
+  if (fd < 0)
+    return false;
+  const bool written = writeAll(fd, content);
+  ::close(fd);
+  return written;
+}
+
+bool writeFileAtomically(const std::string& path, const std::string& content)
+{
+  struct stat original{};
+  const mode_t mode =
+      ::stat(path.c_str(), &original) == 0 ? (original.st_mode & 0777) : 0600;
+  const std::string temporary = path + ".tmp";
+  const int fd = ::open(temporary.c_str(),
+                        O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode);
+  if (fd < 0)
+    return rewriteInPlace(path, content);
+  const bool written = writeAll(fd, content);
+  ::close(fd);
+  if (written && ::rename(temporary.c_str(), path.c_str()) == 0)
+    return true;
+  const int renameError = errno;
+  ::unlink(temporary.c_str());
+  if (written && (renameError == EBUSY || renameError == EXDEV))
+    return rewriteInPlace(path, content);
+  return false;
+}
+
 bool applyValue(const std::string& keyPath, const std::string& literal)
 {
   std::lock_guard lock(gConfigMutex);
@@ -208,11 +259,7 @@ bool applyValue(const std::string& keyPath, const std::string& literal)
     return false;
   }
 
-  std::ofstream out(gConfigPath, std::ios::trunc);
-  if (!out.is_open())
-    return false;
-  out << patched;
-  return out.good();
+  return writeFileAtomically(gConfigPath, patched);
 }
 
 }

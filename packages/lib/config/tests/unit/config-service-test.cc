@@ -10,6 +10,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace
 {
@@ -220,6 +222,27 @@ enabled = false
   CHECK(ConfigService::getString("storage.bucket") == "new-bucket");
   CHECK(ConfigService::getInt("storage.retries") == 3);
   CHECK(ConfigService::getBool("feature.enabled"));
+
+  std::remove(path.c_str());
+}
+
+TEST_CASE("a persisting setter keeps the file's private mode and leaves no temporary")
+{
+  const std::string path = writeTemp("config-service-mode.toml", R"(
+[pairing]
+paired = false
+)");
+  REQUIRE(::chmod(path.c_str(), 0600) == 0);
+  ConfigService::load(path);
+
+  CHECK(ConfigService::setBool("pairing.paired", true));
+  CHECK(ConfigService::setString("pairing.owner_device", "abc"));
+
+  struct stat info{};
+  REQUIRE(::stat(path.c_str(), &info) == 0);
+  CHECK((info.st_mode & 0777) == 0600);
+  CHECK(::access((path + ".tmp").c_str(), F_OK) != 0);
+  CHECK(readFile(path).find("owner_device = \"abc\"") != std::string::npos);
 
   std::remove(path.c_str());
 }
