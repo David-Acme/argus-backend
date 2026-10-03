@@ -236,7 +236,8 @@ provision_models() {
     script="$ROOT/$owner/scripts/provision.sh"
     if [ -f "$script" ]; then
       log "Provisioning models: $owner"
-      bash "$script" || warn "Model provisioning failed for $owner; continuing."
+      ARGUS_TTS_CONFIG="$DEPLOY_DIR/config.tts.toml" bash "$script" || \
+        warn "Model provisioning failed for $owner; continuing."
     fi
   done
 }

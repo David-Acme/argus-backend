@@ -139,3 +139,7 @@ argus_runtime_rpath(tts-pocket-test)
 target_compile_options(tts-pocket-test PRIVATE -Wall -Wextra)
 set_target_properties(tts-pocket-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME tts-pocket-test COMMAND tts-pocket-test)
+
+find_program(TTS_BASH bash REQUIRED)
+add_test(NAME tts-provision-test
+    COMMAND ${TTS_BASH} ${CMAKE_CURRENT_SOURCE_DIR}/tests/unit/tts-provision-test.sh)

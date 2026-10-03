@@ -18,7 +18,7 @@ Argus backend - setup script (Linux).
 Provisions local dependencies and builds every standalone project:
   1. Install system build dependencies (distro aware)
   2. Install Conan (if missing) and configure the profile for C++20
-  3. Download Supertonic 3 (~415 MB) and export Kyutai Pocket TTS es/en (~0.9 GB, pinned)
+  3. Download Supertonic 3 (~415 MB) and export the selected Kyutai Pocket TTS models (pinned)
   4. Download the LFM2.5-1.2B-Instruct QAD LLM (~696 MB)
   5. Install, configure, build and test every standalone project
   6. Create per-project local configs
@@ -248,6 +248,14 @@ sync_storage_credentials() {
   log "Object storage credentials synced into $synced config(s) from ${secrets#"$ROOT"/}."
 }
 
+provision_tts() {
+  if [ "$PROFILE" = dev ] && [ -z "${ARGUS_TTS_POCKET_NONCOMMERCIAL_VOICES:-}" ]; then
+    export ARGUS_TTS_POCKET_NONCOMMERCIAL_VOICES=1
+    warn "Development setup: Kyutai's Pocket voice jean is licensed for non-commercial use only (CC BY-NC 4.0) and is installed for internal testing. ARGUS_TTS_POCKET_NONCOMMERCIAL_VOICES=0 skips it; prod and provision-host.sh never install it unless asked."
+  fi
+  ARGUS_TTS_CONFIG="$ROOT/services/tts/config.toml" "$ROOT/services/tts/scripts/provision.sh"
+}
+
 main() {
   if [ "$CAMERA_ONLY" -eq 1 ]; then
     "$ROOT/services/camera/scripts/provision.sh"
@@ -272,7 +280,7 @@ main() {
   need_cmd cmake
   setup_submodules
   ensure_instance_certs "$ROOT" "$ROOT/certs" "$ROOT/services/identity/config.toml"
-  "$ROOT/services/tts/scripts/provision.sh"
+  provision_tts
   "$ROOT/services/llm/scripts/provision.sh"
   "$ROOT/services/vlm/scripts/provision.sh"
   "$ROOT/services/stt/scripts/provision.sh"
