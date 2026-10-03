@@ -150,6 +150,10 @@ void seedProductivityDb(const std::string& path)
   std::remove(path.c_str());
   const auto db = openFile(path);
   exec(db.get(),
+      "CREATE TABLE idempotency_key (user_id INTEGER NOT NULL, "
+      "idem_key TEXT NOT NULL, route TEXT NOT NULL, record_id INTEGER NOT NULL, "
+      "created_at INTEGER NOT NULL, PRIMARY KEY (user_id, idem_key))");
+  exec(db.get(),
       "CREATE TABLE project ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
       "owner_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
@@ -399,6 +403,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   projectBody["color"] = "#00FF00";
   projectBody["startsAt"] = Json::Int64(1735689600000);
   auto projectReq = drogon::HttpRequest::newHttpJsonRequest(projectBody);
+  projectReq->addHeader("Idempotency-Key", "project-retry-1");
   setActor({.req = projectReq, .sub = 42, .role = UserRole::Owner});
   const auto created = drogon::sync_wait(projectController.create(projectReq));
   REQUIRE(created);
@@ -423,6 +428,18 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
         == static_cast<int>(SyncOperation::Add));
   CHECK(sink.emits.front().option == "project");
   CHECK(sink.emits.front().body["id"].asInt64() == projectId);
+
+  auto retriedReq = drogon::HttpRequest::newHttpJsonRequest(projectBody);
+  retriedReq->addHeader("Idempotency-Key", "project-retry-1");
+  setActor({.req = retriedReq, .sub = 42, .role = UserRole::Owner});
+  const auto retried = drogon::sync_wait(projectController.create(retriedReq));
+  CHECK(body(retried)["info"]["id"].asInt64() == projectId);
+  CHECK(sink.emits.size() == 1);
+
+  auto badKeyReq = drogon::HttpRequest::newHttpJsonRequest(projectBody);
+  badKeyReq->addHeader("Idempotency-Key", "not a key!");
+  setActor({.req = badKeyReq, .sub = 42, .role = UserRole::Owner});
+  CHECK_THROWS(drogon::sync_wait(projectController.create(badKeyReq)));
 
   auto missingUpdateReq =
       drogon::HttpRequest::newHttpJsonRequest(projectBody);
@@ -543,6 +560,13 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   taskBody["status"] = "todo";
   taskBody["priority"] = "low";
   taskBody["sortOrder"] = 1.0;
+  auto reusedKeyReq = drogon::HttpRequest::newHttpJsonRequest(taskBody);
+  reusedKeyReq->addHeader("Idempotency-Key", "project-retry-1");
+  setActor({.req = reusedKeyReq, .sub = 42, .role = UserRole::Owner});
+  const auto reusedKey = refusalOf(taskController.create(reusedKeyReq));
+  REQUIRE(reusedKey);
+  CHECK(reusedKey->status == 409);
+
   auto taskReq = drogon::HttpRequest::newHttpJsonRequest(taskBody);
   setActor({.req = taskReq, .sub = 42, .role = UserRole::Owner});
   const auto taskCreated = drogon::sync_wait(taskController.create(taskReq));
@@ -637,6 +661,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   eventBody["isAllDay"] = false;
   eventBody["projectId"] = Json::Int64(projectId);
   auto eventReq = drogon::HttpRequest::newHttpJsonRequest(eventBody);
+  eventReq->addHeader("Idempotency-Key", "event-retry-1");
   setActor({.req = eventReq, .sub = 42, .role = UserRole::Owner});
   const auto eventCreated = drogon::sync_wait(eventController.create(eventReq));
   const Json::Value eventJson = body(eventCreated);
@@ -657,6 +682,13 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   REQUIRE(sink.emits.size() == 13);
   CHECK(sink.emits.back().option == "calendar_event");
   CHECK(sink.emits.back().users == std::vector<int64_t>{42});
+
+  auto eventRetryReq = drogon::HttpRequest::newHttpJsonRequest(eventBody);
+  eventRetryReq->addHeader("Idempotency-Key", "event-retry-1");
+  setActor({.req = eventRetryReq, .sub = 42, .role = UserRole::Owner});
+  const auto eventRetried = drogon::sync_wait(eventController.create(eventRetryReq));
+  CHECK(body(eventRetried)["info"]["id"].asInt64() == eventId);
+  CHECK(sink.emits.size() == 13);
 
   CalendarEventShareController shareController;
 

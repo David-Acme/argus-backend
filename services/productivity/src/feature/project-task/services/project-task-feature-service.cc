@@ -61,9 +61,10 @@ ProjectTaskFeatureService::emit(const EmitInput& input) const
 }
 
 drogon::Task<std::optional<ProjectTaskSchema>>
-ProjectTaskFeatureService::create(const CreateProjectTaskDto& body,
-                                  int64_t actorId) const
+ProjectTaskFeatureService::create(const CreateInput& input) const
 {
+  const CreateProjectTaskDto& body = input.body;
+  const int64_t actorId = input.actorId;
   auto transaction =
       co_await db_transaction::begin(DbService::productivityClient());
   ProjectTaskSchema row;
@@ -73,6 +74,20 @@ ProjectTaskFeatureService::create(const CreateProjectTaskDto& body,
                              .client = transaction.get()})) {
       db_transaction::rollback(transaction);
       co_return std::nullopt;
+    }
+    if (!input.idempotencyKey.empty()) {
+      const auto earlier = co_await idempotency_.find(
+          {.userId = actorId, .key = input.idempotencyKey, .client = transaction.get()});
+      if (earlier) {
+        if (earlier->route != "project_task")
+          throw ResponseException(ProductivityErrors::IdempotencyKeyReused);
+        const auto existing =
+            co_await repository_.findById(earlier->recordId, transaction.get());
+        if (!existing)
+          throw ResponseException(ProductivityErrors::TaskNotFound);
+        db_transaction::rollback(transaction);
+        co_return *existing;
+      }
     }
 
     row = co_await repository_.create({
@@ -89,6 +104,12 @@ ProjectTaskFeatureService::create(const CreateProjectTaskDto& body,
     co_await emit({.operation = SyncOperation::Add,
                    .row = row,
                    .client = transaction.get()});
+    if (!input.idempotencyKey.empty())
+      co_await idempotency_.remember({.userId = actorId,
+                                      .key = input.idempotencyKey,
+                                      .route = "project_task",
+                                      .recordId = row.id,
+                                      .client = transaction.get()});
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
   }

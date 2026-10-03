@@ -3,6 +3,7 @@
 #include <errors/response-exception.hxx>
 #include <feature/project-task/dtos/create-project-task-dto.hxx>
 #include <feature/project-task/dtos/update-project-task-dto.hxx>
+#include <shared/dtos/idempotency-key/idempotency-key-dto.hxx>
 #include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <productivity/productivity-errors.hxx>
@@ -12,10 +13,12 @@ drogon::Task<drogon::HttpResponsePtr>
 ProjectTaskController::create(drogon::HttpRequestPtr req)
 {
   const auto body = CreateProjectTaskDto::fromJson(*req->getJsonObject());
+  const auto idempotency = IdempotencyKeyDto::fromRequest(req);
   const auto& ctx =
       req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
 
-  const auto row = co_await service_.create(body, ctx.sub);
+  const auto row = co_await service_.create(
+      {.body = body, .actorId = ctx.sub, .idempotencyKey = idempotency.key});
   if (!row)
     throw ResponseException(ProductivityErrors::ProjectNotFound);
   co_return ApiResponse::ok(row->toJson());

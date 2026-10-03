@@ -151,6 +151,18 @@ CREATE INDEX IF NOT EXISTS idx_calendar_event_share_live_created
 CREATE INDEX IF NOT EXISTS idx_calendar_event_share_deleted_at
     ON calendar_event_share (deleted_at, id) WHERE deleted_at IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS idempotency_key (
+    user_id    INTEGER NOT NULL,
+    idem_key   TEXT    NOT NULL,
+    route      TEXT    NOT NULL,
+    record_id  INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, idem_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_idempotency_key_created
+    ON idempotency_key (created_at);
+
 CREATE TABLE IF NOT EXISTS change_outbox (
     event_id    TEXT    NOT NULL  PRIMARY KEY,
     fingerprint TEXT    NOT NULL  DEFAULT '',

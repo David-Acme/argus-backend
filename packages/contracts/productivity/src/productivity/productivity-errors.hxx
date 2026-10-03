@@ -37,6 +37,10 @@ inline constexpr ErrorDefinition OwnerAlreadyHasAccess{
     .code = ErrorCode::Conflict,
     .status = 409,
     .message = "The owner already has access"};
+inline constexpr ErrorDefinition IdempotencyKeyReused{
+    .code = ErrorCode::Conflict,
+    .status = 409,
+    .message = "That Idempotency-Key already created something else"};
 inline constexpr ErrorDefinition ChangeNotRecorded{
     .code = ErrorCode::InternalError,
     .status = 500,

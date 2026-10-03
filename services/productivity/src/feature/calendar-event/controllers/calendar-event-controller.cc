@@ -3,6 +3,7 @@
 #include <errors/response-exception.hxx>
 #include <feature/calendar-event/dtos/create-calendar-event-dto.hxx>
 #include <feature/calendar-event/dtos/update-calendar-event-dto.hxx>
+#include <shared/dtos/idempotency-key/idempotency-key-dto.hxx>
 #include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <productivity/productivity-errors.hxx>
@@ -12,11 +13,12 @@ drogon::Task<drogon::HttpResponsePtr>
 CalendarEventController::create(drogon::HttpRequestPtr req)
 {
   const auto body = CreateCalendarEventDto::fromJson(*req->getJsonObject());
+  const auto idempotency = IdempotencyKeyDto::fromRequest(req);
   const auto& ctx =
       req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
 
-  const auto row =
-      co_await service_.create(body, {.ownerId = ctx.sub, .actorId = ctx.sub});
+  const auto row = co_await service_.create(
+      body, {.ownerId = ctx.sub, .actorId = ctx.sub, .idempotencyKey = idempotency.key});
   co_return ApiResponse::ok(row.toJson());
 }
 

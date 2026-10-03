@@ -7,6 +7,7 @@ argus_module(NAME productivity-project
     INCLUDES
         ../..
     DEPENDS
+        argus::productivity-dtos
         argus::productivity-repositories
         argus::contracts::productivity
         argus::contracts::sync

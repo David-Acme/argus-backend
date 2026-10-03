@@ -6,6 +6,8 @@
 #include <feature/project/dtos/create-project-dto.hxx>
 #include <feature/project/dtos/update-project-dto.hxx>
 #include <optional>
+#include <string>
+#include <shared/repositories/idempotency-key/idempotency-key-repository.hxx>
 #include <shared/repositories/project-member/project-member-repository.hxx>
 #include <shared/repositories/project-task/project-task-repository.hxx>
 #include <shared/repositories/project/project-repository.hxx>
@@ -15,6 +17,13 @@
 class ProjectFeatureService
 {
 public:
+  struct CreateInput
+  {
+    const CreateProjectDto& body;
+    int64_t ownerId{0};
+    std::string idempotencyKey;
+  };
+
   struct UpdateInput
   {
     int64_t id{0};
@@ -22,8 +31,7 @@ public:
     int64_t actorId{0};
   };
 
-  drogon::Task<ProjectSchema> create(const CreateProjectDto& body,
-                                     int64_t ownerId) const;
+  drogon::Task<ProjectSchema> create(const CreateInput& input) const;
   drogon::Task<std::optional<ProjectSchema>>
   update(const UpdateInput& input) const;
   drogon::Task<bool> remove(int64_t id, int64_t actorId) const;
@@ -50,4 +58,5 @@ private:
   ProjectRepository repository_;
   ProjectMemberRepository memberRepository_;
   ProjectTaskRepository taskRepository_;
+  IdempotencyKeyRepository idempotency_;
 };

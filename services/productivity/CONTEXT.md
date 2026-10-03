@@ -105,6 +105,16 @@ own `productivity.db`.
   delete returns `{deleted: true, id}`. The `id` on the delete answer is
   additive; the app reconciles a pending create, update or delete by that id
   and drops it when `/sync` delivers the same record.
+- **A create may carry an `Idempotency-Key`** (2026-10). `POST /project`,
+  `/project-task` and `/calendar-event` read the optional header (at most 64
+  letters, digits, `-`, `_`; anything else is a 422). Inside the create's own
+  transaction the key is looked up per user in `idempotency_key`: a hit on
+  the same route answers the row it created (no second row, no second emit),
+  a hit on another route is `409 IdempotencyKeyReused`, and a miss creates
+  and records the key in the same commit. Keys live 24 h and are purged on
+  the next keyed create. Without the header a create behaves exactly as
+  before. The app's Retry after a timeout sends the same key, so a request
+  that did reach the server cannot duplicate the row.
 - **PATCH: omitted means unchanged, null means clear** (2026-10). A task's
   `dueAt: null` clears its due date and a calendar event's `endsAt: null`
   clears its end (`due_at = NULL` / `ends_at = NULL`); `location: null` and

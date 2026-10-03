@@ -80,13 +80,28 @@ ProjectFeatureService::canEdit(const CanEditInput& input) const
 }
 
 drogon::Task<ProjectSchema>
-ProjectFeatureService::create(const CreateProjectDto& body,
-                              int64_t ownerId) const
+ProjectFeatureService::create(const CreateInput& input) const
 {
+  const CreateProjectDto& body = input.body;
+  const int64_t ownerId = input.ownerId;
   auto transaction =
       co_await db_transaction::begin(DbService::productivityClient());
   ProjectSchema row;
   try {
+    if (!input.idempotencyKey.empty()) {
+      const auto earlier = co_await idempotency_.find(
+          {.userId = ownerId, .key = input.idempotencyKey, .client = transaction.get()});
+      if (earlier) {
+        if (earlier->route != "project")
+          throw ResponseException(ProductivityErrors::IdempotencyKeyReused);
+        const auto existing =
+            co_await repository_.findById(earlier->recordId, transaction.get());
+        db_transaction::rollback(transaction);
+        if (!existing)
+          throw ResponseException(ProductivityErrors::ProjectNotFound);
+        co_return *existing;
+      }
+    }
     row = co_await repository_.create({
         .ownerId = ownerId,
         .name = body.name,
@@ -100,6 +115,12 @@ ProjectFeatureService::create(const CreateProjectDto& body,
     co_await emit({.operation = SyncOperation::Add,
                    .row = row,
                    .client = transaction.get()});
+    if (!input.idempotencyKey.empty())
+      co_await idempotency_.remember({.userId = ownerId,
+                                      .key = input.idempotencyKey,
+                                      .route = "project",
+                                      .recordId = row.id,
+                                      .client = transaction.get()});
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
   }

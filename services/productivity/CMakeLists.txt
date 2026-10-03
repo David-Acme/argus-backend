@@ -85,6 +85,7 @@ endif()
 
 add_subdirectory(src/config)
 add_subdirectory(src/shared/services/change-sink)
+add_subdirectory(src/shared/dtos)
 add_subdirectory(src/shared/repositories)
 add_subdirectory(src/shared/repositories/change-outbox)
 

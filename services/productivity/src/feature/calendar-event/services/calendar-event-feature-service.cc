@@ -56,6 +56,20 @@ CalendarEventFeatureService::create(const CreateCalendarEventDto& body,
       co_await db_transaction::begin(DbService::productivityClient());
   CalendarEventSchema row;
   try {
+    if (!who.idempotencyKey.empty()) {
+      const auto earlier = co_await idempotency_.find(
+          {.userId = who.ownerId, .key = who.idempotencyKey, .client = transaction.get()});
+      if (earlier) {
+        if (earlier->route != "calendar_event")
+          throw ResponseException(ProductivityErrors::IdempotencyKeyReused);
+        const auto existing =
+            co_await repository_.findById(earlier->recordId, transaction.get());
+        if (!existing)
+          throw ResponseException(ProductivityErrors::CalendarEventNotFound);
+        db_transaction::rollback(transaction);
+        co_return *existing;
+      }
+    }
     row = co_await repository_.create({
         .createdBy = who.actorId > 0 ? std::optional<int64_t>(who.actorId)
                                      : std::nullopt,
@@ -74,6 +88,12 @@ CalendarEventFeatureService::create(const CreateCalendarEventDto& body,
     co_await emit({.operation = SyncOperation::Add,
                    .row = row,
                    .client = transaction.get()});
+    if (!who.idempotencyKey.empty())
+      co_await idempotency_.remember({.userId = who.ownerId,
+                                      .key = who.idempotencyKey,
+                                      .route = "calendar_event",
+                                      .recordId = row.id,
+                                      .client = transaction.get()});
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
   }

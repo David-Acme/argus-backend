@@ -284,14 +284,14 @@ TEST_CASE("a productivity write and its change are one unit of work")
 
   sink.refuse(true);
   CHECK_THROWS_AS(
-      drogon::sync_wait(projects.create(projectBody("Refused Project"), kOwner)),
+      drogon::sync_wait(projects.create({.body = projectBody("Refused Project"), .ownerId = kOwner, .idempotencyKey = {}})),
       std::runtime_error);
   CHECK(liveProjects("Refused Project") == 0);
 
   sink.refuse(false);
   const int beforeCreate = sink.calls();
   const auto project =
-      drogon::sync_wait(projects.create(projectBody("Kept Project"), kOwner));
+      drogon::sync_wait(projects.create({.body = projectBody("Kept Project"), .ownerId = kOwner, .idempotencyKey = {}}));
   CHECK(project.id > 0);
   CHECK(sink.calls() == beforeCreate + 1);
   CHECK(sink.sawClient());
@@ -315,7 +315,7 @@ TEST_CASE("a productivity write and its change are one unit of work")
   CHECK(sink.transactional());
 
   const auto live = drogon::sync_wait(
-      projects.create(projectBody("Removed Project"), kOwner));
+      projects.create({.body = projectBody("Removed Project"), .ownerId = kOwner, .idempotencyKey = {}}));
   sink.refuse(true);
   CHECK_THROWS_AS(drogon::sync_wait(projects.remove(live.id, kOwner)),
                   std::runtime_error);
@@ -330,12 +330,12 @@ TEST_CASE("a productivity write and its change are one unit of work")
 
   sink.refuse(true);
   CHECK_THROWS_AS(
-      drogon::sync_wait(tasks.create(taskBody(parentId, "Refused Task"), kOwner)),
+      drogon::sync_wait(tasks.create({.body = taskBody(parentId, "Refused Task"), .actorId = kOwner, .idempotencyKey = {}})),
       std::runtime_error);
   CHECK(liveTasks("Refused Task") == 0);
 
   sink.refuse(false);
-  CHECK(drogon::sync_wait(tasks.create(taskBody(parentId, "Kept Task"), kOwner))
+  CHECK(drogon::sync_wait(tasks.create({.body = taskBody(parentId, "Kept Task"), .actorId = kOwner, .idempotencyKey = {}}))
             .has_value());
   CHECK(liveTasks("Kept Task") == 1);
   CHECK(sink.transactional());
@@ -382,13 +382,13 @@ TEST_CASE("a productivity write and its change are one unit of work")
   sink.refuse(true);
   CHECK_THROWS_AS(
       drogon::sync_wait(events.create(eventBody("Refused Event"),
-                                      {.ownerId = kOwner, .actorId = kOwner})),
+                                      {.ownerId = kOwner, .actorId = kOwner, .idempotencyKey = {}})),
       std::runtime_error);
   CHECK(liveEvents("Refused Event") == 0);
 
   sink.refuse(false);
   const auto event = drogon::sync_wait(events.create(
-      eventBody("Kept Event"), {.ownerId = kOwner, .actorId = kOwner}));
+      eventBody("Kept Event"), {.ownerId = kOwner, .actorId = kOwner, .idempotencyKey = {}}));
   CHECK(event.id > 0);
   CHECK(liveEvents("Kept Event") == 1);
   CHECK(sink.transactional());
@@ -429,7 +429,7 @@ TEST_CASE("a productivity write and its change are one unit of work")
 
   ChangeOutboxRepository outbox;
   const auto durable = drogon::sync_wait(
-      projects.create(projectBody("Durable Project"), kOwner));
+      projects.create({.body = projectBody("Durable Project"), .ownerId = kOwner, .idempotencyKey = {}}));
   CHECK(durable.id > 0);
   const auto pending = outbox.pendingBatch(10);
   REQUIRE(pending.size() == 1);
@@ -439,7 +439,7 @@ TEST_CASE("a productivity write and its change are one unit of work")
   DbService::productivityClient()->execSqlSync("DROP TABLE change_outbox");
 
   CHECK_THROWS(drogon::sync_wait(
-      projects.create(projectBody("Orphan Project"), kOwner)));
+      projects.create({.body = projectBody("Orphan Project"), .ownerId = kOwner, .idempotencyKey = {}})));
   CHECK(liveProjects("Orphan Project") == 0);
   CHECK(liveProjects("Durable Project") == 1);
 

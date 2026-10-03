@@ -2,6 +2,7 @@ argus_module(NAME productivity-repositories
     SOURCES
         calendar-event/calendar-event-repository.cc
         calendar-event-share/calendar-event-share-repository.cc
+        idempotency-key/idempotency-key-repository.cc
         project/project-repository.cc
         project-member/project-member-repository.cc
         project-task/project-task-repository.cc
