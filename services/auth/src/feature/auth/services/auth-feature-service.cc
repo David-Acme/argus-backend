@@ -11,7 +11,9 @@
 #include <identity/identity-client.hxx>
 #include <map>
 #include <mutex>
+#include <openssl/crypto.h>
 #include <openssl/rand.h>
+#include <optional>
 #include <runtime/blocking-task.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
@@ -30,51 +32,76 @@ namespace
 
 constexpr int64_t kDeviceLoginTtlSeconds = 120;
 
-struct PendingDeviceSecret
-{
-  std::string secret;
-  int64_t expiresAt{0};
-};
-
-struct PendingDeviceSecretInput
+struct ExpiringSecretInput
 {
   std::string challengeId;
   std::string secret;
   int64_t expiresAt{0};
 };
 
-std::map<std::string, PendingDeviceSecret>& pendingDeviceSecrets()
+class ExpiringSecrets
 {
-  static std::map<std::string, PendingDeviceSecret> secrets;
+public:
+  void store(const ExpiringSecretInput& input)
+  {
+    std::scoped_lock lock(mutex_);
+    const int64_t now = std::time(nullptr);
+    std::erase_if(secrets_, [now](const auto& entry) { return entry.second.expiresAt <= now; });
+    secrets_[input.challengeId] = {.secret = input.secret, .expiresAt = input.expiresAt};
+  }
+
+  std::string take(const std::string& challengeId)
+  {
+    std::scoped_lock lock(mutex_);
+    auto node = secrets_.extract(challengeId);
+    return node.empty() ? std::string{} : std::move(node.mapped().secret);
+  }
+
+  std::optional<std::string> peek(const std::string& challengeId)
+  {
+    std::scoped_lock lock(mutex_);
+    const auto it = secrets_.find(challengeId);
+    if (it == secrets_.end() || it->second.expiresAt <= std::time(nullptr))
+      return std::nullopt;
+    return it->second.secret;
+  }
+
+private:
+  struct Entry
+  {
+    std::string secret;
+    int64_t expiresAt{0};
+  };
+
+  std::mutex mutex_;
+  std::map<std::string, Entry> secrets_;
+};
+
+ExpiringSecrets& pendingDeviceSecrets()
+{
+  static ExpiringSecrets secrets;
   return secrets;
 }
 
-std::mutex& pendingDeviceSecretsMutex()
+ExpiringSecrets& pendingPollHashes()
 {
-  static std::mutex mutex;
-  return mutex;
+  static ExpiringSecrets hashes;
+  return hashes;
 }
 
-void storePendingDeviceSecret(const PendingDeviceSecretInput& input)
+bool sameDigest(std::string_view left, std::string_view right)
 {
-  std::scoped_lock lock(pendingDeviceSecretsMutex());
-  const int64_t now = std::time(nullptr);
-  std::erase_if(pendingDeviceSecrets(), [&](const auto& entry) {
-    return entry.second.expiresAt <= now;
-  });
-  pendingDeviceSecrets()[input.challengeId] = {
-      .secret = input.secret, .expiresAt = input.expiresAt};
+  return left.size() == right.size() &&
+         CRYPTO_memcmp(left.data(), right.data(), left.size()) == 0;
 }
 
-std::string takePendingDeviceSecret(const std::string& challengeId)
+bool pollerOwnsChallenge(const DeviceLoginPollInput& input,
+                         const DeviceLoginChallengeSchema& challenge)
 {
-  std::scoped_lock lock(pendingDeviceSecretsMutex());
-  const auto it = pendingDeviceSecrets().find(challengeId);
-  if (it == pendingDeviceSecrets().end())
-    return {};
-  auto secret = std::move(it->second.secret);
-  pendingDeviceSecrets().erase(it);
-  return secret;
+  if (const auto pollHash = pendingPollHashes().peek(input.challengeId))
+    return !input.proof.empty() &&
+           sameDigest(DeviceFilter::sha256Hex(input.proof), *pollHash);
+  return challenge.deviceHash == input.device.deviceHash;
 }
 
 std::string randomSecret()
@@ -247,7 +274,7 @@ AuthFeatureService::registerUser(RegisterDto body,
 }
 
 drogon::Task<CreateDeviceLoginDto>
-AuthFeatureService::createDeviceLogin(const LoginDeviceInput& device) const
+AuthFeatureService::createDeviceLogin(const DeviceLoginStartInput& input) const
 {
   const std::string challengeId = randomSecret();
   if (challengeId.empty())
@@ -258,9 +285,13 @@ AuthFeatureService::createDeviceLogin(const LoginDeviceInput& device) const
   const int64_t expiresAt = now + kDeviceLoginTtlSeconds;
   co_await dependencies_.challengeRepository.create(
       {.challengeId = challengeId,
-       .deviceHash = device.deviceHash,
-       .userAgent = device.userAgent,
+       .deviceHash = input.device.deviceHash,
+       .userAgent = input.device.userAgent,
        .expiresAt = expiresAt});
+  if (!input.pollHash.empty())
+    pendingPollHashes().store({.challengeId = challengeId,
+                               .secret = input.pollHash,
+                               .expiresAt = expiresAt});
 
   co_return CreateDeviceLoginDto{.challengeId = challengeId,
                                  .expiresAt = expiresAt};
@@ -330,7 +361,7 @@ AuthFeatureService::approveDeviceLogin(const std::string& challengeId,
   }
 
   if (!credential.secret.empty())
-    storePendingDeviceSecret({.challengeId = challengeId,
+    pendingDeviceSecrets().store({.challengeId = challengeId,
                               .secret = credential.secret,
                               .expiresAt = challenge->expiresAt});
 }
@@ -348,15 +379,21 @@ AuthFeatureService::pollDeviceLogin(const DeviceLoginPollInput& input) const
     co_await dependencies_.challengeRepository.remove(challengeId);
     co_return idleDeviceLogin(DeviceLoginStatus::Expired);
   }
+  if (challenge->status == DeviceLoginStatus::Expired)
+    co_return idleDeviceLogin(DeviceLoginStatus::Expired);
   if (challenge->status != DeviceLoginStatus::Approved ||
-      challenge->deviceHash != input.device.deviceHash)
+      !pollerOwnsChallenge(input, *challenge))
     co_return idleDeviceLogin(DeviceLoginStatus::Pending);
+  if (!co_await dependencies_.challengeRepository.claimApproved(
+          challengeId, static_cast<int64_t>(std::time(nullptr))))
+    co_return idleDeviceLogin(DeviceLoginStatus::Expired);
 
   DeviceLoginStatusDto result;
   result.status = DeviceLoginStatus::Approved;
   result.accessToken = challenge->accessToken;
   result.refreshToken = challenge->refreshToken;
-  result.deviceSecret = takePendingDeviceSecret(challengeId);
+  result.deviceSecret = pendingDeviceSecrets().take(challengeId);
+  static_cast<void>(pendingPollHashes().take(challengeId));
   if (challenge->userId) {
     const auto answer =
         co_await fetchIdentityUser(dependencies_.identity, *challenge->userId);
@@ -396,10 +433,6 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
   }
 
-  if (!co_await dependencies_.refreshTokenRepository.markUsed(existing->id))
-    throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
-  co_await dependencies_.refreshTokenRepository.pruneStale(*userId);
-
   std::map<std::string, std::string> newClaims;
   newClaims["sub"] = std::to_string(*userId);
 
@@ -407,14 +440,29 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
   result.accessToken = dependencies_.jwtService.generateAccess(newClaims);
   result.refreshToken = dependencies_.jwtService.generateRefresh(newClaims);
 
-  co_await dependencies_.refreshTokenRepository.create(
-      {.userId = *userId,
-       .accessToken = result.accessToken,
-       .refreshToken = result.refreshToken,
-       .deviceHash = input.deviceHash,
-       .userAgent = existing->userAgent,
-       .expiresAt = static_cast<int64_t>(std::time(nullptr)) +
-                    dependencies_.jwtService.refreshTtlSeconds()});
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    if (!co_await dependencies_.refreshTokenRepository.markUsed(
+            existing->id, transaction.get()))
+      throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
+    co_await dependencies_.refreshTokenRepository.pruneStale(*userId,
+                                                             transaction.get());
+    co_await dependencies_.refreshTokenRepository.create(
+        {.userId = *userId,
+         .accessToken = result.accessToken,
+         .refreshToken = result.refreshToken,
+         .deviceHash = input.deviceHash,
+         .userAgent = existing->userAgent,
+         .expiresAt = static_cast<int64_t>(std::time(nullptr)) +
+                      dependencies_.jwtService.refreshTtlSeconds(),
+         .client = transaction.get()});
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(AuthErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   co_return result;
 }
 

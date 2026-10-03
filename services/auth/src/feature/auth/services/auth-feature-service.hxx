@@ -26,10 +26,17 @@ struct LoginDeviceInput
   std::string userAgent;
 };
 
+struct DeviceLoginStartInput
+{
+  LoginDeviceInput device;
+  std::string pollHash;
+};
+
 struct DeviceLoginPollInput
 {
   std::string challengeId;
   LoginDeviceInput device;
+  std::string proof;
 };
 
 struct SessionUser
@@ -102,7 +109,7 @@ public:
   registerUser(RegisterDto body, const LoginDeviceInput& device) const;
 
   [[nodiscard]] drogon::Task<CreateDeviceLoginDto>
-  createDeviceLogin(const LoginDeviceInput& device) const;
+  createDeviceLogin(const DeviceLoginStartInput& input) const;
 
   [[nodiscard]] drogon::Task<void>
   approveDeviceLogin(const std::string& challengeId,

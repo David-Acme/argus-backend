@@ -51,6 +51,16 @@ drogon::Task<bool> DeviceLoginChallengeRepository::markApproved(
 }
 
 drogon::Task<bool>
+DeviceLoginChallengeRepository::claimApproved(const std::string& challengeId,
+                                              int64_t now) const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(std::string(CLAIM_APPROVED),
+                                                   challengeId, now);
+  co_return result.affectedRows() == 1;
+}
+
+drogon::Task<bool>
 DeviceLoginChallengeRepository::remove(const std::string& challengeId) const
 {
   auto client = DbService::client();

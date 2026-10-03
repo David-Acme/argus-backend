@@ -22,6 +22,11 @@ inline constexpr std::string_view MARK_APPROVED =
     "refresh_token = ? "
     "WHERE challenge_id = ? AND status = 'pending'";
 
+inline constexpr std::string_view CLAIM_APPROVED =
+    "UPDATE device_login_challenge "
+    "SET status = 'expired', access_token = NULL, refresh_token = NULL "
+    "WHERE challenge_id = ? AND status = 'approved' AND expires_at > ?";
+
 inline constexpr std::string_view DELETE_BY_CHALLENGE_ID =
     "DELETE FROM device_login_challenge WHERE challenge_id = ?";
 

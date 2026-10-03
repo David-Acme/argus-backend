@@ -62,6 +62,22 @@ challenge first deletes the expired ones. Before, whoever polled first -
 anyone who saw the QR - received the approver's tokens, and an approved
 challenge that nobody polled kept live tokens in `auth.db` forever.
 
+The device hash did not hold in `credential` mode: a device that has no
+credential yet (every desktop showing the QR) is hashed as the empty string,
+so any poller without a credential matched it (2026-10). The challenge is now
+bound to `DeviceFilter::deviceKey` (HMAC of agent and address) in both modes,
+and above that to a proof only the creating device knows: `POST
+/auth/device-login` may carry `pollHash`, the SHA-256 of a random proof the
+app keeps in memory, and the poll then presents the proof in
+`X-Argus-Login-Proof`; when a challenge has a poll hash, nothing else unlocks
+it. The hash lives in memory beside the pending device secrets, so a restart
+falls back to the device key. Handing out the tokens is a single conditional
+UPDATE (`approved` to `expired`), so two pollers can never both receive them.
+
+A refresh rotates in one transaction: marking the presented token used,
+pruning the user's stale rows and inserting the new pair commit together, so
+a failed insert no longer leaves a used token and no session.
+
 `AuthRateGate` (`[rate_limit]`, on unless the key says otherwise) limits
 the unauthenticated entry points - `POST /auth/login`, `POST
 /auth/register`, `POST /auth/device-login` - and `PATCH
@@ -72,7 +88,11 @@ by user agent and address, so a face login could be retried without limit
 and a rotated `User-Agent` skipped any limit; and once 4096 keys were
 tracked it refused everyone. A full table now evicts an entry that is not
 locked out. A household behind one address shares the budget (ten
-requests per route per minute by default).
+requests per route per minute by default). When the address comes from a
+trusted `X-Forwarded-For`, the socket's own peer address carries a second,
+twenty-times larger budget, so rotating the header no longer buys unlimited
+attempts. A 5xx answer (identity down) counts neither as a success nor as a
+failure: an outage no longer locks the household out.
 
 No feature reads another's repository, so rule 23's 2+ rule puts each of the
 three in its own feature and keeps `src/shared/` empty.

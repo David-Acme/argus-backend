@@ -61,11 +61,13 @@ RefreshTokenRepository::findByRefreshToken(
   co_return RefreshTokenSchema(result.front());
 }
 
-drogon::Task<bool> RefreshTokenRepository::markUsed(int64_t id) const
+drogon::Task<bool>
+RefreshTokenRepository::markUsed(int64_t id, drogon::orm::DbClient* client) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* resolved = client ? client : pooled.get();
   const auto result =
-      co_await client->execSqlCoro(std::string(MARK_USED), id);
+      co_await resolved->execSqlCoro(std::string(MARK_USED), id);
   co_return result.affectedRows() > 0;
 }
 
@@ -79,9 +81,11 @@ drogon::Task<bool> RefreshTokenRepository::invalidateAllUser(
   co_return result.affectedRows() > 0;
 }
 
-drogon::Task<void> RefreshTokenRepository::pruneStale(int64_t userId) const
+drogon::Task<void>
+RefreshTokenRepository::pruneStale(int64_t userId,
+                                   drogon::orm::DbClient* client) const
 {
-  auto client = DbService::client();
-  co_await client->execSqlCoro(std::string(PRUNE_STALE), userId);
-  co_return;
+  const auto pooled = DbService::client();
+  auto* resolved = client ? client : pooled.get();
+  co_await resolved->execSqlCoro(std::string(PRUNE_STALE), userId);
 }

@@ -453,15 +453,31 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK_FALSE(admitted);
   client->execSqlSync("DELETE FROM refresh_token");
 
-  const auto created = drogon::sync_wait(
-      authService.createDeviceLogin({.deviceHash = "", .userAgent = kDesktopUa}));
+  const std::string loginProof(64, 'b');
+  const auto created = drogon::sync_wait(authService.createDeviceLogin(
+      {.device = {.deviceHash = "", .userAgent = kDesktopUa},
+       .pollHash = DeviceFilter::sha256Hex(loginProof)}));
   REQUIRE(hexShape(created.challengeId, 64));
   REQUIRE_NOTHROW(
       drogon::sync_wait(authService.approveDeviceLogin(created.challengeId, 1)));
 
+  const auto watcher = drogon::sync_wait(authService.pollDeviceLogin(
+      {.challengeId = created.challengeId,
+       .device = {.deviceHash = "", .userAgent = kDesktopUa},
+       .proof = ""}));
+  CHECK(watcher.status == DeviceLoginStatus::Pending);
+  CHECK(watcher.accessToken.empty());
+  const auto guesser = drogon::sync_wait(authService.pollDeviceLogin(
+      {.challengeId = created.challengeId,
+       .device = {.deviceHash = "", .userAgent = kDesktopUa},
+       .proof = std::string(64, 'c')}));
+  CHECK(guesser.status == DeviceLoginStatus::Pending);
+  CHECK(guesser.accessToken.empty());
+
   const auto polled = drogon::sync_wait(authService.pollDeviceLogin(
       {.challengeId = created.challengeId,
-       .device = {.deviceHash = "", .userAgent = kDesktopUa}}));
+       .device = {.deviceHash = "", .userAgent = kDesktopUa},
+       .proof = loginProof}));
   CHECK(polled.status == DeviceLoginStatus::Approved);
   CHECK(polled.userId == kUserId);
   CHECK(polled.name == "Ada Rico");
@@ -486,7 +502,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK(jwtCtx(desktop).deviceHash == expectedHash);
 
   const auto contended = drogon::sync_wait(authService.createDeviceLogin(
-      {.deviceHash = "", .userAgent = kDesktopUa}));
+      {.device = {.deviceHash = "", .userAgent = kDesktopUa}, .pollHash = ""}));
   REQUIRE(hexShape(contended.challengeId, 64));
   app.identity().beforeGetUser = [&client, &contended] {
     client->execSqlSync(
@@ -506,23 +522,26 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
 
   const auto replayed = drogon::sync_wait(authService.pollDeviceLogin(
       {.challengeId = created.challengeId,
-       .device = {.deviceHash = "", .userAgent = kDesktopUa}}));
+       .device = {.deviceHash = "", .userAgent = kDesktopUa},
+       .proof = loginProof}));
   CHECK(replayed.status == DeviceLoginStatus::Expired);
   CHECK(replayed.deviceSecret.empty());
 
   ConfigService::setRuntimeString("device.identity_mode", "");
   const auto ipChallenge = drogon::sync_wait(authService.createDeviceLogin(
-      {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa}));
+      {.device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa}, .pollHash = ""}));
   REQUIRE_NOTHROW(drogon::sync_wait(
       authService.approveDeviceLogin(ipChallenge.challengeId, 1)));
   const auto snooped = drogon::sync_wait(authService.pollDeviceLogin(
       {.challengeId = ipChallenge.challengeId,
-       .device = {.deviceHash = "another-device", .userAgent = kDesktopUa}}));
+       .device = {.deviceHash = "another-device", .userAgent = kDesktopUa},
+       .proof = ""}));
   CHECK(snooped.status == DeviceLoginStatus::Pending);
   CHECK(snooped.accessToken.empty());
   const auto ipPolled = drogon::sync_wait(authService.pollDeviceLogin(
       {.challengeId = ipChallenge.challengeId,
-       .device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa}}));
+       .device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa},
+       .proof = ""}));
   CHECK(ipPolled.status == DeviceLoginStatus::Approved);
   CHECK(ipPolled.deviceSecret.empty());
   CHECK_FALSE(ipPolled.toJson().isMember("device_secret"));
@@ -540,6 +559,20 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
     return;
   }
   CHECK(bound->deviceHash == jwtCtx(desktop).deviceHash);
+
+  const auto claimed = drogon::sync_wait(authService.createDeviceLogin(
+      {.device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa}, .pollHash = ""}));
+  REQUIRE_NOTHROW(drogon::sync_wait(authService.approveDeviceLogin(claimed.challengeId, 1)));
+  const DeviceLoginChallengeRepository challenges;
+  const auto claimAt = static_cast<int64_t>(std::time(nullptr));
+  CHECK(drogon::sync_wait(challenges.claimApproved(claimed.challengeId, claimAt)));
+  CHECK_FALSE(drogon::sync_wait(challenges.claimApproved(claimed.challengeId, claimAt)));
+  const auto secondPoller = drogon::sync_wait(authService.pollDeviceLogin(
+      {.challengeId = claimed.challengeId,
+       .device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa},
+       .proof = ""}));
+  CHECK(secondPoller.status != DeviceLoginStatus::Approved);
+  CHECK(secondPoller.accessToken.empty());
 
   ConfigService::setRuntimeString("auth.target", "127.0.0.1:1");
   auto unreachable = drogon::HttpRequest::newHttpRequest();

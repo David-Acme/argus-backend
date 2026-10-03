@@ -24,11 +24,13 @@ public:
   [[nodiscard]] drogon::Task<std::optional<RefreshTokenSchema>>
   findByRefreshToken(int64_t userId, const std::string& refreshToken) const;
 
-  [[nodiscard]] drogon::Task<bool> markUsed(int64_t id) const;
+  [[nodiscard]] drogon::Task<bool>
+  markUsed(int64_t id, drogon::orm::DbClient* client = nullptr) const;
 
   [[nodiscard]] drogon::Task<bool>
   invalidateAllUser(int64_t userId,
                     drogon::orm::DbClient* client = nullptr) const;
 
-  [[nodiscard]] drogon::Task<void> pruneStale(int64_t userId) const;
+  [[nodiscard]] drogon::Task<void>
+  pruneStale(int64_t userId, drogon::orm::DbClient* client = nullptr) const;
 };

@@ -8,6 +8,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 class AuthRateGate
 {
@@ -20,6 +21,8 @@ public:
   void recordOutcome(const drogon::HttpRequestPtr& req,
                      const drogon::HttpResponsePtr& resp);
 
+  static constexpr int kPeerCeilingFactor = 20;
+
 private:
   struct Entry
   {
@@ -28,14 +31,21 @@ private:
     std::chrono::steady_clock::time_point lockedUntil{};
   };
 
+  struct GateKey
+  {
+    std::string key;
+    int maxRequests{0};
+    int lockoutThreshold{0};
+  };
+
   [[nodiscard]] bool enabled() const;
   [[nodiscard]] static std::string guardedRoute(const drogon::HttpRequestPtr& req);
-  [[nodiscard]] static std::string
-  rateLimitKey(const drogon::HttpRequestPtr& req);
-  [[nodiscard]] bool admit(const std::string& key,
+  [[nodiscard]] std::vector<GateKey>
+  gateKeys(const drogon::HttpRequestPtr& req) const;
+  [[nodiscard]] bool admit(const GateKey& gateKey,
                            std::chrono::steady_clock::time_point now);
   void recordSuccess(const std::string& key);
-  [[nodiscard]] bool recordFailure(const std::string& key,
+  [[nodiscard]] bool recordFailure(const GateKey& gateKey,
                                    std::chrono::steady_clock::time_point now);
   void pruneExpired(std::chrono::steady_clock::time_point now);
   [[nodiscard]] bool makeRoom(std::chrono::steady_clock::time_point now);

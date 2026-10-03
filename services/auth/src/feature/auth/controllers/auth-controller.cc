@@ -7,6 +7,8 @@
 #include <auth/user-role.hxx>
 #include <drogon/MultiPart.h>
 #include <errors/response-exception.hxx>
+#include <feature/auth/dtos/poll-device-login-dto.hxx>
+#include <feature/auth/dtos/start-device-login-dto.hxx>
 #include <feature/auth/dtos/update-me-dto.hxx>
 #include <http/api-response.hxx>
 #include <utility>
@@ -71,11 +73,13 @@ AuthController::status(drogon::HttpRequestPtr req)
 drogon::Task<drogon::HttpResponsePtr>
 AuthController::createDeviceLogin(drogon::HttpRequestPtr req)
 {
+  const auto body = StartDeviceLoginDto::fromRequest(req);
   const auto& dev =
       req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
 
   const auto result = co_await service_.createDeviceLogin(
-      {.deviceHash = dev.deviceHash, .userAgent = dev.userAgent});
+      {.device = {.deviceHash = DeviceFilter::deviceKey(req), .userAgent = dev.userAgent},
+       .pollHash = body.pollHash});
 
   co_return ApiResponse::ok(result.toJson());
 }
@@ -103,11 +107,13 @@ AuthController::pollDeviceLogin(drogon::HttpRequestPtr req,
   if (challengeId.empty())
     throw ResponseException(AuthErrors::MissingChallengeId);
 
+  const auto body = PollDeviceLoginDto::fromRequest(req);
   const auto& dev =
       req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
   const auto result = co_await service_.pollDeviceLogin(
       {.challengeId = std::move(challengeId),
-       .device = {.deviceHash = dev.deviceHash, .userAgent = dev.userAgent}});
+       .device = {.deviceHash = DeviceFilter::deviceKey(req), .userAgent = dev.userAgent},
+       .proof = body.proof});
 
   co_return ApiResponse::ok(result.toJson());
 }

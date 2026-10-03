@@ -285,3 +285,33 @@ TEST_CASE("login, registration and device login are limited per address")
     REQUIRE(gate.check(post(path, "agent-two")));
   }
 }
+
+TEST_CASE("rotating forwarded addresses from one peer meets the peer ceiling")
+{
+  loadGateConfig("");
+  AuthRateLimitConfig config = windowConfig();
+  config.maxRequests = 1;
+  AuthRateGate gate(config);
+
+  const int ceiling = config.maxRequests * AuthRateGate::kPeerCeilingFactor;
+  for (int attempt = 0; attempt < ceiling; ++attempt) {
+    CAPTURE(attempt);
+    CHECK_FALSE(gate.check(patchRequest("argus-app/1.0", "10.1.0." + std::to_string(attempt))));
+  }
+  REQUIRE(gate.check(patchRequest("argus-app/1.0", "10.2.0.1")));
+}
+
+TEST_CASE("a server failure is not counted against the caller")
+{
+  loadGateConfig("");
+  AuthRateLimitConfig config = windowConfig();
+  config.maxRequests = 100;
+  AuthRateGate gate(config);
+
+  const auto unavailable = ApiResponse::error(AuthErrors::IdentityUnavailable);
+  for (int attempt = 0; attempt < config.lockoutThreshold + 2; ++attempt) {
+    CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
+    gate.recordOutcome(patchRequest("argus-app/1.0"), unavailable);
+  }
+  CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
+}

@@ -62,9 +62,20 @@ std::string AuthRateGate::guardedRoute(const drogon::HttpRequestPtr& req)
   return {};
 }
 
-std::string AuthRateGate::rateLimitKey(const drogon::HttpRequestPtr& req)
+std::vector<AuthRateGate::GateKey>
+AuthRateGate::gateKeys(const drogon::HttpRequestPtr& req) const
 {
-  return guardedRoute(req) + "|" + DeviceFilter::resolveIp(req);
+  const std::string route = guardedRoute(req);
+  const std::string address = DeviceFilter::resolveIp(req);
+  const std::string peer = req->getPeerAddr().toIp();
+  std::vector<GateKey> keys{{.key = route + "|" + address,
+                             .maxRequests = config_.maxRequests,
+                             .lockoutThreshold = config_.lockoutThreshold}};
+  if (peer != address)
+    keys.push_back({.key = route + "|peer|" + peer,
+                    .maxRequests = config_.maxRequests * kPeerCeilingFactor,
+                    .lockoutThreshold = config_.lockoutThreshold * kPeerCeilingFactor});
+  return keys;
 }
 
 drogon::HttpResponsePtr
@@ -72,7 +83,9 @@ AuthRateGate::check(const drogon::HttpRequestPtr& req)
 {
   if (!enabled() || guardedRoute(req).empty())
     return nullptr;
-  if (admit(rateLimitKey(req), now()))
+  const auto at = now();
+  const auto keys = gateKeys(req);
+  if (std::ranges::all_of(keys, [this, at](const GateKey& key) { return admit(key, at); }))
     return nullptr;
   LOG_WARN << "Auth rate limit refused a " << guardedRoute(req) << " request";
   auto response = ApiResponse::error(AuthErrors::TooManyAttempts);
@@ -85,19 +98,27 @@ void AuthRateGate::recordOutcome(const drogon::HttpRequestPtr& req,
 {
   if (!enabled() || guardedRoute(req).empty())
     return;
-  const std::string key = rateLimitKey(req);
-  if (resp->getStatusCode() < drogon::k400BadRequest) {
-    recordSuccess(key);
+  const auto status = resp->getStatusCode();
+  if (status >= drogon::k500InternalServerError)
+    return;
+  const auto keys = gateKeys(req);
+  if (status < drogon::k400BadRequest) {
+    for (const auto& key : keys)
+      recordSuccess(key.key);
     return;
   }
-  if (recordFailure(key, now()))
-    LOG_WARN << "Auth rate limit locked a " << guardedRoute(req)
-             << " key out after consecutive failures";
+  const auto at = now();
+  for (const auto& key : keys) {
+    if (recordFailure(key, at))
+      LOG_WARN << "Auth rate limit locked a " << guardedRoute(req)
+               << " key out after consecutive failures";
+  }
 }
 
-bool AuthRateGate::admit(const std::string& key,
+bool AuthRateGate::admit(const GateKey& gateKey,
                             std::chrono::steady_clock::time_point now)
 {
+  const std::string& key = gateKey.key;
   const std::scoped_lock lock(mutex_);
   const auto windowStart = now - std::chrono::seconds(config_.windowSeconds);
   auto it = entries_.find(key);
@@ -110,7 +131,7 @@ bool AuthRateGate::admit(const std::string& key,
     return false;
   while (!it->second.hits.empty() && it->second.hits.front() < windowStart)
     it->second.hits.pop_front();
-  if (static_cast<int>(it->second.hits.size()) >= config_.maxRequests)
+  if (static_cast<int>(it->second.hits.size()) >= gateKey.maxRequests)
     return false;
   it->second.hits.push_back(now);
   return true;
@@ -125,17 +146,17 @@ void AuthRateGate::recordSuccess(const std::string& key)
   it->second.consecutiveFailures = 0;
 }
 
-bool AuthRateGate::recordFailure(const std::string& key,
+bool AuthRateGate::recordFailure(const GateKey& gateKey,
                                     std::chrono::steady_clock::time_point now)
 {
   const std::scoped_lock lock(mutex_);
-  const auto it = entries_.find(key);
+  const auto it = entries_.find(gateKey.key);
   if (it == entries_.end())
     return false;
   if (now < it->second.lockedUntil)
     return false;
   ++it->second.consecutiveFailures;
-  if (it->second.consecutiveFailures < config_.lockoutThreshold)
+  if (it->second.consecutiveFailures < gateKey.lockoutThreshold)
     return false;
   it->second.lockedUntil = now + std::chrono::seconds(config_.lockoutSeconds);
   return true;

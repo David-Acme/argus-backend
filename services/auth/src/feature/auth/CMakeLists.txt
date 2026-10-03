@@ -4,10 +4,12 @@ argus_module(NAME auth-auth
         dtos/create-device-login-dto.cc
         dtos/device-login-status-dto.cc
         dtos/login-dto.cc
+        dtos/poll-device-login-dto.cc
         dtos/refresh-token-dto.cc
         dtos/register-dto.cc
         dtos/response-login-dto.cc
         dtos/response-refresh-token-dto.cc
+        dtos/start-device-login-dto.cc
         dtos/update-me-dto.cc
         infra/auth-rate-gate.cc
         services/auth-feature-service.cc
