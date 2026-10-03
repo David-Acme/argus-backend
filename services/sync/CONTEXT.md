@@ -106,7 +106,11 @@ protocol could not regress by accident in the commit that changed the endpoint.
   the service installs `VoiceGrpcRelay` when `[voice] target` is set and leaves
   the forwarder null otherwise, which answers 503
   (`SyncErrors::VoiceUnavailable`) at `voice:start` instead of dropping frames
-  silently.
+  silently. `voice:start` awaits the directory and the connect probe; a socket
+  that closes during either is taken out of the session map before the stream
+  exists, so the relay checks `closing` (and a stream a second start already
+  opened) after the awaits instead of starting a stream nobody would finish —
+  the observer and the session hold each other until the stream closes.
 
 ## Where the state lives
 

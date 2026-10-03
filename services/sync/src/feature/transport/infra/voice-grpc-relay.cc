@@ -217,6 +217,8 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(const SyncFrameInput& input)
         [this] { return client_->waitConnected(kConnectProbeTimeoutMs); }};
     if (!up)
       throw ResponseException(503, SyncErrors::VoiceUnavailable);
+    if (session->closing || session->stream)
+      co_return true;
 
     session->stream = client_->connect(
         identity, std::make_shared<StreamObserver>(conn, session));
