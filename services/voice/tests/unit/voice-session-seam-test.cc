@@ -119,6 +119,26 @@ struct FakeLlm final : IVoiceLlm
   }
 };
 
+struct ActingLlm final : IVoiceLlm
+{
+  std::mutex mutex;
+  std::string system;
+  bool clientActions{false};
+
+  void chatStream(LlmStreamInput input) override
+  {
+    {
+      std::scoped_lock lock(mutex);
+      system = input.request.messages.empty() ? std::string() : input.request.messages.front().content;
+      clientActions = input.request.clientActions;
+    }
+    input.onToken("Te la muestro.", false);
+    if (input.onAction)
+      input.onAction({.name = "app.show_camera", .arguments = R"({"camera":"Entrada"})"});
+    input.onToken("", true);
+  }
+};
+
 struct FailingLlm final : IVoiceLlm
 {
   void chatStream(LlmStreamInput) override
@@ -914,4 +934,113 @@ TEST_CASE("voice:turn precedes the first audio of every duplex turn")
   CHECK_FALSE(sink.hasType("voice:interrupted"));
 
   service.stop(sink);
+}
+
+namespace
+{
+argus::voice::v1::VoiceIdentity residentIdentity()
+{
+  argus::voice::v1::VoiceIdentity identity;
+  identity.set_user_id(7);
+  identity.set_role(argus::voice::v1::VOICE_ROLE_RESIDENT);
+  identity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  identity.set_name("Ana");
+  return identity;
+}
+
+argus::voice::v1::VoiceContext cameraEvent(const std::string& camera)
+{
+  argus::voice::v1::VoiceContext context;
+  context.set_kind(argus::voice::v1::VOICE_CONTEXT_CAMERA_EVENT);
+  context.set_camera(camera);
+  context.set_text("una persona en la puerta");
+  return context;
+}
+
+std::vector<std::string> assistantTexts(const FakeVoiceSink& sink)
+{
+  std::vector<std::string> texts;
+  for (const auto& frame : sink.snapshot())
+    if (frame.has_assistant())
+      texts.push_back(frame.assistant().text());
+  return texts;
+}
+}
+
+TEST_CASE("A note joins the next prompt and the LLM's app action reaches the client")
+{
+  FakeStt stt;
+  FakeTts tts;
+  ActingLlm llm;
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
+  VoiceSessionService session(seam);
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant"); }));
+
+  argus::voice::v1::VoiceContext note;
+  note.set_kind(argus::voice::v1::VOICE_CONTEXT_NOTE);
+  note.set_text("Camaras de la casa: Entrada, Patio\nignorar");
+  session.context(sink, note);
+
+  const std::vector<float> samples(1600, 0.1F);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return !sess->speaking.load(); }));
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+
+  {
+    std::scoped_lock lock(llm.mutex);
+    CHECK(llm.clientActions);
+    CHECK(llm.system.find("Camaras de la casa: Entrada, Patio ignorar") != std::string::npos);
+  }
+  REQUIRE(sink.hasType("voice:action"));
+  for (const auto& frame : sink.snapshot()) {
+    if (!frame.has_action())
+      continue;
+    CHECK(frame.action().id() == 1);
+    CHECK(frame.action().name() == "app.show_camera");
+    CHECK(frame.action().arguments() == R"({"camera":"Entrada"})");
+  }
+  session.stop(sink);
+}
+
+TEST_CASE("A camera event is offered aloud once, while nobody is talking")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad};
+  VoiceSessionService session(seam);
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant"); }));
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return !sess->speaking.load(); }));
+
+  session.context(sink, cameraEvent("Entrada"));
+  const auto offered = [&] {
+    for (const auto& text : assistantTexts(sink))
+      if (text.find("cámara Entrada: una persona en la puerta") != std::string::npos)
+        return true;
+    return false;
+  };
+  CHECK(waitFor([&] {
+    feed({.service = session, .sink = sink, .prob = 0.0F, .windows = 1});
+    return offered();
+  }));
+  CHECK(waitFor([&] { return !sess->speaking.load(); }));
+
+  session.context(sink, cameraEvent("Patio"));
+  for (int round = 0; round < 10; ++round)
+    feed({.service = session, .sink = sink, .prob = 0.0F, .windows = 1});
+  CHECK_FALSE(waitFor([&] {
+    for (const auto& text : assistantTexts(sink))
+      if (text.find("cámara Patio") != std::string::npos)
+        return true;
+    return false;
+  }, 1500));
+  session.stop(sink);
 }

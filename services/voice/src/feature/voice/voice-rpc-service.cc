@@ -111,6 +111,9 @@ private:
       case argus::voice::v1::ClientFrame::kSkip:
         sessions_.skip(*this);
         break;
+      case argus::voice::v1::ClientFrame::kContext:
+        sessions_.context(*this, frame.context());
+        break;
       case argus::voice::v1::ClientFrame::kPcm:
         sessions_.feedPcm(*this, {.data = frame.pcm().data(),
                                   .size = static_cast<size_t>(

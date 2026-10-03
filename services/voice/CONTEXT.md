@@ -173,6 +173,29 @@ The VAD model is a seam (`VadModel`, created through `IVoiceVad` in
 `VoiceEngineSeam`, Silero by default) so the suites drive barge-in with
 scripted probabilities instead of the ONNX model.
 
+## Conversation mode: app actions and camera offers
+
+During a call the assistant can drive the app. Every LLM request from a
+call sets `clientActions`, which makes argus-llm offer its `app.*` tools
+(`app.show_camera`, `app.open`, `app.set_guard_mode`); a tool the model
+calls comes back on the stream as an action, and the session forwards it
+to the app as a `VoiceAction` frame with a per-session id. The app
+executes it with the user's own token, so an action can never do more
+than the user could by hand, and the user can always undo it.
+
+The app feeds the call through `VoiceContext` frames. A note (for example
+the names of the cameras) is queued and folded into the system prompt on
+the turn thread before the next answer. A camera event is offered aloud
+by voice itself, not by the model: "Oye, tengo algo en la cámara X: ...
+¿Quieres que te lo muestre?" goes through TTS and joins the history as an
+assistant turn, so a "sí" reaches the model with the offer in view and it
+calls `app.show_camera`. Asking the model to phrase the offer would re-run
+the router over the previous user message and could repeat its tool. An
+offer is spoken only while nobody is talking (half duplex: not speaking;
+duplex: no turn running and playback over), at most once every 30 s, and
+dropped when older than 20 s. Texts are trimmed to one line (notes 300,
+camera 64, summary 200 characters).
+
 ## Owner settings
 
 `src/feature/settings/voice-settings.cc` (`argus::voice-settings`) is the

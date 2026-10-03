@@ -1,6 +1,7 @@
 #include "voice-session-service.hxx"
 
 #include <algorithm>
+#include <utility>
 #include <cctype>
 #include <cmath>
 #include <drogon/drogon.h>
@@ -148,6 +149,41 @@ public:
 private:
   std::atomic<bool>& flag_;
 };
+
+constexpr size_t kMaxNotes = 6;
+constexpr size_t kMaxNoteChars = 300;
+constexpr size_t kMaxCameraChars = 64;
+constexpr size_t kMaxSummaryChars = 200;
+constexpr auto kNoticeFreshFor = std::chrono::seconds(20);
+constexpr auto kNoticeSpacing = std::chrono::seconds(30);
+
+std::string sanitizedLine(const std::string& text, size_t limit)
+{
+  std::string line;
+  line.reserve(std::min(text.size(), limit));
+  for (const char c : text) {
+    if (line.size() >= limit)
+      break;
+    const auto byte = static_cast<unsigned char>(c);
+    line.push_back(byte < 0x20 ? ' ' : c);
+  }
+  const auto first = line.find_first_not_of(' ');
+  if (first == std::string::npos)
+    return {};
+  const auto last = line.find_last_not_of(' ');
+  return line.substr(first, last - first + 1);
+}
+
+std::string cameraOffer(VoiceLang lang, const std::string& camera, const std::string& summary)
+{
+  if (lang == VoiceLang::En)
+    return summary.empty()
+               ? "Hey, something came up on the " + camera + " camera. Want me to show you?"
+               : "Hey, something came up on the " + camera + " camera: " + summary + ". Want me to show you?";
+  return summary.empty()
+             ? "Oye, tengo algo en la cámara " + camera + ". ¿Quieres que te lo muestre?"
+             : "Oye, tengo algo en la cámara " + camera + ": " + summary + ". ¿Quieres que te lo muestre?";
+}
 
 std::string systemPrompt(VoiceLang lang)
 {
@@ -452,6 +488,13 @@ void VoiceSessionService::workerLoop(std::shared_ptr<Session> session)
       batch.swap(session->pcmQueue);
     }
 
+    if (!session->speaking) {
+      if (const auto notice = takeCameraNotice(*session)) {
+        applyNotes(*session);
+        deliverCameraNotice(*session, *notice);
+      }
+    }
+
     if (session->speaking)
       continue;
 
@@ -515,6 +558,14 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
       if (!session->active.load())
         break;
       batch.swap(session->pcmQueue);
+    }
+
+    if (!listenState(*session).listening) {
+      if (auto notice = takeCameraNotice(*session))
+        launchTurn(session, [this, notice = std::move(*notice)](Session& active) {
+          applyNotes(active);
+          deliverCameraNotice(active, notice);
+        });
     }
 
     const std::vector<float> clean = cleanBatch(*session, batch);
@@ -653,6 +704,8 @@ void VoiceSessionService::processTurn(Session& session,
     cancellation = session.turnStop.get_token();
   }
 
+  applyNotes(session);
+
   std::string userText;
   try {
     userText = stt_.transcribe({.samples = samples,
@@ -716,6 +769,7 @@ void VoiceSessionService::processTurn(Session& session,
       reaction, session.lang == VoiceLang::En ? "en" : "es");
 
   ChatRequest req;
+  req.clientActions = true;
   req.messages = session.history;
   req.userId = session.userId;
   req.role = userRoleFromString(session.role);
@@ -757,7 +811,15 @@ void VoiceSessionService::processTurn(Session& session,
     llm_.chatStream({.request = req,
                      .onToken = onToken,
                      .stats = nullptr,
-                     .cancellation = cancellation});
+                     .cancellation = cancellation,
+                     .onAction = [this, &session](const ClientAction& action) {
+                       argus::voice::v1::ServerFrame frame;
+                       frame.mutable_action()->set_id(++session.actionSeq);
+                       frame.mutable_action()->set_name(action.name);
+                       frame.mutable_action()->set_arguments(action.arguments);
+                       LOG_INFO << "Voice: client action " << action.name;
+                       sendFrame(session, std::move(frame));
+                     }});
   }
   catch (const std::exception& e) {
     if (cancellation.stop_requested())
@@ -883,6 +945,86 @@ void VoiceSessionService::skip(VoiceSessionSink& sink)
     std::scoped_lock lock(session->duplexMutex);
     session->turn.playbackEnd = std::chrono::steady_clock::now();
   }
+}
+
+void VoiceSessionService::context(VoiceSessionSink& sink,
+                                  const argus::voice::v1::VoiceContext& context)
+{
+  std::shared_ptr<Session> session;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = sessions_.find(&sink);
+    if (it == sessions_.end())
+      return;
+    session = it->second;
+  }
+  std::scoped_lock lock(session->noticeMutex);
+  if (context.kind() == argus::voice::v1::VOICE_CONTEXT_CAMERA_EVENT) {
+    const std::string camera = sanitizedLine(context.camera(), kMaxCameraChars);
+    if (camera.empty())
+      return;
+    session->pendingCamera = CameraNotice{.camera = camera,
+                                          .summary = sanitizedLine(context.text(), kMaxSummaryChars),
+                                          .at = std::chrono::steady_clock::now()};
+    return;
+  }
+  const std::string note = sanitizedLine(context.text(), kMaxNoteChars);
+  if (note.empty())
+    return;
+  session->pendingNotes.push_back(note);
+  if (session->pendingNotes.size() > kMaxNotes)
+    session->pendingNotes.erase(session->pendingNotes.begin());
+}
+
+void VoiceSessionService::applyNotes(Session& session)
+{
+  {
+    std::scoped_lock lock(session.noticeMutex);
+    if (session.pendingNotes.empty())
+      return;
+    for (auto& note : session.pendingNotes)
+      session.notes.push_back(std::move(note));
+    session.pendingNotes.clear();
+  }
+  if (session.notes.size() > kMaxNotes)
+    session.notes.erase(session.notes.begin(),
+                        session.notes.end() - static_cast<std::ptrdiff_t>(kMaxNotes));
+  if (session.history.empty() || session.history.front().role != "system")
+    return;
+  std::string prompt = systemPrompt(session.lang);
+  for (const auto& note : session.notes)
+    prompt += "\n" + note;
+  session.history.front().content = std::move(prompt);
+}
+
+std::optional<VoiceSessionService::CameraNotice>
+VoiceSessionService::takeCameraNotice(Session& session)
+{
+  std::scoped_lock lock(session.noticeMutex);
+  if (!session.pendingCamera)
+    return std::nullopt;
+  const auto notice = std::exchange(session.pendingCamera, std::nullopt);
+  const auto now = std::chrono::steady_clock::now();
+  if (now - notice->at > kNoticeFreshFor || now - session.lastNoticeAt < kNoticeSpacing)
+    return std::nullopt;
+  session.lastNoticeAt = now;
+  return notice;
+}
+
+void VoiceSessionService::deliverCameraNotice(Session& session, const CameraNotice& notice)
+{
+  {
+    std::lock_guard lock(session.turnMutex);
+    if (!session.active.load())
+      return;
+    session.interrupt.store(false);
+    session.turnStop = std::stop_source{};
+  }
+  const std::string offer = cameraOffer(session.lang, notice.camera, notice.summary);
+  LOG_INFO << "Voice: offering camera " << notice.camera;
+  speak(session, offer);
+  session.history.push_back({.role = "assistant", .content = offer});
+  trimHistory(session.history);
 }
 
 void VoiceSessionService::sendFrame(Session& session,

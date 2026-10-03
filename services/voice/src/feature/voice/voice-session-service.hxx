@@ -8,6 +8,7 @@
 #include <feature/voice/voice-engine-seam.hxx>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <llm/llm-service.hxx>
 #include <shared/services/noise/noise-suppression-service.hxx>
 #include <shared/services/reaction/reaction-engine.hxx>
@@ -50,8 +51,16 @@ public:
   void feedPcm(VoiceSessionSink& sink, const PcmFrame& frame);
   void stop(VoiceSessionSink& sink);
   void skip(VoiceSessionSink& sink);
+  void context(VoiceSessionSink& sink, const argus::voice::v1::VoiceContext& context);
 
 private:
+  struct CameraNotice
+  {
+    std::string camera;
+    std::string summary;
+    std::chrono::steady_clock::time_point at{};
+  };
+
   struct DuplexTurn
   {
     int64_t id{0};
@@ -103,6 +112,12 @@ private:
     std::thread turnThread;
     std::mutex duplexMutex;
     DuplexTurn turn;
+    std::mutex noticeMutex;
+    std::vector<std::string> pendingNotes;
+    std::optional<CameraNotice> pendingCamera;
+    std::vector<std::string> notes;
+    std::chrono::steady_clock::time_point lastNoticeAt{};
+    std::atomic<int64_t> actionSeq{0};
   };
 
   void workerLoop(std::shared_ptr<Session> session);
@@ -115,6 +130,9 @@ private:
   void sendDuplexChunk(Session& session, argus::voice::v1::ServerFrame frame);
   void sendDuplexAssistant(Session& session, AssistantSend send);
   void processTurn(Session& session, const std::vector<float>& samples);
+  void applyNotes(Session& session);
+  std::optional<CameraNotice> takeCameraNotice(Session& session);
+  void deliverCameraNotice(Session& session, const CameraNotice& notice);
   Reaction emitReaction(Session& session, const ReactionSignals& signals);
   void speak(Session& session, const std::string& text);
   void sendFrame(Session& session, argus::voice::v1::ServerFrame frame) const;
