@@ -19,6 +19,7 @@ argus_module(NAME identity-shared
         services/face/face-db.cc
         services/face/face-service.cc
         services/storage/private-portrait-service.cc
+        services/token/opaque-token.cc
     INCLUDES
         ..
     DEPENDS
@@ -33,7 +34,8 @@ argus_module(NAME identity-shared
         argus::hardware-profile-gpu
         Drogon::Drogon
         nlohmann_json::nlohmann_json
-        opencv::opencv)
+        opencv::opencv
+        OpenSSL::Crypto)
 
 target_include_directories(argus_identity-shared SYSTEM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/stb
