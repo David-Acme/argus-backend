@@ -288,6 +288,9 @@ inline constexpr const char* MARK_ENCOUNTER_CONFLICT =
     "UPDATE encounter_closed_inbox SET status = 'conflict', fingerprint = ?, "
     "updated_at = ? WHERE event_id = ? AND status IN ('received', "
     "'dispatched')";
+inline constexpr const char* PURGE_SETTLED_ENCOUNTERS =
+    "DELETE FROM encounter_closed_inbox "
+    "WHERE status != 'received' AND updated_at < ?";
 inline constexpr const char* FORCE_ENCOUNTER_DEAD_LETTERED =
     "UPDATE encounter_closed_inbox SET status = 'dead_lettered', "
     "updated_at = ? WHERE event_id = ?";

@@ -13,6 +13,8 @@
 
 namespace
 {
+constexpr int64_t kSettledReceiptRetentionS = 14LL * 24 * 3600;
+constexpr int64_t kPurgeIntervalS = 24LL * 3600;
 std::string encounterFingerprint(const std::string& payload)
 {
   return argus::hash::sha256Hex(
@@ -193,7 +195,24 @@ drogon::Task<EncounterDisposition> EncounterClosedConsumer::handle(
             {.eventId = event.eventId, .at = now}))
       throw std::runtime_error("encounter receipt settle failed");
   }
+  purgeSettled(now);
   co_return EncounterDisposition::Ack;
+}
+
+void EncounterClosedConsumer::purgeSettled(int64_t now)
+{
+  int64_t due = nextPurgeAt_.load(std::memory_order_relaxed);
+  if (now < due ||
+      !nextPurgeAt_.compare_exchange_strong(due, now + kPurgeIntervalS))
+    return;
+  int64_t purged = 0;
+  {
+    std::scoped_lock lock(dependencies_.graph->mutex());
+    purged = dependencies_.repository->purgeSettledEncounters(
+        dependencies_.graph->handle(), now - kSettledReceiptRetentionS);
+  }
+  if (purged > 0)
+    LOG_INFO << "Encounter consumer: purged " << purged << " settled receipt(s)";
 }
 
 bool EncounterClosedConsumer::trySubscribe()

@@ -136,6 +136,14 @@ TEST_CASE("the encounter inbox is durable, exact and fail-closed")
   CHECK(scalarText(db, "SELECT status FROM encounter_closed_inbox WHERE "
                        "event_id = 'enc:3'") == "dead_lettered");
 
+  CHECK_FALSE(repository.claimEncounterClosed(
+      db, {.eventId = "enc:live", .fingerprint = "fp-live", .at = 50}).duplicate);
+  CHECK(repository.purgeSettledEncounters(db, 104) == 2);
+  CHECK(scalarInt(db, "SELECT COUNT(*) FROM encounter_closed_inbox WHERE "
+                      "event_id IN ('enc:1', 'enc:2')") == 0);
+  CHECK(scalarInt(db, "SELECT COUNT(*) FROM encounter_closed_inbox WHERE "
+                      "event_id IN ('enc:3', 'enc:live')") == 2);
+
   REQUIRE(sqlite3_exec(db, "DROP TABLE encounter_closed_inbox", nullptr,
                        nullptr, nullptr) == SQLITE_OK);
   REQUIRE(sqlite3_exec(db,

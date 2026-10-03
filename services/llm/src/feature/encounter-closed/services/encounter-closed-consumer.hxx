@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <drogon/utils/coroutine.h>
 #include <nats/nats-subject.hxx>
 
@@ -81,10 +82,12 @@ public:
 private:
   bool trySubscribe();
   void scheduleSubscribeRetry();
+  void purgeSettled(int64_t now);
 
   Dependencies dependencies_;
   Config config_;
   std::shared_ptr<EncounterLifecycle> lifecycle_;
   std::optional<uint64_t> subscription_;
   std::optional<uint64_t> retryTimer_;
+  std::atomic<int64_t> nextPurgeAt_{0};
 };

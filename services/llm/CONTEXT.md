@@ -203,8 +203,11 @@ durable JetStream consumer on `argus.guard.v1.encounter_closed`
 `encounter_closed_inbox` (same states as argus-sync's
 `notification_delivery_inbox`: `received`/`dispatched`/`conflict`/
 `dead_lettered`, SHA-256 canonical fingerprint, conflict never captured) and
-captured exactly once through the injected `capture`, which calls
-`observeSystemEvent` with the owner's scope —
+captured exactly once through the injected `capture`. Settled receipts older
+than 14 days — twice the stream's 7-day max age, so nothing can redeliver
+them — are deleted at most once a day after a capture; a busy venue closes
+thousands of encounters a day and the table kept them all. The capture
+calls `observeSystemEvent` with the owner's scope —
 never rule-parsed, never a fact. The owner resolves through
 `IdentityClient::listNotifiableUsers` (first notifiable user, their language
 for the summary line). The consumer stops before `memory.shutdown()` in the

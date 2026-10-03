@@ -164,6 +164,7 @@ public:
                                const EncounterSettleInput& input);
   bool markEncounterDeadLettered(sqlite3* db,
                                  const EncounterSettleInput& input);
+  int64_t purgeSettledEncounters(sqlite3* db, int64_t olderThan);
 
   int64_t migrateLegacy(sqlite3* db);
 };
