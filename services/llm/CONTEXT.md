@@ -65,7 +65,10 @@ scaffolds.
     prompt_tokens, reused_tokens, decoded_tokens}\n`. The sentinel is the
     client's exact end-of-stream marker; token framing is "chunks until the
     sentinel line". Generation runs on a producer thread (the TTS stream
-    pattern), the engine mutex serializes concurrent generations.
+    pattern), the engine mutex serializes concurrent generations. A client
+    that disconnects ends the generation at the next token: the token
+    callback throws, as `ChatStream`'s does on a cancelled call, so a dropped
+    request does not hold the engine for up to 4096 tokens.
   - `GET /llm/v1/config` — `{loaded, defaultMaxTokens, defaultTemperature,
     contextSize, lastPromptTokens, lastReusedTokens, lastDecodedTokens}`
     (additive, internal-only).

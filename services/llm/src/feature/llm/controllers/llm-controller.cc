@@ -78,6 +78,10 @@ ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
   return input;
 }
 
+struct ClientGone
+{
+};
+
 struct ChatStreamJob
 {
   LlmController* owner{nullptr};
@@ -105,11 +109,11 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
   const auto t0 = std::chrono::steady_clock::now();
   const TokenCallback send = [&job](const std::string& token, bool done) {
     if (!job->stream)
-      return;
+      throw ClientGone{};
     if (!done) {
       if (!job->stream->send(token)) {
         job->stream.reset();
-        return;
+        throw ClientGone{};
       }
       ++job->tokenCount;
       job->charCount += token.size();
@@ -122,6 +126,9 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
   try {
     job->owner->chatStreamSync(
         {.request = job->request, .onToken = send, .stats = &job->stats});
+  }
+  catch (const ClientGone&) {
+    LOG_INFO << "LLM stream: client left, generation stopped";
   }
   catch (const std::exception& e) {
     LOG_ERROR << "LLM stream generation failed: " << e.what();
