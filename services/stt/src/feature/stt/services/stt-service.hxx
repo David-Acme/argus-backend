@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct SherpaOnnxOfflineRecognizer;
@@ -38,6 +39,10 @@ public:
 
   static std::string configLanguage();
 
+  static SttEngine configEngine();
+
+  static std::string_view engineName(SttEngine engine);
+
   static bool isSupportedLanguage(const std::string& lang);
 
   static const std::vector<std::string>& supportedLanguages();
@@ -62,6 +67,7 @@ private:
                   void (*)(const SherpaOnnxOfflineRecognizer*)>
       recognizer_;
   std::string currentLang_;
+  SttEngine engine_ = SttEngine::NemoTransducer;
   bool loaded_ = false;
   mutable std::mutex mutex_;
 };

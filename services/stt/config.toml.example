@@ -8,6 +8,7 @@ address = ""
 [rpc.callers]
 voice = ""
 camera = ""
+settings = ""
 
 [stt]
 engine = "nemo_transducer"

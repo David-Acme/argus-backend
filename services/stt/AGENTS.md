@@ -53,11 +53,14 @@ argus-stt/
   src/feature/stt/      argus::stt — the whole vertical slice:
                           controllers/ (the frozen /stt/v1/* wire),
                           services/ (the sherpa-onnx engine facade)
+  src/feature/settings/ argus::stt-settings — the owner-editable catalog
   config.toml.example   [stt] engine keys + [server] + [rpc] only; no other domains
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
-There is one feature and two modules: `argus::stt` compiles the engine facade
+There are two features and three modules: `argus::stt-settings` is the
+owner catalog (lib/config only, served by `argus.settings.v1` on the gRPC
+listener), `argus::stt` compiles the engine facade
 and the HTTP surface together, `argus::stt-rpc` compiles the gRPC server and
 links `argus::clients::stt` and `argus::contracts::stt-wire` PUBLIC so the
 executable reaches both, and `app/main.cc` registers the controller explicitly

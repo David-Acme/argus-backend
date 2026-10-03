@@ -99,7 +99,8 @@ SttRpcInput serverInput()
                                request.lang) +
                        " " + std::to_string(request.samples.size());
               },
-          .slots = 1};
+          .slots = 1,
+          .services = {}};
 }
 
 struct HeldEngine

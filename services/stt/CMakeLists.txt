@@ -62,6 +62,11 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 endif()
 
+if(NOT COMMAND argus_settings_rpc_contract)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/settings
+                     ${CMAKE_BINARY_DIR}/contracts/settings)
+endif()
+
 find_package(doctest REQUIRED)
 
 file(GLOB STT_FEATURE_MODULES CONFIGURE_DEPENDS
@@ -80,6 +85,7 @@ argus_service(NAME argus-stt
         argus::stt-config
         argus::stt-rpc
         argus::stt
+        argus::stt-settings
         argus::lib::config
         argus::lib::runtime
         argus::lib::http
@@ -129,3 +135,15 @@ target_compile_options(stt-rpc-test PRIVATE -Wall -Wextra)
 set_target_properties(stt-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME stt-rpc-test COMMAND stt-rpc-test)
+
+add_executable(stt-settings-test tests/unit/stt-settings-test.cc)
+
+target_link_libraries(stt-settings-test PRIVATE argus::stt-rpc argus::stt-settings
+    argus::stt-config doctest::doctest)
+argus_runtime_rpath(stt-settings-test)
+
+target_compile_options(stt-settings-test PRIVATE -Wall -Wextra)
+
+set_target_properties(stt-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME stt-settings-test COMMAND stt-settings-test)

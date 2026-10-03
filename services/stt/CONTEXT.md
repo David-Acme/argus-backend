@@ -93,3 +93,39 @@ The listener and the optional gRPC leg are resolved by
 `SttConfig::resolveRpc()` (`rpc.address` plus the `rpc.callers` credential
 pairs, empty ones dropped). `main.cc` keeps `config.toml` loading,
 `drogonConfig` and the boot gate on the resolved address and credentials.
+
+## Owner settings
+
+`src/feature/settings/stt-settings.cc` is the catalog an owner may change
+through `argus.settings.v1.Settings`, registered on the same gRPC listener as
+`argus.stt.v1` (`argus::contracts::settings-wire`). Both keys are advanced:
+the call language an owner thinks about lives in argus-voice, which sends a
+language on every request, so the STT default only serves callers that send
+none.
+
+- `stt.language` (`es`/`en`/`auto`, fallback `es`) is **live**.
+  `transcribe()` resolves an empty request language through
+  `configLanguage()` on every call, and a language different from the
+  loaded recognizer's already rebuilds the recognizer inside the blocking
+  leg. A new default therefore costs one rebuild on the next request that
+  carries no language, and never mismatches the loaded model.
+- `stt.engine` (`nemo_transducer`/`whisper`/`canary`/`nemo_ctc`/
+  `omnilingual`, fallback `nemo_transducer`) is **restart**. The engine is
+  resolved once by `init()` into `engine_`, and every later recognizer
+  rebuild (a language switch) reuses it. Before this, `createRecognizer`
+  re-read `stt.engine` on every language switch, so a changed key would have
+  silently swapped the engine on the next switch; pinning it makes
+  "restart" true.
+- An absent `stt.engine` used to mean whisper while the template, the
+  provisioning and this document all name `nemo_transducer`. The code now
+  runs `nemo_transducer` when the key is absent or unrecognized (`whisper`
+  must be named), so the catalog fallback is what the service really runs.
+  `SttService::configEngine()` / `engineName()` are the one spelling.
+
+The thread count is not a key (`ThreadBudget::computeThreads()`), so it is
+not in the catalog; models_dir, ports, addresses and callers never are. The
+`settings` entry of `[rpc.callers]` is the only credential the settings
+service accepts, and `SttConfig::resolveRpc()` removes it from the
+transcription callers (`settingsCallers` / `withoutSettingsCaller`): the
+settings caller cannot transcribe and a transcription caller cannot change
+settings. `stt-settings-test` checks both directions on a live listener.

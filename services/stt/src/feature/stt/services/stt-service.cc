@@ -20,28 +20,12 @@ std::string modelsDir()
   return dir.empty() ? std::string("models/stt") : dir;
 }
 
-SttEngine resolveEngine()
-{
-  const std::string e = ConfigService::getString("stt.engine");
-  if (e == "canary")
-    return SttEngine::Canary;
-  if (e == "nemo_ctc" || e == "nemo-ctc" || e == "fastconformer")
-    return SttEngine::NemoCtc;
-  if (e == "nemo_transducer" || e == "nemo-transducer" ||
-      e == "fastconformer_transducer")
-    return SttEngine::NemoTransducer;
-  if (e == "omnilingual")
-    return SttEngine::Omnilingual;
-  return SttEngine::Whisper;
-}
-
 std::unique_ptr<const SherpaOnnxOfflineRecognizer,
                 void (*)(const SherpaOnnxOfflineRecognizer*)>
-createRecognizer(const std::string& lang)
+createRecognizer(SttEngine engine, const std::string& lang)
 {
   const std::string modelDir = modelsDir();
   auto nThreads = ThreadBudget::computeThreads();
-  const SttEngine engine = resolveEngine();
 
   SherpaOnnxOfflineRecognizerConfig config{};
 
@@ -126,6 +110,37 @@ std::string SttService::configLanguage()
   return lang.empty() ? std::string("es") : lang;
 }
 
+SttEngine SttService::configEngine()
+{
+  const std::string e = ConfigService::getString("stt.engine");
+  if (e == "whisper")
+    return SttEngine::Whisper;
+  if (e == "canary")
+    return SttEngine::Canary;
+  if (e == "nemo_ctc" || e == "nemo-ctc" || e == "fastconformer")
+    return SttEngine::NemoCtc;
+  if (e == "omnilingual")
+    return SttEngine::Omnilingual;
+  return SttEngine::NemoTransducer;
+}
+
+std::string_view SttService::engineName(SttEngine engine)
+{
+  switch (engine) {
+    case SttEngine::Whisper:
+      return "whisper";
+    case SttEngine::Canary:
+      return "canary";
+    case SttEngine::NemoCtc:
+      return "nemo_ctc";
+    case SttEngine::NemoTransducer:
+      return "nemo_transducer";
+    case SttEngine::Omnilingual:
+      return "omnilingual";
+  }
+  return "nemo_transducer";
+}
+
 bool SttService::isSupportedLanguage(const std::string& lang)
 {
   const auto& languages = supportedLanguages();
@@ -142,7 +157,8 @@ void SttService::init()
 {
   try {
     const std::string lang = configLanguage();
-    recognizer_ = createRecognizer(lang);
+    engine_ = configEngine();
+    recognizer_ = createRecognizer(engine_, lang);
     if (!recognizer_) {
       LOG_FATAL << "STT init failed: recognizer creation returned null";
       shutdown();
@@ -151,27 +167,8 @@ void SttService::init()
     currentLang_ = lang;
     loaded_ = true;
 
-    std::string engineName = "whisper";
-    switch (resolveEngine()) {
-      case SttEngine::Canary:
-        engineName = "canary";
-        break;
-      case SttEngine::NemoCtc:
-        engineName = "nemo_ctc";
-        break;
-      case SttEngine::NemoTransducer:
-        engineName = "nemo_transducer";
-        break;
-      case SttEngine::Omnilingual:
-        engineName = "omnilingual";
-        break;
-      case SttEngine::Whisper:
-        engineName = "whisper";
-        break;
-    }
-
     LOG_INFO << "STT loaded: " << modelsDir()
-             << " (" << engineName << ", " << lang
+             << " (" << engineName(engine_) << ", " << lang
              << ", threads=" << ThreadBudget::computeThreads() << ")";
   }
   catch (const std::exception& e) {
@@ -185,7 +182,7 @@ bool SttService::setLanguage(const std::string& lang)
   std::lock_guard<std::mutex> lock(mutex_);
   if (!isSupportedLanguage(lang))
     return false;
-  auto recognizer = createRecognizer(lang);
+  auto recognizer = createRecognizer(engine_, lang);
   if (!recognizer)
     return false;
   recognizer_ = std::move(recognizer);

@@ -2,6 +2,7 @@
 
 #include <feature/stt/services/stt-service.hxx>
 #include <stt/stt-client.hxx>
+#include <grpcpp/impl/service_type.h>
 #include <functional>
 #include <memory>
 #include <string>
@@ -16,6 +17,7 @@ struct SttRpcInput
   std::function<bool(const std::string&)> acceptsLanguage;
   std::function<std::string(const TranscribeRequest&)> transcribe;
   int slots{1};
+  std::vector<grpc::Service*> services;
 };
 
 class SttRpcServer

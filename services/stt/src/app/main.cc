@@ -2,6 +2,7 @@
 #include <config/stt-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/stt/controllers/stt-controller.hxx>
+#include <feature/settings/stt-settings.hxx>
 #include <feature/stt/services/stt-service.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
@@ -10,6 +11,7 @@
 #include <runtime/log-output.hxx>
 #include <stt/stt-remote.hxx>
 #include <config/config-service.hxx>
+#include <settings/settings-rpc.hxx>
 
 #include <json/value.h>
 #include <memory>
@@ -54,10 +56,19 @@ int main()
     return 1;
   }
 
+  SettingsRegistry settings(sttSettingsCatalog());
+
+  std::unique_ptr<SettingsRpcService> settingsRpc;
   std::unique_ptr<SttRpcServer> rpc;
   const SttRpcConfig rpcConfig = SttConfig::resolveRpc();
   if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
     auto& stt = SttService::instance();
+    std::vector<grpc::Service*> services;
+    if (!rpcConfig.settingsCredentials.empty()) {
+      settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
+          .service = "stt", .registry = &settings, .credentials = rpcConfig.settingsCredentials});
+      services.push_back(settingsRpc.get());
+    }
     rpc = std::make_unique<SttRpcServer>(SttRpcInput{
         .address = rpcConfig.address,
         .credentials = rpcConfig.credentials,
@@ -76,7 +87,8 @@ int main()
         .transcribe = [&stt](const TranscribeRequest& request) {
           return stt.transcribe(request);
         },
-        .slots = ThreadBudget::inferenceSlots()});
+        .slots = ThreadBudget::inferenceSlots(),
+        .services = std::move(services)});
   }
 
   if (rpc)
