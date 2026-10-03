@@ -511,14 +511,19 @@
         "contentType": "application/json",
         "json": {
           "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "id": [
+                "id must be positive"
+              ]
+            },
+            "message": "Validation failed"
           },
           "info": null,
-          "status": 403
+          "status": 422
         },
         "pretty": true,
-        "status": 403
+        "status": 422
       },
       "route": "/guard/expected-guests",
       "unit": "guard"
@@ -645,15 +650,12 @@
       "response": {
         "contentType": "application/json",
         "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
+          "errors": null,
+          "info": [],
+          "status": 200
         },
         "pretty": true,
-        "status": 403
+        "status": 200
       },
       "route": "/guard/expected-guests",
       "unit": "guard"
@@ -799,14 +801,19 @@
         "contentType": "application/json",
         "json": {
           "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "description": [
+                "description must not be empty"
+              ]
+            },
+            "message": "Validation failed"
           },
           "info": null,
-          "status": 403
+          "status": 422
         },
         "pretty": true,
-        "status": 403
+        "status": 422
       },
       "route": "/guard/expected-guests",
       "unit": "guard"
@@ -933,15 +940,12 @@
       "response": {
         "contentType": "application/json",
         "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
+          "errors": null,
+          "info": [],
+          "status": 200
         },
         "pretty": true,
-        "status": 403
+        "status": 200
       },
       "route": "/guard/incidents",
       "unit": "guard"
@@ -1060,15 +1064,18 @@
       "response": {
         "contentType": "application/json",
         "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
+          "errors": null,
+          "info": {
+            "effectiveMode": "home",
+            "mode": "home",
+            "occupancy": "manual",
+            "publicPresent": false,
+            "staffOnly": false
           },
-          "info": null,
-          "status": 403
+          "status": 200
         },
         "pretty": true,
-        "status": 403
+        "status": 200
       },
       "route": "/guard/mode",
       "unit": "guard"
@@ -1114,7 +1121,11 @@
         "json": {
           "errors": null,
           "info": {
-            "mode": "home"
+            "effectiveMode": "home",
+            "mode": "home",
+            "occupancy": "manual",
+            "publicPresent": false,
+            "staffOnly": false
           },
           "status": 200
         },
@@ -1216,14 +1227,19 @@
         "contentType": "application/json",
         "json": {
           "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "mode": [
+                "mode must be one of the allowed values"
+              ]
+            },
+            "message": "Validation failed"
           },
           "info": null,
-          "status": 403
+          "status": 422
         },
         "pretty": true,
-        "status": 403
+        "status": 422
       },
       "route": "/guard/mode",
       "unit": "guard"

@@ -246,7 +246,7 @@ TEST_CASE("hasHttpAccess applies kAuthAccess to /auth paths")
                                             .method = drogon::Delete}));
 }
 
-TEST_CASE("guard administration is Owner-only")
+TEST_CASE("guard calibration stays Owner-only while the Owner keeps every guard route")
 {
   CHECK(role_access::hasHttpAccess(
       {.role = UserRole::Owner, .path = "/guard/mode", .method = drogon::Post}));
@@ -254,9 +254,7 @@ TEST_CASE("guard administration is Owner-only")
                                     .path = "/guard/expected-guests",
                                     .method = drogon::Delete}));
   CHECK_FALSE(role_access::hasHttpAccess(
-      {.role = UserRole::Resident, .path = "/guard/mode", .method = drogon::Get}));
-  CHECK_FALSE(role_access::hasHttpAccess(
-      {.role = UserRole::Guard, .path = "/guard/incidents", .method = drogon::Get}));
+      {.role = UserRole::Guard, .path = "/guard/decisions", .method = drogon::Get}));
   CHECK_FALSE(role_access::hasHttpAccess(
       {.role = UserRole::Guest, .path = "/guard/mode", .method = drogon::Post}));
 }
@@ -283,4 +281,35 @@ TEST_CASE("only directory roles receive the user module stream")
                  TableName::User));
   CHECK(contains(role_access::moduleTables(UserRole::Resident),
                  TableName::Reminder));
+}
+
+TEST_CASE("hasHttpAccess applies kGuardAccess route by route")
+{
+    const auto allows = [](UserRole role, std::string_view path, drogon::HttpMethod method) {
+        return role_access::hasHttpAccess({.role = role, .path = path, .method = method});
+    };
+
+    CHECK(allows(UserRole::Resident, "/guard/mode", drogon::Get));
+    CHECK(allows(UserRole::Resident, "/guard/mode", drogon::Post));
+    CHECK(allows(UserRole::Resident, "/guard/incidents", drogon::Get));
+    CHECK(allows(UserRole::Resident, "/guard/expected-guests", drogon::Post));
+    CHECK(allows(UserRole::Resident, "/guard/expected-guests", drogon::Delete));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/decisions", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/decisions/summary", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/decisions/7/feedback", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/person/3/promote", drogon::Post));
+
+    CHECK(allows(UserRole::Guard, "/guard/mode", drogon::Get));
+    CHECK(allows(UserRole::Guard, "/guard/incidents", drogon::Get));
+    CHECK(allows(UserRole::Guard, "/guard/expected-guests", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Guard, "/guard/mode", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Guard, "/guard/expected-guests", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Guard, "/guard/decisions", drogon::Get));
+
+    CHECK_FALSE(allows(UserRole::Guest, "/guard/mode", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Guest, "/guard/incidents", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/mode/extra", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Resident, "/guardian", drogon::Get));
+
+    CHECK(allows(UserRole::Owner, "/guard/decisions", drogon::Get));
 }

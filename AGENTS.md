@@ -192,6 +192,12 @@ Guest    → read-only permitted resources; user read is limited to their own
            profile.
 ```
 
+The guard surface (`/guard/*`) maps to no table: it is declared route by
+route in `kGuardAccess`, beside `kAuthAccess`. Resident reads and sets the
+mode, reads incidents and manages expected visits; Guard reads the mode,
+incidents and expected visits; decision review, feedback and person
+promotion stay Owner-only; Guest has no guard route.
+
 Helpers: `hasAccess(role, table, perm)`, `readableTables(role)`,
 `readsUserDirectory(role)`, `moduleTables(role)` (the module rooms a socket
 joins and the global audit tables it pages: `readableTables` minus `user` for

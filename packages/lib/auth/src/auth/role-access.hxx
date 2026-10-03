@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <drogon/HttpTypes.h>
 #include <optional>
@@ -70,6 +71,22 @@ inline const std::unordered_map<UserRole,
         {UserRole::Resident, {drogon::Get, drogon::Post, drogon::Patch}},
         {UserRole::Guard, {drogon::Get}},
         {UserRole::Guest, {drogon::Get}},
+};
+
+struct GuardRouteAccess
+{
+  std::string_view path;
+  drogon::HttpMethod method;
+  std::unordered_set<UserRole> roles;
+};
+
+inline const std::vector<GuardRouteAccess> kGuardAccess = {
+    {.path = "/guard/mode", .method = drogon::Get, .roles = {UserRole::Resident, UserRole::Guard}},
+    {.path = "/guard/mode", .method = drogon::Post, .roles = {UserRole::Resident}},
+    {.path = "/guard/incidents", .method = drogon::Get, .roles = {UserRole::Resident, UserRole::Guard}},
+    {.path = "/guard/expected-guests", .method = drogon::Get, .roles = {UserRole::Resident, UserRole::Guard}},
+    {.path = "/guard/expected-guests", .method = drogon::Post, .roles = {UserRole::Resident}},
+    {.path = "/guard/expected-guests", .method = drogon::Delete, .roles = {UserRole::Resident}},
 };
 
 struct HasAccessInput
@@ -204,6 +221,13 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
     if (it == kAuthAccess.end())
       return false;
     return it->second.contains(method);
+  }
+
+  if (path.rfind("/guard", 0) == 0) {
+    const auto route = std::ranges::find_if(kGuardAccess, [&](const GuardRouteAccess& entry) {
+      return entry.path == path && entry.method == method;
+    });
+    return route != kGuardAccess.end() && route->roles.contains(role);
   }
 
   const auto table = tableFromPath(path);
