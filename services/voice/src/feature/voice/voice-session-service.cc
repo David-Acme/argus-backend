@@ -501,7 +501,8 @@ void VoiceSessionService::processTurn(Session& session,
                            .systemAlert = false});
     return;
   }
-  LOG_INFO << "Voice: STT -> " << userText;
+  LOG_INFO << "Voice: STT turn of " << userText.size() << " bytes";
+  LOG_DEBUG << "Voice: STT -> " << userText;
 
   argus::voice::v1::ServerFrame sttFrame;
   sttFrame.mutable_stt()->set_text(userText);
@@ -605,7 +606,8 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
       return;
     cancellation = session.ttsStop.get_token();
   }
-  LOG_INFO << "Voice: speaking -> " << text.substr(0, 80);
+  LOG_INFO << "Voice: speaking " << text.size() << " bytes";
+  LOG_DEBUG << "Voice: speaking -> " << text.substr(0, 80);
 
   TtsRequest treq;
   treq.text = text;

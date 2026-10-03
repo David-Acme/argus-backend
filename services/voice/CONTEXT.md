@@ -84,6 +84,9 @@ exact JSON/binary the app expects is argus-sync's
   `OnDone` stops the session and deletes the reactor without calling
   `Finish` again: a second `Finish` aborted the process, and the reactor
   was never freed.
+- What the user said and what Argus answers are logged at debug level
+  only; info carries their length. A transcript is personal data and the
+  reply can quote recalled memories, and the deploy keeps info logs.
 - A second `VoiceStart` on a live stream is ignored; it used to replace the
   session and orphan the first one's worker thread for good.
 
