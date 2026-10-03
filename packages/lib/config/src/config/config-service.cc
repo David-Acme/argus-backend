@@ -275,14 +275,18 @@ bool applyValue(const std::string& keyPath, const std::string& literal)
                                             .key = key,
                                             .literal = literal});
 
+  toml::table parsed;
   try {
-    gConfig = toml::parse(patched);
+    parsed = toml::parse(patched);
   }
   catch (const toml::parse_error&) {
     return false;
   }
 
-  return writeFileAtomically(gConfigPath, patched);
+  if (!writeFileAtomically(gConfigPath, patched))
+    return false;
+  gConfig = std::move(parsed);
+  return true;
 }
 
 }
