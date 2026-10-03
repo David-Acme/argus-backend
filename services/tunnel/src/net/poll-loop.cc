@@ -56,7 +56,7 @@ void PollLoop::watch(int fd, std::weak_ptr<LoopActor> actor)
 void PollLoop::update(const UpdateInput& input)
 {
   epoll_event event{};
-  event.events = input.events | EPOLLRDHUP;
+  event.events = input.events;
   event.data.fd = input.fd;
   if (::epoll_ctl(epollFd_, EPOLL_CTL_MOD, input.fd, &event) < 0)
     throw std::runtime_error("epoll_ctl mod failed");

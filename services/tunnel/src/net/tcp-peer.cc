@@ -51,7 +51,8 @@ TcpPeer::Ptr TcpPeer::connect(const Params& params)
   Ptr peer(new TcpPeer(updated));
   peer->connecting_ = true;
   peer->loop_.watch(peer->fd_.get(), peer);
-  peer->loop_.update({.fd = peer->fd_.get(), .events = EPOLLOUT, .actor = peer});
+  peer->loop_.update(
+      {.fd = peer->fd_.get(), .events = EPOLLOUT | EPOLLRDHUP, .actor = peer});
   return peer;
 }
 
@@ -215,6 +216,8 @@ void TcpPeer::handleConnectionComplete()
   updateInterest();
   if (callbacks_.onConnected)
     callbacks_.onConnected(*this);
+  if (closeWhenFlushed_ && !closed_)
+    flush();
 }
 
 void TcpPeer::handleEvents(uint32_t events)
@@ -284,8 +287,10 @@ void TcpPeer::updateInterest()
 
 uint32_t TcpPeer::interestEvents() const
 {
-  uint32_t events = kBaseEvents;
-  if (!readPaused_)
+  uint32_t events = 0;
+  if (!eofSeen_)
+    events |= kBaseEvents;
+  if (!readPaused_ && !eofSeen_)
     events |= EPOLLIN;
   if (!sendBuffer_.empty())
     events |= EPOLLOUT;
