@@ -21,7 +21,7 @@ class VoiceStream
 public:
   virtual ~VoiceStream() = default;
 
-  virtual void start(const argus::voice::v1::VoiceIdentity& identity) = 0;
+  virtual void start(const argus::voice::v1::VoiceStart& start) = 0;
   virtual void stop() = 0;
   virtual void skip() = 0;
   virtual void sendPcm(const void* data, size_t size) = 0;

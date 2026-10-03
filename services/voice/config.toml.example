@@ -33,3 +33,6 @@ min_turn_ms = 240
 min_mean_prob = 0.35
 denoise = true
 denoise_gate_rms = 0.0035
+barge_threshold = 0.7
+barge_min_frames = 8
+barge_guard_ms = 300

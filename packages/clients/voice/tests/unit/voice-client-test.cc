@@ -147,11 +147,12 @@ TEST_CASE("one stream carries the connect identity and the frames in order")
   connectIdentity.set_role(v1::VOICE_ROLE_RESIDENT);
   const auto stream = client.connect(connectIdentity, observer);
 
-  v1::VoiceIdentity startIdentity;
-  startIdentity.set_user_id(9);
-  startIdentity.set_name("Ana");
-  startIdentity.set_role(v1::VOICE_ROLE_OWNER);
-  stream->start(startIdentity);
+  v1::VoiceStart start;
+  start.mutable_identity()->set_user_id(9);
+  start.mutable_identity()->set_name("Ana");
+  start.mutable_identity()->set_role(v1::VOICE_ROLE_OWNER);
+  start.set_mode(v1::VOICE_MODE_DUPLEX);
+  stream->start(start);
   stream->sendPcm("a\0b", 3);
   stream->skip();
   stream->stop();
@@ -171,6 +172,7 @@ TEST_CASE("one stream carries the connect identity and the frames in order")
   REQUIRE(service.frames[0].has_start());
   CHECK(service.frames[0].start().identity().user_id() == 9);
   CHECK(service.frames[0].start().identity().role() == v1::VOICE_ROLE_OWNER);
+  CHECK(service.frames[0].start().mode() == v1::VOICE_MODE_DUPLEX);
   CHECK(service.frames[1].pcm() == std::string("a\0b", 3));
   CHECK(service.frames[2].has_skip());
   CHECK(service.frames[3].has_stop());

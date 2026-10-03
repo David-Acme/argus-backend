@@ -24,9 +24,16 @@ message VoiceIdentity
   VoiceRole role = 4;
 }
 
+enum VoiceMode
+{
+  VOICE_MODE_HALF_DUPLEX = 0;
+  VOICE_MODE_DUPLEX = 1;
+}
+
 message VoiceStart
 {
   VoiceIdentity identity = 1;
+  VoiceMode mode = 2;
 }
 
 message VoiceStop {}
@@ -53,6 +60,17 @@ message VoiceStt
 message VoiceAssistant
 {
   string text = 1;
+  int64 turn_id = 2;
+}
+
+message VoiceTurn
+{
+  int64 id = 1;
+}
+
+message VoiceInterrupted
+{
+  int64 id = 1;
 }
 
 message VoiceEvent
@@ -95,6 +113,8 @@ message ServerFrame
     VoiceEvent event = 3;
     VoiceDone done = 4;
     TtsChunk tts_chunk = 5;
+    VoiceTurn turn = 6;
+    VoiceInterrupted interrupted = 7;
   }
 }
 

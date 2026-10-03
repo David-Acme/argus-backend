@@ -12,6 +12,7 @@ namespace
 
 constexpr int kTargetRate = 16000;
 constexpr size_t kMaxQueuedSamples = static_cast<size_t>(kTargetRate) * 30;
+constexpr std::chrono::milliseconds kDefaultBargeGuard{300};
 
 float rmsOf(const std::vector<float>& samples)
 {
@@ -282,7 +283,7 @@ VoiceLang voiceSystemLang()
 
 VoiceSessionService::VoiceSessionService(const VoiceEngineSeam& engines)
     : stt_(engines.stt), tts_(engines.tts), llm_(engines.llm),
-      identity_(engines.identity)
+      identity_(engines.identity), vad_(engines.vad)
 {
   reactions_.init();
 }
@@ -303,6 +304,16 @@ Reaction VoiceSessionService::emitReaction(Session& session,
 void VoiceSessionService::start(VoiceSessionSink& sink,
                                 const argus::voice::v1::VoiceIdentity& identity)
 {
+  argus::voice::v1::VoiceStart halfDuplex;
+  *halfDuplex.mutable_identity() = identity;
+  start(sink, halfDuplex);
+}
+
+void VoiceSessionService::start(VoiceSessionSink& sink,
+                                const argus::voice::v1::VoiceStart& request)
+{
+  const argus::voice::v1::VoiceIdentity& identity = request.identity();
+  const bool duplex = request.mode() == argus::voice::v1::VOICE_MODE_DUPLEX;
   {
     std::scoped_lock lock(mutex_);
     if (sessions_.contains(&sink)) {
@@ -318,9 +329,10 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   const std::string userName = identity.name();
   LOG_INFO << "Voice: session start user=" << identity.user_id()
            << " lang=" << voiceLangToString(lang)
-           << " nameKnown=" << (userName.size() >= 2);
+           << " nameKnown=" << (userName.size() >= 2)
+           << " duplex=" << duplex;
 
-  auto session = std::make_shared<Session>();
+  auto session = std::make_shared<Session>(vad_.createModel());
   session->sink = &sink;
   session->lang = lang;
   session->userId = identity.user_id();
@@ -329,12 +341,22 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   session->denoise = ConfigService::getBool("vad.denoise");
   const double gateRms = ConfigService::getDouble("vad.denoise_gate_rms");
   session->denoiseGateRms = gateRms > 0.0 ? static_cast<float>(gateRms) : 0.0035F;
+  session->duplex = duplex;
+  if (const int guardMs = ConfigService::getInt("vad.barge_guard_ms"); guardMs > 0)
+    session->bargeGuard = std::chrono::milliseconds(guardMs);
+  else
+    session->bargeGuard = kDefaultBargeGuard;
   session->history.push_back({"system", systemPrompt(session->lang)});
 
   const std::string greeting = greetingFor(session->lang, userName);
   session->history.push_back({"assistant", greeting});
 
   session->worker = std::thread([this, session, greeting] {
+    if (session->duplex) {
+      launchTurn(session, [this, greeting](Session& turn) { speak(turn, greeting); });
+      duplexLoop(session);
+      return;
+    }
     speak(*session, greeting);
     workerLoop(session);
   });
@@ -354,7 +376,7 @@ void VoiceSessionService::feedPcm(VoiceSessionSink& sink, const PcmFrame& pcm)
     session = it->second;
   }
 
-  if (session->speaking)
+  if (session->speaking && !session->duplex)
     return;
 
   const size_t sampleCount = pcm.size / 2;
@@ -398,6 +420,8 @@ void VoiceSessionService::stop(VoiceSessionSink& sink)
   session->pcmCv.notify_all();
   if (session->worker.joinable())
     session->worker.join();
+  if (session->turnThread.joinable())
+    session->turnThread.join();
 
   if (session->sink && session->sink->connected()) {
     argus::voice::v1::ServerFrame done;
@@ -423,20 +447,7 @@ void VoiceSessionService::workerLoop(std::shared_ptr<Session> session)
     if (session->speaking)
       continue;
 
-    std::vector<float> clean;
-    if (session->denoise) {
-      const bool silent = rmsOf(batch) < session->denoiseGateRms &&
-                          !session->denoiser.recentVoice();
-      if (silent) {
-        clean.swap(batch);
-      } else {
-        session->denoiser.process(batch, clean);
-      }
-      if ((++session->denoiseLogCounter % 25) == 0)
-        LOG_INFO << "Voice: denoise prob=" << session->denoiser.lastVoiceProb();
-    } else {
-      clean.swap(batch);
-    }
+    std::vector<float> clean = cleanBatch(*session, batch);
 
     size_t offset = 0;
     while (offset < clean.size() && session->active.load()) {
@@ -461,6 +472,164 @@ void VoiceSessionService::workerLoop(std::shared_ptr<Session> session)
       offset += chunk;
     }
   }
+}
+
+std::vector<float> VoiceSessionService::cleanBatch(Session& session,
+                                                   std::vector<float>& batch)
+{
+  std::vector<float> clean;
+  if (session.denoise) {
+    const bool silent = rmsOf(batch) < session.denoiseGateRms &&
+                        !session.denoiser.recentVoice();
+    if (silent) {
+      clean.swap(batch);
+    } else {
+      session.denoiser.process(batch, clean);
+    }
+    if ((++session.denoiseLogCounter % 25) == 0)
+      LOG_INFO << "Voice: denoise prob=" << session.denoiser.lastVoiceProb();
+  } else {
+    clean.swap(batch);
+  }
+  return clean;
+}
+
+void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
+{
+  bool wasListening = false;
+  while (session->active.load()) {
+    std::vector<float> batch;
+    {
+      std::unique_lock<std::mutex> lock(session->pcmMutex);
+      session->pcmCv.wait(lock, [&] {
+        return !session->pcmQueue.empty() || !session->active.load();
+      });
+      if (!session->active.load())
+        break;
+      batch.swap(session->pcmQueue);
+    }
+
+    const std::vector<float> clean = cleanBatch(*session, batch);
+
+    size_t offset = 0;
+    while (offset < clean.size() && session->active.load()) {
+      const size_t chunk = std::min<size_t>(512, clean.size() - offset);
+      const ListenState state = listenState(*session);
+      if (state.listening) {
+        wasListening = true;
+        if (session->vad.listen({.samples = clean.data() + offset,
+                                 .count = static_cast<int>(chunk),
+                                 .armed = state.armed})) {
+          wasListening = false;
+          bargeIn(*session);
+        }
+      }
+      else {
+        if (wasListening) {
+          session->vad.reset();
+          wasListening = false;
+        }
+        auto turn = session->vad.process({.samples = clean.data() + offset,
+                                          .count = static_cast<int>(chunk)});
+        if (turn && !turn->samples.empty()) {
+          launchTurn(session,
+                     [this, samples = std::move(turn->samples)](Session& active) {
+                       processTurn(active, samples);
+                     });
+        }
+      }
+      offset += chunk;
+    }
+  }
+}
+
+void VoiceSessionService::launchTurn(const std::shared_ptr<Session>& session,
+                                     std::function<void(Session&)> body)
+{
+  if (session->turnThread.joinable())
+    session->turnThread.join();
+  {
+    std::scoped_lock lock(session->duplexMutex);
+    session->turn.running = true;
+    session->turn.announced = false;
+    session->turn.barged = false;
+  }
+  session->turnThread = std::thread([session, body = std::move(body)] {
+    try {
+      body(*session);
+    }
+    catch (const std::exception& e) {
+      LOG_WARN << "Voice: turn failed: " << e.what();
+      session->speaking.store(false);
+    }
+    catch (...) {
+      LOG_WARN << "Voice: turn failed (unknown error)";
+      session->speaking.store(false);
+    }
+    std::scoped_lock lock(session->duplexMutex);
+    session->turn.running = false;
+  });
+}
+
+VoiceSessionService::ListenState
+VoiceSessionService::listenState(Session& session)
+{
+  const auto now = std::chrono::steady_clock::now();
+  std::scoped_lock lock(session.duplexMutex);
+  const DuplexTurn& turn = session.turn;
+  return {.listening = !turn.barged && (turn.running || now < turn.playbackEnd),
+          .armed = turn.announced && now >= turn.firstAudioAt + session.bargeGuard};
+}
+
+void VoiceSessionService::bargeIn(Session& session)
+{
+  std::stop_source cancellation;
+  {
+    std::scoped_lock lock(session.turnMutex);
+    session.interrupt.store(true);
+    cancellation = session.turnStop;
+  }
+  cancellation.request_stop();
+
+  std::scoped_lock lock(session.duplexMutex);
+  session.turn.barged = true;
+  session.turn.playbackEnd = std::chrono::steady_clock::now();
+  LOG_INFO << "Voice: barge-in interrupts turn " << session.turn.id;
+  argus::voice::v1::ServerFrame frame;
+  frame.mutable_interrupted()->set_id(session.turn.id);
+  sendFrame(session, std::move(frame));
+}
+
+void VoiceSessionService::sendDuplexChunk(Session& session,
+                                          argus::voice::v1::ServerFrame frame)
+{
+  std::scoped_lock lock(session.duplexMutex);
+  if (session.turn.barged)
+    return;
+  if (!session.turn.announced) {
+    session.turn.announced = true;
+    session.turn.firstAudioAt = std::chrono::steady_clock::now();
+    ++session.turn.id;
+    argus::voice::v1::ServerFrame turnFrame;
+    turnFrame.mutable_turn()->set_id(session.turn.id);
+    sendFrame(session, std::move(turnFrame));
+  }
+  sendFrame(session, std::move(frame));
+}
+
+void VoiceSessionService::sendDuplexAssistant(Session& session,
+                                              AssistantSend send)
+{
+  const auto now = std::chrono::steady_clock::now();
+  std::scoped_lock lock(session.duplexMutex);
+  if (session.turn.barged)
+    return;
+  if (session.turn.announced)
+    send.frame.mutable_assistant()->set_turn_id(session.turn.id);
+  const auto audible = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+      std::chrono::duration<double>(static_cast<double>(send.samples) / kTargetRate));
+  session.turn.playbackEnd = std::max(session.turn.playbackEnd, now) + audible;
+  sendFrame(session, std::move(send.frame));
 }
 
 void VoiceSessionService::processTurn(Session& session,
@@ -606,7 +775,8 @@ void VoiceSessionService::processTurn(Session& session,
   }
   session.speaking = false;
 
-  session.vad.reset();
+  if (!session.duplex)
+    session.vad.reset();
 }
 
 void VoiceSessionService::speak(Session& session, const std::string& text)
@@ -640,6 +810,7 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
        .targetRate = kTargetRate});
 
   SpeakingGuard speakingGuard(session.speaking);
+  size_t spokenSamples = 0;
   argus::voice::v1::ServerFrame assistantFrame;
   assistantFrame.mutable_assistant()->set_text(text);
   try {
@@ -657,7 +828,13 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
         chunkFrame.mutable_tts_chunk()->set_pcm(
             reinterpret_cast<const char*>(resampled.data()),
             static_cast<size_t>(resampled.size()) * sizeof(int16_t));
-        sendFrame(session, std::move(chunkFrame));
+        if (session.duplex) {
+          spokenSamples += resampled.size();
+          sendDuplexChunk(session, std::move(chunkFrame));
+        }
+        else {
+          sendFrame(session, std::move(chunkFrame));
+        }
       }
     },
                            .cancellation = cancellation});
@@ -667,6 +844,11 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
   }
   catch (...) {
     LOG_WARN << "Voice: TTS failed (unknown error)";
+  }
+  if (session.duplex) {
+    sendDuplexAssistant(session, {.frame = std::move(assistantFrame),
+                                  .samples = spokenSamples});
+    return;
   }
   sendFrame(session, std::move(assistantFrame));
 }
@@ -689,6 +871,10 @@ void VoiceSessionService::skip(VoiceSessionSink& sink)
     cancellation = session->turnStop;
   }
   cancellation.request_stop();
+  if (session->duplex) {
+    std::scoped_lock lock(session->duplexMutex);
+    session->turn.playbackEnd = std::chrono::steady_clock::now();
+  }
 }
 
 void VoiceSessionService::sendFrame(Session& session,

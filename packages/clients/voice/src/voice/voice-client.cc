@@ -31,10 +31,10 @@ public:
   {
   }
 
-  void start(const argus::voice::v1::VoiceIdentity& identity) override
+  void start(const argus::voice::v1::VoiceStart& start) override
   {
     argus::voice::v1::ClientFrame frame;
-    *frame.mutable_start()->mutable_identity() = identity;
+    *frame.mutable_start() = start;
     writeFrame(std::move(frame));
   }
 

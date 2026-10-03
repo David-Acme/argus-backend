@@ -70,6 +70,8 @@ Json::Value VoiceGrpcRelay::renderServerFrame(
   else if (frame.has_assistant()) {
     msg["type"] = "voice:assistant";
     payload["text"] = frame.assistant().text();
+    if (frame.assistant().turn_id() != 0)
+      payload["turnId"] = static_cast<Json::Int64>(frame.assistant().turn_id());
   }
   else if (frame.has_event()) {
     msg["type"] = "voice:event";
@@ -82,8 +84,30 @@ Json::Value VoiceGrpcRelay::renderServerFrame(
     msg["type"] = "voice:done";
     payload["sessionId"] = Json::Int64(frame.done().session_id());
   }
+  else if (frame.has_turn()) {
+    msg["type"] = "voice:turn";
+    payload["id"] = static_cast<Json::Int64>(frame.turn().id());
+  }
+  else if (frame.has_interrupted()) {
+    msg["type"] = "voice:interrupted";
+    payload["id"] = static_cast<Json::Int64>(frame.interrupted().id());
+  }
   msg["payload"] = payload;
   return msg;
+}
+
+argus::voice::v1::VoiceMode VoiceGrpcRelay::startModeOf(
+    const Json::Value& message)
+{
+  if (!message.isObject())
+    return argus::voice::v1::VOICE_MODE_HALF_DUPLEX;
+  const Json::Value& payload = message["payload"];
+  if (!payload.isObject())
+    return argus::voice::v1::VOICE_MODE_HALF_DUPLEX;
+  const Json::Value& mode = payload["mode"];
+  if (mode.isString() && mode.asString() == "duplex")
+    return argus::voice::v1::VOICE_MODE_DUPLEX;
+  return argus::voice::v1::VOICE_MODE_HALF_DUPLEX;
 }
 
 class VoiceGrpcRelay::StreamObserver final : public VoiceStreamObserver
@@ -220,9 +244,12 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(const SyncFrameInput& input)
     if (session->closing || session->stream)
       co_return true;
 
+    argus::voice::v1::VoiceStart start;
+    *start.mutable_identity() = identity;
+    start.set_mode(startModeOf(message));
     session->stream = client_->connect(
         identity, std::make_shared<StreamObserver>(conn, session));
-    session->stream->start(identity);
+    session->stream->start(start);
     co_return true;
   }
 

@@ -1,11 +1,11 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <memory>
 #include <onnxruntime_cxx_api.h>
 #include <optional>
 #include <shared/wrapper/audio/sample-ring.hxx>
+#include <span>
 #include <vector>
 
 struct VadConfig
@@ -19,6 +19,8 @@ struct VadConfig
   int preRollFrames{10};
   int minTurnMs{320};
   float minMeanProb{0.55F};
+  float bargeThreshold{0.7F};
+  int bargeMinFrames{8};
 };
 
 struct VadTurn
@@ -34,17 +36,37 @@ struct VadProcessInput
   int count{0};
 };
 
+struct VadListenInput
+{
+  const float* samples;
+  int count{0};
+  bool armed{false};
+};
+
+class VadModel
+{
+public:
+  virtual ~VadModel() = default;
+
+  virtual float probability(std::span<const float> window) = 0;
+  virtual void reset() = 0;
+};
+
+std::unique_ptr<VadModel> makeSileroVadModel();
+
 class VadService
 {
 public:
   VadService();
-  explicit VadService(const VadConfig& config);
+  explicit VadService(std::unique_ptr<VadModel> model);
   ~VadService();
 
   VadService(const VadService&) = delete;
   VadService& operator=(const VadService&) = delete;
 
   std::optional<VadTurn> process(const VadProcessInput& input);
+
+  bool listen(const VadListenInput& input);
 
   bool inSpeech() const;
 
@@ -55,20 +77,19 @@ public:
   static bool isLoaded();
 
 private:
-  void runModel(float& prob);
+  float nextWindow();
+  void keepPreRoll(int frames);
 
   VadConfig cfg_;
-  std::vector<float> state_;
+  std::unique_ptr<VadModel> model_;
   std::vector<float> context_;
   SampleRing pending_;
   std::vector<float> window_;
   std::vector<float> preRoll_;
   std::vector<float> buffer_;
-  std::array<int64_t, 1> sampleRateInput_;
-  std::array<int64_t, 2> inputShape_;
-  std::array<int64_t, 3> stateShape_;
-  std::array<int64_t, 1> srShape_;
   bool speech_{false};
+  int bargeCounter_{0};
+  float bargeProbSum_{0.0F};
   int startCounter_{0};
   int silenceCounter_{0};
   int frameCounter_{0};

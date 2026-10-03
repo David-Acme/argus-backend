@@ -48,7 +48,7 @@ This is the only client package that links `argus::contracts::auth`
   explicit source list, never `file(GLOB)`.
 - The include prefix is load-bearing: `<voice/voice-client.hxx>`.
 - What a consumer sees: a `shared_ptr<VoiceStream>` and five calls on it — start
-  with an identity, PCM in, skip, stop, finish — plus the observer callbacks
+  with a `VoiceStart` (identity and mode), PCM in, skip, stop, finish — plus the observer callbacks
   for what came back and for the close. What it must not see: no
   `StubInterface`, no `grpc::Channel`, no target, no credential, no
   `ClientBidiReactor`, no generated service class, no retry policy. The frames
@@ -64,8 +64,8 @@ This is the only client package that links `argus::contracts::auth`
   resampling, an embedded NUL and all.
 - The identity the stream is gated on is the one passed to `connect`, not the
   one passed to `start`: `connect` sets `x-argus-user` and `x-argus-role`
-  (`voice-client.cc:119-121`, inside `begin()`), `start` puts its own identity
-  inside the first frame, and the two may differ. No device and no credential
+  (`voice-client.cc:119-121`, inside `begin()`), `start` puts its own `VoiceStart`
+  (identity and mode) inside the first frame, and the two may differ. No device and no credential
   are ever sent —
   there is no field for either — and the receiver asks for exactly the two
   headers the client attaches and checks only that both are present, the roles
@@ -107,6 +107,6 @@ This is the only client package that links `argus::contracts::auth`
   pins what crosses it: `x-argus-user` 7 and `x-argus-role` `"resident"` from
   the connect identity with no device and no credential header; four frames in
   order — a start carrying `start()`'s identity (user 9, `VOICE_ROLE_OWNER`,
-  not the one `connect()` got), PCM of exactly three bytes including an
+  not the one `connect()` got) and its `VOICE_MODE_DUPLEX` mode, PCM of exactly three bytes including an
   embedded NUL, skip, stop; the server's `done` reaching the observer with
   `session_id` 4242; and `onStreamClosed` reporting an OK status.

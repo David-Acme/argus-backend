@@ -2,7 +2,9 @@
 
 #include <argus/voice/v1/voice.pb.h>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <feature/voice/voice-engine-seam.hxx>
 #include <memory>
 #include <mutex>
@@ -42,14 +44,40 @@ public:
   explicit VoiceSessionService(const VoiceEngineSeam& engines = {});
 
   void start(VoiceSessionSink& sink,
+             const argus::voice::v1::VoiceStart& request);
+  void start(VoiceSessionSink& sink,
              const argus::voice::v1::VoiceIdentity& identity);
   void feedPcm(VoiceSessionSink& sink, const PcmFrame& frame);
   void stop(VoiceSessionSink& sink);
   void skip(VoiceSessionSink& sink);
 
 private:
+  struct DuplexTurn
+  {
+    int64_t id{0};
+    bool running{false};
+    bool announced{false};
+    bool barged{false};
+    std::chrono::steady_clock::time_point firstAudioAt{};
+    std::chrono::steady_clock::time_point playbackEnd{};
+  };
+
+  struct ListenState
+  {
+    bool listening{false};
+    bool armed{false};
+  };
+
+  struct AssistantSend
+  {
+    argus::voice::v1::ServerFrame frame;
+    size_t samples{0};
+  };
+
   struct Session
   {
+    explicit Session(std::unique_ptr<VadModel> model) : vad(std::move(model)) {}
+
     VoiceSessionSink* sink{nullptr};
     VadService vad;
     NoiseSuppressor denoiser;
@@ -70,9 +98,22 @@ private:
     std::mutex pcmMutex;
     std::condition_variable pcmCv;
     std::vector<float> pcmQueue;
+    bool duplex{false};
+    std::chrono::milliseconds bargeGuard{300};
+    std::thread turnThread;
+    std::mutex duplexMutex;
+    DuplexTurn turn;
   };
 
   void workerLoop(std::shared_ptr<Session> session);
+  void duplexLoop(const std::shared_ptr<Session>& session);
+  std::vector<float> cleanBatch(Session& session, std::vector<float>& batch);
+  void launchTurn(const std::shared_ptr<Session>& session,
+                  std::function<void(Session&)> body);
+  ListenState listenState(Session& session);
+  void bargeIn(Session& session);
+  void sendDuplexChunk(Session& session, argus::voice::v1::ServerFrame frame);
+  void sendDuplexAssistant(Session& session, AssistantSend send);
   void processTurn(Session& session, const std::vector<float>& samples);
   Reaction emitReaction(Session& session, const ReactionSignals& signals);
   void speak(Session& session, const std::string& text);
@@ -85,6 +126,7 @@ private:
   IVoiceTts& tts_;
   IVoiceLlm& llm_;
   IVoiceIdentity& identity_;
+  IVoiceVad& vad_;
 
   friend struct VoiceSessionTestAccess;
 };

@@ -6,7 +6,9 @@
 #include <feature/transport/infra/voice-grpc-relay.hxx>
 #include <fstream>
 #include <json/value.h>
+#include <string>
 #include <text/json-util.hxx>
+#include <vector>
 
 TEST_CASE("voice gRPC config resolves the typed voice leg target")
 {
@@ -69,4 +71,63 @@ TEST_CASE("renderServerFrame reproduces the frozen voice wire JSON")
       json_util::toString(VoiceGrpcRelay::renderServerFrame(done)));
   CHECK(doneJson["type"] == "voice:done");
   CHECK(doneJson["payload"]["sessionId"].asInt64() == 0);
+}
+
+TEST_CASE("renderServerFrame renders the duplex turn frames")
+{
+  argus::voice::v1::ServerFrame turn;
+  turn.mutable_turn()->set_id(3);
+  const Json::Value turnJson = json_util::fromString(
+      json_util::toString(VoiceGrpcRelay::renderServerFrame(turn)));
+  CHECK(turnJson["type"] == "voice:turn");
+  CHECK(turnJson["payload"]["id"].asInt64() == 3);
+
+  argus::voice::v1::ServerFrame interrupted;
+  interrupted.mutable_interrupted()->set_id(3);
+  const Json::Value interruptedJson = json_util::fromString(
+      json_util::toString(VoiceGrpcRelay::renderServerFrame(interrupted)));
+  CHECK(interruptedJson["type"] == "voice:interrupted");
+  CHECK(interruptedJson["payload"]["id"].asInt64() == 3);
+
+  argus::voice::v1::ServerFrame assistant;
+  assistant.mutable_assistant()->set_text("Hola.");
+  assistant.mutable_assistant()->set_turn_id(3);
+  const Json::Value assistantJson = json_util::fromString(
+      json_util::toString(VoiceGrpcRelay::renderServerFrame(assistant)));
+  CHECK(assistantJson["type"] == "voice:assistant");
+  CHECK(assistantJson["payload"]["text"] == "Hola.");
+  CHECK(assistantJson["payload"]["turnId"].asInt64() == 3);
+}
+
+TEST_CASE("A half-duplex assistant frame keeps the frozen payload")
+{
+  argus::voice::v1::ServerFrame assistant;
+  assistant.mutable_assistant()->set_text("Hola.");
+  const Json::Value assistantJson = json_util::fromString(
+      json_util::toString(VoiceGrpcRelay::renderServerFrame(assistant)));
+  CHECK(assistantJson["payload"].getMemberNames() ==
+        std::vector<std::string>{"text"});
+}
+
+TEST_CASE("voice:start selects the duplex mode only when it asks for it")
+{
+  const auto modeOf = [](const std::string& raw) {
+    return VoiceGrpcRelay::startModeOf(json_util::fromString(raw));
+  };
+  CHECK(modeOf(R"({"type":"voice:start","payload":{"mode":"duplex"}})") ==
+        argus::voice::v1::VOICE_MODE_DUPLEX);
+  CHECK(modeOf(R"({"type":"voice:start"})") ==
+        argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  CHECK(modeOf(R"({"type":"voice:start","payload":{}})") ==
+        argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  CHECK(modeOf(R"({"type":"voice:start","payload":{"mode":"half"}})") ==
+        argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  CHECK(modeOf(R"({"type":"voice:start","payload":{"mode":"DUPLEX"}})") ==
+        argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  CHECK(modeOf(R"({"type":"voice:start","payload":{"mode":1}})") ==
+        argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  CHECK(modeOf(R"({"type":"voice:start","payload":"duplex"})") ==
+        argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  CHECK(modeOf(R"({"type":"voice:start","payload":null})") ==
+        argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
 }

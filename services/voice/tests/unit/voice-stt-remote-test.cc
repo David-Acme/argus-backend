@@ -114,7 +114,7 @@ TEST_CASE("The voice session transcribes through the remote adapter")
   FakeLlm llm;
   FakeIdentity identity;
   RemoteVoiceStt stt;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity};
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
   VoiceSessionService session(seam);
 
   FakeVoiceSink sink;
@@ -165,7 +165,7 @@ TEST_CASE("An unreachable argus-stt degrades the turn, not the session")
   FakeLlm llm;
   FakeIdentity identity;
   RemoteVoiceStt stt;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity};
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
   VoiceSessionService session(seam);
 
   FakeVoiceSink sink;

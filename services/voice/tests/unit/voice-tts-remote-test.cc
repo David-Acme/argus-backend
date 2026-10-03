@@ -250,7 +250,7 @@ TEST_CASE("The voice session greeting flows through the remote adapter")
                        [&](const std::vector<float>&) { ++chunks; });
   CHECK(chunks == 2);
 
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity};
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
   VoiceSessionService session(seam);
 
   FakeVoiceSink sink;
@@ -289,7 +289,7 @@ TEST_CASE("An unreachable argus-tts degrades the speak leg, not the session")
   FakeLlm llm;
   FakeIdentity identity;
   RemoteVoiceTts tts;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity};
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
   VoiceSessionService session(seam);
 
   FakeVoiceSink sink;

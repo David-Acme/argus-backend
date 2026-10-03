@@ -3,10 +3,17 @@
 
 #include <test-support/fake-voice-sink.hxx>
 
+#include <config/config-service.hxx>
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
+#include <cstdio>
+#include <fstream>
+#include <memory>
 #include <mutex>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -148,6 +155,156 @@ struct BlockingLlm final : IVoiceLlm
   }
 };
 
+
+struct ScriptedVadModel final : VadModel
+{
+  explicit ScriptedVadModel(std::shared_ptr<std::atomic<int>> counter)
+      : windows(std::move(counter))
+  {
+  }
+
+  float probability(std::span<const float> window) override
+  {
+    ++*windows;
+    return window.back();
+  }
+
+  void reset() override {}
+
+  std::shared_ptr<std::atomic<int>> windows;
+};
+
+struct ScriptedVad final : IVoiceVad
+{
+  std::shared_ptr<std::atomic<int>> windows = std::make_shared<std::atomic<int>>(0);
+
+  [[nodiscard]] std::unique_ptr<VadModel> createModel() const override
+  {
+    return std::make_unique<ScriptedVadModel>(windows);
+  }
+};
+
+struct StreamingTts final : IVoiceTts
+{
+  std::atomic<int> calls{0};
+  std::atomic<int> cancelled{0};
+
+  [[nodiscard]] float defaultSpeed(std::stop_token = {}) const override { return 1.0F; }
+  [[nodiscard]] int sampleRate(std::stop_token = {}) const override { return 16000; }
+
+  void synthesizeStream(TtsRemoteStreamInput input) override
+  {
+    ++calls;
+    for (int i = 0; i < 500 && !input.cancellation.stop_requested(); ++i) {
+      input.onChunk(std::vector<float>(320, 0.1F));
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (input.cancellation.stop_requested())
+      ++cancelled;
+  }
+};
+
+struct RecordingStt final : IVoiceStt
+{
+  std::mutex mutex;
+  std::vector<std::vector<float>> turns;
+
+  std::string transcribe(const VoiceTranscribeInput& input) override
+  {
+    std::scoped_lock lock(mutex);
+    turns.push_back(input.samples);
+    return "espera argus";
+  }
+
+  size_t count()
+  {
+    std::scoped_lock lock(mutex);
+    return turns.size();
+  }
+};
+
+class DuplexConfig
+{
+public:
+  explicit DuplexConfig(int guardMs)
+  {
+    std::ofstream file(kPath);
+    file << "[vad]\n"
+         << "threshold = 0.45\n"
+         << "neg_threshold = 0.25\n"
+         << "min_speech_frames = 5\n"
+         << "min_silence_frames = 12\n"
+         << "pre_roll_frames = 10\n"
+         << "min_turn_ms = 240\n"
+         << "min_mean_prob = 0.35\n"
+         << "denoise = false\n"
+         << "barge_threshold = 0.7\n"
+         << "barge_min_frames = 8\n"
+         << "barge_guard_ms = " << guardMs << "\n";
+    file.close();
+    ConfigService::load(kPath);
+  }
+
+  ~DuplexConfig()
+  {
+    {
+      std::ofstream file(kPath);
+    }
+    ConfigService::load(kPath);
+    std::remove(kPath);
+  }
+
+  DuplexConfig(const DuplexConfig&) = delete;
+  DuplexConfig& operator=(const DuplexConfig&) = delete;
+
+private:
+  static constexpr const char* kPath = "voice-duplex-test-config.toml";
+};
+
+constexpr int kWindow = 512;
+
+struct FeedInput
+{
+  VoiceSessionService& service;
+  VoiceSessionSink& sink;
+  float prob{0.0F};
+  int windows{0};
+};
+
+void feed(const FeedInput& input)
+{
+  const auto value = static_cast<int16_t>(input.prob * 32767.0F);
+  const auto low = static_cast<char>(static_cast<uint16_t>(value) & 0xFFU);
+  const auto high = static_cast<char>((static_cast<uint16_t>(value) >> 8U) & 0xFFU);
+  std::string pcm;
+  pcm.reserve(static_cast<size_t>(input.windows) * kWindow * 2);
+  for (int i = 0; i < input.windows * kWindow; ++i) {
+    pcm.push_back(low);
+    pcm.push_back(high);
+  }
+  input.service.feedPcm(input.sink, {.data = pcm.data(), .size = pcm.size()});
+}
+
+argus::voice::v1::VoiceStart duplexStart()
+{
+  argus::voice::v1::VoiceStart start;
+  start.mutable_identity()->set_user_id(7);
+  start.mutable_identity()->set_role(argus::voice::v1::VOICE_ROLE_OWNER);
+  start.mutable_identity()->set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  start.mutable_identity()->set_name("Ana");
+  start.set_mode(argus::voice::v1::VOICE_MODE_DUPLEX);
+  return start;
+}
+
+std::vector<int64_t> interruptedIds(const FakeVoiceSink& sink)
+{
+  std::vector<int64_t> ids;
+  for (const auto& frame : sink.snapshot())
+    if (frame.has_interrupted())
+      ids.push_back(frame.interrupted().id());
+  return ids;
+}
+
 }
 
 struct VoiceSessionTestAccess
@@ -211,7 +368,7 @@ TEST_CASE("Voice session start speaks the greeting through the injected seam")
   FakeTts tts;
   FakeLlm llm;
   FakeIdentity identity;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity};
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
   VoiceSessionService session(seam);
 
   FakeVoiceSink sink;
@@ -230,6 +387,10 @@ TEST_CASE("Voice session start speaks the greeting through the injected seam")
   for (const auto& frame : sink.snapshot())
     if (frame.has_assistant())
       CHECK(frame.assistant().text().find("Argus") != std::string::npos);
+  CHECK_FALSE(sink.hasType("voice:turn"));
+  for (const auto& frame : sink.snapshot())
+    if (frame.has_assistant())
+      CHECK(frame.assistant().turn_id() == 0);
 
   session.stop(sink);
   CHECK(sink.hasType("voice:done"));
@@ -241,7 +402,7 @@ TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
   FakeTts tts;
   FakeLlm llm;
   FakeIdentity identity;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity};
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
   VoiceSessionService session(seam);
 
   FakeVoiceSink sink;
@@ -301,7 +462,7 @@ TEST_CASE("Skip and stop cancel blocked voice synthesis")
   FakeStt stt;
   FakeLlm llm;
   FakeIdentity identity;
-  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
   FakeVoiceSink sink;
   argus::voice::v1::VoiceIdentity voiceIdentity;
   voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
@@ -332,7 +493,7 @@ TEST_CASE("Skip cancels a blocked voice config fetch")
   FakeStt stt;
   FakeLlm llm;
   FakeIdentity identity;
-  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
   FakeVoiceSink sink;
   argus::voice::v1::VoiceIdentity voiceIdentity;
   voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
@@ -351,7 +512,7 @@ TEST_CASE("The spoken name is written once through the identity seam")
   FakeTts tts;
   FakeLlm llm;
   FakeIdentity identity;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity};
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
   VoiceSessionService session(seam);
 
   FakeVoiceSink sink;
@@ -386,7 +547,7 @@ TEST_CASE("A failed answer rolls the user turn back and says so")
   FakeTts tts;
   FailingLlm llm;
   FakeIdentity identity;
-  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
 
   FakeVoiceSink sink;
   argus::voice::v1::VoiceIdentity voiceIdentity;
@@ -415,7 +576,7 @@ TEST_CASE("The history trims in whole turns and keeps the system prompt")
   FakeTts tts;
   FakeLlm llm;
   FakeIdentity identity;
-  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
 
   FakeVoiceSink sink;
   argus::voice::v1::VoiceIdentity voiceIdentity;
@@ -448,7 +609,7 @@ TEST_CASE("A second start on a live session keeps the first one")
   FakeTts tts;
   FakeLlm llm;
   FakeIdentity identity;
-  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
 
   FakeVoiceSink sink;
   argus::voice::v1::VoiceIdentity voiceIdentity;
@@ -471,7 +632,7 @@ TEST_CASE("Skip cancels the LLM generation and the next turn does not wait for i
   FakeTts tts;
   BlockingLlm llm;
   FakeIdentity identity;
-  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
 
   FakeVoiceSink sink;
   argus::voice::v1::VoiceIdentity voiceIdentity;
@@ -509,7 +670,7 @@ TEST_CASE("Concurrent sessions transcribe in their own language")
   FakeTts tts;
   FakeLlm llm;
   FakeIdentity identity;
-  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
 
   FakeVoiceSink spanishSink;
   argus::voice::v1::VoiceIdentity spanish;
@@ -551,4 +712,206 @@ TEST_CASE("Concurrent sessions transcribe in their own language")
 
   service.stop(spanishSink);
   service.stop(englishSink);
+}
+
+TEST_CASE("A duplex session keeps feeding the VAD while the assistant speaks")
+{
+  DuplexConfig config(300);
+  BlockingTts tts;
+  FakeStt stt;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  service.start(sink, duplexStart());
+  auto sess = VoiceSessionTestAccess::sessionOf(service, sink);
+  CHECK(waitFor([&] { return tts.entered.load() && sess->speaking.load(); }, 1000));
+
+  feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 4});
+  CHECK(waitFor([&] { return vad.windows->load() >= 4; }, 1000));
+  CHECK(sess->speaking.load());
+
+  service.stop(sink);
+}
+
+TEST_CASE("A half-duplex session still drops PCM while the assistant speaks")
+{
+  DuplexConfig config(300);
+  BlockingTts tts;
+  FakeStt stt;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceStart start = duplexStart();
+  start.set_mode(argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  service.start(sink, start);
+  auto sess = VoiceSessionTestAccess::sessionOf(service, sink);
+  CHECK(waitFor([&] { return tts.entered.load() && sess->speaking.load(); }, 1000));
+
+  feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 4});
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  CHECK(vad.windows->load() == 0);
+  {
+    std::scoped_lock lock(sess->pcmMutex);
+    CHECK(sess->pcmQueue.empty());
+  }
+
+  service.stop(sink);
+  CHECK_FALSE(sink.hasType("voice:turn"));
+  CHECK_FALSE(sink.hasType("voice:interrupted"));
+}
+
+TEST_CASE("Sustained speech over the assistant interrupts its turn exactly once")
+{
+  DuplexConfig config(100);
+  StreamingTts tts;
+  RecordingStt stt;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  service.start(sink, duplexStart());
+  CHECK(waitFor([&] { return sink.hasType("voice:turn"); }, 1000));
+  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+  feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 12});
+  CHECK(waitFor([&] { return sink.hasType("voice:interrupted"); }, 2000));
+  CHECK(waitFor([&] { return tts.cancelled.load() == 1; }, 2000));
+  CHECK(interruptedIds(sink) == std::vector<int64_t>{1});
+  CHECK(llm.chatStreamCalls == 0);
+
+  const size_t framesAtInterrupt = sink.size();
+  feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 20});
+  feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 14});
+  CHECK(waitFor([&] { return stt.count() == 1; }, 3000));
+  {
+    std::scoped_lock lock(stt.mutex);
+    REQUIRE(stt.turns.size() == 1);
+    CHECK(stt.turns[0].size() == static_cast<size_t>(44 * kWindow));
+    CHECK(stt.turns[0].front() > 0.9F);
+  }
+
+  CHECK(waitFor([&] {
+    for (const auto& frame : sink.snapshot())
+      if (frame.has_turn() && frame.turn().id() == 2)
+        return true;
+    return false;
+  }, 2000));
+  CHECK(interruptedIds(sink) == std::vector<int64_t>{1});
+  const auto frames = sink.snapshot();
+  bool interruptedTurnSpoke = false;
+  for (size_t i = framesAtInterrupt; i < frames.size(); ++i)
+    interruptedTurnSpoke = interruptedTurnSpoke ||
+                           (frames[i].has_assistant() &&
+                            frames[i].assistant().turn_id() == 1) ||
+                           (frames[i].has_turn() && frames[i].turn().id() == 1);
+  CHECK_FALSE(interruptedTurnSpoke);
+
+  service.stop(sink);
+}
+
+TEST_CASE("Short or weak speech over the assistant does not interrupt it")
+{
+  DuplexConfig config(100);
+  StreamingTts tts;
+  RecordingStt stt;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  service.start(sink, duplexStart());
+  CHECK(waitFor([&] { return sink.hasType("voice:turn"); }, 1000));
+  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+  for (int blip = 0; blip < 4; ++blip) {
+    feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 7});
+    feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 2});
+  }
+  feed({.service = service, .sink = sink, .prob = 0.6F, .windows = 30});
+  CHECK(waitFor([&] { return vad.windows->load() >= 66; }, 2000));
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  CHECK_FALSE(sink.hasType("voice:interrupted"));
+  CHECK(tts.cancelled.load() == 0);
+  CHECK(stt.count() == 0);
+
+  service.stop(sink);
+}
+
+TEST_CASE("Nothing interrupts the assistant before the barge-in guard elapses")
+{
+  DuplexConfig config(60000);
+  StreamingTts tts;
+  RecordingStt stt;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  service.start(sink, duplexStart());
+  CHECK(waitFor([&] { return sink.hasType("voice:turn"); }, 1000));
+
+  feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 24});
+  CHECK(waitFor([&] { return vad.windows->load() >= 24; }, 2000));
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  CHECK_FALSE(sink.hasType("voice:interrupted"));
+  CHECK(tts.cancelled.load() == 0);
+  CHECK(stt.count() == 0);
+
+  service.stop(sink);
+}
+
+TEST_CASE("voice:turn precedes the first audio of every duplex turn")
+{
+  DuplexConfig config(300);
+  FakeTts tts;
+  FakeStt stt;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  service.start(sink, duplexStart());
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant"); }, 1000));
+  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+  feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 20});
+  feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 14});
+  CHECK(waitFor([&] {
+    int assistants = 0;
+    for (const auto& frame : sink.snapshot())
+      if (frame.has_assistant())
+        ++assistants;
+    return assistants == 2;
+  }, 3000));
+
+  std::vector<int64_t> turns;
+  std::vector<int64_t> assistantTurns;
+  bool audioAnnounced = false;
+  bool everyChunkAnnounced = true;
+  for (const auto& frame : sink.snapshot()) {
+    if (frame.has_turn()) {
+      turns.push_back(frame.turn().id());
+      audioAnnounced = true;
+    }
+    else if (frame.has_tts_chunk()) {
+      everyChunkAnnounced = everyChunkAnnounced && audioAnnounced;
+    }
+    else if (frame.has_assistant()) {
+      assistantTurns.push_back(frame.assistant().turn_id());
+      audioAnnounced = false;
+    }
+  }
+  CHECK(turns == std::vector<int64_t>{1, 2});
+  CHECK(assistantTurns == std::vector<int64_t>{1, 2});
+  CHECK(everyChunkAnnounced);
+  CHECK_FALSE(sink.hasType("voice:interrupted"));
+
+  service.stop(sink);
 }

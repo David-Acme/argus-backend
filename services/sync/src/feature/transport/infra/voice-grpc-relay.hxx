@@ -36,6 +36,7 @@ public:
 
   static Json::Value renderServerFrame(
       const argus::voice::v1::ServerFrame& frame);
+  static argus::voice::v1::VoiceMode startModeOf(const Json::Value& message);
 
 private:
   class StreamObserver;

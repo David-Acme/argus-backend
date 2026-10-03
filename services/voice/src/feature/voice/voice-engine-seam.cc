@@ -40,6 +40,12 @@ IVoiceIdentity& voiceIdentity()
   return adapter;
 }
 
+IVoiceVad& voiceVad()
+{
+  static SileroVoiceVad adapter;
+  return adapter;
+}
+
 std::shared_ptr<const IdentityClient>
 GrpcVoiceIdentity::clientFor(const std::string& target)
 {

@@ -116,6 +116,20 @@ protocol could not regress by accident in the commit that changed the endpoint.
   exists, so the relay checks `closing` (and a stream a second start already
   opened) after the awaits instead of starting a stream nobody would finish —
   the observer and the session hold each other until the stream closes.
+- **The voice start mode.** `voice:start` may carry `{"mode":"duplex"}`; the
+  relay reads it with `VoiceGrpcRelay::startModeOf` and sends it as
+  `VoiceStart.mode` (`VOICE_MODE_DUPLEX`). Anything else - no payload, a
+  payload that is not an object, a missing, non-string or unknown `mode`,
+  even `"DUPLEX"` - is `VOICE_MODE_HALF_DUPLEX`, the proto default, so the
+  current app, which sends `voice:start` with no payload, starts exactly the
+  session it always did. The parse is strict on purpose: a typo must fall
+  back to the frozen behaviour, never into a mode the app cannot handle.
+  `renderServerFrame` renders the two duplex frames the same way as the
+  others: `VoiceTurn` as `{"type":"voice:turn","payload":{"id":N}}` and
+  `VoiceInterrupted` as `{"type":"voice:interrupted","payload":{"id":N}}`.
+  `voice:assistant` gains `payload.turnId` only when the frame carries a
+  non-zero `turn_id`, which only a duplex session sets, so a half-duplex
+  `voice:assistant` stays `{"text":...}` byte for byte.
 
 ## Where the state lives
 

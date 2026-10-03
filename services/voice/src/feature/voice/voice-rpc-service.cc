@@ -103,7 +103,7 @@ private:
   {
     switch (frame.body_case()) {
       case argus::voice::v1::ClientFrame::kStart:
-        sessions_.start(*this, frame.start().identity());
+        sessions_.start(*this, frame.start());
         break;
       case argus::voice::v1::ClientFrame::kStop:
         sessions_.stop(*this);

@@ -65,6 +65,10 @@ public:
         return true;
       if (frame.has_done() && type == "voice:done")
         return true;
+      if (frame.has_turn() && type == "voice:turn")
+        return true;
+      if (frame.has_interrupted() && type == "voice:interrupted")
+        return true;
     }
     return false;
   }

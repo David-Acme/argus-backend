@@ -14,9 +14,10 @@ exact JSON/binary the app expects is argus-sync's
 ## What it owns
 
 - **The voice session** (`voice-session-service`), driven by the bidi
-  `VoiceService/Connect` stream: `VoiceStart` (typed identity), `VoiceStop`,
-  `VoiceSkip`, raw PCM bytes; server side `VoiceStt`, `VoiceAssistant`,
-  `VoiceEvent`, `VoiceDone`, `TtsChunk`. PCM is raw 16 kHz s16le in both
+  `VoiceService/Connect` stream: `VoiceStart` (typed identity and mode),
+  `VoiceStop`, `VoiceSkip`, raw PCM bytes; server side `VoiceStt`,
+  `VoiceAssistant`, `VoiceEvent`, `VoiceDone`, `TtsChunk`, and in duplex
+  sessions `VoiceTurn` and `VoiceInterrupted`. PCM is raw 16 kHz s16le in both
   directions, exactly the WS binary frame the `/sync` forwarder relays.
 - **The engine seam** (`voice-engine-seam`): remote-only. There is no
   in-process engine registry in argus-voice — STT/TTS/LLM compile to the
@@ -35,8 +36,10 @@ exact JSON/binary the app expects is argus-sync's
 
 ## Session behavior decisions (moved from code comments)
 
-- While the assistant speaks, mic frames are dropped (the app mic picks up
-  Argus's own audio; feeding it to the VAD would self-trigger).
+- While the assistant speaks, mic frames are dropped in a half-duplex session
+  (the app mic picks up Argus's own audio; feeding it to the VAD would
+  self-trigger). A duplex session keeps them and applies the barge-in rule
+  instead (see "Full duplex and barge-in").
 - RNNoise runs only when a batch is not below the silence RMS gate
   (`vad.denoise_gate_rms` and no recently-decaying voice) — that gate is
   where most CPU is saved when nobody talks.
@@ -96,6 +99,79 @@ exact JSON/binary the app expects is argus-sync's
 - The PCM queue holds at most 30 s of 16 kHz audio; past that the oldest
   samples go. A worker stalled behind a slow turn cannot grow memory without
   bound, and audio that old is no longer an interjection worth answering.
+
+## Full duplex and barge-in
+
+`VoiceStart.mode` (`VoiceMode`, default `VOICE_MODE_HALF_DUPLEX`) selects
+the session behaviour. Half-duplex is the behaviour described above, byte for
+byte: the greeting and every turn run inline on the worker, PCM is dropped
+while `speaking`, and no new frame is ever sent. The relay sends
+`VOICE_MODE_DUPLEX` only when the app's `voice:start` carries
+`{"mode":"duplex"}`, so the current app keeps the half-duplex wire.
+
+A duplex session splits the work in two threads. The worker owns the audio:
+it never stops reading PCM (`feedPcm` does not drop while speaking), runs the
+denoiser and owns the VAD. Each assistant turn (the greeting included) runs
+on the session's turn thread (`launchTurn`), so the VAD keeps running while
+the LLM generates and TTS streams. Only one turn runs at a time: launching
+the next joins the previous one, which is already finished or cancelled.
+`processTurn` therefore does not reset the VAD in duplex; the worker owns it.
+
+While the assistant is audible the worker does not run normal turn
+detection: `VadService::listen` runs the model on each 512-sample window,
+keeps a pre-roll of `pre_roll_frames + barge_min_frames` windows, and counts
+consecutive windows at or above `[vad] barge_threshold` (0.7). When the count
+reaches `[vad] barge_min_frames` (8 windows, about 256 ms) it is a barge-in.
+That is stricter than normal turn start (`threshold` 0.45 for
+`min_speech_frames` 5) because the mic also hears Argus: residual echo after
+the device's own cancellation tends to be short or of middling probability,
+and a self-interrupt is worse than a late one. A window below the threshold
+resets the count, so blips never add up.
+
+The count is only armed once the turn's first TTS audio has been sent and
+`[vad] barge_guard_ms` (300 ms) has passed since: before that there is
+nothing to interrupt, and the first instants of playback are where echo is
+strongest. Before the guard the windows feed only the pre-roll.
+
+"Audible" means the turn thread is still running or the estimated playback
+has not ended. The server streams TTS faster than real time and the app
+plays each sentence when its `voice:assistant` arrives, so each sentence's
+audio duration is added to a `playbackEnd` estimate at that moment. When the
+assistant stops being audible without a barge-in, the VAD is reset and normal
+turn detection resumes (the duplex equivalent of the half-duplex reset after
+a turn). A `voice:skip` ends the estimate at once.
+
+On barge-in the worker cancels the turn exactly as `voice:skip` does
+(`interrupt` + `turnStop.request_stop()`, which cancels the LLM stream and
+the TTS call), sends `voice:interrupted {id}` with the interrupted turn's id,
+and puts the VAD straight into the speech state with the pre-roll as the
+start of the utterance: the windows that triggered the barge-in and the ones
+before them are the first syllables, and normal end-of-turn detection takes
+it from there. A turn is interrupted at most once: the `barged` flag stops
+listening until the next turn starts. Once barged, the turn sends no more
+`tts_chunk`, no `voice:turn` and no `voice:assistant` (chunk, turn and
+interrupted frames are sent under the same `duplexMutex`, so no audio of an
+interrupted turn can follow its `voice:interrupted`); a `voice:assistant`
+after the interruption would make the app flush and play stale audio.
+
+Turn ids are per session and monotonic, starting at 1. A turn takes its id
+when it produces its first audio, and `voice:turn {id}` is sent right before
+that first `tts_chunk`; a turn that never produces audio (STT failed or was
+empty) takes no id, so every id the app sees has a `voice:turn`. In duplex
+each `voice:assistant` also carries `turnId`.
+
+Duplex wire additions (all additive; the relay renders them):
+
+| Frame | Direction | Payload |
+|---|---|---|
+| `voice:start` | app → server | optional `{"mode":"duplex"}` |
+| `voice:turn` | server → app | `{"id": <int64>}` |
+| `voice:interrupted` | server → app | `{"id": <int64>}` |
+| `voice:assistant` | server → app | `{"text": ..., "turnId": <int64>}` (`turnId` duplex only) |
+
+The VAD model is a seam (`VadModel`, created through `IVoiceVad` in
+`VoiceEngineSeam`, Silero by default) so the suites drive barge-in with
+scripted probabilities instead of the ONNX model.
 
 ## Stream lifecycle decisions
 

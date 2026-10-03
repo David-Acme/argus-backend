@@ -6,6 +6,7 @@
 #include <mutex>
 #include <llm/llm-service.hxx>
 #include <llm/llm-remote.hxx>
+#include <shared/services/vad/vad-service.hxx>
 #include <stt/stt-remote.hxx>
 #include <tts/tts-remote.hxx>
 #include <stop_token>
@@ -128,10 +129,28 @@ private:
   std::shared_ptr<const LlmClient> client_;
 };
 
+class IVoiceVad
+{
+public:
+  virtual ~IVoiceVad() = default;
+
+  [[nodiscard]] virtual std::unique_ptr<VadModel> createModel() const = 0;
+};
+
+class SileroVoiceVad final : public IVoiceVad
+{
+public:
+  [[nodiscard]] std::unique_ptr<VadModel> createModel() const override
+  {
+    return makeSileroVadModel();
+  }
+};
+
 IVoiceStt& voiceStt();
 IVoiceTts& voiceTts();
 IVoiceLlm& voiceLlm();
 IVoiceIdentity& voiceIdentity();
+IVoiceVad& voiceVad();
 
 struct VoiceEngineSeam
 {
@@ -139,4 +158,5 @@ struct VoiceEngineSeam
   IVoiceTts& tts = voiceTts();
   IVoiceLlm& llm = voiceLlm();
   IVoiceIdentity& identity = voiceIdentity();
+  IVoiceVad& vad = voiceVad();
 };
