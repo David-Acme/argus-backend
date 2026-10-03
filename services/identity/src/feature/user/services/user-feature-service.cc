@@ -13,8 +13,55 @@
 #include <sync/sync-operation.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <condition_variable>
+#include <functional>
+#include <mutex>
+
 namespace
 {
+class SessionNoticeOrder
+{
+public:
+  static SessionNoticeOrder& instance()
+  {
+    static SessionNoticeOrder order;
+    return order;
+  }
+
+  uint64_t take()
+  {
+    std::scoped_lock lock(mutex_);
+    return next_++;
+  }
+
+  void runInTurn(uint64_t ticket, const std::function<void()>& work)
+  {
+    {
+      std::unique_lock lock(mutex_);
+      turn_.wait(lock, [this, ticket] { return serving_ == ticket; });
+    }
+    struct Advance
+    {
+      SessionNoticeOrder& order;
+      ~Advance()
+      {
+        {
+          std::scoped_lock lock(order.mutex_);
+          ++order.serving_;
+        }
+        order.turn_.notify_all();
+      }
+    } advance{*this};
+    work();
+  }
+
+private:
+  std::mutex mutex_;
+  std::condition_variable turn_;
+  uint64_t next_{0};
+  uint64_t serving_{0};
+};
+
 bool removesLastActiveOwner(const UserSchema& before,
                             const UserManagementUpdateInput& input)
 {
@@ -116,27 +163,30 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
   }
 
   if (roleChanged || deactivated) {
+    const uint64_t ticket = SessionNoticeOrder::instance().take();
     co_await BlockingTask<void>([this, updated, oldRole = existing->role,
-                                 roleChanged, deactivated] {
-      const auto* control = sync_control::getSink();
-      if (roleChanged) {
-        if (control &&
-            !control->replaceRoleRooms({.userId = updated.id,
-                                        .oldRole = userRoleToString(oldRole),
-                                        .newRole = userRoleToString(updated.role)}))
-          LOG_WARN << "Identity: role room replace failed for user "
-                   << updated.id;
-        emitAuthContextChanged(updated);
-      }
-      if (deactivated && control) {
-        SocketEmitDto context;
-        context.operation = SyncOperation::AuthContextChanged;
-        context.option = TableName::User;
-        context.obj = updated.toJson();
-        context.obj["resync"] = false;
-        if (!control->disconnectUser(updated.id, context))
-          LOG_WARN << "Identity: disconnect failed for user " << updated.id;
-      }
+                                 roleChanged, deactivated, ticket] {
+      SessionNoticeOrder::instance().runInTurn(ticket, [&] {
+        const auto* control = sync_control::getSink();
+        if (roleChanged) {
+          if (control &&
+              !control->replaceRoleRooms({.userId = updated.id,
+                                          .oldRole = userRoleToString(oldRole),
+                                          .newRole = userRoleToString(updated.role)}))
+            LOG_WARN << "Identity: role room replace failed for user "
+                     << updated.id;
+          emitAuthContextChanged(updated);
+        }
+        if (deactivated && control) {
+          SocketEmitDto context;
+          context.operation = SyncOperation::AuthContextChanged;
+          context.option = TableName::User;
+          context.obj = updated.toJson();
+          context.obj["resync"] = false;
+          if (!control->disconnectUser(updated.id, context))
+            LOG_WARN << "Identity: disconnect failed for user " << updated.id;
+        }
+      });
     });
   }
   co_return updated;

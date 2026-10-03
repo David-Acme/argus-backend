@@ -260,6 +260,18 @@ adopt the first one's shape; Phase 3c-2 removed the question by giving the sync
 owner a file of its own, and this service's outbox is the only `change_outbox`
 left here.
 
+## Telling argus-sync about a role change
+
+After a role change or a deactivation commits, identity asks argus-sync to
+move the user's sockets between role rooms, emits `AuthContextChanged` and,
+for a deactivation, disconnects them. Those are synchronous gRPC calls with
+a 5 s deadline, so they run in a `BlockingTask`, never on the request's IO
+loop, where an unreachable argus-sync would stall every request that loop
+serves. Each one takes a ticket right after its commit and waits for its turn
+(`SessionNoticeOrder`): two quick changes A→B then B→C must reach argus-sync
+in that order, or the socket ends up in both B's and C's rooms while the
+database says C.
+
 ## Camera guard surface (camera-guard phase 2)
 
 `IdentifyPerson`, `EnrollPerson`, `TouchPerson`, `TagPerson` and
