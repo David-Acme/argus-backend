@@ -25,6 +25,9 @@ inline constexpr std::string_view MARK_APPROVED =
 inline constexpr std::string_view DELETE_BY_CHALLENGE_ID =
     "DELETE FROM device_login_challenge WHERE challenge_id = ?";
 
+inline constexpr std::string_view DELETE_EXPIRED =
+    "DELETE FROM device_login_challenge WHERE expires_at <= ?";
+
 }
 
 struct DeviceLoginChallengeCreateInput

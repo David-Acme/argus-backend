@@ -24,4 +24,6 @@ public:
   markApproved(const DeviceLoginChallengeMarkApprovedInput& input) const;
 
   [[nodiscard]] drogon::Task<bool> remove(const std::string& challengeId) const;
+
+  [[nodiscard]] drogon::Task<int64_t> removeExpired(int64_t now) const;
 };

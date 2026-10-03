@@ -459,8 +459,9 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   REQUIRE_NOTHROW(
       drogon::sync_wait(authService.approveDeviceLogin(created.challengeId, 1)));
 
-  const auto polled =
-      drogon::sync_wait(authService.pollDeviceLogin(created.challengeId));
+  const auto polled = drogon::sync_wait(authService.pollDeviceLogin(
+      {.challengeId = created.challengeId,
+       .device = {.deviceHash = "", .userAgent = kDesktopUa}}));
   CHECK(polled.status == DeviceLoginStatus::Approved);
   CHECK(polled.userId == kUserId);
   CHECK(polled.name == "Ada Rico");
@@ -503,8 +504,9 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK(lost->code == "NOT_FOUND");
   CHECK(lost->message == "Challenge not found");
 
-  const auto replayed =
-      drogon::sync_wait(authService.pollDeviceLogin(created.challengeId));
+  const auto replayed = drogon::sync_wait(authService.pollDeviceLogin(
+      {.challengeId = created.challengeId,
+       .device = {.deviceHash = "", .userAgent = kDesktopUa}}));
   CHECK(replayed.status == DeviceLoginStatus::Expired);
   CHECK(replayed.deviceSecret.empty());
 
@@ -513,8 +515,14 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
       {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa}));
   REQUIRE_NOTHROW(drogon::sync_wait(
       authService.approveDeviceLogin(ipChallenge.challengeId, 1)));
-  const auto ipPolled =
-      drogon::sync_wait(authService.pollDeviceLogin(ipChallenge.challengeId));
+  const auto snooped = drogon::sync_wait(authService.pollDeviceLogin(
+      {.challengeId = ipChallenge.challengeId,
+       .device = {.deviceHash = "another-device", .userAgent = kDesktopUa}}));
+  CHECK(snooped.status == DeviceLoginStatus::Pending);
+  CHECK(snooped.accessToken.empty());
+  const auto ipPolled = drogon::sync_wait(authService.pollDeviceLogin(
+      {.challengeId = ipChallenge.challengeId,
+       .device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa}}));
   CHECK(ipPolled.status == DeviceLoginStatus::Approved);
   CHECK(ipPolled.deviceSecret.empty());
   CHECK_FALSE(ipPolled.toJson().isMember("device_secret"));

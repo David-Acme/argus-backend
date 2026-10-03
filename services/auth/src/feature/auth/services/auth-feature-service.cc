@@ -253,8 +253,9 @@ AuthFeatureService::createDeviceLogin(const LoginDeviceInput& device) const
   if (challengeId.empty())
     throw ResponseException(AuthErrors::LoginChallengeGenerationFailed);
 
-  const int64_t expiresAt =
-      static_cast<int64_t>(std::time(nullptr)) + kDeviceLoginTtlSeconds;
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  co_await dependencies_.challengeRepository.removeExpired(now);
+  const int64_t expiresAt = now + kDeviceLoginTtlSeconds;
   co_await dependencies_.challengeRepository.create(
       {.challengeId = challengeId,
        .deviceHash = device.deviceHash,
@@ -335,19 +336,21 @@ AuthFeatureService::approveDeviceLogin(const std::string& challengeId,
 }
 
 drogon::Task<DeviceLoginStatusDto>
-AuthFeatureService::pollDeviceLogin(const std::string& challengeId) const
+AuthFeatureService::pollDeviceLogin(const DeviceLoginPollInput& input) const
 {
+  const std::string& challengeId = input.challengeId;
   const auto challenge =
       co_await dependencies_.challengeRepository.findByChallengeId(challengeId);
   if (!challenge)
     co_return idleDeviceLogin(DeviceLoginStatus::Expired);
 
-  if (challenge->status != DeviceLoginStatus::Approved) {
-    if (challenge->expiresAt > static_cast<int64_t>(std::time(nullptr)))
-      co_return idleDeviceLogin(DeviceLoginStatus::Pending);
+  if (challenge->expiresAt <= static_cast<int64_t>(std::time(nullptr))) {
     co_await dependencies_.challengeRepository.remove(challengeId);
     co_return idleDeviceLogin(DeviceLoginStatus::Expired);
   }
+  if (challenge->status != DeviceLoginStatus::Approved ||
+      challenge->deviceHash != input.device.deviceHash)
+    co_return idleDeviceLogin(DeviceLoginStatus::Pending);
 
   DeviceLoginStatusDto result;
   result.status = DeviceLoginStatus::Approved;

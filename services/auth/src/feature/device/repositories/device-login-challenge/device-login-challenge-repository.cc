@@ -59,3 +59,12 @@ DeviceLoginChallengeRepository::remove(const std::string& challengeId) const
                                    challengeId);
   co_return result.affectedRows() > 0;
 }
+
+drogon::Task<int64_t>
+DeviceLoginChallengeRepository::removeExpired(int64_t now) const
+{
+  auto client = DbService::client();
+  const auto result =
+      co_await client->execSqlCoro(std::string(DELETE_EXPIRED), now);
+  co_return static_cast<int64_t>(result.affectedRows());
+}

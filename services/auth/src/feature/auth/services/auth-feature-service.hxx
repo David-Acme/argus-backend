@@ -26,6 +26,12 @@ struct LoginDeviceInput
   std::string userAgent;
 };
 
+struct DeviceLoginPollInput
+{
+  std::string challengeId;
+  LoginDeviceInput device;
+};
+
 struct SessionUser
 {
   int64_t userId{0};
@@ -103,7 +109,7 @@ public:
                      int64_t approvingUserId) const;
 
   [[nodiscard]] drogon::Task<DeviceLoginStatusDto>
-  pollDeviceLogin(const std::string& challengeId) const;
+  pollDeviceLogin(const DeviceLoginPollInput& input) const;
 
   [[nodiscard]] drogon::Task<ResponseRefreshTokenDto>
   refreshToken(const RefreshTokenInput& input) const;

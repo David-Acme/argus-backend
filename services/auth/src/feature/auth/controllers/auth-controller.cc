@@ -97,13 +97,17 @@ AuthController::approveDeviceLogin(drogon::HttpRequestPtr req,
 }
 
 drogon::Task<drogon::HttpResponsePtr>
-AuthController::pollDeviceLogin(drogon::HttpRequestPtr,
+AuthController::pollDeviceLogin(drogon::HttpRequestPtr req,
                                 std::string challengeId)
 {
   if (challengeId.empty())
     throw ResponseException(AuthErrors::MissingChallengeId);
 
-  const auto result = co_await service_.pollDeviceLogin(challengeId);
+  const auto& dev =
+      req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
+  const auto result = co_await service_.pollDeviceLogin(
+      {.challengeId = std::move(challengeId),
+       .device = {.deviceHash = dev.deviceHash, .userAgent = dev.userAgent}});
 
   co_return ApiResponse::ok(result.toJson());
 }

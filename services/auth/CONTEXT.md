@@ -48,6 +48,14 @@ repository and mapping — because the lookup is a different question with a
 different table, and nothing in `session` needs the other's tables. `auth`
 owns the HTTP surface, its DTOs and the rate gate that guards it.
 
+Cross-device login: the approved tokens are handed only to the device
+that created the challenge (the poll's device hash must equal the
+creator's; any other poller keeps reading `pending`), a challenge past its
+expiry answers `expired` even after it was approved, and creating a
+challenge first deletes the expired ones. Before, whoever polled first -
+anyone who saw the QR - received the approver's tokens, and an approved
+challenge that nobody polled kept live tokens in `auth.db` forever.
+
 `AuthRateGate` (`[rate_limit]`, on unless the key says otherwise) limits
 the unauthenticated entry points - `POST /auth/login`, `POST
 /auth/register`, `POST /auth/device-login` - and `PATCH
