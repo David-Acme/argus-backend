@@ -117,6 +117,9 @@ CREATE TABLE IF NOT EXISTS encounter_closed_inbox (
   updated_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
+CREATE INDEX IF NOT EXISTS idx_encounter_closed_inbox_settled
+  ON encounter_closed_inbox (updated_at) WHERE status != 'received';
+
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fact_fts USING fts5(
   canonical, content = 'memory_fact', content_rowid = 'id',
   tokenize = 'unicode61 remove_diacritics 2'

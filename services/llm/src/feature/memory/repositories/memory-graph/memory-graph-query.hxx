@@ -289,11 +289,18 @@ inline constexpr const char* MARK_ENCOUNTER_CONFLICT =
     "updated_at = ? WHERE event_id = ? AND status IN ('received', "
     "'dispatched')";
 inline constexpr const char* PURGE_SETTLED_ENCOUNTERS =
-    "DELETE FROM encounter_closed_inbox "
-    "WHERE status != 'received' AND updated_at < ?";
+    "DELETE FROM encounter_closed_inbox WHERE event_id IN ("
+    "SELECT event_id FROM encounter_closed_inbox "
+    "WHERE status != 'received' AND updated_at < ? LIMIT ?)";
 inline constexpr const char* FORCE_ENCOUNTER_DEAD_LETTERED =
     "UPDATE encounter_closed_inbox SET status = 'dead_lettered', "
     "updated_at = ? WHERE event_id = ?";
+
+struct EncounterPurgeInput
+{
+  int64_t olderThan{0};
+  int64_t limit{0};
+};
 
 struct EncounterClosedReceiptInput
 {

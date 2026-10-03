@@ -15,6 +15,8 @@ namespace
 {
 constexpr int64_t kSettledReceiptRetentionS = 14LL * 24 * 3600;
 constexpr int64_t kPurgeIntervalS = 24LL * 3600;
+constexpr int64_t kPurgeBatch = 500;
+constexpr int64_t kPurgeBacklogIntervalS = 60;
 std::string encounterFingerprint(const std::string& payload)
 {
   return argus::hash::sha256Hex(
@@ -209,8 +211,11 @@ void EncounterClosedConsumer::purgeSettled(int64_t now)
   {
     std::scoped_lock lock(dependencies_.graph->mutex());
     purged = dependencies_.repository->purgeSettledEncounters(
-        dependencies_.graph->handle(), now - kSettledReceiptRetentionS);
+        dependencies_.graph->handle(),
+        {.olderThan = now - kSettledReceiptRetentionS, .limit = kPurgeBatch});
   }
+  if (purged >= kPurgeBatch)
+    nextPurgeAt_.store(now + kPurgeBacklogIntervalS, std::memory_order_relaxed);
   if (purged > 0)
     LOG_INFO << "Encounter consumer: purged " << purged << " settled receipt(s)";
 }

@@ -205,7 +205,10 @@ durable JetStream consumer on `argus.guard.v1.encounter_closed`
 `dead_lettered`, SHA-256 canonical fingerprint, conflict never captured) and
 captured exactly once through the injected `capture`. Settled receipts older
 than 14 days — twice the stream's 7-day max age, so nothing can redeliver
-them — are deleted at most once a day after a capture; a busy venue closes
+them — are deleted at most once a day after a capture, 500 at a time
+through a partial index on `updated_at`; a full batch brings the next one a
+minute closer, so a first run over a long backlog never holds the graph lock
+or the loop for more than one bounded statement. A busy venue closes
 thousands of encounters a day and the table kept them all. The capture
 calls `observeSystemEvent` with the owner's scope —
 never rule-parsed, never a fact. The owner resolves through

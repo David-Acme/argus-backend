@@ -937,15 +937,16 @@ bool MemoryGraphRepository::markEncounterDispatched(
   return stmt.step() == SQLITE_DONE && sqlite3_changes(db) > 0;
 }
 
-int64_t MemoryGraphRepository::purgeSettledEncounters(sqlite3* db,
-                                                      int64_t olderThan)
+int64_t MemoryGraphRepository::purgeSettledEncounters(
+    sqlite3* db, const EncounterPurgeInput& input)
 {
   if (!db)
     return 0;
   SqliteStmt stmt;
   if (!stmt.prepare(db, PURGE_SETTLED_ENCOUNTERS))
     return 0;
-  stmt.bindInt64(1, olderThan);
+  stmt.bindInt64(1, input.olderThan);
+  stmt.bindInt64(2, input.limit);
   if (stmt.step() != SQLITE_DONE)
     return 0;
   return sqlite3_changes(db);

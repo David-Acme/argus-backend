@@ -138,7 +138,8 @@ TEST_CASE("the encounter inbox is durable, exact and fail-closed")
 
   CHECK_FALSE(repository.claimEncounterClosed(
       db, {.eventId = "enc:live", .fingerprint = "fp-live", .at = 50}).duplicate);
-  CHECK(repository.purgeSettledEncounters(db, 104) == 2);
+  CHECK(repository.purgeSettledEncounters(db, {.olderThan = 104, .limit = 1}) == 1);
+  CHECK(repository.purgeSettledEncounters(db, {.olderThan = 104, .limit = 10}) == 1);
   CHECK(scalarInt(db, "SELECT COUNT(*) FROM encounter_closed_inbox WHERE "
                       "event_id IN ('enc:1', 'enc:2')") == 0);
   CHECK(scalarInt(db, "SELECT COUNT(*) FROM encounter_closed_inbox WHERE "
