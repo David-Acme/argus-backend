@@ -1,17 +1,6 @@
 #include "create-camera-dto.hxx"
 
-#include <arpa/inet.h>
-
-namespace
-{
-bool isLiteralAddress(const std::string& value)
-{
-  in_addr v4{};
-  in6_addr v6{};
-  return ::inet_pton(AF_INET, value.c_str(), &v4) == 1 ||
-         ::inet_pton(AF_INET6, value.c_str(), &v6) == 1;
-}
-}
+#include <feature/camera/dtos/camera-address-rules.hxx>
 
 CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
 {
@@ -31,6 +20,10 @@ CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
   dto.recordMode = json.get("recordMode", "events").asString();
   if (json.isMember("retentionDays") && json["retentionDays"].isInt64())
     dto.retentionDays = json["retentionDays"].asInt64();
+  if (json.isMember("streamPath") && json["streamPath"].isString())
+    dto.streamPath = json["streamPath"].asString();
+  if (json.isMember("subStreamPath") && json["subStreamPath"].isString())
+    dto.subStreamPath = json["subStreamPath"].asString();
 
   START_VALIDATION(CreateCameraDto, dto)
   IS_NOT_EMPTY(name)
@@ -38,9 +31,7 @@ CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
   IS_NOT_EMPTY(ip)
   MAX_LENGTH(ip, 64)
   CUSTOM_LAMBDA(ip, [](const CreateCameraDto& d) -> std::optional<std::string> {
-    if (isLiteralAddress(d.ip))
-      return std::nullopt;
-    return "must be an IPv4 or IPv6 address";
+    return camera_address_rules::addressError(d.ip);
   })
   BETWEEN(port, 1, 65535)
   IS_IN(recordMode, "events", "continuous")
@@ -51,6 +42,17 @@ CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
   MAX_LENGTH(manufacturer, 80)
   MAX_LENGTH(model, 80)
   MAX_LENGTH(username, 80)
+  MAX_LENGTH(password, camera_address_rules::kMaxSecretLength)
+  MAX_LENGTH(cloudPassword, camera_address_rules::kMaxSecretLength)
+  CUSTOM_LAMBDA(retentionDays, [](const CreateCameraDto& d) {
+    return camera_address_rules::retentionError(d.retentionDays);
+  })
+  CUSTOM_LAMBDA(streamPath, [](const CreateCameraDto& d) {
+    return camera_address_rules::pathError(d.streamPath);
+  })
+  CUSTOM_LAMBDA(subStreamPath, [](const CreateCameraDto& d) {
+    return camera_address_rules::pathError(d.subStreamPath);
+  })
   END_VALIDATION()
   return dto;
 }

@@ -10,6 +10,7 @@
 #include <feature/camera/controllers/camera-controller.hxx>
 #include <feature/camera/dtos/create-camera-dto.hxx>
 #include <feature/camera/dtos/update-camera-dto.hxx>
+#include <shared/services/camera-driver/stream-only-driver.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 #include <feature/zone/controllers/zone-controller.hxx>
 #include <feature/zone/dtos/create-zone-dto.hxx>
@@ -477,6 +478,54 @@ TEST_CASE("a camera address must be a literal IP and a record mode a known one")
   CHECK(UpdateCameraDto::fromJson(update).recordMode == "continuous");
 }
 
+TEST_CASE("a camera lives on the local network and its stream paths are plain")
+{
+  const auto refusesField = [](const auto& parse, const char* field) {
+    try {
+      static_cast<void>(parse());
+    }
+    catch (const ValidationException& e) {
+      return e.errors().count(field) == 1;
+    }
+    return false;
+  };
+  Json::Value create;
+  create["name"] = "Gate";
+  create["ip"] = "8.8.8.8";
+  CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "ip"));
+  create["ip"] = "fd12:3456::7";
+  CHECK(CreateCameraDto::fromJson(create).ip == "fd12:3456::7");
+  create["ip"] = "192.168.1.60";
+  create["streamPath"] = "Streaming/Channels/101";
+  CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "streamPath"));
+  create["streamPath"] = "/cam/realmonitor?channel=1&subtype=0";
+  create["subStreamPath"] = "/live 2";
+  CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "subStreamPath"));
+  create["subStreamPath"] = "/Streaming/Channels/102";
+  const auto parsed = CreateCameraDto::fromJson(create);
+  CHECK(parsed.streamPath == "/cam/realmonitor?channel=1&subtype=0");
+  CHECK(parsed.subStreamPath == "/Streaming/Channels/102");
+  create["retentionDays"] = Json::Int64(-1);
+  CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "retentionDays"));
+
+  Json::Value update;
+  update["port"] = 0;
+  CHECK(refusesField([&] { return UpdateCameraDto::fromJson(update); }, "port"));
+  update["port"] = 70000;
+  CHECK(refusesField([&] { return UpdateCameraDto::fromJson(update); }, "port"));
+  update["port"] = 8554;
+  update["ip"] = "203.0.113.9";
+  CHECK(refusesField([&] { return UpdateCameraDto::fromJson(update); }, "ip"));
+  update["ip"] = "10.1.2.3";
+  update["model"] = std::string(81, 'm');
+  CHECK(refusesField([&] { return UpdateCameraDto::fromJson(update); }, "model"));
+  update["model"] = "C225";
+  update["streamPath"] = "";
+  const auto cleared = UpdateCameraDto::fromJson(update);
+  CHECK(cleared.port == 8554);
+  CHECK(cleared.streamPath == "");
+}
+
 TEST_CASE("a removed camera leaves nothing behind in the snapshot store")
 {
   SnapshotStore::instance().putFrame(4242, "jpeg-bytes", 1);
@@ -497,4 +546,22 @@ TEST_CASE("a stream sink admits one box larger than its window when idle")
   CHECK_FALSE(sink.tryReserve(1));
   sink.release(100);
   CHECK(sink.tryReserve(100));
+}
+
+TEST_CASE("a stream-only camera answers its capabilities with every control off")
+{
+  CameraSchema camera;
+  camera.driver = CameraDriver::Rtsp;
+  camera.model = "testsrc2";
+  StreamOnlyDriver driver(camera);
+  const Json::Value capabilities = driver.capabilities();
+  for (const char* control : {"ptz", "presets", "talk", "privacy", "led", "alarm"})
+    CHECK_FALSE(capabilities[control].asBool());
+  CHECK(capabilities["streamOnly"].asBool());
+  const DriverResult status = driver.status();
+  CHECK(status.ok);
+  CHECK(status.data["model"].asString() == "testsrc2");
+  const DriverResult moved = driver.move({.x = std::nullopt, .y = std::nullopt, .angle = 90});
+  CHECK_FALSE(moved.ok);
+  CHECK(moved.error.find("stream video only") != std::string::npos);
 }

@@ -2,6 +2,7 @@ argus_module(NAME camera-driver
     SOURCES
         camera-driver-registry.cc
         camera-scene-log.cc
+        stream-only-driver.cc
         tapo-driver.cc
     INCLUDES
         ../../..

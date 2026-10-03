@@ -7,6 +7,7 @@
 #include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
+#include <shared/vocabulary/camera-stream-paths.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 #include <runtime/blocking-task.hxx>
@@ -78,7 +79,9 @@ CameraFeatureService::create(const CreateCameraDto& body) const
         .recordMode = cameraRecordModeFromString(body.recordMode),
         .retentionDays = body.retentionDays,
         .capabilities = "[]",
-        .config = "{}",
+        .config = camera_stream_paths::withPaths({.config = "{}",
+                                                  .main = body.streamPath,
+                                                  .sub = body.subStreamPath}),
         .client = transaction.get(),
     });
     co_await emit({.table = TableName::Camera,
@@ -125,6 +128,11 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
     if (body.driver)
       input.driver = cameraDriverFromString(*body.driver);
     input.isEnabled = body.isEnabled;
+    if (body.streamPath || body.subStreamPath) {
+      input.config = camera_stream_paths::withPaths({.config = before.config,
+                                                     .main = body.streamPath,
+                                                     .sub = body.subStreamPath});
+    }
     if (body.recordMode)
       input.recordMode = cameraRecordModeFromString(*body.recordMode);
     input.client = transaction.get();

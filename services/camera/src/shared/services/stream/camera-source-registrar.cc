@@ -2,6 +2,9 @@
 
 #include "go2rtc-manager.hxx"
 
+#include <shared/utils/network-address/private-address.hxx>
+#include <shared/vocabulary/camera-stream-paths.hxx>
+
 namespace
 {
 
@@ -55,10 +58,11 @@ void collect(const CameraSchema& camera, CameraSourceChange& change)
     change.removals.push_back(sourceName(camera.id, true));
     return;
   }
+  const CameraStreamPaths paths = camera_stream_paths::of(camera.config);
   change.upserts.push_back({.name = sourceName(camera.id, false),
-                            .url = CameraSourceRegistrar::sourceUrl(camera, "stream1")});
+                            .url = CameraSourceRegistrar::sourceUrl(camera, paths.main)});
   change.upserts.push_back({.name = sourceName(camera.id, true),
-                            .url = CameraSourceRegistrar::sourceUrl(camera, "stream2")});
+                            .url = CameraSourceRegistrar::sourceUrl(camera, paths.sub)});
 }
 
 }
@@ -73,10 +77,11 @@ std::string CameraSourceRegistrar::sourceUrl(const CameraSchema& camera,
     url += encodeUserInfo(camera.password);
     url += '@';
   }
-  url += camera.ip;
+  url += network_address::urlHost(camera.ip);
   url += ':';
   url += std::to_string(camera.port > 0 ? camera.port : 554);
-  url += '/';
+  if (!path.starts_with('/'))
+    url += '/';
   url += path;
   return url;
 }

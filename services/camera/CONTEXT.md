@@ -879,3 +879,40 @@ as `ZoneProvider` loaded it from camera.db. argus-guard asked for it to word its
 notifications ("in «Back door»" instead of "in the alert zone"); the key is
 additive and absent outside a zone, so a consumer that ignores it reads the
 event exactly as before, and `schemaVersion` stays 3.
+
+## Any RTSP camera, any private address, and a driver for the ones Argus cannot steer
+
+- **Stream paths.** go2rtc's sources were always `/stream1` and `/stream2`,
+  the Tapo paths, so an RTSP or ONVIF camera from another vendor could be added
+  and never stream. `POST/PATCH /camera` accept `streamPath` and
+  `subStreamPath` (a leading `/`, letters, digits and `/._~-?=&%+,;:` only, at
+  most 200 characters, so the value can sit in the YAML line and the URL
+  without quoting) and keep them in the camera's `config` JSON column (until
+  now always `{}`, synced to the app as a string); an empty string clears one.
+  The registrar reads them through `shared/vocabulary/camera-stream-paths.hxx`
+  and falls back to the Tapo paths, so every existing camera keeps its URLs.
+  No credential ever enters `config`.
+- **Addresses.** One predicate, `shared/utils/network-address`, decides what a
+  camera address may be, for the DTOs and for go2rtc's source guard alike: a
+  literal IPv4 or IPv6 address in a private, loopback or link-local range
+  (10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, ::1, fc00::/7, fe80::/10,
+  and the v4-mapped forms). The guard used string prefixes, which let
+  `10.evil.example` through as a host; the DTO already required a literal, and
+  now also refuses a public address with a 422 instead of accepting a camera
+  whose stream go2rtc would silently never open. An IPv6 camera is bracketed in
+  its RTSP URL; it used to produce `rtsp://fd00::5:554/...`, which nothing
+  parses. `PATCH /camera` now checks `port` (1-65535) and the same lengths as
+  create; both check `retentionDays` (0-3650) and cap the passwords at 128.
+- **Stream-only cameras.** RTSP and ONVIF cameras have no control driver, so
+  `/camera/{id}/capabilities` answered 502 and the app offered a PTZ pad that
+  could only fail. Camera-control now answers them through `StreamOnlyDriver`:
+  capabilities all `false` plus `streamOnly: true`, a status that reports the
+  stored model, and a refusal that says the camera only streams for every
+  control. The driver registry is untouched, so argus-guard's action RPCs keep
+  rejecting these cameras with `no_driver` exactly as before.
+- **go2rtc's files.** The generated `go2rtc.yaml` holds every camera's
+  credentials; it was written with the default mode and chmod-ed to 0600
+  afterwards, and `go2rtc.log` was 0644. The config is now written to a 0600
+  staging file and renamed into place (go2rtc never reads half a file either),
+  the log is created 0600, and the source guard also refuses a space or `#` in
+  a URL, the two characters that would end the YAML scalar.

@@ -1,17 +1,6 @@
 #include "update-camera-dto.hxx"
 
-#include <arpa/inet.h>
-
-namespace
-{
-bool isLiteralAddress(const std::string& value)
-{
-  in_addr v4{};
-  in6_addr v6{};
-  return ::inet_pton(AF_INET, value.c_str(), &v4) == 1 ||
-         ::inet_pton(AF_INET6, value.c_str(), &v6) == 1;
-}
-}
+#include <feature/camera/dtos/camera-address-rules.hxx>
 
 UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
 {
@@ -44,6 +33,10 @@ UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
     dto.retentionDays = json["retentionDays"].asInt64();
   if (json.isMember("isEnabled") && json["isEnabled"].isBool())
     dto.isEnabled = json["isEnabled"].asBool();
+  if (json.isMember("streamPath") && json["streamPath"].isString())
+    dto.streamPath = json["streamPath"].asString();
+  if (json.isMember("subStreamPath") && json["subStreamPath"].isString())
+    dto.subStreamPath = json["subStreamPath"].asString();
 
   START_VALIDATION(UpdateCameraDto, dto)
   IS_NOT_EMPTY_OPTIONAL(name)
@@ -51,12 +44,33 @@ UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
   IS_NOT_EMPTY_OPTIONAL(ip)
   MAX_LENGTH_OPTIONAL(ip, 64)
   CUSTOM_LAMBDA(ip, [](const UpdateCameraDto& d) -> std::optional<std::string> {
-    if (!d.ip || isLiteralAddress(*d.ip))
+    if (!d.ip)
       return std::nullopt;
-    return "must be an IPv4 or IPv6 address";
+    return camera_address_rules::addressError(*d.ip);
+  })
+  CUSTOM_LAMBDA(port, [](const UpdateCameraDto& d) -> std::optional<std::string> {
+    if (!d.port || (*d.port >= 1 && *d.port <= 65535))
+      return std::nullopt;
+    return "must be between 1 and 65535";
   })
   IS_IN_OPTIONAL(recordMode, "events", "continuous")
+  IS_NOT_EMPTY_OPTIONAL(icon)
   MAX_LENGTH_OPTIONAL(icon, 40)
+  MAX_LENGTH_OPTIONAL(manufacturer, 80)
+  MAX_LENGTH_OPTIONAL(model, 80)
+  MAX_LENGTH_OPTIONAL(username, 80)
+  MAX_LENGTH_OPTIONAL(cloudUsername, 120)
+  MAX_LENGTH_OPTIONAL(password, camera_address_rules::kMaxSecretLength)
+  MAX_LENGTH_OPTIONAL(cloudPassword, camera_address_rules::kMaxSecretLength)
+  CUSTOM_LAMBDA(retentionDays, [](const UpdateCameraDto& d) {
+    return camera_address_rules::retentionError(d.retentionDays);
+  })
+  CUSTOM_LAMBDA(streamPath, [](const UpdateCameraDto& d) {
+    return camera_address_rules::pathError(d.streamPath);
+  })
+  CUSTOM_LAMBDA(subStreamPath, [](const UpdateCameraDto& d) {
+    return camera_address_rules::pathError(d.subStreamPath);
+  })
   CUSTOM_LAMBDA(driver, [](const UpdateCameraDto& d) -> std::optional<std::string> {
     if (!d.driver)
       return std::nullopt;

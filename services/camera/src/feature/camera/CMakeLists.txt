@@ -16,6 +16,7 @@ argus_module(NAME camera-feature
         argus::lib::http
         argus::lib::runtime
         argus::lib::sqlite
+        argus::lib::text
         argus::lib::validation
         Drogon::Drogon)
 

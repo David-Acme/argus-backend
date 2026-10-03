@@ -21,6 +21,8 @@ struct CreateCameraDto
   std::string icon;
   std::string recordMode;
   std::optional<int64_t> retentionDays;
+  std::optional<std::string> streamPath;
+  std::optional<std::string> subStreamPath;
 
   static CreateCameraDto fromJson(const Json::Value& json);
 };

@@ -22,6 +22,8 @@ struct UpdateCameraDto
   std::optional<std::string> recordMode;
   std::optional<int64_t> retentionDays;
   std::optional<bool> isEnabled;
+  std::optional<std::string> streamPath;
+  std::optional<std::string> subStreamPath;
 
   static UpdateCameraDto fromJson(const Json::Value& json);
 };

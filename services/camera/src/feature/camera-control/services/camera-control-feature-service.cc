@@ -2,6 +2,7 @@
 
 #include <runtime/blocking-task.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <shared/services/camera-driver/stream-only-driver.hxx>
 
 #include <chrono>
 
@@ -28,9 +29,10 @@ drogon::Task<CameraControlResult> CameraControlFeatureService::onDevice(
   if (!camera)
     co_return std::nullopt;
 
-  auto driver = CameraDriverRegistry::instance().driverFor(*camera);
+  std::shared_ptr<ICameraDriver> driver =
+      CameraDriverRegistry::instance().driverFor(*camera);
   if (!driver)
-    co_return DriverResult::failure("This camera driver is not supported yet");
+    driver = std::make_shared<StreamOnlyDriver>(*camera);
 
   DriverResult result =
       co_await BlockingTask<DriverResult>([driver, work]() { return work(*driver); });

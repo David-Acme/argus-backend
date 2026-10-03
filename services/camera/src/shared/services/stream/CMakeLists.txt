@@ -12,6 +12,7 @@ argus_module(NAME camera-stream
     DEPENDS
         argus::camera-repositories
         argus::lib::config
+        argus::lib::text
         Drogon::Drogon)
 
 target_compile_options(argus_camera-stream PRIVATE -Wall -Wextra)

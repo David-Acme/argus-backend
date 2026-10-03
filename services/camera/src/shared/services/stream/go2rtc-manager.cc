@@ -9,9 +9,11 @@
 #include <drogon/HttpClient.h>
 #include <drogon/drogon.h>
 #include <fcntl.h>
-#include <fstream>
+#include <sstream>
+#include <string_view>
 #include <netinet/in.h>
 #include <config/config-service.hxx>
+#include <shared/utils/network-address/private-address.hxx>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -34,21 +36,51 @@ bool isSubStreamName(const std::string& name)
   return name.ends_with(kSubStreamSuffix);
 }
 
-bool isPrivateHost(const std::string& host)
+struct PrivateFile
 {
-  if (host == "localhost" || host.rfind("127.", 0) == 0)
-    return true;
-  if (host.rfind("10.", 0) == 0 || host.rfind("192.168.", 0) == 0)
-    return true;
-  if (host.rfind("172.", 0) == 0) {
-    const auto dot = host.find('.', 4);
-    if (dot != std::string::npos) {
-      const int second = std::atoi(host.substr(4, dot - 4).c_str());
-      if (second >= 16 && second <= 31)
-        return true;
+  const std::string& path;
+  std::string contents;
+};
+
+bool writePrivateFile(const PrivateFile& file)
+{
+  const std::string staging = file.path + ".tmp";
+  const int fd = ::open(staging.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
+                        S_IRUSR | S_IWUSR);
+  if (fd < 0)
+    return false;
+  ::fchmod(fd, S_IRUSR | S_IWUSR);
+  std::string_view pending = file.contents;
+  while (!pending.empty()) {
+    const ssize_t written = ::write(fd, pending.data(), pending.size());
+    if (written < 0 && errno == EINTR)
+      continue;
+    if (written <= 0) {
+      ::close(fd);
+      ::unlink(staging.c_str());
+      return false;
     }
+    pending.remove_prefix(static_cast<size_t>(written));
   }
-  return false;
+  ::close(fd);
+  return ::rename(staging.c_str(), file.path.c_str()) == 0;
+}
+
+std::string authorityHost(std::string_view url)
+{
+  const auto scheme = url.find("://");
+  if (scheme == std::string_view::npos)
+    return {};
+  std::string_view authority = url.substr(scheme + 3);
+  authority = authority.substr(0, authority.find_first_of("/?#"));
+  if (const auto at = authority.rfind('@'); at != std::string_view::npos)
+    authority = authority.substr(at + 1);
+  if (authority.starts_with('[')) {
+    const auto close = authority.find(']');
+    return close == std::string_view::npos ? std::string{}
+                                           : std::string(authority.substr(1, close - 1));
+  }
+  return std::string(authority.substr(0, authority.find(':')));
 }
 
 }
@@ -90,23 +122,11 @@ bool Go2rtcManager::isSafeUrl(const std::string& url)
     if (c < 0x20 || c == 0x7F)
       return false;
     if (c == '\n' || c == '\r' || c == '"' || c == '\'' || c == '\\' ||
-        c == '$' || c == '`')
+        c == '$' || c == '`' || c == ' ' || c == '#')
       return false;
   }
 
-  auto hostStart = url.find("://");
-  if (hostStart == std::string::npos)
-    return false;
-  hostStart += 3;
-  const auto at = url.find('@', hostStart);
-  if (at != std::string::npos)
-    hostStart = at + 1;
-  auto hostEnd = url.find_first_of(":/?", hostStart);
-  if (hostEnd == std::string::npos)
-    hostEnd = url.size();
-  const std::string host = url.substr(hostStart, hostEnd - hostStart);
-
-  return isPrivateHost(host);
+  return network_address::isPrivate(authorityHost(url));
 }
 
 std::string Go2rtcManager::apiBase()
@@ -131,12 +151,7 @@ std::string Go2rtcManager::subStreamName(int64_t cameraId)
 
 bool Go2rtcManager::writeConfig()
 {
-  std::ofstream out(configPath_, std::ios::trunc);
-  if (!out.is_open()) {
-    setError("cannot write " + configPath_);
-    return false;
-  }
-
+  std::ostringstream out;
   out << "api:\n";
   out << "  listen: \"" << apiAddr_ << "\"\n";
   out << "rtsp:\n";
@@ -161,9 +176,11 @@ bool Go2rtcManager::writeConfig()
         out << "  " << s.name << ":\n";
     }
   }
-  out.close();
 
-  ::chmod(configPath_.c_str(), S_IRUSR | S_IWUSR);
+  if (!writePrivateFile({.path = configPath_, .contents = out.str()})) {
+    setError("cannot write " + configPath_);
+    return false;
+  }
   return true;
 }
 
@@ -183,7 +200,8 @@ bool Go2rtcManager::spawn()
 
   if (pid == 0) {
     ::setsid();
-    const int logFd = ::open("go2rtc.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    const int logFd = ::open("go2rtc.log", O_WRONLY | O_CREAT | O_APPEND,
+                             S_IRUSR | S_IWUSR);
     if (logFd >= 0) {
       ::dup2(logFd, STDOUT_FILENO);
       ::dup2(logFd, STDERR_FILENO);

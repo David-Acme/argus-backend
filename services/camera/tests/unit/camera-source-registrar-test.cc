@@ -45,6 +45,53 @@ TEST_CASE("camera source urls percent-encode credentials")
         "rtsp://user%40example.com:p%3Aa%20ss%2Fword@192.168.1.50:554/stream1");
 }
 
+TEST_CASE("an IPv6 camera address is bracketed in its source url")
+{
+  CameraSchema camera;
+  camera.id = 8;
+  camera.ip = "fd00::5";
+  camera.port = 554;
+  CHECK(CameraSourceRegistrar::sourceUrl(camera, "/stream1") == "rtsp://[fd00::5]:554/stream1");
+  CHECK(Go2rtcManager::isSafeUrl("rtsp://[fd00::5]:554/stream1"));
+  CHECK(Go2rtcManager::isSafeUrl("rtsp://admin:x@[fe80::1]:554/stream2"));
+  CHECK_FALSE(Go2rtcManager::isSafeUrl("rtsp://[2001:db8::1]:554/stream1"));
+}
+
+TEST_CASE("only literal private hosts pass the go2rtc source guard")
+{
+  CHECK(Go2rtcManager::isSafeUrl("rtsp://admin:secret@192.168.1.50:554/stream1"));
+  CHECK(Go2rtcManager::isSafeUrl("rtsp://172.20.0.4:554/live"));
+  CHECK_FALSE(Go2rtcManager::isSafeUrl("rtsp://10.evil.example:554/stream1"));
+  CHECK_FALSE(Go2rtcManager::isSafeUrl("rtsp://172.32.0.4:554/stream1"));
+  CHECK_FALSE(Go2rtcManager::isSafeUrl("rtsp://8.8.8.8:554/stream1"));
+  CHECK_FALSE(Go2rtcManager::isSafeUrl("rtsp://10.0.0.5:554/a#b"));
+  CHECK_FALSE(Go2rtcManager::isSafeUrl("rtsp://10.0.0.5:554/a b"));
+  CHECK(Go2rtcManager::isSafeUrl("rtsp://10.0.0.5:554/cam/realmonitor?channel=1&subtype=0"));
+}
+
+TEST_CASE("a camera's configured stream paths replace the Tapo defaults")
+{
+  CameraSchema camera;
+  camera.id = 12;
+  camera.ip = "10.0.0.12";
+  camera.isEnabled = true;
+  camera.config = R"({"streamPath":"/Streaming/Channels/101","subStreamPath":"/Streaming/Channels/102"})";
+
+  RecordingSink sink;
+  CameraSourceRegistrar registrar(sink);
+  registrar.apply(camera);
+  REQUIRE(sink.added.size() == 2);
+  CHECK(sink.added[0].second == "rtsp://10.0.0.12:554/Streaming/Channels/101");
+  CHECK(sink.added[1].second == "rtsp://10.0.0.12:554/Streaming/Channels/102");
+
+  camera.config = R"({"streamPath":"no-slash"})";
+  sink.added.clear();
+  registrar.apply(camera);
+  REQUIRE(sink.added.size() == 2);
+  CHECK(sink.added[0].second == "rtsp://10.0.0.12:554/stream1");
+  CHECK(sink.added[1].second == "rtsp://10.0.0.12:554/stream2");
+}
+
 TEST_CASE("camera registrar syncs main and sub sources")
 {
   CameraSchema camera;
