@@ -1,0 +1,81 @@
+[settings]
+host = "0.0.0.0"
+port = 7045
+plain = false
+min_protocol = "TLSv1.2"
+list_timeout_ms = 1500
+update_timeout_ms = 5000
+
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = false
+use_gzip = true
+use_brotli = false
+static_files_cache_time = 0
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+client_max_body_size = "64K"
+reuse_port = false
+enable_request_stream = false
+handle_sig_term = true
+relaunch_on_error = false
+
+[cert]
+server_cert = "certs/server.pem"
+server_key = "certs/server.key"
+
+[owners.llm]
+target = ""
+credential = ""
+
+[owners.voice]
+target = ""
+credential = ""
+
+[owners.tts]
+target = ""
+credential = ""
+
+[owners.stt]
+target = ""
+credential = ""
+
+[owners.vlm]
+target = ""
+credential = ""
+
+[owners.guard]
+target = ""
+credential = ""
+
+[owners.camera]
+target = ""
+credential = ""
+
+[owners.notification]
+target = ""
+credential = ""
+
+[jwt]
+secret = ""
+refresh_secret = ""
+access_ttl_minutes = 15
+refresh_ttl_days = 30
+
+[device]
+fingerprint_secret = ""
+identity_mode = "ip"
+trust_forwarded_for = true
+trusted_proxy_ips = ""
+
+[auth]
+target = "127.0.0.1:7043"
+rpc_secret = ""
+
+[mdns]
+enabled = true
+name = "Argus"
+address = ""

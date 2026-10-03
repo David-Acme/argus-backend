@@ -60,9 +60,14 @@ of the build context.
 
 One container per service: `argus-auth`, `argus-identity`,
 `argus-camera`, `argus-productivity`, `argus-notification`, `argus-sync`,
-`argus-guard`, `argus-tts`, `argus-stt`, `argus-vlm`, `argus-llm`,
-`argus-voice`, `argus-relay`, `argus-tunnel-client`, plus `nats`. Each
-container runs its service image and mounts its own `config.<service>.toml`.
+`argus-guard`, `argus-settings`, `argus-tts`, `argus-stt`, `argus-vlm`,
+`argus-llm`, `argus-voice`, `argus-relay`, `argus-tunnel-client`, plus
+`nats`. Each container runs its service image and mounts its own
+`config.<service>.toml`. The settings owners (`argus-tts`, `argus-stt`,
+`argus-vlm`, `argus-llm`, `argus-voice`) mount theirs writable, because a
+change made through `argus-settings` (HTTPS 7045, owner only) is persisted by
+the owner into that file; every other config mount is read-only except
+identity's.
 
 `argus-auth` publishes its HTTP surface (7042) on every interface, so the app
 dials `/auth` directly, and its RPC listener (7043) on `127.0.0.1` only. The

@@ -168,6 +168,24 @@ camera credential
 grpc caller_guard
 grpc caller_sync
 grpc caller_llm
+grpc caller_settings
+rpc.callers settings
+owners.llm target
+owners.llm credential
+owners.voice target
+owners.voice credential
+owners.tts target
+owners.tts credential
+owners.stt target
+owners.stt credential
+owners.vlm target
+owners.vlm credential
+owners.guard target
+owners.guard credential
+owners.camera target
+owners.camera credential
+owners.notification target
+owners.notification credential
 mdns enabled
 EOF
 }
@@ -271,6 +289,60 @@ fill_config_pair() {
   replace_toml_value "$b_table" "$b_key" "$value" "$b_config"
 }
 
+settings_owner_port() {
+  local config="$1"
+  local listener="$2"
+  local address
+
+  case "$listener" in
+    rpc)
+      address="$(toml_value "$config" rpc address)"
+      case "$address" in
+        *:*) printf '%s' "${address##*:}" ;;
+      esac
+      ;;
+    grpc)
+      toml_value "$config" server grpc_port
+      ;;
+  esac
+}
+
+ensure_settings_owners() {
+  local settings_config="$1"
+  local mode="$2"
+  local base="$3"
+  local owner table key listener owner_config host port
+
+  [ -f "$settings_config" ] || return 0
+  while read -r owner table key listener; do
+    if [ "$mode" = deploy ]; then
+      owner_config="$base/config.$owner.toml"
+      host="argus-$owner"
+    else
+      owner_config="$base/services/$owner/config.toml"
+      host="127.0.0.1"
+    fi
+    [ -f "$owner_config" ] || continue
+    toml_key_exists "$owner_config" "$table" "$key" || continue
+    toml_key_exists "$settings_config" "owners.$owner" credential || continue
+    fill_config_pair "$settings_config" "owners.$owner" credential \
+      "$owner_config" "$table" "$key" 32
+    [ -z "$(toml_value "$settings_config" "owners.$owner" target)" ] || continue
+    port="$(settings_owner_port "$owner_config" "$listener")"
+    [ -n "$port" ] || continue
+    replace_toml_value "owners.$owner" target "$host:$port" "$settings_config"
+  done <<'OWNERS'
+llm rpc.callers settings rpc
+voice grpc caller_settings grpc
+tts rpc.callers settings rpc
+stt rpc.callers settings rpc
+vlm rpc.callers settings rpc
+guard grpc caller_settings grpc
+camera grpc caller_settings grpc
+notification grpc caller_settings grpc
+OWNERS
+}
+
 fill_deploy_placeholder() {
   local config="$1"
   local table="$2"
@@ -352,6 +424,7 @@ ensure_deploy_configs() {
     "$deploy_dir/config.vlm.toml" rpc.callers guard 32
   fill_config_pair "$deploy_dir/config.guard.toml" llm grpc_credential \
     "$deploy_dir/config.llm.toml" rpc.callers guard 32
+  ensure_settings_owners "$deploy_dir/config.settings.toml" deploy "$deploy_dir"
 
   log "Deploy configs ready in $deploy_dir"
 }

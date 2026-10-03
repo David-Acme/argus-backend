@@ -8,6 +8,7 @@ address = "0.0.0.0:7132"
 [rpc.callers]
 voice = "CHANGE_ME_VOICE_LLM"
 guard = "CHANGE_ME_GUARD_LLM"
+settings = "CHANGE_ME_SETTINGS_LLM"
 
 [llm]
 model_path = "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"

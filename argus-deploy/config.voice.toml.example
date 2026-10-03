@@ -5,6 +5,7 @@ health_port = 7035
 
 [grpc]
 caller_sync = "CHANGE_ME_SYNC_VOICE"
+caller_settings = "CHANGE_ME_SETTINGS_VOICE"
 
 [identity]
 target = "argus-identity:7040"

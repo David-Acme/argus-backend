@@ -14,6 +14,7 @@ PROJECTS=(
   services/productivity
   services/notification
   services/guard
+  services/settings
   services/tts
   services/stt
   services/vlm

@@ -45,6 +45,8 @@ CONTROL_ERROR_CODE = "CAMERA_UNREACHABLE"
 BODY_OVERRIDES = {
     ("auth", "PATCH", "/auth/me"): json.dumps({"name": "p" * 125}),
     ("guard", "POST", "/guard/mode"): json.dumps({"mode": "argus-probe"}),
+    ("settings", "PATCH", "/settings/{1}"): json.dumps(
+        {"changes": [{"key": "probe.setting", "value": "argus-probe"}]}),
 }
 
 CONTROL_ROUTES = (

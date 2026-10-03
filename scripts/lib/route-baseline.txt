@@ -65,6 +65,8 @@ productivity	DELETE	/project-task/{1}	DeviceFilter,JwtFilter,RoleFilter	-	servic
 productivity	PATCH	/project-task/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/project-task/controllers/project-task-controller.hxx
 productivity	DELETE	/project/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/project/controllers/project-controller.hxx
 productivity	PATCH	/project/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/project/controllers/project-controller.hxx
+settings	GET	/settings	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/settings/controllers/settings-controller.hxx
+settings	PATCH	/settings/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/settings/controllers/settings-controller.hxx
 shared	GET	/health	-	-	packages/lib/http/src/http/health-controller.hxx
 stt	GET	/stt/v1/config	-	-	services/stt/src/feature/stt/controllers/stt-controller.hxx
 stt	POST	/stt/v1/transcribe	-	-	services/stt/src/feature/stt/controllers/stt-controller.hxx

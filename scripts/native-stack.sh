@@ -10,7 +10,7 @@ case "$STACK_DIR" in
   *) STACK_DIR="$ROOT/$STACK_DIR" ;;
 esac
 PROFILE="${ARGUS_STACK_PROFILE:-dev}"
-SERVICES=(identity auth camera productivity notification sync guard)
+SERVICES=(identity auth camera productivity notification sync guard settings)
 MDNS_ENABLED=false
 case "${ARGUS_STACK_MDNS:-0}" in
   1 | true | on | yes) MDNS_ENABLED=true ;;
@@ -23,25 +23,29 @@ declare -A SECTION=(
   [notification]=notifications
   [sync]=sync
   [guard]=database
+  [settings]=
 )
 
 usage() {
   cat <<'USAGE'
 Argus backend - native stack runner.
 
-Boots the seven request-serving services (identity, auth, camera,
-productivity, notification, sync, guard) natively, each with its own
-database under ARGUS_STACK_DIR, so a golden replay can run against a real
-fleet without touching the developer's own databases.
+Boots the eight request-serving services (identity, auth, camera,
+productivity, notification, sync, guard, settings) natively, each with its
+own database under ARGUS_STACK_DIR (settings owns none), so a golden replay
+can run against a real fleet without touching the developer's own databases.
+The sandbox's settings service reaches only owners the sandbox boots, so
+every other owner's target is emptied in its copy of the config.
 
-The sandbox claims the standard ports (7025-7044). Stop any other native
+The sandbox claims the standard ports (7025-7045). Stop any other native
 run of these services before `up`; the docker compose stack may stay up
 for nats, rustfs, voice, stt, tts and vlm.
 
 Usage:
   native-stack.sh up                prepare configs, start, gate on /health
   native-stack.sh down              stop the stack and its go2rtc
-  native-stack.sh restart <service> stop and start one service
+  native-stack.sh restart <service> stop and start one service, preparing its
+                                    config first when the sandbox has none
   native-stack.sh kill <service>    stop one service (durability drills)
   native-stack.sh sigkill <service> kill one service outright, no drain: the
                                     process dies where it stands, mid-write
@@ -105,6 +109,28 @@ service_port() {
   awk -F'[ =]+' '$1 == "port" && $2 ~ /^[0-9]+$/ { print $2; exit }' "$1"
 }
 
+stack_service() {
+  local known
+  for known in "${SERVICES[@]}"; do
+    [ "$known" = "$1" ] && return 0
+  done
+  return 1
+}
+
+isolate_settings_owners() {
+  local config="$1"
+  local owner
+  for owner in $(awk '/^\[owners\.[a-z]+\][[:space:]]*$/ {
+      name = $0
+      sub(/^\[owners\./, "", name)
+      sub(/\].*$/, "", name)
+      print name
+    }' "$config"); do
+    stack_service "$owner" && continue
+    replace_toml_value "owners.$owner" target "" "$config"
+  done
+}
+
 prepare_service() {
   local svc="$1"
   local template="$ROOT/services/$svc/config.toml.example"
@@ -121,21 +147,23 @@ prepare_service() {
   install -m 600 "$source_config" "$config"
   adopt_wiring_keys "$template" "$config"
 
-  local db schema
-  db="$(toml_value "$config" "${SECTION[$svc]}" db)"
-  case "$db" in
-    /*)
-      err "$source_config uses the absolute db path $db; a sandbox needs a relative one"
-      return 1
-      ;;
-  esac
-  replace_top_key db "$STACK_DIR/$svc/$db" "$config"
+  if [ -n "${SECTION[$svc]}" ]; then
+    local db schema
+    db="$(toml_value "$config" "${SECTION[$svc]}" db)"
+    case "$db" in
+      /*)
+        err "$source_config uses the absolute db path $db; a sandbox needs a relative one"
+        return 1
+        ;;
+    esac
+    replace_top_key db "$STACK_DIR/$svc/$db" "$config"
 
-  schema="$(toml_value "$config" "${SECTION[$svc]}" schema)"
-  case "$schema" in
-    /*) ;;
-    *) replace_top_key schema "$ROOT/$schema" "$config" ;;
-  esac
+    schema="$(toml_value "$config" "${SECTION[$svc]}" schema)"
+    case "$schema" in
+      /*) ;;
+      *) replace_top_key schema "$ROOT/$schema" "$config" ;;
+    esac
+  fi
 
   replace_toml_value mdns enabled "$MDNS_ENABLED" "$config" literal
   if [ "$MDNS_ENABLED" = true ]; then
@@ -147,6 +175,10 @@ prepare_service() {
     ln -sfn "$ROOT/models" "$STACK_DIR/identity/models"
   fi
 
+  if [ "$svc" = settings ]; then
+    isolate_settings_owners "$config"
+  fi
+
   if [ "$svc" = camera ]; then
     replace_top_key go2rtc_bin "$ROOT/third_party/go2rtc/go2rtc" "$config"
     replace_top_key go2rtc_config "$STACK_DIR/camera/go2rtc.yaml" "$config"
@@ -154,6 +186,10 @@ prepare_service() {
   fi
 
   log "prepared $config"
+}
+
+ensure_prepared() {
+  [ -f "$(config_of "$1")" ] || prepare_service "$1"
 }
 
 prepare() {
@@ -378,7 +414,7 @@ require_service() {
 case "${1:-}" in
   up) up ;;
   down) down ;;
-  restart) require_service "${2:-}"; stop_service "$2" && start_service "$2" ;;
+  restart) require_service "${2:-}"; stop_service "$2" && ensure_prepared "$2" && start_service "$2" ;;
   kill) require_service "${2:-}"; stop_service "$2" ;;
   sigkill) require_service "${2:-}"; hard_kill_service "$2" ;;
   freeze) require_service "${2:-}"; freeze_service "$2" ;;

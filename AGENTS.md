@@ -689,9 +689,9 @@ Every service follows the same layout inside its own folder:
 **Today, against that target** (Phase 4 of
 `docs/history/plans/architecture-plan.md` lands it): `services/auth`,
 `services/camera`, `services/guard`, `services/identity`,
-`services/notification`, `services/productivity`, `services/stt`,
-`services/sync`, `services/tts`, `services/vlm` and `services/llm` are the
-services with `src/app/`, and the
+`services/notification`, `services/productivity`, `services/settings`,
+`services/stt`, `services/sync`, `services/tts`, `services/vlm` and
+`services/llm` are the services with `src/app/`, and the
 `feature/api/<resource>/` spelling is gone from the tree — Phase 4 step 4
 flattened the last two owners that had it; step 5 gave `stt`, `vlm` and `llm`
 the reference interior (`app/` composition, `feature/<feature>/` vertical
@@ -701,13 +701,14 @@ has two entry points there, `main-client.cc` and `main-relay.cc`.
 
 One service has no `feature/` at all today — `tunnel` — and keeps its code at
 `src/` level instead (`client/`, `core/`, `net/`, `protocol/`, `relay/`,
-`server/` and the two entry points). Of the twelve
+`server/` and the two entry points). Of the thirteen
 services that do have a `feature/`, one
 still keeps code beside it — `voice` (`src/test-support/`) — because step 9
 moved the last three strays into the home the rules give them: `camera`'s
 `src/camera/`, `notification`'s `src/notification/` and `productivity`'s
-`src/productivity/` are gone. `auth`, `stt`, `tts` and `vlm` keep nothing at
-`src/` level but `app/`, `config/` and `feature/`; seven keep a `src/shared/`
+`src/productivity/` are gone. `auth`, `settings`, `stt`, `tts` and `vlm` keep
+nothing at `src/` level but `app/`, `config/` and `feature/`; seven keep a
+`src/shared/`
 beside them — `camera`, `guard`, `identity`, `llm`, `notification`,
 `productivity` and `sync` — and `voice` carries `shared/` and
 `test-support/` without an `app/`.
@@ -800,12 +801,13 @@ package: it is the executable `argus-<name>`.
 The target-name half of that rule is structural: `argus_lib`,
 `argus_contracts` and `argus_clients` build the group into the name, so a
 package cannot declare itself into the wrong tier (rule 25's own names are in
-`cmake/argus-module.cmake`). The dependency half is still prose — 23 packages
+`cmake/argus-module.cmake`). The dependency half is still prose — 25 packages
 name a first-party `argus::` alias by hand inside the dependency list of one of
-the group helpers: eleven of the thirteen contracts (all but `routes` and
-`voice`, which name only their own test target; the `response`, `stt`, `tts`,
-`llm` and `vlm` wire modules among the eleven), six of the twelve clients
-(`llm`, `stt`, `sync`, `tts`, `vlm`, `voice`) and six of the fifteen libs
+the group helpers: twelve of the fourteen contracts (all but `routes` and
+`voice`, which name only their own test target; the `response`, `settings`,
+`stt`, `tts`, `llm` and `vlm` wire modules among the twelve), seven of the
+thirteen clients (`llm`, `settings`, `stt`, `sync`, `tts`, `vlm`, `voice`)
+and six of the fifteen libs
 (`auth`, `http`, `mdns`, `nats`, `storage`, `validation`). Every package is in
 a group since Phase 4 step 7: `packages/memory` and `packages/intent` were the
 two that sat outside the helpers — declaring themselves with literal
@@ -818,16 +820,18 @@ The three groups sit where they belong — `packages/lib/<name>`,
 `packages/contracts/<domain>`, `packages/clients/<domain>`, each declared by
 its group's helper: `argus_lib_<name>` / `argus::lib::<name>`,
 `argus_contracts_<domain>` / `argus::contracts::<domain>`,
-`argus_clients_<domain>` / `argus::clients::<domain>`. Every one of the twelve
+`argus_clients_<domain>` / `argus::clients::<domain>`. Every one of the thirteen
 clients wraps a generated gRPC stub — eight of them pass `PROTO` to
-`argus_clients`, and the four wire clients (`llm`, `stt`, `tts`, `vlm`)
+`argus_clients`, the four wire clients (`llm`, `stt`, `tts`, `vlm`)
 speak HTTP beside the stub and reach it through a wire contract module
 (`argus::contracts::{llm,stt,tts,vlm}-wire`) instead of passing `PROTO`
-themselves, each carrying an HTTP transport next to it. Six wire
+themselves, each carrying an HTTP transport next to it, and `settings`
+reaches its stub through `argus::contracts::settings-wire` the same way, with
+no HTTP transport. Seven wire
 modules are
 not a domain SDK and call `argus_client_module` with the group they live in:
-`lib/grpc`'s health stubs (`GROUP lib`) and the `response`, `stt`, `tts`, `llm`
-and `vlm` wire
+`lib/grpc`'s health stubs (`GROUP lib`) and the `response`, `settings`, `stt`,
+`tts`, `llm` and `vlm` wire
 contracts, which live in `packages/contracts/` and are aliased
 `argus::contracts::…`.
 
@@ -854,11 +858,11 @@ data (D18):
   source.
 - Interface dependencies (types in public headers) are `PUBLIC`;
   implementation-only dependencies are `PRIVATE`.
-- Header-only where nothing is compiled: twelve of the thirteen contracts go
+- Header-only where nothing is compiled: thirteen of the fourteen contracts go
   through
   `argus_contracts`, which is `INTERFACE` by construction (`auth`, `camera`,
-  `identity`, `llm`, `notification`, `productivity`, `routes`, `stt`, `sync`,
-  `tts`, `vlm`, `voice`), and `validation` declares `HEADER_ONLY` to `argus_lib`
+  `identity`, `llm`, `notification`, `productivity`, `routes`, `settings`,
+  `stt`, `sync`, `tts`, `vlm`, `voice`), and `validation` declares `HEADER_ONLY` to `argus_lib`
   for
   the same result. `response` is the exception under `packages/contracts/`: it
   carries no vocabulary but the response wire, declared
@@ -924,7 +928,7 @@ Before any commit, verify the affected standalone project with
 `./scripts/build-all.sh dev --only <project>` and **0 errors, 0 warnings**.
 Run the full orchestrator when changing shared build infrastructure.
 
-The orchestrator runs four gates of its own, beyond the fifteen projects:
+The orchestrator runs four gates of its own, beyond the sixteen projects:
 `scripts/check-comments.sh` (rule 20), `scripts/check-deps.sh` (§2.4's tiers)
 and `scripts/check-routes.sh` (rule 5's filter chain, route by route, against
 `scripts/lib/route-baseline.txt`) before anything is built, and, at the end of
@@ -990,7 +994,7 @@ for two different reasons, and says which when it does.
 
 | File | Purpose |
 |------|---------|
-| `packages/clients/<domain>/src/<domain>/` (all twelve now hold a single `src/<domain>/`; `camera-actions` shares `camera`'s domain folder) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`auth`, `camera`, `identity`, `notification`, `productivity`, `sync`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
+| `packages/clients/<domain>/src/<domain>/` (all thirteen now hold a single `src/<domain>/`; `camera-actions` shares `camera`'s domain folder) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`auth`, `camera`, `identity`, `notification`, `productivity`, `settings`, `sync`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
 
 **Tier 4 — `lib/auth`**
 
@@ -1019,6 +1023,7 @@ for two different reasons, and says which when it does.
 | `services/vlm/src/feature/vlm/services/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
 | `services/stt/src/feature/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
 | `services/tts/src/feature/synthesis/` | `TtsService` (`services/`) + the Supertonic engine set (`infra/supertonic/`: `TtsEngine`, `Style`, `UnicodeProcessor`, onnx loading) — Supertonic 3 text-to-speech |
+| `services/settings/src/feature/settings/` | The owner-only `/settings` surface (`argus-settings`, HTTPS 7045): no data of its own; `SettingsGatewayService` reads every configured owner's `argus.settings.v1` catalog in parallel through `argus::clients::settings` and forwards a `PATCH /settings/{owner}` to that owner, which validates and persists it |
 | `services/voice/src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
 | `services/voice/src/shared/wrapper/audio/` | `SampleRing` — the fixed-capacity float ring the voice paths carry samples in across calls |
 | `services/voice/src/shared/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |

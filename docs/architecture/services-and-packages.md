@@ -22,6 +22,7 @@ on its own TLS listener.
 | `argus-llm` | LFM2.5 chat, intent router, tool loop, hosted memory | HTTP 7032 | `memory.db` |
 | `argus-voice` | Voice-session orchestration over gRPC | gRPC 7034, health 7035 | — |
 | `argus-guard` | Autonomous camera security: danger policy, incidents, gated actions | HTTP 7039 | `guard.db` |
+| `argus-settings` | Owner-only Settings surface: aggregates each owner's `argus.settings.v1` catalog and forwards changes to it | HTTPS 7045 | — |
 | `argus-tunnel` | Byte-transparent client and relay transport | per config | — |
 
 Every app-facing service terminates TLS on its own listener and announces one
@@ -51,7 +52,7 @@ These own a Conan/CMake graph and build on their own:
 Two, and the claim is a build fact: each of them carries a `CMakeLists.txt`
 that declares its own project name, so it configures on its own as well as
 under a consumer. `packages/contracts/` is **not** one of them — the folder has no
-`CMakeLists.txt` of its own, and its thirteen domain subfolders are
+`CMakeLists.txt` of its own, and its fourteen domain subfolders are
 direct-import packages like the rest. `argus-memory` and `argus-intent` were
 standalone packages too until Phase 4 step 7 turned them into features of
 `services/llm`; nothing outside that service linked them.
@@ -62,7 +63,7 @@ The remainder of `packages/`: `argus-audio`, `argus-auth`,
 `argus-config`, `argus-errors`, `argus-grpc`, `argus-http`, `argus-mdns`,
 `argus-nats`, `argus-phrase`, `argus-runtime`, `argus-storage`,
 `argus-text`, `argus-validation`, the thirteen contract packages under
-`packages/contracts/` and the twelve SDK clients under `packages/clients/`.
+`packages/contracts/` and the thirteen SDK clients under `packages/clients/`.
 These are not standalone projects: the service that links them provides the
 build context. They are declared once in their folder and linked by target
 name. `argus::clients::vlm` carries both transports for the internal vision

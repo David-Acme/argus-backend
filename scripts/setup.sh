@@ -187,6 +187,7 @@ ensure_local_config() {
       services/sync \
       services/camera \
       services/guard \
+      services/settings \
       services/productivity \
       services/notification \
       services/tts \
@@ -213,6 +214,7 @@ ensure_local_config() {
     "$ROOT/services/camera/config.toml" grpc caller_guard 32
   fill_config_pair "$ROOT/services/guard/config.toml" notifications credential \
     "$ROOT/services/notification/config.toml" grpc caller_guard 32
+  ensure_settings_owners "$ROOT/services/settings/config.toml" native "$ROOT"
   log "Per-project configs are ready."
 }
 

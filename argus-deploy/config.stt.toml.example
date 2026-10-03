@@ -8,6 +8,7 @@ address = "0.0.0.0:7130"
 [rpc.callers]
 voice = "CHANGE_ME_VOICE_STT"
 camera = "CHANGE_ME_CAMERA_STT"
+settings = "CHANGE_ME_SETTINGS_STT"
 
 [stt]
 engine = "nemo_transducer"

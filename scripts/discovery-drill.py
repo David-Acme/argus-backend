@@ -27,7 +27,7 @@ CLASS_IN = 1
 CLASS_UNICAST = 0x8000
 
 SANDBOX_UNITS = ("identity", "auth", "camera", "productivity",
-                 "notification", "sync", "guard")
+                 "notification", "sync", "guard", "settings")
 CLIENT_ROUTES = ("auth", "sync", "media")
 ROUTE_UNITS = {
     "auth": "auth",
@@ -47,6 +47,7 @@ ROUTE_UNITS = {
     "project": "productivity",
     "project-member": "productivity",
     "project-task": "productivity",
+    "settings": "settings",
 }
 
 NEW_DEVICE_UA = "argus-discovery-drill/1.0"

@@ -3,17 +3,18 @@
 ## Standalone projects
 
 The repository root has no CMake project; its `conanfile.txt` is the tree's
-single dependency manifest. Fifteen owner projects build independently, each
+single dependency manifest. Sixteen owner projects build independently, each
 with its own `CMakeLists.txt` and binary directory, all configuring against the
 one Conan graph `scripts/build-all.sh` resolves before the first of them:
 
 ```
 packages/lib/cert          services/auth              services/guard
-packages/lib/sqlite        services/identity          services/tts
-                           services/sync              services/stt
-                           services/camera            services/vlm
-                           services/productivity      services/llm
-                           services/notification      services/voice
+packages/lib/sqlite        services/identity          services/settings
+                           services/sync              services/tts
+                           services/camera            services/stt
+                           services/productivity      services/vlm
+                           services/notification      services/llm
+                                                      services/voice
                                                       services/tunnel
 ```
 

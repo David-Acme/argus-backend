@@ -139,6 +139,16 @@ argus-deploy relay configuration (Fase 5). Copy to config.relay.toml (gitignored
 - **`[push]`** — Push intents to the home client; default off. The notification rows are the source of truth — the queue only accelerates delivery.
 - **`[drogon.app]`** — Mirror of the legacy [drogon.app] block for the /health listener.
 
+## `argus-deploy/config.settings.toml.example`
+
+argus-settings deploy configuration; `provision-host.sh` fills it.
+
+| Key | Notes |
+|---|---|
+| `settings.host` / `settings.port` / `settings.plain` / `settings.min_protocol` | The app-facing TLS listener (`0.0.0.0:7045`); `[cert]` carries the certificate served and `[mdns]` the `settings` route announcement. No database, no gRPC listener. |
+| `settings.list_timeout_ms` / `settings.update_timeout_ms` | Per-owner deadlines: 1500 ms for each catalog read of `GET /settings` (owners are read in parallel, so one dead owner costs one deadline), 5000 ms for a forwarded update. Values outside 1..120000 fall back to these. |
+| `owners.<owner>.target` / `owners.<owner>.credential` | One table per settings owner (`llm`, `voice`, `tts`, `stt`, `vlm`, `guard`, `camera`, `notification`, also the display order). An empty target leaves the owner out. Provisioning sets the target to `argus-<owner>:<grpc port>` and mints the credential into both this file and the owner's caller slot (`[rpc.callers] settings`, or `[grpc] caller_settings` for voice, camera and notification), but only for an owner whose config carries that slot. |
+
 ## `argus-deploy/config.stt.toml.example`
 
 argus-deploy argus-stt configuration. Copy to config.stt.toml (gitignored); the compose file bind-mounts it as the service's config.toml.
@@ -337,6 +347,14 @@ argus-auth configuration. Copy to config.toml (gitignored) to run.
 argus-productivity configuration. Copy to config.toml (gitignored) to run.
 
 - **`[productivity]`** — The app-facing TLS listener (`host`, `port`, `plain`, `min_protocol`); `[cert]` carries the instance certificate it serves and `[mdns]` (`enabled`, `name`) the per-route announcement.
+
+## `services/settings/config.toml.example`
+
+argus-settings configuration. `scripts/setup.sh` copies it to `config.toml`
+and wires every owner whose `config.toml` carries a settings caller slot: the
+credential on both sides and the target `127.0.0.1:<grpc port>` (tts, stt,
+vlm and llm need a non-empty `[rpc] address` for a target). The keys are the
+deploy template's, with `auth.target` on loopback.
 
 ## `services/stt/config.toml.example`
 

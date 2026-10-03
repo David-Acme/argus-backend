@@ -99,8 +99,8 @@ against a real client.
   `"${IDENTITY_PORT:-7044}:7044"`, `"${SYNC_PORT:-7025}:7025"`,
   `"${CAMERA_PORT:-7026}:7026"`,
   `"${PRODUCTIVITY_PORT:-7027}:7027"`,
-  `"${NOTIFICATION_PORT:-7028}:7028"` and
-  `"${GUARD_PORT:-7039}:7039"`. Every one of them serves `/health` over TLS,
+  `"${NOTIFICATION_PORT:-7028}:7028"`,
+  `"${GUARD_PORT:-7039}:7039"` and `"${SETTINGS_PORT:-7045}:7045"`. Every one of them serves `/health` over TLS,
   which is what the healthchecks curl (`curl -kfs https://127.0.0.1:<port>/health`
   from inside the container).
 - **The internal wires stay `127.0.0.1:`-published**: auth's RPC 7043,
@@ -158,11 +158,12 @@ against a real client.
 | argus-productivity | `argus-productivity:local` | internal network, LAN 7027 + loopback 7037 (sync gRPC) publishes; owns productivity.db; `/health` healthcheck |
 | argus-notification | `argus-notification:local` | internal network, LAN 7028 + loopback 7038 (RPC) publishes; owns notification.db; `/health` healthcheck |
 | argus-guard | `argus-guard:local` | internal network, LAN 7039 publish; owns guard.db; no gRPC listener; `/health` healthcheck |
-| argus-tts | `argus-tts:local` | internal network (172.19.0.29), loopback 7029 publish; models/tts subpath ro; `/health` healthcheck |
-| argus-stt | `argus-stt:local` | internal network (172.19.0.30), loopback 7030 publish; models/stt subpath ro; `/health` healthcheck |
-| argus-vlm | `argus-vlm:local` | internal network (172.19.0.31), loopback 7031 publish; models/vision subpath ro; `/dev/dri`; `/health` healthcheck |
-| argus-llm | `argus-llm:local` | internal network (172.19.0.32), loopback 7032 publish; models/llm subpath ro; carries the memory stack as a feature since Phase 4 step 7 (its stack hosting landed at f8-b4); `/health` healthcheck |
-| argus-voice | `argus-voice:local` | internal network (172.19.0.34), loopback 7034 (gRPC) + 7035 (`/health`) publishes; no database; models/vad ro; gated on nats; `/health` healthcheck |
+| argus-settings | `argus-settings:local` | internal network (alias `argus-settings`), LAN 7045 publish; no database and no data directory; the owner-only `/settings` surface, which reads every settings owner's catalog over `argus.settings.v1` (`[owners.<name>] target`/`credential`) and forwards changes to it; `/health` healthcheck |
+| argus-tts | `argus-tts:local` | internal network (172.19.0.29), loopback 7029 publish; models/tts subpath ro; config bind rw (settings owner); `/health` healthcheck |
+| argus-stt | `argus-stt:local` | internal network (172.19.0.30), loopback 7030 publish; models/stt subpath ro; config bind rw (settings owner); `/health` healthcheck |
+| argus-vlm | `argus-vlm:local` | internal network (172.19.0.31), loopback 7031 publish; models/vision subpath ro; `/dev/dri`; config bind rw (settings owner); `/health` healthcheck |
+| argus-llm | `argus-llm:local` | internal network (172.19.0.32), loopback 7032 publish; models/llm subpath ro; carries the memory stack as a feature since Phase 4 step 7 (its stack hosting landed at f8-b4); config bind rw (settings owner); `/health` healthcheck |
+| argus-voice | `argus-voice:local` | internal network (172.19.0.34), loopback 7034 (gRPC) + 7035 (`/health`) publishes; no database; models/vad ro; gated on nats; config bind rw (settings owner); `/health` healthcheck |
 | argus-relay | `argus-tunnel:local` | `profiles: [tunnel]`; internal network, loopback 7100/7101/7103 publishes; no database (Ruling CL); `/health` healthcheck |
 | argus-tunnel-client | `argus-tunnel:local` | `profiles: [tunnel]`; host-networked (it dials the remote listener a home service opens and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
 | nats | `nats:2.11.14-alpine` | exact tag pin; core NATS (no JetStream needed) |
@@ -398,6 +399,7 @@ secrets are read at runtime, never printed; the refresh token lands in a
 - argus-productivity: `curl -kfs https://127.0.0.1:7027/health` (envelope 200).
 - argus-notification: `curl -kfs https://127.0.0.1:7028/health` (envelope 200).
 - argus-guard: `curl -kfs https://127.0.0.1:7039/health` (envelope 200).
+- argus-settings: `curl -kfs https://127.0.0.1:7045/health` (envelope 200).
 - argus-voice: `curl -fs http://127.0.0.1:7035/health` (envelope 200).
 - argus-tts / argus-stt / argus-vlm / argus-llm:
   `curl -fs http://127.0.0.1:7029..7032/health` (envelope 200, container-local).
@@ -594,6 +596,7 @@ service) are the next step and are not done.
 | 7027 TLS | 0.0.0.0 (compose publish) | argus-productivity |
 | 7028 TLS | 0.0.0.0 (compose publish) | argus-notification |
 | 7039 TLS | 0.0.0.0 (compose publish) | argus-guard |
+| 7045 TLS | 0.0.0.0 (compose publish) | argus-settings (`/settings`, owner only) |
 | 7029 plain | 127.0.0.1 (compose publish) | argus-tts (internal, argus-camera `[tts]` upstream) |
 | 7030 plain | 127.0.0.1 (compose publish) | argus-stt (internal, argus-voice `[stt]` gate upstream) |
 | 7031 plain | 127.0.0.1 (compose publish) | argus-vlm (internal) |
@@ -616,3 +619,26 @@ route; since step 1c the seven app-facing publishes above are on the LAN and
 `scripts/provision-host.sh` writes the host's LAN address into every
 `mdns.address`, so the announcement names an address the app can actually
 reach. Phase 5 step 6 verifies discovery against a real client.
+
+## Settings owners
+
+`argus-settings` owns no data: `GET /settings` reads the catalog every
+configured owner publishes over `argus.settings.v1` and `PATCH
+/settings/{owner}` forwards a change to that owner, which validates it against
+its own registry and persists it into its own `config.toml`. That is why the
+config binds of the settings owners are writable: `argus-tts`, `argus-stt`,
+`argus-vlm`, `argus-llm` and `argus-voice` mount `config.<owner>.toml`
+without `read_only` (`ConfigService` rewrites the file in place when a rename
+over a bind-mounted file fails). Every other config bind stays read-only,
+`argus-settings`' own included; guard, camera and notification join the list
+when they publish a catalog.
+
+`provision-host.sh` (through `ensure_settings_owners` in
+`scripts/lib/common.sh`) mints one 32-byte secret per owner and writes it on
+both sides: the owner's caller slot (`[rpc.callers] settings` for tts, stt,
+vlm and llm; `[grpc] caller_settings` for voice, and for camera and
+notification once their templates carry it) and `[owners.<owner>] credential`
+in `config.settings.toml`, whose `target` it sets to `argus-<owner>:<port>`
+from the owner's own gRPC listener. An owner whose config has no caller slot
+stays unconfigured (guard has no gRPC listener today). Existing secrets and
+targets are never overwritten.

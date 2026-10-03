@@ -8,6 +8,7 @@ address = "0.0.0.0:7129"
 [rpc.callers]
 voice = "CHANGE_ME_VOICE_TTS"
 camera = "CHANGE_ME_CAMERA_TTS"
+settings = "CHANGE_ME_SETTINGS_TTS"
 
 [tts]
 threads = 0

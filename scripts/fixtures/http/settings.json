@@ -1,0 +1,290 @@
+{
+  "probes": [
+    {
+      "method": "GET",
+      "path": "/settings",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/settings",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/settings",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/settings",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/settings",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/settings",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/settings",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/settings",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/settings",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "owners": []
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/settings",
+      "unit": "settings"
+    },
+    {
+      "method": "PATCH",
+      "path": "/settings/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{\"changes\": [{\"key\": \"probe.setting\", \"value\": \"argus-probe\"}]}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/settings/{1}",
+      "unit": "settings"
+    },
+    {
+      "method": "PATCH",
+      "path": "/settings/999999",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/settings/{1}",
+      "unit": "settings"
+    },
+    {
+      "method": "PATCH",
+      "path": "/settings/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{\"changes\": [{\"key\": \"probe.setting\", \"value\": \"argus-probe\"}]}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/settings/{1}",
+      "unit": "settings"
+    },
+    {
+      "method": "PATCH",
+      "path": "/settings/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{\"changes\": [{\"key\": \"probe.setting\", \"value\": \"argus-probe\"}]}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/settings/{1}",
+      "unit": "settings"
+    },
+    {
+      "method": "PATCH",
+      "path": "/settings/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{\"changes\": [{\"key\": \"probe.setting\", \"value\": \"argus-probe\"}]}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/settings/{1}",
+      "unit": "settings"
+    },
+    {
+      "method": "PATCH",
+      "path": "/settings/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{\"changes\": [{\"key\": \"probe.setting\", \"value\": \"argus-probe\"}]}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Unknown settings owner"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/settings/{1}",
+      "unit": "settings"
+    }
+  ],
+  "unit": "settings"
+}

@@ -41,7 +41,7 @@
       "errors"
     ]
   },
-  "probes": 326,
+  "probes": 338,
   "sessions": "scripts/seed-golden.py --roles (owner, resident, guest)",
   "sources": "scripts/lib/route-baseline.txt (the route census)",
   "units": [
@@ -51,6 +51,7 @@
     "identity",
     "notification",
     "productivity",
+    "settings",
     "shared",
     "sync"
   ],

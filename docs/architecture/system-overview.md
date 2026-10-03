@@ -116,6 +116,7 @@ Each process reads its own ignored `config.toml`, generated from the adjacent
 | LLM | HTTP `7032` |
 | Voice | gRPC `7034`, health HTTP `7035` |
 | Guard | HTTP `7039` |
+| Settings | HTTPS `7045` |
 
 Standalone binaries are produced inside their owner folder, for example:
 

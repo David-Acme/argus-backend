@@ -17,7 +17,7 @@ order below.
    and the audit cursors.
 5. [Events and contracts](architecture/events-and-contracts.md) — NATS
    subjects and typed gRPC/protobuf contracts.
-6. [Build model](architecture/build-model.md) — the 15 standalone projects,
+6. [Build model](architecture/build-model.md) — the 16 standalone projects,
    the one root Conan graph they share and the third-party dependency map.
 7. [Build and test](operations/build-and-test.md)
 8. [Provisioning and models](operations/provisioning-and-models.md)
