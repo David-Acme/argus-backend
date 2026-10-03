@@ -18,7 +18,7 @@ Argus backend - setup script (Linux).
 Provisions local dependencies and builds every standalone project:
   1. Install system build dependencies (distro aware)
   2. Install Conan (if missing) and configure the profile for C++20
-  3. Download the Supertonic 3 TTS model (~415 MB)
+  3. Download Supertonic 3 (~415 MB) and export Kyutai Pocket TTS es/en (~0.9 GB, pinned)
   4. Download the LFM2.5-1.2B-Instruct QAD LLM (~696 MB)
   5. Install, configure, build and test every standalone project
   6. Create per-project local configs
