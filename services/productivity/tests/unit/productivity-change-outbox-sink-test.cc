@@ -188,7 +188,10 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
     CHECK(outbox.markSent(verbatim.eventId, 1100));
 
     drogon::sync_wait(sink.emitUsers({.userIds = {42, 7}, .body = created}));
-    CHECK_FALSE(hasPending(outbox));
+    const ChangeOutboxRow readded = pendingRow(outbox.pendingBatch(1));
+    CHECK(readded.eventId != emitted.eventId);
+    CHECK(readded.payload == emitted.payload);
+    CHECK(outbox.markSent(readded.eventId, 1150));
 
     drogon::sync_wait(
         sink.emitUsers({.userIds = {42, 7},

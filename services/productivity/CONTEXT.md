@@ -139,9 +139,15 @@ own `productivity.db`.
   audit leg collapses duplicates and drops non-positive ids, which is the set
   the legacy `publishUsers` kept.
 - **The event id names the transition, not the record.** It is the hash of the
-  table, the record id and the payload's own canonical JSON, so a redelivery
-  recomputes the same id while a record that moves again, or returns to a state
-  it already held, is its own event. An emit carries its record id under
+  table, the record id and the payload's own canonical JSON, plus, for an emit,
+  the enqueue time and an in-process sequence: a stored row keeps its id across
+  every publish retry (JetStream dedups on it), while a record that moves
+  again, or returns to a state it already held, is its own event. The audit
+  leg gets that from the payload's own `eventTimestamp`; the emit leg needs the
+  stamp because an unshare followed by a re-share sends the parent's Add with a
+  byte-identical payload, and keyed on the payload alone the outbox took it for
+  a replay and the re-shared user never received the event again (2026-10).
+  An emit carries its record id under
   `info.id`; one that carries none, or one that is not integral, has nothing to
   be keyed by and is logged and dropped rather than recorded under a wrong
   name.

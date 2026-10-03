@@ -130,6 +130,27 @@ CREATE INDEX IF NOT EXISTS idx_reminder_detail_reminder  ON reminder_detail (rem
 CREATE INDEX IF NOT EXISTS idx_reminder_detail_created   ON reminder_detail (created_at);
 CREATE INDEX IF NOT EXISTS idx_reminder_detail_deleted   ON reminder_detail (deleted_at);
 
+CREATE INDEX IF NOT EXISTS idx_project_live_created
+    ON project (created_at, id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_project_deleted_at
+    ON project (deleted_at, id) WHERE deleted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_project_task_live_created
+    ON project_task (created_at, id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_project_task_deleted_at
+    ON project_task (deleted_at, id) WHERE deleted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_calendar_event_live_created
+    ON calendar_event (created_at, id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_calendar_event_deleted_at
+    ON calendar_event (deleted_at, id) WHERE deleted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_project_member_live_created
+    ON project_member (created_at, id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_project_member_deleted_at
+    ON project_member (deleted_at, id) WHERE deleted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_calendar_event_share_live_created
+    ON calendar_event_share (created_at, id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_calendar_event_share_deleted_at
+    ON calendar_event_share (deleted_at, id) WHERE deleted_at IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS change_outbox (
     event_id    TEXT    NOT NULL  PRIMARY KEY,
     fingerprint TEXT    NOT NULL  DEFAULT '',

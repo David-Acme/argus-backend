@@ -3,8 +3,10 @@
 
 #include <productivity-migration.hxx>
 
+#include <algorithm>
 #include <memory>
 #include <sqlite3.h>
+#include <string>
 
 namespace
 {
@@ -50,7 +52,15 @@ TEST_CASE("productivity schema applies cleanly to an in-memory database")
       "SELECT name FROM sqlite_master WHERE type = 'index' AND "
       "(name LIKE 'idx_project%' OR name LIKE 'idx_calendar_event%' OR "
       "name LIKE 'idx_reminder%') ORDER BY name");
-  CHECK(indexes.size() == 13);
+  CHECK(indexes.size() == 23);
+
+  for (const char* table : {"project", "project_task", "project_member",
+                            "calendar_event", "calendar_event_share"}) {
+    CAPTURE(table);
+    const std::string name(table);
+    CHECK(std::ranges::find(indexes, "idx_" + name + "_live_created") != indexes.end());
+    CHECK(std::ranges::find(indexes, "idx_" + name + "_deleted_at") != indexes.end());
+  }
 }
 
 TEST_CASE("productivity schema application is idempotent")

@@ -63,10 +63,13 @@ NatsProductivityChangeSink::emitUsers(const UserEmitInput& input) const
   }
   const std::string payload = json_util::toString(
       sync_change::userEmitPayload(input.body, input.userIds));
+  const std::string transition =
+      payload + '|' + std::to_string(nowMs()) + '|' +
+      std::to_string(transitions_.fetch_add(1, std::memory_order_relaxed));
   const std::string id =
       change_outbox_key::eventId({.table = tableNameToString(input.body.option),
                                   .recordId = recordId.asInt64(),
-                                  .discriminator = payload});
+                                  .discriminator = transition});
   co_await enqueue(
       {.eventId = id, .payload = payload, .client = input.client});
 }
