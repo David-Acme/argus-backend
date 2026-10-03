@@ -305,6 +305,8 @@ main() {
   ensure_data_tree
   write_env
   ensure_deploy_configs "$DEPLOY_DIR"
+  ensure_env_value "$DEPLOY_DIR/.env" NATS_PASSWORD \
+    "$(toml_value "$DEPLOY_DIR/config.auth.toml" nats password)"
 
   local lan_address
   lan_address="$(detect_lan_address)"

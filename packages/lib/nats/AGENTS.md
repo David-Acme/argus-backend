@@ -117,3 +117,7 @@ spellings, the option defaults without config, a handler registered without a
 server, and a connect to a closed endpoint that fails instead of crashing. The
 live roundtrip and the stream reconcile run only when `ARGUS_TEST_NATS_URL`
 names a broker, and say so when it does not.
+
+`[nats] user` and `[nats] password`, when both are set, are passed to the
+broker with `natsOptions_SetUserInfo`; credentials never go into the URL,
+which services log.

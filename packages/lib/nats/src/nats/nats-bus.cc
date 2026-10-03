@@ -82,6 +82,8 @@ NatsBus::Options NatsBus::optionsFromConfig()
   const std::string url = ConfigService::getString("nats.url");
   if (!url.empty())
     options.url = url;
+  options.user = ConfigService::getString("nats.user");
+  options.password = ConfigService::getString("nats.password");
 
   const int reconnectWait = ConfigService::getInt("nats.reconnect_wait_ms");
   if (reconnectWait > 0)
@@ -295,6 +297,9 @@ bool NatsBus::connectOnce()
   OptionsPtr opts(rawOptions);
 
   natsStatus status = natsOptions_SetURL(opts.get(), options.url.c_str());
+  if (status == NATS_OK && !options.user.empty() && !options.password.empty())
+    status = natsOptions_SetUserInfo(opts.get(), options.user.c_str(),
+                                     options.password.c_str());
   if (status == NATS_OK)
     status = natsOptions_SetReconnectWait(
         opts.get(), static_cast<int64_t>(options.reconnectWaitMs));

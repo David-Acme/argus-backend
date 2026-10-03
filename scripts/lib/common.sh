@@ -303,13 +303,14 @@ ensure_deploy_configs() {
   done
 
   local jwt_secret refresh_secret fingerprint_secret rpc_secret auth_rpc_secret
-  local control_secret
+  local control_secret nats_password
   jwt_secret="$(shared_deploy_secret "$deploy_dir" jwt secret 48)"
   refresh_secret="$(shared_deploy_secret "$deploy_dir" jwt refresh_secret 48)"
   fingerprint_secret="$(shared_deploy_secret "$deploy_dir" device fingerprint_secret 48)"
   rpc_secret="$(shared_deploy_secret "$deploy_dir" identity rpc_secret 32)"
   auth_rpc_secret="$(shared_deploy_secret "$deploy_dir" auth rpc_secret 32)"
   control_secret="$(shared_deploy_secret "$deploy_dir" sync control_secret 32)"
+  nats_password="$(shared_deploy_secret "$deploy_dir" nats password 32)"
 
   for config in "$deploy_dir"/config.*.toml; do
     [ -f "$config" ] || continue
@@ -319,6 +320,7 @@ ensure_deploy_configs() {
     fill_deploy_placeholder "$config" identity rpc_secret "$rpc_secret"
     fill_deploy_placeholder "$config" auth rpc_secret "$auth_rpc_secret"
     fill_deploy_placeholder "$config" sync control_secret "$control_secret"
+    fill_deploy_placeholder "$config" nats password "$nats_password"
     fill_deploy_placeholder "$config" device trusted_proxy_ips "172.19.0.1"
   done
 

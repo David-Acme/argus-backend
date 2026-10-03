@@ -84,6 +84,8 @@ credential = "CHANGE_ME_LLM_CAMERA"
 
 [nats]
 url = "nats://nats:4222"
+user = "argus"
+password = "CHANGE_ME_NATS"
 reconnect_wait_ms = 2000
 max_reconnects = 60
 

@@ -24,6 +24,8 @@ public:
   struct Options
   {
     std::string url{"nats://127.0.0.1:4222"};
+    std::string user;
+    std::string password;
     int reconnectWaitMs{2000};
     int maxReconnects{60};
   };

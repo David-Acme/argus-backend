@@ -567,6 +567,19 @@ templates now:
 `rpc.callers` table). The pairs are distinct per caller, so a compromised
 caller cannot impersonate another.
 
+## NATS requires a password (2026-10)
+
+The broker ran with no authorization, so any container on the internal
+network - the camera container that parses untrusted media, the relay -
+could publish forged identity changes (signing users out), change-feed
+events, encounter summaries for the LLM's memory or push intents. The
+compose now starts it with `--user argus --pass ${NATS_PASSWORD}`, every
+service's `[nats]` carries `user`/`password` (read by `NatsBus` and passed
+with `natsOptions_SetUserInfo`, never in the URL, so it never reaches a
+log), and `provision-host.sh` generates the password once for every config
+and writes it to `.env`. Per-service subject permissions (an nkey per
+service) are the next step and are not done.
+
 ## Port map (host)
 
 | Port | Bind | Owner |

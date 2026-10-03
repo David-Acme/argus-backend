@@ -78,6 +78,8 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [nats]
 url = "nats://nats:4222"
+user = "argus"
+password = "CHANGE_ME_NATS"
 reconnect_wait_ms = 2000
 max_reconnects = 60
 

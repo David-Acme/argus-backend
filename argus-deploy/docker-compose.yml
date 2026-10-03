@@ -770,7 +770,7 @@ services:
 
   nats:
     image: nats:2.11.14-alpine
-    command: ["-js", "-m", "8222", "-sd", "/data"]
+    command: ["-js", "-m", "8222", "-sd", "/data", "--user", "argus", "--pass", "${NATS_PASSWORD:?run scripts/provision-host.sh}"]
     ports:
       - "127.0.0.1:${NATS_CLIENT_PORT:-4222}:4222"
       - "127.0.0.1:${NATS_MONITOR_PORT:-8222}:8222"
