@@ -409,11 +409,15 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
 
   session->worker = std::thread([this, session, greeting] {
     if (session->duplex) {
-      launchTurn(session, [this, greeting](Session& turn) { speak(turn, greeting); });
+      launchTurn(session, [this, greeting](Session& turn) {
+        speak(turn, greeting);
+        primeLlm(turn);
+      });
       duplexLoop(session);
       return;
     }
     speak(*session, greeting);
+    primeLlm(*session);
     workerLoop(session);
   });
 
@@ -476,11 +480,14 @@ void VoiceSessionService::stop(VoiceSessionSink& sink)
     cancellation = session->turnStop;
   }
   cancellation.request_stop();
+  session->callStop.request_stop();
   session->pcmCv.notify_all();
   if (session->worker.joinable())
     session->worker.join();
   if (session->turnThread.joinable())
     session->turnThread.join();
+  if (session->primeThread.joinable())
+    session->primeThread.join();
 
   if (session->sink && session->sink->connected()) {
     argus::voice::v1::ServerFrame done;
@@ -787,13 +794,7 @@ void VoiceSessionService::processTurn(Session& session,
                                                    .systemAlert = false});
   session.history.addTone(ReactionEngine::toneNote(reaction, lang));
 
-  ChatRequest req;
-  req.clientActions = true;
-  req.messages = session.history.request();
-  req.userId = session.userId;
-  req.role = userRoleFromString(session.role);
-  req.lang = lang;
-  req.sessionId = session.callId;
+  const ChatRequest req = turnRequest(session);
 
   std::string full;
   std::string pending;
@@ -877,7 +878,7 @@ void VoiceSessionService::processTurn(Session& session,
   else {
     session.history.addAssistant(full);
   }
-  session.history.trim();
+  const bool trimmed = session.history.trim();
   session.speaking = false;
 
   LOG_INFO << "Voice: turn latency stt_ms=" << elapsedMs(clock.detected, clock.transcribed)
@@ -888,6 +889,48 @@ void VoiceSessionService::processTurn(Session& session,
 
   if (!session.duplex)
     session.vad.reset();
+  if (trimmed)
+    primeLlm(session);
+}
+
+ChatRequest VoiceSessionService::turnRequest(Session& session)
+{
+  ChatRequest req;
+  req.clientActions = true;
+  req.messages = session.history.request();
+  req.userId = session.userId;
+  req.role = userRoleFromString(session.role);
+  req.lang = langCode(session.lang);
+  req.sessionId = session.callId;
+  return req;
+}
+
+void VoiceSessionService::primeLlm(Session& session)
+{
+  applyNotes(session);
+  ChatRequest req = turnRequest(session);
+  req.prefillOnly = true;
+  std::stop_token stop;
+  {
+    std::scoped_lock lock(session.turnMutex);
+    if (!session.active.load())
+      return;
+    stop = session.callStop.get_token();
+  }
+  if (session.primeThread.joinable())
+    session.primeThread.join();
+  session.primeThread = std::thread([this, req = std::move(req), stop] {
+    try {
+      llm_.chatStream({.request = req,
+                       .onToken = [](const std::string&, bool) {},
+                       .stats = nullptr,
+                       .cancellation = stop,
+                       .onAction = {}});
+    }
+    catch (const std::exception& e) {
+      LOG_DEBUG << "Voice: LLM priming skipped: " << e.what();
+    }
+  });
 }
 
 void VoiceSessionService::rememberAction(Session& session, const ClientAction& action)
@@ -1148,7 +1191,8 @@ void VoiceSessionService::deliverNotice(Session& session, const Notice& notice)
   session.history.addEvent(notice.event);
   if (speak(session, notice.spoken).audible)
     session.history.addAssistant(notice.spoken);
-  session.history.trim();
+  if (session.history.trim())
+    primeLlm(session);
 }
 
 void VoiceSessionService::sendFrame(Session& session,

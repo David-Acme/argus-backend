@@ -46,7 +46,7 @@ public:
   void addTone(const std::string& tone);
   void addAssistant(const std::string& text);
   void rollbackUser();
-  void trim();
+  bool trim();
 
   [[nodiscard]] std::vector<ChatMessage> request();
   [[nodiscard]] const std::vector<CallEntry>& entries() const { return entries_; }

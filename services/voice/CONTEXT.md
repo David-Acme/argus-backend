@@ -226,6 +226,14 @@ los domingos\n(Tono: cálido y corto.)".
   re-prefills from the first message anyway, so rewriting history[0] there
   costs nothing extra, and the call keeps what was asked, offered and
   confirmed in the turns it drops. Tone notes are not kept.
+- argus-llm is primed once the greeting has been spoken and again after
+  every trim: the same request a turn would send, with `prefillOnly`, on its
+  own thread with the call's stop token (`callStop`, requested at hang-up).
+  By the end of the greeting the app's first notes have arrived and folded
+  into history[0], so the primed prefix is exactly what turn 1 extends, and
+  the first answer decodes only the user's words instead of the ~700-token
+  prompt. The priming never runs as a turn, so turn detection and barge-in
+  are untouched; argus-llm skips it when a real generation holds the engine.
 - An interrupted answer (barge-in or `voice:skip`) is stored as the sentences
   that actually produced audio, not as everything the LLM generated: the
   next turn must not assume the user heard words that were cut off. Nothing

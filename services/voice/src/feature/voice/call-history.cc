@@ -185,10 +185,10 @@ std::vector<ChatMessage> CallHistory::request()
   return messages;
 }
 
-void CallHistory::trim()
+bool CallHistory::trim()
 {
   if (userTurns() <= limits_.maxTurns)
-    return;
+    return false;
   size_t seen = 0;
   size_t keepFrom = entries_.size();
   for (size_t i = entries_.size(); i-- > 1;) {
@@ -203,6 +203,7 @@ void CallHistory::trim()
   entries_.erase(entries_.begin() + 1, entries_.begin() + static_cast<std::ptrdiff_t>(keepFrom));
   std::erase_if(entries_, [](const CallEntry& entry) { return isNoteKind(entry.kind); });
   rebuildPrompt();
+  return true;
 }
 
 void CallHistory::remember(const CallEntry& entry)

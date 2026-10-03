@@ -110,8 +110,17 @@ struct FakeLlm final : IVoiceLlm
   UserRole lastRole{UserRole::Owner};
   std::string lastLang;
 
+  std::atomic<int> primeCalls{0};
+  std::vector<ChatMessage> primedMessages;
+
   void chatStream(LlmStreamInput input) override
   {
+    if (input.request.prefillOnly) {
+      primedMessages = input.request.messages;
+      ++primeCalls;
+      input.onToken("", true);
+      return;
+    }
     ++chatStreamCalls;
     lastPromptMessages = input.request.messages.size();
     lastMessages = input.request.messages;
@@ -132,9 +141,14 @@ struct ActingLlm final : IVoiceLlm
 
   void chatStream(LlmStreamInput input) override
   {
+    if (input.request.prefillOnly)
+      return;
     {
       std::scoped_lock lock(mutex);
-      system = input.request.messages.empty() ? std::string() : input.request.messages.front().content;
+      system.clear();
+      for (const auto& message : input.request.messages)
+        if (message.role == "system")
+          system += message.content + "\n";
       clientActions = input.request.clientActions;
     }
     input.onToken("Te la muestro.", false);
@@ -160,6 +174,8 @@ struct BlockingLlm final : IVoiceLlm
 
   void chatStream(LlmStreamInput input) override
   {
+    if (input.request.prefillOnly)
+      return;
     if (calls.fetch_add(1) > 0) {
       input.onToken("Sigo aqui.", false);
       input.onToken("", true);
@@ -1071,6 +1087,8 @@ struct SpeakThenBlockLlm final : IVoiceLlm
 
   void chatStream(LlmStreamInput input) override
   {
+    if (input.request.prefillOnly)
+      return;
     input.onToken("Primera frase. Y", false);
     std::mutex mutex;
     std::condition_variable_any ready;
@@ -1253,5 +1271,35 @@ TEST_CASE("Muting drops the half-said utterance instead of finishing it on unmut
   CHECK(waitFor([&] { return vad.windows->load() >= 34; }, 2000));
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
   CHECK(stt.count() == 0);
+  session.stop(sink);
+}
+
+TEST_CASE("The LLM is primed after the greeting with the prompt the first turn extends")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  argus::voice::v1::VoiceContext note;
+  note.set_kind(argus::voice::v1::VOICE_CONTEXT_NOTE);
+  note.set_text("Cámaras de la casa: Entrada.");
+  session.context(sink, note);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return llm.primeCalls.load() == 1 && !sess->speaking.load(); }));
+  REQUIRE(llm.primedMessages.size() == 2);
+  CHECK(llm.primedMessages[0].content.find("Cámaras de la casa: Entrada.") != std::string::npos);
+  CHECK(llm.primedMessages[1].role == "assistant");
+
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+  REQUIRE(llm.lastMessages.size() > llm.primedMessages.size());
+  CHECK(std::equal(llm.primedMessages.begin(), llm.primedMessages.end(), llm.lastMessages.begin(),
+                   [](const ChatMessage& a, const ChatMessage& b) {
+                     return a.role == b.role && a.content == b.content;
+                   }));
+  CHECK(llm.primeCalls.load() == 1);
   session.stop(sink);
 }

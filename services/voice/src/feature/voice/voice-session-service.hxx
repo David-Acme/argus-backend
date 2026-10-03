@@ -147,7 +147,9 @@ private:
     std::atomic<bool> vadResetPending{false};
     std::mutex turnMutex;
     std::stop_source turnStop;
+    std::stop_source callStop;
     std::thread worker;
+    std::thread primeThread;
     std::mutex pcmMutex;
     std::condition_variable pcmCv;
     std::vector<float> pcmQueue;
@@ -178,6 +180,8 @@ private:
   bool sendDuplexChunk(Session& session, argus::voice::v1::ServerFrame frame);
   bool sendDuplexAssistant(Session& session, AssistantSend send);
   void processTurn(Session& session, const std::vector<float>& samples);
+  static ChatRequest turnRequest(Session& session);
+  void primeLlm(Session& session);
   void applyNotes(Session& session);
   std::optional<Notice> takeNotice(Session& session);
   void deliverNotice(Session& session, const Notice& notice);

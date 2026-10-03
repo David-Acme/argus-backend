@@ -210,7 +210,7 @@ TEST_CASE("The voice session speaks through the remote adapter")
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
 
   CHECK(sttServer.requests().at("POST /stt/v1/transcribe?lang=es") == 1);
-  CHECK(llmServer.requests().at("POST /llm/v1/chat-stream") == 1);
+  CHECK(waitFor([&] { return llmServer.requests()["POST /llm/v1/chat-stream"] == 2; }));
   bool sttSeen = false;
   for (const auto& frame : sink.snapshot())
     if (frame.has_stt()) {
