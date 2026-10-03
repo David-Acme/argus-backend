@@ -3,7 +3,9 @@
 #include <camera/camera-errors.hxx>
 #include <ctime>
 #include <errors/response-exception.hxx>
+#include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
+#include <shared/services/stream/snapshot-store.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 #include <runtime/blocking-task.hxx>
@@ -153,6 +155,7 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
     db_transaction::rollback(transaction);
     throw;
   }
+  CameraDriverRegistry::instance().forget(id);
   co_await syncSource(row);
   co_return row;
 }
@@ -185,6 +188,8 @@ drogon::Task<bool> CameraFeatureService::remove(int64_t id) const
     db_transaction::rollback(transaction);
     throw;
   }
+  CameraDriverRegistry::instance().forget(id);
+  SnapshotStore::instance().forget(id);
   co_await dropSource(id);
   co_return true;
 }

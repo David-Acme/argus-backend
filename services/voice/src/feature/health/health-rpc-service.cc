@@ -26,7 +26,7 @@ public:
 
   void OnWriteDone(bool ok) override { (void)ok; }
 
-  void OnDone() override {}
+  void OnDone() override { delete this; }
 
 private:
   grpc::health::v1::HealthCheckResponse message_;

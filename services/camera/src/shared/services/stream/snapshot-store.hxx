@@ -26,6 +26,8 @@ public:
                                            int64_t trackId) const;
   std::optional<CameraSnapshot> latestPersonCrop(int64_t cameraId) const;
 
+  void forget(int64_t cameraId);
+
 private:
   SnapshotStore() = default;
 

@@ -7,6 +7,7 @@ argus_module(NAME camera-feature
     INCLUDES
         ../..
     DEPENDS
+        argus::camera-driver
         argus::camera-repositories
         argus::camera-stream
         argus::contracts::camera

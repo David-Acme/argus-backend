@@ -22,6 +22,13 @@ void SnapshotStore::putFrame(int64_t cameraId, const std::string& jpeg,
   frames_[cameraId] = {.jpeg = jpeg, .atMs = atMs};
 }
 
+void SnapshotStore::forget(int64_t cameraId)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  frames_.erase(cameraId);
+  crops_.erase(cameraId);
+}
+
 void SnapshotStore::putPersonCrop(int64_t cameraId, int64_t trackId,
                                   const std::string& jpeg, int64_t atMs)
 {

@@ -44,6 +44,7 @@ public:
 
   void onClosed(const StreamHub::StreamClosedInput& input) override
   {
+    dropSubscription();
     if (!conn_ || conn_->disconnected())
       return;
     Json::Value j;

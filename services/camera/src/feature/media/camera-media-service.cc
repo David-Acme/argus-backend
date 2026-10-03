@@ -60,6 +60,8 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
     const auto camera = co_await cameraRepository_.findById(cameraId);
     if (!camera)
       throw ResponseException(404, CameraErrors::CameraNotFound);
+    if (conn->disconnected())
+      co_return true;
 
     auto sink = sinkFor(conn);
     if (!sink) {

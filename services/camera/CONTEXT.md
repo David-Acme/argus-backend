@@ -564,6 +564,16 @@ conversation is half duplex: speak, stop, listen, never both at once. Video
 does not come from here either: RTSP is the documented, maintained path and
 one pull through go2rtc serves every viewer.
 
+**Nothing outlives its camera.** Updating a camera evicts its cached
+driver, so the next control, talk or siren call reconnects with the new
+address and credentials instead of the stale ones; removing it also clears
+its frame and person crops from `SnapshotStore`. A `camera:subscribe` that
+resumes after its socket closed is dropped instead of storing a sink for a
+dead connection, and a stream the hub closes (`upstream_closed`/`failed`)
+releases its slot in the per-connection subscription count, which used to
+leak until a long-lived socket hit a false 429. The `grpc.health.v1`
+`Watch` reactor deletes itself when the stream ends (here and in voice).
+
 **A camera address is a literal IP.** `ip` must parse as IPv4 or IPv6 on
 create and on update: it is concatenated into the RTSP URLs and the Tapo
 client's endpoint, and go2rtc's private-host check compares prefixes, so a

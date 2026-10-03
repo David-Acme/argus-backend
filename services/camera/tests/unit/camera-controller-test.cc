@@ -9,6 +9,7 @@
 #include <feature/camera/controllers/camera-controller.hxx>
 #include <feature/camera/dtos/create-camera-dto.hxx>
 #include <feature/camera/dtos/update-camera-dto.hxx>
+#include <shared/services/stream/snapshot-store.hxx>
 #include <feature/zone/controllers/zone-controller.hxx>
 #include <feature/zone/dtos/create-zone-dto.hxx>
 #include <auth/jwt-filter.hxx>
@@ -455,4 +456,14 @@ TEST_CASE("a camera address must be a literal IP and a record mode a known one")
                      "recordMode"));
   update["recordMode"] = "continuous";
   CHECK(UpdateCameraDto::fromJson(update).recordMode == "continuous");
+}
+
+TEST_CASE("a removed camera leaves nothing behind in the snapshot store")
+{
+  SnapshotStore::instance().putFrame(4242, "jpeg-bytes", 1);
+  SnapshotStore::instance().putPersonCrop(4242, 7, "crop-bytes", 1);
+  REQUIRE(SnapshotStore::instance().frame(4242).has_value());
+  SnapshotStore::instance().forget(4242);
+  CHECK_FALSE(SnapshotStore::instance().frame(4242).has_value());
+  CHECK_FALSE(SnapshotStore::instance().latestPersonCrop(4242).has_value());
 }
