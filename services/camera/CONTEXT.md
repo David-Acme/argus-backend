@@ -916,3 +916,20 @@ event exactly as before, and `schemaVersion` stays 3.
   staging file and renamed into place (go2rtc never reads half a file either),
   the log is created 0600, and the source guard also refuses a space or `#` in
   a URL, the two characters that would end the YAML scalar.
+
+## A camera that goes silent is closed, and its last GOP is not replayed
+
+When a camera drops off the network, go2rtc keeps the hub's
+`/api/stream.mp4` response open and simply stops writing to it while it
+redials the source, so the hub never saw an end and never sent
+`camera:closed`; a viewer that resubscribed was handed the cached GOP from
+before the outage and looked live on stale frames. Measured on the sandbox by
+stopping the test source under a live viewer: frames stopped at 8 s, a
+resubscribe at 16 s replayed ten old frames and the view read "live" twice
+before the camera came back. An upstream with viewers that delivers nothing
+for 10 s is now closed with `camera:closed` (`reason: "upstream_stalled"`), so
+every client hears about it, and `fastStart` replays the GOP only while its
+last fragment is under 3 s old. The same run after the change: stall noticed
+by the client at 16 s, the upstream closed at 18 s, three refused attempts
+read as offline at 28 s, the camera back at 30.0 s and the picture again at
+33.1 s.

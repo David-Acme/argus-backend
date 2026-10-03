@@ -21,3 +21,9 @@ void GopCache::clear()
   fragments_.clear();
   bytes_ = 0;
 }
+
+bool GopCache::freshAt(const GopFreshness& freshness) const
+{
+  return !fragments_.empty() &&
+         freshness.nowMs - fragments_.back().arrivedMs <= freshness.maxAgeMs;
+}

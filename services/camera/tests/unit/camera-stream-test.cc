@@ -93,7 +93,7 @@ upstream_http::Fmp4Reader collectingReader(Collected& collected, bool chunked)
 
 CachedFragment cached(FragmentKind kind, size_t size)
 {
-  return {.bytes = std::make_shared<const std::string>(size, 'x'), .kind = kind};
+  return {.bytes = std::make_shared<const std::string>(size, 'x'), .kind = kind, .arrivedMs = 1000};
 }
 }
 
@@ -225,4 +225,14 @@ TEST_CASE("a zero-capacity gop cache holds nothing")
   cache.add(cached(FragmentKind::VideoKey, 10));
   CHECK(cache.fragments().empty());
   CHECK(cache.bytes() == 0);
+}
+
+TEST_CASE("a gop is fresh only while its last fragment is recent")
+{
+  GopCache cache(1000);
+  CHECK_FALSE(cache.freshAt({.nowMs = 1000, .maxAgeMs = 3000}));
+  cache.add(cached(FragmentKind::VideoKey, 10));
+  CHECK(cache.freshAt({.nowMs = 1000, .maxAgeMs = 3000}));
+  CHECK(cache.freshAt({.nowMs = 4000, .maxAgeMs = 3000}));
+  CHECK_FALSE(cache.freshAt({.nowMs = 4001, .maxAgeMs = 3000}));
 }

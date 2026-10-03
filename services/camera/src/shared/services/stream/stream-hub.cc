@@ -15,6 +15,15 @@ namespace
 {
 constexpr size_t kDefaultChunkBytes = 16 * 1024;
 constexpr int64_t kDefaultGraceMs = 2000;
+constexpr int64_t kStallMs = 10000;
+constexpr int64_t kFreshGopMs = 3000;
+
+int64_t steadyNowMs()
+{
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
 
 std::string upstreamName(int64_t cameraId, const std::string& quality)
 {
@@ -113,7 +122,8 @@ void StreamHub::dispatch(Upstream& up, const CachedFragment& fragment)
 void StreamHub::replayGop(Upstream& up, const std::shared_ptr<Subscriber>& sub)
 {
   const auto& fragments = up.gop.fragments();
-  if (fragments.empty() || !up.hasInit || !sub->sink)
+  if (!up.gop.freshAt({.nowMs = steadyNowMs(), .maxAgeMs = kFreshGopMs}) ||
+      !up.hasInit || !sub->sink)
     return;
   const bool reserved = sub->sink->tryReserve(up.init.size() + up.gop.bytes());
   for (const CachedFragment& fragment : fragments)
@@ -156,17 +166,21 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
   reader.onFragment = [this, &up](upstream_http::Fmp4Fragment fragment) {
     dispatch(*up,
              {.bytes = std::make_shared<const std::string>(std::move(fragment.bytes)),
-              .kind = fragment.kind});
+              .kind = fragment.kind,
+              .arrivedMs = steadyNowMs()});
   };
   if (!conn.leftover.empty())
     reader.feed(conn.leftover.data(), conn.leftover.size());
 
   int64_t emptySinceMs = 0;
+  int64_t lastDataMs = steadyNowMs();
+  std::string closeReason = "upstream_closed";
   char buf[65536];
   while (!up->stopping.load(std::memory_order_relaxed)) {
     const ssize_t n = ::recv(conn.fd, buf, sizeof(buf), 0);
     if (n > 0) {
       reader.feed(buf, static_cast<size_t>(n));
+      lastDataMs = steadyNowMs();
       continue;
     }
     if (n == 0)
@@ -184,10 +198,8 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
       std::scoped_lock lock(up->mtx);
       empty = up->subs.empty();
     }
+    const int64_t nowMs = steadyNowMs();
     if (empty) {
-      const auto now = std::chrono::steady_clock::now().time_since_epoch();
-      const int64_t nowMs =
-          std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
       if (emptySinceMs == 0)
         emptySinceMs = nowMs;
       else if (nowMs - emptySinceMs >= graceMs_)
@@ -195,6 +207,12 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
     }
     else {
       emptySinceMs = 0;
+      if (nowMs - lastDataMs >= kStallMs) {
+        LOG_WARN << "StreamHub: " << up->name << " sent nothing for "
+                 << nowMs - lastDataMs << " ms; closing it";
+        closeReason = "upstream_stalled";
+        break;
+      }
     }
   }
 
@@ -203,7 +221,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
   std::scoped_lock lock(up->mtx);
   for (auto& sub : up->subs) {
     if (sub->sink)
-      sub->sink->onClosed({.subId = sub->subId, .reason = "upstream_closed"});
+      sub->sink->onClosed({.subId = sub->subId, .reason = closeReason});
   }
   up->subs.clear();
   up->dead.store(true, std::memory_order_release);
