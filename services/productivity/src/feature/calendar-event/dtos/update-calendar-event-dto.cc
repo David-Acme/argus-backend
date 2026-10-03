@@ -5,16 +5,24 @@ UpdateCalendarEventDto UpdateCalendarEventDto::fromJson(const Json::Value& json)
   UpdateCalendarEventDto dto;
   if (json.isMember("title") && json["title"].isString())
     dto.title = json["title"].asString();
+  const auto clears = [&json](const char* field) {
+    return json.isMember(field) && json[field].isNull();
+  };
   if (json.isMember("description") && json["description"].isString())
     dto.description = json["description"].asString();
+  else if (clears("description"))
+    dto.description = std::string{};
   if (json.isMember("location") && json["location"].isString())
     dto.location = json["location"].asString();
+  else if (clears("location"))
+    dto.location = std::string{};
   if (json.isMember("color") && json["color"].isString())
     dto.color = json["color"].asString();
   if (json.isMember("startsAt") && json["startsAt"].isInt64())
     dto.startsAt = json["startsAt"].asInt64();
   if (json.isMember("endsAt") && json["endsAt"].isInt64())
     dto.endsAt = json["endsAt"].asInt64();
+  dto.clearsEndsAt = clears("endsAt");
   if (json.isMember("isAllDay") && json["isAllDay"].isBool())
     dto.isAllDay = json["isAllDay"].asBool();
   if (json.isMember("recurrenceRule") && json["recurrenceRule"].isString())

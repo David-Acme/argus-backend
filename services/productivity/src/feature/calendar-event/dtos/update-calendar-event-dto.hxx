@@ -14,6 +14,7 @@ struct UpdateCalendarEventDto
   std::optional<std::string> color;
   std::optional<int64_t> startsAt;
   std::optional<int64_t> endsAt;
+  bool clearsEndsAt{false};
   std::optional<bool> isAllDay;
   std::optional<std::string> recurrenceRule;
   std::optional<int64_t> projectId;

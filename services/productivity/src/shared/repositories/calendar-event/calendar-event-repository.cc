@@ -76,11 +76,16 @@ CalendarEventRepository::update(int64_t id,
   auto* client = input.client ? input.client : pooled.get();
   std::string sql = UPDATE_PREFIX.data();
   std::vector<std::string> args;
+  bool changed = false;
 
-  const auto addColumn = [&](std::string_view column, std::string value) {
-    if (!args.empty())
+  const auto addFragment = [&](std::string_view fragment) {
+    if (changed)
       sql += ", ";
-    sql += column;
+    sql += fragment;
+    changed = true;
+  };
+  const auto addColumn = [&](std::string_view column, std::string value) {
+    addFragment(column);
     args.push_back(std::move(value));
   };
   const auto addString = [&](std::string_view column,
@@ -99,13 +104,16 @@ CalendarEventRepository::update(int64_t id,
   addString(UPDATE_COL_LOCATION, input.location);
   addString(UPDATE_COL_COLOR, input.color);
   addInt(UPDATE_COL_STARTS_AT, input.startsAt);
-  addInt(UPDATE_COL_ENDS_AT, input.endsAt);
+  if (input.clearEndsAt)
+    addFragment(UPDATE_COL_ENDS_AT_NULL);
+  else
+    addInt(UPDATE_COL_ENDS_AT, input.endsAt);
   if (input.isAllDay)
     addColumn(UPDATE_COL_IS_ALL_DAY, *input.isAllDay ? "1" : "0");
   addString(UPDATE_COL_RECURRENCE_RULE, input.recurrenceRule);
   addInt(UPDATE_COL_PROJECT_ID, input.projectId);
 
-  if (args.empty()) {
+  if (!changed) {
     auto existing = co_await findById(id, client);
     if (!existing) {
       LOG_WARN << "CalendarEvent not found for update";

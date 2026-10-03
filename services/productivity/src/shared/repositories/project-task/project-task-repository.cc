@@ -69,11 +69,16 @@ ProjectTaskRepository::update(int64_t id,
   auto* client = input.client ? input.client : pooled.get();
   std::string sql = UPDATE_PREFIX.data();
   std::vector<std::string> args;
+  bool changed = false;
 
-  const auto addColumn = [&](std::string_view column, std::string value) {
-    if (!args.empty())
+  const auto addFragment = [&](std::string_view fragment) {
+    if (changed)
       sql += ", ";
-    sql += column;
+    sql += fragment;
+    changed = true;
+  };
+  const auto addColumn = [&](std::string_view column, std::string value) {
+    addFragment(column);
     args.push_back(std::move(value));
   };
   const auto addString = [&](std::string_view column,
@@ -91,11 +96,14 @@ ProjectTaskRepository::update(int64_t id,
   addString(UPDATE_COL_STATUS, input.status);
   addString(UPDATE_COL_PRIORITY, input.priority);
   addInt(UPDATE_COL_ASSIGNEE_ID, input.assigneeId);
-  addInt(UPDATE_COL_DUE_AT, input.dueAt);
+  if (input.clearDueAt)
+    addFragment(UPDATE_COL_DUE_AT_NULL);
+  else
+    addInt(UPDATE_COL_DUE_AT, input.dueAt);
   if (input.sortOrder)
     addColumn(UPDATE_COL_SORT_ORDER, std::to_string(*input.sortOrder));
 
-  if (args.empty()) {
+  if (!changed) {
     auto existing = co_await findById(id, client);
     if (!existing) {
       LOG_WARN << "ProjectTask not found for update";

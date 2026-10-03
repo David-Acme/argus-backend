@@ -13,6 +13,7 @@ struct UpdateProjectTaskDto
   std::optional<std::string> priority;
   std::optional<int64_t> assigneeId;
   std::optional<int64_t> dueAt;
+  bool clearsDueAt{false};
   std::optional<double> sortOrder;
 
   static UpdateProjectTaskDto fromJson(const Json::Value& json);

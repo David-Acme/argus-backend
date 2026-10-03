@@ -13,6 +13,7 @@ UpdateProjectTaskDto UpdateProjectTaskDto::fromJson(const Json::Value& json)
     dto.assigneeId = json["assigneeId"].asInt64();
   if (json.isMember("dueAt") && json["dueAt"].isInt64())
     dto.dueAt = json["dueAt"].asInt64();
+  dto.clearsDueAt = json.isMember("dueAt") && json["dueAt"].isNull();
   if (json.isMember("sortOrder") && json["sortOrder"].isNumeric())
     dto.sortOrder = json["sortOrder"].asDouble();
 

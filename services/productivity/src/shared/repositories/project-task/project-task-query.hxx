@@ -124,6 +124,7 @@ inline constexpr std::string_view UPDATE_COL_STATUS = "status = ?";
 inline constexpr std::string_view UPDATE_COL_PRIORITY = "priority = ?";
 inline constexpr std::string_view UPDATE_COL_ASSIGNEE_ID = "assignee_id = ?";
 inline constexpr std::string_view UPDATE_COL_DUE_AT = "due_at = ?";
+inline constexpr std::string_view UPDATE_COL_DUE_AT_NULL = "due_at = NULL";
 inline constexpr std::string_view UPDATE_COL_SORT_ORDER = "sort_order = ?";
 inline constexpr std::string_view UPDATE_SUFFIX =
     ", updated_at = strftime('%s', 'now') "
@@ -156,6 +157,7 @@ struct ProjectTaskUpdateInput
   std::optional<std::string> priority;
   std::optional<int64_t> assigneeId;
   std::optional<int64_t> dueAt;
+  bool clearDueAt{false};
   std::optional<double> sortOrder;
   drogon::orm::DbClient* client{nullptr};
 };

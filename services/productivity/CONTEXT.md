@@ -105,6 +105,13 @@ own `productivity.db`.
   delete returns `{deleted: true, id}`. The `id` on the delete answer is
   additive; the app reconciles a pending create, update or delete by that id
   and drops it when `/sync` delivers the same record.
+- **PATCH: omitted means unchanged, null means clear** (2026-10). A task's
+  `dueAt: null` clears its due date and a calendar event's `endsAt: null`
+  clears its end (`due_at = NULL` / `ends_at = NULL`); `location: null` and
+  `description: null` clear those text columns to `''`, the value their
+  `NOT NULL DEFAULT ''` already means. The DTO records an explicit null as
+  a `clears*` flag beside the `std::optional` that means "provided"; a
+  field left out of the body stays untouched, as before.
 
 ## The productivity change feed (3a-2d)
 

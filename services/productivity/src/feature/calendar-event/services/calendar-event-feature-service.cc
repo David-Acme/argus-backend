@@ -110,6 +110,7 @@ CalendarEventFeatureService::update(const UpdateInput& input) const
         .color = input.body.color,
         .startsAt = input.body.startsAt,
         .endsAt = input.body.endsAt,
+        .clearEndsAt = input.body.clearsEndsAt,
         .isAllDay = input.body.isAllDay,
         .recurrenceRule = input.body.recurrenceRule,
         .projectId = input.body.projectId,

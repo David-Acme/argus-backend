@@ -127,6 +127,7 @@ ProjectTaskFeatureService::update(const UpdateInput& input) const
         .priority = input.body.priority,
         .assigneeId = input.body.assigneeId,
         .dueAt = input.body.dueAt,
+        .clearDueAt = input.body.clearsDueAt,
         .sortOrder = input.body.sortOrder,
         .client = transaction.get(),
     });

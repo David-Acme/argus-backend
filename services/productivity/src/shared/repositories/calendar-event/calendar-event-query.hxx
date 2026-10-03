@@ -115,6 +115,7 @@ inline constexpr std::string_view UPDATE_COL_LOCATION = "location = ?";
 inline constexpr std::string_view UPDATE_COL_COLOR = "color = ?";
 inline constexpr std::string_view UPDATE_COL_STARTS_AT = "starts_at = ?";
 inline constexpr std::string_view UPDATE_COL_ENDS_AT = "ends_at = ?";
+inline constexpr std::string_view UPDATE_COL_ENDS_AT_NULL = "ends_at = NULL";
 inline constexpr std::string_view UPDATE_COL_IS_ALL_DAY = "is_all_day = ?";
 inline constexpr std::string_view UPDATE_COL_RECURRENCE_RULE = "recurrence_rule = ?";
 inline constexpr std::string_view UPDATE_COL_PROJECT_ID = "project_id = ?";
@@ -153,6 +154,7 @@ struct CalendarEventUpdateInput
   std::optional<std::string> color;
   std::optional<int64_t> startsAt;
   std::optional<int64_t> endsAt;
+  bool clearEndsAt{false};
   std::optional<bool> isAllDay;
   std::optional<std::string> recurrenceRule;
   std::optional<int64_t> projectId;

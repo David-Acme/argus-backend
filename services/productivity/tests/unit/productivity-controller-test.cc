@@ -585,6 +585,15 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(sink.audits.back().tableName == "project_task");
   CHECK(sink.audits.back().users == std::vector<int64_t>{42});
 
+  const auto patchTask = [&taskController, taskId](const std::string& json) {
+    auto req = drogon::HttpRequest::newHttpJsonRequest(json_util::fromString(json));
+    setActor({.req = req, .sub = 42, .role = UserRole::Owner});
+    return body(drogon::sync_wait(taskController.update(req, taskId)))["info"];
+  };
+  CHECK(patchTask(R"({"dueAt":1790000000})")["dueAt"].asInt64() == 1790000000);
+  CHECK(patchTask(R"({"title":"Sand the door twice"})")["dueAt"].asInt64() == 1790000000);
+  CHECK(patchTask(R"({"dueAt":null})")["dueAt"].isNull());
+
   Json::Value orphanTaskBody;
   orphanTaskBody["projectId"] = Json::Int64(999);
   orphanTaskBody["title"] = "Orphan";
@@ -691,7 +700,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
       drogon::sync_wait(shareController.update(shareEditReq, shareId));
   CHECK(body(shareEdited)["status"].asInt() == 200);
   CHECK(body(shareEdited)["info"]["access"] == "edit");
-  REQUIRE(sink.audits.size() == 4);
+  REQUIRE(sink.audits.size() == 7);
   CHECK(sink.audits.back().recordId == shareId);
   CHECK(sink.audits.back().tableName == "calendar_event_share");
   CHECK(sink.audits.back().users == std::vector<int64_t>{42, 7});
@@ -705,6 +714,22 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   REQUIRE(shareGoneTwice);
   CHECK(shareGoneTwice->status == 404);
   CHECK(shareGoneTwice->message == "Share not found");
+
+  const auto patchEvent = [&eventController, eventId](const std::string& json) {
+    auto req = drogon::HttpRequest::newHttpJsonRequest(json_util::fromString(json));
+    setActor({.req = req, .sub = 42, .role = UserRole::Owner});
+    return body(drogon::sync_wait(eventController.update(req, eventId)))["info"];
+  };
+  const auto located = patchEvent(R"({"location":"Porch","endsAt":1735699600000})");
+  CHECK(located["location"] == "Porch");
+  CHECK(located["endsAt"].asInt64() == 1735699600000);
+  const auto untouched = patchEvent(R"({"title":"Golden event, moved"})");
+  CHECK(untouched["location"] == "Porch");
+  CHECK(untouched["endsAt"].asInt64() == 1735699600000);
+  const auto cleared = patchEvent(R"({"location":null,"description":null,"endsAt":null})");
+  CHECK(cleared["location"] == "");
+  CHECK(cleared["description"] == "");
+  CHECK(cleared["endsAt"].isNull());
 
   const auto eventGone =
       drogon::sync_wait(eventController.remove(ownerRequest(), eventId));
