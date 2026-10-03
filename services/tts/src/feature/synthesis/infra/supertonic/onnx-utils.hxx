@@ -91,6 +91,4 @@ latentMask(const LatentMaskInput& input);
 
 std::vector<int64_t> loadJsonInt64(const std::string& path);
 
-std::vector<std::string> chunkText(const std::string& text, int maxLen = 300);
-size_t completeSentenceEnd(const std::string& buffer, size_t minChars = 0);
 std::string sanitizeFilename(const std::string& text, int maxLen);

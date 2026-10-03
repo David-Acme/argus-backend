@@ -1,5 +1,5 @@
 tool 22.1.8
-tus 611
+tus 624
 modernize-use-nodiscard 714
 modernize-avoid-c-style-cast 357
 bugprone-suspicious-stringview-data-usage 274
@@ -22,7 +22,7 @@ performance-enum-size 23
 performance-unnecessary-copy-initialization 22
 bugprone-unused-return-value 20
 modernize-raw-string-literal 20
-modernize-use-integer-sign-comparison 18
+modernize-use-integer-sign-comparison 17
 performance-inefficient-string-concatenation 17
 performance-move-const-arg 12
 bugprone-empty-catch 9

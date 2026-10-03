@@ -23,6 +23,19 @@ edge_silence_ms = 40
 join_silence_ms = 90
 
 models_dir = "models/tts"
+pocket_models_dir = ""
+
+engine_es = "pocket"
+engine_en = "pocket"
+pocket_variant_es = "fast"
+pocket_voice_es = "lola"
+pocket_voice_en = "alba"
+pocket_reference_es = ""
+pocket_reference_en = ""
+pocket_precision = "int8"
+pocket_temperature = 0.3
+pocket_lsd_steps = 1
+normalize_text = true
 
 [drogon.app]
 number_of_threads = 0

@@ -14,8 +14,17 @@ argus_module(NAME tts-synthesis
         infra/supertonic/onnx-utils.cc
         infra/supertonic/style.cc
         infra/supertonic/unicode-processor.cc
+        infra/pocket/pocket-bundle.cc
+        infra/pocket/unigram-tokenizer.cc
+        infra/pocket/pocket-voice.cc
+        infra/pocket/pocket-prompt.cc
+        infra/pocket/pocket-engine.cc
+        infra/pocket/pcm-rate-converter.cc
+        infra/pocket/reference-audio.cc
     INCLUDES ../..
     DEPENDS
+        argus::tts-speech-text
+        argus::lib::audio
         argus::lib::config argus::lib::runtime
         argus::clients::tts
         argus::hardware-profile

@@ -129,5 +129,9 @@ TtsController::engine(drogon::HttpRequestPtr)
   info["sampleRate"] = tts.sampleRate();
   info["defaultSpeed"] = tts.defaultSpeed();
   info["loaded"] = tts.isLoaded();
+  Json::Value engines(Json::objectValue);
+  for (const auto& [language, engine] : tts.activeEngines())
+    engines[language] = engine;
+  info["engines"] = engines;
   co_return ApiResponse::ok(info);
 }

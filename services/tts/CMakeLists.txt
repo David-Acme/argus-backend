@@ -26,6 +26,10 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
     endif()
+    if(NOT TARGET argus::lib::audio)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/audio
+                         ${CMAKE_BINARY_DIR}/audio)
+    endif()
     if(NOT TARGET argus::lib::validation)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/validation
                          ${CMAKE_BINARY_DIR}/validation)
@@ -119,3 +123,19 @@ target_link_libraries(tts-speech-text-test PRIVATE argus::tts-speech-text doctes
 target_compile_options(tts-speech-text-test PRIVATE -Wall -Wextra)
 set_target_properties(tts-speech-text-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME tts-speech-text-test COMMAND tts-speech-text-test)
+
+add_executable(tts-settings-test tests/unit/tts-settings-test.cc)
+target_link_libraries(tts-settings-test PRIVATE argus::tts-settings argus::tts-synthesis doctest::doctest)
+argus_runtime_rpath(tts-settings-test)
+target_compile_options(tts-settings-test PRIVATE -Wall -Wextra)
+set_target_properties(tts-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME tts-settings-test COMMAND tts-settings-test)
+
+add_executable(tts-pocket-test tests/unit/tts-pocket-test.cc)
+target_link_libraries(tts-pocket-test PRIVATE argus::tts-synthesis doctest::doctest)
+target_compile_definitions(tts-pocket-test PRIVATE
+    ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/tts")
+argus_runtime_rpath(tts-pocket-test)
+target_compile_options(tts-pocket-test PRIVATE -Wall -Wextra)
+set_target_properties(tts-pocket-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME tts-pocket-test COMMAND tts-pocket-test)

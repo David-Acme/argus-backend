@@ -4,6 +4,8 @@
 #include "style.hxx"
 #include "unicode-processor.hxx"
 
+#include <feature/synthesis/text/prosodic-chunker.hxx>
+
 #include <algorithm>
 #include <cmath>
 #include <config/config-service.hxx>
@@ -377,8 +379,8 @@ TtsEngine::Result TtsEngine::synthesize(const SynthesizeInput& input) const
         "Single speaker text to speech only supports single style");
   }
 
-  int maxLen = (lang == "ko" || lang == "ja") ? 120 : 300;
-  auto textList = chunkText(text, maxLen);
+  const std::size_t maxLen = (lang == "ko" || lang == "ja") ? 120 : 300;
+  auto textList = chunkProsodic({.text = text, .maxUnits = maxLen, .measure = codepointCount});
 
   const float threshold = 1e-3f;
   const size_t keepEdge =
