@@ -119,6 +119,7 @@ wire::ChatRequest wireRequest(const ChatRequest& request)
   wire.set_grammar_required(request.grammarRequired);
   wire.set_caller_role(wireRole(request.role));
   wire.set_lang(request.lang);
+  wire.set_client_actions(request.clientActions);
   return wire;
 }
 }
@@ -197,6 +198,11 @@ void Client::chatStream(const LlmStreamInput& input) const
   bool sentinel = false;
   while (!input.cancellation.stop_requested() && reader->Read(&token)) {
     if (!token.done()) {
+      if (token.has_action()) {
+        if (input.onAction)
+          input.onAction({.name = token.action().name(), .arguments = token.action().arguments()});
+        continue;
+      }
       input.onToken(token.text(), false);
       continue;
     }

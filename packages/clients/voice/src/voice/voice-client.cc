@@ -52,6 +52,13 @@ public:
     writeFrame(std::move(frame));
   }
 
+  void sendContext(const argus::voice::v1::VoiceContext& context) override
+  {
+    argus::voice::v1::ClientFrame frame;
+    *frame.mutable_context() = context;
+    writeFrame(std::move(frame));
+  }
+
   void sendPcm(const void* data, size_t size) override
   {
     argus::voice::v1::ClientFrame frame;

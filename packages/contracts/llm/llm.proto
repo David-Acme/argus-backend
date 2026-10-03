@@ -44,10 +44,16 @@ message ChatRequest {
   bool grammar_required = 8;
   CallerRole caller_role = 9;
   string lang = 10;
+  bool client_actions = 11;
 }
 
 message ChatResponse {
   string text = 1;
+}
+
+message ClientAction {
+  string name = 1;
+  string arguments = 2;
 }
 
 message ChatToken {
@@ -57,4 +63,5 @@ message ChatToken {
   int32 prompt_tokens = 4;
   int32 reused_tokens = 5;
   int32 decoded_tokens = 6;
+  ClientAction action = 7;
 }

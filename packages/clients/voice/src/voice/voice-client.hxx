@@ -25,6 +25,7 @@ public:
   virtual void stop() = 0;
   virtual void skip() = 0;
   virtual void sendPcm(const void* data, size_t size) = 0;
+  virtual void sendContext(const argus::voice::v1::VoiceContext& context) = 0;
   virtual void finish() = 0;
 };
 

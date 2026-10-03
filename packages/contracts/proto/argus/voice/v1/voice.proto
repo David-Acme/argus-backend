@@ -40,6 +40,19 @@ message VoiceStop {}
 
 message VoiceSkip {}
 
+enum VoiceContextKind
+{
+  VOICE_CONTEXT_NOTE = 0;
+  VOICE_CONTEXT_CAMERA_EVENT = 1;
+}
+
+message VoiceContext
+{
+  VoiceContextKind kind = 1;
+  string text = 2;
+  string camera = 3;
+}
+
 message ClientFrame
 {
   oneof body
@@ -48,6 +61,7 @@ message ClientFrame
     VoiceStop stop = 2;
     VoiceSkip skip = 3;
     bytes pcm = 4;
+    VoiceContext context = 5;
   }
 }
 
@@ -94,6 +108,13 @@ enum ReactionKind
   REACTION_ALARMED = 9;
 }
 
+message VoiceAction
+{
+  int64 id = 1;
+  string name = 2;
+  string arguments = 3;
+}
+
 message VoiceDone
 {
   int64 session_id = 1;
@@ -115,6 +136,7 @@ message ServerFrame
     TtsChunk tts_chunk = 5;
     VoiceTurn turn = 6;
     VoiceInterrupted interrupted = 7;
+    VoiceAction action = 8;
   }
 }
 
