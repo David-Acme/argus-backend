@@ -5,7 +5,10 @@
 #include <iostream>
 #include <map>
 #include <config/config-service.hxx>
+#include <feature/llm/controllers/llm-controller.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
+#include <feature/llm/services/tools/app-tool-descriptors.hxx>
+#include <feature/memory/services/memory/memory-tool-descriptors.hxx>
 #include <llm/llm-service.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <sstream>
@@ -63,6 +66,115 @@ long long nowMs()
       .count();
 }
 
+constexpr const char* kVoicePersona =
+    "You are Argus, a warm, natural home voice assistant for a local security "
+    "camera system.\nReply strictly in Spanish, in at most two short "
+    "sentences. Your reply is spoken aloud.\nCameras: Garaje, Puerta, Patio.";
+
+struct VoiceTally
+{
+  int total = 0;
+  int expected = 0;
+  int memoryWrite = 0;
+  int appAction = 0;
+  int anyTool = 0;
+  long long ttftMs = 0;
+};
+
+bool expectedFor(const std::string& label, const std::vector<std::string>& ran)
+{
+  const auto has = [&ran](const char* name) {
+    return std::ranges::find(ran, name) != ran.end();
+  };
+  if (label == "memory_save")
+    return has("memory.remember") || has("memory.remind");
+  if (label == "camera")
+    return has("app.show_camera") ||
+           (!has("memory.remember") && !has("memory.remind"));
+  return ran.empty();
+}
+
+int voiceSuite(const std::vector<Case>& cases)
+{
+  std::vector<std::string> ran;
+  for (auto descriptor : memoryToolDescriptors()) {
+    descriptor.handler = [&ran](const tools::ToolCall& call) {
+      ran.push_back(call.name);
+      tools::ToolResult result;
+      result.ok = true;
+      result.output = call.name == "memory.recall" ? "No tengo nada guardado sobre eso."
+                                                   : "Guardado.";
+      return result;
+    };
+    ToolRegistry::instance().registerTool(std::move(descriptor));
+  }
+  for (auto descriptor : appToolDescriptors())
+    ToolRegistry::instance().registerTool(std::move(descriptor));
+
+  LlmController controller;
+  controller.initEngine();
+  if (!controller.isEngineLoaded()) {
+    std::cout << "[skip] LLM model not loaded\n";
+    return 0;
+  }
+
+  std::map<std::string, VoiceTally> tally;
+  for (const auto& c : cases) {
+    ran.clear();
+    std::vector<std::string> actions;
+    long long first = -1;
+    const long long t0 = nowMs();
+    ChatRequest request;
+    request.messages = {{.role = "system", .content = kVoicePersona},
+                        {.role = "user", .content = c.text}};
+    request.temperature = 0.0F;
+    request.userId = 7;
+    request.role = UserRole::Owner;
+    request.lang = "es";
+    request.clientActions = true;
+    request.sessionId = "bench";
+    std::string reply;
+    controller.chatStreamSync(
+        {.request = request,
+         .onToken =
+             [&first, &reply, t0](const std::string& token, bool done) {
+               if (!done && first < 0 && !token.empty())
+                 first = nowMs() - t0;
+               reply += token;
+             },
+         .stats = nullptr,
+         .cancellation = {},
+         .onAction = [&actions, &ran](const ClientAction& action) {
+           actions.push_back(action.name);
+           ran.push_back(action.name);
+         }});
+    auto& bucket = tally[c.label];
+    ++bucket.total;
+    bucket.expected += expectedFor(c.label, ran) ? 1 : 0;
+    bucket.memoryWrite += std::ranges::any_of(ran, [](const std::string& name) {
+                            return name == "memory.remember" || name == "memory.remind";
+                          })
+                              ? 1
+                              : 0;
+    bucket.appAction += actions.empty() ? 0 : 1;
+    bucket.anyTool += ran.empty() ? 0 : 1;
+    bucket.ttftMs += first < 0 ? nowMs() - t0 : first;
+    std::cout << c.label << "\t" << c.text << "\t";
+    for (const auto& name : ran)
+      std::cout << name << " ";
+    std::cout << "\t" << (first < 0 ? nowMs() - t0 : first) << " ms\t"
+              << reply.substr(0, 80) << "\n";
+  }
+
+  std::cout << "\nlabel\ttotal\texpected\tmemory_write\tapp_action\tany_tool\tmean_ttft_ms\n";
+  for (const auto& [label, bucket] : tally)
+    std::cout << label << "\t" << bucket.total << "\t" << bucket.expected << "\t"
+              << bucket.memoryWrite << "\t" << bucket.appAction << "\t"
+              << bucket.anyTool << "\t" << bucket.ttftMs / std::max(1, bucket.total)
+              << "\n";
+  return 0;
+}
+
 }
 
 int main(int argc, char** argv)
@@ -70,12 +182,18 @@ int main(int argc, char** argv)
   std::string filter;
   int limit = 0;
   bool verbose = false;
+  bool voice = false;
+  std::string configPath;
   float temperature = 0.0F;
   std::string checkPath = kDefaultCases;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
     if (arg == "--verbose")
       verbose = true;
+    else if (arg == "--voice")
+      voice = true;
+    else if (arg == "--config" && i + 1 < argc)
+      configPath = argv[++i];
     else if (arg == "--filter" && i + 1 < argc)
       filter = argv[++i];
     else if (arg == "--limit" && i + 1 < argc)
@@ -85,21 +203,28 @@ int main(int argc, char** argv)
     else if (arg == "--temp" && i + 1 < argc)
       temperature = std::stof(argv[++i]);
     else if (arg == "--help") {
-      std::cout << "argus-tool-bench [--verbose] [--filter <label>] "
-                   "[--limit <n>] [--check <path>] [--temp <t>]\n";
+      std::cout << "argus-tool-bench [--verbose] [--voice] [--config <toml>] "
+                   "[--filter <label>] [--limit <n>] [--check <path>] [--temp <t>]\n";
       return 0;
     }
   }
 
   const std::string dir = exeDir();
   const std::string root = dir + "/../../..";
-  if (access((root + "/config.toml").c_str(), F_OK) == 0) {
+  if (configPath.empty() && access((root + "/config.toml").c_str(), F_OK) == 0) {
     if (chdir(root.c_str()) != 0) {
       std::cerr << "chdir failed: " << root << "\n";
       return 1;
     }
   }
-  ConfigService::load("config.toml");
+  ConfigService::load(configPath.empty() ? std::string("config.toml") : configPath);
+
+  if (voice) {
+    auto cases = loadCases(checkPath);
+    if (limit > 0 && static_cast<size_t>(limit) < cases.size())
+      cases.resize(static_cast<size_t>(limit));
+    return voiceSuite(cases);
+  }
 
   gLlm.init();
   if (!gLlm.isLoaded()) {
