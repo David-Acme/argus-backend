@@ -34,4 +34,5 @@ public:
                                     const FaceVecSearchInput& input) const;
   bool deleteVecRow(sqlite3* db, int64_t rowid) const;
   size_t countVec(sqlite3* db) const;
+  std::vector<int64_t> findOrphanVecRows(sqlite3* db) const;
 };

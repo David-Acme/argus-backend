@@ -24,6 +24,16 @@ std::mutex& FaceDB::vecMutex()
 
 void FaceDB::init()
 {
+  std::scoped_lock lock(vecMutex());
+  sqlite3* db = vecDb_.handle();
+  if (db) {
+    const auto orphans = repository_.findOrphanVecRows(db);
+    for (const int64_t rowid : orphans)
+      repository_.deleteVecRow(db, rowid);
+    if (!orphans.empty())
+      LOG_INFO << "FaceDB: dropped " << orphans.size()
+               << " index row(s) whose embedding is gone";
+  }
   LOG_INFO << "FaceDB: vec0 index ready";
 }
 

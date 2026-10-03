@@ -2,6 +2,7 @@
 
 #include <ctime>
 #include <sqlite/db-service.hxx>
+#include <string>
 #include <sqlite/sqlite-stmt.hxx>
 #include <sqlite3.h>
 
@@ -104,6 +105,17 @@ FaceEmbeddingRepository::findIdsByPerson(sqlite3* db, int64_t personId) const
   if (!stmt.prepare(db, FIND_IDS_BY_PERSON.data()))
     return ids;
   stmt.bindInt64(1, personId);
+  while (stmt.step() == SQLITE_ROW)
+    ids.push_back(stmt.columnInt64(0));
+  return ids;
+}
+
+std::vector<int64_t> FaceEmbeddingRepository::findOrphanVecRows(sqlite3* db) const
+{
+  std::vector<int64_t> ids;
+  SqliteStmt stmt;
+  if (!stmt.prepare(db, std::string(VEC_ORPHANS).c_str()))
+    return ids;
   while (stmt.step() == SQLITE_ROW)
     ids.push_back(stmt.columnInt64(0));
   return ids;

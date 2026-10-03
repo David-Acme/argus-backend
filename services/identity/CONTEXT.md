@@ -279,7 +279,10 @@ to whose `last_seen_at` is older than `[retention] candidate_days` (default 30,
 the same transaction deletes their embeddings, crop and tags and publishes
 the sync tombstone (`{id, deletedAt}`), and their `face_vec` rows go once it
 commits. A stranger who comes back after the window is a new candidate; a
-known person and a user's person are never touched.
+known person and a user's person are never touched. Because the index rows go
+after the commit, a stop in between would leave rows pointing at a retired
+person, which a later sighting would match; `FaceDB::init` therefore drops
+every `face_vec` row whose `face_embedding` row no longer exists.
 
 `PromotePerson` (candidate → known) is the one mutating call with a human gate:
 the owner bearer token plus the device fingerprint travel in the call, the
