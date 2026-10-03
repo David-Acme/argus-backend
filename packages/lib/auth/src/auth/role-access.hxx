@@ -88,8 +88,10 @@ constexpr std::uint8_t roleBit(UserRole role)
 
 inline constexpr std::uint8_t kResidentAndGuard = roleBit(UserRole::Resident) | roleBit(UserRole::Guard);
 
-inline constexpr std::array<GuardRouteAccess, 6> kGuardAccess = {{
+inline constexpr std::array<GuardRouteAccess, 8> kGuardAccess = {{
     {.path = "/guard/mode", .method = drogon::Get, .roles = kResidentAndGuard},
+    {.path = "/guard/episodes", .method = drogon::Get, .roles = kResidentAndGuard},
+    {.path = "/guard/site", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/mode", .method = drogon::Post, .roles = roleBit(UserRole::Resident)},
     {.path = "/guard/incidents", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/expected-guests", .method = drogon::Get, .roles = kResidentAndGuard},

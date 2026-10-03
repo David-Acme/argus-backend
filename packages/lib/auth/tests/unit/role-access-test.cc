@@ -302,6 +302,14 @@ TEST_CASE("hasHttpAccess applies kGuardAccess route by route")
     CHECK(allows(UserRole::Guard, "/guard/mode", drogon::Get));
     CHECK(allows(UserRole::Guard, "/guard/incidents", drogon::Get));
     CHECK(allows(UserRole::Guard, "/guard/expected-guests", drogon::Get));
+    CHECK(allows(UserRole::Guard, "/guard/episodes", drogon::Get));
+    CHECK(allows(UserRole::Guard, "/guard/site", drogon::Get));
+    CHECK(allows(UserRole::Resident, "/guard/episodes", drogon::Get));
+    CHECK(allows(UserRole::Resident, "/guard/site", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/site", drogon::Patch));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/episodes/4", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Guard, "/guard/episodes/4/review", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Guest, "/guard/episodes", drogon::Get));
     CHECK_FALSE(allows(UserRole::Guard, "/guard/mode", drogon::Post));
     CHECK_FALSE(allows(UserRole::Guard, "/guard/expected-guests", drogon::Post));
     CHECK_FALSE(allows(UserRole::Guard, "/guard/decisions", drogon::Get));
