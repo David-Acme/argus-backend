@@ -69,6 +69,8 @@ SyncService::handleMessage(const SyncFrameInput& input) const
 
   const std::string type = obj["type"].asString();
   const Json::Value& payload = obj["payload"];
+  if (!payload.isNull() && !payload.isObject())
+    throw ResponseException(400, SyncErrors::InvalidPayload);
   const auto& ctx = conn->getContextRef<JwtContext>();
 
   if (type == "sync") {

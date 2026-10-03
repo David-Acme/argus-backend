@@ -13,6 +13,10 @@ inline constexpr ErrorDefinition MissingMessageType{
     .code = ErrorCode::BadRequest,
     .status = 400,
     .message = "Missing message type"};
+inline constexpr ErrorDefinition InvalidPayload{
+    .code = ErrorCode::BadRequest,
+    .status = 400,
+    .message = "Message payload must be an object"};
 inline constexpr ErrorDefinition UnknownMessageType{
     .code = ErrorCode::BadRequest,
     .status = 400,
