@@ -544,6 +544,29 @@ the matching `*-init` profile is the only migration path onto a volume.
   real data directory; the default lives in `argus-deploy/data/` and is
   gitignored.
 
+## AI engines over authenticated gRPC (2026-10)
+
+Voice, camera and guard used to reach STT, TTS, LLM and VLM over their HTTP
+routes, which authenticate no caller and, in the LLM's case, take the
+`user_id` whose memories the tools read and write from the request body;
+the engines listened on `0.0.0.0` inside the internal network. The deploy
+templates now:
+
+- open each engine's gRPC leg (`[rpc] address`: tts 7129, stt 7130, vlm
+  7131, llm 7132) with one `[rpc.callers]` credential per caller, which the
+  gRPC servers already enforce;
+- point the callers at it (`grpc_target` and `grpc_credential` in voice's
+  `[stt]`/`[tts]`/`[llm]`, camera's `[stt]`/`[tts]`, guard's new `[vlm]` and
+  `[llm]`), the transport the clients prefer whenever a target is set; this
+  also replaces camera's HTTP path, whose hand-rolled client could not
+  resolve a host name at all;
+- bind the engines' HTTP listeners to the container's loopback, where only
+  the healthcheck reaches them.
+
+`ensure_deploy_configs` pairs every credential (`fill_config_pair` into the
+`rpc.callers` table). The pairs are distinct per caller, so a compromised
+caller cannot impersonate another.
+
 ## Port map (host)
 
 | Port | Bind | Owner |

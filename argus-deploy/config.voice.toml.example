@@ -11,16 +11,22 @@ target = "argus-identity:7040"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [stt]
-remote_url = "172.19.0.30:7030"
+remote_url = ""
+grpc_target = "argus-stt:7130"
+grpc_credential = "CHANGE_ME_VOICE_STT"
 remote_timeout_ms = 30000
 language = "es"
 
 [tts]
-remote_url = "172.19.0.29:7029"
+remote_url = ""
+grpc_target = "argus-tts:7129"
+grpc_credential = "CHANGE_ME_VOICE_TTS"
 remote_timeout_ms = 30000
 
 [llm]
-remote_url = "172.19.0.32:7032"
+remote_url = ""
+grpc_target = "argus-llm:7132"
+grpc_credential = "CHANGE_ME_VOICE_LLM"
 remote_timeout_ms = 120000
 
 [vad]

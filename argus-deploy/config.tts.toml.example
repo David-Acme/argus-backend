@@ -1,6 +1,13 @@
 [server]
-host = "0.0.0.0"
+host = "127.0.0.1"
 port = 7029
+
+[rpc]
+address = "0.0.0.0:7129"
+
+[rpc.callers]
+voice = "CHANGE_ME_VOICE_TTS"
+camera = "CHANGE_ME_CAMERA_TTS"
 
 [tts]
 threads = 0

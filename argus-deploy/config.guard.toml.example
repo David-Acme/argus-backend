@@ -113,8 +113,8 @@ weight_camera_health_degraded = -2
 [guard.assess]
 enabled = true
 mode = "agent"
-vlm_url = "http://argus-vlm:7031"
-llm_url = "argus-llm:7032"
+vlm_url = ""
+llm_url = ""
 timeout_ms = 8000
 max_tool_rounds = 2
 
@@ -163,3 +163,11 @@ secret_key = ""
 enabled = true
 name = "Argus"
 address = ""
+
+[vlm]
+grpc_target = "argus-vlm:7131"
+grpc_credential = "CHANGE_ME_GUARD_VLM"
+
+[llm]
+grpc_target = "argus-llm:7132"
+grpc_credential = "CHANGE_ME_GUARD_LLM"

@@ -62,7 +62,9 @@ max_viewers_per_camera = 4
 max_total_viewers = 8
 
 [tts]
-remote_url = "argus-tts:7029"
+remote_url = ""
+grpc_target = "argus-tts:7129"
+grpc_credential = "CHANGE_ME_CAMERA_TTS"
 remote_timeout_ms = 30000
 
 [nats]
@@ -144,7 +146,9 @@ blur_threshold = 18.0
 scene_diff = 0.35
 
 [stt]
-remote_url = "argus-stt:7030"
+remote_url = ""
+grpc_target = "argus-stt:7130"
+grpc_credential = "CHANGE_ME_CAMERA_STT"
 remote_timeout_ms = 30000
 language = "es"
 

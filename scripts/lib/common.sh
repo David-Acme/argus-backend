@@ -336,6 +336,20 @@ ensure_deploy_configs() {
     "$deploy_dir/config.camera.toml" grpc caller_sync 32
   fill_config_pair "$deploy_dir/config.llm.toml" camera credential \
     "$deploy_dir/config.camera.toml" grpc caller_llm 32
+  fill_config_pair "$deploy_dir/config.voice.toml" stt grpc_credential \
+    "$deploy_dir/config.stt.toml" rpc.callers voice 32
+  fill_config_pair "$deploy_dir/config.voice.toml" tts grpc_credential \
+    "$deploy_dir/config.tts.toml" rpc.callers voice 32
+  fill_config_pair "$deploy_dir/config.voice.toml" llm grpc_credential \
+    "$deploy_dir/config.llm.toml" rpc.callers voice 32
+  fill_config_pair "$deploy_dir/config.camera.toml" stt grpc_credential \
+    "$deploy_dir/config.stt.toml" rpc.callers camera 32
+  fill_config_pair "$deploy_dir/config.camera.toml" tts grpc_credential \
+    "$deploy_dir/config.tts.toml" rpc.callers camera 32
+  fill_config_pair "$deploy_dir/config.guard.toml" vlm grpc_credential \
+    "$deploy_dir/config.vlm.toml" rpc.callers guard 32
+  fill_config_pair "$deploy_dir/config.guard.toml" llm grpc_credential \
+    "$deploy_dir/config.llm.toml" rpc.callers guard 32
 
   log "Deploy configs ready in $deploy_dir"
 }
