@@ -160,6 +160,8 @@ TEST_CASE("a voiceprint call the client cannot make never opens a socket")
   CHECK_FALSE(client.verify({.userId = 0, .sample = clip}).has_value());
   CHECK_FALSE(client.verify({.userId = 7, .sample = silent}).has_value());
   CHECK_FALSE(client.identify(ultrasonic).has_value());
+  CHECK_FALSE(
+      client.identifyWithin({.sample = clip, .timeoutMs = 0}).has_value());
   CHECK_FALSE(client.remove({.userId = 7, .session = anonymous}).has_value());
   CHECK_FALSE(
       client.createChallenge({.userId = 7, .lang = "es", .session = anonymous})

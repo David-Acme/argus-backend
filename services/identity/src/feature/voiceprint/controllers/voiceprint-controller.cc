@@ -3,7 +3,6 @@
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/request-context.hxx>
-#include <drogon/MultiPart.h>
 #include <errors/response-exception.hxx>
 #include <feature/voiceprint/dtos/create-voiceprint-challenge-dto.hxx>
 #include <feature/voiceprint/dtos/enroll-voiceprint-dto.hxx>
@@ -11,7 +10,6 @@
 #include <feature/voiceprint/dtos/response-voiceprint-sample-dto.hxx>
 #include <feature/voiceprint/dtos/response-voiceprint-status-dto.hxx>
 #include <feature/voiceprint/dtos/response-voiceprint-verify-dto.hxx>
-#include <feature/voiceprint/dtos/voice-sample-dto.hxx>
 #include <http/api-response.hxx>
 #include <identity/identity-errors.hxx>
 #include <utility>
@@ -65,6 +63,20 @@ void requireOk(VoiceprintOutcome outcome)
     throw ResponseException(refusalOf(outcome));
 }
 
+bool sampleVerdict(VoiceprintOutcome outcome)
+{
+  switch (outcome) {
+    case VoiceprintOutcome::Ok:
+    case VoiceprintOutcome::SampleInvalid:
+    case VoiceprintOutcome::SampleTooShort:
+    case VoiceprintOutcome::SampleTooNoisy:
+    case VoiceprintOutcome::SampleClipped:
+      return true;
+    default:
+      return false;
+  }
+}
+
 VoiceprintActor actorOf(const drogon::HttpRequestPtr& req)
 {
   const auto& attributes = req->getAttributes();
@@ -73,28 +85,11 @@ VoiceprintActor actorOf(const drogon::HttpRequestPtr& req)
   return {.userId = jwt.sub, .role = jwt.role, .deviceHash = device.deviceHash};
 }
 
-drogon::MultiPartParser multipartOf(const drogon::HttpRequestPtr& req)
-{
-  drogon::MultiPartParser parser;
-  if (parser.parse(req) != 0)
-    throw ResponseException(IdentityErrors::InvalidMultipartForm);
-  return parser;
-}
-
 EncodedVoice wav(std::string bytes)
 {
   return {.bytes = std::move(bytes),
           .encoding = VoiceEncoding::Wav,
           .sampleRate = 0};
-}
-
-std::vector<EncodedVoice> wavs(std::vector<std::string> samples)
-{
-  std::vector<EncodedVoice> voices;
-  voices.reserve(samples.size());
-  for (auto& sample : samples)
-    voices.push_back(wav(std::move(sample)));
-  return voices;
 }
 
 struct ChallengeAnswerInput
@@ -116,6 +111,25 @@ Json::Value challengeAnswer(const ChallengeAnswerInput& input)
       .toJson();
 }
 
+Json::Value statusAnswer(const VoiceprintEnrollResult& result)
+{
+  requireOk(result.outcome);
+  return ResponseVoiceprintStatusDto{.status = result.status}.toJson();
+}
+
+}
+
+drogon::Task<VoiceprintSampleCheck>
+VoiceprintController::takeSample(const SampleInput& input) const
+{
+  if (input.body.challengeId.empty())
+    co_return co_await service_.checkSample(wav(input.body.wav()));
+  co_return co_await service_.stageSample(
+      {.actor = input.actor,
+       .subjectId = input.subjectId,
+       .challengeId = input.body.challengeId,
+       .position = static_cast<int>(input.body.phrase),
+       .sample = wav(input.body.wav())});
 }
 
 drogon::Task<drogon::HttpResponsePtr>
@@ -133,18 +147,25 @@ VoiceprintController::challenge(drogon::HttpRequestPtr req)
   const auto body =
       CreateVoiceprintChallengeDto::fromJson(*req->getJsonObject());
   const auto actor = actorOf(req);
-  const auto result = co_await service_.createChallenge(
-      {.actor = actor, .subjectId = actor.userId, .lang = body.language()});
+  const VoiceprintChallengeRequest request{.actor = actor,
+                                           .subjectId = actor.userId,
+                                           .lang = body.language()};
+  const auto result = co_await service_.createChallenge(request);
   co_return ApiResponse::ok(
       challengeAnswer({.result = result, .config = service_.config()}));
 }
 
 drogon::Task<drogon::HttpResponsePtr>
-VoiceprintController::checkSample(drogon::HttpRequestPtr req)
+VoiceprintController::sample(drogon::HttpRequestPtr req)
 {
-  const auto parser = multipartOf(req);
-  auto body = VoiceSampleDto::form_multipart(parser);
-  const auto check = co_await service_.checkSample(wav(std::move(body.sample)));
+  const auto body = VoiceSampleDto::fromJson(*req->getJsonObject());
+  const auto actor = actorOf(req);
+  const SampleInput input{.actor = actor,
+                          .subjectId = actor.userId,
+                          .body = body};
+  const auto check = co_await takeSample(input);
+  if (!sampleVerdict(check.outcome))
+    requireOk(check.outcome);
   co_return ApiResponse::ok(
       ResponseVoiceprintSampleDto{.check = check}.toJson());
 }
@@ -152,29 +173,23 @@ VoiceprintController::checkSample(drogon::HttpRequestPtr req)
 drogon::Task<drogon::HttpResponsePtr>
 VoiceprintController::enroll(drogon::HttpRequestPtr req)
 {
-  const auto parser = multipartOf(req);
-  auto body = EnrollVoiceprintDto::form_multipart(parser);
+  const auto body = EnrollVoiceprintDto::fromJson(*req->getJsonObject());
   const auto actor = actorOf(req);
-  const auto result = co_await service_.enroll(
-      {.actor = actor,
-       .subjectId = actor.userId,
-       .samples = wavs(std::move(body.samples)),
-       .consent = true,
-       .consentVersion = std::move(body.consentVersion),
-       .challengeId = std::move(body.challengeId),
-       .faceImage = {}});
-  requireOk(result.outcome);
-  co_return ApiResponse::ok(
-      ResponseVoiceprintStatusDto{.status = result.status}.toJson());
+  const VoiceprintFinalizeRequest request{.actor = actor,
+                                          .subjectId = actor.userId,
+                                          .consent = body.consent,
+                                          .consentVersion = body.consentVersion,
+                                          .challengeId = body.challengeId,
+                                          .faceImage = {}};
+  co_return ApiResponse::ok(statusAnswer(co_await service_.finalize(request)));
 }
 
 drogon::Task<drogon::HttpResponsePtr>
 VoiceprintController::verify(drogon::HttpRequestPtr req)
 {
-  const auto parser = multipartOf(req);
-  auto body = VoiceSampleDto::form_multipart(parser);
+  const auto body = VoiceSampleDto::fromJson(*req->getJsonObject());
   const auto result = co_await service_.verify(
-      {.userId = actorOf(req).userId, .sample = wav(std::move(body.sample))});
+      {.userId = actorOf(req).userId, .sample = wav(body.wav())});
   requireOk(result.outcome);
   co_return ApiResponse::ok(
       ResponseVoiceprintVerifyDto{.result = result}.toJson());
@@ -184,9 +199,9 @@ drogon::Task<drogon::HttpResponsePtr>
 VoiceprintController::remove(drogon::HttpRequestPtr req)
 {
   const auto actor = actorOf(req);
-  const auto result =
-      co_await service_.remove({.actor = actor, .subjectId = actor.userId});
-  requireOk(result.outcome);
+  const VoiceprintDeleteRequest request{.actor = actor,
+                                        .subjectId = actor.userId};
+  requireOk((co_await service_.remove(request)).outcome);
   co_return ApiResponse::noContent();
 }
 
@@ -206,35 +221,46 @@ VoiceprintController::challengeFor(drogon::HttpRequestPtr req, int64_t userId)
 {
   const auto body =
       CreateVoiceprintChallengeDto::fromJson(*req->getJsonObject());
-  const auto result = co_await service_.createChallenge(
-      {.actor = actorOf(req), .subjectId = userId, .lang = body.language()});
+  const VoiceprintChallengeRequest request{.actor = actorOf(req),
+                                           .subjectId = userId,
+                                           .lang = body.language()};
+  const auto result = co_await service_.createChallenge(request);
   co_return ApiResponse::ok(
       challengeAnswer({.result = result, .config = service_.config()}));
 }
 
 drogon::Task<drogon::HttpResponsePtr>
+VoiceprintController::sampleFor(drogon::HttpRequestPtr req, int64_t userId)
+{
+  const auto body = VoiceSampleDto::fromJson(*req->getJsonObject());
+  const SampleInput input{.actor = actorOf(req),
+                          .subjectId = userId,
+                          .body = body};
+  const auto check = co_await takeSample(input);
+  if (!sampleVerdict(check.outcome))
+    requireOk(check.outcome);
+  co_return ApiResponse::ok(
+      ResponseVoiceprintSampleDto{.check = check}.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr>
 VoiceprintController::enrollFor(drogon::HttpRequestPtr req, int64_t userId)
 {
-  const auto parser = multipartOf(req);
-  auto body = EnrollVoiceprintDto::form_multipart(parser);
-  const auto result = co_await service_.enroll(
-      {.actor = actorOf(req),
-       .subjectId = userId,
-       .samples = wavs(std::move(body.samples)),
-       .consent = true,
-       .consentVersion = std::move(body.consentVersion),
-       .challengeId = std::move(body.challengeId),
-       .faceImage = std::move(body.face)});
-  requireOk(result.outcome);
-  co_return ApiResponse::ok(
-      ResponseVoiceprintStatusDto{.status = result.status}.toJson());
+  const auto body = EnrollVoiceprintDto::fromJson(*req->getJsonObject());
+  const VoiceprintFinalizeRequest request{.actor = actorOf(req),
+                                          .subjectId = userId,
+                                          .consent = body.consent,
+                                          .consentVersion = body.consentVersion,
+                                          .challengeId = body.challengeId,
+                                          .faceImage = body.faceImage()};
+  co_return ApiResponse::ok(statusAnswer(co_await service_.finalize(request)));
 }
 
 drogon::Task<drogon::HttpResponsePtr>
 VoiceprintController::removeFor(drogon::HttpRequestPtr req, int64_t userId)
 {
-  const auto result =
-      co_await service_.remove({.actor = actorOf(req), .subjectId = userId});
-  requireOk(result.outcome);
+  const VoiceprintDeleteRequest request{.actor = actorOf(req),
+                                        .subjectId = userId};
+  requireOk((co_await service_.remove(request)).outcome);
   co_return ApiResponse::noContent();
 }

@@ -55,5 +55,37 @@ drogon::Task<void>
 VoiceprintChallengeRepository::purgeExpired(int64_t now) const
 {
   auto client = DbService::identityClient();
+  co_await client->execSqlCoro(PURGE_SAMPLES, now);
   co_await client->execSqlCoro(PURGE, now);
+}
+
+drogon::Task<void> VoiceprintChallengeRepository::stageSample(
+    const VoiceprintStageSampleInput& input) const
+{
+  auto client = DbService::identityClient();
+  co_await client->execSqlCoro(STAGE_SAMPLE, input.challengeId, input.position,
+                               input.embedding, input.speechSeconds);
+}
+
+drogon::Task<std::vector<VoiceprintChallengeSampleSchema>>
+VoiceprintChallengeRepository::findSamples(int64_t challengeId,
+                                           drogon::orm::DbClient* client) const
+{
+  const auto pooled = DbService::identityClient();
+  auto* resolved = client ? client : pooled.get();
+  const auto rows = co_await resolved->execSqlCoro(FIND_SAMPLES, challengeId);
+  std::vector<VoiceprintChallengeSampleSchema> samples;
+  samples.reserve(rows.size());
+  for (const auto& row : rows)
+    samples.emplace_back(row);
+  co_return samples;
+}
+
+drogon::Task<void>
+VoiceprintChallengeRepository::deleteSamples(int64_t challengeId,
+                                             drogon::orm::DbClient* client) const
+{
+  const auto pooled = DbService::identityClient();
+  auto* resolved = client ? client : pooled.get();
+  co_await resolved->execSqlCoro(DELETE_SAMPLES, challengeId);
 }

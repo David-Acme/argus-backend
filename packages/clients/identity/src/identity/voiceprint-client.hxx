@@ -1,9 +1,8 @@
 #pragma once
 
 #include <argus/identity/v1/voiceprint.grpc.pb.h>
-#include <grpcpp/grpcpp.h>
-
 #include <cstdint>
+#include <grpcpp/grpcpp.h>
 #include <memory>
 #include <optional>
 #include <span>
@@ -52,6 +51,12 @@ struct VoiceprintVerifyInput
   VoiceClipView sample;
 };
 
+struct VoiceprintIdentifyInput
+{
+  VoiceClipView sample;
+  int timeoutMs{5000};
+};
+
 struct VoiceprintDeleteInput
 {
   int64_t userId{0};
@@ -82,6 +87,10 @@ public:
   [[nodiscard]] virtual std::optional<
       argus::identity::v1::IdentifyVoiceResponse>
   identify(const VoiceClipView& sample) const;
+
+  [[nodiscard]] virtual std::optional<
+      argus::identity::v1::IdentifyVoiceResponse>
+  identifyWithin(const VoiceprintIdentifyInput& input) const;
 
   [[nodiscard]] virtual std::optional<
       argus::identity::v1::DeleteVoiceprintResponse>

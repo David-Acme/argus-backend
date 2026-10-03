@@ -9,6 +9,7 @@
 #include <feature/voiceprint/services/voiceprint/voiceprint-phrases.hxx>
 #include <identity/identity-errors.hxx>
 #include <json/value.h>
+#include <numeric>
 #include <runtime/blocking-task.hxx>
 #include <shared/services/face/face-service.hxx>
 #include <shared/services/token/opaque-token.hxx>
@@ -60,17 +61,17 @@ std::string phrasesJson(const std::vector<std::string>& phrases)
 struct ChallengeMatchInput
 {
   const VoiceprintChallengeSchema& challenge;
-  const VoiceprintEnrollRequest& request;
+  const VoiceprintActor& actor;
+  int64_t subjectId{0};
   int64_t now{0};
 };
 
 bool challengeMatches(const ChallengeMatchInput& input)
 {
   const auto& challenge = input.challenge;
-  const auto& request = input.request;
-  return challenge.userId == request.subjectId &&
-         challenge.requesterId == request.actor.userId &&
-         challenge.deviceHash == request.actor.deviceHash &&
+  return challenge.userId == input.subjectId &&
+         challenge.requesterId == input.actor.userId &&
+         challenge.deviceHash == input.actor.deviceHash &&
          !challenge.consumedAt.has_value() && challenge.expiresAt > input.now;
 }
 
@@ -251,33 +252,174 @@ VoiceprintFeatureService::checkSample(EncodedVoice sample) const
                                       analysis.quality.speechSeconds,
                                   .snrDb = analysis.quality.snrDb,
                                   .minSpeechSeconds = config_.minSpeechSeconds,
-                                  .minSnrDb = config_.minSnrDb};
+                                  .minSnrDb = config_.minSnrDb,
+                                  .collected = 0,
+                                  .required = config_.samplesRequired};
 }
 
-drogon::Task<bool> VoiceprintFeatureService::challengeUsable(
-    const VoiceprintEnrollRequest& request) const
+drogon::Task<std::optional<VoiceprintChallengeSchema>>
+VoiceprintFeatureService::usableChallenge(const ChallengeLookup& lookup) const
 {
-  if (request.challengeId.empty())
-    co_return false;
-  const auto challenge = co_await challengeRepository_.findByTokenHash(
-      hashToken(request.challengeId));
-  if (!challenge)
-    co_return false;
-  co_return challengeMatches(
-      {.challenge = *challenge, .request = request, .now = std::time(nullptr)});
+  if (lookup.challengeId.empty())
+    co_return std::nullopt;
+  auto challenge = co_await challengeRepository_.findByTokenHash(
+      hashToken(lookup.challengeId));
+  if (!challenge || !challengeMatches({.challenge = *challenge,
+                                       .actor = lookup.actor,
+                                       .subjectId = lookup.subjectId,
+                                       .now = std::time(nullptr)}))
+    co_return std::nullopt;
+  co_return challenge;
 }
 
-drogon::Task<bool> VoiceprintFeatureService::faceBelongsTo(
-    const VoiceprintEnrollRequest& request) const
+drogon::Task<bool>
+VoiceprintFeatureService::faceBelongsTo(const EnrollmentGate& gate) const
 {
-  if (request.faceImage.empty())
+  if (gate.faceImage.empty())
     co_return false;
   const auto personId =
-      co_await FaceService::instance().identifyAsync(request.faceImage);
+      co_await FaceService::instance().identifyAsync(gate.faceImage);
   if (!personId)
     co_return false;
   const auto person = co_await personRepository_.findById(*personId);
-  co_return person && person->userId && *person->userId == request.subjectId;
+  co_return person && person->userId && *person->userId == gate.subjectId;
+}
+
+drogon::Task<VoiceprintOutcome>
+VoiceprintFeatureService::admit(const EnrollmentGate& gate) const
+{
+  const SubjectAccess access{.actor = gate.actor,
+                             .subjectId = gate.subjectId,
+                             .requireActive = true};
+  const auto check = co_await manageableSubject(access);
+  if (check.outcome != VoiceprintOutcome::Ok)
+    co_return check.outcome;
+  if (!gate.consent || gate.consentVersion != kVoiceprintConsentVersion)
+    co_return VoiceprintOutcome::ConsentRequired;
+  if (!SpeakerEmbeddingService::instance().isLoaded())
+    co_return VoiceprintOutcome::Unavailable;
+  const auto existing =
+      co_await voiceprintRepository_.findByUser(gate.subjectId);
+  if (existing && existing->model == activeModel(config_))
+    co_return VoiceprintOutcome::AlreadyEnrolled;
+  const ChallengeLookup lookup{.actor = gate.actor,
+                               .subjectId = gate.subjectId,
+                               .challengeId = gate.challengeId};
+  if (!co_await usableChallenge(lookup))
+    co_return VoiceprintOutcome::ChallengeInvalid;
+  if (gate.actor.userId != gate.subjectId && !co_await faceBelongsTo(gate))
+    co_return VoiceprintOutcome::FaceNotVerified;
+  co_return VoiceprintOutcome::Ok;
+}
+
+drogon::Task<VoiceprintSampleCheck>
+VoiceprintFeatureService::stageSample(VoiceprintStageRequest request) const
+{
+  VoiceprintSampleCheck result{.outcome = VoiceprintOutcome::Ok,
+                               .speechSeconds = 0.0F,
+                               .snrDb = 0.0F,
+                               .minSpeechSeconds = config_.minSpeechSeconds,
+                               .minSnrDb = config_.minSnrDb,
+                               .collected = 0,
+                               .required = config_.samplesRequired};
+  const SubjectAccess access{.actor = request.actor,
+                             .subjectId = request.subjectId,
+                             .requireActive = true};
+  const auto check = co_await manageableSubject(access);
+  if (check.outcome != VoiceprintOutcome::Ok) {
+    result.outcome = check.outcome;
+    co_return result;
+  }
+  if (!SpeakerEmbeddingService::instance().isLoaded()) {
+    result.outcome = VoiceprintOutcome::Unavailable;
+    co_return result;
+  }
+  if (request.position < 0 || request.position >= config_.samplesRequired) {
+    result.outcome = VoiceprintOutcome::SampleCountInvalid;
+    co_return result;
+  }
+  const ChallengeLookup lookup{.actor = request.actor,
+                               .subjectId = request.subjectId,
+                               .challengeId = request.challengeId};
+  const auto challenge = co_await usableChallenge(lookup);
+  if (!challenge) {
+    result.outcome = VoiceprintOutcome::ChallengeInvalid;
+    co_return result;
+  }
+
+  VoiceAnalysisInput input{.voice = std::move(request.sample),
+                           .requirement = {.minSpeechSeconds =
+                                               config_.minSpeechSeconds,
+                                           .minSnrDb = config_.minSnrDb},
+                           .extractEmbedding = true};
+  auto analysis = co_await SpeakerEmbeddingService::instance().analyzeAsync(
+      std::move(input));
+  result.outcome = outcomeOf(analysis.status);
+  result.speechSeconds = analysis.quality.speechSeconds;
+  result.snrDb = analysis.quality.snrDb;
+  if (result.outcome == VoiceprintOutcome::Ok) {
+    const VoiceprintStageSampleInput stage{.challengeId = challenge->id,
+                                           .position = request.position,
+                                           .embedding = voice_vector::toBlob(
+                                               analysis.embedding),
+                                           .speechSeconds =
+                                               analysis.quality.speechSeconds};
+    co_await challengeRepository_.stageSample(stage);
+  }
+  const auto staged = co_await challengeRepository_.findSamples(challenge->id);
+  result.collected = static_cast<int>(staged.size());
+  co_return result;
+}
+
+drogon::Task<VoiceprintEnrollResult> VoiceprintFeatureService::finalize(
+    const VoiceprintFinalizeRequest& request) const
+{
+  const EnrollmentGate gate{.actor = request.actor,
+                            .subjectId = request.subjectId,
+                            .consent = request.consent,
+                            .consentVersion = request.consentVersion,
+                            .challengeId = request.challengeId,
+                            .faceImage = request.faceImage};
+  const auto admitted = co_await admit(gate);
+  if (admitted != VoiceprintOutcome::Ok)
+    co_return VoiceprintEnrollResult{.outcome = admitted,
+                                     .status = {},
+                                     .failedSample = std::nullopt};
+
+  const ChallengeLookup lookup{.actor = request.actor,
+                               .subjectId = request.subjectId,
+                               .challengeId = request.challengeId};
+  const auto challenge = co_await usableChallenge(lookup);
+  if (!challenge)
+    co_return VoiceprintEnrollResult{.outcome =
+                                         VoiceprintOutcome::ChallengeInvalid,
+                                     .status = {},
+                                     .failedSample = std::nullopt};
+  const auto staged = co_await challengeRepository_.findSamples(challenge->id);
+  if (std::cmp_less(staged.size(), config_.samplesRequired))
+    co_return VoiceprintEnrollResult{.outcome =
+                                         VoiceprintOutcome::SampleCountInvalid,
+                                     .status = {},
+                                     .failedSample = std::nullopt};
+
+  std::vector<std::vector<float>> embeddings;
+  std::vector<int> positions;
+  double speechSeconds = 0.0;
+  embeddings.reserve(staged.size());
+  positions.reserve(staged.size());
+  for (const auto& sample : staged) {
+    embeddings.push_back(sample.embedding);
+    positions.push_back(sample.position);
+    speechSeconds += sample.speechSeconds;
+  }
+  const CommitInput commit{.actor = request.actor,
+                           .subjectId = request.subjectId,
+                           .embeddings = embeddings,
+                           .positions = positions,
+                           .speechSeconds = speechSeconds,
+                           .consentVersion = request.consentVersion,
+                           .challengeId = request.challengeId};
+  co_return co_await commitEnrollment(commit);
 }
 
 drogon::Task<VoiceprintFeatureService::AnalyzedSamples>
@@ -340,64 +482,84 @@ bool VoiceprintFeatureService::voiceTakenByOther(
 drogon::Task<VoiceprintEnrollResult>
 VoiceprintFeatureService::enroll(VoiceprintEnrollRequest request) const
 {
+  const EnrollmentGate gate{.actor = request.actor,
+                            .subjectId = request.subjectId,
+                            .consent = request.consent,
+                            .consentVersion = request.consentVersion,
+                            .challengeId = request.challengeId,
+                            .faceImage = request.faceImage};
+  const auto admitted = co_await admit(gate);
+  if (admitted == VoiceprintOutcome::AlreadyEnrolled) {
+    const auto existing =
+        co_await voiceprintRepository_.findByUser(request.subjectId);
+    co_return VoiceprintEnrollResult{.outcome = admitted,
+                                     .status = viewOf(existing),
+                                     .failedSample = std::nullopt};
+  }
+  if (admitted != VoiceprintOutcome::Ok)
+    co_return VoiceprintEnrollResult{.outcome = admitted,
+                                     .status = {},
+                                     .failedSample = std::nullopt};
+  if (std::cmp_less(request.samples.size(), config_.samplesRequired) ||
+      request.samples.size() > kMaxSamples)
+    co_return VoiceprintEnrollResult{.outcome =
+                                         VoiceprintOutcome::SampleCountInvalid,
+                                     .status = {},
+                                     .failedSample = std::nullopt};
+
+  const auto analyzed = co_await analyzeSamples(std::move(request.samples));
+  if (analyzed.outcome != VoiceprintOutcome::Ok)
+    co_return VoiceprintEnrollResult{.outcome = analyzed.outcome,
+                                     .status = {},
+                                     .failedSample = analyzed.failedSample};
+  std::vector<int> positions(analyzed.embeddings.size());
+  std::iota(positions.begin(), positions.end(), 0);
+  const CommitInput commit{.actor = request.actor,
+                           .subjectId = request.subjectId,
+                           .embeddings = analyzed.embeddings,
+                           .positions = positions,
+                           .speechSeconds = analyzed.speechSeconds,
+                           .consentVersion = request.consentVersion,
+                           .challengeId = request.challengeId};
+  co_return co_await commitEnrollment(commit);
+}
+
+drogon::Task<VoiceprintEnrollResult>
+VoiceprintFeatureService::commitEnrollment(const CommitInput& input) const
+{
   const auto refuse = [](VoiceprintOutcome outcome) {
     return VoiceprintEnrollResult{.outcome = outcome,
                                   .status = {},
                                   .failedSample = std::nullopt};
   };
 
-  const SubjectAccess access{.actor = request.actor,
-                             .subjectId = request.subjectId,
-                             .requireActive = true};
-  const auto check = co_await manageableSubject(access);
-  if (check.outcome != VoiceprintOutcome::Ok)
-    co_return refuse(check.outcome);
-  if (!request.consent || request.consentVersion != kVoiceprintConsentVersion)
-    co_return refuse(VoiceprintOutcome::ConsentRequired);
-  if (!SpeakerEmbeddingService::instance().isLoaded())
-    co_return refuse(VoiceprintOutcome::Unavailable);
-  if (std::cmp_less(request.samples.size(), config_.samplesRequired) ||
-      request.samples.size() > kMaxSamples)
-    co_return refuse(VoiceprintOutcome::SampleCountInvalid);
-  const std::string model = activeModel(config_);
-  const auto existing =
-      co_await voiceprintRepository_.findByUser(request.subjectId);
-  if (existing && existing->model == model)
-    co_return VoiceprintEnrollResult{.outcome =
-                                         VoiceprintOutcome::AlreadyEnrolled,
-                                     .status = viewOf(existing),
-                                     .failedSample = std::nullopt};
-  if (!co_await challengeUsable(request))
-    co_return refuse(VoiceprintOutcome::ChallengeInvalid);
-  const bool assisted = request.actor.userId != request.subjectId;
-  if (assisted && !co_await faceBelongsTo(request))
-    co_return refuse(VoiceprintOutcome::FaceNotVerified);
-
-  const size_t sampleCount = request.samples.size();
-  auto analyzed = co_await analyzeSamples(std::move(request.samples));
-  if (analyzed.outcome != VoiceprintOutcome::Ok)
-    co_return VoiceprintEnrollResult{.outcome = analyzed.outcome,
-                                     .status = {},
-                                     .failedSample = analyzed.failedSample};
-  if (const auto odd = inconsistentSample(analyzed.embeddings))
+  if (const auto odd = inconsistentSample(input.embeddings)) {
+    const auto index = static_cast<size_t>(*odd);
     co_return VoiceprintEnrollResult{.outcome =
                                          VoiceprintOutcome::SamplesInconsistent,
                                      .status = {},
-                                     .failedSample = odd};
+                                     .failedSample =
+                                         index < input.positions.size()
+                                             ? input.positions[index]
+                                             : *odd};
+  }
 
   auto centroid = std::make_shared<const std::vector<float>>(
-      voice_vector::centroid(analyzed.embeddings));
+      voice_vector::centroid(input.embeddings));
   if (centroid->empty())
     co_return refuse(VoiceprintOutcome::SampleInvalid);
-  const int64_t subjectId = request.subjectId;
+  const int64_t subjectId = input.subjectId;
   const bool taken = co_await BlockingTask<bool>([this, centroid, subjectId]() {
     return voiceTakenByOther(*centroid, subjectId);
   });
   if (taken)
     co_return refuse(VoiceprintOutcome::VoiceTaken);
 
-  const VoiceprintMethod method =
-      assisted ? VoiceprintMethod::OwnerFace : VoiceprintMethod::Self;
+  const std::string model = activeModel(config_);
+  const VoiceprintMethod method = input.actor.userId != subjectId
+                                      ? VoiceprintMethod::OwnerFace
+                                      : VoiceprintMethod::Self;
+  const size_t sampleCount = input.embeddings.size();
   std::optional<VoiceprintSchema> created;
   std::optional<int64_t> replaced;
   auto transaction =
@@ -406,22 +568,24 @@ VoiceprintFeatureService::enroll(VoiceprintEnrollRequest request) const
     const int64_t now = std::time(nullptr);
     const auto challenge =
         co_await challengeRepository_.findByTokenHash(hashToken(
-                                                          request.challengeId),
+                                                          input.challengeId),
                                                       transaction.get());
-    bool consumed = false;
-    if (challenge &&
-        challengeMatches(
-            {.challenge = *challenge, .request = request, .now = now})) {
-      const VoiceprintChallengeConsumeInput consume{.id = challenge->id,
-                                                    .now = now,
-                                                    .client =
-                                                        transaction.get()};
-      consumed = co_await challengeRepository_.tryConsume(consume);
-    }
-    if (!consumed) {
+    if (!challenge || !challengeMatches({.challenge = *challenge,
+                                         .actor = input.actor,
+                                         .subjectId = subjectId,
+                                         .now = now})) {
       db_transaction::rollback(transaction);
       co_return refuse(VoiceprintOutcome::ChallengeInvalid);
     }
+    const VoiceprintChallengeConsumeInput consume{.id = challenge->id,
+                                                  .now = now,
+                                                  .client = transaction.get()};
+    if (!co_await challengeRepository_.tryConsume(consume)) {
+      db_transaction::rollback(transaction);
+      co_return refuse(VoiceprintOutcome::ChallengeInvalid);
+    }
+    co_await challengeRepository_.deleteSamples(challenge->id,
+                                                transaction.get());
 
     replaced = co_await voiceprintRepository_.removeByUser(subjectId,
                                                            transaction.get());
@@ -431,10 +595,10 @@ VoiceprintFeatureService::enroll(VoiceprintEnrollRequest request) const
                                            voice_vector::toBlob(*centroid),
                                        .sampleCount =
                                            static_cast<int>(sampleCount),
-                                       .speechSeconds = analyzed.speechSeconds,
+                                       .speechSeconds = input.speechSeconds,
                                        .method = method,
-                                       .consentVersion = request.consentVersion,
-                                       .enrolledBy = request.actor.userId,
+                                       .consentVersion = input.consentVersion,
+                                       .enrolledBy = input.actor.userId,
                                        .client = transaction.get()};
     created = co_await voiceprintRepository_.create(create);
 
@@ -443,9 +607,9 @@ VoiceprintFeatureService::enroll(VoiceprintEnrollRequest request) const
     data["method"] = voiceprintMethodToString(method);
     data["samples"] = static_cast<Json::UInt64>(sampleCount);
     data["model"] = model;
-    data["consentVersion"] = request.consentVersion;
+    data["consentVersion"] = input.consentVersion;
     data["replaced"] = replaced.has_value();
-    const AuditInput auditInput{.actorId = request.actor.userId,
+    const AuditInput auditInput{.actorId = input.actor.userId,
                                 .subjectId = subjectId,
                                 .action = UserAction::Create,
                                 .data = std::move(data),

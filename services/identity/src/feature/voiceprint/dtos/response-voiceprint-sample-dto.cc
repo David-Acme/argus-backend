@@ -33,5 +33,7 @@ Json::Value ResponseVoiceprintSampleDto::toJson() const
   json["snrDb"] = std::round(check.snrDb * 100.0) / 100.0;
   json["minSpeechSeconds"] = std::round(check.minSpeechSeconds * 100.0) / 100.0;
   json["minSnrDb"] = std::round(check.minSnrDb * 100.0) / 100.0;
+  json["collected"] = check.collected;
+  json["required"] = check.required;
   return json;
 }

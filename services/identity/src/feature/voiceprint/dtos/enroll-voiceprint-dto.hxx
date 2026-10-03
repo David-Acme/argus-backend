@@ -1,18 +1,17 @@
 #pragma once
 
-#include <drogon/MultiPart.h>
+#include <json/value.h>
 #include <string>
 #include <validation/validation_dsl.hxx>
-#include <vector>
 
 struct EnrollVoiceprintDto
 {
-  std::vector<std::string> samples;
-  std::string face;
-  std::string consent;
+  bool consent{false};
   std::string consentVersion;
   std::string challengeId;
+  std::string face;
 
-  static EnrollVoiceprintDto
-  form_multipart(const drogon::MultiPartParser& parser);
+  [[nodiscard]] std::string faceImage() const;
+
+  static EnrollVoiceprintDto fromJson(const Json::Value& json);
 };

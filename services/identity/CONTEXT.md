@@ -411,7 +411,9 @@ the voiced seconds, the method (`self` or `owner_face`), the consent version
 the person accepted and who enrolled it. `voiceprint_challenge` holds the
 enrollment challenges, hash-only like the invitation and portrait tokens (the
 256-bit token lives in `shared/services/token/opaque-token`, which the
-invitation and portrait-preview features now share). Raw audio never reaches a
+invitation and portrait-preview features now share), and
+`voiceprint_challenge_sample` the per-phrase embeddings an enrollment in
+progress has staged, which die with their challenge. Raw audio never reaches a
 table, a file, a log or the change feed: it is decoded in memory, measured,
 embedded and dropped. The `voice_vec` index is rebuilt from the rows of the
 active model at every boot (it holds a household's handful of rows), so a stop
@@ -501,20 +503,40 @@ when it drives an enrollment by voice.
 
 ### Surfaces
 
-HTTP (TLS 7044, the app): `GET /voiceprint/me` (status),
-`POST /voiceprint/me/challenge` (`{lang?}`), `POST /voiceprint/me/sample`
-(multipart `sample`: quality feedback per phrase, nothing stored),
-`POST /voiceprint/me` (multipart `samples` ×3, `consent`, `consentVersion`,
-`challengeId`), `POST /voiceprint/me/verify` (multipart `sample`: "try my
-voice"), `DELETE /voiceprint/me`; and for the Owner, behind `RoleFilter`,
-`GET|POST|DELETE /voiceprint/user/{id}` and `POST /voiceprint/user/{id}/challenge`
-(the POST also takes the `face` file). The `/me` routes need no role entry:
-every authenticated role manages its own voice, the same shape as `/auth/me`.
-`/voiceprint/user/...` maps to no table in `role-access`, so only the Owner
-passes `RoleFilter`.
+HTTP (TLS 7044, the app) is JSON end to end — audio travels as a
+base64-encoded WAV, because the desktop's request path reads multipart files
+from disk and a recording made in the WebView never is one:
+
+- `GET /voiceprint/me` — status (`available`, `enrolled`, `stale`, model,
+  sample count, method, consent version, `samplesRequired`,
+  `minSpeechSeconds`).
+- `POST /voiceprint/me/challenge` `{lang?}` — the challenge: id, phrases,
+  expiry, consent version.
+- `POST /voiceprint/me/sample` `{audio, challengeId?, phrase?}` — without a
+  challenge, quality feedback only; with one, the phrase is analysed and its
+  **embedding** (never the audio) staged in `voiceprint_challenge_sample` at
+  that position, replacing an earlier take. The answer says `accepted`,
+  `problem` (`too_short`, `too_noisy`, `clipped`, `invalid`), the measured
+  speech seconds and SNR, and `collected`/`required`, so the app gives
+  feedback phrase by phrase.
+- `POST /voiceprint/me` `{challengeId, consent: true, consentVersion}` —
+  runs the gates over the staged embeddings and links the voiceprint; the
+  challenge and its staged rows are consumed in the same transaction, and
+  expired challenges take theirs with them at the next challenge.
+- `POST /voiceprint/me/verify` `{audio}` — "try my voice".
+- `DELETE /voiceprint/me`.
+- For the Owner, behind `RoleFilter`: `GET|DELETE /voiceprint/user/{id}`,
+  `POST /voiceprint/user/{id}/challenge`, `POST /voiceprint/user/{id}/sample`
+  and `POST /voiceprint/user/{id}` (the last also takes `face`, a base64
+  JPEG of the person taken during the enrollment).
+
+The `/me` routes need no role entry: every authenticated role manages its own
+voice, the same shape as `/auth/me`. `/voiceprint/user/...` maps to no table in
+`role-access`, so only the Owner passes `RoleFilter`.
 
 gRPC (`argus.identity.v1.VoiceprintService`, fleet-secret gated, client
-`VoiceprintClient` in `argus::clients::identity`): `Verify`, `Identify` and
+`VoiceprintClient` in `argus::clients::identity`; `Enroll` takes every clip
+in one call, since the voice relay already holds them): `Verify`, `Identify` and
 `GetStatus` for the voice relay and guard; `CreateChallenge`, `Enroll` and
 `Delete` additionally require the person's bearer token and device hash,
 validated through argus-auth exactly like `PromotePerson`. Every answer carries
@@ -535,6 +557,9 @@ same-speaker against different-speaker scores, the whole gating order
 (forbidden, unknown and inactive subjects, consent and its version, a
 challenge from another device, sample count, mixed speakers, a silent sample,
 already enrolled, a voice already linked, owner-assisted without a verified
-face), verify, identify, delete by the Owner, the audit events, and the gRPC
+face), the app's staged flow (a phrase per call, a silent take refused, a
+position out of range, another device, too few phrases, a mixed set named by
+position, the re-take, the staged rows gone after the commit), verify,
+identify, delete by the Owner, the audit events, and the gRPC
 surface through `VoiceprintClient` with a scripted auth verdict. Without the
 model on disk the model-backed half reports itself skipped.

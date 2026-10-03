@@ -138,6 +138,15 @@ CREATE TABLE IF NOT EXISTS voiceprint_challenge (
     created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS voiceprint_challenge_sample (
+    challenge_id    INTEGER NOT NULL REFERENCES voiceprint_challenge(id) ON DELETE CASCADE,
+    position        INTEGER NOT NULL CHECK (position BETWEEN 0 AND 9),
+    embedding       BLOB    NOT NULL,
+    speech_seconds  REAL    NOT NULL CHECK (speech_seconds > 0),
+    created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    PRIMARY KEY (challenge_id, position)
+);
+
 CREATE TABLE IF NOT EXISTS change_outbox (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     event_id    TEXT              UNIQUE,

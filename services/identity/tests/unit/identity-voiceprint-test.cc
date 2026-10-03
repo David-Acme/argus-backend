@@ -544,6 +544,85 @@ TEST_CASE("a voice is linked once, only under a confirmed enrollment")
   }
 
   {
+    INFO("the app's flow: one phrase at a time, then a confirmation");
+    const VoiceprintActor resident = actor(kResident, UserRole::Resident);
+    const VoiceprintChallengeRequest challengeRequest{.actor = resident,
+                                                      .subjectId = kResident,
+                                                      .lang = VoiceLang::Es};
+    const auto challenge =
+        drogon::sync_wait(service.createChallenge(challengeRequest));
+    REQUIRE(challenge.outcome == VoiceprintOutcome::Ok);
+    const std::string& challengeId = challenge.challenge.challengeId;
+
+    const auto stage = [&](int position, const char* name) {
+      return drogon::sync_wait(
+          service.stageSample({.actor = resident,
+                               .subjectId = kResident,
+                               .challengeId = challengeId,
+                               .position = position,
+                               .sample = wavOf(fixture(name))}));
+    };
+    const auto finalize = [&]() {
+      const VoiceprintFinalizeRequest request{.actor = resident,
+                                              .subjectId = kResident,
+                                              .consent = true,
+                                              .consentVersion = std::string(
+                                                  kVoiceprintConsentVersion),
+                                              .challengeId = challengeId,
+                                              .faceImage = {}};
+      return drogon::sync_wait(service.finalize(request));
+    };
+
+    const auto first = stage(0, "alpha-1");
+    CHECK(first.outcome == VoiceprintOutcome::Ok);
+    CHECK(first.collected == 1);
+    CHECK(first.required == 3);
+    CHECK(first.speechSeconds > 1.2F);
+
+    const auto silent = drogon::sync_wait(
+        service.stageSample({.actor = resident,
+                             .subjectId = kResident,
+                             .challengeId = challengeId,
+                             .position = 1,
+                             .sample = wavOf(std::vector<int16_t>(48000, 0))}));
+    CHECK(silent.outcome == VoiceprintOutcome::SampleTooShort);
+    CHECK(silent.collected == 1);
+
+    CHECK(stage(3, "alpha-2").outcome == VoiceprintOutcome::SampleCountInvalid);
+    VoiceprintActor elsewhere = resident;
+    elsewhere.deviceHash = "another-device";
+    CHECK(drogon::sync_wait(
+              service.stageSample({.actor = elsewhere,
+                                   .subjectId = kResident,
+                                   .challengeId = challengeId,
+                                   .position = 1,
+                                   .sample = wavOf(fixture("alpha-2"))}))
+              .outcome == VoiceprintOutcome::ChallengeInvalid);
+
+    CHECK(stage(1, "alpha-2").collected == 2);
+    CHECK(finalize().outcome == VoiceprintOutcome::SampleCountInvalid);
+
+    CHECK(stage(2, "bravo-2").collected == 3);
+    const auto mixed = finalize();
+    CHECK(mixed.outcome == VoiceprintOutcome::SamplesInconsistent);
+    CHECK(mixed.failedSample == 2);
+
+    CHECK(stage(2, "alpha-3").collected == 3);
+    const auto linked = finalize();
+    REQUIRE(linked.outcome == VoiceprintOutcome::Ok);
+    CHECK(linked.status.sampleCount == 3);
+    CHECK(finalize().outcome == VoiceprintOutcome::AlreadyEnrolled);
+
+    const auto leftovers = DbService::identityClient()->execSqlSync(
+        "SELECT COUNT(*) AS total FROM voiceprint_challenge_sample");
+    CHECK(leftovers.front()["total"].as<int>() == 0);
+
+    const VoiceprintDeleteRequest bySelf{.actor = resident,
+                                         .subjectId = kResident};
+    CHECK(drogon::sync_wait(service.remove(bySelf)).deleted);
+  }
+
+  {
     INFO("the SDK reaches the same surface over gRPC, gated by the session");
     Fleet fleet;
     REQUIRE(fleet.server);
@@ -597,8 +676,9 @@ TEST_CASE("a voice is linked once, only under a confirmed enrollment")
     CHECK(enrolled->status().method() == "self");
 
     const auto alpha4 = fixture("alpha-4");
-    const auto identified =
-        client.identify({.samples = alpha4, .sampleRate = 16000});
+    const auto identified = client.identifyWithin(
+        {.sample = {.samples = alpha4, .sampleRate = 16000},
+         .timeoutMs = 3000});
     if (!identified) {
       FAIL("identified answered nothing");
       return;
@@ -638,5 +718,4 @@ TEST_CASE("a voice is linked once, only under a confirmed enrollment")
         {.target = fleet.target, .fleetSecret = ""});
     CHECK_FALSE(stranger.status(kResident).has_value());
   }
-
 }

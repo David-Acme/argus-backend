@@ -142,16 +142,22 @@ VoiceprintClient::verify(const VoiceprintVerifyInput& input) const
 std::optional<argus::identity::v1::IdentifyVoiceResponse>
 VoiceprintClient::identify(const VoiceClipView& sample) const
 {
-  if (!clipUsable(sample))
+  return identifyWithin({.sample = sample, .timeoutMs = kCallTimeoutMs});
+}
+
+std::optional<argus::identity::v1::IdentifyVoiceResponse>
+VoiceprintClient::identifyWithin(const VoiceprintIdentifyInput& input) const
+{
+  if (!clipUsable(input.sample) || input.timeoutMs <= 0)
     return std::nullopt;
 
   grpc::ClientContext context;
   prepare({.context = context,
            .fleetSecret = fleetSecret_,
-           .timeoutMs = kCallTimeoutMs});
+           .timeoutMs = input.timeoutMs});
 
   argus::identity::v1::IdentifyVoiceRequest request;
-  fillClip(sample, request.mutable_sample());
+  fillClip(input.sample, request.mutable_sample());
 
   argus::identity::v1::IdentifyVoiceResponse response;
   if (const grpc::Status status = stub_->Identify(&context, request, &response);

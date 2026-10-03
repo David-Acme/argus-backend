@@ -59,7 +59,9 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   `identity-sync-rpc-test.cc` drives it directly against the served method.
 - `src/identity/voiceprint-client.hxx` — `VoiceprintClient`, the third stub
   (`argus.identity.v1.VoiceprintService`): `createChallenge`, `enroll`,
-  `verify`, `identify`, `remove` and `status`, with the input structs
+  `verify`, `identify`, `identifyWithin` (the same call under the caller's
+  own deadline, `VoiceprintIdentifyInput{sample, timeoutMs}`, for a voice
+  turn that cannot wait 5 s), `remove` and `status`, with the input structs
   `VoiceClipView` (a `std::span<const int16_t>` and its sample rate — the
   caller's samples are copied once, into the wire bytes),
   `VoiceprintSession` (the bearer token and device hash a gated call

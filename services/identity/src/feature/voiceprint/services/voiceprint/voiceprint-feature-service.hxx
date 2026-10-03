@@ -120,6 +120,27 @@ struct VoiceprintSampleCheck
   float snrDb{0.0F};
   float minSpeechSeconds{0.0F};
   float minSnrDb{0.0F};
+  int collected{0};
+  int required{0};
+};
+
+struct VoiceprintStageRequest
+{
+  VoiceprintActor actor;
+  int64_t subjectId{0};
+  std::string challengeId;
+  int position{0};
+  EncodedVoice sample;
+};
+
+struct VoiceprintFinalizeRequest
+{
+  VoiceprintActor actor;
+  int64_t subjectId{0};
+  bool consent{false};
+  std::string consentVersion;
+  std::string challengeId;
+  std::string faceImage;
 };
 
 struct VoiceprintDeleteRequest
@@ -148,6 +169,12 @@ public:
 
   [[nodiscard]] drogon::Task<VoiceprintSampleCheck>
   checkSample(EncodedVoice sample) const;
+
+  [[nodiscard]] drogon::Task<VoiceprintSampleCheck>
+  stageSample(VoiceprintStageRequest request) const;
+
+  [[nodiscard]] drogon::Task<VoiceprintEnrollResult>
+  finalize(const VoiceprintFinalizeRequest& request) const;
 
   [[nodiscard]] drogon::Task<VoiceprintEnrollResult>
   enroll(VoiceprintEnrollRequest request) const;
@@ -190,17 +217,51 @@ private:
     double speechSeconds{0.0};
   };
 
+  struct EnrollmentGate
+  {
+    const VoiceprintActor& actor;
+    int64_t subjectId{0};
+    bool consent{false};
+    const std::string& consentVersion;
+    const std::string& challengeId;
+    const std::string& faceImage;
+  };
+
+  struct ChallengeLookup
+  {
+    const VoiceprintActor& actor;
+    int64_t subjectId{0};
+    const std::string& challengeId;
+  };
+
+  struct CommitInput
+  {
+    const VoiceprintActor& actor;
+    int64_t subjectId{0};
+    const std::vector<std::vector<float>>& embeddings;
+    const std::vector<int>& positions;
+    double speechSeconds{0.0};
+    const std::string& consentVersion;
+    const std::string& challengeId;
+  };
+
   [[nodiscard]] drogon::Task<SubjectCheck>
   manageableSubject(const SubjectAccess& access) const;
+
+  [[nodiscard]] drogon::Task<VoiceprintOutcome>
+  admit(const EnrollmentGate& gate) const;
+
+  [[nodiscard]] drogon::Task<std::optional<VoiceprintChallengeSchema>>
+  usableChallenge(const ChallengeLookup& lookup) const;
 
   [[nodiscard]] drogon::Task<AnalyzedSamples>
   analyzeSamples(std::vector<EncodedVoice> samples) const;
 
   [[nodiscard]] drogon::Task<bool>
-  faceBelongsTo(const VoiceprintEnrollRequest& request) const;
+  faceBelongsTo(const EnrollmentGate& gate) const;
 
-  [[nodiscard]] drogon::Task<bool>
-  challengeUsable(const VoiceprintEnrollRequest& request) const;
+  [[nodiscard]] drogon::Task<VoiceprintEnrollResult>
+  commitEnrollment(const CommitInput& input) const;
 
   [[nodiscard]] VoiceprintStatusView
   viewOf(const std::optional<VoiceprintSchema>& voiceprint) const;

@@ -128,7 +128,7 @@ argus-identity/
                                 and their SHA-256 (invitation, portrait
                                 preview, voiceprint challenge)
   src/shared/vocabulary/        person-status
-  database/schema.sql   this owner's thirteen tables and their indices
+  database/schema.sql   this owner's fourteen tables and their indices
   config.toml.example   identity keys + the peer targets; no AI keys
   tests/unit/           the config, migration, change-outbox,
                         change-transaction, change-outbox-sink, sync-RPC,

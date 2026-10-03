@@ -11,6 +11,7 @@ argus_module(NAME identity-voiceprint
         repositories/voiceprint/voiceprint-repository.cc
         repositories/voiceprint-challenge/voiceprint-challenge-repository.cc
         schemas/voiceprint/voiceprint-schema.cc
+        schemas/voiceprint-challenge-sample/voiceprint-challenge-sample-schema.cc
         schemas/voiceprint-challenge/voiceprint-challenge-schema.cc
         services/audio/speech-quality.cc
         services/audio/voice-audio.cc
