@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package argus.settings.v1;
+
+option cc_enable_arenas = true;
+
+enum SettingType {
+  SETTING_TYPE_UNSPECIFIED = 0;
+  SETTING_TYPE_TOGGLE = 1;
+  SETTING_TYPE_INTEGER = 2;
+  SETTING_TYPE_DECIMAL = 3;
+  SETTING_TYPE_CHOICE = 4;
+  SETTING_TYPE_TEXT = 5;
+}
+
+enum SettingLevel {
+  SETTING_LEVEL_UNSPECIFIED = 0;
+  SETTING_LEVEL_BASIC = 1;
+  SETTING_LEVEL_ADVANCED = 2;
+}
+
+enum SettingApply {
+  SETTING_APPLY_UNSPECIFIED = 0;
+  SETTING_APPLY_LIVE = 1;
+  SETTING_APPLY_NEXT_SESSION = 2;
+  SETTING_APPLY_RESTART = 3;
+}
+
+enum RejectionReason {
+  REJECTION_REASON_UNSPECIFIED = 0;
+  REJECTION_REASON_UNKNOWN_KEY = 1;
+  REJECTION_REASON_INVALID = 2;
+  REJECTION_REASON_OUT_OF_RANGE = 3;
+  REJECTION_REASON_NOT_A_CHOICE = 4;
+  REJECTION_REASON_WRITE_FAILED = 5;
+}
+
+message Setting {
+  string key = 1;
+  string group = 2;
+  SettingType type = 3;
+  SettingLevel level = 4;
+  SettingApply apply = 5;
+  double min = 6;
+  double max = 7;
+  double step = 8;
+  repeated string choices = 9;
+  string value = 10;
+  string fallback = 11;
+}
+
+message ListSettingsRequest {}
+
+message SettingsCatalog {
+  string service = 1;
+  repeated Setting settings = 2;
+}
+
+message SettingChange {
+  string key = 1;
+  string value = 2;
+}
+
+message UpdateSettingsRequest {
+  repeated SettingChange changes = 1;
+}
+
+message SettingRejection {
+  string key = 1;
+  RejectionReason reason = 2;
+}
+
+message UpdateSettingsResponse {
+  repeated string applied = 1;
+  repeated SettingRejection rejected = 2;
+  SettingsCatalog catalog = 3;
+}
+
+service Settings {
+  rpc List(ListSettingsRequest) returns (SettingsCatalog);
+  rpc Update(UpdateSettingsRequest) returns (UpdateSettingsResponse);
+}
