@@ -1,6 +1,7 @@
 argus_module(NAME camera-monitor
     SOURCES
         camera-health-monitor.cc
+        camera-presence.cc
         nats-health-event-sink.cc
     INCLUDES
         ../..
@@ -8,6 +9,9 @@ argus_module(NAME camera-monitor
         argus::camera-config
         argus::camera-driver
         argus::camera-operator
+        argus::camera-repositories
+        argus::contracts::camera
+        argus::contracts::sync
         argus::lib::nats
         argus::lib::runtime
         argus::lib::sqlite

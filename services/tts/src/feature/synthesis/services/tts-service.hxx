@@ -12,6 +12,7 @@
 #include <optional>
 #include <onnxruntime_cxx_api.h>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -40,6 +41,19 @@ struct PocketSelection
 {
   std::string variant;
   std::filesystem::path directory;
+};
+
+struct PocketVoiceChoice
+{
+  TtsLang lang{TtsLang::EN};
+  std::string_view requestVoiceId;
+  std::function<bool(const std::string&)> installed;
+};
+
+struct PocketVoiceResolution
+{
+  std::string voice;
+  bool fallback{false};
 };
 
 class TtsService
@@ -86,6 +100,8 @@ public:
   [[nodiscard]] static const std::vector<std::string>& pocketLanguages();
   [[nodiscard]] static const std::vector<std::string>& pocketVoices(TtsLang lang);
   [[nodiscard]] static std::string configuredPocketVoice(TtsLang lang);
+  [[nodiscard]] static std::string fallbackPocketVoice(TtsLang lang);
+  [[nodiscard]] static std::optional<PocketVoiceResolution> resolvePocketVoice(const PocketVoiceChoice& choice);
   [[nodiscard]] static std::string configuredPocketVariant(TtsLang lang);
   [[nodiscard]] static float configuredPocketTemperature();
   [[nodiscard]] static int configuredPocketLsdSteps();
@@ -107,6 +123,7 @@ private:
     PocketEngine& engine;
     const PocketSelection& selection;
     TtsLang lang{TtsLang::EN};
+    std::string_view requestVoiceId;
   };
 
   void loadDefaults();

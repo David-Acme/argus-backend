@@ -28,7 +28,8 @@ constexpr size_t kSynthCacheMaxChars = 300;
 constexpr size_t kPocketVoiceCacheSlots = 32;
 constexpr float kDefaultPocketTemperature = 0.3F;
 constexpr int kDefaultPocketLsdSteps = 1;
-constexpr const char* kDefaultSpanishVariant = "fast";
+constexpr const char* kDefaultSpanishVariant = "quality";
+constexpr const char* kMalePocketVoice = "jean";
 
 std::string modelsDir()
 {
@@ -48,6 +49,14 @@ const char* engineKey(TtsLang lang)
 const char* referenceKey(TtsLang lang)
 {
   return lang == TtsLang::ES ? "tts.pocket_reference_es" : "tts.pocket_reference_en";
+}
+
+std::function<bool(const std::string&)> installedIn(const std::filesystem::path& directory)
+{
+  return [directory](const std::string& voice) {
+    std::error_code error;
+    return std::filesystem::is_regular_file(directory / "voices" / (voice + ".safetensors"), error);
+  };
 }
 
 std::vector<std::string> pocketDirectories(TtsLang lang)
@@ -252,8 +261,14 @@ std::string TtsService::cacheKey(const TtsRequest& req) const
   const std::string langStr = langCode(req.lang);
   if (configuredEngine(req.lang) == SpeechEngineKind::Pocket) {
     std::string reference = ConfigService::getString(referenceKey(req.lang));
-    return "pocket\x1f" + configuredPocketVariant(req.lang) + '\x1f' + configuredPocketVoice(req.lang) + '\x1f' +
-           reference + '\x1f' + std::to_string(configuredPocketTemperature()) + '\x1f' +
+    const auto selection = pocketSelection(req.lang);
+    const auto voice = selection ? resolvePocketVoice({.lang = req.lang,
+                                                       .requestVoiceId = req.voiceId,
+                                                       .installed = installedIn(selection->directory)})
+                                 : std::nullopt;
+    return "pocket\x1f" + (selection ? selection->variant : std::string()) + '\x1f' +
+           (voice ? voice->voice : std::string()) + '\x1f' + reference + '\x1f' +
+           std::to_string(configuredPocketTemperature()) + '\x1f' +
            std::to_string(configuredPocketLsdSteps()) + '\x1f' + langStr + '\x1f' + text;
   }
   const int steps = resolveSteps(resolveQuality(req));
@@ -357,7 +372,10 @@ bool TtsService::streamPocket(const PocketStreamJob& job)
     engine = pocketEngine(*selection);
     if (engine == nullptr)
       return false;
-    voice = pocketVoice({.engine = *engine, .selection = *selection, .lang = job.request.lang});
+    voice = pocketVoice({.engine = *engine,
+                         .selection = *selection,
+                         .lang = job.request.lang,
+                         .requestVoiceId = job.request.voiceId});
     if (!voice)
       return false;
     chunks = chunkProsodic({.text = job.text,
@@ -441,7 +459,17 @@ std::shared_ptr<const PocketVoice> TtsService::pocketVoice(const VoiceRequest& r
 {
   if (auto cloned = referenceVoice(request))
     return cloned;
-  const auto name = configuredPocketVoice(request.lang);
+  const auto resolution = resolvePocketVoice({.lang = request.lang,
+                                               .requestVoiceId = request.requestVoiceId,
+                                               .installed = installedIn(request.selection.directory)});
+  if (!resolution) {
+    warnOnce("No Pocket voice is installed for " + request.selection.variant + ", Supertonic answers instead");
+    return nullptr;
+  }
+  if (resolution->fallback)
+    warnOnce("Pocket voice " + configuredPocketVoice(request.lang) + " is not installed for " +
+             request.selection.variant + ", " + resolution->voice + " answers instead");
+  const auto& name = resolution->voice;
   const auto key = request.selection.variant + "/" + name;
   if (const auto found = pocketVoices_.find(key); found != pocketVoices_.end())
     return found->second;
@@ -625,8 +653,8 @@ const std::vector<std::string>& TtsService::pocketLanguages()
 
 const std::vector<std::string>& TtsService::pocketVoices(TtsLang lang)
 {
-  static const std::vector<std::string> spanish{"lola", "alba", "eve", "fantine", "giovanni", "marius", "javert", "michael"};
-  static const std::vector<std::string> english{"alba", "eve", "jane", "mary", "marius", "javert", "michael", "george"};
+  static const std::vector<std::string> spanish{"jean", "lola", "alba", "eve", "fantine", "giovanni", "marius", "javert", "michael"};
+  static const std::vector<std::string> english{"jean", "alba", "eve", "jane", "mary", "marius", "javert", "michael", "george"};
   static const std::vector<std::string> none;
   if (lang == TtsLang::ES)
     return spanish;
@@ -642,6 +670,32 @@ std::string TtsService::configuredPocketVoice(TtsLang lang)
     return {};
   const auto value = ConfigService::getString(lang == TtsLang::ES ? "tts.pocket_voice_es" : "tts.pocket_voice_en");
   return std::ranges::find(voices, value) != voices.end() ? value : voices.front();
+}
+
+std::string TtsService::fallbackPocketVoice(TtsLang lang)
+{
+  if (lang == TtsLang::ES)
+    return "lola";
+  if (lang == TtsLang::EN)
+    return "alba";
+  return {};
+}
+
+std::optional<PocketVoiceResolution> TtsService::resolvePocketVoice(const PocketVoiceChoice& choice)
+{
+  const auto configured = configuredPocketVoice(choice.lang);
+  if (configured.empty() || !choice.installed)
+    return std::nullopt;
+  if (choice.installed(configured))
+    return PocketVoiceResolution{.voice = configured, .fallback = false};
+  const auto fallback = fallbackPocketVoice(choice.lang);
+  std::vector<std::string> candidates{choice.requestVoiceId.starts_with('M') ? kMalePocketVoice : fallback, fallback};
+  const auto& voices = pocketVoices(choice.lang);
+  candidates.insert(candidates.end(), voices.begin(), voices.end());
+  for (const auto& candidate : candidates)
+    if (candidate != configured && choice.installed(candidate))
+      return PocketVoiceResolution{.voice = candidate, .fallback = true};
+  return std::nullopt;
 }
 
 std::string TtsService::configuredPocketVariant(TtsLang lang)

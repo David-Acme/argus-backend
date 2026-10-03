@@ -21,6 +21,7 @@
 #include <http/route-announcements.hxx>
 #include <mdns/mdns-service.hxx>
 #include <feature/monitor/camera-health-monitor.hxx>
+#include <feature/monitor/camera-presence.hxx>
 #include <feature/monitor/nats-health-event-sink.hxx>
 #include <shared/services/event-stream/event-stream.hxx>
 #include <feature/operator/services/evidence/evidence-uploader.hxx>
@@ -81,6 +82,35 @@ Go2rtcFrameSource& frameSource()
 {
   static Go2rtcFrameSource source;
   return source;
+}
+
+drogon::Task<void> applyInitialSources()
+{
+  try {
+    CameraRepository repository;
+    auto cameras = co_await repository.findEnabled();
+    if (cameras.empty())
+      co_return;
+    co_await BlockingTask<void>([cameras = std::move(cameras)] {
+      cameraSourceRegistrar().applyAll(cameras);
+    });
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Camera source registrar: initial apply failed: " << error.what();
+  }
+  catch (...) {
+    LOG_WARN << "Camera source registrar: initial apply failed with unknown error";
+  }
+}
+
+drogon::Task<void> startAfterSources(CameraOperatorService* operatorService,
+                                     CameraHealthMonitor* healthMonitor)
+{
+  co_await applyInitialSources();
+  if (operatorService)
+    operatorService->start();
+  if (healthMonitor)
+    healthMonitor->start();
 }
 
 }
@@ -195,6 +225,7 @@ int main()
   std::unique_ptr<CameraOperatorService> operatorService;
   std::unique_ptr<ZoneProvider> zoneProvider;
   std::unique_ptr<IdentityKnownPersonMatcher> identityMatcher;
+  CameraPresenceRecorder presenceRecorder;
   std::unique_ptr<NatsHealthEventSink> healthSink;
   std::unique_ptr<CameraHealthMonitor> healthMonitor;
   if (objectsConfig.enabled) {
@@ -247,7 +278,8 @@ int main()
       healthSink = std::make_unique<NatsHealthEventSink>(natsBus);
     healthMonitor = std::make_unique<CameraHealthMonitor>(
         CameraHealthMonitor::Dependencies{.source = &frameSource(),
-                                           .sink = healthSink.get()},
+                                           .sink = healthSink.get(),
+                                           .presence = &presenceRecorder},
         healthConfig);
   }
 
@@ -291,30 +323,9 @@ int main()
     Go2rtcManager::instance().init();
     StreamHub::instance().init();
 
-    if (operatorService)
-      operatorService->start();
-    if (healthMonitor)
-      healthMonitor->start();
-
-    drogon::async_run([]() -> drogon::Task<void> {
-      try {
-        CameraRepository repository;
-        auto cameras = co_await repository.findEnabled();
-        if (cameras.empty())
-          co_return;
-        co_await BlockingTask<void>([cameras = std::move(cameras)] {
-          cameraSourceRegistrar().applyAll(cameras);
-        });
-      }
-      catch (const std::exception& error) {
-        LOG_WARN << "Camera source registrar: initial apply failed: "
-                 << error.what();
-      }
-      catch (...) {
-        LOG_WARN << "Camera source registrar: initial apply failed with "
-                    "unknown error";
-      }
-      co_return;
+    drogon::async_run([operator_ = operatorService.get(),
+                       monitor = healthMonitor.get()]() {
+      return startAfterSources(operator_, monitor);
     });
   });
 

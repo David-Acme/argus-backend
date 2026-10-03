@@ -218,6 +218,7 @@ target_link_libraries(camera-controller-test PRIVATE
     argus::camera-feature
     argus::camera-zone
     argus::camera-media
+    argus::camera-monitor
     argus::lib::auth
     argus::lib::errors
     argus::lib::text

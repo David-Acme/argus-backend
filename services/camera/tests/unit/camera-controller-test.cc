@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <feature/media/camera-media-service.hxx>
+#include <feature/monitor/camera-presence.hxx>
 #include <drogon/WebSocketConnection.h>
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
@@ -420,6 +421,24 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   const bool voiceIgnored = drogon::sync_wait(mediaService.handleText(
       {.conn = conn, .message = unknownMessage, .raw = std::string_view{}}));
   CHECK_FALSE(voiceIgnored);
+
+  CameraPresenceRecorder presence;
+  const CameraRepository cameras;
+  const auto onlineOf = [&cameras](int64_t id) {
+    const auto row = drogon::sync_wait(cameras.findById(id));
+    REQUIRE(row.has_value());
+    return row->isOnline;
+  };
+  CHECK_FALSE(onlineOf(cameraId2));
+  drogon::sync_wait(presence.record({.cameraId = cameraId2, .reachable = true}));
+  CHECK(onlineOf(cameraId2));
+  drogon::sync_wait(presence.record({.cameraId = cameraId2, .reachable = false}));
+  CHECK(onlineOf(cameraId2));
+  drogon::sync_wait(presence.record({.cameraId = cameraId2, .reachable = false}));
+  CHECK_FALSE(onlineOf(cameraId2));
+  drogon::sync_wait(presence.record({.cameraId = cameraId2, .reachable = true}));
+  CHECK(onlineOf(cameraId2));
+  drogon::sync_wait(presence.record({.cameraId = 424242, .reachable = true}));
 
   std::remove(kCameraDb);
   std::remove((std::string(kCameraDb) + "-wal").c_str());

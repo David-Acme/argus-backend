@@ -842,3 +842,31 @@ schedules frames by their timestamps (Android's ExoPlayer pipe) would carry
 the replayed GOP's age as permanent latency; the web player decodes and paints
 on arrival, so the burst simply catches up. The first viewer of a cold upstream
 still waits for go2rtc's first keyframe (300-700 ms on the same source).
+
+## A camera is online when the monitor can see it
+
+`camera.is_online` had a column, a repository field, a sync field and an app
+badge, and no writer: every camera, the working ones included, showed as
+offline in the app. The health monitor already grabs a frame from each enabled
+camera's sub stream on its cadence, so it is the writer now:
+`CameraPresenceRecorder` (`feature/monitor`) receives every sample's
+reachability and flips `is_online` only on a transition — one reachable frame
+marks a camera online, two consecutive misses offline, so a single slow grab
+does not flicker the badge. The flip is a normal camera update: the row and its
+before/after audit go through the change outbox in one transaction, so the app
+receives it as an ordinary audit `Log`. Nothing is written while the state
+holds, and a camera Argus put in privacy mode is not sampled, so it keeps its
+last state.
+
+The monitor no longer sleeps a whole interval after each round: it rescans the
+camera list every five seconds and samples a camera once `interval_ms` has
+passed since its previous sample, so a camera added at runtime is sampled (and
+marked online) within seconds instead of a minute, while every camera's
+heartbeat cadence is unchanged. One camera's failed sample is logged and skipped
+instead of ending the loop: an empty JPEG body from go2rtc used to throw out of
+`cv::imdecode` and stopped the monitor for the life of the process. The frame
+source treats an empty body as no frame.
+
+The operator and the monitor start after the boot's first source apply instead
+of before it: they used to sample a go2rtc that had no sources yet, so every
+boot published `unreachable` for every camera.
