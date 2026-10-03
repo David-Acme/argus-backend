@@ -10,6 +10,7 @@ struct ResponsePairingDto
   std::string serverFingerprint;
   std::string caPem;
   std::string scheme;
+  std::string serverProof;
   int port = 7044;
 
   Json::Value toJson() const;

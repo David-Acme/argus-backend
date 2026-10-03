@@ -3,6 +3,12 @@
 #include <json/value.h>
 #include <string>
 
+struct PairingProofInput
+{
+  std::string nonce;
+  std::string proof;
+};
+
 class CertService
 {
 public:
@@ -16,6 +22,8 @@ public:
   static std::string serverFingerprint();
   static std::string pairingCode();
   static bool verifyPairingCode(const std::string& code);
+  static bool verifyPairingProof(const PairingProofInput& input);
+  static std::string pairingServerProof(const std::string& nonce);
 
   static bool rotateServerCertificate();
   static Json::Value health();

@@ -55,6 +55,18 @@ every TLS handshake, and anyone who registered first after the pairing -
 the legitimate owner or not - became the Owner. An installation paired
 before this change has no `owner_device` and keeps working.
 
+**The code never travels.** The client pairs over a trust-any TLS
+connection (it has no CA yet), so a code sent in clear would hand the secret
+to whoever sits in the middle, who could then answer with its own CA. The
+client sends a random `nonce` (32-64 hex) and
+`proof = HMAC-SHA256(code, "argus-pair-client|" + nonce)`; the server checks
+it in constant time and answers, with the CA, `serverProof =
+HMAC-SHA256(code, "argus-pair-server|" + nonce + "|" + caFingerprint)`. The
+client accepts the CA only when that proof matches the fingerprint of the
+CA it received, which an intermediary cannot forge without the code. The
+plain `{code}` body is still accepted for scripts and older clients. The
+code is upper-case hex, so both sides use it upper-cased as the HMAC key.
+
 The code is checked first, then the paired state. A repeat from the recorded
 owner device answers the same CA material again instead of 409: the server
 commits the pairing before the client has verified the reply, so a client

@@ -9,5 +9,7 @@ Json::Value ResponsePairingDto::toJson() const
   value["caPem"] = caPem;
   value["scheme"] = scheme;
   value["port"] = port;
+  if (!serverProof.empty())
+    value["serverProof"] = serverProof;
   return value;
 }

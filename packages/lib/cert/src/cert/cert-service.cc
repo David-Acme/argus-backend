@@ -11,7 +11,9 @@
 #include <memory>
 #include <openssl/bio.h>
 #include <openssl/bn.h>
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
+#include <openssl/hmac.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
@@ -455,6 +457,46 @@ bool CertService::verifyPairingCode(const std::string& code)
     diff |= static_cast<unsigned char>(candidate[i]) ^
             static_cast<unsigned char>(gState.pairingCode[i]);
   return diff == 0;
+}
+
+namespace
+{
+std::string pairingHmacHex(const std::string& key, const std::string& message)
+{
+  std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
+  unsigned int length = 0;
+  if (HMAC(EVP_sha256(), key.data(), static_cast<int>(key.size()),
+           reinterpret_cast<const unsigned char*>(message.data()), message.size(),
+           digest.data(), &length) == nullptr)
+    return {};
+  constexpr std::string_view kHex = "0123456789ABCDEF";
+  std::string hex;
+  hex.reserve(static_cast<size_t>(length) * 2);
+  for (unsigned int i = 0; i < length; ++i) {
+    hex.push_back(kHex[digest[i] >> 4]);
+    hex.push_back(kHex[digest[i] & 0x0F]);
+  }
+  return hex;
+}
+}
+
+bool CertService::verifyPairingProof(const PairingProofInput& input)
+{
+  if (!gState.loaded.load() || gState.pairingCode.empty() || input.nonce.empty())
+    return false;
+  const std::string expected =
+      pairingHmacHex(gState.pairingCode, "argus-pair-client|" + input.nonce);
+  const std::string candidate = toUpper(input.proof);
+  return !expected.empty() && candidate.size() == expected.size() &&
+         CRYPTO_memcmp(candidate.data(), expected.data(), expected.size()) == 0;
+}
+
+std::string CertService::pairingServerProof(const std::string& nonce)
+{
+  if (!gState.loaded.load() || gState.pairingCode.empty())
+    return {};
+  return pairingHmacHex(gState.pairingCode, "argus-pair-server|" + nonce + "|" +
+                                                caFingerprint());
 }
 
 bool CertService::rotateServerCertificate()

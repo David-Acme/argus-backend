@@ -10,6 +10,8 @@
 struct PairingRequestInput
 {
   std::string code;
+  std::string nonce;
+  std::string proof;
   std::string deviceHash;
 };
 

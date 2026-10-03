@@ -1,6 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <cctype>
+
+#include <algorithm>
+
 #include <drogon/drogon.h>
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
@@ -336,8 +340,28 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
   ConfigService::setRuntimeString("cert.rotation_threshold_days", "3650");
   ConfigService::setRuntimeString("mdns.name", "");
 
+  {
+    std::ofstream code(dir / "pairing.code");
+    code << "A1B2C3D4E5F6\n";
+  }
   REQUIRE(CertService::init());
   REQUIRE(CertService::isLoaded());
+
+  const std::string nonce = "00112233445566778899aabbccddeeff";
+  const std::string clientProof =
+      "AB6450EDC394C763C30635F5C37FC512ACB3C25211CA0EA5E22103A275EC322E";
+  CHECK(CertService::verifyPairingProof({.nonce = nonce, .proof = clientProof}));
+  std::string lowered = clientProof;
+  std::ranges::transform(lowered, lowered.begin(),
+                         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  CHECK(CertService::verifyPairingProof({.nonce = nonce, .proof = lowered}));
+  CHECK_FALSE(CertService::verifyPairingProof(
+      {.nonce = "ffeeddccbbaa99887766554433221100", .proof = clientProof}));
+  CHECK_FALSE(CertService::verifyPairingProof({.nonce = nonce, .proof = ""}));
+  const std::string serverProof = CertService::pairingServerProof(nonce);
+  CHECK(serverProof.size() == 64);
+  CHECK(serverProof != clientProof);
+  CHECK(serverProof != CertService::pairingServerProof("ffeeddccbbaa99887766554433221100"));
 
   REQUIRE(CertService::rotateServerCertificate());
   CHECK((std::filesystem::status(dir / "server.key").permissions() &

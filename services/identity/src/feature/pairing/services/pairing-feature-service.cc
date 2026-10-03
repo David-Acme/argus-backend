@@ -13,7 +13,11 @@ ResponsePairingDto PairingFeatureService::pair(const PairingRequestInput& input)
   {
     static std::mutex pairingMutex;
     const std::scoped_lock lock(pairingMutex);
-    if (!CertService::verifyPairingCode(input.code))
+    const bool proven =
+        input.proof.empty()
+            ? CertService::verifyPairingCode(input.code)
+            : CertService::verifyPairingProof({.nonce = input.nonce, .proof = input.proof});
+    if (!proven)
       throw ResponseException(IdentityErrors::InvalidPairingCode);
     if (ConfigService::getBool("pairing.paired")) {
       if (ConfigService::getString("pairing.owner_device") != input.deviceHash)
@@ -32,6 +36,8 @@ ResponsePairingDto PairingFeatureService::pair(const PairingRequestInput& input)
   result.caPem = CertService::caPem();
   result.scheme = "https";
   result.port = IdentityConfig::resolveAnnouncedPort();
+  if (!input.proof.empty())
+    result.serverProof = CertService::pairingServerProof(input.nonce);
   return result;
 }
 
