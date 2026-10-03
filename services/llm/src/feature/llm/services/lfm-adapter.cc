@@ -654,7 +654,7 @@ bool LfmAdapter::routedTurn(ToolHopContext ctx)
   ctx.output.toolMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::steady_clock::now() - toolStart)
                           .count();
-  if (!executed.ok && decision.intent == intent::ToolIntent::MemoryForget) {
+  if (!executed.ok) {
     LOG_WARN << "LfmAdapter: routed tool '" << call->name
              << "' failed: " << executed.output << "; falling back to the "
              << "tool loop";
@@ -664,7 +664,7 @@ bool LfmAdapter::routedTurn(ToolHopContext ctx)
   LOG_INFO << "LfmAdapter: router picked '" << call->name << "' ("
            << intent::toolIntentToString(decision.intent) << " score "
            << decision.score << (decision.fromRules ? ", rules" : ", model")
-           << (executed.ok ? "): " : ") and it failed: ") << executed.output;
+           << "): " << executed.output;
   ctx.output.executed.push_back(*call);
   ctx.output.hops = 1;
   ctx.history.push_back({.role = "assistant", .content = renderToolCall(*call)});

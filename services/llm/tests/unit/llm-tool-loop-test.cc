@@ -266,7 +266,7 @@ TEST_CASE("a prefill-only turn primes the prompt a real turn starts from and run
   }
 }
 
-TEST_CASE("a routed save that fails is answered from its failure, never claimed")
+TEST_CASE("a routed call the tool refuses falls back to the model with every tool")
 {
   ToolRegistry registry;
   int runs = 0;
@@ -290,7 +290,7 @@ TEST_CASE("a routed save that fails is answered from its failure, never claimed"
   const SilentClassifier classifier;
   const IntentRouter router({.catalog = catalog, .model = classifier, .recurrent = {}});
   ScriptedEngine script;
-  script.replies = {"Perdona, no pude guardarlo."};
+  script.replies = {"Claro, enciendo la luz de la cocina."};
   LfmAdapter adapter({.engine = script.engine(), .registry = registry, .router = &router});
 
   std::vector<ChatMessage> history{{.role = "user", .content = "recuerda que el wifi se cae cada semana"}};
@@ -298,7 +298,7 @@ TEST_CASE("a routed save that fails is answered from its failure, never claimed"
       adapter.chatWithTools(loopInput({registry.find("memory.remember")}), history);
   CHECK(runs == 1);
   REQUIRE(script.requests.size() == 1);
-  CHECK_FALSE(script.requests.front().toolCallsAllowed);
-  CHECK(script.requests.front().messages.back().content == "No pude guardar eso.");
-  CHECK(output.reply == "Perdona, no pude guardarlo.");
+  CHECK(script.requests.front().toolCallsAllowed);
+  CHECK(script.requests.front().messages.back().role == "user");
+  CHECK(output.reply == "Claro, enciendo la luz de la cocina.");
 }

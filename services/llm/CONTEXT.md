@@ -523,11 +523,14 @@ The voice session and argus-llm agreed this contract with the voice agent:
   the history as the model would have written it
   (`<|tool_call_start|>[memory.remember(text='…')]<|tool_call_end|>`, the
   template's own pythonic form) before the tool's result, so the model
-  confirms a call it can see. A routed save, reminder or recall that fails is
-  answered from its failure. Before, it fell back to the tool loop, where the
-  model regularly answered "lo he guardado" without calling anything. A
-  routed forget that finds nothing still falls back, because a cancellation
-  may not be about memory at all.
+  confirms a call it can see. A routed call the tool refuses still falls
+  back to the tool loop with every tool offered. The eval showed the router's
+  false positives ("enciende la luz de la cocina", "cuándo viene mi
+  hermana") are exactly the calls memory formation refuses, and a reply
+  built from "No pude guardar eso" answered them worse than the model did.
+  The baseline's other failure, routed saves that formation dropped while
+  the model claimed "lo he guardado", is fixed at its source: explicit
+  requests now store.
 - **Each tool runs at most once per turn.** A tool that already succeeded in
   this turn is not run again in a later hop: the model gets the earlier
   result. A hop made only of repeats ends the loop with a prose answer.
