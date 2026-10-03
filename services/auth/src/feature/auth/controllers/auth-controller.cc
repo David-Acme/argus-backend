@@ -29,12 +29,12 @@ AuthController::login(drogon::HttpRequestPtr req)
   if (parser.parse(req) != 0)
     throw ResponseException(AuthErrors::InvalidMultipartForm);
 
-  const auto body = LoginDto::form_multipart(parser);
+  auto body = LoginDto::form_multipart(parser);
   const auto& dev =
       req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
 
   const auto result = co_await service_.login(
-      body, {.deviceHash = dev.deviceHash, .userAgent = dev.userAgent});
+      std::move(body), {.deviceHash = dev.deviceHash, .userAgent = dev.userAgent});
 
   co_return ApiResponse::ok(result.toJson());
 }
@@ -46,12 +46,12 @@ AuthController::registerUser(drogon::HttpRequestPtr req)
   if (parser.parse(req) != 0)
     throw ResponseException(AuthErrors::InvalidMultipartForm);
 
-  const auto body = RegisterDto::form_multipart(parser);
+  auto body = RegisterDto::form_multipart(parser);
   const auto& dev =
       req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
 
   const auto result = co_await service_.registerUser(
-      body, {.deviceHash = dev.deviceHash, .userAgent = dev.userAgent});
+      std::move(body), {.deviceHash = dev.deviceHash, .userAgent = dev.userAgent});
 
   co_return ApiResponse::ok(result.toJson());
 }

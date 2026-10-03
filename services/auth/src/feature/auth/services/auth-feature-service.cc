@@ -155,24 +155,23 @@ DeviceLoginStatusDto idleDeviceLogin(DeviceLoginStatus status)
 }
 
 drogon::Task<std::optional<argus::identity::v1::IdentifyPersonResponse>>
-identifyPerson(const IdentityClient* client, const std::string& image)
+identifyPerson(const IdentityClient* client, std::string image)
 {
   if (client == nullptr)
     co_return std::nullopt;
   co_return co_await BlockingTask<
       std::optional<argus::identity::v1::IdentifyPersonResponse>>(
-      [client, image]() { return client->identifyPerson(image); });
+      [client, image = std::move(image)]() { return client->identifyPerson(image); });
 }
 
 drogon::Task<std::optional<argus::identity::v1::RegisterUserResponse>>
-registerIdentityUser(const IdentityClient* client,
-                     const RegisterUserInput& input)
+registerIdentityUser(const IdentityClient* client, RegisterUserInput input)
 {
   if (client == nullptr)
     co_return std::nullopt;
   co_return co_await BlockingTask<
       std::optional<argus::identity::v1::RegisterUserResponse>>(
-      [client, input]() { return client->registerUser(input); });
+      [client, request = std::move(input)]() { return client->registerUser(request); });
 }
 
 drogon::Task<std::optional<argus::identity::v1::GetUserResponse>>
@@ -206,7 +205,8 @@ AuthFeatureService::AuthFeatureService(Dependencies dependencies)
 drogon::Task<ResponseLoginDto>
 AuthFeatureService::login(LoginDto body, const LoginDeviceInput& device) const
 {
-  const auto answer = co_await identifyPerson(dependencies_.identity, body.image);
+  const auto answer =
+      co_await identifyPerson(dependencies_.identity, std::move(body.image));
   if (!answer || !answer->matched() || !answer->has_user_id() ||
       answer->user_id() <= 0)
     throw ResponseException(AuthErrors::FaceNotRecognized);
