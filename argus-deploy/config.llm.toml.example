@@ -24,6 +24,7 @@ flash_attn = "auto"
 swa_full = false
 top_k = 20
 top_p = 0.8
+min_p = 0.0
 penalty_last_n = 64
 penalty_repeat = 1.10
 penalty_freq = 0.0

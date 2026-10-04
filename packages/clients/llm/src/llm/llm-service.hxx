@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <stop_token>
@@ -80,6 +81,20 @@ struct GenerateInput
   bool prefillOnly{false};
 };
 
+struct LlmSampling
+{
+  int32_t maxTokens{256};
+  float temperature{0.85F};
+  int32_t topK{20};
+  float topP{0.8F};
+  float minP{0.0F};
+  int32_t penaltyLastN{64};
+  float penaltyRepeat{1.1F};
+  float penaltyFreq{0.0F};
+  float penaltyPresent{0.0F};
+  uint32_t seed{std::numeric_limits<uint32_t>::max()};
+};
+
 struct PrefixCheckpoint
 {
   std::size_t tokens{0};
@@ -111,8 +126,10 @@ public:
   bool isBusy();
   LlmPrefillStats lastPrefillStats();
 
-  int32_t defaultMaxTokens() const { return defaultMaxTokens_; }
-  float defaultTemperature() const { return defaultTemperature_; }
+  void refreshSampling();
+  [[nodiscard]] LlmSampling sampling() const;
+  int32_t defaultMaxTokens() const { return sampling().maxTokens; }
+  float defaultTemperature() const { return sampling().temperature; }
   int64_t contextSize() const { return contextSize_; }
 
   std::string buildPrompt(const std::vector<ChatMessage>& messages);
@@ -144,15 +161,8 @@ private:
   std::string chatTemplate_;
   int64_t contextSize_ = 0;
   int32_t nBatch_ = 1024;
-  int32_t defaultMaxTokens_ = 96;
-  float defaultTemperature_ = 0.3F;
-  int32_t topK_ = 20;
-  float topP_ = 0.8F;
-  int32_t penaltyLastN_ = 64;
-  float penaltyRepeat_ = 1.1F;
-  float penaltyFreq_ = 0.0F;
-  float penaltyPresent_ = 0.0F;
-  uint32_t seed_ = 0;
+  mutable std::mutex samplingMutex_;
+  LlmSampling sampling_;
   std::atomic<LlmPrefillStats> lastStats_;
   bool loaded_ = false;
   std::mutex mutex_;

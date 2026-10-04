@@ -46,7 +46,6 @@ llama_flash_attn_type flashAttnFromConfig(const std::string& name)
 LlmService::LlmService()
     : model_(nullptr, llama_model_free), context_(nullptr, llama_free)
 {
-  seed_ = LLAMA_DEFAULT_SEED;
 }
 
 LlmService::~LlmService()
@@ -160,16 +159,7 @@ void LlmService::init()
       chatTemplate_.clear();
 
     contextSize_ = contextSize;
-    const SamplingConfig sampling = resolveSampling();
-    defaultMaxTokens_ = sampling.maxTokens;
-    defaultTemperature_ = sampling.temperature;
-    topK_ = sampling.topK;
-    topP_ = sampling.topP;
-    penaltyLastN_ = sampling.penaltyLastN;
-    penaltyRepeat_ = sampling.penaltyRepeat;
-    penaltyFreq_ = sampling.penaltyFreq;
-    penaltyPresent_ = sampling.penaltyPresent;
-    seed_ = sampling.seed;
+    refreshSampling();
 
     warmup();
     loaded_ = true;
@@ -503,11 +493,12 @@ void LlmService::generateStream(const GenerateInput& input,
     return;
   }
 
+  const LlmSampling sampling = this->sampling();
   llama_sampler_chain_add(smpl.get(),
-                          llama_sampler_init_penalties(nVocab, penaltyLastN_,
-                                                       penaltyRepeat_,
-                                                       penaltyFreq_,
-                                                       penaltyPresent_));
+                          llama_sampler_init_penalties(nVocab, sampling.penaltyLastN,
+                                                       sampling.penaltyRepeat,
+                                                       sampling.penaltyFreq,
+                                                       sampling.penaltyPresent));
   if (!input.grammar.empty()) {
     auto* grammar =
         llama_sampler_init_grammar(vocab, input.grammar.c_str(), "root");
@@ -528,11 +519,13 @@ void LlmService::generateStream(const GenerateInput& input,
     llama_sampler_chain_add(smpl.get(),
                             llama_sampler_init_logit_bias(nVocab, 1, &ban));
   }
-  const auto addTail = [this, temperature](llama_sampler* chain) {
-    llama_sampler_chain_add(chain, llama_sampler_init_top_k(topK_));
-    llama_sampler_chain_add(chain, llama_sampler_init_top_p(topP_, 1));
+  const auto addTail = [&sampling, temperature](llama_sampler* chain) {
+    llama_sampler_chain_add(chain, llama_sampler_init_top_k(sampling.topK));
+    llama_sampler_chain_add(chain, llama_sampler_init_top_p(sampling.topP, 1));
+    if (sampling.minP > 0.0F)
+      llama_sampler_chain_add(chain, llama_sampler_init_min_p(sampling.minP, 1));
     llama_sampler_chain_add(chain, llama_sampler_init_temp(temperature));
-    llama_sampler_chain_add(chain, llama_sampler_init_dist(seed_));
+    llama_sampler_chain_add(chain, llama_sampler_init_dist(sampling.seed));
   };
   addTail(smpl.get());
 
@@ -620,14 +613,28 @@ std::string LlmService::generate(const GenerateInput& input)
   return result;
 }
 
+void LlmService::refreshSampling()
+{
+  const LlmSampling fresh = resolveSampling();
+  std::scoped_lock lock(samplingMutex_);
+  sampling_ = fresh;
+}
+
+LlmSampling LlmService::sampling() const
+{
+  std::scoped_lock lock(samplingMutex_);
+  return sampling_;
+}
+
 GenerateInput LlmService::generateInput(const ChatRequest& req)
 {
+  const LlmSampling current = sampling();
   return {.formattedPrompt = buildPrompt(req.messages),
           .temperature =
-              req.temperature >= 0.0F ? req.temperature : defaultTemperature_,
+              req.temperature >= 0.0F ? req.temperature : current.temperature,
           .maxTokens = req.prefillOnly ? 0
                        : req.maxTokens > 0 ? req.maxTokens
-                                           : defaultMaxTokens_,
+                                           : current.maxTokens,
           .resetContext = req.resetContext,
           .stop = req.stop,
           .grammar = req.grammar,

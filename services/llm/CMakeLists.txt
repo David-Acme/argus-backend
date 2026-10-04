@@ -231,6 +231,9 @@ add_test(NAME llm-rpc-test COMMAND llm-rpc-test)
 
 add_executable(llm-settings-test tests/unit/llm-settings-test.cc)
 
+target_compile_definitions(llm-settings-test PRIVATE
+    ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/llm")
+
 target_link_libraries(llm-settings-test PRIVATE argus::llm-settings argus::llm
     doctest::doctest)
 
@@ -341,7 +344,8 @@ target_link_libraries(memory-reminder-test PRIVATE argus::memory
 
 target_compile_definitions(memory-reminder-test PRIVATE
     ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
-    ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/memory")
+    ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/memory"
+    ARGUS_TEST_EXTRACT_MODEL="${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf")
 
 target_compile_options(memory-reminder-test PRIVATE -Wall -Wextra)
 
