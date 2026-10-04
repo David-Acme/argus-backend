@@ -573,7 +573,10 @@ Raw pointers only for non-owning access (`.get()`).
   `notification` per user), `SynchronizeAuditLog=2` (global field diffs; the
   backend selects tables by role), `SynchronizeUserAuditLog=3` (recipient
   field diffs, filtered by `sub`). Live events: `Add=4`, `Delete=5`, `Log=6`,
-  `AuthContextChanged=7`.
+  `AuthContextChanged=7`. Calls (additive): `CallIncoming=8` rings a
+  user's devices and `CallCancel=9` stops the ring, both emitted by
+  argus-notification's call engine through `SyncControlService.EmitToUser`
+  (`services/notification/CONTEXT.md`, "Argus calls you").
 - **Normal rows are creation-only after bootstrap**: `Synchronize` pages by
   `created_at`; do not switch it to `updated_at`/`syncAt` to represent an
   update. Every persisted update/revocation must instead publish a granular
