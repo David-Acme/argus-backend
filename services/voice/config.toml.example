@@ -9,6 +9,7 @@ caller_settings = ""
 
 [identity]
 target = "127.0.0.1:7040"
+rpc_secret = ""
 
 [stt]
 remote_url = "127.0.0.1:7030"
