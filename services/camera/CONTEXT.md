@@ -1228,15 +1228,31 @@ main 2688×1520 H.264 at **15 fps**, offering **15, 20 and 25 fps** and
 irregular timestamps, which is why the app's meter averages the frame
 durations instead of taking the most common gap).
 
-`PATCH /camera/{id}/settings` takes `frameRate` (1-60). The driver reads the
-camera's offer first and refuses a rate it does not list ("This camera streams
-at 15, 20, 25 fps only"), then sends `setVideoQualities {"video":{"main":
-{"frame_rate": <the camera's own code>}}}`, the setter that pairs with
-`getVideoQualities`. pytapo has no setter, so this request is the vendor's
-naming pattern, not a measured one: it was not sent to the owner's camera
-(changing a device setting is the owner's own test), and a camera that
-refuses it answers with its error code, which the app shows. Resolution is
-reported but not changeable from Argus.
+**There is no frame-rate setting from Argus.** Measured on the C225
+(firmware 1.3.1, with the owner's authorisation): `setVideoQualities` and
+`setVideoConfig` answer `-40210` (METHOD_DO_NOT_EXIST), `setVideoQuality`
+answers `-40106` (UNSUPPORTED_METHOD) for every payload shape tried. The
+legacy top-level `{"method":"set","video":{"main":{"frame_rate":"65556"}}}`
+answers `error_code 0` and `getVideoQualities` then reads back the new code,
+but the stream kept emitting 15 fps (14.98-15.11 fps from RTP timestamps over
+10 s, after fresh RTSP sessions, at 20 and at 30): the stored value is not
+what the encoder runs. The camera was set back to `65551` on both streams.
+The route no longer takes `frameRate`; the status keeps reporting the
+encoder's offer (`video.frameRates`, now 15/20/25/30) for information, and
+the app shows the measured rate read-only.
+
+## Night vision speaks the camera's words, and refusals are refusals (2026-10, CAMERA3)
+
+`setDayNightModeConfig` takes `inf_type` `on` (night, infrared), `off` (day)
+or `auto`, as pytapo does; Argus sent its own `night`/`day`, which the camera
+refused with `-40101` inside an otherwise successful batch, so the app showed
+"night" while the picture stayed in colour. `tapo_day_night` maps the app's
+words to the camera's and back (status now reads `night`/`day`). Measured:
+`on` took the live picture's mean saturation from 24.9 to 0.0 within 8 s;
+`auto` was restored. `TapoApi::call` now fails on any non-zero inner
+`error_code` with the camera's number, so every setting, preset and motor
+call reports a refusal instead of a silent success (the motor calls still
+read `-64304` as a limit).
 
 ## Pan and tilt, measured on the owner's C225 (2026-10, CAMERA3)
 

@@ -1,4 +1,5 @@
 #include "tapo-api.hxx"
+#include "tapo-day-night.hxx"
 #include "tapo-motor.hxx"
 
 #include <chrono>
@@ -121,7 +122,14 @@ Json::Value TapoApi::state() const
 
 TapoResult TapoApi::call(const std::string& method, const Json::Value& params)
 {
-  return client_.batch({makeRequest(method, params)});
+  auto result = client_.batch({makeRequest(method, params)});
+  if (!result.ok)
+    return result;
+  const int error = responseAt(result.data, 0).get("error_code", 0).asInt();
+  if (error != 0)
+    return TapoResult::failure(
+        "the camera refused " + method + " (error " + std::to_string(error) + ")", error);
+  return result;
 }
 
 TapoResult TapoApi::callBatch(const std::vector<Json::Value>& requests)
@@ -189,20 +197,6 @@ TapoResult TapoApi::getVideoCapability()
                                    std::to_string(answer["error_code"].asInt()) + ")",
                                answer["error_code"].asInt());
   return TapoResult::success(answer["result"]);
-}
-
-TapoResult TapoApi::setVideoFrameRate(const std::string& code)
-{
-  Json::Value params(Json::objectValue);
-  params["video"]["main"]["frame_rate"] = code;
-  auto result = call("setVideoQualities", params);
-  if (!result.ok)
-    return result;
-  const int error = responseAt(result.data, 0)["error_code"].asInt();
-  if (error != 0)
-    return TapoResult::failure(
-        "the camera refused the frame rate (error " + std::to_string(error) + ")", error);
-  return result;
 }
 
 TapoResult TapoApi::getMotorCapability()
@@ -297,7 +291,7 @@ TapoResult TapoApi::setLed(const TapoLedInput& input)
 TapoResult TapoApi::setDayNight(const TapoDayNightInput& input)
 {
   Json::Value params(Json::objectValue);
-  params["image"]["common"]["inf_type"] = input.mode;
+  params["image"]["common"]["inf_type"] = tapo_day_night::toDevice(input.mode);
   return call("setDayNightModeConfig", params);
 }
 
@@ -469,7 +463,7 @@ TapoStatusBatch TapoApi::getStatus()
 
   const auto& image = responseAt(result.data, 5)["result"]["image"]["common"]["inf_type"];
   if (image.isString())
-    status.dayNightMode = image.asString();
+    status.dayNightMode = tapo_day_night::fromDevice(image.asString());
 
   const auto& clock =
       responseAt(result.data, 7)["result"]["system"]["clock_status"]["seconds_from_1970"];

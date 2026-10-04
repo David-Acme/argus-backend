@@ -19,8 +19,6 @@ CameraSettingsDto CameraSettingsDto::fromJson(const Json::Value& json)
     dto.alarm = json["alarm"].asBool();
   if (json.isMember("alarmVolume") && json["alarmVolume"].isInt())
     dto.alarmVolume = json["alarmVolume"].asInt();
-  if (json.isMember("frameRate") && json["frameRate"].isInt())
-    dto.frameRate = json["frameRate"].asInt();
 
   START_VALIDATION(CameraSettingsDto, dto)
   CUSTOM_LAMBDA(dayNight, [](const CameraSettingsDto& d) -> std::optional<std::string> {
@@ -44,13 +42,6 @@ CameraSettingsDto CameraSettingsDto::fromJson(const Json::Value& json)
     return *d.alarmVolume >= 1 && *d.alarmVolume <= 100
                ? std::nullopt
                : std::optional<std::string>("must be between 1 and 100");
-  })
-  CUSTOM_LAMBDA(frameRate, [](const CameraSettingsDto& d) -> std::optional<std::string> {
-    if (!d.frameRate)
-      return std::nullopt;
-    return *d.frameRate >= 1 && *d.frameRate <= 60
-               ? std::nullopt
-               : std::optional<std::string>("must be between 1 and 60");
   })
   END_VALIDATION()
   return dto;

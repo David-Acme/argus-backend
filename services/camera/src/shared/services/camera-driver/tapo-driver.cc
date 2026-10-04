@@ -39,34 +39,6 @@ DriverResult toDriverResult(const TapoResult& result)
 {
   return {.ok = result.ok, .error = result.error, .data = result.data};
 }
-
-std::string frameRateList(const std::vector<int>& rates)
-{
-  std::string out;
-  for (const int rate : rates) {
-    if (!out.empty())
-      out += ", ";
-    out += std::to_string(rate);
-  }
-  return out;
-}
-
-TapoResult applyFrameRate(TapoApi& api, int frameRate)
-{
-  auto offered = api.getVideoCapability();
-  if (!offered.ok)
-    return offered;
-  const auto code = tapo_video::frameRateCodeFor(offered.data, frameRate);
-  if (!code) {
-    const Json::Value empty;
-    const auto profile = tapo_video::profileOf({.capability = offered.data, .quality = empty});
-    const auto rates = profile ? frameRateList(profile->frameRates) : std::string();
-    return TapoResult::failure(rates.empty()
-                                   ? "This camera does not let Argus change its frame rate"
-                                   : "This camera streams at " + rates + " fps only");
-  }
-  return api.setVideoFrameRate(*code);
-}
 }
 
 DriverResult TapoDriver::probe(const CameraSchema& camera)
@@ -179,8 +151,6 @@ DriverResult TapoDriver::settings(const DriverSettingsInput& input)
                                                           : "high"));
   if (input.alarm)
     apply(api_->setAlarm({.enabled = *input.alarm}));
-  if (input.frameRate)
-    apply(applyFrameRate(*api_, *input.frameRate));
   if (input.sounding) {
     const auto sounded = api_->manualAlarm(*input.sounding);
     if (!sounded.ok)

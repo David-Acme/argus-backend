@@ -76,15 +76,6 @@ std::optional<TapoVideoProfile> profileOf(const TapoVideoAnswers& answers)
   }
   return profile;
 }
-
-std::optional<std::string> frameRateCodeFor(const Json::Value& capability, int frameRate)
-{
-  for (const auto& code : listOf(mainOf(capability["video_capability"])["frame_rates"])) {
-    if (frameRateOf(code) == frameRate)
-      return code.isString() ? code.asString() : std::to_string(code.asInt64());
-  }
-  return std::nullopt;
-}
 }
 
 Json::Value TapoVideoProfile::toJson() const

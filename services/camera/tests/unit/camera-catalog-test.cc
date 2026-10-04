@@ -7,6 +7,7 @@
 #include <shared/services/camera-driver/stream-only-driver.hxx>
 #include <shared/services/camera-driver/tapo-driver.hxx>
 #include <shared/services/tapo/tapo-crypto.hxx>
+#include <shared/services/tapo/tapo-day-night.hxx>
 #include <shared/services/tapo/tapo-motor.hxx>
 #include <shared/services/tapo/tapo-video.hxx>
 #include <shared/vocabulary/camera-stream-paths.hxx>
@@ -393,8 +394,6 @@ TEST_CASE("the Tapo video profile reads the encoder's offer and its current sett
   CHECK(profile->resolutions.size() == 3);
   CHECK(profile->toJson()["frameRates"].size() == 5);
 
-  CHECK(tapo_video::frameRateCodeFor(capability, 30) == std::optional<std::string>("65566"));
-  CHECK_FALSE(tapo_video::frameRateCodeFor(capability, 60).has_value());
 
   CHECK(tapo_video::frameRateOf(Json::Value("15")) == 15);
   CHECK(tapo_video::frameRateOf(Json::Value(25)) == 25);
@@ -433,4 +432,19 @@ TEST_CASE("a motor answer says whether the camera moved or stood at the end of i
   CHECK(refused.errorCode == -40210);
 
   CHECK_FALSE(tapo_motor::outcomeOf(TapoResult::failure("no answer")).ok);
+
+  const auto refusedAtLimit =
+      tapo_motor::outcomeOf(TapoResult::failure("refused", tapo_motor::kLockedRotor));
+  CHECK(refusedAtLimit.ok);
+  CHECK(refusedAtLimit.data["limit"].asBool());
+}
+
+TEST_CASE("night vision speaks the camera's own words: on is night, off is day")
+{
+  CHECK(tapo_day_night::toDevice("night") == "on");
+  CHECK(tapo_day_night::toDevice("day") == "off");
+  CHECK(tapo_day_night::toDevice("auto") == "auto");
+  CHECK(tapo_day_night::fromDevice("on") == "night");
+  CHECK(tapo_day_night::fromDevice("off") == "day");
+  CHECK(tapo_day_night::fromDevice("auto") == "auto");
 }

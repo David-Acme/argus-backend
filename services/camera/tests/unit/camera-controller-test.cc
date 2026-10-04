@@ -284,12 +284,6 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK_THROWS_AS(ptz(R"({"x":400,"y":0})"), ValidationException);
   CHECK_THROWS_AS(ptz("{}"), ValidationException);
 
-  Json::Value frameRate;
-  frameRate["frameRate"] = 30;
-  CHECK(CameraSettingsDto::fromJson(frameRate).frameRate == 30);
-  frameRate["frameRate"] = 240;
-  CHECK_THROWS_AS(CameraSettingsDto::fromJson(frameRate), ValidationException);
-
   auto updateReq = drogon::HttpRequest::newHttpJsonRequest(createBody);
   const auto missingUpdate =
       refusalOf(cameraController.update(updateReq, 999));

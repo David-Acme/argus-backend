@@ -125,7 +125,6 @@ public:
   TapoResult setAlarm(const TapoAlarmInput& input);
   TapoResult setAlarmVolume(const std::string& level);
   TapoResult manualAlarm(bool sounding);
-  TapoResult setVideoFrameRate(const std::string& code);
 
   TapoResult searchDetectionList(const TapoEventFilter& filter);
 

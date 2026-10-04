@@ -26,5 +26,4 @@ namespace tapo_video
 {
 int frameRateOf(const Json::Value& code);
 std::optional<TapoVideoProfile> profileOf(const TapoVideoAnswers& answers);
-std::optional<std::string> frameRateCodeFor(const Json::Value& capability, int frameRate);
 }
