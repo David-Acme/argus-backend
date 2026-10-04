@@ -62,6 +62,25 @@ Every route is probed in each access shape its own filter chain admits:
 | `owner-missing` | a path id that no row carries |
 | `multipart-empty`, `multipart-image` | `multipart/form-data`, empty and with a deterministic PNG |
 | `ws-plain-get` | the route's own `WS` method against the WebSocket path, which Drogon answers 405 |
+| `resident-scope-others`, `guest-scope-all` | `DELETE /auth/sessions?scope=…` on the transient resident's and guest's own recorder sessions (see Session safety) |
+
+A path's `{2}` is always the missing id, and a `PUT` carries the same `{}`
+body and `bad-json` probe a `POST` or a `PATCH` does.
+
+## Session safety
+
+Every probe that can revoke a session is pinned to a session the recorder
+minted for itself. The plain `DELETE /auth/sessions` probes carry no `scope`
+and answer 422; the two scoped probes run as the transient resident
+(`scope=others`, which finds nothing to revoke) and the transient guest
+(`scope=all`, which ends its own session, so the run re-mints the role
+sessions, as it does after the logout). The owner's session list is never
+asked to revoke anything: `DELETE /auth/sessions/{1}` and
+`DELETE /auth/users/{1}/sessions/{2}` name the missing id, and
+`DELETE /auth/users/{1}/sessions` names the missing user. Minting the owner's
+recorder session still replaces every session user 1 holds in the sandbox
+(`seed-golden.py`), so a run signs out whatever app was signed in to the
+sandbox as that user; mint a new session for it afterwards.
 
 ## Invariants
 
@@ -81,8 +100,9 @@ same rules apply to the live answer before the comparison, so a value that is
 random by nature never becomes part of a contract:
 
 - the keys in `maskedKeys` and any key ending in `At` are masked;
-- a value shaped like a three-part JWT, and any 64-character hexadecimal value,
-  is masked wherever it appears, inside a JSON body or in a non-JSON one;
+- a value shaped like a three-part JWT, any 64-character hexadecimal value and
+  any 32-character lowercase hexadecimal value (a session id) is masked
+  wherever it appears, inside a JSON body or in a non-JSON one;
 - a masked key keeps the shape of what it held, so an object under one is still
   compared field by field;
 - the `errors` subtree is not masked by key name: its values are the server's
@@ -98,9 +118,14 @@ and which no other unit's client reads.
 
 `volatileFields` in the manifest lists the fields of a response that are an
 observation rather than a contract, and the comparison drops them from both
-sides. One entry exists: `/notification/delivery-summary` reports the push
+sides; a key spelled `list[].field` drops that field from every row of the
+list. Three entries exist: `/notification/delivery-summary` reports the push
 channel's last self-test (`probeOk`, `probeMs`, `latencyMsP50/P95/Max`), which
-runs on its own schedule. The counters beside them stay pinned.
+runs on its own schedule; `/settings/profiles` carries the `recommendation`
+derived from the answering host's hardware; `/camera/overview` reports each
+camera's `health`, which is `unknown` until the stream supervisor's first
+probe of the fixture camera and `unreachable` after it. Everything beside
+them stays pinned.
 
 ## What a run writes
 
@@ -119,8 +144,8 @@ A run is additive on three tables and leaves every domain table byte-identical:
 | Table | Effect |
 |-------|--------|
 | `auth.device_login_challenge` | +1 pending row (`POST /auth/device-login`) |
-| `auth.change_outbox` | +1 `sent` row (the logout's user action) |
-| `sync.user_action_log` | +1 row (that action's recipient audit) |
+| `auth.change_outbox` | +8 rows: for the logout and for the guest's `scope=all` revocation, the session disconnect, the user action, and the two session-list change frames |
+| `sync.user_action_log` | +2 rows (those two actions' recipient audit) |
 | `identity.user`, `auth.refresh_token` | the run's own transient users and sessions; three rows become one at the owner's re-mint, and the last one stays |
 | `auth.sqlite_sequence`, `sync.sqlite_sequence` | SQLite's AUTOINCREMENT high-water marks, which gain a row the first time such a table is written |
 
@@ -147,9 +172,15 @@ more than it is:
   statically.
 - **multipart success paths**: both multipart routes are recorded only in the
   refusal shapes (422, 401, 409), never with a face that would log in.
-- **`PATCH /auth/me` and `POST /guard/mode` success paths**: their probes carry
-  a body built to fail validation, on purpose, so a replay cannot rename the
-  owner or flip the guard mode.
+- **`PATCH /auth/me`, `POST /guard/mode` and `POST /invitation` success
+  paths**: their probes carry a body built to fail validation, on purpose, so
+  a replay cannot rename the owner, flip the guard mode or mint an
+  invitation.
+- **the settings first run**: `native-stack.sh` turns it off in the sandbox
+  (`first_run = false`), so `GET /settings/profiles` pins `firstRun: null`,
+  `POST /settings/profiles/recommended/revert` pins its 404 and `GET
+  /settings` pins each owner's values as the copied config left them. The
+  first run's own path is pinned by `services/settings`'s unit tests.
 - **WebSocket frames**: the `WS` probe pins the path and the method rejection;
   the frames themselves are the frozen `/sync` suite's subject.
 

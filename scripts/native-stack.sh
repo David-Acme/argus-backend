@@ -38,7 +38,10 @@ The sandbox's settings service reaches only owners the sandbox boots, so
 every other owner's target is emptied in its copy of the config. Guard,
 camera and notification are paired with it (settings credential and target)
 on prepare and on every restart of settings or of one of them; restart
-settings after a restart that minted a new pair.
+settings after a restart that minted a new pair. The sandbox's settings
+service never applies the recommended profile on its own (first_run =
+false), so a replay finds every owner's values as the copied config left
+them.
 
 The sandbox claims the standard ports (7025-7045, plus guard's settings
 listener on 7139). Stop any other native
@@ -182,6 +185,7 @@ prepare_service() {
   if [ "$svc" = settings ]; then
     isolate_settings_owners "$config"
     replace_toml_value settings profiles_path "$ROOT/services/settings/profiles.json" "$config"
+    replace_toml_value settings first_run false "$config" literal
   fi
 
   if [ "$svc" = camera ]; then

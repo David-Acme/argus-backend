@@ -95,7 +95,8 @@
             "code": "VALIDATION_ERROR",
             "fields": {
               "ip": [
-                "ip must not be empty"
+                "ip must not be empty",
+                "must be an IPv4 or IPv6 address"
               ],
               "name": [
                 "name must not be empty"
@@ -155,7 +156,8 @@
             "code": "VALIDATION_ERROR",
             "fields": {
               "ip": [
-                "ip must not be empty"
+                "ip must not be empty",
+                "must be an IPv4 or IPv6 address"
               ],
               "name": [
                 "name must not be empty"
@@ -170,6 +172,3641 @@
         "status": 422
       },
       "route": "/camera",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/catalog",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/catalog",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/catalog",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/catalog",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/catalog",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "models": [
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-c100",
+                "manufacturer": "TP-Link",
+                "model": "C100",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-c110",
+                "manufacturer": "TP-Link",
+                "model": "C110",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-c120",
+                "manufacturer": "TP-Link",
+                "model": "C120",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-c125",
+                "manufacturer": "TP-Link",
+                "model": "C125",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-tc60",
+                "manufacturer": "TP-Link",
+                "model": "TC60",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c200",
+                "manufacturer": "TP-Link",
+                "model": "C200",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c210",
+                "manufacturer": "TP-Link",
+                "model": "C210",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c211",
+                "manufacturer": "TP-Link",
+                "model": "C211",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c220",
+                "manufacturer": "TP-Link",
+                "model": "C220",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c225",
+                "manufacturer": "TP-Link",
+                "model": "C225",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2688x1520",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-tc70",
+                "manufacturer": "TP-Link",
+                "model": "TC70",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "bullet",
+                "generic": false,
+                "id": "tapo-c310",
+                "manufacturer": "TP-Link",
+                "model": "C310",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "bullet",
+                "generic": false,
+                "id": "tapo-c320ws",
+                "manufacturer": "TP-Link",
+                "model": "C320WS",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "bullet",
+                "generic": false,
+                "id": "tapo-c325wb",
+                "manufacturer": "TP-Link",
+                "model": "C325WB",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "outdoor-pan-tilt",
+                "generic": false,
+                "id": "tapo-c500",
+                "manufacturer": "TP-Link",
+                "model": "C500",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "outdoor-pan-tilt",
+                "generic": false,
+                "id": "tapo-c510w",
+                "manufacturer": "TP-Link",
+                "model": "C510W",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "outdoor-pan-tilt",
+                "generic": false,
+                "id": "tapo-c520ws",
+                "manufacturer": "TP-Link",
+                "model": "C520WS",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": true,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": true
+                },
+                "formFactor": "doorbell",
+                "generic": false,
+                "id": "tapo-d130",
+                "manufacturer": "TP-Link",
+                "model": "D130",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": true,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": true
+                },
+                "formFactor": "doorbell",
+                "generic": false,
+                "id": "tapo-d225",
+                "manufacturer": "TP-Link",
+                "model": "D225",
+                "note": "tapo-doorbell-wired",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link VIGI",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "turret",
+                "generic": true,
+                "id": "vigi",
+                "manufacturer": "TP-Link",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Hikvision",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/Streaming/Channels/101",
+                  "subStreamPath": "/Streaming/Channels/102",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "bullet",
+                "generic": true,
+                "id": "hikvision",
+                "manufacturer": "Hikvision",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Annke",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/Streaming/Channels/101",
+                  "subStreamPath": "/Streaming/Channels/102",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "turret",
+                "generic": true,
+                "id": "annke",
+                "manufacturer": "Annke",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Dahua",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/cam/realmonitor?channel=1&subtype=0",
+                  "subStreamPath": "/cam/realmonitor?channel=1&subtype=1",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "dome",
+                "generic": true,
+                "id": "dahua",
+                "manufacturer": "Dahua",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Amcrest",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/cam/realmonitor?channel=1&subtype=0",
+                  "subStreamPath": "/cam/realmonitor?channel=1&subtype=1",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "turret",
+                "generic": true,
+                "id": "amcrest",
+                "manufacturer": "Amcrest",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Imou",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/cam/realmonitor?channel=1&subtype=0",
+                  "subStreamPath": "/cam/realmonitor?channel=1&subtype=1",
+                  "username": "admin"
+                },
+                "driver": "rtsp",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "pan-tilt",
+                "generic": true,
+                "id": "imou",
+                "manufacturer": "Imou",
+                "model": "",
+                "note": "safety-code-password",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Reolink",
+                "defaults": {
+                  "onvifPort": 8000,
+                  "port": 554,
+                  "streamPath": "/h264Preview_01_main",
+                  "subStreamPath": "/h264Preview_01_sub",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "bullet",
+                "generic": true,
+                "id": "reolink",
+                "manufacturer": "Reolink",
+                "model": "",
+                "note": "reolink-h265",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "EZVIZ",
+                "defaults": {
+                  "onvifPort": 0,
+                  "port": 554,
+                  "streamPath": "/h264/ch1/main/av_stream",
+                  "subStreamPath": "/h264/ch1/sub/av_stream",
+                  "username": "admin"
+                },
+                "driver": "rtsp",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "pan-tilt",
+                "generic": true,
+                "id": "ezviz",
+                "manufacturer": "EZVIZ",
+                "model": "",
+                "note": "verification-code-password",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Uniview",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/media/video1",
+                  "subStreamPath": "/media/video2",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "turret",
+                "generic": true,
+                "id": "uniview",
+                "manufacturer": "Uniview",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Axis",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/axis-media/media.amp",
+                  "subStreamPath": "/axis-media/media.amp?resolution=640x360",
+                  "username": "root"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "dome",
+                "generic": true,
+                "id": "axis",
+                "manufacturer": "Axis",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Foscam",
+                "defaults": {
+                  "onvifPort": 888,
+                  "port": 88,
+                  "streamPath": "/videoMain",
+                  "subStreamPath": "/videoSub",
+                  "username": "admin"
+                },
+                "driver": "rtsp",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "pan-tilt",
+                "generic": true,
+                "id": "foscam",
+                "manufacturer": "Foscam",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "ONVIF",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "",
+                  "subStreamPath": "",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "bullet",
+                "generic": true,
+                "id": "onvif",
+                "manufacturer": "",
+                "model": "",
+                "note": "custom-paths",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "RTSP",
+                "defaults": {
+                  "onvifPort": 0,
+                  "port": 554,
+                  "streamPath": "",
+                  "subStreamPath": "",
+                  "username": ""
+                },
+                "driver": "rtsp",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "bullet",
+                "generic": true,
+                "id": "rtsp",
+                "manufacturer": "",
+                "model": "",
+                "note": "custom-paths",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              }
+            ]
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/catalog",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/catalog",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "models": [
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-c100",
+                "manufacturer": "TP-Link",
+                "model": "C100",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-c110",
+                "manufacturer": "TP-Link",
+                "model": "C110",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-c120",
+                "manufacturer": "TP-Link",
+                "model": "C120",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-c125",
+                "manufacturer": "TP-Link",
+                "model": "C125",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-tc60",
+                "manufacturer": "TP-Link",
+                "model": "TC60",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c200",
+                "manufacturer": "TP-Link",
+                "model": "C200",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c210",
+                "manufacturer": "TP-Link",
+                "model": "C210",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c211",
+                "manufacturer": "TP-Link",
+                "model": "C211",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c220",
+                "manufacturer": "TP-Link",
+                "model": "C220",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c225",
+                "manufacturer": "TP-Link",
+                "model": "C225",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2688x1520",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-tc70",
+                "manufacturer": "TP-Link",
+                "model": "TC70",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "bullet",
+                "generic": false,
+                "id": "tapo-c310",
+                "manufacturer": "TP-Link",
+                "model": "C310",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "bullet",
+                "generic": false,
+                "id": "tapo-c320ws",
+                "manufacturer": "TP-Link",
+                "model": "C320WS",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "bullet",
+                "generic": false,
+                "id": "tapo-c325wb",
+                "manufacturer": "TP-Link",
+                "model": "C325WB",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "outdoor-pan-tilt",
+                "generic": false,
+                "id": "tapo-c500",
+                "manufacturer": "TP-Link",
+                "model": "C500",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "outdoor-pan-tilt",
+                "generic": false,
+                "id": "tapo-c510w",
+                "manufacturer": "TP-Link",
+                "model": "C510W",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "outdoor-pan-tilt",
+                "generic": false,
+                "id": "tapo-c520ws",
+                "manufacturer": "TP-Link",
+                "model": "C520WS",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": true,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": true
+                },
+                "formFactor": "doorbell",
+                "generic": false,
+                "id": "tapo-d130",
+                "manufacturer": "TP-Link",
+                "model": "D130",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": true,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": true
+                },
+                "formFactor": "doorbell",
+                "generic": false,
+                "id": "tapo-d225",
+                "manufacturer": "TP-Link",
+                "model": "D225",
+                "note": "tapo-doorbell-wired",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link VIGI",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "turret",
+                "generic": true,
+                "id": "vigi",
+                "manufacturer": "TP-Link",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Hikvision",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/Streaming/Channels/101",
+                  "subStreamPath": "/Streaming/Channels/102",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "bullet",
+                "generic": true,
+                "id": "hikvision",
+                "manufacturer": "Hikvision",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Annke",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/Streaming/Channels/101",
+                  "subStreamPath": "/Streaming/Channels/102",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "turret",
+                "generic": true,
+                "id": "annke",
+                "manufacturer": "Annke",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Dahua",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/cam/realmonitor?channel=1&subtype=0",
+                  "subStreamPath": "/cam/realmonitor?channel=1&subtype=1",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "dome",
+                "generic": true,
+                "id": "dahua",
+                "manufacturer": "Dahua",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Amcrest",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/cam/realmonitor?channel=1&subtype=0",
+                  "subStreamPath": "/cam/realmonitor?channel=1&subtype=1",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "turret",
+                "generic": true,
+                "id": "amcrest",
+                "manufacturer": "Amcrest",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Imou",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/cam/realmonitor?channel=1&subtype=0",
+                  "subStreamPath": "/cam/realmonitor?channel=1&subtype=1",
+                  "username": "admin"
+                },
+                "driver": "rtsp",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "pan-tilt",
+                "generic": true,
+                "id": "imou",
+                "manufacturer": "Imou",
+                "model": "",
+                "note": "safety-code-password",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Reolink",
+                "defaults": {
+                  "onvifPort": 8000,
+                  "port": 554,
+                  "streamPath": "/h264Preview_01_main",
+                  "subStreamPath": "/h264Preview_01_sub",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "bullet",
+                "generic": true,
+                "id": "reolink",
+                "manufacturer": "Reolink",
+                "model": "",
+                "note": "reolink-h265",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "EZVIZ",
+                "defaults": {
+                  "onvifPort": 0,
+                  "port": 554,
+                  "streamPath": "/h264/ch1/main/av_stream",
+                  "subStreamPath": "/h264/ch1/sub/av_stream",
+                  "username": "admin"
+                },
+                "driver": "rtsp",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "pan-tilt",
+                "generic": true,
+                "id": "ezviz",
+                "manufacturer": "EZVIZ",
+                "model": "",
+                "note": "verification-code-password",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Uniview",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/media/video1",
+                  "subStreamPath": "/media/video2",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "turret",
+                "generic": true,
+                "id": "uniview",
+                "manufacturer": "Uniview",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Axis",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/axis-media/media.amp",
+                  "subStreamPath": "/axis-media/media.amp?resolution=640x360",
+                  "username": "root"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "dome",
+                "generic": true,
+                "id": "axis",
+                "manufacturer": "Axis",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Foscam",
+                "defaults": {
+                  "onvifPort": 888,
+                  "port": 88,
+                  "streamPath": "/videoMain",
+                  "subStreamPath": "/videoSub",
+                  "username": "admin"
+                },
+                "driver": "rtsp",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "pan-tilt",
+                "generic": true,
+                "id": "foscam",
+                "manufacturer": "Foscam",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "ONVIF",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "",
+                  "subStreamPath": "",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "bullet",
+                "generic": true,
+                "id": "onvif",
+                "manufacturer": "",
+                "model": "",
+                "note": "custom-paths",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "RTSP",
+                "defaults": {
+                  "onvifPort": 0,
+                  "port": 554,
+                  "streamPath": "",
+                  "subStreamPath": "",
+                  "username": ""
+                },
+                "driver": "rtsp",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "bullet",
+                "generic": true,
+                "id": "rtsp",
+                "manufacturer": "",
+                "model": "",
+                "note": "custom-paths",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              }
+            ]
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/catalog",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/catalog",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "models": [
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-c100",
+                "manufacturer": "TP-Link",
+                "model": "C100",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-c110",
+                "manufacturer": "TP-Link",
+                "model": "C110",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-c120",
+                "manufacturer": "TP-Link",
+                "model": "C120",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-c125",
+                "manufacturer": "TP-Link",
+                "model": "C125",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "cube",
+                "generic": false,
+                "id": "tapo-tc60",
+                "manufacturer": "TP-Link",
+                "model": "TC60",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c200",
+                "manufacturer": "TP-Link",
+                "model": "C200",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c210",
+                "manufacturer": "TP-Link",
+                "model": "C210",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c211",
+                "manufacturer": "TP-Link",
+                "model": "C211",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c220",
+                "manufacturer": "TP-Link",
+                "model": "C220",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-c225",
+                "manufacturer": "TP-Link",
+                "model": "C225",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "2688x1520",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "pan-tilt",
+                "generic": false,
+                "id": "tapo-tc70",
+                "manufacturer": "TP-Link",
+                "model": "TC70",
+                "note": "tapo-camera-account",
+                "outdoor": false,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "bullet",
+                "generic": false,
+                "id": "tapo-c310",
+                "manufacturer": "TP-Link",
+                "model": "C310",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "bullet",
+                "generic": false,
+                "id": "tapo-c320ws",
+                "manufacturer": "TP-Link",
+                "model": "C320WS",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": false,
+                  "privacy": true,
+                  "ptz": false,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "bullet",
+                "generic": false,
+                "id": "tapo-c325wb",
+                "manufacturer": "TP-Link",
+                "model": "C325WB",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "outdoor-pan-tilt",
+                "generic": false,
+                "id": "tapo-c500",
+                "manufacturer": "TP-Link",
+                "model": "C500",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "1920x1080",
+                "subResolution": "640x360"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "outdoor-pan-tilt",
+                "generic": false,
+                "id": "tapo-c510w",
+                "manufacturer": "TP-Link",
+                "model": "C510W",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": true,
+                  "dayNight": true,
+                  "led": true,
+                  "microphone": true,
+                  "motion": true,
+                  "presets": true,
+                  "privacy": true,
+                  "ptz": true,
+                  "sdCard": true,
+                  "siren": true,
+                  "speaker": true
+                },
+                "formFactor": "outdoor-pan-tilt",
+                "generic": false,
+                "id": "tapo-c520ws",
+                "manufacturer": "TP-Link",
+                "model": "C520WS",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": true,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": true
+                },
+                "formFactor": "doorbell",
+                "generic": false,
+                "id": "tapo-d130",
+                "manufacturer": "TP-Link",
+                "model": "D130",
+                "note": "tapo-camera-account",
+                "outdoor": true,
+                "resolution": "2304x1296",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link Tapo",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": ""
+                },
+                "driver": "tapo",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": true,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": true
+                },
+                "formFactor": "doorbell",
+                "generic": false,
+                "id": "tapo-d225",
+                "manufacturer": "TP-Link",
+                "model": "D225",
+                "note": "tapo-doorbell-wired",
+                "outdoor": true,
+                "resolution": "2560x1440",
+                "subResolution": "1280x720"
+              },
+              {
+                "brand": "TP-Link VIGI",
+                "defaults": {
+                  "onvifPort": 2020,
+                  "port": 554,
+                  "streamPath": "/stream1",
+                  "subStreamPath": "/stream2",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "turret",
+                "generic": true,
+                "id": "vigi",
+                "manufacturer": "TP-Link",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Hikvision",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/Streaming/Channels/101",
+                  "subStreamPath": "/Streaming/Channels/102",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "bullet",
+                "generic": true,
+                "id": "hikvision",
+                "manufacturer": "Hikvision",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Annke",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/Streaming/Channels/101",
+                  "subStreamPath": "/Streaming/Channels/102",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "turret",
+                "generic": true,
+                "id": "annke",
+                "manufacturer": "Annke",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Dahua",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/cam/realmonitor?channel=1&subtype=0",
+                  "subStreamPath": "/cam/realmonitor?channel=1&subtype=1",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "dome",
+                "generic": true,
+                "id": "dahua",
+                "manufacturer": "Dahua",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Amcrest",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/cam/realmonitor?channel=1&subtype=0",
+                  "subStreamPath": "/cam/realmonitor?channel=1&subtype=1",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "turret",
+                "generic": true,
+                "id": "amcrest",
+                "manufacturer": "Amcrest",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Imou",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/cam/realmonitor?channel=1&subtype=0",
+                  "subStreamPath": "/cam/realmonitor?channel=1&subtype=1",
+                  "username": "admin"
+                },
+                "driver": "rtsp",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "pan-tilt",
+                "generic": true,
+                "id": "imou",
+                "manufacturer": "Imou",
+                "model": "",
+                "note": "safety-code-password",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Reolink",
+                "defaults": {
+                  "onvifPort": 8000,
+                  "port": 554,
+                  "streamPath": "/h264Preview_01_main",
+                  "subStreamPath": "/h264Preview_01_sub",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "bullet",
+                "generic": true,
+                "id": "reolink",
+                "manufacturer": "Reolink",
+                "model": "",
+                "note": "reolink-h265",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "EZVIZ",
+                "defaults": {
+                  "onvifPort": 0,
+                  "port": 554,
+                  "streamPath": "/h264/ch1/main/av_stream",
+                  "subStreamPath": "/h264/ch1/sub/av_stream",
+                  "username": "admin"
+                },
+                "driver": "rtsp",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "pan-tilt",
+                "generic": true,
+                "id": "ezviz",
+                "manufacturer": "EZVIZ",
+                "model": "",
+                "note": "verification-code-password",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Uniview",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/media/video1",
+                  "subStreamPath": "/media/video2",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "turret",
+                "generic": true,
+                "id": "uniview",
+                "manufacturer": "Uniview",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Axis",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "/axis-media/media.amp",
+                  "subStreamPath": "/axis-media/media.amp?resolution=640x360",
+                  "username": "root"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "dome",
+                "generic": true,
+                "id": "axis",
+                "manufacturer": "Axis",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "Foscam",
+                "defaults": {
+                  "onvifPort": 888,
+                  "port": 88,
+                  "streamPath": "/videoMain",
+                  "subStreamPath": "/videoSub",
+                  "username": "admin"
+                },
+                "driver": "rtsp",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "pan-tilt",
+                "generic": true,
+                "id": "foscam",
+                "manufacturer": "Foscam",
+                "model": "",
+                "note": "",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "ONVIF",
+                "defaults": {
+                  "onvifPort": 80,
+                  "port": 554,
+                  "streamPath": "",
+                  "subStreamPath": "",
+                  "username": "admin"
+                },
+                "driver": "onvif",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "bullet",
+                "generic": true,
+                "id": "onvif",
+                "manufacturer": "",
+                "model": "",
+                "note": "custom-paths",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              },
+              {
+                "brand": "RTSP",
+                "defaults": {
+                  "onvifPort": 0,
+                  "port": 554,
+                  "streamPath": "",
+                  "subStreamPath": "",
+                  "username": ""
+                },
+                "driver": "rtsp",
+                "features": {
+                  "autoTrack": false,
+                  "dayNight": false,
+                  "led": false,
+                  "microphone": false,
+                  "motion": false,
+                  "presets": false,
+                  "privacy": false,
+                  "ptz": false,
+                  "sdCard": false,
+                  "siren": false,
+                  "speaker": false
+                },
+                "formFactor": "bullet",
+                "generic": true,
+                "id": "rtsp",
+                "manufacturer": "",
+                "model": "",
+                "note": "custom-paths",
+                "outdoor": true,
+                "resolution": "",
+                "subResolution": ""
+              }
+            ]
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/catalog",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/overview",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/overview",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/overview",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/overview",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/overview",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "cameras": [
+              {
+                "health": "unknown",
+                "height": 0,
+                "id": 1,
+                "lastEvent": null,
+                "lastSeenAt": "<masked>",
+                "mainActive": false,
+                "sampledAt": "<masked>",
+                "stream": null,
+                "viewers": 0,
+                "width": 0
+              }
+            ],
+            "events": []
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/overview",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/overview",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "cameras": [
+              {
+                "health": "unknown",
+                "height": 0,
+                "id": 1,
+                "lastEvent": null,
+                "lastSeenAt": "<masked>",
+                "mainActive": false,
+                "sampledAt": "<masked>",
+                "stream": null,
+                "viewers": 0,
+                "width": 0
+              }
+            ],
+            "events": []
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/overview",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/overview",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "cameras": [
+              {
+                "health": "unknown",
+                "height": 0,
+                "id": 1,
+                "lastEvent": null,
+                "lastSeenAt": "<masked>",
+                "mainActive": false,
+                "sampledAt": "<masked>",
+                "stream": null,
+                "viewers": 0,
+                "width": 0
+              }
+            ],
+            "events": []
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/overview",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/probe",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/probe",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/probe",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/camera/probe",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/probe",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/probe",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/probe",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "ip": [
+                "ip must not be empty",
+                "must be an IPv4 or IPv6 address"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/probe",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/probe",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/probe",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/probe",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "ip": [
+                "ip must not be empty",
+                "must be an IPv4 or IPv6 address"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/probe",
       "unit": "camera"
     },
     {
@@ -587,12 +4224,14 @@
           "info": {
             "alarm": true,
             "autoTrack": true,
+            "catalogId": "tapo-c200",
             "dayNight": true,
             "led": true,
             "motion": true,
             "presets": true,
             "privacy": true,
             "ptz": true,
+            "sdCard": true,
             "talk": false
           },
           "status": 200
@@ -620,12 +4259,14 @@
           "info": {
             "alarm": true,
             "autoTrack": true,
+            "catalogId": "tapo-c200",
             "dayNight": true,
             "led": true,
             "motion": true,
             "presets": true,
             "privacy": true,
             "ptz": true,
+            "sdCard": true,
             "talk": false
           },
           "status": 200
@@ -653,12 +4294,14 @@
           "info": {
             "alarm": true,
             "autoTrack": true,
+            "catalogId": "tapo-c200",
             "dayNight": true,
             "led": true,
             "motion": true,
             "presets": true,
             "privacy": true,
             "ptz": true,
+            "sdCard": true,
             "talk": false
           },
           "status": 200
@@ -1425,6 +5068,162 @@
         "status": 404
       },
       "route": "/camera/{1}/settings",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/snapshot",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/snapshot",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/snapshot",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/snapshot",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/snapshot",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "CAMERA_UNREACHABLE",
+            "message": "The camera sent no picture"
+          },
+          "info": null,
+          "status": 502
+        },
+        "pretty": true,
+        "status": 502
+      },
+      "route": "/camera/{1}/snapshot",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/snapshot",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "CAMERA_UNREACHABLE",
+            "message": "The camera sent no picture"
+          },
+          "info": null,
+          "status": 502
+        },
+        "pretty": true,
+        "status": 502
+      },
+      "route": "/camera/{1}/snapshot",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/snapshot",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "CAMERA_UNREACHABLE",
+            "message": "The camera sent no picture"
+          },
+          "info": null,
+          "status": 502
+        },
+        "pretty": true,
+        "status": 502
+      },
+      "route": "/camera/{1}/snapshot",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/999999/snapshot",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Camera not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/camera/{1}/snapshot",
       "unit": "camera"
     },
     {

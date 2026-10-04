@@ -85,7 +85,12 @@
               "enabled": true
             },
             "service": "argus-identity",
-            "uptimeSeconds": "<masked>"
+            "uptimeSeconds": "<masked>",
+            "voiceprint": {
+              "indexed": 0,
+              "loaded": true,
+              "model": "3dspeaker_speech_eres2net_sv_en_voxceleb_16k"
+            }
           },
           "status": 200
         },

@@ -44,7 +44,9 @@ CONTROL_ERROR_CODE = "CAMERA_UNREACHABLE"
 
 BODY_OVERRIDES = {
     ("auth", "PATCH", "/auth/me"): json.dumps({"name": "p" * 125}),
-    ("guard", "POST", "/guard/mode"): json.dumps({"mode": "argus-probe"}),
+    ("identity", "POST", "/invitation"): json.dumps({"role": "owner"}),
+    ("guard", "POST", "/guard/mode"): json.dumps(
+        {"mode": "argus-probe", "environmentId": 0}),
     ("settings", "PATCH", "/settings/{1}"): json.dumps(
         {"changes": [{"key": "probe.setting", "value": "argus-probe"}]}),
 }
@@ -55,12 +57,24 @@ CONTROL_ROUTES = (
     "presets",
     "ptz",
     "settings",
+    "snapshot",
     "status",
     "talk",
 )
 
+BODY_METHODS = ("POST", "PATCH", "PUT")
+
+SCOPED_PROBES = {
+    ("auth", "DELETE", "/auth/sessions"): (
+        {"name": "resident-scope-others", "auth": "resident",
+         "query": "?scope=others"},
+        {"name": "guest-scope-all", "auth": "guest", "query": "?scope=all"},
+    ),
+}
+
 ID_SLOTS = {
     "/auth/device-login/": MISSING_ID,
+    "/auth/users/": "ownerUser",
     "/camera/": "camera",
     "/zone/": "zone",
     "/invitation/": MISSING_ID,
@@ -76,6 +90,7 @@ ID_SLOTS = {
 
 SESSION_KILLERS = {
     ("auth", "PATCH", "/auth/logout"),
+    ("auth", "DELETE", "/auth/sessions"),
 }
 
 VOLATILE_FIELDS = {
@@ -85,6 +100,13 @@ VOLATILE_FIELDS = {
         "reason": "the push channel's self-test runs on its own schedule, so "
                   "these fields report the last probe's outcome rather than a "
                   "contract; the counters beside them stay pinned",
+    },
+    ("camera", "/camera/overview"): {
+        "keys": ("cameras[].health",),
+        "reason": "a camera's health is the stream supervisor's last "
+                  "observation, unknown until its first probe and unreachable "
+                  "after it for the fixture camera; the rest of each row stays "
+                  "pinned",
     },
     ("settings", "/settings/profiles"): {
         "keys": ("recommendation",),
@@ -98,6 +120,7 @@ PORT_RE = re.compile(r"^port\s*=\s*(\d+)\s*$", re.MULTILINE)
 PLAIN_RE = re.compile(r"^plain\s*=\s*(true|false)\s*$", re.MULTILINE)
 TOKEN_RE = re.compile(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+")
 HEX64_RE = re.compile(r"\b[0-9a-fA-F]{64}\b")
+HEX32_RE = re.compile(r"\b[0-9a-f]{32}\b")
 
 CENSUS_IDS = {
     "camera": 1,
@@ -266,8 +289,13 @@ def looks_like_hex64(value):
     return isinstance(value, str) and HEX64_RE.fullmatch(value) is not None
 
 
+def looks_like_hex32(value):
+    return isinstance(value, str) and HEX32_RE.fullmatch(value) is not None
+
+
 def mask_text(text):
-    return HEX64_RE.sub("<masked-hex64>", TOKEN_RE.sub("<masked-token>", text))
+    text = HEX64_RE.sub("<masked-hex64>", TOKEN_RE.sub("<masked-token>", text))
+    return HEX32_RE.sub("<masked-hex32>", text)
 
 
 def mask(value):
@@ -296,6 +324,8 @@ def normalize(value, masking=True):
         return "<masked-token>"
     if looks_like_hex64(value):
         return "<masked-hex64>"
+    if looks_like_hex32(value):
+        return "<masked-hex32>"
     return value
 
 
@@ -313,8 +343,9 @@ def slot_id(route, ids):
 
 
 def route_identity(route, ids, missing):
-    return route["path"].replace("{1}", MISSING_ID if missing
+    path = route["path"].replace("{1}", MISSING_ID if missing
                                  else slot_id(route, ids))
+    return path.replace("{2}", MISSING_ID)
 
 
 def is_control(unit, path):
@@ -330,14 +361,14 @@ def probe_plan(route, ids, roles):
     probes = []
 
     def add(name, auth=None, ua=RECORDER_UA, body=None,
-            content_type="application/json", missing=False):
+            content_type="application/json", missing=False, query=""):
         probes.append({
             "name": name,
             "auth": auth,
             "userAgent": ua,
             "body": body,
             "contentType": content_type if body is not None else None,
-            "path": route_identity(route, ids, missing),
+            "path": route_identity(route, ids, missing) + query,
         })
 
     if route["multipart"]:
@@ -357,11 +388,11 @@ def probe_plan(route, ids, roles):
         return probes
 
     body = BODY_OVERRIDES.get((route["unit"], method, route["path"]))
-    if body is None and method in ("POST", "PATCH"):
+    if body is None and method in BODY_METHODS:
         body = "{}"
     if guarded:
         add("no-token", body=body)
-    if "ValidJsonFilter" in filters and method in ("POST", "PATCH"):
+    if "ValidJsonFilter" in filters and method in BODY_METHODS:
         add("bad-json", body="not-json")
     if guarded and "DeviceFilter" in filters:
         add("other-device", auth="owner", ua=OTHER_UA, body=body)
@@ -383,6 +414,10 @@ def probe_plan(route, ids, roles):
     if "{1}" in route["path"] and slot_id(route, ids) != MISSING_ID:
         add("owner-missing", auth="owner" if guarded else None, body=body,
             missing=True)
+    for scoped in SCOPED_PROBES.get((route["unit"], method, route["path"]), ()):
+        if scoped["auth"] in roles:
+            add(scoped["name"], auth=scoped["auth"], body=body,
+                query=scoped["query"])
     return probes
 
 
@@ -567,6 +602,8 @@ def write_manifest(fixtures, units, probes, deviations):
             "maskedSuffix": "*At",
             "maskedTokens": "any value shaped like a three-part JWT",
             "maskedHex64": "any 64-character hexadecimal value",
+            "maskedHex32": "any 32-character lowercase hexadecimal value "
+                           "(a session id)",
             "unmaskedUnder": sorted(UNMASKED_UNDER),
             "maskedShape": "a masked key keeps the shape of what it held, so "
                            "an object under it is still compared field by field",
@@ -705,8 +742,23 @@ def without_volatile(entry, body, volatile):
         return body
     body = json.loads(json.dumps(body))
     for key in fields["keys"]:
-        body["info"].pop(key, None)
+        drop_path(body["info"], key.split("."))
     return body
+
+
+def drop_path(node, parts):
+    head, rest = parts[0], parts[1:]
+    if head.endswith("[]"):
+        items = node.get(head[:-2]) if isinstance(node, dict) else None
+        for item in items if isinstance(items, list) else ():
+            drop_path(item, rest)
+        return
+    if not isinstance(node, dict):
+        return
+    if rest:
+        drop_path(node.get(head), rest)
+    else:
+        node.pop(head, None)
 
 
 def compare(expected, actual, volatile):
