@@ -3,8 +3,11 @@
 #include <argus/voice/v1/voice.grpc.pb.h>
 #include <grpcpp/grpcpp.h>
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <auth/user-role.hxx>
 
 class VoiceStreamObserver
@@ -31,6 +34,21 @@ public:
   virtual void finish() = 0;
 };
 
+struct VoiceRoomJoinResult
+{
+  bool joined{false};
+  bool already{false};
+  grpc::Status status;
+};
+
+struct VoiceAnnounceInput
+{
+  int64_t userId{0};
+  std::string text;
+  std::string kind;
+  std::string callId;
+};
+
 struct VoiceClientConfig
 {
   std::string target;
@@ -50,7 +68,14 @@ public:
       const argus::voice::v1::VoiceIdentity& identity,
       std::shared_ptr<VoiceStreamObserver> observer);
 
-  virtual bool waitConnected(int timeoutMs) const;
+  [[nodiscard]] virtual bool waitConnected(int timeoutMs) const;
+
+  [[nodiscard]] virtual VoiceRoomJoinResult joinRoom(const argus::voice::v1::RtcJoin& join) const;
+
+  [[nodiscard]] virtual std::optional<bool> announce(const VoiceAnnounceInput& input) const;
+
+  static constexpr int kJoinRoomDeadlineMs = 6000;
+  static constexpr int kAnnounceDeadlineMs = 1500;
 
 private:
   std::shared_ptr<grpc::Channel> channel_;
@@ -59,3 +84,7 @@ private:
 };
 
 std::string voiceRoleToString(argus::voice::v1::VoiceRole role);
+
+argus::voice::v1::VoiceRole voiceRoleToProto(UserRole role);
+
+argus::voice::v1::VoiceLanguage voiceLanguageToProto(std::string_view lang);

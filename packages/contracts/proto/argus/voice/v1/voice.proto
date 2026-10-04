@@ -36,6 +36,7 @@ message VoiceStart
   VoiceIdentity identity = 1;
   VoiceMode mode = 2;
   bool resume = 3;
+  string opening_line = 4;
 }
 
 message VoiceStop {}
@@ -157,7 +158,41 @@ message ServerFrame
   }
 }
 
+message RtcJoin
+{
+  string room = 1;
+  string agent_token = 2;
+  string user_identity = 3;
+  VoiceIdentity identity = 4;
+  VoiceMode mode = 5;
+  bool resume = 6;
+  string call_id = 7;
+  string opening_line = 8;
+  string call_kind = 9;
+}
+
+message RtcJoined
+{
+  bool joined = 1;
+  bool already = 2;
+}
+
+message AnnounceRequest
+{
+  int64 user_id = 1;
+  string text = 2;
+  string kind = 3;
+  string call_id = 4;
+}
+
+message AnnounceResponse
+{
+  bool delivered = 1;
+}
+
 service VoiceService
 {
   rpc Connect(stream ClientFrame) returns (stream ServerFrame) {}
+  rpc JoinRoom(RtcJoin) returns (RtcJoined) {}
+  rpc Announce(AnnounceRequest) returns (AnnounceResponse) {}
 }

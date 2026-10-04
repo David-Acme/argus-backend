@@ -221,6 +221,39 @@ bool VoiceClient::waitConnected(int timeoutMs) const
       std::chrono::system_clock::now() + std::chrono::milliseconds(timeoutMs));
 }
 
+VoiceRoomJoinResult VoiceClient::joinRoom(const argus::voice::v1::RtcJoin& join) const
+{
+  grpc::ClientContext context;
+  argus::client::addCallerCredential(context, credential_);
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::milliseconds(kJoinRoomDeadlineMs));
+  argus::voice::v1::RtcJoined reply;
+  VoiceRoomJoinResult result;
+  result.status = stub_->JoinRoom(&context, join, &reply);
+  if (result.status.ok()) {
+    result.joined = reply.joined();
+    result.already = reply.already();
+  }
+  return result;
+}
+
+std::optional<bool> VoiceClient::announce(const VoiceAnnounceInput& input) const
+{
+  grpc::ClientContext context;
+  argus::client::addCallerCredential(context, credential_);
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::milliseconds(kAnnounceDeadlineMs));
+  argus::voice::v1::AnnounceRequest request;
+  request.set_user_id(input.userId);
+  request.set_text(input.text);
+  request.set_kind(input.kind);
+  request.set_call_id(input.callId);
+  argus::voice::v1::AnnounceResponse reply;
+  if (!stub_->Announce(&context, request, &reply).ok())
+    return std::nullopt;
+  return reply.delivered();
+}
+
 std::string voiceRoleToString(argus::voice::v1::VoiceRole role)
 {
   switch (role) {
@@ -234,4 +267,28 @@ std::string voiceRoleToString(argus::voice::v1::VoiceRole role)
       break;
   }
   return "guest";
+}
+
+argus::voice::v1::VoiceRole voiceRoleToProto(UserRole role)
+{
+  switch (role) {
+    case UserRole::Owner:
+      return argus::voice::v1::VOICE_ROLE_OWNER;
+    case UserRole::Resident:
+      return argus::voice::v1::VOICE_ROLE_RESIDENT;
+    case UserRole::Guard:
+      return argus::voice::v1::VOICE_ROLE_GUARD;
+    case UserRole::Guest:
+      break;
+  }
+  return argus::voice::v1::VOICE_ROLE_GUEST;
+}
+
+argus::voice::v1::VoiceLanguage voiceLanguageToProto(std::string_view lang)
+{
+  if (lang == "es")
+    return argus::voice::v1::VOICE_LANGUAGE_ES;
+  if (lang == "en")
+    return argus::voice::v1::VOICE_LANGUAGE_EN;
+  return argus::voice::v1::VOICE_LANGUAGE_SYSTEM;
 }

@@ -58,30 +58,6 @@ ReactionKind reactionKindFromProto(argus::voice::v1::ReactionKind reaction)
   return static_cast<ReactionKind>(reaction);
 }
 
-argus::voice::v1::VoiceRole voiceRoleToProto(UserRole role)
-{
-  switch (role) {
-    case UserRole::Owner:
-      return argus::voice::v1::VOICE_ROLE_OWNER;
-    case UserRole::Resident:
-      return argus::voice::v1::VOICE_ROLE_RESIDENT;
-    case UserRole::Guard:
-      return argus::voice::v1::VOICE_ROLE_GUARD;
-    case UserRole::Guest:
-      break;
-  }
-  return argus::voice::v1::VOICE_ROLE_GUEST;
-}
-
-argus::voice::v1::VoiceLanguage voiceLangToProto(const std::string& lang)
-{
-  if (lang == "es")
-    return argus::voice::v1::VOICE_LANGUAGE_ES;
-  if (lang == "en")
-    return argus::voice::v1::VOICE_LANGUAGE_EN;
-  return argus::voice::v1::VOICE_LANGUAGE_SYSTEM;
-}
-
 }
 
 VoiceGrpcConfig VoiceGrpcConfig::resolve()
@@ -395,7 +371,7 @@ drogon::Task<void> VoiceGrpcRelay::startStream(StartInput input)
   identity.set_device_hash(session->deviceHash);
   if (user) {
     identity.set_name(user->name);
-    identity.set_language(voiceLangToProto(user->lang));
+    identity.set_language(voiceLanguageToProto(user->lang));
   }
   start.set_mode(mode);
   start.set_resume(resume);

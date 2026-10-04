@@ -83,6 +83,37 @@ public:
     return grpc::Status::OK;
   }
 
+  grpc::Status JoinRoom(grpc::ServerContext* context, const v1::RtcJoin* request,
+                        v1::RtcJoined* reply) override
+  {
+    std::scoped_lock lock(mutex);
+    credential = credentialOf(*context);
+    joins.push_back(*request);
+    reply->set_joined(true);
+    reply->set_already(joins.size() > 1);
+    return grpc::Status::OK;
+  }
+
+  grpc::Status Announce(grpc::ServerContext* context, const v1::AnnounceRequest* request,
+                        v1::AnnounceResponse* reply) override
+  {
+    std::scoped_lock lock(mutex);
+    credential = credentialOf(*context);
+    announcements.push_back(*request);
+    if (request->user_id() == 0)
+      return {grpc::StatusCode::INVALID_ARGUMENT, "no user"};
+    reply->set_delivered(request->user_id() == 7);
+    return grpc::Status::OK;
+  }
+
+  static std::string credentialOf(const grpc::ServerContext& context)
+  {
+    for (const auto& [key, value] : context.client_metadata())
+      if (std::string(key.begin(), key.end()) == "x-argus-credential")
+        return {value.begin(), value.end()};
+    return {};
+  }
+
   void cancelActiveCall()
   {
     std::scoped_lock lock(mutex);
@@ -91,6 +122,9 @@ public:
   }
 
   std::vector<v1::ClientFrame> frames;
+  std::vector<v1::RtcJoin> joins;
+  std::vector<v1::AnnounceRequest> announcements;
+  std::string credential;
   std::map<std::string, std::string> metadata;
   std::mutex mutex;
   grpc::ServerContext* context_{nullptr};
@@ -188,4 +222,79 @@ TEST_CASE("one stream carries the connect identity and the frames in order")
   REQUIRE(service.frames[4].has_mute());
   CHECK(service.frames[4].mute().muted());
   CHECK(service.frames[5].has_stop());
+}
+
+TEST_CASE("joinRoom carries the whole join and the caller credential, and reports a second join")
+{
+  RecordingVoiceService service;
+  int port = 0;
+  auto server = startServer(service, port);
+  REQUIRE(server);
+  VoiceClient client({.target = "127.0.0.1:" + std::to_string(port), .credential = "sync-secret"});
+  CallCleanup cleanup{service, *server};
+
+  v1::RtcJoin join;
+  join.set_room("u7.rtc-0123");
+  join.set_agent_token("agent.jwt");
+  join.set_user_identity("user:7:abcd");
+  join.mutable_identity()->set_user_id(7);
+  join.set_mode(v1::VOICE_MODE_DUPLEX);
+  join.set_call_id("rtc-0123");
+  join.set_opening_line("Hola");
+  const VoiceRoomJoinResult first = client.joinRoom(join);
+  const VoiceRoomJoinResult second = client.joinRoom(join);
+
+  CHECK(first.status.ok());
+  CHECK(first.joined);
+  CHECK_FALSE(first.already);
+  CHECK(second.already);
+  std::scoped_lock lock(service.mutex);
+  CHECK(service.credential == "sync-secret");
+  REQUIRE(service.joins.size() == 2);
+  CHECK(service.joins[0].room() == "u7.rtc-0123");
+  CHECK(service.joins[0].agent_token() == "agent.jwt");
+  CHECK(service.joins[0].user_identity() == "user:7:abcd");
+  CHECK(service.joins[0].opening_line() == "Hola");
+}
+
+TEST_CASE("announce answers delivered, not delivered, or nothing when the call fails")
+{
+  RecordingVoiceService service;
+  int port = 0;
+  auto server = startServer(service, port);
+  REQUIRE(server);
+  VoiceClient client({.target = "127.0.0.1:" + std::to_string(port), .credential = "n-secret"});
+  CallCleanup cleanup{service, *server};
+
+  CHECK(client.announce({.userId = 7, .text = "Ha llegado alguien.", .kind = "guard_episode", .callId = "call-3"}) == true);
+  CHECK(client.announce({.userId = 8, .text = "x", .kind = "agenda", .callId = "call-4"}) == false);
+  CHECK_FALSE(client.announce({.userId = 0, .text = "x", .kind = "agenda", .callId = ""}).has_value());
+  std::scoped_lock lock(service.mutex);
+  CHECK(service.credential == "n-secret");
+  REQUIRE(service.announcements.size() == 3);
+  CHECK(service.announcements[0].text() == "Ha llegado alguien.");
+  CHECK(service.announcements[0].call_id() == "call-3");
+}
+
+TEST_CASE("joinRoom against nothing listening fails within its deadline")
+{
+  VoiceClient client({.target = "127.0.0.1:1", .credential = ""});
+  const auto started = std::chrono::steady_clock::now();
+  const VoiceRoomJoinResult result = client.joinRoom(v1::RtcJoin{});
+  CHECK_FALSE(result.status.ok());
+  CHECK_FALSE(result.joined);
+  CHECK(std::chrono::steady_clock::now() - started <
+        std::chrono::milliseconds(VoiceClient::kJoinRoomDeadlineMs + 1000));
+}
+
+TEST_CASE("a user role and a language reach the voice wire as their proto values")
+{
+  CHECK(voiceRoleToProto(UserRole::Owner) == v1::VOICE_ROLE_OWNER);
+  CHECK(voiceRoleToProto(UserRole::Resident) == v1::VOICE_ROLE_RESIDENT);
+  CHECK(voiceRoleToProto(UserRole::Guard) == v1::VOICE_ROLE_GUARD);
+  CHECK(voiceRoleToProto(UserRole::Guest) == v1::VOICE_ROLE_GUEST);
+  CHECK(voiceLanguageToProto("es") == v1::VOICE_LANGUAGE_ES);
+  CHECK(voiceLanguageToProto("en") == v1::VOICE_LANGUAGE_EN);
+  CHECK(voiceLanguageToProto("fr") == v1::VOICE_LANGUAGE_SYSTEM);
+  CHECK(voiceLanguageToProto("") == v1::VOICE_LANGUAGE_SYSTEM);
 }
