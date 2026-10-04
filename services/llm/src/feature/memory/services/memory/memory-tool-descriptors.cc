@@ -45,8 +45,8 @@ std::vector<tools::ToolDescriptor> memoryToolDescriptors()
   descriptors.push_back(
       {.name = "memory.remind",
        .description = "Guarda un recordatorio del usuario que habla: un hecho "
-                      "con un momento concreto. No suena ninguna alarma; el "
-                      "recordatorio se recupera al preguntar por él",
+                      "con un momento concreto. Si dice la hora, Argus le "
+                      "llama a esa hora para recordárselo",
        .arguments = {{.name = "text",
                       .type = "string",
                       .required = false,

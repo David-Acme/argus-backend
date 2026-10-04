@@ -7,6 +7,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <shared/vocabulary/tool-contracts.hxx>
 #include <feature/memory/repositories/memory-graph/memory-graph-repository.hxx>
 #include <feature/memory/services/embedding/embedding-service.hxx>
@@ -14,6 +15,7 @@
 #include <feature/memory/services/memory/graph-recall.hxx>
 #include <feature/memory/services/memory/memory-chat.hxx>
 #include <feature/memory/services/memory/memory-formation.hxx>
+#include <feature/memory/services/memory/reminder-call-scheduler.hxx>
 #include <phrase/phrase-catalog.hxx>
 #include <feature/memory/services/memory/sqlite-graph.hxx>
 #include <feature/memory/services/memory/tool-parser.hxx>
@@ -101,6 +103,8 @@ public:
 
   std::vector<tools::ToolDescriptor> toolDescriptors();
 
+  void setReminderCalls(std::shared_ptr<const ReminderCallScheduler> scheduler);
+
   SemanticGraph& graph() { return *graph_; }
   MemoryFormation& formation() { return formation_; }
   GraphRecall& graphRecall() { return graphRecall_; }
@@ -147,6 +151,7 @@ private:
 
   VecDb& vecDb_;
   IMemoryChat& chat_;
+  std::shared_ptr<const ReminderCallScheduler> reminderCalls_;
   std::unique_ptr<SqliteGraph> graph_{std::make_unique<SqliteGraph>()};
   MemoryGraphRepository graphRepo_;
   EntityResolver resolver_{*graph_};
@@ -204,6 +209,16 @@ private:
 
   tools::ToolResult handleRemember(const tools::ToolCall& call);
   tools::ToolResult handleRemind(const tools::ToolCall& call);
+
+  struct ReminderCallInput
+  {
+    const tools::ToolCall& call;
+    const std::string& text;
+    int64_t factId{0};
+  };
+
+  std::optional<std::string>
+  scheduleReminderCall(const ReminderCallInput& input) const;
   tools::ToolResult handleRecall(const tools::ToolCall& call);
   tools::ToolResult handleForget(const tools::ToolCall& call);
   tools::ToolResult handleProcedureRun(const tools::ToolCall& call);

@@ -97,6 +97,10 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                          ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
     endif()
+    if(NOT TARGET argus::clients::notification)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
+                         ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
+    endif()
     if(NOT TARGET argus::clients::camera)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera
                          ${CMAKE_BINARY_DIR}/clients/camera EXCLUDE_FROM_ALL)
@@ -352,6 +356,16 @@ target_compile_options(memory-reminder-test PRIVATE -Wall -Wextra)
 set_target_properties(memory-reminder-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME memory-reminder-test COMMAND memory-reminder-test)
+
+add_executable(call-time-test tests/unit/call-time-test.cc)
+
+target_link_libraries(call-time-test PRIVATE argus::memory doctest::doctest)
+
+target_compile_options(call-time-test PRIVATE -Wall -Wextra)
+
+set_target_properties(call-time-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME call-time-test COMMAND call-time-test)
 
 add_executable(encounter-inbox-test tests/unit/encounter-inbox-test.cc)
 

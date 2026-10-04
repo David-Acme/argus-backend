@@ -107,3 +107,7 @@ max_reconnects = 60
 [camera]
 grpc_target = ""
 credential = ""
+
+[notifications]
+target = "127.0.0.1:7038"
+credential = ""

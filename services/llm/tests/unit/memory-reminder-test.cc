@@ -10,6 +10,8 @@
 #include <sqlite/vec-db.hxx>
 
 #include <algorithm>
+#include <ctime>
+#include <memory>
 #include <cctype>
 #include <cstdio>
 #include <filesystem>
@@ -381,6 +383,76 @@ TEST_CASE("a newer value of the same fact closes the older one, and notes never 
   CHECK(holding("sábados") == 1);
   CHECK(holding("paquete") == 1);
   CHECK(holding("wifi") == 1);
+  service.shutdown();
+  std::remove(kScratchConfig);
+}
+
+namespace
+{
+class RecordingReminderCalls final : public ReminderCallScheduler
+{
+public:
+  [[nodiscard]] bool schedule(const ReminderCallRequest& request) const override
+  {
+    requests.push_back(request);
+    return true;
+  }
+
+  mutable std::vector<ReminderCallRequest> requests;
+};
+}
+
+TEST_CASE("a reminder that names a time schedules a call at that time")
+{
+  std::filesystem::create_directories(kScratchDir);
+  writeConfig("reminder-call.db");
+  ConfigService::load(kScratchConfig);
+  std::filesystem::remove(std::string(kScratchDir) + "/reminder-call.db");
+
+  SilentChat chat;
+  MemoryService service(VecDb::instance(), chat);
+  service.init({});
+  REQUIRE(service.isLoaded());
+  auto calls = std::make_shared<RecordingReminderCalls>();
+  service.setReminderCalls(calls);
+
+  const auto descriptors = service.toolDescriptors();
+  const auto run = [&descriptors](const tools::ToolCall& call) {
+    for (const auto& descriptor : descriptors)
+      if (descriptor.name == call.name)
+        return descriptor.handler(call);
+    return tools::ToolResult{};
+  };
+
+  auto timed = callFor("memory.remind", kSpeaker);
+  timed.arguments["text"] = "llamar al dentista mañana a las nueve";
+  timed.context.utterance = "recuérdame mañana a las nueve llamar al dentista";
+  timed.context.decided = true;
+  const auto stored = run(timed);
+  INFO("timed output: " << stored.output);
+  REQUIRE(stored.ok);
+  REQUIRE(calls->requests.size() == 1);
+  const auto& request = calls->requests.front();
+  CHECK(request.userId == kSpeaker);
+  CHECK(request.topic == "llamar al dentista");
+  CHECK(request.lang == "es");
+  CHECK(request.commandId.starts_with("memory-remind:"));
+  const auto seconds = static_cast<std::time_t>(request.fireAt);
+  std::tm local{};
+  localtime_r(&seconds, &local);
+  CHECK(local.tm_hour == 9);
+  CHECK(local.tm_min == 0);
+  CHECK(request.fireAt > std::time(nullptr));
+  CHECK(stored.output.ends_with("Te llamaré a las 09:00."));
+
+  auto untimed = callFor("memory.remind", kSpeaker);
+  untimed.arguments["text"] = "mi cita con el dentista es el lunes";
+  untimed.context.utterance = "recuérdame que mi cita con el dentista es el lunes";
+  const auto plain = run(untimed);
+  INFO("untimed output: " << plain.output);
+  CHECK(calls->requests.size() == 1);
+  CHECK(plain.output.find("llamaré") == std::string::npos);
+
   service.shutdown();
   std::remove(kScratchConfig);
 }

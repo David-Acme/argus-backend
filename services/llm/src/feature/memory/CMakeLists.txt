@@ -1,9 +1,11 @@
 argus_module(NAME memory
     SOURCES
         infra/catalog-replica.cc
+        infra/notification-reminder-calls.cc
         repositories/memory-graph/memory-graph-repository.cc
         services/embedding/embedding-service.cc
         services/embedding/unigram-tokenizer.cc
+        services/extract/call-time.cc
         services/extract/extraction-service.cc
         services/extract/lexicon-extractor.cc
         services/extract/temporal-resolver.cc
@@ -27,6 +29,7 @@ argus_module(NAME memory
         argus::lib::nats
         argus::contracts::sync
         argus::clients::llm
+        argus::clients::notification
         argus::hardware-profile
         Drogon::Drogon
         nlohmann_json::nlohmann_json

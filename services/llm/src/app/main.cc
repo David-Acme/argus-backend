@@ -1,6 +1,7 @@
 #include <app/rpc/llm-rpc-server.hxx>
 #include <config/llm-config.hxx>
 #include <camera/camera-sync-client.hxx>
+#include <feature/memory/infra/notification-reminder-calls.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <feature/llm/services/tools/app-tool-descriptors.hxx>
 #include <feature/settings/llm-settings.hxx>
@@ -174,6 +175,15 @@ int main()
     llm->shutdownEngine();
     llama_backend_free();
     return 1;
+  }
+  if (const LlmNotificationConfig notifications = LlmConfig::resolveNotifications();
+      !notifications.target.empty() && !notifications.credential.empty()) {
+    memory.setReminderCalls(std::make_shared<NotificationReminderCalls>(
+        std::make_shared<NotificationClient>(
+            NotificationClientConfig{.target = notifications.target,
+                                     .credential = notifications.credential})));
+    LOG_INFO << "argus-llm: timed reminders schedule a call through "
+             << notifications.target;
   }
   for (auto& descriptor : memory.toolDescriptors())
     ToolRegistry::instance().registerTool(std::move(descriptor));

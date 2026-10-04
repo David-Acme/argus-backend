@@ -1,6 +1,7 @@
 #include "memory-service.hxx"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <chrono>
@@ -16,6 +17,7 @@
 #include <string_view>
 #include <config/config-service.hxx>
 #include <feature/memory/services/embedding/embedding-service.hxx>
+#include <feature/memory/services/extract/call-time.hxx>
 #include <llm/llm-service.hxx>
 #include <feature/memory/services/memory/memory-tool-descriptors.hxx>
 #include <feature/memory/services/memory/memory-vec.hxx>
@@ -1203,7 +1205,55 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
               .episode = false});
   result.output = (english(call) ? "Reminder saved: " : "Recordatorio guardado: ") +
                   spoken(formed->canonical);
+  if (const auto when = scheduleReminderCall({.call = call,
+                                              .text = text,
+                                              .factId = formed->factId}))
+    result.output += (english(call) ? " I will call you at " : " Te llamaré a las ") +
+                     *when + ".";
   return result;
+}
+
+std::optional<std::string>
+MemoryService::scheduleReminderCall(const ReminderCallInput& input) const
+{
+  if (!reminderCalls_ || input.call.context.userId <= 0)
+    return std::nullopt;
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  const std::string& utterance = input.call.context.utterance.empty()
+                                     ? input.text
+                                     : input.call.context.utterance;
+  const auto when = call_time::resolve(
+      {.text = utterance, .lang = input.call.context.lang, .now = now});
+  if (!when)
+    return std::nullopt;
+  std::string topic = input.text;
+  if (const auto inText = call_time::resolve(
+          {.text = input.text, .lang = input.call.context.lang, .now = now}))
+    topic = call_time::withoutPhrase(input.text, *inText);
+  if (topic.empty())
+    topic = input.text;
+  const bool scheduled = reminderCalls_->schedule(
+      {.userId = input.call.context.userId,
+       .fireAt = when->fireAt,
+       .topic = topic,
+       .lang = input.call.context.lang,
+       .commandId = "memory-remind:" + std::to_string(input.factId) + ":" +
+                    std::to_string(when->fireAt)});
+  if (!scheduled)
+    return std::nullopt;
+  const auto seconds = static_cast<std::time_t>(when->fireAt);
+  std::tm local{};
+  localtime_r(&seconds, &local);
+  std::array<char, 8> clock{};
+  const std::size_t written =
+      std::strftime(clock.data(), clock.size(), "%H:%M", &local);
+  return std::string(clock.data(), written);
+}
+
+void MemoryService::setReminderCalls(
+    std::shared_ptr<const ReminderCallScheduler> scheduler)
+{
+  reminderCalls_ = std::move(scheduler);
 }
 
 tools::ToolResult MemoryService::handleRecall(const tools::ToolCall& call)

@@ -788,3 +788,29 @@ languages, and tool selection was identical (59/59 camera, 25/25 saves,
 vigilancia?" turns in the 2026-10-04 call runs) happens inside a call with
 an app situation note, which the single-turn bench does not reproduce; it
 needs a call-level A/B.
+
+## Timed reminders call the user (2026-10, "Argus calls you")
+
+`memory.remind` stores the reminder as before; when the user's own utterance
+names a time that `call_time::resolve` (`services/extract/call-time.{hxx,cc}`)
+turns into an instant within 30 days, it also asks argus-notification to call
+the user at that time (`CallService.ScheduleCall` through
+`argus::clients::notification`, `[notifications] target/credential`, paired
+with notification's `[grpc] caller_llm`). The answer then ends with "Te
+llamaré a las 09:00." only when the call was scheduled.
+
+The contract is narrow on purpose: the model cannot call anyone. The time
+comes from the user's words, not the model's arguments; the recipient is the
+speaking user; the topic is the grounded reminder text with the time phrase
+cut out ("llamar al dentista"); the command id is
+`memory-remind:<factId>:<fireAt>`, so a repeated tool call schedules once.
+The parser reads es/en clock times ("a las 9:30", "a las nueve y media de la
+noche", "at 7 pm", "at noon"), named days ("mañana", "pasado mañana", "el
+lunes", "tomorrow", "on friday") and relative times ("en 20 minutos",
+"dentro de una hora", "in half an hour"). A bare hour that has already
+passed today is read as its evening hour when that is still ahead ("a las
+nueve" at 15:20 is 21:00), otherwise as tomorrow; a vague time ("mañana por
+la mañana") schedules nothing. Whether the scheduled call rings, is only a
+notification or is spoken into a live call is the user's call preference
+(`assistant`), decided by the notification service. The descriptor no longer
+says "no suena ninguna alarma".

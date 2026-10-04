@@ -25,6 +25,12 @@ struct LlmMemoryConfig
   bool observeCameraEvents{false};
 };
 
+struct LlmNotificationConfig
+{
+  std::string target;
+  std::string credential;
+};
+
 class LlmConfig
 {
 public:
@@ -38,4 +44,6 @@ public:
   [[nodiscard]] static std::string resolveCameraCredential();
 
   [[nodiscard]] static LlmMemoryConfig resolveMemory();
+
+  [[nodiscard]] static LlmNotificationConfig resolveNotifications();
 };

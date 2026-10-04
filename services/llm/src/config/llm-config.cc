@@ -44,3 +44,9 @@ LlmMemoryConfig LlmConfig::resolveMemory()
   return {.observeCameraEvents =
               ConfigService::getBool("memory.observe_camera_events")};
 }
+
+LlmNotificationConfig LlmConfig::resolveNotifications()
+{
+  return {.target = ConfigService::getString("notifications.target"),
+          .credential = ConfigService::getString("notifications.credential")};
+}
