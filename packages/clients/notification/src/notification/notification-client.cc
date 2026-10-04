@@ -23,8 +23,9 @@ NotificationRpcOutcome outcomeForStatus(grpc::StatusCode code)
 
 NotificationClient::NotificationClient(NotificationClientConfig config)
     : channel_(argus::client::makeChannel(config.target)),
+      credential_(std::move(config.credential)),
       stub_(argus::notification::v1::NotificationService::NewStub(channel_)),
-      credential_(std::move(config.credential))
+      callStub_(argus::notification::v1::CallService::NewStub(channel_))
 {
 }
 
@@ -64,5 +65,71 @@ NotificationPullResult NotificationClient::pullNotifications(
   result.status = status;
   result.outcome = status.ok() ? NotificationRpcOutcome::Success
                                : outcomeForStatus(status.error_code());
+  return result;
+}
+
+NotificationCallClaimResult
+NotificationClient::claimCall(const NotificationCallClaimInput& input) const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  argus::notification::v1::ClaimCallRequest request;
+  request.set_call_id(input.callId);
+  request.set_user_id(input.userId);
+  request.set_session_id(input.sessionId);
+
+  NotificationCallClaimResult result;
+  result.status = callStub_->ClaimCall(&context, request, &result.response);
+  result.outcome = result.status.ok()
+                       ? NotificationRpcOutcome::Success
+                       : outcomeForStatus(result.status.error_code());
+  return result;
+}
+
+NotificationRpcOutcome
+NotificationClient::endCall(const NotificationCallEndInput& input) const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  argus::notification::v1::EndCallRequest request;
+  request.set_call_id(input.callId);
+  request.set_user_id(input.userId);
+  request.set_outcome(input.outcome);
+  request.set_spoken(input.spoken);
+
+  argus::notification::v1::EndCallResponse response;
+  const grpc::Status status = callStub_->EndCall(&context, request, &response);
+  if (!status.ok())
+    return outcomeForStatus(status.error_code());
+  return response.ok() ? NotificationRpcOutcome::Success
+                       : NotificationRpcOutcome::Rejected;
+}
+
+NotificationCallScheduleResult NotificationClient::scheduleCall(
+    const NotificationCallScheduleInput& input) const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  argus::notification::v1::ScheduleCallRequest request;
+  request.set_user_id(input.userId);
+  request.set_fire_at(input.fireAt);
+  request.set_topic(input.topic);
+  request.set_lang(input.lang);
+  request.set_command_id(input.commandId);
+
+  argus::notification::v1::ScheduleCallResponse response;
+  NotificationCallScheduleResult result;
+  result.status = callStub_->ScheduleCall(&context, request, &response);
+  result.outcome = result.status.ok()
+                       ? NotificationRpcOutcome::Success
+                       : outcomeForStatus(result.status.error_code());
+  result.scheduledId = response.scheduled_id();
+  result.duplicate = response.duplicate();
   return result;
 }

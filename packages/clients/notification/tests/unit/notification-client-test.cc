@@ -103,9 +103,9 @@ TEST_CASE("a create carries the identity and the capability credential")
 
   const NotificationClient anonymous(
       {.target = loopback(port), .credential = ""});
-  anonymous.createNotifications(request, {.userId = 7,
-                                          .role = "guest",
-                                          .device = std::nullopt});
+  const auto anonymousResult = anonymous.createNotifications(
+      request, {.userId = 7, .role = "guest", .device = std::nullopt});
+  CHECK(anonymousResult.outcome == NotificationRpcOutcome::Success);
   CHECK(service.metadata.count("x-argus-credential") == 0);
   CHECK(service.metadata.count("x-argus-device") == 0);
   server->Shutdown();
@@ -150,5 +150,109 @@ TEST_CASE("a receiver status picks the outcome, and only OK carries a body")
   CHECK(result.response.created(0).title() == "Front door: person");
   CHECK(result.response.last_created().id() == 12);
 
+  server->Shutdown();
+}
+
+namespace
+{
+class ScriptedCallService final : public v1::CallService::CallbackService
+{
+public:
+  grpc::Status status = grpc::Status::OK;
+  v1::ClaimCallRequest claimed;
+  v1::EndCallRequest ended;
+  v1::ScheduleCallRequest scheduled;
+  v1::ClaimCallResponse claimAnswer;
+  bool endOk = true;
+  std::string credential;
+
+  Reactor* ClaimCall(Ctx* context, const v1::ClaimCallRequest* in,
+                     v1::ClaimCallResponse* out) override
+  {
+    claimed = *in;
+    *out = claimAnswer;
+    return finish(context);
+  }
+  Reactor* EndCall(Ctx* context, const v1::EndCallRequest* in,
+                   v1::EndCallResponse* out) override
+  {
+    ended = *in;
+    out->set_ok(endOk);
+    return finish(context);
+  }
+  Reactor* ScheduleCall(Ctx* context, const v1::ScheduleCallRequest* in,
+                        v1::ScheduleCallResponse* out) override
+  {
+    scheduled = *in;
+    out->set_scheduled_id(31);
+    out->set_duplicate(true);
+    return finish(context);
+  }
+
+private:
+  Reactor* finish(Ctx* context)
+  {
+    credential.clear();
+    for (const auto& [key, value] : context->client_metadata())
+      if (std::string(key.begin(), key.end()) == "x-argus-credential")
+        credential.assign(value.begin(), value.end());
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(status);
+    return reactor;
+  }
+};
+}
+
+TEST_CASE("the call methods carry their fields and the credential")
+{
+  ScriptedCallService service;
+  grpc::ServerBuilder builder;
+  int port = 0;
+  builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(),
+                           &port);
+  builder.RegisterService(&service);
+  auto server = builder.BuildAndStart();
+  REQUIRE(server);
+  const NotificationClient client(
+      {.target = loopback(port), .credential = kCredential});
+
+  service.claimAnswer.set_status(v1::CALL_CLAIM_STATUS_CLAIMED);
+  service.claimAnswer.set_opening_line("Hola");
+  const auto claim =
+      client.claimCall({.callId = "call-4", .userId = 7, .sessionId = "s1"});
+  CHECK(claim.outcome == NotificationRpcOutcome::Success);
+  CHECK(claim.response.status() == v1::CALL_CLAIM_STATUS_CLAIMED);
+  CHECK(claim.response.opening_line() == "Hola");
+  CHECK(service.claimed.call_id() == "call-4");
+  CHECK(service.claimed.user_id() == 7);
+  CHECK(service.claimed.session_id() == "s1");
+  CHECK(service.credential == kCredential);
+
+  CHECK(client.endCall({.callId = "call-4",
+                        .userId = 7,
+                        .outcome = v1::CALL_OUTCOME_DECLINED,
+                        .spoken = true}) == NotificationRpcOutcome::Success);
+  CHECK(service.ended.outcome() == v1::CALL_OUTCOME_DECLINED);
+  CHECK(service.ended.spoken());
+  service.endOk = false;
+  CHECK(client.endCall({.callId = "call-4",
+                        .userId = 7,
+                        .outcome = v1::CALL_OUTCOME_COMPLETED,
+                        .spoken = false}) == NotificationRpcOutcome::Rejected);
+
+  const auto schedule = client.scheduleCall({.userId = 7,
+                                             .fireAt = 1800000000,
+                                             .topic = "llamar al dentista",
+                                             .lang = "es",
+                                             .commandId = "remind-1"});
+  CHECK(schedule.outcome == NotificationRpcOutcome::Success);
+  CHECK(schedule.scheduledId == 31);
+  CHECK(schedule.duplicate);
+  CHECK(service.scheduled.topic() == "llamar al dentista");
+  CHECK(service.scheduled.fire_at() == 1800000000);
+
+  service.status = grpc::Status(grpc::StatusCode::UNAVAILABLE, "down");
+  CHECK(client.claimCall({.callId = "call-4", .userId = 7, .sessionId = ""})
+            .outcome == NotificationRpcOutcome::Unavailable);
   server->Shutdown();
 }

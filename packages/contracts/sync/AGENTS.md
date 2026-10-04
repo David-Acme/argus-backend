@@ -36,10 +36,18 @@ now `services/sync`'s `SyncSocket`.
 ## Layout
 
 - `src/sync/sync-operation.hxx` — `SyncOperation`, `InitialInfo = 0` through
-  `AuthContextChanged = 7`, with `syncOperationToString`/`FromString` over the
-  eight spellings (`"initial_info"`, `"sync"`, `"sync_audit_log"`,
+  `CallCancel = 9`, with `syncOperationToString`/`FromString` over the
+  ten spellings (`"initial_info"`, `"sync"`, `"sync_audit_log"`,
   `"sync_user_audit_log"`, `"add"`, `"delete"`, `"log"`,
-  `"auth_context_changed"`). 16 files include it.
+  `"auth_context_changed"`, `"call_incoming"`, `"call_cancel"`). 16 files
+  include it. `0`-`7` are the frozen list; `CallIncoming = 8` and
+  `CallCancel = 9` (2026-10, "Argus calls you") are additive: argus-notification's
+  call engine rings a user's devices with them through
+  `SyncControlService.EmitToUser` (option `notification`, info
+  `{callId, reason, summary, urgency, kind, …}` / `{callId, reason}`), and
+  argus-sync relays them like any user emit — its fan-out never validates the
+  operation's range, so an older sync passes them through unchanged
+  (`services/notification/CONTEXT.md`, "Argus calls you").
 - `src/sync/table-name.hxx` — `TableName`, 24 enumerators `User = 0` through
   `Memory = 23`, with its round-trip helpers, `kLastTableName` for the sweeps
   that must not miss a new table, and a lookup map; 35 files, the
@@ -195,9 +203,10 @@ now `services/sync`'s `SyncSocket`.
 ## Tests
 
 - `tests/unit/sync-contract-vocabulary-test.cc` — `TableName` and `UserAction`
-  round-trips (the two the old enums-test covered; `SyncOperation` has helpers
-  but never had a round-trip case, and `AuditLogPriority` has none to make) and
-  the documented fallbacks.
+  round-trips (the two the old enums-test covered), the `SyncOperation`
+  round-trip with its numeric values pinned (the call operations made the case
+  worth having), and the documented fallbacks; `AuditLogPriority` has none to
+  make.
 - `tests/unit/sync-contract-catalog-test.cc` — the nine refusals as a pinned
   table, each entry's wire legality, and that no two say the same thing.
 - `tests/unit/audit-retention-test.cc` — the window's default and the refusal

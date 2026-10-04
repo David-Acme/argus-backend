@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <sync/audit-log-priority.hxx>
+#include <sync/sync-operation.hxx>
 #include <sync/table-name.hxx>
 #include <sync/user-action.hxx>
 
@@ -31,6 +32,26 @@ static void checkRoundTrip(const CheckRoundTripInput<Enum>& input)
         CHECK(toString(values[i]) == names[i]);
         CHECK(fromString(names[i]) == values[i]);
     }
+}
+
+TEST_CASE("sync operation strings round-trip and keep their wire numbers")
+{
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {SyncOperation::InitialInfo, SyncOperation::Synchronize,
+                   SyncOperation::SynchronizeAuditLog,
+                   SyncOperation::SynchronizeUserAuditLog, SyncOperation::Add,
+                   SyncOperation::Delete, SyncOperation::Log,
+                   SyncOperation::AuthContextChanged,
+                   SyncOperation::CallIncoming, SyncOperation::CallCancel},
+        .names = {"initial_info", "sync", "sync_audit_log",
+                  "sync_user_audit_log", "add", "delete", "log",
+                  "auth_context_changed", "call_incoming", "call_cancel"},
+        .toString = syncOperationToString,
+        .fromString = syncOperationFromString});
+    CHECK(static_cast<int>(SyncOperation::AuthContextChanged) == 7);
+    CHECK(static_cast<int>(SyncOperation::CallIncoming) == 8);
+    CHECK(static_cast<int>(SyncOperation::CallCancel) == 9);
+    CHECK(syncOperationFromString("unknown") == SyncOperation::Synchronize);
 }
 
 TEST_CASE("user action strings round-trip")

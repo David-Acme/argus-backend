@@ -51,6 +51,73 @@ message PullNotificationsResponse {
   optional NotificationRow last_created = 2;
 }
 
+enum CallClaimStatus {
+  CALL_CLAIM_STATUS_UNSPECIFIED = 0;
+  CALL_CLAIM_STATUS_CLAIMED = 1;
+  CALL_CLAIM_STATUS_TAKEN = 2;
+  CALL_CLAIM_STATUS_EXPIRED = 3;
+  CALL_CLAIM_STATUS_NOT_FOUND = 4;
+}
+
+enum CallOutcome {
+  CALL_OUTCOME_UNSPECIFIED = 0;
+  CALL_OUTCOME_COMPLETED = 1;
+  CALL_OUTCOME_DECLINED = 2;
+  CALL_OUTCOME_FAILED = 3;
+}
+
+message ClaimCallRequest {
+  string call_id = 1;
+  int64 user_id = 2;
+  string session_id = 3;
+}
+
+message ClaimCallResponse {
+  CallClaimStatus status = 1;
+  string opening_line = 2;
+  string lang = 3;
+  string kind = 4;
+  string summary = 5;
+  string title = 6;
+  int64 camera_id = 7;
+  string camera_name = 8;
+  int64 episode_id = 9;
+  string environment_name = 10;
+  string urgency = 11;
+}
+
+message EndCallRequest {
+  string call_id = 1;
+  int64 user_id = 2;
+  CallOutcome outcome = 3;
+  bool spoken = 4;
+}
+
+message EndCallResponse {
+  bool ok = 1;
+}
+
+message ScheduleCallRequest {
+  int64 user_id = 1;
+  int64 fire_at = 2;
+  string topic = 3;
+  string lang = 4;
+  string command_id = 5;
+}
+
+message ScheduleCallResponse {
+  int64 scheduled_id = 1;
+  bool duplicate = 2;
+}
+
+service CallService {
+  rpc ClaimCall(ClaimCallRequest) returns (ClaimCallResponse) {}
+
+  rpc EndCall(EndCallRequest) returns (EndCallResponse) {}
+
+  rpc ScheduleCall(ScheduleCallRequest) returns (ScheduleCallResponse) {}
+}
+
 service NotificationService {
   rpc CreateNotifications(CreateNotificationsRequest)
       returns (CreateNotificationsResponse) {}
