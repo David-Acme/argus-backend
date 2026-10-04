@@ -3647,7 +3647,7 @@
       "probe": "no-token",
       "request": {
         "auth": "none",
-        "body": "{}",
+        "body": "{\"driver\": \"tapo\", \"ip\": \"127.0.0.1\", \"port\": 1}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },
@@ -3699,7 +3699,7 @@
       "probe": "other-device",
       "request": {
         "auth": "owner",
-        "body": "{}",
+        "body": "{\"driver\": \"tapo\", \"ip\": \"127.0.0.1\", \"port\": 1}",
         "contentType": "application/json",
         "userAgent": "other"
       },
@@ -3725,28 +3725,61 @@
       "probe": "role-resident",
       "request": {
         "auth": "resident",
-        "body": "{}",
+        "body": "{\"driver\": \"tapo\", \"ip\": \"127.0.0.1\", \"port\": 1}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },
       "response": {
         "contentType": "application/json",
         "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "fields": {
-              "ip": [
-                "ip must not be empty",
-                "must be an IPv4 or IPv6 address"
-              ]
-            },
-            "message": "Validation failed"
+          "errors": null,
+          "info": {
+            "catalogId": "",
+            "device": {},
+            "ok": false,
+            "steps": [
+              {
+                "code": "refused",
+                "detail": "connection refused by 127.0.0.1:1",
+                "id": "network",
+                "status": "failed"
+              },
+              {
+                "code": "",
+                "detail": "",
+                "id": "main",
+                "status": "skipped"
+              },
+              {
+                "code": "",
+                "detail": "",
+                "id": "sub",
+                "status": "skipped"
+              },
+              {
+                "code": "",
+                "detail": "",
+                "id": "device",
+                "status": "skipped"
+              },
+              {
+                "code": "cloud_password_missing",
+                "detail": "",
+                "id": "talk",
+                "status": "warning"
+              }
+            ],
+            "stream": {
+              "audioCodec": "",
+              "height": 0,
+              "videoCodec": "",
+              "width": 0
+            }
           },
-          "info": null,
-          "status": 422
+          "status": 200
         },
         "pretty": true,
-        "status": 422
+        "status": 200
       },
       "route": "/camera/probe",
       "unit": "camera"
@@ -3757,7 +3790,7 @@
       "probe": "role-guest",
       "request": {
         "auth": "guest",
-        "body": "{}",
+        "body": "{\"driver\": \"tapo\", \"ip\": \"127.0.0.1\", \"port\": 1}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },
@@ -3783,28 +3816,61 @@
       "probe": "owner",
       "request": {
         "auth": "owner",
-        "body": "{}",
+        "body": "{\"driver\": \"tapo\", \"ip\": \"127.0.0.1\", \"port\": 1}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },
       "response": {
         "contentType": "application/json",
         "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "fields": {
-              "ip": [
-                "ip must not be empty",
-                "must be an IPv4 or IPv6 address"
-              ]
-            },
-            "message": "Validation failed"
+          "errors": null,
+          "info": {
+            "catalogId": "",
+            "device": {},
+            "ok": false,
+            "steps": [
+              {
+                "code": "refused",
+                "detail": "connection refused by 127.0.0.1:1",
+                "id": "network",
+                "status": "failed"
+              },
+              {
+                "code": "",
+                "detail": "",
+                "id": "main",
+                "status": "skipped"
+              },
+              {
+                "code": "",
+                "detail": "",
+                "id": "sub",
+                "status": "skipped"
+              },
+              {
+                "code": "",
+                "detail": "",
+                "id": "device",
+                "status": "skipped"
+              },
+              {
+                "code": "cloud_password_missing",
+                "detail": "",
+                "id": "talk",
+                "status": "warning"
+              }
+            ],
+            "stream": {
+              "audioCodec": "",
+              "height": 0,
+              "videoCodec": "",
+              "width": 0
+            }
           },
-          "info": null,
-          "status": 422
+          "status": 200
         },
         "pretty": true,
-        "status": 422
+        "status": 200
       },
       "route": "/camera/probe",
       "unit": "camera"

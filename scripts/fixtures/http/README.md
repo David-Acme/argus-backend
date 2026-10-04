@@ -63,6 +63,7 @@ Every route is probed in each access shape its own filter chain admits:
 | `multipart-empty`, `multipart-image` | `multipart/form-data`, empty and with a deterministic PNG |
 | `ws-plain-get` | the route's own `WS` method against the WebSocket path, which Drogon answers 405 |
 | `resident-scope-others`, `guest-scope-all` | `DELETE /auth/sessions?scope=…` on the transient resident's and guest's own recorder sessions (see Session safety) |
+| `guest-own-session`, `owner-resident-session` | `DELETE /auth/sessions/{session:guest}` and `DELETE /auth/users/2/sessions/{session:resident}`: the path names a transient user's current recorder session, read from its own `GET /auth/sessions` when the probe is sent |
 
 A path's `{2}` is always the missing id, and a `PUT` carries the same `{}`
 body and `bad-json` probe a `POST` or a `PATCH` does.
@@ -74,8 +75,10 @@ minted for itself. The plain `DELETE /auth/sessions` probes carry no `scope`
 and answer 422; the two scoped probes run as the transient resident
 (`scope=others`, which finds nothing to revoke) and the transient guest
 (`scope=all`, which ends its own session, so the run re-mints the role
-sessions, as it does after the logout). The owner's session list is never
-asked to revoke anything: `DELETE /auth/sessions/{1}` and
+sessions, as it does after the logout). The single-session revocations end
+the guest's own session and, as the owner, the resident's; both re-mint the
+same way. The owner's own sessions are never asked to revoke anything: the
+other probes of `DELETE /auth/sessions/{1}` and
 `DELETE /auth/users/{1}/sessions/{2}` name the missing id, and
 `DELETE /auth/users/{1}/sessions` names the missing user. Minting the owner's
 recorder session still replaces every session user 1 holds in the sandbox
@@ -144,8 +147,8 @@ A run is additive on three tables and leaves every domain table byte-identical:
 | Table | Effect |
 |-------|--------|
 | `auth.device_login_challenge` | +1 pending row (`POST /auth/device-login`) |
-| `auth.change_outbox` | +8 rows: for the logout and for the guest's `scope=all` revocation, the session disconnect, the user action, and the two session-list change frames |
-| `sync.user_action_log` | +2 rows (those two actions' recipient audit) |
+| `auth.change_outbox` | +16 rows: for each of the four revocations (the logout, the guest's `scope=all`, the guest's own session, the owner's revocation of the resident's), the session disconnect, the user action and the two session-list change frames |
+| `sync.user_action_log` | +4 rows (those four actions' recipient audit) |
 | `identity.user`, `auth.refresh_token` | the run's own transient users and sessions; three rows become one at the owner's re-mint, and the last one stays |
 | `auth.sqlite_sequence`, `sync.sqlite_sequence` | SQLite's AUTOINCREMENT high-water marks, which gain a row the first time such a table is written |
 
@@ -175,7 +178,9 @@ more than it is:
 - **`PATCH /auth/me`, `POST /guard/mode` and `POST /invitation` success
   paths**: their probes carry a body built to fail validation, on purpose, so
   a replay cannot rename the owner, flip the guard mode or mint an
-  invitation.
+  invitation. `POST /camera/probe` probes the fixture camera's own address,
+  `127.0.0.1:1`, which refuses at once, so its success shape is pinned
+  without reaching a device.
 - **the settings first run**: `native-stack.sh` turns it off in the sandbox
   (`first_run = false`), so `GET /settings/profiles` pins `firstRun: null`,
   `POST /settings/profiles/recommended/revert` pins its 404 and `GET

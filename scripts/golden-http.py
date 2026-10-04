@@ -45,6 +45,8 @@ CONTROL_ERROR_CODE = "CAMERA_UNREACHABLE"
 BODY_OVERRIDES = {
     ("auth", "PATCH", "/auth/me"): json.dumps({"name": "p" * 125}),
     ("identity", "POST", "/invitation"): json.dumps({"role": "owner"}),
+    ("camera", "POST", "/camera/probe"): json.dumps(
+        {"driver": "tapo", "ip": "127.0.0.1", "port": 1}),
     ("guard", "POST", "/guard/mode"): json.dumps(
         {"mode": "argus-probe", "environmentId": 0}),
     ("settings", "PATCH", "/settings/{1}"): json.dumps(
@@ -64,13 +66,24 @@ CONTROL_ROUTES = (
 
 BODY_METHODS = ("POST", "PATCH", "PUT")
 
-SCOPED_PROBES = {
+EXTRA_PROBES = {
     ("auth", "DELETE", "/auth/sessions"): (
         {"name": "resident-scope-others", "auth": "resident",
-         "query": "?scope=others"},
-        {"name": "guest-scope-all", "auth": "guest", "query": "?scope=all"},
+         "path": "/auth/sessions?scope=others"},
+        {"name": "guest-scope-all", "auth": "guest",
+         "path": "/auth/sessions?scope=all"},
+    ),
+    ("auth", "DELETE", "/auth/sessions/{1}"): (
+        {"name": "guest-own-session", "auth": "guest",
+         "path": "/auth/sessions/{session:guest}"},
+    ),
+    ("auth", "DELETE", "/auth/users/{1}/sessions/{2}"): (
+        {"name": "owner-resident-session", "auth": "owner",
+         "path": "/auth/users/{user:resident}/sessions/{session:resident}"},
     ),
 }
+
+SESSION_SLOT_RE = re.compile(r"\{session:([a-z]+)\}")
 
 ID_SLOTS = {
     "/auth/device-login/": MISSING_ID,
@@ -91,6 +104,8 @@ ID_SLOTS = {
 SESSION_KILLERS = {
     ("auth", "PATCH", "/auth/logout"),
     ("auth", "DELETE", "/auth/sessions"),
+    ("auth", "DELETE", "/auth/sessions/{1}"),
+    ("auth", "DELETE", "/auth/users/{1}/sessions/{2}"),
 }
 
 VOLATILE_FIELDS = {
@@ -361,14 +376,14 @@ def probe_plan(route, ids, roles):
     probes = []
 
     def add(name, auth=None, ua=RECORDER_UA, body=None,
-            content_type="application/json", missing=False, query=""):
+            content_type="application/json", missing=False, path=None):
         probes.append({
             "name": name,
             "auth": auth,
             "userAgent": ua,
             "body": body,
             "contentType": content_type if body is not None else None,
-            "path": route_identity(route, ids, missing) + query,
+            "path": path or route_identity(route, ids, missing),
         })
 
     if route["multipart"]:
@@ -414,10 +429,12 @@ def probe_plan(route, ids, roles):
     if "{1}" in route["path"] and slot_id(route, ids) != MISSING_ID:
         add("owner-missing", auth="owner" if guarded else None, body=body,
             missing=True)
-    for scoped in SCOPED_PROBES.get((route["unit"], method, route["path"]), ()):
-        if scoped["auth"] in roles:
-            add(scoped["name"], auth=scoped["auth"], body=body,
-                query=scoped["query"])
+    for extra in EXTRA_PROBES.get((route["unit"], method, route["path"]), ()):
+        if extra["auth"] in roles and all(
+                role in roles for role in SESSION_SLOT_RE.findall(extra["path"])):
+            add(extra["name"], auth=extra["auth"], body=body,
+                path=extra["path"].replace(
+                    "{user:resident}", str(ids.get("residentUser") or MISSING_ID)))
     return probes
 
 
@@ -482,6 +499,26 @@ def session_of(name, sessions):
     return sessions[name]
 
 
+def current_session(base, token, timeout):
+    status, _, body = send(base, "GET", "/auth/sessions",
+                           {"User-Agent": RECORDER_UA,
+                            "Authorization": f"Bearer {token}"},
+                           None, None, timeout)
+    if status != 200:
+        raise SystemExit(f"GET /auth/sessions answered {status} while "
+                         "resolving a recorder session")
+    for session in json.loads(body)["info"]["sessions"]:
+        if session["current"]:
+            return session["id"]
+    raise SystemExit("the recorder session is missing from its own list")
+
+
+def resolve_path(path, base, sessions, timeout):
+    return SESSION_SLOT_RE.sub(
+        lambda match: current_session(
+            base, session_of(match.group(1), sessions), timeout), path)
+
+
 def run_probe(entry, base, sessions, timeout):
     probe = entry["probe"]
     headers = {"User-Agent": probe["userAgent"], "Accept": "application/json"}
@@ -496,8 +533,9 @@ def run_probe(entry, base, sessions, timeout):
     else:
         described = payload
     status, content_type, raw = send(
-        base, entry["method"], probe["path"], headers, payload,
-        probe["contentType"], timeout)
+        base, entry["method"], resolve_path(probe["path"], base, sessions,
+                                            timeout),
+        headers, payload, probe["contentType"], timeout)
     body = raw.decode("utf-8", "replace")
     record = {
         "unit": entry["unit"],
