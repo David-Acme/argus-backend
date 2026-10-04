@@ -199,7 +199,11 @@ TEST_CASE("the settings caller and the sync caller cannot stand in for each othe
   CHECK(settingsCallers[0].service == kSettingsCaller);
 
   SettingsRegistry registry(voiceSettingsCatalog());
-  VoiceRpcService voice(VoiceConfig::resolveSyncCallerSecret());
+  VoiceSessionService sessions;
+  VoiceRpcService voice({.sessions = &sessions,
+                         .syncCallerSecret = VoiceConfig::resolveSyncCallerSecret(),
+                         .notificationCallerSecret = VoiceConfig::resolveNotificationCallerSecret(),
+                         .rooms = nullptr});
   SettingsRpcService settings(
       SettingsRpcInput{.service = "voice", .registry = &registry, .credentials = settingsCallers});
   int port = 0;

@@ -1,0 +1,8 @@
+LiveKit C++ client SDK 1.12.0 (https://github.com/livekit/client-sdk-cpp,
+commit e6e191b, livekit-ffi 0.12.80 from https://github.com/livekit/rust-sdks)
+Copyright LiveKit, Inc.
+Licensed under the Apache License, Version 2.0.
+http://www.apache.org/licenses/LICENSE-2.0
+
+The prebuilt release archives are fetched at configure time into
+third_party/livekit-sdk/ and verified against livekit-sdk.sha256.

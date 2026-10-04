@@ -6,10 +6,21 @@ health_port = 7035
 [grpc]
 caller_sync = "CHANGE_ME_SYNC_VOICE"
 caller_settings = "CHANGE_ME_SETTINGS_VOICE"
+caller_notification = "CHANGE_ME_NOTIFICATION_VOICE"
 
 [identity]
 target = "argus-identity:7040"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+
+[rtc]
+enabled = true
+url = "ws://172.19.0.1:7880"
+rejoin_grace_ms = 20000
+first_join_wait_ms = 60000
+
+[notification]
+target = "argus-notification:7038"
+credential = "CHANGE_ME_VOICE_NOTIFICATION"
 
 [stt]
 remote_url = ""

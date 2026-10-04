@@ -174,9 +174,13 @@ private:
 
 }
 
-VoiceRpcService::VoiceRpcService(std::string syncCallerSecret)
-    : callers_({argus::client::CallerCredential{
-          .service = "argus-sync", .secret = std::move(syncCallerSecret)}})
+VoiceRpcService::VoiceRpcService(VoiceRpcInput input)
+    : sessions_(*input.sessions),
+      syncCallers_({argus::client::CallerCredential{
+          .service = "argus-sync", .secret = std::move(input.syncCallerSecret)}}),
+      notificationCallers_({argus::client::CallerCredential{
+          .service = "argus-notification", .secret = std::move(input.notificationCallerSecret)}}),
+      rooms_(input.rooms)
 {
 }
 
@@ -184,7 +188,47 @@ grpc::ServerBidiReactor<argus::voice::v1::ClientFrame,
                         argus::voice::v1::ServerFrame>*
 VoiceRpcService::Connect(grpc::CallbackServerContext* context)
 {
-  auto* reactor = new VoiceSessionStream(sessions_, context, callers_);
+  auto* reactor = new VoiceSessionStream(sessions_, context, syncCallers_);
   reactor->begin();
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* VoiceRpcService::JoinRoom(grpc::CallbackServerContext* context,
+                                                    const argus::voice::v1::RtcJoin* request,
+                                                    argus::voice::v1::RtcJoined* reply)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!argus::client::authorizeCaller(context, syncCallers_).has_value()) {
+    reactor->Finish({grpc::StatusCode::UNAUTHENTICATED, "argus-sync caller credential required"});
+    return reactor;
+  }
+  if (rooms_ == nullptr) {
+    reactor->Finish({grpc::StatusCode::UNAVAILABLE, "realtime calls are not configured"});
+    return reactor;
+  }
+  rooms_->joinRoom(*request, [reactor, reply](const grpc::Status& status, argus::voice::v1::RtcJoined joined) {
+    *reply = std::move(joined);
+    reactor->Finish(status);
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* VoiceRpcService::Announce(grpc::CallbackServerContext* context,
+                                                    const argus::voice::v1::AnnounceRequest* request,
+                                                    argus::voice::v1::AnnounceResponse* reply)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!argus::client::authorizeCaller(context, notificationCallers_).has_value()) {
+    reactor->Finish({grpc::StatusCode::UNAUTHENTICATED, "argus-notification caller credential required"});
+    return reactor;
+  }
+  if (request->user_id() <= 0 || request->text().empty()) {
+    reactor->Finish({grpc::StatusCode::INVALID_ARGUMENT, "user_id and text are required"});
+    return reactor;
+  }
+  reply->set_delivered(sessions_.announce(request->user_id(), request->text()));
+  LOG_INFO << "Voice: announce kind=" << request->kind() << " call=" << request->call_id()
+           << " delivered=" << reply->delivered();
+  reactor->Finish(grpc::Status::OK);
   return reactor;
 }

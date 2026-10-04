@@ -500,6 +500,130 @@ config-plugins `react-native-webrtc` compatibility table; libdatachannel
 on Conan Center (0.24.0); WebKitGTK `enable-media-stream` and
 `permission-request` (used by the desktop shell, frontend e4bc731).
 
+## Realtime calls over WebRTC (LiveKit), 2026-10-04
+
+The plan above (Opus over the socket, then a peer-to-peer WebRTC transport
+of our own) was replaced by a decision with the owner: calls move to a
+self-hosted LiveKit SFU, and argus-voice joins each call's room as the agent
+participant. The PCM-over-`/sync` path stays, untouched, as the fallback
+until WebRTC is proven on every platform; it is removed in its own change.
+The contract every side codes against (token route, room and identity names,
+data topics, call lifecycle, proactive calls) is
+`agents/RTC-CONTRACT.md` in the coordination scratch; its stable parts are
+restated here and in `services/sync/CONTEXT.md`.
+
+**Why an SFU and not our own peer connection.** One media server for every
+platform's mature client SDK (browser, React Native, the Tauri desktop
+through the Rust SDK), echo cancellation inside the WebRTC audio module on
+each client, Opus with a jitter buffer and congestion control, ICE over UDP
+with an ICE/TCP fallback and an embedded TURN for later, and camera video can
+ride the same rooms later. LiveKit server is Apache-2.0, a single Go binary,
+about 20 MB resident idle on this machine.
+
+**Integration: the official C++ SDK, prebuilt.** `livekit/client-sdk-cpp`
+reached 1.0 in June 2026 and ships signed release archives per platform;
+1.12.0 (2026-09-23) is pinned. It is itself a thin C++ layer over the Rust
+SDK's C FFI (`livekit-ffi` 0.12.80, the same core the Python and Node agent
+SDKs use), so it is the FFI option with a C++ API already written and
+maintained upstream. Building the Rust FFI here instead would need a cargo
+toolchain and a libwebrtc download in every image build; the archive is 13 MB
+and links two shared libraries. `src/feature/rtc/CMakeLists.txt` downloads
+the archive for the host architecture at configure time into
+`third_party/livekit-sdk/` (gitignored), verifies it against
+`livekit-sdk.sha256` (x64 and arm64 pins) and imports `LiveKit::livekit` as a
+SYSTEM target, so `-Wall -Wextra` stays clean on our code. The SDK hides
+its protobuf (no exported `google::protobuf` or `absl` symbol), so it does
+not collide with the gRPC stack of this binary; it needs the system
+`libcurl` and `libssl` and glibc 2.38 (Debian trixie has 2.41). The two
+libraries are copied beside `argus-voice` after the link (`$ORIGIN`) and
+into the image. License in `src/feature/rtc/NOTICE`.
+
+**Who dispatches the agent.** argus-sync's `/rtc/token` route asks
+`VoiceService.JoinRoom` (unary, `caller_sync`) before it answers the client,
+with the room, the agent's own LiveKit token (minted by argus-sync, which
+holds the only copy of the API secret), the user's participant identity, the
+typed `VoiceIdentity`, the mode, `resume`, and for a proactive call its
+`call_id`, `opening_line` and `call_kind`. JoinRoom answers once the agent
+has connected and published its track, so a 200 to the client means Argus is
+already in the room. A second JoinRoom for a room the agent is in answers
+`already` (a resume inside the rejoin window). LiveKit's own agent dispatch
+and webhooks were not used: they would need argus-voice to hold the API
+secret and an HTTP listener, and the identity (role, device hash, language)
+is argus-sync's to give.
+
+**One call = one `RtcCall` (`src/feature/rtc/rtc-call.{hxx,cc}`), a
+`VoiceSessionSink` like the gRPC stream.** The session service is shared:
+`main.cc` owns one `VoiceSessionService` that both the gRPC streams and the
+RTC calls drive, so the turn logic, the call history, barge-in, the camera
+offers, app actions and the voiceprint probes are the same code on both
+transports. Per call:
+
+- a control thread connects, then waits for the user's microphone track and
+  starts the session only once it is subscribed (the greeting, or the
+  claimed call's opening line, is never spoken into a track that is not up);
+  it publishes the outbound data messages and the agent state, and ends the
+  call;
+- a reader thread reads the decoded track (`livekit::AudioStream`, 48 kHz
+  from the Opus decoder), downmixes, resamples to 16 kHz with
+  `AudioResampler::processInto` (added for this: it reuses the caller's
+  buffer, so the hot path allocates nothing once the buffers have grown) and
+  feeds `VoiceSessionService::feedSamples` (the float entry `feedPcm` now
+  shares);
+- a playout thread takes TTS from a 120 s `BasicSampleRing<int16_t>` (the
+  ring became a template) in 10 ms frames into a `livekit::AudioSource` with
+  a 100 ms queue. `sendServerFrame` only copies a chunk into the ring, so the
+  session's turn thread never blocks on the network while it holds
+  `duplexMutex`; each chunk goes out as soon as it is synthesized, which is
+  the lowest latency the TTS allows. A tail shorter than one frame is padded
+  after 40 ms without new audio.
+
+Barge-in is the session's own (duplex VAD listening, `voice:interrupted`):
+on the interrupted frame the call clears the ring and the source's queue
+(`AudioSource::clearQueue`), so at most one 10 ms frame and the queue's
+100 ms are already on their way when Argus stops. The session's playback
+estimate still advances per chunk; it is a little early here (the source
+paces in real time) which only makes the barge-in window shorter.
+
+Data messages replace the `voice:*` text frames one for one (topics
+`argus.stt`, `argus.assistant`, `argus.turn`, `argus.interrupted`,
+`argus.action`, `argus.event`, `argus.done`; and from the app
+`argus.context`, `argus.action_result`, `argus.mute`, `argus.skip`,
+`argus.hangup`), reliable, JSON, addressed to the call's user only; data from
+any other participant is ignored. `src/feature/rtc/rtc-wire.{hxx,cc}` is the
+mapping, pure and tested. They travel on the room rather than on `/sync`
+because the room is the call: ordered with the audio, gone with the call, and
+no relay hop. Messages that arrive before the session started (the app sends
+the camera names right after connecting) are queued, at most 16, and applied
+right after the start, as the `/sync` relay does. `voice:assistant` no longer
+means "flush and play": the audio is the track.
+
+The agent's visible state is the participant attribute `lk.agent.state`
+(`initializing`, `listening`, `thinking`, `speaking`), LiveKit's own agent
+vocabulary, so the clients read it without a message of ours: thinking on a
+final transcript, speaking on the first chunk, listening when the ring has
+drained (600 ms after the last chunk, so the gap between two sentences does not flicker the state), on an interruption, and after 20 s of
+thinking without audio.
+
+**Ending.** `argus.hangup` ends at once. A user who leaves (a dead connection
+the SDK gave up on) has 20 s (`[rtc] rejoin_grace_ms`) to come back with the
+same identity and the call continues; after that, or when nobody joins within
+60 s (`[rtc] first_join_wait_ms`), the agent sends `argus.done {timeout}` and
+leaves. A participant removed by the server (session revoked, account
+disabled) ends the call as `revoked` and no done message is sent. A
+`call-<id>` call reports its outcome to argus-notification's
+`CallService.EndCall` (`[notification] target` + `credential` =
+notification's `caller_voice`): completed once the opening line has played
+out, declined when the user left before, failed when the user never joined
+or the call broke before.
+
+**Announce.** argus-notification's call engine asks
+`VoiceService.Announce {user_id, text, kind, call_id}` (`[grpc]
+caller_notification`) before it rings a user. Every live session of that user
+(WebRTC or PCM) queues the text as an announcement: it is spoken at the next
+quiet moment exactly like a camera offer, before any camera offer, without
+the 30 s spacing, dropped after 60 s, and joins the history as an assistant
+turn. `delivered` is true when at least one live call took it.
+
 ## Owner settings
 
 `src/feature/settings/voice-settings.cc` (`argus::voice-settings`) is the

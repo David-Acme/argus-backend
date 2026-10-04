@@ -1,5 +1,6 @@
 #include <config/voice-config.hxx>
 #include <feature/health/health-rpc-service.hxx>
+#include <feature/rtc/rtc-agent-service.hxx>
 #include <feature/settings/voice-settings.hxx>
 #include <feature/voice/voice-rpc-service.hxx>
 #include <grpcpp/grpcpp.h>
@@ -8,6 +9,8 @@
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <config/config-service.hxx>
+#include <livekit/livekit.h>
+#include <notification/notification-client.hxx>
 #include <settings/settings-rpc.hxx>
 
 #include <drogon/drogon.h>
@@ -33,6 +36,40 @@ Json::Value drogonConfig(const ListenerConfig& listener)
   return config;
 }
 
+argus::notification::v1::CallOutcome callOutcomeToProto(rtc_wire::CallOutcome outcome)
+{
+  switch (outcome) {
+    case rtc_wire::CallOutcome::Completed:
+      return argus::notification::v1::CALL_OUTCOME_COMPLETED;
+    case rtc_wire::CallOutcome::Declined:
+      return argus::notification::v1::CALL_OUTCOME_DECLINED;
+    case rtc_wire::CallOutcome::Failed:
+    case rtc_wire::CallOutcome::NotReported:
+      break;
+  }
+  return argus::notification::v1::CALL_OUTCOME_FAILED;
+}
+
+void reportCallEnd(const NotificationClient* notifications, const RtcCallReport& report)
+{
+  const rtc_wire::CallOutcome outcome = rtc_wire::callOutcomeOf({.callId = report.callId,
+                                                                 .reason = report.reason,
+                                                                 .userJoined = report.userJoined,
+                                                                 .openingSpoken = report.openingSpoken});
+  if (outcome == rtc_wire::CallOutcome::NotReported)
+    return;
+  if (notifications == nullptr) {
+    LOG_WARN << "Voice: call " << report.callId << " ended but no notification target is configured";
+    return;
+  }
+  const NotificationRpcOutcome sent = notifications->endCall({.callId = report.callId,
+                                                              .userId = report.userId,
+                                                              .outcome = callOutcomeToProto(outcome),
+                                                              .spoken = report.openingSpoken});
+  if (sent != NotificationRpcOutcome::Success)
+    LOG_WARN << "Voice: EndCall for " << report.callId << " was not accepted";
+}
+
 }
 
 int main()
@@ -43,7 +80,34 @@ int main()
   const ListenerConfig healthListener = VoiceConfig::resolveHealthListener();
   const GrpcListenerConfig grpcListener = VoiceConfig::resolveGrpcListener();
 
-  VoiceRpcService voiceRpc(VoiceConfig::resolveSyncCallerSecret());
+  VoiceSessionService sessions;
+  const VoiceNotificationConfig notificationConfig = VoiceConfig::resolveNotification();
+  std::unique_ptr<NotificationClient> notifications;
+  if (!notificationConfig.target.empty())
+    notifications = std::make_unique<NotificationClient>(NotificationClientConfig{
+        .target = notificationConfig.target, .credential = notificationConfig.credential});
+
+  const VoiceRtcConfig rtcConfig = VoiceConfig::resolveRtc();
+  std::unique_ptr<RtcAgentService> rtc;
+  if (rtcConfig.enabled) {
+    livekit::initialize(livekit::LogLevel::Warn);
+    rtc = std::make_unique<RtcAgentService>(RtcAgentInput{
+        .sessions = &sessions,
+        .config = {.url = rtcConfig.url,
+                   .timings = {.rejoinGrace = rtcConfig.rejoinGrace,
+                               .firstJoinWait = rtcConfig.firstJoinWait,
+                               .thinkingTimeout = RtcCallTimings{}.thinkingTimeout,
+                               .connectTimeout = RtcCallTimings{}.connectTimeout}},
+        .onCallEnded = [client = notifications.get()](const RtcCallReport& report) {
+          reportCallEnd(client, report);
+        }});
+    LOG_INFO << "Voice: realtime calls join LiveKit at " << rtcConfig.url;
+  }
+
+  VoiceRpcService voiceRpc({.sessions = &sessions,
+                            .syncCallerSecret = VoiceConfig::resolveSyncCallerSecret(),
+                            .notificationCallerSecret = VoiceConfig::resolveNotificationCallerSecret(),
+                            .rooms = rtc.get()});
   HealthRpcService healthRpc;
   SettingsRegistry settings(voiceSettingsCatalog());
   std::unique_ptr<SettingsRpcService> settingsRpc;
@@ -91,5 +155,9 @@ int main()
       .run();
 
   server->Shutdown();
+  if (rtc) {
+    rtc->shutdown();
+    livekit::shutdown();
+  }
   return 0;
 }

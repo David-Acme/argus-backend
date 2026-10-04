@@ -1,6 +1,8 @@
 #include "voice-config.hxx"
 
 #include <config/config-service.hxx>
+
+#include <algorithm>
 #include <settings/settings-rpc.hxx>
 
 ListenerConfig VoiceConfig::resolveHealthListener()
@@ -24,4 +26,31 @@ std::vector<argus::client::CallerCredential> VoiceConfig::resolveSettingsCallers
   if (secret == resolveSyncCallerSecret())
     return {};
   return settingsCallers({{kSettingsCaller, secret}});
+}
+
+std::string VoiceConfig::resolveNotificationCallerSecret()
+{
+  const std::string secret = ConfigService::getString("grpc.caller_notification");
+  return secret == resolveSyncCallerSecret() ? std::string() : secret;
+}
+
+VoiceRtcConfig VoiceConfig::resolveRtc()
+{
+  VoiceRtcConfig config;
+  config.url = ConfigService::getString("rtc.url");
+  config.enabled = ConfigService::hasKey("rtc.enabled") && ConfigService::getBool("rtc.enabled") &&
+                   !config.url.empty();
+  if (ConfigService::hasKey("rtc.rejoin_grace_ms"))
+    config.rejoinGrace =
+        std::chrono::milliseconds(std::max(1000, ConfigService::getInt("rtc.rejoin_grace_ms")));
+  if (ConfigService::hasKey("rtc.first_join_wait_ms"))
+    config.firstJoinWait =
+        std::chrono::milliseconds(std::max(5000, ConfigService::getInt("rtc.first_join_wait_ms")));
+  return config;
+}
+
+VoiceNotificationConfig VoiceConfig::resolveNotification()
+{
+  return {.target = ConfigService::getString("notification.target"),
+          .credential = ConfigService::getString("notification.credential")};
 }

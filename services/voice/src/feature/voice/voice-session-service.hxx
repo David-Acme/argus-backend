@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <llm/llm-service.hxx>
 #include <shared/services/noise/noise-suppression-service.hxx>
 #include <shared/services/reaction/reaction-engine.hxx>
@@ -52,6 +53,8 @@ public:
   void start(VoiceSessionSink& sink,
              const argus::voice::v1::VoiceIdentity& identity);
   void feedPcm(VoiceSessionSink& sink, const PcmFrame& frame);
+  void feedSamples(VoiceSessionSink& sink, std::span<const float> samples);
+  bool announce(int64_t userId, const std::string& text);
   void stop(VoiceSessionSink& sink);
   void skip(VoiceSessionSink& sink);
   void context(VoiceSessionSink& sink, const argus::voice::v1::VoiceContext& context);
@@ -78,6 +81,12 @@ private:
     std::string spoken;
     std::string event;
     std::string camera;
+  };
+
+  struct Announcement
+  {
+    std::string text;
+    std::chrono::steady_clock::time_point at{};
   };
 
   struct CameraOffer
@@ -173,6 +182,7 @@ private:
     std::optional<std::string> pendingSituation;
     std::optional<CameraNotice> pendingCamera;
     std::deque<ActionFailure> pendingFailures;
+    std::deque<Announcement> pendingAnnouncements;
     std::deque<std::pair<int64_t, std::string>> sentActions;
     std::chrono::steady_clock::time_point lastNoticeAt{};
     std::atomic<int64_t> actionSeq{0};

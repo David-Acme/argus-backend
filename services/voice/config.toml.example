@@ -6,10 +6,21 @@ health_port = 7035
 [grpc]
 caller_sync = ""
 caller_settings = ""
+caller_notification = ""
 
 [identity]
 target = "127.0.0.1:7040"
 rpc_secret = ""
+
+[rtc]
+enabled = true
+url = "ws://127.0.0.1:7880"
+rejoin_grace_ms = 20000
+first_join_wait_ms = 60000
+
+[notification]
+target = "127.0.0.1:7038"
+credential = ""
 
 [stt]
 remote_url = "127.0.0.1:7030"

@@ -11,7 +11,10 @@ that apply to voice-service code; when in doubt, the root file wins.
    the minimal `/health` HTTP listener, plus `argus.settings.v1.Settings`
    on the same gRPC listener when `[grpc] caller_settings` is set. No `/sync`, no Drogon filters, no
    WebSocket, no HTTP routes to other services; all inter-service traffic is
-   gRPC.
+   gRPC. The one outbound media path is the realtime agent: with `[rtc]
+   enabled` it joins LiveKit rooms (`[rtc] url`, a plain ws on loopback or the
+   docker gateway) with the token argus-sync hands it in `JoinRoom`, and holds
+   no LiveKit secret of its own.
 2. **Zero database** — no db clients, no schema, no repositories. The
    spoken-name write is the typed `IdentityService.UpdateUser` RPC to
    argus-identity.
@@ -64,11 +67,16 @@ argus-voice/
   src/feature/health/   grpc.health.v1 service
   src/feature/settings/ argus::voice-settings — the owner-editable catalog,
                         served by argus.settings.v1 on the gRPC listener
+  src/feature/rtc/      argus::voice-rtc-wire (data topics, pure) and
+                        argus::voice-rtc (the LiveKit agent: RtcCall per room,
+                        RtcAgentService); the pinned LiveKit C++ SDK archive
+                        hashes and its NOTICE
   src/shared/services/  vad, noise suppression and the reaction engine
   src/shared/wrapper/   the ring the voice paths carry samples in
   src/test-support/     the fake voice sink the suites drive
-  config.toml.example   [server], [grpc] (caller_sync, caller_settings),
-                        [identity], [stt], [tts], [llm], [vad]
+  config.toml.example   [server], [grpc] (caller_sync, caller_settings,
+                        caller_notification), [identity], [rtc],
+                        [notification], [stt], [tts], [llm], [vad]
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 

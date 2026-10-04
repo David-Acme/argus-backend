@@ -167,6 +167,9 @@ private:
 
 constexpr size_t kMaxNotes = 6;
 constexpr size_t kMaxNoteChars = 300;
+constexpr size_t kMaxAnnouncementChars = 400;
+constexpr size_t kMaxPendingAnnouncements = 4;
+constexpr auto kAnnouncementFreshFor = std::chrono::seconds(60);
 constexpr size_t kMaxSituationChars = 900;
 constexpr size_t kMaxCameraChars = 64;
 constexpr size_t kMaxSummaryChars = 200;
@@ -462,7 +465,10 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   session->duplex = duplex;
   session->bargeGuard = listening.bargeGuard;
 
-  const std::string greeting = resume ? std::string() : greetingFor(session->lang, userName);
+  const std::string opening = sanitizedLine(request.opening_line(), kMaxAnnouncementChars);
+  const std::string greeting = resume            ? std::string()
+                               : !opening.empty() ? opening
+                                                  : greetingFor(session->lang, userName);
   if (!greeting.empty())
     session->history.addAssistant(greeting);
 
@@ -502,6 +508,20 @@ VoiceSessionService::sessionOf(VoiceSessionSink& sink) const
 
 void VoiceSessionService::feedPcm(VoiceSessionSink& sink, const PcmFrame& pcm)
 {
+  thread_local std::vector<float> floats;
+  const size_t sampleCount = pcm.size / 2;
+  floats.resize(sampleCount);
+  for (size_t i = 0; i < sampleCount; ++i) {
+    const auto s = static_cast<int16_t>(
+        (static_cast<unsigned char>(pcm.data[i * 2]) |
+         (static_cast<unsigned char>(pcm.data[i * 2 + 1]) << 8)));
+    floats[i] = static_cast<float>(s) / 32768.0F;
+  }
+  feedSamples(sink, floats);
+}
+
+void VoiceSessionService::feedSamples(VoiceSessionSink& sink, std::span<const float> samples)
+{
   const auto session = sessionOf(sink);
   if (!session)
     return;
@@ -509,24 +529,42 @@ void VoiceSessionService::feedPcm(VoiceSessionSink& sink, const PcmFrame& pcm)
   if (session->muted.load() || (session->speaking && !session->duplex))
     return;
 
-  const size_t sampleCount = pcm.size / 2;
-  std::vector<float> floats(sampleCount);
-  for (size_t i = 0; i < sampleCount; ++i) {
-    const auto s = static_cast<int16_t>(
-        (static_cast<unsigned char>(pcm.data[i * 2]) |
-         (static_cast<unsigned char>(pcm.data[i * 2 + 1]) << 8)));
-    floats[i] = static_cast<float>(s) / 32768.0F;
-  }
-
   {
     std::scoped_lock lock(session->pcmMutex);
     auto& queue = session->pcmQueue;
-    queue.insert(queue.end(), floats.begin(), floats.end());
+    queue.insert(queue.end(), samples.begin(), samples.end());
     if (queue.size() > kMaxQueuedSamples)
       queue.erase(queue.begin(),
                   queue.begin() + static_cast<std::ptrdiff_t>(queue.size() - kMaxQueuedSamples));
   }
   session->pcmCv.notify_one();
+}
+
+bool VoiceSessionService::announce(int64_t userId, const std::string& text)
+{
+  const std::string line = sanitizedLine(text, kMaxAnnouncementChars);
+  if (userId <= 0 || line.empty())
+    return false;
+  std::vector<std::shared_ptr<Session>> targets;
+  {
+    std::scoped_lock lock(mutex_);
+    for (const auto& [sink, session] : sessions_)
+      if (session->userId == userId && session->active.load())
+        targets.push_back(session);
+  }
+  for (const auto& session : targets) {
+    {
+      std::scoped_lock lock(session->noticeMutex);
+      session->pendingAnnouncements.push_back(
+          {.text = line, .at = std::chrono::steady_clock::now()});
+      if (session->pendingAnnouncements.size() > kMaxPendingAnnouncements)
+        session->pendingAnnouncements.pop_front();
+    }
+    session->pcmCv.notify_one();
+  }
+  LOG_INFO << "Voice: announcement for user " << userId << " delivered to "
+           << targets.size() << " call(s)";
+  return !targets.empty();
 }
 
 void VoiceSessionService::stop(VoiceSessionSink& sink)
@@ -1392,6 +1430,14 @@ VoiceSessionService::takeNotice(Session& session)
       continue;
     const ActionFailureText text{.lang = session.lang, .name = failure.name, .detail = failure.detail};
     return Notice{.spoken = actionFailureLine(text), .event = actionFailureEvent(text), .camera = {}};
+  }
+  while (!session.pendingAnnouncements.empty()) {
+    Announcement announcement = std::move(session.pendingAnnouncements.front());
+    session.pendingAnnouncements.pop_front();
+    if (now - announcement.at > kAnnouncementFreshFor)
+      continue;
+    session.lastNoticeAt = now;
+    return Notice{.spoken = std::move(announcement.text), .event = {}, .camera = {}};
   }
   auto camera = std::exchange(session.pendingCamera, std::nullopt);
   if (!camera)

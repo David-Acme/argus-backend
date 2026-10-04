@@ -35,12 +35,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates libgcc-s1 libgomp1 libstdc++6 libvulkan1 \
-      mesa-vulkan-drivers curl \
+      mesa-vulkan-drivers curl libcurl4t64 libssl3t64 \
       libgrpc++1.51t64 libgrpc29t64 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/argus
 COPY --from=build /opt/argus/services/voice/build/prod/argus-voice /opt/argus/argus-voice
+COPY --from=build /opt/argus/services/voice/build/prod/liblivekit.so /opt/argus/services/voice/build/prod/liblivekit_ffi.so /opt/argus/
 
 RUN groupadd --gid "$ARGUS_GID" argus \
     && useradd --uid "$ARGUS_UID" --gid "$ARGUS_GID" --create-home \

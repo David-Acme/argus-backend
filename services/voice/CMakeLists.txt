@@ -64,6 +64,10 @@ if(NOT TARGET argus::lib::grpc-health)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/grpc
                      ${CMAKE_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
 endif()
+if(NOT TARGET argus::clients::notification)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
+                     ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
+endif()
 if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
@@ -130,11 +134,17 @@ target_compile_options(argus_voice-core PRIVATE -Wall -Wextra)
 
 add_subdirectory(src/config)
 add_subdirectory(src/feature/settings)
+add_subdirectory(src/feature/rtc)
 
 argus_service(NAME argus-voice
     MAIN src/main.cc
-    MODULES argus::voice-config argus::voice-core argus::voice-settings
+    MODULES argus::voice-config argus::voice-core argus::voice-settings argus::voice-rtc
+    DEPENDS argus::clients::notification
     PORTS 7034 7035)
+
+add_custom_command(TARGET argus-voice POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ARGUS_LIVEKIT_SDK_LIBS} $<TARGET_FILE_DIR:argus-voice>
+    VERBATIM)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
@@ -256,3 +266,16 @@ argus_runtime_rpath(voice-settings-test)
 set_target_properties(voice-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-settings-test COMMAND voice-settings-test)
+
+add_executable(voice-rtc-wire-test tests/unit/voice-rtc-wire-test.cc)
+
+target_link_libraries(voice-rtc-wire-test PRIVATE argus::voice-rtc-wire
+    doctest::doctest)
+
+target_compile_options(voice-rtc-wire-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-rtc-wire-test)
+
+set_target_properties(voice-rtc-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-rtc-wire-test COMMAND voice-rtc-wire-test)

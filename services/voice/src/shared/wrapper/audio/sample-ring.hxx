@@ -4,12 +4,13 @@
 #include <cstddef>
 #include <vector>
 
-class SampleRing
+template <typename Sample>
+class BasicSampleRing
 {
 public:
-  explicit SampleRing(size_t capacity) : buffer_(capacity, 0.0F) {}
+  explicit BasicSampleRing(size_t capacity) : buffer_(capacity, Sample{}) {}
 
-  void push(const float* data, size_t count)
+  void push(const Sample* data, size_t count)
   {
     if (count >= buffer_.size()) {
       std::copy(data + count - buffer_.size(), data + count, buffer_.begin());
@@ -26,7 +27,7 @@ public:
     }
   }
 
-  bool pop(float* dst, size_t count)
+  bool pop(Sample* dst, size_t count)
   {
     if (count > size_)
       return false;
@@ -37,12 +38,14 @@ public:
     return true;
   }
 
-  size_t size() const { return size_; }
-  size_t capacity() const { return buffer_.size(); }
+  [[nodiscard]] size_t size() const { return size_; }
+  [[nodiscard]] size_t capacity() const { return buffer_.size(); }
   void clear() { head_ = 0; size_ = 0; }
 
 private:
-  std::vector<float> buffer_;
+  std::vector<Sample> buffer_;
   size_t head_{0};
   size_t size_{0};
 };
+
+using SampleRing = BasicSampleRing<float>;
