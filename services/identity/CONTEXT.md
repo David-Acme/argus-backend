@@ -108,6 +108,14 @@ Moved: 107 source files (the four features' `.cc` + headers, the ten
 unit suites and the migration tool (now `tools/migrate-identity/`, where the
 root `tools/` dissolution landed it).
 
+The copy names the source's own columns and the verification checksums those
+columns on both sides, refusing only a source column the target lacks
+(2026-10). It used to copy with `SELECT *` and compare the column lists of
+`src` and `main` read as `"src".pragma_table_info(...)`, which SQLite
+resolves against the main schema: the check compared the target with itself,
+and a legacy table that predates a later additive column failed the copy on
+its column count. `tests/unit/identity-migration-test.cc` pins both cases.
+
 Not moved, on purpose:
 
 - The auth filter package (`src/filter/`) — `argus-auth` landed as its own

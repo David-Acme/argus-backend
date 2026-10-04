@@ -76,6 +76,18 @@ int64_t countOf(sqlite3* db, const std::string& table)
   return count;
 }
 
+std::string textOf(sqlite3* db, const std::string& sql)
+{
+  sqlite3_stmt* stmt = nullptr;
+  REQUIRE(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK);
+  REQUIRE(sqlite3_step(stmt) == SQLITE_ROW);
+  const auto* text = sqlite3_column_text(stmt, 0);
+  std::string value = text == nullptr ? std::string()
+                                      : std::string(reinterpret_cast<const char*>(text));
+  sqlite3_finalize(stmt);
+  return value;
+}
+
 IdentityFixture makeFixture()
 {
   const auto dir = std::filesystem::temp_directory_path()
@@ -249,4 +261,47 @@ TEST_CASE("migration fails when the source database is missing")
   CHECK_FALSE(report.ok);
   CHECK_FALSE(report.error.empty());
   CHECK_FALSE(std::filesystem::exists(fixture.targetPath));
+}
+
+TEST_CASE("a source written before a later column migrates, and one with a column the target lacks is refused")
+{
+  const auto fixture = makeFixture();
+  {
+    const auto source = openFile(fixture.sourcePath);
+    const auto schema = applyIdentitySchema(
+        {.db = source.get(), .schemaPath = ARGUS_IDENTITY_SCHEMA_PATH});
+    REQUIRE_MESSAGE(schema.ok, schema.error);
+    exec(source.get(), "ALTER TABLE person DROP COLUMN observation");
+    seedSource(source.get());
+  }
+
+  const auto report = migrateIdentity({.sourcePath = fixture.sourcePath,
+                                       .targetPath = fixture.targetPath,
+                                       .schemaPath = ARGUS_IDENTITY_SCHEMA_PATH});
+  REQUIRE_MESSAGE(report.ok, report.error);
+  for (const auto& entry : report.tables) {
+    CAPTURE(entry.table);
+    CHECK(entry.sourceRows == entry.targetRows);
+    CHECK(entry.sourceChecksum == entry.targetChecksum);
+  }
+  {
+    const auto target = openFile(fixture.targetPath);
+    CHECK(countOf(target.get(), "person") > 0);
+    CHECK(textOf(target.get(), "SELECT COUNT(*) FROM person WHERE observation <> ''") == "0");
+  }
+
+  const auto widened = makeFixture();
+  {
+    const auto source = openFile(widened.sourcePath);
+    const auto schema = applyIdentitySchema(
+        {.db = source.get(), .schemaPath = ARGUS_IDENTITY_SCHEMA_PATH});
+    REQUIRE_MESSAGE(schema.ok, schema.error);
+    exec(source.get(), "ALTER TABLE person ADD COLUMN legacy_only TEXT NOT NULL DEFAULT ''");
+    seedSource(source.get());
+  }
+  const auto refused = migrateIdentity({.sourcePath = widened.sourcePath,
+                                        .targetPath = widened.targetPath,
+                                        .schemaPath = ARGUS_IDENTITY_SCHEMA_PATH});
+  CHECK_FALSE(refused.ok);
+  CHECK_MESSAGE(refused.error.find("person") != std::string::npos, refused.error);
 }

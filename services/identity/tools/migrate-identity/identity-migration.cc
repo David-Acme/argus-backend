@@ -4,6 +4,7 @@
 #include <text/fnv-hash.hxx>
 #include <sqlite/sql-escape.hxx>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -45,6 +46,7 @@ struct IdentityChecksumInput
   sqlite3* db = nullptr;
   std::string schema;
   std::string table;
+  std::string columns;
 };
 
 struct IdentityChecksumResult
@@ -120,8 +122,9 @@ IdentityHandleResult openHandle(const std::string& path, int flags)
 IdentityChecksumResult tableChecksum(const IdentityChecksumInput& input)
 {
   IdentityChecksumResult result;
-  const std::string sql = "SELECT * FROM \"" + input.schema + "\".\""
-                          + input.table + "\" ORDER BY id";
+  std::string sql = "SELECT ";
+  sql.append(input.columns).append(" FROM \"").append(input.schema);
+  sql.append("\".\"").append(input.table).append("\" ORDER BY id");
   SqliteStmt stmt;
   if (!stmt.prepare(input.db, sql.c_str())) {
     result.error = sqlite3_errmsg(input.db);
@@ -169,12 +172,22 @@ IdentityChecksumResult tableChecksum(const IdentityChecksumInput& input)
   return result;
 }
 
+std::string columnList(const std::vector<std::string>& names)
+{
+  std::string list;
+  for (const auto& name : names) {
+    if (!list.empty())
+      list += ", ";
+    list.append("\"").append(name).append("\"");
+  }
+  return list;
+}
+
 std::optional<std::vector<std::string>>
 columnNames(const IdentityColumnShapeInput& input, std::string& error)
 {
-  const std::string sql = "SELECT name FROM \"" + input.schema
-                          + "\".pragma_table_info('" + input.table
-                          + "') ORDER BY cid";
+  const std::string sql = "SELECT name FROM pragma_table_info('" + input.table
+                          + "', '" + input.schema + "') ORDER BY cid";
   SqliteStmt stmt;
   if (!stmt.prepare(input.db, sql.c_str())) {
     error = sqlite3_errmsg(input.db);
@@ -198,8 +211,19 @@ bool copyIdentityTables(sqlite3* db, std::string& error)
     return false;
   }
   for (const auto& table : kIdentityTables) {
-    const std::string sql = "INSERT INTO main.\"" + table
-                            + "\" SELECT * FROM src.\"" + table + "\"";
+    std::string shapeError;
+    const auto columns =
+        columnNames({.db = db, .schema = "src", .table = table}, shapeError);
+    if (!columns) {
+      error = "copy of ";
+      error.append(table).append(" failed: ").append(shapeError);
+      execStatement({.db = db, .sql = "ROLLBACK"});
+      return false;
+    }
+    const std::string list = columnList(*columns);
+    std::string sql = "INSERT INTO main.\"";
+    sql.append(table).append("\" (").append(list).append(") SELECT ");
+    sql.append(list).append(" FROM src.\"").append(table).append("\"");
     const auto insert = execStatement({.db = db, .sql = sql});
     if (!insert.ok) {
       error = "copy of " + table + " failed: " + insert.error;
@@ -321,15 +345,25 @@ IdentityMigrationReport verifyIdentityTables(const IdentityVerificationInput& in
       report.error = shapeError.empty() ? targetColumnsError : shapeError;
       return report;
     }
-    if (*sourceColumns != *targetColumns) {
-      report.error = "column shape mismatch on " + table + ": source and "
-                     "target schemas differ";
+    const bool covered = std::ranges::all_of(
+        *sourceColumns, [&targetColumns](const std::string& name) {
+          return std::ranges::find(*targetColumns, name)
+                 != targetColumns->end();
+        });
+    if (!covered) {
+      report.error = "column shape mismatch on " + table
+                     + ": the target lacks a source column";
       return report;
     }
-    const auto sourceChecksum =
-        tableChecksum({.db = input.target, .schema = "src", .table = table});
-    const auto targetChecksum =
-        tableChecksum({.db = input.target, .schema = "main", .table = table});
+    const std::string columns = columnList(*sourceColumns);
+    const auto sourceChecksum = tableChecksum({.db = input.target,
+                                               .schema = "src",
+                                               .table = table,
+                                               .columns = columns});
+    const auto targetChecksum = tableChecksum({.db = input.target,
+                                               .schema = "main",
+                                               .table = table,
+                                               .columns = columns});
     if (!sourceChecksum.ok || !targetChecksum.ok) {
       report.error = "checksum of " + table + " failed: "
                      + (sourceChecksum.ok ? targetChecksum.error
