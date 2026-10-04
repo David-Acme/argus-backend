@@ -203,21 +203,27 @@ public:
   {
     lastTable = table;
     lastUser = ctx.sub;
-    return std::make_unique<Pull>(ctx.sub);
+    return std::make_unique<Pull>(ctx.sub, lastScope);
   }
 
   mutable ProductivitySyncTable lastTable{ProductivitySyncTable::Reminder};
   mutable int64_t lastUser{0};
+  mutable std::shared_ptr<std::vector<int64_t>> lastScope =
+      std::make_shared<std::vector<int64_t>>();
 
 private:
   class Pull final : public Syncable
   {
   public:
-    explicit Pull(int64_t userId) : userId_(userId) {}
+    Pull(int64_t userId, std::shared_ptr<std::vector<int64_t>> scope)
+        : userId_(userId), scope_(std::move(scope))
+    {
+    }
 
     drogon::Task<std::vector<Json::Value>>
-    find(const SyncFilter&) const override
+    find(const SyncFilter& filter) const override
     {
+      *scope_ = filter.scopeIds;
       std::vector<Json::Value> rows;
       Json::Value row(Json::objectValue);
       row["id"] = Json::Int64(userId_ == 42 ? 3 : 4);
@@ -252,6 +258,7 @@ private:
 
   private:
     int64_t userId_;
+    std::shared_ptr<std::vector<int64_t>> scope_;
   };
 };
 
@@ -567,6 +574,52 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   REQUIRE(residentSync["info"]["project"]["created"].size() == 1);
   CHECK(residentSync["info"]["project"]["created"][0]["id"].asInt64() == 4);
   CHECK(productivitySource.lastUser == 7);
+  CHECK(productivitySource.lastScope->empty());
+
+  Json::Value scopedSyncBody;
+  Json::Value scopedBody;
+  scopedBody["requiredCreate"] = true;
+  scopedBody["scope"].append(Json::Int64(11));
+  scopedBody["scope"].append(Json::Int64(12));
+  scopedSyncBody["project_task"] = scopedBody;
+  drogon::sync_wait(synchronizedService.sync(
+      SynchronizedDto::fromJson(scopedSyncBody), residentCtx));
+  CHECK(productivitySource.lastTable == ProductivitySyncTable::ProjectTask);
+  CHECK(*productivitySource.lastScope == std::vector<int64_t>{11, 12});
+
+  const auto refusesScope = [](const Json::Value& json) {
+    try {
+      SynchronizedDto::fromJson(json);
+    }
+    catch (const ValidationException&) {
+      return true;
+    }
+    return false;
+  };
+  Json::Value cameraScoped;
+  cameraScoped["camera"] = scopedBody;
+  CHECK(refusesScope(cameraScoped));
+  Json::Value memberScoped;
+  memberScoped["project_member"] = scopedBody;
+  CHECK(refusesScope(memberScoped));
+  Json::Value malformed = scopedSyncBody;
+  malformed["project_task"]["scope"].append("13");
+  CHECK(refusesScope(malformed));
+  Json::Value zero = scopedSyncBody;
+  zero["project_task"]["scope"].append(Json::Int64(0));
+  CHECK(refusesScope(zero));
+  Json::Value deletionsOnly = scopedSyncBody;
+  deletionsOnly["project_task"]["requiredCreate"] = false;
+  CHECK(refusesScope(deletionsOnly));
+  Json::Value oversized;
+  oversized["requiredCreate"] = true;
+  for (int64_t id = 1; id <= 51; ++id)
+    oversized["scope"].append(Json::Int64(id));
+  Json::Value oversizedBody;
+  oversizedBody["calendar_event"] = oversized;
+  CHECK(refusesScope(oversizedBody));
+  oversizedBody["calendar_event"]["scope"].resize(50);
+  CHECK_FALSE(refusesScope(oversizedBody));
 
   Json::Value notificationSyncBody;
   Json::Value notificationBody;

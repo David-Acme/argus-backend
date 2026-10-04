@@ -234,6 +234,94 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
   }
 
   {
+    client->execSqlSync(
+        "INSERT INTO project_task (id, project_id, created_by, title, status, "
+        "priority, sort_order, created_at) "
+        "VALUES (3, 1, 42, 'Oil hinge', 'todo', 'low', 3.0, 1001)");
+    client->execSqlSync(
+        "INSERT INTO project_member (id, project_id, user_id, access, created_at) "
+        "VALUES (2, 1, 9, 'view', 5000)");
+
+    argus::productivity::v1::PullTableRequest caughtUp = taskPull(false);
+    caughtUp.mutable_project_task()->mutable_created()->set_start_time(4000);
+    const auto missed = sdk.pullTable(caughtUp, identityFor(9));
+    REQUIRE(missed);
+    CHECK(missed->project_task().created_size() == 0);
+
+    argus::productivity::v1::PullTableRequest grants;
+    grants.mutable_project_member()->set_required_create(true);
+    grants.mutable_project_member()->mutable_created()->set_start_time(4000);
+    const auto grant = sdk.pullTable(grants, identityFor(9));
+    REQUIRE(grant);
+    REQUIRE(grant->project_member().created_size() == 1);
+    CHECK(grant->project_member().created(0).project_id() == 1);
+
+    argus::productivity::v1::PullTableRequest scopedTasks = taskPull(false);
+    scopedTasks.mutable_project_task()->add_scope_ids(1);
+    const auto tasks = sdk.pullTable(scopedTasks, identityFor(9));
+    REQUIRE(tasks);
+    REQUIRE(tasks->project_task().created_size() == 2);
+    CHECK(tasks->project_task().created(0).id() == 2);
+    CHECK(tasks->project_task().created(1).id() == 3);
+
+    argus::productivity::v1::PullTableRequest nextPage = scopedTasks;
+    nextPage.mutable_project_task()->mutable_created()->set_start_time(1001);
+    nextPage.mutable_project_task()->mutable_created()->set_start_id(2);
+    const auto rest = sdk.pullTable(nextPage, identityFor(9));
+    REQUIRE(rest);
+    REQUIRE(rest->project_task().created_size() == 1);
+    CHECK(rest->project_task().created(0).id() == 3);
+
+    argus::productivity::v1::PullTableRequest scopedProject = projectPull();
+    scopedProject.mutable_project()->add_scope_ids(1);
+    scopedProject.mutable_project()->add_scope_ids(2);
+    const auto projects = sdk.pullTable(scopedProject, identityFor(9));
+    REQUIRE(projects);
+    REQUIRE(projects->project().created_size() == 1);
+    CHECK(projects->project().created(0).id() == 1);
+
+    argus::productivity::v1::PullTableRequest foreign = taskPull(false);
+    foreign.mutable_project_task()->add_scope_ids(1);
+    const auto outsider = sdk.pullTable(foreign, identityFor(8));
+    REQUIRE(outsider);
+    CHECK(outsider->project_task().created_size() == 0);
+
+    argus::productivity::v1::PullTableRequest scopedEvent;
+    scopedEvent.mutable_calendar_event()->set_required_create(true);
+    scopedEvent.mutable_calendar_event()->add_scope_ids(1);
+    const auto event = sdk.pullTable(scopedEvent, identityFor(7));
+    REQUIRE(event);
+    REQUIRE(event->calendar_event().created_size() == 1);
+    CHECK(event->calendar_event().created(0).id() == 1);
+
+    client->execSqlSync(
+        "UPDATE project_member SET deleted_at = 6000 WHERE id = 2");
+    argus::productivity::v1::PullTableRequest revocations;
+    revocations.mutable_project_member()->set_required_deleted(true);
+    revocations.mutable_project_member()->mutable_deleted()->set_start_time(5500);
+    const auto revoked = sdk.pullTable(revocations, identityFor(9));
+    REQUIRE(revoked);
+    REQUIRE(revoked->project_member().deleted_size() == 1);
+    CHECK(revoked->project_member().deleted(0).id() == 2);
+    const auto after = sdk.pullTable(scopedTasks, identityFor(9));
+    REQUIRE(after);
+    CHECK(after->project_task().created_size() == 0);
+
+    argus::productivity::v1::PullTableRequest unscopable = reminderPull();
+    unscopable.mutable_reminder()->add_scope_ids(1);
+    CHECK_FALSE(sdk.pullTable(unscopable, identityFor(7)));
+
+    argus::productivity::v1::PullTableRequest oversized = taskPull(false);
+    for (int64_t id = 1; id <= 51; ++id)
+      oversized.mutable_project_task()->add_scope_ids(id);
+    CHECK_FALSE(sdk.pullTable(oversized, identityFor(9)));
+
+    argus::productivity::v1::PullTableRequest negative = taskPull(false);
+    negative.mutable_project_task()->add_scope_ids(-1);
+    CHECK_FALSE(sdk.pullTable(negative, identityFor(9)));
+  }
+
+  {
     auto raw = argus::productivity::v1::SyncService::NewStub(
         argus::client::makeChannel(harness.target()));
     grpc::ClientContext context;

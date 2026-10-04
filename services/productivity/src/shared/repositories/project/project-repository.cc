@@ -122,19 +122,26 @@ drogon::Task<std::vector<Json::Value>>
 ProjectRepository::find(const SyncFilter& filter) const
 {
   auto client = DbService::productivityClient();
-  const auto [query, args] = sync_query::withUser(
-                                   {.parts = sync_query::buildSyncQuery({.filter = filter,
-                                                                        .queryBoth = FIND,
-                                                                        .queryFrom = FIND_FROM,
-                                                                        .queryAll = FIND_ALL,
-                                                                        .queryAfterBoth = FIND_AFTER,
-                                                                        .queryAfterFrom = FIND_AFTER_FROM}),
-                                    .userId = filter.userId,
-                                    .placeholders = OWNERSHIP_PLACEHOLDERS});
+  auto parts = filter.scopeIds.empty()
+                   ? sync_query::buildSyncQuery({.filter = filter,
+                                                 .queryBoth = FIND,
+                                                 .queryFrom = FIND_FROM,
+                                                 .queryAll = FIND_ALL,
+                                                 .queryAfterBoth = FIND_AFTER,
+                                                 .queryAfterFrom = FIND_AFTER_FROM})
+                   : sync_query::buildScopedQuery({.filter = filter,
+                                                   .head = FIND_SCOPED_HEAD,
+                                                   .after = FIND_SCOPED_AFTER,
+                                                   .tail = FIND_SCOPED_TAIL});
+  const auto [query, args] =
+      sync_query::withUser({.parts = std::move(parts),
+                            .userId = filter.userId,
+                            .placeholders = OWNERSHIP_PLACEHOLDERS});
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 
   std::vector<Json::Value> data;
+  data.reserve(rows.size());
   for (const auto& row : rows)
     data.push_back(ProjectSchema(row).toJson());
   co_return data;

@@ -40,57 +40,6 @@ drogon::Task<void> ProjectMemberFeatureService::emitMembership(
   co_return;
 }
 
-drogon::Task<void> ProjectMemberFeatureService::emitParent(
-    const EmitParentInput& input) const
-{
-  const SyncOperation operation = input.operation;
-  const auto parent =
-      co_await parentRepository_.findById(input.parentId, input.client);
-  if (!parent)
-    co_return;
-
-  SocketEmitDto body;
-  body.operation = operation;
-  body.option = TableName::Project;
-  if (operation == SyncOperation::Delete) {
-    Json::Value tombstone;
-    tombstone["id"] = parent->id;
-    tombstone["deletedAt"] = static_cast<Json::Int64>(std::time(nullptr));
-    body.obj = tombstone;
-  }
-  else {
-    body.obj = parent->toJson();
-  }
-  const auto* sink = user_change::getProductivitySink();
-  if (!sink) {
-    LOG_WARN << "user change sink not installed; drop project member parent emit";
-    co_return;
-  }
-  co_await sink->emitUsers({.userIds = {input.userId},
-                            .body = std::move(body),
-                            .client = input.client});
-
-  const auto tasks =
-      co_await taskRepository_.findByProject(parent->id, input.client);
-  for (const auto& task : tasks) {
-    SocketEmitDto taskBody;
-    taskBody.operation = operation;
-    taskBody.option = TableName::ProjectTask;
-    if (operation == SyncOperation::Delete) {
-      Json::Value tombstone;
-      tombstone["id"] = task.id;
-      tombstone["deletedAt"] = static_cast<Json::Int64>(std::time(nullptr));
-      taskBody.obj = tombstone;
-    }
-    else {
-      taskBody.obj = task.toJson();
-    }
-    co_await sink->emitUsers({.userIds = {input.userId},
-                              .body = std::move(taskBody),
-                              .client = input.client});
-  }
-}
-
 drogon::Task<ProjectMemberResult>
 ProjectMemberFeatureService::create(const CreateProjectMemberDto& body, int64_t actorId) const
 {
@@ -144,10 +93,6 @@ ProjectMemberFeatureService::create(const CreateProjectMemberDto& body, int64_t 
                                .row = row,
                                .ownerId = parent->ownerId,
                                .client = transaction.get()});
-      co_await emitParent({.operation = SyncOperation::Add,
-                           .parentId = body.projectId,
-                           .userId = body.userId,
-                           .client = transaction.get()});
     }
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
@@ -242,10 +187,6 @@ drogon::Task<bool> ProjectMemberFeatureService::remove(int64_t id,
                              .row = before,
                              .ownerId = parent->ownerId,
                              .client = transaction.get()});
-    co_await emitParent({.operation = SyncOperation::Delete,
-                         .parentId = existing->projectId,
-                         .userId = existing->userId,
-                         .client = transaction.get()});
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
   }

@@ -94,7 +94,8 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
   Json::Value node(Json::objectValue);
 
   if (dto.requiredCreate) {
-    const SyncFilter filter = applyRange(base, dto.created);
+    SyncFilter filter = applyRange(base, dto.created);
+    filter.scopeIds = dto.scope;
     const auto rows = co_await repo.find(filter);
     Json::Value arr(Json::arrayValue);
     for (const auto& row : rows)

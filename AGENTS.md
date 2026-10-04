@@ -570,6 +570,15 @@ Raw pointers only for non-owning access (`.get()`).
   update. Every persisted update/revocation must instead publish a granular
   audit change. New records are `Add` with the complete current row; deletion
   events carry only `id` and `deletedAt`.
+- **A grant is one row; the client pulls its scope.** A `project_member` or
+  `calendar_event_share` row naming the user arrives like any creation (pull
+  or live `Add`); the client then pulls the parent's rows with a scoped
+  `Synchronize` (`{requiredCreate, scope: [parentIds]}`, accepted on
+  `project`, `project_task` and `calendar_event`, at most
+  `SyncLimits::kMaxScopeIds` ids, paged by `(created_at, id)` from zero). A
+  revoked grant's tombstone reaches its user through the deleted leg, and the
+  client drops the parent and its children locally. The server never fans a
+  grant out as one frame per child row (`services/sync/CONTEXT.md`, "Grants").
 - Audit requests use monotonic SQLite ids, not timestamps. A client asks
   `{findLast:true}` for a `watermarkId`, then pages
   `afterId < id <= endId` in ascending order. `afterId=0` is valid to establish

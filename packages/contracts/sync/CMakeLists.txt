@@ -97,6 +97,12 @@ target_link_libraries(audit-retention-test PRIVATE
 target_compile_options(audit-retention-test PRIVATE -Wall -Wextra)
 add_test(NAME audit-retention-test COMMAND audit-retention-test)
 
+add_executable(sync-scope-query-test tests/unit/sync-scope-query-test.cc)
+target_link_libraries(sync-scope-query-test PRIVATE
+    argus::contracts::sync doctest::doctest)
+target_compile_options(sync-scope-query-test PRIVATE -Wall -Wextra)
+add_test(NAME sync-scope-query-test COMMAND sync-scope-query-test)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)

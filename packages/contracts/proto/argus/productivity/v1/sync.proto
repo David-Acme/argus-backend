@@ -116,6 +116,7 @@ message TablePull {
   bool find_last_deleted = 4;
   optional SyncRange created = 5;
   optional SyncRange deleted = 6;
+  repeated int64 scope_ids = 7;
 }
 
 message ReminderTableRows {

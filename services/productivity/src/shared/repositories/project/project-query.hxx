@@ -98,6 +98,16 @@ inline constexpr std::string_view FIND_LAST_DELETED =
     "AND m.deleted_at IS NULL)) "
     "ORDER BY deleted_at DESC LIMIT 1";
 
+inline constexpr std::string_view FIND_SCOPED_HEAD =
+    "SELECT * FROM project WHERE deleted_at IS NULL AND id IN (";
+inline constexpr std::string_view FIND_SCOPED_AFTER =
+    " AND (created_at > ? OR (created_at = ? AND id > ?))";
+inline constexpr std::string_view FIND_SCOPED_TAIL =
+    " AND (owner_id = ? OR EXISTS (SELECT 1 FROM project_member m "
+    "WHERE m.project_id = project.id AND m.user_id = ? "
+    "AND m.deleted_at IS NULL)) "
+    "ORDER BY created_at ASC, id ASC LIMIT 200";
+
 inline constexpr std::string_view FIND_BY_OWNER =
     "SELECT * FROM project WHERE owner_id = ? AND deleted_at IS NULL "
     "ORDER BY created_at DESC";

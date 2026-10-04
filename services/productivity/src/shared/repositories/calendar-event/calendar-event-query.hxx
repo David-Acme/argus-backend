@@ -99,6 +99,16 @@ inline constexpr std::string_view FIND_LAST_DELETED =
     "AND s.deleted_at IS NULL)) "
     "ORDER BY deleted_at DESC LIMIT 1";
 
+inline constexpr std::string_view FIND_SCOPED_HEAD =
+    "SELECT * FROM calendar_event WHERE deleted_at IS NULL AND id IN (";
+inline constexpr std::string_view FIND_SCOPED_AFTER =
+    " AND (created_at > ? OR (created_at = ? AND id > ?))";
+inline constexpr std::string_view FIND_SCOPED_TAIL =
+    " AND (owner_id = ? OR EXISTS (SELECT 1 FROM calendar_event_share s "
+    "WHERE s.calendar_event_id = calendar_event.id AND s.user_id = ? "
+    "AND s.deleted_at IS NULL)) "
+    "ORDER BY created_at ASC, id ASC LIMIT 200";
+
 inline constexpr std::string_view FIND_BY_OWNER_RANGE =
     "SELECT * FROM calendar_event WHERE owner_id = ? AND deleted_at IS NULL "
     "AND starts_at >= ? AND starts_at <= ? "

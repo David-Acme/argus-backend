@@ -51,6 +51,7 @@ trusted_proxy_ips = ""
 
 [identity]
 target = "127.0.0.1:7040"
+rpc_secret = ""
 
 [nats]
 url = "nats://127.0.0.1:4222"

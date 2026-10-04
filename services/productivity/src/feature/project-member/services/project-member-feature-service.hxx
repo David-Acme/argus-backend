@@ -7,7 +7,6 @@
 #include <feature/project-member/dtos/update-project-member-dto.hxx>
 #include <optional>
 #include <shared/repositories/project-member/project-member-repository.hxx>
-#include <shared/repositories/project-task/project-task-repository.hxx>
 #include <shared/repositories/project/project-repository.hxx>
 #include <shared/schemas/project-member/project-member-schema.hxx>
 #include <sync/user-change-sink.hxx>
@@ -44,19 +43,9 @@ private:
     drogon::orm::DbClient* client{nullptr};
   };
 
-  struct EmitParentInput
-  {
-    SyncOperation operation{};
-    int64_t parentId{0};
-    int64_t userId{0};
-    drogon::orm::DbClient* client{nullptr};
-  };
-
   drogon::Task<void> emitMembership(const EmitMembershipInput& input) const;
-  drogon::Task<void> emitParent(const EmitParentInput& input) const;
 
   ProjectMemberRepository repository_;
   ProjectRepository parentRepository_;
-  ProjectTaskRepository taskRepository_;
   IdentityUserDirectory directory_;
 };

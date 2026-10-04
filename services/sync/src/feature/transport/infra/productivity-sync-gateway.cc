@@ -436,6 +436,8 @@ private:
       case Mode::Created:
         body->set_required_create(true);
         *body->mutable_created() = toRange(input.filter);
+        body->mutable_scope_ids()->Add(input.filter.scopeIds.begin(),
+                                       input.filter.scopeIds.end());
         break;
       case Mode::Deleted:
         body->set_required_deleted(true);

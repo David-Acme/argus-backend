@@ -291,3 +291,19 @@ path and the TLS listener) and its NATS change sink is
 `src/shared/services/change-sink/` (`argus::productivity-change-sink`).
 `main.cc` keeps `config.toml` loading, `drogonConfig` and the `nats.url` gate
 on the optional bus.
+
+## Grants are one row; scoped pulls (2026-10)
+
+`PullTable` accepts `TablePull.scope_ids` on `project` (by `id`),
+`project_task` (by `project_id`) and `calendar_event` (by `id`), at most 50
+positive ids, and refuses it anywhere else with `INVALID_ARGUMENT`. The pull
+keeps the caller's owner-or-member scope and pages by `(created_at, id)` from
+zero (`FIND_SCOPED_HEAD/AFTER/TAIL` + `sync_query::buildScopedQuery`). Adding
+or removing a project member or an event share now emits only the grant row,
+to the owner and the grantee; the grantee's app pulls the parent's rows
+through that scope (`services/sync/CONTEXT.md`, "Grants").
+
+The native `config.toml.example` gained `[identity] rpc_secret`: identity
+refuses `GetUser` without the fleet secret once it has one, and without the
+key `setup.sh` never shared it here, so every grant on a native install
+answered "User not found" (the deploy example already carried it).

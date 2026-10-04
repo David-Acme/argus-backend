@@ -43,16 +43,7 @@ private:
     drogon::orm::DbClient* client{nullptr};
   };
 
-  struct EmitParentInput
-  {
-    SyncOperation operation{};
-    int64_t parentId{0};
-    int64_t userId{0};
-    drogon::orm::DbClient* client{nullptr};
-  };
-
   drogon::Task<void> emitMembership(const EmitMembershipInput& input) const;
-  drogon::Task<void> emitParent(const EmitParentInput& input) const;
 
   CalendarEventShareRepository repository_;
   CalendarEventRepository parentRepository_;

@@ -422,3 +422,57 @@ for a JSON `true`, `detail` cut at 160 characters. `voice:mute`
 `{muted: true}` tells argus-voice the microphone is muted, so it drops the
 half-said utterance instead of finishing it after the unmute; any other
 payload is unmute.
+
+## Grants: a scoped pull instead of a frame per row (2026-10)
+
+A member added to a project while offline never received the project's
+tasks: `Synchronize` pages creations by `created_at`, those tasks were created
+before the member's cursor, and the grant pushed them only as live frames
+(d07e59cd) that an offline socket never saw. The same held for a calendar
+event shared with someone offline, and on revocation for the rows a removed
+member kept.
+
+The fix follows what local-first sync engines do for permission changes —
+WatermelonDB's sync guide (a granted record must be reported as created, a
+revoked one as deleted), PowerSync (a newly applicable bucket is downloaded
+from its beginning, a removed one is dropped from the client) and Electric's
+shape move-in/move-out — without breaking rule 18's creation-only stream:
+
+- **The grant is the durable signal.** A `project_member` /
+  `calendar_event_share` row naming the user is created at grant time, so it
+  reaches an offline member through the ordinary creation pull and an online
+  one as a live `Add`. Its tombstone reaches them through the deleted leg,
+  whose scope includes the user's own grant rows.
+- **The client pulls the scope.** On a grant for itself the app records the
+  parent id (persisted, so a crash resumes it) and sends a scoped page:
+  `{"project": {"requiredCreate": true, "scope": [14]}, "project_task":
+  {"requiredCreate": true, "scope": [14]}}`. `SynchronizedBodyDto` accepts
+  `scope` only with `requiredCreate`, only on `project`, `project_task` and
+  `calendar_event` (a 422 otherwise) and at most `SyncLimits::kMaxScopeIds`
+  (50) positive ids; `SyncFilter::scopeIds` carries it to argus-productivity
+  as `TablePull.scope_ids`, whose RPC refuses the same cases, and the
+  repositories page `id IN (...)` / `project_id IN (...)` by `(created_at,
+  id)` from zero (`sync_query::buildScopedQuery`), still under the caller's
+  owner-or-member scope — a scope never widens what a user may read.
+- **Revocation is local.** When a grant row of the user's own disappears, the
+  app drops every parent it neither owns nor holds a grant for, with its
+  children (tasks, other grant rows). The sweep runs after each pull and after
+  a live batch that deleted a grant row.
+- **A grant costs one row, not one per child.** The project-member and
+  calendar-event-share services no longer emit the parent and every task to
+  the member (d07e59cd did, O(tasks) outbox rows per grant and per revoke);
+  they emit the grant row to the owner and the member, and the member's app
+  pulls what it now may read. That scales with many projects and members, and
+  a member who is offline gets exactly what an online one gets.
+
+Measured on the sandbox (throwaway residents 9301 owner / 9302 member, project
+with three tasks): an incremental pull after the grant returned the membership
+row and no task or project (the old gap), the scoped pull returned the project
+and the three tasks, `scope` on `camera` answered `sync_error` 422, the revoke
+reached the member's open socket as one `project_member` Delete, an offline
+pull of the deleted leg returned that tombstone, and a scoped pull after the
+revoke returned nothing.
+
+The fresh bootstrap also pulls every grant's scope once more (the projection
+paging may pass a parent's old rows before it meets a grant created
+mid-bootstrap); that one-time re-download is the price of not missing them.

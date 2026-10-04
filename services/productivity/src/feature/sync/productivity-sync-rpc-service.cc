@@ -1,9 +1,13 @@
 #include "productivity-sync-rpc-service.hxx"
 
+#include <algorithm>
+#include <utility>
+
 #include <config/config-service.hxx>
 #include <drogon/drogon.h>
 #include <grpc/grpc-server-identity.hxx>
 #include <sync/sync-filter.hxx>
+#include <sync/sync-limits.hxx>
 #include <trantor/utils/Logger.h>
 
 namespace
@@ -160,6 +164,49 @@ void toProto(const Json::Value& row,
     out->set_deleted_at(row["deletedAt"].asInt64());
 }
 
+const argus::productivity::v1::TablePull* pullOf(
+    const argus::productivity::v1::PullTableRequest& request)
+{
+  using argus::productivity::v1::PullTableRequest;
+  switch (request.table_case()) {
+    case PullTableRequest::kReminder:
+      return &request.reminder();
+    case PullTableRequest::kReminderDetail:
+      return &request.reminder_detail();
+    case PullTableRequest::kCalendarEvent:
+      return &request.calendar_event();
+    case PullTableRequest::kCalendarEventShare:
+      return &request.calendar_event_share();
+    case PullTableRequest::kProject:
+      return &request.project();
+    case PullTableRequest::kProjectMember:
+      return &request.project_member();
+    case PullTableRequest::kProjectTask:
+      return &request.project_task();
+    default:
+      return nullptr;
+  }
+}
+
+bool scopable(argus::productivity::v1::PullTableRequest::TableCase table)
+{
+  using argus::productivity::v1::PullTableRequest;
+  return table == PullTableRequest::kProject ||
+         table == PullTableRequest::kProjectTask ||
+         table == PullTableRequest::kCalendarEvent;
+}
+
+bool validScope(const argus::productivity::v1::PullTableRequest& request)
+{
+  const auto* pull = pullOf(request);
+  if (!pull || pull->scope_ids_size() == 0)
+    return true;
+  if (!scopable(request.table_case()) ||
+      std::cmp_greater(pull->scope_ids_size(), SyncLimits::kMaxScopeIds))
+    return false;
+  return std::ranges::all_of(pull->scope_ids(), [](int64_t id) { return id > 0; });
+}
+
 template <typename TableRows, typename Repo>
 struct FillInput
 {
@@ -180,6 +227,7 @@ drogon::Task<void> fill(const FillInput<TableRows, Repo>& input)
     SyncFilter filter = input.base;
     if (body.has_created())
       mergeRange(filter, body.created());
+    filter.scopeIds.assign(body.scope_ids().begin(), body.scope_ids().end());
     for (const auto& row : co_await repo.find(filter))
       toProto(row, rows->add_created());
   }
@@ -241,6 +289,14 @@ grpc::ServerUnaryReactor* ProductivitySyncRpcService::PullTable(
     auto* reactor = context->DefaultReactor();
     reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                                  "table branch is required"));
+    return reactor;
+  }
+
+  if (!validScope(*request)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "scope is limited to project, project_task and "
+                                 "calendar_event, with positive ids"));
     return reactor;
   }
 

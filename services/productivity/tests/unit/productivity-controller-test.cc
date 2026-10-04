@@ -512,12 +512,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(member["userId"].asInt64() == 7);
   CHECK(member["access"] == "view");
   CHECK(member.getMemberNames().size() == 7);
-  REQUIRE(sink.emits.size() == 3);
+  REQUIRE(sink.emits.size() == 2);
   CHECK(sink.emits.at(1).option == "project_member");
   CHECK(sink.emits.at(1).users == std::vector<int64_t>{42, 7});
   CHECK(sink.emits.at(1).body["id"].asInt64() == memberId);
-  CHECK(sink.emits.at(2).option == "project");
-  CHECK(sink.emits.at(2).users == std::vector<int64_t>{7});
 
   Json::Value editBody;
   editBody["access"] = "edit";
@@ -542,15 +540,12 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   REQUIRE(memberGoneTwice);
   CHECK(memberGoneTwice->status == 404);
   CHECK(memberGoneTwice->message == "Share not found");
-  REQUIRE(sink.emits.size() == 5);
-  CHECK(sink.emits.at(3).operation
+  REQUIRE(sink.emits.size() == 3);
+  CHECK(sink.emits.at(2).operation
         == static_cast<int>(SyncOperation::Delete));
-  CHECK(sink.emits.at(3).option == "project_member");
-  CHECK(sink.emits.at(3).users == std::vector<int64_t>{42, 7});
-  CHECK(sink.emits.at(4).operation
-        == static_cast<int>(SyncOperation::Delete));
-  CHECK(sink.emits.at(4).option == "project");
-  CHECK(sink.emits.at(4).users == std::vector<int64_t>{7});
+  CHECK(sink.emits.at(2).option == "project_member");
+  CHECK(sink.emits.at(2).users == std::vector<int64_t>{42, 7});
+  CHECK(sink.emits.at(2).body["id"].asInt64() == memberId);
 
   ProjectTaskController taskController;
 
@@ -585,7 +580,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(task["assigneeId"].isNull());
   CHECK(task["dueAt"].isNull());
   CHECK(task.getMemberNames().size() == 12);
-  REQUIRE(sink.emits.size() == 6);
+  REQUIRE(sink.emits.size() == 4);
   CHECK(sink.emits.back().option == "project_task");
   CHECK(sink.emits.back().users == std::vector<int64_t>{42});
 
@@ -634,20 +629,19 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   const auto regranted =
       drogon::sync_wait(memberController.create(memberReq(7, "view")));
   const int64_t regrantedId = body(regranted)["info"]["id"].asInt64();
-  REQUIRE(sink.emits.size() == emitsBeforeRegrant + 3);
-  CHECK(sink.emits.at(emitsBeforeRegrant + 1).option == "project");
-  CHECK(sink.emits.at(emitsBeforeRegrant + 2).option == "project_task");
-  CHECK(sink.emits.at(emitsBeforeRegrant + 2).operation ==
-        static_cast<int>(SyncOperation::Add));
-  CHECK(sink.emits.at(emitsBeforeRegrant + 2).users == std::vector<int64_t>{7});
-  CHECK(sink.emits.at(emitsBeforeRegrant + 2).body["id"].asInt64() == taskId);
+  REQUIRE(sink.emits.size() == emitsBeforeRegrant + 1);
+  CHECK(sink.emits.back().option == "project_member");
+  CHECK(sink.emits.back().operation == static_cast<int>(SyncOperation::Add));
+  CHECK(sink.emits.back().users == std::vector<int64_t>{42, 7});
+  CHECK(sink.emits.back().body["id"].asInt64() == regrantedId);
+  CHECK(sink.emits.back().body["projectId"].asInt64() == projectId);
 
   drogon::sync_wait(memberController.remove(ownerRequest(), regrantedId));
-  REQUIRE(sink.emits.size() == emitsBeforeRegrant + 6);
-  CHECK(sink.emits.back().option == "project_task");
+  REQUIRE(sink.emits.size() == emitsBeforeRegrant + 2);
+  CHECK(sink.emits.back().option == "project_member");
   CHECK(sink.emits.back().operation == static_cast<int>(SyncOperation::Delete));
-  CHECK(sink.emits.back().users == std::vector<int64_t>{7});
-  CHECK(sink.emits.back().body["id"].asInt64() == taskId);
+  CHECK(sink.emits.back().users == std::vector<int64_t>{42, 7});
+  CHECK(sink.emits.back().body["id"].asInt64() == regrantedId);
 
   CalendarEventController eventController;
 
@@ -679,7 +673,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK_FALSE(event["isAllDay"].asBool());
   CHECK(event["recurrenceRule"].isNull());
   CHECK(event.getMemberNames().size() == 15);
-  REQUIRE(sink.emits.size() == 13);
+  REQUIRE(sink.emits.size() == 7);
   CHECK(sink.emits.back().option == "calendar_event");
   CHECK(sink.emits.back().users == std::vector<int64_t>{42});
 
@@ -688,7 +682,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   setActor({.req = eventRetryReq, .sub = 42, .role = UserRole::Owner});
   const auto eventRetried = drogon::sync_wait(eventController.create(eventRetryReq));
   CHECK(body(eventRetried)["info"]["id"].asInt64() == eventId);
-  CHECK(sink.emits.size() == 13);
+  CHECK(sink.emits.size() == 7);
 
   CalendarEventShareController shareController;
 
@@ -723,6 +717,9 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(share["userId"].asInt64() == 7);
   CHECK(share["access"] == "view");
   CHECK(share.getMemberNames().size() == 7);
+  REQUIRE(sink.emits.size() == 8);
+  CHECK(sink.emits.back().option == "calendar_event_share");
+  CHECK(sink.emits.back().users == std::vector<int64_t>{42, 7});
 
   Json::Value shareEditBody;
   shareEditBody["access"] = "edit";

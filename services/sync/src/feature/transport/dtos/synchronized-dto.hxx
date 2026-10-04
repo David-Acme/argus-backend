@@ -1,7 +1,9 @@
 #pragma once
 
 #include <json/value.h>
+#include <cstdint>
 #include <optional>
+#include <sync/sync-limits.hxx>
 #include <validation/validation_dsl.hxx>
 #include <string>
 #include <vector>
@@ -48,10 +50,26 @@ struct SynchronizedBodyDto
   bool findLastDeleted{false};
   bool requiredCreate{false};
   bool requiredDeleted{false};
+  std::vector<int64_t> scope;
+  bool scopeMalformed{false};
 
   static SynchronizedBodyDto fromJson(const Json::Value& json)
   {
     SynchronizedBodyDto dto;
+
+    if (json.isMember("scope") && !json["scope"].isNull()) {
+      if (!json["scope"].isArray()) {
+        dto.scopeMalformed = true;
+      }
+      else {
+        for (const auto& id : json["scope"]) {
+          if (id.isInt64() && id.asInt64() > 0)
+            dto.scope.push_back(id.asInt64());
+          else
+            dto.scopeMalformed = true;
+        }
+      }
+    }
 
     if (json.isMember("created") && !json["created"].isNull() &&
         json["created"].isObject())
@@ -71,6 +89,15 @@ struct SynchronizedBodyDto
     IS_BOOLEAN(findLastDeleted)
     IS_BOOLEAN(requiredCreate)
     IS_BOOLEAN(requiredDeleted)
+    MAX_ELEMENTS(scope, int64_t, SyncLimits::kMaxScopeIds)
+    CUSTOM_LAMBDA(scope,
+                  [](const SynchronizedBodyDto& d) -> std::optional<std::string> {
+                    if (d.scopeMalformed)
+                      return "scope must be an array of positive ids";
+                    if (!d.scope.empty() && !d.requiredCreate)
+                      return "scope pages creations only";
+                    return std::nullopt;
+                  })
     END_VALIDATION()
     return dto;
   }
@@ -124,7 +151,24 @@ struct SynchronizedDto
           json[jsonKey].isObject())
         dto.*member = SynchronizedBodyDto::fromJson(json[jsonKey]);
     }
+
+    START_VALIDATION(SynchronizedDto, dto)
+    CUSTOM_LAMBDA(scope,
+                  [](const SynchronizedDto& d) -> std::optional<std::string> {
+                    for (const auto& [key, member] : kBodyFields) {
+                      const auto& body = d.*member;
+                      if (body && !body->scope.empty() && !scopable(key))
+                        return key + " cannot be scoped";
+                    }
+                    return std::nullopt;
+                  })
+    END_VALIDATION()
     return dto;
+  }
+
+  static bool scopable(const std::string& key)
+  {
+    return key == "project" || key == "project_task" || key == "calendar_event";
   }
 };
 
