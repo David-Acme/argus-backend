@@ -319,6 +319,19 @@ TEST_CASE("explicit app commands become app calls and questions do not")
   CHECK(appCommandFor("Modo fuera.").value().arguments["mode"].asString() == "away");
   CHECK_FALSE(appCommandFor("está la vigilancia en modo noche").has_value());
   CHECK_FALSE(appCommandFor("anoche la vigilancia en modo noche saltó dos veces por el gato").has_value());
+  CHECK_FALSE(mode.value().arguments.isMember("environment"));
+  CHECK_FALSE(appCommandFor("Activa el modo fuera, me voy").value().arguments.isMember("environment"));
+  const auto restaurant = appCommandFor("Pon el restaurante en modo armado, por favor");
+  REQUIRE(restaurant.has_value());
+  CHECK(restaurant.value().arguments["mode"].asString() == "armed");
+  CHECK(restaurant.value().arguments["environment"].asString() == "restaurante");
+  const auto cottage = appCommandFor("pon la vigilancia de la casa de campo en modo noche");
+  CHECK(cottage.value().arguments["mode"].asString() == "night");
+  CHECK(cottage.value().arguments["environment"].asString() == "casa campo");
+  CHECK(appCommandFor("pon la casa en modo noche").value().arguments["environment"].asString() == "casa");
+  CHECK_FALSE(appCommandFor("pon la vigilancia en casa").value().arguments.isMember("environment"));
+  CHECK(appCommandFor("set the office guard mode to away").value().arguments["environment"].asString() ==
+        "office");
 
   const auto garage = appCommandFor("Muéstrame la cámara del garaje, por favor.");
   REQUIRE(garage.has_value());

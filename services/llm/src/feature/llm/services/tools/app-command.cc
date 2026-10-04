@@ -50,6 +50,9 @@ constexpr std::array<std::string_view, 33> kClaims{
 constexpr std::array<std::string_view, 2> kSeeVerbs{"ver", "see"};
 constexpr std::array<std::string_view, 9> kNameFillers{"de", "del", "la", "el", "los", "las", "en", "the", "a"};
 constexpr std::array<std::string_view, 6> kNameTails{"por", "favor", "ahora", "please", "now", "ya"};
+constexpr std::array<std::string_view, 24> kPlaceNoise{
+    "a",   "al",  "para", "to",  "in",  "on",  "of", "for", "y",     "and",   "me",    "voy",
+    "nos", "vamos", "ya", "que", "porfa", "todo", "toda", "todos", "todas", "everything", "all", "it"};
 constexpr std::array<std::string_view, 12> kOpenVerbs{
     "abre", "abreme", "ve", "vamos", "llevame", "muestrame", "ensename", "open", "go", "take", "show", "pon"};
 constexpr std::array<std::pair<std::string_view, std::string_view>, 15> kScreens{{{"agenda", "agenda"},
@@ -141,6 +144,33 @@ bool terseCommand(const Words& words)
          std::ranges::find(kQuestionOpeners, words.front()) == kQuestionOpeners.end();
 }
 
+bool isAny(const std::string& word, std::span<const std::string_view> set)
+{
+  return std::ranges::find(set, word) != set.end();
+}
+
+std::string placeHint(const Words& words, size_t modeAt)
+{
+  std::string hint;
+  for (size_t i = 0; i < words.size(); ++i) {
+    const std::string& word = words[i];
+    if (i == modeAt || word == "modo" || word == "mode" || isAny(word, kGuardContext) ||
+        isAny(word, kGuardVerbs) || isAny(word, kNameFillers) || isAny(word, kNameTails) ||
+        isAny(word, kPlaceNoise))
+      continue;
+    hint += hint.empty() ? word : " " + word;
+  }
+  return hint;
+}
+
+tools::ToolCall guardModeCall(const Words& words, size_t modeAt, std::string_view mode)
+{
+  tools::ToolCall call = callOf({.name = "app.set_guard_mode", .argument = "mode", .value = std::string(mode)});
+  if (const std::string hint = placeHint(words, modeAt); !hint.empty())
+    call.arguments["environment"] = hint;
+  return call;
+}
+
 std::optional<tools::ToolCall> guardMode(const Words& words)
 {
   if (!hasAny(words, kGuardContext))
@@ -151,13 +181,13 @@ std::optional<tools::ToolCall> guardMode(const Words& words)
   if (modeWord != words.end() && std::next(modeWord) != words.end() &&
       (hasAny(words, kGuardVerbs) || terseCommand(words))) {
     if (const auto mode = lookup(kModes, *std::next(modeWord)))
-      return callOf({.name = "app.set_guard_mode", .argument = "mode", .value = std::string(*mode)});
+      return guardModeCall(words, static_cast<size_t>(std::next(modeWord) - words.begin()), *mode);
   }
   if (!hasAny(words, kGuardVerbs))
     return std::nullopt;
-  for (const auto& word : words) {
-    if (const auto mode = lookup(kModes, word))
-      return callOf({.name = "app.set_guard_mode", .argument = "mode", .value = std::string(*mode)});
+  for (size_t i = 0; i < words.size(); ++i) {
+    if (const auto mode = lookup(kModes, words[i]))
+      return guardModeCall(words, i, *mode);
   }
   return std::nullopt;
 }

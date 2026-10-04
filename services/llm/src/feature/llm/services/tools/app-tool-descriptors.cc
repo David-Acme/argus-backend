@@ -112,13 +112,24 @@ std::vector<tools::ToolDescriptor> appToolDescriptors()
        }});
   descriptors.push_back(
       {.name = "app.set_guard_mode",
-       .description = "Cambia el modo de vigilancia de la casa: home al estar en casa, night al dormir, "
-                      "away al salir, armed para máxima alerta",
-       .arguments = {argument("mode", "enum", {"home", "night", "away", "armed"})},
+       .description = "Cambia el modo de vigilancia: home al estar en casa, night al dormir, away al "
+                      "salir, armed para máxima alerta. environment es el nombre del lugar (casa, "
+                      "restaurante, oficina...) si el usuario nombra uno; vacío cambia todos",
+       .arguments = {argument("mode", "enum", {"home", "night", "away", "armed"}),
+                     {.name = "environment",
+                      .type = "string",
+                      .required = false,
+                      .enumValues = {},
+                      .description = ""}},
        .accessTable = TableName::Camera,
        .accessPermission = RolePermission::Update,
        .handler = [](const tools::ToolCall& call) {
          const std::string mode = labelFor(kModeLabels, call, "mode");
+         const std::string place = call.arguments.get("environment", "").asString();
+         if (!place.empty())
+           return emit({.call = call,
+                        .spokenEs = "La app puso la vigilancia de " + place + " en modo " + mode + ".",
+                        .spokenEn = "The app set the guard mode of " + place + " to " + mode + "."});
          return emit({.call = call,
                       .spokenEs = "La app puso la vigilancia en modo " + mode + ".",
                       .spokenEn = "The app set the guard mode to " + mode + "."});

@@ -502,6 +502,17 @@ controller turns into a `ClientAction` on the stream (`ChatToken.action`,
 ordered with the text tokens). Without an emitter the tool refuses, so a
 non-call caller never hears that something happened when nothing did.
 
+`app.set_guard_mode` takes an optional `environment` (2026-10, guard
+environments): the place the user named ("pon el restaurante en modo
+armado"). The model fills it from the environment names the app's situation
+note lists; the deterministic parser passes the words left after removing
+guard words, verbs, the mode word and fillers as a hint ("restaurante",
+"casa campo"). The app resolves the hint against its environments by word,
+treats a hint that names no environment as "every environment" unless it
+contains a place noun it cannot match (then it refuses and the call
+corrects itself aloud), and no `environment` keeps the old meaning: every
+environment.
+
 ## The tool loop in a call (2026-10-03)
 
 The voice session and argus-llm agreed this contract with the voice agent:
