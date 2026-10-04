@@ -40,6 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /opt/argus
 COPY --from=build /opt/argus/services/settings/build/prod/argus-settings /opt/argus/argus-settings
+COPY --from=build /opt/argus/services/settings/profiles.json /opt/argus/profiles.json
 
 RUN groupadd --gid "$ARGUS_GID" argus \
     && useradd --uid "$ARGUS_UID" --gid "$ARGUS_GID" --create-home \

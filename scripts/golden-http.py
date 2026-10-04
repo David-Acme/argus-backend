@@ -86,6 +86,12 @@ VOLATILE_FIELDS = {
                   "these fields report the last probe's outcome rather than a "
                   "contract; the counters beside them stay pinned",
     },
+    ("settings", "/settings/profiles"): {
+        "keys": ("recommendation",),
+        "reason": "the recommendation is derived from the cores, RAM, ISA "
+                  "and GPU of the host that answers, so it differs between "
+                  "machines; the profile previews beside it stay pinned",
+    },
 }
 
 PORT_RE = re.compile(r"^port\s*=\s*(\d+)\s*$", re.MULTILINE)

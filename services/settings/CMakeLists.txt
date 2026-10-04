@@ -77,7 +77,7 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-foreach(TEST_NAME IN ITEMS settings-gateway-test settings-dto-test settings-config-test)
+foreach(TEST_NAME IN ITEMS settings-gateway-test settings-dto-test settings-config-test settings-profile-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
     target_link_libraries(${TEST_NAME} PRIVATE
@@ -87,3 +87,6 @@ foreach(TEST_NAME IN ITEMS settings-gateway-test settings-dto-test settings-conf
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
+
+target_compile_definitions(settings-profile-test PRIVATE
+    ARGUS_SETTINGS_PROFILES_FILE="${CMAKE_CURRENT_SOURCE_DIR}/profiles.json")

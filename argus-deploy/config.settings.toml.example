@@ -5,6 +5,7 @@ plain = false
 min_protocol = "TLSv1.2"
 list_timeout_ms = 1500
 update_timeout_ms = 5000
+profiles_path = "profiles.json"
 
 [drogon.app]
 number_of_threads = 0

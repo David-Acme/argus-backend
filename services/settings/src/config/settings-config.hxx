@@ -32,4 +32,6 @@ public:
   [[nodiscard]] static std::vector<SettingsOwnerConfig> resolveOwners();
 
   [[nodiscard]] static SettingsTimeouts resolveTimeouts();
+
+  [[nodiscard]] static std::string resolveProfilesPath();
 };

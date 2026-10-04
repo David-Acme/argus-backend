@@ -79,3 +79,13 @@ TEST_CASE("the listener and the deadlines fall back to their defaults")
   CHECK(SettingsConfig::resolveTimeouts().update.count() == 3000);
   std::filesystem::remove(configPath());
 }
+
+TEST_CASE("the profile file defaults beside the working directory and follows the config")
+{
+  loadConfig("[settings]\nport = 7045\n");
+  CHECK(SettingsConfig::resolveProfilesPath() == "profiles.json");
+
+  loadConfig("[settings]\nprofiles_path = \"/opt/argus/profiles.json\"\n");
+  CHECK(SettingsConfig::resolveProfilesPath() == "/opt/argus/profiles.json");
+  std::filesystem::remove(configPath());
+}

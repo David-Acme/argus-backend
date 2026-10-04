@@ -1,0 +1,54 @@
+{
+  "profiles": [
+    {
+      "id": "performance",
+      "labelKey": "performance",
+      "owners": {
+        "tts": {
+          "tts.engine_es": "pocket",
+          "tts.engine_en": "pocket",
+          "tts.pocket_variant_es": "fast"
+        },
+        "vlm": {
+          "vision.max_input_px": "256"
+        }
+      }
+    },
+    {
+      "id": "balanced",
+      "labelKey": "balanced",
+      "owners": {
+        "tts": {
+          "tts.engine_es": "pocket",
+          "tts.engine_en": "pocket",
+          "tts.pocket_variant_es": "fast"
+        },
+        "vlm": {
+          "vision.max_input_px": "384"
+        }
+      }
+    },
+    {
+      "id": "quality",
+      "labelKey": "quality",
+      "owners": {
+        "tts": {
+          "tts.engine_es": "pocket",
+          "tts.engine_en": "pocket",
+          "tts.pocket_variant_es": "quality",
+          "tts.pocket_voice_es": "jean"
+        },
+        "vlm": {
+          "vision.max_input_px": "512"
+        }
+      }
+    }
+  ],
+  "recommendation": {
+    "rules": [
+      { "profile": "quality", "minCores": 8, "minRamGb": 14, "vectorIsa": true },
+      { "profile": "balanced", "minCores": 4, "minRamGb": 7, "vectorIsa": true }
+    ],
+    "fallback": "performance"
+  }
+}

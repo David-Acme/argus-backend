@@ -187,6 +187,7 @@ owners.camera target
 owners.camera credential
 owners.notification target
 owners.notification credential
+settings profiles_path
 mdns enabled
 EOF
 }

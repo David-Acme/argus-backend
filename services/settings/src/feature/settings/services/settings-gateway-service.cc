@@ -2,6 +2,7 @@
 
 #include <errors/response-exception.hxx>
 #include <errors/validation-exception.hxx>
+#include <feature/settings/dtos/setting-names.hxx>
 #include <feature/settings/settings-gateway-errors.hxx>
 #include <runtime/blocking-task.hxx>
 #include <settings/settings-errors.hxx>
@@ -15,19 +16,6 @@
 
 namespace
 {
-std::string reasonCode(SettingRejectionReason reason)
-{
-  switch (reason) {
-  case SettingRejectionReason::Unknown: return "unknownKey";
-  case SettingRejectionReason::Invalid: return "invalid";
-  case SettingRejectionReason::OutOfRange: return "outOfRange";
-  case SettingRejectionReason::NotAChoice: return "notAChoice";
-  case SettingRejectionReason::WriteFailed: return "writeFailed";
-  case SettingRejectionReason::NotInstalled: return "notInstalled";
-  }
-  return "invalid";
-}
-
 std::string joined(const std::vector<std::string>& keys)
 {
   std::string text;
@@ -58,14 +46,68 @@ SettingsGatewayService::SettingsGatewayService(const SettingsGatewayInput& input
 
 std::vector<OwnerCatalog> SettingsGatewayService::catalogs() const
 {
-  std::vector<OwnerCatalog> catalogs(owners_.size());
+  std::vector<const OwnerLink*> links;
+  links.reserve(owners_.size());
+  for (const auto& owner : owners_)
+    links.push_back(&owner);
+  return fetchAll(links);
+}
+
+std::vector<OwnerCatalog> SettingsGatewayService::catalogsOf(const std::vector<std::string>& names) const
+{
+  std::vector<const OwnerLink*> links;
+  links.reserve(names.size());
+  for (const auto& owner : owners_)
+    if (std::ranges::find(names, owner.name) != names.end())
+      links.push_back(&owner);
+  return fetchAll(links);
+}
+
+std::vector<OwnerCatalog> SettingsGatewayService::fetchAll(const std::vector<const OwnerLink*>& links)
+{
+  std::vector<OwnerCatalog> catalogs(links.size());
   {
     std::vector<std::jthread> workers;
-    workers.reserve(owners_.size());
-    for (const auto index : std::views::iota(std::size_t{0}, owners_.size()))
-      workers.emplace_back([this, index, &catalogs] { catalogs[index] = fetch(owners_[index]); });
+    workers.reserve(links.size());
+    for (const auto index : std::views::iota(std::size_t{0}, links.size()))
+      workers.emplace_back([&links, index, &catalogs] { catalogs[index] = fetch(*links[index]); });
   }
   return catalogs;
+}
+
+std::vector<OwnerWriteResult> SettingsGatewayService::write(const std::vector<OwnerWrite>& writes) const
+{
+  std::vector<OwnerWriteResult> results(writes.size());
+  {
+    std::vector<std::jthread> workers;
+    workers.reserve(writes.size());
+    for (const auto index : std::views::iota(std::size_t{0}, writes.size()))
+      workers.emplace_back([this, &writes, index, &results] { results[index] = send(writes[index]); });
+  }
+  return results;
+}
+
+OwnerWriteResult SettingsGatewayService::send(const OwnerWrite& write) const
+{
+  OwnerWriteResult result{.owner = write.owner, .reachable = false, .applied = {}, .rejected = {}, .catalog = {}};
+  const auto* owner = find(write.owner);
+  if (owner == nullptr || write.changes.empty())
+    return result;
+  try {
+    auto reply = owner->writer->update(write.changes);
+    result.reachable = true;
+    result.applied = std::move(reply.applied);
+    result.rejected = std::move(reply.rejected);
+    result.catalog = OwnerCatalog{.service = owner->name, .reachable = true, .settings = std::move(reply.catalog.settings)};
+  }
+  catch (const ResponseException& error) {
+    LOG_WARN << "Settings owner " << owner->name << " refused or missed an update: " << error.statusCode() << " "
+             << error.errorCode();
+  }
+  catch (const std::exception& error) {
+    LOG_ERROR << "Settings owner " << owner->name << " answered an update unreadably: " << error.what();
+  }
+  return result;
 }
 
 drogon::Task<std::vector<OwnerCatalog>> SettingsGatewayService::catalogsAsync() const
@@ -104,7 +146,7 @@ SettingsUpdateOutcome SettingsGatewayService::update(const SettingsUpdateInput& 
   if (!reply.rejected.empty()) {
     ValidationErrors errors;
     for (const auto& rejection : reply.rejected)
-      errors[rejection.key].push_back(reasonCode(rejection.reason));
+      errors[rejection.key].push_back(rejectionReasonName(rejection.reason));
     throw ValidationException(errors);
   }
 

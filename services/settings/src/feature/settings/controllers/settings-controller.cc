@@ -2,6 +2,8 @@
 
 #include <auth/jwt-filter.hxx>
 #include <auth/request-context.hxx>
+#include <feature/settings/dtos/response-apply-profile-dto.hxx>
+#include <feature/settings/dtos/response-list-profiles-dto.hxx>
 #include <feature/settings/dtos/response-list-settings-dto.hxx>
 #include <feature/settings/dtos/response-update-settings-dto.hxx>
 #include <feature/settings/dtos/update-settings-dto.hxx>
@@ -9,12 +11,29 @@
 
 #include <utility>
 
-SettingsController::SettingsController(const SettingsGatewayInput& input) : service_(input) {}
+SettingsController::SettingsController(const SettingsControllerInput& input)
+    : service_(input.gateway),
+      profiles_({.gateway = service_, .catalog = input.profiles, .hardware = input.hardware})
+{
+}
 
 drogon::Task<drogon::HttpResponsePtr> SettingsController::list(drogon::HttpRequestPtr)
 {
   const auto owners = co_await service_.catalogsAsync();
   co_return ApiResponse::ok(ResponseListSettingsDto{.owners = owners}.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr> SettingsController::profiles(drogon::HttpRequestPtr)
+{
+  const auto overview = co_await profiles_.overviewAsync();
+  co_return ApiResponse::ok(ResponseListProfilesDto{.overview = overview}.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr> SettingsController::applyProfile(drogon::HttpRequestPtr req, std::string id)
+{
+  const auto& jwt = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto outcome = co_await profiles_.applyAsync({.profile = std::move(id), .userId = jwt.sub});
+  co_return ApiResponse::ok(ResponseApplyProfileDto{.outcome = outcome}.toJson());
 }
 
 drogon::Task<drogon::HttpResponsePtr> SettingsController::update(drogon::HttpRequestPtr req, std::string owner)

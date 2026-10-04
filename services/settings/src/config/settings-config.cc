@@ -8,6 +8,7 @@
 namespace
 {
 constexpr int kMaxTimeoutMs = 120000;
+constexpr const char* kDefaultProfilesPath = "profiles.json";
 
 std::chrono::milliseconds timeoutOr(const std::string& key, std::chrono::milliseconds fallback)
 {
@@ -48,4 +49,10 @@ SettingsTimeouts SettingsConfig::resolveTimeouts()
   const SettingsTimeouts defaults;
   return {.list = timeoutOr("settings.list_timeout_ms", defaults.list),
           .update = timeoutOr("settings.update_timeout_ms", defaults.update)};
+}
+
+std::string SettingsConfig::resolveProfilesPath()
+{
+  auto path = ConfigService::getString("settings.profiles_path");
+  return path.empty() ? std::string(kDefaultProfilesPath) : path;
 }

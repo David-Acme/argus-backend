@@ -177,6 +177,7 @@ prepare_service() {
 
   if [ "$svc" = settings ]; then
     isolate_settings_owners "$config"
+    replace_toml_value settings profiles_path "$ROOT/services/settings/profiles.json" "$config"
   fi
 
   if [ "$svc" = camera ]; then

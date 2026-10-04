@@ -6,6 +6,8 @@
 #include <config/settings-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/settings/controllers/settings-controller.hxx>
+#include <feature/settings/infra/hardware-facts.hxx>
+#include <feature/settings/infra/profile-file.hxx>
 #include <http/certificate-reload.hxx>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
@@ -52,9 +54,10 @@ int main()
 
   drogon::app().registerController(
       std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-settings", .extras = {}}));
-  drogon::app().registerController(
-      std::make_shared<SettingsController>(SettingsGatewayInput{.owners = owners,
-                                                                .timeouts = SettingsConfig::resolveTimeouts()}));
+  drogon::app().registerController(std::make_shared<SettingsController>(SettingsControllerInput{
+      .gateway = {.owners = owners, .timeouts = SettingsConfig::resolveTimeouts()},
+      .profiles = loadProfileFile(SettingsConfig::resolveProfilesPath()),
+      .hardware = probeHardwareFacts()}));
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());

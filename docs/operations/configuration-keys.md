@@ -153,6 +153,7 @@ argus-settings deploy configuration; `provision-host.sh` fills it.
 |---|---|
 | `settings.host` / `settings.port` / `settings.plain` / `settings.min_protocol` | The app-facing TLS listener (`0.0.0.0:7045`); `[cert]` carries the certificate served and `[mdns]` the `settings` route announcement. No database, no gRPC listener. |
 | `settings.list_timeout_ms` / `settings.update_timeout_ms` | Per-owner deadlines: 1500 ms for each catalog read of `GET /settings` (owners are read in parallel, so one dead owner costs one deadline), 5000 ms for a forwarded update. Values outside 1..120000 fall back to these. |
+| `settings.profiles_path` | The owner profiles file (`services/settings/profiles.json`, baked into the image at `/opt/argus/profiles.json`): the three profiles, the keys each sets per owner and the hardware recommendation thresholds. Relative paths resolve against the working directory; absent means `profiles.json`. A missing or invalid file is logged at boot and the profile routes answer 503; `GET /settings` and `PATCH /settings/{owner}` keep working. |
 | `owners.<owner>.target` / `owners.<owner>.credential` | One table per settings owner (`llm`, `voice`, `tts`, `stt`, `vlm`, `guard`, `camera`, `notification`, also the display order). An empty target leaves the owner out. Provisioning sets the target to `argus-<owner>:<grpc port>` and mints the credential into both this file and the owner's caller slot (`[rpc.callers] settings`, or `[grpc] caller_settings` for voice, camera and notification), but only for an owner whose config carries that slot. |
 
 ## `argus-deploy/config.stt.toml.example`
@@ -390,7 +391,10 @@ argus-settings configuration. `scripts/setup.sh` copies it to `config.toml`
 and wires every owner whose `config.toml` carries a settings caller slot: the
 credential on both sides and the target `127.0.0.1:<grpc port>` (tts, stt,
 vlm and llm need a non-empty `[rpc] address` for a target). The keys are the
-deploy template's, with `auth.target` on loopback.
+deploy template's, with `auth.target` on loopback. `settings.profiles_path`
+stays `profiles.json` for a native run from `services/settings/`;
+`scripts/native-stack.sh` writes the absolute path of the repository's file
+into the sandbox copy.
 
 ## `services/stt/config.toml.example`
 
