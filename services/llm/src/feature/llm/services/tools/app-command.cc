@@ -107,7 +107,7 @@ tools::ToolCall callOf(AppCall app)
   tools::ToolCall call;
   call.name = std::move(app.name);
   call.arguments = Json::Value(Json::objectValue);
-  call.arguments[app.argument] = std::move(app.value);
+  call.arguments[app.argument] = app.value;
   return call;
 }
 

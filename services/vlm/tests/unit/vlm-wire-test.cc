@@ -451,7 +451,7 @@ TEST_CASE("the caption hash reads pixels at any offset the same way")
   for (std::size_t i = 0; i < aligned.size(); ++i)
     aligned[i] = static_cast<unsigned char>(i * 7 + 3);
   std::vector<unsigned char> shifted(aligned.size() + 1);
-  std::copy(aligned.begin(), aligned.end(), shifted.begin() + 1);
+  std::ranges::copy(aligned, shifted.begin() + 1);
   CHECK(visionHashBytes(aligned.data(), aligned.size()) ==
         visionHashBytes(shifted.data() + 1, aligned.size()));
   const std::string prompt = "who is at the door?";

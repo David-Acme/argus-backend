@@ -424,7 +424,7 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
       historyBody({.first = "Di exactamente: hola",
                    .answer = "Hola, te interrumpo",
                    .followUp = "Y ahora despidete"});
-  CHECK(envelope({0, postChat(port, tornBody)})["status"].asInt() == 200);
+  CHECK(envelope({.status = 0, .body = postChat(port, tornBody)})["status"].asInt() == 200);
   const Json::Value afterTorn = envelope(request(
       {.port = port,
        .method = "GET",
@@ -444,14 +444,14 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   Json::StreamWriterBuilder primeWriter;
   primeWriter["indentation"] = "";
   const Json::Value primed =
-      envelope({0, postChat(port, Json::writeString(primeWriter, primeBody))});
+      envelope({.status = 0, .body = postChat(port, Json::writeString(primeWriter, primeBody))});
   CHECK(primed["status"].asInt() == 200);
   CHECK(primed["info"]["text"].asString().empty());
   const std::string primedFollowUp =
       historyBody({.first = "Me llamo Ana y vivo en Quito",
                    .answer = "Encantado, Ana",
                    .followUp = "Como me llamo?"});
-  CHECK(envelope({0, postChat(port, primedFollowUp)})["status"].asInt() == 200);
+  CHECK(envelope({.status = 0, .body = postChat(port, primedFollowUp)})["status"].asInt() == 200);
   const Json::Value afterPrime = envelope(request(
       {.port = port,
        .method = "GET",

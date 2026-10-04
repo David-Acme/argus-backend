@@ -985,21 +985,33 @@ std::vector<std::string> contentWords(const std::string& text)
   return text_norm::words(text_norm::stripAccents(text), 3);
 }
 
-bool groundedIn(const std::string& candidate, const std::string& utterance)
+struct GroundingInput
 {
-  const auto words = contentWords(candidate);
+  const std::string& candidate;
+  const std::string& utterance;
+};
+
+bool groundedIn(const GroundingInput& input)
+{
+  const auto words = contentWords(input.candidate);
   if (words.empty())
     return false;
-  const auto heard = text_norm::wordSet(text_norm::stripAccents(utterance), 3);
+  const auto heard = text_norm::wordSet(text_norm::stripAccents(input.utterance), 3);
   const auto found = std::ranges::count_if(
       words, [&heard](const std::string& word) { return heard.contains(word); });
   return found * 5 >= static_cast<std::ptrdiff_t>(words.size()) * 3;
 }
 
-std::ptrdiff_t sharedWords(const std::string& query, const std::string& canonical)
+struct OverlapInput
 {
-  const auto heard = text_norm::wordSet(text_norm::stripAccents(canonical), 4);
-  return std::ranges::count_if(contentWords(query), [&heard](const std::string& word) {
+  const std::string& query;
+  const std::string& canonical;
+};
+
+std::ptrdiff_t sharedWords(const OverlapInput& input)
+{
+  const auto heard = text_norm::wordSet(text_norm::stripAccents(input.canonical), 4);
+  return std::ranges::count_if(contentWords(input.query), [&heard](const std::string& word) {
     return word.size() >= 4 && heard.contains(word);
   });
 }
@@ -1011,10 +1023,10 @@ tools::ToolCall groundedCall(const tools::ToolCall& call)
   if (utterance.empty() || !grounded.arguments.isObject())
     return grounded;
   const std::string text = grounded.arguments.get("text", "").asString();
-  if (text.empty() || !groundedIn(text, utterance))
+  if (text.empty() || !groundedIn({.candidate = text, .utterance = utterance}))
     grounded.arguments["text"] = utterance;
   const std::string value = grounded.arguments.get("value", "").asString();
-  if (!value.empty() && !groundedIn(value, utterance)) {
+  if (!value.empty() && !groundedIn({.candidate = value, .utterance = utterance})) {
     grounded.arguments.removeMember("subject");
     grounded.arguments.removeMember("predicate");
     grounded.arguments.removeMember("value");
@@ -1218,7 +1230,8 @@ tools::ToolResult MemoryService::handleForget(const tools::ToolCall& call)
   auto target = recalled.hits.end();
   std::ptrdiff_t best = 0;
   for (auto hit = recalled.hits.begin(); hit != recalled.hits.end(); ++hit) {
-    const std::ptrdiff_t shared = hit->factId > 0 ? sharedWords(query, hit->canonical) : 0;
+    const std::ptrdiff_t shared =
+        hit->factId > 0 ? sharedWords({.query = query, .canonical = hit->canonical}) : 0;
     if (shared > best) {
       best = shared;
       target = hit;

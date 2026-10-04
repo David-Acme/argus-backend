@@ -209,6 +209,15 @@ TEST_CASE("memory writes keep to the user's own words and forgetting stays in sc
   CHECK(lowered(timedSaved.output).find("nueve") != std::string::npos);
   CHECK(timedSaved.output.find("..") == std::string::npos);
 
+  auto note = callFor("memory.remember", kSpeaker);
+  note.context.utterance = "anota que llegó el paquete";
+  note.arguments["text"] = note.context.utterance;
+  note.context.decided = true;
+  const auto noted = run(note);
+  INFO("note output: " << noted.output);
+  REQUIRE(noted.ok);
+  CHECK(lowered(noted.output).find("paquete") != std::string::npos);
+
   auto command = callFor("memory.remember", kSpeaker);
   command.context.utterance = "enciende la luz de la cocina";
   command.arguments["text"] = command.context.utterance;

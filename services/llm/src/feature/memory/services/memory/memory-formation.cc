@@ -208,6 +208,7 @@ MemoryFormation::observe(const Observation& obs,
   }
   const bool completeTriple = toolArgs && !subjectSurface.empty() &&
                               !predicate.empty() && !value.empty();
+  bool askedToKeep = false;
   if (completeTriple) {
     factType = toolArgs->get("type", "attribute").asString();
     confidence = toolArgs->get("confidence", 0.8).asFloat();
@@ -235,6 +236,7 @@ MemoryFormation::observe(const Observation& obs,
     const bool explicitTrigger =
         parsed.has_value() || statement.has_value() ||
         (obs.decided && obs.typeHint == "schedule" && namesATime({.text = obs.text, .lang = obs.lang}));
+    askedToKeep = parsed.has_value() || obs.typeHint == "schedule";
 
     if (!parsed.has_value() &&
         ruleParser_.isQuestion({.text = obs.text, .lang = obs.lang}))
@@ -347,7 +349,7 @@ MemoryFormation::observe(const Observation& obs,
 
   if (!obs.typeHint.empty())
     factType = obs.typeHint;
-  if (subjectSurface.empty() && (mentionsFirstPerson(obs.text) || obs.typeHint == "schedule"))
+  if (subjectSurface.empty() && (askedToKeep || mentionsFirstPerson(obs.text)))
     subjectSurface = "usuario";
   if (subjectSurface.empty())
     return std::nullopt;

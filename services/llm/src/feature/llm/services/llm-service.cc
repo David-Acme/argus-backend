@@ -7,6 +7,7 @@
 #include <cstring>
 #include <drogon/drogon.h>
 #include <limits>
+#include <ranges>
 #include <llama.h>
 #include <config/config-service.hxx>
 #include <runtime/ai-init.hxx>
@@ -274,16 +275,17 @@ std::size_t LlmService::rewind(std::size_t target)
   };
   if (llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(target), -1))
     return keepUpTo(target);
-  for (auto it = checkpoints_.rbegin(); it != checkpoints_.rend(); ++it) {
-    if (it->tokens > target)
-      continue;
-    if (llama_state_seq_set_data_ext(ctx, it->state.data(), it->state.size(), 0,
-                                     LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY) == 0 ||
-        !llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(it->tokens), -1))
-      return 0;
-    return keepUpTo(it->tokens);
-  }
-  return 0;
+  const auto newest = std::views::reverse(checkpoints_);
+  const auto usable = std::ranges::find_if(
+      newest, [target](const PrefixCheckpoint& checkpoint) { return checkpoint.tokens <= target; });
+  if (usable == newest.end())
+    return 0;
+  const std::size_t restored = usable->tokens;
+  if (llama_state_seq_set_data_ext(ctx, usable->state.data(), usable->state.size(), 0,
+                                   LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY) == 0 ||
+      !llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(restored), -1))
+    return 0;
+  return keepUpTo(restored);
 }
 
 void LlmService::checkpoint(std::size_t tokens)

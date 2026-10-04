@@ -97,14 +97,14 @@ private:
 
   bool toolHops(ToolHopContext ctx);
 
-  ChatRequest hopRequest(const ToolHopContext& ctx) const;
+  [[nodiscard]] ChatRequest hopRequest(const ToolHopContext& ctx) const;
 
   void proseAnswer(ToolHopContext ctx, float temperature);
 
   std::string streamHop(const StreamHopInput& args);
 
-  bool offered(const tools::ToolCall& call,
-               const std::vector<const tools::ToolDescriptor*>& tools) const;
+  [[nodiscard]] bool offered(const tools::ToolCall& call,
+                             const std::vector<const tools::ToolDescriptor*>& tools) const;
 
   ChatEngine engine_;
   ToolRegistry& registry_;

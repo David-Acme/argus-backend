@@ -576,7 +576,10 @@ The voice session and argus-llm agreed this contract with the voice agent:
   (`TemporalResolver`). "Recuérdame mañana a las nueve llamar al dentista",
   which has no "que", now stores the whole clause; before, an incomplete
   extraction kept "llamar al". A reminder that names no one is the
-  speaker's: its subject is the user's own entity. "Enciende la luz de la cocina", routed by
+  speaker's: its subject is the user's own entity. So is a note asked for
+  with a rule trigger ("anota que llegó el paquete", "recuerda que el wifi se
+  cae cada semana") whose lexicon extraction finds no subject. Without the
+  model tier in the turn such requests otherwise stored nothing. "Enciende la luz de la cocina", routed by
   fastText at 0.96, stores nothing; before, an empty extraction let it
   through the rule path. The tool handlers extract with the lexicon tier
   only (`allowModel = false`). NuExtract inside a call's turn measured 23 s

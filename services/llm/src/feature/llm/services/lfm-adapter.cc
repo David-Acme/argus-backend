@@ -32,9 +32,9 @@ std::string jsonType(const tools::ToolArgumentSpec& spec)
 Json::Value bareValue(const std::string& token)
 {
   if (token == "True" || token == "true")
-    return Json::Value(true);
+    return {true};
   if (token == "False" || token == "false")
-    return Json::Value(false);
+    return {false};
   try {
     std::size_t used = 0;
     if (token.find('.') != std::string::npos) {

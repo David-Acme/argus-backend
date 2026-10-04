@@ -71,8 +71,8 @@ tools::ToolDescriptor probe(const std::string& name, ProbeLog& log)
 class SilentClassifier final : public intent::IIntentClassifier
 {
 public:
-  bool isLoaded() const override { return false; }
-  std::vector<intent::IntentHit> score(const std::string&) const override { return {}; }
+  [[nodiscard]] bool isLoaded() const override { return false; }
+  [[nodiscard]] std::vector<intent::IntentHit> score(const std::string&) const override { return {}; }
 };
 
 ToolChatInput loopInput(const std::vector<const tools::ToolDescriptor*>& offered)
@@ -92,7 +92,7 @@ ToolChatInput loopInput(const std::vector<const tools::ToolDescriptor*>& offered
   return input;
 }
 
-const std::string kCall =
+constexpr std::string_view kCall =
     "<|tool_call_start|>[probe.save(text='mi hermana viene los domingos')]<|tool_call_end|>";
 
 }
@@ -147,7 +147,7 @@ TEST_CASE("a tool the model calls again in a later hop runs once")
   ToolRegistry registry;
   registry.registerTool(probe("probe.save", log));
   ScriptedEngine script;
-  script.replies = {kCall, kCall, "Ya lo guardé."};
+  script.replies = {std::string(kCall), std::string(kCall), "Ya lo guardé."};
   LfmAdapter adapter({.engine = script.engine(), .registry = registry, .router = nullptr});
 
   std::vector<ChatMessage> history{{.role = "system", .content = "persona"},
@@ -309,29 +309,29 @@ TEST_CASE("explicit app commands become app calls and questions do not")
 {
   const auto mode = appCommandFor("Pon la vigilancia en modo noche.");
   REQUIRE(mode.has_value());
-  CHECK(mode->name == "app.set_guard_mode");
-  CHECK(mode->arguments["mode"].asString() == "night");
-  CHECK(appCommandFor("Activa el modo fuera, me voy")->arguments["mode"].asString() == "away");
-  CHECK(appCommandFor("set the guard mode to armed")->arguments["mode"].asString() == "armed");
+  CHECK(mode.value().name == "app.set_guard_mode");
+  CHECK(mode.value().arguments["mode"].asString() == "night");
+  CHECK(appCommandFor("Activa el modo fuera, me voy").value().arguments["mode"].asString() == "away");
+  CHECK(appCommandFor("set the guard mode to armed").value().arguments["mode"].asString() == "armed");
   CHECK_FALSE(appCommandFor("¿En qué modo está la vigilancia?").has_value());
   CHECK_FALSE(appCommandFor("Me voy a dormir").has_value());
 
   const auto garage = appCommandFor("Muéstrame la cámara del garaje, por favor.");
   REQUIRE(garage.has_value());
-  CHECK(garage->name == "app.show_camera");
-  CHECK(garage->arguments["camera"].asString() == "garaje");
-  CHECK(appCommandFor("show me the garage camera")->arguments["camera"].asString() == "garage");
-  CHECK(appCommandFor("quiero ver la cámara 3")->arguments["camera"].asString() == "3");
-  CHECK(appCommandFor("enséñame la cámara")->arguments["camera"].asString().empty());
-  CHECK(appCommandFor("checa la cámara 4")->arguments["camera"].asString() == "4");
+  CHECK(garage.value().name == "app.show_camera");
+  CHECK(garage.value().arguments["camera"].asString() == "garaje");
+  CHECK(appCommandFor("show me the garage camera").value().arguments["camera"].asString() == "garage");
+  CHECK(appCommandFor("quiero ver la cámara 3").value().arguments["camera"].asString() == "3");
+  CHECK(appCommandFor("enséñame la cámara").value().arguments["camera"].asString().empty());
+  CHECK(appCommandFor("checa la cámara 4").value().arguments["camera"].asString() == "4");
   CHECK_FALSE(appCommandFor("quiero comprar una cámara nueva").has_value());
   CHECK_FALSE(appCommandFor("¿qué se ve en la cámara del patio?").has_value());
 
   const auto agenda = appCommandFor("Abre la agenda");
   REQUIRE(agenda.has_value());
-  CHECK(agenda->name == "app.open");
-  CHECK(agenda->arguments["screen"].asString() == "agenda");
-  CHECK(appCommandFor("abre las cámaras")->arguments["screen"].asString() == "cameras");
+  CHECK(agenda.value().name == "app.open");
+  CHECK(agenda.value().arguments["screen"].asString() == "agenda");
+  CHECK(appCommandFor("abre las cámaras").value().arguments["screen"].asString() == "cameras");
   CHECK_FALSE(appCommandFor("hola, ¿cómo estás?").has_value());
 }
 
