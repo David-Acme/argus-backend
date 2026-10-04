@@ -3304,7 +3304,7 @@ duplicating effects.
 ## Camera audio: the microphone reaches the app, the talk channel is reference-shaped (2026-09-26)
 
 Both halves of camera audio were driven to root cause against the live C225
-(192.168.18.213, firmware 1.3.1 Build 260514) with the community references
+(on the LAN, firmware 1.3.1 Build 260514) with the community references
 read line by line (pytapo `media_stream/session.py`, go2rtc `pkg/tapo`) and
 run against the device.
 
