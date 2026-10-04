@@ -470,6 +470,18 @@ false-reject rate of 2.3 % / 0 %; 2-second clips 0.28 % / 0.31 % at 5.7 % /
 (`identify_threshold` 0.55, `identify_margin` 0.05 over the runner-up) is
 stricter because a search over N people multiplies the false-accept rate by N.
 
+Every speaker-model run goes to the blocking pool's heavy lane
+(`BlockingLane::Heavy`, `packages/lib/runtime`): `SpeakerEmbeddingService::analyzeAsync`,
+the 1:N search in `VoiceprintFeatureService::identify` (analysis and nearest
+neighbours in one task) and the turn analysis of
+`PassiveEnrollmentService::learnFromTurn`. The ERes2Net forward pass costs
+about 100 ms per 3 s of audio, so a call's turns would otherwise hold light
+slots that the session verdicts, vec0 lookups and repository work need. The
+close-of-call scoring (`scoresFor` over the centroid) is a vector search, not
+a model run, and stays light. The face paths were already there:
+`FaceService::identifyAsync` and `extractImageAsync` run heavy, the vec0
+search and index writes after them light.
+
 ### What is stored
 
 Three tables, all of them embeddings or counters; raw audio never reaches a

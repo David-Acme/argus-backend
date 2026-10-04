@@ -140,7 +140,7 @@ PassiveEnrollmentService::learnFromTurn(VoiceTurnInput input) const
     if (result.analysis.status == VoiceAnalysisStatus::Ok)
       result.scores = scoresFor(result.analysis.embedding, userId);
     return result;
-  });
+  }, BlockingLane::Heavy);
   learning.quality = turn.analysis.status;
   learning.speechSeconds = turn.analysis.quality.speechSeconds;
   if (turn.analysis.status != VoiceAnalysisStatus::Ok)

@@ -94,7 +94,7 @@ VoiceprintFeatureService::identify(EncodedVoice sample) const
           VoiceprintIndex::instance().nearest(found.analysis.embedding,
                                               kIdentifyCandidates);
     return found;
-  });
+  }, BlockingLane::Heavy);
   result.outcome = outcomeOf(search.analysis.status);
   if (result.outcome != VoiceprintOutcome::Ok || search.nearest.empty())
     co_return result;

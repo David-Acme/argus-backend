@@ -220,5 +220,5 @@ SpeakerEmbeddingService::analyzeAsync(VoiceAnalysisInput input)
 {
   auto shared = std::make_shared<const VoiceAnalysisInput>(std::move(input));
   co_return co_await BlockingTask<VoiceAnalysis>(
-      [this, shared]() { return analyze(*shared); });
+      [this, shared]() { return analyze(*shared); }, BlockingLane::Heavy);
 }
