@@ -173,20 +173,28 @@ rpc.callers settings
 rpc address
 owners.llm target
 owners.llm credential
+owners.llm config_file
 owners.voice target
 owners.voice credential
+owners.voice config_file
 owners.tts target
 owners.tts credential
+owners.tts config_file
 owners.stt target
 owners.stt credential
+owners.stt config_file
 owners.vlm target
 owners.vlm credential
+owners.vlm config_file
 owners.guard target
 owners.guard credential
+owners.guard config_file
 owners.camera target
 owners.camera credential
+owners.camera config_file
 owners.notification target
 owners.notification credential
+owners.notification config_file
 settings profiles_path
 mdns enabled
 EOF
@@ -329,6 +337,10 @@ ensure_settings_owners() {
     toml_key_exists "$settings_config" "owners.$owner" credential || continue
     fill_config_pair "$settings_config" "owners.$owner" credential \
       "$owner_config" "$table" "$key" 32
+    if [ "$mode" = deploy ] && toml_key_exists "$settings_config" "owners.$owner" config_file &&
+      [ -z "$(toml_value "$settings_config" "owners.$owner" config_file)" ]; then
+      replace_toml_value "owners.$owner" config_file "$owner_config" "$settings_config"
+    fi
     [ -z "$(toml_value "$settings_config" "owners.$owner" target)" ] || continue
     port="$(settings_owner_port "$owner_config" "$listener")"
     [ -n "$port" ] || continue

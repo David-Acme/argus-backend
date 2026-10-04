@@ -16,6 +16,13 @@ struct SettingsOwnerConfig
   std::string name;
   std::string target;
   std::string credential;
+  std::string configFile{};
+};
+
+struct FirstRunConfig
+{
+  bool enabled{true};
+  std::chrono::seconds interval{30};
 };
 
 struct SettingsTimeouts
@@ -30,6 +37,10 @@ public:
   [[nodiscard]] static ListenerConfig resolveListener();
 
   [[nodiscard]] static std::vector<SettingsOwnerConfig> resolveOwners();
+
+  [[nodiscard]] static std::vector<std::string> unconfiguredOwners(const std::vector<SettingsOwnerConfig>& owners);
+
+  [[nodiscard]] static FirstRunConfig resolveFirstRun();
 
   [[nodiscard]] static SettingsTimeouts resolveTimeouts();
 

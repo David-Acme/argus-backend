@@ -25,9 +25,23 @@ errors}` envelope. The profile routes are described in "Profiles" below.
   `level`: `basic` | `advanced`; `apply`: `live` | `nextSession` | `restart`.
 - `value` and `fallback` are the owner's canonical strings.
 - Owners appear in the fixed display order llm, voice, tts, stt, vlm, guard,
-  camera, notification, and only when configured (non-empty target and
-  credential). An owner that does not answer is `reachable: false` with an
-  empty `settings`.
+  camera, notification. All eight are listed: one without a target and a
+  credential is `configured: false` (and `reachable: false`), so the app can
+  name what is not connected instead of showing an empty page. An owner that
+  does not answer is `reachable: false` with an empty `settings`.
+- Each owner also carries `configFile` (the TOML file its keys live in:
+  `[owners.<owner>] config_file` when set, which provisioning fills with the
+  host path in a deploy, otherwise the absolute path the owner loaded),
+  `capabilities` (`["gpu"]` when its engine can offload to a GPU) and
+  `profile`, the marker it keeps in its own file (`{ "id", "origin":
+  "recommended" | "owner" | "reverted", "appliedAt", "keys" }`, or null when
+  no profile was ever applied there or the owner predates markers).
+- Each setting also carries `unit` (a code the app translates: `ms`, `s`,
+  `px`, `tokens`, `threads`, `layers`, `steps`, `frames`, `bytes`, `MB`,
+  `days`, `entries`, `chars`, `turns`, `perHour`; empty = none; declared by
+  the owner or derived from the key's suffix by the registry) and
+  `pendingRestart` (a restart key whose value in the file is not the one the
+  owner booted with).
 - A setting whose type this service does not know (an owner newer than it) is
   left out rather than failing the page.
 - A choice setting whose owner installs files per choice (argus-tts's engine,
@@ -107,6 +121,7 @@ owner's own CONTEXT.md, measured on the reference host (Ryzen 7 5825U,
 | tts | `tts.pocket_variant_es` | fast | fast | quality | fast: RTF 0.097/0.103, 994 MB resident; quality (24 layers): RTF 0.297/0.320, 78/113 ms, 1.40 GB, the same WER on the test sentences, and the owner's choice ("utilizar calidad máxima"). |
 | tts | `tts.pocket_voice_es` | — | — | jean | The owner's voice for the house ("una voz M de Jean"); WER 0.00 on both Spanish models. |
 | vlm | `vision.max_input_px` | 256 | 384 | 512 | 256: 1.05–1.27 s and the same captions on the test scenes; 384: 1.35–1.70 s, the default because camera subjects are small; 512: 1.38–1.98 s, more detail. |
+| vlm, llm | `vision.gpu_layers`, `llm.gpu_layers` | — | — | 999 where the engine reports a GPU | VLM 0.61 s instead of 1.09 s per sentence on the Vega 8 iGPU (1.8x); see GPU offload. |
 
 - **balanced keeps Spanish on `fast`.** It is recommended for 4–7 cores,
   where `ThreadBudget::ttsThreads()` gives Pocket half the hardware threads:
@@ -126,13 +141,65 @@ owner's own CONTEXT.md, measured on the reference host (Ryzen 7 5825U,
   `context_size` only costs RAM as history grows (the history cap is the real
   lever), `kv_type` is already chosen by RAM, the thread keys default to
   `ThreadBudget`, and none has a speed/quality measurement. `vision.gpu_layers`
-  and `llm.gpu_layers`: Vulkan offload measured 1.6–1.9× faster, but it needs
-  `/dev/dri` in the container, a deploy decision. `vision.max_tokens`: the
+  and `llm.gpu_layers` are set only by Máxima calidad and only where the
+  engine reports a GPU (see "GPU offload"). `vision.max_tokens`: the
   image encoder dominates (a one-word answer costs 60–75 % of a sentence).
   `vision.image_max_tokens`: below 256 the model stops reading text.
   `tts.quality`/steps only shape Supertonic, the fallback engine. Voice turn
   keys (VAD) are about the room, not the hardware. Guard, camera and
   notification keys are security and privacy: never in a profile.
+
+### GPU offload
+
+`vision.gpu_layers` and `llm.gpu_layers` (-1..999, -1 = the CPU probe, 999 =
+every layer) are restart keys. "Máxima calidad" sets both to 999 through a
+`withCapability.gpu` block in `profiles.json`: those keys join the profile only
+for an owner whose catalog reports the `gpu` capability, which argus-vlm and
+argus-llm declare when `llama_supports_gpu_offload()` finds a Vulkan device
+(in a container, only with `/dev/dri` passed through). Elsewhere the profile
+is exactly what it was. Measured on the reference host's Radeon Vega 8: the
+VLM describes in 0.61 s instead of 1.09 s per sentence (1.8x, services/vlm
+CONTEXT.md). The LLM, measured 2026-10-03 with the prod binary on the same
+iGPU (load 6-8, a 258-token prompt, 160 tokens out, three runs): prefill
+101 -> 182 tok/s (1.8x), decode 22.6 -> 25.1 tok/s (1.1x), so the turn's
+first token comes sooner and the CPU cores stay free for STT and TTS. Performance and
+Equilibrado never set them.
+
+### First run: the recommendation applied by default
+
+Nothing was ever set on a fresh installation, so argus-settings applies the
+recommended profile itself, once per owner. **The state lives in each owner's
+own file**, in a `[settings_profile]` section the registry writes (`id`,
+`origin`, `applied_at`, `keys`), next to the values it describes: argus-settings
+still owns no data, there is no extra volume, an owner added later gets its
+own first run, and a config file reset from its template starts over.
+
+- `FirstRunService` (a `jthread`, registered as a shutdown drain) waits 5 s
+  after boot, then every `[settings] first_run_interval_s` (30 s) reads the
+  catalogs of the recommended profile's owners until each is settled.
+  `[settings] first_run = false` turns it off.
+- An owner is settled when its marker has an origin, when it is not
+  configured, or when it answers without a marker (it predates them: an old
+  owner is never written to, since it could not remember that it was).
+- Otherwise the plan (`settings_profile::firstRunPlan`) takes only keys that
+  still hold their fallback (a value someone set by hand, in the file or the
+  app, is kept), that the profile changes, and whose choice is already
+  installed: the first run never downloads a model or a voice. The write
+  carries the marker `origin = recommended` with the applied keys, recorded
+  only when no key was refused; refused keys are dropped in rounds as in an
+  apply, and a marker-only write records the owner when nothing changed.
+- Later changes are never overwritten: once the marker has an origin, the
+  first run never touches that owner again.
+- `GET /settings/profiles` adds `firstRun`: `{ "profile", "state": "applied"
+  | "reverted", "appliedAt", "owners": [ { "service", "keys" } ] }` from the
+  markers, or null. The app shows what was applied and offers to undo it.
+- `POST /settings/profiles/recommended/revert` (body `{}`) undoes it: for each
+  owner whose marker is `recommended`, the keys it applied that still hold the
+  profile's value go back to their fallback (a key changed since is kept), and
+  the marker becomes `reverted`, so the first run stays done. It answers like
+  an apply; 404 `NOT_FOUND` when no owner carries a recommended marker.
+- Applying a profile by hand records `origin = owner` on every owner it
+  reaches, including a marker-only write where nothing changed.
 
 ### Recommendation
 
@@ -157,7 +224,9 @@ order; the first the host meets wins, otherwise the fallback:
   +0.4 GB; the floors guard the whole fleet of engines, not this delta.
 - Every measurement ran on AVX2. Without a vector ISA the int8 and Q4 kernels
   fall back to scalar code, so such a host gets the lightest profile.
-- The GPU is reported, not used: no profile sets `gpu_layers`.
+- The GPU the probe reports here is the settings process's own view (none in
+  its container); whether an engine offloads is the engine's `gpu`
+  capability, see "GPU offload".
 - `reason` names what held back the profile above the recommended one:
   `meets` (the top rule), `cores`, `ram` or `isa`; `rule` is the rule met
   (null for the fallback) and `missed` the one above it. `rules` and

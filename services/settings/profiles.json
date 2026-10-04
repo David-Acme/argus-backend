@@ -41,6 +41,16 @@
         "vlm": {
           "vision.max_input_px": "512"
         }
+      },
+      "withCapability": {
+        "gpu": {
+          "vlm": {
+            "vision.gpu_layers": "999"
+          },
+          "llm": {
+            "llm.gpu_layers": "999"
+          }
+        }
       }
     }
   ],

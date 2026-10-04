@@ -98,6 +98,7 @@ productivity	PATCH	/project/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilte
 settings	GET	/settings	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/settings/controllers/settings-controller.hxx
 settings	GET	/settings/profiles	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/settings/controllers/settings-controller.hxx
 settings	POST	/settings/profiles/{1}/apply	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/settings/controllers/settings-controller.hxx
+settings	POST	/settings/profiles/recommended/revert	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/settings/controllers/settings-controller.hxx
 settings	PATCH	/settings/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/settings/controllers/settings-controller.hxx
 shared	GET	/health	-	-	packages/lib/http/src/http/health-controller.hxx
 stt	GET	/stt/v1/config	-	-	services/stt/src/feature/stt/controllers/stt-controller.hxx

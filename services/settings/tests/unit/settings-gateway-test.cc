@@ -299,3 +299,30 @@ TEST_CASE("choice states pass through to the app, and a host-only choice is refu
   CHECK(ConfigService::getString("voice.language") == "es");
   std::filesystem::remove(configPath());
 }
+
+TEST_CASE("unconfigured owners are listed in display order as not configured, beside the live ones")
+{
+  loadConfig();
+  const Owner tts("tts", ttsSpecs());
+  const SettingsGatewayService gateway({.owners = {{.name = "tts", .target = tts.target(), .credential = kSecret,
+                                                    .configFile = "/srv/argus/config.tts.toml"}},
+                                        .timeouts = {.list = 1500ms, .update = 1500ms},
+                                        .unconfigured = {"vlm", "llm"}});
+  const auto catalogs = gateway.catalogs();
+  REQUIRE(catalogs.size() == 3);
+  CHECK(catalogs[0].service == "llm");
+  CHECK_FALSE(catalogs[0].configured);
+  CHECK(catalogs[1].service == "tts");
+  CHECK(catalogs[1].configured);
+  CHECK(catalogs[1].reachable);
+  CHECK(catalogs[1].configFile == "/srv/argus/config.tts.toml");
+  REQUIRE(catalogs[1].profile.has_value());
+  CHECK(catalogs[2].service == "vlm");
+  CHECK_FALSE(catalogs[2].reachable);
+  CHECK(gateway.catalogsOf({"vlm", "tts"}).size() == 1);
+
+  const SettingsGatewayService plain({.owners = {{.name = "tts", .target = tts.target(), .credential = kSecret}},
+                                      .timeouts = {.list = 1500ms, .update = 1500ms}});
+  CHECK(plain.catalogs()[0].configFile == std::filesystem::absolute(configPath()).lexically_normal().string());
+  std::filesystem::remove(configPath());
+}

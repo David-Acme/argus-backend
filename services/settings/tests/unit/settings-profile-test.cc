@@ -7,6 +7,7 @@
 #include <feature/settings/dtos/response-list-profiles-dto.hxx>
 #include <feature/settings/infra/hardware-facts.hxx>
 #include <feature/settings/infra/profile-file.hxx>
+#include <feature/settings/services/first-run-service.hxx>
 #include <feature/settings/services/profile-planner.hxx>
 #include <feature/settings/services/settings-profile-service.hxx>
 #include <settings/settings-rpc.hxx>
@@ -22,6 +23,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -378,15 +380,25 @@ TEST_CASE("the shipped profile file parses, in owner display order")
   CHECK(catalog.profiles[1].id == "balanced");
   CHECK(catalog.profiles[2].id == "quality");
   CHECK(catalog.fallback == "performance");
-  CHECK(catalog.owners() == std::vector<std::string>{"tts", "vlm"});
+  CHECK(catalog.owners() == std::vector<std::string>{"llm", "tts", "vlm"});
   for (const auto& profile : catalog.profiles) {
-    REQUIRE(profile.owners.size() == 2);
-    CHECK(profile.owners[0].owner == "tts");
-    CHECK(profile.owners[1].owner == "vlm");
+    const auto offset = profile.id == "quality" ? 1U : 0U;
+    REQUIRE(profile.owners.size() == 2 + offset);
+    CHECK(profile.owners[offset].owner == "tts");
+    CHECK(profile.owners[offset + 1].owner == "vlm");
   }
   const auto* quality = catalog.find("quality");
   REQUIRE(quality != nullptr);
-  const auto& tts = quality->owners[0].changes;
+  CHECK(quality->owners[0].owner == "llm");
+  CHECK(quality->owners[0].changes.empty());
+  REQUIRE(quality->owners[0].withCapability.size() == 1);
+  CHECK(quality->owners[0].withCapability[0].capability == "gpu");
+  CHECK(quality->owners[0].withCapability[0].change.key == "llm.gpu_layers");
+  CHECK(quality->owners[0].withCapability[0].change.value == "999");
+  REQUIRE(quality->owners[2].withCapability.size() == 1);
+  CHECK(quality->owners[2].withCapability[0].change.key == "vision.gpu_layers");
+  CHECK(catalog.find("balanced")->owners[0].withCapability.empty());
+  const auto& tts = quality->owners[1].changes;
   CHECK(std::ranges::find(tts, std::string("tts.pocket_variant_es"), &SettingChange::key)->value == "quality");
   CHECK(std::ranges::find(tts, std::string("tts.pocket_voice_es"), &SettingChange::key)->value == "jean");
   CHECK_FALSE(loadProfileFile("/nonexistent/argus-profiles.json").has_value());
@@ -502,4 +514,261 @@ TEST_CASE("an unconfigured owner is unreachable and a missing profile file answe
   CHECK(statusOf([&missing] { (void)missing.overview(); }) == 503);
   CHECK(statusOf([&missing] { (void)missing.apply({.profile = "quality", .userId = 1}); }) == 503);
   std::filesystem::remove(configPath());
+}
+
+namespace
+{
+SettingSpec gpuSpec(const std::string& key)
+{
+  return {.key = key,
+          .group = "engine",
+          .type = SettingType::Integer,
+          .level = SettingLevel::Advanced,
+          .apply = SettingApply::Restart,
+          .range = {.min = -1, .max = 999, .step = 1},
+          .choices = {},
+          .fallback = "-1",
+          .unit = "layers"};
+}
+
+OwnerCatalog vlmCatalog(const std::string& inputPx, const std::string& gpuLayers, bool gpu)
+{
+  OwnerCatalog catalog{.service = "vlm",
+                       .reachable = true,
+                       .settings = {entry(integerSpec("vision.max_input_px"), inputPx),
+                                    entry(gpuSpec("vision.gpu_layers"), gpuLayers)},
+                       .configured = true,
+                       .configFile = "/srv/argus/config.vlm.toml",
+                       .profile = ProfileMarker{},
+                       .capabilities = {}};
+  if (gpu)
+    catalog.capabilities.emplace_back("gpu");
+  return catalog;
+}
+
+SettingsProfile gpuQualityProfile()
+{
+  auto profile = qualityProfile();
+  profile.owners[1].withCapability.push_back(
+      {.capability = "gpu", .change = {.key = "vision.gpu_layers", .value = "999"}});
+  profile.owners.insert(profile.owners.begin(),
+                        ProfileOwnerChanges{.owner = "llm",
+                                            .changes = {},
+                                            .withCapability = {{.capability = "gpu",
+                                                                .change = {.key = "llm.gpu_layers", .value = "999"}}}});
+  return profile;
+}
+
+std::vector<SettingSpec> vlmGpuSpecs()
+{
+  return {integerSpec("vision.max_input_px"), gpuSpec("vision.gpu_layers")};
+}
+
+void loadVlmConfig(const std::string& body)
+{
+  std::ofstream(configPath()) << body;
+  ConfigService::load(configPath().string());
+}
+}
+
+TEST_CASE("a capability key joins the profile only where the owner reports the capability")
+{
+  const auto profile = gpuQualityProfile();
+  const auto cpu = settings_profile::preview(profile, {vlmCatalog("512", "-1", false)});
+  REQUIRE(cpu.owners.size() == 2);
+  CHECK(cpu.owners[0].service == "tts");
+  CHECK(cpu.owners[1].changes.size() == 1);
+
+  const auto gpu = settings_profile::preview(profile, {vlmCatalog("512", "-1", true)});
+  REQUIRE(gpu.owners[1].changes.size() == 2);
+  CHECK(gpu.owners[1].changes[1].key == "vision.gpu_layers");
+  CHECK(gpu.owners[1].changes[1].changed);
+  CHECK(gpu.owners[1].changes[1].apply == SettingApply::Restart);
+
+  SettingsProfile vlmOnly{.id = "quality", .labelKey = "quality", .owners = {profile.owners[0], profile.owners[2]}};
+  vlmOnly.owners[1].changes = {{.key = "vision.max_input_px", .value = "512"}};
+  CHECK_FALSE(settings_profile::preview(vlmOnly, {vlmCatalog("512", "-1", true)}).current);
+  CHECK(settings_profile::preview(vlmOnly, {vlmCatalog("512", "999", true)}).current);
+  CHECK(settings_profile::preview(vlmOnly, {vlmCatalog("512", "-1", false)}).current);
+  CHECK(settings_profile::plan(vlmOnly, {vlmCatalog("512", "-1", false)}).size() == 1);
+}
+
+TEST_CASE("a capability block is validated like the owners it names")
+{
+  const auto problemOf = [](const std::string& text) { return parseProfileCatalog(parsed(text)).problem; };
+  const std::string recommendation = R"("recommendation": {"rules": [], "fallback": "a"})";
+  const std::string owners = R"("owners": {"vlm": {"vision.max_input_px": "512"}})";
+  CHECK(problemOf(R"({"profiles": [{"id": "a", "labelKey": "a", )" + owners +
+                  R"(, "withCapability": {"gpu": {"vlm": {"vision.gpu_layers": "999"}}}}], )" + recommendation + "}")
+            .empty());
+  CHECK(problemOf(R"({"profiles": [{"id": "a", "labelKey": "a", )" + owners +
+                  R"(, "withCapability": {"gpu": {"vlm": {"vision.max_input_px": "640"}}}}], )" + recommendation + "}")
+            .find("twice") != std::string::npos);
+  CHECK(problemOf(R"({"profiles": [{"id": "a", "labelKey": "a", )" + owners +
+                  R"(, "withCapability": {"GPU!": {"vlm": {"vision.gpu_layers": "999"}}}}], )" + recommendation + "}")
+            .find("capability") != std::string::npos);
+  CHECK(problemOf(R"({"profiles": [{"id": "a", "labelKey": "a", )" + owners +
+                  R"(, "withCapability": {"gpu": {"gateway": {"x.y": "1"}}}}], )" + recommendation + "}")
+            .find("gateway") != std::string::npos);
+}
+
+TEST_CASE("the first run touches only keys still at their default, never installs, and skips what already matches")
+{
+  auto profile = gpuQualityProfile();
+  const auto fresh = settings_profile::firstRunPlan(profile, vlmCatalog("384", "-1", true));
+  REQUIRE(fresh.keys.size() == 2);
+  CHECK(fresh.keys[0].result.key == "vision.max_input_px");
+  CHECK(fresh.keys[0].result.to == "512");
+  CHECK(fresh.keys[1].result.key == "vision.gpu_layers");
+  CHECK(fresh.keys[1].send);
+
+  const auto handTuned = settings_profile::firstRunPlan(profile, vlmCatalog("640", "0", true));
+  CHECK(handTuned.keys.empty());
+
+  const auto noGpu = settings_profile::firstRunPlan(profile, vlmCatalog("384", "-1", false));
+  REQUIRE(noGpu.keys.size() == 1);
+  CHECK(noGpu.keys[0].result.key == "vision.max_input_px");
+
+  const auto tts = settings_profile::firstRunPlan(profile, ttsCatalog("quality", "lola"));
+  CHECK(tts.keys.empty());
+  auto installable = ttsCatalog("fast", "lola");
+  installable.settings[0].spec.fallback = "fast";
+  SettingsProfile slow{.id = "quality", .labelKey = "quality", .owners = {{.owner = "tts", .changes = {{.key = "tts.pocket_variant_es", .value = "quality"}}, .withCapability = {}}}};
+  installable.settings[0].choiceStates[1].availability = ChoiceAvailability::Installable;
+  CHECK(settings_profile::firstRunPlan(slow, installable).keys.empty());
+  installable.settings[0].choiceStates[1].availability = ChoiceAvailability::Installed;
+  CHECK(settings_profile::firstRunPlan(slow, installable).keys.size() == 1);
+}
+
+TEST_CASE("undoing the recommendation restores only the keys that still hold what it set")
+{
+  const auto profiles = catalogOf({gpuQualityProfile()});
+  auto applied = vlmCatalog("512", "0", true);
+  applied.profile = ProfileMarker{.id = "quality",
+                                  .origin = ProfileOrigin::Recommended,
+                                  .appliedAt = 1759500000,
+                                  .keys = {"vision.max_input_px", "vision.gpu_layers"}};
+  const auto plan = settings_profile::revertPlan(profiles, applied);
+  REQUIRE(plan.keys.size() == 1);
+  CHECK(plan.keys[0].result.key == "vision.max_input_px");
+  CHECK(plan.keys[0].result.to == "384");
+
+  auto chosen = applied;
+  chosen.profile->origin = ProfileOrigin::Owner;
+  CHECK(settings_profile::revertPlan(profiles, chosen).keys.empty());
+
+  const auto state = settings_profile::firstRunState({applied, vlmCatalog("384", "-1", false)});
+  REQUIRE(state.has_value());
+  CHECK(state->profile == "quality");
+  CHECK(state->origin == ProfileOrigin::Recommended);
+  CHECK(state->appliedAt == 1759500000);
+  REQUIRE(state->owners.size() == 1);
+  CHECK(state->owners[0].keys.size() == 2);
+  CHECK_FALSE(settings_profile::firstRunState({vlmCatalog("384", "-1", false)}).has_value());
+}
+
+TEST_CASE("a profile marker rides every write with the keys applied so far, and alone when nothing changed")
+{
+  auto plans = settings_profile::plan(gpuQualityProfile(), {vlmCatalog("384", "-1", true)});
+  REQUIRE(plans.size() == 2);
+  CHECK_FALSE(plans[0].reachable);
+  plans[0].marker = ProfileMarker{.id = "quality", .origin = ProfileOrigin::Owner, .appliedAt = 7, .keys = {}};
+  plans[1].marker = ProfileMarker{.id = "quality", .origin = ProfileOrigin::Owner, .appliedAt = 7, .keys = {}};
+  ProfileApplication application(plans);
+  auto writes = application.pendingWrites();
+  REQUIRE(writes.size() == 1);
+  CHECK(writes[0].owner == "vlm");
+  REQUIRE(writes[0].marker.has_value());
+  CHECK(writes[0].marker->keys == std::vector<std::string>{"vision.max_input_px", "vision.gpu_layers"});
+  application.record({{.owner = "vlm",
+                       .reachable = true,
+                       .applied = {"vision.max_input_px", "vision.gpu_layers"},
+                       .rejected = {},
+                       .catalog = std::nullopt,
+                       .markerRecorded = true}});
+  CHECK(application.markerWrites().empty());
+
+  auto unchanged = settings_profile::plan(gpuQualityProfile(), {vlmCatalog("512", "999", true)});
+  unchanged[1].marker = ProfileMarker{.id = "quality", .origin = ProfileOrigin::Owner, .appliedAt = 7, .keys = {}};
+  const ProfileApplication settled(unchanged);
+  CHECK(settled.pendingWrites().empty());
+  const auto markers = settled.markerWrites();
+  REQUIRE(markers.size() == 1);
+  CHECK(markers[0].owner == "vlm");
+  CHECK(markers[0].changes.empty());
+  CHECK(markers[0].marker->keys.empty());
+}
+
+TEST_CASE("the first run applies the recommendation once, through a real owner, and the owner can undo it")
+{
+  loadVlmConfig("[vision]\nmax_input_px = 384\ngpu_layers = -1\n");
+  Owner vlm("vlm", vlmGpuSpecs());
+  vlm.registry.declareCapability("gpu");
+  const SettingsGatewayService gateway({.owners = {{.name = "vlm", .target = vlm.target(), .credential = kSecret}},
+                                        .timeouts = {.list = 1500ms, .update = 1500ms},
+                                        .unconfigured = {"tts"}});
+  const auto catalog = catalogOf({gpuQualityProfile()});
+
+  FirstRunService firstRun({.gateway = gateway,
+                            .catalog = catalog,
+                            .hardware = hardware(8, 30.7, CpuIsa::Avx2),
+                            .config = {.enabled = true, .interval = 30s}});
+  const auto pass = firstRun.runOnce();
+  CHECK(pass.waiting.empty());
+  CHECK(std::ranges::find(pass.settled, std::string("vlm")) != pass.settled.end());
+  CHECK(ConfigService::getInt("vision.max_input_px") == 512);
+  CHECK(ConfigService::getInt("vision.gpu_layers") == 999);
+  CHECK(ConfigService::getString("settings_profile.origin") == "recommended");
+
+  CHECK(ConfigService::hasKey("settings_profile.keys"));
+  REQUIRE(vlm.registry.update({{.key = "vision.gpu_layers", .value = "0"}}).rejected.empty());
+  FirstRunService again({.gateway = gateway,
+                         .catalog = catalog,
+                         .hardware = hardware(8, 30.7, CpuIsa::Avx2),
+                         .config = {.enabled = true, .interval = 30s}});
+  CHECK(again.runOnce().waiting.empty());
+  CHECK(ConfigService::getInt("vision.gpu_layers") == 0);
+
+  const SettingsProfileService profiles(
+      {.gateway = gateway, .catalog = catalog, .hardware = hardware(8, 30.7, CpuIsa::Avx2)});
+  const auto overview = profiles.overview();
+  REQUIRE(overview.firstRun.has_value());
+  CHECK(overview.firstRun->profile == "quality");
+  const auto listing = ResponseListProfilesDto{.overview = overview}.toJson();
+  CHECK(listing["firstRun"]["state"].asString() == "applied");
+  CHECK(listing["firstRun"]["owners"][0]["service"].asString() == "vlm");
+
+  const auto undone = profiles.revertRecommended({.userId = 1});
+  REQUIRE(undone.owners.size() == 1);
+  CHECK(resultOf(undone.owners[0], "vision.max_input_px").status == ProfileKeyStatus::Applied);
+  CHECK(ConfigService::getInt("vision.max_input_px") == 384);
+  CHECK(ConfigService::getInt("vision.gpu_layers") == 0);
+  CHECK(ConfigService::getString("settings_profile.origin") == "reverted");
+  CHECK(ResponseListProfilesDto{.overview = profiles.overview()}.toJson()["firstRun"]["state"].asString() == "reverted");
+  CHECK(statusOf([&profiles] { (void)profiles.revertRecommended({.userId = 1}); }) == 404);
+
+  CHECK(firstRun.runOnce().settled.empty());
+  CHECK(ConfigService::getInt("vision.max_input_px") == 384);
+  std::filesystem::remove(configPath());
+}
+
+TEST_CASE("a disabled first run never starts and an idle one is drained")
+{
+  const SettingsGatewayService gateway({.owners = {}, .timeouts = {.list = 1500ms, .update = 1500ms}, .unconfigured = {}});
+  FirstRunService disabled({.gateway = gateway,
+                            .catalog = catalogOf({qualityProfile()}),
+                            .hardware = hardware(8, 30.7, CpuIsa::Avx2),
+                            .config = {.enabled = false, .interval = 30s}});
+  disabled.start();
+  CHECK(disabled.drained());
+  FirstRunService running({.gateway = gateway,
+                           .catalog = catalogOf({qualityProfile()}),
+                           .hardware = hardware(8, 30.7, CpuIsa::Avx2),
+                           .config = {.enabled = true, .interval = 30s}});
+  running.start();
+  CHECK_FALSE(running.drained());
+  running.requestStop();
+  for (int attempt = 0; attempt < 50 && !running.drained(); ++attempt)
+    std::this_thread::sleep_for(20ms);
+  CHECK(running.drained());
 }

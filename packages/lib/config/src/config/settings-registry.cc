@@ -45,6 +45,36 @@ std::string joinKeys(const std::vector<std::string>& keys)
 
 constexpr std::size_t kMaxMarkerKeysLength = 4096;
 
+struct UnitRule
+{
+  std::string_view suffix;
+  std::string_view unit;
+};
+
+constexpr std::array kUnitRules{
+    UnitRule{.suffix = "_ms", .unit = "ms"},          UnitRule{.suffix = "_seconds", .unit = "s"},
+    UnitRule{.suffix = "_s", .unit = "s"},            UnitRule{.suffix = "_days", .unit = "days"},
+    UnitRule{.suffix = "_px", .unit = "px"},          UnitRule{.suffix = "_tokens", .unit = "tokens"},
+    UnitRule{.suffix = "context_size", .unit = "tokens"}, UnitRule{.suffix = "_frames", .unit = "frames"},
+    UnitRule{.suffix = "_bytes", .unit = "bytes"},    UnitRule{.suffix = "_mb", .unit = "MB"},
+    UnitRule{.suffix = "_per_hour", .unit = "perHour"}, UnitRule{.suffix = "threads", .unit = "threads"},
+    UnitRule{.suffix = "gpu_layers", .unit = "layers"}, UnitRule{.suffix = "_slots", .unit = "entries"},
+    UnitRule{.suffix = "_len", .unit = "chars"},      UnitRule{.suffix = "_turns", .unit = "turns"},
+};
+
+std::string inferredUnit(const SettingSpec& spec)
+{
+  if (!spec.unit.empty() || (spec.type != SettingType::Integer && spec.type != SettingType::Decimal))
+    return spec.unit;
+  const std::string_view leaf = std::string_view(spec.key).substr(spec.key.rfind('.') + 1);
+  if (leaf.starts_with("steps_") || leaf.ends_with("_steps"))
+    return "steps";
+  for (const auto& rule : kUnitRules)
+    if (leaf.ends_with(rule.suffix))
+      return std::string(rule.unit);
+  return {};
+}
+
 bool validMarkerText(const std::string& text, std::size_t limit)
 {
   return text.size() <= limit && text.find_first_of(std::string_view("\n\r\0", 3)) == std::string::npos;
@@ -205,6 +235,8 @@ SettingsRegistry::SettingsRegistry(std::vector<SettingSpec> specs) : specs_(std:
       throw std::invalid_argument("Invalid setting fallback: " + spec.key);
     bootValues_.push_back(currentValue(spec));
   }
+  for (auto& spec : specs_)
+    spec.unit = inferredUnit(spec);
 }
 
 std::vector<SettingEntry> SettingsRegistry::list() const

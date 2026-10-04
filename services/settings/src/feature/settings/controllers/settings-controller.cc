@@ -36,6 +36,13 @@ drogon::Task<drogon::HttpResponsePtr> SettingsController::applyProfile(drogon::H
   co_return ApiResponse::ok(ResponseApplyProfileDto{.outcome = outcome}.toJson());
 }
 
+drogon::Task<drogon::HttpResponsePtr> SettingsController::revertRecommended(drogon::HttpRequestPtr req)
+{
+  const auto& jwt = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto outcome = co_await profiles_.revertRecommendedAsync({.userId = jwt.sub});
+  co_return ApiResponse::ok(ResponseApplyProfileDto{.outcome = outcome}.toJson());
+}
+
 drogon::Task<drogon::HttpResponsePtr> SettingsController::update(drogon::HttpRequestPtr req, std::string owner)
 {
   auto body = UpdateSettingsDto::fromJson(*req->getJsonObject());

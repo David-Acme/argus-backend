@@ -298,3 +298,44 @@ TEST_CASE("capabilities are declared once each and a spec carries its unit")
   CHECK(profileOriginFromString("unknown") == ProfileOrigin::None);
   std::remove(path.c_str());
 }
+
+TEST_CASE("a numeric key without a declared unit takes the one its name spells, and a declared one wins")
+{
+  const auto path = writeConfig("[x]\n");
+  ConfigService::load(path);
+  const auto numeric = [](const std::string& key, const std::string& unit) {
+    return SettingSpec{.key = key,
+                       .group = "g",
+                       .type = SettingType::Integer,
+                       .level = SettingLevel::Advanced,
+                       .apply = SettingApply::Live,
+                       .range = {},
+                       .choices = {},
+                       .fallback = "0",
+                       .unit = unit};
+  };
+  SettingsRegistry registry({numeric("x.wait_ms", ""), numeric("x.window_s", ""), numeric("x.alarm_seconds", ""),
+                             numeric("x.steps_low", ""), numeric("x.context_size", ""), numeric("x.gpu_layers", ""),
+                             numeric("x.batch_threads", ""), numeric("x.top_k", ""), numeric("x.speed_ms", "x"),
+                             {.key = "x.prompt_ms",
+                              .group = "g",
+                              .type = SettingType::Text,
+                              .level = SettingLevel::Advanced,
+                              .apply = SettingApply::Live,
+                              .range = {},
+                              .choices = {},
+                              .fallback = "",
+                              .unit = ""}});
+  const auto entries = registry.list();
+  CHECK(entryOf(entries, "x.wait_ms").spec.unit == "ms");
+  CHECK(entryOf(entries, "x.window_s").spec.unit == "s");
+  CHECK(entryOf(entries, "x.alarm_seconds").spec.unit == "s");
+  CHECK(entryOf(entries, "x.steps_low").spec.unit == "steps");
+  CHECK(entryOf(entries, "x.context_size").spec.unit == "tokens");
+  CHECK(entryOf(entries, "x.gpu_layers").spec.unit == "layers");
+  CHECK(entryOf(entries, "x.batch_threads").spec.unit == "threads");
+  CHECK(entryOf(entries, "x.top_k").spec.unit.empty());
+  CHECK(entryOf(entries, "x.speed_ms").spec.unit == "x");
+  CHECK(entryOf(entries, "x.prompt_ms").spec.unit.empty());
+  std::remove(path.c_str());
+}

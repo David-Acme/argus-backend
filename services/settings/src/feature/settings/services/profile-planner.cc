@@ -57,7 +57,7 @@ std::size_t positionOf(const OwnerCatalog& catalog, const std::string& key)
 
 std::vector<SettingChange> inCatalogOrder(const ProfileOwnerChanges& owner, const OwnerCatalog* catalog)
 {
-  auto changes = owner.changes;
+  auto changes = settings_profile::effectiveChanges(owner, catalog);
   if (catalog != nullptr)
     std::ranges::stable_sort(changes, {}, [catalog](const SettingChange& change) { return positionOf(*catalog, change.key); });
   return changes;
@@ -117,7 +117,12 @@ PlannedKey planKey(const SettingChange& change, const OwnerCatalog& catalog)
 
 OwnerPlan planOwner(const ProfileOwnerChanges& owner, const OwnerCatalog* catalog)
 {
-  OwnerPlan plan{.service = owner.owner, .reachable = catalog != nullptr, .keys = {}, .catalog = {}};
+  OwnerPlan plan{.service = owner.owner,
+                 .reachable = catalog != nullptr,
+                 .keys = {},
+                 .catalog = {},
+                 .marker = std::nullopt,
+                 .markerRecorded = false};
   if (catalog != nullptr)
     plan.catalog = *catalog;
   for (const auto& change : inCatalogOrder(owner, catalog)) {
@@ -143,6 +148,41 @@ std::optional<RecommendationReason> shortfall(const RecommendationRule& rule, co
   if (rule.vectorIsa && !hardware.vectorIsa())
     return RecommendationReason::Isa;
   return std::nullopt;
+}
+
+PlannedKey sendKey(const SettingEntry& entry, const std::string& target)
+{
+  return {.result = {.key = entry.spec.key,
+                     .from = entry.value,
+                     .to = target,
+                     .status = ProfileKeyStatus::Applied,
+                     .reason = std::nullopt},
+          .send = true};
+}
+
+const ProfileOwnerChanges* ownerOf(const SettingsProfile& profile, const std::string& service)
+{
+  const auto match = std::ranges::find(profile.owners, service, &ProfileOwnerChanges::owner);
+  return match == profile.owners.end() ? nullptr : &*match;
+}
+
+OwnerPlan emptyPlan(const OwnerCatalog& catalog)
+{
+  return {.service = catalog.service,
+          .reachable = catalog.reachable,
+          .keys = {},
+          .catalog = catalog,
+          .marker = std::nullopt,
+          .markerRecorded = false};
+}
+
+std::vector<std::string> keysWithStatus(const OwnerPlan& plan, ProfileKeyStatus status)
+{
+  std::vector<std::string> keys;
+  for (const auto& planned : plan.keys)
+    if (planned.result.status == status)
+      keys.push_back(planned.result.key);
+  return keys;
 }
 
 std::size_t pendingCount(const OwnerPlan& plan)
@@ -180,6 +220,17 @@ void settleRemaining(OwnerPlan& plan, const Settlement& settlement)
 
 namespace settings_profile
 {
+std::vector<SettingChange> effectiveChanges(const ProfileOwnerChanges& owner, const OwnerCatalog* catalog)
+{
+  auto changes = owner.changes;
+  if (catalog == nullptr)
+    return changes;
+  for (const auto& conditional : owner.withCapability)
+    if (catalog->can(conditional.capability))
+      changes.push_back(conditional.change);
+  return changes;
+}
+
 bool sameValue(const SettingEntry& entry, const std::string& target)
 {
   switch (entry.spec.type) {
@@ -197,8 +248,11 @@ ProfilePreview preview(const SettingsProfile& profile, const std::vector<OwnerCa
   ProfilePreview result{.id = profile.id, .labelKey = profile.labelKey, .current = true, .owners = {}};
   for (const auto& owner : profile.owners) {
     const auto* catalog = reachableCatalog(catalogs, owner.owner);
+    if (settings_profile::effectiveChanges(owner, catalog).empty())
+      continue;
     auto ownerPreview = previewOwner(owner, catalog);
-    const bool settled = ownerPreview.reachable && ownerPreview.changes.size() == owner.changes.size() &&
+    const bool settled = ownerPreview.reachable &&
+                         ownerPreview.changes.size() == settings_profile::effectiveChanges(owner, catalog).size() &&
                          std::ranges::none_of(ownerPreview.changes, &ProfileChange::changed);
     result.current = result.current && settled;
     result.owners.push_back(std::move(ownerPreview));
@@ -210,8 +264,11 @@ std::vector<OwnerPlan> plan(const SettingsProfile& profile, const std::vector<Ow
 {
   std::vector<OwnerPlan> plans;
   plans.reserve(profile.owners.size());
-  for (const auto& owner : profile.owners)
-    plans.push_back(planOwner(owner, reachableCatalog(catalogs, owner.owner)));
+  for (const auto& owner : profile.owners) {
+    const auto* catalog = reachableCatalog(catalogs, owner.owner);
+    if (!settings_profile::effectiveChanges(owner, catalog).empty())
+      plans.push_back(planOwner(owner, catalog));
+  }
   return plans;
 }
 
@@ -244,6 +301,68 @@ Recommendation recommend(const ProfileCatalog& catalog, const HardwareFacts& har
 }
 }
 
+namespace settings_profile
+{
+OwnerPlan firstRunPlan(const SettingsProfile& profile, const OwnerCatalog& catalog)
+{
+  auto plan = emptyPlan(catalog);
+  const auto* owner = ownerOf(profile, catalog.service);
+  if (owner == nullptr || !catalog.reachable)
+    return plan;
+  for (const auto& change : inCatalogOrder(*owner, &catalog)) {
+    const auto* entry = entryOf(catalog, change.key);
+    if (entry == nullptr || !sameValue(*entry, entry->spec.fallback) || sameValue(*entry, change.value) ||
+        installOf(*entry, change.value))
+      continue;
+    plan.keys.push_back(sendKey(*entry, change.value));
+  }
+  return plan;
+}
+
+OwnerPlan revertPlan(const ProfileCatalog& profiles, const OwnerCatalog& catalog)
+{
+  auto plan = emptyPlan(catalog);
+  if (!catalog.reachable || !catalog.profile || catalog.profile->origin != ProfileOrigin::Recommended)
+    return plan;
+  const auto* profile = profiles.find(catalog.profile->id);
+  const auto* owner = profile == nullptr ? nullptr : ownerOf(*profile, catalog.service);
+  if (owner == nullptr)
+    return plan;
+  const auto targets = effectiveChanges(*owner, &catalog);
+  for (const auto& key : catalog.profile->keys) {
+    const auto* entry = entryOf(catalog, key);
+    const auto target = std::ranges::find(targets, key, &SettingChange::key);
+    if (entry == nullptr || target == targets.end() || !sameValue(*entry, target->value) ||
+        sameValue(*entry, entry->spec.fallback))
+      continue;
+    plan.keys.push_back(sendKey(*entry, entry->spec.fallback));
+  }
+  return plan;
+}
+
+std::optional<FirstRunState> firstRunState(const std::vector<OwnerCatalog>& catalogs)
+{
+  std::optional<FirstRunState> state;
+  for (const auto& catalog : catalogs) {
+    if (!catalog.profile || (catalog.profile->origin != ProfileOrigin::Recommended &&
+                             catalog.profile->origin != ProfileOrigin::Reverted))
+      continue;
+    if (!state)
+      state = FirstRunState{.profile = catalog.profile->id,
+                            .origin = catalog.profile->origin,
+                            .appliedAt = catalog.profile->appliedAt,
+                            .owners = {}};
+    if (catalog.profile->origin == ProfileOrigin::Recommended) {
+      state->origin = ProfileOrigin::Recommended;
+      state->profile = catalog.profile->id;
+    }
+    state->appliedAt = std::max(state->appliedAt, catalog.profile->appliedAt);
+    state->owners.push_back({.service = catalog.service, .keys = catalog.profile->keys});
+  }
+  return state;
+}
+}
+
 ProfileApplication::ProfileApplication(std::vector<OwnerPlan> plans) : plans_(std::move(plans)) {}
 
 std::vector<OwnerWrite> ProfileApplication::pendingWrites() const
@@ -252,9 +371,24 @@ std::vector<OwnerWrite> ProfileApplication::pendingWrites() const
   for (const auto& plan : plans_) {
     if (!plan.reachable || pendingCount(plan) == 0)
       continue;
-    OwnerWrite write{.owner = plan.service, .changes = {}};
+    OwnerWrite write{.owner = plan.service, .changes = {}, .marker = plan.marker};
     for (const auto& planned : plan.keys | std::views::filter(&PlannedKey::send))
       write.changes.push_back({.key = planned.result.key, .value = planned.result.to});
+    if (write.marker)
+      write.marker->keys = keysWithStatus(plan, ProfileKeyStatus::Applied);
+    writes.push_back(std::move(write));
+  }
+  return writes;
+}
+
+std::vector<OwnerWrite> ProfileApplication::markerWrites() const
+{
+  std::vector<OwnerWrite> writes;
+  for (const auto& plan : plans_) {
+    if (!plan.reachable || !plan.marker || plan.markerRecorded)
+      continue;
+    OwnerWrite write{.owner = plan.service, .changes = {}, .marker = plan.marker};
+    write.marker->keys = keysWithStatus(plan, ProfileKeyStatus::Applied);
     writes.push_back(std::move(write));
   }
   return writes;
@@ -273,6 +407,7 @@ void ProfileApplication::record(const std::vector<OwnerWriteResult>& results)
     }
     if (result.catalog)
       plan->catalog = result.catalog;
+    plan->markerRecorded = plan->markerRecorded || result.markerRecorded;
     const auto before = pendingCount(*plan);
     for (const auto& rejection : result.rejected)
       if (auto* planned = pendingKey(*plan, rejection.key))

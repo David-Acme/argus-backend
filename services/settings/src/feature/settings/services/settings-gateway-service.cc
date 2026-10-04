@@ -33,11 +33,17 @@ bool writeFailed(const SettingRejection& rejection)
 }
 }
 
-SettingsGatewayService::SettingsGatewayService(const SettingsGatewayInput& input)
+bool OwnerCatalog::can(const std::string& capability) const
+{
+  return std::ranges::find(capabilities, capability) != capabilities.end();
+}
+
+SettingsGatewayService::SettingsGatewayService(const SettingsGatewayInput& input) : unconfigured_(input.unconfigured)
 {
   owners_.reserve(input.owners.size());
   for (const auto& owner : input.owners)
     owners_.push_back({.name = owner.name,
+                       .configFile = owner.configFile,
                        .reader = std::make_unique<SettingsClient>(SettingsClientConfig{
                            .target = owner.target, .credential = owner.credential, .timeout = input.timeouts.list}),
                        .writer = std::make_unique<SettingsClient>(SettingsClientConfig{
@@ -50,7 +56,20 @@ std::vector<OwnerCatalog> SettingsGatewayService::catalogs() const
   links.reserve(owners_.size());
   for (const auto& owner : owners_)
     links.push_back(&owner);
-  return fetchAll(links);
+  auto catalogs = fetchAll(links);
+  for (const auto& name : unconfigured_)
+    catalogs.push_back({.service = name,
+                        .reachable = false,
+                        .settings = {},
+                        .configured = false,
+                        .configFile = {},
+                        .profile = std::nullopt,
+                        .capabilities = {}});
+  const auto position = [](const OwnerCatalog& catalog) {
+    return std::ranges::find(kSettingsOwnerOrder, catalog.service) - kSettingsOwnerOrder.begin();
+  };
+  std::ranges::stable_sort(catalogs, {}, position);
+  return catalogs;
 }
 
 std::vector<OwnerCatalog> SettingsGatewayService::catalogsOf(const std::vector<std::string>& names) const
@@ -89,16 +108,18 @@ std::vector<OwnerWriteResult> SettingsGatewayService::write(const std::vector<Ow
 
 OwnerWriteResult SettingsGatewayService::send(const OwnerWrite& write) const
 {
-  OwnerWriteResult result{.owner = write.owner, .reachable = false, .applied = {}, .rejected = {}, .catalog = {}};
+  OwnerWriteResult result{
+      .owner = write.owner, .reachable = false, .applied = {}, .rejected = {}, .catalog = {}, .markerRecorded = false};
   const auto* owner = find(write.owner);
-  if (owner == nullptr || write.changes.empty())
+  if (owner == nullptr || (write.changes.empty() && !write.marker))
     return result;
   try {
-    auto reply = owner->writer->update(write.changes);
+    auto reply = owner->writer->update(write.changes, write.marker);
     result.reachable = true;
     result.applied = std::move(reply.applied);
     result.rejected = std::move(reply.rejected);
-    result.catalog = OwnerCatalog{.service = owner->name, .reachable = true, .settings = std::move(reply.catalog.settings)};
+    result.markerRecorded = reply.profileRecorded;
+    result.catalog = catalogFrom(*owner, std::move(reply.catalog));
   }
   catch (const ResponseException& error) {
     LOG_WARN << "Settings owner " << owner->name << " refused or missed an update: " << error.statusCode() << " "
@@ -150,8 +171,7 @@ SettingsUpdateOutcome SettingsGatewayService::update(const SettingsUpdateInput& 
     throw ValidationException(errors);
   }
 
-  return {.applied = std::move(reply.applied),
-          .catalog = {.service = owner->name, .reachable = true, .settings = std::move(reply.catalog.settings)}};
+  return {.applied = std::move(reply.applied), .catalog = catalogFrom(*owner, std::move(reply.catalog))};
 }
 
 drogon::Task<SettingsUpdateOutcome> SettingsGatewayService::updateAsync(SettingsUpdateInput input) const
@@ -162,18 +182,39 @@ drogon::Task<SettingsUpdateOutcome> SettingsGatewayService::updateAsync(Settings
 OwnerCatalog SettingsGatewayService::fetch(const OwnerLink& owner)
 {
   try {
-    auto catalog = owner.reader->list();
-    return {.service = owner.name, .reachable = true, .settings = std::move(catalog.settings)};
+    return catalogFrom(owner, owner.reader->list());
   }
   catch (const ResponseException& error) {
     LOG_WARN << "Settings owner " << owner.name << " is unreachable: " << error.statusCode() << " "
              << error.errorCode();
-    return {.service = owner.name, .reachable = false, .settings = {}};
+    return unreachable(owner);
   }
   catch (const std::exception& error) {
     LOG_ERROR << "Settings owner " << owner.name << " answered unreadably: " << error.what();
-    return {.service = owner.name, .reachable = false, .settings = {}};
+    return unreachable(owner);
   }
+}
+
+OwnerCatalog SettingsGatewayService::unreachable(const OwnerLink& owner)
+{
+  return {.service = owner.name,
+          .reachable = false,
+          .settings = {},
+          .configured = true,
+          .configFile = owner.configFile,
+          .profile = std::nullopt,
+          .capabilities = {}};
+}
+
+OwnerCatalog SettingsGatewayService::catalogFrom(const OwnerLink& owner, SettingsCatalog catalog)
+{
+  return {.service = owner.name,
+          .reachable = true,
+          .settings = std::move(catalog.settings),
+          .configured = true,
+          .configFile = owner.configFile.empty() ? catalog.configPath : owner.configFile,
+          .profile = std::move(catalog.profile),
+          .capabilities = std::move(catalog.capabilities)};
 }
 
 const SettingsGatewayService::OwnerLink* SettingsGatewayService::find(const std::string& name) const

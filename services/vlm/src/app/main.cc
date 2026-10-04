@@ -64,6 +64,8 @@ int main()
 
   SettingsRegistry settings(vlmSettingsCatalog());
   settings.onChange([&vlm](const std::vector<std::string>&) { vlm->service().refreshDefaults(); });
+  if (llama_supports_gpu_offload())
+    settings.declareCapability("gpu");
 
   std::unique_ptr<SettingsRpcService> settingsRpc;
   std::unique_ptr<VlmRpcServer> rpc;

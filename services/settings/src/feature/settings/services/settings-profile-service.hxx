@@ -2,11 +2,13 @@
 
 #include <drogon/utils/coroutine.h>
 #include <feature/settings/services/settings-gateway-service.hxx>
+#include <feature/settings/services/profile-planner.hxx>
 #include <feature/settings/services/settings-profile.hxx>
 
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 struct SettingsProfileInput
 {
@@ -21,6 +23,11 @@ struct ProfileApplyInput
   int64_t userId{0};
 };
 
+struct ProfileRevertInput
+{
+  int64_t userId{0};
+};
+
 class SettingsProfileService
 {
 public:
@@ -32,8 +39,14 @@ public:
   [[nodiscard]] ProfileApplyOutcome apply(const ProfileApplyInput& input) const;
   [[nodiscard]] drogon::Task<ProfileApplyOutcome> applyAsync(ProfileApplyInput input) const;
 
+  [[nodiscard]] ProfileApplyOutcome revertRecommended(const ProfileRevertInput& input) const;
+  [[nodiscard]] drogon::Task<ProfileApplyOutcome> revertRecommendedAsync(ProfileRevertInput input) const;
+
+  [[nodiscard]] std::string recommendedProfile() const;
+
 private:
   [[nodiscard]] const ProfileCatalog& catalog() const;
+  [[nodiscard]] std::vector<OwnerApplyResult> run(std::vector<OwnerPlan> plans) const;
 
   const SettingsGatewayService& gateway_;
   std::optional<ProfileCatalog> catalog_;

@@ -169,7 +169,7 @@ against a real client.
 | argus-tts | `argus-tts:local` | internal network (172.19.0.29), loopback 7029 publish; models/tts subpath ro; config bind rw (settings owner); `/health` healthcheck |
 | argus-stt | `argus-stt:local` | internal network (172.19.0.30), loopback 7030 publish; models/stt subpath ro; config bind rw (settings owner); `/health` healthcheck |
 | argus-vlm | `argus-vlm:local` | internal network (172.19.0.31), loopback 7031 publish; models/vision subpath ro; `/dev/dri`; config bind rw (settings owner); `/health` healthcheck |
-| argus-llm | `argus-llm:local` | internal network (172.19.0.32), loopback 7032 publish; models/llm subpath ro; carries the memory stack as a feature since Phase 4 step 7 (its stack hosting landed at f8-b4); config bind rw (settings owner); `/health` healthcheck |
+| argus-llm | `argus-llm:local` | internal network (172.19.0.32), loopback 7032 publish; `/dev/dri`; models/llm subpath ro; carries the memory stack as a feature since Phase 4 step 7 (its stack hosting landed at f8-b4); config bind rw (settings owner); `/health` healthcheck |
 | argus-voice | `argus-voice:local` | internal network (172.19.0.34), loopback 7034 (gRPC) + 7035 (`/health`) publishes; no database; models/vad ro; gated on nats; config bind rw (settings owner); `/health` healthcheck |
 | argus-relay | `argus-tunnel:local` | `profiles: [tunnel]`; internal network, loopback 7100/7101/7103 publishes; no database (Ruling CL); `/health` healthcheck |
 | argus-tunnel-client | `argus-tunnel:local` | `profiles: [tunnel]`; host-networked (it dials the remote listener a home service opens and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
@@ -289,12 +289,18 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
   a cpus pool
   implicitly). Every value
   is env-overridable (`ARGUS_TTS_MEMORY_LIMIT`, `ARGUS_LLM_CPU_LIMIT`, ...).
-- `/dev/dri` is mounted into `argus-vlm` (llama.cpp Vulkan backend, F2-1
-  pattern). A GPU-less host drops the device with a `devices: !override []`
-  compose override and the engine degrades to CPU in-binary. `argus-llm`
-  ships without the device (Ruling CD scopes it to argus-vlm): with
-  `gpu_layers = -1` it runs CPU; an operator adding the device pins
-  `gpu_layers = 999` in `config.llm.toml`.
+- `/dev/dri` is mounted into `argus-vlm` and `argus-llm` (llama.cpp Vulkan
+  backend, F2-1 pattern; the owner accepted the LLM half on 2026-10-03,
+  superseding Ruling CD). A GPU-less host drops the device from both with a
+  `devices: !override []` compose override and each engine degrades to CPU
+  in-binary. The device alone changes nothing: each engine reports the `gpu`
+  settings capability when llama.cpp finds a Vulkan device
+  (`llama_supports_gpu_offload()`), and only then does the "Máxima calidad"
+  profile, or the owner in Configuración, set `vision.gpu_layers` /
+  `llm.gpu_layers` to 999 (a restart key: the engine picks it up when its
+  container restarts). `gpu_layers = -1` keeps the CPU path. Measured on the
+  reference host's Radeon Vega 8 (services/vlm/CONTEXT.md): the VLM answers a
+  one-sentence describe in 0.61 s instead of 1.09 s (1.8x).
 - **Models (Ruling CB).** Per-service read-only subpath binds, never the
   whole tree: `models/tts` → argus-tts, `models/stt` → argus-stt,
   `models/vision` → argus-vlm (the GGUF + its mmproj projector),
@@ -646,5 +652,17 @@ vlm and llm; `[grpc] caller_settings` for voice, and for camera and
 notification once their templates carry it) and `[owners.<owner>] credential`
 in `config.settings.toml`, whose `target` it sets to `argus-<owner>:<port>`
 from the owner's own gRPC listener. An owner whose config has no caller slot
-stays unconfigured (guard has no gRPC listener today). Existing secrets and
-targets are never overwritten.
+stays unconfigured. It also writes `[owners.<owner>] config_file`, the host
+path of the owner's `config.<owner>.toml`, which Configuración shows beside
+every key instead of the container's `/opt/argus/config.toml`. Existing
+secrets, targets and paths are never overwritten.
+
+A stack provisioned before argus-settings existed has none of this: its
+`config.<owner>.toml` files carry no `[rpc]` listener and no settings caller,
+and `config.settings.toml` does not exist, so the settings surface sees no
+owner and Configuración stays empty (the app now names every unconnected
+service instead of showing nothing). Re-running `provision-host.sh` adopts
+the wiring keys into the existing files without touching their values, mints
+the credentials, writes `config.settings.toml`, and a rebuild plus
+`docker compose up -d` brings the owners up with their settings listener.
+This was checked on a scratch copy of the 2026-09 owner configs.

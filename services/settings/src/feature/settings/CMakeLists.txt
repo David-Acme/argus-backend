@@ -11,6 +11,7 @@ argus_module(NAME settings-gateway
         infra/hardware-facts.cc
         infra/profile-file.cc
         services/profile-planner.cc
+        services/first-run-service.cc
         services/settings-gateway-service.cc
         services/settings-profile-service.cc
         services/settings-profile.cc

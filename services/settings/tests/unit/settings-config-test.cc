@@ -6,7 +6,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <chrono>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -59,6 +61,32 @@ credential = "g"
   CHECK(owners[0].credential == "l");
   CHECK(owners[1].name == "tts");
   CHECK(owners[2].name == "notification");
+  CHECK(SettingsConfig::unconfiguredOwners(owners) ==
+        std::vector<std::string>{"voice", "stt", "vlm", "guard", "camera"});
+  std::filesystem::remove(configPath());
+}
+
+TEST_CASE("an owner may name the host path of its config file, and the first run is on unless turned off")
+{
+  loadConfig(R"([owners.tts]
+target = "argus-tts:7129"
+credential = "t"
+config_file = "/srv/argus/argus-deploy/config.tts.toml"
+)");
+  const auto owners = SettingsConfig::resolveOwners();
+  REQUIRE(owners.size() == 1);
+  CHECK(owners[0].configFile == "/srv/argus/argus-deploy/config.tts.toml");
+  const auto defaults = SettingsConfig::resolveFirstRun();
+  CHECK(defaults.enabled);
+  CHECK(defaults.interval == std::chrono::seconds(30));
+
+  loadConfig("[settings]\nfirst_run = false\nfirst_run_interval_s = 120\n");
+  const auto tuned = SettingsConfig::resolveFirstRun();
+  CHECK_FALSE(tuned.enabled);
+  CHECK(tuned.interval == std::chrono::seconds(120));
+
+  loadConfig("[settings]\nfirst_run_interval_s = 1\n");
+  CHECK(SettingsConfig::resolveFirstRun().interval == std::chrono::seconds(30));
   std::filesystem::remove(configPath());
 }
 

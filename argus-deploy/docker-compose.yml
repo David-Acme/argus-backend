@@ -586,6 +586,8 @@ services:
         ipv4_address: 172.19.0.32
     ports:
       - "127.0.0.1:${LLM_PORT:-7032}:7032"
+    devices:
+      - /dev/dri:/dev/dri
     entrypoint: ["/opt/argus/argus-llm"]
     volumes:
       - type: bind

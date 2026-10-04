@@ -49,10 +49,17 @@ struct HardwareFacts
   [[nodiscard]] bool vectorIsa() const { return isa != CpuIsa::Baseline; }
 };
 
+struct CapabilityChange
+{
+  std::string capability;
+  SettingChange change;
+};
+
 struct ProfileOwnerChanges
 {
   std::string owner;
   std::vector<SettingChange> changes;
+  std::vector<CapabilityChange> withCapability{};
 };
 
 struct SettingsProfile
@@ -116,10 +123,25 @@ struct Recommendation
   std::string fallback;
 };
 
+struct FirstRunOwner
+{
+  std::string service;
+  std::vector<std::string> keys;
+};
+
+struct FirstRunState
+{
+  std::string profile;
+  ProfileOrigin origin{ProfileOrigin::Recommended};
+  std::int64_t appliedAt{0};
+  std::vector<FirstRunOwner> owners;
+};
+
 struct ProfilesOverview
 {
   std::vector<ProfilePreview> profiles;
   Recommendation recommendation;
+  std::optional<FirstRunState> firstRun{};
 };
 
 struct ProfileKeyResult

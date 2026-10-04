@@ -181,6 +181,8 @@ int main()
     ToolRegistry::instance().registerTool(std::move(descriptor));
 
   SettingsRegistry settings(llmSettingsCatalog());
+  if (llama_supports_gpu_offload())
+    settings.declareCapability("gpu");
 
   const LlmRpcConfig rpcConfig = LlmConfig::resolveRpc();
   std::unique_ptr<LlmRpcServer> rpc;

@@ -145,6 +145,40 @@ TEST_CASE("the catalog serializes every field the app reads, in camelCase")
   CHECK(stt["settings"].empty());
 }
 
+TEST_CASE("the technical fields: unit, pending restart, config file, capabilities, profile marker and configured")
+{
+  OwnerCatalog tts = ttsCatalog();
+  tts.settings[0].spec.unit = "steps";
+  tts.settings[0].pendingRestart = true;
+  tts.configFile = "/srv/argus/argus-deploy/config.tts.toml";
+  tts.capabilities = {"gpu"};
+  tts.profile = ProfileMarker{.id = "quality", .origin = ProfileOrigin::Recommended, .appliedAt = 1759500000,
+                              .keys = {"tts.quality"}};
+  const Json::Value owner = ResponseOwnerCatalogDto{.catalog = tts}.toJson();
+  CHECK(owner["settings"][0]["unit"].asString() == "steps");
+  CHECK(owner["settings"][0]["pendingRestart"].asBool());
+  CHECK(owner["configured"].asBool());
+  CHECK(owner["configFile"].asString() == "/srv/argus/argus-deploy/config.tts.toml");
+  REQUIRE(owner["capabilities"].size() == 1);
+  CHECK(owner["capabilities"][0].asString() == "gpu");
+  CHECK(owner["profile"]["id"].asString() == "quality");
+  CHECK(owner["profile"]["origin"].asString() == "recommended");
+  CHECK(owner["profile"]["appliedAt"].asInt64() == 1759500000);
+  CHECK(owner["profile"]["keys"][0].asString() == "tts.quality");
+
+  tts.profile = ProfileMarker{};
+  CHECK(ResponseOwnerCatalogDto{.catalog = tts}.toJson()["profile"].isNull());
+  tts.profile.reset();
+  CHECK(ResponseOwnerCatalogDto{.catalog = tts}.toJson()["profile"].isNull());
+
+  const OwnerCatalog missing{.service = "guard", .reachable = false, .settings = {}, .configured = false,
+                             .configFile = {}, .profile = std::nullopt, .capabilities = {}};
+  const Json::Value guard = ResponseOwnerCatalogDto{.catalog = missing}.toJson();
+  CHECK_FALSE(guard["configured"].asBool());
+  CHECK_FALSE(guard["reachable"].asBool());
+  CHECK(guard["capabilities"].empty());
+}
+
 TEST_CASE("an update answers with the applied keys and the owner's catalog")
 {
   const SettingsUpdateOutcome outcome{.applied = {"tts.quality"}, .catalog = ttsCatalog()};

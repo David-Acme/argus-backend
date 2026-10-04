@@ -83,6 +83,28 @@ Json::Value hardwareJson(const HardwareFacts& hardware)
   return entry;
 }
 
+Json::Value firstRunJson(const std::optional<FirstRunState>& state)
+{
+  if (!state)
+    return {Json::nullValue};
+  Json::Value entry(Json::objectValue);
+  entry["profile"] = state->profile;
+  entry["state"] = state->origin == ProfileOrigin::Reverted ? "reverted" : "applied";
+  entry["appliedAt"] = Json::Int64{state->appliedAt};
+  Json::Value owners(Json::arrayValue);
+  for (const auto& owner : state->owners) {
+    Json::Value item(Json::objectValue);
+    item["service"] = owner.service;
+    Json::Value keys(Json::arrayValue);
+    for (const auto& key : owner.keys)
+      keys.append(key);
+    item["keys"] = std::move(keys);
+    owners.append(std::move(item));
+  }
+  entry["owners"] = std::move(owners);
+  return entry;
+}
+
 Json::Value recommendationJson(const Recommendation& recommendation)
 {
   Json::Value entry(Json::objectValue);
@@ -108,5 +130,6 @@ Json::Value ResponseListProfilesDto::toJson() const
   Json::Value info(Json::objectValue);
   info["profiles"] = std::move(profiles);
   info["recommendation"] = recommendationJson(overview.recommendation);
+  info["firstRun"] = firstRunJson(overview.firstRun);
   return info;
 }

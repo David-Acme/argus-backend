@@ -6,6 +6,8 @@ min_protocol = "TLSv1.2"
 list_timeout_ms = 1500
 update_timeout_ms = 5000
 profiles_path = "profiles.json"
+first_run = true
+first_run_interval_s = 30
 
 [drogon.app]
 number_of_threads = 0
@@ -31,34 +33,42 @@ server_key = "certs/server.key"
 [owners.llm]
 target = ""
 credential = ""
+config_file = ""
 
 [owners.voice]
 target = ""
 credential = ""
+config_file = ""
 
 [owners.tts]
 target = ""
 credential = ""
+config_file = ""
 
 [owners.stt]
 target = ""
 credential = ""
+config_file = ""
 
 [owners.vlm]
 target = ""
 credential = ""
+config_file = ""
 
 [owners.guard]
 target = ""
 credential = ""
+config_file = ""
 
 [owners.camera]
 target = ""
 credential = ""
+config_file = ""
 
 [owners.notification]
 target = ""
 credential = ""
+config_file = ""
 
 [jwt]
 secret = ""

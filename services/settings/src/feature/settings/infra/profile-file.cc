@@ -55,13 +55,17 @@ std::string text(const Node& node, std::size_t maxLength)
   return node.value.asString();
 }
 
+bool wellFormedId(const std::string& id)
+{
+  return !id.empty() && id.size() <= kMaxIdLength && std::ranges::all_of(id, [](char letter) {
+    return (letter >= 'a' && letter <= 'z') || (letter >= '0' && letter <= '9') || letter == '-';
+  });
+}
+
 std::string profileId(const Node& node)
 {
   auto id = text(node, kMaxIdLength);
-  const bool wellFormed = std::ranges::all_of(id, [](char letter) {
-    return (letter >= 'a' && letter <= 'z') || (letter >= '0' && letter <= '9') || letter == '-';
-  });
-  if (!wellFormed)
+  if (!wellFormedId(id))
     reject(node.where + ": must hold only lowercase letters, digits and '-'");
   return id;
 }
@@ -79,13 +83,43 @@ ProfileOwnerChanges readOwner(const std::string& owner, const Node& node)
   objectAt(node);
   if (node.value.size() > kMaxChangesPerOwner)
     reject(node.where + ": holds more than 64 settings");
-  ProfileOwnerChanges changes{.owner = owner, .changes = {}};
+  ProfileOwnerChanges changes{.owner = owner, .changes = {}, .withCapability = {}};
   for (const auto& key : node.value.getMemberNames()) {
     if (key.empty() || key.size() > kMaxKeyLength)
       reject(node.where + ": has a key that is empty or longer than 128 characters");
     changes.changes.push_back({.key = key, .value = text(child(node, key), kMaxValueLength)});
   }
   return changes;
+}
+
+ProfileOwnerChanges& ownerEntry(SettingsProfile& profile, const std::string& owner)
+{
+  const auto match = std::ranges::find(profile.owners, owner, &ProfileOwnerChanges::owner);
+  if (match != profile.owners.end())
+    return *match;
+  return profile.owners.emplace_back(ProfileOwnerChanges{.owner = owner, .changes = {}, .withCapability = {}});
+}
+
+void readCapabilities(SettingsProfile& profile, const Node& node)
+{
+  for (const auto& capability : objectAt(node).getMemberNames()) {
+    const auto capabilityNode = child(node, capability);
+    if (!wellFormedId(capability))
+      reject(capabilityNode.where + ": names a capability that is not lowercase letters, digits and '-'");
+    for (const auto& owner : objectAt(capabilityNode).getMemberNames()) {
+      const auto read = readOwner(owner, child(capabilityNode, owner));
+      auto& entry = ownerEntry(profile, owner);
+      for (const auto& change : read.changes) {
+        const bool repeated =
+            std::ranges::find(entry.changes, change.key, &SettingChange::key) != entry.changes.end() ||
+            std::ranges::any_of(entry.withCapability,
+                                [&change](const CapabilityChange& other) { return other.change.key == change.key; });
+        if (repeated)
+          reject(capabilityNode.where + "." + owner + ": sets " + change.key + " twice");
+        entry.withCapability.push_back({.capability = capability, .change = change});
+      }
+    }
+  }
 }
 
 SettingsProfile readProfile(const Node& node)
@@ -97,6 +131,8 @@ SettingsProfile readProfile(const Node& node)
   const auto owners = child(node, "owners");
   for (const auto& owner : objectAt(owners).getMemberNames())
     profile.owners.push_back(readOwner(owner, child(owners, owner)));
+  if (node.value.isMember("withCapability"))
+    readCapabilities(profile, child(node, "withCapability"));
   std::ranges::sort(profile.owners, {}, [](const ProfileOwnerChanges& owner) { return ownerPosition(owner.owner); });
   return profile;
 }

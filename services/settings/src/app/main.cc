@@ -8,6 +8,7 @@
 #include <feature/settings/controllers/settings-controller.hxx>
 #include <feature/settings/infra/hardware-facts.hxx>
 #include <feature/settings/infra/profile-file.hxx>
+#include <feature/settings/services/first-run-service.hxx>
 #include <http/certificate-reload.hxx>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
@@ -16,6 +17,7 @@
 #include <http/route-announcements.hxx>
 #include <mdns/mdns-service.hxx>
 #include <runtime/log-output.hxx>
+#include <runtime/shutdown-signal.hxx>
 
 #include <memory>
 #include <string>
@@ -51,13 +53,21 @@ int main()
 
   const ListenerConfig listener = SettingsConfig::resolveListener();
   const auto owners = SettingsConfig::resolveOwners();
+  const SettingsGatewayInput gateway{.owners = owners,
+                                     .timeouts = SettingsConfig::resolveTimeouts(),
+                                     .unconfigured = SettingsConfig::unconfiguredOwners(owners)};
+  const auto profiles = loadProfileFile(SettingsConfig::resolveProfilesPath());
+  const auto hardware = probeHardwareFacts();
 
   drogon::app().registerController(
       std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-settings", .extras = {}}));
-  drogon::app().registerController(std::make_shared<SettingsController>(SettingsControllerInput{
-      .gateway = {.owners = owners, .timeouts = SettingsConfig::resolveTimeouts()},
-      .profiles = loadProfileFile(SettingsConfig::resolveProfilesPath()),
-      .hardware = probeHardwareFacts()}));
+  drogon::app().registerController(std::make_shared<SettingsController>(
+      SettingsControllerInput{.gateway = gateway, .profiles = profiles, .hardware = hardware}));
+
+  const SettingsGatewayService firstRunGateway(gateway);
+  FirstRunService firstRun(
+      {.gateway = firstRunGateway, .catalog = profiles, .hardware = hardware, .config = SettingsConfig::resolveFirstRun()});
+  shutdown_signal::onStop(shutdown_signal::drainOf(firstRun, "settings-first-run"));
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
@@ -92,6 +102,9 @@ int main()
     mdnsService->initialize();
   });
 
+  drogon::app().registerBeginningAdvice([&firstRun]() { firstRun.start(); });
+
   drogon::app().setThreadNum(0).run();
+  firstRun.requestStop();
   return 0;
 }

@@ -13,6 +13,10 @@ inline constexpr ErrorDefinition UnknownProfile{
     .code = ErrorCode::NotFound,
     .status = 404,
     .message = "Unknown settings profile"};
+inline constexpr ErrorDefinition NothingToRevert{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "No recommended profile is applied"};
 inline constexpr ErrorDefinition ProfilesUnavailable{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,
