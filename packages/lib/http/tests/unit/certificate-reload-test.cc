@@ -3,10 +3,10 @@
 
 #include <http/certificate-reload.hxx>
 
-#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
@@ -26,9 +26,9 @@ struct X509Deleter
   void operator()(X509* certificate) const { X509_free(certificate); }
 };
 
-struct FileCloser
+struct BioDeleter
 {
-  void operator()(std::FILE* file) const { std::fclose(file); }
+  void operator()(BIO* bio) const { BIO_free(bio); }
 };
 
 using Key = std::unique_ptr<EVP_PKEY, KeyDeleter>;
@@ -47,9 +47,9 @@ std::string tempPath(const std::string& stem)
 
 void writeKey(const std::string& path, EVP_PKEY* key)
 {
-  const std::unique_ptr<std::FILE, FileCloser> file(std::fopen(path.c_str(), "wb"));
+  const std::unique_ptr<BIO, BioDeleter> file(BIO_new_file(path.c_str(), "wb"));
   REQUIRE(file);
-  REQUIRE(PEM_write_PrivateKey(file.get(), key, nullptr, nullptr, 0, nullptr, nullptr) == 1);
+  REQUIRE(PEM_write_bio_PrivateKey(file.get(), key, nullptr, nullptr, 0, nullptr, nullptr) == 1);
 }
 
 void writeCertificate(const std::string& path, EVP_PKEY* key)
@@ -65,9 +65,9 @@ void writeCertificate(const std::string& path, EVP_PKEY* key)
                              reinterpret_cast<const unsigned char*>("argus.local"), -1, -1, 0);
   X509_set_issuer_name(certificate.get(), name);
   REQUIRE(X509_sign(certificate.get(), key, EVP_sha256()) > 0);
-  const std::unique_ptr<std::FILE, FileCloser> file(std::fopen(path.c_str(), "wb"));
+  const std::unique_ptr<BIO, BioDeleter> file(BIO_new_file(path.c_str(), "wb"));
   REQUIRE(file);
-  REQUIRE(PEM_write_X509(file.get(), certificate.get()) == 1);
+  REQUIRE(PEM_write_bio_X509(file.get(), certificate.get()) == 1);
 }
 
 }

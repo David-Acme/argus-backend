@@ -240,7 +240,10 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
                                    .payload = {},
                                    .at = 101};
   const auto planned = drogon::sync_wait(repository.planIntent(intent));
-  REQUIRE(planned.has_value());
+  if (!planned) {
+    FAIL("expected a value in planned");
+    return;
+  }
   CHECK(planned->status == GuardIntentStatus::Pending);
   CHECK(drogon::sync_wait(
       repository.setOutboxPayload({.commandId = "evt:1:notify:1",
@@ -248,7 +251,10 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
                                    .at = 101})));
   const auto replannedPayload =
       drogon::sync_wait(repository.planIntent(intent));
-  REQUIRE(replannedPayload.has_value());
+  if (!replannedPayload) {
+    FAIL("expected a value in replannedPayload");
+    return;
+  }
   CHECK(replannedPayload->payload == "{\"userIds\":[7]}");
   CHECK(drogon::sync_wait(repository.updateOutbox(
       {.commandId = "evt:1:notify:1",
@@ -258,7 +264,10 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
        .nextAttemptAt = 0,
        .at = 102})));
   const auto replanned = drogon::sync_wait(repository.planIntent(intent));
-  REQUIRE(replanned.has_value());
+  if (!replanned) {
+    FAIL("expected a value in replanned");
+    return;
+  }
   CHECK(replanned->status == GuardIntentStatus::Succeeded);
   CHECK(replanned->detail == "notified");
   CHECK(replanned->response.find("accepted") != std::string::npos);
@@ -433,7 +442,10 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
   CHECK(passFor(8) == openPass);
   const auto inOtherEnvironment = drogon::sync_wait(repository.activeGuest(
       {.at = 400, .cameraId = 1, .environmentId = 2, .personId = 8}));
-  REQUIRE(inOtherEnvironment.has_value());
+  if (!inOtherEnvironment) {
+    FAIL("expected a value in inOtherEnvironment");
+    return;
+  }
   CHECK(inOtherEnvironment->id == elsewherePass);
 
   CHECK(drogon::sync_wait(repository.claimObservation({.eventId = "enc:1",
@@ -544,7 +556,10 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
                                      .payload = {},
                                      .at = 2000};
     const auto pending = drogon::sync_wait(repository.planIntent(intent));
-    REQUIRE(pending.has_value());
+    if (!pending) {
+      FAIL("expected a value in pending");
+      return;
+    }
     CHECK(pending->status == GuardIntentStatus::Pending);
     CHECK(guardIntentStatusIsResumable(pending->status));
     CHECK(drogon::sync_wait(
@@ -555,7 +570,10 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
                                  .nextAttemptAt = 2600,
                                  .at = 2001})));
     const auto retryable = drogon::sync_wait(repository.planIntent(intent));
-    REQUIRE(retryable.has_value());
+    if (!retryable) {
+      FAIL("expected a value in retryable");
+      return;
+    }
     CHECK(retryable->status == GuardIntentStatus::RetryableFailed);
     CHECK(retryable->nextAttemptAt == 2600);
     CHECK(guardIntentStatusIsResumable(retryable->status));
@@ -567,7 +585,10 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
                                  .nextAttemptAt = 0,
                                  .at = 2002})));
     const auto indeterminate = drogon::sync_wait(repository.planIntent(intent));
-    REQUIRE(indeterminate.has_value());
+    if (!indeterminate) {
+      FAIL("expected a value in indeterminate");
+      return;
+    }
     CHECK(indeterminate->status == GuardIntentStatus::Indeterminate);
     CHECK(guardIntentStatusIsTerminal(indeterminate->status));
   }

@@ -29,7 +29,7 @@ std::vector<float> randomUnit(std::mt19937& rng)
 class Voice
 {
 public:
-  Voice(uint32_t seed, float spread) : rng_(seed), spread_(spread)
+  explicit Voice(uint32_t seed) : rng_(seed)
   {
     base_ = randomUnit(rng_);
   }
@@ -39,13 +39,14 @@ public:
     const std::vector<float> noise = randomUnit(rng_);
     std::vector<float> out(kDims);
     for (size_t index = 0; index < kDims; ++index)
-      out[index] = base_[index] + spread_ * noise[index];
+      out[index] = base_[index] + kSpread * noise[index];
     return voice_vector::normalized(out);
   }
 
   [[nodiscard]] std::vector<float> call(int turns)
   {
     std::vector<std::vector<float>> parts;
+    parts.reserve(static_cast<size_t>(turns));
     for (int turn = 0; turn < turns; ++turn)
       parts.push_back(utterance());
     return voice_vector::centroid(parts);
@@ -55,7 +56,7 @@ public:
 
 private:
   std::mt19937 rng_;
-  float spread_{0.0F};
+  static constexpr float kSpread = 0.5F;
   std::vector<float> base_;
 };
 
@@ -100,8 +101,8 @@ TrackedTurn turnOf(const std::string& key, std::vector<float> embedding,
 TEST_CASE("a turn joins the call only while the call stays one speaker")
 {
   const PassivePolicy policy(defaults());
-  Voice rita(7, 0.5F);
-  Voice laura(8, 0.5F);
+  Voice rita(7);
+  Voice laura(8);
   const std::vector<std::vector<float>> accepted{rita.utterance(),
                                                  rita.utterance()};
   const auto turn = rita.utterance();
@@ -179,8 +180,8 @@ TEST_CASE("a turn joins the call only while the call stays one speaker")
 TEST_CASE("a closed call teaches only when it is long, clean and one voice")
 {
   const PassivePolicy policy(defaults());
-  Voice rita(7, 0.5F);
-  Voice laura(8, 0.5F);
+  Voice rita(7);
+  Voice laura(8);
   const std::vector<std::vector<float>> clean{rita.utterance(),
                                               rita.utterance(),
                                               rita.utterance()};
@@ -208,9 +209,9 @@ TEST_CASE("a closed call teaches only when it is long, clean and one voice")
 TEST_CASE("a voice is linked only after consistent calls on separate occasions")
 {
   const PassivePolicy policy(defaults());
-  Voice rita(7, 0.5F);
-  Voice laura(8, 0.5F);
-  Voice tv(9, 0.5F);
+  Voice rita(7);
+  Voice laura(8);
+  Voice tv(9);
 
   SUBCASE("nothing heard, nothing linked")
   {
@@ -254,6 +255,7 @@ TEST_CASE("a voice is linked only after consistent calls on separate occasions")
   SUBCASE("one evening is not enough, however many calls")
   {
     std::vector<PolicySample> samples;
+    samples.reserve(5);
     for (int64_t index = 0; index < 5; ++index)
       samples.push_back(sample({.id = index + 1,
                                 .embedding = rita.call(3),
@@ -271,7 +273,7 @@ TEST_CASE("a voice is linked only after consistent calls on separate occasions")
         sample({.id = 1, .embedding = rita.call(3), .createdAt = lateEvening,
                 .ownDevice = true}),
         sample({.id = 2, .embedding = rita.call(3),
-                .createdAt = lateEvening + 90 * 60, .ownDevice = true}),
+                .createdAt = lateEvening + int64_t{90} * 60, .ownDevice = true}),
         sample({.id = 3, .embedding = rita.call(3),
                 .createdAt = lateEvening + 3 * kHour, .ownDevice = true})};
     CHECK(policy
@@ -286,6 +288,7 @@ TEST_CASE("a voice is linked only after consistent calls on separate occasions")
   SUBCASE("a phone two accounts share never links anybody")
   {
     std::vector<PolicySample> samples;
+    samples.reserve(6);
     for (int64_t index = 0; index < 6; ++index)
       samples.push_back(sample({.id = index + 1,
                                 .embedding = rita.call(3),
@@ -299,6 +302,7 @@ TEST_CASE("a voice is linked only after consistent calls on separate occasions")
   SUBCASE("two people taking turns on one account link neither")
   {
     std::vector<PolicySample> samples;
+    samples.reserve(8);
     for (int64_t index = 0; index < 8; ++index)
       samples.push_back(sample({.id = index + 1,
                                 .embedding = index % 2 == 0 ? rita.call(3)
@@ -313,6 +317,7 @@ TEST_CASE("a voice is linked only after consistent calls on separate occasions")
   SUBCASE("the voice that holds three calls in four is the holder's")
   {
     std::vector<PolicySample> samples;
+    samples.reserve(8);
     for (int64_t index = 0; index < 8; ++index)
       samples.push_back(sample({.id = index + 1,
                                 .embedding = index % 4 == 3 ? tv.call(3)
@@ -328,6 +333,7 @@ TEST_CASE("a voice is linked only after consistent calls on separate occasions")
   SUBCASE("calls too short in total do not link")
   {
     std::vector<PolicySample> samples;
+    samples.reserve(3);
     for (int64_t index = 0; index < 3; ++index) {
       auto entry = sample({.id = index + 1,
                            .embedding = rita.call(3),
@@ -344,6 +350,7 @@ TEST_CASE("a voice is linked only after consistent calls on separate occasions")
   SUBCASE("a voice already linked to someone else is never linked again")
   {
     std::vector<PolicySample> samples;
+    samples.reserve(3);
     for (int64_t index = 0; index < 3; ++index)
       samples.push_back(sample({.id = index + 1,
                                 .embedding = laura.call(3),
@@ -394,11 +401,12 @@ TEST_CASE("a call refreshes a linked voice only when it clearly is that voice")
 TEST_CASE("a refresh moves the profile gradually and leaves outliers out")
 {
   const PassivePolicy policy(defaults());
-  Voice rita(7, 0.5F);
-  Voice laura(8, 0.5F);
+  Voice rita(7);
+  Voice laura(8);
   const auto current = rita.call(6);
 
   std::vector<std::vector<float>> reservoir;
+  reservoir.reserve(10);
   for (int index = 0; index < 9; ++index)
     reservoir.push_back(rita.call(3));
   reservoir.push_back(laura.call(3));
@@ -414,6 +422,7 @@ TEST_CASE("a refresh moves the profile gradually and leaves outliers out")
   CHECK(voice_vector::cosine(refreshed.centroid, laura.base()) < 0.2F);
 
   std::vector<std::vector<float>> stranger;
+  stranger.reserve(5);
   for (int index = 0; index < 5; ++index)
     stranger.push_back(laura.call(3));
   CHECK_FALSE(policy.refresh({.current = current, .reservoir = stranger}).applied);
@@ -425,8 +434,8 @@ TEST_CASE("the call tracker keeps each call to one caller and one voice")
   auto config = defaults();
   config.maxOpenCalls = 2;
   VoiceCallTracker tracker(config);
-  Voice rita(7, 0.5F);
-  Voice laura(8, 0.5F);
+  Voice rita(7);
+  Voice laura(8);
 
   CHECK(tracker.observe(turnOf("a", rita.utterance(), 100)) ==
         TurnVerdict::Accepted);
@@ -437,7 +446,10 @@ TEST_CASE("the call tracker keeps each call to one caller and one voice")
   CHECK(tracker.observe(turnOf("a", rita.utterance(), 130)) ==
         TurnVerdict::CallTainted);
   const auto tainted = tracker.close("a");
-  REQUIRE(tainted.has_value());
+  if (!tainted) {
+    FAIL("expected a value in tainted");
+    return;
+  }
   CHECK(tainted->tainted);
   CHECK(tainted->taint == TurnVerdict::Drift);
   CHECK(tainted->turns.empty());
@@ -461,7 +473,10 @@ TEST_CASE("the call tracker keeps each call to one caller and one voice")
   CHECK(idle.size() == 1);
   CHECK(tracker.open() == 1);
   const auto closed = tracker.close("c");
-  REQUIRE(closed.has_value());
+  if (!closed) {
+    FAIL("expected a value in closed");
+    return;
+  }
   CHECK_FALSE(closed->tainted);
   CHECK(closed->turns.size() == 1);
   CHECK(closed->speechSeconds == doctest::Approx(3.0F));

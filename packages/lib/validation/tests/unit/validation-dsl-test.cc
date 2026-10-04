@@ -167,7 +167,10 @@ TEST_CASE("validation-dsl reports empty required fields")
     auto probe = validProbe();
     probe.name = "";
     const auto errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     REQUIRE(errors->at("name").size() == 1);
     CHECK(errors->at("name")[0] == "name must not be empty");
 }
@@ -177,13 +180,19 @@ TEST_CASE("validation-dsl reports email format failures")
     auto probe = validProbe();
     probe.email = "not-an-email";
     auto errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     REQUIRE(errors->at("email").size() == 1);
     CHECK(errors->at("email")[0] == "email must be a valid email");
 
     probe.email = "missing@tld";
     errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("email")[0] == "email must be a valid email");
 }
 
@@ -192,7 +201,10 @@ TEST_CASE("validation-dsl restricts IS_IN to allowed values")
     auto probe = validProbe();
     probe.role = "superadmin";
     const auto errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     REQUIRE(errors->at("role").size() == 1);
     CHECK(errors->at("role")[0] == "role must be one of the allowed values");
 
@@ -207,13 +219,19 @@ TEST_CASE("validation-dsl enforces MIN_LENGTH and MAX_LENGTH bounds")
     auto probe = validProbe();
     probe.password = "short";
     auto errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("password")[0] == "password must be at least 8 characters");
 
     probe.password = std::string(65, 'x');
     probe.confirmation = probe.password;
     errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("password")[0] == "password must be at most 64 characters");
 }
 
@@ -222,7 +240,10 @@ TEST_CASE("validation-dsl cross-checks EQUALS_FIELD")
     auto probe = validProbe();
     probe.confirmation = "different-password";
     const auto errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("confirmation")[0] == "confirmation must equal password");
 }
 
@@ -231,17 +252,26 @@ TEST_CASE("validation-dsl treats optional string fields correctly")
     auto probe = validProbe();
     probe.nickname = "";
     auto errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("nickname")[0] == "nickname must not be empty");
 
     probe.nickname = "a";
     errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("nickname")[0] == "nickname must be at least 2 characters");
 
     probe.nickname = std::string(33, 'n');
     errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("nickname")[0] == "nickname must be at most 32 characters");
 
     probe.nickname = std::nullopt;
@@ -253,19 +283,28 @@ TEST_CASE("validation-dsl validates timestamps")
     auto probe = validProbe();
     probe.timestamp = 0;
     auto errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("timestamp")[0] == "timestamp must be a valid timestamp");
 
     probe = validProbe();
     probe.expiresAt = 0;
     errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("expiresAt")[0] == "expiresAt must be a positive timestamp");
 
     probe = validProbe();
     probe.expiresAt = -42;
     errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("expiresAt")[0] == "expiresAt must be a positive timestamp");
 
     probe = validProbe();
@@ -278,14 +317,20 @@ TEST_CASE("validation-dsl enforces array rules")
     auto probe = validProbe();
     probe.tags.clear();
     auto errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     REQUIRE(errors->at("tags").size() == 2);
     CHECK(errors->at("tags")[0] == "tags must not be empty");
     CHECK(errors->at("tags")[1] == "tags must have at least 1 elements");
 
     probe.tags = {"a", "b", "c", "d", "e", "f"};
     errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("tags")[0] == "tags must have at most 5 elements");
 }
 
@@ -294,7 +339,10 @@ TEST_CASE("validation-dsl runs CUSTOM_LAMBDA")
     auto probe = validProbe();
     probe.active = false;
     const auto errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     REQUIRE(errors->at("active").size() == 1);
     CHECK(errors->at("active")[0] == "active must be true");
 }
@@ -306,7 +354,10 @@ TEST_CASE("validation-dsl accumulates errors from several fields")
     probe.email = "broken";
     probe.active = false;
     const auto errors = probeErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->size() == 3);
     CHECK(errors->count("name") == 1);
     CHECK(errors->count("email") == 1);
@@ -347,31 +398,46 @@ TEST_CASE("format rules reject malformed values")
     auto probe = validFormat();
     probe.uuid = "not-a-uuid";
     auto errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("uuid")[0] == "uuid must be a valid UUID");
 
     probe = validFormat();
     probe.url = "ftp://argus.local";
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("url")[0] == "url must be a valid URL");
 
     probe = validFormat();
     probe.hex = "xyz";
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("hex")[0] == "hex must be a valid hex string");
 
     probe = validFormat();
     probe.slug = "Front Door";
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("slug")[0] == "slug must be a valid slug");
 
     probe = validFormat();
     probe.base64 = "abcde";
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("base64")[0] == "base64 must be a valid base64 string");
 
     probe = validFormat();
@@ -382,25 +448,37 @@ TEST_CASE("format rules reject malformed values")
     probe = validFormat();
     probe.base64 = "aGVsbG8===";
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("base64")[0] == "base64 must be a valid base64 string");
 
     probe = validFormat();
     probe.alpha = "Argus42";
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("alpha")[0] == "alpha must contain only letters");
 
     probe = validFormat();
     probe.alnum = "cam-42";
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("alnum")[0] == "alnum must contain only letters and digits");
 
     probe = validFormat();
     probe.compact = "has space";
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("compact")[0] == "compact must not contain spaces");
 }
 
@@ -409,7 +487,10 @@ TEST_CASE("MATCHES_REGEX enforces the given pattern")
     auto probe = validFormat();
     probe.code = "12-3456";
     const auto errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("code")[0] == "code must match the code pattern");
 }
 
@@ -418,37 +499,55 @@ TEST_CASE("numeric rules bound int64 fields")
     auto probe = validFormat();
     probe.count = 0;
     auto errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("count")[0] == "count must be positive");
 
     probe = validFormat();
     probe.count = 11;
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("count")[0] == "count must be between 3 and 10");
 
     probe = validFormat();
     probe.count = 2;
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("count")[0] == "count must be between 3 and 10");
 
     probe = validFormat();
     probe.lower = -11;
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("lower")[0] == "lower must be at least -10");
 
     probe = validFormat();
     probe.upper = 11;
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("upper")[0] == "upper must be at most 10");
 
     probe = validFormat();
     probe.offset = -1;
     errors = formatErrors(probe);
-    REQUIRE(errors.has_value());
+    if (!errors) {
+      FAIL("expected a value in errors");
+      return;
+    }
     CHECK(errors->at("offset")[0] == "offset must be non-negative");
 
     probe = validFormat();

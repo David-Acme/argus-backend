@@ -57,7 +57,7 @@ constexpr std::array<Label, 7> kScreenLabels{{{.value = "home", .es = "el inicio
 template <size_t N>
 std::string labelFor(const std::array<Label, N>& labels, const tools::ToolCall& call, const char* argument)
 {
-  const std::string value = call.arguments.get(argument, "").asString();
+  std::string value = call.arguments.get(argument, "").asString();
   const auto found = std::ranges::find(labels, std::string_view(value), &Label::value);
   if (found == labels.end())
     return value;

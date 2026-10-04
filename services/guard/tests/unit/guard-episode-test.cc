@@ -370,7 +370,10 @@ TEST_CASE("an episode keeps its story: list, timeline and review")
 
   const auto detail =
       drogon::sync_wait(api.episode(episode["id"].asInt64()));
-  REQUIRE(detail.has_value());
+  if (!detail) {
+    FAIL("expected a value in detail");
+    return;
+  }
   const Json::Value& timeline = (*detail)["timeline"];
   REQUIRE(timeline.isArray());
   bool notified = false;
@@ -386,7 +389,10 @@ TEST_CASE("an episode keeps its story: list, timeline and review")
 
   const auto reviewed = drogon::sync_wait(api.reviewEpisode(
       {.episodeId = episode["id"].asInt64(), .label = FeedbackLabel::FalseAlarm}));
-  REQUIRE(reviewed.has_value());
+  if (!reviewed) {
+    FAIL("expected a value in reviewed");
+    return;
+  }
   CHECK((*reviewed)["reviewLabel"].asString() == "false_alarm");
   CHECK(scalar("SELECT feedback_label FROM guard_decision_journal WHERE "
                "event_id = 'ep:1'") == "false_alarm");
@@ -507,7 +513,7 @@ TEST_CASE("expected activity is summarized once at the digest hour")
                "'dig:5'")
             .find("public_hours") != std::string::npos);
 
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const auto now = static_cast<int64_t>(std::time(nullptr));
   drogon::sync_wait(service->maybeSendDigests(now));
   const auto sent = harness.notifications.sent();
   REQUIRE(sent.size() == 1);

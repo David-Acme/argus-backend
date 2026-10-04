@@ -185,21 +185,30 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
 
   {
     const auto owner = sdk.pullTable(projectPull(), identityFor(42));
-    REQUIRE(owner);
+    if (!owner) {
+      FAIL("expected a value in owner");
+      return;
+    }
     REQUIRE(owner->has_project());
     REQUIRE(owner->project().created_size() == 2);
     CHECK(owner->project().created(0).id() == 1);
     CHECK(owner->project().created(1).id() == 2);
 
     const auto other = sdk.pullTable(projectPull(), identityFor(7));
-    REQUIRE(other);
+    if (!other) {
+      FAIL("expected a value in other");
+      return;
+    }
     REQUIRE(other->project().created_size() == 1);
     CHECK(other->project().created(0).id() == 2);
   }
 
   {
     const auto rows = sdk.pullTable(reminderPull(), identityFor(7));
-    REQUIRE(rows);
+    if (!rows) {
+      FAIL("expected a value in rows");
+      return;
+    }
     REQUIRE(rows->has_reminder());
     REQUIRE(rows->reminder().created_size() == 1);
     CHECK(rows->reminder().created(0).target_user_id() == 7);
@@ -207,13 +216,19 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
 
   {
     const auto created = sdk.pullTable(taskPull(false), identityFor(42));
-    REQUIRE(created);
+    if (!created) {
+      FAIL("expected a value in created");
+      return;
+    }
     REQUIRE(created->project_task().created_size() == 1);
     CHECK(created->project_task().created(0).id() == 2);
     CHECK(created->project_task().created(0).sort_order() == doctest::Approx(2.0));
 
     const auto deleted = sdk.pullTable(taskPull(true), identityFor(42));
-    REQUIRE(deleted);
+    if (!deleted) {
+      FAIL("expected a value in deleted");
+      return;
+    }
     REQUIRE(deleted->project_task().deleted_size() == 1);
     CHECK(deleted->project_task().deleted(0).id() == 1);
     CHECK(deleted->project_task().deleted(0).deleted_at() == 1500);
@@ -221,14 +236,20 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
     argus::productivity::v1::PullTableRequest last;
     last.mutable_project()->set_find_last_created(true);
     const auto lastRow = sdk.pullTable(last, identityFor(42));
-    REQUIRE(lastRow);
+    if (!lastRow) {
+      FAIL("expected a value in lastRow");
+      return;
+    }
     REQUIRE(lastRow->project().has_last_created());
     CHECK(lastRow->project().last_created().id() == 2);
 
     argus::productivity::v1::PullTableRequest lastDeleted;
     lastDeleted.mutable_project_task()->set_find_last_deleted(true);
     const auto tombstone = sdk.pullTable(lastDeleted, identityFor(42));
-    REQUIRE(tombstone);
+    if (!tombstone) {
+      FAIL("expected a value in tombstone");
+      return;
+    }
     REQUIRE(tombstone->project_task().has_last_deleted());
     CHECK(tombstone->project_task().last_deleted().id() == 1);
   }
@@ -245,21 +266,30 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
     argus::productivity::v1::PullTableRequest caughtUp = taskPull(false);
     caughtUp.mutable_project_task()->mutable_created()->set_start_time(4000);
     const auto missed = sdk.pullTable(caughtUp, identityFor(9));
-    REQUIRE(missed);
+    if (!missed) {
+      FAIL("expected a value in missed");
+      return;
+    }
     CHECK(missed->project_task().created_size() == 0);
 
     argus::productivity::v1::PullTableRequest grants;
     grants.mutable_project_member()->set_required_create(true);
     grants.mutable_project_member()->mutable_created()->set_start_time(4000);
     const auto grant = sdk.pullTable(grants, identityFor(9));
-    REQUIRE(grant);
+    if (!grant) {
+      FAIL("expected a value in grant");
+      return;
+    }
     REQUIRE(grant->project_member().created_size() == 1);
     CHECK(grant->project_member().created(0).project_id() == 1);
 
     argus::productivity::v1::PullTableRequest scopedTasks = taskPull(false);
     scopedTasks.mutable_project_task()->add_scope_ids(1);
     const auto tasks = sdk.pullTable(scopedTasks, identityFor(9));
-    REQUIRE(tasks);
+    if (!tasks) {
+      FAIL("expected a value in tasks");
+      return;
+    }
     REQUIRE(tasks->project_task().created_size() == 2);
     CHECK(tasks->project_task().created(0).id() == 2);
     CHECK(tasks->project_task().created(1).id() == 3);
@@ -268,7 +298,10 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
     nextPage.mutable_project_task()->mutable_created()->set_start_time(1001);
     nextPage.mutable_project_task()->mutable_created()->set_start_id(2);
     const auto rest = sdk.pullTable(nextPage, identityFor(9));
-    REQUIRE(rest);
+    if (!rest) {
+      FAIL("expected a value in rest");
+      return;
+    }
     REQUIRE(rest->project_task().created_size() == 1);
     CHECK(rest->project_task().created(0).id() == 3);
 
@@ -276,21 +309,30 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
     scopedProject.mutable_project()->add_scope_ids(1);
     scopedProject.mutable_project()->add_scope_ids(2);
     const auto projects = sdk.pullTable(scopedProject, identityFor(9));
-    REQUIRE(projects);
+    if (!projects) {
+      FAIL("expected a value in projects");
+      return;
+    }
     REQUIRE(projects->project().created_size() == 1);
     CHECK(projects->project().created(0).id() == 1);
 
     argus::productivity::v1::PullTableRequest foreign = taskPull(false);
     foreign.mutable_project_task()->add_scope_ids(1);
     const auto outsider = sdk.pullTable(foreign, identityFor(8));
-    REQUIRE(outsider);
+    if (!outsider) {
+      FAIL("expected a value in outsider");
+      return;
+    }
     CHECK(outsider->project_task().created_size() == 0);
 
     argus::productivity::v1::PullTableRequest scopedEvent;
     scopedEvent.mutable_calendar_event()->set_required_create(true);
     scopedEvent.mutable_calendar_event()->add_scope_ids(1);
     const auto event = sdk.pullTable(scopedEvent, identityFor(7));
-    REQUIRE(event);
+    if (!event) {
+      FAIL("expected a value in event");
+      return;
+    }
     REQUIRE(event->calendar_event().created_size() == 1);
     CHECK(event->calendar_event().created(0).id() == 1);
 
@@ -300,11 +342,17 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
     revocations.mutable_project_member()->set_required_deleted(true);
     revocations.mutable_project_member()->mutable_deleted()->set_start_time(5500);
     const auto revoked = sdk.pullTable(revocations, identityFor(9));
-    REQUIRE(revoked);
+    if (!revoked) {
+      FAIL("expected a value in revoked");
+      return;
+    }
     REQUIRE(revoked->project_member().deleted_size() == 1);
     CHECK(revoked->project_member().deleted(0).id() == 2);
     const auto after = sdk.pullTable(scopedTasks, identityFor(9));
-    REQUIRE(after);
+    if (!after) {
+      FAIL("expected a value in after");
+      return;
+    }
     CHECK(after->project_task().created_size() == 0);
 
     argus::productivity::v1::PullTableRequest unscopable = reminderPull();

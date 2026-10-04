@@ -582,13 +582,19 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   app.identity().reachable = false;
   const auto identityDown =
       refusalOf(authService.approveDeviceLogin(refusedApproval.challengeId, 1));
-  REQUIRE(identityDown.has_value());
+  if (!identityDown.has_value()) {
+    FAIL("the approve was not refused while identity was down");
+    return;
+  }
   CHECK(identityDown->status == 503);
   app.identity().reachable = true;
   app.identity().isActive = false;
   const auto inactiveApprover =
       refusalOf(authService.approveDeviceLogin(refusedApproval.challengeId, 1));
-  REQUIRE(inactiveApprover.has_value());
+  if (!inactiveApprover.has_value()) {
+    FAIL("the approve of an inactive approver was not refused");
+    return;
+  }
   CHECK(inactiveApprover->status == 403);
   app.identity().isActive = true;
 

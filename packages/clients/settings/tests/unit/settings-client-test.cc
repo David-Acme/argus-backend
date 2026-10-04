@@ -90,7 +90,7 @@ int statusOf(const std::function<void()>& call)
 
 TEST_CASE("the constructor refuses a configuration it cannot dial")
 {
-  const auto build = [](SettingsClientConfig config) {
+  const auto build = [](const SettingsClientConfig& config) {
     return [config] { const SettingsClient client(config); };
   };
   CHECK(statusOf(build({.target = "", .credential = kSecret, .timeout = std::chrono::seconds(1)})) == 400);
@@ -218,7 +218,10 @@ TEST_CASE("the catalog carries units, the config path, capabilities and a profil
   CHECK(before.settings[1].spec.unit.empty());
   CHECK(before.configPath == std::filesystem::absolute(configPath()).lexically_normal().string());
   CHECK(before.capabilities == std::vector<std::string>{"gpu"});
-  REQUIRE(before.profile.has_value());
+  if (!before.profile) {
+    FAIL("expected a value in before.profile");
+    return;
+  }
   CHECK(before.profile->origin == ProfileOrigin::None);
   CHECK(before.profile->id.empty());
 
@@ -229,7 +232,10 @@ TEST_CASE("the catalog carries units, the config path, capabilities and a profil
                                                  .keys = {"tts.speed"}});
   CHECK(reply.applied == std::vector<std::string>{"tts.speed"});
   CHECK(reply.profileRecorded);
-  REQUIRE(reply.catalog.profile.has_value());
+  if (!reply.catalog.profile) {
+    FAIL("expected a value in reply.catalog.profile");
+    return;
+  }
   CHECK(reply.catalog.profile->id == "balanced");
   CHECK(reply.catalog.profile->origin == ProfileOrigin::Recommended);
   CHECK(reply.catalog.profile->appliedAt == 1759500000);
@@ -241,7 +247,12 @@ TEST_CASE("the catalog carries units, the config path, capabilities and a profil
                                                         .keys = {}});
   CHECK(markOnly.applied.empty());
   CHECK(markOnly.profileRecorded);
-  CHECK(client.list().profile->origin == ProfileOrigin::Reverted);
+  const auto reverted = client.list();
+  if (!reverted.profile) {
+    FAIL("the reverted catalog carries no profile");
+    return;
+  }
+  CHECK(reverted.profile->origin == ProfileOrigin::Reverted);
 
   const auto refused = client.update({{.key = "tts.speed", .value = "9"}},
                                      ProfileMarker{.id = "quality",
@@ -249,6 +260,11 @@ TEST_CASE("the catalog carries units, the config path, capabilities and a profil
                                                    .appliedAt = 1759500200,
                                                    .keys = {}});
   CHECK_FALSE(refused.profileRecorded);
-  CHECK(client.list().profile->id == "balanced");
+  const auto kept = client.list();
+  if (!kept.profile) {
+    FAIL("the catalog lost its profile after a refused write");
+    return;
+  }
+  CHECK(kept.profile->id == "balanced");
   std::filesystem::remove(configPath());
 }

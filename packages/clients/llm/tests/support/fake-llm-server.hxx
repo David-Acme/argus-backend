@@ -12,6 +12,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -30,7 +31,7 @@ class FakeLlmServer
 {
 public:
   explicit FakeLlmServer(FakeLlmOptions options = {})
-      : options_(options)
+      : options_(std::move(options))
   {
     listen_ = ::socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in addr{};

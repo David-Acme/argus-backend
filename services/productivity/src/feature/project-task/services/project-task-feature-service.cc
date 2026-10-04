@@ -86,7 +86,7 @@ ProjectTaskFeatureService::create(const CreateInput& input) const
         if (!existing)
           throw ResponseException(ProductivityErrors::TaskNotFound);
         db_transaction::rollback(transaction);
-        co_return *existing;
+        co_return existing;
       }
     }
 

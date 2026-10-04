@@ -85,7 +85,10 @@ TEST_CASE("fan-out parses the sync-change wire contract")
   const Json::Value moduleEmit = json_util::fromString(
       R"({"operation":4,"option":"camera","info":{"id":3}})");
   const auto module = sync_fan_out::parseEvent(moduleEmit);
-  REQUIRE(module);
+  if (!module) {
+    FAIL("expected a value in module");
+    return;
+  }
   CHECK(module->emit.operation == SyncOperation::Add);
   CHECK(module->users == std::nullopt);
   CHECK(moduleRoom(module->emit.option) == moduleRoom(TableName::Camera));
@@ -93,30 +96,48 @@ TEST_CASE("fan-out parses the sync-change wire contract")
   const Json::Value userEmit = json_util::fromString(
       R"({"operation":4,"option":"user","info":{},"users":[42,43]})");
   const auto user = sync_fan_out::parseEvent(userEmit);
-  REQUIRE(user);
-  REQUIRE(user->users);
+  if (!user) {
+    FAIL("expected a value in user");
+    return;
+  }
+  if (!user->users) {
+    FAIL("expected a value in user->users");
+    return;
+  }
   CHECK(user->users->size() == 2);
   CHECK(userRoom((*user->users)[0]) == userRoom(42));
 
   const Json::Value userEmitEmpty = json_util::fromString(
       R"({"operation":4,"option":"user","info":{},"users":[]})");
   const auto empty = sync_fan_out::parseEvent(userEmitEmpty);
-  REQUIRE(empty);
-  REQUIRE(empty->users);
+  if (!empty) {
+    FAIL("expected a value in empty");
+    return;
+  }
+  if (!empty->users) {
+    FAIL("expected a value in empty->users");
+    return;
+  }
   CHECK(empty->users->empty());
   CHECK(empty->user == std::nullopt);
 
   const Json::Value disconnect = json_util::fromString(
       R"({"operation":7,"option":"user","info":{},"users":[7],"user":7,"action":"disconnect"})");
   const auto disconnection = sync_fan_out::parseEvent(disconnect);
-  REQUIRE(disconnection);
+  if (!disconnection) {
+    FAIL("expected a value in disconnection");
+    return;
+  }
   CHECK(disconnection->user == 7);
 
   const auto replacement = sync_fan_out::parseEvent(
       sync_change::roleRoomsPayload({.userId = 7,
                                      .oldRole = userRoleToString(UserRole::Resident),
                                      .newRole = userRoleToString(UserRole::Guest)}));
-  REQUIRE(replacement);
+  if (!replacement) {
+    FAIL("expected a value in replacement");
+    return;
+  }
   CHECK(replacement->emit.operation == SyncOperation::AuthContextChanged);
   CHECK(replacement->emit.option == TableName::User);
   CHECK(replacement->user == 7);
@@ -151,8 +172,14 @@ TEST_CASE("fan-out refuses what it cannot route instead of guessing the user roo
 
   const auto filtered = sync_fan_out::parseEvent(json_util::fromString(
       R"({"operation":4,"option":"notification","info":{},"users":[-999,0,42]})"));
-  REQUIRE(filtered);
-  REQUIRE(filtered->users);
+  if (!filtered) {
+    FAIL("expected a value in filtered");
+    return;
+  }
+  if (!filtered->users) {
+    FAIL("expected a value in filtered->users");
+    return;
+  }
   CHECK(*filtered->users == std::vector<int64_t>{42});
 }
 
@@ -185,11 +212,17 @@ TEST_CASE("a socket frame must be an object, and its type is read without throwi
   CHECK_FALSE(SocketFrameDto::fromJson(json_util::fromString(R"("sync")")));
 
   const auto objectType = SocketFrameDto::fromJson(json_util::fromString(R"({"type":{}})"));
-  REQUIRE(objectType);
+  if (!objectType) {
+    FAIL("expected a value in objectType");
+    return;
+  }
   CHECK(objectType->type.empty());
 
   const auto sync = SocketFrameDto::fromJson(json_util::fromString(R"({"type":"sync","payload":{}})"));
-  REQUIRE(sync);
+  if (!sync) {
+    FAIL("expected a value in sync");
+    return;
+  }
   CHECK(sync->type == "sync");
 }
 
@@ -219,7 +252,10 @@ TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
   const auto module =
       sync_fan_out::parseEvent(sync_change::emitPayload(emit(SyncOperation::Add,
                                                              TableName::Camera)));
-  REQUIRE(module);
+  if (!module) {
+    FAIL("expected a value in module");
+    return;
+  }
   const sync_fan_out::FanOutPlan modulePlan = sync_fan_out::planEvent(*module);
   CHECK(modulePlan.kind == sync_fan_out::FanOutPlan::Kind::ModuleEmit);
   CHECK(modulePlan.room == moduleRoom(TableName::Camera));
@@ -228,7 +264,10 @@ TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
   const auto scoped =
       sync_fan_out::parseEvent(sync_change::userEmitPayload(
           emit(SyncOperation::Add, TableName::Notification), {42, 43}));
-  REQUIRE(scoped);
+  if (!scoped) {
+    FAIL("expected a value in scoped");
+    return;
+  }
   const sync_fan_out::FanOutPlan scopedPlan = sync_fan_out::planEvent(*scoped);
   CHECK(scopedPlan.kind == sync_fan_out::FanOutPlan::Kind::UserEmit);
   REQUIRE(scopedPlan.rooms.size() == 2);
@@ -238,7 +277,10 @@ TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
   const auto unscoped =
       sync_fan_out::parseEvent(sync_change::userEmitPayload(
           emit(SyncOperation::Add, TableName::Notification), {}));
-  REQUIRE(unscoped);
+  if (!unscoped) {
+    FAIL("expected a value in unscoped");
+    return;
+  }
   const sync_fan_out::FanOutPlan unscopedPlan = sync_fan_out::planEvent(*unscoped);
   CHECK(unscopedPlan.kind == sync_fan_out::FanOutPlan::Kind::UserEmit);
   CHECK(unscopedPlan.rooms.empty());
@@ -246,7 +288,10 @@ TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
   const auto disconnection =
       sync_fan_out::parseEvent(sync_change::disconnectPayload(
           emit(SyncOperation::AuthContextChanged, TableName::User), 42));
-  REQUIRE(disconnection);
+  if (!disconnection) {
+    FAIL("expected a value in disconnection");
+    return;
+  }
   const sync_fan_out::FanOutPlan disconnectPlan = sync_fan_out::planEvent(*disconnection);
   CHECK(disconnectPlan.kind == sync_fan_out::FanOutPlan::Kind::Disconnect);
   CHECK(disconnectPlan.userId == 42);
@@ -270,7 +315,10 @@ TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
       sync_change::roleRoomsPayload({.userId = 42,
                                      .oldRole = userRoleToString(UserRole::Resident),
                                      .newRole = userRoleToString(UserRole::Guest)}));
-  REQUIRE(replacement);
+  if (!replacement) {
+    FAIL("expected a value in replacement");
+    return;
+  }
   const sync_fan_out::FanOutPlan replacePlan = sync_fan_out::planEvent(*replacement);
   CHECK(replacePlan.kind == sync_fan_out::FanOutPlan::Kind::ReplaceRoleRooms);
   CHECK(replacePlan.replaceInput.userId == 42);
@@ -283,7 +331,10 @@ TEST_CASE("fan-out re-emits the exact legacy wire triple")
   const Json::Value payload = json_util::fromString(
       R"({"operation":5,"option":"reminder","info":{"id":9,"title":"x"},"users":[]})");
   const auto event = sync_fan_out::parseEvent(payload);
-  REQUIRE(event);
+  if (!event) {
+    FAIL("expected a value in event");
+    return;
+  }
 
   SocketEmitDto body;
   body.operation = SyncOperation::Delete;

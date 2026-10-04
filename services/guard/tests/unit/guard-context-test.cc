@@ -8,11 +8,17 @@
 
 namespace
 {
-std::tm at(int weekday, int hour)
+struct LocalHour
+{
+  int weekday;
+  int hour;
+};
+
+std::tm at(LocalHour when)
 {
   std::tm local{};
-  local.tm_wday = weekday;
-  local.tm_hour = hour;
+  local.tm_wday = when.weekday;
+  local.tm_hour = when.hour;
   local.tm_min = 0;
   return local;
 }
@@ -28,10 +34,10 @@ GuardCameraContext camera(CameraRole role, bool outdoor, bool publicArea)
           .updatedAt = 0};
 }
 
-const GuardPosture kHome{.mode = GuardMode::Home,
-                         .publicPresent = false,
-                         .staffOnly = false,
-                         .occupancy = "manual"};
+GuardPosture homePosture()
+{
+  return {.mode = GuardMode::Home, .publicPresent = false, .staffOnly = false, .occupancy = "manual"};
+}
 
 GuardContext unknownAt(GuardMode mode)
 {
@@ -52,7 +58,7 @@ TEST_CASE("an unconfigured camera changes nothing")
 {
   GuardCameraContext blank;
   const GuardArea area = guard_context::evaluate(
-      {.camera = blank, .posture = kHome, .local = at(2, 12), .inAlertZone = false});
+      {.camera = blank, .posture = homePosture(), .local = at({.weekday = 2, .hour = 12}), .inAlertZone = false});
   CHECK_FALSE(area.inUse);
   CHECK_FALSE(area.passerby);
 }
@@ -66,18 +72,18 @@ TEST_CASE("work areas are in use while staff or customers are in")
   const auto kitchen = camera(CameraRole::Kitchen, false, false);
   CHECK(guard_context::evaluate({.camera = kitchen,
                                  .posture = staffed,
-                                 .local = at(2, 9),
+                                 .local = at({.weekday = 2, .hour = 9}),
                                  .inAlertZone = false})
             .inUse);
   const auto entrance = camera(CameraRole::Entrance, true, false);
   CHECK_FALSE(guard_context::evaluate({.camera = entrance,
                                        .posture = staffed,
-                                       .local = at(2, 9),
+                                       .local = at({.weekday = 2, .hour = 9}),
                                        .inAlertZone = false})
                   .inUse);
   CHECK_FALSE(guard_context::evaluate({.camera = kitchen,
-                                       .posture = kHome,
-                                       .local = at(2, 9),
+                                       .posture = homePosture(),
+                                       .local = at({.weekday = 2, .hour = 9}),
                                        .inAlertZone = false})
                   .inUse);
 }
@@ -87,11 +93,11 @@ TEST_CASE("a camera's own hours count at home, never when away or armed")
   auto office = camera(CameraRole::Office, false, false);
   office.activeHours = "mon-fri 09:00-18:00";
   CHECK(guard_context::evaluate(
-            {.camera = office, .posture = kHome, .local = at(2, 10), .inAlertZone = false})
+            {.camera = office, .posture = homePosture(), .local = at({.weekday = 2, .hour = 10}), .inAlertZone = false})
             .inUse);
   CHECK_FALSE(guard_context::evaluate({.camera = office,
-                                       .posture = kHome,
-                                       .local = at(6, 10),
+                                       .posture = homePosture(),
+                                       .local = at({.weekday = 6, .hour = 10}),
                                        .inAlertZone = false})
                   .inUse);
   const GuardPosture away{.mode = GuardMode::Away,
@@ -100,7 +106,7 @@ TEST_CASE("a camera's own hours count at home, never when away or armed")
                           .occupancy = "manual"};
   CHECK_FALSE(guard_context::evaluate({.camera = office,
                                        .posture = away,
-                                       .local = at(2, 10),
+                                       .local = at({.weekday = 2, .hour = 10}),
                                        .inAlertZone = false})
                   .inUse);
   const GuardPosture closed{.mode = GuardMode::Away,
@@ -109,7 +115,7 @@ TEST_CASE("a camera's own hours count at home, never when away or armed")
                             .occupancy = "closed"};
   CHECK(guard_context::evaluate({.camera = office,
                                  .posture = closed,
-                                 .local = at(2, 10),
+                                 .local = at({.weekday = 2, .hour = 10}),
                                  .inAlertZone = false})
             .inUse);
 }
@@ -118,11 +124,11 @@ TEST_CASE("a public outdoor camera sees passers-by unless they enter a zone")
 {
   const auto street = camera(CameraRole::Perimeter, true, true);
   CHECK(guard_context::evaluate(
-            {.camera = street, .posture = kHome, .local = at(3, 2), .inAlertZone = false})
+            {.camera = street, .posture = homePosture(), .local = at({.weekday = 3, .hour = 2}), .inAlertZone = false})
             .passerby);
   CHECK_FALSE(guard_context::evaluate({.camera = street,
-                                       .posture = kHome,
-                                       .local = at(3, 2),
+                                       .posture = homePosture(),
+                                       .local = at({.weekday = 3, .hour = 2}),
                                        .inAlertZone = true})
                   .passerby);
 }

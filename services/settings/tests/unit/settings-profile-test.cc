@@ -658,7 +658,10 @@ TEST_CASE("undoing the recommendation restores only the keys that still hold wha
   CHECK(settings_profile::revertPlan(profiles, chosen).keys.empty());
 
   const auto state = settings_profile::firstRunState({applied, vlmCatalog("384", "-1", false)});
-  REQUIRE(state.has_value());
+  if (!state) {
+    FAIL("expected a value in state");
+    return;
+  }
   CHECK(state->profile == "quality");
   CHECK(state->origin == ProfileOrigin::Recommended);
   CHECK(state->appliedAt == 1759500000);
@@ -678,8 +681,12 @@ TEST_CASE("a profile marker rides every write with the keys applied so far, and 
   auto writes = application.pendingWrites();
   REQUIRE(writes.size() == 1);
   CHECK(writes[0].owner == "vlm");
-  REQUIRE(writes[0].marker.has_value());
-  CHECK(writes[0].marker->keys == std::vector<std::string>{"vision.max_input_px", "vision.gpu_layers"});
+  const auto& writeMarker = writes[0].marker;
+  if (!writeMarker) {
+    FAIL("the pending write carries no marker");
+    return;
+  }
+  CHECK(writeMarker->keys == std::vector<std::string>{"vision.max_input_px", "vision.gpu_layers"});
   application.record({{.owner = "vlm",
                        .reachable = true,
                        .applied = {"vision.max_input_px", "vision.gpu_layers"},
@@ -696,7 +703,12 @@ TEST_CASE("a profile marker rides every write with the keys applied so far, and 
   REQUIRE(markers.size() == 1);
   CHECK(markers[0].owner == "vlm");
   CHECK(markers[0].changes.empty());
-  CHECK(markers[0].marker->keys.empty());
+  const auto& settledMarker = markers[0].marker;
+  if (!settledMarker) {
+    FAIL("the marker write carries no marker");
+    return;
+  }
+  CHECK(settledMarker->keys.empty());
 }
 
 TEST_CASE("the first run applies the recommendation once, through a real owner, and the owner can undo it")
@@ -732,7 +744,10 @@ TEST_CASE("the first run applies the recommendation once, through a real owner, 
   const SettingsProfileService profiles(
       {.gateway = gateway, .catalog = catalog, .hardware = hardware(8, 30.7, CpuIsa::Avx2)});
   const auto overview = profiles.overview();
-  REQUIRE(overview.firstRun.has_value());
+  if (!overview.firstRun) {
+    FAIL("expected a value in overview.firstRun");
+    return;
+  }
   CHECK(overview.firstRun->profile == "quality");
   const auto listing = ResponseListProfilesDto{.overview = overview}.toJson();
   CHECK(listing["firstRun"]["state"].asString() == "applied");

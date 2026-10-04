@@ -1,10 +1,10 @@
 #include "certificate-reload.hxx"
 
 #include <chrono>
-#include <cstdio>
 #include <drogon/drogon.h>
 #include <filesystem>
 #include <memory>
+#include <openssl/bio.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 #include <optional>
@@ -17,9 +17,9 @@ namespace
 
 constexpr double kCheckSeconds = 600.0;
 
-struct FileCloser
+struct BioDeleter
 {
-  void operator()(std::FILE* file) const { std::fclose(file); }
+  void operator()(BIO* bio) const { BIO_free(bio); }
 };
 
 struct X509Deleter
@@ -32,11 +32,11 @@ struct KeyDeleter
   void operator()(EVP_PKEY* key) const { EVP_PKEY_free(key); }
 };
 
-using File = std::unique_ptr<std::FILE, FileCloser>;
+using File = std::unique_ptr<BIO, BioDeleter>;
 
 File openRead(const std::string& path)
 {
-  return File(std::fopen(path.c_str(), "rb"));
+  return File(BIO_new_file(path.c_str(), "rb"));
 }
 
 using Stamp = std::pair<std::filesystem::file_time_type, std::filesystem::file_time_type>;
@@ -61,9 +61,9 @@ bool usablePair(const CertificatePair& pair)
   if (!certFile || !keyFile)
     return false;
   const std::unique_ptr<X509, X509Deleter> certificate(
-      PEM_read_X509(certFile.get(), nullptr, nullptr, nullptr));
+      PEM_read_bio_X509(certFile.get(), nullptr, nullptr, nullptr));
   const std::unique_ptr<EVP_PKEY, KeyDeleter> key(
-      PEM_read_PrivateKey(keyFile.get(), nullptr, nullptr, nullptr));
+      PEM_read_bio_PrivateKey(keyFile.get(), nullptr, nullptr, nullptr));
   if (!certificate || !key)
     return false;
   return X509_check_private_key(certificate.get(), key.get()) == 1 &&

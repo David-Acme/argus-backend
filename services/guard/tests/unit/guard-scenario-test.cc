@@ -498,7 +498,7 @@ TEST_CASE("one summary per environment and per day, each in its own thread")
               << "\n";
   REQUIRE(sent.size() >= 2);
   std::array<char, 16> day{};
-  const std::time_t at = static_cast<std::time_t>(now);
+  const auto at = static_cast<std::time_t>(now);
   std::tm local{};
   localtime_r(&at, &local);
   const std::string today(day.data(),

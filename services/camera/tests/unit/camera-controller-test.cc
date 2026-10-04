@@ -263,7 +263,10 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   auto updateReq = drogon::HttpRequest::newHttpJsonRequest(createBody);
   const auto missingUpdate =
       refusalOf(cameraController.update(updateReq, 999));
-  REQUIRE(missingUpdate);
+  if (!missingUpdate) {
+    FAIL("expected a value in missingUpdate");
+    return;
+  }
   CHECK(missingUpdate->status == 404);
   CHECK(missingUpdate->code == "NOT_FOUND");
   CHECK(missingUpdate->message == "Camera not found");
@@ -275,7 +278,10 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK(removedJson["info"]["deleted"].asBool());
   const auto removedTwice =
       refusalOf(cameraController.remove(nullptr, cameraId));
-  REQUIRE(removedTwice);
+  if (!removedTwice) {
+    FAIL("expected a value in removedTwice");
+    return;
+  }
   CHECK(removedTwice->status == 404);
 
   Json::Value invalidBody;
@@ -310,7 +316,10 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   }
   auto ghostReq = drogon::HttpRequest::newHttpJsonRequest(zoneBody);
   const auto ghostZone = refusalOf(zoneController.create(ghostReq));
-  REQUIRE(ghostZone);
+  if (!ghostZone) {
+    FAIL("expected a value in ghostZone");
+    return;
+  }
   CHECK(ghostZone->status == 404);
   CHECK(ghostZone->code == "NOT_FOUND");
   CHECK(ghostZone->message == "Camera not found");
@@ -337,7 +346,10 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
                                                                 zoneId));
   CHECK(body(zoneGone)["status"].asInt() == 200);
   const auto zoneGoneTwice = refusalOf(zoneController.remove(nullptr, zoneId));
-  REQUIRE(zoneGoneTwice);
+  if (!zoneGoneTwice) {
+    FAIL("expected a value in zoneGoneTwice");
+    return;
+  }
   CHECK(zoneGoneTwice->status == 404);
   CHECK(zoneGoneTwice->code == "NOT_FOUND");
   CHECK(zoneGoneTwice->message == "Zone not found");
@@ -434,7 +446,10 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK(picture["image"].asString() == "data:image/jpeg;base64,anBlZw==");
   CHECK(picture["capturedAt"].asInt64() == stamp);
   const auto missingSnapshot = refusalOf(controlController.snapshot(nullptr, 999));
-  REQUIRE(missingSnapshot);
+  if (!missingSnapshot) {
+    FAIL("expected a value in missingSnapshot");
+    return;
+  }
   CHECK(missingSnapshot->status == 404);
   SnapshotStore::instance().forget(cameraId2);
 

@@ -27,7 +27,7 @@ ProjectTaskRepository::findByProject(int64_t projectId,
   const auto pooled = DbService::productivityClient();
   auto* resolved = client ? client : pooled.get();
   const auto result =
-      co_await resolved->execSqlCoro(FIND_BY_PROJECT.data(), projectId);
+      co_await resolved->execSqlCoro(std::string(FIND_BY_PROJECT), projectId);
 
   std::vector<ProjectTaskSchema> data;
   for (const auto& row : result)
@@ -140,7 +140,7 @@ ProjectTaskRepository::removeByProject(int64_t projectId,
 {
   const auto pooled = DbService::productivityClient();
   auto* effective = client ? client : pooled.get();
-  co_await effective->execSqlCoro(REMOVE_BY_PROJECT.data(), projectId);
+  co_await effective->execSqlCoro(std::string(REMOVE_BY_PROJECT), projectId);
 }
 
 drogon::Task<std::vector<Json::Value>>

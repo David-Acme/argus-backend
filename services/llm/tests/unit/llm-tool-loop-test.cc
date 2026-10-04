@@ -43,6 +43,13 @@ struct ScriptedEngine
   }
 };
 
+tools::ToolCall commandOf(const std::string& utterance)
+{
+  auto command = appCommandFor(utterance);
+  REQUIRE(command.has_value());
+  return std::move(command).value_or(tools::ToolCall{});
+}
+
 struct ProbeLog
 {
   std::vector<tools::ToolCall> calls;
@@ -307,48 +314,44 @@ TEST_CASE("a routed call the tool refuses falls back to the model with every too
 
 TEST_CASE("explicit app commands become app calls and questions do not")
 {
-  const auto mode = appCommandFor("Pon la vigilancia en modo noche.");
-  REQUIRE(mode.has_value());
-  CHECK(mode.value().name == "app.set_guard_mode");
-  CHECK(mode.value().arguments["mode"].asString() == "night");
-  CHECK(appCommandFor("Activa el modo fuera, me voy").value().arguments["mode"].asString() == "away");
-  CHECK(appCommandFor("set the guard mode to armed").value().arguments["mode"].asString() == "armed");
+  const auto mode = commandOf("Pon la vigilancia en modo noche.");
+  CHECK(mode.name == "app.set_guard_mode");
+  CHECK(mode.arguments["mode"].asString() == "night");
+  CHECK(commandOf("Activa el modo fuera, me voy").arguments["mode"].asString() == "away");
+  CHECK(commandOf("set the guard mode to armed").arguments["mode"].asString() == "armed");
   CHECK_FALSE(appCommandFor("¿En qué modo está la vigilancia?").has_value());
   CHECK_FALSE(appCommandFor("Me voy a dormir").has_value());
-  CHECK(appCommandFor("con la vigilancia en modo noche.").value().arguments["mode"].asString() == "night");
-  CHECK(appCommandFor("Modo fuera.").value().arguments["mode"].asString() == "away");
+  CHECK(commandOf("con la vigilancia en modo noche.").arguments["mode"].asString() == "night");
+  CHECK(commandOf("Modo fuera.").arguments["mode"].asString() == "away");
   CHECK_FALSE(appCommandFor("está la vigilancia en modo noche").has_value());
   CHECK_FALSE(appCommandFor("anoche la vigilancia en modo noche saltó dos veces por el gato").has_value());
-  CHECK_FALSE(mode.value().arguments.isMember("environment"));
-  CHECK_FALSE(appCommandFor("Activa el modo fuera, me voy").value().arguments.isMember("environment"));
-  const auto restaurant = appCommandFor("Pon el restaurante en modo armado, por favor");
-  REQUIRE(restaurant.has_value());
-  CHECK(restaurant.value().arguments["mode"].asString() == "armed");
-  CHECK(restaurant.value().arguments["environment"].asString() == "restaurante");
-  const auto cottage = appCommandFor("pon la vigilancia de la casa de campo en modo noche");
-  CHECK(cottage.value().arguments["mode"].asString() == "night");
-  CHECK(cottage.value().arguments["environment"].asString() == "casa campo");
-  CHECK(appCommandFor("pon la casa en modo noche").value().arguments["environment"].asString() == "casa");
-  CHECK_FALSE(appCommandFor("pon la vigilancia en casa").value().arguments.isMember("environment"));
-  CHECK(appCommandFor("set the office guard mode to away").value().arguments["environment"].asString() ==
+  CHECK_FALSE(mode.arguments.isMember("environment"));
+  CHECK_FALSE(commandOf("Activa el modo fuera, me voy").arguments.isMember("environment"));
+  const auto restaurant = commandOf("Pon el restaurante en modo armado, por favor");
+  CHECK(restaurant.arguments["mode"].asString() == "armed");
+  CHECK(restaurant.arguments["environment"].asString() == "restaurante");
+  const auto cottage = commandOf("pon la vigilancia de la casa de campo en modo noche");
+  CHECK(cottage.arguments["mode"].asString() == "night");
+  CHECK(cottage.arguments["environment"].asString() == "casa campo");
+  CHECK(commandOf("pon la casa en modo noche").arguments["environment"].asString() == "casa");
+  CHECK_FALSE(commandOf("pon la vigilancia en casa").arguments.isMember("environment"));
+  CHECK(commandOf("set the office guard mode to away").arguments["environment"].asString() ==
         "office");
 
-  const auto garage = appCommandFor("Muéstrame la cámara del garaje, por favor.");
-  REQUIRE(garage.has_value());
-  CHECK(garage.value().name == "app.show_camera");
-  CHECK(garage.value().arguments["camera"].asString() == "garaje");
-  CHECK(appCommandFor("show me the garage camera").value().arguments["camera"].asString() == "garage");
-  CHECK(appCommandFor("quiero ver la cámara 3").value().arguments["camera"].asString() == "3");
-  CHECK(appCommandFor("enséñame la cámara").value().arguments["camera"].asString().empty());
-  CHECK(appCommandFor("checa la cámara 4").value().arguments["camera"].asString() == "4");
+  const auto garage = commandOf("Muéstrame la cámara del garaje, por favor.");
+  CHECK(garage.name == "app.show_camera");
+  CHECK(garage.arguments["camera"].asString() == "garaje");
+  CHECK(commandOf("show me the garage camera").arguments["camera"].asString() == "garage");
+  CHECK(commandOf("quiero ver la cámara 3").arguments["camera"].asString() == "3");
+  CHECK(commandOf("enséñame la cámara").arguments["camera"].asString().empty());
+  CHECK(commandOf("checa la cámara 4").arguments["camera"].asString() == "4");
   CHECK_FALSE(appCommandFor("quiero comprar una cámara nueva").has_value());
   CHECK_FALSE(appCommandFor("¿qué se ve en la cámara del patio?").has_value());
 
-  const auto agenda = appCommandFor("Abre la agenda");
-  REQUIRE(agenda.has_value());
-  CHECK(agenda.value().name == "app.open");
-  CHECK(agenda.value().arguments["screen"].asString() == "agenda");
-  CHECK(appCommandFor("abre las cámaras").value().arguments["screen"].asString() == "cameras");
+  const auto agenda = commandOf("Abre la agenda");
+  CHECK(agenda.name == "app.open");
+  CHECK(agenda.arguments["screen"].asString() == "agenda");
+  CHECK(commandOf("abre las cámaras").arguments["screen"].asString() == "cameras");
   CHECK_FALSE(appCommandFor("hola, ¿cómo estás?").has_value());
 }
 

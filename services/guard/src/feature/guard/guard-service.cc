@@ -3550,7 +3550,7 @@ drogon::Task<bool> GuardService::sendDigest(const DigestInput& input)
 std::string GuardService::userLang(int64_t userId)
 {
   const auto config = currentConfig();
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const auto now = static_cast<int64_t>(std::time(nullptr));
   {
     std::scoped_lock lock(langMutex_);
     const auto found = langCache_.find(userId);

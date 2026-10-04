@@ -208,6 +208,7 @@ std::vector<TurnSpec> callOf(const char* speaker, uint32_t seed)
   std::vector<TurnSpec> turns;
   const std::string prefix(speaker);
   const std::vector<std::string> clips{"-1", "-2", "-3", "-4"};
+  turns.reserve(clips.size());
   for (size_t index = 0; index < clips.size(); ++index) {
     turns.push_back({.clip = prefix + clips[(index + seed) % clips.size()],
                      .offsetSeconds = 0.05F * static_cast<float>((seed + index) % 4),
@@ -252,13 +253,19 @@ IdentityVoiceprintConfig testConfig()
   return config;
 }
 
-int64_t localTime(int day, int hour)
+struct LocalMoment
+{
+  int day;
+  int hour;
+};
+
+int64_t localTime(LocalMoment at)
 {
   std::tm moment{};
   moment.tm_year = 2026 - 1900;
   moment.tm_mon = 8;
-  moment.tm_mday = 1 + day;
-  moment.tm_hour = hour;
+  moment.tm_mday = 1 + at.day;
+  moment.tm_hour = at.hour;
   moment.tm_isdst = -1;
   return static_cast<int64_t>(std::mktime(&moment));
 }
@@ -431,13 +438,19 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
     for (const auto& spec : callOf("alpha", 1)) {
       const auto analysis = embed(turnSamples(spec));
       REQUIRE(analysis.status == VoiceAnalysisStatus::Ok);
-      REQUIRE(analysis.halvesScore.has_value());
+      if (!analysis.halvesScore) {
+        FAIL("expected a value in analysis.halvesScore");
+        return;
+      }
       MESSAGE(spec.clip << " halves " << *analysis.halvesScore);
       CHECK(*analysis.halvesScore > gates.turnSplitThreshold);
       alpha.push_back(analysis.embedding);
     }
     const auto both = embed(mixedTurn());
-    REQUIRE(both.halvesScore.has_value());
+    if (!both.halvesScore) {
+      FAIL("expected a value in both.halvesScore");
+      return;
+    }
     MESSAGE("two voices in one turn, halves " << *both.halvesScore);
     CHECK(*both.halvesScore < gates.turnSplitThreshold);
     const std::vector<std::vector<float>> others(alpha.begin() + 1,
@@ -453,6 +466,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
 
   const auto oneClipCall = [](const char* clip, uint32_t seed) {
     std::vector<TurnSpec> turns;
+    turns.reserve(4);
     for (uint32_t index = 0; index < 4; ++index)
       turns.push_back({.clip = clip,
                        .offsetSeconds = 0.05F * static_cast<float>(index),
@@ -481,7 +495,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
                                          .device = "rita-phone",
                                          .key = "rita-1",
                                          .turns = callOf("alpha", 1),
-                                         .at = localTime(0, 10)});
+                                         .at = localTime({.day = 0, .hour = 10})});
     for (const auto& turn : first.turns) {
       CHECK(turn.considered);
       CHECK(turn.quality == VoiceAnalysisStatus::Ok);
@@ -492,7 +506,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
                             .device = "rita-phone",
                             .key = "rita-2",
                             .turns = callOf("alpha", 2),
-                            .at = localTime(0, 14)})
+                            .at = localTime({.day = 0, .hour = 14})})
               .outcome == PassiveCallOutcome::Pending);
     CHECK(profileOf(kRita) == 0);
     CHECK(identifies("alpha-4") == 0);
@@ -501,7 +515,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
                             .device = "rita-phone",
                             .key = "rita-3",
                             .turns = callOf("alpha", 3),
-                            .at = localTime(1, 10)})
+                            .at = localTime({.day = 1, .hour = 10})})
               .outcome == PassiveCallOutcome::Linked);
     CHECK(profileOf(kRita) == 1);
     CHECK(identifies("alpha-4") == kRita);
@@ -511,7 +525,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
     CHECK(listed.available);
     REQUIRE(listed.recognized.size() == 1);
     CHECK(listed.recognized.front().userId == kRita);
-    CHECK(listed.recognized.front().since > localTime(1, 10));
+    CHECK(listed.recognized.front().since > localTime({.day = 1, .hour = 10}));
 
     const auto actions = sink.actions();
     const auto linked = std::ranges::find_if(
@@ -541,7 +555,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
                                         .device = "rita-phone",
                                         .key = "rita-tv",
                                         .turns = turns,
-                                        .at = localTime(2, 9)});
+                                        .at = localTime({.day = 2, .hour = 9})});
     REQUIRE(call.turns.size() == 5);
     CHECK(call.turns[2].verdict == TurnVerdict::Drift);
     CHECK(call.turns[3].verdict == TurnVerdict::CallTainted);
@@ -556,7 +570,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
                     .device = "rita-phone",
                     .key = "rita-mixed",
                     .turns = {},
-                    .at = localTime(2, 15)};
+                    .at = localTime({.day = 2, .hour = 15})};
     const auto first = drogon::sync_wait(passive.learnFromTurn(
         {.userId = kRita,
          .deviceHash = input.device,
@@ -583,11 +597,15 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
                                         .device = "gil-phone",
                                         .key = "gil-rita",
                                         .turns = callOf("alpha", 4),
-                                        .at = localTime(3, 9)});
+                                        .at = localTime({.day = 3, .hour = 9})});
     REQUIRE_FALSE(call.turns.empty());
     CHECK(call.turns.front().verdict == TurnVerdict::OtherSpeaker);
-    REQUIRE(call.turns.front().bestOther.has_value());
-    CHECK(call.turns.front().bestOther->userId == kRita);
+    const auto& bestOther = call.turns.front().bestOther;
+    if (!bestOther) {
+      FAIL("the other speaker is missing");
+      return;
+    }
+    CHECK(bestOther->userId == kRita);
     CHECK(call.outcome == PassiveCallOutcome::Tainted);
     CHECK(samplesOf(kGil) == 0);
   }
@@ -603,7 +621,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
            .key = "gil-" + std::to_string(day),
            .turns = gil ? callOf("bravo", static_cast<uint32_t>(day))
                         : oneClipCall("charlie-1", static_cast<uint32_t>(day)),
-           .at = localTime(day, 11)});
+           .at = localTime({.day = day, .hour = 11})});
       CHECK(call.outcome == PassiveCallOutcome::Pending);
     }
     CHECK(profileOf(kGil) == 0);
@@ -616,7 +634,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
                             .device = "family-tablet",
                             .key = "tablet-gil",
                             .turns = callOf("bravo", 1),
-                            .at = localTime(10, 18)})
+                            .at = localTime({.day = 10, .hour = 18})})
               .outcome == PassiveCallOutcome::Pending);
     for (int day = 11; day < 15; ++day)
       CHECK(runCall(passive,
@@ -624,7 +642,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
                      .device = "family-tablet",
                      .key = "tablet-gus-" + std::to_string(day),
                      .turns = callOf("bravo", static_cast<uint32_t>(day)),
-                     .at = localTime(day, 18)})
+                     .at = localTime({.day = day, .hour = 18})})
                 .outcome == PassiveCallOutcome::Pending);
     CHECK(profileOf(kGus) == 0);
     CHECK(profileOf(kGil) == 0);
@@ -639,7 +657,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
                             .device = "rita-phone",
                             .key = "rita-" + std::to_string(day),
                             .turns = callOf("alpha", static_cast<uint32_t>(day)),
-                            .at = localTime(day, 10)})
+                            .at = localTime({.day = day, .hour = 10})})
               .outcome);
     CHECK(outcomes == std::vector<PassiveCallOutcome>{
                           PassiveCallOutcome::Adopted,
@@ -668,7 +686,10 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
         .timeoutMs = 5000};
     CHECK_FALSE(intruder.observeTurn(observation).has_value());
     const auto answer = client.observeTurn(observation);
-    REQUIRE(answer.has_value());
+    if (!answer) {
+      FAIL("expected a value in answer");
+      return;
+    }
     CHECK(answer->matched());
     CHECK(answer->user_id() == kRita);
     for (int attempt = 0;

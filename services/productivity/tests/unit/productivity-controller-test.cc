@@ -446,7 +446,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   setActor({.req = missingUpdateReq, .sub = 42, .role = UserRole::Owner});
   const auto missingUpdate =
       refusalOf(projectController.update(missingUpdateReq, 999));
-  REQUIRE(missingUpdate);
+  if (!missingUpdate) {
+    FAIL("expected a value in missingUpdate");
+    return;
+  }
   CHECK(missingUpdate->status == 404);
   CHECK(missingUpdate->code == "NOT_FOUND");
   CHECK(missingUpdate->message == "Project not found");
@@ -484,19 +487,28 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
 
   const auto selfShare =
       refusalOf(memberController.create(memberReq(42, "view")));
-  REQUIRE(selfShare);
+  if (!selfShare) {
+    FAIL("expected a value in selfShare");
+    return;
+  }
   CHECK(selfShare->status == 409);
   CHECK(selfShare->message == "The owner already has access");
 
   const auto inactiveShare =
       refusalOf(memberController.create(memberReq(8, "view")));
-  REQUIRE(inactiveShare);
+  if (!inactiveShare) {
+    FAIL("expected a value in inactiveShare");
+    return;
+  }
   CHECK(inactiveShare->status == 404);
   CHECK(inactiveShare->message == "User not found");
 
   const auto guardShare =
       refusalOf(memberController.create(memberReq(9, "view")));
-  REQUIRE(guardShare);
+  if (!guardShare) {
+    FAIL("expected a value in guardShare");
+    return;
+  }
   CHECK(guardShare->status == 403);
   CHECK(guardShare->message == "That user cannot see projects");
 
@@ -537,7 +549,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(body(memberGone)["info"]["id"].asInt64() == memberId);
   const auto memberGoneTwice =
       refusalOf(memberController.remove(ownerRequest(), memberId));
-  REQUIRE(memberGoneTwice);
+  if (!memberGoneTwice) {
+    FAIL("expected a value in memberGoneTwice");
+    return;
+  }
   CHECK(memberGoneTwice->status == 404);
   CHECK(memberGoneTwice->message == "Share not found");
   REQUIRE(sink.emits.size() == 3);
@@ -559,7 +574,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   reusedKeyReq->addHeader("Idempotency-Key", "project-retry-1");
   setActor({.req = reusedKeyReq, .sub = 42, .role = UserRole::Owner});
   const auto reusedKey = refusalOf(taskController.create(reusedKeyReq));
-  REQUIRE(reusedKey);
+  if (!reusedKey) {
+    FAIL("expected a value in reusedKey");
+    return;
+  }
   CHECK(reusedKey->status == 409);
 
   auto taskReq = drogon::HttpRequest::newHttpJsonRequest(taskBody);
@@ -586,7 +604,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
 
   const auto taskMissing =
       refusalOf(taskController.remove(ownerRequest(), 999));
-  REQUIRE(taskMissing);
+  if (!taskMissing) {
+    FAIL("expected a value in taskMissing");
+    return;
+  }
   CHECK(taskMissing->status == 404);
   CHECK(taskMissing->message == "Task not found");
 
@@ -621,7 +642,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   auto orphanReq = drogon::HttpRequest::newHttpJsonRequest(orphanTaskBody);
   setActor({.req = orphanReq, .sub = 42, .role = UserRole::Owner});
   const auto orphan = refusalOf(taskController.create(orphanReq));
-  REQUIRE(orphan);
+  if (!orphan) {
+    FAIL("expected a value in orphan");
+    return;
+  }
   CHECK(orphan->status == 404);
   CHECK(orphan->message == "Project not found");
 
@@ -698,11 +722,17 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
 
   const auto eventSelfShare =
       refusalOf(shareController.create(shareReq(42)));
-  REQUIRE(eventSelfShare);
+  if (!eventSelfShare) {
+    FAIL("expected a value in eventSelfShare");
+    return;
+  }
   CHECK(eventSelfShare->status == 409);
   const auto eventGuardShare =
       refusalOf(shareController.create(shareReq(9)));
-  REQUIRE(eventGuardShare);
+  if (!eventGuardShare) {
+    FAIL("expected a value in eventGuardShare");
+    return;
+  }
   CHECK(eventGuardShare->status == 403);
   CHECK(eventGuardShare->message == "That user cannot see calendar events");
 
@@ -740,7 +770,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(body(shareGone)["info"]["id"].asInt64() == shareId);
   const auto shareGoneTwice =
       refusalOf(shareController.remove(ownerRequest(), shareId));
-  REQUIRE(shareGoneTwice);
+  if (!shareGoneTwice) {
+    FAIL("expected a value in shareGoneTwice");
+    return;
+  }
   CHECK(shareGoneTwice->status == 404);
   CHECK(shareGoneTwice->message == "Share not found");
 
@@ -767,7 +800,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(body(eventGone)["info"]["id"].asInt64() == eventId);
   const auto eventGoneTwice =
       refusalOf(eventController.remove(ownerRequest(), eventId));
-  REQUIRE(eventGoneTwice);
+  if (!eventGoneTwice) {
+    FAIL("expected a value in eventGoneTwice");
+    return;
+  }
   CHECK(eventGoneTwice->status == 404);
   CHECK(eventGoneTwice->message == "Calendar event not found");
 
@@ -784,7 +820,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(sink.emits.at(emitsBeforeProjectGone).body["id"].asInt64() == taskId);
   CHECK(sink.emits.back().option == "project");
   const auto orphanedTask = refusalOf(taskController.remove(ownerRequest(), taskId));
-  REQUIRE(orphanedTask);
+  if (!orphanedTask) {
+    FAIL("expected a value in orphanedTask");
+    return;
+  }
   CHECK(orphanedTask->status == 404);
 
   user_change::setProductivitySink(nullptr);
