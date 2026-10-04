@@ -4,6 +4,7 @@
 #include <functional>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 enum class SettingType : std::uint8_t
@@ -47,6 +48,17 @@ enum class ChoiceAvailability : std::uint8_t
   Failed
 };
 
+enum class ProfileOrigin : std::uint8_t
+{
+  None,
+  Recommended,
+  Owner,
+  Reverted
+};
+
+[[nodiscard]] std::string_view profileOriginToString(ProfileOrigin origin);
+[[nodiscard]] ProfileOrigin profileOriginFromString(std::string_view text);
+
 struct SettingRange
 {
   double min{0};
@@ -64,6 +76,7 @@ struct SettingSpec
   SettingRange range{};
   std::vector<std::string> choices{};
   std::string fallback{};
+  std::string unit{};
 };
 
 struct ChoiceState
@@ -79,6 +92,15 @@ struct SettingEntry
   SettingSpec spec;
   std::string value;
   std::vector<ChoiceState> choiceStates{};
+  bool pendingRestart{false};
+};
+
+struct ProfileMarker
+{
+  std::string id;
+  ProfileOrigin origin{ProfileOrigin::None};
+  std::int64_t appliedAt{0};
+  std::vector<std::string> keys{};
 };
 
 struct SettingChange
@@ -112,12 +134,21 @@ public:
   void onChange(Listener listener);
   void describeChoices(ChoiceStates describe);
 
+  [[nodiscard]] ProfileMarker profileMarker() const;
+  bool recordProfile(const ProfileMarker& marker);
+
+  void declareCapability(std::string capability);
+  [[nodiscard]] std::vector<std::string> capabilities() const;
+
 private:
   [[nodiscard]] const SettingSpec* find(const std::string& key) const;
   [[nodiscard]] std::vector<ChoiceState> choiceStatesOf(const SettingSpec& spec) const;
+  [[nodiscard]] bool pendingRestart(std::size_t index, const std::string& value) const;
 
   std::vector<SettingSpec> specs_;
+  std::vector<std::string> bootValues_;
   mutable std::mutex mutex_;
   std::vector<Listener> listeners_;
   ChoiceStates describe_;
+  std::vector<std::string> capabilities_;
 };

@@ -25,6 +25,8 @@ public:
 
   static bool hasKey(const std::string& keyPath);
 
+  static std::string path();
+
   static bool setBool(const std::string& keyPath, bool value);
   static bool setString(const std::string& keyPath, const std::string& value);
   static bool setInt(const std::string& keyPath, int value);

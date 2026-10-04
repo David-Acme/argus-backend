@@ -45,6 +45,13 @@ enum ChoiceAvailability {
   CHOICE_AVAILABILITY_FAILED = 5;
 }
 
+enum ProfileOrigin {
+  PROFILE_ORIGIN_UNSPECIFIED = 0;
+  PROFILE_ORIGIN_RECOMMENDED = 1;
+  PROFILE_ORIGIN_OWNER = 2;
+  PROFILE_ORIGIN_REVERTED = 3;
+}
+
 message ChoiceState {
   string choice = 1;
   ChoiceAvailability availability = 2;
@@ -65,6 +72,15 @@ message Setting {
   string value = 10;
   string fallback = 11;
   repeated ChoiceState choice_states = 12;
+  string unit = 13;
+  bool pending_restart = 14;
+}
+
+message ProfileMarker {
+  string id = 1;
+  ProfileOrigin origin = 2;
+  int64 applied_at = 3;
+  repeated string keys = 4;
 }
 
 message ListSettingsRequest {}
@@ -72,6 +88,9 @@ message ListSettingsRequest {}
 message SettingsCatalog {
   string service = 1;
   repeated Setting settings = 2;
+  string config_path = 3;
+  ProfileMarker profile = 4;
+  repeated string capabilities = 5;
 }
 
 message SettingChange {
@@ -81,6 +100,7 @@ message SettingChange {
 
 message UpdateSettingsRequest {
   repeated SettingChange changes = 1;
+  ProfileMarker profile = 2;
 }
 
 message SettingRejection {
@@ -92,6 +112,7 @@ message UpdateSettingsResponse {
   repeated string applied = 1;
   repeated SettingRejection rejected = 2;
   SettingsCatalog catalog = 3;
+  bool profile_recorded = 4;
 }
 
 service Settings {

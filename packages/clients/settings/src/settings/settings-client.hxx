@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,9 @@ struct SettingsCatalog
 {
   std::string service;
   std::vector<SettingEntry> settings;
+  std::string configPath{};
+  std::optional<ProfileMarker> profile{};
+  std::vector<std::string> capabilities{};
 };
 
 struct SettingsUpdateReply
@@ -25,6 +29,7 @@ struct SettingsUpdateReply
   std::vector<std::string> applied;
   std::vector<SettingRejection> rejected;
   SettingsCatalog catalog;
+  bool profileRecorded{false};
 };
 
 class SettingsClient
@@ -37,6 +42,8 @@ public:
 
   [[nodiscard]] SettingsCatalog list() const;
   [[nodiscard]] SettingsUpdateReply update(const std::vector<SettingChange>& changes) const;
+  [[nodiscard]] SettingsUpdateReply update(const std::vector<SettingChange>& changes,
+                                           const std::optional<ProfileMarker>& profile) const;
 
 private:
   struct Impl;

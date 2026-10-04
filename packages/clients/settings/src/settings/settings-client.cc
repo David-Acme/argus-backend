@@ -87,9 +87,45 @@ std::vector<ChoiceState> choiceStatesOf(const wire::Setting& setting)
   return states;
 }
 
+ProfileOrigin originOf(wire::ProfileOrigin origin)
+{
+  switch (origin) {
+  case wire::PROFILE_ORIGIN_RECOMMENDED: return ProfileOrigin::Recommended;
+  case wire::PROFILE_ORIGIN_OWNER: return ProfileOrigin::Owner;
+  case wire::PROFILE_ORIGIN_REVERTED: return ProfileOrigin::Reverted;
+  default: return ProfileOrigin::None;
+  }
+}
+
+wire::ProfileOrigin wireOrigin(ProfileOrigin origin)
+{
+  switch (origin) {
+  case ProfileOrigin::None: return wire::PROFILE_ORIGIN_UNSPECIFIED;
+  case ProfileOrigin::Recommended: return wire::PROFILE_ORIGIN_RECOMMENDED;
+  case ProfileOrigin::Owner: return wire::PROFILE_ORIGIN_OWNER;
+  case ProfileOrigin::Reverted: return wire::PROFILE_ORIGIN_REVERTED;
+  }
+  return wire::PROFILE_ORIGIN_UNSPECIFIED;
+}
+
+std::optional<ProfileMarker> markerOf(const wire::SettingsCatalog& catalog)
+{
+  if (!catalog.has_profile())
+    return std::nullopt;
+  const auto& marker = catalog.profile();
+  return ProfileMarker{.id = marker.id(),
+                       .origin = originOf(marker.origin()),
+                       .appliedAt = marker.applied_at(),
+                       .keys = {marker.keys().begin(), marker.keys().end()}};
+}
+
 SettingsCatalog catalogOf(const wire::SettingsCatalog& catalog)
 {
-  SettingsCatalog result{.service = catalog.service(), .settings = {}};
+  SettingsCatalog result{.service = catalog.service(),
+                         .settings = {},
+                         .configPath = catalog.config_path(),
+                         .profile = markerOf(catalog),
+                         .capabilities = {catalog.capabilities().begin(), catalog.capabilities().end()}};
   result.settings.reserve(static_cast<std::size_t>(catalog.settings_size()));
   for (const auto& setting : catalog.settings()) {
     const auto type = typeOf(setting.type());
@@ -103,9 +139,11 @@ SettingsCatalog catalogOf(const wire::SettingsCatalog& catalog)
                   .apply = applyOf(setting.apply()),
                   .range = {.min = setting.min(), .max = setting.max(), .step = setting.step()},
                   .choices = {setting.choices().begin(), setting.choices().end()},
-                  .fallback = setting.fallback()},
+                  .fallback = setting.fallback(),
+                  .unit = setting.unit()},
          .value = setting.value(),
-         .choiceStates = choiceStatesOf(setting)});
+         .choiceStates = choiceStatesOf(setting),
+         .pendingRestart = setting.pending_restart()});
   }
   return result;
 }
@@ -145,6 +183,12 @@ SettingsCatalog SettingsClient::list() const
 
 SettingsUpdateReply SettingsClient::update(const std::vector<SettingChange>& changes) const
 {
+  return update(changes, std::nullopt);
+}
+
+SettingsUpdateReply SettingsClient::update(const std::vector<SettingChange>& changes,
+                                           const std::optional<ProfileMarker>& profile) const
+{
   grpc::ClientContext context;
   impl_->prepare(context);
   wire::UpdateSettingsRequest request;
@@ -153,12 +197,21 @@ SettingsUpdateReply SettingsClient::update(const std::vector<SettingChange>& cha
     entry->set_key(change.key);
     entry->set_value(change.value);
   }
+  if (profile) {
+    auto* marker = request.mutable_profile();
+    marker->set_id(profile->id);
+    marker->set_origin(wireOrigin(profile->origin));
+    marker->set_applied_at(profile->appliedAt);
+    for (const auto& key : profile->keys)
+      marker->add_keys(key);
+  }
   wire::UpdateSettingsResponse response;
   check(impl_->stub->Update(&context, request, &response));
 
   SettingsUpdateReply reply{.applied = {response.applied().begin(), response.applied().end()},
                             .rejected = {},
-                            .catalog = catalogOf(response.catalog())};
+                            .catalog = catalogOf(response.catalog()),
+                            .profileRecorded = response.profile_recorded()};
   reply.rejected.reserve(static_cast<std::size_t>(response.rejected_size()));
   for (const auto& rejection : response.rejected())
     reply.rejected.push_back({.key = rejection.key(), .reason = reasonOf(rejection.reason())});

@@ -4,6 +4,7 @@
 #include <charconv>
 #include <cmath>
 #include <drogon/drogon.h>
+#include <filesystem>
 #include <fstream>
 #include <json/reader.h>
 #include <json/value.h>
@@ -15,6 +16,7 @@
 #include <string>
 #include <toml++/toml.h>
 #include <type_traits>
+#include <utility>
 #include <vector>
 #include <cerrno>
 #include <fcntl.h>
@@ -165,9 +167,9 @@ std::string patchContent(const PatchContentInput& input)
     if (trim(l.substr(0, eq)) != key)
       continue;
     const auto lead = l.find_first_not_of(" \t");
-    const std::string indent =
-        lead == std::string::npos ? "" : l.substr(0, lead);
-    l = indent + key + " = " + literal;
+    std::string rewritten = lead == std::string::npos ? "" : l.substr(0, lead);
+    rewritten.append(key).append(" = ").append(literal);
+    l = std::move(rewritten);
     replaced = true;
   }
 
@@ -175,7 +177,7 @@ std::string patchContent(const PatchContentInput& input)
     bool found = false;
     for (auto& l : lines) {
       if (trim(l) == sectionHeader) {
-        l += "\n" + key + " = " + literal;
+        l.append("\n").append(key).append(" = ").append(literal);
         found = true;
         break;
       }
@@ -382,6 +384,16 @@ bool ConfigService::hasKey(const std::string& keyPath)
   if (gRuntimeOverrides.count(keyPath) > 0)
     return true;
   return resolvePath(keyPath) != nullptr;
+}
+
+std::string ConfigService::path()
+{
+  std::scoped_lock lock(gConfigMutex);
+  if (gConfigPath.empty())
+    return {};
+  std::error_code error;
+  const auto absolute = std::filesystem::absolute(gConfigPath, error);
+  return error ? gConfigPath : absolute.lexically_normal().string();
 }
 
 bool ConfigService::setBool(const std::string& keyPath, bool value)

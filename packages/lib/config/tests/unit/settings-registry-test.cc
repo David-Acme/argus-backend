@@ -226,3 +226,75 @@ TEST_CASE("a choice that only the host can install is refused; one the owner can
   }
   std::remove(path.c_str());
 }
+
+TEST_CASE("a restart key reads as pending once the file holds a value the process did not boot with")
+{
+  const auto path = writeConfig("[llm]\ntemperature = 0.5\nkv_type = \"auto\"\n");
+  ConfigService::load(path);
+  SettingsRegistry registry(llmSpecs());
+  CHECK_FALSE(entryOf(registry.list(), "llm.kv_type").pendingRestart);
+
+  REQUIRE(registry.update({{.key = "llm.kv_type", .value = "f16"}, {.key = "llm.temperature", .value = "0.6"}})
+              .rejected.empty());
+  auto entries = registry.list();
+  CHECK(entryOf(entries, "llm.kv_type").pendingRestart);
+  CHECK_FALSE(entryOf(entries, "llm.temperature").pendingRestart);
+
+  REQUIRE(registry.update({{.key = "llm.kv_type", .value = "auto"}}).rejected.empty());
+  CHECK_FALSE(entryOf(registry.list(), "llm.kv_type").pendingRestart);
+
+  REQUIRE(registry.update({{.key = "llm.kv_type", .value = "q8_0"}}).rejected.empty());
+  SettingsRegistry rebooted(llmSpecs());
+  CHECK_FALSE(entryOf(rebooted.list(), "llm.kv_type").pendingRestart);
+  std::remove(path.c_str());
+}
+
+TEST_CASE("the profile marker is absent until recorded, then persists in its own section beside the comments")
+{
+  const auto path = writeConfig("# owner file\n[llm]\ntemperature = 0.5\n");
+  ConfigService::load(path);
+  SettingsRegistry registry(llmSpecs());
+  const auto empty = registry.profileMarker();
+  CHECK(empty.id.empty());
+  CHECK(empty.origin == ProfileOrigin::None);
+  CHECK(empty.keys.empty());
+
+  REQUIRE(registry.recordProfile({.id = "quality",
+                                  .origin = ProfileOrigin::Recommended,
+                                  .appliedAt = 1759500000,
+                                  .keys = {"llm.temperature", "llm.kv_type"}}));
+  const auto written = readFile(path);
+  CHECK(written.find("# owner file") != std::string::npos);
+  CHECK(written.find("[settings_profile]") != std::string::npos);
+  CHECK(written.find("origin = \"recommended\"") != std::string::npos);
+
+  ConfigService::load(path);
+  const auto marker = SettingsRegistry(llmSpecs()).profileMarker();
+  CHECK(marker.id == "quality");
+  CHECK(marker.origin == ProfileOrigin::Recommended);
+  CHECK(marker.appliedAt == 1759500000);
+  CHECK(marker.keys == std::vector<std::string>{"llm.temperature", "llm.kv_type"});
+  CHECK(entryOf(registry.list(), "llm.temperature").value == "0.5");
+
+  CHECK_FALSE(registry.recordProfile({.id = "bad\nid", .origin = ProfileOrigin::Owner, .appliedAt = 1, .keys = {}}));
+  CHECK_FALSE(registry.recordProfile({.id = "quality", .origin = ProfileOrigin::None, .appliedAt = 1, .keys = {}}));
+  CHECK_FALSE(registry.recordProfile({.id = "quality", .origin = ProfileOrigin::Owner, .appliedAt = -1, .keys = {}}));
+  std::remove(path.c_str());
+}
+
+TEST_CASE("capabilities are declared once each and a spec carries its unit")
+{
+  const auto path = writeConfig("[llm]\n");
+  ConfigService::load(path);
+  auto specs = llmSpecs();
+  specs[1].unit = "tokens";
+  SettingsRegistry registry(specs);
+  registry.declareCapability("gpu");
+  registry.declareCapability("gpu");
+  CHECK(registry.capabilities() == std::vector<std::string>{"gpu"});
+  CHECK(entryOf(registry.list(), "llm.max_tokens").spec.unit == "tokens");
+  CHECK(entryOf(registry.list(), "llm.temperature").spec.unit.empty());
+  CHECK(profileOriginFromString(profileOriginToString(ProfileOrigin::Reverted)) == ProfileOrigin::Reverted);
+  CHECK(profileOriginFromString("unknown") == ProfileOrigin::None);
+  std::remove(path.c_str());
+}

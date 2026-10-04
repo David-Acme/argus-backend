@@ -16,6 +16,39 @@
 namespace
 {
 constexpr std::size_t kMaxTextLength = 512;
+constexpr const char* kMarkerId = "settings_profile.id";
+constexpr const char* kMarkerOrigin = "settings_profile.origin";
+constexpr const char* kMarkerAppliedAt = "settings_profile.applied_at";
+constexpr const char* kMarkerKeys = "settings_profile.keys";
+
+std::vector<std::string> splitKeys(const std::string& text)
+{
+  std::vector<std::string> keys;
+  for (const auto part : std::views::split(text, ',')) {
+    std::string key(part.begin(), part.end());
+    if (!key.empty())
+      keys.push_back(std::move(key));
+  }
+  return keys;
+}
+
+std::string joinKeys(const std::vector<std::string>& keys)
+{
+  std::string text;
+  for (const auto& key : keys) {
+    if (!text.empty())
+      text += ',';
+    text += key;
+  }
+  return text;
+}
+
+constexpr std::size_t kMaxMarkerKeysLength = 4096;
+
+bool validMarkerText(const std::string& text, std::size_t limit)
+{
+  return text.size() <= limit && text.find_first_of(std::string_view("\n\r\0", 3)) == std::string::npos;
+}
 
 std::string decimalText(double value)
 {
@@ -137,9 +170,32 @@ bool persist(const SettingSpec& spec, const std::string& canonical)
 }
 }
 
+std::string_view profileOriginToString(ProfileOrigin origin)
+{
+  switch (origin) {
+  case ProfileOrigin::None: return "";
+  case ProfileOrigin::Recommended: return "recommended";
+  case ProfileOrigin::Owner: return "owner";
+  case ProfileOrigin::Reverted: return "reverted";
+  }
+  return "";
+}
+
+ProfileOrigin profileOriginFromString(std::string_view text)
+{
+  if (text == "recommended")
+    return ProfileOrigin::Recommended;
+  if (text == "owner")
+    return ProfileOrigin::Owner;
+  if (text == "reverted")
+    return ProfileOrigin::Reverted;
+  return ProfileOrigin::None;
+}
+
 SettingsRegistry::SettingsRegistry(std::vector<SettingSpec> specs) : specs_(std::move(specs))
 {
   std::unordered_set<std::string> keys;
+  bootValues_.reserve(specs_.size());
   for (const auto& spec : specs_) {
     if (spec.key.empty() || spec.key.find('.') == std::string::npos || !keys.insert(spec.key).second)
       throw std::invalid_argument("Invalid setting key: " + spec.key);
@@ -147,6 +203,7 @@ SettingsRegistry::SettingsRegistry(std::vector<SettingSpec> specs) : specs_(std:
       throw std::invalid_argument("A choice setting needs choices: " + spec.key);
     if (validate(spec, spec.fallback).rejection)
       throw std::invalid_argument("Invalid setting fallback: " + spec.key);
+    bootValues_.push_back(currentValue(spec));
   }
 }
 
@@ -154,9 +211,54 @@ std::vector<SettingEntry> SettingsRegistry::list() const
 {
   std::vector<SettingEntry> entries;
   entries.reserve(specs_.size());
-  for (const auto& spec : specs_)
-    entries.push_back({.spec = spec, .value = currentValue(spec), .choiceStates = choiceStatesOf(spec)});
+  for (const auto index : std::views::iota(std::size_t{0}, specs_.size())) {
+    const auto& spec = specs_[index];
+    auto value = currentValue(spec);
+    const bool pending = pendingRestart(index, value);
+    entries.push_back(
+        {.spec = spec, .value = std::move(value), .choiceStates = choiceStatesOf(spec), .pendingRestart = pending});
+  }
   return entries;
+}
+
+bool SettingsRegistry::pendingRestart(std::size_t index, const std::string& value) const
+{
+  return specs_[index].apply == SettingApply::Restart && value != bootValues_[index];
+}
+
+ProfileMarker SettingsRegistry::profileMarker() const
+{
+  std::scoped_lock lock(mutex_);
+  return {.id = ConfigService::getString(kMarkerId),
+          .origin = profileOriginFromString(ConfigService::getString(kMarkerOrigin)),
+          .appliedAt = ConfigService::getInt(kMarkerAppliedAt),
+          .keys = splitKeys(ConfigService::getString(kMarkerKeys))};
+}
+
+bool SettingsRegistry::recordProfile(const ProfileMarker& marker)
+{
+  const auto keys = joinKeys(marker.keys);
+  if (!validMarkerText(marker.id, kMaxTextLength) || !validMarkerText(keys, kMaxMarkerKeysLength) || marker.origin == ProfileOrigin::None ||
+      marker.appliedAt < 0 || marker.appliedAt > std::numeric_limits<int>::max())
+    return false;
+  std::scoped_lock lock(mutex_);
+  return ConfigService::setString(kMarkerId, marker.id) &&
+         ConfigService::setString(kMarkerOrigin, std::string(profileOriginToString(marker.origin))) &&
+         ConfigService::setInt(kMarkerAppliedAt, static_cast<int>(marker.appliedAt)) &&
+         ConfigService::setString(kMarkerKeys, keys);
+}
+
+void SettingsRegistry::declareCapability(std::string capability)
+{
+  std::scoped_lock lock(mutex_);
+  if (std::ranges::find(capabilities_, capability) == capabilities_.end())
+    capabilities_.push_back(std::move(capability));
+}
+
+std::vector<std::string> SettingsRegistry::capabilities() const
+{
+  std::scoped_lock lock(mutex_);
+  return capabilities_;
 }
 
 std::vector<ChoiceState> SettingsRegistry::choiceStatesOf(const SettingSpec& spec) const

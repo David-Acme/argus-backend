@@ -39,7 +39,8 @@ std::vector<SettingSpec> catalogSpecs()
            .apply = SettingApply::Live,
            .range = {.min = 0.7, .max = 2.0, .step = 0.05},
            .choices = {},
-           .fallback = "1"},
+           .fallback = "1",
+           .unit = "x"},
           {.key = "tts.quality",
            .group = "voice",
            .type = SettingType::Choice,
@@ -202,5 +203,52 @@ TEST_CASE("the installation state of each choice and a not-installed refusal com
   REQUIRE(refused.rejected.size() == 1);
   CHECK(refused.rejected[0].reason == SettingRejectionReason::NotInstalled);
   CHECK(refused.catalog.settings[1].value == "auto");
+  std::filesystem::remove(configPath());
+}
+
+TEST_CASE("the catalog carries units, the config path, capabilities and a profile marker an update can record")
+{
+  loadConfig("[tts]\nspeed = 1.0\n");
+  Owner owner;
+  owner.registry.declareCapability("gpu");
+  const SettingsClient client({.target = owner.target(), .credential = kSecret, .timeout = std::chrono::seconds(5)});
+
+  const auto before = client.list();
+  CHECK(before.settings[0].spec.unit == "x");
+  CHECK(before.settings[1].spec.unit.empty());
+  CHECK(before.configPath == std::filesystem::absolute(configPath()).lexically_normal().string());
+  CHECK(before.capabilities == std::vector<std::string>{"gpu"});
+  REQUIRE(before.profile.has_value());
+  CHECK(before.profile->origin == ProfileOrigin::None);
+  CHECK(before.profile->id.empty());
+
+  const auto reply = client.update({{.key = "tts.speed", .value = "1.2"}},
+                                   ProfileMarker{.id = "balanced",
+                                                 .origin = ProfileOrigin::Recommended,
+                                                 .appliedAt = 1759500000,
+                                                 .keys = {"tts.speed"}});
+  CHECK(reply.applied == std::vector<std::string>{"tts.speed"});
+  CHECK(reply.profileRecorded);
+  REQUIRE(reply.catalog.profile.has_value());
+  CHECK(reply.catalog.profile->id == "balanced");
+  CHECK(reply.catalog.profile->origin == ProfileOrigin::Recommended);
+  CHECK(reply.catalog.profile->appliedAt == 1759500000);
+  CHECK(reply.catalog.profile->keys == std::vector<std::string>{"tts.speed"});
+
+  const auto markOnly = client.update({}, ProfileMarker{.id = "balanced",
+                                                        .origin = ProfileOrigin::Reverted,
+                                                        .appliedAt = 1759500100,
+                                                        .keys = {}});
+  CHECK(markOnly.applied.empty());
+  CHECK(markOnly.profileRecorded);
+  CHECK(client.list().profile->origin == ProfileOrigin::Reverted);
+
+  const auto refused = client.update({{.key = "tts.speed", .value = "9"}},
+                                     ProfileMarker{.id = "quality",
+                                                   .origin = ProfileOrigin::Owner,
+                                                   .appliedAt = 1759500200,
+                                                   .keys = {}});
+  CHECK_FALSE(refused.profileRecorded);
+  CHECK(client.list().profile->id == "balanced");
   std::filesystem::remove(configPath());
 }

@@ -20,9 +20,18 @@ not a local choice.
 
 - `src/config/config-service.hxx` — `ConfigService`, all static: `load`,
   `loadOverlay`, `getString`/`getInt`/`getBool`/`getDouble`, `hasKey`,
-  `getStringPairs`, `drogonConfig`.
+  `getStringPairs`, `drogonConfig`, and `path()`, the absolute path of the
+  loaded file.
 - `src/config/config-service.cc` — the TOML parse, the dotted-path resolver
   and the runtime-override map.
+- `src/config/settings-registry.{hxx,cc}` — `SettingsRegistry`, the owner
+  side of the settings wire: a catalog of `SettingSpec`s (key, group, type,
+  level, apply, range, choices, fallback, unit), validation, the persisting
+  update, change listeners, per-choice install states, the boot snapshot
+  that marks a restart key `pendingRestart` once the file holds another
+  value, the `ProfileMarker` kept in the owner's own file under
+  `[settings_profile]` (`profileMarker`/`recordProfile`), and the owner's
+  declared capabilities (`declareCapability`).
 - `src/config/service.hxx` — `IService`: `name`, `version`, `dependencies`,
   `initialize`, `isLoaded`, `shutdown`, `health`. Header-only; it is listed
   among the sources so the target shows it.

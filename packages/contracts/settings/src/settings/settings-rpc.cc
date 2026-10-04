@@ -1,5 +1,6 @@
 #include "settings-rpc.hxx"
 
+#include <config/config-service.hxx>
 #include <response/response-rpc.hxx>
 #include <settings/settings-errors.hxx>
 
@@ -64,6 +65,35 @@ wire::ChoiceAvailability availabilityOf(ChoiceAvailability availability)
   return wire::CHOICE_AVAILABILITY_UNSPECIFIED;
 }
 
+wire::ProfileOrigin originOf(ProfileOrigin origin)
+{
+  switch (origin) {
+  case ProfileOrigin::None: return wire::PROFILE_ORIGIN_UNSPECIFIED;
+  case ProfileOrigin::Recommended: return wire::PROFILE_ORIGIN_RECOMMENDED;
+  case ProfileOrigin::Owner: return wire::PROFILE_ORIGIN_OWNER;
+  case ProfileOrigin::Reverted: return wire::PROFILE_ORIGIN_REVERTED;
+  }
+  return wire::PROFILE_ORIGIN_UNSPECIFIED;
+}
+
+ProfileOrigin originFrom(wire::ProfileOrigin origin)
+{
+  switch (origin) {
+  case wire::PROFILE_ORIGIN_RECOMMENDED: return ProfileOrigin::Recommended;
+  case wire::PROFILE_ORIGIN_OWNER: return ProfileOrigin::Owner;
+  case wire::PROFILE_ORIGIN_REVERTED: return ProfileOrigin::Reverted;
+  default: return ProfileOrigin::None;
+  }
+}
+
+ProfileMarker markerFrom(const wire::ProfileMarker& marker)
+{
+  return {.id = marker.id(),
+          .origin = originFrom(marker.origin()),
+          .appliedAt = marker.applied_at(),
+          .keys = {marker.keys().begin(), marker.keys().end()}};
+}
+
 grpc::ServerUnaryReactor* finish(grpc::CallbackServerContext* context, grpc::Status status)
 {
   auto* reactor = context->DefaultReactor();
@@ -109,7 +139,8 @@ grpc::ServerUnaryReactor* SettingsRpcService::Update(grpc::CallbackServerContext
 {
   if (!argus::client::authorizeCaller(context, input_.credentials))
     return finish(context, argus::response::toRpcStatus(ResponseException(SettingsErrors::Unauthorized)));
-  if (request->changes_size() == 0 || request->changes_size() > kMaxChanges)
+  const bool marks = request->has_profile();
+  if ((request->changes_size() == 0 && !marks) || request->changes_size() > kMaxChanges)
     return finish(context, argus::response::toRpcStatus(ResponseException(SettingsErrors::InvalidRequest)));
 
   std::vector<SettingChange> changes;
@@ -117,7 +148,9 @@ grpc::ServerUnaryReactor* SettingsRpcService::Update(grpc::CallbackServerContext
   for (const auto& change : request->changes())
     changes.push_back({.key = change.key(), .value = change.value()});
 
-  const auto result = input_.registry->update(changes);
+  SettingsUpdateResult result;
+  if (!changes.empty())
+    result = input_.registry->update(changes);
   for (const auto& key : result.applied)
     response->add_applied(key);
   for (const auto& rejection : result.rejected) {
@@ -125,6 +158,8 @@ grpc::ServerUnaryReactor* SettingsRpcService::Update(grpc::CallbackServerContext
     entry->set_key(rejection.key);
     entry->set_reason(reasonOf(rejection.reason));
   }
+  if (marks && result.rejected.empty())
+    response->set_profile_recorded(input_.registry->recordProfile(markerFrom(request->profile())));
   fillCatalog(*response->mutable_catalog());
   return finish(context, grpc::Status::OK);
 }
@@ -132,6 +167,16 @@ grpc::ServerUnaryReactor* SettingsRpcService::Update(grpc::CallbackServerContext
 void SettingsRpcService::fillCatalog(wire::SettingsCatalog& catalog) const
 {
   catalog.set_service(input_.service);
+  catalog.set_config_path(ConfigService::path());
+  const auto marker = input_.registry->profileMarker();
+  auto* profile = catalog.mutable_profile();
+  profile->set_id(marker.id);
+  profile->set_origin(originOf(marker.origin));
+  profile->set_applied_at(marker.appliedAt);
+  for (const auto& key : marker.keys)
+    profile->add_keys(key);
+  for (const auto& capability : input_.registry->capabilities())
+    catalog.add_capabilities(capability);
   for (const auto& entry : input_.registry->list()) {
     auto* setting = catalog.add_settings();
     setting->set_key(entry.spec.key);
@@ -146,6 +191,8 @@ void SettingsRpcService::fillCatalog(wire::SettingsCatalog& catalog) const
       setting->add_choices(choice);
     setting->set_value(entry.value);
     setting->set_fallback(entry.spec.fallback);
+    setting->set_unit(entry.spec.unit);
+    setting->set_pending_restart(entry.pendingRestart);
     for (const auto& state : entry.choiceStates) {
       auto* choice = setting->add_choice_states();
       choice->set_choice(state.choice);
