@@ -91,6 +91,11 @@ Json::Value recommendationJson(const Recommendation& recommendation)
   entry["hardware"] = hardwareJson(recommendation.hardware);
   entry["rule"] = ruleJson(recommendation.rule);
   entry["missed"] = ruleJson(recommendation.missed);
+  Json::Value rules(Json::arrayValue);
+  for (const auto& rule : recommendation.rules)
+    rules.append(ruleJson(rule));
+  entry["rules"] = std::move(rules);
+  entry["fallback"] = recommendation.fallback;
   return entry;
 }
 }

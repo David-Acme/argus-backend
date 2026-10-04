@@ -218,33 +218,29 @@ std::vector<OwnerPlan> plan(const SettingsProfile& profile, const std::vector<Ow
 Recommendation recommend(const ProfileCatalog& catalog, const HardwareFacts& hardware)
 {
   const auto& rules = catalog.rules;
+  Recommendation recommendation{.profile = catalog.fallback,
+                                .reason = RecommendationReason::Meets,
+                                .hardware = hardware,
+                                .rule = std::nullopt,
+                                .missed = std::nullopt,
+                                .rules = rules,
+                                .fallback = catalog.fallback};
   for (const auto index : std::views::iota(std::size_t{0}, rules.size())) {
     if (shortfall(rules[index], hardware))
       continue;
-    if (index == 0)
-      return {.profile = rules[index].profile,
-              .reason = RecommendationReason::Meets,
-              .hardware = hardware,
-              .rule = rules[index],
-              .missed = std::nullopt};
-    const auto& missed = rules[index - 1];
-    return {.profile = rules[index].profile,
-            .reason = shortfall(missed, hardware).value_or(RecommendationReason::Meets),
-            .hardware = hardware,
-            .rule = rules[index],
-            .missed = missed};
+    recommendation.profile = rules[index].profile;
+    recommendation.rule = rules[index];
+    if (index > 0) {
+      recommendation.missed = rules[index - 1];
+      recommendation.reason = shortfall(rules[index - 1], hardware).value_or(RecommendationReason::Meets);
+    }
+    return recommendation;
   }
-  if (rules.empty())
-    return {.profile = catalog.fallback,
-            .reason = RecommendationReason::Meets,
-            .hardware = hardware,
-            .rule = std::nullopt,
-            .missed = std::nullopt};
-  return {.profile = catalog.fallback,
-          .reason = shortfall(rules.back(), hardware).value_or(RecommendationReason::Meets),
-          .hardware = hardware,
-          .rule = std::nullopt,
-          .missed = rules.back()};
+  if (!rules.empty()) {
+    recommendation.missed = rules.back();
+    recommendation.reason = shortfall(rules.back(), hardware).value_or(RecommendationReason::Meets);
+  }
+  return recommendation;
 }
 }
 

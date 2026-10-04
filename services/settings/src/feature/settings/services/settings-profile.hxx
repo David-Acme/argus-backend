@@ -112,6 +112,8 @@ struct Recommendation
   HardwareFacts hardware;
   std::optional<RecommendationRule> rule;
   std::optional<RecommendationRule> missed;
+  std::vector<RecommendationRule> rules;
+  std::string fallback;
 };
 
 struct ProfilesOverview

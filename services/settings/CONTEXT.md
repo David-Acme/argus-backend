@@ -160,8 +160,10 @@ order; the first the host meets wins, otherwise the fallback:
 - The GPU is reported, not used: no profile sets `gpu_layers`.
 - `reason` names what held back the profile above the recommended one:
   `meets` (the top rule), `cores`, `ram` or `isa`; `rule` is the rule met
-  (null for the fallback) and `missed` the one above it. The app writes the
-  sentence; the wire carries codes.
+  (null for the fallback) and `missed` the one above it. `rules` and
+  `fallback` repeat the whole ladder, so every card can say what it asks for
+  and whether this machine is above or below it. The app writes the
+  sentences; the wire carries codes and numbers.
 - In a container the probe sees the host's cores and RAM (a CPU quota or a
   `mem_limit` does not change them), and `gpu` reads `none` unless `/dev/dri`
   is passed through.
@@ -182,7 +184,9 @@ order; the first the host meets wins, otherwise the fallback:
                   "gpu": "vaapi" },
     "rule": { "profile": "quality", "minCores": 8, "minRamGb": 14,
               "vectorIsa": true },
-    "missed": null } }
+    "missed": null,
+    "rules": [ { "profile": "quality", ... }, { "profile": "balanced", ... } ],
+    "fallback": "performance" } }
 ```
 
 - Every key of the profile is listed in the owner's catalog order, with its

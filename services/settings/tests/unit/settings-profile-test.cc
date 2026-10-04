@@ -347,6 +347,8 @@ TEST_CASE("the recommendation picks the first rule the host meets and names what
   const auto scalar = settings_profile::recommend(catalog, hardware(16, 64, CpuIsa::Baseline));
   CHECK(scalar.profile == "performance");
   CHECK(scalar.reason == RecommendationReason::Isa);
+  CHECK(scalar.rules.size() == 2);
+  CHECK(scalar.fallback == "performance");
 }
 
 TEST_CASE("hardware facts round the RAM to a tenth and name the widest vector ISA")
@@ -451,6 +453,10 @@ TEST_CASE("the listing and the apply answer through real owners, and a host-only
   const auto listing = ResponseListProfilesDto{.overview = overview}.toJson();
   CHECK(listing["recommendation"]["hardware"]["isa"].asString() == "avx2");
   CHECK(listing["recommendation"]["missed"].isNull());
+  REQUIRE(listing["recommendation"]["rules"].size() == 2);
+  CHECK(listing["recommendation"]["rules"][1]["profile"].asString() == "balanced");
+  CHECK(listing["recommendation"]["rules"][1]["minCores"].asInt() == 4);
+  CHECK(listing["recommendation"]["fallback"].asString() == "performance");
   CHECK(listing["profiles"][0]["owners"][0]["changes"][1]["install"]["availability"].asString() == "hostOnly");
 
   const auto outcome = profiles.apply({.profile = "quality", .userId = 1});
