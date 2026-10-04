@@ -35,7 +35,8 @@ std::string expand(const std::string_view query,
 drogon::Task<UserAuditLogSchema>
 UserAuditLogRepository::create(const UserAuditLogCreateInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       std::string(INSERT), input.userId, input.recordId,
       tableNameToString(input.tableName), json_util::toString(input.changes),
@@ -56,7 +57,8 @@ UserAuditLogRepository::create(const UserAuditLogCreateInput& input) const
 drogon::Task<std::optional<UserAuditLogSchema>>
 UserAuditLogRepository::findExist(const UserAuditLogFindExistInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       std::string(FIND_EXIST), input.userId, input.recordId,
       tableNameToString(input.tableName), input.dayStart, input.dayEnd);
@@ -65,10 +67,12 @@ UserAuditLogRepository::findExist(const UserAuditLogFindExistInput& input) const
   co_return UserAuditLogSchema(result.front());
 }
 
-drogon::Task<void> UserAuditLogRepository::remove(int64_t id) const
+drogon::Task<void>
+UserAuditLogRepository::remove(int64_t id, drogon::orm::DbClient* client) const
 {
-  auto client = DbService::client();
-  co_await client->execSqlCoro(std::string(REMOVE), id);
+  const auto pooled = DbService::client();
+  auto* resolved = client ? client : pooled.get();
+  co_await resolved->execSqlCoro(std::string(REMOVE), id);
 }
 
 drogon::Task<std::vector<Json::Value>>
@@ -196,18 +200,21 @@ drogon::Task<int64_t> UserAuditLogRepository::findCompactionFrontier() const
 drogon::Task<void>
 UserAuditLogRepository::compactRow(const UserAuditLogCompactInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   co_await client->execSqlCoro(std::string(COMPACT_ROW),
                                json_util::toString(input.changes), input.id);
 }
 
 drogon::Task<void>
-UserAuditLogRepository::removeMany(const std::vector<int64_t>& ids) const
+UserAuditLogRepository::removeMany(const std::vector<int64_t>& ids,
+                                drogon::orm::DbClient* resolvedClient) const
 {
   if (ids.empty())
     co_return;
 
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = resolvedClient ? resolvedClient : pooled.get();
   const std::string query =
       expand(REMOVE_IDS, buildInPlaceholders(ids.size()));
 
@@ -222,9 +229,10 @@ UserAuditLogRepository::removeMany(const std::vector<int64_t>& ids) const
 
 drogon::Task<void>
 UserAuditLogRepository::advanceCompactionFrontier(
-    const int64_t throughId) const
+    int64_t throughId, drogon::orm::DbClient* resolvedClient) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = resolvedClient ? resolvedClient : pooled.get();
   co_await client->execSqlCoro(
       std::string(ADVANCE_COMPACTION_FRONTIER),
       tableNameToString(TableName::UserAuditLog), throughId);

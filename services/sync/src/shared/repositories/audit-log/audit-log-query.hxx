@@ -1,4 +1,5 @@
 #pragma once
+#include <drogon/orm/DbClient.h>
 #include <json/value.h>
 #include <optional>
 #include <sync/audit-log-priority.hxx>
@@ -87,6 +88,7 @@ struct AuditLogCreateInput
   Json::Value changes;
   AuditLogPriority priority{AuditLogPriority::Medium};
   int64_t eventTimestamp{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct AuditLogSyncFilter
@@ -106,6 +108,7 @@ struct AuditLogWriteInput
   AuditLogPriority priority{AuditLogPriority::Medium};
   std::optional<int64_t> createUserId;
   std::optional<int64_t> eventTimestamp;
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct AuditLogFindExistInput
@@ -114,6 +117,7 @@ struct AuditLogFindExistInput
   TableName tableName{TableName::User};
   int64_t dayStart{0};
   int64_t dayEnd{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct AuditLogCompactionPair
@@ -126,4 +130,5 @@ struct AuditLogCompactInput
 {
   int64_t id{0};
   Json::Value changes;
+  drogon::orm::DbClient* client{nullptr};
 };

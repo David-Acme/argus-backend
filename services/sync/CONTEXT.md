@@ -270,13 +270,17 @@ Three costs come with it, each chosen over a wrong value on a client:
   successor re-attaches through a fresh deliver subject and the broker
   redelivers the in-flight message at once, ahead of the rest.
 
-The merge itself inserts the merged row before it deletes the one it replaces,
-and finds the row to merge into newest first. A failure between the two
-statements therefore leaves an older, redundant row behind the merged one —
-a client pages both in id order and ends on the merged value — instead of
-deleting the day's history, which is what the old delete-then-insert order did.
-`tests/unit/change-feed-consumer-test.cc` forces each statement to fail with a
-temporary trigger and pins both outcomes.
+Each event is written in one transaction (2026-10): a module audit's merge,
+and every recipient row of a user audit, commit together or not at all, and
+the Log frames go out only after the commit, so a client never receives an id
+that was rolled back. A failure in the middle (the merge's delete, the fifth
+recipient's insert) leaves the table as it was and the nak's redelivery
+applies the event whole; before, the merge inserted and deleted in separate
+autocommits and a failure between them left an older, redundant row behind
+the merged one. The retention round (every survivor's rewrite, the removals
+and the frontier) is one transaction for the same reason.
+`tests/unit/change-feed-consumer-test.cc` forces the insert and the delete to
+fail with a temporary trigger and pins that nothing is written.
 
 **A message the fan-out cannot route is terminated, not retried** (2026-10).
 An unknown `option` or `table_name` used to fall back to `user` and broadcast

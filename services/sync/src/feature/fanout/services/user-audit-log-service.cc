@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
+#include <stdexcept>
 #include <text/json-util.hxx>
 #include <unordered_map>
 
@@ -35,7 +38,8 @@ UserAuditLogService::create(const UserAuditLogWriteInput& input) const
        .recordId = input.recordId,
        .tableName = input.tableName,
        .dayStart = dayStart,
-       .dayEnd = dayEnd});
+       .dayEnd = dayEnd,
+       .client = input.client});
 
   UserAuditLogSchema schema;
   if (!existing) {
@@ -45,7 +49,8 @@ UserAuditLogService::create(const UserAuditLogWriteInput& input) const
          .tableName = input.tableName,
          .changes = JsonDiff::toJson(input.changes),
          .priority = input.priority,
-         .eventTimestamp = now});
+         .eventTimestamp = now,
+         .client = input.client});
     co_return schema;
   }
 
@@ -59,8 +64,9 @@ UserAuditLogService::create(const UserAuditLogWriteInput& input) const
        .tableName = input.tableName,
        .changes = JsonDiff::toJson(changes),
        .priority = input.priority,
-       .eventTimestamp = now});
-  co_await repository_.remove(existing->id);
+       .eventTimestamp = now,
+       .client = input.client});
+  co_await repository_.remove(existing->id, input.client);
 
   co_return schema;
 }
@@ -101,14 +107,24 @@ drogon::Task<int64_t> UserAuditLogService::compact(const int64_t cutoffMs) const
     frontier = std::max(frontier, pair.olderId);
   }
 
-  for (const auto& [id, changes] : pending) {
-    if (std::ranges::find(removeIds, id) != removeIds.end())
-      continue;
-    co_await repository_.compactRow({.id = id, .changes = changes});
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    for (const auto& [id, changes] : pending) {
+      if (std::ranges::find(removeIds, id) != removeIds.end())
+        continue;
+      co_await repository_.compactRow(
+          {.id = id, .changes = changes, .client = transaction.get()});
+    }
+    co_await repository_.removeMany(removeIds, transaction.get());
+    if (frontier > 0)
+      co_await repository_.advanceCompactionFrontier(frontier, transaction.get());
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw std::runtime_error("audit compaction round was not committed");
   }
-  co_await repository_.removeMany(removeIds);
-  if (frontier > 0)
-    co_await repository_.advanceCompactionFrontier(frontier);
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
 
   co_return static_cast<int64_t>(removeIds.size());
 }

@@ -1,6 +1,9 @@
 #include "audit-fan-out.hxx"
 
 #include <feature/fanout/services/sync-fan-out.hxx>
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
+#include <stdexcept>
 #include <string>
 #include <sync/sync-operation.hxx>
 #include <sync/table-name.hxx>
@@ -24,14 +27,25 @@ bool AuditFanOut::migrateLegacySchema() const
 
 drogon::Task<void> AuditFanOut::insertModuleAudit(const ModuleAuditEvent& event)
 {
-  const auto schema = co_await auditLogService_.create({
-      .recordId = event.recordId,
-      .tableName = event.tableName,
-      .changes = event.changes,
-      .priority = event.priority,
-      .createUserId = event.createUserId,
-      .eventTimestamp = event.eventTimestamp,
-  });
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  AuditLogSchema schema;
+  try {
+    schema = co_await auditLogService_.create({
+        .recordId = event.recordId,
+        .tableName = event.tableName,
+        .changes = event.changes,
+        .priority = event.priority,
+        .createUserId = event.createUserId,
+        .eventTimestamp = event.eventTimestamp,
+        .client = transaction.get(),
+    });
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw std::runtime_error("module audit row was not committed");
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
 
   sync_fan_out::Event fanout;
   fanout.emit.operation = SyncOperation::Log;
@@ -43,17 +57,32 @@ drogon::Task<void> AuditFanOut::insertModuleAudit(const ModuleAuditEvent& event)
 drogon::Task<void> AuditFanOut::insertUsersAudit(const UserAuditEvent& event)
 {
   std::unordered_set<int64_t> recipients;
-  for (const auto userId : event.users) {
-    if (userId <= 0 || !recipients.insert(userId).second)
-      continue;
-    const auto schema = co_await userAuditLogService_.create(
-        {.userId = userId,
-         .recordId = event.recordId,
-         .tableName = event.tableName,
-         .changes = event.changes,
-         .priority = event.priority,
-         .eventTimestamp = event.eventTimestamp});
+  std::vector<UserAuditLogSchema> written;
+  written.reserve(event.users.size());
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    for (const auto userId : event.users) {
+      if (userId <= 0 || !recipients.insert(userId).second)
+        continue;
+      written.push_back(co_await userAuditLogService_.create(
+          {.userId = userId,
+           .recordId = event.recordId,
+           .tableName = event.tableName,
+           .changes = event.changes,
+           .priority = event.priority,
+           .eventTimestamp = event.eventTimestamp,
+           .client = transaction.get()}));
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw std::runtime_error("user audit rows were not committed");
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
 
+  for (const auto& schema : written) {
+    const int64_t userId = schema.userId;
     sync_fan_out::Event fanout;
     fanout.emit.operation = SyncOperation::Log;
     fanout.emit.option = TableName::UserAuditLog;

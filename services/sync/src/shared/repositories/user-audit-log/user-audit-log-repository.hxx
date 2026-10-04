@@ -16,7 +16,8 @@ public:
   create(const UserAuditLogCreateInput& input) const;
   [[nodiscard]] drogon::Task<std::optional<UserAuditLogSchema>>
   findExist(const UserAuditLogFindExistInput& input) const;
-  [[nodiscard]] drogon::Task<void> remove(int64_t id) const;
+  [[nodiscard]] drogon::Task<void>
+  remove(int64_t id, drogon::orm::DbClient* client = nullptr) const;
 
   [[nodiscard]] drogon::Task<std::vector<Json::Value>>
   findSync(const UserAuditLogSyncFilter& filter) const;
@@ -31,7 +32,9 @@ public:
   [[nodiscard]] drogon::Task<void>
   compactRow(const UserAuditLogCompactInput& input) const;
   [[nodiscard]] drogon::Task<void>
-  removeMany(const std::vector<int64_t>& ids) const;
+  removeMany(const std::vector<int64_t>& ids,
+             drogon::orm::DbClient* client = nullptr) const;
   [[nodiscard]] drogon::Task<void>
-  advanceCompactionFrontier(int64_t throughId) const;
+  advanceCompactionFrontier(int64_t throughId,
+                            drogon::orm::DbClient* client = nullptr) const;
 };

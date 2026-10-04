@@ -421,8 +421,8 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
       "CREATE TEMP TRIGGER refuse_delete BEFORE DELETE ON audit_log "
       "WHEN OLD.record_id = 31 BEGIN SELECT RAISE(ABORT, 'refused'); END");
   CHECK_THROWS(applyStep(3));
-  CHECK(scalar("SELECT COUNT(*) FROM audit_log WHERE record_id = 31") == "2");
-  CHECK(newestCurrent() == "v3");
+  CHECK(scalar("SELECT COUNT(*) FROM audit_log WHERE record_id = 31") == "1");
+  CHECK(newestCurrent() == "v2");
   DbService::client()->execSqlSync("DROP TRIGGER refuse_delete");
   CHECK(applyStep(3) == DurableDisposition::Ack);
   CHECK(newestCurrent() == "v3");
