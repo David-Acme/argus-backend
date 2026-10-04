@@ -28,6 +28,7 @@ argus.<domain>.v1.<event>
 | `argus.camera.v1.change` | argus-camera (F2-2) | argus-sync (durable `argus-sync-camera`), argus-llm (durable `argus-llm-catalog-camera`) | a camera-domain persisted change (same payload as `argus.sync.v1.change`, plus the module emits); retained on the camera stream `ARGUS_CAMERA` (7 days, file storage, 2-minute duplicate window), which both durables drain |
 | `argus.camera.v1.object_detected` | argus-camera (F2-3) | argus-guard (durable JetStream), argus-notification (degraded fallback) | an immutable per-object observation (schemaVersion 3: track/observation ids, identity tri-state, score history, evidence binding); never re-emitted to `/sync` |
 | `argus.guard.v1.heartbeat` | argus-guard | argus-notification | readiness heartbeat; while fresh argus-notification's raw camera notifier yields to guard |
+| `argus.guard.v1.known_seen` | argus-guard | argus-notification (call engine) | a recognized person seen by a camera with nobody unknown beside them; the call engine turns the first sighting after an absence into an "arrival" call or notification for the users who asked for it. Core publish, best-effort (the guard stream retains it 7 days for inspection only) |
 | `argus.guard.v1.encounter_closed` | argus-guard | argus-llm (durable JetStream) | finalized, redacted encounter summary; the only camera feed long-term memory reads. Published with `Nats-Msg-Id = <eventId>` on the guard-owned stream `ARGUS_GUARD` (7 days, file storage, 2-minute duplicate window); argus-llm receipts each event in `encounter_closed_inbox` and captures exactly one memory episode per receipt |
 | `argus.productivity.v1.change` | argus-productivity (F3-2) | argus-sync (durable `argus-sync-productivity`) | a productivity-domain change: the user-scoped row emits (`SocketEmitDto` + `users`) plus the `kind: audit` user_audit_log diffs argus-sync persists before fanning the rows out. Both legs land in the productivity-owned `change_outbox` first and are published with `Nats-Msg-Id = productivity-change:<32 hex>`, a row settling only on PubAck; the subject is retained on the productivity change stream `ARGUS_PRODUCTIVITY_CHANGE` (7 days, file storage, 2-minute duplicate window), which is the sink's own stream — a stream carries one subject set |
 | `argus.notification.v1.change` | argus-notification (F3-2) | argus-sync (durable `argus-sync-notification`) | a notification-domain change: the `kind: audit` markAsRead rows (same payload contract as the productivity subject) and nothing else — the domain's rows reach their users on the delivery subject below, so this sink is the audit-only `AuditSink`. The diffs land in the notification-owned `change_outbox` first and are published with `Nats-Msg-Id = notification-change:<32 hex>`, a row settling only on PubAck; the subject is retained on the notification change stream `ARGUS_NOTIFICATION_CHANGE` (7 days, file storage, 2-minute duplicate window), which is the sink's own stream and not the delivery one — a stream carries one subject set |
@@ -244,6 +245,22 @@ fail open).
 { "service": "argus-guard", "enabled": true, "at": 1735689600 }
 ```
 
+## Payload of `argus.guard.v1.known_seen`
+
+Published by argus-guard on each observation whose people are all recognized
+and whose primary person has an identity (`personId > 0`), once per
+observation (the guard saga's encounter stage, so a redelivered observation
+can publish it again: the consumer is idempotent by person and time). It is a
+core publish with no outbox: an arrival lost to a broker outage is an
+arrival nobody is called about, never a wrong call. argus-notification's call
+engine keeps the last sighting per person (`call_arrival_seen`) and treats a
+sighting as an arrival only after `calls.arrival_absence_s` (3 h) without one.
+
+```json
+{ "eventId": "evt-1", "personId": 12, "cameraId": 6, "cameraName": "Patio",
+  "environmentId": 1, "environmentName": "", "at": 1735689600 }
+```
+
 ## Payload of `argus.guard.v1.encounter_closed`
 
 Published by argus-guard when an encounter reaches its terminal summary (stale
@@ -369,6 +386,12 @@ alarm/siren semantics.
   correlate the intent against the `/sync` row).
 - `type`, `title`, `body` — the notification row's display fields, verbatim.
 - `createdAt` — the row's creation time as a millisecond Unix epoch.
+- `data` (2026-10, additive, only when the row has an object `data`) — the
+  row's `data` verbatim (`kind`, `threadKey`, `urgency`, …). A ringing call
+  ("Argus calls you") publishes an intent with `type: "call"` and `data`
+  `{kind: "call", callId, urgency, deepLink: "argus://call?callId=<id>"}` and
+  `notificationId` 0, because a ring mirrors a `call` row, not a notification;
+  the device opens the call from the deep link.
 
 Size bound: the tunnel PUSH frame cannot carry more than 256 KiB of payload,
 while the NATS subscription accepts up to the server's maximum, so the relay

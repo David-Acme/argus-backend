@@ -201,8 +201,10 @@ TEST_CASE("push_intent payloads match the subjects.md contract")
                           .type = "camera",
                           .title = "Front door",
                           .body = "Person detected",
-                          .createdAtMs = 1735689600123};
+                          .createdAtMs = 1735689600123,
+                          .data = Json::Value()};
   const Json::Value json = push_intent::toJson(intent);
+  CHECK_FALSE(json.isMember("data"));
 
   CHECK(json["userId"].as<int64_t>() == 42);
   CHECK(json["notificationId"].as<int64_t>() == 17);
@@ -210,6 +212,15 @@ TEST_CASE("push_intent payloads match the subjects.md contract")
   CHECK(json["title"].asString() == "Front door");
   CHECK(json["body"].asString() == "Person detected");
   CHECK(json["createdAt"].as<int64_t>() == 1735689600123);
+
+  Json::Value callData(Json::objectValue);
+  callData["kind"] = "call";
+  callData["deepLink"] = "argus://call?callId=call-9";
+  PushIntent ringing = intent;
+  ringing.data = callData;
+  const Json::Value withData = push_intent::toJson(ringing);
+  CHECK(withData["data"]["deepLink"].asString() ==
+        "argus://call?callId=call-9");
 
   CHECK(nats_subject::isValidSubject(nats_subject::kNotificationPushIntent,
                                      nats_subject::SubjectKind::Publish));
@@ -226,7 +237,8 @@ TEST_CASE("a publish on an unconnected bus is a warn, not a crash")
                           .type = "system",
                           .title = "",
                           .body = "",
-                          .createdAtMs = 0});
+                          .createdAtMs = 0,
+                          .data = Json::Value(Json::objectValue)});
 }
 
 TEST_CASE("the create path publishes one intent per row")

@@ -51,9 +51,26 @@ fallback_suppress_known = true
 fallback_retention_days = 90
 lang = "es"
 
+[calls]
+enabled = true
+ring_timeout_s = 45
+in_app_grace_s = 4
+call_gap_s = 300
+max_calls_per_hour = 4
+arrival_absence_s = 10800
+scheduled_late_s = 900
+
 [identity]
 target = "127.0.0.1:7040"
 rpc_secret = ""
+
+[sync]
+control_target = "127.0.0.1:7041"
+control_secret = ""
+
+[voice]
+target = "127.0.0.1:7034"
+credential = ""
 
 [jwt]
 secret = ""
@@ -70,6 +87,9 @@ trusted_proxy_ips = ""
 caller_guard = ""
 caller_sync = ""
 caller_settings = ""
+caller_voice = ""
+caller_llm = ""
+caller_productivity = ""
 
 [nats]
 url = "nats://127.0.0.1:4222"

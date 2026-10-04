@@ -6,6 +6,7 @@
 #include <config/notification-config.hxx>
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
+#include <utility>
 #include <vector>
 
 namespace
@@ -49,7 +50,10 @@ NotificationRpcService::NotificationRpcService(Dependencies dependencies)
     : guardCallers_(
           {argus::client::CallerCredential{.service = "argus-guard",
                                         .secret = ConfigService::getString(
-                                            "grpc.caller_guard")}}),
+                                            "grpc.caller_guard")},
+           argus::client::CallerCredential{
+               .service = "argus-productivity",
+               .secret = ConfigService::getString("grpc.caller_productivity")}}),
       syncCallers_(
           {argus::client::CallerCredential{.service = "argus-sync",
                                         .secret = ConfigService::getString(
@@ -138,6 +142,12 @@ void NotificationRpcService::startSelfTestProber()
                                     });
 }
 
+void NotificationRpcService::attachCallEngine(
+    std::shared_ptr<const CallEngine> engine)
+{
+  callEngine_ = std::move(engine);
+}
+
 grpc::ServerUnaryReactor* NotificationRpcService::CreateNotifications(
     grpc::CallbackServerContext* context,
     const argus::notification::v1::CreateNotificationsRequest* request,
@@ -146,7 +156,7 @@ grpc::ServerUnaryReactor* NotificationRpcService::CreateNotifications(
   if (!argus::client::authorizeCaller(context, guardCallers_).has_value()) {
     auto* reactor = context->DefaultReactor();
     reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "argus-guard caller credential required"));
+                                 "notification caller credential required"));
     return reactor;
   }
   if (request->command_id().empty()) {
@@ -186,6 +196,16 @@ grpc::ServerUnaryReactor* NotificationRpcService::CreateNotifications(
         responseWriter->set_created(static_cast<int32_t>(outcome.createdCount));
         responseWriter->set_duplicate(outcome.duplicate);
         reactor->Finish(grpc::Status::OK);
+        if (callEngine_ && !outcome.duplicate && outcome.createdCount > 0) {
+          try {
+            co_await callEngine_->considerNotification(batch.notification.data,
+                                                       batch.userIds);
+          }
+          catch (const std::exception& error) {
+            LOG_WARN << "Notification RPC: call engine skipped "
+                     << batch.commandId << ": " << error.what();
+          }
+        }
       }
       catch (const NotificationCommandConflict& e) {
         LOG_WARN << "Notification RPC: command conflict: " << e.what();

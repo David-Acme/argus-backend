@@ -44,6 +44,8 @@ inline constexpr const char* kGuardHeartbeat = "argus.guard.v1.heartbeat";
 inline constexpr const char* kGuardEncounterClosed =
     "argus.guard.v1.encounter_closed";
 
+inline constexpr const char* kGuardKnownSeen = "argus.guard.v1.known_seen";
+
 inline constexpr const char* kGuardStream = "ARGUS_GUARD";
 
 inline constexpr const char* kGuardSubjectFilter = "argus.guard.v1.>";

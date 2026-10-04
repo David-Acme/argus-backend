@@ -161,14 +161,23 @@ identity rpc_host
 identity rpc_port
 identity rpc_secret
 camera actions_credential
+notifications target
 notifications credential
+notification target
+notification credential
 productivity credential
+voice target
 voice credential
 camera credential
+sync control_target
+sync control_secret
 grpc caller_guard
 grpc caller_sync
 grpc caller_llm
 grpc caller_settings
+grpc caller_voice
+grpc caller_productivity
+grpc caller_notification
 rpc.callers settings
 rpc address
 owners.llm target
@@ -441,6 +450,14 @@ ensure_deploy_configs() {
     "$deploy_dir/config.camera.toml" grpc caller_guard 32
   fill_config_pair "$deploy_dir/config.guard.toml" notifications credential \
     "$deploy_dir/config.notification.toml" grpc caller_guard 32
+  fill_config_pair "$deploy_dir/config.productivity.toml" notifications credential \
+    "$deploy_dir/config.notification.toml" grpc caller_productivity 32
+  fill_config_pair "$deploy_dir/config.llm.toml" notifications credential \
+    "$deploy_dir/config.notification.toml" grpc caller_llm 32
+  fill_config_pair "$deploy_dir/config.voice.toml" notification credential \
+    "$deploy_dir/config.notification.toml" grpc caller_voice 32
+  fill_config_pair "$deploy_dir/config.notification.toml" voice credential \
+    "$deploy_dir/config.voice.toml" grpc caller_notification 32
   fill_config_pair "$deploy_dir/config.sync.toml" notifications credential \
     "$deploy_dir/config.notification.toml" grpc caller_sync 32
   fill_config_pair "$deploy_dir/config.sync.toml" productivity credential \

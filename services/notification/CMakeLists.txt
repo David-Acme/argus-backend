@@ -81,6 +81,11 @@ if(NOT TARGET argus::clients::identity)
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
 
+if(NOT TARGET argus::clients::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/sync
+                     ${CMAKE_BINARY_DIR}/clients/sync EXCLUDE_FROM_ALL)
+endif()
+
 if(NOT COMMAND argus_settings_rpc_contract)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/settings
                      ${CMAKE_BINARY_DIR}/contracts/settings)
@@ -118,6 +123,7 @@ target_link_libraries(argus-notification PRIVATE
     $<LINK_LIBRARY:WHOLE_ARCHIVE,argus::notification-feature>
     argus::notification-rpc
     argus::notification-camera-notification
+    argus::notification-call
     argus::notification-settings
     argus::contracts::settings-wire
     argus::lib::auth argus::lib::validation argus::lib::http
@@ -374,6 +380,19 @@ target_link_libraries(notification-settings-test PRIVATE
 target_compile_options(notification-settings-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-settings-test COMMAND notification-settings-test)
+
+foreach(TEST_NAME IN ITEMS call-policy-test call-engine-test)
+    add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
+    set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    target_compile_definitions(${TEST_NAME} PRIVATE
+        ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+    target_link_libraries(${TEST_NAME} PRIVATE
+        argus::notification-call
+        argus::lib::sqlite
+        doctest::doctest)
+    target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endforeach()
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

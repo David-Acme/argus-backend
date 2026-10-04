@@ -236,6 +236,14 @@ prepare() {
     "$STACK_DIR/camera/config.toml" grpc caller_sync 32
   fill_config_pair "$STACK_DIR/llm/config.toml" camera credential \
     "$STACK_DIR/camera/config.toml" grpc caller_llm 32
+  fill_config_pair "$STACK_DIR/productivity/config.toml" notifications credential \
+    "$STACK_DIR/notification/config.toml" grpc caller_productivity 32
+  fill_config_pair "$STACK_DIR/llm/config.toml" notifications credential \
+    "$STACK_DIR/notification/config.toml" grpc caller_llm 32
+  fill_config_pair "$STACK_DIR/voice/config.toml" notification credential \
+    "$STACK_DIR/notification/config.toml" grpc caller_voice 32
+  fill_config_pair "$STACK_DIR/notification/config.toml" voice credential \
+    "$STACK_DIR/voice/config.toml" grpc caller_notification 32
   wire_settings_owners
   log "sandbox configs ready in $STACK_DIR"
 }

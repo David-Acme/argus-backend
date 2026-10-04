@@ -11,6 +11,7 @@ struct PushIntent
   std::string title;
   std::string body;
   int64_t createdAtMs{0};
+  Json::Value data;
 };
 
 namespace push_intent
@@ -24,6 +25,8 @@ inline Json::Value toJson(const PushIntent& intent)
   json["title"] = intent.title;
   json["body"] = intent.body;
   json["createdAt"] = Json::Value::Int64(intent.createdAtMs);
+  if (intent.data.isObject())
+    json["data"] = intent.data;
   return json;
 }
 

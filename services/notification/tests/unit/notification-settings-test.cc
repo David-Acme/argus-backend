@@ -132,8 +132,8 @@ TEST_CASE("the notification catalog builds through the registry")
 {
   const auto catalog = notificationSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{notificationSettingsCatalog()});
-  CHECK(catalog.size() == 10);
-  CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) == 4);
+  CHECK(catalog.size() == 16);
+  CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) == 5);
   for (const auto& spec : catalog)
     CHECK_MESSAGE((spec.apply == SettingApply::Restart) ==
                       (spec.key == "notifications.selftest_interval_s"),
@@ -172,6 +172,15 @@ TEST_CASE("every fallback is what the service runs with when the key is absent")
         NotificationConfig::resolveAckWindowS());
   CHECK(std::stoll(fallbackOf(catalog, "notifications.selftest_interval_s")) ==
         NotificationConfig::resolveSelfTestIntervalS());
+  const CallEngineConfig calls = NotificationConfig::resolveCalls();
+  CHECK((fallbackOf(catalog, "calls.enabled") == "true") == calls.enabled);
+  CHECK(std::stoll(fallbackOf(catalog, "calls.ring_timeout_s")) == calls.ringTimeoutS);
+  CHECK(std::stoll(fallbackOf(catalog, "calls.in_app_grace_s")) == calls.inAppGraceS);
+  CHECK(std::stoll(fallbackOf(catalog, "calls.call_gap_s")) == calls.callGapS);
+  CHECK(std::stoi(fallbackOf(catalog, "calls.max_calls_per_hour")) ==
+        calls.maxCallsPerHour);
+  CHECK(std::stoll(fallbackOf(catalog, "calls.arrival_absence_s")) ==
+        calls.arrivalAbsenceS);
 }
 
 TEST_CASE("one quiet-hour bound alone keeps quiet hours off, as the fallback says")

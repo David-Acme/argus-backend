@@ -67,6 +67,8 @@ identity	GET	/voiceprint/users	DeviceFilter,JwtFilter,RoleFilter	-	services/iden
 llm	POST	/llm/v1/chat	-	-	services/llm/src/feature/llm/controllers/llm-controller.hxx
 llm	POST	/llm/v1/chat-stream	-	-	services/llm/src/feature/llm/controllers/llm-controller.hxx
 llm	GET	/llm/v1/config	-	-	services/llm/src/feature/llm/controllers/llm-controller.hxx
+notification	GET	/notification/call-preferences	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/call/controllers/call-preference-controller.hxx
+notification	PATCH	/notification/call-preferences	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/call/controllers/call-preference-controller.hxx
 notification	POST	/notification-token	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/notification/controllers/notification-token-controller.hxx
 notification	PATCH	/notification/ack	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/notification/controllers/notification-controller.hxx
 notification	GET	/notification/delivery-summary	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/notification/controllers/notification-controller.hxx

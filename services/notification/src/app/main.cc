@@ -1,6 +1,12 @@
 #include <drogon/drogon.h>
 #include <feature/camera-notification/services/camera-object-notifier.hxx>
+#include <app/rpc/call-rpc-service.hxx>
 #include <app/rpc/notification-rpc-service.hxx>
+#include <feature/call/controllers/call-preference-controller.hxx>
+#include <feature/call/infra/identity-call-directory.hxx>
+#include <feature/call/infra/notification-call-sink.hxx>
+#include <feature/call/infra/sync-call-signal.hxx>
+#include <feature/call/services/call-feed.hxx>
 #include <feature/settings/notification-settings.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
@@ -24,6 +30,7 @@
 #include <settings/settings-rpc.hxx>
 #include <runtime/log-output.hxx>
 #include <config/notification-config.hxx>
+#include <sync/sync-client.hxx>
 #include <sync/user-change-sink.hxx>
 #include <config/config-service.hxx>
 #include <sqlite/db-service.hxx>
@@ -153,25 +160,59 @@ int main()
 
   const NotificationIdentityConfig identityConfig =
       NotificationConfig::resolveIdentity();
+  std::shared_ptr<IdentityClient> identityClient;
+  if (identityConfig.target.empty()) {
+    LOG_WARN << "Identity target unconfigured; camera notifications keep "
+                "their fallback record but reach no recipient, and calls "
+                "greet nobody by name";
+  }
+  else {
+    identityClient = std::make_shared<IdentityClient>(identityConfig.target,
+                                                      identityConfig.rpcSecret);
+  }
+
   std::shared_ptr<CameraObjectNotifier> cameraNotifier;
   if (natsBus) {
-    std::shared_ptr<IdentityClient> identityClient;
-    if (identityConfig.target.empty()) {
-      LOG_WARN << "Identity target unconfigured; camera notifications keep "
-                  "their fallback record but reach no recipient";
-    }
-    else {
-      identityClient = std::make_shared<IdentityClient>(
-          identityConfig.target, identityConfig.rpcSecret);
-    }
     cameraNotifier = std::make_shared<CameraObjectNotifier>(
         camera_notifier::resolveConfig(),
-        CameraNotifierDependencies{.identityClient = std::move(identityClient),
+        CameraNotifierDependencies{.identityClient = identityClient,
                                    .delivery = deliveryDeps});
     camera_notifier::subscribe(*natsBus, *cameraNotifier);
     LOG_INFO << "Camera object fallback subscribed on "
              << nats_subject::kCameraObjectDetected;
   }
+
+  const NotificationSyncControlConfig syncControl =
+      NotificationConfig::resolveSyncControl();
+  std::shared_ptr<const CallSignal> callSignal;
+  if (syncControl.target.empty()) {
+    LOG_WARN << "Sync control target unconfigured; calls cannot ring the app "
+                "and reach users only by push and missed-call notifications";
+  }
+  else {
+    callSignal = std::make_shared<SyncCallSignal>(std::make_shared<SyncClient>(
+        SyncClientConfig{.target = syncControl.target,
+                         .fleetSecret = syncControl.secret}));
+  }
+  const auto callEngine = std::make_shared<CallEngine>(
+      NotificationConfig::resolveCalls(),
+      CallEngineDependencies{
+          .signal = callSignal,
+          .announcer = nullptr,
+          .directory = identityClient
+                           ? std::make_shared<IdentityCallDirectory>(identityClient)
+                           : nullptr,
+          .notifier = std::make_shared<NotificationCallSink>(deliveryDeps),
+          .push = pushIntentSink,
+          .clock = {},
+          .localHour = {},
+          .blockingOffLoop = true});
+  drogon::app().registerController(std::make_shared<CallPreferenceController>());
+  if (natsBus) {
+    call_feed::subscribe(*natsBus, callEngine);
+    LOG_INFO << "Call engine subscribed on " << nats_subject::kGuardKnownSeen;
+  }
+  call_feed::startSweep(callEngine);
 
   const std::weak_ptr<NatsBus> healthBus = natsBus;
   drogon::app().registerController(std::make_shared<HealthController>(
@@ -259,10 +300,13 @@ int main()
   });
 
   NotificationRpcService notificationRpc(deliveryDeps);
+  notificationRpc.attachCallEngine(callEngine);
+  CallRpcService callRpc(callEngine, NotificationConfig::resolveCallCallers());
   SettingsRegistry settings(notificationSettingsCatalog());
-  settings.onChange([cameraNotifier](const std::vector<std::string>&) {
+  settings.onChange([cameraNotifier, callEngine](const std::vector<std::string>&) {
     if (cameraNotifier)
       camera_notifier::refresh(*cameraNotifier);
+    callEngine->reconfigure(NotificationConfig::resolveCalls());
   });
   std::unique_ptr<SettingsRpcService> settingsRpc;
   if (auto callers = NotificationConfig::resolveSettingsCallers();
@@ -277,6 +321,7 @@ int main()
       grpcListener.host + ":" + std::to_string(grpcListener.port);
   grpcBuilder.AddListeningPort(grpcAddress, grpc::InsecureServerCredentials());
   grpcBuilder.RegisterService(&notificationRpc);
+  grpcBuilder.RegisterService(&callRpc);
   if (settingsRpc)
     grpcBuilder.RegisterService(settingsRpc.get());
   std::unique_ptr<grpc::Server> grpcServer(grpcBuilder.BuildAndStart());

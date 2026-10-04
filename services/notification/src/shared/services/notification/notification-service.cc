@@ -86,7 +86,8 @@ drogon::Task<bool> NotificationService::deliverDurable(
                                          .title = delivery.title,
                                          .body = delivery.body,
                                          .createdAtMs = delivery.createdAt *
-                                                          1000});
+                                                          1000,
+                                         .data = delivery.data});
     }
     if (co_await repository_.markDelivered(delivery.deliveryId,
                                            static_cast<int64_t>(

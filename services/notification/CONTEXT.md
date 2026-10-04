@@ -454,3 +454,180 @@ client can render, group and later push both the same way.
 The TLS listener also reloads a rotated instance certificate
 (`certificate_reload::watch`, lib/http 897c23bf) instead of failing 30 days
 after a rotation until restarted; argus-guard does the same.
+
+## Argus calls you (2026-10, RTC wave)
+
+The owner's words: "When something important happens the LLM can 'call' the
+user, to say 'I detected an intruder' or 'someone arrived', even remind us of
+the agenda. It works like a call: you can interrupt. When Argus calls you it
+starts a conversation and you don't need to confirm. Inside the app it just
+activates and tells you; outside, then yes, a call."
+
+**Why the engine lives here.** A call is the loudest form of a notification:
+it reaches the same people, in the same language, through the same push
+tokens, and when nobody answers it *becomes* a notification. This service
+already owns the roster (through identity), the per-user language, the push
+intent and the durable notification row, so `src/feature/call/` is a feature
+of argus-notification rather than a service of its own; nothing else would
+own anything a call needs. The voice side (LiveKit room, the agent speaking
+first, the `/rtc/token` route that answers a call) belongs to argus-voice and
+argus-sync and is described in RTC-CONTRACT v1, section 5.
+
+### Triggers
+
+| Trigger | Source | Becomes a candidate when | Dedupe key |
+|---|---|---|---|
+| `guard_critical` | guard's `CreateNotifications` | `kind = guard_episode`, `urgency = critical`, phase `opened` | `threadKey` (`guard:episode:<id>`) |
+| `guard_intruder` | same | `urgency = time_sensitive` (danger high: a stranger at night, away, armed, in an alert zone) | same |
+| `guard_escalation` | same | phase `escalated` to high or critical | same, so an episode that already called never calls again |
+| `guard_arrival` | `argus.guard.v1.known_seen` | a recognized person seen after `calls.arrival_absence_s` (3 h) without a sighting; only for users who opted in, never the person themselves, never a guest | `guard:arrival:<personId>:<at>` |
+| `agenda` | productivity's agenda announcer (`CreateNotifications`, `caller_productivity`) | `kind = agenda_event` (lead time before the start) or `agenda_reminder` (due) | `agenda:event:<id>:<startsAt>` / `agenda:reminder:<id>:<at>` |
+| `assistant` | `CallService.ScheduleCall` from argus-llm | the user asked for a timed reminder (`memory.remind` with a time the user said) and the time has come | `assistant:scheduled:<id>` |
+
+Guard needed no change for its episodes: its notification `data` already
+carries `kind`, `phase`, `urgency`, `threadKey`, the camera, the environment,
+the subject, the reasons and the action, so the engine reads them after
+`CreateNotifications` persisted the rows (`NotificationRpcService` hands the
+batch to `CallEngine::considerNotification` once it has answered guard; a
+duplicate command never calls twice). Tamper and digests never call.
+
+The LLM contract is deliberately narrow: the model cannot call anyone. The
+only path is `memory.remind` when the *user's* words carry a time that
+`call_time::resolve` turns into an instant within 30 days ("mañana a las
+nueve", "en 20 minutos", "at 7 pm"); the call goes to the speaking user only,
+its topic is the grounded reminder text with the time phrase cut out, and
+the engine validates it again (`ScheduleCall`: 1-300 bytes, at most 20
+pending per user, idempotent by command id).
+
+### Policy (`call_policy::decide`, pure)
+
+Checked in this order; the first rule that answers wins.
+
+| # | Rule | Result | Injectable into a live call |
+|---|---|---|---|
+| 1 | this user already had a call for this dedupe key (one call per episode) | drop | no |
+| 2 | the user's mode for the trigger is `off` | drop (an `assistant` reminder still becomes a note) | no |
+| 3 | the user's mode is `notify` | the notification only | no |
+| 4 | `calls.enabled` is false | the notification only | no |
+| 5 | the user switched calls off (`enabled = false`) | the notification only | no |
+| 6 | guard trigger from a muted environment | the notification only | no |
+| 7 | do-not-disturb until a time in the future, unless critical and `criticalBypass` | the notification only | yes |
+| 8 | inside the user's quiet hours (may wrap midnight), unless critical and `criticalBypass` | the notification only | yes |
+| 9 | a call is already ringing for this user | follow-up: joins that call's opening line ("Además, …") | yes |
+| 10 | not critical and the last call rang less than `calls.call_gap_s` (300 s) ago | the notification only | yes |
+| 11 | not critical and `calls.max_calls_per_hour` (4) calls in the last hour | the notification only | yes |
+| 12 | otherwise | ring | yes |
+
+"Critical" is a `guard_critical` trigger or any candidate with urgency
+`critical`. "Injectable" means: before acting, the engine asks argus-voice
+(`VoiceService.Announce`, RTC-SERVER's) whether the user is already in a
+conversation; if so the follow-up line is spoken there at the next quiet
+moment ("Además, hay una persona desconocida en Patio.") and recorded as an
+`injected` call, so the episode never rings afterwards. A voice service that
+is unreachable or not wired never blocks a ring.
+
+Defaults per user (no row = these): calls on; `guardCritical`, `guardIntruder`,
+`guardEscalation`, `agenda` and `assistant` call; `guardArrival` off; no quiet
+hours; no do-not-disturb; `criticalBypass` on; no muted environment. Every
+role reads and writes only its own row: `GET /notification/call-preferences`
+and `PATCH /notification/call-preferences` (PATCH semantics, every field
+optional: `enabled`, the six modes `call|notify|off`, `quietStartHour` and
+`quietEndHour` -1..23, `dndUntil` epoch seconds or 0, `criticalBypass`,
+`mutedEnvironmentIds` up to 64 ids). They are user-level preferences, so they
+live here beside the user's notifications, not in the owner's settings
+catalog; the owner's catalog only carries the engine's global knobs
+(`calls.*`, group `calls`).
+
+Several household members: guard notifies its roster, and each recipient is
+judged on their own preferences, so an intruder rings everyone who lets it
+(they all live there); one member answering does not silence the others.
+Agenda calls go to the event's owner and the people it is shared with.
+
+### Delivery
+
+1. **Ring.** A `call` row (`ringing`, `expires_at = now + ring_timeout_s`) and
+   a `/sync` frame through argus-sync's `SyncControlService.EmitToUser`:
+   `{operation: 8 (call_incoming), option: notification, info: {callId,
+   reason, summary, urgency, kind, episodeId?, cameraId?, cameraName?,
+   environmentName?, lang, expiresAt}}`. An app in the foreground answers at
+   once: it asks `/rtc/token {callId}`, which claims the call.
+2. **Claim.** `CallService.ClaimCall` (caller_sync / caller_voice): the first
+   session wins (`answered`), the same session re-claiming gets the same
+   answer, any other gets `TAKEN`, a missed or timed-out call `EXPIRED`, a
+   call of another user or an `rtc-…` id `NOT_FOUND`. The answer carries the
+   opening line, which the agent speaks first, verbatim, once the user's
+   microphone track is up. The line carries the context: "Hola, Laura. Te
+   llamo por algo urgente de la vigilancia. Hay una persona desconocida en
+   Patio, de noche. Le estoy avisando por el altavoz. ¿Quieres que te muestre
+   la cámara?"; follow-ups queued while it rang are appended. Every other
+   device of the user gets `call_cancel {reason: answered_elsewhere}`.
+3. **Out of the app.** A sweep every second pushes a still-ringing call once
+   after `calls.in_app_grace_s` (4 s): a push intent with `type: call` and
+   `data {kind: call, callId, urgency, deepLink: argus://call?callId=<id>}`.
+   Push is behind `[push] enabled` and argus-relay, as every push is.
+4. **Missed.** After `ring_timeout_s` (45 s) unanswered the call is `missed`,
+   `call_cancel {expired}` goes out, and a notification of type `call` is
+   written with a spoken-style summary ("Te llamé porque había una persona
+   desconocida en Patio.") and `data {kind: call, callId, threadKey (the
+   source's), urgency, summary, episodeId?, cameraId?}`; follow-ups are added
+   to its body. A call ended by the agent with `DECLINED`, or without the
+   opening line spoken, is `declined` and leaves the same note. Answered calls
+   nobody ended are closed after two hours.
+
+Scheduled reminder calls are fired by the same sweep. One that comes more
+than `calls.scheduled_late_s` (15 min) late (the service was down) becomes a
+notification instead: a call at the wrong time is worse than a note.
+
+**Native call UI (later phase, not built).** iOS CallKit + PushKit VoIP pushes
+and Android `ConnectionService`/a full-screen-intent notification would make
+the out-of-app ring a real phone call. Android 14 grants
+`USE_FULL_SCREEN_INTENT` by default only to calling and alarm apps, so Argus
+would have to declare itself a calling app on Play; iOS VoIP pushes must
+report a call to CallKit every time, and critical alerts that pierce
+do-not-disturb need Apple's critical-alerts entitlement. The deep link and the
+`call` push type are the hooks those layers would use; nothing in the engine
+changes.
+
+### Research behind the policy
+
+- Alarm and alert fatigue: an alert must be actionable, and the cost of a
+  false call is trust (ISA-18.2 / EEMUA 191 alarm rationalisation, Bliss'
+  cry-wolf studies, already the basis of guard's own notification policy).
+  Hence calls only for critical and intruder episodes and things the user
+  asked for, everything else stays a notification; one call per episode;
+  a cooldown and an hourly cap for non-critical calls.
+- Monitoring centres call before they act and work down a contact list
+  (Ring Alarm's emergency process: the primary contact first, then the next;
+  enhanced call verification in US alarm ordinances). Argus calls the
+  household members the episode concerns, each by their own preferences.
+- Assistants keep proactive speech opt-in and respect do-not-disturb
+  (Alexa notifications are opt-in per skill and suppressed by Do Not
+  Disturb; iOS Focus with interruption levels, where only critical alerts
+  break through). Hence user-level modes per trigger, quiet hours,
+  do-not-disturb, and `criticalBypass` as the one explicit exception.
+- In a live conversation an interruption is cheaper than a second channel:
+  the news is spoken into the call, the way the voice session already offers
+  camera events, instead of ringing a device the user is holding.
+
+### Code map
+
+`src/feature/call/` (`argus::notification-call`): `vocabulary/` (trigger,
+mode, state), `schemas/`, `repositories/` (`call`, `call-preference`,
+`scheduled-call`, `arrival-seen`), `services/call-policy` (pure),
+`call-trigger-classifier` (notification data → candidate), `call-copy`
+(es/en opening, follow-up, missed lines), `call-engine` (consider, claim,
+end, schedule, arrival, sweep), `call-feed` (the `known_seen` subscription
+and the one-second sweep), `call-preference-service`, the controller and its
+DTO, and `infra/` (argus-sync signal, identity directory, notification sink).
+`src/app/rpc/call-rpc-service` serves `CallService` on the gRPC listener.
+Tables: `call_preference`, `call` (unique `(dedupe_key, user_id)`; the
+ringing insert is one guarded statement, so two triggers at once cannot ring
+the same user twice), `scheduled_call`, `call_arrival_seen`.
+Config: `[calls]`, `[sync] control_target/control_secret`, `[voice]
+target/credential`, `[grpc] caller_voice/caller_llm/caller_productivity`;
+`setup.sh`, `native-stack.sh` and `provision-host.sh` pair the credentials.
+Tests: `call-policy-test` (every rule above, the classifier, the copy, call
+ids) and `call-engine-test` (a temporary database and fakes for sync, voice,
+identity, notifications and push: ring, one per episode, claim races,
+follow-ups, injection, push after the grace, missed and declined notes,
+quiet hours, do-not-disturb, cooldown, arrivals, scheduled and late calls).

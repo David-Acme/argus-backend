@@ -1,6 +1,7 @@
 #pragma once
 
 #include <argus/notification/v1/notification.grpc.pb.h>
+#include <feature/call/services/call-engine.hxx>
 #include <grpc/grpc-server-identity.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
@@ -33,9 +34,12 @@ public:
 
   void startSelfTestProber();
 
+  void attachCallEngine(std::shared_ptr<const CallEngine> engine);
+
 private:
   std::vector<argus::client::CallerCredential> guardCallers_;
   std::vector<argus::client::CallerCredential> syncCallers_;
+  std::shared_ptr<const CallEngine> callEngine_;
   NotificationService notificationService_;
   NotificationRepository repository_;
 };

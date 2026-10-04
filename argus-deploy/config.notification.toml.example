@@ -55,6 +55,23 @@ lang = "es"
 target = "argus-identity:7040"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
+[calls]
+enabled = true
+ring_timeout_s = 45
+in_app_grace_s = 4
+call_gap_s = 300
+max_calls_per_hour = 4
+arrival_absence_s = 10800
+scheduled_late_s = 900
+
+[sync]
+control_target = "argus-sync:7041"
+control_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+
+[voice]
+target = "argus-voice:7034"
+credential = "CHANGE_ME_NOTIFICATION_VOICE"
+
 [nats]
 url = "nats://nats:4222"
 user = "argus"
@@ -84,6 +101,9 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 caller_guard = "CHANGE_ME_GUARD_NOTIFICATION"
 caller_sync = "CHANGE_ME_SYNC_NOTIFICATION"
 caller_settings = "CHANGE_ME_SETTINGS_NOTIFICATION"
+caller_voice = "CHANGE_ME_VOICE_NOTIFICATION"
+caller_llm = "CHANGE_ME_LLM_NOTIFICATION"
+caller_productivity = "CHANGE_ME_PRODUCTIVITY_NOTIFICATION"
 
 [mdns]
 enabled = true

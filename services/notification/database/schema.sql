@@ -99,3 +99,80 @@ CREATE TABLE IF NOT EXISTS camera_fallback_event (
 
 CREATE INDEX IF NOT EXISTS idx_camera_fallback_created
     ON camera_fallback_event (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS call_preference (
+    user_id            INTEGER NOT NULL  PRIMARY KEY,
+    enabled            INTEGER NOT NULL  DEFAULT 1  CHECK (enabled IN (0, 1)),
+    guard_critical     TEXT    NOT NULL  DEFAULT 'call'
+                                  CHECK (guard_critical IN ('call', 'notify', 'off')),
+    guard_intruder     TEXT    NOT NULL  DEFAULT 'call'
+                                  CHECK (guard_intruder IN ('call', 'notify', 'off')),
+    guard_escalation   TEXT    NOT NULL  DEFAULT 'call'
+                                  CHECK (guard_escalation IN ('call', 'notify', 'off')),
+    guard_arrival      TEXT    NOT NULL  DEFAULT 'off'
+                                  CHECK (guard_arrival IN ('call', 'notify', 'off')),
+    agenda             TEXT    NOT NULL  DEFAULT 'call'
+                                  CHECK (agenda IN ('call', 'notify', 'off')),
+    assistant          TEXT    NOT NULL  DEFAULT 'call'
+                                  CHECK (assistant IN ('call', 'notify', 'off')),
+    quiet_start_hour   INTEGER NOT NULL  DEFAULT -1,
+    quiet_end_hour     INTEGER NOT NULL  DEFAULT -1,
+    dnd_until          INTEGER NOT NULL  DEFAULT 0,
+    critical_bypass    INTEGER NOT NULL  DEFAULT 1  CHECK (critical_bypass IN (0, 1)),
+    muted_environments TEXT    NOT NULL  DEFAULT '[]',
+    updated_at         INTEGER NOT NULL  DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS call (
+    id               INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    user_id          INTEGER NOT NULL,
+    dedupe_key       TEXT    NOT NULL,
+    trigger          TEXT    NOT NULL
+                             CHECK (trigger IN ('guard_critical', 'guard_intruder',
+                                    'guard_escalation', 'guard_arrival',
+                                    'agenda', 'assistant')),
+    state            TEXT    NOT NULL
+                             CHECK (state IN ('ringing', 'queued', 'answered',
+                                    'completed', 'missed', 'declined',
+                                    'injected')),
+    reason           TEXT    NOT NULL  DEFAULT '',
+    parent_call_id   INTEGER NOT NULL  DEFAULT 0,
+    urgency          TEXT    NOT NULL  DEFAULT 'active',
+    lang             TEXT    NOT NULL  DEFAULT 'es',
+    title            TEXT    NOT NULL  DEFAULT '',
+    summary          TEXT    NOT NULL  DEFAULT '',
+    opening_line     TEXT    NOT NULL  DEFAULT '',
+    missed_line      TEXT    NOT NULL  DEFAULT '',
+    data             TEXT    NOT NULL  DEFAULT '{}',
+    answered_session TEXT    NOT NULL  DEFAULT '',
+    created_at       INTEGER NOT NULL  DEFAULT 0,
+    expires_at       INTEGER NOT NULL  DEFAULT 0,
+    pushed_at        INTEGER NOT NULL  DEFAULT 0,
+    answered_at      INTEGER NOT NULL  DEFAULT 0,
+    ended_at         INTEGER NOT NULL  DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_call_dedupe ON call (dedupe_key, user_id);
+CREATE INDEX IF NOT EXISTS idx_call_user_created ON call (user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_call_live ON call (state, expires_at)
+    WHERE state IN ('ringing', 'queued', 'answered');
+
+CREATE TABLE IF NOT EXISTS scheduled_call (
+    id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    command_id  TEXT    NOT NULL  UNIQUE,
+    fire_at     INTEGER NOT NULL,
+    topic       TEXT    NOT NULL,
+    lang        TEXT    NOT NULL  DEFAULT 'es',
+    state       TEXT    NOT NULL  DEFAULT 'pending'
+                        CHECK (state IN ('pending', 'fired', 'canceled')),
+    created_at  INTEGER NOT NULL  DEFAULT 0,
+    fired_at    INTEGER NOT NULL  DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_scheduled_call_due ON scheduled_call (state, fire_at);
+
+CREATE TABLE IF NOT EXISTS call_arrival_seen (
+    person_id  INTEGER NOT NULL  PRIMARY KEY,
+    last_seen  INTEGER NOT NULL  DEFAULT 0
+);
