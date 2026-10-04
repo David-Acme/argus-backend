@@ -53,6 +53,7 @@ private:
   {
     int64_t userId{0};
     UserRole role{UserRole::Guest};
+    std::string deviceHash;
     trantor::EventLoop* loop{nullptr};
     std::atomic<bool> closing{false};
     std::mutex mutex;

@@ -13,6 +13,7 @@ namespace
 constexpr int kIdentityTimeoutMs = 5000;
 constexpr auto kTtsCapabilitiesTtl = std::chrono::seconds(10);
 constexpr int kSpeakerTimeoutMs = 800;
+constexpr int kCallCloseTimeoutMs = 500;
 
 std::string identityTarget()
 {
@@ -84,14 +85,34 @@ std::optional<VoiceSpeaker> GrpcVoiceSpeaker::identify(const VoiceSpeakerInput& 
   std::ranges::transform(input.samples, std::back_inserter(pcm), [](float sample) {
     return static_cast<int16_t>(std::clamp(sample, -1.0F, 1.0F) * 32767.0F);
   });
-  const auto answer = client->identifyWithin(
-      {.sample = {.samples = pcm, .sampleRate = input.sampleRate}, .timeoutMs = kSpeakerTimeoutMs});
+  const VoiceClipView clip{.samples = pcm, .sampleRate = input.sampleRate};
+  const bool learnable = input.userId > 0 && !input.deviceHash.empty() && !input.callKey.empty();
+  const auto answer = learnable ? client->observeTurn({.sample = clip,
+                                                       .userId = input.userId,
+                                                       .deviceHash = input.deviceHash,
+                                                       .callKey = input.callKey,
+                                                       .timeoutMs = kSpeakerTimeoutMs})
+                                : client->identifyWithin({.sample = clip, .timeoutMs = kSpeakerTimeoutMs});
   if (!answer || answer->outcome() != argus::identity::v1::VOICEPRINT_OK || !answer->matched() ||
       answer->user_id() <= 0)
     return std::nullopt;
   return VoiceSpeaker{.userId = answer->user_id(),
                       .name = answer->has_name() ? answer->name() : std::string(),
                       .score = answer->score()};
+}
+
+void GrpcVoiceSpeaker::closeCall(const std::string& callKey)
+{
+  const std::string target = identityTarget();
+  if (target.empty() || callKey.empty())
+    return;
+  std::shared_ptr<const VoiceprintClient> client;
+  {
+    std::scoped_lock lock(mutex_);
+    client = clientFor(target);
+  }
+  if (!client->closeCall({.callKey = callKey, .timeoutMs = kCallCloseTimeoutMs}))
+    LOG_DEBUG << "Voice: identity did not close the call's voice sample";
 }
 
 std::shared_ptr<const IdentityClient>

@@ -132,6 +132,9 @@ protocol could not regress by accident in the commit that changed the endpoint.
   exists, so the relay checks `closing` (and a stream a second start already
   opened) after the awaits instead of starting a stream nobody would finish —
   the observer and the session hold each other until the stream closes.
+  `VoiceStart.identity` carries the socket's user, role and, since the passive
+  voiceprints, the `device_hash` its `JwtFilter` bound, so argus-identity can
+  tell a holder's own phone from a device several accounts share.
 - **One stream, many calls.** The gRPC stream outlives a call: `voice:stop`
   ends the session in argus-voice but leaves the stream open, so a later
   `voice:start` on the same socket is sent as a new `VoiceStart` on that

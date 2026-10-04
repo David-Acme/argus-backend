@@ -72,6 +72,9 @@ struct VoiceSpeakerInput
 {
   const std::vector<float>& samples;
   int32_t sampleRate{0};
+  int64_t userId{0};
+  const std::string& deviceHash;
+  const std::string& callKey;
 };
 
 struct VoiceSpeaker
@@ -87,12 +90,14 @@ public:
   virtual ~IVoiceSpeaker() = default;
 
   [[nodiscard]] virtual std::optional<VoiceSpeaker> identify(const VoiceSpeakerInput& input) = 0;
+  virtual void closeCall(const std::string& callKey) = 0;
 };
 
 class GrpcVoiceSpeaker final : public IVoiceSpeaker
 {
 public:
   [[nodiscard]] std::optional<VoiceSpeaker> identify(const VoiceSpeakerInput& input) override;
+  void closeCall(const std::string& callKey) override;
 
 private:
   std::shared_ptr<const VoiceprintClient> clientFor(const std::string& target);

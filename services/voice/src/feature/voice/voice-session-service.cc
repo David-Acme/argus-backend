@@ -4,6 +4,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <random>
 #include <ranges>
 #include <string_view>
 #include <utility>
@@ -19,6 +20,21 @@ namespace
 constexpr int kTargetRate = 16000;
 constexpr size_t kMaxQueuedSamples = static_cast<size_t>(kTargetRate) * 30;
 constexpr auto kIdleTick = std::chrono::milliseconds(150);
+
+std::string mintCallKey()
+{
+  constexpr std::string_view kHex = "0123456789abcdef";
+  constexpr size_t kKeyChars = 32;
+  std::random_device entropy;
+  std::string key;
+  key.reserve(kKeyChars);
+  while (key.size() < kKeyChars) {
+    const unsigned word = entropy();
+    for (unsigned shift = 0; shift < 32U && key.size() < kKeyChars; shift += 4U)
+      key.push_back(kHex[(word >> shift) & 0xFU]);
+  }
+  return key;
+}
 
 float rmsOf(const std::vector<float>& samples)
 {
@@ -431,6 +447,8 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   auto session = std::make_shared<Session>(SessionInit{.model = vad_.createModel(), .lang = lang});
   session->sink = &sink;
   session->userId = identity.user_id();
+  session->deviceHash = identity.device_hash();
+  session->callKey = mintCallKey();
   session->role = voiceRoleToString(identity.role());
   session->nameKnown = userName.size() >= 2;
   session->callId = "voice-" + std::to_string(identity.user_id()) + "-" +
@@ -538,6 +556,8 @@ void VoiceSessionService::stop(VoiceSessionSink& sink)
     session->primeThread.join();
   if (session->speakerThread.joinable())
     session->speakerThread.join();
+  if (session->speakerHeard)
+    speaker_.closeCall(session->callKey);
 
   if (session->sink && session->sink->connected()) {
     argus::voice::v1::ServerFrame done;
@@ -967,10 +987,16 @@ VoiceSessionService::probeSpeaker(Session& session, const std::vector<float>& sa
   session.speakerProbe = probe;
   std::vector<float> clip(samples.begin(),
                           samples.begin() + static_cast<std::ptrdiff_t>(std::min(samples.size(), kSpeakerMaxSamples)));
-  session.speakerThread = std::thread([this, probe, clip = std::move(clip)] {
+  session.speakerHeard = true;
+  session.speakerThread = std::thread([this, probe, clip = std::move(clip), userId = session.userId,
+                                       deviceHash = session.deviceHash, callKey = session.callKey] {
     std::optional<VoiceSpeaker> found;
     try {
-      found = speaker_.identify({.samples = clip, .sampleRate = kTargetRate});
+      found = speaker_.identify({.samples = clip,
+                                 .sampleRate = kTargetRate,
+                                 .userId = userId,
+                                 .deviceHash = deviceHash,
+                                 .callKey = callKey});
     }
     catch (const std::exception& e) {
       LOG_DEBUG << "Voice: speaker identification skipped: " << e.what();

@@ -22,6 +22,7 @@ message VoiceIdentity
   string name = 2;
   VoiceLanguage language = 3;
   VoiceRole role = 4;
+  string device_hash = 5;
 }
 
 enum VoiceMode

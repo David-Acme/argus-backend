@@ -277,6 +277,7 @@ void VoiceGrpcRelay::onConnect(const drogon::HttpRequestPtr& req,
         req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
     session->userId = ctx.sub;
     session->role = ctx.role;
+    session->deviceHash = ctx.deviceHash;
   }
 
   std::scoped_lock lock(sessionsMutex_);
@@ -391,6 +392,7 @@ drogon::Task<void> VoiceGrpcRelay::startStream(StartInput input)
   argus::voice::v1::VoiceIdentity& identity = *start.mutable_identity();
   identity.set_user_id(session->userId);
   identity.set_role(voiceRoleToProto(session->role));
+  identity.set_device_hash(session->deviceHash);
   if (user) {
     identity.set_name(user->name);
     identity.set_language(voiceLangToProto(user->lang));

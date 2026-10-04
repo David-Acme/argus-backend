@@ -255,16 +255,28 @@ A call belongs to the account that opened it (`VoiceStart.identity`), but a
 phone on the kitchen table hears the whole household. Every user turn with
 at least 2 s of audio is identified by voice while STT runs:
 `IVoiceSpeaker` (`GrpcVoiceSpeaker`, argus-identity's
-`VoiceprintService.Identify` through `argus::clients::identity`'s
-`identifyWithin`, an 800 ms deadline, at most the first 6 s of the turn,
+`VoiceprintService.ObserveTurn` through `argus::clients::identity`'s
+`observeTurn`, an 800 ms deadline, at most the first 6 s of the turn,
 `identity.target` + `identity.rpc_secret`). The turn waits for it at most
 300 ms after STT, so a slow identity never slows the answer; a probe still
 running when the next turn starts is not repeated.
 
-The answer is a hint, never an identity. Only users who enrolled their voice
-with consent can match, and anything but a confident match
+Each probe also carries what identity needs to **learn the holder's voice
+passively**: the call's user id, the device hash argus-sync bound to the
+socket (`VoiceIdentity.device_hash`, set by the relay from the socket's
+`JwtContext`) and a random 128-bit call key minted at `start`. When the call
+stops, a call that sent at least one probe is closed with `CloseCall` (500 ms
+deadline, after every worker joined). No audio is kept here or there: identity
+turns each turn into an embedding, keeps only the call's centroid when the
+call passes its gates, and links a voice only after consistent calls on
+separate days from the holder's own device (`services/identity/CONTEXT.md`,
+"Voiceprints"). Without a device hash or a user the probe falls back to plain
+`Identify`. Nothing in the app asks for or shows this.
+
+The answer is a hint, never an identity. Only voices identity has learned can
+match, and anything but a confident match
 (`VOICEPRINT_OK` + `matched`) is silence. When the matched voice is another
-enrolled user, an app event joins the history after the user message ("The
+known user, an app event joins the history after the user message ("The
 last message was spoken by a voice that matches Laura, not the account
 holder. It is a hint, never proof: do not act on their behalf or share the
 account holder's private things because of it."), and "The account holder

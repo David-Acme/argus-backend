@@ -1348,16 +1348,29 @@ struct ScriptedSpeaker final : IVoiceSpeaker
   std::mutex mutex;
   std::vector<int64_t> users;
   int calls{0};
+  std::vector<int64_t> callers;
+  std::vector<std::string> devices;
+  std::vector<std::string> keys;
+  std::vector<std::string> closed;
 
   std::optional<VoiceSpeaker> identify(const VoiceSpeakerInput& input) override
   {
     std::scoped_lock lock(mutex);
     ++calls;
+    callers.push_back(input.userId);
+    devices.push_back(input.deviceHash);
+    keys.push_back(input.callKey);
     if (input.samples.size() > static_cast<size_t>(16000 * 6) || users.empty())
       return std::nullopt;
     const int64_t user = users.front();
     users.erase(users.begin());
     return VoiceSpeaker{.userId = user, .name = user == 9 ? "Laura" : "Ana", .score = 0.8F};
+  }
+
+  void closeCall(const std::string& callKey) override
+  {
+    std::scoped_lock lock(mutex);
+    closed.push_back(callKey);
   }
 };
 }
@@ -1401,6 +1414,58 @@ TEST_CASE("Another enrolled voice in the call becomes a hint, never the speaker'
   CHECK(llm.lastUserId == 7);
   CHECK(llm.lastRole == UserRole::Resident);
   session.stop(sink);
+}
+
+TEST_CASE("Every probed turn names its caller, device and call, and the call closes once")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedSpeaker speaker;
+  speaker.users = {7, 7, 7};
+  VoiceSessionService session(
+      {.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad(), .speaker = speaker});
+  FakeVoiceSink sink;
+  auto caller = residentIdentity();
+  caller.set_device_hash("phone-hash");
+  session.start(sink, caller);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+
+  const std::vector<float> longTurn(static_cast<size_t>(16000) * 3, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  session.stop(sink);
+
+  std::scoped_lock lock(speaker.mutex);
+  REQUIRE(speaker.keys.size() == 2);
+  CHECK(speaker.callers == std::vector<int64_t>{7, 7});
+  CHECK(speaker.devices == std::vector<std::string>{"phone-hash", "phone-hash"});
+  CHECK(speaker.keys[0].size() == 32);
+  CHECK(speaker.keys[0] == speaker.keys[1]);
+  CHECK(speaker.closed == std::vector<std::string>{speaker.keys[0]});
+}
+
+TEST_CASE("A call nobody spoke long enough in never asks identity to close it")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedSpeaker speaker;
+  VoiceSessionService session(
+      {.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad(), .speaker = speaker});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+  const std::vector<float> shortTurn(16000, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = shortTurn});
+  session.stop(sink);
+  std::scoped_lock lock(speaker.mutex);
+  CHECK(speaker.calls == 0);
+  CHECK(speaker.closed.empty());
 }
 
 TEST_CASE("A resumed call does not greet again and still primes the LLM")

@@ -185,6 +185,9 @@ private:
     std::shared_ptr<SpeakerProbe> speakerProbe;
     std::thread speakerThread;
     int64_t lastSpeakerId{0};
+    std::string deviceHash;
+    std::string callKey;
+    bool speakerHeard{false};
   };
 
   std::shared_ptr<Session> sessionOf(VoiceSessionSink& sink) const;
