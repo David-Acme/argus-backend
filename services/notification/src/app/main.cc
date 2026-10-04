@@ -6,6 +6,7 @@
 #include <feature/call/infra/identity-call-directory.hxx>
 #include <feature/call/infra/notification-call-sink.hxx>
 #include <feature/call/infra/sync-call-signal.hxx>
+#include <feature/call/infra/voice-call-announcer.hxx>
 #include <feature/call/services/call-feed.hxx>
 #include <feature/settings/notification-settings.hxx>
 #include <auth/device-filter.hxx>
@@ -38,6 +39,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -59,7 +61,7 @@ Json::Value drogonConfig(const NotificationDbConfig& notificationDb,
   client["number_of_connections"] = 1;
   client["timeout"] = -1.0;
   clients.append(client);
-  config["db_clients"] = clients;
+  config["db_clients"] = std::move(clients);
 
   config["listeners"] = listenerJson(listener);
 
@@ -194,11 +196,20 @@ int main()
         SyncClientConfig{.target = syncControl.target,
                          .fleetSecret = syncControl.secret}));
   }
+  const NotificationVoiceConfig voiceConfig = NotificationConfig::resolveVoice();
+  std::shared_ptr<const LiveCallAnnouncer> callAnnouncer;
+  if (!voiceConfig.target.empty() && !voiceConfig.credential.empty())
+    callAnnouncer = std::make_shared<VoiceCallAnnouncer>(std::make_shared<VoiceClient>(
+        VoiceClientConfig{.target = voiceConfig.target,
+                          .credential = voiceConfig.credential}));
+  else
+    LOG_INFO << "Voice target or credential unset; calls never speak into a "
+                "live conversation and always ring";
   const auto callEngine = std::make_shared<CallEngine>(
       NotificationConfig::resolveCalls(),
       CallEngineDependencies{
           .signal = callSignal,
-          .announcer = nullptr,
+          .announcer = callAnnouncer,
           .directory = identityClient
                            ? std::make_shared<IdentityCallDirectory>(identityClient)
                            : nullptr,
@@ -241,13 +252,13 @@ int main()
                         status["subscribed"] = true;
                         const auto counts =
                             cameraNotifier->policy().fallbackCounts();
-                        status["passed"] = Json::Int64(counts.passed);
+                        status["passed"] = static_cast<Json::Int64>(counts.passed);
                         status["dropped_known"] =
-                            Json::Int64(counts.droppedKnown);
+                            static_cast<Json::Int64>(counts.droppedKnown);
                         status["dropped_weak_score"] =
-                            Json::Int64(counts.droppedWeakScore);
+                            static_cast<Json::Int64>(counts.droppedWeakScore);
                         status["dropped_short_dwell"] =
-                            Json::Int64(counts.droppedShortDwell);
+                            static_cast<Json::Int64>(counts.droppedShortDwell);
                         return status;
                       }}}}));
 

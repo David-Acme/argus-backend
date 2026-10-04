@@ -524,7 +524,9 @@ Checked in this order; the first rule that answers wins.
 conversation; if so the follow-up line is spoken there at the next quiet
 moment ("Además, hay una persona desconocida en Patio.") and recorded as an
 `injected` call, so the episode never rings afterwards. A voice service that
-is unreachable or not wired never blocks a ring.
+is unreachable or not wired never blocks a ring: the probe runs off the loop
+on the light blocking lane and costs at most the client's 1.5 s deadline per
+recipient, and with `[voice] target/credential` unset the engine skips it.
 
 Defaults per user (no row = these): calls on; `guardCritical`, `guardIntruder`,
 `guardEscalation`, `agenda` and `assistant` call; `guardArrival` off; no quiet

@@ -81,6 +81,11 @@ if(NOT TARGET argus::clients::identity)
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
 
+if(NOT TARGET argus::clients::voice)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/voice
+                     ${CMAKE_BINARY_DIR}/clients/voice EXCLUDE_FROM_ALL)
+endif()
+
 if(NOT TARGET argus::clients::sync)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/sync
                      ${CMAKE_BINARY_DIR}/clients/sync EXCLUDE_FROM_ALL)
