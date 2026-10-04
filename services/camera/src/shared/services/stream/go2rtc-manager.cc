@@ -203,6 +203,7 @@ bool Go2rtcManager::spawn()
     const int logFd = ::open("go2rtc.log", O_WRONLY | O_CREAT | O_APPEND,
                              S_IRUSR | S_IWUSR);
     if (logFd >= 0) {
+      ::fchmod(logFd, S_IRUSR | S_IWUSR);
       ::dup2(logFd, STDOUT_FILENO);
       ::dup2(logFd, STDERR_FILENO);
       ::close(logFd);
