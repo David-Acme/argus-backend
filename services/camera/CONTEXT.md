@@ -1128,3 +1128,29 @@ close, and the fake talk channel received the vendor stop).
   suite); live, a Python fake of the 8800 channel received a 3 s 440 Hz tone
   from a WebSocket client as 24 parts exactly 120 ms apart, decoded back to
   440 Hz, `queuedMs` 58-118 ms, and the vendor stop at the end.
+
+## What owners expect next (plan, 2026-10)
+
+Done in this pass: catalog per model, connection test, live overview, calls and announcements
+for owner/resident/guard, presets (go to, save), motion sensitivity, privacy/LED/night/motion
+on cameras without PTZ, SD card state in the device panel, snapshot per camera.
+
+Not done yet, in the order they pay off:
+
+1. **Snapshot to file**: the still exists (`GET /camera/{id}/snapshot`); the app needs a save/
+   share action per platform (Tauri dialog, Android/iOS share sheet).
+2. **SD-card recordings and a timeline**: `searchDateWithVideo` / `searchVideoOfDay` are read-only
+   pytapo calls Argus can add to the driver for a day list; playback is the 8800 media stream in
+   `sdvod` mode with encrypted parts (pytapo's `Downloader`), a second media client, and it uses
+   one of the camera's three connection slots while it runs.
+3. **Argus-side recording** (`record_mode` is stored but nothing records): go2rtc can write MP4
+   segments per camera; retention would follow `retention_days`, the evidence uploader's manifest
+   shows the shape.
+4. **Patrol and preset delete/rename**: `setCruise` (pytapo) and the preset delete the driver
+   already sends; needs owner-only UI and a device test, which this pass was not allowed to do.
+5. **Siren from the app**: the driver arms and sounds it, but only argus-guard may (rule 10);
+   an owner button would need a decision and a consent setting.
+6. **Live view audio on the native player**: Android's ExoPlayer may also play the FLAC track of
+   the live view; the call path plays its own copy, so a native `muted` prop on `argus-camera`
+   is the clean fix once a device is at hand to test it.
+7. **ONVIF control** (PTZ, presets, events) for generic cameras: `StreamOnlyDriver` today.
