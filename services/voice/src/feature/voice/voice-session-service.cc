@@ -34,6 +34,8 @@ constexpr size_t kMinSentenceChars = 10;
 constexpr size_t kClauseMinChars = 46;
 constexpr size_t kClauseTailChars = 22;
 constexpr size_t kHardMaxChars = 110;
+constexpr size_t kLeadInMinChars = 2;
+constexpr size_t kLeadInMaxChars = 24;
 constexpr size_t kHardMinCut = 28;
 
 struct Greeting
@@ -293,6 +295,9 @@ size_t nextChunkEnd(const std::string& text, bool firstSentence)
       if (firstSentence || i >= kMinSentenceChars)
         return j;
     }
+    const bool leadIn = firstSentence && c == ',' && i >= kLeadInMinChars && i < kLeadInMaxChars;
+    if (leadIn && i + 1 < len && std::isspace(static_cast<unsigned char>(text[i + 1])))
+      return i + 1;
     if ((c == ',' || c == ';' || c == ':') &&
         i >= kClauseMinChars &&
         i + 1 < len &&

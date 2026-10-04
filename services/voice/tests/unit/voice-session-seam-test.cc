@@ -1421,3 +1421,59 @@ TEST_CASE("A resumed call does not greet again and still primes the LLM")
   CHECK(sess->history.size() == 1);
   session.stop(sink);
 }
+
+namespace
+{
+struct LeadInLlm final : IVoiceLlm
+{
+  void chatStream(LlmStreamInput input) override
+  {
+    if (input.request.prefillOnly)
+      return;
+    for (const char* token : {"Claro", ",", " tu", " agenda", " tiene", " la", " cena", " a", " las", " nueve", ".",
+                              " Luego", ", nada", " más", "."})
+      input.onToken(token, false);
+    input.onToken("", true);
+  }
+};
+
+struct RecordingTts final : IVoiceTts
+{
+  std::mutex mutex;
+  std::vector<std::string> texts;
+
+  [[nodiscard]] float defaultSpeed(std::stop_token = {}) const override { return 1.0F; }
+  [[nodiscard]] int sampleRate(std::stop_token = {}) const override { return 16000; }
+
+  void synthesizeStream(TtsRemoteStreamInput input) override
+  {
+    {
+      std::scoped_lock lock(mutex);
+      texts.push_back(input.request.text);
+    }
+    input.onChunk(std::vector<float>(160, 0.1F));
+  }
+};
+}
+
+TEST_CASE("A short opening clause is spoken before the rest of the first sentence arrives")
+{
+  FakeStt stt;
+  RecordingTts tts;
+  LeadInLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+  std::scoped_lock lock(tts.mutex);
+  REQUIRE(tts.texts.size() == 4);
+  CHECK(tts.texts[1] == "Claro,");
+  CHECK(tts.texts[2] == " tu agenda tiene la cena a las nueve.");
+  CHECK(tts.texts[3] == " Luego, nada más.");
+  session.stop(sink);
+}
