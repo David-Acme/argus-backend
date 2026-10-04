@@ -73,7 +73,7 @@ drogon::Task<CameraControlResult>
 CameraControlFeatureService::move(int64_t cameraId, const CameraPtzDto& body) const
 {
   auto result = co_await onDevice(cameraId, [body](ICameraDriver& driver) {
-    return driver.move({.x = body.x, .y = body.y, .angle = body.angle});
+    return driver.move({.x = body.x, .y = body.y, .angle = body.angle, .stop = body.stop});
   });
   if (succeeded(result))
     CameraSceneLog::instance().noteAimed(cameraId, nowMs());

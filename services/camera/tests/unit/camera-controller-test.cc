@@ -9,6 +9,7 @@
 #include <errors/validation-exception.hxx>
 #include <feature/camera-control/controllers/camera-control-controller.hxx>
 #include <feature/camera/controllers/camera-controller.hxx>
+#include <feature/camera-control/dtos/camera-ptz-dto.hxx>
 #include <feature/camera/dtos/create-camera-dto.hxx>
 #include <feature/camera/dtos/update-camera-dto.hxx>
 #include <shared/services/camera-driver/stream-only-driver.hxx>
@@ -273,6 +274,15 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
       cameraController.update(drogon::HttpRequest::newHttpJsonRequest(toTapo), cameraId));
   CHECK(body(talking)["info"]["capabilities"].asString().find("\"talk\"") != std::string::npos);
   checkNoCredentials(body(talking)["info"]);
+
+  const auto ptz = [](const char* body) { return CameraPtzDto::fromJson(json_util::fromString(body)); };
+  CHECK(ptz(R"({"x":-10,"y":0})").x == -10);
+  CHECK(ptz(R"({"angle":180})").angle == 180);
+  CHECK(ptz(R"({"stop":true})").stop);
+  CHECK_THROWS_AS(ptz(R"({"x":10})"), ValidationException);
+  CHECK_THROWS_AS(ptz(R"({"x":10,"y":0,"stop":true})"), ValidationException);
+  CHECK_THROWS_AS(ptz(R"({"x":400,"y":0})"), ValidationException);
+  CHECK_THROWS_AS(ptz("{}"), ValidationException);
 
   Json::Value frameRate;
   frameRate["frameRate"] = 30;

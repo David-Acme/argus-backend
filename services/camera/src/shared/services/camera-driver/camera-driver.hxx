@@ -26,6 +26,7 @@ struct DriverMoveInput
   std::optional<int64_t> x;
   std::optional<int64_t> y;
   std::optional<int64_t> angle;
+  bool stop{false};
 };
 
 struct DriverPresetInput

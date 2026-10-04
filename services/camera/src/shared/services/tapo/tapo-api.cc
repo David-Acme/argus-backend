@@ -1,4 +1,5 @@
 #include "tapo-api.hxx"
+#include "tapo-motor.hxx"
 
 #include <chrono>
 #include <cstdlib>
@@ -228,7 +229,7 @@ TapoResult TapoApi::move(const TapoMoveInput& input)
   Json::Value params(Json::objectValue);
   params["motor"]["move"]["x_coord"] = std::to_string(input.x);
   params["motor"]["move"]["y_coord"] = std::to_string(input.y);
-  return call("motorMove", params);
+  return tapo_motor::outcomeOf(call("motorMove", params));
 }
 
 TapoResult TapoApi::step(const TapoStepInput& input)
@@ -238,7 +239,7 @@ TapoResult TapoApi::step(const TapoStepInput& input)
 
   Json::Value params(Json::objectValue);
   params["motor"]["movestep"]["direction"] = std::to_string(input.direction);
-  return call("relativeMove", params);
+  return tapo_motor::outcomeOf(call("relativeMove", params));
 }
 
 TapoResult TapoApi::gotoPreset(const TapoPresetInput& input)
@@ -276,7 +277,7 @@ TapoResult TapoApi::stopMotor()
 {
   Json::Value params(Json::objectValue);
   params["motor"]["stop"] = "";
-  return call("stopMove", params);
+  return tapo_motor::outcomeOf(call("stopMove", params));
 }
 
 TapoResult TapoApi::setPrivacy(const TapoPrivacyInput& input)

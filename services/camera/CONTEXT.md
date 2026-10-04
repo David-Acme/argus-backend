@@ -1237,3 +1237,41 @@ naming pattern, not a measured one: it was not sent to the owner's camera
 (changing a device setting is the owner's own test), and a camera that
 refuses it answers with its error code, which the app shows. Resolution is
 reported but not changeable from Argus.
+
+## Pan and tilt, measured on the owner's C225 (2026-10, CAMERA3)
+
+Measured on the real camera with the owner's authorisation (fresh go2rtc
+frames, each move timed until two consecutive frames differ by under 3 px,
+shift by phase correlation and ORB feature matching against a reference;
+about 16.7 px per degree on the 1280×720 sub stream):
+
+- **`motorMove {x_coord, y_coord}` is a relative move in degrees**, not an
+  absolute position: `+x` pans right, `-x` left, `+y` tilts up, `-y` down,
+  exactly what Home Assistant's Tapo integration sends for its arrow buttons
+  (`moveMotor(±degrees, 0)` / `(0, ±degrees)`, default 15). A 15° pan moved
+  the picture 190-225 px, 10° tilt 136-139 px, ±30° pans ±250 px; two steps
+  out and two back returned within 0-16 px (≤ 1°). A move settles in about
+  1-2 s.
+- **`relativeMove {direction}` is a continuous sweep** in the protocol's
+  direction (`0` right, `90` up, `180` left, `270` down) that runs until the
+  end of travel unless stopped: from the right limit, `180` alone crossed the
+  whole ~350° range to the left limit in about 14 s, which is why the app's
+  old arrows (one `relativeMove` per tap) jumped wildly and never came back to
+  the same place. **`stopMove {"motor":{"stop":""}}` stops it**: 1.0 s of
+  `180` then stop panned about 36°, 0.4 s of `90`/`270` tilted ±11°
+  symmetrically.
+- **The end of travel is `-64304` (`MOTOR_LOCKED_ROTOR`) inside an otherwise
+  successful batch**: the outer answer was `error_code 0`, so the route used to
+  report a refused move as a success. `tapo_motor::outcomeOf` reads the inner
+  code: `0` → `{moved: true, limit: false}`, `-64304` → `{moved: false,
+  limit: true}` (a 200, an answer rather than a refusal), anything else a
+  refusal with the camera's code.
+- **No home position over the local API**: pytapo exposes only
+  `manualCalibrate` (a full sweep) and presets (`getPresetConfig` stores
+  absolute `position_pan`/`position_tilt`); the camera had none. The app no
+  longer offers "Centrar".
+
+`PATCH /camera/{id}/ptz` therefore takes exactly one of `{x, y}` (a step,
+both required, each within ±180), `{angle}` (start a continuous move) or
+`{stop: true}`, and answers `{moved, limit}`. The app taps a 10° step and
+holds for a continuous move that ends with `stop` on release.

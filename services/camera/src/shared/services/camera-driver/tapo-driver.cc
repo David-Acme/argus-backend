@@ -131,6 +131,8 @@ DriverResult TapoDriver::move(const DriverMoveInput& input)
 {
   if (const auto ready = ensureConnected(); !ready.ok)
     return ready;
+  if (input.stop)
+    return toDriverResult(api_->stopMotor());
   if (input.angle)
     return toDriverResult(api_->step({.direction = *input.angle}));
   return toDriverResult(

@@ -7,6 +7,7 @@ argus_module(NAME camera-tapo
         tapo-client.cc
         tapo-crypto.cc
         tapo-http.cc
+        tapo-motor.cc
         tapo-talk-client.cc
         tapo-ts-muxer.cc
         tapo-video.cc

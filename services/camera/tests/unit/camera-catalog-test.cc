@@ -7,6 +7,7 @@
 #include <shared/services/camera-driver/stream-only-driver.hxx>
 #include <shared/services/camera-driver/tapo-driver.hxx>
 #include <shared/services/tapo/tapo-crypto.hxx>
+#include <shared/services/tapo/tapo-motor.hxx>
 #include <shared/services/tapo/tapo-video.hxx>
 #include <shared/vocabulary/camera-stream-paths.hxx>
 #include <text/json-util.hxx>
@@ -408,4 +409,28 @@ TEST_CASE("the Tapo video profile reads the encoder's offer and its current sett
   CHECK(fromStrings->frameRate == 0);
 
   CHECK_FALSE(tapo_video::profileOf({.capability = empty, .quality = empty}).has_value());
+}
+
+TEST_CASE("a motor answer says whether the camera moved or stood at the end of its travel")
+{
+  const auto answer = [](int code) {
+    return TapoResult::success(json_util::fromString(
+        R"({"error_code":0,"result":{"responses":[{"error_code":)" + std::to_string(code) +
+        R"(,"method":"motorMove","result":{}}]}})"));
+  };
+  const auto moved = tapo_motor::outcomeOf(answer(0));
+  CHECK(moved.ok);
+  CHECK(moved.data["moved"].asBool());
+  CHECK_FALSE(moved.data["limit"].asBool());
+
+  const auto limit = tapo_motor::outcomeOf(answer(tapo_motor::kLockedRotor));
+  CHECK(limit.ok);
+  CHECK_FALSE(limit.data["moved"].asBool());
+  CHECK(limit.data["limit"].asBool());
+
+  const auto refused = tapo_motor::outcomeOf(answer(-40210));
+  CHECK_FALSE(refused.ok);
+  CHECK(refused.errorCode == -40210);
+
+  CHECK_FALSE(tapo_motor::outcomeOf(TapoResult::failure("no answer")).ok);
 }
