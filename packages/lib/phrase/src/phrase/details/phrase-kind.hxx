@@ -11,7 +11,8 @@ enum class PhraseKind : uint8_t
   RecallMarker,
   Interrogative,
   Filler,
-  Cancellation
+  Cancellation,
+  Command
 };
 
 inline std::string phraseKindToString(PhraseKind k)
@@ -29,6 +30,8 @@ inline std::string phraseKindToString(PhraseKind k)
       return "filler";
     case PhraseKind::Cancellation:
       return "cancellation";
+    case PhraseKind::Command:
+      return "command";
     default:
       return "trigger";
   }
@@ -48,5 +51,7 @@ inline PhraseKind phraseKindFromString(const std::string& s)
     return PhraseKind::Filler;
   if (s == "cancellation")
     return PhraseKind::Cancellation;
+  if (s == "command")
+    return PhraseKind::Command;
   return PhraseKind::Trigger;
 }

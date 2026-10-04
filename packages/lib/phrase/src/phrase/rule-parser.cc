@@ -1,8 +1,11 @@
 #include "rule-parser.hxx"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <iterator>
 #include <phrase/phrase-catalog.hxx>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -114,6 +117,67 @@ bool insideTrigger(const std::vector<PhraseHit>& hits, const PhraseHit& word)
   return false;
 }
 
+size_t clauseStartBefore(const std::string& lowered, size_t until)
+{
+  if (until == 0)
+    return 0;
+  const size_t cut = lowered.find_last_of(",;:.!", until - 1);
+  size_t at = cut == std::string::npos ? 0 : cut + 1;
+  while (at < until && lowered[at] == ' ')
+    ++at;
+  return at;
+}
+
+bool isCliticImperative(std::string_view word)
+{
+  static constexpr std::array<std::string_view, 6> kMemoryVerbs{
+      "recu\xc3\xa9rd", "acu\xc3\xa9rd", "ap\xc3\xbant", "an\xc3\xb3t", "gu\xc3\xa1rd", "memor\xc3\xad"};
+  if (std::ranges::any_of(kMemoryVerbs, [word](std::string_view verb) { return word.starts_with(verb); }))
+    return false;
+  static constexpr std::array<std::string_view, 5> kAccented{"\xc3\xa1", "\xc3\xa9", "\xc3\xad",
+                                                             "\xc3\xb3", "\xc3\xba"};
+  const bool accented = std::ranges::any_of(
+      kAccented, [word](std::string_view vowel) { return word.find(vowel) != std::string_view::npos; });
+  return accented && word.size() > 5 && (word.ends_with("me") || word.ends_with("nos"));
+}
+
+struct ClauseOpeningInput
+{
+  const std::vector<PhraseHit>& hits;
+  const std::string& lowered;
+  size_t clauseStart;
+  size_t limit;
+};
+
+bool opensWithCommand(const ClauseOpeningInput& input)
+{
+  const std::string& lowered = input.lowered;
+  size_t at = input.clauseStart;
+  for (;;) {
+    if (at >= input.limit)
+      return false;
+    const auto startsHere = [&](PhraseKind kind) {
+      size_t end = 0;
+      for (const auto& hit : input.hits) {
+        if (hit.kind == kind && hit.begin == at && closerOk(lowered, hit.end))
+          end = std::max(end, static_cast<size_t>(hit.end));
+      }
+      return end;
+    };
+    if (startsHere(PhraseKind::Command) > 0)
+      return true;
+    const size_t wordEnd = std::min(lowered.find(' ', at), lowered.size());
+    if (isCliticImperative(std::string_view(lowered).substr(at, wordEnd - at)))
+      return true;
+    const size_t filler = startsHere(PhraseKind::Filler);
+    if (filler == 0)
+      return false;
+    at = filler;
+    while (at < input.limit && (lowered[at] == ' ' || lowered[at] == ','))
+      ++at;
+  }
+}
+
 struct BestHitInput
 {
   const std::vector<PhraseHit>& hits;
@@ -216,6 +280,16 @@ bool RuleParser::isQuestion(const RuleParseInput& input) const
       return true;
   }
   return false;
+}
+
+bool RuleParser::isCommand(const RuleParseInput& input) const
+{
+  const std::string lowered = toLower(input.text);
+  const auto first = lowered.find_first_not_of(" ,");
+  if (first == std::string::npos)
+    return false;
+  const std::vector<PhraseHit> hits = catalog_.match(lowered, input.lang);
+  return opensWithCommand({.hits = hits, .lowered = lowered, .clauseStart = first, .limit = lowered.size()});
 }
 
 bool RuleParser::isCancellation(const RuleParseInput& input) const
@@ -380,7 +454,18 @@ RuleParser::parseStatement(const RuleParseInput& input) const
   if (isRecallTalk(lowered, input.lang))
     return std::nullopt;
 
-  const std::vector<PhraseHit> hits = catalog_.match(lowered, input.lang);
+  std::vector<PhraseHit> hits = catalog_.match(lowered, input.lang);
+  std::vector<PhraseHit> openers;
+  std::ranges::copy_if(hits, std::back_inserter(openers), [](const PhraseHit& hit) {
+    return hit.kind == PhraseKind::Command || hit.kind == PhraseKind::Filler;
+  });
+  std::erase_if(hits, [&](const PhraseHit& hit) {
+    return hit.kind == PhraseKind::StatementStart &&
+           opensWithCommand({.hits = openers,
+                             .lowered = lowered,
+                             .clauseStart = clauseStartBefore(lowered, hit.begin),
+                             .limit = hit.begin});
+  });
 
   const PhraseHit* best =
       bestHit({.hits = hits,

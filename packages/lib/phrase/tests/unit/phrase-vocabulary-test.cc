@@ -49,9 +49,9 @@ TEST_CASE("phrase kind strings round-trip")
         .values = {PhraseKind::Trigger, PhraseKind::Confirmation,
                    PhraseKind::StatementStart, PhraseKind::RecallMarker,
                    PhraseKind::Interrogative, PhraseKind::Filler,
-                   PhraseKind::Cancellation},
+                   PhraseKind::Cancellation, PhraseKind::Command},
         .names = {"trigger", "confirmation", "statement_start", "recall_marker",
-                  "interrogative", "filler", "cancellation"},
+                  "interrogative", "filler", "cancellation", "command"},
         .toString = phraseKindToString,
         .fromString = phraseKindFromString});
 }

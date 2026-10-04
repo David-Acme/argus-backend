@@ -25,19 +25,21 @@ class RuleParser
 public:
   explicit RuleParser(const PhraseCatalog& catalog) : catalog_(catalog) {}
 
-  std::optional<RuleParseResult> parse(const RuleParseInput& input) const;
-  std::optional<RuleParseResult>
+  [[nodiscard]] std::optional<RuleParseResult> parse(const RuleParseInput& input) const;
+  [[nodiscard]] std::optional<RuleParseResult>
   parseStatement(const RuleParseInput& input) const;
 
-  bool isQuestion(const RuleParseInput& input) const;
+  [[nodiscard]] bool isQuestion(const RuleParseInput& input) const;
 
-  bool isCancellation(const RuleParseInput& input) const;
+  [[nodiscard]] bool isCancellation(const RuleParseInput& input) const;
 
-  bool isVacuous(const RuleParseInput& input) const;
+  [[nodiscard]] bool isCommand(const RuleParseInput& input) const;
 
-  std::string stripFillers(const RuleParseInput& input) const;
+  [[nodiscard]] bool isVacuous(const RuleParseInput& input) const;
 
-  bool isFiller(const std::string& phrase, const std::string& lang) const;
+  [[nodiscard]] std::string stripFillers(const RuleParseInput& input) const;
+
+  [[nodiscard]] bool isFiller(const std::string& phrase, const std::string& lang) const;
 
 private:
   struct ContentBeforeTriggerInput

@@ -19,6 +19,12 @@ target_link_libraries(phrase-vocabulary-test PRIVATE
 target_compile_options(phrase-vocabulary-test PRIVATE -Wall -Wextra)
 add_test(NAME phrase-vocabulary-test COMMAND phrase-vocabulary-test)
 
+add_executable(phrase-rule-parser-test tests/unit/rule-parser-test.cc)
+target_link_libraries(phrase-rule-parser-test PRIVATE
+    argus::lib::phrase doctest::doctest)
+target_compile_options(phrase-rule-parser-test PRIVATE -Wall -Wextra)
+add_test(NAME phrase-rule-parser-test COMMAND phrase-rule-parser-test)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)
