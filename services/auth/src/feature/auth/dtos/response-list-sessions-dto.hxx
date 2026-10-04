@@ -15,6 +15,8 @@ struct SessionView
   int64_t lastSeenAt{0};
   int64_t expiresAt{0};
   bool current{false};
+
+  [[nodiscard]] Json::Value toJson() const;
 };
 
 struct ResponseListSessionsDto

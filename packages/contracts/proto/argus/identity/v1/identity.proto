@@ -45,6 +45,7 @@ enum RegisterUserOutcome
   REGISTER_USER_INVITATION_INVALID = 8;
   REGISTER_USER_OWNER_ALREADY_EXISTS = 9;
   REGISTER_USER_FACE_INDEX_FAILED = 10;
+  REGISTER_USER_ACCOUNT_DISABLED = 11;
 }
 
 message RegisterUserResponse
@@ -97,6 +98,7 @@ message IdentifyPersonResponse
   bool trusted = 7;
   optional string last_name = 8;
   optional bool face_found = 9;
+  optional bool account_disabled = 10;
 }
 
 message EnrollPersonRequest

@@ -139,6 +139,69 @@ first-party component writes the header (the tunnel carries the app's TLS
 unopened), so every template ships an empty list. `AuthRateGate` keeps its
 per-peer ceiling either way.
 
+## The owner's view of every session, and disabled accounts (2026-10)
+
+**Every user's sessions, for the owner only.** `GET /auth/users/sessions`
+answers `{users: [{userId, sessions: [...]}]}`: every user with an open
+session, most recently active first, each session in the same shape as `GET
+/auth/sessions` (`current` is true only for the caller's own session). `GET
+/auth/users/{userId}/sessions` is one user's list, `DELETE
+/auth/users/{userId}/sessions/{sessionId}` closes one of them (404
+`SESSION_NOT_FOUND` when it is not an open session of that user, a malformed
+id included) and `DELETE /auth/users/{userId}/sessions` closes all of them;
+both answer `{revoked, current}` like the caller's own routes. The four rows
+are `kOwnerOnly` in `role_access::kSessionAccess`, so `RoleFilter` refuses
+every other role (without them `kAuthAccess` would have let a guard or a guest
+`GET` any `/auth` path). The route patterns are matched segment by segment
+(`routeMatches`, one `{id}` per segment). The list is one query over the active
+rows (`listAllActive`); names come from the app's own synced directory, so
+this service still reads no identity table.
+
+**One revocation path.** `SessionRevocation` (session feature) is the only
+code that invalidates a family and queues its frames and journal rows; it
+moved there from the HTTP feature together with `session-events`, so the
+identity change consumer, the owner's routes, logout and refresh-token reuse
+all end a session the same way. A revocation by someone other than the
+session's user carries reason `revokedByOwner`; the consumer's carries
+`accountDisabled` with `revokedBy` 0 (the system: identity's own journal row
+names the owner who disabled the account). The `sessionRevoked` frame now
+says why in `info.cause` (the reason string), so the app can tell "the owner
+closed this device" and "your account was disabled" from a plain close.
+
+**The owner hears about every user's sessions.** Every `sessionsChanged`
+(a login, a QR approval, any revocation) is followed by a
+`{"reason":"userSessionsChanged","userId":N}` frame emitted to the
+`user_invitation` module room. That room is the owner's alone (only the owner
+reads `user_invitation`), so the frame reaches exactly the people who manage
+access, without this service knowing who the owners are, and without telling
+a guard when a resident signs in. No change to argus-sync: it is an ordinary
+module emit on the session subject.
+
+**A disabled account is refused at every way in.** Deactivation stays
+identity's: `PATCH /user/{id}` with `isActive:false` (or `DELETE /user/{id}`)
+commits, identity disconnects the user's sockets, and the user change reaches
+this service's consumer, which revokes every session through
+`SessionRevocation`. Re-enabling restores the ability to log in, never the old
+sessions. Each entry point also refuses on its own, so a lagging or absent
+broker cannot let a disabled user back in:
+
+- face login: identity's `IdentifyPerson` sets `account_disabled` (field 10)
+  when the face belongs to a disabled user, and login answers 403
+  `ACCOUNT_DISABLED` instead of "face not recognized";
+- registration with an existing face: `REGISTER_USER_ACCOUNT_DISABLED`
+  (outcome 11), the same 403;
+- refresh: after the family checks, and also when no live family is left, the
+  user is asked from identity; a disabled user gets 403 `ACCOUNT_DISABLED`
+  and any family still open is revoked. An unreachable identity does not
+  block the refresh (the verdict already fails closed on every request);
+- QR login: approval was already refused for an inactive approver, and the
+  poll now asks identity before handing out the tokens, so a user disabled
+  between approval and poll gets `expired`;
+- every request: the verdict refuses `User account is disabled`, as before.
+
+`ACCOUNT_DISABLED` is a new `ErrorCode` (appended, so no other service's
+wire changes).
+
 ## Ownership and the three features
 
 `session` owns everything about what a validated token means: the
@@ -285,6 +348,14 @@ fleet gate, the device credential lookup, the refusal of a revoked or rotated
 session row on both validation paths, the effect a revocation has on the rows
 themselves, and — under `ARGUS_NATS_URL` — the live consumer, over a real gRPC
 server and a real `AuthClient` against a temporary database.
+
+`tests/unit/session-management-test.cc` also drives the owner's routes (every
+user's list, one and all of another user's sessions, a session id of a third
+user refused, the owner's own current session reported) and a disabled
+account end to end: the consumer's revocation with its frames and journal
+rows, face login, registration, refresh with and without a live family, a QR
+login disabled between approval and poll, and the re-enabled account that
+logs in again while its old sessions stay closed.
 
 `tests/unit/session-management-test.cc` boots on a database with the old
 `refresh_token` and `device_login_challenge` shapes and a live session in it,

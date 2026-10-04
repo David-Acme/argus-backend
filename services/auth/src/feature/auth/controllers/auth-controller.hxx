@@ -6,6 +6,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/auth/services/auth-feature-service.hxx>
 #include <feature/auth/services/session-management-service.hxx>
+#include <cstdint>
 #include <string>
 
 class AuthController : public drogon::HttpController<AuthController, false>
@@ -40,6 +41,15 @@ public:
                 drogon::Delete, "DeviceFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(AuthController::revokeSession, "/auth/sessions/{1}",
                 drogon::Delete, "DeviceFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(AuthController::listEveryUserSessions, "/auth/users/sessions",
+                drogon::Get, "DeviceFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(AuthController::listUserSessions, "/auth/users/{1}/sessions",
+                drogon::Get, "DeviceFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(AuthController::revokeUserSessions, "/auth/users/{1}/sessions",
+                drogon::Delete, "DeviceFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(AuthController::revokeUserSession,
+                "/auth/users/{1}/sessions/{2}", drogon::Delete, "DeviceFilter",
+                "JwtFilter", "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> login(drogon::HttpRequestPtr req);
@@ -62,6 +72,15 @@ public:
   revokeSessions(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr>
   revokeSession(drogon::HttpRequestPtr req, std::string sessionId);
+  drogon::Task<drogon::HttpResponsePtr>
+  listEveryUserSessions(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr>
+  listUserSessions(drogon::HttpRequestPtr req, int64_t userId);
+  drogon::Task<drogon::HttpResponsePtr>
+  revokeUserSessions(drogon::HttpRequestPtr req, int64_t userId);
+  drogon::Task<drogon::HttpResponsePtr>
+  revokeUserSession(drogon::HttpRequestPtr req, int64_t userId,
+                    std::string sessionId);
 
 private:
   AuthFeatureService authService_;

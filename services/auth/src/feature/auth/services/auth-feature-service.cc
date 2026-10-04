@@ -236,6 +236,8 @@ AuthFeatureService::login(LoginDto body, const LoginDeviceInput& device) const
 {
   const auto answer =
       co_await identifyPerson(dependencies_.identity, std::move(body.image));
+  if (answer && answer->account_disabled())
+    throw ResponseException(AuthErrors::AccountDisabled);
   if (!answer || !answer->matched() || !answer->has_user_id() ||
       answer->user_id() <= 0)
     throw ResponseException(AuthErrors::FaceNotRecognized);
@@ -286,6 +288,8 @@ AuthFeatureService::registerUser(RegisterDto body,
       throw ResponseException(AuthErrors::OwnerAlreadyExists);
     case argus::identity::v1::REGISTER_USER_FACE_INDEX_FAILED:
       throw ResponseException(AuthErrors::EnrolledFaceIndexFailed);
+    case argus::identity::v1::REGISTER_USER_ACCOUNT_DISABLED:
+      throw ResponseException(AuthErrors::AccountDisabled);
     default:
       throw ResponseException(AuthErrors::IdentityUnavailable);
   }
@@ -424,6 +428,17 @@ AuthFeatureService::pollDeviceLogin(const DeviceLoginPollInput& input) const
   if (challenge->status != DeviceLoginStatus::Approved ||
       !pollerOwnsChallenge(input, *challenge))
     co_return idleDeviceLogin(DeviceLoginStatus::Pending);
+
+  std::optional<argus::identity::v1::GetUserResponse> owner;
+  if (challenge->userId)
+    owner =
+        co_await fetchIdentityUser(dependencies_.identity, *challenge->userId);
+  if (owner && owner->has_user() && !owner->user().is_active()) {
+    LOG_WARN << "Auth: a cross-device login for disabled user "
+             << owner->user().user_id() << " was not handed out";
+    co_await dependencies_.challengeRepository.remove(challengeId);
+    co_return idleDeviceLogin(DeviceLoginStatus::Expired);
+  }
   if (!co_await dependencies_.challengeRepository.claimApproved(
           challengeId, static_cast<int64_t>(std::time(nullptr))))
     co_return idleDeviceLogin(DeviceLoginStatus::Expired);
@@ -434,14 +449,10 @@ AuthFeatureService::pollDeviceLogin(const DeviceLoginPollInput& input) const
   result.refreshToken = challenge->refreshToken;
   result.deviceSecret = pendingDeviceSecrets().take(challengeId);
   static_cast<void>(pendingPollHashes().take(challengeId));
-  if (challenge->userId) {
-    const auto answer =
-        co_await fetchIdentityUser(dependencies_.identity, *challenge->userId);
-    if (answer && answer->has_user()) {
-      result.userId = answer->user().user_id();
-      result.name = answer->user().name() + " " + answer->user().last_name();
-      result.role = userRoleFromString(answer->user().role());
-    }
+  if (owner && owner->has_user()) {
+    result.userId = owner->user().user_id();
+    result.name = owner->user().name() + " " + owner->user().last_name();
+    result.role = userRoleFromString(owner->user().role());
   }
   co_await dependencies_.challengeRepository.remove(challengeId);
   co_return result;
@@ -463,8 +474,10 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
       .tokenHash = argus::hash::sha256Hex(input.body.refreshToken),
       .sessionId = sid == claims.end() ? std::string{} : sid->second};
   const auto existing = co_await presentedSession(presented);
-  if (!existing)
+  if (!existing) {
+    co_await refuseDisabledAccount(*userId);
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
+  }
 
   if (existing->refreshToken != presented.tokenHash &&
       existing->refreshToken != presented.token) {
@@ -489,6 +502,8 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
   if (upgraded)
     LOG_INFO << "Auth: session of user " << *userId
              << " moved to the stable user agent " << input.userAgent;
+
+  co_await refuseDisabledAccount(*userId);
 
   const auto newClaims = sessionClaims(*userId, existing->sessionId);
   ResponseRefreshTokenDto result;
@@ -578,6 +593,23 @@ AuthFeatureService::settleStaleToken(const StaleRefreshInput& input) const
        .scope = SessionRevocationScope::One,
        .sessionId = session.sessionId,
        .reason = SessionRevocationReason::RefreshTokenReuse}));
+}
+
+drogon::Task<void>
+AuthFeatureService::refuseDisabledAccount(int64_t userId) const
+{
+  const auto answer = co_await fetchIdentityUser(dependencies_.identity, userId);
+  if (!answer || !answer->has_user() || answer->user().is_active())
+    co_return;
+
+  LOG_WARN << "Auth: refresh refused for disabled user " << userId;
+  static_cast<void>(co_await dependencies_.sessions.revoke(
+      {.userId = userId,
+       .actorId = 0,
+       .scope = SessionRevocationScope::All,
+       .sessionId = "",
+       .reason = SessionRevocationReason::AccountDisabled}));
+  throw ResponseException(AuthErrors::AccountDisabled);
 }
 
 drogon::Task<void> AuthFeatureService::logout(const LogoutInput& input) const

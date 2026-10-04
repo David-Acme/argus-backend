@@ -17,7 +17,9 @@ enum class SessionRevocationReason : std::uint8_t
 {
   Logout,
   Revoked,
-  RefreshTokenReuse
+  RefreshTokenReuse,
+  RevokedByOwner,
+  AccountDisabled
 };
 
 [[nodiscard]] std::string
@@ -46,8 +48,11 @@ struct SessionsChangedEvent
 namespace session_events
 {
 inline constexpr const char* kReasonField = "reason";
+inline constexpr const char* kCauseField = "cause";
+inline constexpr const char* kUserIdField = "userId";
 inline constexpr const char* kSessionRevoked = "sessionRevoked";
 inline constexpr const char* kSessionsChanged = "sessionsChanged";
+inline constexpr const char* kUserSessionsChanged = "userSessionsChanged";
 
 [[nodiscard]] drogon::Task<void> publishRevoked(const SessionRevokedEvent& event);
 

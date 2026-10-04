@@ -68,7 +68,14 @@ Two consequences worth keeping in mind:
   `GET /auth/sessions`, `DELETE /auth/sessions` and
   `DELETE /auth/sessions/{id}` to every role, route by route like
   `kGuardAccess`, without widening `kAuthAccess`: the service scopes every
-  query to the caller's own sessions.
+  query to the caller's own sessions. Four more rows are `kOwnerOnly`: `GET
+  /auth/users/sessions`, `GET` and `DELETE /auth/users/{id}/sessions` and
+  `DELETE /auth/users/{id}/sessions/{id}`, the owner's view of every user's
+  sessions. They must be listed even though the Owner passes every check,
+  because a path that misses the table falls back to `kAuthAccess`, which lets
+  a guard or a guest `GET` any `/auth` path. `routeMatches` compares a pattern
+  segment by segment, one `{id}` per segment, so a placeholder never spans a
+  `/` and an empty segment never matches.
 
 ## The two targets
 

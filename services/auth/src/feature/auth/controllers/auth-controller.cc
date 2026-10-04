@@ -26,6 +26,12 @@ LoginDeviceInput loginDeviceOf(const drogon::HttpRequestPtr& req)
           .client = client_identity::of(req)};
 }
 
+SessionOwnerInput actorOf(const drogon::HttpRequestPtr& req)
+{
+  const auto& ctx = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  return {.userId = ctx.sub, .currentSessionId = ctx.sessionId};
+}
+
 std::string credentialHashOf(const drogon::HttpRequestPtr& req,
                              const DeviceContext& device)
 {
@@ -211,5 +217,37 @@ AuthController::revokeSession(drogon::HttpRequestPtr req, std::string sessionId)
   const auto result = co_await sessionService_.revokeOne(
       {.owner = {.userId = ctx.sub, .currentSessionId = ctx.sessionId},
        .sessionId = std::move(sessionId)});
+  co_return ApiResponse::ok(result.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+AuthController::listEveryUserSessions(drogon::HttpRequestPtr req)
+{
+  const auto result = co_await sessionService_.listEveryUser(actorOf(req));
+  co_return ApiResponse::ok(result.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+AuthController::listUserSessions(drogon::HttpRequestPtr req, int64_t userId)
+{
+  const auto result = co_await sessionService_.listOfUser(
+      {.actor = actorOf(req), .userId = userId});
+  co_return ApiResponse::ok(result.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+AuthController::revokeUserSessions(drogon::HttpRequestPtr req, int64_t userId)
+{
+  const auto result = co_await sessionService_.revokeUserSessions(
+      {.actor = actorOf(req), .userId = userId});
+  co_return ApiResponse::ok(result.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+AuthController::revokeUserSession(drogon::HttpRequestPtr req, int64_t userId,
+                                  std::string sessionId)
+{
+  const auto result = co_await sessionService_.revokeUserSession(
+      {.actor = actorOf(req), .userId = userId, .sessionId = std::move(sessionId)});
   co_return ApiResponse::ok(result.toJson());
 }

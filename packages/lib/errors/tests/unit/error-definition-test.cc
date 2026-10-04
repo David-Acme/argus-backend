@@ -43,10 +43,11 @@ TEST_CASE("every error code has exactly one wire string")
       {.code = ErrorCode::CameraUnreachable, .name = "CAMERA_UNREACHABLE"},
       {.code = ErrorCode::Cancelled, .name = "CANCELLED"},
       {.code = ErrorCode::DeadlineExceeded, .name = "DEADLINE_EXCEEDED"},
-      {.code = ErrorCode::SessionNotFound, .name = "SESSION_NOT_FOUND"}};
+      {.code = ErrorCode::SessionNotFound, .name = "SESSION_NOT_FOUND"},
+      {.code = ErrorCode::AccountDisabled, .name = "ACCOUNT_DISABLED"}};
 
   CHECK(table.size() ==
-        static_cast<std::size_t>(ErrorCode::SessionNotFound) + 1);
+        static_cast<std::size_t>(ErrorCode::AccountDisabled) + 1);
 
   for (const auto& row : table)
     CHECK(std::string(toString(row.code)) == row.name);

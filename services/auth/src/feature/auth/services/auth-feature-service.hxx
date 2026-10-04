@@ -164,6 +164,9 @@ private:
   [[nodiscard]] drogon::Task<void>
   settleStaleToken(const StaleRefreshInput& input) const;
 
+  [[nodiscard]] drogon::Task<void>
+  refuseDisabledAccount(int64_t userId) const;
+
   Dependencies dependencies_;
   Config config_;
 };

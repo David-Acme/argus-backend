@@ -35,6 +35,11 @@ inline constexpr std::string_view LIST_ACTIVE =
     "WHERE user_id = ? AND is_valid = 1 AND is_used = 0 AND expires_at > ? "
     "AND session_id <> '' ORDER BY last_seen_at DESC, id DESC";
 
+inline constexpr std::string_view LIST_ALL_ACTIVE =
+    "SELECT * FROM refresh_token "
+    "WHERE is_valid = 1 AND is_used = 0 AND expires_at > ? "
+    "AND session_id <> '' ORDER BY user_id, last_seen_at DESC, id DESC";
+
 inline constexpr std::string_view INSERT =
     "INSERT INTO refresh_token "
     "(user_id, access_token, refresh_token, device_hash, user_agent, "

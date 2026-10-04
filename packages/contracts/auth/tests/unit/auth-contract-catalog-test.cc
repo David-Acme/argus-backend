@@ -151,6 +151,11 @@ const std::vector<CatalogEntry> kCatalog{
      .code = ErrorCode::SessionNotFound,
      .status = 404,
      .message = "Session not found"},
+    {.name = "AccountDisabled",
+     .definition = &AuthErrors::AccountDisabled,
+     .code = ErrorCode::AccountDisabled,
+     .status = 403,
+     .message = "User account is disabled"},
 };
 
 constexpr std::size_t kMaxMessageBytes = 1024;
@@ -165,7 +170,7 @@ TEST_CASE("the auth catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 27);
+  CHECK(kCatalog.size() == 28);
 }
 
 TEST_CASE("every auth entry is legal on the wire")

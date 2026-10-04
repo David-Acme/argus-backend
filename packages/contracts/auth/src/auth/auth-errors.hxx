@@ -113,4 +113,8 @@ inline constexpr ErrorDefinition SessionNotFound{
     .code = ErrorCode::SessionNotFound,
     .status = 404,
     .message = "Session not found"};
+inline constexpr ErrorDefinition AccountDisabled{
+    .code = ErrorCode::AccountDisabled,
+    .status = 403,
+    .message = "User account is disabled"};
 }

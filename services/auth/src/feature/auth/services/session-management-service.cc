@@ -6,10 +6,7 @@
 #include <ctime>
 #include <errors/response-exception.hxx>
 #include <openssl/rand.h>
-#include <sqlite/db-service.hxx>
-#include <sqlite/transaction.hxx>
 #include <string_view>
-#include <trantor/utils/Logger.h>
 #include <utility>
 
 namespace
@@ -21,18 +18,22 @@ bool isLowerHex(char value)
   return (value >= '0' && value <= '9') || (value >= 'a' && value <= 'f');
 }
 
-bool targets(const SessionRevocationInput& input,
-             const RefreshTokenSchema& session)
+int64_t nowSeconds()
 {
-  switch (input.scope) {
-    case SessionRevocationScope::One:
-      return session.sessionId == input.sessionId;
-    case SessionRevocationScope::Others:
-      return session.sessionId != input.sessionId;
-    case SessionRevocationScope::All:
-      return true;
-  }
-  return false;
+  return static_cast<int64_t>(std::time(nullptr));
+}
+
+SessionView viewOf(const RefreshTokenSchema& row,
+                   const std::string& currentSessionId)
+{
+  return {.id = row.sessionId,
+          .platform = row.platform,
+          .deviceName = row.deviceName,
+          .createdAt =
+              row.sessionCreatedAt > 0 ? row.sessionCreatedAt : row.createdAt,
+          .lastSeenAt = row.lastSeenAt > 0 ? row.lastSeenAt : row.createdAt,
+          .expiresAt = row.expiresAt,
+          .current = row.sessionId == currentSessionId};
 }
 
 ResponseRevokeSessionsDto revocationResult(std::vector<std::string> revoked,
@@ -42,6 +43,21 @@ ResponseRevokeSessionsDto revocationResult(std::vector<std::string> revoked,
                        revoked.end();
   return ResponseRevokeSessionsDto{.revoked = std::move(revoked),
                                    .current = current};
+}
+
+SessionRevocationReason reasonFor(const UserSessionsInput& input)
+{
+  return input.actor.userId == input.userId
+             ? SessionRevocationReason::Revoked
+             : SessionRevocationReason::RevokedByOwner;
+}
+
+SessionOwnerInput callerAgainst(const UserSessionsInput& input)
+{
+  return {.userId = input.userId,
+          .currentSessionId = input.actor.userId == input.userId
+                                  ? input.actor.currentSessionId
+                                  : std::string{}};
 }
 }
 
@@ -76,24 +92,41 @@ drogon::Task<ResponseListSessionsDto>
 SessionManagementService::list(const SessionOwnerInput& input) const
 {
   const auto rows = co_await dependencies_.refreshTokenRepository.listActive(
-      {.userId = input.userId,
-       .now = static_cast<int64_t>(std::time(nullptr)),
-       .client = nullptr});
+      {.userId = input.userId, .now = nowSeconds(), .client = nullptr});
 
   ResponseListSessionsDto result;
   result.sessions.reserve(rows.size());
   for (const auto& row : rows)
-    result.sessions.push_back(
-        {.id = row.sessionId,
-         .platform = row.platform,
-         .deviceName = row.deviceName,
-         .createdAt = row.sessionCreatedAt > 0 ? row.sessionCreatedAt
-                                               : row.createdAt,
-         .lastSeenAt = row.lastSeenAt > 0 ? row.lastSeenAt : row.createdAt,
-         .expiresAt = row.expiresAt,
-         .current = row.sessionId == input.currentSessionId});
+    result.sessions.push_back(viewOf(row, input.currentSessionId));
   std::ranges::stable_partition(result.sessions, &SessionView::current);
   co_return result;
+}
+
+drogon::Task<ResponseUserSessionsDto>
+SessionManagementService::listEveryUser(const SessionOwnerInput& actor) const
+{
+  const auto rows =
+      co_await dependencies_.refreshTokenRepository.listAllActive(nowSeconds());
+
+  ResponseUserSessionsDto result;
+  for (const auto& row : rows) {
+    if (result.users.empty() || result.users.back().userId != row.userId)
+      result.users.push_back({.userId = row.userId, .sessions = {}});
+    result.users.back().sessions.push_back(viewOf(
+        row,
+        row.userId == actor.userId ? actor.currentSessionId : std::string{}));
+  }
+  const auto latest = [](const UserSessionsView& user) {
+    return user.sessions.front().lastSeenAt;
+  };
+  std::ranges::stable_sort(result.users, std::ranges::greater{}, latest);
+  co_return result;
+}
+
+drogon::Task<ResponseListSessionsDto>
+SessionManagementService::listOfUser(const UserSessionsInput& input) const
+{
+  co_return co_await list(callerAgainst(input));
 }
 
 drogon::Task<ResponseRevokeSessionsDto>
@@ -124,66 +157,41 @@ SessionManagementService::revokeScope(const RevokeSessionScopeInput& input) cons
   co_return revocationResult(std::move(revoked), input.owner);
 }
 
+drogon::Task<ResponseRevokeSessionsDto>
+SessionManagementService::revokeUserSession(
+    const RevokeUserSessionInput& input) const
+{
+  if (input.userId <= 0 || !isSessionId(input.sessionId))
+    throw ResponseException(AuthErrors::SessionNotFound);
+
+  const UserSessionsInput target{.actor = input.actor, .userId = input.userId};
+  auto revoked = co_await revoke({.userId = input.userId,
+                                  .actorId = input.actor.userId,
+                                  .scope = SessionRevocationScope::One,
+                                  .sessionId = input.sessionId,
+                                  .reason = reasonFor(target)});
+  if (revoked.empty())
+    throw ResponseException(AuthErrors::SessionNotFound);
+  co_return revocationResult(std::move(revoked), callerAgainst(target));
+}
+
+drogon::Task<ResponseRevokeSessionsDto>
+SessionManagementService::revokeUserSessions(
+    const UserSessionsInput& input) const
+{
+  if (input.userId <= 0)
+    throw ResponseException(AuthErrors::UserNotFound);
+
+  auto revoked = co_await revoke({.userId = input.userId,
+                                  .actorId = input.actor.userId,
+                                  .scope = SessionRevocationScope::All,
+                                  .sessionId = "",
+                                  .reason = reasonFor(input)});
+  co_return revocationResult(std::move(revoked), callerAgainst(input));
+}
+
 drogon::Task<std::vector<std::string>>
 SessionManagementService::revoke(const SessionRevocationInput& input) const
 {
-  if (input.scope != SessionRevocationScope::All && input.sessionId.empty())
-    co_return std::vector<std::string>{};
-
-  const auto& repository = dependencies_.refreshTokenRepository;
-  std::vector<std::string> revoked;
-  auto transaction = co_await db_transaction::begin(DbService::client());
-  try {
-    const auto active = co_await repository.listActive(
-        {.userId = input.userId,
-         .now = static_cast<int64_t>(std::time(nullptr)),
-         .client = transaction.get()});
-
-    const SessionLookupInput lookup{.userId = input.userId,
-                                    .sessionId = input.sessionId,
-                                    .client = transaction.get()};
-    switch (input.scope) {
-      case SessionRevocationScope::One:
-        static_cast<void>(co_await repository.invalidateSession(lookup));
-        break;
-      case SessionRevocationScope::Others:
-        static_cast<void>(co_await repository.invalidateOtherSessions(lookup));
-        break;
-      case SessionRevocationScope::All:
-        static_cast<void>(co_await repository.invalidateAllUser(
-            input.userId, transaction.get()));
-        break;
-    }
-
-    for (const auto& session : active) {
-      if (!targets(input, session))
-        continue;
-      revoked.push_back(session.sessionId);
-      co_await session_events::publishRevoked(
-          {.userId = input.userId,
-           .actorId = input.actorId,
-           .sessionId = session.sessionId,
-           .platform = session.platform,
-           .scope = input.scope,
-           .reason = input.reason,
-           .client = transaction.get()});
-    }
-    if (!revoked.empty())
-      co_await session_events::publishChanged(
-          {.userId = input.userId, .client = transaction.get()});
-
-    if (!co_await db_transaction::Commit(std::move(transaction)))
-      throw ResponseException(AuthErrors::ChangeNotRecorded);
-  }
-  catch (...) {
-    db_transaction::rollback(transaction);
-    throw;
-  }
-
-  if (!revoked.empty())
-    LOG_INFO << "Auth: revoked " << revoked.size() << " session(s) of user "
-             << input.userId << " ("
-             << sessionRevocationReasonToString(input.reason) << ", "
-             << sessionRevocationScopeToString(input.scope) << ")";
-  co_return revoked;
+  co_return co_await revocation_.revoke(input);
 }

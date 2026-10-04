@@ -97,6 +97,12 @@ void SessionService::forget(int64_t userId)
 
 drogon::Task<bool> SessionService::revokeUser(int64_t userId) const
 {
-  co_return co_await dependencies_.refreshTokenRepository.invalidateAllUser(
-      userId);
+  co_await dependencies_.refreshTokenRepository.adoptLegacySessions(userId);
+  const auto revoked = co_await revocation_.revoke(
+      {.userId = userId,
+       .actorId = 0,
+       .scope = SessionRevocationScope::All,
+       .sessionId = "",
+       .reason = SessionRevocationReason::AccountDisabled});
+  co_return !revoked.empty();
 }

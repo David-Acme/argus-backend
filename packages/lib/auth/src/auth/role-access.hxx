@@ -110,30 +110,47 @@ inline constexpr std::uint8_t kEveryRole =
     roleBit(UserRole::Owner) | roleBit(UserRole::Resident) |
     roleBit(UserRole::Guard) | roleBit(UserRole::Guest);
 
-inline constexpr std::array<AuthRouteAccess, 3> kSessionAccess = {{
+inline constexpr std::uint8_t kOwnerOnly = roleBit(UserRole::Owner);
+
+inline constexpr std::array<AuthRouteAccess, 7> kSessionAccess = {{
     {.path = "/auth/sessions", .method = drogon::Get, .roles = kEveryRole},
     {.path = "/auth/sessions", .method = drogon::Delete, .roles = kEveryRole},
     {.path = "/auth/sessions/{id}", .method = drogon::Delete, .roles = kEveryRole},
+    {.path = "/auth/users/sessions", .method = drogon::Get, .roles = kOwnerOnly},
+    {.path = "/auth/users/{id}/sessions", .method = drogon::Get, .roles = kOwnerOnly},
+    {.path = "/auth/users/{id}/sessions", .method = drogon::Delete, .roles = kOwnerOnly},
+    {.path = "/auth/users/{id}/sessions/{id}", .method = drogon::Delete, .roles = kOwnerOnly},
 }};
 
 inline constexpr std::string_view kRouteSegment = "{id}";
 
+inline bool routeMatches(std::string_view pattern, std::string_view path)
+{
+  while (!pattern.empty() || !path.empty()) {
+    const auto patternEnd = pattern.find('/', 1);
+    const auto pathEnd = path.find('/', 1);
+    const std::string_view expected = pattern.substr(0, patternEnd);
+    const std::string_view actual = path.substr(0, pathEnd);
+    if (expected.empty() || actual.size() < 2)
+      return false;
+    if (expected.substr(1) == kRouteSegment) {
+      if (actual.front() != '/')
+        return false;
+    } else if (expected != actual) {
+      return false;
+    }
+    pattern.remove_prefix(expected.size());
+    path.remove_prefix(actual.size());
+  }
+  return true;
+}
+
 inline const AuthRouteAccess* sessionRouteOf(std::string_view path,
                                              drogon::HttpMethod method)
 {
-  const auto matches = [path](std::string_view pattern) {
-    if (!pattern.ends_with(kRouteSegment))
-      return pattern == path;
-    const std::string_view prefix =
-        pattern.substr(0, pattern.size() - kRouteSegment.size());
-    if (!path.starts_with(prefix))
-      return false;
-    const std::string_view segment = path.substr(prefix.size());
-    return !segment.empty() && segment.find('/') == std::string_view::npos;
-  };
   const auto route =
       std::ranges::find_if(kSessionAccess, [&](const AuthRouteAccess& entry) {
-        return entry.method == method && matches(entry.path);
+        return entry.method == method && routeMatches(entry.path, path);
       });
   return route == kSessionAccess.end() ? nullptr : &*route;
 }

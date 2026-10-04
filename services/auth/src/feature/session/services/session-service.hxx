@@ -5,6 +5,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/session/repositories/refresh-token/refresh-token-repository.hxx>
 #include <feature/session/services/session-context-cache.hxx>
+#include <feature/session/services/session-revocation.hxx>
 #include <optional>
 #include <string>
 
@@ -58,4 +59,5 @@ private:
 
   Dependencies dependencies_;
   SessionContextCache contextCache_;
+  SessionRevocation revocation_;
 };

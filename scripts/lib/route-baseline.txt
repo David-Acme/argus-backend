@@ -10,6 +10,10 @@ auth	DELETE	/auth/sessions	DeviceFilter,JwtFilter,RoleFilter	-	services/auth/src
 auth	GET	/auth/sessions	DeviceFilter,JwtFilter,RoleFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
 auth	DELETE	/auth/sessions/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
 auth	GET	/auth/status	DeviceFilter,JwtFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
+auth	GET	/auth/users/sessions	DeviceFilter,JwtFilter,RoleFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
+auth	GET	/auth/users/{1}/sessions	DeviceFilter,JwtFilter,RoleFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
+auth	DELETE	/auth/users/{1}/sessions	DeviceFilter,JwtFilter,RoleFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
+auth	DELETE	/auth/users/{1}/sessions/{2}	DeviceFilter,JwtFilter,RoleFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
 camera	POST	/camera	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera/controllers/camera-controller.hxx
 camera	DELETE	/camera/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera/controllers/camera-controller.hxx
 camera	PATCH	/camera/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera/controllers/camera-controller.hxx

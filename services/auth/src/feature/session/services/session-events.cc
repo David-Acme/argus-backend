@@ -10,11 +10,12 @@
 
 namespace
 {
-SocketEmitDto authContextFrame(const char* reason)
+SocketEmitDto authContextFrame(const char* reason,
+                               TableName room = TableName::User)
 {
   SocketEmitDto frame;
   frame.operation = SyncOperation::AuthContextChanged;
-  frame.option = TableName::User;
+  frame.option = room;
   frame.obj = Json::Value(Json::objectValue);
   frame.obj[session_events::kReasonField] = reason;
   frame.obj["resync"] = false;
@@ -42,6 +43,10 @@ std::string sessionRevocationReasonToString(SessionRevocationReason reason)
       return "logout";
     case SessionRevocationReason::RefreshTokenReuse:
       return "refreshTokenReuse";
+    case SessionRevocationReason::RevokedByOwner:
+      return "revokedByOwner";
+    case SessionRevocationReason::AccountDisabled:
+      return "accountDisabled";
     case SessionRevocationReason::Revoked:
       return "revoked";
   }
@@ -56,6 +61,7 @@ drogon::Task<void> session_events::publishRevoked(const SessionRevokedEvent& eve
 
   SocketEmitDto frame = authContextFrame(kSessionRevoked);
   frame.obj["sessionId"] = event.sessionId;
+  frame.obj[kCauseField] = sessionRevocationReasonToString(event.reason);
   co_await sink->publishSessionChange(
       {.payload = sync_change::disconnectSessionPayload(
            frame, {.userId = event.userId, .sessionId = event.sessionId}),
@@ -89,4 +95,10 @@ session_events::publishChanged(const SessionsChangedEvent& event)
       {.payload = sync_change::userEmitPayload(authContextFrame(kSessionsChanged),
                                                {event.userId}),
        .client = event.client});
+
+  SocketEmitDto owners =
+      authContextFrame(kUserSessionsChanged, TableName::UserInvitation);
+  owners.obj[kUserIdField] = static_cast<Json::Int64>(event.userId);
+  co_await sink->publishSessionChange(
+      {.payload = sync_change::emitPayload(owners), .client = event.client});
 }

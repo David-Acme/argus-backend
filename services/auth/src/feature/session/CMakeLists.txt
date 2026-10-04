@@ -5,6 +5,8 @@ argus_module(NAME auth-session
         repositories/refresh-token/refresh-token-repository.cc
         services/auth-action-sink.cc
         services/session-context-cache.cc
+        services/session-events.cc
+        services/session-revocation.cc
         services/session-service.cc
         services/identity-change-consumer.cc
     INCLUDES ../..

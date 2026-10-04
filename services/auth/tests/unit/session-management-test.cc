@@ -33,6 +33,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -110,19 +111,78 @@ class ScriptedIdentityClient : public IdentityClient
 public:
   ScriptedIdentityClient() : IdentityClient("127.0.0.1:1") {}
 
+  void setActive(int64_t userId, bool active)
+  {
+    const std::scoped_lock lock(mutex_);
+    if (active)
+      disabled_.erase(userId);
+    else
+      disabled_.insert(userId);
+  }
+
+  [[nodiscard]] bool active(int64_t userId) const
+  {
+    const std::scoped_lock lock(mutex_);
+    return !disabled_.contains(userId);
+  }
+
   [[nodiscard]] std::optional<argus::identity::v1::GetUserResponse>
   getUser(int64_t userId) const override
   {
     argus::identity::v1::GetUserResponse response;
-    auto* user = response.mutable_user();
-    user->set_user_id(userId);
-    user->set_name("Ada");
-    user->set_last_name("Rico");
-    user->set_lang("es");
-    user->set_role("owner");
-    user->set_is_active(true);
+    *response.mutable_user() = identityOf(userId);
     return response;
   }
+
+  [[nodiscard]] std::optional<argus::identity::v1::IdentifyPersonResponse>
+  identifyPerson(const std::string& image) const override
+  {
+    const int64_t userId = std::stoll(image);
+    argus::identity::v1::IdentifyPersonResponse response;
+    response.set_matched(true);
+    response.set_person_id(userId + 100);
+    response.set_face_found(true);
+    if (!active(userId)) {
+      response.set_account_disabled(true);
+      return response;
+    }
+    response.set_user_id(userId);
+    response.set_role("resident");
+    response.set_name("Ada");
+    response.set_last_name("Rico");
+    return response;
+  }
+
+  [[nodiscard]] std::optional<argus::identity::v1::RegisterUserResponse>
+  registerUser(const RegisterUserInput& input) const override
+  {
+    const int64_t userId = std::stoll(input.image);
+    argus::identity::v1::RegisterUserResponse response;
+    if (!active(userId)) {
+      response.set_outcome(argus::identity::v1::REGISTER_USER_ACCOUNT_DISABLED);
+      return response;
+    }
+    response.set_outcome(argus::identity::v1::REGISTER_USER_ALREADY_REGISTERED);
+    *response.mutable_user() = identityOf(userId);
+    response.set_person_id(userId + 100);
+    return response;
+  }
+
+private:
+  [[nodiscard]] argus::identity::v1::UserIdentity identityOf(int64_t userId) const
+  {
+    argus::identity::v1::UserIdentity user;
+    user.set_user_id(userId);
+    user.set_name("Ada");
+    user.set_last_name("Rico");
+    user.set_lang("es");
+    user.set_role(userId == kOwnerId ? "owner" : "resident");
+    user.set_is_active(active(userId));
+    return user;
+  }
+
+  mutable std::mutex mutex_;
+  std::set<int64_t> disabled_;
 };
 
 class RecordingSink : public AuthChangeSink
@@ -310,6 +370,8 @@ public:
   [[nodiscard]] AuthFeatureService& auth() { return auth_; }
   [[nodiscard]] SessionManagementService& sessions() { return manager_; }
   [[nodiscard]] RecordingSink& sink() { return sink_; }
+  [[nodiscard]] ScriptedIdentityClient& identity() { return identity_; }
+  [[nodiscard]] SessionService& verdicts() { return sessions_; }
   [[nodiscard]] const LegacySeed& legacy() const { return legacy_; }
 
 private:
@@ -576,7 +638,7 @@ TEST_CASE("an owner lists, revokes one session and the rest, and logs out")
   const auto web = openSession({.userId = kOwnerId, .device = browser()});
   const auto stranger =
       openSession({.userId = kOtherUserId, .device = androidPhone()});
-  CHECK(app.sink().changes().size() == 4);
+  CHECK(app.sink().changes().size() == 8);
 
   const JwtContext phoneContext = contextOf(phone);
   const JwtContext deskContext = contextOf(desk);
@@ -621,7 +683,7 @@ TEST_CASE("an owner lists, revokes one session and the rest, and logs out")
   CHECK(authenticate(phone).has_value());
 
   const auto changes = app.sink().changes();
-  REQUIRE(changes.size() == 2);
+  REQUIRE(changes.size() == 3);
   CHECK(changes[0]["action"].asString() == "disconnect_session");
   CHECK(changes[0]["user"].asInt64() == kOwnerId);
   CHECK(changes[0]["session"].asString() == deskContext.sessionId);
@@ -632,6 +694,12 @@ TEST_CASE("an owner lists, revokes one session and the rest, and logs out")
   CHECK(changes[1]["info"]["reason"].asString() == "sessionsChanged");
   CHECK(changes[1]["users"][0].asInt64() == kOwnerId);
   CHECK_FALSE(changes[1].isMember("action"));
+  CHECK(changes[0]["info"]["cause"].asString() == "revoked");
+  CHECK(changes[2]["option"].asString() == "user_invitation");
+  CHECK(changes[2]["info"]["reason"].asString() == "userSessionsChanged");
+  CHECK(changes[2]["info"]["userId"].asInt64() == kOwnerId);
+  CHECK_FALSE(changes[2].isMember("users"));
+  CHECK_FALSE(changes[2].isMember("action"));
   const auto actions = app.sink().actions();
   REQUIRE(actions.size() == 1);
   CHECK(actions[0]["old_data"]["sessionId"].asString() ==
@@ -671,7 +739,7 @@ TEST_CASE("an owner lists, revokes one session and the rest, and logs out")
   CHECK_FALSE(authenticate(web).has_value());
   CHECK_FALSE(authenticate(second).has_value());
   CHECK(authenticate(phone).has_value());
-  CHECK(app.sink().changes().size() == 3);
+  CHECK(app.sink().changes().size() == 4);
 
   const auto spare = openSession({.userId = kOwnerId, .device = browser()});
   REQUIRE(authenticate(spare).has_value());
@@ -734,7 +802,7 @@ TEST_CASE("a rotated refresh token races inside the window and is a theft outsid
   CHECK(replayed.status == 401);
   CHECK_FALSE(contains(activeSessionIds(kOtherUserId), sessionId));
   const auto changes = app.sink().changes();
-  REQUIRE(changes.size() == 2);
+  REQUIRE(changes.size() == 3);
   CHECK(changes[0]["session"].asString() == sessionId);
   const auto actions = app.sink().actions();
   REQUIRE(actions.size() == 1);
@@ -880,6 +948,175 @@ TEST_CASE("last seen advances on use at most once a minute")
       context.sessionId);
   REQUIRE(authenticate(phone).has_value());
   CHECK(lastSeen() == touched - 30);
+}
+
+TEST_CASE("the owner lists every user's sessions and closes another user's one or all")
+{
+  Fixture& app = fixture();
+  REQUIRE(app.start());
+  constexpr int64_t kTargetId = 21;
+  constexpr int64_t kBystanderId = 22;
+
+  const auto owner = openSession({.userId = kOwnerId, .device = desktop()});
+  const auto phone = openSession({.userId = kTargetId, .device = androidPhone()});
+  const auto laptop = openSession({.userId = kTargetId, .device = browser()});
+  const auto bystander =
+      openSession({.userId = kBystanderId, .device = androidPhone()});
+  const JwtContext ownerContext = contextOf(owner);
+  const JwtContext phoneContext = contextOf(phone);
+  const JwtContext laptopContext = contextOf(laptop);
+  const JwtContext bystanderContext = contextOf(bystander);
+  const SessionOwnerInput actor{.userId = kOwnerId,
+                                .currentSessionId = ownerContext.sessionId};
+
+  const auto overview = drogon::sync_wait(app.sessions().listEveryUser(actor));
+  const auto userOf = [&overview](int64_t userId) {
+    return std::ranges::find(overview.users, userId, &UserSessionsView::userId);
+  };
+  REQUIRE(userOf(kTargetId) != overview.users.end());
+  REQUIRE(userOf(kOwnerId) != overview.users.end());
+  CHECK(userOf(kTargetId)->sessions.size() == 2);
+  CHECK(std::ranges::none_of(userOf(kTargetId)->sessions, &SessionView::current));
+  CHECK(std::ranges::any_of(userOf(kOwnerId)->sessions, &SessionView::current));
+  const Json::Value overviewJson = overview.toJson();
+  for (const auto& user : overviewJson["users"]) {
+    CHECK(user.getMemberNames() == std::vector<std::string>{"sessions", "userId"});
+    CHECK_FALSE(mentionsSecret(user));
+  }
+
+  const auto listed = drogon::sync_wait(
+      app.sessions().listOfUser({.actor = actor, .userId = kTargetId}));
+  CHECK(listed.sessions.size() == 2);
+  CHECK(std::ranges::none_of(listed.sessions, &SessionView::current));
+
+  app.sink().clear();
+  const auto one = drogon::sync_wait(app.sessions().revokeUserSession(
+      {.actor = actor, .userId = kTargetId, .sessionId = phoneContext.sessionId}));
+  CHECK(one.revoked == std::vector<std::string>{phoneContext.sessionId});
+  CHECK_FALSE(one.current);
+  CHECK_FALSE(authenticate(phone).has_value());
+  CHECK(authenticate(laptop).has_value());
+  CHECK(authenticate(owner).has_value());
+  const auto changes = app.sink().changes();
+  REQUIRE(changes.size() == 3);
+  CHECK(changes[0]["action"].asString() == "disconnect_session");
+  CHECK(changes[0]["user"].asInt64() == kTargetId);
+  CHECK(changes[0]["info"]["cause"].asString() == "revokedByOwner");
+  CHECK(changes[1]["users"][0].asInt64() == kTargetId);
+  CHECK(changes[2]["info"]["userId"].asInt64() == kTargetId);
+  const auto actions = app.sink().actions();
+  REQUIRE(actions.size() == 1);
+  CHECK(actions[0]["record_id"].asInt64() == kTargetId);
+  CHECK(actions[0]["new_data"]["reason"].asString() == "revokedByOwner");
+  CHECK(actions[0]["new_data"]["revokedBy"].asInt64() == kOwnerId);
+  CHECK_FALSE(mentionsSecret(actions[0]));
+
+  const Refusal again = refusedBy(app.sessions().revokeUserSession(
+      {.actor = actor, .userId = kTargetId, .sessionId = phoneContext.sessionId}));
+  CHECK(again.status == 404);
+  const Refusal crossed = refusedBy(app.sessions().revokeUserSession(
+      {.actor = actor,
+       .userId = kTargetId,
+       .sessionId = bystanderContext.sessionId}));
+  CHECK(crossed.code == "SESSION_NOT_FOUND");
+  CHECK(authenticate(bystander).has_value());
+
+  const auto all = drogon::sync_wait(app.sessions().revokeUserSessions(
+      {.actor = actor, .userId = kTargetId}));
+  CHECK(all.revoked == std::vector<std::string>{laptopContext.sessionId});
+  CHECK_FALSE(all.current);
+  CHECK(activeSessionIds(kTargetId).empty());
+  CHECK(authenticate(bystander).has_value());
+  CHECK(authenticate(owner).has_value());
+
+  const auto selfAll = drogon::sync_wait(app.sessions().revokeUserSessions(
+      {.actor = actor, .userId = kOwnerId}));
+  CHECK(selfAll.current);
+  CHECK(contains(selfAll.revoked, ownerContext.sessionId));
+  CHECK_FALSE(authenticate(owner).has_value());
+}
+
+TEST_CASE("a disabled account loses every session and is refused at every way in")
+{
+  Fixture& app = fixture();
+  REQUIRE(app.start());
+  constexpr int64_t kDisabledId = 31;
+  constexpr int64_t kLaggingId = 32;
+  constexpr int64_t kQrId = 33;
+  const auto phoneLogin = [] {
+    const Device device = androidPhone();
+    return LoginDeviceInput{.deviceHash = deviceHashOf(device),
+                            .userAgent = device.userAgent,
+                            .client = device.client};
+  };
+
+  const auto phone = openSession({.userId = kDisabledId, .device = androidPhone()});
+  const auto web = openSession({.userId = kDisabledId, .device = browser()});
+  app.sink().clear();
+  app.identity().setActive(kDisabledId, false);
+  CHECK(drogon::sync_wait(app.verdicts().revokeUser(kDisabledId)));
+  CHECK_FALSE(authenticate(phone).has_value());
+  CHECK_FALSE(authenticate(web).has_value());
+  CHECK(activeSessionIds(kDisabledId).empty());
+  const auto changes = app.sink().changes();
+  const auto revokedFrames = std::ranges::count_if(changes, [](const Json::Value& change) {
+    return change["action"].asString() == "disconnect_session" &&
+           change["info"]["cause"].asString() == "accountDisabled";
+  });
+  CHECK(revokedFrames == 2);
+  for (const auto& action : app.sink().actions())
+    CHECK(action["new_data"]["reason"].asString() == "accountDisabled");
+
+  const Refusal face =
+      refusedBy(app.auth().login(LoginDto{.image = std::to_string(kDisabledId)},
+                                 phoneLogin()));
+  CHECK(face.status == 403);
+  CHECK(face.code == "ACCOUNT_DISABLED");
+  const Refusal registered = refusedBy(app.auth().registerUser(
+      RegisterDto{.image = std::to_string(kDisabledId),
+                  .name = "Ada",
+                  .inviteCode = "",
+                  .lang = "es"},
+      phoneLogin()));
+  CHECK(registered.status == 403);
+  CHECK(registered.code == "ACCOUNT_DISABLED");
+  const Refusal oldRefresh = refusedBy(app.auth().refreshToken(refreshInputOf(
+      {.refreshToken = phone.refreshToken, .device = phone.device})));
+  CHECK(oldRefresh.status == 403);
+  CHECK(oldRefresh.code == "ACCOUNT_DISABLED");
+
+  const auto lagging = openSession({.userId = kLaggingId, .device = androidPhone()});
+  app.identity().setActive(kLaggingId, false);
+  const Refusal refresh = refusedBy(app.auth().refreshToken(refreshInputOf(
+      {.refreshToken = lagging.refreshToken, .device = lagging.device})));
+  CHECK(refresh.status == 403);
+  CHECK(refresh.code == "ACCOUNT_DISABLED");
+  CHECK(activeSessionIds(kLaggingId).empty());
+
+  const LoginDeviceInput qrDevice = phoneLogin();
+  const auto challenge = drogon::sync_wait(
+      app.auth().createDeviceLogin({.device = qrDevice, .pollHash = ""}));
+  drogon::sync_wait(app.auth().approveDeviceLogin(challenge.challengeId, kQrId));
+  app.identity().setActive(kQrId, false);
+  const auto polled = drogon::sync_wait(app.auth().pollDeviceLogin(
+      {.challengeId = challenge.challengeId, .device = qrDevice, .proof = ""}));
+  CHECK(polled.status == DeviceLoginStatus::Expired);
+  CHECK(polled.accessToken.empty());
+  CHECK(polled.refreshToken.empty());
+  const Refusal approve = refusedBy(app.auth().approveDeviceLogin(
+      drogon::sync_wait(
+          app.auth().createDeviceLogin({.device = qrDevice, .pollHash = ""}))
+          .challengeId,
+      kQrId));
+  CHECK(approve.status == 403);
+
+  app.identity().setActive(kDisabledId, true);
+  const auto back = drogon::sync_wait(app.auth().login(
+      LoginDto{.image = std::to_string(kDisabledId)}, phoneLogin()));
+  CHECK(back.userId == kDisabledId);
+  CHECK(activeSessionIds(kDisabledId).size() == 1);
+  CHECK_FALSE(authenticate(phone).has_value());
+  CHECK_FALSE(authenticate(web).has_value());
 }
 
 int main(int argc, char** argv)

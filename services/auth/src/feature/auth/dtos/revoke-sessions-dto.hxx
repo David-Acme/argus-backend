@@ -1,7 +1,7 @@
 #pragma once
 
 #include <drogon/HttpRequest.h>
-#include <feature/auth/services/session-events.hxx>
+#include <feature/session/services/session-events.hxx>
 #include <string>
 #include <validation/validation_dsl.hxx>
 

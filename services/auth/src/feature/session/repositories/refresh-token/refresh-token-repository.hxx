@@ -36,6 +36,9 @@ public:
   [[nodiscard]] drogon::Task<std::vector<RefreshTokenSchema>>
   listActive(const ActiveSessionsInput& input) const;
 
+  [[nodiscard]] drogon::Task<std::vector<RefreshTokenSchema>>
+  listAllActive(int64_t now) const;
+
   [[nodiscard]] drogon::Task<bool>
   markUsed(int64_t id, drogon::orm::DbClient* client = nullptr) const;
 

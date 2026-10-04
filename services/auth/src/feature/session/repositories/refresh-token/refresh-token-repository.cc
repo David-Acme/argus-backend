@@ -152,6 +152,19 @@ RefreshTokenRepository::listActive(const ActiveSessionsInput& input) const
   co_return sessions;
 }
 
+drogon::Task<std::vector<RefreshTokenSchema>>
+RefreshTokenRepository::listAllActive(int64_t now) const
+{
+  const auto client = DbService::client();
+  const auto result =
+      co_await client->execSqlCoro(std::string(LIST_ALL_ACTIVE), now);
+  std::vector<RefreshTokenSchema> sessions;
+  sessions.reserve(result.size());
+  for (const auto& row : result)
+    sessions.emplace_back(row);
+  co_return sessions;
+}
+
 drogon::Task<bool>
 RefreshTokenRepository::markUsed(int64_t id, drogon::orm::DbClient* client) const
 {

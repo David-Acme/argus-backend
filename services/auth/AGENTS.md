@@ -73,7 +73,10 @@ argus-auth/
     repositories/       refresh_token queries and the row mapping
     schemas/            refresh_token row mapping
     services/           SessionService, SessionContextCache,
-                        IdentityChangeConsumer
+                        IdentityChangeConsumer, SessionRevocation (the one
+                        path that ends a session) and session-events (the
+                        sessionRevoked / sessionsChanged /
+                        userSessionsChanged frames and their audit rows)
     infra/              ordered-delivery: the one durable handler shape this
                         service's consumers are built from
   src/feature/device/
@@ -81,13 +84,14 @@ argus-auth/
                         device_login_challenge compare-and-set
     schemas/            device_credential and device_login_challenge mapping
   src/feature/auth/
-    controllers/        the twelve /auth routes (three of them the
-                        session list and revocations)
+    controllers/        the sixteen /auth routes (three of them the
+                        caller's own sessions, four the owner's view of
+                        every user's sessions)
     dtos/               the request and response DTOs of that surface
     services/           AuthFeatureService: sessions, credentials, challenges;
-                        SessionManagementService: list and revoke a user's
-                        own sessions; session-events: the sessionRevoked /
-                        sessionsChanged frames and their audit rows
+                        SessionManagementService: list and revoke the
+                        caller's own sessions, and the owner's list and
+                        revocation of any user's
     infra/              auth-rate-gate: the [rate_limit] pre-routing gate;
                         client-identity: platform and device name from the
                         X-Argus-Client / X-Argus-Device / User-Agent headers

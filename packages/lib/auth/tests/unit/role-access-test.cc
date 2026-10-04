@@ -342,3 +342,37 @@ TEST_CASE("every role lists and revokes its own sessions through kSessionAccess"
   CHECK_FALSE(allows(UserRole::Guest, "/auth/logout", drogon::Delete));
   CHECK(allows(UserRole::Guard, "/auth/me", drogon::Get));
 }
+
+TEST_CASE("only the owner reads and revokes another user's sessions")
+{
+  const auto allows = [](UserRole role, std::string_view path, drogon::HttpMethod method) {
+    return role_access::hasHttpAccess({.role = role, .path = path, .method = method});
+  };
+  constexpr std::string_view kOne = "/auth/users/7/sessions/0123456789abcdef0123456789abcdef";
+
+  CHECK(allows(UserRole::Owner, "/auth/users/sessions", drogon::Get));
+  CHECK(allows(UserRole::Owner, "/auth/users/7/sessions", drogon::Get));
+  CHECK(allows(UserRole::Owner, "/auth/users/7/sessions", drogon::Delete));
+  CHECK(allows(UserRole::Owner, kOne, drogon::Delete));
+
+  for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CAPTURE(userRoleToString(role));
+    CHECK_FALSE(allows(role, "/auth/users/sessions", drogon::Get));
+    CHECK_FALSE(allows(role, "/auth/users/7/sessions", drogon::Get));
+    CHECK_FALSE(allows(role, "/auth/users/7/sessions", drogon::Delete));
+    CHECK_FALSE(allows(role, kOne, drogon::Delete));
+  }
+}
+
+TEST_CASE("a session route pattern matches one segment per placeholder")
+{
+  using role_access::routeMatches;
+  CHECK(routeMatches("/auth/users/{id}/sessions", "/auth/users/12/sessions"));
+  CHECK(routeMatches("/auth/users/{id}/sessions/{id}", "/auth/users/12/sessions/ab"));
+  CHECK_FALSE(routeMatches("/auth/users/{id}/sessions", "/auth/users//sessions"));
+  CHECK_FALSE(routeMatches("/auth/users/{id}/sessions", "/auth/users/1/2/sessions"));
+  CHECK_FALSE(routeMatches("/auth/users/{id}/sessions", "/auth/users/1/sessions/"));
+  CHECK_FALSE(routeMatches("/auth/users/{id}/sessions", "/auth/users/1"));
+  CHECK_FALSE(routeMatches("/auth/sessions", "/auth/sessions/x"));
+  CHECK_FALSE(routeMatches("/auth/sessions", ""));
+}

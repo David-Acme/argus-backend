@@ -4,8 +4,9 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/auth/dtos/response-list-sessions-dto.hxx>
 #include <feature/auth/dtos/response-revoke-sessions-dto.hxx>
-#include <feature/auth/services/session-events.hxx>
+#include <feature/auth/dtos/response-user-sessions-dto.hxx>
 #include <feature/session/repositories/refresh-token/refresh-token-repository.hxx>
+#include <feature/session/services/session-revocation.hxx>
 #include <string>
 #include <vector>
 
@@ -27,13 +28,17 @@ struct RevokeSessionScopeInput
   SessionRevocationScope scope{SessionRevocationScope::Others};
 };
 
-struct SessionRevocationInput
+struct UserSessionsInput
 {
+  SessionOwnerInput actor;
   int64_t userId{0};
-  int64_t actorId{0};
-  SessionRevocationScope scope{SessionRevocationScope::One};
+};
+
+struct RevokeUserSessionInput
+{
+  SessionOwnerInput actor;
+  int64_t userId{0};
   std::string sessionId;
-  SessionRevocationReason reason{SessionRevocationReason::Revoked};
 };
 
 class SessionManagementService
@@ -55,6 +60,18 @@ public:
   [[nodiscard]] drogon::Task<ResponseRevokeSessionsDto>
   revokeScope(const RevokeSessionScopeInput& input) const;
 
+  [[nodiscard]] drogon::Task<ResponseUserSessionsDto>
+  listEveryUser(const SessionOwnerInput& actor) const;
+
+  [[nodiscard]] drogon::Task<ResponseListSessionsDto>
+  listOfUser(const UserSessionsInput& input) const;
+
+  [[nodiscard]] drogon::Task<ResponseRevokeSessionsDto>
+  revokeUserSession(const RevokeUserSessionInput& input) const;
+
+  [[nodiscard]] drogon::Task<ResponseRevokeSessionsDto>
+  revokeUserSessions(const UserSessionsInput& input) const;
+
   [[nodiscard]] drogon::Task<std::vector<std::string>>
   revoke(const SessionRevocationInput& input) const;
 
@@ -64,4 +81,5 @@ public:
 
 private:
   Dependencies dependencies_;
+  SessionRevocation revocation_;
 };
