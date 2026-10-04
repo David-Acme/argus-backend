@@ -1,6 +1,7 @@
 #include <app/rpc/camera-rpc-server.hxx>
 #include <config/camera-config.hxx>
 #include <feature/media/camera-media-socket.hxx>
+#include <feature/media/session-revocation-consumer.hxx>
 #include <drogon/drogon.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/camera-control/controllers/camera-control-controller.hxx>
@@ -169,8 +170,9 @@ int main()
   drogon::app().registerFilter(std::make_shared<JwtFilter>());
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
 
+  MediaSessionRegistry mediaSessions;
   drogon::app().registerController(
-      std::make_shared<CameraMediaSocket>());
+      std::make_shared<CameraMediaSocket>(mediaSessions));
 
   drogon::app().loadConfigJson(drogonConfig(cameraDb, listener));
   certificate_reload::watch(listener);
@@ -221,6 +223,9 @@ int main()
                      .publishSubject = {}});
     static_cast<void>(camera_event_stream::ensure(natsBus, {}));
   }
+  SessionRevocationConsumer sessionRevocations(
+      {.bus = natsBus, .sessions = &mediaSessions},
+      SessionRevocationConsumer::defaults());
 
   const ObjectsConfig objectsConfig = operator_config::resolveObjects();
   std::unique_ptr<ObjectDetectorService> detector;
@@ -348,6 +353,12 @@ int main()
   if (healthMonitor) {
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*healthMonitor, "camera-health"));
+  }
+  if (natsBus) {
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(sessionRevocations, "camera-session-revocations"));
+    drogon::app().registerBeginningAdvice(
+        [&sessionRevocations]() { sessionRevocations.start(); });
   }
 
   std::unique_ptr<MdnsService> mdnsService;

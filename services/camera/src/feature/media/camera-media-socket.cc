@@ -23,6 +23,8 @@ void CameraMediaSocket::handleNewConnection(
   const auto& ctx =
       req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   conn->setContext(std::make_shared<JwtContext>(ctx));
+  sessions_.add({.connection = conn,
+                 .session = {.userId = ctx.sub, .sessionId = ctx.sessionId}});
 }
 
 void CameraMediaSocket::handleNewMessage(
@@ -74,5 +76,6 @@ void CameraMediaSocket::handleNewMessage(
 void CameraMediaSocket::handleConnectionClosed(
     const drogon::WebSocketConnectionPtr& conn)
 {
+  sessions_.remove(conn);
   service_.handleClose(conn);
 }

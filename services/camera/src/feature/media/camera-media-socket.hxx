@@ -1,6 +1,7 @@
 #pragma once
 
 #include "camera-media-service.hxx"
+#include "media-session-registry.hxx"
 
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
@@ -11,6 +12,8 @@ class CameraMediaSocket
     : public drogon::WebSocketController<CameraMediaSocket, false>
 {
 public:
+  explicit CameraMediaSocket(MediaSessionRegistry& sessions) : sessions_(sessions) {}
+
   void handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                         std::string&& message,
                         const drogon::WebSocketMessageType& type) override;
@@ -25,4 +28,5 @@ public:
 
 private:
   CameraMediaService service_;
+  MediaSessionRegistry& sessions_;
 };

@@ -957,3 +957,24 @@ end to end, including the token refresh and go2rtc's decode.
 `Go2rtcFrameSource` and `IFrameSource` moved from `feature/operator` to
 `shared/services/stream`: the operator, the monitor and camera-control read
 them now, and the monitor no longer links the operator module to reach them.
+
+## A revoked session's live view closes with it
+
+The `/media` socket is authenticated once, at the upgrade, so a session
+revoked from the sessions view (or ended for refresh-token reuse) used to keep
+its open live views streaming: a stolen device kept watching. Each media
+socket is now tagged at connect with the user and the session id the auth
+verdict put in `JwtContext.sessionId` (`MediaSessionRegistry`,
+`feature/media`), and a durable JetStream consumer of argus-auth's session
+feed (`argus-camera-auth-session` on `argus.auth.v1.session`, stream
+`ARGUS_AUTH_SESSION`, ordered, new messages only) closes exactly the sockets of
+a `disconnect_session` change with 1008 `session_revoked`; the socket's close
+handler then releases its stream subscriptions. Other sessions of the same
+user, and other users, keep streaming. Every other change on the subject
+(`sessionsChanged`) is acknowledged and ignored; a malformed
+`disconnect_session` is terminated rather than redelivered. A socket opened
+without a session id (a token minted before sessions existed) is not tracked;
+its access token is refused at its next upgrade like any revoked one. Measured
+on the sandbox with two sessions of a throwaway resident watching the same test
+camera: the revoked session's socket closed 1 ms after argus-auth logged the
+revocation, and the other session's stream carried on.

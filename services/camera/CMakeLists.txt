@@ -184,6 +184,7 @@ set(CAMERA_UNIT_TESTS
     event-intelligence-test
     camera-source-registrar-test
     camera-stream-test
+    camera-media-session-test
     camera-change-transaction-test
 )
 
@@ -242,6 +243,9 @@ target_link_libraries(camera-source-registrar-test PRIVATE
 
 target_link_libraries(camera-stream-test PRIVATE
     argus::camera-stream)
+
+target_link_libraries(camera-media-session-test PRIVATE
+    argus::camera-media)
 
 target_link_libraries(camera-change-transaction-test PRIVATE
     argus::camera-change-sink
