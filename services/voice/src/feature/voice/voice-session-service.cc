@@ -65,11 +65,11 @@ const std::unordered_map<VoiceLang, Greeting>& greetings()
 {
   static const std::unordered_map<VoiceLang, Greeting> map = {
       {VoiceLang::Es,
-       {"Hola {name}, soy Argus, tu asistente. ¿En qué puedo ayudarte?",
-        "Hola, soy Argus, tu asistente local. ¿Cómo te llamas?"}},
+       {.withName = "Hola {name}, soy Argus, tu asistente. ¿En qué puedo ayudarte?",
+        .askName = "Hola, soy Argus, tu asistente local. ¿Cómo te llamas?"}},
       {VoiceLang::En,
-       {"Hi {name}, I'm Argus, your assistant. How can I help you?",
-        "Hi, I'm Argus, your local assistant. What's your name?"}},
+       {.withName = "Hi {name}, I'm Argus, your assistant. How can I help you?",
+        .askName = "Hi, I'm Argus, your local assistant. What's your name?"}},
   };
   return map;
 }
@@ -346,7 +346,7 @@ std::optional<std::string> extractName(const std::string& text)
     while (!name.empty() &&
            std::isspace(static_cast<unsigned char>(name.front())))
       name.erase(name.begin());
-    const auto end = std::find_if(name.begin(), name.end(), [](unsigned char c) {
+    const auto end = std::ranges::find_if(name, [](unsigned char c) {
       return c == '.' || c == ',' || c == '!' || c == '?';
     });
     name = std::string(name.begin(), end);
@@ -439,7 +439,7 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   if (lang == VoiceLang::System)
     lang = voiceSystemLang();
 
-  const std::string userName = identity.name();
+  const std::string& userName = identity.name();
   LOG_INFO << "Voice: session start user=" << identity.user_id()
            << " lang=" << voiceLangToString(lang)
            << " nameKnown=" << (userName.size() >= 2)
@@ -580,7 +580,7 @@ std::optional<std::vector<float>> VoiceSessionService::nextBatch(Session& sessio
   return batch;
 }
 
-void VoiceSessionService::workerLoop(std::shared_ptr<Session> session)
+void VoiceSessionService::workerLoop(const std::shared_ptr<Session>& session)
 {
   while (session->active.load()) {
     auto batch = nextBatch(*session);
@@ -770,12 +770,17 @@ void VoiceSessionService::bargeIn(Session& session)
 bool VoiceSessionService::sendDuplexChunk(Session& session,
                                           argus::voice::v1::ServerFrame frame)
 {
+  const auto now = std::chrono::steady_clock::now();
+  const size_t samples = frame.tts_chunk().pcm().size() / sizeof(int16_t);
+  const auto audible = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+      std::chrono::duration<double>(static_cast<double>(samples) / kTargetRate));
   std::scoped_lock lock(session.duplexMutex);
   if (session.turn.barged)
     return false;
+  session.turn.playbackEnd = std::max(session.turn.playbackEnd, now) + audible;
   if (!session.turn.announced) {
     session.turn.announced = true;
-    session.turn.firstAudioAt = std::chrono::steady_clock::now();
+    session.turn.firstAudioAt = now;
     ++session.turn.id;
     argus::voice::v1::ServerFrame turnFrame;
     turnFrame.mutable_turn()->set_id(session.turn.id);
@@ -786,18 +791,14 @@ bool VoiceSessionService::sendDuplexChunk(Session& session,
 }
 
 bool VoiceSessionService::sendDuplexAssistant(Session& session,
-                                              AssistantSend send)
+                                              argus::voice::v1::ServerFrame frame)
 {
-  const auto now = std::chrono::steady_clock::now();
   std::scoped_lock lock(session.duplexMutex);
   if (session.turn.barged)
     return false;
   if (session.turn.announced)
-    send.frame.mutable_assistant()->set_turn_id(session.turn.id);
-  const auto audible = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-      std::chrono::duration<double>(static_cast<double>(send.samples) / kTargetRate));
-  session.turn.playbackEnd = std::max(session.turn.playbackEnd, now) + audible;
-  sendFrame(session, std::move(send.frame));
+    frame.mutable_assistant()->set_turn_id(session.turn.id);
+  sendFrame(session, std::move(frame));
   return true;
 }
 
@@ -1213,7 +1214,6 @@ VoiceSessionService::SpeakOutcome VoiceSessionService::speak(Session& session,
        .targetRate = kTargetRate});
 
   SpeakingGuard speakingGuard(session.speaking);
-  size_t spokenSamples = 0;
   const auto markAudible = [&outcome] {
     if (outcome.audible)
       return;
@@ -1241,7 +1241,6 @@ VoiceSessionService::SpeakOutcome VoiceSessionService::speak(Session& session,
       if (session.duplex) {
         if (!sendDuplexChunk(session, std::move(chunkFrame)))
           return;
-        spokenSamples += resampled.size();
       }
       else {
         sendFrame(session, std::move(chunkFrame));
@@ -1257,8 +1256,7 @@ VoiceSessionService::SpeakOutcome VoiceSessionService::speak(Session& session,
     LOG_WARN << "Voice: TTS failed (unknown error)";
   }
   if (session.duplex) {
-    const bool delivered = sendDuplexAssistant(session, {.frame = std::move(assistantFrame),
-                                                         .samples = spokenSamples});
+    const bool delivered = sendDuplexAssistant(session, std::move(assistantFrame));
     outcome.interrupted = !delivered || session.interrupt.load();
     return outcome;
   }

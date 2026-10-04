@@ -125,12 +125,6 @@ private:
     bool armed{false};
   };
 
-  struct AssistantSend
-  {
-    argus::voice::v1::ServerFrame frame;
-    size_t samples{0};
-  };
-
   struct SessionInit
   {
     std::unique_ptr<VadModel> model;
@@ -199,7 +193,7 @@ private:
   };
 
   std::shared_ptr<Session> sessionOf(VoiceSessionSink& sink) const;
-  void workerLoop(std::shared_ptr<Session> session);
+  void workerLoop(const std::shared_ptr<Session>& session);
   void duplexLoop(const std::shared_ptr<Session>& session);
   static std::optional<std::vector<float>> nextBatch(Session& session);
   std::vector<float> cleanBatch(Session& session, std::vector<float>& batch);
@@ -208,7 +202,7 @@ private:
   ListenState listenState(Session& session);
   void bargeIn(Session& session);
   bool sendDuplexChunk(Session& session, argus::voice::v1::ServerFrame frame);
-  bool sendDuplexAssistant(Session& session, AssistantSend send);
+  bool sendDuplexAssistant(Session& session, argus::voice::v1::ServerFrame frame);
   void processTurn(Session& session, const std::vector<float>& samples);
   void processTurn(Session& session, const HeardTurn& heard);
   void followUtterance(Session& session);

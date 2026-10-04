@@ -173,8 +173,22 @@ arrived: median 2.6–2.8 s, p90 4.6 s.
 A call harness that starts the next utterance right after Argus's reply
 lost the first word on 1 to 4 of 32 turns in every variant (HEAD included):
 the user's onset fell inside the playback estimate, where only the last 320
-ms of pre-roll survive (see "Full duplex and barge-in"). It is the duplex
-playback estimate, not the transcript path.
+ms of pre-roll survive (see "Full duplex and barge-in"). It was the duplex
+playback estimate, not the transcript path: the estimate started each
+sentence when its `voice:assistant` was sent, after the whole sentence was
+synthesized, while the app plays every `tts_chunk` as it arrives. The
+estimate ran late by each sentence's synthesis time (2.4 s on a 69-byte
+sentence), so speech that began after Argus had gone quiet still went to the
+barge-in listener. The estimate now advances per chunk (see below).
+Re-run of the same harness (2026-10-04, prod argus-voice, Pocket es-quality,
+scratch engines): with the fix 0 of 44 mid-call turns lost their first word
+(28 during a full build-all on the host, 16 on an idle host); the previous
+binary lost 11 of 126 in the earlier runs and 2 of 16 in an interleaved A/B
+on the idle host. The call's first turn ("Hola Argus") lost "Hola" in 2 of 4
+loaded runs and in 1 of 4 idle runs of the previous binary as well: the
+harness starts it 0.7-0.95 s after the greeting's playback ends, outside any
+estimate, so that one is the VAD's onset after a stretch of digital silence
+(five windows over 0.45 needed, ten windows of pre-roll), not playback.
 
 ## Full duplex and barge-in
 
@@ -210,9 +224,19 @@ nothing to interrupt, and the first instants of playback are where echo is
 strongest. Before the guard the windows feed only the pre-roll.
 
 "Audible" means the turn thread is still running or the estimated playback
-has not ended. The server streams TTS faster than real time and the app
-plays each sentence when its `voice:assistant` arrives, so each sentence's
-audio duration is added to a `playbackEnd` estimate at that moment. When the
+has not ended. The app's playout is a stream: it plays every `tts_chunk` the
+moment it arrives (`VoicePlayout.write`), and the server streams TTS faster
+than real time. So `sendDuplexChunk` moves the estimate per chunk:
+`playbackEnd = max(playbackEnd, now) + chunk duration`, which is the first
+chunk's arrival plus the audio sent, and also models an underrun (a chunk
+that arrives after the previous audio ran out starts when it arrives).
+`voice:assistant` carries only the text. It used to add the sentence's
+duration when it was sent, after the sentence was fully synthesized, which
+put the end of playback late by the synthesis time; the seam suite pins the
+fix ("Speech after the streamed audio has played is a new turn, however
+late the sentence closed": 2 s of audio streamed over 1.2 s, speech fed
+2.6 s after the first chunk reaches STT whole; on the old estimate it went
+to the barge-in listener and no turn was heard). When the
 assistant stops being audible without a barge-in, the barge-in counters are
 cleared and normal turn detection resumes on the same VAD state, keeping the
 last `pre_roll_frames` windows as the pre-roll (`VadService::endListening`).

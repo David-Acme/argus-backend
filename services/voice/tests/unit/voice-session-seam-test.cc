@@ -1569,6 +1569,56 @@ TEST_CASE("Speech that starts while Argus is finishing keeps its first syllables
 
 namespace
 {
+struct PacedTts final : IVoiceTts
+{
+  static constexpr int kChunks = 20;
+  static constexpr int kChunkSamples = 1600;
+
+  [[nodiscard]] float defaultSpeed(std::stop_token = {}) const override { return 1.0F; }
+  [[nodiscard]] int sampleRate(std::stop_token = {}) const override { return 16000; }
+
+  void synthesizeStream(TtsRemoteStreamInput input) override
+  {
+    for (int i = 0; i < kChunks && !input.cancellation.stop_requested(); ++i) {
+      input.onChunk(std::vector<float>(kChunkSamples, 0.1F));
+      std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    }
+  }
+};
+}
+
+TEST_CASE("Speech after the streamed audio has played is a new turn, however late the sentence closed")
+{
+  DuplexConfig config(60000);
+  PacedTts tts;
+  RecordingStt stt;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  service.start(sink, duplexStart());
+  REQUIRE(waitFor([&] { return sink.hasType("voice:turn"); }, 1000));
+  const auto firstAudio = std::chrono::steady_clock::now();
+  REQUIRE(waitFor([&] { return sink.hasType("voice:assistant"); }, 3000));
+
+  std::this_thread::sleep_until(firstAudio + std::chrono::milliseconds(2600));
+  feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 20});
+  feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 14});
+  REQUIRE(waitFor([&] { return stt.count() == 1; }, 3000));
+  {
+    std::scoped_lock lock(stt.mutex);
+    const auto& heard = stt.turns.front();
+    CHECK(heard.front() > 0.9F);
+    CHECK(std::ranges::count_if(heard, [](float sample) { return sample > 0.9F; }) == 20 * kWindow);
+  }
+  CHECK_FALSE(sink.hasType("voice:interrupted"));
+
+  service.stop(sink);
+}
+
+namespace
+{
 struct StreamLog
 {
   std::mutex mutex;
