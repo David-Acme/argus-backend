@@ -134,3 +134,30 @@ TEST_CASE("identity peer and face config resolve from their sections")
   CHECK(sync.secret == "control-secret");
   CHECK(IdentityConfig::resolveFace().enabled);
 }
+
+TEST_CASE("an invitation lives thirty minutes unless the key says otherwise, "
+          "within a minute and a day")
+{
+  {
+    const TempConfig config("identity-config-test-invitation-default.toml",
+                            "[identity]\nport = 7044\n");
+    CHECK(IdentityConfig::resolveInvitation().lifetimeSeconds == 1800);
+  }
+  {
+    const TempConfig config("identity-config-test-invitation-set.toml",
+                            "[invitation]\nlifetime_seconds = 900\n");
+    CHECK(IdentityConfig::resolveInvitation().lifetimeSeconds == 900);
+  }
+  {
+    const TempConfig config("identity-config-test-invitation-low.toml",
+                            "[invitation]\nlifetime_seconds = 5\n");
+    CHECK(IdentityConfig::resolveInvitation().lifetimeSeconds ==
+          IdentityInvitationConfig::kMinLifetimeSeconds);
+  }
+  {
+    const TempConfig config("identity-config-test-invitation-high.toml",
+                            "[invitation]\nlifetime_seconds = 9999999\n");
+    CHECK(IdentityConfig::resolveInvitation().lifetimeSeconds ==
+          IdentityInvitationConfig::kMaxLifetimeSeconds);
+  }
+}

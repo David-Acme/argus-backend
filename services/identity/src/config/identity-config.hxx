@@ -34,6 +34,13 @@ struct IdentityRetentionConfig
   int64_t candidateDays{30};
 };
 
+struct IdentityInvitationConfig
+{
+  static constexpr int64_t kMinLifetimeSeconds = 60;
+  static constexpr int64_t kMaxLifetimeSeconds = 86400;
+  int64_t lifetimeSeconds{1800};
+};
+
 struct IdentityVoiceprintConfig
 {
   bool enabled{true};
@@ -68,4 +75,6 @@ public:
   [[nodiscard]] static IdentityRetentionConfig resolveRetention();
 
   [[nodiscard]] static IdentityVoiceprintConfig resolveVoiceprint();
+
+  [[nodiscard]] static IdentityInvitationConfig resolveInvitation();
 };

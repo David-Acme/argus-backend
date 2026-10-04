@@ -220,15 +220,21 @@ the roles that read only their own row), `tableFromPath(path)`,
   receive only the row whose id is `JwtContext.sub`. Apply that same scope in
   HTTP list services and `SynchronizedService`; route permission alone is not
   enough.
-- Invitations are created by Owner with a preselected non-owner role, expiry and
-  capacity. The token is 256-bit opaque material; persist only SHA-256. Consume
+- Invitations are created by Owner with a preselected non-owner role and
+  nothing else: every invitation is single-use (capacity 1) and the server
+  sets its lifetime (`[invitation] lifetime_seconds`, a safety net, never an
+  input). The token is 256-bit opaque material; persist only SHA-256. Consume
   it atomically with enrollment and redemption recording. An invitation QR that
   the frontend closes/unmounts is revoked, so it cannot be reused from a prior
   preview.
 - A role update is not a logout: persist first, call
   `sync_control::sink()->replaceRoleRooms`, then emit `AuthContextChanged` with
   `resync=true` to the user's room. Preserve the socket and user room. Only
-  account deactivation invalidates refresh tokens and disconnects the device.
+  account deactivation invalidates refresh tokens and disconnects the device;
+  argus-auth then refuses that user at face login, registration, refresh and
+  QR login (`ACCOUNT_DISABLED`) until the Owner re-enables the account, which
+  restores login, never the old sessions. No Owner deactivates their own
+  account, and the last active Owner cannot be deactivated or demoted.
 - Portrait objects are private server storage, never sync tables. Guard/Owner
   use `/portrait-preview/{userId}` to mint a requester-bound, short-lived,
   one-use capability and `/portrait-preview/{token}/content` to consume it.

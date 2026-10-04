@@ -254,6 +254,7 @@ argus-identity configuration. Copy to config.toml (gitignored) to run.
 | `voiceprint.min_snr_db` | Minimum estimated signal-to-noise ratio of a sample (12 dB). |
 | `voiceprint.samples_required` | Phrases an enrollment needs (3, between 3 and 10). |
 | `voiceprint.challenge_seconds` | Lifetime of an enrollment challenge (300 s): one use, bound to the user, the requester and the device. |
+| `invitation.lifetime_seconds` | The server-side safety net of an invitation (1800 s, clamped to 60..86400). An invitation is single-use and the app revokes it the moment its QR is closed; this lifetime only bounds a QR whose revoke never arrived (the app was killed, the network dropped). It is not shown in the app. |
 
 Optional keys the template does not set:
 

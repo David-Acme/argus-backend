@@ -32,7 +32,8 @@ enum class EnrollmentOutcome : uint8_t
   InvitationRequired,
   InvitationInvalid,
   OwnerAlreadyExists,
-  FaceIndexFailed
+  FaceIndexFailed,
+  AccountDisabled
 };
 
 struct EnrollmentResult

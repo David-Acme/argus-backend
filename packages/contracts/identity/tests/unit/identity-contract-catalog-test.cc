@@ -141,6 +141,11 @@ constexpr std::array<CatalogEntry, 45> kCatalog{{
      .code = ErrorCode::Conflict,
      .status = 409,
      .message = "At least one active owner is required"},
+    {.name = "SelfDeactivationForbidden",
+     .definition = &IdentityErrors::SelfDeactivationForbidden,
+     .code = ErrorCode::Conflict,
+     .status = 409,
+     .message = "You cannot deactivate your own account"},
     {.name = "InvalidMultipartForm",
      .definition = &IdentityErrors::InvalidMultipartForm,
      .code = ErrorCode::BadRequest,
@@ -255,7 +260,7 @@ TEST_CASE("the identity catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 45);
+  CHECK(kCatalog.size() == 46);
 }
 
 TEST_CASE("every identity entry is legal on the wire")

@@ -307,6 +307,51 @@ serves. Each one takes a ticket right after its commit and waits for its turn
 in that order, or the socket ends up in both B's and C's rooms while the
 database says C.
 
+## Accounts the owner turns off (2026-10)
+
+Deactivation is `PATCH /user/{id}` with `isActive:false` (or `DELETE
+/user/{id}`), reactivation the same patch with `true`. Two refusals guard it:
+the last active Owner can be neither deactivated nor demoted (409
+`ActiveOwnerRequired`, as before), and nobody deactivates their own account
+(409 `SelfDeactivationForbidden`), refused before the transaction opens so
+nothing is written or queued. The owner turning a user off is the whole
+flow: the commit publishes the user row, argus-sync closes the user's
+sockets, and argus-auth's consumer revokes every session; reactivation
+restores the ability to log in, not the sessions. `IdentifyPerson` now says
+`account_disabled` when a face belongs to a disabled user instead of answering
+as if the face were unknown, and `RegisterUser` answers
+`REGISTER_USER_ACCOUNT_DISABLED` for a disabled user's face, so argus-auth can
+tell that person why (403 `ACCOUNT_DISABLED`). The camera guard keeps seeing
+no user id for that face, as before.
+
+## Invitations are single use, with a server-side lifetime (2026-10)
+
+The owner no longer chooses a capacity or an expiry: `POST /invitation` takes
+the role alone, and every invitation is created with `max_redemptions = 1`
+and `expires_at = now + [invitation] lifetime_seconds` (1800 s by default,
+clamped to 60..86400). The columns stay, so the synced metadata, the redemption
+CAS (`TRY_CONSUME`) and the CHECK constraints are unchanged and the app reads
+`expiresAt` as before.
+
+Why one use and no input: the QR is shown once and only for as long as the
+owner keeps it open, and closing or unmounting it revokes the invitation. A
+capacity above one turned a photographed QR into an open door for several
+people, and an expiry chosen in days kept a token valid long after the person
+it was meant for had joined.
+
+Why a lifetime at all: the revoke-on-close is a client action, and it can be
+lost (the app is killed, the phone loses the network, the request times out)
+while the token is still valid. OWASP's guidance for one-time tokens
+(Forgot Password Cheat Sheet: tokens must be random, long enough, stored
+securely, single use and "expire after an appropriate period"; ASVS 4.0 2.3.1:
+activation codes "expire after a short period of time") is that single use is
+not enough on its own. Thirty minutes covers installing the app, pairing and
+the face enrolment while the owner holds the QR open, and bounds what a lost
+revoke leaves behind; the app shows the QR as expired when it lapses instead
+of a date the owner never chose. The token itself keeps rule 7b: 256 bits of
+`RAND_bytes`, only its SHA-256 stored, never logged or returned after
+creation, consumed in the same transaction as the enrolment.
+
 ## Camera guard surface (camera-guard phase 2)
 
 `IdentifyPerson`, `EnrollPerson`, `TouchPerson`, `TagPerson` and

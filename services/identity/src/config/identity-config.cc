@@ -128,3 +128,14 @@ IdentityVoiceprintConfig IdentityConfig::resolveVoiceprint()
         kMinChallengeSeconds, kMaxChallengeSeconds);
   return config;
 }
+
+IdentityInvitationConfig IdentityConfig::resolveInvitation()
+{
+  IdentityInvitationConfig config;
+  if (ConfigService::hasKey("invitation.lifetime_seconds"))
+    config.lifetimeSeconds =
+        std::clamp<int64_t>(ConfigService::getInt("invitation.lifetime_seconds"),
+                            IdentityInvitationConfig::kMinLifetimeSeconds,
+                            IdentityInvitationConfig::kMaxLifetimeSeconds);
+  return config;
+}

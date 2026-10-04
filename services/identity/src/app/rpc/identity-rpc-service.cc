@@ -206,6 +206,8 @@ registerUserOutcome(EnrollmentOutcome outcome)
     return argus::identity::v1::REGISTER_USER_OWNER_ALREADY_EXISTS;
   case EnrollmentOutcome::FaceIndexFailed:
     return argus::identity::v1::REGISTER_USER_FACE_INDEX_FAILED;
+  case EnrollmentOutcome::AccountDisabled:
+    return argus::identity::v1::REGISTER_USER_ACCOUNT_DISABLED;
   }
   return argus::identity::v1::REGISTER_USER_OUTCOME_UNSPECIFIED;
 }
@@ -414,6 +416,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
         }
         if (person && person->userId) {
           const auto user = co_await userRepository_.findById(*person->userId);
+          if (user && !user->isActive)
+            responseWriter->set_account_disabled(true);
           if (user && user->isActive) {
             responseWriter->set_user_id(user->id);
             responseWriter->set_role(userRoleToString(user->role));

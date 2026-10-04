@@ -2,6 +2,8 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
+#include <config/identity-config.hxx>
 #include <feature/invitation/services/invitation-feature-service.hxx>
 #include <feature/user/services/nats-identity-change-sink.hxx>
 #include <feature/user/services/user-feature-service.hxx>
@@ -16,6 +18,7 @@
 #include <chrono>
 #include <cstdio>
 #include <ctime>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -139,13 +142,11 @@ private:
   const drogon::orm::DbClient* pooled_;
 };
 
-CreateInvitationDto invitationBody(int64_t expiresAt)
+CreateInvitationDto invitationBody()
 {
   CreateInvitationDto dto;
   dto.role = UserRole::Resident;
   dto.roleValue = userRoleToString(UserRole::Resident);
-  dto.maxRedemptions = 1;
-  dto.expiresAt = expiresAt;
   return dto;
 }
 
@@ -230,21 +231,24 @@ TEST_CASE("an identity write and its change are one unit of work")
   RefusingSink sink(pooled.get());
   identity_change::setSink(&sink);
 
-  const int64_t expiresAt = std::time(nullptr) + 3600;
   seedUser(kUserId);
 
   sink.refuse(true);
   CHECK_THROWS_AS(drogon::sync_wait(invitations.create(
-                      invitationBody(expiresAt), kUserId)),
+                      invitationBody(), kUserId)),
                   std::runtime_error);
   CHECK(liveInvitations() == 0);
 
   sink.refuse(false);
   const int beforeCreate = sink.calls();
   const auto created =
-      drogon::sync_wait(invitations.create(invitationBody(expiresAt), kUserId));
+      drogon::sync_wait(invitations.create(invitationBody(), kUserId));
   CHECK(created.invitation.id > 0);
   CHECK(created.token.size() == 43);
+  CHECK(created.invitation.maxRedemptions == 1);
+  const auto lifetime = created.invitation.expiresAt - std::time(nullptr);
+  CHECK(lifetime > IdentityInvitationConfig{}.lifetimeSeconds - 60);
+  CHECK(lifetime <= IdentityInvitationConfig{}.lifetimeSeconds);
   CHECK(sink.calls() == beforeCreate + 2);
   CHECK(sink.sawClient());
   CHECK(sink.transactional());
@@ -290,7 +294,7 @@ TEST_CASE("an identity write and its change are one unit of work")
   identity_change::setSink(&durableSink);
 
   const auto durable =
-      drogon::sync_wait(invitations.create(invitationBody(expiresAt), kUserId));
+      drogon::sync_wait(invitations.create(invitationBody(), kUserId));
   CHECK(durable.invitation.id > 0);
   {
     const auto pending = outbox.pendingBatch(10);
@@ -320,11 +324,28 @@ TEST_CASE("an identity write and its change are one unit of work")
   }
   CHECK(drainOutbox(outbox) == 3);
 
+  UpdateUserDto disable;
+  disable.isActive = false;
+  const auto selfRefusal = [&users, &disable]() -> std::optional<int> {
+    try {
+      drogon::sync_wait(users.update(
+          {.targetUserId = kUserId, .actorId = kUserId, .body = disable}));
+    }
+    catch (const ResponseException& error) {
+      return error.statusCode();
+    }
+    return std::nullopt;
+  };
+  CHECK(selfRefusal() == 409);
+  CHECK_THROWS_AS(drogon::sync_wait(users.deactivate(kUserId, kUserId)),
+                  ResponseException);
+  CHECK(outbox.pendingBatch(10).empty());
+
   DbService::client()->execSqlSync("DROP TABLE change_outbox");
 
   const int64_t invitationsBefore = liveInvitations();
   CHECK_THROWS(
-      drogon::sync_wait(invitations.create(invitationBody(expiresAt), kUserId)));
+      drogon::sync_wait(invitations.create(invitationBody(), kUserId)));
   CHECK(liveInvitations() == invitationsBefore);
 
   UpdateUserDto orphan;

@@ -105,6 +105,10 @@ inline constexpr ErrorDefinition ActiveOwnerRequired{
     .code = ErrorCode::Conflict,
     .status = 409,
     .message = "At least one active owner is required"};
+inline constexpr ErrorDefinition SelfDeactivationForbidden{
+    .code = ErrorCode::Conflict,
+    .status = 409,
+    .message = "You cannot deactivate your own account"};
 inline constexpr ErrorDefinition InvalidMultipartForm{
     .code = ErrorCode::BadRequest,
     .status = 400,

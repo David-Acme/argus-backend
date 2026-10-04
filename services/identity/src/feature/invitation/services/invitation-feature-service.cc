@@ -17,6 +17,8 @@
 
 namespace
 {
+constexpr int kSingleUse = 1;
+
 std::string newOpaqueToken()
 {
   auto token = opaque_token::mint();
@@ -56,8 +58,9 @@ InvitationFeatureService::create(const CreateInvitationDto& body,
     invitation = co_await repository_.create({
         .tokenHash = hashToken(token),
         .role = body.role,
-        .maxRedemptions = body.maxRedemptions,
-        .expiresAt = body.expiresAt,
+        .maxRedemptions = kSingleUse,
+        .expiresAt = static_cast<int64_t>(std::time(nullptr)) +
+                     IdentityConfig::resolveInvitation().lifetimeSeconds,
         .createdBy = actorId,
         .client = transaction.get(),
     });

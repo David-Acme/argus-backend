@@ -88,6 +88,10 @@ UserFeatureService::list(int64_t actorId, UserRole actorRole) const
 drogon::Task<UserSchema>
 UserFeatureService::update(const UserManagementUpdateInput& input) const
 {
+  if (input.targetUserId == input.actorId && input.body.isActive.has_value() &&
+      !*input.body.isActive)
+    throw ResponseException(IdentityErrors::SelfDeactivationForbidden);
+
   UserSchema updated;
   std::optional<UserSchema> existing;
   bool roleChanged = false;
@@ -198,6 +202,8 @@ UserFeatureService::deactivate(int64_t targetUserId, int64_t actorId) const
   const auto existing = co_await repository_.findById(targetUserId);
   if (!existing)
     throw ResponseException(404, IdentityErrors::UserNotFound);
+  if (targetUserId == actorId)
+    throw ResponseException(IdentityErrors::SelfDeactivationForbidden);
   if (!existing->isActive)
     co_return;
 

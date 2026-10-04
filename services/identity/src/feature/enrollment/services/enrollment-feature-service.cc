@@ -65,8 +65,10 @@ EnrollmentFeatureService::recognizeRegistered(const std::string& image) const
     co_return outcomeResult(EnrollmentOutcome::FaceAlreadyRegistered);
 
   const auto user = co_await userRepository_.findById(*person->userId);
-  if (!user || !user->isActive)
+  if (!user)
     co_return outcomeResult(EnrollmentOutcome::FaceNotRecognized);
+  if (!user->isActive)
+    co_return outcomeResult(EnrollmentOutcome::AccountDisabled);
 
   co_return registeredResult(*user, person->id, user->lang);
 }
@@ -92,8 +94,10 @@ EnrollmentFeatureService::registerUser(const EnrollmentInput& input) const
       co_return outcomeResult(EnrollmentOutcome::FaceAlreadyRegistered);
 
     const auto user = co_await userRepository_.findById(*person->userId);
-    if (!user || !user->isActive)
+    if (!user)
       co_return outcomeResult(EnrollmentOutcome::FaceNotRecognized);
+    if (!user->isActive)
+      co_return outcomeResult(EnrollmentOutcome::AccountDisabled);
 
     co_return registeredResult(*user, person->id, user->lang);
   }

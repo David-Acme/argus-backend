@@ -91,6 +91,9 @@ challenge_seconds = 300
 [retention]
 candidate_days = 30
 
+[invitation]
+lifetime_seconds = 1800
+
 [storage]
 mode = "s3"
 

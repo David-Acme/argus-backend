@@ -90,6 +90,9 @@ min_snr_db = 12.0
 samples_required = 3
 challenge_seconds = 300
 
+[invitation]
+lifetime_seconds = 1800
+
 [storage]
 mode = "s3"
 
