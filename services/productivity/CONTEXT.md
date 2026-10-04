@@ -234,6 +234,14 @@ because after the F3-2 cutover `productivity.db` is live data and the frozen
 user parent rows live in identity.db) and fails on any violation between the
 productivity tables themselves.
 
+The copy names the source's own columns and the verification checksums those
+columns on both sides, refusing only a source column the target lacks
+(2026-10). It used to copy with `SELECT *` and compare the column lists of
+`src` and `main` read as `"src".pragma_table_info(...)`, which SQLite
+resolves against the main schema: the check compared the target with itself,
+and a legacy table that predates a later additive column failed the copy on
+its column count. `tests/unit/productivity-migration-test.cc` pins both cases.
+
 ## The folder owns its domain (f7-7b)
 
 The five write-side feature trees (calendar-event, calendar-event-share,
