@@ -310,13 +310,21 @@ the chain) → 200 even when partial:
 Each owner has its own 32-byte credential, minted by `scripts/setup.sh`
 (native) and `scripts/provision-host.sh` (deploy) through
 `ensure_settings_owners` in `scripts/lib/common.sh`. It is written to the
-owner's caller slot (`[rpc.callers] settings` in tts, stt, vlm and llm;
-`[grpc] caller_settings` in voice, and camera/notification when they adopt
-it) and to `[owners.<owner>] credential` here; the target comes from the
-owner's own gRPC listener. An owner with no caller slot stays unconfigured;
-guard has no gRPC listener today. Existing secrets and targets are never
-overwritten.
+owner's caller slot (`[rpc.callers] settings` in tts, stt, vlm, llm and
+guard; `[grpc] caller_settings` in voice, camera and notification) and to `[owners.<owner>] credential` here; the target comes from the
+owner's own gRPC listener (`[rpc] address` for the `rpc` owners, `[server]
+grpc_port` for voice, camera and notification). When the owner's config
+lacks the listener (a config older than its template: an empty guard `[rpc]
+address`, a notification file without `grpc_port`), the template's value is
+used, and an empty guard address is written from the template. An owner
+with no caller slot stays unconfigured. Existing secrets and targets are
+never overwritten.
 
 The native sandbox (`scripts/native-stack.sh`) empties the target of every
 owner it does not boot, so the golden replay never depends on processes
-outside the sandbox.
+outside the sandbox, and pairs the three it does boot (guard on 7139,
+camera on 7036, notification on 7038) through `ensure_settings_owners` in
+its `stack` mode, on `prepare` and on every `restart` of settings or one of
+them. `GET /settings` on the sandbox therefore lists guard (40 keys), camera
+(17) and notification (10) as reachable; the golden fixture of that route
+has to be recorded with them.

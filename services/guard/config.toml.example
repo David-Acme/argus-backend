@@ -16,7 +16,7 @@ handle_sig_term = true
 relaunch_on_error = false
 
 [rpc]
-address = ""
+address = "127.0.0.1:7139"
 
 [rpc.callers]
 settings = ""

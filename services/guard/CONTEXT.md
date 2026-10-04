@@ -473,15 +473,18 @@ zero weight and a negative global weight.
 `src/feature/settings/guard-settings.cc` (`argus::guard-settings`) is the
 catalog an owner may change through `argus.settings.v1.Settings`. Guard had no
 gRPC server before; it now opens one only for this, on `[rpc] address`
-(empty, the native default, means no listener; the deploy template uses
-`0.0.0.0:7139`), and registers `SettingsRpcService{.service = "guard"}` alone
+(`127.0.0.1:7139` in the native template, `0.0.0.0:7139` in the deploy one;
+empty means no listener), and registers `SettingsRpcService{.service = "guard"}` alone
 on it. The only credential it accepts is `[rpc.callers] settings` (service
 name `settings`, resolved by `GuardConfig::resolveRpc()` through
 `settingsCallers`); any other `[rpc.callers]` entry is ignored, and an address
 with an empty settings secret starts nothing and logs why.
 `ensure_settings_owners` wires the slot as `guard rpc.callers settings rpc`,
 like llm/tts/stt/vlm, so argus-settings' `[owners.guard]` target is
-`argus-guard:7139` in compose and stays empty natively while the address is.
+`argus-guard:7139` in compose and `127.0.0.1:7139` natively. A native config
+written before the template had an address gets it filled from the template
+by `ensure_settings_owners` (setup.sh and the native-stack sandbox), so the
+owner page lists guard without a hand edit.
 
 | Key | Level | Applies | Group | Range | Fallback |
 |---|---|---|---|---|---|

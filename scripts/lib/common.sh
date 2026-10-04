@@ -317,21 +317,40 @@ settings_owner_port() {
   esac
 }
 
+settings_owner_template() {
+  local mode="$1"
+  local base="$2"
+  local owner="$3"
+
+  if [ "$mode" = deploy ]; then
+    printf '%s/config.%s.toml.example' "$base" "$owner"
+  else
+    printf '%s/services/%s/config.toml.example' "$ROOT" "$owner"
+  fi
+}
+
 ensure_settings_owners() {
   local settings_config="$1"
   local mode="$2"
   local base="$3"
-  local owner table key listener owner_config host port
+  local owner table key listener owner_config host port template address
 
   [ -f "$settings_config" ] || return 0
   while read -r owner table key listener; do
-    if [ "$mode" = deploy ]; then
-      owner_config="$base/config.$owner.toml"
-      host="argus-$owner"
-    else
-      owner_config="$base/services/$owner/config.toml"
-      host="127.0.0.1"
-    fi
+    case "$mode" in
+      deploy)
+        owner_config="$base/config.$owner.toml"
+        host="argus-$owner"
+        ;;
+      stack)
+        owner_config="$base/$owner/config.toml"
+        host="127.0.0.1"
+        ;;
+      *)
+        owner_config="$base/services/$owner/config.toml"
+        host="127.0.0.1"
+        ;;
+    esac
     [ -f "$owner_config" ] || continue
     toml_key_exists "$owner_config" "$table" "$key" || continue
     toml_key_exists "$settings_config" "owners.$owner" credential || continue
@@ -341,8 +360,17 @@ ensure_settings_owners() {
       [ -z "$(toml_value "$settings_config" "owners.$owner" config_file)" ]; then
       replace_toml_value "owners.$owner" config_file "$owner_config" "$settings_config"
     fi
+    template="$(settings_owner_template "$mode" "$base" "$owner")"
+    if [ "$listener" = rpc ] && [ -f "$template" ] &&
+      [ -z "$(toml_value "$owner_config" rpc address)" ]; then
+      address="$(toml_value "$template" rpc address)"
+      [ -z "$address" ] || replace_toml_value rpc address "$address" "$owner_config"
+    fi
     [ -z "$(toml_value "$settings_config" "owners.$owner" target)" ] || continue
     port="$(settings_owner_port "$owner_config" "$listener")"
+    if [ -z "$port" ] && [ -f "$template" ]; then
+      port="$(settings_owner_port "$template" "$listener")"
+    fi
     [ -n "$port" ] || continue
     replace_toml_value "owners.$owner" target "$host:$port" "$settings_config"
   done <<'OWNERS'
