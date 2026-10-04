@@ -31,7 +31,7 @@ bugprone-branch-clone 7
 bugprone-macro-parentheses 7
 bugprone-unchecked-string-to-number-conversion 7
 cppcoreguidelines-owning-memory 6
-modernize-loop-convert 5
+modernize-loop-convert 4
 bugprone-exception-escape 4
 modernize-pass-by-value 4
 modernize-use-nullptr 4

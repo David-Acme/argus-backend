@@ -95,6 +95,42 @@ PocketVoiceResolution resolvedVoice(const PocketVoiceChoice& choice)
   return TtsService::resolvePocketVoice(choice).value_or(PocketVoiceResolution{.voice = "none", .fallback = false});
 }
 
+void touch(const std::filesystem::path& file)
+{
+  std::filesystem::create_directories(file.parent_path());
+  std::ofstream(file) << "{}";
+}
+
+std::filesystem::path fakePocketTree()
+{
+  const auto root = std::filesystem::temp_directory_path() / "tts-pocket-warm";
+  std::filesystem::remove_all(root);
+  for (const auto* file : {"es-quality/bundle.json", "es-quality/voices/jean.safetensors",
+                           "es-quality/voices/lola.safetensors", "es-fast/bundle.json",
+                           "es-fast/voices/lola.safetensors", "en/bundle.json", "en/voices/alba.safetensors"})
+    touch(root / file);
+  return root;
+}
+
+std::string pocketConfig(const std::filesystem::path& root, const std::string& keys)
+{
+  return "[tts]\npocket_models_dir = \"" + root.string() + "\"\n" + keys;
+}
+
+std::vector<std::string> warmUpPlan(const std::filesystem::path& root)
+{
+  std::vector<std::string> described;
+  for (const auto& target : TtsService::instance().warmUpPlan()) {
+    std::string line = std::string(langCode(target.lang)) + " " + TtsService::engineName(target.engine);
+    if (target.engine == SpeechEngineKind::Pocket) {
+      CHECK(target.pocket.directory == root / target.pocket.variant);
+      line += " " + target.pocket.variant;
+    }
+    described.push_back(line + " " + target.voice);
+  }
+  return described;
+}
+
 Synthesis stream(const StreamRun& run)
 {
   Synthesis result;
@@ -202,6 +238,38 @@ TEST_CASE("the owner's voice choice wins, and a missing one keeps the requested 
   CHECK(TtsService::configuredPocketVoice(TtsLang::ES) == "jean");
 }
 
+TEST_CASE("the boot warm-up names exactly the configured engine, variant and voice of each language")
+{
+  const auto root = fakePocketTree();
+  {
+    const ScopedConfig config(pocketConfig(root, "engine_es = \"pocket\"\nengine_en = \"pocket\"\n"
+                                                 "pocket_variant_es = \"quality\"\npocket_voice_es = \"jean\"\n"
+                                                 "pocket_voice_en = \"jean\"\n"));
+    CHECK(warmUpPlan(root) == std::vector<std::string>{"es pocket es-quality jean", "en pocket en alba"});
+  }
+  {
+    const ScopedConfig config(pocketConfig(root, "engine_es = \"pocket\"\nengine_en = \"supertonic\"\n"
+                                                 "pocket_variant_es = \"fast\"\npocket_voice_es = \"lola\"\n"));
+    CHECK(warmUpPlan(root) == std::vector<std::string>{"es pocket es-fast lola", "en supertonic M3"});
+  }
+  {
+    const ScopedConfig config(pocketConfig(root, "engine_es = \"supertonic\"\nengine_en = \"supertonic\"\n"));
+    CHECK(warmUpPlan(root) == std::vector<std::string>{"es supertonic M3", "en supertonic M3"});
+  }
+  std::filesystem::remove(root / "es-quality" / "bundle.json");
+  {
+    const ScopedConfig config(pocketConfig(root, "pocket_variant_es = \"quality\"\npocket_voice_es = \"giovanni\"\n"));
+    CHECK(warmUpPlan(root) == std::vector<std::string>{"es pocket es-fast lola", "en pocket en alba"});
+  }
+  std::filesystem::remove(root / "es-fast" / "voices" / "lola.safetensors");
+  std::filesystem::remove(root / "en" / "bundle.json");
+  {
+    const ScopedConfig config(pocketConfig(root, ""));
+    CHECK(warmUpPlan(root) == std::vector<std::string>{"es supertonic M3", "en supertonic M3"});
+  }
+  std::filesystem::remove_all(root);
+}
+
 TEST_CASE("the Pocket tokenizer reproduces the reference token ids")
 {
   if (!provisioned("es-fast") || !provisioned("en")) {
@@ -303,6 +371,36 @@ TEST_CASE("the service answers Pocket languages at the announced rate and falls 
     service.shutdown();
   }
   std::filesystem::remove_all(empty);
+}
+
+TEST_CASE("a warm-up that cannot load a Pocket model leaves the lazy fallback where it was")
+{
+  if (!std::filesystem::exists(modelsRoot() / "onnx" / "tts.json")) {
+    MESSAGE("Supertonic models are not provisioned under " << modelsRoot().string() << "; skipped");
+    return;
+  }
+  const auto root = fakePocketTree();
+  {
+    const ScopedConfig config(pocketConfig(root, "models_dir = \"" + modelsRoot().string() +
+                                                     "\"\nengine_es = \"pocket\"\nengine_en = \"supertonic\"\nthreads = 4\n"));
+    auto& service = TtsService::instance();
+    service.warmUp();
+    CHECK(warmUpPlan(root) == std::vector<std::string>{"es pocket es-quality jean", "en supertonic M3"});
+    service.init();
+    REQUIRE(service.isLoaded());
+    service.warmUp();
+    CHECK(warmUpPlan(root) == std::vector<std::string>{"es pocket es-fast lola", "en supertonic M3"});
+    service.warmUp();
+    CHECK(warmUpPlan(root) == std::vector<std::string>{"es supertonic M3", "en supertonic M3"});
+    const auto engines = service.activeEngines();
+    CHECK(std::ranges::find(engines, std::pair<std::string, std::string>{"es", "supertonic"}) != engines.end());
+    const auto speech = service.synthesize({.text = "Hola.", .lang = TtsLang::ES, .voiceId = "M3",
+                                            .quality = TtsQuality::Low, .speed = 1.0F});
+    CHECK_FALSE(speech.empty());
+    service.shutdown();
+    CHECK(warmUpPlan(root) == std::vector<std::string>{"es pocket es-quality jean", "en supertonic M3"});
+  }
+  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("a reference recording becomes a Pocket voice when the bundle carries the encoder")

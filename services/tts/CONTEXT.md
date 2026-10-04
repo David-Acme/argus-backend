@@ -182,8 +182,10 @@ Unigram Viterbi, Metaspace and byte fallback, checked against the Python
 `pocket-prompt` (upstream `prepare_text_prompt`), `pocket-engine` (the
 loop: text prompt, autoregressive backbone, LSD flow step, EOS plus frames
 after it, pipelined Mimi decoding with the 5 ms fade-in), `pcm-rate-converter`
-and `reference-audio`. An engine per variant is loaded lazily on the first
-request that needs it and kept for the life of the process. Thread counts come
+and `reference-audio`. The engine and voice the configuration selects are
+loaded right after boot (see "Warm-up after boot"); any other variant loads on
+the first request that needs it, and every loaded engine is kept for the life
+of the process. Thread counts come
 from `ThreadBudget::ttsThreads()` (or `tts.threads`): the backbone gets half
 and the decoder half, and the two tiny graphs run on one thread.
 Measurements showed ORT spinning threads and the multi-threaded flow step cost
@@ -275,8 +277,8 @@ excluded by the rule that weights never enter git.
 Sizes on disk: es fast 125 MB of graphs, es quality 355 MB, en 125 MB; a voice
 state is 4-7 MB for the 6-layer models and 15-33 MB for the 24-layer one. The
 downloads that build them are the weights (es fast and en 219 MB, es quality
-672 MB) plus the one-time toolchain. RAM is only spent on a variant once it is
-used. Licence and attribution: `models/tts/pocket/NOTICE`. The runtime code is
+672 MB) plus the one-time toolchain. RAM is spent on a variant once it is
+selected (it is warmed after boot) or used. Licence and attribution: `models/tts/pocket/NOTICE`. The runtime code is
 original (MIT upstream pocket-tts semantics, no PocketTTS.cpp source copied).
 
 ### What gets installed
@@ -349,6 +351,68 @@ group. The choice is persisted at once; synthesis keeps its fallback (`quality`
 → `fast`, a missing voice → the chain above) and picks up the new files on the
 next request, because variants and voices are found on disk per request. The
 app polls while a choice says `installing`.
+
+## Warm-up after boot
+
+The first Spanish greeting after a restart used to pay the load of the
+24-layer model (ONNX Runtime session creation for 355 MB of graphs, 1.8-4.4 s
+in the release build depending on machine load), which is where VOICE's 3.8 s
+first greeting came from. `main.cc` now starts one background thread right
+before `drogon::app().run()` that calls `TtsService::warmUp()`. Health answers
+as soon as Drogon listens; the warm-up never runs on an event loop.
+
+`warmUpPlan()` names, per language (es, en), what the next request would use.
+For a Pocket language that is the variant `pocketSelection` picks (so `quality`
+without its files is `fast`, and a variant that failed to load is skipped) and
+the voice `resolvePocketVoice` gives the id every caller sends (`M3`). A
+language Pocket cannot answer (Supertonic configured, no variant installed, or
+no voice) warms Supertonic's `M3` style, a small JSON file. Nothing else loads:
+no unselected variant and no other voice. `warmUp()` loads each target through
+the same `pocketEngine`, `pocketVoice` and `resolveVoice` calls a request
+makes, so the caches, `pocketFailures_` and the one-time warnings end up
+exactly as the lazy path would leave them. A model that fails to load is logged
+once and marked failed, and the next request falls back as it always did. The
+lazy path itself is unchanged; the warm-up only runs it earlier. The plan is
+tested on a fake model tree, without loading a model.
+
+Each language is warmed under `synthMutex_` and checked against `stopping_`
+and `generation_`, like a synthesis. The warm-up only takes the lock when it is
+free (it polls `try_lock` every 20 ms) and pauses 200 ms between languages, so
+a request that queued behind the Spanish load is served before the English load
+starts. It does not compete with a stream that is already speaking either: it
+only takes a lock nobody holds, and a stream takes it back between chunks at
+once. A request sent the moment health answers therefore gets its first audio
+no later than before. Without the pause it lost the lock to the English load
+and arrived 0.3 s later than the lazy path. A shutdown during the warm-up waits for the one
+model being loaded (about 1.7 s here), then the thread stops without loading
+the next.
+
+A settings change to engine, variant or voice is not warmed: the new selection
+loads on its first request, as before. Warming it would need a worker that
+outlives each change, and it would take the engine lock for a whole load at a
+moment no request chose, where the lazy path only loads at the start of a
+request. The delay it would save follows a rare owner action, so the trade is
+not worth it.
+
+Measured on the release build (`build/prod`, Ryzen 7 5825U, idle) with a
+scratch instance of the template config (es Pocket `quality` + `jean`, en
+Pocket + `jean`), a short Spanish sentence through `/tts/v1/synthesize-stream`,
+3 runs each, before and after interleaved:
+
+| Case | Lazy (before) | Warm-up (after) |
+|---|---|---|
+| Request 15 s after health: request to first audio | 1.84-1.87 s | 0.067-0.070 s |
+| Request at health: process start to first audio | 2.47-2.52 s | 2.44-2.48 s |
+| Process start to health | 0.60-0.62 s | 0.60-0.64 s |
+| Warm-up of es `quality` + en | none | 2.3 s, 3.5 s when a request goes first |
+| Service memory before the first request | 0.45 GB | 1.49 GB |
+
+Earlier, with other builds running, the lazy first request took 4.3-4.7 s to
+its first audio. The second request was 0.06-0.07 s in every run, so a loaded
+engine and voice is all the first request was missing, and no warm-up
+synthesis is needed. The memory is what both languages cost once used (1.33 GB
+lazily after one Spanish request); it is now spent at boot and stays under the
+compose limit (`ARGUS_TTS_MEMORY_LIMIT`, 2 GB).
 
 ## The wire test runs Supertonic
 

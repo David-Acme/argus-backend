@@ -56,6 +56,14 @@ struct PocketVoiceResolution
   bool fallback{false};
 };
 
+struct SpeechWarmTarget
+{
+  TtsLang lang{TtsLang::EN};
+  SpeechEngineKind engine{SpeechEngineKind::Supertonic};
+  PocketSelection pocket;
+  std::string voice;
+};
+
 class TtsService
 {
 public:
@@ -90,6 +98,8 @@ public:
   std::vector<std::string> availableVoices() const;
 
   [[nodiscard]] std::vector<std::pair<std::string, std::string>> activeEngines() const;
+  [[nodiscard]] std::vector<SpeechWarmTarget> warmUpPlan() const;
+  void warmUp();
 
   static const std::vector<std::string>& supportedLangs();
 
@@ -133,8 +143,11 @@ private:
   static TtsQuality autoQuality(const std::string& text);
   TtsQuality resolveQuality(const TtsRequest& req) const;
   std::unique_lock<std::timed_mutex> acquire(const std::function<bool()>& stopped);
+  std::unique_lock<std::timed_mutex> acquireWhenIdle(const std::function<bool()>& stopped);
   bool streamPocket(const PocketStreamJob& job);
   [[nodiscard]] std::optional<PocketSelection> pocketSelection(TtsLang lang) const;
+  [[nodiscard]] SpeechWarmTarget warmTarget(TtsLang lang) const;
+  std::string warm(const SpeechWarmTarget& target);
   PocketEngine* pocketEngine(const PocketSelection& selection);
   std::shared_ptr<const PocketVoice> pocketVoice(const VoiceRequest& request);
   std::shared_ptr<const PocketVoice> referenceVoice(const VoiceRequest& request);

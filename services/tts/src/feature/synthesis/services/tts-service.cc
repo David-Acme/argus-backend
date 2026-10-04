@@ -15,11 +15,12 @@
 #include <runtime/blocking-task.hxx>
 #include <runtime/hardware-profile.hxx>
 #include <runtime/thread-budget.hxx>
+#include <algorithm>
+#include <array>
+#include <cctype>
 #include <chrono>
 #include <stdexcept>
 #include <thread>
-#include <algorithm>
-#include <cctype>
 
 namespace
 {
@@ -66,6 +67,15 @@ std::vector<std::string> pocketDirectories(TtsLang lang)
   if (TtsService::configuredPocketVariant(lang) == "quality")
     return {"es-quality", "es-fast"};
   return {"es-fast"};
+}
+
+constexpr std::array kWarmLanguages{TtsLang::ES, TtsLang::EN};
+constexpr std::chrono::milliseconds kIdlePoll{20};
+constexpr std::chrono::milliseconds kWarmPause{200};
+
+std::string callerVoice()
+{
+  return TtsRequest{}.voiceId;
 }
 
 }
@@ -147,7 +157,7 @@ void TtsService::init()
              << ", max_chunk_len=" << maxChunkLen_ << ")";
     LOG_INFO << "TTS engines: es=" << engineName(configuredEngine(TtsLang::ES))
              << ", en=" << engineName(configuredEngine(TtsLang::EN))
-             << " (Pocket models from " << pocketModelsDir().string() << ", loaded on first use)";
+             << " (Pocket models from " << pocketModelsDir().string() << ")";
   }
   catch (const std::exception& e) {
     LOG_FATAL << "TTS init failed: " << e.what();
@@ -294,6 +304,16 @@ std::unique_lock<std::timed_mutex> TtsService::acquire(const std::function<bool(
       return lock;
     }
   }
+  return lock;
+}
+
+std::unique_lock<std::timed_mutex> TtsService::acquireWhenIdle(const std::function<bool()>& stopped)
+{
+  std::unique_lock lock(synthMutex_, std::defer_lock);
+  while (!stopped() && !lock.try_lock())
+    std::this_thread::sleep_for(kIdlePoll);
+  if (lock.owns_lock() && stopped())
+    lock.unlock();
   return lock;
 }
 
@@ -546,6 +566,67 @@ std::vector<std::pair<std::string, std::string>> TtsService::activeEngines() con
   return engines;
 }
 
+std::vector<SpeechWarmTarget> TtsService::warmUpPlan() const
+{
+  std::scoped_lock lock(synthMutex_);
+  std::vector<SpeechWarmTarget> plan;
+  plan.reserve(kWarmLanguages.size());
+  for (const auto lang : kWarmLanguages)
+    plan.push_back(warmTarget(lang));
+  return plan;
+}
+
+void TtsService::warmUp()
+{
+  const auto generation = generation_.load();
+  const std::function<bool()> stopped = [this, generation] {
+    return stopping_.load() || generation != generation_.load();
+  };
+  const auto start = std::chrono::steady_clock::now();
+  std::string summary;
+  for (const auto lang : kWarmLanguages) {
+    if (lang != kWarmLanguages.front())
+      std::this_thread::sleep_for(kWarmPause);
+    auto lock = acquireWhenIdle(stopped);
+    if (!lock.owns_lock() || !loaded_)
+      return;
+    try {
+      summary += (summary.empty() ? "" : ", ") + warm(warmTarget(lang));
+    }
+    catch (const std::exception& error) {
+      warnOnce(std::string("TTS warm-up of ") + langCode(lang) + " failed, it loads on first use: " + error.what());
+    }
+  }
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+  LOG_INFO << "TTS warm-up: " << summary << " (" << elapsed.count() << " ms)";
+}
+
+SpeechWarmTarget TtsService::warmTarget(TtsLang lang) const
+{
+  if (const auto selection = pocketSelection(lang)) {
+    const auto voice = resolvePocketVoice(
+        {.lang = lang, .requestVoiceId = callerVoice(), .installed = installedIn(selection->directory)});
+    if (voice.has_value())
+      return {.lang = lang, .engine = SpeechEngineKind::Pocket, .pocket = *selection, .voice = voice->voice};
+  }
+  return {.lang = lang, .engine = SpeechEngineKind::Supertonic, .pocket = {}, .voice = callerVoice()};
+}
+
+std::string TtsService::warm(const SpeechWarmTarget& target)
+{
+  const std::string lang = langCode(target.lang);
+  if (target.engine == SpeechEngineKind::Supertonic) {
+    resolveVoice(target.voice);
+    return lang + "=supertonic " + target.voice;
+  }
+  auto* const engine = pocketEngine(target.pocket);
+  if (engine == nullptr)
+    return lang + "=pocket " + target.pocket.variant + " unavailable";
+  const auto voice = pocketVoice(
+      {.engine = *engine, .selection = target.pocket, .lang = target.lang, .requestVoiceId = callerVoice()});
+  return lang + "=pocket " + target.pocket.variant + " " + (voice ? target.voice : std::string("without a voice"));
+}
+
 drogon::Task<std::vector<float>>
 TtsService::synthesizeAsync(const TtsRequest& req)
 {
@@ -791,14 +872,8 @@ TtsQuality TtsService::autoQuality(const std::string& text)
   if (text.empty())
     return TtsQuality::Medium;
 
-  size_t len = text.size();
-  int sentences = 0;
-
-  for (size_t i = 0; i < text.size(); i++) {
-    char c = text[i];
-    if (c == '.' || c == '!' || c == '?')
-      sentences++;
-  }
+  const size_t len = text.size();
+  const auto sentences = std::ranges::count_if(text, [](char c) { return c == '.' || c == '!' || c == '?'; });
 
   int score = 0;
   if (len > 300)

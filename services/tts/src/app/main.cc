@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -101,6 +102,8 @@ int main()
 
   LOG_INFO << "argus-tts listening on " << listener.host << ":"
            << listener.port;
+
+  std::jthread warmUp([] { TtsService::instance().warmUp(); });
 
   drogon::app()
       .setThreadNum(0)
