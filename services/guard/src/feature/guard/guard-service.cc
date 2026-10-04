@@ -334,6 +334,7 @@ void GuardService::refresh(const Config& fresh)
     next->beliefGateScope = fresh.beliefGateScope;
     next->actionCooldownS = fresh.actionCooldownS;
     next->repeatWindowS = fresh.repeatWindowS;
+    next->regroupWindowS = fresh.regroupWindowS;
     next->maxActionsPerHour = fresh.maxActionsPerHour;
     next->maxDialogueTurns = fresh.maxDialogueTurns;
     next->crossCameraWindowS = fresh.crossCameraWindowS;

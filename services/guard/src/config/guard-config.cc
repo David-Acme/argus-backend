@@ -80,6 +80,14 @@ int configHourOr(const std::string& key, int fallback)
   return hour < 0 || hour > 23 ? fallback : hour;
 }
 
+int64_t configWindowOr(const std::string& key, int64_t fallback)
+{
+  if (!ConfigService::hasKey(key))
+    return fallback;
+  const int seconds = ConfigService::getInt(key);
+  return seconds < 0 ? fallback : seconds;
+}
+
 int beliefIntOr(const std::string& key, int fallback)
 {
   if (!ConfigService::hasKey(key))
@@ -260,7 +268,7 @@ GuardServiceConfig GuardConfig::resolveService()
                           ? std::clamp(ConfigService::getInt("guard.digest_hour"),
                                        -1, 23)
                           : 21;
-  config.regroupWindowS = configInt64Or("guard.regroup_window_s", 600);
+  config.regroupWindowS = configWindowOr("guard.regroup_window_s", 600);
   config.notifyLang =
       configOr({.key = "guard.notify_lang", .fallback = config.announceLang});
   config.tamperSustainedS = configInt64Or("guard.tamper_sustained_s", 300);

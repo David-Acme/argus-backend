@@ -508,6 +508,7 @@ like llm/tts/stt/vlm, so argus-settings' `[owners.guard]` target is
 | `guard.belief_refresh_s` | advanced | live | decisions | 10-3600 | 300 |
 | `guard.action_cooldown_s` | advanced | live | limits | 1-86400 | 120 |
 | `guard.repeat_window_s` | advanced | live | limits | 60-604800 | 86400 |
+| `guard.regroup_window_s` | advanced | live | limits | 0-86400 | 600 |
 | `guard.max_actions_per_hour` | advanced | live | limits | 1-60 | 4 |
 | `guard.max_dialogue_turns` | advanced | live | dialogue | 1-10 | 3 |
 | `guard.greet_listen_seconds` | advanced | live | dialogue | 1-10 | 6 |
@@ -528,7 +529,8 @@ rank reaches (never); notify stops at 4 so a critical danger always notifies.
 Every minimum of a service key is 1 or more because `configIntOr` reads `0`
 as "absent" and would run the fallback instead of the owner's value; the
 belief thresholds use the presence-based belief readers, so they span the
-belief score's own range, negatives included.
+belief score's own range, negatives included, and `regroup_window_s` reads
+with a presence test so its `0` (grouping off) is honoured.
 
 ### How a change goes live
 
@@ -713,6 +715,10 @@ live.
 - A medium-or-lower first alert of a new episode on a camera that already
   alerted at the same or a higher tier within `regroup_window_s` (600 s)
   joins that episode: journal `grouped`, action `grouped`, `group_id` set.
+  The owner tunes the window live from Configuración; `0` turns grouping
+  off. It is read with a presence test like the quiet hours: through
+  `configInt64Or` an explicit `0` used to fall back to 600, so "0 disables"
+  never worked.
   High and critical always alert on their own. The decision is persisted in
   the checkpoint, so a replay does not regroup differently.
 - Quiet hours and the daily budget (`[guard.quiet_hours]`, still default

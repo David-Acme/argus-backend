@@ -130,7 +130,7 @@ TEST_CASE("the guard catalog builds through the registry")
 {
   const auto catalog = guardSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{guardSettingsCatalog()});
-  CHECK(catalog.size() == 39);
+  CHECK(catalog.size() == 40);
   CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) ==
         12);
   for (const auto& spec : catalog) {
@@ -185,6 +185,7 @@ TEST_CASE("every fallback is what the guard runs with when the key is absent")
   CHECK(intFallback(catalog, "guard.action_cooldown_s") ==
         service.actionCooldownS);
   CHECK(intFallback(catalog, "guard.repeat_window_s") == service.repeatWindowS);
+  CHECK(intFallback(catalog, "guard.regroup_window_s") == service.regroupWindowS);
   CHECK(intFallback(catalog, "guard.max_actions_per_hour") ==
         service.maxActionsPerHour);
   CHECK(intFallback(catalog, "guard.max_dialogue_turns") ==
@@ -268,9 +269,10 @@ TEST_CASE("a registry update reaches a running guard through the refresh")
        {.key = "guard.quiet_hours.enabled", .value = "true"},
        {.key = "guard.quiet_hours.start_hour", .value = "0"},
        {.key = "guard.belief.gate_scope", .value = "all"},
-       {.key = "guard.signature_min_similarity", .value = "0.9"}});
+       {.key = "guard.signature_min_similarity", .value = "0.9"},
+       {.key = "guard.regroup_window_s", .value = "0"}});
   CHECK(result.rejected.empty());
-  CHECK(heard.size() == 6);
+  CHECK(heard.size() == 7);
 
   const auto after = service.currentConfig();
   CHECK(after->notifyLevel == 3);
@@ -279,12 +281,26 @@ TEST_CASE("a registry update reaches a running guard through the refresh")
   CHECK(after->quietStartHour == 0);
   CHECK(after->beliefGateScope == BeliefGateScope::All);
   CHECK(after->signatureMinSimilarity == doctest::Approx(0.9));
+  CHECK(after->regroupWindowS == 0);
   CHECK(after->consumerDurable == "guard-settings-boot");
   CHECK(after->retryLeaseMs == 4321);
 
   CHECK(before->notifyLevel == 2);
   CHECK(before->decisionMode == "shadow");
   CHECK_FALSE(before->quietHoursEnabled);
+  CHECK(before->regroupWindowS == 600);
+}
+
+TEST_CASE("a regroup window of zero turns grouping off instead of falling back")
+{
+  const auto windowOf = [](const std::string& content) {
+    const ScopedConfig config(content);
+    return GuardConfig::resolveService().regroupWindowS;
+  };
+  CHECK(windowOf("[guard]\nregroup_window_s = 0\n") == 0);
+  CHECK(windowOf("[guard]\nregroup_window_s = 900\n") == 900);
+  CHECK(windowOf("[guard]\nnotify_level = 2\n") == 600);
+  CHECK(windowOf("[guard]\nregroup_window_s = -5\n") == 600);
 }
 
 TEST_CASE("the registry refuses what the guard could not use")
