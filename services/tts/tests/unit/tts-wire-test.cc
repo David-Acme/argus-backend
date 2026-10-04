@@ -20,6 +20,7 @@
 
 #include <json/value.h>
 #include <json/reader.h>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -129,12 +130,12 @@ HttpReply request(const WireRequest& input)
   }
 
   std::string data;
-  char buffer[65536];
+  std::array<char, 65536> buffer{};
   const auto recvMore = [&data, &buffer, fd]() -> bool {
-    const auto n = ::recv(fd, buffer, sizeof(buffer), 0);
+    const auto n = ::recv(fd, buffer.data(), buffer.size(), 0);
     if (n <= 0)
       return false;
-    data.append(buffer, static_cast<size_t>(n));
+    data.append(buffer.data(), static_cast<size_t>(n));
     return true;
   };
 
@@ -254,7 +255,8 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   {
     std::ofstream config(kScratchConfig);
     config << "[tts]\nthreads = 0\nquality = \"low\"\nspeed = 1.0\n"
-              "max_chunk_len = 350\n[drogon.app]\nnumber_of_threads = 2\n";
+              "max_chunk_len = 350\nengine_es = \"supertonic\"\nengine_en = \"supertonic\"\n"
+              "[drogon.app]\nnumber_of_threads = 2\n";
   }
   ConfigService::load(kScratchConfig);
   ConfigService::setRuntimeString("tts.models_dir",
@@ -310,6 +312,8 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   CHECK(configJson["info"]["sampleRate"].asInt() > 0);
   CHECK(configJson["info"]["defaultSpeed"].asDouble() > 0);
   CHECK(configJson["info"]["loaded"].asBool());
+  CHECK(configJson["info"]["engines"]["es"] == "supertonic");
+  CHECK(configJson["info"]["engines"]["en"] == "supertonic");
 
   const auto t0 = std::chrono::steady_clock::now();
   const auto synth = request({.port = port,

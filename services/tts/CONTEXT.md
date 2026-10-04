@@ -350,6 +350,21 @@ group. The choice is persisted at once; synthesis keeps its fallback (`quality`
 next request, because variants and voices are found on disk per request. The
 app polls while a choice says `installing`.
 
+## The wire test runs Supertonic
+
+`tts-wire-test` pins `engine_es` and `engine_en` to `supertonic`. It was
+written for Supertonic (its config sets `quality = "low"`), and its 30 s bound
+is a liveness bound on a low-quality Supertonic synthesis. When Pocket became
+the default for both languages, the unpinned test started timing the first
+load of the 24-layer Pocket model in the Debug build, which links a Debug ONNX
+Runtime: 13.6 s of load plus a Debug synthesis whose length depends on the
+random seed made the request 25.9 s on an idle machine and 30.8-31.9 s under
+load. Pinned, the request takes 0.5-0.6 s idle and 2.2 s with all 16 hardware
+threads busy, and the whole test 5 s instead of 38 s. The test also checks that
+`/tts/v1/config` reports Supertonic for both languages, so the pin cannot
+silently stop applying. The Pocket path through the service keeps its own
+coverage in `tts-pocket-test`.
+
 ## Voice previews (`tools/tts-preview/`)
 
 The app plays a bundled clip for every engine, variant and voice option, so

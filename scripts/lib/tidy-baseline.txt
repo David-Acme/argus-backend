@@ -6,7 +6,7 @@ bugprone-suspicious-stringview-data-usage 274
 modernize-use-designated-initializers 220
 bugprone-unchecked-optional-access 204
 modernize-use-scoped-lock 157
-modernize-avoid-c-arrays 74
+modernize-avoid-c-arrays 72
 bugprone-implicit-widening-of-multiplication-result 69
 bugprone-narrowing-conversions 63
 modernize-use-ranges 59
