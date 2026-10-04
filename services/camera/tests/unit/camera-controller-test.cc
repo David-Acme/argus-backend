@@ -251,7 +251,8 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK(cam["username"] == "");
   CHECK(cam["recordMode"] == "events");
   CHECK(cam["retentionDays"].asInt64() == 7);
-  CHECK(cam["capabilities"] == "[]");
+  CHECK(cam["capabilities"] ==
+        R"(["ptz","presets","microphone","privacy","led","dayNight","motion","autoTrack","alarm","sdCard"])");
   CHECK(cam["config"] == "{}");
   CHECK(cam["isEnabled"].asBool());
   CHECK_FALSE(cam["isOnline"].asBool());
@@ -259,6 +260,25 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK(cam["deletedAt"].isNull());
   CHECK(cam.getMemberNames().size() == 19);
   checkNoCredentials(cam);
+
+  Json::Value toRtsp;
+  toRtsp["driver"] = "rtsp";
+  const auto streamOnly = drogon::sync_wait(
+      cameraController.update(drogon::HttpRequest::newHttpJsonRequest(toRtsp), cameraId));
+  CHECK(body(streamOnly)["info"]["capabilities"] == R"(["streamOnly"])");
+  Json::Value toTapo;
+  toTapo["driver"] = "tapo";
+  toTapo["cloudPassword"] = "cloud-secret";
+  const auto talking = drogon::sync_wait(
+      cameraController.update(drogon::HttpRequest::newHttpJsonRequest(toTapo), cameraId));
+  CHECK(body(talking)["info"]["capabilities"].asString().find("\"talk\"") != std::string::npos);
+  checkNoCredentials(body(talking)["info"]);
+
+  Json::Value frameRate;
+  frameRate["frameRate"] = 30;
+  CHECK(CameraSettingsDto::fromJson(frameRate).frameRate == 30);
+  frameRate["frameRate"] = 240;
+  CHECK_THROWS_AS(CameraSettingsDto::fromJson(frameRate), ValidationException);
 
   auto updateReq = drogon::HttpRequest::newHttpJsonRequest(createBody);
   const auto missingUpdate =

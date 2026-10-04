@@ -31,11 +31,6 @@ constexpr const char* kDefaultRtsp = "127.0.0.1:8554";
 constexpr const char* kSubStreamSuffix = "-sub";
 constexpr auto kHealthyResetAfter = std::chrono::seconds(60);
 
-bool isSubStreamName(const std::string& name)
-{
-  return name.ends_with(kSubStreamSuffix);
-}
-
 struct PrivateFile
 {
   const std::string& path;
@@ -139,14 +134,17 @@ std::string Go2rtcManager::rtspBase()
   return "rtsp://" + rtspAddr_;
 }
 
-std::string Go2rtcManager::streamName(int64_t cameraId)
+std::string Go2rtcManager::sourceName(int64_t cameraId, CameraStream stream)
 {
-  return "cam" + std::to_string(cameraId);
+  std::string name = "cam" + std::to_string(cameraId);
+  if (stream == CameraStream::Sub)
+    name += kSubStreamSuffix;
+  return name;
 }
 
-std::string Go2rtcManager::subStreamName(int64_t cameraId)
+std::string Go2rtcManager::sourceFor(int64_t cameraId, CameraStreamRole role)
 {
-  return streamName(cameraId) + kSubStreamSuffix;
+  return sourceName(cameraId, camera_stream_role::streamFor(role));
 }
 
 bool Go2rtcManager::writeConfig()
@@ -167,7 +165,7 @@ bool Go2rtcManager::writeConfig()
     out << "  " << s.name << ": " << s.url << "\n";
   }
   const auto isWarmStream = [](const Go2rtcSource& s) {
-    return isSafeName(s.name) && isSafeUrl(s.url) && isSubStreamName(s.name);
+    return s.preload && isSafeName(s.name) && isSafeUrl(s.url);
   };
   if (std::ranges::any_of(sources_, isWarmStream)) {
     out << "preload:\n";
@@ -415,8 +413,9 @@ bool Go2rtcManager::merge(const Go2rtcSourceChange& change)
       sources_.push_back(source);
       changed = true;
     }
-    else if (it->url != source.url) {
+    else if (it->url != source.url || it->preload != source.preload) {
       it->url = source.url;
+      it->preload = source.preload;
       changed = true;
     }
   }

@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <shared/vocabulary/camera-stream-role.hxx>
 #include <string>
 #include <vector>
 
@@ -10,6 +11,7 @@ struct Go2rtcSource
 {
   std::string name;
   std::string url;
+  bool preload{false};
 };
 
 struct Go2rtcSourceChange
@@ -48,8 +50,8 @@ public:
 
   std::string apiBase();
   std::string rtspBase();
-  static std::string streamName(int64_t cameraId);
-  static std::string subStreamName(int64_t cameraId);
+  static std::string sourceName(int64_t cameraId, CameraStream stream);
+  static std::string sourceFor(int64_t cameraId, CameraStreamRole role);
 
   static bool isSafeName(const std::string& name);
   static bool isSafeUrl(const std::string& url);

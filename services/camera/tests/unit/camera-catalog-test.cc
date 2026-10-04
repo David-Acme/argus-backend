@@ -3,10 +3,13 @@
 
 #include <feature/camera/infra/rtsp-probe.hxx>
 #include <shared/services/camera-catalog/camera-catalog.hxx>
+#include <shared/services/camera-driver/camera-capabilities.hxx>
 #include <shared/services/camera-driver/stream-only-driver.hxx>
 #include <shared/services/camera-driver/tapo-driver.hxx>
 #include <shared/services/tapo/tapo-crypto.hxx>
+#include <shared/services/tapo/tapo-video.hxx>
 #include <shared/vocabulary/camera-stream-paths.hxx>
+#include <text/json-util.hxx>
 
 #include <drogon/utils/Utilities.h>
 
@@ -348,4 +351,61 @@ TEST_CASE("the probe tells a wrong path, a closed port and a basic login apart")
 
   CHECK(rtsp_probe::urlHost("fd00::5") == "[fd00::5]");
   CHECK(rtsp_probe::urlHost("192.168.1.2") == "192.168.1.2");
+}
+
+TEST_CASE("a camera's capabilities travel on its row as the names of what it can do")
+{
+  CameraSchema patio;
+  patio.model = "Tapo C225";
+  patio.config = R"({"catalogId":"tapo-c225"})";
+  const Json::Value withoutCloud = camera_capabilities::of(patio);
+  CHECK(withoutCloud["ptz"].asBool());
+  CHECK(withoutCloud["microphone"].asBool());
+  CHECK_FALSE(withoutCloud["talk"].asBool());
+  CHECK(camera_capabilities::listOf(withoutCloud).find("\"talk\"") == std::string::npos);
+
+  patio.cloudPassword = "cloud";
+  const std::string list = camera_capabilities::listOf(camera_capabilities::of(patio));
+  CHECK(list ==
+        R"(["ptz","presets","talk","microphone","privacy","led","dayNight","motion","autoTrack","alarm","sdCard"])");
+
+  CameraSchema rtsp;
+  rtsp.driver = CameraDriver::Rtsp;
+  CHECK(camera_capabilities::listOf(camera_capabilities::of(rtsp)) == R"(["streamOnly"])");
+  CHECK(StreamOnlyDriver(rtsp).capabilities() == camera_capabilities::of(rtsp));
+  CHECK(TapoDriver(patio).capabilities() == camera_capabilities::of(patio));
+}
+
+TEST_CASE("the Tapo video profile reads the encoder's offer and its current setting")
+{
+  const Json::Value capability = json_util::fromString(
+      R"({"video_capability":{"main":{"frame_rates":["65537","65551","65556","65561","65566"],)"
+      R"("resolutions":["2688*1520","2560*1440","1920*1080"],"encode_types":["H264"]}}})");
+  const Json::Value quality = json_util::fromString(
+      R"({"video":{"main":{"resolution":"2688*1520","frame_rate":"65551","encode_type":"H264"}}})");
+  const auto profile = tapo_video::profileOf({.capability = capability, .quality = quality});
+  REQUIRE(profile.has_value());
+  CHECK(profile->resolution == "2688x1520");
+  CHECK(profile->frameRate == 15);
+  CHECK(profile->encoding == "H264");
+  CHECK(profile->frameRates == std::vector<int>{1, 15, 20, 25, 30});
+  CHECK(profile->resolutions.size() == 3);
+  CHECK(profile->toJson()["frameRates"].size() == 5);
+
+  CHECK(tapo_video::frameRateCodeFor(capability, 30) == std::optional<std::string>("65566"));
+  CHECK_FALSE(tapo_video::frameRateCodeFor(capability, 60).has_value());
+
+  CHECK(tapo_video::frameRateOf(Json::Value("15")) == 15);
+  CHECK(tapo_video::frameRateOf(Json::Value(25)) == 25);
+  CHECK(tapo_video::frameRateOf(Json::Value("nonsense")) == 0);
+
+  const Json::Value stringLists = json_util::fromString(
+      R"({"video_capability":{"main":{"frame_rates":"[\"65551\",\"65566\"]"}}})");
+  const Json::Value empty;
+  const auto fromStrings = tapo_video::profileOf({.capability = stringLists, .quality = empty});
+  REQUIRE(fromStrings.has_value());
+  CHECK(fromStrings->frameRates == std::vector<int>{15, 30});
+  CHECK(fromStrings->frameRate == 0);
+
+  CHECK_FALSE(tapo_video::profileOf({.capability = empty, .quality = empty}).has_value());
 }

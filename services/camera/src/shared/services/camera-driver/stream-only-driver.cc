@@ -1,7 +1,6 @@
 #include "stream-only-driver.hxx"
 
-#include <shared/services/camera-catalog/camera-catalog.hxx>
-#include <shared/vocabulary/camera-stream-paths.hxx>
+#include <shared/services/camera-driver/camera-capabilities.hxx>
 
 #include <utility>
 
@@ -9,18 +8,7 @@ StreamOnlyDriver::StreamOnlyDriver(CameraSchema camera) : camera_(std::move(came
 
 Json::Value StreamOnlyDriver::capabilities() const
 {
-  Json::Value out;
-  for (const char* control :
-       {"ptz", "presets", "talk", "privacy", "led", "dayNight", "motion", "autoTrack", "alarm",
-        "sdCard"})
-    out[control] = false;
-  out["streamOnly"] = true;
-  const auto* entry = camera_catalog::find(
-      {.catalogId = camera_stream_paths::catalogIdOf(camera_.config),
-       .driver = camera_.driver,
-       .model = camera_.model});
-  out["catalogId"] = entry == nullptr ? std::string() : std::string(entry->id);
-  return out;
+  return camera_capabilities::of(camera_);
 }
 
 DriverResult StreamOnlyDriver::status()

@@ -1154,3 +1154,86 @@ Not done yet, in the order they pay off:
    the live view; the call path plays its own copy, so a native `muted` prop on `argus-camera`
    is the clean fix once a device is at hand to test it.
 7. **ONVIF control** (PTZ, presets, events) for generic cameras: `StreamOnlyDriver` today.
+
+## Two streams, two jobs: the view watches main, every analysis reads sub (2026-10, CAMERA3)
+
+The owner decided the split: the **main** stream (`/stream1`, 2688×1520 on
+the C225) is what a person watches and what recording will use; the **sub**
+stream (`/stream2`, 1280×720) feeds everything Argus computes. One header
+owns that decision, `shared/vocabulary/camera-stream-role.hxx`:
+`CameraStream {Main, Sub}`, `CameraStreamRole {LiveView, Analysis,
+Listening}` and the constexpr `camera_stream_role::streamFor(role)`.
+`Go2rtcManager::sourceFor(cameraId, role)` turns a role into the go2rtc
+source name, and no consumer spells `-sub` or `cam<N>` any more:
+
+| Consumer | Role | Stream |
+|---|---|---|
+| `/media` viewer with no `quality` (the default view) | LiveView | main |
+| detector, guard frames, health monitor (`Go2rtcFrameSource`) | Analysis | sub |
+| `GET /camera/{id}/snapshot`, thumbnails, the guard's VLM crops (they come from `SnapshotStore`, filled by the operator's frames) | Analysis | sub |
+| `GET /camera/overview` stream stats | Analysis | sub |
+| the voice loop's microphone capture (`audio_capture`, guard listen) | Listening | sub |
+| recording (not built yet: `record_mode` is stored, nothing records) | — | main, by the owner's decision; it adds `Recording → Main` to the table when it lands |
+
+The analysis stream is the only one go2rtc preloads: the registrar marks
+each source `preload` from `camera_stream_role::isWarm`, and go2rtc's config
+writes the `preload:` block from that flag instead of matching a name suffix.
+The main stream is pulled only while someone watches it, which keeps the
+camera inside its three-connection budget (sub pull + main viewer + talk
+line, measured in "The talk channel" above).
+
+A viewer may still ask for `quality: "sub"` (`camera:subscribe`): the app
+offers "Fluida" for slow or remote links and falls back to it by itself
+after two stalls in a minute on main (the user's own choice is remembered
+per device and per camera; the fallback is not, so the next visit tries
+main again). An unknown `quality` value is read as the LiveView default.
+The app does not know yet whether it is on mobile data or the tunnel (no
+network-type module is linked); phones start on sub by default and every
+larger screen on main.
+
+## Capabilities travel on the camera row (2026-10, CAMERA3)
+
+The `capabilities` column was `[]` for every camera: nothing wrote it, and the
+app read `GET /camera/{id}/capabilities` from a remote cache that refreshed
+only on focus, so a camera switched from RTSP to the Tapo driver kept showing
+"video only", no PTZ pad and only "Escuchar" until the screen was reopened.
+
+- `shared/services/camera-driver/camera-capabilities` (`camera_capabilities::of`)
+  is the one function both drivers answer with: the Tapo entry's features from
+  the catalog (talk only with the cloud password, `microphone` from the
+  catalog), and every control off plus `streamOnly` for RTSP/ONVIF.
+- Create and update store `camera_capabilities::listOf(...)` — the names of
+  what the camera can do, e.g. `["ptz","presets","talk","microphone",...]` or
+  `["streamOnly"]` — in the column. The update computes it from the row as it
+  will be (driver, model, cloud password, catalog id) and writes it only when
+  it changes, in the same transaction, so the audit diff carries it and the
+  app's detail screen redraws live. No secret enters the list: `talk` says a
+  cloud password exists, not what it is.
+- At boot `CameraFeatureService::reconcileCapabilities` rewrites every live
+  camera whose stored list differs (the rows created before this change), as
+  an ordinary audited update.
+
+## What the Tapo encoder offers: `video` in the device status (2026-10, CAMERA3)
+
+`GET /camera/{id}/status` adds `video {resolution, frameRate, encoding,
+frameRates[], resolutions[]}` for Tapo cameras: the status batch now also asks
+`getVideoCapability` (`video_capability.main`) and `getVideoQualities`
+(`video.main`), pytapo's own read-only calls. Frame rates arrive as codes
+(`"65551"` = 0x10000 + 15) and `tapo_video::frameRateOf` decodes both that and
+a plain number. Measured on the owner's C225 (firmware 1.3.1, read-only):
+main 2688×1520 H.264 at **15 fps**, offering **15, 20 and 25 fps** and
+2688×1520 or 1920×1080. TP-Link's datasheet says "15/20/25/30 fps (Default
+15 fps)"; this firmware offers no 30 on the main stream. The sub stream's
+1280×720 averages 15 fps too (ffprobe on a capture: 115 frames in 7.6 s, with
+irregular timestamps, which is why the app's meter averages the frame
+durations instead of taking the most common gap).
+
+`PATCH /camera/{id}/settings` takes `frameRate` (1-60). The driver reads the
+camera's offer first and refuses a rate it does not list ("This camera streams
+at 15, 20, 25 fps only"), then sends `setVideoQualities {"video":{"main":
+{"frame_rate": <the camera's own code>}}}`, the setter that pairs with
+`getVideoQualities`. pytapo has no setter, so this request is the vendor's
+naming pattern, not a measured one: it was not sent to the owner's camera
+(changing a device setting is the owner's own test), and a camera that
+refuses it answers with its error code, which the app shows. Resolution is
+reported but not changeable from Argus.

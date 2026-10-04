@@ -674,7 +674,8 @@ CameraActionRpcService::SetSiren(grpc::CallbackServerContext* context,
                                        .autoTrack = std::nullopt,
                                        .alarm = enabled,
                                        .alarmVolume = volume,
-                                       .sounding = enabled});
+                                       .sounding = enabled,
+                                       .frameRate = std::nullopt});
             });
         if (!enabled && result.ok &&
             !co_await commandRepository_.deleteLease(cameraId))
@@ -862,7 +863,7 @@ CameraActionRpcService::Listen(grpc::CallbackServerContext* context,
         }
 
         const std::string url = Go2rtcManager::instance().rtspBase() + "/" +
-                                Go2rtcManager::subStreamName(cameraId);
+                                Go2rtcManager::sourceFor(cameraId, CameraStreamRole::Listening);
         dispatched = true;
         const auto captured =
             co_await BlockingTask<AudioCaptureResult>([url, seconds]() {
@@ -990,7 +991,8 @@ void CameraActionRpcService::startLeaseSweeper()
                                    .autoTrack = std::nullopt,
                                    .alarm = false,
                                    .alarmVolume = std::nullopt,
-                                   .sounding = false});
+                                   .sounding = false,
+                                   .frameRate = std::nullopt});
         });
         if (!result.ok) {
           LOG_WARN << "Camera action: siren lease disarm failed for camera "

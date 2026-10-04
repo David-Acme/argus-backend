@@ -103,7 +103,8 @@ CameraControlFeatureService::settings(int64_t cameraId, const CameraSettingsDto&
                             .autoTrack = body.autoTrack,
                             .alarm = body.alarm,
                             .alarmVolume = body.alarmVolume,
-                            .sounding = std::nullopt});
+                            .sounding = std::nullopt,
+                            .frameRate = body.frameRate});
   });
   if (!succeeded(result))
     co_return result;

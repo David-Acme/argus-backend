@@ -96,6 +96,8 @@ Json::Value TapoStatusBatch::toJson() const
     value["deviceTime"] = static_cast<Json::Int64>(*deviceTime);
   if (clockOffsetSeconds)
     value["clockOffsetSeconds"] = static_cast<Json::Int64>(*clockOffsetSeconds);
+  if (video)
+    value["video"] = video->toJson();
   return value;
 }
 
@@ -160,6 +162,46 @@ TapoResult TapoApi::getAudioConfig()
 TapoResult TapoApi::getPresets()
 {
   return call("getPresetConfig", nameList("preset", {"preset"}));
+}
+
+namespace
+{
+Json::Value videoCapabilityParams()
+{
+  return nameList("video_capability", {"main"});
+}
+
+Json::Value videoQualityParams()
+{
+  return nameList("video", {"main"});
+}
+}
+
+TapoResult TapoApi::getVideoCapability()
+{
+  auto result = call("getVideoCapability", videoCapabilityParams());
+  if (!result.ok)
+    return result;
+  const auto& answer = responseAt(result.data, 0);
+  if (answer["error_code"].asInt() != 0)
+    return TapoResult::failure("the camera does not report its video options (error " +
+                                   std::to_string(answer["error_code"].asInt()) + ")",
+                               answer["error_code"].asInt());
+  return TapoResult::success(answer["result"]);
+}
+
+TapoResult TapoApi::setVideoFrameRate(const std::string& code)
+{
+  Json::Value params(Json::objectValue);
+  params["video"]["main"]["frame_rate"] = code;
+  auto result = call("setVideoQualities", params);
+  if (!result.ok)
+    return result;
+  const int error = responseAt(result.data, 0)["error_code"].asInt();
+  if (error != 0)
+    return TapoResult::failure(
+        "the camera refused the frame rate (error " + std::to_string(error) + ")", error);
+  return result;
 }
 
 TapoResult TapoApi::getMotorCapability()
@@ -377,7 +419,9 @@ TapoStatusBatch TapoApi::getStatus()
         Json::Value params(Json::objectValue);
         params["system"]["name"] = "clock_status";
         return params;
-      }())};
+      }()),
+      makeRequest("getVideoCapability", videoCapabilityParams()),
+      makeRequest("getVideoQualities", videoQualityParams())};
 
   const auto result = callBatch(requests);
   status.raw = result.data;
@@ -435,6 +479,9 @@ TapoStatusBatch TapoApi::getStatus()
     status.deviceTime = deviceTime;
     status.clockOffsetSeconds = deviceTime - nowSeconds();
   }
+
+  status.video = tapo_video::profileOf({.capability = responseAt(result.data, 8)["result"],
+                                        .quality = responseAt(result.data, 9)["result"]});
 
   status.ok = true;
   return status;

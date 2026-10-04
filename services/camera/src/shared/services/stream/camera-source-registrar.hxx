@@ -9,6 +9,7 @@ struct CameraSource
 {
   std::string name;
   std::string url;
+  bool preload{false};
 };
 
 struct CameraSourceChange

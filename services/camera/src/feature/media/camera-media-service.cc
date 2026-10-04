@@ -62,7 +62,9 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
     const int64_t cameraId = payload.get("cameraId", 0).asInt64();
     if (cameraId <= 0)
       throw ResponseException(400, CameraErrors::InvalidCameraId);
-    const std::string quality = payload.get("quality", "main").asString();
+    const CameraStream stream =
+        cameraStreamFromString(payload.get("quality", "").asString())
+            .value_or(camera_stream_role::streamFor(CameraStreamRole::LiveView));
 
     const auto camera = co_await cameraRepository_.findById(cameraId);
     if (!camera)
@@ -82,7 +84,7 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
     const uint16_t subId = StreamHub::instance().subscribe(
         {.sink = sink,
          .cameraId = cameraId,
-         .quality = quality,
+         .stream = stream,
          .fastStart = payload["fastStart"].isBool() && payload["fastStart"].asBool()},
         error);
     if (subId == 0) {

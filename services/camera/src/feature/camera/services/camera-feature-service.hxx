@@ -17,6 +17,7 @@ public:
   drogon::Task<std::optional<CameraSchema>>
   update(int64_t id, const UpdateCameraDto& body) const;
   drogon::Task<bool> remove(int64_t id) const;
+  drogon::Task<int> reconcileCapabilities() const;
 
 private:
   [[nodiscard]] drogon::Task<void> emit(const ModuleEmitInput& input) const;

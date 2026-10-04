@@ -34,6 +34,18 @@ CameraRepository::findEnabled() const
   co_return data;
 }
 
+drogon::Task<std::vector<CameraSchema>> CameraRepository::findLive() const
+{
+  const auto client = DbService::cameraClient();
+  const auto result = co_await client->execSqlCoro(FIND_LIVE.data());
+
+  std::vector<CameraSchema> data;
+  data.reserve(result.size());
+  for (const auto& row : result)
+    data.push_back(CameraSchema(row));
+  co_return data;
+}
+
 drogon::Task<CameraSchema>
 CameraRepository::create(const CameraCreateInput& input) const
 {

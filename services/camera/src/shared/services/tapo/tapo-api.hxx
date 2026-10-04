@@ -5,6 +5,7 @@
 #include <json/value.h>
 #include <optional>
 #include <shared/services/tapo/tapo-client.hxx>
+#include <shared/services/tapo/tapo-video.hxx>
 #include <string>
 #include <vector>
 
@@ -84,6 +85,7 @@ struct TapoStatusBatch
   std::string sdCardFree;
   std::optional<int64_t> deviceTime;
   std::optional<int64_t> clockOffsetSeconds;
+  std::optional<TapoVideoProfile> video;
   Json::Value raw;
 
   Json::Value toJson() const;
@@ -104,6 +106,7 @@ public:
   TapoResult getAudioConfig();
   TapoResult getPresets();
   TapoResult getMotorCapability();
+  TapoResult getVideoCapability();
   TapoStatusBatch getStatus();
 
   TapoResult move(const TapoMoveInput& input);
@@ -122,6 +125,7 @@ public:
   TapoResult setAlarm(const TapoAlarmInput& input);
   TapoResult setAlarmVolume(const std::string& level);
   TapoResult manualAlarm(bool sounding);
+  TapoResult setVideoFrameRate(const std::string& code);
 
   TapoResult searchDetectionList(const TapoEventFilter& filter);
 

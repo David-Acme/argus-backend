@@ -20,8 +20,11 @@ public:
   bool applySources(const CameraSourceChange& change) override
   {
     ++batches;
-    for (const auto& source : change.upserts)
+    for (const auto& source : change.upserts) {
       added.emplace_back(source.name, source.url);
+      if (source.preload)
+        preloaded.push_back(source.name);
+    }
     removed.insert(removed.end(), change.removals.begin(), change.removals.end());
     return true;
   }
@@ -29,7 +32,20 @@ public:
   int batches{0};
   std::vector<std::pair<std::string, std::string>> added;
   std::vector<std::string> removed;
+  std::vector<std::string> preloaded;
 };
+}
+
+TEST_CASE("the live view watches the main stream and every analysis reads the sub stream")
+{
+  CHECK(camera_stream_role::streamFor(CameraStreamRole::LiveView) == CameraStream::Main);
+  CHECK(camera_stream_role::streamFor(CameraStreamRole::Analysis) == CameraStream::Sub);
+  CHECK(camera_stream_role::streamFor(CameraStreamRole::Listening) == CameraStream::Sub);
+  CHECK(Go2rtcManager::sourceFor(4, CameraStreamRole::LiveView) == "cam4");
+  CHECK(Go2rtcManager::sourceFor(4, CameraStreamRole::Analysis) == "cam4-sub");
+  CHECK(cameraStreamFromString("main") == CameraStream::Main);
+  CHECK(cameraStreamFromString("sub") == CameraStream::Sub);
+  CHECK_FALSE(cameraStreamFromString("hd").has_value());
 }
 
 TEST_CASE("camera source urls percent-encode credentials")
@@ -111,6 +127,7 @@ TEST_CASE("camera registrar syncs main and sub sources")
   CHECK(sink.added[0].second == "rtsp://admin:secret@10.0.0.7:554/stream1");
   CHECK(sink.added[1].first == "cam3-sub");
   CHECK(sink.added[1].second == "rtsp://admin:secret@10.0.0.7:554/stream2");
+  CHECK(sink.preloaded == std::vector<std::string>{"cam3-sub"});
 
   registrar.remove(3);
   REQUIRE(sink.removed.size() == 2);
@@ -168,7 +185,7 @@ TEST_CASE("go2rtc rewrites its config only when a source really changed")
   };
 
   Go2rtcManager manager;
-  const Go2rtcSource main{.name = "cam1", .url = "rtsp://10.0.0.1:554/stream1"};
+  const Go2rtcSource main{.name = "cam1", .url = "rtsp://10.0.0.1:554/stream1", .preload = false};
   CHECK(manager.applySources({.upserts = {main}, .removals = {}}));
   CHECK(written().find("cam1: rtsp://10.0.0.1:554/stream1") != std::string::npos);
 
@@ -179,16 +196,23 @@ TEST_CASE("go2rtc rewrites its config only when a source really changed")
   CHECK_FALSE(std::filesystem::exists(config));
 
   CHECK(manager.applySources(
-      {.upserts = {{.name = "cam1", .url = "rtsp://10.0.0.2:554/stream1"}},
+      {.upserts = {{.name = "cam1", .url = "rtsp://10.0.0.2:554/stream1", .preload = false}},
        .removals = {}}));
   CHECK(written().find("cam1: rtsp://10.0.0.2:554/stream1") != std::string::npos);
 
   CHECK(manager.applySources(
-      {.upserts = {{.name = "cam2", .url = "rtsp://8.8.8.8:554/stream1"}},
+      {.upserts = {{.name = "cam2", .url = "rtsp://8.8.8.8:554/stream1", .preload = false}},
        .removals = {}}));
   CHECK(written().find("cam2") == std::string::npos);
 
   CHECK(manager.applySources({.upserts = {}, .removals = {"cam1"}}));
   CHECK(written().find("cam1") == std::string::npos);
+
+  CHECK(manager.applySources(
+      {.upserts = {{.name = "cam5", .url = "rtsp://10.0.0.5:554/stream1", .preload = false},
+                   {.name = "cam5-sub", .url = "rtsp://10.0.0.5:554/stream2", .preload = true}},
+       .removals = {}}));
+  CHECK(written().find("preload:\n  cam5-sub:\n") != std::string::npos);
+  CHECK(written().find("  cam5:\n") == std::string::npos);
   std::filesystem::remove(config);
 }

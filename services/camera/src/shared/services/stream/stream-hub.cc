@@ -24,12 +24,6 @@ int64_t steadyNowMs()
              std::chrono::steady_clock::now().time_since_epoch())
       .count();
 }
-
-std::string upstreamName(int64_t cameraId, const std::string& quality)
-{
-  return quality == "sub" ? Go2rtcManager::subStreamName(cameraId)
-                          : Go2rtcManager::streamName(cameraId);
-}
 }
 
 StreamHub::~StreamHub()
@@ -287,7 +281,7 @@ StreamHub::getOrOpen(const SubscribeInput& input, std::string& error)
     return nullptr;
   }
 
-  const std::string name = upstreamName(input.cameraId, input.quality);
+  const std::string name = Go2rtcManager::sourceName(input.cameraId, input.stream);
   std::scoped_lock lock(hubMutex_);
   auto it = upstreams_.find(name);
   if (it != upstreams_.end()) {

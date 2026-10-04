@@ -41,6 +41,7 @@
 #include <sqlite/db-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
+#include <feature/camera/services/camera-feature-service.hxx>
 #include <shared/services/stream/stream-hub.hxx>
 #include <runtime/blocking-task.hxx>
 #include <settings/settings-rpc.hxx>
@@ -105,10 +106,23 @@ drogon::Task<void> applyInitialSources()
   }
 }
 
+drogon::Task<void> reconcileCapabilities()
+{
+  try {
+    const CameraFeatureService cameras;
+    if (const int updated = co_await cameras.reconcileCapabilities(); updated > 0)
+      LOG_INFO << "Camera capabilities: refreshed " << updated << " camera(s)";
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Camera capabilities: reconcile failed: " << error.what();
+  }
+}
+
 drogon::Task<void> startAfterSources(CameraOperatorService* operatorService,
                                      CameraHealthMonitor* healthMonitor)
 {
   co_await applyInitialSources();
+  co_await reconcileCapabilities();
   if (operatorService)
     operatorService->start();
   if (healthMonitor)

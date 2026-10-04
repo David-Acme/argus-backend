@@ -1,5 +1,6 @@
 argus_module(NAME camera-driver
     SOURCES
+        camera-capabilities.cc
         camera-driver-registry.cc
         camera-scene-log.cc
         stream-only-driver.cc

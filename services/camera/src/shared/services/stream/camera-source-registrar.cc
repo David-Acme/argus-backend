@@ -2,11 +2,14 @@
 
 #include "go2rtc-manager.hxx"
 
+#include <array>
+
 #include <shared/utils/network-address/private-address.hxx>
 #include <shared/vocabulary/camera-stream-paths.hxx>
 
 namespace
 {
+constexpr std::array kStreams{CameraStream::Main, CameraStream::Sub};
 
 std::string encodeUserInfo(const std::string& value)
 {
@@ -29,12 +32,6 @@ std::string encodeUserInfo(const std::string& value)
   return out;
 }
 
-std::string sourceName(int64_t cameraId, bool sub)
-{
-  return sub ? Go2rtcManager::subStreamName(cameraId)
-             : Go2rtcManager::streamName(cameraId);
-}
-
 class Go2rtcSourceSink : public ICameraSourceSink
 {
 public:
@@ -43,7 +40,8 @@ public:
     Go2rtcSourceChange sources;
     sources.upserts.reserve(change.upserts.size());
     for (const auto& source : change.upserts)
-      sources.upserts.push_back({.name = source.name, .url = source.url});
+      sources.upserts.push_back(
+          {.name = source.name, .url = source.url, .preload = source.preload});
     sources.removals = change.removals;
     return Go2rtcManager::instance().applySources(sources);
   }
@@ -54,15 +52,17 @@ void collect(const CameraSchema& camera, CameraSourceChange& change)
   if (camera.id <= 0)
     return;
   if (!camera.isEnabled) {
-    change.removals.push_back(sourceName(camera.id, false));
-    change.removals.push_back(sourceName(camera.id, true));
+    for (const auto stream : kStreams)
+      change.removals.push_back(Go2rtcManager::sourceName(camera.id, stream));
     return;
   }
   const CameraStreamPaths paths = camera_stream_paths::of(camera.config);
-  change.upserts.push_back({.name = sourceName(camera.id, false),
-                            .url = CameraSourceRegistrar::sourceUrl(camera, paths.main)});
-  change.upserts.push_back({.name = sourceName(camera.id, true),
-                            .url = CameraSourceRegistrar::sourceUrl(camera, paths.sub)});
+  for (const auto stream : kStreams)
+    change.upserts.push_back(
+        {.name = Go2rtcManager::sourceName(camera.id, stream),
+         .url = CameraSourceRegistrar::sourceUrl(
+             camera, stream == CameraStream::Main ? paths.main : paths.sub),
+         .preload = camera_stream_role::isWarm(stream)});
 }
 
 }
@@ -105,8 +105,8 @@ void CameraSourceRegistrar::remove(int64_t cameraId) const
   if (cameraId <= 0)
     return;
   sink_.applySources({.upserts = {},
-                      .removals = {sourceName(cameraId, false),
-                                   sourceName(cameraId, true)}});
+                      .removals = {Go2rtcManager::sourceName(cameraId, CameraStream::Main),
+                                   Go2rtcManager::sourceName(cameraId, CameraStream::Sub)}});
 }
 
 CameraSourceRegistrar& cameraSourceRegistrar()

@@ -15,6 +15,7 @@ struct CameraSettingsDto
   std::optional<bool> autoTrack;
   std::optional<bool> alarm;
   std::optional<int> alarmVolume;
+  std::optional<int> frameRate;
 
   static CameraSettingsDto fromJson(const Json::Value& json);
 };

@@ -46,6 +46,7 @@ struct DriverSettingsInput
   std::optional<bool> alarm;
   std::optional<int> alarmVolume;
   std::optional<bool> sounding;
+  std::optional<int> frameRate;
 };
 
 struct DriverSpeakInput

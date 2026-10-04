@@ -1,6 +1,7 @@
 #pragma once
 
 #include <shared/services/stream/gop-cache.hxx>
+#include <shared/vocabulary/camera-stream-role.hxx>
 
 #include <atomic>
 #include <cstdint>
@@ -43,7 +44,7 @@ public:
   {
     std::shared_ptr<ISink> sink;
     int64_t cameraId{0};
-    std::string quality;
+    CameraStream stream{camera_stream_role::streamFor(CameraStreamRole::LiveView)};
     bool fastStart{false};
   };
 

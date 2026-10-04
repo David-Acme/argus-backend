@@ -3,6 +3,7 @@
 #include <camera/camera-errors.hxx>
 #include <ctime>
 #include <errors/response-exception.hxx>
+#include <shared/services/camera-driver/camera-capabilities.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
@@ -27,6 +28,25 @@ drogon::Task<void> dropSource(int64_t cameraId)
 {
   co_await BlockingTask<void>(
       [cameraId] { cameraSourceRegistrar().remove(cameraId); });
+}
+
+CameraSchema projectedCamera(const CameraSchema& before, const CameraUpdateInput& input)
+{
+  CameraSchema camera = before;
+  if (input.model)
+    camera.model = *input.model;
+  if (input.driver)
+    camera.driver = *input.driver;
+  if (input.cloudPassword)
+    camera.cloudPassword = *input.cloudPassword;
+  if (input.config)
+    camera.config = *input.config;
+  return camera;
+}
+
+std::string capabilityListOf(const CameraSchema& camera)
+{
+  return camera_capabilities::listOf(camera_capabilities::of(camera));
 }
 
 SocketEmitDto cameraBody(SyncOperation operation, const CameraSchema& row)
@@ -63,6 +83,14 @@ CameraFeatureService::create(const CreateCameraDto& body) const
 {
   auto transaction =
       co_await db_transaction::begin(DbService::cameraClient());
+  CameraSchema planned;
+  planned.model = body.model;
+  planned.driver = cameraDriverFromString(body.driver);
+  planned.cloudPassword = body.cloudPassword;
+  planned.config = camera_stream_paths::withConfig({.config = "{}",
+                                                    .main = body.streamPath,
+                                                    .sub = body.subStreamPath,
+                                                    .catalogId = body.catalogId});
   CameraSchema row;
   try {
     row = co_await repository_.create({
@@ -79,11 +107,8 @@ CameraFeatureService::create(const CreateCameraDto& body) const
         .icon = body.icon,
         .recordMode = cameraRecordModeFromString(body.recordMode),
         .retentionDays = body.retentionDays,
-        .capabilities = "[]",
-        .config = camera_stream_paths::withConfig({.config = "{}",
-                                                   .main = body.streamPath,
-                                                   .sub = body.subStreamPath,
-                                                   .catalogId = body.catalogId}),
+        .capabilities = capabilityListOf(planned),
+        .config = planned.config,
         .client = transaction.get(),
     });
     co_await emit({.table = TableName::Camera,
@@ -138,6 +163,9 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
     }
     if (body.recordMode)
       input.recordMode = cameraRecordModeFromString(*body.recordMode);
+    if (auto capabilities = capabilityListOf(projectedCamera(before, input));
+        capabilities != before.capabilities)
+      input.capabilities = std::move(capabilities);
     input.client = transaction.get();
 
     row = co_await repository_.update(id, input);
@@ -209,4 +237,16 @@ drogon::Task<bool> CameraFeatureService::remove(int64_t id) const
   CameraLiveBoard::instance().forget(id);
   co_await dropSource(id);
   co_return true;
+}
+
+drogon::Task<int> CameraFeatureService::reconcileCapabilities() const
+{
+  int updated = 0;
+  for (const auto& camera : co_await repository_.findLive()) {
+    if (capabilityListOf(camera) == camera.capabilities)
+      continue;
+    if (co_await update(camera.id, UpdateCameraDto{}))
+      ++updated;
+  }
+  co_return updated;
 }

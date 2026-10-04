@@ -2,7 +2,7 @@
 
 #include <chrono>
 #include <config/config-service.hxx>
-#include <shared/services/camera-catalog/camera-catalog.hxx>
+#include <shared/services/camera-driver/camera-capabilities.hxx>
 #include <shared/vocabulary/camera-stream-paths.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
 #include <runtime/cancellation-token.hxx>
@@ -39,6 +39,34 @@ DriverResult toDriverResult(const TapoResult& result)
 {
   return {.ok = result.ok, .error = result.error, .data = result.data};
 }
+
+std::string frameRateList(const std::vector<int>& rates)
+{
+  std::string out;
+  for (const int rate : rates) {
+    if (!out.empty())
+      out += ", ";
+    out += std::to_string(rate);
+  }
+  return out;
+}
+
+TapoResult applyFrameRate(TapoApi& api, int frameRate)
+{
+  auto offered = api.getVideoCapability();
+  if (!offered.ok)
+    return offered;
+  const auto code = tapo_video::frameRateCodeFor(offered.data, frameRate);
+  if (!code) {
+    const Json::Value empty;
+    const auto profile = tapo_video::profileOf({.capability = offered.data, .quality = empty});
+    const auto rates = profile ? frameRateList(profile->frameRates) : std::string();
+    return TapoResult::failure(rates.empty()
+                                   ? "This camera does not let Argus change its frame rate"
+                                   : "This camera streams at " + rates + " fps only");
+  }
+  return api.setVideoFrameRate(*code);
+}
 }
 
 DriverResult TapoDriver::probe(const CameraSchema& camera)
@@ -74,26 +102,7 @@ TapoDriver::TapoDriver(const CameraSchema& camera)
 
 Json::Value TapoDriver::capabilities() const
 {
-  const auto* entry = camera_catalog::find(
-      {.catalogId = camera_stream_paths::catalogIdOf(camera_.config),
-       .driver = CameraDriver::Tapo,
-       .model = camera_.model});
-  const auto has = [entry](CameraFeature feature) {
-    return entry == nullptr || entry->has(feature);
-  };
-  Json::Value out;
-  out["ptz"] = has(CameraFeature::Ptz);
-  out["presets"] = has(CameraFeature::Presets);
-  out["talk"] = has(CameraFeature::Speaker) && !camera_.cloudPassword.empty();
-  out["privacy"] = has(CameraFeature::Privacy);
-  out["led"] = has(CameraFeature::Led);
-  out["dayNight"] = has(CameraFeature::DayNight);
-  out["motion"] = has(CameraFeature::Motion);
-  out["autoTrack"] = has(CameraFeature::AutoTrack);
-  out["alarm"] = has(CameraFeature::Siren);
-  out["sdCard"] = has(CameraFeature::SdCard);
-  out["catalogId"] = entry == nullptr ? std::string() : std::string(entry->id);
-  return out;
+  return camera_capabilities::of(camera_);
 }
 
 DriverResult TapoDriver::ensureConnected()
@@ -168,6 +177,8 @@ DriverResult TapoDriver::settings(const DriverSettingsInput& input)
                                                           : "high"));
   if (input.alarm)
     apply(api_->setAlarm({.enabled = *input.alarm}));
+  if (input.frameRate)
+    apply(applyFrameRate(*api_, *input.frameRate));
   if (input.sounding) {
     const auto sounded = api_->manualAlarm(*input.sounding);
     if (!sounded.ok)

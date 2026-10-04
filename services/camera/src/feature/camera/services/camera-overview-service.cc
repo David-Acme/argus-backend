@@ -1,5 +1,7 @@
 #include "camera-overview-service.hxx"
 
+#include <utility>
+
 #include <auth/role-access.hxx>
 #include <shared/services/stream/camera-live-board.hxx>
 #include <feature/camera/infra/rtsp-probe.hxx>
@@ -101,9 +103,11 @@ drogon::Task<Json::Value> CameraOverviewService::overview(UserRole role) const
     row["height"] = known ? state->second.height : 0;
     const auto watching = viewers.find(camera.id);
     row["viewers"] = watching == viewers.end() ? 0 : watching->second;
-    const std::string sub = Go2rtcManager::subStreamName(camera.id);
-    row["stream"] = streams.isMember(sub) ? streams[sub] : Json::Value();
-    row["mainActive"] = streams.isMember(Go2rtcManager::streamName(camera.id));
+    const std::string analysis =
+        Go2rtcManager::sourceFor(camera.id, CameraStreamRole::Analysis);
+    row["stream"] = streams.isMember(analysis) ? streams[analysis] : Json::Value();
+    row["mainActive"] =
+        streams.isMember(Go2rtcManager::sourceName(camera.id, CameraStream::Main));
     row["lastEvent"] = readsEvents && known && state->second.lastEvent
                            ? state->second.lastEvent->toJson()
                            : Json::Value();
@@ -117,7 +121,7 @@ drogon::Task<Json::Value> CameraOverviewService::overview(UserRole role) const
   }
 
   Json::Value out(Json::objectValue);
-  out["cameras"] = rows;
-  out["events"] = events;
+  out["cameras"] = std::move(rows);
+  out["events"] = std::move(events);
   co_return out;
 }
