@@ -1,5 +1,7 @@
 #include "sync-config.hxx"
 
+#include <algorithm>
+
 #include <config/config-service.hxx>
 #include <sync/audit-retention.hxx>
 
@@ -48,4 +50,28 @@ int SyncConfig::resolveAuditRetentionDays()
   if (!ConfigService::hasKey("sync.audit_retention_days"))
     return audit_retention::kDefaultDays;
   return ConfigService::getInt("sync.audit_retention_days");
+}
+
+SyncRtcConfig SyncConfig::resolveRtc()
+{
+  SyncRtcConfig config;
+  config.apiKey = ConfigService::getString("rtc.api_key");
+  config.apiSecret = ConfigService::getString("rtc.api_secret");
+  config.serverUrl = ConfigService::getString("rtc.server_url");
+  config.publicUrl = ConfigService::getString("rtc.public_url");
+  if (ConfigService::hasKey("rtc.public_port")) {
+    const int port = ConfigService::getInt("rtc.public_port");
+    if (port > 0 && port <= 65535)
+      config.publicPort = static_cast<uint16_t>(port);
+  }
+  if (ConfigService::hasKey("rtc.token_ttl_seconds"))
+    config.tokenTtl = std::chrono::seconds(
+        std::clamp(ConfigService::getInt("rtc.token_ttl_seconds"), 60, 3600));
+  constexpr std::size_t kMinSecretBytes = 32;
+  config.enabled = ConfigService::hasKey("rtc.enabled") && ConfigService::getBool("rtc.enabled") &&
+                   !config.apiKey.empty() && config.apiSecret.size() >= kMinSecretBytes &&
+                   config.apiKey.find("CHANGE_ME") == std::string::npos &&
+                   config.apiSecret.find("CHANGE_ME") == std::string::npos &&
+                   !config.serverUrl.empty();
+  return config;
 }

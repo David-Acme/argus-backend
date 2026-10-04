@@ -400,3 +400,14 @@ TEST_CASE("talking through a camera is open to the owner, residents and guards, 
   CHECK_FALSE(allows(UserRole::Guard, "/camera/12/talk/more", drogon::Post));
   CHECK(allows(UserRole::Resident, "/camera/12/ptz", drogon::Patch));
 }
+
+TEST_CASE("every role may ask for a realtime call token, and only by POST")
+{
+  for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest})
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/rtc/token", .method = drogon::Post}));
+  for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/rtc/token", .method = drogon::Get}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/rtc/rooms", .method = drogon::Post}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/rtc/token/x", .method = drogon::Post}));
+  }
+}

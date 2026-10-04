@@ -166,6 +166,10 @@ inline constexpr std::array<AuthRouteAccess, 7> kSessionAccess = {{
     {.path = "/auth/users/{id}/sessions/{id}", .method = drogon::Delete, .roles = kOwnerOnly},
 }};
 
+inline constexpr std::array<AuthRouteAccess, 1> kRtcAccess = {{
+    {.path = "/rtc/token", .method = drogon::Post, .roles = kEveryRole},
+}};
+
 inline constexpr std::string_view kRouteSegment = "{id}";
 
 inline bool routeMatches(std::string_view pattern, std::string_view path)
@@ -333,6 +337,13 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
     if (it == kAuthAccess.end())
       return false;
     return it->second.contains(method);
+  }
+
+  if (path.rfind("/rtc", 0) == 0) {
+    const auto route = std::ranges::find_if(kRtcAccess, [&](const AuthRouteAccess& entry) {
+      return entry.path == path && entry.method == method;
+    });
+    return route != kRtcAccess.end() && (route->roles & roleBit(role)) != 0;
   }
 
   if (path.rfind("/guard", 0) == 0) {

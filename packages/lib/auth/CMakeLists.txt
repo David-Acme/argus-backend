@@ -56,6 +56,7 @@ argus_lib(NAME auth
         src/auth/jwt-service.cc
         src/auth/user-directory-identity.cc
         src/auth/role-access.hxx
+        src/auth/linked-filter.hxx
         src/auth/remote-config.hxx
         src/auth/remote-gate.hxx
         src/auth/user-directory.hxx

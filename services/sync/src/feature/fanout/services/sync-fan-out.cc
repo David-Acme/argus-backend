@@ -19,6 +19,12 @@ const RoomManager roomManager;
 
 constexpr std::size_t kMaxSessionIdBytes = 64;
 
+sync_fan_out::SessionEndListener& sessionEndListener()
+{
+  static sync_fan_out::SessionEndListener listener;
+  return listener;
+}
+
 std::string kindOf(const Json::Value& json)
 {
   return json.isObject() ? json.get(sync_change::kKindField, "").asString()
@@ -28,6 +34,11 @@ std::string kindOf(const Json::Value& json)
 
 namespace sync_fan_out
 {
+void onSessionEnd(SessionEndListener listener)
+{
+  sessionEndListener() = std::move(listener);
+}
+
 std::optional<Event> parseEvent(const Json::Value& json)
 {
   if (!json.isObject() || !json.isMember("operation") ||
@@ -134,11 +145,15 @@ void dispatchEvent(const Event& event)
       return;
     case FanOutPlan::Kind::Disconnect:
       roomManager.disconnectUser(plan.userId, message);
+      if (sessionEndListener())
+        sessionEndListener()({.userId = plan.userId, .sessionId = std::nullopt});
       return;
     case FanOutPlan::Kind::DisconnectSession:
       roomManager.disconnectSession({.userId = plan.userId,
                                      .sessionId = plan.sessionId,
                                      .contextMessage = message});
+      if (sessionEndListener())
+        sessionEndListener()({.userId = plan.userId, .sessionId = plan.sessionId});
       return;
     case FanOutPlan::Kind::UserEmit:
       if (!plan.rooms.empty())

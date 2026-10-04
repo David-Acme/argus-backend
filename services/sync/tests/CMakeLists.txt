@@ -146,3 +146,13 @@ target_link_libraries(golden-sync-test PRIVATE Drogon::Drogon)
 target_compile_options(golden-sync-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(golden-sync-test)
 add_test(NAME golden-sync-test COMMAND golden-sync-test)
+
+add_executable(rtc-token-test unit/rtc-token-test.cc)
+target_link_libraries(rtc-token-test PRIVATE
+    argus::sync-rtc
+    argus::lib::errors
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(rtc-token-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(rtc-token-test)
+add_test(NAME rtc-token-test COMMAND rtc-token-test)

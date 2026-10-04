@@ -44,10 +44,14 @@ TEST_CASE("every error code has exactly one wire string")
       {.code = ErrorCode::Cancelled, .name = "CANCELLED"},
       {.code = ErrorCode::DeadlineExceeded, .name = "DEADLINE_EXCEEDED"},
       {.code = ErrorCode::SessionNotFound, .name = "SESSION_NOT_FOUND"},
-      {.code = ErrorCode::AccountDisabled, .name = "ACCOUNT_DISABLED"}};
+      {.code = ErrorCode::AccountDisabled, .name = "ACCOUNT_DISABLED"},
+      {.code = ErrorCode::RtcUnavailable, .name = "RTC_UNAVAILABLE"},
+      {.code = ErrorCode::CallNotFound, .name = "CALL_NOT_FOUND"},
+      {.code = ErrorCode::CallTaken, .name = "CALL_TAKEN"},
+      {.code = ErrorCode::CallExpired, .name = "CALL_EXPIRED"}};
 
   CHECK(table.size() ==
-        static_cast<std::size_t>(ErrorCode::AccountDisabled) + 1);
+        static_cast<std::size_t>(ErrorCode::CallExpired) + 1);
 
   for (const auto& row : table)
     CHECK(std::string(toString(row.code)) == row.name);

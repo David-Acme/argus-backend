@@ -179,6 +179,71 @@ protocol could not regress by accident in the commit that changed the endpoint.
   non-zero `turn_id`, which only a duplex session sets, so a half-duplex
   `voice:assistant` stays `{"text":...}` byte for byte.
 
+## Realtime calls: `POST /rtc/token` (2026-10-04)
+
+Calls move to WebRTC through a self-hosted LiveKit SFU (`services/voice/CONTEXT.md`,
+"Realtime calls over WebRTC"). The client needs a short-lived LiveKit room
+token, and this service mints it: `POST /rtc/token`, filters `DeviceFilter →
+ValidJsonFilter → JwtFilter → RoleFilter`, every role (`role_access::kRtcAccess`,
+like the `/sync` voice leg, which has no role gate either).
+
+**Why here and not in argus-voice or a new service.** The token is signaling,
+and signaling is what the plan leaves on this service's surface. Minting
+needs the authenticated, device-bound session (`JwtContext`: user, role,
+session id, device hash), which this listener already establishes for
+`/sync`; the call identity needs the directory lookup the voice relay already
+does; revocation needs the `argus.auth.v1.session` feed, which this service
+already consumes; and argus-voice must stay a pure gRPC service without
+filters or an app-facing listener. A service of its own would duplicate the
+TLS listener, the filter chain and the session consumer for one route. The
+cost is the one exception to "no route but `/health` and the upgrade" in this
+service's AGENTS.md, stated there.
+
+**What it does, in order.** Validates the body (`callId` absent, `rtc-<32
+hex>` or `call-<digits>`; `resume` a boolean; `mode` `duplex`/`half`),
+refuses with 503 `RTC_UNAVAILABLE` when `[rtc]` is not configured (or still
+holds a `CHANGE_ME` placeholder, or a secret under 32 bytes), when no voice
+target exists, or when the session predates session ids; mints `rtc-<32 hex>`
+for a new call; for `call-<id>` claims the call from argus-notification
+(`CallService.ClaimCall`, idempotent per session) and maps TAKEN, EXPIRED and
+NOT_FOUND to 409 `CALL_TAKEN`, 410 `CALL_EXPIRED`, 404 `CALL_NOT_FOUND`; then
+asks argus-voice to join (`VoiceService.JoinRoom`, light blocking lane, 6 s
+deadline) with the agent's own token, and only then mints the caller's token
+and answers. A 200 therefore means the agent is already in the room.
+
+- Room `u<userId>.<callId>`, so a resume can only name a room of the caller's
+  own user id; participant identity `user:<userId>:<sessionId>`; agent
+  `argus-voice` with `kind: agent`.
+- Grants: the user may join exactly that room, publish only the microphone,
+  subscribe and send data; the agent also updates its own attributes (the
+  `lk.agent.state` the apps read). No admin grant leaves this service.
+- `url` is `[rtc] public_url` or `wss://<hostname of the request's Host>:<[rtc]
+  public_port>` (7046, the TLS front). The Host is checked to be a hostname or
+  a bracketed IPv6 literal; anything else falls back to `argus.local`. The
+  apps rewrite the host to the one they pinned and keep the port.
+- Token lifetime `[rtc] token_ttl_seconds` (600, clamped 60-3600): the token
+  only has to be valid at connect; LiveKit refreshes a connected participant's
+  token itself. `expiresAt` is the `exp`.
+- `rtc` is announced over mDNS with this service's other routes (it is a
+  route segment of this listener); the LiveKit front is not announced.
+
+**Revocation.** `sync_fan_out::onSessionEnd` is a listener the fan-out calls
+after it has closed the sockets of a `disconnect_session` (one session) or a
+`disconnect` (account disabled), on both transports (the NATS feed and the
+control RPC). `RtcSessionRevoker` lists the rooms (`RoomService.ListRooms`
+over LiveKit's Twirp API, a 60 s admin token), and for each room of that user
+removes the session's participant (`RemoveParticipant`), or deletes the room
+when the whole account went (`DeleteRoom`, which also sends the agent away).
+It runs on the main loop, off the ordered feed's critical path. Stateless on
+purpose: a restart of this service loses nothing, and LiveKit is the source of
+truth for who is in which room. The app sees `Disconnected` with reason
+`PARTICIPANT_REMOVED`, the agent ends the call as `revoked`.
+
+The LiveKit key pair is `[rtc] api_key` / `api_secret`, generated per
+installation by `setup.sh` (native) and `provision-host.sh` (deploy, which
+also writes the 0600 `argus-deploy/livekit-keys.yaml` LiveKit reads through
+`key_file`). It never reaches a client, a log or argus-voice.
+
 ## Where the state lives
 
 Its own file, `database/sync.db`, resolved from `[sync] db` — the deploy binds

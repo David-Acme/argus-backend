@@ -5,6 +5,7 @@
 #include <feature/fanout/services/audit-fan-out.hxx>
 #include <feature/fanout/services/durable-disposition.hxx>
 #include <json/value.h>
+#include <functional>
 #include <optional>
 #include <shared/services/room/room-manager.hxx>
 #include <string>
@@ -41,6 +42,16 @@ struct FanOutPlan
   std::string sessionId;
   RoleRoomReplaceInput replaceInput{0, UserRole::Guest, UserRole::Guest};
 };
+
+struct SessionEndNotice
+{
+  int64_t userId{0};
+  std::optional<std::string> sessionId;
+};
+
+using SessionEndListener = std::function<void(const SessionEndNotice&)>;
+
+void onSessionEnd(SessionEndListener listener);
 
 std::optional<Event> parseEvent(const Json::Value& json);
 FanOutPlan planEvent(const Event& event);

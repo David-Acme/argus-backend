@@ -115,6 +115,7 @@ argus_service(NAME argus-sync
     MODULES argus::sync-config
             argus::sync-transport
             argus::sync-fanout
+            argus::sync-rtc
             argus::sync-control-rpc
             argus::sync-repositories
             argus::sync-services

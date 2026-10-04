@@ -10,7 +10,10 @@ that apply to sync-service code; when in doubt, the root file wins.
    the rooms and the fan-out, persists the audit trail and the action journal,
    drains the notification delivery stream and answers the control RPC. It runs
    no AI capacity (face, llm, vlm, tts, stt, vad stay elsewhere) and exposes no
-   HTTP route other than `/health` and the WebSocket upgrade.
+   HTTP route other than `/health`, the WebSocket upgrade and `POST
+   /rtc/token` (call signaling: it mints LiveKit room tokens and holds the
+   only copy of the LiveKit API secret, `[rtc]`; CONTEXT.md, "Realtime
+   calls").
 2. **Single writer of its five tables** — `audit_log`, `user_audit_log`,
    `user_action_log`, `notification_delivery_inbox` and
    `audit_compaction_state` are written here and
@@ -104,6 +107,10 @@ argus-sync/
     schemas/            event and person-event row mapping
     infra/              the four domain pull sources, the socket registrar
                         and the voice gRPC relay the forwarder rides
+  src/feature/rtc/      POST /rtc/token: controller, DTOs, the token service,
+                        LiveKit token minting and the Twirp room client, the
+                        session revoker the fan-out calls, the voice and
+                        notification ports
   src/feature/fanout/
     repositories/       delivery inbox (query + repository + receipt)
     services/           the change-feed consumer (one durable per change

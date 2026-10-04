@@ -27,7 +27,11 @@ enum class ErrorCode
   Cancelled,
   DeadlineExceeded,
   SessionNotFound,
-  AccountDisabled
+  AccountDisabled,
+  RtcUnavailable,
+  CallNotFound,
+  CallTaken,
+  CallExpired
 };
 
 constexpr std::string_view toString(ErrorCode code)
@@ -56,6 +60,10 @@ constexpr std::string_view toString(ErrorCode code)
   case ErrorCode::DeadlineExceeded: return "DEADLINE_EXCEEDED";
   case ErrorCode::SessionNotFound: return "SESSION_NOT_FOUND";
   case ErrorCode::AccountDisabled: return "ACCOUNT_DISABLED";
+  case ErrorCode::RtcUnavailable: return "RTC_UNAVAILABLE";
+  case ErrorCode::CallNotFound: return "CALL_NOT_FOUND";
+  case ErrorCode::CallTaken: return "CALL_TAKEN";
+  case ErrorCode::CallExpired: return "CALL_EXPIRED";
   }
   throw std::invalid_argument("Unknown response error code");
 }

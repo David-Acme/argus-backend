@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+#include <cstdint>
 #include <http/listener-config.hxx>
 #include <string>
 
@@ -26,6 +28,17 @@ struct SyncUpstreams
   std::string identitySecret;
 };
 
+struct SyncRtcConfig
+{
+  bool enabled{false};
+  std::string apiKey;
+  std::string apiSecret;
+  std::string serverUrl;
+  std::string publicUrl;
+  uint16_t publicPort{7046};
+  std::chrono::seconds tokenTtl{600};
+};
+
 class SyncConfig
 {
 public:
@@ -36,4 +49,5 @@ public:
   static SyncControlConfig resolveControl();
   static SyncUpstreams resolveUpstreams();
   static int resolveAuditRetentionDays();
+  static SyncRtcConfig resolveRtc();
 };

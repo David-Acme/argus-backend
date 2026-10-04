@@ -6,6 +6,12 @@
 #include <feature/fanout/services/audit-retention-service.hxx>
 #include <feature/fanout/services/change-feed-consumer.hxx>
 #include <feature/fanout/services/notification-delivery-consumer.hxx>
+#include <feature/fanout/services/sync-fan-out.hxx>
+#include <feature/rtc/controllers/rtc-controller.hxx>
+#include <feature/rtc/infra/livekit-room-client.hxx>
+#include <feature/rtc/infra/notification-call-claimer.hxx>
+#include <feature/rtc/infra/voice-room-joiner.hxx>
+#include <feature/rtc/services/rtc-session-revoker.hxx>
 #include <feature/transport/infra/camera-sync-gateway.hxx>
 #include <feature/transport/infra/identity-sync-gateway.hxx>
 #include <feature/transport/infra/notification-sync-gateway.hxx>
@@ -25,6 +31,8 @@
 #include <memory>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
+#include <notification/notification-client.hxx>
+#include <voice/voice-client.hxx>
 #include <runtime/shutdown-signal.hxx>
 #include <runtime/log-output.hxx>
 #include <shared/services/room/room-manager.hxx>
@@ -110,6 +118,30 @@ int main()
            << (upstreams.identity.empty()
                    ? "; identity tables -> unconfigured source (503)"
                    : "; identity tables -> gRPC " + upstreams.identity);
+
+  const SyncRtcConfig rtc = SyncConfig::resolveRtc();
+  std::shared_ptr<const RtcVoiceJoiner> rtcVoice;
+  if (!voice.target.empty())
+    rtcVoice = std::make_shared<VoiceRoomJoiner>(std::make_shared<VoiceClient>(
+        VoiceClientConfig{.target = voice.target, .credential = voice.credential}));
+  std::shared_ptr<const RtcCallClaimer> rtcCalls;
+  if (!upstreams.notification.empty())
+    rtcCalls = std::make_shared<NotificationCallClaimer>(std::make_shared<NotificationClient>(
+        NotificationClientConfig{.target = upstreams.notification,
+                                 .credential = ConfigService::getString("notifications.credential")}));
+  drogon::app().registerController(std::make_shared<RtcController>(RtcTokenServiceInput{
+      .config = rtc, .voice = rtcVoice, .calls = rtcCalls, .directory = userDirectory}));
+  if (rtc.enabled) {
+    const auto revoker = std::make_shared<RtcSessionRevoker>(std::make_shared<LiveKitRoomClient>(
+        LiveKitAdminConfig{.serverUrl = rtc.serverUrl, .apiKey = rtc.apiKey, .apiSecret = rtc.apiSecret}));
+    sync_fan_out::onSessionEnd([revoker](const sync_fan_out::SessionEndNotice& notice) {
+      revoker->sessionEnded({.userId = notice.userId, .sessionId = notice.sessionId});
+    });
+  }
+  LOG_INFO << "Realtime calls: "
+           << (rtc.enabled ? "LiveKit API " + rtc.serverUrl + ", apps dial port " +
+                                 std::to_string(rtc.publicPort)
+                           : std::string("unconfigured (/rtc/token answers 503)"));
 
   drogon::app().loadConfigJson(drogonConfig(syncDb, listener));
   certificate_reload::watch(listener);

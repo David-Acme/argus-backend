@@ -56,6 +56,15 @@ credential = ""
 target = "127.0.0.1:7034"
 credential = ""
 
+[rtc]
+enabled = true
+api_key = ""
+api_secret = ""
+server_url = "http://127.0.0.1:7880"
+public_url = ""
+public_port = 7046
+token_ttl_seconds = 600
+
 [notifications]
 grpc_target = "127.0.0.1:7038"
 credential = ""

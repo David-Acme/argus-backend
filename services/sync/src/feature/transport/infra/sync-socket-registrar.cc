@@ -1,27 +1,14 @@
 #include "sync-socket-registrar.hxx"
 
-#include <drogon/DrClassMap.h>
 #include <drogon/drogon.h>
 #include <feature/transport/controllers/sync-socket.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
+#include <auth/linked-filter.hxx>
 #include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-namespace
-{
-template <typename T>
-void requireLinkedFilter()
-{
-  const auto names = drogon::DrClassMap::getAllClassName();
-  if (std::find(names.begin(), names.end(), T::classTypeName()) ==
-      names.end())
-    throw std::runtime_error(std::string(T::classTypeName())
-                             + " is not linked into this binary");
-}
-}
 
 SyncRegistrationStats registerSyncSurface(SyncSurfaceInput input)
 {
@@ -46,8 +33,8 @@ SyncRegistrationStats registerSyncSurface(SyncSurfaceInput input)
     throw std::runtime_error("WebsocketController: SyncSocket"
                              " has no routes registered");
 
-  requireLinkedFilter<DeviceFilter>();
-  requireLinkedFilter<JwtFilter>();
+  auth_filters::requireLinked<DeviceFilter>();
+  auth_filters::requireLinked<JwtFilter>();
 
   return {.controllers = 1, .filters = 2};
 }
