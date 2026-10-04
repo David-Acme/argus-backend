@@ -1,6 +1,7 @@
 #include "call-rpc-service.hxx"
 
 #include <drogon/drogon.h>
+#include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <utility>
@@ -182,6 +183,47 @@ CallRpcService::ScheduleCall(grpc::CallbackServerContext* context,
         LOG_WARN << "Call RPC: ScheduleCall failed: " << error.what();
         reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
                                      "schedule failed"));
+      }
+    });
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor*
+CallRpcService::AnnounceAgenda(grpc::CallbackServerContext* context,
+                               const v1::AnnounceAgendaRequest* request,
+                               v1::AnnounceAgendaResponse* response)
+{
+  if (!argus::client::authorizeCaller(context, callers_.agenda))
+    return finishWith(context, grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                            "agenda caller credential required"));
+  if (request->command_id().empty() || request->user_ids_size() == 0 ||
+      !json_util::isValid(request->data()))
+    return finishWith(context,
+                      grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                   "user_ids, data and command_id are required"));
+  AgendaAnnouncement announcement{.userIds = {request->user_ids().begin(),
+                                              request->user_ids().end()},
+                                  .leadMinutes = request->lead_minutes(),
+                                  .title = request->title(),
+                                  .body = request->body(),
+                                  .data = json_util::fromString(request->data()),
+                                  .commandId = request->command_id()};
+  auto* reactor = context->DefaultReactor();
+  drogon::app().getLoop()->queueInLoop([this, reactor, response,
+                                        announcement]() {
+    drogon::async_run([this, reactor, response,
+                       announcement]() -> drogon::Task<void> {
+      try {
+        const auto outcome = co_await engine_->announceAgenda(announcement);
+        response->set_notified(outcome.notified);
+        response->set_rang(outcome.rang);
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Call RPC: AnnounceAgenda failed: " << error.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                     "agenda announcement failed"));
       }
     });
   });

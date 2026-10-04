@@ -41,7 +41,6 @@ server_key = "certs/server.key"
 
 [agenda]
 enabled = true
-lead_minutes = 10
 
 [notifications]
 target = "argus-notification:7038"

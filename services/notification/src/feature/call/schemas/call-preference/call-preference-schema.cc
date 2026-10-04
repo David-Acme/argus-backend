@@ -51,6 +51,18 @@ bool CallPreferenceSchema::mutes(int64_t environmentId) const
              mutedEnvironmentIds.end();
 }
 
+int CallPreferenceSchema::ringSecondsClamped() const
+{
+  return std::clamp(ringSeconds, call_preference_bounds::kMinRingSeconds,
+                    call_preference_bounds::kMaxRingSeconds);
+}
+
+int CallPreferenceSchema::pushDelayClamped() const
+{
+  return std::clamp(pushDelaySeconds, 0,
+                    call_preference_bounds::kMaxPushDelaySeconds);
+}
+
 Json::Value CallPreferenceSchema::toJson() const
 {
   Json::Value json(Json::objectValue);
@@ -71,6 +83,12 @@ Json::Value CallPreferenceSchema::toJson() const
     muted.append(static_cast<Json::Int64>(id));
   json["mutedEnvironmentIds"] = std::move(muted);
   json["updatedAt"] = static_cast<Json::Int64>(updatedAt);
+  json["agendaLeadMinutes"] = agendaLeadMinutes;
+  json["quietDays"] = quietDays;
+  json["ringSeconds"] = ringSeconds;
+  json["pushDelaySeconds"] = pushDelaySeconds;
+  json["liveAnnounce"] = liveAnnounce;
+  json["lang"] = lang;
   return json;
 }
 
@@ -104,5 +122,11 @@ CallPreferenceSchema CallPreferenceSchema::fromRow(const drogon::orm::Row& row)
   preference.mutedEnvironmentIds =
       environmentIds(row["muted_environments"].as<std::string>());
   preference.updatedAt = row["updated_at"].as<int64_t>();
+  preference.agendaLeadMinutes = row["agenda_lead_min"].as<int>();
+  preference.quietDays = row["quiet_days"].as<int>();
+  preference.ringSeconds = row["ring_seconds"].as<int>();
+  preference.pushDelaySeconds = row["push_delay_s"].as<int>();
+  preference.liveAnnounce = row["live_announce"].as<int>() != 0;
+  preference.lang = row["lang"].as<std::string>();
   return preference;
 }

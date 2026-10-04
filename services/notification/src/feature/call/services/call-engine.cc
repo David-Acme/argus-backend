@@ -115,14 +115,14 @@ int64_t CallEngine::now() const
   return static_cast<int64_t>(std::time(nullptr));
 }
 
-int CallEngine::hourAt(int64_t at) const
+CallLocalTime CallEngine::localAt(int64_t at) const
 {
-  if (dependencies_.localHour)
-    return dependencies_.localHour(at);
+  if (dependencies_.localTime)
+    return dependencies_.localTime(at);
   const auto seconds = static_cast<std::time_t>(at);
   std::tm local{};
   localtime_r(&seconds, &local);
-  return local.tm_hour;
+  return {.hour = local.tm_hour, .weekday = local.tm_wday};
 }
 
 std::string CallEngine::langFor(const std::string& preferred) const
@@ -268,11 +268,13 @@ CallEngine::considerUser(const ConsiderUserInput& input) const
       {.userId = userId, .now = input.now});
   const CallRingStats stats = co_await callRepository_.ringStats(
       {.userId = userId, .since = input.now - kHourS});
+  const CallLocalTime clock = localAt(input.now);
   const CallVerdict verdict = call_policy::decide(
       {.trigger = candidate.trigger,
        .critical = candidate.critical,
        .preference = user.preference,
-       .localHour = hourAt(input.now),
+       .localHour = clock.hour,
+       .localWeekday = clock.weekday,
        .now = input.now,
        .environmentId = candidate.environmentId,
        .alreadyCalled = alreadyCalled,
@@ -285,7 +287,9 @@ CallEngine::considerUser(const ConsiderUserInput& input) const
   outcome.reason = verdict.reason;
 
   const std::string lang =
-      langFor(!user.recipient.lang.empty() ? user.recipient.lang : candidate.lang);
+      langFor(!user.preference.lang.empty() ? user.preference.lang
+              : !user.recipient.lang.empty() ? user.recipient.lang
+                                             : candidate.lang);
   const CallCopy copy = call_copy::render({.trigger = candidate.trigger,
                                            .lang = lang,
                                            .data = candidate.data,
@@ -310,7 +314,10 @@ CallEngine::considerUser(const ConsiderUserInput& input) const
                       .missedLine = copy.missedLine,
                       .data = json_util::toString(stored),
                       .createdAt = input.now,
-                      .expiresAt = input.now + input.config.ringTimeoutS};
+                      .expiresAt =
+                          input.now + user.preference.ringSecondsClamped(),
+                      .pushAfter =
+                          input.now + user.preference.pushDelayClamped()};
 
   const bool askedReminder = candidate.trigger == CallTrigger::Assistant &&
                              verdict.reason == "trigger_off";
@@ -379,11 +386,12 @@ CallEngine::considerUser(const ConsiderUserInput& input) const
                       .expiresAt = row.expiresAt,
                       .pushedAt = 0,
                       .answeredAt = 0,
-                      .endedAt = 0};
+                      .endedAt = 0,
+                      .pushAfter = row.pushAfter};
       co_await emit({.userId = userId,
                      .operation = SyncOperation::CallIncoming,
                      .info = call_engine::incomingInfo(call)});
-      if (input.config.inAppGraceS <= 0 &&
+      if (row.pushAfter <= input.now &&
           co_await callRepository_.markPushed(call.id, input.now))
         pushRing(call);
       outcome.resolution = CallResolution::Rang;
@@ -486,6 +494,7 @@ CallEngine::claim(const CallClaimRequest& request) const
   Json::Value info(Json::objectValue);
   info["callId"] = claimed.callId();
   info["reason"] = "answered_elsewhere";
+  info["claimedBy"] = request.sessionId;
   co_await emit({.userId = request.userId,
                  .operation = SyncOperation::CallCancel,
                  .info = info});
@@ -675,7 +684,7 @@ drogon::Task<CallSweepReport> CallEngine::sweep() const
       ++report.missed;
       continue;
     }
-    if (call.pushedAt == 0 && at - call.createdAt >= config.inAppGraceS &&
+    if (call.pushedAt == 0 && call.pushAfter <= at &&
         co_await callRepository_.markPushed(call.id, at)) {
       pushRing(call);
       ++report.pushed;
@@ -726,4 +735,48 @@ drogon::Task<CallSweepReport> CallEngine::sweep() const
   report.closed =
       co_await callRepository_.closeStaleAnswered(at - config.answeredStaleS, at);
   co_return report;
+}
+
+drogon::Task<AgendaAnnouncementOutcome>
+CallEngine::announceAgenda(const AgendaAnnouncement& announcement) const
+{
+  AgendaAnnouncementOutcome outcome;
+  std::vector<int64_t> userIds;
+  for (const int64_t userId : announcement.userIds) {
+    if (userId > 0 && std::ranges::find(userIds, userId) == userIds.end())
+      userIds.push_back(userId);
+  }
+  if (userIds.empty() || announcement.commandId.empty())
+    co_return outcome;
+  const bool reminder = text(announcement.data, "kind") == "agenda_reminder";
+  const auto preferences = co_await preferenceRepository_.findMany(userIds);
+  std::vector<int64_t> matched;
+  for (const int64_t userId : userIds) {
+    auto preference = CallPreferenceSchema::defaultsFor(userId);
+    if (const auto found = preferences.find(userId); found != preferences.end())
+      preference = found->second;
+    if (preference.agenda == CallMode::Off)
+      continue;
+    const int wanted = reminder ? 0 : preference.agendaLeadMinutes;
+    if (wanted != announcement.leadMinutes)
+      continue;
+    matched.push_back(userId);
+    if (!dependencies_.notifier)
+      continue;
+    if (co_await dependencies_.notifier->notify(
+            {.userId = userId,
+             .type = "agenda",
+             .title = announcement.title,
+             .body = announcement.body,
+             .data = announcement.data,
+             .commandId = announcement.commandId + ":" + std::to_string(userId)}))
+      ++outcome.notified;
+  }
+  if (matched.empty())
+    co_return outcome;
+  for (const auto& user : co_await considerNotification(announcement.data, matched)) {
+    if (user.resolution == CallResolution::Rang)
+      ++outcome.rang;
+  }
+  co_return outcome;
 }

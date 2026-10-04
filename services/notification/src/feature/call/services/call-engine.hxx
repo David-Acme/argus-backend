@@ -21,6 +21,12 @@
 #include <string>
 #include <vector>
 
+struct CallLocalTime
+{
+  int hour{0};
+  int weekday{0};
+};
+
 struct CallEngineDependencies
 {
   std::shared_ptr<const CallSignal> signal;
@@ -29,7 +35,7 @@ struct CallEngineDependencies
   std::shared_ptr<const CallNotificationSink> notifier;
   std::shared_ptr<const push_intent::PushIntentSink> push;
   std::function<int64_t()> clock;
-  std::function<int(int64_t)> localHour;
+  std::function<CallLocalTime(int64_t)> localTime;
   bool blockingOffLoop{true};
 };
 
@@ -121,6 +127,22 @@ struct CallScheduleOutcome
   std::string reason;
 };
 
+struct AgendaAnnouncement
+{
+  std::vector<int64_t> userIds;
+  int leadMinutes{0};
+  std::string title;
+  std::string body;
+  Json::Value data;
+  std::string commandId;
+};
+
+struct AgendaAnnouncementOutcome
+{
+  int notified{0};
+  int rang{0};
+};
+
 struct KnownSeenEvent
 {
   int64_t personId{0};
@@ -160,6 +182,9 @@ public:
 
   drogon::Task<std::vector<CallUserOutcome>>
   arrival(const KnownSeenEvent& event) const;
+
+  drogon::Task<AgendaAnnouncementOutcome>
+  announceAgenda(const AgendaAnnouncement& announcement) const;
 
   drogon::Task<CallSweepReport> sweep() const;
 
@@ -207,7 +232,7 @@ private:
 
   int64_t now() const;
 
-  int hourAt(int64_t at) const;
+  CallLocalTime localAt(int64_t at) const;
 
   std::string langFor(const std::string& preferred) const;
 

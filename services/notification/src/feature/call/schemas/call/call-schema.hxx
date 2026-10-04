@@ -31,6 +31,7 @@ struct CallSchema
   int64_t pushedAt{0};
   int64_t answeredAt{0};
   int64_t endedAt{0};
+  int64_t pushAfter{0};
 
   [[nodiscard]] std::string callId() const;
 

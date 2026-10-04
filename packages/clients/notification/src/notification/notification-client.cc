@@ -133,3 +133,30 @@ NotificationCallScheduleResult NotificationClient::scheduleCall(
   result.duplicate = response.duplicate();
   return result;
 }
+
+NotificationAgendaResult
+NotificationClient::announceAgenda(const NotificationAgendaInput& input) const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  argus::notification::v1::AnnounceAgendaRequest request;
+  for (const int64_t userId : input.userIds)
+    request.add_user_ids(userId);
+  request.set_lead_minutes(input.leadMinutes);
+  request.set_title(input.title);
+  request.set_body(input.body);
+  request.set_data(input.data);
+  request.set_command_id(input.commandId);
+
+  argus::notification::v1::AnnounceAgendaResponse response;
+  NotificationAgendaResult result;
+  result.status = callStub_->AnnounceAgenda(&context, request, &response);
+  result.outcome = result.status.ok()
+                       ? NotificationRpcOutcome::Success
+                       : outcomeForStatus(result.status.error_code());
+  result.notified = response.notified();
+  result.rang = response.rang();
+  return result;
+}

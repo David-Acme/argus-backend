@@ -51,7 +51,8 @@ AgendaNotice agenda_notice::forEvent(const DueEventRow& event,
   notice.data["location"] = event.location;
   notice.data["threadKey"] = threadKey;
   notice.data["urgency"] = "time_sensitive";
-  notice.commandId = threadKey;
+  notice.leadMinutes = event.leadMinutes;
+  notice.commandId = threadKey + ":" + std::to_string(event.leadMinutes);
   return notice;
 }
 
@@ -71,7 +72,8 @@ AgendaNotice agenda_notice::forReminder(const DueReminderRow& reminder)
   notice.data["scheduledAt"] = static_cast<Json::Int64>(reminder.scheduledAt);
   notice.data["threadKey"] = threadKey;
   notice.data["urgency"] = "time_sensitive";
-  notice.commandId = threadKey;
+  notice.leadMinutes = 0;
+  notice.commandId = threadKey + ":0";
   return notice;
 }
 
@@ -112,7 +114,7 @@ drogon::Task<AgendaSweepReport> AgendaAnnouncer::sweep() const
   const int64_t at = now();
 
   const auto events = co_await repository_.dueEvents(
-      {.after = at - config_.graceS, .until = at + config_.leadS, .limit = kBatch});
+      {.after = at - config_.graceS, .until = at, .limit = kBatch});
   std::vector<int64_t> eventIds;
   eventIds.reserve(events.size());
   for (const auto& event : events)
@@ -129,6 +131,7 @@ drogon::Task<AgendaSweepReport> AgendaAnnouncer::sweep() const
     co_await repository_.record({.kind = "event",
                                  .refId = event.id,
                                  .occurrenceAt = event.startsAt,
+                                 .leadMinutes = event.leadMinutes,
                                  .at = at});
     ++report.events;
   }
@@ -143,6 +146,7 @@ drogon::Task<AgendaSweepReport> AgendaAnnouncer::sweep() const
     co_await repository_.record({.kind = "reminder",
                                  .refId = reminder.id,
                                  .occurrenceAt = reminder.scheduledAt,
+                                 .leadMinutes = 0,
                                  .at = at});
     ++report.reminders;
   }

@@ -11,8 +11,9 @@ drogon::Task<std::vector<DueEventRow>>
 AgendaAnnouncementRepository::dueEvents(const AgendaWindowInput& input) const
 {
   const auto client = DbService::productivityClient();
-  const auto rows = co_await client->execSqlCoro(std::string(DUE_EVENTS), input.after,
-                                                 input.until, input.limit);
+  const auto rows = co_await client->execSqlCoro(
+      std::string(DUE_EVENTS), input.until, input.after,
+      input.until + kMaxLeadS, input.limit);
   std::vector<DueEventRow> events;
   events.reserve(rows.size());
   for (const auto& row : rows)
@@ -20,7 +21,8 @@ AgendaAnnouncementRepository::dueEvents(const AgendaWindowInput& input) const
                       .ownerId = row["owner_id"].as<int64_t>(),
                       .title = row["title"].as<std::string>(),
                       .location = row["location"].as<std::string>(),
-                      .startsAt = row["starts_at"].as<int64_t>()});
+                      .startsAt = row["starts_at"].as<int64_t>(),
+                      .leadMinutes = row["minutes"].as<int>()});
   co_return events;
 }
 
@@ -51,7 +53,8 @@ drogon::Task<std::vector<DueReminderRow>>
 AgendaAnnouncementRepository::dueReminders(const AgendaWindowInput& input) const
 {
   const auto client = DbService::productivityClient();
-  const auto rows = co_await client->execSqlCoro(std::string(DUE_REMINDERS), input.after, input.until, input.limit);
+  const auto rows = co_await client->execSqlCoro(
+      std::string(DUE_REMINDERS), input.after, input.until, input.limit);
   std::vector<DueReminderRow> reminders;
   reminders.reserve(rows.size());
   for (const auto& row : rows)
@@ -67,7 +70,9 @@ drogon::Task<bool>
 AgendaAnnouncementRepository::record(const AgendaRecordInput& input) const
 {
   const auto client = DbService::productivityClient();
-  const auto result = co_await client->execSqlCoro(std::string(RECORD), input.kind, input.refId, input.occurrenceAt, input.at);
+  const auto result = co_await client->execSqlCoro(
+      std::string(RECORD), input.kind, input.refId, input.occurrenceAt,
+      input.leadMinutes, input.at);
   co_return result.affectedRows() > 0;
 }
 

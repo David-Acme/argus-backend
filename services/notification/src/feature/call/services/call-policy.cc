@@ -15,14 +15,26 @@ std::string callDecisionToString(CallDecision decision)
   return "notify";
 }
 
-bool call_policy::inQuietHours(int hour, int startHour, int endHour)
+bool call_policy::inQuietHours(const QuietWindowInput& input)
 {
-  if (startHour < 0 || endHour < 0 || startHour > 23 || endHour > 23 ||
-      startHour == endHour)
+  const int start = input.startHour;
+  const int end = input.endHour;
+  if (start < 0 || end < 0 || start > 23 || end > 23 || start == end)
     return false;
-  if (startHour < endHour)
-    return hour >= startHour && hour < endHour;
-  return hour >= startHour || hour < endHour;
+  bool inside = false;
+  int windowDay = input.weekday;
+  if (start < end) {
+    inside = input.hour >= start && input.hour < end;
+  }
+  else if (input.hour >= start) {
+    inside = true;
+  }
+  else if (input.hour < end) {
+    inside = true;
+    windowDay = (input.weekday + 6) % 7;
+  }
+  return inside && ((static_cast<unsigned>(input.days) >>
+                     static_cast<unsigned>(windowDay)) & 1U) != 0;
 }
 
 CallVerdict call_policy::decide(const CallPolicyInput& input)
@@ -59,30 +71,35 @@ CallVerdict call_policy::decide(const CallPolicyInput& input)
   if (preference.dndUntil > input.now && !bypass)
     return {.decision = CallDecision::Notify,
             .reason = "do_not_disturb",
-            .injectable = true};
-  if (inQuietHours(input.localHour, preference.quietStartHour,
-                   preference.quietEndHour) &&
+            .injectable = preference.liveAnnounce};
+  if (inQuietHours({.hour = input.localHour,
+                    .weekday = input.localWeekday,
+                    .startHour = preference.quietStartHour,
+                    .endHour = preference.quietEndHour,
+                    .days = preference.quietDays}) &&
       !bypass)
     return {.decision = CallDecision::Notify,
             .reason = "quiet_hours",
-            .injectable = true};
+            .injectable = preference.liveAnnounce};
 
   if (input.ringing)
     return {.decision = CallDecision::Followup,
             .reason = "ringing",
-            .injectable = true};
+            .injectable = preference.liveAnnounce};
 
   if (!input.critical) {
     if (input.lastCallAt > 0 &&
         input.now - input.lastCallAt < input.limits.callGapS)
       return {.decision = CallDecision::Notify,
               .reason = "cooldown",
-              .injectable = true};
+              .injectable = preference.liveAnnounce};
     if (input.callsLastHour >= input.limits.maxCallsPerHour)
       return {.decision = CallDecision::Notify,
               .reason = "hourly_cap",
-              .injectable = true};
+              .injectable = preference.liveAnnounce};
   }
 
-  return {.decision = CallDecision::Ring, .reason = "ring", .injectable = true};
+  return {.decision = CallDecision::Ring,
+          .reason = "ring",
+          .injectable = preference.liveAnnounce};
 }

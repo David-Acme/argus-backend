@@ -14,6 +14,7 @@ struct DueEventRow
   std::string title;
   std::string location;
   int64_t startsAt{0};
+  int leadMinutes{0};
 };
 
 struct DueReminderRow

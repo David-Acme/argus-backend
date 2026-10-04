@@ -36,5 +36,11 @@ CallPreferenceService::update(int64_t userId,
        .dndUntil = dto.dndUntil,
        .criticalBypass = dto.criticalBypass,
        .mutedEnvironmentIds = dto.mutedEnvironmentIds,
+       .agendaLeadMinutes = dto.agendaLeadMinutes,
+       .quietDays = dto.quietDays,
+       .ringSeconds = dto.ringSeconds,
+       .pushDelaySeconds = dto.pushDelaySeconds,
+       .liveAnnounce = dto.liveAnnounce,
+       .lang = dto.lang,
        .updatedAt = static_cast<int64_t>(std::time(nullptr))});
 }

@@ -50,10 +50,7 @@ NotificationRpcService::NotificationRpcService(Dependencies dependencies)
     : guardCallers_(
           {argus::client::CallerCredential{.service = "argus-guard",
                                         .secret = ConfigService::getString(
-                                            "grpc.caller_guard")},
-           argus::client::CallerCredential{
-               .service = "argus-productivity",
-               .secret = ConfigService::getString("grpc.caller_productivity")}}),
+                                            "grpc.caller_guard")}}),
       syncCallers_(
           {argus::client::CallerCredential{.service = "argus-sync",
                                         .secret = ConfigService::getString(

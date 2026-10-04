@@ -216,7 +216,7 @@ int main()
           .notifier = std::make_shared<NotificationCallSink>(deliveryDeps),
           .push = pushIntentSink,
           .clock = {},
-          .localHour = {},
+          .localTime = {},
           .blockingOffLoop = true});
   drogon::app().registerController(std::make_shared<CallPreferenceController>());
   if (natsBus) {
@@ -301,6 +301,22 @@ int main()
       DbService::client()->execSqlSync(
           "ALTER TABLE notification_delivery ADD COLUMN acked_ms INTEGER NOT "
           "NULL DEFAULT 0");
+
+    for (const auto& [column, ddl] :
+         std::vector<std::pair<std::string, std::string>>{
+             {"agenda_lead_min", "INTEGER NOT NULL DEFAULT 10"},
+             {"quiet_days", "INTEGER NOT NULL DEFAULT 127"},
+             {"ring_seconds", "INTEGER NOT NULL DEFAULT 45"},
+             {"push_delay_s", "INTEGER NOT NULL DEFAULT 4"},
+             {"live_announce", "INTEGER NOT NULL DEFAULT 1"},
+             {"lang", "TEXT NOT NULL DEFAULT ''"}}) {
+      if (!hasColumn("call_preference", column))
+        DbService::client()->execSqlSync("ALTER TABLE call_preference ADD COLUMN " +
+                                         column + " " + ddl);
+    }
+    if (!hasColumn("call", "push_after"))
+      DbService::client()->execSqlSync(
+          "ALTER TABLE call ADD COLUMN push_after INTEGER NOT NULL DEFAULT 0");
 
     DbService::applyPragmas();
     DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");

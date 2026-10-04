@@ -35,6 +35,7 @@ CallSchema CallSchema::fromRow(const drogon::orm::Row& row)
   call.pushedAt = row["pushed_at"].as<int64_t>();
   call.answeredAt = row["answered_at"].as<int64_t>();
   call.endedAt = row["ended_at"].as<int64_t>();
+  call.pushAfter = row["push_after"].as<int64_t>();
   return call;
 }
 

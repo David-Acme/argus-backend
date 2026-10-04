@@ -1,5 +1,6 @@
 #include "update-call-preference-dto.hxx"
 
+#include <feature/call/schemas/call-preference/call-preference-schema.hxx>
 #include <validation/validation_dsl.hxx>
 
 #include <algorithm>
@@ -109,6 +110,12 @@ UpdateCallPreferenceDto UpdateCallPreferenceDto::fromJson(const Json::Value& jso
   dto.dndUntil = read.wide("dndUntil");
   dto.criticalBypass = read.flag("criticalBypass");
   dto.mutedEnvironmentIds = read.ids("mutedEnvironmentIds");
+  dto.agendaLeadMinutes = read.integer("agendaLeadMinutes");
+  dto.quietDays = read.integer("quietDays");
+  dto.ringSeconds = read.integer("ringSeconds");
+  dto.pushDelaySeconds = read.integer("pushDelaySeconds");
+  dto.liveAnnounce = read.flag("liveAnnounce");
+  dto.lang = read.text("lang");
 
   START_VALIDATION(UpdateCallPreferenceDto, dto)
   IS_IN_OPTIONAL(guardCritical, "call", "notify", "off")
@@ -117,6 +124,45 @@ UpdateCallPreferenceDto UpdateCallPreferenceDto::fromJson(const Json::Value& jso
   IS_IN_OPTIONAL(guardArrival, "call", "notify", "off")
   IS_IN_OPTIONAL(agenda, "call", "notify", "off")
   IS_IN_OPTIONAL(assistant, "call", "notify", "off")
+  IS_IN_OPTIONAL(lang, "", "es", "en")
+  CUSTOM_LAMBDA(agendaLeadMinutes,
+                [](const UpdateCallPreferenceDto& value)
+                    -> std::optional<std::string> {
+                  if (value.agendaLeadMinutes &&
+                      std::ranges::find(call_preference_bounds::kAgendaLeads,
+                                        *value.agendaLeadMinutes) ==
+                          call_preference_bounds::kAgendaLeads.end())
+                    return "must be 0, 5, 10, 15, 30 or 60";
+                  return std::nullopt;
+                })
+  CUSTOM_LAMBDA(quietDays,
+                [](const UpdateCallPreferenceDto& value)
+                    -> std::optional<std::string> {
+                  if (value.quietDays &&
+                      (*value.quietDays < 0 ||
+                       *value.quietDays > call_preference_bounds::kAllDays))
+                    return "must be a 7-bit day mask (bit 0 is Sunday)";
+                  return std::nullopt;
+                })
+  CUSTOM_LAMBDA(ringSeconds,
+                [](const UpdateCallPreferenceDto& value)
+                    -> std::optional<std::string> {
+                  if (value.ringSeconds &&
+                      (*value.ringSeconds < call_preference_bounds::kMinRingSeconds ||
+                       *value.ringSeconds > call_preference_bounds::kMaxRingSeconds))
+                    return "must be between 20 and 90";
+                  return std::nullopt;
+                })
+  CUSTOM_LAMBDA(pushDelaySeconds,
+                [](const UpdateCallPreferenceDto& value)
+                    -> std::optional<std::string> {
+                  if (value.pushDelaySeconds &&
+                      (*value.pushDelaySeconds < 0 ||
+                       *value.pushDelaySeconds >
+                           call_preference_bounds::kMaxPushDelaySeconds))
+                    return "must be between 0 and 30";
+                  return std::nullopt;
+                })
   CUSTOM_LAMBDA(body,
                 [](const UpdateCallPreferenceDto& value)
                     -> std::optional<std::string> {

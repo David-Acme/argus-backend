@@ -132,7 +132,7 @@ TEST_CASE("the notification catalog builds through the registry")
 {
   const auto catalog = notificationSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{notificationSettingsCatalog()});
-  CHECK(catalog.size() == 16);
+  CHECK(catalog.size() == 14);
   CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) == 5);
   for (const auto& spec : catalog)
     CHECK_MESSAGE((spec.apply == SettingApply::Restart) ==
@@ -174,8 +174,6 @@ TEST_CASE("every fallback is what the service runs with when the key is absent")
         NotificationConfig::resolveSelfTestIntervalS());
   const CallEngineConfig calls = NotificationConfig::resolveCalls();
   CHECK((fallbackOf(catalog, "calls.enabled") == "true") == calls.enabled);
-  CHECK(std::stoll(fallbackOf(catalog, "calls.ring_timeout_s")) == calls.ringTimeoutS);
-  CHECK(std::stoll(fallbackOf(catalog, "calls.in_app_grace_s")) == calls.inAppGraceS);
   CHECK(std::stoll(fallbackOf(catalog, "calls.call_gap_s")) == calls.callGapS);
   CHECK(std::stoi(fallbackOf(catalog, "calls.max_calls_per_hour")) ==
         calls.maxCallsPerHour);

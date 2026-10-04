@@ -6,8 +6,19 @@
 #include <feature/call/vocabulary/call-trigger.hxx>
 #include <json/value.h>
 
+#include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
+
+namespace call_preference_bounds
+{
+inline constexpr std::array<int, 6> kAgendaLeads{0, 5, 10, 15, 30, 60};
+inline constexpr int kMinRingSeconds = 20;
+inline constexpr int kMaxRingSeconds = 90;
+inline constexpr int kMaxPushDelaySeconds = 30;
+inline constexpr int kAllDays = 0x7F;
+}
 
 struct CallPreferenceSchema
 {
@@ -25,9 +36,17 @@ struct CallPreferenceSchema
   bool criticalBypass{true};
   std::vector<int64_t> mutedEnvironmentIds;
   int64_t updatedAt{0};
+  int agendaLeadMinutes{10};
+  int quietDays{0x7F};
+  int ringSeconds{45};
+  int pushDelaySeconds{4};
+  bool liveAnnounce{true};
+  std::string lang;
 
   [[nodiscard]] CallMode modeFor(CallTrigger trigger) const;
   [[nodiscard]] bool mutes(int64_t environmentId) const;
+  [[nodiscard]] int ringSecondsClamped() const;
+  [[nodiscard]] int pushDelayClamped() const;
   [[nodiscard]] Json::Value toJson() const;
 
   static CallPreferenceSchema defaultsFor(int64_t userId);

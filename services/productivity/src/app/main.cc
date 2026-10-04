@@ -168,7 +168,6 @@ int main()
             .credential = notifications.credential}));
   const auto agenda = std::make_shared<AgendaAnnouncer>(
       AgendaAnnouncerConfig{.enabled = agendaConfig.enabled,
-                            .leadS = agendaConfig.leadS,
                             .graceS = agendaConfig.graceS,
                             .retentionS = 2592000},
       AgendaAnnouncerDependencies{.notifier = agendaNotifier,
@@ -189,8 +188,8 @@ int main()
         sweeping->store(false);
       });
     });
-    LOG_INFO << "Agenda announcements on, " << agendaConfig.leadS / 60
-             << " min ahead, through " << notifications.target;
+    LOG_INFO << "Agenda announcements on (each user's lead time), through "
+             << notifications.target;
   }
   else {
     LOG_INFO << "Agenda announcements off (agenda.enabled or the notification "

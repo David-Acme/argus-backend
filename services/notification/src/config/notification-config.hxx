@@ -34,8 +34,6 @@ struct NotificationVoiceConfig
 struct CallEngineConfig
 {
   bool enabled{true};
-  int64_t ringTimeoutS{45};
-  int64_t inAppGraceS{4};
   int64_t callGapS{300};
   int maxCallsPerHour{4};
   int64_t arrivalAbsenceS{10800};
@@ -50,6 +48,7 @@ struct NotificationCallCallers
 {
   std::vector<argus::client::CallerCredential> answer;
   std::vector<argus::client::CallerCredential> schedule;
+  std::vector<argus::client::CallerCredential> agenda;
 };
 
 class NotificationConfig

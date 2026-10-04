@@ -30,6 +30,11 @@ public:
                const argus::notification::v1::ScheduleCallRequest* request,
                argus::notification::v1::ScheduleCallResponse* response) override;
 
+  grpc::ServerUnaryReactor*
+  AnnounceAgenda(grpc::CallbackServerContext* context,
+                 const argus::notification::v1::AnnounceAgendaRequest* request,
+                 argus::notification::v1::AnnounceAgendaResponse* response) override;
+
 private:
   std::shared_ptr<const CallEngine> engine_;
   NotificationCallCallers callers_;

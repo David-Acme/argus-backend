@@ -219,6 +219,7 @@ struct Harness
   std::shared_ptr<std::atomic<int64_t>> clock =
       std::make_shared<std::atomic<int64_t>>(kStart);
   std::shared_ptr<std::atomic<int>> hour = std::make_shared<std::atomic<int>>(12);
+  std::shared_ptr<std::atomic<int>> weekday = std::make_shared<std::atomic<int>>(3);
   CallEngine engine;
 
   Harness()
@@ -230,7 +231,11 @@ struct Harness
                    .notifier = notifier,
                    .push = push,
                    .clock = [clock = clock]() { return clock->load(); },
-                   .localHour = [hour = hour](int64_t) { return hour->load(); },
+                   .localTime =
+                       [hour = hour, weekday = weekday](int64_t) {
+                         return CallLocalTime{.hour = hour->load(),
+                                              .weekday = weekday->load()};
+                       },
                    .blockingOffLoop = false})
   {
     reset();
@@ -349,6 +354,7 @@ TEST_CASE("the first device to answer claims the call; the others are told")
   const auto cancels = harness.signal->of(SyncOperation::CallCancel);
   REQUIRE(cancels.size() == 1);
   CHECK(cancels.front().info["reason"].asString() == "answered_elsewhere");
+  CHECK(cancels.front().info["claimedBy"].asString() == "phone");
   CHECK(cancels.front().info["callId"].asString() == callId);
 
   CHECK(drogon::sync_wait(harness.engine.claim(
@@ -737,4 +743,108 @@ TEST_CASE("global switch off turns every call into the notification it was")
   CHECK(outcomes.front().resolution == CallResolution::Notified);
   CHECK(outcomes.front().reason == "calls_disabled");
   CHECK(harness.signal->frames.empty());
+}
+
+TEST_CASE("each user's ring length, push delay and language are their own")
+{
+  Harness harness;
+  const CallPreferenceService preferences;
+  UpdateCallPreferenceDto quick;
+  quick.ringSeconds = 20;
+  quick.pushDelaySeconds = 0;
+  quick.lang = "en";
+  drogon::sync_wait(preferences.update(1, quick));
+  UpdateCallPreferenceDto patient;
+  patient.ringSeconds = 90;
+  patient.pushDelaySeconds = 30;
+  drogon::sync_wait(preferences.update(2, patient));
+
+  const auto rang = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 60), {1, 2}));
+  const auto frames = harness.signal->of(SyncOperation::CallIncoming);
+  REQUIRE(frames.size() == 2);
+  CHECK(frames.front().info["expiresAt"].asInt64() == kStart + 20);
+  CHECK(frames.front().info["lang"].asString() == "en");
+  CHECK(frames.back().info["expiresAt"].asInt64() == kStart + 90);
+  REQUIRE(harness.push->all().size() == 1);
+  CHECK(harness.push->all().front().userId == 1);
+
+  harness.advance(21);
+  const auto report = drogon::sync_wait(harness.engine.sweep());
+  CHECK(report.missed == 1);
+  CHECK(report.pushed == 0);
+  CHECK(stateOf(outcomeFor(rang, 1).callId) == "missed");
+  CHECK(stateOf(outcomeFor(rang, 2).callId) == "ringing");
+  harness.advance(10);
+  CHECK(drogon::sync_wait(harness.engine.sweep()).pushed == 1);
+  CHECK(harness.push->all().back().userId == 2);
+}
+
+TEST_CASE("a user who keeps calls quiet gets rung, not spoken to")
+{
+  Harness harness;
+  harness.announcer->inCall[1] = true;
+  const CallPreferenceService preferences;
+  UpdateCallPreferenceDto quiet;
+  quiet.liveAnnounce = false;
+  drogon::sync_wait(preferences.update(1, quiet));
+  const auto outcomes = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 61), {1}));
+  CHECK(outcomes.front().resolution == CallResolution::Rang);
+  CHECK(harness.announcer->heard.empty());
+}
+
+TEST_CASE("agenda announcements reach only the users whose lead time matches")
+{
+  Harness harness;
+  const CallPreferenceService preferences;
+  UpdateCallPreferenceDto early;
+  early.agendaLeadMinutes = 30;
+  drogon::sync_wait(preferences.update(2, early));
+  UpdateCallPreferenceDto off;
+  off.agenda = "off";
+  drogon::sync_wait(preferences.update(3, off));
+  UpdateCallPreferenceDto notify;
+  notify.agenda = "notify";
+  drogon::sync_wait(preferences.update(5, notify));
+
+  const Json::Value data = agendaData(70, kStart + 600);
+  const auto tenMinutes = drogon::sync_wait(harness.engine.announceAgenda(
+      {.userIds = {1, 2, 3, 5},
+       .leadMinutes = 10,
+       .title = "Dentista",
+       .body = "17:00",
+       .data = data,
+       .commandId = "agenda:event:70:" + std::to_string(kStart + 600) + ":10"}));
+  CHECK(tenMinutes.notified == 2);
+  CHECK(tenMinutes.rang == 1);
+  const auto notices = harness.notifier->all();
+  REQUIRE(notices.size() == 2);
+  CHECK(notices.front().userId == 1);
+  CHECK(notices.front().type == "agenda");
+  CHECK(notices.back().userId == 5);
+  CHECK(harness.signal->of(SyncOperation::CallIncoming).size() == 1);
+
+  const auto halfHour = drogon::sync_wait(harness.engine.announceAgenda(
+      {.userIds = {1, 2, 3, 5},
+       .leadMinutes = 30,
+       .title = "Dentista",
+       .body = "17:00",
+       .data = data,
+       .commandId = "agenda:event:70:" + std::to_string(kStart + 600) + ":30"}));
+  CHECK(halfHour.notified == 1);
+  CHECK(harness.notifier->all().back().userId == 2);
+
+  Json::Value reminder(Json::objectValue);
+  reminder["kind"] = "agenda_reminder";
+  reminder["threadKey"] = "agenda:reminder:4:" + std::to_string(kStart);
+  reminder["title"] = "Sacar la basura";
+  const auto due = drogon::sync_wait(harness.engine.announceAgenda(
+      {.userIds = {2},
+       .leadMinutes = 0,
+       .title = "Sacar la basura",
+       .body = "",
+       .data = reminder,
+       .commandId = "agenda:reminder:4:" + std::to_string(kStart) + ":0"}));
+  CHECK(due.notified == 1);
 }

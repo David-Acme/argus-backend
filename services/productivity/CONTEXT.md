@@ -311,32 +311,40 @@ answered "User not found" (the deploy example already carried it).
 ## Agenda announcements (2026-10, "Argus calls you")
 
 `src/feature/agenda/` (`argus::productivity-agenda`) announces what is due so
-argus-notification can tell the user, and call them when their preferences
-allow ("even remind us of the agenda"). Every 30 s `AgendaAnnouncer::sweep`
-reads its own tables only (rule 27):
+argus-notification can tell each user, and call them when their preferences
+allow ("even remind us of the agenda"). The lead time is the user's own
+preference (`agendaLeadMinutes`: 0, 5, 10, 15, 30 or 60, kept by the
+notification service), so productivity announces every upcoming event once
+per lead bucket and the notification service keeps, per recipient, the
+bucket that matches. Every 30 s `AgendaAnnouncer::sweep` reads its own tables
+only (rule 27):
 
-- timed calendar events (not all-day, not deleted) whose `starts_at` falls in
-  `(now - 120 s, now + agenda.lead_minutes]` (10 min by default), sent to the
-  owner and every user the event is shared with;
+- for timed calendar events (not all-day, not deleted) that start within the
+  next hour and did not start more than 120 s ago, every bucket whose moment
+  (`starts_at - lead`) has come and is not recorded yet, sent to the owner and
+  every user the event is shared with. One statement with a `VALUES` CTE of
+  the six leads finds them; an event created or moved late sends the buckets
+  already passed at once, so no lead preference misses it;
 - reminders (not completed, not deleted) whose `scheduled_at` falls in
-  `(now - 120 s, now]`, sent to `target_user_id`.
+  `(now - 120 s, now]`, sent to `target_user_id` in bucket 0.
 
-Each becomes one `CreateNotifications` through `argus::clients::notification`
-(`[notifications] target/credential`, paired with notification's
-`[grpc] caller_productivity`) of type `agenda`, title the event or reminder
+Each becomes one `CallService.AnnounceAgenda` through
+`argus::clients::notification` (`[notifications] target/credential`, paired
+with notification's `[grpc] caller_productivity`): `user_ids`, `lead_minutes`,
 title, body `HH:MM · location` or the reminder's description, and `data`
 `{kind: agenda_event | agenda_reminder, eventId | reminderId, title,
-startsAt | scheduledAt, location, threadKey, urgency: time_sensitive}`. The
-command id is the thread key (`agenda:event:<id>:<startsAt>`), so a retry is
-a duplicate on the notification side. `agenda_announcement` records an
-occurrence only after the notification service accepted it, so an outage is
-retried on the next sweep within the 120 s grace; moving an event to a new
-time announces it again, because the occurrence is part of the key. Rows
-older than 30 days are purged by the same sweep. The partial index
-`idx_calendar_event_live_start` serves the window query.
+startsAt | scheduledAt, location, threadKey, urgency: time_sensitive}`; the
+command id is `<threadKey>:<lead>`. `agenda_notice` (kind, ref, occurrence,
+lead) records a bucket only after the notification service accepted it, so an
+outage is retried on the next sweep; moving an event announces it again
+because the occurrence is part of the key; rows older than 30 days are purged
+by the same sweep. It replaced the first version's `agenda_announcement`
+(dedupe markers only, dropped by the schema), and `[agenda] lead_minutes` is
+gone: the lead belongs to each user. `idx_calendar_event_live_start` serves
+the window query.
 
-The body carries no words in any language: notification and the call engine
-render the spoken lines per user. Recurring events are announced for their
-stored `starts_at` only; expanding `recurrence_rule` into occurrences is an
-open item. `agenda.enabled = false`, or no notification target/credential,
-leaves the announcer off.
+The body carries no words in any language: the notification service renders
+the spoken lines per user. Recurring events are announced for their stored
+`starts_at` only; expanding `recurrence_rule` into occurrences is an open
+item. `agenda.enabled = false`, or no notification target/credential, leaves
+the announcer off.

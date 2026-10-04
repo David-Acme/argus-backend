@@ -25,7 +25,7 @@ CallRepository::create(const CallCreateInput& input) const
       callTriggerToString(input.trigger), callStateToString(input.state),
       input.reason, input.parentCallId, input.urgency, input.lang, input.title,
       input.summary, input.openingLine, input.missedLine, input.data,
-      input.createdAt, input.expiresAt);
+      input.createdAt, input.expiresAt, input.pushAfter);
   if (rows.empty())
     co_return std::nullopt;
   co_return rows.front()["id"].as<int64_t>();
@@ -39,7 +39,7 @@ CallRepository::createRinging(const CallCreateInput& input) const
       callTriggerToString(input.trigger), input.reason, input.urgency,
       input.lang, input.title, input.summary, input.openingLine,
       input.missedLine, input.data, input.createdAt, input.expiresAt,
-      input.userId, input.createdAt);
+      input.pushAfter, input.userId, input.createdAt);
   if (rows.empty())
     co_return std::nullopt;
   co_return rows.front()["id"].as<int64_t>();

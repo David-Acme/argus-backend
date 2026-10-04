@@ -17,6 +17,7 @@ struct AgendaNotice
   std::string body;
   Json::Value data;
   std::string commandId;
+  int leadMinutes{0};
 };
 
 class AgendaNotifier
@@ -30,7 +31,6 @@ public:
 struct AgendaAnnouncerConfig
 {
   bool enabled{true};
-  int64_t leadS{600};
   int64_t graceS{120};
   int64_t retentionS{2592000};
 };

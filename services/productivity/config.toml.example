@@ -55,7 +55,6 @@ rpc_secret = ""
 
 [agenda]
 enabled = true
-lead_minutes = 10
 
 [notifications]
 target = "127.0.0.1:7038"

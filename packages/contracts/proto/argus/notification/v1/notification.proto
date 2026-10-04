@@ -110,12 +110,28 @@ message ScheduleCallResponse {
   bool duplicate = 2;
 }
 
+message AnnounceAgendaRequest {
+  repeated int64 user_ids = 1;
+  int32 lead_minutes = 2;
+  string title = 3;
+  string body = 4;
+  string data = 5;
+  string command_id = 6;
+}
+
+message AnnounceAgendaResponse {
+  int32 notified = 1;
+  int32 rang = 2;
+}
+
 service CallService {
   rpc ClaimCall(ClaimCallRequest) returns (ClaimCallResponse) {}
 
   rpc EndCall(EndCallRequest) returns (EndCallResponse) {}
 
   rpc ScheduleCall(ScheduleCallRequest) returns (ScheduleCallResponse) {}
+
+  rpc AnnounceAgenda(AnnounceAgendaRequest) returns (AnnounceAgendaResponse) {}
 }
 
 service NotificationService {

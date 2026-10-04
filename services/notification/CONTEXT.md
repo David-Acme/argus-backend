@@ -481,7 +481,7 @@ argus-sync and is described in RTC-CONTRACT v1, section 5.
 | `guard_intruder` | same | `urgency = time_sensitive` (danger high: a stranger at night, away, armed, in an alert zone) | same |
 | `guard_escalation` | same | phase `escalated` to high or critical | same, so an episode that already called never calls again |
 | `guard_arrival` | `argus.guard.v1.known_seen` | a recognized person seen after `calls.arrival_absence_s` (3 h) without a sighting; only for users who opted in, never the person themselves, never a guest | `guard:arrival:<personId>:<at>` |
-| `agenda` | productivity's agenda announcer (`CreateNotifications`, `caller_productivity`) | `kind = agenda_event` (lead time before the start) or `agenda_reminder` (due) | `agenda:event:<id>:<startsAt>` / `agenda:reminder:<id>:<at>` |
+| `agenda` | productivity's agenda announcer (`CallService.AnnounceAgenda`, `caller_productivity`) | `kind = agenda_event` in the recipient's lead bucket, or `agenda_reminder` (due) | `agenda:event:<id>:<startsAt>` / `agenda:reminder:<id>:<at>` |
 | `assistant` | `CallService.ScheduleCall` from argus-llm | the user asked for a timed reminder (`memory.remind` with a time the user said) and the time has come | `assistant:scheduled:<id>` |
 
 Guard needed no change for its episodes: its notification `data` already
@@ -528,17 +528,59 @@ is unreachable or not wired never blocks a ring: the probe runs off the loop
 on the light blocking lane and costs at most the client's 1.5 s deadline per
 recipient, and with `[voice] target/credential` unset the engine skips it.
 
-Defaults per user (no row = these): calls on; `guardCritical`, `guardIntruder`,
-`guardEscalation`, `agenda` and `assistant` call; `guardArrival` off; no quiet
-hours; no do-not-disturb; `criticalBypass` on; no muted environment. Every
-role reads and writes only its own row: `GET /notification/call-preferences`
-and `PATCH /notification/call-preferences` (PATCH semantics, every field
-optional: `enabled`, the six modes `call|notify|off`, `quietStartHour` and
-`quietEndHour` -1..23, `dndUntil` epoch seconds or 0, `criticalBypass`,
-`mutedEnvironmentIds` up to 64 ids). They are user-level preferences, so they
-live here beside the user's notifications, not in the owner's settings
-catalog; the owner's catalog only carries the engine's global knobs
-(`calls.*`, group `calls`).
+### Who decides what: user preferences and system limits
+
+David (2026-10): "la agenda, 10 minutos antes de un evento — este punto y la
+gran mayoría que sea configurarlo lo que consideres que cambian dependiendo
+del usuario". Anything that is a matter of taste or routine is the user's;
+what protects the household from a runaway engine stays the owner's.
+
+| Preference (user, own row) | Values | Default | Why it is per user |
+|---|---|---|---|
+| `enabled` | bool | true | someone may not want calls at all |
+| `guardCritical`, `guardIntruder`, `guardEscalation`, `guardArrival`, `agenda`, `assistant` | `call` / `notify` / `off` | call ×5, arrival off | how loud each kind of news should be is personal |
+| `agendaLeadMinutes` | 0, 5, 10, 15, 30, 60 | 10 | some need 30 min to get ready, some want it as it starts |
+| `quietStartHour`, `quietEndHour`, `quietDays` | -1..23, 7-bit mask (bit 0 Sunday) | off, every day | sleep and work routines differ; a window belongs to the day it starts (Fri 22-07 covers Sat 03:00) |
+| `dndUntil` | epoch s or 0 | 0 | do-not-disturb with an end time |
+| `criticalBypass` | bool | true | whether a critical alert breaks quiet hours and do-not-disturb |
+| `mutedEnvironmentIds` | up to 64 ids | none | someone may not care about the restaurant |
+| `ringSeconds` | 20..90 | 45 | how long a ring lasts before it is a missed call |
+| `pushDelaySeconds` | 0..30 | 4 | how long the open app gets before the phone is pushed |
+| `liveAnnounce` | bool | true | whether news may be spoken into a call the user is in; when false the normal `call_incoming` frame arrives and the app shows it as a waiting banner (RTC-APP) instead of joining |
+| `lang` | "", es, en | "" (account language) | the calls' language, independent of the account's |
+
+| System limit (owner catalog / config) | Default | Why it is not per user |
+|---|---|---|
+| `calls.enabled` | true | the owner can switch the whole feature off |
+| `calls.max_calls_per_hour` | 4 | anti-fatigue cap for non-critical calls, a safety net |
+| `calls.call_gap_s` | 300 | minimum spacing of non-critical calls |
+| `calls.arrival_absence_s` | 10800 | what counts as "arrived" is a property of the house's sightings, not of a listener |
+| `calls.scheduled_late_s` | 900 | when a delayed reminder call becomes a note |
+
+`calls.ring_timeout_s` and `calls.in_app_grace_s` left the owner catalog and
+became `ringSeconds`/`pushDelaySeconds`; productivity's `agenda.lead_minutes`
+became `agendaLeadMinutes`. The ring length and push delay of each call are
+stored on its row (`expires_at`, `push_after`), so changing a preference never
+moves a call already ringing.
+
+**How a per-user lead time works across services.** Productivity owns the
+calendar (rule 27) and the notification service owns the preferences, so
+neither can do it alone. Productivity announces each upcoming timed event
+once per lead bucket (60, 30, 15, 10, 5, 0 minutes before) through
+`CallService.AnnounceAgenda {user_ids, lead_minutes, …}` (caller_productivity);
+the engine keeps, for each recipient, only the bucket equal to their
+`agendaLeadMinutes`, writes their `agenda` notification
+(command `<thread>:<lead>:<userId>`) and then judges the call. Reminders are
+due-time items: they are announced in bucket 0 and reach every recipient.
+An event created or moved inside a bucket sends the buckets already passed at
+once, so a user with a 30-minute lead still hears about an event added 10
+minutes before it starts. Deleted events stop being announced because
+productivity reads live rows only.
+
+Every role reads and writes only its own row: `GET
+/notification/call-preferences` and `PATCH /notification/call-preferences`
+(PATCH semantics, every field optional, validated with the DSL; 422 with the
+field names otherwise).
 
 Several household members: guard notifies its roster, and each recipient is
 judged on their own preferences, so an intruder rings everyone who lets it
@@ -547,7 +589,7 @@ Agenda calls go to the event's owner and the people it is shared with.
 
 ### Delivery
 
-1. **Ring.** A `call` row (`ringing`, `expires_at = now + ring_timeout_s`) and
+1. **Ring.** A `call` row (`ringing`, `expires_at = now + ringSeconds`, `push_after = now + pushDelaySeconds`) and
    a `/sync` frame through argus-sync's `SyncControlService.EmitToUser`:
    `{operation: 8 (call_incoming), option: notification, info: {callId,
    reason, summary, urgency, kind, episodeId?, cameraId?, cameraName?,
@@ -562,12 +604,14 @@ Agenda calls go to the event's owner and the people it is shared with.
    llamo por algo urgente de la vigilancia. Hay una persona desconocida en
    Patio, de noche. Le estoy avisando por el altavoz. ¿Quieres que te muestre
    la cámara?"; follow-ups queued while it rang are appended. Every other
-   device of the user gets `call_cancel {reason: answered_elsewhere}`.
+   device of the user gets `call_cancel {reason: answered_elsewhere, claimedBy:
+   <session id>}`; the claiming device ignores a cancel naming its own session
+   (it can arrive before its own `/rtc/token` answer).
 3. **Out of the app.** A sweep every second pushes a still-ringing call once
-   after `calls.in_app_grace_s` (4 s): a push intent with `type: call` and
+   at its `push_after` (4 s by default): a push intent with `type: call` and
    `data {kind: call, callId, urgency, deepLink: argus://call?callId=<id>}`.
    Push is behind `[push] enabled` and argus-relay, as every push is.
-4. **Missed.** After `ring_timeout_s` (45 s) unanswered the call is `missed`,
+4. **Missed.** After `ringSeconds` (45 s by default) unanswered the call is `missed`,
    `call_cancel {expired}` goes out, and a notification of type `call` is
    written with a spoken-style summary ("Te llamé porque había una persona
    desconocida en Patio.") and `data {kind: call, callId, threadKey (the

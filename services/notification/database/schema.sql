@@ -120,7 +120,13 @@ CREATE TABLE IF NOT EXISTS call_preference (
     dnd_until          INTEGER NOT NULL  DEFAULT 0,
     critical_bypass    INTEGER NOT NULL  DEFAULT 1  CHECK (critical_bypass IN (0, 1)),
     muted_environments TEXT    NOT NULL  DEFAULT '[]',
-    updated_at         INTEGER NOT NULL  DEFAULT 0
+    updated_at         INTEGER NOT NULL  DEFAULT 0,
+    agenda_lead_min    INTEGER NOT NULL  DEFAULT 10,
+    quiet_days         INTEGER NOT NULL  DEFAULT 127,
+    ring_seconds       INTEGER NOT NULL  DEFAULT 45,
+    push_delay_s       INTEGER NOT NULL  DEFAULT 4,
+    live_announce      INTEGER NOT NULL  DEFAULT 1  CHECK (live_announce IN (0, 1)),
+    lang               TEXT    NOT NULL  DEFAULT ''  CHECK (lang IN ('', 'es', 'en'))
 );
 
 CREATE TABLE IF NOT EXISTS call (
@@ -149,7 +155,8 @@ CREATE TABLE IF NOT EXISTS call (
     expires_at       INTEGER NOT NULL  DEFAULT 0,
     pushed_at        INTEGER NOT NULL  DEFAULT 0,
     answered_at      INTEGER NOT NULL  DEFAULT 0,
-    ended_at         INTEGER NOT NULL  DEFAULT 0
+    ended_at         INTEGER NOT NULL  DEFAULT 0,
+    push_after       INTEGER NOT NULL  DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_call_dedupe ON call (dedupe_key, user_id);

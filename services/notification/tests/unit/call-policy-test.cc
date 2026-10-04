@@ -18,6 +18,7 @@ struct Scenario
   CallTrigger trigger{CallTrigger::GuardIntruder};
   bool critical{false};
   int hour{12};
+  int weekday{3};
   int64_t environmentId{0};
   bool alreadyCalled{false};
   bool ringing{false};
@@ -32,6 +33,7 @@ CallVerdict run(const CallPreferenceSchema& preference, const Scenario& scenario
                               .critical = scenario.critical,
                               .preference = preference,
                               .localHour = scenario.hour,
+                              .localWeekday = scenario.weekday,
                               .now = kNow,
                               .environmentId = scenario.environmentId,
                               .alreadyCalled = scenario.alreadyCalled,
@@ -76,16 +78,74 @@ Json::Value guardData(const GuardDataInput& input)
 
 TEST_CASE("quiet hours: a window may wrap midnight, -1 or an empty window is off")
 {
-  CHECK(call_policy::inQuietHours(23, 22, 7));
-  CHECK(call_policy::inQuietHours(3, 22, 7));
-  CHECK_FALSE(call_policy::inQuietHours(7, 22, 7));
-  CHECK_FALSE(call_policy::inQuietHours(12, 22, 7));
-  CHECK(call_policy::inQuietHours(8, 8, 17));
-  CHECK_FALSE(call_policy::inQuietHours(17, 8, 17));
-  CHECK_FALSE(call_policy::inQuietHours(3, -1, 7));
-  CHECK_FALSE(call_policy::inQuietHours(3, 22, -1));
-  CHECK_FALSE(call_policy::inQuietHours(3, 5, 5));
-  CHECK_FALSE(call_policy::inQuietHours(3, 24, 7));
+  CHECK(call_policy::inQuietHours({.hour = 23, .weekday = 3, .startHour = 22, .endHour = 7, .days = 0x7F}));
+  CHECK(call_policy::inQuietHours({.hour = 3, .weekday = 3, .startHour = 22, .endHour = 7, .days = 0x7F}));
+  CHECK_FALSE(call_policy::inQuietHours({.hour = 7, .weekday = 3, .startHour = 22, .endHour = 7, .days = 0x7F}));
+  CHECK_FALSE(call_policy::inQuietHours({.hour = 12, .weekday = 3, .startHour = 22, .endHour = 7, .days = 0x7F}));
+  CHECK(call_policy::inQuietHours({.hour = 8, .weekday = 3, .startHour = 8, .endHour = 17, .days = 0x7F}));
+  CHECK_FALSE(call_policy::inQuietHours({.hour = 17, .weekday = 3, .startHour = 8, .endHour = 17, .days = 0x7F}));
+  CHECK_FALSE(call_policy::inQuietHours({.hour = 3, .weekday = 3, .startHour = -1, .endHour = 7, .days = 0x7F}));
+  CHECK_FALSE(call_policy::inQuietHours({.hour = 3, .weekday = 3, .startHour = 22, .endHour = -1, .days = 0x7F}));
+  CHECK_FALSE(call_policy::inQuietHours({.hour = 3, .weekday = 3, .startHour = 5, .endHour = 5, .days = 0x7F}));
+  CHECK_FALSE(call_policy::inQuietHours({.hour = 3, .weekday = 3, .startHour = 24, .endHour = 7, .days = 0x7F}));
+}
+
+TEST_CASE("quiet days: a window belongs to the day it starts")
+{
+  constexpr int kWeekdays = 0b0111110;
+  CHECK(call_policy::inQuietHours(
+      {.hour = 23, .weekday = 1, .startHour = 22, .endHour = 7, .days = kWeekdays}));
+  CHECK_FALSE(call_policy::inQuietHours(
+      {.hour = 23, .weekday = 6, .startHour = 22, .endHour = 7, .days = kWeekdays}));
+  CHECK(call_policy::inQuietHours(
+      {.hour = 3, .weekday = 6, .startHour = 22, .endHour = 7, .days = kWeekdays}));
+  CHECK_FALSE(call_policy::inQuietHours(
+      {.hour = 3, .weekday = 0, .startHour = 22, .endHour = 7, .days = kWeekdays}));
+  CHECK_FALSE(call_policy::inQuietHours(
+      {.hour = 10, .weekday = 0, .startHour = 9, .endHour = 18, .days = kWeekdays}));
+  CHECK(call_policy::inQuietHours(
+      {.hour = 10, .weekday = 2, .startHour = 9, .endHour = 18, .days = kWeekdays}));
+  CHECK_FALSE(call_policy::inQuietHours(
+      {.hour = 23, .weekday = 1, .startHour = 22, .endHour = 7, .days = 0}));
+
+  auto preference = CallPreferenceSchema::defaultsFor(7);
+  preference.quietStartHour = 22;
+  preference.quietEndHour = 7;
+  preference.quietDays = kWeekdays;
+  CHECK(run(preference, {.trigger = CallTrigger::Agenda, .hour = 23, .weekday = 2})
+            .reason == "quiet_hours");
+  CHECK(run(preference, {.trigger = CallTrigger::Agenda, .hour = 23, .weekday = 6})
+            .decision == CallDecision::Ring);
+}
+
+TEST_CASE("a user who keeps live calls quiet is never injected into")
+{
+  auto preference = CallPreferenceSchema::defaultsFor(7);
+  CHECK(run(preference, {.trigger = CallTrigger::Agenda}).injectable);
+  preference.liveAnnounce = false;
+  const auto verdict = run(preference, {.trigger = CallTrigger::Agenda});
+  CHECK(verdict.decision == CallDecision::Ring);
+  CHECK_FALSE(verdict.injectable);
+  preference.dndUntil = kNow + 60;
+  CHECK_FALSE(run(preference, {.trigger = CallTrigger::Agenda}).injectable);
+}
+
+TEST_CASE("per-user ring and push timing stay inside their bounds")
+{
+  auto preference = CallPreferenceSchema::defaultsFor(7);
+  CHECK(preference.ringSecondsClamped() == 45);
+  CHECK(preference.pushDelayClamped() == 4);
+  CHECK(preference.agendaLeadMinutes == 10);
+  CHECK(preference.quietDays == 0x7F);
+  CHECK(preference.lang.empty());
+  preference.ringSeconds = 5;
+  preference.pushDelaySeconds = 99;
+  CHECK(preference.ringSecondsClamped() == 20);
+  CHECK(preference.pushDelayClamped() == 30);
+  preference.ringSeconds = 500;
+  preference.pushDelaySeconds = -3;
+  CHECK(preference.ringSecondsClamped() == 90);
+  CHECK(preference.pushDelayClamped() == 0);
 }
 
 TEST_CASE("defaults ring for guard and agenda, never for arrivals")

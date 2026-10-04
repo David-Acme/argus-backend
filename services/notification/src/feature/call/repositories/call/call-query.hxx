@@ -12,14 +12,14 @@ namespace call_query
 inline constexpr std::string_view INSERT =
     "INSERT OR IGNORE INTO call (user_id, dedupe_key, trigger, state, reason, "
     "parent_call_id, urgency, lang, title, summary, opening_line, missed_line, "
-    "data, created_at, expires_at) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id";
+    "data, created_at, expires_at, push_after) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id";
 
 inline constexpr std::string_view INSERT_RINGING =
     "INSERT OR IGNORE INTO call (user_id, dedupe_key, trigger, state, reason, "
     "parent_call_id, urgency, lang, title, summary, opening_line, missed_line, "
-    "data, created_at, expires_at) "
-    "SELECT ?, ?, ?, 'ringing', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ? "
+    "data, created_at, expires_at, push_after) "
+    "SELECT ?, ?, ?, 'ringing', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? "
     "WHERE NOT EXISTS (SELECT 1 FROM call WHERE user_id = ? "
     "AND state = 'ringing' AND expires_at > ?) RETURNING id";
 
@@ -86,6 +86,7 @@ struct CallCreateInput
   std::string data;
   int64_t createdAt{0};
   int64_t expiresAt{0};
+  int64_t pushAfter{0};
 };
 
 struct CallRingStats

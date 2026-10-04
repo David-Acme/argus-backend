@@ -87,10 +87,6 @@ CallEngineConfig NotificationConfig::resolveCalls()
   };
   if (ConfigService::hasKey("calls.enabled"))
     config.enabled = ConfigService::getBool("calls.enabled");
-  config.ringTimeoutS = positive("calls.ring_timeout_s", config.ringTimeoutS);
-  if (ConfigService::hasKey("calls.in_app_grace_s"))
-    config.inAppGraceS =
-        std::max<int64_t>(0, ConfigService::getInt("calls.in_app_grace_s"));
   config.callGapS = positive("calls.call_gap_s", config.callGapS);
   config.maxCallsPerHour = static_cast<int>(
       positive("calls.max_calls_per_hour", config.maxCallsPerHour));
@@ -115,5 +111,11 @@ NotificationCallCallers NotificationConfig::resolveCallCallers()
     callers.answer.push_back({.service = "argus-voice", .secret = voice});
   if (!llm.empty() && llm != sync && llm != voice)
     callers.schedule.push_back({.service = "argus-llm", .secret = llm});
+  const std::string productivity =
+      ConfigService::getString("grpc.caller_productivity");
+  if (!productivity.empty() && productivity != sync && productivity != voice &&
+      productivity != llm)
+    callers.agenda.push_back(
+        {.service = "argus-productivity", .secret = productivity});
   return callers;
 }

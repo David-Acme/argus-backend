@@ -5,6 +5,7 @@
 #include <feature/agenda/services/agenda-announcer.hxx>
 #include <sqlite/db-service.hxx>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -87,7 +88,7 @@ void reset()
   static SharedBoot boot;
   const auto client = DbService::productivityClient();
   for (const char* table : {"calendar_event_share", "calendar_event", "reminder",
-                            "agenda_announcement"})
+                            "agenda_notice"})
     client->execSqlSync(std::string("DELETE FROM ") + table);
 }
 
@@ -136,13 +137,13 @@ int64_t insertEvent(const EventInput& input)
 }
 }
 
-TEST_CASE("events starting within the lead time are announced once to owner and guests")
+TEST_CASE("each lead bucket of an upcoming event is announced once to owner and guests")
 {
   reset();
   auto notifier = std::make_shared<RecordingNotifier>();
   auto clock = std::make_shared<std::atomic<int64_t>>(kNow);
   const AgendaAnnouncer announcer(
-      {.enabled = true, .leadS = 600, .graceS = 120, .retentionS = 2592000},
+      {.enabled = true, .graceS = 120, .retentionS = 2592000},
       {.notifier = notifier,
        .clock = [clock]() { return clock->load(); },
        .blockingOffLoop = false});
@@ -161,24 +162,35 @@ TEST_CASE("events starting within the lead time are announced once to owner and 
       soon, kNow);
 
   const auto report = drogon::sync_wait(announcer.sweep());
-  CHECK(report.events == 1);
+  CHECK(report.events == 5);
   const auto sent = notifier->all();
-  REQUIRE(sent.size() == 1);
-  CHECK(sent.front().userIds == std::vector<int64_t>{1, 2});
-  CHECK(sent.front().title == "Dentista");
-  CHECK(sent.front().body == agenda_notice::clockTime(kNow + 300) + " · Calle Mayor");
-  CHECK(sent.front().data["kind"].asString() == "agenda_event");
-  CHECK(sent.front().data["threadKey"].asString() ==
-        "agenda:event:" + std::to_string(soon) + ":" + std::to_string(kNow + 300));
-  CHECK(sent.front().commandId == sent.front().data["threadKey"].asString());
+  REQUIRE(sent.size() == 5);
+  std::vector<int> leads;
+  for (const auto& notice : sent) {
+    CHECK(notice.userIds == std::vector<int64_t>{1, 2});
+    CHECK(notice.title == "Dentista");
+    leads.push_back(notice.leadMinutes);
+  }
+  std::ranges::sort(leads);
+  CHECK(leads == std::vector<int>{5, 10, 15, 30, 60});
+  const auto& ten = *std::ranges::find(sent, 10, &AgendaNotice::leadMinutes);
+  CHECK(ten.body == agenda_notice::clockTime(kNow + 300) + " · Calle Mayor");
+  CHECK(ten.data["kind"].asString() == "agenda_event");
+  const std::string thread =
+      "agenda:event:" + std::to_string(soon) + ":" + std::to_string(kNow + 300);
+  CHECK(ten.data["threadKey"].asString() == thread);
+  CHECK(ten.commandId == thread + ":10");
 
   clock->fetch_add(30);
   CHECK(drogon::sync_wait(announcer.sweep()).events == 0);
-  CHECK(notifier->all().size() == 1);
+  clock->fetch_add(270);
+  CHECK(drogon::sync_wait(announcer.sweep()).events == 1);
+  CHECK(notifier->all().back().leadMinutes == 0);
 
   DbService::productivityClient()->execSqlSync(
-      "UPDATE calendar_event SET starts_at = ? WHERE id = ?", kNow + 500, soon);
-  CHECK(drogon::sync_wait(announcer.sweep()).events == 1);
+      "UPDATE calendar_event SET starts_at = ? WHERE id = ?", clock->load() + 500,
+      soon);
+  CHECK(drogon::sync_wait(announcer.sweep()).events == 4);
 }
 
 TEST_CASE("an undelivered announcement is retried on the next sweep")
@@ -187,12 +199,12 @@ TEST_CASE("an undelivered announcement is retried on the next sweep")
   auto notifier = std::make_shared<RecordingNotifier>();
   notifier->accept = false;
   const AgendaAnnouncer announcer(
-      {.enabled = true, .leadS = 600, .graceS = 120, .retentionS = 2592000},
+      {.enabled = true, .graceS = 120, .retentionS = 2592000},
       {.notifier = notifier, .clock = []() { return kNow; }, .blockingOffLoop = false});
   insertEvent({.owner = 4, .title = "Reunión", .startsAt = kNow + 60});
-  CHECK(drogon::sync_wait(announcer.sweep()).failed == 1);
+  CHECK(drogon::sync_wait(announcer.sweep()).failed == 5);
   notifier->accept = true;
-  CHECK(drogon::sync_wait(announcer.sweep()).events == 1);
+  CHECK(drogon::sync_wait(announcer.sweep()).events == 5);
   CHECK(drogon::sync_wait(announcer.sweep()).events == 0);
 }
 
@@ -201,7 +213,7 @@ TEST_CASE("due reminders are announced to their target, completed ones never")
   reset();
   auto notifier = std::make_shared<RecordingNotifier>();
   const AgendaAnnouncer announcer(
-      {.enabled = true, .leadS = 600, .graceS = 120, .retentionS = 2592000},
+      {.enabled = true, .graceS = 120, .retentionS = 2592000},
       {.notifier = notifier, .clock = []() { return kNow; }, .blockingOffLoop = false});
   const auto client = DbService::productivityClient();
   client->execSqlSync(
@@ -228,12 +240,12 @@ TEST_CASE("due reminders are announced to their target, completed ones never")
 TEST_CASE("without a notifier or switched off, the announcer does nothing")
 {
   reset();
-  const AgendaAnnouncer off({.enabled = false, .leadS = 600, .graceS = 120, .retentionS = 1},
+  const AgendaAnnouncer off({.enabled = false, .graceS = 120, .retentionS = 1},
                             {.notifier = std::make_shared<RecordingNotifier>(),
                              .clock = {},
                              .blockingOffLoop = false});
   CHECK_FALSE(off.enabled());
-  const AgendaAnnouncer unwired({.enabled = true, .leadS = 600, .graceS = 120, .retentionS = 1},
+  const AgendaAnnouncer unwired({.enabled = true, .graceS = 120, .retentionS = 1},
                                 {.notifier = nullptr, .clock = {}, .blockingOffLoop = false});
   CHECK_FALSE(unwired.enabled());
   insertEvent({.owner = 1, .title = "X", .startsAt = kNow + 10});

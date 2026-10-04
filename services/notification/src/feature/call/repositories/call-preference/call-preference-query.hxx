@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -40,6 +41,12 @@ inline constexpr std::string_view UPDATE_COL_CRITICAL_BYPASS =
     "critical_bypass = ?";
 inline constexpr std::string_view UPDATE_COL_MUTED = "muted_environments = ?";
 inline constexpr std::string_view UPDATE_COL_UPDATED_AT = "updated_at = ?";
+inline constexpr std::string_view UPDATE_COL_AGENDA_LEAD = "agenda_lead_min = ?";
+inline constexpr std::string_view UPDATE_COL_QUIET_DAYS = "quiet_days = ?";
+inline constexpr std::string_view UPDATE_COL_RING_SECONDS = "ring_seconds = ?";
+inline constexpr std::string_view UPDATE_COL_PUSH_DELAY = "push_delay_s = ?";
+inline constexpr std::string_view UPDATE_COL_LIVE_ANNOUNCE = "live_announce = ?";
+inline constexpr std::string_view UPDATE_COL_LANG = "lang = ?";
 }
 
 struct CallPreferenceUpdateInput
@@ -57,5 +64,11 @@ struct CallPreferenceUpdateInput
   std::optional<int64_t> dndUntil;
   std::optional<bool> criticalBypass;
   std::optional<std::vector<int64_t>> mutedEnvironmentIds;
+  std::optional<int> agendaLeadMinutes;
+  std::optional<int> quietDays;
+  std::optional<int> ringSeconds;
+  std::optional<int> pushDelaySeconds;
+  std::optional<bool> liveAnnounce;
+  std::optional<std::string> lang;
   int64_t updatedAt{0};
 };

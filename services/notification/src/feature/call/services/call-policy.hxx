@@ -29,6 +29,7 @@ struct CallPolicyInput
   bool critical{false};
   const CallPreferenceSchema& preference;
   int localHour{0};
+  int localWeekday{0};
   int64_t now{0};
   int64_t environmentId{0};
   bool alreadyCalled{false};
@@ -47,7 +48,16 @@ struct CallVerdict
 
 namespace call_policy
 {
-bool inQuietHours(int hour, int startHour, int endHour);
+struct QuietWindowInput
+{
+  int hour{0};
+  int weekday{0};
+  int startHour{-1};
+  int endHour{-1};
+  int days{0x7F};
+};
+
+bool inQuietHours(const QuietWindowInput& input);
 
 CallVerdict decide(const CallPolicyInput& input);
 }

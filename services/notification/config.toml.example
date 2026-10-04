@@ -53,8 +53,6 @@ lang = "es"
 
 [calls]
 enabled = true
-ring_timeout_s = 45
-in_app_grace_s = 4
 call_gap_s = 300
 max_calls_per_hour = 4
 arrival_absence_s = 10800

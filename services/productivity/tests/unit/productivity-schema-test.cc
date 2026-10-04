@@ -57,7 +57,7 @@ TEST_CASE("productivity schema applies cleanly to an in-memory database")
 
   const auto announcements = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'table' AND "
-      "name = 'agenda_announcement'");
+      "name = 'agenda_notice'");
   CHECK(announcements.size() == 1);
 
   for (const char* table : {"project", "project_task", "project_member",

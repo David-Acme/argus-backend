@@ -20,7 +20,6 @@ struct ProductivityNotificationConfig
 struct ProductivityAgendaConfig
 {
   bool enabled{true};
-  int64_t leadS{600};
   int64_t graceS{120};
 };
 

@@ -162,6 +162,7 @@ public:
   v1::ClaimCallRequest claimed;
   v1::EndCallRequest ended;
   v1::ScheduleCallRequest scheduled;
+  v1::AnnounceAgendaRequest announced;
   v1::ClaimCallResponse claimAnswer;
   bool endOk = true;
   std::string credential;
@@ -186,6 +187,15 @@ public:
     scheduled = *in;
     out->set_scheduled_id(31);
     out->set_duplicate(true);
+    return finish(context);
+  }
+
+  Reactor* AnnounceAgenda(Ctx* context, const v1::AnnounceAgendaRequest* in,
+                          v1::AnnounceAgendaResponse* out) override
+  {
+    announced = *in;
+    out->set_notified(2);
+    out->set_rang(1);
     return finish(context);
   }
 
@@ -250,6 +260,19 @@ TEST_CASE("the call methods carry their fields and the credential")
   CHECK(schedule.duplicate);
   CHECK(service.scheduled.topic() == "llamar al dentista");
   CHECK(service.scheduled.fire_at() == 1800000000);
+
+  const auto agenda = client.announceAgenda({.userIds = {7, 8},
+                                             .leadMinutes = 15,
+                                             .title = "Dentista",
+                                             .body = "17:00",
+                                             .data = "{}",
+                                             .commandId = "agenda:event:1:2:15"});
+  CHECK(agenda.outcome == NotificationRpcOutcome::Success);
+  CHECK(agenda.notified == 2);
+  CHECK(agenda.rang == 1);
+  CHECK(service.announced.user_ids_size() == 2);
+  CHECK(service.announced.lead_minutes() == 15);
+  CHECK(service.announced.command_id() == "agenda:event:1:2:15");
 
   service.status = grpc::Status(grpc::StatusCode::UNAVAILABLE, "down");
   CHECK(client.claimCall({.callId = "call-4", .userId = 7, .sessionId = ""})

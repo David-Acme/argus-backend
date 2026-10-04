@@ -64,6 +64,20 @@ std::vector<Assignment> assignments(const CallPreferenceUpdateInput& input)
   if (input.mutedEnvironmentIds)
     list.push_back({.column = UPDATE_COL_MUTED,
                     .value = mutedJson(*input.mutedEnvironmentIds)});
+  const auto number = [&list](std::string_view column,
+                              const std::optional<int>& value) {
+    if (value)
+      list.push_back({.column = column, .value = std::to_string(*value)});
+  };
+  number(UPDATE_COL_AGENDA_LEAD, input.agendaLeadMinutes);
+  number(UPDATE_COL_QUIET_DAYS, input.quietDays);
+  number(UPDATE_COL_RING_SECONDS, input.ringSeconds);
+  number(UPDATE_COL_PUSH_DELAY, input.pushDelaySeconds);
+  if (input.liveAnnounce)
+    list.push_back({.column = UPDATE_COL_LIVE_ANNOUNCE,
+                    .value = flag(*input.liveAnnounce)});
+  if (input.lang)
+    list.push_back({.column = UPDATE_COL_LANG, .value = *input.lang});
   list.push_back({.column = UPDATE_COL_UPDATED_AT,
                   .value = std::to_string(input.updatedAt)});
   return list;

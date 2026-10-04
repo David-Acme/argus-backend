@@ -6,6 +6,7 @@
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <string>
+#include <vector>
 
 enum class NotificationRpcOutcome : uint8_t
 {
@@ -70,6 +71,24 @@ struct NotificationCallScheduleResult
   bool duplicate{false};
 };
 
+struct NotificationAgendaInput
+{
+  std::vector<int64_t> userIds;
+  int leadMinutes{0};
+  std::string title;
+  std::string body;
+  std::string data;
+  std::string commandId;
+};
+
+struct NotificationAgendaResult
+{
+  NotificationRpcOutcome outcome{NotificationRpcOutcome::Unavailable};
+  grpc::Status status;
+  int32_t notified{0};
+  int32_t rang{0};
+};
+
 struct NotificationClientConfig
 {
   std::string target;
@@ -101,6 +120,9 @@ public:
 
   [[nodiscard]] virtual NotificationCallScheduleResult
   scheduleCall(const NotificationCallScheduleInput& input) const;
+
+  [[nodiscard]] virtual NotificationAgendaResult
+  announceAgenda(const NotificationAgendaInput& input) const;
 
 private:
   std::shared_ptr<grpc::Channel> channel_;
