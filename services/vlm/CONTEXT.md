@@ -218,3 +218,19 @@ Fixes in the same pass:
   unaligned `uint64_t*` dereference, which is undefined behaviour.
 - `loaded_` is atomic, because `run()` and the capabilities callback read it
   without the engine lock.
+
+### Re-measured after the shared helpers' busy-wait was fixed
+
+Taken at 20:29 at load 6–7 with the same images and prompts, over three
+uncached runs. The prod binary predates this pass's fixes, none of which is
+on the hot path.
+
+| `max_input_px` | backend | one sentence, median (range) | yes/no, median (range) |
+|---|---|---|---|
+| 384 | CPU | 1091 ms (980–1659) | 791 ms (685–1339) |
+| 256 | CPU | 905 ms (654–970) | 693 ms (613–831) |
+| 384 | Vulkan iGPU, `gpu_layers = 999` | 613 ms (500–661) | 379 ms (339–458) |
+
+The earlier table above was taken while four helper processes spun a full
+core each, so its CPU rows are 20–40 % high. The iGPU stays 1.8–2.1× faster
+than the CPU at 384 px.

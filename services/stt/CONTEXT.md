@@ -132,28 +132,33 @@ settings. `stt-settings-test` checks both directions on a live listener.
 
 ## Real-time behaviour (measured 2026-10-03)
 
-Host: Ryzen 7 5825U (8 cores, 16 threads), CPU only, prod build,
-`nemo_transducer` (sherpa-onnx FastConformer RNN-T int8, en/de/es/fr),
-`ThreadBudget::computeThreads()` = 8. The machine was shared with other
-work, so the figures are medians of 5 runs over the HTTP leg, including the
-loopback round trip.
+Host: Ryzen 7 5825U (8 cores, 16 threads), CPU only, prod builds of the
+baseline (48b75ba2) and of this work, `nemo_transducer` (sherpa-onnx
+FastConformer RNN-T int8, en/de/es/fr), `ThreadBudget::computeThreads()` = 8.
+The figures are medians of 5 requests over the HTTP leg, loopback round trip
+included. The audio is the TTS preview voices cut to 2, 4 and 6 s. Other
+agents shared the machine, so the load average is given for each run.
 
-| utterance | audio | median | RTF |
+| utterance | baseline (load 5–7) | this work (load 1–3) | this work (load 7–9) |
 |---|---|---|---|
-| es, 2.0 s | TTS voice | 101 ms | 0.051 |
-| es, 4.6 s | TTS voice | 184 ms | 0.040 |
-| es, 6.0 s | TTS voice | 204 ms | 0.034 |
-| en, 2.0 s | TTS voice | 109 ms | 0.055 |
-| en, 4.6 s | TTS voice | 158 ms | 0.034 |
-| en, 6.0 s | TTS voice | 209 ms | 0.035 |
-| en, 6.6 s | LibriSpeech `0.wav` | 214 ms | 0.032 |
+| es 2 s | 118 ms | 61 ms | 100 ms |
+| es 4 s | 172 ms | 97 ms | 148 ms |
+| es 6 s | 203 ms | 116 ms | 197 ms |
+| en 2 s | 89 ms | 57 ms | 97 ms |
+| en 4 s | 175 ms | 88 ms | 170 ms |
+| en 6 s | 230 ms | 127 ms | 192 ms |
+| es/en alternating, 2 s | **1228 ms** | **70 ms** | **88 ms** |
+
+The single-language decode is the same code in both builds and follows the
+load: RTF 0.02–0.06. The alternating row is the change, below. In the voice
+agent's live call the server-side STT time was 38–70 ms per turn.
 
 **Language switches no longer reload the model.** A request whose language
 differed from the loaded recognizer's rebuilt the recognizer inside the
 blocking leg, even for the engines that ignore the language
 (`nemo_transducer`, `nemo_ctc`, `omnilingual`: the transducer is one
-multilingual model). Alternating es/en requests cost 1378 ms each against
-96 ms for the same request in one language: the whole 131 MB encoder was
+multilingual model). Alternating es/en requests cost 1228 ms each against
+104 ms for the same request in one language: the whole 131 MB encoder was
 loaded again every time. `SttService::languageBound()` names the two engines
 whose recognizer depends on the language (`whisper`, `canary`); for the
 others a switch only records the language. Two calls in different languages,

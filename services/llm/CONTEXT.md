@@ -631,3 +631,57 @@ The voice session and argus-llm agreed this contract with the voice agent:
   validates arguments, so an unpermitted caller learns nothing about a tool's
   shape. `ToolRegistry::names()` is sorted, so the declarations, and with them
   the cached prefix, are the same in every process.
+
+## Real-time behaviour (measured 2026-10-03)
+
+Host: Ryzen 7 5825U (8 cores, 16 threads), CPU only (`gpu_layers` resolves
+0, see the tier note), LFM2.5-1.2B-Instruct-QAD-Q4_0. Prod builds: the
+baseline is 48b75ba2, the commit before this work, built from a worktree.
+Decode on `ThreadBudget::lightThreads()` = 4 threads, prefill on
+`batchThreads()` = 8. Other agents shared the machine, so each run gives its
+load average. Every figure was taken after the 16:15 fix of the shared
+helpers' busy-wait.
+
+**A seven-turn Spanish call** (`/llm/v1/chat-stream`, temperature 0, owner,
+memory and policy tools; turn 2 is a routed save). TTFT is time to the first
+streamed token.
+
+| | turn 1 | turn after the save | the turn after that | turns 2–7 median / p90 | tokens decoded per turn |
+|---|---|---|---|---|---|
+| baseline, old message shape (load 5–7) | 3.3–3.6 s (677 cold) | 1.7–1.8 s (360 re-prefilled) | 3.7–4.4 s (775 re-prefilled) | 427 ms / 3.7 s | 275 |
+| this work (load 1–5) | 2.9–3.2 s (751 cold) | 0.86–1.33 s (85) | 0.44–0.55 s (53) | 425 ms / 860 ms | 146 |
+| this work, primed with `prefill_only` (load 1–5) | 0.33–0.44 s (31) | — | — | 552 ms / 928 ms | 43 |
+| this work, primed (load 7–9) | 0.44 s | — | — | 522 ms / 1.38 s | 43 |
+
+The prime itself takes 3.1–3.5 s for 723 tokens. The voice session sends it
+while the greeting plays, so the user never waits on it. In the voice agent's
+end-to-end run (Release TTS, end of speech → first audio, five turns) the
+baseline measured 3456 / 1635 / 1523 / 1602 / 660 ms and this work
+823 / 1511 / 1870 / 1754 / 1199 ms. The first token came at 195–561 ms. The
+later turns vary with the length of the reply's first sentence, which is now
+the dominant cost (voice and TTS side).
+
+**Engine speed.** Prefill runs about 250 tokens/s on the 750-token call
+prompt and 140–175 tokens/s on a 258-token one. Decode is 28–31 tokens/s
+with 4 threads. A sweep at load 4–6 gave 4 threads 28.7–29.3, 6 threads
+30.9 and 8 threads 30.7 tokens/s. The +5 % is within that load's noise
+(decode is memory-bandwidth bound), so `lightThreads()` stays and keeps the
+other cores for STT and TTS during a call.
+
+**Tool selection, HTTP chat without app tools** (`check.tsv` +
+`negatives.tsv`, 150 rows, temperature 0, each row in its own language;
+"stored" means a memory write that succeeded):
+
+| | saves stored (25) | false writes (125 non-save rows) | mean latency per row |
+|---|---|---|---|
+| baseline (load 5–9) | 19, and every miss was answered "lo he guardado" | 1 | 2.4–3.8 s |
+| this work (load 3–9) | 24 | 2 ("la alarma se activa a las 10", "la cámara de mi teléfono no funciona") | 1.3–1.5 s |
+
+**Tool selection inside a call** (`argus-tool-bench --voice`: the real
+controller, `clientActions`, recording handlers, `check.tsv`):
+- Camera requests: 56 of 56 as expected. The five explicit ones
+  ("muéstrame/checa la cámara N", "show/check camera N") open
+  `app.show_camera`.
+- Saves: 19 of 20.
+- Neither: 22 of 27.
+- Mean TTFT: 374 ms (camera), 789 ms (save), 328 ms (neither).
