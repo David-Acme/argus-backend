@@ -127,6 +127,14 @@ resurrected over it. Nothing is deleted from `argus.db`. Its
 `foreign_key_check` ignores user references by design (the user parent rows
 live in identity.db) and fails on any other violation.
 
+The copy names the source's own columns and the verification checksums those
+columns on both sides, refusing only a source column the target lacks
+(2026-10). It used to copy with `SELECT *` and compare the column lists of
+`src` and `main` read as `"src".pragma_table_info(...)`, which SQLite
+resolves against the main schema: the check compared the target with itself,
+and a legacy table that predates a later additive column failed the copy on
+its column count. `tests/unit/notification-migration-test.cc` pins both cases.
+
 ## The folder owns its domain (f7-7c, a rule-25 module since Phase 4 step 2)
 
 The notification feature tree, the notification-token repository, schema
