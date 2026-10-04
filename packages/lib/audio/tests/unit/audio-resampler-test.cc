@@ -88,3 +88,27 @@ TEST_CASE("ten minutes of streaming keep the output count exact")
   CHECK(produced + 40 >= expected);
   CHECK(produced <= expected);
 }
+
+TEST_CASE("processInto reuses the caller's buffer and matches process")
+{
+  std::vector<int16_t> input(4800);
+  for (size_t i = 0; i < input.size(); ++i)
+    input[i] = static_cast<int16_t>(8000.0 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(i) / 48000.0));
+  AudioResampler byValue({.sourceRate = 48000, .targetRate = 16000});
+  AudioResampler intoBuffer({.sourceRate = 48000, .targetRate = 16000});
+  std::vector<int16_t> expected;
+  std::vector<int16_t> actual;
+  std::vector<int16_t> chunk;
+  for (size_t offset = 0; offset < input.size(); offset += 480) {
+    const auto part = byValue.process(input.data() + offset, 480);
+    expected.insert(expected.end(), part.begin(), part.end());
+    intoBuffer.processInto({input.data() + offset, 480}, chunk);
+    actual.insert(actual.end(), chunk.begin(), chunk.end());
+  }
+  const auto* storage = chunk.data();
+  intoBuffer.processInto({input.data(), 480}, chunk);
+  CHECK(chunk.data() == storage);
+  CHECK(actual == expected);
+  intoBuffer.processInto({}, chunk);
+  CHECK(chunk.empty());
+}

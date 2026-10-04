@@ -85,16 +85,23 @@ std::vector<int16_t> AudioResampler::process(const int16_t* samples,
                                              size_t count)
 {
   std::vector<int16_t> out;
-  if (count == 0)
-    return out;
+  processInto({samples, count}, out);
+  return out;
+}
+
+void AudioResampler::processInto(std::span<const int16_t> samples, std::vector<int16_t>& out)
+{
+  out.clear();
+  if (samples.empty())
+    return;
   if (sourceRate_ == targetRate_) {
-    out.assign(samples, samples + count);
-    return out;
+    out.assign(samples.begin(), samples.end());
+    return;
   }
 
-  history_.insert(history_.end(), samples, samples + count);
+  history_.insert(history_.end(), samples.begin(), samples.end());
   out.reserve(static_cast<size_t>(
-      static_cast<double>(count) * targetRate_ / sourceRate_ + 2.0));
+      static_cast<double>(samples.size()) * targetRate_ / sourceRate_ + 2.0));
   while (posWhole_ + kSincHalf < history_.size()) {
     out.push_back(sampleAt(
         {.whole = posWhole_, .phase = posFraction_ * phases_ / denominator_}));
@@ -114,5 +121,4 @@ std::vector<int16_t> AudioResampler::process(const int16_t* samples,
                    history_.begin() + static_cast<std::ptrdiff_t>(keep));
     posWhole_ -= keep;
   }
-  return out;
 }

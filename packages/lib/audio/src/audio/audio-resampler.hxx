@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 struct AudioResamplerInput
@@ -22,17 +23,18 @@ public:
   explicit AudioResampler(AudioResamplerInput input);
 
   std::vector<int16_t> process(const int16_t* samples, size_t count);
+  void processInto(std::span<const int16_t> samples, std::vector<int16_t>& out);
   void reset();
 
-  int sourceRate() const { return sourceRate_; }
-  int targetRate() const { return targetRate_; }
+  [[nodiscard]] int sourceRate() const { return sourceRate_; }
+  [[nodiscard]] int targetRate() const { return targetRate_; }
 
 private:
   static constexpr int kSincHalf = 32;
   static constexpr int kTaps = 2 * kSincHalf + 1;
   static constexpr int64_t kMaxPhases = 1024;
 
-  int16_t sampleAt(const ResamplerTap& tap) const;
+  [[nodiscard]] int16_t sampleAt(const ResamplerTap& tap) const;
 
   int sourceRate_;
   int targetRate_;
