@@ -17,6 +17,8 @@ public:
 
   [[nodiscard]] std::vector<ObjectEventRow> pendingBatch(int limit) const;
 
+  [[nodiscard]] std::vector<std::string> recentPayloads(int limit) const;
+
   bool markSent(const std::string& eventId, int64_t at) const;
 
   bool recordAttempt(const std::string& eventId) const;

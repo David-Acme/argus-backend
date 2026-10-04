@@ -155,6 +155,23 @@ ObjectEventOutboxRepository::pendingBatch(int limit) const
   return pending;
 }
 
+std::vector<std::string> ObjectEventOutboxRepository::recentPayloads(int limit) const
+{
+  if (limit <= 0)
+    return {};
+  auto client = DbService::client();
+  if (!client)
+    return {};
+  const auto rows = client->execSqlSync(
+      RECENT_PAYLOADS.data(),
+      objectEventStatusToString(ObjectEventStatus::OverflowDropped), limit);
+  std::vector<std::string> payloads;
+  payloads.reserve(rows.size());
+  for (const auto& row : rows)
+    payloads.push_back(row["payload"].as<std::string>());
+  return payloads;
+}
+
 bool ObjectEventOutboxRepository::markSent(const std::string& eventId,
                                            int64_t at) const
 {

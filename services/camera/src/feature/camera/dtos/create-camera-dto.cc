@@ -24,6 +24,8 @@ CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
     dto.streamPath = json["streamPath"].asString();
   if (json.isMember("subStreamPath") && json["subStreamPath"].isString())
     dto.subStreamPath = json["subStreamPath"].asString();
+  if (json.isMember("catalogId") && json["catalogId"].isString())
+    dto.catalogId = json["catalogId"].asString();
 
   START_VALIDATION(CreateCameraDto, dto)
   IS_NOT_EMPTY(name)
@@ -52,6 +54,9 @@ CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
   })
   CUSTOM_LAMBDA(subStreamPath, [](const CreateCameraDto& d) {
     return camera_address_rules::pathError(d.subStreamPath);
+  })
+  CUSTOM_LAMBDA(catalogId, [](const CreateCameraDto& d) {
+    return camera_address_rules::catalogError(d.catalogId);
   })
   END_VALIDATION()
   return dto;

@@ -99,6 +99,51 @@ inline constexpr std::array<GuardRouteAccess, 8> kGuardAccess = {{
     {.path = "/guard/expected-guests", .method = drogon::Delete, .roles = roleBit(UserRole::Resident)},
 }};
 
+enum class CameraAction : std::uint8_t
+{
+  Talk = 0
+};
+
+struct CameraActionAccess
+{
+  CameraAction action;
+  std::string_view segment;
+  drogon::HttpMethod method;
+  std::uint8_t roles;
+};
+
+inline constexpr std::array<CameraActionAccess, 1> kCameraActionAccess = {{
+    {.action = CameraAction::Talk, .segment = "talk", .method = drogon::Post, .roles = kResidentAndGuard},
+}};
+
+inline bool hasCameraAction(UserRole role, CameraAction action)
+{
+  if (role == UserRole::Owner)
+    return true;
+  const auto entry = std::ranges::find(kCameraActionAccess, action, &CameraActionAccess::action);
+  return entry != kCameraActionAccess.end() && (entry->roles & roleBit(role)) != 0;
+}
+
+inline const CameraActionAccess* cameraActionRouteOf(std::string_view path,
+                                                     drogon::HttpMethod method)
+{
+  constexpr std::string_view kPrefix = "/camera/";
+  if (!path.starts_with(kPrefix))
+    return nullptr;
+  const std::string_view rest = path.substr(kPrefix.size());
+  const size_t slash = rest.find('/');
+  if (slash == 0 || slash == std::string_view::npos)
+    return nullptr;
+  const std::string_view id = rest.substr(0, slash);
+  if (!std::ranges::all_of(id, [](char c) { return c >= '0' && c <= '9'; }))
+    return nullptr;
+  const std::string_view segment = rest.substr(slash + 1);
+  const auto entry = std::ranges::find_if(kCameraActionAccess, [&](const CameraActionAccess& candidate) {
+    return candidate.segment == segment && candidate.method == method;
+  });
+  return entry == kCameraActionAccess.end() ? nullptr : &*entry;
+}
+
 struct AuthRouteAccess
 {
   std::string_view path;
@@ -297,6 +342,9 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
     });
     return route != kGuardAccess.end() && (route->roles & roleBit(role)) != 0;
   }
+
+  if (const auto* action = cameraActionRouteOf(path, method))
+    return (action->roles & roleBit(role)) != 0;
 
   const auto table = tableFromPath(path);
   if (!table)

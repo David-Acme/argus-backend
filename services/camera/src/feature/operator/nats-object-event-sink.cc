@@ -1,6 +1,7 @@
 #include <feature/operator/nats-object-event-sink.hxx>
 
 #include <shared/services/event-stream/event-stream.hxx>
+#include <shared/services/stream/camera-live-board.hxx>
 #include <sync/stream-retention.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
@@ -97,6 +98,10 @@ NatsObjectEventSink::publish(const ObjectDetectedEvent& event)
   }
   if (syncHook)
     syncHook("enqueue_post_commit");
+  if (outcome.inserted) {
+    if (const auto live = camera_live_event::fromPayload(object_event::toJson(stored)))
+      CameraLiveBoard::instance().recordEvent(*live);
+  }
   refreshCounters();
   wake_.notify_all();
   return outcome.inserted ? ObjectEventPublishResult::Recorded
@@ -117,6 +122,11 @@ void NatsObjectEventSink::refreshCounters()
 void NatsObjectEventSink::reconcile()
 {
   outbox_.purgeExpiredCooldowns(nowMs() - stream_retention::kRetentionMs);
+  for (const auto& payload :
+       outbox_.recentPayloads(static_cast<int>(CameraLiveBoard::kRecentEvents))) {
+    if (const auto live = camera_live_event::fromPayload(json_util::fromString(payload)))
+      CameraLiveBoard::instance().recordEvent(*live);
+  }
   refreshCounters();
   if (!workerStarted_.exchange(true, std::memory_order_acq_rel))
     worker_ = std::thread([this]() { flushLoop(); });

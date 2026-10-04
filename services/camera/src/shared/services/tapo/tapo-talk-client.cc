@@ -52,61 +52,48 @@ std::string between(const BetweenInput& input)
   return text.substr(start, end - start);
 }
 
-struct Biquad
-{
-  double b0{1}, b1{0}, b2{0}, a1{0}, a2{0};
-  double z1{0}, z2{0};
+constexpr double kSpeakerRate = 8000.0;
+constexpr double kLiveVoiceGain = 1.6;
 
-  void apply(std::vector<double>& samples)
-  {
-    for (auto& s : samples) {
-      const double out = b0 * s + z1;
-      z1 = b1 * s - a1 * out + z2;
-      z2 = b2 * s - a2 * out;
-      s = out;
-    }
-  }
-};
+TapoBiquad highPassFilter()
+{
+  const double w0 = 2.0 * M_PI * 150.0 / kSpeakerRate;
+  const double alpha = std::sin(w0) / (2.0 * 0.707);
+  const double a0 = 1.0 + alpha;
+  TapoBiquad filter;
+  filter.b0 = (1.0 + std::cos(w0)) / 2.0 / a0;
+  filter.b1 = -(1.0 + std::cos(w0)) / a0;
+  filter.b2 = filter.b0;
+  filter.a1 = -2.0 * std::cos(w0) / a0;
+  filter.a2 = (1.0 - alpha) / a0;
+  return filter;
+}
+
+TapoBiquad presenceFilter()
+{
+  const double w0 = 2.0 * M_PI * 2500.0 / kSpeakerRate;
+  const double alpha = std::sin(w0) / (2.0 * 1.0);
+  const double amp = std::pow(10.0, 4.0 / 40.0);
+  const double a0 = 1.0 + alpha / amp;
+  TapoBiquad filter;
+  filter.b0 = (1.0 + alpha * amp) / a0;
+  filter.b1 = (-2.0 * std::cos(w0)) / a0;
+  filter.b2 = (1.0 - alpha * amp) / a0;
+  filter.a1 = (-2.0 * std::cos(w0)) / a0;
+  filter.a2 = (1.0 - alpha / amp) / a0;
+  return filter;
+}
 
 std::vector<int16_t> equalizeForSpeaker(const std::vector<int16_t>& samples)
 {
-  constexpr double kFs = 8000.0;
-  std::vector<double> buf;
-  buf.reserve(samples.size());
-  for (const auto s : samples)
-    buf.push_back(s);
-
-  Biquad highPass;
-  {
-    const double w0 = 2.0 * M_PI * 150.0 / kFs;
-    const double alpha = std::sin(w0) / (2.0 * 0.707);
-    const double a0 = 1.0 + alpha;
-    highPass.b0 = (1.0 + std::cos(w0)) / 2.0 / a0;
-    highPass.b1 = -(1.0 + std::cos(w0)) / a0;
-    highPass.b2 = highPass.b0;
-    highPass.a1 = -2.0 * std::cos(w0) / a0;
-    highPass.a2 = (1.0 - alpha) / a0;
-  }
-  highPass.apply(buf);
-
-  Biquad presence;
-  {
-    const double w0 = 2.0 * M_PI * 2500.0 / kFs;
-    const double alpha = std::sin(w0) / (2.0 * 1.0);
-    const double amp = std::pow(10.0, 4.0 / 40.0);
-    const double a0 = 1.0 + alpha / amp;
-    presence.b0 = (1.0 + alpha * amp) / a0;
-    presence.b1 = (-2.0 * std::cos(w0)) / a0;
-    presence.b2 = (1.0 - alpha * amp) / a0;
-    presence.a1 = (-2.0 * std::cos(w0)) / a0;
-    presence.a2 = (1.0 - alpha / amp) / a0;
-  }
-  presence.apply(buf);
-
+  TapoBiquad highPass = highPassFilter();
+  TapoBiquad presence = presenceFilter();
   std::vector<int16_t> out;
-  out.reserve(buf.size());
-  for (const auto v : buf)
-    out.push_back(static_cast<int16_t>(std::clamp(v, -32768.0, 32767.0)));
+  out.reserve(samples.size());
+  for (const auto sample : samples) {
+    const double filtered = presence.step(highPass.step(sample));
+    out.push_back(static_cast<int16_t>(std::clamp(filtered, -32768.0, 32767.0)));
+  }
   return out;
 }
 
@@ -135,6 +122,27 @@ std::vector<TalkPassword> talkPasswords(const TalkPasswordSource& input)
   return {md5, sha256};
 }
 
+}
+
+double TapoBiquad::step(double sample)
+{
+  const double out = b0 * sample + z1;
+  z1 = b1 * sample - a1 * out + z2;
+  z2 = b2 * sample - a2 * out;
+  return out;
+}
+
+TapoVoiceEncoder::TapoVoiceEncoder() : highPass_(highPassFilter()), presence_(presenceFilter()) {}
+
+std::vector<uint8_t> TapoVoiceEncoder::encode(std::span<const int16_t> pcm8k)
+{
+  std::vector<int16_t> shaped;
+  shaped.reserve(pcm8k.size());
+  for (const auto sample : pcm8k) {
+    const double filtered = presence_.step(highPass_.step(sample)) * kLiveVoiceGain;
+    shaped.push_back(static_cast<int16_t>(std::clamp(filtered, -32768.0, 32767.0)));
+  }
+  return tapo_audio::encodeALaw(shaped);
 }
 
 std::vector<int16_t> tapoApplySpeakerGain(const TapoSpeakerGainInput& input)
@@ -404,9 +412,8 @@ TapoResult TapoTalkClient::startSession()
   payload["type"] = "request";
 
   const std::string body = json_util::toString(payload);
-  const std::vector<TapoHttpHeader> headers = {{"Content-Type",
-                                                "application/json"},
-                                               {"X-If-Encrypt", "0"}};
+  const std::vector<TapoHttpHeader> headers = {{.name = "Content-Type", .value = "application/json"},
+                                               {.name = "X-If-Encrypt", .value = "0"}};
   if (!writePart(headers, body))
     return TapoResult::failure("cannot send talk session request");
 
@@ -505,9 +512,9 @@ TapoResult TapoTalkClient::send(const TapoTalkAudio& audio,
     pts90k_ += ptsStep;
     sinceTables += config_.packetMs;
 
-    const std::vector<TapoHttpHeader> headers = {{"Content-Type", "audio/mp2t"},
-                                                 {"X-If-Encrypt", "0"},
-                                                 {"X-Session-Id", sessionId_}};
+    const std::vector<TapoHttpHeader> headers = {{.name = "Content-Type", .value = "audio/mp2t"},
+                                                 {.name = "X-If-Encrypt", .value = "0"},
+                                                 {.name = "X-Session-Id", .value = sessionId_}};
     if (!writePart(headers, payload)) {
       open_ = false;
       return TapoResult::failure("talk channel write failed");
@@ -551,6 +558,29 @@ TapoResult TapoTalkClient::sendChunk(const TapoTalkSendInput& input,
     return reopened;
   return send({.samples = input.samples, .sampleRate = input.sampleRate},
               token);
+}
+
+TapoResult TapoTalkClient::sendPacket(std::span<const uint8_t> alaw)
+{
+  if (!open_ || !connection_)
+    return TapoResult::failure("talk channel not open");
+  if (alaw.empty())
+    return TapoResult::success(Json::Value());
+
+  std::string payload = muxer_.tables();
+  payload += muxer_.frame({.payload = std::vector<uint8_t>(alaw.begin(), alaw.end()),
+                           .pts90k = pts90k_});
+  pts90k_ += kClockRate * static_cast<int64_t>(alaw.size()) / kTargetSampleRate;
+
+  const std::vector<TapoHttpHeader> headers = {{.name = "Content-Type", .value = "audio/mp2t"},
+                                               {.name = "X-If-Encrypt", .value = "0"},
+                                               {.name = "X-Session-Id", .value = sessionId_}};
+  if (!writePart(headers, payload)) {
+    open_ = false;
+    return TapoResult::failure("talk channel write failed");
+  }
+  sentSamples_ += static_cast<int64_t>(alaw.size());
+  return TapoResult::success(Json::Value());
 }
 
 int64_t TapoTalkClient::sentDurationMs() const

@@ -7,10 +7,12 @@ argus_module(NAME camera-driver
     INCLUDES
         ../../..
     DEPENDS
+        argus::camera-catalog
         argus::camera-repositories
         argus::camera-tapo
         argus::lib::config
         argus::lib::runtime
+        argus::lib::text
         Drogon::Drogon
         nlohmann_json::nlohmann_json)
 

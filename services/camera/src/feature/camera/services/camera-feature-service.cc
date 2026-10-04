@@ -6,6 +6,7 @@
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
+#include <shared/services/stream/camera-live-board.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 #include <shared/vocabulary/camera-stream-paths.hxx>
 #include <sqlite/db-service.hxx>
@@ -79,9 +80,10 @@ CameraFeatureService::create(const CreateCameraDto& body) const
         .recordMode = cameraRecordModeFromString(body.recordMode),
         .retentionDays = body.retentionDays,
         .capabilities = "[]",
-        .config = camera_stream_paths::withPaths({.config = "{}",
-                                                  .main = body.streamPath,
-                                                  .sub = body.subStreamPath}),
+        .config = camera_stream_paths::withConfig({.config = "{}",
+                                                   .main = body.streamPath,
+                                                   .sub = body.subStreamPath,
+                                                   .catalogId = body.catalogId}),
         .client = transaction.get(),
     });
     co_await emit({.table = TableName::Camera,
@@ -128,10 +130,11 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
     if (body.driver)
       input.driver = cameraDriverFromString(*body.driver);
     input.isEnabled = body.isEnabled;
-    if (body.streamPath || body.subStreamPath) {
-      input.config = camera_stream_paths::withPaths({.config = before.config,
-                                                     .main = body.streamPath,
-                                                     .sub = body.subStreamPath});
+    if (body.streamPath || body.subStreamPath || body.catalogId) {
+      input.config = camera_stream_paths::withConfig({.config = before.config,
+                                                      .main = body.streamPath,
+                                                      .sub = body.subStreamPath,
+                                                      .catalogId = body.catalogId});
     }
     if (body.recordMode)
       input.recordMode = cameraRecordModeFromString(*body.recordMode);
@@ -203,6 +206,7 @@ drogon::Task<bool> CameraFeatureService::remove(int64_t id) const
   CameraDriverRegistry::instance().forget(id);
   CameraSceneLog::instance().forget(id);
   SnapshotStore::instance().forget(id);
+  CameraLiveBoard::instance().forget(id);
   co_await dropSource(id);
   co_return true;
 }

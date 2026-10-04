@@ -1,5 +1,6 @@
 #pragma once
 
+#include <shared/services/camera-catalog/camera-catalog.hxx>
 #include <shared/utils/network-address/private-address.hxx>
 #include <shared/vocabulary/camera-stream-paths.hxx>
 
@@ -25,6 +26,13 @@ inline std::optional<std::string> pathError(const std::optional<std::string>& pa
   if (!path || camera_stream_paths::isValid(*path))
     return std::nullopt;
   return "must start with / and use only letters, digits and / . _ ~ - ? = & % + , ; :";
+}
+
+inline std::optional<std::string> catalogError(const std::optional<std::string>& catalogId)
+{
+  if (!catalogId || catalogId->empty() || camera_catalog::byId(*catalogId) != nullptr)
+    return std::nullopt;
+  return "must be a model id from GET /camera/catalog";
 }
 
 inline std::optional<std::string> retentionError(const std::optional<int64_t>& days)

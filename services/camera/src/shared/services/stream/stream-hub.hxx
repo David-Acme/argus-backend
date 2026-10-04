@@ -69,6 +69,7 @@ public:
   void closeAll(const ISink* sink);
   int activeUpstreams();
   int activeSubscribers();
+  std::unordered_map<int64_t, int> viewersByCamera();
 
 private:
   struct Subscriber

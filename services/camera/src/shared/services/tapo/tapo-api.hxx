@@ -78,6 +78,10 @@ struct TapoStatusBatch
   std::optional<bool> motionEnabled;
   std::optional<bool> autoTrackEnabled;
   std::optional<std::string> dayNightMode;
+  std::optional<int> motionSensitivity;
+  std::optional<std::string> sdCardStatus;
+  std::string sdCardTotal;
+  std::string sdCardFree;
   std::optional<int64_t> deviceTime;
   std::optional<int64_t> clockOffsetSeconds;
   Json::Value raw;

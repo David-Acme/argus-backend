@@ -15,6 +15,8 @@ public:
   explicit TapoDriver(const CameraSchema& camera);
   ~TapoDriver() override;
 
+  static DriverResult probe(const CameraSchema& camera);
+
   Json::Value capabilities() const override;
   DriverResult status() override;
   DriverResult presets() override;
@@ -22,12 +24,13 @@ public:
   DriverResult preset(const DriverPresetInput& input) override;
   DriverResult settings(const DriverSettingsInput& input) override;
   DriverResult speak(const DriverSpeakInput& input) override;
+  TalkLineOpen talkLine() override;
 
 private:
   DriverResult ensureConnected();
 
   CameraSchema camera_;
   std::unique_ptr<TapoApi> api_;
-  std::unique_ptr<TapoTalkClient> talkClient_;
-  std::mutex talkMutex_;
+  std::shared_ptr<TapoTalkClient> talkClient_;
+  std::shared_ptr<std::timed_mutex> lineMutex_;
 };

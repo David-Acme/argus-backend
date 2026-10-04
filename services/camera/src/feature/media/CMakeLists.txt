@@ -9,6 +9,7 @@ argus_module(NAME camera-media
     DEPENDS
         argus::camera-repositories
         argus::camera-stream
+        argus::camera-talk
         argus::contracts::camera
         argus::contracts::sync
         argus::lib::auth

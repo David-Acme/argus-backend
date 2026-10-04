@@ -3,6 +3,8 @@
 #include "camera-media-service.hxx"
 #include "media-session-registry.hxx"
 
+#include <feature/talk/camera-talk-service.hxx>
+
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <drogon/WebSocketController.h>
@@ -12,7 +14,10 @@ class CameraMediaSocket
     : public drogon::WebSocketController<CameraMediaSocket, false>
 {
 public:
-  explicit CameraMediaSocket(MediaSessionRegistry& sessions) : sessions_(sessions) {}
+  CameraMediaSocket(MediaSessionRegistry& sessions, CameraTalkService& talk)
+      : sessions_(sessions), talk_(talk)
+  {
+  }
 
   void handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                         std::string&& message,
@@ -29,4 +34,5 @@ public:
 private:
   CameraMediaService service_;
   MediaSessionRegistry& sessions_;
+  CameraTalkService& talk_;
 };

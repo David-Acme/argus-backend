@@ -1,6 +1,7 @@
 #include "tapo-api.hxx"
 
 #include <chrono>
+#include <cstdlib>
 #include <drogon/drogon.h>
 #include <utility>
 
@@ -82,6 +83,15 @@ Json::Value TapoStatusBatch::toJson() const
     value["autoTrackEnabled"] = *autoTrackEnabled;
   if (dayNightMode)
     value["dayNightMode"] = *dayNightMode;
+  if (motionSensitivity)
+    value["motionSensitivity"] = *motionSensitivity;
+  if (sdCardStatus) {
+    Json::Value card(Json::objectValue);
+    card["status"] = *sdCardStatus;
+    card["total"] = sdCardTotal;
+    card["free"] = sdCardFree;
+    value["sdCard"] = card;
+  }
   if (deviceTime)
     value["deviceTime"] = static_cast<Json::Int64>(*deviceTime);
   if (clockOffsetSeconds)
@@ -392,6 +402,25 @@ TapoStatusBatch TapoApi::getStatus()
   status.autoTrackEnabled =
       switchValue(responseAt(result.data,
                              4)["result"]["target_track"]["target_track_info"]["enabled"]);
+
+  const auto& motion = responseAt(result.data, 3)["result"]["motion_detection"]["motion_det"];
+  if (const auto& digital = motion["digital_sensitivity"]; digital.isString() || digital.isIntegral())
+    status.motionSensitivity = digital.isString()
+                                   ? static_cast<int>(std::strtol(digital.asString().c_str(), nullptr, 10))
+                                   : digital.asInt();
+  else if (const auto& level = motion["sensitivity"]; level.isString())
+    status.motionSensitivity = level.asString() == "low" ? 20 : level.asString() == "high" ? 80 : 50;
+
+  const auto& disks = responseAt(result.data, 6)["result"]["harddisk_manage"]["hd_info"];
+  if (disks.isArray() && !disks.empty()) {
+    const Json::Value& first = disks[0];
+    const Json::Value& disk = first.isObject() && first.isMember("hd_info_1") ? first["hd_info_1"] : first;
+    if (disk["status"].isString()) {
+      status.sdCardStatus = disk["status"].asString();
+      status.sdCardTotal = disk.get("total_space", "").asString();
+      status.sdCardFree = disk.get("free_space", "").asString();
+    }
+  }
 
   const auto& image = responseAt(result.data, 5)["result"]["image"]["common"]["inf_type"];
   if (image.isString())

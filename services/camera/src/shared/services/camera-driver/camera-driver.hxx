@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <shared/schemas/camera/camera-schema.hxx>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -53,6 +54,22 @@ struct DriverSpeakInput
   int sampleRate{16000};
 };
 
+class ICameraTalkLine
+{
+public:
+  virtual ~ICameraTalkLine() = default;
+
+  virtual DriverResult open() = 0;
+  virtual DriverResult write(std::span<const int16_t> pcm8k) = 0;
+  virtual void close() = 0;
+};
+
+struct TalkLineOpen
+{
+  std::unique_ptr<ICameraTalkLine> line;
+  std::string error;
+};
+
 class ICameraDriver
 {
 public:
@@ -66,6 +83,7 @@ public:
   virtual DriverResult preset(const DriverPresetInput& input) = 0;
   virtual DriverResult settings(const DriverSettingsInput& input) = 0;
   virtual DriverResult speak(const DriverSpeakInput& input) = 0;
+  virtual TalkLineOpen talkLine();
 };
 
 class CameraDriverRegistry

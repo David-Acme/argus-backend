@@ -159,6 +159,7 @@ bool TapoConnection::open(const TapoEndpoint& endpoint)
   }
 
   int fd = -1;
+  bool refused = false;
   for (addrinfo* candidate = resolved; candidate;
        candidate = candidate->ai_next) {
     fd = ::socket(candidate->ai_family, candidate->ai_socktype,
@@ -171,6 +172,7 @@ bool TapoConnection::open(const TapoEndpoint& endpoint)
     ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     if (::connect(fd, candidate->ai_addr, candidate->ai_addrlen) == 0)
       break;
+    refused = refused || errno == ECONNREFUSED;
     if (errno == EINPROGRESS &&
         waitReady({.fd = fd, .events = POLLOUT,
                    .timeoutMs = endpoint.connectTimeoutMs})) {
@@ -179,6 +181,7 @@ bool TapoConnection::open(const TapoEndpoint& endpoint)
       if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &status, &length) == 0 &&
           status == 0)
         break;
+      refused = refused || status == ECONNREFUSED;
     }
     ::close(fd);
     fd = -1;
@@ -186,7 +189,8 @@ bool TapoConnection::open(const TapoEndpoint& endpoint)
   ::freeaddrinfo(resolved);
 
   if (fd < 0) {
-    impl_->error = "cannot connect to " + endpoint.host + ":" + port;
+    impl_->error = (refused ? "connection refused by " : "no answer from ") +
+                   endpoint.host + ":" + port;
     return false;
   }
   impl_->fd = fd;

@@ -1,5 +1,6 @@
 argus_module(NAME camera-stream
     SOURCES
+        camera-live-board.cc
         camera-source-registrar.cc
         go2rtc-frame-source.cc
         gop-cache.cc

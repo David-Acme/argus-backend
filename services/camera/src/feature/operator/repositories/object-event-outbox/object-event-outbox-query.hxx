@@ -50,6 +50,10 @@ inline constexpr std::string_view PURGE_COOLDOWNS =
 inline constexpr std::string_view PURGE_SETTLED =
     "DELETE FROM object_event_outbox WHERE status IN (?, ?) AND sent_at <= ?";
 
+inline constexpr std::string_view RECENT_PAYLOADS =
+    "SELECT payload FROM object_event_outbox WHERE status != ? "
+    "ORDER BY created_at DESC LIMIT ?";
+
 inline constexpr std::string_view OUTBOX_STATS =
     "SELECT SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS pending, "
     "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS sent, "

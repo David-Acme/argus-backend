@@ -171,8 +171,9 @@ int main()
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
 
   MediaSessionRegistry mediaSessions;
+  CameraTalkService talkService;
   drogon::app().registerController(
-      std::make_shared<CameraMediaSocket>(mediaSessions));
+      std::make_shared<CameraMediaSocket>(mediaSessions, talkService));
 
   drogon::app().loadConfigJson(drogonConfig(cameraDb, listener));
   certificate_reload::watch(listener);
@@ -354,6 +355,7 @@ int main()
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*healthMonitor, "camera-health"));
   }
+  shutdown_signal::onStop(shutdown_signal::drainOf(talkService, "camera-talk"));
   if (natsBus) {
     shutdown_signal::onStop(
         shutdown_signal::drainOf(sessionRevocations, "camera-session-revocations"));

@@ -58,7 +58,8 @@ argus-camera/
   src/feature/actions/  argus.camera.v1 CameraActionService (guard-gated),
                         audio capture, STT transcriber and their
                         action-command repository
-  src/feature/camera/   /camera* HTTP surface
+  src/feature/camera/   /camera* HTTP surface, the model catalog route, the
+                        connection probe (infra/rtsp-probe) and the overview
   src/feature/camera-control/
                         /camera PTZ, preset, settings and talk surface;
                         RTSP/ONVIF cameras answer through the stream-only
@@ -73,6 +74,10 @@ argus-camera/
   src/feature/settings/ argus::camera-settings — the owner-editable catalog,
                         served by argus.settings.v1 on the gRPC listener when
                         `[grpc] caller_settings` is set
+  src/feature/talk/     live talk sessions over /media: the uplink (resample
+                        + 120 ms packets), one paced thread per session and
+                        the service the media socket hands camera:talk:*
+                        frames and binary audio to
   src/feature/sync/     argus.camera.v1 SyncService owner and the
                         camera_stream repository and schema
   src/feature/zone/     /zone* HTTP surface

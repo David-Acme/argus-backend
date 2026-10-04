@@ -376,3 +376,22 @@ TEST_CASE("a session route pattern matches one segment per placeholder")
   CHECK_FALSE(routeMatches("/auth/sessions", "/auth/sessions/x"));
   CHECK_FALSE(routeMatches("/auth/sessions", ""));
 }
+
+TEST_CASE("talking through a camera is open to the owner, residents and guards, never to guests")
+{
+  const auto allows = [](UserRole role, std::string_view path, drogon::HttpMethod method) {
+    return role_access::hasHttpAccess({.role = role, .path = path, .method = method});
+  };
+  for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard}) {
+    CAPTURE(userRoleToString(role));
+    CHECK(role_access::hasCameraAction(role, role_access::CameraAction::Talk));
+    CHECK(allows(role, "/camera/12/talk", drogon::Post));
+  }
+  CHECK_FALSE(role_access::hasCameraAction(UserRole::Guest, role_access::CameraAction::Talk));
+  CHECK_FALSE(allows(UserRole::Guest, "/camera/12/talk", drogon::Post));
+  CHECK_FALSE(allows(UserRole::Guard, "/camera/12/ptz", drogon::Patch));
+  CHECK_FALSE(allows(UserRole::Guard, "/camera/x/talk", drogon::Post));
+  CHECK_FALSE(allows(UserRole::Guard, "/camera//talk", drogon::Post));
+  CHECK_FALSE(allows(UserRole::Guard, "/camera/12/talk/more", drogon::Post));
+  CHECK(allows(UserRole::Resident, "/camera/12/ptz", drogon::Patch));
+}

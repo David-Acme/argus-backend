@@ -6,6 +6,7 @@
 #include <shared/services/tapo/tapo-transport.hxx>
 #include <shared/services/tapo/tapo-ts-muxer.hxx>
 #include <runtime/cancellation-token.hxx>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -75,6 +76,31 @@ struct TapoSpeakerGainInput
 
 std::vector<int16_t> tapoApplySpeakerGain(const TapoSpeakerGainInput& input);
 
+struct TapoBiquad
+{
+  double b0{1};
+  double b1{0};
+  double b2{0};
+  double a1{0};
+  double a2{0};
+  double z1{0};
+  double z2{0};
+
+  double step(double sample);
+};
+
+class TapoVoiceEncoder
+{
+public:
+  TapoVoiceEncoder();
+
+  std::vector<uint8_t> encode(std::span<const int16_t> pcm8k);
+
+private:
+  TapoBiquad highPass_;
+  TapoBiquad presence_;
+};
+
 struct TapoTalkPart
 {
   std::vector<TapoHttpHeader> headers;
@@ -96,6 +122,7 @@ public:
   TapoResult send(const TapoTalkAudio& audio, const CancellationToken& token);
   TapoResult sendChunk(const TapoTalkSendInput& input,
                        const CancellationToken& token);
+  TapoResult sendPacket(std::span<const uint8_t> alaw);
   void close();
 
   bool isOpen() const;

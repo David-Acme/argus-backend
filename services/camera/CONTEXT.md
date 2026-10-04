@@ -978,3 +978,153 @@ its access token is refused at its next upgrade like any revoked one. Measured
 on the sandbox with two sessions of a throwaway resident watching the same test
 camera: the revoked session's socket closed 1 ms after argus-auth logged the
 revocation, and the other session's stream carried on.
+
+## A model catalog the drivers read (2026-10, CAMERA2)
+
+`shared/services/camera-catalog` (`argus::camera-catalog`) is one constexpr
+table of the cameras Argus knows: nineteen Tapo models and thirteen generic
+brand profiles (TP-Link VIGI, Hikvision, Annke, Dahua, Amcrest, Imou, Reolink,
+EZVIZ, Uniview, Axis, Foscam, ONVIF, RTSP). Each entry has its driver, a form
+factor (`pan-tilt`, `outdoor-pan-tilt`, `cube`, `bullet`, `turret`, `dome`,
+`doorbell`, which the app draws), indoor/outdoor, the nominal main and sub
+resolution, the default RTSP/ONVIF ports, user and stream paths, and a feature
+mask (`ptz`, `presets`, `autoTrack`, `microphone`, `speaker`, `siren`,
+`privacy`, `led`, `dayNight`, `motion`, `sdCard`). `GET /camera/catalog` (camera
+read) serves it, so the app pre-fills a form from the same table the drivers
+use.
+
+- **What the drivers implement decides the features.** A Tapo entry may only
+  claim what `TapoDriver` can drive (PTZ, presets, privacy, LED, day/night,
+  motion, auto-track, the alarm, the 8800 talk line). A generic profile claims
+  nothing because `StreamOnlyDriver` drives nothing; whether it has a
+  microphone shows in its stream (the probe and the app read the audio track).
+  Doorbells claim only microphone and speaker: the control APIs on them were
+  never measured.
+- **Models were researched, not guessed**, from the vendor's model pages and
+  the RTSP/ONVIF support notes (mains-powered Tapo cameras expose RTSP on 554
+  `/stream1` `/stream2` and ONVIF on 2020; battery models do not and are left
+  out; D225/D235 stream only hard-wired and always on, hence their note).
+  Brand paths come from the vendors' published RTSP URL formats. The resolution
+  is nominal; the probe measures the real one. Measured on the owner's C225:
+  main 2688×1520, sub 1280×720, so the C225 entry says 2688×1520.
+- **A camera remembers its entry** as `catalogId` in its `config` JSON, beside
+  the stream paths (`camera_stream_paths::withConfig`, validated against the
+  table on create and update, empty clears it). When it is absent the model
+  text is matched token by token (`Tapo C225 (EU)` → `tapo-c225`, `C2250` →
+  nothing). `TapoDriver::capabilities()` now answers per model: a C310 has no
+  pan/tilt, so the app stops offering a PTZ pad on a bullet camera. An unknown
+  Tapo model keeps every control, exactly as before.
+
+## Testing a connection before saving: `POST /camera/probe`
+
+The form calls the probe with what the user typed (`driver`, `ip`, `port`,
+user/password, cloud user/password, paths, and `cameraId` on an edit so the
+stored secrets fill blank password fields). The probe runs off the loop and
+answers `{ok, steps[], stream, device, catalogId}`: each step (`network`,
+`main`, `sub`, and for Tapo `device` and `talk`) is `ok`, `failed`, `skipped`
+or `warning` with a code the app words for the user: `unreachable` (nothing
+answered: off, wrong address, another network), `refused` (the host answers
+but not on that port), `auth_failed`, `not_found` (wrong path), `no_video`,
+`protocol` (not RTSP), `no_credentials`, `cloud_password_missing` (video will
+work, the speaker will not). The probe is a 200 with `ok: false`, not a
+refusal: it is a test result. Only the input is refused (422 for a public
+address, as on create).
+
+- `infra/rtsp-probe` sends one `DESCRIBE`, answers a Basic or Digest
+  challenge on the same connection (reconnecting once when a server closes
+  after the 401), reads the SDP for the video and audio codecs and decodes the
+  H.264 SPS from `sprop-parameter-sets` for the size, cropping included, and
+  the frame rate when the VUI carries timing. `TapoConnection::open` now says
+  `connection refused by` or `no answer from`, which is the line between
+  `refused` and `unreachable`.
+- The `device` step is a read-only Tapo login plus `getDeviceInfo`
+  (`TapoDriver::probe`), giving model and firmware; a recognised model comes
+  back as `catalogId`. The talk line is never opened by a probe.
+- Measured: against the fake camera every step was `ok` with H264 1280×720 +
+  PCMA and a 640×360 sub; a closed port is `refused` at once; an unrouted
+  private address is `unreachable` after the 4 s timeout; the owner's C225
+  (read-only) answered C225, firmware 1.3.1, 2688×1520 / 1280×720, PCMA.
+
+## What the cameras screen reads: `GET /camera/overview`
+
+One call for the grid, camera read: per enabled camera `lastSeenAt`,
+`sampledAt`, `health` (the monitor's own state names, `unknown` before the
+first sample), the sub-stream `width`/`height`, `viewers` (from
+`StreamHub::viewersByCamera`), `stream` (`codec`, `profile`, `audio`,
+`width`, `height`, `fps`, `kbps` of `camN-sub` from go2rtc's `/api/streams`,
+the SDP parsed by the probe's own reader, the rate from the video receiver's
+byte counter between two calls), `mainActive`, and `lastEvent`; plus `events`,
+the 30 most recent detections. Detections go only to roles that read the
+`event` table (owner, resident, guard); a guest gets the live data and empty
+events.
+
+- `shared/services/stream/camera-live-board` is the in-memory state behind
+  it: the health monitor records every sample (reachable, health, frame size),
+  the object-event sink records every event it stores, and at boot the sink
+  seeds the board from the outbox's retained payloads, so a restart does not
+  empty the list. Removing a camera forgets it. Nothing here is persisted
+  twice: the outbox stays the record.
+- The app's "recent detections" used to read the synced `event` table, which
+  no service writes, so it was always empty; the overview is its source now.
+- go2rtc's stream JSON carries the camera URL with its credentials; the
+  overview reads only codec names, the SDP and byte counters out of it, and
+  nothing else leaves the process.
+
+## Talking through a camera: the /media socket carries the voice up
+
+A live conversation rides the same `/media` socket the live view uses, so it
+inherits its authentication, the session tagging of `MediaSessionRegistry` and
+the revocation consumer: a revoked session's socket closes and its talk session
+closes the camera's line with it (measured: 19 ms from the DELETE to the socket
+close, and the fake talk channel received the vendor stop).
+
+- **Frames.** `camera:talk:start {cameraId, sampleRate}` (8, 16, 24, 32, 44.1
+  or 48 kHz) → `camera:talk:ready {cameraId, sampleRate, packetMs}`; the client
+  then sends binary frames `[0xA8, 0x01, 0, 0] + PCM16LE mono`; the server
+  sends `camera:talk:state {queuedMs, sentMs, droppedMs, underruns}` every
+  second and `camera:talk:closed {cameraId, reason}` at the end (`stopped`,
+  `idle` after 20 s without audio, `limit` after 15 min, `line_lost`,
+  `socket_closed`, `replaced`, `shutdown`). Refusals are
+  `camera:talk:start_error {status, error}`: 403 for a role that may not talk,
+  404, 409 `CameraDisabled`, 409 `TalkLineBusy` (one voice per camera), 422
+  `TalkUnavailable` (no speaker Argus can reach: a stream-only camera or a
+  Tapo without the cloud password), 400 `InvalidTalkFormat`, 502 when the
+  camera refuses the line.
+- **Who may talk** is `role_access::kCameraActionAccess` in
+  `packages/lib/auth/src/auth/role-access.hxx`: owner, residents and guards;
+  never guests. The same row decides the HTTP `POST /camera/{id}/talk` (typed
+  announcements), so a guard can now also send a typed announcement. The app
+  mirrors it in `shared/libs/role-access.ts`.
+- **The pipeline** (`feature/talk`): `TalkUplink` resamples with the shared
+  stateful `AudioResampler` to 8 kHz and cuts 960-sample packets, keeping at
+  most one second queued (the oldest audio is dropped, so a stalled line never
+  turns into seconds of delay). `CameraTalkSession` owns one thread: it asks
+  the driver for the line, opens it, paces one packet every 120 ms against a
+  steady clock (re-anchoring after a stall), and closes the line on every exit
+  path. `CameraTalkService` keys sessions by socket, refuses a second voice on
+  the same camera, caps the process at four, joins only finished threads (never
+  on the event loop) and is a `shutdown_signal` drain.
+- **The driver owns the line.** `ICameraDriver::talkLine()` (default: no
+  speaker) returns an `ICameraTalkLine`; `TapoDriver` hands out its persistent
+  `TapoTalkClient` behind a `timed_mutex` the line holds for its whole life, so
+  a guard announcement (`speak`) waits up to 3 s and then answers "someone is
+  talking through this camera right now" instead of fighting the call for the
+  8800 line. `TapoTalkClient::sendPacket` writes one MPEG-TS part (tables +
+  one PES of A-law) without pacing; `TapoVoiceEncoder` keeps the speaker
+  equaliser's state across packets (the TTS path re-created it per chunk) and
+  uses a fixed 1.6× gain: the per-chunk peak normalisation of announcements
+  would pump a microphone's background noise up to full scale.
+- **Echo.** The camera ducks its own microphone while its speaker plays (the
+  vendor app shows the same), which already keeps the user's voice from
+  coming back; the app captures with the platform's echo canceller
+  (`getUserMedia` echo cancellation, Android `VOICE_COMMUNICATION` + AEC, iOS
+  voice chat) and plays the camera's microphone through that same voice path,
+  so the canceller has the reference. That is as far as echo handling goes
+  without a device-side AEC Argus could configure.
+- **Proven without the owner's speaker**: unit tests drive the session with a
+  recording fake line (pacing, idle, busy, refused, lost line) and drive a real
+  `TapoDriver` → `TapoTalkClient` against the fake talk channel
+  (`tests/support/fake-talk-channel.hxx`, now shared with the client's own
+  suite); live, a Python fake of the 8800 channel received a 3 s 440 Hz tone
+  from a WebSocket client as 24 parts exactly 120 ms apart, decoded back to
+  440 Hz, `queuedMs` 58-118 ms, and the vendor stop at the end.

@@ -9,6 +9,7 @@
 #include <drogon/utils/coroutine.h>
 
 #include <memory>
+#include <span>
 #include <utility>
 
 namespace
@@ -32,6 +33,11 @@ void CameraMediaSocket::handleNewMessage(
     std::string&& message,
     const drogon::WebSocketMessageType& type)
 {
+  if (type == drogon::WebSocketMessageType::Binary) {
+    talk_.handleBinary(conn, std::span(reinterpret_cast<const uint8_t*>(message.data()),
+                                       message.size()));
+    return;
+  }
   if (type != drogon::WebSocketMessageType::Text)
     return;
   if (message.size() > kMaxMessageSize)
@@ -52,8 +58,10 @@ void CameraMediaSocket::handleNewMessage(
                      raw = std::move(message)]() mutable -> drogon::Task<> {
     const std::string frameType = json.get("type", "").asString();
     try {
-      const bool handled = co_await self->service_.handleText(
-          {.conn = conn, .message = json, .raw = raw});
+      const SyncFrameInput frame{.conn = conn, .message = json, .raw = raw};
+      const bool handled = CameraTalkService::handles(frameType)
+                               ? co_await self->talk_.handleText(frame)
+                               : co_await self->service_.handleText(frame);
       if (!handled)
         sendSocketFrameError({.conn = conn,
                               .type = frameType,
@@ -77,5 +85,6 @@ void CameraMediaSocket::handleConnectionClosed(
     const drogon::WebSocketConnectionPtr& conn)
 {
   sessions_.remove(conn);
+  talk_.handleClose(conn);
   service_.handleClose(conn);
 }

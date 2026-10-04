@@ -1,12 +1,18 @@
 #include "tapo-driver.hxx"
 
+#include <chrono>
 #include <config/config-service.hxx>
+#include <shared/services/camera-catalog/camera-catalog.hxx>
+#include <shared/vocabulary/camera-stream-paths.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
 #include <runtime/cancellation-token.hxx>
 #include <trantor/utils/Logger.h>
+#include <utility>
 
 namespace
 {
+constexpr int kSpeakWaitSeconds = 3;
+
 TapoClientConfig controlConfig(const CameraSchema& camera)
 {
   TapoClientConfig config;
@@ -35,23 +41,58 @@ DriverResult toDriverResult(const TapoResult& result)
 }
 }
 
+DriverResult TapoDriver::probe(const CameraSchema& camera)
+{
+  TapoApi api(controlConfig(camera));
+  const auto connected = api.connect();
+  if (!connected.ok) {
+    const bool silent = connected.error.find("no answer") != std::string::npos ||
+                        connected.error.find("refused") != std::string::npos ||
+                        connected.error.find("timeout") != std::string::npos ||
+                        connected.error.find("transport error") != std::string::npos;
+    DriverResult failed = DriverResult::failure(connected.error);
+    failed.data["reason"] = silent ? "unreachable" : "auth_failed";
+    return failed;
+  }
+  const auto info = api.getDeviceInfo();
+  const Json::Value& responses = info.data["result"]["responses"];
+  const Json::Value& basic = responses.isArray() && !responses.empty()
+                                 ? responses[0]["result"]["device_info"]["basic_info"]
+                                 : Json::Value::nullSingleton();
+  Json::Value out(Json::objectValue);
+  out["model"] = basic.get("device_model", "").asString();
+  out["firmware"] = basic.get("sw_version", "").asString();
+  return {.ok = true, .error = {}, .data = out};
+}
+
 TapoDriver::TapoDriver(const CameraSchema& camera)
-    : camera_(camera), api_(std::make_unique<TapoApi>(controlConfig(camera)))
+    : camera_(camera),
+      api_(std::make_unique<TapoApi>(controlConfig(camera))),
+      lineMutex_(std::make_shared<std::timed_mutex>())
 {
 }
 
 Json::Value TapoDriver::capabilities() const
 {
+  const auto* entry = camera_catalog::find(
+      {.catalogId = camera_stream_paths::catalogIdOf(camera_.config),
+       .driver = CameraDriver::Tapo,
+       .model = camera_.model});
+  const auto has = [entry](CameraFeature feature) {
+    return entry == nullptr || entry->has(feature);
+  };
   Json::Value out;
-  out["ptz"] = true;
-  out["presets"] = true;
-  out["talk"] = !camera_.cloudPassword.empty();
-  out["privacy"] = true;
-  out["led"] = true;
-  out["dayNight"] = true;
-  out["motion"] = true;
-  out["autoTrack"] = true;
-  out["alarm"] = true;
+  out["ptz"] = has(CameraFeature::Ptz);
+  out["presets"] = has(CameraFeature::Presets);
+  out["talk"] = has(CameraFeature::Speaker) && !camera_.cloudPassword.empty();
+  out["privacy"] = has(CameraFeature::Privacy);
+  out["led"] = has(CameraFeature::Led);
+  out["dayNight"] = has(CameraFeature::DayNight);
+  out["motion"] = has(CameraFeature::Motion);
+  out["autoTrack"] = has(CameraFeature::AutoTrack);
+  out["alarm"] = has(CameraFeature::Siren);
+  out["sdCard"] = has(CameraFeature::SdCard);
+  out["catalogId"] = entry == nullptr ? std::string() : std::string(entry->id);
   return out;
 }
 
@@ -170,10 +211,12 @@ DriverResult TapoDriver::speak(const DriverSpeakInput& input)
   if (input.samples.empty())
     return DriverResult::failure("Nothing to say");
 
-  std::scoped_lock lock(talkMutex_);
+  std::unique_lock lock(*lineMutex_, std::chrono::seconds(kSpeakWaitSeconds));
+  if (!lock.owns_lock())
+    return DriverResult::failure("Someone is talking through this camera right now");
 
   if (!talkClient_)
-    talkClient_ = std::make_unique<TapoTalkClient>(talkConfigOf(camera_));
+    talkClient_ = std::make_shared<TapoTalkClient>(talkConfigOf(camera_));
 
   CancellationToken token;
   const auto sent = talkClient_->sendChunk(
@@ -188,4 +231,67 @@ DriverResult TapoDriver::speak(const DriverSpeakInput& input)
   Json::Value data;
   data["spokenSamples"] = static_cast<Json::Int64>(input.samples.size());
   return {.ok = true, .error = {}, .data = data};
+}
+
+namespace
+{
+class TapoTalkLine final : public ICameraTalkLine
+{
+public:
+  TapoTalkLine(std::shared_ptr<std::timed_mutex> mutex,
+               std::shared_ptr<TapoTalkClient> client)
+      : mutex_(std::move(mutex)), lock_(*mutex_, std::adopt_lock), client_(std::move(client))
+  {
+  }
+
+  TapoTalkLine(const TapoTalkLine&) = delete;
+  TapoTalkLine& operator=(const TapoTalkLine&) = delete;
+
+  ~TapoTalkLine() override { close(); }
+
+  DriverResult open() override
+  {
+    if (client_->isOpen())
+      return {.ok = true, .error = {}, .data = Json::Value()};
+    const auto opened = client_->open();
+    if (!opened.ok)
+      return DriverResult::failure(opened.error.empty() ? "The camera refused the talk session"
+                                                        : opened.error);
+    return {.ok = true, .error = {}, .data = Json::Value()};
+  }
+
+  DriverResult write(std::span<const int16_t> pcm8k) override
+  {
+    const auto sent = client_->sendPacket(encoder_.encode(pcm8k));
+    if (!sent.ok)
+      return DriverResult::failure(sent.error);
+    return {.ok = true, .error = {}, .data = Json::Value()};
+  }
+
+  void close() override
+  {
+    if (closed_)
+      return;
+    closed_ = true;
+    client_->close();
+  }
+
+private:
+  std::shared_ptr<std::timed_mutex> mutex_;
+  std::unique_lock<std::timed_mutex> lock_;
+  std::shared_ptr<TapoTalkClient> client_;
+  TapoVoiceEncoder encoder_;
+  bool closed_{false};
+};
+}
+
+TalkLineOpen TapoDriver::talkLine()
+{
+  if (camera_.cloudPassword.empty())
+    return {.line = nullptr, .error = "The talk channel needs the vendor cloud password"};
+  if (!lineMutex_->try_lock_for(std::chrono::seconds(kSpeakWaitSeconds)))
+    return {.line = nullptr, .error = "Someone is talking through this camera right now"};
+  if (!talkClient_)
+    talkClient_ = std::make_shared<TapoTalkClient>(talkConfigOf(camera_));
+  return {.line = std::make_unique<TapoTalkLine>(lineMutex_, talkClient_), .error = {}};
 }

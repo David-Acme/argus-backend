@@ -37,6 +37,8 @@ UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
     dto.streamPath = json["streamPath"].asString();
   if (json.isMember("subStreamPath") && json["subStreamPath"].isString())
     dto.subStreamPath = json["subStreamPath"].asString();
+  if (json.isMember("catalogId") && json["catalogId"].isString())
+    dto.catalogId = json["catalogId"].asString();
 
   START_VALIDATION(UpdateCameraDto, dto)
   IS_NOT_EMPTY_OPTIONAL(name)
@@ -70,6 +72,9 @@ UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
   })
   CUSTOM_LAMBDA(subStreamPath, [](const UpdateCameraDto& d) {
     return camera_address_rules::pathError(d.subStreamPath);
+  })
+  CUSTOM_LAMBDA(catalogId, [](const UpdateCameraDto& d) {
+    return camera_address_rules::catalogError(d.catalogId);
   })
   CUSTOM_LAMBDA(driver, [](const UpdateCameraDto& d) -> std::optional<std::string> {
     if (!d.driver)

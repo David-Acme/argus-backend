@@ -19,6 +19,8 @@ namespace camera_stream_paths
 {
 inline constexpr const char* kMainKey = "streamPath";
 inline constexpr const char* kSubKey = "subStreamPath";
+inline constexpr const char* kCatalogKey = "catalogId";
+inline constexpr size_t kMaxCatalogIdLength = 40;
 inline constexpr const char* kDefaultMain = "/stream1";
 inline constexpr const char* kDefaultSub = "/stream2";
 inline constexpr size_t kMaxLength = 200;
@@ -48,14 +50,23 @@ inline CameraStreamPaths of(const std::string& config)
   return {.main = read(kMainKey, kDefaultMain), .sub = read(kSubKey, kDefaultSub)};
 }
 
-struct PathChange
+inline std::string catalogIdOf(const std::string& config)
+{
+  const Json::Value json = json_util::fromString(config);
+  if (!json.isObject() || !json[kCatalogKey].isString())
+    return {};
+  return json[kCatalogKey].asString();
+}
+
+struct ConfigChange
 {
   std::string config;
   std::optional<std::string> main;
   std::optional<std::string> sub;
+  std::optional<std::string> catalogId;
 };
 
-inline std::string withPaths(const PathChange& change)
+inline std::string withConfig(const ConfigChange& change)
 {
   Json::Value json = json_util::fromString(change.config);
   if (!json.isObject())
@@ -70,6 +81,7 @@ inline std::string withPaths(const PathChange& change)
   };
   apply(kMainKey, change.main);
   apply(kSubKey, change.sub);
+  apply(kCatalogKey, change.catalogId);
   return json_util::toString(json);
 }
 }

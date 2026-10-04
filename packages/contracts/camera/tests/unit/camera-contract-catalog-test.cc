@@ -15,7 +15,7 @@ struct CatalogEntry
   const char* message;
 };
 
-constexpr std::array<CatalogEntry, 9> kCatalog{{
+constexpr std::array<CatalogEntry, 13> kCatalog{{
     {.name = "Forbidden",
      .definition = &CameraErrors::Forbidden,
      .code = ErrorCode::Forbidden,
@@ -56,6 +56,26 @@ constexpr std::array<CatalogEntry, 9> kCatalog{{
      .code = ErrorCode::CameraUnreachable,
      .status = 502,
      .message = "The camera refused the command"},
+    {.name = "TalkUnavailable",
+     .definition = &CameraErrors::TalkUnavailable,
+     .code = ErrorCode::ValidationError,
+     .status = 422,
+     .message = "This camera has no speaker Argus can reach"},
+    {.name = "TalkLineBusy",
+     .definition = &CameraErrors::TalkLineBusy,
+     .code = ErrorCode::Conflict,
+     .status = 409,
+     .message = "Someone is talking through this camera right now"},
+    {.name = "InvalidTalkFormat",
+     .definition = &CameraErrors::InvalidTalkFormat,
+     .code = ErrorCode::BadRequest,
+     .status = 400,
+     .message = "Unsupported talk audio format"},
+    {.name = "CameraDisabled",
+     .definition = &CameraErrors::CameraDisabled,
+     .code = ErrorCode::Conflict,
+     .status = 409,
+     .message = "This camera is disabled"},
     {.name = "ChangeNotRecorded",
      .definition = &CameraErrors::ChangeNotRecorded,
      .code = ErrorCode::InternalError,
@@ -75,7 +95,7 @@ TEST_CASE("the camera catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 9);
+  CHECK(kCatalog.size() == 13);
 }
 
 TEST_CASE("every camera entry is legal on the wire")

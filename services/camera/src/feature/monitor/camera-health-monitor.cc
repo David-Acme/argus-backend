@@ -2,6 +2,7 @@
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include <shared/services/stream/camera-live-board.hxx>
 #include <shared/services/stream/frame-source.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <sqlite/db-service.hxx>
@@ -289,11 +290,15 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
   HealthMetrics metrics;
   int64_t capturedAt = nowMs();
   bool reachable = false;
+  int frameWidth = 0;
+  int frameHeight = 0;
   if (frame && !frame->jpeg.empty()) {
     reachable = true;
     capturedAt = frame->capturedAtMs;
     const cv::Mat raw = cv::imdecode(frame->jpeg, cv::IMREAD_COLOR);
     if (!raw.empty()) {
+      frameWidth = raw.cols;
+      frameHeight = raw.rows;
       cv::Mat small;
       cv::resize(raw, small, cv::Size(kSampleWidth, kSampleHeight), 0, 0,
                  cv::INTER_AREA);
@@ -333,6 +338,13 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
       state.published = true;
     }
   }
+
+  CameraLiveBoard::instance().recordSample({.cameraId = camera.id,
+                                            .reachable = reachable,
+                                            .health = health_monitor::statusName(status),
+                                            .atMs = capturedAt,
+                                            .width = frameWidth,
+                                            .height = frameHeight});
 
   if (dependencies_.presence) {
     const in_flight::Guard guard(inFlight_);

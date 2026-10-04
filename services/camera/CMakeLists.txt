@@ -130,6 +130,7 @@ add_subdirectory(src/config)
 add_subdirectory(src/shared/repositories)
 add_subdirectory(src/shared/repositories/change-outbox)
 add_subdirectory(src/shared/services/change-sink)
+add_subdirectory(src/shared/services/camera-catalog)
 add_subdirectory(src/shared/services/tapo)
 add_subdirectory(src/shared/services/camera-driver)
 add_subdirectory(src/shared/services/stream)
@@ -275,6 +276,30 @@ target_compile_options(camera-talk-cutover-test PRIVATE -Wall -Wextra)
 
 add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
 
+add_executable(camera-talk-test
+    tests/unit/camera-talk-test.cc)
+target_include_directories(camera-talk-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+target_link_libraries(camera-talk-test PRIVATE
+    argus::camera-talk
+    argus::camera-driver
+    argus::lib::config
+    doctest::doctest)
+set_target_properties(camera-talk-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_compile_options(camera-talk-test PRIVATE -Wall -Wextra)
+add_test(NAME camera-talk-test COMMAND camera-talk-test)
+
+add_executable(camera-catalog-test
+    tests/unit/camera-catalog-test.cc)
+target_link_libraries(camera-catalog-test PRIVATE
+    argus::camera-catalog
+    argus::camera-driver
+    argus::camera-feature
+    doctest::doctest)
+set_target_properties(camera-catalog-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_compile_options(camera-catalog-test PRIVATE -Wall -Wextra)
+add_test(NAME camera-catalog-test COMMAND camera-catalog-test)
+
 add_executable(tapo-crypto-test
     tests/unit/tapo-crypto-test.cc)
 
@@ -292,6 +317,9 @@ add_test(NAME tapo-crypto-test COMMAND tapo-crypto-test)
 
 add_executable(tapo-talk-client-test
     tests/unit/tapo-talk-client-test.cc)
+
+target_include_directories(tapo-talk-client-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 
 target_link_libraries(tapo-talk-client-test PRIVATE
     argus::camera-tapo

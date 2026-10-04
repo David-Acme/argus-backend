@@ -490,6 +490,17 @@ int StreamHub::activeUpstreams()
   return count;
 }
 
+std::unordered_map<int64_t, int> StreamHub::viewersByCamera()
+{
+  std::scoped_lock hubLock(hubMutex_);
+  std::unordered_map<int64_t, int> viewers;
+  for (const auto& [name, up] : upstreams_) {
+    std::scoped_lock upLock(up->mtx);
+    viewers[up->cameraId] += static_cast<int>(up->subs.size());
+  }
+  return viewers;
+}
+
 int StreamHub::activeSubscribers()
 {
   std::scoped_lock hubLock(hubMutex_);

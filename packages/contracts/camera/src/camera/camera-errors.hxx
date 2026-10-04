@@ -37,6 +37,22 @@ inline constexpr ErrorDefinition CameraUnreachable{
     .code = ErrorCode::CameraUnreachable,
     .status = 502,
     .message = "The camera refused the command"};
+inline constexpr ErrorDefinition TalkUnavailable{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "This camera has no speaker Argus can reach"};
+inline constexpr ErrorDefinition TalkLineBusy{
+    .code = ErrorCode::Conflict,
+    .status = 409,
+    .message = "Someone is talking through this camera right now"};
+inline constexpr ErrorDefinition InvalidTalkFormat{
+    .code = ErrorCode::BadRequest,
+    .status = 400,
+    .message = "Unsupported talk audio format"};
+inline constexpr ErrorDefinition CameraDisabled{
+    .code = ErrorCode::Conflict,
+    .status = 409,
+    .message = "This camera is disabled"};
 inline constexpr ErrorDefinition ChangeNotRecorded{
     .code = ErrorCode::InternalError,
     .status = 500,

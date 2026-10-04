@@ -12,6 +12,11 @@ std::mutex gMutex;
 std::unordered_map<int64_t, std::shared_ptr<ICameraDriver>> gDrivers;
 }
 
+TalkLineOpen ICameraDriver::talkLine()
+{
+  return {.line = nullptr, .error = "This camera has no speaker Argus can reach"};
+}
+
 CameraDriverRegistry& CameraDriverRegistry::instance()
 {
   static CameraDriverRegistry registry;

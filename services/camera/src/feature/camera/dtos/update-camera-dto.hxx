@@ -24,6 +24,7 @@ struct UpdateCameraDto
   std::optional<bool> isEnabled;
   std::optional<std::string> streamPath;
   std::optional<std::string> subStreamPath;
+  std::optional<std::string> catalogId;
 
   static UpdateCameraDto fromJson(const Json::Value& json);
 };
