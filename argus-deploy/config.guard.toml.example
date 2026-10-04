@@ -144,7 +144,7 @@ refresh_ttl_days = 30
 [device]
 fingerprint_secret = ""
 identity_mode = "ip"
-trust_forwarded_for = true
+trust_forwarded_for = false
 trusted_proxy_ips = ""
 
 [auth]

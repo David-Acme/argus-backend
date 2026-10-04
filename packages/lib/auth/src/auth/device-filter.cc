@@ -2,6 +2,7 @@
 
 #include <auth/auth-client.hxx>
 #include <auth/auth-access.hxx>
+#include <auth/details/proxy-allowlist.hxx>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
@@ -20,22 +21,9 @@ constexpr size_t kMaxCredentialLength = 128;
 
 bool trustedProxy(const std::string& peer)
 {
-  if (peer == "127.0.0.1" || peer == "::1")
-    return true;
-
-  const auto configured = ConfigService::getString("device.trusted_proxy_ips");
-  size_t begin = 0;
-  while (begin < configured.size()) {
-    const auto end = configured.find(',', begin);
-    const auto value = configured.substr(
-        begin, end == std::string::npos ? std::string::npos : end - begin);
-    if (!value.empty() && value == peer)
-      return true;
-    if (end == std::string::npos)
-      break;
-    begin = end + 1;
-  }
-  return false;
+  const std::string configured =
+      ConfigService::getString("device.trusted_proxy_ips");
+  return proxy_allowlist::contains({.configured = configured, .address = peer});
 }
 
 std::string fingerprintKey()

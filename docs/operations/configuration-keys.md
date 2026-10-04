@@ -41,6 +41,7 @@ argus-deploy argus-auth configuration. Copy to config.auth.toml (gitignored) nex
 | `auth.db` | The three session tables, moved here from identity.db as a copy in Phase 3b-2 with the `/auth` surface that writes them. |
 | `auth.rpc_secret` | Must be the same value in every service's config: the RPC answers session verdicts for the fleet. Empty means loopback-only and ungated, and the service refuses to start when the listener is reachable beyond loopback without it. |
 | `auth.context_cache_seconds` | How long a resolved user context may be reused before identity is asked again (0 disables the cache). A change on the identity feed drops the entry immediately, so this is a load valve, not the invalidation mechanism. |
+| `device.trust_forwarded_for` / `device.trusted_proxy_ips` | `X-Forwarded-For` is read only when the immediate peer is in the list (exact addresses or CIDRs, comma-separated; loopback is not implicit). Nothing in the stack writes the header, so the template ships `false` and an empty list; name an address only for a real reverse proxy that writes it. |
 | `identity.target` | The identity call behind a session verdict; `argus-identity:7040`, the fleet-secret RPC leg. |
 | `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or every validation of a live session fails. |
 | `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |

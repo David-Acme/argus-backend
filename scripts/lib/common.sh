@@ -395,7 +395,6 @@ ensure_deploy_configs() {
     fill_deploy_placeholder "$config" auth rpc_secret "$auth_rpc_secret"
     fill_deploy_placeholder "$config" sync control_secret "$control_secret"
     fill_deploy_placeholder "$config" nats password "$nats_password"
-    fill_deploy_placeholder "$config" device trusted_proxy_ips "172.19.0.1"
   done
 
   fill_config_pair "$deploy_dir/config.guard.toml" camera actions_credential \

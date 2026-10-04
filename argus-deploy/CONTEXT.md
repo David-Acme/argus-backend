@@ -134,15 +134,22 @@ against a real client.
   wires resolve IPv4 literals only. Loopback-only publishes keep every AI
   wire unreachable from the LAN — "internal, no host publish" means no
   non-loopback exposure; the publishes exist for host-side reachability.
-- Trust note, now sharper than when the gateway wrote the header: a service
-  resolves the caller IP from `X-Forwarded-For` only for a trusted peer
-  (loopback always, otherwise `device.trusted_proxy_ips`), and with no HTTP
-  proxy in front of the LAN publishes the only peer a service sees for a
-  remote client is Docker's own forwarding address — the pinned bridge gateway
-  172.19.0.1 — so `device.identity_mode = "ip"` fingerprints that address and
-  the user agent rather than the client. `config.camera.toml` lists
-  172.19.0.1 in `device.trusted_proxy_ips` for exactly this reason. A host
-  that disables Docker's userland proxy preserves the client address instead.
+- Trust note: a service resolves the caller IP from `X-Forwarded-For` only
+  when the immediate peer is in `device.trusted_proxy_ips` (exact addresses
+  or CIDRs; loopback is no longer implicit) and `device.trust_forwarded_for`
+  is set. Nothing in this stack writes that header: the gateway that did is
+  gone, the tunnel relays the app's TLS unopened, and Docker's port
+  forwarding adds no header. So the templates ship `trust_forwarded_for =
+  false` and an empty list, and provisioning no longer fills the bridge
+  gateway 172.19.0.1 into it: listing that address let any client that
+  reached a published port through it choose its own address with the
+  header. Where Docker's userland proxy forwards a connection, the peer a
+  service sees is that gateway, so `device.identity_mode = "ip"`
+  fingerprints the gateway and the user agent rather than the client; a host
+  that disables the userland proxy preserves the client address. An
+  installation provisioned before this change keeps `172.19.0.1` in its own
+  configs until the owner clears it; put an address back only for a real
+  reverse proxy that writes the header.
   Phase 5 step 6's real-client verification is where this is settled; the
   credential mode (`device.identity_mode = "credential"`, the
   `X-Argus-Device-Credential` header) is the identity path that does not
@@ -473,13 +480,12 @@ the matching `*-init` profile is the only migration path onto a volume.
   authenticated routes answering 401 — and the `[tunnel] secret` (identical
   in the two tunnel templates — the HMAC home-link key; empty keeps the pair
   from booting, and it is never baked into any layer or template).
-  `device.trusted_proxy_ips` carries the internal network's gateway IP in
-  every bridge-networked service (argus-auth, argus-camera, argus-productivity,
-  argus-notification, argus-guard, argus-identity, argus-sync) together with
-  `device.trust_forwarded_for = true`: since Phase 3d step 1c no first-party
-  peer writes `X-Forwarded-For`, so the address those services fingerprint is
-  the bridge's own forwarding address — read the network section's trust note
-  before relying on either key.
+  `device.trusted_proxy_ips` is empty and `device.trust_forwarded_for` false
+  in every bridge-networked service's template (argus-auth, argus-camera,
+  argus-productivity, argus-notification, argus-guard, argus-identity,
+  argus-sync, argus-settings): since Phase 3d step 1c no first-party peer
+  writes `X-Forwarded-For` — read the network section's trust note before
+  changing either key.
   `scripts/lib/common.sh` adopts the wiring keys a config lacks from its own
   template and fills the shared ones from the first non-placeholder value
   the deploy directory holds, so an existing installation repairs itself on

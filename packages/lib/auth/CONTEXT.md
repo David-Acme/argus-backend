@@ -54,6 +54,14 @@ Two consequences worth keeping in mind:
   nearest trusted proxy actually saw. The left-most entry is whatever the
   client chose to send, and in `ip` mode the device hash is built from it,
   so a stolen token could be replayed with the victim's address claimed.
+- The header is read at all only when the immediate peer is in
+  `device.trusted_proxy_ips`, a comma-separated list of exact addresses or
+  CIDRs (`details/proxy-allowlist`, IPv4, IPv6 and IPv4-mapped peers), and
+  the list is empty by default. Loopback used to be trusted implicitly, which
+  let anything that reached a service through a local port (the tunnel client
+  dials the remote listener on loopback) choose its own address. No
+  first-party component writes the header, so the deploy templates leave the
+  list empty and `trust_forwarded_for` false.
 
 ## The two targets
 

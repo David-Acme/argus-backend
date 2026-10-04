@@ -47,6 +47,7 @@ argus_lib(NAME auth
         src/auth/auth-access.cc
         src/auth/device-filter.cc
         src/auth/details/identity-access.cc
+        src/auth/details/proxy-allowlist.cc
         src/auth/jwt-filter.cc
         src/auth/role-filter.cc
         src/auth/remote-config.cc
@@ -84,6 +85,11 @@ add_executable(remote-gate-test tests/unit/remote-gate-test.cc)
 target_link_libraries(remote-gate-test PRIVATE argus::lib::auth doctest::doctest)
 target_compile_options(remote-gate-test PRIVATE -Wall -Wextra)
 add_test(NAME remote-gate-test COMMAND remote-gate-test)
+
+add_executable(proxy-allowlist-test tests/unit/proxy-allowlist-test.cc)
+target_link_libraries(proxy-allowlist-test PRIVATE argus::lib::auth doctest::doctest)
+target_compile_options(proxy-allowlist-test PRIVATE -Wall -Wextra)
+add_test(NAME proxy-allowlist-test COMMAND proxy-allowlist-test)
 
 add_executable(jwt-service-test tests/unit/jwt-service-test.cc)
 target_link_libraries(jwt-service-test PRIVATE argus::lib::auth doctest::doctest)

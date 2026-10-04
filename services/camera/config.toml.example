@@ -77,7 +77,7 @@ refresh_ttl_days = 30
 
 [device]
 fingerprint_secret = ""
-trust_forwarded_for = true
+trust_forwarded_for = false
 trusted_proxy_ips = ""
 
 [objects]
