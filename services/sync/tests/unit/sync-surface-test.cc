@@ -140,6 +140,14 @@ TEST_CASE("fan-out refuses what it cannot route instead of guessing the user roo
       R"({"operation":7,"option":"user","info":{},"user":"7","action":"disconnect"})")));
   CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString(
       R"({"operation":7,"option":"user","info":{},"user":7,"action":"replace_role_rooms","old_role":{},"new_role":"guest"})")));
+  CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString(
+      R"({"operation":7,"option":"user","info":{},"user":7,"action":"disconnect_session"})")));
+  CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString(
+      R"({"operation":7,"option":"user","info":{},"user":7,"session":"","action":"disconnect_session"})")));
+  CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString(
+      R"({"operation":7,"option":"user","info":{},"user":7,"session":42,"action":"disconnect_session"})")));
+  CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString(
+      R"({"operation":7,"option":"user","info":{},"session":"abc","action":"disconnect_session"})")));
 
   const auto filtered = sync_fan_out::parseEvent(json_util::fromString(
       R"({"operation":4,"option":"notification","info":{},"users":[-999,0,42]})"));
@@ -242,6 +250,21 @@ TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
   const sync_fan_out::FanOutPlan disconnectPlan = sync_fan_out::planEvent(*disconnection);
   CHECK(disconnectPlan.kind == sync_fan_out::FanOutPlan::Kind::Disconnect);
   CHECK(disconnectPlan.userId == 42);
+
+  const auto sessionDisconnection = sync_fan_out::parseEvent(
+      sync_change::disconnectSessionPayload(
+          emit(SyncOperation::AuthContextChanged, TableName::User),
+          {.userId = 42, .sessionId = "0123456789abcdef0123456789abcdef"}));
+  if (!sessionDisconnection) {
+    FAIL("a session disconnect payload did not parse");
+    return;
+  }
+  const sync_fan_out::FanOutPlan sessionPlan =
+      sync_fan_out::planEvent(*sessionDisconnection);
+  CHECK(sessionPlan.kind == sync_fan_out::FanOutPlan::Kind::DisconnectSession);
+  CHECK(sessionPlan.userId == 42);
+  CHECK(sessionPlan.sessionId == "0123456789abcdef0123456789abcdef");
+  CHECK(sessionPlan.rooms.empty());
 
   const auto replacement = sync_fan_out::parseEvent(
       sync_change::roleRoomsPayload({.userId = 42,

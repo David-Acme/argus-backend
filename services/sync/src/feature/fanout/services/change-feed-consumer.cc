@@ -37,6 +37,10 @@ const std::vector<Feed>& defaults()
        .subject = nats_subject::kAuthUserAction,
        .durable = "argus-sync-auth-action",
        .maxAckPending = NatsBus::kDefaultMaxAckPending},
+      {.stream = nats_subject::kAuthSessionStream,
+       .subject = nats_subject::kAuthSession,
+       .durable = "argus-sync-auth-session",
+       .maxAckPending = NatsBus::kOrderedMaxAckPending},
   };
   return feeds;
 }

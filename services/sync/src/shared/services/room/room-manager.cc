@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <drogon/drogon.h>
+#include <auth/jwt-filter.hxx>
 #include <auth/role-access.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -260,6 +261,20 @@ void RoomManager::disconnectUser(int64_t userId,
   }
 }
 
+void RoomManager::disconnectSession(const SessionDisconnectInput& input) const
+{
+  if (input.userId <= 0 || input.sessionId.empty())
+    return;
+
+  const auto shared = std::make_shared<const SessionDisconnectInput>(input);
+  const size_t threadCount = drogon::app().getThreadNum();
+  for (size_t i = 0; i < threadCount; ++i) {
+    auto* loop = drogon::app().getIOLoop(i);
+    loop->runInLoop(
+        [shared]() { RoomManager::disconnectLocalSession(shared); });
+  }
+}
+
 void RoomManager::replaceLocalRoleRooms(const RoleRoomReplaceInput& input)
 {
   const auto userRoomId = userRoom(input.userId);
@@ -332,6 +347,45 @@ void RoomManager::disconnectLocalUserRoom(
     conn->send(contextMessage->data(), contextMessage->size());
     conn->shutdown(drogon::CloseCode::kViolation, "auth_context_changed");
   }
+}
+
+void RoomManager::disconnectLocalSession(
+    const std::shared_ptr<const SessionDisconnectInput>& input)
+{
+  const auto roomIt = g_local.rooms.find(userRoom(input->userId));
+  if (roomIt == g_local.rooms.end())
+    return;
+
+  const auto members = roomIt->second.members;
+  std::vector<Conn> connections;
+  for (auto* raw : members) {
+    const auto weakIt = g_local.weakRefs.find(raw);
+    if (weakIt == g_local.weakRefs.end())
+      continue;
+
+    auto conn = weakIt->second.lock();
+    if (!conn) {
+      pruneDeadConnection(raw);
+      continue;
+    }
+    if (!conn->hasContext())
+      continue;
+    const auto context = conn->getContext<JwtContext>();
+    if (context && context->sessionId == input->sessionId)
+      connections.push_back(std::move(conn));
+  }
+
+  for (const auto& conn : connections) {
+    leaveAllLocal(conn.get());
+    if (!conn->connected())
+      continue;
+
+    conn->send(input->contextMessage.data(), input->contextMessage.size());
+    conn->shutdown(drogon::CloseCode::kViolation, "session_revoked");
+  }
+  if (!connections.empty())
+    LOG_INFO << "Sync: closed " << connections.size()
+             << " socket(s) of a revoked session of user " << input->userId;
 }
 
 bool RoomManager::isOnline(RoomId room) const

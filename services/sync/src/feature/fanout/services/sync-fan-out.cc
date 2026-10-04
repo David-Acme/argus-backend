@@ -17,6 +17,8 @@ namespace
 {
 const RoomManager roomManager;
 
+constexpr std::size_t kMaxSessionIdBytes = 64;
+
 std::string kindOf(const Json::Value& json)
 {
   return json.isObject() ? json.get(sync_change::kKindField, "").asString()
@@ -56,6 +58,20 @@ std::optional<Event> parseEvent(const Json::Value& json)
 
   const std::string action =
       json.get(sync_change::kActionField, sync_change::kActionEmit).asString();
+  if (action == sync_change::kActionDisconnectSession) {
+    if (!json.isMember(sync_change::kUserField) ||
+        !json[sync_change::kUserField].isInt64() ||
+        json[sync_change::kUserField].asInt64() <= 0 ||
+        !json.isMember(sync_change::kSessionField) ||
+        !json[sync_change::kSessionField].isString())
+      return std::nullopt;
+    std::string session = json[sync_change::kSessionField].asString();
+    if (session.empty() || session.size() > kMaxSessionIdBytes)
+      return std::nullopt;
+    event.user = json[sync_change::kUserField].asInt64();
+    event.session = std::move(session);
+    return event;
+  }
   if (action == sync_change::kActionDisconnect ||
       action == sync_change::kActionReplaceRoleRooms) {
     if (!json.isMember(sync_change::kUserField) ||
@@ -83,6 +99,11 @@ FanOutPlan planEvent(const Event& event)
   FanOutPlan plan;
   if (event.user) {
     plan.userId = *event.user;
+    if (event.session) {
+      plan.kind = FanOutPlan::Kind::DisconnectSession;
+      plan.sessionId = *event.session;
+      return plan;
+    }
     if (event.oldRole) {
       plan.kind = FanOutPlan::Kind::ReplaceRoleRooms;
       plan.replaceInput = {*event.user, *event.oldRole, *event.newRole};
@@ -113,6 +134,11 @@ void dispatchEvent(const Event& event)
       return;
     case FanOutPlan::Kind::Disconnect:
       roomManager.disconnectUser(plan.userId, message);
+      return;
+    case FanOutPlan::Kind::DisconnectSession:
+      roomManager.disconnectSession({.userId = plan.userId,
+                                     .sessionId = plan.sessionId,
+                                     .contextMessage = message});
       return;
     case FanOutPlan::Kind::UserEmit:
       if (!plan.rooms.empty())

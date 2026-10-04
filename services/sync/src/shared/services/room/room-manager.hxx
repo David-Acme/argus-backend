@@ -22,6 +22,13 @@ struct RoleRoomReplaceInput
   UserRole newRole;
 };
 
+struct SessionDisconnectInput
+{
+  int64_t userId{0};
+  std::string sessionId;
+  std::string contextMessage;
+};
+
 inline RoomId moduleRoom(TableName table)
 {
   return 1 + static_cast<uint64_t>(table);
@@ -49,6 +56,7 @@ public:
   void emitMany(const std::vector<RoomId>& rooms, std::string_view msg) const;
   void replaceRoleRooms(const RoleRoomReplaceInput& input) const;
   void disconnectUser(int64_t userId, std::string_view contextMessage) const;
+  void disconnectSession(const SessionDisconnectInput& input) const;
 
   bool isOnline(RoomId room) const;
 
@@ -60,6 +68,8 @@ private:
   static void replaceLocalRoleRooms(const RoleRoomReplaceInput& input);
   static void disconnectLocalUserRoom(
       RoomId room, const std::shared_ptr<std::string>& contextMessage);
+  static void
+  disconnectLocalSession(const std::shared_ptr<const SessionDisconnectInput>& input);
   static void leaveAllLocal(drogon::WebSocketConnection* raw);
   static void pruneDeadConnection(drogon::WebSocketConnection* raw);
   static void pruneAllDeadConnections();

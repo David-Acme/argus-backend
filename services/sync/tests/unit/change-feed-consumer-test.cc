@@ -188,7 +188,7 @@ Json::Value cameraEmit()
 TEST_CASE("every producer stream carries the durable the change feed holds")
 {
   const auto& feeds = change_feed::defaults();
-  REQUIRE(feeds.size() == 6);
+  REQUIRE(feeds.size() == 7);
 
   CHECK(feeds[0].stream == std::string(nats_subject::kCameraStream));
   CHECK(feeds[0].subject == std::string(nats_subject::kCameraChange));
@@ -220,6 +220,11 @@ TEST_CASE("every producer stream carries the durable the change feed holds")
   CHECK(feeds[5].subject == std::string(nats_subject::kAuthUserAction));
   CHECK(feeds[5].durable == "argus-sync-auth-action");
   CHECK(feeds[5].maxAckPending == NatsBus::kDefaultMaxAckPending);
+
+  CHECK(feeds[6].stream == std::string(nats_subject::kAuthSessionStream));
+  CHECK(feeds[6].subject == std::string(nats_subject::kAuthSession));
+  CHECK(feeds[6].durable == "argus-sync-auth-session");
+  CHECK(feeds[6].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
   std::unordered_set<std::string> durables;
   for (const auto& feed : feeds) {
@@ -344,6 +349,25 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
   CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "3");
   CHECK(scalar("SELECT msg_id FROM user_action_log WHERE record_id = 7") ==
         "auth-action:1");
+
+  SocketEmitDto revokedFrame;
+  revokedFrame.operation = SyncOperation::AuthContextChanged;
+  revokedFrame.option = TableName::User;
+  revokedFrame.obj["reason"] = "sessionRevoked";
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kAuthSession,
+             .msgId = "auth-session:1",
+             .body = json_util::toString(sync_change::disconnectSessionPayload(
+                 revokedFrame,
+                 {.userId = 42,
+                  .sessionId = "0123456789abcdef0123456789abcdef"}))})) ==
+        DurableDisposition::Ack);
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kAuthSession,
+             .msgId = "auth-session:2",
+             .body = R"({"operation":7,"option":"user","info":{},"user":42,"action":"disconnect_session"})"})) ==
+        DurableDisposition::Term);
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "3");
 
   CHECK(drogon::sync_wait(consumer.handle(
             {.subject = nats_subject::kIdentityUserAction,

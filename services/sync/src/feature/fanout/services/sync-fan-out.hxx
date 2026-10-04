@@ -7,6 +7,7 @@
 #include <json/value.h>
 #include <optional>
 #include <shared/services/room/room-manager.hxx>
+#include <string>
 #include <string_view>
 #include <sync/socket-emit-dto.hxx>
 #include <vector>
@@ -18,6 +19,7 @@ struct Event
   SocketEmitDto emit;
   std::optional<std::vector<int64_t>> users;
   std::optional<int64_t> user;
+  std::optional<std::string> session;
   std::optional<UserRole> oldRole;
   std::optional<UserRole> newRole;
 };
@@ -29,12 +31,14 @@ struct FanOutPlan
     ModuleEmit,
     UserEmit,
     Disconnect,
+    DisconnectSession,
     ReplaceRoleRooms
   };
   Kind kind{Kind::ModuleEmit};
   RoomId room{0};
   std::vector<RoomId> rooms;
   int64_t userId{0};
+  std::string sessionId;
   RoleRoomReplaceInput replaceInput{0, UserRole::Guest, UserRole::Guest};
 };
 

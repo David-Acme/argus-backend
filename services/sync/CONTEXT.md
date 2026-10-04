@@ -86,8 +86,9 @@ protocol could not regress by accident in the commit that changed the endpoint.
   (`change_feed::defaults()`: `argus-sync-camera` on `ARGUS_CAMERA`,
   `argus-sync-notification`, `argus-sync-productivity`, `argus-sync-identity`
   and `argus-sync-identity-action`, the last two both on
-  `ARGUS_IDENTITY_CHANGE`, and `argus-sync-auth-action` on
-  `ARGUS_AUTH_CHANGE`), plus the delivery consumer. Each attaches with
+  `ARGUS_IDENTITY_CHANGE`, `argus-sync-auth-action` on
+  `ARGUS_AUTH_CHANGE` and `argus-sync-auth-session` on
+  `ARGUS_AUTH_SESSION`), plus the delivery consumer. Each attaches with
   `deliverAll = false` — deliver-new, so the first boot after this landed
   cannot replay a week of already-recorded changes into duplicate audit rows —
   settles `durable_delivery`'s three dispositions (ack, nak on a throw, term on
@@ -107,6 +108,21 @@ protocol could not regress by accident in the commit that changed the endpoint.
   three operations change no row, so they cannot travel as a change event; each
   typed frame is rebuilt into the change feed's envelope and handed to the same
   dispatcher the NATS leg uses, so the two transports cannot diverge.
+- **Sessions.** Every socket keeps the `JwtContext` its upgrade produced, and
+  that context now carries the session id the auth verdict returned, so a
+  socket is tagged with its session for its whole life. argus-auth queues its
+  session changes on `argus.auth.v1.session` (stream `ARGUS_AUTH_SESSION`),
+  read by a seventh durable, `argus-sync-auth-session`, ordered like the other
+  change feeds and handled by the same change dispatcher. A
+  `disconnect_session` change (`user` and `session`, beside the per-user
+  `disconnect`) walks that user's room on every IO loop, sends the frame only to
+  the sockets of that session and then closes them (1008,
+  `session_revoked`); the user's other sockets stay. `sessionsChanged` is an
+  ordinary user emit. Measured on the sandbox: the revoked session's socket
+  had its frame and its close 58 ms after the revocation was sent, while the
+  user's two other sockets received `sessionsChanged` and stayed open. A
+  socket opened through an auth that predates the session id carries an empty
+  one and cannot be closed by session, so auth is upgraded first.
 - **The voice leg.** `SyncForwarder` is the socket's `voice:*` + raw PCM path;
   the service installs `VoiceGrpcRelay` when `[voice] target` is set and leaves
   the forwarder null otherwise, which answers 503
@@ -238,7 +254,7 @@ object the consumers share is the `AuditFanOut` `main.cc` owns; the fan-out
 itself is a free-function namespace because dispatching holds no state of its
 own.
 
-**The four change feeds are ordered consumers** (closure item 5b): each holds
+**The four change feeds and the auth session feed are ordered consumers** (closure item 5b): each holds
 one unacknowledged message at a time (`NatsBus::kOrderedMaxAckPending`, the
 feed's `maxAckPending` in `change_feed::defaults()`), so the broker delivers
 nothing behind a message until it is acked or given up on. A message that is
