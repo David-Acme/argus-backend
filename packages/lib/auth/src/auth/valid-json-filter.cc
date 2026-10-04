@@ -7,7 +7,7 @@ drogon::Task<drogon::HttpResponsePtr>
 ValidJsonFilter::doFilter(const drogon::HttpRequestPtr& req)
 {
   auto method = req->method();
-  if (method == drogon::Post || method == drogon::Patch) {
+  if (method == drogon::Post || method == drogon::Patch || method == drogon::Put) {
     if (!req->getJsonError().empty() || req->getJsonObject() == nullptr) {
       throw ResponseException(AuthErrors::InvalidJsonBody);
     }

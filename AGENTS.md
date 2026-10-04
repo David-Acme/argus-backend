@@ -1039,7 +1039,7 @@ for two different reasons, and says which when it does.
 | `packages/lib/auth/src/auth/device-filter.{cc,hxx}` | Device fingerprint extraction |
 | `packages/lib/auth/src/auth/jwt-filter.{cc,hxx}` | JWT verification + refresh token validation |
 | `packages/lib/auth/src/auth/role-filter.{cc,hxx}` | Role-based access control |
-| `packages/lib/auth/src/auth/valid-json-filter.{cc,hxx}` | JSON body validation for POST/PATCH |
+| `packages/lib/auth/src/auth/valid-json-filter.{cc,hxx}` | JSON body validation for POST/PATCH/PUT |
 | `packages/lib/auth/src/auth/jwt-service.{cc,hxx}` | JWT sign/verify (HS256, instance class) |
 
 **Tier 5 — services, and the packages that are on their way to one**
