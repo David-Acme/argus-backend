@@ -53,6 +53,14 @@ trusted_proxy_ips = ""
 target = "127.0.0.1:7040"
 rpc_secret = ""
 
+[agenda]
+enabled = true
+lead_minutes = 10
+
+[notifications]
+target = "127.0.0.1:7038"
+credential = ""
+
 [nats]
 url = "nats://127.0.0.1:4222"
 

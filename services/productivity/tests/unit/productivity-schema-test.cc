@@ -52,7 +52,13 @@ TEST_CASE("productivity schema applies cleanly to an in-memory database")
       "SELECT name FROM sqlite_master WHERE type = 'index' AND "
       "(name LIKE 'idx_project%' OR name LIKE 'idx_calendar_event%' OR "
       "name LIKE 'idx_reminder%') ORDER BY name");
-  CHECK(indexes.size() == 23);
+  CHECK(indexes.size() == 24);
+  CHECK(std::ranges::find(indexes, "idx_calendar_event_live_start") != indexes.end());
+
+  const auto announcements = queryColumn(db.get(),
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND "
+      "name = 'agenda_announcement'");
+  CHECK(announcements.size() == 1);
 
   for (const char* table : {"project", "project_task", "project_member",
                             "calendar_event", "calendar_event_share"}) {

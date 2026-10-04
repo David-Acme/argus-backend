@@ -176,3 +176,14 @@ CREATE TABLE IF NOT EXISTS change_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_change_outbox_status
     ON change_outbox (status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_calendar_event_live_start
+    ON calendar_event (starts_at) WHERE deleted_at IS NULL AND is_all_day = 0;
+
+CREATE TABLE IF NOT EXISTS agenda_announcement (
+    kind          TEXT    NOT NULL  CHECK (kind IN ('event', 'reminder')),
+    ref_id        INTEGER NOT NULL,
+    occurrence_at INTEGER NOT NULL,
+    created_at    INTEGER NOT NULL  DEFAULT 0,
+    PRIMARY KEY (kind, ref_id, occurrence_at)
+);

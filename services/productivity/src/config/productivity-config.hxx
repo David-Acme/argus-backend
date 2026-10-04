@@ -2,6 +2,7 @@
 
 #include <http/listener-config.hxx>
 
+#include <cstdint>
 #include <string>
 
 struct ProductivityDbConfig
@@ -10,9 +11,24 @@ struct ProductivityDbConfig
   std::string schemaPath;
 };
 
+struct ProductivityNotificationConfig
+{
+  std::string target;
+  std::string credential;
+};
+
+struct ProductivityAgendaConfig
+{
+  bool enabled{true};
+  int64_t leadS{600};
+  int64_t graceS{120};
+};
+
 class ProductivityConfig
 {
 public:
   static ProductivityDbConfig resolveDb();
   static ListenerConfig resolveListener();
+  static ProductivityNotificationConfig resolveNotifications();
+  static ProductivityAgendaConfig resolveAgenda();
 };

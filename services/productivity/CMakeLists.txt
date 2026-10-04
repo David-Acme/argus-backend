@@ -74,6 +74,10 @@ if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
+if(NOT TARGET argus::clients::notification)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
+                     ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
+endif()
 if(NOT TARGET argus::clients::productivity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/productivity
                      ${CMAKE_BINARY_DIR}/clients/productivity EXCLUDE_FROM_ALL)
@@ -109,6 +113,7 @@ argus_service(NAME argus-productivity
         argus::productivity-project-member
         argus::productivity-project-task
         argus::productivity-sync
+        argus::productivity-agenda
         argus::productivity-rpc-server
         argus::lib::auth
         argus::lib::http
@@ -245,6 +250,24 @@ target_compile_options(productivity-change-transaction-test
 
 add_test(NAME productivity-change-transaction-test
          COMMAND productivity-change-transaction-test)
+
+add_executable(productivity-agenda-test
+    tests/unit/productivity-agenda-test.cc)
+
+set_target_properties(productivity-agenda-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_compile_definitions(productivity-agenda-test PRIVATE
+    ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(productivity-agenda-test PRIVATE
+    argus::productivity-agenda
+    argus::lib::sqlite
+    doctest::doctest)
+
+target_compile_options(productivity-agenda-test PRIVATE -Wall -Wextra)
+
+add_test(NAME productivity-agenda-test COMMAND productivity-agenda-test)
 
 add_executable(productivity-sync-rpc-test
     tests/unit/productivity-sync-rpc-test.cc)

@@ -38,6 +38,15 @@ schema = "database/schema.sql"
 server_cert = "certs/server.pem"
 server_key = "certs/server.key"
 
+
+[agenda]
+enabled = true
+lead_minutes = 10
+
+[notifications]
+target = "argus-notification:7038"
+credential = "CHANGE_ME_PRODUCTIVITY_NOTIFICATION"
+
 [nats]
 url = "nats://nats:4222"
 user = "argus"

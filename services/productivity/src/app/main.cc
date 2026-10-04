@@ -1,3 +1,5 @@
+#include <feature/agenda/infra/notification-agenda-notifier.hxx>
+#include <feature/agenda/services/agenda-announcer.hxx>
 #include <app/rpc/productivity-rpc-server.hxx>
 #include <drogon/drogon.h>
 #include <feature/sync/productivity-sync-rpc-service.hxx>
@@ -28,6 +30,7 @@
 #include <sqlite/db-service.hxx>
 #include <unistd.h>
 
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -153,6 +156,46 @@ int main()
       changeSink->reconcile();
     }
   });
+
+  const ProductivityNotificationConfig notifications =
+      ProductivityConfig::resolveNotifications();
+  const ProductivityAgendaConfig agendaConfig = ProductivityConfig::resolveAgenda();
+  std::shared_ptr<const AgendaNotifier> agendaNotifier;
+  if (!notifications.target.empty() && !notifications.credential.empty())
+    agendaNotifier = std::make_shared<NotificationAgendaNotifier>(
+        std::make_shared<NotificationClient>(NotificationClientConfig{
+            .target = notifications.target,
+            .credential = notifications.credential}));
+  const auto agenda = std::make_shared<AgendaAnnouncer>(
+      AgendaAnnouncerConfig{.enabled = agendaConfig.enabled,
+                            .leadS = agendaConfig.leadS,
+                            .graceS = agendaConfig.graceS,
+                            .retentionS = 2592000},
+      AgendaAnnouncerDependencies{.notifier = agendaNotifier,
+                                  .clock = {},
+                                  .blockingOffLoop = true});
+  if (agenda->enabled()) {
+    auto sweeping = std::make_shared<std::atomic<bool>>(false);
+    drogon::app().getLoop()->runEvery(30.0, [agenda, sweeping]() {
+      if (sweeping->exchange(true))
+        return;
+      drogon::async_run([agenda, sweeping]() -> drogon::Task<void> {
+        try {
+          co_await agenda->sweep();
+        }
+        catch (const std::exception& error) {
+          LOG_WARN << "Agenda: sweep failed: " << error.what();
+        }
+        sweeping->store(false);
+      });
+    });
+    LOG_INFO << "Agenda announcements on, " << agendaConfig.leadS / 60
+             << " min ahead, through " << notifications.target;
+  }
+  else {
+    LOG_INFO << "Agenda announcements off (agenda.enabled or the notification "
+                "target/credential is unset)";
+  }
 
   shutdown_signal::onQuit(
       [dbPath = productivityDb.dbPath] { DbService::freezeClient(dbPath); });
