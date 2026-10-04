@@ -70,6 +70,8 @@ public:
 
   bool listen(const VadListenInput& input);
 
+  void endListening();
+
   bool inSpeech() const;
 
   float lastProb() const;

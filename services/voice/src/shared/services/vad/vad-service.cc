@@ -275,6 +275,18 @@ bool VadService::listen(const VadListenInput& input)
   return false;
 }
 
+void VadService::endListening()
+{
+  bargeCounter_ = 0;
+  bargeProbSum_ = 0.0F;
+  startCounter_ = 0;
+  silenceCounter_ = 0;
+  const auto limit = static_cast<size_t>(cfg_.preRollFrames) * kWindowSize;
+  if (preRoll_.size() > limit)
+    preRoll_.erase(preRoll_.begin(),
+                   preRoll_.begin() + static_cast<std::ptrdiff_t>(preRoll_.size() - limit));
+}
+
 bool VadService::inSpeech() const
 {
   return speech_;

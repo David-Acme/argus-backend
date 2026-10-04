@@ -662,7 +662,7 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
       }
       else {
         if (wasListening) {
-          session->vad.reset();
+          session->vad.endListening();
           wasListening = false;
         }
         auto turn = session->vad.process({.samples = clean.data() + offset,

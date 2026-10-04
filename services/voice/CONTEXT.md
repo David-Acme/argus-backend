@@ -160,9 +160,14 @@ strongest. Before the guard the windows feed only the pre-roll.
 has not ended. The server streams TTS faster than real time and the app
 plays each sentence when its `voice:assistant` arrives, so each sentence's
 audio duration is added to a `playbackEnd` estimate at that moment. When the
-assistant stops being audible without a barge-in, the VAD is reset and normal
-turn detection resumes (the duplex equivalent of the half-duplex reset after
-a turn). A `voice:skip` ends the estimate at once.
+assistant stops being audible without a barge-in, the barge-in counters are
+cleared and normal turn detection resumes on the same VAD state, keeping the
+last `pre_roll_frames` windows as the pre-roll (`VadService::endListening`).
+It used to reset the VAD, which threw away the pre-roll: a user who started
+talking as Argus finished lost the first word ("Pon la vigilancia en modo
+noche" reached STT as "con la vigilancia en modo noche", so the command was
+never recognized). A live call on scratch engines showed it on six of
+fourteen turns. A `voice:skip` ends the estimate at once.
 
 On barge-in the worker cancels the turn exactly as `voice:skip` does
 (`interrupt` + `turnStop.request_stop()`, which cancels the LLM stream and
@@ -321,6 +326,71 @@ Texts are trimmed to one line (notes 300, camera 64, summary 200
 characters; the situation keeps its lines, up to 900 characters); every
 cut lands on a UTF-8 character boundary, since a cut through "á" made the
 LLM request an invalid protobuf string.
+
+## Transport: why PCM over /sync stays, and the plan after it
+
+Decision (2026-10-03): the call keeps raw 16 kHz PCM16 over the `/sync`
+WebSocket, relayed by argus-sync onto this gRPC stream. WebRTC is the
+right transport once calls cross a lossy network; on the LAN it buys
+little and costs a second media stack on four platforms.
+
+What WebRTC gives a voice agent, and where Argus stands on each:
+
+| WebRTC gives | Argus today |
+|---|---|
+| Echo cancellation, noise suppression and gain control in the client | Android `VOICE_COMMUNICATION` + `AcousticEchoCanceler`/`NoiseSuppressor`/`AutomaticGainControl`; iOS `.voiceChat` + voice processing; web/desktop `getUserMedia` with `echoCancellation`/`noiseSuppression`/`autoGainControl` (the browser's WebRTC audio processing, without a peer connection); RNNoise and Silero on the server |
+| A jitter buffer | TTS is generated faster than real time and buffered by the player, so downlink jitter is absorbed; uplink jitter only delays the VAD by a few ms |
+| UDP: no head-of-line blocking on packet loss | TCP+TLS: on a LAN a retransmission costs milliseconds; on a lossy Wi-Fi or a tunnel it costs a stall |
+| Opus at 16-32 kbps | PCM16 at 256 kbps each way (115 MB per hour of call): irrelevant on the LAN, noticeable on mobile data through the tunnel |
+| ICE/STUN/TURN | Not needed on the LAN; the tunnel is TCP, so WebRTC through it would need TURN over TCP/TLS, which brings head-of-line blocking back |
+
+Measured on this machine (latency check on scratch engines, see the
+budget table in the report): the network is not where a turn's time
+goes. End of speech to first audio is the VAD endpoint (`min_silence_frames`
+× 32 ms = 384 ms), STT (40-60 ms), the LLM's first token (240-500 ms with
+a warm prefix) and the first sentence plus its first TTS chunk.
+
+Plan:
+1. Done in this change: client-side audio processing on every platform,
+   including desktop (web microphone + AudioWorklet player), resume of a
+   call after a lost socket, and the server pipeline cuts (priming, cached
+   TTS capabilities, call history that keeps the KV prefix).
+2. Next, Opus over the same socket for remote calls. Negotiated, so the
+   current PCM path stays the default and the fallback: `voice:start`
+   gains `{"codecs": ["opus", "pcm16"]}`; argus-voice answers a new
+   `VoiceReady {codec, sample_rate, frame_ms}` frame before the greeting
+   (the relay renders it as `voice:ready`); until it arrives the app sends
+   PCM, so an old server never receives Opus. Audio becomes length-prefixed
+   20 ms Opus packets (5 per WebSocket message, 100 ms) in new
+   `ClientFrame.opus` / `TtsChunk.opus` fields, so the relay stays a byte
+   relay that picks the field from the negotiated codec. argus-voice links
+   libopus (system `opus` 1.6 is present; the Conan recipe `opus/1.5.2`
+   would put it in the root manifest), one encoder (VOIP, 24 kbps, 16 kHz)
+   and one decoder per session. Clients: WebCodecs `AudioEncoder`/
+   `AudioDecoder` where `isConfigSupported({codec: "opus"})` says yes
+   (WebView2, recent WKWebView; WebKitGTK only with GStreamer's opus
+   plugin), Android `MediaCodec` (`audio/opus` decoder from API 21, encoder
+   from API 29), iOS `AVAudioConverter` with `kAudioFormatOpus`; anything
+   else keeps PCM. Gain: about 10x less bandwidth; latency unchanged on
+   the LAN.
+3. Then WebRTC for calls through the tunnel, as an additive transport in
+   argus-voice (libdatachannel 0.24 from Conan Center: ICE, DTLS-SRTP, an
+   Opus track with its RTP packetizer), with SDP offer/answer and ICE
+   candidates signalled over `/sync` as new `voice:rtc_*` frames on the
+   same authenticated, device-bound socket. Clients: browser
+   `RTCPeerConnection` (WebKitGTK only when built with GStreamer
+   `webrtcbin`; otherwise stay on 2), `react-native-webrtc` 124 with
+   `@config-plugins/react-native-webrtc` (the newest published pairing is
+   for SDK 56; SDK 57 needs a check), and native AEC moves into the
+   WebRTC audio module on mobile. The relay needs no media path: media
+   goes peer to peer between the app and argus-voice. Without UDP reach
+   (tunnel without TURN) the app falls back to 2, then to PCM.
+
+Sources: LiveKit, "Why WebRTC beats WebSockets for realtime voice AI";
+Pipecat/RTC League, "WebRTC vs WebSockets for real-time voice AI"; Expo
+config-plugins `react-native-webrtc` compatibility table; libdatachannel
+on Conan Center (0.24.0); WebKitGTK `enable-media-stream` and
+`permission-request` (used by the desktop shell, frontend e4bc731).
 
 ## Owner settings
 

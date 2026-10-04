@@ -14,6 +14,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -1476,4 +1477,26 @@ TEST_CASE("A short opening clause is spoken before the rest of the first sentenc
   CHECK(tts.texts[2] == " tu agenda tiene la cena a las nueve.");
   CHECK(tts.texts[3] == " Luego, nada más.");
   session.stop(sink);
+}
+
+TEST_CASE("Speech that starts while Argus is finishing keeps its first syllables")
+{
+  DuplexConfig config(300);
+  auto windows = std::make_shared<std::atomic<int>>(0);
+  VadService vad(std::make_unique<ScriptedVadModel>(windows));
+  const std::vector<float> onset(kWindow, 0.96F);
+  const std::vector<float> speech(kWindow, 0.95F);
+  const std::vector<float> silence(kWindow, 0.0F);
+  for (int i = 0; i < 6; ++i)
+    CHECK_FALSE(vad.listen({.samples = onset.data(), .count = kWindow, .armed = false}));
+  vad.endListening();
+  for (int i = 0; i < 20; ++i)
+    CHECK_FALSE(vad.process({.samples = speech.data(), .count = kWindow}));
+  std::optional<VadTurn> turn;
+  for (int i = 0; i < 14 && !turn; ++i)
+    turn = vad.process({.samples = silence.data(), .count = kWindow});
+  REQUIRE(turn.has_value());
+  const VadTurn found = turn.value_or(VadTurn{});
+  REQUIRE(found.samples.size() == static_cast<size_t>(kWindow) * 38);
+  CHECK(found.samples.front() == doctest::Approx(0.96F));
 }
