@@ -48,6 +48,13 @@ sibling service: own binary, own CMake preset, own `camera.db`.
   `camera.db` makes reruns a verified no-op, because after the F2-2 cutover
   `camera.db` is live data and the frozen `argus.db` copy must never be
   resurrected over it. Nothing is deleted from `argus.db`.
+  The copy names the source's own columns and the verification checksums those
+  columns on both sides, refusing only a source column the target lacks
+  (2026-10). It used to copy with `SELECT *` and compare the column lists of
+  `src` and `main` read as `"src".pragma_table_info(...)`, which SQLite
+  resolves against the main schema: the check compared the target with itself,
+  and a legacy table that predates a later additive column failed the copy on
+  its column count. `tests/unit/camera-migration-test.cc` pins both cases.
 
 ## What it owns since the cutover (F2-2)
 
