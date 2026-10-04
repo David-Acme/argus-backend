@@ -79,20 +79,21 @@ inline constexpr std::string_view SELECT_RECENT_INCIDENTS =
 
 inline constexpr std::string_view INSERT_GUEST =
     "INSERT INTO guard_expected_guest (description, camera_id, person_id, "
-    "host_user_id, one_time, valid_from, valid_until, created_at) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    "host_user_id, one_time, valid_from, valid_until, environment_id, "
+    "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 inline constexpr std::string_view ACTIVE_GUEST =
-    "SELECT id, description, camera_id, person_id, host_user_id, one_time "
-    "FROM guard_expected_guest "
+    "SELECT id, description, camera_id, person_id, host_user_id, one_time, "
+    "environment_id FROM guard_expected_guest "
     "WHERE deleted_at IS NULL AND used_at = 0 AND valid_from <= ? AND "
     "valid_until >= ? AND (camera_id = 0 OR camera_id = ?) "
+    "AND (environment_id = 0 OR environment_id = ?) "
     "AND (person_id = 0 OR person_id = ?) "
     "ORDER BY person_id = ? DESC, created_at DESC LIMIT 1";
 
 inline constexpr std::string_view LIST_GUESTS =
     "SELECT id, description, camera_id, person_id, host_user_id, one_time, "
-    "valid_from, valid_until FROM guard_expected_guest "
+    "valid_from, valid_until, environment_id FROM guard_expected_guest "
     "WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 50";
 
 inline constexpr std::string_view CONSUME_GUEST =
@@ -185,7 +186,8 @@ inline constexpr std::string_view CLOSE_STALE_TRANSITIONS =
 inline constexpr std::string_view CLOSE_STALE_ENCOUNTERS =
     "UPDATE guard_encounter SET state = 'closed', revision = revision + 1 "
     "WHERE state != 'closed' AND last_seen < ? "
-    "RETURNING id, person_id, grade, best_camera_id, first_seen, last_seen";
+    "RETURNING id, person_id, grade, best_camera_id, first_seen, last_seen, "
+    "environment_id";
 
 inline constexpr std::string_view CLOSE_PERSON_TRANSITIONS =
     "INSERT INTO guard_encounter_transition (encounter_id, from_state, "
@@ -312,8 +314,9 @@ inline constexpr std::string_view INSERT_DECISION_JOURNAL =
     "legacy_would_notify, belief_would_notify, did_notify, decision_mode, "
     "suppression_reason, suppressed_kinds, reasons, dispatch_attempts, "
     "novelty_score, repeat_visits, quiet_hold, budget_hold, assess_ms, "
-    "created_at) VALUES "
-    "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)";
+    "environment_id, created_at) VALUES "
+    "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, "
+    "?)";
 
 inline constexpr std::string_view MARK_DECISION_NOTIFIED =
     "UPDATE guard_decision_journal SET did_notify = 1 WHERE event_id = ? AND "
@@ -470,7 +473,7 @@ inline constexpr std::string_view SUMMARY_ASSESS_COUNT =
 
 inline constexpr std::string_view COUNT_FIRED_SINCE =
     "SELECT COUNT(*) AS rows FROM guard_decision_journal WHERE did_notify = 1 "
-    "AND created_at >= ?";
+    "AND environment_id = ? AND created_at >= ?";
 
 inline constexpr std::string_view SELECT_BASELINE_EMA =
     "SELECT events_ema, updated_at FROM guard_hourly_baseline WHERE "
@@ -501,7 +504,14 @@ struct GuardGuestLookupInput
 {
   int64_t at{0};
   int64_t cameraId{0};
+  int64_t environmentId{0};
   int64_t personId{0};
+};
+
+struct FiredSinceInput
+{
+  int64_t environmentId{0};
+  int64_t since{0};
 };
 
 struct BaselineEmaRow
@@ -562,6 +572,7 @@ struct GuardGuestInput
   bool oneTime{false};
   int64_t validFrom{0};
   int64_t validUntil{0};
+  int64_t environmentId{0};
 };
 
 struct GuardGuest
@@ -574,6 +585,7 @@ struct GuardGuest
   bool oneTime{false};
   int64_t validFrom{0};
   int64_t validUntil{0};
+  int64_t environmentId{0};
 };
 
 struct GuardAssessmentRowInput
@@ -700,6 +712,7 @@ struct DecisionJournalInput
   bool quietHold{false};
   bool budgetHold{false};
   int assessMs{0};
+  int64_t environmentId{0};
   int64_t createdAt{0};
 };
 

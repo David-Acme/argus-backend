@@ -17,6 +17,7 @@ GuardCameraContext fromRow(const drogon::orm::Row& row)
           .outdoor = row["outdoor"].as<int>() != 0,
           .publicArea = row["public_area"].as<int>() != 0,
           .activeHours = row["active_hours"].as<std::string>(),
+          .environmentId = row["environment_id"].as<int64_t>(),
           .configured = true,
           .updatedAt = row["updated_at"].as<int64_t>()};
 }
@@ -33,6 +34,7 @@ CameraContextRepository::find(int64_t cameraId) const
                                  .outdoor = false,
                                  .publicArea = false,
                                  .activeHours = {},
+                                 .environmentId = 0,
                                  .configured = false,
                                  .updatedAt = 0};
   co_return fromRow(rows.front());
@@ -56,7 +58,8 @@ CameraContextRepository::upsert(const CameraContextUpsertInput& input) const
   const auto rows = co_await DbService::client()->execSqlCoro(
       std::string(UPSERT_CONTEXT), input.cameraId,
       cameraRoleToString(input.role), input.outdoor ? 1 : 0,
-      input.publicArea ? 1 : 0, input.activeHours, input.updatedAt);
+      input.publicArea ? 1 : 0, input.activeHours, input.environmentId,
+      input.updatedAt);
   if (rows.empty())
     throw std::runtime_error("camera context upsert returned no row");
   co_return fromRow(rows.front());

@@ -193,12 +193,14 @@ Guest    → read-only permitted resources; user read is limited to their own
 ```
 
 The guard surface (`/guard/*`) maps to no table: it is declared route by
-route in `kGuardAccess`, beside `kAuthAccess`. Resident reads and sets the
-mode, reads incidents, episodes and the site's hours and manages expected
-visits; Guard reads the mode, incidents, episodes, the site's hours and
-expected visits; episode detail and review, site and camera settings,
-decision review, feedback and person promotion stay Owner-only; Guest has
-no guard route.
+route in `kGuardAccess`, beside `kAuthAccess`. Guard is organised in
+environments (a home, a restaurant, an office: each with its own kind, hours,
+mode and summary policy; every camera belongs to one). Resident reads the
+environments and sets their mode (one or all), reads incidents and episodes
+and manages expected visits; Guard reads the environments, incidents,
+episodes and expected visits; creating, editing and removing environments,
+episode detail and review, camera context, decision review, feedback and
+person promotion stay Owner-only; Guest has no guard route.
 
 The session routes (`GET /auth/sessions`, `DELETE /auth/sessions`,
 `DELETE /auth/sessions/{id}`) are declared the same way in `kSessionAccess`:

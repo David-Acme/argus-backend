@@ -292,6 +292,24 @@ TEST_CASE("every saga failpoint converges on redelivery without duplicates")
   AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
   REQUIRE(DbService::runScriptFile(ARGUS_GUARD_SCHEMA_PATH));
+  REQUIRE(guard_schema::seedEnvironments(
+      {.id = 0,
+       .name = "Casa",
+       .kind = EnvironmentKind::Home,
+       .isDefault = true,
+       .mode = GuardMode::Home,
+       .modeUpdatedAt = 0,
+       .scheduleEnabled = false,
+       .asleep = {},
+       .open = {},
+       .staffed = {},
+       .closedMode = GuardMode::Away,
+       .digestHour = -1,
+       .quietPolicy = QuietPolicy::Inherit,
+       .quietStartHour = 22,
+       .quietEndHour = 7,
+       .createdAt = 0,
+       .updatedAt = 0}));
 
   auto failTarget = std::make_shared<std::string>();
   GuardService::Config config = dialogueConfig();
@@ -379,9 +397,9 @@ TEST_CASE("every saga failpoint converges on redelivery without duplicates")
     ++cameraId;
   }
 
-  GuardRepository modeStore;
-  REQUIRE(drogon::sync_wait(modeStore.setState(
-      {.key = "mode", .value = "armed", .updatedAt = 1})));
+  EnvironmentRepository modeStore;
+  REQUIRE(drogon::sync_wait(modeStore.setMode(
+              {.environmentId = std::nullopt, .mode = GuardMode::Armed, .at = 1})) == 1);
   const std::vector<std::string> effectFailpoints = {"after_effects",
                                                      "after_intent",
                                                      "after_effect_rpc",
@@ -422,8 +440,8 @@ TEST_CASE("every saga failpoint converges on redelivery without duplicates")
                  eventId + ":%'") == "4");
     ++cameraId;
   }
-  REQUIRE(drogon::sync_wait(modeStore.setState(
-      {.key = "mode", .value = "home", .updatedAt = 2})));
+  REQUIRE(drogon::sync_wait(modeStore.setMode(
+              {.environmentId = std::nullopt, .mode = GuardMode::Home, .at = 2})) == 1);
 
   {
     CountingNotifications notifications;

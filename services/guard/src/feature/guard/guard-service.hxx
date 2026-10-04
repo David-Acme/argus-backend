@@ -11,11 +11,12 @@
 
 #include <feature/guard/repositories/camera-context/camera-context-repository.hxx>
 #include <feature/guard/repositories/episode/episode-repository.hxx>
-#include <feature/guard/repositories/guard-site/guard-site-repository.hxx>
+#include <feature/guard/repositories/environment/environment-repository.hxx>
 
 #include <atomic>
 #include <config/guard-config.hxx>
 #include <cstdint>
+#include <ctime>
 #include <deque>
 #include <drogon/utils/coroutine.h>
 #include <functional>
@@ -279,6 +280,7 @@ private:
     const GuardEventSignals& signals;
     const ObservationCheckpoint& checkpoint;
     const GuardPosture& posture;
+    const GuardEnvironmentScope& scope;
     GuardDanger danger{GuardDanger::None};
     int64_t incidentId{0};
     int64_t encounterId{0};
@@ -330,6 +332,7 @@ private:
     bool quietHold{false};
     bool budgetHold{false};
     int assessMs{0};
+    int64_t environmentId{0};
     int64_t at{0};
   };
 
@@ -351,6 +354,7 @@ private:
 
   struct HoldInput
   {
+    const GuardEnvironment& environment;
     GuardDanger danger{GuardDanger::None};
     bool legacyWouldNotify{false};
     int64_t now{0};
@@ -434,7 +438,7 @@ private:
 
   static GuardPosture postureAt(const PostureInput& input);
 
-  drogon::Task<GuardSite> activeSite() const;
+  drogon::Task<GuardEnvironmentScope> environmentScope(int64_t cameraId) const;
 
   void rememberCameraName(int64_t cameraId, const std::string& name);
 
@@ -442,6 +446,8 @@ private:
 
   struct DigestInput
   {
+    const GuardEnvironmentScope& scope;
+    std::string day;
     int64_t from{0};
     int64_t to{0};
     bool afterQuiet{false};
@@ -450,6 +456,14 @@ private:
   };
 
   drogon::Task<bool> sendDigest(const DigestInput& input);
+  struct EnvironmentDigestInput
+  {
+    GuardEnvironmentScope scope;
+    const Config& config;
+    std::tm local{};
+    int64_t now{0};
+  };
+  drogon::Task<void> sendEnvironmentDigests(const EnvironmentDigestInput& input);
 
   void trackTimer(uint64_t id);
   void stopTimers();
@@ -458,7 +472,7 @@ private:
   mutable std::mutex configMutex_;
   std::shared_ptr<const Config> config_;
   GuardRepository repository_;
-  GuardSiteRepository siteRepository_;
+  EnvironmentRepository environmentRepository_;
   CameraContextRepository cameraContextRepository_;
   EpisodeRepository episodeRepository_;
   S3StorageService storage_;

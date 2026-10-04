@@ -1,7 +1,7 @@
 #pragma once
 
 #include <config/guard-config.hxx>
-#include <feature/guard/repositories/guard-site/guard-site-query.hxx>
+#include <feature/guard/repositories/environment/environment-query.hxx>
 #include <shared/vocabulary/guard-mode.hxx>
 
 #include <cstdint>
@@ -53,8 +53,25 @@ bool inWindows(const std::vector<GuardWindow>& windows, const std::tm& local);
 
 GuardPosture resolve(const GuardPostureInput& input);
 
-GuardSite siteDefaults(const GuardServiceConfig& config);
+GuardEnvironment environmentSeed(const GuardServiceConfig& config);
 
-GuardSchedule fromSite(const GuardSite& site);
+GuardSchedule fromEnvironment(const GuardEnvironment& environment);
+
+struct QuietWindow
+{
+  bool enabled{false};
+  int startHour{22};
+  int endHour{7};
+};
+
+struct QuietWindowInput
+{
+  const GuardEnvironment& environment;
+  const GuardServiceConfig& config;
+};
+
+QuietWindow quietWindow(const QuietWindowInput& input);
+
+bool inQuietHours(const QuietWindow& window, int hour);
 
 }

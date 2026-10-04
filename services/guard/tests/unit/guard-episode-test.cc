@@ -2,7 +2,10 @@
 #include <ctime>
 #include <doctest/doctest.h>
 #include <feature/guard/dtos/update-camera-context-dto.hxx>
-#include <feature/guard/dtos/update-guard-site-dto.hxx>
+#include <errors/response-exception.hxx>
+#include <feature/guard/dtos/create-environment-dto.hxx>
+#include <feature/guard/dtos/update-environment-dto.hxx>
+#include <feature/guard/dtos/update-guard-mode-dto.hxx>
 #include <feature/guard/guard-service.hxx>
 #include <feature/guard/services/guard-feature-service.hxx>
 #include <memory>
@@ -115,26 +118,48 @@ struct Harness
 
 GuardFeatureService feature()
 {
-  return GuardFeatureService({.identity = nullptr,
-                              .defaultMode = GuardMode::Home,
-                              .siteDefaults = {}});
+  return GuardFeatureService({.identity = nullptr});
 }
 
-UpdateGuardSiteDto sitePatch(const Json::Value& body)
+UpdateEnvironmentDto patchOf(const Json::Value& body)
 {
-  return UpdateGuardSiteDto::fromJson(body);
+  return UpdateEnvironmentDto::fromJson(body);
+}
+
+int64_t homeId()
+{
+  return std::stoll(scalar("SELECT id FROM guard_environment WHERE is_default = 1"));
+}
+
+Json::Value findEnvironment(const Json::Value& list, int64_t id)
+{
+  for (const auto& row : list) {
+    if (row["id"].asInt64() == id)
+      return row;
+  }
+  return {};
 }
 
 void resetSite()
 {
   Json::Value body(Json::objectValue);
-  body["profile"] = "home";
+  body["kind"] = "home";
   body["scheduleEnabled"] = false;
   body["open"] = "";
   body["staffed"] = "";
   body["asleep"] = "";
   body["digestHour"] = -1;
-  drogon::sync_wait(feature().updateSite(sitePatch(body)));
+  const UpdateEnvironmentDto patch = patchOf(body);
+  drogon::sync_wait(feature().updateEnvironment({.id = homeId(), .patch = patch}));
+}
+
+Json::Value modeBody(const std::string& mode, int64_t environmentId)
+{
+  Json::Value body(Json::objectValue);
+  body["mode"] = mode;
+  if (environmentId > 0)
+    body["environmentId"] = Json::Int64(environmentId);
+  return body;
 }
 
 int localHour()
@@ -146,49 +171,121 @@ int localHour()
 }
 }
 
-TEST_CASE("the site is the config until the owner edits it, then a patch")
+TEST_CASE("environments: the seeded default, a second place, patches and modes")
 {
   (void)boot();
   GuardFeatureService service = feature();
-  const Json::Value initial = drogon::sync_wait(service.site());
-  CHECK(initial["profile"].asString() == "home");
-  CHECK(initial["digestHour"].asInt() == 21);
+  const Json::Value initial = drogon::sync_wait(service.environments());
+  REQUIRE(initial.size() == 1);
+  CHECK(initial[0]["isDefault"].asBool());
+  CHECK(initial[0]["kind"].asString() == "home");
+  CHECK(initial[0]["name"].asString() == "Casa");
+  CHECK(initial[0]["mode"].asString() == "home");
 
   Json::Value body(Json::objectValue);
-  body["profile"] = "commercial";
-  body["open"] = "00:00-24:00";
+  body["name"] = "  Trattoria  ";
+  body["kind"] = "restaurant";
   body["scheduleEnabled"] = true;
-  const Json::Value updated =
-      drogon::sync_wait(service.updateSite(sitePatch(body)));
-  CHECK(updated["profile"].asString() == "commercial");
-  CHECK(updated["open"].asString() == "00:00-24:00");
-  CHECK(updated["closedMode"].asString() == "away");
+  body["open"] = "00:00-24:00";
+  const Json::Value created = drogon::sync_wait(
+      service.createEnvironment(CreateEnvironmentDto::fromJson(body)));
+  const int64_t restaurant = created["id"].asInt64();
+  CHECK(created["name"].asString() == "Trattoria");
+  CHECK(created["occupancy"].asString() == "open");
+  CHECK(created["publicPresent"].asBool());
+  CHECK_FALSE(created["isDefault"].asBool());
+
+  Json::Value clash(Json::objectValue);
+  clash["name"] = "trattoria";
+  clash["kind"] = "office";
+  CHECK_THROWS_AS(drogon::sync_wait(service.createEnvironment(
+                      CreateEnvironmentDto::fromJson(clash))),
+                  ResponseException);
 
   Json::Value later(Json::objectValue);
   later["closedMode"] = "armed";
-  const Json::Value patched =
-      drogon::sync_wait(service.updateSite(sitePatch(later)));
-  CHECK(patched["profile"].asString() == "commercial");
+  later["quietPolicy"] = "custom";
+  later["quietStartHour"] = 1;
+  later["quietEndHour"] = 6;
+  const UpdateEnvironmentDto laterPatch = patchOf(later);
+  const Json::Value patched = drogon::sync_wait(
+      service.updateEnvironment({.id = restaurant, .patch = laterPatch}));
+  CHECK(patched["kind"].asString() == "restaurant");
+  CHECK(patched["open"].asString() == "00:00-24:00");
   CHECK(patched["closedMode"].asString() == "armed");
+  CHECK(patched["quietPolicy"].asString() == "custom");
+  CHECK(patched["quietEndHour"].asInt() == 6);
+  CHECK_THROWS_AS(drogon::sync_wait(service.updateEnvironment(
+                      {.id = 999999, .patch = laterPatch})),
+                  ResponseException);
 
-  const Json::Value mode = drogon::sync_wait(service.mode());
-  CHECK(mode["profile"].asString() == "commercial");
-  CHECK(mode["occupancy"].asString() == "open");
-  CHECK(mode["publicPresent"].asBool());
-  resetSite();
+  const Json::Value one = drogon::sync_wait(
+      service.setMode(UpdateGuardModeDto::fromJson(modeBody("armed", restaurant))));
+  CHECK(findEnvironment(one, restaurant)["mode"].asString() == "armed");
+  CHECK(findEnvironment(one, restaurant)["effectiveMode"].asString() == "armed");
+  CHECK(findEnvironment(one, homeId())["mode"].asString() == "home");
+  CHECK_THROWS_AS(drogon::sync_wait(service.setMode(
+                      UpdateGuardModeDto::fromJson(modeBody("away", 999999)))),
+                  ResponseException);
+  const Json::Value all = drogon::sync_wait(
+      service.setMode(UpdateGuardModeDto::fromJson(modeBody("night", 0))));
+  for (const auto& row : all)
+    CHECK(row["mode"].asString() == "night");
+  drogon::sync_wait(
+      service.setMode(UpdateGuardModeDto::fromJson(modeBody("home", 0))));
+
+  Json::Value kitchen(Json::objectValue);
+  kitchen["role"] = "kitchen";
+  kitchen["environmentId"] = Json::Int64(restaurant);
+  drogon::sync_wait(service.setCamera(
+      {.cameraId = 601, .context = UpdateCameraContextDto::fromJson(kitchen)}));
+  CHECK(findEnvironment(drogon::sync_wait(service.environments()), restaurant)
+            ["cameraIds"][0]
+                .asInt64() == 601);
+  CHECK_THROWS_AS(drogon::sync_wait(service.removeEnvironment(homeId())),
+                  ResponseException);
+  const Json::Value remaining =
+      drogon::sync_wait(service.removeEnvironment(restaurant));
+  CHECK(remaining.size() == 1);
+  CHECK(scalar("SELECT environment_id FROM guard_camera_context WHERE "
+               "camera_id = 601") == std::to_string(homeId()));
+  CHECK_THROWS_AS(drogon::sync_wait(service.removeEnvironment(restaurant)),
+                  ResponseException);
 }
 
-TEST_CASE("site patches refuse malformed hours and wrong types")
+TEST_CASE("environment bodies refuse malformed hours, names and wrong types")
 {
   Json::Value hours(Json::objectValue);
   hours["staffed"] = "mon-fri 8-18";
-  CHECK_THROWS(sitePatch(hours));
+  CHECK_THROWS(patchOf(hours));
   Json::Value types(Json::objectValue);
   types["scheduleEnabled"] = "yes";
-  CHECK_THROWS(sitePatch(types));
+  CHECK_THROWS(patchOf(types));
   Json::Value digest(Json::objectValue);
   digest["digestHour"] = 30;
-  CHECK_THROWS(sitePatch(digest));
+  CHECK_THROWS(patchOf(digest));
+  Json::Value quiet(Json::objectValue);
+  quiet["quietPolicy"] = "sometimes";
+  CHECK_THROWS(patchOf(quiet));
+  Json::Value blank(Json::objectValue);
+  blank["name"] = "   ";
+  CHECK_THROWS(patchOf(blank));
+  Json::Value nameless(Json::objectValue);
+  nameless["kind"] = "office";
+  CHECK_THROWS(CreateEnvironmentDto::fromJson(nameless));
+  Json::Value kindless(Json::objectValue);
+  kindless["name"] = "Bodega";
+  CHECK_THROWS(CreateEnvironmentDto::fromJson(kindless));
+  Json::Value badKind(Json::objectValue);
+  badKind["name"] = "Bodega";
+  badKind["kind"] = "castle";
+  CHECK_THROWS(CreateEnvironmentDto::fromJson(badKind));
+  Json::Value negative = modeBody("away", 0);
+  negative["environmentId"] = -3;
+  CHECK_THROWS(UpdateGuardModeDto::fromJson(negative));
+  Json::Value textual = modeBody("away", 0);
+  textual["environmentId"] = "2";
+  CHECK_THROWS(UpdateGuardModeDto::fromJson(textual));
 }
 
 TEST_CASE("camera context is stored per camera and listed")
@@ -219,6 +316,17 @@ TEST_CASE("camera context is stored per camera and listed")
   Json::Value invalid(Json::objectValue);
   invalid["role"] = "bedroom";
   CHECK_THROWS(UpdateCameraContextDto::fromJson(invalid));
+  Json::Value elsewhere(Json::objectValue);
+  elsewhere["role"] = "office";
+  elsewhere["environmentId"] = Json::Int64(999999);
+  CHECK_THROWS_AS(drogon::sync_wait(service.setCamera(
+                      {.cameraId = 501,
+                       .context = UpdateCameraContextDto::fromJson(elsewhere)})),
+                  ResponseException);
+  for (const auto& row : drogon::sync_wait(service.cameras())) {
+    if (row["cameraId"].asInt64() == 501)
+      CHECK(row["environmentId"].asInt64() == homeId());
+  }
 }
 
 TEST_CASE("an episode keeps its story: list, timeline and review")
@@ -240,8 +348,12 @@ TEST_CASE("an episode keeps its story: list, timeline and review")
   CHECK(harness.notifications.sent().size() == 1);
 
   GuardFeatureService api = feature();
-  const Json::Value page =
-      drogon::sync_wait(api.episodes({.limit = 10, .before = 0}));
+  const Json::Value page = drogon::sync_wait(
+      api.episodes({.limit = 10, .before = 0, .environmentId = homeId()}));
+  CHECK(drogon::sync_wait(
+            api.episodes({.limit = 10, .before = 0, .environmentId = 999999}))
+            ["rows"]
+                .empty());
   Json::Value episode;
   for (const auto& row : page["rows"]) {
     if (row["cameraId"].asInt64() == 510)
@@ -254,6 +366,7 @@ TEST_CASE("an episode keeps its story: list, timeline and review")
   CHECK(episode["danger"].asString() == "critical");
   CHECK(episode["subject"].asString() == "stranger");
   CHECK(episode["reasons"][0].asString() == "alert_zone");
+  CHECK(episode["environmentId"].asInt64() == homeId());
 
   const auto detail =
       drogon::sync_wait(api.episode(episode["id"].asInt64()));
@@ -365,11 +478,12 @@ TEST_CASE("expected activity is summarized once at the digest hour")
   (void)boot();
   GuardFeatureService api = feature();
   Json::Value body(Json::objectValue);
-  body["profile"] = "commercial";
+  body["kind"] = "commercial";
   body["scheduleEnabled"] = true;
   body["open"] = "00:00-24:00";
   body["digestHour"] = localHour();
-  drogon::sync_wait(api.updateSite(sitePatch(body)));
+  const UpdateEnvironmentDto patch = patchOf(body);
+  drogon::sync_wait(api.updateEnvironment({.id = homeId(), .patch = patch}));
   Json::Value kitchen(Json::objectValue);
   kitchen["role"] = "kitchen";
   drogon::sync_wait(api.setCamera(
@@ -402,6 +516,9 @@ TEST_CASE("expected activity is summarized once at the digest hour")
   const Json::Value data = json_util::fromString(sent.front().data);
   CHECK(data["kind"].asString() == "guard_digest");
   CHECK(data["urgency"].asString() == "passive");
+  CHECK(data["environmentId"].asInt64() == homeId());
+  CHECK(data["threadKey"].asString().starts_with(
+      "guard:digest:" + std::to_string(homeId()) + ":"));
 
   drogon::sync_wait(service->maybeSendDigests(now + 60));
   CHECK(harness.notifications.sent().size() == 1);

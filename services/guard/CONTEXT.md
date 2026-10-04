@@ -64,11 +64,12 @@ how bad is it (`guard_policy::evaluate`, the danger) and what may the
 camera do about it out loud (`guard_policy::deterrence`). Notifying never
 depends on who is present; voice and siren always do.
 
-**Posture.** `[guard.schedule]` (off by default) derives the effective
-mode from the local time, the manual mode stored by `POST /guard/mode`
-and the property's hours; `guard_schedule::resolve` is the one place that
-does it, and `GET /guard/mode` reports both (`mode` stays the manual one,
-`effectiveMode`, `occupancy`, `publicPresent` and `staffOnly` are added).
+**Posture.** Each environment's schedule (off by default) derives its
+effective mode from the local time, the environment's manual mode (set by
+`POST /guard/mode`) and its hours; `guard_schedule::resolve` is the one
+place that does it, and `GET /guard/environments` reports both per
+environment (`mode` stays the manual one, `effectiveMode`, `occupancy`,
+`publicPresent` and `staffOnly` are added; see "Environments" below).
 A manual `armed` always wins. Inside `open` windows (a restaurant or shop
 serving) the public is present; inside `staffed` windows only staff is;
 outside both, a commercial schedule is closed and takes `closed_mode`
@@ -266,15 +267,17 @@ and every spoken line (configured or generated) passes the code-side gate in
 
 ## Test surface
 
-`GET /health` (unfiltered) and the owner-only administrative API:
-`GET|POST /guard/mode`, `GET /guard/incidents?limit=N`,
+`GET /health` (unfiltered) and the administrative API:
+`POST /guard/mode` (`{mode, environmentId?}`; no id means every
+environment), `GET|POST /guard/environments`,
+`PATCH|DELETE /guard/environments/{id}`, `GET /guard/incidents?limit=N`,
 `GET /guard/decisions?limit=N` (read-only decision journal),
 `GET /guard/decisions/summary?from=&to=&nearMissMargin=`,
 `POST /guard/decisions/{eventId}/feedback`,
 `GET|POST /guard/expected-guests`, `DELETE /guard/expected-guests?id=N`,
 `POST /guard/person/{id}/promote` (forwards the owner bearer token and device
-fingerprint to argus-identity), `GET|PATCH /guard/site`, `GET /guard/cameras`,
-`PUT /guard/cameras/{id}`, `GET /guard/episodes?limit=&before=`,
+fingerprint to argus-identity), `GET /guard/cameras`,
+`PUT /guard/cameras/{id}`, `GET /guard/episodes?limit=&before=&environmentId=`,
 `GET /guard/episodes/{id}` and `POST /guard/episodes/{id}/review` (see "Site,
 camera context and episodes" below).
 Every `/guard` route runs the full `DeviceFilter → ValidJsonFilter → JwtFilter
@@ -616,7 +619,8 @@ than recall of the trivial; urgency is a property of the message, so the
 data carries an interruption level a push channel can map later (iOS
 passive / active / time-sensitive / critical, Android channel importance).
 
-**Site.** `guard_site` (one row, `id = 1`) holds the profile (`home`,
+**Site** (superseded by "Environments" below; `guard_site` is migrated
+into the default environment and dropped). `guard_site` (one row, `id = 1`) held the profile (`home`,
 `office`, `commercial`), the schedule (`schedule_enabled`, `asleep_hours`,
 `open_hours`, `staffed_hours`, `closed_mode`) and `digest_hour`. Until the
 owner edits it, guard reads `[guard] profile`, `[guard.schedule]` and
@@ -748,3 +752,122 @@ config, fakes for the camera and the notification service):
 The before column is the same test file built against 527bfa2f (the parent
 of the change) in a scratch worktree; the camera-context rows it inserts do
 not exist there, so the old guard saw the same events with no context.
+
+## Environments (2026-10, wave 2)
+
+The owner's words: "Vigilancia" was one profile and one mode for the whole
+system, but a camera lives in a place, and one install can watch a home, a
+restaurant and an office at once. An environment is now the unit of
+posture: guard judges every observation through the environment of its
+camera.
+
+**Research.** Serious products all separate the place from the system:
+Ring and Google Home have *locations/homes*, each with its own mode
+(Disarmed/Home/Away), its own mode schedule and its own devices; alarm
+panels (Alarm.com, Qolsys IQ, DSC Neo) have *partitions* that arm
+independently, with an "arm all" action across them (Alarm.com only offers
+the multi-select when the partitions share a state); Verkada Alarms has
+*sites/partitions* with their own arming schedules, smart schedules and
+schedule exceptions, managed from one console; UniFi Protect's Alarm
+Manager has arm profiles with schedules and a scope of cameras (and a
+documented midnight gap in its 00:00-23:59 profiles, which our windows that
+cross midnight avoid). Frigate and the camera-level products keep zones and
+review policy per camera. The model below takes the location/partition shape
+for posture (mode, hours, summaries) and keeps the camera-level context
+(role, indoor/outdoor, public area, own hours) that 966ae0b0 introduced.
+
+**Model.** `guard_environment` holds `name` (unique, case-insensitive),
+`kind` (`home`, `office`, `commercial`, `restaurant`, `warehouse`,
+`outdoor`), `is_default` (exactly one, enforced by a partial unique index),
+the manual `mode` and `mode_updated_at`, the schedule (`schedule_enabled`,
+`asleep_hours`, `open_hours`, `staffed_hours`, `closed_mode`), the summary
+policy (`digest_hour`, `quiet_policy` = `inherit` | `custom` | `off`,
+`quiet_start_hour`, `quiet_end_hour`). `guard_camera_context.environment_id`
+places a camera; a camera without a row, or pointing at a removed
+environment, belongs to the default. The kind frames the assessment prompt
+and names the seeded default ("Casa", "Local", ...); like the old profile it
+never assumes hours.
+
+**Engine.** One query per observation (`EnvironmentRepository::forCamera`,
+a primary-key join that also counts the environments) replaces the site and
+`mode` reads. Per environment: posture and the in-use/passer-by evaluation,
+the expected-guest lookup (a pass with `environment_id` 0 is valid
+everywhere, as every pass was before), quiet hours (`inherit` follows the
+owner's `guard.quiet_hours.*` settings, `custom` uses the environment's
+hours, `off` never holds) and the daily budget (`firedSince` counts the
+environment's own notified decisions). Regrouping, threads, staging and the
+per-camera caps were already per camera. The decision journal and the
+encounter carry `environment_id`, written when the decision is made, so
+history and digests stay with the place where they happened even if a
+camera moves later. Tamper episodes take the camera's current environment.
+
+**Copy.** With one environment nothing changes. With several, every title
+names the place: "Persona desconocida · Cocina (Trattoria)", "Sigue en
+Jardín (Casa) · riesgo crítico", "Revisa la cámara Cocina (Trattoria)",
+"Resumen de vigilancia · Trattoria". Notification `data` gains
+`environmentId` and `environmentName` (empty with one environment).
+
+**Summaries.** The sweep sends each environment its own "Mientras
+descansabas" (at its quiet end) and "Resumen de vigilancia" (at its
+`digest_hour`), counting only that environment's journal rows. The thread is
+one per day and environment, `threadKey = guard:digest:<envId>:<YYYY-MM-DD>`,
+shared by both summaries of that day. Correlations are
+`digest:quiet:<envId>:<day>` / `digest:daily:<envId>:<day>`, state keys
+`digest_*_day_<envId>`. A summary is not a camera effect: effects with
+`cameraId` 0 no longer count against the per-camera hourly cap, which five
+environments sharing a digest hour would otherwise have exhausted.
+
+**Modes.** `POST /guard/mode {mode, environmentId?}` sets one environment,
+or every environment when the id is absent (the voice tool and older clients
+send no id). It answers the whole environment list, so an optimistic client
+settles from it.
+
+**API.** `GET /guard/environments` (Owner, Resident, Guard) lists every
+environment with its config, live posture and the ids of the cameras placed
+in it. `POST /guard/environments` (name and kind required), `PATCH
+/guard/environments/{id}` (any field, PATCH semantics) and `DELETE
+/guard/environments/{id}` are Owner-only; removing moves its cameras to the
+default and retires the expected visits scoped to it, and the default cannot
+be removed (409). `PUT /guard/cameras/{id}` takes an optional
+`environmentId` (absent keeps the camera where it is; unknown is 404).
+`GET /guard/episodes` takes `environmentId` and every row carries it.
+Expected visits take an optional `environmentId`. `GET /guard/mode`,
+`GET /guard/site` and `PATCH /guard/site` are gone.
+
+**Residents and expected visits.** Recognised people stay global: a
+resident's face is known in every environment, and identity has no notion
+of membership per place, so "staff of the restaurant" is an open item rather
+than a model guard can enforce today. Expected visits are scoped: a pass can
+name an environment, so "the plumber comes at noon" for the home does not
+make an unknown in the restaurant a guest.
+
+**Migration.** `migrate()` adds the `environment_id` columns; after the
+schema, `seedEnvironments(environmentSeed(config))` runs once (only when the
+table is empty, in one transaction): the default environment takes its name
+from the kind in `guard.notify_lang`, its kind/hours/closed mode/digest hour
+from the old `guard_site` row when there is one (else the config seeds), its
+mode from the stored `guard_state.mode` (else `guard.default_mode`), and
+quiet policy `inherit`. Existing camera contexts, encounters and journal rows
+are backfilled to it, the three digest state keys move to their `_<id>`
+names (so the day's summary is not sent twice), and `guard_site` and the
+`mode` key are dropped. An existing install behaves exactly as before.
+`guard-migration-test` pins it on a legacy database carrying a single site.
+
+**Measured** (`guard-scenario-test`, "three environments at the same
+moment": a restaurant kitchen while open, a home garden while its residents
+sleep and an office after hours, 13 interleaved observations; the before
+column is the same events against a973774a in a scratch worktree, where one
+site has to describe all three):
+
+| Setup | Alerts | Spoken lines | What went wrong |
+|---|---|---|---|
+| Before, site = restaurant (open) | 0 | 0 | the stranger in the garden at night and the intruder in the closed office were treated as customers |
+| Before, site = home (asleep) | 3 | 3 | the cook paged the owner and was spoken to through the speaker, at "night" |
+| Before, site = office (closed) | 3 | 3 | the cook paged and was spoken to, "after hours" |
+| After, three environments | 2 | 2 | none: "Persona desconocida · Jardín (Casa de campo)" and "Persona desconocida · Oficina (Oficina Centro)"; the kitchen stays in the Trattoria's summary |
+
+**A compiler trap.** GCC 16 miscompiles a conditional expression inside the
+operand of `co_await` (and a `co_await` inside either branch of one): the
+repository's `setMode` evaluated the wrong branch and dereferenced an empty
+optional, and the feature service's PATCH did the same with an optional
+field. Build the input as a local before awaiting, and branch with `if`.

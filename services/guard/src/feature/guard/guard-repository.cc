@@ -262,6 +262,7 @@ GuardRepository::insertGuest(const GuardGuestInput& input) const
                                    input.cameraId, input.personId,
                                    input.hostUserId, input.oneTime ? 1 : 0,
                                    input.validFrom, input.validUntil,
+                                   input.environmentId,
                                    static_cast<int64_t>(std::time(nullptr)));
   co_return result.insertId();
 }
@@ -271,8 +272,8 @@ GuardRepository::activeGuest(const GuardGuestLookupInput& input) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(
-      std::string(ACTIVE_GUEST), input.at, input.at, input.cameraId, input.personId,
-      input.personId);
+      std::string(ACTIVE_GUEST), input.at, input.at, input.cameraId,
+      input.environmentId, input.personId, input.personId);
   if (result.empty())
     co_return std::nullopt;
   const auto& row = result.front();
@@ -283,7 +284,8 @@ GuardRepository::activeGuest(const GuardGuestLookupInput& input) const
                        .hostUserId = row["host_user_id"].as<int64_t>(),
                        .oneTime = row["one_time"].as<int>() != 0,
                        .validFrom = 0,
-                       .validUntil = 0};
+                       .validUntil = 0,
+                       .environmentId = row["environment_id"].as<int64_t>()};
 }
 
 drogon::Task<bool> GuardRepository::consumeGuest(int64_t id, int64_t at) const
@@ -308,7 +310,8 @@ drogon::Task<std::vector<GuardGuest>> GuardRepository::listGuests() const
                       .hostUserId = row["host_user_id"].as<int64_t>(),
                       .oneTime = row["one_time"].as<int>() != 0,
                       .validFrom = row["valid_from"].as<int64_t>(),
-                      .validUntil = row["valid_until"].as<int64_t>()});
+                      .validUntil = row["valid_until"].as<int64_t>(),
+                      .environmentId = row["environment_id"].as<int64_t>()});
   }
   co_return guests;
 }
@@ -931,7 +934,8 @@ drogon::Task<bool> GuardRepository::insertDecisionJournal(
         decisionSuppressionToString(input.suppression), input.suppressedKinds,
         input.reasons, input.noveltyScore, input.repeatVisits,
         input.quietHold ? 1 : 0,
-        input.budgetHold ? 1 : 0, input.assessMs, input.createdAt);
+        input.budgetHold ? 1 : 0, input.assessMs, input.environmentId,
+        input.createdAt);
     co_return result.affectedRows() > 0;
   }
   catch (const std::exception& error) {
@@ -993,11 +997,12 @@ GuardRepository::setDecisionFeedback(const DecisionFeedbackInput& input) const
   co_return result.affectedRows() > 0;
 }
 
-drogon::Task<int64_t> GuardRepository::firedSince(int64_t since) const
+drogon::Task<int64_t>
+GuardRepository::firedSince(const FiredSinceInput& input) const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(COUNT_FIRED_SINCE.data(), since);
+  const auto result = co_await client->execSqlCoro(
+      std::string(COUNT_FIRED_SINCE), input.environmentId, input.since);
   if (result.empty())
     co_return 0;
   co_return result.front()["rows"].as<int64_t>();
@@ -1532,7 +1537,8 @@ drogon::Task<bool> GuardRepository::closeStaleEncounters(
           encounter.bestCameraId, "", encounter.grade,
           guardDangerRank(grade), 0, 0, "[]", 0, 0, 0, 0, input.decisionMode,
           decisionSuppressionToString(DecisionSuppression::LegacySilent),
-          "[]", "[]", 0.0, 0, 0, 0, 0, input.closedAt);
+          "[]", "[]", 0.0, 0, 0, 0, 0, row["environment_id"].as<int64_t>(),
+          input.closedAt);
     }
   }
   catch (const std::exception& e) {

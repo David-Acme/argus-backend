@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstdint>
 #include <json/value.h>
+#include <optional>
 #include <string>
 
 struct UpdateCameraContextDto
@@ -9,6 +11,7 @@ struct UpdateCameraContextDto
   bool outdoor{false};
   bool publicArea{false};
   std::string activeHours;
+  std::optional<int64_t> environmentId;
 
   static UpdateCameraContextDto fromJson(const Json::Value& json);
 };

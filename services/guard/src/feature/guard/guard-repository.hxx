@@ -163,7 +163,7 @@ public:
   drogon::Task<bool>
   setDecisionFeedback(const DecisionFeedbackInput& input) const;
 
-  drogon::Task<int64_t> firedSince(int64_t since) const;
+  drogon::Task<int64_t> firedSince(const FiredSinceInput& input) const;
 
   drogon::Task<BaselineEmaRow> baselineEma(int64_t cameraId, int dowHour) const;
 

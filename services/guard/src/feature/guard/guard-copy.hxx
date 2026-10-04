@@ -1,6 +1,7 @@
 #pragma once
 
 #include <feature/guard/vocabulary/camera-role.hxx>
+#include <feature/guard/vocabulary/environment-kind.hxx>
 #include <feature/guard/vocabulary/guard-danger.hxx>
 #include <feature/guard/vocabulary/guard-reason.hxx>
 
@@ -53,6 +54,7 @@ struct GuardNotice
   int people{1};
   int64_t cameraId{0};
   std::string cameraName;
+  std::string environmentName;
   CameraRole role{CameraRole::Other};
   bool outdoor{false};
   std::string zoneName;
@@ -87,5 +89,7 @@ std::string normalizeLang(const LangPreference& preference);
 NoticeText render(const GuardNotice& notice, std::string_view lang);
 
 std::string urgency(const GuardNotice& notice);
+
+std::string environmentDefaultName(EnvironmentKind kind, std::string_view lang);
 
 }

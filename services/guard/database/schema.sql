@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS guard_expected_guest (
     valid_from   INTEGER NOT NULL,
     valid_until  INTEGER NOT NULL,
     used_at      INTEGER NOT NULL  DEFAULT 0,
+    environment_id INTEGER NOT NULL DEFAULT 0,
     created_at   INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     deleted_at   INTEGER
 );
@@ -130,11 +131,14 @@ CREATE TABLE IF NOT EXISTS guard_encounter (
     review_label     TEXT    NOT NULL  DEFAULT ''
                              CHECK (review_label IN ('', 'useful', 'false_alarm',
                                     'not_now')),
-    reviewed_at      INTEGER NOT NULL  DEFAULT 0
+    reviewed_at      INTEGER NOT NULL  DEFAULT 0,
+    environment_id   INTEGER NOT NULL  DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_guard_encounter_last_seen
     ON guard_encounter (last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_guard_encounter_environment
+    ON guard_encounter (environment_id, last_seen DESC);
 CREATE INDEX IF NOT EXISTS idx_guard_encounter_person
     ON guard_encounter (person_id);
 
@@ -286,6 +290,7 @@ CREATE TABLE IF NOT EXISTS guard_decision_journal (
                           CHECK (feedback_label IN ('', 'useful', 'false_alarm',
                                  'not_now')),
     feedback_at         INTEGER NOT NULL DEFAULT 0,
+    environment_id      INTEGER NOT NULL DEFAULT 0,
     created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
@@ -298,10 +303,19 @@ CREATE INDEX IF NOT EXISTS idx_guard_decision_journal_cursor
 CREATE INDEX IF NOT EXISTS idx_guard_decision_journal_camera_time
     ON guard_decision_journal (camera_id, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS guard_site (
-    id               INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
-    profile          TEXT    NOT NULL DEFAULT 'home'
-                       CHECK (profile IN ('home', 'office', 'commercial')),
+CREATE INDEX IF NOT EXISTS idx_guard_decision_journal_environment_time
+    ON guard_decision_journal (environment_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS guard_environment (
+    id               INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    name             TEXT    NOT NULL CHECK (length(name) BETWEEN 1 AND 60),
+    kind             TEXT    NOT NULL DEFAULT 'home'
+                       CHECK (kind IN ('home', 'office', 'commercial',
+                              'restaurant', 'warehouse', 'outdoor')),
+    is_default       INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+    mode             TEXT    NOT NULL DEFAULT 'home'
+                       CHECK (mode IN ('home', 'away', 'night', 'armed')),
+    mode_updated_at  INTEGER NOT NULL DEFAULT 0,
     schedule_enabled INTEGER NOT NULL DEFAULT 0 CHECK (schedule_enabled IN (0, 1)),
     asleep_hours     TEXT    NOT NULL DEFAULT '',
     open_hours       TEXT    NOT NULL DEFAULT '',
@@ -310,8 +324,21 @@ CREATE TABLE IF NOT EXISTS guard_site (
                        CHECK (closed_mode IN ('away', 'armed')),
     digest_hour      INTEGER NOT NULL DEFAULT 21
                        CHECK (digest_hour >= -1 AND digest_hour <= 23),
+    quiet_policy     TEXT    NOT NULL DEFAULT 'inherit'
+                       CHECK (quiet_policy IN ('inherit', 'custom', 'off')),
+    quiet_start_hour INTEGER NOT NULL DEFAULT 22
+                       CHECK (quiet_start_hour >= 0 AND quiet_start_hour <= 23),
+    quiet_end_hour   INTEGER NOT NULL DEFAULT 7
+                       CHECK (quiet_end_hour >= 0 AND quiet_end_hour <= 23),
+    created_at       INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     updated_at       INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_guard_environment_default
+    ON guard_environment (is_default) WHERE is_default = 1;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_guard_environment_name
+    ON guard_environment (name COLLATE NOCASE);
 
 CREATE TABLE IF NOT EXISTS guard_camera_context (
     camera_id    INTEGER NOT NULL PRIMARY KEY,
@@ -322,5 +349,9 @@ CREATE TABLE IF NOT EXISTS guard_camera_context (
     outdoor      INTEGER NOT NULL DEFAULT 0 CHECK (outdoor IN (0, 1)),
     public_area  INTEGER NOT NULL DEFAULT 0 CHECK (public_area IN (0, 1)),
     active_hours TEXT    NOT NULL DEFAULT '',
+    environment_id INTEGER NOT NULL DEFAULT 0,
     updated_at   INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_guard_camera_context_environment
+    ON guard_camera_context (environment_id);

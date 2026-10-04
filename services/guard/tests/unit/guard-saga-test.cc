@@ -370,7 +370,8 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
                                                 .hostUserId = 0,
                                                 .oneTime = true,
                                                 .validFrom = 150,
-                                                .validUntil = 300}));
+                                                .validUntil = 300,
+                                                .environmentId = 0}));
   CHECK(guestId > 0);
   CHECK(
       drogon::sync_wait(repository.claimObservation({.eventId = "fault:2",
@@ -401,7 +402,8 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
                                                 .hostUserId = 0,
                                                 .oneTime = false,
                                                 .validFrom = 100,
-                                                .validUntil = 1000}));
+                                                .validUntil = 1000,
+                                                .environmentId = 0}));
   const int64_t boundPass =
       drogon::sync_wait(repository.insertGuest({.description = "plumber",
                                                 .cameraId = 1,
@@ -409,15 +411,30 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
                                                 .hostUserId = 0,
                                                 .oneTime = false,
                                                 .validFrom = 100,
-                                                .validUntil = 1000}));
+                                                .validUntil = 1000,
+                                                .environmentId = 0}));
   const auto passFor = [&repository](int64_t personId) {
-    const auto guest = drogon::sync_wait(
-        repository.activeGuest({.at = 400, .cameraId = 1, .personId = personId}));
+    const auto guest = drogon::sync_wait(repository.activeGuest(
+        {.at = 400, .cameraId = 1, .environmentId = 1, .personId = personId}));
     return guest ? guest->id : int64_t{0};
   };
   CHECK(passFor(7) == openPass);
   CHECK(passFor(5) == boundPass);
   CHECK(passFor(0) == openPass);
+  const int64_t elsewherePass =
+      drogon::sync_wait(repository.insertGuest({.description = "courier",
+                                                .cameraId = 0,
+                                                .personId = 8,
+                                                .hostUserId = 0,
+                                                .oneTime = false,
+                                                .validFrom = 100,
+                                                .validUntil = 1000,
+                                                .environmentId = 2}));
+  CHECK(passFor(8) == openPass);
+  const auto inOtherEnvironment = drogon::sync_wait(repository.activeGuest(
+      {.at = 400, .cameraId = 1, .environmentId = 2, .personId = 8}));
+  REQUIRE(inOtherEnvironment.has_value());
+  CHECK(inOtherEnvironment->id == elsewherePass);
 
   CHECK(drogon::sync_wait(repository.claimObservation({.eventId = "enc:1",
                                                        .cameraId = 1,

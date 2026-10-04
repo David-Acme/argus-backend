@@ -13,6 +13,7 @@ argus_module(NAME guard
         guard-schema.cc
         guard-service.cc
         controllers/guard-controller.cc
+        dtos/create-environment-dto.cc
         dtos/create-expected-guest-dto.cc
         dtos/feedback-decision-dto.cc
         dtos/list-decisions-dto.cc
@@ -23,10 +24,10 @@ argus_module(NAME guard
         dtos/summary-decisions-dto.cc
         dtos/update-camera-context-dto.cc
         dtos/update-guard-mode-dto.cc
-        dtos/update-guard-site-dto.cc
+        dtos/update-environment-dto.cc
         repositories/camera-context/camera-context-repository.cc
+        repositories/environment/environment-repository.cc
         repositories/episode/episode-repository.cc
-        repositories/guard-site/guard-site-repository.cc
         services/guard-feature-service.cc
     INCLUDES
         ../..

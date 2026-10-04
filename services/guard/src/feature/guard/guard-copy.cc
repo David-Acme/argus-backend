@@ -42,9 +42,13 @@ std::string joined(const std::vector<std::string>& parts,
 
 std::string cameraLabel(const GuardNotice& notice, bool english)
 {
-  if (!notice.cameraName.empty())
-    return notice.cameraName;
-  return (english ? "Camera " : "Cámara ") + std::to_string(notice.cameraId);
+  std::string label =
+      notice.cameraName.empty()
+          ? (english ? "Camera " : "Cámara ") + std::to_string(notice.cameraId)
+          : notice.cameraName;
+  if (!notice.environmentName.empty())
+    label += " (" + notice.environmentName + ")";
+  return label;
 }
 
 std::string subjectPhrase(const GuardNotice& notice, bool english)
@@ -312,6 +316,8 @@ NoticeText renderDigest(const GuardNotice& notice, bool english)
                    : pick({.es = "Resumen de vigilancia",
                            .en = "Security summary"},
                           english);
+  if (!notice.environmentName.empty())
+    text.title += " · " + notice.environmentName;
   std::vector<std::string> sentences;
   const int64_t held = total(notice.held);
   if (held > 0)
@@ -430,4 +436,26 @@ std::string guard_copy::urgency(const GuardNotice& notice)
   if (notice.danger == GuardDanger::High)
     return "time_sensitive";
   return "active";
+}
+
+std::string guard_copy::environmentDefaultName(EnvironmentKind kind,
+                                               std::string_view lang)
+{
+  const bool english =
+      normalizeLang({.requested = lang, .fallback = "es"}) == "en";
+  switch (kind) {
+    case EnvironmentKind::Home:
+      return pick({.es = "Casa", .en = "Home"}, english);
+    case EnvironmentKind::Office:
+      return pick({.es = "Oficina", .en = "Office"}, english);
+    case EnvironmentKind::Commercial:
+      return pick({.es = "Local", .en = "Shop"}, english);
+    case EnvironmentKind::Restaurant:
+      return pick({.es = "Restaurante", .en = "Restaurant"}, english);
+    case EnvironmentKind::Warehouse:
+      return pick({.es = "Almacén", .en = "Warehouse"}, english);
+    case EnvironmentKind::Outdoor:
+      return pick({.es = "Exterior", .en = "Outdoors"}, english);
+  }
+  return pick({.es = "Casa", .en = "Home"}, english);
 }

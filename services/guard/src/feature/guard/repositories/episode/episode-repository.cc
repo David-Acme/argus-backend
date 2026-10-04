@@ -36,7 +36,8 @@ EpisodeRow episodeFromRow(const drogon::orm::Row& row)
                             ? std::string{}
                             : row["last_reason"].as<std::string>(),
           .spoke = row["spoke"].as<int>() != 0,
-          .sounded = row["sounded"].as<int>() != 0};
+          .sounded = row["sounded"].as<int>() != 0,
+          .environmentId = row["environment_id"].as<int64_t>()};
 }
 
 constexpr std::string_view kTamperOnsetPrefix = "tamper_onset_";
@@ -46,7 +47,8 @@ drogon::Task<std::vector<EpisodeRow>>
 EpisodeRepository::list(const EpisodeListInput& input) const
 {
   const auto rows = co_await DbService::client()->execSqlCoro(
-      std::string(LIST_EPISODES), input.before, input.before, input.limit);
+      std::string(LIST_EPISODES), input.before, input.before,
+      input.environmentId, input.environmentId, input.limit);
   std::vector<EpisodeRow> episodes;
   episodes.reserve(rows.size());
   for (const auto& row : rows)
@@ -86,7 +88,8 @@ EpisodeRepository::tamper(const EpisodeListInput& input) const
 {
   const auto client = DbService::client();
   const auto rows = co_await client->execSqlCoro(
-      std::string(LIST_TAMPER), input.before, input.before, input.limit);
+      std::string(LIST_TAMPER), input.before, input.before,
+      input.environmentId, input.environmentId, input.limit);
   const auto onsets = co_await client->execSqlCoro(std::string(OPEN_TAMPER_KEYS));
   std::unordered_set<int64_t> openCameras;
   for (const auto& onset : onsets) {
@@ -113,7 +116,8 @@ EpisodeRepository::tamper(const EpisodeListInput& input) const
          .status = event.isObject() ? event.get("status", "").asString()
                                     : std::string{},
          .createdAt = row["created_at"].as<int64_t>(),
-         .open = openCameras.contains(cameraId) && seen.insert(cameraId).second});
+         .open = openCameras.contains(cameraId) && seen.insert(cameraId).second,
+         .environmentId = row["environment_id"].as<int64_t>()});
   }
   co_return tampered;
 }
@@ -123,7 +127,8 @@ EpisodeRepository::recordInsight(const EpisodeInsightInput& input) const
 {
   const auto result = co_await DbService::client()->execSqlCoro(
       std::string(UPDATE_INSIGHT), input.subject, input.people, input.rank,
-      input.reasons, input.rank, input.encounterId);
+      input.reasons, input.rank, input.environmentId, input.environmentId,
+      input.encounterId);
   co_return result.affectedRows() > 0;
 }
 
@@ -183,7 +188,7 @@ drogon::Task<std::vector<DigestRow>>
 EpisodeRepository::digest(const DigestWindowInput& input) const
 {
   const auto rows = co_await DbService::client()->execSqlCoro(
-      std::string(DIGEST_WINDOW), input.from, input.to);
+      std::string(DIGEST_WINDOW), input.from, input.to, input.environmentId);
   std::vector<DigestRow> lines;
   lines.reserve(rows.size());
   for (const auto& row : rows)

@@ -6,6 +6,7 @@
 #include "guard-risk.hxx"
 
 #include <algorithm>
+#include <array>
 #include <camera/camera-action-client.hxx>
 #include <map>
 #include <ranges>
@@ -162,6 +163,8 @@ void addReason(std::vector<std::string>& reasons, GuardReason reason)
 struct NoticeDataInput
 {
   const GuardNotice& notice;
+  int64_t environmentId{0};
+  std::string digestDay;
   std::string rule;
   int64_t incidentId{0};
   int64_t encounterId{0};
@@ -176,6 +179,8 @@ Json::Value noticeData(const NoticeDataInput& input)
   Json::Value data(Json::objectValue);
   data["cameraId"] = static_cast<Json::Int64>(notice.cameraId);
   data["cameraName"] = notice.cameraName;
+  data["environmentId"] = static_cast<Json::Int64>(input.environmentId);
+  data["environmentName"] = notice.environmentName;
   data["rule"] = input.rule;
   data["danger"] = guardDangerToString(notice.danger);
   data["incidentId"] = static_cast<Json::Int64>(input.incidentId);
@@ -201,7 +206,9 @@ Json::Value noticeData(const NoticeDataInput& input)
       data["threadKey"] = "guard:tamper:" + std::to_string(notice.cameraId);
       break;
     case NoticeKind::Digest:
-      data["threadKey"] = "guard:digest";
+      data["threadKey"] = "guard:digest:" +
+                          std::to_string(input.environmentId) + ":" +
+                          input.digestDay;
       break;
     case NoticeKind::Episode:
     case NoticeKind::Escalation:
@@ -362,18 +369,20 @@ GuardPosture GuardService::postureAt(const PostureInput& input)
       {.schedule = input.schedule, .manual = input.manual, .local = local});
 }
 
-drogon::Task<GuardSite> GuardService::activeSite() const
+drogon::Task<GuardEnvironmentScope>
+GuardService::environmentScope(int64_t cameraId) const
 {
   const auto config = currentConfig();
   try {
-    if (const auto stored = co_await siteRepository_.find())
+    if (const auto stored = co_await environmentRepository_.forCamera(cameraId))
       co_return *stored;
   }
   catch (const std::exception& error) {
-    LOG_WARN << "Guard service: site read failed, using config: "
+    LOG_WARN << "Guard service: environment read failed, using config: "
              << error.what();
   }
-  co_return guard_schedule::siteDefaults(*config);
+  co_return GuardEnvironmentScope{
+      .environment = guard_schedule::environmentSeed(*config), .several = false};
 }
 
 void GuardService::rememberCameraName(int64_t cameraId, const std::string& name)
@@ -741,11 +750,16 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
              .createdAt = now});
     const GuardCameraContext camera =
         co_await cameraContextRepository_.find(reading.cameraId);
+    const GuardEnvironmentScope scope =
+        co_await environmentScope(reading.cameraId);
     const GuardNotice notice{.kind = NoticeKind::Tamper,
                              .subject = NoticeSubject::Stranger,
                              .people = 0,
                              .cameraId = reading.cameraId,
                              .cameraName = name,
+                             .environmentName = scope.several
+                                                    ? scope.environment.name
+                                                    : std::string{},
                              .role = camera.role,
                              .outdoor = camera.outdoor,
                              .zoneName = {},
@@ -761,6 +775,8 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
     const NotifyContent content{
         .notice = notice,
         .data = noticeData({.notice = notice,
+                            .environmentId = scope.environment.id,
+                            .digestDay = {},
                             .rule = "camera_tamper",
                             .incidentId = incidentId,
                             .encounterId = 0,
@@ -789,6 +805,7 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
          .quietHold = false,
          .budgetHold = false,
          .assessMs = 0,
+         .environmentId = scope.environment.id,
          .at = now});
     const EffectResult sent = co_await performEffect(
         {.kind = GuardActionKind::Notify,
@@ -869,6 +886,7 @@ GuardService::journalDecision(const JournalDecisionInput& input)
          .quietHold = input.quietHold,
          .budgetHold = input.budgetHold,
          .assessMs = input.assessMs,
+         .environmentId = input.environmentId,
          .createdAt = input.at});
   }
   catch (const std::exception& error) {
@@ -924,7 +942,9 @@ GuardService::computeHolds(const HoldInput& input)
   const auto config = currentConfig();
   HoldResult holds;
   try {
-    if (!config->quietHoursEnabled || !input.legacyWouldNotify)
+    const guard_schedule::QuietWindow window = guard_schedule::quietWindow(
+        {.environment = input.environment, .config = *config});
+    if (!window.enabled || !input.legacyWouldNotify)
       co_return holds;
     if (guard_policy::dangerRank(input.danger) >=
         guard_policy::dangerRank(GuardDanger::High))
@@ -933,17 +953,13 @@ GuardService::computeHolds(const HoldInput& input)
     const std::time_t at = static_cast<std::time_t>(input.now);
     if (localtime_r(&at, &parts) == nullptr)
       co_return holds;
-    const int hour = parts.tm_hour;
-    const bool inWindow = config->quietStartHour <= config->quietEndHour
-                              ? (hour >= config->quietStartHour &&
-                                 hour < config->quietEndHour)
-                              : (hour >= config->quietStartHour ||
-                                 hour < config->quietEndHour);
-    if (inWindow)
+    if (guard_schedule::inQuietHours(window, parts.tm_hour))
       holds.quiet = true;
     const int64_t midnight =
         input.now - (parts.tm_hour * 3600 + parts.tm_min * 60 + parts.tm_sec);
-    if (co_await repository_.firedSince(midnight) >= config->quietDailyBudget)
+    if (co_await repository_.firedSince(
+            {.environmentId = input.environment.id, .since = midnight}) >=
+        config->quietDailyBudget)
       holds.budget = true;
   }
   catch (const std::exception& error) {
@@ -1444,13 +1460,14 @@ GuardService::applyObservation(const ObservationInput& input)
   ObservationCheckpoint checkpoint =
       checkpointFromJson(json_util::fromString(state.checkpoint));
 
-  const GuardSite site = co_await activeSite();
-  const GuardSchedule schedule = guard_schedule::fromSite(site);
+  const GuardEnvironmentScope scope =
+      co_await environmentScope(signals.cameraId);
+  const GuardEnvironment& environment = scope.environment;
+  const std::string environmentName =
+      scope.several ? environment.name : std::string{};
+  const GuardSchedule schedule = guard_schedule::fromEnvironment(environment);
   const GuardPosture posture = postureAt(
-      {.schedule = schedule,
-       .manual = guard_policy::modeFromString(co_await repository_.state(
-           "mode", guard_policy::modeToString(config->defaultMode))),
-       .now = now});
+      {.schedule = schedule, .manual = environment.mode, .now = now});
   const GuardMode mode = posture.mode;
   rememberCameraName(signals.cameraId, signals.cameraName);
 
@@ -1509,7 +1526,10 @@ GuardService::applyObservation(const ObservationInput& input)
                                            now - config->repeatWindowS);
     if (config->expectedGuestsEnabled && signals.hasUnknown) {
       const auto guest = co_await repository_.activeGuest(
-          {.at = now, .cameraId = signals.cameraId, .personId = signals.personId});
+          {.at = now,
+           .cameraId = signals.cameraId,
+           .environmentId = environment.id,
+           .personId = signals.personId});
       if (guest) {
         context.expectedGuest = true;
         if (guest->oneTime) {
@@ -1696,8 +1716,8 @@ GuardService::applyObservation(const ObservationInput& input)
                                     .danger = danger,
                                     .hardFloor = hardFloor,
                                     .assessMs = assessMs,
-                                    .profile = siteProfileToString(
-                                        site.profile)});
+                                    .profile = environmentKindToString(
+                                        environment.kind)});
     checkpoint.danger = guard_policy::dangerToString(danger);
     state.stage = kStageAssessment;
     failAt("after_assessment");
@@ -1754,7 +1774,8 @@ GuardService::applyObservation(const ObservationInput& input)
            .hasUnknown = signals.hasUnknown,
            .now = now});
       const HoldResult stagedHolds = co_await computeHolds(
-          {.danger = danger,
+          {.environment = environment,
+           .danger = danger,
            .legacyWouldNotify = stagedLegacyWould,
            .now = now});
       co_await journalDecision(
@@ -1779,6 +1800,7 @@ GuardService::applyObservation(const ObservationInput& input)
            .quietHold = stagedHolds.quiet,
            .budgetHold = stagedHolds.budget,
            .assessMs = 0,
+           .environmentId = environment.id,
            .at = now});
       if (state.encounterId > 0)
         co_await episodeRepository_.recordInsight(
@@ -1786,7 +1808,8 @@ GuardService::applyObservation(const ObservationInput& input)
              .subject = noticeSubjectToString(subjectFor(signals)),
              .people = std::max(1, signals.unknownCount),
              .reasons = reasonsJson(checkpoint.reasons),
-             .rank = guard_policy::dangerRank(danger)});
+             .rank = guard_policy::dangerRank(danger),
+             .environmentId = environment.id});
     }
 
     co_await recordAssessment({.signals = signals,
@@ -2045,7 +2068,10 @@ GuardService::applyObservation(const ObservationInput& input)
     bool decisionsComputed = false;
     if (!checkpoint.holdsComputed) {
       const HoldResult holds = co_await computeHolds(
-          {.danger = danger, .legacyWouldNotify = legacyWould, .now = now});
+          {.environment = environment,
+           .danger = danger,
+           .legacyWouldNotify = legacyWould,
+           .now = now});
       checkpoint.holdsComputed = true;
       checkpoint.quietHold = holds.quiet;
       checkpoint.budgetHold = holds.budget;
@@ -2157,6 +2183,7 @@ GuardService::applyObservation(const ObservationInput& input)
            .quietHold = checkpoint.quietHold,
            .budgetHold = checkpoint.budgetHold,
            .assessMs = assessMs,
+           .environmentId = environment.id,
            .at = now});
       if (state.encounterId > 0) {
         co_await episodeRepository_.recordInsight(
@@ -2164,7 +2191,8 @@ GuardService::applyObservation(const ObservationInput& input)
              .subject = noticeSubjectToString(subjectFor(signals)),
              .people = std::max(1, signals.unknownCount),
              .reasons = reasonsJson(checkpoint.reasons),
-             .rank = rank});
+             .rank = rank,
+             .environmentId = environment.id});
         if (grouped)
           co_await episodeRepository_.linkGroup(state.encounterId,
                                                 checkpoint.groupedInto);
@@ -2254,6 +2282,7 @@ GuardService::applyObservation(const ObservationInput& input)
           .people = std::max(1, signals.unknownCount),
           .cameraId = signals.cameraId,
           .cameraName = signals.cameraName,
+          .environmentName = environmentName,
           .role = cameraRoleFromString(checkpoint.cameraRole)
                       .value_or(CameraRole::Other),
           .outdoor = checkpoint.outdoor,
@@ -2271,6 +2300,8 @@ GuardService::applyObservation(const ObservationInput& input)
           .notice = notice,
           .data = noticeData(
               {.notice = notice,
+               .environmentId = environment.id,
+               .digestDay = {},
                .rule = signals.rule,
                .incidentId = state.incidentId,
                .encounterId = state.encounterId,
@@ -2368,8 +2399,8 @@ GuardService::applyObservation(const ObservationInput& input)
                                     .danger = danger,
                                     .hardFloor = true,
                                     .assessMs = assessMs,
-                                    .profile = siteProfileToString(
-                                        site.profile)});
+                                    .profile = environmentKindToString(
+                                        environment.kind)});
       co_await recordAssessment({.signals = signals,
                                  .checkpoint = checkpoint,
                                  .incidentId = state.incidentId,
@@ -2396,6 +2427,7 @@ GuardService::applyObservation(const ObservationInput& input)
           {.signals = signals,
            .checkpoint = checkpoint,
            .posture = posture,
+           .scope = scope,
            .danger = danger,
            .incidentId = state.incidentId,
            .encounterId = state.encounterId,
@@ -2593,6 +2625,8 @@ GuardService::escalate(const EscalateInput& input)
         .people = std::max(1, signals.unknownCount),
         .cameraId = signals.cameraId,
         .cameraName = signals.cameraName,
+        .environmentName =
+            input.scope.several ? input.scope.environment.name : std::string{},
         .role = cameraRoleFromString(input.checkpoint.cameraRole)
                     .value_or(CameraRole::Other),
         .outdoor = input.checkpoint.outdoor,
@@ -2610,6 +2644,8 @@ GuardService::escalate(const EscalateInput& input)
         .notice = notice,
         .data = noticeData(
             {.notice = notice,
+             .environmentId = input.scope.environment.id,
+             .digestDay = {},
              .rule = signals.rule,
              .incidentId = input.incidentId,
              .encounterId = input.encounterId,
@@ -3119,10 +3155,11 @@ GuardService::performEffect(const EffectInput& input)
     result.detail = "camera_unavailable";
   }
 
-  const bool budgeted = input.kind == GuardActionKind::Notify ||
-                        input.kind == GuardActionKind::Announce ||
-                        input.kind == GuardActionKind::Alarm ||
-                        input.kind == GuardActionKind::SirenArm;
+  const bool budgeted = input.cameraId > 0 &&
+                        (input.kind == GuardActionKind::Notify ||
+                         input.kind == GuardActionKind::Announce ||
+                         input.kind == GuardActionKind::Alarm ||
+                         input.kind == GuardActionKind::SirenArm);
   if (result.authorized && budgeted && config->maxActionsPerHour > 0) {
     const int64_t used =
         co_await repository_.effectsSince(input.cameraId, input.now - 3600);
@@ -3348,63 +3385,98 @@ void GuardService::scheduleSirenDisarm(const EffectInput& input)
 drogon::Task<void> GuardService::maybeSendDigests(int64_t now)
 {
   const auto config = currentConfig();
-  const GuardSite site = co_await activeSite();
   const auto at = static_cast<std::time_t>(now);
   std::tm local{};
   if (localtime_r(&at, &local) == nullptr)
     co_return;
+  std::vector<GuardEnvironment> environments;
+  try {
+    environments = co_await environmentRepository_.list();
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Guard service: digest sweep could not list environments: "
+             << error.what();
+    co_return;
+  }
+  const bool several = environments.size() > 1;
+  for (const auto& environment : environments)
+    co_await sendEnvironmentDigests(
+        {.scope = {.environment = environment, .several = several},
+         .config = *config,
+         .local = local,
+         .now = now});
+}
+
+drogon::Task<void>
+GuardService::sendEnvironmentDigests(const EnvironmentDigestInput& input)
+{
+  const GuardEnvironment& environment = input.scope.environment;
+  const std::tm& local = input.local;
+  const int64_t now = input.now;
   const int64_t midnight =
       now - (local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec);
   const std::string today = std::to_string(local.tm_year + 1900) + "-" +
                             std::to_string(local.tm_mon + 1) + "-" +
                             std::to_string(local.tm_mday);
-  if (config->quietHoursEnabled && local.tm_hour == config->quietEndHour &&
-      config->quietStartHour != config->quietEndHour &&
-      co_await repository_.state("digest_quiet_day", "") != today) {
+  std::array<char, 16> padded{};
+  const size_t written = std::strftime(padded.data(), padded.size(), "%Y-%m-%d",
+                                       &local);
+  const std::string day(padded.data(), written);
+  const std::string id = std::to_string(environment.id);
+  const std::string quietKey = "digest_quiet_day_" + id;
+  const std::string dailyKey = "digest_daily_day_" + id;
+  const std::string untilKey = "digest_daily_until_" + id;
+  const guard_schedule::QuietWindow window = guard_schedule::quietWindow(
+      {.environment = environment, .config = input.config});
+  if (window.enabled && local.tm_hour == window.endHour &&
+      window.startHour != window.endHour &&
+      co_await repository_.state(quietKey, "") != today) {
     const int64_t from =
-        config->quietStartHour > config->quietEndHour
-            ? midnight - static_cast<int64_t>(24 - config->quietStartHour) * 3600
-            : midnight + static_cast<int64_t>(config->quietStartHour) * 3600;
-    if (co_await sendDigest({.from = from,
+        window.startHour > window.endHour
+            ? midnight - static_cast<int64_t>(24 - window.startHour) * 3600
+            : midnight + static_cast<int64_t>(window.startHour) * 3600;
+    if (co_await sendDigest({.scope = input.scope,
+                             .day = day,
+                             .from = from,
                              .to = now,
                              .afterQuiet = true,
-                             .correlationId = "digest:quiet:" + today,
+                             .correlationId = "digest:quiet:" + id + ":" + today,
                              .now = now}))
       co_await repository_.setState(
-          {.key = "digest_quiet_day", .value = today, .updatedAt = now});
+          {.key = quietKey, .value = today, .updatedAt = now});
   }
-  if (site.digestHour >= 0 && local.tm_hour == site.digestHour &&
-      co_await repository_.state("digest_daily_day", "") != today) {
-    const std::string until = co_await repository_.state("digest_daily_until", "");
-    int64_t from = now - kDayS;
-    if (const auto [end, error] = std::from_chars(
-            until.data(), until.data() + until.size(), from);
-        error != std::errc{} || end != until.data() + until.size())
-      from = now - kDayS;
-    if (config->quietHoursEnabled &&
-        co_await repository_.state("digest_quiet_day", "") == today)
-      from = std::max<int64_t>(
-          from, midnight + static_cast<int64_t>(config->quietEndHour) * 3600);
-    if (co_await sendDigest({.from = std::max(from, now - kDigestLookbackS),
-                             .to = now,
-                             .afterQuiet = false,
-                             .correlationId = "digest:daily:" + today,
-                             .now = now})) {
-      co_await repository_.setState(
-          {.key = "digest_daily_day", .value = today, .updatedAt = now});
-      co_await repository_.setState({.key = "digest_daily_until",
-                                     .value = std::to_string(now),
-                                     .updatedAt = now});
-    }
-  }
-  co_return;
+  if (environment.digestHour < 0 || local.tm_hour != environment.digestHour ||
+      co_await repository_.state(dailyKey, "") == today)
+    co_return;
+  const std::string until = co_await repository_.state(untilKey, "");
+  int64_t from = now - kDayS;
+  if (const auto [end, error] =
+          std::from_chars(until.data(), until.data() + until.size(), from);
+      error != std::errc{} || end != until.data() + until.size())
+    from = now - kDayS;
+  if (window.enabled && co_await repository_.state(quietKey, "") == today)
+    from = std::max<int64_t>(
+        from, midnight + static_cast<int64_t>(window.endHour) * 3600);
+  if (!co_await sendDigest({.scope = input.scope,
+                            .day = day,
+                            .from = std::max(from, now - kDigestLookbackS),
+                            .to = now,
+                            .afterQuiet = false,
+                            .correlationId = "digest:daily:" + id + ":" + today,
+                            .now = now}))
+    co_return;
+  co_await repository_.setState(
+      {.key = dailyKey, .value = today, .updatedAt = now});
+  co_await repository_.setState(
+      {.key = untilKey, .value = std::to_string(now), .updatedAt = now});
 }
 
 drogon::Task<bool> GuardService::sendDigest(const DigestInput& input)
 {
   const auto config = currentConfig();
-  const auto rows =
-      co_await episodeRepository_.digest({.from = input.from, .to = input.to});
+  const GuardEnvironment& environment = input.scope.environment;
+  const auto rows = co_await episodeRepository_.digest(
+      {.from = input.from, .to = input.to, .environmentId = environment.id});
   std::vector<DigestLine> held;
   std::vector<DigestLine> routine;
   int64_t notified = 0;
@@ -3426,6 +3498,9 @@ drogon::Task<bool> GuardService::sendDigest(const DigestInput& input)
                            .people = 0,
                            .cameraId = 0,
                            .cameraName = {},
+                           .environmentName = input.scope.several
+                                                  ? environment.name
+                                                  : std::string{},
                            .role = CameraRole::Other,
                            .outdoor = false,
                            .zoneName = {},
@@ -3439,6 +3514,8 @@ drogon::Task<bool> GuardService::sendDigest(const DigestInput& input)
                            .notified = notified,
                            .afterQuiet = input.afterQuiet};
   Json::Value data = noticeData({.notice = notice,
+                                 .environmentId = environment.id,
+                                 .digestDay = input.day,
                                  .rule = "guard_digest",
                                  .incidentId = 0,
                                  .encounterId = 0,
@@ -3448,24 +3525,25 @@ drogon::Task<bool> GuardService::sendDigest(const DigestInput& input)
                                                            : "daily"});
   data["from"] = static_cast<Json::Int64>(input.from);
   data["to"] = static_cast<Json::Int64>(input.to);
+  data["day"] = input.day;
   const GuardDanger authorized =
       guardDangerFromRank(std::clamp(config->notifyLevel, 1, 4));
   const EffectResult sent = co_await performEffect(
       {.kind = GuardActionKind::Notify,
-                          .danger = authorized,
-                          .greetingEnabled = false,
-                          .replyRequested = false,
-                          .cameraId = 0,
-                          .incidentId = 0,
-                          .encounterId = 0,
-                          .personId = 0,
-                          .now = input.now,
-                          .text = {},
-                          .lang = {},
-                          .seconds = 0,
-                          .correlationId = input.correlationId,
-                          .sequence = 1,
-                          .notifyContent = {.notice = notice, .data = data}});
+       .danger = authorized,
+       .greetingEnabled = false,
+       .replyRequested = false,
+       .cameraId = 0,
+       .incidentId = 0,
+       .encounterId = 0,
+       .personId = 0,
+       .now = input.now,
+       .text = {},
+       .lang = {},
+       .seconds = 0,
+       .correlationId = input.correlationId,
+       .sequence = 1,
+       .notifyContent = {.notice = notice, .data = data}});
   co_return !sent.resumable;
 }
 

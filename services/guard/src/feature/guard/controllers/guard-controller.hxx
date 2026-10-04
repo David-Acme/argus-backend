@@ -12,8 +12,6 @@ public:
   explicit GuardController(const GuardFeatureDependencies& dependencies);
 
   METHOD_LIST_BEGIN
-  ADD_METHOD_TO(GuardController::mode, "/guard/mode", drogon::Get,
-                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(GuardController::setMode, "/guard/mode", drogon::Post,
                 "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(GuardController::incidents, "/guard/incidents", drogon::Get,
@@ -38,10 +36,18 @@ public:
   ADD_METHOD_TO(GuardController::promotePerson, "/guard/person/{1}/promote",
                 drogon::Post, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
                 "RoleFilter");
-  ADD_METHOD_TO(GuardController::site, "/guard/site", drogon::Get,
-                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
-  ADD_METHOD_TO(GuardController::updateSite, "/guard/site", drogon::Patch,
-                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(GuardController::environments, "/guard/environments",
+                drogon::Get, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
+                "RoleFilter");
+  ADD_METHOD_TO(GuardController::createEnvironment, "/guard/environments",
+                drogon::Post, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
+                "RoleFilter");
+  ADD_METHOD_TO(GuardController::updateEnvironment, "/guard/environments/{1}",
+                drogon::Patch, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
+                "RoleFilter");
+  ADD_METHOD_TO(GuardController::removeEnvironment, "/guard/environments/{1}",
+                drogon::Delete, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
+                "RoleFilter");
   ADD_METHOD_TO(GuardController::cameras, "/guard/cameras", drogon::Get,
                 "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(GuardController::setCamera, "/guard/cameras/{1}", drogon::Put,
@@ -55,7 +61,6 @@ public:
                 "RoleFilter");
   METHOD_LIST_END
 
-  drogon::Task<drogon::HttpResponsePtr> mode(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> setMode(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> incidents(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> decisions(drogon::HttpRequestPtr req);
@@ -70,8 +75,14 @@ public:
       drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> promotePerson(
       drogon::HttpRequestPtr req, int64_t personId);
-  drogon::Task<drogon::HttpResponsePtr> site(drogon::HttpRequestPtr req);
-  drogon::Task<drogon::HttpResponsePtr> updateSite(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> environments(
+      drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> createEnvironment(
+      drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> updateEnvironment(
+      drogon::HttpRequestPtr req, int64_t environmentId);
+  drogon::Task<drogon::HttpResponsePtr> removeEnvironment(
+      drogon::HttpRequestPtr req, int64_t environmentId);
   drogon::Task<drogon::HttpResponsePtr> cameras(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> setCamera(drogon::HttpRequestPtr req,
                                                   int64_t cameraId);

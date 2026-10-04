@@ -13,6 +13,7 @@ GuardNotice episode()
           .people = 1,
           .cameraId = 7,
           .cameraName = "Puerta",
+          .environmentName = {},
           .role = CameraRole::Entrance,
           .outdoor = true,
           .zoneName = {},
@@ -120,6 +121,7 @@ TEST_CASE("digests summarize held alerts and routine activity")
                      .people = 0,
                      .cameraId = 0,
                      .cameraName = {},
+                     .environmentName = {},
                      .role = CameraRole::Other,
                      .outdoor = false,
                      .zoneName = {},
@@ -168,4 +170,38 @@ TEST_CASE("languages normalize to es or en with a fallback")
   CHECK(guard_copy::normalizeLang({.requested = "fr", .fallback = "en"}) ==
         "en");
   CHECK(guard_copy::normalizeLang({.requested = "", .fallback = "pt"}) == "es");
+}
+
+TEST_CASE("with several environments the notice names the place")
+{
+  GuardNotice notice = episode();
+  notice.environmentName = "Trattoria";
+  CHECK(guard_copy::render(notice, "es").title ==
+        "Persona desconocida · Puerta (Trattoria)");
+  notice.kind = NoticeKind::Escalation;
+  notice.danger = GuardDanger::Critical;
+  CHECK(guard_copy::render(notice, "en").title ==
+        "Still at Puerta (Trattoria) · critical risk");
+  notice.kind = NoticeKind::Tamper;
+  notice.tamperStatus = "covered";
+  CHECK(guard_copy::render(notice, "es").title ==
+        "Revisa la cámara Puerta (Trattoria)");
+  notice.kind = NoticeKind::Digest;
+  notice.routine = {{.cameraId = 1, .cameraName = "Cocina", .count = 4}};
+  CHECK(guard_copy::render(notice, "es").title ==
+        "Resumen de vigilancia · Trattoria");
+  notice.afterQuiet = true;
+  CHECK(guard_copy::render(notice, "en").title ==
+        "While you were resting · Trattoria");
+}
+
+TEST_CASE("a seeded environment is named after its kind in the owner's language")
+{
+  CHECK(guard_copy::environmentDefaultName(EnvironmentKind::Home, "es") == "Casa");
+  CHECK(guard_copy::environmentDefaultName(EnvironmentKind::Commercial, "es") ==
+        "Local");
+  CHECK(guard_copy::environmentDefaultName(EnvironmentKind::Restaurant, "en-US") ==
+        "Restaurant");
+  CHECK(guard_copy::environmentDefaultName(EnvironmentKind::Warehouse, "fr") ==
+        "Almacén");
 }

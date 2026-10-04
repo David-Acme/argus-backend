@@ -13,6 +13,7 @@ inline constexpr std::string_view LIST_EPISODES =
     "SELECT e.id, e.state, e.checks, e.best_camera_id, e.first_seen, "
     "e.last_seen, e.notify_count, e.notify_highest_rank, e.subject, e.people, "
     "e.reasons, e.reasons_rank, e.group_id, e.review_label, e.reviewed_at, "
+    "e.environment_id, "
     "(SELECT t.reason FROM guard_encounter_transition t WHERE t.encounter_id "
     "= e.id ORDER BY t.id DESC LIMIT 1) AS last_reason, "
     "EXISTS (SELECT 1 FROM guard_action a WHERE a.encounter_id = e.id AND "
@@ -22,12 +23,14 @@ inline constexpr std::string_view LIST_EPISODES =
     "a.kind IN ('alarm', 'siren_arm') AND a.status IN ('succeeded', "
     "'duplicate_succeeded')) AS sounded "
     "FROM guard_encounter e WHERE (? = 0 OR e.last_seen < ?) "
+    "AND (? = 0 OR e.environment_id = ?) "
     "ORDER BY e.last_seen DESC, e.id DESC LIMIT ?";
 
 inline constexpr std::string_view FIND_EPISODE =
     "SELECT e.id, e.state, e.checks, e.best_camera_id, e.first_seen, "
     "e.last_seen, e.notify_count, e.notify_highest_rank, e.subject, e.people, "
     "e.reasons, e.reasons_rank, e.group_id, e.review_label, e.reviewed_at, "
+    "e.environment_id, "
     "(SELECT t.reason FROM guard_encounter_transition t WHERE t.encounter_id "
     "= e.id ORDER BY t.id DESC LIMIT 1) AS last_reason, "
     "EXISTS (SELECT 1 FROM guard_action a WHERE a.encounter_id = e.id AND "
@@ -52,7 +55,9 @@ inline constexpr std::string_view EPISODE_TIMELINE =
 inline constexpr std::string_view UPDATE_INSIGHT =
     "UPDATE guard_encounter SET subject = ?, people = MAX(people, ?), "
     "reasons = CASE WHEN ? >= reasons_rank THEN ? ELSE reasons END, "
-    "reasons_rank = MAX(reasons_rank, ?) WHERE id = ?";
+    "reasons_rank = MAX(reasons_rank, ?), "
+    "environment_id = CASE WHEN ? > 0 THEN ? ELSE environment_id END "
+    "WHERE id = ?";
 
 inline constexpr std::string_view LINK_GROUP =
     "UPDATE guard_encounter SET group_id = ? WHERE id = ? AND group_id = 0";
@@ -78,7 +83,7 @@ inline constexpr std::string_view DIGEST_WINDOW =
     "MAX(CASE WHEN j.suppression_reason = 'held' THEN 1 ELSE 0 END) AS held, "
     "MAX(j.incident_id) AS incident_id FROM guard_decision_journal j "
     "WHERE j.created_at > ? AND j.created_at <= ? AND j.encounter_id > 0 "
-    "GROUP BY j.encounter_id, j.camera_id) "
+    "AND j.environment_id = ? GROUP BY j.encounter_id, j.camera_id) "
     "SELECT e.camera_id, COALESCE(MAX(i.camera_name), '') AS camera_name, "
     "SUM(e.notified) AS notified, "
     "SUM(CASE WHEN e.held = 1 AND e.notified = 0 THEN 1 ELSE 0 END) AS held, "
@@ -87,8 +92,14 @@ inline constexpr std::string_view DIGEST_WINDOW =
     "GROUP BY e.camera_id";
 
 inline constexpr std::string_view LIST_TAMPER =
-    "SELECT id, camera_id, camera_name, danger, event_json, created_at FROM "
-    "guard_incident WHERE rule = 'camera_tamper' AND (? = 0 OR created_at < ?) "
+    "SELECT id, camera_id, camera_name, danger, event_json, created_at, "
+    "environment_id FROM (SELECT i.id, i.camera_id, i.camera_name, i.danger, "
+    "i.event_json, i.created_at, COALESCE((SELECT c.environment_id FROM "
+    "guard_camera_context c JOIN guard_environment x ON x.id = "
+    "c.environment_id WHERE c.camera_id = i.camera_id), (SELECT d.id FROM "
+    "guard_environment d WHERE d.is_default = 1), 0) AS environment_id FROM "
+    "guard_incident i WHERE i.rule = 'camera_tamper' AND (? = 0 OR "
+    "i.created_at < ?)) WHERE (? = 0 OR environment_id = ?) "
     "ORDER BY created_at DESC LIMIT ?";
 
 inline constexpr std::string_view OPEN_TAMPER_KEYS =
@@ -117,12 +128,14 @@ struct EpisodeRow
   std::string lastReason;
   bool spoke{false};
   bool sounded{false};
+  int64_t environmentId{0};
 };
 
 struct EpisodeListInput
 {
   int limit{30};
   int64_t before{0};
+  int64_t environmentId{0};
 };
 
 struct EpisodeTimelineRow
@@ -142,6 +155,7 @@ struct EpisodeInsightInput
   int people{0};
   std::string reasons;
   int rank{0};
+  int64_t environmentId{0};
 };
 
 struct EpisodeReviewInput
@@ -168,6 +182,7 @@ struct DigestWindowInput
 {
   int64_t from{0};
   int64_t to{0};
+  int64_t environmentId{0};
 };
 
 struct DigestRow
@@ -188,4 +203,5 @@ struct TamperRow
   std::string status;
   int64_t createdAt{0};
   bool open{false};
+  int64_t environmentId{0};
 };

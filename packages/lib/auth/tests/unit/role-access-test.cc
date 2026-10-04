@@ -289,8 +289,13 @@ TEST_CASE("hasHttpAccess applies kGuardAccess route by route")
         return role_access::hasHttpAccess({.role = role, .path = path, .method = method});
     };
 
-    CHECK(allows(UserRole::Resident, "/guard/mode", drogon::Get));
+    CHECK(allows(UserRole::Resident, "/guard/environments", drogon::Get));
     CHECK(allows(UserRole::Resident, "/guard/mode", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/mode", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/environments", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/environments/2", drogon::Patch));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/environments/2", drogon::Delete));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/cameras/4", drogon::Put));
     CHECK(allows(UserRole::Resident, "/guard/incidents", drogon::Get));
     CHECK(allows(UserRole::Resident, "/guard/expected-guests", drogon::Post));
     CHECK(allows(UserRole::Resident, "/guard/expected-guests", drogon::Delete));
@@ -299,14 +304,13 @@ TEST_CASE("hasHttpAccess applies kGuardAccess route by route")
     CHECK_FALSE(allows(UserRole::Resident, "/guard/decisions/7/feedback", drogon::Post));
     CHECK_FALSE(allows(UserRole::Resident, "/guard/person/3/promote", drogon::Post));
 
-    CHECK(allows(UserRole::Guard, "/guard/mode", drogon::Get));
+    CHECK(allows(UserRole::Guard, "/guard/environments", drogon::Get));
     CHECK(allows(UserRole::Guard, "/guard/incidents", drogon::Get));
     CHECK(allows(UserRole::Guard, "/guard/expected-guests", drogon::Get));
     CHECK(allows(UserRole::Guard, "/guard/episodes", drogon::Get));
-    CHECK(allows(UserRole::Guard, "/guard/site", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Guard, "/guard/site", drogon::Get));
     CHECK(allows(UserRole::Resident, "/guard/episodes", drogon::Get));
-    CHECK(allows(UserRole::Resident, "/guard/site", drogon::Get));
-    CHECK_FALSE(allows(UserRole::Resident, "/guard/site", drogon::Patch));
+    CHECK_FALSE(allows(UserRole::Guard, "/guard/environments", drogon::Post));
     CHECK_FALSE(allows(UserRole::Resident, "/guard/episodes/4", drogon::Get));
     CHECK_FALSE(allows(UserRole::Guard, "/guard/episodes/4/review", drogon::Post));
     CHECK_FALSE(allows(UserRole::Guest, "/guard/episodes", drogon::Get));
@@ -314,12 +318,13 @@ TEST_CASE("hasHttpAccess applies kGuardAccess route by route")
     CHECK_FALSE(allows(UserRole::Guard, "/guard/expected-guests", drogon::Post));
     CHECK_FALSE(allows(UserRole::Guard, "/guard/decisions", drogon::Get));
 
-    CHECK_FALSE(allows(UserRole::Guest, "/guard/mode", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Guest, "/guard/environments", drogon::Get));
     CHECK_FALSE(allows(UserRole::Guest, "/guard/incidents", drogon::Get));
     CHECK_FALSE(allows(UserRole::Resident, "/guard/mode/extra", drogon::Get));
     CHECK_FALSE(allows(UserRole::Resident, "/guardian", drogon::Get));
 
     CHECK(allows(UserRole::Owner, "/guard/decisions", drogon::Get));
+    CHECK(allows(UserRole::Owner, "/guard/environments/2", drogon::Delete));
 }
 
 TEST_CASE("every role lists and revokes its own sessions through kSessionAccess")

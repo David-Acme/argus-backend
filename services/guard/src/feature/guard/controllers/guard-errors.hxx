@@ -21,6 +21,18 @@ inline constexpr ErrorDefinition CameraIdInvalid{
     .code = ErrorCode::BadRequest,
     .status = 400,
     .message = "Camera id must be positive"};
+inline constexpr ErrorDefinition EnvironmentNotFound{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "Environment not found"};
+inline constexpr ErrorDefinition EnvironmentNameTaken{
+    .code = ErrorCode::Conflict,
+    .status = 409,
+    .message = "Another environment already has that name"};
+inline constexpr ErrorDefinition DefaultEnvironmentKept{
+    .code = ErrorCode::Conflict,
+    .status = 409,
+    .message = "The default environment cannot be removed"};
 inline constexpr ErrorDefinition ExpectedGuestNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,

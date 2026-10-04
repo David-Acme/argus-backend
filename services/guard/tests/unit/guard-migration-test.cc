@@ -143,12 +143,54 @@ void exec(sqlite3* db, const char* sql)
   sqlite3_free(error);
 }
 
+constexpr const char* kSingleSite =
+    "CREATE TABLE guard_site ("
+    "id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1), "
+    "profile TEXT NOT NULL DEFAULT 'home' "
+    "CHECK (profile IN ('home', 'office', 'commercial')), "
+    "schedule_enabled INTEGER NOT NULL DEFAULT 0, "
+    "asleep_hours TEXT NOT NULL DEFAULT '', "
+    "open_hours TEXT NOT NULL DEFAULT '', "
+    "staffed_hours TEXT NOT NULL DEFAULT '', "
+    "closed_mode TEXT NOT NULL DEFAULT 'away', "
+    "digest_hour INTEGER NOT NULL DEFAULT 21, "
+    "updated_at INTEGER NOT NULL DEFAULT 0)";
+
+constexpr const char* kLegacyCameraContext =
+    "CREATE TABLE guard_camera_context ("
+    "camera_id INTEGER NOT NULL PRIMARY KEY, "
+    "role TEXT NOT NULL DEFAULT 'other', "
+    "outdoor INTEGER NOT NULL DEFAULT 0, "
+    "public_area INTEGER NOT NULL DEFAULT 0, "
+    "active_hours TEXT NOT NULL DEFAULT '', "
+    "updated_at INTEGER NOT NULL DEFAULT 0)";
+
+constexpr const char* kLegacyState =
+    "CREATE TABLE guard_state (key TEXT NOT NULL PRIMARY KEY, "
+    "value TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL DEFAULT 0)";
+
 void seedLegacyDb(const std::string& path)
 {
   sqlite3* raw = nullptr;
   REQUIRE(sqlite3_open(path.c_str(), &raw) == SQLITE_OK);
   const DbHandle db(raw, sqlite3_close_v2);
   exec(db.get(), kLegacyEncounter);
+  exec(db.get(), kSingleSite);
+  exec(db.get(), kLegacyCameraContext);
+  exec(db.get(), kLegacyState);
+  exec(db.get(),
+       "INSERT INTO guard_site (id, profile, schedule_enabled, open_hours, "
+       "closed_mode, digest_hour, updated_at) VALUES (1, 'commercial', 1, "
+       "'tue-sun 12:00-16:00', 'armed', 8, 50)");
+  exec(db.get(),
+       "INSERT INTO guard_camera_context (camera_id, role, outdoor, "
+       "public_area, active_hours, updated_at) VALUES (7, 'kitchen', 0, 0, "
+       "'', 50), (8, 'entrance', 1, 0, '', 50)");
+  exec(db.get(),
+       "INSERT INTO guard_state (key, value, updated_at) VALUES "
+       "('mode', 'night', 60), ('digest_daily_day', '2026-10-3', 61), "
+       "('digest_daily_until', '1790000000', 61), "
+       "('digest_quiet_day', '2026-10-3', 62)");
   exec(db.get(), kLegacyAction);
   exec(db.get(), kLegacyInbox);
   exec(db.get(), kLegacyGuest);
@@ -270,7 +312,68 @@ TEST_CASE("a legacy guard database migrates in place without data loss")
                "name = 'guard_decision_journal' AND sql LIKE '%''held''%'") ==
         "1");
   CHECK(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND "
-               "name IN ('guard_site', 'guard_camera_context')") == "2");
+               "name IN ('guard_environment', 'guard_camera_context')") == "2");
+  for (const char* table : {"guard_camera_context", "guard_encounter",
+                            "guard_decision_journal", "guard_expected_guest"})
+    CHECK(scalar(std::string("SELECT COUNT(*) FROM pragma_table_info('") +
+                 table + "') WHERE name = 'environment_id'") == "1");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_environment") == "0");
+
+  const GuardEnvironment seed{.id = 0,
+                              .name = "Casa",
+                              .kind = EnvironmentKind::Home,
+                              .isDefault = true,
+                              .mode = GuardMode::Home,
+                              .modeUpdatedAt = 0,
+                              .scheduleEnabled = false,
+                              .asleep = {},
+                              .open = {},
+                              .staffed = {},
+                              .closedMode = GuardMode::Away,
+                              .digestHour = 21,
+                              .quietPolicy = QuietPolicy::Inherit,
+                              .quietStartHour = 22,
+                              .quietEndHour = 7,
+                              .createdAt = 0,
+                              .updatedAt = 0};
+  REQUIRE(guard_schema::seedEnvironments(seed));
+  CHECK(scalar("SELECT COUNT(*) FROM guard_environment") == "1");
+  const std::string home =
+      scalar("SELECT id FROM guard_environment WHERE is_default = 1");
+  REQUIRE_FALSE(home.empty());
+  CHECK(scalar("SELECT kind FROM guard_environment") == "commercial");
+  CHECK(scalar("SELECT name FROM guard_environment") == "Casa");
+  CHECK(scalar("SELECT mode FROM guard_environment") == "night");
+  CHECK(scalar("SELECT schedule_enabled FROM guard_environment") == "1");
+  CHECK(scalar("SELECT open_hours FROM guard_environment") ==
+        "tue-sun 12:00-16:00");
+  CHECK(scalar("SELECT closed_mode FROM guard_environment") == "armed");
+  CHECK(scalar("SELECT digest_hour FROM guard_environment") == "8");
+  CHECK(scalar("SELECT quiet_policy FROM guard_environment") == "inherit");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_camera_context WHERE "
+               "environment_id = " + home) == "2");
+  CHECK(scalar("SELECT role FROM guard_camera_context WHERE camera_id = 7") ==
+        "kitchen");
+  CHECK(scalar("SELECT environment_id FROM guard_decision_journal WHERE "
+               "event_id = 'legacy-journal'") == home);
+  CHECK(scalar("SELECT environment_id FROM guard_encounter WHERE id = 1") ==
+        home);
+  CHECK(scalar("SELECT value FROM guard_state WHERE key = "
+               "'digest_daily_day_" + home + "'") == "2026-10-3");
+  CHECK(scalar("SELECT value FROM guard_state WHERE key = "
+               "'digest_daily_until_" + home + "'") == "1790000000");
+  CHECK(scalar("SELECT value FROM guard_state WHERE key = "
+               "'digest_quiet_day_" + home + "'") == "2026-10-3");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_state WHERE key IN ('mode', "
+               "'digest_daily_day', 'digest_daily_until', "
+               "'digest_quiet_day')") == "0");
+  CHECK(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND "
+               "name = 'guard_site'") == "0");
+  REQUIRE(guard_schema::seedEnvironments(seed));
+  CHECK(scalar("SELECT COUNT(*) FROM guard_environment") == "1");
+  REQUIRE(DbService::runScriptFile(ARGUS_GUARD_SCHEMA_PATH));
+  CHECK(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND "
+               "name = 'guard_site'") == "0");
   CHECK(scalar("SELECT stage FROM guard_observation_inbox "
                "WHERE event_id = 'old-event'") == "0");
   CHECK(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' "

@@ -13,7 +13,8 @@
 #include <feature/guard/dtos/list-incidents-dto.hxx>
 #include <feature/guard/dtos/review-episode-dto.hxx>
 #include <feature/guard/dtos/update-camera-context-dto.hxx>
-#include <feature/guard/dtos/update-guard-site-dto.hxx>
+#include <feature/guard/dtos/create-environment-dto.hxx>
+#include <feature/guard/dtos/update-environment-dto.hxx>
 #include <feature/guard/dtos/summary-decisions-dto.hxx>
 #include <feature/guard/dtos/remove-expected-guest-dto.hxx>
 #include <feature/guard/dtos/update-guard-mode-dto.hxx>
@@ -51,19 +52,11 @@ drogon::Task<drogon::HttpResponsePtr> GuardController::promotePerson(
   co_return ApiResponse::ok(response);
 }
 
-drogon::Task<drogon::HttpResponsePtr> GuardController::mode(
-    drogon::HttpRequestPtr)
-{
-  co_return ApiResponse::ok(co_await service_.mode());
-}
-
 drogon::Task<drogon::HttpResponsePtr> GuardController::setMode(
     drogon::HttpRequestPtr req)
 {
   const auto body = UpdateGuardModeDto::fromJson(*req->getJsonObject());
-  Json::Value response;
-  response["mode"] = co_await service_.setMode(body.mode);
-  co_return ApiResponse::ok(response);
+  co_return ApiResponse::ok(co_await service_.setMode(body));
 }
 
 drogon::Task<drogon::HttpResponsePtr> GuardController::incidents(
@@ -126,17 +119,31 @@ drogon::Task<drogon::HttpResponsePtr> GuardController::removeGuest(
   co_return ApiResponse::ok(response);
 }
 
-drogon::Task<drogon::HttpResponsePtr> GuardController::site(
+drogon::Task<drogon::HttpResponsePtr> GuardController::environments(
     drogon::HttpRequestPtr)
 {
-  co_return ApiResponse::ok(co_await service_.site());
+  co_return ApiResponse::ok(co_await service_.environments());
 }
 
-drogon::Task<drogon::HttpResponsePtr> GuardController::updateSite(
+drogon::Task<drogon::HttpResponsePtr> GuardController::createEnvironment(
     drogon::HttpRequestPtr req)
 {
-  const auto body = UpdateGuardSiteDto::fromJson(*req->getJsonObject());
-  co_return ApiResponse::ok(co_await service_.updateSite(body));
+  const auto body = CreateEnvironmentDto::fromJson(*req->getJsonObject());
+  co_return ApiResponse::created(co_await service_.createEnvironment(body));
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::updateEnvironment(
+    drogon::HttpRequestPtr req, int64_t environmentId)
+{
+  const auto body = UpdateEnvironmentDto::fromJson(*req->getJsonObject());
+  co_return ApiResponse::ok(co_await service_.updateEnvironment(
+      {.id = environmentId, .patch = body}));
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::removeEnvironment(
+    drogon::HttpRequestPtr, int64_t environmentId)
+{
+  co_return ApiResponse::ok(co_await service_.removeEnvironment(environmentId));
 }
 
 drogon::Task<drogon::HttpResponsePtr> GuardController::cameras(

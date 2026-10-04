@@ -7,6 +7,7 @@
 #include <camera/camera-action-client.hxx>
 #include <chrono>
 #include <drogon/drogon.h>
+#include <feature/guard/guard-schema.hxx>
 #include <identity/identity-client.hxx>
 #include <map>
 #include <mutex>
@@ -61,6 +62,29 @@ public:
       throw std::runtime_error("drogon loop did not boot");
     if (!DbService::runScriptFile(ARGUS_GUARD_SCHEMA_PATH))
       throw std::runtime_error("guard schema apply failed");
+    if (!guard_schema::seedEnvironments(homeSeed()))
+      throw std::runtime_error("guard environment seed failed");
+  }
+
+  static GuardEnvironment homeSeed()
+  {
+    return {.id = 0,
+            .name = "Casa",
+            .kind = EnvironmentKind::Home,
+            .isDefault = true,
+            .mode = GuardMode::Home,
+            .modeUpdatedAt = 0,
+            .scheduleEnabled = false,
+            .asleep = {},
+            .open = {},
+            .staffed = {},
+            .closedMode = GuardMode::Away,
+            .digestHour = -1,
+            .quietPolicy = QuietPolicy::Inherit,
+            .quietStartHour = 22,
+            .quietEndHour = 7,
+            .createdAt = 0,
+            .updatedAt = 0};
   }
 
 private:

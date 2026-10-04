@@ -1,7 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <algorithm>
+#include <array>
 #include <ctime>
 #include <doctest/doctest.h>
 #include <feature/guard/guard-service.hxx>
+#include <feature/guard/repositories/environment/environment-repository.hxx>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -15,6 +18,7 @@ using guard_test::QuietCameraActions;
 using guard_test::RecordingNotifications;
 using guard_test::RosterIdentity;
 using guard_test::SentNotification;
+using guard_test::scalar;
 
 namespace
 {
@@ -99,20 +103,52 @@ struct CameraContextRow
   std::string role;
   bool outdoor{false};
   bool publicArea{false};
+  int64_t environmentId{1};
 };
 
 void describeCamera(const CameraContextRow& row)
 {
-  try {
-    DbService::client()->execSqlSync(
-        "INSERT OR REPLACE INTO guard_camera_context (camera_id, role, "
-        "outdoor, public_area, active_hours, updated_at) VALUES (?, ?, ?, ?, "
-        "'', 0)",
-        row.cameraId, row.role, row.outdoor ? 1 : 0, row.publicArea ? 1 : 0);
+  DbService::client()->execSqlSync(
+      "INSERT OR REPLACE INTO guard_camera_context (camera_id, role, "
+      "outdoor, public_area, active_hours, environment_id, updated_at) "
+      "VALUES (?, ?, ?, ?, '', ?, 0)",
+      row.cameraId, row.role, row.outdoor ? 1 : 0, row.publicArea ? 1 : 0,
+      row.environmentId);
+}
+
+struct EnvironmentSpec
+{
+  std::string name;
+  EnvironmentKind kind{EnvironmentKind::Home};
+  GuardMode mode{GuardMode::Home};
+  bool scheduleEnabled{false};
+  std::string asleep;
+  std::string open;
+  std::string staffed;
+  int digestHour{-1};
+};
+
+int64_t environment(const EnvironmentSpec& spec)
+{
+  const EnvironmentRepository repository;
+  for (const auto& existing : drogon::sync_wait(repository.list())) {
+    if (existing.name == spec.name)
+      return existing.id;
   }
-  catch (const std::exception& error) {
-    std::cout << "  (no camera context table: " << error.what() << ")\n";
-  }
+  return drogon::sync_wait(repository.create({.name = spec.name,
+                                              .kind = spec.kind,
+                                              .mode = spec.mode,
+                                              .scheduleEnabled = spec.scheduleEnabled,
+                                              .asleep = spec.asleep,
+                                              .open = spec.open,
+                                              .staffed = spec.staffed,
+                                              .closedMode = GuardMode::Away,
+                                              .digestHour = spec.digestHour,
+                                              .quietPolicy = QuietPolicy::Inherit,
+                                              .quietStartHour = 22,
+                                              .quietEndHour = 7,
+                                              .at = 1}))
+      .id;
 }
 
 struct ScenarioInput
@@ -155,17 +191,28 @@ ScenarioResult play(const ScenarioInput& input)
   return result;
 }
 
-std::string windowAvoidingNow()
+std::string clockAt(int hour)
+{
+  const int wrapped = (hour % 24 + 24) % 24;
+  return std::string(wrapped < 10 ? "0" : "") + std::to_string(wrapped) + ":00";
+}
+
+int currentHour()
 {
   const std::time_t now = std::time(nullptr);
   std::tm local{};
   localtime_r(&now, &local);
-  const auto clock = [](int hour) {
-    const int wrapped = (hour % 24 + 24) % 24;
-    return std::string(wrapped < 10 ? "0" : "") + std::to_string(wrapped) +
-           ":00";
-  };
-  return clock(local.tm_hour + 2) + "-" + clock(local.tm_hour + 4);
+  return local.tm_hour;
+}
+
+std::string windowAvoidingNow()
+{
+  return clockAt(currentHour() + 2) + "-" + clockAt(currentHour() + 4);
+}
+
+std::string windowCoveringNow()
+{
+  return clockAt(currentHour() - 1) + "-" + clockAt(currentHour() + 2);
 }
 
 }
@@ -199,15 +246,20 @@ TEST_CASE("home exterior at night: one calm alert for a stranger")
 TEST_CASE("restaurant kitchen during service: staff never page the owner")
 {
   (void)boot();
-  describeCamera(
-      {.cameraId = 302, .role = "kitchen", .outdoor = false, .publicArea = false});
-  GuardService::Config config = defaults();
-  config.profile = "commercial";
-  config.schedule = {.enabled = true,
-                     .asleep = {},
-                     .open = "00:00-24:00",
-                     .staffed = {},
-                     .closedMode = "away"};
+  const int64_t restaurant = environment({.name = "Trattoria",
+                                         .kind = EnvironmentKind::Restaurant,
+                                         .mode = GuardMode::Home,
+                                         .scheduleEnabled = true,
+                                         .asleep = {},
+                                         .open = "00:00-24:00",
+                                         .staffed = {},
+                                         .digestHour = -1});
+  describeCamera({.cameraId = 302,
+                  .role = "kitchen",
+                  .outdoor = false,
+                  .publicArea = false,
+                  .environmentId = restaurant});
+  const GuardService::Config config = defaults();
   std::vector<Json::Value> events;
   for (int step = 1; step <= 6; ++step)
     events.push_back(personEvent({.eventId = "sc2:" + std::to_string(step),
@@ -231,15 +283,20 @@ TEST_CASE("restaurant kitchen during service: staff never page the owner")
 TEST_CASE("office after hours: the stranger is urgent and explained")
 {
   (void)boot();
-  describeCamera(
-      {.cameraId = 303, .role = "office", .outdoor = false, .publicArea = false});
-  GuardService::Config config = defaults();
-  config.profile = "office";
-  config.schedule = {.enabled = true,
-                     .asleep = {},
-                     .open = {},
-                     .staffed = windowAvoidingNow(),
-                     .closedMode = "away"};
+  const int64_t office = environment({.name = "Oficina Centro",
+                                     .kind = EnvironmentKind::Office,
+                                     .mode = GuardMode::Home,
+                                     .scheduleEnabled = true,
+                                     .asleep = {},
+                                     .open = {},
+                                     .staffed = windowAvoidingNow(),
+                                     .digestHour = -1});
+  describeCamera({.cameraId = 303,
+                  .role = "office",
+                  .outdoor = false,
+                  .publicArea = false,
+                  .environmentId = office});
+  const GuardService::Config config = defaults();
   std::vector<Json::Value> events;
   for (int step = 1; step <= 3; ++step)
     events.push_back(personEvent({.eventId = "sc3:" + std::to_string(step),
@@ -255,7 +312,8 @@ TEST_CASE("office after hours: the stranger is urgent and explained")
   const ScenarioResult result = play(
       {.name = "office after hours", .config = config, .events = events});
   REQUIRE(result.sent.size() == 1);
-  CHECK(result.sent.front().title == "Persona desconocida · Oficina");
+  CHECK(result.sent.front().title ==
+        "Persona desconocida · Oficina (Oficina Centro)");
   CHECK(result.sent.front().body ==
         "En la oficina, fuera de horario, desde hace 18 s. Argus le está "
         "avisando por el altavoz.");
@@ -311,4 +369,155 @@ TEST_CASE("quiet hours: a medium visit waits for the morning summary")
                                .zoneKind = "monitor",
                                .identityState = "unrecognized"})}});
   CHECK(result.sent.empty());
+}
+
+TEST_CASE("three environments at the same moment: each camera is judged by its own place")
+{
+  (void)boot();
+  const int64_t restaurant = environment({.name = "Trattoria",
+                                         .kind = EnvironmentKind::Restaurant,
+                                         .mode = GuardMode::Home,
+                                         .scheduleEnabled = true,
+                                         .asleep = {},
+                                         .open = "00:00-24:00",
+                                         .staffed = {},
+                                         .digestHour = -1});
+  const int64_t cottage = environment({.name = "Casa de campo",
+                                      .kind = EnvironmentKind::Home,
+                                      .mode = GuardMode::Home,
+                                      .scheduleEnabled = true,
+                                      .asleep = windowCoveringNow(),
+                                      .open = {},
+                                      .staffed = {},
+                                      .digestHour = -1});
+  const int64_t office = environment({.name = "Oficina Centro",
+                                     .kind = EnvironmentKind::Office,
+                                     .mode = GuardMode::Home,
+                                     .scheduleEnabled = true,
+                                     .asleep = {},
+                                     .open = {},
+                                     .staffed = windowAvoidingNow(),
+                                     .digestHour = -1});
+  describeCamera({.cameraId = 311,
+                  .role = "kitchen",
+                  .outdoor = false,
+                  .publicArea = false,
+                  .environmentId = restaurant});
+  describeCamera({.cameraId = 312,
+                  .role = "perimeter",
+                  .outdoor = true,
+                  .publicArea = false,
+                  .environmentId = cottage});
+  describeCamera({.cameraId = 313,
+                  .role = "office",
+                  .outdoor = false,
+                  .publicArea = false,
+                  .environmentId = office});
+  std::vector<Json::Value> events;
+  for (int step = 1; step <= 6; ++step) {
+    events.push_back(personEvent({.eventId = "mix:kitchen:" + std::to_string(step),
+                                  .cameraId = 311,
+                                  .cameraName = "Cocina",
+                                  .trackId = 1,
+                                  .personId = 0,
+                                  .rule = "person_day",
+                                  .severity = "info",
+                                  .night = false,
+                                  .zoneKind = {},
+                                  .identityState = "unobservable"}));
+    if (step <= 4)
+      events.push_back(personEvent({.eventId = "mix:garden:" + std::to_string(step),
+                                    .cameraId = 312,
+                                    .cameraName = "Jardín",
+                                    .trackId = 1,
+                                    .personId = 0,
+                                    .rule = "person_day",
+                                    .severity = "info",
+                                    .night = false,
+                                    .zoneKind = {},
+                                    .identityState = "unrecognized"}));
+    if (step <= 3)
+      events.push_back(personEvent({.eventId = "mix:office:" + std::to_string(step),
+                                    .cameraId = 313,
+                                    .cameraName = "Oficina",
+                                    .trackId = 1,
+                                    .personId = 0,
+                                    .rule = "person_day",
+                                    .severity = "info",
+                                    .night = false,
+                                    .zoneKind = {},
+                                    .identityState = "unrecognized"}));
+  }
+  const ScenarioResult result = play(
+      {.name = "restaurant open + home asleep + office closed, interleaved",
+       .config = defaults(),
+       .events = events});
+  REQUIRE(result.sent.size() == 2);
+  std::vector<std::string> titles;
+  for (const auto& sent : result.sent) {
+    titles.push_back(sent.title);
+    const Json::Value data = json_util::fromString(sent.data);
+    CHECK(data["environmentId"].asInt64() != restaurant);
+    CHECK(data["environmentName"].asString() != "Trattoria");
+  }
+  CHECK(std::ranges::find(titles, "Persona desconocida · Jardín (Casa de campo)") !=
+        titles.end());
+  CHECK(std::ranges::find(titles, "Persona desconocida · Oficina (Oficina Centro)") !=
+        titles.end());
+  CHECK(scalar("SELECT COUNT(*) FROM guard_decision_journal WHERE "
+               "event_id LIKE 'mix:kitchen:%' AND environment_id = " +
+               std::to_string(restaurant)) == "6");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_decision_journal WHERE "
+               "event_id LIKE 'mix:%' AND did_notify = 1 AND environment_id = " +
+               std::to_string(restaurant)) == "0");
+  CHECK(scalar("SELECT COUNT(DISTINCT environment_id) FROM guard_encounter "
+               "WHERE best_camera_id IN (311, 312, 313)") == "3");
+}
+
+TEST_CASE("one summary per environment and per day, each in its own thread")
+{
+  (void)boot();
+  const int hour = currentHour();
+  DbService::client()->execSqlSync(
+      "UPDATE guard_environment SET digest_hour = ?", hour);
+  QuietCameraActions camera;
+  RosterIdentity identity({{1, "es"}});
+  RecordingNotifications notifications;
+  GuardService service({.bus = nullptr,
+                        .identity = &identity,
+                        .notifications = &notifications,
+                        .actions = &camera,
+                        .assessment = nullptr},
+                       defaults());
+  const int64_t now = static_cast<int64_t>(std::time(nullptr)) + 1;
+  drogon::sync_wait(service.maybeSendDigests(now));
+  const auto sent = notifications.sent();
+  std::cout << "[scenario] daily summaries: " << sent.size() << "\n";
+  for (const auto& digest : sent)
+    std::cout << "    title: " << digest.title << "\n    body:  " << digest.body
+              << "\n";
+  REQUIRE(sent.size() >= 2);
+  std::array<char, 16> day{};
+  const std::time_t at = static_cast<std::time_t>(now);
+  std::tm local{};
+  localtime_r(&at, &local);
+  const std::string today(day.data(),
+                          std::strftime(day.data(), day.size(), "%Y-%m-%d", &local));
+  std::vector<std::string> threads;
+  bool trattoria = false;
+  for (const auto& digest : sent) {
+    const Json::Value data = json_util::fromString(digest.data);
+    CHECK(data["kind"].asString() == "guard_digest");
+    const std::string thread = data["threadKey"].asString();
+    CHECK(thread == "guard:digest:" + std::to_string(data["environmentId"].asInt64()) +
+                        ":" + today);
+    threads.push_back(thread);
+    trattoria = trattoria || digest.title == "Resumen de vigilancia · Trattoria";
+  }
+  CHECK(trattoria);
+  std::ranges::sort(threads);
+  CHECK(std::ranges::adjacent_find(threads) == threads.end());
+  drogon::sync_wait(service.maybeSendDigests(now + 60));
+  CHECK(notifications.sent().size() == sent.size());
+  DbService::client()->execSqlSync("UPDATE guard_environment SET digest_hour = -1");
 }

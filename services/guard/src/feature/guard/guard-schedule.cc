@@ -1,5 +1,7 @@
 #include "guard-schedule.hxx"
 
+#include "guard-copy.hxx"
+
 #include <array>
 #include <optional>
 #include <string_view>
@@ -196,10 +198,16 @@ GuardPosture guard_schedule::resolve(const GuardPostureInput& input)
           .occupancy = "manual"};
 }
 
-GuardSite guard_schedule::siteDefaults(const GuardServiceConfig& config)
+GuardEnvironment guard_schedule::environmentSeed(const GuardServiceConfig& config)
 {
-  return {.profile =
-              siteProfileFromString(config.profile).value_or(SiteProfile::Home),
+  const EnvironmentKind kind =
+      environmentKindFromString(config.profile).value_or(EnvironmentKind::Home);
+  return {.id = 0,
+          .name = guard_copy::environmentDefaultName(kind, config.notifyLang),
+          .kind = kind,
+          .isDefault = true,
+          .mode = config.defaultMode,
+          .modeUpdatedAt = 0,
           .scheduleEnabled = config.schedule.enabled,
           .asleep = config.schedule.asleep,
           .open = config.schedule.open,
@@ -207,15 +215,48 @@ GuardSite guard_schedule::siteDefaults(const GuardServiceConfig& config)
           .closedMode = config.schedule.closedMode == "armed" ? GuardMode::Armed
                                                               : GuardMode::Away,
           .digestHour = config.digestHour,
+          .quietPolicy = QuietPolicy::Inherit,
+          .quietStartHour = config.quietStartHour,
+          .quietEndHour = config.quietEndHour,
+          .createdAt = 0,
           .updatedAt = 0};
 }
 
-GuardSchedule guard_schedule::fromSite(const GuardSite& site)
+GuardSchedule guard_schedule::fromEnvironment(const GuardEnvironment& environment)
 {
-  return parse({.enabled = site.scheduleEnabled,
-                .asleep = site.asleep,
-                .open = site.open,
-                .staffed = site.staffed,
-                .closedMode = site.closedMode == GuardMode::Armed ? "armed"
-                                                                  : "away"});
+  return parse({.enabled = environment.scheduleEnabled,
+                .asleep = environment.asleep,
+                .open = environment.open,
+                .staffed = environment.staffed,
+                .closedMode = environment.closedMode == GuardMode::Armed
+                                  ? "armed"
+                                  : "away"});
+}
+
+guard_schedule::QuietWindow
+guard_schedule::quietWindow(const QuietWindowInput& input)
+{
+  switch (input.environment.quietPolicy) {
+    case QuietPolicy::Off:
+      return {.enabled = false, .startHour = 0, .endHour = 0};
+    case QuietPolicy::Custom:
+      return {.enabled = input.environment.quietStartHour !=
+                         input.environment.quietEndHour,
+              .startHour = input.environment.quietStartHour,
+              .endHour = input.environment.quietEndHour};
+    case QuietPolicy::Inherit:
+      break;
+  }
+  return {.enabled = input.config.quietHoursEnabled,
+          .startHour = input.config.quietStartHour,
+          .endHour = input.config.quietEndHour};
+}
+
+bool guard_schedule::inQuietHours(const QuietWindow& window, int hour)
+{
+  if (!window.enabled)
+    return false;
+  return window.startHour <= window.endHour
+             ? (hour >= window.startHour && hour < window.endHour)
+             : (hour >= window.startHour || hour < window.endHour);
 }

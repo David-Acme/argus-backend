@@ -8,6 +8,7 @@ struct CreateExpectedGuestDto
 {
   std::string description;
   int64_t cameraId{0};
+  int64_t environmentId{0};
   int64_t personId{0};
   int64_t hostUserId{0};
   bool oneTime{false};

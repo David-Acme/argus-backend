@@ -15,6 +15,8 @@ CreateExpectedGuestDto CreateExpectedGuestDto::fromJson(
   dto.description = json.get("description", "").asString();
   if (json.isMember("cameraId") && json["cameraId"].isInt64())
     dto.cameraId = json["cameraId"].asInt64();
+  if (json.isMember("environmentId") && json["environmentId"].isInt64())
+    dto.environmentId = json["environmentId"].asInt64();
   if (json.isMember("personId") && json["personId"].isInt64())
     dto.personId = json["personId"].asInt64();
   if (json.isMember("hostUserId") && json["hostUserId"].isInt64())
@@ -32,6 +34,7 @@ CreateExpectedGuestDto CreateExpectedGuestDto::fromJson(
   IS_NOT_EMPTY(description)
   MAX_LENGTH(description, kMaxDescriptionLength)
   IS_NON_NEGATIVE(cameraId)
+  IS_NON_NEGATIVE(environmentId)
   IS_NON_NEGATIVE(personId)
   IS_NON_NEGATIVE(hostUserId)
   BETWEEN(hours, 1, kMaxWindowHours)

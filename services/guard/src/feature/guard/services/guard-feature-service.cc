@@ -1,8 +1,14 @@
 #include "guard-feature-service.hxx"
 
 #include <algorithm>
+#include <cctype>
 #include <ctime>
+#include <errors/response-exception.hxx>
+#include <feature/guard/controllers/guard-errors.hxx>
 #include <fstream>
+#include <map>
+#include <unordered_set>
+#include <vector>
 #include <feature/guard/guard-belief.hxx>
 #include <identity/identity-client.hxx>
 #include <text/json-util.hxx>
@@ -11,16 +17,8 @@
 
 GuardFeatureService::GuardFeatureService(
     const GuardFeatureDependencies& dependencies)
-    : identity_(dependencies.identity), defaultMode_(dependencies.defaultMode),
-      siteDefaults_(dependencies.siteDefaults)
+    : identity_(dependencies.identity)
 {
-}
-
-drogon::Task<GuardSite> GuardFeatureService::activeSite() const
-{
-  if (const auto stored = co_await siteRepository_.find())
-    co_return *stored;
-  co_return siteDefaults_;
 }
 
 drogon::Task<bool> GuardFeatureService::promotePerson(
@@ -36,39 +34,6 @@ drogon::Task<bool> GuardFeatureService::promotePerson(
              .accessToken = input.accessToken,
              .deviceHash = input.deviceHash});
       });
-}
-
-drogon::Task<Json::Value> GuardFeatureService::mode() const
-{
-  const std::string manual =
-      co_await guardRepository_.state("mode", guardModeToString(defaultMode_));
-  const GuardSite site = co_await activeSite();
-  const GuardSchedule schedule = guard_schedule::fromSite(site);
-  const auto now = std::time(nullptr);
-  std::tm local{};
-  localtime_r(&now, &local);
-  const GuardPosture posture = guard_schedule::resolve(
-      {.schedule = schedule, .manual = guardModeFromString(manual),
-       .local = local});
-  Json::Value response(Json::objectValue);
-  response["mode"] = manual;
-  response["profile"] = siteProfileToString(site.profile);
-  response["effectiveMode"] = guardModeToString(posture.mode);
-  response["occupancy"] = posture.occupancy;
-  response["publicPresent"] = posture.publicPresent;
-  response["staffOnly"] = posture.staffOnly;
-  co_return response;
-}
-
-drogon::Task<std::string> GuardFeatureService::setMode(
-    const std::string& mode) const
-{
-  const std::string normalized = guardModeToString(guardModeFromString(mode));
-  co_await guardRepository_.setState(
-      {.key = "mode",
-       .value = normalized,
-       .updatedAt = static_cast<int64_t>(std::time(nullptr))});
-  co_return normalized;
 }
 
 drogon::Task<Json::Value> GuardFeatureService::incidents(int limit) const
@@ -321,6 +286,9 @@ drogon::Task<bool> GuardFeatureService::setFeedback(
 drogon::Task<int64_t> GuardFeatureService::createGuest(
     const CreateExpectedGuestDto& input) const
 {
+  if (input.environmentId > 0 &&
+      !(co_await environmentRepository_.find(input.environmentId)))
+    throw ResponseException(GuardErrors::EnvironmentNotFound);
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
   const int64_t validFrom = input.validFrom > 0 ? input.validFrom : now;
   const int64_t validUntil = input.validUntil > 0
@@ -333,7 +301,8 @@ drogon::Task<int64_t> GuardFeatureService::createGuest(
        .hostUserId = input.hostUserId,
        .oneTime = input.oneTime,
        .validFrom = validFrom,
-       .validUntil = validUntil});
+       .validUntil = validUntil,
+       .environmentId = input.environmentId});
 }
 
 drogon::Task<Json::Value> GuardFeatureService::guests() const
@@ -350,6 +319,7 @@ drogon::Task<Json::Value> GuardFeatureService::guests() const
     row["oneTime"] = guest.oneTime;
     row["validFrom"] = static_cast<Json::Int64>(guest.validFrom);
     row["validUntil"] = static_cast<Json::Int64>(guest.validUntil);
+    row["environmentId"] = static_cast<Json::Int64>(guest.environmentId);
     response.append(row);
   }
   co_return response;
@@ -367,18 +337,63 @@ std::string closedModeName(GuardMode mode)
   return mode == GuardMode::Armed ? "armed" : "away";
 }
 
-Json::Value siteJson(const GuardSite& site)
+struct EnvironmentJsonInput
 {
+  const GuardEnvironment& environment;
+  const std::vector<int64_t>& cameraIds;
+  const std::tm& local;
+};
+
+Json::Value environmentJson(const EnvironmentJsonInput& input)
+{
+  const GuardEnvironment& environment = input.environment;
+  const GuardPosture posture = guard_schedule::resolve(
+      {.schedule = guard_schedule::fromEnvironment(environment),
+       .manual = environment.mode,
+       .local = input.local});
   Json::Value json(Json::objectValue);
-  json["profile"] = siteProfileToString(site.profile);
-  json["scheduleEnabled"] = site.scheduleEnabled;
-  json["asleep"] = site.asleep;
-  json["open"] = site.open;
-  json["staffed"] = site.staffed;
-  json["closedMode"] = closedModeName(site.closedMode);
-  json["digestHour"] = site.digestHour;
-  json["updatedAt"] = static_cast<Json::Int64>(site.updatedAt);
+  json["id"] = static_cast<Json::Int64>(environment.id);
+  json["name"] = environment.name;
+  json["kind"] = environmentKindToString(environment.kind);
+  json["isDefault"] = environment.isDefault;
+  json["mode"] = guardModeToString(environment.mode);
+  json["effectiveMode"] = guardModeToString(posture.mode);
+  json["occupancy"] = posture.occupancy;
+  json["publicPresent"] = posture.publicPresent;
+  json["staffOnly"] = posture.staffOnly;
+  json["scheduleEnabled"] = environment.scheduleEnabled;
+  json["asleep"] = environment.asleep;
+  json["open"] = environment.open;
+  json["staffed"] = environment.staffed;
+  json["closedMode"] = closedModeName(environment.closedMode);
+  json["digestHour"] = environment.digestHour;
+  json["quietPolicy"] = quietPolicyToString(environment.quietPolicy);
+  json["quietStartHour"] = environment.quietStartHour;
+  json["quietEndHour"] = environment.quietEndHour;
+  Json::Value cameras(Json::arrayValue);
+  for (const int64_t cameraId : input.cameraIds)
+    cameras.append(static_cast<Json::Int64>(cameraId));
+  json["cameraIds"] = std::move(cameras);
+  json["modeUpdatedAt"] = static_cast<Json::Int64>(environment.modeUpdatedAt);
+  json["updatedAt"] = static_cast<Json::Int64>(environment.updatedAt);
   return json;
+}
+
+std::tm localNow()
+{
+  const auto now = std::time(nullptr);
+  std::tm local{};
+  localtime_r(&now, &local);
+  return local;
+}
+
+std::string folded(const std::string& name)
+{
+  std::string lower = name;
+  std::ranges::transform(lower, lower.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return lower;
 }
 
 Json::Value cameraJson(const GuardCameraContext& camera)
@@ -389,6 +404,7 @@ Json::Value cameraJson(const GuardCameraContext& camera)
   json["outdoor"] = camera.outdoor;
   json["publicArea"] = camera.publicArea;
   json["activeHours"] = camera.activeHours;
+  json["environmentId"] = static_cast<Json::Int64>(camera.environmentId);
   json["updatedAt"] = static_cast<Json::Int64>(camera.updatedAt);
   return json;
 }
@@ -429,6 +445,7 @@ Json::Value episodeJson(const EpisodeRow& row)
   json["spoke"] = row.spoke;
   json["sounded"] = row.sounded;
   json["status"] = "";
+  json["environmentId"] = static_cast<Json::Int64>(row.environmentId);
   return json;
 }
 
@@ -458,6 +475,7 @@ Json::Value tamperJson(const TamperRow& row)
   json["spoke"] = false;
   json["sounded"] = false;
   json["status"] = row.status;
+  json["environmentId"] = static_cast<Json::Int64>(row.environmentId);
   return json;
 }
 
@@ -518,46 +536,164 @@ Json::Value condensedTimeline(const std::vector<EpisodeTimelineRow>& rows)
 }
 }
 
-drogon::Task<Json::Value> GuardFeatureService::site() const
+drogon::Task<Json::Value> GuardFeatureService::environments() const
 {
-  co_return siteJson(co_await activeSite());
+  const auto environments = co_await environmentRepository_.list();
+  const auto assignments = co_await environmentRepository_.cameraAssignments();
+  std::map<int64_t, std::vector<int64_t>> cameras;
+  for (const auto& assignment : assignments)
+    cameras[assignment.environmentId].push_back(assignment.cameraId);
+  const std::tm local = localNow();
+  const std::vector<int64_t> none;
+  Json::Value response(Json::arrayValue);
+  for (const auto& environment : environments) {
+    const auto found = cameras.find(environment.id);
+    response.append(environmentJson(
+        {.environment = environment,
+         .cameraIds = found == cameras.end() ? none : found->second,
+         .local = local}));
+  }
+  co_return response;
+}
+
+drogon::Task<void>
+GuardFeatureService::requireNameFree(const std::string& name,
+                                     int64_t except) const
+{
+  const std::string wanted = folded(name);
+  for (const auto& environment : co_await environmentRepository_.list()) {
+    if (environment.id != except && folded(environment.name) == wanted)
+      throw ResponseException(GuardErrors::EnvironmentNameTaken);
+  }
+}
+
+drogon::Task<int64_t> GuardFeatureService::resolveEnvironment(int64_t id) const
+{
+  if (id > 0) {
+    if (!(co_await environmentRepository_.find(id)))
+      throw ResponseException(GuardErrors::EnvironmentNotFound);
+    co_return id;
+  }
+  co_return co_await environmentRepository_.defaultId();
 }
 
 drogon::Task<Json::Value>
-GuardFeatureService::updateSite(const UpdateGuardSiteDto& input) const
+GuardFeatureService::createEnvironment(const CreateEnvironmentDto& input) const
 {
-  const auto profile = input.profile
-                           ? siteProfileFromString(*input.profile)
-                           : std::optional<SiteProfile>{};
-  const auto closedMode = input.closedMode
-                              ? std::optional<GuardMode>(
-                                    guardModeFromString(*input.closedMode))
-                              : std::optional<GuardMode>{};
-  const GuardSite updated = co_await siteRepository_.update(
-      {.seed = siteDefaults_,
-       .profile = profile,
-       .scheduleEnabled = input.scheduleEnabled,
-       .asleep = input.asleep,
-       .open = input.open,
-       .staffed = input.staffed,
-       .closedMode = closedMode,
-       .digestHour = input.digestHour,
-       .updatedAt = static_cast<int64_t>(std::time(nullptr))});
-  co_return siteJson(updated);
+  const UpdateEnvironmentDto& fields = input.fields;
+  co_await requireNameFree(fields.name.value_or(""), 0);
+  const EnvironmentKind kind = environmentKindFromString(fields.kind.value_or(""))
+                                   .value_or(EnvironmentKind::Home);
+  const GuardEnvironment created = co_await environmentRepository_.create(
+      {.name = fields.name.value_or(""),
+       .kind = kind,
+       .mode = guardModeFromString(input.mode.value_or("home")),
+       .scheduleEnabled = fields.scheduleEnabled.value_or(false),
+       .asleep = fields.asleep.value_or(""),
+       .open = fields.open.value_or(""),
+       .staffed = fields.staffed.value_or(""),
+       .closedMode = guardModeFromString(fields.closedMode.value_or("away")),
+       .digestHour = fields.digestHour.value_or(21),
+       .quietPolicy = quietPolicyFromString(fields.quietPolicy.value_or(""))
+                          .value_or(QuietPolicy::Inherit),
+       .quietStartHour = fields.quietStartHour.value_or(22),
+       .quietEndHour = fields.quietEndHour.value_or(7),
+       .at = static_cast<int64_t>(std::time(nullptr))});
+  co_return environmentJson(
+      {.environment = created, .cameraIds = {}, .local = localNow()});
+}
+
+drogon::Task<Json::Value>
+GuardFeatureService::updateEnvironment(const EnvironmentPatchInput& input) const
+{
+  const UpdateEnvironmentDto& patch = input.patch;
+  if (patch.name)
+    co_await requireNameFree(*patch.name, input.id);
+  const EnvironmentUpdateInput update{
+      .id = input.id,
+       .name = patch.name,
+       .kind = patch.kind ? environmentKindFromString(*patch.kind)
+                          : std::optional<EnvironmentKind>{},
+       .scheduleEnabled = patch.scheduleEnabled,
+       .asleep = patch.asleep,
+       .open = patch.open,
+       .staffed = patch.staffed,
+       .closedMode = patch.closedMode ? std::optional<GuardMode>(
+                                            guardModeFromString(*patch.closedMode))
+                                      : std::optional<GuardMode>{},
+       .digestHour = patch.digestHour,
+       .quietPolicy = patch.quietPolicy ? quietPolicyFromString(*patch.quietPolicy)
+                                        : std::optional<QuietPolicy>{},
+       .quietStartHour = patch.quietStartHour,
+       .quietEndHour = patch.quietEndHour,
+       .at = static_cast<int64_t>(std::time(nullptr))};
+  const auto updated = co_await environmentRepository_.update(update);
+  if (!updated)
+    throw ResponseException(GuardErrors::EnvironmentNotFound);
+  std::vector<int64_t> cameraIds;
+  for (const auto& assignment : co_await environmentRepository_.cameraAssignments()) {
+    if (assignment.environmentId == updated->id)
+      cameraIds.push_back(assignment.cameraId);
+  }
+  co_return environmentJson(
+      {.environment = *updated, .cameraIds = cameraIds, .local = localNow()});
+}
+
+drogon::Task<Json::Value> GuardFeatureService::removeEnvironment(int64_t id) const
+{
+  const EnvironmentRemoval removal = co_await environmentRepository_.remove(
+      {.id = id, .at = static_cast<int64_t>(std::time(nullptr))});
+  if (removal == EnvironmentRemoval::NotFound)
+    throw ResponseException(GuardErrors::EnvironmentNotFound);
+  if (removal == EnvironmentRemoval::IsDefault)
+    throw ResponseException(GuardErrors::DefaultEnvironmentKept);
+  co_return co_await environments();
+}
+
+drogon::Task<Json::Value>
+GuardFeatureService::setMode(const UpdateGuardModeDto& input) const
+{
+  const int64_t changed = co_await environmentRepository_.setMode(
+      {.environmentId = input.environmentId,
+       .mode = guardModeFromString(input.mode),
+       .at = static_cast<int64_t>(std::time(nullptr))});
+  if (input.environmentId && changed == 0)
+    throw ResponseException(GuardErrors::EnvironmentNotFound);
+  co_return co_await environments();
 }
 
 drogon::Task<Json::Value> GuardFeatureService::cameras() const
 {
   const auto contexts = co_await cameraContextRepository_.list();
+  std::unordered_set<int64_t> known;
+  for (const auto& environment : co_await environmentRepository_.list())
+    known.insert(environment.id);
+  const int64_t fallback = co_await environmentRepository_.defaultId();
   Json::Value response(Json::arrayValue);
-  for (const auto& context : contexts)
+  for (auto context : contexts) {
+    if (!known.contains(context.environmentId))
+      context.environmentId = fallback;
     response.append(cameraJson(context));
+  }
   co_return response;
 }
 
 drogon::Task<Json::Value>
 GuardFeatureService::setCamera(const CameraContextInput& input) const
 {
+  int64_t environmentId = 0;
+  if (input.context.environmentId) {
+    environmentId = co_await resolveEnvironment(*input.context.environmentId);
+  }
+  else {
+    const GuardCameraContext current =
+        co_await cameraContextRepository_.find(input.cameraId);
+    if (current.configured && current.environmentId > 0 &&
+        (co_await environmentRepository_.find(current.environmentId)))
+      environmentId = current.environmentId;
+    else
+      environmentId = co_await environmentRepository_.defaultId();
+  }
   const GuardCameraContext saved = co_await cameraContextRepository_.upsert(
       {.cameraId = input.cameraId,
        .role = cameraRoleFromString(input.context.role)
@@ -565,6 +701,7 @@ GuardFeatureService::setCamera(const CameraContextInput& input) const
        .outdoor = input.context.outdoor,
        .publicArea = input.context.publicArea,
        .activeHours = input.context.activeHours,
+       .environmentId = environmentId,
        .updatedAt = static_cast<int64_t>(std::time(nullptr))});
   co_return cameraJson(saved);
 }
@@ -572,7 +709,9 @@ GuardFeatureService::setCamera(const CameraContextInput& input) const
 drogon::Task<Json::Value>
 GuardFeatureService::episodes(const ListEpisodesDto& query) const
 {
-  const EpisodeListInput window{.limit = query.limit, .before = query.before};
+  const EpisodeListInput window{.limit = query.limit,
+                                .before = query.before,
+                                .environmentId = query.environmentId};
   const auto people = co_await episodeRepository_.list(window);
   const auto cameras = co_await episodeRepository_.tamper(window);
   std::vector<Json::Value> merged;

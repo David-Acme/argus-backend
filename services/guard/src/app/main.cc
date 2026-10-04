@@ -202,10 +202,7 @@ int main()
   drogon::app().registerFilter(std::make_shared<JwtFilter>());
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
   drogon::app().registerController(std::make_shared<GuardController>(
-      GuardFeatureDependencies{
-          .identity = identity.get(),
-          .defaultMode = guardConfig.defaultMode,
-          .siteDefaults = guard_schedule::siteDefaults(guardConfig)}));
+      GuardFeatureDependencies{.identity = identity.get()}));
 
   drogon::app().setExceptionHandler(ErrorHandler::handleException);
 
@@ -218,13 +215,19 @@ int main()
       drogonConfig({.dbPath = db.dbPath, .listener = listener}));
   certificate_reload::watch(listener);
 
-  drogon::app().registerBeginningAdvice([&db]() {
+  drogon::app().registerBeginningAdvice([&db, &guardConfig]() {
     if (!guard_schema::migrate(db.schemaPath)) {
       LOG_FATAL << "Guard database migration failed — aborting startup";
       _exit(1);
     }
     if (!DbService::runScriptFile(db.schemaPath)) {
       LOG_FATAL << "Guard database schema failed to apply — aborting startup";
+      _exit(1);
+    }
+    if (!guard_schema::seedEnvironments(
+            guard_schedule::environmentSeed(guardConfig))) {
+      LOG_FATAL << "Guard default environment failed to seed — aborting "
+                   "startup";
       _exit(1);
     }
     DbService::applyPragmas();

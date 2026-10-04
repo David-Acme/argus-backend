@@ -108,3 +108,61 @@ TEST_CASE("a disabled schedule leaves the manual mode alone")
   CHECK(posture.mode == GuardMode::Away);
   CHECK(posture.occupancy == "manual");
 }
+
+TEST_CASE("an environment's quiet hours inherit, override or switch off")
+{
+  GuardServiceConfig config;
+  config.quietHoursEnabled = true;
+  config.quietStartHour = 22;
+  config.quietEndHour = 7;
+  GuardEnvironment environment = guard_schedule::environmentSeed(config);
+  CHECK(environment.isDefault);
+  CHECK(environment.quietPolicy == QuietPolicy::Inherit);
+  auto window = guard_schedule::quietWindow(
+      {.environment = environment, .config = config});
+  CHECK(window.enabled);
+  CHECK(guard_schedule::inQuietHours(window, 23));
+  CHECK(guard_schedule::inQuietHours(window, 3));
+  CHECK_FALSE(guard_schedule::inQuietHours(window, 12));
+
+  environment.quietPolicy = QuietPolicy::Custom;
+  environment.quietStartHour = 1;
+  environment.quietEndHour = 6;
+  window = guard_schedule::quietWindow({.environment = environment, .config = config});
+  CHECK(guard_schedule::inQuietHours(window, 2));
+  CHECK_FALSE(guard_schedule::inQuietHours(window, 23));
+
+  environment.quietPolicy = QuietPolicy::Off;
+  window = guard_schedule::quietWindow({.environment = environment, .config = config});
+  CHECK_FALSE(window.enabled);
+  CHECK_FALSE(guard_schedule::inQuietHours(window, 2));
+
+  config.quietHoursEnabled = false;
+  environment.quietPolicy = QuietPolicy::Inherit;
+  window = guard_schedule::quietWindow({.environment = environment, .config = config});
+  CHECK_FALSE(window.enabled);
+}
+
+TEST_CASE("the seed carries the configured profile, hours, mode and digest hour")
+{
+  GuardServiceConfig config;
+  config.profile = "office";
+  config.defaultMode = GuardMode::Away;
+  config.digestHour = 19;
+  config.notifyLang = "en";
+  config.schedule = {.enabled = true,
+                     .asleep = {},
+                     .open = {},
+                     .staffed = "mon-fri 08:00-18:00",
+                     .closedMode = "armed"};
+  const GuardEnvironment seed = guard_schedule::environmentSeed(config);
+  CHECK(seed.kind == EnvironmentKind::Office);
+  CHECK(seed.name == "Office");
+  CHECK(seed.mode == GuardMode::Away);
+  CHECK(seed.digestHour == 19);
+  CHECK(seed.closedMode == GuardMode::Armed);
+  CHECK(seed.staffed == "mon-fri 08:00-18:00");
+  const GuardSchedule schedule = guard_schedule::fromEnvironment(seed);
+  CHECK(schedule.enabled);
+  CHECK(schedule.staffed.size() == 1);
+}

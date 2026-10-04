@@ -1,9 +1,12 @@
 #include "guard-schema.hxx"
 
 #include <drogon/drogon.h>
+#include <algorithm>
+#include <array>
 #include <fstream>
 #include <sqlite/db-service.hxx>
 #include <string>
+#include <string_view>
 #include <trantor/utils/Logger.h>
 #include <vector>
 
@@ -596,6 +599,110 @@ bool rebuildJournalTable(const std::string& schemaPath)
   return exec("COMMIT");
 }
 
+bool addEnvironmentColumn(const std::string& table)
+{
+  if (!tableExists(table) || columnExists(table, "environment_id"))
+    return true;
+  return exec("ALTER TABLE " + table +
+              " ADD COLUMN environment_id INTEGER NOT NULL DEFAULT 0");
+}
+
+bool migrateEnvironmentColumns()
+{
+  return addEnvironmentColumn("guard_camera_context") &&
+         addEnvironmentColumn("guard_encounter") &&
+         addEnvironmentColumn("guard_decision_journal") &&
+         addEnvironmentColumn("guard_expected_guest");
+}
+
+struct SeedRow
+{
+  std::string kind;
+  int scheduleEnabled{0};
+  std::string asleep;
+  std::string open;
+  std::string staffed;
+  std::string closedMode;
+  int digestHour{21};
+};
+
+SeedRow seedRow(const GuardEnvironment& seed)
+{
+  SeedRow row{.kind = environmentKindToString(seed.kind),
+              .scheduleEnabled = seed.scheduleEnabled ? 1 : 0,
+              .asleep = seed.asleep,
+              .open = seed.open,
+              .staffed = seed.staffed,
+              .closedMode = seed.closedMode == GuardMode::Armed ? "armed" : "away",
+              .digestHour = seed.digestHour};
+  if (!tableExists("guard_site"))
+    return row;
+  const auto rows = DbService::client()->execSqlSync(
+      "SELECT profile, schedule_enabled, asleep_hours, open_hours, "
+      "staffed_hours, closed_mode, digest_hour FROM guard_site WHERE id = 1");
+  if (rows.empty())
+    return row;
+  const auto& site = rows.front();
+  row.kind = environmentKindFromString(site["profile"].as<std::string>())
+                 .has_value()
+                 ? site["profile"].as<std::string>()
+                 : row.kind;
+  row.scheduleEnabled = site["schedule_enabled"].as<int>() != 0 ? 1 : 0;
+  row.asleep = site["asleep_hours"].as<std::string>();
+  row.open = site["open_hours"].as<std::string>();
+  row.staffed = site["staffed_hours"].as<std::string>();
+  row.closedMode = site["closed_mode"].as<std::string>() == "armed" ? "armed"
+                                                                     : "away";
+  row.digestHour = site["digest_hour"].as<int>();
+  return row;
+}
+
+std::string seedMode(const GuardEnvironment& seed)
+{
+  const auto rows = DbService::client()->execSqlSync(
+      "SELECT value FROM guard_state WHERE key = 'mode'");
+  if (rows.empty())
+    return guardModeToString(seed.mode);
+  return guardModeToString(guardModeFromString(rows.front()["value"].as<std::string>()));
+}
+
+bool insertDefaultEnvironment(const GuardEnvironment& seed)
+{
+  const SeedRow row = seedRow(seed);
+  const std::string mode = seedMode(seed);
+  const auto inserted = DbService::client()->execSqlSync(
+      "INSERT INTO guard_environment (name, kind, is_default, mode, "
+      "mode_updated_at, schedule_enabled, asleep_hours, open_hours, "
+      "staffed_hours, closed_mode, digest_hour, quiet_policy, "
+      "quiet_start_hour, quiet_end_hour) VALUES (?, ?, 1, ?, 0, ?, ?, ?, ?, "
+      "?, ?, 'inherit', ?, ?) RETURNING id",
+      seed.name, row.kind, mode, row.scheduleEnabled, row.asleep, row.open,
+      row.staffed, row.closedMode, row.digestHour,
+      std::clamp(seed.quietStartHour, 0, 23),
+      std::clamp(seed.quietEndHour, 0, 23));
+  if (inserted.empty())
+    return false;
+  const int64_t id = inserted.front()["id"].as<int64_t>();
+  constexpr std::array<std::string_view, 3> kBackfills{
+      "UPDATE guard_camera_context SET environment_id = ? WHERE "
+      "environment_id = 0",
+      "UPDATE guard_encounter SET environment_id = ? WHERE environment_id = 0",
+      "UPDATE guard_decision_journal SET environment_id = ? WHERE "
+      "environment_id = 0"};
+  const auto client = DbService::client();
+  for (const std::string_view statement : kBackfills)
+    client->execSqlSync(std::string(statement), id);
+  client->execSqlSync(
+      "INSERT OR IGNORE INTO guard_state (key, value, updated_at) SELECT "
+      "key || '_' || ?, value, updated_at FROM guard_state WHERE key IN "
+      "('digest_quiet_day', 'digest_daily_day', 'digest_daily_until')",
+      std::to_string(id));
+  client->execSqlSync(
+      "DELETE FROM guard_state WHERE key IN ('digest_quiet_day', "
+      "'digest_daily_day', 'digest_daily_until', 'mode')");
+  return exec("DROP TABLE IF EXISTS guard_site");
+}
+
 bool migrateGuestColumns()
 {
   if (!tableExists("guard_expected_guest"))
@@ -637,7 +744,8 @@ bool guard_schema::migrate(const std::string& schemaPath)
       !exec("ALTER TABLE guard_encounter ADD COLUMN revision INTEGER "
             "NOT NULL DEFAULT 0"))
     return false;
-  if (!migrateGuestColumns() || !migrateInboxColumns() ||
+  if (!migrateGuestColumns() || !migrateEnvironmentColumns() ||
+      !migrateInboxColumns() ||
       !migrateIncidentColumns() || !migrateActionColumns() ||
       !migrateEncounterDialogueColumns() || !migrateAssessmentColumns() ||
       !migrateEncounterNotifyColumns() || !migrateEncounterEpisodeColumns() ||
@@ -657,4 +765,34 @@ bool guard_schema::migrate(const std::string& schemaPath)
   if (!outboxStatusIsCurrent() && !rebuildActionOutboxTable(schemaPath))
     return false;
   return true;
+}
+
+bool guard_schema::seedEnvironments(const GuardEnvironment& seed)
+{
+  try {
+    const auto rows = DbService::client()->execSqlSync(
+        "SELECT COUNT(*) AS total FROM guard_environment");
+    if (!rows.empty() && rows.front()["total"].as<int>() > 0)
+      return true;
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Guard environment seed could not read the table: "
+             << error.what();
+    return false;
+  }
+  if (!exec("BEGIN IMMEDIATE"))
+    return false;
+  bool ok = false;
+  try {
+    ok = insertDefaultEnvironment(seed);
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Guard environment seed failed: " << error.what();
+    ok = false;
+  }
+  if (!ok) {
+    exec("ROLLBACK");
+    return false;
+  }
+  return exec("COMMIT");
 }
