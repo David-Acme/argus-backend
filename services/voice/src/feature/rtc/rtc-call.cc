@@ -253,7 +253,7 @@ void RtcCall::startSession()
     early.swap(earlyClient_);
   }
   LOG_INFO << "Voice: RTC session started in " << join_.room() << " resume=" << join_.resume()
-           << " opening=" << !join_.opening_line().empty();
+           << " opening=" << !join_.opening_line().empty() << " early=" << early.size();
   wantState(join_.resume() ? rtc_wire::AgentState::Listening : rtc_wire::AgentState::Thinking);
   for (const auto& message : early)
     dispatch(message);
@@ -549,27 +549,31 @@ void RtcCall::onParticipantDisconnected(livekit::Room&, const livekit::Participa
 void RtcCall::onDisconnected(livekit::Room&, const livekit::DisconnectedEvent& event)
 {
   roomUp_.store(false);
+  LOG_INFO << "Voice: RTC room " << join_.room() << " disconnected the agent (reason "
+           << static_cast<int>(event.reason) << ")";
   {
     std::scoped_lock lock(mutex_);
+    const bool removed = event.reason == livekit::DisconnectReason::ParticipantRemoved ||
+                         event.reason == livekit::DisconnectReason::RoomDeleted;
     if (!stopReason_)
-      stopReason_ = event.reason == livekit::DisconnectReason::ParticipantRemoved ||
-                            event.reason == livekit::DisconnectReason::RoomDeleted
-                        ? rtc_wire::DoneReason::Revoked
-                        : rtc_wire::DoneReason::Error;
+      stopReason_ = !userJoined_ ? rtc_wire::DoneReason::Timeout
+                    : removed    ? rtc_wire::DoneReason::Revoked
+                                 : rtc_wire::DoneReason::Error;
   }
   cv_.notify_all();
 }
 
 void RtcCall::onUserPacketReceived(livekit::Room&, const livekit::UserDataPacketEvent& event)
 {
-  if (!isUser(event.participant))
-    return;
   rtc_wire::ClientMessage message =
       rtc_wire::clientMessageOf({.topic = event.topic, .payload = event.data});
   if (message.kind == rtc_wire::ClientMessageKind::Ignored)
     return;
   {
     std::scoped_lock lock(mutex_);
+    const bool unknownSender = event.participant == nullptr && !sessionStarted_;
+    if (!isUser(event.participant) && !unknownSender)
+      return;
     if (!sessionStarted_ && message.kind != rtc_wire::ClientMessageKind::Hangup) {
       if (earlyClient_.size() < kMaxEarlyClientMessages)
         earlyClient_.push_back(std::move(message));

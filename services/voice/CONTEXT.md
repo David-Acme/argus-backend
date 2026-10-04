@@ -594,7 +594,13 @@ mapping, pure and tested. They travel on the room rather than on `/sync`
 because the room is the call: ordered with the audio, gone with the call, and
 no relay hop. Messages that arrive before the session started (the app sends
 the camera names right after connecting) are queued, at most 16, and applied
-right after the start, as the `/sync` relay does. `voice:assistant` no longer
+right after the start, as the `/sync` relay does. Measured: the C++ SDK
+delivers a packet sent in the first instant after the user connects with no
+participant attached (it has not registered the sender yet), so until the
+session has started a packet without a sender is accepted as the user's.
+Nobody else can be in the room to send one: the room name carries the user
+id and only argus-sync, for that user, mints tokens for it. Before this the
+first notes and the situation of every call were dropped. `voice:assistant` no longer
 means "flush and play": the audio is the track.
 
 The agent's visible state is the participant attribute `lk.agent.state`
@@ -609,7 +615,14 @@ the SDK gave up on) has 20 s (`[rtc] rejoin_grace_ms`) to come back with the
 same identity and the call continues; after that, or when nobody joins within
 60 s (`[rtc] first_join_wait_ms`), the agent sends `argus.done {timeout}` and
 leaves. A participant removed by the server (session revoked, account
-disabled) ends the call as `revoked` and no done message is sent. A
+disabled) ends the call as `revoked` and no done message is sent. LiveKit
+itself closes a room whose only participant is an agent (measured: the
+agent of a token nobody used was sent away by the server a minute later);
+when the user never joined that is a `timeout`, not an error. Measured on the
+sandbox (2026-10-04, throwaway session of the owner made through the QR
+flow): `/rtc/token` answered in 83 ms with the agent already in the room;
+`PATCH /auth/logout` of that session removed the participant 57 ms later
+(`PARTICIPANT_REMOVED`) and the agent ended the call as `revoked`. A
 `call-<id>` call reports its outcome to argus-notification's
 `CallService.EndCall` (`[notification] target` + `credential` =
 notification's `caller_voice`): completed once the opening line has played
