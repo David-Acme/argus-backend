@@ -292,6 +292,23 @@ bool VadService::inSpeech() const
   return speech_;
 }
 
+std::span<const float> VadService::utterance() const
+{
+  if (!speech_)
+    return {};
+  return buffer_;
+}
+
+int VadService::silenceFrames() const
+{
+  return speech_ ? silenceCounter_ : 0;
+}
+
+int VadService::minSilenceFrames() const
+{
+  return cfg_.minSilenceFrames;
+}
+
 float VadService::lastProb() const
 {
   return lastProb_;

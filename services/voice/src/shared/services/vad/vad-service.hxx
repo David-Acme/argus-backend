@@ -72,9 +72,15 @@ public:
 
   void endListening();
 
-  bool inSpeech() const;
+  [[nodiscard]] bool inSpeech() const;
 
-  float lastProb() const;
+  [[nodiscard]] std::span<const float> utterance() const;
+
+  [[nodiscard]] int silenceFrames() const;
+
+  [[nodiscard]] int minSilenceFrames() const;
+
+  [[nodiscard]] float lastProb() const;
 
   void reset();
 

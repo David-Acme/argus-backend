@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -1564,4 +1565,204 @@ TEST_CASE("Speech that starts while Argus is finishing keeps its first syllables
   const VadTurn found = turn.value_or(VadTurn{});
   REQUIRE(found.samples.size() == static_cast<size_t>(kWindow) * 38);
   CHECK(found.samples.front() == doctest::Approx(0.96F));
+}
+
+namespace
+{
+struct StreamLog
+{
+  std::mutex mutex;
+  std::vector<std::string> steps;
+  size_t pushedSamples{0};
+  int opened{0};
+  int finished{0};
+
+  void add(std::string step)
+  {
+    std::scoped_lock lock(mutex);
+    steps.push_back(std::move(step));
+  }
+
+  std::vector<std::string> snapshot()
+  {
+    std::scoped_lock lock(mutex);
+    return steps;
+  }
+};
+
+struct FakeSttStream final : IVoiceSttStream
+{
+  explicit FakeSttStream(StreamLog& log) : log(log) {}
+
+  void push(std::span<const float> samples) override
+  {
+    {
+      std::scoped_lock lock(log.mutex);
+      log.pushedSamples += samples.size();
+    }
+    log.add("push");
+  }
+
+  void flush() override { log.add("flush"); }
+
+  [[nodiscard]] std::string finish() override
+  {
+    {
+      std::scoped_lock lock(log.mutex);
+      ++log.finished;
+    }
+    log.add("finish");
+    if (failFinish)
+      throw std::runtime_error("stream broke");
+    return "hola desde el stream";
+  }
+
+  StreamLog& log;
+  bool failFinish{false};
+};
+
+struct StreamingStt final : IVoiceStt
+{
+  StreamLog log;
+  std::atomic<int> unaryCalls{0};
+  bool failFinish{false};
+
+  std::string transcribe(const VoiceTranscribeInput&) override
+  {
+    ++unaryCalls;
+    return "hola sin stream";
+  }
+
+  [[nodiscard]] std::unique_ptr<IVoiceSttStream> openStream(const VoiceSttStreamInput& input) override
+  {
+    {
+      std::scoped_lock lock(log.mutex);
+      ++log.opened;
+    }
+    log.add("open " + input.language);
+    auto stream = std::make_unique<FakeSttStream>(log);
+    stream->failFinish = failFinish;
+    return stream;
+  }
+};
+
+std::string lastHeard(const FakeVoiceSink& sink)
+{
+  std::string heard;
+  for (const auto& frame : sink.snapshot())
+    if (frame.has_stt())
+      heard = frame.stt().text();
+  return heard;
+}
+
+struct HalfDuplexCall
+{
+  DuplexConfig config{300};
+  StreamingStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service{{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad}};
+  FakeVoiceSink sink;
+  decltype(VoiceSessionTestAccess::sessionOf(std::declval<VoiceSessionService&>(),
+                                             std::declval<VoiceSessionSink&>())) session;
+
+  HalfDuplexCall()
+  {
+    service.start(sink, residentIdentity());
+    session = VoiceSessionTestAccess::sessionOf(service, sink);
+  }
+
+  ~HalfDuplexCall() { service.stop(sink); }
+
+  HalfDuplexCall(const HalfDuplexCall&) = delete;
+  HalfDuplexCall& operator=(const HalfDuplexCall&) = delete;
+
+  bool greeted()
+  {
+    return waitFor([&] { return sink.hasType("voice:assistant") && !session->speaking.load(); });
+  }
+
+  void say(float prob, int windows) { feed({.service = service, .sink = sink, .prob = prob, .windows = windows}); }
+};
+
+std::vector<std::string> after(const std::vector<std::string>& steps, const std::string& step)
+{
+  const auto at = std::ranges::find(steps, step);
+  return at == steps.end() ? std::vector<std::string>{} : std::vector<std::string>(std::next(at), steps.end());
+}
+}
+
+TEST_CASE("A turn's audio is streamed while the user speaks and the pause is flushed before the endpoint")
+{
+  HalfDuplexCall call;
+  REQUIRE(call.greeted());
+
+  call.say(0.9F, 20);
+  call.say(0.0F, 14);
+  REQUIRE(waitFor([&] { return call.sink.hasType("voice:stt"); }));
+
+  CHECK(lastHeard(call.sink) == "hola desde el stream");
+  CHECK(call.stt.unaryCalls.load() == 0);
+  const auto steps = call.stt.log.snapshot();
+  REQUIRE_FALSE(steps.empty());
+  CHECK(steps.front() == "open es");
+  CHECK(std::ranges::count(steps, "flush") == 1);
+  CHECK(after(steps, "flush") == std::vector<std::string>{"finish"});
+  std::scoped_lock lock(call.stt.log.mutex);
+  CHECK(call.stt.log.pushedSamples > static_cast<size_t>(kWindow) * 20);
+  CHECK(call.stt.log.pushedSamples < static_cast<size_t>(kWindow) * 34);
+}
+
+TEST_CASE("Speech that resumes after a flushed pause is streamed with the pause it held back")
+{
+  HalfDuplexCall call;
+  REQUIRE(call.greeted());
+
+  call.say(0.9F, 20);
+  call.say(0.0F, 6);
+  REQUIRE(waitFor([&] { return std::ranges::count(call.stt.log.snapshot(), "flush") == 1; }));
+  call.say(0.9F, 10);
+  call.say(0.0F, 14);
+  REQUIRE(waitFor([&] { return call.sink.hasType("voice:stt"); }));
+
+  CHECK(lastHeard(call.sink) == "hola desde el stream");
+  const auto steps = call.stt.log.snapshot();
+  CHECK(std::ranges::count(steps, "open es") == 1);
+  CHECK(std::ranges::count(steps, "flush") == 2);
+  CHECK(std::ranges::count(after(steps, "flush"), "push") >= 1);
+  std::scoped_lock lock(call.stt.log.mutex);
+  CHECK(call.stt.log.pushedSamples >= static_cast<size_t>(kWindow) * 36);
+}
+
+TEST_CASE("A broken STT stream falls back to one transcription of the whole turn")
+{
+  HalfDuplexCall call;
+  call.stt.failFinish = true;
+  REQUIRE(call.greeted());
+
+  call.say(0.9F, 20);
+  call.say(0.0F, 14);
+  REQUIRE(waitFor([&] { return call.sink.hasType("voice:stt"); }));
+
+  CHECK(lastHeard(call.sink) == "hola sin stream");
+  CHECK(call.stt.unaryCalls.load() == 1);
+}
+
+TEST_CASE("A blip the VAD discards closes its stream without a transcription")
+{
+  HalfDuplexCall call;
+  REQUIRE(call.greeted());
+
+  call.say(0.9F, 6);
+  call.say(0.0F, 14);
+  REQUIRE(waitFor([&] { return call.vad.windows->load() >= 20; }));
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  CHECK_FALSE(call.sink.hasType("voice:stt"));
+  CHECK(call.stt.unaryCalls.load() == 0);
+  std::scoped_lock lock(call.stt.log.mutex);
+  CHECK(call.stt.log.opened == 1);
+  CHECK(call.stt.log.finished == 0);
 }

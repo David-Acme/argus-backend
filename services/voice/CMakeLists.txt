@@ -86,6 +86,7 @@ argus_module(NAME voice-core
     SOURCES
         src/feature/voice/call-history.cc
         src/feature/voice/offer-reply.cc
+        src/feature/voice/turn-transcript.cc
         src/feature/voice/voice-session-service.cc
         src/feature/voice/voice-engine-seam.cc
         src/feature/voice/voice-rpc-service.cc

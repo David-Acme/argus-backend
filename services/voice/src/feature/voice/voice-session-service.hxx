@@ -7,6 +7,7 @@
 #include <deque>
 #include <functional>
 #include <feature/voice/call-history.hxx>
+#include <feature/voice/turn-transcript.hxx>
 #include <feature/voice/voice-engine-seam.hxx>
 #include <memory>
 #include <mutex>
@@ -188,6 +189,13 @@ private:
     std::string deviceHash;
     std::string callKey;
     bool speakerHeard{false};
+    std::shared_ptr<TurnTranscript> listening;
+  };
+
+  struct HeardTurn
+  {
+    const std::vector<float>& samples;
+    std::shared_ptr<TurnTranscript> transcript;
   };
 
   std::shared_ptr<Session> sessionOf(VoiceSessionSink& sink) const;
@@ -202,6 +210,15 @@ private:
   bool sendDuplexChunk(Session& session, argus::voice::v1::ServerFrame frame);
   bool sendDuplexAssistant(Session& session, AssistantSend send);
   void processTurn(Session& session, const std::vector<float>& samples);
+  void processTurn(Session& session, const HeardTurn& heard);
+  void followUtterance(Session& session);
+  std::shared_ptr<TurnTranscript> takeTranscript(Session& session);
+  struct Transcript
+  {
+    std::string text;
+    bool streamed{false};
+  };
+  Transcript transcribe(Session& session, const HeardTurn& heard);
   static ChatRequest turnRequest(Session& session);
   bool answerOffer(Session& session, const std::string& userText);
   std::shared_ptr<SpeakerProbe> probeSpeaker(Session& session, const std::vector<float>& samples);

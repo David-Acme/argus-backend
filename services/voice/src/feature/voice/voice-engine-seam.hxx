@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <llm/llm-service.hxx>
 #include <llm/llm-remote.hxx>
 #include <shared/services/vad/vad-service.hxx>
@@ -23,12 +24,32 @@ struct VoiceTranscribeInput
   std::string language;
 };
 
+struct VoiceSttStreamInput
+{
+  int32_t sampleRate{0};
+  std::string language;
+};
+
+class IVoiceSttStream
+{
+public:
+  virtual ~IVoiceSttStream() = default;
+
+  virtual void push(std::span<const float> samples) = 0;
+  virtual void flush() = 0;
+  [[nodiscard]] virtual std::string finish() = 0;
+};
+
 class IVoiceStt
 {
 public:
   virtual ~IVoiceStt() = default;
 
   virtual std::string transcribe(const VoiceTranscribeInput& input) = 0;
+  [[nodiscard]] virtual std::unique_ptr<IVoiceSttStream> openStream(const VoiceSttStreamInput&)
+  {
+    return nullptr;
+  }
 };
 
 class IVoiceTts
@@ -154,6 +175,7 @@ class RemoteVoiceStt final : public IVoiceStt
 {
 public:
   std::string transcribe(const VoiceTranscribeInput& input) override;
+  [[nodiscard]] std::unique_ptr<IVoiceSttStream> openStream(const VoiceSttStreamInput& input) override;
 
   static bool supportsLanguage(const std::string& lang);
 

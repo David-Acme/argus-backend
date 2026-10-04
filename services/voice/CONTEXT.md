@@ -123,6 +123,59 @@ exact JSON/binary the app expects is argus-sync's
   samples go. A worker stalled behind a slow turn cannot grow memory without
   bound, and audio that old is no longer an interjection worth answering.
 
+## Streamed transcription
+
+The STT request no longer waits for the end of the turn. When the VAD enters
+speech, the session opens argus-stt's `TranscribeStream`
+(`IVoiceStt::openStream`, `TurnTranscript` in
+`src/feature/voice/turn-transcript.{hxx,cc}`) and pushes the utterance as
+the VAD buffers it (`VadService::utterance()`). When the pause reaches a third
+of the endpoint (`max(2, min_silence_frames / 3)`, 4 windows = 128 ms of the
+384 ms endpoint) it sends `flush`; argus-stt decodes what it has while the VAD
+is still waiting for the endpoint, and the audio of the rest of the pause is
+held back. If speech resumes, the held-back pause and the new speech are
+pushed and the next pause flushes again. At the endpoint the turn takes the
+stream (`HeardTurn`) and `finish` returns the partial without a second decode
+when nothing came after the flush. A turn the VAD discards closes its stream
+unread. The stream is per utterance; in a duplex call the worker opens the
+next one while the turn thread finishes the previous.
+
+The unary request stays the fallback: on the HTTP leg (`stt.grpc_target`
+empty) `openStream` returns nothing, and a stream that fails to open, push or
+finish, or returns no text, is replaced by one `transcribe` of the turn's
+samples. The turn latency log says which one ran (`stt=stream` /
+`stt=unary`).
+
+Measured 2026-10-04 (scratch prod argus-llm, argus-stt, argus-tts with Pocket,
+prod argus-voice built from a clean worktree, the gRPC call harness, 32 turns
+per variant, duplex): the server-side `stt_ms` (endpoint → transcript) went
+from median 50 ms (mean 64–73) to 0, and the user-side time from the end of
+the clip to the `voice:stt` frame from median 240 ms to 164 ms. The same
+binary on the HTTP leg against the gRPC leg cut the turns to the same sample
+counts, so the stream changes when the transcript is ready, not what the VAD
+hears.
+
+## The lead-in clause (bfb86590), measured
+
+The first chunk of a reply also ends at a comma within its first 24
+characters ("Estoy bien,", "Gracias,"). Same runs, the HEAD build against the
+same build with those lines removed: turns whose reply opened with such a
+clause reached the user's ear (the `voice:assistant` that plays the sentence)
+at a median 1.39 s with the lead-in (1.14 s with streaming too) against
+1.6–2.0 s for the same turns without it ("Estoy bien, gracias." spoken as one
+chunk). The pause between the lead-in and the rest was 0 ms in 15 of 16 cases
+(the rest was synthesized before the lead-in finished playing) and 1.04 s
+once, behind a 6.4 s first token on a long answer. It stays. Over all turns
+the first audible sentence is still dominated by the length of the first
+sentence, because the app plays a sentence only when its whole audio has
+arrived: median 2.6–2.8 s, p90 4.6 s.
+
+A call harness that starts the next utterance right after Argus's reply
+lost the first word on 1 to 4 of 32 turns in every variant (HEAD included):
+the user's onset fell inside the playback estimate, where only the last 320
+ms of pre-roll survive (see "Full duplex and barge-in"). It is the duplex
+playback estimate, not the transcript path.
+
 ## Full duplex and barge-in
 
 `VoiceStart.mode` (`VoiceMode`, default `VOICE_MODE_HALF_DUPLEX`) selects

@@ -6,7 +6,9 @@
 #include <iterator>
 #include <identity/identity-client.hxx>
 #include <config/config-service.hxx>
+#include <memory>
 #include <stdexcept>
+#include <utility>
 
 namespace
 {
@@ -168,6 +170,36 @@ std::string RemoteVoiceStt::transcribe(const VoiceTranscribeInput& input)
     throw std::invalid_argument("argus-stt does not support language " +
                                 input.language);
   return client_.transcribe(input.samples, input.language);
+}
+
+namespace
+{
+class RemoteSttStream final : public IVoiceSttStream
+{
+public:
+  explicit RemoteSttStream(std::unique_ptr<argus::stt::TranscribeStream> stream) : stream_(std::move(stream)) {}
+
+  void push(std::span<const float> samples) override { stream_->push(samples); }
+  void flush() override { stream_->flush(); }
+  [[nodiscard]] std::string finish() override { return stream_->finish().text; }
+
+private:
+  std::unique_ptr<argus::stt::TranscribeStream> stream_;
+};
+}
+
+std::unique_ptr<IVoiceSttStream> RemoteVoiceStt::openStream(const VoiceSttStreamInput& input)
+{
+  if (input.sampleRate != kWireSampleRate || input.language.empty() || input.language == "auto" ||
+      !supportsLanguage(input.language))
+    return nullptr;
+  auto stream = client_.openStream({.sampleRate = input.sampleRate,
+                                    .language = input.language,
+                                    .onPartial = {},
+                                    .cancellation = {}});
+  if (!stream)
+    return nullptr;
+  return std::make_unique<RemoteSttStream>(std::move(stream));
 }
 
 std::shared_ptr<const LlmClient>

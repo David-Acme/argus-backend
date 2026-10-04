@@ -174,9 +174,10 @@ VAD hears the pause begin. The server decodes everything received so far and
 answers a partial. If the pause becomes the endpoint, the final is that
 partial, returned without a second decode (`decode_ms = 0`). If speech
 resumes, the caller keeps pushing, including the pause audio it held back,
-and the final decodes all of it. The voice session's endpoint waits 700 ms of
-silence (`EndpointDetector`), so the decode at the pause (≈100–210 ms above)
-finishes inside that wait. The transcript is ready when the endpoint fires,
+and the final decodes all of it. argus-voice adopted it on 2026-10-04: it flushes 128 ms into the
+pause and its endpoint fires at 384 ms, so the decode at the pause
+(≈40–210 ms above) finishes inside that wait; the server-side transcript time
+after the endpoint went from a median 50 ms to 0 (see the voice CONTEXT). The transcript is ready when the endpoint fires,
 instead of 100–210 ms after it. The cost is one extra decode when speech
 resumes after a flushed pause. A partial is best effort: when every slot is
 busy it repeats the last text instead of waiting, while the final waits for a
