@@ -37,6 +37,16 @@ constexpr std::array<std::string_view, 14> kShowVerbs{"muestrame", "muestra", "e
                                                      "chequea",   "revisa",  "show",     "open",
                                                      "display",   "check"};
 constexpr std::array<std::string_view, 4> kWantVerbs{"quiero", "dejame", "let", "want"};
+constexpr std::array<std::string_view, 13> kQuestionOpeners{
+    "que", "cual", "como", "esta", "estamos", "sigue", "hay", "is", "what", "which", "how", "are", "does"};
+constexpr size_t kTerseCommandWords = 7;
+constexpr std::array<std::string_view, 6> kAppTopics{"camara", "camera", "camaras", "cameras", "app", "pantalla"};
+constexpr std::array<std::string_view, 33> kClaims{
+    "cambie",     "cambiado",   "cambiada",    "active",      "activado",    "activada",   "puse",
+    "puesto",     "puesta",     "abri",        "abierto",     "abierta",     "mostre",     "mostrando",
+    "desactive",  "desactivado", "desactivada", "configure",  "configurado", "configurada", "listo",
+    "hecho",      "changed",    "switched",    "opened",      "showing",     "activated",  "enabled",
+    "disabled",   "turned",     "done",        "armado",      "desarmado"};
 constexpr std::array<std::string_view, 2> kSeeVerbs{"ver", "see"};
 constexpr std::array<std::string_view, 9> kNameFillers{"de", "del", "la", "el", "los", "las", "en", "the", "a"};
 constexpr std::array<std::string_view, 6> kNameTails{"por", "favor", "ahora", "please", "now", "ya"};
@@ -125,17 +135,26 @@ bool asksToSee(const Words& words)
   return false;
 }
 
+bool terseCommand(const Words& words)
+{
+  return words.size() <= kTerseCommandWords &&
+         std::ranges::find(kQuestionOpeners, words.front()) == kQuestionOpeners.end();
+}
+
 std::optional<tools::ToolCall> guardMode(const Words& words)
 {
-  if (!hasAny(words, kGuardContext) || !hasAny(words, kGuardVerbs))
+  if (!hasAny(words, kGuardContext))
     return std::nullopt;
   const auto modeWord = std::ranges::find_if(words, [](const std::string& word) {
     return word == "modo" || word == "mode";
   });
-  if (modeWord != words.end() && std::next(modeWord) != words.end()) {
+  if (modeWord != words.end() && std::next(modeWord) != words.end() &&
+      (hasAny(words, kGuardVerbs) || terseCommand(words))) {
     if (const auto mode = lookup(kModes, *std::next(modeWord)))
       return callOf({.name = "app.set_guard_mode", .argument = "mode", .value = std::string(*mode)});
   }
+  if (!hasAny(words, kGuardVerbs))
+    return std::nullopt;
   for (const auto& word : words) {
     if (const auto mode = lookup(kModes, word))
       return callOf({.name = "app.set_guard_mode", .argument = "mode", .value = std::string(*mode)});
@@ -189,6 +208,25 @@ std::optional<tools::ToolCall> openScreen(const Words& words)
   return std::nullopt;
 }
 
+}
+
+bool asksForAppAction(const std::string& utterance)
+{
+  if (utterance.find('?') != std::string::npos)
+    return false;
+  const Words words = wordsOf(utterance);
+  if (words.empty() || std::ranges::find(kQuestionOpeners, words.front()) != kQuestionOpeners.end())
+    return false;
+  const bool screenWord = std::ranges::any_of(words, [](const std::string& word) {
+    return lookup(kScreens, word).has_value();
+  });
+  return hasAny(words, kGuardContext) || hasAny(words, kAppTopics) ||
+         (screenWord && hasAny(words, kOpenVerbs));
+}
+
+bool claimsAppAction(const std::string& reply)
+{
+  return hasAny(wordsOf(reply), kClaims);
 }
 
 std::optional<tools::ToolCall> appCommandFor(const std::string& utterance)

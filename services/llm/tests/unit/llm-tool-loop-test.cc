@@ -315,6 +315,10 @@ TEST_CASE("explicit app commands become app calls and questions do not")
   CHECK(appCommandFor("set the guard mode to armed").value().arguments["mode"].asString() == "armed");
   CHECK_FALSE(appCommandFor("¿En qué modo está la vigilancia?").has_value());
   CHECK_FALSE(appCommandFor("Me voy a dormir").has_value());
+  CHECK(appCommandFor("con la vigilancia en modo noche.").value().arguments["mode"].asString() == "night");
+  CHECK(appCommandFor("Modo fuera.").value().arguments["mode"].asString() == "away");
+  CHECK_FALSE(appCommandFor("está la vigilancia en modo noche").has_value());
+  CHECK_FALSE(appCommandFor("anoche la vigilancia en modo noche saltó dos veces por el gato").has_value());
 
   const auto garage = appCommandFor("Muéstrame la cámara del garaje, por favor.");
   REQUIRE(garage.has_value());
@@ -362,4 +366,76 @@ TEST_CASE("an app command runs before the model when the call offers app tools")
   script.replies = {"No puedo cambiarla desde aquí."};
   adapter.chatWithTools(loopInput({}), withoutApp);
   CHECK(actions.size() == 1);
+}
+
+namespace
+{
+struct AppTurn
+{
+  ToolRegistry registry;
+  std::vector<std::string> actions;
+  ScriptedEngine script;
+  std::string spoken;
+
+  AppTurn()
+  {
+    for (auto& descriptor : appToolDescriptors())
+      registry.registerTool(std::move(descriptor));
+  }
+
+  ToolChatOutput run(const std::string& utterance)
+  {
+    LfmAdapter adapter({.engine = script.engine(), .registry = registry, .router = nullptr});
+    auto input = loopInput({registry.find("app.set_guard_mode"), registry.find("app.show_camera")});
+    input.role = UserRole::Owner;
+    input.context.emitAction = [this](const std::string& name, const Json::Value&) {
+      actions.push_back(name);
+    };
+    std::vector<ChatMessage> history{{.role = "user", .content = utterance}};
+    const TokenCallback onToken = [this](const std::string& token, bool) { spoken += token; };
+    return adapter.chatWithToolsStream({.input = input, .history = history, .onToken = onToken});
+  }
+};
+}
+
+TEST_CASE("a reply that claims an app action no tool ran is never spoken and the model is asked again")
+{
+  AppTurn turn;
+  turn.script.replies = {"Cambié la vigilancia a modo noche.",
+                         "<|tool_call_start|>[app.set_guard_mode(mode='night')]<|tool_call_end|>",
+                         "Listo, la vigilancia está en modo noche."};
+  const auto output = turn.run("oye la vigilancia esta noche que esté atenta a todo por favor");
+  REQUIRE(turn.actions.size() == 1);
+  CHECK(turn.actions.front() == "app.set_guard_mode");
+  CHECK(turn.spoken == "Listo, la vigilancia está en modo noche.");
+  CHECK(turn.spoken.find("Cambié") == std::string::npos);
+  REQUIRE(turn.script.requests.size() == 3);
+  CHECK(turn.script.requests[1].messages.back().role == "system");
+  CHECK(output.reply == "Listo, la vigilancia está en modo noche.");
+}
+
+TEST_CASE("a claim that survives the second ask becomes an honest question")
+{
+  AppTurn turn;
+  turn.script.replies = {"Cambié la vigilancia a modo noche.", "Ya está activado el modo noche."};
+  const auto output = turn.run("oye la vigilancia esta noche que esté atenta a todo por favor");
+  CHECK(turn.actions.empty());
+  CHECK(turn.spoken == "Todavía no lo he hecho. ¿Quieres que lo haga?");
+  CHECK(output.reply == turn.spoken);
+}
+
+TEST_CASE("a question about the app or a turn without app words streams as before")
+{
+  AppTurn question;
+  question.script.replies = {"Está en modo noche, lo cambiaste anoche."};
+  question.run("¿en qué modo está la vigilancia?");
+  CHECK(question.actions.empty());
+  CHECK(question.spoken == "Está en modo noche, lo cambiaste anoche.");
+  REQUIRE(question.script.requests.size() == 1);
+
+  AppTurn chat;
+  chat.script.replies = {"¡Qué bien! Ya está hecho entonces."};
+  chat.run("mi hermana ya llegó a casa");
+  CHECK(chat.spoken == "¡Qué bien! Ya está hecho entonces.");
+  CHECK(chat.script.requests.size() == 1);
 }

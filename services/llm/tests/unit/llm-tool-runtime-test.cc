@@ -304,14 +304,34 @@ TEST_CASE("an app tool hands its validated call to the conversation and speaks a
   REQUIRE(emitted.size() == 1);
   CHECK(emitted[0].first == "app.set_guard_mode");
   CHECK(emitted[0].second["mode"].asString() == "night");
+  CHECK(result.output == "La app puso la vigilancia en modo noche.");
+
+  call.context.lang = "en";
+  call.arguments["mode"] = "away";
+  CHECK(executor.execute(call, UserRole::Owner).output == "The app set the guard mode to away.");
+  call.context.lang = "es";
+  CHECK(executor.execute(call, UserRole::Owner).output == "La app puso la vigilancia en modo fuera de casa.");
+
+  tools::ToolCall open = call;
+  open.name = "app.open";
+  open.arguments = Json::Value(Json::objectValue);
+  open.arguments["screen"] = "agenda";
+  CHECK(executor.execute(open, UserRole::Owner).output == "La app abrió la agenda.");
+  tools::ToolCall show = call;
+  show.name = "app.show_camera";
+  show.arguments = Json::Value(Json::objectValue);
+  show.arguments["camera"] = "garaje";
+  CHECK(executor.execute(show, UserRole::Owner).output == "La app está mostrando la cámara garaje.");
+  const size_t ran = emitted.size();
+  CHECK(ran == 5);
 
   call.arguments["mode"] = "party";
   CHECK_FALSE(executor.execute(call, UserRole::Resident).ok);
-  CHECK(emitted.size() == 1);
+  CHECK(emitted.size() == ran);
 
   call.arguments["mode"] = "away";
   CHECK_FALSE(executor.execute(call, UserRole::Guard).ok);
-  CHECK(emitted.size() == 1);
+  CHECK(emitted.size() == ran);
 }
 
 TEST_CASE("an app tool without a connected app refuses instead of pretending")

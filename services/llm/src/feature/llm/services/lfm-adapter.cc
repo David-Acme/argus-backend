@@ -8,6 +8,7 @@
 #include <json/reader.h>
 #include <json/writer.h>
 #include <feature/llm/services/tools/app-command.hxx>
+#include <feature/llm/services/tools/app-tool-descriptors.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <optional>
 #include <sstream>
@@ -479,7 +480,7 @@ std::string LfmAdapter::streamHop(const StreamHopInput& input)
       return;
     }
     held += token;
-    if (mayOpenToolCall(held))
+    if (input.holdAll || mayOpenToolCall(held))
       return;
     input.streamed = true;
     input.onToken(held, false);
@@ -525,6 +526,22 @@ std::optional<tools::ToolCall> routedCall(intent::ToolIntent decided,
       return std::nullopt;
   }
   return call;
+}
+
+std::string unclaimedNote(const std::string& lang)
+{
+  if (lang == "en")
+    return "You have not used any tool yet. If the user asked for a change in the app, call its "
+           "tool now; otherwise do not say that you did anything.";
+  return "Todavía no has usado ninguna herramienta. Si el usuario pidió un cambio en la app, llama "
+         "ahora a su herramienta; si no, no digas que hiciste nada.";
+}
+
+std::string honestAnswer(const std::string& lang)
+{
+  if (lang == "en")
+    return "I have not done it yet. Do you want me to?";
+  return "Todavía no lo he hecho. ¿Quieres que lo haga?";
 }
 
 std::string quotedArgument(const std::string& value)
@@ -735,15 +752,25 @@ bool LfmAdapter::toolHops(ToolHopContext ctx)
   ToolChatOutput& output = ctx.output;
   const TokenCallback* onToken = ctx.onToken;
   std::vector<tools::ToolResult> succeeded;
+  const bool watchClaims =
+      std::ranges::any_of(input.tools,
+                          [](const tools::ToolDescriptor* tool) { return isAppTool(tool->name); }) &&
+      asksForAppAction(lastUserMessage(history));
+  bool challenged = false;
   for (output.hops = 0; output.hops < input.maxHops; ++output.hops) {
     const ChatRequest req = hopRequest(ctx);
+    const bool appRan = std::ranges::any_of(
+        succeeded, [](const tools::ToolResult& result) { return isAppTool(result.tool); });
+    const bool holdAll = watchClaims && !appRan;
 
     bool streamed = false;
     const auto genStart = std::chrono::steady_clock::now();
     const std::string reply =
-        onToken
-            ? streamHop({.request = req, .onToken = *onToken, .streamed = streamed})
-            : engine_.chat(req);
+        onToken ? streamHop({.request = req,
+                             .onToken = *onToken,
+                             .streamed = streamed,
+                             .holdAll = holdAll})
+                : engine_.chat(req);
     output.generateMs += std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::steady_clock::now() - genStart)
                              .count();
@@ -768,6 +795,21 @@ bool LfmAdapter::toolHops(ToolHopContext ctx)
         LOG_INFO << "LfmAdapter: the reply held no call this turn can run; "
                     "answering in prose";
         return false;
+      }
+      if (holdAll && claimsAppAction(reply)) {
+        history.pop_back();
+        if (!challenged) {
+          challenged = true;
+          LOG_WARN << "LfmAdapter: the reply claims an app action no tool ran; asking again";
+          history.push_back({.role = "system", .content = unclaimedNote(input.context.lang)});
+          continue;
+        }
+        LOG_WARN << "LfmAdapter: the reply still claims an app action no tool ran; "
+                    "answering honestly";
+        output.reply = honestAnswer(input.context.lang);
+        output.emitted = false;
+        history.push_back({.role = "assistant", .content = output.reply});
+        return true;
       }
       output.reply = reply;
       output.emitted = streamed;

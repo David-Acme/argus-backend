@@ -55,6 +55,7 @@ struct StreamHopInput
   const ChatRequest& request;
   const TokenCallback& onToken;
   bool& streamed;
+  bool holdAll{false};
 };
 
 struct ChatEngine

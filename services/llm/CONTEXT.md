@@ -543,10 +543,35 @@ The voice session and argus-llm agreed this contract with the voice agent:
   cámara/camera. The name is taken from around that word: "la cámara del
   garaje, por favor" → `garaje`, "the garage camera" → `garage`, an empty name
   means the last notice. `app.open` needs an opening verb and a screen word.
-  An utterance with `?` is never routed. A live call showed the model
-  answering "¡Listo!" to "pon la vigilancia en modo noche" without calling
-  the tool. The call policy also forbids confirming an action that no tool
+  An utterance with `?` is never routed. A terse utterance (seven words or
+  fewer, not opened by an interrogative) that says "modo <mode>" next to a
+  guard word routes without a verb: speech recognition drops the first word
+  of a barged-in command ("con la vigilancia en modo noche"), and the model,
+  given the bare words, claimed the change without calling the tool. A live
+  call showed the model answering "¡Listo!" to "pon la vigilancia en modo
+  noche" without calling the tool. The call policy also forbids confirming an action that no tool
   ran.
+- **A claimed app action is checked before it is spoken.** When a call
+  offers the app tools and the user's words ask for something in the app
+  (a guard word, a camera, "abre" plus a screen, never a question), the
+  first reply is held instead of streamed. If it claims an action ("cambié",
+  "activado", "abrí", "mostrando", "listo", "changed", …) while no app tool
+  ran this turn, it is dropped. A system note ("you have not used any tool
+  yet…") goes into the history and the model answers again. A second claim
+  becomes an honest question ("Todavía no lo he hecho. ¿Quieres que lo
+  haga?") rather than a false confirmation. The live call that found this
+  had lost its first word to speech recognition ("con la vigilancia en modo
+  noche"), and the model answered "Cambié la vigilancia a modo noche" with no
+  tool. The prompt rule alone ("nunca digas que hiciste algo… sin haber
+  usado su herramienta") did not hold on a 1.2B model. Holding costs the
+  reply's generation time as first-audio delay, only on those turns.
+- **App tool results speak the call's language.** The guard modes, screens
+  and camera reach the model as labels in the call's language: "La app puso
+  la vigilancia en modo fuera de casa.", "The app set the guard mode to
+  away.", "La app abrió la agenda.", "La app está mostrando la cámara
+  garaje." The enum values (`home`, `night`, `away`, `armed`) never appear in
+  the text the model reads. A live call had the model say "modo outside of
+  home" in a Spanish answer.
 - **A prose answer cannot end before it starts.** On the first sampled token
   of a prose answer every end-of-generation token and `<|tool_call_start|>`
   carry a −∞ bias. With greedy decoding (`toolTemperature` 0) the model
