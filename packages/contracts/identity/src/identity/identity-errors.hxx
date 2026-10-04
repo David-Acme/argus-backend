@@ -129,64 +129,8 @@ inline constexpr ErrorDefinition ChangeNotRecorded{
     .code = ErrorCode::InternalError,
     .status = 500,
     .message = "The change could not be recorded"};
-inline constexpr ErrorDefinition VoiceprintUnavailable{
-    .code = ErrorCode::ServiceUnavailable,
-    .status = 503,
-    .message = "Voice recognition is not available"};
 inline constexpr ErrorDefinition VoiceprintNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,
-    .message = "No voiceprint is enrolled"};
-inline constexpr ErrorDefinition VoiceprintStale{
-    .code = ErrorCode::Conflict,
-    .status = 409,
-    .message = "The voiceprint must be enrolled again"};
-inline constexpr ErrorDefinition VoiceprintAlreadyEnrolled{
-    .code = ErrorCode::Conflict,
-    .status = 409,
-    .message = "A voiceprint is already enrolled"};
-inline constexpr ErrorDefinition VoiceAlreadyLinked{
-    .code = ErrorCode::Conflict,
-    .status = 409,
-    .message = "This voice is already linked to another person"};
-inline constexpr ErrorDefinition VoiceSampleInvalid{
-    .code = ErrorCode::BadRequest,
-    .status = 422,
-    .message = "The voice sample could not be read"};
-inline constexpr ErrorDefinition VoiceSampleTooShort{
-    .code = ErrorCode::BadRequest,
-    .status = 422,
-    .message = "The voice sample has too little speech"};
-inline constexpr ErrorDefinition VoiceSampleTooNoisy{
-    .code = ErrorCode::BadRequest,
-    .status = 422,
-    .message = "The voice sample is too noisy"};
-inline constexpr ErrorDefinition VoiceSampleClipped{
-    .code = ErrorCode::BadRequest,
-    .status = 422,
-    .message = "The voice sample is distorted"};
-inline constexpr ErrorDefinition VoiceSamplesInconsistent{
-    .code = ErrorCode::BadRequest,
-    .status = 422,
-    .message = "The voice samples do not belong to one speaker"};
-inline constexpr ErrorDefinition VoiceSampleCountInvalid{
-    .code = ErrorCode::BadRequest,
-    .status = 422,
-    .message = "The number of voice samples is not the required one"};
-inline constexpr ErrorDefinition VoiceprintConsentRequired{
-    .code = ErrorCode::BadRequest,
-    .status = 422,
-    .message = "Explicit consent is required to enroll a voiceprint"};
-inline constexpr ErrorDefinition VoiceprintChallengeInvalid{
-    .code = ErrorCode::NotFound,
-    .status = 404,
-    .message = "The voice enrollment challenge is invalid or expired"};
-inline constexpr ErrorDefinition VoiceprintForbidden{
-    .code = ErrorCode::Forbidden,
-    .status = 403,
-    .message = "This voiceprint cannot be managed by the caller"};
-inline constexpr ErrorDefinition VoiceprintFaceNotVerified{
-    .code = ErrorCode::Forbidden,
-    .status = 403,
-    .message = "The person's face could not be verified"};
+    .message = "Argus has not learned this person's voice"};
 }

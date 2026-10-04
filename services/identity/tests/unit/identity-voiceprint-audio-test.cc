@@ -7,9 +7,7 @@
 #include <feature/voiceprint/services/audio/speech-quality.hxx>
 #include <feature/voiceprint/services/audio/voice-audio.hxx>
 #include <feature/voiceprint/services/embedding/voice-vector.hxx>
-#include <feature/voiceprint/services/voiceprint/voiceprint-phrases.hxx>
 #include <numbers>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -252,8 +250,10 @@ TEST_CASE("every clip reaches the model at 16 kHz in [-1, 1]")
 
 TEST_CASE("speech quality separates speech, silence, noise and clipping")
 {
-  const SpeechRequirement requirement{.minSpeechSeconds = 1.2F,
-                                      .minSnrDb = 12.0F};
+  const SpeechRequirement requirement{
+      .minSpeechSeconds = 1.2F,
+      .minSnrDb = 12.0F,
+      .maxClippedRatio = speech_quality::kMaxClippedRatio};
 
   SUBCASE("digital silence has no speech")
   {
@@ -292,6 +292,23 @@ TEST_CASE("speech quality separates speech, silence, noise and clipping")
     CHECK(speech_quality::judge(speech_quality::measure(clip), requirement) ==
           SpeechProblem::Clipped);
   }
+  SUBCASE("a stricter clipping limit refuses what the default lets through")
+  {
+    auto clip = mixed(concat({std::vector<float>(8000, 0.0F),
+                              tone({.seconds = 2.0F, .amplitude = 0.5F}),
+                              std::vector<float>(8000, 0.0F)}),
+                      noise({.seconds = 3.0F, .amplitude = 0.001F}));
+    for (size_t index = 8000; index < 40000; index += 120)
+      clip[index] = 1.0F;
+    const auto quality = speech_quality::measure(clip);
+    REQUIRE(quality.clippedRatio > 0.005F);
+    REQUIRE(quality.clippedRatio < speech_quality::kMaxClippedRatio);
+    CHECK(speech_quality::judge(quality, requirement) == SpeechProblem::None);
+    const SpeechRequirement strict{.minSpeechSeconds = 1.2F,
+                                   .minSnrDb = 12.0F,
+                                   .maxClippedRatio = 0.005F};
+    CHECK(speech_quality::judge(quality, strict) == SpeechProblem::Clipped);
+  }
 }
 
 TEST_CASE("voice vectors normalize, compare and survive a blob round trip")
@@ -315,19 +332,4 @@ TEST_CASE("voice vectors normalize, compare and survive a blob round trip")
   CHECK(blob.size() == values.size() * 4);
   CHECK(voice_vector::fromBlob(std::string_view(blob.data(), blob.size())) ==
         values);
-}
-
-TEST_CASE("a challenge reads distinct phrases from the speaker's language")
-{
-  for (const VoiceLang lang : {VoiceLang::Es, VoiceLang::En}) {
-    const auto phrases = voiceprint_phrases::pick(lang, 3);
-    REQUIRE(phrases.size() == 3);
-    CHECK(std::set<std::string>(phrases.begin(), phrases.end()).size() == 3);
-    const auto& bank = lang == VoiceLang::En ? voiceprint_phrases::kEnglish
-                                             : voiceprint_phrases::kSpanish;
-    for (const auto& phrase : phrases)
-      CHECK(std::ranges::find(bank, phrase) != bank.end());
-  }
-  CHECK(voiceprint_phrases::pick(VoiceLang::Es, 50).size() ==
-        voiceprint_phrases::kSpanish.size());
 }

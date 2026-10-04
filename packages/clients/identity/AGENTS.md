@@ -58,17 +58,17 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   constructed at `services/sync/src/app/main.cc:80`; identity's own
   `identity-sync-rpc-test.cc` drives it directly against the served method.
 - `src/identity/voiceprint-client.hxx` — `VoiceprintClient`, the third stub
-  (`argus.identity.v1.VoiceprintService`): `createChallenge`, `enroll`,
-  `verify`, `identify`, `identifyWithin` (the same call under the caller's
-  own deadline, `VoiceprintIdentifyInput{sample, timeoutMs}`, for a voice
-  turn that cannot wait 5 s), `remove` and `status`, with the input structs
-  `VoiceClipView` (a `std::span<const int16_t>` and its sample rate — the
-  caller's samples are copied once, into the wire bytes),
-  `VoiceprintSession` (the bearer token and device hash a gated call
-  presents), `VoiceprintChallengeInput`, `VoiceprintEnrollInput`,
-  `VoiceprintVerifyInput` and `VoiceprintDeleteInput`, configured by
-  `VoiceprintClientConfig{target, fleetSecret}`. The voice relay (calls) and
-  guard (visitor dialogues) are the consumers it was written for.
+  (`argus.identity.v1.VoiceprintService`): `identify`, `identifyWithin` (the
+  same call under the caller's own deadline,
+  `VoiceprintIdentifyInput{sample, timeoutMs}`, for a voice turn that cannot
+  wait 5 s), `observeTurn` (`VoiceTurnObservation{sample, userId,
+  deviceHash, callKey, timeoutMs}`: the same answer as `identify`, and
+  identity learns the holder's voice from the turn) and `closeCall`
+  (`VoiceCallClose{callKey, timeoutMs}`, true when identity had the call
+  open), with `VoiceClipView` (a `std::span<const int16_t>` and its sample
+  rate — the caller's samples are copied once, into the wire bytes),
+  configured by `VoiceprintClientConfig{target, fleetSecret}`. argus-voice
+  (calls) is its consumer; guard's visitor dialogues can use `identify`.
 - Nothing else: the folder is CMakeLists.txt, the six sources, the two suites
   and this file. No `details/` directory: the channel, deadline, fleet secret and
   metadata ride inline in the `.cc` files.
@@ -84,13 +84,12 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   each.
 - The voiceprint wire: a clip is mono 16-bit little-endian PCM at its own
   rate (8-48 kHz), encoded byte by byte so the host's endianness never
-  leaks. `createChallenge`, `enroll` and `remove` are the human-gated calls:
-  they refuse locally without a bearer token, and send `authorization:
-  Bearer <token>` plus `x-argus-device` when a device hash is known — the
-  same pair `promotePerson` presents. `verify`, `identify` and `status` carry
-  the fleet secret only. `enroll` refuses an empty clip list, a clip with no
-  samples or an out-of-range rate, and an empty challenge id. One deadline
-  per call (5 s), 20 s for `enroll`, which extracts every sample.
+  leaks. Every call carries the fleet secret only: the caller's account and
+  device in `observeTurn` are the ones argus-sync's filters bound to the
+  call's socket, vouched for by the fleet. `observeTurn` refuses locally a
+  clip with no samples or an out-of-range rate, a missing user, an empty or
+  oversized device hash and a call key that is empty or over 128 characters;
+  `closeCall` an empty key. One deadline per call, chosen by the caller.
 - What a consumer sees: twelve methods returning `std::optional` or `bool`,
   and `PersonProfile` as the one local DTO — `getPerson` always maps personId,
   name, alias, observation, role and tags, maps `userId` only when the wire
@@ -142,12 +141,11 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   carries `grpc` in its name because `packages/lib/sqlite` already registers a
   suite called `identity-client-test`; ctest allows the duplicate, and the
   rename keeps the ledger readable.
-- `tests/unit/voiceprint-client-test.cc` — three cases: the local refusals
-  (no call reaches the scripted server until a valid one does), the fleet
-  secret, bearer and device the gated calls present (and the bearer the
-  fleet-only `verify` does not), and the little-endian encoding of an
-  enrollment's clips with their rate and consent. Registered as
-  `identity-voiceprint-client-test`.
+- `tests/unit/voiceprint-client-test.cc` — two cases: the local refusals
+  (no call reaches the scripted server until a valid one does) and a call
+  turn's wire (caller, device, call key, the little-endian samples and their
+  rate, the fleet secret without a bearer) followed by its close. Registered
+  as `identity-voiceprint-client-test`.
 - The CMakeLists registers it as `identity-grpc-client-test`, with
   `EXCLUDE_FROM_ALL FALSE` because six of the pulls that reach it are
   `EXCLUDE_FROM_ALL` (guard, llm, notification, productivity, sync, voice; auth

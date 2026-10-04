@@ -1,13 +1,18 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <algorithm>
 #include <app/rpc/identity-voiceprint-rpc-service.hxx>
 #include <bit>
 #include <chrono>
 #include <cstdio>
+#include <ctime>
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
+#include <feature/voiceprint/repositories/voice-profile/voice-profile-repository.hxx>
 #include <feature/voiceprint/services/embedding/speaker-embedding-service.hxx>
 #include <feature/voiceprint/services/embedding/voice-vector.hxx>
 #include <feature/voiceprint/services/index/voiceprint-index.hxx>
+#include <feature/voiceprint/services/passive/passive-enrollment-service.hxx>
 #include <feature/voiceprint/services/voiceprint/voiceprint-feature-service.hxx>
 #include <filesystem>
 #include <fstream>
@@ -16,6 +21,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <random>
 #include <shared/services/face/face-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/vec-db.hxx>
@@ -40,9 +46,10 @@ namespace
 constexpr const char* kDb = "identity-voiceprint-test.db";
 constexpr const char* kFleetSecret = "voiceprint-test-secret";
 constexpr int64_t kOwner = 1;
-constexpr int64_t kResident = 7;
-constexpr int64_t kGuard = 8;
-constexpr int64_t kGuest = 9;
+constexpr int64_t kRita = 7;
+constexpr int64_t kGil = 8;
+constexpr int64_t kGus = 9;
+constexpr int kRate = 16000;
 
 class AppRunner
 {
@@ -136,32 +143,6 @@ private:
   mutable bool transactional_{true};
 };
 
-class ScriptedAuth final : public AuthClient
-{
-public:
-  ScriptedAuth() : AuthClient({.target = "127.0.0.1:9", .fleetSecret = {}}) {}
-
-  [[nodiscard]] std::optional<argus::auth::v1::ValidateTokenResponse>
-  validateToken(const ValidateSessionInput& input) const override
-  {
-    argus::auth::v1::ValidateTokenResponse verdict;
-    const auto known = [&](int64_t userId, const char* role) {
-      verdict.set_valid(true);
-      verdict.mutable_user()->set_user_id(userId);
-      verdict.mutable_user()->set_role(role);
-    };
-    if (input.accessToken == "owner-token")
-      known(kOwner, "owner");
-    else if (input.accessToken == "resident-token")
-      known(kResident, "resident");
-    else if (input.accessToken == "guard-token")
-      known(kGuard, "guard");
-    else
-      verdict.set_valid(false);
-    return verdict;
-  }
-};
-
 std::vector<int16_t> fixture(const std::string& name)
 {
   const std::filesystem::path path =
@@ -178,54 +159,63 @@ std::vector<int16_t> fixture(const std::string& name)
   return samples;
 }
 
-void put16(std::string& out, uint16_t value)
+struct TurnSpec
 {
-  out.push_back(static_cast<char>(value & 0xFFU));
-  out.push_back(static_cast<char>((value >> 8U) & 0xFFU));
+  std::string clip;
+  float offsetSeconds{0.0F};
+  float seconds{2.6F};
+  uint32_t seed{1};
+  int repeats{1};
+};
+
+std::vector<int16_t> turnSamples(const TurnSpec& spec)
+{
+  const auto source = fixture(spec.clip);
+  const auto begin = std::min(
+      source.size(), static_cast<size_t>(spec.offsetSeconds * kRate));
+  const auto end = std::min(
+      source.size(), begin + static_cast<size_t>(spec.seconds * kRate));
+  std::mt19937 rng(spec.seed);
+  std::normal_distribution<float> noise(0.0F, 25.0F);
+  std::uniform_real_distribution<float> gain(0.8F, 1.1F);
+  const float level = gain(rng);
+  std::vector<int16_t> out;
+  out.reserve((end - begin) * static_cast<size_t>(spec.repeats));
+  for (int repeat = 0; repeat < spec.repeats; ++repeat)
+    for (size_t index = begin; index < end; ++index)
+      out.push_back(static_cast<int16_t>(std::clamp(
+          static_cast<float>(source[index]) * level + noise(rng), -32767.0F,
+          32767.0F)));
+  return out;
 }
 
-void put32(std::string& out, uint32_t value)
+EncodedVoice pcmOf(const std::vector<int16_t>& samples)
 {
-  for (unsigned shift = 0; shift < 32U; shift += 8U)
-    out.push_back(static_cast<char>((value >> shift) & 0xFFU));
+  std::string bytes;
+  bytes.reserve(samples.size() * 2);
+  for (const int16_t sample : samples) {
+    const auto word = std::bit_cast<uint16_t>(sample);
+    bytes.push_back(static_cast<char>(word & 0xFFU));
+    bytes.push_back(static_cast<char>((word >> 8U) & 0xFFU));
+  }
+  return {.bytes = std::move(bytes),
+          .encoding = VoiceEncoding::Pcm16,
+          .sampleRate = kRate};
 }
 
-EncodedVoice wavOf(const std::vector<int16_t>& samples)
+std::vector<TurnSpec> callOf(const char* speaker, uint32_t seed)
 {
-  std::string data;
-  for (const int16_t sample : samples)
-    put16(data, std::bit_cast<uint16_t>(sample));
-  std::string wav = "RIFF";
-  put32(wav, static_cast<uint32_t>(36 + data.size()));
-  wav += "WAVEfmt ";
-  put32(wav, 16);
-  put16(wav, 1);
-  put16(wav, 1);
-  put32(wav, 16000);
-  put32(wav, 32000);
-  put16(wav, 2);
-  put16(wav, 16);
-  wav += "data";
-  put32(wav, static_cast<uint32_t>(data.size()));
-  wav += data;
-  return {.bytes = std::move(wav),
-          .encoding = VoiceEncoding::Wav,
-          .sampleRate = 0};
-}
-
-std::vector<EncodedVoice> wavs(std::initializer_list<const char*> names)
-{
-  std::vector<EncodedVoice> voices;
-  for (const char* name : names)
-    voices.push_back(wavOf(fixture(name)));
-  return voices;
-}
-
-VoiceprintActor actor(int64_t userId, UserRole role)
-{
-  return {.userId = userId,
-          .role = role,
-          .deviceHash = "device-" + std::to_string(userId)};
+  std::vector<TurnSpec> turns;
+  const std::string prefix(speaker);
+  const std::vector<std::string> clips{"-1", "-2", "-3", "-4"};
+  for (size_t index = 0; index < clips.size(); ++index) {
+    turns.push_back({.clip = prefix + clips[(index + seed) % clips.size()],
+                     .offsetSeconds = 0.05F * static_cast<float>((seed + index) % 4),
+                     .seconds = 3.0F,
+                     .seed = seed * 31 + static_cast<uint32_t>(index),
+                     .repeats = 1});
+  }
+  return turns;
 }
 
 void seedUsers()
@@ -262,11 +252,69 @@ IdentityVoiceprintConfig testConfig()
   return config;
 }
 
+int64_t localTime(int day, int hour)
+{
+  std::tm moment{};
+  moment.tm_year = 2026 - 1900;
+  moment.tm_mon = 8;
+  moment.tm_mday = 1 + day;
+  moment.tm_hour = hour;
+  moment.tm_isdst = -1;
+  return static_cast<int64_t>(std::mktime(&moment));
+}
+
+struct CallInput
+{
+  int64_t userId{0};
+  std::string device;
+  std::string key;
+  std::vector<TurnSpec> turns;
+  int64_t at{0};
+};
+
+struct CallResult
+{
+  std::vector<VoiceTurnLearning> turns;
+  PassiveCallOutcome outcome{PassiveCallOutcome::NotFound};
+};
+
+CallResult runCall(const PassiveEnrollmentService& passive,
+                   const CallInput& input)
+{
+  CallResult result;
+  int64_t now = input.at;
+  for (const auto& spec : input.turns) {
+    result.turns.push_back(drogon::sync_wait(
+        passive.learnFromTurn({.userId = input.userId,
+                               .deviceHash = input.device,
+                               .callKey = input.key,
+                               .sample = pcmOf(turnSamples(spec)),
+                               .now = now})));
+    now += 20;
+  }
+  result.outcome = drogon::sync_wait(
+      passive.closeCall({.callKey = input.key, .now = now}));
+  return result;
+}
+
+int64_t count(const std::string& sql)
+{
+  const auto rows = DbService::identityClient()->execSqlSync(sql);
+  return rows.empty() ? 0 : rows.front()["total"].as<int64_t>();
+}
+
+std::vector<std::string> events(const RecordingSink& sink)
+{
+  std::vector<std::string> names;
+  for (const auto& action : sink.actions())
+    names.push_back(action.newData.get("event", "").asString());
+  return names;
+}
+
 struct Fleet
 {
-  std::shared_ptr<const AuthClient> auth = std::make_shared<ScriptedAuth>();
   IdentityVoiceprintRpcService service{
-      {.fleetSecret = kFleetSecret, .auth = auth, .voiceprint = testConfig()}};
+      {.fleetSecret = kFleetSecret, .voiceprint = testConfig()}};
   std::unique_ptr<grpc::Server> server;
   std::string target;
 
@@ -293,7 +341,7 @@ struct Fleet
 
 }
 
-TEST_CASE("a voice is linked once, only under a confirmed enrollment")
+TEST_CASE("a voice is learned from its owner's own calls, and only from them")
 {
   for (const char* suffix : {"", "-wal", "-shm"})
     std::remove((std::string(kDb) + suffix).c_str());
@@ -315,52 +363,38 @@ TEST_CASE("a voice is linked once, only under a confirmed enrollment")
   identity_change::setSink(&sink);
   const Teardown teardown;
 
+  {
+    INFO("an explicit enrollment from before is carried over once");
+    auto client = DbService::identityClient();
+    client->execSqlSync(
+        "CREATE TABLE voiceprint (id INTEGER PRIMARY KEY, user_id INTEGER, "
+        "model TEXT, embedding BLOB, sample_count INTEGER, speech_seconds "
+        "REAL, method TEXT, consent_version TEXT, enrolled_by INTEGER, "
+        "created_at INTEGER)");
+    client->execSqlSync("CREATE TABLE voiceprint_challenge (id INTEGER)");
+    client->execSqlSync("CREATE TABLE voiceprint_challenge_sample (id INTEGER)");
+    client->execSqlSync(
+        "INSERT INTO voiceprint VALUES (1, 9, 'legacy-model', x'0000803f', 3, "
+        "9.5, 'self', 'voiceprint-consent-v1', 9, 1700000000)");
+    VoiceProfileRepository::migrateLegacy();
+    VoiceProfileRepository::migrateLegacy();
+    CHECK(count("SELECT COUNT(*) AS total FROM sqlite_master WHERE name IN "
+                "('voiceprint', 'voiceprint_challenge', "
+                "'voiceprint_challenge_sample')") == 0);
+    const auto carried = client->execSqlSync(
+        "SELECT source, model, linked_at FROM voice_profile WHERE user_id = 9");
+    REQUIRE(carried.size() == 1);
+    CHECK(carried.front()["source"].as<std::string>() == "enrolled");
+    CHECK(carried.front()["linked_at"].as<int64_t>() == 1700000000);
+  }
+
   const VoiceprintFeatureService service(testConfig());
+  const PassiveEnrollmentService passive(testConfig());
   auto& engine = SpeakerEmbeddingService::instance();
 
-  {
-    INFO("nobody manages another person's voice but the owner");
-    const auto forbidden = drogon::sync_wait(
-        service.createChallenge({.actor = actor(kGuard, UserRole::Guard),
-                                 .subjectId = kResident,
-                                 .lang = std::nullopt}));
-    CHECK(forbidden.outcome == VoiceprintOutcome::Forbidden);
-
-    const VoiceprintDeleteRequest removal{.actor =
-                                              actor(kGuest, UserRole::Guest),
-                                          .subjectId = kResident};
-    CHECK(drogon::sync_wait(service.remove(removal)).outcome ==
-          VoiceprintOutcome::Forbidden);
-
-    const auto missing = drogon::sync_wait(
-        service.createChallenge({.actor = actor(kOwner, UserRole::Owner),
-                                 .subjectId = 4040,
-                                 .lang = std::nullopt}));
-    CHECK(missing.outcome == VoiceprintOutcome::UserNotFound);
-
-    const auto inactive = drogon::sync_wait(
-        service.createChallenge({.actor = actor(kOwner, UserRole::Owner),
-                                 .subjectId = 10,
-                                 .lang = std::nullopt}));
-    CHECK(inactive.outcome == VoiceprintOutcome::UserNotFound);
-  }
-
-  {
-    INFO("consent is explicit and versioned");
-    for (const auto& [consent, version] :
-         {std::pair{false, std::string(kVoiceprintConsentVersion)},
-          std::pair{true, std::string("voiceprint-consent-v0")}}) {
-      const auto refused = drogon::sync_wait(
-          service.enroll({.actor = actor(kResident, UserRole::Resident),
-                          .subjectId = kResident,
-                          .samples = {},
-                          .consent = consent,
-                          .consentVersion = version,
-                          .challengeId = "whatever",
-                          .faceImage = {}}));
-      CHECK(refused.outcome == VoiceprintOutcome::ConsentRequired);
-    }
-  }
+  const auto directory = drogon::sync_wait(service.directory());
+  CHECK_FALSE(directory.available);
+  CHECK(directory.recognized.empty());
 
   const bool modelPresent =
       engine.init(ARGUS_TEST_SPEAKER_MODEL) &&
@@ -371,351 +405,313 @@ TEST_CASE("a voice is linked once, only under a confirmed enrollment")
             "; the model-backed half of the suite is skipped");
     return;
   }
-  CHECK(engine.dims() == 192);
+  REQUIRE(engine.dims() == 192);
+
+  const PassiveVoiceConfig gates = testConfig().passive;
+  const auto embed = [&](const std::vector<int16_t>& samples) {
+    return engine.analyze({.voice = pcmOf(samples),
+                           .requirement = {.minSpeechSeconds = 1.0F,
+                                           .minSnrDb = 0.0F,
+                                           .maxClippedRatio = 1.0F},
+                           .extractEmbedding = true,
+                           .halvesMinSeconds = gates.minHalfSeconds});
+  };
+  const auto mixedTurn = [] {
+    auto samples = turnSamples(
+        {.clip = "alpha-2", .offsetSeconds = 0.0F, .seconds = 1.4F, .seed = 7, .repeats = 1});
+    const auto tail = turnSamples(
+        {.clip = "bravo-2", .offsetSeconds = 0.5F, .seconds = 1.4F, .seed = 8, .repeats = 1});
+    samples.insert(samples.end(), tail.begin(), tail.end());
+    return samples;
+  };
 
   {
-    INFO("the same speaker scores far above the threshold, others far below");
-    const auto embed = [&](const char* name) {
-      const auto analysis = engine.analyze(
-          {.voice = wavOf(fixture(name)),
-           .requirement = {.minSpeechSeconds = 1.2F, .minSnrDb = 12.0F},
-           .extractEmbedding = true});
+    INFO("the gates sit between what one voice and two voices score");
+    std::vector<std::vector<float>> alpha;
+    for (const auto& spec : callOf("alpha", 1)) {
+      const auto analysis = embed(turnSamples(spec));
       REQUIRE(analysis.status == VoiceAnalysisStatus::Ok);
-      return analysis.embedding;
-    };
-    const std::vector<std::vector<float>> alpha{embed("alpha-1"),
-                                                embed("alpha-2"),
-                                                embed("alpha-3")};
-    const auto centroid = voice_vector::centroid(alpha);
-    const float same = voice_vector::cosine(centroid, embed("alpha-4"));
-    const float other = voice_vector::cosine(centroid, embed("bravo-4"));
-    const float stranger = voice_vector::cosine(centroid, embed("charlie-1"));
-    MESSAGE("same=" << same << " other=" << other << " stranger=" << stranger);
-    CHECK(same > testConfig().verifyThreshold);
-    CHECK(other < testConfig().verifyThreshold);
-    CHECK(stranger < testConfig().verifyThreshold);
-  }
-
-  {
-    INFO("enrollment, verification, identification and deletion");
-    const auto challenge = drogon::sync_wait(
-        service.createChallenge({.actor = actor(kResident, UserRole::Resident),
-                                 .subjectId = kResident,
-                                 .lang = std::nullopt}));
-    REQUIRE(challenge.outcome == VoiceprintOutcome::Ok);
-    CHECK(challenge.challenge.lang == VoiceLang::En);
-    CHECK(challenge.challenge.phrases.size() == 3);
-
-    const auto enrollAs = [&](const VoiceprintActor& who,
-                              std::vector<EncodedVoice> samples,
-                              const std::string& challengeId) {
-      return drogon::sync_wait(service.enroll(
-          {.actor = who,
-           .subjectId = kResident,
-           .samples = std::move(samples),
-           .consent = true,
-           .consentVersion = std::string(kVoiceprintConsentVersion),
-           .challengeId = challengeId,
-           .faceImage = {}}));
-    };
-
-    VoiceprintActor otherDevice = actor(kResident, UserRole::Resident);
-    otherDevice.deviceHash = "stolen-device";
-    CHECK(enrollAs(otherDevice, wavs({"alpha-1", "alpha-2", "alpha-3"}),
-                   challenge.challenge.challengeId)
-              .outcome == VoiceprintOutcome::ChallengeInvalid);
-    CHECK(enrollAs(actor(kResident, UserRole::Resident),
-                   wavs({"alpha-1", "alpha-2"}),
-                   challenge.challenge.challengeId)
-              .outcome == VoiceprintOutcome::SampleCountInvalid);
-
-    const auto mixedUp = enrollAs(actor(kResident, UserRole::Resident),
-                                  wavs({"alpha-1", "alpha-2", "bravo-1"}),
-                                  challenge.challenge.challengeId);
-    CHECK(mixedUp.outcome == VoiceprintOutcome::SamplesInconsistent);
-    CHECK(mixedUp.failedSample == 2);
-
-    std::vector<EncodedVoice> silentFirst = wavs({"alpha-2", "alpha-3"});
-    silentFirst.insert(silentFirst.begin(),
-                       wavOf(std::vector<int16_t>(48000, 0)));
-    const auto silent =
-        enrollAs(actor(kResident, UserRole::Resident), std::move(silentFirst),
-                 challenge.challenge.challengeId);
-    CHECK(silent.outcome == VoiceprintOutcome::SampleTooShort);
-    CHECK(silent.failedSample == 0);
-
-    const auto enrolled = enrollAs(actor(kResident, UserRole::Resident),
-                                   wavs({"alpha-1", "alpha-2", "alpha-3"}),
-                                   challenge.challenge.challengeId);
-    REQUIRE(enrolled.outcome == VoiceprintOutcome::Ok);
-    CHECK(enrolled.status.enrolled);
-    CHECK(enrolled.status.sampleCount == 3);
-    CHECK(enrolled.status.method == VoiceprintMethod::Self);
-    CHECK_FALSE(enrolled.status.stale);
-
-    CHECK(enrollAs(actor(kResident, UserRole::Resident),
-                   wavs({"alpha-1", "alpha-2", "alpha-3"}),
-                   challenge.challenge.challengeId)
-              .outcome == VoiceprintOutcome::AlreadyEnrolled);
-    CHECK(drogon::sync_wait(service.createChallenge(
-                                {.actor = actor(kResident, UserRole::Resident),
-                                 .subjectId = kResident,
-                                 .lang = std::nullopt}))
-              .outcome == VoiceprintOutcome::AlreadyEnrolled);
-
-    const VoiceprintVerifyRequest genuine{.userId = kResident,
-                                          .sample = wavOf(fixture("alpha-4"))};
-    const auto verified = drogon::sync_wait(service.verify(genuine));
-    CHECK(verified.outcome == VoiceprintOutcome::Ok);
-    CHECK(verified.matched);
-    const VoiceprintVerifyRequest impostor{.userId = kResident,
-                                           .sample = wavOf(fixture("bravo-4"))};
-    CHECK_FALSE(drogon::sync_wait(service.verify(impostor)).matched);
-    const VoiceprintVerifyRequest unenrolled{.userId = kGuard,
-                                             .sample =
-                                                 wavOf(fixture("bravo-4"))};
-    CHECK(drogon::sync_wait(service.verify(unenrolled)).outcome ==
-          VoiceprintOutcome::NotEnrolled);
-
-    const auto known =
-        drogon::sync_wait(service.identify(wavOf(fixture("alpha-4"))));
-    CHECK(known.matched);
-    CHECK(known.userId == kResident);
-    CHECK(known.personId == 70);
-    CHECK(known.name == "Rita");
-    CHECK_FALSE(drogon::sync_wait(service.identify(wavOf(fixture("charlie-1"))))
-                    .matched);
-
-    const auto guardChallenge = drogon::sync_wait(
-        service.createChallenge({.actor = actor(kGuard, UserRole::Guard),
-                                 .subjectId = kGuard,
-                                 .lang = VoiceLang::Es}));
-    REQUIRE(guardChallenge.outcome == VoiceprintOutcome::Ok);
-    const auto taken = drogon::sync_wait(service.enroll(
-        {.actor = actor(kGuard, UserRole::Guard),
-         .subjectId = kGuard,
-         .samples = wavs({"alpha-2", "alpha-3", "alpha-4"}),
-         .consent = true,
-         .consentVersion = std::string(kVoiceprintConsentVersion),
-         .challengeId = guardChallenge.challenge.challengeId,
-         .faceImage = {}}));
-    CHECK(taken.outcome == VoiceprintOutcome::VoiceTaken);
-
-    const auto assisted = drogon::sync_wait(
-        service.createChallenge({.actor = actor(kOwner, UserRole::Owner),
-                                 .subjectId = kGuest,
-                                 .lang = std::nullopt}));
-    REQUIRE(assisted.outcome == VoiceprintOutcome::Ok);
-    const auto faceless = drogon::sync_wait(service.enroll(
-        {.actor = actor(kOwner, UserRole::Owner),
-         .subjectId = kGuest,
-         .samples = wavs({"bravo-1", "bravo-2", "bravo-3"}),
-         .consent = true,
-         .consentVersion = std::string(kVoiceprintConsentVersion),
-         .challengeId = assisted.challenge.challengeId,
-         .faceImage = "not a face"}));
-    CHECK(faceless.outcome == VoiceprintOutcome::FaceNotVerified);
-
-    const VoiceprintDeleteRequest byOwner{.actor =
-                                              actor(kOwner, UserRole::Owner),
-                                          .subjectId = kResident};
-    const auto removed = drogon::sync_wait(service.remove(byOwner));
-    CHECK(removed.outcome == VoiceprintOutcome::Ok);
-    CHECK(removed.deleted);
-    CHECK(drogon::sync_wait(service.remove(byOwner)).outcome ==
-          VoiceprintOutcome::NotEnrolled);
-    CHECK_FALSE(
-        drogon::sync_wait(service.identify(wavOf(fixture("alpha-4")))).matched);
-
-    const auto audit = sink.actions();
-    REQUIRE(audit.size() == 2);
-    CHECK(audit[0].action == UserAction::Create);
-    CHECK(audit[0].userId == kResident);
-    CHECK(audit[0].recordId == kResident);
-    CHECK(audit[0].newData["event"].asString() == "voiceprint_enroll");
-    CHECK(audit[1].action == UserAction::Delete);
-    CHECK(audit[1].userId == kOwner);
-    CHECK(audit[1].newData["byOwner"].asBool());
-    for (const auto& event : audit) {
-      CHECK_FALSE(event.newData.isMember("embedding"));
-      CHECK(event.newData.toStyledString().size() < 512);
+      REQUIRE(analysis.halvesScore.has_value());
+      MESSAGE(spec.clip << " halves " << *analysis.halvesScore);
+      CHECK(*analysis.halvesScore > gates.turnSplitThreshold);
+      alpha.push_back(analysis.embedding);
     }
+    const auto both = embed(mixedTurn());
+    REQUIRE(both.halvesScore.has_value());
+    MESSAGE("two voices in one turn, halves " << *both.halvesScore);
+    CHECK(*both.halvesScore < gates.turnSplitThreshold);
+    const std::vector<std::vector<float>> others(alpha.begin() + 1,
+                                                 alpha.end());
+    CHECK(voice_vector::cosine(alpha[0], voice_vector::centroid(others)) >
+          gates.callConsistency);
+    const auto stranger = embed(turnSamples(
+        {.clip = "charlie-1", .offsetSeconds = 0.0F, .seconds = 3.0F, .seed = 6, .repeats = 2}));
+    CHECK(voice_vector::cosine(stranger.embedding,
+                               voice_vector::centroid(alpha)) <
+          gates.callConsistency);
+  }
+
+  const auto oneClipCall = [](const char* clip, uint32_t seed) {
+    std::vector<TurnSpec> turns;
+    for (uint32_t index = 0; index < 4; ++index)
+      turns.push_back({.clip = clip,
+                       .offsetSeconds = 0.05F * static_cast<float>(index),
+                       .seconds = 3.0F,
+                       .seed = seed * 31 + index,
+                       .repeats = 2});
+    return turns;
+  };
+  const auto profileOf = [](int64_t userId) {
+    return count("SELECT COUNT(*) AS total FROM voice_profile WHERE user_id = " +
+                 std::to_string(userId) + " AND model <> 'legacy-model'");
+  };
+  const auto samplesOf = [](int64_t userId) {
+    return count("SELECT COUNT(*) AS total FROM voice_sample WHERE user_id = " +
+                 std::to_string(userId));
+  };
+  const auto identifies = [&](const char* clip) {
+    const auto found = drogon::sync_wait(service.identify(pcmOf(turnSamples(
+        {.clip = clip, .offsetSeconds = 0.0F, .seconds = 2.9F, .seed = 99, .repeats = 1}))));
+    return found.matched ? found.userId : int64_t{0};
+  };
+
+  {
+    INFO("Rita is linked after three calls on two days from her own phone");
+    const auto first = runCall(passive, {.userId = kRita,
+                                         .device = "rita-phone",
+                                         .key = "rita-1",
+                                         .turns = callOf("alpha", 1),
+                                         .at = localTime(0, 10)});
+    for (const auto& turn : first.turns) {
+      CHECK(turn.considered);
+      CHECK(turn.quality == VoiceAnalysisStatus::Ok);
+      CHECK(turn.verdict == TurnVerdict::Accepted);
+    }
+    CHECK(first.outcome == PassiveCallOutcome::Pending);
+    CHECK(runCall(passive, {.userId = kRita,
+                            .device = "rita-phone",
+                            .key = "rita-2",
+                            .turns = callOf("alpha", 2),
+                            .at = localTime(0, 14)})
+              .outcome == PassiveCallOutcome::Pending);
+    CHECK(profileOf(kRita) == 0);
+    CHECK(identifies("alpha-4") == 0);
+
+    CHECK(runCall(passive, {.userId = kRita,
+                            .device = "rita-phone",
+                            .key = "rita-3",
+                            .turns = callOf("alpha", 3),
+                            .at = localTime(1, 10)})
+              .outcome == PassiveCallOutcome::Linked);
+    CHECK(profileOf(kRita) == 1);
+    CHECK(identifies("alpha-4") == kRita);
+    CHECK(identifies("bravo-4") == 0);
+
+    const auto listed = drogon::sync_wait(service.directory());
+    CHECK(listed.available);
+    REQUIRE(listed.recognized.size() == 1);
+    CHECK(listed.recognized.front().userId == kRita);
+    CHECK(listed.recognized.front().since > localTime(1, 10));
+
+    const auto actions = sink.actions();
+    const auto linked = std::ranges::find_if(
+        actions, [](const UserActionEvent& event) {
+          return event.newData.get("event", "").asString() == "voiceprint_link";
+        });
+    REQUIRE(linked != actions.end());
+    CHECK(linked->recordId == kRita);
+    CHECK(linked->action == UserAction::Create);
+    CHECK(linked->newData["occasions"].asInt() == 3);
+    CHECK(linked->newData["days"].asInt() == 2);
+    CHECK_FALSE(linked->newData.isMember("embedding"));
     CHECK(sink.transactional());
+
+    CHECK(count("SELECT COUNT(*) AS total FROM voice_sample "
+                "WHERE length(embedding) <> 768") == 0);
+    CHECK(count("SELECT COUNT(*) AS total FROM voice_sample "
+                "WHERE user_id = 7 AND state = 'adopted'") == 3);
   }
 
   {
-    INFO("the app's flow: one phrase at a time, then a confirmation");
-    const VoiceprintActor resident = actor(kResident, UserRole::Resident);
-    const VoiceprintChallengeRequest challengeRequest{.actor = resident,
-                                                      .subjectId = kResident,
-                                                      .lang = VoiceLang::Es};
-    const auto challenge =
-        drogon::sync_wait(service.createChallenge(challengeRequest));
-    REQUIRE(challenge.outcome == VoiceprintOutcome::Ok);
-    const std::string& challengeId = challenge.challenge.challengeId;
-
-    const auto stage = [&](int position, const char* name) {
-      return drogon::sync_wait(
-          service.stageSample({.actor = resident,
-                               .subjectId = kResident,
-                               .challengeId = challengeId,
-                               .position = position,
-                               .sample = wavOf(fixture(name))}));
-    };
-    const auto finalize = [&]() {
-      const VoiceprintFinalizeRequest request{.actor = resident,
-                                              .subjectId = kResident,
-                                              .consent = true,
-                                              .consentVersion = std::string(
-                                                  kVoiceprintConsentVersion),
-                                              .challengeId = challengeId,
-                                              .faceImage = {}};
-      return drogon::sync_wait(service.finalize(request));
-    };
-
-    const auto first = stage(0, "alpha-1");
-    CHECK(first.outcome == VoiceprintOutcome::Ok);
-    CHECK(first.collected == 1);
-    CHECK(first.required == 3);
-    CHECK(first.speechSeconds > 1.2F);
-
-    const auto silent = drogon::sync_wait(
-        service.stageSample({.actor = resident,
-                             .subjectId = kResident,
-                             .challengeId = challengeId,
-                             .position = 1,
-                             .sample = wavOf(std::vector<int16_t>(48000, 0))}));
-    CHECK(silent.outcome == VoiceprintOutcome::SampleTooShort);
-    CHECK(silent.collected == 1);
-
-    CHECK(stage(3, "alpha-2").outcome == VoiceprintOutcome::SampleCountInvalid);
-    VoiceprintActor elsewhere = resident;
-    elsewhere.deviceHash = "another-device";
-    CHECK(drogon::sync_wait(
-              service.stageSample({.actor = elsewhere,
-                                   .subjectId = kResident,
-                                   .challengeId = challengeId,
-                                   .position = 1,
-                                   .sample = wavOf(fixture("alpha-2"))}))
-              .outcome == VoiceprintOutcome::ChallengeInvalid);
-
-    CHECK(stage(1, "alpha-2").collected == 2);
-    CHECK(finalize().outcome == VoiceprintOutcome::SampleCountInvalid);
-
-    CHECK(stage(2, "bravo-2").collected == 3);
-    const auto mixed = finalize();
-    CHECK(mixed.outcome == VoiceprintOutcome::SamplesInconsistent);
-    CHECK(mixed.failedSample == 2);
-
-    CHECK(stage(2, "alpha-3").collected == 3);
-    const auto linked = finalize();
-    REQUIRE(linked.outcome == VoiceprintOutcome::Ok);
-    CHECK(linked.status.sampleCount == 3);
-    CHECK(finalize().outcome == VoiceprintOutcome::AlreadyEnrolled);
-
-    const auto leftovers = DbService::identityClient()->execSqlSync(
-        "SELECT COUNT(*) AS total FROM voiceprint_challenge_sample");
-    CHECK(leftovers.front()["total"].as<int>() == 0);
-
-    const VoiceprintDeleteRequest bySelf{.actor = resident,
-                                         .subjectId = kResident};
-    CHECK(drogon::sync_wait(service.remove(bySelf)).deleted);
+    INFO("another voice in the call stops the call from teaching anything");
+    const int64_t before = samplesOf(kRita);
+    auto turns = callOf("alpha", 1);
+    turns.insert(turns.begin() + 2, oneClipCall("charlie-1", 4).front());
+    const auto call = runCall(passive, {.userId = kRita,
+                                        .device = "rita-phone",
+                                        .key = "rita-tv",
+                                        .turns = turns,
+                                        .at = localTime(2, 9)});
+    REQUIRE(call.turns.size() == 5);
+    CHECK(call.turns[2].verdict == TurnVerdict::Drift);
+    CHECK(call.turns[3].verdict == TurnVerdict::CallTainted);
+    CHECK(call.outcome == PassiveCallOutcome::Tainted);
+    CHECK(samplesOf(kRita) == before);
   }
 
   {
-    INFO("the SDK reaches the same surface over gRPC, gated by the session");
+    INFO("two voices inside one turn stop the call too");
+    const int64_t before = samplesOf(kRita);
+    CallInput input{.userId = kRita,
+                    .device = "rita-phone",
+                    .key = "rita-mixed",
+                    .turns = {},
+                    .at = localTime(2, 15)};
+    const auto first = drogon::sync_wait(passive.learnFromTurn(
+        {.userId = kRita,
+         .deviceHash = input.device,
+         .callKey = input.key,
+         .sample = pcmOf(turnSamples(callOf("alpha", 2).front())),
+         .now = input.at}));
+    CHECK(first.verdict == TurnVerdict::Accepted);
+    const auto mixed = drogon::sync_wait(
+        passive.learnFromTurn({.userId = kRita,
+                               .deviceHash = input.device,
+                               .callKey = input.key,
+                               .sample = pcmOf(mixedTurn()),
+                               .now = input.at + 20}));
+    CHECK(mixed.verdict == TurnVerdict::MixedTurn);
+    CHECK(drogon::sync_wait(passive.closeCall(
+              {.callKey = input.key, .now = input.at + 40})) ==
+          PassiveCallOutcome::Tainted);
+    CHECK(samplesOf(kRita) == before);
+  }
+
+  {
+    INFO("Rita's linked voice on Gil's account is never learned as Gil's");
+    const auto call = runCall(passive, {.userId = kGil,
+                                        .device = "gil-phone",
+                                        .key = "gil-rita",
+                                        .turns = callOf("alpha", 4),
+                                        .at = localTime(3, 9)});
+    REQUIRE_FALSE(call.turns.empty());
+    CHECK(call.turns.front().verdict == TurnVerdict::OtherSpeaker);
+    REQUIRE(call.turns.front().bestOther.has_value());
+    CHECK(call.turns.front().bestOther->userId == kRita);
+    CHECK(call.outcome == PassiveCallOutcome::Tainted);
+    CHECK(samplesOf(kGil) == 0);
+  }
+
+  {
+    INFO("two people taking turns on one account link neither of them");
+    for (int day = 4; day < 10; ++day) {
+      const bool gil = day % 2 == 0;
+      const auto call = runCall(
+          passive,
+          {.userId = kGil,
+           .device = "gil-phone",
+           .key = "gil-" + std::to_string(day),
+           .turns = gil ? callOf("bravo", static_cast<uint32_t>(day))
+                        : oneClipCall("charlie-1", static_cast<uint32_t>(day)),
+           .at = localTime(day, 11)});
+      CHECK(call.outcome == PassiveCallOutcome::Pending);
+    }
+    CHECK(profileOf(kGil) == 0);
+    CHECK(samplesOf(kGil) == 6);
+  }
+
+  {
+    INFO("a tablet two accounts share teaches neither, however consistent");
+    CHECK(runCall(passive, {.userId = kGil,
+                            .device = "family-tablet",
+                            .key = "tablet-gil",
+                            .turns = callOf("bravo", 1),
+                            .at = localTime(10, 18)})
+              .outcome == PassiveCallOutcome::Pending);
+    for (int day = 11; day < 15; ++day)
+      CHECK(runCall(passive,
+                    {.userId = kGus,
+                     .device = "family-tablet",
+                     .key = "tablet-gus-" + std::to_string(day),
+                     .turns = callOf("bravo", static_cast<uint32_t>(day)),
+                     .at = localTime(day, 18)})
+                .outcome == PassiveCallOutcome::Pending);
+    CHECK(profileOf(kGus) == 0);
+    CHECK(profileOf(kGil) == 0);
+  }
+
+  {
+    INFO("Rita's later calls are adopted and refresh her voice in batches");
+    std::vector<PassiveCallOutcome> outcomes;
+    for (int day = 15; day < 18; ++day)
+      outcomes.push_back(
+          runCall(passive, {.userId = kRita,
+                            .device = "rita-phone",
+                            .key = "rita-" + std::to_string(day),
+                            .turns = callOf("alpha", static_cast<uint32_t>(day)),
+                            .at = localTime(day, 10)})
+              .outcome);
+    CHECK(outcomes == std::vector<PassiveCallOutcome>{
+                          PassiveCallOutcome::Adopted,
+                          PassiveCallOutcome::Adopted,
+                          PassiveCallOutcome::Refreshed});
+    const auto names = events(sink);
+    CHECK(std::ranges::count(names, std::string("voiceprint_refresh")) == 1);
+    CHECK(identifies("alpha-4") == kRita);
+  }
+
+  {
+    INFO("the voice relay reaches all of it over gRPC");
     Fleet fleet;
     REQUIRE(fleet.server);
     const VoiceprintClient client(
         {.target = fleet.target, .fleetSecret = kFleetSecret});
-    const VoiceprintSession resident{.accessToken = "resident-token",
-                                     .deviceHash = "phone-7"};
+    const VoiceprintClient intruder(
+        {.target = fleet.target, .fleetSecret = "wrong"});
+    const auto clip = turnSamples(
+        {.clip = "alpha-4", .offsetSeconds = 0.0F, .seconds = 2.9F, .seed = 3, .repeats = 1});
+    const VoiceTurnObservation observation{
+        .sample = {.samples = clip, .sampleRate = kRate},
+        .userId = kRita,
+        .deviceHash = "rita-phone",
+        .callKey = "grpc-call",
+        .timeoutMs = 5000};
+    CHECK_FALSE(intruder.observeTurn(observation).has_value());
+    const auto answer = client.observeTurn(observation);
+    REQUIRE(answer.has_value());
+    CHECK(answer->matched());
+    CHECK(answer->user_id() == kRita);
+    for (int attempt = 0;
+         attempt < 500 && fleet.service.passive().openCalls() == 0; ++attempt)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    CHECK(fleet.service.passive().openCalls() == 1);
+    CHECK(client.closeCall({.callKey = "grpc-call", .timeoutMs = 5000}));
+    CHECK(fleet.service.passive().openCalls() == 0);
+    CHECK_FALSE(client.closeCall({.callKey = "grpc-call", .timeoutMs = 5000}));
+  }
 
-    const auto status = client.status(kResident);
-    if (!status) {
-      FAIL("status answered nothing");
-      return;
-    }
-    CHECK(status->available());
-    CHECK_FALSE(status->status().enrolled());
+  {
+    INFO("the owner makes Argus forget a voice, and it is gone");
+    const auto forgotten =
+        drogon::sync_wait(service.forget({.actorId = kOwner, .subjectId = kRita}));
+    CHECK(forgotten.hadProfile);
+    CHECK(forgotten.samples > 0);
+    CHECK(profileOf(kRita) == 0);
+    CHECK(samplesOf(kRita) == 0);
+    CHECK(identifies("alpha-4") == 0);
+    CHECK(drogon::sync_wait(service.directory()).recognized.empty());
+    const auto actions = sink.actions();
+    const auto forget = std::ranges::find_if(
+        actions, [](const UserActionEvent& event) {
+          return event.newData.get("event", "").asString() ==
+                 "voiceprint_forget";
+        });
+    REQUIRE(forget != actions.end());
+    CHECK(forget->userId == kOwner);
+    CHECK(forget->action == UserAction::Delete);
 
-    CHECK_FALSE(client
-                    .createChallenge({.userId = kResident,
-                                      .lang = "",
-                                      .session = {.accessToken = "forged",
-                                                  .deviceHash = ""}})
-                    .has_value());
-
-    const auto challenge = client.createChallenge(
-        {.userId = kResident, .lang = "es", .session = resident});
-    if (!challenge) {
-      FAIL("challenge answered nothing");
-      return;
-    }
-    REQUIRE(challenge->outcome() == argus::identity::v1::VOICEPRINT_OK);
-    CHECK(challenge->lang() == "es");
-
-    const auto alpha1 = fixture("alpha-1");
-    const auto alpha2 = fixture("alpha-2");
-    const auto alpha3 = fixture("alpha-3");
-    const auto enrolled =
-        client.enroll({.userId = kResident,
-                       .samples = {{.samples = alpha1, .sampleRate = 16000},
-                                   {.samples = alpha2, .sampleRate = 16000},
-                                   {.samples = alpha3, .sampleRate = 16000}},
-                       .consent = true,
-                       .consentVersion = std::string(kVoiceprintConsentVersion),
-                       .challengeId = challenge->challenge_id(),
-                       .faceImage = "",
-                       .session = resident});
-    if (!enrolled) {
-      FAIL("enrolled answered nothing");
-      return;
-    }
-    REQUIRE(enrolled->outcome() == argus::identity::v1::VOICEPRINT_OK);
-    CHECK(enrolled->status().method() == "self");
-
-    const auto alpha4 = fixture("alpha-4");
-    const auto identified = client.identifyWithin(
-        {.sample = {.samples = alpha4, .sampleRate = 16000},
-         .timeoutMs = 3000});
-    if (!identified) {
-      FAIL("identified answered nothing");
-      return;
-    }
-    CHECK(identified->matched());
-    CHECK(identified->user_id() == kResident);
-    CHECK(identified->role() == "resident");
-
-    const auto bravo4 = fixture("bravo-4");
-    const auto verdict =
-        client.verify({.userId = kResident,
-                       .sample = {.samples = bravo4, .sampleRate = 16000}});
-    if (!verdict) {
-      FAIL("verdict answered nothing");
-      return;
-    }
-    CHECK_FALSE(verdict->matched());
-
-    const auto byGuard = client.remove(
-        {.userId = kResident,
-         .session = {.accessToken = "guard-token", .deviceHash = ""}});
-    if (!byGuard) {
-      FAIL("byGuard answered nothing");
-      return;
-    }
-    CHECK(byGuard->outcome() == argus::identity::v1::VOICEPRINT_FORBIDDEN);
-
-    const auto bySelf =
-        client.remove({.userId = kResident, .session = resident});
-    if (!bySelf) {
-      FAIL("bySelf answered nothing");
-      return;
-    }
-    CHECK(bySelf->deleted());
-
-    const VoiceprintClient stranger(
-        {.target = fleet.target, .fleetSecret = ""});
-    CHECK_FALSE(stranger.status(kResident).has_value());
+    const auto refusal = [&](int64_t subject) {
+      try {
+        drogon::sync_wait(
+            service.forget({.actorId = kOwner, .subjectId = subject}));
+      }
+      catch (const ResponseException& error) {
+        return error.statusCode();
+      }
+      return 0;
+    };
+    CHECK(refusal(kRita) == 404);
+    CHECK(refusal(4040) == 404);
+    CHECK(samplesOf(kGil) > 0);
   }
 }

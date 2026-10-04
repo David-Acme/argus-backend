@@ -1,25 +1,23 @@
 argus_module(NAME identity-voiceprint
     SOURCES
         controllers/voiceprint-controller.cc
-        dtos/create-voiceprint-challenge-dto.cc
-        dtos/enroll-voiceprint-dto.cc
-        dtos/response-voiceprint-challenge-dto.cc
-        dtos/response-voiceprint-sample-dto.cc
-        dtos/response-voiceprint-status-dto.cc
-        dtos/response-voiceprint-verify-dto.cc
-        dtos/voice-sample-dto.cc
-        repositories/voiceprint/voiceprint-repository.cc
-        repositories/voiceprint-challenge/voiceprint-challenge-repository.cc
-        schemas/voiceprint/voiceprint-schema.cc
-        schemas/voiceprint-challenge-sample/voiceprint-challenge-sample-schema.cc
-        schemas/voiceprint-challenge/voiceprint-challenge-schema.cc
+        dtos/response-voiceprint-directory-dto.cc
+        repositories/voice-device/voice-device-repository.cc
+        repositories/voice-profile/voice-profile-repository.cc
+        repositories/voice-sample/voice-sample-repository.cc
+        schemas/voice-device/voice-device-schema.cc
+        schemas/voice-profile/voice-profile-schema.cc
+        schemas/voice-sample/voice-sample-schema.cc
         services/audio/speech-quality.cc
         services/audio/voice-audio.cc
         services/embedding/speaker-embedding-service.cc
         services/embedding/voice-vector.cc
         services/index/voiceprint-index.cc
+        services/passive/passive-enrollment-service.cc
+        services/passive/passive-policy.cc
+        services/passive/voice-call-tracker.cc
+        services/voiceprint/voiceprint-audit.cc
         services/voiceprint/voiceprint-feature-service.cc
-        services/voiceprint/voiceprint-phrases.cc
     INCLUDES ../..
     DEPENDS
         argus::identity-config
@@ -30,14 +28,10 @@ argus_module(NAME identity-voiceprint
         argus::lib::http
         argus::lib::runtime
         argus::lib::sqlite
-        argus::lib::text
-        argus::lib::validation
         argus::contracts::auth
         argus::contracts::identity
         argus::contracts::sync
-        argus::contracts::voice
         Drogon::Drogon
-        OpenSSL::Crypto
         onnxruntime::onnxruntime
         sherpa-onnx-c-api)
 

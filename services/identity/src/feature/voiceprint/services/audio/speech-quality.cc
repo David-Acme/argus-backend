@@ -117,7 +117,7 @@ SpeechQuality measure(std::span<const float> samples)
 SpeechProblem judge(const SpeechQuality& quality,
                     const SpeechRequirement& requirement)
 {
-  if (quality.clippedRatio > kMaxClippedRatio)
+  if (quality.clippedRatio > requirement.maxClippedRatio)
     return SpeechProblem::Clipped;
   if (quality.speechSeconds < requirement.minSpeechSeconds)
     return SpeechProblem::TooShort;

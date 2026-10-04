@@ -415,13 +415,15 @@ type), and `identity-face-embedding-test` pins that a row with zero bytes comes
 back whole and typed `blob`. Rows written before the fix stay truncated; the
 `face_vec` index still holds their real vectors.
 
-## Voiceprints (speaker verification)
+## Voiceprints (speaker identification, learned passively)
 
-A person's voice is linked to them **once**, and only under a confirmed
-enrollment; afterwards the service verifies (1:1) and identifies (1:N) them by
-voice. The feature is `src/feature/voiceprint/`, and it mirrors the face
-design: the engine runs in this process, the canonical row stores only an
-embedding, and a vec0 table (`voice_vec`) is the search index.
+Argus learns the voice of each account holder by itself, from the holder's own
+calls, and recognizes it afterwards (1:N). Nobody enrolls: the owner decided
+(2026-10-03) that this is an internal capability of a local system and must not
+be presented to the user, because every byte stays on the user's own computer.
+The feature is `src/feature/voiceprint/`, and it mirrors the face design: the
+engine runs in this process, the canonical rows store only embeddings, and a
+vec0 table (`voice_vec`) is the search index.
 
 ### Why here, and why sherpa-onnx
 
@@ -461,172 +463,190 @@ dropped. `services/identity/scripts/provision.sh` downloads the file into
 `models/speaker/` with a pinned SHA-256 (`.part` + atomic move) and writes the
 NOTICE beside it.
 
-The operating points come from the same runs. 1:1 (`verify_threshold` 0.50):
-3-second clips give a false-accept rate of 0.36 % (EN) / 0.50 % (ES) at a
+The operating points come from the same runs. A 1:1 score of 0.50 on
+3-second clips gives a false-accept rate of 0.36 % (EN) / 0.50 % (ES) at a
 false-reject rate of 2.3 % / 0 %; 2-second clips 0.28 % / 0.31 % at 5.7 % /
-3.3 %. 1:N (`identify_threshold` 0.55, `identify_margin` 0.05 over the
-runner-up) is stricter because a search over N people multiplies the
-false-accept rate by N. Enrollment consistency (`consistency_threshold` 0.50,
-each sample against the centroid of the others) rejected no genuine set and
-accepted at most 1.5 % of sets with one sample from another speaker.
+3.3 %; the passive gates use that 0.50 as "sounds like this person". 1:N
+(`identify_threshold` 0.55, `identify_margin` 0.05 over the runner-up) is
+stricter because a search over N people multiplies the false-accept rate by N.
 
 ### What is stored
 
-`voiceprint` (one row per user, `UNIQUE user_id`): the model id (the model
-file's stem), the L2-normalised centroid as a float32 BLOB, the sample count,
-the voiced seconds, the method (`self` or `owner_face`), the consent version
-the person accepted and who enrolled it. `voiceprint_challenge` holds the
-enrollment challenges, hash-only like the invitation and portrait tokens (the
-256-bit token lives in `shared/services/token/opaque-token`, which the
-invitation and portrait-preview features now share), and
-`voiceprint_challenge_sample` the per-phrase embeddings an enrollment in
-progress has staged, which die with their challenge. Raw audio never reaches a
-table, a file, a log or the change feed: it is decoded in memory, measured,
-embedded and dropped. The `voice_vec` index is rebuilt from the rows of the
-active model at every boot (it holds a household's handful of rows), so a stop
-between a commit and its index write repairs itself.
+Three tables, all of them embeddings or counters; raw audio never reaches a
+table, a file, a log or the change feed (it is decoded in memory, measured,
+embedded and dropped):
 
-**Versioning.** A row whose model id differs from the configured model is
-*stale*: excluded from the index, reported as `stale` by the status, and the
-only voiceprint that may be enrolled over without deleting it first. Swapping
-the model therefore never compares embeddings from two different spaces.
+- `voice_profile` (one row per user, `UNIQUE user_id`): the model id, the
+  L2-normalised centroid (float32 BLOB), how many call samples stand behind it,
+  their voiced seconds, the `source` (`passive`, or `enrolled` for a profile
+  carried over from the explicit enrollment this replaced), `linked_at` and
+  `refreshed_at`.
+- `voice_sample`: one row per **call** that taught something — the centroid of
+  that call's accepted turns, its turn count and voiced seconds, the device
+  hash it came from and its `state`: `pending` (heard before the voice is
+  linked, or too weak to refresh it) or `adopted` (stands behind the profile).
+  At most `maxPendingSamples` (20) pending rows per user, kept 30 days
+  (`voiceprint.window_days`), and `maxProfileSamples` (40) adopted rows, kept
+  180 days; older rows go at every call of that user and in an hourly purge.
+- `voice_device`: per `(device_hash, user_id)` the calls heard, how many matched
+  the linked voice, how many conflicted with it and how many showed two
+  voices. It is the device prior below.
 
-### Confirmed, once
+The `voice_vec` index is rebuilt from the profiles of the active model at every
+boot, so a stop between a commit and its index write repairs itself.
+**Versioning:** a profile or sample whose model id differs from the configured
+model is ignored and replaced by learning on the new model; two embedding
+spaces are never compared.
 
-An enrollment is accepted only when all of these hold, checked in this order:
+The explicit enrollment of 5773a063/c477b761 (`voiceprint`,
+`voiceprint_challenge`, `voiceprint_challenge_sample`) is gone. At boot
+`VoiceProfileRepository::migrateLegacy()` copies any `voiceprint` row into
+`voice_profile` as `source = enrolled` (that person consented and was
+confirmed) and drops the three tables; the step is idempotent.
 
-1. **Who.** The subject is the authenticated caller (`JwtContext.sub`), or
-   the caller is an Owner. Any other combination is `Forbidden`; an inactive
-   or deleted subject is `UserNotFound`.
-2. **Consent.** `consent=true` together with the consent version the server
-   currently presents (`voiceprint-consent-v1`); the version is stored.
-3. **Not already linked.** A current-model voiceprint answers
-   `AlreadyEnrolled` (409). Re-enrolling is an explicit delete followed by a
-   new enrollment, both audited, so a hijacked session cannot silently
-   replace somebody's voice.
-4. **A live challenge.** `POST /voiceprint/me/challenge` mints a one-use,
-   five-minute challenge bound to the subject, the requester and the device
-   hash, with three random phrases from a static per-language bank. The
-   enrollment must present it from the same device; it is consumed in the
-   same transaction that writes the voiceprint.
-5. **Owner-assisted only with the face.** When the Owner enrolls someone
-   else, the request must carry a face image taken in the same request, and
-   `FaceService` must identify it as the person linked to that user
-   (`FaceNotVerified` otherwise).
-6. **Quality.** Each sample is decoded (WAV PCM 8/16/24/32-bit or float, any
-   rate 8-48 kHz, any channel count, at most 30 s) and resampled to 16 kHz
-   with `lib/audio`'s `AudioResampler`. An energy analysis over 20 ms frames
-   measures voiced seconds, an SNR estimate (loudest half against the
-   quietest tenth) and clipping; a sample under 1.2 s of speech, under 12 dB
-   or with more than 1 % clipped samples is refused with its index. The
-   embedding is taken over the voiced span only.
-7. **One speaker.** The consistency check above.
-8. **Not somebody else's voice.** If the centroid matches another user's
-   voiceprint above the identification threshold the enrollment is refused
-   (`VoiceAlreadyLinked`): nobody can link a recording of a housemate to their
-   own account.
+### How a voice is learned
 
-Deletion is the subject's or an Owner's (`DELETE /voiceprint/me`,
-`DELETE /voiceprint/user/{id}`), hard (a biometric must be erasable), and works
-for an inactive user. Enrollment and deletion each publish one
-`UserAction::Create` / `UserAction::Delete` journal event on `TableName::User`
-through the identity change sink, inside the same transaction, with safe
-metadata only (`event`, `method`, sample count, model, consent version,
-`replaced` / `byOwner`). Nothing about voiceprints enters the sync stream: the
-app reads its own status over HTTP.
+The voice relay (argus-voice) sends every call turn of at least 2 s to
+`VoiceprintService.ObserveTurn` together with the account the call belongs to
+(`user_id`), the device hash argus-sync's `JwtFilter` bound to that socket and
+an opaque per-call key, and closes the call with `CloseCall` when it hangs up
+(an idle sweep closes calls silent for 5 minutes). The answer is the same
+`IdentifyVoiceResponse` `Identify` gives — the call's hint is never delayed —
+and the learning runs after the reply, off the request path
+(`PassiveEnrollmentService`).
 
-### Threat model
+Every gate is a pure function in `services/passive/passive-policy.{hxx,cc}`
+(unit-tested with synthetic voices) and the per-call state lives in memory in
+`VoiceCallTracker` (bounded: 64 open calls, 12 turns each, the last 256 closed
+keys remembered so a late turn cannot reopen a call).
 
-- **Replay of an old enrollment upload** fails: the challenge is one-use,
-  short-lived and device-bound.
-- **A recording of the victim enrolled into the attacker's account** needs
-  the attacker's own session, is refused when the victim is already enrolled
-  (rule 8), and leaves an audit trail. The challenge phrases are the hook for
-  the remaining gap: once the spoken content is checked against them, a
-  recording of anything else fails. That check belongs to speech recognition
-  and is not done yet — see below.
-- **Replay or synthetic speech at verification time** is not detected; there
-  is no anti-spoofing model (the open ones, e.g. AASIST, are trained on
-  ASVspoof logical-access attacks and are unreliable on phone-microphone
-  replay). Therefore a voice match is a **soft identification signal**: who is
-  speaking in a call, a greeting, attributing a turn. It is never an
-  authentication factor — there is no voice login, and no consumer may unlock,
-  arm, disarm or authorize anything on a voice match alone.
-- **The biometric itself** stays on the host: only the centroid is stored, it
-  never leaves this process (the RPCs answer scores and ids, never vectors),
-  and the HTTP and gRPC bodies are not logged.
+**Per turn** (the turn is skipped, the call keeps going):
+- quality: at least 2.0 s voiced, 15 dB SNR, at most 0.5 % clipped samples —
+  stricter than identification (0.8 s, 12 dB, 1 %).
 
-### Liveness: the part left to speech recognition
+**Per turn** (the turn *taints* the call; a tainted call teaches nothing):
+- *two voices in one turn*: the voiced span is cut in halves (each ≥ 0.9 s),
+  each half is embedded, and halves scoring below 0.15 against each other mark
+  a mixed turn. Measured on the LibriSpeech fixtures with ~1.2 s halves: one
+  speaker 0.24–0.68, two speakers 0.06;
+- *another enrolled person*: a turn scoring ≥ 0.50 against someone else's
+  profile and at least as high as against the holder's own is never adopted,
+  and the call stops teaching;
+- *drift*: a turn below 0.55 against the centroid of the call's accepted turns
+  (one speaker scores ~0.77 on these fixtures, different speakers ≤ 0.0);
+- a turn that arrives under the same call key from another account or device.
 
-The challenge already carries what a spoken-content check needs: the phrases
-are stored with the challenge (JSON, per language). Completing it is an STT
-call per sample — transcribe, normalise, require a fuzzy match (for example a
-word error rate under 0.4) against the phrase shown — before the embedding is
-accepted. identity can do that through `argus::clients::stt` without any change
-to argus-stt; it is not wired today because argus-stt is not part of the
-default native stack and an unreachable STT must not block enrollment. The
-voice service, which already transcribes every turn, can apply the same check
-when it drives an enrollment by voice.
+**Per call**, at close: not tainted, at least 2 accepted turns and 5 s of
+speech, and every turn ≥ 0.55 against the centroid of the others
+(leave-one-out). The call's centroid is then compared with every profile: if it
+sounds like someone else (≥ 0.50 and at least as close as to the holder),
+nothing is stored.
+
+**Linking** (`evaluateLink`, over the user's samples of the last 30 days, both
+states) clusters the call centroids (seeded at the call with most neighbours ≥
+0.60, refined three passes) and links only when all hold, in this order:
+1. *dominance*: the cluster holds ≥ 75 % of the window's calls
+   (`voiceprint.link_dominance`) — two people taking turns on one account stay
+   at ~50 % and link nobody; a guest or a TV-only call now and then does not
+   outvote the holder;
+2. *occasions*: ≥ 3 calls (`voiceprint.link_min_occasions`) **from the user's
+   own devices**, counted as occasions an hour or more apart (a dropped call
+   resumed, or a guest's back-to-back calls, are one occasion);
+3. *days*: those occasions span ≥ 2 local calendar days
+   (`voiceprint.link_min_days`) — one evening of a visitor on the owner's phone
+   is never enough;
+4. ≥ 20 s of speech in the cluster;
+5. the cluster is not ≥ 0.50 like any other person's profile.
+
+*Own device* is the device prior: a device hash on which only this account has
+called. A tablet two accounts use (household members sharing a device) never
+counts toward a link for anyone; its calls still refresh a linked voice when
+they match it strongly (margin +0.05).
+
+**Refresh**: once linked, a call whose centroid scores ≥ 0.60 against the
+profile (0.65 from a shared device), that does not sound more like someone
+else, and whose device does not mostly conflict with the profile (> 50 % of
+≥ 4 known calls) is `adopted`. Every 3 adopted calls the profile is
+recomputed: the robust mean of the newest 40 adopted samples — samples further
+than max(3 σ (MAD), 0.15) below the median similarity, or under 0.45, are left
+out — must agree with the current profile (≥ 0.60) and is blended 30 % into it,
+so the voice drifts with the person (a cold, a new phone) but never jumps.
+
+**Relink**: weak or foreign calls stay `pending`; if a different voice ever
+fills the window enough to pass every link gate (dominance counts the adopted
+samples too), the profile is replaced and its old adopted samples dropped —
+this is how a wrong link heals once the real holder keeps calling.
+
+Every link, relink, refresh and forget publishes one `UserAction` journal event
+on `TableName::User` through the identity change sink, inside the same
+transaction, with safe metadata only (`event`, `source`, `automatic`,
+`occasions`, `days`, `samples`, `outliers`, `model`, `byOwner`, never a vector
+or a score). Nothing about voices enters the sync stream.
+
+### What a voice match may do
+
+- It is a **soft hint**, never authentication: there is no voice login, and no
+  consumer may unlock, arm, disarm or authorize anything on a voice match. The
+  call keeps the session's role, tool user and memory owner whatever the voice
+  says (`services/voice/CONTEXT.md`).
+- There is no anti-spoofing model (the open ones are trained on ASVspoof
+  logical-access attacks and are unreliable on phone-microphone replay), so a
+  recording can match; that is acceptable only because a match unlocks
+  nothing.
+- Learning never needs a person's action, so nobody can steer it from the app:
+  it only reads calls the account holder opened with their own session on a
+  bound device.
+- The biometric stays on the host: the RPCs answer scores and ids, never
+  vectors, and request bodies are not logged.
+
+### Residual risks, by design
+
+- A person who uses somebody else's account on that account's own phone for
+  most of its calls, on several days, will be learned as that account's voice.
+  That is the account's real user for every practical purpose; the hint stays
+  a hint.
+- A TV or radio dominating a call while the holder never speaks yields a
+  consistent call of the broadcast voice; it is outvoted by dominance unless
+  it happens in three of four calls.
+- Learning cannot be refused by the person yet: the owner can only *forget* a
+  voice, and Argus learns it again from later calls. An opt-out per person is a
+  decision left to David.
 
 ### Surfaces
 
-HTTP (TLS 7044, the app) is JSON end to end — audio travels as a
-base64-encoded WAV, because the desktop's request path reads multipart files
-from disk and a recording made in the WebView never is one:
+HTTP (TLS 7044), Owner only (`RoleFilter`: `/voiceprint/...` maps to no table
+in `role-access`):
+- `GET /voiceprint/users` → `{available, recognized: [{userId, since,
+  updatedAt}]}` — whose voice Argus recognizes, for the people directory.
+- `DELETE /voiceprint/user/{id}` → 204: forget the profile, every learning
+  sample and the device prior of that person (404 `VoiceprintNotFound` when
+  nothing was learned, 404 `UserNotFound` for an unknown user).
 
-- `GET /voiceprint/me` — status (`available`, `enrolled`, `stale`, model,
-  sample count, method, consent version, `samplesRequired`,
-  `minSpeechSeconds`).
-- `POST /voiceprint/me/challenge` `{lang?}` — the challenge: id, phrases,
-  expiry, consent version.
-- `POST /voiceprint/me/sample` `{audio, challengeId?, phrase?}` — without a
-  challenge, quality feedback only; with one, the phrase is analysed and its
-  **embedding** (never the audio) staged in `voiceprint_challenge_sample` at
-  that position, replacing an earlier take. The answer says `accepted`,
-  `problem` (`too_short`, `too_noisy`, `clipped`, `invalid`), the measured
-  speech seconds and SNR, and `collected`/`required`, so the app gives
-  feedback phrase by phrase.
-- `POST /voiceprint/me` `{challengeId, consent: true, consentVersion}` —
-  runs the gates over the staged embeddings and links the voiceprint; the
-  challenge and its staged rows are consumed in the same transaction, and
-  expired challenges take theirs with them at the next challenge.
-- `POST /voiceprint/me/verify` `{audio}` — "try my voice".
-- `DELETE /voiceprint/me`.
-- For the Owner, behind `RoleFilter`: `GET|DELETE /voiceprint/user/{id}`,
-  `POST /voiceprint/user/{id}/challenge`, `POST /voiceprint/user/{id}/sample`
-  and `POST /voiceprint/user/{id}` (the last also takes `face`, a base64
-  JPEG of the person taken during the enrollment).
-
-The `/me` routes need no role entry: every authenticated role manages its own
-voice, the same shape as `/auth/me`. `/voiceprint/user/...` maps to no table in
-`role-access`, so only the Owner passes `RoleFilter`.
-
-gRPC (`argus.identity.v1.VoiceprintService`, fleet-secret gated, client
-`VoiceprintClient` in `argus::clients::identity`; `Enroll` takes every clip
-in one call, since the voice relay already holds them): `Verify`, `Identify` and
-`GetStatus` for the voice relay and guard; `CreateChallenge`, `Enroll` and
-`Delete` additionally require the person's bearer token and device hash,
-validated through argus-auth exactly like `PromotePerson`. Every answer carries
-a `VoiceprintOutcome`.
-
-Measured on this machine (Debug build): one 3-second clip is decoded,
-analysed and embedded in about 100 ms on two threads; extraction is bounded
-by `ThreadBudget::inferenceSlots()` like the face engine.
+gRPC `argus.identity.v1.VoiceprintService` (fleet-secret gated, client
+`VoiceprintClient` in `argus::clients::identity`): `Identify` (guard and
+anyone who only asks who is speaking), `ObserveTurn` and `CloseCall` (argus-voice).
+`CreateChallenge`, `Enroll`, `Verify`, `Delete` and `GetStatus` left with the
+explicit enrollment; their outcome values are `reserved` in the proto.
 
 ### Tests
 
-`identity-voiceprint-audio-test` (no model): WAV decoding (mono, stereo,
-float, 24-bit, extensible, truncated, refused shapes), raw PCM, resampling,
-the speech-quality analysis on synthetic signals, the vector maths and the
-phrase bank. `identity-voiceprint-test` (live Drogon loop and database, the
-real model and the LibriSpeech fixtures in `tests/fixtures/voiceprint/`):
-same-speaker against different-speaker scores, the whole gating order
-(forbidden, unknown and inactive subjects, consent and its version, a
-challenge from another device, sample count, mixed speakers, a silent sample,
-already enrolled, a voice already linked, owner-assisted without a verified
-face), the app's staged flow (a phrase per call, a silent take refused, a
-position out of range, another device, too few phrases, a mixed set named by
-position, the re-take, the staged rows gone after the commit), verify,
-identify, delete by the Owner, the audit events, and the gRPC
-surface through `VoiceprintClient` with a scripted auth verdict. Without the
-model on disk the model-backed half reports itself skipped.
+`identity-voiceprint-audio-test` (no model): WAV decoding, raw PCM,
+resampling, the speech-quality analysis (including the stricter clipping
+limit) and the vector maths. `identity-voiceprint-passive-test` (no model, no
+database): every gate of `PassivePolicy` and `VoiceCallTracker` on synthetic
+192-dim voices — mixed turn, other speaker, drift, call cap, tainted, too few
+turns, too little speech, inconsistent call, dominance (a 50/50 household
+links nobody, 3 of 4 links the holder), occasions, local days, shared device,
+speech total, voice taken, adoption (weak, shared margin, other better, device
+conflicted), refresh (outlier left out, gradual blend, a stranger's reservoir
+refused) and the tracker's bounds. `identity-voiceprint-test` (live Drogon
+loop and database, the real model, the LibriSpeech fixtures turned into calls
+by cropping, gain and noise): the legacy carry-over, the gates' calibration,
+Rita linked after three calls on two days from her phone (not after two), the
+journal event and its safe metadata, a TV voice in a call (drift → tainted), a
+mixed turn, Rita's linked voice on Gil's account (other speaker), Gil's
+account shared 50/50 with another voice (nothing linked), a tablet two
+accounts use (nothing linked), three later calls adopted and refreshing in one
+batch, the gRPC `ObserveTurn`/`CloseCall` path with the fleet secret, and the
+owner's forget (404 after). Without the model on disk the model-backed half
+reports itself skipped.

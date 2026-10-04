@@ -20,6 +20,7 @@
 #include <feature/user/controllers/user-controller.hxx>
 #include <feature/user/services/nats-identity-change-sink.hxx>
 #include <feature/voiceprint/controllers/voiceprint-controller.hxx>
+#include <feature/voiceprint/repositories/voice-profile/voice-profile-repository.hxx>
 #include <feature/voiceprint/services/embedding/speaker-embedding-service.hxx>
 #include <feature/voiceprint/services/index/voiceprint-index.hxx>
 #include <grpcpp/grpcpp.h>
@@ -46,6 +47,8 @@ namespace
 {
 
 constexpr int kMaxRpcReceiveBytes = 12 * 1024 * 1024;
+constexpr double kVoiceCallSweepSeconds = 60.0;
+constexpr double kVoiceSamplePurgeSeconds = 3600.0;
 
 struct DrogonConfigInput
 {
@@ -233,9 +236,7 @@ int main()
                                  .auth = filterAuthClient()});
   IdentitySyncRpcService syncRpcService({.fleetSecret = rpc.secret});
   IdentityVoiceprintRpcService voiceprintRpcService(
-      {.fleetSecret = rpc.secret,
-       .auth = filterAuthClient(),
-       .voiceprint = voiceprint});
+      {.fleetSecret = rpc.secret, .voiceprint = voiceprint});
   grpc::ServerBuilder rpcBuilder;
   rpcBuilder.SetMaxReceiveMessageSize(kMaxRpcReceiveBytes);
   rpcBuilder.AddListeningPort(rpc.listener.host + ":" +
@@ -281,6 +282,8 @@ int main()
       DbService::client()->execSqlSync(
           "ALTER TABLE person ADD COLUMN status TEXT NOT NULL DEFAULT 'known'");
 
+    VoiceProfileRepository::migrateLegacy();
+
     DbService::applyPragmas();
 
     if (identitySink)
@@ -315,6 +318,15 @@ int main()
 
   CandidateRetentionService candidateRetention(IdentityConfig::resolveRetention());
   std::unique_ptr<MdnsService> mdnsService;
+  drogon::app().registerBeginningAdvice([&voiceprintRpcService]() {
+    drogon::app().getLoop()->runEvery(
+        kVoiceCallSweepSeconds,
+        [&voiceprintRpcService]() { voiceprintRpcService.sweepIdleCalls(); });
+    drogon::app().getLoop()->runEvery(
+        kVoiceSamplePurgeSeconds, [&voiceprintRpcService]() {
+          voiceprintRpcService.purgeExpiredSamples();
+        });
+  });
   drogon::app().registerBeginningAdvice(
       [&mdnsService, &listener, &candidateRetention]() {
         mdnsService = std::make_unique<MdnsService>(

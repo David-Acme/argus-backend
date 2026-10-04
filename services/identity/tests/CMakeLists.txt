@@ -117,6 +117,16 @@ argus_runtime_rpath(identity-voiceprint-audio-test)
 add_test(NAME identity-voiceprint-audio-test
          COMMAND identity-voiceprint-audio-test)
 
+add_executable(identity-voiceprint-passive-test
+    unit/identity-voiceprint-passive-test.cc)
+target_link_libraries(identity-voiceprint-passive-test PRIVATE
+    argus::identity-voiceprint
+    doctest::doctest)
+target_compile_options(identity-voiceprint-passive-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-voiceprint-passive-test)
+add_test(NAME identity-voiceprint-passive-test
+         COMMAND identity-voiceprint-passive-test)
+
 add_executable(identity-voiceprint-test unit/identity-voiceprint-test.cc)
 target_compile_definitions(identity-voiceprint-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql"

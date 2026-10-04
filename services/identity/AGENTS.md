@@ -7,7 +7,7 @@ identity-service code; when in doubt, the root file wins.
 ## MUST-FOLLOW Rules
 
 1. **Identity only** — this service owns the users, the persons, the face
-   embeddings, the voiceprints and their enrollment challenges, the
+   embeddings, the learned voice profiles and their call samples, the
    invitations and their redemptions, the pairing state, the portraits and
    the private-portrait capabilities. Sessions, device
    credentials, refresh tokens and the refresh limiter belong to `argus-auth`;
@@ -103,14 +103,16 @@ argus-identity/
   src/feature/pairing/
     controllers/ dtos/  the /pairing routes and their DTOs
   src/feature/voiceprint/
-    controllers/ dtos/  the /voiceprint routes and their DTOs
-    repositories/       voiceprint and voiceprint-challenge (this feature
-                        alone reads them)
+    controllers/ dtos/  the owner's /voiceprint routes and their DTO
+    repositories/       voice-profile, voice-sample and voice-device (this
+                        feature alone reads them)
     services/           audio/ (WAV decode, resampling, speech quality),
                         embedding/ (SpeakerEmbeddingService over sherpa-onnx,
                         vector maths), index/ (the voice_vec vec0 index),
-                        voiceprint/ (VoiceprintFeatureService, phrase bank)
-    vocabulary/         VoiceprintMethod, VoiceprintOutcome
+                        passive/ (PassivePolicy gates, VoiceCallTracker,
+                        PassiveEnrollmentService), voiceprint/
+                        (VoiceprintFeatureService, the journal helper)
+    vocabulary/         VoiceProfileSource, VoiceSampleState, VoiceprintOutcome
   src/feature/user/
     controllers/        the /user routes and /portrait-preview
     dtos/               user update and portrait capability/image DTOs
@@ -126,14 +128,14 @@ argus-identity/
   src/shared/services/storage/  PrivatePortraitService
   src/shared/services/token/    opaque-token: the 256-bit capability tokens
                                 and their SHA-256 (invitation, portrait
-                                preview, voiceprint challenge)
+                                preview)
   src/shared/vocabulary/        person-status
   database/schema.sql   this owner's fourteen tables and their indices
   config.toml.example   identity keys + the peer targets; no AI keys
   tests/unit/           the config, migration, change-outbox,
                         change-transaction, change-outbox-sink, sync-RPC,
-                        face-slots, face-embedding, voiceprint-audio and
-                        voiceprint suites
+                        face-slots, face-embedding, voiceprint-audio,
+                        voiceprint-passive and voiceprint suites
   tests/fixtures/voiceprint/  nine LibriSpeech clips (CC BY 4.0, raw PCM)
   tools/migrate-identity/  argus-migrate-identity (argus.db -> identity.db)
   scripts/provision.sh  the deploy-time provisioning of this service: the
@@ -145,8 +147,9 @@ Six features: `enrollment` owns the `RegisterUser` write path;
 `invitation` the create/resolve/redeem cycle; `pairing` the paired state the
 frontend's QR flow reads; `retention` the candidate expiry; `user` the profile
 updates, the portrait-preview capability and the change sink; `voiceprint`
-the confirmed voice enrollment, verification and identification (HTTP for the
-app, `argus.identity.v1.VoiceprintService` for the fleet — see CONTEXT.md). Rule 23's 2+ rule is what puts the repositories
+the voices Argus learns passively from each holder's calls and identifies
+afterwards (`argus.identity.v1.VoiceprintService` for the voice relay, an
+owner-only HTTP view and forget — see CONTEXT.md). Rule 23's 2+ rule is what puts the repositories
 and schemas in `src/shared/`: each is read by two or more of them (and by the
 RPC services), so they are earned there rather than parked.
 

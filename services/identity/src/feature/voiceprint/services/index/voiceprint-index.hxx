@@ -2,7 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
-#include <feature/voiceprint/repositories/voiceprint/voiceprint-repository.hxx>
+#include <feature/voiceprint/repositories/voice-profile/voice-profile-repository.hxx>
 #include <mutex>
 #include <span>
 #include <sqlite/vec-db.hxx>
@@ -47,7 +47,7 @@ public:
 
 private:
   VecDb& vecDb_;
-  VoiceprintRepository repository_;
+  VoiceProfileRepository repository_;
   int dims_{0};
   std::atomic<size_t> size_{0};
 };

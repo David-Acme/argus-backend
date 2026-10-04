@@ -112,39 +112,40 @@ CREATE TABLE IF NOT EXISTS portrait_preview_capability (
     created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
-CREATE TABLE IF NOT EXISTS voiceprint (
+CREATE TABLE IF NOT EXISTS voice_profile (
     id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     user_id         INTEGER NOT NULL UNIQUE REFERENCES user(id) ON DELETE CASCADE,
     model           TEXT    NOT NULL,
     embedding       BLOB    NOT NULL,
-    sample_count    INTEGER NOT NULL CHECK (sample_count BETWEEN 1 AND 10),
+    sample_count    INTEGER NOT NULL CHECK (sample_count >= 1),
     speech_seconds  REAL    NOT NULL CHECK (speech_seconds > 0),
-    method          TEXT    NOT NULL CHECK (method IN ('self', 'owner_face')),
-    consent_version TEXT    NOT NULL,
-    enrolled_by     INTEGER REFERENCES user(id) ON DELETE SET NULL,
+    source          TEXT    NOT NULL CHECK (source IN ('passive', 'enrolled')),
+    linked_at       INTEGER NOT NULL,
+    refreshed_at    INTEGER NOT NULL,
     created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
-CREATE TABLE IF NOT EXISTS voiceprint_challenge (
+CREATE TABLE IF NOT EXISTS voice_sample (
     id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    token_hash      TEXT    NOT NULL UNIQUE,
     user_id         INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-    requester_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    model           TEXT    NOT NULL,
     device_hash     TEXT    NOT NULL,
-    lang            TEXT    NOT NULL CHECK (lang IN ('es', 'en')),
-    phrases         TEXT    NOT NULL,
-    expires_at      INTEGER NOT NULL,
-    consumed_at     INTEGER,
-    created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+    embedding       BLOB    NOT NULL,
+    turns           INTEGER NOT NULL CHECK (turns >= 1),
+    speech_seconds  REAL    NOT NULL CHECK (speech_seconds > 0),
+    state           TEXT    NOT NULL CHECK (state IN ('pending', 'adopted')),
+    created_at      INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS voiceprint_challenge_sample (
-    challenge_id    INTEGER NOT NULL REFERENCES voiceprint_challenge(id) ON DELETE CASCADE,
-    position        INTEGER NOT NULL CHECK (position BETWEEN 0 AND 9),
-    embedding       BLOB    NOT NULL,
-    speech_seconds  REAL    NOT NULL CHECK (speech_seconds > 0),
-    created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    PRIMARY KEY (challenge_id, position)
+CREATE TABLE IF NOT EXISTS voice_device (
+    device_hash     TEXT    NOT NULL,
+    user_id         INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    calls           INTEGER NOT NULL DEFAULT 0,
+    matched         INTEGER NOT NULL DEFAULT 0,
+    conflicting     INTEGER NOT NULL DEFAULT 0,
+    mixed           INTEGER NOT NULL DEFAULT 0,
+    last_call_at    INTEGER NOT NULL,
+    PRIMARY KEY (device_hash, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS change_outbox (
@@ -190,11 +191,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_user_portrait_user_current
 CREATE INDEX IF NOT EXISTS idx_portrait_preview_capability_lookup
     ON portrait_preview_capability (token_hash, expires_at, consumed_at);
 
-CREATE INDEX IF NOT EXISTS idx_voiceprint_model
-    ON voiceprint (model);
+CREATE INDEX IF NOT EXISTS idx_voice_profile_model
+    ON voice_profile (model);
 
-CREATE INDEX IF NOT EXISTS idx_voiceprint_challenge_expiry
-    ON voiceprint_challenge (expires_at);
+CREATE INDEX IF NOT EXISTS idx_voice_sample_user
+    ON voice_sample (user_id, model, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_voice_sample_created
+    ON voice_sample (state, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_change_outbox_status
     ON change_outbox (status, id);

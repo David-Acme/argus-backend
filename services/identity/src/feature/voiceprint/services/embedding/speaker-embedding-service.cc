@@ -168,6 +168,20 @@ SpeakerEmbeddingService::embed(std::span<const float> samples)
       std::span<const float>(embedding.get(), static_cast<size_t>(dims_)));
 }
 
+std::optional<float> SpeakerEmbeddingService::halvesScore(const HalvesInput& input)
+{
+  const auto minSamples = static_cast<size_t>(
+      input.minSeconds * static_cast<float>(voice_audio::kModelRate));
+  if (minSamples == 0 || input.speech.size() < 2 * minSamples)
+    return std::nullopt;
+  const size_t middle = input.speech.size() / 2;
+  const auto first = embed(input.speech.first(middle));
+  const auto second = embed(input.speech.subspan(middle));
+  if (!first || !second)
+    return std::nullopt;
+  return voice_vector::cosine(*first, *second);
+}
+
 VoiceAnalysis SpeakerEmbeddingService::analyze(const VoiceAnalysisInput& input)
 {
   VoiceAnalysis analysis;
@@ -187,13 +201,17 @@ VoiceAnalysis SpeakerEmbeddingService::analyze(const VoiceAnalysisInput& input)
   if (analysis.status != VoiceAnalysisStatus::Ok || !input.extractEmbedding)
     return analysis;
 
-  auto embedding = embed(speech_quality::speechSpan(samples, analysis.quality));
+  const auto speech = speech_quality::speechSpan(samples, analysis.quality);
+  auto embedding = embed(speech);
   if (!embedding) {
     analysis.status = isLoaded() ? VoiceAnalysisStatus::Invalid
                                  : VoiceAnalysisStatus::Unavailable;
     return analysis;
   }
   analysis.embedding = std::move(*embedding);
+  if (input.halvesMinSeconds)
+    analysis.halvesScore = halvesScore(
+        {.speech = speech, .minSeconds = *input.halvesMinSeconds});
   return analysis;
 }
 

@@ -23,7 +23,7 @@ bool VoiceprintIndex::init(const VoiceprintIndexInit& input)
   dims_ = input.dims;
   size_ = 0;
   size_t skipped = 0;
-  for (const auto& row : repository_.findForModel(db, input.model)) {
+  for (const auto& row : repository_.findForIndex(db, input.model)) {
     if (std::cmp_not_equal(row.embedding.size(), input.dims) ||
         !repository_.insertVec(db, {.voiceprintId = row.voiceprintId,
                                     .userId = row.userId,
@@ -53,12 +53,16 @@ bool VoiceprintIndex::insert(const VoiceprintIndexInsert& input)
       repository_.insertVec(db, {.voiceprintId = input.voiceprintId,
                                  .userId = input.userId,
                                  .embedding = input.embedding});
-  if (inserted && !replaced)
-    ++size_;
-  else
+  if (!inserted) {
     LOG_WARN << "VoiceprintIndex: could not index voiceprint "
              << input.voiceprintId;
-  return inserted;
+    if (replaced && size_.load() > 0)
+      --size_;
+    return false;
+  }
+  if (!replaced)
+    ++size_;
+  return true;
 }
 
 void VoiceprintIndex::remove(int64_t voiceprintId)

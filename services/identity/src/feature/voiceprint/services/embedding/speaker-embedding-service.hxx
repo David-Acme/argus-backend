@@ -30,6 +30,13 @@ struct VoiceAnalysisInput
   EncodedVoice voice;
   SpeechRequirement requirement;
   bool extractEmbedding{true};
+  std::optional<float> halvesMinSeconds;
+};
+
+struct HalvesInput
+{
+  std::span<const float> speech;
+  float minSeconds{0.0F};
 };
 
 struct VoiceAnalysis
@@ -37,6 +44,7 @@ struct VoiceAnalysis
   VoiceAnalysisStatus status{VoiceAnalysisStatus::Invalid};
   SpeechQuality quality;
   std::vector<float> embedding;
+  std::optional<float> halvesScore;
 };
 
 class SpeakerEmbeddingService
@@ -62,6 +70,8 @@ public:
 
   [[nodiscard]] std::optional<std::vector<float>>
   embed(std::span<const float> samples);
+
+  [[nodiscard]] std::optional<float> halvesScore(const HalvesInput& input);
 
   [[nodiscard]] VoiceAnalysis analyze(const VoiceAnalysisInput& input);
 

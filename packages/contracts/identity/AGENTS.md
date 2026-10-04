@@ -15,14 +15,13 @@ portrait and voiceprint handlers inside that service.
 
 ## Layout
 
-- `src/identity/identity-errors.hxx` — the forty-five definitions in
+- `src/identity/identity-errors.hxx` — the definitions in
   `IdentityErrors`, in the header's own order: the face and enrolment answers,
   the pairing and invitation answers, the challenge and refresh-token answers,
   the portrait answers, the five the controllers refuse before any service
   sees the request, the answer a change that could not be recorded gives, and
-  the fifteen voiceprint answers (engine unavailable, not enrolled, stale,
-  already enrolled, voice already linked, the six sample refusals, consent,
-  the challenge, the caller and the owner-assisted face check).
+  the one voiceprint answer (the owner asked to forget a voice Argus never
+  learned); the explicit-enrollment answers left with that flow.
   11 files include it.
 
 ## Rules

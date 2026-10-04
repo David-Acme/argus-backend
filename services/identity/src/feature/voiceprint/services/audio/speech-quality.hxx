@@ -21,15 +21,20 @@ enum class SpeechProblem : uint8_t
   Clipped
 };
 
+namespace speech_quality
+{
+inline constexpr float kMaxClippedRatio = 0.01F;
+}
+
 struct SpeechRequirement
 {
   float minSpeechSeconds{0.0F};
   float minSnrDb{0.0F};
+  float maxClippedRatio{speech_quality::kMaxClippedRatio};
 };
 
 namespace speech_quality
 {
-inline constexpr float kMaxClippedRatio = 0.01F;
 
 [[nodiscard]] SpeechQuality measure(std::span<const float> samples);
 

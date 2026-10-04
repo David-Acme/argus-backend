@@ -8,10 +8,12 @@ namespace
 {
 constexpr uint16_t kDefaultIdentityPort = 7044;
 constexpr uint16_t kDefaultRpcPort = 7040;
-constexpr int kMinVoiceSamples = 3;
-constexpr int kMaxVoiceSamples = 10;
-constexpr int64_t kMinChallengeSeconds = 60;
-constexpr int64_t kMaxChallengeSeconds = 1800;
+constexpr int kMinLinkOccasions = 2;
+constexpr int kMaxLinkOccasions = 20;
+constexpr int kMinProfileSamples = 5;
+constexpr int kMaxProfileSamples = 200;
+constexpr int64_t kSecondsPerMinute = 60;
+constexpr int64_t kSecondsPerDay = 86400;
 
 struct UnitScoreInput
 {
@@ -103,29 +105,43 @@ IdentityVoiceprintConfig IdentityConfig::resolveVoiceprint()
   if (const std::string model = ConfigService::getString("voiceprint.model");
       !model.empty())
     config.modelPath = model;
-  config.verifyThreshold = unitScore(
-      {.key = "voiceprint.verify_threshold", .fallback = config.verifyThreshold});
   config.identifyThreshold =
       unitScore({.key = "voiceprint.identify_threshold",
                  .fallback = config.identifyThreshold});
   config.identifyMargin = unitScore(
       {.key = "voiceprint.identify_margin", .fallback = config.identifyMargin});
-  config.consistencyThreshold =
-      unitScore({.key = "voiceprint.consistency_threshold",
-                 .fallback = config.consistencyThreshold});
-  config.minSpeechSeconds =
-      nonNegative("voiceprint.min_speech_seconds", config.minSpeechSeconds);
   config.minVerifySpeechSeconds = nonNegative(
       "voiceprint.min_verify_speech_seconds", config.minVerifySpeechSeconds);
   config.minSnrDb = nonNegative("voiceprint.min_snr_db", config.minSnrDb);
-  if (ConfigService::hasKey("voiceprint.samples_required"))
-    config.samplesRequired =
-        std::clamp(ConfigService::getInt("voiceprint.samples_required"),
-                   kMinVoiceSamples, kMaxVoiceSamples);
-  if (ConfigService::hasKey("voiceprint.challenge_seconds"))
-    config.challengeSeconds = std::clamp<int64_t>(
-        ConfigService::getInt("voiceprint.challenge_seconds"),
-        kMinChallengeSeconds, kMaxChallengeSeconds);
+
+  PassiveVoiceConfig& passive = config.passive;
+  if (ConfigService::hasKey("voiceprint.passive_enabled"))
+    passive.enabled = ConfigService::getBool("voiceprint.passive_enabled");
+  if (ConfigService::hasKey("voiceprint.link_min_occasions"))
+    passive.linkMinOccasions =
+        std::clamp(ConfigService::getInt("voiceprint.link_min_occasions"),
+                   kMinLinkOccasions, kMaxLinkOccasions);
+  if (ConfigService::hasKey("voiceprint.link_min_days"))
+    passive.linkMinDays = std::clamp(
+        ConfigService::getInt("voiceprint.link_min_days"), 1,
+        passive.linkMinOccasions);
+  passive.linkDominance = std::max(
+      0.5F, unitScore({.key = "voiceprint.link_dominance",
+                       .fallback = passive.linkDominance}));
+  if (ConfigService::hasKey("voiceprint.max_profile_samples"))
+    passive.maxProfileSamples =
+        std::clamp(ConfigService::getInt("voiceprint.max_profile_samples"),
+                   kMinProfileSamples, kMaxProfileSamples);
+  if (ConfigService::hasKey("voiceprint.window_days"))
+    passive.windowSeconds =
+        std::clamp<int64_t>(ConfigService::getInt("voiceprint.window_days"), 1,
+                            365) *
+        kSecondsPerDay;
+  if (ConfigService::hasKey("voiceprint.call_idle_minutes"))
+    passive.callIdleSeconds =
+        std::clamp<int64_t>(ConfigService::getInt("voiceprint.call_idle_minutes"),
+                            1, 60) *
+        kSecondsPerMinute;
   return config;
 }
 

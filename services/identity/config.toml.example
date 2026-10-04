@@ -78,15 +78,17 @@ top_k = 5
 [voiceprint]
 enabled = true
 model = "models/speaker/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx"
-verify_threshold = 0.50
 identify_threshold = 0.55
 identify_margin = 0.05
-consistency_threshold = 0.50
-min_speech_seconds = 1.2
 min_verify_speech_seconds = 0.8
 min_snr_db = 12.0
-samples_required = 3
-challenge_seconds = 300
+passive_enabled = true
+link_min_occasions = 3
+link_min_days = 2
+link_dominance = 0.75
+window_days = 30
+max_profile_samples = 40
+call_idle_minutes = 5
 
 [retention]
 candidate_days = 30

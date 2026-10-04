@@ -131,14 +131,18 @@ TEST_CASE("identity schema applies cleanly to an in-memory database")
   const auto indexes = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE "
       "'idx_%' AND name NOT LIKE 'idx_change_outbox%' "
-      "AND name NOT LIKE 'idx_voiceprint%' ORDER BY name");
+      "AND name NOT LIKE 'idx_voice%' ORDER BY name");
   CHECK(indexes.size() == 13);
 
-  const auto voiceprint = queryColumn(db.get(),
+  const auto voices = queryColumn(db.get(),
+      "SELECT name FROM sqlite_master WHERE name IN ('voice_profile', "
+      "'voice_sample', 'voice_device', 'idx_voice_profile_model', "
+      "'idx_voice_sample_user', 'idx_voice_sample_created')");
+  CHECK(voices.size() == 6);
+  const auto enrollment = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE name IN ('voiceprint', "
-      "'voiceprint_challenge', 'idx_voiceprint_model', "
-      "'idx_voiceprint_challenge_expiry')");
-  CHECK(voiceprint.size() == 4);
+      "'voiceprint_challenge', 'voiceprint_challenge_sample')");
+  CHECK(enrollment.empty());
 
   const auto moved = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN "

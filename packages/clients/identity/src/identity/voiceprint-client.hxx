@@ -7,7 +7,6 @@
 #include <optional>
 #include <span>
 #include <string>
-#include <vector>
 
 struct VoiceprintClientConfig
 {
@@ -21,46 +20,25 @@ struct VoiceClipView
   int sampleRate{16000};
 };
 
-struct VoiceprintSession
-{
-  std::string accessToken;
-  std::string deviceHash;
-};
-
-struct VoiceprintChallengeInput
-{
-  int64_t userId{0};
-  std::string lang;
-  VoiceprintSession session;
-};
-
-struct VoiceprintEnrollInput
-{
-  int64_t userId{0};
-  std::vector<VoiceClipView> samples;
-  bool consent{false};
-  std::string consentVersion;
-  std::string challengeId;
-  std::string faceImage;
-  VoiceprintSession session;
-};
-
-struct VoiceprintVerifyInput
-{
-  int64_t userId{0};
-  VoiceClipView sample;
-};
-
 struct VoiceprintIdentifyInput
 {
   VoiceClipView sample;
   int timeoutMs{5000};
 };
 
-struct VoiceprintDeleteInput
+struct VoiceTurnObservation
 {
+  VoiceClipView sample;
   int64_t userId{0};
-  VoiceprintSession session;
+  std::string deviceHash;
+  std::string callKey;
+  int timeoutMs{5000};
+};
+
+struct VoiceCallClose
+{
+  std::string callKey;
+  int timeoutMs{5000};
 };
 
 class VoiceprintClient
@@ -73,18 +51,6 @@ public:
   virtual ~VoiceprintClient() = default;
 
   [[nodiscard]] virtual std::optional<
-      argus::identity::v1::CreateVoiceprintChallengeResponse>
-  createChallenge(const VoiceprintChallengeInput& input) const;
-
-  [[nodiscard]] virtual std::optional<
-      argus::identity::v1::EnrollVoiceprintResponse>
-  enroll(const VoiceprintEnrollInput& input) const;
-
-  [[nodiscard]] virtual std::optional<
-      argus::identity::v1::VerifyVoiceprintResponse>
-  verify(const VoiceprintVerifyInput& input) const;
-
-  [[nodiscard]] virtual std::optional<
       argus::identity::v1::IdentifyVoiceResponse>
   identify(const VoiceClipView& sample) const;
 
@@ -93,12 +59,10 @@ public:
   identifyWithin(const VoiceprintIdentifyInput& input) const;
 
   [[nodiscard]] virtual std::optional<
-      argus::identity::v1::DeleteVoiceprintResponse>
-  remove(const VoiceprintDeleteInput& input) const;
+      argus::identity::v1::IdentifyVoiceResponse>
+  observeTurn(const VoiceTurnObservation& input) const;
 
-  [[nodiscard]] virtual std::optional<
-      argus::identity::v1::GetVoiceprintStatusResponse>
-  status(int64_t userId) const;
+  [[nodiscard]] virtual bool closeCall(const VoiceCallClose& input) const;
 
 private:
   std::string fleetSecret_;

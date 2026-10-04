@@ -57,7 +57,7 @@ argus-deploy argus-identity configuration. Copy to config.identity.toml (gitigno
 | `identity.rpc_secret` | Gates the cleartext `argus.identity.v1` gRPC listener on `[server] grpc_port` (7040). Same value in every service's [identity] rpc_secret, or every call fails. Empty means loopback-only and ungated, and the service refuses to start when the listener is reachable beyond loopback without it. |
 | `identity.db` | `database/identity.db`, this owner's only database (rule 27). |
 | `face.enabled` | Face detection + recognition in this process; the engine never leaves it and argus-camera only ships crops. |
-| `voiceprint.enabled` / `voiceprint.model` | Speaker verification in this process (3D-Speaker ERes2Net through sherpa-onnx, provisioned into the read-only `models/speaker/` mount by `services/identity/scripts/provision.sh`). Disabled or missing, every voiceprint call answers *unavailable* and nothing else changes. The thresholds below are the template's defaults; see `services/identity/CONTEXT.md` for the measurements behind them. |
+| `voiceprint.enabled` / `voiceprint.model` | Speaker identification in this process (3D-Speaker ERes2Net through sherpa-onnx, provisioned into the read-only `models/speaker/` mount by `services/identity/scripts/provision.sh`). Argus learns each holder's voice passively from their own calls; nobody enrolls. Disabled or missing, every voiceprint call answers *unavailable*, nothing is learned and nothing else changes. See `services/identity/CONTEXT.md` for the gates and the measurements behind them. |
 | `storage.mode` | Private object storage (RustFS) for the portraits. provision-host.sh fills the endpoint and credentials. |
 | `pairing.paired` | The QR pairing state the frontend's onboarding reads; persisted at runtime, which is why this config bind is not read-only. |
 | `auth.target` | argus-auth's fleet-secret RPC listener: the session-verdict leg the shared `JwtFilter` asks before it trusts a token. |
@@ -230,7 +230,7 @@ argus-identity configuration. Copy to config.toml (gitignored) to run.
 - **`[drogon.app]`** — The HTTP listener and db_clients are built by the service itself.
 - **`[cert]`** — The instance CA and server certificate; the HTTPS surface needs both.
 - **`[face]`** — The face engine runs in this process: the vec0 index lives in identity.db and no crop leaves the host.
-- **`[voiceprint]`** — The speaker-verification engine runs in this process too: only the 192-value centroid of a confirmed enrollment is stored (`voiceprint` table, `voice_vec` vec0 index), never the audio.
+- **`[voiceprint]`** — The speaker-identification engine runs in this process too and learns each holder's voice passively from their calls: only 192-value embeddings are stored (the `voice_profile` centroid, one `voice_sample` per teaching call, the `voice_vec` vec0 index), never the audio.
 - **`[storage]`** — Private object storage for the portraits; `mode = "s3"` with the `[storage.s3]` keys.
 
 | Key | Notes |
@@ -245,15 +245,16 @@ argus-identity configuration. Copy to config.toml (gitignored) to run.
 | `jwt.secret` / `jwt.refresh_secret` | The shared `JwtService` constructor reads both and refuses to start on a missing, short or default-value one; the routes verify the access token with `jwt.secret`, and `argus-auth` stays the only minter. |
 | `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route, so the app discovers this service's port directly. |
 | `mdns.address` | The LAN address the announcements carry: empty enumerates the host's usable interfaces, and a value that is not an IP address falls back to the interfaces with a warning. provision-host.sh detects the host address (`--mdns-address`, `ARGUS_MDNS_ADDRESS`, `ip route get 1.1.1.1`, `hostname -I`) and writes it into every deploy config that carries the key. |
-| `voiceprint.enabled` | Loads the speaker model at boot; `false` answers every voiceprint call as unavailable. |
-| `voiceprint.model` | The ONNX speaker-embedding model. Its file stem is the model id every voiceprint row records, so swapping the file marks every existing voiceprint stale (re-enrollment), it never mixes embedding spaces. |
-| `voiceprint.verify_threshold` | Cosine score a 1:1 check must reach (0.50). Measured with 3-second clips: false-accept 0.36 % (English) / 0.50 % (Spanish), false-reject 2.3 % / 0 %. |
-| `voiceprint.identify_threshold` / `voiceprint.identify_margin` | 1:N identification: the best match must reach 0.55 and beat the runner-up by 0.05, because a household-sized search multiplies the false-accept rate by the number of enrolled people. |
-| `voiceprint.consistency_threshold` | Each enrollment sample against the centroid of the others (0.50): refuses a set that mixes two speakers. |
-| `voiceprint.min_speech_seconds` / `voiceprint.min_verify_speech_seconds` | Voiced speech required per enrollment sample (1.2 s) and per verification or identification clip (0.8 s). |
-| `voiceprint.min_snr_db` | Minimum estimated signal-to-noise ratio of a sample (12 dB). |
-| `voiceprint.samples_required` | Phrases an enrollment needs (3, between 3 and 10). |
-| `voiceprint.challenge_seconds` | Lifetime of an enrollment challenge (300 s): one use, bound to the user, the requester and the device. |
+| `voiceprint.enabled` | Loads the speaker model at boot; `false` answers every voiceprint call as unavailable and learns nothing. |
+| `voiceprint.model` | The ONNX speaker-embedding model. Its file stem is the model id every voice profile and learning sample records, so swapping the file starts learning again on the new model; it never mixes embedding spaces. |
+| `voiceprint.identify_threshold` / `voiceprint.identify_margin` | 1:N identification: the best match must reach 0.55 and beat the runner-up by 0.05, because a household-sized search multiplies the false-accept rate by the number of known voices. |
+| `voiceprint.min_verify_speech_seconds` / `voiceprint.min_snr_db` | Voiced speech (0.8 s) and estimated signal-to-noise ratio (12 dB) an identification clip needs. Learning applies its own stricter bar (2 s, 15 dB, 0.5 % clipping). |
+| `voiceprint.passive_enabled` | Learns voices from calls (default `true`). `false` keeps identification of the voices already learned and stops learning. |
+| `voiceprint.link_min_occasions` / `voiceprint.link_min_days` | A voice is linked to an account only after this many consistent calls (3, an hour or more apart) from that account's own devices, spread over this many local days (2). |
+| `voiceprint.link_dominance` | Share of the account's recent calls the voice must hold (0.75, at least 0.5): a device two people use in turns links nobody. |
+| `voiceprint.window_days` | How long a learning sample counts (30 days). |
+| `voiceprint.max_profile_samples` | Call samples behind a linked voice (40); the profile is refreshed every three adopted calls, outliers left out. |
+| `voiceprint.call_idle_minutes` | A call the voice relay never closed is closed after this silence (5 minutes). |
 | `invitation.lifetime_seconds` | The server-side safety net of an invitation (1800 s, clamped to 60..86400). An invitation is single-use and the app revokes it the moment its QR is closed; this lifetime only bounds a QR whose revoke never arrived (the app was killed, the network dropped). It is not shown in the app. |
 
 Optional keys the template does not set:
