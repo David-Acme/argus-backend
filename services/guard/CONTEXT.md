@@ -874,3 +874,17 @@ operand of `co_await` (and a `co_await` inside either branch of one): the
 repository's `setMode` evaluated the wrong branch and dereferenced an empty
 optional, and the feature service's PATCH did the same with an optional
 field. Build the input as a local before awaiting, and branch with `if`.
+
+## Known arrivals for calls (2026-10, "Argus calls you")
+
+An observation whose people are all recognized and whose primary person has
+an identity (`personId > 0`) publishes `argus.guard.v1.known_seen`
+(`{eventId, personId, cameraId, cameraName, environmentId, environmentName,
+at}`) from the encounter stage of the saga, right after the encounter phase
+commits. It is a plain core publish with no outbox and no change to any
+verdict, notification or encounter: argus-notification's call engine turns
+the first sighting after an absence into an opt-in "ha llegado Marta a la
+Entrada" call or notification (`services/notification/CONTEXT.md`, "Argus
+calls you"). A replayed observation may publish it again; the consumer keys
+arrivals by person and time. Known people still never notify from guard
+itself.

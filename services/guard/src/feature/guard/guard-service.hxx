@@ -429,6 +429,19 @@ private:
 
   void publishHeartbeat();
 
+  struct KnownSeenInput
+  {
+    std::string eventId;
+    int64_t personId{0};
+    int64_t cameraId{0};
+    std::string cameraName;
+    int64_t environmentId{0};
+    std::string environmentName;
+    int64_t at{0};
+  };
+
+  void publishKnownSeen(const KnownSeenInput& input);
+
   struct PostureInput
   {
     const GuardSchedule& schedule;

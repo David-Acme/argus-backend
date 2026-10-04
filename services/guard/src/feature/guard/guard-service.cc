@@ -1091,6 +1091,22 @@ void GuardService::publishHeartbeat()
                              json_util::toString(payload));
 }
 
+void GuardService::publishKnownSeen(const KnownSeenInput& input)
+{
+  if (!dependencies_.bus)
+    return;
+  Json::Value payload(Json::objectValue);
+  payload["eventId"] = input.eventId;
+  payload["personId"] = static_cast<Json::Int64>(input.personId);
+  payload["cameraId"] = static_cast<Json::Int64>(input.cameraId);
+  payload["cameraName"] = input.cameraName;
+  payload["environmentId"] = static_cast<Json::Int64>(input.environmentId);
+  payload["environmentName"] = input.environmentName;
+  payload["at"] = static_cast<Json::Int64>(input.at);
+  dependencies_.bus->publish(nats_subject::kGuardKnownSeen,
+                             json_util::toString(payload));
+}
+
 void GuardService::scheduleEncounterSweep()
 {
   trackTimer(drogon::app().getLoop()->runEvery(60.0, [this, lifecycle = lifecycle_]() {
@@ -1662,6 +1678,14 @@ GuardService::applyObservation(const ObservationInput& input)
     checkpoint.encounterChecks = encounterPhase.encounterChecks;
     for (const auto& encounter : encounterPhase.closed)
       publishEncounterClosed(encounter, now);
+    if (signals.hasKnown && !signals.hasUnknown && signals.personId > 0)
+      publishKnownSeen({.eventId = eventId,
+                        .personId = signals.personId,
+                        .cameraId = signals.cameraId,
+                        .cameraName = signals.cameraName,
+                        .environmentId = environment.id,
+                        .environmentName = environmentName,
+                        .at = now});
     state.stage = kStageEncounter;
     failAt("after_encounter");
   }
