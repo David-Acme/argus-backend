@@ -35,6 +35,7 @@ db = "database/auth.db"
 schema = "services/auth/database/schema.sql"
 rpc_secret = ""
 context_cache_seconds = 30
+refresh_reuse_grace_seconds = 30
 
 [cert]
 server_cert = "certs/server.pem"
@@ -55,10 +56,6 @@ fingerprint_secret = ""
 identity_mode = "ip"
 trust_forwarded_for = false
 trusted_proxy_ips = ""
-
-[sync]
-control_target = "127.0.0.1:7041"
-control_secret = ""
 
 [rate_limit]
 enabled = true

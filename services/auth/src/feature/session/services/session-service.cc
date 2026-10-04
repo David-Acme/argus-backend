@@ -55,21 +55,39 @@ SessionService::validate(const SessionValidationInput& input) const
   if (!context->isActive)
     co_return rejected("User account is disabled");
 
-  const auto session = co_await dependencies_.refreshTokenRepository
-                           .findByAccessToken(userId, input.accessToken);
+  const auto session = co_await sessionOf(userId, input.accessToken);
   if (!session)
     co_return SessionVerdict{};
 
-  if (session->expiresAt <= std::time(nullptr))
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  if (session->expiresAt <= now)
     co_return rejected("Token expired");
   if (input.hasDeviceContext && session->deviceHash != input.deviceHash)
     co_return rejected("Device mismatch");
+
+  if (now - session->lastSeenAt >= kLastSeenThrottleSeconds)
+    static_cast<void>(co_await dependencies_.refreshTokenRepository.touch(
+        {.rowId = session->id,
+         .now = now,
+         .throttleSeconds = kLastSeenThrottleSeconds}));
 
   co_return SessionVerdict{.valid = true,
                            .reason = "",
                            .user = context,
                            .expiresAt =
-                               input.hasDeviceContext ? session->expiresAt : 0};
+                               input.hasDeviceContext ? session->expiresAt : 0,
+                           .sessionId = session->sessionId};
+}
+
+drogon::Task<std::optional<RefreshTokenSchema>>
+SessionService::sessionOf(int64_t userId, const std::string& accessToken) const
+{
+  const auto& repository = dependencies_.refreshTokenRepository;
+  auto session = co_await repository.findByAccessToken(userId, accessToken);
+  if (!session || !session->sessionId.empty())
+    co_return session;
+  co_await repository.adoptLegacySessions(userId);
+  co_return co_await repository.findByAccessToken(userId, accessToken);
 }
 
 void SessionService::forget(int64_t userId)

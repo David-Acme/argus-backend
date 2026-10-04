@@ -12,18 +12,18 @@ links `argus::clients::sync` (D8's imperative leg, §3.5). It is the only
 CMakeLists that **compiles** `argus/sync/v1/contracts.proto` — the contract
 package is an INTERFACE target and ships no translation unit — so the control
 schema's `SyncFrame` symbols are generated here, in
-`argus-clients-sync/generated/`. Five link lines across four trees, each of
+`argus-clients-sync/generated/`. Four link lines across three trees, each of
 which adds the folder to its own standalone build first:
-`services/auth/CMakeLists.txt:99`, `services/identity/CMakeLists.txt:146`,
-`services/sync/CMakeLists.txt:123` with its `sync-control-rpc` module
-(`services/sync/src/app/rpc/CMakeLists.txt:9`), and this package's own suite.
-Two files outside the package build the client, each at boot and each
-installing it through `sync_control::setSink` —
-`services/auth/src/app/main.cc:118` and
-`services/identity/src/app/main.cc:103`; the emit-only call sites
-(`auth-feature-service`, `user-feature-service`) reach the same sink through
+`services/identity/CMakeLists.txt`, `services/sync/CMakeLists.txt` with its
+`sync-control-rpc` module (`services/sync/src/app/rpc/CMakeLists.txt`), and
+this package's own suite. One file outside the package builds the client at
+boot and installs it through `sync_control::setSink` —
+`services/identity/src/app/main.cc`; the emit-only call site
+(`user-feature-service`) reaches the same sink through
 `<sync/sync-control-sink.hxx>`, the interface that keeps a domain owner from
-linking the transport.
+linking the transport. argus-auth left the leg in 2026-10: a logout and a
+session revocation now travel its durable change outbox
+(`argus.auth.v1.session`), closing only the revoked session's sockets.
 
 ## Layout
 
@@ -95,11 +95,10 @@ linking the transport.
   bool.
 - Config, since sub-step 3a-1c: the target and the fleet secret arrive in
   `SyncClientConfig`, resolved from `sync.control_target` and
-  `sync.control_secret` — the caller's `[sync]` block in both
-  (`services/auth/config.toml.example:59-61`,
-  `services/identity/config.toml.example:65-67`) and, on the answering side,
+  `sync.control_secret` — the caller's `[sync]` block
+  (`services/identity/config.toml.example:65-67`) and, on the answering side,
   `services/sync/config.toml.example:37`. The deploy stack pairs them under
-  the same keys (`argus-deploy/config.{auth,identity}.toml.example`,
+  the same keys (`argus-deploy/config.identity.toml.example`,
   sync's own at `argus-deploy/config.sync.toml.example:37`), spelling the target
   `argus-sync:7041` from the compose containers and `127.0.0.1:7041` in the
   project templates, and an empty target leaves the leg uninstalled

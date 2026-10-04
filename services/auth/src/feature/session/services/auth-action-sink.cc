@@ -24,12 +24,12 @@ int64_t nowMs()
 
 constexpr int64_t kStuckLogEvery = 100;
 
-std::string mintedActionMsgId()
+std::array<unsigned char, 16> msgIdEntropy()
 {
   std::array<unsigned char, 16> bytes{};
   if (RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1)
     throw ResponseException(503, AuthErrors::ChangeNotRecorded);
-  return change_outbox_key::actionMsgId(bytes);
+  return bytes;
 }
 
 constexpr int kDrainBatch = 64;
@@ -44,7 +44,13 @@ AuthActionSink::AuthActionSink(std::shared_ptr<NatsBus> bus, Config config)
                          : config_.actionSubject),
       stream_(config_.streamName.empty()
                   ? std::string(nats_subject::kAuthChangeStream)
-                  : config_.streamName)
+                  : config_.streamName),
+      sessionSubject_(config_.sessionSubject.empty()
+                          ? std::string(nats_subject::kAuthSession)
+                          : config_.sessionSubject),
+      sessionStream_(config_.sessionStreamName.empty()
+                         ? std::string(nats_subject::kAuthSessionStream)
+                         : config_.sessionStreamName)
 {
 }
 
@@ -58,30 +64,39 @@ AuthActionSink::~AuthActionSink()
 drogon::Task<void>
 AuthActionSink::publishAction(const AuthActionPublishInput& input) const
 {
-  co_await enqueueAction(json_util::toString(input.event.toJson()),
-                         input.client);
+  co_await enqueue({.payloadJson = json_util::toString(input.event.toJson()),
+                    .eventId = change_outbox_key::actionMsgId(msgIdEntropy()),
+                    .subject = actionSubject_,
+                    .client = input.client});
 }
 
 drogon::Task<void>
-AuthActionSink::enqueueAction(std::string payloadJson,
-                              drogon::orm::DbClient* client) const
+AuthActionSink::publishSessionChange(const AuthSessionChangeInput& input) const
 {
-  if (payloadJson.size() > kMaxPayloadBytes) {
-    LOG_ERROR << "Auth action outbox: an action journal row carries "
-              << payloadJson.size()
+  co_await enqueue({.payloadJson = json_util::toString(input.payload),
+                    .eventId = change_outbox_key::sessionMsgId(msgIdEntropy()),
+                    .subject = sessionSubject_,
+                    .client = input.client});
+}
+
+drogon::Task<void> AuthActionSink::enqueue(EnqueueInput input) const
+{
+  if (input.payloadJson.size() > kMaxPayloadBytes) {
+    LOG_ERROR << "Auth action outbox: a row for " << input.subject
+              << " carries " << input.payloadJson.size()
               << " bytes, past the broker's message budget; the write is "
                  "refused";
     throw ResponseException(AuthErrors::ChangeNotRecorded);
   }
-  const ChangeOutboxActionInput input{
-      .eventId = mintedActionMsgId(),
-      .subject = actionSubject_,
-      .fingerprint = change_outbox_key::fingerprintJson(payloadJson),
-      .payload = std::move(payloadJson),
+  const ChangeOutboxActionInput row{
+      .eventId = std::move(input.eventId),
+      .subject = std::move(input.subject),
+      .fingerprint = change_outbox_key::fingerprintJson(input.payloadJson),
+      .payload = std::move(input.payloadJson),
       .at = nowMs(),
-      .client = client,
+      .client = input.client,
   };
-  co_await outbox_.enqueueAction(input);
+  co_await outbox_.enqueueAction(row);
   wake_.notify();
 }
 
@@ -108,9 +123,14 @@ bool AuthActionSink::ensureStream() const
   if (!bus_->ensureStream({.name = stream_,
                            .subjects = {actionSubject_},
                            .maxAgeNs = stream_retention::kRetentionNs,
+                           .duplicatesNs = stream_retention::kDuplicatesNs}) ||
+      !bus_->ensureStream({.name = sessionStream_,
+                           .subjects = {sessionSubject_},
+                           .maxAgeNs = stream_retention::kRetentionNs,
                            .duplicatesNs = stream_retention::kDuplicatesNs}))
     return false;
-  LOG_INFO << "Auth action outbox: stream " << stream_ << " ready";
+  LOG_INFO << "Auth action outbox: streams " << stream_ << " and "
+           << sessionStream_ << " ready";
   return true;
 }
 

@@ -23,6 +23,7 @@ struct SessionVerdict
   std::string reason;
   std::optional<UserContext> user;
   int64_t expiresAt{0};
+  std::string sessionId;
 };
 
 class SessionService
@@ -40,6 +41,8 @@ public:
     int64_t contextCacheSeconds{30};
   };
 
+  static constexpr int64_t kLastSeenThrottleSeconds = 60;
+
   SessionService(Dependencies dependencies, Config config);
 
   [[nodiscard]] drogon::Task<SessionVerdict>
@@ -50,6 +53,9 @@ public:
   [[nodiscard]] drogon::Task<bool> revokeUser(int64_t userId) const;
 
 private:
+  [[nodiscard]] drogon::Task<std::optional<RefreshTokenSchema>>
+  sessionOf(int64_t userId, const std::string& accessToken) const;
+
   Dependencies dependencies_;
   SessionContextCache contextCache_;
 };

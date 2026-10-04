@@ -552,6 +552,11 @@ TEST_CASE("tokens rest hashed, and a row written before that still verifies")
                                        .deviceHash = kDeviceHash,
                                        .userAgent = {},
                                        .expiresAt = now + kHourSeconds,
+                                       .sessionId = "issued-session",
+                                       .platform = SessionPlatform::Android,
+                                       .deviceName = "Pixel",
+                                       .sessionCreatedAt = 0,
+                                       .previousRefreshHash = "",
                                        .client = nullptr}));
   CHECK(stored.accessToken == argus::hash::sha256Hex("issued-access"));
   CHECK(drogon::sync_wait(RefreshTokenRepository{}.findByRefreshToken(

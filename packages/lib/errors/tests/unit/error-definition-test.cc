@@ -22,30 +22,31 @@ struct CodeName
 TEST_CASE("every error code has exactly one wire string")
 {
   const std::vector<CodeName> table = {
-      {ErrorCode::Error, "ERROR"},
-      {ErrorCode::BadRequest, "BAD_REQUEST"},
-      {ErrorCode::Unauthorized, "UNAUTHORIZED"},
-      {ErrorCode::Forbidden, "FORBIDDEN"},
-      {ErrorCode::NotFound, "NOT_FOUND"},
-      {ErrorCode::MethodNotAllowed, "METHOD_NOT_ALLOWED"},
-      {ErrorCode::Conflict, "CONFLICT"},
-      {ErrorCode::RemoteNotAllowed, "REMOTE_NOT_ALLOWED"},
-      {ErrorCode::ServiceUnavailable, "SERVICE_UNAVAILABLE"},
-      {ErrorCode::TooManyRequests, "TOO_MANY_REQUESTS"},
-      {ErrorCode::InternalError, "INTERNAL_ERROR"},
-      {ErrorCode::BadGateway, "BAD_GATEWAY"},
-      {ErrorCode::ValidationError, "VALIDATION_ERROR"},
-      {ErrorCode::UserNotFound, "USER_NOT_FOUND"},
-      {ErrorCode::TtsNotLoaded, "TTS_NOT_LOADED"},
-      {ErrorCode::SttNotLoaded, "STT_NOT_LOADED"},
-      {ErrorCode::LlmNotLoaded, "LLM_NOT_LOADED"},
-      {ErrorCode::VlmNotLoaded, "VLM_NOT_LOADED"},
-      {ErrorCode::CameraUnreachable, "CAMERA_UNREACHABLE"},
-      {ErrorCode::Cancelled, "CANCELLED"},
-      {ErrorCode::DeadlineExceeded, "DEADLINE_EXCEEDED"}};
+      {.code = ErrorCode::Error, .name = "ERROR"},
+      {.code = ErrorCode::BadRequest, .name = "BAD_REQUEST"},
+      {.code = ErrorCode::Unauthorized, .name = "UNAUTHORIZED"},
+      {.code = ErrorCode::Forbidden, .name = "FORBIDDEN"},
+      {.code = ErrorCode::NotFound, .name = "NOT_FOUND"},
+      {.code = ErrorCode::MethodNotAllowed, .name = "METHOD_NOT_ALLOWED"},
+      {.code = ErrorCode::Conflict, .name = "CONFLICT"},
+      {.code = ErrorCode::RemoteNotAllowed, .name = "REMOTE_NOT_ALLOWED"},
+      {.code = ErrorCode::ServiceUnavailable, .name = "SERVICE_UNAVAILABLE"},
+      {.code = ErrorCode::TooManyRequests, .name = "TOO_MANY_REQUESTS"},
+      {.code = ErrorCode::InternalError, .name = "INTERNAL_ERROR"},
+      {.code = ErrorCode::BadGateway, .name = "BAD_GATEWAY"},
+      {.code = ErrorCode::ValidationError, .name = "VALIDATION_ERROR"},
+      {.code = ErrorCode::UserNotFound, .name = "USER_NOT_FOUND"},
+      {.code = ErrorCode::TtsNotLoaded, .name = "TTS_NOT_LOADED"},
+      {.code = ErrorCode::SttNotLoaded, .name = "STT_NOT_LOADED"},
+      {.code = ErrorCode::LlmNotLoaded, .name = "LLM_NOT_LOADED"},
+      {.code = ErrorCode::VlmNotLoaded, .name = "VLM_NOT_LOADED"},
+      {.code = ErrorCode::CameraUnreachable, .name = "CAMERA_UNREACHABLE"},
+      {.code = ErrorCode::Cancelled, .name = "CANCELLED"},
+      {.code = ErrorCode::DeadlineExceeded, .name = "DEADLINE_EXCEEDED"},
+      {.code = ErrorCode::SessionNotFound, .name = "SESSION_NOT_FOUND"}};
 
   CHECK(table.size() ==
-        static_cast<std::size_t>(ErrorCode::DeadlineExceeded) + 1);
+        static_cast<std::size_t>(ErrorCode::SessionNotFound) + 1);
 
   for (const auto& row : table)
     CHECK(std::string(toString(row.code)) == row.name);

@@ -99,6 +99,45 @@ inline constexpr std::array<GuardRouteAccess, 8> kGuardAccess = {{
     {.path = "/guard/expected-guests", .method = drogon::Delete, .roles = roleBit(UserRole::Resident)},
 }};
 
+struct AuthRouteAccess
+{
+  std::string_view path;
+  drogon::HttpMethod method;
+  std::uint8_t roles;
+};
+
+inline constexpr std::uint8_t kEveryRole =
+    roleBit(UserRole::Owner) | roleBit(UserRole::Resident) |
+    roleBit(UserRole::Guard) | roleBit(UserRole::Guest);
+
+inline constexpr std::array<AuthRouteAccess, 3> kSessionAccess = {{
+    {.path = "/auth/sessions", .method = drogon::Get, .roles = kEveryRole},
+    {.path = "/auth/sessions", .method = drogon::Delete, .roles = kEveryRole},
+    {.path = "/auth/sessions/{id}", .method = drogon::Delete, .roles = kEveryRole},
+}};
+
+inline constexpr std::string_view kRouteSegment = "{id}";
+
+inline const AuthRouteAccess* sessionRouteOf(std::string_view path,
+                                             drogon::HttpMethod method)
+{
+  const auto matches = [path](std::string_view pattern) {
+    if (!pattern.ends_with(kRouteSegment))
+      return pattern == path;
+    const std::string_view prefix =
+        pattern.substr(0, pattern.size() - kRouteSegment.size());
+    if (!path.starts_with(prefix))
+      return false;
+    const std::string_view segment = path.substr(prefix.size());
+    return !segment.empty() && segment.find('/') == std::string_view::npos;
+  };
+  const auto route =
+      std::ranges::find_if(kSessionAccess, [&](const AuthRouteAccess& entry) {
+        return entry.method == method && matches(entry.path);
+      });
+  return route == kSessionAccess.end() ? nullptr : &*route;
+}
+
 struct HasAccessInput
 {
   UserRole role;
@@ -227,6 +266,8 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
     return true;
 
   if (path.rfind("/auth", 0) == 0) {
+    if (const auto* route = sessionRouteOf(path, method))
+      return (route->roles & roleBit(role)) != 0;
     const auto it = kAuthAccess.find(role);
     if (it == kAuthAccess.end())
       return false;

@@ -17,7 +17,15 @@ CREATE TABLE IF NOT EXISTS refresh_token (
     is_valid      INTEGER NOT NULL  DEFAULT 1  CHECK (is_valid IN (0, 1)),
     is_used       INTEGER NOT NULL  DEFAULT 0  CHECK (is_used  IN (0, 1)),
     expires_at    INTEGER NOT NULL,
-    created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+    created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    session_id    TEXT    NOT NULL  DEFAULT '',
+    platform      TEXT    NOT NULL  DEFAULT 'unknown'
+                            CHECK (platform IN ('unknown', 'android', 'ios',
+                                                'desktop', 'web')),
+    device_name   TEXT    NOT NULL  DEFAULT '',
+    session_created_at     INTEGER NOT NULL  DEFAULT 0,
+    last_seen_at           INTEGER NOT NULL  DEFAULT 0,
+    previous_refresh_token TEXT    NOT NULL  DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS device_login_challenge (
@@ -31,7 +39,11 @@ CREATE TABLE IF NOT EXISTS device_login_challenge (
     access_token  TEXT,
     refresh_token TEXT,
     expires_at    INTEGER NOT NULL,
-    created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+    created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    platform      TEXT    NOT NULL  DEFAULT 'unknown'
+                            CHECK (platform IN ('unknown', 'android', 'ios',
+                                                'desktop', 'web')),
+    device_name   TEXT    NOT NULL  DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS device_credential (
@@ -59,6 +71,7 @@ CREATE TABLE IF NOT EXISTS change_outbox (
 CREATE INDEX IF NOT EXISTS idx_refresh_token_user_id ON refresh_token (user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_token_access  ON refresh_token (access_token);
 CREATE INDEX IF NOT EXISTS idx_refresh_token_refresh ON refresh_token (refresh_token);
+CREATE INDEX IF NOT EXISTS idx_refresh_token_session ON refresh_token (user_id, session_id);
 
 CREATE INDEX IF NOT EXISTS idx_change_outbox_status
     ON change_outbox (status, id);

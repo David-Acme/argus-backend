@@ -24,6 +24,8 @@ public:
     int retryMs{500};
     std::string actionSubject;
     std::string streamName;
+    std::string sessionSubject;
+    std::string sessionStreamName;
   };
 
   AuthActionSink(std::shared_ptr<NatsBus> bus, Config config);
@@ -34,6 +36,9 @@ public:
   [[nodiscard]] drogon::Task<void>
   publishAction(const AuthActionPublishInput& input) const override;
 
+  [[nodiscard]] drogon::Task<void>
+  publishSessionChange(const AuthSessionChangeInput& input) const override;
+
   void reconcile();
   void requestStop();
   [[nodiscard]] bool drained() const;
@@ -41,8 +46,15 @@ public:
   static constexpr std::size_t kMaxPayloadBytes = std::size_t{256} * 1024;
 
 private:
-  [[nodiscard]] drogon::Task<void>
-  enqueueAction(std::string payloadJson, drogon::orm::DbClient* client) const;
+  struct EnqueueInput
+  {
+    std::string payloadJson;
+    std::string eventId;
+    std::string subject;
+    drogon::orm::DbClient* client{nullptr};
+  };
+
+  [[nodiscard]] drogon::Task<void> enqueue(EnqueueInput input) const;
   [[nodiscard]] bool ensureStream() const;
   void flushLoop();
   bool flush(const ChangeOutboxRow& row);
@@ -52,6 +64,8 @@ private:
   const Config config_;
   const std::string actionSubject_;
   const std::string stream_;
+  const std::string sessionSubject_;
+  const std::string sessionStream_;
   int64_t nextPurgeMs_{0};
   std::atomic<bool> streamReady_{false};
   std::atomic<bool> stopping_{false};

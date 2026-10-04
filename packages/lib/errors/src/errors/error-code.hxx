@@ -25,7 +25,8 @@ enum class ErrorCode
   VlmNotLoaded,
   CameraUnreachable,
   Cancelled,
-  DeadlineExceeded
+  DeadlineExceeded,
+  SessionNotFound
 };
 
 constexpr std::string_view toString(ErrorCode code)
@@ -52,6 +53,7 @@ constexpr std::string_view toString(ErrorCode code)
   case ErrorCode::CameraUnreachable: return "CAMERA_UNREACHABLE";
   case ErrorCode::Cancelled: return "CANCELLED";
   case ErrorCode::DeadlineExceeded: return "DEADLINE_EXCEEDED";
+  case ErrorCode::SessionNotFound: return "SESSION_NOT_FOUND";
   }
   throw std::invalid_argument("Unknown response error code");
 }

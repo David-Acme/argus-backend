@@ -55,7 +55,8 @@ auth-service code; when in doubt, the root file wins.
 15. **Frozen contract** — `argus.auth.v1.AuthService` (`ValidateToken`,
     `CheckDeviceCredential`) and the `RefreshToken`/`UserAction`/`TableName`
     vocabulary the sync engine already serves never change here; the mobile app
-    must keep working unmodified.
+    must keep working unmodified. Additive fields are the only growth: the
+    verdict's `session_id` (field 5) is one.
 16. **Build gate** — 0 errors AND 0 warnings (`-Wall -Wextra`) in Argus's own
     code; third-party includes are SYSTEM.
 
@@ -67,7 +68,7 @@ argus-auth/
   src/app/main.cc       config load, listeners, NATS bus, app run
   src/app/rpc/          argus.auth.v1.AuthService (fleet-secret gated)
   src/config/           this service's typed config ([auth], [identity],
-                        [rate_limit], [sync] and the certificate pair)
+                        [rate_limit] and the certificate pair)
   src/feature/session/
     repositories/       refresh_token queries and the row mapping
     schemas/            refresh_token row mapping
@@ -80,15 +81,22 @@ argus-auth/
                         device_login_challenge compare-and-set
     schemas/            device_credential and device_login_challenge mapping
   src/feature/auth/
-    controllers/        the nine /auth routes
+    controllers/        the twelve /auth routes (three of them the
+                        session list and revocations)
     dtos/               the request and response DTOs of that surface
-    services/           AuthFeatureService: sessions, credentials, challenges
-    infra/              auth-rate-gate: the [rate_limit] pre-routing gate
+    services/           AuthFeatureService: sessions, credentials, challenges;
+                        SessionManagementService: list and revoke a user's
+                        own sessions; session-events: the sessionRevoked /
+                        sessionsChanged frames and their audit rows
+    infra/              auth-rate-gate: the [rate_limit] pre-routing gate;
+                        client-identity: platform and device name from the
+                        X-Argus-Client / X-Argus-Device / User-Agent headers
   database/schema.sql   this owner's four tables — the three session tables
-                        and the change outbox — with their five indexes
+                        and the change outbox — with their six indexes
   config.toml.example   auth keys + the identity target; no AI keys
-  tests/unit/           the session-verdict, device-login, refresh-gate and
-                        migration suites (the first has a live NATS leg)
+  tests/unit/           the session-verdict, device-login, refresh-gate,
+                        session-management and migration suites (the first
+                        has a live NATS leg)
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 

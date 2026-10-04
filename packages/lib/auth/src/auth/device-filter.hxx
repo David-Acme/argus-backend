@@ -11,6 +11,12 @@ struct DeviceContext
   std::string ip;
 };
 
+struct AddressFingerprintInput
+{
+  const std::string& userAgent;
+  const std::string& address;
+};
+
 class DeviceFilter : public drogon::HttpCoroFilter<DeviceFilter, false>
 {
 public:
@@ -23,6 +29,8 @@ public:
 
   static std::string credentialFingerprint(const std::string& ua,
                                            const std::string& secretHash);
+
+  static std::string addressFingerprint(const AddressFingerprintInput& input);
 
   static bool credentialMode();
 

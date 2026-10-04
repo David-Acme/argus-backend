@@ -20,11 +20,9 @@
 #include <string>
 #include <string_view>
 #include <sync/auth-change-sink.hxx>
-#include <sync/socket-emit-dto.hxx>
-#include <sync/sync-control-sink.hxx>
-#include <sync/sync-operation.hxx>
 #include <sync/table-name.hxx>
 #include <sync/user-action.hxx>
+#include <text/sha256.hxx>
 #include <trantor/utils/Logger.h>
 
 namespace
@@ -154,6 +152,36 @@ DeviceLoginStatusDto idleDeviceLogin(DeviceLoginStatus status)
   return result;
 }
 
+std::map<std::string, std::string> sessionClaims(int64_t userId,
+                                                 const std::string& sessionId)
+{
+  return {{"sub", std::to_string(userId)}, {"sid", sessionId}};
+}
+
+bool agentUpgradeAllowed(const RefreshTokenSchema& session,
+                         const RefreshTokenInput& input)
+{
+  if (client_identity::isStableUserAgent(session.userAgent) ||
+      !client_identity::isStableUserAgent(input.userAgent))
+    return false;
+  if (DeviceFilter::credentialMode())
+    return !input.credentialHash.empty() &&
+           DeviceFilter::credentialFingerprint(session.userAgent,
+                                               input.credentialHash) ==
+               session.deviceHash;
+  return DeviceFilter::addressFingerprint(
+             {.userAgent = session.userAgent, .address = input.ip}) ==
+         session.deviceHash;
+}
+
+bool sameBinding(const RefreshTokenSchema& session,
+                 const RefreshTokenInput& input)
+{
+  return session.userAgent == input.userAgent &&
+         (!DeviceFilter::credentialMode() ||
+          session.deviceHash == input.deviceHash);
+}
+
 drogon::Task<std::optional<argus::identity::v1::IdentifyPersonResponse>>
 identifyPerson(const IdentityClient* client, std::string image)
 {
@@ -197,8 +225,9 @@ renameIdentityUser(const IdentityClient* client,
 
 }
 
-AuthFeatureService::AuthFeatureService(Dependencies dependencies)
-    : dependencies_(std::move(dependencies))
+AuthFeatureService::AuthFeatureService(Dependencies dependencies,
+                                       Config config)
+    : dependencies_(std::move(dependencies)), config_(config)
 {
 }
 
@@ -287,7 +316,9 @@ AuthFeatureService::createDeviceLogin(const DeviceLoginStartInput& input) const
       {.challengeId = challengeId,
        .deviceHash = input.device.deviceHash,
        .userAgent = input.device.userAgent,
-       .expiresAt = expiresAt});
+       .expiresAt = expiresAt,
+       .platform = input.device.client.platform,
+       .deviceName = input.device.client.deviceName});
   if (!input.pollHash.empty())
     pendingPollHashes().store({.challengeId = challengeId,
                                .secret = input.pollHash,
@@ -317,8 +348,8 @@ AuthFeatureService::approveDeviceLogin(const std::string& challengeId,
   if (!answer->has_user() || !answer->user().is_active())
     throw ResponseException(AuthErrors::AccessDenied);
 
-  std::map<std::string, std::string> claims;
-  claims["sub"] = std::to_string(approvingUserId);
+  const std::string sessionId = SessionManagementService::newSessionId();
+  const auto claims = sessionClaims(approvingUserId, sessionId);
 
   IssuedDeviceCredential credential;
   auto transaction = co_await db_transaction::begin(DbService::client());
@@ -329,7 +360,7 @@ AuthFeatureService::approveDeviceLogin(const std::string& challengeId,
          .client = transaction.get()});
 
     const std::string accessToken =
-        dependencies_.jwtService.generateAccess(claims);
+        dependencies_.jwtService.generateAccess({{"sub", claims.at("sub")}});
     const std::string refreshToken =
         dependencies_.jwtService.generateRefresh(claims);
 
@@ -342,7 +373,14 @@ AuthFeatureService::approveDeviceLogin(const std::string& challengeId,
          .userAgent = challenge->userAgent,
          .expiresAt = static_cast<int64_t>(std::time(nullptr)) +
                       dependencies_.jwtService.refreshTtlSeconds(),
+         .sessionId = sessionId,
+         .platform = challenge->platform,
+         .deviceName = challenge->deviceName,
+         .sessionCreatedAt = 0,
+         .previousRefreshHash = "",
          .client = transaction.get()});
+    co_await session_events::publishChanged(
+        {.userId = approvingUserId, .client = transaction.get()});
 
     const bool approved =
         co_await dependencies_.challengeRepository.markApproved(
@@ -418,28 +456,44 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
   if (!userId)
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
 
-  const auto existing = co_await dependencies_.refreshTokenRepository
-                            .findByRefreshToken(*userId, input.body.refreshToken);
-  if (!existing || !existing->isValid || existing->isUsed)
+  const auto sid = claims.find("sid");
+  const RefreshPresentation presented{
+      .userId = *userId,
+      .token = input.body.refreshToken,
+      .tokenHash = argus::hash::sha256Hex(input.body.refreshToken),
+      .sessionId = sid == claims.end() ? std::string{} : sid->second};
+  const auto existing = co_await presentedSession(presented);
+  if (!existing)
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
 
-  if (existing->expiresAt <= static_cast<int64_t>(std::time(nullptr))) {
+  if (existing->refreshToken != presented.tokenHash &&
+      existing->refreshToken != presented.token) {
+    co_await settleStaleToken({.session = *existing,
+                               .request = input,
+                               .tokenHash = presented.tokenHash});
+    throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
+  }
+
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  if (existing->expiresAt <= now) {
     LOG_WARN << "Auth: expired refresh token for user " << *userId;
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
   }
 
-  const bool sameDevice = !DeviceFilter::credentialMode() ||
-                          existing->deviceHash == input.deviceHash;
-  if (existing->userAgent != input.userAgent || !sameDevice) {
+  const bool bound = sameBinding(*existing, input);
+  const bool upgraded = !bound && agentUpgradeAllowed(*existing, input);
+  if (!bound && !upgraded) {
     LOG_WARN << "Auth: device mismatch on refresh for user " << *userId;
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
   }
+  if (upgraded)
+    LOG_INFO << "Auth: session of user " << *userId
+             << " moved to the stable user agent " << input.userAgent;
 
-  std::map<std::string, std::string> newClaims;
-  newClaims["sub"] = std::to_string(*userId);
-
+  const auto newClaims = sessionClaims(*userId, existing->sessionId);
   ResponseRefreshTokenDto result;
-  result.accessToken = dependencies_.jwtService.generateAccess(newClaims);
+  result.accessToken =
+      dependencies_.jwtService.generateAccess({{"sub", newClaims.at("sub")}});
   result.refreshToken = dependencies_.jwtService.generateRefresh(newClaims);
 
   auto transaction = co_await db_transaction::begin(DbService::client());
@@ -454,9 +508,19 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
          .accessToken = result.accessToken,
          .refreshToken = result.refreshToken,
          .deviceHash = input.deviceHash,
-         .userAgent = existing->userAgent,
-         .expiresAt = static_cast<int64_t>(std::time(nullptr)) +
-                      dependencies_.jwtService.refreshTtlSeconds(),
+         .userAgent = upgraded ? input.userAgent : existing->userAgent,
+         .expiresAt = now + dependencies_.jwtService.refreshTtlSeconds(),
+         .sessionId = existing->sessionId,
+         .platform = input.client.platform == SessionPlatform::Unknown
+                         ? existing->platform
+                         : input.client.platform,
+         .deviceName = input.client.deviceName.empty()
+                           ? existing->deviceName
+                           : input.client.deviceName,
+         .sessionCreatedAt = existing->sessionCreatedAt > 0
+                                 ? existing->sessionCreatedAt
+                                 : existing->createdAt,
+         .previousRefreshHash = presented.tokenHash,
          .client = transaction.get()});
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(AuthErrors::ChangeNotRecorded);
@@ -468,48 +532,64 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
   co_return result;
 }
 
+drogon::Task<std::optional<RefreshTokenSchema>>
+AuthFeatureService::presentedSession(const RefreshPresentation& presented) const
+{
+  const auto& repository = dependencies_.refreshTokenRepository;
+  if (!presented.sessionId.empty())
+    co_return co_await repository.findActiveBySession(
+        {.userId = presented.userId,
+         .sessionId = presented.sessionId,
+         .client = nullptr});
+
+  auto current =
+      co_await repository.findByRefreshToken(presented.userId, presented.token);
+  if (current && current->sessionId.empty()) {
+    co_await repository.adoptLegacySessions(presented.userId);
+    current = co_await repository.findByRefreshToken(presented.userId,
+                                                     presented.token);
+  }
+  if (current)
+    co_return current;
+  co_return co_await repository.findActiveByPrevious(presented.userId,
+                                                     presented.tokenHash);
+}
+
+drogon::Task<void>
+AuthFeatureService::settleStaleToken(const StaleRefreshInput& input) const
+{
+  const RefreshTokenSchema& session = input.session;
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  const bool racedRotation =
+      session.previousRefreshToken == input.tokenHash &&
+      now - session.createdAt <= config_.refreshReuseGraceSeconds &&
+      sameBinding(session, input.request);
+  if (racedRotation) {
+    LOG_INFO << "Auth: a rotated refresh token of user " << session.userId
+             << " came back inside the grace window; nothing revoked";
+    co_return;
+  }
+
+  LOG_WARN << "Auth: refresh token reuse for user " << session.userId
+           << "; the session is revoked";
+  static_cast<void>(co_await dependencies_.sessions.revoke(
+      {.userId = session.userId,
+       .actorId = session.userId,
+       .scope = SessionRevocationScope::One,
+       .sessionId = session.sessionId,
+       .reason = SessionRevocationReason::RefreshTokenReuse}));
+}
+
 drogon::Task<void> AuthFeatureService::logout(const LogoutInput& input) const
 {
-  auto transaction = co_await db_transaction::begin(DbService::client());
-  try {
-    co_await dependencies_.refreshTokenRepository.invalidateAllUser(
-        input.userId, transaction.get());
-
-    if (const auto* sink = auth_change::getSink()) {
-      co_await sink->publishAction(
-          {.event = {.userId = input.userId,
-                     .recordId = input.userId,
-                     .tableName = TableName::User,
-                     .action = UserAction::Delete,
-                     .oldData = Json::Value(),
-                     .newData = Json::Value(),
-                     .ipAddress = ""},
-           .client = transaction.get()});
-    }
-
-    if (!co_await db_transaction::Commit(std::move(transaction)))
-      throw ResponseException(AuthErrors::ChangeNotRecorded);
-  }
-  catch (...) {
-    db_transaction::rollback(transaction);
-    throw;
-  }
-
-  SocketEmitDto context;
-  context.operation = SyncOperation::AuthContextChanged;
-  context.option = TableName::User;
-  context.obj = Json::Value(Json::objectValue);
-  context.obj["id"] = static_cast<Json::Int64>(input.userId);
-  context.obj["name"] = input.name;
-  context.obj["role"] = userRoleToString(input.role);
-  context.obj["isActive"] = false;
-  context.obj["resync"] = false;
-  if (const auto* control = sync_control::getSink()) {
-    if (!control->disconnectUser(input.userId, context))
-      LOG_WARN << "Auth: disconnect failed for user " << input.userId;
-  }
-
-  LOG_INFO << "Auth: logged out user " << input.userId;
+  const auto revoked = co_await dependencies_.sessions.revoke(
+      {.userId = input.userId,
+       .actorId = input.userId,
+       .scope = SessionRevocationScope::One,
+       .sessionId = input.sessionId,
+       .reason = SessionRevocationReason::Logout});
+  LOG_INFO << "Auth: user " << input.userId << " logged out "
+           << revoked.size() << " session(s)";
 }
 
 drogon::Task<void>
@@ -540,10 +620,11 @@ AuthFeatureService::issueSession(const IssueSessionInput& input) const
                                        ? input.device.deviceHash
                                        : credential.deviceHash;
 
-    std::map<std::string, std::string> claims;
-    claims["sub"] = std::to_string(input.user.userId);
+    const std::string sessionId = SessionManagementService::newSessionId();
+    const auto claims = sessionClaims(input.user.userId, sessionId);
 
-    result.accessToken = dependencies_.jwtService.generateAccess(claims);
+    result.accessToken =
+        dependencies_.jwtService.generateAccess({{"sub", claims.at("sub")}});
     result.refreshToken = dependencies_.jwtService.generateRefresh(claims);
     result.userId = input.user.userId;
     result.name = input.user.name + " " + input.user.lastName;
@@ -559,11 +640,18 @@ AuthFeatureService::issueSession(const IssueSessionInput& input) const
          .userAgent = input.device.userAgent,
          .expiresAt = static_cast<int64_t>(std::time(nullptr)) +
                       dependencies_.jwtService.refreshTtlSeconds(),
+         .sessionId = sessionId,
+         .platform = input.device.client.platform,
+         .deviceName = input.device.client.deviceName,
+         .sessionCreatedAt = 0,
+         .previousRefreshHash = "",
          .client = transaction.get()});
 
     Json::Value session(Json::objectValue);
     session["deviceHash"] = deviceHash;
     session["userAgent"] = input.device.userAgent;
+    session["sessionId"] = sessionId;
+    session["platform"] = sessionPlatformToString(input.device.client.platform);
 
     if (const auto* sink = auth_change::getSink()) {
       co_await sink->publishAction(
@@ -576,6 +664,8 @@ AuthFeatureService::issueSession(const IssueSessionInput& input) const
                      .ipAddress = ""},
            .client = transaction.get()});
     }
+    co_await session_events::publishChanged(
+        {.userId = input.user.userId, .client = transaction.get()});
 
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(AuthErrors::ChangeNotRecorded);

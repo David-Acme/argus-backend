@@ -200,6 +200,11 @@ expected visits; episode detail and review, site and camera settings,
 decision review, feedback and person promotion stay Owner-only; Guest has
 no guard route.
 
+The session routes (`GET /auth/sessions`, `DELETE /auth/sessions`,
+`DELETE /auth/sessions/{id}`) are declared the same way in `kSessionAccess`:
+every role reads and revokes its own sessions, and `argus-auth` scopes each
+query to `JwtContext.sub`, so `kAuthAccess` stays as narrow as it was.
+
 Helpers: `hasAccess(role, table, perm)`, `readableTables(role)`,
 `readsUserDirectory(role)`, `moduleTables(role)` (the module rooms a socket
 joins and the global audit tables it pages: `readableTables` minus `user` for

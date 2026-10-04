@@ -1,10 +1,36 @@
 #include "device-login-challenge-repository.hxx"
 
 #include <ctime>
+#include <exception>
 #include <sqlite/db-service.hxx>
 #include <string>
+#include <trantor/utils/Logger.h>
+#include <unordered_set>
 
 using namespace device_login_challenge_query;
+
+bool DeviceLoginChallengeRepository::migrateLegacySchema() const
+{
+  try {
+    const auto client = DbService::client();
+    const auto tables = client->execSqlSync(std::string(COUNT_TABLE));
+    if (tables.empty() || tables.front()["total"].as<int64_t>() == 0)
+      return true;
+
+    std::unordered_set<std::string> present;
+    for (const auto& row : client->execSqlSync(std::string(TABLE_COLUMNS)))
+      present.insert(row["name"].as<std::string>());
+    for (const auto& column : ADDED_COLUMNS) {
+      if (!present.contains(std::string(column.name)))
+        client->execSqlSync(std::string(column.statement));
+    }
+    return true;
+  }
+  catch (const std::exception& error) {
+    LOG_ERROR << "device_login_challenge migration failed: " << error.what();
+    return false;
+  }
+}
 
 drogon::Task<DeviceLoginChallengeSchema>
 DeviceLoginChallengeRepository::create(
@@ -13,7 +39,8 @@ DeviceLoginChallengeRepository::create(
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(
       std::string(INSERT), input.challengeId, input.deviceHash, input.userAgent,
-      input.expiresAt);
+      input.expiresAt, sessionPlatformToString(input.platform),
+      input.deviceName);
 
   DeviceLoginChallengeSchema schema;
   schema.id = static_cast<int64_t>(result.insertId());
@@ -22,6 +49,8 @@ DeviceLoginChallengeRepository::create(
   schema.userAgent = input.userAgent;
   schema.expiresAt = input.expiresAt;
   schema.createdAt = static_cast<int64_t>(std::time(nullptr));
+  schema.platform = input.platform;
+  schema.deviceName = input.deviceName;
   co_return schema;
 }
 

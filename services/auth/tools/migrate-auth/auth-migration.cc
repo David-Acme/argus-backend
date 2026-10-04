@@ -4,6 +4,7 @@
 #include <sqlite/sqlite-stmt.hxx>
 #include <text/fnv-hash.hxx>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <filesystem>
@@ -41,6 +42,7 @@ struct AuthChecksumInput
   sqlite3* db = nullptr;
   std::string table;
   std::string schema;
+  std::string columns;
 };
 
 struct AuthChecksumResult
@@ -119,13 +121,30 @@ AuthHandleResult openHandle(const std::string& path, int flags)
   return result;
 }
 
+std::string columnList(const std::vector<std::string>& names)
+{
+  std::string list;
+  for (const auto& name : names) {
+    if (!list.empty())
+      list += ", ";
+    list.append("\"").append(name).append("\"");
+  }
+  return list;
+}
+
 std::string scopedSelect(const AuthChecksumInput& input)
 {
   const std::string quoted = "\"" + input.table + "\"";
-  if (input.schema == "src")
-    return "SELECT * FROM src." + quoted + " ORDER BY id";
-  return "SELECT * FROM main." + quoted + " WHERE id IN (SELECT id FROM src."
-         + quoted + ") ORDER BY id";
+  std::string sql = "SELECT ";
+  sql.append(input.columns);
+  if (input.schema == "src") {
+    sql.append(" FROM src.").append(quoted).append(" ORDER BY id");
+    return sql;
+  }
+  sql.append(" FROM main.").append(quoted);
+  sql.append(" WHERE id IN (SELECT id FROM src.").append(quoted);
+  sql.append(") ORDER BY id");
+  return sql;
 }
 
 AuthChecksumResult tableChecksum(const AuthChecksumInput& input)
@@ -182,9 +201,8 @@ AuthChecksumResult tableChecksum(const AuthChecksumInput& input)
 std::optional<std::vector<std::string>>
 columnNames(const AuthColumnShapeInput& input, std::string& error)
 {
-  const std::string sql = "SELECT name FROM \"" + input.schema
-                          + "\".pragma_table_info('" + input.table
-                          + "') ORDER BY cid";
+  const std::string sql = "SELECT name FROM pragma_table_info('" + input.table
+                          + "', '" + input.schema + "') ORDER BY cid";
   SqliteStmt stmt;
   if (!stmt.prepare(input.db, sql.c_str())) {
     error = sqlite3_errmsg(input.db);
@@ -208,16 +226,25 @@ bool copyAuthTables(sqlite3* db, std::string& error)
     return false;
   }
   for (const std::string_view table : kAuthTables) {
+    const std::string tableName(table);
+    std::string shapeError;
+    const auto columns = columnNames(
+        {.db = db, .schema = "src", .table = tableName}, shapeError);
+    if (!columns) {
+      error = "copy of ";
+      error.append(tableName).append(" failed: ").append(shapeError);
+      execStatement({.db = db, .sql = "ROLLBACK"});
+      return false;
+    }
+    const std::string list = columnList(*columns);
     std::string sql = "INSERT INTO main.\"";
-    sql += table;
-    sql += "\" SELECT * FROM src.\"";
-    sql += table;
-    sql += "\" AS s WHERE NOT EXISTS (SELECT 1 FROM main.\"";
-    sql += table;
-    sql += "\" AS m WHERE m.id = s.id)";
+    sql.append(tableName).append("\" (").append(list).append(") SELECT ");
+    sql.append(list).append(" FROM src.\"").append(tableName);
+    sql.append("\" AS s WHERE NOT EXISTS (SELECT 1 FROM main.\"");
+    sql.append(tableName).append("\" AS m WHERE m.id = s.id)");
     const auto insert = execStatement({.db = db, .sql = std::move(sql)});
     if (!insert.ok) {
-      error = "copy of " + std::string(table) + " failed: " + insert.error;
+      error = "copy of " + tableName + " failed: " + insert.error;
       execStatement({.db = db, .sql = "ROLLBACK"});
       return false;
     }
@@ -337,16 +364,26 @@ AuthMigrationReport verifyAuthTables(const AuthVerificationInput& input)
       report.error = shapeError.empty() ? targetColumnsError : shapeError;
       return report;
     }
-    if (*sourceColumns != *targetColumns) {
+    const bool covered = std::ranges::all_of(
+        *sourceColumns, [&targetColumns](const std::string& name) {
+          return std::ranges::find(*targetColumns, name)
+                 != targetColumns->end();
+        });
+    if (!covered) {
       report.error = "column shape mismatch on " + tableName
-                     + ": source and target schemas differ";
+                     + ": the target lacks a source column";
       return report;
     }
 
-    const auto sourceChecksum = tableChecksum(
-        {.db = input.target, .table = tableName, .schema = "src"});
-    const auto targetChecksum = tableChecksum(
-        {.db = input.target, .table = tableName, .schema = "main"});
+    const std::string columns = columnList(*sourceColumns);
+    const auto sourceChecksum = tableChecksum({.db = input.target,
+                                               .table = tableName,
+                                               .schema = "src",
+                                               .columns = columns});
+    const auto targetChecksum = tableChecksum({.db = input.target,
+                                               .table = tableName,
+                                               .schema = "main",
+                                               .columns = columns});
     if (!sourceChecksum.ok || !targetChecksum.ok) {
       report.error = "checksum of " + tableName + " failed: "
                      + (sourceChecksum.ok ? targetChecksum.error

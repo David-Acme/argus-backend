@@ -12,6 +12,8 @@
 #include <feature/auth/dtos/register-dto.hxx>
 #include <feature/auth/dtos/response-login-dto.hxx>
 #include <feature/auth/dtos/response-refresh-token-dto.hxx>
+#include <feature/auth/infra/client-identity.hxx>
+#include <feature/auth/services/session-management-service.hxx>
 #include <feature/device/repositories/device-credential/device-credential-repository.hxx>
 #include <feature/device/repositories/device-login-challenge/device-login-challenge-repository.hxx>
 #include <feature/session/repositories/refresh-token/refresh-token-repository.hxx>
@@ -24,6 +26,7 @@ struct LoginDeviceInput
 {
   std::string deviceHash;
   std::string userAgent;
+  ClientIdentity client;
 };
 
 struct DeviceLoginStartInput
@@ -58,6 +61,9 @@ struct RefreshTokenInput
   RefreshTokenDto body;
   std::string deviceHash;
   std::string userAgent;
+  std::string ip;
+  std::string credentialHash;
+  ClientIdentity client;
 };
 
 struct IssueSessionInput
@@ -84,8 +90,22 @@ struct UpdateMeInput
 struct LogoutInput
 {
   int64_t userId{0};
-  std::string name;
-  UserRole role{UserRole::Guest};
+  std::string sessionId;
+};
+
+struct RefreshPresentation
+{
+  int64_t userId{0};
+  std::string token;
+  std::string tokenHash;
+  std::string sessionId;
+};
+
+struct StaleRefreshInput
+{
+  const RefreshTokenSchema& session;
+  const RefreshTokenInput& request;
+  const std::string& tokenHash;
 };
 
 class AuthFeatureService
@@ -97,10 +117,16 @@ public:
     RefreshTokenRepository refreshTokenRepository;
     DeviceCredentialRepository deviceCredentialRepository;
     DeviceLoginChallengeRepository challengeRepository;
+    SessionManagementService sessions;
     const IdentityClient* identity{nullptr};
   };
 
-  explicit AuthFeatureService(Dependencies dependencies);
+  struct Config
+  {
+    int64_t refreshReuseGraceSeconds{30};
+  };
+
+  AuthFeatureService(Dependencies dependencies, Config config);
 
   [[nodiscard]] drogon::Task<ResponseLoginDto>
   login(LoginDto body, const LoginDeviceInput& device) const;
@@ -132,5 +158,12 @@ private:
   [[nodiscard]] drogon::Task<IssuedDeviceCredential>
   issueDeviceCredential(const IssueDeviceCredentialInput& input) const;
 
+  [[nodiscard]] drogon::Task<std::optional<RefreshTokenSchema>>
+  presentedSession(const RefreshPresentation& presented) const;
+
+  [[nodiscard]] drogon::Task<void>
+  settleStaleToken(const StaleRefreshInput& input) const;
+
   Dependencies dependencies_;
+  Config config_;
 };

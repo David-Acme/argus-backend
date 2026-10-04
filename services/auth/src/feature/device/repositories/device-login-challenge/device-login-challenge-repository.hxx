@@ -14,6 +14,8 @@ public:
   DeviceLoginChallengeRepository() = default;
   ~DeviceLoginChallengeRepository() = default;
 
+  [[nodiscard]] bool migrateLegacySchema() const;
+
   [[nodiscard]] drogon::Task<DeviceLoginChallengeSchema>
   create(const DeviceLoginChallengeCreateInput& input) const;
 

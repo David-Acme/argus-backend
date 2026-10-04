@@ -5,6 +5,7 @@
 namespace
 {
 constexpr int64_t kDefaultContextCacheSeconds = 30;
+constexpr int64_t kDefaultRefreshReuseGraceSeconds = 30;
 constexpr int kDefaultIdentityPort = 7040;
 constexpr uint16_t kDefaultAuthPort = 7042;
 constexpr uint16_t kDefaultRpcPort = 7043;
@@ -87,18 +88,19 @@ AuthRateLimitConfig AuthConfig::resolveRateLimit()
   return config;
 }
 
-AuthSyncControlConfig AuthConfig::resolveSyncControl()
-{
-  AuthSyncControlConfig config;
-  config.target = ConfigService::getString("sync.control_target");
-  config.secret = ConfigService::getString("sync.control_secret");
-  return config;
-}
-
 int64_t AuthConfig::resolveContextCacheSeconds()
 {
   if (!ConfigService::hasKey("auth.context_cache_seconds"))
     return kDefaultContextCacheSeconds;
   const int64_t seconds = ConfigService::getInt("auth.context_cache_seconds");
   return seconds >= 0 ? seconds : kDefaultContextCacheSeconds;
+}
+
+int64_t AuthConfig::resolveRefreshReuseGraceSeconds()
+{
+  if (!ConfigService::hasKey("auth.refresh_reuse_grace_seconds"))
+    return kDefaultRefreshReuseGraceSeconds;
+  const int64_t seconds =
+      ConfigService::getInt("auth.refresh_reuse_grace_seconds");
+  return seconds >= 0 ? seconds : kDefaultRefreshReuseGraceSeconds;
 }

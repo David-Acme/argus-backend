@@ -62,6 +62,13 @@ Two consequences worth keeping in mind:
   dials the remote listener on loopback) choose its own address. No
   first-party component writes the header, so the deploy templates leave the
   list empty and `trust_forwarded_for` false.
+- `JwtContext.sessionId` is the session (refresh-token family) the verdict
+  names; argus-sync tags each socket with it, and argus-auth uses it as the
+  caller's current session. `role_access::kSessionAccess` opens
+  `GET /auth/sessions`, `DELETE /auth/sessions` and
+  `DELETE /auth/sessions/{id}` to every role, route by route like
+  `kGuardAccess`, without widening `kAuthAccess`: the service scopes every
+  query to the caller's own sessions.
 
 ## The two targets
 

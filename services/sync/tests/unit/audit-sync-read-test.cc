@@ -545,8 +545,8 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   synchronizedService.setProductivitySource(&productivitySource);
   synchronizedService.setNotificationSource(&notificationSource);
 
-  const JwtContext ownerCtx{42, "Owner", UserRole::Owner, true, {}};
-  const JwtContext residentCtx{7, "Resident", UserRole::Resident, true, {}};
+  const JwtContext ownerCtx{.sub = 42, .name = "Owner", .role = UserRole::Owner, .isActive = true, .deviceHash = {}, .sessionId = {}};
+  const JwtContext residentCtx{.sub = 7, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}};
 
   Json::Value projectSyncBody;
   Json::Value projectBody;

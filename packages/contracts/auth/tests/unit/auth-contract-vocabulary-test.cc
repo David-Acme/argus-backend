@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <auth/device-login-status.hxx>
+#include <auth/session-platform.hxx>
 #include <auth/user-role.hxx>
 
 #include <cstddef>
@@ -60,4 +61,21 @@ TEST_CASE("device login status strings round-trip")
 TEST_CASE("unknown device login status strings fall back to pending")
 {
     CHECK(deviceLoginStatusFromString("bogus") == DeviceLoginStatus::Pending);
+}
+
+TEST_CASE("session platform strings round-trip")
+{
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {SessionPlatform::Unknown, SessionPlatform::Android,
+                   SessionPlatform::Ios, SessionPlatform::Desktop,
+                   SessionPlatform::Web},
+        .names = {"unknown", "android", "ios", "desktop", "web"},
+        .toString = sessionPlatformToString,
+        .fromString = sessionPlatformFromString});
+}
+
+TEST_CASE("an unknown session platform string falls back to unknown")
+{
+    CHECK(sessionPlatformFromString("Android") == SessionPlatform::Unknown);
+    CHECK(sessionPlatformFromString("") == SessionPlatform::Unknown);
 }

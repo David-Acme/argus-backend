@@ -72,6 +72,7 @@ grpc::ServerUnaryReactor* AuthRpcService::ValidateToken(
             payload->set_role(user.role);
             payload->set_is_active(user.isActive);
             responseWriter->set_expires_at(verdict.expiresAt);
+            responseWriter->set_session_id(verdict.sessionId);
             responseWriter->set_valid(true);
             reactor->Finish(grpc::Status::OK);
           }

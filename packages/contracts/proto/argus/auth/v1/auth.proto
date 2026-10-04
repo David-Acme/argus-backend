@@ -24,6 +24,7 @@ message ValidateTokenResponse
   string reason = 2;
   SessionUser user = 3;
   int64 expires_at = 4;
+  string session_id = 5;
 }
 
 message CheckDeviceCredentialRequest

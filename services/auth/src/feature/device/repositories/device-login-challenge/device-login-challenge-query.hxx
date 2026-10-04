@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <auth/session-platform.hxx>
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
 #include <string>
@@ -13,8 +15,9 @@ inline constexpr std::string_view FIND_BY_CHALLENGE_ID =
 
 inline constexpr std::string_view INSERT =
     "INSERT INTO device_login_challenge "
-    "(challenge_id, device_hash, user_agent, expires_at) "
-    "VALUES (?, ?, ?, ?)";
+    "(challenge_id, device_hash, user_agent, expires_at, platform, "
+    "device_name) "
+    "VALUES (?, ?, ?, ?, ?, ?)";
 
 inline constexpr std::string_view MARK_APPROVED =
     "UPDATE device_login_challenge "
@@ -33,6 +36,29 @@ inline constexpr std::string_view DELETE_BY_CHALLENGE_ID =
 inline constexpr std::string_view DELETE_EXPIRED =
     "DELETE FROM device_login_challenge WHERE expires_at <= ?";
 
+inline constexpr std::string_view COUNT_TABLE =
+    "SELECT COUNT(*) AS total FROM sqlite_master "
+    "WHERE type = 'table' AND name = 'device_login_challenge'";
+
+inline constexpr std::string_view TABLE_COLUMNS =
+    "SELECT name FROM pragma_table_info('device_login_challenge')";
+
+struct AddedColumn
+{
+  std::string_view name;
+  std::string_view statement;
+};
+
+inline constexpr std::array<AddedColumn, 2> ADDED_COLUMNS{{
+    {.name = "platform",
+     .statement = "ALTER TABLE device_login_challenge ADD COLUMN platform TEXT "
+                  "NOT NULL DEFAULT 'unknown' CHECK (platform IN ('unknown', "
+                  "'android', 'ios', 'desktop', 'web'))"},
+    {.name = "device_name",
+     .statement = "ALTER TABLE device_login_challenge ADD COLUMN device_name "
+                  "TEXT NOT NULL DEFAULT ''"},
+}};
+
 }
 
 struct DeviceLoginChallengeCreateInput
@@ -41,6 +67,8 @@ struct DeviceLoginChallengeCreateInput
   std::string deviceHash;
   std::string userAgent;
   int64_t expiresAt{0};
+  SessionPlatform platform{SessionPlatform::Unknown};
+  std::string deviceName;
 };
 
 struct DeviceLoginChallengeMarkApprovedInput

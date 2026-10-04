@@ -98,6 +98,11 @@ std::string DeviceFilter::credentialFingerprint(const std::string& ua,
   return hashFingerprint(ua, secretHash);
 }
 
+std::string DeviceFilter::addressFingerprint(const AddressFingerprintInput& input)
+{
+  return hashFingerprint(input.userAgent, input.address);
+}
+
 std::string DeviceFilter::hashFingerprint(const std::string& ua,
                                           const std::string& ip)
 {

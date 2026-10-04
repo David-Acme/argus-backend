@@ -16,4 +16,6 @@ DeviceLoginChallengeSchema::DeviceLoginChallengeSchema(
     refreshToken = row["refresh_token"].as<std::string>();
   expiresAt = static_cast<int64_t>(row["expires_at"].as<long long>());
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
+  platform = sessionPlatformFromString(row["platform"].as<std::string>());
+  deviceName = row["device_name"].as<std::string>();
 }

@@ -19,8 +19,10 @@ inline constexpr const char* kUsersField = "users";
 inline constexpr const char* kActionField = "action";
 inline constexpr const char* kActionEmit = "emit";
 inline constexpr const char* kActionDisconnect = "disconnect";
+inline constexpr const char* kActionDisconnectSession = "disconnect_session";
 inline constexpr const char* kActionReplaceRoleRooms = "replace_role_rooms";
 inline constexpr const char* kUserField = "user";
+inline constexpr const char* kSessionField = "session";
 inline constexpr const char* kOldRoleField = "old_role";
 inline constexpr const char* kNewRoleField = "new_role";
 
@@ -61,6 +63,22 @@ inline Json::Value disconnectPayload(const SocketEmitDto& context,
   Json::Value payload = userEmitPayload(context, {userId});
   payload[kActionField] = kActionDisconnect;
   payload[kUserField] = static_cast<Json::Int64>(userId);
+  return payload;
+}
+
+struct SessionDisconnect
+{
+  int64_t userId{0};
+  std::string sessionId;
+};
+
+inline Json::Value disconnectSessionPayload(const SocketEmitDto& context,
+                                            const SessionDisconnect& target)
+{
+  Json::Value payload = userEmitPayload(context, {target.userId});
+  payload[kActionField] = kActionDisconnectSession;
+  payload[kUserField] = static_cast<Json::Int64>(target.userId);
+  payload[kSessionField] = target.sessionId;
   return payload;
 }
 

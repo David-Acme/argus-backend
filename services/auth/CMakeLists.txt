@@ -67,11 +67,6 @@ if(NOT TARGET argus::clients::identity)
                      ${CMAKE_BINARY_DIR}/clients/identity)
 endif()
 
-if(NOT TARGET argus::clients::sync)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/sync
-                     ${CMAKE_BINARY_DIR}/clients/sync)
-endif()
-
 find_package(doctest REQUIRED)
 
 file(GLOB AUTH_FEATURE_MODULES CONFIGURE_DEPENDS
@@ -96,7 +91,6 @@ argus_service(NAME argus-auth
             argus::lib::nats
             argus::contracts::auth
             argus::clients::identity
-            argus::clients::sync
             Drogon::Drogon
     PORTS 7042 7043)
 

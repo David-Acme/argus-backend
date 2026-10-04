@@ -72,3 +72,24 @@ target_link_libraries(auth-migration-test PRIVATE
 target_compile_options(auth-migration-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(auth-migration-test)
 add_test(NAME auth-migration-test COMMAND auth-migration-test)
+
+add_executable(session-management-test unit/session-management-test.cc)
+target_compile_definitions(session-management-test PRIVATE
+    ARGUS_AUTH_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(session-management-test PRIVATE
+    argus::auth-auth
+    argus::auth-session
+    argus::auth-device
+    argus::auth-rpc
+    argus::lib::auth
+    argus::lib::config
+    argus::lib::sqlite
+    argus::lib::text
+    argus::contracts::auth
+    argus::contracts::sync
+    argus::clients::identity
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(session-management-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(session-management-test)
+add_test(NAME session-management-test COMMAND session-management-test)

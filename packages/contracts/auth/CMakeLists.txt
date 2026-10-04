@@ -13,6 +13,7 @@ argus_contracts(NAME auth
         src/auth/auth-errors.hxx
         src/auth/device-login-status.hxx
         src/auth/request-context.hxx
+        src/auth/session-platform.hxx
         src/auth/user-role.hxx
     DEPENDS argus::lib::errors)
 

@@ -213,7 +213,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     auto req = drogon::HttpRequest::newHttpJsonRequest(payload);
     req->getAttributes()->insert(
         AuthContext::kJwtKey,
-        JwtContext{7, "Resident", UserRole::Resident, true, {}});
+        JwtContext{.sub = 7, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
     return req;
   };
 
@@ -263,7 +263,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     auto req = drogon::HttpRequest::newHttpJsonRequest(payload);
     req->getAttributes()->insert(
         AuthContext::kJwtKey,
-        JwtContext{7, "Resident", UserRole::Resident, true, {}});
+        JwtContext{.sub = 7, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
     return req;
   };
 
@@ -291,7 +291,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   summaryReq->setParameter("since", "1");
   summaryReq->getAttributes()->insert(
       AuthContext::kJwtKey,
-      JwtContext{7, "Resident", UserRole::Resident, true, {}});
+      JwtContext{.sub = 7, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
   const auto summary =
       drogon::sync_wait(notificationController.deliverySummary(summaryReq));
   REQUIRE(summary);
@@ -312,7 +312,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     auto req = drogon::HttpRequest::newHttpJsonRequest(payload);
     req->getAttributes()->insert(
         AuthContext::kJwtKey,
-        JwtContext{7, "Resident", UserRole::Resident, true, {}});
+        JwtContext{.sub = 7, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
     req->getAttributes()->insert(AuthContext::kDeviceKey,
                                  DeviceContext{deviceHash, "ua", "127.0.0.1"});
     return req;

@@ -6,6 +6,9 @@ auth	PATCH	/auth/logout	DeviceFilter,JwtFilter	-	services/auth/src/feature/auth/
 auth	PATCH	/auth/me	DeviceFilter,ValidJsonFilter,JwtFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
 auth	PATCH	/auth/refresh-token	DeviceFilter,ValidJsonFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
 auth	POST	/auth/register	DeviceFilter	multipart	services/auth/src/feature/auth/controllers/auth-controller.hxx
+auth	DELETE	/auth/sessions	DeviceFilter,JwtFilter,RoleFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
+auth	GET	/auth/sessions	DeviceFilter,JwtFilter,RoleFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
+auth	DELETE	/auth/sessions/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
 auth	GET	/auth/status	DeviceFilter,JwtFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
 camera	POST	/camera	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera/controllers/camera-controller.hxx
 camera	DELETE	/camera/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera/controllers/camera-controller.hxx

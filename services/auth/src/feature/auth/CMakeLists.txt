@@ -7,12 +7,18 @@ argus_module(NAME auth-auth
         dtos/poll-device-login-dto.cc
         dtos/refresh-token-dto.cc
         dtos/register-dto.cc
+        dtos/response-list-sessions-dto.cc
         dtos/response-login-dto.cc
         dtos/response-refresh-token-dto.cc
+        dtos/response-revoke-sessions-dto.cc
+        dtos/revoke-sessions-dto.cc
         dtos/start-device-login-dto.cc
         dtos/update-me-dto.cc
         infra/auth-rate-gate.cc
+        infra/client-identity.cc
         services/auth-feature-service.cc
+        services/session-events.cc
+        services/session-management-service.cc
     INCLUDES ../..
     DEPENDS
         argus::auth-config

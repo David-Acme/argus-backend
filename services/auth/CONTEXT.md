@@ -30,7 +30,8 @@ the user row behind a session comes from identity through
   tokens in clear only until the waiting device claims them.
 - A refresh is refused unless it comes from the agent the session was issued
   to (a missing `User-Agent` is a mismatch, not a skipped check) and, in
-  `credential` identity mode, from the same device hash. A stolen refresh
+  `credential` identity mode, from the same device hash; the one exception is
+  the move to the stable agent described under Sessions. A stolen refresh
   token without its device credential used to mint a session bound to the
   thief's hash. In `ip` mode the hash is not compared: it carries the IP,
   and the refresh is exactly how a phone that changed network gets a session
@@ -44,6 +45,99 @@ the user row behind a session comes from identity through
   HTTP surface (login, pairing, QR, refresh, logout) is this service's own
   subroute on port 7042 since Phase 3b-2, served over the RPC authority
   underneath it.
+
+## Sessions (2026-10)
+
+A session is one refresh-token family: every row a rotation writes carries
+the same `session_id` (32 hex characters, 128 random bits), minted at login,
+registration or the approval of a cross-device login and never shown with a
+token, a hash or a row id. The family also carries what the sessions screen
+shows: `platform` (`SessionPlatform`, `contracts/auth`, CHECK-constrained),
+`device_name`, `session_created_at` and `last_seen_at`. The family is active
+while its newest row is valid, unrotated and unexpired, so the list is one
+query over `(user_id, session_id)` and needs no table of its own.
+
+**Additive, at boot.** `refresh_token` and `device_login_challenge` gain their
+columns with `ALTER TABLE ... ADD COLUMN` in the beginning advice, before the
+schema file runs (the same guarded shape the change outbox uses), and every
+row without a session id receives one from `lower(hex(randomblob(16)))` in the
+same pass, so a database from before the change keeps every session. A row
+written later without one (a tool, an older binary during a rollback) is
+adopted the first time the verdict or a refresh meets it. The migration tool
+that copies the legacy tables out of `identity.db` now copies the source's
+own columns and refuses only a source column the target lacks; it used to
+read both column lists from the target (`"src".pragma_table_info` resolves
+to `main`), so its shape check compared the target with itself.
+
+**Platform and name come from the device that holds the session.** The app
+sends `User-Agent: Argus/1 (<platform>)`, `X-Argus-Client: <platform>/<version>`
+and an optional percent-encoded `X-Argus-Device`. The platform is read from
+`X-Argus-Client` first, then from the stable agent, else it is `unknown`; the
+name is decoded, stripped of control characters, cut at 64 characters and
+dropped whole when it is not UTF-8. For a QR login the poller's headers are
+stored on the challenge, so the session is labelled with the device that ends
+up holding it, not the approver. A refresh refreshes both and keeps the old
+value when the request carries none.
+
+**Last seen.** The verdict advances `last_seen_at` when the session was last
+seen a minute or more ago, with a conditional UPDATE that cannot write twice
+in that minute; a refresh writes it on the new row.
+
+**Revocation is a write plus two frames, in one transaction.** Revoking one
+session, the others, all of them, or logging out (now only the caller's own
+session) invalidates the family rows, then queues, through the change outbox
+and in the same transaction, a `disconnect_session` change for every revoked
+session and one `sessionsChanged` user emit, on `argus.auth.v1.session`
+(stream `ARGUS_AUTH_SESSION`). argus-sync consumes that subject and closes
+only the sockets tagged with that session id, after sending them
+`{"operation":7,"info":{"reason":"sessionRevoked","sessionId":...}}`. The
+imperative control RPC that logout used before is gone from this service: it
+disconnected every socket of the user with an `isActive:false` context, which
+the current app reads as a deactivation and answers by signing out of every
+device. Each revoked session is audited as a journal row (`user`, `delete`)
+whose data is the session id, the platform, the scope, the reason and who
+revoked it; no token, hash or agent. Without a broker nothing is queued: the
+rows are still invalid, so every service refuses the token, but no socket is
+told.
+
+**A revoked access token is refused at once.** No verdict is cached: the
+context cache holds the user context only, and the session row is read on
+every validation, by every service's `JwtFilter`, so the next request after
+the commit is refused. The tests measure it under a second, on the
+`JwtFilter` path every service runs.
+
+**Refresh-token reuse.** A refresh token now carries a `sid` claim, and every
+rotated row keeps the hash of the token it replaced. A presented token that is
+not the family's current one is a stale token of that family: when it is the
+immediate predecessor, was rotated no more than
+`[auth] refresh_reuse_grace_seconds` ago (30) and comes with the same binding
+(the same agent and, in credential mode, the same device hash), it is two
+requests racing the same rotation and gets a plain 401; anything else revokes
+the session with reason `refreshTokenReuse`. A token issued before the claim
+existed is found by its hash, or as the predecessor of an active row, so the
+first rotation after the upgrade is covered as well.
+
+**From a legacy agent to the stable one, once.** A session is bound to the
+exact agent that opened it, and the device hash carries that agent in both
+identity modes, so the app's switch to `Argus/1 (<platform>)` would have
+signed every device out. A refresh accepts the switch once per session, from
+an agent that is not of the stable form to one that is, when the device proves
+itself: in credential mode the presented device credential must be the one the
+session is bound to (`HMAC(old agent | sha256(credential))` equals the stored
+hash), in ip mode the request must come from the address the session was last
+bound to (`HMAC(old agent | address)` equals it). The new rows carry the
+stable agent; any later change is refused as before. In ip mode the proof is
+the address, which a household shares; that is no weaker than the binding it
+replaces, an agent string that is no secret, and a phone that changes network
+in the same instant signs in once more. Every request in between gets a
+`Device mismatch` 401, which the app answers with one refresh.
+
+**Who forwards.** `X-Forwarded-For` counts only when the immediate peer is in
+`[device] trusted_proxy_ips` (exact addresses or CIDRs) and
+`trust_forwarded_for` is set; loopback is no longer trusted implicitly. No
+first-party component writes the header (the tunnel carries the app's TLS
+unopened), so every template ships an empty list. `AuthRateGate` keeps its
+per-peer ceiling either way.
 
 ## Ownership and the three features
 
@@ -191,6 +285,19 @@ fleet gate, the device credential lookup, the refusal of a revoked or rotated
 session row on both validation paths, the effect a revocation has on the rows
 themselves, and — under `ARGUS_NATS_URL` — the live consumer, over a real gRPC
 server and a real `AuthClient` against a temporary database.
+
+`tests/unit/session-management-test.cc` boots on a database with the old
+`refresh_token` and `device_login_challenge` shapes and a live session in it,
+runs the boot migration, and then drives the sessions end to end through the
+real filters: the legacy session keeps validating and gets an id; sessions
+opened by QR carry the poller's platform and name; one revocation, the others,
+all, and a logout each end exactly the sessions they name, and the revoked
+access token is refused by `JwtFilter` in under a second; the frames and audit
+rows a recording sink captures carry no token, hash or agent; a rotated
+refresh token inside the window is a race and outside it, or from another
+agent, revokes the family; the legacy agent moves to the stable one once, only
+from its own address or credential; `last_seen_at` moves at most once a
+minute.
 
 The suite quits Drogon from `main()` **after** `doctest::Context::run()`
 instead of letting the exit-time static destructors do it. Measured: a binary

@@ -33,12 +33,6 @@ struct AuthRateLimitConfig
   int lockoutSeconds{300};
 };
 
-struct AuthSyncControlConfig
-{
-  std::string target;
-  std::string secret;
-};
-
 class AuthConfig
 {
 public:
@@ -52,7 +46,7 @@ public:
 
   [[nodiscard]] static AuthRateLimitConfig resolveRateLimit();
 
-  [[nodiscard]] static AuthSyncControlConfig resolveSyncControl();
-
   [[nodiscard]] static int64_t resolveContextCacheSeconds();
+
+  [[nodiscard]] static int64_t resolveRefreshReuseGraceSeconds();
 };

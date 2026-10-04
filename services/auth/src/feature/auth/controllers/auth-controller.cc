@@ -8,17 +8,45 @@
 #include <drogon/MultiPart.h>
 #include <errors/response-exception.hxx>
 #include <feature/auth/dtos/poll-device-login-dto.hxx>
+#include <feature/auth/dtos/revoke-sessions-dto.hxx>
+#include <feature/auth/infra/client-identity.hxx>
 #include <feature/auth/dtos/start-device-login-dto.hxx>
 #include <feature/auth/dtos/update-me-dto.hxx>
 #include <http/api-response.hxx>
 #include <utility>
 
-AuthController::AuthController(const IdentityClient* identity)
-    : service_({.jwtService = JwtService{},
-                .refreshTokenRepository = RefreshTokenRepository{},
-                .deviceCredentialRepository = DeviceCredentialRepository{},
-                .challengeRepository = DeviceLoginChallengeRepository{},
-                .identity = identity})
+namespace
+{
+LoginDeviceInput loginDeviceOf(const drogon::HttpRequestPtr& req)
+{
+  const auto& dev =
+      req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
+  return {.deviceHash = dev.deviceHash,
+          .userAgent = dev.userAgent,
+          .client = client_identity::of(req)};
+}
+
+std::string credentialHashOf(const drogon::HttpRequestPtr& req,
+                             const DeviceContext& device)
+{
+  if (!DeviceFilter::credentialMode() || device.deviceHash.empty())
+    return {};
+  return DeviceFilter::sha256Hex(
+      req->getHeader("X-Argus-Device-Credential"));
+}
+}
+
+AuthController::AuthController(const IdentityClient* identity,
+                               AuthFeatureService::Config config)
+    : authService_({.jwtService = JwtService{},
+                    .refreshTokenRepository = RefreshTokenRepository{},
+                    .deviceCredentialRepository = DeviceCredentialRepository{},
+                    .challengeRepository = DeviceLoginChallengeRepository{},
+                    .sessions = SessionManagementService(
+                        {.refreshTokenRepository = RefreshTokenRepository{}}),
+                    .identity = identity},
+                   config),
+      sessionService_({.refreshTokenRepository = RefreshTokenRepository{}})
 {
 }
 
@@ -30,11 +58,8 @@ AuthController::login(drogon::HttpRequestPtr req)
     throw ResponseException(AuthErrors::InvalidMultipartForm);
 
   auto body = LoginDto::form_multipart(parser);
-  const auto& dev =
-      req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
-
-  const auto result = co_await service_.login(
-      std::move(body), {.deviceHash = dev.deviceHash, .userAgent = dev.userAgent});
+  const auto result =
+      co_await authService_.login(std::move(body), loginDeviceOf(req));
 
   co_return ApiResponse::ok(result.toJson());
 }
@@ -47,11 +72,8 @@ AuthController::registerUser(drogon::HttpRequestPtr req)
     throw ResponseException(AuthErrors::InvalidMultipartForm);
 
   auto body = RegisterDto::form_multipart(parser);
-  const auto& dev =
-      req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
-
-  const auto result = co_await service_.registerUser(
-      std::move(body), {.deviceHash = dev.deviceHash, .userAgent = dev.userAgent});
+  const auto result =
+      co_await authService_.registerUser(std::move(body), loginDeviceOf(req));
 
   co_return ApiResponse::ok(result.toJson());
 }
@@ -77,8 +99,10 @@ AuthController::createDeviceLogin(drogon::HttpRequestPtr req)
   const auto& dev =
       req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
 
-  const auto result = co_await service_.createDeviceLogin(
-      {.device = {.deviceHash = DeviceFilter::deviceKey(req), .userAgent = dev.userAgent},
+  const auto result = co_await authService_.createDeviceLogin(
+      {.device = {.deviceHash = DeviceFilter::deviceKey(req),
+                  .userAgent = dev.userAgent,
+                  .client = client_identity::of(req)},
        .pollHash = body.pollHash});
 
   co_return ApiResponse::ok(result.toJson());
@@ -93,7 +117,7 @@ AuthController::approveDeviceLogin(drogon::HttpRequestPtr req,
   if (challengeId.empty())
     throw ResponseException(AuthErrors::MissingChallengeId);
 
-  co_await service_.approveDeviceLogin(challengeId, ctx.sub);
+  co_await authService_.approveDeviceLogin(challengeId, ctx.sub);
 
   Json::Value body(Json::objectValue);
   body["approved"] = true;
@@ -110,9 +134,11 @@ AuthController::pollDeviceLogin(drogon::HttpRequestPtr req,
   const auto body = PollDeviceLoginDto::fromRequest(req);
   const auto& dev =
       req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
-  const auto result = co_await service_.pollDeviceLogin(
+  const auto result = co_await authService_.pollDeviceLogin(
       {.challengeId = std::move(challengeId),
-       .device = {.deviceHash = DeviceFilter::deviceKey(req), .userAgent = dev.userAgent},
+       .device = {.deviceHash = DeviceFilter::deviceKey(req),
+                  .userAgent = dev.userAgent,
+                  .client = client_identity::of(req)},
        .proof = body.proof});
 
   co_return ApiResponse::ok(result.toJson());
@@ -125,8 +151,13 @@ AuthController::refreshToken(drogon::HttpRequestPtr req)
   const auto& dev =
       req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
 
-  const auto result = co_await service_.refreshToken(
-      {.body = body, .deviceHash = dev.deviceHash, .userAgent = dev.userAgent});
+  const auto result = co_await authService_.refreshToken(
+      {.body = body,
+       .deviceHash = dev.deviceHash,
+       .userAgent = dev.userAgent,
+       .ip = dev.ip,
+       .credentialHash = credentialHashOf(req, dev),
+       .client = client_identity::of(req)});
 
   co_return ApiResponse::ok(result.toJson());
 }
@@ -136,8 +167,7 @@ AuthController::logout(drogon::HttpRequestPtr req)
 {
   const auto& ctx = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
 
-  co_await service_.logout(
-      {.userId = ctx.sub, .name = ctx.name, .role = ctx.role});
+  co_await authService_.logout({.userId = ctx.sub, .sessionId = ctx.sessionId});
   co_return ApiResponse::noContent();
 }
 
@@ -148,8 +178,38 @@ AuthController::updateMe(drogon::HttpRequestPtr req)
 
   const auto body = UpdateMeDto::fromJson(*req->getJsonObject());
 
-  co_await service_.updateMe({.userId = ctx.sub,
+  co_await authService_.updateMe({.userId = ctx.sub,
                               .role = userRoleToString(ctx.role),
                               .name = body.name});
   co_return ApiResponse::ok();
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+AuthController::listSessions(drogon::HttpRequestPtr req)
+{
+  const auto& ctx = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto result = co_await sessionService_.list(
+      {.userId = ctx.sub, .currentSessionId = ctx.sessionId});
+  co_return ApiResponse::ok(result.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+AuthController::revokeSessions(drogon::HttpRequestPtr req)
+{
+  const auto body = RevokeSessionsDto::fromRequest(req);
+  const auto& ctx = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto result = co_await sessionService_.revokeScope(
+      {.owner = {.userId = ctx.sub, .currentSessionId = ctx.sessionId},
+       .scope = body.target});
+  co_return ApiResponse::ok(result.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+AuthController::revokeSession(drogon::HttpRequestPtr req, std::string sessionId)
+{
+  const auto& ctx = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto result = co_await sessionService_.revokeOne(
+      {.owner = {.userId = ctx.sub, .currentSessionId = ctx.sessionId},
+       .sessionId = std::move(sessionId)});
+  co_return ApiResponse::ok(result.toJson());
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <auth/device-login-status.hxx>
+#include <auth/session-platform.hxx>
 #include <cstdint>
 #include <drogon/orm/Field.h>
 #include <drogon/orm/Row.h>
@@ -19,6 +20,8 @@ struct DeviceLoginChallengeSchema
   std::string refreshToken;
   int64_t expiresAt{0};
   int64_t createdAt{0};
+  SessionPlatform platform{SessionPlatform::Unknown};
+  std::string deviceName;
 
   DeviceLoginChallengeSchema() = default;
   explicit DeviceLoginChallengeSchema(const drogon::orm::Row& row);

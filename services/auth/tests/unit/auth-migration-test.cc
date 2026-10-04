@@ -164,7 +164,9 @@ TEST_CASE("auth schema applies cleanly to an in-memory database")
       queryColumn(db.get(),
                   "SELECT name FROM sqlite_master WHERE type = 'index' AND "
                   "name LIKE 'idx_refresh_token%' ORDER BY name");
-  CHECK(indexes.size() == 3);
+  CHECK(indexes.size() == 4);
+  CHECK(std::ranges::find(indexes, "idx_refresh_token_session") !=
+        indexes.end());
 }
 
 TEST_CASE("migration copies auth tables into an empty target and verifies them")
@@ -187,6 +189,46 @@ TEST_CASE("migration copies auth tables into an empty target and verifies them")
     CHECK_FALSE(entry.sourceChecksum.empty());
     CHECK(entry.sourceChecksum == entry.targetChecksum);
   }
+}
+
+TEST_CASE("a source written before the session columns still migrates")
+{
+  const auto fixture = makeFixture();
+  {
+    const auto source = openFile(fixture.sourcePath);
+    exec(source.get(),
+         "CREATE TABLE refresh_token (id INTEGER NOT NULL PRIMARY KEY "
+         "AUTOINCREMENT, user_id INTEGER NOT NULL, access_token TEXT NOT NULL, "
+         "refresh_token TEXT NOT NULL, device_hash TEXT NOT NULL, user_agent "
+         "TEXT NOT NULL DEFAULT '', is_valid INTEGER NOT NULL DEFAULT 1, "
+         "is_used INTEGER NOT NULL DEFAULT 0, expires_at INTEGER NOT NULL, "
+         "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
+    exec(source.get(),
+         "CREATE TABLE device_login_challenge (id INTEGER NOT NULL PRIMARY KEY "
+         "AUTOINCREMENT, challenge_id TEXT NOT NULL UNIQUE, device_hash TEXT "
+         "NOT NULL, user_agent TEXT NOT NULL DEFAULT '', status TEXT NOT NULL "
+         "DEFAULT 'pending', user_id INTEGER, access_token TEXT, refresh_token "
+         "TEXT, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL "
+         "DEFAULT (strftime('%s', 'now')))");
+    exec(source.get(),
+         "CREATE TABLE device_credential (id INTEGER NOT NULL PRIMARY KEY "
+         "AUTOINCREMENT, user_id INTEGER NOT NULL, device_hash TEXT NOT NULL, "
+         "secret_hash TEXT NOT NULL UNIQUE, is_active INTEGER NOT NULL DEFAULT "
+         "1, created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
+    seedSource(source.get());
+  }
+
+  const auto report = migrateAuth({.sourcePath = fixture.sourcePath,
+                                   .targetPath = fixture.targetPath,
+                                   .schemaPath = ARGUS_AUTH_SCHEMA_PATH});
+  REQUIRE_MESSAGE(report.ok, report.error);
+
+  const auto target = openFile(fixture.targetPath);
+  CHECK(countOf(target.get(), "refresh_token") == 2);
+  CHECK(textOf(target.get(),
+               "SELECT platform FROM refresh_token WHERE id = 1") == "unknown");
+  CHECK(textOf(target.get(),
+               "SELECT session_id FROM refresh_token WHERE id = 1").empty());
 }
 
 TEST_CASE("migration merges beside rows the target already holds")

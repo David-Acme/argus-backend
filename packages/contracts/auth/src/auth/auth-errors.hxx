@@ -109,4 +109,8 @@ inline constexpr ErrorDefinition EnrolledFaceIndexFailed{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,
     .message = "Could not index enrolled face"};
+inline constexpr ErrorDefinition SessionNotFound{
+    .code = ErrorCode::SessionNotFound,
+    .status = 404,
+    .message = "Session not found"};
 }

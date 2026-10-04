@@ -69,6 +69,18 @@ TEST_CASE("disconnect and role-room payloads carry the room-control action")
   CHECK(roleRooms["new_role"] == "guest");
 }
 
+TEST_CASE("a session disconnect names the user room and the one session it closes")
+{
+  const Json::Value disconnect = sync_change::disconnectSessionPayload(
+      emitDto(SyncOperation::AuthContextChanged, TableName::User),
+      {.userId = 42, .sessionId = "0123456789abcdef0123456789abcdef"});
+  CHECK(disconnect["action"] == "disconnect_session");
+  CHECK(disconnect["operation"] == 7);
+  CHECK(disconnect["user"] == 42);
+  CHECK(disconnect["users"][0] == 42);
+  CHECK(disconnect["session"] == "0123456789abcdef0123456789abcdef");
+}
+
 TEST_CASE("payloads re-serialize to the client wire triple")
 {
   const SocketEmitDto body =

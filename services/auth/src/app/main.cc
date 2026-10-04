@@ -11,6 +11,7 @@
 #include <feature/auth/controllers/auth-controller.hxx>
 #include <feature/auth/infra/auth-rate-gate.hxx>
 #include <feature/device/repositories/device-credential/device-credential-repository.hxx>
+#include <feature/device/repositories/device-login-challenge/device-login-challenge-repository.hxx>
 #include <feature/session/repositories/change-outbox/change-outbox-repository.hxx>
 #include <feature/session/repositories/refresh-token/refresh-token-repository.hxx>
 #include <feature/session/services/auth-action-sink.hxx>
@@ -34,8 +35,6 @@
 #include <sqlite/db-service.hxx>
 #include <string>
 #include <sync/auth-change-sink.hxx>
-#include <sync/sync-client.hxx>
-#include <sync/sync-control-sink.hxx>
 #include <unistd.h>
 
 namespace
@@ -92,7 +91,6 @@ int main()
   const RemoteConfig remote = RemoteConfig::resolve();
   const AuthRpcConfig rpc = AuthConfig::resolveRpc();
   const AuthIdentityConfig identity = AuthConfig::resolveIdentity();
-  const AuthSyncControlConfig syncControl = AuthConfig::resolveSyncControl();
 
   requireDistinctTunnelPort(listener, remote);
 
@@ -109,18 +107,8 @@ int main()
                                   AuthConfig::resolveContextCacheSeconds()});
   DeviceCredentialRepository deviceCredentials;
   ChangeOutboxRepository changeOutbox;
-
-  std::shared_ptr<SyncClient> controlClient;
-  if (syncControl.target.empty()) {
-    LOG_INFO << "Sync control leg unconfigured; the imperative leg stays "
-                "uninstalled";
-  }
-  else {
-    controlClient = std::make_shared<SyncClient>(SyncClientConfig{
-        .target = syncControl.target, .fleetSecret = syncControl.secret});
-    sync_control::setSink(controlClient.get());
-    LOG_INFO << "Sync control leg -> gRPC " << syncControl.target;
-  }
+  RefreshTokenRepository refreshTokens;
+  DeviceLoginChallengeRepository loginChallenges;
 
   drogon::app().loadConfigJson(
       drogonConfig({.authDb = authDb, .listener = listener, .remote = remote}));
@@ -130,8 +118,11 @@ int main()
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
   drogon::app().registerFilter(std::make_shared<JwtFilter>());
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
-  drogon::app().registerController(
-      std::make_shared<AuthController>(identityClient.get()));
+  drogon::app().registerController(std::make_shared<AuthController>(
+      identityClient.get(),
+      AuthFeatureService::Config{
+          .refreshReuseGraceSeconds =
+              AuthConfig::resolveRefreshReuseGraceSeconds()}));
 
   AuthRateGate rateGate(AuthConfig::resolveRateLimit());
   RemoteGate remoteGate(remote);
@@ -206,15 +197,18 @@ int main()
         shutdown_signal::drainOf(*identityConsumer, "auth-identity"));
 
     actionSink = std::make_shared<AuthActionSink>(
-        natsBus, AuthActionSink::Config{.retryMs = kActionRetryMs,
-                                        .actionSubject =
-                                            nats_subject::kAuthUserAction,
-                                        .streamName =
-                                            nats_subject::kAuthChangeStream});
+        natsBus,
+        AuthActionSink::Config{
+            .retryMs = kActionRetryMs,
+            .actionSubject = nats_subject::kAuthUserAction,
+            .streamName = nats_subject::kAuthChangeStream,
+            .sessionSubject = nats_subject::kAuthSession,
+            .sessionStreamName = nats_subject::kAuthSessionStream});
     auth_change::setSink(actionSink.get());
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*actionSink, "auth-action"));
-    LOG_INFO << "Auth action journal -> " << nats_subject::kAuthUserAction;
+    LOG_INFO << "Auth action journal -> " << nats_subject::kAuthUserAction
+             << "; session changes -> " << nats_subject::kAuthSession;
 
     if (connected)
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
@@ -280,8 +274,11 @@ int main()
                                 : " (remote pairing and registration refused)");
 
   drogon::app().registerBeginningAdvice(
-      [&authDb, &changeOutbox, &identityConsumer, &actionSink]() {
+      [&authDb, &changeOutbox, &refreshTokens, &loginChallenges,
+       &identityConsumer, &actionSink]() {
         if (!changeOutbox.migrateLegacySchema() ||
+            !refreshTokens.migrateLegacySchema() ||
+            !loginChallenges.migrateLegacySchema() ||
             !DbService::runScriptFile(authDb.schemaPath)) {
           LOG_FATAL << "Auth database schema failed to apply — aborting startup";
           _exit(1);

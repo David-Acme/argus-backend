@@ -321,3 +321,24 @@ TEST_CASE("hasHttpAccess applies kGuardAccess route by route")
 
     CHECK(allows(UserRole::Owner, "/guard/decisions", drogon::Get));
 }
+
+TEST_CASE("every role lists and revokes its own sessions through kSessionAccess")
+{
+  const auto allows = [](UserRole role, std::string_view path, drogon::HttpMethod method) {
+    return role_access::hasHttpAccess({.role = role, .path = path, .method = method});
+  };
+
+  for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CAPTURE(userRoleToString(role));
+    CHECK(allows(role, "/auth/sessions", drogon::Get));
+    CHECK(allows(role, "/auth/sessions", drogon::Delete));
+    CHECK(allows(role, "/auth/sessions/0123456789abcdef0123456789abcdef", drogon::Delete));
+  }
+
+  CHECK_FALSE(allows(UserRole::Guard, "/auth/sessions/", drogon::Delete));
+  CHECK_FALSE(allows(UserRole::Guard, "/auth/sessions/a/b", drogon::Delete));
+  CHECK_FALSE(allows(UserRole::Guest, "/auth/sessions", drogon::Post));
+  CHECK_FALSE(allows(UserRole::Guard, "/auth/sessionsx", drogon::Delete));
+  CHECK_FALSE(allows(UserRole::Guest, "/auth/logout", drogon::Delete));
+  CHECK(allows(UserRole::Guard, "/auth/me", drogon::Get));
+}

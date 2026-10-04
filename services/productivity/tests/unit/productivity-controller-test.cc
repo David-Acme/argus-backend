@@ -362,7 +362,7 @@ void setActor(const SetActorInput& input)
 {
   input.req->getAttributes()->insert(
       AuthContext::kJwtKey,
-      JwtContext{input.sub, "Actor", input.role, true, {}});
+      JwtContext{.sub = input.sub, .name = "Actor", .role = input.role, .isActive = true, .deviceHash = {}, .sessionId = {}});
 }
 
 drogon::HttpRequestPtr ownerRequest(int64_t sub = 42)

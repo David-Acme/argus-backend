@@ -73,6 +73,7 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
   ctx.role = userRoleFromString(user.role());
   ctx.isActive = user.is_active();
   ctx.deviceHash = deviceHash;
+  ctx.sessionId = verdict->session_id();
 
   req->getAttributes()->insert(AuthContext::kJwtKey, ctx);
   co_return drogon::HttpResponsePtr{};
