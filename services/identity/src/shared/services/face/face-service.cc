@@ -522,7 +522,8 @@ FaceService::identifyAsync(std::string imageBytes)
   co_return co_await BlockingTask<std::optional<int64_t>>(
       [this, image = std::move(imageBytes)]() mutable {
         return identify(std::move(image));
-      });
+      },
+      BlockingLane::Heavy);
 }
 
 std::optional<FaceService::FaceResult>
@@ -552,5 +553,6 @@ FaceService::extractImageAsync(std::string imageBytes)
   co_return co_await BlockingTask<std::optional<FaceService::FaceResult>>(
       [this, image = std::move(imageBytes)]() mutable {
         return extractImage(std::move(image));
-      });
+      },
+      BlockingLane::Heavy);
 }

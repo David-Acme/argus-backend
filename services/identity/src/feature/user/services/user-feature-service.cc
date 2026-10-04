@@ -13,54 +13,14 @@
 #include <sync/sync-operation.hxx>
 #include <trantor/utils/Logger.h>
 
-#include <condition_variable>
-#include <functional>
-#include <mutex>
 
 namespace
 {
-class SessionNoticeOrder
+BlockingStrand& sessionNotices()
 {
-public:
-  static SessionNoticeOrder& instance()
-  {
-    static SessionNoticeOrder order;
-    return order;
-  }
-
-  uint64_t take()
-  {
-    std::scoped_lock lock(mutex_);
-    return next_++;
-  }
-
-  void runInTurn(uint64_t ticket, const std::function<void()>& work)
-  {
-    {
-      std::unique_lock lock(mutex_);
-      turn_.wait(lock, [this, ticket] { return serving_ == ticket; });
-    }
-    struct Advance
-    {
-      SessionNoticeOrder& order;
-      ~Advance()
-      {
-        {
-          std::scoped_lock lock(order.mutex_);
-          ++order.serving_;
-        }
-        order.turn_.notify_all();
-      }
-    } advance{*this};
-    work();
-  }
-
-private:
-  std::mutex mutex_;
-  std::condition_variable turn_;
-  uint64_t next_{0};
-  uint64_t serving_{0};
-};
+  static BlockingStrand strand;
+  return strand;
+}
 
 bool removesLastActiveOwner(const UserSchema& before,
                             const UserManagementUpdateInput& input)
@@ -167,10 +127,8 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
   }
 
   if (roleChanged || deactivated) {
-    const uint64_t ticket = SessionNoticeOrder::instance().take();
-    co_await BlockingTask<void>([this, updated, oldRole = existing->role,
-                                 roleChanged, deactivated, ticket] {
-      SessionNoticeOrder::instance().runInTurn(ticket, [&] {
+    co_await BlockingTask<void>(
+        [this, updated, oldRole = existing->role, roleChanged, deactivated] {
         const auto* control = sync_control::getSink();
         if (roleChanged) {
           if (control &&
@@ -190,8 +148,8 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
           if (!control->disconnectUser(updated.id, context))
             LOG_WARN << "Identity: disconnect failed for user " << updated.id;
         }
-      });
-    });
+        },
+        sessionNotices());
   }
   co_return updated;
 }

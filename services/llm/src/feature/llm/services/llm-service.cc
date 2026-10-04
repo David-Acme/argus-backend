@@ -649,7 +649,7 @@ void LlmService::chatStream(const ChatRequest& req, TokenCallback onToken)
 drogon::Task<std::string> LlmService::chatAsync(const ChatRequest& req)
 {
   co_return co_await BlockingTask<std::string>(
-      [this, req]() { return chat(req); });
+      [this, req]() { return chat(req); }, BlockingLane::Heavy);
 }
 
 drogon::Task<void> LlmService::chatStreamAsync(const ChatRequest& req,
@@ -663,6 +663,7 @@ drogon::Task<void> LlmService::chatStreamAsync(const ChatRequest& req,
               [callback, token, done]() { callback(token, done); });
         };
         generateStream(generateInput(req), std::move(wrapped));
-      });
+      },
+      BlockingLane::Heavy);
   co_return;
 }

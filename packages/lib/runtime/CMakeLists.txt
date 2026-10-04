@@ -13,6 +13,8 @@ argus_lib(NAME runtime
         src/runtime/log-output.cc
         src/runtime/log-output.hxx
         src/runtime/ai-init.hxx
+        src/runtime/blocking-pool.cc
+        src/runtime/blocking-pool.hxx
         src/runtime/blocking-task.hxx
         src/runtime/cancellation-token.hxx
         src/runtime/wake-signal.hxx
@@ -74,6 +76,24 @@ target_link_libraries(wake-signal-test PRIVATE argus::lib::runtime
     doctest::doctest)
 target_compile_options(wake-signal-test PRIVATE -Wall -Wextra)
 add_test(NAME wake-signal-test COMMAND wake-signal-test)
+
+add_executable(blocking-pool-test tests/unit/blocking-pool-test.cc)
+target_link_libraries(blocking-pool-test PRIVATE argus::lib::runtime
+    doctest::doctest)
+target_compile_options(blocking-pool-test PRIVATE -Wall -Wextra)
+add_test(NAME blocking-pool-test COMMAND blocking-pool-test)
+
+add_executable(blocking-task-test tests/unit/blocking-task-test.cc)
+target_link_libraries(blocking-task-test PRIVATE argus::lib::runtime
+    doctest::doctest)
+target_compile_options(blocking-task-test PRIVATE -Wall -Wextra)
+add_test(NAME blocking-task-test COMMAND blocking-task-test)
+
+add_executable(blocking-pool-stress-test tests/unit/blocking-pool-stress-test.cc)
+target_link_libraries(blocking-pool-stress-test PRIVATE argus::lib::runtime
+    doctest::doctest)
+target_compile_options(blocking-pool-stress-test PRIVATE -Wall -Wextra)
+add_test(NAME blocking-pool-stress-test COMMAND blocking-pool-stress-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

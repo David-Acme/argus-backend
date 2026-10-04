@@ -37,6 +37,16 @@ int inferenceSlots()
   return std::clamp(hardwareThreads() / 8, 1, 4);
 }
 
+int blockingLightThreads()
+{
+  return std::clamp(hardwareThreads() * 4, 16, 64);
+}
+
+int blockingHeavyThreads()
+{
+  return std::clamp(hardwareThreads(), 4, 16);
+}
+
 int ttsThreads()
 {
   return std::clamp(hardwareThreads() / 2, 2, 8);

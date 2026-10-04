@@ -18,6 +18,10 @@ int lightThreads();
 
 int inferenceSlots();
 
+int blockingLightThreads();
+
+int blockingHeavyThreads();
+
 int ttsThreads();
 
 int extractionSlots();

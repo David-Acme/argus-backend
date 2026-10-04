@@ -631,7 +631,7 @@ drogon::Task<std::vector<float>>
 TtsService::synthesizeAsync(const TtsRequest& req)
 {
   co_return co_await BlockingTask<std::vector<float>>(
-      [this, req]() { return synthesize(req); });
+      [this, req]() { return synthesize(req); }, BlockingLane::Heavy);
 }
 
 drogon::Task<void> TtsService::synthesizeStreamAsync(const TtsRequest& req,
@@ -645,7 +645,7 @@ drogon::Task<void> TtsService::synthesizeStreamAsync(const TtsRequest& req,
               [callback, chunkPcm]() { callback(chunkPcm); });
         };
     synthesizeStream(req, std::move(wrapped));
-  });
+  }, BlockingLane::Heavy);
   co_return;
 }
 

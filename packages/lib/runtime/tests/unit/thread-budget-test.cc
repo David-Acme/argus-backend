@@ -45,6 +45,13 @@ TEST_CASE("every budget stays within its own clamp bounds")
 
     CHECK(ThreadBudget::extractionThreads() >= 1);
     CHECK(ThreadBudget::extractionThreads() <= 4);
+
+    CHECK(ThreadBudget::blockingLightThreads() >= 16);
+    CHECK(ThreadBudget::blockingLightThreads() <= 64);
+    CHECK(ThreadBudget::blockingLightThreads() >= ThreadBudget::lightThreads());
+
+    CHECK(ThreadBudget::blockingHeavyThreads() >= 4);
+    CHECK(ThreadBudget::blockingHeavyThreads() <= 16);
 }
 
 TEST_CASE("each budget is monotonic non-decreasing in the hardware count")
@@ -66,6 +73,10 @@ TEST_CASE("each budget is monotonic non-decreasing in the hardware count")
          [](int hw) { return std::clamp(hw / 8, 1, 4); }},
         {"extractionThreads", ThreadBudget::extractionThreads,
          [](int hw) { return std::clamp(hw / 4, 1, 4); }},
+        {"blockingLightThreads", ThreadBudget::blockingLightThreads,
+         [](int hw) { return std::clamp(hw * 4, 16, 64); }},
+        {"blockingHeavyThreads", ThreadBudget::blockingHeavyThreads,
+         [](int hw) { return std::clamp(hw, 4, 16); }},
     };
 
     for (const auto& contract : contracts) {

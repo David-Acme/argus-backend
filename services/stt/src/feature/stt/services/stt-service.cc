@@ -266,5 +266,6 @@ std::string SttService::decode(const std::vector<float>& samples,
 drogon::Task<std::string> SttService::transcribeAsync(TranscribeRequest request)
 {
   co_return co_await BlockingTask<std::string>(
-      [this, request = std::move(request)]() { return transcribe(request); });
+      [this, request = std::move(request)]() { return transcribe(request); },
+      BlockingLane::Heavy);
 }

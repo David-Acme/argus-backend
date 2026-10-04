@@ -238,7 +238,8 @@ LlmController::chat(drogon::HttpRequestPtr req)
 
   const auto t0 = std::chrono::steady_clock::now();
   auto outcome = co_await BlockingTask<LlmChatOutcome>(
-      [this, request = body.request()] { return chatSync(request); });
+      [this, request = body.request()] { return chatSync(request); },
+      BlockingLane::Heavy);
   const double ms =
       std::chrono::duration<double, std::milli>(
           std::chrono::steady_clock::now() - t0)

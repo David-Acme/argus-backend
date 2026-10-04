@@ -376,7 +376,12 @@ Every AI service exposes a sync method (`chat`, `describe`, `transcribe`,
 `synthesize`) AND a coroutine variant (`chatAsync`, `describeAsync`,
 `transcribeAsync`, `synthesizeAsync`) that wraps the sync one in
 `BlockingTask` (see `packages/lib/runtime/src/runtime/blocking-task.hxx`,
-which has a `void` specialization). Controllers/services on the event loop
+which has a `void` specialization) on the heavy lane
+(`BlockingTask<T>(fn, BlockingLane::Heavy)`); blocking RPC/IO stays on the
+default light lane. Both lanes are bounded pools sized from `ThreadBudget`, so
+a job must never wait on another job of its own lane — ordered work posts to a
+`BlockingStrand` (`packages/lib/runtime/AGENTS.md`, "The blocking lanes").
+Controllers/services on the event loop
 MUST `co_await` the Async variant — never call the sync method directly.
 Streaming variants marshal callbacks into the loop via `queueInLoop`.
 

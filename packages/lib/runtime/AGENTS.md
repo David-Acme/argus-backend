@@ -18,9 +18,14 @@ both variants have to answer the same numbers.
 ## Layout
 
 - `src/runtime/blocking-task.hxx` — `BlockingTask<T>`: an awaitable that runs a
-  blocking callable on a detached thread and resumes the coroutine, the
-  `camera-sync-source` pattern. A blocking SDK call goes through this, never
-  straight into a Drogon handler.
+  blocking callable off the loop and resumes the coroutine on Drogon's main
+  loop. A blocking SDK call goes through this, never straight into a Drogon
+  handler. `BlockingTask<T>(fn)` runs on the light lane; an inference call
+  passes `BlockingLane::Heavy`; work that must run one at a time in arrival
+  order passes a `BlockingStrand&` instead of waiting for a turn on a worker.
+- `src/runtime/blocking-pool.{hxx,cc}` — the two process-wide lanes behind it
+  (`blocking_pool::lane`, `submit`, `statsOf`), the `ElasticPool` they are made
+  of and `BlockingStrand`. See "The blocking lanes" below.
 - `src/runtime/cancellation-token.hxx` — `CancellationToken`: a shared atomic
   flag a long operation polls; `cancel`/`reset`/`cancelled`.
 - `src/runtime/wake-signal.hxx` — `WakeSignal`: `notify`/`waitFor`, a
@@ -111,3 +116,41 @@ with the app still running — the window the sqlite freeze is armed from.
 
 `tests/unit/app-runner.hxx` — the shared `AppRunner` the two suites above boot
 a throwaway Drogon app with, plus `waitForBoot` and `waitUntil`.
+
+## The blocking lanes
+
+`BlockingTask` used to start a detached `std::thread` per call. Nothing bounded
+it: a burst of 2000 slow calls (20 ms each) peaked at 1000 live threads in the
+stress suite, and each call paid a thread start (15.4 µs per empty job against
+3.9 µs on a reused worker, 20 000 jobs). It now hands the callable to one of two
+`ElasticPool`s, created on first use (nothing starts at load time):
+
+- **Light** (the default): blocking RPC and IO — the auth verdict every request
+  waits on, the identity directory, the camera actions, the sync pulls. Core
+  `ThreadBudget::lightThreads()` workers stay; extra workers up to
+  `ThreadBudget::blockingLightThreads()` (`clamp(hw * 4, 16, 64)`) start the
+  moment a job finds no idle worker and retire after 30 s idle. These calls
+  wait on the network, not on a core, so the lane grows instead of queueing
+  until its cap; past it, jobs queue in arrival order.
+- **Heavy**: AI inference (`chatAsync`, `chatStreamAsync`, `describeAsync`,
+  `transcribeAsync`, `synthesizeAsync`, face identify/extract, the extractor,
+  the LLM controller). One core worker, up to
+  `ThreadBudget::blockingHeavyThreads()` (`clamp(hw, 4, 16)`). The engines
+  serialise themselves (rule 13d's mutexes, the face semaphore), so this lane
+  only caps how many callers may wait on them. Its point is isolation: a
+  minute-long generation never holds a worker the auth verdict needs. Measured
+  (`blocking-pool-stress-test`, 32 jobs of 300 ms saturating the long lane,
+  200 short jobs at 2 ms intervals): one shared pool of 8 made a short job wait
+  p50 1001 ms / p99 1191 ms; the two lanes kept it at p50 0.01 ms / p99 0.03 ms
+  with 9 threads.
+
+**Deadlock rule.** A job must never block waiting for another job of the same
+lane: with a bounded lane, enough such jobs hold every worker while the job
+they wait for sits in the queue. Identity's session notices did exactly that
+(a ticket per call, each worker waiting for its turn); they now post to a
+`BlockingStrand`, which keeps the arrival order without holding a worker while
+it waits. Waiting on something outside the pool (a database commit callback,
+another service's reply) is fine. The lanes are leaked-by-design statics:
+their destructor only asks idle workers to leave, workers own the shared
+state, and a worker still inside a call at exit is not joined.
+

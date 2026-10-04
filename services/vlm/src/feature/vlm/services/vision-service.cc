@@ -388,12 +388,13 @@ std::string VisionService::describeMat(const VisionDescribeMatInput& input)
 drogon::Task<std::string> VisionService::describeAsync(const VisionRequest& req)
 {
   co_return co_await BlockingTask<std::string>(
-      [this, req]() { return describe(req); });
+      [this, req]() { return describe(req); }, BlockingLane::Heavy);
 }
 
 drogon::Task<std::string>
 VisionService::describeMatAsync(const VisionDescribeMatInput& input)
 {
   co_return co_await BlockingTask<std::string>(
-      [this, input]() { return describeMat(input); });
+      [this, input]() { return describeMat(input); },
+      BlockingLane::Heavy);
 }

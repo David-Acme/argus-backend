@@ -1,0 +1,156 @@
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest/doctest.h>
+#include <runtime/blocking-task.hxx>
+
+#include "app-runner.hxx"
+
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
+
+using namespace std::chrono_literals;
+
+namespace
+{
+
+void onLoop(std::function<drogon::Task<void>()> body)
+{
+  drogon::app().getLoop()->queueInLoop(
+      [body = std::move(body)]() { drogon::async_run(body); });
+}
+
+struct Outcome
+{
+  std::atomic<bool> done{false};
+  std::atomic<bool> resumedOnLoop{false};
+  std::mutex mutex;
+  std::string value;
+};
+
+}
+
+static void valueResumesOnLoop()
+{
+  auto outcome = std::make_shared<Outcome>();
+  onLoop([outcome]() -> drogon::Task<void> {
+    const auto value = co_await BlockingTask<std::string>([] {
+      std::this_thread::sleep_for(5ms);
+      return std::string("ready");
+    });
+    {
+      std::scoped_lock lock(outcome->mutex);
+      outcome->value = value;
+    }
+    outcome->resumedOnLoop = drogon::app().getLoop()->isInLoopThread();
+    outcome->done = true;
+  });
+
+  REQUIRE(waitUntil([outcome] { return outcome->done.load(); }, 5s));
+  CHECK(outcome->resumedOnLoop.load());
+  std::scoped_lock lock(outcome->mutex);
+  CHECK(outcome->value == "ready");
+}
+
+static void carriesNonDefaultConstructible()
+{
+  struct Only
+  {
+    explicit Only(int v) : value(v) {}
+    int value;
+  };
+  auto seen = std::make_shared<std::atomic<int>>(0);
+  onLoop([seen]() -> drogon::Task<void> {
+    const auto only =
+        co_await BlockingTask<Only>([] { return Only(42); }, BlockingLane::Heavy);
+    seen->store(only.value);
+  });
+
+  CHECK(waitUntil([seen] { return seen->load() == 42; }, 5s));
+}
+
+static void rethrowsOffLoopException()
+{
+  auto caught = std::make_shared<std::atomic<bool>>(false);
+  onLoop([caught]() -> drogon::Task<void> {
+    try {
+      co_await BlockingTask<void>([] { throw std::runtime_error("off loop"); });
+    }
+    catch (const std::runtime_error& error) {
+      caught->store(std::string(error.what()) == "off loop");
+    }
+  });
+
+  CHECK(waitUntil([caught] { return caught->load(); }, 5s));
+}
+
+static void strandKeepsArrivalOrder()
+{
+  static BlockingStrand strand;
+  auto order = std::make_shared<std::vector<int>>();
+  auto mutex = std::make_shared<std::mutex>();
+  auto finished = std::make_shared<std::atomic<int>>(0);
+  onLoop([order, mutex, finished]() -> drogon::Task<void> {
+    for (int i = 0; i < 50; ++i) {
+      drogon::async_run([i, order, mutex, finished]() -> drogon::Task<void> {
+        co_await BlockingTask<void>(
+            [i, order, mutex] {
+              std::this_thread::sleep_for(std::chrono::microseconds((50 - i) * 20));
+              std::scoped_lock lock(*mutex);
+              order->push_back(i);
+            },
+            strand);
+        finished->fetch_add(1);
+      });
+    }
+    co_return;
+  });
+
+  REQUIRE(waitUntil([finished] { return finished->load() == 50; }, 10s));
+  std::scoped_lock lock(*mutex);
+  REQUIRE(order->size() == 50);
+  for (int i = 0; i < 50; ++i)
+    CHECK((*order)[static_cast<std::size_t>(i)] == i);
+}
+
+static void thousandAwaitsStayCapped()
+{
+  auto finished = std::make_shared<std::atomic<int>>(0);
+  onLoop([finished]() -> drogon::Task<void> {
+    for (int i = 0; i < 1000; ++i) {
+      drogon::async_run([finished]() -> drogon::Task<void> {
+        co_await BlockingTask<int>([] {
+          std::this_thread::sleep_for(2ms);
+          return 1;
+        });
+        finished->fetch_add(1);
+      });
+    }
+    co_return;
+  });
+
+  REQUIRE(waitUntil([finished] { return finished->load() == 1000; }, 30s));
+  const auto stats = blocking_pool::statsOf(BlockingLane::Light);
+  CHECK(stats.peakThreads <= blocking_pool::limitsFor(BlockingLane::Light).maxThreads);
+  CHECK(stats.peakThreads >= 2);
+}
+
+TEST_CASE("blocking tasks resume their coroutines on the main loop")
+{
+  AppRunner runner;
+  REQUIRE(waitForBoot(5s));
+  INFO("a blocking task hands its value back on the main loop");
+  valueResumesOnLoop();
+  INFO("a value type without a default constructor is carried");
+  carriesNonDefaultConstructible();
+  INFO("an exception thrown off the loop is rethrown in the coroutine");
+  rethrowsOffLoopException();
+  INFO("a strand keeps the order in which the coroutines reached it");
+  strandKeepsArrivalOrder();
+  INFO("a thousand concurrent awaits stay inside the light lane's cap");
+  thousandAwaitsStayCapped();
+}

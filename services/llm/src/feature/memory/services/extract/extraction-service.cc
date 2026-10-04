@@ -442,5 +442,5 @@ drogon::Task<std::optional<Json::Value>>
 ExtractionService::extractAsync(const ExtractRequest& request)
 {
   co_return co_await BlockingTask<std::optional<Json::Value>>{
-      [this, request] { return extract(request); }};
+      [this, request] { return extract(request); }, BlockingLane::Heavy};
 }
