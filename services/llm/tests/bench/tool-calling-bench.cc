@@ -1,6 +1,7 @@
 #include <chrono>
 #include <drogon/drogon.h>
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -81,6 +82,50 @@ struct VoiceTally
   long long ttftMs = 0;
 };
 
+struct VoicePersona
+{
+  std::string spanish = kVoicePersona;
+  std::string english = kVoicePersona;
+  bool rowLanguage = false;
+  float temperature = 0.0F;
+};
+
+std::string readFile(const std::string& path)
+{
+  std::ifstream in(path);
+  std::ostringstream text;
+  text << in.rdbuf();
+  return text.str();
+}
+
+bool looksEnglish(const std::string& text)
+{
+  static const std::vector<std::string> kAccents{"\xc3\xa1", "\xc3\xa9", "\xc3\xad", "\xc3\xb3",
+                                                 "\xc3\xba", "\xc3\xb1", "\xc2\xbf", "\xc2\xa1"};
+  if (std::ranges::any_of(kAccents, [&text](const std::string& mark) { return text.find(mark) != std::string::npos; }))
+    return false;
+  static const std::vector<std::string> kWords{"the", "my", "that", "is", "what", "show", "did", "are", "i",
+                                               "it", "this", "please", "remember", "save", "note", "you", "do"};
+  std::istringstream words(text);
+  std::string word;
+  while (words >> word) {
+    std::string bare;
+    for (const char c : word)
+      if (std::isalpha(static_cast<unsigned char>(c)) != 0)
+        bare.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    if (std::ranges::find(kWords, bare) != kWords.end())
+      return true;
+  }
+  return false;
+}
+
+std::string oneLine(std::string text)
+{
+  std::ranges::replace(text, '\n', ' ');
+  std::ranges::replace(text, '\t', ' ');
+  return text;
+}
+
 bool expectedFor(const std::string& label, const std::vector<std::string>& ran)
 {
   const auto has = [&ran](const char* name) {
@@ -94,7 +139,7 @@ bool expectedFor(const std::string& label, const std::vector<std::string>& ran)
   return ran.empty();
 }
 
-int voiceSuite(const std::vector<Case>& cases)
+int voiceSuite(const std::vector<Case>& cases, const VoicePersona& persona)
 {
   std::vector<std::string> ran;
   for (auto descriptor : memoryToolDescriptors()) {
@@ -124,13 +169,14 @@ int voiceSuite(const std::vector<Case>& cases)
     std::vector<std::string> actions;
     long long first = -1;
     const long long t0 = nowMs();
+    const bool english = persona.rowLanguage && looksEnglish(c.text);
     ChatRequest request;
-    request.messages = {{.role = "system", .content = kVoicePersona},
+    request.messages = {{.role = "system", .content = english ? persona.english : persona.spanish},
                         {.role = "user", .content = c.text}};
-    request.temperature = 0.0F;
+    request.temperature = persona.temperature;
     request.userId = 7;
     request.role = UserRole::Owner;
-    request.lang = "es";
+    request.lang = english ? "en" : "es";
     request.clientActions = true;
     request.sessionId = "bench";
     std::string reply;
@@ -163,7 +209,7 @@ int voiceSuite(const std::vector<Case>& cases)
     for (const auto& name : ran)
       std::cout << name << " ";
     std::cout << "\t" << (first < 0 ? nowMs() - t0 : first) << " ms\t"
-              << reply.substr(0, 80) << "\n";
+              << (persona.rowLanguage ? request.lang + "\t" + oneLine(reply) : reply.substr(0, 80)) << "\n";
   }
 
   std::cout << "\nlabel\ttotal\texpected\tmemory_write\tapp_action\tany_tool\tmean_ttft_ms\n";
@@ -186,6 +232,7 @@ int main(int argc, char** argv)
   std::string configPath;
   float temperature = 0.0F;
   std::string checkPath = kDefaultCases;
+  VoicePersona persona;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
     if (arg == "--verbose")
@@ -202,9 +249,16 @@ int main(int argc, char** argv)
       checkPath = argv[++i];
     else if (arg == "--temp" && i + 1 < argc)
       temperature = std::stof(argv[++i]);
+    else if (arg == "--persona-es" && i + 1 < argc)
+      persona.spanish = readFile(argv[++i]);
+    else if (arg == "--persona-en" && i + 1 < argc)
+      persona.english = readFile(argv[++i]);
+    else if (arg == "--row-lang")
+      persona.rowLanguage = true;
     else if (arg == "--help") {
       std::cout << "argus-tool-bench [--verbose] [--voice] [--config <toml>] "
-                   "[--filter <label>] [--limit <n>] [--check <path>] [--temp <t>]\n";
+                   "[--filter <label>] [--limit <n>] [--check <path>] [--temp <t>] "
+                   "[--row-lang] [--persona-es <file>] [--persona-en <file>]\n";
       return 0;
     }
   }
@@ -223,7 +277,8 @@ int main(int argc, char** argv)
     auto cases = loadCases(checkPath);
     if (limit > 0 && static_cast<size_t>(limit) < cases.size())
       cases.resize(static_cast<size_t>(limit));
-    return voiceSuite(cases);
+    persona.temperature = temperature;
+    return voiceSuite(cases, persona);
   }
 
   gLlm.init();
