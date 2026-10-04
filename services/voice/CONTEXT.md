@@ -344,9 +344,28 @@ What WebRTC gives a voice agent, and where Argus stands on each:
 | Opus at 16-32 kbps | PCM16 at 256 kbps each way (115 MB per hour of call): irrelevant on the LAN, noticeable on mobile data through the tunnel |
 | ICE/STUN/TURN | Not needed on the LAN; the tunnel is TCP, so WebRTC through it would need TURN over TCP/TLS, which brings head-of-line blocking back |
 
-Measured on this machine (latency check on scratch engines, see the
-budget table in the report): the network is not where a turn's time
-goes. End of speech to first audio is the VAD endpoint (`min_silence_frames`
+Measured on this machine (2026-10-03, scratch argus-llm and argus-stt
+prod 8530e7ec, argus-tts release with Pocket, argus-voice dev, a gRPC
+harness that streams synthesized Spanish speech in real time and times
+the frames; end of the user's audio to Argus's first audio):
+
+| Turn | Before (96e7b3f4) | After (f3f64259..b0e26992) |
+|---|---|---|
+| 1 ("Hola Argus, ¿cómo estás hoy?") | 3456 ms | 823 ms |
+| 2 (agenda) | 1635 ms | 1511 ms |
+| 3 (cats) | 1523 ms | 1870 ms |
+| 4 (guard mode) | 1602 ms | 1754 ms |
+| 5 ("vale, gracias") | 660 ms | 1199 ms |
+
+The first turn is the priming (argus-llm prefilled ~720 tokens while the
+greeting played). Turns 2-5 differ by the reply the model chose, mostly by
+the length of its first sentence; the per-turn log of the new build splits
+them: VAD endpoint 384 ms (before the clock starts), STT 38-70 ms, LLM
+first token 195-561 ms, first token to first audio 250-1290 ms (the first
+sentence being written; Pocket's first chunk is ~90 ms in release, ~1 s
+in a debug build at RTF ~2). The lead-in flush (bfb86590) attacks that
+last term and was not yet in this measurement. The network is not where a
+turn's time goes. End of speech to first audio is the VAD endpoint (`min_silence_frames`
 × 32 ms = 384 ms), STT (40-60 ms), the LLM's first token (240-500 ms with
 a warm prefix) and the first sentence plus its first TTS chunk.
 
