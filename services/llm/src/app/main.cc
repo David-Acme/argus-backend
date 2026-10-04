@@ -181,6 +181,7 @@ int main()
     ToolRegistry::instance().registerTool(std::move(descriptor));
 
   SettingsRegistry settings(llmSettingsCatalog());
+  settings.onChange([&llm](const std::vector<std::string>&) { llm->service().refreshSampling(); });
   if (llama_supports_gpu_offload())
     settings.declareCapability("gpu");
 
