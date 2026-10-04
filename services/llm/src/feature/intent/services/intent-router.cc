@@ -56,12 +56,13 @@ intent::IntentDecision IntentRouter::decide(const std::string& text,
   const RuleParser parser(catalog_);
   const RuleParseInput input{.text = text, .lang = lang};
 
-  if (parser.isCancellation(input)) {
+  const bool triggered = parser.parse(input).has_value();
+  if (!triggered && parser.isCancellation(input)) {
     return {.intent = intent::ToolIntent::MemoryForget,
             .fromRules = true,
             .confident = true};
   }
-  if (parser.parse(input) || parser.parseStatement(input)) {
+  if (triggered || parser.parseStatement(input)) {
     const intent::ToolIntent kind = factOrReminder(text, lang);
     return {.intent = kind,
             .score = 1.0F,

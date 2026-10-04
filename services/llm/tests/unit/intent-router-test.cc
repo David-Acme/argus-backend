@@ -144,6 +144,21 @@ TEST_CASE("a cancellation is a forget decided by the rules")
 
   CHECK(router.decide("olvida lo que te dije del perro", "es").intent ==
         intent::ToolIntent::MemoryForget);
+  CHECK(router.decide("forget that, it doesn't matter", "en").intent ==
+        intent::ToolIntent::MemoryForget);
+}
+
+TEST_CASE("a save trigger that contains a cancellation phrase is still a save")
+{
+  BuiltCatalog catalog;
+  const AlwaysCameraClassifier wrong;
+  const IntentRouter router(
+      {.catalog = catalog.value, .model = wrong, .recurrent = nullptr});
+
+  const auto decision = router.decide("don't forget that the dog eats at 7", "en");
+  CHECK(decision.confident);
+  CHECK(decision.fromRules);
+  CHECK(decision.intent != intent::ToolIntent::MemoryForget);
 }
 
 TEST_CASE("normalizeInput reproduces the training normalisation")

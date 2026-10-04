@@ -233,10 +233,10 @@ MemoryFormation::observe(const Observation& obs,
     if (clause.empty())
       return std::nullopt;
 
-    const bool explicitTrigger =
-        parsed.has_value() || statement.has_value() ||
-        (obs.decided && obs.typeHint == "schedule" && namesATime({.text = obs.text, .lang = obs.lang}));
-    askedToKeep = parsed.has_value() || obs.typeHint == "schedule";
+    const bool timedRequest = obs.decided && obs.typeHint == "schedule" && !statement.has_value() &&
+                              namesATime({.text = obs.text, .lang = obs.lang});
+    const bool explicitTrigger = parsed.has_value() || statement.has_value() || timedRequest;
+    askedToKeep = parsed.has_value() || timedRequest;
 
     if (!parsed.has_value() &&
         ruleParser_.isQuestion({.text = obs.text, .lang = obs.lang}))

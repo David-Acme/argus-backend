@@ -604,7 +604,14 @@ The voice session and argus-llm agreed this contract with the voice agent:
   speaker's: its subject is the user's own entity. So is a note asked for
   with a rule trigger ("anota que llegó el paquete", "recuerda que el wifi se
   cae cada semana") whose lexicon extraction finds no subject. Without the
-  model tier in the turn such requests otherwise stored nothing. "Enciende la luz de la cocina", routed by
+  model tier in the turn such requests otherwise stored nothing. A
+  statement-start match is not a timed request: the vocabulary's "la cámara"
+  statement start made "muéstrame la cámara 3" a reminder, and the 3 read as a
+  time. Without a trigger or a subject it stores nothing.
+- **A save trigger outranks a cancellation inside it.** "don't forget that
+  the dog eats at 7" contains the cancellation "forget that", and the router
+  answered it with `memory.forget`. The router now tries the rule triggers
+  first and treats a cancellation as a forget only when no trigger matched. "Enciende la luz de la cocina", routed by
   fastText at 0.96, stores nothing; before, an empty extraction let it
   through the rule path. The tool handlers extract with the lexicon tier
   only (`allowModel = false`). NuExtract inside a call's turn measured 23 s

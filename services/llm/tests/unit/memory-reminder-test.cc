@@ -218,6 +218,12 @@ TEST_CASE("memory writes keep to the user's own words and forgetting stays in sc
   REQUIRE(noted.ok);
   CHECK(lowered(noted.output).find("paquete") != std::string::npos);
 
+  auto camera = callFor("memory.remind", kSpeaker);
+  camera.context.utterance = "muéstrame la cámara 3";
+  camera.arguments["text"] = camera.context.utterance;
+  camera.context.decided = true;
+  CHECK_FALSE(run(camera).ok);
+
   auto command = callFor("memory.remember", kSpeaker);
   command.context.utterance = "enciende la luz de la cocina";
   command.arguments["text"] = command.context.utterance;
