@@ -13,6 +13,8 @@
 namespace
 {
 
+constexpr std::string_view kNotePredicate = "nota";
+
 bool mentionsFirstPerson(const std::string& text)
 {
   const std::string norm = " " + text_norm::whitespace(text) + " ";
@@ -234,6 +236,7 @@ MemoryFormation::observe(const Observation& obs,
       return std::nullopt;
 
     const bool timedRequest = obs.decided && obs.typeHint == "schedule" && !statement.has_value() &&
+                              !ruleParser_.isCommand({.text = obs.text, .lang = obs.lang}) &&
                               namesATime({.text = obs.text, .lang = obs.lang});
     const bool explicitTrigger = parsed.has_value() || statement.has_value() || timedRequest;
     askedToKeep = parsed.has_value() || timedRequest;
@@ -247,7 +250,7 @@ MemoryFormation::observe(const Observation& obs,
       extractor_->extract({.clause = clause,
                            .lang = obs.lang,
                            .userId = obs.userId,
-                           .requireModel = !explicitTrigger,
+                           .requireModel = !explicitTrigger || obs.refines > 0,
                            .allowModel = obs.allowModel},
                           extracted);
 
@@ -272,11 +275,11 @@ MemoryFormation::observe(const Observation& obs,
           first.tier == extract::ExtractTier::Lexicon ? "lexicon" : "model";
     }
     else {
-      if (extractor_ && !explicitTrigger)
+      if (obs.refines > 0 || (extractor_ && !explicitTrigger))
         return std::nullopt;
       extracted.clear();
       value = clause;
-      predicate = "nota";
+      predicate = std::string(kNotePredicate);
       factType = factTypeFromMemoryType(memoryTypeToString(gate.type));
       priority = gate.priority;
       result.source = "rule";
@@ -386,10 +389,19 @@ MemoryFormation::observe(const Observation& obs,
                               .scope = "user",
                               .refId = obs.userId,
                               .now = obs.at,
-                              .sourceId = sourceId});
+                              .sourceId = sourceId,
+                              .supersedes = predicate != kNotePredicate});
   }();
   if (factId == 0)
     return std::nullopt;
+  if (obs.refines > 0) {
+    std::scoped_lock lock(graph_.mutex());
+    if (!graph_.closeFact({.factId = obs.refines, .refId = obs.userId, .at = obs.at})) {
+      graph_.closeFact({.factId = factId, .refId = obs.userId, .at = obs.at});
+      return std::nullopt;
+    }
+    result.refined = true;
+  }
 
   result.factId = factId;
   result.subjectEntityId = entityId;

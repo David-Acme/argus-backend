@@ -137,6 +137,14 @@ private:
     bool preferIdle = false;
   };
 
+  struct NoteRefinement
+  {
+    const FormationResult& note;
+    int64_t userId = 0;
+    std::string text;
+    std::string lang;
+  };
+
   VecDb& vecDb_;
   IMemoryChat& chat_;
   std::unique_ptr<SqliteGraph> graph_{std::make_unique<SqliteGraph>()};
@@ -188,6 +196,7 @@ private:
   std::string buildProfile(int64_t userId, const std::string& lang);
   int64_t captureInline(const InlineCapture& capture);
   void deferCapture(const InlineCapture& capture);
+  void refineLater(const NoteRefinement& refinement);
   void embedAndStore(int64_t factId, bool episode);
   void rebuildAll();
 

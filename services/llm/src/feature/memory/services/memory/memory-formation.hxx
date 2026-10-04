@@ -25,6 +25,7 @@ struct Observation
   bool salient = false;
   bool decided = false;
   std::string typeHint;
+  int64_t refines = 0;
 };
 
 struct FormationResult
@@ -35,6 +36,7 @@ struct FormationResult
   std::string canonical;
   bool superseded = false;
   std::string source;
+  bool refined = false;
 };
 
 struct MemoryFormationDeps

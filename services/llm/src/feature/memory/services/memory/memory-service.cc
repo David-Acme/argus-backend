@@ -226,11 +226,16 @@ void MemoryService::processExtract(const MemoryJob& job)
                                           .allowModel = true,
                                           .salient = job.salient,
                                           .decided = false,
-                                          .typeHint = {}});
-  if (!formed)
+                                          .typeHint = {},
+                                          .refines = job.memoryId});
+  if (!formed) {
+    if (job.memoryId > 0)
+      LOG_INFO << "MemoryService: note " << job.memoryId << " kept; the model found no fact in it";
     return;
+  }
   LOG_INFO << "MemoryService: deferred extraction stored fact "
-           << formed->factId << " (" << formed->source << ")";
+           << formed->factId << " (" << formed->source << ")"
+           << (formed->refined ? " in place of note " + std::to_string(job.memoryId) : std::string());
   enqueueJob({.kind = MemoryJob::Kind::Embed,
               .memoryId = formed->factId,
               .userId = 0,
@@ -462,7 +467,8 @@ int64_t MemoryService::captureInline(const InlineCapture& capture)
                                           .allowModel = false,
                                           .salient = capture.salient,
                                           .decided = false,
-                                          .typeHint = {}});
+                                          .typeHint = {},
+                                          .refines = 0});
   if (!formed)
     return 0;
   enqueueJob({.kind = MemoryJob::Kind::Embed,
@@ -492,6 +498,20 @@ void MemoryService::deferCapture(const InlineCapture& capture)
               .lang = capture.lang,
               .preferIdle = capture.preferIdle,
               .salient = capture.salient,
+              .episode = false});
+}
+
+void MemoryService::refineLater(const NoteRefinement& refinement)
+{
+  if (refinement.note.source != "rule" || refinement.note.factId <= 0 || refinement.userId <= 0)
+    return;
+  enqueueJob({.kind = MemoryJob::Kind::Extract,
+              .memoryId = refinement.note.factId,
+              .userId = refinement.userId,
+              .text = refinement.text,
+              .lang = refinement.lang,
+              .preferIdle = true,
+              .salient = false,
               .episode = false});
 }
 
@@ -1102,13 +1122,16 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
                                .allowModel = false,
                                .salient = false,
                                .decided = call.context.decided,
-                               .typeHint = {}},
+                               .typeHint = {},
+                               .refines = 0},
                               grounded);
   };
   auto formed = observe(text);
   if (!formed && !call.context.utterance.empty() &&
-      call.context.utterance != text)
-    formed = observe(call.context.utterance);
+      call.context.utterance != text) {
+    text = call.context.utterance;
+    formed = observe(text);
+  }
   if (!formed) {
     result.output = english(call) ? "I could not save that." : "No pude guardar eso.";
     return result;
@@ -1125,6 +1148,7 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
               .preferIdle = false,
               .salient = false,
               .episode = false});
+  refineLater({.note = *formed, .userId = call.context.userId, .text = text, .lang = call.context.lang});
   result.output = (english(call) ? "Saved: " : "Guardado: ") + spoken(formed->canonical);
   return result;
 }
@@ -1156,7 +1180,8 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
                                           .allowModel = false,
                                           .salient = false,
                                           .decided = call.context.decided,
-                                          .typeHint = "schedule"},
+                                          .typeHint = "schedule",
+                                          .refines = 0},
                                          grounded);
   if (!formed) {
     result.output = english(call) ? "I could not save the reminder."

@@ -36,6 +36,10 @@ inline constexpr const char* FIND_OPEN_FACT =
     "SELECT id FROM memory_fact WHERE entity_id = ? AND predicate = ? "
     "AND scope = ? AND ref_id = ? AND valid_to = 0 LIMIT 1";
 
+inline constexpr const char* FIND_OPEN_FACT_WITH_VALUE =
+    "SELECT id FROM memory_fact WHERE entity_id = ? AND predicate = ? "
+    "AND value = ? AND scope = ? AND ref_id = ? AND valid_to = 0 LIMIT 1";
+
 inline constexpr const char* INSERT_FACT =
     "INSERT INTO memory_fact (entity_id, predicate, value, canonical, "
     "type, priority, confidence, lang, scope, ref_id, valid_from, "

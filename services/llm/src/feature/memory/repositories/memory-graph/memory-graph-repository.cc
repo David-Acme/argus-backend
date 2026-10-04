@@ -127,7 +127,16 @@ int64_t MemoryGraphRepository::upsertFact(sqlite3* db,
     return 0;
   SqliteStmt stmt;
   int64_t oldId = 0;
-  if (stmt.prepare(db, FIND_OPEN_FACT)) {
+  if (!input.supersedes && stmt.prepare(db, FIND_OPEN_FACT_WITH_VALUE)) {
+    stmt.bindInt64(1, input.entityId);
+    stmt.bindText(2, input.predicate);
+    stmt.bindText(3, input.value);
+    stmt.bindText(4, input.scope);
+    stmt.bindInt64(5, input.refId);
+    if (stmt.step() == SQLITE_ROW)
+      return stmt.columnInt64(0);
+  }
+  if (input.supersedes && stmt.prepare(db, FIND_OPEN_FACT)) {
     stmt.bindInt64(1, input.entityId);
     stmt.bindText(2, input.predicate);
     stmt.bindText(3, input.scope);
@@ -154,17 +163,16 @@ int64_t MemoryGraphRepository::upsertFact(sqlite3* db,
     return 0;
   const int64_t newId = lastRowId(db);
 
-  if (oldId > 0) {
-    if (stmt.prepare(db, CLOSE_FACT)) {
-      stmt.bindInt64(1, input.now);
-      stmt.bindInt64(2, input.now);
-      stmt.bindInt64(3, oldId);
-      stmt.step();
-    }
-    insertEdge(db, {.kind = "supersedes",
-                    .src = oldId,
-                    .dst = newId,
-                    .since = input.now});
+  if (oldId > 0 && stmt.prepare(db, CLOSE_FACT)) {
+    stmt.bindInt64(1, input.now);
+    stmt.bindInt64(2, input.now);
+    stmt.bindInt64(3, oldId);
+    stmt.bindInt64(4, input.refId);
+    if (stmt.step() == SQLITE_DONE && sqlite3_changes(db) > 0)
+      insertEdge(db, {.kind = "supersedes",
+                      .src = oldId,
+                      .dst = newId,
+                      .since = input.now});
   }
   if (input.sourceId)
     insertEdge(db, {.kind = "derived", .dst = *input.sourceId});

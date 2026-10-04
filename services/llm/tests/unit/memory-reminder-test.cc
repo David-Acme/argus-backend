@@ -1,17 +1,21 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <llama.h>
 #include <shared/vocabulary/tool-contracts.hxx>
+#include <sqlite3.h>
 #include <config/config-service.hxx>
 #include <feature/memory/services/memory/memory-chat.hxx>
 #include <feature/memory/services/memory/memory-service.hxx>
 #include <sqlite/vec-db.hxx>
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -21,6 +25,9 @@ namespace
 #endif
 #ifndef ARGUS_TEST_MEMORY_MODELS_DIR
 #define ARGUS_TEST_MEMORY_MODELS_DIR "models/memory"
+#endif
+#ifndef ARGUS_TEST_EXTRACT_MODEL
+#define ARGUS_TEST_EXTRACT_MODEL "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"
 #endif
 
 constexpr const char* kScratchConfig = "memory-reminder-test.toml";
@@ -33,10 +40,11 @@ class SilentChat final : public IMemoryChat
 public:
   bool available() const override { return false; }
   bool busy() const override { return false; }
-  std::string chat(const ChatRequest&) const override { return {}; }
+  [[nodiscard]] std::string chat(const ChatRequest&) const override { return {}; }
 };
 
-void writeConfig(const std::string& database = "reminder.db")
+void writeConfig(const std::string& database = "reminder.db",
+                 const std::string& extractModel = std::string(kScratchDir) + "/none.gguf")
 {
   std::remove(kScratchConfig);
   std::ofstream config(kScratchConfig);
@@ -54,7 +62,7 @@ void writeConfig(const std::string& database = "reminder.db")
          << "/tokenizer.json\"\n"
          << "embedding_preload = true\n"
          << "[extract]\n"
-         << "model_path = \"" << kScratchDir << "/none.gguf\"\n";
+         << "model_path = \"" << extractModel << "\"\n";
 }
 
 std::string lowered(std::string text)
@@ -234,6 +242,145 @@ TEST_CASE("memory writes keep to the user's own words and forgetting stays in sc
   nothing.arguments["query"] = "el color favorito de la vecina";
   CHECK_FALSE(run(nothing).ok);
 
+  service.shutdown();
+  std::remove(kScratchConfig);
+}
+
+namespace
+{
+struct OpenFact
+{
+  std::string predicate;
+  std::string canonical;
+};
+
+std::vector<OpenFact> openFacts(const std::string& database)
+{
+  std::vector<OpenFact> facts;
+  sqlite3* db = nullptr;
+  if (sqlite3_open_v2(database.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+    sqlite3_close(db);
+    return facts;
+  }
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db, "SELECT predicate, canonical FROM memory_fact WHERE valid_to = 0", -1, &stmt,
+                         nullptr) == SQLITE_OK) {
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+      facts.push_back({.predicate = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)),
+                       .canonical = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1))});
+  }
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return facts;
+}
+}
+
+TEST_CASE("an explicit request kept as a note is refined off the turn by the extraction model")
+{
+  std::filesystem::create_directories(kScratchDir);
+  writeConfig("refine.db", ARGUS_TEST_EXTRACT_MODEL);
+  ConfigService::load(kScratchConfig);
+  const std::string database = std::string(kScratchDir) + "/refine.db";
+  std::filesystem::remove(database);
+  llama_backend_init();
+  {
+    SilentChat chat;
+    MemoryService service(VecDb::instance(), chat);
+    service.init({});
+    REQUIRE(service.isLoaded());
+    const auto descriptors = service.toolDescriptors();
+    const auto run = [&descriptors](const tools::ToolCall& call) {
+      for (const auto& descriptor : descriptors)
+        if (descriptor.name == call.name)
+          return descriptor.handler(call);
+      return tools::ToolResult{};
+    };
+
+    auto gate = callFor("memory.remember", kSpeaker);
+    gate.context.utterance = "guarda que el código del portón es 1234";
+    gate.arguments["text"] = gate.context.utterance;
+    gate.context.decided = true;
+    const auto saved = run(gate);
+    INFO("gate output: " << saved.output);
+    REQUIRE(saved.ok);
+    CHECK(saved.output.find("1234") != std::string::npos);
+
+    auto parcel = callFor("memory.remember", kSpeaker);
+    parcel.context.utterance = "anota que llegó el paquete";
+    parcel.arguments["text"] = parcel.context.utterance;
+    parcel.context.decided = true;
+    REQUIRE(run(parcel).ok);
+
+    REQUIRE(service.flushPending(180000));
+    const auto facts = openFacts(database);
+    const auto holding = [&facts](const std::string& needle) {
+      return std::ranges::count_if(facts, [&needle](const OpenFact& fact) {
+        return fact.canonical.find(needle) != std::string::npos;
+      });
+    };
+    for (const auto& fact : facts)
+      MESSAGE("open fact: " << fact.predicate << " | " << fact.canonical);
+    CHECK(holding("1234") == 1);
+    CHECK(holding("paquete") == 1);
+    const bool gateRefined = std::ranges::any_of(facts, [](const OpenFact& fact) {
+      return fact.canonical.find("1234") != std::string::npos && fact.predicate != "nota";
+    });
+    CHECK(gateRefined);
+
+    auto recall = callFor("memory.recall", kSpeaker);
+    recall.arguments["query"] = "código del portón";
+    CHECK(run(recall).output.find("1234") != std::string::npos);
+    service.shutdown();
+  }
+  llama_backend_free();
+  std::remove(kScratchConfig);
+}
+
+TEST_CASE("a newer value of the same fact closes the older one, and notes never close each other")
+{
+  std::filesystem::create_directories(kScratchDir);
+  writeConfig("supersede.db");
+  ConfigService::load(kScratchConfig);
+  const std::string database = std::string(kScratchDir) + "/supersede.db";
+  std::filesystem::remove(database);
+  SilentChat chat;
+  MemoryService service(VecDb::instance(), chat);
+  service.init({});
+  REQUIRE(service.isLoaded());
+  const auto descriptors = service.toolDescriptors();
+  const auto run = [&descriptors](const tools::ToolCall& call) {
+    for (const auto& descriptor : descriptors)
+      if (descriptor.name == call.name)
+        return descriptor.handler(call);
+    return tools::ToolResult{};
+  };
+  const auto remember = [&run](const std::string& utterance) {
+    auto call = callFor("memory.remember", kSpeaker);
+    call.context.utterance = utterance;
+    call.arguments["text"] = utterance;
+    call.context.decided = true;
+    return run(call);
+  };
+
+  REQUIRE(remember("recuerda que mi hermana viene los domingos").ok);
+  REQUIRE(remember("recuerda que mi hermana viene los sábados").ok);
+  REQUIRE(remember("anota que llegó el paquete").ok);
+  REQUIRE(remember("anota que el wifi se cae cada semana").ok);
+  REQUIRE(remember("anota que llegó el paquete").ok);
+  REQUIRE(service.flushPending(60000));
+
+  const auto facts = openFacts(database);
+  for (const auto& fact : facts)
+    MESSAGE("open fact: " << fact.predicate << " | " << fact.canonical);
+  const auto holding = [&facts](const std::string& needle) {
+    return std::ranges::count_if(facts, [&needle](const OpenFact& fact) {
+      return fact.canonical.find(needle) != std::string::npos;
+    });
+  };
+  CHECK(holding("domingos") == 0);
+  CHECK(holding("sábados") == 1);
+  CHECK(holding("paquete") == 1);
+  CHECK(holding("wifi") == 1);
   service.shutdown();
   std::remove(kScratchConfig);
 }

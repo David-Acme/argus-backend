@@ -238,14 +238,38 @@ llama context is built and say "restart"; `memory.observe_camera_events` is
 read once by `main.cc` to decide whether the encounter consumer starts, and
 `memory.embedding_preload` once at embedding init, so both say "restart" too.
 
-The sampling keys say "restart" for now. `resolveSampling()`
-(`feature/llm/services/sampling-config.cc`) is the one reader of them and
-`LlmService::init()` copies its result into the engine's members, but those
-members and the inline `defaultTemperature()`/`defaultMaxTokens()` accessors
-are declared in `packages/clients/llm/src/llm/llm-service.hxx`. Making them
-live needs that header to hold the set as one guarded value with a
-`refreshSampling()` that `main.cc` calls from the registry's `onChange`; once
-it does, the nine sampling specs flip to `SettingApply::Live`.
+The ten sampling keys apply live: `llm.temperature`, `llm.max_tokens`,
+`llm.top_k`, `llm.top_p`, `llm.min_p`, the four penalties and `llm.seed`.
+The set is one `LlmSampling` value inside `LlmService`
+(`packages/clients/llm/src/llm/llm-service.hxx`), guarded by its own mutex
+and copied once per generation. `main.cc` registers
+`settings.onChange(... refreshSampling())`, so a change persisted through
+`argus.settings.v1` is resolved again from `config.toml` and the next
+generation samples with it: the request in flight keeps the values it started
+with, the following turn reads the new ones. `resolveSampling()`
+(`feature/llm/services/sampling-config.cc`) is the one reader. An absent key
+takes the catalog's fallback (0.85, 256, 20, 0.8, 0, 64, 1.1, 0, 0, random
+seed), so the fallback the app shows is what runs; before, an absent
+`llm.temperature` ran at 0 and an absent `llm.max_tokens` at 16. A
+hand-edited value is clamped to a sane range instead of reaching llama.cpp:
+temperature 0–2, max tokens 16–4096, top-k 1–200, top-p 0.05–1, min-p 0–0.5,
+penalty window 1–1024, repeat penalty 1–2, frequency and presence penalties
+0–2, seed ≥ 0 (0 means a new seed per generation). The catalog's own ranges
+are narrower where the app offers a slider (max tokens 32–2048).
+
+`llm.min_p` is new (advanced, 0–0.5, 0 = off). When it is above 0 the chain
+gains `llama_sampler_init_min_p` after top-p: it drops every token whose
+probability is below that fraction of the best token's, which keeps a high
+temperature from picking stray tokens. It is the knob the llama.cpp and
+Liquid AI sampling guides pair with temperature; top-k and top-p stay as they
+were. Each key carries its unit for the app (`tokens`, `entries`, `ms`,
+`layers`, `threads`; unitless otherwise).
+
+The engine keys still say "restart": they shape the llama context, which is
+built once. Inside the tool loop, tool hops and the answer to a routed call
+run at `toolTemperature` 0; the plain prose answer of a turn, which is what a
+voice call hears on most turns (the voice session sends no temperature), uses
+`llm.temperature`, and every answer takes `llm.max_tokens` as its budget.
 
 The `settings` entry of `[rpc.callers]` is the only credential the settings
 service accepts, and `LlmConfig::resolveRpc()` removes it from the chat
@@ -628,6 +652,45 @@ The voice session and argus-llm agreed this contract with the voice agent:
   only (`allowModel = false`). NuExtract inside a call's turn measured 23 s
   of `tool_ms` on a loaded machine. The deferred extract job still uses the
   model.
+- **A command is not a statement about its object.** The vocabulary's
+  statement starts are noun phrases ("la cámara", "la luz", "the heating"),
+  accepted within the first five words, so "muéstrame la cámara 3",
+  "enciende la luz de la cocina" and "turn off the heating" were stored as
+  facts about the camera, the light and the heating. `lib/phrase` now has a
+  `Command` phrase kind (imperatives, request openers such as "puedes",
+  "por favor", "can you", "quiero ver") plus the accented-clitic imperative
+  form ("muéstrame", "explícame"; the memory verbs "recuérdame", "apúntalo"
+  and the like excepted). A statement start is ignored when its clause, after
+  fillers, opens with a command; `RuleParser::isCommand` answers the same for
+  the whole utterance, and a router-decided reminder whose words open with a
+  command is not a timed request either.
+- **Plain save requests are triggers.** "save that", "save this", "store
+  that", "guarda esto", "guárdame esto", "memoriza que", "no te olvides de
+  que", "quiero que guardes que", "toma nota" and their variants were not in
+  the vocabulary. The router sent such a request to `memory.remember` on
+  fastText's word, formation refused it as not explicit, and the model then
+  answered "lo he guardado" for a fact that was never written (9 of 16 such
+  probes before this change).
+- **A note the fast tier could not structure is refined off the turn.** An
+  explicit request whose lexicon extraction finds no complete triple is
+  stored at once as the speaker's note (`predicate = nota`, the clause as
+  written), so the confirmation the user hears is true and the fact survives
+  a restart. `MemoryService::refineLater` then queues an extract job for that
+  note (`MemoryJob::memoryId` names it, `preferIdle`), and the worker runs
+  NuExtract on the utterance after the turn, when the chat engine is idle.
+  When the model returns a usable triple it is stored with the clause as its
+  canonical text and the note is closed; when the note was forgotten in the
+  meantime the new fact is closed too, and when the model finds nothing the
+  note stays. Nothing is confirmed later: the user already heard a true
+  "Guardado", and a second confirmation would repeat it. NuExtract never runs
+  inside a turn: in a call it measured 23 s of `tool_ms` on a loaded machine.
+- **A newer value closes the older one; notes accumulate.** `upsertFact`
+  looked for the open fact with the same entity and predicate and bound three
+  of `CLOSE_FACT`'s four parameters, so since the close was scoped to its
+  owner (`ref_id`) nothing was ever closed and a "supersedes" edge pointed
+  at a fact that stayed open. It binds the owner now and adds the edge only
+  when a row was closed. A note is many-valued (`supersedes = false`): every
+  "anota que …" stays, and saving the same note twice keeps one row.
 - **`memory.forget` takes a `query`**, the fact in the user's words, instead
   of a `fact_id` the model could only invent. It closes the user's open fact
   that shares the most words with the query. The close is scoped to the
@@ -696,3 +759,32 @@ controller, `clientActions`, recording handlers, `check.tsv`):
 - Saves: 19 of 20.
 - Neither: 22 of 27.
 - Mean TTFT: 374 ms (camera), 789 ms (save), 328 ms (neither).
+
+**After the command, trigger and note changes (2026-10-04)**, HTTP chat
+without app tools, same 150 rows plus 16 explicit save requests and 10 app
+commands (`check.tsv`, `negatives.tsv` and two scratch probe sets), the prod
+build at HEAD against the prod build with the changes, temperature 0, each
+row in its own language and persona:
+
+| | saves stored (25) | explicit save probes stored (16) | commands that wrote or tried a write (10) | false writes (66 `none`) |
+|---|---|---|---|---|
+| HEAD (llm as of ed766524) | 24 | 7, every miss answered "lo he guardado" / "I've saved" | 10 tried, 1 stored ("show me the camera 3") | 2 |
+| this work | 25 | 15 ("apunta el código del wifi, es casa2024" has no trigger) | 0 | 2 ("la alarma se activa a las 10", "la cámara de mi teléfono no funciona", both statements) |
+
+Of the eight rule notes the run left, NuExtract refined two off the turn
+("el código del portón es 1234", "the gate code is 1234") and kept six as
+notes. Inside a call (`argus-tool-bench --voice`, `check.tsv`): camera 56/56
+and saves 19/20 in both builds; "neither" rows 22/27 → 23/27 with 3 → 2
+memory writes.
+
+**Persona language (A/B).** The call prompt is written in English and says
+"Reply strictly in Spanish/English". A Spanish-written prompt for Spanish
+calls was compared on `argus-tool-bench --voice --row-lang` (150 rows each
+in its own language, temperature 0 and 0.85, two seeds, 600 replies per
+variant): no reply in either variant was in the wrong language or mixed
+languages, and tool selection was identical (59/59 camera, 25/25 saves,
+45/66 neither). The English prompt stays. The switch that was heard live
+("modo outside of home" in a Spanish answer, 3 of 16 "¿en qué modo está la
+vigilancia?" turns in the 2026-10-04 call runs) happens inside a call with
+an app situation note, which the single-turn bench does not reproduce; it
+needs a call-level A/B.

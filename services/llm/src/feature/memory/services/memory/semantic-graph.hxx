@@ -50,6 +50,7 @@ struct FactUpsertInput
   int64_t refId;
   int64_t now;
   std::optional<int64_t> sourceId;
+  bool supersedes = true;
 };
 
 struct FactCloseInput
