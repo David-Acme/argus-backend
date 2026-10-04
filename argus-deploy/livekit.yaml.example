@@ -1,0 +1,32 @@
+port: 7880
+bind_addresses:
+  - 127.0.0.1
+  - 172.19.0.1
+key_file: /etc/livekit/keys.yaml
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+  enable_loopback_candidate: false
+  congestion_control:
+    enabled: true
+    allow_pause: false
+room:
+  auto_create: true
+  empty_timeout: 60
+  departure_timeout: 20
+  max_participants: 8
+  enabled_codecs:
+    - mime: audio/opus
+    - mime: audio/red
+    - mime: video/vp8
+    - mime: video/h264
+logging:
+  level: info
+  pion_level: error
+turn:
+  enabled: false
+  domain: ""
+  udp_port: 3478
+  tls_port: 5349
+  external_tls: false

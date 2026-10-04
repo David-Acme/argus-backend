@@ -456,6 +456,15 @@ shared file-static behind a mutex.
   trims per-tile detail and makes the model stop reading text below 256).
   The prompt is built as ChatML by hand: `llama_chat_apply_template()` is NOT
   a jinja parser and mangles LFM2.5's template.
+- **LiveKit** (realtime calls over WebRTC): `livekit/livekit-server:v1.13.7`
+  plus an nginx TLS front (port 7046, the instance certificate) in
+  `argus-deploy/docker-compose.yml`, `scripts/livekit.sh` natively; the
+  agent side is the official LiveKit C++ SDK 1.12.0 (a C++ layer over the
+  Rust SDK's `livekit-ffi`), fetched as the pinned prebuilt release archive at
+  configure time into `third_party/livekit-sdk/` and verified against
+  `services/voice/src/feature/rtc/livekit-sdk.sha256`; only `services/voice`
+  links it (`LiveKit::livekit`, SYSTEM, two shared libraries copied beside the
+  binary). The API key pair is argus-sync's `[rtc]` secret, never a client's.
 - **sqlite-vec** (vendored in `third_party/sqlite-vec/`, MIT/Apache-2.0) — vec0
   vector search; compiled with `SQLITE_CORE`, registered via
   `sqlite3_auto_extension` in `DbService::installExtensions()` (must run AFTER

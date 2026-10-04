@@ -394,6 +394,34 @@ notification grpc caller_settings grpc
 OWNERS
 }
 
+ensure_livekit_key_pair() {
+  local config="$1"
+  [ -f "$config" ] || return 0
+  toml_key_exists "$config" rtc api_key || return 0
+  local key secret
+  key="$(toml_value "$config" rtc api_key)"
+  secret="$(toml_value "$config" rtc api_secret)"
+  case "$key" in ""|*CHANGE_ME*) key="" ;; esac
+  case "$secret" in ""|*CHANGE_ME*) secret="" ;; esac
+  if [ -n "$key" ] && [ "${#secret}" -ge 32 ]; then
+    return 0
+  fi
+  replace_toml_value rtc api_key "argus$(openssl rand -hex 6)" "$config"
+  replace_toml_value rtc api_secret "$(openssl rand -hex 24)" "$config"
+}
+
+write_livekit_keys() {
+  local config="$1"
+  local keys="$2"
+  local key secret
+  key="$(toml_value "$config" rtc api_key)"
+  secret="$(toml_value "$config" rtc api_secret)"
+  [ -n "$key" ] && [ -n "$secret" ] || { err "no [rtc] key pair in $config"; return 1; }
+  mkdir -p "$(dirname "$keys")"
+  (umask 077 && printf '%s: %s\n' "$key" "$secret" > "$keys")
+  chmod 600 "$keys"
+}
+
 fill_deploy_placeholder() {
   local config="$1"
   local table="$2"
@@ -483,6 +511,13 @@ ensure_deploy_configs() {
   fill_config_pair "$deploy_dir/config.guard.toml" llm grpc_credential \
     "$deploy_dir/config.llm.toml" rpc.callers guard 32
   ensure_settings_owners "$deploy_dir/config.settings.toml" deploy "$deploy_dir"
+  ensure_livekit_key_pair "$deploy_dir/config.sync.toml"
+  if [ -f "$deploy_dir/config.sync.toml" ]; then
+    write_livekit_keys "$deploy_dir/config.sync.toml" "$deploy_dir/livekit-keys.yaml"
+  fi
+  if [ ! -f "$deploy_dir/livekit.yaml" ] && [ -f "$deploy_dir/livekit.yaml.example" ]; then
+    cp "$deploy_dir/livekit.yaml.example" "$deploy_dir/livekit.yaml"
+  fi
 
   log "Deploy configs ready in $deploy_dir"
 }

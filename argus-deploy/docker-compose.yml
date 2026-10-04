@@ -748,6 +748,61 @@ services:
     pids_limit: 128
     restart: unless-stopped
 
+  livekit:
+    image: livekit/livekit-server:v1.13.7
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    network_mode: host
+    command: ["--config", "/etc/livekit/livekit.yaml"]
+    volumes:
+      - type: bind
+        source: ./livekit.yaml
+        target: /etc/livekit/livekit.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./livekit-keys.yaml
+        target: /etc/livekit/keys.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:7880/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    mem_limit: "${ARGUS_LIVEKIT_MEMORY_LIMIT:-384m}"
+    cpus: "${ARGUS_LIVEKIT_CPU_LIMIT:-1.00}"
+    pids_limit: 256
+    restart: unless-stopped
+
+  livekit-tls:
+    image: nginx:1.28.3-alpine
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    network_mode: host
+    entrypoint: ["nginx", "-g", "daemon off;"]
+    volumes:
+      - type: bind
+        source: ./livekit-tls.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_CERTS_DIR:-../certs}
+        target: /etc/argus/certs
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      livekit:
+        condition: service_healthy
+    mem_limit: "${ARGUS_LIVEKIT_TLS_MEMORY_LIMIT:-32m}"
+    cpus: "${ARGUS_LIVEKIT_TLS_CPU_LIMIT:-0.25}"
+    pids_limit: 32
+    restart: unless-stopped
+
   rustfs:
     image: rustfs/rustfs:1.0.0-beta.12
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"

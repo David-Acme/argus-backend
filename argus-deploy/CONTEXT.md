@@ -623,6 +623,9 @@ service) are the next step and are not done.
 | 8800 | host | Tapo talk channel (camera-side, argus-camera `[tapo]`) |
 | 7034 gRPC + 7035 plain | 127.0.0.1 (compose publish) | argus-voice voice wire + `/health` (F6-3) |
 | 7036 gRPC | 127.0.0.1 (compose publish) | argus-camera camera-domain sync wire (F6-5) |
+| 7046 TLS | 0.0.0.0 (host network) | livekit-tls: LiveKit signalling for the apps (`wss://`, the instance certificate) |
+| 7880 plain | 127.0.0.1 + 172.19.0.1 (host network) | livekit HTTP API + signalling, for argus-sync, argus-voice and the TLS front only |
+| 7881 tcp / 7882 udp | 0.0.0.0 (host network) | livekit ICE over TCP / muxed ICE over UDP (call media, DTLS-SRTP) |
 | `[remote] tunnel_port` TLS | argus-auth / argus-identity host port | their second (remote) listener (default 0 = disabled; the instance sets a port when the tunnel profile is on — the listener is config-file-driven, not env-driven, see the tunnel section) |
 
 Since Phase 3d step 1b every app-facing service terminates TLS with the
@@ -666,3 +669,51 @@ the wiring keys into the existing files without touching their values, mints
 the credentials, writes `config.settings.toml`, and a rebuild plus
 `docker compose up -d` brings the owners up with their settings listener.
 This was checked on a scratch copy of the 2026-09 owner configs.
+
+## LiveKit: the realtime call media server (2026-10-04)
+
+Two services carry WebRTC calls (`services/voice/CONTEXT.md`, "Realtime calls
+over WebRTC"):
+
+- `livekit` (`livekit/livekit-server:v1.13.7`, Apache-2.0, the latest stable
+  release on 2026-10-04; 384 MB cap, about 20 MB resident idle) on the host
+  network. Its HTTP API and signalling port 7880 bind only `127.0.0.1` and
+  `172.19.0.1`, the gateway of `argus-cutover-internal`, where argus-sync
+  (the Twirp room API) and argus-voice (the agent's connection) reach it from
+  the bridge; it is never on the LAN in clear. Media: 7881/tcp (ICE over TCP)
+  and 7882/udp (one muxed UDP port instead of a 10 000-port range, enough for
+  a household and one firewall rule). Host networking lets LiveKit announce
+  the host's own LAN addresses as ICE candidates and follow an address
+  change; with a bridge and published ports it would need `rtc.node_ip`
+  pinned to an address DHCP can change.
+- `livekit-tls` (`nginx:1.28.3-alpine`, 32 MB cap): LiveKit does not terminate
+  TLS on its signalling port (upstream's config says to put it behind a TLS
+  load balancer), and every app-facing Argus listener presents the instance
+  certificate the app pins. An nginx `stream` server on 7046 terminates TLS
+  with `certs/server.pem` and passes the bytes to 127.0.0.1:7880, so the
+  WebSocket and LiveKit's own HTTP paths cross it unchanged. Its config,
+  `livekit-tls.conf`, holds no secret and is committed.
+
+`livekit.yaml` is the per-installation copy of `livekit.yaml.example`
+(written by `provision-host.sh` when absent, gitignored, no secret inside):
+the API key pair is in `livekit-keys.yaml` (0600, gitignored, read through
+`key_file`; LiveKit refuses a key file other users can read), written from
+`config.sync.toml`'s `[rtc] api_key` / `api_secret`, which
+`ensure_livekit_key_pair` generates the first time (`argus` + 12 hex, 48 hex
+of secret). Rooms auto-create on the first join, close 20 s after the last
+participant leaves and 60 s after creation when nobody joined; at most 8
+participants; Opus (+RED), VP8 and H.264 allowed, the last two for camera
+video later.
+
+**TURN** is configured off (`turn.enabled: false`). When the tunnel exists:
+set `turn.enabled: true`, `turn.domain` to the public name, `turn.tls_port`
+5349 (or 443 behind a TLS-terminating proxy with `external_tls: true`) and
+`turn.udp_port` 3478, give it a certificate (`cert_file`/`key_file`, mounted
+read-only), open those ports and restart `livekit`. Clients receive the TURN
+servers in LiveKit's join response; nothing in Argus changes.
+
+Native development uses `scripts/livekit.sh up|down|status|logs|token`: the
+same two images as capped containers (`argus-dev-livekit`,
+`argus-dev-livekit-tls`), 7880 on loopback only, the key pair from
+`services/sync/config.toml` (copied into the native stack's sync config when
+one exists), the rendered files under `build/livekit/`.

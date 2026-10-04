@@ -742,13 +742,13 @@ def classify(rel):
         return "gitconfig"
     if name == ".env.example":
         return "env"
-    if name in HASH_NAMES or name.endswith(".dockerignore"):
+    if name in HASH_NAMES or name.endswith(".dockerignore") or path.suffix == ".conf":
         return "hash"
     if name == "Dockerfile" or name.startswith("Dockerfile."):
         return "dockerfile"
     if name.endswith((".toml", ".toml.example")):
         return "toml"
-    if path.suffix in (".yml", ".yaml") or name in (".clang-tidy", ".clang-format"):
+    if path.suffix in (".yml", ".yaml") or name.endswith(".yaml.example") or name in (".clang-tidy", ".clang-format"):
         return "yaml"
     return "unknown"
 
