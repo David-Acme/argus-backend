@@ -92,12 +92,14 @@ the gRPC one to serve the same protocol.
   with a frozen message ("argus-tts remote_url has no host" from
   `TtsHttpClient`'s constructor, "tts.remote_url is not configured" from the
   entry points, "argus-tts unreachable at <url>" and the rest from the
-  transport). One ragged edge, measured and left as it is: `parseUrl` runs
-  `std::stoi` on the port, so a URL like `host:abc` escapes as
+  transport). One ragged edge, measured and left as it is:
+  `argus::net::parseEndpoint` runs `std::stoi` on the port, so a URL like `host:abc` escapes as
   `std::invalid_argument` rather than as a frozen message.
 - Flagged deviations from §2.3, none of them hidden: there is no `details/`
-  folder — the URL parsing, socket loop and chunked decoding live in the
-  anonymous namespace of `tts-remote.cc`, and the gRPC channel and credential
+  folder — the chunked decoding lives in the anonymous namespace of
+  `tts-remote.cc`, while the URL parsing and the socket (connect, send,
+  receive) are `packages/lib/net`'s `argus::net`, shared with the `stt` and
+  `llm` clients that used to carry their own copies, and the gRPC channel and credential
   helpers are `lib/grpc`'s `argus::client`; `tts-wire.hxx` is read by the
   service as well as by callers — `tts-rpc-server.hxx`, `tts-service.hxx` and
   `onnx-utils.hxx` in `services/tts`, and `voice-session-service.hxx` in

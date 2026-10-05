@@ -20,6 +20,11 @@ if(NOT TARGET argus::lib::errors)
                      ${CMAKE_CURRENT_BINARY_DIR}/errors)
 endif()
 
+if(NOT TARGET argus::lib::net)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../lib/net
+                     ${CMAKE_CURRENT_BINARY_DIR}/net)
+endif()
+
 find_package(Drogon CONFIG REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
@@ -47,7 +52,8 @@ argus_clients(NAME llm
         Drogon::Drogon
         nlohmann_json::nlohmann_json)
 
-target_link_libraries(argus_clients_llm PRIVATE argus::contracts::llm-wire)
+target_link_libraries(argus_clients_llm PRIVATE argus::contracts::llm-wire
+    argus::lib::net)
 target_compile_options(argus_clients_llm PRIVATE -Wall -Wextra)
 
 enable_testing()

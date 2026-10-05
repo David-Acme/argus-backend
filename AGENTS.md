@@ -885,7 +885,7 @@ the group helpers: twelve of the fourteen contracts (all but `routes` and
 `voice`, which name only their own test target; the `response`, `settings`,
 `stt`, `tts`, `llm` and `vlm` wire modules among the twelve), seven of the
 thirteen clients (`llm`, `settings`, `stt`, `sync`, `tts`, `vlm`, `voice`)
-and seven of the sixteen libs
+and seven of the seventeen libs
 (`auth`, `http`, `mdns`, `nats`, `outbox`, `storage`, `validation`). Every package is in
 a group since Phase 4 step 7: `packages/memory` and `packages/intent` were the
 two that sat outside the helpers — declaring themselves with literal
@@ -921,7 +921,7 @@ data (D18):
 
 | Tier | Packages | May depend on | May never depend on |
 |---|---|---|---|
-| 1 · foundation | `lib/`: audio, cert, config, errors, grpc, mdns, nats, outbox, phrase, runtime, sqlite, storage, text, validation | third-party, other tier-1 `lib` packages | contracts, clients, services |
+| 1 · foundation | `lib/`: audio, cert, config, errors, grpc, mdns, nats, net, outbox, phrase, runtime, sqlite, storage, text, validation | third-party, other tier-1 `lib` packages | contracts, clients, services |
 | 2 · wire | `contracts/*`, `lib/http` | tier 1 (`lib/errors`, `lib/grpc`), third-party (Drogon), generated protobuf | clients, services |
 | 3 · transport | `clients/*` | tier 1 + tier 2 | other clients, services |
 | 4 · service-aware lib | `lib/auth` | tiers 1–3 | services |
@@ -1060,6 +1060,7 @@ for two different reasons, and says which when it does.
 | `packages/lib/runtime/src/runtime/shutdown-signal.{cc,hxx}` | `shutdown_signal::onStop(Drain)` — the process-wide stop sequence: a unit registers its drain before `drogon::app().run()`, the module requests the stops and holds Drogon's `quit()` until every drain reports drained (D22, §4.6 of the plan); `onQuit(hook)` runs what belongs between that last drain and the quit itself (the database freeze) |
 | `packages/lib/text/src/text/json-diff.{cc,hxx}` | Diff JSON + snapshot (`JsonDiff`) |
 | `packages/lib/text/src/text/json-util.hxx` | `json_util::toString` (compact, `{}` for null), `isValid` (empty is not valid) and `fromString` |
+| `packages/lib/net/src/net/loopback-socket.{cc,hxx}` | `argus::net`: the one plain-TCP transport the `stt`, `tts` and `llm` wire clients share for their HTTP leg — `Socket` (RAII fd), `parseEndpoint`, `connectLoopback` (close-on-exec, bounded non-blocking connect that retries `EINTR`, a `std::stop_token` that shuts the socket down, the failing `errno` reported), `sendAll` (`MSG_NOSIGNAL`), `receiveSome` and `readUntilClosed` |
 
 **Tier 2 — `contracts/`**
 

@@ -47,7 +47,9 @@ the `Chat` service `packages/contracts/llm/llm.proto` declares.
 - `src/llm/llm-remote.{hxx,cc}` (60 + 512) — `LlmRemoteConfig` with its
   `resolve()`, `LlmHttpClient` (`chat`, `chatStream`) and the façade
   `LlmClient` (`chat`, `chatStream`, `remote()`), which picks the leg per call;
-  6 files include the header.
+  6 files include the header. The HTTP leg's URL parsing and socket (connect,
+  send, receive, cancellation by shutdown) are `packages/lib/net`'s
+  `argus::net`, shared with the `stt` and `tts` clients.
 - `tests/support/fake-llm-server.hxx` (236 lines) — the in-process HTTP server
   a suite drives the client end to end against; 2 files include it.
 
@@ -134,7 +136,7 @@ the `Chat` service `packages/contracts/llm/llm.proto` declares.
   (`172.19.0.32:7032`, 120000); the other `remote_url` pairs in those files and
   in the camera configs belong to `[stt]` and `[tts]`. And no toml
   in the tree declares the gRPC pair; the switch lives on the consuming side.
-  The declared values are scheme-less `host:port`, which `parseUrl` accepts; an
+  The declared values are scheme-less `host:port`, which `argus::net::parseEndpoint` accepts; an
   empty URL makes `enabled()` false and a non-positive `remote_timeout_ms`
   keeps the header's 120000 default, which is also the gRPC client's ceiling.
 - No retry is configurable on either leg: one socket per call with one

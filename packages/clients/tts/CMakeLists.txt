@@ -10,6 +10,11 @@ if(NOT TARGET argus::lib::errors)
                      ${CMAKE_CURRENT_BINARY_DIR}/errors)
 endif()
 
+if(NOT TARGET argus::lib::net)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../lib/net
+                     ${CMAKE_CURRENT_BINARY_DIR}/net)
+endif()
+
 find_package(Drogon CONFIG REQUIRED)
 
 set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL TRUE)
@@ -34,7 +39,8 @@ argus_clients(NAME tts
         argus::contracts::tts
         Drogon::Drogon)
 
-target_link_libraries(argus_clients_tts PRIVATE argus::contracts::tts-wire)
+target_link_libraries(argus_clients_tts PRIVATE argus::contracts::tts-wire
+    argus::lib::net)
 target_compile_options(argus_clients_tts PRIVATE -Wall -Wextra)
 
 enable_testing()

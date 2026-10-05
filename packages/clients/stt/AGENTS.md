@@ -112,7 +112,7 @@ façade; `services/stt` consumes the gRPC client to serve the protocol.
   <url>"`, and `"argus-stt <code>: <message>"` off the frozen
   `{status, info, errors}` envelope. A caller that cannot reach argus-stt
   degrades to the documented `stt_failed` path, never a crash. One ragged edge,
-  measured and left as it is: `parseUrl` runs `std::stoi` on the port, so a URL
+  measured and left as it is: `argus::net::parseEndpoint` runs `std::stoi` on the port, so a URL
   like `host:abc` escapes as `std::invalid_argument` rather than as a frozen
   message.
 - The endpoint is runtime config, not a constant: `SttRemoteConfig::resolve()`
@@ -128,7 +128,7 @@ façade; `services/stt` consumes the gRPC client to serve the protocol.
   config carries either knob, and `services/camera/config.toml` has no `[stt]`
   block at all, so the camera transcriber is off in that tree and answers an
   empty transcript. The declared values are scheme-less `host:port`, which the
-  client's `parseUrl` accepts; an empty value makes `enabled()` false and a
+  client's `argus::net::parseEndpoint` accepts; an empty value makes `enabled()` false and a
   non-positive `remote_timeout_ms` keeps the header's 30000 default. The gRPC
   pair (`stt.grpc_target`, `stt.grpc_credential`) is declared in no toml at
   all — only runtime overrides in this package's own suite and in
@@ -136,9 +136,10 @@ façade; `services/stt` consumes the gRPC client to serve the protocol.
   path enabled.
 - The `-client` name is the gRPC one here, as §2.3 lays it out; the HTTP client
   and the façade keep the `-remote` spelling their consumers already import.
-  This package has **no `details/` directory**: the URL parsing, the socket
-  plumbing, the PCM scaling and the envelope parsing share the top-level
-  `stt-remote.cc` with `SttHttpClient`, and the gRPC channel and credential
+  This package has **no `details/` directory**: the PCM scaling and the
+  envelope parsing share the top-level `stt-remote.cc` with `SttHttpClient`,
+  the URL parsing and the socket plumbing are `packages/lib/net`'s
+  `argus::net` (shared with the `tts` and `llm` clients), and the gRPC channel and credential
   helpers are `lib/grpc`'s `argus::client`. A known, flagged deviation, left as
   the layout put it.
 - `stt-remote.hxx` is not the caller's half alone: it is the one vocabulary

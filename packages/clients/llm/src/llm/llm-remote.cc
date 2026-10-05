@@ -3,17 +3,9 @@
 #include <config/config-service.hxx>
 
 #include <json/json.h>
-
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include <net/loopback-socket.hxx>
 
 #include <algorithm>
-#include <cerrno>
 #include <chrono>
 #include <cstring>
 #include <stdexcept>
@@ -51,115 +43,12 @@ void throwEnvelopeError(int status, const std::string& body)
   throw std::runtime_error("argus-llm " + detail);
 }
 
-class SocketGuard
-{
-public:
-  explicit SocketGuard(int fd) : fd_(fd) {}
-  ~SocketGuard()
-  {
-    if (fd_ >= 0)
-      ::close(fd_);
-  }
-  SocketGuard(const SocketGuard&) = delete;
-  SocketGuard& operator=(const SocketGuard&) = delete;
-  int get() const { return fd_; }
-
-private:
-  int fd_;
-};
-
-struct ConnectLoopbackInput
-{
-  const std::string& host;
-  int port{0};
-  int timeoutMs{0};
-};
-
-int connectLoopback(const ConnectLoopbackInput& input)
-{
-  const std::string& host = input.host;
-  const int port = input.port;
-  const int timeoutMs = input.timeoutMs;
-
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0)
-    return -1;
-
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(static_cast<uint16_t>(port));
-  if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
-    ::close(fd);
-    return -1;
-  }
-
-  const int flags = ::fcntl(fd, F_GETFL, 0);
-  ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-  if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0 &&
-      errno != EINPROGRESS) {
-    ::close(fd);
-    return -1;
-  }
-  pollfd pfd{};
-  pfd.fd = fd;
-  pfd.events = POLLOUT;
-  if (::poll(&pfd, 1, timeoutMs) != 1) {
-    ::close(fd);
-    return -1;
-  }
-  int soError = 0;
-  socklen_t len = sizeof(soError);
-  if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len) != 0 ||
-      soError != 0) {
-    ::close(fd);
-    return -1;
-  }
-  ::fcntl(fd, F_SETFL, flags);
-
-  timeval tv{};
-  tv.tv_sec = timeoutMs / 1000;
-  tv.tv_usec = (timeoutMs % 1000) * 1000;
-  ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-  ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-  const int one = 1;
-  ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-  return fd;
-}
-
-struct Address
-{
-  std::string host;
-  int port{0};
-};
-
-Address parseUrl(const std::string& url)
-{
-  Address address;
-  std::string rest = url;
-  const auto scheme = rest.find("://");
-  if (scheme != std::string::npos)
-    rest = rest.substr(scheme + 3);
-  const auto slash = rest.find('/');
-  if (slash != std::string::npos)
-    rest = rest.substr(0, slash);
-  const auto colon = rest.rfind(':');
-  if (colon != std::string::npos) {
-    address.host = rest.substr(0, colon);
-    address.port = std::stoi(rest.substr(colon + 1));
-  }
-  else {
-    address.host = rest;
-    address.port = 80;
-  }
-  return address;
-}
-
 struct HttpRequestHead
 {
   const char* method{nullptr};
   const std::string* path{nullptr};
   const std::string* body{nullptr};
-  const Address* address{nullptr};
+  const argus::net::Endpoint* address{nullptr};
   const std::string* credential{nullptr};
   bool closeConnection{true};
 };
@@ -176,30 +65,6 @@ std::string serialize(const HttpRequestHead& head)
     wire += std::string(kCallerCredentialHeader) + ": " + *head.credential + "\r\n";
   wire += head.closeConnection ? "Connection: close\r\n\r\n" : "\r\n";
   return wire;
-}
-
-void sendAll(int fd, const std::string& data)
-{
-  size_t sent = 0;
-  while (sent < data.size()) {
-    const auto n = ::send(fd, data.data() + sent, data.size() - sent, 0);
-    if (n <= 0)
-      throw std::runtime_error("argus-llm request send failed");
-    sent += static_cast<size_t>(n);
-  }
-}
-
-std::string readAll(int fd, const std::chrono::steady_clock::time_point& deadline)
-{
-  std::string data;
-  char buffer[65536];
-  while (std::chrono::steady_clock::now() < deadline) {
-    const auto n = ::recv(fd, buffer, sizeof(buffer), 0);
-    if (n <= 0)
-      break;
-    data.append(buffer, static_cast<size_t>(n));
-  }
-  return data;
 }
 
 struct Head
@@ -275,6 +140,43 @@ void throwIfCancelled(const std::stop_token& cancellation)
     throw std::runtime_error("argus-llm stream cancelled");
 }
 
+struct SendRequestInput
+{
+  int fd;
+  const std::string& outgoing;
+  std::stop_token cancellation;
+};
+
+void sendRequest(const SendRequestInput& input)
+{
+  const auto status = argus::net::sendAll(
+      {.fd = input.fd, .data = input.outgoing, .cancellation = input.cancellation});
+  throwIfCancelled(input.cancellation);
+  if (status != argus::net::NetStatus::Ok)
+    throw std::runtime_error("argus-llm request send failed");
+}
+
+struct ConnectInput
+{
+  const std::string& baseUrl;
+  const argus::net::Endpoint& address;
+  int timeoutMs;
+  std::stop_token cancellation;
+};
+
+argus::net::Connection connectTo(const ConnectInput& input)
+{
+  auto connection = argus::net::connectLoopback(
+      {.host = input.address.host,
+       .port = input.address.port,
+       .timeout = std::chrono::milliseconds(input.timeoutMs),
+       .cancellation = input.cancellation});
+  throwIfCancelled(input.cancellation);
+  if (!connection.connected())
+    throw std::runtime_error("argus-llm unreachable at " + input.baseUrl);
+  return connection;
+}
+
 std::chrono::milliseconds rpcTimeout(int timeoutMs)
 {
   const auto ceiling = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -298,7 +200,7 @@ LlmRemoteConfig LlmRemoteConfig::resolve()
 LlmHttpClient::LlmHttpClient(std::string baseUrl, int timeoutMs)
     : baseUrl_(std::move(baseUrl)), timeoutMs_(timeoutMs)
 {
-  if (parseUrl(baseUrl_).host.empty())
+  if (argus::net::parseEndpoint(baseUrl_).host.empty())
     throw std::runtime_error("argus-llm remote_url has no host");
 }
 
@@ -348,12 +250,9 @@ std::string LlmHttpClient::chatBody(const ChatRequest& request) const
 
 std::string LlmHttpClient::chat(const ChatRequest& request) const
 {
-  const Address address = parseUrl(baseUrl_);
-  const SocketGuard fd(connectLoopback({.host = address.host,
-                                        .port = address.port,
-                                        .timeoutMs = timeoutMs_}));
-  if (fd.get() < 0)
-    throw std::runtime_error("argus-llm unreachable at " + baseUrl_);
+  const auto address = argus::net::parseEndpoint(baseUrl_);
+  const auto connection = connectTo(
+      {.baseUrl = baseUrl_, .address = address, .timeoutMs = timeoutMs_, .cancellation = {}});
 
   const std::string body = chatBody(request);
   const std::string path = kChatPath;
@@ -363,12 +262,16 @@ std::string LlmHttpClient::chat(const ChatRequest& request) const
                              .address = &address,
                              .credential = &credential_,
                              .closeConnection = true};
-  sendAll(fd.get(), serialize(head) + body);
+  const std::string outgoing = serialize(head) + body;
+  sendRequest({.fd = connection.socket.get(), .outgoing = outgoing, .cancellation = {}});
 
   const auto deadline =
       std::chrono::steady_clock::now() +
       std::chrono::milliseconds(timeoutMs_);
-  const std::string wire = readAll(fd.get(), deadline);
+  const std::string wire =
+      argus::net::readUntilClosed(
+          {.fd = connection.socket.get(), .deadline = deadline, .cancellation = {}})
+          .data;
   if (wire.empty())
     throw std::runtime_error("argus-llm closed the connection before answering");
 
@@ -387,14 +290,14 @@ std::string LlmHttpClient::chat(const ChatRequest& request) const
 void LlmHttpClient::chatStream(const LlmStreamInput& input) const
 {
   throwIfCancelled(input.cancellation);
-  const Address address = parseUrl(baseUrl_);
-  const SocketGuard fd(connectLoopback({.host = address.host,
-                                        .port = address.port,
-                                        .timeoutMs = timeoutMs_}));
-  if (fd.get() < 0)
-    throw std::runtime_error("argus-llm unreachable at " + baseUrl_);
-  const std::stop_callback cancel(
-      input.cancellation, [socket = fd.get()] { ::shutdown(socket, SHUT_RDWR); });
+  const auto address = argus::net::parseEndpoint(baseUrl_);
+  const auto connection = connectTo({.baseUrl = baseUrl_,
+                                     .address = address,
+                                     .timeoutMs = timeoutMs_,
+                                     .cancellation = input.cancellation});
+  const int fd = connection.socket.get();
+  const std::stop_callback cancel(input.cancellation,
+                                  [&connection] { connection.socket.shutdown(); });
   throwIfCancelled(input.cancellation);
 
   const std::string body = chatBody(input.request);
@@ -405,7 +308,8 @@ void LlmHttpClient::chatStream(const LlmStreamInput& input) const
                              .address = &address,
                              .credential = &credential_,
                              .closeConnection = false};
-  sendAll(fd.get(), serialize(head) + body);
+  const std::string outgoing = serialize(head) + body;
+  sendRequest({.fd = fd, .outgoing = outgoing, .cancellation = input.cancellation});
 
   const auto deadline =
       std::chrono::steady_clock::now() +
@@ -416,13 +320,10 @@ void LlmHttpClient::chatStream(const LlmStreamInput& input) const
     throwIfCancelled(input.cancellation);
     if (std::chrono::steady_clock::now() >= deadline)
       return false;
-    char buffer[16384];
-    const auto n = ::recv(fd.get(), buffer, sizeof(buffer), 0);
+    const auto status = argus::net::receiveSome(
+        {.fd = fd, .into = wire, .cancellation = input.cancellation});
     throwIfCancelled(input.cancellation);
-    if (n <= 0)
-      return false;
-    wire.append(buffer, static_cast<size_t>(n));
-    return true;
+    return status == argus::net::NetStatus::Ok;
   };
 
   while (wire.find("\r\n\r\n") == std::string::npos) {
