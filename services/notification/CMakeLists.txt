@@ -391,7 +391,7 @@ target_compile_options(notification-settings-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-settings-test COMMAND notification-settings-test)
 
-foreach(TEST_NAME IN ITEMS call-policy-test call-engine-test)
+foreach(TEST_NAME IN ITEMS call-policy-test call-engine-test call-verdict-wire-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
     target_compile_definitions(${TEST_NAME} PRIVATE

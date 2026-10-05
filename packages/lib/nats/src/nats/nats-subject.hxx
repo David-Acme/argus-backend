@@ -51,6 +51,8 @@ inline constexpr const char* kGuardKnownSeen = "argus.guard.v1.known_seen";
 
 inline constexpr const char* kNotificationResponseVerdict =
     "argus.notification.v1.response_verdict";
+inline constexpr const char* kNotificationVerdictStream =
+    "ARGUS_NOTIFICATION_VERDICT";
 
 inline constexpr const char* kGuardPresenceChanged =
     "argus.guard.v1.presence_changed";

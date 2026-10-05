@@ -9,6 +9,8 @@
 #include <feature/guard/guard-policy.hxx>
 #include <feature/guard/repositories/response/response-repository.hxx>
 #include <feature/guard/services/response-plan.hxx>
+#include <feature/guard/services/response-verdict-feed.hxx>
+#include <text/json-util.hxx>
 #include <vector>
 
 using guard_test::GuardBoot;
@@ -654,4 +656,33 @@ TEST_CASE("a watchlist face is a clear threat even below critical")
   data["reasons"] = Json::Value(Json::arrayValue);
   data["urgency"] = "critical";
   CHECK(response_plan::clearThreat(data));
+}
+
+TEST_CASE("a durable verdict is acknowledged only once the review is stored")
+{
+  boot();
+  scalar("INSERT INTO guard_encounter (first_seen, last_seen) VALUES (1, 2)");
+  const std::string episode = scalar("SELECT MAX(id) FROM guard_encounter");
+  const ResponseVerdictFeed feed(nullptr);
+  const auto verdict = [](const std::string& kind, int64_t episodeId, const std::string& label) {
+    Json::Value event(Json::objectValue);
+    event["kind"] = kind;
+    event["episodeId"] = static_cast<Json::Int64>(episodeId);
+    event["verdict"] = label;
+    event["at"] = static_cast<Json::Int64>(1'700'000'100);
+    return json_util::toString(event);
+  };
+  CHECK(drogon::sync_wait(feed.apply(verdict("guard_episode", std::stoll(episode), "real"))) ==
+        VerdictSettle::Ack);
+  CHECK(scalar("SELECT review_label FROM guard_encounter WHERE id = " + episode) == "useful");
+  CHECK(drogon::sync_wait(feed.apply(verdict("guard_episode", 999'999, "false_alarm"))) ==
+        VerdictSettle::Ack);
+  CHECK(drogon::sync_wait(feed.apply(verdict("guard_panic", 0, "real"))) == VerdictSettle::Ack);
+  CHECK(drogon::sync_wait(feed.apply("not json")) == VerdictSettle::Discard);
+  scalar("CREATE TRIGGER guard_review_refused BEFORE UPDATE OF review_label ON guard_encounter "
+         "BEGIN SELECT RAISE(ABORT, 'refused'); END");
+  CHECK(drogon::sync_wait(feed.apply(verdict("guard_episode", std::stoll(episode),
+                                             "false_alarm"))) == VerdictSettle::Retry);
+  scalar("DROP TRIGGER guard_review_refused");
+  CHECK(scalar("SELECT review_label FROM guard_encounter WHERE id = " + episode) == "useful");
 }
