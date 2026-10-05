@@ -3,6 +3,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/pki.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/docker.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/privacy.sh"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPLOY_DIR="$ROOT/argus-deploy"
@@ -13,6 +14,7 @@ WITH_MODELS=0
 WITH_S3=1
 START=0
 MIGRATE_VOLUMES=0
+PRIVACY_ACTION="require"
 
 usage() {
   cat <<'USAGE'
@@ -23,6 +25,8 @@ bakes into images: Docker + Compose v2, the instance PKI, the per-service
 config files with unique shared secrets and the external data tree the
 compose file links into the containers. Idempotent: an existing CA, secret or
 database is reused untouched, so an image update is pull/build plus `up -d`.
+The Argus privacy notice and terms are shown first; nothing is configured
+until the owner accepts them for the household.
 
 Usage:
   ./scripts/provision-host.sh                     prepare everything, no start
@@ -33,6 +37,21 @@ Usage:
   ./scripts/provision-host.sh --migrate-volumes   copy old named volumes
   ./scripts/provision-host.sh --no-docker -y
   ./scripts/provision-host.sh --no-s3             skip the object store
+  ./scripts/provision-host.sh --accept-privacy-notice --no-docker -y
+
+Privacy notice (required before anything is configured):
+  --accept-privacy-notice      accept the notice in a non-interactive run
+                               (also ARGUS_ACCEPT_PRIVACY_NOTICE=1); without it
+                               a non-interactive run stops; -y never accepts it
+  --accept-visitor-notice      also acknowledge recurring-visitor recognition
+                               (it stays off until enabled in the app)
+  --privacy-lang es|en         notice language (default: from LANG, else es)
+  --jurisdiction pe            country rules quoted in the notice
+                               (scripts/privacy/jurisdictions.tsv)
+  --show-privacy-notice        print the notice and exit
+  --withdraw-privacy-consent   remove the recorded acceptance and exit
+  The acceptance (version, time, user@host) is stored in
+  <data dir>/privacy/host-consent.json (0600).
 USAGE
 }
 
@@ -45,6 +64,14 @@ while [ "$#" -gt 0 ]; do
     --no-s3) WITH_S3=0; shift ;;
     --start) START=1; shift ;;
     --migrate-volumes) MIGRATE_VOLUMES=1; shift ;;
+    --accept-privacy-notice) PRIVACY_ACCEPT=1; shift ;;
+    --accept-visitor-notice) PRIVACY_VISITOR_ACCEPT=1; shift ;;
+    --show-privacy-notice) PRIVACY_ACTION="show"; shift ;;
+    --withdraw-privacy-consent) PRIVACY_ACTION="withdraw"; shift ;;
+    --privacy-lang=*) PRIVACY_LANG="${1#*=}"; shift ;;
+    --privacy-lang) [ "$#" -ge 2 ] || { err "--privacy-lang needs es or en"; exit 2; }; PRIVACY_LANG="$2"; shift 2 ;;
+    --jurisdiction=*) PRIVACY_JURISDICTION="${1#*=}"; shift ;;
+    --jurisdiction) [ "$#" -ge 2 ] || { err "--jurisdiction needs a code"; exit 2; }; PRIVACY_JURISDICTION="$2"; shift 2 ;;
     --data-dir) [ "$#" -ge 2 ] || { err "--data-dir needs a path"; exit 2; }; DATA_DIR_IN="$2"; shift 2 ;;
     --mdns-address) [ "$#" -ge 2 ] || { err "--mdns-address needs an IP"; exit 2; }; MDNS_ADDRESS_IN="$2"; shift 2 ;;
     *) err "unknown argument: $1"; usage >&2; exit 2 ;;
@@ -303,6 +330,11 @@ print_summary() {
 
 main() {
   need_cmd openssl
+  case "$PRIVACY_ACTION" in
+    show) privacy_notice_text; exit $? ;;
+    withdraw) privacy_withdraw_consent "$DATA_DIR"; exit 0 ;;
+  esac
+  privacy_require_consent "$DATA_DIR" "scripts/provision-host.sh"
   ensure_data_tree
   write_env
   ensure_deploy_configs "$DEPLOY_DIR"

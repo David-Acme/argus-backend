@@ -3,6 +3,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/pki.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/docker.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/privacy.sh"
 
 PROFILE="dev"
 SKIP_BUILD="${SKIP_BUILD:-0}"
@@ -10,12 +11,15 @@ CAMERA_ONLY=0
 WITH_DOCKER=1
 ASSUME_YES="${ARGUS_ASSUME_YES:+1}"
 ARGS=()
+PRIVACY_ACTION="require"
 
 usage() {
   cat <<'USAGE'
 Argus backend - setup script (Linux).
 
-Provisions local dependencies and builds every standalone project:
+Shows the Argus privacy notice and terms first and configures nothing until
+they are accepted. Then provisions local dependencies and builds every
+standalone project:
   1. Install system build dependencies (distro aware)
   2. Install Conan (if missing) and configure the profile for C++20
   3. Download Supertonic 3 (~415 MB) and export the selected Kyutai Pocket TTS models (pinned)
@@ -32,6 +36,20 @@ Usage:
   ./scripts/setup.sh dev -y              non-interactive package installs
   ./scripts/setup.sh camera              camera artifacts only (detector + go2rtc)
   SKIP_BUILD=1 ./scripts/setup.sh prod
+
+Privacy notice (required before anything is configured):
+  --accept-privacy-notice      accept the notice in a non-interactive run
+                               (also ARGUS_ACCEPT_PRIVACY_NOTICE=1); without it
+                               a non-interactive run stops; -y never accepts it
+  --accept-visitor-notice      also acknowledge recurring-visitor recognition
+                               (it stays off until enabled in the app)
+  --privacy-lang=es|en         notice language (default: from LANG, else es)
+  --jurisdiction=pe            country rules quoted in the notice
+                               (scripts/privacy/jurisdictions.tsv)
+  --show-privacy-notice        print the notice and exit
+  --withdraw-privacy-consent   remove the recorded acceptance and exit
+  The acceptance (version, time, user@host) is stored in
+  ${ARGUS_DATA_DIR:-argus-deploy/data}/privacy/host-consent.json (0600).
 USAGE
 }
 
@@ -42,6 +60,12 @@ for a in "$@"; do
     --no-build) SKIP_BUILD=1 ;;
     --no-docker) WITH_DOCKER=0 ;;
     -y|--yes)   ASSUME_YES=1 ;;
+    --accept-privacy-notice) PRIVACY_ACCEPT=1 ;;
+    --accept-visitor-notice) PRIVACY_VISITOR_ACCEPT=1 ;;
+    --privacy-lang=*) PRIVACY_LANG="${a#*=}" ;;
+    --jurisdiction=*) PRIVACY_JURISDICTION="${a#*=}" ;;
+    --show-privacy-notice) PRIVACY_ACTION="show" ;;
+    --withdraw-privacy-consent) PRIVACY_ACTION="withdraw" ;;
     camera)     CAMERA_ONLY=1 ;;
     dev|prod)   PROFILE="$a" ;;
     *)          ARGS+=("$a") ;;
@@ -53,9 +77,17 @@ case "$PROFILE" in
   prod) BUILD_TYPE="Release" ;;
 esac
 
-log "Profile: $PROFILE  build_type: $BUILD_TYPE"
-
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PRIVACY_DATA_DIR="${ARGUS_DATA_DIR:-$ROOT/argus-deploy/data}"
+
+case "$PRIVACY_ACTION" in
+  show) privacy_notice_text; exit $? ;;
+  withdraw) privacy_withdraw_consent "$PRIVACY_DATA_DIR"; exit 0 ;;
+esac
+need_cmd openssl
+privacy_require_consent "$PRIVACY_DATA_DIR" "scripts/setup.sh"
+
+log "Profile: $PROFILE  build_type: $BUILD_TYPE"
 
 install_system_deps() {
   log "Detecting distribution and installing build dependencies..."
