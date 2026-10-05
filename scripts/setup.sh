@@ -262,6 +262,7 @@ ensure_local_config() {
     "$ROOT/services/guard/config.toml" rpc.callers sync 32
   fill_config_pair "$ROOT/services/notification/config.toml" guard presence_credential \
     "$ROOT/services/guard/config.toml" rpc.callers notification 32
+  ensure_fleet_callers native "$ROOT"
   ensure_settings_owners "$ROOT/services/settings/config.toml" native "$ROOT"
   ensure_livekit_key_pair "$ROOT/services/sync/config.toml"
   remove_toml_key tunnel max_reconnects "$ROOT/services/tunnel/config.toml"

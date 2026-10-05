@@ -287,12 +287,12 @@ device trusted_proxy_ips
 auth target
 auth rpc_host
 auth rpc_port
-auth rpc_secret
+auth credential
 identity target
 identity proxy_url
 identity rpc_host
 identity rpc_port
-identity rpc_secret
+identity credential
 camera actions_credential
 notifications target
 notifications credential
@@ -303,7 +303,7 @@ voice target
 voice credential
 camera credential
 sync control_target
-sync control_secret
+sync control_credential
 grpc caller_guard
 grpc caller_sync
 grpc caller_llm
@@ -315,6 +315,12 @@ rpc.callers settings
 rpc.callers sync
 rpc.callers notification
 rpc.callers voice
+rpc.callers auth
+rpc.callers camera
+rpc.callers guard
+rpc.callers identity
+rpc.callers llm
+rpc.callers productivity
 llm grpc_credential
 guard presence_target
 guard presence_credential
@@ -450,6 +456,47 @@ fill_config_pair() {
   [ -n "$value" ] || value="$(openssl rand -hex "$bytes")"
   replace_toml_value "$a_table" "$a_key" "$value" "$a_config"
   replace_toml_value "$b_table" "$b_key" "$value" "$b_config"
+}
+
+fleet_caller_config() {
+  local mode="$1"
+  local base="$2"
+  local service="$3"
+
+  case "$mode" in
+    deploy) printf '%s/config.%s.toml' "$base" "$service" ;;
+    stack) printf '%s/%s/config.toml' "$base" "$service" ;;
+    *) printf '%s/services/%s/config.toml' "$base" "$service" ;;
+  esac
+}
+
+ensure_fleet_callers() {
+  local mode="$1"
+  local base="$2"
+  local caller table key server
+
+  while read -r caller table key server; do
+    fill_config_pair "$(fleet_caller_config "$mode" "$base" "$caller")" "$table" "$key" \
+      "$(fleet_caller_config "$mode" "$base" "$server")" rpc.callers "$caller" 32
+  done <<'CALLERS'
+auth identity credential identity
+camera identity credential identity
+guard identity credential identity
+llm identity credential identity
+notification identity credential identity
+productivity identity credential identity
+sync identity credential identity
+voice identity credential identity
+camera auth credential auth
+guard auth credential auth
+identity auth credential auth
+notification auth credential auth
+productivity auth credential auth
+settings auth credential auth
+sync auth credential auth
+identity sync control_credential sync
+notification sync control_credential sync
+CALLERS
 }
 
 settings_owner_port() {
@@ -662,6 +709,7 @@ ensure_deploy_configs() {
     "$deploy_dir/config.guard.toml" rpc.callers sync 32
   fill_config_pair "$deploy_dir/config.notification.toml" guard presence_credential \
     "$deploy_dir/config.guard.toml" rpc.callers notification 32
+  ensure_fleet_callers deploy "$deploy_dir"
   ensure_settings_owners "$deploy_dir/config.settings.toml" deploy "$deploy_dir"
   ensure_livekit_key_pair "$deploy_dir/config.sync.toml"
   if [ -f "$deploy_dir/config.sync.toml" ]; then

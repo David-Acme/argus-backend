@@ -493,10 +493,12 @@ the matching `*-init` profile is the only migration path onto a volume.
   argus-productivity, argus-notification, argus-identity and argus-sync
   verify, and the
   device hash must agree across them), the `[auth] target`
-  (`argus-auth:7043`) and `[auth] rpc_secret` each of those verifiers
-  carries — the fleet gate on the session verdict, so an absent or
-  mismatched key makes the authority refuse every call and leaves all their
-  authenticated routes answering 401 — and the `[tunnel] secret` (identical
+  (`argus-auth:7043`) and the `[auth] credential` each of those verifiers
+  carries — its own key to the session verdict, paired with argus-auth's
+  `[rpc.callers]` entry for it (the fleet-wide `[auth] rpc_secret` of an
+  older install is honoured only until every verifier is paired), so an
+  absent or mismatched key makes the authority refuse every call and leaves
+  all their authenticated routes answering 401 — and the `[tunnel] secret` (identical
   in the two tunnel templates — the HMAC home-link key; empty keeps the pair
   from booting, and it is never baked into any layer or template).
   `device.trusted_proxy_ips` is empty and `device.trust_forwarded_for` false
@@ -742,9 +744,9 @@ in order:
 | 7024 TLS | — | gone: the gateway's public port, deleted with the service in Phase 3d step 1c |
 | 7025 TLS | 0.0.0.0 (compose publish) | argus-sync `/sync` WebSocket — the app-facing sync transport, on all interfaces since Phase 3a |
 | 7042 TLS | 0.0.0.0 (compose publish) | argus-auth HTTP surface (`/auth`, `/invitation*`, `/pairing`) — LAN since Phase 3d step 1c |
-| 7043 gRPC | 127.0.0.1 (compose publish) | argus-auth session verdict — the auth filters' `[auth] target` upstream, gated by `[auth] rpc_secret` |
+| 7043 gRPC | 127.0.0.1 (compose publish) | argus-auth session verdict — the auth filters' `[auth] target` upstream, gated per caller by `[rpc.callers]` |
 | 7044 TLS | 0.0.0.0 (compose publish) | argus-identity HTTP surface (`/user*`, `/portrait-preview/*`) — LAN since Phase 3d step 1c |
-| 7040 gRPC | 127.0.0.1 (compose publish) | argus-identity people wire — argus-sync's `[identity] target` pull |
+| 7040 gRPC | 127.0.0.1 (compose publish) | argus-identity people wire — argus-sync's `[identity] target` pull, gated per caller by `[rpc.callers]` |
 | 7026 TLS | 0.0.0.0 (compose publish) | argus-camera (`/camera`, `/zone`, the `/media` socket) |
 | 7027 TLS | 0.0.0.0 (compose publish) | argus-productivity |
 | 7028 TLS | 0.0.0.0 (compose publish) | argus-notification |

@@ -453,5 +453,6 @@ fi
 
 "$ROOT/scripts/privacy-consent-test.sh" >/dev/null
 "$ROOT/scripts/pki-test.sh" >/dev/null
+"$ROOT/scripts/rpc-credentials-test.sh" >/dev/null
 
 echo "build-all tests passed"
