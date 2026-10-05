@@ -99,12 +99,27 @@ GuardService::Config calmConfig()
   return config;
 }
 
+class FixedDirectory final : public ResponseDirectory
+{
+public:
+  explicit FixedDirectory(std::vector<ResponseUser> users) : users_(std::move(users)) {}
+
+  [[nodiscard]] std::optional<std::vector<ResponseUser>> users() const override
+  {
+    return users_;
+  }
+
+private:
+  std::vector<ResponseUser> users_;
+};
+
 struct Harness
 {
   QuietCameraActions camera;
   RosterIdentity identity{{{7, "es"}}};
   RecordingNotifications notifications;
   GuardService::Config config = calmConfig();
+  std::shared_ptr<const ResponseDirectory> directory;
 
   std::unique_ptr<GuardService> service()
   {
@@ -113,7 +128,8 @@ struct Harness
                                    .identity = &identity,
                                    .notifications = &notifications,
                                    .actions = &camera,
-                                   .assessment = nullptr},
+                                   .assessment = nullptr,
+                                   .directory = directory},
         config);
   }
 };
@@ -567,6 +583,8 @@ TEST_CASE("a watchlist person alerts at once and the notice says who it is")
   (void)boot();
   resetSite();
   Harness harness;
+  harness.directory = std::make_shared<FixedDirectory>(std::vector<ResponseUser>{
+      {.userId = 7, .role = UserRole::Owner, .active = true, .name = "Ana", .lang = "es"}});
   harness.identity.addPerson({.personId = 4242,
                               .userId = std::nullopt,
                               .name = "Hombre de la moto",
@@ -600,4 +618,41 @@ TEST_CASE("a watchlist person alerts at once and the notice says who it is")
   CHECK(data["danger"].asString() == "high");
   CHECK(data["visitor"]["category"].asString() == "watchlist");
   CHECK(data["reasons"][0].asString() == "watchlist");
+}
+
+TEST_CASE("without a directory the roster fallback never names a visitor")
+{
+  (void)boot();
+  resetSite();
+  Harness harness;
+  harness.identity.addPerson({.personId = 4343,
+                              .userId = std::nullopt,
+                              .name = "Hombre de la moto",
+                              .alias = {},
+                              .observation = {},
+                              .role = {},
+                              .tags = {},
+                              .trusted = false,
+                              .category = "watchlist",
+                              .visits = 3,
+                              .firstSeenAt = 0,
+                              .lastSeenAt = 0,
+                              .visitorNumber = 8,
+                              .usualWeekdays = {},
+                              .usualHour = std::nullopt});
+  auto service = harness.service();
+  REQUIRE(drogon::sync_wait(service->handle(visit({.eventId = "watch:roster",
+                                                   .cameraId = 531,
+                                                   .trackId = 1,
+                                                   .personId = 4343,
+                                                   .rule = "person_day",
+                                                   .severity = "info",
+                                                   .zoneKind = ""}),
+                                            1)));
+  const auto all = harness.notifications.sent();
+  REQUIRE(all.size() == 1);
+  CHECK(all.front().title.find("Hombre de la moto") == std::string::npos);
+  CHECK(all.front().body.find("Hombre de la moto") == std::string::npos);
+  CHECK(all.front().data.find("Hombre de la moto") == std::string::npos);
+  CHECK_FALSE(json_util::fromString(all.front().data).isMember("visitor"));
 }

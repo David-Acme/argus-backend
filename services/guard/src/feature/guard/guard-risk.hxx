@@ -48,9 +48,17 @@ struct GuardRiskResult
   std::vector<std::string> appliedTags;
 };
 
+struct GuestPassInput
+{
+  std::string threat;
+  std::vector<std::string> tags;
+};
+
 namespace guard_risk
 {
 
 GuardRiskResult mergeEvidence(const GuardRiskInput& input);
+
+bool revokesGuestPass(const GuestPassInput& input);
 
 }

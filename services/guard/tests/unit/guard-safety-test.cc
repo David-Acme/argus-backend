@@ -9,6 +9,7 @@
 #include <feature/guard/guard-copy.hxx>
 #include <feature/guard/guard-service.hxx>
 #include <feature/guard/services/guard-feature-service.hxx>
+#include <feature/safety/dtos/remove-pin-dto.hxx>
 #include <feature/safety/dtos/set-pin-dto.hxx>
 #include <feature/safety/infra/guard-alert-sink.hxx>
 #include <feature/safety/infra/notification-actor-notifier.hxx>
@@ -66,6 +67,11 @@ public:
       result.outcome = NotificationRpcOutcome::Unavailable;
       return result;
     }
+    if (rejections_ > 0) {
+      --rejections_;
+      result.outcome = NotificationRpcOutcome::Rejected;
+      return result;
+    }
     sent_.push_back({.commandId = request.command_id(),
                      .title = request.title(),
                      .body = request.body(),
@@ -94,10 +100,17 @@ public:
     failures_ = count;
   }
 
+  void rejectNext(int count) const
+  {
+    std::scoped_lock lock(mutex_);
+    rejections_ = count;
+  }
+
 private:
   mutable std::mutex mutex_;
   mutable std::vector<Delivered> sent_;
   mutable int failures_{0};
+  mutable int rejections_{0};
 };
 
 GuardService::Config quickRetries()
@@ -178,7 +191,7 @@ struct SafetyRig
 
   void armPins()
   {
-    drogon::sync_wait(safety.toggle({.duressEnabled = true, .actorUserId = 1}));
+    drogon::sync_wait(safety.toggle({.duressEnabled = true, .actorUserId = 1, .actorName = "Ana", .currentPin = std::nullopt}));
     static_cast<void>(drogon::sync_wait(safety.setPin({.userId = 2,
                                                        .userName = "Laura",
                                                        .disarmPin = "1111",
@@ -308,7 +321,7 @@ TEST_CASE("a duress PIN disarms like the real one and silently alerts everyone e
 {
   boot();
   SafetyRig rig;
-  drogon::sync_wait(rig.safety.toggle({.duressEnabled = true, .actorUserId = 1}));
+  drogon::sync_wait(rig.safety.toggle({.duressEnabled = true, .actorUserId = 1, .actorName = "Ana", .currentPin = std::nullopt}));
   const SafetyStatus status =
       drogon::sync_wait(rig.safety.setPin({.userId = 2, .userName = "Laura", .disarmPin = "1111", .duressPin = "2222", .currentPin = std::nullopt}));
   CHECK(status.hasPin);
@@ -353,7 +366,7 @@ TEST_CASE("wrong PINs are refused, counted and locked out")
 {
   boot();
   SafetyRig rig;
-  drogon::sync_wait(rig.safety.toggle({.duressEnabled = true, .actorUserId = 1}));
+  drogon::sync_wait(rig.safety.toggle({.duressEnabled = true, .actorUserId = 1, .actorName = "Ana", .currentPin = std::nullopt}));
   static_cast<void>(
       drogon::sync_wait(rig.safety.setPin({.userId = 2, .userName = "Laura", .disarmPin = "1111", .duressPin = "2222", .currentPin = std::nullopt})));
   for (int attempt = 0; attempt < 3; ++attempt)
@@ -369,10 +382,10 @@ TEST_CASE("switching duress off forgets every stored PIN")
 {
   boot();
   SafetyRig rig;
-  drogon::sync_wait(rig.safety.toggle({.duressEnabled = true, .actorUserId = 1}));
+  drogon::sync_wait(rig.safety.toggle({.duressEnabled = true, .actorUserId = 1, .actorName = "Ana", .currentPin = std::nullopt}));
   static_cast<void>(
       drogon::sync_wait(rig.safety.setPin({.userId = 2, .userName = "Laura", .disarmPin = "1111", .duressPin = "2222", .currentPin = std::nullopt})));
-  drogon::sync_wait(rig.safety.toggle({.duressEnabled = false, .actorUserId = 1}));
+  drogon::sync_wait(rig.safety.toggle({.duressEnabled = false, .actorUserId = 1, .actorName = "Ana", .currentPin = std::nullopt}));
   CHECK(scalar("SELECT COUNT(*) FROM guard_user_pin") == "0");
   CHECK_FALSE(drogon::sync_wait(rig.safety.status(2)).hasPin);
   CHECK(rig.setMode("home", std::nullopt, 2)[0]["mode"].asString() == "home");
@@ -519,6 +532,113 @@ TEST_CASE("lowering any mode asks for the PIN, and a duress PIN alerts before th
   CHECK(refusalOf([&] { rig.setMode("home", std::string("2222"), 2, 99999); }) == 404);
   rig.waitForKind("guard_duress", 1);
   CHECK_FALSE(rig.ofKind("guard_duress").empty());
+}
+
+TEST_CASE("a refused safety alert is retried under a fresh command until it is delivered")
+{
+  boot();
+  SafetyRig rig;
+  rig.notifications.rejectNext(1);
+  const PanicResult result = drogon::sync_wait(
+      rig.safety.panic({.userId = 1, .userName = "Ana", .environmentId = std::nullopt}));
+  CHECK_FALSE(result.sent);
+  const std::string id = std::to_string(result.alertId);
+  CHECK(scalar("SELECT status FROM guard_action_outbox WHERE command_id = 'safety:" + id +
+               ":notify:1'") == "rejected");
+  CHECK(scalar("SELECT notify_sequence FROM guard_safety_alert WHERE id = " + id) == "2");
+  CHECK(rig.ofKind("guard_panic").empty());
+  rig.clock += 2;
+  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 1);
+  const auto alerts = rig.ofKind("guard_panic");
+  REQUIRE_FALSE(alerts.empty());
+  for (const auto& alert : alerts) {
+    CHECK(alert.commandId.starts_with("safety:" + id + ":r2:notify:1"));
+    CHECK(alert.data["actorName"].asString() == "Ana");
+  }
+  CHECK(scalar("SELECT notified_at > 0 FROM guard_safety_alert WHERE id = " + id) == "1");
+  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+}
+
+TEST_CASE("an alert undelivered past the resume window is escalated and still retried, never purged")
+{
+  boot();
+  SafetyRig rig;
+  scalar("INSERT INTO guard_safety_alert (kind, user_id, environment_id, created_at, "
+         "notified_at, actor_name) VALUES ('panic', 3, 0, " +
+         std::to_string(rig.clock - 2LL * 86400) + ", 0, 'Marta')");
+  const std::string id = scalar("SELECT MAX(id) FROM guard_safety_alert");
+  rig.notifications.failNext(1);
+  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+  CHECK(scalar("SELECT escalated_at > 0 FROM guard_safety_alert WHERE id = " + id) == "1");
+  CHECK(scalar("SELECT notified_at FROM guard_safety_alert WHERE id = " + id) == "0");
+  rig.clock += 2;
+  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 1);
+  const auto alerts = rig.ofKind("guard_panic");
+  REQUIRE_FALSE(alerts.empty());
+  CHECK(alerts.front().data["actorName"].asString() == "Marta");
+  scalar("INSERT INTO guard_safety_alert (kind, user_id, environment_id, created_at, "
+         "notified_at) VALUES ('duress', 2, 0, " +
+         std::to_string(rig.clock - 40LL * 86400) + ", 0)");
+  drogon::sync_wait(rig.safety.purgeExpired());
+  CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE kind = 'duress' AND "
+               "notified_at = 0") == "1");
+}
+
+TEST_CASE("switching duress off needs the caller's current PIN, and the duress PIN alerts")
+{
+  boot();
+  SafetyRig rig;
+  rig.armPins();
+  CHECK(refusalOf([&] {
+          static_cast<void>(drogon::sync_wait(rig.safety.toggle(
+              {.duressEnabled = false, .actorUserId = 2, .actorName = "Laura", .currentPin = std::nullopt})));
+        }) == 403);
+  CHECK(refusalOf([&] {
+          static_cast<void>(drogon::sync_wait(rig.safety.toggle(
+              {.duressEnabled = false, .actorUserId = 2, .actorName = "Laura", .currentPin = "5555"})));
+        }) == 403);
+  CHECK(drogon::sync_wait(rig.safety.setting()).duressEnabled);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_user_pin") == "1");
+  CHECK(refusalOf([&] { rig.setMode("home", std::nullopt, 2); }) == 403);
+  CHECK(rig.notifications.sent().empty());
+  static_cast<void>(drogon::sync_wait(rig.safety.toggle(
+      {.duressEnabled = false, .actorUserId = 2, .actorName = "Laura", .currentPin = "2222"})));
+  CHECK_FALSE(drogon::sync_wait(rig.safety.setting()).duressEnabled);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_user_pin") == "0");
+  rig.waitForKind("guard_duress", 1);
+  CHECK_FALSE(rig.ofKind("guard_duress").empty());
+}
+
+TEST_CASE("switching duress off with the real PIN raises nothing, and the duress PIN on PUT alerts")
+{
+  boot();
+  SafetyRig rig;
+  rig.armPins();
+  CHECK(drogon::sync_wait(rig.safety.setPin({.userId = 2,
+                                             .userName = "Laura",
+                                             .disarmPin = "4721",
+                                             .duressPin = "9386",
+                                             .currentPin = "2222"}))
+            .hasPin);
+  rig.waitForKind("guard_duress", 1);
+  CHECK_FALSE(rig.ofKind("guard_duress").empty());
+  rig.notifications.clear();
+  static_cast<void>(drogon::sync_wait(rig.safety.toggle(
+      {.duressEnabled = false, .actorUserId = 2, .actorName = "Laura", .currentPin = "4721"})));
+  CHECK(scalar("SELECT COUNT(*) FROM guard_user_pin") == "0");
+  CHECK(rig.notifications.sent().empty());
+}
+
+TEST_CASE("a malformed body on PIN removal is a bad request")
+{
+  const auto req = drogon::HttpRequest::newHttpRequest();
+  req->setMethod(drogon::Delete);
+  req->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+  req->setBody("{not json");
+  CHECK(refusalOf([&] { static_cast<void>(RemovePinDto::fromRequest(req)); }) == 400);
+  const auto empty = drogon::HttpRequest::newHttpRequest();
+  empty->setMethod(drogon::Delete);
+  CHECK_FALSE(RemovePinDto::fromRequest(empty).currentPin.has_value());
 }
 
 TEST_CASE("a disabled account loses its PINs and old alerts are purged")

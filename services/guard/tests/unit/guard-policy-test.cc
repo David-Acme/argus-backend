@@ -865,3 +865,28 @@ TEST_CASE("a person on the Owner's watchlist alerts at once, whatever lowers oth
   CHECK(reasons.front() == GuardReason::Watchlist);
   CHECK(guardReasonRaises(GuardReason::Watchlist));
 }
+
+TEST_CASE("a guest-capped floor is remembered, and only a lowered high floor counts")
+{
+  auto zone = unknownPerson();
+  zone.inAlertZone = true;
+  zone.expectedGuest = true;
+  CHECK(guard_policy::evaluate(zone) == GuardDanger::Medium);
+  CHECK(guard_policy::guestFloor(zone) == GuardDanger::Critical);
+
+  auto staffZone = zone;
+  staffZone.staffOnly = true;
+  CHECK(guard_policy::guestFloor(staffZone) == GuardDanger::High);
+
+  auto plain = unknownPerson();
+  plain.expectedGuest = true;
+  CHECK(guard_policy::evaluate(plain) == GuardDanger::Low);
+  CHECK(guard_policy::guestFloor(plain) == GuardDanger::None);
+
+  auto away = zone;
+  away.mode = GuardMode::Away;
+  CHECK(guard_policy::guestFloor(away) == GuardDanger::None);
+
+  zone.expectedGuest = false;
+  CHECK(guard_policy::guestFloor(zone) == GuardDanger::None);
+}

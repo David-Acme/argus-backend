@@ -160,3 +160,13 @@ GuardRiskResult guard_risk::mergeEvidence(const GuardRiskInput& input)
     result.danger = GuardDanger::Medium;
   return result;
 }
+
+bool guard_risk::revokesGuestPass(const GuestPassInput& input)
+{
+  if (input.threat == "high" || input.threat == "critical")
+    return true;
+  return std::ranges::any_of(input.tags, [](const std::string& tag) {
+    RiskEvidence evidence;
+    return evidenceFromTag(tag, evidence) && evidenceScore(evidence) >= kRaiseThreshold;
+  });
+}

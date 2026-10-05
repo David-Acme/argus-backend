@@ -54,6 +54,8 @@ struct SafetyToggleInput
 {
   bool duressEnabled{false};
   int64_t actorUserId{0};
+  std::string actorName;
+  std::optional<std::string> currentPin;
 };
 
 struct SafetyRuntime;
@@ -122,6 +124,7 @@ private:
   [[nodiscard]] int64_t now() const;
   [[nodiscard]] int64_t retryDelay(int failures) const;
   void recordOutcome(int64_t alertId, bool sent) const;
+  [[nodiscard]] drogon::Task<void> escalate(const SafetyAlertRow& alert) const;
 
   Dependencies dependencies_;
   Config config_;

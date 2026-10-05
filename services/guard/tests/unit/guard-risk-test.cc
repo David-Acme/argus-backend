@@ -111,3 +111,13 @@ TEST_CASE("a repeated tag counts once")
   CHECK(repeated.danger == once.danger);
   CHECK(repeated.appliedTags.size() == 1);
 }
+
+TEST_CASE("a weapon or a high threat revokes an expected guest's pass")
+{
+  CHECK(guard_risk::revokesGuestPass({.threat = "none", .tags = {"weapon"}}));
+  CHECK(guard_risk::revokesGuestPass({.threat = "low", .tags = {"knife"}}));
+  CHECK(guard_risk::revokesGuestPass({.threat = "none", .tags = {"raised_object"}}));
+  CHECK(guard_risk::revokesGuestPass({.threat = "high", .tags = {}}));
+  CHECK_FALSE(guard_risk::revokesGuestPass({.threat = "medium", .tags = {"loitering"}}));
+  CHECK_FALSE(guard_risk::revokesGuestPass({.threat = "none", .tags = {"carrying_box"}}));
+}

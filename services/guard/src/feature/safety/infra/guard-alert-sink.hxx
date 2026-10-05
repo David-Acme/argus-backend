@@ -9,7 +9,7 @@ class GuardAlertSink : public SafetyAlertSink
 public:
   explicit GuardAlertSink(GuardService& guard);
 
-  [[nodiscard]] drogon::Task<bool> raise(const SafetyAlertNotice& notice) const override;
+  [[nodiscard]] drogon::Task<SafetyDelivery> raise(const SafetyAlertNotice& notice) const override;
 
 private:
   GuardService& guard_;

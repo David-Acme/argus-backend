@@ -58,7 +58,10 @@ drogon::Task<drogon::HttpResponsePtr> SafetyController::toggle(drogon::HttpReque
 {
   const auto body = UpdateSafetyDto::fromJson(*req->getJsonObject());
   const auto& caller = callerOf(req);
-  co_await service_->toggle({.duressEnabled = body.duressEnabled, .actorUserId = caller.sub});
+  co_await service_->toggle({.duressEnabled = body.duressEnabled,
+                             .actorUserId = caller.sub,
+                             .actorName = caller.name,
+                             .currentPin = body.currentPin});
   co_return ApiResponse::ok(statusJson(co_await service_->status(caller.sub)));
 }
 

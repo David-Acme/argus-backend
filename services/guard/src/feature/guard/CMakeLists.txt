@@ -37,6 +37,7 @@ argus_module(NAME guard
         services/guard-feature-service.cc
         services/response-feature-service.cc
         services/response-plan.cc
+        services/delivery-keepalive.cc
         services/response-verdict-feed.cc
     INCLUDES
         ../..

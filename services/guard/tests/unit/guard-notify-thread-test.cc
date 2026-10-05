@@ -1,6 +1,9 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <atomic>
 #include <camera/camera-action-client.hxx>
+#include <condition_variable>
+#include <mutex>
+#include <runtime/blocking-task.hxx>
 #include <chrono>
 #include <cstdio>
 #include <ctime>
@@ -342,7 +345,17 @@ public:
                      std::vector<std::string> tags, bool veto = false)
       : GuardAssessment({.camera = nullptr, .vlm = nullptr, .llm = nullptr},
                         GuardAssessmentConfig{}),
-        notifications_(notifications), tags_(std::move(tags)), veto_(veto)
+        notifications_(notifications), tags_(std::move(tags)), veto_(veto),
+        threat_(veto ? "none" : "high")
+  {
+  }
+
+  ScriptedAssessment(const CapturingNotifications& notifications,
+                     std::vector<std::string> tags, bool veto, std::string threat)
+      : GuardAssessment({.camera = nullptr, .vlm = nullptr, .llm = nullptr},
+                        GuardAssessmentConfig{}),
+        notifications_(notifications), tags_(std::move(tags)), veto_(veto),
+        threat_(std::move(threat))
   {
   }
 
@@ -354,7 +367,7 @@ public:
     GuardAssessmentResult result;
     result.performed = true;
     result.valid = true;
-    result.threat = veto_ ? "none" : "high";
+    result.threat = threat_;
     result.veto = veto_;
     result.tags = tags_;
     co_return result;
@@ -367,6 +380,49 @@ private:
   const CapturingNotifications& notifications_;
   std::vector<std::string> tags_;
   bool veto_{false};
+  std::string threat_;
+};
+
+class GatedAssessment final : public GuardAssessment
+{
+public:
+  GatedAssessment()
+      : GuardAssessment({.camera = nullptr, .vlm = nullptr, .llm = nullptr},
+                        GuardAssessmentConfig{})
+  {
+  }
+
+  drogon::Task<GuardAssessmentResult>
+  assess(const GuardAssessmentInput&) const override
+  {
+    entered.fetch_add(1);
+    co_await BlockingTask<bool>{[this]() {
+      std::unique_lock lock(mutex_);
+      gate_.wait(lock, [this] { return open_; });
+      return true;
+    }};
+    GuardAssessmentResult result;
+    result.performed = true;
+    result.valid = true;
+    result.threat = "none";
+    co_return result;
+  }
+
+  void open() const
+  {
+    {
+      std::scoped_lock lock(mutex_);
+      open_ = true;
+    }
+    gate_.notify_all();
+  }
+
+  mutable std::atomic<int> entered{0};
+
+private:
+  mutable std::mutex mutex_;
+  mutable std::condition_variable gate_;
+  mutable bool open_{false};
 };
 
 std::string threadField(int64_t cameraId, const std::string& column)
@@ -654,12 +710,37 @@ TEST_CASE("an observation older than the stale window notifies but never speaks 
                          .rule = "person_in_alert_zone",
                          .severity = "critical",
                          .zoneKind = "alert", .signature = {}}),
-      1)));
+      2)));
   CHECK(harness.notifications.calls == 1);
   CHECK(harness.camera.announceCalls == 0);
   CHECK(harness.camera.alarmCalls == 0);
   CHECK(scalar("SELECT json_extract(checkpoint, '$.stale') FROM guard_observation_inbox "
                "WHERE event_id = 'stale:1'") == "1");
+}
+
+TEST_CASE("a first delivery that waited in a backlog is not stale and still deters")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  harness.config.announceLevel = 3;
+  harness.config.alarmLevel = 4;
+  harness.config.defaultMode = GuardMode::Armed;
+  harness.config.staleObservationS = 120;
+  auto service = harness.makeService();
+
+  REQUIRE(drogon::sync_wait(service->handle(
+      threadObservation({.eventId = "stale:backlog",
+                         .cameraId = 38,
+                         .trackId = 1,
+                         .rule = "person_in_alert_zone",
+                         .severity = "critical",
+                         .zoneKind = "alert", .signature = {}}),
+      1)));
+  CHECK(harness.notifications.calls == 1);
+  CHECK(harness.camera.announceCalls + harness.camera.alarmCalls > 0);
+  CHECK(scalar("SELECT json_extract(checkpoint, '$.stale') FROM guard_observation_inbox "
+               "WHERE event_id = 'stale:backlog'") == "0");
 }
 
 TEST_CASE("closing an encounter journals without notifying")
@@ -1512,4 +1593,88 @@ TEST_CASE("a short offline blip stays quiet, and offline at home is not critical
   const Json::Value data = json_util::fromString(harness.notifications.sent.front().data);
   CHECK(data["urgency"].asString() == "active");
   CHECK(data["danger"].asString() == "high");
+}
+
+TEST_CASE("an expected guest in an alert zone is never vetoed below the guest cap")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  scalar("UPDATE guard_environment SET mode = 'home'");
+  scalar("DELETE FROM guard_expected_guest");
+  const int64_t nowS = testNowMs() / 1000;
+  scalar("INSERT INTO guard_expected_guest (description, camera_id, valid_from, "
+         "valid_until) VALUES ('plumber', 0, " +
+         std::to_string(nowS - 600) + ", " + std::to_string(nowS + 3600) + ")");
+  const auto run = [](const std::string& eventId, int64_t cameraId,
+                      ScriptedAssessment& assessment, ThreadHarness& harness) {
+    harness.assessment = &assessment;
+    auto service = harness.makeService();
+    REQUIRE(drogon::sync_wait(service->handle(
+        threadObservation({.eventId = eventId,
+                           .cameraId = cameraId,
+                           .trackId = 1,
+                           .rule = "person_in_alert_zone",
+                           .severity = "critical",
+                           .zoneKind = "alert", .signature = {}}),
+        1)));
+    return journalField(eventId, "severity");
+  };
+
+  ThreadHarness vetoed;
+  ScriptedAssessment calm(vetoed.notifications, {"carrying_box"}, true, "none");
+  CHECK(run("guest:veto", 91, calm, vetoed) == "medium");
+  CHECK(calm.calls == 1);
+
+  ThreadHarness armed;
+  ScriptedAssessment knife(armed.notifications, {"weapon"}, true, "none");
+  CHECK(run("guest:knife", 92, knife, armed) == "critical");
+
+  ThreadHarness raised;
+  ScriptedAssessment object(raised.notifications, {"raised_object"}, false, "medium");
+  CHECK(run("guest:raised", 93, object, raised) == "critical");
+
+  scalar("DELETE FROM guard_expected_guest");
+}
+
+TEST_CASE("queued and running deliveries are kept in progress until they settle")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  GatedAssessment assessment;
+  harness.assessment = &assessment;
+  auto service = harness.makeService();
+  std::atomic<int> acked{0};
+  std::atomic<int> runningTouches{0};
+  std::atomic<int> queuedTouches{0};
+  const auto delivery = [&acked](const std::string& eventId, std::atomic<int>& touches) {
+    return GuardService::Delivery{
+        .payload = json_util::toString(threadObservation({.eventId = eventId,
+                                                          .cameraId = 61,
+                                                          .trackId = 1,
+                                                          .rule = "person_day",
+                                                          .severity = "info",
+                                                          .zoneKind = "monitor",
+                                                          .signature = {}})),
+        .ack = [&acked]() { acked.fetch_add(1); },
+        .nak = {},
+        .term = {},
+        .inProgress = [&touches]() { touches.fetch_add(1); },
+        .delivered = 1};
+  };
+  service->accept(delivery("ka:1", runningTouches));
+  service->accept(delivery("ka:2", queuedTouches));
+  for (int attempt = 0; attempt < 500 && assessment.entered.load() == 0; ++attempt)
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  REQUIRE(assessment.entered.load() == 1);
+  CHECK(service->keepDeliveriesAlive() == 2);
+  CHECK(runningTouches.load() == 1);
+  CHECK(queuedTouches.load() == 1);
+  assessment.open();
+  for (int attempt = 0; attempt < 1000 && acked.load() < 2; ++attempt)
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  REQUIRE(acked.load() == 2);
+  CHECK(service->keepDeliveriesAlive() == 0);
+  CHECK(runningTouches.load() == 1);
+  CHECK(queuedTouches.load() == 1);
 }

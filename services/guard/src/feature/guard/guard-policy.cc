@@ -86,6 +86,19 @@ GuardDanger evaluate(const GuardContext& context)
   return danger;
 }
 
+GuardDanger guestFloor(const GuardContext& context)
+{
+  if (!context.expectedGuest)
+    return GuardDanger::None;
+  GuardContext unguested = context;
+  unguested.expectedGuest = false;
+  const GuardDanger floor = evaluate(unguested);
+  if (dangerRank(floor) < dangerRank(GuardDanger::High) ||
+      dangerRank(floor) <= dangerRank(evaluate(context)))
+    return GuardDanger::None;
+  return floor;
+}
+
 std::vector<GuardReason> explain(const GuardContext& context)
 {
   std::vector<GuardReason> reasons;

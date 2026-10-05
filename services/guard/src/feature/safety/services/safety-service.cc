@@ -244,6 +244,11 @@ drogon::Task<SafetySetting> SafetyService::setting() const
 
 drogon::Task<SafetySetting> SafetyService::toggle(const SafetyToggleInput& input) const
 {
+  if (!input.duressEnabled && (co_await settingRepository_.find()).duressEnabled)
+    co_await requireCurrentPin({.userId = input.actorUserId,
+                                .userName = input.actorName,
+                                .pin = input.currentPin,
+                                .environmentId = std::nullopt});
   const int64_t at = now();
   co_await settingRepository_.update(
       {.duressEnabled = input.duressEnabled, .updatedBy = input.actorUserId, .now = at});
@@ -277,13 +282,15 @@ void SafetyService::duress(const DisarmRequest& request) const
           {.kind = SafetyAlertKind::Duress,
            .userId = request.userId,
            .environmentId = request.environmentId.value_or(0),
-           .now = at});
+           .now = at,
+           .actorName = request.userName});
       co_await deliver({.kind = SafetyAlertKind::Duress,
                         .alertId = alertId,
                         .actorUserId = request.userId,
                         .actorName = request.userName,
                         .environmentId = request.environmentId.value_or(0),
-                        .now = at});
+                        .now = at,
+                        .sequence = 1});
     }
     catch (const std::exception& error) {
       LOG_ERROR << "Guard safety: an alert could not be recorded: " << error.what();
@@ -310,13 +317,15 @@ drogon::Task<PanicResult> SafetyService::panic(const PanicInput& input) const
       co_await alertRepository_.insert({.kind = SafetyAlertKind::Panic,
                                         .userId = input.userId,
                                         .environmentId = input.environmentId.value_or(0),
-                                        .now = at});
+                                        .now = at,
+                                        .actorName = input.userName});
   const SafetyAlertNotice notice{.kind = SafetyAlertKind::Panic,
                                  .alertId = alertId,
                                  .actorUserId = input.userId,
                                  .actorName = input.userName,
                                  .environmentId = input.environmentId.value_or(0),
-                                 .now = at};
+                                 .now = at,
+                                 .sequence = 1};
   const bool sent = co_await deliver(notice);
   if (dependencies_.actor)
     static_cast<void>(co_await dependencies_.actor->confirmPanic(notice));
@@ -355,9 +364,16 @@ drogon::Task<bool> SafetyService::deliver(const SafetyAlertNotice& notice) const
   }
   bool sent = false;
   try {
-    sent = co_await dependencies_.sink->raise(notice);
+    const SafetyDelivery delivery = co_await dependencies_.sink->raise(notice);
+    sent = delivery == SafetyDelivery::Sent;
     if (sent)
       co_await alertRepository_.markNotified(notice.alertId, now());
+    else if (delivery == SafetyDelivery::Refused) {
+      LOG_ERROR << "Guard safety: alert " << notice.alertId << " attempt " << notice.sequence
+                << " was refused; the next attempt resolves the recipients again";
+      static_cast<void>(co_await alertRepository_.advanceSequence(
+          {.id = notice.alertId, .sequence = notice.sequence}));
+    }
   }
   catch (const std::exception& error) {
     LOG_WARN << "Guard safety: alert " << notice.alertId
@@ -368,11 +384,22 @@ drogon::Task<bool> SafetyService::deliver(const SafetyAlertNotice& notice) const
   co_return sent;
 }
 
+drogon::Task<void> SafetyService::escalate(const SafetyAlertRow& alert) const
+{
+  if (alert.escalatedAt > 0 || alert.createdAt >= now() - config_.resumeWindowS)
+    co_return;
+  if (co_await alertRepository_.markEscalated(alert.id, now()))
+    LOG_ERROR << "Guard safety: " << safetyAlertKindToString(alert.kind) << " alert " << alert.id
+              << " of user " << alert.userId << " is still undelivered after "
+              << config_.resumeWindowS << " s; it keeps being retried";
+}
+
 drogon::Task<size_t> SafetyService::sweepPending() const
 {
   size_t delivered = 0;
   const int64_t at = now();
-  for (const auto& alert : co_await alertRepository_.pending(at - config_.resumeWindowS)) {
+  for (const auto& alert : co_await alertRepository_.pending()) {
+    co_await escalate(alert);
     {
       std::scoped_lock lock(runtime_->mutex);
       const auto retry = runtime_->retries.find(alert.id);
@@ -382,9 +409,10 @@ drogon::Task<size_t> SafetyService::sweepPending() const
     if (co_await deliver({.kind = alert.kind,
                           .alertId = alert.id,
                           .actorUserId = alert.userId,
-                          .actorName = {},
+                          .actorName = alert.actorName,
                           .environmentId = alert.environmentId,
-                          .now = alert.createdAt}))
+                          .now = alert.createdAt,
+                          .sequence = alert.sequence}))
       ++delivered;
   }
   co_return delivered;
@@ -402,6 +430,7 @@ drogon::Task<int64_t> SafetyService::purgeExpired() const
   const int64_t removed =
       co_await alertRepository_.purgeBefore(at - std::max(config_.retentionS, config_.resumeWindowS));
   if (removed > 0)
-    LOG_INFO << "Guard safety: purged " << removed << " alert row(s) past the retention window";
+    LOG_INFO << "Guard safety: purged " << removed
+             << " delivered alert row(s) past the retention window";
   co_return removed;
 }

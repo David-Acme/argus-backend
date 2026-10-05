@@ -197,6 +197,14 @@ int main()
 
   ConfigService::load("config.toml");
 
+  try {
+    DeviceFilter::requireFingerprintSecret();
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+
   const GuardDbConfig db = GuardConfig::resolveDb();
   const ListenerConfig listener = GuardConfig::resolveListener();
 

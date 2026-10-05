@@ -91,6 +91,19 @@ midnight.
   home and at night. While the environment is `away` or `armed` nobody is
   there to host a guest, so a pass never lowers those (the audit of
   2026-10-05, finding 6). A weapon is the exception, below.
+- A guest cap that lowered a `High` or `Critical` floor (an alert zone, the
+  night, several strangers) is remembered in the checkpoint as
+  `guestFloor`. The assessment's `soft_only` veto never applies under it, so
+  a guest-softened intruder stays at the guest cap (`Medium`) and is never
+  vetoed down to `Low`. Threat evidence revokes the pass outright
+  (`guard_risk::revokesGuestPass`): any tag worth a raise on its own
+  (`weapon`/`knife`/`gun`, `raised_object`, `attempting_door`) or a model
+  threat of `high`/`critical` restores `guestFloor`, whatever threat level
+  the model paired the tag with. Commercial sites differ through the
+  context, not through the pass: during open or staffed hours the public and
+  staff rules decide before any guest is considered, and staff-only hours
+  make the alert-zone floor `High`, which is then the floor a revoked pass
+  restores.
 
 **Weapons.** The assessment's tags are a closed vocabulary (the grammar
 enumerates them) and `weapon` (also `knife`, `gun`, `firearm`,
@@ -1056,7 +1069,15 @@ makes it a 2-second hold (`PANIC_HOLD_MS`), never a tap.
 duressPin, currentPin?}`: 4-8 digits, different, not trivial; `DELETE` with
 `{currentPin}` removes them). With codes set, changing or removing them needs
 the current code, under the same lockout; the duress code there succeeds
-like the real one and raises the silent alert. With codes set, any change
+like the real one and raises the silent alert. Switching the feature off
+(`PATCH /guard/safety {duressEnabled: false, currentPin}`) asks the caller
+for their own current code the same way, because it deletes every code and
+would otherwise let a coerced Owner turn the protection off in front of the
+intruder: missing 403 `PIN_REQUIRED`, wrong 403 `PIN_INVALID` (counted
+toward the lockout), the duress code succeeds and raises the silent alert.
+An Owner who never set codes is not asked (nothing protects their own
+disarm either). A malformed body on `DELETE /guard/safety/pin` is 400, not a
+missing PIN. With codes set, any change
 to a lower mode (`armed` > `away` > `night` > `home`) through
 `POST /guard/mode` requires `pin`:
 
@@ -1112,16 +1133,25 @@ people see are those of an ordinary disarm. Raising the mode never asks. Switchi
   two repeated halves such as `1212`).
 - *Order.* A duress code raises its alert before the environment id is
   validated, so a forced disarm against a wrong id still alerts.
-- *Delivery.* One attempt runs inline; on failure the safety sweep (every
-  5 s, started by `SafetyService::start`, a `shutdown_signal` drain named
-  `guard-safety`) re-delivers every pending alert younger than 24 hours with
-  a bounded backoff (2 s doubling to 60 s) and no attempt limit until it is
-  notified. Without the user directory the recipients come from the last
+- *Delivery.* Panic and duress alerts are never lost (owner decision). One
+  attempt runs inline; on failure the safety sweep (every 5 s, started by
+  `SafetyService::start`, a `shutdown_signal` drain named `guard-safety`)
+  re-delivers every pending alert, whatever its age, with a bounded backoff
+  (2 s doubling to 60 s) and no attempt limit until it is notified. A refusal
+  the outbox would replay forever (argus-notification answering `INTERNAL`,
+  `PERMISSION_DENIED`, a command conflict) advances the alert's
+  `notify_sequence`: the next attempt runs under the fresh correlation
+  `safety:<alertId>:r<n>`, so it resolves the recipients again instead of
+  replaying the stored rejection. An alert still undelivered after
+  `resumeWindowS` (24 h) is escalated, not abandoned: one `LOG_ERROR` and
+  `escalated_at` set, and the retries go on. The actor's name is stored on the
+  row (`actor_name`), so a swept retry renders "Botón de pánico · Laura" like
+  the first attempt. Without the user directory the recipients come from the last
   directory guard saw (kept in memory and as `guard_state`
   `response_directory_snapshot`: ids, roles, languages and the active flag,
   no names), then from the legacy owner+guard roster.
-- *Retention.* Alert rows go after `guard.journal_retention_days` (checked
-  hourly by the same sweep). A user's codes are deleted when identity's
+- *Retention.* Delivered alert rows go after `guard.journal_retention_days`
+  (checked hourly by the same sweep); an undelivered row is never purged. A user's codes are deleted when identity's
   change feed reports the account disabled: the presence consumer calls the
   `onAccountDisabled` hook that `main.cc` wires to `SafetyService::forgetUser`.
 - *Trace.* Both kinds of alert use the opaque correlation `safety:<alertId>`
@@ -1204,12 +1234,24 @@ batches, so a replay sends the same plan). The call engine reaches later steps
 itself. Any other notification goes to every member not set to off, so a
 Resident now receives guard notifications; before this, guard's roster was
 owners and guards only. Without the identity directory, guard keeps the old
-owner+guard roster (`legacyRecipients`).
+owner+guard roster (`legacyRecipients`). That roster carries no roles, so a
+notice about a visitor goes out redacted on it, named or not (rule 7b): no
+visitor name in the text and no `data.visitor`.
 
-**Feedback.** `ResponseVerdictFeed` subscribes to
-`argus.notification.v1.response_verdict`. A verdict on a `guard_episode`
-labels the episode, through the same `EpisodeRepository::review` the owner's
-review uses: `false_alarm` gives `false_alarm`, `real` gives `useful`.
+**Feedback.** argus-notification publishes every verdict into the JetStream
+stream `ARGUS_NOTIFICATION_VERDICT` (subject
+`argus.notification.v1.response_verdict`, msg id
+`response-verdict:<responseId>:<verdict>:<userId>`), and
+`ResponseVerdictFeed` reads it through the durable consumer
+`argus-guard-verdicts`. A verdict on a `guard_episode` labels the episode,
+through the same `EpisodeRepository::review` the owner's review uses:
+`false_alarm` gives `false_alarm`, `real` gives `useful`. The message is
+acknowledged only after the review is stored (or when it names no episode,
+or another kind); a review that failed on an existing episode is nak'd and
+redelivered, and an unparseable payload is terminated. Both services ensure
+the stream idempotently (guard at boot with the consumer, retrying every 5 s
+while NATS is down; notification at boot and before a publish), so an older
+argus-notification that still core-publishes is captured by the stream too.
 
 **API.** `GET /guard/environments/{id}/response`: Owner sees everyone;
 Resident and Guard see only their own row plus the contacts and the emergency
@@ -1300,11 +1342,14 @@ The cloud audit (`docs/history/reports/cloud-audit-2026-10-05.md`, findings
   already reached that tier.
 - **Action rows.** `guard_action` upserts on `command_id`, so a retried
   effect shows its final status, not the first attempt's.
-- **Stale observations.** An observation already older than
-  `guard.stale_observation_s` (120 s) when it is first evaluated (a
-  redelivery after a crash) keeps its journal, incident and notification
-  but never greets, speaks or sounds: the person is long gone. `0` turns
-  the check off (tests). The decision is kept in the checkpoint (`stale`).
+- **Stale observations.** A redelivered observation (JetStream delivery
+  count above 1, or a claim that found the inbox row already there: a crash,
+  a local retry) already older than `guard.stale_observation_s` (120 s) when
+  it is evaluated keeps its journal, incident and notification but never
+  greets, speaks or sounds: the person is long gone. A first delivery that
+  merely waited behind its camera's queue is not stale, so a backlog never
+  silences the deterrence of a live intruder. `0` turns the check off
+  (tests). The decision is kept in the checkpoint (`stale`).
 - **Camera commands** carry an expiry taken from the clock when each command
   leaves, not from the start of the observation, so a long dialogue no
   longer sends an already-expired command.
@@ -1337,14 +1382,15 @@ The cloud audit (`docs/history/reports/cloud-audit-2026-10-05.md`, findings
   checked again afterwards, so a withdrawal that lands mid-signal cannot
   revive the row.
 
-Still open, owned elsewhere:
-- *JetStream ack wait (50, G1).* The durable consumer acknowledges after the
-  saga; the 60 s `AckWait` is fixed in `packages/lib/nats` and
-  `DurableSettlement` has no `inProgress`, so an observation queued behind a
-  slow VLM/LLM evaluation of its camera can be redelivered and use up
-  `maxDeliver`. The fix belongs to `lib/nats` (an `inProgress` callback or
-  a per-consumer `ackWait`); guard would then heartbeat queued and running
-  entries.
-- *Verdict feed (N16).* `argus.notification.v1.response_verdict` is a core
-  publish on no stream, so guard cannot read it through a durable consumer;
-  argus-notification has to publish it into a stream first.
+- **JetStream ack wait (50, G1).** The 60 s `AckWait` stays fixed in
+  `packages/lib/nats`; instead every delivery the consumer hands over carries
+  `DurableSettlement::inProgress`, which `GuardService::accept` registers in
+  `DeliveryKeepalive` until the entry is acked, nak'd or terminated.
+  `startHeartbeat` touches every registered delivery every 20 s, so an
+  observation queued behind its camera's slow assessment or dialogue, and
+  the one running them, are not redelivered and do not use up `maxDeliver`.
+- **Verdict feed (N16).** Durable since this round, see "Feedback" above.
+- **Boot.** `main.cc` calls `DeviceFilter::requireFingerprintSecret()` like
+  every other HTTP service, so a missing or short `[device]
+  fingerprint_secret` stops the process at boot instead of at the first
+  request.

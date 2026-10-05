@@ -745,6 +745,25 @@ bool migrateGuestColumns()
   return true;
 }
 
+bool migrateSafetyAlertColumns()
+{
+  if (!tableExists("guard_safety_alert"))
+    return true;
+  if (!columnExists("guard_safety_alert", "notify_sequence") &&
+      !exec("ALTER TABLE guard_safety_alert ADD COLUMN notify_sequence "
+            "INTEGER NOT NULL DEFAULT 1"))
+    return false;
+  if (!columnExists("guard_safety_alert", "escalated_at") &&
+      !exec("ALTER TABLE guard_safety_alert ADD COLUMN escalated_at "
+            "INTEGER NOT NULL DEFAULT 0"))
+    return false;
+  if (!columnExists("guard_safety_alert", "actor_name") &&
+      !exec("ALTER TABLE guard_safety_alert ADD COLUMN actor_name TEXT "
+            "NOT NULL DEFAULT ''"))
+    return false;
+  return true;
+}
+
 }
 
 bool guard_schema::migrate(const std::string& schemaPath)
@@ -760,7 +779,7 @@ bool guard_schema::migrate(const std::string& schemaPath)
             "NOT NULL DEFAULT 0"))
     return false;
   if (!migrateGuestColumns() || !migrateEnvironmentColumns() ||
-      !migrateLanPresenceColumn() ||
+      !migrateLanPresenceColumn() || !migrateSafetyAlertColumns() ||
       !migrateInboxColumns() ||
       !migrateIncidentColumns() || !migrateActionColumns() ||
       !migrateEncounterDialogueColumns() || !migrateAssessmentColumns() ||

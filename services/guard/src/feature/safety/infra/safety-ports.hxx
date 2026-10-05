@@ -14,6 +14,14 @@ struct SafetyAlertNotice
   std::string actorName;
   int64_t environmentId{0};
   int64_t now{0};
+  int64_t sequence{1};
+};
+
+enum class SafetyDelivery : uint8_t
+{
+  Sent,
+  Pending,
+  Refused
 };
 
 class SafetyAlertSink
@@ -21,7 +29,7 @@ class SafetyAlertSink
 public:
   virtual ~SafetyAlertSink() = default;
 
-  [[nodiscard]] virtual drogon::Task<bool> raise(const SafetyAlertNotice& notice) const = 0;
+  [[nodiscard]] virtual drogon::Task<SafetyDelivery> raise(const SafetyAlertNotice& notice) const = 0;
 };
 
 class SafetyActorNotifier

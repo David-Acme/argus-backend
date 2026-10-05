@@ -379,6 +379,24 @@ private:
   std::atomic<bool>& flag_;
 };
 
+constexpr double kDeliveryKeepaliveS = 20.0;
+
+class KeepaliveRelease
+{
+public:
+  KeepaliveRelease(DeliveryKeepalive& keepalive, uint64_t token)
+      : keepalive_(keepalive), token_(token)
+  {
+  }
+  ~KeepaliveRelease() { keepalive_.release(token_); }
+  KeepaliveRelease(const KeepaliveRelease&) = delete;
+  KeepaliveRelease& operator=(const KeepaliveRelease&) = delete;
+
+private:
+  DeliveryKeepalive& keepalive_;
+  uint64_t token_{0};
+};
+
 class LifecycleGuard
 {
 public:
@@ -650,6 +668,12 @@ void GuardService::startHeartbeat()
     return;
   heartbeatStarted_ = true;
   trackTimer(drogon::app().getLoop()->runEvery(
+      kDeliveryKeepaliveS, [keepalive = keepalive_, lifecycle = lifecycle_]() {
+        const LifecycleGuard guard(lifecycle);
+        if (guard.alive())
+          keepalive->touch();
+      }));
+  trackTimer(drogon::app().getLoop()->runEvery(
       static_cast<double>(std::max(1, config->heartbeatS)),
       [this, lifecycle = lifecycle_]() {
         const LifecycleGuard guard(lifecycle);
@@ -717,11 +741,12 @@ bool GuardService::trySubscribe()
                     settlement.nak();
                   return;
                 }
-                enqueue({.payload = std::move(payload),
-                         .ack = std::move(settlement.ack),
-                         .nak = std::move(settlement.nak),
-                         .term = std::move(settlement.term),
-                         .delivered = delivered});
+                accept({.payload = std::move(payload),
+                        .ack = std::move(settlement.ack),
+                        .nak = std::move(settlement.nak),
+                        .term = std::move(settlement.term),
+                        .inProgress = std::move(settlement.inProgress),
+                        .delivered = delivered});
               });
         }});
   if (!subscription)
@@ -1171,6 +1196,23 @@ int64_t GuardService::retryBackoffAt(int attempts, int64_t nowMs) const
   return nowMs + std::max<int64_t>(delay, 1);
 }
 
+void GuardService::accept(Delivery delivery)
+{
+  const uint64_t keepalive = keepalive_->hold(std::move(delivery.inProgress));
+  enqueue({.payload = std::move(delivery.payload),
+           .ack = std::move(delivery.ack),
+           .nak = std::move(delivery.nak),
+           .term = std::move(delivery.term),
+           .delivered = delivery.delivered,
+           .leased = false,
+           .keepalive = keepalive});
+}
+
+size_t GuardService::keepDeliveriesAlive() const
+{
+  return keepalive_->touch();
+}
+
 void GuardService::enqueue(QueueEntry entry)
 {
   const int64_t cameraId =
@@ -1203,6 +1245,7 @@ drogon::Task<void> GuardService::processQueue(int64_t cameraId)
       entry = std::move(lane.entries.front());
       lane.entries.pop_front();
     }
+    const KeepaliveRelease release(*keepalive_, entry.keepalive);
     if (!aliveGuard.alive()) {
       if (entry.nak)
         entry.nak();
@@ -1395,8 +1438,10 @@ GuardService::handleEvent(HandleEventInput input)
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
   const std::string eventId = input.event.get("eventId", "").asString();
   if (eventId.empty()) {
-    co_await applyObservation(
-        {.event = input.event, .signals = signals, .state = {}});
+    co_await applyObservation({.event = input.event,
+                               .signals = signals,
+                               .state = {},
+                               .redelivered = input.delivered > 1});
     co_return true;
   }
 
@@ -1444,8 +1489,13 @@ GuardService::handleEvent(HandleEventInput input)
     co_return true;
   }
   failAt("after_claim");
+  const bool redelivered =
+      input.delivered > 1 || state.kind != ObservationClaimKind::New;
   const ObservationResult outcome = co_await applyObservation(
-      {.event = input.event, .signals = signals, .state = std::move(state)});
+      {.event = input.event,
+       .signals = signals,
+       .state = std::move(state),
+       .redelivered = redelivered});
   if (!outcome.completed) {
     const int64_t retryAt =
         outcome.retryAt > 0
@@ -1501,6 +1551,7 @@ GuardService::checkpointToJson(const ObservationCheckpoint& checkpoint)
   json["lateRaised"] = checkpoint.lateRaised;
   json["stale"] = checkpoint.stale;
   json["policyDanger"] = checkpoint.policyDanger;
+  json["guestFloor"] = checkpoint.guestFloor;
   json["danger"] = checkpoint.danger;
   json["greetingStatus"] = checkpoint.greetingStatus;
   json["greetingDetail"] = checkpoint.greetingDetail;
@@ -1578,6 +1629,7 @@ GuardService::checkpointFromJson(const Json::Value& json)
   checkpoint.lateRaised = json.get("lateRaised", false).asBool();
   checkpoint.stale = json.get("stale", false).asBool();
   checkpoint.policyDanger = json.get("policyDanger", "").asString();
+  checkpoint.guestFloor = json.get("guestFloor", "").asString();
   checkpoint.danger = json.get("danger", "").asString();
   checkpoint.greetingStatus = json.get("greetingStatus", "").asString();
   checkpoint.greetingDetail = json.get("greetingDetail", "").asString();
@@ -1696,7 +1748,8 @@ GuardService::applyObservation(const ObservationInput& input)
     checkpoint.passerby = area.passerby;
     checkpoint.expectedArea = posture.publicPresent || area.inUse;
     checkpoint.cameraRole = cameraRoleToString(camera.role);
-    checkpoint.stale = config->staleObservationS > 0 && signals.publishedAtMs > 0 &&
+    checkpoint.stale = input.redelivered && config->staleObservationS > 0 &&
+                       signals.publishedAtMs > 0 &&
                        nowMillis() - signals.publishedAtMs > config->staleObservationS * 1000;
     checkpoint.outdoor = camera.outdoor;
     checkpoint.familyInside = camera.configured && !camera.outdoor &&
@@ -1752,6 +1805,8 @@ GuardService::applyObservation(const ObservationInput& input)
         signals.identityState == IdentityState::Unobservable)
       addReason(checkpoint.reasons, GuardReason::FaceHidden);
     checkpoint.policyDanger = guard_policy::dangerToString(policyDanger);
+    checkpoint.guestFloor =
+        guard_policy::dangerToString(guard_policy::guestFloor(context));
     checkpoint.visitCount = context.visitCount;
     checkpoint.expectedGuest = context.expectedGuest;
     checkpoint.hardFloor = guard_policy::dangerRank(policyDanger) >=
@@ -2750,10 +2805,13 @@ GuardService::assessInto(const AssessIntoInput& input)
           .count());
   if (!checkpoint.dialogue.heardText.empty())
     checkpoint.assessment.veto = false;
+  const GuardDanger guestFloor =
+      guard_policy::dangerFromString(checkpoint.guestFloor);
+  const bool guestSoftened = guestFloor != GuardDanger::None;
   const bool soft = guard_policy::dangerRank(danger) <
                     guard_policy::dangerRank(GuardDanger::High);
   if (checkpoint.assessment.performed && checkpoint.assessment.veto &&
-      config->vetoScope == "soft_only" && soft)
+      config->vetoScope == "soft_only" && soft && !guestSoftened)
     danger = GuardDanger::Low;
   if (checkpoint.assessment.performed) {
     const GuardRiskResult risk =
@@ -2764,6 +2822,10 @@ GuardService::assessInto(const AssessIntoInput& input)
     danger = risk.danger;
     checkpoint.weapon = risk.weapon;
     checkpoint.assessment.tags = risk.appliedTags;
+    if (guestSoftened &&
+        guard_risk::revokesGuestPass({.threat = checkpoint.assessment.threat,
+                                      .tags = risk.appliedTags}))
+      danger = std::max(danger, guestFloor);
     if (risk.weapon) {
       std::vector<std::string> ordered{guardReasonToString(GuardReason::Weapon)};
       for (const auto& reason : checkpoint.reasons) {
@@ -3388,7 +3450,8 @@ GuardService::performEffect(const EffectInput& input)
                              .replyRequested = input.replyRequested});
   result.authorized = decision.authorized;
   result.detail = decision.reason;
-  if (result.authorized && !dependencies_.actions) {
+  if (result.authorized && input.kind != GuardActionKind::Notify &&
+      !dependencies_.actions) {
     result.authorized = false;
     result.detail = "camera_unavailable";
   }
@@ -3814,7 +3877,7 @@ GuardService::legacyRecipients(const RecipientQuery& query)
     LOG_WARN << "Guard service: identity SDK unavailable";
     co_return std::nullopt;
   }
-  const bool redacted = visitorPresent(query.data) && !visitorNamed(query.data);
+  const bool redacted = visitorPresent(query.data);
   co_return co_await BlockingTask<std::optional<RecipientResolution>>(
       [this, excluded = query.excluded, redacted]() -> std::optional<RecipientResolution> {
         const auto users = dependencies_.identity->listNotifiableUsers();
@@ -4216,7 +4279,8 @@ GuardService::notify(const NotifyInput& input)
   co_return EffectStatus::Succeeded;
 }
 
-drogon::Task<bool> GuardService::raiseSafetyAlert(const SafetyAlertInput& input)
+drogon::Task<GuardService::SafetyAlertOutcome>
+GuardService::raiseSafetyAlert(const SafetyAlertInput& input)
 {
   const int64_t environmentId = input.environmentId > 0
                                     ? input.environmentId
@@ -4270,10 +4334,14 @@ drogon::Task<bool> GuardService::raiseSafetyAlert(const SafetyAlertInput& input)
        .text = {},
        .lang = {},
        .seconds = 0,
-       .correlationId = "safety:" + std::to_string(input.alertId),
+       .correlationId = "safety:" + std::to_string(input.alertId) +
+                        (input.sequence > 1 ? ":r" + std::to_string(input.sequence)
+                                            : std::string{}),
        .sequence = 1,
        .notifyContent = {.notice = notice,
                          .data = std::move(data),
                          .excludeUserIds = {input.actorUserId}}});
-  co_return sent.accepted;
+  co_return SafetyAlertOutcome{
+      .accepted = sent.accepted,
+      .terminal = !sent.accepted && guardIntentStatusIsTerminal(sent.status)};
 }

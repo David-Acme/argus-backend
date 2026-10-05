@@ -138,6 +138,8 @@ namespace guard_policy
 
 GuardDanger evaluate(const GuardContext& context);
 
+GuardDanger guestFloor(const GuardContext& context);
+
 std::vector<GuardReason> explain(const GuardContext& context);
 
 GuardDeterrence deterrence(const GuardDeterrenceInput& input);

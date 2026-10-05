@@ -13,6 +13,7 @@
 #include <feature/guard/repositories/episode/episode-repository.hxx>
 #include <feature/guard/repositories/environment/environment-repository.hxx>
 #include <feature/guard/repositories/response/response-repository.hxx>
+#include <feature/guard/services/delivery-keepalive.hxx>
 #include <feature/guard/services/response-plan.hxx>
 #include <shared/repositories/presence/presence-repository.hxx>
 
@@ -53,9 +54,16 @@ public:
     std::string actorName;
     int64_t environmentId{0};
     int64_t now{0};
+    int64_t sequence{1};
   };
 
-  [[nodiscard]] drogon::Task<bool> raiseSafetyAlert(const SafetyAlertInput& input);
+  struct SafetyAlertOutcome
+  {
+    bool accepted{false};
+    bool terminal{false};
+  };
+
+  [[nodiscard]] drogon::Task<SafetyAlertOutcome> raiseSafetyAlert(const SafetyAlertInput& input);
 
   struct Dependencies
   {
@@ -86,6 +94,20 @@ public:
 
   drogon::Task<bool> handleLocalRetry(const Json::Value& event);
 
+  struct Delivery
+  {
+    std::string payload;
+    std::function<void()> ack{};
+    std::function<void()> nak{};
+    std::function<void()> term{};
+    std::function<void()> inProgress{};
+    int delivered{0};
+  };
+
+  void accept(Delivery delivery);
+
+  size_t keepDeliveriesAlive() const;
+
   struct HealthSample
   {
     int64_t cameraId{0};
@@ -110,6 +132,7 @@ private:
     std::function<void()> term{};
     int delivered{0};
     bool leased{false};
+    uint64_t keepalive{0};
   };
 
   bool trySubscribe();
@@ -270,6 +293,7 @@ private:
     const Json::Value& event;
     const GuardEventSignals& signals;
     ObservationClaim state;
+    bool redelivered{false};
   };
 
   drogon::Task<ObservationResult>
@@ -303,6 +327,7 @@ private:
     bool lateRaised{false};
     bool stale{false};
     std::string policyDanger;
+    std::string guestFloor;
     std::string danger;
     std::string greetingStatus;
     std::string greetingDetail;
@@ -561,6 +586,7 @@ private:
 
   std::mutex queueMutex_;
   std::map<int64_t, QueueLane> lanes_;
+  std::shared_ptr<DeliveryKeepalive> keepalive_ = std::make_shared<DeliveryKeepalive>();
 
   std::mutex lifecycleMutex_;
   std::vector<uint64_t> timerIds_;

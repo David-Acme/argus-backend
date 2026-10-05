@@ -430,7 +430,10 @@ CREATE TABLE IF NOT EXISTS guard_safety_alert (
     user_id         INTEGER NOT NULL,
     environment_id  INTEGER NOT NULL DEFAULT 0,
     created_at      INTEGER NOT NULL,
-    notified_at     INTEGER NOT NULL DEFAULT 0
+    notified_at     INTEGER NOT NULL DEFAULT 0,
+    notify_sequence INTEGER NOT NULL DEFAULT 1,
+    escalated_at    INTEGER NOT NULL DEFAULT 0,
+    actor_name      TEXT    NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_guard_safety_alert_user_kind
