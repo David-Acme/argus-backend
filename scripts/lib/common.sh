@@ -179,6 +179,10 @@ grpc caller_voice
 grpc caller_productivity
 grpc caller_notification
 rpc.callers settings
+rpc.callers sync
+rpc.callers notification
+guard presence_target
+guard presence_credential
 rpc address
 owners.llm target
 owners.llm credential
@@ -510,6 +514,10 @@ ensure_deploy_configs() {
     "$deploy_dir/config.vlm.toml" rpc.callers guard 32
   fill_config_pair "$deploy_dir/config.guard.toml" llm grpc_credential \
     "$deploy_dir/config.llm.toml" rpc.callers guard 32
+  fill_config_pair "$deploy_dir/config.sync.toml" guard presence_credential \
+    "$deploy_dir/config.guard.toml" rpc.callers sync 32
+  fill_config_pair "$deploy_dir/config.notification.toml" guard presence_credential \
+    "$deploy_dir/config.guard.toml" rpc.callers notification 32
   ensure_settings_owners "$deploy_dir/config.settings.toml" deploy "$deploy_dir"
   ensure_livekit_key_pair "$deploy_dir/config.sync.toml"
   if [ -f "$deploy_dir/config.sync.toml" ]; then

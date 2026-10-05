@@ -1,3 +1,4 @@
+#include <app/rpc/presence-rpc-service.hxx>
 #include <camera/camera-action-client.hxx>
 #include <config/guard-config.hxx>
 #include <drogon/drogon.h>
@@ -10,6 +11,10 @@
 #include <feature/guard/guard-schedule.hxx>
 #include <feature/guard/guard-schema.hxx>
 #include <feature/guard/guard-service.hxx>
+#include <feature/presence/controllers/presence-controller.hxx>
+#include <feature/presence/infra/identity-presence-directory.hxx>
+#include <feature/presence/infra/nats-presence-publisher.hxx>
+#include <feature/presence/services/presence-service.hxx>
 #include <feature/settings/guard-settings.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
@@ -69,40 +74,60 @@ Json::Value drogonConfig(const GuardDrogonConfig& input)
   return config;
 }
 
-struct SettingsListener
+struct RpcListener
 {
-  std::unique_ptr<SettingsRpcService> service;
+  std::unique_ptr<SettingsRpcService> settings;
+  std::unique_ptr<PresenceRpcService> presence;
   std::unique_ptr<grpc::Server> server;
 };
 
-SettingsListener startSettingsListener(SettingsRegistry& registry)
+struct RpcListenerInput
+{
+  SettingsRegistry& registry;
+  const PresenceService& presence;
+};
+
+RpcListener startRpcListener(const RpcListenerInput& input)
 {
   GuardRpcConfig rpc = GuardConfig::resolveRpc();
   if (rpc.address.empty())
     return {};
-  if (rpc.settingsCredentials.empty()) {
-    LOG_WARN << "Guard settings listener not started: [rpc.callers] settings "
-                "is empty";
-    return {};
-  }
-  SettingsListener listener;
-  listener.service = std::make_unique<SettingsRpcService>(
-      SettingsRpcInput{.service = "guard",
-                       .registry = &registry,
-                       .credentials = std::move(rpc.settingsCredentials)});
+  RpcListener listener;
   grpc::ServerBuilder builder;
+  if (rpc.settingsCredentials.empty()) {
+    LOG_WARN << "Guard settings RPC not served: [rpc.callers] settings is "
+                "empty";
+  }
+  else {
+    listener.settings = std::make_unique<SettingsRpcService>(
+        SettingsRpcInput{.service = "guard",
+                         .registry = &input.registry,
+                         .credentials = std::move(rpc.settingsCredentials)});
+    builder.RegisterService(listener.settings.get());
+  }
+  if (rpc.presenceCredentials.empty()) {
+    LOG_INFO << "Guard presence RPC not served: no [rpc.callers] sync or "
+                "notification";
+  }
+  else {
+    listener.presence = std::make_unique<PresenceRpcService>(
+        PresenceRpcInput{.presence = &input.presence,
+                         .credentials = std::move(rpc.presenceCredentials)});
+    builder.RegisterService(listener.presence.get());
+  }
+  if (!listener.settings && !listener.presence)
+    return {};
   builder.AddListeningPort(rpc.address, grpc::InsecureServerCredentials());
-  builder.RegisterService(listener.service.get());
   listener.server = builder.BuildAndStart();
   if (!listener.server) {
-    LOG_FATAL << "Guard settings listener failed to listen on " << rpc.address;
+    LOG_FATAL << "Guard RPC listener failed to listen on " << rpc.address;
     _exit(1);
   }
-  LOG_INFO << "Guard settings listener on " << rpc.address;
+  LOG_INFO << "Guard RPC listener on " << rpc.address;
   return listener;
 }
 
-void stopSettingsListener(const SettingsListener& listener)
+void stopRpcListener(const RpcListener& listener)
 {
   if (listener.server)
     listener.server->Shutdown(std::chrono::system_clock::now() +
@@ -198,11 +223,20 @@ int main()
   ResponseVerdictFeed verdictFeed(natsBus.get());
   verdictFeed.start();
 
+  IdentityPresenceDirectory presenceDirectory(identity.get());
+  NatsPresencePublisher presencePublisher(natsBus.get());
+  PresenceService presence({.bus = natsBus.get(),
+                            .directory = &presenceDirectory,
+                            .publisher = &presencePublisher},
+                           GuardConfig::resolvePresence());
+
   SettingsRegistry settings(guardSettingsCatalog());
-  settings.onChange([&guardService](const std::vector<std::string>&) {
+  settings.onChange([&guardService, &presence](const std::vector<std::string>&) {
     guardService.refresh(GuardConfig::resolveService());
+    presence.refresh(GuardConfig::resolvePresence());
   });
-  const SettingsListener settingsListener = startSettingsListener(settings);
+  const RpcListener rpcListener =
+      startRpcListener({.registry = settings, .presence = presence});
 
   registerHealth();
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
@@ -211,6 +245,8 @@ int main()
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
   drogon::app().registerController(std::make_shared<GuardController>(
       GuardFeatureDependencies{.identity = identity.get()}));
+  drogon::app().registerController(
+      std::make_shared<PresenceController>(&presence));
   drogon::app().registerController(std::make_shared<ResponseController>(
       ResponseFeatureDependencies{.directory = responseDirectory, .clock = {}}));
 
@@ -247,18 +283,18 @@ int main()
            << (listener.tls ? " (TLS" : " (plain") << ", cert "
            << listener.certPath << "); guard database " << db.dbPath;
 
-  drogon::app().registerBeginningAdvice([&guardService]() {
+  drogon::app().registerBeginningAdvice([&guardService, &presence]() {
     guardService.start();
+    presence.start();
   });
 
   shutdown_signal::onQuit(
       [path = db.dbPath] { DbService::freezeClient(path); });
   shutdown_signal::onStop(
-      {.name = "guard-settings",
-       .requestStop = [&settingsListener] {
-         stopSettingsListener(settingsListener);
-       },
+      {.name = "guard-rpc",
+       .requestStop = [&rpcListener] { stopRpcListener(rpcListener); },
        .drained = [] { return true; }});
+  shutdown_signal::onStop(shutdown_signal::drainOf(presence, "guard-presence"));
   shutdown_signal::onStop(shutdown_signal::drainOf(guardService, "guard"));
 
   std::unique_ptr<MdnsService> mdnsService;
@@ -269,6 +305,6 @@ int main()
   });
 
   drogon::app().setThreadNum(0).run();
-  stopSettingsListener(settingsListener);
+  stopRpcListener(rpcListener);
   return 0;
 }

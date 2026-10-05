@@ -53,6 +53,7 @@ guard	POST	/guard/expected-guests	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFil
 guard	GET	/guard/incidents	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
 guard	POST	/guard/mode	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
 guard	POST	/guard/person/{1}/promote	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
+guard	GET	/guard/presence	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/presence/controllers/presence-controller.hxx
 guard	GET	/health	-	-	services/guard/src/app/main.cc
 identity	GET	/invitation	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/invitation/controllers/invitation-controller.hxx
 identity	POST	/invitation	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/invitation/controllers/invitation-controller.hxx

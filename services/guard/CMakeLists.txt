@@ -64,6 +64,10 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                          ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
     endif()
+    if(NOT TARGET argus::clients::guard)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/guard
+                         ${CMAKE_BINARY_DIR}/clients/guard EXCLUDE_FROM_ALL)
+    endif()
     if(NOT TARGET argus::clients::notification)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
                          ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
@@ -102,12 +106,15 @@ foreach(module IN LISTS GUARD_FEATURE_MODULES)
     get_filename_component(module_dir "${module}" DIRECTORY)
     add_subdirectory("${module_dir}")
 endforeach()
+add_subdirectory(${GUARD_SRC_ROOT}/app/rpc)
 
 argus_service(NAME argus-guard
     MAIN ${GUARD_SRC_ROOT}/app/main.cc
     MODULES
         argus::guard
         argus::guard-config
+        argus::guard-presence
+        argus::guard-rpc
         argus::guard-settings
         argus::contracts::settings-wire
         argus::lib::auth
@@ -116,6 +123,7 @@ argus_service(NAME argus-guard
         argus::lib::nats
         argus::lib::sqlite
         argus::lib::text
+        argus::clients::guard
         argus::clients::identity
         argus::clients::notification
         argus::clients::camera-actions
@@ -168,6 +176,21 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
     endif()
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
+
+add_executable(guard-presence-test tests/unit/guard-presence-test.cc)
+set_target_properties(guard-presence-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(guard-presence-test PRIVATE
+    argus::guard
+    argus::guard-presence
+    argus::guard-rpc
+    argus::clients::guard
+    doctest::doctest)
+target_include_directories(guard-presence-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+target_compile_definitions(guard-presence-test PRIVATE
+    ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(guard-presence-test PRIVATE -Wall -Wextra)
+add_test(NAME guard-presence-test COMMAND guard-presence-test)
 
 add_executable(guard-settings-test tests/unit/guard-settings-test.cc)
 set_target_properties(guard-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)

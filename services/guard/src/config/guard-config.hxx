@@ -22,6 +22,7 @@ struct GuardRpcConfig
 {
   std::string address;
   std::vector<argus::client::CallerCredential> settingsCredentials;
+  std::vector<argus::client::CallerCredential> presenceCredentials;
 };
 
 struct GuardPeerConfig
@@ -125,6 +126,16 @@ struct GuardServiceConfig
   std::function<bool(const std::string&)> failPoint;
 };
 
+struct GuardPresenceConfig
+{
+  bool enabled{true};
+  int64_t awayTimeoutSeconds{2700};
+  int64_t tunnelGraceSeconds{90};
+  int64_t retentionSeconds{2592000};
+  int64_t sweepSeconds{60};
+  int64_t consentRefreshSeconds{600};
+};
+
 class GuardConfig
 {
 public:
@@ -147,4 +158,6 @@ public:
   [[nodiscard]] static GuardServiceConfig resolveService();
 
   [[nodiscard]] static BeliefConfig resolveBelief(int64_t cameraId);
+
+  [[nodiscard]] static GuardPresenceConfig resolvePresence();
 };

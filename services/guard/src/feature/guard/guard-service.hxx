@@ -473,6 +473,7 @@ private:
     int64_t environmentId{0};
     std::string environmentName;
     int64_t at{0};
+    bool passerby{false};
   };
 
   void publishKnownSeen(const KnownSeenInput& input);

@@ -401,3 +401,19 @@ None. Phase 3b-2 brought the `/auth` surface and the row migration off
 Phase 3b-3 landed the filter leg: `JwtFilter` asks the verdict through
 `argus::clients::auth` (`packages/lib/auth/src/auth/jwt-filter.cc:50-54`), so
 no other unit opens `auth.db`.
+
+## Presence signal (2026-10, safety wave)
+
+argus-guard decides who is home, partly from where a person's sessions come
+from. The verdict is where auth already sees every authenticated request, so
+it is the one place that can tell, without guard reading `auth.db`.
+`ValidateTokenRequest.origin` (optional, field 3) carries the class
+`DeviceFilter` gave the request (`lan`, `tunnel`, `loopback`, `external`;
+never the address). On a valid session the verdict hands `lan` and `tunnel`
+to a `PresenceSignalSink` when that session's origin changed or its
+`last_seen` advanced (the existing once-a-minute touch), and
+`NatsPresenceSignalSink` core-publishes `argus.auth.v1.presence_signal`
+`{userId, sessionId, platform, origin, at}`. It is a core publish on purpose:
+a lost signal only delays presence by a minute, and nothing about a session
+is decided by it. The throttle's per-session map is bounded (4096, then
+cleared). Guard's side is in `services/guard/CONTEXT.md`, "Presence".

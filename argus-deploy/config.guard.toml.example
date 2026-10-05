@@ -24,6 +24,14 @@ address = "0.0.0.0:7139"
 
 [rpc.callers]
 settings = "CHANGE_ME_SETTINGS_GUARD"
+sync = "CHANGE_ME_PRESENCE_SYNC"
+notification = "CHANGE_ME_PRESENCE_NOTIFICATION"
+
+[presence]
+enabled = true
+away_timeout_minutes = 45
+tunnel_grace_seconds = 90
+retention_days = 30
 
 [database]
 db = "guard/guard.db"

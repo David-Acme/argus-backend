@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package argus.guard.v1;
+
+enum PresenceState
+{
+  PRESENCE_STATE_UNKNOWN = 0;
+  PRESENCE_STATE_HOME = 1;
+  PRESENCE_STATE_AWAY = 2;
+}
+
+enum PresenceSource
+{
+  PRESENCE_SOURCE_NONE = 0;
+  PRESENCE_SOURCE_LAN_SESSION = 1;
+  PRESENCE_SOURCE_TUNNEL_SESSION = 2;
+  PRESENCE_SOURCE_APP_ACTIVITY = 3;
+  PRESENCE_SOURCE_CAMERA = 4;
+  PRESENCE_SOURCE_TIMEOUT = 5;
+}
+
+message EnvironmentPresence
+{
+  int64 environment_id = 1;
+  PresenceState state = 2;
+  PresenceSource source = 3;
+  int64 since = 4;
+}
+
+message UserPresence
+{
+  int64 user_id = 1;
+  PresenceState overall = 2;
+  int64 since = 3;
+  repeated EnvironmentPresence environments = 4;
+}
+
+message ListPresenceRequest
+{
+  repeated int64 user_ids = 1;
+}
+
+message ListPresenceResponse
+{
+  repeated UserPresence users = 1;
+}
+
+service PresenceService
+{
+  rpc ListPresence(ListPresenceRequest) returns (ListPresenceResponse) {}
+}

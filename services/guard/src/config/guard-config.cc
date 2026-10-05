@@ -136,9 +136,15 @@ ListenerConfig GuardConfig::resolveListener()
 
 GuardRpcConfig GuardConfig::resolveRpc()
 {
+  const auto callers = ConfigService::getStringPairs("rpc.callers");
+  std::vector<std::pair<std::string, std::string>> presence;
+  for (const auto& caller : callers)
+    if (caller.first == "sync" || caller.first == "notification")
+      presence.push_back(caller);
   return {.address = ConfigService::getString("rpc.address"),
-          .settingsCredentials =
-              settingsCallers(ConfigService::getStringPairs("rpc.callers"))};
+          .settingsCredentials = settingsCallers(callers),
+          .presenceCredentials =
+              argus::client::callerCredentialsFromPairs(presence)};
 }
 
 GuardPeerConfig GuardConfig::resolveNotifications()
@@ -348,5 +354,19 @@ BeliefConfig GuardConfig::resolveBelief(int64_t cameraId)
       beliefLeafKey(cameraId, "threshold_medium"), defaults.thresholdMedium);
   config.thresholdLow = beliefIntOr(
       beliefLeafKey(cameraId, "threshold_low"), defaults.thresholdLow);
+  return config;
+}
+
+GuardPresenceConfig GuardConfig::resolvePresence()
+{
+  constexpr int64_t kMinute = 60;
+  constexpr int64_t kDay = 86400;
+  GuardPresenceConfig config;
+  config.enabled = configBoolOr("presence.enabled", true);
+  config.awayTimeoutSeconds =
+      configInt64Or("presence.away_timeout_minutes", 45) * kMinute;
+  config.tunnelGraceSeconds =
+      configInt64Or("presence.tunnel_grace_seconds", 90);
+  config.retentionSeconds = configInt64Or("presence.retention_days", 30) * kDay;
   return config;
 }

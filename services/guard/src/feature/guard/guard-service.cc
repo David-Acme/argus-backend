@@ -1123,6 +1123,7 @@ void GuardService::publishKnownSeen(const KnownSeenInput& input)
   payload["environmentId"] = static_cast<Json::Int64>(input.environmentId);
   payload["environmentName"] = input.environmentName;
   payload["at"] = static_cast<Json::Int64>(input.at);
+  payload["passerby"] = input.passerby;
   dependencies_.bus->publish(nats_subject::kGuardKnownSeen,
                              json_util::toString(payload));
 }
@@ -1709,7 +1710,8 @@ GuardService::applyObservation(const ObservationInput& input)
                         .cameraName = signals.cameraName,
                         .environmentId = environment.id,
                         .environmentName = environmentName,
-                        .at = now});
+                        .at = now,
+                        .passerby = checkpoint.passerby});
     state.stage = kStageEncounter;
     failAt("after_encounter");
   }

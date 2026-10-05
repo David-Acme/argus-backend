@@ -244,6 +244,10 @@ prepare() {
     "$STACK_DIR/notification/config.toml" grpc caller_voice 32
   fill_config_pair "$STACK_DIR/notification/config.toml" voice credential \
     "$STACK_DIR/voice/config.toml" grpc caller_notification 32
+  fill_config_pair "$STACK_DIR/sync/config.toml" guard presence_credential \
+    "$STACK_DIR/guard/config.toml" rpc.callers sync 32
+  fill_config_pair "$STACK_DIR/notification/config.toml" guard presence_credential \
+    "$STACK_DIR/guard/config.toml" rpc.callers notification 32
   wire_settings_owners
   log "sandbox configs ready in $STACK_DIR"
 }

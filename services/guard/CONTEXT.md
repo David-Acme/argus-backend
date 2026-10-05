@@ -916,3 +916,108 @@ Entrada" call or notification (`services/notification/CONTEXT.md`, "Argus
 calls you"). A replayed observation may publish it again; the consumer keys
 arrivals by person and time. Known people still never notify from guard
 itself.
+
+## Presence: who is home (2026-10, safety wave)
+
+The owner's words: an intruder alert must know whether anyone is home, locally
+and never by GPS. "Nobody home" calls the owner and the guards and offers the
+siren; "people home, intruder outside" warns the people inside first and
+quietly; "intruder inside with people home" never speaks through a camera in a
+room where the family is; "night, everyone home" wakes people only on a clear
+threat. Presence is the input those decisions read.
+
+**Why guard owns it.** Presence is per user *per environment*, and guard owns
+the environments. One of the three signals (a recognized face) is born in
+guard's own saga, and the decisions that read presence (the response plan,
+the deterrence ladder) are guard posture. A presence feature in
+argus-notification would have needed the environments, the camera roles and
+the known-seen feed from guard over the wire, only to hand presence back to
+guard for the plan. argus-notification and argus-sync read it through the
+SDK instead.
+
+**What is stored: current state only.** `guard_presence` holds one row per
+user and environment: `home` or `away`, the kind of signal behind it
+(`lan_session`, `tunnel_session`, `app_activity`, `camera`, `timeout`), since
+when, and the last home signal. A missing row means *unknown*. Every change
+overwrites the row: there is no history, no address and no location, ever.
+Rows go when the environment goes (`ON DELETE CASCADE`), when consent is
+withdrawn or the account disabled, and after `[presence] retention_days`
+(30) without a change. That retention is the one ONBOARD-CONSENT quotes in
+the privacy notice.
+
+**Signals.**
+- *Home network vs tunnel.* `DeviceFilter` (lib/auth) classifies every request
+  by where it arrived: `tunnel` on the `[remote] tunnel_port` listener,
+  `loopback`, `lan` for private, link-local and ULA ranges (`[device]
+  lan_networks` replaces the default list, e.g. for a Tailscale range),
+  otherwise `external`. Only that class leaves the filter. `JwtFilter`
+  forwards it to argus-auth's verdict (`ValidateTokenRequest.origin`), and the
+  verdict core-publishes `argus.auth.v1.presence_signal` `{userId, sessionId,
+  platform, origin, at}` for `lan`/`tunnel` when a session's origin changed or
+  its `last_seen` advanced (at most once a minute per session). Guard never
+  reads auth.db (rule 27). A phone (`android`/`ios`) on the LAN is a
+  `lan_session`; a desktop or web session on the LAN is `app_activity`, a
+  weaker sign (a desktop at home says less about its owner than a phone in a
+  pocket). The LAN signal makes the person home in every environment with
+  `lan_presence` (the server's own network; seeded on the default
+  environment, editable through `PATCH /guard/environments/{id}`). Any
+  session through the tunnel makes them away there.
+- *A recognized face.* The presence feature subscribes to guard's own
+  `argus.guard.v1.known_seen` (no saga coupling), asks identity which account
+  the person is (`GetPerson.user_id`) and marks that user home in the
+  camera's environment. `known_seen` gained `passerby`: a resident walking past
+  on an outdoor public camera is not an arrival. A user who withdrew face
+  consent has no `user_id` on their person, so a sighting cannot name them.
+- *The away timeout.* A sweep every minute turns `home` into `away` with
+  source `timeout` after `[presence] away_timeout_minutes` (45) without a
+  home signal.
+
+**The rules** (`presence_engine::apply`, pure). A home signal always wins
+and keeps the first arrival as `since`. The tunnel means away, except within
+`tunnel_grace_seconds` (90) of a home signal, because a phone leaving the
+wifi races its own last LAN request. A timed-out `away` confirmed by the
+tunnel becomes `tunnel_session` at once (the decision readers treat the two
+differently), and a signal older than the row's last one changes nothing.
+Two strengths of away exist on purpose: `tunnel_session` means the person's
+device is provably outside; `timeout` only means silence, which a phone
+asleep on the nightstand also produces. The response plan must never sound a
+siren or speak into a room on a `timeout` away alone.
+
+**Consent.** Nothing is stored for a user who has not consented
+(`UserIdentity.privacy`, decided and presence, from identity; ONBOARD-CONSENT
+owns the record). The verdict is cached five minutes and dropped by identity's
+change feed: a user change whose `row.privacy.presence` is false, or whose
+`isActive` is false, deletes the user's rows at once and publishes
+`unknown`/`consent` for each environment. A change without `row.privacy` (a
+rename) is not a consent change. Every ten minutes, and at boot,
+`ListPrivacy` reconciles the table (covers a withdrawal that happened while
+guard was down). An unreachable identity stores nothing: fail closed.
+
+**Who reads it.**
+- In guard: `PresenceRepository` and the helpers in
+  `shared/vocabulary/presence-state.hxx` (`presence::stateOf`,
+  `presence::overall`): shared because the response plan reads them too.
+- Over gRPC: `argus.guard.v1.PresenceService/ListPresence` through
+  `argus::clients::guard` (`GuardPresenceClient`), served on `[rpc] address`
+  beside the settings service for the callers named `sync` and
+  `notification` in `[rpc.callers]`. The setup, native-stack and deploy
+  pairing fill `[guard] presence_credential` on their side.
+- Live: `argus.guard.v1.presence_changed` `{userId, environmentId, state,
+  source, since, overall}` on every state change. `overall` folds the
+  environments: home anywhere is home, away everywhere is away, otherwise
+  unknown.
+- The app: `GET /guard/presence` (owner only, by `kGuardAccess` omission) gives
+  `{people: [{userId, state, since, environments: [{environmentId, state,
+  since}]}]}`: the coarse "en casa / fuera" of the people view, with no source.
+
+**Code map.** `src/shared/vocabulary/presence-state.hxx`,
+`src/shared/repositories/presence/` (`argus::guard-presence-repository`),
+`src/feature/presence/` (`argus::guard-presence`: the pure engine, the
+service with its NATS subscriptions and timers, the identity directory
+adapter, the NATS publisher, the controller and its response DTO),
+`src/app/rpc/presence-rpc-service` (`argus::guard-rpc`), `[presence]` in
+`config.toml`. Tests: `guard-presence-repository-test` (storage, timeout,
+retention, cascade), `guard-presence-test` (every signal, the grace, stale
+signals, consent withdrawal, account disable, the consent sweep, the owner
+view, the RPC with its caller check), `device-origin-test` (lib/auth) and the
+presence cases in auth's `session-verdict-test`.
