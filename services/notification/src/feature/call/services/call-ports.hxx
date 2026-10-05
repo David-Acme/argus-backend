@@ -82,3 +82,23 @@ public:
 
   virtual drogon::Task<bool> notify(const CallNotice& notice) const = 0;
 };
+
+struct ResponseVerdictEvent
+{
+  int64_t responseId{0};
+  std::string kind;
+  std::string threadKey;
+  int64_t episodeId{0};
+  int64_t environmentId{0};
+  std::string verdict;
+  int64_t userId{0};
+  int64_t at{0};
+};
+
+class ResponseVerdictSink
+{
+public:
+  virtual ~ResponseVerdictSink() = default;
+
+  virtual void publish(const ResponseVerdictEvent& event) const = 0;
+};

@@ -4,6 +4,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/call/repositories/arrival-seen/arrival-seen-repository.hxx>
 #include <feature/call/repositories/call-preference/call-preference-repository.hxx>
+#include <feature/call/repositories/call-response/call-response-repository.hxx>
 #include <feature/call/repositories/call/call-repository.hxx>
 #include <feature/call/repositories/scheduled-call/scheduled-call-repository.hxx>
 #include <feature/call/services/call-copy.hxx>
@@ -34,6 +35,7 @@ struct CallEngineDependencies
   std::shared_ptr<const CallDirectory> directory;
   std::shared_ptr<const CallNotificationSink> notifier;
   std::shared_ptr<const push_intent::PushIntentSink> push;
+  std::shared_ptr<const ResponseVerdictSink> verdicts{};
   std::function<int64_t()> clock;
   std::function<CallLocalTime(int64_t)> localTime;
   bool blockingOffLoop{true};
@@ -44,6 +46,40 @@ struct CallRequest
   CallCandidate candidate;
   std::vector<int64_t> userIds;
   bool notificationExists{false};
+  std::vector<CallResponseMember> members{};
+};
+
+struct ResponseRequest
+{
+  const Json::Value& data;
+  const std::vector<int64_t>& userIds;
+  const Json::Value& plan;
+};
+
+struct ResponseVerdictRequest
+{
+  int64_t responseId{0};
+  int64_t userId{0};
+  ResponseVerdict verdict{ResponseVerdict::FalseAlarm};
+};
+
+enum class ResponseVerdictStatus : uint8_t
+{
+  Recorded = 0,
+  NotFound,
+  Closed
+};
+
+struct ResponseVerdictOutcome
+{
+  ResponseVerdictStatus status{ResponseVerdictStatus::NotFound};
+  Json::Value response;
+};
+
+struct ResponseViewRequest
+{
+  int64_t userId{0};
+  int64_t responseId{0};
 };
 
 enum class CallResolution : uint8_t
@@ -159,6 +195,8 @@ struct CallSweepReport
   int64_t missed{0};
   int64_t fired{0};
   int64_t closed{0};
+  int64_t escalated{0};
+  int64_t expired{0};
 };
 
 class CallEngine
@@ -172,6 +210,17 @@ public:
   drogon::Task<std::vector<CallUserOutcome>>
   considerNotification(const Json::Value& data,
                        const std::vector<int64_t>& userIds) const;
+
+  drogon::Task<std::vector<CallUserOutcome>>
+  respond(const ResponseRequest& request) const;
+
+  drogon::Task<ResponseVerdictOutcome>
+  verdict(const ResponseVerdictRequest& request) const;
+
+  drogon::Task<Json::Value> responses(int64_t userId) const;
+
+  drogon::Task<std::optional<Json::Value>>
+  response(const ResponseViewRequest& request) const;
 
   drogon::Task<CallClaimOutcome> claim(const CallClaimRequest& request) const;
 
@@ -206,6 +255,31 @@ private:
     const UserContext& user;
     const CallEngineConfig& config;
     int64_t now{0};
+    const CallResponseMember* member{nullptr};
+  };
+
+  struct ReachInput
+  {
+    const CallResponseSchema& response;
+    std::vector<CallResponseMember> members;
+    bool critical{false};
+    int64_t now{0};
+  };
+
+  struct CancelInput
+  {
+    const CallResponseSchema& response;
+    int64_t exceptUserId{0};
+    std::string reason;
+    std::string attendedBy;
+    int64_t now{0};
+  };
+
+  struct PromptInput
+  {
+    const CallResponseSchema& response;
+    bool confirmed{false};
+    int64_t now{0};
   };
 
   struct MissedInput
@@ -218,6 +292,18 @@ private:
   drogon::Task<CallUserOutcome> considerUser(const ConsiderUserInput& input) const;
 
   drogon::Task<void> settleMissed(const MissedInput& input) const;
+
+  drogon::Task<void> reach(const ReachInput& input) const;
+
+  drogon::Task<void> cancelRinging(const CancelInput& input) const;
+
+  drogon::Task<void> promptContacts(const PromptInput& input) const;
+
+  drogon::Task<void> emitResponse(int64_t responseId) const;
+
+  drogon::Task<void> attendAnswered(const CallSchema& call) const;
+
+  drogon::Task<int64_t> advanceResponses(int64_t now) const;
 
   drogon::Task<CallRecipient> lookupRecipient(int64_t userId) const;
 
@@ -243,6 +329,7 @@ private:
   CallPreferenceRepository preferenceRepository_;
   ScheduledCallRepository scheduledRepository_;
   ArrivalSeenRepository arrivalRepository_;
+  CallResponseRepository responseRepository_;
 };
 
 namespace call_engine

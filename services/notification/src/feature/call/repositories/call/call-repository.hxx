@@ -41,6 +41,9 @@ public:
 
   drogon::Task<std::vector<CallSchema>> findRinging() const;
 
+  drogon::Task<std::vector<CallCancelled>>
+  cancelRingingForKey(const CallCancelForKeyInput& input) const;
+
   drogon::Task<int64_t> closeStaleAnswered(int64_t answeredBefore,
                                            int64_t now) const;
 };

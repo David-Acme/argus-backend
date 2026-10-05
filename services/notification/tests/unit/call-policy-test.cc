@@ -4,6 +4,8 @@
 #include <feature/call/schemas/call/call-schema.hxx>
 #include <feature/call/services/call-copy.hxx>
 #include <feature/call/services/call-policy.hxx>
+#include <feature/call/services/response-copy.hxx>
+#include <feature/call/schemas/call-response/call-response-schema.hxx>
 #include <feature/call/services/call-trigger-classifier.hxx>
 
 #include <string>
@@ -311,9 +313,23 @@ TEST_CASE("guard notifications become call candidates by urgency and phase")
   CHECK(escalated.critical);
 
   CHECK_FALSE(call_trigger::fromNotification(guardData({.urgency = "active", .phase = "opened"})));
-  auto tamper = guardData({.urgency = "critical", .phase = "opened"});
+  auto tamper = guardData({.urgency = "active", .phase = "opened"});
   tamper["kind"] = "guard_tamper";
   CHECK_FALSE(call_trigger::fromNotification(tamper));
+  tamper["urgency"] = "time_sensitive";
+  CHECK_FALSE(call_trigger::fromNotification(tamper));
+  tamper["urgency"] = "critical";
+  const CallCandidate tamperCall =
+      call_trigger::fromNotification(tamper).value_or(CallCandidate{});
+  CHECK(tamperCall.trigger == CallTrigger::GuardCritical);
+  for (const char* kind : {"guard_panic", "guard_duress"}) {
+    auto safety = guardData({.urgency = "critical", .phase = "opened"});
+    safety["kind"] = kind;
+    CHECK(call_trigger::fromNotification(safety).value_or(CallCandidate{}).trigger ==
+          CallTrigger::GuardCritical);
+    safety["urgency"] = "time_sensitive";
+    CHECK_FALSE(call_trigger::fromNotification(safety));
+  }
   auto unthreaded = guardData({.urgency = "critical", .phase = "opened"});
   unthreaded.removeMember("threadKey");
   unthreaded.removeMember("episodeId");
@@ -442,4 +458,145 @@ TEST_CASE("call ids round-trip and refuse anything else")
   CHECK(call_id::parse("rtc-12") == 0);
   CHECK(call_id::parse("call-") == 0);
   CHECK(call_id::parse("call-12345678901234567890") == 0);
+}
+
+TEST_CASE("a guard on duty is called whatever their own switches say, inside the system limits")
+{
+  auto preference = CallPreferenceSchema::defaultsFor(7);
+  preference.guardIntruder = CallMode::Off;
+  preference.enabled = false;
+  preference.dndUntil = kNow + 600;
+  preference.quietStartHour = 0;
+  preference.quietEndHour = 23;
+  preference.mutedEnvironmentIds = {4};
+  const auto mandatory = [&](const Scenario& scenario) {
+    return call_policy::decide({.trigger = scenario.trigger,
+                                .critical = scenario.critical,
+                                .preference = preference,
+                                .localHour = scenario.hour,
+                                .localWeekday = scenario.weekday,
+                                .now = kNow,
+                                .environmentId = scenario.environmentId,
+                                .alreadyCalled = scenario.alreadyCalled,
+                                .ringing = scenario.ringing,
+                                .lastCallAt = scenario.lastCallAt,
+                                .callsLastHour = scenario.callsLastHour,
+                                .limits = {.enabled = scenario.enabled,
+                                           .callGapS = 300,
+                                           .maxCallsPerHour = 4},
+                                .planNotify = false,
+                                .mandatory = true});
+  };
+  const auto rings = mandatory({.trigger = CallTrigger::GuardIntruder, .environmentId = 4});
+  CHECK(rings.decision == CallDecision::Ring);
+  CHECK(rings.reason == "on_duty");
+  CHECK(run(preference, {.trigger = CallTrigger::GuardIntruder}).decision == CallDecision::Drop);
+  CHECK(mandatory({.trigger = CallTrigger::GuardIntruder, .alreadyCalled = true}).decision ==
+        CallDecision::Drop);
+  CHECK(mandatory({.trigger = CallTrigger::GuardIntruder, .enabled = false}).reason ==
+        "calls_disabled");
+  CHECK(mandatory({.trigger = CallTrigger::GuardIntruder, .lastCallAt = kNow - 10}).reason ==
+        "cooldown");
+  CHECK(mandatory({.trigger = CallTrigger::GuardCritical, .critical = true,
+                   .lastCallAt = kNow - 10})
+            .decision == CallDecision::Ring);
+  CHECK(mandatory({.trigger = CallTrigger::GuardIntruder, .ringing = true}).decision ==
+        CallDecision::Followup);
+}
+
+TEST_CASE("a plan that lists someone as notify keeps them to the notification")
+{
+  const auto preference = CallPreferenceSchema::defaultsFor(7);
+  const auto verdict = call_policy::decide({.trigger = CallTrigger::GuardCritical,
+                                            .critical = true,
+                                            .preference = preference,
+                                            .localHour = 12,
+                                            .localWeekday = 3,
+                                            .now = kNow,
+                                            .environmentId = 0,
+                                            .alreadyCalled = false,
+                                            .ringing = false,
+                                            .lastCallAt = 0,
+                                            .callsLastHour = 0,
+                                            .limits = {.enabled = true,
+                                                       .callGapS = 300,
+                                                       .maxCallsPerHour = 4},
+                                            .planNotify = true,
+                                            .mandatory = false});
+  CHECK(verdict.decision == CallDecision::Notify);
+  CHECK(verdict.reason == "plan_notify");
+}
+
+TEST_CASE("panic, duress and tamper read as what they are, and contacts are offered by name")
+{
+  Json::Value panic(Json::objectValue);
+  panic["kind"] = "guard_panic";
+  panic["actorName"] = "Tom";
+  panic["environmentName"] = "Casa";
+  const CallCopy es = call_copy::render(
+      {.trigger = CallTrigger::GuardCritical, .lang = "es", .data = panic, .userName = "Laura", .now = kNow});
+  CHECK(es.title == "Botón de pánico · Casa");
+  CHECK(es.openingLine.find("Tom ha pulsado el botón de pánico en Casa") != std::string::npos);
+  Json::Value duress = panic;
+  duress["kind"] = "guard_duress";
+  const CallCopy silent = call_copy::render(
+      {.trigger = CallTrigger::GuardCritical, .lang = "en", .data = duress, .userName = "", .now = kNow});
+  CHECK(silent.title == "Silent alert · Casa");
+  CHECK(silent.summary.find("do not call them") != std::string::npos);
+  Json::Value tamper(Json::objectValue);
+  tamper["kind"] = "guard_tamper";
+  tamper["cameraName"] = "Patio";
+  const CallCopy covered = call_copy::render(
+      {.trigger = CallTrigger::GuardCritical, .lang = "es", .data = tamper, .userName = "", .now = kNow});
+  CHECK(covered.summary == "La cámara Patio ha dejado de ver.");
+  CHECK(covered.missedTitle.starts_with("Llamada perdida · "));
+
+  Json::Value contacts(Json::arrayValue);
+  Json::Value vecina(Json::objectValue);
+  vecina["name"] = "Vecina";
+  vecina["phone"] = "999111222";
+  contacts.append(vecina);
+  const ResponseNotice unanswered = response_copy::contacts(
+      {.lang = "es", .place = "Patio", .contacts = contacts, .emergencyNumber = "105",
+       .confirmed = false, .confirmedBy = ""});
+  CHECK(unanswered.title == "Nadie ha contestado · Patio");
+  CHECK(unanswered.body ==
+        "Nadie de casa ha contestado la llamada. Llama a Vecina (999111222), o al 105 si es una emergencia.");
+  const Json::Value none(Json::arrayValue);
+  const ResponseNotice confirmed = response_copy::contacts(
+      {.lang = "en", .place = "", .contacts = none, .emergencyNumber = "",
+       .confirmed = true, .confirmedBy = "Pedro"});
+  CHECK(confirmed.title == "Confirmed alert");
+  CHECK(confirmed.body == "Pedro confirmed it is real.");
+  CHECK(response_copy::escalationBody({.lang = "es", .summary = "Hay alguien."}) ==
+        "Hay alguien. Nadie ha contestado todavía.");
+}
+
+TEST_CASE("a response plan parses defensively")
+{
+  Json::Value plan(Json::objectValue);
+  plan["strategy"] = "bogus";
+  plan["stepSeconds"] = 5;
+  Json::Value good(Json::objectValue);
+  good["userId"] = 3;
+  good["step"] = 2;
+  good["mode"] = "notify";
+  plan["recipients"].append(good);
+  plan["recipients"].append(good);
+  Json::Value negative(Json::objectValue);
+  negative["userId"] = -1;
+  negative["step"] = 0;
+  plan["recipients"].append(negative);
+  Json::Value deep(Json::objectValue);
+  deep["userId"] = 4;
+  deep["step"] = 99;
+  plan["recipients"].append(deep);
+  const auto parsed = call_response::parsePlan(plan);
+  REQUIRE(parsed.has_value());
+  CHECK(parsed->strategy == "ordered");
+  CHECK(parsed->stepSeconds == 15);
+  REQUIRE(parsed->entries.size() == 1);
+  CHECK(parsed->entries.front().mode == ResponseMemberMode::Notify);
+  CHECK(parsed->stepCount == 3);
+  CHECK_FALSE(call_response::parsePlan(Json::Value(Json::objectValue)));
 }

@@ -98,6 +98,8 @@ void reset()
   client->execSqlSync("DELETE FROM call_preference");
   client->execSqlSync("DELETE FROM scheduled_call");
   client->execSqlSync("DELETE FROM call_arrival_seen");
+  client->execSqlSync("DELETE FROM call_response");
+  client->execSqlSync("DELETE FROM call_response_member");
 }
 
 class RecordingSignal final : public CallSignal
@@ -156,6 +158,10 @@ public:
       return {.found = true, .name = "Ana", .lang = "es", .role = "resident", .active = false};
     if (userId == 4)
       return {.found = true, .name = "Visita", .lang = "es", .role = "guest", .active = true};
+    if (userId == 5)
+      return {.found = true, .name = "Pedro", .lang = "es", .role = "guard", .active = true};
+    if (userId == 6)
+      return {.found = true, .name = "Lucía", .lang = "es", .role = "resident", .active = true};
     return {};
   }
 
@@ -208,8 +214,22 @@ public:
   mutable std::vector<PushIntent> intents;
 };
 
+class RecordingVerdicts final : public ResponseVerdictSink
+{
+public:
+  void publish(const ResponseVerdictEvent& event) const override
+  {
+    const std::scoped_lock lock(mutex);
+    events.push_back(event);
+  }
+
+  mutable std::mutex mutex;
+  mutable std::vector<ResponseVerdictEvent> events;
+};
+
 struct Harness
 {
+  std::shared_ptr<RecordingVerdicts> verdicts = std::make_shared<RecordingVerdicts>();
   std::shared_ptr<RecordingSignal> signal = std::make_shared<RecordingSignal>();
   std::shared_ptr<ScriptedAnnouncer> announcer =
       std::make_shared<ScriptedAnnouncer>();
@@ -230,6 +250,7 @@ struct Harness
                    .directory = std::make_shared<FixedDirectory>(),
                    .notifier = notifier,
                    .push = push,
+                   .verdicts = verdicts,
                    .clock = [clock = clock]() { return clock->load(); },
                    .localTime =
                        [hour = hour, weekday = weekday](int64_t) {
@@ -330,7 +351,7 @@ TEST_CASE("notifications that are not call-worthy never ring")
   CHECK(drogon::sync_wait(harness.engine.considerNotification(
                               guardData("active", 42), {1}))
             .empty());
-  Json::Value tamper = guardData("critical", 43);
+  Json::Value tamper = guardData("active", 43);
   tamper["kind"] = "guard_tamper";
   CHECK(drogon::sync_wait(harness.engine.considerNotification(tamper, {1})).empty());
   CHECK(harness.signal->frames.empty());
@@ -847,4 +868,376 @@ TEST_CASE("agenda announcements reach only the users whose lead time matches")
        .data = reminder,
        .commandId = "agenda:reminder:4:" + std::to_string(kStart) + ":0"}));
   CHECK(due.notified == 1);
+}
+
+namespace
+{
+struct PlanMember
+{
+  int64_t userId{0};
+  int step{0};
+  std::string mode{"call"};
+  bool mandatory{false};
+  bool discreet{false};
+};
+
+Json::Value planOf(const std::vector<PlanMember>& members, const std::string& strategy)
+{
+  Json::Value plan(Json::objectValue);
+  plan["v"] = 1;
+  plan["environmentId"] = 1;
+  plan["strategy"] = strategy;
+  plan["stepSeconds"] = 45;
+  plan["emergencyNumber"] = "105";
+  Json::Value contact(Json::objectValue);
+  contact["name"] = "Vecina";
+  contact["phone"] = "999111222";
+  contact["note"] = "";
+  plan["contacts"].append(contact);
+  plan["offers"].append("camera");
+  int steps = 0;
+  for (const auto& member : members) {
+    Json::Value item(Json::objectValue);
+    item["userId"] = static_cast<Json::Int64>(member.userId);
+    item["step"] = member.step;
+    item["mode"] = member.mode;
+    item["mandatory"] = member.mandatory;
+    item["discreet"] = member.discreet;
+    plan["recipients"].append(item);
+    steps = std::max(steps, member.step + 1);
+  }
+  plan["stepCount"] = steps;
+  return plan;
+}
+
+std::vector<PlanMember> orderedHousehold()
+{
+  return {{.userId = 1, .step = 0, .mode = "call", .mandatory = false, .discreet = false},
+          {.userId = 5, .step = 0, .mode = "call", .mandatory = false, .discreet = false},
+          {.userId = 2, .step = 1, .mode = "call", .mandatory = false, .discreet = false},
+          {.userId = 6, .step = 2, .mode = "call", .mandatory = false, .discreet = false}};
+}
+
+struct RespondInput
+{
+  const Json::Value& data;
+  std::vector<int64_t> userIds;
+  const Json::Value& plan;
+};
+
+std::vector<CallUserOutcome> respond(Harness& harness, const RespondInput& input)
+{
+  return drogon::sync_wait(harness.engine.respond(
+      {.data = input.data, .userIds = input.userIds, .plan = input.plan}));
+}
+
+int64_t responseIdOf(const std::string& threadKey)
+{
+  const auto rows = DbService::client()->execSqlSync(
+      "SELECT id FROM call_response WHERE dedupe_key = ?", threadKey);
+  return rows.empty() ? 0 : rows.front()["id"].as<int64_t>();
+}
+
+std::string responseState(int64_t id)
+{
+  const auto rows =
+      DbService::client()->execSqlSync("SELECT state FROM call_response WHERE id = ?", id);
+  return rows.empty() ? std::string{} : rows.front()["state"].as<std::string>();
+}
+
+std::vector<int64_t> ringingUsers()
+{
+  std::vector<int64_t> users;
+  for (const auto& row : DbService::client()->execSqlSync(
+           "SELECT user_id FROM call WHERE state = 'ringing' ORDER BY user_id"))
+    users.push_back(row["user_id"].as<int64_t>());
+  return users;
+}
+
+std::vector<CallNotice> noticesFor(const Harness& harness, int64_t userId)
+{
+  std::vector<CallNotice> found;
+  for (const auto& notice : harness.notifier->all()) {
+    if (notice.userId == userId)
+      found.push_back(notice);
+  }
+  return found;
+}
+}
+
+TEST_CASE("a response rings the first step, then escalates step by step, then asks for the contacts")
+{
+  Harness harness;
+  const Json::Value data = guardData("critical", 70);
+  const Json::Value plan = planOf(orderedHousehold(), "ordered");
+  const auto first = respond(harness, {.data = data, .userIds = {1, 5}, .plan = plan});
+  CHECK(outcomeFor(first, 1).resolution == CallResolution::Rang);
+  CHECK(outcomeFor(first, 5).resolution == CallResolution::Rang);
+  CHECK(ringingUsers() == std::vector<int64_t>{1, 5});
+  const int64_t id = responseIdOf("guard:episode:70");
+  REQUIRE(id > 0);
+  CHECK(responseState(id) == "active");
+  const auto incoming = harness.signal->of(SyncOperation::CallIncoming);
+  REQUIRE(incoming.size() == 2);
+  CHECK(incoming.front().info["responseId"].asInt64() == id);
+  CHECK(incoming.front().info["offers"][0].asString() == "camera");
+  CHECK_FALSE(incoming.front().info["discreet"].asBool());
+  const auto updates = harness.signal->of(SyncOperation::ResponseUpdate);
+  REQUIRE(updates.size() == 2);
+  CHECK(updates.front().info["state"].asString() == "active");
+  CHECK(updates.front().info["mine"]["reached"].asBool());
+
+  harness.advance(30);
+  drogon::sync_wait(harness.engine.sweep());
+  CHECK(ringingUsers() == std::vector<int64_t>{1, 5});
+
+  harness.advance(16);
+  const auto second = drogon::sync_wait(harness.engine.sweep());
+  CHECK(second.escalated == 1);
+  CHECK(second.missed == 2);
+  CHECK(ringingUsers() == std::vector<int64_t>{2});
+  const auto tom = noticesFor(harness, 2);
+  REQUIRE(tom.size() == 1);
+  CHECK(tom.front().body.ends_with("Nobody has answered yet."));
+  CHECK(tom.front().data["responseId"].asInt64() == id);
+
+  harness.advance(46);
+  drogon::sync_wait(harness.engine.sweep());
+  CHECK(ringingUsers() == std::vector<int64_t>{6});
+  const auto lucia = noticesFor(harness, 6);
+  REQUIRE(lucia.size() == 1);
+  CHECK(lucia.front().body.ends_with("Nadie ha contestado todavía."));
+
+  harness.advance(46);
+  drogon::sync_wait(harness.engine.sweep());
+  CHECK(responseState(id) == "unanswered");
+  for (const int64_t userId : {1, 5, 2, 6}) {
+    const auto notices = noticesFor(harness, userId);
+    REQUIRE_FALSE(notices.empty());
+    CHECK(notices.back().data["kind"].asString() == "guard_response");
+  }
+  CHECK(noticesFor(harness, 1).back().body.find("Vecina (999111222)") != std::string::npos);
+  CHECK(noticesFor(harness, 1).back().body.find("105") != std::string::npos);
+  CHECK(noticesFor(harness, 2).back().title.starts_with("Nobody answered"));
+}
+
+TEST_CASE("the first to answer attends: the others stop ringing and see who it is")
+{
+  Harness harness;
+  const Json::Value data = guardData("critical", 71);
+  const Json::Value plan = planOf(orderedHousehold(), "ordered");
+  const auto first = respond(harness, {.data = data, .userIds = {1, 5}, .plan = plan});
+  const int64_t id = responseIdOf("guard:episode:71");
+  const auto claimed = drogon::sync_wait(harness.engine.claim(
+      {.callId = call_id::format(outcomeFor(first, 1).callId), .userId = 1, .sessionId = "s1"}));
+  CHECK(claimed.status == CallClaimStatus::Claimed);
+  CHECK(responseState(id) == "attended");
+  CHECK(ringingUsers().empty());
+  const auto cancels = harness.signal->of(SyncOperation::CallCancel);
+  bool pedroTold = false;
+  for (const auto& cancel : cancels) {
+    if (cancel.userId == 5) {
+      pedroTold = true;
+      CHECK(cancel.info["reason"].asString() == "attended");
+      CHECK(cancel.info["attendedBy"].asString() == "Laura");
+    }
+  }
+  CHECK(pedroTold);
+  const auto updates = harness.signal->of(SyncOperation::ResponseUpdate);
+  REQUIRE_FALSE(updates.empty());
+  CHECK(updates.back().info["attendedBy"]["name"].asString() == "Laura");
+  CHECK(noticesFor(harness, 5).empty());
+
+  harness.advance(200);
+  drogon::sync_wait(harness.engine.sweep());
+  CHECK(noticesFor(harness, 2).empty());
+  CHECK(responseState(id) == "attended");
+}
+
+TEST_CASE("a false alarm cancels every ring, stops the escalation and feeds the guard")
+{
+  Harness harness;
+  const Json::Value data = guardData("critical", 72);
+  const Json::Value plan = planOf(orderedHousehold(), "ordered");
+  respond(harness, {.data = data, .userIds = {1, 5}, .plan = plan});
+  const int64_t id = responseIdOf("guard:episode:72");
+
+  const auto stranger = drogon::sync_wait(harness.engine.verdict(
+      {.responseId = id, .userId = 9, .verdict = ResponseVerdict::FalseAlarm}));
+  CHECK(stranger.status == ResponseVerdictStatus::NotFound);
+  const auto early = drogon::sync_wait(harness.engine.verdict(
+      {.responseId = id, .userId = 2, .verdict = ResponseVerdict::FalseAlarm}));
+  CHECK(early.status == ResponseVerdictStatus::NotFound);
+
+  const auto marked = drogon::sync_wait(harness.engine.verdict(
+      {.responseId = id, .userId = 5, .verdict = ResponseVerdict::FalseAlarm}));
+  CHECK(marked.status == ResponseVerdictStatus::Recorded);
+  CHECK(marked.response["state"].asString() == "false_alarm");
+  CHECK(marked.response["verdictBy"]["name"].asString() == "Pedro");
+  CHECK(marked.response["attendedBy"]["name"].asString() == "Pedro");
+  CHECK(ringingUsers().empty());
+  REQUIRE(harness.verdicts->events.size() == 1);
+  CHECK(harness.verdicts->events.front().episodeId == 72);
+  CHECK(harness.verdicts->events.front().verdict == "false_alarm");
+  CHECK(harness.verdicts->events.front().kind == "guard_episode");
+
+  const auto again = drogon::sync_wait(harness.engine.verdict(
+      {.responseId = id, .userId = 1, .verdict = ResponseVerdict::FalseAlarm}));
+  CHECK(again.status == ResponseVerdictStatus::Recorded);
+  const auto contrary = drogon::sync_wait(harness.engine.verdict(
+      {.responseId = id, .userId = 1, .verdict = ResponseVerdict::Real}));
+  CHECK(contrary.status == ResponseVerdictStatus::Closed);
+  CHECK(harness.verdicts->events.size() == 1);
+
+  harness.advance(500);
+  drogon::sync_wait(harness.engine.sweep());
+  CHECK(noticesFor(harness, 2).empty());
+  CHECK(respond(harness, {.data = guardData("critical", 72, "escalated"), .userIds = {1, 5, 2, 6},
+                          .plan = plan})
+            .empty());
+}
+
+TEST_CASE("it is real: everyone left is called now and the contacts are offered")
+{
+  Harness harness;
+  const Json::Value data = guardData("time_sensitive", 73);
+  const Json::Value plan = planOf(orderedHousehold(), "ordered");
+  respond(harness, {.data = data, .userIds = {1, 5}, .plan = plan});
+  const int64_t id = responseIdOf("guard:episode:73");
+  const auto confirmed = drogon::sync_wait(harness.engine.verdict(
+      {.responseId = id, .userId = 1, .verdict = ResponseVerdict::Real}));
+  CHECK(confirmed.status == ResponseVerdictStatus::Recorded);
+  CHECK(responseState(id) == "confirmed");
+  CHECK(confirmed.response["showContacts"].asBool());
+  CHECK(confirmed.response["emergencyNumber"].asString() == "105");
+  CHECK(ringingUsers() == std::vector<int64_t>{1, 2, 5, 6});
+  const auto incoming = harness.signal->of(SyncOperation::CallIncoming);
+  bool tomCritical = false;
+  for (const auto& frame : incoming) {
+    if (frame.userId == 2)
+      tomCritical = frame.info["urgency"].asString() == "critical";
+  }
+  CHECK(tomCritical);
+  CHECK(noticesFor(harness, 6).back().title.starts_with("Alerta confirmada"));
+  CHECK(noticesFor(harness, 6).back().body.find("Laura ha confirmado") != std::string::npos);
+  CHECK(harness.verdicts->events.front().verdict == "real");
+}
+
+TEST_CASE("a guard on duty rings despite turning intruder calls off; a notify member only reads")
+{
+  Harness harness;
+  const CallPreferenceService preferences;
+  UpdateCallPreferenceDto off;
+  off.guardIntruder = "off";
+  off.enabled = false;
+  drogon::sync_wait(preferences.update(5, off));
+  drogon::sync_wait(preferences.update(1, off));
+  const Json::Value plan =
+      planOf({{.userId = 5, .step = 0, .mode = "call", .mandatory = true, .discreet = false},
+              {.userId = 1, .step = 0, .mode = "call", .mandatory = false, .discreet = false},
+              {.userId = 6, .step = 0, .mode = "notify", .mandatory = false, .discreet = false}},
+             "ordered");
+  const auto outcomes =
+      respond(harness, {.data = guardData("time_sensitive", 74), .userIds = {5, 1, 6}, .plan = plan});
+  CHECK(outcomeFor(outcomes, 5).resolution == CallResolution::Rang);
+  CHECK(outcomeFor(outcomes, 5).reason == "on_duty");
+  CHECK(outcomeFor(outcomes, 1).resolution == CallResolution::Dropped);
+  CHECK(outcomeFor(outcomes, 6).resolution == CallResolution::Notified);
+  CHECK(outcomeFor(outcomes, 6).reason == "plan_notify");
+}
+
+TEST_CASE("the people inside are warned quietly")
+{
+  Harness harness;
+  const Json::Value plan =
+      planOf({{.userId = 6, .step = 0, .mode = "call", .mandatory = false, .discreet = true},
+              {.userId = 1, .step = 1, .mode = "call", .mandatory = false, .discreet = false}},
+             "inside_first");
+  const auto outcomes =
+      respond(harness, {.data = guardData("time_sensitive", 75), .userIds = {6}, .plan = plan});
+  CHECK(outcomeFor(outcomes, 6).resolution == CallResolution::Rang);
+  const auto incoming = harness.signal->of(SyncOperation::CallIncoming);
+  REQUIRE(incoming.size() == 1);
+  CHECK(incoming.front().info["discreet"].asBool());
+  const auto claimed = drogon::sync_wait(harness.engine.claim(
+      {.callId = call_id::format(outcomeFor(outcomes, 6).callId), .userId = 6, .sessionId = "s6"}));
+  CHECK(claimed.openingLine.find("en voz baja") != std::string::npos);
+  CHECK(claimed.openingLine.find("No abras") != std::string::npos);
+}
+
+TEST_CASE("panic and duress never reach the person who raised them")
+{
+  Harness harness;
+  Json::Value panic(Json::objectValue);
+  panic["kind"] = "guard_panic";
+  panic["urgency"] = "critical";
+  panic["phase"] = "opened";
+  panic["threadKey"] = "guard:panic:9";
+  panic["episodeId"] = 9;
+  panic["incidentId"] = 9;
+  panic["environmentId"] = 1;
+  panic["environmentName"] = "Casa";
+  panic["cameraId"] = 0;
+  panic["actorUserId"] = 2;
+  const Json::Value plan =
+      planOf({{.userId = 1, .step = 0, .mode = "call", .mandatory = false, .discreet = false},
+              {.userId = 2, .step = 0, .mode = "call", .mandatory = false, .discreet = false},
+              {.userId = 6, .step = 0, .mode = "call", .mandatory = false, .discreet = false}},
+             "everyone");
+  const auto outcomes = respond(harness, {.data = panic, .userIds = {1, 2, 6}, .plan = plan});
+  CHECK(outcomes.size() == 2);
+  CHECK(ringingUsers() == std::vector<int64_t>{1, 6});
+  for (const auto& frame : harness.signal->frames)
+    CHECK(frame.userId != 2);
+  const int64_t id = responseIdOf("guard:panic:9");
+  CHECK_FALSE(drogon::sync_wait(harness.engine.response({.userId = 2, .responseId = id})));
+  const auto incoming = harness.signal->of(SyncOperation::CallIncoming);
+  CHECK(incoming.front().info["reason"].asString() == "Botón de pánico · Casa");
+  const auto claimed = drogon::sync_wait(harness.engine.claim(
+      {.callId = call_id::format(outcomeFor(outcomes, 1).callId), .userId = 1, .sessionId = "s1"}));
+  CHECK(claimed.openingLine.find("Tom ha pulsado el botón de pánico") != std::string::npos);
+  drogon::sync_wait(harness.engine.verdict(
+      {.responseId = id, .userId = 1, .verdict = ResponseVerdict::FalseAlarm}));
+  CHECK(harness.verdicts->events.front().kind == "guard_panic");
+  CHECK(harness.verdicts->events.front().episodeId == 0);
+}
+
+TEST_CASE("a worse turn of the same episode reaches everyone left at once")
+{
+  Harness harness;
+  const Json::Value plan = planOf(orderedHousehold(), "ordered");
+  respond(harness, {.data = guardData("time_sensitive", 76), .userIds = {1, 5}, .plan = plan});
+  CHECK(ringingUsers() == std::vector<int64_t>{1, 5});
+  respond(harness, {.data = guardData("critical", 76, "escalated"), .userIds = {1, 5, 2, 6},
+                    .plan = planOf(orderedHousehold(), "everyone")});
+  CHECK(ringingUsers() == std::vector<int64_t>{1, 2, 5, 6});
+  CHECK(harness.signal->of(SyncOperation::CallIncoming).size() == 4);
+}
+
+TEST_CASE("each person lists only the responses that reached them")
+{
+  Harness harness;
+  const Json::Value plan = planOf(orderedHousehold(), "ordered");
+  respond(harness, {.data = guardData("critical", 77), .userIds = {1, 5}, .plan = plan});
+  const int64_t id = responseIdOf("guard:episode:77");
+  const Json::Value mine = drogon::sync_wait(harness.engine.responses(1));
+  REQUIRE(mine.size() == 1);
+  CHECK(mine[0]["id"].asInt64() == id);
+  CHECK(mine[0]["contacts"][0]["name"].asString() == "Vecina");
+  CHECK_FALSE(mine[0]["showContacts"].asBool());
+  CHECK(drogon::sync_wait(harness.engine.responses(2)).empty());
+  CHECK_FALSE(drogon::sync_wait(harness.engine.response({.userId = 2, .responseId = id})));
+  CHECK(drogon::sync_wait(harness.engine.response({.userId = 5, .responseId = id})));
+}
+
+TEST_CASE("a plan that does not parse falls back to the plain call")
+{
+  Harness harness;
+  Json::Value broken(Json::objectValue);
+  broken["recipients"] = "everyone";
+  const auto outcomes =
+      respond(harness, {.data = guardData("critical", 78), .userIds = {1, 2}, .plan = broken});
+  CHECK(outcomes.size() == 2);
+  CHECK(responseIdOf("guard:episode:78") == 0);
+  CHECK(harness.signal->of(SyncOperation::ResponseUpdate).empty());
 }

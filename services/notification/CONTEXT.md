@@ -677,3 +677,94 @@ ids) and `call-engine-test` (a temporary database and fakes for sync, voice,
 identity, notifications and push: ring, one per episode, claim races,
 follow-ups, injection, push after the grace, missed and declined notes,
 quiet hours, do-not-disturb, cooldown, arrivals, scheduled and late calls).
+
+### Intruder response: steps, hand-off and verdict (2026-10, RESPONSE)
+
+David (2026-10-04): per environment the Owner decides who is called, Owner
+and Guards together first, then the Residents in order, then the external
+contacts; the first responder sees the camera and says "Es real" or "Falsa
+alarma"; everyone else sees who is attending; nobody is called twice.
+
+**Who and in what order is guard's; how it rings is ours.** argus-guard owns
+the environments, their recipient lists and presence, so it builds the plan
+(`services/guard/CONTEXT.md`, "Who is called") and sends it inside the
+notification `data` as `response`. `NotificationRpcService` takes `response`
+out of `data` before the rows are written, so the plan (user ids, contacts'
+phones) never reaches the synced notification rows, and hands both to
+`CallEngine::respond`. A notification without a plan, or with one that does
+not parse, goes through `considerNotification` exactly as before.
+
+**One response per thread.** `call_response` (unique `dedupe_key` = the
+guard `threadKey`) and `call_response_member` (one row per plan entry:
+step, `call`/`notify`, `mandatory`, `discreet`, `reached_at`). Several language
+batches of one guard notification open one response: the first creates it
+(`INSERT OR IGNORE`, members in the same transaction), and each batch marks
+its users as reached and considers them. The actor of a panic or duress
+(`data.actorUserId`) is dropped from the plan and the batch here too, so they
+never ring and never get a `response_update`.
+
+**Per-person overrides of the policy.** `CallPolicyInput` gains
+`mandatory` (a guard on duty) and `planNotify` (the Owner listed this person
+as notify, or the night rule turned everyone to notify). A mandatory member
+skips their own switches (trigger mode, calls off, muted environment,
+do-not-disturb, quiet hours) but keeps the system limits (`calls.enabled`,
+one call per episode, a ringing call becoming a follow-up, cooldown and the
+hourly cap for non-critical). `planNotify` comes after the user's own mode, so
+a user who switched the trigger off still gets nothing.
+
+**Escalation.** The one-second sweep advances each `active` response whose
+`step_deadline` passed. It moves to the next step and reaches its members: a
+notification of their own, "<the summary> Nadie ha contestado todavía.",
+then the ring. A step with only notify members gets a zero deadline, so the
+next sweep moves on. After the last step the response is `unanswered`, and
+everyone reached gets a "Nadie ha contestado · <place>" notification that
+names the first two contacts and the emergency number. Argus cannot place a
+phone call, so the app offers one tap to call or text them. The window per
+step is the environment's `stepSeconds` (default 45, the same as a ring).
+
+**Hand-off.** When a call of a response is claimed, the response becomes
+`attended` with that person as responder, every other ringing call of the
+thread is closed (`missed`, reason `attended`, no missed-call note) with
+`call_cancel {reason: attended, attendedBy, responseId}`, and the escalation
+stops. Every reached member gets `response_update`
+(SyncOperation 10): the response as JSON, with the attending person's name,
+so the app shows "<Name> está atendiendo".
+
+**Verdict.** `PATCH /notification/responses/{id} {verdict: real |
+false_alarm}`, by a member the response reached.
+- `false_alarm` closes the response, cancels every ringing call of the
+  thread (reason `resolved`), and stops the steps.
+- `real` (`confirmed`) reaches everyone not yet reached at once, with critical
+  urgency so their quiet hours with `criticalBypass` let it through, and sends
+  the contacts notification ("Alerta confirmada · <place>").
+- A second identical verdict answers the same. The opposite one after a false
+  alarm is 409 `ResponseClosed`. `real` can still become `false_alarm`.
+- The person who gives the verdict becomes the responder if there was none.
+- The verdict is published on `argus.notification.v1.response_verdict`.
+  Guard labels the episode (`false_alarm` / `useful`) for a `guard_episode`.
+  Panic, duress and tamper verdicts stay on the response row, because their
+  `episodeId` is not an encounter.
+`GET /notification/responses` lists the responses that reached the caller (open, or
+closed in the last 24 h); `GET /notification/responses/{id}` reads one. A
+response nobody closed expires after two hours.
+
+**Copy.** Panic: "Botón de pánico · Casa" / "Tom ha pulsado el botón de pánico
+en Casa. Puede necesitar ayuda ahora mismo." Duress: "Alerta silenciosa ·
+Casa" / "… Puede estar bajo amenaza: no le llames." Critical tamper:
+"Revisa la cámara · Patio". A discreet member (people inside, intruder
+outside) hears "Te aviso en voz baja: hay una persona desconocida en Puerta
+trasera. No abras y quédate dentro.", and `call_incoming` carries
+`discreet: true` so the app rings without sound. `call_incoming` also carries
+`responseId` and the plan's `offers` (`camera`, and `siren` only when guard
+saw everyone positively away).
+
+**Not built here, on purpose.** The siren is never triggered by this service
+(AGENTS rule 11). The app's siren offer goes through the camera controls the
+Owner already has. The emergency number is dialled by the phone.
+
+Tests: `call-engine-test` (step by step escalation to the contacts prompt,
+hand-off, false alarm and its feedback, real and its escalation, a guard on
+duty with calls off, notify members, discreet copy, panic actor never
+reached, escalation phase reaching everyone, listing per member, broken plan
+fallback) and `call-policy-test` (mandatory and plan-notify rules, panic/
+duress/tamper copy, contacts copy, defensive plan parsing).

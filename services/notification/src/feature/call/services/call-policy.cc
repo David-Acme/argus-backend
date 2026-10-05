@@ -37,6 +37,23 @@ bool call_policy::inQuietHours(const QuietWindowInput& input)
                      static_cast<unsigned>(windowDay)) & 1U) != 0;
 }
 
+namespace
+{
+CallVerdict limited(const CallPolicyInput& input, const char* ringReason)
+{
+  const bool live = input.preference.liveAnnounce;
+  if (input.ringing)
+    return {.decision = CallDecision::Followup, .reason = "ringing", .injectable = live};
+  if (!input.critical) {
+    if (input.lastCallAt > 0 && input.now - input.lastCallAt < input.limits.callGapS)
+      return {.decision = CallDecision::Notify, .reason = "cooldown", .injectable = live};
+    if (input.callsLastHour >= input.limits.maxCallsPerHour)
+      return {.decision = CallDecision::Notify, .reason = "hourly_cap", .injectable = live};
+  }
+  return {.decision = CallDecision::Ring, .reason = ringReason, .injectable = live};
+}
+}
+
 CallVerdict call_policy::decide(const CallPolicyInput& input)
 {
   const CallPreferenceSchema& preference = input.preference;
@@ -44,6 +61,14 @@ CallVerdict call_policy::decide(const CallPolicyInput& input)
     return {.decision = CallDecision::Drop,
             .reason = "already_called",
             .injectable = false};
+
+  if (input.mandatory) {
+    if (!input.limits.enabled)
+      return {.decision = CallDecision::Notify,
+              .reason = "calls_disabled",
+              .injectable = false};
+    return limited(input, "on_duty");
+  }
 
   const CallMode mode = preference.modeFor(input.trigger);
   if (mode == CallMode::Off)
@@ -53,6 +78,10 @@ CallVerdict call_policy::decide(const CallPolicyInput& input)
   if (mode == CallMode::Notify)
     return {.decision = CallDecision::Notify,
             .reason = "trigger_notify",
+            .injectable = false};
+  if (input.planNotify)
+    return {.decision = CallDecision::Notify,
+            .reason = "plan_notify",
             .injectable = false};
   if (!input.limits.enabled)
     return {.decision = CallDecision::Notify,
@@ -82,24 +111,5 @@ CallVerdict call_policy::decide(const CallPolicyInput& input)
             .reason = "quiet_hours",
             .injectable = preference.liveAnnounce};
 
-  if (input.ringing)
-    return {.decision = CallDecision::Followup,
-            .reason = "ringing",
-            .injectable = preference.liveAnnounce};
-
-  if (!input.critical) {
-    if (input.lastCallAt > 0 &&
-        input.now - input.lastCallAt < input.limits.callGapS)
-      return {.decision = CallDecision::Notify,
-              .reason = "cooldown",
-              .injectable = preference.liveAnnounce};
-    if (input.callsLastHour >= input.limits.maxCallsPerHour)
-      return {.decision = CallDecision::Notify,
-              .reason = "hourly_cap",
-              .injectable = preference.liveAnnounce};
-  }
-
-  return {.decision = CallDecision::Ring,
-          .reason = "ring",
-          .injectable = preference.liveAnnounce};
+  return limited(input, "ring");
 }

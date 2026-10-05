@@ -15,12 +15,22 @@ struct CatalogEntry
   const char* message;
 };
 
-constexpr std::array<CatalogEntry, 1> kCatalog{{
+constexpr std::array<CatalogEntry, 3> kCatalog{{
     {.name = "ChangeNotRecorded",
      .definition = &NotificationErrors::ChangeNotRecorded,
      .code = ErrorCode::InternalError,
      .status = 500,
      .message = "The change could not be recorded"},
+    {.name = "ResponseNotFound",
+     .definition = &NotificationErrors::ResponseNotFound,
+     .code = ErrorCode::NotFound,
+     .status = 404,
+     .message = "Response not found"},
+    {.name = "ResponseClosed",
+     .definition = &NotificationErrors::ResponseClosed,
+     .code = ErrorCode::Conflict,
+     .status = 409,
+     .message = "The response already has another verdict"},
 }};
 
 constexpr std::size_t kMaxMessageBytes = 1024;
@@ -35,7 +45,7 @@ TEST_CASE("the notification catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 1);
+  CHECK(kCatalog.size() == 3);
 }
 
 TEST_CASE("every notification entry is legal on the wire")

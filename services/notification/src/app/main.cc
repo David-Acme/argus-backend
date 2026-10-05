@@ -3,7 +3,9 @@
 #include <app/rpc/call-rpc-service.hxx>
 #include <app/rpc/notification-rpc-service.hxx>
 #include <feature/call/controllers/call-preference-controller.hxx>
+#include <feature/call/controllers/call-response-controller.hxx>
 #include <feature/call/infra/identity-call-directory.hxx>
+#include <feature/call/infra/nats-response-verdict-sink.hxx>
 #include <feature/call/infra/notification-call-sink.hxx>
 #include <feature/call/infra/sync-call-signal.hxx>
 #include <feature/call/infra/voice-call-announcer.hxx>
@@ -215,10 +217,13 @@ int main()
                            : nullptr,
           .notifier = std::make_shared<NotificationCallSink>(deliveryDeps),
           .push = pushIntentSink,
+          .verdicts = natsBus ? std::make_shared<NatsResponseVerdictSink>(natsBus)
+                              : nullptr,
           .clock = {},
           .localTime = {},
           .blockingOffLoop = true});
   drogon::app().registerController(std::make_shared<CallPreferenceController>());
+  drogon::app().registerController(std::make_shared<CallResponseController>(callEngine));
   if (natsBus) {
     call_feed::subscribe(*natsBus, callEngine);
     LOG_INFO << "Call engine subscribed on " << nats_subject::kGuardKnownSeen;

@@ -63,6 +63,9 @@ call_trigger::fromNotification(const Json::Value& data)
   const std::string kind = text(data, "kind");
   if (kind == "guard_episode")
     return guardCandidate(data);
+  if ((kind == "guard_panic" || kind == "guard_duress" || kind == "guard_tamper") &&
+      text(data, "urgency") == "critical")
+    return guardCandidate(data);
   if (kind == "agenda_event" || kind == "agenda_reminder")
     return agendaCandidate(data);
   return std::nullopt;

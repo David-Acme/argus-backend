@@ -435,3 +435,13 @@ TEST_CASE("residents and guards read an environment's response list, only guards
   CHECK(role_access::hasHttpAccess({.role = UserRole::Guard, .path = "/guard/environments", .method = drogon::Get}));
   CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guard, .path = "/guard/environments/3", .method = drogon::Patch}));
 }
+
+TEST_CASE("every role reads the responses that reached it and gives a verdict by PATCH")
+{
+  for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/notification/responses", .method = drogon::Get}));
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/notification/responses/4", .method = drogon::Get}));
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/notification/responses/4", .method = drogon::Patch}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/notification/responses/4", .method = drogon::Delete}));
+  }
+}

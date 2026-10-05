@@ -182,6 +182,9 @@ grpc::ServerUnaryReactor* NotificationRpcService::CreateNotifications(
         batch.notification.title = create.title();
         batch.notification.body = create.body();
         batch.notification.data = json_util::fromString(create.data());
+        Json::Value plan;
+        if (batch.notification.data.isObject())
+          batch.notification.data.removeMember("response", &plan);
         batch.commandId = create.command_id();
 
         batch.userIds.reserve(create.user_ids_size());
@@ -195,8 +198,13 @@ grpc::ServerUnaryReactor* NotificationRpcService::CreateNotifications(
         reactor->Finish(grpc::Status::OK);
         if (callEngine_ && !outcome.duplicate && outcome.createdCount > 0) {
           try {
-            co_await callEngine_->considerNotification(batch.notification.data,
-                                                       batch.userIds);
+            if (plan.isObject())
+              co_await callEngine_->respond({.data = batch.notification.data,
+                                             .userIds = batch.userIds,
+                                             .plan = plan});
+            else
+              co_await callEngine_->considerNotification(batch.notification.data,
+                                                         batch.userIds);
           }
           catch (const std::exception& error) {
             LOG_WARN << "Notification RPC: call engine skipped "

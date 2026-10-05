@@ -37,6 +37,8 @@ struct CallPolicyInput
   int64_t lastCallAt{0};
   int callsLastHour{0};
   CallPolicyLimits limits;
+  bool planNotify{false};
+  bool mandatory{false};
 };
 
 struct CallVerdict

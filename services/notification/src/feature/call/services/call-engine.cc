@@ -1,5 +1,6 @@
 #include "call-engine.hxx"
 
+#include <feature/call/services/response-copy.hxx>
 #include <runtime/blocking-task.hxx>
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
@@ -14,6 +15,10 @@ constexpr int64_t kHourS = 3600;
 constexpr std::size_t kTopicLimit = 300;
 constexpr int kDueBatch = 50;
 constexpr const char* kMissedTitleKey = "callMissedTitle";
+constexpr int64_t kResponseLifetimeS = 2 * kHourS;
+constexpr int64_t kClosedVisibleS = 24 * kHourS;
+constexpr int kResponseBatch = 50;
+constexpr int kResponsesShown = 20;
 
 std::string text(const Json::Value& data, const char* key)
 {
@@ -87,6 +92,12 @@ Json::Value call_engine::incomingInfo(const CallSchema& call)
   if (const std::string environment = text(call.data, "environmentName");
       !environment.empty())
     info["environmentName"] = environment;
+  if (const int64_t responseId = number(call.data, "responseId"); responseId > 0)
+    info["responseId"] = static_cast<Json::Int64>(responseId);
+  const Json::Value& discreet = call.data["discreet"];
+  info["discreet"] = discreet.isBool() && discreet.asBool();
+  if (call.data["offers"].isArray())
+    info["offers"] = call.data["offers"];
   return info;
 }
 
@@ -231,9 +242,15 @@ CallEngine::consider(const CallRequest& request) const
                      .preference = CallPreferenceSchema::defaultsFor(userId)};
     if (const auto found = preferences.find(userId); found != preferences.end())
       user.preference = found->second;
+    const auto member = std::ranges::find(request.members, userId,
+                                          &CallResponseMember::userId);
     try {
       outcomes.push_back(co_await considerUser(
-          {.request = request, .user = user, .config = config, .now = at}));
+          {.request = request,
+           .user = user,
+           .config = config,
+           .now = at,
+           .member = member != request.members.end() ? &*member : nullptr}));
     }
     catch (const std::exception& error) {
       LOG_WARN << "Call engine: user " << userId << " for "
@@ -283,21 +300,26 @@ CallEngine::considerUser(const ConsiderUserInput& input) const
        .callsLastHour = stats.recent,
        .limits = {.enabled = input.config.enabled,
                   .callGapS = input.config.callGapS,
-                  .maxCallsPerHour = input.config.maxCallsPerHour}});
+                  .maxCallsPerHour = input.config.maxCallsPerHour},
+       .planNotify = input.member != nullptr &&
+                     input.member->mode == ResponseMemberMode::Notify,
+       .mandatory = input.member != nullptr && input.member->mandatory});
   outcome.reason = verdict.reason;
 
   const std::string lang =
       langFor(!user.preference.lang.empty() ? user.preference.lang
               : !user.recipient.lang.empty() ? user.recipient.lang
                                              : candidate.lang);
-  const CallCopy copy = call_copy::render({.trigger = candidate.trigger,
-                                           .lang = lang,
-                                           .data = candidate.data,
-                                           .userName = user.recipient.name,
-                                           .now = input.now});
   Json::Value stored = candidate.data.isObject()
                            ? candidate.data
                            : Json::Value(Json::objectValue);
+  if (input.member != nullptr && input.member->discreet)
+    stored["discreet"] = true;
+  const CallCopy copy = call_copy::render({.trigger = candidate.trigger,
+                                           .lang = lang,
+                                           .data = stored,
+                                           .userName = user.recipient.name,
+                                           .now = input.now});
   stored[kMissedTitleKey] = copy.missedTitle;
   CallCreateInput row{.userId = userId,
                       .dedupeKey = candidate.dedupeKey,
@@ -500,6 +522,7 @@ CallEngine::claim(const CallClaimRequest& request) const
                  .info = info});
   LOG_INFO << "Call engine: " << claimed.callId() << " answered by user "
            << request.userId;
+  co_await attendAnswered(claimed);
   co_return outcome;
 }
 
@@ -734,6 +757,9 @@ drogon::Task<CallSweepReport> CallEngine::sweep() const
 
   report.closed =
       co_await callRepository_.closeStaleAnswered(at - config.answeredStaleS, at);
+  report.escalated = co_await advanceResponses(at);
+  report.expired = static_cast<int64_t>(
+      (co_await responseRepository_.expire(at - kResponseLifetimeS, at)).size());
   co_return report;
 }
 
@@ -779,4 +805,380 @@ CallEngine::announceAgenda(const AgendaAnnouncement& announcement) const
       ++outcome.rang;
   }
   co_return outcome;
+}
+
+namespace
+{
+std::string placeOf(const Json::Value& data)
+{
+  std::string camera = text(data, "cameraName");
+  std::string environment = text(data, "environmentName");
+  if (camera.empty())
+    return environment;
+  if (!environment.empty())
+    camera += " (" + environment + ")";
+  return camera;
+}
+
+std::vector<CallResponseMember> unreached(const std::vector<CallResponseMember>& members)
+{
+  std::vector<CallResponseMember> pending;
+  for (const auto& member : members) {
+    if (member.reachedAt == 0)
+      pending.push_back(member);
+  }
+  return pending;
+}
+}
+
+drogon::Task<std::vector<CallUserOutcome>>
+CallEngine::respond(const ResponseRequest& request) const
+{
+  const auto parsed = call_response::parsePlan(request.plan);
+  if (!parsed)
+    co_return co_await considerNotification(request.data, request.userIds);
+  auto candidate = call_trigger::fromNotification(request.data);
+  if (!candidate)
+    co_return std::vector<CallUserOutcome>{};
+
+  const int64_t actor = number(request.data, "actorUserId");
+  std::vector<int64_t> userIds;
+  for (const int64_t userId : request.userIds) {
+    if (userId > 0 && userId != actor &&
+        std::ranges::find(userIds, userId) == userIds.end())
+      userIds.push_back(userId);
+  }
+  if (actor > 0 && text(candidate->data, "actorName").empty()) {
+    const CallRecipient person = co_await lookupRecipient(actor);
+    if (person.found)
+      candidate->data["actorName"] = person.name;
+  }
+
+  const int64_t at = now();
+  const std::string kind = text(request.data, "kind");
+  std::vector<CallResponseMemberInput> members;
+  members.reserve(parsed->entries.size());
+  bool firstStepRings = false;
+  for (const auto& entry : parsed->entries) {
+    if (entry.userId == actor)
+      continue;
+    members.push_back({.userId = entry.userId,
+                       .step = entry.step,
+                       .mode = entry.mode,
+                       .mandatory = entry.mandatory,
+                       .discreet = entry.discreet});
+    firstStepRings = firstStepRings ||
+                     (entry.step == 0 && entry.mode == ResponseMemberMode::Call);
+  }
+  const int64_t planEnvironment = number(request.plan, "environmentId");
+  const CallResponseOpened opened = co_await responseRepository_.open(
+      {.dedupeKey = candidate->dedupeKey,
+       .kind = kind,
+       .environmentId = planEnvironment > 0 ? planEnvironment : candidate->environmentId,
+       .episodeId = kind == "guard_episode" ? number(request.data, "episodeId") : 0,
+       .cameraId = number(request.data, "cameraId"),
+       .strategy = parsed->strategy,
+       .stepCount = parsed->stepCount,
+       .stepSeconds = parsed->stepSeconds,
+       .stepDeadline = at + (firstStepRings ? parsed->stepSeconds : 0),
+       .plan = json_util::toString(request.plan),
+       .data = json_util::toString(candidate->data),
+       .at = at},
+      members);
+  if (!opened.response || !responseOpen(opened.response->state))
+    co_return std::vector<CallUserOutcome>{};
+  const CallResponseSchema& response = *opened.response;
+  candidate->data["responseId"] = static_cast<Json::Int64>(response.id);
+  if (response.plan["offers"].isArray())
+    candidate->data["offers"] = response.plan["offers"];
+
+  const auto stored = co_await responseRepository_.members(response.id);
+  if (!opened.created && candidate->trigger == CallTrigger::GuardEscalation &&
+      (response.state == ResponseState::Active ||
+       response.state == ResponseState::Unanswered)) {
+    std::vector<CallResponseMember> others;
+    for (const auto& member : unreached(stored)) {
+      if (std::ranges::find(userIds, member.userId) == userIds.end())
+        others.push_back(member);
+    }
+    co_await reach({.response = response,
+                    .members = std::move(others),
+                    .critical = candidate->critical,
+                    .now = at});
+  }
+  for (const int64_t userId : userIds)
+    co_await responseRepository_.markReached(
+        {.responseId = response.id, .userId = userId, .at = at});
+
+  auto outcomes = co_await consider({.candidate = *candidate,
+                                     .userIds = userIds,
+                                     .notificationExists = true,
+                                     .members = stored});
+  co_await emitResponse(response.id);
+  co_return outcomes;
+}
+
+drogon::Task<void> CallEngine::reach(const ReachInput& input) const
+{
+  const CallResponseSchema& response = input.response;
+  auto candidate = call_trigger::fromNotification(response.data);
+  if (!candidate || input.members.empty())
+    co_return;
+  candidate->data["responseId"] = static_cast<Json::Int64>(response.id);
+  if (response.plan["offers"].isArray())
+    candidate->data["offers"] = response.plan["offers"];
+  if (input.critical) {
+    candidate->critical = true;
+    candidate->urgency = "critical";
+  }
+  std::vector<int64_t> reached;
+  reached.reserve(input.members.size());
+  for (const auto& member : input.members) {
+    if (!co_await responseRepository_.markReached(
+            {.responseId = response.id, .userId = member.userId, .at = input.now}))
+      continue;
+    reached.push_back(member.userId);
+    if (!dependencies_.notifier)
+      continue;
+    const CallRecipient recipient = co_await lookupRecipient(member.userId);
+    const std::string lang = langFor(recipient.lang);
+    const CallCopy copy = call_copy::render({.trigger = candidate->trigger,
+                                             .lang = lang,
+                                             .data = candidate->data,
+                                             .userName = recipient.name,
+                                             .now = input.now});
+    Json::Value data = candidate->data;
+    data["threadKey"] = response.dedupeKey;
+    data["urgency"] = candidate->urgency;
+    data["lang"] = lang;
+    co_await dependencies_.notifier->notify(
+        {.userId = member.userId,
+         .type = "camera",
+         .title = copy.title,
+         .body = response_copy::escalationBody({.lang = lang, .summary = copy.summary}),
+         .data = data,
+         .commandId = "response:" + std::to_string(response.id) + ":reach:" +
+                      std::to_string(member.userId)});
+  }
+  if (reached.empty())
+    co_return;
+  co_await consider({.candidate = *candidate,
+                     .userIds = reached,
+                     .notificationExists = true,
+                     .members = co_await responseRepository_.members(response.id)});
+}
+
+drogon::Task<void> CallEngine::cancelRinging(const CancelInput& input) const
+{
+  const auto cancelled = co_await callRepository_.cancelRingingForKey(
+      {.dedupeKey = input.response.dedupeKey,
+       .exceptUserId = input.exceptUserId,
+       .reason = input.reason,
+       .now = input.now});
+  for (const auto& call : cancelled) {
+    co_await callRepository_.settleFollowups(
+        {.parentId = call.id, .state = CallState::Missed, .now = input.now});
+    Json::Value info(Json::objectValue);
+    info["callId"] = call_id::format(call.id);
+    info["reason"] = input.reason;
+    info["attendedBy"] = input.attendedBy;
+    info["responseId"] = static_cast<Json::Int64>(input.response.id);
+    co_await emit({.userId = call.userId,
+                   .operation = SyncOperation::CallCancel,
+                   .info = info});
+  }
+}
+
+drogon::Task<void> CallEngine::promptContacts(const PromptInput& input) const
+{
+  if (!dependencies_.notifier)
+    co_return;
+  const CallResponseSchema& response = input.response;
+  const std::string place = placeOf(response.data);
+  for (const auto& member : co_await responseRepository_.members(response.id)) {
+    if (member.reachedAt == 0)
+      continue;
+    const CallRecipient recipient = co_await lookupRecipient(member.userId);
+    const std::string lang = langFor(recipient.lang);
+    const ResponseNotice notice = response_copy::contacts(
+        {.lang = lang,
+         .place = place,
+         .contacts = response.plan["contacts"],
+         .emergencyNumber = text(response.plan, "emergencyNumber"),
+         .confirmed = input.confirmed,
+         .confirmedBy = response.verdictByName});
+    Json::Value data(Json::objectValue);
+    data["kind"] = "guard_response";
+    data["responseId"] = static_cast<Json::Int64>(response.id);
+    data["threadKey"] = response.dedupeKey + ":response";
+    data["urgency"] = "time_sensitive";
+    data["state"] = responseStateToString(response.state);
+    data["environmentId"] = static_cast<Json::Int64>(response.environmentId);
+    data["cameraId"] = static_cast<Json::Int64>(response.cameraId);
+    data["lang"] = lang;
+    co_await dependencies_.notifier->notify(
+        {.userId = member.userId,
+         .type = "camera",
+         .title = notice.title,
+         .body = notice.body,
+         .data = data,
+         .commandId = "response:" + std::to_string(response.id) + ":" +
+                      (input.confirmed ? "confirmed" : "unanswered") + ":" +
+                      std::to_string(member.userId)});
+  }
+}
+
+drogon::Task<void> CallEngine::emitResponse(int64_t responseId) const
+{
+  const auto response = co_await responseRepository_.findById(responseId);
+  if (!response)
+    co_return;
+  for (const auto& member : co_await responseRepository_.members(responseId)) {
+    if (member.reachedAt == 0)
+      continue;
+    co_await emit({.userId = member.userId,
+                   .operation = SyncOperation::ResponseUpdate,
+                   .info = call_response::toJson({.response = *response, .member = &member})});
+  }
+}
+
+drogon::Task<void> CallEngine::attendAnswered(const CallSchema& call) const
+{
+  const auto response = co_await responseRepository_.findByKey(call.dedupeKey);
+  if (!response || !responseOpen(response->state))
+    co_return;
+  const CallRecipient recipient = co_await lookupRecipient(call.userId);
+  const int64_t at = now();
+  if (!co_await responseRepository_.attend(
+          {.id = response->id, .userId = call.userId, .name = recipient.name, .at = at}))
+    co_return;
+  co_await cancelRinging({.response = *response,
+                          .exceptUserId = call.userId,
+                          .reason = "attended",
+                          .attendedBy = recipient.name,
+                          .now = at});
+  co_await emitResponse(response->id);
+  LOG_INFO << "Call engine: " << call_response::responseId(response->id)
+           << " attended by user " << call.userId;
+}
+
+drogon::Task<int64_t> CallEngine::advanceResponses(int64_t now) const
+{
+  int64_t advanced = 0;
+  for (const auto& response :
+       co_await responseRepository_.due({.now = now, .limit = kResponseBatch})) {
+    const int next = response.step + 1;
+    if (next < response.stepCount) {
+      std::vector<CallResponseMember> stepMembers;
+      bool rings = false;
+      for (const auto& member : co_await responseRepository_.members(response.id)) {
+        if (member.step != next || member.reachedAt != 0)
+          continue;
+        rings = rings || member.mode == ResponseMemberMode::Call;
+        stepMembers.push_back(member);
+      }
+      if (!co_await responseRepository_.advance(
+              {.id = response.id,
+               .fromStep = response.step,
+               .toStep = next,
+               .deadline = now + (rings ? response.stepSeconds : 0),
+               .at = now}))
+        continue;
+      co_await reach({.response = response,
+                      .members = std::move(stepMembers),
+                      .critical = false,
+                      .now = now});
+    }
+    else {
+      if (!co_await responseRepository_.markUnanswered(response.id, now))
+        continue;
+      if (const auto fresh = co_await responseRepository_.findById(response.id))
+        co_await promptContacts({.response = *fresh, .confirmed = false, .now = now});
+    }
+    co_await emitResponse(response.id);
+    ++advanced;
+  }
+  co_return advanced;
+}
+
+drogon::Task<ResponseVerdictOutcome>
+CallEngine::verdict(const ResponseVerdictRequest& request) const
+{
+  ResponseVerdictOutcome outcome;
+  const auto member =
+      co_await responseRepository_.member(request.responseId, request.userId);
+  if (!member || member->reachedAt == 0)
+    co_return outcome;
+  const CallRecipient recipient = co_await lookupRecipient(request.userId);
+  const int64_t at = now();
+  const bool recorded = co_await responseRepository_.verdict(
+      {.id = request.responseId,
+       .verdict = request.verdict,
+       .userId = request.userId,
+       .name = recipient.name,
+       .at = at});
+  auto fresh = co_await responseRepository_.findById(request.responseId);
+  if (!fresh)
+    co_return outcome;
+  if (!recorded) {
+    outcome.status = fresh->verdict == request.verdict ? ResponseVerdictStatus::Recorded
+                                                       : ResponseVerdictStatus::Closed;
+    outcome.response = call_response::toJson({.response = *fresh, .member = &*member});
+    co_return outcome;
+  }
+  if (request.verdict == ResponseVerdict::FalseAlarm) {
+    co_await cancelRinging({.response = *fresh,
+                            .exceptUserId = 0,
+                            .reason = "resolved",
+                            .attendedBy = recipient.name,
+                            .now = at});
+  }
+  else {
+    co_await reach({.response = *fresh,
+                    .members = unreached(co_await responseRepository_.members(fresh->id)),
+                    .critical = true,
+                    .now = at});
+    co_await promptContacts({.response = *fresh, .confirmed = true, .now = at});
+  }
+  if (dependencies_.verdicts)
+    dependencies_.verdicts->publish({.responseId = fresh->id,
+                                     .kind = fresh->kind,
+                                     .threadKey = fresh->dedupeKey,
+                                     .episodeId = fresh->episodeId,
+                                     .environmentId = fresh->environmentId,
+                                     .verdict = responseVerdictToString(request.verdict),
+                                     .userId = request.userId,
+                                     .at = at});
+  co_await emitResponse(fresh->id);
+  LOG_INFO << "Call engine: " << call_response::responseId(fresh->id) << " marked "
+           << responseVerdictToString(request.verdict) << " by user " << request.userId;
+  outcome.status = ResponseVerdictStatus::Recorded;
+  outcome.response = call_response::toJson({.response = *fresh, .member = &*member});
+  co_return outcome;
+}
+
+drogon::Task<Json::Value> CallEngine::responses(int64_t userId) const
+{
+  Json::Value list(Json::arrayValue);
+  const int64_t at = now();
+  for (const auto& response : co_await responseRepository_.forUser(
+           {.userId = userId, .closedSince = at - kClosedVisibleS, .limit = kResponsesShown})) {
+    const auto member = co_await responseRepository_.member(response.id, userId);
+    list.append(call_response::toJson(
+        {.response = response, .member = member ? &*member : nullptr}));
+  }
+  co_return list;
+}
+
+drogon::Task<std::optional<Json::Value>>
+CallEngine::response(const ResponseViewRequest& request) const
+{
+  const auto member =
+      co_await responseRepository_.member(request.responseId, request.userId);
+  if (!member || member->reachedAt == 0)
+    co_return std::nullopt;
+  const auto found = co_await responseRepository_.findById(request.responseId);
+  if (!found)
+    co_return std::nullopt;
+  co_return call_response::toJson({.response = *found, .member = &*member});
 }

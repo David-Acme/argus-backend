@@ -183,3 +183,52 @@ CREATE TABLE IF NOT EXISTS call_arrival_seen (
     person_id  INTEGER NOT NULL  PRIMARY KEY,
     last_seen  INTEGER NOT NULL  DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS call_response (
+    id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    dedupe_key      TEXT    NOT NULL UNIQUE,
+    kind            TEXT    NOT NULL
+                            CHECK (kind IN ('guard_episode', 'guard_panic',
+                                   'guard_duress', 'guard_tamper')),
+    environment_id  INTEGER NOT NULL DEFAULT 0,
+    episode_id      INTEGER NOT NULL DEFAULT 0,
+    camera_id       INTEGER NOT NULL DEFAULT 0,
+    strategy        TEXT    NOT NULL DEFAULT 'ordered'
+                            CHECK (strategy IN ('ordered', 'inside_first',
+                                   'everyone', 'night_quiet')),
+    state           TEXT    NOT NULL DEFAULT 'active'
+                            CHECK (state IN ('active', 'attended', 'unanswered',
+                                   'confirmed', 'false_alarm', 'expired')),
+    step            INTEGER NOT NULL DEFAULT 0,
+    step_count      INTEGER NOT NULL DEFAULT 1,
+    step_seconds    INTEGER NOT NULL DEFAULT 45,
+    step_deadline   INTEGER NOT NULL DEFAULT 0,
+    responder_id    INTEGER NOT NULL DEFAULT 0,
+    responder_name  TEXT    NOT NULL DEFAULT '',
+    verdict         TEXT    NOT NULL DEFAULT ''
+                            CHECK (verdict IN ('', 'real', 'false_alarm')),
+    verdict_by      INTEGER NOT NULL DEFAULT 0,
+    verdict_by_name TEXT    NOT NULL DEFAULT '',
+    verdict_at      INTEGER NOT NULL DEFAULT 0,
+    plan            TEXT    NOT NULL DEFAULT '{}',
+    data            TEXT    NOT NULL DEFAULT '{}',
+    created_at      INTEGER NOT NULL DEFAULT 0,
+    updated_at      INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_call_response_due
+    ON call_response (state, step_deadline);
+
+CREATE TABLE IF NOT EXISTS call_response_member (
+    response_id INTEGER NOT NULL,
+    user_id     INTEGER NOT NULL,
+    step        INTEGER NOT NULL DEFAULT 0,
+    mode        TEXT    NOT NULL DEFAULT 'call' CHECK (mode IN ('call', 'notify')),
+    mandatory   INTEGER NOT NULL DEFAULT 0 CHECK (mandatory IN (0, 1)),
+    discreet    INTEGER NOT NULL DEFAULT 0 CHECK (discreet IN (0, 1)),
+    reached_at  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (response_id, user_id)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_call_response_member_user
+    ON call_response_member (user_id, response_id);

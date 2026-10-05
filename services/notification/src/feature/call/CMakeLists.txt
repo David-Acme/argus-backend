@@ -1,23 +1,29 @@
 argus_module(NAME notification-call
     SOURCES
         controllers/call-preference-controller.cc
+        controllers/call-response-controller.cc
+        dtos/response-verdict-dto.cc
         dtos/update-call-preference-dto.cc
         infra/identity-call-directory.cc
+        infra/nats-response-verdict-sink.cc
         infra/notification-call-sink.cc
         infra/sync-call-signal.cc
         infra/voice-call-announcer.cc
         repositories/arrival-seen/arrival-seen-repository.cc
         repositories/call/call-repository.cc
+        repositories/call-response/call-response-repository.cc
         repositories/call-preference/call-preference-repository.cc
         repositories/scheduled-call/scheduled-call-repository.cc
         schemas/call/call-schema.cc
         schemas/call-preference/call-preference-schema.cc
+        schemas/call-response/call-response-schema.cc
         services/call-copy.cc
         services/call-engine.cc
         services/call-feed.cc
         services/call-policy.cc
         services/call-preference-service.cc
         services/call-trigger-classifier.cc
+        services/response-copy.cc
     INCLUDES ../..
     DEPENDS
         argus::notification-shared
@@ -25,6 +31,7 @@ argus_module(NAME notification-call
         argus::clients::identity
         argus::clients::sync
         argus::clients::voice
+        argus::contracts::notification
         argus::contracts::sync
         argus::lib::auth
         argus::lib::config

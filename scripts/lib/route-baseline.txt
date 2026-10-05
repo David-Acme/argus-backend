@@ -81,6 +81,9 @@ notification	POST	/notification-token	DeviceFilter,ValidJsonFilter,JwtFilter,Rol
 notification	PATCH	/notification/ack	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/notification/controllers/notification-controller.hxx
 notification	GET	/notification/delivery-summary	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/notification/controllers/notification-controller.hxx
 notification	PATCH	/notification/read	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/notification/controllers/notification-controller.hxx
+notification	GET	/notification/responses	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/call/controllers/call-response-controller.hxx
+notification	GET	/notification/responses/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/call/controllers/call-response-controller.hxx
+notification	PATCH	/notification/responses/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/call/controllers/call-response-controller.hxx
 productivity	POST	/calendar-event	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/calendar-event/controllers/calendar-event-controller.hxx
 productivity	POST	/calendar-event-share	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/calendar-event-share/controllers/calendar-event-share-controller.hxx
 productivity	DELETE	/calendar-event-share/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/calendar-event-share/controllers/calendar-event-share-controller.hxx

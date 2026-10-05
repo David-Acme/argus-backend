@@ -147,3 +147,18 @@ drogon::Task<int64_t> CallRepository::closeStaleAnswered(int64_t answeredBefore,
                                                    now, answeredBefore);
   co_return static_cast<int64_t>(result.affectedRows());
 }
+
+drogon::Task<std::vector<CallCancelled>>
+CallRepository::cancelRingingForKey(const CallCancelForKeyInput& input) const
+{
+  const auto client = DbService::client();
+  const auto rows = co_await client->execSqlCoro(std::string(CANCEL_RINGING_FOR_KEY),
+                                                 input.reason, input.now,
+                                                 input.dedupeKey, input.exceptUserId);
+  std::vector<CallCancelled> cancelled;
+  cancelled.reserve(rows.size());
+  for (const auto& row : rows)
+    cancelled.push_back({.id = row["id"].as<int64_t>(),
+                         .userId = row["user_id"].as<int64_t>()});
+  co_return cancelled;
+}
