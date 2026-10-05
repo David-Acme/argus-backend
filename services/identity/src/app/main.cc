@@ -1,4 +1,3 @@
-#include <app/rpc/grpc-server-drain.hxx>
 #include <app/rpc/identity-rpc-service.hxx>
 #include <app/rpc/identity-sync-rpc-service.hxx>
 #include <app/rpc/identity-voiceprint-rpc-service.hxx>
@@ -11,6 +10,7 @@
 #include <auth/valid-json-filter.hxx>
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
+#include <grpc/grpc-server-drain.hxx>
 #include <config/identity-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/face-upgrade/services/face-upgrade-service.hxx>
@@ -51,13 +51,16 @@
 #include <sync/identity-change-sink.hxx>
 #include <sync/sync-client.hxx>
 #include <sync/sync-control-sink.hxx>
+#include <chrono>
 #include <exception>
+#include <utility>
 #include <unistd.h>
 
 namespace
 {
 
 constexpr int kMaxRpcReceiveBytes = 12 * 1024 * 1024;
+constexpr std::chrono::milliseconds kRpcDrainDeadline{2000};
 constexpr double kVoiceCallSweepSeconds = 60.0;
 constexpr double kVoiceSamplePurgeSeconds = 3600.0;
 
@@ -296,9 +299,11 @@ int main()
   rpcBuilder.RegisterService(&syncRpcService);
   rpcBuilder.RegisterService(&voiceprintRpcService);
   std::unique_ptr<grpc::Server> rpcServer(rpcBuilder.BuildAndStart());
-  GrpcServerDrain rpcDrain(rpcServer.get());
+  const bool rpcListening = rpcServer != nullptr;
+  argus::client::GrpcServerDrain rpcDrain(std::move(rpcServer),
+                                          kRpcDrainDeadline);
   shutdown_signal::onStop(shutdown_signal::drainOf(rpcDrain, "identity-rpc"));
-  if (rpcServer)
+  if (rpcListening)
     LOG_INFO << "Identity RPC listening on " << rpc.listener.host << ":"
              << rpc.listener.port << " (cleartext, "
              << (rpc.secret.empty() ? "loopback only, no fleet secret"
@@ -407,7 +412,7 @@ int main()
 
   drogon::app().setThreadNum(0).run();
 
-  rpcDrain.stopAndWait();
+  rpcDrain.stop();
   FaceService::instance().shutdown();
   SpeakerEmbeddingService::instance().shutdown();
   return 0;

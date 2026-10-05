@@ -1235,3 +1235,12 @@ Differences from the old copy, none visible on the wire or in the schema:
   identity's table it finds both `event_id` and `subject` and does nothing.
 - A relay that cannot publish backs off exponentially to 5 s instead of
   retrying every 500 ms.
+
+## The RPC listener drains through `argus::client::GrpcServerDrain`
+
+`src/app/rpc/grpc-server-drain.*` was the last private copy of the gRPC
+listener drain; `main.cc` now hands the built server to the shared
+`argus::client::GrpcServerDrain` in `packages/lib/grpc` (owned, 2 s shutdown
+deadline, `stop()` after `run()` returns), the same class notification and
+sync use, and its suite (`grpc-server-drain-test`) runs in this service's
+CTest graph.
