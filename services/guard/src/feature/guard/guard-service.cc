@@ -368,7 +368,7 @@ private:
 };
 
 GuardService::GuardService(Dependencies dependencies, Config config)
-    : dependencies_(dependencies),
+    : dependencies_(std::move(dependencies)),
       config_(std::make_shared<const Config>(std::move(config))),
       lifecycle_(std::make_shared<GuardLifecycle>())
 {

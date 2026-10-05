@@ -8,6 +8,7 @@
 #include <feature/call/schemas/call-response/call-response-schema.hxx>
 #include <feature/call/services/call-trigger-classifier.hxx>
 
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -76,6 +77,13 @@ Json::Value guardData(const GuardDataInput& input)
   data["lang"] = "es";
   return data;
 }
+}
+
+template <typename T>
+T present(const std::optional<T>& value)
+{
+  REQUIRE(value.has_value());
+  return value.value_or(T{});
 }
 
 TEST_CASE("quiet hours: a window may wrap midnight, -1 or an empty window is off")
@@ -598,13 +606,12 @@ TEST_CASE("a response plan parses defensively")
   deep["userId"] = 4;
   deep["step"] = 99;
   plan["recipients"].append(deep);
-  const auto parsed = call_response::parsePlan(plan);
-  REQUIRE(parsed.has_value());
-  CHECK(parsed->strategy == "ordered");
-  CHECK(parsed->stepSeconds == 15);
-  REQUIRE(parsed->entries.size() == 1);
-  CHECK(parsed->entries.front().mode == ResponseMemberMode::Notify);
-  CHECK(parsed->stepCount == 3);
+  const auto parsed = present(call_response::parsePlan(plan));
+  CHECK(parsed.strategy == "ordered");
+  CHECK(parsed.stepSeconds == 15);
+  REQUIRE(parsed.entries.size() == 1);
+  CHECK(parsed.entries.front().mode == ResponseMemberMode::Notify);
+  CHECK(parsed.stepCount == 3);
   CHECK_FALSE(call_response::parsePlan(Json::Value(Json::objectValue)));
 }
 

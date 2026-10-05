@@ -291,7 +291,7 @@ TapoResult TapoApi::setLed(const TapoLedInput& input)
 TapoResult TapoApi::setDayNight(const TapoDayNightInput& input)
 {
   Json::Value params(Json::objectValue);
-  params["image"]["common"]["inf_type"] = tapo_day_night::toDevice(input.mode);
+  params["image"]["common"]["inf_type"] = std::string(tapo_day_night::toDevice(input.mode));
   return call("setDayNightModeConfig", params);
 }
 

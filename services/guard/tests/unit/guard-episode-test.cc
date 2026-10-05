@@ -9,6 +9,7 @@
 #include <feature/guard/guard-service.hxx>
 #include <feature/guard/services/guard-feature-service.hxx>
 #include <memory>
+#include <optional>
 #include <string>
 #include <text/json-util.hxx>
 
@@ -176,6 +177,13 @@ int localHour()
   localtime_r(&now, &local);
   return local.tm_hour;
 }
+}
+
+template <typename T>
+T present(const std::optional<T>& value)
+{
+  REQUIRE(value.has_value());
+  return value.value_or(T{});
 }
 
 TEST_CASE("environments: the seeded default, a second place, patches and modes")
@@ -404,9 +412,8 @@ TEST_CASE("an episode keeps its story: list, timeline and review")
                   .has_value());
 
   const int64_t episodeId = episode["id"].asInt64();
-  const auto kept = drogon::sync_wait(api.retainEpisode({.episodeId = episodeId, .retain = true}));
-  REQUIRE(kept.has_value());
-  CHECK(kept.value()["retainUntil"].asInt64() >
+  const auto kept = present(drogon::sync_wait(api.retainEpisode({.episodeId = episodeId, .retain = true})));
+  CHECK(kept["retainUntil"].asInt64() >
         static_cast<int64_t>(std::time(nullptr)) + 100LL * 86400);
   const GuardRepository repository;
   const int64_t future = static_cast<int64_t>(std::time(nullptr)) + 10;
@@ -416,9 +423,8 @@ TEST_CASE("an episode keeps its story: list, timeline and review")
   CHECK(scalar("SELECT COUNT(*) FROM guard_encounter WHERE id = " +
                std::to_string(episodeId)) == "1");
   const auto released =
-      drogon::sync_wait(api.retainEpisode({.episodeId = episodeId, .retain = false}));
-  REQUIRE(released.has_value());
-  CHECK(released.value()["retainUntil"].asInt64() == 0);
+      present(drogon::sync_wait(api.retainEpisode({.episodeId = episodeId, .retain = false})));
+  CHECK(released["retainUntil"].asInt64() == 0);
   drogon::sync_wait(repository.purgeDecisions(future));
   CHECK(scalar("SELECT COUNT(*) FROM guard_decision_journal WHERE event_id = 'ep:1'") == "0");
   CHECK_FALSE(drogon::sync_wait(api.retainEpisode({.episodeId = 999999, .retain = true}))

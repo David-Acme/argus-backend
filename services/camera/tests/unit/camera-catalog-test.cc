@@ -24,6 +24,7 @@
 #include <atomic>
 #include <cerrno>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -199,6 +200,13 @@ RtspProbeInput probeOf(int port, const std::string& path)
   return {.host = "127.0.0.1", .port = port, .username = "admin", .password = "secret", .path = path, .timeoutMs = 1500};
 }
 
+}
+
+template <typename T>
+T present(const std::optional<T>& value)
+{
+  REQUIRE(value.has_value());
+  return value.value_or(T{});
 }
 
 TEST_CASE("every catalog entry has a unique id and the defaults its driver needs")
@@ -385,14 +393,13 @@ TEST_CASE("the Tapo video profile reads the encoder's offer and its current sett
       R"("resolutions":["2688*1520","2560*1440","1920*1080"],"encode_types":["H264"]}}})");
   const Json::Value quality = json_util::fromString(
       R"({"video":{"main":{"resolution":"2688*1520","frame_rate":"65551","encode_type":"H264"}}})");
-  const auto profile = tapo_video::profileOf({.capability = capability, .quality = quality});
-  REQUIRE(profile.has_value());
-  CHECK(profile->resolution == "2688x1520");
-  CHECK(profile->frameRate == 15);
-  CHECK(profile->encoding == "H264");
-  CHECK(profile->frameRates == std::vector<int>{1, 15, 20, 25, 30});
-  CHECK(profile->resolutions.size() == 3);
-  CHECK(profile->toJson()["frameRates"].size() == 5);
+  const auto profile = present(tapo_video::profileOf({.capability = capability, .quality = quality}));
+  CHECK(profile.resolution == "2688x1520");
+  CHECK(profile.frameRate == 15);
+  CHECK(profile.encoding == "H264");
+  CHECK(profile.frameRates == std::vector<int>{1, 15, 20, 25, 30});
+  CHECK(profile.resolutions.size() == 3);
+  CHECK(profile.toJson()["frameRates"].size() == 5);
 
 
   CHECK(tapo_video::frameRateOf(Json::Value("15")) == 15);
@@ -402,10 +409,9 @@ TEST_CASE("the Tapo video profile reads the encoder's offer and its current sett
   const Json::Value stringLists = json_util::fromString(
       R"({"video_capability":{"main":{"frame_rates":"[\"65551\",\"65566\"]"}}})");
   const Json::Value empty;
-  const auto fromStrings = tapo_video::profileOf({.capability = stringLists, .quality = empty});
-  REQUIRE(fromStrings.has_value());
-  CHECK(fromStrings->frameRates == std::vector<int>{15, 30});
-  CHECK(fromStrings->frameRate == 0);
+  const auto fromStrings = present(tapo_video::profileOf({.capability = stringLists, .quality = empty}));
+  CHECK(fromStrings.frameRates == std::vector<int>{15, 30});
+  CHECK(fromStrings.frameRate == 0);
 
   CHECK_FALSE(tapo_video::profileOf({.capability = empty, .quality = empty}).has_value());
 }

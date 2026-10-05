@@ -206,11 +206,11 @@ FaceService::runDetector(const RunDetectorInput& input)
   const float scale =
       static_cast<float>(kTarget) / static_cast<float>(std::max(width, height));
   const int resizedWidth =
-      std::clamp(static_cast<int>(std::lround(width * scale)), 1, kTarget);
+      std::clamp(static_cast<int>(std::lround(static_cast<float>(width) * scale)), 1, kTarget);
   const int resizedHeight =
-      std::clamp(static_cast<int>(std::lround(height * scale)), 1, kTarget);
-  const float invScaleX = static_cast<float>(width) / resizedWidth;
-  const float invScaleY = static_cast<float>(height) / resizedHeight;
+      std::clamp(static_cast<int>(std::lround(static_cast<float>(height) * scale)), 1, kTarget);
+  const float invScaleX = static_cast<float>(width) / static_cast<float>(resizedWidth);
+  const float invScaleY = static_cast<float>(height) / static_cast<float>(resizedHeight);
 
   const ncnn::Mat resized =
       ncnn::Mat::from_pixels_resize(imageData, ncnn::Mat::PIXEL_RGB, width,

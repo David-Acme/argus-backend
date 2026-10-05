@@ -566,6 +566,13 @@ struct RefreshAttempt
 }
 }
 
+template <typename T>
+T present(const std::optional<T>& value)
+{
+  REQUIRE(value.has_value());
+  return value.value_or(T{});
+}
+
 TEST_CASE("a session written before the migration keeps working with an id")
 {
   Fixture& app = fixture();
@@ -878,12 +885,12 @@ TEST_CASE("an identity outage during a refresh rotates nothing and the token sur
   app.sink().clear();
 
   app.identity().setReachable(false);
-  const auto outage = refusalOf(app.auth().refreshToken(refreshInputOf(
+  const auto refused = refusalOf(app.auth().refreshToken(refreshInputOf(
       {.refreshToken = opened.refreshToken, .device = tablet})));
   app.identity().setReachable(true);
-  REQUIRE(outage.has_value());
-  CHECK(outage->status == 503);
-  CHECK(outage->code == "SERVICE_UNAVAILABLE");
+  const auto outage = present(refused);
+  CHECK(outage.status == 503);
+  CHECK(outage.code == "SERVICE_UNAVAILABLE");
   CHECK(liveHashes(sessionId) == presentedOnly);
   CHECK(contains(activeSessionIds(kOtherUserId), sessionId));
   CHECK(app.sink().changes().empty());

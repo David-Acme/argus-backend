@@ -5,7 +5,7 @@
 
 namespace tapo_day_night
 {
-inline std::string toDevice(std::string_view mode)
+inline std::string_view toDevice(std::string_view mode)
 {
   if (mode == "night")
     return "on";

@@ -315,9 +315,13 @@ int main()
              {"push_delay_s", "INTEGER NOT NULL DEFAULT 4"},
              {"live_announce", "INTEGER NOT NULL DEFAULT 1"},
              {"lang", "TEXT NOT NULL DEFAULT ''"}}) {
-      if (!hasColumn("call_preference", column))
-        DbService::client()->execSqlSync("ALTER TABLE call_preference ADD COLUMN " +
-                                         column + " " + ddl);
+      if (!hasColumn("call_preference", column)) {
+        std::string statement = "ALTER TABLE call_preference ADD COLUMN ";
+        statement += column;
+        statement += ' ';
+        statement += ddl;
+        DbService::client()->execSqlSync(statement);
+      }
     }
     if (!hasColumn("call", "push_after"))
       DbService::client()->execSqlSync(

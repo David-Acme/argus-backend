@@ -7,6 +7,7 @@
 #include <optional>
 #include <sync/role-permission.hxx>
 #include <sync/table-name.hxx>
+#include <initializer_list>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -86,10 +87,18 @@ constexpr std::uint8_t roleBit(UserRole role)
   return static_cast<std::uint8_t>(1U << static_cast<unsigned>(role));
 }
 
-inline constexpr std::uint8_t kResidentAndGuard = roleBit(UserRole::Resident) | roleBit(UserRole::Guard);
+constexpr std::uint8_t roleBits(std::initializer_list<UserRole> roles)
+{
+  unsigned bits = 0U;
+  for (const UserRole role : roles)
+    bits |= 1U << static_cast<unsigned>(role);
+  return static_cast<std::uint8_t>(bits);
+}
+
+inline constexpr std::uint8_t kResidentAndGuard = roleBits({UserRole::Resident, UserRole::Guard});
 
 inline constexpr std::uint8_t kResidentGuardGuest =
-    roleBit(UserRole::Resident) | roleBit(UserRole::Guard) | roleBit(UserRole::Guest);
+    roleBits({UserRole::Resident, UserRole::Guard, UserRole::Guest});
 
 inline constexpr std::array<GuardRouteAccess, 13> kGuardAccess = {{
     {.path = "/guard/environments", .method = drogon::Get, .roles = kResidentAndGuard},

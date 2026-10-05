@@ -65,12 +65,17 @@ FaceService& loadedFaces()
   return FaceService::instance();
 }
 
+template <typename T>
+T present(const std::optional<T>& value)
+{
+  REQUIRE(value.has_value());
+  return value.value_or(T{});
+}
+
 std::vector<float> embed(const std::string& name)
 {
-  const auto analysis =
-      loadedFaces().analyzeImage({.imageBytes = fixture(name), .encodeFace = false});
-  REQUIRE(analysis.has_value());
-  return analysis.value().embedding;
+  return present(loadedFaces().analyzeImage({.imageBytes = fixture(name), .encodeFace = false}))
+      .embedding;
 }
 
 float cosine(const std::vector<float>& a, const std::vector<float>& b)
@@ -218,10 +223,8 @@ TEST_CASE("the recognizer separates people on the public-domain fixtures")
   CHECK(cosine(meirB, menon) < 0.30F);
   CHECK(cosine(hathaway, menon) < 0.30F);
 
-  const auto analysis = loadedFaces().analyzeImage(
-      {.imageBytes = fixture("menon.jpg"), .encodeFace = true});
-  REQUIRE(analysis.has_value());
-  const auto& crop = analysis.value();
+  const auto crop = present(loadedFaces().analyzeImage(
+      {.imageBytes = fixture("menon.jpg"), .encodeFace = true}));
   CHECK(crop.faces == 1);
   CHECK(crop.quality.detectorScore > 0.9F);
   CHECK(crop.quality.interOcularPx > 40.0F);
@@ -297,9 +300,8 @@ TEST_CASE("an account's legacy face is re-embedded from its portrait and the "
   CHECK(again.upgraded == 0);
 
   const auto probe = embed("barratt-b.jpg");
-  const auto match = FaceService::instance().faceDb().search(probe.data());
-  REQUIRE(match.has_value());
-  CHECK(match.value().first == 10);
+  const auto match = present(FaceService::instance().faceDb().search(probe.data()));
+  CHECK(match.first == 10);
   const auto stranger = embed("menon.jpg");
   CHECK_FALSE(FaceService::instance().faceDb().search(stranger.data()).has_value());
 }

@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -223,6 +224,13 @@ bool hasJournalEvent(const std::vector<UserActionEvent>& actions,
 }
 }
 
+template <typename T>
+T present(const std::optional<T>& value)
+{
+  REQUIRE(value.has_value());
+  return value.value_or(T{});
+}
+
 TEST_CASE("route access: everyone reads and decides their own choices, the "
           "owner alone reads the directory and the household switches")
 {
@@ -389,10 +397,9 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
     RpcHarness harness;
     const IdentityClient client(harness.target());
 
-    const auto named = client.getPerson(1);
-    REQUIRE(named.has_value());
-    CHECK(named.value().userId == std::optional<int64_t>(7));
-    CHECK(named.value().role == "resident");
+    const auto named = present(client.getPerson(1));
+    CHECK(named.userId == std::optional<int64_t>(7));
+    CHECK(named.role == "resident");
 
     sink.clear();
     const auto directory = drogon::sync_wait(service.updateHousehold(
@@ -410,33 +417,29 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
     CHECK(sink.catalog().size() == 3);
     CHECK(hasJournalEvent(sink.actions(), "household_privacy"));
 
-    const auto unnamed = client.getPerson(1);
-    REQUIRE(unnamed.has_value());
-    CHECK_FALSE(unnamed.value().userId.has_value());
-    CHECK(unnamed.value().name.empty());
-    CHECK(unnamed.value().role == "resident");
+    const auto unnamed = present(client.getPerson(1));
+    CHECK_FALSE(unnamed.userId.has_value());
+    CHECK(unnamed.name.empty());
+    CHECK(unnamed.role == "resident");
 
-    const auto user = client.getUser(7);
-    REQUIRE(user.has_value());
-    REQUIRE(user.value().user().has_privacy());
-    CHECK(user.value().user().privacy().decided());
-    CHECK(user.value().user().privacy().presence());
-    CHECK_FALSE(user.value().user().privacy().face_cameras());
+    const auto user = present(client.getUser(7));
+    REQUIRE(user.user().has_privacy());
+    CHECK(user.user().privacy().decided());
+    CHECK(user.user().privacy().presence());
+    CHECK_FALSE(user.user().privacy().face_cameras());
 
-    const auto listed = client.listPrivacy();
-    REQUIRE(listed.has_value());
-    CHECK_FALSE(listed.value().household().face_cameras());
-    CHECK_FALSE(listed.value().household().visitor_recognition());
-    REQUIRE(listed.value().users_size() == 2);
-    CHECK(listed.value().users(0).user_id() == 1);
-    CHECK_FALSE(listed.value().users(0).choices().decided());
+    const auto listed = present(client.listPrivacy());
+    CHECK_FALSE(listed.household().face_cameras());
+    CHECK_FALSE(listed.household().visitor_recognition());
+    REQUIRE(listed.users_size() == 2);
+    CHECK(listed.users(0).user_id() == 1);
+    CHECK_FALSE(listed.users(0).choices().decided());
 
-    const auto users = client.listUsers();
-    REQUIRE(users.has_value());
-    REQUIRE(users.value().size() == 3);
-    CHECK(users.value().at(0).user_id() == 1);
-    CHECK(users.value().at(2).user_id() == 9);
-    CHECK_FALSE(users.value().at(2).is_active());
+    const auto users = present(client.listUsers());
+    REQUIRE(users.size() == 3);
+    CHECK(users.at(0).user_id() == 1);
+    CHECK(users.at(2).user_id() == 9);
+    CHECK_FALSE(users.at(2).is_active());
 
     drogon::sync_wait(service.updateHousehold({.actorId = 1,
                                                .presence = std::nullopt,
