@@ -607,3 +607,30 @@ TEST_CASE("a response plan parses defensively")
   CHECK(parsed->stepCount == 3);
   CHECK_FALSE(call_response::parsePlan(Json::Value(Json::objectValue)));
 }
+
+TEST_CASE("a recognised visitor is named in the call, in the user's language")
+{
+  Json::Value data = guardData({.urgency = "critical", .phase = "opened"});
+  data["visitor"]["phraseEs"] = "Es el repartidor que suele venir los martes.";
+  data["visitor"]["phraseEn"] = "It is the courier who usually comes on Tuesdays.";
+  const auto es = call_copy::render({.trigger = CallTrigger::GuardCritical,
+                                     .lang = "es",
+                                     .data = data,
+                                     .userName = "",
+                                     .now = kNow});
+  CHECK(es.openingLine.find(" Es el repartidor que suele venir los martes.") !=
+        std::string::npos);
+  const auto en = call_copy::render({.trigger = CallTrigger::GuardCritical,
+                                     .lang = "en",
+                                     .data = data,
+                                     .userName = "",
+                                     .now = kNow});
+  CHECK(en.openingLine.find("It is the courier who usually comes on Tuesdays.") !=
+        std::string::npos);
+  const auto plain = call_copy::render({.trigger = CallTrigger::GuardCritical,
+                                        .lang = "es",
+                                        .data = guardData({.urgency = "critical", .phase = "opened"}),
+                                        .userName = "",
+                                        .now = kNow});
+  CHECK(plain.openingLine.find("repartidor") == std::string::npos);
+}

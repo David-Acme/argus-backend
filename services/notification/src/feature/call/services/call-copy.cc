@@ -278,6 +278,9 @@ CallCopy guardCopy(const CallCopyInput& input, bool english)
                     english);
   opening += (english ? "There is " : "Hay ") + someone + at +
              reasonClause(data, english) + "." + actionSentence(data, english);
+  const std::string visitor = text(data["visitor"], english ? "phraseEn" : "phraseEs");
+  if (!visitor.empty())
+    opening += " " + visitor;
   if (number(data, "cameraId") > 0)
     opening += pick({.es = " ¿Quieres que te muestre la cámara?",
                      .en = " Do you want me to show you the camera?"},
