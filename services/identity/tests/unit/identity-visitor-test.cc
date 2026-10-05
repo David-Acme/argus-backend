@@ -15,6 +15,7 @@
 #include <iterator>
 #include <sqlite/db-service.hxx>
 #include <sqlite/vec-db.hxx>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -119,6 +120,13 @@ void enrollHousehold(const std::string& name)
 }
 }
 
+template <typename T>
+T present(const std::optional<T>& value)
+{
+  REQUIRE(value.has_value());
+  return value.value_or(T{});
+}
+
 TEST_CASE("recurring unknown faces become numbered visitors, the household never "
           "does, and the Owner can name, merge, split and delete them")
 {
@@ -202,15 +210,15 @@ TEST_CASE("recurring unknown faces become numbered visitors, the household never
        .namedOnly = false,
        .page = {.filter = VisitorListFilter::All, .search = "", .after = {}, .limit = 2}}));
   REQUIRE(pageOne.visitors.size() == 2);
-  REQUIRE(pageOne.nextCursor.has_value());
+  const auto cursor = present(pageOne.nextCursor);
   CHECK(pageOne.visitors[0].lastSeenAt >= pageOne.visitors[1].lastSeenAt);
-  CHECK(pageOne.nextCursor->id == pageOne.visitors[1].id);
+  CHECK(cursor.id == pageOne.visitors[1].id);
   const auto pageTwo = drogon::sync_wait(gallery.list(
       {.requester = ownerActor,
        .namedOnly = false,
        .page = {.filter = VisitorListFilter::All,
                 .search = "",
-                .after = *pageOne.nextCursor,
+                .after = cursor,
                 .limit = 2}}));
   REQUIRE(pageTwo.visitors.size() == 1);
   CHECK_FALSE(pageTwo.nextCursor.has_value());

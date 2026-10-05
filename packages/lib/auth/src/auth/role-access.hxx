@@ -346,7 +346,7 @@ inline std::optional<TableName> tableFromPath(std::string_view path)
   };
 
   for (const auto& [prefix, table] : kPaths) {
-    if (path.rfind(prefix, 0) == 0)
+    if (path.starts_with(prefix))
       return table;
   }
   return std::nullopt;
@@ -368,7 +368,7 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
   if (role == UserRole::Owner)
     return true;
 
-  if (path.rfind("/auth", 0) == 0) {
+  if (path.starts_with("/auth")) {
     if (const auto* route = sessionRouteOf(path, method))
       return (route->roles & roleBit(role)) != 0;
     const auto it = kAuthAccess.find(role);
@@ -377,7 +377,7 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
     return it->second.contains(method);
   }
 
-  if (path.rfind("/rtc", 0) == 0) {
+  if (path.starts_with("/rtc")) {
     const auto route = std::ranges::find_if(kRtcAccess, [&](const AuthRouteAccess& entry) {
       return entry.path == path && entry.method == method;
     });
@@ -405,7 +405,7 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
     return route != kSyncAccess.end() && (route->roles & roleBit(role)) != 0;
   }
 
-  if (path.rfind("/guard", 0) == 0) {
+  if (path.starts_with("/guard")) {
     const auto route = std::ranges::find_if(kGuardAccess, [&](const GuardRouteAccess& entry) {
       return entry.method == method && routeMatches(entry.path, path);
     });

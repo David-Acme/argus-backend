@@ -1,5 +1,5 @@
 tool 23.1.1
-tus 873
+tus 881
 modernize-use-nodiscard 397
 modernize-avoid-c-style-cast 322
 bugprone-suspicious-stringview-data-usage 272
@@ -17,9 +17,9 @@ performance-unnecessary-value-param 48
 bugprone-easily-swappable-parameters 47
 modernize-use-auto 47
 modernize-use-emplace 36
-modernize-use-starts-ends-with 33
 bugprone-throwing-static-initialization 34
 bugprone-optional-value-conversion 30
+modernize-use-starts-ends-with 30
 modernize-use-string-view 28
 performance-enum-size 22
 performance-unnecessary-copy-initialization 21
@@ -32,8 +32,8 @@ bugprone-empty-catch 9
 performance-no-automatic-move 9
 bugprone-branch-clone 7
 bugprone-macro-parentheses 7
-bugprone-unchecked-string-to-number-conversion 5
 cppcoreguidelines-owning-memory 6
+bugprone-unchecked-string-to-number-conversion 5
 bugprone-exception-escape 4
 modernize-loop-convert 4
 modernize-use-nullptr 4
