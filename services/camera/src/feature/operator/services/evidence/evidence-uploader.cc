@@ -1,4 +1,5 @@
 #include "evidence-uploader.hxx"
+#include "evidence-query.hxx"
 
 #include <drogon/drogon.h>
 #include <shared/services/stream/snapshot-store.hxx>
@@ -13,31 +14,13 @@
 #include <string>
 #include <utility>
 
+using namespace evidence_query;
+
 namespace
 {
 constexpr int64_t kDaySeconds = 24LL * 3600;
 constexpr int kSweepBatch = 200;
 constexpr int kMaxSweepBatches = 50;
-
-constexpr const char* kInsertEvidence =
-    "INSERT INTO camera_evidence (camera_id, object_key, content_type, "
-    "created_at, expires_at) VALUES (?, ?, ?, ?, ?)";
-
-constexpr const char* kCameraRetention =
-    "SELECT retention_days, config FROM camera WHERE id = ?";
-
-constexpr const char* kExpiredEvidence =
-    "SELECT id, object_key FROM camera_evidence "
-    "WHERE deleted_at = 0 AND id > ? AND "
-    "((expires_at > 0 AND expires_at <= ?) OR created_at <= ?) "
-    "ORDER BY id ASC LIMIT 200";
-
-constexpr const char* kMarkEvidenceDeleted =
-    "UPDATE camera_evidence SET deleted_at = ? WHERE id = ?";
-
-constexpr const char* kCountExpired =
-    "SELECT COUNT(*) AS total FROM camera_evidence WHERE deleted_at = 0 AND "
-    "((expires_at > 0 AND expires_at <= ?) OR created_at <= ?)";
 }
 
 EvidenceUploader& EvidenceUploader::instance()
@@ -73,7 +56,7 @@ void EvidenceUploader::uploadDetection(int64_t cameraId, int64_t atMs)
              cropJpeg = std::move(cropJpeg)]() mutable -> drogon::Task<void> {
               try {
                 const auto client = DbService::client();
-                const auto camera = co_await client->execSqlCoro(kCameraRetention, cameraId);
+                const auto camera = co_await client->execSqlCoro(std::string(CAMERA_RETENTION), cameraId);
                 const std::optional<int64_t> days =
                     camera.empty() || camera.front()["retention_days"].isNull()
                         ? std::nullopt
@@ -83,7 +66,7 @@ void EvidenceUploader::uploadDetection(int64_t cameraId, int64_t atMs)
                     camera_stream_paths::retentionIncidentOf(camera.front()["config"].as<std::string>());
                 const int64_t keepSeconds =
                     retentionSecondsOf({.retentionDays = days, .incident = incident});
-                const int64_t now = static_cast<int64_t>(std::time(nullptr));
+                const auto now = static_cast<int64_t>(std::time(nullptr));
                 const std::string prefix = "cameras/" + std::to_string(cameraId) +
                                            "/" + std::to_string(atMs);
                 const std::array<std::pair<std::string, const std::string*>, 2> parts{
@@ -94,7 +77,7 @@ void EvidenceUploader::uploadDetection(int64_t cameraId, int64_t atMs)
                     if (jpeg->empty())
                       continue;
                     co_await storage_.put({.objectKey = key, .body = *jpeg, .contentType = "image/jpeg"});
-                    co_await client->execSqlCoro(kInsertEvidence, cameraId, key, "image/jpeg", now,
+                    co_await client->execSqlCoro(std::string(INSERT_EVIDENCE), cameraId, key, "image/jpeg", now,
                                                  now + keepSeconds);
                   }
                 }
@@ -148,14 +131,14 @@ drogon::Task<EvidenceSweepReport> EvidenceUploader::runRetentionSweep(int64_t no
   const int64_t hardCap = now - kMaxIncidentRetentionDays * kDaySeconds;
   const auto client = DbService::client();
   if (!storage_.isConfigured()) {
-    const auto stranded = co_await client->execSqlCoro(kCountExpired, now, hardCap);
+    const auto stranded = co_await client->execSqlCoro(std::string(COUNT_EXPIRED), now, hardCap, now);
     report.stranded = stranded.empty() ? 0 : stranded.front()["total"].as<int64_t>();
     co_return report;
   }
   int64_t cursor = 0;
   for (int batch = 0; batch < kMaxSweepBatches && !stopping_.load(std::memory_order_acquire);
        ++batch) {
-    const auto expired = co_await client->execSqlCoro(kExpiredEvidence, cursor, now, hardCap);
+    const auto expired = co_await client->execSqlCoro(std::string(EXPIRED_EVIDENCE), cursor, now, hardCap, now);
     if (expired.empty())
       break;
     for (const auto& row : expired) {
@@ -170,7 +153,7 @@ drogon::Task<EvidenceSweepReport> EvidenceUploader::runRetentionSweep(int64_t no
         LOG_WARN << "Camera evidence removal failed for evidence " << id << ": " << error.what();
         continue;
       }
-      co_await client->execSqlCoro(kMarkEvidenceDeleted, now, id);
+      co_await client->execSqlCoro(std::string(MARK_EVIDENCE_DELETED), now, id);
       ++report.removed;
     }
     if (expired.size() < static_cast<size_t>(kSweepBatch))

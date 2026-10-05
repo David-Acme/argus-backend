@@ -1648,7 +1648,12 @@ voice it transcribed for the guard.
   to 60 in the same audited update.
 - Evidence expires after the camera's `retentionDays` (7 days when unset, 0
   stores none), capped at 60 days, or 120 with the incident flag, and nothing
-  survives 120 days whatever its manifest says. The sweep runs every 6 hours,
+  survives 120 days whatever its manifest says. The sweep judges each object
+  by its camera's current retention as well as by the `expires_at` written at
+  upload (`evidence_query::EXPIRED_EVIDENCE` joins `camera`), so lowering
+  `retentionDays` or clearing the incident flag shortens what is already
+  stored, and a row from before the caps (up to 3650 days) is held to 60. A
+  camera's `config` that is not valid JSON counts as no incident. The sweep runs every 6 hours,
   walks `camera_evidence` by `id`, so one object that cannot be removed no
   longer repeats the same 200 rows, counts its failures, and retries them on
   the next sweep. Without object storage it counts what is waiting and says so.

@@ -171,7 +171,7 @@ drogon::Task<int64_t>
 ActionCommandRepository::purgeSettled(int64_t olderThan) const
 {
   auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(PURGE_SETTLED.data(), olderThan);
+  const auto result = co_await client->execSqlCoro(std::string(PURGE_SETTLED), olderThan);
   co_return static_cast<int64_t>(result.affectedRows());
 }
 

@@ -2,7 +2,9 @@
 #include <doctest/doctest.h>
 
 #include <drogon/orm/DbClient.h>
+#include <feature/actions/repositories/action-command/action-command-query.hxx>
 #include <feature/media/media-access-check.hxx>
+#include <feature/operator/services/evidence/evidence-query.hxx>
 #include <feature/operator/services/evidence/evidence-uploader.hxx>
 #include <feature/sync/camera-sync-rpc-service.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
@@ -188,6 +190,72 @@ TEST_CASE("an upgraded camera.db keeps every password, sealed in place, and refu
 
   secret_box::clearKey();
   DbService::setCameraClient(nullptr);
+  std::remove(path.c_str());
+}
+
+TEST_CASE("expired evidence follows the camera's current retention, and settled commands are purged")
+{
+  constexpr int64_t kDay = 24 * 3600;
+  constexpr int64_t kNow = 400 * kDay;
+  const std::string path =
+      (std::filesystem::temp_directory_path() / "camera-hardening-retention.db").string();
+  std::remove(path.c_str());
+  const auto db = openFile(path);
+  exec(db.get(), kLegacyCameraTable);
+  exec(db.get(),
+       "CREATE TABLE camera_evidence (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+       "camera_id INTEGER NOT NULL DEFAULT 0, object_key TEXT NOT NULL DEFAULT '', "
+       "content_type TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL DEFAULT 0, "
+       "expires_at INTEGER NOT NULL DEFAULT 0, deleted_at INTEGER NOT NULL DEFAULT 0)");
+  exec(db.get(),
+       "INSERT INTO camera (id, name, ip, retention_days, config) VALUES "
+       "(1, 'short', '192.168.1.30', 7, '{}'), "
+       "(2, 'incident', '192.168.1.31', 90, '{\"retentionIncident\":true}'), "
+       "(3, 'legacy', '192.168.1.32', 3650, 'not json')");
+  const auto insert = [&db](int64_t camera, int64_t ageDays, int64_t expiresInDays) {
+    exec(db.get(), "INSERT INTO camera_evidence (camera_id, object_key, created_at, expires_at) "
+                   "VALUES (" + std::to_string(camera) + ", 'k', " +
+                       std::to_string(kNow - ageDays * kDay) + ", " +
+                       std::to_string(kNow + expiresInDays * kDay) + ")");
+  };
+  insert(1, 10, 50);
+  insert(1, 3, 50);
+  insert(2, 80, 20);
+  insert(2, 121, 20);
+  insert(3, 61, 3000);
+  insert(3, 59, 3000);
+  insert(9, 30, 5);
+
+  const std::string query(evidence_query::EXPIRED_EVIDENCE);
+  sqlite3_stmt* raw = nullptr;
+  REQUIRE(sqlite3_prepare_v2(db.get(), query.c_str(), -1, &raw, nullptr) == SQLITE_OK);
+  const std::unique_ptr<sqlite3_stmt, int (*)(sqlite3_stmt*)> statement(raw, sqlite3_finalize);
+  sqlite3_bind_int64(statement.get(), 1, 0);
+  sqlite3_bind_int64(statement.get(), 2, kNow);
+  sqlite3_bind_int64(statement.get(), 3, kNow - 120 * kDay);
+  sqlite3_bind_int64(statement.get(), 4, kNow);
+  std::vector<int64_t> expired;
+  while (sqlite3_step(statement.get()) == SQLITE_ROW)
+    expired.push_back(sqlite3_column_int64(statement.get(), 0));
+  CHECK(expired == std::vector<int64_t>{1, 4, 5});
+
+  exec(db.get(),
+       "CREATE TABLE action_command (command_id TEXT PRIMARY KEY, "
+       "status TEXT NOT NULL DEFAULT 'executing', response TEXT NOT NULL DEFAULT '', "
+       "updated_at INTEGER NOT NULL DEFAULT 0)");
+  exec(db.get(),
+       "INSERT INTO action_command (command_id, status, response, updated_at) VALUES "
+       "('old-done', 'succeeded', 'visitor said hi', 100), "
+       "('old-running', 'executing', '', 100), "
+       "('new-done', 'succeeded', 'recent', 900)");
+  const std::string purge = std::string(action_command_query::PURGE_SETTLED);
+  sqlite3_stmt* rawPurge = nullptr;
+  REQUIRE(sqlite3_prepare_v2(db.get(), purge.c_str(), -1, &rawPurge, nullptr) == SQLITE_OK);
+  const std::unique_ptr<sqlite3_stmt, int (*)(sqlite3_stmt*)> purgeStatement(rawPurge,
+                                                                             sqlite3_finalize);
+  sqlite3_bind_int64(purgeStatement.get(), 1, 500);
+  CHECK(sqlite3_step(purgeStatement.get()) == SQLITE_DONE);
+  CHECK(sqlite3_changes(db.get()) == 1);
   std::remove(path.c_str());
 }
 
