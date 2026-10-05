@@ -1,14 +1,16 @@
 #pragma once
 
 #include <argus/sync/v1/sync.grpc.pb.h>
+#include <grpc/fleet-caller-gate.hxx>
 #include <grpcpp/grpcpp.h>
-#include <string>
+#include <memory>
 
 class SyncControlRpcService final
     : public argus::sync::v1::SyncControlService::CallbackService
 {
 public:
-  explicit SyncControlRpcService(std::string fleetSecret);
+  explicit SyncControlRpcService(
+      std::shared_ptr<const argus::client::FleetCallerGate> gate);
 
   grpc::ServerUnaryReactor*
   ReplaceRoleRooms(grpc::CallbackServerContext* context,
@@ -26,7 +28,9 @@ public:
              argus::sync::v1::ControlAck* response) override;
 
 private:
-  bool fleetAuthorized(const grpc::CallbackServerContext* context) const;
+  [[nodiscard]] argus::client::FleetAdmission
+  admit(const grpc::CallbackServerContext* context,
+        argus::client::CallerSet allowed) const;
 
-  std::string fleetSecret_;
+  std::shared_ptr<const argus::client::FleetCallerGate> gate_;
 };

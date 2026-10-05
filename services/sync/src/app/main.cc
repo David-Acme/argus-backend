@@ -1,3 +1,4 @@
+#include <app/rpc/sync-control-callers.hxx>
 #include <app/rpc/sync-control-rpc-service.hxx>
 #include <config/config-service.hxx>
 #include <config/sync-config.hxx>
@@ -28,6 +29,7 @@
 #include <auth/device-filter.hxx>
 #include <auth/user-directory-identity.hxx>
 #include <chrono>
+#include <grpc/fleet-caller-gate.hxx>
 #include <grpc/grpc-server-drain.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
@@ -49,6 +51,7 @@
 #include <shared/services/room/room-manager.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
+#include <vector>
 #include <sync/table-name.hxx>
 #include <unistd.h>
 
@@ -112,6 +115,7 @@ int main()
       std::make_shared<NotificationSyncGateway>(upstreams.notification);
   const auto identitySource = std::make_shared<IdentitySyncGateway>(
       IdentitySyncClientConfig{.target = upstreams.identity,
+                               .credential = upstreams.identityCredential,
                                .fleetSecret = upstreams.identitySecret});
   const auto userDirectory = std::make_shared<CachedUserDirectory>(
       std::make_shared<IdentityUserDirectory>(),
@@ -293,16 +297,28 @@ int main()
                                  return status;
                                }}}}));
 
-  if (control.reachableBeyondLoopback() && control.secret.empty()) {
+  const auto controlGate = std::make_shared<const argus::client::FleetCallerGate>(
+      argus::client::FleetGateConfig{
+          .expectedCallers = sync_control_callers::expected(),
+          .callerPairs = control.callers,
+          .legacySecret = control.secret,
+          .onFirstLegacy = [](const std::vector<std::string>& unpaired) {
+            LOG_WARN << "Sync control RPC: a caller presented the fleet-wide "
+                        "[sync] control_secret; it reaches only what an "
+                        "unpaired caller may call until every caller has its "
+                        "own [rpc.callers] credential (unpaired: "
+                     << unpaired.size() << ", run scripts/setup.sh or "
+                        "scripts/provision-host.sh to pair them)";
+          }});
+  if (control.reachableBeyondLoopback() && controlGate->open()) {
     LOG_FATAL
         << "[server] host " << control.listener.host
         << " is reachable beyond loopback and injects frames into any "
-           "user's room: set [sync] control_secret (and the same value in "
-           "every service's config) — aborting startup";
+           "user's room: pair its callers in [rpc.callers] — aborting startup";
     _exit(1);
   }
 
-  SyncControlRpcService controlRpc(control.secret);
+  SyncControlRpcService controlRpc(controlGate);
   grpc::ServerBuilder controlBuilder;
   controlBuilder.AddListeningPort(control.listener.host + ":" +
                                       std::to_string(control.listener.port),
@@ -312,8 +328,13 @@ int main()
   if (controlServer)
     LOG_INFO << "Sync control RPC listening on " << control.listener.host << ":"
              << control.listener.port << " (cleartext, "
-             << (control.secret.empty() ? "loopback only, no fleet secret"
-                                        : "fleet secret required")
+             << (controlGate->open()
+                     ? "loopback only, no caller credential"
+                     : std::to_string(controlGate->pairedCount()) +
+                           " paired callers" +
+                           (controlGate->acceptsLegacy()
+                                ? ", legacy fleet secret for the unpaired ones"
+                                : ""))
              << ")";
   else
     LOG_WARN << "Sync control RPC failed to listen on " << control.listener.host

@@ -1,4 +1,5 @@
 #include "sync-control-rpc-service.hxx"
+#include "sync-control-callers.hxx"
 
 #include <auth/user-role.hxx>
 #include <feature/fanout/services/sync-fan-out.hxx>
@@ -53,29 +54,34 @@ grpc::ServerUnaryReactor* finishAck(grpc::CallbackServerContext* context,
   return reactor;
 }
 
-grpc::ServerUnaryReactor*
-rejectUnauthenticated(grpc::CallbackServerContext* context)
+grpc::ServerUnaryReactor* reject(grpc::CallbackServerContext* context,
+                                 argus::client::FleetVerdict verdict)
 {
   auto* reactor = context->DefaultReactor();
-  reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                               "Fleet secret missing or invalid"));
+  reactor->Finish(argus::client::FleetCallerGate::refusal(verdict));
   return reactor;
 }
+
+bool callFrame(const argus::sync::v1::SyncFrame& frame)
+{
+  const auto operation = static_cast<SyncOperation>(frame.operation());
+  return operation == SyncOperation::CallIncoming ||
+         operation == SyncOperation::CallCancel ||
+         operation == SyncOperation::ResponseUpdate;
+}
 }
 
-SyncControlRpcService::SyncControlRpcService(std::string fleetSecret)
-    : fleetSecret_(std::move(fleetSecret))
+SyncControlRpcService::SyncControlRpcService(
+    std::shared_ptr<const argus::client::FleetCallerGate> gate)
+    : gate_(std::move(gate))
 {
 }
 
-bool SyncControlRpcService::fleetAuthorized(
-    const grpc::CallbackServerContext* context) const
+argus::client::FleetAdmission
+SyncControlRpcService::admit(const grpc::CallbackServerContext* context,
+                             argus::client::CallerSet allowed) const
 {
-  if (fleetSecret_.empty())
-    return true;
-  return argus::client::constantTimeEquals(
-      argus::client::metadata(context, argus::client::kFleetSecretKey),
-      fleetSecret_);
+  return gate_->admit(context, allowed);
 }
 
 grpc::ServerUnaryReactor* SyncControlRpcService::ReplaceRoleRooms(
@@ -83,8 +89,9 @@ grpc::ServerUnaryReactor* SyncControlRpcService::ReplaceRoleRooms(
     const argus::sync::v1::ReplaceRoleRoomsRequest* request,
     argus::sync::v1::ControlAck* response)
 {
-  if (!fleetAuthorized(context))
-    return rejectUnauthenticated(context);
+  if (const auto admission = admit(context, sync_control_callers::kRoomControl);
+      !admission.admitted())
+    return reject(context, admission.verdict);
 
   if (request->user_id() <= 0 || !isRoleName(request->old_role()) ||
       !isRoleName(request->new_role()))
@@ -106,8 +113,9 @@ grpc::ServerUnaryReactor* SyncControlRpcService::DisconnectUser(
     const argus::sync::v1::DisconnectUserRequest* request,
     argus::sync::v1::ControlAck* response)
 {
-  if (!fleetAuthorized(context))
-    return rejectUnauthenticated(context);
+  if (const auto admission = admit(context, sync_control_callers::kRoomControl);
+      !admission.admitted())
+    return reject(context, admission.verdict);
 
   if (request->user_id() <= 0 || !request->has_frame())
     return finishAck(context, {.response = response,
@@ -127,8 +135,15 @@ grpc::ServerUnaryReactor* SyncControlRpcService::EmitToUser(
     const argus::sync::v1::EmitToUserRequest* request,
     argus::sync::v1::ControlAck* response)
 {
-  if (!fleetAuthorized(context))
-    return rejectUnauthenticated(context);
+  if (const auto admission = admit(context, sync_control_callers::kEmitToUser);
+      !admission.admitted())
+    return reject(context, admission.verdict);
+
+  if (!callFrame(request->frame())) {
+    const auto admission = admit(context, sync_control_callers::kRoomControl);
+    if (!admission.admitted())
+      return reject(context, admission.verdict);
+  }
 
   if (request->user_id() <= 0 || !request->has_frame())
     return finishAck(context, {.response = response,

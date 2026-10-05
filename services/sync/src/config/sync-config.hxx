@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <http/listener-config.hxx>
 #include <string>
+#include <utility>
+#include <vector>
 
 struct SyncDbConfig
 {
@@ -15,6 +17,7 @@ struct SyncControlConfig
 {
   GrpcListenerConfig listener;
   std::string secret;
+  std::vector<std::pair<std::string, std::string>> callers;
 
   [[nodiscard]] bool reachableBeyondLoopback() const;
 };
@@ -25,6 +28,7 @@ struct SyncUpstreams
   std::string productivity;
   std::string notification;
   std::string identity;
+  std::string identityCredential;
   std::string identitySecret;
 };
 

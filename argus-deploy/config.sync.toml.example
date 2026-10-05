@@ -2,6 +2,10 @@
 host = "0.0.0.0"
 grpc_port = 7041
 
+[rpc.callers]
+identity = "CHANGE_ME_IDENTITY_SYNC"
+notification = "CHANGE_ME_NOTIFICATION_SYNC"
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false
@@ -34,7 +38,6 @@ min_protocol = "TLSv1.2"
 db = "database/sync.db"
 schema = "database/schema.sql"
 audit_retention_days = 90
-control_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [cert]
 server_cert = "certs/server.pem"
@@ -46,7 +49,7 @@ credential = "CHANGE_ME_SYNC_CAMERA"
 
 [identity]
 target = "argus-identity:7040"
-rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+credential = "CHANGE_ME_SYNC_IDENTITY"
 
 [productivity]
 grpc_target = "argus-productivity:7037"
@@ -84,7 +87,7 @@ trusted_proxy_ips = ""
 
 [auth]
 target = "argus-auth:7043"
-rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+credential = "CHANGE_ME_SYNC_AUTH"
 
 [guard]
 presence_target = "argus-guard:7139"

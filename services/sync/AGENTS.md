@@ -39,10 +39,15 @@ that apply to sync-service code; when in doubt, the root file wins.
    default): a cursor older than the frontier the sweep has already deleted is
    refused with `SyncErrors::ReplicaTooOld` (409), which means re-bootstrap,
    not replay.
-6. **The control RPC injects frames into any user's room** — it is gated by
-   `sync.control_secret` (the same value in every service's config) and the
-   service refuses to start when that listener is reachable beyond loopback
-   without it. The listener is cleartext; keep it loopback-bound (the compose
+6. **The control RPC injects frames into any user's room** — it is gated per
+   caller: `[rpc.callers]` pairs `identity` and `notification` with their
+   `[sync] control_credential`. Identity alone replaces role rooms,
+   disconnects and emits any frame; notification may emit only
+   `CallIncoming`, `CallCancel` and `ResponseUpdate`
+   (`app/rpc/sync-control-callers.hxx`). The old `sync.control_secret` is
+   accepted only while a caller is unpaired, and only for that caller's
+   methods; the service refuses to start when the listener is reachable
+   beyond loopback with neither. The listener is cleartext; keep it loopback-bound (the compose
    publishes 7041 on `127.0.0.1` only).
 7. **One dispatcher, two transports** — the control RPC rebuilds its typed
    frame into the change feed's envelope and hands it to the same dispatcher

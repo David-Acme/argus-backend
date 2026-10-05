@@ -108,6 +108,9 @@ protocol could not regress by accident in the commit that changed the endpoint.
   three operations change no row, so they cannot travel as a change event; each
   typed frame is rebuilt into the change feed's envelope and handed to the same
   dispatcher the NATS leg uses, so the two transports cannot diverge.
+  Each caller presents its own credential (`[rpc.callers]` `identity` and
+  `notification`, paired with their `[sync] control_credential`), checked by
+  `argus::client::FleetCallerGate`; see "Control callers" below.
 - **Sessions.** Every socket keeps the `JwtContext` its upgrade produced, and
   that context now carries the session id the auth verdict returned, so a
   socket is tagged with its session for its whole life. argus-auth queues its
@@ -847,3 +850,25 @@ relying on this service's revoker alone; and the agent's voice role is fixed
 when it joins, so a role change mid-call takes effect only on the next call.
 The revoker already deletes the room when the revoked participant was the
 only human, which is what keeps a 60 s token from reopening it.
+
+## Control callers (2026-10-05 audit, #25)
+
+One `sync.control_secret` used to open the control RPC to any container
+holding it, so a compromised camera could emit `AuthContextChanged` or a fake
+`CallIncoming` to any user. Two peers call it, each with its own credential
+in `[rpc.callers]`, paired with its `[sync] control_credential` by
+`ensure_fleet_callers` (`scripts/lib/common.sh`):
+
+| Method | identity | notification |
+|---|---|---|
+| `ReplaceRoleRooms`, `DisconnectUser` | yes | no |
+| `EmitToUser` | any frame | `CallIncoming`, `CallCancel`, `ResponseUpdate` only |
+
+The table is `src/app/rpc/sync-control-callers.hxx`; the operation check runs
+before the request is validated, so a refused frame never reaches the
+dispatcher. A known caller outside its rights gets `PERMISSION_DENIED`, a
+missing or unknown credential `UNAUTHENTICATED`. The fleet secret of an older
+install is accepted only while a caller is unpaired, and only for what that
+caller may do; one WARN marks the first such call. `setup.sh` and
+`provision-host.sh` pair both callers idempotently, after which the secret is
+refused and may be deleted. `sync-control-callers-test` pins all of it.

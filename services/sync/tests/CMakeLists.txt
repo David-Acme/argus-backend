@@ -156,3 +156,11 @@ target_link_libraries(heartbeat-test PRIVATE
 target_compile_options(heartbeat-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(heartbeat-test)
 add_test(NAME heartbeat-test COMMAND heartbeat-test)
+
+add_executable(sync-control-callers-test unit/sync-control-callers-test.cc)
+target_link_libraries(sync-control-callers-test PRIVATE
+    argus::sync-control-rpc
+    doctest::doctest)
+target_compile_options(sync-control-callers-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(sync-control-callers-test)
+add_test(NAME sync-control-callers-test COMMAND sync-control-callers-test)

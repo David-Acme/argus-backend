@@ -27,6 +27,7 @@ SyncControlConfig SyncConfig::resolveControl()
   SyncControlConfig config;
   config.listener = GrpcListenerConfig::resolve(7041);
   config.secret = ConfigService::getString("sync.control_secret");
+  config.callers = ConfigService::getStringPairs("rpc.callers");
   return config;
 }
 
@@ -42,6 +43,7 @@ SyncUpstreams SyncConfig::resolveUpstreams()
           .productivity = ConfigService::getString("productivity.grpc_target"),
           .notification = ConfigService::getString("notifications.grpc_target"),
           .identity = ConfigService::getString("identity.target"),
+          .identityCredential = ConfigService::getString("identity.credential"),
           .identitySecret = ConfigService::getString("identity.rpc_secret")};
 }
 
