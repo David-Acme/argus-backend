@@ -314,6 +314,8 @@ grpc caller_notification
 rpc.callers settings
 rpc.callers sync
 rpc.callers notification
+rpc.callers voice
+llm grpc_credential
 guard presence_target
 guard presence_credential
 rpc address

@@ -34,6 +34,7 @@ remote_timeout_ms = 30000
 [llm]
 remote_url = "127.0.0.1:7032"
 remote_timeout_ms = 120000
+grpc_credential = ""
 
 [vad]
 threshold = 0.45

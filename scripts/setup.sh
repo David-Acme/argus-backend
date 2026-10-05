@@ -252,6 +252,8 @@ ensure_local_config() {
     "$ROOT/services/notification/config.toml" grpc caller_productivity 32
   fill_config_pair "$ROOT/services/llm/config.toml" notifications credential \
     "$ROOT/services/notification/config.toml" grpc caller_llm 32
+  fill_config_pair "$ROOT/services/voice/config.toml" llm grpc_credential \
+    "$ROOT/services/llm/config.toml" rpc.callers voice 32
   fill_config_pair "$ROOT/services/voice/config.toml" notification credential \
     "$ROOT/services/notification/config.toml" grpc caller_voice 32
   fill_config_pair "$ROOT/services/notification/config.toml" voice credential \
