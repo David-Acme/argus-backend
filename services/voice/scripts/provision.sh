@@ -3,7 +3,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib/common.sh"
 
 SILERO_REVISION="v5.0"
-SILERO_SHA256=""
+SILERO_SHA256="6b99cbfd39246b6706f98ec13c7c50c6b299181f2474fa05cbc8046acc274396"
 
 fetch_pinned() {
   local url="$1" target="$2" expected="$3"

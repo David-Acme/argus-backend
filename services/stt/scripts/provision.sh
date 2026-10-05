@@ -4,7 +4,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib/common.sh"
 
 STT_RELEASE="asr-models"
 STT_TARBALL="sherpa-onnx-nemo-fast-conformer-transducer-en-de-es-fr-14288-int8.tar.bz2"
-STT_TARBALL_SHA256=""
+STT_TARBALL_SHA256="69416bd0845a8c1e78a110e7a6434fcf94af0c0c905d4d4d288e42d7b013af74"
 
 fetch_pinned() {
   local url="$1" target="$2" expected="$3"

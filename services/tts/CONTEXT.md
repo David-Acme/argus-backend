@@ -490,9 +490,10 @@ chose `quality` ("utilizar calidad máxima", 2026-10-03), so it is the default;
 revision (`SUPERTONIC_REVISION`) with a SHA-256 per file
 (`SUPERTONIC_SHA256`), into a `.part` file that is moved into place only
 after its hash matches, the way the Pocket files already were. The pins
-were not computable from the audit environment (Hugging Face was not
-reachable), so they are empty: until the maintainer fills them, the script
-refuses to download a missing Supertonic file and says so, and
+were filled on 2026-10-05 (revision `3cadd1ee`, hashes from the Hugging Face
+LFS metadata and, for the JSON files, from the files of that revision) and
+match the files installed on the development host. A pin left empty makes
+the script refuse to download that file and say so, and
 `ARGUS_ALLOW_UNPINNED_MODELS=1` fetches from `main` and prints each file's
 hash to pin. Present files are kept. The stt, vlm and voice provisioning
 scripts follow the same rule.

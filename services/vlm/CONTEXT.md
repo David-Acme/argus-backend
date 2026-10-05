@@ -247,8 +247,9 @@ than the CPU at 384 px.
 
 `scripts/provision.sh` downloads the model with `curl -fL` into a `.part`
 file and moves it into place only after its SHA-256 matches the pin in the
-script, from a pinned revision (no `resolve/main`). The pins could not be
-computed from the audit environment, so they are empty: until the
-maintainer fills them, the script refuses to download a missing file and
-says so; `ARGUS_ALLOW_UNPINNED_MODELS=1` downloads it and prints its hash
-to pin. A present file with a pinned hash that does not match is replaced.
+script, from a pinned revision (no `resolve/main`). The pins were filled on
+2026-10-05 from the Hugging Face LFS metadata and the GitHub release digest
+of that revision, and checked against the files installed on the
+development host. A present file whose hash does not match is replaced; a
+pin left empty makes the script refuse to download and say so, and
+`ARGUS_ALLOW_UNPINNED_MODELS=1` downloads it and prints its hash to pin.
