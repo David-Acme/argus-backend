@@ -12,21 +12,33 @@
 namespace
 {
 
-std::string encoded(const char* extension, int width, int height)
+std::string encoded(const char* extension, const JpegSize& size)
 {
-  const cv::Mat image(height, width, CV_8UC3, cv::Scalar(10, 120, 200));
+  const cv::Mat image(size.height, size.width, CV_8UC3, cv::Scalar(10, 120, 200));
   std::vector<unsigned char> bytes;
   REQUIRE(cv::imencode(extension, image, bytes));
   return {bytes.begin(), bytes.end()};
 }
 
-std::string forgedHeader(int width, int height)
+char highByte(unsigned value)
 {
+  return static_cast<char>((value >> 8U) & 0xFFU);
+}
+
+char lowByte(unsigned value)
+{
+  return static_cast<char>(value & 0xFFU);
+}
+
+std::string forgedHeader(const JpegSize& size)
+{
+  const auto width = static_cast<unsigned>(size.width);
+  const auto height = static_cast<unsigned>(size.height);
   std::string header{"\xFF\xD8\xFF\xC0\x00\x11\x08", 7};
-  header.push_back(static_cast<char>((height >> 8) & 0xFF));
-  header.push_back(static_cast<char>(height & 0xFF));
-  header.push_back(static_cast<char>((width >> 8) & 0xFF));
-  header.push_back(static_cast<char>(width & 0xFF));
+  header.push_back(highByte(height));
+  header.push_back(lowByte(height));
+  header.push_back(highByte(width));
+  header.push_back(lowByte(width));
   header.append(std::string(10, '\0'));
   return header;
 }
@@ -35,11 +47,12 @@ std::string forgedHeader(int width, int height)
 
 TEST_CASE("the gate reads a JPEG's size from its frame header")
 {
-  const std::string jpeg = encoded(".jpg", 64, 48);
+  const std::string jpeg = encoded(".jpg", {.width = 64, .height = 48});
   const auto size = jpegSize(jpeg);
   REQUIRE(size.has_value());
-  CHECK(size->width == 64);
-  CHECK(size->height == 48);
+  const JpegSize read = size.value_or(JpegSize{.width = 0, .height = 0});
+  CHECK(read.width == 64);
+  CHECK(read.height == 48);
   const DecodedJpeg decoded = decodeCameraJpeg(jpeg);
   CHECK(decoded.refusal == JpegRefusal::None);
   CHECK(decoded.bgr.cols == 64);
@@ -48,18 +61,18 @@ TEST_CASE("the gate reads a JPEG's size from its frame header")
 
 TEST_CASE("anything but a JPEG is refused before the decoder sees it")
 {
-  CHECK(decodeCameraJpeg(encoded(".png", 16, 16)).refusal == JpegRefusal::NotJpeg);
+  CHECK(decodeCameraJpeg(encoded(".png", {.width = 16, .height = 16})).refusal == JpegRefusal::NotJpeg);
   CHECK(decodeCameraJpeg("not an image").refusal == JpegRefusal::NotJpeg);
   CHECK(decodeCameraJpeg("").refusal == JpegRefusal::NotJpeg);
 }
 
 TEST_CASE("a header that declares a huge frame is refused without decoding")
 {
-  const std::string bomb = forgedHeader(30000, 30000);
+  const std::string bomb = forgedHeader({.width = 30000, .height = 30000});
   const auto size = jpegSize(bomb);
   REQUIRE(size.has_value());
-  CHECK(size->width == 30000);
+  CHECK(size.value_or(JpegSize{.width = 0, .height = 0}).width == 30000);
   CHECK(decodeCameraJpeg(bomb).refusal == JpegRefusal::TooLarge);
-  CHECK(decodeCameraJpeg(forgedHeader(8000, 8000)).refusal == JpegRefusal::TooLarge);
-  CHECK(decodeCameraJpeg(forgedHeader(64, 64)).refusal == JpegRefusal::Undecodable);
+  CHECK(decodeCameraJpeg(forgedHeader({.width = 8000, .height = 8000})).refusal == JpegRefusal::TooLarge);
+  CHECK(decodeCameraJpeg(forgedHeader({.width = 64, .height = 64})).refusal == JpegRefusal::Undecodable);
 }
