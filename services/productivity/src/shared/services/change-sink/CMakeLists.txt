@@ -4,11 +4,11 @@ argus_module(NAME productivity-change-sink
     INCLUDES
         ../../..
     DEPENDS
-        argus::productivity-change-outbox
         argus::contracts::productivity
         argus::contracts::sync
         argus::lib::errors
         argus::lib::nats
+        argus::lib::outbox
         argus::lib::runtime
         argus::lib::sqlite
         argus::lib::text

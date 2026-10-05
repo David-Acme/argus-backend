@@ -4,11 +4,12 @@
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
 #include <shared/services/change-sink/nats-productivity-change-sink.hxx>
-#include <shared/repositories/change-outbox/change-outbox-key.hxx>
-#include <shared/repositories/change-outbox/change-outbox-repository.hxx>
-#include <shared/repositories/change-outbox/change-outbox-status.hxx>
+#include <outbox/outbox-key.hxx>
+#include <outbox/outbox-repository.hxx>
+#include <outbox/outbox-status.hxx>
 #include <sqlite/db-service.hxx>
 #include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 
 #include <chrono>
 #include <condition_variable>
@@ -67,13 +68,13 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-ChangeOutboxRow pendingRow(const std::vector<ChangeOutboxRow>& rows)
+outbox::OutboxRow pendingRow(const std::vector<outbox::OutboxRow>& rows)
 {
   REQUIRE(!rows.empty());
-  return rows.empty() ? ChangeOutboxRow{} : rows.front();
+  return rows.empty() ? outbox::OutboxRow{} : rows.front();
 }
 
-bool hasPending(const ChangeOutboxRepository& outbox)
+bool hasPending(const outbox::OutboxRepository& outbox)
 {
   return !outbox.pendingBatch(1).empty();
 }
@@ -99,7 +100,7 @@ int64_t sentRowsAfter(int64_t watermark)
 {
   return firstInteger(DbService::client()->execSqlSync(
       "SELECT COUNT(*) FROM change_outbox WHERE rowid > ? AND status = ?",
-      watermark, changeOutboxStatusToString(ChangeOutboxStatus::Sent)));
+      watermark, outbox::outboxStatusToString(outbox::OutboxStatus::Sent)));
 }
 
 bool waitForDrain(const NatsProductivityChangeSink& sink,
@@ -161,7 +162,7 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
   REQUIRE(DbService::runScriptFile(ARGUS_PRODUCTIVITY_SCHEMA));
 
-  ChangeOutboxRepository outbox;
+  const auto outbox = NatsProductivityChangeSink::repository();
 
   {
     NatsProductivityChangeSink sink(
@@ -170,35 +171,36 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
 
     const SocketEmitDto created = projectRow(SyncOperation::Add, 42, "Gate");
     drogon::sync_wait(sink.emitUsers({.userIds = {42, 7}, .body = created}));
-    const ChangeOutboxRow emitted = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow emitted = pendingRow(outbox.pendingBatch(1));
     CHECK(emitted.eventId.rfind("productivity-change:", 0) == 0);
     CHECK(emitted.eventId.size() == 52);
+    CHECK(emitted.subject == nats_subject::kProductivityChange);
     CHECK(emitted.payload.find("\"operation\":4") != std::string::npos);
     CHECK(emitted.payload.find("\"option\":\"project\"") != std::string::npos);
     CHECK(emitted.payload.find("\"info\":{") != std::string::npos);
     CHECK(emitted.payload.find("\"name\":\"Gate\"") != std::string::npos);
     CHECK(emitted.payload.find("\"users\":[42,7]") != std::string::npos);
     CHECK(emitted.payload.find("\"kind\"") == std::string::npos);
-    CHECK(outbox.markSent(emitted.eventId, 1000));
+    CHECK(outbox.markSent(emitted.id, 1000));
 
     drogon::sync_wait(sink.emitUsers({.userIds = {42, 42}, .body = created}));
-    const ChangeOutboxRow verbatim = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow verbatim = pendingRow(outbox.pendingBatch(1));
     CHECK(verbatim.eventId != emitted.eventId);
     CHECK(verbatim.payload.find("\"users\":[42,42]") != std::string::npos);
-    CHECK(outbox.markSent(verbatim.eventId, 1100));
+    CHECK(outbox.markSent(verbatim.id, 1100));
 
     drogon::sync_wait(sink.emitUsers({.userIds = {42, 7}, .body = created}));
-    const ChangeOutboxRow readded = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow readded = pendingRow(outbox.pendingBatch(1));
     CHECK(readded.eventId != emitted.eventId);
     CHECK(readded.payload == emitted.payload);
-    CHECK(outbox.markSent(readded.eventId, 1150));
+    CHECK(outbox.markSent(readded.id, 1150));
 
     drogon::sync_wait(
         sink.emitUsers({.userIds = {42, 7},
                     .body = projectRow(SyncOperation::Add, 42, "Fence")}));
-    const ChangeOutboxRow moved = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow moved = pendingRow(outbox.pendingBatch(1));
     CHECK(moved.eventId != emitted.eventId);
-    CHECK(outbox.markSent(moved.eventId, 1200));
+    CHECK(outbox.markSent(moved.id, 1200));
 
     SocketEmitDto tombstone;
     tombstone.operation = SyncOperation::Delete;
@@ -206,12 +208,12 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
     tombstone.obj["id"] = static_cast<Json::Int64>(42);
     tombstone.obj["deletedAt"] = static_cast<Json::Int64>(1700000000);
     drogon::sync_wait(sink.emitUsers({.userIds = {9}, .body = tombstone}));
-    const ChangeOutboxRow deleted = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow deleted = pendingRow(outbox.pendingBatch(1));
     CHECK(deleted.payload.find("\"operation\":5") != std::string::npos);
     CHECK(deleted.payload.find("\"deletedAt\":1700000000") !=
           std::string::npos);
     CHECK(deleted.payload.find("\"users\":[9]") != std::string::npos);
-    CHECK(outbox.markSent(deleted.eventId, 1300));
+    CHECK(outbox.markSent(deleted.id, 1300));
 
     SocketEmitDto anonymous;
     anonymous.operation = SyncOperation::Add;
@@ -230,7 +232,7 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
     CHECK_FALSE(hasPending(outbox));
 
     drogon::sync_wait(sink.publishAudit(projectAudit(7, {42, 7})));
-    const ChangeOutboxRow audited = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow audited = pendingRow(outbox.pendingBatch(1));
     CHECK(audited.payload.find("\"kind\":\"audit\"") != std::string::npos);
     CHECK(audited.payload.find("\"table_name\":\"project\"") !=
           std::string::npos);
@@ -238,7 +240,7 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
     CHECK(audited.payload.find("\"users\":[42,7]") != std::string::npos);
     CHECK(audited.payload.find("\"current\":\"paused\"") != std::string::npos);
     CHECK(audited.payload.find("\"previous\":\"active\"") != std::string::npos);
-    CHECK(outbox.markSent(audited.eventId, 1400));
+    CHECK(outbox.markSent(audited.id, 1400));
 
     SocketEmitDto oversized = projectRow(SyncOperation::Add, 8, "Gate");
     oversized.obj["description"] =
@@ -249,10 +251,10 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
     CHECK_FALSE(hasPending(outbox));
 
     drogon::sync_wait(sink.publishAudit(projectAudit(9, {42, 42, 0, -3})));
-    const ChangeOutboxRow deduped = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow deduped = pendingRow(outbox.pendingBatch(1));
     CHECK(deduped.payload.find("\"users\":[42]") != std::string::npos);
     CHECK(deduped.payload.find("\"users\":[42,42]") == std::string::npos);
-    CHECK(outbox.markSent(deduped.eventId, 1500));
+    CHECK(outbox.markSent(deduped.id, 1500));
 
     drogon::sync_wait(sink.publishAudit(projectAudit(10, {})));
     CHECK_FALSE(hasPending(outbox));
@@ -277,7 +279,7 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
                         .body = projectRow(SyncOperation::Add, 12, "Gate")}));
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
-    const ChangeOutboxRow waiting = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow waiting = pendingRow(outbox.pendingBatch(1));
     CHECK(waiting.eventId.rfind("productivity-change:", 0) == 0);
     CHECK(waiting.payload.find("\"id\":12") != std::string::npos);
     CHECK(waiting.attempts == 0);
@@ -286,7 +288,7 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
     CHECK(waitForDrain(sink, std::chrono::seconds(5)));
     sink.requestStop();
     CHECK(sink.drained());
-    CHECK(outbox.markSent(waiting.eventId, 3000));
+    CHECK(outbox.markSent(waiting.id, 3000));
   }
 
   const char* url = std::getenv("ARGUS_NATS_URL");

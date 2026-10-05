@@ -976,3 +976,23 @@ duty with calls off, notify members, discreet copy, panic actor never
 reached, escalation phase reaching everyone, listing per member, broken plan
 fallback) and `call-policy-test` (mandatory and plan-notify rules, panic/
 duress/tamper copy, contacts copy, defensive plan parsing).
+
+## The outbox is `argus::lib::outbox` (2026-10-05 audit, #69)
+
+`src/shared/repositories/change-outbox` was one of five diverged copies and is
+gone, together with `notification-change-outbox-test`, whose generic cases are
+the library's suites now (they run in this service's CTest graph).
+`NatsNotificationChangeSink` keeps the user-audit payload and the
+`notification-change:` transition id and hands the row to
+`outbox::TransactionalOutbox`. What changed, none of it on the wire (same subjects, streams, msg ids and
+payloads) and none of it visible to another service:
+
+- `change_outbox` gained `subject TEXT NOT NULL DEFAULT ''`, appended by the
+  boot migration right after the schema runs (fatal on failure) and declared at
+  the end of `schema.sql`; a row from before it reads `''` and is published on
+  the configured change subject.
+- Pending rows leave in insertion (`rowid`) order rather than `created_at,
+  rowid`.
+- A relay that cannot publish backs off exponentially to 5 s instead of
+  retrying every 500 ms.
+- `notification-shared` no longer links an outbox module it never included.

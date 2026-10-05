@@ -14,7 +14,6 @@ argus_module(NAME notification-shared
         argus::lib::runtime
         argus::lib::sqlite
         argus::lib::text
-        argus::notification-change-outbox
         ${ARGUS_SQLITE_VEC_TARGET})
 
 target_compile_options(argus_notification-shared PRIVATE -Wall -Wextra)

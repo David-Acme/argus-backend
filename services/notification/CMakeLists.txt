@@ -63,6 +63,10 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
+    if(NOT TARGET argus::lib::outbox)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/outbox
+                         ${CMAKE_BINARY_DIR}/outbox)
+    endif()
     if(NOT TARGET argus::lib::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
@@ -106,7 +110,6 @@ if(NOT TARGET argus::lib::runtime)
                      ${CMAKE_BINARY_DIR}/runtime)
 endif()
 
-add_subdirectory(src/shared/repositories/change-outbox)
 
 add_subdirectory(src/config)
 add_subdirectory(src/shared)
@@ -237,24 +240,6 @@ target_link_libraries(notification-delivery-test PRIVATE
 target_compile_options(notification-delivery-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-delivery-test COMMAND notification-delivery-test)
-
-add_executable(notification-change-outbox-test
-    tests/unit/notification-change-outbox-test.cc)
-
-set_target_properties(notification-change-outbox-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
-
-target_link_libraries(notification-change-outbox-test PRIVATE
-    argus::notification-change-outbox
-    doctest::doctest)
-
-target_compile_definitions(notification-change-outbox-test PRIVATE
-    ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
-
-target_compile_options(notification-change-outbox-test PRIVATE -Wall -Wextra)
-
-add_test(NAME notification-change-outbox-test
-         COMMAND notification-change-outbox-test)
 
 add_executable(notification-change-outbox-sink-test
     tests/unit/notification-change-outbox-sink-test.cc)

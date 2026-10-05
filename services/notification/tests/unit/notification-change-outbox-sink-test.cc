@@ -4,11 +4,12 @@
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
 #include <shared/services/change-sink/nats-notification-change-sink.hxx>
-#include <shared/repositories/change-outbox/change-outbox-key.hxx>
-#include <shared/repositories/change-outbox/change-outbox-repository.hxx>
-#include <shared/repositories/change-outbox/change-outbox-status.hxx>
+#include <outbox/outbox-key.hxx>
+#include <outbox/outbox-repository.hxx>
+#include <outbox/outbox-status.hxx>
 #include <sqlite/db-service.hxx>
 #include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 
 #include <chrono>
 #include <condition_variable>
@@ -67,13 +68,13 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-ChangeOutboxRow pendingRow(const std::vector<ChangeOutboxRow>& rows)
+outbox::OutboxRow pendingRow(const std::vector<outbox::OutboxRow>& rows)
 {
   REQUIRE(!rows.empty());
-  return rows.empty() ? ChangeOutboxRow{} : rows.front();
+  return rows.empty() ? outbox::OutboxRow{} : rows.front();
 }
 
-bool hasPending(const ChangeOutboxRepository& outbox)
+bool hasPending(const outbox::OutboxRepository& outbox)
 {
   return !outbox.pendingBatch(1).empty();
 }
@@ -99,7 +100,7 @@ int64_t sentRowsAfter(int64_t watermark)
 {
   return firstInteger(DbService::client()->execSqlSync(
       "SELECT COUNT(*) FROM change_outbox WHERE rowid > ? AND status = ?",
-      watermark, changeOutboxStatusToString(ChangeOutboxStatus::Sent)));
+      watermark, outbox::outboxStatusToString(outbox::OutboxStatus::Sent)));
 }
 
 bool waitForDrain(const NatsNotificationChangeSink& sink,
@@ -150,7 +151,7 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
   REQUIRE(DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA));
 
-  ChangeOutboxRepository outbox;
+  const auto outbox = NatsNotificationChangeSink::repository();
   const UserAuditInput read = readAudit(7, {7});
 
   {
@@ -159,9 +160,10 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
                      .retryMs = 20, .publishSubject = {}, .streamName = {}});
     drogon::sync_wait(sink.publishAudit(read));
 
-    const ChangeOutboxRow marked = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow marked = pendingRow(outbox.pendingBatch(1));
     CHECK(marked.eventId.rfind("notification-change:", 0) == 0);
     CHECK(marked.eventId.size() == 52);
+    CHECK(marked.subject == nats_subject::kNotificationChange);
     CHECK(marked.payload.find("\"kind\":\"audit\"") != std::string::npos);
     CHECK(marked.payload.find("\"table_name\":\"notification\"") !=
           std::string::npos);
@@ -170,7 +172,7 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
     CHECK(marked.payload.find("\"previous\":0") != std::string::npos);
     CHECK(marked.payload.find("\"users\":[7]") != std::string::npos);
     CHECK(marked.attempts == 0);
-    CHECK(outbox.markSent(marked.eventId, 1000));
+    CHECK(outbox.markSent(marked.id, 1000));
 
     bool repeated = false;
     for (int attempt = 0; attempt < 50 && !repeated; ++attempt) {
@@ -180,15 +182,15 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
     REQUIRE(repeated);
-    const ChangeOutboxRow cycled = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow cycled = pendingRow(outbox.pendingBatch(1));
     CHECK(cycled.eventId != marked.eventId);
-    CHECK(outbox.markSent(cycled.eventId, 2000));
+    CHECK(outbox.markSent(cycled.id, 2000));
 
     drogon::sync_wait(sink.publishAudit(readAudit(8, {7, 7, 0, -3})));
-    const ChangeOutboxRow deduped = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow deduped = pendingRow(outbox.pendingBatch(1));
     CHECK(deduped.payload.find("\"users\":[7]") != std::string::npos);
     CHECK(deduped.payload.find("\"users\":[7,7]") == std::string::npos);
-    CHECK(outbox.markSent(deduped.eventId, 2100));
+    CHECK(outbox.markSent(deduped.id, 2100));
 
     drogon::sync_wait(sink.publishAudit(readAudit(9, {})));
     CHECK_FALSE(hasPending(outbox));
@@ -222,7 +224,7 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
     drogon::sync_wait(sink.publishAudit(readAudit(12, {7})));
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
-    const ChangeOutboxRow waiting = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow waiting = pendingRow(outbox.pendingBatch(1));
     CHECK(waiting.eventId.rfind("notification-change:", 0) == 0);
     CHECK(waiting.payload.find("\"record_id\":12") != std::string::npos);
     CHECK(waiting.attempts == 0);
@@ -231,7 +233,7 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
     CHECK(waitForDrain(sink, std::chrono::seconds(5)));
     sink.requestStop();
     CHECK(sink.drained());
-    CHECK(outbox.markSent(waiting.eventId, 3000));
+    CHECK(outbox.markSent(waiting.id, 3000));
   }
 
   const char* url = std::getenv("ARGUS_NATS_URL");

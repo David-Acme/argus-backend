@@ -12,7 +12,6 @@
 #include <feature/auth/infra/auth-rate-gate.hxx>
 #include <feature/device/repositories/device-credential/device-credential-repository.hxx>
 #include <feature/device/repositories/device-login-challenge/device-login-challenge-repository.hxx>
-#include <feature/session/repositories/change-outbox/change-outbox-repository.hxx>
 #include <feature/session/repositories/refresh-token/refresh-token-repository.hxx>
 #include <feature/session/infra/nats-presence-signal-sink.hxx>
 #include <feature/session/services/auth-action-sink.hxx>
@@ -119,7 +118,7 @@ int main()
                               .contextCacheSeconds =
                                   AuthConfig::resolveContextCacheSeconds()});
   DeviceCredentialRepository deviceCredentials;
-  ChangeOutboxRepository changeOutbox;
+  const outbox::OutboxRepository changeOutbox = AuthActionSink::repository();
   RefreshTokenRepository refreshTokens;
   DeviceLoginChallengeRepository loginChallenges;
 
@@ -292,7 +291,7 @@ int main()
   drogon::app().registerBeginningAdvice(
       [&authDb, &changeOutbox, &refreshTokens, &loginChallenges,
        &identityConsumer, &actionSink]() {
-        if (!changeOutbox.migrateLegacySchema() ||
+        if (!changeOutbox.migrateSchema() ||
             !refreshTokens.migrateLegacySchema() ||
             !loginChallenges.migrateLegacySchema() ||
             !DbService::runScriptFile(authDb.schemaPath)) {

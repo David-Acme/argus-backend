@@ -11,7 +11,7 @@ argus_module(NAME notification-change-sink
         argus::lib::runtime
         argus::lib::sqlite
         argus::lib::text
-        argus::notification-change-outbox
+        argus::lib::outbox
         Drogon::Drogon
         ${ARGUS_SQLITE_VEC_TARGET})
 

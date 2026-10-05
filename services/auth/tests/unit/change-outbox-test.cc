@@ -7,8 +7,11 @@
 #include <cstdint>
 #include <cstdio>
 #include <drogon/drogon.h>
-#include <feature/session/repositories/change-outbox/change-outbox-key.hxx>
-#include <feature/session/repositories/change-outbox/change-outbox-repository.hxx>
+#include <errors/response-exception.hxx>
+#include <nats/nats-subject.hxx>
+#include <feature/session/services/auth-action-sink.hxx>
+#include <outbox/outbox-key.hxx>
+#include <outbox/outbox-repository.hxx>
 #include <memory>
 #include <sqlite/db-service.hxx>
 #include <string>
@@ -207,17 +210,19 @@ TEST_CASE("the change outbox carries a minted event id and reads it back")
   CHECK(hasIndex("idx_change_outbox_event_id"));
   CHECK(hasIndex("idx_change_outbox_status"));
 
-  const ChangeOutboxRepository repository;
-  const std::string minted = change_outbox_key::actionMsgId(entropy());
-  REQUIRE(minted.size() == change_outbox_key::kActionPrefix.size() + 32);
-  CHECK(minted.starts_with(change_outbox_key::kActionPrefix));
+  const auto repository = AuthActionSink::repository();
+  const std::string minted = outbox::uniqueId(AuthActionSink::kActionIdPrefix, entropy());
+  REQUIRE(minted.size() == AuthActionSink::kActionIdPrefix.size() + 32);
+  CHECK(minted.starts_with(AuthActionSink::kActionIdPrefix));
 
-  drogon::sync_wait(repository.enqueueAction({.eventId = minted,
-                                              .subject = kSubject,
-                                              .fingerprint = "sha",
-                                              .payload = R"({"userId":1})",
-                                              .at = 11,
-                                              .client = nullptr}));
+  CHECK(drogon::sync_wait(
+            repository.insert({.eventId = minted,
+                               .subject = kSubject,
+                               .fingerprint = "sha",
+                               .payload = R"({"userId":1})",
+                               .at = 11,
+                               .client = nullptr})) ==
+        outbox::OutboxDisposition::Enqueued);
 
   const auto pending = repository.pendingBatch(10);
   REQUIRE(pending.size() == 1);
@@ -225,21 +230,16 @@ TEST_CASE("the change outbox carries a minted event id and reads it back")
   CHECK(pending.front().subject == kSubject);
   CHECK(pending.front().payload == R"({"userId":1})");
   CHECK(pending.front().eventId !=
-        change_outbox_key::legacyActionMsgId(pending.front().id));
+        outbox::legacyId(AuthActionSink::kActionIdPrefix, pending.front().id));
 
-  bool refusedDuplicate = false;
-  try {
-    drogon::sync_wait(repository.enqueueAction({.eventId = minted,
-                                                .subject = kSubject,
-                                                .fingerprint = "",
-                                                .payload = "{}",
-                                                .at = 12,
-                                                .client = nullptr}));
-  }
-  catch (const std::exception&) {
-    refusedDuplicate = true;
-  }
-  CHECK(refusedDuplicate);
+  CHECK(drogon::sync_wait(repository.insert({.eventId = minted,
+                                             .subject = kSubject,
+                                             .fingerprint = "",
+                                             .payload = "{}",
+                                             .at = 12,
+                                             .client = nullptr})) ==
+        outbox::OutboxDisposition::Conflict);
+  CHECK(repository.pendingBatch(10).size() == 1);
 
   CHECK(repository.markSent(pending.front().id, 20));
 }
@@ -257,12 +257,12 @@ TEST_CASE("a legacy change outbox widens under the guard and keeps its rows")
 
   CHECK_FALSE(DbService::runScriptFile(ARGUS_AUTH_SCHEMA_PATH));
 
-  const ChangeOutboxRepository repository;
-  CHECK(repository.migrateLegacySchema());
+  const auto repository = AuthActionSink::repository();
+  CHECK(repository.migrateSchema());
   const auto widened = columnShape("change_outbox", "event_id");
   CHECK(widened.present);
   CHECK(widened.textNotNullDefaultEmpty);
-  CHECK(repository.migrateLegacySchema());
+  CHECK(repository.migrateSchema());
 
   CHECK(DbService::runScriptFile(ARGUS_AUTH_SCHEMA_PATH));
   CHECK(hasIndex("idx_change_outbox_event_id"));
@@ -272,21 +272,58 @@ TEST_CASE("a legacy change outbox widens under the guard and keeps its rows")
   CHECK(legacy.front().id == legacyId);
   CHECK(legacy.front().eventId.empty());
   const std::string fallback =
-      change_outbox_key::legacyActionMsgId(legacy.front().id);
+      outbox::legacyId(AuthActionSink::kActionIdPrefix, legacy.front().id);
   CHECK(fallback == "auth-action:" + std::to_string(legacy.front().id));
-  CHECK(fallback != change_outbox_key::actionMsgId(entropy()));
+  CHECK(fallback != outbox::uniqueId(AuthActionSink::kActionIdPrefix, entropy()));
 
-  const std::string minted = change_outbox_key::actionMsgId(entropy());
-  drogon::sync_wait(repository.enqueueAction({.eventId = minted,
-                                              .subject = kSubject,
-                                              .fingerprint = "",
-                                              .payload = "{}",
-                                              .at = 30,
-                                              .client = nullptr}));
+  const std::string minted = outbox::uniqueId(AuthActionSink::kActionIdPrefix, entropy());
+  CHECK(drogon::sync_wait(repository.insert({.eventId = minted,
+                                             .subject = kSubject,
+                                             .fingerprint = "",
+                                             .payload = "{}",
+                                             .at = 30,
+                                             .client = nullptr})) ==
+        outbox::OutboxDisposition::Enqueued);
   const auto pending = repository.pendingBatch(10);
   REQUIRE(pending.size() == 2);
   CHECK(pending.front().eventId.empty());
   CHECK(pending.back().eventId == minted);
+
+  DbService::client()->execSqlSync("DELETE FROM change_outbox");
+}
+
+TEST_CASE("the action sink journals actions and session changes under their "
+          "own prefixes and subjects")
+{
+  REQUIRE(fixture().start());
+  DbService::client()->execSqlSync("DELETE FROM change_outbox");
+
+  const AuthActionSink sink(nullptr, AuthActionSink::Config{});
+  UserActionEvent action;
+  action.userId = 7;
+  action.recordId = 7;
+  drogon::sync_wait(sink.publishAction({.event = action, .client = nullptr}));
+  Json::Value session(Json::objectValue);
+  session["sessionId"] = 9;
+  drogon::sync_wait(
+      sink.publishSessionChange({.payload = session, .client = nullptr}));
+
+  const auto pending = AuthActionSink::repository().pendingBatch(10);
+  REQUIRE(pending.size() == 2);
+  CHECK(pending.front().subject == nats_subject::kAuthUserAction);
+  CHECK(pending.front().eventId.starts_with(AuthActionSink::kActionIdPrefix));
+  CHECK(pending.front().eventId.size() ==
+        AuthActionSink::kActionIdPrefix.size() + 32);
+  CHECK(pending.back().subject == nats_subject::kAuthSession);
+  CHECK(pending.back().eventId.starts_with(AuthActionSink::kSessionIdPrefix));
+  CHECK(pending.back().payload == R"({"sessionId":9})");
+
+  Json::Value oversized(Json::objectValue);
+  oversized["blob"] = std::string(AuthActionSink::kMaxPayloadBytes, 'x');
+  CHECK_THROWS_AS(drogon::sync_wait(sink.publishSessionChange(
+                      {.payload = oversized, .client = nullptr})),
+                  ResponseException);
+  CHECK(AuthActionSink::repository().pendingBatch(10).size() == 2);
 
   DbService::client()->execSqlSync("DELETE FROM change_outbox");
 }

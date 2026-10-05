@@ -62,6 +62,10 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
+    if(NOT TARGET argus::lib::outbox)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/outbox
+                         ${CMAKE_BINARY_DIR}/outbox)
+    endif()
     if(NOT TARGET argus::lib::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
@@ -91,7 +95,6 @@ add_subdirectory(src/config)
 add_subdirectory(src/shared/services/change-sink)
 add_subdirectory(src/shared/dtos)
 add_subdirectory(src/shared/repositories)
-add_subdirectory(src/shared/repositories/change-outbox)
 
 file(GLOB PRODUCTIVITY_FEATURE_MODULES CONFIGURE_DEPENDS
     "${PRODUCTIVITY_SRC_ROOT}/feature/*/CMakeLists.txt")
@@ -149,24 +152,6 @@ foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
-
-add_executable(productivity-change-outbox-test
-    tests/unit/productivity-change-outbox-test.cc)
-
-set_target_properties(productivity-change-outbox-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
-
-target_link_libraries(productivity-change-outbox-test PRIVATE
-    argus::productivity-change-outbox
-    doctest::doctest)
-
-target_compile_definitions(productivity-change-outbox-test PRIVATE
-    ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
-
-target_compile_options(productivity-change-outbox-test PRIVATE -Wall -Wextra)
-
-add_test(NAME productivity-change-outbox-test
-         COMMAND productivity-change-outbox-test)
 
 add_executable(productivity-change-outbox-sink-test
     tests/unit/productivity-change-outbox-sink-test.cc)

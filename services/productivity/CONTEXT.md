@@ -302,7 +302,6 @@ sources are replaced by declarations that live beside the code they compile
 | `argus::productivity-config` | `src/config/` — db path, schema path, listener |
 | `argus::productivity-change-sink` | `src/shared/services/change-sink/` — the NATS change sink |
 | `argus::productivity-repositories` | the five repositories + their schemas |
-| `argus::productivity-change-outbox` | the durable outbox |
 | `argus::productivity-<feature>` (×5) | one feature's controllers, DTOs and feature service |
 | `argus::productivity-sync` | the sync RPC service, plus the reminder repositories and schemas only it reads |
 | `argus::productivity-rpc-server` | `src/app/rpc/` — the gRPC listener |
@@ -432,3 +431,25 @@ times), so the check breaks nothing it uses. `productivity-controller-test`
 pins all three: `null` keeps the project, an absent field keeps it, `0`
 answers 404 and changes nothing. Unlinking, if the app ever needs it, is an
 additive `"projectId": null` meaning "clear", like `endsAt`.
+
+## The outbox is `argus::lib::outbox` (2026-10-05 audit, #69)
+
+`src/shared/repositories/change-outbox` was one of five diverged copies and is
+gone, together with `productivity-change-outbox-test`, whose generic cases are
+the library's suites now (they run in this service's CTest graph).
+`NatsProductivityChangeSink` keeps what is productivity's own — the
+`userIds`-expanded emit payload, the per-emit discriminator (payload, clock and
+a counter, so a verbatim re-emit is its own event), the audit payload and the
+`productivity-change:` prefix — and hands the row to
+`outbox::TransactionalOutbox` over `DbService::productivityClient()`.
+What changed, none of it on the wire (same subjects, streams, msg ids and
+payloads) and none of it visible to another service:
+
+- `change_outbox` gained `subject TEXT NOT NULL DEFAULT ''`, appended by the
+  boot migration right after the schema runs (fatal on failure) and declared at
+  the end of `schema.sql`; a row from before it reads `''` and is published on
+  the configured change subject.
+- Pending rows leave in insertion (`rowid`) order rather than `created_at,
+  rowid`.
+- A relay that cannot publish backs off exponentially to 5 s instead of
+  retrying every 500 ms.

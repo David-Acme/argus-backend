@@ -1,13 +1,9 @@
 #include "auth-action-sink.hxx"
 
-#include <array>
-#include <chrono>
-#include <errors/response-exception.hxx>
-#include <exception>
-#include <openssl/rand.h>
-#include <feature/session/repositories/change-outbox/change-outbox-key.hxx>
+#include <auth/auth-errors.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
+#include <sqlite/db-service.hxx>
 #include <sync/stream-retention.hxx>
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
@@ -15,190 +11,97 @@
 
 namespace
 {
-int64_t nowMs()
+std::string orDefault(const std::string& configured, std::string_view fallback)
 {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
+  return configured.empty() ? std::string(fallback) : configured;
 }
 
-constexpr int64_t kStuckLogEvery = 100;
-
-std::array<unsigned char, 16> msgIdEntropy()
+NatsBus::StreamInput streamOf(std::string name, std::string subject)
 {
-  std::array<unsigned char, 16> bytes{};
-  if (RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1)
-    throw ResponseException(503, AuthErrors::ChangeNotRecorded);
-  return bytes;
+  return {.name = std::move(name),
+          .subjects = {std::move(subject)},
+          .maxAgeNs = stream_retention::kRetentionNs,
+          .duplicatesNs = stream_retention::kDuplicatesNs};
 }
 
-constexpr int kDrainBatch = 64;
-constexpr int kProgressMs = 50;
+outbox::OutboxConfig outboxConfig(const AuthActionSink::Config& config)
+{
+  const std::string actionSubject =
+      orDefault(config.actionSubject, nats_subject::kAuthUserAction);
+  NatsBus::StreamInput actions = streamOf(
+      orDefault(config.streamName, nats_subject::kAuthChangeStream),
+      actionSubject);
+  NatsBus::StreamInput sessions = streamOf(
+      orDefault(config.sessionStreamName, nats_subject::kAuthSessionStream),
+      orDefault(config.sessionSubject, nats_subject::kAuthSession));
+  return {.label = "Auth action outbox",
+          .client = [] { return DbService::client(); },
+          .defaultSubject = actionSubject,
+          .legacyIdPrefix = std::string(AuthActionSink::kActionIdPrefix),
+          .refusal = AuthErrors::ChangeNotRecorded,
+          .ensureStreams =
+              [actions = std::move(actions),
+               sessions = std::move(sessions)](NatsBus& bus) {
+                if (!bus.ensureStream(actions) || !bus.ensureStream(sessions))
+                  return false;
+                LOG_INFO << "Auth action outbox: streams " << actions.name
+                         << " and " << sessions.name << " ready";
+                return true;
+              },
+          .timing = {.retryMs = config.retryMs,
+                     .maxRetryMs = outbox::kMaxRetryMs,
+                     .progressMs = outbox::kProgressMs,
+                     .batch = outbox::kBatch},
+          .retention = {.keepSentMs = stream_retention::kRetentionMs,
+                        .purgeEveryMs = stream_retention::kSettledPurgeIntervalMs,
+                        .purgeRetryMs = stream_retention::kSettledPurgeRetryMs}};
+}
 }
 
-AuthActionSink::AuthActionSink(std::shared_ptr<NatsBus> bus, Config config)
-    : bus_(std::move(bus)),
-      config_(std::move(config)),
-      actionSubject_(config_.actionSubject.empty()
-                         ? std::string(nats_subject::kAuthUserAction)
-                         : config_.actionSubject),
-      stream_(config_.streamName.empty()
-                  ? std::string(nats_subject::kAuthChangeStream)
-                  : config_.streamName),
-      sessionSubject_(config_.sessionSubject.empty()
-                          ? std::string(nats_subject::kAuthSession)
-                          : config_.sessionSubject),
-      sessionStream_(config_.sessionStreamName.empty()
-                         ? std::string(nats_subject::kAuthSessionStream)
-                         : config_.sessionStreamName)
+AuthActionSink::AuthActionSink(std::shared_ptr<NatsBus> bus,
+                               const Config& config)
+    : actionSubject_(
+          orDefault(config.actionSubject, nats_subject::kAuthUserAction)),
+      sessionSubject_(
+          orDefault(config.sessionSubject, nats_subject::kAuthSession)),
+      outbox_(std::move(bus), outboxConfig(config))
 {
 }
 
-AuthActionSink::~AuthActionSink()
+outbox::OutboxRepository AuthActionSink::repository()
 {
-  requestStop();
-  if (worker_.joinable())
-    worker_.join();
+  return outbox::OutboxRepository([] { return DbService::client(); });
 }
 
 drogon::Task<void>
 AuthActionSink::publishAction(const AuthActionPublishInput& input) const
 {
-  co_await enqueue({.payloadJson = json_util::toString(input.event.toJson()),
-                    .eventId = change_outbox_key::actionMsgId(msgIdEntropy()),
-                    .subject = actionSubject_,
-                    .client = input.client});
+  co_await outbox_.append({.idPrefix = kActionIdPrefix,
+                           .subject = actionSubject_,
+                           .payload = json_util::toString(input.event.toJson()),
+                           .client = input.client});
 }
 
 drogon::Task<void>
 AuthActionSink::publishSessionChange(const AuthSessionChangeInput& input) const
 {
-  co_await enqueue({.payloadJson = json_util::toString(input.payload),
-                    .eventId = change_outbox_key::sessionMsgId(msgIdEntropy()),
-                    .subject = sessionSubject_,
-                    .client = input.client});
-}
-
-drogon::Task<void> AuthActionSink::enqueue(EnqueueInput input) const
-{
-  if (input.payloadJson.size() > kMaxPayloadBytes) {
-    LOG_ERROR << "Auth action outbox: a row for " << input.subject
-              << " carries " << input.payloadJson.size()
-              << " bytes, past the broker's message budget; the write is "
-                 "refused";
-    throw ResponseException(AuthErrors::ChangeNotRecorded);
-  }
-  const ChangeOutboxActionInput row{
-      .eventId = std::move(input.eventId),
-      .subject = std::move(input.subject),
-      .fingerprint = change_outbox_key::fingerprintJson(input.payloadJson),
-      .payload = std::move(input.payloadJson),
-      .at = nowMs(),
-      .client = input.client,
-  };
-  co_await outbox_.enqueueAction(row);
-  wake_.notify();
+  co_await outbox_.append({.idPrefix = kSessionIdPrefix,
+                           .subject = sessionSubject_,
+                           .payload = json_util::toString(input.payload),
+                           .client = input.client});
 }
 
 void AuthActionSink::reconcile()
 {
-  if (!workerStarted_.exchange(true, std::memory_order_acq_rel))
-    worker_ = std::thread([this]() { flushLoop(); });
+  outbox_.reconcile();
 }
 
 void AuthActionSink::requestStop()
 {
-  stopping_.store(true, std::memory_order_release);
-  wake_.notify();
+  outbox_.requestStop();
 }
 
 bool AuthActionSink::drained() const
 {
-  return exited_.load(std::memory_order_acquire) ||
-         !workerStarted_.load(std::memory_order_acquire);
-}
-
-bool AuthActionSink::ensureStream() const
-{
-  if (!bus_->ensureStream({.name = stream_,
-                           .subjects = {actionSubject_},
-                           .maxAgeNs = stream_retention::kRetentionNs,
-                           .duplicatesNs = stream_retention::kDuplicatesNs}) ||
-      !bus_->ensureStream({.name = sessionStream_,
-                           .subjects = {sessionSubject_},
-                           .maxAgeNs = stream_retention::kRetentionNs,
-                           .duplicatesNs = stream_retention::kDuplicatesNs}))
-    return false;
-  LOG_INFO << "Auth action outbox: streams " << stream_ << " and "
-           << sessionStream_ << " ready";
-  return true;
-}
-
-bool AuthActionSink::flush(const ChangeOutboxRow& row)
-{
-  if (!bus_ || !bus_->isConnected())
-    return false;
-  if (!streamReady_.load(std::memory_order_acquire))
-    streamReady_.store(ensureStream(), std::memory_order_release);
-
-  const std::string msgId = row.eventId.empty()
-                                ? change_outbox_key::legacyActionMsgId(row.id)
-                                : row.eventId;
-  if (bus_->publishWithMsgId(
-          {.subject = row.subject, .payload = row.payload, .msgId = msgId})) {
-    if (!outbox_.markSent(row.id, nowMs())) {
-      LOG_WARN << "Auth action outbox: " << msgId
-               << " was stored but could not be marked sent; it stays pending";
-      return false;
-    }
-    return true;
-  }
-  streamReady_.store(false, std::memory_order_relaxed);
-  static_cast<void>(outbox_.recordAttempt(row.id));
-  const int64_t attempts = row.attempts + 1;
-  if (attempts <= 1 || attempts % kStuckLogEvery == 0)
-    LOG_WARN << "Auth action outbox: " << msgId
-             << " is still unpublished after " << attempts
-             << " attempts; every later change waits behind it";
-  return false;
-}
-
-void AuthActionSink::flushLoop()
-{
-  while (!stopping_.load(std::memory_order_acquire)) {
-    bool progressed = false;
-    try {
-      if (!streamReady_.load(std::memory_order_acquire) && bus_ &&
-          bus_->isConnected())
-        streamReady_.store(ensureStream(), std::memory_order_release);
-      for (const auto& row : outbox_.pendingBatch(kDrainBatch)) {
-        if (stopping_.load(std::memory_order_acquire) || !flush(row))
-          break;
-        progressed = true;
-      }
-    }
-    catch (const std::exception& e) {
-      LOG_WARN << "Auth action outbox: flush failed (" << e.what()
-               << "); retrying";
-    }
-    const int64_t now = nowMs();
-    if (now >= nextPurgeMs_) {
-      nextPurgeMs_ = now + stream_retention::kSettledPurgeIntervalMs;
-      try {
-        const int64_t purged =
-            outbox_.purgeSent(now - stream_retention::kRetentionMs);
-        if (purged > 0)
-          LOG_INFO << "Auth action outbox: purged " << purged
-                   << " settled row(s) past the stream's retention";
-      }
-      catch (const std::exception& e) {
-        nextPurgeMs_ = now + stream_retention::kSettledPurgeRetryMs;
-        LOG_WARN << "Auth action outbox: purge failed (" << e.what()
-                 << "); the settled rows stay and the purge is retried";
-      }
-    }
-    wake_.waitFor(std::chrono::milliseconds(progressed ? kProgressMs
-                                                     : config_.retryMs));
-  }
-  exited_.store(true, std::memory_order_release);
+  return outbox_.drained();
 }

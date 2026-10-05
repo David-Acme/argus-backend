@@ -1,16 +1,12 @@
 #pragma once
 
+#include <cstddef>
 #include <drogon/utils/coroutine.h>
 #include <memory>
-#include <shared/repositories/change-outbox/change-outbox-repository.hxx>
-#include <sync/user-change-sink.hxx>
-
-#include <atomic>
-#include <cstddef>
-#include <runtime/wake-signal.hxx>
-#include <sqlite/transaction.hxx>
+#include <outbox/transactional-outbox.hxx>
 #include <string>
-#include <thread>
+#include <string_view>
+#include <sync/user-change-sink.hxx>
 
 class NatsBus;
 
@@ -19,16 +15,19 @@ class NatsNotificationChangeSink : public AuditSink
 public:
   struct Config
   {
-    int retryMs{500};
+    int retryMs{outbox::kRetryMs};
     std::string publishSubject;
     std::string streamName;
   };
 
-  NatsNotificationChangeSink(std::shared_ptr<NatsBus> bus, Config config);
-  ~NatsNotificationChangeSink() override;
+  NatsNotificationChangeSink(std::shared_ptr<NatsBus> bus,
+                             const Config& config);
+  ~NatsNotificationChangeSink() override = default;
   NatsNotificationChangeSink(const NatsNotificationChangeSink&) = delete;
   NatsNotificationChangeSink& operator=(const NatsNotificationChangeSink&) =
       delete;
+  NatsNotificationChangeSink(NatsNotificationChangeSink&&) = delete;
+  NatsNotificationChangeSink& operator=(NatsNotificationChangeSink&&) = delete;
 
   [[nodiscard]] drogon::Task<void>
   publishAudit(const UserAuditInput& input) const override;
@@ -37,26 +36,12 @@ public:
   void requestStop();
   [[nodiscard]] bool drained() const;
 
-  static constexpr std::size_t kMaxPayloadBytes = std::size_t{256} * 1024;
+  static constexpr std::size_t kMaxPayloadBytes = outbox::kMaxPayloadBytes;
+  static constexpr std::string_view kEventIdPrefix = "notification-change:";
+
+  [[nodiscard]] static outbox::OutboxRepository repository();
 
 private:
-  [[nodiscard]] drogon::Task<void>
-  enqueue(ChangeOutboxEnqueueInput input) const;
-  bool ensureStream() const;
-  void flushLoop();
-  bool flush(const ChangeOutboxRow& row);
-
-  std::shared_ptr<NatsBus> bus_;
-  ChangeOutboxRepository outbox_;
-  const Config config_;
   const std::string subject_;
-  const std::string stream_;
-  int64_t nextPurgeMs_{0};
-  std::atomic<bool> streamReady_{false};
-  std::atomic<bool> stopping_{false};
-  std::atomic<bool> workerStarted_{false};
-  std::atomic<bool> exited_{false};
-  mutable WakeSignal wake_;
-  db_transaction::CommitObserver commitObserver_{[this] { wake_.notify(); }};
-  std::thread worker_;
+  outbox::TransactionalOutbox outbox_;
 };

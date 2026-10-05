@@ -168,6 +168,12 @@ int main()
       _exit(1);
     }
 
+    if (!NatsProductivityChangeSink::repository().migrateSchema()) {
+      LOG_FATAL
+          << "Productivity change outbox migration failed — aborting startup";
+      _exit(1);
+    }
+
     DbService::applyPragmas(DbService::productivityClient());
     if (declaresForeignUserReferences()) {
       DbService::productivityClient()->execSqlSync("PRAGMA foreign_keys = OFF");

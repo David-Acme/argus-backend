@@ -51,9 +51,9 @@ argus-productivity/
   src/feature/<feature>/  one vertical slice per resource: controllers/,
                         dtos/, services/ — the folder IS the module
   src/feature/sync/     argus::productivity-sync — sync RPC + reminder rows
-  src/shared/repositories/{,change-outbox}/  rows 2+ features read
+  src/shared/repositories/  rows 2+ features read
   src/shared/services/change-sink/  argus::productivity-change-sink — the
-                        NATS change sink the outbox flushes through
+                        NATS change sink over `argus::lib::outbox`
   config.toml.example   the productivity roster ([server], [drogon.app],
                         [productivity], [cert], [jwt], [device], [identity],
                         [nats], [mdns]; no AI keys)

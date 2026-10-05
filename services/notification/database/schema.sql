@@ -81,7 +81,8 @@ CREATE TABLE IF NOT EXISTS change_outbox (
                         CHECK (status IN ('pending', 'sent')),
     attempts    INTEGER NOT NULL  DEFAULT 0,
     created_at  INTEGER NOT NULL  DEFAULT 0,
-    sent_at     INTEGER NOT NULL  DEFAULT 0
+    sent_at     INTEGER NOT NULL  DEFAULT 0,
+    subject     TEXT    NOT NULL  DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_change_outbox_status

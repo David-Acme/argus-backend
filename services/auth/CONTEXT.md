@@ -71,7 +71,7 @@ query over `(user_id, session_id)` and needs no table of its own.
 
 **Additive, at boot.** `refresh_token` and `device_login_challenge` gain their
 columns with `ALTER TABLE ... ADD COLUMN` in the beginning advice, before the
-schema file runs (the same guarded shape the change outbox uses), and every
+schema file runs (the same guarded shape `argus::lib::outbox`'s `migrateSchema` uses for `change_outbox`), and every
 row without a session id receives one from `lower(hex(randomblob(16)))` in the
 same pass, so a database from before the change keeps every session. A row
 written later without one (a tool, an older binary during a rollback) is
@@ -501,3 +501,23 @@ to a `PresenceSignalSink` when that session's origin changed or its
 a lost signal only delays presence by a minute, and nothing about a session
 is decided by it. The throttle's per-session map is bounded (4096, then
 cleared). Guard's side is in `services/guard/CONTEXT.md`, "Presence".
+
+## The outbox is `argus::lib::outbox` (2026-10-05 audit, #69)
+
+`feature/session/repositories/change-outbox` was one of five diverged copies
+and is gone. Its `migrateLegacySchema` (adding `event_id` to a journal that
+predates it, before the schema file builds the partial unique index on it) is
+the library's `migrateSchema`, still run first in the beginning advice.
+`AuthActionSink` keeps the two prefixes (`auth-action:`, `auth-session:`), the
+two subjects and the two streams, and appends through
+`outbox::TransactionalOutbox`. What changed, none of it on the wire (same subjects, streams, msg ids and
+payloads) and none of it visible to another service:
+
+- A minted id that is already taken is refused with `ChangeNotRecorded`
+  (`INSERT OR IGNORE` + disposition) instead of surfacing SQLite's unique
+  violation.
+- A relay that cannot publish backs off exponentially to 5 s instead of
+  retrying every 500 ms.
+- `change-outbox-test` stays here as the auth-schema suite (the migration
+  ordering against `schema.sql`) and now also drives the sink's two legs and
+  its payload budget.

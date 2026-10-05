@@ -1,17 +1,14 @@
 #pragma once
 
-#include <drogon/utils/coroutine.h>
-#include <memory>
-#include <shared/repositories/change-outbox/change-outbox-repository.hxx>
-#include <sync/user-change-sink.hxx>
-
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
+#include <drogon/utils/coroutine.h>
+#include <memory>
+#include <outbox/transactional-outbox.hxx>
 #include <string>
-#include <thread>
-#include <vector>
-#include <runtime/wake-signal.hxx>
-#include <sqlite/transaction.hxx>
+#include <string_view>
+#include <sync/user-change-sink.hxx>
 
 class NatsBus;
 
@@ -20,16 +17,19 @@ class NatsProductivityChangeSink : public UserChangeSink
 public:
   struct Config
   {
-    int retryMs{500};
+    int retryMs{outbox::kRetryMs};
     std::string publishSubject;
     std::string streamName;
   };
 
-  NatsProductivityChangeSink(std::shared_ptr<NatsBus> bus, Config config);
-  ~NatsProductivityChangeSink() override;
+  NatsProductivityChangeSink(std::shared_ptr<NatsBus> bus,
+                             const Config& config);
+  ~NatsProductivityChangeSink() override = default;
   NatsProductivityChangeSink(const NatsProductivityChangeSink&) = delete;
   NatsProductivityChangeSink& operator=(const NatsProductivityChangeSink&) =
       delete;
+  NatsProductivityChangeSink(NatsProductivityChangeSink&&) = delete;
+  NatsProductivityChangeSink& operator=(NatsProductivityChangeSink&&) = delete;
 
   [[nodiscard]] drogon::Task<void>
   emitUsers(const UserEmitInput& input) const override;
@@ -40,27 +40,24 @@ public:
   void requestStop();
   [[nodiscard]] bool drained() const;
 
-  static constexpr std::size_t kMaxPayloadBytes = std::size_t{256} * 1024;
+  static constexpr std::size_t kMaxPayloadBytes = outbox::kMaxPayloadBytes;
+  static constexpr std::string_view kEventIdPrefix = "productivity-change:";
+
+  [[nodiscard]] static outbox::OutboxRepository repository();
 
 private:
-  [[nodiscard]] drogon::Task<void>
-  enqueue(ChangeOutboxEnqueueInput input) const;
-  bool ensureStream() const;
-  void flushLoop();
-  bool flush(const ChangeOutboxRow& row);
+  struct RecordInput
+  {
+    TableName table;
+    int64_t recordId{0};
+    std::string discriminator;
+    std::string payload;
+    drogon::orm::DbClient* client{nullptr};
+  };
 
-  std::shared_ptr<NatsBus> bus_;
-  ChangeOutboxRepository outbox_;
-  const Config config_;
+  [[nodiscard]] drogon::Task<void> record(RecordInput input) const;
+
   const std::string subject_;
-  const std::string stream_;
-  int64_t nextPurgeMs_{0};
   mutable std::atomic<uint64_t> transitions_{0};
-  std::atomic<bool> streamReady_{false};
-  std::atomic<bool> stopping_{false};
-  std::atomic<bool> workerStarted_{false};
-  std::atomic<bool> exited_{false};
-  mutable WakeSignal wake_;
-  db_transaction::CommitObserver commitObserver_{[this] { wake_.notify(); }};
-  std::thread worker_;
+  outbox::TransactionalOutbox outbox_;
 };

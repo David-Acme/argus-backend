@@ -8,7 +8,7 @@
 #include <feature/project-task/services/project-task-feature-service.hxx>
 #include <feature/project/services/project-feature-service.hxx>
 #include <shared/services/change-sink/nats-productivity-change-sink.hxx>
-#include <shared/repositories/change-outbox/change-outbox-repository.hxx>
+#include <outbox/outbox-repository.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/user-change-sink.hxx>
 
@@ -427,7 +427,7 @@ TEST_CASE("a productivity write and its change are one unit of work")
                    .retryMs = 20, .publishSubject = {}, .streamName = {}});
   user_change::setProductivitySink(&durableSink);
 
-  ChangeOutboxRepository outbox;
+  const auto outbox = NatsProductivityChangeSink::repository();
   const auto durable = drogon::sync_wait(
       projects.create({.body = projectBody("Durable Project"), .ownerId = kOwner, .idempotencyKey = {}}));
   CHECK(durable.id > 0);

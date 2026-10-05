@@ -72,8 +72,8 @@ argus-notification/
                         listener when `[grpc] caller_settings` is set
   src/shared/           argus::notification-shared — the notification
                         repository, schema and delivery service both features
-                        read — plus the change outbox and the change and
-                        delivery sinks
+                        read — plus the change and delivery sinks (the
+                        change outbox itself is `argus::lib::outbox`)
   config.toml.example   the notification roster ([server], [drogon.app],
                         [notification], [notifications], [cert], [jwt],
                         [device], [identity], [grpc] (caller_guard,

@@ -303,6 +303,12 @@ int main()
       _exit(1);
     }
 
+    if (!NatsNotificationChangeSink::repository().migrateSchema()) {
+      LOG_FATAL
+          << "Notification change outbox migration failed — aborting startup";
+      _exit(1);
+    }
+
     const auto hasColumn = [](const std::string& table,
                               const std::string& column) {
       const auto rows = DbService::client()->execSqlSync(

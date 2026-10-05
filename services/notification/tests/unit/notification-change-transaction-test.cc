@@ -3,7 +3,7 @@
 
 #include <drogon/drogon.h>
 #include <shared/services/change-sink/nats-notification-change-sink.hxx>
-#include <shared/repositories/change-outbox/change-outbox-repository.hxx>
+#include <outbox/outbox-repository.hxx>
 #include <shared/services/notification/notification-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/user-change-sink.hxx>
@@ -183,7 +183,7 @@ TEST_CASE("a notification read and its change are one unit of work")
                                                   .streamName = {}});
   user_change::setNotificationSink(&durableSink);
 
-  ChangeOutboxRepository outbox;
+  const auto outbox = NatsNotificationChangeSink::repository();
   drogon::sync_wait(notifications.markAsRead(7, {third}));
   CHECK(unreadNotifications() == 0);
   const auto pending = outbox.pendingBatch(10);

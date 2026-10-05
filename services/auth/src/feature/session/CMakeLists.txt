@@ -1,7 +1,6 @@
 argus_module(NAME auth-session
     SOURCES
         schemas/refresh-token/refresh-token-schema.cc
-        repositories/change-outbox/change-outbox-repository.cc
         repositories/refresh-token/refresh-token-repository.cc
         services/auth-action-sink.cc
         services/session-context-cache.cc
@@ -17,6 +16,7 @@ argus_module(NAME auth-session
         argus::lib::auth
         argus::lib::errors
         argus::lib::nats
+        argus::lib::outbox
         argus::lib::runtime
         argus::lib::sqlite
         argus::lib::text
