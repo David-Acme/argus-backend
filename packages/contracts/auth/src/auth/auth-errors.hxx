@@ -73,6 +73,10 @@ inline constexpr ErrorDefinition AuthUnavailable{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,
     .message = "The auth service is unavailable"};
+inline constexpr ErrorDefinition AuthBusy{
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 503,
+    .message = "The server is busy, retry shortly"};
 inline constexpr ErrorDefinition IdentityUnavailable{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,

@@ -1,5 +1,6 @@
 #include "device-filter.hxx"
 
+#include <auth/admitted-call.hxx>
 #include <auth/auth-client.hxx>
 #include <auth/auth-access.hxx>
 #include <auth/details/proxy-allowlist.hxx>
@@ -9,7 +10,6 @@
 #include <openssl/sha.h>
 #include <auth/request-context.hxx>
 #include <config/config-service.hxx>
-#include <runtime/blocking-task.hxx>
 #include <stdexcept>
 #include <auth/auth-errors.hxx>
 #include <errors/response-exception.hxx>
@@ -57,7 +57,7 @@ DeviceFilter::doFilter(const drogon::HttpRequestPtr& req)
     if (!credential.empty() && credential.size() <= kMaxCredentialLength) {
       const auto secretHash = sha256Hex(credential);
       const auto client = filterAuthClient();
-      const auto active = co_await BlockingTask<std::optional<bool>>(
+      const auto active = co_await auth_admission::admitted<std::optional<bool>>(
           [client, secretHash]() {
             return client->checkDeviceCredential(secretHash);
           });

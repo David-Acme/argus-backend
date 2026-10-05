@@ -101,6 +101,11 @@ const std::vector<CatalogEntry> kCatalog{
      .code = ErrorCode::ServiceUnavailable,
      .status = 503,
      .message = "The auth service is unavailable"},
+    {.name = "AuthBusy",
+     .definition = &AuthErrors::AuthBusy,
+     .code = ErrorCode::ServiceUnavailable,
+     .status = 503,
+     .message = "The server is busy, retry shortly"},
     {.name = "IdentityUnavailable",
      .definition = &AuthErrors::IdentityUnavailable,
      .code = ErrorCode::ServiceUnavailable,
@@ -190,7 +195,7 @@ TEST_CASE("the auth catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 32);
+  CHECK(kCatalog.size() == 33);
 }
 
 TEST_CASE("every auth entry is legal on the wire")

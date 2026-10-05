@@ -4,13 +4,13 @@
 #include <cctype>
 #include <string_view>
 
+#include <auth/admitted-call.hxx>
 #include <auth/auth-errors.hxx>
 #include <auth/auth-client.hxx>
 #include <errors/response-exception.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/auth-access.hxx>
 #include <auth/request-context.hxx>
-#include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
 drogon::Task<drogon::HttpResponsePtr>
@@ -52,7 +52,7 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
                                  : sessionOriginToString(device.origin);
 
   const auto client = filterAuthClient();
-  const auto verdict = co_await BlockingTask<
+  const auto verdict = co_await auth_admission::admitted<
       std::optional<argus::auth::v1::ValidateTokenResponse>>(
       [client, token, deviceHash, origin]() {
         return client->validateToken({.accessToken = token,

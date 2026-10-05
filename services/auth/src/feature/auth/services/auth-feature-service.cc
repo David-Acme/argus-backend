@@ -1,6 +1,7 @@
 #include "auth-feature-service.hxx"
 
 #include <array>
+#include <auth/admitted-call.hxx>
 #include <auth/auth-errors.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/device-login-status.hxx>
@@ -190,7 +191,7 @@ identifyPerson(const IdentityClient* client, std::string image)
 {
   if (client == nullptr)
     co_return std::nullopt;
-  co_return co_await BlockingTask<
+  co_return co_await auth_admission::admitted<
       std::optional<argus::identity::v1::IdentifyPersonResponse>>(
       [client, image = std::move(image)]() { return client->identifyPerson(image); });
 }
@@ -200,7 +201,7 @@ registerIdentityUser(const IdentityClient* client, RegisterUserInput input)
 {
   if (client == nullptr)
     co_return std::nullopt;
-  co_return co_await BlockingTask<
+  co_return co_await auth_admission::admitted<
       std::optional<argus::identity::v1::RegisterUserResponse>>(
       [client, request = std::move(input)]() { return client->registerUser(request); });
 }

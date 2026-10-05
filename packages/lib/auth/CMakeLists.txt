@@ -56,6 +56,7 @@ argus_lib(NAME auth
         src/auth/jwt-service.cc
         src/auth/user-directory-identity.cc
         src/auth/role-access.hxx
+        src/auth/admitted-call.hxx
         src/auth/linked-filter.hxx
         src/auth/remote-config.hxx
         src/auth/remote-gate.hxx
@@ -96,6 +97,11 @@ add_executable(device-origin-test tests/unit/device-origin-test.cc)
 target_link_libraries(device-origin-test PRIVATE argus::lib::auth doctest::doctest)
 target_compile_options(device-origin-test PRIVATE -Wall -Wextra)
 add_test(NAME device-origin-test COMMAND device-origin-test)
+
+add_executable(admitted-call-test tests/unit/admitted-call-test.cc)
+target_link_libraries(admitted-call-test PRIVATE argus::lib::auth doctest::doctest)
+target_compile_options(admitted-call-test PRIVATE -Wall -Wextra)
+add_test(NAME admitted-call-test COMMAND admitted-call-test)
 
 add_executable(jwt-service-test tests/unit/jwt-service-test.cc)
 target_link_libraries(jwt-service-test PRIVATE argus::lib::auth doctest::doctest)

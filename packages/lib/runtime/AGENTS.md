@@ -196,8 +196,9 @@ and `BlockingTask(fn, lane)` keep the old behaviour and always queue, so no
 caller changes meaning. A caller that can answer "busy" asks for it:
 `trySubmit` returns false past the cap, `BlockingTask(fn, lane,
 BlockingAdmission::RejectWhenFull)` (or with a strand) throws `BlockingLaneFull`
-into the awaiting coroutine — a controller maps it to 429, a gRPC handler to
-`RESOURCE_EXHAUSTED`. `BlockingStrand(lane, maxQueued)` bounds a strand the
+into the awaiting coroutine — an HTTP caller maps it to its catalog's busy
+refusal (the auth filters answer `AuthErrors::AuthBusy`, 503), a gRPC handler
+to `RESOURCE_EXHAUSTED`. Who uses it and why is in `CONTEXT.md`. `BlockingStrand(lane, maxQueued)` bounds a strand the
 same way through `tryPost`. `stats()` reports `queued`, `rejected` and
 `oldestQueuedAge` (the wait of the job at the head), which is what a health
 endpoint should expose. A strand whose next hand-off to the pool fails (no
