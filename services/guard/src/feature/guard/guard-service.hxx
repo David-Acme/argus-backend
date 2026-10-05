@@ -522,9 +522,9 @@ private:
   GuardRepository repository_;
   EnvironmentRepository environmentRepository_;
   CameraContextRepository cameraContextRepository_;
-  EpisodeRepository episodeRepository_;
   ResponseRepository responseRepository_;
   PresenceRepository presenceRepository_;
+  EpisodeRepository episodeRepository_;
   S3StorageService storage_;
   std::shared_ptr<GuardLifecycle> lifecycle_;
 

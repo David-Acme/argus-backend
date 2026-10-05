@@ -1330,8 +1330,8 @@ GuardService::checkpointToJson(const ObservationCheckpoint& checkpoint)
   json["expectedArea"] = checkpoint.expectedArea;
   json["cameraRole"] = checkpoint.cameraRole;
   json["outdoor"] = checkpoint.outdoor;
-  Json::Value reasons(Json::arrayValue);
   json["familyInside"] = checkpoint.familyInside;
+  Json::Value reasons(Json::arrayValue);
   for (const auto& reason : checkpoint.reasons)
     reasons.append(reason);
   json["reasons"] = std::move(reasons);
@@ -1405,8 +1405,8 @@ GuardService::checkpointFromJson(const Json::Value& json)
   checkpoint.expectedArea = json.get("expectedArea", false).asBool();
   checkpoint.cameraRole = json.get("cameraRole", "").asString();
   checkpoint.outdoor = json.get("outdoor", false).asBool();
-  for (const auto& reason : json["reasons"]) {
   checkpoint.familyInside = json.get("familyInside", false).asBool();
+  for (const auto& reason : json["reasons"]) {
     if (reason.isString())
       checkpoint.reasons.push_back(reason.asString());
   }
@@ -1546,9 +1546,9 @@ GuardService::applyObservation(const ObservationInput& input)
     checkpoint.expectedArea = posture.publicPresent || area.inUse;
     checkpoint.cameraRole = cameraRoleToString(camera.role);
     checkpoint.outdoor = camera.outdoor;
-    if (signals.hasUnknown && signals.knownPersonId > 0 &&
     checkpoint.familyInside = camera.configured && !camera.outdoor &&
                               co_await familyInside(environment.id);
+    if (signals.hasUnknown && signals.knownPersonId > 0 &&
         dependencies_.identity) {
       const auto known = co_await BlockingTask<std::optional<PersonProfile>>(
           [this, personId = signals.knownPersonId]() {
@@ -3648,8 +3648,6 @@ GuardService::legacyRecipients(const std::vector<int64_t>& excluded)
       });
 }
 
-drogon::Task<GuardService::EffectStatus>
-GuardService::notify(const NotifyInput& input)
 namespace
 {
 std::optional<ResponseTrigger> responseTriggerOf(const Json::Value& data)
@@ -3809,6 +3807,8 @@ drogon::Task<bool> GuardService::familyInside(int64_t environmentId)
   co_return false;
 }
 
+drogon::Task<GuardService::EffectStatus>
+GuardService::notify(const NotifyInput& input)
 {
   const auto config = currentConfig();
   if (!dependencies_.notifications) {
@@ -3869,12 +3869,12 @@ drogon::Task<bool> GuardService::familyInside(int64_t environmentId)
       LOG_WARN << "Guard service: no notifiable users; notification dropped";
       co_return EffectStatus::RetryableFailed;
     }
-    data = input.content.data;
-    Json::Value payload(Json::objectValue);
     const std::vector<RecipientBatch>& batches = resolution->batches;
-    payload["type"] = "camera";
+    data = input.content.data;
     if (resolution->plan.isObject() && data.isObject())
       data["response"] = resolution->plan;
+    Json::Value payload(Json::objectValue);
+    payload["type"] = "camera";
     payload["data"] = data;
     Json::Value storedBatches(Json::arrayValue);
     for (const auto& batch : batches) {
