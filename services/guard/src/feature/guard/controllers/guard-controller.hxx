@@ -59,6 +59,9 @@ public:
   ADD_METHOD_TO(GuardController::reviewEpisode, "/guard/episodes/{1}/review",
                 drogon::Post, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
                 "RoleFilter");
+  ADD_METHOD_TO(GuardController::retainEpisode, "/guard/episodes/{1}/retain",
+                drogon::Post, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
+                "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> setMode(drogon::HttpRequestPtr req);
@@ -89,6 +92,8 @@ public:
   drogon::Task<drogon::HttpResponsePtr> episodes(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> episode(drogon::HttpRequestPtr req,
                                                 int64_t episodeId);
+  drogon::Task<drogon::HttpResponsePtr> retainEpisode(drogon::HttpRequestPtr req,
+                                                      int64_t episodeId);
   drogon::Task<drogon::HttpResponsePtr> reviewEpisode(
       drogon::HttpRequestPtr req, int64_t episodeId);
 

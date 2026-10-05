@@ -375,6 +375,10 @@ bool migrateEncounterEpisodeColumns()
       !exec("ALTER TABLE guard_encounter ADD COLUMN reviewed_at INTEGER NOT "
             "NULL DEFAULT 0"))
     return false;
+  if (!columnExists("guard_encounter", "retain_until") &&
+      !exec("ALTER TABLE guard_encounter ADD COLUMN retain_until INTEGER NOT "
+            "NULL DEFAULT 0"))
+    return false;
   return true;
 }
 

@@ -12,6 +12,7 @@
 #include <feature/guard/dtos/list-decisions-dto.hxx>
 #include <feature/guard/dtos/list-episodes-dto.hxx>
 #include <feature/guard/dtos/list-incidents-dto.hxx>
+#include <feature/guard/dtos/retain-episode-dto.hxx>
 #include <feature/guard/dtos/review-episode-dto.hxx>
 #include <feature/guard/dtos/update-camera-context-dto.hxx>
 #include <feature/guard/dtos/create-environment-dto.hxx>
@@ -179,6 +180,17 @@ drogon::Task<drogon::HttpResponsePtr> GuardController::episode(
   if (!found)
     throw ResponseException(GuardErrors::EpisodeNotFound);
   co_return ApiResponse::ok(*found);
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::retainEpisode(
+    drogon::HttpRequestPtr req, int64_t episodeId)
+{
+  const auto body = RetainEpisodeDto::fromJson(*req->getJsonObject());
+  const auto retained =
+      co_await service_.retainEpisode({.episodeId = episodeId, .retain = body.retain});
+  if (!retained)
+    throw ResponseException(GuardErrors::EpisodeNotFound);
+  co_return ApiResponse::ok(*retained);
 }
 
 drogon::Task<drogon::HttpResponsePtr> GuardController::reviewEpisode(

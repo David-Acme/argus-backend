@@ -54,6 +54,7 @@ struct GuardContext
   bool areaInUse{false};
   bool passerby{false};
   bool afterHours{false};
+  bool watchlist{false};
 };
 
 struct GuardDeterrenceInput

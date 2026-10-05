@@ -132,7 +132,8 @@ CREATE TABLE IF NOT EXISTS guard_encounter (
                              CHECK (review_label IN ('', 'useful', 'false_alarm',
                                     'not_now')),
     reviewed_at      INTEGER NOT NULL  DEFAULT 0,
-    environment_id   INTEGER NOT NULL  DEFAULT 0
+    environment_id   INTEGER NOT NULL  DEFAULT 0,
+    retain_until     INTEGER NOT NULL  DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_guard_encounter_last_seen

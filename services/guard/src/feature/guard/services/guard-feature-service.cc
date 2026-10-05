@@ -1,5 +1,7 @@
 #include "guard-feature-service.hxx"
 
+#include <config/config-service.hxx>
+
 #include <algorithm>
 #include <cctype>
 #include <ctime>
@@ -440,6 +442,7 @@ Json::Value episodeJson(const EpisodeRow& row)
   json["groupId"] = static_cast<Json::Int64>(row.groupId);
   json["reviewLabel"] = row.reviewLabel;
   json["reviewedAt"] = static_cast<Json::Int64>(row.reviewedAt);
+  json["retainUntil"] = static_cast<Json::Int64>(row.retainUntil);
   json["resolution"] = !closed ? ""
                        : row.lastReason == "known_resident" ? "recognized"
                                                             : "left";
@@ -775,4 +778,27 @@ GuardFeatureService::reviewEpisode(const ReviewInput& input) const
   if (!row)
     co_return std::nullopt;
   co_return episodeJson(*row);
+}
+
+drogon::Task<std::optional<Json::Value>>
+GuardFeatureService::retainEpisode(const RetainInput& input) const
+{
+  const auto days = [](const char* key, int fallback, int low, int high) {
+    return static_cast<int64_t>(std::clamp(
+        ConfigService::hasKey(key) ? ConfigService::getInt(key) : fallback, low, high));
+  };
+  const auto row = co_await episodeRepository_.find(input.episodeId);
+  if (!row)
+    co_return std::nullopt;
+  const int64_t marked = days("guard.marked_retention_days", 120, 30, 120);
+  const int64_t standard = days("guard.journal_retention_days", 30, 1, 60);
+  if (!co_await episodeRepository_.retain(
+          {.encounterId = input.episodeId,
+           .retainUntil = input.retain ? row->firstSeen + marked * 86400 : 0,
+           .standardExpiry = row->firstSeen + standard * 86400}))
+    co_return std::nullopt;
+  const auto updated = co_await episodeRepository_.find(input.episodeId);
+  if (!updated)
+    co_return std::nullopt;
+  co_return episodeJson(*updated);
 }

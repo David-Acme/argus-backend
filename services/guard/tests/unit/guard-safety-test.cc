@@ -366,7 +366,8 @@ TEST_CASE("safety notices render in both languages")
                      .routine = {},
                      .notified = 0,
                      .afterQuiet = false,
-                     .actorName = "Laura"};
+                     .actorName = "Laura",
+                     .visitor = {}};
   CHECK(guard_copy::render(notice, "es").title == "Botón de pánico · Laura");
   CHECK(guard_copy::urgency(notice) == "critical");
   notice.kind = NoticeKind::Duress;

@@ -22,6 +22,7 @@ argus_module(NAME guard
         dtos/list-episodes-dto.cc
         dtos/list-incidents-dto.cc
         dtos/remove-expected-guest-dto.cc
+        dtos/retain-episode-dto.cc
         dtos/review-episode-dto.cc
         dtos/summary-decisions-dto.cc
         dtos/update-camera-context-dto.cc

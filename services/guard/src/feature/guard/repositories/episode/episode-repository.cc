@@ -37,7 +37,8 @@ EpisodeRow episodeFromRow(const drogon::orm::Row& row)
                             : row["last_reason"].as<std::string>(),
           .spoke = row["spoke"].as<int>() != 0,
           .sounded = row["sounded"].as<int>() != 0,
-          .environmentId = row["environment_id"].as<int64_t>()};
+          .environmentId = row["environment_id"].as<int64_t>(),
+          .retainUntil = row["retain_until"].as<int64_t>()};
 }
 
 constexpr std::string_view kTamperOnsetPrefix = "tamper_onset_";
@@ -198,4 +199,24 @@ EpisodeRepository::digest(const DigestWindowInput& input) const
                      .held = row["held"].as<int64_t>(),
                      .routine = row["routine"].as<int64_t>()});
   co_return lines;
+}
+
+drogon::Task<bool> EpisodeRepository::retain(const EpisodeRetainInput& input) const
+{
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    const auto updated = co_await transaction->execSqlCoro(
+        std::string(RETAIN_EPISODE), input.retainUntil, input.encounterId);
+    if (updated.affectedRows() == 0) {
+      transaction->rollback();
+      co_return false;
+    }
+    co_await transaction->execSqlCoro(std::string(RETAIN_EVIDENCE), input.retainUntil,
+                                      input.standardExpiry, input.encounterId);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return co_await db_transaction::Commit(std::move(transaction));
 }

@@ -25,6 +25,7 @@ public:
   [[nodiscard]] drogon::Task<bool> linkGroup(int64_t encounterId, int64_t groupId) const;
 
   [[nodiscard]] drogon::Task<bool> review(const EpisodeReviewInput& input) const;
+  [[nodiscard]] drogon::Task<bool> retain(const EpisodeRetainInput& input) const;
 
   [[nodiscard]] drogon::Task<std::optional<CameraNotification>>
   recentCameraNotification(const CameraNotificationLookupInput& input) const;

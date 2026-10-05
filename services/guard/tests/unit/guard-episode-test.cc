@@ -402,6 +402,27 @@ TEST_CASE("an episode keeps its story: list, timeline and review")
   CHECK_FALSE(drogon::sync_wait(api.reviewEpisode(
                   {.episodeId = 999999, .label = FeedbackLabel::Useful}))
                   .has_value());
+
+  const int64_t episodeId = episode["id"].asInt64();
+  const auto kept = drogon::sync_wait(api.retainEpisode({.episodeId = episodeId, .retain = true}));
+  REQUIRE(kept.has_value());
+  CHECK(kept.value()["retainUntil"].asInt64() >
+        static_cast<int64_t>(std::time(nullptr)) + 100LL * 86400);
+  const GuardRepository repository;
+  const int64_t future = static_cast<int64_t>(std::time(nullptr)) + 10;
+  drogon::sync_wait(repository.purgeDecisions(future));
+  drogon::sync_wait(repository.purgeHistory({.historyBefore = future, .inboxBefore = 0}));
+  CHECK(scalar("SELECT COUNT(*) FROM guard_decision_journal WHERE event_id = 'ep:1'") == "1");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_encounter WHERE id = " +
+               std::to_string(episodeId)) == "1");
+  const auto released =
+      drogon::sync_wait(api.retainEpisode({.episodeId = episodeId, .retain = false}));
+  REQUIRE(released.has_value());
+  CHECK(released.value()["retainUntil"].asInt64() == 0);
+  drogon::sync_wait(repository.purgeDecisions(future));
+  CHECK(scalar("SELECT COUNT(*) FROM guard_decision_journal WHERE event_id = 'ep:1'") == "0");
+  CHECK_FALSE(drogon::sync_wait(api.retainEpisode({.episodeId = 999999, .retain = true}))
+                  .has_value());
 }
 
 TEST_CASE("a second medium visit on the same camera joins the first")
@@ -532,4 +553,44 @@ TEST_CASE("expected activity is summarized once at the digest hour")
   drogon::sync_wait(service->maybeSendDigests(now + 60));
   CHECK(harness.notifications.sent().size() == 1);
   resetSite();
+}
+
+TEST_CASE("a watchlist person alerts at once and the notice says who it is")
+{
+  (void)boot();
+  resetSite();
+  Harness harness;
+  harness.identity.addPerson({.personId = 4242,
+                              .userId = std::nullopt,
+                              .name = "Hombre de la moto",
+                              .alias = {},
+                              .observation = {},
+                              .role = {},
+                              .tags = {},
+                              .trusted = false,
+                              .category = "watchlist",
+                              .visits = 3,
+                              .firstSeenAt = 0,
+                              .lastSeenAt = 0,
+                              .visitorNumber = 7,
+                              .usualWeekdays = {},
+                              .usualHour = std::nullopt});
+  auto service = harness.service();
+  REQUIRE(drogon::sync_wait(service->handle(visit({.eventId = "watch:1",
+                                                   .cameraId = 530,
+                                                   .trackId = 1,
+                                                   .personId = 4242,
+                                                   .rule = "person_day",
+                                                   .severity = "info",
+                                                   .zoneKind = ""}),
+                                            1)));
+  const auto all = harness.notifications.sent();
+  REQUIRE(all.size() == 1);
+  const auto& sent = all.front();
+  CHECK(sent.title.starts_with("Hombre de la moto · "));
+  CHECK(sent.body.find("lista de vigilancia") != std::string::npos);
+  const Json::Value data = json_util::fromString(sent.data);
+  CHECK(data["danger"].asString() == "high");
+  CHECK(data["visitor"]["category"].asString() == "watchlist");
+  CHECK(data["reasons"][0].asString() == "watchlist");
 }

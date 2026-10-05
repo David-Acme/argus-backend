@@ -112,7 +112,8 @@ struct GuardServiceConfig
   std::string decisionMode{"shadow"};
   BeliefGateScope beliefGateScope{BeliefGateScope::Notify};
   int64_t beliefRefreshS{300};
-  int journalRetentionDays{90};
+  int journalRetentionDays{30};
+  int markedRetentionDays{120};
   bool quietHoursEnabled{false};
   int quietStartHour{22};
   int quietEndHour{7};

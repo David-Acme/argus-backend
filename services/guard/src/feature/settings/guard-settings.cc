@@ -268,7 +268,12 @@ std::vector<SettingSpec> guardSettingsCatalog()
       integer({.key = "guard.journal_retention_days",
                .group = "history",
                .level = SettingLevel::Advanced,
-               .range = {.min = 1, .max = 3650, .step = 1},
-               .fallback = "90"}),
+               .range = {.min = 1, .max = 60, .step = 1},
+               .fallback = "30"}),
+      integer({.key = "guard.marked_retention_days",
+               .group = "history",
+               .level = SettingLevel::Advanced,
+               .range = {.min = 30, .max = 120, .step = 1},
+               .fallback = "120"}),
   };
 }

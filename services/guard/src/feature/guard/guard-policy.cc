@@ -48,6 +48,12 @@ GuardDanger hardFloor(const GuardContext& context)
 
 GuardDanger evaluate(const GuardContext& context)
 {
+  if (context.watchlist) {
+    const bool unguarded = context.mode == GuardMode::Away ||
+                           context.mode == GuardMode::Armed ||
+                           context.mode == GuardMode::Night;
+    return unguarded ? GuardDanger::Critical : GuardDanger::High;
+  }
   if (!context.hasUnknown) {
     if (context.hasKnown)
       return GuardDanger::None;
@@ -81,6 +87,8 @@ GuardDanger evaluate(const GuardContext& context)
 std::vector<GuardReason> explain(const GuardContext& context)
 {
   std::vector<GuardReason> reasons;
+  if (context.watchlist)
+    reasons.push_back(GuardReason::Watchlist);
   if (!context.hasUnknown)
     return reasons;
   const auto add = [&reasons](bool applies, GuardReason reason) {

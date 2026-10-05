@@ -842,3 +842,21 @@ TEST_CASE("the event's night flag reaches the signals")
   event["night"] = true;
   CHECK(guard_policy::parseObjectEvent(event).night);
 }
+
+TEST_CASE("a person on the Owner's watchlist alerts at once, whatever lowers others")
+{
+  GuardContext context = unknownPerson();
+  context.watchlist = true;
+  context.publicPresent = true;
+  context.expectedGuest = true;
+  context.passerby = true;
+  CHECK(guard_policy::evaluate(context) == GuardDanger::High);
+  context.mode = GuardMode::Away;
+  CHECK(guard_policy::evaluate(context) == GuardDanger::Critical);
+  context.mode = GuardMode::Night;
+  CHECK(guard_policy::evaluate(context) == GuardDanger::Critical);
+  const auto reasons = guard_policy::explain(context);
+  REQUIRE_FALSE(reasons.empty());
+  CHECK(reasons.front() == GuardReason::Watchlist);
+  CHECK(guardReasonRaises(GuardReason::Watchlist));
+}

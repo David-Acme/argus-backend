@@ -37,8 +37,8 @@ inline constexpr std::string_view INSERT_ACTION =
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 inline constexpr std::string_view COUNT_PERSON_SINCE =
-    "SELECT COUNT(*) AS total FROM guard_incident "
-    "WHERE person_id = ? AND created_at >= ?";
+    "SELECT COUNT(*) AS total FROM guard_encounter "
+    "WHERE person_id = ? AND last_seen >= ?";
 
 inline constexpr std::string_view LAST_ACTION =
     "SELECT created_at FROM guard_action WHERE camera_id = ? AND person_id = ? "
@@ -416,20 +416,28 @@ inline constexpr std::string_view SUMMARY_GROUP_SIGNAL =
     "GROUP BY signal ORDER BY rows DESC";
 
 inline constexpr std::string_view PURGE_DECISIONS =
-    "DELETE FROM guard_decision_journal WHERE created_at < ?";
+    "DELETE FROM guard_decision_journal WHERE created_at < ? AND encounter_id "
+    "NOT IN (SELECT id FROM guard_encounter WHERE retain_until > "
+    "strftime('%s', 'now'))";
 
 inline constexpr std::string_view PURGE_SETTLED_INBOX =
     "DELETE FROM guard_observation_inbox WHERE status != 'processing' "
     "AND MAX(completed_at, updated_at) < ?";
 
 inline constexpr std::string_view PURGE_INCIDENTS =
-    "DELETE FROM guard_incident WHERE created_at < ?";
+    "DELETE FROM guard_incident WHERE created_at < ? AND id NOT IN (SELECT "
+    "j.incident_id FROM guard_decision_journal j JOIN guard_encounter e ON "
+    "e.id = j.encounter_id WHERE e.retain_until > strftime('%s', 'now'))";
 
 inline constexpr std::string_view PURGE_ASSESSMENTS =
-    "DELETE FROM guard_assessment WHERE created_at < ?";
+    "DELETE FROM guard_assessment WHERE created_at < ? AND incident_id NOT IN "
+    "(SELECT j.incident_id FROM guard_decision_journal j JOIN guard_encounter "
+    "e ON e.id = j.encounter_id WHERE e.retain_until > strftime('%s', 'now'))";
 
 inline constexpr std::string_view PURGE_ACTIONS =
-    "DELETE FROM guard_action WHERE created_at < ?";
+    "DELETE FROM guard_action WHERE created_at < ? AND encounter_id NOT IN "
+    "(SELECT id FROM guard_encounter WHERE retain_until > strftime('%s', "
+    "'now'))";
 
 inline constexpr std::string_view PURGE_SETTLED_ACTION_OUTBOX =
     "DELETE FROM guard_action_outbox WHERE status NOT IN ('pending', "
@@ -437,10 +445,12 @@ inline constexpr std::string_view PURGE_SETTLED_ACTION_OUTBOX =
 
 inline constexpr std::string_view PURGE_CLOSED_TRANSITIONS =
     "DELETE FROM guard_encounter_transition WHERE encounter_id IN (SELECT id "
-    "FROM guard_encounter WHERE state = 'closed' AND last_seen < ?)";
+    "FROM guard_encounter WHERE state = 'closed' AND last_seen < ? AND "
+    "retain_until <= strftime('%s', 'now'))";
 
 inline constexpr std::string_view PURGE_CLOSED_ENCOUNTERS =
-    "DELETE FROM guard_encounter WHERE state = 'closed' AND last_seen < ?";
+    "DELETE FROM guard_encounter WHERE state = 'closed' AND last_seen < ? AND "
+    "retain_until <= strftime('%s', 'now')";
 
 inline constexpr std::string_view PURGE_DEAD_LETTERS =
     "DELETE FROM guard_dead_letter WHERE created_at < ?";

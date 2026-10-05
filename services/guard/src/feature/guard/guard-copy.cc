@@ -1,6 +1,8 @@
 #include "guard-copy.hxx"
 
 #include <algorithm>
+#include <array>
+#include <utility>
 #include <cctype>
 #include <ranges>
 
@@ -224,6 +226,77 @@ std::string situationSentence(const GuardNotice& notice, bool english)
   return text.empty() ? std::string{} : capitalized(text) + ".";
 }
 
+std::string categoryNoun(std::string_view category, bool english)
+{
+  constexpr std::array<std::pair<std::string_view, Phrase>, 6> kNouns{{
+      {"neighbor", {.es = "el vecino", .en = "the neighbour"}},
+      {"delivery", {.es = "el repartidor", .en = "the courier"}},
+      {"service", {.es = "el técnico de servicio", .en = "the service worker"}},
+      {"family", {.es = "un familiar", .en = "a relative"}},
+      {"acquaintance", {.es = "un conocido", .en = "an acquaintance"}},
+      {"watchlist", {.es = "alguien de tu lista de vigilancia",
+                     .en = "someone on your watchlist"}},
+  }};
+  for (const auto& [key, phrase] : kNouns)
+    if (key == category)
+      return pick(phrase, english);
+  return {};
+}
+
+std::string weekdayPlural(int day, bool english)
+{
+  constexpr std::array<Phrase, 7> kDays{{{.es = "domingos", .en = "Sundays"},
+                                         {.es = "lunes", .en = "Mondays"},
+                                         {.es = "martes", .en = "Tuesdays"},
+                                         {.es = "miércoles", .en = "Wednesdays"},
+                                         {.es = "jueves", .en = "Thursdays"},
+                                         {.es = "viernes", .en = "Fridays"},
+                                         {.es = "sábados", .en = "Saturdays"}}};
+  if (day < 0 || day > 6)
+    return {};
+  return pick(kDays.at(static_cast<std::size_t>(day)), english);
+}
+
+std::string habitPhrase(const GuardVisitor& visitor, bool english)
+{
+  std::vector<std::string> days;
+  days.reserve(visitor.weekdays.size());
+  for (const int day : visitor.weekdays)
+    days.push_back(weekdayPlural(day, english));
+  std::string habit;
+  if (!days.empty())
+    habit = (english ? "who usually comes on " : "que suele venir los ") +
+            joined(days, english ? " and " : " y ");
+  if (visitor.usualHour >= 0) {
+    const std::string hour = std::to_string(visitor.usualHour) + ":00";
+    habit += habit.empty()
+                 ? (english ? "who usually comes around " : "que suele venir hacia las ") + hour
+                 : (english ? " around " : " hacia las ") + hour;
+  }
+  return habit;
+}
+
+std::string visitorSentenceOf(const GuardVisitor& visitor, bool english)
+{
+  if (!visitor.present())
+    return {};
+  const std::string noun = categoryNoun(visitor.category, english);
+  const std::string habit = habitPhrase(visitor, english);
+  std::string who;
+  if (!visitor.name.empty())
+    who = noun.empty() ? visitor.name : visitor.name + ", " + noun;
+  else
+    who = noun;
+  if (who.empty())
+    return {};
+  std::string sentence = visitor.companion
+                             ? (english ? "With " : "Con ") + who
+                             : (english ? "It is " : "Es ") + who;
+  if (!habit.empty() && visitor.category != "watchlist")
+    sentence += (visitor.name.empty() ? " " : ", ") + habit;
+  return sentence + ".";
+}
+
 NoticeText renderEpisode(const GuardNotice& notice, bool english)
 {
   const std::string camera = cameraLabel(notice, english);
@@ -233,9 +306,15 @@ NoticeText renderEpisode(const GuardNotice& notice, bool english)
                                dangerWord(notice.danger, english) + " risk"
                          : "Sigue en " + camera + " · riesgo " +
                                dangerWord(notice.danger, english);
+  else if (notice.visitor.category == "watchlist" && !notice.visitor.companion)
+    text.title = (notice.visitor.name.empty()
+                      ? pick({.es = "Persona en vigilancia", .en = "Watchlist person"}, english)
+                      : notice.visitor.name) +
+                 " · " + camera;
   else
     text.title = subjectPhrase(notice, english) + " · " + camera;
   std::vector<std::string> sentences;
+  sentences.push_back(visitorSentenceOf(notice.visitor, english));
   if (hasReason(notice, GuardReason::Weapon))
     sentences.push_back(pick({.es = "Posible arma a la vista.",
                               .en = "Possible weapon in view."},
@@ -504,4 +583,9 @@ std::string guard_copy::environmentDefaultName(EnvironmentKind kind,
       return pick({.es = "Exterior", .en = "Outdoors"}, english);
   }
   return pick({.es = "Casa", .en = "Home"}, english);
+}
+
+std::string guard_copy::visitorSentence(const GuardVisitor& visitor, std::string_view lang)
+{
+  return visitorSentenceOf(visitor, normalizeLang({.requested = lang, .fallback = "es"}) == "en");
 }

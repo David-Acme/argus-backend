@@ -274,6 +274,7 @@ private:
     std::string cameraRole;
     bool outdoor{false};
     bool familyInside{false};
+    GuardVisitor visitor;
     std::vector<std::string> reasons;
     bool holdsComputed{false};
     bool quietHold{false};

@@ -264,7 +264,9 @@ GuardServiceConfig GuardConfig::resolveService()
   config.healthStaleS = configInt64Or("guard.health_stale_s", 300);
   config.beliefRefreshS = configInt64Or("guard.belief_refresh_s", 300);
   config.journalRetentionDays =
-      configIntOr("guard.journal_retention_days", 90);
+      std::clamp(configIntOr("guard.journal_retention_days", 30), 1, 60);
+  config.markedRetentionDays =
+      std::clamp(configIntOr("guard.marked_retention_days", 120), 30, 120);
   config.quietHoursEnabled = configBoolOr("guard.quiet_hours.enabled", false);
   config.quietStartHour = configHourOr("guard.quiet_hours.start_hour", 22);
   config.quietEndHour = configHourOr("guard.quiet_hours.end_hour", 7);

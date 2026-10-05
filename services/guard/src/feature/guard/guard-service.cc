@@ -68,6 +68,51 @@ private:
 
 namespace
 {
+
+Json::Value visitorToJson(const GuardVisitor& visitor)
+{
+  Json::Value json(Json::objectValue);
+  json["name"] = visitor.name;
+  json["category"] = visitor.category;
+  json["visits"] = visitor.visits;
+  Json::Value days(Json::arrayValue);
+  for (const int day : visitor.weekdays)
+    days.append(day);
+  json["weekdays"] = days;
+  json["usualHour"] = visitor.usualHour;
+  json["companion"] = visitor.companion;
+  return json;
+}
+
+GuardVisitor visitorFromJson(const Json::Value& json)
+{
+  GuardVisitor visitor;
+  if (!json.isObject())
+    return visitor;
+  visitor.name = json.get("name", "").asString();
+  visitor.category = json.get("category", "").asString();
+  visitor.visits = json.get("visits", 0).asInt();
+  for (const auto& day : json["weekdays"])
+    if (day.isInt())
+      visitor.weekdays.push_back(day.asInt());
+  visitor.usualHour = json.get("usualHour", -1).asInt();
+  visitor.companion = json.get("companion", false).asBool();
+  return visitor;
+}
+
+GuardVisitor visitorOf(const PersonProfile& person, bool companion)
+{
+  GuardVisitor visitor;
+  if (person.userId)
+    return visitor;
+  visitor.name = person.name;
+  visitor.category = person.category;
+  visitor.visits = person.visits;
+  visitor.weekdays.assign(person.usualWeekdays.begin(), person.usualWeekdays.end());
+  visitor.usualHour = person.usualHour.value_or(-1);
+  visitor.companion = companion;
+  return visitor;
+}
 std::string tagsToJson(const std::vector<std::string>& tags)
 {
   Json::Value array(Json::arrayValue);
@@ -208,6 +253,12 @@ Json::Value noticeData(const NoticeDataInput& input)
   for (const GuardReason reason : notice.reasons)
     reasons.append(guardReasonToString(reason));
   data["reasons"] = std::move(reasons);
+  if (notice.visitor.present()) {
+    Json::Value visitor = visitorToJson(notice.visitor);
+    visitor["phraseEs"] = guard_copy::visitorSentence(notice.visitor, "es");
+    visitor["phraseEn"] = guard_copy::visitorSentence(notice.visitor, "en");
+    data["visitor"] = std::move(visitor);
+  }
   switch (notice.kind) {
     case NoticeKind::Tamper:
       data["threadKey"] = "guard:tamper:" + std::to_string(notice.cameraId);
@@ -365,6 +416,7 @@ void GuardService::refresh(const Config& fresh)
     next->encounterTimeoutS = fresh.encounterTimeoutS;
     next->beliefRefreshS = fresh.beliefRefreshS;
     next->journalRetentionDays = fresh.journalRetentionDays;
+    next->markedRetentionDays = fresh.markedRetentionDays;
     next->tamperSustainedS = fresh.tamperSustainedS;
     next->offlineSustainedS = fresh.offlineSustainedS;
     next->healthStaleS = fresh.healthStaleS;
@@ -796,7 +848,7 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
                              .held = {},
                              .routine = {},
                              .notified = 0,
-                             .afterQuiet = false, .actorName = {}};
+                             .afterQuiet = false, .actorName = {}, .visitor = {}};
     const NotifyContent content{
         .notice = notice,
         .data = noticeData({.notice = notice,
@@ -1338,6 +1390,8 @@ GuardService::checkpointToJson(const ObservationCheckpoint& checkpoint)
   json["cameraRole"] = checkpoint.cameraRole;
   json["outdoor"] = checkpoint.outdoor;
   json["familyInside"] = checkpoint.familyInside;
+  if (checkpoint.visitor.present())
+    json["visitor"] = visitorToJson(checkpoint.visitor);
   Json::Value reasons(Json::arrayValue);
   for (const auto& reason : checkpoint.reasons)
     reasons.append(reason);
@@ -1413,6 +1467,7 @@ GuardService::checkpointFromJson(const Json::Value& json)
   checkpoint.cameraRole = json.get("cameraRole", "").asString();
   checkpoint.outdoor = json.get("outdoor", false).asBool();
   checkpoint.familyInside = json.get("familyInside", false).asBool();
+  checkpoint.visitor = visitorFromJson(json["visitor"]);
   for (const auto& reason : json["reasons"]) {
     if (reason.isString())
       checkpoint.reasons.push_back(reason.asString());
@@ -1555,6 +1610,17 @@ GuardService::applyObservation(const ObservationInput& input)
     checkpoint.outdoor = camera.outdoor;
     checkpoint.familyInside = camera.configured && !camera.outdoor &&
                               co_await familyInside(environment.id);
+    checkpoint.visitor = {};
+    if (signals.personId > 0 && dependencies_.identity) {
+      const auto primary = co_await BlockingTask<std::optional<PersonProfile>>(
+          [this, personId = signals.personId]() {
+            return dependencies_.identity->getPerson(personId);
+          });
+      if (primary) {
+        checkpoint.visitor = visitorOf(*primary, false);
+        context.watchlist = primary->category == "watchlist";
+      }
+    }
     if (signals.hasUnknown && signals.knownPersonId > 0 &&
         dependencies_.identity) {
       const auto known = co_await BlockingTask<std::optional<PersonProfile>>(
@@ -1566,6 +1632,8 @@ GuardService::applyObservation(const ObservationInput& input)
           (known->role == "owner" || known->role == "resident");
       context.accompaniedByResident = resident;
       context.accompaniedByGuest = known.has_value() && !resident;
+      if (known && !checkpoint.visitor.present())
+        checkpoint.visitor = visitorOf(*known, true);
     }
     if (signals.personId > 0)
       context.visitCount =
@@ -2352,7 +2420,7 @@ GuardService::applyObservation(const ObservationInput& input)
           .held = {},
           .routine = {},
           .notified = 0,
-          .afterQuiet = false, .actorName = {}};
+          .afterQuiet = false, .actorName = {}, .visitor = checkpoint.visitor};
       const NotifyContent content{
           .notice = notice,
           .data = noticeData(
@@ -2698,7 +2766,7 @@ GuardService::escalate(const EscalateInput& input)
         .held = {},
         .routine = {},
         .notified = 0,
-        .afterQuiet = false, .actorName = {}};
+        .afterQuiet = false, .actorName = {}, .visitor = input.checkpoint.visitor};
     const NotifyContent content{
         .notice = notice,
         .data = noticeData(
@@ -3002,10 +3070,12 @@ drogon::Task<void> GuardService::uploadEvidence(const EvidenceInput& input)
   const std::string retentionClass =
       serious ? "extended"
               : (input.danger == GuardDanger::Medium ? "standard" : "short");
-  const int64_t retentionS =
+  const int64_t classS =
       serious ? 30LL * 24 * 3600
               : (input.danger == GuardDanger::Medium ? 7LL * 24 * 3600
                                                      : 24LL * 3600);
+  const int64_t retentionS = std::min<int64_t>(
+      classS, static_cast<int64_t>(currentConfig()->journalRetentionDays) * 86400);
   const std::string objectKey = "guard/incidents/" +
                                 std::to_string(input.cameraId) + "/" +
                                 std::to_string(input.incidentId) + ".json";
@@ -3572,7 +3642,7 @@ drogon::Task<bool> GuardService::sendDigest(const DigestInput& input)
                            .held = std::move(held),
                            .routine = std::move(routine),
                            .notified = notified,
-                           .afterQuiet = input.afterQuiet, .actorName = {}};
+                           .afterQuiet = input.afterQuiet, .actorName = {}, .visitor = {}};
   Json::Value data = noticeData({.notice = notice,
                                  .environmentId = environment.id,
                                  .digestDay = input.day,
@@ -4009,7 +4079,8 @@ drogon::Task<bool> GuardService::raiseSafetyAlert(const SafetyAlertInput& input)
                            .routine = {},
                            .notified = 0,
                            .afterQuiet = false,
-                           .actorName = input.actorName};
+                           .actorName = input.actorName,
+                           .visitor = {}};
   Json::Value data = noticeData({.notice = notice,
                                  .environmentId = environment ? environment->id : 0,
                                  .digestDay = {},

@@ -49,6 +49,18 @@ struct DigestLine
   int64_t count{0};
 };
 
+struct GuardVisitor
+{
+  std::string name;
+  std::string category;
+  int visits{0};
+  std::vector<int> weekdays;
+  int usualHour{-1};
+  bool companion{false};
+
+  [[nodiscard]] bool present() const { return !name.empty() || !category.empty(); }
+};
+
 struct GuardNotice
 {
   NoticeKind kind{NoticeKind::Episode};
@@ -70,6 +82,7 @@ struct GuardNotice
   int64_t notified{0};
   bool afterQuiet{false};
   std::string actorName;
+  GuardVisitor visitor;
 };
 
 struct NoticeText
@@ -94,5 +107,7 @@ NoticeText render(const GuardNotice& notice, std::string_view lang);
 std::string urgency(const GuardNotice& notice);
 
 std::string environmentDefaultName(EnvironmentKind kind, std::string_view lang);
+
+std::string visitorSentence(const GuardVisitor& visitor, std::string_view lang);
 
 }

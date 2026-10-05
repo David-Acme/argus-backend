@@ -13,7 +13,7 @@ inline constexpr std::string_view LIST_EPISODES =
     "SELECT e.id, e.state, e.checks, e.best_camera_id, e.first_seen, "
     "e.last_seen, e.notify_count, e.notify_highest_rank, e.subject, e.people, "
     "e.reasons, e.reasons_rank, e.group_id, e.review_label, e.reviewed_at, "
-    "e.environment_id, "
+    "e.environment_id, e.retain_until, "
     "(SELECT t.reason FROM guard_encounter_transition t WHERE t.encounter_id "
     "= e.id ORDER BY t.id DESC LIMIT 1) AS last_reason, "
     "EXISTS (SELECT 1 FROM guard_action a WHERE a.encounter_id = e.id AND "
@@ -30,7 +30,7 @@ inline constexpr std::string_view FIND_EPISODE =
     "SELECT e.id, e.state, e.checks, e.best_camera_id, e.first_seen, "
     "e.last_seen, e.notify_count, e.notify_highest_rank, e.subject, e.people, "
     "e.reasons, e.reasons_rank, e.group_id, e.review_label, e.reviewed_at, "
-    "e.environment_id, "
+    "e.environment_id, e.retain_until, "
     "(SELECT t.reason FROM guard_encounter_transition t WHERE t.encounter_id "
     "= e.id ORDER BY t.id DESC LIMIT 1) AS last_reason, "
     "EXISTS (SELECT 1 FROM guard_action a WHERE a.encounter_id = e.id AND "
@@ -69,6 +69,13 @@ inline constexpr std::string_view REVIEW_EPISODE =
 inline constexpr std::string_view REVIEW_DECISIONS =
     "UPDATE guard_decision_journal SET feedback_label = ?, feedback_at = ? "
     "WHERE encounter_id = ? AND did_notify = 1";
+
+inline constexpr std::string_view RETAIN_EPISODE =
+    "UPDATE guard_encounter SET retain_until = ? WHERE id = ?";
+
+inline constexpr std::string_view RETAIN_EVIDENCE =
+    "UPDATE guard_evidence SET expires_at = CASE WHEN ?1 > 0 THEN MAX(expires_at, ?1) "
+    "ELSE MIN(expires_at, ?2) END WHERE encounter_id = ?3 AND deleted_at = 0";
 
 inline constexpr std::string_view RECENT_CAMERA_NOTIFICATION =
     "SELECT encounter_id, MAX(severity_rank) AS rank FROM "
@@ -129,6 +136,14 @@ struct EpisodeRow
   bool spoke{false};
   bool sounded{false};
   int64_t environmentId{0};
+  int64_t retainUntil{0};
+};
+
+struct EpisodeRetainInput
+{
+  int64_t encounterId{0};
+  int64_t retainUntil{0};
+  int64_t standardExpiry{0};
 };
 
 struct EpisodeListInput

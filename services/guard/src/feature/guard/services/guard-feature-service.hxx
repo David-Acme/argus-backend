@@ -110,6 +110,15 @@ public:
   [[nodiscard]] drogon::Task<std::optional<Json::Value>>
   reviewEpisode(const ReviewInput& input) const;
 
+  struct RetainInput
+  {
+    int64_t episodeId{0};
+    bool retain{false};
+  };
+
+  [[nodiscard]] drogon::Task<std::optional<Json::Value>>
+  retainEpisode(const RetainInput& input) const;
+
 private:
   [[nodiscard]] drogon::Task<void>
   requireNameFree(const std::string& name, int64_t except) const;

@@ -27,10 +27,11 @@ enum class GuardReason : uint8_t
   StaffHours,
   AreaInUse,
   Passerby,
-  Brief
+  Brief,
+  Watchlist
 };
 
-inline constexpr std::array<std::pair<GuardReason, std::string_view>, 19>
+inline constexpr std::array<std::pair<GuardReason, std::string_view>, 20>
     kGuardReasonNames{{{GuardReason::Weapon, "weapon"},
                        {GuardReason::AfterHours, "after_hours"},
                        {GuardReason::NobodyHome, "nobody_home"},
@@ -49,7 +50,8 @@ inline constexpr std::array<std::pair<GuardReason, std::string_view>, 19>
                        {GuardReason::StaffHours, "staff_hours"},
                        {GuardReason::AreaInUse, "area_in_use"},
                        {GuardReason::Passerby, "passerby"},
-                       {GuardReason::Brief, "brief"}}};
+                       {GuardReason::Brief, "brief"},
+                       {GuardReason::Watchlist, "watchlist"}}};
 
 inline std::string guardReasonToString(GuardReason reason)
 {
@@ -71,6 +73,7 @@ inline std::optional<GuardReason> guardReasonFromString(std::string_view value)
 
 inline bool guardReasonRaises(GuardReason reason)
 {
-  return static_cast<uint8_t>(reason) <=
-         static_cast<uint8_t>(GuardReason::FaceHidden);
+  return reason == GuardReason::Watchlist ||
+         static_cast<uint8_t>(reason) <=
+             static_cast<uint8_t>(GuardReason::FaceHidden);
 }

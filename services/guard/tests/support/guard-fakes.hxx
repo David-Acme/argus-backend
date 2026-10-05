@@ -187,8 +187,23 @@ public:
     return response;
   }
 
+  void addPerson(PersonProfile person)
+  {
+    const int64_t id = person.personId;
+    persons_[id] = std::move(person);
+  }
+
+  std::optional<PersonProfile> getPerson(int64_t personId) const override
+  {
+    const auto found = persons_.find(personId);
+    if (found == persons_.end())
+      return std::nullopt;
+    return found->second;
+  }
+
 private:
   std::map<int64_t, std::string> langs_;
+  std::map<int64_t, PersonProfile> persons_;
 };
 
 struct SentNotification

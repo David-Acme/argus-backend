@@ -26,7 +26,7 @@ GuardNotice episode()
           .held = {},
           .routine = {},
           .notified = 0,
-          .afterQuiet = false, .actorName = {}};
+          .afterQuiet = false, .actorName = {}, .visitor = {}};
 }
 }
 
@@ -156,7 +156,7 @@ TEST_CASE("digests summarize held alerts and routine activity")
                                  {.cameraId = 3, .cameraName = "Entrada", .count = 2},
                                  {.cameraId = 4, .cameraName = {}, .count = 1}},
                      .notified = 0,
-                     .afterQuiet = false, .actorName = {}};
+                     .afterQuiet = false, .actorName = {}, .visitor = {}};
   NoticeText text = guard_copy::render(notice, "es");
   CHECK(text.title == "Resumen de vigilancia");
   CHECK(text.body == "Nada requirió tu atención. Actividad normal: Cocina 23, "
@@ -224,4 +224,39 @@ TEST_CASE("a seeded environment is named after its kind in the owner's language"
         "Restaurant");
   CHECK(guard_copy::environmentDefaultName(EnvironmentKind::Warehouse, "fr") ==
         "Almacén");
+}
+
+TEST_CASE("a recognised visitor is named in the notice, and a watchlist person titles it")
+{
+  GuardNotice notice = episode();
+  notice.visitor = {.name = "Juan",
+                    .category = "neighbor",
+                    .visits = 6,
+                    .weekdays = {},
+                    .usualHour = -1,
+                    .companion = true};
+  CHECK(guard_copy::render(notice, "es").body.starts_with("Con Juan, el vecino."));
+  CHECK(guard_copy::render(notice, "en").body.starts_with("With Juan, the neighbour."));
+
+  notice.visitor = {.name = "",
+                    .category = "delivery",
+                    .visits = 5,
+                    .weekdays = {2},
+                    .usualHour = 10,
+                    .companion = false};
+  CHECK(guard_copy::visitorSentence(notice.visitor, "es") ==
+        "Es el repartidor que suele venir los martes hacia las 10:00.");
+  CHECK(guard_copy::visitorSentence(notice.visitor, "en") ==
+        "It is the courier who usually comes on Tuesdays around 10:00.");
+
+  notice.visitor = {.name = "Hombre de la moto",
+                    .category = "watchlist",
+                    .visits = 2,
+                    .weekdays = {2},
+                    .usualHour = 3,
+                    .companion = false};
+  const NoticeText watch = guard_copy::render(notice, "es");
+  CHECK(watch.title.starts_with("Hombre de la moto · "));
+  CHECK(watch.body.starts_with("Es Hombre de la moto, alguien de tu lista de vigilancia."));
+  CHECK(guard_copy::visitorSentence({}, "es").empty());
 }

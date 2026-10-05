@@ -1184,3 +1184,51 @@ now (`routeMatches`).
 Tests: `guard-response-test` (defaults, overrides, every row of the table,
 duty and staffed hours, the siren offer, panic actor exclusion, the JSON,
 the DTO validation, the repository), `role-access-test` (the three routes).
+
+## Recurring visitors and evidence retention (2026-10, STRANGERS)
+
+identity now recognises recurring visitors (`services/identity/CONTEXT.md`,
+"Recurring visitors"): a face that is not the household's gets a person id,
+and the Owner can name it and give it a type. Guard reads that through the
+`GetPerson` it already called (`PersonProfile` gained `category`, `visits`,
+first/last seen and the usual weekdays/hour), once per observation in stage 0,
+and keeps it in the checkpoint (`visitor`), so a replay sees the same answer.
+
+- **Named, non-watchlist visitor alone**: identity reports it `trusted`, the
+  camera publishes it `known`, and the policy treats it like any known
+  person: no alert (it lowers risk as a companion too: a known non-resident
+  companion caps a soft case at Medium, as before).
+- **Watchlist**: `GuardContext.watchlist` is a floor before anything that
+  lowers risk (public hours, area in use, passer-by, expected guest): High,
+  Critical while away, armed or at night. High is what the fast lane, the
+  immediate notification and the "never held, never grouped" rules already key
+  on, so the alert goes out at once. Reason `watchlist` (it raises).
+- **Copy**: the episode body starts with who it is — "Con Juan, el vecino." for
+  a known companion, "Es el repartidor que suele venir los martes hacia las
+  10:00." for a typed visitor, and a watchlist episode is titled with the
+  person's name ("Hombre de la moto · Entrada"). Notification `data.visitor`
+  carries `name`, `category`, `visits`, `weekdays`, `usualHour`, `companion`
+  and the ready sentence in both languages (`phraseEs`, `phraseEn`), which is
+  what a call engine reads aloud instead of composing it again.
+- **Repeat visits** count encounters (`guard_encounter` rows of the person in
+  the window), not incidents. With re-identification an unknown person now has
+  a stable id, and one person lingering at the door produced several incident
+  rows, which reached the three-visit High floor on a single visit.
+
+Per-visit notifications for named visitors ("Juan pasó por la entrada") are
+not sent: they would be routine traffic at the cost of the alert channel's
+credibility; the visit is in the gallery's timeline. It is a decision for
+David whether a type (e.g. delivery) should announce itself.
+
+**Retention.** `guard.journal_retention_days` (decision journal, incidents,
+assessments, actions, closed encounters and evidence objects) defaults to 30
+days and is clamped to 1–60, the videovigilancia directive's window; evidence
+objects expire at the shorter of their class (1/7/30 days) and that window.
+`POST /guard/episodes/{id}/retain {retain}` (Owner) marks an episode as an
+incident to keep: `guard_encounter.retain_until = first_seen +
+guard.marked_retention_days` (default 120, 30–120), its evidence objects
+are extended to the same date, and every purge skips the rows tied to a
+retained encounter (journal and actions by `encounter_id`, incidents and
+assessments through the journal's `incident_id`). Unmarking resets
+`retain_until` to 0 and pulls the evidence back to the standard window.
+`guard-episode-test` pins both and the watchlist path.

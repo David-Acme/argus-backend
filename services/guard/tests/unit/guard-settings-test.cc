@@ -130,7 +130,7 @@ TEST_CASE("the guard catalog builds through the registry")
 {
   const auto catalog = guardSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{guardSettingsCatalog()});
-  CHECK(catalog.size() == 41);
+  CHECK(catalog.size() == 42);
   CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) ==
         12);
   for (const auto& spec : catalog) {
@@ -209,6 +209,8 @@ TEST_CASE("every fallback is what the guard runs with when the key is absent")
   CHECK(intFallback(catalog, "guard.health_stale_s") == service.healthStaleS);
   CHECK(intFallback(catalog, "guard.journal_retention_days") ==
         service.journalRetentionDays);
+  CHECK(intFallback(catalog, "guard.marked_retention_days") ==
+        service.markedRetentionDays);
 
   const BeliefConfig belief = GuardConfig::resolveBelief(1);
   CHECK(intFallback(catalog, "guard.belief.threshold_critical") ==
