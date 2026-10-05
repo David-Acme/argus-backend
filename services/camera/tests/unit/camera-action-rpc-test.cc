@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "fake-stt-server.hxx"
 #include "fake-tts-server.hxx"
+#include <shared/services/privacy/camera-audio-policy.hxx>
 
 #include <arpa/inet.h>
 #include <atomic>
@@ -435,6 +436,7 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
     return result;
   });
 
+  CameraAudioPolicy::instance().setAllowed(true);
   const auto listen = client.listen({.cameraId = 1,
                                      .seconds = 1,
                                      .lang = "es",
@@ -520,6 +522,18 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
         result.samples.assign(16000, 0);
         return result;
       });
+  CameraAudioPolicy::instance().setAllowed(false);
+  const auto withheld = client.listen({.cameraId = 1,
+                                       .seconds = 1,
+                                       .lang = "es",
+                                       .commandId = "cmd-listen-withheld",
+                                       .encounterId = 9,
+                                       .expiresAt = 0});
+  CHECK_FALSE(withheld.succeeded());
+  CHECK_FALSE(withheld.captured);
+  CHECK(captureCalls == 0);
+  CameraAudioPolicy::instance().setAllowed(true);
+
   const auto listenFull = client.listen({.cameraId = 1,
                                          .seconds = 1,
                                          .lang = "es",

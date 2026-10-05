@@ -6,6 +6,7 @@
 #include <ctime>
 #include <drogon/drogon.h>
 #include <feature/actions/audio-capture.hxx>
+#include <shared/services/privacy/camera-audio-policy.hxx>
 #include <feature/camera-control/dtos/camera-talk-dto.hxx>
 #include <feature/camera-control/services/camera-control-feature-service.hxx>
 #include <optional>
@@ -790,6 +791,13 @@ CameraActionRpcService::Listen(grpc::CallbackServerContext* context,
     auto* reactor = context->DefaultReactor();
     reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                                  "camera_id and command_id are required"));
+    return reactor;
+  }
+  if (!CameraAudioPolicy::instance().allowed()) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
+                                 "camera audio is off by the household's "
+                                 "privacy choices"));
     return reactor;
   }
 

@@ -61,6 +61,7 @@ public:
   void init();
   void shutdown();
   void refreshViewerLimits();
+  void restartUpstreams();
   [[nodiscard]] ViewerLimits viewerLimits();
 
   uint16_t subscribe(const SubscribeInput& input, std::string& error);

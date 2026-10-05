@@ -1291,3 +1291,27 @@ about 16.7 px per degree on the 1280×720 sub stream):
 both required, each within ±180), `{angle}` (start a continuous move) or
 `{stop: true}`, and answers `{moved, limit}`. The app taps a 10° step and
 holds for a continuous move that ends with `stop` on release.
+
+## Camera audio follows the household's privacy choices (2026-10-04)
+
+A camera microphone hears everyone near it, so camera audio cannot be granted
+per person. It is on only while the Owner's household switch allows it and
+every active person of the household has said yes to camera audio in their own
+privacy choices (identity, `services/identity/CONTEXT.md`, "Privacy
+choices"); a person who has not decided yet counts as a no. Anyone saying no
+turns the microphones off for everyone, which the app explains where the
+choice is made.
+
+`CameraAudioPolicy` (`src/shared/services/privacy/`, read by the stream hub
+and the actions feature) starts withheld, reads `ListPrivacy` from identity at
+boot and every 15 s (light blocking lane), and keeps its last answer while
+identity is unreachable. When it flips, `StreamHub::restartUpstreams()` stops
+every upstream: viewers receive `camera:closed`, resubscribe, and the new
+upstream asks go2rtc for `stream.mp4?src=<name>&video` (video only) instead
+of `&mp4=flac`. Measured with a scratch go2rtc and an ffmpeg test source:
+`&mp4=flac` carries `avc1` + `fLaC`, `&video` only `avc1`. A stopping upstream
+is never handed to a new subscriber. The `Listen` RPC (the assistant
+listening through a camera) refuses with `FAILED_PRECONDITION` while audio is
+withheld. Talking through the camera's speaker is not capture and is not
+gated. `camera-privacy-test` pins the rule and the listener, and
+`camera-action-rpc-test` the refused `Listen`.

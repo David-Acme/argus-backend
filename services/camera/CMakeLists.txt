@@ -133,6 +133,7 @@ add_subdirectory(src/shared/services/change-sink)
 add_subdirectory(src/shared/services/camera-catalog)
 add_subdirectory(src/shared/services/tapo)
 add_subdirectory(src/shared/services/camera-driver)
+add_subdirectory(src/shared/services/privacy)
 add_subdirectory(src/shared/services/stream)
 add_subdirectory(src/shared/services/event-stream)
 
@@ -161,6 +162,7 @@ argus_service(NAME argus-camera
         argus::camera-monitor
         argus::camera-operator
         argus::camera-settings
+        argus::camera-privacy
         argus::contracts::settings-wire
         argus::lib::auth
         argus::lib::http
@@ -187,6 +189,7 @@ set(CAMERA_UNIT_TESTS
     camera-stream-test
     camera-media-session-test
     camera-change-transaction-test
+    camera-privacy-test
 )
 
 foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
@@ -235,6 +238,9 @@ target_link_libraries(camera-operator-test PRIVATE
 
 target_link_libraries(camera-health-test PRIVATE
     argus::camera-monitor)
+
+target_link_libraries(camera-privacy-test PRIVATE
+    argus::camera-privacy)
 
 target_link_libraries(event-intelligence-test PRIVATE
     argus::camera-operator)

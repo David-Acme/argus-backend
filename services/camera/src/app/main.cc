@@ -42,6 +42,7 @@
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <feature/camera/services/camera-feature-service.hxx>
+#include <shared/services/privacy/camera-audio-policy.hxx>
 #include <shared/services/stream/stream-hub.hxx>
 #include <runtime/blocking-task.hxx>
 #include <settings/settings-rpc.hxx>
@@ -57,6 +58,7 @@
 
 namespace
 {
+constexpr double kAudioPolicyRefreshSeconds = 15.0;
 
 Json::Value drogonConfig(const CameraDbConfig& cameraDb,
                          const ListenerConfig& listener)
@@ -376,6 +378,27 @@ int main()
     drogon::app().registerBeginningAdvice(
         [&sessionRevocations]() { sessionRevocations.start(); });
   }
+
+  const IdentityConfig privacyIdentity = operator_config::resolveIdentity();
+  std::shared_ptr<const IdentityClient> privacyClient;
+  if (!privacyIdentity.target.empty())
+    privacyClient = std::make_shared<IdentityClient>(privacyIdentity.target,
+                                                     privacyIdentity.rpcSecret);
+  else
+    LOG_WARN << "Camera audio withheld: no identity target to read the "
+                "household's privacy choices from";
+  CameraAudioPolicy::instance().onChange(
+      [](bool) { StreamHub::instance().restartUpstreams(); });
+  drogon::app().registerBeginningAdvice([privacyClient]() {
+    drogon::async_run([privacyClient]() {
+      return CameraAudioPolicy::instance().refreshFrom(privacyClient);
+    });
+    drogon::app().getLoop()->runEvery(kAudioPolicyRefreshSeconds, [privacyClient]() {
+      drogon::async_run([privacyClient]() {
+        return CameraAudioPolicy::instance().refreshFrom(privacyClient);
+      });
+    });
+  });
 
   std::unique_ptr<MdnsService> mdnsService;
   drogon::app().registerBeginningAdvice([&mdnsService, &listener]() {

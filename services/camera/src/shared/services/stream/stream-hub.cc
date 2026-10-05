@@ -8,6 +8,7 @@
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/upstream-http.hxx>
 #include <shared/services/stream/ws-frame.hxx>
+#include <shared/services/privacy/camera-audio-policy.hxx>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -128,7 +129,9 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
 {
   const auto [host, port] = upstream_http::splitHostPort(
       Go2rtcManager::instance().apiBase().substr(7));
-  const std::string path = "/api/stream.mp4?src=" + up->name + "&mp4=flac";
+  const std::string path =
+      "/api/stream.mp4?src=" + up->name +
+      (CameraAudioPolicy::instance().allowed() ? "&mp4=flac" : "&video");
 
   upstream_http::Upstream conn =
       upstream_http::open({.host = host, .port = port, .path = path,
@@ -273,6 +276,13 @@ void StreamHub::shutdown()
   subToUpstream_.clear();
 }
 
+void StreamHub::restartUpstreams()
+{
+  std::scoped_lock lock(hubMutex_);
+  for (auto& [name, up] : upstreams_)
+    up->stopping.store(true, std::memory_order_release);
+}
+
 std::shared_ptr<StreamHub::Upstream>
 StreamHub::getOrOpen(const SubscribeInput& input, std::string& error)
 {
@@ -285,7 +295,8 @@ StreamHub::getOrOpen(const SubscribeInput& input, std::string& error)
   std::scoped_lock lock(hubMutex_);
   auto it = upstreams_.find(name);
   if (it != upstreams_.end()) {
-    if (!it->second->dead.load(std::memory_order_acquire))
+    if (!it->second->dead.load(std::memory_order_acquire) &&
+        !it->second->stopping.load(std::memory_order_acquire))
       return it->second;
     if (it->second->reader.joinable())
       it->second->reader.join();

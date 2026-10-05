@@ -12,6 +12,7 @@ argus_module(NAME camera-stream
     INCLUDES
         ../../..
     DEPENDS
+        argus::camera-privacy
         argus::camera-repositories
         argus::lib::config
         argus::lib::text

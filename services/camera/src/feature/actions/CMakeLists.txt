@@ -9,6 +9,7 @@ argus_module(NAME camera-actions
     DEPENDS
         argus::camera-control
         argus::camera-driver
+        argus::camera-privacy
         argus::camera-repositories
         argus::camera-stream
         argus::clients::camera-actions
