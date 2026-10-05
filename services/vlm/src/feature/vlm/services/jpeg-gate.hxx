@@ -26,8 +26,8 @@ struct DecodedJpeg
   JpegRefusal refusal{JpegRefusal::None};
 };
 
-inline constexpr int kMaxJpegSide = 8192;
-inline constexpr std::int64_t kMaxJpegPixels = std::int64_t{7680} * 4320;
+inline constexpr int kMaxJpegSide = 4096;
+inline constexpr std::int64_t kMaxJpegPixels = std::int64_t{kMaxJpegSide} * kMaxJpegSide;
 
 [[nodiscard]] std::optional<JpegSize> jpegSize(std::string_view bytes);
 

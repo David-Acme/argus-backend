@@ -74,5 +74,9 @@ TEST_CASE("a header that declares a huge frame is refused without decoding")
   CHECK(size.value_or(JpegSize{.width = 0, .height = 0}).width == 30000);
   CHECK(decodeCameraJpeg(bomb).refusal == JpegRefusal::TooLarge);
   CHECK(decodeCameraJpeg(forgedHeader({.width = 8000, .height = 8000})).refusal == JpegRefusal::TooLarge);
+  CHECK(decodeCameraJpeg(forgedHeader({.width = 4097, .height = 64})).refusal == JpegRefusal::TooLarge);
+  CHECK(decodeCameraJpeg(forgedHeader({.width = 64, .height = 4097})).refusal == JpegRefusal::TooLarge);
+  CHECK(decodeCameraJpeg(forgedHeader({.width = 4096, .height = 4096})).refusal == JpegRefusal::Undecodable);
+  CHECK(decodeCameraJpeg(forgedHeader({.width = 3840, .height = 2160})).refusal == JpegRefusal::Undecodable);
   CHECK(decodeCameraJpeg(forgedHeader({.width = 64, .height = 64})).refusal == JpegRefusal::Undecodable);
 }

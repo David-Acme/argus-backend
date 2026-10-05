@@ -210,8 +210,11 @@ leg, including the base64 upload and the JPEG decode.
   (`feature/vlm/services/jpeg-gate.{hxx,cc}`): the bytes must start a JPEG
   (anything else is "not a JPEG image", 422 on HTTP, 400
   `IMAGE_NOT_DECODABLE` on gRPC), the frame size is read from the SOF
-  header before any pixel is decoded, and a side over 8192 or more than
-  7680×4320 pixels is refused ("image dimensions are too large"). `main.cc`
+  header before any pixel is decoded, and a side over 4096 or more than
+  4096×4096 pixels (16.7 Mpx, about 50 MB of BGR) is refused ("image
+  dimensions are too large"). Camera frames are at most 4K (3840×2160), so
+  the budget leaves a margin without letting a forged header reserve the
+  hundreds of megabytes an 8K frame would. `main.cc`
   also sets `OPENCV_IO_MAX_IMAGE_PIXELS` to that budget before anything
   decodes, as a second fence inside OpenCV.
 
