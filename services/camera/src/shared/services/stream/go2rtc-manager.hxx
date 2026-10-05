@@ -20,6 +20,20 @@ struct Go2rtcSourceChange
   std::vector<std::string> removals;
 };
 
+struct Go2rtcWebRtc
+{
+  std::string listen;
+  std::vector<std::string> candidates;
+};
+
+struct Go2rtcConfigInput
+{
+  std::string api;
+  std::string rtsp;
+  Go2rtcWebRtc webrtc;
+  const std::vector<Go2rtcSource>& sources;
+};
+
 struct Go2rtcStatus
 {
   bool running{false};
@@ -47,14 +61,21 @@ public:
   Go2rtcStatus status();
 
   bool applySources(const Go2rtcSourceChange& change);
+  bool restart();
+
+  [[nodiscard]] bool webrtcEnabled() const;
 
   std::string apiBase();
   std::string rtspBase();
   static std::string sourceName(int64_t cameraId, CameraStream stream);
   static std::string sourceFor(int64_t cameraId, CameraStreamRole role);
+  static std::string opusAudioSource(const std::string& source);
 
   static bool isSafeName(const std::string& name);
   static bool isSafeUrl(const std::string& url);
+  static bool isSafeListen(const std::string& listen);
+  static bool isSafeCandidate(const std::string& candidate);
+  static std::string renderConfig(const Go2rtcConfigInput& input);
 
   bool healthCheck();
   bool waitReady(int maxMs);
@@ -66,6 +87,7 @@ private:
   void supervise();
   void setError(std::string error);
   bool merge(const Go2rtcSourceChange& change);
+  bool respawn();
 
   std::vector<Go2rtcSource> sources_;
   std::mutex mutex_;
@@ -79,6 +101,8 @@ private:
   std::string configPath_;
   std::string apiAddr_;
   std::string rtspAddr_;
+  Go2rtcWebRtc webrtc_;
+  std::atomic<bool> webrtcOn_{false};
 
   int maxRestarts_ = 8;
 };

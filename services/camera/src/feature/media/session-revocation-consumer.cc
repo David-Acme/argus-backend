@@ -118,6 +118,8 @@ void SessionRevocationConsumer::handle(const NatsBus::DurableMessage& message,
     return;
   }
   const std::size_t closed = dependencies_.sessions->closeSession(*session);
+  if (dependencies_.onRevoked)
+    dependencies_.onRevoked(*session);
   if (closed > 0)
     LOG_INFO << "Media session revocations: closed " << closed
              << " live view(s) of a revoked session of user " << session->userId;

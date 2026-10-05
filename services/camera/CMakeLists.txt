@@ -154,6 +154,7 @@ argus_service(NAME argus-camera
         argus::camera-actions
         argus::camera-feature
         argus::camera-control
+        argus::camera-webrtc
         argus::camera-zone
         argus::camera-media
         argus::camera-health
@@ -190,6 +191,7 @@ set(CAMERA_UNIT_TESTS
     camera-media-session-test
     camera-change-transaction-test
     camera-privacy-test
+    camera-webrtc-test
 )
 
 foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
@@ -241,6 +243,10 @@ target_link_libraries(camera-health-test PRIVATE
 
 target_link_libraries(camera-privacy-test PRIVATE
     argus::camera-privacy)
+
+target_link_libraries(camera-webrtc-test PRIVATE
+    argus::camera-webrtc
+    argus::camera-stream)
 
 target_link_libraries(event-intelligence-test PRIVATE
     argus::camera-operator)

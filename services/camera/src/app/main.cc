@@ -8,6 +8,8 @@
 #include <feature/camera-control/controllers/camera-control-controller.hxx>
 #include <feature/camera/controllers/camera-controller.hxx>
 #include <feature/zone/controllers/zone-controller.hxx>
+#include <feature/webrtc/controllers/camera-webrtc-controller.hxx>
+#include <feature/webrtc/services/webrtc-session-closer.hxx>
 #include <feature/actions/camera-action-rpc-service.hxx>
 #include <feature/health/health-rpc-service.hxx>
 #include <feature/settings/camera-settings.hxx>
@@ -77,7 +79,7 @@ Json::Value drogonConfig(const CameraDbConfig& cameraDb,
   client["number_of_connections"] = 1;
   client["timeout"] = -1.0;
   clients.append(client);
-  config["db_clients"] = clients;
+  config["db_clients"] = std::move(clients);
 
   config["listeners"] = listenerJson(listener);
 
@@ -182,6 +184,7 @@ int main()
   drogon::app().registerController(std::make_shared<CameraController>());
   drogon::app().registerController(std::make_shared<ZoneController>());
   drogon::app().registerController(std::make_shared<CameraControlController>());
+  drogon::app().registerController(std::make_shared<CameraWebRtcController>());
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
@@ -242,8 +245,18 @@ int main()
                      .publishSubject = {}});
     static_cast<void>(camera_event_stream::ensure(natsBus, {}));
   }
+  const WebRtcSessionCloser webrtcSessions{};
   SessionRevocationConsumer sessionRevocations(
-      {.bus = natsBus, .sessions = &mediaSessions},
+      {.bus = natsBus,
+       .sessions = &mediaSessions,
+       .onRevoked =
+           [&webrtcSessions](const MediaSessionKey& session) {
+             drogon::app().getLoop()->queueInLoop(
+                 [closer = &webrtcSessions,
+                  viewer = WebRtcViewer{.userId = session.userId, .sessionId = session.sessionId}]() {
+                   drogon::async_run([closer, viewer]() { return closer->closeViewer(viewer); });
+                 });
+           }},
       SessionRevocationConsumer::defaults());
 
   const ObjectsConfig objectsConfig = operator_config::resolveObjects();
@@ -391,8 +404,12 @@ int main()
   else
     LOG_WARN << "Camera audio withheld: no identity target to read the "
                 "household's privacy choices from";
-  CameraAudioPolicy::instance().onChange(
-      [](bool) { StreamHub::instance().restartUpstreams(); });
+  CameraAudioPolicy::instance().onChange([&webrtcSessions](bool) {
+    StreamHub::instance().restartUpstreams();
+    drogon::app().getLoop()->queueInLoop([closer = &webrtcSessions]() {
+      drogon::async_run([closer]() { return closer->closeAll(); });
+    });
+  });
   drogon::app().registerBeginningAdvice([privacyClient]() {
     drogon::async_run([privacyClient]() {
       return CameraAudioPolicy::instance().refreshFrom(privacyClient);

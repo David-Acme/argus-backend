@@ -28,6 +28,7 @@ camera	PATCH	/camera/{1}/settings	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFil
 camera	GET	/camera/{1}/snapshot	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	GET	/camera/{1}/status	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	POST	/camera/{1}/talk	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
+camera	POST	/camera/{1}/webrtc	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/webrtc/controllers/camera-webrtc-controller.hxx
 camera	WS	/media	DeviceFilter,JwtFilter	-	services/camera/src/feature/media/camera-media-socket.hxx
 camera	POST	/zone	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/zone/controllers/zone-controller.hxx
 camera	DELETE	/zone/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/zone/controllers/zone-controller.hxx

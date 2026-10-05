@@ -136,6 +136,8 @@ services:
     ports:
       - "${CAMERA_PORT:-7026}:7026"
       - "127.0.0.1:${CAMERA_GRPC_PORT:-7036}:7036"
+      - "${CAMERA_WEBRTC_PORT:-8555}:8555/tcp"
+      - "${CAMERA_WEBRTC_PORT:-8555}:8555/udp"
     devices:
       - /dev/dri:/dev/dri
     entrypoint: ["/opt/argus/argus-camera"]

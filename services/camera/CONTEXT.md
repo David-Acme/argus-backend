@@ -1367,3 +1367,99 @@ the matcher calls `IdentityClient::identifyForCamera` with the camera id and
 the time of the sighting, and identity decides whether a face is a household
 member, a known visitor or a new one (`services/identity/CONTEXT.md`, "Recurring
 visitors").
+
+## The live view prefers WebRTC, and the /media socket is its fallback (2026-10-05, CAMRTC)
+
+The owner asked that the live view always try WebRTC first and fall back to
+the `/media` WebSocket only when WebRTC cannot be established or drops for
+good. The media path is go2rtc's own WebRTC server; argus-camera only carries
+the signalling, so the decision about who may watch stays where every other
+camera route decides it.
+
+- **Signalling: `POST /camera/{id}/webrtc`** (`feature/webrtc`), full chain
+  `DeviceFilter → ValidJsonFilter → JwtFilter → RoleFilter`. The body is
+  `{sdp, quality?}` (`quality` is `main` or `sub`, default the LiveView
+  role's `main`); the answer is `{type: "answer", sdp, quality, audio}`. It is
+  one non-trickle exchange: go2rtc's `POST /api/webrtc?src=` (WHEP,
+  `application/sdp`) gathers its own candidates before answering, and learns
+  the viewer's address from its first STUN check, so the client never sends
+  candidates. The exchange goes through `Go2rtcWebRtcGateway`
+  (`feature/webrtc/infra`), the only code that speaks to go2rtc's WebRTC API,
+  on its loopback address; the API itself is never published. Who may call
+  it is `CameraAction::Watch` in `kCameraActionAccess` (every role, because
+  every role reads `camera` and may already open `/media`): without the row
+  a POST would read as `camera` + Create and refuse Guard and Guest.
+- **The offer is rewritten before go2rtc sees it** (`webrtc_sdp::prepareOffer`).
+  Every audio/video section is forced to `recvonly`, because go2rtc treats an
+  offer that sends video as a publisher and would add it as a *producer* of
+  `cam<id>`, which every other viewer and the operator read. An offer with no
+  video section, more than eight sections or a line that is not SDP is a 400
+  (`InvalidWebRtcOffer`). While `CameraAudioPolicy` withholds audio, the audio
+  section becomes `inactive`: go2rtc creates no transceiver for it and the
+  answer carries no audio, the same rule the fMP4 upstream follows.
+- **The answer gives the camera's audio its own stream id**
+  (`webrtc_sdp::separateAudio`). go2rtc puts both tracks in stream `go2rtc`,
+  so the browser lip-syncs them, and the C225's audio timing made Chrome hold
+  the picture back: measured on Patio (main, 2688×1520), the video jitter
+  buffer grew from ~150 ms to 520–630 ms within 30 s with audio in the same
+  stream, ~100–150 ms with the video alone, and 84–116 ms with the audio
+  renamed to `go2rtc-audio` while still playing. The fMP4 path never synced
+  the two either (its audio is scheduled on its own clock).
+- **go2rtc's config** (`Go2rtcManager::renderConfig`): `webrtc.listen` from
+  `[streaming] webrtc_listen` (default `:8555`, tcp and udp; empty or not
+  `host:port` turns WebRTC off and the route answers 503
+  `webrtc_unavailable`), `ice_servers: []` so nothing asks a public STUN
+  server and the answer is not held for a server-reflexive candidate, and
+  `candidates` from `[streaming] webrtc_candidates` (comma-separated
+  `host[:port]` or `stun:port`, each checked before it reaches the YAML).
+  Natively go2rtc offers a host candidate per interface and drops Docker
+  bridge addresses itself; in the deploy container that leaves nothing a
+  phone can reach, so `provision-host.sh` writes the host's LAN address
+  (`<lan>:8555`) into `config.camera.toml` beside `mdns.address`, and the
+  compose file publishes `${CAMERA_WEBRTC_PORT:-8555}` tcp+udp.
+- **Codecs.** H.264 passes through untouched (`profile-level-id` as the
+  camera sends it). The C225 sends PCMA 8 kHz on both streams (go2rtc
+  `/api/streams`), which browsers and libwebrtc decode natively, so it is
+  passed through too. For a camera whose audio is AAC (`MPEG4-GENERIC`),
+  WebRTC has no decoder; the config therefore also declares, for every
+  source, an on-demand `cam<id>[-sub]-opus: ffmpeg:<source>#video=copy#audio=opus`
+  variant, and the service picks it only when the warm sub producer reports
+  AAC and audio is allowed. It costs nothing until someone watches it.
+  Measured with a scratch go2rtc reading the sandbox restream: passthrough
+  costs go2rtc ~0.8–1.0% of one core per viewer; the Opus variant adds an
+  ffmpeg process at ~1.0% of a core and 52 MB RSS, and its first frame came at
+  2.5 s instead of 1.2–1.9 s.
+- **Limits.** WebRTC viewers count against `streaming.max_viewers_per_camera`
+  and `streaming.max_total_viewers` together with the hub's: the service
+  counts go2rtc's `webrtc/*` consumers of the camera's four source names
+  (`CameraWebRtcService::tally`) and refuses with the same 429
+  `too_many_viewers[_for_camera]`. A `main` viewer adds the same single
+  camera pull a `/media` viewer adds, so the camera's three-connection budget
+  is unchanged.
+- **A revoked session's view still closes with it.** go2rtc has no API to
+  close one consumer, so each exchange is tagged: the User-Agent sent to
+  go2rtc is `argus-camera/webrtc <32 hex of SHA-256(userId:sessionId)>`
+  (`webrtc_viewer::tagOf`, no session id on go2rtc's API). On a
+  `disconnect_session` event the media consumer's new `onRevoked` hook asks
+  `WebRtcSessionCloser` to look for a consumer with that tag and, only if one
+  exists, restart go2rtc (`Go2rtcManager::restart`, off the event loop). The
+  same closer runs when the household's audio choice flips, if any WebRTC
+  viewer is open, so a stream that carried audio cannot outlive a "no".
+  Every other viewer reconnects by itself (the app retries WebRTC once, the
+  hub's viewers resubscribe on `camera:closed`). Measured live: a synthetic
+  revocation for a tagged consumer restarted go2rtc within 0.3 s and the
+  browser's peer went `disconnected` 5 s later.
+- **Measured on the sandbox** (headless Chromium, the app's own live service
+  bundled with a fetch shim, Patio C225): first picture over WebRTC 0.28–1.1 s
+  after the offer (go2rtc starts a WebRTC consumer on the next keyframe),
+  2688×1520 at 15 fps, PCMA audio; signalling round trip 60–200 ms. The fMP4
+  path's first picture stays ~0.1 s on a warm camera (it replays the GOP);
+  its receive side decodes on arrival with no jitter buffer, where WebRTC
+  keeps the ~100 ms above in exchange for loss recovery (NACK/PLI) and
+  congestion control.
+- **Remote viewers (tunnel): no TURN.** The answer carries only LAN host
+  candidates, so a viewer outside the LAN cannot complete ICE; the app gives
+  WebRTC 5 s to paint a frame, then plays `/media` through the tunnel as
+  before, and backs off before trying WebRTC again (30 s doubling to 5 min).
+  Making WebRTC work remotely needs a TURN relay (or the tunnel carrying
+  UDP); that is not built.

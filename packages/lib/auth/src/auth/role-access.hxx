@@ -118,7 +118,8 @@ inline constexpr std::array<GuardRouteAccess, 13> kGuardAccess = {{
 
 enum class CameraAction : std::uint8_t
 {
-  Talk = 0
+  Talk = 0,
+  Watch
 };
 
 struct CameraActionAccess
@@ -129,8 +130,9 @@ struct CameraActionAccess
   std::uint8_t roles;
 };
 
-inline constexpr std::array<CameraActionAccess, 1> kCameraActionAccess = {{
+inline constexpr std::array<CameraActionAccess, 2> kCameraActionAccess = {{
     {.action = CameraAction::Talk, .segment = "talk", .method = drogon::Post, .roles = kResidentAndGuard},
+    {.action = CameraAction::Watch, .segment = "webrtc", .method = drogon::Post, .roles = kResidentGuardGuest},
 }};
 
 inline bool hasCameraAction(UserRole role, CameraAction action)

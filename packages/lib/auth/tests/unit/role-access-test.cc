@@ -401,6 +401,24 @@ TEST_CASE("talking through a camera is open to the owner, residents and guards, 
   CHECK(allows(UserRole::Resident, "/camera/12/ptz", drogon::Patch));
 }
 
+TEST_CASE("every role that sees a camera may watch it over WebRTC, and only by POST")
+{
+  const auto allows = [](UserRole role, std::string_view path, drogon::HttpMethod method) {
+    return role_access::hasHttpAccess({.role = role, .path = path, .method = method});
+  };
+  for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CAPTURE(userRoleToString(role));
+    CHECK(role_access::hasCameraAction(role, role_access::CameraAction::Watch));
+    CHECK(allows(role, "/camera/6/webrtc", drogon::Post));
+  }
+  for (const UserRole role : {UserRole::Guard, UserRole::Guest}) {
+    CAPTURE(userRoleToString(role));
+    CHECK_FALSE(allows(role, "/camera/6/webrtc", drogon::Delete));
+    CHECK_FALSE(allows(role, "/camera/6/webrtc/x", drogon::Post));
+    CHECK_FALSE(allows(role, "/camera/x/webrtc", drogon::Post));
+  }
+}
+
 TEST_CASE("every role may ask for a realtime call token, and only by POST")
 {
   for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest})

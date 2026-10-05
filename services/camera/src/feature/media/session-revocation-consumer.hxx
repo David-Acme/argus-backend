@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -16,6 +17,7 @@ public:
   {
     std::shared_ptr<NatsBus> bus;
     MediaSessionRegistry* sessions{nullptr};
+    std::function<void(const MediaSessionKey&)> onRevoked;
   };
 
   struct Config

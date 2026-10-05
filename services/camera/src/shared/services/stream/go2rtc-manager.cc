@@ -1,6 +1,8 @@
 #include "go2rtc-manager.hxx"
 
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <arpa/inet.h>
 #include <cerrno>
 #include <csignal>
@@ -10,7 +12,9 @@
 #include <drogon/drogon.h>
 #include <fcntl.h>
 #include <sstream>
+#include <ranges>
 #include <string_view>
+#include <vector>
 #include <netinet/in.h>
 #include <config/config-service.hxx>
 #include <shared/utils/network-address/private-address.hxx>
@@ -28,7 +32,10 @@ constexpr const char* kDefaultBin = "third_party/go2rtc/go2rtc";
 constexpr const char* kDefaultConfig = "go2rtc.yaml";
 constexpr const char* kDefaultApi = "127.0.0.1:1984";
 constexpr const char* kDefaultRtsp = "127.0.0.1:8554";
+constexpr const char* kDefaultWebRtcListen = ":8555";
 constexpr const char* kSubStreamSuffix = "-sub";
+constexpr const char* kOpusAudioSuffix = "-opus";
+constexpr size_t kMaxListenBytes = 64;
 constexpr auto kHealthyResetAfter = std::chrono::seconds(60);
 
 struct PrivateFile
@@ -61,6 +68,46 @@ bool writePrivateFile(const PrivateFile& file)
   return ::rename(staging.c_str(), file.path.c_str()) == 0;
 }
 
+int portOf(std::string_view digits)
+{
+  int port = 0;
+  if (digits.empty() || digits.size() > 5)
+    return 0;
+  const auto [end, error] = std::from_chars(digits.data(), digits.data() + digits.size(), port);
+  if (error != std::errc{} || end != digits.data() + digits.size())
+    return 0;
+  return port <= 65535 ? port : 0;
+}
+
+bool isPort(std::string_view digits)
+{
+  return portOf(digits) > 0;
+}
+
+bool isAddressCharacter(unsigned char c)
+{
+  return std::isalnum(c) != 0 || c == '.' || c == ':' || c == '[' || c == ']' || c == '-';
+}
+
+std::vector<std::string> splitList(std::string_view list)
+{
+  std::vector<std::string> items;
+  while (!list.empty()) {
+    const auto comma = list.find(',');
+    std::string_view item = list.substr(0, comma);
+    while (!item.empty() && std::isspace(static_cast<unsigned char>(item.front())) != 0)
+      item.remove_prefix(1);
+    while (!item.empty() && std::isspace(static_cast<unsigned char>(item.back())) != 0)
+      item.remove_suffix(1);
+    if (!item.empty())
+      items.emplace_back(item);
+    if (comma == std::string_view::npos)
+      break;
+    list.remove_prefix(comma + 1);
+  }
+  return items;
+}
+
 std::string authorityHost(std::string_view url)
 {
   const auto scheme = url.find("://");
@@ -82,7 +129,7 @@ std::string authorityHost(std::string_view url)
 
 Go2rtcManager::Go2rtcManager()
     : binPath_(kDefaultBin), configPath_(kDefaultConfig), apiAddr_(kDefaultApi),
-      rtspAddr_(kDefaultRtsp)
+      rtspAddr_(kDefaultRtsp), webrtc_{.listen = kDefaultWebRtcListen, .candidates = {}}
 {
 }
 
@@ -101,7 +148,7 @@ bool Go2rtcManager::isSafeName(const std::string& name)
 {
   if (name.empty() || name.size() > 64)
     return false;
-  return std::all_of(name.begin(), name.end(), [](unsigned char c) {
+  return std::ranges::all_of(name, [](unsigned char c) {
     return std::isalnum(c) != 0 || c == '_' || c == '-';
   });
 }
@@ -110,8 +157,8 @@ bool Go2rtcManager::isSafeUrl(const std::string& url)
 {
   if (url.empty() || url.size() > 512)
     return false;
-  if (url.rfind("rtsp://", 0) != 0 && url.rfind("tapo://", 0) != 0 &&
-      url.rfind("http://", 0) != 0)
+  if (!url.starts_with("rtsp://") && !url.starts_with("tapo://") &&
+      !url.starts_with("http://"))
     return false;
   for (unsigned char c : url) {
     if (c < 0x20 || c == 0x7F)
@@ -122,6 +169,72 @@ bool Go2rtcManager::isSafeUrl(const std::string& url)
   }
 
   return network_address::isPrivate(authorityHost(url));
+}
+
+bool Go2rtcManager::isSafeListen(const std::string& listen)
+{
+  if (listen.empty() || listen.size() > kMaxListenBytes)
+    return false;
+  const auto colon = listen.rfind(':');
+  if (colon == std::string::npos)
+    return false;
+  const std::string_view host = std::string_view(listen).substr(0, colon);
+  return std::ranges::all_of(host, isAddressCharacter) &&
+         isPort(std::string_view(listen).substr(colon + 1));
+}
+
+bool Go2rtcManager::isSafeCandidate(const std::string& candidate)
+{
+  if (candidate.empty() || candidate.size() > kMaxListenBytes ||
+      !std::ranges::all_of(candidate, isAddressCharacter))
+    return false;
+  const auto colon = candidate.rfind(':');
+  const auto bracket = candidate.rfind(']');
+  const bool hasPort = colon != std::string::npos &&
+                       (bracket == std::string::npos || colon > bracket);
+  return !hasPort || isPort(std::string_view(candidate).substr(colon + 1));
+}
+
+std::string Go2rtcManager::renderConfig(const Go2rtcConfigInput& input)
+{
+  const bool webrtc = isSafeListen(input.webrtc.listen);
+  std::ostringstream out;
+  out << "api:\n";
+  out << "  listen: \"" << input.api << "\"\n";
+  out << "rtsp:\n";
+  out << "  listen: \"" << input.rtsp << "\"\n";
+  out << "webrtc:\n";
+  out << "  listen: \"" << (webrtc ? input.webrtc.listen : std::string()) << "\"\n";
+  if (webrtc) {
+    out << "  ice_servers: []\n";
+    auto safe = input.webrtc.candidates | std::views::filter(isSafeCandidate);
+    if (!std::ranges::empty(safe)) {
+      out << "  candidates:\n";
+      for (const auto& candidate : safe)
+        out << "    - " << candidate << "\n";
+    }
+  }
+  out << "log:\n";
+  out << "  level: info\n";
+  out << "streams:\n";
+  const auto isServed = [](const Go2rtcSource& s) {
+    return isSafeName(s.name) && isSafeUrl(s.url);
+  };
+  for (const auto& s : input.sources | std::views::filter(isServed)) {
+    out << "  " << s.name << ": " << s.url << "\n";
+    if (webrtc)
+      out << "  " << opusAudioSource(s.name) << ": ffmpeg:" << s.name
+          << "#video=copy#audio=opus\n";
+  }
+  const auto isWarmStream = [&isServed](const Go2rtcSource& s) {
+    return s.preload && isServed(s);
+  };
+  if (std::ranges::any_of(input.sources, isWarmStream)) {
+    out << "preload:\n";
+    for (const auto& s : input.sources | std::views::filter(isWarmStream))
+      out << "  " << s.name << ":\n";
+  }
+  return out.str();
 }
 
 std::string Go2rtcManager::apiBase()
@@ -147,35 +260,18 @@ std::string Go2rtcManager::sourceFor(int64_t cameraId, CameraStreamRole role)
   return sourceName(cameraId, camera_stream_role::streamFor(role));
 }
 
+std::string Go2rtcManager::opusAudioSource(const std::string& source)
+{
+  return source + kOpusAudioSuffix;
+}
+
 bool Go2rtcManager::writeConfig()
 {
-  std::ostringstream out;
-  out << "api:\n";
-  out << "  listen: \"" << apiAddr_ << "\"\n";
-  out << "rtsp:\n";
-  out << "  listen: \"" << rtspAddr_ << "\"\n";
-  out << "webrtc:\n";
-  out << "  listen: \"\"\n";
-  out << "log:\n";
-  out << "  level: info\n";
-  out << "streams:\n";
-  for (const auto& s : sources_) {
-    if (!isSafeName(s.name) || !isSafeUrl(s.url))
-      continue;
-    out << "  " << s.name << ": " << s.url << "\n";
-  }
-  const auto isWarmStream = [](const Go2rtcSource& s) {
-    return s.preload && isSafeName(s.name) && isSafeUrl(s.url);
-  };
-  if (std::ranges::any_of(sources_, isWarmStream)) {
-    out << "preload:\n";
-    for (const auto& s : sources_) {
-      if (isWarmStream(s))
-        out << "  " << s.name << ":\n";
-    }
-  }
-
-  if (!writePrivateFile({.path = configPath_, .contents = out.str()})) {
+  const std::string contents = renderConfig({.api = apiAddr_,
+                                             .rtsp = rtspAddr_,
+                                             .webrtc = webrtc_,
+                                             .sources = sources_});
+  if (!writePrivateFile({.path = configPath_, .contents = contents})) {
     setError("cannot write " + configPath_);
     return false;
   }
@@ -206,9 +302,9 @@ bool Go2rtcManager::spawn()
       ::dup2(logFd, STDERR_FILENO);
       ::close(logFd);
     }
-    const char* argv[] = {binPath_.c_str(), "-config", configPath_.c_str(),
-                          nullptr};
-    ::execv(binPath_.c_str(), const_cast<char* const*>(argv));
+    const std::array<const char*, 4> argv{binPath_.c_str(), "-config",
+                                          configPath_.c_str(), nullptr};
+    ::execv(binPath_.c_str(), const_cast<char* const*>(argv.data()));
     ::_exit(127);
   }
 
@@ -255,7 +351,7 @@ bool Go2rtcManager::healthCheck()
 
   const auto colon = apiAddr_.find(':');
   const std::string host = apiAddr_.substr(0, colon);
-  const int port = std::atoi(apiAddr_.c_str() + colon + 1);
+  const int port = colon == std::string::npos ? 0 : portOf(std::string_view(apiAddr_).substr(colon + 1));
 
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
@@ -326,7 +422,7 @@ void Go2rtcManager::supervise()
 
 void Go2rtcManager::init()
 {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
 
   if (const auto v = ConfigService::getString("streaming.go2rtc_bin");
       !v.empty())
@@ -342,6 +438,12 @@ void Go2rtcManager::init()
     rtspAddr_ = v;
   if (const int v = ConfigService::getInt("streaming.max_restarts"); v > 0)
     maxRestarts_ = v;
+  if (ConfigService::hasKey("streaming.webrtc_listen"))
+    webrtc_.listen = ConfigService::getString("streaming.webrtc_listen");
+  webrtc_.candidates = splitList(ConfigService::getString("streaming.webrtc_candidates"));
+  if (!webrtc_.listen.empty() && !isSafeListen(webrtc_.listen))
+    LOG_WARN << "Go2rtc: streaming.webrtc_listen is not host:port; WebRTC stays off";
+  webrtcOn_.store(isSafeListen(webrtc_.listen), std::memory_order_release);
 
   stopping_.store(false, std::memory_order_relaxed);
   restarts_.store(0);
@@ -362,7 +464,7 @@ void Go2rtcManager::init()
 void Go2rtcManager::shutdown()
 {
   stopping_.store(true, std::memory_order_relaxed);
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   terminate();
   healthy_.store(false, std::memory_order_relaxed);
   LOG_INFO << "Go2rtc shutdown";
@@ -422,11 +524,8 @@ bool Go2rtcManager::merge(const Go2rtcSourceChange& change)
   return changed;
 }
 
-bool Go2rtcManager::applySources(const Go2rtcSourceChange& change)
+bool Go2rtcManager::respawn()
 {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (!merge(change))
-    return true;
   if (!writeConfig())
     return false;
   if (pid_ <= 0)
@@ -435,4 +534,23 @@ bool Go2rtcManager::applySources(const Go2rtcSourceChange& change)
   if (!spawn())
     return false;
   return waitReady(5000);
+}
+
+bool Go2rtcManager::applySources(const Go2rtcSourceChange& change)
+{
+  std::scoped_lock lock(mutex_);
+  if (!merge(change))
+    return true;
+  return respawn();
+}
+
+bool Go2rtcManager::restart()
+{
+  std::scoped_lock lock(mutex_);
+  return respawn();
+}
+
+bool Go2rtcManager::webrtcEnabled() const
+{
+  return webrtcOn_.load(std::memory_order_acquire);
 }

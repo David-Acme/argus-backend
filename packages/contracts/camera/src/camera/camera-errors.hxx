@@ -29,6 +29,14 @@ inline constexpr ErrorDefinition SubscribeFailed{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,
     .message = "subscribe_failed"};
+inline constexpr ErrorDefinition WebRtcUnavailable{
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 503,
+    .message = "webrtc_unavailable"};
+inline constexpr ErrorDefinition InvalidWebRtcOffer{
+    .code = ErrorCode::BadRequest,
+    .status = 400,
+    .message = "The offer must ask to receive the camera's video"};
 inline constexpr ErrorDefinition ZoneNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,

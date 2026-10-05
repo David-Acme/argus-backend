@@ -188,6 +188,14 @@ configure_mdns_address() {
   done
 }
 
+configure_webrtc_candidate() {
+  local address="$1" config="$DEPLOY_DIR/config.camera.toml"
+
+  [ -f "$config" ] || return 0
+  toml_key_exists "$config" streaming webrtc_candidates || return 0
+  replace_toml_value streaming webrtc_candidates "$address:${CAMERA_WEBRTC_PORT:-8555}" "$config"
+}
+
 ensure_secret_file() {
   local path="$1"
   local value="$2"
@@ -345,7 +353,8 @@ main() {
   lan_address="$(detect_lan_address)"
   if [ -n "$lan_address" ]; then
     configure_mdns_address "$lan_address"
-    log "mDNS announcements carry $lan_address (override with ARGUS_MDNS_ADDRESS)"
+    configure_webrtc_candidate "$lan_address"
+    log "mDNS announcements and the camera WebRTC candidate carry $lan_address (override with ARGUS_MDNS_ADDRESS)"
   else
     warn "No LAN address detected; set ARGUS_MDNS_ADDRESS and re-run, or the"
     warn "containers announce their own bridge interface and stay undiscoverable"

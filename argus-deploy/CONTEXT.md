@@ -620,6 +620,7 @@ service) are the next step and are not done.
 | 7103 plain | 127.0.0.1 (compose publish) | argus-relay `/health` (tunnel profile) |
 | 7104 plain | 127.0.0.1 (host network, container binds loopback) | argus-tunnel-client `/health` (tunnel profile) |
 | 1984 / 8554 | container loopback only | go2rtc spawned by argus-camera (Ruling AH — never published) |
+| 8555 tcp + udp | 0.0.0.0 (compose publish, `CAMERA_WEBRTC_PORT`) | go2rtc's WebRTC media listener (DTLS-SRTP only; its signalling is argus-camera's `POST /camera/{id}/webrtc`, the go2rtc API stays inside the container); `provision-host.sh` writes `<lan>:8555` into `[streaming] webrtc_candidates` |
 | 8800 | host | Tapo talk channel (camera-side, argus-camera `[tapo]`) |
 | 7034 gRPC + 7035 plain | 127.0.0.1 (compose publish) | argus-voice voice wire + `/health` (F6-3) |
 | 7036 gRPC | 127.0.0.1 (compose publish) | argus-camera camera-domain sync wire (F6-5) |
