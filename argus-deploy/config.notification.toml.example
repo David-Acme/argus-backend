@@ -53,7 +53,7 @@ lang = "es"
 
 [identity]
 target = "argus-identity:7040"
-rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+credential = "CHANGE_ME_NOTIFICATION_IDENTITY"
 
 [calls]
 enabled = true
@@ -64,7 +64,7 @@ scheduled_late_s = 900
 
 [sync]
 control_target = "argus-sync:7041"
-control_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+control_credential = "CHANGE_ME_NOTIFICATION_SYNC"
 
 [voice]
 target = "argus-voice:7034"
@@ -94,7 +94,7 @@ trusted_proxy_ips = ""
 
 [auth]
 target = "argus-auth:7043"
-rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+credential = "CHANGE_ME_NOTIFICATION_AUTH"
 
 [grpc]
 caller_guard = "CHANGE_ME_GUARD_NOTIFICATION"

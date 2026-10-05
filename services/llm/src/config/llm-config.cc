@@ -26,6 +26,7 @@ LlmRpcConfig LlmConfig::resolveRpc()
 LlmIdentityConfig LlmConfig::resolveIdentity()
 {
   return {.target = ConfigService::getString("identity.target"),
+          .credential = ConfigService::getString("identity.credential"),
           .rpcSecret = ConfigService::getString("identity.rpc_secret")};
 }
 

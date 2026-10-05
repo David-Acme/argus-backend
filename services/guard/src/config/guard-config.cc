@@ -153,10 +153,11 @@ GuardPeerConfig GuardConfig::resolveNotifications()
           .secret = ConfigService::getString("notifications.credential")};
 }
 
-GuardPeerConfig GuardConfig::resolveIdentity()
+GuardIdentityPeerConfig GuardConfig::resolveIdentity()
 {
   return {.target = ConfigService::getString("identity.target"),
-          .secret = ConfigService::getString("identity.rpc_secret")};
+          .credential = ConfigService::getString("identity.credential"),
+          .fleetSecret = ConfigService::getString("identity.rpc_secret")};
 }
 
 GuardPeerConfig GuardConfig::resolveActions()

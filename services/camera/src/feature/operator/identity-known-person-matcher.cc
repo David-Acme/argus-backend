@@ -67,8 +67,10 @@ PersonMatch observedAs(const ObservedAsInput& input)
 
 IdentityKnownPersonMatcher::IdentityKnownPersonMatcher(IdentityConfig config)
     : config_(std::move(config)),
-      client_(
-          std::make_unique<IdentityClient>(config_.target, config_.rpcSecret))
+      client_(std::make_unique<IdentityClient>(
+          config_.target,
+          argus::client::PeerCredential{.credential = config_.credential,
+                                        .fleetSecret = config_.rpcSecret}))
 {
 }
 

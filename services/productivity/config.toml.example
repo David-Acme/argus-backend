@@ -52,7 +52,7 @@ trusted_proxy_ips = ""
 
 [identity]
 target = "127.0.0.1:7040"
-rpc_secret = ""
+credential = ""
 
 [agenda]
 enabled = true
@@ -71,3 +71,6 @@ caller_sync = ""
 enabled = true
 name = "Argus"
 address = ""
+
+[auth]
+credential = ""

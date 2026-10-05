@@ -84,7 +84,7 @@ trusted_proxy_ips = ""
 
 [auth]
 target = "127.0.0.1:7043"
-rpc_secret = ""
+credential = ""
 
 [mdns]
 enabled = true

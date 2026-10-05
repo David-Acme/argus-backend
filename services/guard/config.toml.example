@@ -164,7 +164,7 @@ trusted_proxy_ips = ""
 
 [identity]
 target = "127.0.0.1:7040"
-rpc_secret = ""
+credential = ""
 
 [nats]
 url = "nats://127.0.0.1:4222"
@@ -173,3 +173,6 @@ url = "nats://127.0.0.1:4222"
 enabled = true
 name = "Argus"
 address = ""
+
+[auth]
+credential = ""

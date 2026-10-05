@@ -31,6 +31,7 @@ NotificationIdentityConfig NotificationConfig::resolveIdentity()
 {
   NotificationIdentityConfig config;
   config.target = ConfigService::getString("identity.target");
+  config.credential = ConfigService::getString("identity.credential");
   config.rpcSecret = ConfigService::getString("identity.rpc_secret");
   return config;
 }
@@ -67,6 +68,7 @@ int64_t NotificationConfig::resolveSelfTestIntervalS()
 NotificationSyncControlConfig NotificationConfig::resolveSyncControl()
 {
   return {.target = ConfigService::getString("sync.control_target"),
+          .credential = ConfigService::getString("sync.control_credential"),
           .secret = ConfigService::getString("sync.control_secret")};
 }
 

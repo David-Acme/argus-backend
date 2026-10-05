@@ -193,6 +193,7 @@ IdentityConfig operator_config::resolveIdentity()
   if (config.improveMargin <= 0)
     config.improveMargin = 0.15;
   config.target = ConfigService::getString("identity.target");
+  config.credential = ConfigService::getString("identity.credential");
   config.rpcSecret = ConfigService::getString("identity.rpc_secret");
   return config;
 }

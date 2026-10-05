@@ -31,6 +31,13 @@ struct GuardPeerConfig
   std::string secret;
 };
 
+struct GuardIdentityPeerConfig
+{
+  std::string target;
+  std::string credential;
+  std::string fleetSecret;
+};
+
 struct GuardAssessEndpoints
 {
   std::string vlmUrl;
@@ -149,7 +156,7 @@ public:
 
   [[nodiscard]] static GuardPeerConfig resolveNotifications();
 
-  [[nodiscard]] static GuardPeerConfig resolveIdentity();
+  [[nodiscard]] static GuardIdentityPeerConfig resolveIdentity();
 
   [[nodiscard]] static GuardPeerConfig resolveActions();
 

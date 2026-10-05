@@ -62,12 +62,15 @@ IVoiceSpeaker& voiceSpeaker()
 std::shared_ptr<const VoiceprintClient>
 GrpcVoiceSpeaker::clientFor(const std::string& target)
 {
+  const auto credential = ConfigService::getString("identity.credential");
   const auto secret = ConfigService::getString("identity.rpc_secret");
-  if (!client_ || target != cachedTarget_ || secret != cachedSecret_) {
+  if (!client_ || target != cachedTarget_ || credential != cachedCredential_ ||
+      secret != cachedSecret_) {
     cachedTarget_ = target;
+    cachedCredential_ = credential;
     cachedSecret_ = secret;
-    client_ = std::make_shared<VoiceprintClient>(
-        VoiceprintClientConfig{.target = target, .fleetSecret = secret});
+    client_ = std::make_shared<VoiceprintClient>(VoiceprintClientConfig{
+        .target = target, .credential = credential, .fleetSecret = secret});
   }
   return client_;
 }
@@ -120,11 +123,16 @@ void GrpcVoiceSpeaker::closeCall(const std::string& callKey)
 std::shared_ptr<const IdentityClient>
 GrpcVoiceIdentity::clientFor(const std::string& target)
 {
+  const auto credential = ConfigService::getString("identity.credential");
   const auto secret = ConfigService::getString("identity.rpc_secret");
-  if (!client_ || target != cachedTarget_ || secret != cachedSecret_) {
+  if (!client_ || target != cachedTarget_ || credential != cachedCredential_ ||
+      secret != cachedSecret_) {
     cachedTarget_ = target;
+    cachedCredential_ = credential;
     cachedSecret_ = secret;
-    client_ = std::make_shared<IdentityClient>(target, secret);
+    client_ = std::make_shared<IdentityClient>(
+        target, argus::client::PeerCredential{.credential = credential,
+                                              .fleetSecret = secret});
   }
   return client_;
 }

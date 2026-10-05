@@ -10,7 +10,7 @@ caller_notification = ""
 
 [identity]
 target = "127.0.0.1:7040"
-rpc_secret = ""
+credential = ""
 
 [rtc]
 enabled = true

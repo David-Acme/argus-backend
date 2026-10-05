@@ -16,12 +16,14 @@ struct NotificationDbConfig
 struct NotificationIdentityConfig
 {
   std::string target;
+  std::string credential;
   std::string rpcSecret;
 };
 
 struct NotificationSyncControlConfig
 {
   std::string target;
+  std::string credential;
   std::string secret;
 };
 

@@ -215,11 +215,13 @@ int main()
         NotificationClientConfig{.target = notificationsPeer.target,
                                  .credential = notificationsPeer.secret});
 
-  const GuardPeerConfig identityPeer = GuardConfig::resolveIdentity();
+  const GuardIdentityPeerConfig identityPeer = GuardConfig::resolveIdentity();
   std::unique_ptr<IdentityClient> identity;
   if (!identityPeer.target.empty())
-    identity = std::make_unique<IdentityClient>(identityPeer.target,
-                                                identityPeer.secret);
+    identity = std::make_unique<IdentityClient>(
+        identityPeer.target,
+        argus::client::PeerCredential{.credential = identityPeer.credential,
+                                      .fleetSecret = identityPeer.fleetSecret});
 
   const GuardPeerConfig actionsPeer = GuardConfig::resolveActions();
   std::unique_ptr<CameraActionClient> actions;

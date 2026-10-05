@@ -60,7 +60,9 @@ CatalogReplica::Snapshot fetchCatalogSnapshot()
   const LlmIdentityConfig identityConfig = LlmConfig::resolveIdentity();
   if (!identityConfig.target.empty()) {
     const IdentityClient client(
-        identityConfig.target, identityConfig.rpcSecret);
+        identityConfig.target,
+        argus::client::PeerCredential{.credential = identityConfig.credential,
+                                      .fleetSecret = identityConfig.rpcSecret});
     if (const auto persons = client.listPersons()) {
       for (const auto& person : persons->persons())
         snapshot.persons.push_back({.id = person.id(),
@@ -262,8 +264,11 @@ int main()
                   "empty";
     }
     else {
-      const IdentityClient identity(identityConfig.target,
-                                    identityConfig.rpcSecret);
+      const IdentityClient identity(
+          identityConfig.target,
+          argus::client::PeerCredential{
+              .credential = identityConfig.credential,
+              .fleetSecret = identityConfig.rpcSecret});
       int64_t ownerUserId = 0;
       std::string ownerLang = "es";
       if (const auto ids = identity.listNotifiableUsers();

@@ -17,6 +17,7 @@ struct LlmRpcConfig
 struct LlmIdentityConfig
 {
   std::string target;
+  std::string credential;
   std::string rpcSecret;
 };
 

@@ -78,7 +78,7 @@ max_tokens = 512
 
 [identity]
 target = "argus-identity:7040"
-rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+credential = "CHANGE_ME_LLM_IDENTITY"
 
 [camera]
 grpc_target = "argus-camera:7036"

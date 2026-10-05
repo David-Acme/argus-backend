@@ -10,7 +10,7 @@ caller_notification = "CHANGE_ME_NOTIFICATION_VOICE"
 
 [identity]
 target = "argus-identity:7040"
-rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+credential = "CHANGE_ME_VOICE_IDENTITY"
 
 [rtc]
 enabled = true

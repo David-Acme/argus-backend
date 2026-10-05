@@ -451,8 +451,10 @@ int main()
   const IdentityConfig privacyIdentity = operator_config::resolveIdentity();
   std::shared_ptr<const IdentityClient> privacyClient;
   if (!privacyIdentity.target.empty())
-    privacyClient = std::make_shared<IdentityClient>(privacyIdentity.target,
-                                                     privacyIdentity.rpcSecret);
+    privacyClient = std::make_shared<IdentityClient>(
+        privacyIdentity.target,
+        argus::client::PeerCredential{.credential = privacyIdentity.credential,
+                                      .fleetSecret = privacyIdentity.rpcSecret});
   else
     LOG_WARN << "Camera audio withheld: no identity target to read the "
                 "household's privacy choices from";

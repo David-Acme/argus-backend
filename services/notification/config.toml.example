@@ -61,11 +61,11 @@ retention_days = 30
 
 [identity]
 target = "127.0.0.1:7040"
-rpc_secret = ""
+credential = ""
 
 [sync]
 control_target = "127.0.0.1:7041"
-control_secret = ""
+control_credential = ""
 
 [voice]
 target = "127.0.0.1:7034"
@@ -101,3 +101,6 @@ enabled = false
 enabled = true
 name = "Argus"
 address = ""
+
+[auth]
+credential = ""

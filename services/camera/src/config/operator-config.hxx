@@ -54,6 +54,7 @@ struct IdentityConfig
   int64_t bestShotMs{10000};
   double improveMargin{0.15};
   std::string target;
+  std::string credential{};
   std::string rpcSecret;
 };
 

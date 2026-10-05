@@ -111,3 +111,6 @@ credential = ""
 [notifications]
 target = "127.0.0.1:7038"
 credential = ""
+
+[identity]
+credential = ""

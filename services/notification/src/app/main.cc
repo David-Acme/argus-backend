@@ -196,8 +196,10 @@ int main()
                 "greet nobody by name";
   }
   else {
-    identityClient = std::make_shared<IdentityClient>(identityConfig.target,
-                                                      identityConfig.rpcSecret);
+    identityClient = std::make_shared<IdentityClient>(
+        identityConfig.target,
+        argus::client::PeerCredential{.credential = identityConfig.credential,
+                                      .fleetSecret = identityConfig.rpcSecret});
   }
 
   std::shared_ptr<CameraObjectNotifier> cameraNotifier;
@@ -222,6 +224,7 @@ int main()
   else {
     callSignal = std::make_shared<SyncCallSignal>(std::make_shared<SyncClient>(
         SyncClientConfig{.target = syncControl.target,
+                         .credential = syncControl.credential,
                          .fleetSecret = syncControl.secret}));
   }
   const NotificationVoiceConfig voiceConfig = NotificationConfig::resolveVoice();
