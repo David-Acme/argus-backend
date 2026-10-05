@@ -637,6 +637,40 @@ quiet moment exactly like a camera offer, before any camera offer, without
 the 30 s spacing, dropped after 60 s, and joins the history as an assistant
 turn. `delivered` is true when at least one live call took it.
 
+## Latency over WebRTC, measured (2026-10-04)
+
+Setup: scratch prod argus-llm, argus-stt and argus-tts (Pocket es-quality),
+prod argus-voice at 4c6a33e8, dev LiveKit on this machine, the same
+synthesized Spanish clips (`hola, agenda, gatos, modo, entrada, hermana,
+gracias`), two rounds per path run alternately against the same argus-voice.
+WebSocket path: the gRPC call harness (`measure.py`), which is the `/sync`
+leg minus argus-sync's relay hop, timing the first `tts_chunk`; WebRTC path:
+a LiveKit Python client publishing the clip as its microphone in real time
+and timing the first decoded agent audio frame above an RMS of 300. Clock:
+end of the clip.
+
+| Path | End of speech -> first audio, median | p90 | Transcript after speech, median |
+|---|---|---|---|
+| WebSocket (first PCM chunk received) | 1699 ms | 1805 ms | 180 ms |
+| WebRTC (first audio decoded at the client) | 1568 ms | 2783 ms | 253 ms |
+
+Both are dominated by the model: the reply chosen (the length of its first
+sentence) and the LLM's first token move a turn by more than a second, which
+is why the two medians differ in the opposite direction of the transport.
+The transport itself, measured inside the WebRTC runs, costs about 70 ms on
+the way up (the transcript arrives 253 ms after the clip ends against 180 ms
+over the socket: Opus encode, the SFU and the agent's jitter buffer and
+resampling) and 58 ms on the way down (median from `argus.turn`, sent just
+before the first chunk, to the first audible frame at the client; p90 100
+ms). So on the LAN WebRTC adds roughly 130 ms per turn to what the raw
+socket costs, but the user hears it as a stream with the device's own echo
+cancellation, where the socket path only plays as fast as the app's player
+drains (and the old half-duplex player waited for a whole sentence: 1.5-5.4
+s here). Barge-in over WebRTC: the user's "Espera, espera" over a long
+answer produced `argus.interrupted` 542-1191 ms after the clip's onset (the
+VAD's 8 windows over 0.7 plus the clip's own lead-in), and Argus's audio
+stopped 45-70 ms after that at the client (ring and source queue flushed).
+
 ## A revoked session hears why the call ends (2026-10-04)
 
 David's request: when a session is revoked or closed, or the owner disables
