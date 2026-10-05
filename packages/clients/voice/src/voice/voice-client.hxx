@@ -31,6 +31,7 @@ public:
   virtual void sendContext(const argus::voice::v1::VoiceContext& context) = 0;
   virtual void sendActionResult(const argus::voice::v1::VoiceActionResult& result) = 0;
   virtual void sendMute(bool muted) = 0;
+  virtual void sendFarewell(const std::string& reason) = 0;
   virtual void finish() = 0;
 };
 
@@ -73,6 +74,8 @@ public:
   [[nodiscard]] virtual VoiceRoomJoinResult joinRoom(const argus::voice::v1::RtcJoin& join) const;
 
   [[nodiscard]] virtual std::optional<bool> announce(const VoiceAnnounceInput& input) const;
+
+  [[nodiscard]] virtual bool farewell(const argus::voice::v1::RtcFarewell& farewell, int deadlineMs) const;
 
   static constexpr int kJoinRoomDeadlineMs = 6000;
   static constexpr int kAnnounceDeadlineMs = 1500;

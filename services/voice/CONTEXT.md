@@ -637,6 +637,47 @@ quiet moment exactly like a camera offer, before any camera offer, without
 the 30 s spacing, dropped after 60 s, and joins the history as an assistant
 turn. `delivered` is true when at least one live call took it.
 
+## A revoked session hears why the call ends (2026-10-04)
+
+David's request: when a session is revoked or closed, or the owner disables
+the account, during a live call, Argus says a short line in the call's
+language and then hangs up. Lines (`src/feature/voice/farewell-lines.cc`):
+"Tu sesión se ha cerrado, cuelgo." / "Your session was closed, I'm hanging
+up." (logout, refresh-token reuse, any other cause), "Han cerrado esta
+sesión, cuelgo." / "This session was closed, I'm hanging up."
+(`revokedByOwner`), "Tu cuenta está desactivada, cuelgo." / "Your account
+was disabled, I'm hanging up." (`accountDisabled`). The first draft ("...,
+voy a colgar.") measured 2.3-3.2 s in Spanish with Pocket and did not fit the
+budget; the current ones measure 1.5-2.0 s.
+
+- **No TTS wait.** `FarewellCache` synthesizes the six lines at boot on its
+  own thread (`warmFarewells()` in `main.cc`), at 1.12x the voice's speed,
+  trims leading and trailing silence (40 ms kept) and keeps them as 16 kHz
+  PCM; with argus-tts down it retries every 15 s. A farewell asked before a
+  line is cached plays nothing and the call is cut at once.
+- **WebRTC** (`VoiceService.Farewell`, `caller_sync`): the call drops the
+  user's audio and data from that instant, flushes whatever Argus was
+  saying, publishes `argus.done {reason: "revoked", cause}`, and
+  `VoiceSessionService::farewell` stops the turn (the LLM and TTS calls are
+  cancelled), mutes the session, blocks every later frame of it and pushes
+  the cached line (with its `argus.assistant`) into the playout ring. The RPC
+  answers once the line has played out plus the source queue (120 ms tail),
+  never later than 2.3 s. A second Farewell for the same call (a disabled
+  account produces the user disconnect and then each session's revocation)
+  waits for the first instead of cutting it. argus-sync has already revoked
+  the participant's publish permissions and removes it right after the
+  answer (`services/sync/CONTEXT.md`).
+- **PCM over `/sync`**: a new `VoiceFarewell` client frame does the same on
+  the gRPC stream: the line goes out as `tts_chunk` frames and a
+  `voice:assistant`, the session ignores everything after it.
+
+Measured on the sandbox with throwaway users (2026-10-04, scratch argus-voice,
+prod argus-tts): logout mid-call: `argus.done` 46-52 ms after the request,
+the line audible from then to 1.74-1.83 s, participant removed at 1.86-2.0 s;
+owner disables the account: `argus.done` at 160-225 ms (identity's update
+first), line to 2.2 s, room deleted at 2.37 s; PCM call: line frames at
+195 ms, `sessionRevoked` and the close at 2.54 s.
+
 ## Owner settings
 
 `src/feature/settings/voice-settings.cc` (`argus::voice-settings`) is the

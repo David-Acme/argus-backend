@@ -1,5 +1,8 @@
 #pragma once
 
+#include <chrono>
+#include <string_view>
+
 #include <argus/voice/v1/voice.grpc.pb.h>
 #include <drogon/WebSocketController.h>
 #include <sync/sync-forwarder.hxx>
@@ -37,6 +40,10 @@ public:
                      const std::string& data) override;
   void onClose(const drogon::WebSocketConnectionPtr& conn) override;
 
+  std::chrono::milliseconds farewell(const drogon::WebSocketConnectionPtr& conn, std::string_view cause);
+
+  static constexpr auto kFarewellGrace = std::chrono::milliseconds(2300);
+
   static Json::Value renderServerFrame(
       const argus::voice::v1::ServerFrame& frame);
   static argus::voice::v1::VoiceMode startModeOf(const Json::Value& message);
@@ -56,6 +63,8 @@ private:
     std::string deviceHash;
     trantor::EventLoop* loop{nullptr};
     std::atomic<bool> closing{false};
+    std::atomic<bool> revoked{false};
+    std::atomic<bool> inCall{false};
     std::mutex mutex;
     std::shared_ptr<VoiceStream> stream;
     bool starting{false};

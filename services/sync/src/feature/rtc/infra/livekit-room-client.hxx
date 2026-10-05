@@ -33,6 +33,8 @@ public:
   virtual drogon::Task<std::optional<std::vector<std::string>>> listRooms() const;
   virtual drogon::Task<bool> removeParticipant(LiveKitParticipantRef participant) const;
   virtual drogon::Task<bool> deleteRoom(std::string room) const;
+  virtual drogon::Task<std::optional<std::vector<std::string>>> listParticipants(std::string room) const;
+  virtual drogon::Task<bool> silenceParticipant(LiveKitParticipantRef participant) const;
 
   static constexpr double kRequestTimeoutSeconds = 3.0;
 
@@ -43,6 +45,7 @@ private:
     Json::Value body;
     std::string room;
     bool list{false};
+    bool create{false};
   };
 
   drogon::Task<std::optional<Json::Value>> call(TwirpCall twirp) const;

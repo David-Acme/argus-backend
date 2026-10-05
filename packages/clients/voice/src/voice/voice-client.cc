@@ -73,6 +73,13 @@ public:
     writeFrame(std::move(frame));
   }
 
+  void sendFarewell(const std::string& reason) override
+  {
+    argus::voice::v1::ClientFrame frame;
+    frame.mutable_farewell()->set_reason(reason);
+    writeFrame(std::move(frame));
+  }
+
   void sendPcm(const void* data, size_t size) override
   {
     argus::voice::v1::ClientFrame frame;
@@ -235,6 +242,15 @@ VoiceRoomJoinResult VoiceClient::joinRoom(const argus::voice::v1::RtcJoin& join)
     result.already = reply.already();
   }
   return result;
+}
+
+bool VoiceClient::farewell(const argus::voice::v1::RtcFarewell& farewell, int deadlineMs) const
+{
+  grpc::ClientContext context;
+  argus::client::addCallerCredential(context, credential_);
+  context.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(deadlineMs));
+  argus::voice::v1::RtcFarewellDone reply;
+  return stub_->Farewell(&context, farewell, &reply).ok() && reply.played();
 }
 
 std::optional<bool> VoiceClient::announce(const VoiceAnnounceInput& input) const

@@ -47,6 +47,7 @@ struct SessionEndNotice
 {
   int64_t userId{0};
   std::optional<std::string> sessionId;
+  std::string cause;
 };
 
 using SessionEndListener = std::function<void(const SessionEndNotice&)>;

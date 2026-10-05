@@ -22,6 +22,7 @@ drogon::Task<std::optional<Json::Value>> LiveKitRoomClient::call(TwirpCall twirp
                                                         .roomJoin = false,
                                                         .roomAdmin = !twirp.room.empty(),
                                                         .roomList = twirp.list,
+                                                        .roomCreate = twirp.create,
                                                         .canPublish = false,
                                                         .publishSources = {},
                                                         .canSubscribe = false,
@@ -56,7 +57,8 @@ drogon::Task<std::optional<std::vector<std::string>>> LiveKitRoomClient::listRoo
   const auto reply = co_await call({.method = "ListRooms",
                                     .body = Json::Value(Json::objectValue),
                                     .room = {},
-                                    .list = true});
+                                    .list = true,
+                                    .create = false});
   if (!reply)
     co_return std::nullopt;
   std::vector<std::string> rooms;
@@ -74,7 +76,8 @@ drogon::Task<bool> LiveKitRoomClient::removeParticipant(LiveKitParticipantRef pa
   co_return (co_await call({.method = "RemoveParticipant",
                             .body = std::move(body),
                             .room = participant.room,
-                            .list = false}))
+                            .list = false,
+                            .create = false}))
       .has_value();
 }
 
@@ -82,6 +85,40 @@ drogon::Task<bool> LiveKitRoomClient::deleteRoom(std::string room) const
 {
   Json::Value body(Json::objectValue);
   body["room"] = room;
-  co_return (co_await call({.method = "DeleteRoom", .body = std::move(body), .room = room, .list = false}))
+  co_return (co_await call(
+                 {.method = "DeleteRoom", .body = std::move(body), .room = room, .list = false, .create = true}))
+      .has_value();
+}
+
+drogon::Task<std::optional<std::vector<std::string>>> LiveKitRoomClient::listParticipants(std::string room) const
+{
+  Json::Value body(Json::objectValue);
+  body["room"] = room;
+  const auto reply =
+      co_await call({.method = "ListParticipants", .body = std::move(body), .room = room, .list = false, .create = false});
+  if (!reply)
+    co_return std::nullopt;
+  std::vector<std::string> identities;
+  for (const auto& participant : (*reply)["participants"])
+    if (participant["identity"].isString())
+      identities.push_back(participant["identity"].asString());
+  co_return identities;
+}
+
+drogon::Task<bool> LiveKitRoomClient::silenceParticipant(LiveKitParticipantRef participant) const
+{
+  Json::Value body(Json::objectValue);
+  body["room"] = participant.room;
+  body["identity"] = participant.identity;
+  Json::Value permission(Json::objectValue);
+  permission["canSubscribe"] = true;
+  permission["canPublish"] = false;
+  permission["canPublishData"] = false;
+  body["permission"] = std::move(permission);
+  co_return (co_await call({.method = "UpdateParticipant",
+                            .body = std::move(body),
+                            .room = participant.room,
+                            .list = false,
+                            .create = false}))
       .has_value();
 }

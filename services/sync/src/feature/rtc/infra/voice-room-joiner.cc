@@ -15,3 +15,12 @@ drogon::Task<bool> VoiceRoomJoiner::join(argus::voice::v1::RtcJoin join) const
     LOG_WARN << "RTC: argus-voice JoinRoom refused: " << result.status.error_message();
   co_return result.status.ok() && result.joined;
 }
+
+drogon::Task<bool> VoiceRoomJoiner::farewell(RtcFarewellInput input) const
+{
+  if (input.deadline.count() <= 0)
+    co_return false;
+  co_return co_await BlockingTask<bool>{[client = client_, farewell = std::move(input)] {
+    return client->farewell(farewell.request, static_cast<int>(farewell.deadline.count()));
+  }};
+}

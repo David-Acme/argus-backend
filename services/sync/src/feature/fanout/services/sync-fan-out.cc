@@ -19,6 +19,15 @@ const RoomManager roomManager;
 
 constexpr std::size_t kMaxSessionIdBytes = 64;
 
+std::string causeOf(const Json::Value& info)
+{
+  constexpr std::size_t kMaxCauseBytes = 32;
+  if (!info.isObject() || !info["cause"].isString())
+    return {};
+  std::string cause = info["cause"].asString();
+  return cause.size() <= kMaxCauseBytes ? cause : std::string();
+}
+
 sync_fan_out::SessionEndListener& sessionEndListener()
 {
   static sync_fan_out::SessionEndListener listener;
@@ -146,14 +155,17 @@ void dispatchEvent(const Event& event)
     case FanOutPlan::Kind::Disconnect:
       roomManager.disconnectUser(plan.userId, message);
       if (sessionEndListener())
-        sessionEndListener()({.userId = plan.userId, .sessionId = std::nullopt});
+        sessionEndListener()({.userId = plan.userId, .sessionId = std::nullopt, .cause = "accountDisabled"});
       return;
     case FanOutPlan::Kind::DisconnectSession:
       roomManager.disconnectSession({.userId = plan.userId,
                                      .sessionId = plan.sessionId,
-                                     .contextMessage = message});
+                                     .contextMessage = message,
+                                     .cause = causeOf(event.emit.obj)});
       if (sessionEndListener())
-        sessionEndListener()({.userId = plan.userId, .sessionId = plan.sessionId});
+        sessionEndListener()({.userId = plan.userId,
+                              .sessionId = plan.sessionId,
+                              .cause = causeOf(event.emit.obj)});
       return;
     case FanOutPlan::Kind::UserEmit:
       if (!plan.rooms.empty())

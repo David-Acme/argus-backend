@@ -147,6 +147,14 @@ DataMessage doneMessage(DoneReason reason)
   return messageOf(kTopicDone, payload);
 }
 
+DataMessage revokedMessage(std::string_view cause)
+{
+  Json::Value payload(Json::objectValue);
+  payload["reason"] = doneReasonToString(DoneReason::Revoked);
+  payload["cause"] = cause.empty() ? std::string("revoked") : std::string(cause);
+  return messageOf(kTopicDone, payload);
+}
+
 ClientMessage clientMessageOf(const ClientPacket& packet)
 {
   ClientMessage message;

@@ -48,6 +48,27 @@ public:
     co_return accept_;
   }
 
+  drogon::Task<bool> farewell(RtcFarewellInput input) const override
+  {
+    std::scoped_lock lock(mutex_);
+    farewells_.push_back(input.request.room() + "/" + input.request.user_identity() + "/" +
+                         input.request.reason());
+    deadlines_.push_back(input.deadline);
+    co_return accept_;
+  }
+
+  std::vector<std::string> farewells() const
+  {
+    std::scoped_lock lock(mutex_);
+    return farewells_;
+  }
+
+  std::vector<std::chrono::milliseconds> deadlines() const
+  {
+    std::scoped_lock lock(mutex_);
+    return deadlines_;
+  }
+
   std::vector<argus::voice::v1::RtcJoin> joins() const
   {
     std::scoped_lock lock(mutex_);
@@ -58,6 +79,8 @@ private:
   bool accept_;
   mutable std::mutex mutex_;
   mutable std::vector<argus::voice::v1::RtcJoin> joins_;
+  mutable std::vector<std::string> farewells_;
+  mutable std::vector<std::chrono::milliseconds> deadlines_;
 };
 
 class FakeCalls final : public RtcCallClaimer
@@ -89,18 +112,34 @@ public:
 
   drogon::Task<bool> removeParticipant(LiveKitParticipantRef participant) const override
   {
+    calls.push_back("remove " + participant.room + "/" + participant.identity);
     removed.push_back(participant.room + "/" + participant.identity);
     co_return participant.room == "u7.rtc-aa";
   }
 
   drogon::Task<bool> deleteRoom(std::string room) const override
   {
+    calls.push_back("delete " + room);
     deleted.push_back(room);
     co_return true;
   }
 
+  drogon::Task<std::optional<std::vector<std::string>>> listParticipants(std::string room) const override
+  {
+    if (room == "u7.call-3")
+      co_return std::vector<std::string>{"argus-voice", "user:7:s1", "user:7:s2"};
+    co_return std::vector<std::string>{"argus-voice", "user:7:s1"};
+  }
+
+  drogon::Task<bool> silenceParticipant(LiveKitParticipantRef participant) const override
+  {
+    calls.push_back("silence " + participant.room + "/" + participant.identity);
+    co_return participant.room == "u7.rtc-aa";
+  }
+
   mutable std::vector<std::string> removed;
   mutable std::vector<std::string> deleted;
+  mutable std::vector<std::string> calls;
 };
 
 JwtContext caller()
@@ -185,6 +224,7 @@ TEST_CASE("a LiveKit token carries exactly the grants it was minted with")
                                                         .roomJoin = true,
                                                         .roomAdmin = false,
                                                         .roomList = false,
+                                                   .roomCreate = false,
                                                         .canPublish = true,
                                                         .publishSources = {"microphone"},
                                                         .canSubscribe = true,
@@ -287,8 +327,9 @@ TEST_CASE("a proactive call is claimed first, and the opening line goes to the a
   CHECK(calls->last.userId == 7);
   CHECK(calls->last.sessionId == caller().sessionId);
   REQUIRE(response.call.has_value());
-  CHECK(response.call.value().cameraName == "Patio");
-  CHECK(response.call.value().episodeId == 41);
+  const ResponseRtcCallDto call = response.call.value_or(ResponseRtcCallDto{});
+  CHECK(call.cameraName == "Patio");
+  CHECK(call.episodeId == 41);
   CHECK(response.toJson()["call"]["kind"].asString() == "guard_episode");
   CHECK(response.toJson().toStyledString().find("Hay alguien") == std::string::npos);
   REQUIRE(voice->joins().size() == 1);
@@ -366,16 +407,52 @@ TEST_CASE("the notification claim reply maps onto the route's claim")
   CHECK(NotificationCallClaimer::claimOf(result).status == RtcClaimStatus::Unavailable);
 }
 
-TEST_CASE("a revoked session leaves only its own user's calls, and a disabled account ends them")
+TEST_CASE("a revoked session is silenced, hears Argus say goodbye, then leaves; only its own calls")
 {
   const auto rooms = std::make_shared<FakeRooms>();
-  const int removed = drogon::sync_wait(
-      RtcSessionRevoker::revoke(rooms, {.userId = 7, .sessionId = std::string("s1")}));
+  const auto voice = std::make_shared<FakeVoice>(true);
+  const int removed = drogon::sync_wait(RtcSessionRevoker::revoke(
+      {.rooms = rooms,
+       .voice = voice,
+       .end = {.userId = 7, .sessionId = std::string("s1"), .cause = "revokedByOwner"},
+       .farewellBudget = RtcSessionRevoker::kFarewellBudget}));
   CHECK(removed == 1);
-  CHECK(rooms->removed == std::vector<std::string>{"u7.rtc-aa/user:7:s1", "u7.call-3/user:7:s1"});
+  CHECK(rooms->calls == std::vector<std::string>{"silence u7.rtc-aa/user:7:s1", "remove u7.rtc-aa/user:7:s1",
+                                                 "silence u7.call-3/user:7:s1"});
+  CHECK(voice->farewells() == std::vector<std::string>{"u7.rtc-aa/user:7:s1/revokedByOwner"});
+  REQUIRE(voice->deadlines().size() == 1);
+  CHECK(voice->deadlines()[0] <= RtcSessionRevoker::kFarewellBudget);
+  CHECK(voice->deadlines()[0] > std::chrono::milliseconds(2000));
   CHECK(rooms->deleted.empty());
+}
 
-  const auto all = std::make_shared<FakeRooms>();
-  CHECK(drogon::sync_wait(RtcSessionRevoker::revoke(all, {.userId = 7, .sessionId = std::nullopt})) == 2);
-  CHECK(all->deleted == std::vector<std::string>{"u7.rtc-aa", "u7.call-3"});
+TEST_CASE("a disabled account silences every session of the user, says goodbye and ends the rooms")
+{
+  const auto rooms = std::make_shared<FakeRooms>();
+  const auto voice = std::make_shared<FakeVoice>(false);
+  CHECK(drogon::sync_wait(RtcSessionRevoker::revoke({.rooms = rooms,
+                                                     .voice = voice,
+                                                     .end = {.userId = 7, .sessionId = std::nullopt, .cause = "accountDisabled"},
+                                                     .farewellBudget = RtcSessionRevoker::kFarewellBudget})) == 2);
+  CHECK(rooms->calls == std::vector<std::string>{"silence u7.rtc-aa/user:7:s1", "delete u7.rtc-aa",
+                                                 "silence u7.call-3/user:7:s1", "silence u7.call-3/user:7:s2",
+                                                 "delete u7.call-3"});
+  CHECK(voice->farewells() == std::vector<std::string>{"u7.rtc-aa//accountDisabled", "u7.call-3//accountDisabled"});
+}
+
+TEST_CASE("the goodbye never stretches the revocation past its budget")
+{
+  const auto rooms = std::make_shared<FakeRooms>();
+  const auto voice = std::make_shared<FakeVoice>(true);
+  CHECK(drogon::sync_wait(RtcSessionRevoker::revoke({.rooms = rooms,
+                                                     .voice = voice,
+                                                     .end = {.userId = 7, .sessionId = std::string("s1"), .cause = ""},
+                                                     .farewellBudget = std::chrono::milliseconds(0)})) == 1);
+  REQUIRE(voice->deadlines().size() == 1);
+  CHECK(voice->deadlines()[0] == std::chrono::milliseconds(0));
+  const auto none = std::make_shared<FakeRooms>();
+  CHECK(drogon::sync_wait(RtcSessionRevoker::revoke({.rooms = none,
+                                                     .voice = nullptr,
+                                                     .end = {.userId = 7, .sessionId = std::string("s1"), .cause = ""},
+                                                     .farewellBudget = RtcSessionRevoker::kFarewellBudget})) == 1);
 }

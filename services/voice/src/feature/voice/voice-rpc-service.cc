@@ -120,6 +120,9 @@ private:
       case argus::voice::v1::ClientFrame::kMute:
         sessions_.mute(*this, frame.mute().muted());
         break;
+      case argus::voice::v1::ClientFrame::kFarewell:
+        sessions_.farewell(*this, farewellReasonOf(frame.farewell().reason()));
+        break;
       case argus::voice::v1::ClientFrame::kPcm:
         sessions_.feedPcm(*this, {.data = frame.pcm().data(),
                                   .size = static_cast<size_t>(
@@ -209,6 +212,26 @@ grpc::ServerUnaryReactor* VoiceRpcService::JoinRoom(grpc::CallbackServerContext*
   rooms_->joinRoom(*request, [reactor, reply](const grpc::Status& status, argus::voice::v1::RtcJoined joined) {
     *reply = std::move(joined);
     reactor->Finish(status);
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* VoiceRpcService::Farewell(grpc::CallbackServerContext* context,
+                                                    const argus::voice::v1::RtcFarewell* request,
+                                                    argus::voice::v1::RtcFarewellDone* reply)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!argus::client::authorizeCaller(context, syncCallers_).has_value()) {
+    reactor->Finish({grpc::StatusCode::UNAUTHENTICATED, "argus-sync caller credential required"});
+    return reactor;
+  }
+  if (rooms_ == nullptr) {
+    reactor->Finish({grpc::StatusCode::UNAVAILABLE, "realtime calls are not configured"});
+    return reactor;
+  }
+  rooms_->farewellRoom(*request, [reactor, reply](bool played) {
+    reply->set_played(played);
+    reactor->Finish(grpc::Status::OK);
   });
   return reactor;
 }

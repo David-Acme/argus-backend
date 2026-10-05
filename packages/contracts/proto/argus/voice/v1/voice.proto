@@ -69,6 +69,11 @@ message VoiceMute
   bool muted = 1;
 }
 
+message VoiceFarewell
+{
+  string reason = 1;
+}
+
 message ClientFrame
 {
   oneof body
@@ -80,6 +85,7 @@ message ClientFrame
     VoiceContext context = 5;
     VoiceActionResult action_result = 6;
     VoiceMute mute = 7;
+    VoiceFarewell farewell = 8;
   }
 }
 
@@ -177,6 +183,18 @@ message RtcJoined
   bool already = 2;
 }
 
+message RtcFarewell
+{
+  string room = 1;
+  string user_identity = 2;
+  string reason = 3;
+}
+
+message RtcFarewellDone
+{
+  bool played = 1;
+}
+
 message AnnounceRequest
 {
   int64 user_id = 1;
@@ -195,4 +213,5 @@ service VoiceService
   rpc Connect(stream ClientFrame) returns (stream ServerFrame) {}
   rpc JoinRoom(RtcJoin) returns (RtcJoined) {}
   rpc Announce(AnnounceRequest) returns (AnnounceResponse) {}
+  rpc Farewell(RtcFarewell) returns (RtcFarewellDone) {}
 }

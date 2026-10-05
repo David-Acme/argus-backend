@@ -318,6 +318,38 @@ void RoomManager::replaceLocalRoleRooms(const RoleRoomReplaceInput& input)
   }
 }
 
+namespace
+{
+SocketFarewell& socketFarewell()
+{
+  static SocketFarewell farewell;
+  return farewell;
+}
+}
+
+void RoomManager::setSocketFarewell(SocketFarewell farewell)
+{
+  socketFarewell() = std::move(farewell);
+}
+
+void RoomManager::closeAfterFarewell(SocketClose close)
+{
+  const auto delay = socketFarewell() ? socketFarewell()({.conn = close.conn, .cause = close.cause})
+                                      : std::chrono::milliseconds(0);
+  const auto finish = [close = std::move(close)]() {
+    if (!close.conn->connected())
+      return;
+    close.conn->send(close.message->data(), close.message->size());
+    close.conn->shutdown(drogon::CloseCode::kViolation, close.closeReason);
+  };
+  auto* loop = trantor::EventLoop::getEventLoopOfCurrentThread();
+  if (delay.count() <= 0 || loop == nullptr) {
+    finish();
+    return;
+  }
+  loop->runAfter(std::chrono::duration<double>(delay).count(), finish);
+}
+
 void RoomManager::disconnectLocalUserRoom(
     RoomId room, const std::shared_ptr<std::string>& contextMessage)
 {
@@ -343,9 +375,10 @@ void RoomManager::disconnectLocalUserRoom(
     leaveAllLocal(conn.get());
     if (!conn->connected())
       continue;
-
-    conn->send(contextMessage->data(), contextMessage->size());
-    conn->shutdown(drogon::CloseCode::kViolation, "auth_context_changed");
+    closeAfterFarewell({.conn = conn,
+                        .message = contextMessage,
+                        .closeReason = "auth_context_changed",
+                        .cause = "accountDisabled"});
   }
 }
 
@@ -375,13 +408,13 @@ void RoomManager::disconnectLocalSession(
       connections.push_back(std::move(conn));
   }
 
+  const auto message = std::make_shared<const std::string>(input->contextMessage);
   for (const auto& conn : connections) {
     leaveAllLocal(conn.get());
     if (!conn->connected())
       continue;
-
-    conn->send(input->contextMessage.data(), input->contextMessage.size());
-    conn->shutdown(drogon::CloseCode::kViolation, "session_revoked");
+    closeAfterFarewell(
+        {.conn = conn, .message = message, .closeReason = "session_revoked", .cause = input->cause});
   }
   if (!connections.empty())
     LOG_INFO << "Sync: closed " << connections.size()

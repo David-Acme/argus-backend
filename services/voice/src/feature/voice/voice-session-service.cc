@@ -397,9 +397,64 @@ VoiceListeningConfig resolveVoiceListeningConfig()
 
 VoiceSessionService::VoiceSessionService(const VoiceEngineSeam& engines)
     : stt_(engines.stt), tts_(engines.tts), llm_(engines.llm),
-      identity_(engines.identity), vad_(engines.vad), speaker_(engines.speaker)
+      identity_(engines.identity), vad_(engines.vad), speaker_(engines.speaker),
+      farewells_(engines.tts)
 {
   reactions_.init();
+}
+
+void VoiceSessionService::warmFarewells()
+{
+  farewells_.startWarming();
+}
+
+FarewellAudio VoiceSessionService::farewellAudio(const FarewellKey& key) const
+{
+  return farewells_.audio(key);
+}
+
+VoiceLang VoiceSessionService::langOf(const argus::voice::v1::VoiceIdentity& identity)
+{
+  const VoiceLang lang = voiceLangFromProto(identity.language());
+  return lang == VoiceLang::System ? voiceSystemLang() : lang;
+}
+
+bool VoiceSessionService::farewell(VoiceSessionSink& sink, FarewellReason reason)
+{
+  const auto session = sessionOf(sink);
+  if (!session)
+    return false;
+  session->muted.store(true);
+  {
+    std::scoped_lock lock(session->pcmMutex);
+    session->pcmQueue.clear();
+  }
+  std::stop_source cancellation;
+  {
+    std::scoped_lock lock(session->turnMutex);
+    session->interrupt.store(true);
+    session->farewell.store(true);
+    cancellation = session->turnStop;
+  }
+  cancellation.request_stop();
+  session->callStop.request_stop();
+  const FarewellAudio audio = farewells_.audio({.lang = session->lang, .reason = reason});
+  LOG_INFO << "Voice: farewell (" << (audio.pcm ? "cached line" : "no line cached, cut") << ")";
+  if (!audio.pcm || !sink.connected())
+    return false;
+  constexpr std::size_t kChunkSamples = FarewellCache::kSampleRate / 5;
+  const std::vector<int16_t>& pcm = *audio.pcm;
+  for (std::size_t offset = 0; offset < pcm.size(); offset += kChunkSamples) {
+    const std::size_t count = std::min(kChunkSamples, pcm.size() - offset);
+    argus::voice::v1::ServerFrame chunk;
+    chunk.mutable_tts_chunk()->set_pcm(reinterpret_cast<const char*>(pcm.data() + offset),
+                                       count * sizeof(int16_t));
+    sink.sendServerFrame(std::move(chunk));
+  }
+  argus::voice::v1::ServerFrame assistant;
+  assistant.mutable_assistant()->set_text(audio.text);
+  sink.sendServerFrame(std::move(assistant));
+  return true;
 }
 
 Reaction VoiceSessionService::emitReaction(Session& session,
@@ -1474,7 +1529,7 @@ void VoiceSessionService::deliverNotice(Session& session, const Notice& notice)
 void VoiceSessionService::sendFrame(Session& session,
                                     argus::voice::v1::ServerFrame frame) const
 {
-  if (!session.sink || !session.sink->connected())
+  if (!session.sink || !session.sink->connected() || session.farewell.load())
     return;
   session.sink->sendServerFrame(std::move(frame));
 }

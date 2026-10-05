@@ -97,9 +97,13 @@ int main()
                                .fleetSecret = upstreams.identitySecret});
   const auto userDirectory = std::make_shared<IdentityUserDirectory>();
   const VoiceGrpcConfig voice = VoiceGrpcConfig::resolve();
-  std::shared_ptr<SyncForwarder> voiceLeg;
-  if (!voice.target.empty())
+  std::shared_ptr<VoiceGrpcRelay> voiceLeg;
+  if (!voice.target.empty()) {
     voiceLeg = std::make_shared<VoiceGrpcRelay>(voice, userDirectory);
+    RoomManager::setSocketFarewell([relay = voiceLeg](const SocketFarewellInput& input) {
+      return relay->farewell(input.conn, input.cause);
+    });
+  }
   const SyncHeartbeatConfig heartbeatConfig = SyncConfig::resolveHeartbeat();
   const auto presenceBoard = std::make_shared<PresenceBoard>();
   const auto heartbeatService = std::make_shared<const HeartbeatService>(
@@ -148,10 +152,12 @@ int main()
   drogon::app().registerController(std::make_shared<RtcController>(RtcTokenServiceInput{
       .config = rtc, .voice = rtcVoice, .calls = rtcCalls, .directory = userDirectory}));
   if (rtc.enabled) {
-    const auto revoker = std::make_shared<RtcSessionRevoker>(std::make_shared<LiveKitRoomClient>(
-        LiveKitAdminConfig{.serverUrl = rtc.serverUrl, .apiKey = rtc.apiKey, .apiSecret = rtc.apiSecret}));
+    const auto revoker = std::make_shared<RtcSessionRevoker>(
+        std::make_shared<LiveKitRoomClient>(
+            LiveKitAdminConfig{.serverUrl = rtc.serverUrl, .apiKey = rtc.apiKey, .apiSecret = rtc.apiSecret}),
+        rtcVoice);
     sync_fan_out::onSessionEnd([revoker](const sync_fan_out::SessionEndNotice& notice) {
-      revoker->sessionEnded({.userId = notice.userId, .sessionId = notice.sessionId});
+      revoker->sessionEnded({.userId = notice.userId, .sessionId = notice.sessionId, .cause = notice.cause});
     });
   }
   LOG_INFO << "Realtime calls: "

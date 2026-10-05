@@ -234,7 +234,22 @@ control RPC). `RtcSessionRevoker` lists the rooms (`RoomService.ListRooms`
 over LiveKit's Twirp API, a 60 s admin token), and for each room of that user
 removes the session's participant (`RemoveParticipant`), or deletes the room
 when the whole account went (`DeleteRoom`, which also sends the agent away).
-It runs on the main loop, off the ordered feed's critical path. Stateless on
+It runs on the main loop, off the ordered feed's critical path.
+
+Before the removal the user is told (David's request, 2026-10-04): the
+revoker first revokes the participant's publish permissions
+(`UpdateParticipant`, so mic and data stop at the SFU at once), then asks
+argus-voice to say goodbye (`VoiceService.Farewell` with the cause the auth
+session frame carries in `info.cause`, `accountDisabled` for an account
+disconnect), and removes the participant or deletes the room when it
+answers. The whole goodbye shares one 2.4 s budget from the revocation; with
+argus-voice down or no line cached the removal follows at once. DeleteRoom
+needs LiveKit's `roomCreate` grant (it answered 401 with `roomAdmin` alone,
+measured). On the PCM path `RoomManager` asks the voice relay through a
+`SocketFarewell` hook before it closes a revoked socket: when that socket has
+a live voice call, the relay sends `VoiceFarewell`, ignores the socket's
+frames, and the auth frame plus the close follow 2.3 s later
+(`closeAfterFarewell`); a socket without a call closes as before. Stateless on
 purpose: a restart of this service loses nothing, and LiveKit is the source of
 truth for who is in which room. The app sees `Disconnected` with reason
 `PARTICIPANT_REMOVED`, the agent ends the call as `revoked`.

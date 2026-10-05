@@ -1,9 +1,11 @@
 #pragma once
 
 #include <feature/rtc/infra/livekit-room-client.hxx>
+#include <feature/rtc/infra/rtc-ports.hxx>
 
 #include <drogon/utils/coroutine.h>
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -13,17 +15,29 @@ struct RtcSessionEnd
 {
   int64_t userId{0};
   std::optional<std::string> sessionId;
+  std::string cause;
+};
+
+struct RtcRevokeInput
+{
+  std::shared_ptr<const LiveKitRoomClient> rooms;
+  std::shared_ptr<const RtcVoiceJoiner> voice;
+  RtcSessionEnd end;
+  std::chrono::milliseconds farewellBudget{2400};
 };
 
 class RtcSessionRevoker
 {
 public:
-  explicit RtcSessionRevoker(std::shared_ptr<const LiveKitRoomClient> rooms);
+  RtcSessionRevoker(std::shared_ptr<const LiveKitRoomClient> rooms, std::shared_ptr<const RtcVoiceJoiner> voice);
 
   void sessionEnded(RtcSessionEnd end) const;
 
-  static drogon::Task<int> revoke(std::shared_ptr<const LiveKitRoomClient> rooms, RtcSessionEnd end);
+  static drogon::Task<int> revoke(RtcRevokeInput input);
+
+  static constexpr auto kFarewellBudget = std::chrono::milliseconds(2400);
 
 private:
   std::shared_ptr<const LiveKitRoomClient> rooms_;
+  std::shared_ptr<const RtcVoiceJoiner> voice_;
 };

@@ -104,6 +104,10 @@ TEST_CASE("audio and done frames never become data messages")
   CHECK_FALSE(rtc_wire::dataMessageOf(done));
   CHECK(parsed(rtc_wire::doneMessage(rtc_wire::DoneReason::Revoked).payload)["reason"].asString() == "revoked");
   CHECK(rtc_wire::doneMessage(rtc_wire::DoneReason::Hangup).topic == "argus.done");
+  const Json::Value revoked = parsed(rtc_wire::revokedMessage("accountDisabled").payload);
+  CHECK(revoked["reason"].asString() == "revoked");
+  CHECK(revoked["cause"].asString() == "accountDisabled");
+  CHECK(parsed(rtc_wire::revokedMessage("").payload)["cause"].asString() == "revoked");
 }
 
 TEST_CASE("client data messages map onto the session's inputs")

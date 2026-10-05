@@ -14,6 +14,8 @@ std::string mintLiveKitToken(const LiveKitTokenInput& input)
     video["roomAdmin"] = true;
   if (grant.roomList)
     video["roomList"] = true;
+  if (grant.roomCreate)
+    video["roomCreate"] = true;
   if (grant.roomJoin) {
     video["canPublish"] = grant.canPublish;
     video["canSubscribe"] = grant.canSubscribe;

@@ -1816,3 +1816,100 @@ TEST_CASE("A blip the VAD discards closes its stream without a transcription")
   CHECK(call.stt.log.opened == 1);
   CHECK(call.stt.log.finished == 0);
 }
+
+TEST_CASE("A farewell drops the call's input and plays only the cached line")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
+  VoiceSessionService session(seam);
+
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  CHECK_FALSE(session.farewell(sink, FarewellReason::SessionClosed));
+  session.start(sink, voiceIdentity);
+  REQUIRE(waitFor([&] { return sink.hasType("voice:assistant"); }));
+  REQUIRE(waitFor([&] { return !VoiceSessionTestAccess::sessionOf(session, sink)->speaking.load(); }));
+
+  CHECK_FALSE(session.farewell(sink, FarewellReason::AccountDisabled));
+  auto state = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(state->muted.load());
+  CHECK(state->farewell.load());
+
+  VoiceSessionService warmed(seam);
+  warmed.warmFarewells();
+  REQUIRE(waitFor([&] {
+    return warmed.farewellAudio({.lang = VoiceLang::Es, .reason = FarewellReason::AccountDisabled}).pcm != nullptr &&
+           warmed.farewellAudio({.lang = VoiceLang::En, .reason = FarewellReason::SessionClosed}).pcm != nullptr;
+  }));
+  FakeVoiceSink second;
+  warmed.start(second, voiceIdentity);
+  REQUIRE(waitFor([&] { return second.hasType("voice:assistant"); }));
+  REQUIRE(waitFor([&] { return !VoiceSessionTestAccess::sessionOf(warmed, second)->speaking.load(); }));
+  const size_t before = second.size();
+  CHECK(warmed.farewell(second, FarewellReason::AccountDisabled));
+  const auto frames = second.snapshot();
+  REQUIRE(frames.size() > before + 1);
+  CHECK(frames.back().has_assistant());
+  CHECK(frames.back().assistant().text() == "Tu cuenta está desactivada, cuelgo.");
+  for (size_t i = before; i + 1 < frames.size(); ++i)
+    CHECK(frames[i].has_tts_chunk());
+
+  const size_t after = second.size();
+  std::vector<char> pcm(3200, 0);
+  warmed.feedPcm(second, {.data = pcm.data(), .size = pcm.size()});
+  warmed.context(second, [] {
+    argus::voice::v1::VoiceContext note;
+    note.set_text("nota");
+    return note;
+  }());
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  CHECK(second.size() == after);
+  warmed.stop(second);
+  session.stop(sink);
+}
+
+TEST_CASE("A proactive call opens with its claimed line instead of the greeting")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
+  VoiceSessionService session(seam);
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceStart start;
+  start.mutable_identity()->set_user_id(7);
+  start.mutable_identity()->set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  start.set_opening_line("Hay alguien en el patio.\nTe lo cuento.");
+  session.start(sink, start);
+  REQUIRE(waitFor([&] { return sink.hasType("voice:assistant"); }));
+  CHECK(tts.lastText == "Hay alguien en el patio. Te lo cuento.");
+  session.stop(sink);
+}
+
+TEST_CASE("An announcement reaches every live call of that user and nobody else")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
+  VoiceSessionService session(seam);
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  session.start(sink, voiceIdentity);
+  REQUIRE(waitFor([&] { return sink.hasType("voice:assistant"); }));
+  CHECK_FALSE(session.announce(8, "Ha llegado alguien."));
+  CHECK_FALSE(session.announce(7, "   "));
+  CHECK(session.announce(7, "Ha llegado alguien al patio."));
+  CHECK(waitFor([&] { return tts.lastText == "Ha llegado alguien al patio."; }));
+  session.stop(sink);
+}

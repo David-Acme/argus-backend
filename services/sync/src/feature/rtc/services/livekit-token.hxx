@@ -11,6 +11,7 @@ struct LiveKitGrant
   bool roomJoin{false};
   bool roomAdmin{false};
   bool roomList{false};
+  bool roomCreate{false};
   bool canPublish{false};
   std::vector<std::string> publishSources;
   bool canSubscribe{false};

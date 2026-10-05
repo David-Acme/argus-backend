@@ -195,6 +195,8 @@ public:
         [conn = conn_, session = session_, frame = std::move(frame)]() {
           if (session->closing || conn->disconnected())
             return;
+          if (frame.has_done())
+            session->inCall = false;
           if (frame.has_tts_chunk()) {
             const auto& pcm = frame.tts_chunk().pcm();
             conn->send(pcm.data(), static_cast<uint64_t>(pcm.size()),
@@ -289,7 +291,7 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(const SyncFrameInput& input)
   auto session = sessionFor(conn);
   if (!session)
     co_return false;
-  if (session->closing)
+  if (session->closing || session->revoked)
     co_return true;
 
   if (type == "voice:start") {
@@ -377,6 +379,7 @@ drogon::Task<void> VoiceGrpcRelay::startStream(StartInput input)
   start.set_resume(resume);
 
   if (stream) {
+    session->inCall = true;
     stream->start(start);
     co_return;
   }
@@ -397,6 +400,7 @@ drogon::Task<void> VoiceGrpcRelay::startStream(StartInput input)
     throw ResponseException(503, SyncErrors::VoiceUnavailable);
   if (!stream)
     co_return;
+  session->inCall = true;
   stream->start(start);
   for (auto& op : pending)
     op(*stream);
@@ -406,7 +410,7 @@ void VoiceGrpcRelay::forwardBinary(const drogon::WebSocketConnectionPtr& conn,
                                    const std::string& data)
 {
   auto session = sessionFor(conn);
-  if (!session || session->closing)
+  if (!session || session->closing || session->revoked)
     return;
   std::shared_ptr<VoiceStream> stream;
   {
@@ -415,6 +419,24 @@ void VoiceGrpcRelay::forwardBinary(const drogon::WebSocketConnectionPtr& conn,
   }
   if (stream)
     stream->sendPcm(data.data(), data.size());
+}
+
+std::chrono::milliseconds VoiceGrpcRelay::farewell(const drogon::WebSocketConnectionPtr& conn,
+                                                   std::string_view cause)
+{
+  auto session = sessionFor(conn);
+  if (!session || session->closing)
+    return std::chrono::milliseconds(0);
+  std::shared_ptr<VoiceStream> stream;
+  {
+    std::scoped_lock lock(session->mutex);
+    stream = session->stream;
+  }
+  session->revoked = true;
+  if (!stream || !session->inCall)
+    return std::chrono::milliseconds(0);
+  stream->sendFarewell(std::string(cause));
+  return kFarewellGrace;
 }
 
 void VoiceGrpcRelay::onClose(const drogon::WebSocketConnectionPtr& conn)

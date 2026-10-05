@@ -16,6 +16,7 @@ public:
 
   virtual void joinRoom(const argus::voice::v1::RtcJoin& join,
                         std::function<void(grpc::Status, argus::voice::v1::RtcJoined)> done) = 0;
+  virtual void farewellRoom(const argus::voice::v1::RtcFarewell& farewell, std::function<void(bool)> done) = 0;
 };
 
 struct VoiceRpcInput
@@ -39,6 +40,10 @@ public:
   grpc::ServerUnaryReactor* JoinRoom(grpc::CallbackServerContext* context,
                                      const argus::voice::v1::RtcJoin* request,
                                      argus::voice::v1::RtcJoined* reply) override;
+
+  grpc::ServerUnaryReactor* Farewell(grpc::CallbackServerContext* context,
+                                     const argus::voice::v1::RtcFarewell* request,
+                                     argus::voice::v1::RtcFarewellDone* reply) override;
 
   grpc::ServerUnaryReactor* Announce(grpc::CallbackServerContext* context,
                                      const argus::voice::v1::AnnounceRequest* request,

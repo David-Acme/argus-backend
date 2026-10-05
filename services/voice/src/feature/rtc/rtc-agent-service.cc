@@ -95,6 +95,23 @@ void RtcAgentService::joinRoom(const argus::voice::v1::RtcJoin& join,
   });
 }
 
+void RtcAgentService::farewellRoom(const argus::voice::v1::RtcFarewell& farewell,
+                                   std::function<void(bool)> done)
+{
+  std::shared_ptr<RtcCall> call;
+  {
+    std::scoped_lock lock(mutex_);
+    const auto it = calls_.find(farewell.room());
+    if (it != calls_.end() && !it->second->ended())
+      call = it->second;
+  }
+  if (!call) {
+    done(false);
+    return;
+  }
+  call->farewell(farewell, std::move(done));
+}
+
 size_t RtcAgentService::activeCalls() const
 {
   std::scoped_lock lock(mutex_);

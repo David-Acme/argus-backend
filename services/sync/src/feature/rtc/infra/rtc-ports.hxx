@@ -3,6 +3,7 @@
 #include <argus/voice/v1/voice.pb.h>
 #include <drogon/utils/coroutine.h>
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 
@@ -41,9 +42,16 @@ public:
   virtual drogon::Task<RtcClaim> claim(RtcClaimInput input) const = 0;
 };
 
+struct RtcFarewellInput
+{
+  argus::voice::v1::RtcFarewell request;
+  std::chrono::milliseconds deadline{0};
+};
+
 class RtcVoiceJoiner
 {
 public:
   virtual ~RtcVoiceJoiner() = default;
   virtual drogon::Task<bool> join(argus::voice::v1::RtcJoin join) const = 0;
+  virtual drogon::Task<bool> farewell(RtcFarewellInput input) const = 0;
 };

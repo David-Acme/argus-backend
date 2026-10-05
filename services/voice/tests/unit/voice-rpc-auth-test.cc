@@ -29,7 +29,14 @@ public:
     done(grpc::Status::OK, joined);
   }
 
+  void farewellRoom(const argus::voice::v1::RtcFarewell& farewell, std::function<void(bool)> done) override
+  {
+    farewells.push_back(farewell.room() + "/" + farewell.reason());
+    done(true);
+  }
+
   std::vector<std::string> rooms;
+  std::vector<std::string> farewells;
 };
 
 struct UnaryProbe
@@ -134,6 +141,23 @@ TEST_CASE("JoinRoom answers only argus-sync, Announce only argus-notification")
   CHECK(joined.joined());
   CHECK_FALSE(joined.already());
   CHECK(joiner.rooms == std::vector<std::string>{"u7.rtc-00"});
+
+  {
+    auto stub = argus::voice::v1::VoiceService::NewStub(
+        grpc::CreateChannel(target, grpc::InsecureChannelCredentials()));
+    argus::voice::v1::RtcFarewell farewell;
+    farewell.set_room("u7.rtc-00");
+    farewell.set_reason("accountDisabled");
+    argus::voice::v1::RtcFarewellDone done;
+    grpc::ClientContext refused;
+    argus::client::addCallerCredential(refused, kNotificationSecret);
+    CHECK(stub->Farewell(&refused, farewell, &done).error_code() == grpc::StatusCode::UNAUTHENTICATED);
+    grpc::ClientContext accepted;
+    argus::client::addCallerCredential(accepted, kSyncSecret);
+    REQUIRE(stub->Farewell(&accepted, farewell, &done).ok());
+    CHECK(done.played());
+    CHECK(joiner.farewells == std::vector<std::string>{"u7.rtc-00/accountDisabled"});
+  }
 
   argus::voice::v1::AnnounceResponse reply;
   CHECK(announceWith({.target = target, .secret = kSyncSecret}, reply).error_code() ==

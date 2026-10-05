@@ -89,6 +89,7 @@ set(VOICE_ENGINE_SOURCES
 argus_module(NAME voice-core
     SOURCES
         src/feature/voice/call-history.cc
+        src/feature/voice/farewell-lines.cc
         src/feature/voice/offer-reply.cc
         src/feature/voice/turn-transcript.cc
         src/feature/voice/voice-session-service.cc
@@ -279,3 +280,16 @@ argus_runtime_rpath(voice-rtc-wire-test)
 set_target_properties(voice-rtc-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-rtc-wire-test COMMAND voice-rtc-wire-test)
+
+add_executable(voice-farewell-test tests/unit/voice-farewell-test.cc)
+
+target_link_libraries(voice-farewell-test PRIVATE argus::voice-core
+    doctest::doctest)
+
+target_compile_options(voice-farewell-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-farewell-test)
+
+set_target_properties(voice-farewell-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-farewell-test COMMAND voice-farewell-test)
