@@ -1,6 +1,313 @@
 {
   "probes": [
     {
+      "method": "POST",
+      "path": "/rtc/token",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/rtc/token",
+      "unit": "sync"
+    },
+    {
+      "method": "POST",
+      "path": "/rtc/token",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/rtc/token",
+      "unit": "sync"
+    },
+    {
+      "method": "POST",
+      "path": "/rtc/token",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/rtc/token",
+      "unit": "sync"
+    },
+    {
+      "method": "POST",
+      "path": "/rtc/token",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "RTC_UNAVAILABLE",
+            "message": "Realtime calls are unavailable"
+          },
+          "info": null,
+          "status": 503
+        },
+        "pretty": true,
+        "status": 503
+      },
+      "route": "/rtc/token",
+      "unit": "sync"
+    },
+    {
+      "method": "POST",
+      "path": "/rtc/token",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "RTC_UNAVAILABLE",
+            "message": "Realtime calls are unavailable"
+          },
+          "info": null,
+          "status": 503
+        },
+        "pretty": true,
+        "status": 503
+      },
+      "route": "/rtc/token",
+      "unit": "sync"
+    },
+    {
+      "method": "POST",
+      "path": "/rtc/token",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "RTC_UNAVAILABLE",
+            "message": "Realtime calls are unavailable"
+          },
+          "info": null,
+          "status": 503
+        },
+        "pretty": true,
+        "status": 503
+      },
+      "route": "/rtc/token",
+      "unit": "sync"
+    },
+    {
+      "method": "GET",
+      "path": "/sync/heartbeat",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/sync/heartbeat",
+      "unit": "sync"
+    },
+    {
+      "method": "GET",
+      "path": "/sync/heartbeat",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/sync/heartbeat",
+      "unit": "sync"
+    },
+    {
+      "method": "GET",
+      "path": "/sync/heartbeat",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "armed": false,
+            "at": 1791184282,
+            "graceSeconds": 2700,
+            "guard": "unknown",
+            "guardSeenAt": "<masked>",
+            "intervalSeconds": 60,
+            "presence": "unknown",
+            "presenceSince": 0,
+            "socketGraceSeconds": 180
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/sync/heartbeat",
+      "unit": "sync"
+    },
+    {
+      "method": "GET",
+      "path": "/sync/heartbeat",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "armed": false,
+            "at": 1791184282,
+            "graceSeconds": 2700,
+            "guard": "unknown",
+            "guardSeenAt": "<masked>",
+            "intervalSeconds": 60,
+            "presence": "unknown",
+            "presenceSince": 0,
+            "socketGraceSeconds": 180
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/sync/heartbeat",
+      "unit": "sync"
+    },
+    {
+      "method": "GET",
+      "path": "/sync/heartbeat",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "armed": false,
+            "at": 1791184282,
+            "graceSeconds": 2700,
+            "guard": "unknown",
+            "guardSeenAt": "<masked>",
+            "intervalSeconds": 60,
+            "presence": "unknown",
+            "presenceSince": 0,
+            "socketGraceSeconds": 180
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/sync/heartbeat",
+      "unit": "sync"
+    },
+    {
       "method": "WS",
       "path": "/sync",
       "probe": "ws-plain-get",

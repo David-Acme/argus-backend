@@ -1,6 +1,400 @@
 {
   "probes": [
     {
+      "method": "GET",
+      "path": "/notification/call-preferences",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/call-preferences",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/call-preferences",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/call-preferences",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/call-preferences",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "agenda": "call",
+            "agendaLeadMinutes": 10,
+            "assistant": "call",
+            "criticalBypass": true,
+            "dndUntil": 0,
+            "enabled": true,
+            "guardArrival": "off",
+            "guardCritical": "call",
+            "guardEscalation": "call",
+            "guardIntruder": "call",
+            "lang": "",
+            "liveAnnounce": true,
+            "mutedEnvironmentIds": [],
+            "pushDelaySeconds": 4,
+            "quietDays": 127,
+            "quietEndHour": -1,
+            "quietStartHour": -1,
+            "ringSeconds": 45,
+            "updatedAt": "<masked>",
+            "userId": 2
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification/call-preferences",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/call-preferences",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "agenda": "call",
+            "agendaLeadMinutes": 10,
+            "assistant": "call",
+            "criticalBypass": true,
+            "dndUntil": 0,
+            "enabled": true,
+            "guardArrival": "off",
+            "guardCritical": "call",
+            "guardEscalation": "call",
+            "guardIntruder": "call",
+            "lang": "",
+            "liveAnnounce": true,
+            "mutedEnvironmentIds": [],
+            "pushDelaySeconds": 4,
+            "quietDays": 127,
+            "quietEndHour": -1,
+            "quietStartHour": -1,
+            "ringSeconds": 45,
+            "updatedAt": "<masked>",
+            "userId": 3
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification/call-preferences",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/call-preferences",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "agenda": "call",
+            "agendaLeadMinutes": 10,
+            "assistant": "call",
+            "criticalBypass": true,
+            "dndUntil": 0,
+            "enabled": true,
+            "guardArrival": "off",
+            "guardCritical": "call",
+            "guardEscalation": "call",
+            "guardIntruder": "call",
+            "lang": "",
+            "liveAnnounce": true,
+            "mutedEnvironmentIds": [],
+            "pushDelaySeconds": 4,
+            "quietDays": 127,
+            "quietEndHour": -1,
+            "quietStartHour": -1,
+            "ringSeconds": 45,
+            "updatedAt": "<masked>",
+            "userId": 1
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification/call-preferences",
+      "unit": "notification"
+    },
+    {
+      "method": "PATCH",
+      "path": "/notification/call-preferences",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/call-preferences",
+      "unit": "notification"
+    },
+    {
+      "method": "PATCH",
+      "path": "/notification/call-preferences",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/notification/call-preferences",
+      "unit": "notification"
+    },
+    {
+      "method": "PATCH",
+      "path": "/notification/call-preferences",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/call-preferences",
+      "unit": "notification"
+    },
+    {
+      "method": "PATCH",
+      "path": "/notification/call-preferences",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "agenda": "call",
+            "agendaLeadMinutes": 10,
+            "assistant": "call",
+            "criticalBypass": true,
+            "dndUntil": 0,
+            "enabled": true,
+            "guardArrival": "off",
+            "guardCritical": "call",
+            "guardEscalation": "call",
+            "guardIntruder": "call",
+            "lang": "",
+            "liveAnnounce": true,
+            "mutedEnvironmentIds": [],
+            "pushDelaySeconds": 4,
+            "quietDays": 127,
+            "quietEndHour": -1,
+            "quietStartHour": -1,
+            "ringSeconds": 45,
+            "updatedAt": "<masked>",
+            "userId": 2
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification/call-preferences",
+      "unit": "notification"
+    },
+    {
+      "method": "PATCH",
+      "path": "/notification/call-preferences",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "agenda": "call",
+            "agendaLeadMinutes": 10,
+            "assistant": "call",
+            "criticalBypass": true,
+            "dndUntil": 0,
+            "enabled": true,
+            "guardArrival": "off",
+            "guardCritical": "call",
+            "guardEscalation": "call",
+            "guardIntruder": "call",
+            "lang": "",
+            "liveAnnounce": true,
+            "mutedEnvironmentIds": [],
+            "pushDelaySeconds": 4,
+            "quietDays": 127,
+            "quietEndHour": -1,
+            "quietStartHour": -1,
+            "ringSeconds": 45,
+            "updatedAt": "<masked>",
+            "userId": 3
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification/call-preferences",
+      "unit": "notification"
+    },
+    {
+      "method": "PATCH",
+      "path": "/notification/call-preferences",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "agenda": "call",
+            "agendaLeadMinutes": 10,
+            "assistant": "call",
+            "criticalBypass": true,
+            "dndUntil": 0,
+            "enabled": true,
+            "guardArrival": "off",
+            "guardCritical": "call",
+            "guardEscalation": "call",
+            "guardIntruder": "call",
+            "lang": "",
+            "liveAnnounce": true,
+            "mutedEnvironmentIds": [],
+            "pushDelaySeconds": 4,
+            "quietDays": 127,
+            "quietEndHour": -1,
+            "quietStartHour": -1,
+            "ringSeconds": 45,
+            "updatedAt": "<masked>",
+            "userId": 1
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification/call-preferences",
+      "unit": "notification"
+    },
+    {
       "method": "POST",
       "path": "/notification-token",
       "probe": "no-token",
@@ -413,15 +807,15 @@
           "errors": null,
           "info": {
             "acked": 0,
-            "latencyMsMax": 0,
-            "latencyMsP50": 0,
-            "latencyMsP95": 0,
+            "latencyMsMax": 4,
+            "latencyMsP50": 3,
+            "latencyMsP95": 4,
             "pending": 0,
             "probeAt": "<masked>",
             "probeMs": 0,
             "probeOk": false,
-            "sent": 0,
-            "unacked": 0,
+            "sent": 7,
+            "unacked": 7,
             "unackedOld": 0
           },
           "status": 200
@@ -448,15 +842,15 @@
           "errors": null,
           "info": {
             "acked": 0,
-            "latencyMsMax": 0,
-            "latencyMsP50": 0,
-            "latencyMsP95": 0,
+            "latencyMsMax": 4,
+            "latencyMsP50": 3,
+            "latencyMsP95": 4,
             "pending": 0,
             "probeAt": "<masked>",
             "probeMs": 0,
             "probeOk": false,
-            "sent": 0,
-            "unacked": 0,
+            "sent": 7,
+            "unacked": 7,
             "unackedOld": 0
           },
           "status": 200
@@ -483,15 +877,15 @@
           "errors": null,
           "info": {
             "acked": 0,
-            "latencyMsMax": 0,
-            "latencyMsP50": 0,
-            "latencyMsP95": 0,
+            "latencyMsMax": 4,
+            "latencyMsP50": 3,
+            "latencyMsP95": 4,
             "pending": 0,
             "probeAt": "<masked>",
             "probeMs": 0,
             "probeOk": false,
-            "sent": 0,
-            "unacked": 0,
+            "sent": 7,
+            "unacked": 7,
             "unackedOld": 0
           },
           "status": 200
@@ -674,6 +1068,557 @@
         "status": 422
       },
       "route": "/notification/read",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/responses",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/responses",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/responses",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/responses",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/responses",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": [
+            {
+              "attendedBy": null,
+              "cameraId": 0,
+              "cameraName": "",
+              "contacts": [],
+              "createdAt": "<masked>",
+              "emergencyNumber": "",
+              "environmentId": 1,
+              "environmentName": "",
+              "episodeId": 0,
+              "id": 3,
+              "kind": "guard_panic",
+              "mine": {
+                "discreet": false,
+                "mandatory": false,
+                "mode": "call",
+                "reached": true,
+                "step": 0
+              },
+              "offers": [],
+              "showContacts": false,
+              "state": "active",
+              "step": 0,
+              "stepCount": 1,
+              "strategy": "everyone",
+              "threadKey": "guard:panic:3",
+              "updatedAt": "<masked>",
+              "verdict": "",
+              "verdictAt": "<masked>",
+              "verdictBy": null
+            },
+            {
+              "attendedBy": null,
+              "cameraId": 0,
+              "cameraName": "",
+              "contacts": [],
+              "createdAt": "<masked>",
+              "emergencyNumber": "",
+              "environmentId": 1,
+              "environmentName": "",
+              "episodeId": 0,
+              "id": 2,
+              "kind": "guard_panic",
+              "mine": {
+                "discreet": false,
+                "mandatory": false,
+                "mode": "call",
+                "reached": true,
+                "step": 0
+              },
+              "offers": [],
+              "showContacts": false,
+              "state": "active",
+              "step": 0,
+              "stepCount": 1,
+              "strategy": "everyone",
+              "threadKey": "guard:panic:2",
+              "updatedAt": "<masked>",
+              "verdict": "",
+              "verdictAt": "<masked>",
+              "verdictBy": null
+            }
+          ],
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification/responses",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/responses",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": [],
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification/responses",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/responses",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": [
+            {
+              "attendedBy": null,
+              "cameraId": 0,
+              "cameraName": "",
+              "contacts": [],
+              "createdAt": "<masked>",
+              "emergencyNumber": "",
+              "environmentId": 1,
+              "environmentName": "",
+              "episodeId": 0,
+              "id": 2,
+              "kind": "guard_panic",
+              "mine": {
+                "discreet": false,
+                "mandatory": false,
+                "mode": "call",
+                "reached": true,
+                "step": 0
+              },
+              "offers": [],
+              "showContacts": false,
+              "state": "active",
+              "step": 0,
+              "stepCount": 1,
+              "strategy": "everyone",
+              "threadKey": "guard:panic:2",
+              "updatedAt": "<masked>",
+              "verdict": "",
+              "verdictAt": "<masked>",
+              "verdictBy": null
+            },
+            {
+              "attendedBy": null,
+              "cameraId": 0,
+              "cameraName": "",
+              "contacts": [],
+              "createdAt": "<masked>",
+              "emergencyNumber": "",
+              "environmentId": 1,
+              "environmentName": "",
+              "episodeId": 0,
+              "id": 1,
+              "kind": "guard_panic",
+              "mine": {
+                "discreet": false,
+                "mandatory": false,
+                "mode": "call",
+                "reached": true,
+                "step": 0
+              },
+              "offers": [],
+              "showContacts": false,
+              "state": "active",
+              "step": 0,
+              "stepCount": 1,
+              "strategy": "everyone",
+              "threadKey": "guard:panic:1",
+              "updatedAt": "<masked>",
+              "verdict": "",
+              "verdictAt": "<masked>",
+              "verdictBy": null
+            }
+          ],
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification/responses",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/responses/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/responses/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/responses/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/responses/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/responses/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Response not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/notification/responses/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/responses/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Response not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/notification/responses/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "GET",
+      "path": "/notification/responses/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Response not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/notification/responses/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "PATCH",
+      "path": "/notification/responses/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/responses/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "PATCH",
+      "path": "/notification/responses/999999",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/notification/responses/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "PATCH",
+      "path": "/notification/responses/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/responses/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "PATCH",
+      "path": "/notification/responses/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "verdict": [
+                "verdict must not be empty",
+                "verdict must be one of the allowed values"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/notification/responses/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "PATCH",
+      "path": "/notification/responses/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "verdict": [
+                "verdict must not be empty",
+                "verdict must be one of the allowed values"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/notification/responses/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "PATCH",
+      "path": "/notification/responses/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "verdict": [
+                "verdict must not be empty",
+                "verdict must be one of the allowed values"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/notification/responses/{1}",
       "unit": "notification"
     }
   ],

@@ -42,6 +42,10 @@ ENVELOPE_KEYS = {"status", "info", "errors"}
 
 CONTROL_ERROR_CODE = "CAMERA_UNREACHABLE"
 
+ABSENT_DEPENDENCY_ANSWERS = {
+    ("sync", "/rtc/token"): (503, "RTC_UNAVAILABLE"),
+}
+
 BODY_OVERRIDES = {
     ("auth", "PATCH", "/auth/me"): json.dumps({"name": "p" * 125}),
     ("identity", "POST", "/invitation"): json.dumps({"role": "owner"}),
@@ -109,6 +113,12 @@ SESSION_KILLERS = {
 }
 
 VOLATILE_FIELDS = {
+    ("sync", "/sync/heartbeat"): {
+        "keys": ("at", "presenceSince"),
+        "reason": "a heartbeat stamps the second it answers and the presence "
+                  "change it reports, so both move on every call; the "
+                  "interval, grace and armed state beside them stay pinned",
+    },
     ("notification", "/notification/delivery-summary"): {
         "keys": ("latencyMsMax", "latencyMsP50", "latencyMsP95",
                  "probeMs", "probeOk"),
@@ -582,7 +592,12 @@ def violates(entry, record, deviations):
     status = response["status"]
     problems = []
     control = is_control(entry["unit"], entry["route"])
-    if status >= 500 and not (status == 502 and control):
+    absent = ABSENT_DEPENDENCY_ANSWERS.get((entry["unit"], entry["route"]))
+    if absent and status == absent[0] and error_code(record) != absent[1]:
+        problems.append(f"{entry['route']} answered {status} "
+                        f"{error_code(record)} instead of {absent[1]}")
+    elif status >= 500 and not (status == 502 and control) and \
+            not (absent and status == absent[0]):
         problems.append(f"{status} is a server failure")
     elif control and status == 502 and error_code(record) != CONTROL_ERROR_CODE:
         problems.append(f"control route answered 502 "

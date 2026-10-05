@@ -753,6 +753,21 @@
                   {
                     "apply": "live",
                     "choices": [],
+                    "fallback": "240",
+                    "group": "health",
+                    "key": "guard.offline_sustained_s",
+                    "level": "advanced",
+                    "max": 3600.0,
+                    "min": 60.0,
+                    "pendingRestart": false,
+                    "step": 30.0,
+                    "type": "integer",
+                    "unit": "s",
+                    "value": "240"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
                     "fallback": "300",
                     "group": "health",
                     "key": "guard.health_stale_s",
@@ -768,17 +783,32 @@
                   {
                     "apply": "live",
                     "choices": [],
-                    "fallback": "90",
+                    "fallback": "30",
                     "group": "history",
                     "key": "guard.journal_retention_days",
                     "level": "advanced",
-                    "max": 3650.0,
+                    "max": 60.0,
                     "min": 1.0,
                     "pendingRestart": false,
                     "step": 1.0,
                     "type": "integer",
                     "unit": "days",
                     "value": "90"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "120",
+                    "group": "history",
+                    "key": "guard.marked_retention_days",
+                    "level": "advanced",
+                    "max": 120.0,
+                    "min": 30.0,
+                    "pendingRestart": false,
+                    "step": 1.0,
+                    "type": "integer",
+                    "unit": "days",
+                    "value": "120"
                   }
                 ]
               },
@@ -1204,6 +1234,66 @@
                     "type": "integer",
                     "unit": "days",
                     "value": "90"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "true",
+                    "group": "calls",
+                    "key": "calls.enabled",
+                    "level": "basic",
+                    "max": 0.0,
+                    "min": 0.0,
+                    "pendingRestart": false,
+                    "step": 0.0,
+                    "type": "toggle",
+                    "unit": "",
+                    "value": "true"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "300",
+                    "group": "calls",
+                    "key": "calls.call_gap_s",
+                    "level": "advanced",
+                    "max": 3600.0,
+                    "min": 30.0,
+                    "pendingRestart": false,
+                    "step": 30.0,
+                    "type": "integer",
+                    "unit": "s",
+                    "value": "300"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "4",
+                    "group": "calls",
+                    "key": "calls.max_calls_per_hour",
+                    "level": "advanced",
+                    "max": 20.0,
+                    "min": 1.0,
+                    "pendingRestart": false,
+                    "step": 1.0,
+                    "type": "integer",
+                    "unit": "perHour",
+                    "value": "4"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "10800",
+                    "group": "calls",
+                    "key": "calls.arrival_absence_s",
+                    "level": "advanced",
+                    "max": 86400.0,
+                    "min": 600.0,
+                    "pendingRestart": false,
+                    "step": 600.0,
+                    "type": "integer",
+                    "unit": "s",
+                    "value": "10800"
                   }
                 ]
               }

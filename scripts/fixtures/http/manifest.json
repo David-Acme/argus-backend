@@ -42,7 +42,7 @@
       "errors"
     ]
   },
-  "probes": 472,
+  "probes": 648,
   "sessions": "scripts/seed-golden.py --roles (owner, resident, guest)",
   "sources": "scripts/lib/route-baseline.txt (the route census)",
   "units": [
@@ -84,6 +84,15 @@
       "reason": "the recommendation is derived from the cores, RAM, ISA and GPU of the host that answers, so it differs between machines; the profile previews beside it stay pinned",
       "route": "/settings/profiles",
       "unit": "settings"
+    },
+    {
+      "keys": [
+        "at",
+        "presenceSince"
+      ],
+      "reason": "a heartbeat stamps the second it answers and the presence change it reports, so both move on every call; the interval, grace and armed state beside them stay pinned",
+      "route": "/sync/heartbeat",
+      "unit": "sync"
     }
   ]
 }
