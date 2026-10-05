@@ -111,6 +111,12 @@ void setConfig()
       drogon::HttpRequest::newHttpRequest()->getPeerAddr().toIp());
 }
 
+[[nodiscard]] bool configured()
+{
+  setConfig();
+  return true;
+}
+
 class ScriptedIdentityClient : public IdentityClient
 {
 public:
@@ -330,14 +336,13 @@ private:
   std::string target_;
 };
 
-class Fixture
+class Runtime
 {
 public:
-  Fixture() = default;
+  Runtime() = default;
 
-  ~Fixture()
+  ~Runtime()
   {
-    rpc_.reset();
     if (runner_.joinable()) {
       if (drogon::app().isRunning()) {
         drogon::app().quit();
@@ -352,15 +357,14 @@ public:
     std::remove((path_ + "-shm").c_str());
   }
 
-  Fixture(const Fixture&) = delete;
-  Fixture& operator=(const Fixture&) = delete;
+  Runtime(const Runtime&) = delete;
+  Runtime& operator=(const Runtime&) = delete;
 
   [[nodiscard]] bool start()
   {
     if (started_)
-      return ready_;
+      return running_;
     started_ = true;
-    setConfig();
     drogon::app().setLogLevel(trantor::Logger::kWarn);
     drogon::app().addDbClient(
         drogon::orm::Sqlite3Config{.connectionNumber = 1,
@@ -373,22 +377,73 @@ public:
     while (!drogon::app().isRunning() &&
            std::chrono::steady_clock::now() < deadline)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    if (!drogon::app().isRunning())
-      return false;
+    running_ = drogon::app().isRunning();
+    return running_;
+  }
 
+private:
+  std::string path_{tempPath()};
+  std::thread runner_;
+  bool started_{false};
+  bool running_{false};
+};
+
+[[nodiscard]] std::unique_ptr<Runtime>& runtimeStorage()
+{
+  static std::unique_ptr<Runtime> booted;
+  return booted;
+}
+
+[[nodiscard]] bool startRuntime()
+{
+  auto& booted = runtimeStorage();
+  if (!booted)
+    booted = std::make_unique<Runtime>();
+  return booted->start();
+}
+
+void dropEveryTable()
+{
+  auto client = DbService::client();
+  client->execSqlSync("PRAGMA foreign_keys = OFF");
+  const auto tables = client->execSqlSync(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE "
+      "'sqlite_%'");
+  for (const auto& row : tables)
+    client->execSqlSync("DROP TABLE IF EXISTS \"" +
+                        row["name"].as<std::string>() + "\"");
+  client->execSqlSync("PRAGMA foreign_keys = ON");
+}
+
+class Fixture
+{
+public:
+  Fixture()
+  {
+    if (!startRuntime())
+      return;
+    dropEveryTable();
     legacy_ = seedLegacySchema();
-    ready_ = RefreshTokenRepository().migrateLegacySchema() &&
-             DeviceLoginChallengeRepository().migrateLegacySchema() &&
-             DbService::runScriptFile(ARGUS_AUTH_SCHEMA_PATH);
-    if (!ready_)
-      return false;
-
+    if (!RefreshTokenRepository().migrateLegacySchema() ||
+        !DeviceLoginChallengeRepository().migrateLegacySchema() ||
+        !DbService::runScriptFile(ARGUS_AUTH_SCHEMA_PATH))
+      return;
     rpc_ = std::make_unique<AuthRpcHarness>(sessions_);
     ConfigService::setRuntimeString("auth.target", rpc_->target());
     auth_change::setSink(&sink_);
-    return rpc_->listening();
+    ready_ = rpc_->listening();
   }
 
+  ~Fixture()
+  {
+    auth_change::setSink(nullptr);
+    rpc_.reset();
+  }
+
+  Fixture(const Fixture&) = delete;
+  Fixture& operator=(const Fixture&) = delete;
+
+  [[nodiscard]] bool ready() const { return ready_; }
   [[nodiscard]] AuthFeatureService& auth() { return auth_; }
   [[nodiscard]] SessionManagementService& sessions() { return manager_; }
   [[nodiscard]] RecordingSink& sink() { return sink_; }
@@ -397,7 +452,7 @@ public:
   [[nodiscard]] const LegacySeed& legacy() const { return legacy_; }
 
 private:
-  std::string path_{tempPath()};
+  bool configured_{configured()};
   ScriptedIdentityClient identity_;
   SessionService sessions_{{.jwtService = JwtService{JwtRole::Issuer},
                             .refreshTokenRepository = RefreshTokenRepository{},
@@ -417,27 +472,8 @@ private:
   RecordingSink sink_;
   LegacySeed legacy_;
   std::unique_ptr<AuthRpcHarness> rpc_;
-  std::thread runner_;
-  bool started_{false};
   bool ready_{false};
 };
-
-[[nodiscard]] std::unique_ptr<Fixture>& fixtureStorage()
-{
-  static std::unique_ptr<Fixture> booted;
-  return booted;
-}
-
-[[nodiscard]] Fixture& fixture()
-{
-  auto& booted = fixtureStorage();
-  if (!booted) {
-    setConfig();
-    booted = std::make_unique<Fixture>();
-  }
-  return *booted;
-}
-
 struct Device
 {
   std::string userAgent;
@@ -486,9 +522,9 @@ struct OpenSessionInput
                                .ipAddress = device.address};
 }
 
-[[nodiscard]] OpenedSession openSession(const OpenSessionInput& input)
+[[nodiscard]] OpenedSession openSession(AuthFeatureService& auth,
+                                        const OpenSessionInput& input)
 {
-  AuthFeatureService& auth = fixture().auth();
   const LoginDeviceInput login = loginOf(input.device);
   const auto challenge =
       drogon::sync_wait(auth.createDeviceLogin(qrStartOf(input.device)));
@@ -613,8 +649,8 @@ T present(const std::optional<T>& value)
 
 TEST_CASE("a session written before the migration keeps working with an id")
 {
-  Fixture& app = fixture();
-  REQUIRE(app.start());
+  Fixture app;
+  REQUIRE(app.ready());
 
   const OpenedSession legacy{
       .accessToken = app.legacy().accessToken,
@@ -679,15 +715,15 @@ TEST_CASE("the client identity headers name the platform and the device")
 
 TEST_CASE("an owner lists, revokes one session and the rest, and logs out")
 {
-  Fixture& app = fixture();
-  REQUIRE(app.start());
+  Fixture app;
+  REQUIRE(app.ready());
   app.sink().clear();
 
-  const auto phone = openSession({.userId = kOwnerId, .device = androidPhone()});
-  const auto desk = openSession({.userId = kOwnerId, .device = desktop()});
-  const auto web = openSession({.userId = kOwnerId, .device = browser()});
+  const auto phone = openSession(app.auth(), {.userId = kOwnerId, .device = androidPhone()});
+  const auto desk = openSession(app.auth(), {.userId = kOwnerId, .device = desktop()});
+  const auto web = openSession(app.auth(), {.userId = kOwnerId, .device = browser()});
   const auto stranger =
-      openSession({.userId = kOtherUserId, .device = androidPhone()});
+      openSession(app.auth(), {.userId = kOtherUserId, .device = androidPhone()});
   CHECK(app.sink().changes().size() == 8);
 
   const JwtContext phoneContext = contextOf(phone);
@@ -777,7 +813,7 @@ TEST_CASE("an owner lists, revokes one session and the rest, and logs out")
        .sessionId = "../../etc"}));
   CHECK(malformed.code == "SESSION_NOT_FOUND");
 
-  const auto second = openSession({.userId = kOwnerId, .device = desktop()});
+  const auto second = openSession(app.auth(), {.userId = kOwnerId, .device = desktop()});
   app.sink().clear();
   const auto others = drogon::sync_wait(app.sessions().revokeScope(
       {.owner = {.userId = kOwnerId, .currentSessionId = phoneId, .role = UserRole::Owner},
@@ -791,7 +827,7 @@ TEST_CASE("an owner lists, revokes one session and the rest, and logs out")
   CHECK(authenticate(phone).has_value());
   CHECK(app.sink().changes().size() == 4);
 
-  const auto spare = openSession({.userId = kOwnerId, .device = browser()});
+  const auto spare = openSession(app.auth(), {.userId = kOwnerId, .device = browser()});
   REQUIRE(authenticate(spare).has_value());
   drogon::sync_wait(
       app.auth().logout({.userId = kOwnerId, .sessionId = phoneId}));
@@ -825,10 +861,10 @@ TEST_CASE("the scope of a bulk revocation is validated")
 
 TEST_CASE("a rotated refresh token races inside the window and is a theft outside it")
 {
-  Fixture& app = fixture();
-  REQUIRE(app.start());
+  Fixture app;
+  REQUIRE(app.ready());
 
-  const auto phone = openSession({.userId = kOtherUserId, .device = androidPhone()});
+  const auto phone = openSession(app.auth(), {.userId = kOtherUserId, .device = androidPhone()});
   const JwtContext context = contextOf(phone);
   const std::string sessionId = context.sessionId;
 
@@ -863,7 +899,7 @@ TEST_CASE("a rotated refresh token races inside the window and is a theft outsid
                        .device = phone.device})))
             .has_value());
 
-  const auto late = openSession({.userId = kOtherUserId, .device = desktop()});
+  const auto late = openSession(app.auth(), {.userId = kOtherUserId, .device = desktop()});
   const JwtContext lateContext = contextOf(late);
   const auto rotated = drogon::sync_wait(app.auth().refreshToken(refreshInputOf(
       {.refreshToken = late.refreshToken, .device = late.device})));
@@ -878,7 +914,7 @@ TEST_CASE("a rotated refresh token races inside the window and is a theft outsid
             .has_value());
   CHECK_FALSE(contains(activeSessionIds(kOtherUserId), lateContext.sessionId));
 
-  const auto stolen = openSession({.userId = kOtherUserId, .device = browser()});
+  const auto stolen = openSession(app.auth(), {.userId = kOtherUserId, .device = browser()});
   const JwtContext stolenContext = contextOf(stolen);
   CHECK_FALSE(drogon::sync_wait(app.auth().refreshToken(refreshInputOf(
                                     {.refreshToken = stolen.refreshToken,
@@ -908,14 +944,14 @@ TEST_CASE("a rotated refresh token races inside the window and is a theft outsid
 
 TEST_CASE("an identity outage during a refresh rotates nothing and the token survives it")
 {
-  Fixture& app = fixture();
-  REQUIRE(app.start());
+  Fixture app;
+  REQUIRE(app.ready());
 
   const Device tablet{.userAgent = "Argus/1 (android)",
                       .address = "10.0.0.31",
                       .client = {.platform = SessionPlatform::Android,
                                  .deviceName = "Tab"}};
-  const auto opened = openSession({.userId = kOtherUserId, .device = tablet});
+  const auto opened = openSession(app.auth(), {.userId = kOtherUserId, .device = tablet});
   const std::string sessionId = contextOf(opened).sessionId;
   const std::vector<std::string> presentedOnly{
       argus::hash::sha256Hex(opened.refreshToken)};
@@ -956,8 +992,8 @@ TEST_CASE("an identity outage during a refresh rotates nothing and the token sur
 
 TEST_CASE("a legacy agent moves to the stable agent once, from the device it is bound to")
 {
-  Fixture& app = fixture();
-  REQUIRE(app.start());
+  Fixture app;
+  REQUIRE(app.ready());
 
   const auto rows = DbService::client()->execSqlSync(
       "SELECT session_id FROM refresh_token WHERE user_id = ? AND is_valid = 1 "
@@ -1031,10 +1067,10 @@ TEST_CASE("a legacy agent moves to the stable agent once, from the device it is 
 
 TEST_CASE("last seen advances on use at most once a minute")
 {
-  Fixture& app = fixture();
-  REQUIRE(app.start());
+  Fixture app;
+  REQUIRE(app.ready());
 
-  const auto phone = openSession({.userId = kOwnerId, .device = androidPhone()});
+  const auto phone = openSession(app.auth(), {.userId = kOwnerId, .device = androidPhone()});
   const JwtContext context = contextOf(phone);
   const auto lastSeen = [&] {
     return DbService::client()
@@ -1064,16 +1100,16 @@ TEST_CASE("last seen advances on use at most once a minute")
 
 TEST_CASE("the owner lists every user's sessions and closes another user's one or all")
 {
-  Fixture& app = fixture();
-  REQUIRE(app.start());
+  Fixture app;
+  REQUIRE(app.ready());
   constexpr int64_t kTargetId = 21;
   constexpr int64_t kBystanderId = 22;
 
-  const auto owner = openSession({.userId = kOwnerId, .device = desktop()});
-  const auto phone = openSession({.userId = kTargetId, .device = androidPhone()});
-  const auto laptop = openSession({.userId = kTargetId, .device = browser()});
+  const auto owner = openSession(app.auth(), {.userId = kOwnerId, .device = desktop()});
+  const auto phone = openSession(app.auth(), {.userId = kTargetId, .device = androidPhone()});
+  const auto laptop = openSession(app.auth(), {.userId = kTargetId, .device = browser()});
   const auto bystander =
-      openSession({.userId = kBystanderId, .device = androidPhone()});
+      openSession(app.auth(), {.userId = kBystanderId, .device = androidPhone()});
   const JwtContext ownerContext = contextOf(owner);
   const JwtContext phoneContext = contextOf(phone);
   const JwtContext laptopContext = contextOf(laptop);
@@ -1169,8 +1205,8 @@ TEST_CASE("the owner lists every user's sessions and closes another user's one o
 
 TEST_CASE("identity's liveness and quality refusals reach the app as their own codes")
 {
-  Fixture& app = fixture();
-  REQUIRE(app.start());
+  Fixture app;
+  REQUIRE(app.ready());
   const auto phoneLogin = [] { return loginOf(androidPhone()); };
   const auto login = [&](const std::string& check) {
     return refusedBy(app.auth().login(LoginDto{.image = "check:" + check}, phoneLogin()));
@@ -1212,15 +1248,15 @@ TEST_CASE("identity's liveness and quality refusals reach the app as their own c
 
 TEST_CASE("a disabled account loses every session and is refused at every way in")
 {
-  Fixture& app = fixture();
-  REQUIRE(app.start());
+  Fixture app;
+  REQUIRE(app.ready());
   constexpr int64_t kDisabledId = 31;
   constexpr int64_t kLaggingId = 32;
   constexpr int64_t kQrId = 33;
   const auto phoneLogin = [] { return loginOf(androidPhone()); };
 
-  const auto phone = openSession({.userId = kDisabledId, .device = androidPhone()});
-  const auto web = openSession({.userId = kDisabledId, .device = browser()});
+  const auto phone = openSession(app.auth(), {.userId = kDisabledId, .device = androidPhone()});
+  const auto web = openSession(app.auth(), {.userId = kDisabledId, .device = browser()});
   app.sink().clear();
   app.identity().setActive(kDisabledId, false);
   CHECK(drogon::sync_wait(app.verdicts().revokeUser(kDisabledId)));
@@ -1254,7 +1290,7 @@ TEST_CASE("a disabled account loses every session and is refused at every way in
   CHECK(oldRefresh.status == 403);
   CHECK(oldRefresh.code == "ACCOUNT_DISABLED");
 
-  const auto lagging = openSession({.userId = kLaggingId, .device = androidPhone()});
+  const auto lagging = openSession(app.auth(), {.userId = kLaggingId, .device = androidPhone()});
   app.identity().setActive(kLaggingId, false);
   const Refusal refresh = refusedBy(app.auth().refreshToken(refreshInputOf(
       {.refreshToken = lagging.refreshToken, .device = lagging.device})));
@@ -1291,7 +1327,6 @@ int main(int argc, char** argv)
 {
   doctest::Context context(argc, argv);
   const int result = context.run();
-  auth_change::setSink(nullptr);
-  fixtureStorage().reset();
+  runtimeStorage().reset();
   return result;
 }

@@ -473,6 +473,16 @@ agent, revokes the family; the legacy agent moves to the stable one once, only
 from its own address or credential; `last_seen_at` moves at most once a
 minute.
 
+Every case of that suite stands alone. Drogon runs once per process, so the
+loop and the `default` client are booted by the first case and kept; each
+case then builds its own `Fixture`: it drops every table, seeds the
+pre-migration shape with its legacy session, runs the boot migration and the
+schema, and constructs fresh services, a fresh identity script, a fresh
+recording sink and its own RPC harness. No case reads a row, a sink entry or
+an identity toggle another case left behind, which
+`--order-by=rand --rand-seed=<n>`, `--order-by=name --reverse` and a
+`--test-case=<name>` run of each case confirm.
+
 The suite quits Drogon from `main()` **after** `doctest::Context::run()`
 instead of letting the exit-time static destructors do it. Measured: a binary
 that boots Drogon with a SQLite `DbClient`, connects a `NatsBus`, drains it and
