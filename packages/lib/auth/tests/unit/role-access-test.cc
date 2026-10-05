@@ -420,3 +420,18 @@ TEST_CASE("every role reads its own heartbeat, only by GET, and nothing else und
     CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/sync/other", .method = drogon::Get}));
   }
 }
+
+TEST_CASE("residents and guards read an environment's response list, only guards go on duty, only owners edit")
+{
+  for (const UserRole role : {UserRole::Resident, UserRole::Guard}) {
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/guard/environments/3/response", .method = drogon::Get}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/guard/environments/3/response", .method = drogon::Put}));
+  }
+  CHECK(role_access::hasHttpAccess({.role = UserRole::Guard, .path = "/guard/environments/3/duty", .method = drogon::Post}));
+  CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Resident, .path = "/guard/environments/3/duty", .method = drogon::Post}));
+  CHECK(role_access::hasHttpAccess({.role = UserRole::Owner, .path = "/guard/environments/3/response", .method = drogon::Put}));
+  CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guest, .path = "/guard/environments/3/response", .method = drogon::Get}));
+  CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guard, .path = "/guard/environments/3/response/x", .method = drogon::Get}));
+  CHECK(role_access::hasHttpAccess({.role = UserRole::Guard, .path = "/guard/environments", .method = drogon::Get}));
+  CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guard, .path = "/guard/environments/3", .method = drogon::Patch}));
+}

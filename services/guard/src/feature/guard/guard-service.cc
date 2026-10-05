@@ -801,7 +801,8 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
                             .encounterId = 0,
                             .zoneKind = {},
                             .identityState = {},
-                            .phase = "opened"})};
+                            .phase = "opened"}),
+        .excludeUserIds = {}};
     co_await journalDecision(
         {.eventId = eventId,
          .encounterId = 0,
@@ -1330,6 +1331,7 @@ GuardService::checkpointToJson(const ObservationCheckpoint& checkpoint)
   json["cameraRole"] = checkpoint.cameraRole;
   json["outdoor"] = checkpoint.outdoor;
   Json::Value reasons(Json::arrayValue);
+  json["familyInside"] = checkpoint.familyInside;
   for (const auto& reason : checkpoint.reasons)
     reasons.append(reason);
   json["reasons"] = std::move(reasons);
@@ -1404,6 +1406,7 @@ GuardService::checkpointFromJson(const Json::Value& json)
   checkpoint.cameraRole = json.get("cameraRole", "").asString();
   checkpoint.outdoor = json.get("outdoor", false).asBool();
   for (const auto& reason : json["reasons"]) {
+  checkpoint.familyInside = json.get("familyInside", false).asBool();
     if (reason.isString())
       checkpoint.reasons.push_back(reason.asString());
   }
@@ -1544,6 +1547,8 @@ GuardService::applyObservation(const ObservationInput& input)
     checkpoint.cameraRole = cameraRoleToString(camera.role);
     checkpoint.outdoor = camera.outdoor;
     if (signals.hasUnknown && signals.knownPersonId > 0 &&
+    checkpoint.familyInside = camera.configured && !camera.outdoor &&
+                              co_await familyInside(environment.id);
         dependencies_.identity) {
       const auto known = co_await BlockingTask<std::optional<PersonProfile>>(
           [this, personId = signals.knownPersonId]() {
@@ -2072,7 +2077,8 @@ GuardService::applyObservation(const ObservationInput& input)
        .inAlertZone = signals.zoneKind == "alert" ||
                       signals.rule == "person_in_alert_zone",
        .encounterChecks = checkpoint.encounterChecks,
-       .quietArea = checkpoint.expectedArea || checkpoint.passerby});
+       .quietArea = checkpoint.expectedArea || checkpoint.passerby,
+       .familyInside = checkpoint.familyInside});
   bool notifySuppressed = false;
   bool announceSuppressed = false;
   bool alarmSuppressed = false;
@@ -2350,7 +2356,8 @@ GuardService::applyObservation(const ObservationInput& input)
                .encounterId = state.encounterId,
                .zoneKind = signals.zoneKind,
                .identityState = identityStateToString(signals.identityState),
-               .phase = threadOpen ? "escalated" : "opened"})};
+               .phase = threadOpen ? "escalated" : "opened"}),
+          .excludeUserIds = {}};
       note(co_await performEffect(
           {.kind = GuardActionKind::Notify,
            .danger = danger,
@@ -2652,7 +2659,8 @@ GuardService::escalate(const EscalateInput& input)
        .inAlertZone = signals.zoneKind == "alert" ||
                       signals.rule == "person_in_alert_zone",
        .encounterChecks = input.checkpoint.encounterChecks,
-       .quietArea = input.checkpoint.expectedArea || input.checkpoint.passerby});
+       .quietArea = input.checkpoint.expectedArea || input.checkpoint.passerby,
+       .familyInside = input.checkpoint.familyInside});
 
   if (rank >= config->notifyLevel) {
     NoticeAction action = NoticeAction::Watching;
@@ -2694,7 +2702,8 @@ GuardService::escalate(const EscalateInput& input)
              .encounterId = input.encounterId,
              .zoneKind = signals.zoneKind,
              .identityState = identityStateToString(signals.identityState),
-             .phase = "escalated"})};
+             .phase = "escalated"}),
+        .excludeUserIds = {}};
     note(co_await performEffect(
         {.kind = GuardActionKind::Notify,
          .danger = input.danger,
@@ -3586,7 +3595,7 @@ drogon::Task<bool> GuardService::sendDigest(const DigestInput& input)
        .seconds = 0,
        .correlationId = input.correlationId,
        .sequence = 1,
-       .notifyContent = {.notice = notice, .data = data}});
+       .notifyContent = {.notice = notice, .data = data, .excludeUserIds = {}}});
   co_return !sent.resumable;
 }
 
@@ -3614,32 +3623,192 @@ std::string GuardService::userLang(int64_t userId)
   return lang;
 }
 
-drogon::Task<std::optional<std::vector<GuardService::RecipientBatch>>>
-GuardService::recipientBatches()
+drogon::Task<std::optional<GuardService::RecipientResolution>>
+GuardService::legacyRecipients(const std::vector<int64_t>& excluded)
 {
   if (!dependencies_.identity) {
     LOG_WARN << "Guard service: identity SDK unavailable";
     co_return std::nullopt;
   }
-  co_return co_await BlockingTask<
-      std::optional<std::vector<RecipientBatch>>>(
-      [this]() -> std::optional<std::vector<RecipientBatch>> {
+  co_return co_await BlockingTask<std::optional<RecipientResolution>>(
+      [this, excluded]() -> std::optional<RecipientResolution> {
         const auto users = dependencies_.identity->listNotifiableUsers();
         if (!users || users->empty())
           return std::nullopt;
         std::map<std::string, std::vector<int64_t>> byLang;
-        for (const int64_t userId : *users)
-          byLang[userLang(userId)].push_back(userId);
-        std::vector<RecipientBatch> batches;
-        batches.reserve(byLang.size());
+        for (const int64_t userId : *users) {
+          if (std::ranges::find(excluded, userId) == excluded.end())
+            byLang[userLang(userId)].push_back(userId);
+        }
+        RecipientResolution resolution{.batches = {}, .plan = Json::Value()};
+        resolution.batches.reserve(byLang.size());
         for (auto& [lang, ids] : byLang)
-          batches.push_back({.lang = lang, .userIds = std::move(ids)});
-        return batches;
+          resolution.batches.push_back({.lang = lang, .userIds = std::move(ids)});
+        return resolution;
       });
 }
 
 drogon::Task<GuardService::EffectStatus>
 GuardService::notify(const NotifyInput& input)
+namespace
+{
+std::optional<ResponseTrigger> responseTriggerOf(const Json::Value& data)
+{
+  const std::string kind = data.get("kind", "").asString();
+  const std::string urgency = data.get("urgency", "").asString();
+  const bool critical = urgency == "critical";
+  if (kind == "guard_episode" && (critical || urgency == "time_sensitive"))
+    return data.get("phase", "").asString() == "escalated"
+               ? ResponseTrigger::Escalation
+               : ResponseTrigger::Intrusion;
+  if (kind == "guard_panic" && critical)
+    return ResponseTrigger::Panic;
+  if (kind == "guard_duress" && critical)
+    return ResponseTrigger::Duress;
+  if (kind == "guard_tamper" && critical)
+    return ResponseTrigger::Tamper;
+  return std::nullopt;
+}
+
+bool hasReason(const Json::Value& data, std::string_view reason)
+{
+  const Json::Value& reasons = data["reasons"];
+  if (!reasons.isArray())
+    return false;
+  return std::ranges::any_of(reasons, [reason](const Json::Value& value) {
+    return value.isString() && value.asString() == reason;
+  });
+}
+}
+
+drogon::Task<GuardService::RecipientResolution>
+GuardService::planRecipients(const PlanQuery& query)
+{
+  const auto config = currentConfig();
+  const Json::Value& data = query.data;
+  int64_t environmentId = data.get("environmentId", 0).asInt64();
+  std::optional<GuardEnvironment> environment;
+  if (environmentId > 0)
+    environment = co_await environmentRepository_.find(environmentId);
+  if (!environment) {
+    environmentId = co_await environmentRepository_.defaultId();
+    if (environmentId > 0)
+      environment = co_await environmentRepository_.find(environmentId);
+  }
+  const ResponseConfigRows rows = environmentId > 0
+                                      ? co_await responseRepository_.forEnvironment(
+                                            environmentId)
+                                      : ResponseConfigRows{};
+  const std::vector<ResponseMember> members = response_plan::members(
+      {.users = query.users, .rows = rows.recipients});
+  const auto langOf = [&](int64_t userId) {
+    const auto user = std::ranges::find(query.users, userId, &ResponseUser::userId);
+    return guard_copy::normalizeLang(
+        {.requested = user != query.users.end() ? user->lang : std::string{},
+         .fallback = config->notifyLang});
+  };
+  const auto batchesOf = [&](const std::vector<int64_t>& userIds) {
+    std::map<std::string, std::vector<int64_t>> byLang;
+    for (const int64_t userId : userIds)
+      byLang[langOf(userId)].push_back(userId);
+    std::vector<RecipientBatch> batches;
+    batches.reserve(byLang.size());
+    for (auto& [lang, ids] : byLang)
+      batches.push_back({.lang = lang, .userIds = std::move(ids)});
+    return batches;
+  };
+
+  const auto trigger = responseTriggerOf(data);
+  if (!trigger)
+    co_return RecipientResolution{
+        .batches = batchesOf(response_plan::audience(
+            {.members = members, .excluded = query.excluded})),
+        .plan = Json::Value()};
+
+  std::vector<int64_t> memberIds;
+  memberIds.reserve(members.size());
+  for (const auto& member : members)
+    memberIds.push_back(member.userId);
+  std::vector<PresenceRow> presence;
+  if (environmentId > 0 && !memberIds.empty()) {
+    try {
+      presence = co_await presenceRepository_.forEnvironment(
+          {.environmentId = environmentId, .userIds = memberIds});
+    }
+    catch (const std::exception& error) {
+      LOG_WARN << "Guard service: presence read failed, treating as unknown: "
+               << error.what();
+    }
+  }
+  const auto at = static_cast<std::time_t>(query.now);
+  std::tm local{};
+  localtime_r(&at, &local);
+  const GuardSchedule schedule = environment
+                                     ? guard_schedule::fromEnvironment(*environment)
+                                     : GuardSchedule{};
+  const GuardPosture posture =
+      guard_schedule::resolve({.schedule = schedule,
+                               .manual = environment ? environment->mode
+                                                     : GuardMode::Home,
+                               .local = local});
+  const int64_t cameraId = data.get("cameraId", 0).asInt64();
+  bool indoor = false;
+  if (cameraId > 0) {
+    const GuardCameraContext camera = co_await cameraContextRepository_.find(cameraId);
+    indoor = camera.configured && !camera.outdoor;
+  }
+  const ResponsePlan plan = response_plan::build(
+      {.environmentId = environmentId,
+       .members = members,
+       .presence = presence,
+       .excluded = query.excluded,
+       .trigger = *trigger,
+       .indoor = indoor,
+       .night = posture.mode == GuardMode::Night || hasReason(data, "night"),
+       .clearThreat = data.get("urgency", "").asString() == "critical",
+       .staffedNow = response_plan::staffedAt(schedule, local),
+       .hasCamera = cameraId > 0,
+       .stepSeconds = rows.setting.stepSeconds,
+       .emergencyNumber = rows.setting.emergencyNumber,
+       .contacts = rows.contacts});
+  co_return RecipientResolution{.batches = batchesOf(response_plan::stepUsers(plan, 0)),
+                                .plan = response_plan::toJson(plan)};
+}
+
+drogon::Task<std::optional<GuardService::RecipientResolution>>
+GuardService::recipientsFor(const RecipientQuery& query)
+{
+  if (!dependencies_.directory)
+    co_return co_await legacyRecipients(query.excluded);
+  const auto directory = dependencies_.directory;
+  const auto users = co_await BlockingTask<std::optional<std::vector<ResponseUser>>>(
+      [directory]() { return directory->users(); });
+  if (!users) {
+    LOG_WARN << "Guard service: user directory unavailable";
+    co_return std::nullopt;
+  }
+  RecipientResolution resolution = co_await planRecipients(
+      {.data = query.data, .excluded = query.excluded, .users = *users, .now = query.now});
+  if (resolution.batches.empty())
+    co_return std::nullopt;
+  co_return resolution;
+}
+
+drogon::Task<bool> GuardService::familyInside(int64_t environmentId)
+{
+  if (environmentId <= 0)
+    co_return false;
+  try {
+    const auto rows = co_await presenceRepository_.forEnvironment(
+        {.environmentId = environmentId, .userIds = {}});
+    co_return presence::overall(rows) == PresenceState::Home;
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Guard service: presence read failed: " << error.what();
+  }
+  co_return false;
+}
+
 {
   const auto config = currentConfig();
   if (!dependencies_.notifications) {
@@ -3692,17 +3861,23 @@ GuardService::notify(const NotifyInput& input)
   }
 
   if (deliveries.empty()) {
-    const auto batches = co_await recipientBatches();
-    if (!batches) {
+    const auto resolution = co_await recipientsFor(
+        {.data = input.content.data,
+         .excluded = input.content.excludeUserIds,
+         .now = input.now});
+    if (!resolution) {
       LOG_WARN << "Guard service: no notifiable users; notification dropped";
       co_return EffectStatus::RetryableFailed;
     }
     data = input.content.data;
     Json::Value payload(Json::objectValue);
+    const std::vector<RecipientBatch>& batches = resolution->batches;
     payload["type"] = "camera";
+    if (resolution->plan.isObject() && data.isObject())
+      data["response"] = resolution->plan;
     payload["data"] = data;
     Json::Value storedBatches(Json::arrayValue);
-    for (const auto& batch : *batches) {
+    for (const auto& batch : batches) {
       const NoticeText text = guard_copy::render(input.content.notice, batch.lang);
       deliveries.push_back({.lang = batch.lang,
                             .userIds = batch.userIds,

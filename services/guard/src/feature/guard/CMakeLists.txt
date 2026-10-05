@@ -13,6 +13,8 @@ argus_module(NAME guard
         guard-schema.cc
         guard-service.cc
         controllers/guard-controller.cc
+        controllers/response-controller.cc
+        infra/identity-response-directory.cc
         dtos/create-environment-dto.cc
         dtos/create-expected-guest-dto.cc
         dtos/feedback-decision-dto.cc
@@ -25,10 +27,16 @@ argus_module(NAME guard
         dtos/update-camera-context-dto.cc
         dtos/update-guard-mode-dto.cc
         dtos/update-environment-dto.cc
+        dtos/update-duty-dto.cc
+        dtos/update-response-dto.cc
         repositories/camera-context/camera-context-repository.cc
         repositories/environment/environment-repository.cc
         repositories/episode/episode-repository.cc
+        repositories/response/response-repository.cc
         services/guard-feature-service.cc
+        services/response-feature-service.cc
+        services/response-plan.cc
+        services/response-verdict-feed.cc
     INCLUDES
         ../..
     DEPENDS
@@ -40,6 +48,7 @@ argus_module(NAME guard
         argus::contracts::camera
         argus::contracts::sync
         argus::guard-config
+        argus::guard-presence-repository
         argus::lib::auth
         argus::lib::config
         argus::lib::http

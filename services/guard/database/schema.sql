@@ -376,3 +376,34 @@ CREATE INDEX IF NOT EXISTS idx_guard_presence_environment
 
 CREATE INDEX IF NOT EXISTS idx_guard_presence_home
     ON guard_presence (last_home_at) WHERE state = 'home';
+
+CREATE TABLE IF NOT EXISTS guard_response_recipient (
+    environment_id INTEGER NOT NULL CHECK (environment_id > 0),
+    user_id        INTEGER NOT NULL CHECK (user_id > 0),
+    mode           TEXT    CHECK (mode IS NULL OR mode IN ('call', 'notify', 'off')),
+    step           INTEGER CHECK (step IS NULL OR (step >= 0 AND step <= 32)),
+    on_duty        INTEGER NOT NULL DEFAULT 0 CHECK (on_duty IN (0, 1)),
+    updated_at     INTEGER NOT NULL,
+    PRIMARY KEY (environment_id, user_id)
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS guard_response_contact (
+    id             INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    environment_id INTEGER NOT NULL CHECK (environment_id > 0),
+    position       INTEGER NOT NULL DEFAULT 0,
+    name           TEXT    NOT NULL CHECK (length(name) BETWEEN 1 AND 60),
+    phone          TEXT    NOT NULL CHECK (length(phone) BETWEEN 3 AND 24),
+    note           TEXT    NOT NULL DEFAULT '' CHECK (length(note) <= 60),
+    updated_at     INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_guard_response_contact_environment
+    ON guard_response_contact (environment_id, position);
+
+CREATE TABLE IF NOT EXISTS guard_response_setting (
+    environment_id   INTEGER NOT NULL PRIMARY KEY CHECK (environment_id > 0),
+    emergency_number TEXT    NOT NULL DEFAULT '' CHECK (length(emergency_number) <= 16),
+    step_seconds     INTEGER NOT NULL DEFAULT 45
+                       CHECK (step_seconds >= 15 AND step_seconds <= 300),
+    updated_at       INTEGER NOT NULL
+);

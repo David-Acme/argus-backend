@@ -88,7 +88,7 @@ constexpr std::uint8_t roleBit(UserRole role)
 
 inline constexpr std::uint8_t kResidentAndGuard = roleBit(UserRole::Resident) | roleBit(UserRole::Guard);
 
-inline constexpr std::array<GuardRouteAccess, 7> kGuardAccess = {{
+inline constexpr std::array<GuardRouteAccess, 9> kGuardAccess = {{
     {.path = "/guard/environments", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/episodes", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/mode", .method = drogon::Post, .roles = roleBit(UserRole::Resident)},
@@ -96,6 +96,8 @@ inline constexpr std::array<GuardRouteAccess, 7> kGuardAccess = {{
     {.path = "/guard/expected-guests", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/expected-guests", .method = drogon::Post, .roles = roleBit(UserRole::Resident)},
     {.path = "/guard/expected-guests", .method = drogon::Delete, .roles = roleBit(UserRole::Resident)},
+    {.path = "/guard/environments/{id}/response", .method = drogon::Get, .roles = kResidentAndGuard},
+    {.path = "/guard/environments/{id}/duty", .method = drogon::Post, .roles = roleBit(UserRole::Guard)},
 }};
 
 enum class CameraAction : std::uint8_t
@@ -373,7 +375,7 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
 
   if (path.rfind("/guard", 0) == 0) {
     const auto route = std::ranges::find_if(kGuardAccess, [&](const GuardRouteAccess& entry) {
-      return entry.path == path && entry.method == method;
+      return entry.method == method && routeMatches(entry.path, path);
     });
     return route != kGuardAccess.end() && (route->roles & roleBit(role)) != 0;
   }

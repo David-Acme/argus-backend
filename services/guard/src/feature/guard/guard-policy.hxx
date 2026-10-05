@@ -66,6 +66,7 @@ struct GuardDeterrenceInput
   bool inAlertZone{false};
   int encounterChecks{0};
   bool quietArea{false};
+  bool familyInside{false};
 };
 
 struct GuardDeterrence

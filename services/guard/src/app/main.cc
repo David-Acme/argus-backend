@@ -2,6 +2,9 @@
 #include <config/guard-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/guard/controllers/guard-controller.hxx>
+#include <feature/guard/controllers/response-controller.hxx>
+#include <feature/guard/infra/identity-response-directory.hxx>
+#include <feature/guard/services/response-verdict-feed.hxx>
 #include <feature/guard/guard-assessment.hxx>
 #include <feature/guard/guard-repository.hxx>
 #include <feature/guard/guard-schedule.hxx>
@@ -182,13 +185,18 @@ int main()
                << "; guard keeps retrying the durable consumer";
   }
 
+  const std::shared_ptr<const ResponseDirectory> responseDirectory =
+      identity ? std::make_shared<IdentityResponseDirectory>(identity.get()) : nullptr;
   GuardService guardService(
       {.bus = natsBus.get(),
        .identity = identity.get(),
        .notifications = notifications.get(),
        .actions = actions.get(),
-       .assessment = &assessment},
+       .assessment = &assessment,
+       .directory = responseDirectory},
       guardConfig);
+  ResponseVerdictFeed verdictFeed(natsBus.get());
+  verdictFeed.start();
 
   SettingsRegistry settings(guardSettingsCatalog());
   settings.onChange([&guardService](const std::vector<std::string>&) {
@@ -203,6 +211,8 @@ int main()
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
   drogon::app().registerController(std::make_shared<GuardController>(
       GuardFeatureDependencies{.identity = identity.get()}));
+  drogon::app().registerController(std::make_shared<ResponseController>(
+      ResponseFeatureDependencies{.directory = responseDirectory, .clock = {}}));
 
   drogon::app().setExceptionHandler(ErrorHandler::handleException);
 

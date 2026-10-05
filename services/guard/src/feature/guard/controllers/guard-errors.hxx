@@ -37,4 +37,16 @@ inline constexpr ErrorDefinition ExpectedGuestNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,
     .message = "Expected guest not found"};
+inline constexpr ErrorDefinition RecipientUnknown{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "A recipient is not an active user of this installation"};
+inline constexpr ErrorDefinition DirectoryUnavailable{
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 503,
+    .message = "The user directory is unavailable"};
+inline constexpr ErrorDefinition DutyForGuardsOnly{
+    .code = ErrorCode::Forbidden,
+    .status = 403,
+    .message = "Only a guard goes on duty"};
 }

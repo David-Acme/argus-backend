@@ -122,7 +122,7 @@ GuardDeterrence deterrence(const GuardDeterrenceInput& input)
                              input.mode == GuardMode::Home ||
                              input.mode == GuardMode::Night;
   if (input.publicPresent || input.staffOnly || input.quietArea ||
-      (input.weapon && peoplePresent))
+      input.familyInside || (input.weapon && peoplePresent))
     return {.voice = false, .alarm = false};
 
   const bool critical = input.danger == GuardDanger::Critical;

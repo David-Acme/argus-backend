@@ -12,6 +12,9 @@
 #include <feature/guard/repositories/camera-context/camera-context-repository.hxx>
 #include <feature/guard/repositories/episode/episode-repository.hxx>
 #include <feature/guard/repositories/environment/environment-repository.hxx>
+#include <feature/guard/repositories/response/response-repository.hxx>
+#include <feature/guard/services/response-plan.hxx>
+#include <shared/repositories/presence/presence-repository.hxx>
 
 #include <atomic>
 #include <config/guard-config.hxx>
@@ -49,6 +52,7 @@ public:
     NotificationClient* notifications{nullptr};
     CameraActionClient* actions{nullptr};
     GuardAssessment* assessment{nullptr};
+    std::shared_ptr<const ResponseDirectory> directory{};
   };
 
   using Config = GuardServiceConfig;
@@ -107,6 +111,7 @@ private:
   {
     GuardNotice notice;
     Json::Value data;
+    std::vector<int64_t> excludeUserIds;
   };
 
   struct NotifyInput
@@ -127,7 +132,36 @@ private:
     std::vector<int64_t> userIds;
   };
 
-  drogon::Task<std::optional<std::vector<RecipientBatch>>> recipientBatches();
+  struct RecipientQuery
+  {
+    const Json::Value& data;
+    const std::vector<int64_t>& excluded;
+    int64_t now{0};
+  };
+
+  struct RecipientResolution
+  {
+    std::vector<RecipientBatch> batches;
+    Json::Value plan;
+  };
+
+  drogon::Task<std::optional<RecipientResolution>>
+  recipientsFor(const RecipientQuery& query);
+
+  drogon::Task<std::optional<RecipientResolution>>
+  legacyRecipients(const std::vector<int64_t>& excluded);
+
+  struct PlanQuery
+  {
+    const Json::Value& data;
+    const std::vector<int64_t>& excluded;
+    const std::vector<ResponseUser>& users;
+    int64_t now{0};
+  };
+
+  drogon::Task<RecipientResolution> planRecipients(const PlanQuery& query);
+
+  drogon::Task<bool> familyInside(int64_t environmentId);
 
   std::string userLang(int64_t userId);
 
@@ -227,6 +261,7 @@ private:
     bool expectedArea{false};
     std::string cameraRole;
     bool outdoor{false};
+    bool familyInside{false};
     std::vector<std::string> reasons;
     bool holdsComputed{false};
     bool quietHold{false};
@@ -488,6 +523,8 @@ private:
   EnvironmentRepository environmentRepository_;
   CameraContextRepository cameraContextRepository_;
   EpisodeRepository episodeRepository_;
+  ResponseRepository responseRepository_;
+  PresenceRepository presenceRepository_;
   S3StorageService storage_;
   std::shared_ptr<GuardLifecycle> lifecycle_;
 
