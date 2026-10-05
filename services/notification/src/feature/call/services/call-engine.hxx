@@ -346,6 +346,9 @@ private:
 
   drogon::Task<CallPerson> lookupPerson(int64_t personId) const;
 
+  drogon::Task<std::vector<CallUserOutcome>>
+  announceArrival(const KnownSeenEvent& event) const;
+
   drogon::Task<bool> emit(const CallSignalInput& input) const;
 
   void pushRing(const CallSchema& call) const;

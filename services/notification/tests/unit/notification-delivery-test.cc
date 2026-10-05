@@ -4,12 +4,15 @@
 #include <drogon/drogon.h>
 #include <notification/notification-delivery-sink.hxx>
 #include <sync/user-change-sink.hxx>
+#include <shared/services/notification/delivery-page.hxx>
 #include <shared/services/notification/notification-service.hxx>
 #include <sqlite/db-service.hxx>
 
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <functional>
+#include <memory>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -185,7 +188,7 @@ TEST_CASE("durable delivery keeps intents pending until the broker stores them")
   CHECK(outcome.createdCount == 2);
 
   CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification") == 2);
-  CHECK(deliverySink->published.size() == 2);
+  CHECK(deliverySink->published.size() == 1);
   CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "
                     "WHERE status = 'pending'") == 2);
   CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "
@@ -194,11 +197,9 @@ TEST_CASE("durable delivery keeps intents pending until the broker stores them")
   const auto duplicate = drogon::sync_wait(service.createManyAndEmit(batch));
   CHECK(duplicate.duplicate);
   CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification") == 2);
-  REQUIRE(deliverySink->published.size() == 4);
-  for (const auto& republished : deliverySink->published) {
-    CHECK((republished.deliveryId == deliverySink->published[0].deliveryId ||
-           republished.deliveryId == deliverySink->published[1].deliveryId));
-  }
+  REQUIRE(deliverySink->published.size() == 2);
+  CHECK(deliverySink->published[1].deliveryId ==
+        deliverySink->published[0].deliveryId);
 
   deliverySink->armed = true;
   CHECK(drogon::sync_wait(service.deliverPending()) ==
@@ -207,12 +208,12 @@ TEST_CASE("durable delivery keeps intents pending until the broker stores them")
                     "WHERE status = 'pending'") == 0);
   CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "
                     "WHERE status = 'sent'") == 2);
-  REQUIRE(deliverySink->published.size() == 6);
+  REQUIRE(deliverySink->published.size() == 4);
   const auto& settled = deliverySink->published;
-  CHECK(settled[4].deliveryId == settled[0].deliveryId);
-  CHECK(settled[4].notificationId == settled[0].notificationId);
-  CHECK(settled[4].userId == settled[0].userId);
-  CHECK(settled[5].deliveryId == settled[1].deliveryId);
+  CHECK(settled[2].deliveryId == settled[0].deliveryId);
+  CHECK(settled[2].notificationId == settled[0].notificationId);
+  CHECK(settled[2].userId == settled[0].userId);
+  CHECK(settled[3].deliveryId > settled[2].deliveryId);
 
   {
     const NotificationService unsinked;
@@ -295,4 +296,101 @@ TEST_CASE("durable delivery keeps intents pending until the broker stores them")
   }
 
   user_change::setNotificationSink(nullptr);
+}
+
+namespace
+{
+class ScriptedDeliverySink final : public NotificationDeliverySink
+{
+public:
+  bool ensureStream() const override { return true; }
+
+  bool publish(const NotificationDeliveryEvent& event) const override
+  {
+    attempts.push_back(event.deliveryId);
+    if (onPublish)
+      onPublish();
+    return event.deliveryId != refuse;
+  }
+
+  mutable std::vector<int64_t> attempts;
+  int64_t refuse{0};
+  std::function<void()> onPublish;
+};
+
+class CountingPushSink final : public push_intent::PushIntentSink
+{
+public:
+  void publish(const PushIntent& intent) const override
+  {
+    pushed.push_back(intent.notificationId);
+  }
+
+  mutable std::vector<int64_t> pushed;
+};
+
+std::vector<NotificationDeliveryRow> rows(int count)
+{
+  std::vector<NotificationDeliveryRow> pending;
+  for (int id = 1; id <= count; ++id)
+    pending.push_back({.deliveryId = id,
+                       .notificationId = 100 + id,
+                       .userId = 7,
+                       .type = "camera",
+                       .title = "t",
+                       .body = "b",
+                       .data = Json::Value(Json::objectValue),
+                       .createdAt = 1});
+  return pending;
+}
+}
+
+TEST_CASE("a page stops at the first refusal and pushes nothing it did not store")
+{
+  auto sink = std::make_shared<ScriptedDeliverySink>();
+  sink->refuse = 2;
+  auto push = std::make_shared<CountingPushSink>();
+  const auto start = std::chrono::steady_clock::now();
+  const auto page = delivery_page::publish(
+      {.pending = rows(5),
+       .sink = sink,
+       .pushSink = push,
+       .deadline = start + delivery_page::kPublishBudget,
+       .clock = [start] { return start; }});
+  CHECK(sink->attempts == std::vector<int64_t>{1, 2});
+  CHECK(page.sent == std::vector<int64_t>{1});
+  CHECK(page.unsent == std::vector<int64_t>{2, 3, 4, 5});
+  CHECK(push->pushed == std::vector<int64_t>{101});
+}
+
+TEST_CASE("a slow broker cannot hold a page past its budget, so no claim is taken twice")
+{
+  auto sink = std::make_shared<ScriptedDeliverySink>();
+  auto clock = std::make_shared<std::chrono::steady_clock::time_point>(
+      std::chrono::steady_clock::now());
+  const auto deadline = *clock + delivery_page::kPublishBudget;
+  sink->onPublish = [clock] { *clock += delivery_page::kPublishMaxWait; };
+  const auto page = delivery_page::publish(
+      {.pending = rows(delivery_page::kPageSize),
+       .sink = sink,
+       .pushSink = nullptr,
+       .deadline = deadline,
+       .clock = [clock] { return *clock; }});
+  const auto budgeted = static_cast<std::size_t>(
+      delivery_page::kPublishBudget / delivery_page::kPublishMaxWait);
+  CHECK(page.sent.size() == budgeted);
+  CHECK(page.unsent.size() ==
+        static_cast<std::size_t>(delivery_page::kPageSize) - budgeted);
+  CHECK(*clock - (deadline - delivery_page::kPublishBudget) <
+        std::chrono::seconds(delivery_page::kClaimLeaseS));
+
+  auto late = std::make_shared<ScriptedDeliverySink>();
+  const auto past = std::chrono::steady_clock::now();
+  const auto first = delivery_page::publish({.pending = rows(3),
+                                             .sink = late,
+                                             .pushSink = nullptr,
+                                             .deadline = past,
+                                             .clock = [past] { return past; }});
+  CHECK(first.sent == std::vector<int64_t>{1});
+  CHECK(first.unsent == std::vector<int64_t>{2, 3});
 }

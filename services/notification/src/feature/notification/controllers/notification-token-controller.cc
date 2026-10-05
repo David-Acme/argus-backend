@@ -21,7 +21,8 @@ NotificationTokenController::registerToken(drogon::HttpRequestPtr req)
       .deviceHash = dev.deviceHash,
       .token = body.token,
       .platform = body.platform,
-      .lang = body.lang});
+      .lang = body.lang,
+      .sessionId = ctx.sessionId});
 
   Json::Value result;
   result["registered"] = true;

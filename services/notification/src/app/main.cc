@@ -1,7 +1,6 @@
 #include <drogon/drogon.h>
 #include <feature/camera-notification/services/camera-object-notifier.hxx>
 #include <app/rpc/call-rpc-service.hxx>
-#include <app/rpc/grpc-server-drain.hxx>
 #include <app/rpc/notification-rpc-service.hxx>
 #include <feature/call/controllers/call-preference-controller.hxx>
 #include <feature/call/controllers/call-response-controller.hxx>
@@ -11,11 +10,13 @@
 #include <feature/call/infra/sync-call-signal.hxx>
 #include <feature/call/infra/voice-call-announcer.hxx>
 #include <feature/call/services/call-feed.hxx>
+#include <feature/notification/services/token-revocation/token-revocation.hxx>
 #include <feature/settings/notification-settings.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
+#include <grpc/grpc-server-drain.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/certificate-reload.hxx>
@@ -92,6 +93,14 @@ int main()
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
+
+  try {
+    DeviceFilter::requireFingerprintSecret();
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
 
   const NotificationDbConfig notificationDb = NotificationConfig::resolveDb();
   const ListenerConfig listener = NotificationConfig::resolveListener();
@@ -241,8 +250,13 @@ int main()
           .blockingOffLoop = true});
   drogon::app().registerController(std::make_shared<CallPreferenceController>());
   drogon::app().registerController(std::make_shared<CallResponseController>(callEngine));
-  if (natsBus)
+  if (natsBus) {
     call_feed::subscribe({.bus = natsBus, .engine = callEngine, .tasks = tasks});
+    token_revocation::subscribe(
+        {.bus = natsBus,
+         .service = std::make_shared<const TokenRevocationService>(),
+         .tasks = tasks});
+  }
   call_feed::startSweep({.engine = callEngine, .tasks = tasks});
 
   const std::weak_ptr<NatsBus> healthBus = natsBus;
@@ -342,6 +356,10 @@ int main()
         DbService::client()->execSqlSync(statement);
       }
     }
+    if (!hasColumn("notification_token", "session_id"))
+      DbService::client()->execSqlSync(
+          "ALTER TABLE notification_token ADD COLUMN session_id TEXT NOT NULL "
+          "DEFAULT ''");
     if (!hasColumn("call", "push_after"))
       DbService::client()->execSqlSync(
           "ALTER TABLE call ADD COLUMN push_after INTEGER NOT NULL DEFAULT 0");
@@ -390,7 +408,7 @@ int main()
     LOG_FATAL << "gRPC server failed to listen on " << grpcAddress;
     return 1;
   }
-  GrpcServerDrain grpcDrain(std::move(grpcServer), kGrpcDrainDeadline);
+  argus::client::GrpcServerDrain grpcDrain(std::move(grpcServer), kGrpcDrainDeadline);
 
   notificationRpc.startDeliveryReconciler();
   notificationRpc.startSelfTestProber();

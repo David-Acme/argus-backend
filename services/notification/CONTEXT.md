@@ -44,9 +44,10 @@ binary, own CMake preset, own `notification.db`.
   `notification` and `notification_token` (create the new table from the
   schema under a temporary name, `INSERT ... SELECT` the rows, drop the old
   table, rename, recreate the indexes) run by hand with the service stopped.
-  The same applies to `notification_token.token UNIQUE` below. Deleting a
-  user's rows when identity deletes the user is not wired: this service
-  consumes no identity or session change feed today (see "Push tokens").
+  The same applies to `notification_token.token UNIQUE` below. Identity
+  deactivates users instead of deleting them; the identity and session feeds
+  this service consumes since 2026-10-05 delete push tokens (see "Push
+  tokens").
 - **Write-side feature surface, registered in THIS binary only**: the
   notification and notification-token controllers, their feature services
   (markAsRead, registerToken) and DTOs compile from the shared tree into the
@@ -276,6 +277,22 @@ readiness and the fallback gate — `CameraObjectNotifier`, the
   after 30 s (`claimed_at <= now - 30`), so the claim never strands a row.
   The settled rows are marked `sent` in one statement. The column is
   additive: `main.cc` adds `claimed_at` to an older notification.db.
+- **A page never outlives its claim** (2026-10-05, review finding D2). Each
+  publish waits up to 2 s for its PubAck, so a 200-row page against a slow or
+  dying broker could take some 400 s while its claim expired after 30: a
+  second drain re-claimed the rows still in flight and published them again,
+  and while the delivery event deduplicates on `Nats-Msg-Id`, the push intent
+  (a core publish) does not, so the user got the push twice. The page
+  (`shared/services/notification/delivery-page`) now stops at the first
+  refusal (the broker that refused one row will refuse the next; the rest are
+  released at once instead of each costing another 2 s) and stops publishing
+  after a 20 s budget, releasing whatever it did not reach; at least one row
+  is always attempted so a page always progresses. Budget plus one PubAck
+  wait plus a margin is pinned below the 30 s lease by a `static_assert`, so
+  the rows a page still holds can never be re-claimed under it.
+  `notification-delivery-test` pins both stops with a scripted sink and a
+  fake clock. The 2 s is `NatsBus::publishWithMsgId`'s `MaxWait`
+  (`delivery_page::kPublishMaxWait` restates it; change both together).
 - **The broker is never awaited on the event loop** (2026-10, audit #48).
   `ensureStream` and the page's publishes (each waits for its JetStream
   PubAck) run in a `BlockingTask` on the light lane; the loop only claims,
@@ -379,16 +396,38 @@ behaviour from the delete (see "What it owns" for the rebuild).
 Nothing in this tree reads the table: `findByUser` has no caller outside the
 controller suite, and the push intent names a `userId`, not a token, so the
 relay must keep its own registry. The table and `POST /notification-token`
-stay because the app registers through them. Two gaps remain, and both need a
-feed this service does not consume yet:
+stay because the app registers through them.
 
-- a revoked session (`argus.auth.v1.session`, the `ARGUS_AUTH_SESSION`
-  stream camera already reads durably) should delete the token of that
-  device;
-- a deactivated or deleted account (`argus.identity.v1.change`) should delete
-  every token of the user, and the user's notification, call preference and
-  call rows with it — the `ON DELETE CASCADE` the old schema only pretended to
-  have.
+**Revoked sessions and disabled accounts lose their tokens** (2026-10-05).
+Each row now records the session that registered it (`session_id`, the
+`JwtContext.sessionId` of the request; additive, `main.cc` adds the column to
+an older notification.db and existing rows keep `''`). Two durable consumers
+(`feature/notification/services/token-revocation`, ordered, ack after the
+delete, nak on failure, retried every 5 s until the stream exists):
+
+- `notification-auth-session` on `argus.auth.v1.session`
+  (`ARGUS_AUTH_SESSION`): a `disconnect_session` deletes the user's token
+  registered by that session. A row registered before the column existed has
+  no session and is not touched by this path;
+- `notification-identity-user` on `argus.identity.v1.change`
+  (`ARGUS_IDENTITY_CHANGE`): a `user` catalog row with `isActive: false`
+  (identity's deactivation, which is what `DELETE /user/{id}` does) or with
+  `deleted: true` deletes every token of the user, the legacy rows included.
+
+Both start from new messages (`deliverAll = false`): a token registered
+before this service consumed the feeds is cleaned by the next revocation or
+deactivation, not retroactively. The app re-registers its token after each
+login (the row is keyed by device), so a re-enabled account or a new session
+gets its push back on the next registration.
+
+**What is not deleted, and why.** Identity never deletes a user: the account
+is deactivated and can be re-enabled by the Owner, who expects their
+notifications, call preferences and history back. So deactivation removes
+only what would deliver to a device (the tokens); the user's `notification`,
+`call_preference` and `call` rows stay. `deleted: true` is handled for tokens
+only, because no producer emits it for a user today; if identity ever gains a
+hard delete, the same consumer is where the user's remaining rows would be
+deleted.
 
 ## Mark-as-read and acknowledgement bounds (2026-10, audit #95)
 
@@ -765,6 +804,18 @@ every 5 s. A replayed sighting still updates `call_arrival_seen`, but one
 older than `call_engine::kArrivalStaleS` (10 minutes) never calls anybody:
 "Marta has arrived" an hour late is noise.
 
+`call_arrival_seen` is written after the arrival's work, not before
+(2026-10-05, review finding D1). It used to be touched first: when the
+identity lookup or the preference read then threw, the message was nakked,
+and the redelivery read a `last_seen` equal to its own `at`, a gap of zero,
+and dropped the arrival silently. Now `arrival` reads the previous sighting,
+announces when it follows an absence, and only then records the new one; a
+failed attempt leaves no trace, so the durable retry calls. A redelivery of a
+sighting that did succeed reads its own `at`, sees no absence and does
+nothing, and the dedupe key (`guard:arrival:<personId>:<at>`) would refuse a
+second ring anyway. `call-engine-test` fails the first lookup and pins the
+ring on the retry.
+
 ### Retention of the call tables (2026-10, audit #51)
 
 The one-second sweep purges, at most once an hour, what the engine no longer
@@ -774,8 +825,8 @@ ringing, queued or answered), fired or cancelled `scheduled_call` rows,
 `call_response` rows (`false_alarm`, `expired`) with their
 `call_response_member` rows — the plan copies that hold contacts' phone
 numbers. Open responses expire after two hours anyway, so nothing alive is
-touched. `call_preference` is the user's setting and is not purged; deleting
-it with the account needs the identity feed (see "Push tokens").
+touched. `call_preference` is the user's setting and is not purged, not even
+when the account is deactivated (see "Push tokens").
 
 ### Research behind the policy
 
@@ -890,7 +941,12 @@ false_alarm}`, by a member the response reached.
 - A second identical verdict answers the same. The opposite one after a false
   alarm is 409 `ResponseClosed`. `real` can still become `false_alarm`.
 - The person who gives the verdict becomes the responder if there was none.
-- The verdict is published on `argus.notification.v1.response_verdict`.
+- The verdict is published on `argus.notification.v1.response_verdict` into
+  the JetStream stream `ARGUS_NOTIFICATION_VERDICT` (msg id
+  `response-verdict:<responseId>:<verdict>:<userId>`, ensured at boot and
+  again when a publish fails), off the event loop on the light lane; guard
+  reads it through its durable consumer `argus-guard-verdicts` and acks after
+  storing the review, so a verdict given while guard is down still lands.
   Guard labels the episode (`false_alarm` / `useful`) for a `guard_episode`.
   Panic, duress and tamper verdicts stay on the response row, because their
   `episodeId` is not an encounter.

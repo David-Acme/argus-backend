@@ -4,6 +4,7 @@
 #include <sqlite/transaction.hxx>
 
 #include <stdexcept>
+#include <string>
 
 using namespace notification_token_query;
 
@@ -16,7 +17,8 @@ NotificationTokenRepository::upsert(const NotificationTokenCreateInput& input) c
                                       input.userId, input.deviceHash);
     co_await transaction->execSqlCoro(UPSERT.data(), input.userId,
                                       input.deviceHash, input.token,
-                                      input.platform, input.lang);
+                                      input.platform, input.lang,
+                                      input.sessionId);
   }
   catch (...) {
     db_transaction::rollback(transaction);
@@ -36,4 +38,20 @@ NotificationTokenRepository::findByUser(int64_t userId) const
   for (const auto& row : result)
     tokens.emplace_back(row);
   co_return tokens;
+}
+
+drogon::Task<int64_t> NotificationTokenRepository::removeForSession(
+    const NotificationTokenSessionInput& input) const
+{
+  const auto result = co_await DbService::client()->execSqlCoro(
+      std::string(DELETE_FOR_SESSION), input.userId, input.sessionId);
+  co_return static_cast<int64_t>(result.affectedRows());
+}
+
+drogon::Task<int64_t>
+NotificationTokenRepository::removeForUser(int64_t userId) const
+{
+  const auto result =
+      co_await DbService::client()->execSqlCoro(std::string(DELETE_FOR_USER), userId);
+  co_return static_cast<int64_t>(result.affectedRows());
 }

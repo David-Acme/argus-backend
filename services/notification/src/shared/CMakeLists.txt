@@ -2,6 +2,7 @@ argus_module(NAME notification-shared
     SOURCES
         repositories/notification/notification-repository.cc
         schemas/notification/notification-schema.cc
+        services/notification/delivery-page.cc
         services/notification/notification-service.cc
         services/notification/push-copy.cc
     INCLUDES

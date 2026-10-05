@@ -767,16 +767,21 @@ CallEngine::arrival(const KnownSeenEvent& event) const
   std::vector<CallUserOutcome> outcomes;
   if (event.personId <= 0 || event.at <= 0)
     co_return outcomes;
-  const CallEngineConfig config = this->config();
-  const int64_t previous = co_await arrivalRepository_.touch(
+  const int64_t previous = co_await arrivalRepository_.lastSeen(event.personId);
+  const bool afterAbsence =
+      previous == 0 || event.at - previous >= config().arrivalAbsenceS;
+  const bool recent = now() - event.at <= call_engine::kArrivalStaleS;
+  if (afterAbsence && recent)
+    outcomes = co_await announceArrival(event);
+  co_await arrivalRepository_.touch(
       {.personId = event.personId, .seenAt = event.at});
-  if (previous > 0 && event.at - previous < config.arrivalAbsenceS)
-    co_return outcomes;
-  if (previous > event.at)
-    co_return outcomes;
-  if (now() - event.at > call_engine::kArrivalStaleS)
-    co_return outcomes;
+  co_return outcomes;
+}
 
+drogon::Task<std::vector<CallUserOutcome>>
+CallEngine::announceArrival(const KnownSeenEvent& event) const
+{
+  std::vector<CallUserOutcome> outcomes;
   const auto subscribers = co_await preferenceRepository_.findArrivalSubscribers();
   if (subscribers.empty())
     co_return outcomes;

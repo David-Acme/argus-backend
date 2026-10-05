@@ -13,6 +13,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <condition_variable>
 #include <thread>
@@ -176,8 +177,14 @@ public:
 
   mutable std::atomic<int> batches{0};
 
+  mutable std::atomic<int> failingPersonLookups{0};
+
   [[nodiscard]] CallPerson person(int64_t personId) const override
   {
+    if (failingPersonLookups.load() > 0) {
+      failingPersonLookups.fetch_sub(1);
+      throw std::runtime_error("identity unreachable");
+    }
     if (personId == 50)
       return {.found = true, .name = "Marta", .userId = 0};
     if (personId == 51)
@@ -1264,6 +1271,30 @@ TEST_CASE("a plan that does not parse falls back to the plain call")
   CHECK(outcomes.size() == 2);
   CHECK(responseIdOf("guard:episode:78") == 0);
   CHECK(harness.signal->of(SyncOperation::ResponseUpdate).empty());
+}
+
+TEST_CASE("an arrival whose first attempt fails still calls on the durable retry")
+{
+  Harness harness;
+  const CallPreferenceService preferences;
+  UpdateCallPreferenceDto wants;
+  wants.guardArrival = "call";
+  drogon::sync_wait(preferences.update(1, wants));
+  const KnownSeenEvent event{.personId = 50, .cameraId = 6, .cameraName = "Entrada",
+                             .environmentId = 1, .environmentName = "", .at = kStart};
+
+  harness.directory->failingPersonLookups.store(1);
+  CHECK_THROWS_AS(drogon::sync_wait(harness.engine.arrival(event)), std::runtime_error);
+  CHECK(DbService::client()
+            ->execSqlSync("SELECT last_seen FROM call_arrival_seen WHERE person_id = 50")
+            .empty());
+
+  const auto retried = drogon::sync_wait(harness.engine.arrival(event));
+  REQUIRE(retried.size() == 1);
+  CHECK(outcomeFor(retried, 1).resolution == CallResolution::Rang);
+
+  CHECK(drogon::sync_wait(harness.engine.arrival(event)).empty());
+  CHECK(harness.signal->of(SyncOperation::CallIncoming).size() == 1);
 }
 
 TEST_CASE("an arrival replayed long after it happened only updates the absence")

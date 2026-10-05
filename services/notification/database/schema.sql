@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS notification_token (
     lang        TEXT    NOT NULL  DEFAULT '',
     is_active   INTEGER NOT NULL  DEFAULT 1  CHECK (is_active IN (0, 1)),
     created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
-    updated_at  INTEGER
+    updated_at  INTEGER,
+    session_id  TEXT    NOT NULL  DEFAULT ''
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_uniq

@@ -13,6 +13,9 @@
 #include <sqlite/db-service.hxx>
 #include <sync/user-change-sink.hxx>
 #include <feature/notification/repositories/notification-token/notification-token-repository.hxx>
+#include <feature/notification/services/token-revocation/token-revocation.hxx>
+#include <sync/sync-change.hxx>
+#include <sync/table-name.hxx>
 #include <text/json-util.hxx>
 #include <validation/validator.hxx>
 
@@ -101,7 +104,7 @@ void seedNotificationDb(const char* path)
        "platform TEXT NOT NULL DEFAULT '', lang TEXT NOT NULL DEFAULT '', "
        "is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), "
        "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
-       "updated_at INTEGER)");
+       "updated_at INTEGER, session_id TEXT NOT NULL DEFAULT '')");
   exec(db.get(),
        "CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_uniq "
        "ON notification_token (user_id, device_hash)");
@@ -331,7 +334,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   NotificationTokenController tokenController;
 
   auto tokenReq = [&](const char* token, const std::string& deviceHash,
-                      int64_t userId = 7) {
+                      int64_t userId = 7, const std::string& sessionId = "") {
     Json::Value payload;
     payload["token"] = token;
     payload["platform"] = "android";
@@ -339,7 +342,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     auto req = drogon::HttpRequest::newHttpJsonRequest(payload);
     req->getAttributes()->insert(
         AuthContext::kJwtKey,
-        JwtContext{.sub = userId, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
+        JwtContext{.sub = userId, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = sessionId});
     req->getAttributes()->insert(AuthContext::kDeviceKey,
                                  DeviceContext{.deviceHash = deviceHash,
                                                .userAgent = "ua",
@@ -386,6 +389,68 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
       tokenController.registerToken(tokenReq("token-b", "device-b", 8)));
   CHECK(body(again)["status"].asInt() == 200);
   CHECK(drogon::sync_wait(tokenRepository.findByUser(8)).size() == 1);
+
+  drogon::sync_wait(tokenController.registerToken(
+      tokenReq("token-phone", "device-phone", 9, "session-phone")));
+  drogon::sync_wait(tokenController.registerToken(
+      tokenReq("token-tablet", "device-tablet", 9, "session-tablet")));
+  drogon::sync_wait(tokenController.registerToken(
+      tokenReq("token-legacy", "device-legacy", 9)));
+  REQUIRE(drogon::sync_wait(tokenRepository.findByUser(9)).size() == 3);
+
+  Json::Value revoked(Json::objectValue);
+  revoked[sync_change::kActionField] = sync_change::kActionDisconnectSession;
+  revoked[sync_change::kUserField] = 9;
+  revoked[sync_change::kSessionField] = "session-phone";
+  const auto sessionRevocation = token_revocation::fromSessionChange(revoked);
+  if (!sessionRevocation) {
+    FAIL("expected a value in sessionRevocation");
+    return;
+  }
+  const TokenRevocationService revocations;
+  CHECK(drogon::sync_wait(revocations.revoke(*sessionRevocation)) == 1);
+  CHECK(drogon::sync_wait(revocations.revoke(*sessionRevocation)) == 0);
+  const auto afterSession = drogon::sync_wait(tokenRepository.findByUser(9));
+  REQUIRE(afterSession.size() == 2);
+  for (const auto& left : afterSession)
+    CHECK(left.token != "token-phone");
+  CHECK(drogon::sync_wait(revocations.revoke({.userId = 9, .sessionId = ""}))
+            == 2);
+  CHECK(drogon::sync_wait(tokenRepository.findByUser(9)).empty());
+  CHECK(drogon::sync_wait(tokenRepository.findByUser(8)).size() == 1);
+
+  Json::Value otherAction = revoked;
+  otherAction[sync_change::kActionField] = sync_change::kActionEmit;
+  CHECK_FALSE(token_revocation::fromSessionChange(otherAction));
+  Json::Value noSession = revoked;
+  noSession[sync_change::kSessionField] = "";
+  CHECK_FALSE(token_revocation::fromSessionChange(noSession));
+
+  Json::Value disabled(Json::objectValue);
+  disabled[sync_change::kKindField] = sync_change::kKindIdentity;
+  disabled[sync_change::kTableField] = tableNameToString(TableName::User);
+  disabled[sync_change::kRecordIdField] = 8;
+  disabled[sync_change::kDeletedField] = false;
+  disabled[sync_change::kRowField]["isActive"] = false;
+  const auto accountRevocation = token_revocation::fromIdentityChange(disabled);
+  if (!accountRevocation) {
+    FAIL("expected a value in accountRevocation");
+    return;
+  }
+  CHECK(accountRevocation->userId == 8);
+  CHECK(accountRevocation->sessionId.empty());
+  CHECK(drogon::sync_wait(revocations.revoke(*accountRevocation)) == 1);
+  CHECK(drogon::sync_wait(tokenRepository.findByUser(8)).empty());
+
+  Json::Value renamed = disabled;
+  renamed[sync_change::kRowField]["isActive"] = true;
+  CHECK_FALSE(token_revocation::fromIdentityChange(renamed));
+  Json::Value deleted = renamed;
+  deleted[sync_change::kDeletedField] = true;
+  CHECK(token_revocation::fromIdentityChange(deleted).has_value());
+  Json::Value person = disabled;
+  person[sync_change::kTableField] = tableNameToString(TableName::Person);
+  CHECK_FALSE(token_revocation::fromIdentityChange(person));
 
   user_change::setNotificationSink(nullptr);
 

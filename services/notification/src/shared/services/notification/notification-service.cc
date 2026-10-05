@@ -10,7 +10,7 @@
 #include <notification/notification-errors.hxx>
 #include <nats/push-intent-sink.hxx>
 #include <runtime/blocking-task.hxx>
-#include <shared/services/notification/push-copy.hxx>
+#include <shared/services/notification/delivery-page.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 #include <sync/table-name.hxx>
@@ -27,8 +27,6 @@ int64_t nowMillis()
 
 constexpr int64_t kProbeRetentionS = 7LL * 24 * 3600;
 constexpr int64_t kCommandRetentionS = 30LL * 24 * 3600;
-constexpr int kDeliveryPage = 200;
-constexpr int64_t kClaimLeaseS = 30;
 }
 
 NotificationService::NotificationService(Dependencies dependencies)
@@ -63,46 +61,6 @@ drogon::Task<NotificationCreateOutcome> NotificationService::createManyAndEmit(
   co_return outcome;
 }
 
-NotificationService::PublishedPage NotificationService::publishPage(
-    const PublishPageInput& input)
-{
-  PublishedPage page;
-  page.sent.reserve(input.pending.size());
-  for (const auto& delivery : input.pending) {
-    const NotificationDeliveryEvent event{
-        .deliveryId = delivery.deliveryId,
-        .notificationId = delivery.notificationId,
-        .userId = delivery.userId,
-        .type = delivery.type,
-        .title = delivery.title,
-        .body = delivery.body,
-        .data = delivery.data,
-        .createdAt = delivery.createdAt};
-    if (!input.sink->publish(event)) {
-      page.refused.push_back(delivery.deliveryId);
-      continue;
-    }
-    page.sent.push_back(delivery.deliveryId);
-    if (!input.pushSink || delivery.userId <= 0)
-      continue;
-    const PushCopy copy =
-        push_copy::render({.lang = push_copy::langOf(delivery.data),
-                           .urgency = push_copy::urgencyOf(delivery.data),
-                           .call = false});
-    input.pushSink->publish(
-        PushIntent{.userId = delivery.userId,
-                   .notificationId = delivery.notificationId,
-                   .type = delivery.type,
-                   .title = copy.title,
-                   .body = copy.body,
-                   .createdAtMs = delivery.createdAt * 1000,
-                   .data = push_copy::minimalData(
-                       {.notificationId = delivery.notificationId,
-                        .data = delivery.data})});
-  }
-  return page;
-}
-
 drogon::Task<bool> NotificationService::deliverDurable(
     DeliverDurableInput input) const
 {
@@ -113,14 +71,17 @@ drogon::Task<bool> NotificationService::deliverDurable(
   claimed.reserve(input.pending.size());
   for (const auto& delivery : input.pending)
     claimed.push_back(delivery.deliveryId);
-  PublishPageInput page{.pending = std::move(input.pending),
-                        .sink = std::move(input.sink),
-                        .pushSink = std::move(input.pushSink)};
-  PublishedPage published;
+  delivery_page::PageInput page{
+      .pending = std::move(input.pending),
+      .sink = std::move(input.sink),
+      .pushSink = std::move(input.pushSink),
+      .deadline = std::chrono::steady_clock::now() + delivery_page::kPublishBudget,
+      .clock = [] { return std::chrono::steady_clock::now(); }};
+  delivery_page::PublishedPage published;
   std::exception_ptr failure;
   try {
-    published = co_await BlockingTask<PublishedPage>(
-        [page = std::move(page)]() { return publishPage(page); });
+    published = co_await BlockingTask<delivery_page::PublishedPage>(
+        [page = std::move(page)]() { return delivery_page::publish(page); });
   }
   catch (...) {
     failure = std::current_exception();
@@ -129,7 +90,7 @@ drogon::Task<bool> NotificationService::deliverDurable(
     co_await repository_.releaseClaims(claimed);
     std::rethrow_exception(failure);
   }
-  co_await repository_.releaseClaims(published.refused);
+  co_await repository_.releaseClaims(published.unsent);
   const int64_t settled = co_await repository_.markDelivered(
       {.deliveryIds = published.sent,
        .at = static_cast<int64_t>(std::time(nullptr))});
@@ -149,9 +110,9 @@ drogon::Task<DeliverPendingOutcome> NotificationService::deliverPending()
     co_return DeliverPendingOutcome::StreamUnavailable;
   while (true) {
     auto pending = co_await repository_.claimPending(
-        {.limit = kDeliveryPage,
+        {.limit = delivery_page::kPageSize,
          .now = static_cast<int64_t>(std::time(nullptr)),
-         .leaseS = kClaimLeaseS});
+         .leaseS = delivery_page::kClaimLeaseS});
     if (pending.empty())
       co_return DeliverPendingOutcome::Settled;
     const bool progressed =

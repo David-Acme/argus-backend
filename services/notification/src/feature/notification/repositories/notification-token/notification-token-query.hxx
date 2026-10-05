@@ -10,15 +10,28 @@ inline constexpr std::string_view RELEASE_TOKEN =
 
 inline constexpr std::string_view UPSERT =
     "INSERT INTO notification_token (user_id, device_hash, token, platform, "
-    "lang) VALUES (?, ?, ?, ?, ?) "
+    "lang, session_id) VALUES (?, ?, ?, ?, ?, ?) "
     "ON CONFLICT(user_id, device_hash) DO UPDATE SET "
     "token = excluded.token, platform = excluded.platform, "
-    "lang = excluded.lang, is_active = 1, "
+    "lang = excluded.lang, session_id = excluded.session_id, is_active = 1, "
     "updated_at = strftime('%s', 'now')";
 
 inline constexpr std::string_view FIND_BY_USER =
     "SELECT * FROM notification_token WHERE user_id = ? AND is_active = 1";
+
+inline constexpr std::string_view DELETE_FOR_SESSION =
+    "DELETE FROM notification_token WHERE user_id = ? AND session_id = ? "
+    "AND session_id <> ''";
+
+inline constexpr std::string_view DELETE_FOR_USER =
+    "DELETE FROM notification_token WHERE user_id = ?";
 }
+
+struct NotificationTokenSessionInput
+{
+  int64_t userId{0};
+  std::string sessionId;
+};
 
 struct NotificationTokenCreateInput
 {
@@ -27,4 +40,5 @@ struct NotificationTokenCreateInput
   std::string token;
   std::string platform;
   std::string lang;
+  std::string sessionId;
 };

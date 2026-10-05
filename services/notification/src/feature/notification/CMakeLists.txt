@@ -11,6 +11,7 @@ argus_module(NAME notification-feature
         services/notification-feature-service.cc
         services/notification-token-feature-service.cc
         services/notification-token/notification-token-service.cc
+        services/token-revocation/token-revocation.cc
     INCLUDES ../..
     DEPENDS
         argus::notification-shared
@@ -19,6 +20,9 @@ argus_module(NAME notification-feature
         argus::lib::config
         argus::lib::errors
         argus::lib::http
+        argus::lib::nats
+        argus::lib::text
+        argus::contracts::sync
         argus::lib::sqlite
         argus::lib::validation
         Drogon::Drogon
