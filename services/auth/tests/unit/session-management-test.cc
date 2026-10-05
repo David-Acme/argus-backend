@@ -126,9 +126,13 @@ public:
     return !disabled_.contains(userId);
   }
 
+  void setReachable(bool reachable) { reachable_ = reachable; }
+
   [[nodiscard]] std::optional<argus::identity::v1::GetUserResponse>
   getUser(int64_t userId) const override
   {
+    if (!reachable_)
+      return std::nullopt;
     argus::identity::v1::GetUserResponse response;
     *response.mutable_user() = identityOf(userId);
     return response;
@@ -183,6 +187,7 @@ private:
 
   mutable std::mutex mutex_;
   std::set<int64_t> disabled_;
+  std::atomic<bool> reachable_{true};
 };
 
 class RecordingSink : public AuthChangeSink
@@ -841,6 +846,67 @@ TEST_CASE("a rotated refresh token races inside the window and is a theft outsid
             .has_value());
   CHECK_FALSE(
       contains(activeSessionIds(kOtherUserId), stolenContext.sessionId));
+}
+
+[[nodiscard]] std::vector<std::string> liveHashes(const std::string& sessionId)
+{
+  const auto rows = DbService::client()->execSqlSync(
+      "SELECT refresh_token FROM refresh_token WHERE session_id = ? "
+      "AND is_valid = 1 AND is_used = 0",
+      sessionId);
+  std::vector<std::string> hashes;
+  hashes.reserve(rows.size());
+  for (const auto& row : rows)
+    hashes.push_back(row["refresh_token"].as<std::string>());
+  return hashes;
+}
+
+TEST_CASE("an identity outage during a refresh rotates nothing and the token survives it")
+{
+  Fixture& app = fixture();
+  REQUIRE(app.start());
+
+  const Device tablet{.userAgent = "Argus/1 (android)",
+                      .address = "10.0.0.31",
+                      .client = {.platform = SessionPlatform::Android,
+                                 .deviceName = "Tab"}};
+  const auto opened = openSession({.userId = kOtherUserId, .device = tablet});
+  const std::string sessionId = contextOf(opened).sessionId;
+  const std::vector<std::string> presentedOnly{
+      argus::hash::sha256Hex(opened.refreshToken)};
+  REQUIRE(liveHashes(sessionId) == presentedOnly);
+  app.sink().clear();
+
+  app.identity().setReachable(false);
+  const auto outage = refusalOf(app.auth().refreshToken(refreshInputOf(
+      {.refreshToken = opened.refreshToken, .device = tablet})));
+  app.identity().setReachable(true);
+  REQUIRE(outage.has_value());
+  CHECK(outage->status == 503);
+  CHECK(outage->code == "SERVICE_UNAVAILABLE");
+  CHECK(liveHashes(sessionId) == presentedOnly);
+  CHECK(contains(activeSessionIds(kOtherUserId), sessionId));
+  CHECK(app.sink().changes().empty());
+  CHECK(app.sink().actions().empty());
+
+  const auto rotated = drogon::sync_wait(app.auth().refreshToken(refreshInputOf(
+      {.refreshToken = opened.refreshToken, .device = tablet})));
+  CHECK_FALSE(rotated.refreshToken.empty());
+  CHECK(rotated.refreshToken != opened.refreshToken);
+  CHECK(JwtService().verifyRefresh(rotated.refreshToken).at("sid") == sessionId);
+  const std::vector<std::string> rotatedOnly{
+      argus::hash::sha256Hex(rotated.refreshToken)};
+  CHECK(liveHashes(sessionId) == rotatedOnly);
+  CHECK(contextOf({.accessToken = rotated.accessToken,
+                   .refreshToken = rotated.refreshToken,
+                   .device = tablet})
+            .sessionId == sessionId);
+
+  const Refusal replayed = refusedBy(app.auth().refreshToken(refreshInputOf(
+      {.refreshToken = opened.refreshToken, .device = tablet})));
+  CHECK(replayed.status == 401);
+  CHECK(replayed.code == "UNAUTHORIZED");
+  CHECK(liveHashes(sessionId) == rotatedOnly);
 }
 
 TEST_CASE("a legacy agent moves to the stable agent once, from the device it is bound to")

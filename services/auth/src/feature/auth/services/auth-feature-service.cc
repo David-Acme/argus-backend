@@ -475,7 +475,7 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
       .sessionId = sid == claims.end() ? std::string{} : sid->second};
   const auto existing = co_await presentedSession(presented);
   if (!existing) {
-    co_await refuseDisabledAccount(*userId);
+    co_await refuseDisabledAccount(*userId, IdentityLookup::BestEffort);
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
   }
 
@@ -503,7 +503,7 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
     LOG_INFO << "Auth: session of user " << *userId
              << " moved to the stable user agent " << input.userAgent;
 
-  co_await refuseDisabledAccount(*userId);
+  co_await refuseDisabledAccount(*userId, IdentityLookup::Required);
 
   const auto newClaims = sessionClaims(*userId, existing->sessionId);
   ResponseRefreshTokenDto result;
@@ -596,9 +596,15 @@ AuthFeatureService::settleStaleToken(const StaleRefreshInput& input) const
 }
 
 drogon::Task<void>
-AuthFeatureService::refuseDisabledAccount(int64_t userId) const
+AuthFeatureService::refuseDisabledAccount(int64_t userId,
+                                          IdentityLookup lookup) const
 {
   const auto answer = co_await fetchIdentityUser(dependencies_.identity, userId);
+  if (!answer && lookup == IdentityLookup::Required) {
+    LOG_WARN << "Auth: refresh of user " << userId
+             << " deferred; identity did not answer and nothing was rotated";
+    throw ResponseException(AuthErrors::IdentityUnavailable);
+  }
   if (!answer || !answer->has_user() || answer->user().is_active())
     co_return;
 

@@ -101,6 +101,12 @@ struct RefreshPresentation
   std::string sessionId;
 };
 
+enum class IdentityLookup : std::uint8_t
+{
+  BestEffort,
+  Required
+};
+
 struct StaleRefreshInput
 {
   const RefreshTokenSchema& session;
@@ -165,7 +171,7 @@ private:
   settleStaleToken(const StaleRefreshInput& input) const;
 
   [[nodiscard]] drogon::Task<void>
-  refuseDisabledAccount(int64_t userId) const;
+  refuseDisabledAccount(int64_t userId, IdentityLookup lookup) const;
 
   Dependencies dependencies_;
   Config config_;

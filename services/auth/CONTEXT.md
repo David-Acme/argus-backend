@@ -36,6 +36,18 @@ the user row behind a session comes from identity through
   thief's hash. In `ip` mode the hash is not compared: it carries the IP,
   and the refresh is exactly how a phone that changed network gets a session
   for its new address.
+- A rotation commits only once its answer is certain. Every check that can
+  fail (the token's family, its expiry, the binding and identity's view of
+  the account) runs first, the new pair is signed before the transaction
+  opens, and marking the old row used, pruning and inserting the new row are
+  one transaction with nothing after the commit but the reply. Identity not
+  answering is a 503 `SERVICE_UNAVAILABLE` ("The identity service is
+  unavailable") and nothing is rotated, so the client keeps a valid token and
+  retries. Before this the refresh went on without identity: a call that sat
+  on the 5 s gRPC deadline against an identity still booting rotated the
+  session after the phone had given up, and the token it still held was used
+  (2026-10-05). An unknown token still answers 401 when identity is down;
+  `ACCOUNT_DISABLED` there is best effort.
 - The user context (name, last name, language, role, `isActive`) is resolved
   through identity and cached for `[auth] context_cache_seconds`.
 - A durable JetStream consumer on the identity change subject drops a cached
