@@ -1,5 +1,6 @@
 #include "sync-fan-out.hxx"
 
+#include <camera/camera-row-projection.hxx>
 #include <feature/fanout/services/audit-fan-out.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <string>
@@ -178,6 +179,23 @@ FanOutPlan planEvent(const Event& event)
   return plan;
 }
 
+std::vector<RoomFrame> moduleFrames(const Event& event)
+{
+  const RoomId room = moduleRoom(event.emit.option);
+  std::vector<RoomFrame> frames;
+  frames.push_back({.room = room, .message = json_util::toString(event.emit.toJson())});
+  if (event.emit.option != TableName::Camera)
+    return frames;
+  SocketEmitDto reduced = event.emit;
+  if (reduced.operation == SyncOperation::Log)
+    camera_projection::reduceDiff(reduced.obj["changes"]);
+  else if (reduced.operation != SyncOperation::Delete)
+    camera_projection::reduceRow(reduced.obj);
+  frames.push_back({.room = reducedModuleRoom(event.emit.option),
+                    .message = json_util::toString(reduced.toJson())});
+  return frames;
+}
+
 void dispatchEvent(const Event& event)
 {
   const FanOutPlan plan = planEvent(event);
@@ -206,7 +224,8 @@ void dispatchEvent(const Event& event)
         roomManager.emitMany(plan.rooms, message);
       return;
     case FanOutPlan::Kind::ModuleEmit:
-      roomManager.emit(plan.room, message);
+      for (const auto& frame : moduleFrames(event))
+        roomManager.emit(frame.room, frame.message);
       return;
   }
 }

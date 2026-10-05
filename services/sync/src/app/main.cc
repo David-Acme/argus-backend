@@ -1,4 +1,3 @@
-#include <app/rpc/grpc-server-drain.hxx>
 #include <app/rpc/sync-control-rpc-service.hxx>
 #include <config/config-service.hxx>
 #include <config/sync-config.hxx>
@@ -26,8 +25,10 @@
 #include <feature/transport/infra/sync-socket-registrar.hxx>
 #include <feature/transport/infra/voice-grpc-relay.hxx>
 #include <feature/transport/services/connection-lanes.hxx>
+#include <auth/device-filter.hxx>
 #include <auth/user-directory-identity.hxx>
 #include <chrono>
+#include <grpc/grpc-server-drain.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
@@ -88,6 +89,14 @@ int main()
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
+
+  try {
+    DeviceFilter::requireFingerprintSecret();
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
 
   const SyncDbConfig syncDb = SyncConfig::resolveDb();
   const ListenerConfig listener = SyncConfig::resolveListener();
@@ -300,7 +309,6 @@ int main()
                                   grpc::InsecureServerCredentials());
   controlBuilder.RegisterService(&controlRpc);
   std::unique_ptr<grpc::Server> controlServer(controlBuilder.BuildAndStart());
-  GrpcServerDrain controlDrain(controlServer.get(), kControlShutdownDeadline);
   if (controlServer)
     LOG_INFO << "Sync control RPC listening on " << control.listener.host << ":"
              << control.listener.port << " (cleartext, "
@@ -311,6 +319,7 @@ int main()
     LOG_WARN << "Sync control RPC failed to listen on " << control.listener.host
              << ":" << control.listener.port
              << "; role changes and disconnects cannot reach this service";
+  argus::client::GrpcServerDrain controlDrain(std::move(controlServer), kControlShutdownDeadline);
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
            << (listener.tls ? " (TLS" : " (plain") << ", cert "
@@ -372,6 +381,6 @@ int main()
 
   drogon::app().setThreadNum(0).run();
 
-  controlDrain.finish();
+  controlDrain.stop();
   return 0;
 }

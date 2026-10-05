@@ -34,7 +34,8 @@ enum class FrameAdmission : uint8_t
 {
   Start,
   Queued,
-  Refused
+  Refused,
+  Stopping
 };
 
 struct FrameLaneOwner
@@ -52,6 +53,8 @@ public:
   [[nodiscard]] FrameAdmission admitRevalidation();
   [[nodiscard]] std::optional<FrameJob> next();
 
+  void close();
+
   [[nodiscard]] bool draining() const;
   [[nodiscard]] int64_t userId() const { return owner_.userId; }
   [[nodiscard]] trantor::EventLoop* loop() const { return owner_.loop; }
@@ -67,4 +70,5 @@ private:
   std::optional<double> refilledAt_;
   bool draining_{false};
   bool revalidationQueued_{false};
+  bool closed_{false};
 };

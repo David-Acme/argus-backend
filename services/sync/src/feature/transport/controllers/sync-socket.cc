@@ -32,13 +32,7 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
   if (message.size() > kMaxMessageSize)
     return;
 
-  Json::Value json;
-  try {
-    json = json_util::fromString(message);
-  }
-  catch (...) {
-    return;
-  }
+  Json::Value json = json_util::fromString(message);
   const auto frame = SocketFrameDto::fromJson(json);
   if (!frame)
     return;
@@ -51,11 +45,14 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                                       .raw = std::move(message),
                                       .type = frameType},
                                      steadySeconds());
-  if (admission == FrameAdmission::Refused) {
+  if (admission == FrameAdmission::Refused || admission == FrameAdmission::Stopping) {
+    const ErrorDefinition& refusal = admission == FrameAdmission::Stopping
+                                         ? SyncErrors::SyncStopping
+                                         : SyncErrors::TooManyFrames;
     sendSocketFrameError({.conn = conn,
                           .type = frameType,
-                          .status = SyncErrors::TooManyFrames.status,
-                          .error = std::string(SyncErrors::TooManyFrames.message)});
+                          .status = refusal.status,
+                          .error = std::string(refusal.message)});
     return;
   }
   if (admission == FrameAdmission::Start)

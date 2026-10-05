@@ -29,6 +29,8 @@ std::shared_ptr<FrameLane> ConnectionLanes::open(const LaneOpenInput& input)
         .conn = input.conn,
         .lane = std::make_shared<FrameLane>(
             config_, FrameLaneOwner{.userId = input.userId, .loop = input.loop})};
+  if (stopping_.load(std::memory_order_acquire))
+    found->second.lane->close();
   return found->second.lane;
 }
 
@@ -144,7 +146,12 @@ void ConnectionLanes::startDrain(const drogon::WebSocketConnectionPtr& conn,
 
 void ConnectionLanes::requestStop()
 {
-  stopping_.store(true, std::memory_order_release);
+  {
+    std::scoped_lock lock(mutex_);
+    stopping_.store(true, std::memory_order_release);
+    for (const auto& [raw, entry] : entries_)
+      entry.lane->close();
+  }
   if (!timer_)
     return;
   if (drogon::app().isRunning())

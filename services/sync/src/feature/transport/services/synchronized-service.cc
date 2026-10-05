@@ -1,5 +1,7 @@
 #include "synchronized-service.hxx"
 
+#include <camera/camera-row-projection.hxx>
+
 #include <errors/response-exception.hxx>
 #include <auth/role-access.hxx>
 #include <sync/sync-operation.hxx>
@@ -478,6 +480,13 @@ SynchronizedService::syncAuditLog(const SynchronizedLogDto& body,
     rows = std::vector<Json::Value>{};
   else
     rows = co_await auditLogRepository_.findSync(filter);
+  if (!role_access::readsCameraConnection(ctx.role)) {
+    const std::string camera = tableNameToString(TableName::Camera);
+    for (auto& row : rows) {
+      if (row.get("tableName", "").asString() == camera)
+        camera_projection::reduceDiff(row["changes"]);
+    }
+  }
   if (!rows.empty())
     out["nextCursorId"] = rows.back().get("id", Json::Value());
   Json::Value arr(Json::arrayValue);

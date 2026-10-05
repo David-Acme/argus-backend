@@ -87,13 +87,9 @@ bool NotificationDeliveryConsumer::drained() const
 drogon::Task<DurableDisposition>
 NotificationDeliveryConsumer::handlePayload(const std::string& payload)
 {
-  Json::Value json;
-  try {
-    json = json_util::fromString(payload);
-  }
-  catch (const std::exception& error) {
-    LOG_WARN << "Delivery consumer: unparsable payload refused: "
-             << error.what();
+  const Json::Value json = json_util::fromString(payload);
+  if (!json.isObject()) {
+    LOG_WARN << "Delivery consumer: payload is not a JSON object; refused";
     co_return DurableDisposition::Term;
   }
   if (notification_delivery::isProbe(json))

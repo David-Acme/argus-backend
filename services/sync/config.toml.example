@@ -64,6 +64,7 @@ server_url = "http://127.0.0.1:7880"
 public_url = ""
 public_port = 7046
 token_ttl_seconds = 60
+max_concurrent_calls = 2
 
 [notifications]
 grpc_target = "127.0.0.1:7038"

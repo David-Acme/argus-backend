@@ -260,6 +260,10 @@ TEST_CASE("the sync delivery inbox is durable, exact and fail-closed")
 
   CHECK(drogon::sync_wait(consumer.handlePayload("not-json")) ==
         DurableDisposition::Term);
+  CHECK(drogon::sync_wait(consumer.handlePayload("[1,2]")) ==
+        DurableDisposition::Term);
+  CHECK(drogon::sync_wait(consumer.handlePayload("7")) ==
+        DurableDisposition::Term);
   CHECK(drogon::sync_wait(consumer.handlePayload("{\"deliveryId\":0}")) ==
         DurableDisposition::Term);
 

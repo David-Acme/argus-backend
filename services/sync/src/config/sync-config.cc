@@ -67,6 +67,9 @@ SyncRtcConfig SyncConfig::resolveRtc()
   if (ConfigService::hasKey("rtc.token_ttl_seconds"))
     config.tokenTtl = std::chrono::seconds(
         std::clamp(ConfigService::getInt("rtc.token_ttl_seconds"), 60, 3600));
+  if (ConfigService::hasKey("rtc.max_concurrent_calls"))
+    config.maxConcurrentCalls =
+        std::clamp(ConfigService::getInt("rtc.max_concurrent_calls"), 1, 8);
   constexpr std::size_t kMinSecretBytes = 32;
   config.enabled = ConfigService::hasKey("rtc.enabled") && ConfigService::getBool("rtc.enabled") &&
                    !config.apiKey.empty() && config.apiSecret.size() >= kMinSecretBytes &&

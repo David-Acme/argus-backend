@@ -63,7 +63,8 @@ api_secret = "CHANGE_ME_LIVEKIT_SECRET"
 server_url = "http://172.19.0.1:7880"
 public_url = ""
 public_port = 7046
-token_ttl_seconds = 600
+token_ttl_seconds = 60
+max_concurrent_calls = 2
 
 [notifications]
 grpc_target = "argus-notification:7038"

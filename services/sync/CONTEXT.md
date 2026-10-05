@@ -759,19 +759,38 @@ feed is terminated with a warning. Before, any producer able to publish on
 its own change subject could have moved a socket into Owner rooms. The
 emits, the audit diffs and the journal are unchanged.
 
-**A payload that cannot be parsed is terminated (#78).** A body jsoncpp
-refuses by throwing (nesting past its stack limit) used to escape before the
-handler's `try` and nak, holding the ordered feed for its 151 s of retries;
-it is terminated now, on the change feeds and on the delivery leg.
+**A payload that is not a JSON object is terminated (#78).**
+`json_util::fromString` answers a null value for a body it cannot parse, but
+jsoncpp still threw for one case, nesting past its stack limit, which is why
+the first fix wrapped the call in a `try`. That left two holes: every other
+caller of `fromString` (the socket, the other services' consumers) could
+still throw on such a body, and a body that parses to something other than an
+object (an array, a number, a string) reached the fan-out, where
+`Json::Value::get` on an array throws, the handler nakked and the ordered
+feed was held for its retries. Now `fromString` and `isValid` catch jsoncpp's
+exception themselves and answer null / false (`packages/lib/text`,
+`json-diff-test` pins the 5000-deep body), and both consumers check the parsed
+value: anything that is not an object is terminated before the fan-out reads
+a field. `change-feed-consumer-test` sends the deep body, arrays, numbers and
+strings on every subject and expects `Term`; without the object check the
+array cases throw. The socket path's `try` around the same call is gone with
+the throw it guarded; `SocketFrameDto::fromJson` already refuses a
+non-object.
 
 **Shutdown drains (#79).** Next to the database freeze, `main.cc` registers a
-drain for the socket lanes (the revalidation timer stops; drained when no
-lane is running), each change-feed consumer and the delivery consumer (they
+drain for the socket lanes (the revalidation timer stops and every lane is
+closed: a frame or a revalidation that arrives afterwards, on an existing
+socket or one opened during the stop, answers `{type:"<type>_error",
+status: 503}` with `SyncErrors::SyncStopping` instead of joining a queue, so
+a chatty client can no longer hold the drain open until the quit gives up;
+what was already queued still runs; drained when no lane is running), each change-feed consumer and the delivery consumer (they
 unsubscribe; drained when every received message is settled, counted from
 receipt so a queued one counts too), the heartbeat feed (drained when no
 presence refill is in flight), the voice relay (every stream is finished;
 drained when every stream has closed), the retention sweep and the control
-RPC (a `Shutdown` with a 2 s deadline on its own thread). A delivery settled
+RPC (a `Shutdown` with a 2 s deadline on its own thread, through
+`argus::client::GrpcServerDrain` from `packages/lib/grpc`, the copy
+notification and productivity share). A delivery settled
 before the quit is not redelivered into a new UTC day, where it would have
 merged into a second audit row.
 
@@ -785,7 +804,46 @@ earliest `since` of the winning state across environments while the feed
 carries the changed row's, so the two clocks are not comparable and the rule
 would have refused the very refill that recovers a lost event.
 
+**Guard and Guest see a camera without its connection details (#76).**
+argus-camera already answers the `camera` pull of a Guard or a Guest with
+`ip ""`, `port 0`, `username ""`, `cloudUsername ""` and `config "{}"`; the
+live leg and the audit pages used to undo that by sending every socket of the
+camera module room the full row and the full diff. The camera table now has
+two module rooms: `moduleRoom(camera)` for the roles
+`role_access::readsCameraConnection` admits (Owner, Resident) and
+`reducedModuleRoom(camera)` (500 + the table) for the rest; `moduleRoomFor`
+picks one at connect and on a role change (`moduleRoomsOf`, shared by the
+connect and `replaceRoleRooms`). The fan-out sends a camera `Add` or `Log`
+twice: as it came to the full room, and through
+`camera_projection::reduceRow` / `reduceDiff`
+(`packages/contracts/camera/src/camera/camera-row-projection.hxx`, the one
+definition of the reduced field set) to the reduced room; a `Delete` carries
+only the id and goes unchanged. `SynchronizeAuditLog` pages served to a role
+outside `readsCameraConnection` drop the same fields (and any `config.*`
+path) from every `camera` row's `changes`; the row and its id stay, so the
+cursor is unchanged. `sync-surface-test` and `audit-sync-read-test` pin both.
+
+**At most two calls per user at once (#54).** `/rtc/token` lists LiveKit's
+rooms before it claims, creates or joins anything and counts the rooms named
+with the caller's prefix (`u<userId>.`), the room it is asked for excluded so
+a resume always passes, plus the caller's requests still in flight in this
+process (two concurrent requests cannot both take the last slot). At
+`[rtc] max_concurrent_calls` (2 by default, clamped 1-8) it answers 429
+`TOO_MANY_REQUESTS` (`RtcErrors::TooManyCalls`, "Too many calls at once"),
+and argus-voice is never asked to join, so a Guest in a loop can no longer
+start one agent (LLM, STT and TTS) after another. LiveKit is the source of
+truth for what is open: a room is deleted when its call ends or its last
+human is revoked, and LiveKit closes an empty room by itself. A
+`ListRooms` that fails answers 503 `RTC_UNAVAILABLE`, the answer the
+`CreateRoom` that follows would have given. Without the LiveKit admin client
+(`rooms` unset, a test or a half-configured install) no limit is applied.
+
 **Not changed here.** The `person` pull's index belongs to identity's schema
-(`person(created_at, id) WHERE user_id IS NOT NULL`); the agent-side check
-that a joining participant's session is still live and a per-user limit on
-concurrent calls belong to argus-voice.
+(`person(created_at, id) WHERE user_id IS NOT NULL`). What remains of #54 is
+argus-voice's: when a participant joins a room the agent should ask
+argus-auth for the verdict of the session its identity names
+(`user:<userId>:<sessionId>`) and leave a revoked one at once, instead of
+relying on this service's revoker alone; and the agent's voice role is fixed
+when it joins, so a role change mid-call takes effect only on the next call.
+The revoker already deletes the room when the revoked participant was the
+only human, which is what keeps a 60 s token from reopening it.

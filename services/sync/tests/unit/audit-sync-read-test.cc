@@ -720,6 +720,31 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   CHECK_NOTHROW(drogon::sync_wait(
       synchronizedService.syncAuditLog(logBody(moduleWatermark), ownerCtx)));
 
+  DbService::client()->execSqlSync(
+      "INSERT INTO audit_log (id, record_id, table_name, changes, priority, "
+      "event_timestamp) VALUES (2000, 3, 'camera', "
+      "'{\"name\":{\"previous\":\"Patio\",\"current\":\"Jardin\"},"
+      "\"ip\":{\"previous\":\"10.0.0.1\",\"current\":\"10.0.0.2\"},"
+      "\"username\":{\"previous\":\"admin\",\"current\":\"root\"}}', 1, 200)");
+  const JwtContext guardCtx{.sub = 9, .name = "Guard", .role = UserRole::Guard, .isActive = true, .deviceHash = {}, .sessionId = {}};
+  const auto changesOf = [&](const JwtContext& ctx) {
+    const auto page = drogon::sync_wait(
+        synchronizedService.syncAuditLog(logBody(moduleWatermark), ctx));
+    for (const auto& row : page["info"]["info"]) {
+      if (row["id"].asInt64() == 2000)
+        return row["changes"];
+    }
+    return Json::Value();
+  };
+  const Json::Value full = changesOf(ownerCtx);
+  CHECK(full.isMember("ip"));
+  CHECK(full.isMember("username"));
+  const Json::Value reduced = changesOf(guardCtx);
+  REQUIRE(reduced.isObject());
+  CHECK(reduced.isMember("name"));
+  CHECK_FALSE(reduced.isMember("ip"));
+  CHECK_FALSE(reduced.isMember("username"));
+
   const auto userMark = drogon::sync_wait(
       synchronizedService.syncUserAuditLog(findLastBody(), residentCtx));
   REQUIRE(userMark["info"].isMember("watermarkId"));

@@ -1,5 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
+#include <algorithm>
+#include <sync/sync-errors.hxx>
 
 #include <auth/user-role.hxx>
 #include <config/config-service.hxx>
@@ -430,6 +432,42 @@ TEST_CASE("revalidation reaches every socket of one user, once while one is pend
   CHECK(lanes.revalidateUser(7) == 1);
 }
 
+TEST_CASE("once the lanes are asked to stop, no socket can hold the drain open with new frames")
+{
+  ConnectionLanes lanes;
+  int starts = 0;
+  lanes.setDrainStarter([&starts](const drogon::WebSocketConnectionPtr&,
+                                  const std::shared_ptr<FrameLane>&) { ++starts; });
+  const auto busy = std::make_shared<ClosingConnection>();
+  const auto late = std::make_shared<ClosingConnection>();
+  const drogon::WebSocketConnectionPtr busyConn = busy;
+  const drogon::WebSocketConnectionPtr lateConn = late;
+  const auto lane = lanes.open({.conn = busyConn, .userId = 7, .loop = nullptr});
+  const auto frame = [](const char* type) {
+    return FrameJob{.kind = FrameJobKind::Frame,
+                    .message = Json::Value(Json::objectValue),
+                    .raw = "{}",
+                    .type = type};
+  };
+  CHECK(lane->admit(frame("first"), 0.0) == FrameAdmission::Start);
+  CHECK(lane->admit(frame("second"), 0.0) == FrameAdmission::Queued);
+  CHECK_FALSE(lanes.drained());
+
+  lanes.requestStop();
+  CHECK(lane->admit(frame("after-stop"), 0.0) == FrameAdmission::Stopping);
+  CHECK(lane->admitRevalidation() == FrameAdmission::Stopping);
+  CHECK(lanes.revalidateUser(7) == 1);
+  CHECK(starts == 0);
+  const auto fresh = lanes.open({.conn = lateConn, .userId = 8, .loop = nullptr});
+  CHECK(fresh->admit(frame("new-socket"), 0.0) == FrameAdmission::Stopping);
+
+  CHECK(lane->next().value_or(FrameJob{}).type == "first");
+  CHECK(lane->next().value_or(FrameJob{}).type == "second");
+  CHECK_FALSE(lane->next().has_value());
+  CHECK(lanes.drained());
+  CHECK(SyncErrors::SyncStopping.status == 503);
+}
+
 TEST_CASE("a socket whose account was disabled is closed by its revalidation")
 {
   const auto directory = std::make_shared<CountingDirectory>();
@@ -503,6 +541,80 @@ TEST_CASE("identity change events never fan out to the client sockets")
       R"({"kind":"identity","table":"person","id":7,"deleted":true,
           "row":{}})");
   CHECK(sync_fan_out::parseEvent(tombstone) == std::nullopt);
+}
+
+TEST_CASE("a Guard or Guest camera room gets the row and the diff without connection details")
+{
+  CHECK(moduleRoomFor(TableName::Camera, UserRole::Owner) == moduleRoom(TableName::Camera));
+  CHECK(moduleRoomFor(TableName::Camera, UserRole::Resident) == moduleRoom(TableName::Camera));
+  CHECK(moduleRoomFor(TableName::Camera, UserRole::Guard) == reducedModuleRoom(TableName::Camera));
+  CHECK(moduleRoomFor(TableName::Camera, UserRole::Guest) == reducedModuleRoom(TableName::Camera));
+  for (const auto role : {UserRole::Guard, UserRole::Guest}) {
+    const auto rooms = moduleRoomsOf(role);
+    CHECK(std::ranges::find(rooms, moduleRoom(TableName::Camera)) == rooms.end());
+  }
+
+  SocketEmitDto added;
+  added.operation = SyncOperation::Add;
+  added.option = TableName::Camera;
+  added.obj["id"] = 3;
+  added.obj["name"] = "Patio";
+  added.obj["ip"] = "192.168.1.20";
+  added.obj["port"] = 554;
+  added.obj["username"] = "admin";
+  added.obj["cloudUsername"] = "owner@example.com";
+  added.obj["config"] = R"({"rtsp":"rtsp://admin:pw@192.168.1.20"})";
+  const auto addEvent = sync_fan_out::parseEvent(sync_change::emitPayload(added));
+  if (!addEvent) {
+    FAIL("expected a value in addEvent");
+    return;
+  }
+  const auto addFrames = sync_fan_out::moduleFrames(*addEvent);
+  REQUIRE(addFrames.size() == 2);
+  CHECK(addFrames[0].room == moduleRoom(TableName::Camera));
+  CHECK(addFrames[1].room == reducedModuleRoom(TableName::Camera));
+  CHECK(addFrames[0].message.find("192.168.1.20") != std::string::npos);
+  const Json::Value guardAdd = json_util::fromString(addFrames[1].message)["info"];
+  CHECK(guardAdd["name"] == "Patio");
+  CHECK(guardAdd["ip"] == "");
+  CHECK(guardAdd["port"] == 0);
+  CHECK(guardAdd["username"] == "");
+  CHECK(guardAdd["cloudUsername"] == "");
+  CHECK(guardAdd["config"] == "{}");
+  CHECK(addFrames[1].message.find("admin") == std::string::npos);
+
+  SocketEmitDto logged;
+  logged.operation = SyncOperation::Log;
+  logged.option = TableName::Camera;
+  logged.obj["id"] = 9;
+  logged.obj["recordId"] = 3;
+  logged.obj["tableName"] = "camera";
+  logged.obj["changes"]["name"]["current"] = "Jardin";
+  logged.obj["changes"]["ip"]["current"] = "10.0.0.2";
+  logged.obj["changes"]["port"]["current"] = 8554;
+  logged.obj["changes"]["username"]["current"] = "root";
+  const auto logEvent = sync_fan_out::parseEvent(sync_change::emitPayload(logged));
+  if (!logEvent) {
+    FAIL("expected a value in logEvent");
+    return;
+  }
+  const auto logFrames = sync_fan_out::moduleFrames(*logEvent);
+  REQUIRE(logFrames.size() == 2);
+  const Json::Value guardLog = json_util::fromString(logFrames[1].message)["info"]["changes"];
+  CHECK(guardLog.isMember("name"));
+  CHECK_FALSE(guardLog.isMember("ip"));
+  CHECK_FALSE(guardLog.isMember("port"));
+  CHECK_FALSE(guardLog.isMember("username"));
+  CHECK(json_util::fromString(logFrames[0].message)["info"]["changes"].isMember("ip"));
+
+  SocketEmitDto zone = added;
+  zone.option = TableName::Zone;
+  const auto zoneEvent = sync_fan_out::parseEvent(sync_change::emitPayload(zone));
+  if (!zoneEvent) {
+    FAIL("expected a value in zoneEvent");
+    return;
+  }
+  CHECK(sync_fan_out::moduleFrames(*zoneEvent).size() == 1);
 }
 
 TEST_CASE("fan-out routing table matches the legacy SocketService mapping")

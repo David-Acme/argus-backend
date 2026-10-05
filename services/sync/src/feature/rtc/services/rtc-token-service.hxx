@@ -10,8 +10,11 @@
 
 #include <drogon/utils/coroutine.h>
 
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 
 struct RtcTokenServiceInput
 {
@@ -29,6 +32,12 @@ struct RtcTokenRequest
   std::string host;
 };
 
+struct RtcCallSlotInput
+{
+  int64_t userId{0};
+  std::string room;
+};
+
 class RtcTokenService
 {
 public:
@@ -37,9 +46,23 @@ public:
   drogon::Task<ResponseRtcTokenDto> issue(RtcTokenRequest request) const;
 
 private:
+  struct InFlightCalls
+  {
+    std::mutex mutex;
+    std::unordered_map<int64_t, int> byUser;
+  };
+
+  struct CallSlot
+  {
+    std::shared_ptr<void> release;
+  };
+
+  drogon::Task<CallSlot> reserveCall(RtcCallSlotInput input) const;
+
   SyncRtcConfig config_;
   std::shared_ptr<const RtcVoiceJoiner> voice_;
   std::shared_ptr<const RtcCallClaimer> calls_;
   std::shared_ptr<const IUserDirectory> directory_;
   std::shared_ptr<const LiveKitRoomClient> rooms_;
+  std::shared_ptr<InFlightCalls> inFlight_ = std::make_shared<InFlightCalls>();
 };

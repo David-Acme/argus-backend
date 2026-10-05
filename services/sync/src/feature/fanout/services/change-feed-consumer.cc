@@ -98,13 +98,10 @@ bool ChangeFeedConsumer::drained() const
 drogon::Task<DurableDisposition>
 ChangeFeedConsumer::handle(const durable_delivery::Payload& message)
 {
-  Json::Value json;
-  try {
-    json = json_util::fromString(message.body);
-  }
-  catch (const std::exception& error) {
-    LOG_WARN << "Change feed: unparsable payload on " << message.subject
-             << " refused: " << error.what();
+  const Json::Value json = json_util::fromString(message.body);
+  if (!json.isObject()) {
+    LOG_WARN << "Change feed: payload on " << message.subject
+             << " is not a JSON object; refused";
     co_return DurableDisposition::Term;
   }
   if (message.subject == nats_subject::kIdentityUserAction ||

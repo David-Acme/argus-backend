@@ -16,6 +16,7 @@ argus_module(NAME sync-fanout
         argus::lib::sqlite
         argus::lib::text
         argus::contracts::auth
+        argus::contracts::camera
         argus::contracts::sync
         argus::contracts::notification
         Drogon::Drogon)

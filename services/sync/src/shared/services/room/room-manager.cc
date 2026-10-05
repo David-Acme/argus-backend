@@ -54,10 +54,8 @@ std::vector<std::pair<trantor::EventLoop*, trantor::TimerId>> g_pruneTimers;
 
 std::unordered_set<RoomId> moduleRoomsFor(UserRole role)
 {
-  std::unordered_set<RoomId> rooms;
-  for (const auto table : role_access::moduleTables(role))
-    rooms.insert(moduleRoom(table));
-  return rooms;
+  const auto list = moduleRoomsOf(role);
+  return {list.begin(), list.end()};
 }
 }
 

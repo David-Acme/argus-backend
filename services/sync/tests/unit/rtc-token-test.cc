@@ -14,6 +14,7 @@
 #include <jwt-cpp/traits/nlohmann-json/defaults.h>
 
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -33,7 +34,8 @@ SyncRtcConfig enabledConfig()
           .serverUrl = "http://127.0.0.1:7880",
           .publicUrl = {},
           .publicPort = 7046,
-          .tokenTtl = std::chrono::seconds(600)};
+          .tokenTtl = std::chrono::seconds(600),
+          .maxConcurrentCalls = 3};
 }
 
 class FakeVoice final : public RtcVoiceJoiner
@@ -43,10 +45,16 @@ public:
 
   drogon::Task<bool> join(argus::voice::v1::RtcJoin join) const override
   {
-    std::scoped_lock lock(mutex_);
-    joins_.push_back(std::move(join));
+    {
+      std::scoped_lock lock(mutex_);
+      joins_.push_back(std::move(join));
+    }
+    if (onJoin)
+      onJoin();
     co_return accept_;
   }
+
+  std::function<void()> onJoin;
 
   drogon::Task<bool> farewell(RtcFarewellInput input) const override
   {
@@ -110,8 +118,10 @@ public:
     ++listCalls;
     if (listCalls <= failLists)
       co_return std::nullopt;
-    co_return std::vector<std::string>{"u7.rtc-aa", "u7.call-3", "u70.rtc-bb", "u8.rtc-cc"};
+    co_return names;
   }
+
+  std::vector<std::string> names{"u7.rtc-aa", "u7.call-3", "u70.rtc-bb", "u8.rtc-cc"};
 
   drogon::Task<bool> createRoom(std::string room) const override
   {
@@ -321,6 +331,54 @@ TEST_CASE("a room LiveKit refuses to create is never handed to the agent")
         }) == 503);
   CHECK(voice->joins().empty());
   CHECK(SyncRtcConfig{}.tokenTtl == std::chrono::seconds(60));
+}
+
+TEST_CASE("a user holds at most the configured number of calls at once")
+{
+  const auto voice = std::make_shared<FakeVoice>(true);
+  const auto rooms = std::make_shared<FakeRooms>();
+  const std::string held = rtc_naming::mintUserCallId();
+  rooms->names = {"u7." + held, "u7.call-3", "u70.rtc-bb", "u8.rtc-cc"};
+  SyncRtcConfig config = enabledConfig();
+  config.maxConcurrentCalls = 2;
+  const RtcTokenService service(
+      {.config = config, .voice = voice, .calls = nullptr, .directory = nullptr, .rooms = rooms});
+  const auto issue = [&service](const std::string& body) {
+    return drogon::sync_wait(
+        service.issue({.body = bodyOf(body), .caller = caller(), .host = "argus.local"}));
+  };
+
+  try {
+    static_cast<void>(issue("{}"));
+    FAIL("a third call must be refused");
+  }
+  catch (const ResponseException& error) {
+    CHECK(error.statusCode() == 429);
+    CHECK(error.errorCode() == "TOO_MANY_REQUESTS");
+  }
+  CHECK(voice->joins().empty());
+  CHECK(rooms->calls.empty());
+
+  const auto resumed = issue(R"({"callId":")" + held + R"(","resume":true})");
+  CHECK(resumed.room == "u7." + held);
+
+  rooms->names = {"u7." + held, "u70.rtc-bb", "u8.rtc-cc"};
+  int nestedStatus = 0;
+  bool nested = false;
+  voice->onJoin = [&] {
+    if (nested)
+      return;
+    nested = true;
+    nestedStatus = statusOf([&] { static_cast<void>(issue("{}")); });
+  };
+  const auto second = issue("{}");
+  CHECK(second.room.starts_with("u7.rtc-"));
+  CHECK(nestedStatus == 429);
+  CHECK(statusOf([&] { static_cast<void>(issue("{}")); }) == 200);
+
+  rooms->failLists = rooms->listCalls + 1;
+  CHECK(statusOf([&] { static_cast<void>(issue("{}")); }) == 503);
+  CHECK(SyncRtcConfig{}.maxConcurrentCalls == 2);
 }
 
 TEST_CASE("a resume keeps the room and tells the agent not to greet")

@@ -11,6 +11,8 @@ FrameLane::FrameLane(FrameLaneConfig config, FrameLaneOwner owner)
 FrameAdmission FrameLane::admit(FrameJob job, double nowSeconds)
 {
   std::scoped_lock lock(mutex_);
+  if (closed_)
+    return FrameAdmission::Stopping;
   if (refilledAt_) {
     const double elapsed = std::max(0.0, nowSeconds - *refilledAt_);
     tokens_ = std::min(config_.burst,
@@ -27,6 +29,8 @@ FrameAdmission FrameLane::admit(FrameJob job, double nowSeconds)
 FrameAdmission FrameLane::admitRevalidation()
 {
   std::scoped_lock lock(mutex_);
+  if (closed_)
+    return FrameAdmission::Stopping;
   if (revalidationQueued_)
     return FrameAdmission::Refused;
   revalidationQueued_ = true;
@@ -57,6 +61,12 @@ std::optional<FrameJob> FrameLane::next()
   if (job.kind == FrameJobKind::Revalidate)
     revalidationQueued_ = false;
   return job;
+}
+
+void FrameLane::close()
+{
+  std::scoped_lock lock(mutex_);
+  closed_ = true;
 }
 
 bool FrameLane::draining() const

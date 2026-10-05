@@ -37,6 +37,7 @@ struct SyncRtcConfig
   std::string publicUrl;
   uint16_t publicPort{7046};
   std::chrono::seconds tokenTtl{60};
+  int maxConcurrentCalls{2};
 };
 
 struct SyncHeartbeatConfig

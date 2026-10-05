@@ -12,6 +12,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <auth/role-access.hxx>
 #include <auth/user-role.hxx>
 #include <vector>
 
@@ -44,6 +45,26 @@ using SocketFarewell = std::function<std::chrono::milliseconds(const SocketFarew
 inline RoomId moduleRoom(TableName table)
 {
   return 1 + static_cast<uint64_t>(table);
+}
+
+inline RoomId reducedModuleRoom(TableName table)
+{
+  return 500 + static_cast<uint64_t>(table);
+}
+
+inline RoomId moduleRoomFor(TableName table, UserRole role)
+{
+  if (table == TableName::Camera && !role_access::readsCameraConnection(role))
+    return reducedModuleRoom(table);
+  return moduleRoom(table);
+}
+
+inline std::vector<RoomId> moduleRoomsOf(UserRole role)
+{
+  std::vector<RoomId> rooms;
+  for (const auto table : role_access::moduleTables(role))
+    rooms.push_back(moduleRoomFor(table, role));
+  return rooms;
 }
 
 inline RoomId userRoom(int64_t userId)

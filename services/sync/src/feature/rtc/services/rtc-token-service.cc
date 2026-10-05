@@ -8,6 +8,7 @@
 #include <errors/response-exception.hxx>
 #include <voice/voice-client.hxx>
 
+#include <algorithm>
 #include <chrono>
 #include <optional>
 #include <utility>
@@ -43,6 +44,35 @@ RtcTokenService::RtcTokenService(RtcTokenServiceInput input)
 {
 }
 
+drogon::Task<RtcTokenService::CallSlot>
+RtcTokenService::reserveCall(RtcCallSlotInput input) const
+{
+  if (!rooms_)
+    co_return CallSlot{};
+  const auto names = co_await rooms_->listRooms();
+  if (!names)
+    throw ResponseException(RtcErrors::RtcUnavailable);
+  const std::string prefix = rtc_naming::roomPrefixOf(input.userId);
+  const auto open = std::ranges::count_if(*names, [&](const std::string& name) {
+    return name.starts_with(prefix) && name != input.room;
+  });
+  const std::scoped_lock lock(inFlight_->mutex);
+  int& pending = inFlight_->byUser[input.userId];
+  if (open + pending >= config_.maxConcurrentCalls) {
+    if (pending == 0)
+      inFlight_->byUser.erase(input.userId);
+    throw ResponseException(RtcErrors::TooManyCalls);
+  }
+  ++pending;
+  co_return CallSlot{.release = std::shared_ptr<void>(
+                         nullptr, [calls = inFlight_, userId = input.userId](void*) {
+                           const std::scoped_lock release(calls->mutex);
+                           const auto found = calls->byUser.find(userId);
+                           if (found != calls->byUser.end() && --found->second <= 0)
+                             calls->byUser.erase(found);
+                         })};
+}
+
 drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request) const
 {
   const JwtContext& caller = request.caller;
@@ -51,6 +81,8 @@ drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request
 
   std::string callId = request.body.callId.empty() ? rtc_naming::mintUserCallId() : request.body.callId;
   const rtc_naming::CallKind kind = rtc_naming::callKindOf(callId);
+  const std::string room = rtc_naming::roomOf(caller.sub, callId);
+  const CallSlot slot = co_await reserveCall({.userId = caller.sub, .room = room});
   std::optional<RtcClaim> claim;
   if (kind == rtc_naming::CallKind::Proactive) {
     if (!calls_)
@@ -64,7 +96,6 @@ drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request
   if (directory_)
     user = co_await directory_->findById(caller.sub);
 
-  const std::string room = rtc_naming::roomOf(caller.sub, callId);
   const std::string identity = rtc_naming::userIdentityOf(caller.sub, caller.sessionId);
   const auto now = std::chrono::system_clock::now();
 

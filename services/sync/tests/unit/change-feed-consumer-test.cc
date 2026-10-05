@@ -440,6 +440,16 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
              .msgId = "notification-change:deep",
              .body = std::string(5000, '[') + std::string(5000, ']')})) ==
         DurableDisposition::Term);
+  for (const char* notAnObject : {"[1,2]", "42", "\"text\"", "[{\"users\":[1]}]"}) {
+    for (const char* subject :
+         {nats_subject::kNotificationChange, nats_subject::kIdentityChange,
+          nats_subject::kIdentityUserAction, nats_subject::kAuthSession}) {
+      CHECK(drogon::sync_wait(consumer.handle({.subject = subject,
+                                               .msgId = "not-an-object",
+                                               .body = notAnObject})) ==
+            DurableDisposition::Term);
+    }
+  }
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") == "1");
   CHECK(scalar("SELECT COUNT(*) FROM user_audit_log") == "2");
 

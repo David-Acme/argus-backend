@@ -17,6 +17,10 @@ inline constexpr ErrorDefinition CallTaken{
     .code = ErrorCode::CallTaken,
     .status = 409,
     .message = "The call was answered on another device"};
+inline constexpr ErrorDefinition TooManyCalls{
+    .code = ErrorCode::TooManyRequests,
+    .status = 429,
+    .message = "Too many calls at once"};
 inline constexpr ErrorDefinition CallExpired{
     .code = ErrorCode::CallExpired,
     .status = 410,

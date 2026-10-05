@@ -78,6 +78,14 @@ void onIdentityChange(IdentityChangeListener listener);
 std::optional<Event> parseEvent(const Json::Value& json,
                                 ControlScope scope = ControlScope::All);
 FanOutPlan planEvent(const Event& event);
+
+struct RoomFrame
+{
+  RoomId room{0};
+  std::string message;
+};
+
+[[nodiscard]] std::vector<RoomFrame> moduleFrames(const Event& event);
 void dispatchEvent(const Event& event);
 
 struct ChangePayloadInput
