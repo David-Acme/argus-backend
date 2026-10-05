@@ -29,9 +29,11 @@ accept it.
    storage and is never synced to phones.
 
 4. How long data is kept
-   - Argus does not record video continuously. Images of security events are
-     kept for review and deleted automatically.
-   - Faces of strangers passing the cameras: 30 days without being seen again.
+   - Argus does not record video continuously. Images and the history of
+     security events are kept 30 days (you can choose 1 to 60), and 120 days
+     for incidents you mark to keep.
+   - Unnamed faces of people passing the cameras: 30 days without being seen
+     again (you can choose 1 to 60).
    - Learned voices: pending samples 30 days; confirmed samples 180 days;
      everything is erased as soon as the person withdraws permission.
    - Presence: only the current state; erased when permission is withdrawn or

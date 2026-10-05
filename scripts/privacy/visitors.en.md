@@ -11,6 +11,6 @@ By turning it on you accept that:
   recurring. This is third parties' biometric data.
 - You must put up visible camera signs.
 - Retention is limited: an unnamed visitor is erased after 30 days unseen
-  (configurable from 7 to 60); turning the feature off erases unnamed
+  (configurable from 1 to 60); turning the feature off erases unnamed
   visitors within hours. Only small face crops are kept, never video, and
   they are never synced to phones.

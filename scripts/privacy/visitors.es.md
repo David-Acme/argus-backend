@@ -11,6 +11,6 @@ Al encenderlo, aceptas que:
   recurrentes. Son datos biométricos de terceros.
 - Debes colocar avisos visibles de zona videovigilada.
 - La conservación es limitada: un visitante sin nombre se borra tras 30 días
-  sin verlo (configurable entre 7 y 60); al apagar la función se borran los
+  sin verlo (configurable entre 1 y 60); al apagar la función se borran los
   visitantes sin nombre en unas horas. Solo se guardan recortes pequeños del
   rostro, nunca video, y nunca se sincronizan a los teléfonos.

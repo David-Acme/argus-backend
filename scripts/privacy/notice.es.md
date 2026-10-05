@@ -29,10 +29,11 @@ aceptes.
    teléfonos.
 
 4. Cuánto tiempo se guardan
-   - Argus no graba video de forma continua. Las imágenes de eventos de
-     seguridad se guardan para revisarlas y se borran solas.
-   - Rostros de desconocidos que pasan por las cámaras: 30 días sin volver a
-     verlos.
+   - Argus no graba video de forma continua. Las imágenes y el historial de
+     eventos de seguridad se guardan 30 días (puedes elegir entre 1 y 60) y
+     120 días los incidentes que marques para conservar.
+   - Rostros sin nombre de personas que pasan por las cámaras: 30 días sin
+     volver a verlos (puedes elegir entre 1 y 60).
    - Voz aprendida: muestras pendientes 30 días; muestras confirmadas 180
      días; se borra todo apenas la persona retira el permiso.
    - Presencia: solo el estado actual; se borra al retirar el permiso o tras
