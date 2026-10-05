@@ -389,6 +389,11 @@ int main()
       _exit(1);
     }
 
+    if (!NatsCameraChangeSink::repository().migrateSchema()) {
+      LOG_FATAL << "Camera change outbox migration failed — aborting startup";
+      _exit(1);
+    }
+
     if (objectSink) {
       objectSink->reconcile();
     }

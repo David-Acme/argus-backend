@@ -138,8 +138,8 @@ argus-identity/
   src/shared/repositories/
                         user, person, face-embedding, user-invitation,
                         user-portrait, stored-file, privacy, visitor-setting
-                        and pending-object-delete (2+ features read them), plus
-                        change-outbox as its own module
+                        and pending-object-delete (2+ features read them); the
+                        change outbox is `argus::lib::outbox`
   src/shared/schemas/   the row mappings of those tables
   src/shared/services/face/     FaceService + FaceDB (vec0 index), the
                                 MiniFASNet liveness engine (anti-spoof), the
@@ -155,7 +155,7 @@ argus-identity/
   src/shared/vocabulary/        person-status
   database/schema.sql   this owner's tables and their indices
   config.toml.example   identity keys + the peer targets; no AI keys
-  tests/unit/           the config, migration, change-outbox,
+  tests/unit/           the config, migration,
                         change-transaction, change-outbox-sink, sync-RPC,
                         face-slots, face-embedding, voiceprint-audio,
                         voiceprint-passive and voiceprint suites

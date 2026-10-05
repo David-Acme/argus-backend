@@ -81,7 +81,7 @@ argus-camera/
   src/feature/sync/     argus.camera.v1 SyncService owner and the
                         camera_stream repository and schema
   src/feature/zone/     /zone* HTTP surface
-  src/shared/           the camera, zone and change-outbox repositories and
+  src/shared/           the camera and zone repositories and
                         schemas plus the stream, camera-driver, change-sink
                         and in-flight utils modules 2+ features read, the
                         network-address utils (the one private-address
@@ -91,7 +91,8 @@ argus-camera/
                         stream paths a camera keeps in its config; tapo is
                         camera-driver's own protocol stack, event-stream's one
                         reader is operator, the change sink's readers are
-                        composition and the outbox suites, and secret-box
+                        composition and the outbox suites (the outbox itself
+                        is `argus::lib::outbox`), and secret-box
                         seals the camera passwords for the shared camera
                         repository)
   config.toml.example   camera, streaming, YOLO object and operator settings;

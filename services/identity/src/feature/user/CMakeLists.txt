@@ -16,13 +16,13 @@ argus_module(NAME identity-user
     INCLUDES ../..
     DEPENDS
         argus::identity-shared
-        argus::identity-change-outbox
         argus::identity-voiceprint
         argus::lib::auth
         argus::lib::config
         argus::lib::errors
         argus::lib::http
         argus::lib::nats
+        argus::lib::outbox
         argus::lib::runtime
         argus::lib::sqlite
         argus::lib::storage

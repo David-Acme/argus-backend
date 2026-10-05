@@ -1,16 +1,13 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <memory>
-#include <shared/repositories/change-outbox/change-outbox-repository.hxx>
-#include <sync/camera-change-sink.hxx>
-
-#include <atomic>
-#include <condition_variable>
-#include <cstddef>
-#include <mutex>
+#include <outbox/transactional-outbox.hxx>
 #include <string>
-#include <thread>
+#include <string_view>
+#include <sync/camera-change-sink.hxx>
 
 class NatsBus;
 
@@ -19,15 +16,18 @@ class NatsCameraChangeSink : public CameraChangeSink
 public:
   struct Config
   {
-    int retryMs{500};
+    int retryMs{outbox::kRetryMs};
     std::string publishSubject;
     std::string streamName;
   };
 
-  NatsCameraChangeSink(std::shared_ptr<NatsBus> bus, Config config);
-  ~NatsCameraChangeSink() override;
+  NatsCameraChangeSink(const std::shared_ptr<NatsBus>& bus,
+                       const Config& config);
+  ~NatsCameraChangeSink() override = default;
   NatsCameraChangeSink(const NatsCameraChangeSink&) = delete;
   NatsCameraChangeSink& operator=(const NatsCameraChangeSink&) = delete;
+  NatsCameraChangeSink(NatsCameraChangeSink&&) = delete;
+  NatsCameraChangeSink& operator=(NatsCameraChangeSink&&) = delete;
 
   [[nodiscard]] drogon::Task<void>
   emitModule(const ModuleEmitInput& input) const override;
@@ -38,25 +38,22 @@ public:
   void requestStop();
   [[nodiscard]] bool drained() const;
 
-  static constexpr std::size_t kMaxPayloadBytes = std::size_t{256} * 1024;
+  static constexpr std::size_t kMaxPayloadBytes = outbox::kMaxPayloadBytes;
+  static constexpr std::string_view kEventIdPrefix = "camera-change:";
+
+  [[nodiscard]] static outbox::OutboxRepository repository();
 
 private:
-  [[nodiscard]] drogon::Task<void>
-  enqueue(ChangeOutboxEnqueueInput input) const;
-  [[nodiscard]] bool ensureStream() const;
-  void flushLoop();
-  bool flush(const ChangeOutboxRow& row);
+  struct RecordInput
+  {
+    TableName table;
+    int64_t recordId{0};
+    std::string payload;
+    drogon::orm::DbClient* client{nullptr};
+  };
 
-  std::shared_ptr<NatsBus> bus_;
-  ChangeOutboxRepository outbox_;
-  const Config config_;
+  [[nodiscard]] drogon::Task<void> record(RecordInput input) const;
+
   const std::string subject_;
-  int64_t nextPurgeMs_{0};
-  std::atomic<bool> streamReady_{false};
-  std::atomic<bool> stopping_{false};
-  std::atomic<bool> workerStarted_{false};
-  std::atomic<bool> exited_{false};
-  std::mutex wakeMutex_;
-  mutable std::condition_variable wake_;
-  std::thread worker_;
+  outbox::TransactionalOutbox outbox_;
 };

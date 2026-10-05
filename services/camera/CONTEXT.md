@@ -508,7 +508,7 @@ families moved into their single reader: `action-command` into
 `feature/actions`, `object-event-outbox` and `evidence` into
 `feature/operator`, and the `camera_stream` repository and schema into
 `feature/sync` (the sync RPC service is their only reader; the shared module
-keeps `camera`, `zone` and `change-outbox`). Three modules stay in `shared/`
+keeps `camera`, `zone` and, until the 2026-10-05 audit, `change-outbox`). Three modules stay in `shared/`
 with a measured note instead of a move: `services/tapo` is the protocol
 stack `services/camera-driver` (itself shared, two feature readers) is built
 on, `services/event-stream` is read by `feature/operator`, the change sink
@@ -518,13 +518,39 @@ repository, schema or service — rule 23's 2+ rule names those three, and
 its only reader, `feature/zone/dtos/normalized-polygon.hxx`, after the
 2026-10-05 audit.)
 
-The change sink's reader count is the reason `shared/repositories/change-outbox`
-stayed: no feature includes it, because both publishing features reach it
+The change sink's reader count was the reason `shared/repositories/change-outbox`
+stayed until it was replaced by `packages/lib/outbox` (finding #69, below): no feature includes it, because both publishing features reach it
 through `camera_change::getSink()` in `contracts/sync`, whose concrete
 implementation is `nats-camera-change-sink.cc` — `src/camera/` at this step,
 `src/shared/services/change-sink/` since step 9 — and whose install
 is `main.cc`. That is the same indirect-2 shape the notification service
 documented for its own outbox.
+
+## The outbox is `argus::lib::outbox` (2026-10-05 audit, #69)
+
+The change outbox was one of five copies (auth, camera, identity,
+notification, productivity) that had already diverged. Camera's copy is gone;
+`NatsCameraChangeSink` now builds the camera payloads and the
+`camera-change:` transition ids and hands them to
+`outbox::TransactionalOutbox`, which owns the repository, the relay thread,
+the retention purge and the drain. What changed for camera, none of it on the
+wire (same subject, same stream, same msg ids, same payloads):
+
+- `change_outbox` gained `subject TEXT NOT NULL DEFAULT ''`, appended by the
+  boot migration (`NatsCameraChangeSink::repository().migrateSchema()`, fatal
+  on failure, right after the action-schema migration) and declared at the end
+  of `schema.sql` so a fresh table equals a migrated one. A row written before
+  the column existed reads `''` and is published on the configured change
+  subject, as before.
+- Pending rows leave in `rowid` order (strict insertion order) instead of
+  `created_at, rowid`; the two only differed when the clock disagreed with
+  insertion.
+- The relay now wakes on every commit (`db_transaction::CommitObserver`), which
+  the other four copies already did: a row written inside a transaction used
+  to wait out `retryMs` because the wake fired before the commit.
+- A relay that cannot publish backs off 500 ms → 1 s → 2 s → 4 s → 5 s
+  (`outbox::retryDelay`) instead of retrying every 500 ms forever; progress or
+  a commit resets it.
 
 ## Phase 4 step 9: config resolution into `src/config/` (D20)
 

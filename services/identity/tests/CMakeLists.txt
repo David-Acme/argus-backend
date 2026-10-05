@@ -15,25 +15,12 @@ target_compile_options(identity-migration-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-migration-test)
 add_test(NAME identity-migration-test COMMAND identity-migration-test)
 
-add_executable(identity-change-outbox-test unit/identity-change-outbox-test.cc)
-target_compile_definitions(identity-change-outbox-test PRIVATE
-    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
-target_link_libraries(identity-change-outbox-test PRIVATE
-    argus::identity-change-outbox
-    argus::lib::sqlite
-    Drogon::Drogon
-    doctest::doctest)
-target_compile_options(identity-change-outbox-test PRIVATE -Wall -Wextra)
-argus_runtime_rpath(identity-change-outbox-test)
-add_test(NAME identity-change-outbox-test COMMAND identity-change-outbox-test)
-
 add_executable(identity-change-outbox-sink-test
     unit/identity-change-outbox-sink-test.cc)
 target_compile_definitions(identity-change-outbox-sink-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
 target_link_libraries(identity-change-outbox-sink-test PRIVATE
     argus::identity-user
-    argus::identity-change-outbox
     argus::lib::errors
     argus::lib::nats
     argus::lib::sqlite
@@ -65,7 +52,6 @@ target_compile_definitions(identity-change-transaction-test PRIVATE
 target_link_libraries(identity-change-transaction-test PRIVATE
     argus::identity-invitation
     argus::identity-user
-    argus::identity-change-outbox
     argus::lib::nats
     argus::lib::sqlite
     argus::contracts::sync

@@ -4,12 +4,13 @@
 #include <shared/services/change-sink/nats-camera-change-sink.hxx>
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
-#include <shared/repositories/change-outbox/change-outbox-key.hxx>
-#include <shared/repositories/change-outbox/change-outbox-repository.hxx>
-#include <shared/repositories/change-outbox/change-outbox-status.hxx>
+#include <outbox/outbox-key.hxx>
+#include <outbox/outbox-repository.hxx>
+#include <outbox/outbox-status.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 
 #include <chrono>
 #include <condition_variable>
@@ -63,13 +64,13 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-ChangeOutboxRow pendingRow(const std::vector<ChangeOutboxRow>& rows)
+outbox::OutboxRow pendingRow(const std::vector<outbox::OutboxRow>& rows)
 {
   REQUIRE(!rows.empty());
-  return rows.empty() ? ChangeOutboxRow{} : rows.front();
+  return rows.empty() ? outbox::OutboxRow{} : rows.front();
 }
 
-bool hasPending(const ChangeOutboxRepository& outbox)
+bool hasPending(const outbox::OutboxRepository& outbox)
 {
   return !outbox.pendingBatch(1).empty();
 }
@@ -95,7 +96,7 @@ int64_t sentRowsAfter(int64_t watermark)
 {
   return firstInteger(DbService::client()->execSqlSync(
       "SELECT COUNT(*) FROM change_outbox WHERE rowid > ? AND status = ?",
-      watermark, changeOutboxStatusToString(ChangeOutboxStatus::Sent)));
+      watermark, outbox::outboxStatusToString(outbox::OutboxStatus::Sent)));
 }
 
 bool waitForDrain(const NatsCameraChangeSink& sink,
@@ -136,7 +137,7 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
   REQUIRE(DbService::runScriptFile(ARGUS_CAMERA_SCHEMA_PATH));
 
-  ChangeOutboxRepository outbox;
+  const auto outbox = NatsCameraChangeSink::repository();
   const SocketEmitDto add = addCamera(7, "patio");
 
   {
@@ -148,16 +149,18 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     drogon::sync_wait(sink.emitModule(
         {.table = TableName::Camera, .body = add, .client = nullptr}));
 
-    const ChangeOutboxRow created = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow created = pendingRow(outbox.pendingBatch(1));
     CHECK(created.eventId ==
-          change_outbox_key::eventId(
-              {.table = "camera",
+          outbox::transitionId(
+              {.prefix = NatsCameraChangeSink::kEventIdPrefix,
+               .table = "camera",
                .recordId = 7,
                .discriminator = json_util::toString(add.toJson())}));
     CHECK(created.payload == json_util::toString(add.toJson()));
+    CHECK(created.subject == nats_subject::kCameraChange);
     CHECK(created.eventId.size() == 46);
 
-    CHECK(outbox.markSent(created.eventId, 1000));
+    CHECK(outbox.markSent(created.id, 1000));
     drogon::sync_wait(sink.emitModule(
         {.table = TableName::Camera, .body = add, .client = nullptr}));
     CHECK_FALSE(hasPending(outbox));
@@ -171,12 +174,12 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     audit.after["name"] = "porch";
     drogon::sync_wait(sink.publishAudit(audit));
 
-    const ChangeOutboxRow audited = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow audited = pendingRow(outbox.pendingBatch(1));
     CHECK(audited.eventId.rfind("camera-change:", 0) == 0);
     CHECK(audited.eventId.size() == 46);
     CHECK(audited.payload.find("\"kind\":\"audit\"") != std::string::npos);
     CHECK(audited.payload.find("porch") != std::string::npos);
-    CHECK(outbox.markSent(audited.eventId, 2000));
+    CHECK(outbox.markSent(audited.id, 2000));
 
     bool repeated = false;
     for (int attempt = 0; attempt < 50 && !repeated; ++attempt) {
@@ -186,10 +189,10 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
     REQUIRE(repeated);
-    const ChangeOutboxRow cycled = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow cycled = pendingRow(outbox.pendingBatch(1));
     CHECK(cycled.eventId != audited.eventId);
     CHECK(cycled.payload.find("porch") != std::string::npos);
-    CHECK(outbox.markSent(cycled.eventId, 2500));
+    CHECK(outbox.markSent(cycled.id, 2500));
 
     ModuleAuditInput unchanged;
     unchanged.recordId = 7;
@@ -240,10 +243,11 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
         {.table = TableName::Zone, .body = removal, .client = nullptr}));
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
-    const ChangeOutboxRow waiting = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow waiting = pendingRow(outbox.pendingBatch(1));
     CHECK(waiting.eventId ==
-          change_outbox_key::eventId(
-              {.table = "zone",
+          outbox::transitionId(
+              {.prefix = NatsCameraChangeSink::kEventIdPrefix,
+               .table = "zone",
                .recordId = 3,
                .discriminator = json_util::toString(removal.toJson())}));
     CHECK(waiting.payload == json_util::toString(removal.toJson()));
@@ -253,7 +257,7 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     CHECK(waitForDrain(sink, std::chrono::seconds(5)));
     sink.requestStop();
     CHECK(sink.drained());
-    CHECK(outbox.markSent(waiting.eventId, 3000));
+    CHECK(outbox.markSent(waiting.id, 3000));
   }
 
   const char* url = std::getenv("ARGUS_NATS_URL");
@@ -389,8 +393,9 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     }
     CHECK(attempted);
     CHECK(pendingRow(outbox.pendingBatch(1)).eventId ==
-          change_outbox_key::eventId(
-              {.table = "camera",
+          outbox::transitionId(
+              {.prefix = NatsCameraChangeSink::kEventIdPrefix,
+               .table = "camera",
                .recordId = 100,
                .discriminator = json_util::toString(attic.toJson())}));
   }

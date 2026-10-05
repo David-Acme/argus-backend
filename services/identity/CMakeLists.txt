@@ -58,6 +58,10 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
+    if(NOT TARGET argus::lib::outbox)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/outbox
+                         ${CMAKE_BINARY_DIR}/outbox)
+    endif()
     if(NOT TARGET argus::lib::cert)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
@@ -150,7 +154,6 @@ find_package(doctest REQUIRED)
 
 add_subdirectory(src/config)
 add_subdirectory(src/shared)
-add_subdirectory(src/shared/repositories/change-outbox)
 
 file(GLOB IDENTITY_FEATURE_MODULES CONFIGURE_DEPENDS
     "${IDENTITY_SRC_ROOT}/feature/*/CMakeLists.txt")

@@ -4,12 +4,13 @@ argus_module(NAME camera-change-sink
     INCLUDES
         ../../..
     DEPENDS
-        argus::camera-change-outbox
         argus::camera-event-stream
         argus::contracts::camera
         argus::contracts::sync
         argus::lib::errors
         argus::lib::nats
+        argus::lib::outbox
+        argus::lib::sqlite
         argus::lib::text
         Drogon::Drogon)
 

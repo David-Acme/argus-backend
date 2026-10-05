@@ -1,24 +1,22 @@
 #include "nats-identity-change-sink.hxx"
 
-#include <array>
 #include <chrono>
 #include <errors/response-exception.hxx>
-#include <exception>
-#include <openssl/rand.h>
 #include <identity/identity-errors.hxx>
-#include <shared/repositories/change-outbox/change-outbox-key.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
+#include <outbox/outbox-key.hxx>
+#include <sqlite/db-service.hxx>
 #include <sync/module-audit-event.hxx>
 #include <sync/stream-retention.hxx>
 #include <sync/sync-change.hxx>
 #include <sync/user-audit-event.hxx>
 #include <text/json-diff.hxx>
 #include <text/json-util.hxx>
-#include <nats/nats-bus.hxx>
-#include <nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
-#include <utility>
-
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -29,41 +27,68 @@ int64_t nowMs()
       .count();
 }
 
-constexpr int64_t kStuckLogEvery = 100;
-
-std::string mintedActionMsgId()
+std::string orDefault(const std::string& configured, std::string_view fallback)
 {
-  std::array<unsigned char, 16> bytes{};
-  if (RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1)
-    throw ResponseException(503, IdentityErrors::ChangeNotRecorded);
-  return change_outbox_key::actionMsgId(bytes);
+  return configured.empty() ? std::string(fallback) : configured;
 }
 
-constexpr int kDrainBatch = 64;
-constexpr int kProgressMs = 50;
+outbox::OutboxConfig outboxConfig(const NatsIdentityChangeSink::Config& config)
+{
+  NatsBus::StreamInput stream{
+      .name = orDefault(config.streamName, nats_subject::kIdentityChangeStream),
+      .subjects = {orDefault(config.changeSubject,
+                             nats_subject::kIdentityChange),
+                   orDefault(config.actionSubject,
+                             nats_subject::kIdentityUserAction)},
+      .maxAgeNs = stream_retention::kRetentionNs,
+      .duplicatesNs = stream_retention::kDuplicatesNs};
+  return {.label = "Identity change outbox",
+          .client = [] { return DbService::identityClient(); },
+          .defaultSubject = stream.subjects.front(),
+          .legacyIdPrefix = std::string(NatsIdentityChangeSink::kActionIdPrefix),
+          .refusal = IdentityErrors::ChangeNotRecorded,
+          .ensureStreams =
+              [stream = std::move(stream)](NatsBus& bus) {
+                if (!bus.ensureStream(stream))
+                  return false;
+                LOG_INFO << "Identity change outbox: stream " << stream.name
+                         << " ready";
+                return true;
+              },
+          .timing = {.retryMs = config.retryMs,
+                     .maxRetryMs = outbox::kMaxRetryMs,
+                     .progressMs = outbox::kProgressMs,
+                     .batch = outbox::kBatch},
+          .retention = {.keepSentMs = stream_retention::kRetentionMs,
+                        .purgeEveryMs = stream_retention::kSettledPurgeIntervalMs,
+                        .purgeRetryMs = stream_retention::kSettledPurgeRetryMs}};
+}
+
+std::vector<int64_t> distinctRecipients(const std::vector<int64_t>& userIds)
+{
+  std::vector<int64_t> recipients;
+  std::unordered_set<int64_t> seen;
+  for (const auto userId : userIds) {
+    if (userId > 0 && seen.insert(userId).second)
+      recipients.push_back(userId);
+  }
+  return recipients;
+}
 }
 
 NatsIdentityChangeSink::NatsIdentityChangeSink(std::shared_ptr<NatsBus> bus,
-                                               Config config)
-    : bus_(std::move(bus)),
-      config_(std::move(config)),
-      changeSubject_(config_.changeSubject.empty()
-                         ? std::string(nats_subject::kIdentityChange)
-                         : config_.changeSubject),
-      actionSubject_(config_.actionSubject.empty()
-                         ? std::string(nats_subject::kIdentityUserAction)
-                         : config_.actionSubject),
-      stream_(config_.streamName.empty()
-                  ? std::string(nats_subject::kIdentityChangeStream)
-                  : config_.streamName)
+                                               const Config& config)
+    : changeSubject_(
+          orDefault(config.changeSubject, nats_subject::kIdentityChange)),
+      actionSubject_(
+          orDefault(config.actionSubject, nats_subject::kIdentityUserAction)),
+      outbox_(std::move(bus), outboxConfig(config))
 {
 }
 
-NatsIdentityChangeSink::~NatsIdentityChangeSink()
+outbox::OutboxRepository NatsIdentityChangeSink::repository()
 {
-  requestStop();
-  if (worker_.joinable())
-    worker_.join();
+  return outbox::OutboxRepository([] { return DbService::identityClient(); });
 }
 
 drogon::Task<void>
@@ -75,15 +100,10 @@ NatsIdentityChangeSink::publishCatalog(const IdentityCatalogInput& input) const
   event[sync_change::kRecordIdField] = static_cast<Json::Int64>(input.id);
   event[sync_change::kDeletedField] = input.deleted;
   event[sync_change::kRowField] = input.row;
-  const std::string payload = json_util::toString(event);
-  const std::string id =
-      change_outbox_key::eventId({.table = tableNameToString(input.table),
-                                  .recordId = input.id,
-                                  .discriminator = payload});
-  co_await enqueue({.eventId = id,
-                    .subject = changeSubject_,
-                    .payload = payload,
-                    .client = input.client});
+  co_await record({.table = input.table,
+                   .recordId = input.id,
+                   .payload = json_util::toString(event),
+                   .client = input.client});
 }
 
 drogon::Task<void>
@@ -98,16 +118,11 @@ NatsIdentityChangeSink::emitModule(const ModuleEmitInput& input) const
   }
   SocketEmitDto frame = input.body;
   frame.option = input.table;
-  const std::string payload =
-      json_util::toString(sync_change::emitPayload(frame));
-  const std::string id =
-      change_outbox_key::eventId({.table = tableNameToString(input.table),
-                                  .recordId = recordId.asInt64(),
-                                  .discriminator = payload});
-  co_await enqueue({.eventId = id,
-                    .subject = changeSubject_,
-                    .payload = payload,
-                    .client = input.client});
+  co_await record(
+      {.table = input.table,
+       .recordId = recordId.asInt64(),
+       .payload = json_util::toString(sync_change::emitPayload(frame)),
+       .client = input.client});
 }
 
 drogon::Task<void>
@@ -123,15 +138,10 @@ NatsIdentityChangeSink::publishModuleAudit(const ModuleAuditInput& input) const
   event.changes = changes;
   event.createUserId = input.actorId;
   event.eventTimestamp = nowMs();
-  const std::string payload = json_util::toString(event.toJson());
-  const std::string id =
-      change_outbox_key::eventId({.table = tableNameToString(input.tableName),
-                                  .recordId = input.recordId,
-                                  .discriminator = payload});
-  co_await enqueue({.eventId = id,
-                    .subject = changeSubject_,
-                    .payload = payload,
-                    .client = input.client});
+  co_await record({.table = input.tableName,
+                   .recordId = input.recordId,
+                   .payload = json_util::toString(event.toJson()),
+                   .client = input.client});
 }
 
 drogon::Task<void>
@@ -141,13 +151,7 @@ NatsIdentityChangeSink::publishUsersAudit(const UserAuditInput& input) const
   if (changes.empty())
     co_return;
 
-  std::vector<int64_t> recipients;
-  std::unordered_set<int64_t> seen;
-  for (const auto userId : input.userIds) {
-    if (userId <= 0 || !seen.insert(userId).second)
-      continue;
-    recipients.push_back(userId);
-  }
+  auto recipients = distinctRecipients(input.userIds);
   if (recipients.empty())
     co_return;
 
@@ -157,157 +161,45 @@ NatsIdentityChangeSink::publishUsersAudit(const UserAuditInput& input) const
   event.changes = changes;
   event.users = std::move(recipients);
   event.eventTimestamp = nowMs();
-  const std::string payload = json_util::toString(event.toJson());
-  const std::string id =
-      change_outbox_key::eventId({.table = tableNameToString(input.tableName),
-                                  .recordId = input.recordId,
-                                  .discriminator = payload});
-  co_await enqueue({.eventId = id,
-                    .subject = changeSubject_,
-                    .payload = payload,
-                    .client = input.client});
+  co_await record({.table = input.tableName,
+                   .recordId = input.recordId,
+                   .payload = json_util::toString(event.toJson()),
+                   .client = input.client});
 }
 
 drogon::Task<void>
 NatsIdentityChangeSink::publishAction(const ActionPublishInput& input) const
 {
-  co_await enqueueAction(json_util::toString(input.event.toJson()),
-                        input.client);
+  co_await outbox_.append({.idPrefix = kActionIdPrefix,
+                           .subject = actionSubject_,
+                           .payload = json_util::toString(input.event.toJson()),
+                           .client = input.client});
 }
 
-drogon::Task<void>
-NatsIdentityChangeSink::enqueue(ChangeOutboxEnqueueInput input) const
+drogon::Task<void> NatsIdentityChangeSink::record(RecordInput input) const
 {
-  if (input.payload.size() > kMaxPayloadBytes) {
-    LOG_ERROR << "Identity change outbox: " << input.eventId << " carries "
-              << input.payload.size()
-              << " bytes, past the broker's message budget; the write is "
-                 "refused";
-    throw ResponseException(IdentityErrors::ChangeNotRecorded);
-  }
-  input.fingerprint = change_outbox_key::fingerprintJson(input.payload);
-  input.at = nowMs();
-  co_await outbox_.enqueue(input);
-  wake_.notify();
-}
-
-drogon::Task<void>
-NatsIdentityChangeSink::enqueueAction(std::string payloadJson,
-                                      drogon::orm::DbClient* client) const
-{
-  if (payloadJson.size() > kMaxPayloadBytes) {
-    LOG_ERROR << "Identity change outbox: an action journal row carries "
-              << payloadJson.size()
-              << " bytes, past the broker's message budget; the write is "
-                 "refused";
-    throw ResponseException(IdentityErrors::ChangeNotRecorded);
-  }
-  const ChangeOutboxActionInput input{
-      .eventId = mintedActionMsgId(),
-      .subject = actionSubject_,
-      .fingerprint = change_outbox_key::fingerprintJson(payloadJson),
-      .payload = std::move(payloadJson),
-      .at = nowMs(),
-      .client = client,
-  };
-  co_await outbox_.enqueueAction(input);
-  wake_.notify();
+  std::string eventId =
+      outbox::transitionId({.prefix = kEventIdPrefix,
+                            .table = tableNameToString(input.table),
+                            .recordId = input.recordId,
+                            .discriminator = input.payload});
+  static_cast<void>(co_await outbox_.record({.eventId = std::move(eventId),
+                                             .subject = changeSubject_,
+                                             .payload = std::move(input.payload),
+                                             .client = input.client}));
 }
 
 void NatsIdentityChangeSink::reconcile()
 {
-  if (!workerStarted_.exchange(true, std::memory_order_acq_rel))
-    worker_ = std::thread([this]() { flushLoop(); });
+  outbox_.reconcile();
 }
 
 void NatsIdentityChangeSink::requestStop()
 {
-  stopping_.store(true, std::memory_order_release);
-  wake_.notify();
+  outbox_.requestStop();
 }
 
 bool NatsIdentityChangeSink::drained() const
 {
-  return exited_.load(std::memory_order_acquire) ||
-         !workerStarted_.load(std::memory_order_acquire);
-}
-
-bool NatsIdentityChangeSink::ensureStream() const
-{
-  if (!bus_->ensureStream({.name = stream_,
-                           .subjects = {changeSubject_, actionSubject_},
-                           .maxAgeNs = stream_retention::kRetentionNs,
-                           .duplicatesNs = stream_retention::kDuplicatesNs}))
-    return false;
-  LOG_INFO << "Identity change outbox: stream " << stream_ << " ready";
-  return true;
-}
-
-bool NatsIdentityChangeSink::flush(const ChangeOutboxRow& row)
-{
-  if (!bus_ || !bus_->isConnected())
-    return false;
-  if (!streamReady_.load(std::memory_order_acquire))
-    streamReady_.store(ensureStream(), std::memory_order_release);
-
-  const std::string msgId = row.eventId.empty()
-                                ? change_outbox_key::legacyActionMsgId(row.id)
-                                : row.eventId;
-  if (bus_->publishWithMsgId(
-          {.subject = row.subject, .payload = row.payload, .msgId = msgId})) {
-    if (!outbox_.markSent(row.id, nowMs())) {
-      LOG_WARN << "Identity change outbox: " << msgId
-               << " was stored but could not be marked sent; it stays pending";
-      return false;
-    }
-    return true;
-  }
-  streamReady_.store(false, std::memory_order_relaxed);
-  static_cast<void>(outbox_.recordAttempt(row.id));
-  const int64_t attempts = row.attempts + 1;
-  if (attempts <= 1 || attempts % kStuckLogEvery == 0)
-    LOG_WARN << "Identity change outbox: " << msgId
-             << " is still unpublished after " << attempts
-             << " attempts; every later change waits behind it";
-  return false;
-}
-
-void NatsIdentityChangeSink::flushLoop()
-{
-  while (!stopping_.load(std::memory_order_acquire)) {
-    bool progressed = false;
-    try {
-      if (!streamReady_.load(std::memory_order_acquire) && bus_ &&
-          bus_->isConnected())
-        streamReady_.store(ensureStream(), std::memory_order_release);
-      for (const auto& row : outbox_.pendingBatch(kDrainBatch)) {
-        if (stopping_.load(std::memory_order_acquire) || !flush(row))
-          break;
-        progressed = true;
-      }
-    }
-    catch (const std::exception& e) {
-      LOG_WARN << "Identity change outbox: flush failed (" << e.what()
-               << "); retrying";
-    }
-    const int64_t now = nowMs();
-    if (now >= nextPurgeMs_) {
-      nextPurgeMs_ = now + stream_retention::kSettledPurgeIntervalMs;
-      try {
-        const int64_t purged =
-            outbox_.purgeSent(now - stream_retention::kRetentionMs);
-        if (purged > 0)
-          LOG_INFO << "Identity change outbox: purged " << purged
-                   << " settled row(s) past the stream's retention";
-      }
-      catch (const std::exception& e) {
-        nextPurgeMs_ = now + stream_retention::kSettledPurgeRetryMs;
-        LOG_WARN << "Identity change outbox: purge failed (" << e.what()
-                 << "); the settled rows stay and the purge is retried";
-      }
-    }
-    wake_.waitFor(std::chrono::milliseconds(progressed ? kProgressMs
-                                                     : config_.retryMs));
-  }
-  exited_.store(true, std::memory_order_release);
+  return outbox_.drained();
 }

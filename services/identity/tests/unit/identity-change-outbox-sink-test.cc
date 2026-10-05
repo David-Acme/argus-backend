@@ -4,9 +4,9 @@
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
 #include <feature/user/services/nats-identity-change-sink.hxx>
-#include <shared/repositories/change-outbox/change-outbox-key.hxx>
-#include <shared/repositories/change-outbox/change-outbox-repository.hxx>
-#include <shared/repositories/change-outbox/change-outbox-status.hxx>
+#include <outbox/outbox-key.hxx>
+#include <outbox/outbox-repository.hxx>
+#include <outbox/outbox-status.hxx>
 #include <sqlite/db-service.hxx>
 #include <nats/nats-bus.hxx>
 
@@ -72,13 +72,13 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-ChangeOutboxRow pendingRow(const std::vector<ChangeOutboxRow>& rows)
+outbox::OutboxRow pendingRow(const std::vector<outbox::OutboxRow>& rows)
 {
   REQUIRE(!rows.empty());
-  return rows.empty() ? ChangeOutboxRow{} : rows.front();
+  return rows.empty() ? outbox::OutboxRow{} : rows.front();
 }
 
-bool hasPending(const ChangeOutboxRepository& outbox)
+bool hasPending(const outbox::OutboxRepository& outbox)
 {
   return !outbox.pendingBatch(1).empty();
 }
@@ -104,16 +104,16 @@ int64_t sentRowsAfter(int64_t watermark)
 {
   return firstInteger(DbService::client()->execSqlSync(
       "SELECT COUNT(*) FROM change_outbox WHERE rowid > ? AND status = ?",
-      watermark, changeOutboxStatusToString(ChangeOutboxStatus::Sent)));
+      watermark, outbox::outboxStatusToString(outbox::OutboxStatus::Sent)));
 }
 
 bool isMintedActionId(const std::string& value)
 {
-  if (!value.starts_with(change_outbox_key::kActionPrefix)
-      || value.size() != change_outbox_key::kActionPrefix.size() + 32)
+  if (!value.starts_with(NatsIdentityChangeSink::kActionIdPrefix)
+      || value.size() != NatsIdentityChangeSink::kActionIdPrefix.size() + 32)
     return false;
   const std::string_view hex =
-      std::string_view(value).substr(change_outbox_key::kActionPrefix.size());
+      std::string_view(value).substr(NatsIdentityChangeSink::kActionIdPrefix.size());
   return std::ranges::all_of(hex, [](char character) {
     return (character >= '0' && character <= '9')
            || (character >= 'a' && character <= 'f');
@@ -220,13 +220,13 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
   REQUIRE(DbService::runScriptFile(ARGUS_IDENTITY_SCHEMA));
 
-  ChangeOutboxRepository outbox;
+  const auto outbox = NatsIdentityChangeSink::repository();
 
   {
     NatsIdentityChangeSink sink(nullptr, NatsIdentityChangeSink::Config{});
 
     drogon::sync_wait(sink.publishCatalog(userCatalog(42, "Ana")));
-    const ChangeOutboxRow catalog = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow catalog = pendingRow(outbox.pendingBatch(1));
     CHECK(catalog.eventId.rfind("identity-change:", 0) == 0);
     CHECK(catalog.eventId.size() == 48);
     CHECK(catalog.subject == kChangeSubject);
@@ -238,7 +238,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     CHECK(outbox.markSent(catalog.id, 1000));
 
     drogon::sync_wait(sink.publishCatalog(userCatalog(42, "Ana", true)));
-    const ChangeOutboxRow deleted = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow deleted = pendingRow(outbox.pendingBatch(1));
     CHECK(deleted.payload.find("\"deleted\":true") != std::string::npos);
 
     CHECK(outbox.markSent(deleted.id, 1100));
@@ -246,7 +246,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     CHECK_FALSE(hasPending(outbox));
 
     drogon::sync_wait(sink.publishCatalog(userCatalog(42, "Ana Maria")));
-    const ChangeOutboxRow moved = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow moved = pendingRow(outbox.pendingBatch(1));
     CHECK(moved.eventId != catalog.eventId);
     CHECK(outbox.markSent(moved.id, 1200));
 
@@ -254,7 +254,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
         {.table = TableName::User,
          .body = userRow(SyncOperation::Add, 42, "Ana"),
          .client = nullptr}));
-    const ChangeOutboxRow emitted = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow emitted = pendingRow(outbox.pendingBatch(1));
     CHECK(emitted.eventId.rfind("identity-change:", 0) == 0);
     CHECK(emitted.payload.find("\"operation\":4") != std::string::npos);
     CHECK(emitted.payload.find("\"option\":\"user\"") != std::string::npos);
@@ -268,7 +268,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
         {.table = TableName::UserInvitation,
          .body = userRow(SyncOperation::Add, 9, "Ana"),
          .client = nullptr}));
-    const ChangeOutboxRow invitation = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow invitation = pendingRow(outbox.pendingBatch(1));
     CHECK(invitation.payload.find("\"option\":\"user_invitation\"") !=
           std::string::npos);
     CHECK(outbox.markSent(invitation.id, 1400));
@@ -280,7 +280,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     tombstone.obj["deletedAt"] = static_cast<Json::Int64>(1700000000);
     drogon::sync_wait(sink.emitModule(
         {.table = TableName::User, .body = tombstone, .client = nullptr}));
-    const ChangeOutboxRow removed = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow removed = pendingRow(outbox.pendingBatch(1));
     CHECK(removed.payload.find("\"operation\":5") != std::string::npos);
     CHECK(removed.payload.find("\"deletedAt\":1700000000") !=
           std::string::npos);
@@ -305,7 +305,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     CHECK_FALSE(hasPending(outbox));
 
     drogon::sync_wait(sink.publishModuleAudit(invitationAudit(9)));
-    const ChangeOutboxRow audited = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow audited = pendingRow(outbox.pendingBatch(1));
     CHECK(audited.subject == kChangeSubject);
     CHECK(audited.payload.find("\"kind\":\"audit\"") != std::string::npos);
     CHECK(audited.payload.find("\"table_name\":\"user_invitation\"") !=
@@ -325,7 +325,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     CHECK_FALSE(hasPending(outbox));
 
     drogon::sync_wait(sink.publishUsersAudit(userAudit(42, {42, 7})));
-    const ChangeOutboxRow perUser = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow perUser = pendingRow(outbox.pendingBatch(1));
     CHECK(perUser.payload.find("\"kind\":\"audit\"") != std::string::npos);
     CHECK(perUser.payload.find("\"table_name\":\"user\"") !=
           std::string::npos);
@@ -335,7 +335,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     CHECK(outbox.markSent(perUser.id, 1700));
 
     drogon::sync_wait(sink.publishUsersAudit(userAudit(43, {42, 42, 0, -3})));
-    const ChangeOutboxRow deduped = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow deduped = pendingRow(outbox.pendingBatch(1));
     CHECK(deduped.payload.find("\"users\":[42]") != std::string::npos);
     CHECK(deduped.payload.find("\"users\":[42,42]") == std::string::npos);
     CHECK(outbox.markSent(deduped.id, 1800));
@@ -345,7 +345,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
 
     drogon::sync_wait(
         sink.publishAction({.event = portraitRead(42), .client = nullptr}));
-    const ChangeOutboxRow journal = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow journal = pendingRow(outbox.pendingBatch(1));
     CHECK(journal.subject == kActionSubject);
     CHECK(journal.subject != kChangeSubject);
     CHECK(isMintedActionId(journal.eventId));
@@ -361,7 +361,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
 
     drogon::sync_wait(
         sink.publishAction({.event = portraitRead(42), .client = nullptr}));
-    const ChangeOutboxRow secondRead = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow secondRead = pendingRow(outbox.pendingBatch(1));
     CHECK(secondRead.id != journal.id);
     CHECK(secondRead.payload == journal.payload);
     CHECK(isMintedActionId(secondRead.eventId));
@@ -392,13 +392,13 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
         sink.publishAction({.event = portraitRead(12), .client = nullptr}));
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
-    const ChangeOutboxRow change = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow change = pendingRow(outbox.pendingBatch(1));
     CHECK(change.subject == kChangeSubject);
     CHECK(change.payload.find("\"id\":12") != std::string::npos);
     CHECK(change.attempts == 0);
     CHECK(outbox.markSent(change.id, 3000));
 
-    const ChangeOutboxRow action = pendingRow(outbox.pendingBatch(1));
+    const outbox::OutboxRow action = pendingRow(outbox.pendingBatch(1));
     CHECK(action.subject == kActionSubject);
     CHECK(isMintedActionId(action.eventId));
     CHECK(action.attempts == 0);

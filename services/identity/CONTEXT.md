@@ -235,7 +235,6 @@ actor check.
 the non-loopback RPC listener's secret gate — the cases the gateway's suite
 carried while it hosted this surface), `identity-migration-test` (schema apply
 + the argus.db → identity.db row by row verification),
-`identity-change-outbox-test` (the outbox's own key rules and dispositions),
 `identity-change-transaction-test` (a feature write and its outbox row commit
 together), `identity-change-outbox-sink-test` (every leg of the sink, plus the
 live round trip when `ARGUS_NATS_URL` names a broker) and
@@ -1214,3 +1213,25 @@ in the leaf SAN while the CA excluded it, so strict verifiers refused the
 chain). The HMAC proof protocol is unchanged; the code is upper
 case on both sides. The frontend must accept a 26-character code in the QR
 payload and the typed field (it used to expect 12 hex digits).
+
+## The outbox is `argus::lib::outbox` (2026-10-05 audit, #69)
+
+`src/shared/repositories/change-outbox` was one of five diverged copies and is
+gone. `NatsIdentityChangeSink` keeps what is identity's own — the catalog,
+emit and audit payloads, the `identity-change:` transition ids, the
+`identity-action:` journal ids and the stream that carries both subjects — and
+hands the rows to `outbox::TransactionalOutbox`. The key rules and the
+dispositions it used to test in `identity-change-outbox-test` are the
+library's suites now (`outbox-key-test`, `outbox-repository-test`,
+`transactional-outbox-test`, which run in this service's CTest graph).
+Differences from the old copy, none visible on the wire or in the schema:
+
+- The writer and the relay read the same client, `DbService::identityClient()`;
+  the old copy wrote through it but relayed through `DbService::client()`.
+- A journal row is inserted with `INSERT OR IGNORE` and refused
+  (`ChangeNotRecorded`) unless it lands, where a plain `INSERT` used to throw a
+  SQLite error on a colliding random id.
+- The boot runs the shared migration (`migrateSchema`, fatal on failure); on
+  identity's table it finds both `event_id` and `subject` and does nothing.
+- A relay that cannot publish backs off exponentially to 5 s instead of
+  retrying every 500 ms.

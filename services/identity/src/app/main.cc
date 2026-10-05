@@ -328,6 +328,11 @@ int main()
       _exit(1);
     }
 
+    if (!NatsIdentityChangeSink::repository().migrateSchema()) {
+      LOG_FATAL << "Identity change outbox migration failed — aborting startup";
+      _exit(1);
+    }
+
     PersonRepository::ensureColumns();
 
     VoiceProfileRepository::migrateLegacy();

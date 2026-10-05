@@ -877,14 +877,14 @@ package: it is the executable `argus-<name>`.
 The target-name half of that rule is structural: `argus_lib`,
 `argus_contracts` and `argus_clients` build the group into the name, so a
 package cannot declare itself into the wrong tier (rule 25's own names are in
-`cmake/argus-module.cmake`). The dependency half is still prose — 25 packages
+`cmake/argus-module.cmake`). The dependency half is still prose — 26 packages
 name a first-party `argus::` alias by hand inside the dependency list of one of
 the group helpers: twelve of the fourteen contracts (all but `routes` and
 `voice`, which name only their own test target; the `response`, `settings`,
 `stt`, `tts`, `llm` and `vlm` wire modules among the twelve), seven of the
 thirteen clients (`llm`, `settings`, `stt`, `sync`, `tts`, `vlm`, `voice`)
-and six of the fifteen libs
-(`auth`, `http`, `mdns`, `nats`, `storage`, `validation`). Every package is in
+and seven of the sixteen libs
+(`auth`, `http`, `mdns`, `nats`, `outbox`, `storage`, `validation`). Every package is in
 a group since Phase 4 step 7: `packages/memory` and `packages/intent` were the
 two that sat outside the helpers — declaring themselves with literal
 `add_library` calls and an `argus_module` — and both are features of
@@ -919,7 +919,7 @@ data (D18):
 
 | Tier | Packages | May depend on | May never depend on |
 |---|---|---|---|
-| 1 · foundation | `lib/`: audio, cert, config, errors, grpc, mdns, nats, phrase, runtime, sqlite, storage, text, validation | third-party, other tier-1 `lib` packages | contracts, clients, services |
+| 1 · foundation | `lib/`: audio, cert, config, errors, grpc, mdns, nats, outbox, phrase, runtime, sqlite, storage, text, validation | third-party, other tier-1 `lib` packages | contracts, clients, services |
 | 2 · wire | `contracts/*`, `lib/http` | tier 1 (`lib/errors`, `lib/grpc`), third-party (Drogon), generated protobuf | clients, services |
 | 3 · transport | `clients/*` | tier 1 + tier 2 | other clients, services |
 | 4 · service-aware lib | `lib/auth` | tiers 1–3 | services |
@@ -1048,6 +1048,7 @@ for two different reasons, and says which when it does.
 | `packages/lib/phrase/src/phrase/details/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
 | `packages/lib/phrase/src/phrase/` | `RuleParser` + `PhraseCatalog` — the vocabulary's parser and catalog, read by `services/llm` and `services/voice` |
 | `packages/lib/sqlite/src/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection); `freezeClient(dbPath)` arms the private client the work arriving after the app's clients are reset goes to, because `quit()` resets Drogon's manager under `client()` — the flag and that dereference share a reader/writer lock, so the arming cannot land between them |
+| `packages/lib/outbox/src/outbox/` | `TransactionalOutbox` + `OutboxRepository`: the `change_outbox` row written in the domain transaction and relayed to JetStream with a msg id (replay/conflict dispositions, minted journal ids, additive `event_id`/`subject` boot migration, commit-woken relay thread with exponential backoff, retention purge, `shutdown_signal` drain) — the one copy every change feed uses |
 | `packages/lib/storage/src/storage/` | `S3StorageService` (RustFS S3, SigV4 in `details/s3-signing.hxx`) — private objects, read back through a one-use capability |
 | `packages/lib/config/src/config/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
 | `packages/lib/runtime/src/runtime/cancellation-token.hxx` | `CancellationToken` shared across streaming AI/audio paths |

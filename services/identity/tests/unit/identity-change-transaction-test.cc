@@ -8,7 +8,7 @@
 #include <feature/user/services/nats-identity-change-sink.hxx>
 #include <feature/user/services/user-feature-service.hxx>
 #include <nats/nats-subject.hxx>
-#include <shared/repositories/change-outbox/change-outbox-repository.hxx>
+#include <outbox/outbox-repository.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/identity-change-sink.hxx>
 #include <sync/module-audit-event.hxx>
@@ -186,7 +186,7 @@ std::string storedRole(int64_t userId)
   return rows.empty() ? std::string{} : rows.front()["role"].as<std::string>();
 }
 
-std::size_t countSubject(const std::vector<ChangeOutboxRow>& rows,
+std::size_t countSubject(const std::vector<outbox::OutboxRow>& rows,
                          const std::string& subject)
 {
   std::size_t total = 0;
@@ -197,7 +197,7 @@ std::size_t countSubject(const std::vector<ChangeOutboxRow>& rows,
   return total;
 }
 
-std::size_t drainOutbox(const ChangeOutboxRepository& outbox)
+std::size_t drainOutbox(const outbox::OutboxRepository& outbox)
 {
   std::size_t sent = 0;
   for (const auto& row : outbox.pendingBatch(64)) {
@@ -225,7 +225,7 @@ TEST_CASE("an identity write and its change are one unit of work")
 
   InvitationFeatureService invitations;
   UserFeatureService users;
-  ChangeOutboxRepository outbox;
+  const auto outbox = NatsIdentityChangeSink::repository();
   const auto pooled = DbService::client();
 
   RefusingSink sink(pooled.get());

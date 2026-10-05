@@ -78,6 +78,10 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
+    if(NOT TARGET argus::lib::outbox)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/outbox
+                         ${CMAKE_BINARY_DIR}/outbox)
+    endif()
     if(NOT TARGET argus::lib::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
@@ -129,7 +133,6 @@ set(NCNN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn/src)
 add_subdirectory(src/config)
 add_subdirectory(src/shared/services/secret-box)
 add_subdirectory(src/shared/repositories)
-add_subdirectory(src/shared/repositories/change-outbox)
 add_subdirectory(src/shared/services/change-sink)
 add_subdirectory(src/shared/services/camera-catalog)
 add_subdirectory(src/shared/services/tapo)
@@ -263,8 +266,7 @@ target_link_libraries(camera-media-session-test PRIVATE
 
 target_link_libraries(camera-change-transaction-test PRIVATE
     argus::camera-change-sink
-    argus::camera-feature
-    argus::camera-change-outbox)
+    argus::camera-feature)
 
 target_compile_definitions(camera-change-transaction-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -437,23 +439,10 @@ set_target_properties(camera-operator-start-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 add_test(NAME camera-operator-start-test COMMAND camera-operator-start-test)
 
-add_executable(change-outbox-test
-    tests/unit/change-outbox-test.cc)
-target_link_libraries(change-outbox-test PRIVATE
-    argus::camera-change-outbox
-    doctest::doctest)
-target_compile_definitions(change-outbox-test PRIVATE
-    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
-target_compile_options(change-outbox-test PRIVATE -Wall -Wextra)
-set_target_properties(change-outbox-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
-add_test(NAME change-outbox-test COMMAND change-outbox-test)
-
 add_executable(change-outbox-sink-test
     tests/unit/change-outbox-sink-test.cc)
 target_link_libraries(change-outbox-sink-test PRIVATE
     argus::camera-change-sink
-    argus::camera-change-outbox
     doctest::doctest)
 target_compile_definitions(change-outbox-sink-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")

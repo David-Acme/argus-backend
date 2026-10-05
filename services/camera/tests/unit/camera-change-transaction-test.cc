@@ -4,7 +4,6 @@
 #include <shared/services/change-sink/nats-camera-change-sink.hxx>
 #include <drogon/drogon.h>
 #include <feature/camera/services/camera-feature-service.hxx>
-#include <shared/repositories/change-outbox/change-outbox-repository.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/camera-change-sink.hxx>
 #include <sync/module-audit-event.hxx>
@@ -204,7 +203,7 @@ TEST_CASE("a camera write and its change are one unit of work")
                                             .streamName = {}});
   camera_change::setSink(&durableSink);
 
-  ChangeOutboxRepository outbox;
+  const auto outbox = NatsCameraChangeSink::repository();
   const auto durable =
       drogon::sync_wait(cameras.create(cameraBody("Durable Cam")));
   CHECK(durable.id > 0);
