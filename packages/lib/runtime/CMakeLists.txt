@@ -18,6 +18,7 @@ argus_lib(NAME runtime
         src/runtime/blocking-pool.hxx
         src/runtime/blocking-task.hxx
         src/runtime/cancellation-token.hxx
+        src/runtime/stream-slots.hxx
         src/runtime/wake-signal.hxx
     INCLUDES src
     DEPENDS Drogon::Drogon)
@@ -91,6 +92,12 @@ target_link_libraries(wake-signal-test PRIVATE argus::lib::runtime
     doctest::doctest)
 target_compile_options(wake-signal-test PRIVATE -Wall -Wextra)
 add_test(NAME wake-signal-test COMMAND wake-signal-test)
+
+add_executable(stream-slots-test tests/unit/stream-slots-test.cc)
+target_link_libraries(stream-slots-test PRIVATE argus::lib::runtime
+    doctest::doctest)
+target_compile_options(stream-slots-test PRIVATE -Wall -Wextra)
+add_test(NAME stream-slots-test COMMAND stream-slots-test)
 
 add_executable(blocking-pool-test tests/unit/blocking-pool-test.cc)
 target_link_libraries(blocking-pool-test PRIVATE argus::lib::runtime

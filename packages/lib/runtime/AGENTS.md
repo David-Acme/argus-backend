@@ -28,6 +28,13 @@ both variants have to answer the same numbers.
   of and `BlockingStrand`. See "The blocking lanes" below.
 - `src/runtime/cancellation-token.hxx` — `CancellationToken`: a shared atomic
   flag a long operation polls; `cancel`/`reset`/`cancelled`.
+- `src/runtime/stream-slots.hxx` — `StreamSlots`/`StreamLease`: the
+  admission count of the HTTP streams argus-llm and argus-tts run on the
+  Heavy lane. `tryAcquire` hands a movable lease or nothing (the caller
+  answers 429, or 503 once `requestStop` ran); the lease gives its slot
+  back once, wherever it moved, and `stopping()` tells a running stream to
+  end at its next token or chunk. It is a `shutdown_signal` drain
+  (`drainOf(slots, name)`).
 - `src/runtime/wake-signal.hxx` — `WakeSignal`: `notify`/`waitFor`, a
   condition variable with its own pending flag, so a notify that lands while
   the worker is busy wakes its next wait instead of being lost. The outbox
