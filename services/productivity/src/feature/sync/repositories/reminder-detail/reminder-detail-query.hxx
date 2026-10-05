@@ -28,31 +28,31 @@ inline constexpr std::string_view FIND_AFTER_FROM =
     "(created_at > ? OR (created_at = ? AND id > ?)) "
     "ORDER BY created_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED =
-    "SELECT * FROM reminder_detail WHERE deleted_at IS NOT NULL "
+    "SELECT * FROM reminder_detail WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
     "AND deleted_at >= ? AND deleted_at <= ? ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_FROM =
-    "SELECT * FROM reminder_detail WHERE deleted_at IS NOT NULL "
+    "SELECT * FROM reminder_detail WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
     "AND deleted_at >= ? ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_AFTER =
-    "SELECT * FROM reminder_detail WHERE deleted_at IS NOT NULL AND "
+    "SELECT * FROM reminder_detail WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 AND "
     "(deleted_at > ? OR (deleted_at = ? AND id > ?)) AND deleted_at <= ? "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_AFTER_FROM =
-    "SELECT * FROM reminder_detail WHERE deleted_at IS NOT NULL AND "
+    "SELECT * FROM reminder_detail WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 AND "
     "(deleted_at > ? OR (deleted_at = ? AND id > ?)) "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_ALL =
     "SELECT * FROM reminder_detail WHERE deleted_at IS NULL "
     "ORDER BY created_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_ALL =
-    "SELECT * FROM reminder_detail WHERE deleted_at IS NOT NULL "
+    "SELECT * FROM reminder_detail WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_LAST =
     "SELECT * FROM reminder_detail WHERE deleted_at IS NULL "
-    "ORDER BY created_at DESC LIMIT 1";
+    "ORDER BY created_at DESC, id DESC LIMIT 1";
 inline constexpr std::string_view FIND_LAST_DELETED =
-    "SELECT * FROM reminder_detail WHERE deleted_at IS NOT NULL "
-    "ORDER BY deleted_at DESC LIMIT 1";
+    "SELECT * FROM reminder_detail WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
+    "ORDER BY deleted_at DESC, id DESC LIMIT 1";
 inline constexpr std::string_view INSERT =
     "INSERT INTO reminder_detail (reminder_id, created_by, content, status, "
     "file_paths) VALUES (?, ?, ?, ?, ?)";

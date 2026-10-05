@@ -15,3 +15,10 @@ ArrivalSeenRepository::touch(const ArrivalSeenInput& input) const
   co_await client->execSqlCoro(std::string(UPSERT), input.personId, input.seenAt);
   co_return previous;
 }
+
+drogon::Task<int64_t> ArrivalSeenRepository::purgeStale(int64_t seenBefore) const
+{
+  const auto result = co_await DbService::client()->execSqlCoro(
+      std::string(PURGE_STALE), seenBefore);
+  co_return static_cast<int64_t>(result.affectedRows());
+}

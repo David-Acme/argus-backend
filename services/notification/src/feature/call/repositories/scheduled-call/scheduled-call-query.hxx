@@ -21,6 +21,9 @@ inline constexpr std::string_view FIND_DUE =
     "SELECT * FROM scheduled_call WHERE state = 'pending' AND fire_at <= ? "
     "ORDER BY fire_at ASC LIMIT ?";
 
+inline constexpr std::string_view PURGE_SETTLED =
+    "DELETE FROM scheduled_call WHERE state != 'pending' AND created_at < ?";
+
 inline constexpr std::string_view MARK_FIRED =
     "UPDATE scheduled_call SET state = 'fired', fired_at = ? "
     "WHERE id = ? AND state = 'pending'";

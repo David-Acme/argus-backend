@@ -34,4 +34,6 @@ public:
   due(const ScheduledCallDueInput& input) const;
 
   drogon::Task<bool> markFired(int64_t id, int64_t now) const;
+
+  drogon::Task<int64_t> purgeSettled(int64_t createdBefore) const;
 };

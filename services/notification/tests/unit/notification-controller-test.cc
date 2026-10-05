@@ -10,6 +10,7 @@
 #include <feature/notification/dtos/register-notification-token-dto.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
+#include <sqlite/db-service.hxx>
 #include <sync/user-change-sink.hxx>
 #include <feature/notification/repositories/notification-token/notification-token-repository.hxx>
 #include <text/json-util.hxx>
@@ -96,7 +97,7 @@ void seedNotificationDb(const char* path)
        "CREATE TABLE notification_token ("
        "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
        "user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
-       "device_hash TEXT NOT NULL DEFAULT '', token TEXT NOT NULL, "
+       "device_hash TEXT NOT NULL DEFAULT '', token TEXT NOT NULL UNIQUE, "
        "platform TEXT NOT NULL DEFAULT '', lang TEXT NOT NULL DEFAULT '', "
        "is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), "
        "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
@@ -117,6 +118,7 @@ void seedNotificationDb(const char* path)
        "created_ms INTEGER NOT NULL DEFAULT 0, "
        "sent_ms INTEGER NOT NULL DEFAULT 0, "
        "acked_ms INTEGER NOT NULL DEFAULT 0, "
+       "claimed_at INTEGER NOT NULL DEFAULT 0, "
        "UNIQUE (notification_id))");
   exec(db.get(),
        "CREATE TABLE notification_selftest ("
@@ -229,6 +231,24 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   }
   CHECK(validationThrown);
 
+  bool oversizedThrown = false;
+  try {
+    Json::Value oversized(Json::objectValue);
+    oversized["ids"] = Json::Value(Json::arrayValue);
+    for (int64_t id = 1; id <= static_cast<int64_t>(
+                                   NotificationReadDto::kMaxIdsPerRequest) + 1;
+         ++id)
+      oversized["ids"].append(Json::Int64(id));
+    const auto dto = NotificationReadDto::fromJson(oversized);
+    (void)dto;
+  }
+  catch (const ValidationException& e) {
+    oversizedThrown = true;
+    CHECK(e.statusCode() == 422);
+    CHECK(e.errors().count("ids") == 1);
+  }
+  CHECK(oversizedThrown);
+
   const auto marked = drogon::sync_wait(notificationController.markAsRead(
       readReq({1, 2})));
   REQUIRE(marked);
@@ -247,6 +267,12 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     CHECK(before["isRead"].asInt() == 0);
     CHECK(after["isRead"].asInt() == 1);
     CHECK(after["readAt"].asInt64() > 0);
+    const auto stored = DbService::client()->execSqlSync(
+        "SELECT read_at FROM notification WHERE id = ?",
+        sink.audits[i].recordId);
+    REQUIRE(stored.size() == 1);
+    CHECK(stored.front()["read_at"].as<int64_t>() ==
+          after["readAt"].asInt64());
   }
 
   const auto remarkedAgain =
@@ -304,7 +330,8 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
 
   NotificationTokenController tokenController;
 
-  auto tokenReq = [&](const char* token, const std::string& deviceHash) {
+  auto tokenReq = [&](const char* token, const std::string& deviceHash,
+                      int64_t userId = 7) {
     Json::Value payload;
     payload["token"] = token;
     payload["platform"] = "android";
@@ -312,7 +339,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     auto req = drogon::HttpRequest::newHttpJsonRequest(payload);
     req->getAttributes()->insert(
         AuthContext::kJwtKey,
-        JwtContext{.sub = 7, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
+        JwtContext{.sub = userId, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
     req->getAttributes()->insert(AuthContext::kDeviceKey,
                                  DeviceContext{.deviceHash = deviceHash,
                                                .userAgent = "ua",
@@ -345,6 +372,20 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
       drogon::sync_wait(tokenRepository.findByUser(7));
   REQUIRE(rotatedTokens.size() == 1);
   CHECK(rotatedTokens.front().token == "token-b");
+
+  const auto reassigned = drogon::sync_wait(
+      tokenController.registerToken(tokenReq("token-b", "device-b", 8)));
+  CHECK(body(reassigned)["status"].asInt() == 200);
+  CHECK(drogon::sync_wait(tokenRepository.findByUser(7)).empty());
+  const auto newHolder = drogon::sync_wait(tokenRepository.findByUser(8));
+  REQUIRE(newHolder.size() == 1);
+  CHECK(newHolder.front().token == "token-b");
+  CHECK(newHolder.front().deviceHash == "device-b");
+
+  const auto again = drogon::sync_wait(
+      tokenController.registerToken(tokenReq("token-b", "device-b", 8)));
+  CHECK(body(again)["status"].asInt() == 200);
+  CHECK(drogon::sync_wait(tokenRepository.findByUser(8)).size() == 1);
 
   user_change::setNotificationSink(nullptr);
 

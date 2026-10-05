@@ -17,6 +17,7 @@ NotificationReadDto NotificationReadDto::fromJson(const Json::Value& json)
   START_VALIDATION(NotificationReadDto, dto)
   ARRAY_NOT_EMPTY(ids, int64_t)
   MIN_ELEMENTS(ids, int64_t, 1)
+  MAX_ELEMENTS(ids, int64_t, kMaxIdsPerRequest)
   END_VALIDATION()
 
   return dto;

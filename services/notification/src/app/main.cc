@@ -1,6 +1,7 @@
 #include <drogon/drogon.h>
 #include <feature/camera-notification/services/camera-object-notifier.hxx>
 #include <app/rpc/call-rpc-service.hxx>
+#include <app/rpc/grpc-server-drain.hxx>
 #include <app/rpc/notification-rpc-service.hxx>
 #include <feature/call/controllers/call-preference-controller.hxx>
 #include <feature/call/controllers/call-response-controller.hxx>
@@ -26,6 +27,7 @@
 #include <mdns/mdns-service.hxx>
 #include <shared/services/change-sink/nats-notification-change-sink.hxx>
 #include <shared/services/delivery-sink/nats-notification-delivery-sink.hxx>
+#include <shared/services/task-gate/task-gate.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-push-intent-sink.hxx>
 #include <nats/nats-subject.hxx>
@@ -39,6 +41,7 @@
 #include <sqlite/db-service.hxx>
 #include <unistd.h>
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <utility>
@@ -69,6 +72,17 @@ Json::Value drogonConfig(const NotificationDbConfig& notificationDb,
 
   return config;
 }
+
+bool declaresForeignUserReferences()
+{
+  const auto rows = DbService::client()->execSqlSync(
+      "SELECT COUNT(*) AS total FROM sqlite_master AS m, "
+      "pragma_foreign_key_list(m.name) AS f "
+      "WHERE m.type = 'table' AND f.\"table\" = 'user'");
+  return !rows.empty() && rows.front()["total"].as<int64_t>() > 0;
+}
+
+constexpr std::chrono::milliseconds kGrpcDrainDeadline{2000};
 
 }
 
@@ -118,6 +132,8 @@ int main()
            << listener.certPath << "); notification database "
            << notificationDb.dbPath << "; gRPC NotificationService on "
            << grpcListener.host << ":" << grpcListener.port;
+
+  const auto tasks = std::make_shared<TaskGate>();
 
   std::shared_ptr<NatsNotificationChangeSink> changeSink;
   std::shared_ptr<NatsNotificationDeliverySink> deliverySink;
@@ -180,7 +196,8 @@ int main()
     cameraNotifier = std::make_shared<CameraObjectNotifier>(
         camera_notifier::resolveConfig(),
         CameraNotifierDependencies{.identityClient = identityClient,
-                                   .delivery = deliveryDeps});
+                                   .delivery = deliveryDeps,
+                                   .tasks = tasks});
     camera_notifier::subscribe(*natsBus, *cameraNotifier);
     LOG_INFO << "Camera object fallback subscribed on "
              << nats_subject::kCameraObjectDetected;
@@ -224,11 +241,9 @@ int main()
           .blockingOffLoop = true});
   drogon::app().registerController(std::make_shared<CallPreferenceController>());
   drogon::app().registerController(std::make_shared<CallResponseController>(callEngine));
-  if (natsBus) {
-    call_feed::subscribe(*natsBus, callEngine);
-    LOG_INFO << "Call engine subscribed on " << nats_subject::kGuardKnownSeen;
-  }
-  call_feed::startSweep(callEngine);
+  if (natsBus)
+    call_feed::subscribe({.bus = natsBus, .engine = callEngine, .tasks = tasks});
+  call_feed::startSweep({.engine = callEngine, .tasks = tasks});
 
   const std::weak_ptr<NatsBus> healthBus = natsBus;
   drogon::app().registerController(std::make_shared<HealthController>(
@@ -302,6 +317,10 @@ int main()
       DbService::client()->execSqlSync(
           "ALTER TABLE notification_delivery ADD COLUMN sent_ms INTEGER NOT "
           "NULL DEFAULT 0");
+    if (!hasColumn("notification_delivery", "claimed_at"))
+      DbService::client()->execSqlSync(
+          "ALTER TABLE notification_delivery ADD COLUMN claimed_at INTEGER NOT "
+          "NULL DEFAULT 0");
     if (!hasColumn("notification_delivery", "acked_ms"))
       DbService::client()->execSqlSync(
           "ALTER TABLE notification_delivery ADD COLUMN acked_ms INTEGER NOT "
@@ -328,7 +347,12 @@ int main()
           "ALTER TABLE call ADD COLUMN push_after INTEGER NOT NULL DEFAULT 0");
 
     DbService::applyPragmas();
-    DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
+    if (declaresForeignUserReferences()) {
+      DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
+      LOG_WARN << "notification.db still declares REFERENCES user(id); foreign "
+                  "keys stay off until the database is rebuilt from "
+                  "database/schema.sql (services/notification/CONTEXT.md)";
+    }
 
     if (changeSink) {
       changeSink->reconcile();
@@ -337,6 +361,7 @@ int main()
 
   NotificationRpcService notificationRpc(deliveryDeps);
   notificationRpc.attachCallEngine(callEngine);
+  notificationRpc.attachTasks(tasks);
   CallRpcService callRpc(callEngine, NotificationConfig::resolveCallCallers());
   SettingsRegistry settings(notificationSettingsCatalog());
   settings.onChange([cameraNotifier, callEngine](const std::vector<std::string>&) {
@@ -365,6 +390,7 @@ int main()
     LOG_FATAL << "gRPC server failed to listen on " << grpcAddress;
     return 1;
   }
+  GrpcServerDrain grpcDrain(std::move(grpcServer), kGrpcDrainDeadline);
 
   notificationRpc.startDeliveryReconciler();
   notificationRpc.startSelfTestProber();
@@ -375,6 +401,8 @@ int main()
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*changeSink, "notification-change"));
   }
+  shutdown_signal::onStop(shutdown_signal::drainOf(*tasks, "notification-tasks"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(grpcDrain, "notification-grpc"));
 
   std::unique_ptr<MdnsService> mdnsService;
   drogon::app().registerBeginningAdvice([&mdnsService, &listener]() {
@@ -387,6 +415,6 @@ int main()
       .setThreadNum(0)
       .run();
 
-  grpcServer->Shutdown();
+  grpcDrain.stop();
   return 0;
 }

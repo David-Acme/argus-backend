@@ -370,6 +370,49 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
   }
 
   {
+    client->execSqlSync(
+        "INSERT INTO project_task (id, project_id, created_by, title, status, "
+        "priority, sort_order, created_at, deleted_at) VALUES "
+        "(10, 1, 42, 'Old', 'todo', 'none', 1.0, 1000, 7000), "
+        "(11, 1, 42, 'Same second', 'todo', 'none', 1.0, 1000, 7000), "
+        "(12, 1, 42, 'Just now', 'todo', 'none', 1.0, 1000, "
+        "CAST(strftime('%s', 'now') AS INTEGER))");
+    argus::productivity::v1::PullTableRequest tombstones = taskPull(true);
+    tombstones.mutable_project_task()->mutable_deleted()->set_start_time(6500);
+    const auto settled = sdk.pullTable(tombstones, identityFor(42));
+    if (!settled) {
+      FAIL("expected a value in settled");
+      return;
+    }
+    REQUIRE(settled->project_task().deleted_size() == 2);
+    CHECK(settled->project_task().deleted(0).id() == 10);
+    CHECK(settled->project_task().deleted(1).id() == 11);
+
+    argus::productivity::v1::PullTableRequest watermark;
+    watermark.mutable_project_task()->set_find_last_deleted(true);
+    const auto newest = sdk.pullTable(watermark, identityFor(42));
+    if (!newest) {
+      FAIL("expected a value in newest");
+      return;
+    }
+    REQUIRE(newest->project_task().has_last_deleted());
+    CHECK(newest->project_task().last_deleted().id() == 11);
+
+    client->execSqlSync(
+        "INSERT INTO project (id, owner_id, name, status, color, created_at) "
+        "VALUES (4, 42, 'Twin B', 'active', '', 9000), "
+        "(3, 42, 'Twin A', 'active', '', 9000)");
+    argus::productivity::v1::PullTableRequest lastCreated;
+    lastCreated.mutable_project()->set_find_last_created(true);
+    const auto twin = sdk.pullTable(lastCreated, identityFor(42));
+    if (!twin) {
+      FAIL("expected a value in twin");
+      return;
+    }
+    CHECK(twin->project().last_created().id() == 4);
+  }
+
+  {
     auto raw = argus::productivity::v1::SyncService::NewStub(
         argus::client::makeChannel(harness.target()));
     grpc::ClientContext context;

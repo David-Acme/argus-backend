@@ -114,6 +114,7 @@ void createTables()
       "created_ms INTEGER NOT NULL DEFAULT 0, "
       "sent_ms INTEGER NOT NULL DEFAULT 0, "
       "acked_ms INTEGER NOT NULL DEFAULT 0, "
+      "claimed_at INTEGER NOT NULL DEFAULT 0, "
       "UNIQUE (notification_id))");
   client->execSqlSync(
       "CREATE TABLE notification_selftest ("
@@ -257,8 +258,31 @@ TEST_CASE("durable delivery keeps intents pending until the broker stores them")
                                          "notification_delivery WHERE status "
                                          "= 'sent' LIMIT 1");
     REQUIRE(sent.size() == 1);
-    CHECK_FALSE(drogon::sync_wait(
-        repository.markDelivered(sent.front()["total"].as<int64_t>(), 1)));
+    CHECK(drogon::sync_wait(repository.markDelivered(
+              {.deliveryIds = {sent.front()["total"].as<int64_t>()},
+               .at = 1})) == 0);
+  }
+
+  {
+    NotificationRepository repository;
+    const auto first = drogon::sync_wait(
+        repository.claimPending({.limit = 10, .now = 5000, .leaseS = 30}));
+    REQUIRE(first.size() == 1);
+    CHECK(first.front().title == "Back door");
+    CHECK(drogon::sync_wait(repository.claimPending(
+                                {.limit = 10, .now = 5000, .leaseS = 30}))
+              .empty());
+    CHECK(drogon::sync_wait(repository.claimPending(
+                                {.limit = 10, .now = 5029, .leaseS = 30}))
+              .empty());
+    CHECK(drogon::sync_wait(repository.claimPending(
+                                {.limit = 10, .now = 5030, .leaseS = 30}))
+              .size() == 1);
+    drogon::sync_wait(repository.releaseClaims({first.front().deliveryId}));
+    CHECK(drogon::sync_wait(repository.claimPending(
+                                {.limit = 10, .now = 5031, .leaseS = 30}))
+              .size() == 1);
+    drogon::sync_wait(repository.releaseClaims({first.front().deliveryId}));
   }
 
   {

@@ -1,6 +1,7 @@
 argus_module(NAME notification-rpc
     SOURCES
         call-rpc-service.cc
+        grpc-server-drain.cc
         notification-rpc-service.cc
     INCLUDES ../..
     DEPENDS

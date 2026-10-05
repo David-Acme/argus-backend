@@ -107,3 +107,30 @@ TEST_CASE("productivity schema application fails on a missing schema file")
                     != std::string::npos,
                 result.error);
 }
+
+TEST_CASE("the productivity schema names no table of another service and "
+          "enforces its own foreign keys")
+{
+  const auto db = openMemory();
+  const auto result = applyProductivitySchema(
+      {.db = db.get(), .schemaPath = ARGUS_PRODUCTIVITY_SCHEMA_PATH});
+  REQUIRE_MESSAGE(result.ok, result.error);
+
+  CHECK(queryColumn(db.get(),
+                    "SELECT f.\"table\" FROM sqlite_master AS m, "
+                    "pragma_foreign_key_list(m.name) AS f "
+                    "WHERE m.type = 'table' AND f.\"table\" = 'user'")
+            .empty());
+  CHECK(queryColumn(db.get(), "PRAGMA foreign_keys") ==
+        std::vector<std::string>{"1"});
+  CHECK(sqlite3_exec(db.get(),
+                     "INSERT INTO project_task (project_id, title) "
+                     "VALUES (4242, 'orphan')",
+                     nullptr, nullptr, nullptr) == SQLITE_CONSTRAINT);
+  CHECK(sqlite3_exec(db.get(),
+                     "INSERT INTO project (id, owner_id, name) VALUES (1, 7, 'p')",
+                     nullptr, nullptr, nullptr) == SQLITE_OK);
+  CHECK(sqlite3_exec(db.get(),
+                     "INSERT INTO project_task (project_id, title) VALUES (1, 't')",
+                     nullptr, nullptr, nullptr) == SQLITE_OK);
+}

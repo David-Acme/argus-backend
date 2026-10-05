@@ -2,11 +2,15 @@
 
 #include <feature/call/services/response-copy.hxx>
 #include <runtime/blocking-task.hxx>
+#include <shared/services/notification/push-copy.hxx>
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
 #include <ctime>
+#include <exception>
+#include <system_error>
+#include <thread>
 #include <utility>
 
 namespace
@@ -54,6 +58,13 @@ Json::Value missedData(const CallSchema& call)
     data["cameraId"] = static_cast<Json::Int64>(cameraId);
   return data;
 }
+
+CallRecipient recipientIn(const std::unordered_map<int64_t, CallRecipient>& found,
+                          int64_t userId)
+{
+  const auto match = found.find(userId);
+  return match == found.end() ? CallRecipient{} : match->second;
+}
 }
 
 std::string callResolutionToString(CallResolution resolution)
@@ -99,6 +110,40 @@ Json::Value call_engine::incomingInfo(const CallSchema& call)
   if (call.data["offers"].isArray())
     info["offers"] = call.data["offers"];
   return info;
+}
+
+std::vector<std::optional<bool>>
+call_engine::announceAll(const AnnounceAllInput& input)
+{
+  std::vector<std::optional<bool>> heard(input.probes.size());
+  const auto ask = [&input, &heard](std::size_t index) {
+    try {
+      heard[index] = input.announcer.announce(input.probes[index]);
+    }
+    catch (const std::exception& error) {
+      LOG_WARN << "Call engine: live call probe for user "
+               << input.probes[index].userId << " failed: " << error.what();
+    }
+  };
+  const std::size_t width = std::max<std::size_t>(1, input.parallel);
+  for (std::size_t start = 0; start < input.probes.size(); start += width) {
+    const std::size_t end = std::min(input.probes.size(), start + width);
+    std::vector<std::jthread> workers;
+    workers.reserve(end - start);
+    for (std::size_t index = start; index < end; ++index) {
+      if (end - start == 1) {
+        ask(index);
+        continue;
+      }
+      try {
+        workers.emplace_back(ask, index);
+      }
+      catch (const std::system_error&) {
+        ask(index);
+      }
+    }
+  }
+  return heard;
 }
 
 CallEngine::CallEngine(CallEngineConfig config,
@@ -165,16 +210,35 @@ drogon::Task<CallPerson> CallEngine::lookupPerson(int64_t personId) const
       [directory, personId]() { return directory->person(personId); });
 }
 
-drogon::Task<std::optional<bool>>
-CallEngine::announce(const CallAnnouncement& announcement) const
+drogon::Task<std::unordered_map<int64_t, CallRecipient>>
+CallEngine::lookupRecipients(std::vector<int64_t> userIds) const
 {
-  if (!dependencies_.announcer)
-    co_return std::nullopt;
+  if (!dependencies_.directory || userIds.empty())
+    co_return std::unordered_map<int64_t, CallRecipient>{};
   if (!dependencies_.blockingOffLoop)
-    co_return dependencies_.announcer->announce(announcement);
+    co_return dependencies_.directory->recipients(userIds);
+  const auto directory = dependencies_.directory;
+  co_return co_await BlockingTask<std::unordered_map<int64_t, CallRecipient>>(
+      [directory, userIds = std::move(userIds)]() {
+        return directory->recipients(userIds);
+      });
+}
+
+drogon::Task<std::vector<std::optional<bool>>>
+CallEngine::announceAll(std::vector<CallAnnouncement> probes) const
+{
+  if (probes.empty() || !dependencies_.announcer)
+    co_return std::vector<std::optional<bool>>(probes.size());
   const auto announcer = dependencies_.announcer;
-  co_return co_await BlockingTask<std::optional<bool>>(
-      [announcer, announcement]() { return announcer->announce(announcement); });
+  if (!dependencies_.blockingOffLoop)
+    co_return call_engine::announceAll(
+        {.announcer = *announcer, .probes = probes, .parallel = 1});
+  co_return co_await BlockingTask<std::vector<std::optional<bool>>>(
+      [announcer, probes = std::move(probes)]() {
+        return call_engine::announceAll({.announcer = *announcer,
+                                         .probes = probes,
+                                         .parallel = call_engine::kProbeParallel});
+      });
 }
 
 drogon::Task<bool> CallEngine::emit(const CallSignalInput& input) const
@@ -196,14 +260,15 @@ void CallEngine::pushRing(const CallSchema& call) const
   data["kind"] = "call";
   data["callId"] = call.callId();
   data["urgency"] = call.urgency;
-  data["callKind"] = std::string(callKindOf(call.trigger));
   data["deepLink"] = deepLink(call.callId());
   data["expiresAt"] = static_cast<Json::Int64>(call.expiresAt);
+  const PushCopy copy = push_copy::render(
+      {.lang = call.lang, .urgency = call.urgency, .call = true});
   dependencies_.push->publish(PushIntent{.userId = call.userId,
                                          .notificationId = 0,
                                          .type = "call",
-                                         .title = call.title,
-                                         .body = call.summary,
+                                         .title = copy.title,
+                                         .body = copy.body,
                                          .createdAtMs = call.createdAt * 1000,
                                          .data = data});
 }
@@ -235,17 +300,19 @@ CallEngine::consider(const CallRequest& request) const
   const CallEngineConfig config = this->config();
   const int64_t at = now();
   const auto preferences = co_await preferenceRepository_.findMany(userIds);
-  outcomes.reserve(userIds.size());
+  const auto recipients = co_await lookupRecipients(userIds);
+  std::vector<PreparedCall> prepared;
+  prepared.reserve(userIds.size());
   for (const int64_t userId : userIds) {
     UserContext user{.userId = userId,
-                     .recipient = co_await lookupRecipient(userId),
+                     .recipient = recipientIn(recipients, userId),
                      .preference = CallPreferenceSchema::defaultsFor(userId)};
     if (const auto found = preferences.find(userId); found != preferences.end())
       user.preference = found->second;
     const auto member = std::ranges::find(request.members, userId,
                                           &CallResponseMember::userId);
     try {
-      outcomes.push_back(co_await considerUser(
+      prepared.push_back(co_await prepareUser(
           {.request = request,
            .user = user,
            .config = config,
@@ -255,7 +322,50 @@ CallEngine::consider(const CallRequest& request) const
     catch (const std::exception& error) {
       LOG_WARN << "Call engine: user " << userId << " for "
                << request.candidate.dedupeKey << " failed: " << error.what();
-      outcomes.push_back({.userId = userId,
+      PreparedCall failed;
+      failed.outcome = {.userId = userId,
+                        .resolution = CallResolution::Dropped,
+                        .reason = "error",
+                        .callId = 0};
+      prepared.push_back(std::move(failed));
+    }
+  }
+
+  std::vector<CallAnnouncement> probes;
+  std::vector<std::size_t> probed;
+  for (std::size_t index = 0; index < prepared.size(); ++index) {
+    const PreparedCall& call = prepared[index];
+    if (call.settled || !call.verdict.injectable)
+      continue;
+    probes.push_back({.userId = call.outcome.userId,
+                      .text = call.copy.followupLine,
+                      .kind = std::string(callKindOf(request.candidate.trigger)),
+                      .callId = ""});
+    probed.push_back(index);
+  }
+  std::vector<std::optional<bool>> heard(prepared.size());
+  const auto answers = co_await announceAll(std::move(probes));
+  for (std::size_t index = 0; index < probed.size() && index < answers.size();
+       ++index)
+    heard[probed[index]] = answers[index];
+
+  outcomes.reserve(prepared.size());
+  for (std::size_t index = 0; index < prepared.size(); ++index) {
+    PreparedCall& call = prepared[index];
+    if (call.settled) {
+      outcomes.push_back(call.outcome);
+      continue;
+    }
+    try {
+      outcomes.push_back(co_await finishUser({.request = request,
+                                              .prepared = call,
+                                              .heard = heard[index],
+                                              .now = at}));
+    }
+    catch (const std::exception& error) {
+      LOG_WARN << "Call engine: user " << call.outcome.userId << " for "
+               << request.candidate.dedupeKey << " failed: " << error.what();
+      outcomes.push_back({.userId = call.outcome.userId,
                           .resolution = CallResolution::Dropped,
                           .reason = "error",
                           .callId = 0});
@@ -264,29 +374,30 @@ CallEngine::consider(const CallRequest& request) const
   co_return outcomes;
 }
 
-drogon::Task<CallUserOutcome>
-CallEngine::considerUser(const ConsiderUserInput& input) const
+drogon::Task<CallEngine::PreparedCall>
+CallEngine::prepareUser(const ConsiderUserInput& input) const
 {
   const CallCandidate& candidate = input.request.candidate;
   const UserContext& user = input.user;
   const int64_t userId = user.userId;
-  CallUserOutcome outcome{.userId = userId,
-                          .resolution = CallResolution::Dropped,
-                          .reason = "",
-                          .callId = 0};
+  PreparedCall prepared;
+  prepared.outcome = {.userId = userId,
+                      .resolution = CallResolution::Dropped,
+                      .reason = "",
+                      .callId = 0};
   if (user.recipient.found && !user.recipient.active) {
-    outcome.reason = "inactive";
-    co_return outcome;
+    prepared.outcome.reason = "inactive";
+    co_return prepared;
   }
 
   const bool alreadyCalled =
       co_await callRepository_.exists(candidate.dedupeKey, userId);
-  const auto ringing = co_await callRepository_.findRingingFor(
+  prepared.ringing = co_await callRepository_.findRingingFor(
       {.userId = userId, .now = input.now});
   const CallRingStats stats = co_await callRepository_.ringStats(
       {.userId = userId, .since = input.now - kHourS});
   const CallLocalTime clock = localAt(input.now);
-  const CallVerdict verdict = call_policy::decide(
+  prepared.verdict = call_policy::decide(
       {.trigger = candidate.trigger,
        .critical = candidate.critical,
        .preference = user.preference,
@@ -295,7 +406,7 @@ CallEngine::considerUser(const ConsiderUserInput& input) const
        .now = input.now,
        .environmentId = candidate.environmentId,
        .alreadyCalled = alreadyCalled,
-       .ringing = ringing.has_value(),
+       .ringing = prepared.ringing.has_value(),
        .lastCallAt = stats.lastAt,
        .callsLastHour = stats.recent,
        .limits = {.enabled = input.config.enabled,
@@ -304,67 +415,69 @@ CallEngine::considerUser(const ConsiderUserInput& input) const
        .planNotify = input.member != nullptr &&
                      input.member->mode == ResponseMemberMode::Notify,
        .mandatory = input.member != nullptr && input.member->mandatory});
-  outcome.reason = verdict.reason;
+  prepared.outcome.reason = prepared.verdict.reason;
 
-  const std::string lang =
+  prepared.lang =
       langFor(!user.preference.lang.empty() ? user.preference.lang
               : !user.recipient.lang.empty() ? user.recipient.lang
                                              : candidate.lang);
-  Json::Value stored = candidate.data.isObject()
-                           ? candidate.data
-                           : Json::Value(Json::objectValue);
+  prepared.stored = candidate.data.isObject() ? candidate.data
+                                              : Json::Value(Json::objectValue);
   if (input.member != nullptr && input.member->discreet)
-    stored["discreet"] = true;
-  const CallCopy copy = call_copy::render({.trigger = candidate.trigger,
-                                           .lang = lang,
-                                           .data = stored,
-                                           .userName = user.recipient.name,
-                                           .now = input.now});
-  stored[kMissedTitleKey] = copy.missedTitle;
-  CallCreateInput row{.userId = userId,
-                      .dedupeKey = candidate.dedupeKey,
-                      .trigger = candidate.trigger,
-                      .state = CallState::Ringing,
-                      .reason = verdict.reason,
-                      .parentCallId = 0,
-                      .urgency = candidate.urgency.empty() ? "active"
-                                                           : candidate.urgency,
-                      .lang = lang,
-                      .title = copy.title,
-                      .summary = copy.summary,
-                      .openingLine = copy.openingLine,
-                      .missedLine = copy.missedLine,
-                      .data = json_util::toString(stored),
-                      .createdAt = input.now,
-                      .expiresAt =
-                          input.now + user.preference.ringSecondsClamped(),
-                      .pushAfter =
-                          input.now + user.preference.pushDelayClamped()};
+    prepared.stored["discreet"] = true;
+  prepared.copy = call_copy::render({.trigger = candidate.trigger,
+                                     .lang = prepared.lang,
+                                     .data = prepared.stored,
+                                     .userName = user.recipient.name,
+                                     .now = input.now});
+  prepared.stored[kMissedTitleKey] = prepared.copy.missedTitle;
+  prepared.row = {.userId = userId,
+                  .dedupeKey = candidate.dedupeKey,
+                  .trigger = candidate.trigger,
+                  .state = CallState::Ringing,
+                  .reason = prepared.verdict.reason,
+                  .parentCallId = 0,
+                  .urgency = candidate.urgency.empty() ? "active"
+                                                       : candidate.urgency,
+                  .lang = prepared.lang,
+                  .title = prepared.copy.title,
+                  .summary = prepared.copy.summary,
+                  .openingLine = prepared.copy.openingLine,
+                  .missedLine = prepared.copy.missedLine,
+                  .data = json_util::toString(prepared.stored),
+                  .createdAt = input.now,
+                  .expiresAt = input.now + user.preference.ringSecondsClamped(),
+                  .pushAfter = input.now + user.preference.pushDelayClamped()};
 
-  const bool askedReminder = candidate.trigger == CallTrigger::Assistant &&
-                             verdict.reason == "trigger_off";
-  if (verdict.decision == CallDecision::Drop && !askedReminder)
+  prepared.askedReminder = candidate.trigger == CallTrigger::Assistant &&
+                           prepared.verdict.reason == "trigger_off";
+  prepared.settled = prepared.verdict.decision == CallDecision::Drop &&
+                     !prepared.askedReminder;
+  co_return prepared;
+}
+
+drogon::Task<CallUserOutcome>
+CallEngine::finishUser(const FinishUserInput& input) const
+{
+  const CallCandidate& candidate = input.request.candidate;
+  PreparedCall& prepared = input.prepared;
+  CallUserOutcome outcome = prepared.outcome;
+  CallCreateInput& row = prepared.row;
+  const int64_t userId = outcome.userId;
+
+  if (prepared.verdict.injectable && input.heard.value_or(false)) {
+    row.state = CallState::Injected;
+    row.reason = "live_call";
+    row.expiresAt = input.now;
+    const auto id = co_await callRepository_.create(row);
+    outcome.resolution = CallResolution::Injected;
+    outcome.reason = "live_call";
+    outcome.callId = id.value_or(0);
     co_return outcome;
-
-  if (verdict.injectable) {
-    const auto delivered = co_await announce(
-        {.userId = userId,
-         .text = copy.followupLine,
-         .kind = std::string(callKindOf(candidate.trigger)),
-         .callId = ""});
-    if (delivered.value_or(false)) {
-      row.state = CallState::Injected;
-      row.reason = "live_call";
-      row.expiresAt = input.now;
-      const auto id = co_await callRepository_.create(row);
-      outcome.resolution = CallResolution::Injected;
-      outcome.reason = "live_call";
-      outcome.callId = id.value_or(0);
-      co_return outcome;
-    }
   }
 
-  if (verdict.decision == CallDecision::Notify || askedReminder) {
+  if (prepared.verdict.decision == CallDecision::Notify ||
+      prepared.askedReminder) {
     outcome.resolution = CallResolution::Notified;
     if (!input.request.notificationExists && dependencies_.notifier) {
       Json::Value data = candidate.data.isObject()
@@ -372,14 +485,14 @@ CallEngine::considerUser(const ConsiderUserInput& input) const
                              : Json::Value(Json::objectValue);
       data["threadKey"] = candidate.dedupeKey;
       data["urgency"] = "passive";
-      data["lang"] = lang;
+      data["lang"] = prepared.lang;
       co_await dependencies_.notifier->notify(
           {.userId = userId,
            .type = candidate.trigger == CallTrigger::GuardArrival
-                        ? "camera"
-                        : "reminder",
-           .title = copy.title,
-           .body = copy.summary,
+                       ? "camera"
+                       : "reminder",
+           .title = prepared.copy.title,
+           .body = prepared.copy.summary,
            .data = data,
            .commandId = "call-notice:" + candidate.dedupeKey + ":" +
                         std::to_string(userId)});
@@ -387,7 +500,7 @@ CallEngine::considerUser(const ConsiderUserInput& input) const
     co_return outcome;
   }
 
-  if (verdict.decision == CallDecision::Ring) {
+  if (prepared.verdict.decision == CallDecision::Ring) {
     if (const auto id = co_await callRepository_.createRinging(row)) {
       CallSchema call{.id = *id,
                       .userId = userId,
@@ -402,7 +515,7 @@ CallEngine::considerUser(const ConsiderUserInput& input) const
                       .summary = row.summary,
                       .openingLine = row.openingLine,
                       .missedLine = row.missedLine,
-                      .data = stored,
+                      .data = prepared.stored,
                       .answeredSession = "",
                       .createdAt = row.createdAt,
                       .expiresAt = row.expiresAt,
@@ -429,9 +542,10 @@ CallEngine::considerUser(const ConsiderUserInput& input) const
     }
   }
 
-  const auto parent = ringing ? ringing
-                              : co_await callRepository_.findRingingFor(
-                                    {.userId = userId, .now = input.now});
+  const auto parent = prepared.ringing
+                          ? prepared.ringing
+                          : co_await callRepository_.findRingingFor(
+                                {.userId = userId, .now = input.now});
   if (!parent) {
     outcome.resolution = CallResolution::Dropped;
     outcome.reason = "ring_race";
@@ -660,19 +774,28 @@ CallEngine::arrival(const KnownSeenEvent& event) const
     co_return outcomes;
   if (previous > event.at)
     co_return outcomes;
+  if (now() - event.at > call_engine::kArrivalStaleS)
+    co_return outcomes;
 
   const auto subscribers = co_await preferenceRepository_.findArrivalSubscribers();
   if (subscribers.empty())
     co_return outcomes;
   const CallPerson person = co_await lookupPerson(event.personId);
-  std::vector<int64_t> userIds;
+  std::vector<int64_t> listeners;
+  listeners.reserve(subscribers.size());
   for (const auto& subscriber : subscribers) {
     if (person.userId > 0 && subscriber.userId == person.userId)
       continue;
-    const CallRecipient recipient = co_await lookupRecipient(subscriber.userId);
-    if (recipient.found && recipient.role == "guest")
+    listeners.push_back(subscriber.userId);
+  }
+  const auto recipients = co_await lookupRecipients(listeners);
+  std::vector<int64_t> userIds;
+  userIds.reserve(listeners.size());
+  for (const int64_t userId : listeners) {
+    const CallRecipient recipient = recipientIn(recipients, userId);
+    if (recipient.found && recipient.role == UserRole::Guest)
       continue;
-    userIds.push_back(subscriber.userId);
+    userIds.push_back(userId);
   }
   Json::Value data(Json::objectValue);
   data["kind"] = "guard_arrival";
@@ -760,7 +883,27 @@ drogon::Task<CallSweepReport> CallEngine::sweep() const
   report.escalated = co_await advanceResponses(at);
   report.expired = static_cast<int64_t>(
       (co_await responseRepository_.expire(at - kResponseLifetimeS, at)).size());
+  report.purged = co_await purgeHistory(at);
   co_return report;
+}
+
+drogon::Task<int64_t> CallEngine::purgeHistory(int64_t now) const
+{
+  int64_t due = nextPurgeAt_.load(std::memory_order_acquire);
+  if (now < due ||
+      !nextPurgeAt_.compare_exchange_strong(due, now + call_engine::kPurgeIntervalS,
+                                            std::memory_order_acq_rel))
+    co_return 0;
+  const int64_t cutoff = now - config().retentionDays * 24 * kHourS;
+  int64_t purged = co_await callRepository_.purgeSettled(cutoff);
+  purged += co_await scheduledRepository_.purgeSettled(cutoff);
+  purged += co_await arrivalRepository_.purgeStale(cutoff);
+  purged += co_await responseRepository_.purgeClosed(cutoff);
+  if (purged > 0)
+    LOG_INFO << "Call engine: purged " << purged
+             << " call record(s) older than " << config().retentionDays
+             << " days";
+  co_return purged;
 }
 
 drogon::Task<AgendaAnnouncementOutcome>
@@ -935,13 +1078,17 @@ drogon::Task<void> CallEngine::reach(const ReachInput& input) const
   std::vector<int64_t> reached;
   reached.reserve(input.members.size());
   for (const auto& member : input.members) {
-    if (!co_await responseRepository_.markReached(
+    if (co_await responseRepository_.markReached(
             {.responseId = response.id, .userId = member.userId, .at = input.now}))
-      continue;
-    reached.push_back(member.userId);
+      reached.push_back(member.userId);
+  }
+  const auto recipients = dependencies_.notifier
+                              ? co_await lookupRecipients(reached)
+                              : std::unordered_map<int64_t, CallRecipient>{};
+  for (const int64_t userId : reached) {
     if (!dependencies_.notifier)
-      continue;
-    const CallRecipient recipient = co_await lookupRecipient(member.userId);
+      break;
+    const CallRecipient recipient = recipientIn(recipients, userId);
     const std::string lang = langFor(recipient.lang);
     const CallCopy copy = call_copy::render({.trigger = candidate->trigger,
                                              .lang = lang,
@@ -953,7 +1100,7 @@ drogon::Task<void> CallEngine::reach(const ReachInput& input) const
     data["urgency"] = candidate->urgency;
     data["lang"] = lang;
     co_await dependencies_.notifier->notify(
-        {.userId = member.userId,
+        {.userId = userId,
          .type = "camera",
          .title = copy.title,
          .body = response_copy::escalationBody({.lang = lang,
@@ -962,7 +1109,7 @@ drogon::Task<void> CallEngine::reach(const ReachInput& input) const
                                                 .confirmedBy = input.response.verdictByName}),
          .data = data,
          .commandId = "response:" + std::to_string(response.id) + ":reach:" +
-                      std::to_string(member.userId)});
+                      std::to_string(userId)});
   }
   if (reached.empty())
     co_return;
@@ -1000,10 +1147,14 @@ drogon::Task<void> CallEngine::promptContacts(const PromptInput& input) const
     co_return;
   const CallResponseSchema& response = input.response;
   const std::string place = placeOf(response.data);
+  std::vector<int64_t> reached;
   for (const auto& member : co_await responseRepository_.members(response.id)) {
-    if (member.reachedAt == 0)
-      continue;
-    const CallRecipient recipient = co_await lookupRecipient(member.userId);
+    if (member.reachedAt != 0)
+      reached.push_back(member.userId);
+  }
+  const auto recipients = co_await lookupRecipients(reached);
+  for (const int64_t userId : reached) {
+    const CallRecipient recipient = recipientIn(recipients, userId);
     const std::string lang = langFor(recipient.lang);
     const ResponseNotice notice = response_copy::contacts(
         {.lang = lang,
@@ -1022,14 +1173,14 @@ drogon::Task<void> CallEngine::promptContacts(const PromptInput& input) const
     data["cameraId"] = static_cast<Json::Int64>(response.cameraId);
     data["lang"] = lang;
     co_await dependencies_.notifier->notify(
-        {.userId = member.userId,
+        {.userId = userId,
          .type = "camera",
          .title = notice.title,
          .body = notice.body,
          .data = data,
          .commandId = "response:" + std::to_string(response.id) + ":" +
                       (input.confirmed ? "confirmed" : "unanswered") + ":" +
-                      std::to_string(member.userId)});
+                      std::to_string(userId)});
   }
 }
 
@@ -1176,12 +1327,9 @@ drogon::Task<Json::Value> CallEngine::responses(int64_t userId) const
 {
   Json::Value list(Json::arrayValue);
   const int64_t at = now();
-  for (const auto& response : co_await responseRepository_.forUser(
-           {.userId = userId, .closedSince = at - kClosedVisibleS, .limit = kResponsesShown})) {
-    const auto member = co_await responseRepository_.member(response.id, userId);
-    list.append(call_response::toJson(
-        {.response = response, .member = member ? &*member : nullptr}));
-  }
+  for (const auto& view : co_await responseRepository_.forUser(
+           {.userId = userId, .closedSince = at - kClosedVisibleS, .limit = kResponsesShown}))
+    list.append(call_response::toJson({.response = view.response, .member = &view.member}));
   co_return list;
 }
 

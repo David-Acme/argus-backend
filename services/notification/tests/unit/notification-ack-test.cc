@@ -128,6 +128,7 @@ struct SharedBoot
         "created_ms INTEGER NOT NULL DEFAULT 0, "
         "sent_ms INTEGER NOT NULL DEFAULT 0, "
         "acked_ms INTEGER NOT NULL DEFAULT 0, "
+        "claimed_at INTEGER NOT NULL DEFAULT 0, "
         "UNIQUE (notification_id))");
     client->execSqlSync(
         "CREATE TABLE notification_selftest ("

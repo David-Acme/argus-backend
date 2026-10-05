@@ -18,15 +18,35 @@ binary, own CMake preset, own `notification.db`.
   Phase 3d step 1. The schema lands as `database/schema.sql` and is applied at
   boot through `DbService::runScriptFile` — abort on failure. `argus.db` is
   never touched. The two legacy tables carry their own indexes —
-  `services/notification/database/schema.sql:22`, the token pair's unique
-  index at `:36-37` and `idx_notification_token_user` at `:72` — and
-  `camera_fallback_event` carries one on `created_at` (`:100-101`) for its
-  retention sweep and the per-outage queries.
-- **Foreign keys stay off** (schema file pragma + re-applied after
-  `applyPragmas`, which would otherwise turn them on per connection): the
-  tables reference `user(id)`, and the user rows live in identity.db, not
-  here. The `REFERENCES user(id)` clauses are kept verbatim; enforcement is
-  replaced by code — rows are always addressed through the JWT actor.
+  `idx_notification_user_created` and the token pair's unique index
+  `idx_notification_token_uniq` — and `camera_fallback_event` carries one on
+  `created_at` for its retention sweep and the per-outage queries.
+  `idx_notification_token_user` was dropped (2026-10): the unique
+  `(user_id, device_hash)` index already leads with `user_id`.
+- **Foreign keys are on; no table names another service's table**
+  (2026-10, audit #65). The schema used to declare `REFERENCES user(id)` on
+  `notification` and `notification_token`, a table that lives in identity.db
+  (rule 27), and to make that DDL loadable the whole database ran with
+  `foreign_keys = OFF` — so the cascades it promised never happened and the
+  one real internal key (`notification_delivery → notification`) was not
+  enforced either. `database/schema.sql` now declares no reference to `user`
+  and turns `foreign_keys` on, like `DbService::applyPragmas`. Rows are still
+  addressed through the JWT actor or the caller's metadata.
+  **An existing notification.db keeps its old DDL**: `CREATE TABLE IF NOT
+  EXISTS` does not rewrite a table and this service never migrates a user's
+  database silently (root rule 17). At boot `main.cc` asks
+  `pragma_foreign_key_list` whether any table still references `user`; if one
+  does it turns foreign keys back off for that connection and logs a warning,
+  because with enforcement on SQLite refuses every insert into a table whose
+  parent table does not exist. Such a database needs an explicit rebuild:
+  either a development reset (delete notification.db, the service recreates
+  it from `database/schema.sql`) or the SQLite table-rebuild procedure for
+  `notification` and `notification_token` (create the new table from the
+  schema under a temporary name, `INSERT ... SELECT` the rows, drop the old
+  table, rename, recreate the indexes) run by hand with the service stopped.
+  The same applies to `notification_token.token UNIQUE` below. Deleting a
+  user's rows when identity deletes the user is not wired: this service
+  consumes no identity or session change feed today (see "Push tokens").
 - **Write-side feature surface, registered in THIS binary only**: the
   notification and notification-token controllers, their feature services
   (markAsRead, registerToken) and DTOs compile from the shared tree into the
@@ -78,9 +98,9 @@ binary, own CMake preset, own `notification.db`.
   symbols). An unreachable identity service means 401, never an open door.
 - **CORS**: the legacy answered every preflight in pre-routing, and this
   surface keeps answering OPTIONS itself (`Cors::handleOptions`).
-- **Foreign keys (Ruling AN)**: the notification tables reference user rows
-  that live in identity.db, so foreign-key enforcement stays off on every
-  connection.
+- **Foreign keys (Ruling AN, superseded 2026-10)**: the user references are
+  gone from the schema and enforcement is on; see "What it owns" above for
+  what an older database needs.
 - **Audit recipients**: `publishAudit` keeps the same recipient set the
   legacy `SyncAuditService::publishUsers` kept — non-positive ids out,
   duplicates collapsed.
@@ -194,6 +214,9 @@ readiness and the fallback gate — `CameraObjectNotifier`, the
   reach `/sync`. The notifiable-user roster comes from
   `argus::clients::identity`, so an unconfigured identity target keeps the
   fallback record but invents no recipient.
+- **A hard signal is `EventSeverity::Critical` or a person in an alert
+  zone**: the event's `severity` is read through the camera contract's
+  `eventSeverityFromString` (root rule 1), not compared as a string.
 - **`camera_fallback_event`** is this service's third table: one durable row
   per dropped event with its reason (`non_hard_signal`, `drop_known`,
   `drop_weak_score`, `drop_short_dwell`, `budget_silent`), purged on the
@@ -241,6 +264,23 @@ readiness and the fallback gate — `CameraObjectNotifier`, the
   row sent. A refused publish leaves the intent `pending` for the 60-second
   delivery reconciler (`startDeliveryReconciler`); nothing is ever lost on a
   broker outage, and a restart replays from the table.
+- **A page is claimed before it is published** (2026-10, audit #47).
+  `deliverPending` starts from several places at once — every create, the
+  reconciler, the self-test, the call sink and the camera notifier, the last
+  on another I/O loop — and two drains used to read the same pending rows and
+  publish them twice. `claimPending` now stamps `claimed_at` on up to 200
+  pending rows in one `UPDATE ... WHERE id IN (SELECT ...) RETURNING id` and
+  only the drain that got them publishes them; a second drain sees the claim
+  and moves on. A refused publish releases its rows at once, a page whose
+  publish throws releases the whole page, and a claim left by a crash expires
+  after 30 s (`claimed_at <= now - 30`), so the claim never strands a row.
+  The settled rows are marked `sent` in one statement. The column is
+  additive: `main.cc` adds `claimed_at` to an older notification.db.
+- **The broker is never awaited on the event loop** (2026-10, audit #48).
+  `ensureStream` and the page's publishes (each waits for its JetStream
+  PubAck) run in a `BlockingTask` on the light lane; the loop only claims,
+  releases and marks. A slow broker used to freeze the loop for up to 200
+  PubAcks per pass, the one-second call sweep included.
 - **`markAsRead`** lands its per-change user audits in the service's own
   `change_outbox` before they are published over `argus.notification.v1.change`
   (see the change-feed section below), in the same transaction as the row
@@ -250,6 +290,20 @@ readiness and the fallback gate — `CameraObjectNotifier`, the
 - **Push intents** (`[push].enabled`, default off) stay at-most-once
   fire-and-forget accelerators toward `argus-relay`; the `/sync` fan-out
   after durable delivery is the guarantee.
+- **A push carries no household detail** (2026-10, audit #46). The relay
+  forwards to FCM/APNs, so whatever a push intent carries passes through
+  Google or Apple. A notification's intent now carries a generic line in the
+  recipient's language (`push_copy::render`: "Argus" / "Tienes un aviso
+  nuevo. Abre Argus para verlo.", or "Hay un aviso importante…" when
+  `urgency` is `critical` or `time_sensitive`; English when the row's `data`
+  says `lang: en`) and `data {notificationId, kind, urgency}` — no title,
+  body, camera, place or person. A ringing call's push says "Argus te está
+  llamando" / "Abre Argus para contestar." with `data {kind: call, callId,
+  urgency, deepLink, expiresAt}` (`callKind` is gone). The app opens and reads
+  the real row through `/sync`. The probe (`userId` 0) no longer emits a push.
+  **Frontend:** a push's `title`/`body` are no longer the notification's;
+  render from the synced row by `notificationId` (or `callId`), and stop
+  reading `data.callKind` from a call push.
 
 ## The notification change feed (3a-2c)
 
@@ -313,6 +367,38 @@ readiness and the fallback gate — `CameraObjectNotifier`, the
   because a drain registered after the stop was requested is only stopped at
   once, never waited for.
 
+## Push tokens (2026-10, audit #45)
+
+`notification_token` holds one row per `(user_id, device_hash)` and, since
+2026-10, at most one row per `token`: registering a token another user (or
+another device) held first deletes that row inside the same transaction, so a
+shared phone that changes hands stops being addressed to its previous user.
+A fresh database enforces it with `token UNIQUE`; an older one gets the same
+behaviour from the delete (see "What it owns" for the rebuild).
+
+Nothing in this tree reads the table: `findByUser` has no caller outside the
+controller suite, and the push intent names a `userId`, not a token, so the
+relay must keep its own registry. The table and `POST /notification-token`
+stay because the app registers through them. Two gaps remain, and both need a
+feed this service does not consume yet:
+
+- a revoked session (`argus.auth.v1.session`, the `ARGUS_AUTH_SESSION`
+  stream camera already reads durably) should delete the token of that
+  device;
+- a deactivated or deleted account (`argus.identity.v1.change`) should delete
+  every token of the user, and the user's notification, call preference and
+  call rows with it — the `ON DELETE CASCADE` the old schema only pretended to
+  have.
+
+## Mark-as-read and acknowledgement bounds (2026-10, audit #95)
+
+`PATCH /notification/read` and `PATCH /notification/ack` refuse more than 500
+ids (422, `MAX_ELEMENTS`) instead of answering 500 when the `IN (...)` list
+outgrew SQLite's variable limit. `read_at` is bound from the same clock the
+audit diff reports, so the stored value and the published `readAt` no longer
+differ by the second between `time(nullptr)` and `strftime('now')`.
+**Frontend:** batch "mark all as read" in chunks of at most 500 ids.
+
 ## Delivery proof (Round 11)
 
 The chain used to end at gateway dispatch. Clients now confirm display
@@ -332,6 +418,25 @@ retry never comes that late, and the table otherwise kept one row per
 command for ever. The user notifications themselves are not pruned here:
 they are synced creation-only with no tombstone, so a server-side delete
 would leave every device holding rows the server no longer has.
+
+## Stopping cleanly (2026-10, extra finding N1)
+
+Besides the change sink, two drains register with `shutdown_signal` before
+`drogon::app().run()`:
+
+- `notification-tasks`, a `TaskGate` shared by every long-lived loop of the
+  process — the delivery reconciler, the self-test prober, the call sweep, the
+  durable `known_seen` handler and the camera notifier's deliveries, log
+  writes and purges. Each run takes a ticket; after the stop request no new
+  ticket is handed out (a `known_seen` message is nak'ed and comes back after
+  the restart) and the drain reports drained when the last running ticket is
+  released, so `quit()` never destroys the database client under a coroutine.
+- `notification-grpc`, the gRPC listener: the stop request calls
+  `Server::Shutdown` with a 2 s deadline on a thread of its own (the drogon
+  loop keeps running, so in-flight handlers that finish on it can answer), and
+  the drain is drained when that call returns. `main` joins the thread after
+  `run()`; before, the server was shut down only after the loop had stopped,
+  with no deadline.
 
 ## No-NATS survival (Round 6, Gate A)
 
@@ -525,8 +630,20 @@ conversation; if so the follow-up line is spoken there at the next quiet
 moment ("Además, hay una persona desconocida en Patio.") and recorded as an
 `injected` call, so the episode never rings afterwards. A voice service that
 is unreachable or not wired never blocks a ring: the probe runs off the loop
-on the light blocking lane and costs at most the client's 1.5 s deadline per
-recipient, and with `[voice] target/credential` unset the engine skips it.
+on the light blocking lane, and with `[voice] target/credential` unset the
+engine skips it.
+
+**Recipients are judged together** (2026-10, audit #49). `consider` reads the
+recipients' identity records in one `ListUsers` call
+(`CallDirectory::recipients`; a single recipient still uses `GetUser`, and a
+failed listing falls back to one `GetUser` each), decides every recipient
+against the local tables, then asks argus-voice about all the injectable ones
+at once — up to `call_engine::kProbeParallel` (8) probes side by side on
+plain threads inside one light-lane job — and only then rings. A panic with
+strategy `everyone` used to probe and ring members one after the other, so the
+last one rang up to 1.5 s × members late; the probe now costs one deadline for
+the whole household. The role a recipient carries is the contract's
+`UserRole` (`std::optional`, empty when identity did not say), not a string.
 
 ### Who decides what: user preferences and system limits
 
@@ -608,9 +725,12 @@ Agenda calls go to the event's owner and the people it is shared with.
    <session id>}`; the claiming device ignores a cancel naming its own session
    (it can arrive before its own `/rtc/token` answer).
 3. **Out of the app.** A sweep every second pushes a still-ringing call once
-   at its `push_after` (4 s by default): a push intent with `type: call` and
-   `data {kind: call, callId, urgency, deepLink: argus://call?callId=<id>}`.
-   Push is behind `[push] enabled` and argus-relay, as every push is.
+   at its `push_after` (4 s by default): a push intent with `type: call`, the
+   generic "Argus te está llamando" line and `data {kind: call, callId,
+   urgency, deepLink: argus://call?callId=<id>, expiresAt}` — the reason and
+   the place stay in the `call_incoming` frame (see "A push carries no
+   household detail"). Push is behind `[push] enabled` and argus-relay, as
+   every push is.
 4. **Missed.** After `ringSeconds` (45 s by default) unanswered the call is `missed`,
    `call_cancel {expired}` goes out, and a notification of type `call` is
    written with a spoken-style summary ("Te llamé porque había una persona
@@ -633,6 +753,29 @@ report a call to CallKit every time, and critical alerts that pierce
 do-not-disturb need Apple's critical-alerts entitlement. The deep link and the
 `call` push type are the hooks those layers would use; nothing in the engine
 changes.
+
+### Arrivals survive a restart (2026-10, extra finding N16)
+
+`argus.guard.v1.known_seen` is read through a durable JetStream consumer
+(`notification-known-seen` on guard's `ARGUS_GUARD` stream, ordered, ack after
+`CallEngine::arrival` returns, nak on failure) instead of a core subscription
+that lost every sighting published while this service restarted. If the
+stream does not exist yet (guard not started) the subscription is retried
+every 5 s. A replayed sighting still updates `call_arrival_seen`, but one
+older than `call_engine::kArrivalStaleS` (10 minutes) never calls anybody:
+"Marta has arrived" an hour late is noise.
+
+### Retention of the call tables (2026-10, audit #51)
+
+The one-second sweep purges, at most once an hour, what the engine no longer
+needs after `[calls] retention_days` (default 30): settled `call` rows (not
+ringing, queued or answered), fired or cancelled `scheduled_call` rows,
+`call_arrival_seen` rows not refreshed in that window, and closed
+`call_response` rows (`false_alarm`, `expired`) with their
+`call_response_member` rows — the plan copies that hold contacts' phone
+numbers. Open responses expire after two hours anyway, so nothing alive is
+touched. `call_preference` is the user's setting and is not purged; deleting
+it with the account needs the identity feed (see "Push tokens").
 
 ### Research behind the policy
 
@@ -659,7 +802,8 @@ changes.
 
 `src/feature/call/` (`argus::notification-call`): `vocabulary/` (trigger,
 mode, state), `schemas/`, `repositories/` (`call`, `call-preference`,
-`scheduled-call`, `arrival-seen`), `services/call-policy` (pure),
+`scheduled-call`, `arrival-seen`, `call-response`), `services/call-policy`
+(pure),
 `call-trigger-classifier` (notification data → candidate), `call-copy`
 (es/en opening, follow-up, missed lines), `call-engine` (consider, claim,
 end, schedule, arrival, sweep), `call-feed` (the `known_seen` subscription
@@ -751,8 +895,10 @@ false_alarm}`, by a member the response reached.
   Panic, duress and tamper verdicts stay on the response row, because their
   `episodeId` is not an encounter.
 `GET /notification/responses` lists the responses that reached the caller (open, or
-closed in the last 24 h); `GET /notification/responses/{id}` reads one. A
-response nobody closed expires after two hours.
+closed in the last 24 h), each with the caller's own member row from the
+same join (one query, not one per response since 2026-10);
+`GET /notification/responses/{id}` reads one. A response nobody closed
+expires after two hours.
 
 **Copy.** Panic: "Botón de pánico · Casa" / "Tom ha pulsado el botón de pánico
 en Casa. Puede necesitar ayuda ahora mismo." Duress: "Alerta silenciosa ·

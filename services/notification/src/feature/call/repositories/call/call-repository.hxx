@@ -46,4 +46,6 @@ public:
 
   drogon::Task<int64_t> closeStaleAnswered(int64_t answeredBefore,
                                            int64_t now) const;
+
+  drogon::Task<int64_t> purgeSettled(int64_t createdBefore) const;
 };

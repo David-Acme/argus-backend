@@ -3,6 +3,7 @@
 
 #include <drogon/drogon.h>
 #include <feature/agenda/services/agenda-announcer.hxx>
+#include <feature/agenda/services/agenda-sweeper.hxx>
 #include <sqlite/db-service.hxx>
 
 #include <algorithm>
@@ -250,4 +251,19 @@ TEST_CASE("without a notifier or switched off, the announcer does nothing")
   CHECK_FALSE(unwired.enabled());
   insertEvent({.owner = 1, .title = "X", .startsAt = kNow + 10});
   CHECK(drogon::sync_wait(unwired.sweep()).events == 0);
+}
+
+TEST_CASE("the agenda sweeper stops taking sweeps once a stop is requested")
+{
+  reset();
+  AgendaSweeper sweeper(std::make_shared<const AgendaAnnouncer>(
+      AgendaAnnouncerConfig{.enabled = true, .graceS = 120, .retentionS = 1},
+      AgendaAnnouncerDependencies{.notifier = nullptr,
+                                  .clock = {},
+                                  .blockingOffLoop = false}));
+  CHECK(sweeper.drained());
+  CHECK(drogon::sync_wait(sweeper.tick()));
+  sweeper.requestStop();
+  CHECK_FALSE(drogon::sync_wait(sweeper.tick()));
+  CHECK(sweeper.drained());
 }

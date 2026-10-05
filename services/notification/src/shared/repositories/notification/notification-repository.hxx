@@ -24,12 +24,14 @@ public:
   drogon::Task<NotificationCommitResult> createManyWithCommand(
       const NotificationBatchCommitInput& input) const;
 
-  drogon::Task<std::vector<NotificationDeliveryRow>> pendingDeliveries(
-      int limit) const;
+  drogon::Task<std::vector<NotificationDeliveryRow>> claimPending(
+      const DeliveryClaimInput& input) const;
 
   drogon::Task<int64_t> pendingDeliveryCount() const;
 
-  drogon::Task<bool> markDelivered(int64_t deliveryId, int64_t at) const;
+  drogon::Task<int64_t> markDelivered(const DeliveredInput& input) const;
+
+  drogon::Task<void> releaseClaims(const std::vector<int64_t>& deliveryIds) const;
 
   drogon::Task<int64_t> ackDeliveries(const AckDeliveriesInput& input) const;
 

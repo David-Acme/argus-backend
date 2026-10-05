@@ -57,6 +57,7 @@ call_gap_s = 300
 max_calls_per_hour = 4
 arrival_absence_s = 10800
 scheduled_late_s = 900
+retention_days = 30
 
 [identity]
 target = "127.0.0.1:7040"
@@ -78,6 +79,8 @@ refresh_ttl_days = 30
 
 [device]
 fingerprint_secret = ""
+identity_mode = "credential"
+lan_networks = ""
 trust_forwarded_for = false
 trusted_proxy_ips = ""
 

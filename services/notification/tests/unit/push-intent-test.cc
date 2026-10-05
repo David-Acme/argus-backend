@@ -6,6 +6,7 @@
 #include <notification/notification-delivery-sink.hxx>
 #include <nats/push-intent-sink.hxx>
 #include <shared/services/notification/notification-service.hxx>
+#include <shared/services/notification/push-copy.hxx>
 #include <sqlite/db-service.hxx>
 #include <nats/nats-push-intent-sink.hxx>
 #include <nats/nats-subject.hxx>
@@ -228,6 +229,33 @@ TEST_CASE("push_intent payloads match the subjects.md contract")
         std::string("argus.notification.v1.push_intent"));
 }
 
+TEST_CASE("push copy carries no household detail, only a generic line")
+{
+  Json::Value data(Json::objectValue);
+  data["kind"] = "guard_episode";
+  data["urgency"] = "critical";
+  data["lang"] = "en";
+  data["cameraName"] = "Patio";
+  data["personName"] = "Marta";
+  const Json::Value minimal =
+      push_copy::minimalData({.notificationId = 9, .data = data});
+  CHECK(minimal.size() == 3);
+  CHECK(minimal["notificationId"].asInt64() == 9);
+  CHECK(minimal["kind"].asString() == "guard_episode");
+  CHECK(minimal["urgency"].asString() == "critical");
+  CHECK(push_copy::langOf(data) == "en");
+  const PushCopy urgent = push_copy::render(
+      {.lang = "en", .urgency = "critical", .call = false});
+  CHECK(urgent.title == "Argus");
+  CHECK(urgent.body == "There is an important alert. Open Argus to see it.");
+  const PushCopy call =
+      push_copy::render({.lang = "es", .urgency = "critical", .call = true});
+  CHECK(call.title == "Argus te está llamando");
+  CHECK(call.body.find("Patio") == std::string::npos);
+  CHECK(push_copy::langOf(Json::Value(Json::objectValue)) == "es");
+  CHECK(push_copy::urgencyOf(Json::Value(Json::objectValue)) == "active");
+}
+
 TEST_CASE("a publish on an unconnected bus is a warn, not a crash")
 {
   const std::shared_ptr<NatsBus> bus = std::make_shared<NatsBus>();
@@ -278,6 +306,7 @@ TEST_CASE("the create path publishes one intent per row")
       "created_ms INTEGER NOT NULL DEFAULT 0, "
       "sent_ms INTEGER NOT NULL DEFAULT 0, "
       "acked_ms INTEGER NOT NULL DEFAULT 0, "
+      "claimed_at INTEGER NOT NULL DEFAULT 0, "
       "UNIQUE (notification_id))");
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
@@ -309,8 +338,13 @@ TEST_CASE("the create path publishes one intent per row")
   REQUIRE(sink->recordedIntents().size() == 2);
   CHECK(sink->recordedIntents()[0].userId == 1);
   CHECK(sink->recordedIntents()[0].type == "camera");
-  CHECK(sink->recordedIntents()[0].title == "Front door");
-  CHECK(sink->recordedIntents()[0].body == "Person detected");
+  CHECK(sink->recordedIntents()[0].title == "Argus");
+  CHECK(sink->recordedIntents()[0].body ==
+        "Tienes un aviso nuevo. Abre Argus para verlo.");
+  CHECK(sink->recordedIntents()[0].data["notificationId"].asInt64() ==
+        sink->recordedIntents()[0].notificationId);
+  CHECK(sink->recordedIntents()[0].data["urgency"].asString() == "active");
+  CHECK(sink->recordedIntents()[0].data.size() == 3);
   CHECK(sink->recordedIntents()[0].createdAtMs > 0);
   CHECK(sink->recordedIntents()[1].userId == 2);
   CHECK(sink->recordedIntents()[0].notificationId !=

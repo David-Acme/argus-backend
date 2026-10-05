@@ -2,12 +2,15 @@
 
 #include <chrono>
 #include <ctime>
+#include <exception>
 #include <drogon/utils/coroutine.h>
 #include <errors/response-exception.hxx>
 #include <notification/notification-delivery-status.hxx>
 #include <notification/notification-delivery-sink.hxx>
 #include <notification/notification-errors.hxx>
 #include <nats/push-intent-sink.hxx>
+#include <runtime/blocking-task.hxx>
+#include <shared/services/notification/push-copy.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 #include <sync/table-name.hxx>
@@ -24,6 +27,8 @@ int64_t nowMillis()
 
 constexpr int64_t kProbeRetentionS = 7LL * 24 * 3600;
 constexpr int64_t kCommandRetentionS = 30LL * 24 * 3600;
+constexpr int kDeliveryPage = 200;
+constexpr int64_t kClaimLeaseS = 30;
 }
 
 NotificationService::NotificationService(Dependencies dependencies)
@@ -58,14 +63,11 @@ drogon::Task<NotificationCreateOutcome> NotificationService::createManyAndEmit(
   co_return outcome;
 }
 
-drogon::Task<bool> NotificationService::deliverDurable(
-    DeliverDurableInput input) const
+NotificationService::PublishedPage NotificationService::publishPage(
+    const PublishPageInput& input)
 {
-  const bool pushArmed = input.pushSink != nullptr;
-  if (input.pushRequired && !pushArmed)
-    LOG_WARN << "push intents required but no push sink installed; "
-                "settling deliveries without push";
-  bool progressed = false;
+  PublishedPage page;
+  page.sent.reserve(input.pending.size());
   for (const auto& delivery : input.pending) {
     const NotificationDeliveryEvent event{
         .deliveryId = delivery.deliveryId,
@@ -76,25 +78,62 @@ drogon::Task<bool> NotificationService::deliverDurable(
         .body = delivery.body,
         .data = delivery.data,
         .createdAt = delivery.createdAt};
-    if (!input.sink.publish(event))
+    if (!input.sink->publish(event)) {
+      page.refused.push_back(delivery.deliveryId);
       continue;
-    if (input.pushSink) {
-      input.pushSink->publish(PushIntent{.userId = delivery.userId,
-                                         .notificationId =
-                                             delivery.notificationId,
-                                         .type = delivery.type,
-                                         .title = delivery.title,
-                                         .body = delivery.body,
-                                         .createdAtMs = delivery.createdAt *
-                                                          1000,
-                                         .data = delivery.data});
     }
-    if (co_await repository_.markDelivered(delivery.deliveryId,
-                                           static_cast<int64_t>(
-                                               std::time(nullptr))))
-      progressed = true;
+    page.sent.push_back(delivery.deliveryId);
+    if (!input.pushSink || delivery.userId <= 0)
+      continue;
+    const PushCopy copy =
+        push_copy::render({.lang = push_copy::langOf(delivery.data),
+                           .urgency = push_copy::urgencyOf(delivery.data),
+                           .call = false});
+    input.pushSink->publish(
+        PushIntent{.userId = delivery.userId,
+                   .notificationId = delivery.notificationId,
+                   .type = delivery.type,
+                   .title = copy.title,
+                   .body = copy.body,
+                   .createdAtMs = delivery.createdAt * 1000,
+                   .data = push_copy::minimalData(
+                       {.notificationId = delivery.notificationId,
+                        .data = delivery.data})});
   }
-  co_return progressed;
+  return page;
+}
+
+drogon::Task<bool> NotificationService::deliverDurable(
+    DeliverDurableInput input) const
+{
+  if (input.pushRequired && !input.pushSink)
+    LOG_WARN << "push intents required but no push sink installed; "
+                "settling deliveries without push";
+  std::vector<int64_t> claimed;
+  claimed.reserve(input.pending.size());
+  for (const auto& delivery : input.pending)
+    claimed.push_back(delivery.deliveryId);
+  PublishPageInput page{.pending = std::move(input.pending),
+                        .sink = std::move(input.sink),
+                        .pushSink = std::move(input.pushSink)};
+  PublishedPage published;
+  std::exception_ptr failure;
+  try {
+    published = co_await BlockingTask<PublishedPage>(
+        [page = std::move(page)]() { return publishPage(page); });
+  }
+  catch (...) {
+    failure = std::current_exception();
+  }
+  if (failure) {
+    co_await repository_.releaseClaims(claimed);
+    std::rethrow_exception(failure);
+  }
+  co_await repository_.releaseClaims(published.refused);
+  const int64_t settled = co_await repository_.markDelivered(
+      {.deliveryIds = published.sent,
+       .at = static_cast<int64_t>(std::time(nullptr))});
+  co_return settled > 0;
 }
 
 drogon::Task<DeliverPendingOutcome> NotificationService::deliverPending()
@@ -105,15 +144,18 @@ drogon::Task<DeliverPendingOutcome> NotificationService::deliverPending()
                 "intents stay pending";
     co_return DeliverPendingOutcome::NoSinkInstalled;
   }
-  const NotificationDeliverySink& sink = *dependencies_.deliverySink;
-  if (!sink.ensureStream())
+  const auto sink = dependencies_.deliverySink;
+  if (!co_await BlockingTask<bool>([sink]() { return sink->ensureStream(); }))
     co_return DeliverPendingOutcome::StreamUnavailable;
   while (true) {
-    const auto pending = co_await repository_.pendingDeliveries(200);
+    auto pending = co_await repository_.claimPending(
+        {.limit = kDeliveryPage,
+         .now = static_cast<int64_t>(std::time(nullptr)),
+         .leaseS = kClaimLeaseS});
     if (pending.empty())
       co_return DeliverPendingOutcome::Settled;
     const bool progressed =
-        co_await deliverDurable({.pending = pending,
+        co_await deliverDurable({.pending = std::move(pending),
                                  .sink = sink,
                                  .pushSink = dependencies_.pushSink,
                                  .pushRequired = dependencies_.pushRequired});

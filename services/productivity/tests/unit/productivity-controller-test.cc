@@ -669,6 +669,22 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
 
   CalendarEventController eventController;
 
+  Json::Value strayEventBody;
+  strayEventBody["title"] = "Stray";
+  strayEventBody["startsAt"] = Json::Int64(1735689600000);
+  strayEventBody["projectId"] = Json::Int64(999);
+  auto strayEventReq = drogon::HttpRequest::newHttpJsonRequest(strayEventBody);
+  setActor({.req = strayEventReq, .sub = 42, .role = UserRole::Owner});
+  const std::size_t emitsBeforeStray = sink.emits.size();
+  const auto stray = refusalOf(eventController.create(strayEventReq));
+  if (!stray) {
+    FAIL("expected a value in stray");
+    return;
+  }
+  CHECK(stray->status == 404);
+  CHECK(stray->message == "Project not found");
+  CHECK(sink.emits.size() == emitsBeforeStray);
+
   Json::Value eventBody;
   eventBody["title"] = "Gate review";
   eventBody["description"] = "Walk the gate";

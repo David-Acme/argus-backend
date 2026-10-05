@@ -83,3 +83,32 @@ TEST_CASE("notification schema application fails on a missing schema file")
                     != std::string::npos,
                 result.error);
 }
+
+TEST_CASE("the notification schema names no table of another service and "
+          "enforces its own foreign keys")
+{
+  const auto db = openMemory();
+  const auto result = applyNotificationSchema(
+      {.db = db.get(), .schemaPath = ARGUS_NOTIFICATION_SCHEMA_PATH});
+  REQUIRE_MESSAGE(result.ok, result.error);
+
+  CHECK(queryColumn(db.get(),
+                    "SELECT f.\"table\" FROM sqlite_master AS m, "
+                    "pragma_foreign_key_list(m.name) AS f "
+                    "WHERE m.type = 'table' AND f.\"table\" = 'user'")
+            .empty());
+  CHECK(queryColumn(db.get(), "PRAGMA foreign_keys") ==
+        std::vector<std::string>{"1"});
+  CHECK(sqlite3_exec(db.get(),
+                     "INSERT INTO notification_delivery (notification_id) "
+                     "VALUES (4242)",
+                     nullptr, nullptr, nullptr) == SQLITE_CONSTRAINT);
+  CHECK(sqlite3_exec(db.get(),
+                     "INSERT INTO notification_token (user_id, device_hash, "
+                     "token) VALUES (1, 'a', 'shared'), (2, 'b', 'shared')",
+                     nullptr, nullptr, nullptr) == SQLITE_CONSTRAINT);
+  CHECK(queryColumn(db.get(),
+                    "SELECT name FROM sqlite_master WHERE type = 'index' "
+                    "AND name = 'idx_notification_token_user'")
+            .empty());
+}

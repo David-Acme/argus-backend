@@ -187,9 +187,45 @@ CallResponseRepository::expire(int64_t createdBefore, int64_t at) const
   co_return ids;
 }
 
-drogon::Task<std::vector<CallResponseSchema>>
+drogon::Task<std::vector<CallResponseForUser>>
 CallResponseRepository::forUser(const CallResponseUserInput& input) const
 {
-  co_return responsesOf(co_await DbService::client()->execSqlCoro(
-      std::string(FOR_USER), input.userId, input.closedSince, input.limit));
+  const auto rows = co_await DbService::client()->execSqlCoro(
+      std::string(FOR_USER), input.userId, input.closedSince, input.limit);
+  std::vector<CallResponseForUser> views;
+  views.reserve(rows.size());
+  for (const auto& row : rows) {
+    views.push_back(
+        {.response = CallResponseSchema::fromRow(row),
+         .member = {.responseId = row["id"].as<int64_t>(),
+                    .userId = row["member_user_id"].as<int64_t>(),
+                    .step = row["member_step"].as<int>(),
+                    .mode = responseMemberModeFromString(
+                        row["member_mode"].as<std::string>()),
+                    .mandatory = row["member_mandatory"].as<int64_t>() != 0,
+                    .discreet = row["member_discreet"].as<int64_t>() != 0,
+                    .reachedAt = row["member_reached_at"].as<int64_t>()}});
+  }
+  co_return views;
+}
+
+drogon::Task<int64_t>
+CallResponseRepository::purgeClosed(int64_t updatedBefore) const
+{
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  int64_t purged = 0;
+  try {
+    co_await transaction->execSqlCoro(std::string(PURGE_CLOSED_MEMBERS),
+                                      updatedBefore);
+    const auto result = co_await transaction->execSqlCoro(
+        std::string(PURGE_CLOSED), updatedBefore);
+    purged = static_cast<int64_t>(result.affectedRows());
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  if (!co_await db_transaction::Commit(std::move(transaction)))
+    throw std::runtime_error("call response purge did not commit");
+  co_return purged;
 }

@@ -12,6 +12,9 @@ public:
 
   [[nodiscard]] CallRecipient recipient(int64_t userId) const override;
 
+  [[nodiscard]] std::unordered_map<int64_t, CallRecipient>
+  recipients(const std::vector<int64_t>& userIds) const override;
+
   [[nodiscard]] CallPerson person(int64_t personId) const override;
 
 private:

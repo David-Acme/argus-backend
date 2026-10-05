@@ -78,10 +78,22 @@ inline constexpr std::string_view EXPIRE =
     "AND created_at < ? RETURNING id";
 
 inline constexpr std::string_view FOR_USER =
-    "SELECT r.* FROM call_response r JOIN call_response_member m "
+    "SELECT r.*, m.user_id AS member_user_id, m.step AS member_step, "
+    "m.mode AS member_mode, m.mandatory AS member_mandatory, "
+    "m.discreet AS member_discreet, m.reached_at AS member_reached_at "
+    "FROM call_response r JOIN call_response_member m "
     "ON m.response_id = r.id WHERE m.user_id = ? AND m.reached_at > 0 "
     "AND (r.state IN ('active', 'attended', 'unanswered', 'confirmed') "
     "OR r.updated_at >= ?) ORDER BY r.id DESC LIMIT ?";
+
+inline constexpr std::string_view PURGE_CLOSED_MEMBERS =
+    "DELETE FROM call_response_member WHERE response_id IN ("
+    "SELECT id FROM call_response WHERE state IN ('false_alarm', 'expired') "
+    "AND updated_at < ?)";
+
+inline constexpr std::string_view PURGE_CLOSED =
+    "DELETE FROM call_response WHERE state IN ('false_alarm', 'expired') "
+    "AND updated_at < ?";
 }
 
 struct CallResponseCreateInput

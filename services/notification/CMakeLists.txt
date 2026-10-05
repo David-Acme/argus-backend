@@ -71,6 +71,11 @@ endif()
 
 find_package(doctest REQUIRED)
 
+if(NOT TARGET argus::contracts::camera)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/camera
+                     ${CMAKE_BINARY_DIR}/contracts/camera)
+endif()
+
 if(NOT TARGET argus::clients::notification)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
                      ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)

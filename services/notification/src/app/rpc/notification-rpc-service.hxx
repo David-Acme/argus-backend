@@ -9,6 +9,7 @@
 #include <nats/push-intent-sink.hxx>
 #include <shared/repositories/notification/notification-repository.hxx>
 #include <shared/services/notification/notification-service.hxx>
+#include <shared/services/task-gate/task-gate.hxx>
 #include <vector>
 
 class NotificationRpcService final
@@ -36,10 +37,13 @@ public:
 
   void attachCallEngine(std::shared_ptr<const CallEngine> engine);
 
+  void attachTasks(std::shared_ptr<TaskGate> tasks);
+
 private:
   std::vector<argus::client::CallerCredential> guardCallers_;
   std::vector<argus::client::CallerCredential> syncCallers_;
   std::shared_ptr<const CallEngine> callEngine_;
+  std::shared_ptr<TaskGate> tasks_;
   NotificationService notificationService_;
   NotificationRepository repository_;
 };

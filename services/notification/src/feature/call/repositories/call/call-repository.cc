@@ -163,3 +163,10 @@ CallRepository::cancelRingingForKey(const CallCancelForKeyInput& input) const
                          .userId = row["user_id"].as<int64_t>()});
   co_return cancelled;
 }
+
+drogon::Task<int64_t> CallRepository::purgeSettled(int64_t createdBefore) const
+{
+  const auto result = co_await DbService::client()->execSqlCoro(
+      std::string(PURGE_SETTLED), createdBefore);
+  co_return static_cast<int64_t>(result.affectedRows());
+}

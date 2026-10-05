@@ -44,6 +44,23 @@ std::string batchInsertSql(const std::vector<NotificationCreateInput>& inputs,
   return sql;
 }
 
+std::string withIdList(const IdListQueryInput& input)
+{
+  std::string placeholders;
+  placeholders.reserve(input.ids.size() * 3);
+  input.args.reserve(input.args.size() + input.ids.size());
+  for (const int64_t id : input.ids) {
+    if (!placeholders.empty())
+      placeholders += ", ";
+    placeholders += '?';
+    input.args.push_back(std::to_string(id));
+  }
+  std::string query{input.templateQuery};
+  if (const auto position = query.find("%1%"); position != std::string::npos)
+    query.replace(position, 3, placeholders);
+  return query;
+}
+
 void addFingerprintField(argus::hash::Sha256& hasher, std::string_view value)
 {
   hasher.update(std::to_string(value.size()));
@@ -285,14 +302,25 @@ NotificationRepository::createManyWithCommand(
 }
 
 drogon::Task<std::vector<NotificationDeliveryRow>>
-NotificationRepository::pendingDeliveries(int limit) const
+NotificationRepository::claimPending(const DeliveryClaimInput& input) const
 {
   auto client = DbService::client();
-  const auto rows =
-      co_await client->execSqlCoro(std::string(PENDING_DELIVERIES) +
-                                       std::to_string(limit > 0 ? limit : 200),
-                                   notificationDeliveryStatusToString(
-                                       NotificationDeliveryStatus::Pending));
+  const std::string pending =
+      notificationDeliveryStatusToString(NotificationDeliveryStatus::Pending);
+  const auto claimed = co_await client->execSqlCoro(
+      CLAIM_PENDING.data(), input.now, pending, input.now - input.leaseS,
+      input.limit > 0 ? input.limit : 200);
+  if (claimed.empty())
+    co_return std::vector<NotificationDeliveryRow>{};
+  std::vector<int64_t> ids;
+  ids.reserve(claimed.size());
+  for (const auto& row : claimed)
+    ids.push_back(row["id"].as<int64_t>());
+  std::vector<std::string> args{pending};
+  const std::string query = withIdList(
+      {.templateQuery = CLAIMED_DELIVERIES, .ids = ids, .args = args});
+  const auto& argsRef = args;
+  const auto rows = co_await client->execSqlCoro(query, argsRef);
   std::vector<NotificationDeliveryRow> result;
   result.reserve(rows.size());
   for (const auto& row : rows) {
@@ -309,18 +337,36 @@ NotificationRepository::pendingDeliveries(int limit) const
   co_return result;
 }
 
-drogon::Task<bool> NotificationRepository::markDelivered(int64_t deliveryId,
-                                                         int64_t at) const
+drogon::Task<int64_t>
+NotificationRepository::markDelivered(const DeliveredInput& input) const
 {
-  auto client = DbService::client();
+  if (input.deliveryIds.empty())
+    co_return 0;
+  std::vector<std::string> args{
+      notificationDeliveryStatusToString(NotificationDeliveryStatus::Sent),
+      std::to_string(input.at), std::to_string(nowMillis()),
+      notificationDeliveryStatusToString(NotificationDeliveryStatus::Pending)};
+  const std::string query =
+      withIdList({.templateQuery = MARK_DELIVERED_MANY,
+                  .ids = input.deliveryIds,
+                  .args = args});
+  const auto& argsRef = args;
   const auto result =
-      co_await client->execSqlCoro(MARK_DELIVERED.data(),
-                                   notificationDeliveryStatusToString(
-                                       NotificationDeliveryStatus::Sent),
-                                   at, nowMillis(), deliveryId,
-                                   notificationDeliveryStatusToString(
-                                       NotificationDeliveryStatus::Pending));
-  co_return result.affectedRows() > 0;
+      co_await DbService::client()->execSqlCoro(query, argsRef);
+  co_return static_cast<int64_t>(result.affectedRows());
+}
+
+drogon::Task<void> NotificationRepository::releaseClaims(
+    const std::vector<int64_t>& deliveryIds) const
+{
+  if (deliveryIds.empty())
+    co_return;
+  std::vector<std::string> args{
+      notificationDeliveryStatusToString(NotificationDeliveryStatus::Pending)};
+  const std::string query = withIdList(
+      {.templateQuery = RELEASE_CLAIMS, .ids = deliveryIds, .args = args});
+  const auto& argsRef = args;
+  co_await DbService::client()->execSqlCoro(query, argsRef);
 }
 
 drogon::Task<int64_t> NotificationRepository::ackDeliveries(
@@ -603,6 +649,11 @@ NotificationRepository::markAsRead(const NotificationMarkReadInput& input) const
     changes.push_back(std::move(change));
   }
 
-  co_await client->execSqlCoro(withIds(MARK_READ), argsRef);
+  std::vector<std::string> markArgs;
+  markArgs.reserve(args.size() + 1);
+  markArgs.push_back(std::to_string(readAt));
+  markArgs.insert(markArgs.end(), args.begin(), args.end());
+  const auto& markArgsRef = markArgs;
+  co_await client->execSqlCoro(withIds(MARK_READ), markArgsRef);
   co_return changes;
 }

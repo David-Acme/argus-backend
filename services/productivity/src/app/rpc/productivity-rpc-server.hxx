@@ -17,6 +17,8 @@ public:
   ~ProductivityRpcServer();
   [[nodiscard]] bool listening() const;
   [[nodiscard]] const std::string& address() const;
+  void requestStop();
+  [[nodiscard]] bool drained() const;
   void shutdown();
 private:
   struct Impl;

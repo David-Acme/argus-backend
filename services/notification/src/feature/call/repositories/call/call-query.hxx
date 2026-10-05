@@ -69,6 +69,10 @@ inline constexpr std::string_view CANCEL_RINGING_FOR_KEY =
     "WHERE dedupe_key = ? AND state = 'ringing' AND user_id != ? "
     "AND (? = 0 OR user_id = ?) RETURNING id, user_id";
 
+inline constexpr std::string_view PURGE_SETTLED =
+    "DELETE FROM call WHERE created_at < ? "
+    "AND state NOT IN ('ringing', 'queued', 'answered')";
+
 inline constexpr std::string_view CLOSE_STALE_ANSWERED =
     "UPDATE call SET state = 'completed', ended_at = ? "
     "WHERE state = 'answered' AND answered_at < ?";

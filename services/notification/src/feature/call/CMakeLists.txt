@@ -31,6 +31,7 @@ argus_module(NAME notification-call
         argus::clients::identity
         argus::clients::sync
         argus::clients::voice
+        argus::contracts::auth
         argus::contracts::notification
         argus::contracts::sync
         argus::lib::auth

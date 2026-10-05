@@ -20,13 +20,33 @@ own `productivity.db`.
   touched. `context_note` is NOT recreated (Ruling AK): it was an orphan
   table with no controller and no sync pull, and the frozen argus.db copy
   was dropped from `database/schema.sql` in F6-1.
-- **Foreign keys stay off** (schema file pragma + re-applied after
-  `applyPragmas`, which would otherwise turn them on per connection): every
-  productivity table references `user(id)`, and the user rows live in
-  identity.db, not here. The `REFERENCES user(id)` clauses are kept verbatim;
-  enforcement is replaced by code — share/member targets are validated
+- **Foreign keys are on; no table names another service's table**
+  (2026-10, audit #65). Every productivity table used to declare
+  `REFERENCES user(id)` toward identity.db's table (rule 27), and the whole
+  database ran with `foreign_keys = OFF` so that DDL could load: the
+  cascades never happened and the real internal keys (`project_task`,
+  `project_member` and `calendar_event.project_id` → `project`,
+  `calendar_event_share` → `calendar_event`, `reminder_detail` → `reminder`)
+  were not enforced either. `database/schema.sql` now names no `user` table
+  and turns `foreign_keys` on; share/member targets are still validated
   through the identity client (Ruling AM) and the JWT context provides the
-  actor.
+  actor. Because the internal keys now hold, a calendar event whose
+  `projectId` names no live project is refused with `404 Project not found`
+  on create and update (it used to be stored as a dangling id).
+  **An existing productivity.db keeps its old DDL**: `CREATE TABLE IF NOT
+  EXISTS` does not rewrite a table and the service never migrates a user's
+  database silently (root rule 17). At boot `main.cc` checks
+  `pragma_foreign_key_list` for any reference to `user`; while one exists it
+  keeps foreign keys off for the connection and logs a warning (with
+  enforcement on, SQLite refuses every insert into a table whose parent table
+  does not exist). Such a database needs an explicit rebuild — a development
+  reset (delete productivity.db, the schema recreates it) or the SQLite
+  table-rebuild procedure for each of the seven tables, run by hand with the
+  service stopped: create the new table from the schema under a temporary
+  name, `INSERT ... SELECT` the rows, check `PRAGMA foreign_key_check`, drop
+  the old table, rename, recreate the indexes. Removing a deleted user's
+  rows is not wired: this service consumes no identity change feed; the
+  `ON DELETE CASCADE` toward `user` was never effective.
 - **Write-side feature surface, one module per feature**: the calendar-event,
   calendar-event-share, project, project-member and project-task trees are
   each a module (`argus::productivity-<feature>`) under
@@ -307,6 +327,42 @@ The native `config.toml.example` gained `[identity] rpc_secret`: identity
 refuses `GetUser` without the fleet secret once it has one, and without the
 key `setup.sh` never shared it here, so every grant on a native install
 answered "User not found" (the deploy example already carried it).
+
+## Tombstones are served only from settled seconds (2026-10, audit #52)
+
+The deleted leg pages by `(deleted_at, id)` and `deleted_at` has one-second
+resolution, while ids follow creation, not deletion. A client that had read
+`(T, 50)` never saw row 10 deleted later in the same second `T`: its cursor
+had already passed it, and for a `project_member` that meant a revoked
+member kept the project. Every `FIND_DELETED*` and `FIND_LAST_DELETED`
+query now also requires `deleted_at < strftime('%s','now') - 1`: a tombstone
+is served once its second can no longer gain rows. Productivity's pool holds
+one connection, so a reader never interleaves with an open write, and a
+deletion that happens after a read lands in a later second than every row the
+reader saw; the cursor therefore never steps over a row. The wire shape and
+the cursor are unchanged; a tombstone simply reaches a pull up to two seconds
+later, while the live `Delete` frame still arrives at once. A wall clock that
+steps backwards would reopen the gap.
+
+`FIND_LAST` and `FIND_LAST_DELETED` break ties by `id DESC` (audit #77), so
+two rows of the same second give a stable watermark.
+
+The reminder rows (`reminder`, `reminder_detail`) are pulled unscoped, as the
+legacy pull did: every role with read access to them (Owner and Resident)
+receives every household member's reminders, whatever their
+`target_user_id`. That is the documented legacy behaviour, not a rule-7b
+breach (7b scopes the `user` directory), but it is wider than the personal
+scoping the other productivity tables have.
+
+## Stopping cleanly (2026-10)
+
+The gRPC listener and the agenda sweep register with `shutdown_signal`
+before `run()`: `ProductivityRpcServer::requestStop` shuts the server down
+with a 2 s deadline on a thread of its own while the loop keeps answering,
+and `AgendaSweeper` stops taking sweeps and reports drained once the running
+one returns. Before, the server was shut down only after the loop stopped,
+with no deadline, and a sweep could still be inside the database when
+`quit()` reset the client.
 
 ## Agenda announcements (2026-10, "Argus calls you")
 

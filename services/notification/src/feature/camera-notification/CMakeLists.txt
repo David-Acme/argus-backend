@@ -11,6 +11,7 @@ argus_module(NAME notification-camera-notification
         argus::lib::sqlite
         argus::lib::text
         argus::clients::identity
+        argus::contracts::camera
         argus::notification-shared
     INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}/../..)

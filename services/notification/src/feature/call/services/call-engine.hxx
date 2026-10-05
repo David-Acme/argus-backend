@@ -15,12 +15,14 @@
 #include <nats/push-intent-sink.hxx>
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 struct CallLocalTime
@@ -198,6 +200,7 @@ struct CallSweepReport
   int64_t closed{0};
   int64_t escalated{0};
   int64_t expired{0};
+  int64_t purged{0};
 };
 
 class CallEngine
@@ -259,6 +262,27 @@ private:
     const CallResponseMember* member{nullptr};
   };
 
+  struct PreparedCall
+  {
+    CallUserOutcome outcome;
+    bool settled{true};
+    CallVerdict verdict;
+    bool askedReminder{false};
+    std::string lang;
+    CallCopy copy;
+    Json::Value stored;
+    CallCreateInput row;
+    std::optional<CallSchema> ringing;
+  };
+
+  struct FinishUserInput
+  {
+    const CallRequest& request;
+    PreparedCall& prepared;
+    std::optional<bool> heard;
+    int64_t now{0};
+  };
+
   struct ReachInput
   {
     const CallResponseSchema& response;
@@ -292,7 +316,17 @@ private:
     int64_t now{0};
   };
 
-  drogon::Task<CallUserOutcome> considerUser(const ConsiderUserInput& input) const;
+  drogon::Task<PreparedCall> prepareUser(const ConsiderUserInput& input) const;
+
+  drogon::Task<CallUserOutcome> finishUser(const FinishUserInput& input) const;
+
+  drogon::Task<std::vector<std::optional<bool>>>
+  announceAll(std::vector<CallAnnouncement> probes) const;
+
+  drogon::Task<std::unordered_map<int64_t, CallRecipient>>
+  lookupRecipients(std::vector<int64_t> userIds) const;
+
+  drogon::Task<int64_t> purgeHistory(int64_t now) const;
 
   drogon::Task<void> settleMissed(const MissedInput& input) const;
 
@@ -312,9 +346,6 @@ private:
 
   drogon::Task<CallPerson> lookupPerson(int64_t personId) const;
 
-  drogon::Task<std::optional<bool>>
-  announce(const CallAnnouncement& announcement) const;
-
   drogon::Task<bool> emit(const CallSignalInput& input) const;
 
   void pushRing(const CallSchema& call) const;
@@ -326,6 +357,7 @@ private:
   std::string langFor(const std::string& preferred) const;
 
   mutable std::mutex configMutex_;
+  mutable std::atomic<int64_t> nextPurgeAt_{0};
   CallEngineConfig config_;
   CallEngineDependencies dependencies_;
   CallRepository callRepository_;
@@ -337,5 +369,19 @@ private:
 
 namespace call_engine
 {
+inline constexpr std::size_t kProbeParallel = 8;
+inline constexpr int64_t kArrivalStaleS = 600;
+inline constexpr int64_t kPurgeIntervalS = 3600;
+
 Json::Value incomingInfo(const CallSchema& call);
+
+struct AnnounceAllInput
+{
+  const LiveCallAnnouncer& announcer;
+  const std::vector<CallAnnouncement>& probes;
+  std::size_t parallel{1};
+};
+
+[[nodiscard]] std::vector<std::optional<bool>>
+announceAll(const AnnounceAllInput& input);
 }

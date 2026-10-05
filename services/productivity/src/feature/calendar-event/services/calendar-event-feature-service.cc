@@ -48,6 +48,15 @@ CalendarEventFeatureService::canEdit(const CanEditInput& input) const
   co_return access && *access == ShareAccess::Edit;
 }
 
+drogon::Task<void> CalendarEventFeatureService::requireProject(
+    std::optional<int64_t> projectId, drogon::orm::DbClient* client) const
+{
+  if (!projectId)
+    co_return;
+  if (!co_await projectRepository_.findById(*projectId, client))
+    throw ResponseException(ProductivityErrors::ProjectNotFound);
+}
+
 drogon::Task<CalendarEventSchema>
 CalendarEventFeatureService::create(const CreateCalendarEventDto& body,
                                     const CalendarEventOwnerInput& who) const
@@ -70,6 +79,7 @@ CalendarEventFeatureService::create(const CreateCalendarEventDto& body,
         co_return *existing;
       }
     }
+    co_await requireProject(body.projectId, transaction.get());
     row = co_await repository_.create({
         .createdBy = who.actorId > 0 ? std::optional<int64_t>(who.actorId)
                                      : std::nullopt,
@@ -122,6 +132,7 @@ CalendarEventFeatureService::update(const UpdateInput& input) const
       co_return std::nullopt;
     }
     before = existing->toJson();
+    co_await requireProject(input.body.projectId, transaction.get());
 
     row = co_await repository_.update(input.id, {
         .title = input.body.title,

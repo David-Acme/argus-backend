@@ -10,6 +10,7 @@
 #include <shared/repositories/calendar-event-share/calendar-event-share-repository.hxx>
 #include <shared/repositories/idempotency-key/idempotency-key-repository.hxx>
 #include <shared/repositories/calendar-event/calendar-event-repository.hxx>
+#include <shared/repositories/project/project-repository.hxx>
 #include <shared/schemas/calendar-event/calendar-event-schema.hxx>
 #include <sync/user-change-sink.hxx>
 
@@ -53,8 +54,11 @@ private:
 
   drogon::Task<void> emit(const EmitInput& input) const;
   drogon::Task<bool> canEdit(const CanEditInput& input) const;
+  drogon::Task<void> requireProject(std::optional<int64_t> projectId,
+                                    drogon::orm::DbClient* client) const;
 
   CalendarEventRepository repository_;
   CalendarEventShareRepository shareRepository_;
+  ProjectRepository projectRepository_;
   IdempotencyKeyRepository idempotency_;
 };

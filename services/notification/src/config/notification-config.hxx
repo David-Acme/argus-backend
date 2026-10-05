@@ -41,6 +41,7 @@ struct CallEngineConfig
   int64_t scheduleHorizonS{2592000};
   int64_t maxPendingScheduled{20};
   int64_t answeredStaleS{7200};
+  int64_t retentionDays{30};
   std::string fallbackLang{"es"};
 };
 

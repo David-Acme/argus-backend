@@ -6,6 +6,7 @@
 #include <identity/identity-client.hxx>
 #include <json/value.h>
 #include <shared/services/notification/notification-service.hxx>
+#include <shared/services/task-gate/task-gate.hxx>
 
 #include <cstdint>
 #include <memory>
@@ -17,6 +18,7 @@ struct CameraNotifierDependencies
 {
   std::shared_ptr<IdentityClient> identityClient;
   NotificationService::Dependencies delivery;
+  std::shared_ptr<TaskGate> tasks;
 };
 
 class CameraObjectNotifier
@@ -47,6 +49,7 @@ private:
 
   NotificationService notificationService_;
   std::shared_ptr<IdentityClient> identityClient_;
+  std::shared_ptr<TaskGate> tasks_;
   CameraFallbackLogRepository fallbackLogRepository_;
   CameraNotificationPolicy policy_;
 };

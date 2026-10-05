@@ -53,30 +53,30 @@ inline constexpr std::string_view FIND_ALL =
     "WHERE p.id = project_member.project_id AND p.owner_id = ?)) "
     "ORDER BY created_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED =
-    "SELECT * FROM project_member WHERE deleted_at IS NOT NULL "
+    "SELECT * FROM project_member WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
     "AND deleted_at >= ? AND deleted_at <= ? "
     "AND (user_id = ? OR EXISTS (SELECT 1 FROM project p "
     "WHERE p.id = project_member.project_id AND p.owner_id = ?)) "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_FROM =
-    "SELECT * FROM project_member WHERE deleted_at IS NOT NULL AND deleted_at >= ? "
+    "SELECT * FROM project_member WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 AND deleted_at >= ? "
     "AND (user_id = ? OR EXISTS (SELECT 1 FROM project p "
     "WHERE p.id = project_member.project_id AND p.owner_id = ?)) "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_AFTER =
-    "SELECT * FROM project_member WHERE deleted_at IS NOT NULL AND "
+    "SELECT * FROM project_member WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 AND "
     "(deleted_at > ? OR (deleted_at = ? AND id > ?)) AND deleted_at <= ? "
     "AND (user_id = ? OR EXISTS (SELECT 1 FROM project p "
     "WHERE p.id = project_member.project_id AND p.owner_id = ?)) "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_AFTER_FROM =
-    "SELECT * FROM project_member WHERE deleted_at IS NOT NULL AND "
+    "SELECT * FROM project_member WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 AND "
     "(deleted_at > ? OR (deleted_at = ? AND id > ?)) "
     "AND (user_id = ? OR EXISTS (SELECT 1 FROM project p "
     "WHERE p.id = project_member.project_id AND p.owner_id = ?)) "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_ALL =
-    "SELECT * FROM project_member WHERE deleted_at IS NOT NULL "
+    "SELECT * FROM project_member WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
     "AND (user_id = ? OR EXISTS (SELECT 1 FROM project p "
     "WHERE p.id = project_member.project_id AND p.owner_id = ?)) "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
@@ -84,12 +84,12 @@ inline constexpr std::string_view FIND_LAST =
     "SELECT * FROM project_member WHERE deleted_at IS NULL "
     "AND (user_id = ? OR EXISTS (SELECT 1 FROM project p "
     "WHERE p.id = project_member.project_id AND p.owner_id = ?)) "
-    "ORDER BY created_at DESC LIMIT 1";
+    "ORDER BY created_at DESC, id DESC LIMIT 1";
 inline constexpr std::string_view FIND_LAST_DELETED =
-    "SELECT * FROM project_member WHERE deleted_at IS NOT NULL "
+    "SELECT * FROM project_member WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
     "AND (user_id = ? OR EXISTS (SELECT 1 FROM project p "
     "WHERE p.id = project_member.project_id AND p.owner_id = ?)) "
-    "ORDER BY deleted_at DESC LIMIT 1";
+    "ORDER BY deleted_at DESC, id DESC LIMIT 1";
 
 inline constexpr std::string_view INSERT =
     "INSERT INTO project_member (project_id, user_id, access) VALUES (?, ?, ?)";

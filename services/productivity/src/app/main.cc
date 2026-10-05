@@ -1,5 +1,6 @@
 #include <feature/agenda/infra/notification-agenda-notifier.hxx>
 #include <feature/agenda/services/agenda-announcer.hxx>
+#include <feature/agenda/services/agenda-sweeper.hxx>
 #include <app/rpc/productivity-rpc-server.hxx>
 #include <drogon/drogon.h>
 #include <feature/sync/productivity-sync-rpc-service.hxx>
@@ -30,7 +31,6 @@
 #include <sqlite/db-service.hxx>
 #include <unistd.h>
 
-#include <atomic>
 #include <memory>
 #include <string>
 
@@ -59,6 +59,17 @@ Json::Value drogonConfig(const ProductivityDbConfig& productivityDb,
 
   return config;
 }
+
+bool declaresForeignUserReferences()
+{
+  const auto rows = DbService::productivityClient()->execSqlSync(
+      "SELECT COUNT(*) AS total FROM sqlite_master AS m, "
+      "pragma_foreign_key_list(m.name) AS f "
+      "WHERE m.type = 'table' AND f.\"table\" = 'user'");
+  return !rows.empty() && rows.front()["total"].as<int64_t>() > 0;
+}
+
+constexpr double kAgendaSweepPeriodS = 30.0;
 
 }
 
@@ -150,7 +161,12 @@ int main()
     }
 
     DbService::applyPragmas(DbService::productivityClient());
-    DbService::productivityClient()->execSqlSync("PRAGMA foreign_keys = OFF");
+    if (declaresForeignUserReferences()) {
+      DbService::productivityClient()->execSqlSync("PRAGMA foreign_keys = OFF");
+      LOG_WARN << "productivity.db still declares REFERENCES user(id); foreign "
+                  "keys stay off until the database is rebuilt from "
+                  "database/schema.sql (services/productivity/CONTEXT.md)";
+    }
 
     if (changeSink) {
       changeSink->reconcile();
@@ -173,21 +189,9 @@ int main()
       AgendaAnnouncerDependencies{.notifier = agendaNotifier,
                                   .clock = {},
                                   .blockingOffLoop = true});
+  const auto agendaSweeper = std::make_shared<AgendaSweeper>(agenda);
   if (agenda->enabled()) {
-    auto sweeping = std::make_shared<std::atomic<bool>>(false);
-    drogon::app().getLoop()->runEvery(30.0, [agenda, sweeping]() {
-      if (sweeping->exchange(true))
-        return;
-      drogon::async_run([agenda, sweeping]() -> drogon::Task<void> {
-        try {
-          co_await agenda->sweep();
-        }
-        catch (const std::exception& error) {
-          LOG_WARN << "Agenda: sweep failed: " << error.what();
-        }
-        sweeping->store(false);
-      });
-    });
+    agendaSweeper->start(kAgendaSweepPeriodS);
     LOG_INFO << "Agenda announcements on (each user's lead time), through "
              << notifications.target;
   }
@@ -202,6 +206,9 @@ int main()
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*changeSink, "productivity-change"));
   }
+  shutdown_signal::onStop(
+      shutdown_signal::drainOf(*agendaSweeper, "productivity-agenda"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(rpc, "productivity-grpc"));
 
   std::unique_ptr<MdnsService> mdnsService;
   drogon::app().registerBeginningAdvice([&mdnsService, &listener]() {

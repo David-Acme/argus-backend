@@ -70,6 +70,9 @@ void NotificationRpcService::startDeliveryReconciler()
     return;
   }
   const auto reconcile = [this]() -> drogon::Task<void> {
+    const auto ticket = TaskGate::enter(tasks_);
+    if (!ticket)
+      co_return;
     try {
       const DeliverPendingOutcome outcome =
           co_await notificationService_.deliverPending();
@@ -119,6 +122,9 @@ void NotificationRpcService::startSelfTestProber()
     return;
   }
   const auto probe = [this]() -> drogon::Task<void> {
+    const auto ticket = TaskGate::enter(tasks_);
+    if (!ticket)
+      co_return;
     try {
       co_await notificationService_.runSelfTest();
     }
@@ -143,6 +149,11 @@ void NotificationRpcService::attachCallEngine(
     std::shared_ptr<const CallEngine> engine)
 {
   callEngine_ = std::move(engine);
+}
+
+void NotificationRpcService::attachTasks(std::shared_ptr<TaskGate> tasks)
+{
+  tasks_ = std::move(tasks);
 }
 
 grpc::ServerUnaryReactor* NotificationRpcService::CreateNotifications(

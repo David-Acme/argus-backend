@@ -4,6 +4,10 @@
 
 namespace notification_token_query
 {
+inline constexpr std::string_view RELEASE_TOKEN =
+    "DELETE FROM notification_token WHERE token = ? "
+    "AND NOT (user_id = ? AND device_hash = ?)";
+
 inline constexpr std::string_view UPSERT =
     "INSERT INTO notification_token (user_id, device_hash, token, platform, "
     "lang) VALUES (?, ?, ?, ?, ?) "

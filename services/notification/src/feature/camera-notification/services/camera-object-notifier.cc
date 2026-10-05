@@ -1,5 +1,7 @@
 #include <feature/camera-notification/services/camera-object-notifier.hxx>
 
+#include <camera/event-severity.hxx>
+
 #include <chrono>
 #include <config/config-service.hxx>
 #include <drogon/drogon.h>
@@ -30,7 +32,8 @@ FallbackNotice alertNotice(const Json::Value& event)
 
 bool isHardSignal(const Json::Value& event)
 {
-  if (event.get("severity", "").asString() == "critical")
+  if (eventSeverityFromString(event.get("severity", "").asString()) ==
+      EventSeverity::Critical)
     return true;
   const std::string rule = event.get("rule", "").asString();
   return rule == "person_in_alert_zone";
@@ -80,6 +83,7 @@ CameraObjectNotifier::CameraObjectNotifier(
     CameraNotifierDependencies dependencies)
     : notificationService_(std::move(dependencies.delivery)),
       identityClient_(std::move(dependencies.identityClient)),
+      tasks_(std::move(dependencies.tasks)),
       policy_(config)
 {
 }
@@ -154,6 +158,9 @@ void CameraObjectNotifier::logFallback(const CameraFallbackLogInput& input)
   if (!DbService::client())
     return;
   drogon::async_run([this, input]() -> drogon::Task<void> {
+    const auto ticket = TaskGate::enter(tasks_);
+    if (!ticket)
+      co_return;
     try {
       co_await fallbackLogRepository_.log(input);
     }
@@ -171,6 +178,9 @@ void CameraObjectNotifier::purgeFallbackLog(int64_t nowS)
       nowS - static_cast<int64_t>(policy_.config().fallbackRetentionDays) *
                  86400;
   drogon::async_run([this, cutoff]() -> drogon::Task<void> {
+    const auto ticket = TaskGate::enter(tasks_);
+    if (!ticket)
+      co_return;
     try {
       co_await fallbackLogRepository_.purgeOlderThan(cutoff);
     }
@@ -217,6 +227,9 @@ void CameraObjectNotifier::deliver(const DeliverInput& input)
                      commandId = input.commandId,
                      fallbackLang = policy_.config().lang]()
                         -> drogon::Task<void> {
+    const auto ticket = TaskGate::enter(tasks_);
+    if (!ticket)
+      co_return;
     try {
       const auto batches = co_await BlockingTask<
           std::optional<std::map<std::string, std::vector<int64_t>>>>(

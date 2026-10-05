@@ -64,3 +64,11 @@ drogon::Task<bool> ScheduledCallRepository::markFired(int64_t id,
   const auto result = co_await client->execSqlCoro(std::string(MARK_FIRED), now, id);
   co_return result.affectedRows() > 0;
 }
+
+drogon::Task<int64_t>
+ScheduledCallRepository::purgeSettled(int64_t createdBefore) const
+{
+  const auto result = co_await DbService::client()->execSqlCoro(
+      std::string(PURGE_SETTLED), createdBefore);
+  co_return static_cast<int64_t>(result.affectedRows());
+}

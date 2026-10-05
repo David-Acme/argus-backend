@@ -4,13 +4,13 @@ PRAGMA busy_timeout       = 5000;
 PRAGMA cache_size         = -64000;
 PRAGMA temp_store         = MEMORY;
 PRAGMA mmap_size          = 268435456;
-PRAGMA foreign_keys       = OFF;
+PRAGMA foreign_keys       = ON;
 PRAGMA journal_size_limit = 67108864;
 
 CREATE TABLE IF NOT EXISTS reminder (
     id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    created_by      INTEGER           REFERENCES user(id) ON DELETE SET NULL,
-    target_user_id  INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    created_by      INTEGER,
+    target_user_id  INTEGER NOT NULL,
     title           TEXT    NOT NULL,
     description     TEXT    NOT NULL  DEFAULT '',
     scheduled_at    INTEGER NOT NULL,
@@ -29,7 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_reminder_deleted_at   ON reminder (deleted_at);
 
 CREATE TABLE IF NOT EXISTS project (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    owner_id    INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    owner_id    INTEGER NOT NULL,
     name        TEXT    NOT NULL,
     description TEXT    NOT NULL  DEFAULT '',
     status      TEXT    NOT NULL  DEFAULT 'active'
@@ -45,8 +45,8 @@ CREATE TABLE IF NOT EXISTS project (
 CREATE TABLE IF NOT EXISTS project_task (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     project_id  INTEGER NOT NULL  REFERENCES project(id) ON DELETE CASCADE,
-    created_by  INTEGER           REFERENCES user(id) ON DELETE SET NULL,
-    assignee_id INTEGER           REFERENCES user(id) ON DELETE SET NULL,
+    created_by  INTEGER,
+    assignee_id INTEGER,
     title       TEXT    NOT NULL,
     status      TEXT    NOT NULL  DEFAULT 'todo'
                                   CHECK (status IN ('backlog', 'todo', 'doing', 'done', 'canceled')),
@@ -64,8 +64,8 @@ CREATE INDEX IF NOT EXISTS idx_project_task_project_status
 
 CREATE TABLE IF NOT EXISTS calendar_event (
     id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    created_by      INTEGER           REFERENCES user(id) ON DELETE SET NULL,
-    owner_id        INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    created_by      INTEGER,
+    owner_id        INTEGER NOT NULL,
     project_id      INTEGER           REFERENCES project(id) ON DELETE SET NULL,
     title           TEXT    NOT NULL,
     description     TEXT    NOT NULL  DEFAULT '',
@@ -86,7 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_calendar_event_owner_start
 CREATE TABLE IF NOT EXISTS project_member (
     id         INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL  REFERENCES project(id) ON DELETE CASCADE,
-    user_id    INTEGER NOT NULL  REFERENCES user(id)    ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL,
     access     TEXT    NOT NULL  DEFAULT 'view'  CHECK (access IN ('view', 'edit')),
     created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     updated_at INTEGER,
@@ -101,7 +101,7 @@ CREATE INDEX IF NOT EXISTS idx_project_member_user
 CREATE TABLE IF NOT EXISTS calendar_event_share (
     id               INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     calendar_event_id INTEGER NOT NULL REFERENCES calendar_event(id) ON DELETE CASCADE,
-    user_id          INTEGER NOT NULL  REFERENCES user(id)           ON DELETE CASCADE,
+    user_id          INTEGER NOT NULL,
     access           TEXT    NOT NULL  DEFAULT 'view'  CHECK (access IN ('view', 'edit')),
     created_at       INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     updated_at       INTEGER,
@@ -116,7 +116,7 @@ CREATE INDEX IF NOT EXISTS idx_calendar_event_share_user
 CREATE TABLE IF NOT EXISTS reminder_detail (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     reminder_id INTEGER NOT NULL  REFERENCES reminder(id) ON DELETE CASCADE,
-    created_by  INTEGER           REFERENCES user(id) ON DELETE SET NULL,
+    created_by  INTEGER,
     content     TEXT    NOT NULL,
     status      TEXT    NOT NULL  DEFAULT 'pending'
                                   CHECK (status IN ('pending', 'in_progress', 'done', 'blocked')),

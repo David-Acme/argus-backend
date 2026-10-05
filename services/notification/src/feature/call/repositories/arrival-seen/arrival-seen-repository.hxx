@@ -10,4 +10,6 @@ public:
   ArrivalSeenRepository() = default;
 
   drogon::Task<int64_t> touch(const ArrivalSeenInput& input) const;
+
+  drogon::Task<int64_t> purgeStale(int64_t seenBefore) const;
 };

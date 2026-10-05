@@ -4,12 +4,12 @@ PRAGMA busy_timeout       = 5000;
 PRAGMA cache_size         = -64000;
 PRAGMA temp_store         = MEMORY;
 PRAGMA mmap_size          = 268435456;
-PRAGMA foreign_keys       = OFF;
+PRAGMA foreign_keys       = ON;
 PRAGMA journal_size_limit = 67108864;
 
 CREATE TABLE IF NOT EXISTS notification (
     id         INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    user_id    INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL,
     type       TEXT    NOT NULL  DEFAULT 'system',
     title      TEXT    NOT NULL  DEFAULT '',
     body       TEXT    NOT NULL  DEFAULT '',
@@ -23,9 +23,9 @@ CREATE INDEX IF NOT EXISTS idx_notification_user_created ON notification (user_i
 
 CREATE TABLE IF NOT EXISTS notification_token (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    user_id     INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    user_id     INTEGER NOT NULL,
     device_hash TEXT    NOT NULL  DEFAULT '',
-    token       TEXT    NOT NULL,
+    token       TEXT    NOT NULL  UNIQUE,
     platform    TEXT    NOT NULL  DEFAULT '',
     lang        TEXT    NOT NULL  DEFAULT '',
     is_active   INTEGER NOT NULL  DEFAULT 1  CHECK (is_active IN (0, 1)),
@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS notification_delivery (
     acked_at        INTEGER NOT NULL  DEFAULT 0,
     created_ms      INTEGER NOT NULL  DEFAULT 0,
     sent_ms         INTEGER NOT NULL  DEFAULT 0,
-    acked_ms        INTEGER NOT NULL  DEFAULT 0
+    acked_ms        INTEGER NOT NULL  DEFAULT 0,
+    claimed_at      INTEGER NOT NULL  DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS notification_selftest (
@@ -69,7 +70,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_delivery_notification
     ON notification_delivery (notification_id);
 CREATE INDEX IF NOT EXISTS idx_notification_delivery_status
     ON notification_delivery (status, id);
-CREATE INDEX IF NOT EXISTS idx_notification_token_user ON notification_token (user_id);
+DROP INDEX IF EXISTS idx_notification_token_user;
 
 CREATE TABLE IF NOT EXISTS change_outbox (
     event_id    TEXT    NOT NULL  PRIMARY KEY,

@@ -5,7 +5,9 @@
 #include <cstdio>
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
+#include <app/rpc/grpc-server-drain.hxx>
 #include <app/rpc/notification-rpc-service.hxx>
+#include <shared/services/task-gate/task-gate.hxx>
 #include <fstream>
 #include <grpcpp/grpcpp.h>
 #include <memory>
@@ -480,4 +482,44 @@ TEST_CASE("notification RPC creates fan-out rows and serves user pulls")
         raw->CreateNotifications(&context, noCommand, &response).error_code() ==
         grpc::StatusCode::INVALID_ARGUMENT);
   }
+}
+
+TEST_CASE("the gRPC drain shuts the server down once and reports drained")
+{
+  grpc::ServerBuilder builder;
+  int port = 0;
+  NotificationRpcService service;
+  builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(),
+                           &port);
+  builder.RegisterService(&service);
+  auto server = builder.BuildAndStart();
+  REQUIRE(server);
+  CHECK(port > 0);
+  GrpcServerDrain drain(std::move(server), std::chrono::milliseconds(200));
+  CHECK_FALSE(drain.drained());
+  drain.requestStop();
+  drain.requestStop();
+  drain.stop();
+  CHECK(drain.drained());
+
+  GrpcServerDrain empty(nullptr, std::chrono::milliseconds(200));
+  empty.requestStop();
+  CHECK(empty.drained());
+}
+
+TEST_CASE("the task gate refuses new work after a stop and drains on the last ticket")
+{
+  const auto gate = std::make_shared<TaskGate>();
+  CHECK(gate->drained());
+  {
+    const auto ticket = TaskGate::enter(gate);
+    CHECK(static_cast<bool>(ticket));
+    CHECK_FALSE(gate->drained());
+    gate->requestStop();
+    CHECK(gate->stopping());
+    CHECK_FALSE(static_cast<bool>(TaskGate::enter(gate)));
+    CHECK_FALSE(gate->drained());
+  }
+  CHECK(gate->drained());
+  CHECK(static_cast<bool>(TaskGate::enter(nullptr)));
 }

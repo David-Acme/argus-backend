@@ -3,6 +3,7 @@ argus_module(NAME productivity-agenda
         infra/notification-agenda-notifier.cc
         repositories/agenda-announcement/agenda-announcement-repository.cc
         services/agenda-announcer.cc
+        services/agenda-sweeper.cc
     INCLUDES ../..
     DEPENDS
         argus::clients::notification

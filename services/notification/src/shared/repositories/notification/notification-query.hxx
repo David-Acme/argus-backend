@@ -46,10 +46,10 @@ inline constexpr std::string_view FIND_SYNC_ALL =
 
 inline constexpr std::string_view FIND_LAST_SYNC =
     "SELECT * FROM notification WHERE user_id = ? "
-    "ORDER BY created_at DESC LIMIT 1";
+    "ORDER BY created_at DESC, id DESC LIMIT 1";
 
 inline constexpr std::string_view MARK_READ =
-    "UPDATE notification SET is_read = 1, read_at = strftime('%s', 'now') "
+    "UPDATE notification SET is_read = 1, read_at = ? "
     "WHERE user_id = ? AND is_read = 0 AND id IN (%1%)";
 
 inline constexpr std::string_view FIND_UNREAD_BY_IDS =
@@ -88,19 +88,27 @@ inline constexpr std::size_t kMaxNotificationTitle = 200;
 inline constexpr std::size_t kMaxNotificationBody = 2000;
 inline constexpr std::size_t kMaxNotificationData = 8192;
 
-inline constexpr std::string_view PENDING_DELIVERIES =
+inline constexpr std::string_view CLAIM_PENDING =
+    "UPDATE notification_delivery SET claimed_at = ? WHERE id IN ("
+    "SELECT id FROM notification_delivery WHERE status = ? AND claimed_at <= ? "
+    "ORDER BY id ASC LIMIT ?) RETURNING id";
+
+inline constexpr std::string_view CLAIMED_DELIVERIES =
     "SELECT d.id, d.notification_id, d.user_id, n.type, n.title, n.body, "
     "n.data, n.created_at FROM notification_delivery d "
     "JOIN notification n ON n.id = d.notification_id "
-    "WHERE d.status = ? ORDER BY d.id ASC LIMIT ";
+    "WHERE d.status = ? AND d.id IN (%1%) ORDER BY d.id ASC";
 
 inline constexpr std::string_view PENDING_DELIVERY_COUNT =
     "SELECT COUNT(*) AS total FROM notification_delivery WHERE status = ?";
 
-inline constexpr std::string_view MARK_DELIVERED =
-    "UPDATE notification_delivery SET status = ?, "
-    "attempts = attempts + 1, sent_at = ?, sent_ms = ? WHERE id = ? AND "
-    "status = ?";
+inline constexpr std::string_view MARK_DELIVERED_MANY =
+    "UPDATE notification_delivery SET status = ?, attempts = attempts + 1, "
+    "sent_at = ?, sent_ms = ?, claimed_at = 0 WHERE status = ? AND id IN (%1%)";
+
+inline constexpr std::string_view RELEASE_CLAIMS =
+    "UPDATE notification_delivery SET claimed_at = 0 "
+    "WHERE status = ? AND id IN (%1%)";
 
 inline constexpr std::string_view ACK_DELIVERIES =
     "UPDATE notification_delivery SET acked_at = ?, acked_ms = ? "
@@ -204,6 +212,26 @@ struct NotificationDeliveryRow
   std::string body;
   Json::Value data;
   int64_t createdAt{0};
+};
+
+struct IdListQueryInput
+{
+  std::string_view templateQuery;
+  const std::vector<int64_t>& ids;
+  std::vector<std::string>& args;
+};
+
+struct DeliveryClaimInput
+{
+  int limit{200};
+  int64_t now{0};
+  int64_t leaseS{30};
+};
+
+struct DeliveredInput
+{
+  std::vector<int64_t> deliveryIds;
+  int64_t at{0};
 };
 
 struct NotificationSyncFilter

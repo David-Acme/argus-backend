@@ -49,7 +49,7 @@ inline constexpr std::string_view FIND_AFTER_FROM =
 
 inline constexpr std::string_view FIND_DELETED =
     "SELECT * FROM project_task "
-    "WHERE deleted_at IS NOT NULL AND deleted_at >= ? AND deleted_at <= ? "
+    "WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 AND deleted_at >= ? AND deleted_at <= ? "
     "AND EXISTS (SELECT 1 FROM project p WHERE p.id = project_task.project_id "
     "AND (p.owner_id = ? OR EXISTS ("
     "SELECT 1 FROM project_member m WHERE m.project_id = p.id "
@@ -57,14 +57,14 @@ inline constexpr std::string_view FIND_DELETED =
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_FROM =
     "SELECT * FROM project_task "
-    "WHERE deleted_at IS NOT NULL AND deleted_at >= ? "
+    "WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 AND deleted_at >= ? "
     "AND EXISTS (SELECT 1 FROM project p WHERE p.id = project_task.project_id "
     "AND (p.owner_id = ? OR EXISTS ("
     "SELECT 1 FROM project_member m WHERE m.project_id = p.id "
     "AND m.user_id = ? AND m.deleted_at IS NULL))) "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_AFTER =
-    "SELECT * FROM project_task WHERE deleted_at IS NOT NULL AND "
+    "SELECT * FROM project_task WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 AND "
     "(deleted_at > ? OR (deleted_at = ? AND id > ?)) AND deleted_at <= ? "
     "AND EXISTS (SELECT 1 FROM project p WHERE p.id = project_task.project_id "
     "AND (p.owner_id = ? OR EXISTS ("
@@ -72,7 +72,7 @@ inline constexpr std::string_view FIND_DELETED_AFTER =
     "AND m.user_id = ? AND m.deleted_at IS NULL))) "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_AFTER_FROM =
-    "SELECT * FROM project_task WHERE deleted_at IS NOT NULL AND "
+    "SELECT * FROM project_task WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 AND "
     "(deleted_at > ? OR (deleted_at = ? AND id > ?)) "
     "AND EXISTS (SELECT 1 FROM project p WHERE p.id = project_task.project_id "
     "AND (p.owner_id = ? OR EXISTS ("
@@ -88,7 +88,7 @@ inline constexpr std::string_view FIND_ALL =
     "AND m.user_id = ? AND m.deleted_at IS NULL))) "
     "ORDER BY created_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_ALL =
-    "SELECT * FROM project_task WHERE deleted_at IS NOT NULL "
+    "SELECT * FROM project_task WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
     "AND EXISTS (SELECT 1 FROM project p WHERE p.id = project_task.project_id "
     "AND (p.owner_id = ? OR EXISTS ("
     "SELECT 1 FROM project_member m WHERE m.project_id = p.id "
@@ -101,14 +101,14 @@ inline constexpr std::string_view FIND_LAST =
     "AND (p.owner_id = ? OR EXISTS ("
     "SELECT 1 FROM project_member m WHERE m.project_id = p.id "
     "AND m.user_id = ? AND m.deleted_at IS NULL))) "
-    "ORDER BY created_at DESC LIMIT 1";
+    "ORDER BY created_at DESC, id DESC LIMIT 1";
 inline constexpr std::string_view FIND_LAST_DELETED =
-    "SELECT * FROM project_task WHERE deleted_at IS NOT NULL "
+    "SELECT * FROM project_task WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
     "AND EXISTS (SELECT 1 FROM project p WHERE p.id = project_task.project_id "
     "AND (p.owner_id = ? OR EXISTS ("
     "SELECT 1 FROM project_member m WHERE m.project_id = p.id "
     "AND m.user_id = ? AND m.deleted_at IS NULL))) "
-    "ORDER BY deleted_at DESC LIMIT 1";
+    "ORDER BY deleted_at DESC, id DESC LIMIT 1";
 
 inline constexpr std::string_view FIND_SCOPED_HEAD =
     "SELECT * FROM project_task WHERE deleted_at IS NULL AND project_id IN (";

@@ -14,8 +14,10 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <condition_variable>
 #include <thread>
 #include <unistd.h>
+#include <unordered_map>
 #include <vector>
 
 #ifndef ARGUS_NOTIFICATION_SCHEMA
@@ -151,19 +153,28 @@ public:
   [[nodiscard]] CallRecipient recipient(int64_t userId) const override
   {
     if (userId == 1)
-      return {.found = true, .name = "Laura", .lang = "es", .role = "owner", .active = true};
+      return {.found = true, .name = "Laura", .lang = "es", .role = UserRole::Owner, .active = true};
     if (userId == 2)
-      return {.found = true, .name = "Tom", .lang = "en", .role = "resident", .active = true};
+      return {.found = true, .name = "Tom", .lang = "en", .role = UserRole::Resident, .active = true};
     if (userId == 3)
-      return {.found = true, .name = "Ana", .lang = "es", .role = "resident", .active = false};
+      return {.found = true, .name = "Ana", .lang = "es", .role = UserRole::Resident, .active = false};
     if (userId == 4)
-      return {.found = true, .name = "Visita", .lang = "es", .role = "guest", .active = true};
+      return {.found = true, .name = "Visita", .lang = "es", .role = UserRole::Guest, .active = true};
     if (userId == 5)
-      return {.found = true, .name = "Pedro", .lang = "es", .role = "guard", .active = true};
+      return {.found = true, .name = "Pedro", .lang = "es", .role = UserRole::Guard, .active = true};
     if (userId == 6)
-      return {.found = true, .name = "Lucía", .lang = "es", .role = "resident", .active = true};
+      return {.found = true, .name = "Lucía", .lang = "es", .role = UserRole::Resident, .active = true};
     return {};
   }
+
+  [[nodiscard]] std::unordered_map<int64_t, CallRecipient>
+  recipients(const std::vector<int64_t>& userIds) const override
+  {
+    batches.fetch_add(1);
+    return CallDirectory::recipients(userIds);
+  }
+
+  mutable std::atomic<int> batches{0};
 
   [[nodiscard]] CallPerson person(int64_t personId) const override
   {
@@ -240,6 +251,7 @@ struct Harness
       std::make_shared<std::atomic<int64_t>>(kStart);
   std::shared_ptr<std::atomic<int>> hour = std::make_shared<std::atomic<int>>(12);
   std::shared_ptr<std::atomic<int>> weekday = std::make_shared<std::atomic<int>>(3);
+  std::shared_ptr<FixedDirectory> directory = std::make_shared<FixedDirectory>();
   CallEngine engine;
 
   Harness()
@@ -247,7 +259,7 @@ struct Harness
                CallEngineDependencies{
                    .signal = signal,
                    .announcer = announcer,
-                   .directory = std::make_shared<FixedDirectory>(),
+                   .directory = directory,
                    .notifier = notifier,
                    .push = push,
                    .verdicts = verdicts,
@@ -324,6 +336,7 @@ TEST_CASE("a critical guard episode rings every recipient once, in their languag
   REQUIRE(first.size() == 2);
   CHECK(outcomeFor(first, 1).resolution == CallResolution::Rang);
   CHECK(outcomeFor(first, 2).resolution == CallResolution::Rang);
+  CHECK(harness.directory->batches.load() == 1);
 
   const auto frames = harness.signal->of(SyncOperation::CallIncoming);
   REQUIRE(frames.size() == 2);
@@ -467,6 +480,9 @@ TEST_CASE("unanswered: a push after the grace, then a missed-call notification")
   CHECK(pushes.front().userId == 1);
   CHECK(pushes.front().data["deepLink"].asString() ==
         "argus://call?callId=" + call_id::format(id));
+  CHECK(pushes.front().title == "Argus te está llamando");
+  CHECK(pushes.front().body == "Abre Argus para contestar.");
+  CHECK_FALSE(pushes.front().data.isMember("callKind"));
   CHECK(drogon::sync_wait(harness.engine.sweep()).pushed == 0);
 
   harness.advance(41);
@@ -641,6 +657,7 @@ TEST_CASE("an arrival calls only those who asked, once per absence")
 
   KnownSeenEvent tom = event;
   tom.personId = 51;
+  tom.at = back.at;
   const auto own = drogon::sync_wait(harness.engine.arrival(tom));
   CHECK(own.size() == 2);
   for (const auto& outcome : own)
@@ -1247,4 +1264,118 @@ TEST_CASE("a plan that does not parse falls back to the plain call")
   CHECK(outcomes.size() == 2);
   CHECK(responseIdOf("guard:episode:78") == 0);
   CHECK(harness.signal->of(SyncOperation::ResponseUpdate).empty());
+}
+
+TEST_CASE("an arrival replayed long after it happened only updates the absence")
+{
+  Harness harness;
+  const CallPreferenceService preferences;
+  UpdateCallPreferenceDto wants;
+  wants.guardArrival = "call";
+  drogon::sync_wait(preferences.update(1, wants));
+  harness.clock->store(kStart + call_engine::kArrivalStaleS + 1);
+  const auto replayed = drogon::sync_wait(harness.engine.arrival(
+      {.personId = 50, .cameraId = 6, .cameraName = "Entrada",
+       .environmentId = 1, .environmentName = "", .at = kStart}));
+  CHECK(replayed.empty());
+  CHECK(harness.signal->frames.empty());
+  const auto rows = DbService::client()->execSqlSync(
+      "SELECT last_seen FROM call_arrival_seen WHERE person_id = 50");
+  REQUIRE(rows.size() == 1);
+  CHECK(rows.front()["last_seen"].as<int64_t>() == kStart);
+}
+
+namespace
+{
+class GatheringAnnouncer final : public LiveCallAnnouncer
+{
+public:
+  explicit GatheringAnnouncer(int expected) : expected_(expected) {}
+
+  [[nodiscard]] std::optional<bool> announce(const CallAnnouncement& input) const override
+  {
+    std::unique_lock lock(mutex_);
+    ++inside_;
+    peak = std::max(peak, inside_);
+    if (inside_ >= expected_)
+      gathered_ = true;
+    arrived_.notify_all();
+    arrived_.wait_for(lock, std::chrono::seconds(5), [this] { return gathered_; });
+    --inside_;
+    return input.userId == 2;
+  }
+
+  mutable int peak{0};
+
+private:
+  int expected_{0};
+  mutable int inside_{0};
+  mutable bool gathered_{false};
+  mutable std::mutex mutex_;
+  mutable std::condition_variable arrived_;
+};
+}
+
+TEST_CASE("live-call probes for several recipients run side by side")
+{
+  const GatheringAnnouncer announcer(3);
+  const std::vector<CallAnnouncement> probes{
+      {.userId = 1, .text = "a", .kind = "guard_episode", .callId = ""},
+      {.userId = 2, .text = "b", .kind = "guard_episode", .callId = ""},
+      {.userId = 6, .text = "c", .kind = "guard_episode", .callId = ""}};
+  const auto heard = call_engine::announceAll(
+      {.announcer = announcer, .probes = probes, .parallel = 3});
+  REQUIRE(heard.size() == 3);
+  CHECK(heard[0] == std::optional<bool>(false));
+  CHECK(heard[1] == std::optional<bool>(true));
+  CHECK(heard[2] == std::optional<bool>(false));
+  CHECK(announcer.peak == 3);
+}
+
+TEST_CASE("the sweep purges call history past the retention window")
+{
+  Harness harness;
+  const int64_t old = kStart - 31 * 86400;
+  const int64_t recent = kStart - 86400;
+  const auto client = DbService::client();
+  client->execSqlSync(
+      "INSERT INTO call (user_id, dedupe_key, trigger, state, created_at) "
+      "VALUES (1, 'old', 'agenda', 'missed', ?), "
+      "(1, 'recent', 'agenda', 'missed', ?)",
+      old, recent);
+  client->execSqlSync(
+      "INSERT INTO scheduled_call (user_id, command_id, fire_at, topic, state, "
+      "created_at) VALUES (1, 'fired-old', ?, 't', 'fired', ?), "
+      "(1, 'pending-old', ?, 't', 'pending', ?)",
+      old, old, kStart + 10 * 86400, old);
+  client->execSqlSync(
+      "INSERT INTO call_arrival_seen (person_id, last_seen) VALUES (90, ?), (91, ?)",
+      old, recent);
+  client->execSqlSync(
+      "INSERT INTO call_response (id, dedupe_key, kind, state, created_at, "
+      "updated_at) VALUES (900, 'guard:episode:900', 'guard_episode', "
+      "'false_alarm', ?, ?), (901, 'guard:episode:901', 'guard_episode', "
+      "'false_alarm', ?, ?)",
+      old, old, recent, recent);
+  client->execSqlSync(
+      "INSERT INTO call_response_member (response_id, user_id) VALUES "
+      "(900, 1), (901, 1)");
+
+  const auto report = drogon::sync_wait(harness.engine.sweep());
+  CHECK(report.purged == 4);
+  const auto count = [&client](const char* sql) {
+    return client->execSqlSync(sql).front()["total"].as<int64_t>();
+  };
+  CHECK(count("SELECT COUNT(*) AS total FROM call") == 1);
+  CHECK(count("SELECT COUNT(*) AS total FROM scheduled_call") == 1);
+  CHECK(count("SELECT COUNT(*) AS total FROM call_arrival_seen") == 1);
+  CHECK(count("SELECT COUNT(*) AS total FROM call_response") == 1);
+  CHECK(count("SELECT COUNT(*) AS total FROM call_response_member") == 1);
+
+  client->execSqlSync(
+      "INSERT INTO call_arrival_seen (person_id, last_seen) VALUES (92, ?)", old);
+  harness.advance(60);
+  CHECK(drogon::sync_wait(harness.engine.sweep()).purged == 0);
+  harness.advance(call_engine::kPurgeIntervalS);
+  CHECK(drogon::sync_wait(harness.engine.sweep()).purged == 1);
 }

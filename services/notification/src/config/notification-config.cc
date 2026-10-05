@@ -93,6 +93,7 @@ CallEngineConfig NotificationConfig::resolveCalls()
   config.arrivalAbsenceS =
       positive("calls.arrival_absence_s", config.arrivalAbsenceS);
   config.scheduledLateS = positive("calls.scheduled_late_s", config.scheduledLateS);
+  config.retentionDays = positive("calls.retention_days", config.retentionDays);
   const std::string lang = ConfigService::getString("notifications.lang");
   if (lang == "en" || lang == "es")
     config.fallbackLang = lang;

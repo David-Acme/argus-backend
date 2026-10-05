@@ -19,6 +19,7 @@ NotificationAckDto NotificationAckDto::fromJson(const Json::Value& json)
   START_VALIDATION(NotificationAckDto, dto)
   ARRAY_NOT_EMPTY(notificationIds, int64_t)
   MIN_ELEMENTS(notificationIds, int64_t, 1)
+  MAX_ELEMENTS(notificationIds, int64_t, kMaxIdsPerRequest)
   END_VALIDATION()
   for (const int64_t id : dto.notificationIds) {
     if (id <= 0)

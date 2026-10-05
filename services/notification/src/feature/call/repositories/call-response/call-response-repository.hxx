@@ -15,6 +15,12 @@ struct CallResponseOpened
   bool created{false};
 };
 
+struct CallResponseForUser
+{
+  CallResponseSchema response;
+  CallResponseMember member;
+};
+
 class CallResponseRepository
 {
 public:
@@ -49,6 +55,8 @@ public:
 
   [[nodiscard]] drogon::Task<std::vector<int64_t>> expire(int64_t createdBefore, int64_t at) const;
 
-  [[nodiscard]] drogon::Task<std::vector<CallResponseSchema>>
+  [[nodiscard]] drogon::Task<std::vector<CallResponseForUser>>
   forUser(const CallResponseUserInput& input) const;
+
+  [[nodiscard]] drogon::Task<int64_t> purgeClosed(int64_t updatedBefore) const;
 };

@@ -84,10 +84,25 @@ private:
   struct DeliverDurableInput
   {
     std::vector<NotificationDeliveryRow> pending;
-    const NotificationDeliverySink& sink;
+    std::shared_ptr<const NotificationDeliverySink> sink;
     std::shared_ptr<const push_intent::PushIntentSink> pushSink;
     bool pushRequired{false};
   };
+
+  struct PublishPageInput
+  {
+    std::vector<NotificationDeliveryRow> pending;
+    std::shared_ptr<const NotificationDeliverySink> sink;
+    std::shared_ptr<const push_intent::PushIntentSink> pushSink;
+  };
+
+  struct PublishedPage
+  {
+    std::vector<int64_t> sent;
+    std::vector<int64_t> refused;
+  };
+
+  static PublishedPage publishPage(const PublishPageInput& input);
 
   drogon::Task<bool> deliverDurable(DeliverDurableInput input) const;
 

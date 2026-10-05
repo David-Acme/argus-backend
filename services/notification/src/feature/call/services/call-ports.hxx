@@ -1,5 +1,6 @@
 #pragma once
 
+#include <auth/user-role.hxx>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <sync/sync-operation.hxx>
@@ -7,6 +8,8 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 struct CallSignalInput
 {
@@ -44,7 +47,7 @@ struct CallRecipient
   bool found{false};
   std::string name;
   std::string lang;
-  std::string role;
+  std::optional<UserRole> role;
   bool active{true};
 };
 
@@ -61,6 +64,16 @@ public:
   virtual ~CallDirectory() = default;
 
   [[nodiscard]] virtual CallRecipient recipient(int64_t userId) const = 0;
+
+  [[nodiscard]] virtual std::unordered_map<int64_t, CallRecipient>
+  recipients(const std::vector<int64_t>& userIds) const
+  {
+    std::unordered_map<int64_t, CallRecipient> found;
+    found.reserve(userIds.size());
+    for (const int64_t userId : userIds)
+      found.emplace(userId, recipient(userId));
+    return found;
+  }
 
   [[nodiscard]] virtual CallPerson person(int64_t personId) const = 0;
 };
