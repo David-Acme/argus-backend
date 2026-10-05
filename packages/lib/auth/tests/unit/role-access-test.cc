@@ -411,3 +411,12 @@ TEST_CASE("every role may ask for a realtime call token, and only by POST")
     CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/rtc/token/x", .method = drogon::Post}));
   }
 }
+
+TEST_CASE("every role reads its own heartbeat, only by GET, and nothing else under /sync/")
+{
+  for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/sync/heartbeat", .method = drogon::Get}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/sync/heartbeat", .method = drogon::Post}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/sync/other", .method = drogon::Get}));
+  }
+}

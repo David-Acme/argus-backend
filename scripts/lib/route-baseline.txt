@@ -97,6 +97,7 @@ shared	GET	/health	-	-	packages/lib/http/src/http/health-controller.hxx
 stt	GET	/stt/v1/config	-	-	services/stt/src/feature/stt/controllers/stt-controller.hxx
 stt	POST	/stt/v1/transcribe	-	-	services/stt/src/feature/stt/controllers/stt-controller.hxx
 sync	POST	/rtc/token	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/sync/src/feature/rtc/controllers/rtc-controller.hxx
+sync	GET	/sync/heartbeat	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/sync/src/feature/heartbeat/controllers/heartbeat-controller.hxx
 sync	WS	/sync	DeviceFilter,JwtFilter	-	services/sync/src/feature/transport/controllers/sync-socket.hxx
 tts	GET	/tts/v1/config	-	-	services/tts/src/feature/synthesis/controllers/tts-controller.hxx
 tts	POST	/tts/v1/synthesize	ValidJsonFilter	-	services/tts/src/feature/synthesis/controllers/tts-controller.hxx

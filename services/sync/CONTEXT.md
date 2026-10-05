@@ -541,3 +541,77 @@ revoke returned nothing.
 The fresh bootstrap also pulls every grant's scope once more (the projection
 paging may pass a parent's old rows before it meets a grant created
 mid-bootstrap); that one-time re-download is the price of not missing them.
+
+## Dead man's switch: the heartbeat (2026-10, WATCHDOG)
+
+The owner's plan ("SAFETY", point 3): a phone must learn that Argus stopped
+answering even though a stopped Argus can send nothing. The only thing that
+can raise that alarm is the phone itself, so Argus sends a heartbeat and the
+phone keeps a local notification scheduled `graceSeconds` ahead of the last
+one it received; when the heartbeats stop, the notification fires.
+
+**What is sent.** `SyncOperation::Heartbeat = 11` (option `user`, `10` is
+RESPONSE's `response_update`), with `info {at, intervalSeconds,
+graceSeconds, socketGraceSeconds, armed, presence, presenceSince, guard,
+guardSeenAt}`, built by the pure `heartbeat::render`
+(`src/feature/heartbeat/services/heartbeat-policy.cc`):
+
+- on every socket: one right after `InitialInfo`, and one answering each
+  `{type:"heartbeat"}` the client sends every `intervalSeconds` (60). The
+  client asks instead of the server ticking a timer per socket: the answer
+  proves the whole path (TLS listener, loop, directory lookup) is alive, the
+  existing "a request unanswered for 10 s recycles the socket" rule already
+  covers a hung server, and there is no per-connection state to keep;
+- to a user's room the moment their presence changes
+  (`argus.guard.v1.presence_changed`, PRESENCE's feed, `overall` field), so a
+  phone that leaves home arms within a second instead of a minute;
+- `GET /sync/heartbeat` (every role, `kSyncAccess`, own row only): the same
+  payload for the app's background task, which has no socket;
+- a push intent `type: heartbeat` (data only: empty title and body, `data
+  {kind: heartbeat, ...the payload}`) to every armed user every
+  `push_interval_seconds` (900), only when `[push] enabled`. It rides the
+  existing `argus.notification.v1.push_intent` subject toward argus-relay;
+  the device leg (APNs/FCM) does not exist yet (`services/tunnel/CONTEXT.md`),
+  so today it is a hook the app already handles.
+
+**Armed only while away.** `armed = presence == "away"`; `home` and
+`unknown` (no consent, no row, presence service down, sync just booted and
+the directory not read yet) never arm, so a missed reschedule cannot fire at
+home and a server stopped on purpose while people are home raises nothing.
+Presence is cached in `PresenceBoard`, filled from the core-NATS feed and
+re-read from guard's `PresenceService.ListPresence` every `refill_seconds`
+(300) off the loop, because the feed is at-most-once.
+
+**Guard liveness.** The payload also carries `guard` (`alive` / `stale` /
+`unknown`) from `argus.guard.v1.heartbeat`: sync answering while guard is
+down is still "nobody is watching", which the app words differently.
+
+**The numbers** (`[heartbeat]`, clamped in `SyncConfig::resolveHeartbeat`):
+
+| Key | Default | Range | Why |
+|---|---|---|---|
+| `interval_seconds` | 60 | 15-300 | socket heartbeat cadence |
+| `grace_minutes` | 45 | 15-720 | phone alarm delay; three push/background chances at 15 min, so one missed wake-up never alarms |
+| `socket_grace_seconds` | 180 | 60-3600 | desktop/web: socket down this long shows the banner; a Wi-Fi blip or a restart (~10 s) does not |
+| `guard_stale_seconds` | 90 | 30-3600 | guard heartbeat older than this is `stale` |
+| `push_interval_seconds` | 900 | 300-3600 | iOS budgets background pushes at two or three an hour |
+| `refill_seconds` | 300 | 30-3600 | presence re-read |
+
+**Phone background limits (research).** iOS delivers background
+(`content-available`) pushes at Apple's discretion, "not more than two or
+three per hour", from a device-wide budget, and never to an app the user
+force-quit; `BGAppRefreshTask` runs when the system decides. Android's
+WorkManager (what `expo-background-task` uses) has a 15-minute floor and is
+deferred to Doze maintenance windows; high-priority FCM data messages are
+the only reliable wake-up. Hence: socket heartbeats while the app is open,
+a 15-minute background task that calls `GET /sync/heartbeat`, data pushes
+when the relay leg exists, and a 45-minute grace that tolerates two missed
+wake-ups. A force-quit iOS app hears nothing and may alarm after 45 minutes
+away; the notification says it has not heard from Argus since a time and
+opens the app, which settles it at once. Sources: Apple, "Pushing background
+updates to your App"; Expo `expo-background-task`; Android "Optimize for Doze
+and App Standby".
+
+Code: `src/feature/heartbeat/` (`argus::sync-heartbeat`: policy, board,
+service, feed, `HeartbeatController`), the transport port
+`feature/transport/infra/heartbeat-source.hxx`, `tests/unit/heartbeat-test.cc`.

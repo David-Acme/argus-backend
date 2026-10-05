@@ -39,6 +39,16 @@ struct SyncRtcConfig
   std::chrono::seconds tokenTtl{600};
 };
 
+struct SyncHeartbeatConfig
+{
+  int64_t intervalSeconds{60};
+  int64_t graceSeconds{2700};
+  int64_t socketGraceSeconds{180};
+  int64_t guardStaleSeconds{90};
+  int64_t pushIntervalSeconds{900};
+  int64_t refillSeconds{300};
+};
+
 class SyncConfig
 {
 public:
@@ -50,4 +60,5 @@ public:
   static SyncUpstreams resolveUpstreams();
   static int resolveAuditRetentionDays();
   static SyncRtcConfig resolveRtc();
+  static SyncHeartbeatConfig resolveHeartbeat();
 };

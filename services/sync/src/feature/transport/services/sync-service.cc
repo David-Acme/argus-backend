@@ -8,6 +8,8 @@
 #include <sync/socket-emit-dto.hxx>
 #include <sync/sync-errors.hxx>
 
+#include <utility>
+
 drogon::Task<void>
 SyncService::refreshContext(const drogon::WebSocketConnectionPtr& conn) const
 {
@@ -54,8 +56,9 @@ SyncService::handleConnect(const drogon::HttpRequestPtr& req,
 
   SocketEmitDto response;
   response.operation = SyncOperation::InitialInfo;
-  response.obj = user;
+  response.obj = std::move(user);
   conn->sendJson(response.toJson());
+  sendHeartbeat(conn, ctx.sub);
 
   if (forwarder_)
     forwarder_->onConnect(req, conn);
@@ -95,7 +98,14 @@ SyncService::handleMessage(const SyncFrameInput& input) const
     co_return;
   }
 
-  if (type.rfind("camera:", 0) == 0 || type.rfind("voice:", 0) == 0) {
+  if (type == "heartbeat") {
+    if (!heartbeatSource_)
+      throw ResponseException(400, SyncErrors::UnknownMessageType);
+    sendHeartbeat(conn, ctx.sub);
+    co_return;
+  }
+
+  if (type.starts_with("camera:") || type.starts_with("voice:")) {
     const bool handled = forwarder_ && co_await forwarder_->forwardText(input);
     if (!handled)
       throw ResponseException(400, SyncErrors::UnknownMessageType);
@@ -118,6 +128,24 @@ void SyncService::handleDisconnect(
   if (forwarder_)
     forwarder_->onClose(conn);
   roomManager_.leaveAll(conn);
+}
+
+void SyncService::sendHeartbeat(const drogon::WebSocketConnectionPtr& conn,
+                                int64_t userId) const
+{
+  if (!heartbeatSource_)
+    return;
+  SocketEmitDto frame;
+  frame.operation = SyncOperation::Heartbeat;
+  frame.option = TableName::User;
+  frame.obj = heartbeatSource_->heartbeatFor(userId);
+  conn->sendJson(frame.toJson());
+}
+
+void SyncService::setHeartbeatSource(
+    std::shared_ptr<const HeartbeatSource> source)
+{
+  heartbeatSource_ = std::move(source);
 }
 
 void SyncService::setForwarder(std::shared_ptr<SyncForwarder> forwarder)

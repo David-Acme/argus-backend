@@ -8,6 +8,7 @@
 #include <json/value.h>
 #include <memory>
 #include <feature/transport/infra/camera-sync-source.hxx>
+#include <feature/transport/infra/heartbeat-source.hxx>
 #include <feature/transport/infra/identity-sync-source.hxx>
 #include <feature/transport/infra/notification-sync-source.hxx>
 #include <feature/transport/infra/productivity-sync-source.hxx>
@@ -32,8 +33,11 @@ public:
   void setNotificationSource(std::shared_ptr<NotificationSyncSource> source);
   void setIdentitySource(std::shared_ptr<IdentitySyncSource> source);
   void setUserDirectory(std::shared_ptr<const IUserDirectory> directory);
+  void setHeartbeatSource(std::shared_ptr<const HeartbeatSource> source);
 
 private:
+  void sendHeartbeat(const drogon::WebSocketConnectionPtr& conn,
+                     int64_t userId) const;
   drogon::Task<void>
   refreshContext(const drogon::WebSocketConnectionPtr& conn) const;
 
@@ -45,4 +49,5 @@ private:
   std::shared_ptr<NotificationSyncSource> notificationSource_;
   std::shared_ptr<IdentitySyncSource> identitySyncSource_;
   std::shared_ptr<const IUserDirectory> userDirectory_;
+  std::shared_ptr<const HeartbeatSource> heartbeatSource_;
 };

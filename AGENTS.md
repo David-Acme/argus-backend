@@ -577,6 +577,13 @@ Raw pointers only for non-owning access (`.get()`).
   user's devices and `CallCancel=9` stops the ring, both emitted by
   argus-notification's call engine through `SyncControlService.EmitToUser`
   (`services/notification/CONTEXT.md`, "Argus calls you").
+  `Heartbeat=11` (additive, the dead man's switch) answers a client's
+  `{type:"heartbeat"}`, follows `InitialInfo` on connect and is pushed to a
+  user's room when their presence changes: `info {at, intervalSeconds,
+  graceSeconds, socketGraceSeconds, armed, presence, presenceSince, guard,
+  guardSeenAt}`; `armed` is true only while the user is away, so a phone
+  never schedules its "Argus no responde" alarm at home
+  (`services/sync/CONTEXT.md`, "Dead man's switch").
 - **Normal rows are creation-only after bootstrap**: `Synchronize` pages by
   `created_at`; do not switch it to `updated_at`/`syncAt` to represent an
   update. Every persisted update/revocation must instead publish a granular

@@ -7,6 +7,10 @@
 #include <feature/fanout/services/change-feed-consumer.hxx>
 #include <feature/fanout/services/notification-delivery-consumer.hxx>
 #include <feature/fanout/services/sync-fan-out.hxx>
+#include <feature/heartbeat/controllers/heartbeat-controller.hxx>
+#include <feature/heartbeat/services/heartbeat-feed.hxx>
+#include <feature/heartbeat/services/heartbeat-service.hxx>
+#include <feature/heartbeat/services/presence-board.hxx>
 #include <feature/rtc/controllers/rtc-controller.hxx>
 #include <feature/rtc/infra/livekit-room-client.hxx>
 #include <feature/rtc/infra/notification-call-claimer.hxx>
@@ -30,6 +34,7 @@
 #include <mdns/mdns-service.hxx>
 #include <memory>
 #include <nats/nats-bus.hxx>
+#include <nats/nats-push-intent-sink.hxx>
 #include <nats/nats-subject.hxx>
 #include <notification/notification-client.hxx>
 #include <voice/voice-client.hxx>
@@ -95,13 +100,24 @@ int main()
   std::shared_ptr<SyncForwarder> voiceLeg;
   if (!voice.target.empty())
     voiceLeg = std::make_shared<VoiceGrpcRelay>(voice, userDirectory);
+  const SyncHeartbeatConfig heartbeatConfig = SyncConfig::resolveHeartbeat();
+  const auto presenceBoard = std::make_shared<PresenceBoard>();
+  const auto heartbeatService = std::make_shared<const HeartbeatService>(
+      HeartbeatService::Dependencies{.board = presenceBoard, .clock = {}},
+      HeartbeatPolicy{.intervalSeconds = heartbeatConfig.intervalSeconds,
+                      .graceSeconds = heartbeatConfig.graceSeconds,
+                      .socketGraceSeconds = heartbeatConfig.socketGraceSeconds,
+                      .guardStaleSeconds = heartbeatConfig.guardStaleSeconds});
   const SyncRegistrationStats sync =
       registerSyncSurface({.forwarder = voiceLeg,
                            .cameraSource = cameraSource,
                            .productivitySource = productivitySource,
                            .notificationSource = notificationSource,
                            .identitySource = identitySource,
-                           .userDirectory = userDirectory});
+                           .userDirectory = userDirectory,
+                           .heartbeatSource = heartbeatService});
+  drogon::app().registerController(
+      std::make_shared<HeartbeatController>(heartbeatService));
   LOG_INFO << "Sync surface registered: " << sync.controllers << " controller, "
            << sync.filters << " filters; voice leg -> "
            << (voice.target.empty() ? "unconfigured (503)"
@@ -173,6 +189,8 @@ int main()
   std::shared_ptr<NatsBus> natsBus;
   std::shared_ptr<NotificationDeliveryConsumer> deliveryConsumer;
   std::shared_ptr<ChangeFeedConsumer> changeFeedConsumer;
+  std::unique_ptr<NatsPushIntentSink> heartbeatPush;
+  std::unique_ptr<HeartbeatFeed> heartbeatFeed;
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; event bus disabled";
   }
@@ -193,6 +211,24 @@ int main()
             .subject = std::string(nats_subject::kNotificationDelivery),
             .maxDeliver = 10,
             .poisonMaxAttempts = 3});
+    if (push_intent::enabledFromConfig())
+      heartbeatPush = std::make_unique<NatsPushIntentSink>(natsBus);
+    heartbeatFeed = std::make_unique<HeartbeatFeed>(
+        HeartbeatFeed::Dependencies{
+            .bus = natsBus.get(),
+            .board = presenceBoard,
+            .heartbeat = heartbeatService,
+            .directory = {},
+            .push = heartbeatPush.get(),
+            .emit = [](int64_t userId, std::string_view frame) {
+              RoomManager{}.emit(userRoom(userId), frame);
+            }},
+        HeartbeatFeed::Config{
+            .presenceSubject = {},
+            .guardHeartbeatSubject = std::string(nats_subject::kGuardHeartbeat),
+            .pushIntervalSeconds =
+                static_cast<double>(heartbeatConfig.pushIntervalSeconds),
+            .refillSeconds = static_cast<double>(heartbeatConfig.refillSeconds)});
     if (connected)
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
     else
@@ -253,6 +289,7 @@ int main()
   drogon::app().registerBeginningAdvice([&syncDb = syncDb, &auditFanOut,
                                          &changeFeedConsumer,
                                          &deliveryConsumer, &auditRetention,
+                                         &heartbeatFeed,
                                          auditRetentionDays]() {
     if (!auditFanOut.migrateLegacySchema() ||
         !DbService::runScriptFile(syncDb.schemaPath)) {
@@ -267,6 +304,8 @@ int main()
     if (deliveryConsumer)
       deliveryConsumer->start();
     auditRetention.start(auditRetentionDays);
+    if (heartbeatFeed)
+      heartbeatFeed->start();
   });
 
   shutdown_signal::onQuit(

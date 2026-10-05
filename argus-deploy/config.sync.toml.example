@@ -85,6 +85,17 @@ trusted_proxy_ips = ""
 target = "argus-auth:7043"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
+[heartbeat]
+interval_seconds = 60
+grace_minutes = 45
+socket_grace_seconds = 180
+guard_stale_seconds = 90
+push_interval_seconds = 900
+refill_seconds = 300
+
+[push]
+enabled = false
+
 [nats]
 url = "nats://nats:4222"
 user = "argus"

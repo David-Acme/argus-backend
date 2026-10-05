@@ -111,6 +111,12 @@ void SyncSocket::setUserDirectory(
   service_.setUserDirectory(std::move(directory));
 }
 
+void SyncSocket::setHeartbeatSource(
+    std::shared_ptr<const HeartbeatSource> source)
+{
+  service_.setHeartbeatSource(std::move(source));
+}
+
 void SyncSocket::handleConnectionClosed(
     const drogon::WebSocketConnectionPtr& conn)
 {

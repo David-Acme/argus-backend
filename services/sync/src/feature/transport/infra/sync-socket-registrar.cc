@@ -19,6 +19,7 @@ SyncRegistrationStats registerSyncSurface(SyncSurfaceInput input)
   socket->setNotificationSource(std::move(input.notificationSource));
   socket->setIdentitySource(std::move(input.identitySource));
   socket->setUserDirectory(std::move(input.userDirectory));
+  socket->setHeartbeatSource(std::move(input.heartbeatSource));
   drogon::app().registerController(socket);
 
   bool registered = false;

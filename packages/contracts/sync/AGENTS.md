@@ -48,6 +48,11 @@ now `services/sync`'s `SyncSocket`.
   argus-sync relays them like any user emit — its fan-out never validates the
   operation's range, so an older sync passes them through unchanged
   (`services/notification/CONTEXT.md`, "Argus calls you").
+  `Heartbeat = 11` (`"heartbeat"`, 2026-10, the dead man's switch) is
+  additive as well: argus-sync answers `{type:"heartbeat"}` with it, sends one
+  after `InitialInfo` and pushes one to a user's room when their presence
+  changes (`services/sync/CONTEXT.md`, "Dead man's switch"); `10` is
+  `ResponseUpdate`.
 - `src/sync/table-name.hxx` — `TableName`, 24 enumerators `User = 0` through
   `Memory = 23`, with its round-trip helpers, `kLastTableName` for the sweeps
   that must not miss a new table, and a lookup map; 35 files, the

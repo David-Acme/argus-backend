@@ -43,17 +43,18 @@ TEST_CASE("sync operation strings round-trip and keep their wire numbers")
                    SyncOperation::Delete, SyncOperation::Log,
                    SyncOperation::AuthContextChanged,
                    SyncOperation::CallIncoming, SyncOperation::CallCancel,
-                   SyncOperation::ResponseUpdate},
+                   SyncOperation::ResponseUpdate, SyncOperation::Heartbeat},
         .names = {"initial_info", "sync", "sync_audit_log",
                   "sync_user_audit_log", "add", "delete", "log",
                   "auth_context_changed", "call_incoming", "call_cancel",
-                  "response_update"},
+                  "response_update", "heartbeat"},
         .toString = syncOperationToString,
         .fromString = syncOperationFromString});
     CHECK(static_cast<int>(SyncOperation::AuthContextChanged) == 7);
     CHECK(static_cast<int>(SyncOperation::CallIncoming) == 8);
     CHECK(static_cast<int>(SyncOperation::CallCancel) == 9);
     CHECK(static_cast<int>(SyncOperation::ResponseUpdate) == 10);
+    CHECK(static_cast<int>(SyncOperation::Heartbeat) == 11);
     CHECK(syncOperationFromString("unknown") == SyncOperation::Synchronize);
 }
 

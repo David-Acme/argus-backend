@@ -75,3 +75,49 @@ SyncRtcConfig SyncConfig::resolveRtc()
                    !config.serverUrl.empty();
   return config;
 }
+
+namespace
+{
+struct BoundedSecondsInput
+{
+  const char* key;
+  int64_t fallback;
+  int64_t min;
+  int64_t max;
+};
+
+int64_t boundedSeconds(const BoundedSecondsInput& input)
+{
+  if (!ConfigService::hasKey(input.key))
+    return input.fallback;
+  return std::clamp<int64_t>(ConfigService::getInt(input.key), input.min,
+                             input.max);
+}
+}
+
+SyncHeartbeatConfig SyncConfig::resolveHeartbeat()
+{
+  constexpr int64_t kMinute = 60;
+  return {.intervalSeconds = boundedSeconds(
+              {.key = "heartbeat.interval_seconds", .fallback = 60, .min = 15, .max = 300}),
+          .graceSeconds = kMinute * boundedSeconds({.key = "heartbeat.grace_minutes",
+                                                    .fallback = 45,
+                                                    .min = 15,
+                                                    .max = 720}),
+          .socketGraceSeconds = boundedSeconds({.key = "heartbeat.socket_grace_seconds",
+                                                .fallback = 180,
+                                                .min = 60,
+                                                .max = 3600}),
+          .guardStaleSeconds = boundedSeconds({.key = "heartbeat.guard_stale_seconds",
+                                               .fallback = 90,
+                                               .min = 30,
+                                               .max = 3600}),
+          .pushIntervalSeconds = boundedSeconds({.key = "heartbeat.push_interval_seconds",
+                                                 .fallback = 900,
+                                                 .min = 300,
+                                                 .max = 3600}),
+          .refillSeconds = boundedSeconds({.key = "heartbeat.refill_seconds",
+                                           .fallback = 300,
+                                           .min = 30,
+                                           .max = 3600})};
+}

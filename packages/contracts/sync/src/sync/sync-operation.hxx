@@ -15,7 +15,8 @@ enum class SyncOperation : uint8_t
   AuthContextChanged = 7,
   CallIncoming = 8,
   CallCancel = 9,
-  ResponseUpdate = 10
+  ResponseUpdate = 10,
+  Heartbeat = 11
 };
 
 inline std::string syncOperationToString(SyncOperation op)
@@ -43,6 +44,8 @@ inline std::string syncOperationToString(SyncOperation op)
       return "call_cancel";
     case SyncOperation::ResponseUpdate:
       return "response_update";
+    case SyncOperation::Heartbeat:
+      return "heartbeat";
   }
   return "sync";
 }
@@ -69,5 +72,7 @@ inline SyncOperation syncOperationFromString(const std::string& s)
     return SyncOperation::CallCancel;
   if (s == "response_update")
     return SyncOperation::ResponseUpdate;
+  if (s == "heartbeat")
+    return SyncOperation::Heartbeat;
   return SyncOperation::Synchronize;
 }
