@@ -176,10 +176,6 @@ IdentityConfig operator_config::resolveIdentity()
 {
   IdentityConfig config;
   config.identify = ConfigService::getBool("identity.identify");
-  config.autoEnroll = ConfigService::getBool("identity.auto_enroll");
-  config.captureClearFaces =
-      !ConfigService::hasKey("identity.capture_clear_faces") ||
-      ConfigService::getBool("identity.capture_clear_faces");
   config.minFaceBoxPx = ConfigService::getInt("identity.min_face_box_px");
   if (config.minFaceBoxPx <= 0)
     config.minFaceBoxPx = 48;
@@ -187,10 +183,6 @@ IdentityConfig operator_config::resolveIdentity()
       ConfigService::getInt("identity.identify_interval_ms");
   if (config.identifyIntervalMs <= 0)
     config.identifyIntervalMs = 2000;
-  config.enrollCooldownMs =
-      ConfigService::getInt("identity.enroll_cooldown_ms");
-  if (config.enrollCooldownMs <= 0)
-    config.enrollCooldownMs = 600000;
   config.bestShotMs = ConfigService::getInt("identity.best_shot_ms");
   if (config.bestShotMs <= 0)
     config.bestShotMs = 10000;

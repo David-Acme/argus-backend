@@ -1315,3 +1315,35 @@ listening through a camera) refuses with `FAILED_PRECONDITION` while audio is
 withheld. Talking through the camera's speaker is not capture and is not
 gated. `camera-privacy-test` pins the rule and the listener, and
 `camera-action-rpc-test` the refused `Listen`.
+
+## Privacy masks: what the owner draws out is never analysed (2026-10, STRANGERS)
+
+The owner asked for areas a camera must not look at for Argus: the street,
+the pavement, a neighbour's window. A zone of type `privacy` (fourth value of
+`ZoneType`, `packages/contracts/camera`, and of the `zone.zone_type` CHECK) is
+a polygon drawn in the same zone editor as the others. The operator fills it
+black on every analysis frame (`feature/operator/privacy-mask`, before the
+motion gate and the detector), so nothing inside it is detected, tracked,
+identified or cropped. The masked frame is also what goes into
+`SnapshotStore` (re-encoded once per frame only when a mask exists), and
+therefore into the grid stills, the guard's VLM crops, the identity crops and
+the detection evidence the uploader stores. The existing `exclude` zone keeps
+its meaning (detections whose centre falls inside are dropped, pixels kept).
+
+What a mask does not cover, by design: the live view the owner watches (the
+main stream is passed through from go2rtc, unmodified — masking it would mean
+transcoding every viewer) and the health monitor, which only computes
+brightness/sharpness/scene statistics and stores no picture.
+
+A database created before this change has the old CHECK. SQLite cannot alter
+a CHECK, so `ZoneRepository::acceptPrivacyZones()` rebuilds `zone` once at
+boot when its stored DDL lacks `'privacy'`: copy into `zone_rebuild` with the
+same ids, drop, rename, recreate the three indices, in one transaction with
+foreign keys deferred. It is idempotent and no other table references `zone`.
+
+`identity.auto_enroll`, `identity.capture_clear_faces` and
+`identity.enroll_cooldown_ms` are gone with the enrollment path they drove:
+the matcher calls `IdentityClient::identifyForCamera` with the camera id and
+the time of the sighting, and identity decides whether a face is a household
+member, a known visitor or a new one (`services/identity/CONTEXT.md`, "Recurring
+visitors").

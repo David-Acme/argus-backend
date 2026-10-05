@@ -1,4 +1,5 @@
 #include <feature/operator/camera-operator-service.hxx>
+#include <feature/operator/privacy-mask.hxx>
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -10,6 +11,7 @@
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
+#include <iterator>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -568,6 +570,20 @@ void CameraOperatorService::processFrame(const ProcessFrameInput& input)
     return;
   }
 
+  std::vector<OperatorZone> zones;
+  if (inputs_.dependencies.zones)
+    zones = inputs_.dependencies.zones->forCamera(cameraId);
+  else
+    std::ranges::copy_if(inputs_.operator_.zones, std::back_inserter(zones),
+                         [cameraId](const OperatorZone& zone) {
+                           return zone.cameraId == cameraId;
+                         });
+  bool masked = false;
+  if (privacy_mask::covers(zones)) {
+    rgb = rgb.clone();
+    masked = privacy_mask::apply(rgb, zones);
+  }
+
   {
     std::lock_guard<std::mutex> lock(stateMutex_);
     CameraState& gateState = states_[cameraId];
@@ -619,7 +635,15 @@ void CameraOperatorService::processFrame(const ProcessFrameInput& input)
     hour = local.tm_hour;
 
   const int64_t stamp = nowMs();
-  if (!frame.jpeg.empty()) {
+  if (masked) {
+    cv::Mat bgr;
+    cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
+    std::vector<uchar> encoded;
+    if (cv::imencode(".jpg", bgr, encoded, {cv::IMWRITE_JPEG_QUALITY, 85}))
+      SnapshotStore::instance().putFrame(
+          cameraId, std::string(encoded.begin(), encoded.end()), stamp);
+  }
+  else if (!frame.jpeg.empty()) {
     SnapshotStore::instance().putFrame(
         cameraId, std::string(frame.jpeg.begin(), frame.jpeg.end()), stamp);
   }
@@ -649,13 +673,7 @@ void CameraOperatorService::processFrame(const ProcessFrameInput& input)
 
   EventIntelligenceInput intelligence;
   intelligence.cameraId = cameraId;
-  if (inputs_.dependencies.zones)
-    intelligence.zones = inputs_.dependencies.zones->forCamera(cameraId);
-  else
-    for (const auto& zone : inputs_.operator_.zones) {
-      if (zone.cameraId == cameraId)
-        intelligence.zones.push_back(zone);
-    }
+  intelligence.zones = std::move(zones);
   intelligence.ignoredClasses = inputs_.operator_.ignoredClasses;
   const bool night = isNightHour(hour);
   const PersonDwell dwell = updatePersonTracks(

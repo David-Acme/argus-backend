@@ -21,7 +21,7 @@ CreateZoneDto CreateZoneDto::fromJson(const Json::Value& json)
   IS_POSITIVE(cameraId)
   IS_NOT_EMPTY(name)
   MAX_LENGTH(name, 120)
-  IS_IN(zoneType, "monitor", "alert", "exclude")
+  IS_IN(zoneType, "monitor", "alert", "exclude", "privacy")
   MATCHES_REGEX(color, "^#[0-9A-Fa-f]{6}$", "must be a #RRGGBB hex color")
   CUSTOM_LAMBDA(points,
                 [](const CreateZoneDto& d) -> std::optional<std::string> {

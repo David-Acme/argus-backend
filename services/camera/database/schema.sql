@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS zone (
     name       TEXT    NOT NULL,
     points     TEXT    NOT NULL,
     zone_type  TEXT    NOT NULL  DEFAULT 'monitor'
-                                     CHECK (zone_type IN ('monitor', 'alert', 'exclude')),
+                                     CHECK (zone_type IN ('monitor', 'alert', 'exclude', 'privacy')),
     color      TEXT    NOT NULL  DEFAULT '#FF0000',
     is_enabled INTEGER NOT NULL  DEFAULT 1,
     created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),

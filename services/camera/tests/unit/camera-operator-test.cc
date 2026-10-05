@@ -7,6 +7,7 @@
 #include <feature/operator/known-person-matcher.hxx>
 #include <feature/operator/object-event-sink.hxx>
 #include <feature/operator/object-event.hxx>
+#include <feature/operator/privacy-mask.hxx>
 #include <config/operator-config.hxx>
 #include <feature/operator/zone-source.hxx>
 
@@ -39,9 +40,10 @@ public:
   RecognizingIdentityClient() : IdentityClient("localhost:1") {}
 
   std::optional<argus::identity::v1::IdentifyPersonResponse>
-  identifyPerson(const std::string& image) const override
+  identifyForCamera(const CameraIdentifyInput& input) const override
   {
-    CHECK_FALSE(image.empty());
+    CHECK_FALSE(input.image.empty());
+    CHECK(input.cameraId > 0);
     ++calls;
     argus::identity::v1::IdentifyPersonResponse response;
     response.set_matched(true);
@@ -59,11 +61,8 @@ namespace
 IdentityConfig matchConfig(int64_t bestShotMs = 10000)
 {
   return IdentityConfig{.identify = true,
-                        .autoEnroll = false,
-                        .captureClearFaces = true,
                         .minFaceBoxPx = 8,
                         .identifyIntervalMs = 2000,
-                        .enrollCooldownMs = 600000,
                         .bestShotMs = bestShotMs,
                         .improveMargin = 0.15,
                         .target = {},
@@ -225,7 +224,7 @@ TEST_CASE("an unknown verdict can upgrade to known on a better crop")
     LateRecognizer() : IdentityClient("localhost:1") {}
 
     std::optional<argus::identity::v1::IdentifyPersonResponse>
-    identifyPerson(const std::string&) const override
+    identifyForCamera(const CameraIdentifyInput&) const override
     {
       ++calls;
       argus::identity::v1::IdentifyPersonResponse response;
@@ -971,12 +970,9 @@ TEST_CASE("an encode failure reports unobservable without scanning")
 {
   static std::vector<uint8_t> rgb(64 * 48 * 3, 100);
   IdentityKnownPersonMatcher matcher({.identify = true,
-                                      .autoEnroll = false,
-                                      .captureClearFaces = true,
                                       .minFaceBoxPx = 48,
                                       .identifyIntervalMs = 2000,
-                                      .enrollCooldownMs = 600000,
-                                      .bestShotMs = 10000,
+                                                    .bestShotMs = 10000,
                                       .improveMargin = 0.15,
                                       .target = {},
                                       .rpcSecret = {}});
@@ -1005,12 +1001,9 @@ TEST_CASE("disabled identity reports unobservable without scanning")
 {
   static std::vector<uint8_t> rgb(64 * 48 * 3, 100);
   IdentityKnownPersonMatcher matcher({.identify = false,
-                                      .autoEnroll = false,
-                                      .captureClearFaces = true,
                                       .minFaceBoxPx = 48,
                                       .identifyIntervalMs = 2000,
-                                      .enrollCooldownMs = 600000,
-                                      .bestShotMs = 10000,
+                                                    .bestShotMs = 10000,
                                       .improveMargin = 0.15,
                                       .target = {},
                                       .rpcSecret = {}});
@@ -1107,7 +1100,7 @@ TEST_CASE("a crop with no face is unobservable, an unmatched face is unrecognize
     }
 
     std::optional<argus::identity::v1::IdentifyPersonResponse>
-    identifyPerson(const std::string&) const override
+    identifyForCamera(const CameraIdentifyInput&) const override
     {
       argus::identity::v1::IdentifyPersonResponse response;
       if (found_)
@@ -1140,4 +1133,31 @@ TEST_CASE("a crop with no face is unobservable, an unmatched face is unrecognize
   CHECK(stateFor(false) == IdentityState::Unobservable);
   CHECK(stateFor(true) == IdentityState::Unrecognized);
   CHECK(stateFor(std::nullopt) == IdentityState::Unrecognized);
+}
+
+TEST_CASE("a privacy mask blanks its polygon and leaves the rest of the frame")
+{
+  cv::Mat rgb(100, 200, CV_8UC3, cv::Scalar(120, 130, 140));
+  const std::vector<OperatorZone> zones{
+      {.cameraId = 6,
+       .name = "Vereda",
+       .kind = "privacy",
+       .points = {{0.0, 0.0}, {0.5, 0.0}, {0.5, 1.0}, {0.0, 1.0}}},
+      {.cameraId = 6,
+       .name = "Puerta",
+       .kind = "alert",
+       .points = {{0.6, 0.0}, {1.0, 0.0}, {1.0, 1.0}}}};
+  REQUIRE(privacy_mask::covers(zones));
+  REQUIRE(privacy_mask::apply(rgb, zones));
+  CHECK(rgb.at<cv::Vec3b>(50, 40) == cv::Vec3b(0, 0, 0));
+  CHECK(rgb.at<cv::Vec3b>(50, 160) == cv::Vec3b(120, 130, 140));
+  CHECK(rgb.at<cv::Vec3b>(10, 190) == cv::Vec3b(120, 130, 140));
+
+  const std::vector<OperatorZone> none{{.cameraId = 6,
+                                        .name = "Patio",
+                                        .kind = "monitor",
+                                        .points = {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}}}};
+  CHECK_FALSE(privacy_mask::covers(none));
+  cv::Mat untouched(10, 10, CV_8UC3, cv::Scalar(1, 2, 3));
+  CHECK_FALSE(privacy_mask::apply(untouched, none));
 }

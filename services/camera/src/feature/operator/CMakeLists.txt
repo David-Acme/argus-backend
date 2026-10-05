@@ -5,6 +5,7 @@ argus_module(NAME camera-operator
         identity-known-person-matcher.cc
         nats-object-event-sink.cc
         object-event.cc
+        privacy-mask.cc
         zone-provider.cc
         zone-source.cc
         repositories/object-event-outbox/object-event-outbox-repository.cc

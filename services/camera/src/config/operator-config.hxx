@@ -49,11 +49,8 @@ struct OperatorConfig
 struct IdentityConfig
 {
   bool identify{false};
-  bool autoEnroll{false};
-  bool captureClearFaces{true};
   int minFaceBoxPx{48};
   int64_t identifyIntervalMs{2000};
-  int64_t enrollCooldownMs{600000};
   int64_t bestShotMs{10000};
   double improveMargin{0.15};
   std::string target;

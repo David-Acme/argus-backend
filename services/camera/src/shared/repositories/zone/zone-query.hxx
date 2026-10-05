@@ -1,4 +1,6 @@
 #pragma once
+
+#include <array>
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
 #include <optional>
@@ -64,6 +66,29 @@ inline constexpr std::string_view UPDATE_COL_IS_ENABLED = "is_enabled = ?";
 inline constexpr std::string_view UPDATE_SUFFIX =
     ", updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
+inline constexpr std::string_view ZONE_TABLE_SQL =
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'zone'";
+inline constexpr std::array<std::string_view, 7> ZONE_REBUILD = {
+    "CREATE TABLE zone_rebuild ("
+    "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+    "camera_id INTEGER NOT NULL REFERENCES camera(id) ON DELETE CASCADE, "
+    "name TEXT NOT NULL, points TEXT NOT NULL, "
+    "zone_type TEXT NOT NULL DEFAULT 'monitor' "
+    "CHECK (zone_type IN ('monitor', 'alert', 'exclude', 'privacy')), "
+    "color TEXT NOT NULL DEFAULT '#FF0000', "
+    "is_enabled INTEGER NOT NULL DEFAULT 1, "
+    "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+    "updated_at INTEGER, deleted_at INTEGER)",
+    "INSERT INTO zone_rebuild (id, camera_id, name, points, zone_type, color, "
+    "is_enabled, created_at, updated_at, deleted_at) "
+    "SELECT id, camera_id, name, points, zone_type, color, is_enabled, "
+    "created_at, updated_at, deleted_at FROM zone",
+    "DROP TABLE zone",
+    "ALTER TABLE zone_rebuild RENAME TO zone",
+    "CREATE INDEX IF NOT EXISTS idx_zone_camera_id ON zone (camera_id)",
+    "CREATE INDEX IF NOT EXISTS idx_zone_created_at ON zone (created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_zone_deleted_at ON zone (deleted_at)"};
+
 inline constexpr std::string_view REMOVE =
     "UPDATE zone SET deleted_at = strftime('%s', 'now'), "
     "updated_at = strftime('%s', 'now') WHERE id = ? AND deleted_at IS NULL";

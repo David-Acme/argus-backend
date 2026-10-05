@@ -37,11 +37,9 @@ private:
 
   std::string encodeCrop(const PersonCrop& crop) const;
   double cropQuality(const PersonCrop& crop) const;
-  bool canEnroll(int64_t cameraId, int64_t stamp) const;
 
   IdentityConfig config_;
   std::unique_ptr<IdentityClient> client_;
   mutable std::mutex mutex_;
   mutable std::map<std::pair<int64_t, int64_t>, CacheEntry> cache_;
-  mutable std::map<int64_t, int64_t> lastEnrollMs_;
 };

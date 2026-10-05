@@ -23,6 +23,7 @@ public:
   drogon::Task<ZoneSchema> update(int64_t id,
                                   const ZoneUpdateInput& input) const;
   drogon::Task<bool> remove(int64_t id, drogon::orm::DbClient* client) const;
+  static bool acceptPrivacyZones();
 
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;

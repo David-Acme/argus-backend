@@ -3,6 +3,7 @@
 #include <feature/media/camera-media-socket.hxx>
 #include <feature/media/session-revocation-consumer.hxx>
 #include <drogon/drogon.h>
+#include <shared/repositories/zone/zone-repository.hxx>
 #include <drogon/utils/coroutine.h>
 #include <feature/camera-control/controllers/camera-control-controller.hxx>
 #include <feature/camera/controllers/camera-controller.hxx>
@@ -326,6 +327,8 @@ int main()
       LOG_FATAL << "Camera database schema failed to apply — aborting startup";
       _exit(1);
     }
+
+    ZoneRepository::acceptPrivacyZones();
 
     if (!cameraActionRpc.migrateActionSchema()) {
       LOG_FATAL << "Camera action schema migration failed — aborting startup";

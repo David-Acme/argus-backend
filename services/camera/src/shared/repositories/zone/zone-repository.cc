@@ -1,6 +1,7 @@
 #include "zone-repository.hxx"
 
 #include <ctime>
+#include <drogon/drogon.h>
 #include <sqlite/db-service.hxx>
 #include <string>
 #include <string_view>
@@ -178,4 +179,19 @@ drogon::Task<std::optional<Json::Value>> ZoneRepository::findLastDeleted(const S
   if (result.empty())
     co_return std::nullopt;
   co_return ZoneSchema(result.front()).toJson();
+}
+
+bool ZoneRepository::acceptPrivacyZones()
+{
+  const auto client = DbService::cameraClient();
+  const auto table = client->execSqlSync(std::string(ZONE_TABLE_SQL));
+  if (table.empty() ||
+      table.front()["sql"].as<std::string>().find("'privacy'") != std::string::npos)
+    return true;
+  const auto transaction = client->newTransaction();
+  transaction->execSqlSync("PRAGMA defer_foreign_keys = ON");
+  for (const auto statement : ZONE_REBUILD)
+    transaction->execSqlSync(std::string(statement));
+  LOG_INFO << "Camera schema: zone accepts privacy masks";
+  return true;
 }

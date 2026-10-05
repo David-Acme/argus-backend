@@ -27,9 +27,9 @@ UpdateZoneDto UpdateZoneDto::fromJson(const Json::Value& json)
                   if (!d.zoneType)
                     return std::nullopt;
                   if (*d.zoneType == "monitor" || *d.zoneType == "alert" ||
-                      *d.zoneType == "exclude")
+                      *d.zoneType == "exclude" || *d.zoneType == "privacy")
                     return std::nullopt;
-                  return "must be one of: monitor, alert, exclude";
+                  return "must be one of: monitor, alert, exclude, privacy";
                 })
   CUSTOM_LAMBDA(color,
                 [](const UpdateZoneDto& d) -> std::optional<std::string> {

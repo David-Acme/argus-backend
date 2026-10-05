@@ -7,7 +7,8 @@ enum class ZoneType : uint8_t
 {
   Monitor = 0,
   Alert,
-  Exclude
+  Exclude,
+  Privacy
 };
 
 inline std::string zoneTypeToString(ZoneType t)
@@ -17,6 +18,8 @@ inline std::string zoneTypeToString(ZoneType t)
       return "alert";
     case ZoneType::Exclude:
       return "exclude";
+    case ZoneType::Privacy:
+      return "privacy";
     default:
       return "monitor";
   }
@@ -28,5 +31,7 @@ inline ZoneType zoneTypeFromString(const std::string& s)
     return ZoneType::Alert;
   if (s == "exclude")
     return ZoneType::Exclude;
+  if (s == "privacy")
+    return ZoneType::Privacy;
   return ZoneType::Monitor;
 }
