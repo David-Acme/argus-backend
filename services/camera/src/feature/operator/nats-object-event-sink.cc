@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <random>
 #include <sstream>
+#include <utility>
 
 namespace
 {
@@ -44,7 +45,7 @@ std::string makeSessionTag()
 NatsObjectEventSink::NatsObjectEventSink(std::shared_ptr<NatsBus> bus,
                                          Config config)
     : bus_(std::move(bus)),
-      config_(config),
+      config_(std::move(config)),
       subject_(config_.publishSubject.empty()
                    ? std::string(nats_subject::kCameraObjectDetected)
                    : config_.publishSubject),

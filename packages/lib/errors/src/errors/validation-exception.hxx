@@ -3,6 +3,7 @@
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 using ValidationErrors = std::map<std::string, std::vector<std::string>>;
@@ -10,9 +11,9 @@ using ValidationErrors = std::map<std::string, std::vector<std::string>>;
 class ValidationException : public std::runtime_error
 {
 public:
-  explicit ValidationException(const ValidationErrors& errors,
+  explicit ValidationException(ValidationErrors errors,
                                int statusCode = 422)
-      : std::runtime_error("Validation failed"), errors_(errors),
+      : std::runtime_error("Validation failed"), errors_(std::move(errors)),
         statusCode_(statusCode)
   {
   }

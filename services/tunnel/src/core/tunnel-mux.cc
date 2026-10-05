@@ -3,6 +3,7 @@
 #include <drogon/drogon.h>
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 namespace tunnel
@@ -47,7 +48,7 @@ bool TunnelMux::adoptRelayCandidate(const TcpPeer::Ptr& peer)
   if (homePeer_ && homeActive_ &&
       Clock::now() - lastFrameAt_ < limits_.deadLinkTimeout)
     return false;
-  if (static_cast<int>(pendingHomes_.size()) >= limits_.maxPendingHomes)
+  if (std::cmp_greater_equal(pendingHomes_.size(), limits_.maxPendingHomes))
     return false;
   const std::string& ip = peer->peerIp();
   const auto sameIp = std::ranges::count_if(pendingHomes_, [&ip](const auto& entry) {
@@ -196,7 +197,7 @@ uint32_t TunnelMux::openRemote()
 {
   if (!homePeer_ || !homeActive_)
     return 0;
-  if (static_cast<int>(streams_.size()) >= limits_.maxStreams)
+  if (std::cmp_greater_equal(streams_.size(), limits_.maxStreams))
     return 0;
   uint32_t id = nextStreamId_++;
   while (id == 0 || streams_.contains(id))
@@ -422,7 +423,7 @@ void TunnelMux::dispatchFrame(Frame frame)
                << " which is invalid or already open; ignored";
       break;
     }
-    if (static_cast<int>(streams_.size()) >= limits_.maxStreams) {
+    if (std::cmp_greater_equal(streams_.size(), limits_.maxStreams)) {
       const CloseReason busy = CloseReason::Busy;
       sendFrameToHome({.type = FrameType::Close,
                        .streamId = frame.streamId,

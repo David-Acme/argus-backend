@@ -86,10 +86,10 @@ public:
   void send(const char*, uint64_t, const drogon::WebSocketMessageType) override {}
   void send(std::string_view, const drogon::WebSocketMessageType) override {}
   void sendJson(const Json::Value&, const drogon::WebSocketMessageType) override {}
-  const trantor::InetAddress& localAddr() const override { return address_; }
-  const trantor::InetAddress& peerAddr() const override { return address_; }
-  bool connected() const override { return closedWith.empty(); }
-  bool disconnected() const override { return !closedWith.empty(); }
+  [[nodiscard]] const trantor::InetAddress& localAddr() const override { return address_; }
+  [[nodiscard]] const trantor::InetAddress& peerAddr() const override { return address_; }
+  [[nodiscard]] bool connected() const override { return closedWith.empty(); }
+  [[nodiscard]] bool disconnected() const override { return !closedWith.empty(); }
   void shutdown(const drogon::CloseCode, const std::string& reason) override { closedWith = reason; }
   void forceClose() override { closedWith = "forced"; }
   void setPingMessage(const std::string&, const std::chrono::duration<double>&) override {}

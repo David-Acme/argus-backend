@@ -54,7 +54,7 @@ private:
 
 PresenceService::PresenceService(Dependencies dependencies,
                                  GuardPresenceConfig config)
-    : dependencies_(dependencies), config_(config)
+    : dependencies_(std::move(dependencies)), config_(std::move(config))
 {
 }
 

@@ -62,7 +62,7 @@ public:
   bool readSome(std::string& out);
 
   const std::string& error() const;
-  const std::string& peerFingerprint() const;
+  [[nodiscard]] const std::string& peerFingerprint() const;
 
 private:
   struct Impl;

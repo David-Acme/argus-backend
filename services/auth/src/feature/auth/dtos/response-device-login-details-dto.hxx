@@ -16,5 +16,5 @@ struct ResponseDeviceLoginDetailsDto
   int64_t createdAt{0};
   int64_t expiresAt{0};
 
-  Json::Value toJson() const;
+  [[nodiscard]] Json::Value toJson() const;
 };

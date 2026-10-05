@@ -347,10 +347,10 @@ public:
   {
     messages.push_back(json_util::toString(json));
   }
-  const trantor::InetAddress& localAddr() const override { return addr_; }
-  const trantor::InetAddress& peerAddr() const override { return addr_; }
-  bool connected() const override { return closeReason.empty(); }
-  bool disconnected() const override { return !closeReason.empty(); }
+  [[nodiscard]] const trantor::InetAddress& localAddr() const override { return addr_; }
+  [[nodiscard]] const trantor::InetAddress& peerAddr() const override { return addr_; }
+  [[nodiscard]] bool connected() const override { return closeReason.empty(); }
+  [[nodiscard]] bool disconnected() const override { return !closeReason.empty(); }
   void shutdown(const drogon::CloseCode, const std::string& reason) override { closeReason = reason; }
   void forceClose() override { closeReason = "forced"; }
   void setPingMessage(const std::string&, const std::chrono::duration<double>&) override {}

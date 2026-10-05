@@ -75,7 +75,7 @@ public:
   void feed(const char* data, size_t len);
   void reset();
   bool initDone() const { return initDone_; }
-  bool corrupt() const { return corrupt_; }
+  [[nodiscard]] bool corrupt() const { return corrupt_; }
 
 private:
   struct BoxView

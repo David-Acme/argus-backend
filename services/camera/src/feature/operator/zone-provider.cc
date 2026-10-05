@@ -29,7 +29,7 @@ std::vector<OperatorZone> ZoneProvider::forCamera(int64_t cameraId)
   const int64_t stamp = nowMs();
   bool refresh = false;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     const bool stale = dbOk_ ? stamp - loadedAtMs_ >= refreshMs_
                              : stamp - attemptedAtMs_ >= std::min(refreshMs_, kRetryMs);
     refresh = stale && !loading_;
@@ -47,7 +47,7 @@ std::vector<OperatorZone> ZoneProvider::forCamera(int64_t cameraId)
       LOG_WARN << "Zone provider: camera.db read failed (" << e.what()
                << "); using the last zones, retrying in " << kRetryMs << " ms";
     }
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     loading_ = false;
     if (loaded) {
       cached_ = std::move(*loaded);
@@ -59,7 +59,7 @@ std::vector<OperatorZone> ZoneProvider::forCamera(int64_t cameraId)
     }
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   if (!dbOk_ && cached_.empty())
     return fallback_ ? fallback_->forCamera(cameraId)
                      : std::vector<OperatorZone>{};

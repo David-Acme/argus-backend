@@ -73,7 +73,7 @@ FallbackSignals fallbackSignals(const Json::Value& event)
 }
 
 CameraNotificationPolicy::CameraNotificationPolicy(Config config)
-    : config_(config)
+    : config_(std::move(config))
 {
 }
 
