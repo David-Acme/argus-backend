@@ -174,6 +174,13 @@ inline constexpr std::array<AuthRouteAccess, 1> kSyncAccess = {{
     {.path = "/sync/heartbeat", .method = drogon::Get, .roles = kEveryRole},
 }};
 
+inline constexpr std::array<AuthRouteAccess, 4> kPrivacyAccess = {{
+    {.path = "/privacy/me", .method = drogon::Get, .roles = kEveryRole},
+    {.path = "/privacy/me", .method = drogon::Put, .roles = kEveryRole},
+    {.path = "/privacy/users", .method = drogon::Get, .roles = kOwnerOnly},
+    {.path = "/privacy/household", .method = drogon::Patch, .roles = kOwnerOnly},
+}};
+
 inline constexpr std::string_view kRouteSegment = "{id}";
 
 inline bool routeMatches(std::string_view pattern, std::string_view path)
@@ -355,6 +362,13 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
       return entry.path == path && entry.method == method;
     });
     return route != kSyncAccess.end() && (route->roles & roleBit(role)) != 0;
+  }
+
+  if (path.starts_with("/privacy")) {
+    const auto route = std::ranges::find_if(kPrivacyAccess, [&](const AuthRouteAccess& entry) {
+      return entry.path == path && entry.method == method;
+    });
+    return route != kPrivacyAccess.end() && (route->roles & roleBit(role)) != 0;
   }
 
   if (path.rfind("/guard", 0) == 0) {

@@ -110,6 +110,8 @@ VoiceprintFeatureService::identify(EncodedVoice sample) const
   const auto user = co_await userRepository_.findById(best.userId);
   if (!user || !user->isActive)
     co_return result;
+  if (!(co_await privacyGate_.effectiveFor(best.userId)).voiceLearning)
+    co_return result;
   const auto persons = co_await personRepository_.findByUser(best.userId);
   result.matched = true;
   result.userId = best.userId;
@@ -186,4 +188,36 @@ VoiceprintFeatureService::forget(const VoiceprintForgetRequest& request) const
            << (result.hadProfile ? " (profile and " : " (")
            << result.samples << " learning sample(s))";
   co_return result;
+}
+
+drogon::Task<VoiceprintEraseResult>
+VoiceprintFeatureService::eraseForConsent(const VoiceprintEraseInput& input) const
+{
+  VoiceprintEraseResult erased;
+  erased.removedProfile =
+      co_await profileRepository_.removeByUser(input.subjectId, input.client);
+  erased.samples =
+      co_await sampleRepository_.removeByUser(input.subjectId, input.client);
+  co_await deviceRepository_.removeByUser(input.subjectId, input.client);
+  if (!erased.removedProfile && erased.samples == 0)
+    co_return erased;
+
+  Json::Value data(Json::objectValue);
+  data["event"] = "voiceprint_forget";
+  data["hadProfile"] = erased.removedProfile.has_value();
+  data["samples"] = static_cast<Json::UInt64>(erased.samples);
+  data["byOwner"] = false;
+  data["reason"] = "consentWithdrawn";
+  co_await voiceprint_audit::publish({.actorId = input.actorId,
+                                      .subjectId = input.subjectId,
+                                      .action = UserAction::Delete,
+                                      .data = std::move(data),
+                                      .client = input.client});
+  co_return erased;
+}
+
+void VoiceprintFeatureService::dropFromIndex(const VoiceprintEraseResult& erased)
+{
+  if (erased.removedProfile)
+    VoiceprintIndex::instance().remove(*erased.removedProfile);
 }

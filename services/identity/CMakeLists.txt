@@ -171,6 +171,7 @@ argus_service(NAME argus-identity
             argus::identity-enrollment
             argus::identity-retention
             argus::identity-voiceprint
+            argus::identity-privacy
             argus::identity-rpc
     DEPENDS argus::lib::http
             argus::lib::auth

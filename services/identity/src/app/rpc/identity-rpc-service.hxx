@@ -10,6 +10,7 @@
 #include <shared/repositories/person-tag/person-tag-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
+#include <shared/services/privacy/privacy-gate.hxx>
 #include <feature/enrollment/services/enrollment-feature-service.hxx>
 
 class IdentityRpcService final
@@ -86,6 +87,16 @@ public:
       const argus::identity::v1::ListNotifiableUsersRequest* request,
       argus::identity::v1::ListNotifiableUsersResponse* response) override;
 
+  grpc::ServerUnaryReactor*
+  ListPrivacy(grpc::CallbackServerContext* context,
+              const argus::identity::v1::ListPrivacyRequest* request,
+              argus::identity::v1::ListPrivacyResponse* response) override;
+
+  grpc::ServerUnaryReactor*
+  ListUsers(grpc::CallbackServerContext* context,
+            const argus::identity::v1::ListUsersRequest* request,
+            argus::identity::v1::ListUsersResponse* response) override;
+
 private:
   bool fleetAuthorized(const grpc::CallbackServerContext* context) const;
 
@@ -96,4 +107,5 @@ private:
   FaceEmbeddingRepository faceEmbeddingRepository_;
   PersonTagRepository personTagRepository_;
   PersonSnapshotRepository personSnapshotRepository_;
+  PrivacyGate privacyGate_;
 };

@@ -231,6 +231,10 @@ void seedUsers()
       "(10, 'Vera', 'Inactive', 'guest', 'es', 0)");
   client->execSqlSync(
       "INSERT INTO person (id, user_id, name) VALUES (70, 7, 'Rita')");
+  client->execSqlSync(
+      "INSERT INTO user_privacy (user_id, notice_version, presence, "
+      "face_cameras, voice_learning, camera_audio) "
+      "SELECT id, 1, 1, 1, 1, 1 FROM user WHERE id IN (1, 7, 8, 9)");
 }
 
 struct Teardown

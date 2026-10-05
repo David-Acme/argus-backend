@@ -129,6 +129,10 @@ inline constexpr ErrorDefinition ChangeNotRecorded{
     .code = ErrorCode::InternalError,
     .status = 500,
     .message = "The change could not be recorded"};
+inline constexpr ErrorDefinition PrivacyNoticeOutdated{
+    .code = ErrorCode::Conflict,
+    .status = 409,
+    .message = "The privacy notice changed; review it again"};
 inline constexpr ErrorDefinition VoiceprintNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,

@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <shared/repositories/user/user-repository.hxx>
+#include <shared/services/privacy/privacy-gate.hxx>
 #include <string>
 #include <vector>
 
@@ -54,7 +55,8 @@ enum class PassiveCallOutcome : uint8_t
   Adopted,
   Refreshed,
   Linked,
-  Relinked
+  Relinked,
+  NotConsented
 };
 
 [[nodiscard]] const char* passiveCallOutcomeName(PassiveCallOutcome outcome);
@@ -114,4 +116,5 @@ private:
   VoiceSampleRepository sampleRepository_;
   VoiceDeviceRepository deviceRepository_;
   UserRepository userRepository_;
+  PrivacyGate privacyGate_;
 };

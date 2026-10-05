@@ -2,6 +2,17 @@ syntax = "proto3";
 
 package argus.identity.v1;
 
+message PrivacyChoices
+{
+  uint32 notice_version = 1;
+  bool decided = 2;
+  bool presence = 3;
+  bool face_cameras = 4;
+  bool voice_learning = 5;
+  bool camera_audio = 6;
+  bool visitor_recognition = 7;
+}
+
 message UserIdentity
 {
   int64 user_id = 1;
@@ -10,6 +21,7 @@ message UserIdentity
   optional string last_name = 4;
   optional string role = 5;
   optional bool is_active = 6;
+  optional PrivacyChoices privacy = 7;
 }
 
 message UpdateUserRequest
@@ -82,9 +94,16 @@ message ListPersonsResponse
   repeated CatalogPerson persons = 1;
 }
 
+enum IdentifyPurpose
+{
+  IDENTIFY_PURPOSE_LOGIN = 0;
+  IDENTIFY_PURPOSE_CAMERA = 1;
+}
+
 message IdentifyPersonRequest
 {
   bytes image = 1;
+  IdentifyPurpose purpose = 2;
 }
 
 message IdentifyPersonResponse
@@ -190,6 +209,31 @@ message ListNotifiableUsersResponse
   repeated int64 user_ids = 1;
 }
 
+message ListUsersRequest
+{
+}
+
+message ListUsersResponse
+{
+  repeated UserIdentity users = 1;
+}
+
+message ListPrivacyRequest
+{
+}
+
+message UserPrivacy
+{
+  int64 user_id = 1;
+  PrivacyChoices choices = 2;
+}
+
+message ListPrivacyResponse
+{
+  repeated UserPrivacy users = 1;
+  PrivacyChoices household = 2;
+}
+
 service IdentityService
 {
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
@@ -216,4 +260,8 @@ service IdentityService
 
   rpc ListNotifiableUsers(ListNotifiableUsersRequest)
       returns (ListNotifiableUsersResponse) {}
+
+  rpc ListPrivacy(ListPrivacyRequest) returns (ListPrivacyResponse) {}
+
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {}
 }

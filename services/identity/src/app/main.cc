@@ -19,6 +19,7 @@
 #include <feature/user/controllers/portrait-preview-controller.hxx>
 #include <feature/user/controllers/user-controller.hxx>
 #include <feature/user/services/nats-identity-change-sink.hxx>
+#include <feature/privacy/controllers/privacy-controller.hxx>
 #include <feature/voiceprint/controllers/voiceprint-controller.hxx>
 #include <feature/voiceprint/repositories/voice-profile/voice-profile-repository.hxx>
 #include <feature/voiceprint/services/embedding/speaker-embedding-service.hxx>
@@ -135,6 +136,7 @@ int main()
   drogon::app().registerController(
       std::make_shared<PortraitPreviewController>());
   drogon::app().registerController(std::make_shared<VoiceprintController>());
+  drogon::app().registerController(std::make_shared<PrivacyController>());
 
   RemoteGate remoteGate(remote);
 

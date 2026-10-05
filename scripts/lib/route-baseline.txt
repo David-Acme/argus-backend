@@ -59,6 +59,10 @@ identity	POST	/pairing	DeviceFilter,ValidJsonFilter	-	services/identity/src/feat
 identity	GET	/pairing/status	DeviceFilter	-	services/identity/src/feature/pairing/controllers/pairing-controller.hxx
 identity	GET	/portrait-preview/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/user/controllers/portrait-preview-controller.hxx
 identity	GET	/portrait-preview/{1}/content	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/user/controllers/portrait-preview-controller.hxx
+identity	PATCH	/privacy/household	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/privacy/controllers/privacy-controller.hxx
+identity	GET	/privacy/me	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/privacy/controllers/privacy-controller.hxx
+identity	PUT	/privacy/me	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/privacy/controllers/privacy-controller.hxx
+identity	GET	/privacy/users	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/privacy/controllers/privacy-controller.hxx
 identity	GET	/user	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/user/controllers/user-controller.hxx
 identity	DELETE	/user/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/user/controllers/user-controller.hxx
 identity	PATCH	/user/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/user/controllers/user-controller.hxx

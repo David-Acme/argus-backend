@@ -5,6 +5,7 @@ argus_module(NAME identity-shared
         repositories/person-snapshot/person-snapshot-repository.cc
         repositories/person-tag/person-tag-repository.cc
         repositories/portrait-preview-capability/portrait-preview-capability-repository.cc
+        repositories/privacy/privacy-repository.cc
         repositories/stored-file/stored-file-repository.cc
         repositories/user-invitation/user-invitation-repository.cc
         repositories/user-portrait/user-portrait-repository.cc
@@ -12,12 +13,14 @@ argus_module(NAME identity-shared
         schemas/face-embedding/face-embedding-schema.cc
         schemas/person/person-schema.cc
         schemas/portrait-preview-capability/portrait-preview-capability-schema.cc
+        schemas/privacy/privacy-schema.cc
         schemas/stored-file/stored-file-schema.cc
         schemas/user-invitation/user-invitation-schema.cc
         schemas/user-portrait/user-portrait-schema.cc
         schemas/user/user-schema.cc
         services/face/face-db.cc
         services/face/face-service.cc
+        services/privacy/privacy-gate.cc
         services/storage/private-portrait-service.cc
         services/token/opaque-token.cc
     INCLUDES

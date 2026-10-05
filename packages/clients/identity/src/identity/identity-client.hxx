@@ -81,6 +81,10 @@ public:
   virtual std::optional<argus::identity::v1::IdentifyPersonResponse>
   identifyPerson(const std::string& image) const;
 
+  [[nodiscard]] virtual std::optional<
+      argus::identity::v1::IdentifyPersonResponse>
+  identifyForCamera(const std::string& image) const;
+
   virtual std::optional<argus::identity::v1::EnrollPersonResponse>
   enrollPerson(const EnrollPersonInput& input) const;
 
@@ -96,6 +100,13 @@ public:
   virtual std::optional<PersonProfile> getPerson(int64_t personId) const;
 
   virtual std::optional<std::vector<int64_t>> listNotifiableUsers() const;
+
+  [[nodiscard]] virtual std::optional<argus::identity::v1::ListPrivacyResponse>
+  listPrivacy() const;
+
+  [[nodiscard]] virtual std::optional<
+      std::vector<argus::identity::v1::UserIdentity>>
+  listUsers() const;
 
 private:
   std::shared_ptr<grpc::Channel> channel_;

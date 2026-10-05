@@ -1,5 +1,7 @@
 #include "identity-rpc-service.hxx"
 
+#include <algorithm>
+
 #include <ctime>
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
@@ -20,6 +22,20 @@
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 #include <auth/user-role.hxx>
+
+namespace
+{
+void fillPrivacy(argus::identity::v1::PrivacyChoices& target,
+                 const PrivacyState& state)
+{
+  target.set_notice_version(static_cast<uint32_t>(state.noticeVersion));
+  target.set_decided(state.decided);
+  target.set_presence(state.effective.presence);
+  target.set_face_cameras(state.effective.faceCameras);
+  target.set_voice_learning(state.effective.voiceLearning);
+  target.set_camera_audio(state.effective.cameraAudio);
+}
+}
 
 namespace
 {
@@ -307,6 +323,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::GetUser(
               payload->set_last_name(user->lastName);
               payload->set_role(userRoleToString(user->role));
               payload->set_is_active(user->isActive);
+              fillPrivacy(*payload->mutable_privacy(),
+                          co_await privacyGate_.stateFor(user->id));
             }
             reactor->Finish(grpc::Status::OK);
           }
@@ -389,11 +407,13 @@ grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
     return reactor;
   }
 
+  const bool forCamera =
+      request->purpose() == argus::identity::v1::IDENTIFY_PURPOSE_CAMERA;
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;
-  drogon::app().getLoop()->queueInLoop([this, reactor, image,
+  drogon::app().getLoop()->queueInLoop([this, reactor, image, forCamera,
                                         responseWriter]() {
-    drogon::async_run([this, reactor, image,
+    drogon::async_run([this, reactor, image, forCamera,
                        responseWriter]() -> drogon::Task<void> {
       try {
         const auto face =
@@ -419,10 +439,13 @@ grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
           if (user && !user->isActive)
             responseWriter->set_account_disabled(true);
           if (user && user->isActive) {
-            responseWriter->set_user_id(user->id);
             responseWriter->set_role(userRoleToString(user->role));
-            responseWriter->set_name(user->name);
-            responseWriter->set_last_name(user->lastName);
+            if (!forCamera ||
+                (co_await privacyGate_.effectiveFor(user->id)).faceCameras) {
+              responseWriter->set_user_id(user->id);
+              responseWriter->set_name(user->name);
+              responseWriter->set_last_name(user->lastName);
+            }
           }
         }
         reactor->Finish(grpc::Status::OK);
@@ -777,11 +800,16 @@ grpc::ServerUnaryReactor* IdentityRpcService::GetPerson(
         if (person) {
           auto* payload = responseWriter->mutable_person();
           payload->set_person_id(person->id);
-          if (person->userId)
+          const bool named =
+              !person->userId ||
+              (co_await privacyGate_.effectiveFor(*person->userId)).faceCameras;
+          if (person->userId && named)
             payload->set_user_id(*person->userId);
-          payload->set_name(person->name);
-          payload->set_alias(person->alias);
-          payload->set_observation(person->observation);
+          if (named) {
+            payload->set_name(person->name);
+            payload->set_alias(person->alias);
+            payload->set_observation(person->observation);
+          }
           payload->set_trusted(person->status == PersonStatus::Known);
           if (person->userId) {
             const auto user =
@@ -920,5 +948,99 @@ grpc::ServerUnaryReactor* IdentityRpcService::PromotePerson(
           co_return;
         });
       });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* IdentityRpcService::ListPrivacy(
+    grpc::CallbackServerContext* context,
+    const argus::identity::v1::ListPrivacyRequest* request,
+    argus::identity::v1::ListPrivacyResponse* response)
+{
+  (void)request;
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop([this, reactor, responseWriter]() {
+    drogon::async_run([this, reactor, responseWriter]() -> drogon::Task<void> {
+      try {
+        const auto states = co_await privacyGate_.statesByUser();
+        const auto household = co_await privacyGate_.household();
+        auto* allowed = responseWriter->mutable_household();
+        allowed->set_notice_version(static_cast<uint32_t>(kPrivacyNoticeVersion));
+        allowed->set_decided(true);
+        allowed->set_presence(household.allowed.presence);
+        allowed->set_face_cameras(household.allowed.faceCameras);
+        allowed->set_voice_learning(household.allowed.voiceLearning);
+        allowed->set_camera_audio(household.allowed.cameraAudio);
+        allowed->set_visitor_recognition(household.visitorRecognition);
+        for (const auto& user : co_await userRepository_.findAll()) {
+          if (!user.isActive)
+            continue;
+          auto* entry = responseWriter->add_users();
+          entry->set_user_id(user.id);
+          const auto found = states.find(user.id);
+          fillPrivacy(*entry->mutable_choices(),
+                      found == states.end() ? PrivacyState{} : found->second);
+        }
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Identity RPC: ListPrivacy failed: " << e.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+      }
+      co_return;
+    });
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* IdentityRpcService::ListUsers(
+    grpc::CallbackServerContext* context,
+    const argus::identity::v1::ListUsersRequest* request,
+    argus::identity::v1::ListUsersResponse* response)
+{
+  (void)request;
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop([this, reactor, responseWriter]() {
+    drogon::async_run([this, reactor, responseWriter]() -> drogon::Task<void> {
+      try {
+        auto users = co_await userRepository_.findAll();
+        std::ranges::sort(users, {}, &UserSchema::id);
+        const auto states = co_await privacyGate_.statesByUser();
+        for (const auto& user : users) {
+          auto* payload = responseWriter->add_users();
+          payload->set_user_id(user.id);
+          payload->set_name(user.name);
+          payload->set_lang(user.lang);
+          payload->set_last_name(user.lastName);
+          payload->set_role(userRoleToString(user.role));
+          payload->set_is_active(user.isActive);
+          const auto found = states.find(user.id);
+          fillPrivacy(*payload->mutable_privacy(),
+                      found == states.end() ? PrivacyState{} : found->second);
+        }
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Identity RPC: ListUsers failed: " << e.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+      }
+      co_return;
+    });
+  });
   return reactor;
 }

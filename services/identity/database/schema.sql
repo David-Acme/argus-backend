@@ -148,6 +148,33 @@ CREATE TABLE IF NOT EXISTS voice_device (
     PRIMARY KEY (device_hash, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS user_privacy (
+    user_id         INTEGER NOT NULL  PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
+    notice_version  INTEGER NOT NULL  CHECK (notice_version > 0),
+    presence        INTEGER NOT NULL  CHECK (presence IN (0, 1)),
+    face_cameras    INTEGER NOT NULL  CHECK (face_cameras IN (0, 1)),
+    voice_learning  INTEGER NOT NULL  CHECK (voice_learning IN (0, 1)),
+    camera_audio    INTEGER NOT NULL  CHECK (camera_audio IN (0, 1)),
+    decided_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    updated_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS household_privacy (
+    id              INTEGER NOT NULL  PRIMARY KEY CHECK (id = 1),
+    presence        INTEGER NOT NULL  DEFAULT 1  CHECK (presence IN (0, 1)),
+    face_cameras    INTEGER NOT NULL  DEFAULT 1  CHECK (face_cameras IN (0, 1)),
+    voice_learning  INTEGER NOT NULL  DEFAULT 1  CHECK (voice_learning IN (0, 1)),
+    camera_audio    INTEGER NOT NULL  DEFAULT 1  CHECK (camera_audio IN (0, 1)),
+    visitor_recognition  INTEGER NOT NULL  DEFAULT 0  CHECK (visitor_recognition IN (0, 1)),
+    visitor_ack_version  INTEGER,
+    visitor_ack_by       INTEGER,
+    visitor_ack_at       INTEGER,
+    updated_by      INTEGER,
+    updated_at      INTEGER
+);
+
+INSERT OR IGNORE INTO household_privacy (id) VALUES (1);
+
 CREATE TABLE IF NOT EXISTS change_outbox (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     event_id    TEXT              UNIQUE,

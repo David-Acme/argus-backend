@@ -620,9 +620,10 @@ or a score). Nothing about voices enters the sync stream.
 - A TV or radio dominating a call while the holder never speaks yields a
   consistent call of the broadcast voice; it is outvoted by dominance unless
   it happens in three of four calls.
-- Learning cannot be refused by the person yet: the owner can only *forget* a
-  voice, and Argus learns it again from later calls. An opt-out per person is a
-  decision left to David.
+- Learning needs the person's own consent since 2026-10-04 (see "Privacy
+  choices" below): without it nothing is learned or matched, and withdrawing
+  erases what was learned. The owner can still *forget* a voice, and Argus
+  learns it again from later calls only while the person consents.
 
 ### Surfaces
 
@@ -662,3 +663,82 @@ accounts use (nothing linked), three later calls adopted and refreshing in one
 batch, the gRPC `ObserveTurn`/`CloseCall` path with the fleet secret, and the
 owner's forget (404 after). Without the model on disk the model-backed half
 reports itself skipped.
+
+## Privacy choices and the household switches (2026-10-04)
+
+David asked for consent before anything is processed: a notice at host
+provisioning (the scripts) and, per person, in the app's first run, before any
+face, voice or presence processing for that person. Identity owns people data,
+so it owns the record. The feature is `src/feature/privacy/`; the table, the
+gate and the vocabulary are in `src/shared/` because the RPC services, the
+voiceprint feature and the privacy feature all read them (rule 23's 2+ rule).
+
+**What is stored.** `user_privacy` holds one row per person: the notice
+version they accepted (`kPrivacyNoticeVersion` in
+`shared/vocabulary/privacy-choices.hxx`, which covers the privacy notice and
+the pre-beta terms together) and four booleans: `presence`, `face_cameras`,
+`voice_learning` and `camera_audio`, with `decided_at`/`updated_at`.
+`household_privacy` holds a single row (id 1) with the Owner's household-wide
+switches for the same four signals (default on) and `visitor_recognition`
+(default off, read by the STRANGERS re-identification feature through
+`PrivacyGate::household()`). Turning visitor recognition on requires
+`acknowledge: true` and stamps `visitor_ack_at/by/version`; turning it off
+keeps them. Both tables are `CREATE TABLE IF NOT EXISTS`, applied at boot like
+every other table, so the change is additive.
+
+**Effective value = the person's choice AND the household switch.** No row
+means undecided, and undecided means every signal is off for that person.
+`PrivacyGate` (`shared/services/privacy/`) is the one place that computes it.
+A notice version older than the current one stays effective (the choices were
+made), but the app asks again (`current: false`). The Owner can turn a signal
+off for everyone, but cannot turn anything on for someone else: no route
+writes another person's row.
+
+**What enforces it.**
+- Voice: `PassiveEnrollmentService::learnFromTurn` returns before analysing a
+  turn when the speaker's account has no voice consent, so no call opens in
+  the tracker; `recordCall` refuses with `NotConsented` before touching
+  `voice_device`; `VoiceprintFeatureService::identify` answers no match for a
+  person without it. Withdrawing (or the household switch going off) erases the
+  profile, the samples and the device prior in the same transaction as the
+  consent write (`eraseForConsent`, journaled as `voiceprint_forget` with
+  `reason: consentWithdrawn`), and the `voice_vec` rows go after the commit.
+  Existing voice profiles of undecided people are kept untouched but no longer
+  match; they go the moment the person says no.
+- Faces at cameras: `IdentifyPerson` with `purpose = IDENTIFY_PURPOSE_CAMERA`
+  and `GetPerson` stop returning `user_id`, name, alias and observation for the
+  person of a user without `face_cameras`, but keep `trusted` and the role. A
+  household member is never reported as a stranger, and a sighting cannot
+  name them or feed presence. Face login uses the default purpose
+  (`IDENTIFY_PURPOSE_LOGIN`) and is never gated: the face is how a person
+  signs in, which the first-run notice states.
+- Presence (guard, PRESENCE) and camera audio (camera) read the effective
+  values through `GetUser` (`UserIdentity.privacy`, field 7) and
+  `ListPrivacy`, and react to the change feed: every consent decision, and
+  every household flip (for every user), publishes the user's catalog row on
+  the change subject with `row.privacy` = `{noticeVersion, decided, presence,
+  faceCameras, voiceLearning, cameraAudio}`. argus-sync acks identity catalog
+  events without forwarding them, so nothing reaches the apps; argus-auth only
+  drops its cache entry. A user event without `row.privacy` is not a consent
+  change.
+
+**Audit.** Each decision journals one `UserAction` on `TableName::User`
+(`event: privacy_consent`, the four booleans, the notice version, `changed`,
+`first`, `byOwner: false`); each household flip journals `household_privacy`
+with the switches and `changed`. Choices are audit-relevant facts, not
+secrets; no image, vector or address is ever in them.
+
+**Surfaces.** `GET /privacy/me` and `PUT /privacy/me` (every role, own row;
+the body carries all four booleans and the `noticeVersion` the app showed, and
+a different version answers 409 `PrivacyNoticeOutdated`), `GET /privacy/users`
+and `PATCH /privacy/household` (Owner, `kPrivacyAccess` in role-access). gRPC
+`ListPrivacy` (fleet-gated, active users plus the household row) and
+`ListUsers` (every non-deleted user ordered by id, for guard's recipient
+lists) were added beside `GetUser`.
+
+`identity-privacy-test` pins the route access, the DTO refusals, the undecided
+default, the outdated notice, the published and journaled decision, the
+voice erase on withdrawal, the household switch with the unnamed `GetPerson`
+answer, `GetUser`/`ListPrivacy`/`ListUsers`, the visitor acknowledgement and
+`recordCall`'s refusal. `identity-voiceprint-test` seeds consent for its
+people, since learning now requires it.

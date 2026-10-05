@@ -11,6 +11,7 @@
 #include <feature/voiceprint/vocabulary/voiceprint-outcome.hxx>
 #include <optional>
 #include <shared/repositories/person/person-repository.hxx>
+#include <shared/services/privacy/privacy-gate.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <string>
 #include <vector>
@@ -46,6 +47,19 @@ struct VoiceprintForgetRequest
   int64_t subjectId{0};
 };
 
+struct VoiceprintEraseInput
+{
+  int64_t actorId{0};
+  int64_t subjectId{0};
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct VoiceprintEraseResult
+{
+  std::optional<int64_t> removedProfile;
+  size_t samples{0};
+};
+
 struct VoiceprintForgetResult
 {
   bool hadProfile{false};
@@ -66,6 +80,11 @@ public:
   [[nodiscard]] drogon::Task<VoiceprintForgetResult>
   forget(const VoiceprintForgetRequest& request) const;
 
+  [[nodiscard]] drogon::Task<VoiceprintEraseResult>
+  eraseForConsent(const VoiceprintEraseInput& input) const;
+
+  static void dropFromIndex(const VoiceprintEraseResult& erased);
+
   [[nodiscard]] const IdentityVoiceprintConfig& config() const
   {
     return config_;
@@ -80,4 +99,5 @@ private:
   VoiceDeviceRepository deviceRepository_;
   UserRepository userRepository_;
   PersonRepository personRepository_;
+  PrivacyGate privacyGate_;
 };

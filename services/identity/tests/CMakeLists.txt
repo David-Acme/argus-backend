@@ -156,3 +156,19 @@ target_compile_options(identity-face-embedding-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-face-embedding-test)
 add_test(NAME identity-face-embedding-test
          COMMAND identity-face-embedding-test)
+
+add_executable(identity-privacy-test unit/identity-privacy-test.cc)
+target_compile_definitions(identity-privacy-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(identity-privacy-test PRIVATE
+    argus::identity-privacy
+    argus::identity-rpc
+    argus::identity-voiceprint
+    argus::clients::identity
+    argus::lib::auth
+    argus::lib::sqlite
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-privacy-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-privacy-test)
+add_test(NAME identity-privacy-test COMMAND identity-privacy-test)

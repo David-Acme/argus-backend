@@ -76,6 +76,8 @@ const char* passiveCallOutcomeName(PassiveCallOutcome outcome)
       return "linked";
     case PassiveCallOutcome::Relinked:
       return "relinked";
+    case PassiveCallOutcome::NotConsented:
+      return "not_consented";
   }
   return "unknown";
 }
@@ -118,6 +120,8 @@ PassiveEnrollmentService::learnFromTurn(VoiceTurnInput input) const
   const PassiveVoiceConfig& passive = config_.passive;
   if (!passive.enabled || input.userId <= 0 || input.deviceHash.empty() ||
       input.callKey.empty() || !SpeakerEmbeddingService::instance().isLoaded())
+    co_return learning;
+  if (!(co_await privacyGate_.effectiveFor(input.userId)).voiceLearning)
     co_return learning;
   learning.considered = true;
 
@@ -193,6 +197,8 @@ PassiveEnrollmentService::recordCall(const ClosedCall& call, int64_t now) const
   const PassiveVoiceConfig& passive = config_.passive;
   if (!passive.enabled || !SpeakerEmbeddingService::instance().isLoaded())
     co_return PassiveCallOutcome::Unavailable;
+  if (!(co_await privacyGate_.effectiveFor(call.userId)).voiceLearning)
+    co_return PassiveCallOutcome::NotConsented;
 
   const auto judgement = policy_.judgeCall({.turns = call.turns,
                                             .speechSeconds = call.speechSeconds,

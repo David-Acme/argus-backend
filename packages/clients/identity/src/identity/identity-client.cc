@@ -121,6 +121,29 @@ IdentityClient::identifyPerson(const std::string& image) const
   return response;
 }
 
+std::optional<argus::identity::v1::IdentifyPersonResponse>
+IdentityClient::identifyForCamera(const std::string& image) const
+{
+  if (image.empty())
+    return std::nullopt;
+
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addFleetSecret(context, fleetSecret_);
+
+  argus::identity::v1::IdentifyPersonRequest request;
+  request.set_image(image);
+  request.set_purpose(argus::identity::v1::IDENTIFY_PURPOSE_CAMERA);
+
+  argus::identity::v1::IdentifyPersonResponse response;
+  if (const grpc::Status status =
+          stub_->IdentifyPerson(&context, request, &response);
+      !status.ok())
+    return std::nullopt;
+  return response;
+}
+
+
 std::optional<argus::identity::v1::EnrollPersonResponse>
 IdentityClient::enrollPerson(const EnrollPersonInput& input) const
 {
@@ -284,4 +307,38 @@ IdentityClient::listNotifiableUsers() const
   std::vector<int64_t> userIds(response.user_ids().begin(),
                                response.user_ids().end());
   return userIds;
+}
+
+std::optional<argus::identity::v1::ListPrivacyResponse>
+IdentityClient::listPrivacy() const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addFleetSecret(context, fleetSecret_);
+
+  const argus::identity::v1::ListPrivacyRequest request;
+
+  argus::identity::v1::ListPrivacyResponse response;
+  if (const grpc::Status status =
+          stub_->ListPrivacy(&context, request, &response);
+      !status.ok())
+    return std::nullopt;
+  return response;
+}
+
+std::optional<std::vector<argus::identity::v1::UserIdentity>>
+IdentityClient::listUsers() const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addFleetSecret(context, fleetSecret_);
+
+  const argus::identity::v1::ListUsersRequest request;
+
+  argus::identity::v1::ListUsersResponse response;
+  if (const grpc::Status status = stub_->ListUsers(&context, request, &response);
+      !status.ok())
+    return std::nullopt;
+  return std::vector<argus::identity::v1::UserIdentity>(
+      response.users().begin(), response.users().end());
 }
