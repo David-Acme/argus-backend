@@ -24,6 +24,7 @@ struct RefreshTokenSchema
   int64_t sessionCreatedAt{0};
   int64_t lastSeenAt{0};
   std::string previousRefreshToken;
+  std::string networkHash;
 
   RefreshTokenSchema() = default;
   explicit RefreshTokenSchema(const drogon::orm::Row& row);

@@ -53,7 +53,8 @@ refresh_ttl_days = 30
 
 [device]
 fingerprint_secret = ""
-identity_mode = "ip"
+identity_mode = "credential"
+lan_networks = ""
 trust_forwarded_for = false
 trusted_proxy_ips = ""
 
@@ -67,6 +68,8 @@ lockout_seconds = 300
 [remote]
 tunnel_port = 0
 enabled = false
+allow_qr_login = false
+tunnel_profile = false
 
 [nats]
 url = "nats://127.0.0.1:4222"

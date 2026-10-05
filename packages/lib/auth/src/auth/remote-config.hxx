@@ -9,6 +9,8 @@ struct RemoteConfig
 {
   uint16_t tunnelPort{0};
   bool enabled{false};
+  bool allowQrLogin{false};
+  bool tunnelProfile{false};
 
   static RemoteConfig resolve();
 };
@@ -27,3 +29,5 @@ void appendRemoteListener(const AppendRemoteListenerInput& input);
 
 void requireDistinctTunnelPort(const ListenerConfig& listener,
                                const RemoteConfig& remote);
+
+void requireTunnelListener(const RemoteConfig& remote);

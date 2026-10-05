@@ -1,6 +1,7 @@
 auth	POST	/auth/device-login	DeviceFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
 auth	GET	/auth/device-login/{1}	DeviceFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
 auth	POST	/auth/device-login/{1}/approve	DeviceFilter,JwtFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
+auth	GET	/auth/device-login/{1}/details	DeviceFilter,JwtFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
 auth	POST	/auth/login	DeviceFilter	multipart	services/auth/src/feature/auth/controllers/auth-controller.hxx
 auth	PATCH	/auth/logout	DeviceFilter,JwtFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx
 auth	PATCH	/auth/me	DeviceFilter,ValidJsonFilter,JwtFilter	-	services/auth/src/feature/auth/controllers/auth-controller.hxx

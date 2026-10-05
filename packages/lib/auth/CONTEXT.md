@@ -67,15 +67,87 @@ Two consequences worth keeping in mind:
   caller's current session. `role_access::kSessionAccess` opens
   `GET /auth/sessions`, `DELETE /auth/sessions` and
   `DELETE /auth/sessions/{id}` to every role, route by route like
-  `kGuardAccess`, without widening `kAuthAccess`: the service scopes every
-  query to the caller's own sessions. Four more rows are `kOwnerOnly`: `GET
-  /auth/users/sessions`, `GET` and `DELETE /auth/users/{id}/sessions` and
+  `kGuardAccess`: the service scopes every query to the caller's own
+  sessions. Four more rows are `kOwnerOnly`: `GET /auth/users/sessions`,
+  `GET` and `DELETE /auth/users/{id}/sessions` and
   `DELETE /auth/users/{id}/sessions/{id}`, the owner's view of every user's
-  sessions. They must be listed even though the Owner passes every check,
-  because a path that misses the table falls back to `kAuthAccess`, which lets
-  a guard or a guest `GET` any `/auth` path. `routeMatches` compares a pattern
-  segment by segment, one `{id}` per segment, so a placeholder never spans a
-  `/` and an empty segment never matches.
+  sessions. `routeMatches` compares a pattern segment by segment, one `{id}`
+  per segment, so a placeholder never spans a `/` and an empty segment never
+  matches.
+
+## Route access is denied unless a table names it (2026-10 audit)
+
+The role check used to read the path as it came and to fall back on a generic
+`kAuthAccess` rule (any `/auth` path, decided by method alone, `GET` open to
+every role). Drogon routes case-insensitively, so `GET /auth/Users/sessions`
+reached the owner-only handler while `RoleFilter` saw an unknown `/auth` path
+and let a guest through. Since the audit:
+
+- `hasHttpAccess` lowercases the path and strips trailing slashes before any
+  table is consulted (`normalizedPath`). A trailing slash is not a no-op for
+  Drogon: `/x/` reaches the handler of `/x/{1}` with an empty id. So a path
+  that had a trailing slash must be allowed both as `/x` and as its `{id}`
+  child (`/x/0`); a role that holds only one of the two is refused.
+- `kAuthAccess` is gone. Every `/auth` route behind `RoleFilter` is listed in
+  `kSessionAccess`, and an `/auth` path that no row names is refused to every
+  role but the Owner. The `/auth` routes without `RoleFilter` (status, me,
+  logout, the QR approval and its details) never consult the table.
+- Dispatch is by whole first segment (`firstSegment`): `auth`, `rtc`,
+  `privacy`, `visitor`/`visitor-crop`, `sync` and `guard` each answer from
+  their route table; then `kRouteOverrides` (rows that narrow a table, today
+  `GET /notification/delivery-summary`, owner-only); then the camera actions;
+  then `tableFromPath`, which also matches a whole first segment, so `/user`
+  no longer answers for `/users-x`.
+- `permissionForMethod` returns `std::nullopt` for every method it does not
+  name, `PUT` included, and a table route with no permission is refused. A
+  `PUT` reaches a non-owner only through an explicit row (`/privacy/me`,
+  `/guard/safety/pin`).
+- `role_access::hasAppAction(role, AppAction)` is the one answer for the
+  actions the assistant can ask the app to perform (`ShowCamera`,
+  `OpenScreen`, `SetGuardMode`). `SetGuardMode` is decided by the same
+  `POST /guard/mode` row the HTTP route uses, so the tool descriptor and the
+  route cannot drift; argus-llm and argus-voice are meant to ask it instead of
+  carrying their own table/permission pair.
+
+## The filters after the audit
+
+- `JwtFilter` refuses (500 `DeviceContextMissing`) when no `DeviceContext` is
+  on the request: a route that forgot `DeviceFilter` would otherwise lose the
+  device binding silently. `scripts/check-routes.sh` enforces the same rule
+  at build time (`JwtFilter` implies `DeviceFilter`) and keeps an explicit
+  allowlist of the routes that run without `JwtFilter`.
+- The token is read from `Authorization: Bearer` only. `?token=` is accepted
+  on a WebSocket upgrade (`Upgrade: websocket`) and nowhere else, and the
+  `authorization` cookie is no longer read: query strings end up in proxy and
+  access logs, and no first-party client uses a cookie.
+- `JwtFilter` holds a `JwtService{JwtRole::Verifier}`, which loads
+  `jwt.secret` alone; the refresh secret stays in `argus-auth`, the only
+  issuer. An issuer refuses to start when `jwt.secret` equals
+  `jwt.refresh_secret`, every minted token carries `typ` (`access` or
+  `refresh`), `verifyAccess` requires `typ = access`, and `verifyRefresh`
+  refuses `typ = access` (a refresh token minted before the claim existed,
+  with no `typ`, still verifies, so nobody is signed out by the upgrade; an
+  access token without `typ` is refused and the app refreshes once).
+- `device.fingerprint_secret` is mandatory (32 characters or more) and no
+  longer falls back to `jwt.secret`. `DeviceFilter::requireFingerprintSecret()`
+  is the boot check; argus-auth calls it before it listens, and a service that
+  skips it refuses every request that needs a fingerprint instead.
+- `device.identity_mode` is `credential` unless the key says `ip` exactly:
+  a missing or unknown value is the stronger mode.
+- The default LAN list no longer carries `172.16.0.0/12`: those are Docker's
+  bridges, and a tunnelled request that reaches a service through a published
+  port arrives from one. Installations behind the userland proxy name their
+  bridge gateway in `device.lan_networks` themselves.
+- `DeviceFilter::networkPrefix` (an address cut to a given prefix, IPv4 and
+  IPv6, IPv4-mapped folded to IPv4) and `networkFingerprint` (HMAC of the
+  origin class and the /24 or /64 network, `tunnel` for the tunnel listener)
+  are what argus-auth binds an `ip`-mode refresh to and what its rate gate
+  groups IPv6 clients by.
+- `RemoteConfig` also reads `[remote] allow_qr_login` and
+  `[remote] tunnel_profile`. `requireTunnelListener` refuses a configuration
+  that expects the tunnel (`tunnel_profile`, `enabled` or `allow_qr_login`)
+  while `tunnel_port` is 0, because then every tunnelled request is taken
+  for a LAN one.
 
 ## The two targets
 

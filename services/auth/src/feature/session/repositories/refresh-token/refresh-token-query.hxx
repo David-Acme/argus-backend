@@ -44,8 +44,8 @@ inline constexpr std::string_view INSERT =
     "INSERT INTO refresh_token "
     "(user_id, access_token, refresh_token, device_hash, user_agent, "
     "expires_at, created_at, session_id, platform, device_name, "
-    "session_created_at, last_seen_at, previous_refresh_token) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    "session_created_at, last_seen_at, previous_refresh_token, network_hash) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 inline constexpr std::string_view MARK_USED =
     "UPDATE refresh_token SET is_used = 1 "
@@ -100,7 +100,7 @@ struct AddedColumn
   std::string_view statement;
 };
 
-inline constexpr std::array<AddedColumn, 6> ADDED_COLUMNS{{
+inline constexpr std::array<AddedColumn, 7> ADDED_COLUMNS{{
     {.name = "session_id",
      .statement = "ALTER TABLE refresh_token ADD COLUMN session_id TEXT NOT "
                   "NULL DEFAULT ''"},
@@ -120,6 +120,9 @@ inline constexpr std::array<AddedColumn, 6> ADDED_COLUMNS{{
     {.name = "previous_refresh_token",
      .statement = "ALTER TABLE refresh_token ADD COLUMN previous_refresh_token "
                   "TEXT NOT NULL DEFAULT ''"},
+    {.name = "network_hash",
+     .statement = "ALTER TABLE refresh_token ADD COLUMN network_hash TEXT NOT "
+                  "NULL DEFAULT ''"},
 }};
 
 }
@@ -137,6 +140,7 @@ struct RefreshTokenCreateInput
   std::string deviceName;
   int64_t sessionCreatedAt{0};
   std::string previousRefreshHash;
+  std::string networkHash;
   drogon::orm::DbClient* client{nullptr};
 };
 

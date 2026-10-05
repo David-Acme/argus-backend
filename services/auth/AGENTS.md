@@ -84,9 +84,10 @@ argus-auth/
                         device_login_challenge compare-and-set
     schemas/            device_credential and device_login_challenge mapping
   src/feature/auth/
-    controllers/        the sixteen /auth routes (three of them the
+    controllers/        the seventeen /auth routes (three of them the
                         caller's own sessions, four the owner's view of
-                        every user's sessions)
+                        every user's sessions, one the QR approver's
+                        details)
     dtos/               the request and response DTOs of that surface
     services/           AuthFeatureService: sessions, credentials, challenges;
                         SessionManagementService: list and revoke the

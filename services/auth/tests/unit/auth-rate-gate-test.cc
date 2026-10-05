@@ -152,7 +152,7 @@ TEST_CASE("the gate admits within the window and refuses past it")
   const auto limited = gate.check(patchRequest("argus-app/1.0"));
   REQUIRE(limited);
   CHECK(limited->getStatusCode() == drogon::k429TooManyRequests);
-  CHECK(limited->getHeader("Access-Control-Allow-Origin") == "*");
+  CHECK(limited->getHeader("Access-Control-Allow-Origin").empty());
   const auto body = limited->getJsonObject();
   REQUIRE(body);
   CHECK((*body)["status"].asInt() == 429);
@@ -314,4 +314,97 @@ TEST_CASE("a server failure is not counted against the caller")
     gate.recordOutcome(patchRequest("argus-app/1.0"), unavailable);
   }
   CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
+}
+
+TEST_CASE("only 401 and 403 count as failures; a 422 or a 404 locks nobody out")
+{
+  loadGateConfig("");
+  AuthRateLimitConfig config = windowConfig();
+  config.maxRequests = 100;
+  AuthRateGate gate(config);
+
+  const auto invalid = ApiResponse::error(AuthErrors::InvalidJsonBody);
+  invalid->setStatusCode(drogon::k422UnprocessableEntity);
+  const auto missing = ApiResponse::error(AuthErrors::ChallengeNotFound);
+  for (int attempt = 0; attempt < config.lockoutThreshold + 2; ++attempt) {
+    CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
+    gate.recordOutcome(patchRequest("argus-app/1.0"), invalid);
+    gate.recordOutcome(patchRequest("argus-app/1.0"), missing);
+  }
+  CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
+
+  const auto forbidden = ApiResponse::error(AuthErrors::AccountDisabled);
+  for (int attempt = 0; attempt < config.lockoutThreshold; ++attempt)
+    gate.recordOutcome(patchRequest("argus-app/1.0"), forbidden);
+  CHECK(gate.check(patchRequest("argus-app/1.0")));
+}
+
+[[nodiscard]] drogon::HttpRequestPtr refreshWith(const std::string& token)
+{
+  Json::Value body(Json::objectValue);
+  body["refreshToken"] = token;
+  auto req = drogon::HttpRequest::newHttpJsonRequest(body);
+  req->setMethod(drogon::Patch);
+  req->setPath("/auth/refresh-token");
+  req->addHeader("User-Agent", "argus-app/1.0");
+  req->addHeader("X-Forwarded-For", "10.0.0.5");
+  return req;
+}
+
+TEST_CASE("a refresh with a verified session is limited by that session, not by the household address")
+{
+  loadGateConfig("");
+  AuthRateLimitConfig config = windowConfig();
+  config.maxRequests = 100;
+  AuthRateGate gate(config, [](const std::string& token) {
+    return token.starts_with("valid-") ? token.substr(6) : std::string{};
+  });
+
+  for (int attempt = 0; attempt < config.lockoutThreshold; ++attempt) {
+    CHECK_FALSE(gate.check(refreshWith("garbage")));
+    gate.recordOutcome(refreshWith("garbage"), refusal());
+  }
+  CHECK(gate.check(refreshWith("garbage")));
+  CHECK(gate.check(patchRequest("argus-app/1.0")));
+  CHECK_FALSE(gate.check(refreshWith("valid-alice")));
+  CHECK_FALSE(gate.check(refreshWith("valid-bob")));
+
+  for (int attempt = 0; attempt < config.lockoutThreshold; ++attempt)
+    gate.recordOutcome(refreshWith("valid-alice"), refusal());
+  CHECK(gate.check(refreshWith("valid-alice")));
+  CHECK_FALSE(gate.check(refreshWith("valid-bob")));
+}
+
+TEST_CASE("IPv6 clients are grouped per /64")
+{
+  loadGateConfig("");
+  AuthRateLimitConfig config = windowConfig();
+  config.maxRequests = 2;
+  AuthRateGate gate(config);
+
+  CHECK_FALSE(gate.check(patchRequest("argus-app/1.0", "2001:db8:1:2::5")));
+  CHECK_FALSE(gate.check(patchRequest("argus-app/1.0", "2001:db8:1:2:ffff::9")));
+  CHECK(gate.check(patchRequest("argus-app/1.0", "2001:db8:1:2:abcd::1")));
+  CHECK_FALSE(gate.check(patchRequest("argus-app/1.0", "2001:db8:1:3::5")));
+}
+
+TEST_CASE("a full table never evicts a locked key")
+{
+  loadGateConfig("");
+  AuthRateLimitConfig config = windowConfig();
+  config.maxRequests = 1000;
+  config.lockoutThreshold = 1;
+  AuthRateGate gate(config);
+
+  const auto locked = patchRequest("argus-app/1.0", "192.168.50.1");
+  CHECK_FALSE(gate.check(locked));
+  gate.recordOutcome(locked, refusal());
+  REQUIRE(gate.check(patchRequest("argus-app/1.0", "192.168.50.1")));
+
+  for (int index = 0; index < 5000; ++index) {
+    const std::string address = "10." + std::to_string(index / 250) + "." +
+                                std::to_string(index % 250) + ".1";
+    static_cast<void>(gate.check(patchRequest("argus-app/1.0", address)));
+  }
+  CHECK(gate.check(patchRequest("argus-app/1.0", "192.168.50.1")));
 }

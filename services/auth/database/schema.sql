@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS refresh_token (
     device_name   TEXT    NOT NULL  DEFAULT '',
     session_created_at     INTEGER NOT NULL  DEFAULT 0,
     last_seen_at           INTEGER NOT NULL  DEFAULT 0,
-    previous_refresh_token TEXT    NOT NULL  DEFAULT ''
+    previous_refresh_token TEXT    NOT NULL  DEFAULT '',
+    network_hash           TEXT    NOT NULL  DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS device_login_challenge (
@@ -43,7 +44,12 @@ CREATE TABLE IF NOT EXISTS device_login_challenge (
     platform      TEXT    NOT NULL  DEFAULT 'unknown'
                             CHECK (platform IN ('unknown', 'android', 'ios',
                                                 'desktop', 'web')),
-    device_name   TEXT    NOT NULL  DEFAULT ''
+    device_name   TEXT    NOT NULL  DEFAULT '',
+    poll_hash     TEXT    NOT NULL  DEFAULT '',
+    origin        TEXT    NOT NULL  DEFAULT 'unknown'
+                            CHECK (origin IN ('unknown', 'lan', 'tunnel',
+                                              'loopback', 'external')),
+    ip_address    TEXT    NOT NULL  DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS device_credential (

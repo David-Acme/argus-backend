@@ -196,11 +196,15 @@ The guard surface (`/guard/*`) maps to no table: it is declared route by
 route in `kGuardAccess`, beside `kAuthAccess`. Guard is organised in
 environments (a home, a restaurant, an office: each with its own kind, hours,
 mode and summary policy; every camera belongs to one). Resident reads the
-environments and sets their mode (one or all), reads incidents and episodes
-and manages expected visits; Guard reads the environments, incidents,
-episodes and expected visits; creating, editing and removing environments,
-episode detail and review, camera context, decision review, feedback and
-person promotion stay Owner-only; Guest has no guard route.
+environments and their response lists, sets their mode (one or all), reads
+incidents and episodes, manages expected visits and keeps its own safety PINs
+(`PUT`/`DELETE /guard/safety/pin`); Guard reads the environments and their
+response lists, incidents, episodes and expected visits, and goes on duty in
+an environment (`POST /guard/environments/{id}/duty`); every role presses
+panic (`POST /guard/panic`) and reads its safety state (`GET /guard/safety`),
+and those two are the only guard routes a Guest has; creating, editing and
+removing environments, episode detail and review, camera context, decision
+review, feedback and person promotion stay Owner-only.
 
 The session routes (`GET /auth/sessions`, `DELETE /auth/sessions`,
 `DELETE /auth/sessions/{id}`) are declared the same way in `kSessionAccess`:

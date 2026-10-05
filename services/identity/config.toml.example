@@ -54,7 +54,8 @@ refresh_secret = ""
 
 [device]
 fingerprint_secret = ""
-identity_mode = "ip"
+identity_mode = "credential"
+lan_networks = ""
 trust_forwarded_for = false
 trusted_proxy_ips = ""
 
@@ -110,6 +111,7 @@ owner_device = ""
 [remote]
 tunnel_port = 0
 enabled = false
+tunnel_profile = false
 hostname = ""
 
 [mdns]

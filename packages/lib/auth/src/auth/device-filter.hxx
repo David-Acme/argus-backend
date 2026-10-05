@@ -27,6 +27,19 @@ struct AddressFingerprintInput
   const std::string& address;
 };
 
+struct NetworkPrefixInput
+{
+  std::string_view address;
+  int ipv4Bits{32};
+  int ipv6Bits{128};
+};
+
+struct NetworkFingerprintInput
+{
+  SessionOrigin origin{SessionOrigin::Unknown};
+  std::string_view address;
+};
+
 class DeviceFilter : public drogon::HttpCoroFilter<DeviceFilter, false>
 {
 public:
@@ -44,6 +57,15 @@ public:
 
   static bool credentialMode();
 
+  static void requireFingerprintSecret();
+
+  static std::string networkPrefix(const NetworkPrefixInput& input);
+
+  static std::string networkFingerprint(const NetworkFingerprintInput& input);
+
+  static constexpr int kSessionIpv4PrefixBits = 24;
+  static constexpr int kSessionIpv6PrefixBits = 64;
+
   static std::string resolveIp(const drogon::HttpRequestPtr& req);
 
   static SessionOrigin resolveOrigin(const drogon::HttpRequestPtr& req,
@@ -52,8 +74,7 @@ public:
   static SessionOrigin classifyOrigin(const OriginInput& input);
 
   static constexpr std::string_view kDefaultLanNetworks =
-      "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,fc00::/7,"
-      "fe80::/10";
+      "10.0.0.0/8,192.168.0.0/16,169.254.0.0/16,fc00::/7,fe80::/10";
 
 private:
   static std::string hashFingerprint(const std::string& ua,

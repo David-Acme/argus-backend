@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <http/listener-config.hxx>
+#include <optional>
 #include <string>
 
 struct AuthDbConfig
@@ -16,6 +17,10 @@ struct AuthRpcConfig
   std::string secret;
 
   [[nodiscard]] bool reachableBeyondLoopback() const;
+
+  [[nodiscard]] std::optional<std::string> secretProblem() const;
+
+  static constexpr std::size_t kMinSecretLength = 32;
 };
 
 struct AuthIdentityConfig

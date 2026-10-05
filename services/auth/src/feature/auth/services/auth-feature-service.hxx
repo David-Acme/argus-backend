@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
+#include <auth/session-origin.hxx>
 #include <feature/auth/dtos/create-device-login-dto.hxx>
+#include <feature/auth/dtos/response-device-login-details-dto.hxx>
 #include <feature/auth/dtos/device-login-status-dto.hxx>
 #include <feature/auth/dtos/login-dto.hxx>
 #include <feature/auth/dtos/refresh-token-dto.hxx>
@@ -27,12 +29,15 @@ struct LoginDeviceInput
   std::string deviceHash;
   std::string userAgent;
   ClientIdentity client;
+  std::string networkHash;
 };
 
 struct DeviceLoginStartInput
 {
   LoginDeviceInput device;
   std::string pollHash;
+  SessionOrigin origin{SessionOrigin::Unknown};
+  std::string ipAddress;
 };
 
 struct DeviceLoginPollInput
@@ -64,6 +69,7 @@ struct RefreshTokenInput
   std::string ip;
   std::string credentialHash;
   ClientIdentity client;
+  std::string networkHash;
 };
 
 struct IssueSessionInput
@@ -130,6 +136,7 @@ public:
   struct Config
   {
     int64_t refreshReuseGraceSeconds{30};
+    bool allowRemoteQrLogin{false};
   };
 
   AuthFeatureService(Dependencies dependencies, Config config);
@@ -142,6 +149,9 @@ public:
 
   [[nodiscard]] drogon::Task<CreateDeviceLoginDto>
   createDeviceLogin(const DeviceLoginStartInput& input) const;
+
+  [[nodiscard]] drogon::Task<ResponseDeviceLoginDetailsDto>
+  deviceLoginDetails(const std::string& challengeId) const;
 
   [[nodiscard]] drogon::Task<void>
   approveDeviceLogin(const std::string& challengeId,

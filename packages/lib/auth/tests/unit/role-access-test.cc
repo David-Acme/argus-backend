@@ -219,31 +219,114 @@ TEST_CASE("hasHttpAccess enforces table permissions per role")
         {.role = UserRole::Guest, .path = "/sync", .method = drogon::Get}));
 }
 
-TEST_CASE("hasHttpAccess applies kAuthAccess to /auth paths")
+TEST_CASE("an /auth path that no route table lists is refused to every non-owner")
 {
-    CHECK(role_access::hasHttpAccess({.role = UserRole::Resident,
-                                      .path = "/auth/login",
-                                      .method = drogon::Post}));
-    CHECK(role_access::hasHttpAccess(
-        {.role = UserRole::Resident, .path = "/auth/me", .method = drogon::Get}));
-    CHECK(role_access::hasHttpAccess({.role = UserRole::Resident,
-                                      .path = "/auth/profile",
-                                      .method = drogon::Patch}));
-    CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Resident,
-                                            .path = "/auth/logout",
-                                            .method = drogon::Delete}));
+    for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+        CAPTURE(userRoleToString(role));
+        CHECK_FALSE(role_access::hasHttpAccess(
+            {.role = role, .path = "/auth/login", .method = drogon::Post}));
+        CHECK_FALSE(role_access::hasHttpAccess(
+            {.role = role, .path = "/auth/me", .method = drogon::Get}));
+        CHECK_FALSE(role_access::hasHttpAccess(
+            {.role = role, .path = "/auth/profile", .method = drogon::Patch}));
+        CHECK_FALSE(role_access::hasHttpAccess(
+            {.role = role, .path = "/auth/logout", .method = drogon::Delete}));
+        CHECK_FALSE(role_access::hasHttpAccess(
+            {.role = role, .path = "/auth", .method = drogon::Get}));
+    }
+}
 
-    CHECK(role_access::hasHttpAccess(
-        {.role = UserRole::Guard, .path = "/auth/me", .method = drogon::Get}));
-    CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guard,
-                                            .path = "/auth/login",
-                                            .method = drogon::Post}));
+TEST_CASE("the role check reads the path the way the router does: any case, a trailing slash")
+{
+    const auto allows = [](UserRole role, std::string_view path, drogon::HttpMethod method) {
+        return role_access::hasHttpAccess({.role = role, .path = path, .method = method});
+    };
 
+    for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+        CAPTURE(userRoleToString(role));
+        CHECK_FALSE(allows(role, "/auth/Users/sessions", drogon::Get));
+        CHECK_FALSE(allows(role, "/AUTH/USERS/SESSIONS", drogon::Get));
+        CHECK_FALSE(allows(role, "/auth/users/7/Sessions", drogon::Get));
+        CHECK_FALSE(allows(role, "/auth/users/sessions/", drogon::Get));
+        CHECK_FALSE(allows(role, "/auth/users/7/sessions/", drogon::Get));
+        CHECK_FALSE(allows(role, "/auth/users/7/sessions/", drogon::Delete));
+        CHECK_FALSE(allows(role, "/Guard/Decisions", drogon::Get));
+        CHECK_FALSE(allows(role, "/Visitor-Settings", drogon::Get));
+        CHECK(allows(role, "/Auth/Sessions", drogon::Get));
+        CHECK(allows(role, "/auth/sessions/", drogon::Delete));
+        CHECK_FALSE(allows(role, "/auth/sessions/", drogon::Get));
+        CHECK(allows(role, "/Camera/3", drogon::Get));
+    }
+
+    CHECK(allows(UserRole::Resident, "/Guard/Mode", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Guest, "/Guard/Mode", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Guest, "/Camera/3", drogon::Delete));
+    CHECK(allows(UserRole::Resident, "/guard/episodes", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/episodes/", drogon::Get));
+    CHECK_FALSE(allows(UserRole::Guard, "/Guard/Episodes/", drogon::Get));
+    CHECK(allows(UserRole::Owner, "/Auth/Users/Sessions/", drogon::Get));
+}
+
+TEST_CASE("a method no table names is refused, PUT included, unless a route lists it")
+{
+    CHECK_FALSE(role_access::permissionForMethod(drogon::Put).has_value());
+    CHECK_FALSE(role_access::permissionForMethod(drogon::Head).has_value());
+    CHECK_FALSE(role_access::permissionForMethod(drogon::Options).has_value());
+    for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+        CAPTURE(userRoleToString(role));
+        CHECK_FALSE(role_access::hasHttpAccess(
+            {.role = role, .path = "/camera/1", .method = drogon::Put}));
+        CHECK_FALSE(role_access::hasHttpAccess(
+            {.role = role, .path = "/camera/1", .method = drogon::Head}));
+        CHECK(role_access::hasHttpAccess(
+            {.role = role, .path = "/privacy/me", .method = drogon::Put}));
+    }
     CHECK(role_access::hasHttpAccess(
-        {.role = UserRole::Guest, .path = "/auth/me", .method = drogon::Get}));
-    CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guest,
-                                            .path = "/auth/logout",
-                                            .method = drogon::Delete}));
+        {.role = UserRole::Resident, .path = "/guard/safety/pin", .method = drogon::Put}));
+}
+
+TEST_CASE("a table answers only its own whole first segment")
+{
+    CHECK_FALSE(role_access::tableFromPath("/users-x").has_value());
+    CHECK_FALSE(role_access::tableFromPath("/camerax/1").has_value());
+    CHECK_FALSE(role_access::tableFromPath("/notificationx").has_value());
+    CHECK_FALSE(role_access::tableFromPath("/voiceprint/user/3").has_value());
+    CHECK(role_access::tableFromPath("/user") == TableName::User);
+    CHECK_FALSE(role_access::hasHttpAccess(
+        {.role = UserRole::Resident, .path = "/users-x", .method = drogon::Get}));
+    CHECK_FALSE(role_access::hasHttpAccess(
+        {.role = UserRole::Guest, .path = "/camerax", .method = drogon::Get}));
+}
+
+TEST_CASE("the delivery summary is the owner's alone")
+{
+    for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+        CAPTURE(userRoleToString(role));
+        CHECK_FALSE(role_access::hasHttpAccess(
+            {.role = role, .path = "/notification/delivery-summary", .method = drogon::Get}));
+        CHECK_FALSE(role_access::hasHttpAccess(
+            {.role = role, .path = "/Notification/Delivery-Summary/", .method = drogon::Get}));
+        CHECK(role_access::hasHttpAccess(
+            {.role = role, .path = "/notification/responses", .method = drogon::Get}));
+    }
+    CHECK(role_access::hasHttpAccess(
+        {.role = UserRole::Owner, .path = "/notification/delivery-summary", .method = drogon::Get}));
+}
+
+TEST_CASE("an app action answers the same as the route it stands for")
+{
+    using role_access::AppAction;
+    for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+        CAPTURE(userRoleToString(role));
+        CHECK(role_access::hasAppAction(role, AppAction::SetGuardMode) ==
+              role_access::hasHttpAccess({.role = role, .path = "/guard/mode", .method = drogon::Post}));
+        CHECK(role_access::hasAppAction(role, AppAction::ShowCamera) ==
+              role_access::hasHttpAccess({.role = role, .path = "/camera/1", .method = drogon::Get}));
+        CHECK(role_access::hasAppAction(role, AppAction::OpenScreen));
+    }
+    CHECK(role_access::hasAppAction(UserRole::Resident, AppAction::SetGuardMode));
+    CHECK_FALSE(role_access::hasAppAction(UserRole::Guard, AppAction::SetGuardMode));
+    CHECK_FALSE(role_access::hasAppAction(UserRole::Guest, AppAction::SetGuardMode));
 }
 
 TEST_CASE("guard calibration stays Owner-only while the Owner keeps every guard route")
@@ -340,12 +423,12 @@ TEST_CASE("every role lists and revokes its own sessions through kSessionAccess"
     CHECK(allows(role, "/auth/sessions/0123456789abcdef0123456789abcdef", drogon::Delete));
   }
 
-  CHECK_FALSE(allows(UserRole::Guard, "/auth/sessions/", drogon::Delete));
+  CHECK(allows(UserRole::Guard, "/auth/sessions/", drogon::Delete));
   CHECK_FALSE(allows(UserRole::Guard, "/auth/sessions/a/b", drogon::Delete));
   CHECK_FALSE(allows(UserRole::Guest, "/auth/sessions", drogon::Post));
   CHECK_FALSE(allows(UserRole::Guard, "/auth/sessionsx", drogon::Delete));
   CHECK_FALSE(allows(UserRole::Guest, "/auth/logout", drogon::Delete));
-  CHECK(allows(UserRole::Guard, "/auth/me", drogon::Get));
+  CHECK_FALSE(allows(UserRole::Guard, "/auth/me", drogon::Get));
 }
 
 TEST_CASE("only the owner reads and revokes another user's sessions")

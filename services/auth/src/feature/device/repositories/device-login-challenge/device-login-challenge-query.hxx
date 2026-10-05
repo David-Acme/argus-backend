@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <auth/session-origin.hxx>
 #include <auth/session-platform.hxx>
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
@@ -16,8 +17,8 @@ inline constexpr std::string_view FIND_BY_CHALLENGE_ID =
 inline constexpr std::string_view INSERT =
     "INSERT INTO device_login_challenge "
     "(challenge_id, device_hash, user_agent, expires_at, platform, "
-    "device_name) "
-    "VALUES (?, ?, ?, ?, ?, ?)";
+    "device_name, poll_hash, origin, ip_address) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 inline constexpr std::string_view MARK_APPROVED =
     "UPDATE device_login_challenge "
@@ -49,13 +50,23 @@ struct AddedColumn
   std::string_view statement;
 };
 
-inline constexpr std::array<AddedColumn, 2> ADDED_COLUMNS{{
+inline constexpr std::array<AddedColumn, 5> ADDED_COLUMNS{{
     {.name = "platform",
      .statement = "ALTER TABLE device_login_challenge ADD COLUMN platform TEXT "
                   "NOT NULL DEFAULT 'unknown' CHECK (platform IN ('unknown', "
                   "'android', 'ios', 'desktop', 'web'))"},
     {.name = "device_name",
      .statement = "ALTER TABLE device_login_challenge ADD COLUMN device_name "
+                  "TEXT NOT NULL DEFAULT ''"},
+    {.name = "poll_hash",
+     .statement = "ALTER TABLE device_login_challenge ADD COLUMN poll_hash "
+                  "TEXT NOT NULL DEFAULT ''"},
+    {.name = "origin",
+     .statement = "ALTER TABLE device_login_challenge ADD COLUMN origin TEXT "
+                  "NOT NULL DEFAULT 'unknown' CHECK (origin IN ('unknown', "
+                  "'lan', 'tunnel', 'loopback', 'external'))"},
+    {.name = "ip_address",
+     .statement = "ALTER TABLE device_login_challenge ADD COLUMN ip_address "
                   "TEXT NOT NULL DEFAULT ''"},
 }};
 
@@ -69,6 +80,9 @@ struct DeviceLoginChallengeCreateInput
   int64_t expiresAt{0};
   SessionPlatform platform{SessionPlatform::Unknown};
   std::string deviceName;
+  std::string pollHash;
+  SessionOrigin origin{SessionOrigin::Unknown};
+  std::string ipAddress;
 };
 
 struct DeviceLoginChallengeMarkApprovedInput

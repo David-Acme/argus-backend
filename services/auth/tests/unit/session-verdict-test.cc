@@ -44,6 +44,8 @@ namespace
 {
 constexpr const char* kJwtSecret =
     "argus-auth-session-verdict-secret-0123456789";
+constexpr const char* kRefreshSecret =
+    "argus-auth-session-verdict-refresh-secret-0123456789";
 constexpr const char* kFleetSecret = "argus-auth-fleet-secret-0123456789abcdef";
 constexpr const char* kDeviceSecret = "00112233445566778899aabbccddeeff";
 constexpr const char* kDeviceHash = "device-hash-primary";
@@ -86,7 +88,7 @@ private:
 void setConfig()
 {
   ConfigService::setRuntimeString("jwt.secret", kJwtSecret);
-  ConfigService::setRuntimeString("jwt.refresh_secret", kJwtSecret);
+  ConfigService::setRuntimeString("jwt.refresh_secret", kRefreshSecret);
   ConfigService::setRuntimeString("jwt.access_ttl_minutes", "60");
   ConfigService::setRuntimeString("jwt.refresh_ttl_days", "7");
 }
@@ -659,6 +661,7 @@ TEST_CASE("tokens rest hashed, and a row written before that still verifies")
                                        .deviceName = "Pixel",
                                        .sessionCreatedAt = 0,
                                        .previousRefreshHash = "",
+                                       .networkHash = "",
                                        .client = nullptr}));
   CHECK(stored.accessToken == argus::hash::sha256Hex("issued-access"));
   CHECK(drogon::sync_wait(RefreshTokenRepository{}.findByRefreshToken(

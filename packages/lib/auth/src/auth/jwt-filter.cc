@@ -1,5 +1,9 @@
 #include "jwt-filter.hxx"
 
+#include <algorithm>
+#include <cctype>
+#include <string_view>
+
 #include <auth/auth-errors.hxx>
 #include <auth/auth-client.hxx>
 #include <errors/response-exception.hxx>
@@ -38,25 +42,22 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
     throw ResponseException(AuthErrors::AuthenticationRequired);
   }
 
-  const bool hasDeviceContext =
-      req->getAttributes()->find(AuthContext::kDeviceKey);
-  std::string deviceHash;
-  std::string origin;
-  if (hasDeviceContext) {
-    const auto& device =
-        req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
-    deviceHash = device.deviceHash;
-    if (device.origin != SessionOrigin::Unknown)
-      origin = sessionOriginToString(device.origin);
-  }
+  if (!req->getAttributes()->find(AuthContext::kDeviceKey))
+    throw ResponseException(AuthErrors::DeviceContextMissing);
+  const auto& device =
+      req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
+  const std::string deviceHash = device.deviceHash;
+  const std::string origin = device.origin == SessionOrigin::Unknown
+                                 ? std::string{}
+                                 : sessionOriginToString(device.origin);
 
   const auto client = filterAuthClient();
   const auto verdict = co_await BlockingTask<
       std::optional<argus::auth::v1::ValidateTokenResponse>>(
-      [client, token, deviceHash, hasDeviceContext, origin]() {
+      [client, token, deviceHash, origin]() {
         return client->validateToken({.accessToken = token,
                                       .deviceHash = deviceHash,
-                                      .hasDeviceContext = hasDeviceContext,
+                                      .hasDeviceContext = true,
                                       .origin = origin});
       });
 
@@ -83,6 +84,15 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
   co_return drogon::HttpResponsePtr{};
 }
 
+bool JwtFilter::isWebSocketUpgrade(const drogon::HttpRequestPtr& req)
+{
+  const std::string& upgrade = req->getHeader("Upgrade");
+  return std::ranges::equal(upgrade, std::string_view("websocket"),
+                            [](char left, char right) {
+                              return std::tolower(static_cast<unsigned char>(left)) == right;
+                            });
+}
+
 std::string JwtFilter::extractToken(const drogon::HttpRequestPtr& req)
 {
   const auto auth = req->getHeader("Authorization");
@@ -94,16 +104,8 @@ std::string JwtFilter::extractToken(const drogon::HttpRequestPtr& req)
     }
   }
 
-  if (auto token = req->getParameter("token"); !token.empty()) {
-    return token;
-  }
-
-  if (auto cookie = req->getCookie("authorization"); !cookie.empty()) {
-    constexpr std::string_view prefix = "Bearer ";
-    if (std::string_view(cookie).substr(0, prefix.size()) == prefix)
-      return cookie.substr(prefix.size());
-    return cookie;
-  }
+  if (isWebSocketUpgrade(req))
+    return req->getParameter("token");
 
   return {};
 }

@@ -93,14 +93,26 @@ int main()
   const AuthRpcConfig rpc = AuthConfig::resolveRpc();
   const AuthIdentityConfig identity = AuthConfig::resolveIdentity();
 
-  requireDistinctTunnelPort(listener, remote);
+  try {
+    requireDistinctTunnelPort(listener, remote);
+    requireTunnelListener(remote);
+    DeviceFilter::requireFingerprintSecret();
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  if (const auto problem = rpc.secretProblem()) {
+    LOG_FATAL << *problem << " — aborting startup";
+    _exit(1);
+  }
 
   std::unique_ptr<IdentityClient> identityClient;
   if (!identity.target.empty())
     identityClient =
         std::make_unique<IdentityClient>(identity.target, identity.secret);
 
-  SessionService sessions({.jwtService = JwtService{},
+  SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
                            .refreshTokenRepository = RefreshTokenRepository{},
                            .identity = identityClient.get()},
                           SessionService::Config{
@@ -123,9 +135,16 @@ int main()
       identityClient.get(),
       AuthFeatureService::Config{
           .refreshReuseGraceSeconds =
-              AuthConfig::resolveRefreshReuseGraceSeconds()}));
+              AuthConfig::resolveRefreshReuseGraceSeconds(),
+          .allowRemoteQrLogin = remote.allowQrLogin}));
 
-  AuthRateGate rateGate(AuthConfig::resolveRateLimit());
+  AuthRateGate rateGate(
+      AuthConfig::resolveRateLimit(),
+      [refreshTokens = JwtService{JwtRole::Issuer}](const std::string& token) {
+        const auto claims = refreshTokens.verifyRefresh(token);
+        const auto sid = claims.find("sid");
+        return sid == claims.end() ? std::string{} : sid->second;
+      });
   RemoteGate remoteGate(remote);
 
   drogon::app().registerPreRoutingAdvice(
@@ -237,15 +256,6 @@ int main()
                                  return status;
                                }}}}));
 
-  if (rpc.reachableBeyondLoopback() && rpc.secret.empty()) {
-    LOG_FATAL
-        << "[server] host " << rpc.listener.host
-        << " is reachable beyond loopback and answers session verdicts: set "
-           "[auth] rpc_secret (and the same value in every service's config) "
-           "— aborting startup";
-    _exit(1);
-  }
-
   AuthRpcService rpcService({.sessions = &sessions,
                              .deviceCredentials = &deviceCredentials},
                             rpc.secret);
@@ -275,7 +285,9 @@ int main()
   if (remote.tunnelPort != 0)
     LOG_INFO << "Remote tunnel listener on port " << remote.tunnelPort
              << (remote.enabled ? " (remote requests allowed)"
-                                : " (remote pairing and registration refused)");
+                                : " (remote pairing and registration refused)")
+             << (remote.allowQrLogin ? "; QR login allowed through the tunnel"
+                                     : "; QR login refused through the tunnel");
 
   drogon::app().registerBeginningAdvice(
       [&authDb, &changeOutbox, &refreshTokens, &loginChallenges,

@@ -3,6 +3,7 @@
 #include <config/config-service.hxx>
 #include <doctest/doctest.h>
 #include <set>
+#include <stdexcept>
 #include <string>
 
 namespace
@@ -55,4 +56,53 @@ TEST_CASE("a caller keeps the identifier it supplies")
   const std::string token =
       service.generateAccess({{"sub", "1"}, {"jti", "caller-supplied"}});
   CHECK(service.verifyAccess(token).at("jti") == "caller-supplied");
+}
+
+TEST_CASE("an issuer refuses equal access and refresh secrets")
+{
+  armSecrets();
+  ConfigService::setRuntimeString("jwt.refresh_secret", std::string(40, 'a'));
+  CHECK_THROWS_AS(JwtService{}, std::runtime_error);
+  CHECK_NOTHROW(JwtService{JwtRole::Verifier});
+  armSecrets();
+}
+
+TEST_CASE("a refresh token never verifies as an access token, nor the reverse")
+{
+  armSecrets();
+  const JwtService service;
+
+  const std::string access = service.generateAccess({{"sub", "1"}});
+  const std::string refresh = service.generateRefresh({{"sub", "1"}, {"sid", "s"}});
+  CHECK(service.verifyAccess(access).at("typ") == "access");
+  CHECK(service.verifyRefresh(refresh).at("typ") == "refresh");
+  CHECK(service.verifyAccess(refresh).empty());
+  CHECK(service.verifyRefresh(access).empty());
+
+  const std::string untypedAccess = service.generate(
+      {.claims = {{"sub", "1"}}, .secret = std::string(40, 'a'), .expiresInSeconds = 60});
+  CHECK(service.verifyAccess(untypedAccess).empty());
+
+  const std::string legacyRefresh = service.generate(
+      {.claims = {{"sub", "1"}}, .secret = std::string(40, 'b'), .expiresInSeconds = 60});
+  CHECK(service.verifyRefresh(legacyRefresh).at("sub") == "1");
+
+  const std::string forgedType = service.generate(
+      {.claims = {{"sub", "1"}, {"typ", "access"}}, .secret = std::string(40, 'b'), .expiresInSeconds = 60});
+  CHECK(service.verifyRefresh(forgedType).empty());
+}
+
+TEST_CASE("a verifier loads the access secret alone and can neither verify nor mint a refresh token")
+{
+  armSecrets();
+  const JwtService issuer;
+  const std::string refresh = issuer.generateRefresh({{"sub", "1"}});
+
+  ConfigService::setRuntimeString("jwt.refresh_secret", "");
+  const JwtService verifier{JwtRole::Verifier};
+  CHECK(verifier.verifyAccess(issuer.generateAccess({{"sub", "2"}})).at("sub") == "2");
+  CHECK(verifier.verifyRefresh(refresh).empty());
+  CHECK_THROWS(verifier.generateRefresh({{"sub", "1"}}));
+  CHECK_THROWS_AS(JwtService{}, std::runtime_error);
+  armSecrets();
 }

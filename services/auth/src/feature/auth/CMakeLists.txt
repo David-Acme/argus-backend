@@ -7,6 +7,7 @@ argus_module(NAME auth-auth
         dtos/poll-device-login-dto.cc
         dtos/refresh-token-dto.cc
         dtos/register-dto.cc
+        dtos/response-device-login-details-dto.cc
         dtos/response-list-sessions-dto.cc
         dtos/response-login-dto.cc
         dtos/response-refresh-token-dto.cc

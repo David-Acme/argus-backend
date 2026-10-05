@@ -156,6 +156,16 @@ const std::vector<CatalogEntry> kCatalog{
      .code = ErrorCode::AccountDisabled,
      .status = 403,
      .message = "User account is disabled"},
+    {.name = "LoginProofRequired",
+     .definition = &AuthErrors::LoginProofRequired,
+     .code = ErrorCode::BadRequest,
+     .status = 400,
+     .message = "A login proof hash is required"},
+    {.name = "DeviceContextMissing",
+     .definition = &AuthErrors::DeviceContextMissing,
+     .code = ErrorCode::InternalError,
+     .status = 500,
+     .message = "The route binds no device to the session"},
 };
 
 constexpr std::size_t kMaxMessageBytes = 1024;
@@ -170,7 +180,7 @@ TEST_CASE("the auth catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 28);
+  CHECK(kCatalog.size() == 30);
 }
 
 TEST_CASE("every auth entry is legal on the wire")

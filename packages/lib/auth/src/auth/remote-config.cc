@@ -12,6 +12,8 @@ RemoteConfig RemoteConfig::resolve()
   if (port > 0 && port < 65536)
     config.tunnelPort = static_cast<uint16_t>(port);
   config.enabled = ConfigService::getBool("remote.enabled");
+  config.allowQrLogin = ConfigService::getBool("remote.allow_qr_login");
+  config.tunnelProfile = ConfigService::getBool("remote.tunnel_profile");
   return config;
 }
 
@@ -42,4 +44,15 @@ void requireDistinctTunnelPort(const ListenerConfig& listener,
                              + std::to_string(remote.tunnelPort)
                              + " collides with the service listener port "
                              + std::to_string(listener.port));
+}
+
+void requireTunnelListener(const RemoteConfig& remote)
+{
+  if (remote.tunnelPort != 0)
+    return;
+  if (remote.tunnelProfile || remote.enabled || remote.allowQrLogin)
+    throw std::runtime_error(
+        "[remote] tunnel_port is 0 while the tunnel is configured "
+        "(tunnel_profile, enabled or allow_qr_login): every tunnelled request "
+        "would be taken for a LAN one");
 }

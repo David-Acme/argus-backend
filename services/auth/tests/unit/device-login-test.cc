@@ -39,14 +39,17 @@ namespace
 
 constexpr const char* kJwtSecret =
     "f5-2-device-credential-test-jwt-secret-0123456789";
-constexpr const char* kFingerprintSecret = "f5-2-test-secret";
+constexpr const char* kRefreshSecret =
+    "f5-2-device-credential-test-refresh-secret-0123456789";
+constexpr const char* kFingerprintSecret =
+    "f5-2-test-fingerprint-secret-0123456789";
 constexpr const char* kUa = "argus-ua/1.0";
 constexpr const char* kDesktopUa = "argus-desktop/1.0";
 constexpr const char* kSecret = "00112233445566778899aabbccddeeff"
                                 "00112233445566778899aabbccddeeff";
 constexpr const char* kFleetSecret = "f7-r-fleet-secret-0123456789abcdef";
 constexpr const char* kIpFingerprint =
-    "1975e81a234fd02f4ae788a8fdb0911b1a1f15dd6d5d6d21d311fe4bbe130ceb";
+    "39bfb6d938f1b0d706d2bb1bbe73246dfd7bb5ea26e6d2809ceea33b761b510e";
 constexpr int64_t kUserId = 1;
 
 struct Refusal
@@ -104,11 +107,12 @@ private:
 void setConfig()
 {
   ConfigService::setRuntimeString("jwt.secret", kJwtSecret);
-  ConfigService::setRuntimeString("jwt.refresh_secret", kJwtSecret);
+  ConfigService::setRuntimeString("jwt.refresh_secret", kRefreshSecret);
   ConfigService::setRuntimeString("jwt.access_ttl_minutes", "60");
   ConfigService::setRuntimeString("jwt.refresh_ttl_days", "7");
   ConfigService::setRuntimeString("device.fingerprint_secret",
                                   kFingerprintSecret);
+  ConfigService::setRuntimeString("device.identity_mode", "ip");
   ConfigService::setRuntimeString("device.trust_forwarded_for", "true");
   ConfigService::setRuntimeString(
       "device.trusted_proxy_ips",
@@ -321,7 +325,7 @@ TEST_CASE("device credential fingerprints are pinned and IP-free")
   CHECK(secretHash ==
         "2a8abfa8cb9906290437854193ca6bca41d4d4e26d1d454bd66a35158095e737");
   CHECK(DeviceFilter::credentialFingerprint(kUa, secretHash) ==
-        "5b7ed91198d33d7982e10c5bcba905637d88022b5f2c5b85dd9f97b75fbacaaf");
+        "32eeeefe03810d4edcd554f75b16b5403db30a305aa9dcd4a60f4d51db1eb712");
 
   DeviceFilter ipFilter;
   auto lan = drogon::HttpRequest::newHttpRequest();
@@ -337,7 +341,7 @@ TEST_CASE("device credential fingerprints are pinned and IP-free")
   other->addHeader("X-Argus-Device-Credential", kSecret);
   drogon::sync_wait(ipFilter.doFilter(other));
   CHECK(deviceCtx(other).deviceHash ==
-        "df791307570263b5c3e0d2890a8836027b975be9296209519d2fc8ba341ac4ab");
+        "062bed41f23486680f6fbbefe49d39863def73325068b1bf919601f659788860");
 }
 
 TEST_CASE("credential identity mode issues, binds and authenticates devices")
@@ -366,7 +370,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
        .sessions = SessionManagementService(
            {.refreshTokenRepository = RefreshTokenRepository{}}),
        .identity = &app.identity()},
-      AuthFeatureService::Config{.refreshReuseGraceSeconds = 30});
+      AuthFeatureService::Config{.refreshReuseGraceSeconds = 30, .allowRemoteQrLogin = false});
 
   JwtFilter jwtFilter;
   DeviceFilter deviceFilter;
@@ -380,7 +384,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   first->addHeader("X-Argus-Device-Credential", kSecret);
   drogon::sync_wait(deviceFilter.doFilter(first));
   CHECK(deviceCtx(first).deviceHash ==
-        "5b7ed91198d33d7982e10c5bcba905637d88022b5f2c5b85dd9f97b75fbacaaf");
+        "32eeeefe03810d4edcd554f75b16b5403db30a305aa9dcd4a60f4d51db1eb712");
 
   auto second = drogon::HttpRequest::newHttpRequest();
   second->addHeader("User-Agent", kUa);
@@ -458,28 +462,30 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
 
   const std::string loginProof(64, 'b');
   const auto created = drogon::sync_wait(authService.createDeviceLogin(
-      {.device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}},
-       .pollHash = DeviceFilter::sha256Hex(loginProof)}));
+      {.device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
+       .pollHash = DeviceFilter::sha256Hex(loginProof),
+       .origin = SessionOrigin::Lan,
+       .ipAddress = "10.0.0.7"}));
   REQUIRE(hexShape(created.challengeId, 64));
   REQUIRE_NOTHROW(
       drogon::sync_wait(authService.approveDeviceLogin(created.challengeId, 1)));
 
   const auto watcher = drogon::sync_wait(authService.pollDeviceLogin(
       {.challengeId = created.challengeId,
-       .device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}},
+       .device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
        .proof = ""}));
   CHECK(watcher.status == DeviceLoginStatus::Pending);
   CHECK(watcher.accessToken.empty());
   const auto guesser = drogon::sync_wait(authService.pollDeviceLogin(
       {.challengeId = created.challengeId,
-       .device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}},
+       .device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
        .proof = std::string(64, 'c')}));
   CHECK(guesser.status == DeviceLoginStatus::Pending);
   CHECK(guesser.accessToken.empty());
 
   const auto polled = drogon::sync_wait(authService.pollDeviceLogin(
       {.challengeId = created.challengeId,
-       .device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}},
+       .device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
        .proof = loginProof}));
   CHECK(polled.status == DeviceLoginStatus::Approved);
   CHECK(polled.userId == kUserId);
@@ -505,7 +511,10 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK(jwtCtx(desktop).deviceHash == expectedHash);
 
   const auto contended = drogon::sync_wait(authService.createDeviceLogin(
-      {.device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}}, .pollHash = ""}));
+      {.device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
+       .pollHash = DeviceFilter::sha256Hex(loginProof),
+       .origin = SessionOrigin::Lan,
+       .ipAddress = "10.0.0.7"}));
   REQUIRE(hexShape(contended.challengeId, 64));
   app.identity().beforeGetUser = [&client, &contended] {
     client->execSqlSync(
@@ -525,26 +534,29 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
 
   const auto replayed = drogon::sync_wait(authService.pollDeviceLogin(
       {.challengeId = created.challengeId,
-       .device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}},
+       .device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
        .proof = loginProof}));
   CHECK(replayed.status == DeviceLoginStatus::Expired);
   CHECK(replayed.deviceSecret.empty());
 
-  ConfigService::setRuntimeString("device.identity_mode", "");
+  ConfigService::setRuntimeString("device.identity_mode", "ip");
   const auto ipChallenge = drogon::sync_wait(authService.createDeviceLogin(
-      {.device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa, .client = {}}, .pollHash = ""}));
+      {.device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
+       .pollHash = DeviceFilter::sha256Hex(loginProof),
+       .origin = SessionOrigin::Lan,
+       .ipAddress = "10.0.0.1"}));
   REQUIRE_NOTHROW(drogon::sync_wait(
       authService.approveDeviceLogin(ipChallenge.challengeId, 1)));
   const auto snooped = drogon::sync_wait(authService.pollDeviceLogin(
       {.challengeId = ipChallenge.challengeId,
-       .device = {.deviceHash = "another-device", .userAgent = kDesktopUa, .client = {}},
+       .device = {.deviceHash = "another-device", .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
        .proof = ""}));
   CHECK(snooped.status == DeviceLoginStatus::Pending);
   CHECK(snooped.accessToken.empty());
   const auto ipPolled = drogon::sync_wait(authService.pollDeviceLogin(
       {.challengeId = ipChallenge.challengeId,
-       .device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa, .client = {}},
-       .proof = ""}));
+       .device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
+       .proof = loginProof}));
   CHECK(ipPolled.status == DeviceLoginStatus::Approved);
   CHECK(ipPolled.deviceSecret.empty());
   CHECK_FALSE(ipPolled.toJson().isMember("device_secret"));
@@ -564,7 +576,10 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK(bound->deviceHash == jwtCtx(desktop).deviceHash);
 
   const auto claimed = drogon::sync_wait(authService.createDeviceLogin(
-      {.device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa, .client = {}}, .pollHash = ""}));
+      {.device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
+       .pollHash = DeviceFilter::sha256Hex(loginProof),
+       .origin = SessionOrigin::Lan,
+       .ipAddress = "10.0.0.1"}));
   REQUIRE_NOTHROW(drogon::sync_wait(authService.approveDeviceLogin(claimed.challengeId, 1)));
   const DeviceLoginChallengeRepository challenges;
   const auto claimAt = static_cast<int64_t>(std::time(nullptr));
@@ -572,13 +587,16 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK_FALSE(drogon::sync_wait(challenges.claimApproved(claimed.challengeId, claimAt)));
   const auto secondPoller = drogon::sync_wait(authService.pollDeviceLogin(
       {.challengeId = claimed.challengeId,
-       .device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa, .client = {}},
-       .proof = ""}));
+       .device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
+       .proof = loginProof}));
   CHECK(secondPoller.status != DeviceLoginStatus::Approved);
   CHECK(secondPoller.accessToken.empty());
 
   const auto refusedApproval = drogon::sync_wait(authService.createDeviceLogin(
-      {.device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa, .client = {}}, .pollHash = ""}));
+      {.device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
+       .pollHash = DeviceFilter::sha256Hex(loginProof),
+       .origin = SessionOrigin::Lan,
+       .ipAddress = "10.0.0.1"}));
   app.identity().reachable = false;
   const auto identityDown =
       refusalOf(authService.approveDeviceLogin(refusedApproval.challengeId, 1));
@@ -598,10 +616,22 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK(inactiveApprover->status == 403);
   app.identity().isActive = true;
 
+  auto unbound = drogon::HttpRequest::newHttpRequest();
+  unbound->addHeader("User-Agent", kDesktopUa);
+  unbound->addHeader("Authorization", "Bearer " + polled.accessToken);
+  const auto noDevice = refusalOf(jwtFilter.doFilter(unbound));
+  if (!noDevice.has_value()) {
+    FAIL("a request that skipped the device filter was admitted");
+    return;
+  }
+  CHECK(noDevice->status == 500);
+  CHECK(noDevice->message == "The route binds no device to the session");
+
   ConfigService::setRuntimeString("auth.target", "127.0.0.1:1");
   auto unreachable = drogon::HttpRequest::newHttpRequest();
   unreachable->addHeader("User-Agent", kDesktopUa);
   unreachable->addHeader("Authorization", "Bearer " + polled.accessToken);
+  drogon::sync_wait(deviceFilter.doFilter(unreachable));
   const auto refused = refusalOf(jwtFilter.doFilter(unreachable));
   if (!refused.has_value()) {
     FAIL("an unreachable auth RPC did not refuse the verdict");
@@ -642,7 +672,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
     CHECK_FALSE(admittedCall);
     CHECK(jwtCtx(withSecret).sub == kUserId);
     ConfigService::setRuntimeString("auth.rpc_secret", "");
-    ConfigService::setRuntimeString("device.identity_mode", "");
+    ConfigService::setRuntimeString("device.identity_mode", "ip");
   }
 }
 
@@ -659,7 +689,7 @@ TEST_CASE("a refresh keeps the session on the device and agent it was issued to"
        .sessions = SessionManagementService(
            {.refreshTokenRepository = RefreshTokenRepository{}}),
        .identity = &app.identity()},
-      AuthFeatureService::Config{.refreshReuseGraceSeconds = 30});
+      AuthFeatureService::Config{.refreshReuseGraceSeconds = 30, .allowRemoteQrLogin = false});
 
   const std::string boundHash = DeviceFilter::credentialFingerprint(
       kUa, DeviceFilter::sha256Hex(kSecret));
@@ -684,7 +714,8 @@ TEST_CASE("a refresh keeps the session on the device and agent it was issued to"
        .userAgent = kUa,
        .ip = "10.0.0.1",
        .credentialHash = "",
-       .client = {}});
+       .client = {},
+       .networkHash = ""});
   CHECK((noCredential.has_value() && noCredential->status == 401));
 
   const auto noAgent = refreshFrom(
@@ -693,7 +724,8 @@ TEST_CASE("a refresh keeps the session on the device and agent it was issued to"
        .userAgent = "",
        .ip = "10.0.0.1",
        .credentialHash = "",
-       .client = {}});
+       .client = {},
+       .networkHash = ""});
   CHECK((noAgent.has_value() && noAgent->status == 401));
 
   CHECK_FALSE(refreshFrom({.body = {.refreshToken = stolen},
@@ -701,23 +733,195 @@ TEST_CASE("a refresh keeps the session on the device and agent it was issued to"
                            .userAgent = kUa,
                            .ip = "10.0.0.1",
                            .credentialHash = "",
-                           .client = {}})
+                           .client = {},
+                           .networkHash = ""})
                   .has_value());
 
   DbService::client()->execSqlSync("DELETE FROM refresh_token");
   ConfigService::setRuntimeString("device.identity_mode", "ip");
   const auto roaming = JwtService().generateRefresh({{"sub", "1"}});
   seed(roaming);
-  CHECK_FALSE(refreshFrom({.body = {.refreshToken = roaming},
+  CHECK(refreshFrom({.body = {.refreshToken = roaming},
                            .deviceHash = "another-network",
                            .userAgent = kUa,
                            .ip = "10.0.0.2",
                            .credentialHash = "",
-                           .client = {}})
+                           .client = {},
+                           .networkHash = ""})
                   .has_value());
 
   DbService::client()->execSqlSync("DELETE FROM refresh_token");
-  ConfigService::setRuntimeString("device.identity_mode", "");
+  ConfigService::setRuntimeString("device.identity_mode", "ip");
+}
+
+TEST_CASE("a QR challenge needs a poll proof, shows where it came from and refuses the tunnel unless opted in")
+{
+  Fixture& app = fixture();
+  REQUIRE(app.start());
+
+  const auto serviceWith = [&app](bool allowRemoteQrLogin) {
+    return AuthFeatureService(
+        {.jwtService = JwtService{},
+         .refreshTokenRepository = RefreshTokenRepository{},
+         .deviceCredentialRepository = DeviceCredentialRepository{},
+         .challengeRepository = DeviceLoginChallengeRepository{},
+         .sessions = SessionManagementService(
+             {.refreshTokenRepository = RefreshTokenRepository{}}),
+         .identity = &app.identity()},
+        AuthFeatureService::Config{.refreshReuseGraceSeconds = 30,
+                                   .allowRemoteQrLogin = allowRemoteQrLogin});
+  };
+  const AuthFeatureService closed = serviceWith(false);
+  const AuthFeatureService open = serviceWith(true);
+  const std::string proof(64, 'd');
+  const auto startFrom = [&proof](SessionOrigin origin, const std::string& pollHash) {
+    return DeviceLoginStartInput{
+        .device = {.deviceHash = kIpFingerprint,
+                   .userAgent = kDesktopUa,
+                   .client = {.platform = SessionPlatform::Desktop, .deviceName = "Desk"},
+                   .networkHash = ""},
+        .pollHash = pollHash.empty() ? pollHash : DeviceFilter::sha256Hex(proof),
+        .origin = origin,
+        .ipAddress = "203.0.113.9"};
+  };
+
+  const auto missingProof =
+      refusalOf(closed.createDeviceLogin(startFrom(SessionOrigin::Lan, "")));
+  REQUIRE(missingProof.has_value());
+  CHECK(missingProof->status == 400);
+  CHECK(missingProof->message == "A login proof hash is required");
+
+  const auto tunnelled =
+      refusalOf(closed.createDeviceLogin(startFrom(SessionOrigin::Tunnel, "x")));
+  REQUIRE(tunnelled.has_value());
+  CHECK(tunnelled->status == 403);
+  CHECK(tunnelled->code == "REMOTE_NOT_ALLOWED");
+
+  const auto remote =
+      drogon::sync_wait(open.createDeviceLogin(startFrom(SessionOrigin::Tunnel, "x")));
+  const auto details = drogon::sync_wait(open.deviceLoginDetails(remote.challengeId));
+  CHECK(details.challengeId == remote.challengeId);
+  CHECK(details.origin == SessionOrigin::Tunnel);
+  CHECK(details.ipAddress == "203.0.113.9");
+  CHECK(details.platform == SessionPlatform::Desktop);
+  CHECK(details.deviceName == "Desk");
+  CHECK(details.expiresAt == remote.expiresAt);
+  const Json::Value shown = details.toJson();
+  CHECK(shown["origin"].asString() == "tunnel");
+  CHECK(shown["ipAddress"].asString() == "203.0.113.9");
+  CHECK_FALSE(shown.isMember("pollHash"));
+  CHECK_FALSE(shown.isMember("deviceHash"));
+
+  const auto unknown = refusalOf(open.deviceLoginDetails(std::string(64, 'e')));
+  REQUIRE(unknown.has_value());
+  CHECK(unknown->status == 404);
+
+  REQUIRE_NOTHROW(drogon::sync_wait(open.approveDeviceLogin(remote.challengeId, 1)));
+  const auto afterApproval = refusalOf(open.deviceLoginDetails(remote.challengeId));
+  REQUIRE(afterApproval.has_value());
+  CHECK(afterApproval->status == 404);
+
+  const auto stored = DbService::client()->execSqlSync(
+      "SELECT poll_hash FROM device_login_challenge WHERE challenge_id = ?",
+      remote.challengeId);
+  REQUIRE(stored.size() == 1);
+  CHECK(stored.front()["poll_hash"].as<std::string>() == DeviceFilter::sha256Hex(proof));
+
+  const auto handed = drogon::sync_wait(open.pollDeviceLogin(
+      {.challengeId = remote.challengeId,
+       .device = {.deviceHash = "", .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
+       .proof = proof}));
+  CHECK(handed.status == DeviceLoginStatus::Approved);
+
+  const auto legacy = drogon::sync_wait(open.createDeviceLogin(startFrom(SessionOrigin::Lan, "x")));
+  REQUIRE_NOTHROW(drogon::sync_wait(open.approveDeviceLogin(legacy.challengeId, 1)));
+  DbService::client()->execSqlSync(
+      "UPDATE device_login_challenge SET poll_hash = '' WHERE challenge_id = ?",
+      legacy.challengeId);
+  for (const std::string& attempt : {std::string{}, proof}) {
+    const auto withoutHash = drogon::sync_wait(open.pollDeviceLogin(
+        {.challengeId = legacy.challengeId,
+         .device = {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa, .client = {}, .networkHash = ""},
+         .proof = attempt}));
+    CHECK(withoutHash.status == DeviceLoginStatus::Pending);
+    CHECK(withoutHash.accessToken.empty());
+  }
+  DbService::client()->execSqlSync("DELETE FROM refresh_token");
+  DbService::client()->execSqlSync("DELETE FROM device_login_challenge");
+}
+
+TEST_CASE("in ip mode a refresh rotates only from the network the session was bound to")
+{
+  Fixture& app = fixture();
+  REQUIRE(app.start());
+  ConfigService::setRuntimeString("device.identity_mode", "ip");
+
+  AuthFeatureService authService(
+      {.jwtService = JwtService{},
+       .refreshTokenRepository = RefreshTokenRepository{},
+       .deviceCredentialRepository = DeviceCredentialRepository{},
+       .challengeRepository = DeviceLoginChallengeRepository{},
+       .sessions = SessionManagementService(
+           {.refreshTokenRepository = RefreshTokenRepository{}}),
+       .identity = &app.identity()},
+      AuthFeatureService::Config{.refreshReuseGraceSeconds = 30,
+                                 .allowRemoteQrLogin = false});
+
+  const auto from = [](const std::string& address) {
+    return DeviceFilter::networkFingerprint({.origin = SessionOrigin::Lan, .address = address});
+  };
+  const auto input = [&from](const std::string& token, const std::string& address) {
+    return RefreshTokenInput{
+        .body = {.refreshToken = token},
+        .deviceHash = DeviceFilter::addressFingerprint({.userAgent = kUa, .address = address}),
+        .userAgent = kUa,
+        .ip = address,
+        .credentialHash = "",
+        .client = {},
+        .networkHash = from(address)};
+  };
+  CHECK(from("192.168.1.20") == from("192.168.1.200"));
+  CHECK(from("192.168.1.20") != from("192.168.2.20"));
+  CHECK(DeviceFilter::networkFingerprint({.origin = SessionOrigin::Tunnel, .address = "127.0.0.1"}) !=
+        from("127.0.0.1"));
+
+  const auto opened = drogon::sync_wait(authService.createDeviceLogin(
+      {.device = {.deviceHash = DeviceFilter::addressFingerprint({.userAgent = kUa, .address = "192.168.1.20"}),
+                  .userAgent = kUa,
+                  .client = {},
+                  .networkHash = from("192.168.1.20")},
+       .pollHash = DeviceFilter::sha256Hex(std::string(64, 'f')),
+       .origin = SessionOrigin::Lan,
+       .ipAddress = "192.168.1.20"}));
+  REQUIRE_NOTHROW(drogon::sync_wait(authService.approveDeviceLogin(opened.challengeId, 1)));
+  const auto session = drogon::sync_wait(authService.pollDeviceLogin(
+      {.challengeId = opened.challengeId,
+       .device = {.deviceHash = "", .userAgent = kUa, .client = {}, .networkHash = ""},
+       .proof = std::string(64, 'f')}));
+  REQUIRE(session.status == DeviceLoginStatus::Approved);
+
+  const auto elsewhere = refusalOf(authService.refreshToken(input(session.refreshToken, "198.51.100.4")));
+  REQUIRE(elsewhere.has_value());
+  CHECK(elsewhere->status == 401);
+
+  const auto rotated = drogon::sync_wait(authService.refreshToken(input(session.refreshToken, "192.168.1.77")));
+  CHECK_FALSE(rotated.refreshToken.empty());
+  const auto stored = DbService::client()->execSqlSync(
+      "SELECT network_hash FROM refresh_token WHERE is_valid = 1 AND is_used = 0");
+  REQUIRE(stored.size() == 1);
+  CHECK(stored.front()["network_hash"].as<std::string>() == from("192.168.1.77"));
+
+  const auto legacyToken = JwtService().generateRefresh({{"sub", "1"}});
+  DbService::client()->execSqlSync("DELETE FROM refresh_token");
+  DbService::client()->execSqlSync(
+      "INSERT INTO refresh_token (user_id, access_token, refresh_token, "
+      "device_hash, user_agent, expires_at) VALUES (1, 'legacy-access', ?, ?, ?, ?)",
+      legacyToken, DeviceFilter::addressFingerprint({.userAgent = kUa, .address = "192.168.1.20"}),
+      std::string(kUa), static_cast<int64_t>(std::time(nullptr)) + 3600);
+  CHECK(refusalOf(authService.refreshToken(input(legacyToken, "192.168.1.21"))).has_value());
+  CHECK_FALSE(refusalOf(authService.refreshToken(input(legacyToken, "192.168.1.20"))).has_value());
+  DbService::client()->execSqlSync("DELETE FROM refresh_token");
+  DbService::client()->execSqlSync("DELETE FROM device_login_challenge");
 }
 
 TEST_CASE("a forwarded address is the hop the trusted proxy saw, not the client's claim")
@@ -732,7 +936,7 @@ TEST_CASE("a forwarded address is the hop the trusted proxy saw, not the client'
   };
   CHECK(keyFor("6.6.6.6, 10.0.0.9") == keyFor("10.0.0.9"));
   CHECK(keyFor("6.6.6.6, 10.0.0.9") != keyFor("6.6.6.6"));
-  ConfigService::setRuntimeString("device.identity_mode", "");
+  ConfigService::setRuntimeString("device.identity_mode", "ip");
 }
 
 int main(int argc, char** argv)

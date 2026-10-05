@@ -29,13 +29,14 @@ bool trustedProxy(const std::string& peer)
   return proxy_allowlist::contains({.configured = configured, .address = peer});
 }
 
+constexpr std::size_t kMinFingerprintSecretLength = 32;
+
 std::string fingerprintKey()
 {
   auto key = ConfigService::getString("device.fingerprint_secret");
-  if (key.empty())
-    key = ConfigService::getString("jwt.secret");
-  if (key.empty())
-    throw std::runtime_error("Device fingerprint secret is not configured");
+  if (key.size() < kMinFingerprintSecretLength)
+    throw std::runtime_error(
+        "[device] fingerprint_secret must be set to at least 32 characters");
   return key;
 }
 }
@@ -190,5 +191,29 @@ SessionOrigin DeviceFilter::classifyOrigin(const OriginInput& input)
 
 bool DeviceFilter::credentialMode()
 {
-  return ConfigService::getString("device.identity_mode") == "credential";
+  return ConfigService::getString("device.identity_mode") != "ip";
+}
+
+void DeviceFilter::requireFingerprintSecret()
+{
+  static_cast<void>(fingerprintKey());
+}
+
+std::string DeviceFilter::networkPrefix(const NetworkPrefixInput& input)
+{
+  return proxy_allowlist::prefixOf({.address = input.address,
+                                    .ipv4Bits = input.ipv4Bits,
+                                    .ipv6Bits = input.ipv6Bits});
+}
+
+std::string DeviceFilter::networkFingerprint(const NetworkFingerprintInput& input)
+{
+  const std::string network =
+      input.origin == SessionOrigin::Tunnel
+          ? std::string("tunnel")
+          : networkPrefix({.address = input.address,
+                           .ipv4Bits = kSessionIpv4PrefixBits,
+                           .ipv6Bits = kSessionIpv6PrefixBits});
+  return hashFingerprint("network|" + sessionOriginToString(input.origin),
+                         network);
 }

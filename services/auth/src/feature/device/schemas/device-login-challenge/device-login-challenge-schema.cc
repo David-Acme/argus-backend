@@ -18,4 +18,7 @@ DeviceLoginChallengeSchema::DeviceLoginChallengeSchema(
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
   platform = sessionPlatformFromString(row["platform"].as<std::string>());
   deviceName = row["device_name"].as<std::string>();
+  pollHash = row["poll_hash"].as<std::string>();
+  origin = sessionOriginFromString(row["origin"].as<std::string>());
+  ipAddress = row["ip_address"].as<std::string>();
 }

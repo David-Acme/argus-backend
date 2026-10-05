@@ -228,12 +228,12 @@ TEST_CASE("ApiResponse::validationError returns 422 with the field errors")
   CHECK(body["errors"]["fields"]["name"][0] == "name must not be empty");
 }
 
-TEST_CASE("Cors::apply writes the four browser headers every service sends")
+TEST_CASE("Cors::apply writes the browser headers but no wildcard origin")
 {
   const auto response = drogon::HttpResponse::newHttpResponse();
   Cors::apply(response);
 
-  CHECK(response->getHeader("Access-Control-Allow-Origin") == "*");
+  CHECK(response->getHeader("Access-Control-Allow-Origin").empty());
   CHECK(response->getHeader("Access-Control-Allow-Methods") ==
         "GET, POST, PATCH, PUT, DELETE, OPTIONS");
   CHECK(response->getHeader("Access-Control-Allow-Headers") ==
@@ -248,7 +248,7 @@ TEST_CASE("Cors::handleOptions answers the pre-routing probe with no body")
   REQUIRE(response);
 
   CHECK(response->getStatusCode() == drogon::k200OK);
-  CHECK(response->getHeader("Access-Control-Allow-Origin") == "*");
+  CHECK(response->getHeader("Access-Control-Allow-Origin").empty());
   CHECK(response->getBody().empty());
 }
 

@@ -48,7 +48,12 @@ namespace
 {
 constexpr const char* kJwtSecret =
     "argus-auth-session-management-secret-0123456789";
-constexpr const char* kFingerprintSecret = "argus-session-fingerprint";
+constexpr const char* kRefreshSecret =
+    "argus-auth-session-management-refresh-secret-0123456789";
+constexpr const char* kFingerprintSecret =
+    "argus-session-fingerprint-secret-0123456789";
+constexpr const char* kLoginProof =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 constexpr const char* kAndroidUa = "Argus/1 (android)";
 constexpr const char* kDesktopUa = "Argus/1 (desktop)";
 constexpr const char* kWebUa = "Argus/1 (web)";
@@ -94,7 +99,7 @@ template <typename T>
 void setConfig()
 {
   ConfigService::setRuntimeString("jwt.secret", kJwtSecret);
-  ConfigService::setRuntimeString("jwt.refresh_secret", kJwtSecret);
+  ConfigService::setRuntimeString("jwt.refresh_secret", kRefreshSecret);
   ConfigService::setRuntimeString("jwt.access_ttl_minutes", "60");
   ConfigService::setRuntimeString("jwt.refresh_ttl_days", "7");
   ConfigService::setRuntimeString("device.fingerprint_secret",
@@ -394,7 +399,7 @@ private:
        .sessions = SessionManagementService(
            {.refreshTokenRepository = RefreshTokenRepository{}}),
        .identity = &identity_},
-      AuthFeatureService::Config{.refreshReuseGraceSeconds = kGraceSeconds}};
+      AuthFeatureService::Config{.refreshReuseGraceSeconds = kGraceSeconds, .allowRemoteQrLogin = false}};
   SessionManagementService manager_{
       {.refreshTokenRepository = RefreshTokenRepository{}}};
   RecordingSink sink_;
@@ -447,17 +452,37 @@ struct OpenSessionInput
       {.userAgent = device.userAgent, .address = device.address});
 }
 
+[[nodiscard]] std::string networkHashOf(const Device& device)
+{
+  return DeviceFilter::networkFingerprint(
+      {.origin = SessionOrigin::Lan, .address = device.address});
+}
+
+[[nodiscard]] LoginDeviceInput loginOf(const Device& device)
+{
+  return LoginDeviceInput{.deviceHash = deviceHashOf(device),
+                          .userAgent = device.userAgent,
+                          .client = device.client,
+                          .networkHash = networkHashOf(device)};
+}
+
+[[nodiscard]] DeviceLoginStartInput qrStartOf(const Device& device)
+{
+  return DeviceLoginStartInput{.device = loginOf(device),
+                               .pollHash = DeviceFilter::sha256Hex(kLoginProof),
+                               .origin = SessionOrigin::Lan,
+                               .ipAddress = device.address};
+}
+
 [[nodiscard]] OpenedSession openSession(const OpenSessionInput& input)
 {
   AuthFeatureService& auth = fixture().auth();
-  const LoginDeviceInput login{.deviceHash = deviceHashOf(input.device),
-                               .userAgent = input.device.userAgent,
-                               .client = input.device.client};
-  const auto challenge = drogon::sync_wait(
-      auth.createDeviceLogin({.device = login, .pollHash = ""}));
+  const LoginDeviceInput login = loginOf(input.device);
+  const auto challenge =
+      drogon::sync_wait(auth.createDeviceLogin(qrStartOf(input.device)));
   drogon::sync_wait(auth.approveDeviceLogin(challenge.challengeId, input.userId));
   const auto polled = drogon::sync_wait(auth.pollDeviceLogin(
-      {.challengeId = challenge.challengeId, .device = login, .proof = ""}));
+      {.challengeId = challenge.challengeId, .device = login, .proof = kLoginProof}));
   return OpenedSession{.accessToken = polled.accessToken,
                        .refreshToken = polled.refreshToken,
                        .device = input.device};
@@ -508,7 +533,8 @@ struct RefreshAttempt
                            .userAgent = attempt.device.userAgent,
                            .ip = attempt.device.address,
                            .credentialHash = "",
-                           .client = attempt.device.client};
+                           .client = attempt.device.client,
+                           .networkHash = networkHashOf(attempt.device)};
 }
 
 [[nodiscard]] std::vector<std::string> activeSessionIds(int64_t userId)
@@ -587,7 +613,7 @@ TEST_CASE("a session written before the migration keeps working with an id")
   CHECK(SessionManagementService::isSessionId(context.sessionId));
 
   const auto listed = drogon::sync_wait(app.sessions().list(
-      {.userId = kLegacyUserId, .currentSessionId = context.sessionId}));
+      {.userId = kLegacyUserId, .currentSessionId = context.sessionId, .role = UserRole::Owner}));
   REQUIRE(listed.sessions.size() == 1);
   CHECK(listed.sessions.front().current);
   CHECK(listed.sessions.front().platform == SessionPlatform::Unknown);
@@ -661,7 +687,7 @@ TEST_CASE("an owner lists, revokes one session and the rest, and logs out")
   CHECK(phoneId != deskContext.sessionId);
 
   const auto listed = drogon::sync_wait(
-      app.sessions().list({.userId = kOwnerId, .currentSessionId = phoneId}));
+      app.sessions().list({.userId = kOwnerId, .currentSessionId = phoneId, .role = UserRole::Owner}));
   REQUIRE(listed.sessions.size() == 3);
   CHECK(listed.sessions.front().id == phoneId);
   CHECK(listed.sessions.front().current);
@@ -684,7 +710,7 @@ TEST_CASE("an owner lists, revokes one session and the rest, and logs out")
 
   app.sink().clear();
   const auto revoked = drogon::sync_wait(app.sessions().revokeOne(
-      {.owner = {.userId = kOwnerId, .currentSessionId = phoneId},
+      {.owner = {.userId = kOwnerId, .currentSessionId = phoneId, .role = UserRole::Owner},
        .sessionId = deskContext.sessionId}));
   CHECK(revoked.revoked == std::vector<std::string>{deskContext.sessionId});
   CHECK_FALSE(revoked.current);
@@ -725,24 +751,24 @@ TEST_CASE("an owner lists, revokes one session and the rest, and logs out")
   CHECK_FALSE(mentionsSecret(actions[0]));
 
   const Refusal again = refusedBy(app.sessions().revokeOne(
-      {.owner = {.userId = kOwnerId, .currentSessionId = phoneId},
+      {.owner = {.userId = kOwnerId, .currentSessionId = phoneId, .role = UserRole::Owner},
        .sessionId = deskContext.sessionId}));
   CHECK(again.status == 404);
   CHECK(again.code == "SESSION_NOT_FOUND");
   const Refusal foreign = refusedBy(app.sessions().revokeOne(
-      {.owner = {.userId = kOwnerId, .currentSessionId = phoneId},
+      {.owner = {.userId = kOwnerId, .currentSessionId = phoneId, .role = UserRole::Owner},
        .sessionId = strangerContext.sessionId}));
   CHECK(foreign.status == 404);
   CHECK(authenticate(stranger).has_value());
   const Refusal malformed = refusedBy(app.sessions().revokeOne(
-      {.owner = {.userId = kOwnerId, .currentSessionId = phoneId},
+      {.owner = {.userId = kOwnerId, .currentSessionId = phoneId, .role = UserRole::Owner},
        .sessionId = "../../etc"}));
   CHECK(malformed.code == "SESSION_NOT_FOUND");
 
   const auto second = openSession({.userId = kOwnerId, .device = desktop()});
   app.sink().clear();
   const auto others = drogon::sync_wait(app.sessions().revokeScope(
-      {.owner = {.userId = kOwnerId, .currentSessionId = phoneId},
+      {.owner = {.userId = kOwnerId, .currentSessionId = phoneId, .role = UserRole::Owner},
        .scope = SessionRevocationScope::Others}));
   CHECK(others.revoked.size() == 2);
   CHECK_FALSE(others.current);
@@ -764,7 +790,7 @@ TEST_CASE("an owner lists, revokes one session and the rest, and logs out")
   const JwtContext spareContext = contextOf(spare);
   const auto all = drogon::sync_wait(app.sessions().revokeScope(
       {.owner = {.userId = kOwnerId,
-                 .currentSessionId = spareContext.sessionId},
+                 .currentSessionId = spareContext.sessionId, .role = UserRole::Owner},
        .scope = SessionRevocationScope::All}));
   CHECK(all.current);
   CHECK(all.revoked == std::vector<std::string>{spareContext.sessionId});
@@ -948,7 +974,7 @@ TEST_CASE("a legacy agent moves to the stable agent once, from the device it is 
   const JwtContext context = contextOf(movedSession);
   CHECK(context.sessionId == sessionId);
   const auto listed = drogon::sync_wait(app.sessions().list(
-      {.userId = kLegacyUserId, .currentSessionId = sessionId}));
+      {.userId = kLegacyUserId, .currentSessionId = sessionId, .role = UserRole::Owner}));
   REQUIRE(listed.sessions.size() == 1);
   CHECK(listed.sessions.front().platform == SessionPlatform::Android);
   CHECK(listed.sessions.front().deviceName == "Pixel");
@@ -979,7 +1005,8 @@ TEST_CASE("a legacy agent moves to the stable agent once, from the device it is 
         .userAgent = kAndroidUa,
         .ip = "10.9.9.9",
         .credentialHash = presentedHash,
-        .client = {.platform = SessionPlatform::Android, .deviceName = ""}};
+        .client = {.platform = SessionPlatform::Android, .deviceName = ""},
+        .networkHash = ""};
   };
   CHECK(refusalOf(app.auth().refreshToken(
                       credentialRefresh(DeviceFilter::sha256Hex("device-secret-b"))))
@@ -1040,7 +1067,26 @@ TEST_CASE("the owner lists every user's sessions and closes another user's one o
   const JwtContext laptopContext = contextOf(laptop);
   const JwtContext bystanderContext = contextOf(bystander);
   const SessionOwnerInput actor{.userId = kOwnerId,
-                                .currentSessionId = ownerContext.sessionId};
+                                .currentSessionId = ownerContext.sessionId,
+                                .role = UserRole::Owner};
+  for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CAPTURE(userRoleToString(role));
+    const SessionOwnerInput intruder{.userId = kBystanderId,
+                                     .currentSessionId = bystanderContext.sessionId,
+                                     .role = role};
+    CHECK(refusedBy(app.sessions().listEveryUser(intruder)).status == 403);
+    CHECK(refusedBy(app.sessions().listOfUser({.actor = intruder, .userId = kTargetId}))
+              .status == 403);
+    CHECK(refusedBy(app.sessions().revokeUserSession(
+                        {.actor = intruder,
+                         .userId = kTargetId,
+                         .sessionId = phoneContext.sessionId}))
+              .code == "FORBIDDEN");
+    CHECK(refusedBy(app.sessions().revokeUserSessions(
+                        {.actor = intruder, .userId = kTargetId}))
+              .status == 403);
+  }
+  CHECK(activeSessionIds(kTargetId).size() == 2);
 
   const auto overview = drogon::sync_wait(app.sessions().listEveryUser(actor));
   const auto userOf = [&overview](int64_t userId) {
@@ -1116,12 +1162,7 @@ TEST_CASE("a disabled account loses every session and is refused at every way in
   constexpr int64_t kDisabledId = 31;
   constexpr int64_t kLaggingId = 32;
   constexpr int64_t kQrId = 33;
-  const auto phoneLogin = [] {
-    const Device device = androidPhone();
-    return LoginDeviceInput{.deviceHash = deviceHashOf(device),
-                            .userAgent = device.userAgent,
-                            .client = device.client};
-  };
+  const auto phoneLogin = [] { return loginOf(androidPhone()); };
 
   const auto phone = openSession({.userId = kDisabledId, .device = androidPhone()});
   const auto web = openSession({.userId = kDisabledId, .device = browser()});
@@ -1167,18 +1208,17 @@ TEST_CASE("a disabled account loses every session and is refused at every way in
   CHECK(activeSessionIds(kLaggingId).empty());
 
   const LoginDeviceInput qrDevice = phoneLogin();
-  const auto challenge = drogon::sync_wait(
-      app.auth().createDeviceLogin({.device = qrDevice, .pollHash = ""}));
+  const auto challenge =
+      drogon::sync_wait(app.auth().createDeviceLogin(qrStartOf(androidPhone())));
   drogon::sync_wait(app.auth().approveDeviceLogin(challenge.challengeId, kQrId));
   app.identity().setActive(kQrId, false);
   const auto polled = drogon::sync_wait(app.auth().pollDeviceLogin(
-      {.challengeId = challenge.challengeId, .device = qrDevice, .proof = ""}));
+      {.challengeId = challenge.challengeId, .device = qrDevice, .proof = kLoginProof}));
   CHECK(polled.status == DeviceLoginStatus::Expired);
   CHECK(polled.accessToken.empty());
   CHECK(polled.refreshToken.empty());
   const Refusal approve = refusedBy(app.auth().approveDeviceLogin(
-      drogon::sync_wait(
-          app.auth().createDeviceLogin({.device = qrDevice, .pollHash = ""}))
+      drogon::sync_wait(app.auth().createDeviceLogin(qrStartOf(androidPhone())))
           .challengeId,
       kQrId));
   CHECK(approve.status == 403);

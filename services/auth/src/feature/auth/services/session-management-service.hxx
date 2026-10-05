@@ -1,5 +1,6 @@
 #pragma once
 
+#include <auth/user-role.hxx>
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <feature/auth/dtos/response-list-sessions-dto.hxx>
@@ -14,6 +15,7 @@ struct SessionOwnerInput
 {
   int64_t userId{0};
   std::string currentSessionId;
+  UserRole role{UserRole::Guest};
 };
 
 struct RevokeSessionInput

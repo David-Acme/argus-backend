@@ -24,6 +24,9 @@ public:
                 "DeviceFilter", "JwtFilter");
   ADD_METHOD_TO(AuthController::createDeviceLogin, "/auth/device-login",
                 drogon::Post, "DeviceFilter");
+  ADD_METHOD_TO(AuthController::deviceLoginDetails,
+                "/auth/device-login/{1}/details", drogon::Get, "DeviceFilter",
+                "JwtFilter");
   ADD_METHOD_TO(AuthController::approveDeviceLogin,
                 "/auth/device-login/{1}/approve", drogon::Post, "DeviceFilter",
                 "JwtFilter");
@@ -58,6 +61,8 @@ public:
   drogon::Task<drogon::HttpResponsePtr> status(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr>
   createDeviceLogin(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr>
+  deviceLoginDetails(drogon::HttpRequestPtr req, std::string challengeId);
   drogon::Task<drogon::HttpResponsePtr>
   approveDeviceLogin(drogon::HttpRequestPtr req, std::string challengeId);
   drogon::Task<drogon::HttpResponsePtr>

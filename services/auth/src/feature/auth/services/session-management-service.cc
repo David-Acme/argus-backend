@@ -57,7 +57,14 @@ SessionOwnerInput callerAgainst(const UserSessionsInput& input)
   return {.userId = input.userId,
           .currentSessionId = input.actor.userId == input.userId
                                   ? input.actor.currentSessionId
-                                  : std::string{}};
+                                  : std::string{},
+          .role = input.actor.role};
+}
+
+void requireOwner(const SessionOwnerInput& actor)
+{
+  if (actor.role != UserRole::Owner)
+    throw ResponseException(AuthErrors::AccessDenied);
 }
 }
 
@@ -105,6 +112,7 @@ SessionManagementService::list(const SessionOwnerInput& input) const
 drogon::Task<ResponseUserSessionsDto>
 SessionManagementService::listEveryUser(const SessionOwnerInput& actor) const
 {
+  requireOwner(actor);
   const auto rows =
       co_await dependencies_.refreshTokenRepository.listAllActive(nowSeconds());
 
@@ -126,6 +134,7 @@ SessionManagementService::listEveryUser(const SessionOwnerInput& actor) const
 drogon::Task<ResponseListSessionsDto>
 SessionManagementService::listOfUser(const UserSessionsInput& input) const
 {
+  requireOwner(input.actor);
   co_return co_await list(callerAgainst(input));
 }
 
@@ -161,6 +170,7 @@ drogon::Task<ResponseRevokeSessionsDto>
 SessionManagementService::revokeUserSession(
     const RevokeUserSessionInput& input) const
 {
+  requireOwner(input.actor);
   if (input.userId <= 0 || !isSessionId(input.sessionId))
     throw ResponseException(AuthErrors::SessionNotFound);
 
@@ -179,6 +189,7 @@ drogon::Task<ResponseRevokeSessionsDto>
 SessionManagementService::revokeUserSessions(
     const UserSessionsInput& input) const
 {
+  requireOwner(input.actor);
   if (input.userId <= 0)
     throw ResponseException(AuthErrors::UserNotFound);
 

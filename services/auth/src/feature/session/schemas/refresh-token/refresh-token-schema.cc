@@ -19,4 +19,5 @@ RefreshTokenSchema::RefreshTokenSchema(const drogon::orm::Row& row)
       static_cast<int64_t>(row["session_created_at"].as<long long>());
   lastSeenAt = static_cast<int64_t>(row["last_seen_at"].as<long long>());
   previousRefreshToken = row["previous_refresh_token"].as<std::string>();
+  networkHash = row["network_hash"].as<std::string>();
 }

@@ -43,6 +43,8 @@ sync and tts.
   `DirectoryUser` a service may hold without opening the identity database
   (rule 27).
 - `src/auth/jwt-service.{cc,hxx}` — JwtService: HS256 mint and verify.
+  `JwtRole::Issuer` (argus-auth) loads both secrets and refuses equal ones;
+  `JwtRole::Verifier` (every `JwtFilter`) loads `jwt.secret` alone.
 - `src/auth/auth-access.{cc,hxx}` — `filterAuthClient()`: the package's
   single auth RPC client, cached per resolved target, so the filters and a
   service's composition root share one connection to `argus-auth`.
@@ -70,9 +72,14 @@ sync and tts.
 
 ## Tests
 
-Two suites of its own. `tests/unit/role-access-test.cc` pins the
+Five suites of its own. `tests/unit/role-access-test.cc` pins the
 `kTableAccess` map role by role (`readableTables`, `permissionForMethod`,
-`tableFromPath`, `hasHttpAccess`, and the Owner-only guard administration);
+`tableFromPath`, `hasHttpAccess`, the Owner-only guard administration, the
+case and trailing-slash normalization, deny-by-default for unlisted `/auth`
+paths and unknown methods, and `hasAppAction`); `jwt-service-test.cc` pins
+the issuer/verifier split and the `typ` claim; `device-origin-test.cc` and
+`proxy-allowlist-test.cc` pin the origin classes, the network prefixes and
+the forwarded-for allowlist;
 `tests/unit/remote-gate-test.cc` pins the `[remote]` keys, the tunnel
 listener `appendRemoteListener` adds to a service's own, the refusal when
 `tunnel_port` collides with a service listener, and the 403

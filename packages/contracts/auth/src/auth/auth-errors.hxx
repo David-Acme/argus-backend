@@ -117,4 +117,12 @@ inline constexpr ErrorDefinition AccountDisabled{
     .code = ErrorCode::AccountDisabled,
     .status = 403,
     .message = "User account is disabled"};
+inline constexpr ErrorDefinition LoginProofRequired{
+    .code = ErrorCode::BadRequest,
+    .status = 400,
+    .message = "A login proof hash is required"};
+inline constexpr ErrorDefinition DeviceContextMissing{
+    .code = ErrorCode::InternalError,
+    .status = 500,
+    .message = "The route binds no device to the session"};
 }

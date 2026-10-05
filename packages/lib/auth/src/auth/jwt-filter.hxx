@@ -24,6 +24,8 @@ public:
 
   static std::string extractToken(const drogon::HttpRequestPtr& req);
 
+  static bool isWebSocketUpgrade(const drogon::HttpRequestPtr& req);
+
 private:
-  JwtService jwtService_;
+  JwtService jwtService_{JwtRole::Verifier};
 };

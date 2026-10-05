@@ -134,6 +134,43 @@ TEST_CASE("tunnel port validation refuses a service listener collision")
                   std::runtime_error);
 }
 
+TEST_CASE("a tunnel without its own listener refuses to start")
+{
+  CHECK_NOTHROW(requireTunnelListener(RemoteConfig{}));
+
+  RemoteConfig profileOnly;
+  profileOnly.tunnelProfile = true;
+  CHECK_THROWS_AS(requireTunnelListener(profileOnly), std::runtime_error);
+
+  RemoteConfig enabledOnly;
+  enabledOnly.enabled = true;
+  CHECK_THROWS_AS(requireTunnelListener(enabledOnly), std::runtime_error);
+
+  RemoteConfig qrOnly;
+  qrOnly.allowQrLogin = true;
+  CHECK_THROWS_AS(requireTunnelListener(qrOnly), std::runtime_error);
+
+  RemoteConfig listening;
+  listening.tunnelProfile = true;
+  listening.allowQrLogin = true;
+  listening.tunnelPort = 17443;
+  CHECK_NOTHROW(requireTunnelListener(listening));
+}
+
+TEST_CASE("remote config reads the tunnel profile and the QR opt-in")
+{
+  ConfigService::setRuntimeString("remote.tunnel_profile", "true");
+  ConfigService::setRuntimeString("remote.allow_qr_login", "true");
+  const RemoteConfig armed = RemoteConfig::resolve();
+  CHECK(armed.tunnelProfile);
+  CHECK(armed.allowQrLogin);
+  ConfigService::setRuntimeString("remote.tunnel_profile", "false");
+  ConfigService::setRuntimeString("remote.allow_qr_login", "false");
+  const RemoteConfig cleared = RemoteConfig::resolve();
+  CHECK_FALSE(cleared.tunnelProfile);
+  CHECK_FALSE(cleared.allowQrLogin);
+}
+
 TEST_CASE("a request without a tunnel port is never remote")
 {
   CHECK_FALSE(
@@ -159,7 +196,7 @@ TEST_CASE("remote gate rejects pairing and register for remote requests")
   CHECK_FALSE(body["errors"]["message"].asString().empty());
   CHECK(body["info"].isNull());
   CHECK(body["errors"]["fields"].isNull());
-  CHECK(pairingResp->getHeader("Access-Control-Allow-Origin") == "*");
+  CHECK(pairingResp->getHeader("Access-Control-Allow-Origin").empty());
 
   auto registration = testRequest(drogon::Post, "/auth/register");
   const Json::Value registerBody = parseBody(gate.check(registration, true));

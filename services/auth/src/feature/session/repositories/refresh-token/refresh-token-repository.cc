@@ -63,7 +63,7 @@ RefreshTokenRepository::create(const RefreshTokenCreateInput& input) const
       std::string(INSERT), input.userId, accessHash, refreshHash,
       input.deviceHash, input.userAgent, input.expiresAt, now, input.sessionId,
       platform, input.deviceName, sessionCreatedAt, now,
-      input.previousRefreshHash);
+      input.previousRefreshHash, input.networkHash);
 
   RefreshTokenSchema schema;
   schema.id = static_cast<int64_t>(result.insertId());
@@ -82,6 +82,7 @@ RefreshTokenRepository::create(const RefreshTokenCreateInput& input) const
   schema.sessionCreatedAt = sessionCreatedAt;
   schema.lastSeenAt = now;
   schema.previousRefreshToken = input.previousRefreshHash;
+  schema.networkHash = input.networkHash;
   co_return schema;
 }
 

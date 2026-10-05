@@ -55,15 +55,6 @@ public:
     return node.empty() ? std::string{} : std::move(node.mapped().secret);
   }
 
-  std::optional<std::string> peek(const std::string& challengeId)
-  {
-    std::scoped_lock lock(mutex_);
-    const auto it = secrets_.find(challengeId);
-    if (it == secrets_.end() || it->second.expiresAt <= std::time(nullptr))
-      return std::nullopt;
-    return it->second.secret;
-  }
-
 private:
   struct Entry
   {
@@ -81,12 +72,6 @@ ExpiringSecrets& pendingDeviceSecrets()
   return secrets;
 }
 
-ExpiringSecrets& pendingPollHashes()
-{
-  static ExpiringSecrets hashes;
-  return hashes;
-}
-
 bool sameDigest(std::string_view left, std::string_view right)
 {
   return left.size() == right.size() &&
@@ -96,10 +81,8 @@ bool sameDigest(std::string_view left, std::string_view right)
 bool pollerOwnsChallenge(const DeviceLoginPollInput& input,
                          const DeviceLoginChallengeSchema& challenge)
 {
-  if (const auto pollHash = pendingPollHashes().peek(input.challengeId))
-    return !input.proof.empty() &&
-           sameDigest(DeviceFilter::sha256Hex(input.proof), *pollHash);
-  return challenge.deviceHash == input.device.deviceHash;
+  return !challenge.pollHash.empty() && !input.proof.empty() &&
+         sameDigest(DeviceFilter::sha256Hex(input.proof), challenge.pollHash);
 }
 
 std::string randomSecret()
@@ -174,12 +157,22 @@ bool agentUpgradeAllowed(const RefreshTokenSchema& session,
          session.deviceHash;
 }
 
+bool sameNetwork(const RefreshTokenSchema& session,
+                 const RefreshTokenInput& input)
+{
+  if (session.networkHash.empty())
+    return session.deviceHash == input.deviceHash;
+  return sameDigest(session.networkHash, input.networkHash);
+}
+
 bool sameBinding(const RefreshTokenSchema& session,
                  const RefreshTokenInput& input)
 {
-  return session.userAgent == input.userAgent &&
-         (!DeviceFilter::credentialMode() ||
-          session.deviceHash == input.deviceHash);
+  if (session.userAgent != input.userAgent)
+    return false;
+  if (DeviceFilter::credentialMode())
+    return session.deviceHash == input.deviceHash;
+  return sameNetwork(session, input);
 }
 
 drogon::Task<std::optional<argus::identity::v1::IdentifyPersonResponse>>
@@ -309,6 +302,11 @@ AuthFeatureService::registerUser(RegisterDto body,
 drogon::Task<CreateDeviceLoginDto>
 AuthFeatureService::createDeviceLogin(const DeviceLoginStartInput& input) const
 {
+  if (input.origin == SessionOrigin::Tunnel && !config_.allowRemoteQrLogin)
+    throw ResponseException(AuthErrors::RemoteNotAllowed);
+  if (input.pollHash.empty())
+    throw ResponseException(AuthErrors::LoginProofRequired);
+
   const std::string challengeId = randomSecret();
   if (challengeId.empty())
     throw ResponseException(AuthErrors::LoginChallengeGenerationFailed);
@@ -322,14 +320,33 @@ AuthFeatureService::createDeviceLogin(const DeviceLoginStartInput& input) const
        .userAgent = input.device.userAgent,
        .expiresAt = expiresAt,
        .platform = input.device.client.platform,
-       .deviceName = input.device.client.deviceName});
-  if (!input.pollHash.empty())
-    pendingPollHashes().store({.challengeId = challengeId,
-                               .secret = input.pollHash,
-                               .expiresAt = expiresAt});
+       .deviceName = input.device.client.deviceName,
+       .pollHash = input.pollHash,
+       .origin = input.origin,
+       .ipAddress = input.ipAddress});
 
   co_return CreateDeviceLoginDto{.challengeId = challengeId,
                                  .expiresAt = expiresAt};
+}
+
+drogon::Task<ResponseDeviceLoginDetailsDto>
+AuthFeatureService::deviceLoginDetails(const std::string& challengeId) const
+{
+  const auto challenge =
+      co_await dependencies_.challengeRepository.findByChallengeId(challengeId);
+  if (!challenge || challenge->status != DeviceLoginStatus::Pending)
+    throw ResponseException(AuthErrors::ChallengeNotFound);
+  if (challenge->expiresAt <= static_cast<int64_t>(std::time(nullptr)))
+    throw ResponseException(AuthErrors::ChallengeExpired);
+
+  co_return ResponseDeviceLoginDetailsDto{
+      .challengeId = challenge->challengeId,
+      .platform = challenge->platform,
+      .deviceName = challenge->deviceName,
+      .origin = challenge->origin,
+      .ipAddress = challenge->ipAddress,
+      .createdAt = challenge->createdAt,
+      .expiresAt = challenge->expiresAt};
 }
 
 drogon::Task<void>
@@ -382,6 +399,11 @@ AuthFeatureService::approveDeviceLogin(const std::string& challengeId,
          .deviceName = challenge->deviceName,
          .sessionCreatedAt = 0,
          .previousRefreshHash = "",
+         .networkHash = challenge->ipAddress.empty()
+                            ? std::string{}
+                            : DeviceFilter::networkFingerprint(
+                                  {.origin = challenge->origin,
+                                   .address = challenge->ipAddress}),
          .client = transaction.get()});
     co_await session_events::publishChanged(
         {.userId = approvingUserId, .client = transaction.get()});
@@ -448,7 +470,6 @@ AuthFeatureService::pollDeviceLogin(const DeviceLoginPollInput& input) const
   result.accessToken = challenge->accessToken;
   result.refreshToken = challenge->refreshToken;
   result.deviceSecret = pendingDeviceSecrets().take(challengeId);
-  static_cast<void>(pendingPollHashes().take(challengeId));
   if (owner && owner->has_user()) {
     result.userId = owner->user().user_id();
     result.name = owner->user().name() + " " + owner->user().last_name();
@@ -536,6 +557,7 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
                                  ? existing->sessionCreatedAt
                                  : existing->createdAt,
          .previousRefreshHash = presented.tokenHash,
+         .networkHash = input.networkHash,
          .client = transaction.get()});
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(AuthErrors::ChangeNotRecorded);
@@ -683,6 +705,7 @@ AuthFeatureService::issueSession(const IssueSessionInput& input) const
          .deviceName = input.device.client.deviceName,
          .sessionCreatedAt = 0,
          .previousRefreshHash = "",
+         .networkHash = input.device.networkHash,
          .client = transaction.get()});
 
     Json::Value session(Json::objectValue);

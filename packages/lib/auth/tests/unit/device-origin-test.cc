@@ -18,8 +18,6 @@ TEST_CASE("private and link-local addresses are the home network")
 {
   CHECK(originOf("192.168.18.40") == SessionOrigin::Lan);
   CHECK(originOf("10.1.2.3") == SessionOrigin::Lan);
-  CHECK(originOf("172.16.0.9") == SessionOrigin::Lan);
-  CHECK(originOf("172.31.255.1") == SessionOrigin::Lan);
   CHECK(originOf("169.254.10.10") == SessionOrigin::Lan);
   CHECK(originOf("fd12:3456::1") == SessionOrigin::Lan);
   CHECK(originOf("fe80::1") == SessionOrigin::Lan);
@@ -33,6 +31,9 @@ TEST_CASE("loopback, public and carrier-grade addresses are not the home "
   CHECK(originOf("::1") == SessionOrigin::Loopback);
   CHECK(originOf("8.8.8.8") == SessionOrigin::External);
   CHECK(originOf("172.32.0.1") == SessionOrigin::External);
+  CHECK(originOf("172.16.0.9") == SessionOrigin::External);
+  CHECK(originOf("172.17.0.1") == SessionOrigin::External);
+  CHECK(originOf("172.31.255.1") == SessionOrigin::External);
   CHECK(originOf("100.64.0.1") == SessionOrigin::External);
   CHECK(originOf("2001:db8::1") == SessionOrigin::External);
 }
@@ -62,4 +63,27 @@ TEST_CASE("an owner-configured network list replaces the default")
                                       .address = "192.168.1.4",
                                       .lanNetworks = "100.64.0.0/10"}) ==
         SessionOrigin::External);
+}
+
+TEST_CASE("a network prefix keeps the requested bits and drops the host part")
+{
+  CHECK(DeviceFilter::networkPrefix(
+            {.address = "192.168.18.40", .ipv4Bits = 24, .ipv6Bits = 64}) ==
+        "192.168.18.0/24");
+  CHECK(DeviceFilter::networkPrefix(
+            {.address = "192.168.18.40", .ipv4Bits = 32, .ipv6Bits = 64}) ==
+        "192.168.18.40/32");
+  CHECK(DeviceFilter::networkPrefix(
+            {.address = "2001:db8:1:2:aaaa:bbbb:cccc:dddd", .ipv4Bits = 32, .ipv6Bits = 64}) ==
+        "2001:db8:1:2::/64");
+  CHECK(DeviceFilter::networkPrefix(
+            {.address = "2001:db8:1:2::9", .ipv4Bits = 32, .ipv6Bits = 64}) ==
+        DeviceFilter::networkPrefix(
+            {.address = "2001:db8:1:2:ffff::1", .ipv4Bits = 32, .ipv6Bits = 64}));
+  CHECK(DeviceFilter::networkPrefix(
+            {.address = "::ffff:10.0.0.7", .ipv4Bits = 24, .ipv6Bits = 64}) ==
+        "10.0.0.0/24");
+  CHECK(DeviceFilter::networkPrefix(
+            {.address = "not-an-ip", .ipv4Bits = 24, .ipv6Bits = 64}) ==
+        "not-an-ip");
 }

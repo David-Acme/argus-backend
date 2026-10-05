@@ -149,3 +149,27 @@ bool proxy_allowlist::contains(const MembershipInput& input)
                                return covers(range, *address);
                              });
 }
+
+std::string proxy_allowlist::prefixOf(const PrefixInput& input)
+{
+  const std::string_view text = trimmed(input.address);
+  auto address = parseAddress(text);
+  if (!address)
+    return std::string(text);
+  const int prefix = std::clamp(
+      address->bits == kIpv4Bits ? input.ipv4Bits : input.ipv6Bits, 0,
+      address->bits);
+  int remaining = prefix;
+  for (auto& byte : address->bytes) {
+    const int kept = std::clamp(remaining, 0, kByteBits);
+    byte = static_cast<unsigned char>(
+        kept == 0 ? 0U : byte & (0xffU << (kByteBits - kept)));
+    remaining -= kept;
+  }
+  std::array<char, INET6_ADDRSTRLEN> buffer{};
+  const int family = address->bits == kIpv4Bits ? AF_INET : AF_INET6;
+  if (inet_ntop(family, address->bytes.data(), buffer.data(),
+                static_cast<socklen_t>(buffer.size())) == nullptr)
+    return std::string(text);
+  return std::string(buffer.data()) + "/" + std::to_string(prefix);
+}

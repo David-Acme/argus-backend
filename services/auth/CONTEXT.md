@@ -33,9 +33,9 @@ the user row behind a session comes from identity through
   `credential` identity mode, from the same device hash; the one exception is
   the move to the stable agent described under Sessions. A stolen refresh
   token without its device credential used to mint a session bound to the
-  thief's hash. In `ip` mode the hash is not compared: it carries the IP,
-  and the refresh is exactly how a phone that changed network gets a session
-  for its new address.
+  thief's hash. In `ip` mode the device hash carries the exact address and is
+  not compared; the refresh must instead come from the same origin network
+  as the session (see "Identity mode and the origin network" below).
 - A rotation commits only once its answer is certain. Every check that can
   fail (the token's family, its expiry, the binding and identity's view of
   the account) runs first, the new pair is signed before the transaction
@@ -163,8 +163,9 @@ session, most recently active first, each session in the same shape as `GET
 id included) and `DELETE /auth/users/{userId}/sessions` closes all of them;
 both answer `{revoked, current}` like the caller's own routes. The four rows
 are `kOwnerOnly` in `role_access::kSessionAccess`, so `RoleFilter` refuses
-every other role (without them `kAuthAccess` would have let a guard or a guest
-`GET` any `/auth` path). The route patterns are matched segment by segment
+every other role, and `SessionManagementService` checks the caller's role
+again (`SessionOwnerInput.role`, 403 `FORBIDDEN` for anyone but an Owner):
+the route table and the service each refuse on their own. The route patterns are matched segment by segment
 (`routeMatches`, one `{id}` per segment). The list is one query over the active
 rows (`listAllActive`); names come from the app's own synced directory, so
 this service still reads no identity table.
@@ -236,12 +237,32 @@ credential yet (every desktop showing the QR) is hashed as the empty string,
 so any poller without a credential matched it (2026-10). The challenge is now
 bound to `DeviceFilter::deviceKey` (HMAC of agent and address) in both modes,
 and above that to a proof only the creating device knows: `POST
-/auth/device-login` may carry `pollHash`, the SHA-256 of a random proof the
-app keeps in memory, and the poll then presents the proof in
-`X-Argus-Login-Proof`; when a challenge has a poll hash, nothing else unlocks
-it. The hash lives in memory beside the pending device secrets, so a restart
-falls back to the device key. Handing out the tokens is a single conditional
-UPDATE (`approved` to `expired`), so two pollers can never both receive them.
+/auth/device-login` must carry `pollHash`, the SHA-256 of a random proof the
+app keeps in memory (422 without it, `LOGIN_PROOF_REQUIRED` 400 if the service
+is reached another way), and the poll presents the proof in
+`X-Argus-Login-Proof`; nothing else unlocks a challenge. The hash is persisted
+in `device_login_challenge.poll_hash` (2026-10 audit): it used to live in
+memory, so a restart fell back to the device key, which in `ip` mode behind a
+NAT or the Docker proxy is the user agent alone. A row without a poll hash
+(created by an older binary, at most two minutes old) is never handed out.
+Handing out the tokens is a single conditional UPDATE (`approved` to
+`expired`), so two pollers can never both receive them.
+
+**What the approver sees, and the tunnel (2026-10 audit).** The challenge
+also stores where it was created: `origin` (`SessionOrigin`, the class
+`DeviceFilter` gave the request, CHECK-constrained) and `ip_address`. `GET
+/auth/device-login/{id}/details` (`DeviceFilter`, `JwtFilter`, no role gate,
+like the approval) answers `{challengeId, platform, deviceName, origin,
+ipAddress, createdAt, expiresAt}` for a pending, unexpired challenge, so the
+approving app can show "LAN 192.168.1.40" or "tunnel" before the owner taps
+approve; platform and name still come from the requesting device's headers,
+origin and address do not. A challenge created through the tunnel listener is
+refused `REMOTE_NOT_ALLOWED` unless `[remote] allow_qr_login = true`: the
+phishing case is a remote attacker asking the owner to scan a QR. The session
+an approval opens is bound to the network hash of the challenge's origin and
+address, so its first refresh in `ip` mode must come from that network. The
+route and the DTO are additive; the app has to call the details route to show
+them.
 
 A refresh rotates in one transaction: marking the presented token used,
 pruning the user's stale rows and inserting the new pair commit together, so
@@ -251,8 +272,8 @@ a failed insert no longer leaves a used token and no session.
 the unauthenticated entry points - `POST /auth/login`, `POST
 /auth/register`, `POST /auth/device-login` - and `PATCH
 /auth/refresh-token`, per route and per client address (the address
-`DeviceFilter::resolveIp` trusts), with a lockout after consecutive
-refusals. It used to guard the refresh alone, disabled by default and keyed
+`DeviceFilter::resolveIp` trusts, IPv6 grouped per /64), with a lockout after
+consecutive refusals. It used to guard the refresh alone, disabled by default and keyed
 by user agent and address, so a face login could be retried without limit
 and a rotated `User-Agent` skipped any limit; and once 4096 keys were
 tracked it refused everyone. A full table now evicts an entry that is not
@@ -262,6 +283,16 @@ trusted `X-Forwarded-For`, the socket's own peer address carries a second,
 twenty-times larger budget, so rotating the header no longer buys unlimited
 attempts. A 5xx answer (identity down) counts neither as a success nor as a
 failure: an outage no longer locks the household out.
+
+Since the 2026-10 audit only a 401 or a 403 counts as a failure (a 422, a
+404 or a 409 is the caller's mistake, not a guess), and a refresh whose token
+verifies against the refresh secret is keyed by its session id (`sid`)
+instead of the address, with the address keeping only the twenty-times peer
+ceiling: five garbage refreshes from the house lock out the address key that
+garbage and sid-less legacy tokens share, never a live session's refresh. An
+IPv6 client counts per /64, so rotating the interface identifier buys
+nothing. A full table evicts an entry with no recorded failure first, then
+any unlocked one, and never a locked one.
 
 No feature reads another's repository, so rule 23's 2+ rule puts each of the
 three in its own feature and keeps `src/shared/` empty.
@@ -323,7 +354,8 @@ row waiting the retry period.
 be the same value in every service's config. An empty value is legal only
 while the listener is bound to loopback, which is the native development
 default; `main.cc` refuses to start when the listener is reachable beyond
-loopback without one. The deploy template binds `0.0.0.0` behind that secret —
+loopback without one, and refuses a non-empty secret shorter than 32
+characters in every mode, native included (`AuthRpcConfig::secretProblem`). The deploy template binds `0.0.0.0` behind that secret —
 which is what lets the peer containers the secret exists for reach
 `argus-auth:7043` — and the compose publishes 7043 on `127.0.0.1` only.
 
@@ -333,7 +365,46 @@ where the app dials `/auth` directly, and 7043 on `127.0.0.1` only, where the
 fleet reaches it as `argus-auth:7043` over the bridge. `RemoteGate` sits in
 front of the whole surface as a pre-routing advice: a request that arrives on
 the `[remote] tunnel_port` listener is refused `REMOTE_NOT_ALLOWED` for
-`/pairing` and `/auth/register` unless `[remote] enabled` is set.
+`/pairing` and `/auth/register` unless `[remote] enabled` is set. The service
+refuses to start when the configuration expects the tunnel (`[remote]
+tunnel_profile`, `enabled` or `allow_qr_login`) while `tunnel_port` is 0
+(`requireTunnelListener`): every tunnelled request would then arrive on the
+LAN listener and be classified as a LAN one. `provision-host.sh` is expected
+to set `tunnel_profile = true` when it enables the compose `tunnel` profile.
+
+## Identity mode and the origin network (2026-10 audit)
+
+`device.identity_mode` defaults to `credential` (code and every template):
+the device hash is the HMAC of the agent and the device credential the app
+received at login, so a stolen access or refresh token is useless without
+that credential. `ip` mode stays available for installations whose app
+cannot carry a credential, and there the device hash is the HMAC of the
+agent and the address, which behind NAT or the Docker proxy is shared by the
+whole house. To keep a stolen `ip`-mode refresh token from rotating from
+anywhere, every refresh-token row now stores `network_hash`
+(`DeviceFilter::networkFingerprint`: the origin class plus the /24 or /64,
+`tunnel` for the tunnel listener), written at login, registration, QR
+approval and every rotation. In `ip` mode a refresh rotates only when the
+request's network hash equals the row's; a row written before the column
+existed (empty hash) rotates only from its exact address and agent. A phone
+that moved to another network signs in again; that is the price of `ip`
+mode, and `credential` mode does not pay it.
+
+`device.fingerprint_secret` is mandatory and no longer falls back to
+`jwt.secret`; `main.cc` checks it before it listens. `jwt.secret` and
+`jwt.refresh_secret` must differ, and every token carries `typ`, so a refresh
+token never verifies as an access token (`packages/lib/auth/CONTEXT.md`).
+
+## Legacy refresh tokens without a session id (2026-10 audit, #84)
+
+A refresh token minted before the `sid` claim is found by its own hash or as
+the predecessor of an active row. A legacy token two or more rotations old
+matches neither and is refused 401 without revoking its family: there is no
+row that links it to the family any more. This is accepted, not fixed: the
+case only exists for tokens issued before the `sid` claim landed, every such
+token expires within its refresh window (`jwt.refresh_ttl_days`, at most 30
+days in the templates), and forcing a re-login of every pre-`sid` session to
+close it would cost more than the window it closes.
 
 ## The verdict order
 
@@ -347,8 +418,9 @@ mismatch`, `User account is disabled`); everything else refuses with an empty
 reason, because the caller has no business knowing which check failed.
 
 An access-only validation (no device context) answers `valid` with
-`expires_at = 0`: it is the question the WebSocket upgrade asks, where the
-device binding was already enforced by the transport. The session row is still
+`expires_at = 0`. `JwtFilter` no longer asks it: since the 2026-10 audit the
+filter refuses a request that carries no `DeviceContext` and always sends the
+hash, so the access-only question is left to direct RPC callers. The session row is still
 required, so a token whose row was revoked or rotated refuses there too — the
 difference between the two paths is the hash comparison, never whether the
 session exists.

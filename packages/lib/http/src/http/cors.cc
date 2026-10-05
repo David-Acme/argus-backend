@@ -2,7 +2,6 @@
 
 void Cors::apply(const drogon::HttpResponsePtr& resp)
 {
-  resp->addHeader("Access-Control-Allow-Origin", "*");
   resp->addHeader("Access-Control-Allow-Methods",
                   "GET, POST, PATCH, PUT, DELETE, OPTIONS");
   resp->addHeader("Access-Control-Allow-Headers",

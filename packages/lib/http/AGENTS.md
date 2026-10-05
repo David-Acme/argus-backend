@@ -45,7 +45,9 @@ declare errors and this package formats them.
   retried, because trantor throws on the IO loop when a context does not
   load. `usablePair` is the check.
 - `src/http/cors.hxx` — `Cors`: `apply` on a response, `handleOptions` for the
-  preflight.
+  preflight. Since the 2026-10 audit it sends no `Access-Control-Allow-Origin`
+  at all: the app is native and needs none, and the old `*` let any web page
+  open in the LAN read the unauthenticated routes.
 - `src/http/details/http-errors.hxx` — the definitions this package refuses with, all of
   them answers no handler produced.
 - `src/http/health-controller.hxx` — `HealthController` (`/health`) and the

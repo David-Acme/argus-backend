@@ -36,15 +36,21 @@ std::string randomTokenId()
 }
 }
 
-JwtService::JwtService()
+JwtService::JwtService(JwtRole role)
     : accessSecret_(ConfigService::getString("jwt.secret")),
-      refreshSecret_(ConfigService::getString("jwt.refresh_secret")),
+      refreshSecret_(role == JwtRole::Issuer
+                         ? ConfigService::getString("jwt.refresh_secret")
+                         : std::string{}),
       accessTtlSeconds_(ConfigService::getInt("jwt.access_ttl_minutes") * 60),
       refreshTtlSeconds_(ConfigService::getInt("jwt.refresh_ttl_days") * 86400)
 {
-  if (isWeakSecret(accessSecret_) || isWeakSecret(refreshSecret_))
+  if (isWeakSecret(accessSecret_) ||
+      (role == JwtRole::Issuer && isWeakSecret(refreshSecret_)))
     throw std::runtime_error(
         "JWT secrets must be configured with at least 32 non-default characters");
+  if (role == JwtRole::Issuer && accessSecret_ == refreshSecret_)
+    throw std::runtime_error(
+        "jwt.secret and jwt.refresh_secret must be different values");
 }
 
 std::string JwtService::generate(const JwtGenerateInput& input) const
@@ -99,7 +105,9 @@ JwtService::verify(const std::string& token, const std::string& secret) const
 std::string JwtService::generateAccess(
     const std::map<std::string, std::string>& claims) const
 {
-  return generate({.claims = claims,
+  auto typed = claims;
+  typed.insert_or_assign(std::string(kTypeClaim), std::string(kAccessType));
+  return generate({.claims = typed,
                    .secret = accessSecret_,
                    .expiresInSeconds = accessTtlSeconds_});
 }
@@ -107,7 +115,11 @@ std::string JwtService::generateAccess(
 std::string JwtService::generateRefresh(
     const std::map<std::string, std::string>& claims) const
 {
-  return generate({.claims = claims,
+  if (refreshSecret_.empty())
+    throw ResponseException(AuthErrors::TokenIssuanceFailed);
+  auto typed = claims;
+  typed.insert_or_assign(std::string(kTypeClaim), std::string(kRefreshType));
+  return generate({.claims = typed,
                    .secret = refreshSecret_,
                    .expiresInSeconds = refreshTtlSeconds_});
 }
@@ -115,11 +127,21 @@ std::string JwtService::generateRefresh(
 std::map<std::string, std::string>
 JwtService::verifyAccess(const std::string& token) const
 {
-  return verify(token, accessSecret_);
+  auto claims = verify(token, accessSecret_);
+  const auto type = claims.find(std::string(kTypeClaim));
+  if (type == claims.end() || type->second != kAccessType)
+    return {};
+  return claims;
 }
 
 std::map<std::string, std::string>
 JwtService::verifyRefresh(const std::string& token) const
 {
-  return verify(token, refreshSecret_);
+  if (refreshSecret_.empty())
+    return {};
+  auto claims = verify(token, refreshSecret_);
+  const auto type = claims.find(std::string(kTypeClaim));
+  if (type != claims.end() && type->second != kRefreshType)
+    return {};
+  return claims;
 }

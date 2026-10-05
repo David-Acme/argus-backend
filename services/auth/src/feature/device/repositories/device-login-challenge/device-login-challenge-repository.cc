@@ -40,7 +40,8 @@ DeviceLoginChallengeRepository::create(
   const auto result = co_await client->execSqlCoro(
       std::string(INSERT), input.challengeId, input.deviceHash, input.userAgent,
       input.expiresAt, sessionPlatformToString(input.platform),
-      input.deviceName);
+      input.deviceName, input.pollHash, sessionOriginToString(input.origin),
+      input.ipAddress);
 
   DeviceLoginChallengeSchema schema;
   schema.id = static_cast<int64_t>(result.insertId());
@@ -51,6 +52,9 @@ DeviceLoginChallengeRepository::create(
   schema.createdAt = static_cast<int64_t>(std::time(nullptr));
   schema.platform = input.platform;
   schema.deviceName = input.deviceName;
+  schema.pollHash = input.pollHash;
+  schema.origin = input.origin;
+  schema.ipAddress = input.ipAddress;
   co_return schema;
 }
 

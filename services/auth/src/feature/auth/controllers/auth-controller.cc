@@ -17,19 +17,26 @@
 
 namespace
 {
+std::string networkHashOf(const DeviceContext& device)
+{
+  return DeviceFilter::networkFingerprint(
+      {.origin = device.origin, .address = device.ip});
+}
+
 LoginDeviceInput loginDeviceOf(const drogon::HttpRequestPtr& req)
 {
   const auto& dev =
       req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
   return {.deviceHash = dev.deviceHash,
           .userAgent = dev.userAgent,
-          .client = client_identity::of(req)};
+          .client = client_identity::of(req),
+          .networkHash = networkHashOf(dev)};
 }
 
 SessionOwnerInput actorOf(const drogon::HttpRequestPtr& req)
 {
   const auto& ctx = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
-  return {.userId = ctx.sub, .currentSessionId = ctx.sessionId};
+  return {.userId = ctx.sub, .currentSessionId = ctx.sessionId, .role = ctx.role};
 }
 
 std::string credentialHashOf(const drogon::HttpRequestPtr& req,
@@ -44,7 +51,7 @@ std::string credentialHashOf(const drogon::HttpRequestPtr& req,
 
 AuthController::AuthController(const IdentityClient* identity,
                                AuthFeatureService::Config config)
-    : authService_({.jwtService = JwtService{},
+    : authService_({.jwtService = JwtService{JwtRole::Issuer},
                     .refreshTokenRepository = RefreshTokenRepository{},
                     .deviceCredentialRepository = DeviceCredentialRepository{},
                     .challengeRepository = DeviceLoginChallengeRepository{},
@@ -108,9 +115,23 @@ AuthController::createDeviceLogin(drogon::HttpRequestPtr req)
   const auto result = co_await authService_.createDeviceLogin(
       {.device = {.deviceHash = DeviceFilter::deviceKey(req),
                   .userAgent = dev.userAgent,
-                  .client = client_identity::of(req)},
-       .pollHash = body.pollHash});
+                  .client = client_identity::of(req),
+                  .networkHash = networkHashOf(dev)},
+       .pollHash = body.pollHash,
+       .origin = dev.origin,
+       .ipAddress = dev.ip});
 
+  co_return ApiResponse::ok(result.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+AuthController::deviceLoginDetails(drogon::HttpRequestPtr,
+                                   std::string challengeId)
+{
+  if (challengeId.empty())
+    throw ResponseException(AuthErrors::MissingChallengeId);
+
+  const auto result = co_await authService_.deviceLoginDetails(challengeId);
   co_return ApiResponse::ok(result.toJson());
 }
 
@@ -144,7 +165,8 @@ AuthController::pollDeviceLogin(drogon::HttpRequestPtr req,
       {.challengeId = std::move(challengeId),
        .device = {.deviceHash = DeviceFilter::deviceKey(req),
                   .userAgent = dev.userAgent,
-                  .client = client_identity::of(req)},
+                  .client = client_identity::of(req),
+                  .networkHash = networkHashOf(dev)},
        .proof = body.proof});
 
   co_return ApiResponse::ok(result.toJson());
@@ -163,7 +185,8 @@ AuthController::refreshToken(drogon::HttpRequestPtr req)
        .userAgent = dev.userAgent,
        .ip = dev.ip,
        .credentialHash = credentialHashOf(req, dev),
-       .client = client_identity::of(req)});
+       .client = client_identity::of(req),
+       .networkHash = networkHashOf(dev)});
 
   co_return ApiResponse::ok(result.toJson());
 }
@@ -195,7 +218,7 @@ AuthController::listSessions(drogon::HttpRequestPtr req)
 {
   const auto& ctx = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   const auto result = co_await sessionService_.list(
-      {.userId = ctx.sub, .currentSessionId = ctx.sessionId});
+      {.userId = ctx.sub, .currentSessionId = ctx.sessionId, .role = ctx.role});
   co_return ApiResponse::ok(result.toJson());
 }
 
@@ -205,7 +228,7 @@ AuthController::revokeSessions(drogon::HttpRequestPtr req)
   const auto body = RevokeSessionsDto::fromRequest(req);
   const auto& ctx = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   const auto result = co_await sessionService_.revokeScope(
-      {.owner = {.userId = ctx.sub, .currentSessionId = ctx.sessionId},
+      {.owner = {.userId = ctx.sub, .currentSessionId = ctx.sessionId, .role = ctx.role},
        .scope = body.target});
   co_return ApiResponse::ok(result.toJson());
 }
@@ -215,7 +238,7 @@ AuthController::revokeSession(drogon::HttpRequestPtr req, std::string sessionId)
 {
   const auto& ctx = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   const auto result = co_await sessionService_.revokeOne(
-      {.owner = {.userId = ctx.sub, .currentSessionId = ctx.sessionId},
+      {.owner = {.userId = ctx.sub, .currentSessionId = ctx.sessionId, .role = ctx.role},
        .sessionId = std::move(sessionId)});
   co_return ApiResponse::ok(result.toJson());
 }

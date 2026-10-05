@@ -2,12 +2,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdint>
 #include <drogon/HttpTypes.h>
 #include <optional>
 #include <sync/role-permission.hxx>
 #include <sync/table-name.hxx>
 #include <initializer_list>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -65,14 +67,6 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::UserAuditLog, kRead},
       {TableName::Notification, kReadUpdate},
       {TableName::NotificationToken, kCreateOwn}}},
-};
-
-inline const std::unordered_map<UserRole,
-                                std::unordered_set<drogon::HttpMethod>>
-    kAuthAccess = {
-        {UserRole::Resident, {drogon::Get, drogon::Post, drogon::Patch}},
-        {UserRole::Guard, {drogon::Get}},
-        {UserRole::Guest, {drogon::Get}},
 };
 
 struct GuardRouteAccess
@@ -208,6 +202,10 @@ inline constexpr std::array<AuthRouteAccess, 4> kVisitorAccess = {{
     {.path = "/visitor-crop/{id}/content", .method = drogon::Get, .roles = roleBit(UserRole::Guard)},
 }};
 
+inline constexpr std::array<AuthRouteAccess, 1> kRouteOverrides = {{
+    {.path = "/notification/delivery-summary", .method = drogon::Get, .roles = kOwnerOnly},
+}};
+
 inline constexpr std::string_view kRouteSegment = "{id}";
 
 inline bool routeMatches(std::string_view pattern, std::string_view path)
@@ -231,14 +229,25 @@ inline bool routeMatches(std::string_view pattern, std::string_view path)
   return true;
 }
 
+inline bool roleHolds(std::uint8_t roles, UserRole role)
+{
+  return (roles & roleBit(role)) != 0;
+}
+
+template <typename Route, std::size_t Count>
+inline const Route* routeOf(const std::array<Route, Count>& routes,
+                            std::string_view path, drogon::HttpMethod method)
+{
+  const auto route = std::ranges::find_if(routes, [&](const Route& entry) {
+    return entry.method == method && routeMatches(entry.path, path);
+  });
+  return route == routes.end() ? nullptr : &*route;
+}
+
 inline const AuthRouteAccess* sessionRouteOf(std::string_view path,
                                              drogon::HttpMethod method)
 {
-  const auto route =
-      std::ranges::find_if(kSessionAccess, [&](const AuthRouteAccess& entry) {
-        return entry.method == method && routeMatches(entry.path, path);
-      });
-  return route == kSessionAccess.end() ? nullptr : &*route;
+  return routeOf(kSessionAccess, path, method);
 }
 
 struct HasAccessInput
@@ -306,7 +315,7 @@ inline std::vector<TableName> moduleTables(UserRole role)
   return tables;
 }
 
-inline RolePermission permissionForMethod(drogon::HttpMethod method)
+inline std::optional<RolePermission> permissionForMethod(drogon::HttpMethod method)
 {
   switch (method) {
     case drogon::Get:
@@ -318,38 +327,56 @@ inline RolePermission permissionForMethod(drogon::HttpMethod method)
     case drogon::Delete:
       return RolePermission::Delete;
     default:
-      return RolePermission::Read;
+      return std::nullopt;
   }
+}
+
+inline std::string_view firstSegment(std::string_view path)
+{
+  if (path.empty() || path.front() != '/')
+    return {};
+  path.remove_prefix(1);
+  return path.substr(0, path.find('/'));
 }
 
 inline std::optional<TableName> tableFromPath(std::string_view path)
 {
-  static const std::vector<std::pair<std::string_view, TableName>> kPaths = {
-      {"/camera-stream", TableName::CameraStream},
-      {"/camera", TableName::Camera},
-      {"/zone", TableName::Zone},
-      {"/reminder-detail", TableName::ReminderDetail},
-      {"/reminder", TableName::Reminder},
-      {"/calendar-event-share", TableName::CalendarEventShare},
-      {"/calendar-event", TableName::CalendarEvent},
-      {"/project-member", TableName::ProjectMember},
-      {"/project-task", TableName::ProjectTask},
-      {"/project", TableName::Project},
-      {"/context-note", TableName::ContextNote},
-      {"/event", TableName::Event},
-      {"/person", TableName::Person},
-      {"/portrait-preview", TableName::User},
-      {"/invitation", TableName::UserInvitation},
-      {"/user", TableName::User},
-      {"/notification-token", TableName::NotificationToken},
-      {"/notification", TableName::Notification},
+  static const std::unordered_map<std::string_view, TableName> kSegments = {
+      {"camera-stream", TableName::CameraStream},
+      {"camera", TableName::Camera},
+      {"zone", TableName::Zone},
+      {"reminder-detail", TableName::ReminderDetail},
+      {"reminder", TableName::Reminder},
+      {"calendar-event-share", TableName::CalendarEventShare},
+      {"calendar-event", TableName::CalendarEvent},
+      {"project-member", TableName::ProjectMember},
+      {"project-task", TableName::ProjectTask},
+      {"project", TableName::Project},
+      {"context-note", TableName::ContextNote},
+      {"event", TableName::Event},
+      {"person", TableName::Person},
+      {"portrait-preview", TableName::User},
+      {"invitation", TableName::UserInvitation},
+      {"user", TableName::User},
+      {"notification-token", TableName::NotificationToken},
+      {"notification", TableName::Notification},
   };
 
-  for (const auto& [prefix, table] : kPaths) {
-    if (path.starts_with(prefix))
-      return table;
-  }
-  return std::nullopt;
+  const auto table = kSegments.find(firstSegment(path));
+  if (table == kSegments.end())
+    return std::nullopt;
+  return table->second;
+}
+
+inline std::string normalizedPath(std::string_view path)
+{
+  std::string normalized(path);
+  std::ranges::transform(normalized, normalized.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  while (normalized.size() > 1 && normalized.back() == '/')
+    normalized.pop_back();
+  return normalized;
 }
 
 struct HasHttpAccessInput
@@ -359,68 +386,84 @@ struct HasHttpAccessInput
   drogon::HttpMethod method;
 };
 
-inline bool hasHttpAccess(const HasHttpAccessInput& input)
+template <typename Route, std::size_t Count>
+inline bool routeTableAllows(const std::array<Route, Count>& routes,
+                             const HasHttpAccessInput& input)
 {
-  const UserRole role = input.role;
-  const std::string_view path = input.path;
-  const drogon::HttpMethod method = input.method;
+  const Route* route = routeOf(routes, input.path, input.method);
+  return route != nullptr && roleHolds(route->roles, input.role);
+}
 
-  if (role == UserRole::Owner)
-    return true;
+inline bool normalizedRouteAccess(const HasHttpAccessInput& input)
+{
+  const std::string_view segment = firstSegment(input.path);
+  if (segment == "auth")
+    return routeTableAllows(kSessionAccess, input);
+  if (segment == "rtc")
+    return routeTableAllows(kRtcAccess, input);
+  if (segment == "privacy")
+    return routeTableAllows(kPrivacyAccess, input);
+  if (segment == "visitor" || segment == "visitor-crop")
+    return routeTableAllows(kVisitorAccess, input);
+  if (segment == "sync")
+    return routeTableAllows(kSyncAccess, input);
+  if (segment == "guard")
+    return routeTableAllows(kGuardAccess, input);
 
-  if (path.starts_with("/auth")) {
-    if (const auto* route = sessionRouteOf(path, method))
-      return (route->roles & roleBit(role)) != 0;
-    const auto it = kAuthAccess.find(role);
-    if (it == kAuthAccess.end())
-      return false;
-    return it->second.contains(method);
-  }
+  if (const auto* route = routeOf(kRouteOverrides, input.path, input.method))
+    return roleHolds(route->roles, input.role);
 
-  if (path.starts_with("/rtc")) {
-    const auto route = std::ranges::find_if(kRtcAccess, [&](const AuthRouteAccess& entry) {
-      return entry.path == path && entry.method == method;
-    });
-    return route != kRtcAccess.end() && (route->roles & roleBit(role)) != 0;
-  }
+  if (const auto* action = cameraActionRouteOf(input.path, input.method))
+    return roleHolds(action->roles, input.role);
 
-  if (path.starts_with("/privacy")) {
-    const auto route = std::ranges::find_if(kPrivacyAccess, [&](const AuthRouteAccess& entry) {
-      return entry.path == path && entry.method == method;
-    });
-    return route != kPrivacyAccess.end() && (route->roles & roleBit(role)) != 0;
-  }
-
-  if (path.starts_with("/visitor")) {
-    const auto route = std::ranges::find_if(kVisitorAccess, [&](const AuthRouteAccess& entry) {
-      return entry.method == method && routeMatches(entry.path, path);
-    });
-    return route != kVisitorAccess.end() && (route->roles & roleBit(role)) != 0;
-  }
-
-  if (path.starts_with("/sync/")) {
-    const auto route = std::ranges::find_if(kSyncAccess, [&](const AuthRouteAccess& entry) {
-      return entry.path == path && entry.method == method;
-    });
-    return route != kSyncAccess.end() && (route->roles & roleBit(role)) != 0;
-  }
-
-  if (path.starts_with("/guard")) {
-    const auto route = std::ranges::find_if(kGuardAccess, [&](const GuardRouteAccess& entry) {
-      return entry.method == method && routeMatches(entry.path, path);
-    });
-    return route != kGuardAccess.end() && (route->roles & roleBit(role)) != 0;
-  }
-
-  if (const auto* action = cameraActionRouteOf(path, method))
-    return (action->roles & roleBit(role)) != 0;
-
-  const auto table = tableFromPath(path);
-  if (!table)
+  const auto table = tableFromPath(input.path);
+  const auto perm = permissionForMethod(input.method);
+  if (!table || !perm)
     return false;
 
-  return hasAccess(
-      {.role = role, .table = *table, .perm = permissionForMethod(method)});
+  return hasAccess({.role = input.role, .table = *table, .perm = *perm});
+}
+
+inline bool hasHttpAccess(const HasHttpAccessInput& input)
+{
+  if (input.role == UserRole::Owner)
+    return true;
+
+  const std::string path = normalizedPath(input.path);
+  if (!normalizedRouteAccess(
+          {.role = input.role, .path = path, .method = input.method}))
+    return false;
+  if (path.size() == input.path.size())
+    return true;
+
+  const std::string child = path + "/0";
+  return normalizedRouteAccess(
+      {.role = input.role, .path = child, .method = input.method});
+}
+
+enum class AppAction : std::uint8_t
+{
+  ShowCamera = 0,
+  OpenScreen,
+  SetGuardMode
+};
+
+inline bool hasAppAction(UserRole role, AppAction action)
+{
+  switch (action) {
+    case AppAction::ShowCamera:
+      return hasAccess({.role = role,
+                        .table = TableName::Camera,
+                        .perm = RolePermission::Read});
+    case AppAction::OpenScreen:
+      return hasAccess({.role = role,
+                        .table = TableName::Notification,
+                        .perm = RolePermission::Read});
+    case AppAction::SetGuardMode:
+      return hasHttpAccess(
+          {.role = role, .path = "/guard/mode", .method = drogon::Post});
+  }
+  return false;
 }
 
 }

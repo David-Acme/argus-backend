@@ -51,6 +51,22 @@ bool AuthRpcConfig::reachableBeyondLoopback() const
          listener.host != "localhost";
 }
 
+std::optional<std::string> AuthRpcConfig::secretProblem() const
+{
+  if (secret.empty()) {
+    if (reachableBeyondLoopback())
+      return "[server] host " + listener.host +
+             " is reachable beyond loopback and answers session verdicts: set "
+             "[auth] rpc_secret (and the same value in every service's config)";
+    return std::nullopt;
+  }
+  if (secret.size() < kMinSecretLength)
+    return "[auth] rpc_secret must be at least " +
+           std::to_string(kMinSecretLength) +
+           " characters, or empty on a loopback-only listener";
+  return std::nullopt;
+}
+
 AuthIdentityConfig AuthConfig::resolveIdentity()
 {
   AuthIdentityConfig config;

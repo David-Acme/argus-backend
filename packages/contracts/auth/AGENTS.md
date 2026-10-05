@@ -45,8 +45,11 @@ the `{status, info, errors}` envelope's `errors.code`.
   `InvalidJsonBody`), the refresh-limiter refusal
   (`TooManyAttempts`), the `/auth` surface's own (multipart shape, challenge,
   device credential, refresh token, user, `ChangeNotRecorded`) and the
-  enrollment outcomes `argus-identity` reports through `AuthFeatureService`;
-  10 files include it.
+  enrollment outcomes `argus-identity` reports through `AuthFeatureService`,
+  plus two the 2026-10 audit appended: `LoginProofRequired` (400, a QR
+  challenge without its poll hash) and `DeviceContextMissing` (500,
+  `JwtFilter` reached without `DeviceFilter`); 10 files include it. The
+  catalog test pins thirty entries.
 
 ## Rules
 

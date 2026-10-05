@@ -23,8 +23,7 @@ StartDeviceLoginDto StartDeviceLoginDto::fromRequest(const drogon::HttpRequestPt
   START_VALIDATION(StartDeviceLoginDto, dto)
   CUSTOM_LAMBDA(pollHash,
                 [](const StartDeviceLoginDto& d) -> std::optional<std::string> {
-                  if (d.pollHash.empty() ||
-                      (d.pollHash.size() == kPollHashLength && std::ranges::all_of(d.pollHash, isLowerHex)))
+                  if (d.pollHash.size() == kPollHashLength && std::ranges::all_of(d.pollHash, isLowerHex))
                     return std::nullopt;
                   return "pollHash must be a lowercase SHA-256 hex digest";
                 })

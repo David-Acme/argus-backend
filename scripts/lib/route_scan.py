@@ -18,6 +18,28 @@ FILTERS = ("DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter")
 ORDER = {name: index for index, name in enumerate(FILTERS)}
 MULTIPART_TOKENS = ("MultiPartParser", "form_multipart")
 METHODS = ("Get", "Post", "Put", "Patch", "Delete", "Head", "Options")
+PUBLIC_ROUTES = frozenset({
+    ("auth", "POST", "/auth/device-login"),
+    ("auth", "GET", "/auth/device-login/{1}"),
+    ("auth", "POST", "/auth/login"),
+    ("auth", "PATCH", "/auth/refresh-token"),
+    ("auth", "POST", "/auth/register"),
+    ("guard", "GET", "/health"),
+    ("identity", "POST", "/invitation/resolve"),
+    ("identity", "POST", "/pairing"),
+    ("identity", "GET", "/pairing/status"),
+    ("llm", "POST", "/llm/v1/chat"),
+    ("llm", "POST", "/llm/v1/chat-stream"),
+    ("llm", "GET", "/llm/v1/config"),
+    ("shared", "GET", "/health"),
+    ("stt", "GET", "/stt/v1/config"),
+    ("stt", "POST", "/stt/v1/transcribe"),
+    ("tts", "GET", "/tts/v1/config"),
+    ("tts", "POST", "/tts/v1/synthesize"),
+    ("tts", "POST", "/tts/v1/synthesize-stream"),
+    ("vlm", "GET", "/vlm/v1/config"),
+    ("vlm", "POST", "/vlm/v1/describe"),
+})
 
 
 class Unclassified(Exception):
@@ -269,6 +291,13 @@ def rules(records):
             problems.append(f"out of order: {where}  {','.join(record['filters'])}")
         if "RoleFilter" in names and "JwtFilter" not in names:
             problems.append(f"RoleFilter without JwtFilter: {where}")
+        if "JwtFilter" in names and "DeviceFilter" not in names:
+            problems.append(f"JwtFilter without DeviceFilter: {where}")
+        public_key = (record["unit"], "/".join(record["methods"]), record["path"])
+        if "JwtFilter" not in names and public_key not in PUBLIC_ROUTES:
+            problems.append(f"unauthenticated route outside the public list: {where}")
+        if "JwtFilter" in names and public_key in PUBLIC_ROUTES:
+            problems.append(f"public-listed route behind JwtFilter: {where}")
         if record["multipart"] and "ValidJsonFilter" in names:
             problems.append(
                 f"multipart handler behind ValidJsonFilter: {where}")

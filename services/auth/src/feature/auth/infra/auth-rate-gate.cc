@@ -11,6 +11,7 @@
 #include <http/cors.hxx>
 #include <string_view>
 #include <trantor/utils/Logger.h>
+#include <utility>
 
 namespace
 {
@@ -44,7 +45,9 @@ std::chrono::steady_clock::time_point now()
 }
 }
 
-AuthRateGate::AuthRateGate(AuthRateLimitConfig config) : config_(config)
+AuthRateGate::AuthRateGate(AuthRateLimitConfig config,
+                           SessionOfRefreshToken sessionOf)
+    : config_(config), sessionOf_(std::move(sessionOf))
 {
 }
 
@@ -62,19 +65,49 @@ std::string AuthRateGate::guardedRoute(const drogon::HttpRequestPtr& req)
   return {};
 }
 
+std::string AuthRateGate::clientKey(const std::string& address)
+{
+  return DeviceFilter::networkPrefix(
+      {.address = address, .ipv4Bits = 32, .ipv6Bits = kIpv6GroupBits});
+}
+
+std::string AuthRateGate::sessionOf(const drogon::HttpRequestPtr& req) const
+{
+  if (!sessionOf_)
+    return {};
+  const auto json = req->getJsonObject();
+  if (!json || !json->isObject())
+    return {};
+  const Json::Value& token = (*json)["refreshToken"];
+  if (!token.isString() || token.asString().empty())
+    return {};
+  return sessionOf_(token.asString());
+}
+
 std::vector<AuthRateGate::GateKey>
 AuthRateGate::gateKeys(const drogon::HttpRequestPtr& req) const
 {
   const std::string route = guardedRoute(req);
-  const std::string address = DeviceFilter::resolveIp(req);
-  const std::string peer = req->getPeerAddr().toIp();
-  std::vector<GateKey> keys{{.key = route + "|" + address,
-                             .maxRequests = config_.maxRequests,
-                             .lockoutThreshold = config_.lockoutThreshold}};
+  const std::string address = clientKey(DeviceFilter::resolveIp(req));
+  const std::string peer = clientKey(req->getPeerAddr().toIp());
+  const GateKey wide{.key = route + "|peer|" + peer,
+                     .maxRequests = config_.maxRequests * kPeerCeilingFactor,
+                     .lockoutThreshold = config_.lockoutThreshold * kPeerCeilingFactor};
+
+  std::vector<GateKey> keys;
+  const std::string session = route == "refresh" ? sessionOf(req) : std::string{};
+  if (!session.empty()) {
+    keys.push_back({.key = route + "|sid|" + session,
+                    .maxRequests = config_.maxRequests,
+                    .lockoutThreshold = config_.lockoutThreshold});
+    keys.push_back(wide);
+    return keys;
+  }
+  keys.push_back({.key = route + "|" + address,
+                  .maxRequests = config_.maxRequests,
+                  .lockoutThreshold = config_.lockoutThreshold});
   if (peer != address)
-    keys.push_back({.key = route + "|peer|" + peer,
-                    .maxRequests = config_.maxRequests * kPeerCeilingFactor,
-                    .lockoutThreshold = config_.lockoutThreshold * kPeerCeilingFactor});
+    keys.push_back(wide);
   return keys;
 }
 
@@ -99,10 +132,12 @@ void AuthRateGate::recordOutcome(const drogon::HttpRequestPtr& req,
   if (!enabled() || guardedRoute(req).empty())
     return;
   const auto status = resp->getStatusCode();
-  if (status >= drogon::k500InternalServerError)
+  const bool succeeded = status < drogon::k400BadRequest;
+  if (!succeeded && status != drogon::k401Unauthorized &&
+      status != drogon::k403Forbidden)
     return;
   const auto keys = gateKeys(req);
-  if (status < drogon::k400BadRequest) {
+  if (succeeded) {
     for (const auto& key : keys)
       recordSuccess(key.key);
     return;
@@ -181,11 +216,16 @@ bool AuthRateGate::makeRoom(std::chrono::steady_clock::time_point now)
   pruneExpired(now);
   if (entries_.size() < kMaxTrackedKeys)
     return true;
-  const auto unlocked = std::ranges::find_if(entries_, [now](const auto& entry) {
+  const auto unlocked = [now](const auto& entry) {
     return !(now < entry.second.lockedUntil);
+  };
+  auto victim = std::ranges::find_if(entries_, [&unlocked](const auto& entry) {
+    return unlocked(entry) && entry.second.consecutiveFailures == 0;
   });
-  if (unlocked == entries_.end())
+  if (victim == entries_.end())
+    victim = std::ranges::find_if(entries_, unlocked);
+  if (victim == entries_.end())
     return false;
-  entries_.erase(unlocked);
+  entries_.erase(victim);
   return true;
 }

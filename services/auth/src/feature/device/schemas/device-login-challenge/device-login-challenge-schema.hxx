@@ -1,6 +1,7 @@
 #pragma once
 
 #include <auth/device-login-status.hxx>
+#include <auth/session-origin.hxx>
 #include <auth/session-platform.hxx>
 #include <cstdint>
 #include <drogon/orm/Field.h>
@@ -22,6 +23,9 @@ struct DeviceLoginChallengeSchema
   int64_t createdAt{0};
   SessionPlatform platform{SessionPlatform::Unknown};
   std::string deviceName;
+  std::string pollHash;
+  SessionOrigin origin{SessionOrigin::Unknown};
+  std::string ipAddress;
 
   DeviceLoginChallengeSchema() = default;
   explicit DeviceLoginChallengeSchema(const drogon::orm::Row& row);
