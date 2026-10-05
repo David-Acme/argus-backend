@@ -480,7 +480,7 @@ void Go2rtcManager::serveRequestedRestart()
   LOG_INFO << "Go2rtc: restarted on request" << (ok ? "" : " (not ready yet)");
 }
 
-void Go2rtcManager::supervise(std::stop_token stop)
+void Go2rtcManager::supervise(const std::stop_token& stop)
 {
   int backoffMs = 250;
   bool exhausted = false;
@@ -585,7 +585,7 @@ void Go2rtcManager::start()
     waitReady(5000);
   }
 
-  supervisor_ = std::jthread([this](std::stop_token stop) { supervise(std::move(stop)); });
+  supervisor_ = std::jthread([this](const std::stop_token& stop) { supervise(stop); });
   LOG_INFO << "Go2rtc: supervisor running (max_restarts=" << maxRestarts_
            << ")";
 }

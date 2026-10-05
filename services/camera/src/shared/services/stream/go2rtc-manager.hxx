@@ -97,7 +97,7 @@ private:
   bool writeConfig();
   bool spawn();
   void terminate();
-  void supervise(std::stop_token stop);
+  void supervise(const std::stop_token& stop);
   bool waitFor(const std::stop_token& stop, std::chrono::milliseconds limit);
   [[nodiscard]] bool restartDue();
   void serveRequestedRestart();

@@ -165,7 +165,8 @@ ZoneRepository::findDeleted(const SyncFilter& filter) const
   if (!tombstone_page::rereadsBoundary(filter))
     co_return data;
   const auto boundaryRows = co_await client->execSqlCoro(
-      FIND_DELETED_BOUNDARY.data(), *filter.startTime, *filter.startId);
+      std::string(FIND_DELETED_BOUNDARY), filter.startTime.value_or(0),
+      filter.startId.value_or(0));
   std::vector<Json::Value> boundary;
   boundary.reserve(boundaryRows.size());
   for (const auto& row : boundaryRows)

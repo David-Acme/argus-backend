@@ -55,7 +55,7 @@ void SessionRevocationConsumer::start()
   if (!dependencies_.bus || dependencies_.sessions == nullptr || connector_.joinable())
     return;
   connecting_.store(true, std::memory_order_release);
-  connector_ = std::jthread([this](std::stop_token stop) { connect(stop); });
+  connector_ = std::jthread([this](const std::stop_token& stop) { connect(stop); });
 }
 
 void SessionRevocationConsumer::connect(const std::stop_token& stop)
