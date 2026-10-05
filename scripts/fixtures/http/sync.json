@@ -224,7 +224,7 @@
           "errors": null,
           "info": {
             "armed": false,
-            "at": 1791184282,
+            "at": 1791208169,
             "graceSeconds": 2700,
             "guard": "unknown",
             "guardSeenAt": "<masked>",
@@ -257,7 +257,7 @@
           "errors": null,
           "info": {
             "armed": false,
-            "at": 1791184282,
+            "at": 1791208169,
             "graceSeconds": 2700,
             "guard": "unknown",
             "guardSeenAt": "<masked>",
@@ -290,7 +290,7 @@
           "errors": null,
           "info": {
             "armed": false,
-            "at": 1791184282,
+            "at": 1791208169,
             "graceSeconds": 2700,
             "guard": "unknown",
             "guardSeenAt": "<masked>",

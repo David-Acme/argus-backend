@@ -2489,6 +2489,7 @@
         "json": {
           "errors": null,
           "info": {
+            "nextCursor": null,
             "recognitionEnabled": false,
             "visitors": []
           },
