@@ -69,3 +69,13 @@ target_link_libraries(commit-observer-test PRIVATE
     doctest::doctest)
 target_compile_options(commit-observer-test PRIVATE -Wall -Wextra)
 add_test(NAME commit-observer-test COMMAND commit-observer-test)
+
+add_executable(vec-db-test tests/unit/vec-db-test.cc)
+target_link_libraries(vec-db-test PRIVATE
+    argus::lib::sqlite
+    argus::lib::config
+    Drogon::Drogon
+    sqlite-vec
+    doctest::doctest)
+target_compile_options(vec-db-test PRIVATE -Wall -Wextra)
+add_test(NAME vec-db-test COMMAND vec-db-test)

@@ -26,7 +26,11 @@ own.
   each with its `set*` installer); `enableUriFilenames`,
   `runScriptFile`, `applyPragmas`, `installExtensions`.
 - `src/sqlite/vec-db.{cc,hxx}` — `VecDb`: the singleton handle onto the vec
-  database plus the mutex that serialises it.
+  database plus the mutex that serialises it. `setDbFile` with a different
+  file closes the open handle, so the next `handle()` opens that file: it
+  used to keep the first file's connection, and a second store opened in the
+  same process (argus-llm's memory suites) wrote its vectors and its
+  forgets into the first one.
 - `src/sqlite/schema-runner.{cc,hxx}` — `runSchemaFile`: executes every
   statement of a schema file, logging and skipping the ones that fail.
 - `src/sqlite/transaction.{cc,hxx}` — `db_transaction`: `begin` over a

@@ -56,7 +56,10 @@ void VecDb::recreateVecTables()
 void VecDb::setDbFile(std::string file)
 {
   std::scoped_lock lock(mutex_);
+  if (file == dbFile_)
+    return;
   dbFile_ = std::move(file);
+  db_.reset();
 }
 
 void VecDb::applySchema(const std::string& schemaFile)
