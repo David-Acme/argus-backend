@@ -839,7 +839,6 @@ TEST_CASE("a lost settlement stays visible as ambiguous, never suppressed")
   ThreadHarness harness;
   *harness.failTarget = "between_flip_and_thread";
   auto service = harness.makeService();
-  const int64_t windowStart = static_cast<int64_t>(std::time(nullptr));
 
   for (int delivered = 1; delivered <= 3; ++delivered) {
     bool threw = false;
@@ -859,7 +858,6 @@ TEST_CASE("a lost settlement stays visible as ambiguous, never suppressed")
     CHECK(threw);
   }
   CHECK(harness.notifications.calls == 3);
-  const int64_t windowEnd = static_cast<int64_t>(std::time(nullptr));
 
   REQUIRE(drogon::sync_wait(service->handle(
       threadObservation({.eventId = "ntd:1",
@@ -877,10 +875,12 @@ TEST_CASE("a lost settlement stays visible as ambiguous, never suppressed")
                "event_id = 'ntd:1'") == "3");
   CHECK(threadField(29, "notify_count") == "0");
 
+  const int64_t journaledAt = std::stoll(scalar(
+      "SELECT created_at FROM guard_decision_journal WHERE event_id = 'ntd:1'"));
   GuardRepository repository;
   const DecisionSummary summary = drogon::sync_wait(
-      repository.summarizeDecisions({.from = windowStart,
-                                     .to = windowEnd,
+      repository.summarizeDecisions({.from = journaledAt,
+                                     .to = journaledAt,
                                      .nearMissMargin = 0}));
   CHECK(summary.ambiguousNotifications >= 1);
 

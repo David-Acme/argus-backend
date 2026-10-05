@@ -260,13 +260,16 @@ TEST_CASE("a publish on an unconnected bus is a warn, not a crash")
 {
   const std::shared_ptr<NatsBus> bus = std::make_shared<NatsBus>();
   const NatsPushIntentSink sink(bus);
-  sink.publish(PushIntent{.userId = 1,
-                          .notificationId = 2,
-                          .type = "system",
-                          .title = "",
-                          .body = "",
-                          .createdAtMs = 0,
-                          .data = Json::Value(Json::objectValue)});
+  REQUIRE_FALSE(bus->isConnected());
+  CHECK_FALSE(bus->publish(nats_subject::kNotificationPushIntent, "{}"));
+  CHECK_NOTHROW(sink.publish(PushIntent{.userId = 1,
+                                        .notificationId = 2,
+                                        .type = "system",
+                                        .title = "",
+                                        .body = "",
+                                        .createdAtMs = 0,
+                                        .data = Json::Value(Json::objectValue)}));
+  CHECK_FALSE(bus->isConnected());
 }
 
 TEST_CASE("the create path publishes one intent per row")

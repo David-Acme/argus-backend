@@ -148,9 +148,6 @@ TEST_CASE("the sync delivery inbox is durable, exact and fail-closed")
 
   REQUIRE(DbService::runScriptFile(ARGUS_SYNC_SCHEMA_PATH));
   DbService::client()->execSqlSync(
-      "CREATE TABLE user (id INTEGER PRIMARY KEY)");
-  DbService::client()->execSqlSync("INSERT INTO user (id) VALUES (1), (7)");
-  DbService::client()->execSqlSync(
       "INSERT INTO audit_log (record_id, table_name, event_timestamp) "
       "VALUES (1, 'camera', 1700000000)");
   DbService::client()->execSqlSync("DROP TABLE notification_delivery_inbox");

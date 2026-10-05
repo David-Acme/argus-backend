@@ -192,9 +192,6 @@ TEST_CASE("retention compacts each audit table into its own newest rows")
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
   REQUIRE(DbService::runScriptFile(ARGUS_SYNC_SCHEMA_PATH));
-  DbService::client()->execSqlSync(
-      "CREATE TABLE user (id INTEGER PRIMARY KEY)");
-  DbService::client()->execSqlSync("INSERT INTO user (id) VALUES (7), (8)");
 
   const AuditLogService auditService;
   const UserAuditLogService userAuditService;
