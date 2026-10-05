@@ -1,8 +1,13 @@
 #include "upstream-http.hxx"
 
 #include <algorithm>
+#include <array>
 #include <arpa/inet.h>
 #include <cctype>
+#include <cerrno>
+#include <chrono>
+#include <fcntl.h>
+#include <poll.h>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
@@ -15,74 +20,113 @@
 namespace upstream_http
 {
 
+namespace
+{
+constexpr int kCancelSliceMs = 100;
+
+bool cancelled(const OpenInput& input)
+{
+  return input.cancel != nullptr && input.cancel->load(std::memory_order_acquire);
+}
+
+bool waitFor(const OpenInput& input, int fd, short events)
+{
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(input.timeoutSec);
+  pollfd descriptor{.fd = fd, .events = events, .revents = 0};
+  while (!cancelled(input) && std::chrono::steady_clock::now() < deadline) {
+    const int ready = ::poll(&descriptor, 1, kCancelSliceMs);
+    if (ready > 0)
+      return true;
+    if (ready < 0 && errno != EINTR)
+      return false;
+  }
+  return false;
+}
+
+Upstream closed(Upstream up)
+{
+  if (up.fd >= 0)
+    ::close(up.fd);
+  up.fd = -1;
+  up.ok = false;
+  return up;
+}
+}
+
+bool isOkStatusLine(std::string_view headers)
+{
+  const std::string_view line = headers.substr(0, headers.find("\r\n"));
+  if (!line.starts_with("HTTP/1.") || line.size() < 12)
+    return false;
+  return line.substr(8, 4) == " 200" && (line.size() == 12 || line[12] == ' ');
+}
+
 Upstream open(const OpenInput& input)
 {
-  const std::string& host = input.host;
-  const int port = input.port;
-  const std::string& path = input.path;
-  const int timeoutSec = input.timeoutSec;
   Upstream up;
-  up.fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  up.fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
   if (up.fd < 0)
     return up;
 
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
-  addr.sin_port = htons(static_cast<uint16_t>(port));
-  if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
-    ::close(up.fd);
-    up.fd = -1;
-    return up;
-  }
+  addr.sin_port = htons(static_cast<uint16_t>(input.port));
+  if (::inet_pton(AF_INET, input.host.c_str(), &addr.sin_addr) != 1)
+    return closed(std::move(up));
 
-  timeval tv{};
-  tv.tv_sec = timeoutSec;
-  ::setsockopt(up.fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-  ::setsockopt(up.fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
   const int one = 1;
   ::setsockopt(up.fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 
   if (::connect(up.fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-    ::close(up.fd);
-    up.fd = -1;
-    return up;
+    if (errno != EINPROGRESS || !waitFor(input, up.fd, POLLOUT))
+      return closed(std::move(up));
+    int status = 0;
+    socklen_t length = sizeof(status);
+    if (::getsockopt(up.fd, SOL_SOCKET, SO_ERROR, &status, &length) != 0 || status != 0)
+      return closed(std::move(up));
   }
 
-  const std::string req = "GET " + path + " HTTP/1.1\r\nHost: " + host +
+  const std::string req = "GET " + input.path + " HTTP/1.1\r\nHost: " + input.host +
                           "\r\nConnection: close\r\nUser-Agent: argus\r\n\r\n";
-  if (::send(up.fd, req.data(), req.size(), 0) < 0) {
-    ::close(up.fd);
-    up.fd = -1;
-    return up;
+  std::string_view pending = req;
+  while (!pending.empty()) {
+    const ssize_t sent = ::send(up.fd, pending.data(), pending.size(), MSG_NOSIGNAL);
+    if (sent > 0) {
+      pending.remove_prefix(static_cast<size_t>(sent));
+      continue;
+    }
+    if (sent < 0 && errno == EINTR)
+      continue;
+    if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) && waitFor(input, up.fd, POLLOUT))
+      continue;
+    return closed(std::move(up));
   }
 
   std::string buf;
-  char tmp[4096];
+  std::array<char, 4096> chunk{};
   while (buf.find("\r\n\r\n") == std::string::npos) {
-    const auto n = ::recv(up.fd, tmp, sizeof(tmp), 0);
-    if (n <= 0) {
-      ::close(up.fd);
-      up.fd = -1;
-      return up;
-    }
-    buf.append(tmp, static_cast<size_t>(n));
     if (buf.size() > 16384)
-      break;
+      return closed(std::move(up));
+    const auto n = ::recv(up.fd, chunk.data(), chunk.size(), 0);
+    if (n > 0) {
+      buf.append(chunk.data(), static_cast<size_t>(n));
+      continue;
+    }
+    if (n < 0 && errno == EINTR)
+      continue;
+    if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) && waitFor(input, up.fd, POLLIN))
+      continue;
+    return closed(std::move(up));
   }
 
   const auto sep = buf.find("\r\n\r\n");
-  if (sep == std::string::npos) {
-    ::close(up.fd);
-    up.fd = -1;
-    return up;
-  }
   up.headers = buf.substr(0, sep);
   up.leftover = buf.substr(sep + 4);
-  up.ok = up.headers.find(" 200") != std::string::npos;
-  if (!up.ok) {
-    ::close(up.fd);
-    up.fd = -1;
-  }
+  up.ok = isOkStatusLine(up.headers);
+  if (!up.ok)
+    return closed(std::move(up));
+  const int flags = ::fcntl(up.fd, F_GETFL, 0);
+  ::fcntl(up.fd, F_SETFL, flags & ~O_NONBLOCK);
   return up;
 }
 
@@ -269,7 +313,7 @@ Fmp4Reader::Fmp4Reader(Fmp4ReaderInput input) : chunked_(input.chunked) {}
 
 void Fmp4Reader::feed(const char* data, size_t len)
 {
-  if (len == 0)
+  if (len == 0 || corrupt_)
     return;
   if (!chunked_) {
     pending_.append(data, len);
@@ -319,11 +363,22 @@ void Fmp4Reader::processChunked(const char* data, size_t len)
   }
 }
 
-void Fmp4Reader::emit(std::string box, const std::string& type)
+void Fmp4Reader::fail()
 {
+  reset();
+  corrupt_ = true;
+}
+
+void Fmp4Reader::emit(const BoxView& box)
+{
+  const std::string_view bytes(pending_.data() + box.offset, box.size);
   if (!initDone_) {
-    init_ += box;
-    if (type == "moov") {
+    if (init_.size() + bytes.size() > kMaxInitBytes) {
+      fail();
+      return;
+    }
+    init_.append(bytes);
+    if (box.type == "moov") {
       initDone_ = true;
       videoTrack_ = videoTrackOf(init_);
       if (onInit)
@@ -333,25 +388,27 @@ void Fmp4Reader::emit(std::string box, const std::string& type)
     return;
   }
 
-  if (type == "moof") {
-    fragment_ = std::move(box);
+  if (box.type == "moof") {
+    fragment_.assign(bytes);
     fragmentKind_ = fragmentKindOf({.moof = fragment_, .videoTrack = videoTrack_});
     hasMoof_ = true;
     return;
   }
 
-  if (type == "mdat" && hasMoof_) {
-    fragment_ += box;
+  if (box.type == "mdat" && hasMoof_) {
+    fragment_.append(bytes);
     hasMoof_ = false;
     if (onFragment)
       onFragment({.bytes = std::move(fragment_), .kind = fragmentKind_});
-    fragment_.clear();
+    fragment_ = std::string();
   }
 }
 
 void Fmp4Reader::reset()
 {
   pending_.clear();
+  offset_ = 0;
+  corrupt_ = false;
   init_.clear();
   fragment_.clear();
   initDone_ = false;
@@ -367,27 +424,30 @@ void Fmp4Reader::reset()
 void Fmp4Reader::consume()
 {
   constexpr uint64_t kMaxBoxBytes = 64ULL * 1024 * 1024;
-  while (pending_.size() >= 8) {
-    const uint32_t compact = be32(pending_, 0);
+  while (!corrupt_ && pending_.size() - offset_ >= 8) {
+    const std::string_view window(pending_.data() + offset_, pending_.size() - offset_);
+    const uint32_t compact = be32(window, 0);
     uint64_t size = compact;
     if (compact == 1) {
-      if (pending_.size() < 16)
-        return;
-      size = (static_cast<uint64_t>(be32(pending_, 8)) << 32) | be32(pending_, 12);
+      if (window.size() < 16)
+        break;
+      size = (static_cast<uint64_t>(be32(window, 8)) << 32) | be32(window, 12);
     }
     const uint64_t headerLen = compact == 1 ? 16 : 8;
     if (size < headerLen || size > kMaxBoxBytes) {
-      pending_.clear();
+      fail();
       return;
     }
-    if (pending_.size() < size)
+    if (window.size() < size)
+      break;
+    emit({.offset = offset_, .size = static_cast<size_t>(size), .type = window.substr(4, 4)});
+    if (corrupt_)
       return;
-
-    const std::string type(pending_, 4, 4);
-    std::string box = pending_.substr(0, static_cast<size_t>(size));
-    pending_.erase(0, static_cast<size_t>(size));
-
-    emit(std::move(box), type);
+    offset_ += static_cast<size_t>(size);
+  }
+  if (offset_ > 0 && (offset_ == pending_.size() || offset_ >= pending_.size() / 2)) {
+    pending_.erase(0, offset_);
+    offset_ = 0;
   }
 }
 

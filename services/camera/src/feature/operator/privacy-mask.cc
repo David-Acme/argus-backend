@@ -11,8 +11,7 @@ namespace
 {
 bool isMask(const OperatorZone& zone)
 {
-  return zone.points.size() >= 3 &&
-         zoneTypeFromString(zone.kind) == ZoneType::Privacy;
+  return zone.points.size() >= 3 && zone.kind == ZoneType::Privacy;
 }
 }
 

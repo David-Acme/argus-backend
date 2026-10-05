@@ -8,6 +8,7 @@ argus_module(NAME camera-sync
     DEPENDS
         argus::camera-repositories
         argus::clients::camera
+        argus::contracts::auth
         argus::contracts::camera
         argus::contracts::sync
         argus::lib::sqlite

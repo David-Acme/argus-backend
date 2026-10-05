@@ -1,12 +1,19 @@
 #pragma once
 
 #include <argus/camera/v1/sync.grpc.pb.h>
+#include <auth/user-role.hxx>
 #include <grpc/grpc-server-identity.hxx>
 #include <grpcpp/grpcpp.h>
 #include <feature/sync/repositories/camera-stream/camera-stream-repository.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/repositories/zone/zone-repository.hxx>
+#include <json/value.h>
 #include <vector>
+
+namespace camera_sync_projection
+{
+void apply(Json::Value& row, UserRole role);
+}
 
 class CameraSyncRpcService final
     : public argus::camera::v1::SyncService::CallbackService

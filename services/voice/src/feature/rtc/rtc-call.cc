@@ -180,7 +180,6 @@ void RtcCall::controlLoop()
   if (!joined) {
     if (roomUp_.exchange(false))
       room_->disconnect();
-    ended_.store(true);
     if (onEnded_)
       onEnded_({.room = join_.room(),
                 .callId = join_.call_id(),
@@ -188,6 +187,7 @@ void RtcCall::controlLoop()
                 .reason = rtc_wire::DoneReason::Error,
                 .userJoined = false,
                 .openingSpoken = false});
+    ended_.store(true);
     return;
   }
   LOG_INFO << "Voice: RTC agent joined " << join_.room();
@@ -377,9 +377,9 @@ void RtcCall::finish(rtc_wire::DoneReason reason)
               .userJoined = userJoined_,
               .openingSpoken = openingSpoken_};
   }
-  ended_.store(true);
   if (onEnded_)
     onEnded_(report);
+  ended_.store(true);
 }
 
 bool RtcCall::connected() const

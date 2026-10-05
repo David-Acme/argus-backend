@@ -20,6 +20,7 @@ struct FrameGrabRequest
 {
   int64_t cameraId{0};
   std::string cameraName;
+  int64_t maxAgeMs{0};
 };
 
 class IFrameSource

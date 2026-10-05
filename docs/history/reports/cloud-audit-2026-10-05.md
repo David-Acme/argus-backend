@@ -254,3 +254,62 @@ Ordenada de más a menos grave. Rutas relativas a la raíz del repositorio.
 - **Revisión parcial.** `guard-service.cc` (4117 líneas, solo sus partes de efectos, notificación y cola), `services/voice` (`noise`, `reaction`) y `shutdown_signal` se leyeron en diagonal. No se verificó qué herramientas habilita `services/voice` según el rol.
 - **Modelos y rendimiento real.** No se comprobó que los modelos en disco coincidan con los hashes fijados, ni se midieron tiempos reales de PBKDF2 o de inferencia en el hardware de destino.
 - **Exposición real de red.** No se hicieron pruebas de puertos ni `docker inspect`. Tampoco se comprobó si el host usa userland-proxy, de lo que depende el alcance del #14.
+
+---
+
+## Estado de los arreglos (rama `claude/argus-backend-audit-l5zqp4`)
+
+Revisión complementaria hecha antes de arreglar: el historial completo de git (774 commits) no contiene
+secretos reales (solo los placeholders `secret`/`refresh_secret` de un `config.toml` antiguo y la clave de
+ejemplo de AWS en un test); la parte pendiente de `guard-service.cc` dio 20 hallazgos nuevos (G1-G20); voz,
+`shutdown_signal` y las lanes dieron 16 (N1-N16); se verificó en el código upstream el comportamiento de
+Drogon 1.9.13 (router insensible a mayúsculas, sin normalizar barra final ni doble barra), go2rtc (ffmpeg por
+`frame.jpeg`, sin API para cortar un visor, credenciales literales en su log), LiveKit 1.13.7
+(`auto_create=true`, el token sigue valiendo tras `RemoveParticipant`) y sqlite-vec (acepta BLOB float32).
+
+Decisiones del dueño: integrar un modelo PAD (anti-spoofing) en el login facial; `identity_mode = "credential"`
+por defecto; en infraestructura solo cambios acotados (mTLS interno, TLS del túnel, cuentas NATS y
+credenciales S3 por servicio quedan como plan en `argus-deploy/CONTEXT.md`, "Deferred hardening").
+
+Entorno de verificación: Conan Center está bloqueado en la sesión cloud, así que se compiló con dependencias
+del sistema más Drogon 1.9.13 y cnats 3.13 construidos desde el código fuente. `ncnn` y `sherpa-onnx` se
+usaron en tags upstream (`20260526`, `v1.13.8`) porque los commits fijados en los submódulos no existen en
+upstream; el puntero de los submódulos NO se ha cambiado. `config-service-test` falla solo porque los tests
+corren como root.
+
+| Área | Commit | Estado | Hallazgos |
+|---|---|---|---|
+| auth, lib/auth, lib/http | `fa5a8543` | Terminado: 0 errores, 0 warnings, tests verdes | #2, #14 (lib), #20-#24, #71, #73-#75, #81-#85, #104, N13 |
+| notification, productivity | `a9bbf25b` | Terminado | #45-#49, #51, #52 (productivity), #65, #68, #77, #95, N1, N16 (known_seen) |
+| sync | `8e8c1101` | Terminado (golden `/sync` sin ejecutar: necesita flota viva) | #10, #26 (sync), #53-#56, #77-#80 y mejoras de rendimiento |
+| runtime, nats, cert, mdns, deploy, túnel | `d4be3515` | Terminado (sin Docker para probar el compose en ejecución) | #9, #14, #15, #26-#29, #66, #103, #105-#108, N2, N3, N6-N8 |
+| guard | `a1482fe5` | Terminado; `guard-dialogue-service-test` ya fallaba antes en este entorno | #4-#6, #42-#44, #51, #92-#94, #109, G2-G20, N5 |
+| identity (+PAD), camera, IA/voz | commit "wip" siguiente | **En curso, sin verificar**: se cortó por falta de presupuesto | ver pendientes |
+
+### Pendiente para terminar en local
+
+1. **identity** (en curso): modelo PAD MiniFASNet (ONNX, Apache-2.0, ficha en
+   `models/face/anti-spoof/MODEL-CARD.md`; los `.onnx` no se versionan: falta fijar su descarga con SHA-256
+   en `scripts/setup.sh`/`services/identity/scripts/provision.sh` según la regla 13e), borrado biométrico
+   `DELETE /user/{id}/biometrics` (#7, #38), #8, #17-#19, #36-#41, #67, #70, #86-#91, N1, N15, limitador de
+   `/pairing` e `/invitation/resolve`. Compilar `services/identity`, revisar el diff y los tests.
+2. **camera** (en curso, el agente estaba recompilando todo lo tocado): #3, #11-#13, #57-#64, #76,
+   #100-#102, cifrado de credenciales (`secret-box`), pin TOFU de Tapo, go2rtc fijado con SHA-256.
+   Compilar `services/camera` y revisar.
+3. **IA/voz** (en curso; voice ya estaba en verde, faltaban los tests de llm): #30-#35, #96-#99, N4, N9-N14,
+   embeddings fuera del mutex, vectores BLOB. Los SHA-256 de los modelos de stt/vlm/voice/tts no se pudieron
+   calcular (Hugging Face bloqueado): el mantenedor debe rellenarlos.
+4. **Transversal**: `DeviceFilter::requireFingerprintSecret()` en guard, notification, productivity, settings y
+   sync; #50/G1 en guard usando el nuevo `DurableSettlement::markInProgress()`; N16 en guard (el veredicto
+   debe publicarse en un stream); credenciales por llamante en 7040/7041/7043 (#25); outbox duplicado en
+   cinco servicios (#69); tests NATS que pasan sin ejecutarse (#16); #72, #112; consumir los feeds de sesión
+   e identidad en notification/productivity para borrar tokens y datos de usuarios eliminados.
+5. **Coordinación con el frontend**: modo `credential` y `X-Argus-Device-Credential`; `pollHash` y
+   `X-Argus-Login-Proof` obligatorios; `GET /auth/device-login/{id}/details`; `?token=` solo en WebSocket;
+   claim `typ` (los access antiguos fuerzan un refresh); sin CORS; push genérico (contenido por `/sync`);
+   máximo 500 ids en `/notification/read`; 429 y cierre 1008 en `/sync`; token LiveKit de 60 s;
+   `currentPin` en `PUT/DELETE /guard/safety/pin` y PIN en cualquier bajada de modo; visitas esperadas de
+   24 h como máximo.
+6. **Despliegue**: volver a ejecutar `provision-host.sh` con el stack parado antes de `up -d` (nuevo
+   `auth.conf` de NATS y directorio de la CA); las instalaciones existentes conservan su CA antigua y deben
+   dar por expuesta la `ca.key` que estaba en `certs/`.

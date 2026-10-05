@@ -1,32 +1,35 @@
 #include "face-service.hxx"
 
 #include <algorithm>
-#include <allocator.h>
 #include <array>
 #include <cmath>
-#include <cstring>
 #include <drogon/drogon.h>
 #include <gpu.h>
 #include <memory>
+#include <mutex>
 #include <net.h>
-#include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <pipelinecache.h>
+#include <runtime/blocking-task.hxx>
+#include <runtime/hardware-profile.hxx>
+#include <runtime/thread-budget.hxx>
 #include <shared/services/face/face-db.hxx>
 #include <sqlite/vec-db.hxx>
-#include <runtime/hardware-profile.hxx>
-#include <runtime/blocking-task.hxx>
-#include <runtime/thread-budget.hxx>
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_STATIC
-#include <stb_image.h>
-#pragma GCC diagnostic pop
-#include <thread>
 #include <vector>
 
-FaceService::FaceService() : faceDb_(VecDb::instance()) {}
+namespace
+{
+constexpr int kVisitorCropMaxSide = 192;
+constexpr float kVisitorCropMargin = 0.35F;
+constexpr int kVisitorCropQuality = 88;
+
+void resumeOnLoop(std::coroutine_handle<> handle)
+{
+  blocking_task::resumeOn(blocking_task::resumeLoopFor(nullptr), handle);
+}
+}
+
+FaceService::FaceService() : slots_(resumeOnLoop), faceDb_(VecDb::instance()) {}
 
 FaceService::~FaceService()
 {
@@ -41,33 +44,30 @@ FaceService& FaceService::instance()
 
 bool FaceService::Impl::init(const std::string& modelDir)
 {
-  int threads = ThreadBudget::computeThreads();
+  const int threads = ThreadBudget::computeThreads();
 
   auto* vkdev = HardwareProbe::get().vulkanDiscrete ? ncnn::get_gpu_device(0)
                                                     : nullptr;
   if (vkdev) {
-    blobAllocator = std::make_unique<ncnn::VkBlobAllocator>(vkdev);
-    stagingAllocator = std::make_unique<ncnn::VkStagingAllocator>(vkdev);
     pipelineCache = std::make_unique<ncnn::PipelineCache>(vkdev);
     pipelineCache->load_cache((modelDir + "/face.ncnn.vkcache").c_str());
   }
 
+  const auto configure = [&](ncnn::Net& net) {
+    net.opt.use_packing_layout = true;
+    net.opt.num_threads = threads;
+    net.opt.use_vulkan_compute = vkdev != nullptr;
+    net.opt.use_fp16_packed = true;
+    net.opt.use_fp16_storage = true;
+    net.opt.use_fp16_arithmetic = true;
+    if (vkdev) {
+      net.set_vulkan_device(vkdev);
+      net.opt.pipeline_cache = pipelineCache.get();
+    }
+  };
+
   detector = std::make_unique<ncnn::Net>();
-  detector->opt.use_packing_layout = true;
-  detector->opt.num_threads = threads;
-  detector->opt.use_vulkan_compute = vkdev != nullptr;
-  detector->opt.use_fp16_packed = true;
-  detector->opt.use_fp16_storage = true;
-  detector->opt.use_fp16_arithmetic = true;
-
-  if (vkdev) {
-    detector->set_vulkan_device(vkdev);
-    detector->opt.blob_vkallocator = blobAllocator.get();
-    detector->opt.workspace_vkallocator = blobAllocator.get();
-    detector->opt.staging_vkallocator = stagingAllocator.get();
-    detector->opt.pipeline_cache = pipelineCache.get();
-  }
-
+  configure(*detector);
   if (detector->load_param((modelDir + "/detector.param").c_str()) != 0 ||
       detector->load_model((modelDir + "/detector.bin").c_str()) != 0) {
     LOG_ERROR << "FaceService: failed to load detector model";
@@ -75,21 +75,7 @@ bool FaceService::Impl::init(const std::string& modelDir)
   }
 
   recognizer = std::make_unique<ncnn::Net>();
-  recognizer->opt.use_packing_layout = true;
-  recognizer->opt.num_threads = threads;
-  recognizer->opt.use_vulkan_compute = vkdev != nullptr;
-  recognizer->opt.use_fp16_packed = true;
-  recognizer->opt.use_fp16_storage = true;
-  recognizer->opt.use_fp16_arithmetic = true;
-
-  if (vkdev) {
-    recognizer->set_vulkan_device(vkdev);
-    recognizer->opt.blob_vkallocator = blobAllocator.get();
-    recognizer->opt.workspace_vkallocator = blobAllocator.get();
-    recognizer->opt.staging_vkallocator = stagingAllocator.get();
-    recognizer->opt.pipeline_cache = pipelineCache.get();
-  }
-
+  configure(*recognizer);
   if (recognizer->load_param((modelDir + "/recognizer.param").c_str()) != 0 ||
       recognizer->load_model((modelDir + "/recognizer.bin").c_str()) != 0) {
     LOG_ERROR << "FaceService: failed to load recognizer model";
@@ -110,42 +96,62 @@ void FaceService::init()
 
 void FaceService::init(const std::string& modelDir)
 {
-  impl_ = std::make_unique<Impl>();
-
-  if (!impl_->init(modelDir)) {
-    impl_.reset();
+  auto impl = std::make_unique<Impl>();
+  if (!impl->init(modelDir)) {
     LOG_WARN << "FaceService: models missing, recognition disabled";
     disable();
     return;
   }
-
+  {
+    const std::unique_lock lock(implMutex_);
+    impl_ = std::move(impl);
+  }
   faceDb_.init();
-  concurrency_.release(ThreadBudget::inferenceSlots());
+  slots_.open(static_cast<std::size_t>(ThreadBudget::inferenceSlots()));
   LOG_INFO << "FaceService initialized";
+}
+
+AntiSpoofLoad FaceService::initLiveness(const std::string& modelDir)
+{
+  const std::unique_lock lock(implMutex_);
+  const AntiSpoofLoad load = antiSpoof_.load(modelDir);
+  if (load != AntiSpoofLoad::Loaded)
+    LOG_WARN << "Liveness: the anti-spoofing models are "
+             << anti_spoof::loadToString(load) << " in " << modelDir
+             << "; face login and registration stay refused while the check "
+                "is required";
+  return load;
 }
 
 void FaceService::disable()
 {
   disabled_.store(true);
-  concurrency_.release(ThreadBudget::inferenceSlots());
+  slots_.open(static_cast<std::size_t>(ThreadBudget::inferenceSlots()));
 }
 
 void FaceService::shutdown()
 {
-  std::scoped_lock lock(implMutex_);
+  const std::unique_lock lock(implMutex_);
   faceDb_.shutdown();
 
   if (impl_ && impl_->pipelineCache)
     impl_->pipelineCache->save_cache("models/face/face.ncnn.vkcache");
 
   impl_.reset();
+  antiSpoof_.unload();
   LOG_INFO << "FaceService shutdown";
 }
 
 bool FaceService::isLoaded() const
 {
-  std::scoped_lock lock(implMutex_);
+  const std::shared_lock lock(implMutex_);
   return impl_ != nullptr;
+}
+
+bool FaceService::livenessLoaded() const
+{
+  const std::shared_lock lock(implMutex_);
+  return antiSpoof_.isLoaded();
 }
 
 static std::vector<float> normalize(const float* v, int n)
@@ -197,7 +203,7 @@ nms(std::vector<FaceService::FaceBox> boxes, float thresh)
 std::vector<FaceService::FaceBox>
 FaceService::runDetector(const RunDetectorInput& input)
 {
-  Impl& impl = input.impl;
+  const Impl& impl = input.impl;
   const uint8_t* imageData = input.rgbData;
   const int width = input.width;
   const int height = input.height;
@@ -281,13 +287,12 @@ FaceService::runDetector(const RunDetectorInput& input)
           fb.y2 = (pbCy + pbH * 0.5F) * invScaleY;
           fb.score = score;
           for (int k = 0; k < 5; ++k) {
-            fb.lm[k * 2] = (acx + (anchorSize + 1) *
-                                      lm.channel(a * 10 + k * 2).row(r)[c]) *
-                           invScaleX;
-            fb.lm[k * 2 + 1] = (acy + (anchorSize + 1) *
-                                            lm.channel(a * 10 + k * 2 + 1)
-                                                .row(r)[c]) *
-                               invScaleY;
+            fb.lm[static_cast<std::size_t>(k * 2)] =
+                (acx + (anchorSize + 1) * lm.channel(a * 10 + k * 2).row(r)[c]) *
+                invScaleX;
+            fb.lm[static_cast<std::size_t>(k * 2 + 1)] =
+                (acy + (anchorSize + 1) * lm.channel(a * 10 + k * 2 + 1).row(r)[c]) *
+                invScaleY;
           }
           allBoxes.push_back(fb);
         }
@@ -317,22 +322,7 @@ FaceService::runDetector(const RunDetectorInput& input)
                 .scale1 = 1.0F,
                 .scoreThresh = 0.5F});
 
-  auto kept = nms(allBoxes, 0.4F);
-  return kept;
-}
-
-std::vector<FaceService::FaceBox>
-FaceService::detectAll(const DetectAllInput& input)
-{
-  const uint8_t* imageData = input.rgbData;
-  const int width = input.width;
-  const int height = input.height;
-
-  std::scoped_lock lock(implMutex_);
-  if (!impl_)
-    return {};
-  return runDetector(
-      {.impl = *impl_, .rgbData = imageData, .width = width, .height = height});
+  return nms(allBoxes, 0.4F);
 }
 
 std::vector<uint8_t> FaceService::alignFace(const AlignFaceInput& input)
@@ -360,7 +350,7 @@ FaceService::FaceAnalysis FaceService::embedBox(const EmbedBoxInput& input)
   std::vector<uint8_t> aligned = alignFace({.rgbData = input.rgbData,
                                             .width = input.width,
                                             .height = input.height,
-                                            .landmarks = box.lm});
+                                            .landmarks = box.lm.data()});
 
   const ncnn::Mat in = ncnn::Mat::from_pixels(aligned.data(), ncnn::Mat::PIXEL_RGB,
                                               kAligned, kAligned);
@@ -398,36 +388,24 @@ FaceService::FaceAnalysis FaceService::embedBox(const EmbedBoxInput& input)
   analysis.quality.sharpness =
       static_cast<float>(deviation[0] * deviation[0]);
 
-  if (input.encodeFace) {
-    const float faceWidth = box.x2 - box.x1;
-    const float faceHeight = box.y2 - box.y1;
-    const float margin = 0.35F * std::max(faceWidth, faceHeight);
-    const int x1 = std::clamp(static_cast<int>(box.x1 - margin), 0, input.width - 1);
-    const int y1 = std::clamp(static_cast<int>(box.y1 - margin), 0, input.height - 1);
-    const int x2 = std::clamp(static_cast<int>(box.x2 + margin), x1 + 1, input.width);
-    const int y2 = std::clamp(static_cast<int>(box.y2 + margin), y1 + 1, input.height);
-    const cv::Mat full(input.height, input.width, CV_8UC3,
-                       const_cast<uint8_t*>(input.rgbData));
-    cv::Mat face;
-    cv::cvtColor(full(cv::Rect(x1, y1, x2 - x1, y2 - y1)), face,
-                 cv::COLOR_RGB2BGR);
-    constexpr int kMaxCropSide = 192;
-    const int side = std::max(face.cols, face.rows);
-    if (side > kMaxCropSide) {
-      const double scale = static_cast<double>(kMaxCropSide) / side;
-      cv::resize(face, face, cv::Size(), scale, scale, cv::INTER_AREA);
-    }
-    std::vector<uchar> buffer;
-    if (cv::imencode(".jpg", face, buffer, {cv::IMWRITE_JPEG_QUALITY, 88}))
-      analysis.faceJpeg.assign(buffer.begin(), buffer.end());
-  }
+  if (input.encodeFace)
+    analysis.faceJpeg = face_image::encodeFaceCrop({.rgbData = input.rgbData,
+                                                    .width = input.width,
+                                                    .height = input.height,
+                                                    .x1 = box.x1,
+                                                    .y1 = box.y1,
+                                                    .x2 = box.x2,
+                                                    .y2 = box.y2,
+                                                    .margin = kVisitorCropMargin,
+                                                    .maxSide = kVisitorCropMaxSide,
+                                                    .quality = kVisitorCropQuality});
   return analysis;
 }
 
 std::optional<FaceService::FaceAnalysis>
 FaceService::analyzePixels(const ExtractInput& input, bool encodeFace)
 {
-  std::scoped_lock lock(implMutex_);
+  const std::shared_lock lock(implMutex_);
   if (!impl_)
     return std::nullopt;
   const auto boxes = runDetector({.impl = *impl_,
@@ -448,144 +426,96 @@ FaceService::analyzePixels(const ExtractInput& input, bool encodeFace)
   return analysis;
 }
 
-std::optional<FaceService::FaceResult>
-FaceService::extractFace(const ExtractFaceInput& input)
+std::optional<FaceService::FaceAnalysis>
+FaceService::analyzeBytes(const AnalyzeImageInput& input)
 {
-  std::scoped_lock lock(implMutex_);
-  if (!impl_)
-    return std::nullopt;
-  auto analysis = embedBox({.impl = *impl_,
-                            .rgbData = input.rgbData,
-                            .width = input.width,
-                            .height = input.height,
-                            .box = input.box,
-                            .encodeFace = false});
-  return FaceResult{.embedding = std::move(analysis.embedding),
-                    .confidence = input.box.score};
-}
-
-std::optional<FaceService::FaceResult>
-FaceService::extract(const ExtractInput& input)
-{
-  auto analysis = analyzePixels(input, false);
-  if (!analysis)
-    return std::nullopt;
-  return FaceResult{.embedding = std::move(analysis->embedding),
-                    .confidence = analysis->box.score};
-}
-
-namespace
-{
-
-constexpr int kScaledDecodeThreshold = 2048;
-constexpr int kScaledDecodeDeepThreshold = 4096;
-constexpr int kMaxDecodeSide = 12000;
-constexpr int64_t kMaxDecodePixels = int64_t{50} * 1000 * 1000;
-
-struct DecodedImage
-{
-  std::vector<uint8_t> rgb;
-  int width{0};
-  int height{0};
-};
-
-DecodedImage decodeToRgb(const std::string& imageBytes)
-{
-  int origW = 0;
-  int origH = 0;
-  int channels = 0;
-  stbi_info_from_memory(reinterpret_cast<const stbi_uc*>(imageBytes.data()),
-                        static_cast<int>(imageBytes.size()), &origW, &origH,
-                        &channels);
-
-  if (origW <= 0 || origH <= 0 || origW > kMaxDecodeSide ||
-      origH > kMaxDecodeSide ||
-      static_cast<int64_t>(origW) * origH > kMaxDecodePixels)
-    return {};
-
-  const int maxSide = std::max(origW, origH);
-
-  if (maxSide > kScaledDecodeThreshold) {
-    int flags = cv::IMREAD_COLOR;
-    if (maxSide > kScaledDecodeDeepThreshold)
-      flags = cv::IMREAD_REDUCED_COLOR_4;
-    else
-      flags = cv::IMREAD_REDUCED_COLOR_2;
-
-    cv::Mat bgr =
-        cv::imdecode(cv::Mat(1, static_cast<int>(imageBytes.size()), CV_8UC1,
-                             const_cast<char*>(imageBytes.data())),
-                     flags);
-    if (bgr.empty())
-      return {};
-
-    cv::Mat rgb;
-    cv::cvtColor(bgr, rgb, cv::COLOR_BGR2RGB);
-    return {.rgb = std::vector<uint8_t>(rgb.data, rgb.data + rgb.total() * 3),
-            .width = rgb.cols,
-            .height = rgb.rows};
-  }
-
-  int width = 0;
-  int height = 0;
-  std::unique_ptr<stbi_uc, decltype(&stbi_image_free)>
-      decoded(stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(
-                                        imageBytes.data()),
-                                    static_cast<int>(imageBytes.size()), &width,
-                                    &height, &channels, 3),
-              &stbi_image_free);
-  if (!decoded)
-    return {};
-
-  return {.rgb =
-              std::vector<uint8_t>(decoded.get(),
-                                   decoded.get() +
-                                       static_cast<size_t>(width) * height * 3),
-          .width = width,
-          .height = height};
-}
-
-}
-
-std::optional<int64_t> FaceService::identify(std::string imageBytes)
-{
-  if (disabled_.load())
-    return std::nullopt;
-  concurrency_.acquire();
-  struct SlotGuard
-  {
-    ~SlotGuard() { owner->concurrency_.release(); }
-    FaceService* owner;
-  } slotGuard{this};
-
-  const auto decoded = decodeToRgb(imageBytes);
+  const auto decoded = face_image::decodeToRgb(input.imageBytes);
   if (decoded.rgb.empty())
     return std::nullopt;
-
-  auto faceResult = extract({.rgbData = decoded.rgb.data(),
-                             .width = decoded.width,
-                             .height = decoded.height});
-  if (!faceResult)
-    return std::nullopt;
-
-  auto match = faceDb_.search(faceResult->embedding.data());
-  if (!match)
-    return std::nullopt;
-
-  LOG_INFO << "FaceService::identify person=" << match->first
-           << " confidence=" << match->second;
-
-  return match->first;
+  return analyzePixels({.rgbData = decoded.rgb.data(),
+                        .width = decoded.width,
+                        .height = decoded.height},
+                       input.encodeFace);
 }
 
-drogon::Task<std::optional<int64_t>>
-FaceService::identifyAsync(std::string imageBytes)
+FaceService::FaceCheck FaceService::verifyBytes(const VerifyImageInput& input)
 {
-  co_return co_await BlockingTask<std::optional<int64_t>>(
-      [this, image = std::move(imageBytes)]() mutable {
-        return identify(std::move(image));
-      },
-      BlockingLane::Heavy);
+  FaceCheck check;
+  const FaceCheckPolicy& policy = input.policy;
+  const auto decoded = face_image::decodeToRgb(input.imageBytes);
+  if (decoded.rgb.empty()) {
+    check.status = FaceCheckStatus::Undecodable;
+    return check;
+  }
+
+  const std::shared_lock lock(implMutex_);
+  if (!impl_) {
+    check.status = FaceCheckStatus::Unavailable;
+    return check;
+  }
+  if (!face_check::livenessRunnable({.required = policy.livenessRequired,
+                                     .engineLoaded = antiSpoof_.isLoaded()})) {
+    check.status = FaceCheckStatus::LivenessUnavailable;
+    return check;
+  }
+
+  const auto boxes = runDetector({.impl = *impl_,
+                                  .rgbData = decoded.rgb.data(),
+                                  .width = decoded.width,
+                                  .height = decoded.height});
+  const auto competing = std::ranges::count_if(boxes, [&policy](const FaceBox& box) {
+    return box.score >= policy.quality.minDetectorScore;
+  });
+  if (boxes.empty()) {
+    check.status = FaceCheckStatus::NoFace;
+    return check;
+  }
+  const auto best = std::ranges::max_element(
+      boxes, {}, [](const FaceBox& box) { return box.score; });
+  auto analysis = embedBox({.impl = *impl_,
+                            .rgbData = decoded.rgb.data(),
+                            .width = decoded.width,
+                            .height = decoded.height,
+                            .box = *best,
+                            .encodeFace = false});
+  check.quality = analysis.quality;
+  check.confidence = best->score;
+  check.status = face_check::screen({.faces = static_cast<int>(std::max<std::ptrdiff_t>(competing, 1)),
+                                     .quality = analysis.quality,
+                                     .gate = policy.quality});
+  if (check.status != FaceCheckStatus::Accepted)
+    return check;
+
+  if (policy.livenessRequired) {
+    check.liveness = antiSpoof_.realScore({.rgbData = decoded.rgb.data(),
+                                           .width = decoded.width,
+                                           .height = decoded.height,
+                                           .x1 = best->x1,
+                                           .y1 = best->y1,
+                                           .x2 = best->x2,
+                                           .y2 = best->y2});
+    if (!check.liveness) {
+      check.status = FaceCheckStatus::LivenessUnavailable;
+      return check;
+    }
+    check.status = face_check::livenessVerdict(policy, *check.liveness);
+    if (check.status != FaceCheckStatus::Accepted)
+      return check;
+  }
+
+  check.embedding = std::move(analysis.embedding);
+  if (policy.encodePortrait)
+    check.portraitJpeg = face_image::encodeFaceCrop({.rgbData = decoded.rgb.data(),
+                                                     .width = decoded.width,
+                                                     .height = decoded.height,
+                                                     .x1 = best->x1,
+                                                     .y1 = best->y1,
+                                                     .x2 = best->x2,
+                                                     .y2 = best->y2,
+                                                     .margin = face_image::kPortraitMargin,
+                                                     .maxSide = face_image::kPortraitMaxSide,
+                                                     .quality = face_image::kPortraitQuality});
+  return check;
 }
 
 std::optional<FaceService::FaceResult>
@@ -593,28 +523,30 @@ FaceService::extractImage(std::string imageBytes)
 {
   if (disabled_.load())
     return std::nullopt;
-  concurrency_.acquire();
-  struct SlotGuard
-  {
-    ~SlotGuard() { owner->concurrency_.release(); }
-    FaceService* owner;
-  } slotGuard{this};
-
-  const auto decoded = decodeToRgb(imageBytes);
-  if (decoded.rgb.empty())
+  slots_.acquire();
+  const InferenceSlots::Permit permit(slots_);
+  auto analysis = analyzeBytes({.imageBytes = std::move(imageBytes), .encodeFace = false});
+  if (!analysis)
     return std::nullopt;
-
-  return extract({.rgbData = decoded.rgb.data(),
-                  .width = decoded.width,
-                  .height = decoded.height});
+  return FaceResult{.embedding = std::move(analysis->embedding),
+                    .confidence = analysis->box.score};
 }
 
 drogon::Task<std::optional<FaceService::FaceResult>>
 FaceService::extractImageAsync(std::string imageBytes)
 {
+  if (disabled_.load())
+    co_return std::nullopt;
+  co_await slots_.acquireAsync();
+  const InferenceSlots::Permit permit(slots_);
   co_return co_await BlockingTask<std::optional<FaceService::FaceResult>>(
-      [this, image = std::move(imageBytes)]() mutable {
-        return extractImage(std::move(image));
+      [this, image = std::move(imageBytes)]() mutable
+      -> std::optional<FaceService::FaceResult> {
+        auto analysis = analyzeBytes({.imageBytes = std::move(image), .encodeFace = false});
+        if (!analysis)
+          return std::nullopt;
+        return FaceResult{.embedding = std::move(analysis->embedding),
+                          .confidence = analysis->box.score};
       },
       BlockingLane::Heavy);
 }
@@ -624,26 +556,40 @@ FaceService::analyzeImage(const AnalyzeImageInput& input)
 {
   if (disabled_.load())
     return std::nullopt;
-  concurrency_.acquire();
-  struct SlotGuard
-  {
-    ~SlotGuard() { owner->concurrency_.release(); }
-    FaceService* owner;
-  } slotGuard{this};
-
-  const auto decoded = decodeToRgb(input.imageBytes);
-  if (decoded.rgb.empty())
-    return std::nullopt;
-  return analyzePixels({.rgbData = decoded.rgb.data(),
-                        .width = decoded.width,
-                        .height = decoded.height},
-                       input.encodeFace);
+  slots_.acquire();
+  const InferenceSlots::Permit permit(slots_);
+  return analyzeBytes(input);
 }
 
 drogon::Task<std::optional<FaceService::FaceAnalysis>>
 FaceService::analyzeImageAsync(AnalyzeImageInput input)
 {
+  if (disabled_.load())
+    co_return std::nullopt;
+  co_await slots_.acquireAsync();
+  const InferenceSlots::Permit permit(slots_);
   co_return co_await BlockingTask<std::optional<FaceService::FaceAnalysis>>(
-      [this, request = std::move(input)]() { return analyzeImage(request); },
+      [this, request = std::move(input)]() { return analyzeBytes(request); },
+      BlockingLane::Heavy);
+}
+
+FaceService::FaceCheck FaceService::verifyImage(const VerifyImageInput& input)
+{
+  if (disabled_.load())
+    return FaceCheck{};
+  slots_.acquire();
+  const InferenceSlots::Permit permit(slots_);
+  return verifyBytes(input);
+}
+
+drogon::Task<FaceService::FaceCheck>
+FaceService::verifyImageAsync(VerifyImageInput input)
+{
+  if (disabled_.load())
+    co_return FaceCheck{};
+  co_await slots_.acquireAsync();
+  const InferenceSlots::Permit permit(slots_);
+  co_return co_await BlockingTask<FaceCheck>(
+      [this, request = std::move(input)]() { return verifyBytes(request); },
       BlockingLane::Heavy);
 }

@@ -72,6 +72,10 @@ if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
+if(NOT TARGET argus::lib::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
+                     ${CMAKE_BINARY_DIR}/auth)
+endif()
 
 if(NOT COMMAND argus_settings_rpc_contract)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/settings
@@ -103,6 +107,7 @@ argus_module(NAME voice-core
         argus::clients::voice
         argus::lib::grpc-health
         argus::clients::identity
+        argus::lib::auth
         argus::lib::audio
         argus::clients::tts
         argus::clients::llm

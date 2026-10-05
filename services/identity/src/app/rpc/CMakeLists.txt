@@ -1,5 +1,6 @@
 argus_module(NAME identity-rpc
     SOURCES
+        grpc-server-drain.cc
         identity-rpc-service.cc
         identity-sync-rpc-service.cc
         identity-voiceprint-rpc-service.cc
@@ -7,6 +8,9 @@ argus_module(NAME identity-rpc
     DEPENDS
         argus::identity-shared
         argus::identity-enrollment
+        argus::identity-person
+        argus::identity-sign-in
+        argus::identity-user
         argus::identity-voiceprint
         argus::identity-visitor
         argus::lib::auth

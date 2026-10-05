@@ -1,22 +1,24 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <memory>
-#include <mutex>
 #include <optional>
-#include <semaphore>
+#include <shared/services/face/anti-spoof.hxx>
+#include <shared/services/face/face-check.hxx>
 #include <shared/services/face/face-db.hxx>
+#include <shared/services/face/face-image.hxx>
 #include <shared/services/face/face-quality.hxx>
+#include <shared/services/face/inference-slots.hxx>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
 namespace ncnn
 {
 class Net;
-class VkBlobAllocator;
-class VkStagingAllocator;
 class PipelineCache;
 }
 
@@ -33,9 +35,11 @@ public:
 
   void init();
   void init(const std::string& modelDir);
+  AntiSpoofLoad initLiveness(const std::string& modelDir);
   void disable();
   void shutdown();
   bool isLoaded() const;
+  bool livenessLoaded() const;
 
   struct FaceResult
   {
@@ -45,24 +49,12 @@ public:
 
   struct FaceBox
   {
-    float x1, y1, x2, y2;
-    float score;
-    float lm[10];
-  };
-
-  struct DetectAllInput
-  {
-    const uint8_t* rgbData{nullptr};
-    int width{0};
-    int height{0};
-  };
-
-  struct ExtractFaceInput
-  {
-    const uint8_t* rgbData{nullptr};
-    int width{0};
-    int height{0};
-    FaceBox box;
+    float x1{0.0F};
+    float y1{0.0F};
+    float x2{0.0F};
+    float y2{0.0F};
+    float score{0.0F};
+    std::array<float, 10> lm{};
   };
 
   struct ExtractInput
@@ -83,16 +75,6 @@ public:
   static constexpr int kAlignedSide = 112;
 
   static std::vector<uint8_t> alignFace(const AlignFaceInput& input);
-
-  std::vector<FaceBox> detectAll(const DetectAllInput& input);
-
-  std::optional<FaceResult> extractFace(const ExtractFaceInput& input);
-
-  std::optional<FaceResult> extract(const ExtractInput& input);
-
-  std::optional<int64_t> identify(std::string imageBytes);
-
-  drogon::Task<std::optional<int64_t>> identifyAsync(std::string imageBytes);
 
   struct FaceAnalysis
   {
@@ -117,17 +99,30 @@ public:
   drogon::Task<std::optional<FaceResult>>
   extractImageAsync(std::string imageBytes);
 
+  struct FaceCheck
+  {
+    FaceCheckStatus status{FaceCheckStatus::Unavailable};
+    std::vector<float> embedding;
+    FaceQuality quality;
+    float confidence{0.0F};
+    std::optional<float> liveness;
+    std::string portraitJpeg;
+  };
+
+  struct VerifyImageInput
+  {
+    std::string imageBytes;
+    FaceCheckPolicy policy;
+  };
+
+  FaceCheck verifyImage(const VerifyImageInput& input);
+  drogon::Task<FaceCheck> verifyImageAsync(VerifyImageInput input);
+
   FaceDB& faceDb() { return faceDb_; }
 
 private:
-  std::counting_semaphore<8> concurrency_{0};
-  std::atomic<bool> disabled_{false};
-  mutable std::mutex implMutex_;
-
   struct Impl
   {
-    std::unique_ptr<ncnn::VkBlobAllocator> blobAllocator;
-    std::unique_ptr<ncnn::VkStagingAllocator> stagingAllocator;
     std::unique_ptr<ncnn::PipelineCache> pipelineCache;
     std::unique_ptr<ncnn::Net> detector;
     std::unique_ptr<ncnn::Net> recognizer;
@@ -136,7 +131,7 @@ private:
 
   struct RunDetectorInput
   {
-    Impl& impl;
+    const Impl& impl;
     const uint8_t* rgbData{nullptr};
     int width{0};
     int height{0};
@@ -146,7 +141,7 @@ private:
 
   struct EmbedBoxInput
   {
-    Impl& impl;
+    const Impl& impl;
     const uint8_t* rgbData{nullptr};
     int width{0};
     int height{0};
@@ -157,7 +152,13 @@ private:
   static FaceAnalysis embedBox(const EmbedBoxInput& input);
   std::optional<FaceAnalysis> analyzePixels(const ExtractInput& input,
                                             bool encodeFace);
+  std::optional<FaceAnalysis> analyzeBytes(const AnalyzeImageInput& input);
+  FaceCheck verifyBytes(const VerifyImageInput& input);
 
+  InferenceSlots slots_;
+  std::atomic<bool> disabled_{false};
+  mutable std::shared_mutex implMutex_;
   std::unique_ptr<Impl> impl_;
+  AntiSpoofEngine antiSpoof_;
   FaceDB faceDb_;
 };

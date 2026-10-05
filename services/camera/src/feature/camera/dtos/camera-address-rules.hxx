@@ -10,7 +10,8 @@
 namespace camera_address_rules
 {
 inline constexpr size_t kMaxSecretLength = 128;
-inline constexpr int64_t kMaxRetentionDays = 3650;
+inline constexpr int64_t kMaxRetentionDays = 60;
+inline constexpr int64_t kMaxIncidentRetentionDays = 120;
 
 inline std::optional<std::string> addressError(const std::string& ip)
 {
@@ -18,6 +19,8 @@ inline std::optional<std::string> addressError(const std::string& ip)
     return "must be an IPv4 or IPv6 address";
   if (!network_address::isPrivate(ip))
     return "must be a private network address; camera credentials never leave the local network";
+  if (network_address::isHostLocal(ip))
+    return "must be a camera on the local network, not a loopback or link-local address";
   return std::nullopt;
 }
 
@@ -35,10 +38,22 @@ inline std::optional<std::string> catalogError(const std::optional<std::string>&
   return "must be a model id from GET /camera/catalog";
 }
 
-inline std::optional<std::string> retentionError(const std::optional<int64_t>& days)
+struct RetentionRule
 {
-  if (!days || (*days >= 0 && *days <= kMaxRetentionDays))
+  std::optional<int64_t> days;
+  bool incident{false};
+};
+
+inline int64_t retentionCap(bool incident)
+{
+  return incident ? kMaxIncidentRetentionDays : kMaxRetentionDays;
+}
+
+inline std::optional<std::string> retentionError(const RetentionRule& rule)
+{
+  if (!rule.days || (*rule.days >= 0 && *rule.days <= retentionCap(rule.incident)))
     return std::nullopt;
-  return "must be between 0 and 3650 days";
+  return rule.incident ? "must be between 0 and 120 days while an incident is open"
+                       : "must be between 0 and 60 days (up to 120 with retentionIncident)";
 }
 }

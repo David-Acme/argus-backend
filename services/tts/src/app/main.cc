@@ -5,6 +5,7 @@
 #include <http/listener-config.hxx>
 #include <runtime/thread-budget.hxx>
 #include <runtime/log-output.hxx>
+#include <runtime/shutdown-signal.hxx>
 #include <feature/synthesis/controllers/tts-controller.hxx>
 #include <drogon/drogon.h>
 #include <auth/valid-json-filter.hxx>
@@ -41,7 +42,9 @@ int main()
   const ListenerConfig listener = TtsConfig::resolveListener();
 
   drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-tts", .extras = {}}));
-  drogon::app().registerController(std::make_shared<TtsController>());
+  const auto controller = std::make_shared<TtsController>();
+  drogon::app().registerController(controller);
+  shutdown_signal::onStop(shutdown_signal::drainOf(controller->streams(), "tts-streams"));
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
 
   drogon::app().loadConfigJson(drogonConfig(listener));

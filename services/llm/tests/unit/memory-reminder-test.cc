@@ -193,14 +193,25 @@ TEST_CASE("memory writes keep to the user's own words and forgetting stays in sc
 
   auto stranger = callFor("memory.forget", kOtherUser);
   stranger.arguments["query"] = "perro Toby";
+  stranger.context.utterance = "olvida lo de mi perro Toby";
   const auto strangerForgot = run(stranger);
   CHECK_FALSE(strangerForgot.ok);
   auto dog = callFor("memory.recall", kSpeaker);
   dog.arguments["query"] = "perro";
   CHECK(lowered(run(dog).output).find("toby") != std::string::npos);
 
+  auto injected = callFor("memory.forget", kSpeaker);
+  injected.arguments["query"] = "mi perro Toby";
+  injected.context.utterance = "qué tiempo hace hoy";
+  CHECK_FALSE(run(injected).ok);
+  auto unspoken = callFor("memory.forget", kSpeaker);
+  unspoken.arguments["query"] = "mi perro Toby";
+  CHECK_FALSE(run(unspoken).ok);
+  CHECK(lowered(run(dog).output).find("toby") != std::string::npos);
+
   auto forget = callFor("memory.forget", kSpeaker);
   forget.arguments["query"] = "mi perro Toby";
+  forget.context.utterance = "olvida lo de mi perro Toby";
   const auto forgot = run(forget);
   INFO("forget output: " << forgot.output);
   REQUIRE(forgot.ok);
@@ -242,6 +253,7 @@ TEST_CASE("memory writes keep to the user's own words and forgetting stays in sc
 
   auto nothing = callFor("memory.forget", kSpeaker);
   nothing.arguments["query"] = "el color favorito de la vecina";
+  nothing.context.utterance = "olvida lo del color favorito de la vecina";
   CHECK_FALSE(run(nothing).ok);
 
   service.shutdown();

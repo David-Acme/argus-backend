@@ -211,3 +211,48 @@ target_link_libraries(identity-visitor-test PRIVATE
 target_compile_options(identity-visitor-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-visitor-test)
 add_test(NAME identity-visitor-test COMMAND identity-visitor-test)
+
+add_executable(identity-face-guard-test unit/identity-face-guard-test.cc)
+target_link_libraries(identity-face-guard-test PRIVATE
+    argus::identity-enrollment
+    argus::identity-shared
+    doctest::doctest)
+target_compile_options(identity-face-guard-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-face-guard-test)
+add_test(NAME identity-face-guard-test COMMAND identity-face-guard-test)
+
+add_executable(identity-pairing-code-test unit/identity-pairing-code-test.cc)
+target_link_libraries(identity-pairing-code-test PRIVATE
+    argus::identity-pairing
+    argus::identity-rate-gate
+    argus::lib::errors
+    doctest::doctest)
+target_compile_options(identity-pairing-code-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-pairing-code-test)
+add_test(NAME identity-pairing-code-test COMMAND identity-pairing-code-test)
+
+add_executable(identity-liveness-test unit/identity-liveness-test.cc)
+target_compile_definitions(identity-liveness-test PRIVATE
+    ARGUS_TEST_FACE_MODELS="${CMAKE_CURRENT_SOURCE_DIR}/../../../models/face"
+    ARGUS_TEST_FACE_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/face")
+target_link_libraries(identity-liveness-test PRIVATE
+    argus::identity-shared
+    argus::lib::sqlite
+    doctest::doctest)
+target_compile_options(identity-liveness-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-liveness-test)
+add_test(NAME identity-liveness-test COMMAND identity-liveness-test)
+
+add_executable(identity-user-safety-test unit/identity-user-safety-test.cc)
+target_compile_definitions(identity-user-safety-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(identity-user-safety-test PRIVATE
+    argus::identity-enrollment
+    argus::identity-user
+    argus::identity-visitor
+    argus::lib::sqlite
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-user-safety-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-user-safety-test)
+add_test(NAME identity-user-safety-test COMMAND identity-user-safety-test)

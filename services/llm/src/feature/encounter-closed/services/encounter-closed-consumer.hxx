@@ -3,6 +3,7 @@
 #include <atomic>
 #include <drogon/utils/coroutine.h>
 #include <nats/nats-subject.hxx>
+#include <runtime/blocking-pool.hxx>
 
 #include <cstdint>
 #include <functional>
@@ -74,12 +75,19 @@ public:
 
   void stop();
 
+  void requestStop();
+
+  [[nodiscard]] bool drained() const;
+
   drogon::Task<EncounterDisposition> handlePayload(const std::string& payload);
 
   drogon::Task<EncounterDisposition> handle(
       const EncounterClosedEvent& event, const std::string& fingerprint);
 
 private:
+  EncounterDisposition settlePayload(const std::string& payload);
+  EncounterDisposition settleEvent(const EncounterClosedEvent& event,
+                                   const std::string& fingerprint);
   bool trySubscribe();
   void scheduleSubscribeRetry();
   void purgeSettled(int64_t now);
@@ -90,4 +98,5 @@ private:
   std::optional<uint64_t> subscription_;
   std::optional<uint64_t> retryTimer_;
   std::atomic<int64_t> nextPurgeAt_{0};
+  BlockingStrand strand_{BlockingLane::Light};
 };

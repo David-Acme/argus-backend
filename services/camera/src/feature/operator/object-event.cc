@@ -8,7 +8,7 @@ Json::Value object_event::toJson(const ObjectDetectedEvent& event)
   json["cameraId"] = Json::Int64(event.cameraId);
   json["cameraName"] = event.cameraName;
   json["rule"] = event.rule;
-  json["severity"] = event.severity;
+  json["severity"] = eventSeverityToString(event.severity);
   json["escalated"] = event.escalated;
   json["night"] = event.night;
   if (event.knownPersonId)
@@ -62,8 +62,8 @@ Json::Value object_event::toJson(const ObjectDetectedEvent& event)
         entry["areaSpread"] = object.areaSpread;
       }
     }
-    if (!object.zoneKind.empty())
-      entry["zoneKind"] = object.zoneKind;
+    if (object.zoneKind)
+      entry["zoneKind"] = zoneTypeToString(*object.zoneKind);
     if (!object.zoneName.empty())
       entry["zoneName"] = object.zoneName;
     if (!object.signature.empty())

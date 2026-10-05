@@ -3,7 +3,9 @@
 #include <sqlite/db-service.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <algorithm>
 #include <chrono>
+#include <optional>
 #include <utility>
 
 namespace
@@ -24,21 +26,41 @@ ZoneProvider::ZoneProvider(int64_t refreshMs,
 
 std::vector<OperatorZone> ZoneProvider::forCamera(int64_t cameraId)
 {
-  std::lock_guard<std::mutex> lock(mutex_);
   const int64_t stamp = nowMs();
-  if (!dbOk_ || stamp - loadedAtMs_ >= refreshMs_) {
+  bool refresh = false;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const bool stale = dbOk_ ? stamp - loadedAtMs_ >= refreshMs_
+                             : stamp - attemptedAtMs_ >= std::min(refreshMs_, kRetryMs);
+    refresh = stale && !loading_;
+    if (refresh) {
+      loading_ = true;
+      attemptedAtMs_ = stamp;
+    }
+  }
+  if (refresh) {
+    std::optional<std::vector<OperatorZone>> loaded;
     try {
-      cached_ = loadFromDb();
-      loadedAtMs_ = stamp;
-      dbOk_ = true;
+      loaded = loadFromDb();
     }
     catch (const std::exception& e) {
       LOG_WARN << "Zone provider: camera.db read failed (" << e.what()
-               << "); using configured zones";
+               << "); using the last zones, retrying in " << kRetryMs << " ms";
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    loading_ = false;
+    if (loaded) {
+      cached_ = std::move(*loaded);
+      loadedAtMs_ = stamp;
+      dbOk_ = true;
+    }
+    else {
       dbOk_ = false;
     }
   }
-  if (!dbOk_)
+
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!dbOk_ && cached_.empty())
     return fallback_ ? fallback_->forCamera(cameraId)
                      : std::vector<OperatorZone>{};
 
@@ -60,7 +82,7 @@ std::vector<OperatorZone> ZoneProvider::loadFromDb()
     OperatorZone zone;
     zone.cameraId = row["camera_id"].as<int64_t>();
     zone.name = row["name"].as<std::string>();
-    zone.kind = row["zone_type"].as<std::string>();
+    zone.kind = zoneTypeFromString(row["zone_type"].as<std::string>());
     zone.points = parseZonePoints(row["points"].as<std::string>());
     if (zone.cameraId > 0 && !zone.name.empty() && zone.points.size() >= 3)
       zones.push_back(std::move(zone));

@@ -10,6 +10,8 @@
 #include <ranges>
 #include <llama.h>
 #include <config/config-service.hxx>
+#include <errors/response-exception.hxx>
+#include <llm/llm-errors.hxx>
 #include <runtime/ai-init.hxx>
 #include <runtime/blocking-task.hxx>
 #include <runtime/hardware-profile.hxx>
@@ -446,6 +448,8 @@ void LlmService::generateStream(const GenerateInput& input,
     onToken("", true);
     return;
   }
+  if (!loaded_ || !context_ || !model_)
+    throw ResponseException(503, LlmErrors::LlmEngineNotLoaded);
   struct BusyGuard
   {
     ~BusyGuard() { owner->busy_.store(false); }

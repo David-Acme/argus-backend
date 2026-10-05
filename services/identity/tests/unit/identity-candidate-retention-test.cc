@@ -73,8 +73,6 @@ public:
   [[nodiscard]] drogon::Task<void>
   emitModule(const ModuleEmitInput& input) const override
   {
-    if (refuse_)
-      throw std::runtime_error("the change sink refused the tombstone");
     emitted_.push_back(input.body.toJson());
     co_return;
   }
@@ -97,11 +95,9 @@ public:
     co_return;
   }
 
-  void refuse(bool value) const { refuse_ = value; }
   [[nodiscard]] const std::vector<Json::Value>& emitted() const { return emitted_; }
 
 private:
-  mutable bool refuse_{false};
   mutable std::vector<Json::Value> emitted_;
 };
 
@@ -151,7 +147,8 @@ int64_t biometricRows(int64_t personId)
 }
 
 TEST_CASE("an unnamed visitor unseen past the Owner's window leaves no biometrics "
-          "behind, and all of them go when recognition is off")
+          "behind, whatever its status, never reaches the sync rooms, and all "
+          "of them go when recognition is off")
 {
   std::remove(kRetentionDb);
   std::remove((std::string(kRetentionDb) + "-wal").c_str());
@@ -204,34 +201,25 @@ TEST_CASE("an unnamed visitor unseen past the Owner's window leaves no biometric
   DbService::client()->execSqlSync(
       "UPDATE visitor_setting SET unnamed_retention_days = 30 WHERE id = 1");
 
-  sink.refuse(true);
-  CHECK_THROWS_AS(drogon::sync_wait(retention.sweep(now)), std::runtime_error);
-  sink.refuse(false);
-  CHECK_FALSE(retired(staleCandidate));
-  CHECK(biometricRows(staleCandidate) == 3);
+  CHECK(drogon::sync_wait(retention.sweep(now)) == 2);
 
-  CHECK(drogon::sync_wait(retention.sweep(now)) == 1);
-
-  CHECK(retired(staleCandidate));
-  CHECK(biometricRows(staleCandidate) == 0);
+  for (const int64_t gone : {staleCandidate, staleKnown}) {
+    CAPTURE(gone);
+    CHECK(retired(gone));
+    CHECK(biometricRows(gone) == 0);
+  }
   CHECK(DbService::client()
             ->execSqlSync("SELECT COUNT(*) AS n FROM person_visit WHERE person_id = ?",
                           staleCandidate)
             .front()["n"]
             .as<int64_t>() == 0);
-  for (const int64_t kept :
-       {freshCandidate, staleKnown, staleLinked, namedVisitor}) {
+  for (const int64_t kept : {freshCandidate, staleLinked, namedVisitor}) {
     CAPTURE(kept);
     CHECK_FALSE(retired(kept));
     CHECK(biometricRows(kept) == 3);
   }
 
-  REQUIRE(sink.emitted().size() == 1);
-  const auto& tombstone = sink.emitted().front();
-  CHECK(tombstone["operation"].asInt() == static_cast<int>(SyncOperation::Delete));
-  CHECK(tombstone["info"]["id"].asInt64() == staleCandidate);
-  CHECK(tombstone["info"]["deletedAt"].asInt64() >= now);
-  CHECK(tombstone["info"].size() == 2);
+  CHECK(sink.emitted().empty());
 
   CHECK(drogon::sync_wait(retention.sweep(now)) == 0);
 
@@ -239,7 +227,8 @@ TEST_CASE("an unnamed visitor unseen past the Owner's window leaves no biometric
       "UPDATE household_privacy SET visitor_recognition = 0 WHERE id = 1");
   CHECK(drogon::sync_wait(retention.sweep(now)) == 1);
   CHECK(retired(freshCandidate));
-  for (const int64_t kept : {staleKnown, staleLinked, namedVisitor})
+  for (const int64_t kept : {staleLinked, namedVisitor})
     CHECK_FALSE(retired(kept));
+  CHECK(sink.emitted().empty());
   identity_change::setSink(nullptr);
 }

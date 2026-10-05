@@ -26,8 +26,10 @@ CameraController::overview(drogon::HttpRequestPtr req)
 drogon::Task<drogon::HttpResponsePtr>
 CameraController::probe(drogon::HttpRequestPtr req)
 {
-  const auto body = ProbeCameraDto::fromJson(*req->getJsonObject());
-  co_return ApiResponse::ok(co_await probeService_.probe(body));
+  auto body = ProbeCameraDto::fromJson(*req->getJsonObject());
+  const auto& jwt = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  co_return ApiResponse::ok(
+      co_await probeService_.probe({.body = std::move(body), .userId = jwt.sub}));
 }
 
 drogon::Task<drogon::HttpResponsePtr>

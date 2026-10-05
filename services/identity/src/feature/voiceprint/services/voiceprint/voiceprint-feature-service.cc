@@ -77,6 +77,9 @@ VoiceprintFeatureService::identify(EncodedVoice sample) const
     result.outcome = VoiceprintOutcome::Unavailable;
     co_return result;
   }
+  if (VoiceprintIndex::instance().size() == 0 ||
+      !(co_await privacyGate_.household()).allowed.voiceLearning)
+    co_return result;
   auto input = std::make_shared<const VoiceAnalysisInput>(
       VoiceAnalysisInput{.voice = std::move(sample),
                          .requirement = {.minSpeechSeconds =
@@ -183,7 +186,8 @@ VoiceprintFeatureService::forget(const VoiceprintForgetRequest& request) const
     throw ResponseException(IdentityErrors::VoiceprintNotFound);
 
   if (removed)
-    VoiceprintIndex::instance().remove(*removed);
+    co_await BlockingTask<void>(
+        [profile = *removed] { VoiceprintIndex::instance().remove(profile); });
   LOG_INFO << "Voiceprint forgotten for user " << request.subjectId
            << (result.hadProfile ? " (profile and " : " (")
            << result.samples << " learning sample(s))";
@@ -206,8 +210,8 @@ VoiceprintFeatureService::eraseForConsent(const VoiceprintEraseInput& input) con
   data["event"] = "voiceprint_forget";
   data["hadProfile"] = erased.removedProfile.has_value();
   data["samples"] = static_cast<Json::UInt64>(erased.samples);
-  data["byOwner"] = false;
-  data["reason"] = "consentWithdrawn";
+  data["byOwner"] = input.byOwner;
+  data["reason"] = std::string(input.reason);
   co_await voiceprint_audit::publish({.actorId = input.actorId,
                                       .subjectId = input.subjectId,
                                       .action = UserAction::Delete,
@@ -216,8 +220,11 @@ VoiceprintFeatureService::eraseForConsent(const VoiceprintEraseInput& input) con
   co_return erased;
 }
 
-void VoiceprintFeatureService::dropFromIndex(const VoiceprintEraseResult& erased)
+drogon::Task<void> VoiceprintFeatureService::dropFromIndex(VoiceprintEraseResult erased)
 {
-  if (erased.removedProfile)
-    VoiceprintIndex::instance().remove(*erased.removedProfile);
+  if (!erased.removedProfile)
+    co_return;
+  co_await BlockingTask<void>([profile = *erased.removedProfile] {
+    VoiceprintIndex::instance().remove(profile);
+  });
 }

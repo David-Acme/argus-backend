@@ -2,6 +2,7 @@
 
 #include <errors/response-exception.hxx>
 #include <sync/sync-forwarder.hxx>
+#include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/request-context.hxx>
 #include <text/json-util.hxx>
@@ -26,6 +27,14 @@ void CameraMediaSocket::handleNewConnection(
   conn->setContext(std::make_shared<JwtContext>(ctx));
   sessions_.add({.connection = conn,
                  .session = {.userId = ctx.sub, .sessionId = ctx.sessionId}});
+  const auto& device = req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
+  access_.add({.connection = conn,
+               .credential = {.token = JwtFilter::extractToken(req),
+                              .deviceHash = ctx.deviceHash,
+                              .origin = device.origin == SessionOrigin::Unknown
+                                            ? std::string{}
+                                            : sessionOriginToString(device.origin),
+                              .role = ctx.role}});
 }
 
 void CameraMediaSocket::handleNewMessage(
@@ -85,6 +94,7 @@ void CameraMediaSocket::handleConnectionClosed(
     const drogon::WebSocketConnectionPtr& conn)
 {
   sessions_.remove(conn);
+  access_.remove(conn);
   talk_.handleClose(conn);
   service_.handleClose(conn);
 }

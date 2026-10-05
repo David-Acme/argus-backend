@@ -61,6 +61,40 @@ inline bool isPrivate(std::string_view host)
   return loopback || uniqueLocal || linkLocal;
 }
 
+inline bool isHostLocal(std::string_view host)
+{
+  if (host == "localhost")
+    return true;
+  const std::string text(host);
+  in_addr v4{};
+  if (::inet_pton(AF_INET, text.c_str(), &v4) == 1) {
+    const uint32_t address = ntohl(v4.s_addr);
+    const auto first = static_cast<uint8_t>(address >> 24);
+    const auto second = static_cast<uint8_t>((address >> 16) & 0xFFU);
+    return first == 127 || first == 0 || (first == 169 && second == 254);
+  }
+  in6_addr v6{};
+  if (::inet_pton(AF_INET6, text.c_str(), &v6) != 1)
+    return false;
+  std::array<uint8_t, 16> bytes{};
+  std::ranges::copy(v6.s6_addr, bytes.begin());
+  const bool mapped = std::all_of(bytes.begin(), bytes.begin() + 10,
+                                  [](uint8_t byte) { return byte == 0; }) &&
+                      bytes[10] == 0xFFU && bytes[11] == 0xFFU;
+  if (mapped)
+    return bytes[12] == 127 || bytes[12] == 0 || (bytes[12] == 169 && bytes[13] == 254);
+  const bool unspecifiedOrLoopback =
+      std::all_of(bytes.begin(), bytes.end() - 1, [](uint8_t byte) { return byte == 0; }) &&
+      bytes[15] <= 1;
+  const bool linkLocal = bytes[0] == 0xFEU && (bytes[1] & 0xC0U) == 0x80U;
+  return unspecifiedOrLoopback || linkLocal;
+}
+
+inline bool isCameraAddress(std::string_view host)
+{
+  return isPrivate(host) && !isHostLocal(host);
+}
+
 inline std::string urlHost(std::string_view host)
 {
   if (host.find(':') != std::string_view::npos)

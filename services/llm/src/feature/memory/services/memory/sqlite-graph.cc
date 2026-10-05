@@ -124,16 +124,6 @@ void SqliteGraph::bumpFactHits(const std::vector<int64_t>& factIds)
   repo_.bumpFactHits(db_.get(), factIds);
 }
 
-int64_t SqliteGraph::recordProcedure(const ProcedureRecordInput& input)
-{
-  return repo_.recordProcedure(db_.get(), input);
-}
-
-std::optional<std::string> SqliteGraph::findProcedure(const std::string& goal)
-{
-  return repo_.findProcedure(db_.get(), goal);
-}
-
 void SqliteGraph::migrateLegacy()
 {
   std::scoped_lock lock(mutex_);

@@ -1,8 +1,13 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <mutex>
+#include <optional>
+#include <stop_token>
+#include <thread>
 #include <shared/vocabulary/camera-stream-role.hxx>
 #include <string>
 #include <vector>
@@ -54,6 +59,8 @@ public:
 
   static Go2rtcManager& instance();
 
+  void configure();
+  void start();
   void init();
   void shutdown();
 
@@ -61,9 +68,12 @@ public:
   Go2rtcStatus status();
 
   bool applySources(const Go2rtcSourceChange& change);
-  bool restart();
+  void requestRestart();
+  [[nodiscard]] int64_t restartsServed() const;
 
   [[nodiscard]] bool webrtcEnabled() const;
+  [[nodiscard]] std::vector<std::string> webrtcAnswerHosts();
+  static std::vector<std::string> answerHostsOf(const std::vector<std::string>& candidates);
 
   std::string apiBase();
   std::string rtspBase();
@@ -76,6 +86,9 @@ public:
   static bool isSafeListen(const std::string& listen);
   static bool isSafeCandidate(const std::string& candidate);
   static std::string renderConfig(const Go2rtcConfigInput& input);
+  static std::string credentialVariable(const std::string& name);
+  static std::string sealedUrl(const Go2rtcSource& source);
+  static std::vector<std::string> credentialEnvironment(const std::vector<Go2rtcSource>& sources);
 
   bool healthCheck();
   bool waitReady(int maxMs);
@@ -84,7 +97,11 @@ private:
   bool writeConfig();
   bool spawn();
   void terminate();
-  void supervise();
+  void supervise(std::stop_token stop);
+  bool waitFor(const std::stop_token& stop, std::chrono::milliseconds limit);
+  [[nodiscard]] bool restartDue();
+  void serveRequestedRestart();
+  void stopSupervisor();
   void setError(std::string error);
   bool merge(const Go2rtcSourceChange& change);
   bool respawn();
@@ -103,6 +120,13 @@ private:
   std::string rtspAddr_;
   Go2rtcWebRtc webrtc_;
   std::atomic<bool> webrtcOn_{false};
+  std::mutex hostsMutex_;
+  std::vector<std::string> answerHosts_;
+  std::mutex wakeMutex_;
+  std::condition_variable_any wake_;
+  std::optional<std::chrono::steady_clock::time_point> restartDueAt_;
+  std::atomic<int64_t> restartsServed_{0};
+  std::jthread supervisor_;
 
   int maxRestarts_ = 8;
 };

@@ -23,8 +23,13 @@ and instead call it over the internal wire.
   - `POST /tts/v1/synthesize` → binary float32 PCM,
     `audio/x-argus-pcm-f32` + `X-Argus-Sample-Rate`.
   - `POST /tts/v1/synthesize-stream` → chunked float32 PCM with the same
-    headers, one HTTP chunk per engine chunk; synthesis runs on a detached
-    producer thread that pushes through the async stream. A client that
+    headers, one HTTP chunk per engine chunk; synthesis runs on a worker
+    of the Heavy blocking lane admitted by `StreamSlots` (at most the Heavy
+    lane's thread cap minus one streams; one more is 429 `Busy`) and pushes
+    through the async stream. It used to start one detached thread per
+    request with no bound. `main.cc` registers the slots as a
+    `shutdown_signal` drain: a stop request makes every stream stop at its
+    next chunk, and the drain is done when none is running. A client that
     disconnects stops the synthesis at the next chunk boundary
     (`TtsStreamInput::stopRequested`), so the shared engine is not held for
     text nobody will hear.
@@ -478,3 +483,16 @@ Supertonic plus Pocket es fast and en loaded, 1.40 GB with Supertonic plus the
 6-layer one, with the same WER on these sentences. The owner listened and
 chose `quality` ("utilizar calidad máxima", 2026-10-03), so it is the default;
 `fast` stays one tap away.
+
+## Pinned Supertonic downloads (2026-10-05 audit #30)
+
+`scripts/provision.sh` fetches the Supertonic files from a pinned
+revision (`SUPERTONIC_REVISION`) with a SHA-256 per file
+(`SUPERTONIC_SHA256`), into a `.part` file that is moved into place only
+after its hash matches, the way the Pocket files already were. The pins
+were not computable from the audit environment (Hugging Face was not
+reachable), so they are empty: until the maintainer fills them, the script
+refuses to download a missing Supertonic file and says so, and
+`ARGUS_ALLOW_UNPINNED_MODELS=1` fetches from `main` and prints each file's
+hash to pin. Present files are kept. The stt, vlm and voice provisioning
+scripts follow the same rule.

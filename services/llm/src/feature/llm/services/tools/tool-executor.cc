@@ -1,6 +1,7 @@
 #include "tool-executor.hxx"
 
 #include <auth/role-access.hxx>
+#include <feature/llm/services/tools/app-tool-descriptors.hxx>
 #include <feature/llm/services/tools/tool-validator.hxx>
 
 tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call,
@@ -34,6 +35,8 @@ tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call,
 bool ToolExecutor::permits(const tools::ToolDescriptor& descriptor,
                            UserRole role)
 {
+  if (const auto action = appActionOf(descriptor.name))
+    return role_access::hasAppAction(role, *action);
   return role_access::hasAccess({.role = role,
                                  .table = descriptor.accessTable,
                                  .perm = descriptor.accessPermission});

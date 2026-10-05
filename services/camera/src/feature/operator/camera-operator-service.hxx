@@ -68,6 +68,11 @@ public:
   void processFrame(const ProcessFrameInput& input);
 
 private:
+  struct FrameAnalysis;
+
+  std::shared_ptr<FrameAnalysis> analyse(const ProcessFrameInput& input);
+  void interpret(const ProcessFrameInput& input, FrameAnalysis& analysis);
+
   struct BoxTrack
   {
     float x{0};

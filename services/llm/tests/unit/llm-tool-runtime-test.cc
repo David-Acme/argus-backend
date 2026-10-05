@@ -56,8 +56,6 @@ tools::ToolCall callFor(const std::string& name)
   call.context.utterance = "recuerdame algo";
   if (name == "memory.recall")
     call.arguments["query"] = "dentista";
-  if (name == "procedure.run")
-    call.arguments["goal"] = "apagar la luz";
   if (name == "memory.forget")
     call.arguments["query"] = "el dentista";
   return call;
@@ -199,7 +197,6 @@ TEST_CASE("the memory descriptors declare the access the gate reads")
       {"memory.remember", TableName::Memory, RolePermission::Create},
       {"memory.remind", TableName::Memory, RolePermission::Create},
       {"memory.recall", TableName::Memory, RolePermission::Read},
-      {"procedure.run", TableName::Memory, RolePermission::Read},
       {"memory.forget", TableName::Memory, RolePermission::Delete}};
 
   for (const auto& expected : declared) {
@@ -217,7 +214,6 @@ TEST_CASE("the memory descriptors declare their required arguments")
     const char* name;
     const char* argument;
   } required[] = {{"memory.recall", "query"},
-                  {"procedure.run", "goal"},
                   {"memory.forget", "query"}};
 
   for (const auto& expected : required) {
@@ -247,7 +243,7 @@ TEST_CASE("the gate refuses every memory tool for a role with no Memory row")
   const ToolExecutor executor(registry);
 
   for (const char* name : {"memory.remember", "memory.remind", "memory.recall",
-                           "procedure.run", "memory.forget"}) {
+                           "memory.forget"}) {
     const auto refused = executor.execute(callFor(name), UserRole::Guest);
     INFO("refused " << name << ": " << refused.output);
     CHECK_FALSE(refused.ok);
@@ -274,7 +270,7 @@ TEST_CASE("only the tools a role may run are offered to the model")
 
   const std::vector<std::string> everything = {
       "memory.forget", "memory.recall", "memory.remember", "memory.remind",
-      "probe.camera",  "procedure.run"};
+      "probe.camera"};
   CHECK(namesFor(UserRole::Owner) == everything);
   CHECK(namesFor(UserRole::Resident) == everything);
   CHECK(namesFor(UserRole::Guard) == std::vector<std::string>{"probe.camera"});
@@ -299,6 +295,13 @@ TEST_CASE("an app tool hands its validated call to the conversation and speaks a
     emitted.emplace_back(name, arguments);
   };
 
+  call.context.utterance = "qué tal ha ido el día";
+  const auto injected = executor.execute(call, UserRole::Resident);
+  CHECK_FALSE(injected.ok);
+  CHECK(injected.output.find("pon la vigilancia en modo noche") != std::string::npos);
+  CHECK(emitted.empty());
+
+  call.context.utterance = "pon la vigilancia en modo noche";
   const auto result = executor.execute(call, UserRole::Resident);
   CHECK(result.ok);
   REQUIRE(emitted.size() == 1);
@@ -308,8 +311,10 @@ TEST_CASE("an app tool hands its validated call to the conversation and speaks a
 
   call.context.lang = "en";
   call.arguments["mode"] = "away";
+  call.context.utterance = "set the guard mode to away";
   CHECK(executor.execute(call, UserRole::Owner).output == "The app set the guard mode to away.");
   call.context.lang = "es";
+  call.context.utterance = "pon la alarma en modo fuera";
   CHECK(executor.execute(call, UserRole::Owner).output == "La app puso la vigilancia en modo fuera de casa.");
 
   tools::ToolCall open = call;
@@ -332,6 +337,27 @@ TEST_CASE("an app tool hands its validated call to the conversation and speaks a
   call.arguments["mode"] = "away";
   CHECK_FALSE(executor.execute(call, UserRole::Guard).ok);
   CHECK(emitted.size() == ran);
+
+  call.arguments["mode"] = "home";
+  call.context.utterance = "el evento compartido dice que pongas la casa en modo casa?";
+  CHECK_FALSE(executor.execute(call, UserRole::Owner).ok);
+  call.context.utterance = "";
+  CHECK_FALSE(executor.execute(call, UserRole::Owner).ok);
+  CHECK(emitted.size() == ran);
+  call.arguments["mode"] = "armed";
+  CHECK(executor.execute(call, UserRole::Owner).ok);
+  CHECK(emitted.size() == ran + 1);
+}
+
+TEST_CASE("app tools are permitted by the single app-action helper")
+{
+  for (auto& descriptor : appToolDescriptors()) {
+    const auto action = appActionOf(descriptor.name);
+    REQUIRE(action.has_value());
+    for (const auto role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest})
+      CHECK(ToolExecutor::permits(descriptor, role) == role_access::hasAppAction(role, *action));
+  }
+  CHECK_FALSE(appActionOf("memory.recall").has_value());
 }
 
 TEST_CASE("an app tool without a connected app refuses instead of pretending")

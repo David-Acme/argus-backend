@@ -254,6 +254,15 @@ bool asksForAppAction(const std::string& utterance)
          (screenWord && hasAny(words, kOpenVerbs));
 }
 
+bool namesGuardMode(const std::string& utterance, std::string_view mode)
+{
+  if (utterance.find('?') != std::string::npos)
+    return false;
+  const Words words = wordsOf(utterance);
+  return hasAny(words, kGuardContext) &&
+         std::ranges::any_of(words, [mode](const std::string& word) { return lookup(kModes, word) == mode; });
+}
+
 bool claimsAppAction(const std::string& reply)
 {
   return hasAny(wordsOf(reply), kClaims);

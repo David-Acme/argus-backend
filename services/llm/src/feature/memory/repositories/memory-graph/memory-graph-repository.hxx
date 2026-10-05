@@ -130,9 +130,6 @@ public:
                                               const ProfileFactsInput& input);
   int64_t createSource(sqlite3* db, const SourceCreateInput& input);
   void bumpFactHits(sqlite3* db, const std::vector<int64_t>& factIds);
-  int64_t recordProcedure(sqlite3* db, const ProcedureRecordInput& input);
-  std::optional<std::string> findProcedure(sqlite3* db,
-                                           const std::string& goal);
 
   void ftsInsert(sqlite3* db, const FtsIndexInput& input);
   void insertEdge(sqlite3* db, const EdgeInsertInput& input);
@@ -142,7 +139,9 @@ public:
   std::vector<int64_t> openFactIds(sqlite3* db);
   void insertVecRow(sqlite3* db, const VecRowInsertInput& input);
   float vecDedupSim(sqlite3* db, const VecDedupInput& input);
-  void deleteVecRows(sqlite3* db, int64_t factId);
+  void deleteVecRows(sqlite3* db, int64_t key);
+  bool factExists(sqlite3* db, int64_t factId);
+  std::vector<int64_t> forgetFact(sqlite3* db, const FactForgetInput& input);
 
   std::vector<GazetteerRow> gazetteerAliases(sqlite3* db);
   std::vector<CatalogRow> catalogPersons(sqlite3* db);

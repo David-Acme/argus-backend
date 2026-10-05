@@ -45,3 +45,8 @@ drogon::Task<bool> PortraitPreviewCapabilityRepository::tryConsume(
       TRY_CONSUME.data(), input.id, input.requesterUserId, input.now);
   co_return result.affectedRows() == 1;
 }
+
+drogon::Task<void> PortraitPreviewCapabilityRepository::purgeSpent(int64_t now) const
+{
+  co_await DbService::client()->execSqlCoro(std::string(PURGE_SPENT), now);
+}

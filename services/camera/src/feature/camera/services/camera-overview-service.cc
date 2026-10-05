@@ -5,6 +5,7 @@
 #include <auth/role-access.hxx>
 #include <shared/services/stream/camera-live-board.hxx>
 #include <feature/camera/infra/rtsp-probe.hxx>
+#include <shared/services/stream/go2rtc-http.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/stream-hub.hxx>
 
@@ -46,7 +47,7 @@ drogon::Task<Json::Value> CameraOverviewService::streamStats() const
 {
   Json::Value out(Json::objectValue);
   try {
-    const auto client = drogon::HttpClient::newHttpClient(Go2rtcManager::instance().apiBase());
+    const auto client = go2rtc_http::client("streams");
     auto request = drogon::HttpRequest::newHttpRequest();
     request->setPath("/api/streams");
     const auto response = co_await client->sendRequestCoro(request, kGo2rtcTimeoutSeconds);

@@ -15,9 +15,13 @@
 
 #include <drogon/drogon.h>
 
+#include <atomic>
+#include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 #include <runtime/log-output.hxx>
+#include <runtime/shutdown-signal.hxx>
 
 namespace
 {
@@ -69,6 +73,50 @@ void reportCallEnd(const NotificationClient* notifications, const RtcCallReport&
   if (sent != NotificationRpcOutcome::Success)
     LOG_WARN << "Voice: EndCall for " << report.callId << " was not accepted";
 }
+
+struct ServerDrainInput
+{
+  grpc::Server* server{nullptr};
+  RtcAgentService* rtc{nullptr};
+  const VoiceRpcService* streams{nullptr};
+};
+
+class ServerDrain
+{
+public:
+  explicit ServerDrain(ServerDrainInput input) : input_(input) {}
+
+  void requestStop()
+  {
+    if (stopper_.joinable())
+      return;
+    stopper_ = std::jthread([this] {
+      input_.server->Shutdown(std::chrono::system_clock::now() + kShutdownGrace);
+      const auto giveUpAt = std::chrono::steady_clock::now() + kShutdownGrace;
+      while (input_.streams != nullptr && !input_.streams->idle() &&
+             std::chrono::steady_clock::now() < giveUpAt)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      if (input_.rtc != nullptr)
+        input_.rtc->shutdown();
+      stopped_.store(true);
+    });
+  }
+
+  [[nodiscard]] bool drained() const { return stopped_.load(); }
+
+  void finish()
+  {
+    requestStop();
+    stopper_.join();
+  }
+
+private:
+  static constexpr std::chrono::seconds kShutdownGrace{2};
+
+  ServerDrainInput input_;
+  std::jthread stopper_;
+  std::atomic<bool> stopped_{false};
+};
 
 }
 
@@ -151,14 +199,15 @@ int main()
            << "; /health on " << hostPort(healthListener.host,
                                           healthListener.port);
 
+  ServerDrain serverDrain({.server = server.get(), .rtc = rtc.get(), .streams = &voiceRpc});
+  shutdown_signal::onStop(shutdown_signal::drainOf(serverDrain, "voice-grpc"));
+
   drogon::app()
       .setThreadNum(0)
       .run();
 
-  server->Shutdown();
-  if (rtc) {
-    rtc->shutdown();
+  serverDrain.finish();
+  if (rtc)
     livekit::shutdown();
-  }
   return 0;
 }

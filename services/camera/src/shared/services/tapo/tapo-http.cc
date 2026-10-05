@@ -1,6 +1,7 @@
 #include "tapo-http.hxx"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cerrno>
 #include <cstring>
@@ -10,8 +11,11 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <openssl/err.h>
+#include <openssl/evp.h>
 #include <openssl/ssl.h>
+#include <openssl/x509.h>
 #include <poll.h>
+#include <string_view>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -19,6 +23,7 @@ namespace
 {
 
 constexpr size_t kReadChunk = 8192;
+constexpr std::string_view kHexDigits = "0123456789abcdef";
 constexpr size_t kMaxHeaderBytes = 64 * 1024;
 constexpr size_t kMaxBodyBytes = 8 * 1024 * 1024;
 
@@ -57,6 +62,25 @@ bool waitReady(const WaitReadyInput& input)
   }
 }
 
+std::string fingerprintOf(SSL* ssl)
+{
+  const std::unique_ptr<X509, decltype(&X509_free)> certificate(SSL_get1_peer_certificate(ssl),
+                                                                &X509_free);
+  if (!certificate)
+    return {};
+  std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
+  unsigned int length = 0;
+  if (X509_digest(certificate.get(), EVP_sha256(), digest.data(), &length) != 1)
+    return {};
+  std::string hex;
+  hex.reserve(static_cast<size_t>(length) * 2);
+  for (unsigned int i = 0; i < length; ++i) {
+    hex.push_back(kHexDigits[digest.at(i) >> 4]);
+    hex.push_back(kHexDigits[digest.at(i) & 0x0F]);
+  }
+  return hex;
+}
+
 }
 
 struct TapoConnection::Impl
@@ -68,6 +92,7 @@ struct TapoConnection::Impl
   std::string buffer;
   size_t cursor{0};
   std::string error;
+  std::string fingerprint;
 
   ~Impl() { reset(); }
 
@@ -81,6 +106,7 @@ struct TapoConnection::Impl
     }
     buffer.clear();
     cursor = 0;
+    fingerprint.clear();
   }
 
   bool fill()
@@ -89,11 +115,11 @@ struct TapoConnection::Impl
       buffer.clear();
       cursor = 0;
     }
-    char chunk[kReadChunk];
+    std::array<char, kReadChunk> chunk{};
     int received = 0;
     for (;;) {
       if (ssl) {
-        received = SSL_read(ssl.get(), chunk, static_cast<int>(sizeof(chunk)));
+        received = SSL_read(ssl.get(), chunk.data(), static_cast<int>(chunk.size()));
         if (received > 0)
           break;
         const int reason = SSL_get_error(ssl.get(), received);
@@ -113,7 +139,7 @@ struct TapoConnection::Impl
         error = "tls read failed";
         return false;
       }
-      received = static_cast<int>(::recv(fd, chunk, sizeof(chunk), 0));
+      received = static_cast<int>(::recv(fd, chunk.data(), chunk.size(), 0));
       if (received > 0)
         break;
       if (received == 0) {
@@ -133,7 +159,7 @@ struct TapoConnection::Impl
       error = std::strerror(errno);
       return false;
     }
-    buffer.append(chunk, static_cast<size_t>(received));
+    buffer.append(chunk.data(), static_cast<size_t>(received));
     return true;
   }
 };
@@ -234,6 +260,12 @@ bool TapoConnection::open(const TapoEndpoint& endpoint)
       return false;
     }
     impl_->error = "TLS handshake failed";
+    close();
+    return false;
+  }
+  impl_->fingerprint = fingerprintOf(impl_->ssl.get());
+  if (!endpoint.pin.empty() && impl_->fingerprint != endpoint.pin) {
+    impl_->error = "TLS certificate changed since it was pinned";
     close();
     return false;
   }
@@ -343,6 +375,11 @@ bool TapoConnection::readSome(std::string& out)
 const std::string& TapoConnection::error() const
 {
   return impl_->error;
+}
+
+const std::string& TapoConnection::peerFingerprint() const
+{
+  return impl_->fingerprint;
 }
 
 std::string TapoHttpResponse::header(const std::string& name) const
@@ -455,6 +492,7 @@ TapoHttpResponse TapoHttp::send(const TapoHttpRequest& request)
     response.error = connection.error();
     return response;
   }
+  response.fingerprint = connection.peerFingerprint();
   if (!connection.write(buildRequestHead(request) + request.body)) {
     response.error = connection.error();
     return response;

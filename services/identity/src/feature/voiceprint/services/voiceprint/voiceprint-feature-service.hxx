@@ -14,6 +14,7 @@
 #include <shared/services/privacy/privacy-gate.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct VoiceprintIdentifyResult
@@ -47,10 +48,15 @@ struct VoiceprintForgetRequest
   int64_t subjectId{0};
 };
 
+inline constexpr std::string_view kVoiceEraseConsentWithdrawn = "consentWithdrawn";
+inline constexpr std::string_view kVoiceEraseBiometrics = "biometricsErased";
+
 struct VoiceprintEraseInput
 {
   int64_t actorId{0};
   int64_t subjectId{0};
+  std::string_view reason{kVoiceEraseConsentWithdrawn};
+  bool byOwner{false};
   drogon::orm::DbClient* client{nullptr};
 };
 
@@ -83,7 +89,7 @@ public:
   [[nodiscard]] drogon::Task<VoiceprintEraseResult>
   eraseForConsent(const VoiceprintEraseInput& input) const;
 
-  static void dropFromIndex(const VoiceprintEraseResult& erased);
+  static drogon::Task<void> dropFromIndex(VoiceprintEraseResult erased);
 
   [[nodiscard]] const IdentityVoiceprintConfig& config() const
   {

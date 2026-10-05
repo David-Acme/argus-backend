@@ -12,6 +12,8 @@
 #include <feature/camera-control/dtos/camera-ptz-dto.hxx>
 #include <feature/camera/dtos/create-camera-dto.hxx>
 #include <feature/camera/dtos/update-camera-dto.hxx>
+#include <feature/camera/services/camera-probe-service.hxx>
+#include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/services/camera-driver/stream-only-driver.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 #include <feature/zone/controllers/zone-controller.hxx>
@@ -82,6 +84,8 @@ void seedCameraDb(const char* path)
       "config TEXT NOT NULL DEFAULT '{}', "
       "is_enabled INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)), "
       "is_online INTEGER NOT NULL DEFAULT 0, "
+      "tls_fingerprint TEXT NOT NULL DEFAULT '', "
+      "tapo_secure INTEGER NOT NULL DEFAULT 0, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
   exec(db.get(),
@@ -232,7 +236,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
 
   Json::Value createBody;
   createBody["name"] = "Contract Cam";
-  createBody["ip"] = "127.0.0.1";
+  createBody["ip"] = "192.168.1.30";
   createBody["port"] = 554;
   createBody["driver"] = "tapo";
   createBody["retentionDays"] = Json::Int64(7);
@@ -246,7 +250,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   const int64_t cameraId = cam["id"].asInt64();
   CHECK(cameraId > 0);
   CHECK(cam["name"] == "Contract Cam");
-  CHECK(cam["ip"] == "127.0.0.1");
+  CHECK(cam["ip"] == "192.168.1.30");
   CHECK(cam["port"].asInt() == 554);
   CHECK(cam["driver"] == "tapo");
   CHECK(cam["username"] == "");
@@ -274,6 +278,38 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
       cameraController.update(drogon::HttpRequest::newHttpJsonRequest(toTapo), cameraId));
   CHECK(body(talking)["info"]["capabilities"].asString().find("\"talk\"") != std::string::npos);
   checkNoCredentials(body(talking)["info"]);
+  {
+    const auto stored = drogon::sync_wait(CameraRepository().findById(cameraId));
+    REQUIRE(stored);
+    CHECK(stored->cloudPassword == "cloud-secret");
+  }
+  Json::Value moved;
+  moved["ip"] = "192.168.1.31";
+  const auto relocated = drogon::sync_wait(
+      cameraController.update(drogon::HttpRequest::newHttpJsonRequest(moved), cameraId));
+  CHECK(body(relocated)["info"]["ip"] == "192.168.1.31");
+  {
+    const auto stored = drogon::sync_wait(CameraRepository().findById(cameraId));
+    REQUIRE(stored);
+    CHECK(stored->cloudPassword.empty());
+    CHECK(stored->password.empty());
+    CHECK(stored->tlsFingerprint.empty());
+  }
+  Json::Value tooLong;
+  tooLong["retentionDays"] = Json::Int64(90);
+  const auto refusedRetention = refusalOf(
+      cameraController.update(drogon::HttpRequest::newHttpJsonRequest(tooLong), cameraId));
+  REQUIRE(refusedRetention);
+  CHECK(refusedRetention->status == 422);
+  tooLong["retentionIncident"] = true;
+  const auto incident = drogon::sync_wait(
+      cameraController.update(drogon::HttpRequest::newHttpJsonRequest(tooLong), cameraId));
+  CHECK(body(incident)["info"]["retentionDays"].asInt64() == 90);
+  Json::Value closedIncident;
+  closedIncident["retentionIncident"] = false;
+  const auto capped = drogon::sync_wait(
+      cameraController.update(drogon::HttpRequest::newHttpJsonRequest(closedIncident), cameraId));
+  CHECK(body(capped)["info"]["retentionDays"].asInt64() == 60);
 
   const auto ptz = [](const char* body) { return CameraPtzDto::fromJson(json_util::fromString(body)); };
   CHECK(ptz(R"({"x":-10,"y":0})").x == -10);
@@ -464,7 +500,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   const auto stamp = std::chrono::duration_cast<std::chrono::milliseconds>(
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
-  SnapshotStore::instance().putFrame(cameraId2, "jpeg", stamp);
+  SnapshotStore::instance().putFrame({.cameraId = cameraId2, .jpeg = "jpeg", .atMs = stamp});
   const auto snapshot = drogon::sync_wait(controlController.snapshot(nullptr, cameraId2));
   const Json::Value picture = body(snapshot)["info"];
   CHECK(picture["image"].asString() == "data:image/jpeg;base64,anBlZw==");
@@ -561,6 +597,21 @@ TEST_CASE("a camera lives on the local network and its stream paths are plain")
   CHECK(parsed.subStreamPath == "/Streaming/Channels/102");
   create["retentionDays"] = static_cast<Json::Int64>(-1);
   CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "retentionDays"));
+  create["retentionDays"] = static_cast<Json::Int64>(61);
+  CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "retentionDays"));
+  create["retentionIncident"] = true;
+  CHECK(CreateCameraDto::fromJson(create).retentionDays == 61);
+  create["retentionDays"] = static_cast<Json::Int64>(121);
+  CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "retentionDays"));
+  create.removeMember("retentionIncident");
+  create["retentionDays"] = static_cast<Json::Int64>(30);
+  create["ip"] = "127.0.0.1";
+  CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "ip"));
+  create["ip"] = "169.254.169.254";
+  CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "ip"));
+  create["ip"] = "::1";
+  CHECK(refusesField([&] { return CreateCameraDto::fromJson(create); }, "ip"));
+  create["ip"] = "192.168.1.60";
 
   Json::Value update;
   update["port"] = 0;
@@ -582,8 +633,9 @@ TEST_CASE("a camera lives on the local network and its stream paths are plain")
 
 TEST_CASE("a removed camera leaves nothing behind in the snapshot store")
 {
-  SnapshotStore::instance().putFrame(4242, "jpeg-bytes", 1);
-  SnapshotStore::instance().putPersonCrop(4242, 7, "crop-bytes", 1);
+  SnapshotStore::instance().putFrame({.cameraId = 4242, .jpeg = "jpeg-bytes", .atMs = 1});
+  SnapshotStore::instance().putPersonCrop(
+      {.cameraId = 4242, .trackId = 7, .jpeg = "crop-bytes", .atMs = 1});
   REQUIRE(SnapshotStore::instance().frame(4242).has_value());
   SnapshotStore::instance().forget(4242);
   CHECK_FALSE(SnapshotStore::instance().frame(4242).has_value());
@@ -618,4 +670,42 @@ TEST_CASE("a stream-only camera answers its capabilities with every control off"
   const DriverResult moved = driver.move({.x = std::nullopt, .y = std::nullopt, .angle = 90});
   CHECK_FALSE(moved.ok);
   CHECK(moved.error.find("stream video only") != std::string::npos);
+}
+
+TEST_CASE("a probe reuses stored secrets only against the stored address, one at a time per user")
+{
+  CameraSchema stored;
+  stored.ip = "192.168.1.30";
+  stored.port = 554;
+  ProbeCameraDto body;
+  body.ip = "192.168.1.30";
+  body.port = 554;
+  body.cameraId = 4;
+  CHECK(camera_probe::reusesStoredSecrets(body));
+  CHECK(camera_probe::storedAddressMatches({.body = body, .stored = stored}));
+  body.ip = "192.168.1.99";
+  CHECK_FALSE(camera_probe::storedAddressMatches({.body = body, .stored = stored}));
+  body.ip = "192.168.1.30";
+  body.port = 8554;
+  CHECK_FALSE(camera_probe::storedAddressMatches({.body = body, .stored = stored}));
+  body.password = "typed";
+  body.cloudPassword = "typed-cloud";
+  CHECK_FALSE(camera_probe::reusesStoredSecrets(body));
+
+  ProbeSlots slots;
+  auto first = slots.acquire(7);
+  CHECK(first.has_value());
+  CHECK_FALSE(slots.acquire(7).has_value());
+  CHECK(slots.acquire(8).has_value());
+  first.reset();
+  CHECK(slots.acquire(7).has_value());
+}
+
+TEST_CASE("an ack only releases what its own socket was sent")
+{
+  CameraStreamSink sink(nullptr, 100);
+  CHECK(sink.tryReserve(80));
+  CHECK(sink.release(500) == 80);
+  CHECK(sink.release(10) == 0);
+  CHECK(sink.release(-5) == 0);
 }

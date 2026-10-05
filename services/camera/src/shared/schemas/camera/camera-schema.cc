@@ -1,5 +1,7 @@
 #include "camera-schema.hxx"
 
+#include <shared/services/secret-box/secret-box.hxx>
+
 CameraSchema::CameraSchema(const drogon::orm::Row& row)
 {
   id = static_cast<int64_t>(row["id"].as<long long>());
@@ -10,10 +12,12 @@ CameraSchema::CameraSchema(const drogon::orm::Row& row)
   port = row["port"].as<int32_t>();
   username = row["username"].as<std::string>();
   cloudUsername = row["cloud_username"].as<std::string>();
-  cloudPassword = row["cloud_password"].as<std::string>();
+  cloudPassword = secret_box::open({.stored = row["cloud_password"].as<std::string>(),
+                                    .label = camera_secret::kCloudPasswordLabel});
   driver = cameraDriverFromString(row["driver"].as<std::string>());
   icon = row["icon"].as<std::string>();
-  password = row["password"].as<std::string>();
+  password = secret_box::open({.stored = row["password"].as<std::string>(),
+                               .label = camera_secret::kPasswordLabel});
   recordMode = cameraRecordModeFromString(row["record_mode"].as<std::string>());
   if (!row["retention_days"].isNull())
     retentionDays = static_cast<int64_t>(row["retention_days"].as<long long>());
@@ -21,6 +25,8 @@ CameraSchema::CameraSchema(const drogon::orm::Row& row)
   config = row["config"].as<std::string>();
   isEnabled = row["is_enabled"].as<int>() != 0;
   isOnline = row["is_online"].as<int>() != 0;
+  tlsFingerprint = row["tls_fingerprint"].as<std::string>();
+  tapoSecure = row["tapo_secure"].as<int>() != 0;
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
   if (!row["updated_at"].isNull())
     updatedAt = static_cast<int64_t>(row["updated_at"].as<long long>());

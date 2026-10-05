@@ -46,7 +46,7 @@ DetectedObject vehicleAt(float x, float y)
 
 struct SquareZoneInput
 {
-  const char* kind{nullptr};
+  ZoneType kind{ZoneType::Monitor};
   float fromX{0};
   float fromY{0};
   float toX{0};
@@ -56,7 +56,7 @@ struct SquareZoneInput
 OperatorZone squareZone(const SquareZoneInput& input)
 {
   OperatorZone zone;
-  zone.name = input.kind;
+  zone.name = zoneTypeToString(input.kind);
   zone.kind = input.kind;
   zone.points = {{input.fromX, input.fromY},
                  {input.toX, input.fromY},
@@ -121,7 +121,7 @@ TEST_CASE("a person below the dwell gate never reaches the person rules")
 TEST_CASE("rule 1: an object centered in an exclude zone drops the event")
 {
   auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
-  input.zones.push_back(squareZone({.kind = "exclude", .fromX = 0.25f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Exclude, .fromX = 0.25f,
             .fromY = 0.25f, .toX = 0.75f, .toY = 0.75f}));
 
   const auto outcome = EventIntelligence::evaluate(input);
@@ -132,7 +132,7 @@ TEST_CASE("rule 1: an object centered in an exclude zone drops the event")
 TEST_CASE("rule 3: person inside an alert zone is critical")
 {
   auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
-  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.25f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Alert, .fromX = 0.25f,
             .fromY = 0.25f, .toX = 0.75f, .toY = 0.75f}));
 
   const auto outcome = EventIntelligence::evaluate(input);
@@ -144,7 +144,7 @@ TEST_CASE("rule 3: person inside an alert zone is critical")
 TEST_CASE("rule 4: person inside a monitor zone is warning")
 {
   auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
-  input.zones.push_back(squareZone({.kind = "monitor", .fromX = 0.25f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Monitor, .fromX = 0.25f,
             .fromY = 0.25f, .toX = 0.75f, .toY = 0.75f}));
 
   const auto outcome = EventIntelligence::evaluate(input);
@@ -156,24 +156,24 @@ TEST_CASE("rule 4: person inside a monitor zone is warning")
 TEST_CASE("the zone a person stands in travels by name beside its kind")
 {
   auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
-  auto door = squareZone({.kind = "monitor", .fromX = 0.0f, .fromY = 0.0f,
+  auto door = squareZone({.kind = ZoneType::Monitor, .fromX = 0.0f, .fromY = 0.0f,
                           .toX = 1.0f, .toY = 1.0f});
   door.name = "Back door";
-  auto porch = squareZone({.kind = "alert", .fromX = 0.25f, .fromY = 0.25f,
+  auto porch = squareZone({.kind = ZoneType::Alert, .fromX = 0.25f, .fromY = 0.25f,
                            .toX = 0.75f, .toY = 0.75f});
   porch.name = "Porch";
   input.zones = {door, porch};
 
   const auto outcome = EventIntelligence::evaluate(input);
   REQUIRE(outcome.objects.size() == 1);
-  CHECK(outcome.objects.front().zoneKind == "alert");
+  CHECK(outcome.objects.front().zoneKind == ZoneType::Alert);
   CHECK(outcome.objects.front().zoneName == "Porch");
 
   auto outside = baseInput({personAt({.x = 0, .y = 0, .w = 20, .h = 20})});
   outside.zones = {porch};
   const auto outsideOutcome = EventIntelligence::evaluate(outside);
   REQUIRE(outsideOutcome.objects.size() == 1);
-  CHECK(outsideOutcome.objects.front().zoneKind.empty());
+  CHECK_FALSE(outsideOutcome.objects.front().zoneKind.has_value());
   CHECK(outsideOutcome.objects.front().zoneName.empty());
 }
 
@@ -261,7 +261,7 @@ TEST_CASE("rule 2: a matched known person dominates the zone rules")
 {
   KnownPerson7Matcher matcher;
   auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
-  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.25f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Alert, .fromX = 0.25f,
             .fromY = 0.25f, .toX = 0.75f, .toY = 0.75f}));
   input.matcher = &matcher;
   static std::vector<uint8_t> frame(640 * 480 * 3, 128);
@@ -279,7 +279,7 @@ TEST_CASE("the no-match matcher keeps the zone rule severity")
 {
   NoKnownPersonMatcher matcher;
   auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
-  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.25f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Alert, .fromX = 0.25f,
             .fromY = 0.25f, .toX = 0.75f, .toY = 0.75f}));
   input.matcher = &matcher;
   static std::vector<uint8_t> frame(640 * 480 * 3, 128);
@@ -296,7 +296,7 @@ TEST_CASE("an enrolled unknown keeps the zone severity and carries its person id
 {
   UnknownPerson9Matcher matcher;
   auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
-  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.25f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Alert, .fromX = 0.25f,
             .fromY = 0.25f, .toX = 0.75f, .toY = 0.75f}));
   input.matcher = &matcher;
   static std::vector<uint8_t> frame(640 * 480 * 3, 128);
@@ -332,9 +332,9 @@ TEST_CASE("a companion in an exclude zone cannot veto the primary")
 
   auto input = baseInput({primary, companion});
   input.primaryTrackId = 1;
-  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.0f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Alert, .fromX = 0.0f,
             .fromY = 0.0f, .toX = 0.2f, .toY = 0.3f}));
-  input.zones.push_back(squareZone({.kind = "exclude", .fromX = 0.5f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Exclude, .fromX = 0.5f,
             .fromY = 0.0f, .toX = 0.8f, .toY = 0.3f}));
 
   const auto outcome = EventIntelligence::evaluate(input);
@@ -352,9 +352,9 @@ TEST_CASE("the primary's zone decides even when a companion is in alert")
 
   auto input = baseInput({primary, companion});
   input.primaryTrackId = 1;
-  input.zones.push_back(squareZone({.kind = "monitor", .fromX = 0.0f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Monitor, .fromX = 0.0f,
             .fromY = 0.0f, .toX = 0.2f, .toY = 0.3f}));
-  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.5f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Alert, .fromX = 0.5f,
             .fromY = 0.0f, .toX = 0.8f, .toY = 0.3f}));
 
   const auto outcome = EventIntelligence::evaluate(input);
@@ -372,7 +372,7 @@ TEST_CASE("legacy frames without a primary keep the frame-wide exclude")
 
   auto input = baseInput({person, companion});
   input.primaryTrackId = 0;
-  input.zones.push_back(squareZone({.kind = "exclude", .fromX = 0.5f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Exclude, .fromX = 0.5f,
             .fromY = 0.0f, .toX = 0.8f, .toY = 0.3f}));
 
   const auto outcome = EventIntelligence::evaluate(input);
@@ -406,9 +406,9 @@ TEST_CASE("an unknown primary intruder ignores a known companion in exclude")
   input.matcher = &matcher;
   static std::vector<uint8_t> frame(640 * 480 * 3, 128);
   input.frameRgb = frame.data();
-  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.0f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Alert, .fromX = 0.0f,
             .fromY = 0.0f, .toX = 0.2f, .toY = 0.3f}));
-  input.zones.push_back(squareZone({.kind = "exclude", .fromX = 0.5f,
+  input.zones.push_back(squareZone({.kind = ZoneType::Exclude, .fromX = 0.5f,
             .fromY = 0.0f, .toX = 0.8f, .toY = 0.3f}));
 
   const auto outcome = EventIntelligence::evaluate(input);

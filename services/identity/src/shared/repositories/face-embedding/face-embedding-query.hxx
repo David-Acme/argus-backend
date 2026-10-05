@@ -38,6 +38,12 @@ inline constexpr std::string_view VEC_DELETE =
 
 inline constexpr std::string_view VEC_COUNT = "SELECT COUNT(*) FROM face_vec";
 
+inline constexpr std::string_view VEC_ROWIDS = "SELECT rowid FROM face_vec";
+
+inline constexpr std::string_view FIND_INDEXABLE =
+    "SELECT id, person_id, embedding FROM face_embedding "
+    "WHERE model = ? AND length(embedding) = ?";
+
 inline constexpr std::string_view VEC_STALE =
     "SELECT rowid FROM face_vec "
     "WHERE rowid NOT IN (SELECT id FROM face_embedding WHERE model = ?)";

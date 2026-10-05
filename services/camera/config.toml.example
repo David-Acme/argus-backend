@@ -33,6 +33,7 @@ plain = false
 min_protocol = "TLSv1.2"
 db = "database/camera.db"
 schema = "services/camera/database/schema.sql"
+secret_key = ""
 
 [cert]
 server_cert = "certs/server.pem"
@@ -63,6 +64,7 @@ hub_gop_cache_bytes = 2097152
 hub_max_subs_per_client = 8
 max_viewers_per_camera = 4
 max_total_viewers = 8
+max_webrtc_per_user = 4
 
 [tts]
 remote_url = "127.0.0.1:7029"
@@ -73,7 +75,6 @@ url = "nats://127.0.0.1:4222"
 
 [jwt]
 secret = ""
-refresh_secret = ""
 access_ttl_minutes = 15
 refresh_ttl_days = 30
 

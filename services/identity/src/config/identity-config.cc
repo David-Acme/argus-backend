@@ -85,6 +85,20 @@ IdentityFaceConfig IdentityConfig::resolveFace()
 {
   IdentityFaceConfig config;
   config.enabled = ConfigService::getBool("face.enabled");
+  if (ConfigService::hasKey("face.liveness_required"))
+    config.livenessRequired = ConfigService::getBool("face.liveness_required");
+  if (ConfigService::hasKey("face.liveness_threshold"))
+    config.livenessThreshold = std::clamp(
+        static_cast<float>(ConfigService::getDouble("face.liveness_threshold")),
+        IdentityFaceConfig::kMinLivenessThreshold,
+        IdentityFaceConfig::kMaxLivenessThreshold);
+  if (const std::string dir = ConfigService::getString("face.liveness_model_dir");
+      !dir.empty())
+    config.livenessModelDir = dir;
+  if (ConfigService::hasKey("face.login_margin"))
+    config.loginMargin = std::clamp(
+        static_cast<float>(ConfigService::getDouble("face.login_margin")), 0.0F,
+        IdentityFaceConfig::kMaxLoginMargin);
   return config;
 }
 
@@ -133,6 +147,26 @@ IdentityVoiceprintConfig IdentityConfig::resolveVoiceprint()
         std::clamp<int64_t>(ConfigService::getInt("voiceprint.call_idle_minutes"),
                             1, 60) *
         kSecondsPerMinute;
+  return config;
+}
+
+IdentityRateLimitConfig IdentityConfig::resolveRateLimit()
+{
+  IdentityRateLimitConfig config;
+  if (ConfigService::hasKey("rate_limit.enabled"))
+    config.enabled = ConfigService::getBool("rate_limit.enabled");
+  if (ConfigService::hasKey("rate_limit.window_seconds"))
+    config.windowSeconds =
+        std::clamp(ConfigService::getInt("rate_limit.window_seconds"), 1, 3600);
+  if (ConfigService::hasKey("rate_limit.max_requests"))
+    config.maxRequests =
+        std::clamp(ConfigService::getInt("rate_limit.max_requests"), 1, 1000);
+  if (ConfigService::hasKey("rate_limit.lockout_threshold"))
+    config.lockoutThreshold =
+        std::clamp(ConfigService::getInt("rate_limit.lockout_threshold"), 1, 100);
+  if (ConfigService::hasKey("rate_limit.lockout_seconds"))
+    config.lockoutSeconds =
+        std::clamp(ConfigService::getInt("rate_limit.lockout_seconds"), 1, 86400);
   return config;
 }
 

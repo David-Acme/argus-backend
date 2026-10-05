@@ -17,6 +17,7 @@
 #include <text/json-util.hxx>
 #include <text/sha256.hxx>
 #include <runtime/blocking-task.hxx>
+#include <shared/utils/in-flight/in-flight.hxx>
 #include <string>
 #include <trantor/utils/Logger.h>
 #include <vector>
@@ -869,11 +870,28 @@ CameraActionRpcService::Listen(grpc::CallbackServerContext* context,
           co_return;
         }
 
+        if (!CameraAudioPolicy::instance().allowed()) {
+          const auto fence = co_await settleFenced({.commandId = commandId,
+                                                    .generation = verdict.generation,
+                                                    .status = "rejected",
+                                                    .detail = "audio_withheld",
+                                                    .response = {}});
+          responseWriter->set_outcome(fence.won ? CameraCommandOutcome::REJECTED : fence.outcome);
+          reactor->Finish(grpc::Status::OK);
+          co_return;
+        }
         const std::string url = Go2rtcManager::instance().rtspBase() + "/" +
                                 Go2rtcManager::sourceFor(cameraId, CameraStreamRole::Listening);
         dispatched = true;
         const auto captured =
             co_await BlockingTask<AudioCaptureResult>([url, seconds]() {
+              if (!CameraAudioPolicy::instance().allowed())
+                return AudioCaptureResult{.ok = false,
+                                          .status = AudioCaptureStatus::InvalidAudio,
+                                          .speechDetected = false,
+                                          .endpointed = false,
+                                          .samples = {},
+                                          .error = "audio_withheld"};
               return audio_capture::capture(
                   {.url = url, .seconds = seconds, .endpoint = true});
             });
@@ -966,62 +984,96 @@ CameraActionRpcService::Listen(grpc::CallbackServerContext* context,
 void CameraActionRpcService::startLeaseSweeper()
 {
   drogon::app().getLoop()->runEvery(5.0, [this]() {
-    drogon::async_run([this]() -> drogon::Task<void> {
-      try {
-        const int64_t recovered =
-            co_await commandRepository_.reconcileExpired(nowSeconds(),
-                                                         kCommandLeaseSeconds);
-      if (recovered > 0)
-        LOG_WARN << "Camera action: marked " << recovered
-                 << " lost in-flight command(s) indeterminate";
-      const auto expired =
-          co_await commandRepository_.expiredLeases(nowSeconds());
-      for (const int64_t cameraId : expired) {
-        const auto camera = co_await cameraRepository_.findById(cameraId);
-        if (!camera) {
-          LOG_ERROR << "Camera action: siren lease for camera " << cameraId
-                    << " has no camera row; keeping it and retrying";
-          continue;
-        }
-        const auto driver = CameraDriverRegistry::instance().driverFor(*camera);
-        if (!driver) {
-          LOG_ERROR << "Camera action: siren lease for camera " << cameraId
-                    << " has no reachable driver; keeping it and retrying";
-          continue;
-        }
-        const auto result = co_await BlockingTask<DriverResult>([driver]() {
-          return driver->settings({.privacy = std::nullopt,
-                                   .led = std::nullopt,
-                                   .dayNight = std::nullopt,
-                                   .motion = std::nullopt,
-                                   .motionSensitivity = std::nullopt,
-                                   .autoTrack = std::nullopt,
-                                   .alarm = false,
-                                   .alarmVolume = std::nullopt,
-                                   .sounding = false});
-        });
-        if (!result.ok) {
-          LOG_WARN << "Camera action: siren lease disarm failed for camera "
-                   << cameraId << "; retrying next sweep (" << result.error
-                   << ")";
-          continue;
-        }
-        if (!co_await commandRepository_.deleteLease(cameraId)) {
-          LOG_ERROR << "Camera action: siren lease delete failed for camera "
-                    << cameraId << " after disarm; retrying next sweep";
-          continue;
-        }
-        LOG_WARN << "Camera action: siren lease expired for camera " << cameraId
-                 << "; disarmed";
-      }
-      }
-      catch (const std::exception& error) {
-        LOG_WARN << "Camera action: lease sweep failed: " << error.what();
-      }
-      catch (...) {
-        LOG_WARN << "Camera action: lease sweep failed with unknown error";
-      }
-      co_return;
-    });
+    if (!stopping_.load(std::memory_order_acquire))
+      drogon::async_run([this]() { return sweepLeases(); });
   });
+  drogon::app().getLoop()->runEvery(3600.0, [this]() {
+    if (!stopping_.load(std::memory_order_acquire))
+      drogon::async_run([this]() { return purgeCommands(); });
+  });
+  drogon::app().getLoop()->runAfter(60.0, [this]() {
+    if (!stopping_.load(std::memory_order_acquire))
+      drogon::async_run([this]() { return purgeCommands(); });
+  });
+}
+
+void CameraActionRpcService::requestStop()
+{
+  stopping_.store(true, std::memory_order_release);
+}
+
+bool CameraActionRpcService::drained() const
+{
+  return inFlight_.load(std::memory_order_acquire) == 0;
+}
+
+drogon::Task<void> CameraActionRpcService::purgeCommands()
+{
+  const in_flight::Guard guard(inFlight_);
+  try {
+    const int64_t purged =
+        co_await commandRepository_.purgeSettled(nowSeconds() - kCommandRecordSeconds);
+    if (purged > 0)
+      LOG_INFO << "Camera action: purged " << purged
+               << " settled command record(s) and their transcripts";
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Camera action: command purge failed: " << error.what();
+  }
+}
+
+drogon::Task<void> CameraActionRpcService::sweepLeases()
+{
+  const in_flight::Guard guard(inFlight_);
+  try {
+    const int64_t recovered =
+        co_await commandRepository_.reconcileExpired(nowSeconds(), kCommandLeaseSeconds);
+    if (recovered > 0)
+      LOG_WARN << "Camera action: marked " << recovered
+               << " lost in-flight command(s) indeterminate";
+    const auto expired = co_await commandRepository_.expiredLeases(nowSeconds());
+    for (const int64_t cameraId : expired) {
+      const auto camera = co_await cameraRepository_.findById(cameraId);
+      if (!camera) {
+        LOG_ERROR << "Camera action: siren lease for camera " << cameraId
+                  << " has no camera row; keeping it and retrying";
+        continue;
+      }
+      const auto driver = CameraDriverRegistry::instance().driverFor(*camera);
+      if (!driver) {
+        LOG_ERROR << "Camera action: siren lease for camera " << cameraId
+                  << " has no reachable driver; keeping it and retrying";
+        continue;
+      }
+      const auto result = co_await BlockingTask<DriverResult>([driver]() {
+        return driver->settings({.privacy = std::nullopt,
+                                 .led = std::nullopt,
+                                 .dayNight = std::nullopt,
+                                 .motion = std::nullopt,
+                                 .motionSensitivity = std::nullopt,
+                                 .autoTrack = std::nullopt,
+                                 .alarm = false,
+                                 .alarmVolume = std::nullopt,
+                                 .sounding = false});
+      });
+      if (!result.ok) {
+        LOG_WARN << "Camera action: siren lease disarm failed for camera "
+                 << cameraId << "; retrying next sweep (" << result.error << ")";
+        continue;
+      }
+      if (!co_await commandRepository_.deleteLease(cameraId)) {
+        LOG_ERROR << "Camera action: siren lease delete failed for camera "
+                  << cameraId << " after disarm; retrying next sweep";
+        continue;
+      }
+      LOG_WARN << "Camera action: siren lease expired for camera " << cameraId
+               << "; disarmed";
+    }
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Camera action: lease sweep failed: " << error.what();
+  }
+  catch (...) {
+    LOG_WARN << "Camera action: lease sweep failed with unknown error";
+  }
 }

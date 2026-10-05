@@ -6,6 +6,7 @@
 #include <shared/vocabulary/camera-stream-paths.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
 #include <runtime/cancellation-token.hxx>
+#include <shared/repositories/camera/camera-repository.hxx>
 #include <trantor/utils/Logger.h>
 #include <utility>
 
@@ -13,9 +14,20 @@ namespace
 {
 constexpr int kSpeakWaitSeconds = 3;
 
+std::shared_ptr<TapoTrust> trustOf(const CameraSchema& camera)
+{
+  return std::make_shared<TapoTrust>(
+      TapoTrustState{.fingerprint = camera.tlsFingerprint, .secure = camera.tapoSecure},
+      [cameraId = camera.id](const TapoTrustState& state) {
+        CameraRepository::saveTapoTrust(
+            {.cameraId = cameraId, .fingerprint = state.fingerprint, .secure = state.secure});
+      });
+}
+
 TapoClientConfig controlConfig(const CameraSchema& camera)
 {
   TapoClientConfig config;
+  config.trust = trustOf(camera);
   config.host = camera.ip;
   config.port = static_cast<int>(ConfigService::getInt("tapo.control_port"));
   config.connectTimeoutMs = static_cast<int>(ConfigService::getInt("tapo.connect_timeout_ms"));

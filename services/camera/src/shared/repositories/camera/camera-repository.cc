@@ -1,12 +1,27 @@
 #include "camera-repository.hxx"
 
 #include <ctime>
+#include <shared/repositories/tombstone-page.hxx>
+#include <shared/services/secret-box/secret-box.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
 #include <string_view>
 #include <vector>
 
 using namespace camera_query;
+
+namespace
+{
+std::string sealPassword(const std::string& plain)
+{
+  return secret_box::seal({.plain = plain, .label = camera_secret::kPasswordLabel});
+}
+
+std::string sealCloudPassword(const std::string& plain)
+{
+  return secret_box::seal({.plain = plain, .label = camera_secret::kCloudPasswordLabel});
+}
+}
 
 drogon::Task<std::optional<CameraSchema>>
 CameraRepository::findById(int64_t id, drogon::orm::DbClient* client) const
@@ -54,8 +69,9 @@ CameraRepository::create(const CameraCreateInput& input) const
   const auto result =
       co_await client->execSqlCoro(INSERT.data(), input.name,
                                    input.manufacturer, input.model, input.ip,
-                                   input.port, input.username, input.password,
-                                   input.cloudUsername, input.cloudPassword,
+                                   input.port, input.username,
+                                   sealPassword(input.password), input.cloudUsername,
+                                   sealCloudPassword(input.cloudPassword),
                                    cameraDriverToString(input.driver), input.icon,
                                    cameraRecordModeToString(input.recordMode),
                                    input.retentionDays
@@ -114,9 +130,12 @@ CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
     args.push_back(std::to_string(*input.port));
   }
   addField(UPDATE_COL_USERNAME, input.username);
-  addField(UPDATE_COL_PASSWORD, input.password);
+  addField(UPDATE_COL_PASSWORD,
+           input.password ? std::optional(sealPassword(*input.password)) : std::nullopt);
   addField(UPDATE_COL_CLOUD_USERNAME, input.cloudUsername);
-  addField(UPDATE_COL_CLOUD_PASSWORD, input.cloudPassword);
+  addField(UPDATE_COL_CLOUD_PASSWORD,
+           input.cloudPassword ? std::optional(sealCloudPassword(*input.cloudPassword))
+                               : std::nullopt);
   if (input.driver) {
     if (!args.empty())
       sql += ", ";
@@ -149,6 +168,11 @@ CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
       sql += ", ";
     sql += UPDATE_COL_IS_ONLINE;
     args.push_back(*input.isOnline ? "1" : "0");
+  }
+
+  if (input.resetTapoTrust && !args.empty()) {
+    sql += ", ";
+    sql += UPDATE_COL_RESET_TRUST;
   }
 
   if (args.empty()) {
@@ -219,9 +243,18 @@ CameraRepository::findDeleted(const SyncFilter& filter) const
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 
   std::vector<Json::Value> data;
+  data.reserve(rows.size());
   for (const auto& row : rows)
     data.push_back(CameraSchema(row).toJson());
-  co_return data;
+  if (!tombstone_page::rereadsBoundary(filter))
+    co_return data;
+  const auto boundaryRows = co_await client->execSqlCoro(
+      FIND_DELETED_BOUNDARY.data(), *filter.startTime, *filter.startId);
+  std::vector<Json::Value> boundary;
+  boundary.reserve(boundaryRows.size());
+  for (const auto& row : boundaryRows)
+    boundary.push_back(CameraSchema(row).toJson());
+  co_return tombstone_page::merge({.boundary = std::move(boundary), .page = std::move(data)});
 }
 
 drogon::Task<std::optional<Json::Value>> CameraRepository::findLast(const SyncFilter&) const
@@ -241,4 +274,58 @@ CameraRepository::findLastDeleted(const SyncFilter&) const
   if (result.empty())
     co_return std::nullopt;
   co_return CameraSchema(result.front()).toJson();
+}
+
+bool CameraRepository::acceptTapoTrust()
+{
+  const auto client = DbService::cameraClient();
+  bool fingerprint = false;
+  bool secure = false;
+  for (const auto& row : client->execSqlSync(std::string(TABLE_COLUMNS))) {
+    const auto name = row["name"].as<std::string>();
+    fingerprint = fingerprint || name == "tls_fingerprint";
+    secure = secure || name == "tapo_secure";
+  }
+  if (!fingerprint)
+    client->execSqlSync(std::string(ADD_TLS_FINGERPRINT));
+  if (!secure)
+    client->execSqlSync(std::string(ADD_TAPO_SECURE));
+  if (!fingerprint || !secure)
+    LOG_INFO << "Camera schema: camera rows carry their Tapo certificate pin";
+  return true;
+}
+
+int64_t CameraRepository::sealPlaintextSecrets()
+{
+  if (!secret_box::hasKey())
+    return 0;
+  const auto client = DbService::cameraClient();
+  int64_t sealed = 0;
+  for (const auto& row : client->execSqlSync(std::string(PLAINTEXT_SECRETS))) {
+    const auto reseal = [](const std::string& stored, const char* label) {
+      return secret_box::isSealed(stored) ? stored
+                                          : secret_box::seal({.plain = stored, .label = label});
+    };
+    client->execSqlSync(
+        std::string(SEAL_SECRETS),
+        reseal(row["password"].as<std::string>(), camera_secret::kPasswordLabel),
+        reseal(row["cloud_password"].as<std::string>(), camera_secret::kCloudPasswordLabel),
+        row["id"].as<int64_t>());
+    ++sealed;
+  }
+  return sealed;
+}
+
+void CameraRepository::saveTapoTrust(const CameraTapoTrustInput& input)
+{
+  if (input.cameraId <= 0)
+    return;
+  DbService::cameraClient()->execSqlAsync(
+      std::string(SAVE_TAPO_TRUST),
+      [](const drogon::orm::Result&) {},
+      [cameraId = input.cameraId](const drogon::orm::DrogonDbException& error) {
+        LOG_WARN << "Camera " << cameraId << ": Tapo trust not saved ("
+                 << error.base().what() << ")";
+      },
+      input.fingerprint, input.secure ? 1 : 0, input.cameraId);
 }

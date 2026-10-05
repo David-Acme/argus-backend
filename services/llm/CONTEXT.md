@@ -82,11 +82,17 @@ scaffolds.
   - `POST /llm/v1/chat-stream` — same body; `Transfer-Encoding: chunked`
     text stream: every token callback flushed AS PRODUCED (arrival order
     preserved — the voice session's sentence chunker depends on it),
-    terminated by a final JSON sentinel line `\n{done:true,
-    prompt_tokens, reused_tokens, decoded_tokens}\n`. The sentinel is the
-    client's exact end-of-stream marker; token framing is "chunks until the
-    sentinel line". Generation runs on a producer thread (the TTS stream
-    pattern), the engine mutex serializes concurrent generations. A client
+    terminated by the sentinel `\x1e{done:true, prompt_tokens,
+    reused_tokens, decoded_tokens}\n`. The ASCII record separator (0x1E) is
+    out of band: the server strips it from every token before writing it,
+    so only the sentinel carries it and a model that writes
+    `{"done":true}` cannot end the stream (it used to, with the old
+    `\n{…}` sentinel). The sentinel is the client's exact end-of-stream
+    marker; token framing is "chunks until the 0x1E mark". Generation runs
+    on a worker of the Heavy blocking lane, admitted by `StreamSlots`
+    (at most the Heavy lane's thread cap minus one streams at a time; one
+    more is 429 `Busy`), and the engine mutex serializes concurrent
+    generations. It used to be one detached `std::thread` per request. A client
     that disconnects ends the generation at the next token: the token
     callback throws, as `ChatStream`'s does on a cancelled call, so a dropped
     request does not hold the engine for up to 4096 tokens.
@@ -288,7 +294,9 @@ only when `rpc.address` and at least one other caller are set.
   `grammar_required` aborts the generation instead of sampling free. Off-turn
   memory workers (`processCompact`/`processProfile`) pass an empty grammar
   explicitly.
-- `user_id` (D4) scopes tool execution to the authenticated caller.
+- `user_id` (D4) scopes tool execution to the authenticated caller. Who
+  may declare it is bounded per caller credential (see "Caller-bound
+  identity" below).
 
 ## Encounter-closed consumer (camera guard feed)
 
@@ -378,8 +386,9 @@ and the memory feature both read it, which is what `src/shared/` is for.
   snapshot's value. The plain wildcard subscription is gone: it existed for
   `camera_stream` rows, which nothing publishes today, and a future change to
   that table is camera's own, on the camera subject the replica already holds.
-  Every apply runs marshalled onto IOLoop 0 so the arrival order is the stream
-  order, and the host builds the replica whenever `nats.url` is set (not only
+  Every apply runs on one `BlockingStrand` of the Light lane, so the arrival
+  order is the stream order and the synchronous SQLite write no longer
+  blocks IOLoop 0 (it used to run there under the graph mutex), and the host builds the replica whenever `nats.url` is set (not only
   when `connect()` succeeds) so a bus that comes up later still attaches. On
   boot, replica tables still empty get ONE snapshot fill from the typed rows
   the host fetched over `argus.identity.v1.ListPersons` and
@@ -517,9 +526,12 @@ catalog-snapshot fill and by the encounter consumer),
 ## App tools (conversation mode)
 
 `feature/llm/services/tools/app-tool-descriptors.cc` registers
-`app.show_camera` (camera read), `app.open` (any role) and
-`app.set_guard_mode` (camera update, i.e. owner and resident, matching the
-guard surface in `role-access.hxx`). They are offered only when the
+`app.show_camera`, `app.open` and `app.set_guard_mode`. Who may run them is
+`role_access::hasAppAction` (`packages/lib/auth`), the one answer the voice
+session's offer path also asks: `ToolExecutor::permits` maps the three
+names to `AppAction` (`appActionOf`) and asks the helper instead of the
+descriptor's table pair, so `app.set_guard_mode` follows `/guard/mode` in
+`kGuardAccess` rather than camera update. They are offered only when the
 request sets `clientActions`, which only voice calls do; their handler
 hands the validated call to `ToolContext::emitAction`, which the
 controller turns into a `ClientAction` on the stream (`ChatToken.action`,
@@ -692,11 +704,15 @@ The voice session and argus-llm agreed this contract with the voice agent:
   when a row was closed. A note is many-valued (`supersedes = false`): every
   "anota que …" stays, and saving the same note twice keeps one row.
 - **`memory.forget` takes a `query`**, the fact in the user's words, instead
-  of a `fact_id` the model could only invent. It closes the user's open fact
-  that shares the most words with the query. The close is scoped to the
-  caller (`scope = 'user' AND ref_id = ?`) and succeeds only when a row
-  changed. Before, any id of any user closed, and "olvidado" was answered
-  even when nothing matched.
+  of a `fact_id` the model could only invent. It deletes the user's fact
+  that shares the most words with the query (see "Forgetting deletes"
+  below), scoped to the caller (`scope = 'user' AND ref_id = ?`), and
+  succeeds only when a row went. It runs only when the user's own
+  utterance asks to forget (`RuleParser::isCancellation`, and no save
+  trigger in it); otherwise the tool answers "Dime con tus palabras qué
+  quieres que olvide" and nothing is touched. A query that is not grounded
+  in the utterance is replaced by the utterance. Before, any id of any user
+  closed, and "olvidado" was answered even when nothing matched.
 - **Tool outputs are spoken material**: localized to the call's language,
   with no ids ("Guardado: mi hermana viene los domingos.", "Saved: …"). The
   app tools answer in the call's language too. `memory.recall` honours the
@@ -814,3 +830,102 @@ la mañana") schedules nothing. Whether the scheduled call rings, is only a
 notification or is spoken into a live call is the user's call preference
 (`assistant`), decided by the notification service. The descriptor no longer
 says "no suena ninguna alarma".
+
+## Audit fixes (2026-10-05, cloud audit #31-#35, #96-#99, #111)
+
+### Caller-bound identity (#32, #99)
+
+The gRPC leg used to accept the `user_id`, `caller_role`, `tools` and
+`client_actions` any listed caller declared, so the guard credential could
+run the memory tools as any user. The server now resolves which
+`[rpc.callers]` entry presented the credential and passes the request
+through `boundToCaller` (`feature/llm/controllers/llm-controller.hxx`):
+only the `voice` caller (`kIdentityCaller`) declares a user, a role, the
+tool loop, client actions and a session id; every other caller is a Guest
+with `userId = 0`, `tools = false`, no client actions and no session.
+argus-guard already sends `tools = false`, so nothing it relies on changes.
+
+The loopback HTTP leg applies the same rule when a `voice` entry exists in
+`[rpc.callers]`: a request that presents that secret in
+`x-argus-credential` keeps its declared identity, any other request is
+bound as an anonymous caller. The HTTP client sends `llm.grpc_credential`
+in that header on both legs. With no `voice` caller configured (the native
+default today) the HTTP leg keeps trusting the loopback, and boot logs a
+warning; `scripts/setup.sh` still has to pair `services/llm/config.toml`
+`[rpc.callers] voice` with `services/voice/config.toml` `[llm]
+grpc_credential` for native installs (owned by the setup script, not this
+service).
+
+### Actions that lower security or delete need the user's words (#31)
+
+- `app.set_guard_mode` to any mode but `armed` runs only when the user's
+  own utterance is that same command (`appCommandFor(utterance)` yields
+  `app.set_guard_mode` with the same mode). Otherwise the tool refuses and
+  tells the model to ask the user to say it ("pon la vigilancia en modo
+  casa"): that spoken command is the confirmation. The current mode is not
+  known here, so every non-`armed` mode is treated as possibly lowering.
+- `memory.forget` runs only when the utterance is a forget request (above).
+- Camera summaries, announcements and app notes reach the model as quoted
+  system notes, never as assistant turns (`services/voice/CONTEXT.md`).
+
+### Forgetting deletes (#33)
+
+`MemoryGraphRepository::forgetFact` deletes, in one `BEGIN IMMEDIATE`
+transaction on the vec0 connection (the only one that can touch
+`memory_vec`), the fact and every older version it superseded (the
+`supersedes` chain), their `memory_fact_fts` entries through FTS5's
+`'delete'` command, their `memory_vec` rows and their `supersedes` edges.
+The profile cache of that user is dropped. `embedAndStore` checks that the
+fact still exists under the vec lock before it writes vectors, so a queued
+embed cannot resurrect a forgotten fact's vectors.
+
+`memory_vec.memory_id` is now a signed key (`memory-vec.hxx`): a fact is
+its id, an episode is its negated id. Facts and episodes used to share the
+id space, so re-embedding fact 42 deleted episode 42's vectors and the
+recall could return an unrelated fact for an episode's vector. The vec0 DDL
+lives in `packages/lib/sqlite`, so the discriminator is the sign rather than
+a `kind` column. Vectors are written as float32 BLOBs instead of JSON text
+(sqlite-vec accepts both; old JSON rows still match).
+
+**Schema change, explicit development reset (root rule 17b).** A
+`memory.db` created before this change keeps episode vectors under
+positive ids and facts that the old `memory.forget` only closed. Reset the
+development store explicitly (stop argus-llm, delete
+`database/memory.db*`, start it) or re-embed; nothing here migrates or
+deletes a user's database on its own.
+
+### `procedure.run` removed (#96)
+
+The tool ran `MATCH` against `memory_procedure`, a plain table, so it
+always failed, and the table had no `scope`. Nothing wrote procedures
+(`recordProcedure` had no caller), so the tool, its handler, the
+repository code and the table are gone from `database/schema.sql`. An
+existing store keeps an unused empty table.
+
+### Streams, drains and the engine (#35, N1, #97)
+
+- `LlmService::generateStream` checks `loaded_` (now atomic), the context
+  and the model after taking the engine mutex, so a generation that waited
+  for the lock while `shutdown()` ran answers 503 instead of using a freed
+  context.
+- `main.cc` registers drains with `shutdown_signal::onStop` before
+  `run()`: the HTTP streams (`StreamSlots`, whose stop makes every token
+  callback abort), the gRPC server (`Shutdown` with a 2 s deadline on its
+  own thread), the encounter consumer and the catalog replica (new
+  deliveries are nak'd, drained when nothing is in flight) and the memory
+  worker (Compact/Profile jobs dropped, drained when the worker exits).
+- The encounter consumer and the catalog replica write SQLite on a Light
+  `BlockingStrand` each instead of `runInLoop` on IOLoop 0. The catalog
+  snapshot seed also runs inside the `BlockingTask` that fetches it.
+
+### Cost (performance items)
+
+- `embedAndStore` computes every embedding (chunks and the synonym view)
+  outside the `VecDb` mutex; the lock is held only for the dedup probe and
+  for the delete+insert, so a background embed no longer holds the recall
+  of a live turn for 50-300 ms.
+- The memory worker's extraction (NuExtract) waits for the chat engine to
+  be idle on every job, not only on `preferIdle` ones, so NuExtract, e5 and
+  the main model do not run at once on the same cores; a busy engine
+  requeues the job (dropped once the worker is stopping).
+- `ExtractionService::extractAsync` had no caller and is gone (#111).

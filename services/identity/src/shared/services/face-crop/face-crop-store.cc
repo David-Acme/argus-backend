@@ -2,6 +2,7 @@
 
 #include <drogon/drogon.h>
 #include <exception>
+#include <shared/repositories/pending-object-delete/pending-object-delete-repository.hxx>
 #include <storage/s3-storage-service.hxx>
 
 bool FaceCropStore::isConfigured() const
@@ -49,10 +50,18 @@ drogon::Task<void> FaceCropStore::remove(const std::string& key) const
   const S3StorageService storage;
   if (!storage.isConfigured() || key.empty())
     co_return;
+  bool removed = false;
   try {
     co_await storage.remove(key);
+    removed = true;
   }
   catch (const std::exception& error) {
-    LOG_WARN << "Face crop removal failed: " << error.what();
+    LOG_WARN << "Face crop removal failed; it waits for the deletion worker: "
+             << error.what();
   }
+  if (removed)
+    co_return;
+  const PendingObjectEnqueueInput pending{.objectKeys = {key}, .client = nullptr};
+  const PendingObjectDeleteRepository repository;
+  co_await repository.enqueue(pending);
 }

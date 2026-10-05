@@ -2,6 +2,7 @@
 
 #include <ctime>
 #include <drogon/drogon.h>
+#include <shared/repositories/tombstone-page.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
 #include <string_view>
@@ -158,9 +159,18 @@ ZoneRepository::findDeleted(const SyncFilter& filter) const
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 
   std::vector<Json::Value> data;
+  data.reserve(rows.size());
   for (const auto& row : rows)
     data.push_back(ZoneSchema(row).toJson());
-  co_return data;
+  if (!tombstone_page::rereadsBoundary(filter))
+    co_return data;
+  const auto boundaryRows = co_await client->execSqlCoro(
+      FIND_DELETED_BOUNDARY.data(), *filter.startTime, *filter.startId);
+  std::vector<Json::Value> boundary;
+  boundary.reserve(boundaryRows.size());
+  for (const auto& row : boundaryRows)
+    boundary.push_back(ZoneSchema(row).toJson());
+  co_return tombstone_page::merge({.boundary = std::move(boundary), .page = std::move(data)});
 }
 
 drogon::Task<std::optional<Json::Value>> ZoneRepository::findLast(const SyncFilter&) const

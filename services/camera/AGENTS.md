@@ -91,8 +91,9 @@ argus-camera/
                         stream paths a camera keeps in its config; tapo is
                         camera-driver's own protocol stack, event-stream's one
                         reader is operator, the change sink's readers are
-                        composition and the outbox suites, and geometry is
-                        header-only)
+                        composition and the outbox suites, and secret-box
+                        seals the camera passwords for the shared camera
+                        repository)
   config.toml.example   camera, streaming, YOLO object and operator settings;
                         [grpc] caller_guard, caller_sync, caller_llm and
                         caller_settings

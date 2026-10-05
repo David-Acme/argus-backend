@@ -35,6 +35,7 @@ public:
   explicit FaceDB(VecDb& vecDb) : vecDb_(vecDb) {}
 
   void init();
+  std::size_t repairIndex();
   void shutdown();
   bool insert(const FaceInsertInput& input);
   std::optional<std::pair<int64_t, float>> search(const float* query);

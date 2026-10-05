@@ -130,8 +130,8 @@ std::optional<PersonMatch> IdentityKnownPersonMatcher::match(
 
   const std::string image = encodeCrop(crop);
   if (!image.empty())
-    SnapshotStore::instance().putPersonCrop(crop.cameraId, crop.trackId, image,
-                                            stamp);
+    SnapshotStore::instance().putPersonCrop(
+        {.cameraId = crop.cameraId, .trackId = crop.trackId, .jpeg = image, .atMs = stamp});
   std::optional<PersonMatch> result;
   bool faceSeen = false;
   int scans = 0;

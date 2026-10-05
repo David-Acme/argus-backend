@@ -17,7 +17,8 @@ enum class CallEntryKind : uint8_t
   Event,
   User,
   Tone,
-  Assistant
+  Assistant,
+  Notice
 };
 
 struct CallEntry
@@ -45,6 +46,7 @@ public:
   void addUser(const std::string& text);
   void addTone(const std::string& tone);
   void addAssistant(const std::string& text);
+  void addNotice(const std::string& spoken);
   void rollbackUser();
   bool trim();
 

@@ -18,7 +18,7 @@ struct PairingRequestInput
 class PairingFeatureService
 {
 public:
-  [[nodiscard]] ResponsePairingDto pair(const PairingRequestInput& input) const;
+  [[nodiscard]] drogon::Task<ResponsePairingDto> pair(PairingRequestInput input) const;
   [[nodiscard]] drogon::Task<ResponsePairingStatusDto> status() const;
 
 private:

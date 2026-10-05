@@ -4,6 +4,8 @@
 #include <shared/services/stream/gop-cache.hxx>
 #include <shared/services/stream/upstream-http.hxx>
 
+#include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -235,4 +237,67 @@ TEST_CASE("a gop is fresh only while its last fragment is recent")
   CHECK(cache.freshAt({.nowMs = 1000, .maxAgeMs = 3000}));
   CHECK(cache.freshAt({.nowMs = 4000, .maxAgeMs = 3000}));
   CHECK_FALSE(cache.freshAt({.nowMs = 4001, .maxAgeMs = 3000}));
+}
+
+TEST_CASE("a malformed box marks the reader corrupt instead of parsing garbage")
+{
+  Collected collected;
+  auto reader = collectingReader(collected, false);
+  const std::string wire = initSegment({trak(1, "vide")}) + be32(4) + "moof" +
+                           fragment({.track = 1, .defaultFlags = kSyncSample, .trunFlags = 0x000001U, .trunValue = 0});
+  reader.feed(wire.data(), wire.size());
+  CHECK_FALSE(collected.init.empty());
+  CHECK(reader.corrupt());
+  CHECK(collected.fragments.empty());
+  reader.feed(wire.data(), wire.size());
+  CHECK(collected.fragments.empty());
+  reader.reset();
+  CHECK_FALSE(reader.corrupt());
+}
+
+TEST_CASE("an init segment that never reaches moov is bounded")
+{
+  Collected collected;
+  auto reader = collectingReader(collected, false);
+  const std::string filler = box({.type = "free", .body = std::string(1024 * 1024, 'f')});
+  for (int i = 0; i < 6 && !reader.corrupt(); ++i)
+    reader.feed(filler.data(), filler.size());
+  CHECK(reader.corrupt());
+  CHECK(collected.init.empty());
+}
+
+TEST_CASE("fragments split across many feeds come out whole and in order")
+{
+  Collected collected;
+  auto reader = collectingReader(collected, false);
+  std::string wire = initSegment({trak(1, "vide")});
+  for (int i = 0; i < 20; ++i)
+    wire += fragment({.track = 1, .defaultFlags = i % 5 == 0 ? kSyncSample : kDeltaSample,
+                      .trunFlags = 0x000001U, .trunValue = 0});
+  for (size_t offset = 0; offset < wire.size(); offset += 7)
+    reader.feed(wire.data() + offset, std::min<size_t>(7, wire.size() - offset));
+  REQUIRE(collected.fragments.size() == 20);
+  CHECK(collected.fragments[0].kind == FragmentKind::VideoKey);
+  CHECK(collected.fragments[1].kind == FragmentKind::VideoDelta);
+  CHECK(collected.fragments[5].kind == FragmentKind::VideoKey);
+  CHECK(collected.fragments[19].bytes ==
+        fragment({.track = 1, .defaultFlags = kDeltaSample, .trunFlags = 0x000001U, .trunValue = 0}));
+}
+
+TEST_CASE("only an HTTP 200 status line opens an upstream")
+{
+  CHECK(upstream_http::isOkStatusLine("HTTP/1.1 200 OK\r\nContent-Type: video/mp4"));
+  CHECK(upstream_http::isOkStatusLine("HTTP/1.0 200"));
+  CHECK_FALSE(upstream_http::isOkStatusLine("HTTP/1.1 500 Internal\r\nX-Note: 200"));
+  CHECK_FALSE(upstream_http::isOkStatusLine("HTTP/1.1 2000 Odd"));
+  CHECK_FALSE(upstream_http::isOkStatusLine("RTSP/1.0 200 OK"));
+}
+
+TEST_CASE("opening an upstream gives up at once when its stream is stopping")
+{
+  const std::atomic<bool> stopping{true};
+  const auto up = upstream_http::open(
+      {.host = "10.255.255.1", .port = 9, .path = "/", .timeoutSec = 10, .cancel = &stopping});
+  CHECK_FALSE(up.ok);
+  CHECK(up.fd == -1);
 }

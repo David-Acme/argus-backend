@@ -15,7 +15,7 @@ struct CatalogEntry
   const char* message;
 };
 
-constexpr std::array<CatalogEntry, 38> kCatalog{{
+constexpr std::array<CatalogEntry, 43> kCatalog{{
     {.name = "FaceNotRecognized",
      .definition = &IdentityErrors::FaceNotRecognized,
      .code = ErrorCode::Unauthorized,
@@ -206,6 +206,31 @@ constexpr std::array<CatalogEntry, 38> kCatalog{{
      .code = ErrorCode::Conflict,
      .status = 409,
      .message = "Recognition of recurring visitors is turned off"},
+    {.name = "LivenessCheckFailed",
+     .definition = &IdentityErrors::LivenessCheckFailed,
+     .code = ErrorCode::Unauthorized,
+     .status = 401,
+     .message = "The face did not pass the liveness check"},
+    {.name = "LivenessUnavailable",
+     .definition = &IdentityErrors::LivenessUnavailable,
+     .code = ErrorCode::ServiceUnavailable,
+     .status = 503,
+     .message = "The liveness check is unavailable"},
+    {.name = "FaceQualityInsufficient",
+     .definition = &IdentityErrors::FaceQualityInsufficient,
+     .code = ErrorCode::BadRequest,
+     .status = 422,
+     .message = "Retake the photo: one face, close to the camera, facing it and in focus"},
+    {.name = "TooManyAttempts",
+     .definition = &IdentityErrors::TooManyAttempts,
+     .code = ErrorCode::TooManyRequests,
+     .status = 429,
+     .message = "Too many attempts; try again later"},
+    {.name = "BiometricEraseOwnerOnly",
+     .definition = &IdentityErrors::BiometricEraseOwnerOnly,
+     .code = ErrorCode::Forbidden,
+     .status = 403,
+     .message = "Only an owner can erase biometric data"},
 }};
 
 constexpr std::size_t kMaxMessageBytes = 1024;
@@ -220,7 +245,7 @@ TEST_CASE("the identity catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 38);
+  CHECK(kCatalog.size() == 43);
 }
 
 TEST_CASE("every identity entry is legal on the wire")

@@ -100,13 +100,6 @@ struct SourceCreateInput
   int64_t at;
 };
 
-struct ProcedureRecordInput
-{
-  std::string name;
-  std::string goal;
-  std::string steps;
-};
-
 struct EpisodeCreateInput
 {
   std::string kind;

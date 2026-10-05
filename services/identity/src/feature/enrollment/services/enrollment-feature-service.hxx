@@ -8,6 +8,10 @@
 #include <shared/repositories/user-invitation/user-invitation-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/schemas/user/user-schema.hxx>
+#include <optional>
+#include <shared/services/face/face-check.hxx>
+#include <shared/services/face/face-db.hxx>
+#include <shared/services/face/member-match.hxx>
 #include <shared/services/storage/private-portrait-service.hxx>
 #include <string>
 #include <vector>
@@ -33,7 +37,10 @@ enum class EnrollmentOutcome : uint8_t
   InvitationInvalid,
   OwnerAlreadyExists,
   FaceIndexFailed,
-  AccountDisabled
+  AccountDisabled,
+  LivenessFailed,
+  LivenessUnavailable,
+  FaceQualityInsufficient
 };
 
 struct EnrollmentResult
@@ -56,10 +63,24 @@ public:
   [[nodiscard]] drogon::Task<EnrollmentResult>
   registerUser(const EnrollmentInput& input) const;
 
-private:
-  [[nodiscard]] drogon::Task<EnrollmentResult>
-  recognizeRegistered(const std::string& image) const;
+  [[nodiscard]] static EnrollmentOutcome outcomeOf(FaceCheckStatus status);
 
+private:
+  struct Admission
+  {
+    std::optional<EnrollmentOutcome> refusal;
+    bool initialOwner{false};
+    UserRole role{UserRole::Owner};
+    std::optional<UserInvitationSchema> invitation;
+    std::string invitationHash;
+  };
+
+  [[nodiscard]] drogon::Task<Admission> admit(const EnrollmentInput& input) const;
+  [[nodiscard]] drogon::Task<EnrollmentResult>
+  signInRegistered(const MemberMatch& match) const;
+  [[nodiscard]] static bool indexFace(const FaceInsertInput& input);
+
+  MemberMatcher matcher_;
   EnrollmentRepository enrollmentRepository_;
   UserRepository userRepository_;
   PersonRepository personRepository_;

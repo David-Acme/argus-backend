@@ -290,11 +290,12 @@ TEST_CASE("a fixed Tapo camera offers no pan and tilt, an unknown model keeps ev
 TEST_CASE("the catalog id lives in the camera config beside the stream paths")
 {
   const std::string config = camera_stream_paths::withConfig(
-      {.config = R"({"streamPath":"/a"})", .main = std::nullopt, .sub = std::nullopt, .catalogId = "reolink"});
+      {.config = R"({"streamPath":"/a"})", .main = std::nullopt, .sub = std::nullopt, .catalogId = "reolink", .retentionIncident = std::nullopt});
   CHECK(camera_stream_paths::catalogIdOf(config) == "reolink");
   CHECK(camera_stream_paths::of(config).main == "/a");
   const std::string cleared = camera_stream_paths::withConfig(
-      {.config = config, .main = std::nullopt, .sub = std::nullopt, .catalogId = ""});
+      {.config = config, .main = std::nullopt, .sub = std::nullopt, .catalogId = "",
+       .retentionIncident = std::nullopt});
   CHECK(camera_stream_paths::catalogIdOf(cleared).empty());
 }
 

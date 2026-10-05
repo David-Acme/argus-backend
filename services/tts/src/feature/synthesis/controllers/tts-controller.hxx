@@ -4,10 +4,13 @@
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <drogon/utils/coroutine.h>
+#include <feature/synthesis/services/stream-slots.hxx>
 
 class TtsController : public drogon::HttpController<TtsController, false>
 {
 public:
+  TtsController();
+
   METHOD_LIST_BEGIN
   ADD_METHOD_TO(TtsController::synthesize, "/tts/v1/synthesize", drogon::Post,
                 "ValidJsonFilter");
@@ -21,4 +24,9 @@ public:
   drogon::Task<drogon::HttpResponsePtr>
   synthesizeStream(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> engine(drogon::HttpRequestPtr req);
+
+  StreamSlots& streams() { return streams_; }
+
+private:
+  StreamSlots streams_;
 };

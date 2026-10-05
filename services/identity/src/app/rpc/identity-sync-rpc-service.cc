@@ -241,7 +241,8 @@ grpc::ServerUnaryReactor* IdentitySyncRpcService::PullTable(
       }
       catch (const std::exception& e) {
         LOG_WARN << "Identity sync RPC: PullTable failed: " << e.what();
-        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                     "identity could not complete the call"));
       }
       co_return;
     });

@@ -25,6 +25,10 @@ public:
                                     const CameraUpdateInput& input) const;
   drogon::Task<bool> remove(int64_t id, drogon::orm::DbClient* client) const;
 
+  static bool acceptTapoTrust();
+  static int64_t sealPlaintextSecrets();
+  static void saveTapoTrust(const CameraTapoTrustInput& input);
+
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;
   drogon::Task<std::vector<Json::Value>>

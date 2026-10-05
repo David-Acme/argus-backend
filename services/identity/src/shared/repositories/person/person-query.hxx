@@ -24,9 +24,13 @@ inline constexpr std::string_view INSERT =
     "first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, "
     "strftime('%s','now'), strftime('%s','now'))";
 
+inline constexpr std::string_view FIND_MEMBER_IDS =
+    "SELECT id FROM person WHERE deleted_at IS NULL AND user_id IS NOT NULL "
+    "AND id IN (SELECT value FROM json_each(?))";
+
 inline constexpr std::string_view PROMOTE =
     "UPDATE person SET status = 'known', updated_at = strftime('%s', 'now') "
-    "WHERE id = ? AND deleted_at IS NULL";
+    "WHERE id = ? AND deleted_at IS NULL AND (user_id IS NOT NULL OR name != '')";
 
 inline constexpr std::string_view UPDATE_PREFIX = "UPDATE person SET ";
 inline constexpr std::string_view UPDATE_COL_NAME = "name = ?";
@@ -68,30 +72,36 @@ inline constexpr std::string_view SYNC_FIND_ALL =
 
 inline constexpr std::string_view SYNC_FIND_DELETED =
     "SELECT * FROM person "
-    "WHERE deleted_at IS NOT NULL AND deleted_at >= ? AND deleted_at <= ? "
+    "WHERE deleted_at IS NOT NULL AND user_id IS NOT NULL "
+    "AND deleted_at < strftime('%s', 'now') - 1 AND deleted_at >= ? AND deleted_at <= ? "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view SYNC_FIND_DELETED_FROM =
     "SELECT * FROM person "
-    "WHERE deleted_at IS NOT NULL AND deleted_at >= ? "
+    "WHERE deleted_at IS NOT NULL AND user_id IS NOT NULL "
+    "AND deleted_at < strftime('%s', 'now') - 1 AND deleted_at >= ? "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view SYNC_FIND_DELETED_AFTER =
-    "SELECT * FROM person WHERE deleted_at IS NOT NULL AND "
+    "SELECT * FROM person WHERE deleted_at IS NOT NULL AND user_id IS NOT NULL "
+    "AND deleted_at < strftime('%s', 'now') - 1 AND "
     "(deleted_at > ? OR (deleted_at = ? AND id > ?)) AND deleted_at <= ? "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view SYNC_FIND_DELETED_AFTER_FROM =
-    "SELECT * FROM person WHERE deleted_at IS NOT NULL AND "
+    "SELECT * FROM person WHERE deleted_at IS NOT NULL AND user_id IS NOT NULL "
+    "AND deleted_at < strftime('%s', 'now') - 1 AND "
     "(deleted_at > ? OR (deleted_at = ? AND id > ?)) "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view SYNC_FIND_DELETED_ALL =
-    "SELECT * FROM person WHERE deleted_at IS NOT NULL "
+    "SELECT * FROM person WHERE deleted_at IS NOT NULL AND user_id IS NOT NULL "
+    "AND deleted_at < strftime('%s', 'now') - 1 "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 
 inline constexpr std::string_view SYNC_FIND_LAST =
     "SELECT * FROM person WHERE deleted_at IS NULL AND user_id IS NOT NULL "
-    "ORDER BY created_at DESC LIMIT 1";
+    "ORDER BY created_at DESC, id DESC LIMIT 1";
 inline constexpr std::string_view SYNC_FIND_LAST_DELETED =
-    "SELECT * FROM person WHERE deleted_at IS NOT NULL "
-    "ORDER BY deleted_at DESC LIMIT 1";
+    "SELECT * FROM person WHERE deleted_at IS NOT NULL AND user_id IS NOT NULL "
+    "AND deleted_at < strftime('%s', 'now') - 1 "
+    "ORDER BY deleted_at DESC, id DESC LIMIT 1";
 
 }
 

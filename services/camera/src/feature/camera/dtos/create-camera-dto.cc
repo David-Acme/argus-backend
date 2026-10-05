@@ -26,6 +26,8 @@ CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
     dto.subStreamPath = json["subStreamPath"].asString();
   if (json.isMember("catalogId") && json["catalogId"].isString())
     dto.catalogId = json["catalogId"].asString();
+  if (json.isMember("retentionIncident") && json["retentionIncident"].isBool())
+    dto.retentionIncident = json["retentionIncident"].asBool();
 
   START_VALIDATION(CreateCameraDto, dto)
   IS_NOT_EMPTY(name)
@@ -47,7 +49,8 @@ CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
   MAX_LENGTH(password, camera_address_rules::kMaxSecretLength)
   MAX_LENGTH(cloudPassword, camera_address_rules::kMaxSecretLength)
   CUSTOM_LAMBDA(retentionDays, [](const CreateCameraDto& d) {
-    return camera_address_rules::retentionError(d.retentionDays);
+    return camera_address_rules::retentionError(
+        {.days = d.retentionDays, .incident = d.retentionIncident.value_or(false)});
   })
   CUSTOM_LAMBDA(streamPath, [](const CreateCameraDto& d) {
     return camera_address_rules::pathError(d.streamPath);

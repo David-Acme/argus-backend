@@ -102,14 +102,28 @@ setup_camera_model() {
   fi
 }
 
+GO2RTC_VERSION="v1.9.14"
+
+go2rtc_asset_sha256() {
+  case "$1" in
+    go2rtc_linux_amd64) echo "32d616af226bd731678ffde328b94cfb94e30339bfefc469cfb76323144615a6" ;;
+    go2rtc_linux_arm64) echo "359fabade8a7a51e81a55fe6df6b0ef81764a5e1d63179577534eaaa71904b50" ;;
+    go2rtc_linux_arm) echo "4d7e1639af5a2722a28e864468fd8099b3c1682565446c798bf9e3b38fde12e4" ;;
+    go2rtc_mac_amd64.zip) echo "9b0b9a27a4dc3a5b8b93376e7e8fc2787c6af624a512842622be84aec0171c7a" ;;
+    go2rtc_mac_arm64.zip) echo "919b78adc759d6b3883d1e1b2ac915ac0985bb903ff1897b4d228527bd64690c" ;;
+    *) echo "" ;;
+  esac
+}
+
 setup_go2rtc() {
   local ROOT
   ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
   local DEST="$ROOT/third_party/go2rtc"
   local BIN="$DEST/go2rtc"
+  local WANT="${GO2RTC_VERSION#v}"
 
-  if [ -x "$BIN" ]; then
-    log "go2rtc already present ($("$BIN" -version 2>&1 | head -1))"
+  if [ -x "$BIN" ] && "$BIN" -version 2>&1 | head -1 | grep -q "version $WANT "; then
+    log "go2rtc $GO2RTC_VERSION already present"
     return
   fi
 
@@ -126,10 +140,19 @@ setup_go2rtc() {
     *) warn "go2rtc: unsupported arch $(uname -m), skipping."; return ;;
   esac
   asset="go2rtc_${os}_${arch}"
+  if [ "$os" = "mac" ]; then
+    asset="$asset.zip"
+  fi
+  local SHA256
+  SHA256="$(go2rtc_asset_sha256 "$asset")"
+  if [ -z "$SHA256" ]; then
+    warn "go2rtc: no pinned checksum for $asset; skipping."
+    return
+  fi
 
   local DL=""
   if command -v curl >/dev/null 2>&1; then
-    DL="curl -L --retry 3 --progress-bar -o"
+    DL="curl -fL --retry 3 --progress-bar -o"
   elif command -v wget >/dev/null 2>&1; then
     DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
   else
@@ -137,16 +160,44 @@ setup_go2rtc() {
     return
   fi
 
-  log "Downloading go2rtc ($asset)..."
+  log "Downloading go2rtc $GO2RTC_VERSION ($asset)..."
   mkdir -p "$DEST"
-  local URL="https://github.com/AlexxIT/go2rtc/releases/latest/download/$asset"
-  if $DL "$BIN" "$URL"; then
-    chmod +x "$BIN"
-    log "go2rtc ready: $("$BIN" -version 2>&1 | head -1)"
-  else
+  local PART="$DEST/$asset.part"
+  rm -f "$PART"
+  local URL="https://github.com/AlexxIT/go2rtc/releases/download/$GO2RTC_VERSION/$asset"
+  if ! $DL "$PART" "$URL"; then
+    rm -f "$PART"
     warn "Failed to download go2rtc; the camera pipeline will not start."
-    rm -f "$BIN"
+    return
   fi
+  local ACTUAL
+  ACTUAL="$(sha256_file "$PART")"
+  if [ "$ACTUAL" != "$SHA256" ]; then
+    rm -f "$PART"
+    warn "Checksum mismatch for $asset (expected $SHA256, got $ACTUAL); go2rtc not installed."
+    return
+  fi
+  if [ "$os" = "mac" ]; then
+    if ! command -v unzip >/dev/null 2>&1; then
+      rm -f "$PART"
+      warn "unzip not found; cannot unpack $asset."
+      return
+    fi
+    rm -rf "$DEST/.unpack"
+    mkdir -p "$DEST/.unpack"
+    unzip -q "$PART" -d "$DEST/.unpack"
+    rm -f "$PART"
+    if [ ! -f "$DEST/.unpack/go2rtc" ]; then
+      rm -rf "$DEST/.unpack"
+      warn "$asset did not contain go2rtc."
+      return
+    fi
+    mv "$DEST/.unpack/go2rtc" "$PART"
+    rm -rf "$DEST/.unpack"
+  fi
+  chmod +x "$PART"
+  mv -f "$PART" "$BIN"
+  log "go2rtc ready: $("$BIN" -version 2>&1 | head -1)"
 }
 
 setup_camera_model

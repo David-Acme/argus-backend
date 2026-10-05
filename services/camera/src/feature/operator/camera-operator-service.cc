@@ -19,7 +19,6 @@
 #include <cmath>
 #include <ctime>
 #include <filesystem>
-#include <thread>
 
 namespace
 {
@@ -30,26 +29,9 @@ int64_t nowMs()
       .count();
 }
 
-int severityRank(const std::string& severity)
+int severityRank(EventSeverity severity)
 {
-  if (severity == "critical")
-    return 2;
-  if (severity == "warning")
-    return 1;
-  return 0;
-}
-
-std::string severityName(EventSeverity severity)
-{
-  switch (severity) {
-    case EventSeverity::Critical:
-      return "critical";
-    case EventSeverity::Warning:
-      return "warning";
-    case EventSeverity::Info:
-      return "info";
-  }
-  return "info";
+  return static_cast<int>(severity);
 }
 
 std::string personSignature(const cv::Mat& rgb, const DetectedObject& object)
@@ -453,7 +435,7 @@ CameraOperatorService::PersonDwell CameraOperatorService::updatePersonTracks(
     objects[index].firstSeenMs = track.firstSeenMs;
     const bool inAlertZone = std::any_of(
         zones.begin(), zones.end(), [&](const OperatorZone& zone) {
-          return zone.kind == "alert" &&
+          return zone.kind == ZoneType::Alert &&
                  objectCenterInZone({.object = objects[index],
                                      .zone = zone,
                                      .frameWidth = frameWidth,
@@ -462,7 +444,7 @@ CameraOperatorService::PersonDwell CameraOperatorService::updatePersonTracks(
     const bool inAnyZone =
         inAlertZone || std::any_of(zones.begin(), zones.end(),
                                    [&](const OperatorZone& zone) {
-                                     return zone.kind == "monitor" &&
+                                     return zone.kind == ZoneType::Monitor &&
                                             objectCenterInZone(
                                                 {.object = objects[index],
                                                  .zone = zone,
@@ -516,6 +498,15 @@ double CameraOperatorService::currentInferenceFps(int64_t cameraId)
   return inputs_.objects.maxFpsInference;
 }
 
+struct CameraOperatorService::FrameAnalysis
+{
+  cv::Mat rgb;
+  std::vector<OperatorZone> zones;
+  std::vector<DetectedObject> objects;
+  std::string snapshot;
+  int64_t stamp{0};
+};
+
 drogon::Task<void> CameraOperatorService::runCamera(
     CameraRef camera, std::shared_ptr<std::atomic<bool>> stop)
 {
@@ -524,52 +515,58 @@ drogon::Task<void> CameraOperatorService::runCamera(
     const int64_t intervalMs =
         static_cast<int64_t>(1000.0 / currentInferenceFps(camera.id));
     auto frame = co_await inputs_.dependencies.source->grab(
-        {.cameraId = camera.id, .cameraName = camera.name});
+        {.cameraId = camera.id, .cameraName = camera.name, .maxAgeMs = intervalMs});
     if (!running_.load() || stop->load())
       break;
     if (frame) {
-      co_await BlockingTask<void>{[this, &camera, &frame]() {
-        processFrame({.cameraId = camera.id, .cameraName = camera.name,
-                      .frame = *frame});
-      }};
+      const ProcessFrameInput input{.cameraId = camera.id, .cameraName = camera.name, .frame = *frame};
+      auto analysis = co_await BlockingTask<std::shared_ptr<FrameAnalysis>>(
+          [this, &input]() { return analyse(input); }, BlockingLane::Heavy);
+      if (analysis && running_.load() && !stop->load())
+        co_await BlockingTask<void>([this, &input, &analysis]() { interpret(input, *analysis); });
     }
     const int64_t elapsed = nowMs() - tickStart;
     const int64_t remaining = std::max<int64_t>(0, intervalMs - elapsed);
-    if (remaining > 0)
-      co_await BlockingTask<void>{[remaining]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(remaining));
-      }};
+    if (remaining > 0 && running_.load() && !stop->load())
+      co_await drogon::sleepCoro(drogon::app().getLoop(),
+                                 std::chrono::milliseconds(remaining));
   }
   co_return;
 }
 
 void CameraOperatorService::processFrame(const ProcessFrameInput& input)
 {
+  if (const auto analysis = analyse(input))
+    interpret(input, *analysis);
+}
+
+std::shared_ptr<CameraOperatorService::FrameAnalysis>
+CameraOperatorService::analyse(const ProcessFrameInput& input)
+{
   const in_flight::Guard guard(inFlight_);
   const int64_t cameraId = input.cameraId;
-  const std::string& cameraName = input.cameraName;
   CameraFrame& frame = input.frame;
   if (!inputs_.dependencies.detector ||
       !inputs_.dependencies.detector->isLoaded())
-    return;
+    return nullptr;
 
-  cv::Mat rgb;
+  auto analysis = std::make_shared<FrameAnalysis>();
+  cv::Mat& rgb = analysis->rgb;
   if (!frame.jpeg.empty()) {
     const cv::Mat raw =
         cv::imdecode(frame.jpeg, cv::IMREAD_COLOR);
     if (raw.empty()) {
       LOG_WARN << "Camera operator: undecodable frame for camera " << cameraId;
-      return;
+      return nullptr;
     }
     cv::cvtColor(raw, rgb, cv::COLOR_BGR2RGB);
   } else if (!frame.rgb.empty()) {
-    rgb = cv::Mat(frame.height, frame.width, CV_8UC3,
-                  const_cast<uint8_t*>(frame.rgb.data()));
+    rgb = cv::Mat(frame.height, frame.width, CV_8UC3, frame.rgb.data());
   } else {
-    return;
+    return nullptr;
   }
 
-  std::vector<OperatorZone> zones;
+  std::vector<OperatorZone>& zones = analysis->zones;
   if (inputs_.dependencies.zones)
     zones = inputs_.dependencies.zones->forCamera(cameraId);
   else
@@ -589,7 +586,7 @@ void CameraOperatorService::processFrame(const ProcessFrameInput& input)
     if (inputs_.operator_.motionGate && gateState.presenceStreak == 0 &&
         gateState.pendingPersons.empty() && !gateState.pendingOther &&
         !cameraHasMotion(rgb, gateState))
-      return;
+      return nullptr;
   }
 
   auto objects = inputs_.dependencies.detector->detect(
@@ -611,11 +608,12 @@ void CameraOperatorService::processFrame(const ProcessFrameInput& input)
       objects = std::move(kept);
     }
   }
+  analysis->objects = std::move(objects);
 
   if (inputs_.operator_.overlay && !inputs_.operator_.overlayDir.empty()) {
     cv::Mat annotated;
     cv::cvtColor(rgb, annotated, cv::COLOR_RGB2BGR);
-    for (const auto& object : objects) {
+    for (const auto& object : analysis->objects) {
       cv::rectangle(annotated,
                     cv::Rect(static_cast<int>(object.x), static_cast<int>(object.y),
                              static_cast<int>(object.w), static_cast<int>(object.h)),
@@ -627,25 +625,38 @@ void CameraOperatorService::processFrame(const ProcessFrameInput& input)
                 annotated);
   }
 
+  analysis->stamp = nowMs();
+  if (masked) {
+    cv::Mat bgr;
+    cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
+    std::vector<uchar> encoded;
+    if (cv::imencode(".jpg", bgr, encoded, {cv::IMWRITE_JPEG_QUALITY, 85}))
+      analysis->snapshot.assign(encoded.begin(), encoded.end());
+  }
+  else if (!frame.jpeg.empty()) {
+    analysis->snapshot.assign(frame.jpeg.begin(), frame.jpeg.end());
+  }
+  return analysis;
+}
+
+void CameraOperatorService::interpret(const ProcessFrameInput& input, FrameAnalysis& analysis)
+{
+  const in_flight::Guard guard(inFlight_);
+  const int64_t cameraId = input.cameraId;
+  const std::string& cameraName = input.cameraName;
+  const cv::Mat& rgb = analysis.rgb;
+  std::vector<DetectedObject>& objects = analysis.objects;
+
   const std::time_t tick = std::time(nullptr);
   int hour = 0;
   std::tm local{};
   if (localtime_r(&tick, &local))
     hour = local.tm_hour;
 
-  const int64_t stamp = nowMs();
-  if (masked) {
-    cv::Mat bgr;
-    cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
-    std::vector<uchar> encoded;
-    if (cv::imencode(".jpg", bgr, encoded, {cv::IMWRITE_JPEG_QUALITY, 85}))
-      SnapshotStore::instance().putFrame(
-          cameraId, std::string(encoded.begin(), encoded.end()), stamp);
-  }
-  else if (!frame.jpeg.empty()) {
+  const int64_t stamp = analysis.stamp;
+  if (!analysis.snapshot.empty())
     SnapshotStore::instance().putFrame(
-        cameraId, std::string(frame.jpeg.begin(), frame.jpeg.end()), stamp);
-  }
+        {.cameraId = cameraId, .jpeg = std::move(analysis.snapshot), .atMs = stamp});
   std::lock_guard<std::mutex> lock(stateMutex_);
   CameraState& state = states_[cameraId];
 
@@ -672,7 +683,7 @@ void CameraOperatorService::processFrame(const ProcessFrameInput& input)
 
   EventIntelligenceInput intelligence;
   intelligence.cameraId = cameraId;
-  intelligence.zones = std::move(zones);
+  intelligence.zones = std::move(analysis.zones);
   intelligence.ignoredClasses = inputs_.operator_.ignoredClasses;
   const bool night = isNightHour(hour);
   const PersonDwell dwell = updatePersonTracks(
@@ -745,7 +756,7 @@ void CameraOperatorService::processFrame(const ProcessFrameInput& input)
       state.pendingOther->frameWidth = rgb.cols;
       state.pendingOther->frameHeight = rgb.rows;
       state.pendingOther->rule = outcome.rule;
-      state.pendingOther->severity = severityName(outcome.severity);
+      state.pendingOther->severity = outcome.severity;
       state.pendingOther->escalated = outcome.escalated;
       state.pendingOther->night = outcome.night;
       state.pendingOther->knownPersonId = outcome.knownPersonId;
@@ -765,7 +776,7 @@ void CameraOperatorService::processFrame(const ProcessFrameInput& input)
                                  .identityConfidence = 0.0F,
                                  .identityState = {},
                                  .identifyAttempts = 0,
-                                 .zoneKind = {},
+                                 .zoneKind = std::nullopt,
                                  .zoneName = {}},
                    .state = state,
                    .stamp = stamp});
@@ -843,7 +854,7 @@ void CameraOperatorService::mergeObject(const MergeObjectInput& input)
         existing->areaSpread = trackAreaSpread(track->windowHistory);
       }
     }
-    if (!input.evaluated.zoneKind.empty()) {
+    if (input.evaluated.zoneKind) {
       existing->zoneKind = input.evaluated.zoneKind;
       existing->zoneName = input.evaluated.zoneName;
     }
@@ -897,14 +908,13 @@ void CameraOperatorService::mergePersonPending(const PersonPendingInput& input)
     event.frameWidth = input.frameWidth;
     event.frameHeight = input.frameHeight;
     event.rule = input.outcome.rule;
-    event.severity = severityName(input.outcome.severity);
+    event.severity = input.outcome.severity;
     event.escalated = input.outcome.escalated;
     event.knownPersonId = input.outcome.knownPersonId;
   }
-  else if (severityRank(severityName(input.outcome.severity)) >
-           severityRank(event.severity)) {
+  else if (severityRank(input.outcome.severity) > severityRank(event.severity)) {
     event.rule = input.outcome.rule;
-    event.severity = severityName(input.outcome.severity);
+    event.severity = input.outcome.severity;
     event.escalated = input.outcome.escalated;
     event.knownPersonId = input.outcome.knownPersonId;
   }

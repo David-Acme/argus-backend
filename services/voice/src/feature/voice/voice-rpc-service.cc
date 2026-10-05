@@ -1,8 +1,12 @@
 #include "voice-rpc-service.hxx"
 
+#include <runtime/blocking-pool.hxx>
+
+#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <drogon/drogon.h>
+#include <thread>
 
 namespace
 {
@@ -13,11 +17,19 @@ class VoiceSessionStream final
       public VoiceSessionSink
 {
 public:
-  VoiceSessionStream(VoiceSessionService& sessions,
-                     grpc::CallbackServerContext* context,
-                     const std::vector<argus::client::CallerCredential>& callers)
-      : sessions_(sessions), context_(context), callers_(callers)
+  struct Input
   {
+    VoiceSessionService& sessions;
+    grpc::CallbackServerContext* context;
+    const std::vector<argus::client::CallerCredential>& callers;
+    std::shared_ptr<std::atomic<int>> live;
+  };
+
+  explicit VoiceSessionStream(const Input& input)
+      : sessions_(input.sessions), context_(input.context), callers_(input.callers),
+        live_(input.live)
+  {
+    live_->fetch_add(1);
   }
 
   void begin()
@@ -37,7 +49,7 @@ public:
   void OnReadDone(bool ok) override
   {
     if (!ok) {
-      endSession();
+      closer_ = std::jthread([this] { endSession(); });
       return;
     }
     handleFrame(read_);
@@ -50,7 +62,7 @@ public:
     std::scoped_lock lock(writeMutex_);
     writing_ = false;
     if (!ok) {
-      finished_ = true;
+      finished_.store(true);
       queue_.clear();
     }
     else if (!queue_.empty())
@@ -61,19 +73,25 @@ public:
 
   void OnDone() override
   {
-    sessions_.stop(*this);
-    delete this;
+    blocking_pool::submit(BlockingLane::Light, [this] {
+      if (closer_.joinable())
+        closer_.join();
+      sessions_.stop(*this);
+      const auto live = live_;
+      delete this;
+      live->fetch_sub(1);
+    });
   }
 
   bool connected() const override
   {
-    return !finished_ && !context_->IsCancelled();
+    return !finished_.load() && !context_->IsCancelled();
   }
 
   void sendServerFrame(argus::voice::v1::ServerFrame frame) override
   {
     std::scoped_lock lock(writeMutex_);
-    if (finished_)
+    if (finished_.load())
       return;
     if (queue_.size() >= kMaxPendingWrites) {
       LOG_WARN << "Voice: stream write backlog, dropping frame";
@@ -149,13 +167,13 @@ private:
   {
     std::unique_lock<std::mutex> lock(writeMutex_);
     drainCv_.wait_for(lock, std::chrono::seconds(2), [this] {
-      return queue_.empty() || finished_;
+      return queue_.empty() || finished_.load();
     });
   }
 
   void pumpLocked()
   {
-    if (writing_ || queue_.empty() || finished_)
+    if (writing_ || queue_.empty() || finished_.load())
       return;
     writing_ = true;
     StartWrite(&queue_.front());
@@ -170,9 +188,11 @@ private:
   std::condition_variable drainCv_;
   std::deque<argus::voice::v1::ServerFrame> queue_;
   bool writing_{false};
-  bool finished_{false};
+  std::atomic<bool> finished_{false};
   bool finishing_{false};
   argus::voice::v1::ClientFrame read_;
+  std::shared_ptr<std::atomic<int>> live_;
+  std::jthread closer_;
 };
 
 }
@@ -191,7 +211,8 @@ grpc::ServerBidiReactor<argus::voice::v1::ClientFrame,
                         argus::voice::v1::ServerFrame>*
 VoiceRpcService::Connect(grpc::CallbackServerContext* context)
 {
-  auto* reactor = new VoiceSessionStream(sessions_, context, syncCallers_);
+  auto* reactor = new VoiceSessionStream(
+      {.sessions = sessions_, .context = context, .callers = syncCallers_, .live = live_});
   reactor->begin();
   return reactor;
 }

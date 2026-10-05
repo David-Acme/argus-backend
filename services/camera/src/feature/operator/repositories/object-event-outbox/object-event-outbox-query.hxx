@@ -87,6 +87,7 @@ struct ObjectEventEnqueueInput
   int64_t nowMs{0};
   int64_t cooldownMs{0};
   int64_t maxPending{5000};
+  bool checkCap{true};
 };
 
 struct ObjectEventRow

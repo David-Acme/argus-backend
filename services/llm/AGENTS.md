@@ -12,9 +12,11 @@ that apply to llm-service code; when in doubt, the root file wins.
 2. **Internal wire only** — the service serves the legacy voice session over
    loopback plain HTTP (`/llm/v1/*`) and the internal gRPC leg (`argus.llm.v1`)
    when `rpc.address` is set; no JWT, no CORS, no public routing or
-   announcement. Never expose either publicly. The HTTP face has no auth — the
-   loopback bind is its trust boundary; the gRPC face lists its callers in
-   `[rpc.callers]` and answers an unlisted credential with 401.
+   announcement. Never expose either publicly. The HTTP face trusts the loopback
+   bind, and binds a declared identity to the `voice` caller's credential
+   when one is configured; the gRPC face lists its callers in
+   `[rpc.callers]`, answers an unlisted credential with 401 and lets only
+   `voice` declare a user, a role or the tool loop.
 3. **Frozen envelope** — every JSON response uses the
    `{status, info, errors}` envelope (`ApiResponse`); the chat body is JSON
    `{messages, max_tokens?, temperature?, reset_context?}`.
@@ -35,8 +37,8 @@ that apply to llm-service code; when in doubt, the root file wins.
     goes to CONTEXT.md.
 11. **Logging** — Drogon built-ins only (`LOG_INFO`, `LOG_WARN`,
     `LOG_ERROR`, `LOG_FATAL`); no spdlog.
-12. **No std::future** — plain `std::thread` for the stream producer, as the
-    TTS controller does.
+12. **No std::future** — the HTTP stream producer runs on the Heavy
+    blocking lane behind `StreamSlots`, as the TTS controller does.
 13. **Memory database only** — the memory feature owns `memory.db`.
     Identity/camera catalog snapshots arrive over the SDK clients
     (`argus::clients::identity`, `argus::clients::camera`); this service opens no

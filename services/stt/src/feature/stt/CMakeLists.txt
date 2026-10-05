@@ -1,6 +1,7 @@
 argus_module(NAME stt
     SOURCES
         controllers/stt-controller.cc
+        dtos/transcribe-dto.cc
         services/stt-service.cc
     INCLUDES
         ../..
@@ -8,6 +9,7 @@ argus_module(NAME stt
         argus::lib::config
         argus::lib::runtime
         argus::lib::http
+        argus::lib::validation
         argus::clients::stt
         argus::contracts::stt
         Drogon::Drogon

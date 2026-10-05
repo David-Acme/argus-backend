@@ -70,12 +70,7 @@ struct ReactionSignals
 {
   std::string text;
   std::string lang;
-  bool captureStored = false;
-  bool captureQueued = false;
-  int recallHits = -1;
-  bool cameraIntent = false;
   bool sttFailed = false;
-  bool systemAlert = false;
 };
 
 struct Reaction

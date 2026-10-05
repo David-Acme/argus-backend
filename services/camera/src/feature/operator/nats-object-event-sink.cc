@@ -24,6 +24,8 @@ int64_t nowMs()
 
 constexpr int kDrainBatch = 64;
 constexpr int kProgressMs = 50;
+constexpr int64_t kCapCheckEvery = 32;
+constexpr int64_t kCapSlack = 64;
 }
 
 namespace
@@ -86,7 +88,9 @@ NatsObjectEventSink::publish(const ObjectDetectedEvent& event)
        .cooldownClasses = std::move(cooldownClasses),
        .nowMs = nowMs(),
        .cooldownMs = config_.cooldownMs,
-       .maxPending = config_.maxPending});
+       .maxPending = config_.maxPending,
+       .checkCap = pendingCount_.load(std::memory_order_relaxed) + kCapSlack >= config_.maxPending ||
+                   enqueues_.fetch_add(1, std::memory_order_relaxed) % kCapCheckEvery == 0});
   if (outcome.result == ObjectEventEnqueueResult::Suppressed) {
     LOG_INFO << "Camera operator: event suppressed by the persisted cooldown";
     return ObjectEventPublishResult::Suppressed;

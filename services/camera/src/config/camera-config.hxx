@@ -12,6 +12,7 @@ struct CameraDbConfig
 {
   std::string dbPath;
   std::string schemaPath;
+  std::string secretKeyPath;
 };
 
 struct CameraHealthConfig

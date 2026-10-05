@@ -18,7 +18,8 @@ TapoEndpoint endpointOf(const TapoCredentials& credentials)
           .port = credentials.port,
           .tls = true,
           .connectTimeoutMs = credentials.connectTimeoutMs,
-          .ioTimeoutMs = credentials.requestTimeoutMs};
+          .ioTimeoutMs = credentials.requestTimeoutMs,
+          .pin = credentials.trust ? credentials.trust->pin() : std::string()};
 }
 
 std::vector<TapoHttpHeader> commonHeaders(const std::string& host)
@@ -95,6 +96,8 @@ TapoResult LegacyStokTransport::login()
 
   stok_ = parsed["result"]["stok"].asString();
   authenticated_ = true;
+  if (credentials_.trust)
+    credentials_.trust->learn(response.fingerprint);
 
   LOG_INFO << "tapo: legacy stok session established with " << credentials_.host;
   return TapoResult::success(parsed["result"]);

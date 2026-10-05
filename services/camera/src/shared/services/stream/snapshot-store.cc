@@ -13,13 +13,12 @@ SnapshotStore& SnapshotStore::instance()
   return store;
 }
 
-void SnapshotStore::putFrame(int64_t cameraId, const std::string& jpeg,
-                             int64_t atMs)
+void SnapshotStore::putFrame(SnapshotFrameInput input)
 {
-  if (jpeg.empty() || jpeg.size() > kMaxSnapshotBytes)
+  if (input.jpeg.empty() || input.jpeg.size() > kMaxSnapshotBytes)
     return;
   std::lock_guard<std::mutex> lock(mutex_);
-  frames_[cameraId] = {.jpeg = jpeg, .atMs = atMs};
+  frames_[input.cameraId] = {.jpeg = std::move(input.jpeg), .atMs = input.atMs};
 }
 
 void SnapshotStore::forget(int64_t cameraId)
@@ -29,14 +28,13 @@ void SnapshotStore::forget(int64_t cameraId)
   crops_.erase(cameraId);
 }
 
-void SnapshotStore::putPersonCrop(int64_t cameraId, int64_t trackId,
-                                  const std::string& jpeg, int64_t atMs)
+void SnapshotStore::putPersonCrop(SnapshotCropInput input)
 {
-  if (jpeg.empty() || jpeg.size() > kMaxSnapshotBytes)
+  if (input.jpeg.empty() || input.jpeg.size() > kMaxSnapshotBytes)
     return;
   std::lock_guard<std::mutex> lock(mutex_);
-  auto& tracks = crops_[cameraId];
-  tracks[trackId] = {.jpeg = jpeg, .atMs = atMs};
+  auto& tracks = crops_[input.cameraId];
+  tracks[input.trackId] = {.jpeg = std::move(input.jpeg), .atMs = input.atMs};
   while (tracks.size() > kMaxTracksPerCamera) {
     auto oldest = tracks.begin();
     for (auto it = tracks.begin(); it != tracks.end(); ++it) {

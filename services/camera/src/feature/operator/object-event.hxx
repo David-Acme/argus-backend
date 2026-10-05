@@ -1,5 +1,7 @@
 #pragma once
 
+#include <camera/event-severity.hxx>
+#include <camera/zone-type.hxx>
 #include <json/value.h>
 
 #include <cstdint>
@@ -30,7 +32,7 @@ struct DetectedEventObject
   int64_t lastSeenMs{0};
   int64_t dwellMs{0};
   float identityConfidence{0};
-  std::string zoneKind;
+  std::optional<ZoneType> zoneKind;
   std::string zoneName;
   std::string observationId;
 };
@@ -42,7 +44,7 @@ struct ObjectDetectedEvent
   int64_t cameraId{0};
   std::string cameraName;
   std::string rule;
-  std::string severity;
+  EventSeverity severity{EventSeverity::Info};
   bool escalated{false};
   bool night{false};
   std::optional<int64_t> knownPersonId;

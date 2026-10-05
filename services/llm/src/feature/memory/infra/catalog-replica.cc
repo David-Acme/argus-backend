@@ -9,8 +9,10 @@
 #include <sqlite/sqlite-stmt.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <chrono>
 #include <ctime>
 #include <exception>
+#include <thread>
 #include <functional>
 #include <stdexcept>
 #include <string>
@@ -20,6 +22,7 @@ namespace
 {
 
 constexpr int kMaxDeliver = 10;
+constexpr auto kStopWait = std::chrono::seconds(5);
 
 constexpr const char* UPSERT_PERSON =
     "INSERT INTO catalog_person (id, user_id, name, alias, deleted_at) "
@@ -123,8 +126,19 @@ void CatalogReplica::subscribe()
   scheduleSubscribeRetry();
 }
 
+void CatalogReplica::requestStop()
+{
+  inflight_->alive.store(false);
+}
+
+bool CatalogReplica::drained() const
+{
+  return inflight_->active.load() == 0;
+}
+
 void CatalogReplica::stop()
 {
+  requestStop();
   if (retryTimer_.has_value()) {
     if (drogon::app().isRunning())
       drogon::app().getLoop()->invalidateTimer(*retryTimer_);
@@ -135,6 +149,9 @@ void CatalogReplica::stop()
       bus_.unsubscribe(*attachment.subscription);
     attachment.subscription.reset();
   }
+  const auto giveUpAt = std::chrono::steady_clock::now() + kStopWait;
+  while (!drained() && std::chrono::steady_clock::now() < giveUpAt)
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
 }
 
 void CatalogReplica::applyPayload(const ApplyInput& input)
@@ -164,15 +181,27 @@ bool CatalogReplica::trySubscribe(Attachment& attachment)
        .deliverAll = true,
        .maxDeliver = kMaxDeliver,
        .maxAckPending = attachment.feed.maxAckPending,
-       .handler = [this](const NatsBus::DurableMessage& message,
-                         NatsBus::DurableSettlement settlement) {
+       .handler = [this, inflight = inflight_](const NatsBus::DurableMessage& message,
+                                               NatsBus::DurableSettlement settlement) {
          ApplyInput input{.subject = std::string(message.subject),
                           .payload = std::string(message.payload),
                           .settlement = std::move(settlement)};
-         drogon::app().getIOLoop(0)->runInLoop(
-             [this, input = std::move(input)]() mutable {
+         inflight->active.fetch_add(1);
+         try {
+           strand_.post([this, inflight, input]() {
+             if (inflight->alive.load())
                applyPayload(input);
-             });
+             else if (input.settlement.nak)
+               input.settlement.nak();
+             inflight->active.fetch_sub(1);
+           });
+         }
+         catch (const std::exception& error) {
+           inflight->active.fetch_sub(1);
+           LOG_WARN << "Catalog replica: apply not scheduled (" << error.what() << ")";
+           if (input.settlement.nak)
+             input.settlement.nak();
+         }
        }});
   if (!subscription)
     return false;

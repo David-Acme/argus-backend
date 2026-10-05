@@ -3,6 +3,7 @@
 #include <camera/camera-errors.hxx>
 #include <ctime>
 #include <errors/response-exception.hxx>
+#include <feature/camera/dtos/camera-address-rules.hxx>
 #include <shared/services/camera-driver/camera-capabilities.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
@@ -90,7 +91,8 @@ CameraFeatureService::create(const CreateCameraDto& body) const
   planned.config = camera_stream_paths::withConfig({.config = "{}",
                                                     .main = body.streamPath,
                                                     .sub = body.subStreamPath,
-                                                    .catalogId = body.catalogId});
+                                                    .catalogId = body.catalogId,
+                                                    .retentionIncident = body.retentionIncident});
   CameraSchema row;
   try {
     row = co_await repository_.create({
@@ -155,11 +157,27 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
     if (body.driver)
       input.driver = cameraDriverFromString(*body.driver);
     input.isEnabled = body.isEnabled;
-    if (body.streamPath || body.subStreamPath || body.catalogId) {
+    if (body.ip && *body.ip != before.ip) {
+      input.resetTapoTrust = true;
+      if (!body.password)
+        input.password = std::string();
+      if (!body.cloudPassword)
+        input.cloudPassword = std::string();
+    }
+    if (body.streamPath || body.subStreamPath || body.catalogId || body.retentionIncident) {
       input.config = camera_stream_paths::withConfig({.config = before.config,
                                                       .main = body.streamPath,
                                                       .sub = body.subStreamPath,
-                                                      .catalogId = body.catalogId});
+                                                      .catalogId = body.catalogId,
+                                                      .retentionIncident = body.retentionIncident});
+    }
+    const bool incident = body.retentionIncident.value_or(
+        camera_stream_paths::retentionIncidentOf(before.config));
+    if (const auto days = body.retentionDays ? body.retentionDays : before.retentionDays;
+        days && *days > camera_address_rules::retentionCap(incident)) {
+      if (body.retentionDays)
+        throw ResponseException(CameraErrors::RetentionTooLong);
+      input.retentionDays = camera_address_rules::retentionCap(incident);
     }
     if (body.recordMode)
       input.recordMode = cameraRecordModeFromString(*body.recordMode);

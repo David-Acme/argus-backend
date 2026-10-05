@@ -28,8 +28,6 @@ public:
 
   void migrateLegacy();
   void bumpFactHits(const std::vector<int64_t>& factIds);
-  int64_t recordProcedure(const ProcedureRecordInput& input);
-  std::optional<std::string> findProcedure(const std::string& goal);
 
   int64_t createEntity(const EntityCreateInput& input) override;
   std::optional<int64_t> resolveEntity(const AliasResolveInput& input) override;

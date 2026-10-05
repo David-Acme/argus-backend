@@ -4,6 +4,7 @@ argus_module(NAME identity-enrollment
         services/enrollment-feature-service.cc
     INCLUDES ../..
     DEPENDS
+        argus::identity-config
         argus::identity-invitation
         argus::identity-shared
         argus::lib::config

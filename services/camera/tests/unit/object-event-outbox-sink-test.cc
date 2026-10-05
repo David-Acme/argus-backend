@@ -114,7 +114,7 @@ ObjectDetectedEvent personEvent(const std::string& eventId)
   event.cameraId = 1;
   event.cameraName = "front";
   event.rule = "person_day";
-  event.severity = "info";
+  event.severity = EventSeverity::Info;
   event.trackId = 1;
   DetectedEventObject object;
   object.name = "person";

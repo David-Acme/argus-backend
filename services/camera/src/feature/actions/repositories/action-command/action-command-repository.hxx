@@ -25,6 +25,8 @@ public:
   drogon::Task<int64_t> reconcileExpired(int64_t at,
                                          int64_t leaseSeconds) const;
 
+  drogon::Task<int64_t> purgeSettled(int64_t olderThan) const;
+
   drogon::Task<bool> upsertLease(const SirenLeaseInput& input) const;
 
   drogon::Task<bool> deleteLease(int64_t cameraId) const;

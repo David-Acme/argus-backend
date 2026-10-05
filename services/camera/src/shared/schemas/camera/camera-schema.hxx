@@ -9,6 +9,12 @@
 #include <optional>
 #include <string>
 
+namespace camera_secret
+{
+inline constexpr const char* kPasswordLabel = "camera.password";
+inline constexpr const char* kCloudPasswordLabel = "camera.cloud_password";
+}
+
 struct CameraSchema
 {
   int64_t id{0};
@@ -29,6 +35,8 @@ struct CameraSchema
   std::string config;
   bool isEnabled{true};
   bool isOnline{false};
+  std::string tlsFingerprint;
+  bool tapoSecure{false};
   int64_t createdAt{0};
   std::optional<int64_t> updatedAt;
   std::optional<int64_t> deletedAt;

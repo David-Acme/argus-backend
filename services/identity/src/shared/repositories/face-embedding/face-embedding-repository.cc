@@ -130,6 +130,17 @@ FaceEmbeddingRepository::findStaleVecRows(sqlite3* db,
   return ids;
 }
 
+std::vector<int64_t> FaceEmbeddingRepository::findVecRowids(sqlite3* db) const
+{
+  std::vector<int64_t> ids;
+  SqliteStmt stmt;
+  if (!stmt.prepare(db, std::string(VEC_ROWIDS).c_str()))
+    return ids;
+  while (stmt.step() == SQLITE_ROW)
+    ids.push_back(stmt.columnInt64(0));
+  return ids;
+}
+
 bool FaceEmbeddingRepository::insertVec(sqlite3* db,
                                         const FaceVecInsertInput& input) const
 {

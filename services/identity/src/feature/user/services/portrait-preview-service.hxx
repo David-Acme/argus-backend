@@ -3,7 +3,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/user/dtos/response-portrait-preview-capability-dto.hxx>
 #include <feature/user/dtos/response-portrait-preview-image-dto.hxx>
-#include <shared/repositories/portrait-preview-capability/portrait-preview-capability-repository.hxx>
+#include <feature/user/repositories/portrait-preview-capability/portrait-preview-capability-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/storage/private-portrait-service.hxx>
 #include <string>

@@ -156,7 +156,10 @@ OperatorConfig operator_config::resolveOperator()
         OperatorZone parsed;
         parsed.cameraId = zone.get("cameraId", 0).asInt64();
         parsed.name = zone.get("name", "").asString();
-        parsed.kind = zone.get("kind", "").asString();
+        const auto kind = operator_zone::kindOf(zone.get("kind", "").asString());
+        if (!kind)
+          continue;
+        parsed.kind = *kind;
         const Json::Value points = zone.get("points", Json::Value());
         if (points.isArray()) {
           for (const auto& point : points) {

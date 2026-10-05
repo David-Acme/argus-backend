@@ -105,6 +105,8 @@ PrivacyFeatureService::decide(const PrivacyDecisionInput& input) const
       erased = co_await voiceprint_.eraseForConsent(
           {.actorId = input.userId,
            .subjectId = input.userId,
+           .reason = kVoiceEraseConsentWithdrawn,
+           .byOwner = false,
            .client = transaction.get()});
 
     co_await publishCatalog(
@@ -130,7 +132,7 @@ PrivacyFeatureService::decide(const PrivacyDecisionInput& input) const
     db_transaction::rollback(transaction);
     throw;
   }
-  VoiceprintFeatureService::dropFromIndex(erased);
+  co_await VoiceprintFeatureService::dropFromIndex(erased);
   LOG_INFO << "Privacy choices recorded for user " << input.userId
            << " (notice v" << input.noticeVersion << ")";
   co_return view;
@@ -183,6 +185,8 @@ PrivacyFeatureService::updateHousehold(const HouseholdPrivacyChange& change) con
           erased.push_back(co_await voiceprint_.eraseForConsent(
               {.actorId = change.actorId,
                .subjectId = user.id,
+               .reason = kVoiceEraseConsentWithdrawn,
+               .byOwner = false,
                .client = transaction.get()}));
         co_await publishCatalog(
             {.user = user, .state = state, .client = transaction.get()});
@@ -210,6 +214,6 @@ PrivacyFeatureService::updateHousehold(const HouseholdPrivacyChange& change) con
     throw;
   }
   for (const auto& entry : erased)
-    VoiceprintFeatureService::dropFromIndex(entry);
+    co_await VoiceprintFeatureService::dropFromIndex(entry);
   co_return co_await directory();
 }

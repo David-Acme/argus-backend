@@ -3,6 +3,7 @@ argus_module(NAME camera-stream
         camera-live-board.cc
         camera-source-registrar.cc
         go2rtc-frame-source.cc
+        go2rtc-http.cc
         gop-cache.cc
         go2rtc-manager.cc
         snapshot-store.cc
@@ -15,6 +16,7 @@ argus_module(NAME camera-stream
         argus::camera-privacy
         argus::camera-repositories
         argus::lib::config
+        argus::lib::runtime
         argus::lib::text
         Drogon::Drogon)
 

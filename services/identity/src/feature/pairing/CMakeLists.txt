@@ -10,6 +10,7 @@ argus_module(NAME identity-pairing
         dtos/response-pairing-status-dto.cc
         services/pairing-feature-service.cc
         infra/pairing-banner.cc
+        infra/pairing-code.cc
     INCLUDES ../..
     DEPENDS
         argus::identity-config
@@ -19,11 +20,13 @@ argus_module(NAME identity-pairing
         argus::lib::config
         argus::lib::errors
         argus::lib::http
+        argus::lib::runtime
         argus::lib::validation
         argus::lib::text
         argus::contracts::auth
         argus::contracts::identity
         Drogon::Drogon
+        OpenSSL::Crypto
     SYSTEM_DEPENDS
         qr-code-generator::qrcodegencpp)
 

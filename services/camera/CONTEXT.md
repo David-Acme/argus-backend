@@ -512,9 +512,11 @@ keeps `camera`, `zone` and `change-outbox`). Three modules stay in `shared/`
 with a measured note instead of a move: `services/tapo` is the protocol
 stack `services/camera-driver` (itself shared, two feature readers) is built
 on, `services/event-stream` is read by `feature/operator`, the change sink
-and `main.cc`, and `utils/geometry` is a header-only helper, not a
+and `main.cc`, and `utils/geometry` was a header-only helper, not a
 repository, schema or service — rule 23's 2+ rule names those three, and
-`utils/in-flight` does have two feature readers.
+`utils/in-flight` does have two feature readers. (`utils/geometry` moved into
+its only reader, `feature/zone/dtos/normalized-polygon.hxx`, after the
+2026-10-05 audit.)
 
 The change sink's reader count is the reason `shared/repositories/change-outbox`
 stayed: no feature includes it, because both publishing features reach it
@@ -901,15 +903,19 @@ event exactly as before, and `schemaVersion` stays 3.
   No credential ever enters `config`.
 - **Addresses.** One predicate, `shared/utils/network-address`, decides what a
   camera address may be, for the DTOs and for go2rtc's source guard alike: a
-  literal IPv4 or IPv6 address in a private, loopback or link-local range
-  (10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, ::1, fc00::/7, fe80::/10,
-  and the v4-mapped forms). The guard used string prefixes, which let
+  literal IPv4 or IPv6 address in a private range (10/8, 172.16/12,
+  192.168/16, fc00::/7 and the v4-mapped forms). Loopback, link-local and the
+  unspecified address (127/8, 169.254/16, 0.0.0.0, ::1, ::, fe80::/10) are
+  refused since the 2026-10-05 audit (`network_address::isCameraAddress`):
+  they pointed the probe, go2rtc and the Tapo client at RustFS, the internal
+  gRPC listeners or the cloud metadata address. The guard used string prefixes, which let
   `10.evil.example` through as a host; the DTO already required a literal, and
   now also refuses a public address with a 422 instead of accepting a camera
   whose stream go2rtc would silently never open. An IPv6 camera is bracketed in
   its RTSP URL; it used to produce `rtsp://fd00::5:554/...`, which nothing
   parses. `PATCH /camera` now checks `port` (1-65535) and the same lengths as
-  create; both check `retentionDays` (0-3650) and cap the passwords at 128.
+  create; both check `retentionDays` (0-60, 0-120 with `retentionIncident`,
+  see "Retention" below) and cap the passwords at 128.
 - **Stream-only cameras.** RTSP and ONVIF cameras have no control driver, so
   `/camera/{id}/capabilities` answered 502 and the app offered a PTZ pad that
   could only fail. Camera-control now answers them through `StreamOnlyDriver`:
@@ -1019,7 +1025,11 @@ use.
 
 The form calls the probe with what the user typed (`driver`, `ip`, `port`,
 user/password, cloud user/password, paths, and `cameraId` on an edit so the
-stored secrets fill blank password fields). The probe runs off the loop and
+stored secrets fill blank password fields). Stored secrets are only ever sent
+to the stored `ip` and `port`: a probe that leaves a password blank for an
+edited address is a 422 (`StoredCredentialsElsewhere`), so nobody can aim a
+camera's password at a host of their choosing. One probe runs per user at a
+time (429 `ProbeBusy`). The probe runs off the loop and
 answers `{ok, steps[], stream, device, catalogId}`: each step (`network`,
 `main`, `sub`, and for Tapo `device` and `talk`) is `ok`, `failed`, `skipped`
 or `warning` with a code the app words for the user: `unreachable` (nothing
@@ -1463,3 +1473,193 @@ camera route decides it.
   before, and backs off before trying WebRTC again (30 s doubling to 5 min).
   Making WebRTC work remotely needs a TURN relay (or the tunnel carrying
   UDP); that is not built.
+
+## Hardening after the cloud audit (2026-10-05)
+
+The fixes for `docs/history/reports/cloud-audit-2026-10-05.md` that touch this
+service, and why each looks the way it does.
+
+### Credentials
+
+- **A PATCH that moves a camera forgets its secrets.** Changing `ip` without
+  sending a new `password`/`cloudPassword` clears both, and the Tapo
+  certificate pin with them: the new host is a new device until the owner
+  types the secrets again. Before, go2rtc and the driver sent the stored
+  password to whatever address a Resident wrote (#3).
+- **Passwords are encrypted at rest.** `camera.password` and
+  `camera.cloud_password` are stored as `enc:v1:` + base64(nonce ‖ ciphertext ‖
+  tag), AES-256-GCM through OpenSSL EVP, with the column name as associated data
+  so a value cannot be moved to the other column
+  (`shared/services/secret-box`). The 32-byte key is the instance's own file,
+  `[camera] secret_key`, by default `camera-secret.key` beside `camera.db`; it
+  is created 0600 on first boot and the service refuses to start if it cannot
+  read or create it. Every boot seals any row still in plain text (rows written
+  before this change), and every write seals; a read accepts both forms. The
+  key must be backed up with the database and kept out of any backup that
+  leaves the house: a copy of `camera.db` alone no longer reveals the TP-Link
+  account. Losing the key loses the stored passwords (they read back empty),
+  never the cameras.
+- **Tapo TLS is pinned on first use.** The cameras present self-signed
+  certificates, often with TLS 1.0 and weak ciphers, so verification against a
+  CA is impossible and the legacy settings stay. Instead the SHA-256 of the
+  leaf certificate is learned at the first successful login and stored in
+  `camera.tls_fingerprint`; a later handshake with another certificate fails
+  (`TLS certificate changed since it was pinned`). Once a camera has answered
+  over secure passthrough (`camera.tapo_secure`), the legacy `md5(password)`
+  login is never tried again, so a man in the middle cannot downgrade it. The
+  two columns are added by `CameraRepository::acceptTapoTrust` on old
+  databases and never leave the process (`toJson` omits them). The talk port
+  (8800) is plain HTTP with Digest and is not pinned.
+- The secure-passthrough transport no longer logs `device_confirm`, the
+  derived hashes or the nonces (they allowed an offline brute force of the
+  password from the logs), nor the raw outer response.
+- **go2rtc never sees a literal password in its config.** The generated
+  `go2rtc.yaml` names `${ARGUS_SRC_<SOURCE>}` where the user info was, and the
+  values travel in go2rtc's environment (`execve`), which go2rtc substitutes
+  at load time. Measured with v1.9.14: `/api/streams` shows
+  `rtsp://***@host/...`, `/api/config` shows the placeholder, and a refused
+  connection logs no credential. `go2rtc.log` stays 0600.
+
+### Addresses and probes
+
+- Loopback and link-local addresses are refused for cameras (DTOs and go2rtc's
+  source guard share `network_address::isCameraAddress`) (#58).
+- One `/camera/probe` per user at a time (`ProbeSlots`), because a probe holds
+  a light-lane worker for up to ~12 s and its `refused`/`unreachable` answers
+  are a port scanner (#58).
+
+### Live view
+
+- **The hub never joins a reader under `hubMutex_` or on the event loop.** A
+  stopping or dead upstream is retired out of the map under the lock; a
+  finished reader is joined on the light lane, a stopping one is joined when it
+  has finished, and only `shutdown()` (after `run()` returns) joins directly,
+  outside the lock. `upstream_http::open` connects non-blocking and checks the
+  upstream's `stopping` flag every 100 ms, so `restartUpstreams()` no longer
+  leaves a reader in a 10 s connect (#12).
+- **`camera:ack` is the socket's own.** The hub releases credit only to the
+  sink that owns the `subId`, and a sink releases at most what it has in
+  flight. A sink also closes its socket (`slow_consumer`) if more than
+  `max(16 × window, 8 MiB)` sits unacknowledged. Drogon does not expose a
+  connection's output buffer, so a client that acknowledges bytes it never
+  reads cannot be detected from here; the window and the camera's bitrate are
+  the bound in that case (#61).
+- `camera:subscribe` refuses a disabled camera (409) (#102).
+- **Owner and Resident keep a seat.** Guests and guards may fill the per-camera
+  and total viewer limits only up to one below the limit (when the limit is
+  above one), both on `/media` and on WebRTC (#60).
+- **WebRTC seats are reserved atomically.** `WebRtcAdmission` counts go2rtc's
+  WebRTC consumers and the hub's viewers from a snapshot taken before the
+  exchange, plus every seat still reserved or released after that snapshot,
+  under one lock, so N concurrent offers cannot all pass the check. A user may
+  hold `streaming.max_webrtc_per_user` (4) WebRTC views; tags are mapped back
+  to users when their exchange succeeds (#60).
+- **SDP.** Every `a=candidate`/`a=end-of-candidates` line is removed from the
+  offer (go2rtc learns the viewer from its STUN checks), and the answer keeps
+  only candidates on a literal, non-loopback, non-link-local address — or only
+  the configured `webrtc_candidates` hosts when they are configured without
+  `stun:`. mDNS names are dropped (#64).
+- **go2rtc restarts are coalesced.** A revocation or an audio flip asks for a
+  restart (`Go2rtcManager::requestRestart`); requests within 750 ms become one
+  restart, which the supervisor runs. A request that arrives after a restart
+  began gets a restart of its own, so a consumer created before the request
+  never survives it. If go2rtc does not list its consumers after three tries a
+  second apart, the closer restarts it anyway (fail closed). go2rtc has no API
+  to close one consumer (verified against v1.9.14: no DELETE per consumer on
+  `/api/webrtc` or `/api/streams`), so a restart remains the only lever until a
+  WHEP proxy exists (#57).
+- **Supervision off the main loop.** `Go2rtcManager::configure()` reads the
+  config on the loop; `start()` (write, spawn, `waitReady`) runs on the light
+  lane in `startAfterSources`. The supervisor is a `std::jthread` with a stop
+  token, sleeps its backoff without `mutex_`, and keeps serving requested
+  restarts after the crash-restart budget is spent (#62).
+- The fMP4 reader parses by offset (no `substr`/`erase` per box), caps the
+  init segment at 4 MiB, and on an invalid box size marks itself corrupt; the
+  upstream then closes with `upstream_corrupt` and viewers resubscribe. The
+  upstream's status line must be `HTTP/1.x 200` (#100). Each chunk is framed in
+  a per-thread buffer; the fragment itself is one shared buffer for every
+  subscriber.
+- **Media sockets are revalidated.** `MediaAccessCheck` re-verifies each
+  `/media` socket's access token (signature and expiry locally, then the
+  session verdict at argus-auth) every 60 s; an expired or revoked session is
+  closed with `session_expired`, a changed role with `role_changed`, which also
+  ends a talk session. An unreachable argus-auth keeps the socket (#102).
+
+### Workers and lanes
+
+- The operator waits between frames on `sleepCoro` and the health monitor
+  between rescans too, so neither holds a light-lane worker asleep (#11, the
+  same rule as CAMHANG). The operator's decode, privacy mask, motion gate and
+  detector run on `BlockingLane::Heavy` (`analyse`), the tracking, matcher and
+  outbox on the light lane (`interpret`) (#63). The health monitor decodes and
+  measures on the heavy lane (inline only when no event loop runs, as in its
+  unit tests) (#101).
+- Frame grabs ask go2rtc for `frame.jpeg?src=…&cache=<ms>` with the
+  operator's own interval (1 s for the monitor): a frame at most one interval
+  old is what the operator samples anyway, and the operator, monitor and
+  snapshot route coinciding on a camera then share one ffmpeg decode. The HTTP
+  clients to go2rtc are kept alive per event loop and per lane (a camera's
+  frames, a source's WebRTC exchanges, the stream list), so one slow exchange
+  never queues another camera's frames behind it (`go2rtc_http::client`).
+- `ZoneProvider` queries outside its lock, retries a failed read every 5 s at
+  most instead of on every frame, and keeps the last zones it read (#101).
+- The outbox `COUNT(*)` that enforces `operator.outbox_max_pending` runs every
+  32 enqueues, or on every one once the pending count is within 64 of the cap.
+- Zones carry `ZoneType` from the moment they are read (config strings are
+  parsed once; an unknown configured kind is dropped), and events carry
+  `EventSeverity`; strings exist only at the JSON boundary.
+
+### Retention (Peru, Ley 29733 and the video surveillance directive)
+
+The directive of the Peruvian data protection authority on video surveillance
+(Directiva 01-2020-JUS/DGTAIPD) keeps footage 30 days by default, 60 at most,
+and up to 120 days when it documents an incident. Argus stores no continuous
+recording; what it keeps is detection evidence in object storage and the
+voice it transcribed for the guard.
+
+- `retentionDays` is 0-60; `retentionIncident: true` (kept in the camera's
+  `config` JSON) allows up to 120. Clearing the flag brings a longer value back
+  to 60 in the same audited update.
+- Evidence expires after the camera's `retentionDays` (7 days when unset, 0
+  stores none), capped at 60 days, or 120 with the incident flag, and nothing
+  survives 120 days whatever its manifest says. The sweep runs every 6 hours,
+  walks `camera_evidence` by `id`, so one object that cannot be removed no
+  longer repeats the same 200 rows, counts its failures, and retries them on
+  the next sweep. Without object storage it counts what is waiting and says so.
+- `action_command` rows (idempotency records whose `response` holds the
+  visitor transcripts of `Listen`) are deleted 7 days after they settle, so a
+  transcript never outlives the camera's retention. `idx_action_command_updated`
+  serves that purge.
+- `Listen` re-checks the household's audio consent right before capture, on
+  the lane, not only when the call arrives (#102).
+
+### Sync
+
+- **Guards and guests do not receive a camera's address or account.**
+  `PullTable` projects camera rows by the caller's role (`x-argus-role`): for
+  anything but Owner and Resident, `ip`, `username`, `cloudUsername` and
+  `config` are empty and `port` is 0. The wire is unchanged (same fields). The
+  live `Add`/`Log` frames for `camera` are fanned out by argus-sync to the
+  module room as they are; projecting those per role belongs to argus-sync's
+  fan-out (#76).
+- **Tombstones re-read their boundary second.** A `findDeleted` page after
+  `(T, id)` also returns the rows deleted in second `T` with `id ≤ startId`,
+  deduplicated by id, for `camera`, `zone` and `camera_stream`; a row deleted
+  in the same second after the client paged past it is no longer lost. The
+  wire shape is unchanged; the client sees a few tombstones twice, which is
+  idempotent (#52).
+
+### Shutdown
+
+- The gRPC listener is a drain: on SIGTERM it calls `Shutdown` with a 2 s
+  deadline on a thread of its own and reports drained when it returns (N1).
+  The lease sweeper and command purge (`camera-actions`), evidence uploads and
+  sweeps (`camera-evidence`), the media access check and the session feed's
+  subscription (a `std::jthread` that retries every 5 s off the loop) are
+  drains too.
+- `DeviceFilter::requireFingerprintSecret()` runs at startup: a camera without
+  `[device] fingerprint_secret` refuses to start instead of hashing devices
+  with the JWT secret.
+- `scripts/provision.sh` installs go2rtc v1.9.14 only: the asset for the host
+  is downloaded to `.part`, checked against its pinned SHA-256 and moved into
+  place (macOS assets are zips and are unpacked first).

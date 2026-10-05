@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <memory>
 #include <mutex>
@@ -62,8 +61,6 @@ public:
   bool ensureLoaded();
   void unloadIfIdle();
   std::optional<Json::Value> extract(const ExtractRequest& request);
-  drogon::Task<std::optional<Json::Value>>
-  extractAsync(const ExtractRequest& request);
   bool isLoaded() const { return loaded_; }
 
   static std::string buildPrompt(const PromptInput& input);

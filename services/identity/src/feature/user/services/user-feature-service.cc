@@ -27,7 +27,7 @@ bool removesLastActiveOwner(const UserSchema& before,
 {
   if (before.role != UserRole::Owner || !before.isActive)
     return false;
-  const auto nextRole = input.body.role.value_or(before.role);
+  const auto nextRole = input.body.userRole.value_or(before.role);
   const auto nextActive = input.body.isActive.value_or(before.isActive);
   return nextRole != UserRole::Owner || !nextActive;
 }
@@ -65,7 +65,8 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
     if (!existing)
       throw ResponseException(404, IdentityErrors::UserNotFound);
 
-    if (removesLastActiveOwner(*existing, input) &&
+    const bool guardsLastOwner = removesLastActiveOwner(*existing, input);
+    if (guardsLastOwner &&
         !co_await repository_.hasOtherActiveOwner(existing->id,
                                                   transaction.get())) {
       throw ResponseException(409, IdentityErrors::ActiveOwnerRequired);
@@ -75,32 +76,20 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
         existing->id,
         {.name = input.body.name,
          .lastName = input.body.lastName,
-         .role = input.body.role,
+         .role = input.body.userRole,
          .isActive = input.body.isActive,
+         .requireOtherActiveOwner = guardsLastOwner,
          .client = transaction.get()});
+    if (updated.id == 0 && guardsLastOwner)
+      throw ResponseException(409, IdentityErrors::ActiveOwnerRequired);
     if (updated.id == 0)
       throw ResponseException(404, IdentityErrors::UserNotFound);
 
     roleChanged = updated.role != existing->role;
     deactivated = existing->isActive && !updated.isActive;
 
-    auto recipients = co_await repository_.findAll(transaction.get());
-    std::vector<int64_t> recipientIds{updated.id};
-    for (const auto& recipient : recipients) {
-      if (recipient.id != updated.id &&
-          role_access::readsUserDirectory(recipient.role))
-        recipientIds.push_back(recipient.id);
-    }
-    if (const auto* sink = identity_change::getSink()) {
-      co_await sink->publishUsersAudit({
-          .recordId = updated.id,
-          .tableName = TableName::User,
-          .before = existing->toJson(),
-          .after = updated.toJson(),
-          .userIds = std::move(recipientIds),
-          .client = transaction.get(),
-      });
-    }
+    co_await publishDirectoryAudit(
+        {.before = *existing, .after = updated, .client = transaction.get()});
 
     if (const auto* sink = identity_change::getSink()) {
       const IdentityCatalogInput catalog{.table = TableName::User,
@@ -173,6 +162,65 @@ UserFeatureService::deactivate(int64_t targetUserId, int64_t actorId) const
       .body = body,
   });
   co_return;
+}
+
+drogon::Task<void>
+UserFeatureService::publishDirectoryAudit(const DirectoryAuditInput& input) const
+{
+  const auto* sink = identity_change::getSink();
+  if (sink == nullptr)
+    co_return;
+  std::vector<int64_t> recipientIds{input.after.id};
+  for (const auto& recipient : co_await repository_.findAll(input.client)) {
+    if (recipient.id != input.after.id &&
+        role_access::readsUserDirectory(recipient.role))
+      recipientIds.push_back(recipient.id);
+  }
+  co_await sink->publishUsersAudit({
+      .recordId = input.after.id,
+      .tableName = TableName::User,
+      .before = input.before.toJson(),
+      .after = input.after.toJson(),
+      .userIds = std::move(recipientIds),
+      .client = input.client,
+  });
+}
+
+drogon::Task<std::optional<UserSchema>>
+UserFeatureService::rename(const UserRenameInput& input) const
+{
+  std::optional<UserSchema> renamed;
+  auto transaction =
+      co_await db_transaction::begin(DbService::identityClient());
+  try {
+    const auto before = co_await repository_.findById(input.userId,
+                                                      transaction.get());
+    if (!before) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+    const auto user = co_await repository_.update(
+        input.userId, {.name = input.name,
+                       .lastName = std::nullopt,
+                       .role = std::nullopt,
+                       .isActive = std::nullopt,
+                       .requireOtherActiveOwner = false,
+                       .client = transaction.get()});
+    if (user.id <= 0) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+    co_await publishDirectoryAudit(
+        {.before = *before, .after = user, .client = transaction.get()});
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(IdentityErrors::ChangeNotRecorded);
+    renamed = user;
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return renamed;
 }
 
 void UserFeatureService::emitAuthContextChanged(const UserSchema& user) const

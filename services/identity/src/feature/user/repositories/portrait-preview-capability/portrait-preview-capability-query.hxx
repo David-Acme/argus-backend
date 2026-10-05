@@ -18,6 +18,10 @@ inline constexpr std::string_view INSERT =
 inline constexpr std::string_view TRY_CONSUME =
     "UPDATE portrait_preview_capability SET consumed_at = strftime('%s', 'now') "
     "WHERE id = ? AND requester_user_id = ? AND consumed_at IS NULL AND expires_at > ?";
+
+inline constexpr std::string_view PURGE_SPENT =
+    "DELETE FROM portrait_preview_capability "
+    "WHERE expires_at <= ? OR consumed_at IS NOT NULL";
 }
 
 struct PortraitPreviewCapabilityCreateInput

@@ -38,6 +38,9 @@ inline constexpr std::string_view FIND_DELETED_AFTER_FROM =
     "SELECT * FROM camera_stream WHERE deleted_at IS NOT NULL AND "
     "(deleted_at > ? OR (deleted_at = ? AND id > ?)) "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
+inline constexpr std::string_view FIND_DELETED_BOUNDARY =
+    "SELECT * FROM camera_stream WHERE deleted_at IS NOT NULL AND deleted_at = ? "
+    "AND id <= ? ORDER BY id ASC LIMIT 200";
 inline constexpr std::string_view FIND_ALL =
     "SELECT * FROM camera_stream WHERE deleted_at IS NULL "
     "ORDER BY created_at ASC, id ASC LIMIT 200";

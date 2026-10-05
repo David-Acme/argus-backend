@@ -6,10 +6,12 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/llm/services/intent-gate.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
+#include <feature/llm/services/stream-slots.hxx>
 #include <llm/llm-service.hxx>
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 struct LlmChatOutcome
 {
@@ -20,6 +22,10 @@ struct LlmChatOutcome
   int64_t toolMs{0};
 };
 
+inline constexpr std::string_view kIdentityCaller = "voice";
+
+[[nodiscard]] ChatRequest boundToCaller(ChatRequest request, std::string_view caller);
+
 class LlmController : public drogon::HttpController<LlmController, false>
 {
 public:
@@ -29,13 +35,17 @@ public:
   ADD_METHOD_TO(LlmController::engine, "/llm/v1/config", drogon::Get);
   METHOD_LIST_END
 
-  LlmController() : adapter_(service_, &intentGate_.router()) {}
+  LlmController();
 
   void initEngine();
   void shutdownEngine();
   bool isEngineLoaded();
 
   LlmService& service() { return service_; }
+
+  StreamSlots& streams() { return streams_; }
+
+  void setIdentityCredential(std::string credential);
 
   LfmAdapter& adapter() { return adapter_; }
 
@@ -49,7 +59,12 @@ public:
   drogon::Task<drogon::HttpResponsePtr> engine(drogon::HttpRequestPtr req);
 
 private:
+  [[nodiscard]] ChatRequest scopedRequest(const drogon::HttpRequestPtr& req,
+                                          ChatRequest request) const;
+
   LlmService service_;
   IntentGate intentGate_;
   LfmAdapter adapter_;
+  StreamSlots streams_;
+  std::string identityCredential_;
 };

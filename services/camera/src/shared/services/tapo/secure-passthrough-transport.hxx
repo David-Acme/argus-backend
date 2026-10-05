@@ -34,6 +34,7 @@ private:
   std::string nonce_;
   std::string hashedPassword_;
   std::string stok_;
+  std::string fingerprint_;
   std::vector<uint8_t> lsk_;
   std::vector<uint8_t> ivb_;
   TapoHashAlgorithm hashAlgorithm_{TapoHashAlgorithm::Sha256};

@@ -119,28 +119,49 @@ void EncounterClosedConsumer::stop()
   });
 }
 
+void EncounterClosedConsumer::requestStop()
+{
+  lifecycle_->alive.store(false, std::memory_order_release);
+}
+
+bool EncounterClosedConsumer::drained() const
+{
+  return lifecycle_->active.load(std::memory_order_acquire) == 0;
+}
+
 drogon::Task<EncounterDisposition>
 EncounterClosedConsumer::handlePayload(const std::string& payload)
 {
-  const EncounterLifecycleGuard guard(lifecycle_);
-  if (!guard.alive())
-    co_return EncounterDisposition::Nak;
-  const Json::Value json = json_util::fromString(payload);
-  const auto event = EncounterClosedEvent::fromJson(json);
-  if (!event) {
-    LOG_WARN << "Encounter consumer: dropped malformed payload";
-    co_return EncounterDisposition::Term;
-  }
-  co_return co_await handle(*event, encounterFingerprint(payload));
+  co_return settlePayload(payload);
 }
 
 drogon::Task<EncounterDisposition> EncounterClosedConsumer::handle(
     const EncounterClosedEvent& event, const std::string& fingerprint)
 {
+  co_return settleEvent(event, fingerprint);
+}
+
+EncounterDisposition EncounterClosedConsumer::settlePayload(const std::string& payload)
+{
+  const EncounterLifecycleGuard guard(lifecycle_);
+  if (!guard.alive())
+    return EncounterDisposition::Nak;
+  const Json::Value json = json_util::fromString(payload);
+  const auto event = EncounterClosedEvent::fromJson(json);
+  if (!event) {
+    LOG_WARN << "Encounter consumer: dropped malformed payload";
+    return EncounterDisposition::Term;
+  }
+  return settleEvent(*event, encounterFingerprint(payload));
+}
+
+EncounterDisposition EncounterClosedConsumer::settleEvent(
+    const EncounterClosedEvent& event, const std::string& fingerprint)
+{
   if (dependencies_.graph == nullptr || dependencies_.repository == nullptr ||
       !dependencies_.capture) {
     LOG_ERROR << "Encounter consumer: dependencies missing; redelivering";
-    co_return EncounterDisposition::Nak;
+    return EncounterDisposition::Nak;
   }
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
   EncounterClosedClaim claim{.duplicate = true};
@@ -151,7 +172,7 @@ drogon::Task<EncounterDisposition> EncounterClosedConsumer::handle(
         {.eventId = event.eventId, .fingerprint = fingerprint, .at = now});
   }
   if (claim.duplicate)
-    co_return EncounterDisposition::Ack;
+    return EncounterDisposition::Ack;
   int64_t episode = 0;
   std::string captureError;
   try {
@@ -185,10 +206,10 @@ drogon::Task<EncounterDisposition> EncounterClosedConsumer::handle(
               {.eventId = event.eventId, .at = now})) {
         LOG_ERROR << "Encounter consumer: dead-lettered poison encounter "
                   << event.eventId;
-        co_return EncounterDisposition::Term;
+        return EncounterDisposition::Term;
       }
     }
-    co_return EncounterDisposition::Nak;
+    return EncounterDisposition::Nak;
   }
   {
     std::scoped_lock lock(dependencies_.graph->mutex());
@@ -198,7 +219,7 @@ drogon::Task<EncounterDisposition> EncounterClosedConsumer::handle(
       throw std::runtime_error("encounter receipt settle failed");
   }
   purgeSettled(now);
-  co_return EncounterDisposition::Ack;
+  return EncounterDisposition::Ack;
 }
 
 void EncounterClosedConsumer::purgeSettled(int64_t now)
@@ -232,44 +253,34 @@ bool EncounterClosedConsumer::trySubscribe()
        .handler = [this, lifecycle = lifecycle_](
                          const NatsBus::DurableMessage& message,
                          NatsBus::DurableSettlement settlement) {
-         const std::string payload(message.payload);
-         drogon::app().getIOLoop(0)->runInLoop(
-             [this, lifecycle, payload = std::move(payload),
-              settlement = std::move(settlement)]() mutable {
-               const EncounterLifecycleGuard guard(lifecycle);
-               if (!guard.alive()) {
-                 if (settlement.nak)
-                   settlement.nak();
-                 return;
-               }
-               drogon::async_run(
-                   [this, payload = std::move(payload),
-                    settlement = std::move(settlement)]() mutable
-                       -> drogon::Task<void> {
-                     EncounterDisposition disposition =
-                         EncounterDisposition::Nak;
-                     try {
-                       disposition = co_await handlePayload(payload);
-                     }
-                     catch (const std::exception& error) {
-                       LOG_WARN << "Encounter consumer: redelivering ("
-                                << error.what() << ")";
-                       disposition = EncounterDisposition::Nak;
-                     }
-                     if (disposition == EncounterDisposition::Term) {
-                       if (settlement.term)
-                         settlement.term();
-                     }
-                     else if (disposition == EncounterDisposition::Ack) {
-                       if (settlement.ack)
-                         settlement.ack();
-                     }
-                     else if (settlement.nak) {
-                       settlement.nak();
-                     }
-                     co_return;
-                   });
-             });
+         strand_.post([this, lifecycle, payload = std::string(message.payload),
+                       settlement = std::move(settlement)]() {
+           const EncounterLifecycleGuard guard(lifecycle);
+           if (!guard.alive()) {
+             if (settlement.nak)
+               settlement.nak();
+             return;
+           }
+           EncounterDisposition disposition = EncounterDisposition::Nak;
+           try {
+             disposition = settlePayload(payload);
+           }
+           catch (const std::exception& error) {
+             LOG_WARN << "Encounter consumer: redelivering (" << error.what() << ")";
+             disposition = EncounterDisposition::Nak;
+           }
+           if (disposition == EncounterDisposition::Term) {
+             if (settlement.term)
+               settlement.term();
+           }
+           else if (disposition == EncounterDisposition::Ack) {
+             if (settlement.ack)
+               settlement.ack();
+           }
+           else if (settlement.nak) {
+             settlement.nak();
+           }
+         });
        }});
   if (!subscription)
     return false;

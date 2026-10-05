@@ -1,6 +1,7 @@
 #pragma once
 
 #include <argus/identity/v1/voiceprint.grpc.pb.h>
+#include <atomic>
 #include <drogon/utils/coroutine.h>
 #include <feature/voiceprint/services/passive/passive-enrollment-service.hxx>
 #include <feature/voiceprint/services/voiceprint/voiceprint-feature-service.hxx>
@@ -56,11 +57,16 @@ private:
   static grpc::ServerUnaryReactor*
   dispatch(grpc::CallbackServerContext* context, Work work);
 
+  [[nodiscard]] bool admitLearning() const;
+
   [[nodiscard]] drogon::Task<grpc::Status>
   answerIdentify(const argus::identity::v1::VoiceClip& clip,
                  argus::identity::v1::IdentifyVoiceResponse* response) const;
 
+  static constexpr int kMaxLearningInFlight = 8;
+
   Dependencies dependencies_;
   VoiceprintFeatureService service_;
   PassiveEnrollmentService passive_;
+  mutable std::atomic<int> learning_{0};
 };

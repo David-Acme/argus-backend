@@ -12,7 +12,7 @@ PairingController::pair(drogon::HttpRequestPtr req)
   const auto& device =
       req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
   const auto result =
-      service_.pair({.code = body.code,
+      co_await service_.pair({.code = body.code,
                      .nonce = body.nonce,
                      .proof = body.proof,
                      .deviceHash = device.deviceHash});

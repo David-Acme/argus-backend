@@ -306,14 +306,15 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
       std::optional<EpisodeHit> episode;
       {
         std::scoped_lock lock(graph_.mutex());
-        fact = repo_.factById(graph_.handle(), {.factId = neighbour.factId,
-                                                .scope = input.scope,
-                                                .refId = input.refId});
-        if (!fact)
+        if (memory_vec::isEpisodeKey(neighbour.factId))
           episode = repo_.episodeById(graph_.handle(),
-                                      {.episodeId = neighbour.factId,
+                                      {.episodeId = memory_vec::idOfKey(neighbour.factId),
                                        .scope = input.scope,
                                        .refId = input.refId});
+        else
+          fact = repo_.factById(graph_.handle(), {.factId = neighbour.factId,
+                                                  .scope = input.scope,
+                                                  .refId = input.refId});
       }
       if (fact) {
         GraphRecallHit out;

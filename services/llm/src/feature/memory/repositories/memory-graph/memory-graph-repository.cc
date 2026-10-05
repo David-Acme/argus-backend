@@ -3,6 +3,7 @@
 #include <ctime>
 #include <drogon/drogon.h>
 #include <feature/memory/repositories/memory-graph/memory-graph-query.hxx>
+#include <feature/memory/services/memory/memory-vec.hxx>
 #include <text/text-norm.hxx>
 #include <sqlite/sqlite-stmt.hxx>
 #include <sqlite3.h>
@@ -17,6 +18,16 @@ namespace
 int64_t lastRowId(sqlite3* db)
 {
   return sqlite3_last_insert_rowid(db);
+}
+
+bool bindVector(SqliteStmt& stmt, int index, const std::string& bytes)
+{
+  return stmt.bindBlob({.index = index, .data = bytes.data(), .size = bytes.size()});
+}
+
+bool execute(sqlite3* db, const char* sql)
+{
+  return sqlite3_exec(db, sql, nullptr, nullptr, nullptr) == SQLITE_OK;
 }
 
 }
@@ -272,7 +283,7 @@ MemoryGraphRepository::vecNeighbours(sqlite3* db,
   SqliteStmt stmt;
   if (!stmt.prepare(db, FIND_VEC_NEIGHBOURS))
     return out;
-  stmt.bindText(1, input.encoded);
+  bindVector(stmt, 1, input.encoded);
   stmt.bindText(2, input.partition);
   stmt.bindInt(3, input.k);
   while (stmt.step() == SQLITE_ROW)
@@ -398,59 +409,6 @@ void MemoryGraphRepository::bumpFactHits(sqlite3* db,
     stmt.step();
     stmt.reset();
   }
-}
-
-int64_t MemoryGraphRepository::recordProcedure(sqlite3* db,
-                                               const ProcedureRecordInput& input)
-{
-  if (!db || input.name.empty() || input.steps.empty())
-    return 0;
-  SqliteStmt stmt;
-  if (!stmt.prepare(db, FIND_PROCEDURE))
-    return 0;
-  stmt.bindText(1, input.name);
-  if (stmt.step() == SQLITE_ROW) {
-    const int64_t id = stmt.columnInt64(0);
-    SqliteStmt upd;
-    if (upd.prepare(db, BUMP_PROCEDURE)) {
-      upd.bindInt64(1, std::time(nullptr));
-      upd.bindInt64(2, id);
-      upd.step();
-    }
-    return id;
-  }
-  if (!stmt.prepare(db, INSERT_PROCEDURE))
-    return 0;
-  stmt.bindText(1, input.name);
-  stmt.bindText(2, input.goal);
-  stmt.bindText(3, input.steps);
-  stmt.bindInt64(4, std::time(nullptr));
-  if (stmt.step() != SQLITE_DONE)
-    return 0;
-  return lastRowId(db);
-}
-
-std::optional<std::string>
-MemoryGraphRepository::findProcedure(sqlite3* db, const std::string& goal)
-{
-  if (!db || goal.empty())
-    return std::nullopt;
-  const auto tokens = text_norm::words(goal);
-  if (tokens.empty())
-    return std::nullopt;
-  std::string match;
-  for (const auto& token : tokens) {
-    if (!match.empty())
-      match += " OR ";
-    match += "\"" + token + "\"";
-  }
-  SqliteStmt stmt;
-  if (!stmt.prepare(db, FIND_PROCEDURE_STEPS))
-    return std::nullopt;
-  stmt.bindText(1, match);
-  if (stmt.step() == SQLITE_ROW)
-    return stmt.columnText(0);
-  return std::nullopt;
 }
 
 void MemoryGraphRepository::ftsInsert(sqlite3* db, const FtsIndexInput& input)
@@ -634,17 +592,11 @@ void MemoryGraphRepository::insertVecRow(sqlite3* db,
 {
   if (!db)
     return;
-  std::string enc = "[";
-  for (size_t i = 0; i < input.vec.size(); ++i) {
-    if (i > 0)
-      enc += ",";
-    enc += std::to_string(input.vec[i]);
-  }
-  enc += "]";
   SqliteStmt stmt;
   if (!stmt.prepare(db, INSERT_VEC_ROW))
     return;
-  stmt.bindText(1, enc);
+  const std::string bytes = memory_vec::encode(input.vec);
+  bindVector(stmt, 1, bytes);
   stmt.bindText(2, input.partition);
   stmt.bindInt64(3, input.factId);
   stmt.bindInt(4, input.view);
@@ -658,7 +610,7 @@ float MemoryGraphRepository::vecDedupSim(sqlite3* db, const VecDedupInput& input
   SqliteStmt stmt;
   if (!stmt.prepare(db, FIND_VEC_DUP))
     return 0.0F;
-  stmt.bindText(1, input.encoded);
+  bindVector(stmt, 1, input.encoded);
   stmt.bindText(2, input.partition);
   stmt.bindInt64(3, input.factId);
   if (stmt.step() == SQLITE_ROW)
@@ -666,15 +618,77 @@ float MemoryGraphRepository::vecDedupSim(sqlite3* db, const VecDedupInput& input
   return 0.0F;
 }
 
-void MemoryGraphRepository::deleteVecRows(sqlite3* db, int64_t factId)
+void MemoryGraphRepository::deleteVecRows(sqlite3* db, int64_t key)
 {
   if (!db)
     return;
   SqliteStmt stmt;
   if (!stmt.prepare(db, DELETE_VEC_ROWS))
     return;
-  stmt.bindInt64(1, factId);
+  stmt.bindInt64(1, key);
   stmt.step();
+}
+
+bool MemoryGraphRepository::factExists(sqlite3* db, int64_t factId)
+{
+  if (!db || factId <= 0)
+    return false;
+  SqliteStmt stmt;
+  if (!stmt.prepare(db, FIND_FACT_EXISTS))
+    return false;
+  stmt.bindInt64(1, factId);
+  return stmt.step() == SQLITE_ROW;
+}
+
+std::vector<int64_t> MemoryGraphRepository::forgetFact(sqlite3* db,
+                                                       const FactForgetInput& input)
+{
+  if (!db || input.factId <= 0 || input.refId <= 0)
+    return {};
+  if (!execute(db, BEGIN_IMMEDIATE))
+    return {};
+  std::vector<std::pair<int64_t, std::string>> chain;
+  {
+    SqliteStmt stmt;
+    if (stmt.prepare(db, FIND_FORGET_CHAIN)) {
+      stmt.bindInt64(1, input.factId);
+      stmt.bindInt64(2, input.refId);
+      while (stmt.step() == SQLITE_ROW)
+        chain.emplace_back(stmt.columnInt64(0), stmt.columnText(1));
+    }
+  }
+  SqliteStmt fts;
+  SqliteStmt fact;
+  SqliteStmt vec;
+  SqliteStmt edges;
+  bool ok = !chain.empty() && fts.prepare(db, DELETE_FACT_FTS) &&
+            fact.prepare(db, DELETE_FACT) && vec.prepare(db, DELETE_VEC_ROWS) &&
+            edges.prepare(db, DELETE_FACT_EDGES);
+  for (const auto& [id, canonical] : chain) {
+    if (!ok)
+      break;
+    fts.reset();
+    fts.bindInt64(1, id);
+    fts.bindText(2, canonical);
+    fact.reset();
+    fact.bindInt64(1, id);
+    fact.bindInt64(2, input.refId);
+    vec.reset();
+    vec.bindInt64(1, memory_vec::factKey(id));
+    edges.reset();
+    edges.bindInt64(1, id);
+    ok = fts.step() == SQLITE_DONE && fact.step() == SQLITE_DONE &&
+         vec.step() == SQLITE_DONE && edges.step() == SQLITE_DONE;
+  }
+  if (!ok || !execute(db, COMMIT)) {
+    execute(db, ROLLBACK);
+    return {};
+  }
+  std::vector<int64_t> forgotten;
+  forgotten.reserve(chain.size());
+  for (const auto& entry : chain)
+    forgotten.push_back(entry.first);
+  return forgotten;
 }
 
 std::vector<GazetteerRow> MemoryGraphRepository::gazetteerAliases(sqlite3* db)

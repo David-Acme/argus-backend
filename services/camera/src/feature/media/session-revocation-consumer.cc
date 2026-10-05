@@ -7,6 +7,7 @@
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <chrono>
 #include <utility>
 
 namespace
@@ -45,33 +46,53 @@ SessionRevocationConsumer::SessionRevocationConsumer(Dependencies dependencies,
 SessionRevocationConsumer::~SessionRevocationConsumer()
 {
   requestStop();
+  if (connector_.joinable())
+    connector_.join();
 }
 
 void SessionRevocationConsumer::start()
 {
-  if (!dependencies_.bus || dependencies_.sessions == nullptr)
+  if (!dependencies_.bus || dependencies_.sessions == nullptr || connector_.joinable())
     return;
-  if (subscribe())
-    return;
-  LOG_WARN << "Media session revocations: stream not ready; retrying";
-  scheduleSubscribeRetry();
+  connecting_.store(true, std::memory_order_release);
+  connector_ = std::jthread([this](std::stop_token stop) { connect(stop); });
+}
+
+void SessionRevocationConsumer::connect(const std::stop_token& stop)
+{
+  bool warned = false;
+  while (!stop.stop_requested()) {
+    if (subscribe()) {
+      if (stop.stop_requested())
+        requestStop();
+      break;
+    }
+    if (!warned)
+      LOG_WARN << "Media session revocations: stream not ready; retrying";
+    warned = true;
+    std::unique_lock lock(mutex_);
+    wake_.wait_for(lock, stop, std::chrono::duration<double>(kSubscribeRetrySeconds),
+                   [] { return false; });
+  }
+  connecting_.store(false, std::memory_order_release);
 }
 
 void SessionRevocationConsumer::requestStop()
 {
-  if (retryTimer_.has_value()) {
-    if (drogon::app().isRunning())
-      drogon::app().getLoop()->invalidateTimer(*retryTimer_);
-    retryTimer_.reset();
+  connector_.request_stop();
+  std::optional<uint64_t> subscription;
+  {
+    std::scoped_lock lock(mutex_);
+    subscription.swap(subscription_);
   }
-  if (subscription_.has_value() && dependencies_.bus)
-    dependencies_.bus->unsubscribe(*subscription_);
-  subscription_.reset();
+  if (subscription.has_value() && dependencies_.bus)
+    dependencies_.bus->unsubscribe(*subscription);
 }
 
 bool SessionRevocationConsumer::drained() const
 {
-  return inFlight_.load(std::memory_order_acquire) == 0;
+  return inFlight_.load(std::memory_order_acquire) == 0 &&
+         !connecting_.load(std::memory_order_acquire);
 }
 
 bool SessionRevocationConsumer::subscribe()
@@ -89,22 +110,13 @@ bool SessionRevocationConsumer::subscribe()
        }});
   if (!subscription)
     return false;
-  subscription_ = subscription;
+  {
+    std::scoped_lock lock(mutex_);
+    subscription_ = subscription;
+  }
   LOG_INFO << "Media session revocations: durable " << config_.durable
            << " connected on " << config_.subject;
   return true;
-}
-
-void SessionRevocationConsumer::scheduleSubscribeRetry()
-{
-  if (retryTimer_.has_value())
-    return;
-  retryTimer_ = drogon::app().getLoop()->runEvery(kSubscribeRetrySeconds, [this]() {
-    if (!subscribe() || !retryTimer_.has_value())
-      return;
-    drogon::app().getLoop()->invalidateTimer(*retryTimer_);
-    retryTimer_.reset();
-  });
 }
 
 void SessionRevocationConsumer::handle(const NatsBus::DurableMessage& message,

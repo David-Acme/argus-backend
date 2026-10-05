@@ -27,8 +27,21 @@ public:
     virtual ~ISink() = default;
     virtual bool sendBinary(const uint8_t* data, size_t len) = 0;
     virtual bool tryReserve(size_t bytes) = 0;
-    virtual void release(int64_t bytes) = 0;
+    virtual int64_t release(int64_t bytes) = 0;
     virtual void onClosed(const StreamClosedInput& input) = 0;
+  };
+
+  struct AckInput
+  {
+    uint16_t subId{0};
+    int64_t bytes{0};
+    const ISink* owner{nullptr};
+  };
+
+  struct ViewerCount
+  {
+    int perCamera{0};
+    int total{0};
   };
 
   static constexpr int kDefaultViewersPerCamera = 4;
@@ -46,6 +59,7 @@ public:
     int64_t cameraId{0};
     CameraStream stream{camera_stream_role::streamFor(CameraStreamRole::LiveView)};
     bool fastStart{false};
+    bool priority{true};
   };
 
   static constexpr size_t kDefaultGopCacheBytes = size_t{2} * 1024 * 1024;
@@ -65,7 +79,7 @@ public:
   [[nodiscard]] ViewerLimits viewerLimits();
 
   uint16_t subscribe(const SubscribeInput& input, std::string& error);
-  void ack(uint16_t subId, int64_t bytes);
+  int64_t ack(const AckInput& input);
   void unsubscribe(uint16_t subId, const ISink* owner);
   int subscriptionsOf(const ISink* sink);
   void closeAll(const ISink* sink);
@@ -120,7 +134,10 @@ private:
   std::shared_ptr<Upstream> getOrOpen(const SubscribeInput& input,
                                       std::string& error);
   void pruneLocked();
-  void countViewers(int64_t cameraId, int& perCamera, int& total);
+  [[nodiscard]] ViewerCount countViewers(int64_t cameraId);
+  [[nodiscard]] const char* viewerRefusal(const SubscribeInput& input);
+  [[nodiscard]] std::vector<std::thread> collectFinishedLocked();
+  static void reap(std::vector<std::thread> readers);
   static void sendFramed(const SendFramedInput& input);
   void deliver(const DeliverInput& input);
   void dispatch(Upstream& up, const CachedFragment& fragment);
@@ -130,8 +147,8 @@ private:
   std::mutex hubMutex_;
   std::unordered_map<std::string, std::shared_ptr<Upstream>> upstreams_;
   std::unordered_map<uint16_t, std::shared_ptr<Upstream>> subToUpstream_;
+  std::vector<std::shared_ptr<Upstream>> retired_;
   uint16_t nextSubId_ = 1;
-  uint32_t nextSeq_ = 0;
   size_t chunkBytes_ = 16 * 1024;
   int64_t graceMs_ = 2000;
   size_t gopCacheBytes_ = kDefaultGopCacheBytes;

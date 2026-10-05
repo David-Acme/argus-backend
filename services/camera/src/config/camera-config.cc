@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <string_view>
 
 CameraDbConfig CameraConfig::resolveDb()
 {
@@ -15,6 +16,17 @@ CameraDbConfig CameraConfig::resolveDb()
   config.schemaPath = ConfigService::getString("camera.schema");
   if (config.schemaPath.empty())
     config.schemaPath = "services/camera/database/schema.sql";
+  config.secretKeyPath = ConfigService::getString("camera.secret_key");
+  if (config.secretKeyPath.empty()) {
+    std::string_view file = config.dbPath;
+    if (file.starts_with("file:"))
+      file = file.substr(5, file.find('?') == std::string_view::npos ? std::string_view::npos
+                                                                     : file.find('?') - 5);
+    const auto slash = file.rfind('/');
+    config.secretKeyPath =
+        (slash == std::string_view::npos ? std::string() : std::string(file.substr(0, slash + 1))) +
+        "camera-secret.key";
+  }
   return config;
 }
 

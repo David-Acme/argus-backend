@@ -6,6 +6,7 @@ PRAGMA temp_store         = MEMORY;
 PRAGMA mmap_size          = 268435456;
 PRAGMA foreign_keys       = ON;
 PRAGMA journal_size_limit = 67108864;
+PRAGMA secure_delete      = ON;
 
 CREATE TABLE IF NOT EXISTS user (
     id             INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
@@ -214,6 +215,21 @@ CREATE TABLE IF NOT EXISTS visitor_setting (
 
 INSERT OR IGNORE INTO visitor_setting (id) VALUES (1);
 
+CREATE TABLE IF NOT EXISTS visitor_counter (
+    id           INTEGER NOT NULL  PRIMARY KEY CHECK (id = 1),
+    last_number  INTEGER NOT NULL  DEFAULT 0  CHECK (last_number >= 0)
+);
+
+INSERT OR IGNORE INTO visitor_counter (id, last_number) VALUES (1, 0);
+
+CREATE TABLE IF NOT EXISTS pending_object_delete (
+    id               INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    object_key       TEXT    NOT NULL  UNIQUE,
+    attempts         INTEGER NOT NULL  DEFAULT 0  CHECK (attempts >= 0),
+    next_attempt_at  INTEGER NOT NULL  DEFAULT 0,
+    created_at       INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
 CREATE TABLE IF NOT EXISTS change_outbox (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     event_id    TEXT              UNIQUE,
@@ -275,6 +291,9 @@ CREATE INDEX IF NOT EXISTS idx_person_visit_open
 
 CREATE INDEX IF NOT EXISTS idx_person_crop_capability_lookup
     ON person_crop_capability (token_hash, expires_at, consumed_at);
+
+CREATE INDEX IF NOT EXISTS idx_pending_object_delete_due
+    ON pending_object_delete (next_attempt_at, id);
 
 CREATE INDEX IF NOT EXISTS idx_change_outbox_status
     ON change_outbox (status, id);

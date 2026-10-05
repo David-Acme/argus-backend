@@ -3,9 +3,11 @@
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <llm/llm-client.hxx>
 #include <grpcpp/impl/service_type.h>
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -27,8 +29,12 @@ public:
   ~LlmRpcServer();
   int port() const;
   void shutdown();
+  void requestStop();
+  [[nodiscard]] bool drained() const;
 
 private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
+  std::jthread stopper_;
+  std::atomic<bool> stopped_{false};
 };

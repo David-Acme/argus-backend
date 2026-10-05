@@ -20,6 +20,7 @@ namespace camera_stream_paths
 inline constexpr const char* kMainKey = "streamPath";
 inline constexpr const char* kSubKey = "subStreamPath";
 inline constexpr const char* kCatalogKey = "catalogId";
+inline constexpr const char* kRetentionIncidentKey = "retentionIncident";
 inline constexpr size_t kMaxCatalogIdLength = 40;
 inline constexpr const char* kDefaultMain = "/stream1";
 inline constexpr const char* kDefaultSub = "/stream2";
@@ -58,12 +59,20 @@ inline std::string catalogIdOf(const std::string& config)
   return json[kCatalogKey].asString();
 }
 
+inline bool retentionIncidentOf(const std::string& config)
+{
+  const Json::Value json = json_util::fromString(config);
+  return json.isObject() && json[kRetentionIncidentKey].isBool() &&
+         json[kRetentionIncidentKey].asBool();
+}
+
 struct ConfigChange
 {
   std::string config;
   std::optional<std::string> main;
   std::optional<std::string> sub;
   std::optional<std::string> catalogId;
+  std::optional<bool> retentionIncident;
 };
 
 inline std::string withConfig(const ConfigChange& change)
@@ -82,6 +91,12 @@ inline std::string withConfig(const ConfigChange& change)
   apply(kMainKey, change.main);
   apply(kSubKey, change.sub);
   apply(kCatalogKey, change.catalogId);
+  if (change.retentionIncident) {
+    if (*change.retentionIncident)
+      json[kRetentionIncidentKey] = true;
+    else
+      json.removeMember(kRetentionIncidentKey);
+  }
   return json_util::toString(json);
 }
 }

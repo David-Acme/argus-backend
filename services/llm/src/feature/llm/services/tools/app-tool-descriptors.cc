@@ -1,5 +1,7 @@
 #include "app-tool-descriptors.hxx"
 
+#include <feature/llm/services/tools/app-command.hxx>
+
 #include <algorithm>
 #include <array>
 #include <string>
@@ -64,6 +66,36 @@ std::string labelFor(const std::array<Label, N>& labels, const tools::ToolCall& 
   return std::string(call.context.lang == "en" ? found->en : found->es);
 }
 
+bool spokenGuardMode(const tools::ToolCall& call)
+{
+  const std::string requested = call.arguments.get("mode", "").asString();
+  if (requested == "armed")
+    return true;
+  if (namesGuardMode(call.context.utterance, requested))
+    return true;
+  const auto heard = appCommandFor(call.context.utterance);
+  return heard && heard->name == call.name &&
+         heard->arguments.get("mode", "").asString() == requested;
+}
+
+constexpr std::array<Label, 4> kModeWords{{{.value = "home", .es = "casa", .en = "home"},
+                                           {.value = "night", .es = "noche", .en = "night"},
+                                           {.value = "away", .es = "fuera", .en = "away"},
+                                           {.value = "armed", .es = "armado", .en = "armed"}}};
+
+tools::ToolResult confirmGuardMode(const tools::ToolCall& call)
+{
+  const std::string mode = labelFor(kModeWords, call, "mode");
+  tools::ToolResult result;
+  result.tool = call.name;
+  result.output = call.context.lang == "en"
+                      ? "Not changed. Lowering the guard needs the user's own words: ask them to say "
+                        "\"set the guard to " + mode + "\"."
+                      : "No lo he cambiado. Bajar la vigilancia necesita que el usuario lo diga: "
+                        "pídele que diga \"pon la vigilancia en modo " + mode + "\".";
+  return result;
+}
+
 tools::ToolArgumentSpec argument(std::string name, std::string type, std::vector<std::string> values)
 {
   return {.name = std::move(name),
@@ -77,6 +109,17 @@ tools::ToolArgumentSpec argument(std::string name, std::string type, std::vector
 bool isAppTool(std::string_view name)
 {
   return name.starts_with(kAppPrefix);
+}
+
+std::optional<role_access::AppAction> appActionOf(std::string_view name)
+{
+  if (name == "app.show_camera")
+    return role_access::AppAction::ShowCamera;
+  if (name == "app.open")
+    return role_access::AppAction::OpenScreen;
+  if (name == "app.set_guard_mode")
+    return role_access::AppAction::SetGuardMode;
+  return std::nullopt;
 }
 
 std::vector<tools::ToolDescriptor> appToolDescriptors()
@@ -125,6 +168,8 @@ std::vector<tools::ToolDescriptor> appToolDescriptors()
        .accessPermission = RolePermission::Update,
        .handler = [](const tools::ToolCall& call) {
          const std::string mode = labelFor(kModeLabels, call, "mode");
+         if (!spokenGuardMode(call))
+           return confirmGuardMode(call);
          const std::string place = call.arguments.get("environment", "").asString();
          if (!place.empty())
            return emit({.call = call,

@@ -12,7 +12,13 @@ TEST_CASE("a disabled face service answers instead of blocking the caller")
 
   std::atomic<bool> answered{false};
   std::thread caller([&] {
-    CHECK_FALSE(FaceService::instance().identify("not an image").has_value());
+    CHECK(FaceService::instance()
+              .verifyImage({.imageBytes = "not an image",
+                            .policy = {.quality = face_check::biometricGate(),
+                                       .livenessRequired = true,
+                                       .livenessThreshold = 0.8F,
+                                       .encodePortrait = false}})
+              .status == FaceCheckStatus::Unavailable);
     CHECK_FALSE(
         FaceService::instance().extractImage("not an image").has_value());
     answered.store(true);

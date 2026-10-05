@@ -167,6 +167,14 @@ ActionCommandRepository::reconcileExpired(int64_t at,
   co_return result.affectedRows();
 }
 
+drogon::Task<int64_t>
+ActionCommandRepository::purgeSettled(int64_t olderThan) const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(PURGE_SETTLED.data(), olderThan);
+  co_return static_cast<int64_t>(result.affectedRows());
+}
+
 drogon::Task<bool>
 ActionCommandRepository::upsertLease(const SirenLeaseInput& input) const
 {

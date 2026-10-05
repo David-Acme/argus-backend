@@ -135,20 +135,6 @@ inline constexpr const char* INSERT_EDGE =
 inline constexpr const char* BUMP_FACT_HITS =
     "UPDATE memory_fact SET hit_count = hit_count + 1 WHERE id = ?";
 
-inline constexpr const char* FIND_PROCEDURE =
-    "SELECT id FROM memory_procedure WHERE name = ? LIMIT 1";
-
-inline constexpr const char* BUMP_PROCEDURE =
-    "UPDATE memory_procedure SET uses = uses + 1, updated_at = ? WHERE id = ?";
-
-inline constexpr const char* INSERT_PROCEDURE =
-    "INSERT INTO memory_procedure (name, goal, steps, uses, successes, "
-    "updated_at) VALUES (?, ?, ?, 1, 1, ?)";
-
-inline constexpr const char* FIND_PROCEDURE_STEPS =
-    "SELECT steps FROM memory_procedure WHERE goal MATCH ? "
-    "ORDER BY successes DESC, uses DESC LIMIT 1";
-
 inline constexpr const char* FIND_FACT_CONTENT =
     "SELECT scope, ref_id, canonical FROM memory_fact "
     "WHERE id = ? AND valid_to = 0";
@@ -162,11 +148,39 @@ inline constexpr const char* INSERT_VEC_ROW =
 
 inline constexpr const char* FIND_VEC_DUP =
     "SELECT memory_id, distance FROM memory_vec "
-    "WHERE embedding MATCH ? AND partition = ? AND memory_id != ? "
-    "ORDER BY distance LIMIT 1";
+    "WHERE embedding MATCH ? AND partition = ? AND memory_id > 0 "
+    "AND memory_id != ? ORDER BY distance LIMIT 1";
 
 inline constexpr const char* DELETE_VEC_ROWS =
     "DELETE FROM memory_vec WHERE memory_id = ?";
+
+inline constexpr const char* FIND_FACT_EXISTS =
+    "SELECT 1 FROM memory_fact WHERE id = ? AND valid_to = 0";
+
+inline constexpr const char* FIND_FORGET_CHAIN = R"(
+    WITH RECURSIVE chain(id) AS (
+      SELECT id FROM memory_fact WHERE id = ?1 AND scope = 'user' AND ref_id = ?2
+      UNION
+      SELECT e.src_id FROM chain
+        JOIN memory_edge e ON e.kind = 'supersedes' AND e.dst_id = chain.id
+    )
+    SELECT f.id, f.canonical FROM chain JOIN memory_fact f ON f.id = chain.id
+    WHERE f.scope = 'user' AND f.ref_id = ?2)";
+
+inline constexpr const char* DELETE_FACT_FTS =
+    "INSERT INTO memory_fact_fts (memory_fact_fts, rowid, canonical) "
+    "VALUES ('delete', ?, ?)";
+
+inline constexpr const char* DELETE_FACT =
+    "DELETE FROM memory_fact WHERE id = ? AND scope = 'user' AND ref_id = ?";
+
+inline constexpr const char* DELETE_FACT_EDGES =
+    "DELETE FROM memory_edge WHERE kind = 'supersedes' "
+    "AND (src_id = ?1 OR dst_id = ?1)";
+
+inline constexpr const char* BEGIN_IMMEDIATE = "BEGIN IMMEDIATE";
+inline constexpr const char* COMMIT = "COMMIT";
+inline constexpr const char* ROLLBACK = "ROLLBACK";
 
 inline constexpr const char* FIND_ALIAS_GAZETTEER =
     "SELECT a.norm, a.surface, a.person_frame, a.entity_id, e.kind "
@@ -233,6 +247,12 @@ inline constexpr const char* INSERT_LEGACY_FACT =
     "VALUES (?, 'legacy', ?, ?, ?, ?, 0.5, 'es', ?, ?, ?, 0, ?, ?, ?)";
 
 }
+
+struct FactForgetInput
+{
+  int64_t factId{0};
+  int64_t refId{0};
+};
 
 struct VecNeighbourInput
 {

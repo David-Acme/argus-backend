@@ -50,7 +50,6 @@ language = "es"
 
 [jwt]
 secret = ""
-refresh_secret = ""
 
 [device]
 fingerprint_secret = ""
@@ -75,6 +74,11 @@ max_reconnects = 60
 [face]
 enabled = true
 top_k = 5
+match_threshold = 0.50
+login_margin = 0.05
+liveness_required = true
+liveness_threshold = 0.80
+liveness_model_dir = "models/face/anti-spoof"
 
 [voiceprint]
 enabled = true
@@ -93,6 +97,13 @@ call_idle_minutes = 5
 
 [invitation]
 lifetime_seconds = 1800
+
+[rate_limit]
+enabled = true
+window_seconds = 60
+max_requests = 10
+lockout_threshold = 5
+lockout_seconds = 300
 
 [storage]
 mode = "s3"

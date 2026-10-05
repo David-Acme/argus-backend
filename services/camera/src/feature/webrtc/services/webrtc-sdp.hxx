@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -17,10 +18,18 @@ struct WebRtcViewer
   std::string sessionId;
 };
 
+struct WebRtcAnswerScreen
+{
+  std::string_view sdp;
+  std::span<const std::string> allowedHosts;
+};
+
 namespace webrtc_sdp
 {
 std::optional<std::string> prepareOffer(const WebRtcOfferInput& input);
 std::string separateAudio(std::string_view answer);
+std::string screenCandidates(const WebRtcAnswerScreen& screen);
+[[nodiscard]] bool isCandidate(std::string_view line);
 }
 
 namespace webrtc_viewer

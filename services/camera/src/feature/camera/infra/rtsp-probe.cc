@@ -434,7 +434,8 @@ RtspProbeResult rtsp_probe::describe(const RtspProbeInput& input)
                         .port = input.port,
                         .tls = false,
                         .connectTimeoutMs = input.timeoutMs,
-                        .ioTimeoutMs = input.timeoutMs})) {
+                        .ioTimeoutMs = input.timeoutMs,
+                        .pin = {}})) {
     const std::string& error = connection.error();
     return failure({.outcome = error.starts_with("connection refused") ? RtspProbeOutcome::Refused
                                                                        : RtspProbeOutcome::Unreachable,
@@ -459,7 +460,8 @@ RtspProbeResult rtsp_probe::describe(const RtspProbeInput& input)
                                          .port = input.port,
                                          .tls = false,
                                          .connectTimeoutMs = input.timeoutMs,
-                                         .ioTimeoutMs = input.timeoutMs}))
+                                         .ioTimeoutMs = input.timeoutMs,
+                        .pin = {}}))
       answer = roundTrip(connection, authorized);
     if (!answer.rtsp)
       return failure({.outcome = RtspProbeOutcome::Protocol, .detail = answer.error, .status = 0});

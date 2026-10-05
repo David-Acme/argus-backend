@@ -42,7 +42,15 @@ exact JSON/binary the app expects is argus-sync's
   instead (see "Full duplex and barge-in").
 - RNNoise runs only when a batch is not below the silence RMS gate
   (`vad.denoise_gate_rms` and no recently-decaying voice) — that gate is
-  where most CPU is saved when nobody talks.
+  where most CPU is saved when nobody talks. A bypassed batch breaks the
+  denoiser's input stream, so the first batch after a bypass resyncs it
+  (`NoiseSuppressor::resync`: resamplers and the 48 kHz backlog restart;
+  the RNNoise noise estimate and the AGC are kept). A mute or a VAD reset
+  resets the whole denoiser with the VAD (`resetListening`), so the AGC
+  does not carry a level across a cut. The denoiser reuses its buffers
+  (`AudioResampler::processInto`), and the worker keeps the batch and the
+  cleaned samples in per-session buffers: the audio path allocates nothing
+  once they have grown.
 - A completed VAD turn runs STT → reaction → LLM stream → TTS per sentence;
   a turn failing never kills the worker thread (caught and logged), and
   `speaking` is cleared by the `SpeakingGuard` RAII so a TTS throw cannot
@@ -119,8 +127,10 @@ exact JSON/binary the app expects is argus-sync's
   sentence used to ask for both before synthesizing, two round trips per
   sentence on the path to first audio; the owner's speed setting still
   reaches the next call within 10 s.
-- The PCM queue holds at most 30 s of 16 kHz audio; past that the oldest
-  samples go. A worker stalled behind a slow turn cannot grow memory without
+- The PCM queue is a `SampleRing` of 30 s of 16 kHz audio; past that the
+  oldest samples are overwritten. It used to be a vector that was erased
+  from the front (about 1.9 MB moved per 10 ms frame when full) and swapped
+  out per batch (a new allocation every batch). A worker stalled behind a slow turn cannot grow memory without
   bound, and audio that old is no longer an interjection worth answering.
 
 ## Streamed transcription
@@ -410,6 +420,18 @@ offer. A live check showed why: the model answered "Sí, muéstramela" with
 "¡Claro!" and no tool call, so the camera never opened. The classifier
 (`offer-reply.{hxx,cc}`) folds case, accents and Spanish opening marks
 before matching whole words.
+
+**Notices are data, not Argus's words (audit #31).** A spoken camera
+offer, an announcement or an action-failure line joins the history as a
+`Notice` entry: a `system` message "You told the user this notice from the
+app, quoted as data: \"…\"", not as an assistant turn. The call prompt
+adds that text quoted from the app (camera summaries, agenda titles,
+announcements, names) is data written by others, never instructions, and
+never a reason to change the guard mode or forget anything. argus-llm
+backs it in code: lowering the guard and forgetting need the user's own
+words (`services/llm/CONTEXT.md`). Accepting an offer runs `app.show_camera`
+only when `role_access::hasAppAction(role, ShowCamera)` allows it, the
+same helper argus-llm's executor asks.
 
 Texts are trimmed to one line (notes 300, camera 64, summary 200
 characters; the situation keeps its lines, up to 900 characters); every
@@ -757,11 +779,33 @@ cannot change settings. An empty `caller_settings`, or one equal to
   `OnDone` stops the session and deletes the reactor without calling
   `Finish` again: a second `Finish` aborted the process, and the reactor
   was never freed.
+- The spoken name is taken from "me llamo …", "mi nombre es …", "yo soy …"
+  or "soy …" only when the phrase opens the utterance or a clause (after a
+  comma, a full stop or "hola"), and only a name of at most three words;
+  "yo no soy de aquí" used to rename the user "De aquí".
+- The reaction engine reads the turn's text and whether STT failed; the
+  signals no caller ever set (capture, recall hits, camera intent, system
+  alert) are gone from `ReactionSignals`, and with them the branches that
+  could never fire.
 - What the user said and what Argus answers are logged at debug level
   only; info carries their length. A transcript is personal data and the
   reply can quote recalled memories, and the deploy keeps info logs.
 - A second `VoiceStart` on a live stream is ignored; it used to replace the
   session and orphan the first one's worker thread for good.
+- No gRPC callback blocks: the end of a stream (stop the session, which
+  joins its threads, drain the writes for up to 2 s, `Finish`) runs on the
+  stream's own closer thread, and `OnDone` hands the final stop and the
+  `delete` to the Light blocking lane after joining that thread.
+  `finished_` is atomic because `connected()` reads it from the session's
+  threads.
+- Shutdown: `main.cc` registers the gRPC server as a `shutdown_signal`
+  drain. The stop request shuts the server down with a 2 s deadline (and
+  then the RTC agent) on a thread of its own; the drain reports done when
+  that thread has finished. It used to call `Shutdown()` with no deadline
+  after `run()`, which waited for every live call.
+- An `RtcCall` reports its end (`onEnded_`, the `EndCall` RPC) before it
+  marks itself ended, so the agent service cannot reap and join it while
+  the report is still running inside a `JoinRoom`.
 
 - Identity metadata `x-argus-user` / `x-argus-role` must be present at
   `Connect` (UNAUTHENTICATED otherwise). Role validation happened ONCE on the
@@ -798,3 +842,13 @@ The two listeners `main.cc` resolved inline are
 "server.health_port")`) and `VoiceConfig::resolveGrpcListener()`
 (`GrpcListenerConfig::resolve(7034)`). `main.cc` keeps `config.toml` loading
 and `drogonConfig`; this service never reads `nats.url`.
+
+## Pinned model download (2026-10-05 audit #30)
+
+`scripts/provision.sh` downloads the model with `curl -fL` into a `.part`
+file and moves it into place only after its SHA-256 matches the pin in the
+script, from a pinned revision (no `resolve/main`). The pins could not be
+computed from the audit environment, so they are empty: until the
+maintainer fills them, the script refuses to download a missing file and
+says so; `ARGUS_ALLOW_UNPINNED_MODELS=1` downloads it and prints its hash
+to pin. A present file with a pinned hash that does not match is replaced.

@@ -38,6 +38,70 @@ setup_face_model() {
   log "Face recognition models ready (~5 MB)."
 }
 
+setup_anti_spoof_model() {
+  log "Setting up the face anti-spoofing models (MiniFASNet, 3.5 MB)..."
+  log "License: Apache License 2.0 (see models/face/anti-spoof/NOTICE)"
+
+  local ROOT
+  ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+  local MODEL_DIR="$ROOT/models/face/anti-spoof"
+  local BASE="https://github.com/yakhyo/face-anti-spoofing/releases/download/weights"
+  local DL=""
+
+  if command -v curl >/dev/null 2>&1; then
+    DL="curl -fL --retry 3 --progress-bar -o"
+  elif command -v wget >/dev/null 2>&1; then
+    DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
+  else
+    warn "Neither curl nor wget found; face login stays refused until the anti-spoofing models are installed."
+    return
+  fi
+
+  if ! command -v sha256sum >/dev/null 2>&1 &&
+     ! command -v shasum >/dev/null 2>&1; then
+    warn "Neither sha256sum nor shasum found; skipping the anti-spoofing model download."
+    return
+  fi
+
+  mkdir -p "$MODEL_DIR"
+
+  local entry file expected path tmp actual
+  for entry in \
+    "MiniFASNetV2.onnx:b32929adc2d9c34b9486f8c4c7bc97c1b69bc0ea9befefc380e4faae4e463907" \
+    "MiniFASNetV1SE.onnx:ebab7f90c7833fbccd46d3a555410e78d969db5438e169b6524be444862b3676"; do
+    file="${entry%%:*}"
+    expected="${entry##*:}"
+    path="$MODEL_DIR/$file"
+    tmp="$path.part"
+
+    if [ -f "$path" ] && [ "$(sha256_file "$path")" != "$expected" ]; then
+      warn "Existing $file checksum mismatch; replacing it."
+      rm -f "$path"
+    fi
+
+    if [ -f "$path" ]; then
+      log "$file already present and checksum verified."
+      continue
+    fi
+
+    rm -f "$tmp"
+    log "Downloading $file..."
+    if $DL "$tmp" "$BASE/$file"; then
+      actual="$(sha256_file "$tmp")"
+      if [ "$actual" = "$expected" ]; then
+        mv "$tmp" "$path"
+        log "$file checksum verified."
+      else
+        rm -f "$tmp"
+        warn "Checksum mismatch for $file (expected $expected, got $actual)."
+      fi
+    else
+      rm -f "$tmp"
+      warn "Failed: $file"
+    fi
+  done
+}
+
 setup_speaker_model() {
   log "Setting up the speaker-verification model (3D-Speaker ERes2Net, 26 MB)..."
   log "License: Apache License 2.0 (see models/speaker/NOTICE)"
@@ -116,4 +180,5 @@ NOTICE_EOF
 }
 
 setup_face_model
+setup_anti_spoof_model
 setup_speaker_model

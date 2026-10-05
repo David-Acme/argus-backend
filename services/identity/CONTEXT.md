@@ -201,10 +201,13 @@ recognition is known to be off, a call answers before taking a slot or
 decoding the image; during boot it still waits, so a login that races the
 model load is not refused as an unrecognized face.
 
-A face image is refused before it is decoded when its header declares more
-than 12000 px on a side or 50 MP in total: OpenCV decodes a PNG at full size
-before scaling it, so a ~1 MB 20000x20000 PNG posted to the unauthenticated
-`/auth/login` allocated over a gigabyte and could get identity OOM-killed.
+A face image is refused before it is decoded unless its magic bytes say JPEG
+or PNG and its header declares at most 4096 px on a side and 16 MP in total
+(2026-10, audit #37; it used to be 12000 px and 50 MP, and stb also opened
+PSD, HDR, PIC and PNM). OpenCV decodes a PNG at full size before scaling it,
+so the cap is what bounds a burst of unauthenticated `/auth/login` posts.
+Every image is decoded by OpenCV, which applies the EXIF orientation; stb only
+reads the header (`shared/services/face/face-image.{hxx,cc}`).
 
 `IdentifyPerson` sets `face_found` (an optional field added to the frozen
 contract, so older callers ignore it): whether the detector found a face
@@ -355,11 +358,15 @@ creation, consumed in the same transaction as the enrolment.
 ## Camera guard surface (camera-guard phase 2)
 
 `IdentifyPerson`, `EnrollPerson`, `TouchPerson`, `TagPerson` and
-`ListNotifiableUsers` are fleet-secret gated RPCs. Enrollment creates a person
-without user (empty name), persists the embedding and its `face_vec` row,
-optionally stores the JPEG crop in `person_snapshot`, and emits the `person`
-sync add. `person_tag` holds LLM tags. The face engine stays inside this
-process; argus-camera only ships crops.
+`ListNotifiableUsers` are fleet-secret gated RPCs. `EnrollPerson` has no caller
+in the fleet any more; since 2026-10 (audit #8) it is the same path as a camera
+sighting: it runs `VisitorRecognitionService::observe` on the visitor strand,
+so a stranger becomes a visitor (Owner data, never a sync row) and nothing is
+emitted to the module rooms. It used to create a candidate person outside the
+strand, keep the whole crop in `person_snapshot` and emit a `person` `Add` that
+every Resident and Guard received. `capture_snapshot` is ignored. `person_tag`
+holds LLM tags (`feature/person`). The face engine stays inside this process;
+argus-camera only ships crops.
 
 **Unknown faces expire.** Every distinct stranger the cameras crop becomes a
 candidate person with an embedding and, optionally, the JPEG crop — in a
@@ -368,15 +375,19 @@ vec0 search grows with it. `CandidateRetentionService` (feature `retention`)
 retires, every six hours, the candidates nobody promoted and no user is linked
 to whose `last_seen_at` is older than `[retention] candidate_days` (default 30,
 `0` keeps them): one statement soft-deletes up to 200 rows and returns them,
-the same transaction deletes their embeddings, crop and tags and publishes
-the sync tombstone (`{id, deletedAt}`), and their `face_vec` rows go once it
-commits. A stranger who comes back after the window is a new candidate; a
+the same transaction deletes their embeddings, crop and tags and queues their
+crop objects in `pending_object_delete`, and their `face_vec` rows go once it
+commits. No tombstone is published: visitors never reached the sync stream, so
+their retirement does not either (audit #8), and the `person` deleted leg of
+the pull serves only persons with a user. A stranger who comes back after the window is a new candidate; a
 known person and a user's person are never touched. Because the index rows go
 after the commit, a stop in between would leave rows pointing at a retired
 person, which a later sighting would match; `FaceDB::init` therefore drops
 every `face_vec` row whose `face_embedding` row no longer exists.
 
-`PromotePerson` (candidate → known) is the one mutating call with a human gate:
+`PromotePerson` (candidate → known) promotes only a person with a user or a
+name (audit #19): an unnamed visitor promoted to `known` used to escape the
+retention forever. It is the one mutating call with a human gate:
 the owner bearer token plus the device fingerprint travel in the call, the
 service verifies the access token, requires an Owner actor with an active bound
 session on that device (`hasActiveSession`), promotes, and publishes the
@@ -992,3 +1003,189 @@ splits, deletes; the index stays in step with the canonical rows; turning
 recognition off purges the unnamed and stops matching; the gallery pages two
 at a time with a cursor that ends on the last page, and the filters and the
 search narrow it on the server).
+
+## Face login and registration, hardened (2026-10, cloud audit)
+
+The audit of 2026-10-05 (`docs/history/reports/cloud-audit-2026-10-05.md`)
+found that one still image was enough to sign in as anyone whose face the
+attacker could photograph (finding #1, critical). This section records what
+changed in this service; argus-auth maps the new answers.
+
+### Presentation-attack detection (liveness), server side
+
+Every face login (`IdentifyPerson` with the login purpose) and every
+registration (`RegisterUser`) now runs a passive anti-spoofing check before the
+face is matched or stored. The models are Minivision's MiniFASNetV2 (crop
+scale 2.7) and MiniFASNetV1SE (crop scale 4.0), 80x80 BGR, Apache-2.0, exported
+to ONNX by the `yakhyo/face-anti-spoofing` release (the export was verified
+against the upstream weights without retraining; see
+`models/face/anti-spoof/MODEL-CARD.md`). They run in-process with onnxruntime,
+which this service already links for the speaker model, so there is no new
+dependency.
+
+- **Pipeline** (`shared/services/face/anti-spoof.{hxx,cc}`): the detector's
+  best face box is widened by each model's scale around its centre, shifted
+  back inside the image and clamped exactly like upstream `CropImage`, resized
+  to 80x80, fed as BGR 0-255 floats; the two softmax "real" probabilities are
+  averaged and compared with `[face] liveness_threshold` (0.80 by default,
+  clamped 0.50-0.99).
+- **Fail closed**: `[face] liveness_required` is true by default. If the models
+  are missing, fail their pinned SHA-256 (checked again at load) or cannot be
+  run, the check answers `LivenessUnavailable` and the login or registration is
+  refused; it never falls back to matching without it. `/health` reports
+  `face.liveness`.
+- **Distribution**: `scripts/provision.sh` downloads both files from the pinned
+  GitHub release asset into `models/face/anti-spoof/` (rule 13e: only when
+  missing, `.part`, SHA-256, atomic move); the NOTICE and the model card are in
+  Git, the weights are not.
+- **Threading**: the check runs inside the same heavy-lane task and the same
+  inference slot as detection and embedding (`FaceService::verifyImageAsync`).
+- **Answers** (additive on the frozen contract): `IdentifyPersonResponse`
+  field 17 `face_check` (`accepted`, `liveness_failed`, `liveness_unavailable`,
+  `poor_quality`, `multiple_faces`, `no_face`, `undecodable`, `unavailable`)
+  and three `RegisterUserOutcome` values, `REGISTER_USER_LIVENESS_FAILED` (12),
+  `REGISTER_USER_LIVENESS_UNAVAILABLE` (13) and
+  `REGISTER_USER_FACE_QUALITY_INSUFFICIENT` (14). The catalog gained
+  `LivenessCheckFailed` (401), `LivenessUnavailable` (503) and
+  `FaceQualityInsufficient` (422) for the HTTP side. An older argus-auth that
+  does not know them still fails closed: an unmatched login is
+  `FaceNotRecognized`, an unknown outcome `IdentityUnavailable`.
+
+What it protects against: printed photos and photos or videos shown on a phone
+or monitor when the frame, the moire or the reflections are in the crop (a
+photo held up in a frame scores 0.00001-0.024 on the fixtures, live portraits
+0.88-0.9999). What it does not: 3D masks, a high-quality replay that fills the
+whole frame, and a camera stream injected into the app (deepfake injection) —
+a single passive frame cannot tell those apart. **Note for the frontend**: the
+app should add an active, multi-frame challenge (turn the head, blink, follow a
+dot) recorded by the app and checked here; until then the second layer is the
+QR approval from a paired device, which a refused login falls back to.
+
+### One face, close, frontal and sharp (audit #18)
+
+Login and registration take the image only when it holds exactly one face with
+a detector score of at least 0.80 (detections scoring below that do not count as a second face), an
+inter-ocular distance of at least 40 px, `|yaw| <= 0.25`, pitch 0.25-0.85 and
+a Laplacian sharpness of at least 20 (`face_check::biometricGate()`, reusing
+`face_quality::judge`). A registration photo with two people used to store
+whichever face scored best.
+
+### Who a face may sign in as (audits #17 and #86)
+
+Login and the "already registered" branch of registration search the index and
+keep only **household members** (persons with a user); a visitor, however
+close, can neither be signed in as nor hide a member. The best member must
+reach `face.match_threshold` and beat the next member by `[face] login_margin`
+(0.05) — two look-alike members get the QR flow instead of each other's
+account (`shared/services/face/member-match`). Registration validates the
+invitation (or the paired owner device) before it looks at the face, so an
+uninvited client learns nothing about who the cameras have seen, and a
+neighbour already learned as a visitor can register.
+
+### Inference concurrency (audit #36)
+
+The detector and recognizer `ncnn::Net`s are shared under a `shared_mutex`
+(ncnn extractors are independent; the per-net Vulkan allocators that were shared
+across threads were removed, each extractor takes its own from the device),
+and the inference slot is taken **before** the job enters the heavy lane: an
+async caller waits on `InferenceSlots` as a suspended coroutine, so a burst of
+logins no longer parks heavy-lane threads that the speaker model needs.
+
+### Portraits are face crops (audit #39)
+
+A registration stores a re-encoded JPEG of the face with a 0.6 margin, at most
+512 px, without EXIF or any other metadata, as `image/jpeg`; the original
+selfie (with its GPS) is never stored. The face upgrade still re-embeds from it
+(the face fills most of the crop). The previous portrait object of a user is
+queued for deletion when a new one replaces it.
+
+### Index writes that fail (audit #91)
+
+The enrolment writes `face_vec` after its commit (the vec connection is a second
+connection to the same file, so writing it inside the open write transaction
+would wait on itself). The insert is retried three times; if it still fails the
+answer is `FaceIndexFailed`, and `FaceDB::init` now also indexes every
+current-model embedding that has no index row, so the face becomes searchable
+at the next boot without a new registration. `identify` no longer logs the
+person and the score, and gRPC `INTERNAL` answers carry a generic text instead
+of the exception.
+
+## Erasing a person's biometrics (2026-10, audits #7 and #38)
+
+`DELETE /user/{id}/biometrics` (Owner only: `RoleFilter` maps it to `user`
+delete, and the service checks the role again) erases, in one transaction:
+every `face_embedding` of the user's persons (including the `legacy` rows kept
+for the upgrade), their crop capabilities and snapshots, the `user_portrait`
+link and every portrait `stored_file` the user owns, their preview
+capabilities, the voice profile, samples and device prior (through
+`VoiceprintFeatureService::eraseForConsent`, journaled with reason
+`biometricsErased`), and the `user_privacy` row (the person is undecided again,
+so every signal is off; the catalog row is republished with the undecided
+privacy). The same transaction queues every object key in
+`pending_object_delete` and journals one `UserAction::Delete` with counts only.
+After the commit the `face_vec` and `voice_vec` rows go (both also heal at boot)
+and the deletion worker is kicked. The user and the person stay: the account
+signs in by QR until a face is registered again. The answer is
+`{faces, portraits, voiceProfile, voiceSamples}`.
+
+`pending_object_delete` is drained by `ObjectDeletionWorker` (every minute and
+on demand): each due key is deleted from object storage, and a failure is
+retried with an exponential backoff (30 s doubling, at most 6 h). Visitor crops
+retired by the retention are queued in its transaction too, and any other crop
+whose direct delete fails falls back to the queue. `identity.db` runs with
+`PRAGMA secure_delete = ON` on both of its connections, so deleted embeddings
+are overwritten in the file instead of lingering in free pages.
+
+## Smaller fixes of the same audit
+
+- **Visitor numbers** come from `visitor_counter` (never `MAX()+1`, which reused
+  the number of a deleted highest visitor) (#88).
+- **A sighting commits before the index moves** (#41): the strand waits for the
+  commit callback of its transaction and leaves `face_vec` and the crop store
+  untouched when it fails; inside the transaction it re-checks that a matched
+  visitor still exists (a merge may have removed it). A merge reads the samples
+  it reindexes inside its own transaction (#89).
+- **Capabilities are purged** when a new one is minted (expired or consumed
+  portrait and crop capabilities), and the crop view's journal row is written
+  in the transaction that consumes the capability (#89).
+- **No blocking work on the event loop** (#90): `voice_vec` removals and the
+  pairing's TOML writes run on the light lane; `ObserveTurn` learns at most 8
+  turns at a time and skips the rest with a warning. `Identify` returns at once
+  when no voice profile exists or the household switch is off (N15).
+- **Last owner** (#87): besides the check, the demoting `UPDATE` carries an
+  `EXISTS` guard for another active owner, so a lost race answers 409, not 500.
+- **Tombstones** of `user` and `person` are served only from settled seconds
+  (`deleted_at < now - 1`), the same answer productivity gave to #52: the pool
+  has one connection, so a deletion after a read always lands in a later second
+  than the cursor; the wire and the cursor are unchanged.
+- **Role strings** are validated through `userRoleToString(userRoleFromString())`
+  instead of literal lists (#68); the directory audience uses
+  `role_access::readsUserDirectory` everywhere (#67), and the RPC layer
+  delegates to `feature/user` (rename), `feature/person` (tags, touch,
+  describe, promote) and `feature/sign-in` (login).
+- **Structure** (#111): `portrait-preview-capability` moved into `feature/user`,
+  `person-tag` into the new `feature/person`, and `person-snapshot` (whose only
+  writer was the old `EnrollPerson`) was deleted.
+- **Shutdown** (N1): the gRPC server is a `shutdown_signal` drain whose
+  `requestStop` calls `Shutdown` with a 2 s deadline on its own thread.
+- **Startup** refuses a tunnel profile without a tunnel port
+  (`requireTunnelListener`) and a missing device fingerprint secret
+  (`DeviceFilter::requireFingerprintSecret`), as argus-auth does.
+- **Rate limit**: `POST /pairing` and `POST /invitation/resolve` (no session) are
+  limited per client network (`[rate_limit]`, 10 per minute, 5 consecutive
+  failures lock the client out for 5 minutes, 429 `TooManyAttempts`), in
+  `feature/rate-gate`, the same shape as argus-auth's gate.
+
+## The pairing code is 128 bits and rotates (2026-10, audit #40)
+
+`scripts/lib/pki.sh` writes a 26-character base32 code (`A-Z2-7`, 16 random
+bytes) instead of 12 hex digits (48 bits, breakable offline from one captured
+`nonce`/`proof`), and replaces an older code. Identity now reads, verifies and
+rotates the code itself (`feature/pairing/infra/pairing-code`), so it no longer
+depends on `CertService`'s 8-12 hex parser; legacy hex codes still verify until
+they are rotated. After the **first** successful pairing the code is replaced
+(atomic rename, 0600) once the server proof was computed with the old one;
+further devices pair with the new code, which is in `certs/pairing.code` (identity
+never logs the rotated code). The HMAC proof protocol is unchanged; the code is upper
+case on both sides. The frontend must accept a 26-character code in the QR
+payload and the typed field (it used to expect 12 hex digits).

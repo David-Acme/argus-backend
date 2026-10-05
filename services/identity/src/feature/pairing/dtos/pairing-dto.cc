@@ -1,5 +1,7 @@
 #include "pairing-dto.hxx"
 
+#include <feature/pairing/infra/pairing-code.hxx>
+
 #include <algorithm>
 #include <cctype>
 
@@ -24,11 +26,8 @@ PairingDto PairingDto::fromJson(const Json::Value& json)
   CUSTOM_LAMBDA(code, [](const PairingDto& value) -> std::optional<std::string> {
     if (!value.proof.empty())
       return std::nullopt;
-    const bool alnum = std::ranges::all_of(value.code, [](char c) {
-      return std::isalnum(static_cast<unsigned char>(c)) != 0;
-    });
-    if (value.code.size() < 6 || value.code.size() > 12 || !alnum)
-      return "code must be 6 to 12 letters or digits";
+    if (!pairing_code::wellFormed(pairing_code::normalize(value.code)))
+      return "code must be the server's pairing code";
     return std::nullopt;
   })
   CUSTOM_LAMBDA(nonce, [](const PairingDto& value) -> std::optional<std::string> {

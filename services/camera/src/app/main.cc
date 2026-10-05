@@ -1,6 +1,7 @@
 #include <app/rpc/camera-rpc-server.hxx>
 #include <config/camera-config.hxx>
 #include <feature/media/camera-media-socket.hxx>
+#include <feature/media/media-access-check.hxx>
 #include <feature/media/session-revocation-consumer.hxx>
 #include <drogon/drogon.h>
 #include <shared/repositories/zone/zone-repository.hxx>
@@ -46,6 +47,7 @@
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <feature/camera/services/camera-feature-service.hxx>
 #include <shared/services/privacy/camera-audio-policy.hxx>
+#include <shared/services/secret-box/secret-box.hxx>
 #include <shared/services/stream/stream-hub.hxx>
 #include <runtime/blocking-task.hxx>
 #include <settings/settings-rpc.hxx>
@@ -62,6 +64,7 @@
 namespace
 {
 constexpr double kAudioPolicyRefreshSeconds = 15.0;
+constexpr double kMediaAccessCheckSeconds = 60.0;
 
 Json::Value drogonConfig(const CameraDbConfig& cameraDb,
                          const ListenerConfig& listener)
@@ -126,6 +129,7 @@ drogon::Task<void> reconcileCapabilities()
 drogon::Task<void> startAfterSources(CameraOperatorService* operatorService,
                                      CameraHealthMonitor* healthMonitor)
 {
+  co_await BlockingTask<void>([] { Go2rtcManager::instance().start(); });
   co_await applyInitialSources();
   co_await reconcileCapabilities();
   co_await drogon::switchThreadCoro(drogon::app().getLoop());
@@ -146,6 +150,25 @@ int main()
 
   const CameraDbConfig cameraDb = CameraConfig::resolveDb();
   const ListenerConfig listener = CameraConfig::resolveListener();
+
+  try {
+    DeviceFilter::requireFingerprintSecret();
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    return 1;
+  }
+  switch (secret_box::loadOrCreateKey(cameraDb.secretKeyPath)) {
+    case secret_box::KeyFileResult::Loaded:
+      break;
+    case secret_box::KeyFileResult::Created:
+      LOG_INFO << "Camera secrets: created the instance key at " << cameraDb.secretKeyPath;
+      break;
+    case secret_box::KeyFileResult::Failed:
+      LOG_FATAL << "Camera secrets: cannot read or create the key at "
+                << cameraDb.secretKeyPath << " — aborting startup";
+      return 1;
+  }
 
   CameraSyncRpcService cameraSyncRpc(
       {argus::client::CallerCredential{
@@ -193,8 +216,10 @@ int main()
 
   MediaSessionRegistry mediaSessions;
   CameraTalkService talkService;
-  drogon::app().registerController(
-      std::make_shared<CameraMediaSocket>(mediaSessions, talkService));
+  MediaAccessCheck mediaAccess(MediaAccessCheck::remote());
+  drogon::app().registerController(std::make_shared<CameraMediaSocket>(
+      CameraMediaSocket::Dependencies{
+          .sessions = mediaSessions, .talk = talkService, .access = mediaAccess}));
 
   drogon::app().loadConfigJson(drogonConfig(cameraDb, listener));
   certificate_reload::watch(listener);
@@ -343,6 +368,10 @@ int main()
     }
 
     ZoneRepository::acceptPrivacyZones();
+    CameraRepository::acceptTapoTrust();
+    if (const int64_t sealed = CameraRepository::sealPlaintextSecrets(); sealed > 0)
+      LOG_INFO << "Camera secrets: encrypted the stored passwords of " << sealed
+               << " camera(s)";
 
     if (!cameraActionRpc.migrateActionSchema()) {
       LOG_FATAL << "Camera action schema migration failed — aborting startup";
@@ -361,7 +390,7 @@ int main()
     cameraActionRpc.startLeaseSweeper();
     EvidenceUploader::instance().scheduleRetentionSweep();
 
-    Go2rtcManager::instance().init();
+    Go2rtcManager::instance().configure();
     StreamHub::instance().init();
 
     drogon::async_run([operator_ = operatorService.get(),
@@ -389,6 +418,13 @@ int main()
         shutdown_signal::drainOf(*healthMonitor, "camera-health"));
   }
   shutdown_signal::onStop(shutdown_signal::drainOf(talkService, "camera-talk"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(rpc, "camera-rpc"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(cameraActionRpc, "camera-actions"));
+  shutdown_signal::onStop(
+      shutdown_signal::drainOf(EvidenceUploader::instance(), "camera-evidence"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(mediaAccess, "camera-media-access"));
+  drogon::app().registerBeginningAdvice(
+      [&mediaAccess]() { mediaAccess.start(kMediaAccessCheckSeconds); });
   if (natsBus) {
     shutdown_signal::onStop(
         shutdown_signal::drainOf(sessionRevocations, "camera-session-revocations"));

@@ -7,7 +7,6 @@
 #include <config/config-service.hxx>
 #include <feature/memory/services/extract/extract-contracts.hxx>
 #include <runtime/ai-init.hxx>
-#include <runtime/blocking-task.hxx>
 #include <runtime/hardware-profile.hxx>
 #include <runtime/thread-budget.hxx>
 #include <utility>
@@ -436,11 +435,4 @@ ExtractionService::extractOnSlot(ContextSlot& slot,
     return std::nullopt;
   }
   return root;
-}
-
-drogon::Task<std::optional<Json::Value>>
-ExtractionService::extractAsync(const ExtractRequest& request)
-{
-  co_return co_await BlockingTask<std::optional<Json::Value>>{
-      [this, request] { return extract(request); }, BlockingLane::Heavy};
 }

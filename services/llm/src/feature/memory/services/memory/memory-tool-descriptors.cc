@@ -73,18 +73,6 @@ std::vector<tools::ToolDescriptor> memoryToolDescriptors()
        .accessPermission = RolePermission::Read,
        .handler = nullptr});
   descriptors.push_back(
-      {.name = "procedure.run",
-       .description = "Ejecuta un procedimiento conocido para conseguir un "
-                      "objetivo",
-       .arguments = {{.name = "goal",
-                      .type = "string",
-                      .required = true,
-                      .enumValues = {},
-                      .description = ""}},
-       .accessTable = TableName::Memory,
-       .accessPermission = RolePermission::Read,
-       .handler = nullptr});
-  descriptors.push_back(
       {.name = "memory.forget",
        .description = "Olvida un hecho guardado que el usuario pide olvidar; "
                       "query describe ese hecho con sus palabras",

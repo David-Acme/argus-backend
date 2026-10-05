@@ -18,14 +18,15 @@ inline constexpr std::string_view FIND_SAMPLES =
     "SELECT id, embedding, quality, crop_key FROM face_embedding "
     "WHERE person_id = ? AND model = ? ORDER BY id";
 
+inline constexpr std::string_view NEXT_VISITOR_NUMBER =
+    "UPDATE visitor_counter SET last_number = MAX(last_number, "
+    "(SELECT COALESCE(MAX(visitor_number), 0) FROM person)) + 1 "
+    "WHERE id = 1 RETURNING last_number";
+
 inline constexpr std::string_view INSERT_VISITOR =
     "INSERT INTO person (user_id, name, alias, observation, status, category, "
     "visitor_number, visit_count, first_seen_at, last_seen_at) "
-    "VALUES (NULL, '', '', '', 'candidate', '', "
-    "(SELECT COALESCE(MAX(visitor_number), 0) + 1 FROM person), 0, ?, ?)";
-
-inline constexpr std::string_view FIND_VISITOR_NUMBER =
-    "SELECT visitor_number FROM person WHERE id = ?";
+    "VALUES (NULL, '', '', '', 'candidate', '', ?, 0, ?, ?)";
 
 inline constexpr std::string_view INSERT_SAMPLE =
     "INSERT INTO face_embedding (person_id, embedding, angle_label, quality, "

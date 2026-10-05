@@ -1,6 +1,7 @@
 #pragma once
 
 #include "camera-media-service.hxx"
+#include "media-access-check.hxx"
 #include "media-session-registry.hxx"
 
 #include <feature/talk/camera-talk-service.hxx>
@@ -14,8 +15,15 @@ class CameraMediaSocket
     : public drogon::WebSocketController<CameraMediaSocket, false>
 {
 public:
-  CameraMediaSocket(MediaSessionRegistry& sessions, CameraTalkService& talk)
-      : sessions_(sessions), talk_(talk)
+  struct Dependencies
+  {
+    MediaSessionRegistry& sessions;
+    CameraTalkService& talk;
+    MediaAccessCheck& access;
+  };
+
+  explicit CameraMediaSocket(const Dependencies& dependencies)
+      : sessions_(dependencies.sessions), talk_(dependencies.talk), access_(dependencies.access)
   {
   }
 
@@ -35,4 +43,5 @@ private:
   CameraMediaService service_;
   MediaSessionRegistry& sessions_;
   CameraTalkService& talk_;
+  MediaAccessCheck& access_;
 };

@@ -3,6 +3,7 @@
 #include "go2rtc-manager.hxx"
 
 #include <array>
+#include <string_view>
 
 #include <shared/utils/network-address/private-address.hxx>
 #include <shared/vocabulary/camera-stream-paths.hxx>
@@ -13,7 +14,7 @@ constexpr std::array kStreams{CameraStream::Main, CameraStream::Sub};
 
 std::string encodeUserInfo(const std::string& value)
 {
-  constexpr char kHex[] = "0123456789ABCDEF";
+  constexpr std::string_view kHex = "0123456789ABCDEF";
   std::string out;
   out.reserve(value.size());
   for (unsigned char c : value) {

@@ -1,3 +1,4 @@
+#include <app/rpc/grpc-server-drain.hxx>
 #include <app/rpc/identity-rpc-service.hxx>
 #include <app/rpc/identity-sync-rpc-service.hxx>
 #include <app/rpc/identity-voiceprint-rpc-service.hxx>
@@ -21,6 +22,7 @@
 #include <feature/user/controllers/user-controller.hxx>
 #include <feature/user/services/nats-identity-change-sink.hxx>
 #include <feature/privacy/controllers/privacy-controller.hxx>
+#include <feature/rate-gate/infra/identity-rate-gate.hxx>
 #include <feature/visitor/controllers/visitor-controller.hxx>
 #include <feature/voiceprint/controllers/voiceprint-controller.hxx>
 #include <feature/voiceprint/repositories/voice-profile/voice-profile-repository.hxx>
@@ -41,12 +43,15 @@
 #include <shared/repositories/face-embedding/face-embedding-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/services/face/face-service.hxx>
+#include <shared/services/object-deletion/object-deletion-worker.hxx>
+#include <shared/services/schema/secure-delete.hxx>
 #include <shared/services/storage/private-portrait-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
 #include <sync/identity-change-sink.hxx>
 #include <sync/sync-client.hxx>
 #include <sync/sync-control-sink.hxx>
+#include <exception>
 #include <unistd.h>
 
 namespace
@@ -125,7 +130,15 @@ int main()
   const IdentityVoiceprintConfig voiceprint =
       IdentityConfig::resolveVoiceprint();
 
-  requireDistinctTunnelPort(listener, remote);
+  try {
+    requireDistinctTunnelPort(listener, remote);
+    requireTunnelListener(remote);
+    DeviceFilter::requireFingerprintSecret();
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
 
   std::shared_ptr<SyncClient> controlClient;
   if (syncControl.target.empty()) {
@@ -159,12 +172,23 @@ int main()
   drogon::app().registerController(std::make_shared<VisitorController>());
 
   RemoteGate remoteGate(remote);
+  IdentityRateGate rateGate(IdentityConfig::resolveRateLimit());
 
   drogon::app().registerPreRoutingAdvice(
       [&remoteGate, &remote](const drogon::HttpRequestPtr& req,
                              drogon::AdviceCallback&& cb,
                              drogon::AdviceChainCallback&& chain) {
         if (auto resp = remoteGate.check(req, requestIsRemote(req, remote))) {
+          cb(resp);
+          return;
+        }
+        chain();
+      });
+
+  drogon::app().registerPreRoutingAdvice(
+      [&rateGate](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&& cb,
+                  drogon::AdviceChainCallback&& chain) {
+        if (auto resp = rateGate.check(req)) {
           cb(resp);
           return;
         }
@@ -181,7 +205,9 @@ int main()
         chain();
       });
   drogon::app().registerPostHandlingAdvice(
-      [](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
+      [&rateGate](const drogon::HttpRequestPtr& req,
+                  const drogon::HttpResponsePtr& resp) {
+        rateGate.recordOutcome(req, resp);
         Cors::apply(resp);
       });
 
@@ -232,6 +258,8 @@ int main()
                                  Json::Value status(Json::objectValue);
                                  status["loaded"] =
                                      FaceService::instance().isLoaded();
+                                 status["liveness"] =
+                                     FaceService::instance().livenessLoaded();
                                  return status;
                                }},
                               {"voiceprint", []() {
@@ -268,6 +296,8 @@ int main()
   rpcBuilder.RegisterService(&syncRpcService);
   rpcBuilder.RegisterService(&voiceprintRpcService);
   std::unique_ptr<grpc::Server> rpcServer(rpcBuilder.BuildAndStart());
+  GrpcServerDrain rpcDrain(rpcServer.get());
+  shutdown_signal::onStop(shutdown_signal::drainOf(rpcDrain, "identity-rpc"));
   if (rpcServer)
     LOG_INFO << "Identity RPC listening on " << rpc.listener.host << ":"
              << rpc.listener.port << " (cleartext, "
@@ -304,17 +334,28 @@ int main()
     FaceEmbeddingRepository::ensureColumns();
 
     DbService::applyPragmas();
+    if (!secure_delete::enable())
+      LOG_WARN << "Deleted biometric rows may linger in free pages until they "
+                  "are reused";
 
     if (identitySink)
       identitySink->reconcile();
 
     if (face.enabled) {
       FaceService::instance().init();
-      if (!FaceService::instance().isLoaded())
+      if (!FaceService::instance().isLoaded()) {
         LOG_WARN << "FaceService not loaded — facial login disabled";
-      else
+      }
+      else {
+        if (FaceService::instance().initLiveness(face.livenessModelDir) !=
+                AntiSpoofLoad::Loaded &&
+            face.livenessRequired)
+          LOG_WARN << "Face login and registration are refused until the "
+                      "anti-spoofing models are provisioned "
+                      "(services/identity/scripts/provision.sh)";
         drogon::async_run(
             [service = &faceUpgrade] { return upgradeFaces(service); });
+      }
     }
     else {
       FaceService::instance().disable();
@@ -355,13 +396,13 @@ int main()
             routeAnnouncements({.port = listener.port, .tls = listener.tls}));
         mdnsService->initialize();
         candidateRetention.start();
+        ObjectDeletionWorker::instance().start();
         pairing_banner::printWhenUnpaired(listener.port);
       });
 
   drogon::app().setThreadNum(0).run();
 
-  if (rpcServer)
-    rpcServer->Shutdown();
+  rpcDrain.stopAndWait();
   SpeakerEmbeddingService::instance().shutdown();
   return 0;
 }

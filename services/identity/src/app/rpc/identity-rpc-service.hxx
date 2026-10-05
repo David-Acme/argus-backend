@@ -4,15 +4,17 @@
 #include <auth/auth-client.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
+#include <string_view>
 #include <nats/nats-bus.hxx>
-#include <shared/repositories/face-embedding/face-embedding-repository.hxx>
-#include <shared/repositories/person-snapshot/person-snapshot-repository.hxx>
-#include <shared/repositories/person-tag/person-tag-repository.hxx>
+#include <exception>
+#include <feature/enrollment/services/enrollment-feature-service.hxx>
+#include <feature/person/services/person-feature-service.hxx>
+#include <feature/sign-in/services/face-sign-in-service.hxx>
+#include <feature/user/services/user-feature-service.hxx>
+#include <feature/visitor/services/visitor-recognition-service.hxx>
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/privacy/privacy-gate.hxx>
-#include <feature/enrollment/services/enrollment-feature-service.hxx>
-#include <feature/visitor/services/visitor-recognition-service.hxx>
 
 class IdentityRpcService final
     : public argus::identity::v1::IdentityService::CallbackService
@@ -99,13 +101,6 @@ public:
             argus::identity::v1::ListUsersResponse* response) override;
 
 private:
-  struct DescribeHouseholdInput
-  {
-    int64_t personId{0};
-    bool forCamera{false};
-    argus::identity::v1::IdentifyPersonResponse* response{nullptr};
-  };
-
   struct IdentifySightingInput
   {
     std::string image;
@@ -114,18 +109,32 @@ private:
     argus::identity::v1::IdentifyPersonResponse* response{nullptr};
   };
 
+  struct IdentifyInput
+  {
+    std::string image;
+    argus::identity::v1::IdentifyPersonResponse* response{nullptr};
+  };
+
+  struct InternalFailure
+  {
+    grpc::ServerUnaryReactor* reactor{nullptr};
+    std::string_view call;
+    const std::exception& error;
+  };
+
+  static void finishInternal(const InternalFailure& failure);
   bool fleetAuthorized(const grpc::CallbackServerContext* context) const;
-  drogon::Task<void> describeHousehold(const DescribeHouseholdInput& input);
   drogon::Task<void> identifySighting(const IdentifySightingInput& input);
+  drogon::Task<void> identifyForCamera(const IdentifyInput& input);
+  drogon::Task<void> identifyForSignIn(const IdentifyInput& input);
 
   Dependencies dependencies_;
   EnrollmentFeatureService enrollmentService_;
+  FaceSignInService signInService_;
+  UserFeatureService userService_;
+  PersonFeatureService personService_;
   UserRepository userRepository_;
   PersonRepository personRepository_;
-  FaceEmbeddingRepository faceEmbeddingRepository_;
-  PersonTagRepository personTagRepository_;
-  PersonSnapshotRepository personSnapshotRepository_;
   PrivacyGate privacyGate_;
   VisitorRecognitionService visitorRecognition_;
-  VisitorRepository visitorRepository_;
 };

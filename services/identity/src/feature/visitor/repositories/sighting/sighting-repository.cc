@@ -1,5 +1,7 @@
 #include "sighting-repository.hxx"
 
+#include <stdexcept>
+
 #include <shared/vocabulary/face-model.hxx>
 
 #include <cstring>
@@ -74,14 +76,15 @@ std::vector<SightingSample> SightingRepository::findSamples(int64_t personId) co
 
 SightingPerson SightingRepository::createVisitor(int64_t at) const
 {
+  const auto number = client_.execSqlSync(std::string(NEXT_VISITOR_NUMBER));
+  if (number.empty())
+    throw std::runtime_error("the visitor number counter is missing");
+  const auto visitorNumber = number.front()["last_number"].as<int64_t>();
   const auto inserted =
-      client_.execSqlSync(std::string(INSERT_VISITOR), at, at);
+      client_.execSqlSync(std::string(INSERT_VISITOR), visitorNumber, at, at);
   SightingPerson person;
   person.id = static_cast<int64_t>(inserted.insertId());
-  const auto number =
-      client_.execSqlSync(std::string(FIND_VISITOR_NUMBER), person.id);
-  if (!number.empty() && !number.front()["visitor_number"].isNull())
-    person.visitorNumber = number.front()["visitor_number"].as<int64_t>();
+  person.visitorNumber = visitorNumber;
   return person;
 }
 

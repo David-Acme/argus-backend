@@ -22,6 +22,8 @@ class LlmHttpClient
 public:
   LlmHttpClient(std::string baseUrl, int timeoutMs);
 
+  LlmHttpClient& withCredential(std::string credential);
+
   std::string chat(const ChatRequest& request) const;
 
   void chatStream(const LlmStreamInput& input) const;
@@ -31,6 +33,7 @@ private:
 
   std::string baseUrl_;
   int timeoutMs_;
+  std::string credential_;
 };
 
 class LlmClient

@@ -61,6 +61,19 @@ inline constexpr ErrorDefinition CameraDisabled{
     .code = ErrorCode::Conflict,
     .status = 409,
     .message = "This camera is disabled"};
+inline constexpr ErrorDefinition RetentionTooLong{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "retentionDays exceeds 60 days (120 while retentionIncident is set)"};
+inline constexpr ErrorDefinition StoredCredentialsElsewhere{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "Stored credentials are only tested against the camera's stored address; "
+               "type them again for a new address"};
+inline constexpr ErrorDefinition ProbeBusy{
+    .code = ErrorCode::TooManyRequests,
+    .status = 429,
+    .message = "A connection test is already running for this user"};
 inline constexpr ErrorDefinition ChangeNotRecorded{
     .code = ErrorCode::InternalError,
     .status = 500,

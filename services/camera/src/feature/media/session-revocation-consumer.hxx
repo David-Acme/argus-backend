@@ -4,11 +4,15 @@
 #include <nats/nats-bus.hxx>
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <stop_token>
 #include <string>
+#include <thread>
 
 class SessionRevocationConsumer
 {
@@ -42,13 +46,16 @@ public:
 
 private:
   [[nodiscard]] bool subscribe();
-  void scheduleSubscribeRetry();
+  void connect(const std::stop_token& stop);
   void handle(const NatsBus::DurableMessage& message,
               const NatsBus::DurableSettlement& settlement);
 
   Dependencies dependencies_;
   Config config_;
+  mutable std::mutex mutex_;
+  std::condition_variable_any wake_;
   std::optional<uint64_t> subscription_;
-  std::optional<uint64_t> retryTimer_;
   std::atomic<int64_t> inFlight_{0};
+  std::atomic<bool> connecting_{false};
+  std::jthread connector_;
 };

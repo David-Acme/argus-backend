@@ -12,14 +12,28 @@ struct CameraSnapshot
   int64_t atMs{0};
 };
 
+struct SnapshotFrameInput
+{
+  int64_t cameraId{0};
+  std::string jpeg;
+  int64_t atMs{0};
+};
+
+struct SnapshotCropInput
+{
+  int64_t cameraId{0};
+  int64_t trackId{0};
+  std::string jpeg;
+  int64_t atMs{0};
+};
+
 class SnapshotStore
 {
 public:
   static SnapshotStore& instance();
 
-  void putFrame(int64_t cameraId, const std::string& jpeg, int64_t atMs);
-  void putPersonCrop(int64_t cameraId, int64_t trackId,
-                     const std::string& jpeg, int64_t atMs);
+  void putFrame(SnapshotFrameInput input);
+  void putPersonCrop(SnapshotCropInput input);
 
   std::optional<CameraSnapshot> frame(int64_t cameraId) const;
   std::optional<CameraSnapshot> personCrop(int64_t cameraId,

@@ -2,6 +2,7 @@ argus_module(NAME vlm
     SOURCES
         controllers/vlm-controller.cc
         dtos/describe-dto.cc
+        services/jpeg-gate.cc
         services/vision-service.cc
     INCLUDES
         ../..

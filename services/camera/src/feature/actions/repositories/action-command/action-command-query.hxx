@@ -38,6 +38,9 @@ inline constexpr std::string_view RECONCILE_EXPIRED =
     "detail = 'crash_during_execution', updated_at = ? "
     "WHERE status = 'executing' AND updated_at <= ?";
 
+inline constexpr std::string_view PURGE_SETTLED =
+    "DELETE FROM action_command WHERE status != 'executing' AND updated_at <= ?";
+
 inline constexpr std::string_view UPSERT_LEASE =
     "INSERT INTO siren_lease (camera_id, command_id, expires_at, created_at) "
     "VALUES (?, ?, ?, ?) ON CONFLICT(camera_id) DO UPDATE SET "

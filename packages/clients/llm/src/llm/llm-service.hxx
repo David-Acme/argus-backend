@@ -23,6 +23,9 @@ struct ChatMessage
   std::string content;
 };
 
+inline constexpr char kStreamSentinelMark = '\x1e';
+inline constexpr const char* kCallerCredentialHeader = "x-argus-credential";
+
 struct ChatRequest
 {
   std::vector<ChatMessage> messages;
@@ -164,7 +167,7 @@ private:
   mutable std::mutex samplingMutex_;
   LlmSampling sampling_;
   std::atomic<LlmPrefillStats> lastStats_;
-  bool loaded_ = false;
+  std::atomic<bool> loaded_{false};
   std::mutex mutex_;
   std::atomic<bool> busy_{false};
 };

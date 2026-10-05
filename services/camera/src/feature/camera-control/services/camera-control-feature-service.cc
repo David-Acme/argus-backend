@@ -166,7 +166,7 @@ CameraControlFeatureService::snapshot(int64_t cameraId) const
   }
   else {
     const auto frame =
-        co_await frames_.grab({.cameraId = cameraId, .cameraName = camera->name});
+        co_await frames_.grab({.cameraId = cameraId, .cameraName = camera->name, .maxAgeMs = 0});
     if (!frame || frame->jpeg.empty())
       co_return DriverResult::failure("The camera sent no picture");
     picture = {.jpeg = std::string(frame->jpeg.begin(), frame->jpeg.end()),

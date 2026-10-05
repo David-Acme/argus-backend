@@ -24,7 +24,6 @@ namespace
 
 constexpr const char* kChatPath = "/llm/v1/chat";
 constexpr const char* kChatStreamPath = "/llm/v1/chat-stream";
-constexpr std::string_view kSentinelMark = "\n{";
 
 std::string trim(const std::string& value)
 {
@@ -161,6 +160,7 @@ struct HttpRequestHead
   const std::string* path{nullptr};
   const std::string* body{nullptr};
   const Address* address{nullptr};
+  const std::string* credential{nullptr};
   bool closeConnection{true};
 };
 
@@ -171,6 +171,9 @@ std::string serialize(const HttpRequestHead& head)
   wire += "Host: " + head.address->host + "\r\n";
   wire += "Content-Type: application/json\r\n";
   wire += "Content-Length: " + std::to_string(head.body->size()) + "\r\n";
+  if (head.credential && !head.credential->empty() &&
+      head.credential->find_first_of("\r\n") == std::string::npos)
+    wire += std::string(kCallerCredentialHeader) + ": " + *head.credential + "\r\n";
   wire += head.closeConnection ? "Connection: close\r\n\r\n" : "\r\n";
   return wire;
 }
@@ -299,6 +302,12 @@ LlmHttpClient::LlmHttpClient(std::string baseUrl, int timeoutMs)
     throw std::runtime_error("argus-llm remote_url has no host");
 }
 
+LlmHttpClient& LlmHttpClient::withCredential(std::string credential)
+{
+  credential_ = std::move(credential);
+  return *this;
+}
+
 std::string LlmHttpClient::chatBody(const ChatRequest& request) const
 {
   Json::Value body(Json::objectValue);
@@ -352,6 +361,7 @@ std::string LlmHttpClient::chat(const ChatRequest& request) const
                              .path = &path,
                              .body = &body,
                              .address = &address,
+                             .credential = &credential_,
                              .closeConnection = true};
   sendAll(fd.get(), serialize(head) + body);
 
@@ -393,6 +403,7 @@ void LlmHttpClient::chatStream(const LlmStreamInput& input) const
                              .path = &path,
                              .body = &body,
                              .address = &address,
+                             .credential = &credential_,
                              .closeConnection = false};
   sendAll(fd.get(), serialize(head) + body);
 
@@ -458,26 +469,21 @@ void LlmHttpClient::chatStream(const LlmStreamInput& input) const
     }
 
     const std::string chunk = wire.substr(dataStart, size);
-    bool sentinel = false;
-    for (auto mark = chunk.rfind(kSentinelMark); mark != std::string::npos;
-         mark = mark > 0 ? chunk.rfind(kSentinelMark, mark - 1)
-                         : std::string::npos) {
+    const auto mark = chunk.find(kStreamSentinelMark);
+    if (mark == std::string::npos) {
+      if (!chunk.empty())
+        input.onToken(chunk, false);
+    }
+    else {
       std::string candidate = chunk.substr(mark + 1);
       if (!candidate.empty() && candidate.back() == '\n')
         candidate.pop_back();
-      if (parseSentinel(candidate, input.stats)) {
-        if (mark > 0)
-          input.onToken(chunk.substr(0, mark), false);
-        sentinel = true;
-        break;
-      }
-    }
-    if (sentinel) {
+      if (!parseSentinel(candidate, input.stats))
+        throw std::runtime_error("argus-llm malformed stream sentinel");
+      if (mark > 0)
+        input.onToken(chunk.substr(0, mark), false);
       input.onToken("", true);
       doneSent = true;
-    }
-    else if (!chunk.empty()) {
-      input.onToken(chunk, false);
     }
     cursor = dataStart + size + 2;
   }
@@ -515,7 +521,9 @@ std::string LlmClient::chat(const ChatRequest& request) const
 {
   if (const auto client = rpcClient())
     return client->chat(request);
-  return LlmHttpClient(baseUrl_, timeoutMs_).chat(request);
+  return LlmHttpClient(baseUrl_, timeoutMs_)
+      .withCredential(ConfigService::getString("llm.grpc_credential"))
+      .chat(request);
 }
 
 void LlmClient::chatStream(const LlmStreamInput& input) const
@@ -524,7 +532,9 @@ void LlmClient::chatStream(const LlmStreamInput& input) const
     client->chatStream(input);
     return;
   }
-  LlmHttpClient(baseUrl_, timeoutMs_).chatStream(input);
+  LlmHttpClient(baseUrl_, timeoutMs_)
+      .withCredential(ConfigService::getString("llm.grpc_credential"))
+      .chatStream(input);
 }
 
 bool LlmClient::remote() const

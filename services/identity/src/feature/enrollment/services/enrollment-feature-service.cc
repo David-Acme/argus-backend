@@ -1,6 +1,8 @@
 #include "enrollment-feature-service.hxx"
 
 #include <config/config-service.hxx>
+#include <config/identity-config.hxx>
+#include <trantor/utils/Logger.h>
 #include <ctime>
 #include <errors/response-exception.hxx>
 #include <feature/invitation/services/invitation-feature-service.hxx>
@@ -17,6 +19,7 @@
 
 namespace
 {
+constexpr int kIndexAttempts = 3;
 
 EnrollmentResult outcomeResult(EnrollmentOutcome outcome)
 {
@@ -45,29 +48,76 @@ EnrollmentResult registeredResult(const UserSchema& user,
 
 }
 
-drogon::Task<EnrollmentResult>
-EnrollmentFeatureService::recognizeRegistered(const std::string& image) const
+EnrollmentOutcome EnrollmentFeatureService::outcomeOf(FaceCheckStatus status)
 {
-  const auto face = co_await FaceService::instance().extractImageAsync(image);
-  if (!face)
-    co_return outcomeResult(EnrollmentOutcome::FaceExtractionFailed);
+  switch (status) {
+  case FaceCheckStatus::Accepted:
+    return EnrollmentOutcome::Enrolled;
+  case FaceCheckStatus::SpoofSuspected:
+    return EnrollmentOutcome::LivenessFailed;
+  case FaceCheckStatus::LivenessUnavailable:
+    return EnrollmentOutcome::LivenessUnavailable;
+  case FaceCheckStatus::MultipleFaces:
+  case FaceCheckStatus::PoorQuality:
+    return EnrollmentOutcome::FaceQualityInsufficient;
+  case FaceCheckStatus::Unavailable:
+  case FaceCheckStatus::Undecodable:
+  case FaceCheckStatus::NoFace:
+    return EnrollmentOutcome::FaceExtractionFailed;
+  }
+  return EnrollmentOutcome::FaceExtractionFailed;
+}
 
-  const auto existing = co_await BlockingTask<
-      std::optional<std::pair<int64_t, float>>>(
-      [&face]() { return FaceService::instance().faceDb().search(face->embedding.data()); });
-  if (!existing || existing->second < FaceDB::matchThreshold())
-    co_return outcomeResult(EnrollmentOutcome::FaceExtractionFailed);
+bool EnrollmentFeatureService::indexFace(const FaceInsertInput& input)
+{
+  for (int attempt = 0; attempt < kIndexAttempts; ++attempt) {
+    if (FaceService::instance().faceDb().insert(input))
+      return true;
+  }
+  return false;
+}
 
-  const auto person = co_await personRepository_.findById(existing->first);
+drogon::Task<EnrollmentFeatureService::Admission>
+EnrollmentFeatureService::admit(const EnrollmentInput& input) const
+{
+  Admission admission;
+  admission.initialOwner = !co_await userRepository_.hasAnyUser();
+  if (admission.initialOwner) {
+    const std::string pairedDevice =
+        ConfigService::getString("pairing.owner_device");
+    if (!pairedDevice.empty() && pairedDevice != input.deviceHash)
+      admission.refusal = EnrollmentOutcome::NotPaired;
+    co_return admission;
+  }
+  if (input.invitationToken.empty()) {
+    admission.refusal = EnrollmentOutcome::InvitationRequired;
+    co_return admission;
+  }
+  admission.invitationHash = InvitationFeatureService::hashToken(input.invitationToken);
+  admission.invitation =
+      co_await invitationRepository_.findByTokenHash(admission.invitationHash);
+  const int64_t now = std::time(nullptr);
+  const auto& invitation = admission.invitation;
+  if (!invitation || invitation->revokedAt || invitation->expiresAt <= now ||
+      invitation->redemptionCount >= invitation->maxRedemptions) {
+    admission.refusal = EnrollmentOutcome::InvitationInvalid;
+    co_return admission;
+  }
+  admission.role = invitation->role;
+  co_return admission;
+}
+
+drogon::Task<EnrollmentResult>
+EnrollmentFeatureService::signInRegistered(const MemberMatch& match) const
+{
+  const auto person = co_await personRepository_.findById(match.personId);
   if (!person || !person->userId)
-    co_return outcomeResult(EnrollmentOutcome::FaceAlreadyRegistered);
-
+    co_return outcomeResult(EnrollmentOutcome::FaceNotRecognized);
   const auto user = co_await userRepository_.findById(*person->userId);
   if (!user)
     co_return outcomeResult(EnrollmentOutcome::FaceNotRecognized);
   if (!user->isActive)
     co_return outcomeResult(EnrollmentOutcome::AccountDisabled);
-
   co_return registeredResult(*user, person->id, user->lang);
 }
 
@@ -77,62 +127,40 @@ EnrollmentFeatureService::registerUser(const EnrollmentInput& input) const
   if (!ConfigService::getBool("pairing.paired"))
     co_return outcomeResult(EnrollmentOutcome::NotPaired);
 
-  const auto face =
-      co_await FaceService::instance().extractImageAsync(input.image);
-  if (!face)
-    co_return outcomeResult(EnrollmentOutcome::FaceExtractionFailed);
+  const auto admission = co_await admit(input);
+  if (admission.refusal)
+    co_return outcomeResult(*admission.refusal);
 
-  const auto existing = co_await BlockingTask<
-      std::optional<std::pair<int64_t, float>>>(
-      [&face]() { return FaceService::instance().faceDb().search(face->embedding.data()); });
+  const IdentityFaceConfig faceConfig = IdentityConfig::resolveFace();
+  auto face = co_await FaceService::instance().verifyImageAsync(
+      {.imageBytes = input.image,
+       .policy = {.quality = face_check::biometricGate(),
+                  .livenessRequired = faceConfig.livenessRequired,
+                  .livenessThreshold = faceConfig.livenessThreshold,
+                  .encodePortrait = true}});
+  if (face.status != FaceCheckStatus::Accepted)
+    co_return outcomeResult(outcomeOf(face.status));
 
-  if (existing && existing->second >= FaceDB::matchThreshold()) {
-    const auto person = co_await personRepository_.findById(existing->first);
-    if (!person || !person->userId)
-      co_return outcomeResult(EnrollmentOutcome::FaceAlreadyRegistered);
-
-    const auto user = co_await userRepository_.findById(*person->userId);
-    if (!user)
-      co_return outcomeResult(EnrollmentOutcome::FaceNotRecognized);
-    if (!user->isActive)
-      co_return outcomeResult(EnrollmentOutcome::AccountDisabled);
-
-    co_return registeredResult(*user, person->id, user->lang);
-  }
+  if (const auto registered = co_await matcher_.match(
+          {.embedding = face.embedding,
+           .threshold = FaceDB::matchThreshold(),
+           .margin = faceConfig.loginMargin}))
+    co_return co_await signInRegistered(*registered);
 
   VoiceLang lang = voiceLangFromString(input.lang);
   if (lang == VoiceLang::System)
     lang = voiceLangFromString(ConfigService::getString("stt.language"));
 
-  const bool isInitialOwner = !co_await userRepository_.hasAnyUser();
-  if (isInitialOwner) {
-    const std::string pairedDevice =
-        ConfigService::getString("pairing.owner_device");
-    if (!pairedDevice.empty() && pairedDevice != input.deviceHash)
-      co_return outcomeResult(EnrollmentOutcome::NotPaired);
-  }
-  std::optional<UserInvitationSchema> invitation;
-  std::string invitationHash;
-  UserRole role = UserRole::Owner;
-  if (!isInitialOwner) {
-    if (input.invitationToken.empty())
-      co_return outcomeResult(EnrollmentOutcome::InvitationRequired);
-    invitationHash = InvitationFeatureService::hashToken(input.invitationToken);
-    invitation = co_await invitationRepository_.findByTokenHash(invitationHash);
-    const int64_t now = std::time(nullptr);
-    if (!invitation || invitation->revokedAt || invitation->expiresAt <= now ||
-        invitation->redemptionCount >= invitation->maxRedemptions) {
-      co_return outcomeResult(EnrollmentOutcome::InvitationInvalid);
-    }
-    role = invitation->role;
-  }
-
+  const bool isInitialOwner = admission.initialOwner;
+  const auto& invitation = admission.invitation;
+  const std::string& invitationHash = admission.invitationHash;
+  const UserRole role = admission.role;
   const auto name = input.name.empty()
                         ? (isInitialOwner ? "Administrador" : "Usuario")
                         : input.name;
   const std::string embedding(
-      reinterpret_cast<const char*>(face->embedding.data()),
-      face->embedding.size() * sizeof(float));
+      reinterpret_cast<const char*>(face.embedding.data()),
+      face.embedding.size() * sizeof(float));
   const int64_t now = std::time(nullptr);
   int64_t userId = 0;
   int64_t personId = 0;
@@ -161,7 +189,7 @@ EnrollmentFeatureService::registerUser(const EnrollmentInput& input) const
     userId = co_await enrollmentRepository_.insertUser(
         {.name = name,
          .lastName = "",
-         .role = userRoleToString(role),
+         .role = role,
          .lang = voiceLangToString(lang),
          .client = transaction.get()});
     personId = co_await enrollmentRepository_.insertPerson(
@@ -169,7 +197,7 @@ EnrollmentFeatureService::registerUser(const EnrollmentInput& input) const
     faceEmbeddingId = co_await enrollmentRepository_.insertFaceEmbedding(
         {.personId = personId,
          .embedding = embedding,
-         .quality = face->confidence,
+         .quality = face.confidence,
          .client = transaction.get()});
 
     if (invitation) {
@@ -245,17 +273,19 @@ EnrollmentFeatureService::registerUser(const EnrollmentInput& input) const
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(IdentityErrors::ChangeNotRecorded);
 
-    const bool indexed = co_await BlockingTask<bool>(
-        [embedding = face->embedding, personId, faceEmbeddingId] {
-          return FaceService::instance().faceDb().insert(
-              {.embedding = embedding.data(),
-               .personId = personId,
-               .faceEmbeddingId = faceEmbeddingId});
-        });
-    if (!indexed)
-      co_return outcomeResult(EnrollmentOutcome::FaceIndexFailed);
+    co_await privatePortraitService_.store(userId, face.portraitJpeg);
 
-    co_await privatePortraitService_.store(userId, input.image);
+    const bool indexed = co_await BlockingTask<bool>(
+        [embedding = std::move(face.embedding), personId, faceEmbeddingId] {
+          return indexFace({.embedding = embedding.data(),
+                            .personId = personId,
+                            .faceEmbeddingId = faceEmbeddingId});
+        });
+    if (!indexed) {
+      LOG_ERROR << "Enrollment: the new face could not be indexed after "
+                << kIndexAttempts << " attempts; the next boot indexes it";
+      co_return outcomeResult(EnrollmentOutcome::FaceIndexFailed);
+    }
 
     EnrollmentResult result;
     result.outcome = EnrollmentOutcome::Enrolled;

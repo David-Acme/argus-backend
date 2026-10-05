@@ -93,7 +93,8 @@ IdentityVoiceprintRpcService::dispatch(grpc::CallbackServerContext* context,
       }
       catch (const std::exception& error) {
         LOG_WARN << "Identity voiceprint RPC failed: " << error.what();
-        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, error.what()));
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                     "identity could not complete the call"));
       }
       co_return;
     });
@@ -162,7 +163,7 @@ grpc::ServerUnaryReactor* IdentityVoiceprintRpcService::ObserveTurn(
        turn = std::move(turn)]() mutable -> drogon::Task<grpc::Status> {
         const grpc::Status status =
             co_await answerIdentify(request->sample(), response);
-        if (turn)
+        if (turn && admitLearning())
           drogon::async_run(
               [this, learn = std::move(*turn)]() mutable -> drogon::Task<void> {
                 try {
@@ -172,6 +173,7 @@ grpc::ServerUnaryReactor* IdentityVoiceprintRpcService::ObserveTurn(
                   LOG_WARN << "Voiceprint: a call turn was not learned: "
                            << error.what();
                 }
+                learning_.fetch_sub(1);
               });
         co_return status;
       });
@@ -196,6 +198,16 @@ IdentityVoiceprintRpcService::CloseCall(grpc::CallbackServerContext* context,
                     response->set_closed(outcome != PassiveCallOutcome::NotFound);
                     co_return grpc::Status::OK;
                   });
+}
+
+bool IdentityVoiceprintRpcService::admitLearning() const
+{
+  if (learning_.fetch_add(1) < kMaxLearningInFlight)
+    return true;
+  learning_.fetch_sub(1);
+  LOG_WARN << "Voiceprint: a call turn was skipped; " << kMaxLearningInFlight
+           << " turns are already being learned";
+  return false;
 }
 
 void IdentityVoiceprintRpcService::sweepIdleCalls() const

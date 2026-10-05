@@ -145,8 +145,8 @@ private:
 CreateInvitationDto invitationBody()
 {
   CreateInvitationDto dto;
-  dto.role = UserRole::Resident;
-  dto.roleValue = userRoleToString(UserRole::Resident);
+  dto.role = userRoleToString(UserRole::Resident);
+  dto.userRole = UserRole::Resident;
   return dto;
 }
 
@@ -255,7 +255,8 @@ TEST_CASE("an identity write and its change are one unit of work")
   CHECK(liveInvitations() == 1);
 
   UpdateUserDto promote;
-  promote.role = UserRole::Resident;
+  promote.role = userRoleToString(UserRole::Resident);
+  promote.userRole = UserRole::Resident;
 
   sink.refuse(true);
   CHECK_THROWS_AS(drogon::sync_wait(users.update({.targetUserId = kUserId,

@@ -217,21 +217,21 @@ VisitorFeatureService::merge(const VisitorMergeRequest& request) const
     throw ResponseException(IdentityErrors::VisitorMergeInvalid);
   co_await requireVisible(
       {.requester = request.requester, .personId = request.personId});
-  IndexMove move{.ids = {}, .embeddings = {}, .personId = request.personId};
   for (const int64_t source : request.body.sourceIds) {
     if (!co_await repository_.find(source))
       throw ResponseException(IdentityErrors::VisitorMergeInvalid);
-    for (auto& sample : co_await repository_.samples(source)) {
-      move.ids.push_back(sample.id);
-      move.embeddings.push_back(std::move(sample.embedding));
-    }
   }
 
+  IndexMove move{.ids = {}, .embeddings = {}, .personId = request.personId};
   auto transaction = co_await db_transaction::begin(DbService::identityClient());
   try {
     co_await repository_.merge({.targetId = request.personId,
                                 .sourceIds = request.body.sourceIds,
                                 .client = transaction.get()});
+    for (auto& sample : co_await repository_.samples(request.personId, transaction.get())) {
+      move.ids.push_back(sample.id);
+      move.embeddings.push_back(std::move(sample.embedding));
+    }
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(IdentityErrors::ChangeNotRecorded);
   }
@@ -366,29 +366,42 @@ VisitorFeatureService::consumeCrop(const VisitorCropConsumeRequest& request) con
   const auto hash = opaque_token::sha256Hex(request.token);
   if (request.token.empty() || !hash)
     throw ResponseException(IdentityErrors::VisitorCropUnavailable);
-  const auto consumed = co_await cropCapabilityRepository_.consume(
-      {.tokenHash = *hash, .requesterUserId = request.requester.userId, .now = now()});
-  if (!consumed)
-    throw ResponseException(IdentityErrors::VisitorCropUnavailable);
-  co_await requireVisible(
-      {.requester = request.requester, .personId = consumed->personId});
+  std::optional<ConsumedCropCapability> consumed;
+  auto transaction = co_await db_transaction::begin(DbService::identityClient());
+  try {
+    consumed = co_await cropCapabilityRepository_.consume(
+        {.tokenHash = *hash,
+         .requesterUserId = request.requester.userId,
+         .now = now(),
+         .client = transaction.get()});
+    if (!consumed)
+      throw ResponseException(IdentityErrors::VisitorCropUnavailable);
+    co_await requireVisible(
+        {.requester = request.requester, .personId = consumed->personId});
+    if (const auto* sink = identity_change::getSink()) {
+      Json::Value data(Json::objectValue);
+      data["event"] = "visitor_crop_view";
+      co_await sink->publishAction({.event = {.userId = request.requester.userId,
+                                              .recordId = consumed->personId,
+                                              .tableName = TableName::Person,
+                                              .action = UserAction::Read,
+                                              .oldData = Json::Value(),
+                                              .newData = data,
+                                              .ipAddress = ""},
+                                    .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(IdentityErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   const auto key = co_await repository_.sampleCrop(consumed->personId,
                                                    consumed->sampleId);
   const auto bytes = key ? co_await cropStore_.read(*key) : std::nullopt;
   if (!bytes)
     throw ResponseException(IdentityErrors::VisitorCropUnavailable);
-  if (const auto* sink = identity_change::getSink()) {
-    Json::Value data(Json::objectValue);
-    data["event"] = "visitor_crop_view";
-    co_await sink->publishAction({.event = {.userId = request.requester.userId,
-                                            .recordId = consumed->personId,
-                                            .tableName = TableName::Person,
-                                            .action = UserAction::Read,
-                                            .oldData = Json::Value(),
-                                            .newData = data,
-                                            .ipAddress = ""},
-                                  .client = nullptr});
-  }
   co_return ResponseVisitorCropImageDto{.mimeType = "image/jpeg",
                                         .base64 = base64(*bytes)};
 }

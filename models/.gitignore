@@ -4,3 +4,9 @@
 intent/*
 !intent/intent.bin
 !intent/MODEL-CARD.md
+!face/
+face/*
+!face/anti-spoof/
+face/anti-spoof/*
+!face/anti-spoof/MODEL-CARD.md
+!face/anti-spoof/NOTICE

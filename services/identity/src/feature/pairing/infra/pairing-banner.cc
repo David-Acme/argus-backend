@@ -1,6 +1,7 @@
 #include "pairing-banner.hxx"
 
 #include <cert/cert-service.hxx>
+#include <feature/pairing/infra/pairing-code.hxx>
 #include <config/config-service.hxx>
 #include <text/json-util.hxx>
 
@@ -92,7 +93,7 @@ void printWhenUnpaired(int port)
   if (ConfigService::getBool("pairing.paired"))
     return;
   const std::string banner =
-      render({.code = CertService::pairingCode(),
+      render({.code = PairingCodeStore(PairingCodeStore::defaultPath()).current().value_or(""),
               .serverName = ConfigService::getString("mdns.name"),
               .port = port,
               .instanceId = CertService::instanceId(),

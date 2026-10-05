@@ -7,7 +7,11 @@
 #include <sqlite/transaction.hxx>
 
 #include <algorithm>
+#include <condition_variable>
 #include <ctime>
+#include <memory>
+#include <mutex>
+#include <optional>
 #include <drogon/drogon.h>
 #include <exception>
 #include <numeric>
@@ -22,6 +26,31 @@ float cosine(const std::vector<float>& a, const std::vector<float>& b)
     return -1.0F;
   return std::inner_product(a.begin(), a.end(), b.begin(), 0.0F);
 }
+
+class CommitWait
+{
+public:
+  void settle(bool committed)
+  {
+    {
+      const std::scoped_lock lock(mutex_);
+      committed_ = committed;
+    }
+    settled_.notify_all();
+  }
+
+  [[nodiscard]] bool wait()
+  {
+    std::unique_lock lock(mutex_);
+    settled_.wait(lock, [this] { return committed_.has_value(); });
+    return *committed_;
+  }
+
+private:
+  std::mutex mutex_;
+  std::condition_variable settled_;
+  std::optional<bool> committed_;
+};
 
 PersonPool poolOf(const SightingPerson& person)
 {
@@ -131,8 +160,11 @@ VisitorRecognitionService::record(const RecordInput& input) const
   } index;
 
   SightingPerson person;
+  const auto commit = std::make_shared<CommitWait>();
   {
-  const auto transaction = client->newTransaction();
+  const auto transaction = client->newTransaction(
+      [commit](bool committed) { commit->settle(committed); },
+      drogon::orm::TransactionType::Immediate);
   const SightingRepository repository(*transaction);
   if (outcome == SightingOutcome::NewVisitor) {
     person = repository.createVisitor(input.observedAt);
@@ -141,6 +173,9 @@ VisitorRecognitionService::record(const RecordInput& input) const
   }
   else {
     person = persons.at(result.decision.personId);
+    const std::array<int64_t, 1> matched{person.id};
+    if (!repository.findPersons(matched).contains(person.id))
+      return recorded;
   }
 
   if (result.decision.learn) {
@@ -187,6 +222,15 @@ VisitorRecognitionService::record(const RecordInput& input) const
   result.named = !person.name.empty();
   result.known = person.known;
 
+  }
+
+  if (!commit->wait()) {
+    LOG_WARN << "Visitor recognition: a sighting did not commit; the index and "
+                "the stored crops are left untouched";
+    Recorded discarded;
+    discarded.result.faceFound = true;
+    discarded.result.quality = result.quality;
+    return discarded;
   }
 
   if (index.removed > 0) {

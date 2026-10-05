@@ -1,5 +1,7 @@
 #include "camera-probe-service.hxx"
 
+#include <camera/camera-errors.hxx>
+#include <errors/response-exception.hxx>
 #include <feature/camera/infra/rtsp-probe.hxx>
 #include <runtime/blocking-task.hxx>
 #include <shared/services/camera-catalog/camera-catalog.hxx>
@@ -129,13 +131,53 @@ Json::Value camera_probe::run(const CameraSchema& camera)
   return out;
 }
 
-drogon::Task<Json::Value> CameraProbeService::probe(const ProbeCameraDto& body) const
+bool camera_probe::reusesStoredSecrets(const ProbeCameraDto& body)
 {
+  return body.cameraId.has_value() && (body.password.empty() || body.cloudPassword.empty());
+}
+
+bool camera_probe::storedAddressMatches(const StoredSecretsUse& use)
+{
+  return use.body.ip == use.stored.ip && use.body.port == use.stored.port;
+}
+
+ProbeSlots::Slot::~Slot()
+{
+  if (owner_ == nullptr)
+    return;
+  std::scoped_lock lock(owner_->mutex_);
+  owner_->busy_.erase(userId_);
+}
+
+std::optional<ProbeSlots::Slot> ProbeSlots::acquire(int64_t userId)
+{
+  std::scoped_lock lock(mutex_);
+  if (!busy_.insert(userId).second)
+    return std::nullopt;
+  return std::optional<Slot>(std::in_place, *this, userId);
+}
+
+ProbeSlots& CameraProbeService::slots()
+{
+  static ProbeSlots probes;
+  return probes;
+}
+
+drogon::Task<Json::Value> CameraProbeService::probe(CameraProbeRequest request) const
+{
+  auto slot = slots().acquire(request.userId);
+  if (!slot)
+    throw ResponseException(CameraErrors::ProbeBusy);
+  const ProbeCameraDto& body = request.body;
   CameraSchema camera;
-  if (body.cameraId) {
+  if (camera_probe::reusesStoredSecrets(body)) {
     if (const auto stored = co_await repository_.findById(*body.cameraId)) {
+      if (!camera_probe::storedAddressMatches({.body = body, .stored = *stored}))
+        throw ResponseException(CameraErrors::StoredCredentialsElsewhere);
       camera.password = stored->password;
       camera.cloudPassword = stored->cloudPassword;
+      camera.tlsFingerprint = stored->tlsFingerprint;
+      camera.tapoSecure = stored->tapoSecure;
     }
   }
   camera.id = body.cameraId.value_or(0);
@@ -151,6 +193,7 @@ drogon::Task<Json::Value> CameraProbeService::probe(const ProbeCameraDto& body) 
   camera.config = camera_stream_paths::withConfig({.config = "{}",
                                                    .main = pathOr(body.streamPath, camera_stream_paths::kDefaultMain),
                                                    .sub = pathOr(body.subStreamPath, camera_stream_paths::kDefaultSub),
-                                                   .catalogId = std::nullopt});
+                                                   .catalogId = std::nullopt,
+                                                   .retentionIncident = std::nullopt});
   co_return co_await BlockingTask<Json::Value>([camera]() { return camera_probe::run(camera); });
 }

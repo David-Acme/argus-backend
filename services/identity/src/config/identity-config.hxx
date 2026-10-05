@@ -26,7 +26,23 @@ struct IdentitySyncControlConfig
 
 struct IdentityFaceConfig
 {
+  static constexpr float kMinLivenessThreshold = 0.50F;
+  static constexpr float kMaxLivenessThreshold = 0.99F;
+  static constexpr float kMaxLoginMargin = 0.30F;
   bool enabled{false};
+  bool livenessRequired{true};
+  float livenessThreshold{0.80F};
+  std::string livenessModelDir{"models/face/anti-spoof"};
+  float loginMargin{0.05F};
+};
+
+struct IdentityRateLimitConfig
+{
+  bool enabled{true};
+  int windowSeconds{60};
+  int maxRequests{10};
+  int lockoutThreshold{5};
+  int lockoutSeconds{300};
 };
 
 struct IdentityInvitationConfig
@@ -102,4 +118,6 @@ public:
   [[nodiscard]] static IdentityVoiceprintConfig resolveVoiceprint();
 
   [[nodiscard]] static IdentityInvitationConfig resolveInvitation();
+
+  [[nodiscard]] static IdentityRateLimitConfig resolveRateLimit();
 };

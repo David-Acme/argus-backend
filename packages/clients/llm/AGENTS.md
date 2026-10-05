@@ -98,6 +98,14 @@ the `Chat` service `packages/contracts/llm/llm.proto` declares.
   calls `onToken("", true)` — the same spelling the HTTP sentinel produces. A
   stream that ends without one is 502 `InvalidResponse`; an empty generation is
   not an error on either leg.
+- The HTTP stream's sentinel is out of band: it starts with
+  `kStreamSentinelMark` (ASCII 0x1E, declared in `llm-service.hxx`), which
+  the server strips from every token, so the client ends the stream only at
+  that byte and a generated `{"done":true}` is just text; a marked chunk
+  that does not parse is `argus-llm malformed stream sentinel`. The HTTP
+  client sends `llm.grpc_credential` as `x-argus-credential`
+  (`kCallerCredentialHeader`) on both legs, and argus-llm binds a declared
+  user, role and tool loop to the `voice` caller's credential.
 - The HTTP leg keeps its own, older failure type: every failure is a
   `std::runtime_error` — `argus-llm <code>: <message>` off the frozen
   `{status, info, errors}` envelope, or `argus-llm <what>` for a transport

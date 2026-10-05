@@ -1,10 +1,12 @@
 #include <shared/services/stream/go2rtc-frame-source.hxx>
 
 #include <drogon/HttpClient.h>
+#include <shared/services/stream/go2rtc-http.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <chrono>
+#include <string>
 
 drogon::Task<std::optional<CameraFrame>>
 Go2rtcFrameSource::grab(const FrameGrabRequest& request)
@@ -13,16 +15,18 @@ Go2rtcFrameSource::grab(const FrameGrabRequest& request)
                        std::chrono::system_clock::now().time_since_epoch())
                        .count();
 
-  auto request2 = drogon::HttpRequest::newHttpRequest();
-  request2->setMethod(drogon::Get);
-  request2->setPath("/api/frame.jpeg?src=" +
-                    Go2rtcManager::sourceFor(request.cameraId, CameraStreamRole::Analysis));
+  auto frameRequest = drogon::HttpRequest::newHttpRequest();
+  frameRequest->setMethod(drogon::Get);
+  frameRequest->setPath("/api/frame.jpeg");
+  frameRequest->setParameter(
+      "src", Go2rtcManager::sourceFor(request.cameraId, CameraStreamRole::Analysis));
+  if (request.maxAgeMs > 0)
+    frameRequest->setParameter("cache", std::to_string(request.maxAgeMs) + "ms");
 
-  const auto client = drogon::HttpClient::newHttpClient(
-      Go2rtcManager::instance().apiBase());
+  const auto client = go2rtc_http::client("frame:" + std::to_string(request.cameraId));
   drogon::HttpResponsePtr response;
   try {
-    response = co_await client->sendRequestCoro(request2, 5.0);
+    response = co_await client->sendRequestCoro(frameRequest, 5.0);
   }
   catch (const std::exception&) {
     response.reset();

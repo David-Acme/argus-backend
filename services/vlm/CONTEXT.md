@@ -202,10 +202,18 @@ leg, including the base64 upload and the JPEG decode.
   resolves 0 because this service builds the probe without the GPU check, so
   the offload is a deploy decision: `[vision] gpu_layers = 999`, plus the
   container needs `/dev/dri`. It is not made here.
-- The HTTP leg decodes the JPEG on the Drogon loop thread before the
-  blocking leg: 5 ms for 720p and 25 ms for 4.5 MP (OpenCV, measured).
-  `IMREAD_REDUCED_COLOR_*` would save at most 9 ms of that, so the decode
-  stays as it is. The gRPC leg decodes on its own thread.
+- The HTTP leg decoded the JPEG on the Drogon loop thread: 5 ms for 720p
+  and 25 ms for 4.5 MP, but up to 32 MB of base64 of any format and any
+  size (a 30k×30k PNG asks for about 2.7 GB). Since the 2026-10-05 audit
+  (#34) the base64 decode and the image decode run inside a Heavy
+  `BlockingTask`, and both legs go through `decodeCameraJpeg`
+  (`feature/vlm/services/jpeg-gate.{hxx,cc}`): the bytes must start a JPEG
+  (anything else is "not a JPEG image", 422 on HTTP, 400
+  `IMAGE_NOT_DECODABLE` on gRPC), the frame size is read from the SOF
+  header before any pixel is decoded, and a side over 8192 or more than
+  7680×4320 pixels is refused ("image dimensions are too large"). `main.cc`
+  also sets `OPENCV_IO_MAX_IMAGE_PIXELS` to that budget before anything
+  decodes, as a second fence inside OpenCV.
 
 Fixes in the same pass:
 - The caption cache key now includes the token budget. A caption generated
@@ -234,3 +242,13 @@ on the hot path.
 The earlier table above was taken while four helper processes spun a full
 core each, so its CPU rows are 20–40 % high. The iGPU stays 1.8–2.1× faster
 than the CPU at 384 px.
+
+## Pinned model download (2026-10-05 audit #30)
+
+`scripts/provision.sh` downloads the model with `curl -fL` into a `.part`
+file and moves it into place only after its SHA-256 matches the pin in the
+script, from a pinned revision (no `resolve/main`). The pins could not be
+computed from the audit environment, so they are empty: until the
+maintainer fills them, the script refuses to download a missing file and
+says so; `ARGUS_ALLOW_UNPINNED_MODELS=1` downloads it and prints its hash
+to pin. A present file with a pinned hash that does not match is replaced.

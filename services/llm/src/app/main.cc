@@ -25,9 +25,11 @@
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <runtime/blocking-task.hxx>
 #include <runtime/log-output.hxx>
+#include <runtime/shutdown-signal.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <json/value.h>
@@ -196,6 +198,13 @@ int main()
     settings.declareCapability("gpu");
 
   const LlmRpcConfig rpcConfig = LlmConfig::resolveRpc();
+  if (const auto voice = std::ranges::find(rpcConfig.credentials, std::string(kIdentityCaller),
+                                           &std::pair<std::string, std::string>::first);
+      voice != rpcConfig.credentials.end())
+    llm->setIdentityCredential(voice->second);
+  else
+    LOG_WARN << "argus-llm: no [rpc.callers] voice credential; the loopback HTTP leg trusts the "
+                "identity its callers declare";
   std::unique_ptr<LlmRpcServer> rpc;
   std::unique_ptr<SettingsRpcService> settingsRpc;
   if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
@@ -315,14 +324,15 @@ int main()
     drogon::async_run([&memory,
                        &replica]() -> drogon::Task<void> {
       try {
-        const auto snapshot = co_await BlockingTask<CatalogReplica::Snapshot>(
-            [] { return fetchCatalogSnapshotWithRetry(); });
-        if (replica)
-          replica->seedFromSnapshot(snapshot);
-        else
-          CatalogReplica::seedSnapshot(
-              {static_cast<SqliteGraph&>(memory.graph()), memory.resolver(),
-               snapshot});
+        co_await BlockingTask<void>([&memory, &replica] {
+          const auto snapshot = fetchCatalogSnapshotWithRetry();
+          if (replica)
+            replica->seedFromSnapshot(snapshot);
+          else
+            CatalogReplica::seedSnapshot(
+                {static_cast<SqliteGraph&>(memory.graph()), memory.resolver(),
+                 snapshot});
+        });
       }
       catch (const std::exception& error) {
         LOG_WARN << "argus-llm: catalog snapshot seed failed: "
@@ -337,6 +347,15 @@ int main()
       co_return;
     });
   });
+
+  shutdown_signal::onStop(shutdown_signal::drainOf(llm->streams(), "llm-streams"));
+  if (rpc)
+    shutdown_signal::onStop(shutdown_signal::drainOf(*rpc, "llm-rpc"));
+  if (encounterConsumer)
+    shutdown_signal::onStop(shutdown_signal::drainOf(*encounterConsumer, "llm-encounters"));
+  if (replica)
+    shutdown_signal::onStop(shutdown_signal::drainOf(*replica, "llm-catalog-replica"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(memory, "llm-memory-worker"));
 
   LOG_INFO << "argus-llm listening on " << listener.host << ":"
            << listener.port;

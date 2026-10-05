@@ -1,5 +1,6 @@
 #pragma once
 
+#include <auth/user-role.hxx>
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
 #include <string>
@@ -39,7 +40,7 @@ struct EnrollmentUserInput
 {
   std::string name;
   std::string lastName;
-  std::string role;
+  UserRole role{UserRole::Guest};
   std::string lang;
   drogon::orm::DbClient* client{nullptr};
 };

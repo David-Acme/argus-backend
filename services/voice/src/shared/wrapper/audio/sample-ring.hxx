@@ -12,30 +12,46 @@ public:
 
   void push(const Sample* data, size_t count)
   {
-    if (count >= buffer_.size()) {
-      std::copy(data + count - buffer_.size(), data + count, buffer_.begin());
+    const size_t capacity = buffer_.size();
+    if (capacity == 0)
+      return;
+    if (count >= capacity) {
+      std::copy(data + count - capacity, data + count, buffer_.begin());
       head_ = 0;
-      size_ = buffer_.size();
+      size_ = capacity;
       return;
     }
-    for (size_t i = 0; i < count; ++i) {
-      buffer_[(head_ + size_) % buffer_.size()] = data[i];
-      if (size_ == buffer_.size())
-        head_ = (head_ + 1) % buffer_.size();
-      else
-        ++size_;
-    }
+    const size_t overflow = size_ + count > capacity ? size_ + count - capacity : 0;
+    head_ = (head_ + overflow) % capacity;
+    size_ -= overflow;
+    const size_t tail = (head_ + size_) % capacity;
+    const size_t first = std::min(count, capacity - tail);
+    std::copy(data, data + first, buffer_.begin() + static_cast<std::ptrdiff_t>(tail));
+    std::copy(data + first, data + count, buffer_.begin());
+    size_ += count;
   }
 
   bool pop(Sample* dst, size_t count)
   {
     if (count > size_)
       return false;
-    for (size_t i = 0; i < count; ++i)
-      dst[i] = buffer_[(head_ + i) % buffer_.size()];
-    head_ = (head_ + count) % buffer_.size();
+    if (count == 0)
+      return true;
+    const size_t capacity = buffer_.size();
+    const size_t first = std::min(count, capacity - head_);
+    const auto from = buffer_.begin() + static_cast<std::ptrdiff_t>(head_);
+    std::copy(from, from + static_cast<std::ptrdiff_t>(first), dst);
+    std::copy(buffer_.begin(), buffer_.begin() + static_cast<std::ptrdiff_t>(count - first),
+              dst + first);
+    head_ = (head_ + count) % capacity;
     size_ -= count;
     return true;
+  }
+
+  void drainInto(std::vector<Sample>& out)
+  {
+    out.resize(size_);
+    pop(out.data(), out.size());
   }
 
   [[nodiscard]] size_t size() const { return size_; }

@@ -17,7 +17,8 @@ inline constexpr std::string_view CONSUME =
     "AND expires_at > ?1 RETURNING person_id, face_embedding_id";
 
 inline constexpr std::string_view PURGE_EXPIRED =
-    "DELETE FROM person_crop_capability WHERE expires_at < ?";
+    "DELETE FROM person_crop_capability "
+    "WHERE expires_at < ? OR consumed_at IS NOT NULL";
 }
 
 struct CropCapabilityCreateInput
@@ -34,6 +35,7 @@ struct CropCapabilityConsumeInput
   std::string tokenHash;
   int64_t requesterUserId{0};
   int64_t now{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct ConsumedCropCapability

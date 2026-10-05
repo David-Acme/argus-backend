@@ -5,6 +5,7 @@ argus_module(NAME camera-config
     INCLUDES
         ..
     DEPENDS
+        argus::contracts::camera
         argus::lib::config
         argus::lib::http
         argus::lib::text

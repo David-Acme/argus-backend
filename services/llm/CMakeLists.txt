@@ -381,6 +381,20 @@ set_target_properties(encounter-inbox-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME encounter-inbox-test COMMAND encounter-inbox-test)
 
+add_executable(memory-forget-test tests/unit/memory-forget-test.cc)
+
+target_link_libraries(memory-forget-test PRIVATE argus::memory
+    doctest::doctest)
+
+target_compile_definitions(memory-forget-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(memory-forget-test PRIVATE -Wall -Wextra)
+
+set_target_properties(memory-forget-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME memory-forget-test COMMAND memory-forget-test)
+
 add_executable(extract-tier-split-test tests/unit/extract-tier-split-test.cc)
 
 target_link_libraries(extract-tier-split-test PRIVATE argus::memory

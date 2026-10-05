@@ -1,5 +1,7 @@
 #include "visitor-repository.hxx"
 
+#include <stdexcept>
+
 #include <shared/vocabulary/face-model.hxx>
 #include <sqlite/db-service.hxx>
 
@@ -215,7 +217,11 @@ drogon::Task<void> VisitorRepository::merge(const VisitorMergeInput& input) cons
 
 drogon::Task<int64_t> VisitorRepository::createVisitor(drogon::orm::DbClient* client) const
 {
-  const auto result = co_await client->execSqlCoro(std::string(INSERT_VISITOR));
+  const auto number = co_await client->execSqlCoro(std::string(NEXT_VISITOR_NUMBER));
+  if (number.empty())
+    throw std::runtime_error("the visitor number counter is missing");
+  const auto result = co_await client->execSqlCoro(
+      std::string(INSERT_VISITOR), number.front()["last_number"].as<int64_t>());
   co_return static_cast<int64_t>(result.insertId());
 }
 

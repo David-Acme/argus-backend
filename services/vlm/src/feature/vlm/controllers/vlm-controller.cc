@@ -3,13 +3,38 @@
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
 #include <feature/vlm/dtos/describe-dto.hxx>
+#include <feature/vlm/services/jpeg-gate.hxx>
+#include <runtime/blocking-task.hxx>
 #include <vlm/vlm-errors.hxx>
 
 #include <drogon/drogon.h>
-#include <opencv2/imgcodecs.hpp>
 
 #include <chrono>
 #include <string>
+#include <utility>
+
+namespace
+{
+
+struct UploadedImage
+{
+  std::size_t bytes{0};
+  DecodedJpeg decoded;
+};
+
+const char* refusalText(JpegRefusal refusal)
+{
+  switch (refusal) {
+    case JpegRefusal::NotJpeg:
+      return "not a JPEG image";
+    case JpegRefusal::TooLarge:
+      return "image dimensions are too large";
+    default:
+      return "not a decodable image";
+  }
+}
+
+}
 
 drogon::Task<drogon::HttpResponsePtr>
 VlmController::describe(drogon::HttpRequestPtr req)
@@ -22,30 +47,33 @@ VlmController::describe(drogon::HttpRequestPtr req)
 
   const auto body = DescribeImageDto::fromJson(*req->getJsonObject());
 
-  const std::string jpeg = drogon::utils::base64Decode(body.imageB64);
-  if (jpeg.empty()) {
+  UploadedImage image = co_await BlockingTask<UploadedImage>(
+      [encoded = body.imageB64] {
+        const std::string jpeg = drogon::utils::base64Decode(encoded);
+        if (jpeg.empty())
+          return UploadedImage{};
+        return UploadedImage{.bytes = jpeg.size(), .decoded = decodeCameraJpeg(jpeg)};
+      },
+      BlockingLane::Heavy);
+  if (image.bytes == 0) {
     Json::Value fields(Json::objectValue);
     fields["image_b64"] = "decodes to no bytes";
     co_return ApiResponse::validationError(fields);
   }
-
-  const cv::Mat raw(1, static_cast<int>(jpeg.size()), CV_8UC1,
-                    const_cast<char*>(jpeg.data()));
-  const cv::Mat bgr = cv::imdecode(raw, cv::IMREAD_COLOR);
-  if (bgr.empty()) {
+  if (image.decoded.refusal != JpegRefusal::None) {
     Json::Value fields(Json::objectValue);
-    fields["image_b64"] = "not a decodable image";
+    fields["image_b64"] = refusalText(image.decoded.refusal);
     co_return ApiResponse::validationError(fields);
   }
 
   const auto t0 = std::chrono::steady_clock::now();
   std::string caption = co_await service_.describeMatAsync(
-      {.bgr = bgr, .prompt = body.prompt, .maxTokens = 0});
+      {.bgr = std::move(image.decoded.bgr), .prompt = body.prompt, .maxTokens = 0});
   const double ms =
       std::chrono::duration<double, std::milli>(
           std::chrono::steady_clock::now() - t0)
           .count();
-  LOG_INFO << "VLM describe: bytes=" << jpeg.size()
+  LOG_INFO << "VLM describe: bytes=" << image.bytes
            << " camera_id=" << body.cameraId << " ms=" << static_cast<int>(ms);
 
   Json::Value info(Json::objectValue);

@@ -4,7 +4,9 @@
 #include <shared/services/schema/column-migration.hxx>
 
 #include <ctime>
+#include <json/value.h>
 #include <sqlite/db-service.hxx>
+#include <text/json-util.hxx>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -44,6 +46,23 @@ PersonRepository::findAllCatalog() const
   for (const auto& row : result)
     data.push_back(PersonSchema(row));
   co_return data;
+}
+
+drogon::Task<std::vector<int64_t>>
+PersonRepository::findMemberIds(std::span<const int64_t> ids) const
+{
+  if (ids.empty())
+    co_return std::vector<int64_t>{};
+  Json::Value list(Json::arrayValue);
+  for (const int64_t id : ids)
+    list.append(static_cast<Json::Int64>(id));
+  const auto result = co_await DbService::identityClient()->execSqlCoro(
+      std::string(FIND_MEMBER_IDS), json_util::toString(list));
+  std::vector<int64_t> members;
+  members.reserve(result.size());
+  for (const auto& row : result)
+    members.push_back(row["id"].as<int64_t>());
+  co_return members;
 }
 
 drogon::Task<PersonSchema>

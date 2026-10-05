@@ -1,3 +1,4 @@
+#include <feature/vlm/services/jpeg-gate.hxx>
 #include <app/rpc/vlm-rpc-server.hxx>
 #include <config/vlm-config.hxx>
 #include <feature/settings/vlm-settings.hxx>
@@ -33,6 +34,7 @@ Json::Value drogonConfig(const ListenerConfig& listener)
 
 int main()
 {
+  limitDecoderPixels();
   log_output::flushEachLine();
   ConfigService::load("config.toml");
 

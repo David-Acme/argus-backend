@@ -40,5 +40,6 @@ struct FrameInput
 };
 
 std::string frame(const FrameInput& input);
+void frameInto(std::string& out, const FrameInput& input);
 
 }

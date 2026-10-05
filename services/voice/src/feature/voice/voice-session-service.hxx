@@ -19,6 +19,7 @@
 #include <shared/services/reaction/reaction-engine.hxx>
 #include <tts/tts-wire.hxx>
 #include <shared/services/vad/vad-service.hxx>
+#include <shared/wrapper/audio/sample-ring.hxx>
 #include <audio/audio-resampler.hxx>
 #include <stop_token>
 #include <string>
@@ -152,9 +153,14 @@ private:
     {
     }
 
+    static constexpr size_t kPcmRingSamples = static_cast<size_t>(16000) * 30;
+
     VoiceSessionSink* sink{nullptr};
     VadService vad;
     NoiseSuppressor denoiser;
+    bool denoiseBypassed{false};
+    std::vector<float> batch;
+    std::vector<float> cleaned;
     bool denoise{true};
     float denoiseGateRms{0.0035F};
     int denoiseLogCounter{0};
@@ -177,7 +183,7 @@ private:
     std::thread primeThread;
     std::mutex pcmMutex;
     std::condition_variable pcmCv;
-    std::vector<float> pcmQueue;
+    SampleRing pcmRing{kPcmRingSamples};
     bool duplex{false};
     std::chrono::milliseconds bargeGuard{300};
     std::thread turnThread;
@@ -211,8 +217,9 @@ private:
   std::shared_ptr<Session> sessionOf(VoiceSessionSink& sink) const;
   void workerLoop(const std::shared_ptr<Session>& session);
   void duplexLoop(const std::shared_ptr<Session>& session);
-  static std::optional<std::vector<float>> nextBatch(Session& session);
-  std::vector<float> cleanBatch(Session& session, std::vector<float>& batch);
+  static bool nextBatch(Session& session);
+  static std::span<const float> cleanBatch(Session& session);
+  static void resetListening(Session& session);
   void launchTurn(const std::shared_ptr<Session>& session,
                   std::function<void(Session&)> body);
   ListenState listenState(Session& session);

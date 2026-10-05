@@ -12,6 +12,8 @@ class ZoneProvider final : public IZoneSource
 public:
   ZoneProvider(int64_t refreshMs, std::unique_ptr<IZoneSource> fallback);
 
+  static constexpr int64_t kRetryMs = 5000;
+
   std::vector<OperatorZone> forCamera(int64_t cameraId) override;
 
 private:
@@ -21,6 +23,8 @@ private:
   std::unique_ptr<IZoneSource> fallback_;
   std::mutex mutex_;
   int64_t loadedAtMs_{0};
+  int64_t attemptedAtMs_{0};
   bool dbOk_{false};
+  bool loading_{false};
   std::vector<OperatorZone> cached_;
 };

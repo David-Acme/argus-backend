@@ -1,6 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <shared/utils/network-address/private-address.hxx>
+
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 
@@ -69,7 +71,7 @@ TEST_CASE("an IPv6 camera address is bracketed in its source url")
   camera.port = 554;
   CHECK(CameraSourceRegistrar::sourceUrl(camera, "/stream1") == "rtsp://[fd00::5]:554/stream1");
   CHECK(Go2rtcManager::isSafeUrl("rtsp://[fd00::5]:554/stream1"));
-  CHECK(Go2rtcManager::isSafeUrl("rtsp://admin:x@[fe80::1]:554/stream2"));
+  CHECK_FALSE(Go2rtcManager::isSafeUrl("rtsp://admin:x@[fe80::1]:554/stream2"));
   CHECK_FALSE(Go2rtcManager::isSafeUrl("rtsp://[2001:db8::1]:554/stream1"));
 }
 
@@ -83,6 +85,42 @@ TEST_CASE("only literal private hosts pass the go2rtc source guard")
   CHECK_FALSE(Go2rtcManager::isSafeUrl("rtsp://10.0.0.5:554/a#b"));
   CHECK_FALSE(Go2rtcManager::isSafeUrl("rtsp://10.0.0.5:554/a b"));
   CHECK(Go2rtcManager::isSafeUrl("rtsp://10.0.0.5:554/cam/realmonitor?channel=1&subtype=0"));
+}
+
+TEST_CASE("loopback and link-local hosts are never a camera")
+{
+  for (const char* host : {"127.0.0.1", "127.10.0.2", "169.254.10.4", "0.0.0.0", "::1", "::",
+                           "fe80::1", "::ffff:127.0.0.1", "::ffff:169.254.1.1", "localhost"}) {
+    CAPTURE(host);
+    CHECK_FALSE(network_address::isCameraAddress(host));
+  }
+  for (const char* host : {"10.0.0.5", "172.16.4.2", "192.168.1.50", "fd00::5", "::ffff:192.168.1.9"}) {
+    CAPTURE(host);
+    CHECK(network_address::isCameraAddress(host));
+  }
+  CHECK_FALSE(Go2rtcManager::isSafeUrl("rtsp://admin:x@127.0.0.1:9000/stream1"));
+  CHECK_FALSE(Go2rtcManager::isSafeUrl("http://169.254.169.254/latest"));
+}
+
+TEST_CASE("go2rtc's config names a credential variable instead of the password")
+{
+  const Go2rtcSource source{.name = "cam12-sub",
+                            .url = "rtsp://admin:p%40ss@192.168.1.50:554/stream2",
+                            .preload = true};
+  CHECK(Go2rtcManager::credentialVariable("cam12-sub") == "ARGUS_SRC_CAM12_SUB");
+  CHECK(Go2rtcManager::sealedUrl(source) ==
+        "rtsp://${ARGUS_SRC_CAM12_SUB}@192.168.1.50:554/stream2");
+  const std::vector<Go2rtcSource> sources{
+      source, {.name = "cam13", .url = "rtsp://10.0.0.7:554/stream1", .preload = false}};
+  CHECK(Go2rtcManager::credentialEnvironment(sources) ==
+        std::vector<std::string>{"ARGUS_SRC_CAM12_SUB=admin:p%40ss"});
+  const std::string config = Go2rtcManager::renderConfig(
+      {.api = "127.0.0.1:1984", .rtsp = "127.0.0.1:8554", .webrtc = {.listen = "", .candidates = {}},
+       .sources = sources});
+  CHECK(config.find("p%40ss") == std::string::npos);
+  CHECK(config.find("  cam12-sub: rtsp://${ARGUS_SRC_CAM12_SUB}@192.168.1.50:554/stream2\n") !=
+        std::string::npos);
+  CHECK(config.find("  cam13: rtsp://10.0.0.7:554/stream1\n") != std::string::npos);
 }
 
 TEST_CASE("a camera's configured stream paths replace the Tapo defaults")

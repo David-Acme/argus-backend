@@ -56,7 +56,7 @@ NoiseSuppressor::~NoiseSuppressor()
 #endif
 }
 
-void NoiseSuppressor::applyAgc(const std::vector<float>& in,
+void NoiseSuppressor::applyAgc(std::span<const float> in,
                                std::vector<float>& out)
 {
   out.resize(in.size());
@@ -78,16 +78,16 @@ void NoiseSuppressor::applyAgc(const std::vector<float>& in,
     out[i] = clampS16(in[i] * agcGain_);
 }
 
-void NoiseSuppressor::process(const std::vector<float>& in,
+void NoiseSuppressor::process(std::span<const float> in,
                               std::vector<float>& out)
 {
 #if !ARGUS_HAS_RNNOISE
-  out = in;
+  out.assign(in.begin(), in.end());
   return;
 #else
   out.clear();
   if (!state_ || in.empty()) {
-    out = in;
+    out.assign(in.begin(), in.end());
     return;
   }
 
@@ -96,9 +96,8 @@ void NoiseSuppressor::process(const std::vector<float>& in,
   workI16_.resize(workBoosted_.size());
   for (size_t i = 0; i < workBoosted_.size(); ++i)
     workI16_[i] = static_cast<int16_t>(clampS16(workBoosted_[i]) * 32767.0F);
-  workUp48_ = upsampler_.process(workI16_.data(), workI16_.size());
+  upsampler_.processInto(workI16_, workUp48_);
 
-  pending48_.reserve(pending48_.size() + workUp48_.size());
   for (const int16_t s : workUp48_)
     pending48_.push_back(static_cast<float>(s));
 
@@ -143,11 +142,11 @@ void NoiseSuppressor::process(const std::vector<float>& in,
   for (size_t i = 0; i < workDenoised_.size(); ++i)
     workD48_[i] = static_cast<int16_t>(
         std::max(-32767.0F, std::min(32767.0F, workDenoised_[i])));
-  workDown16_ = downsampler_.process(workD48_.data(), workD48_.size());
+  downsampler_.processInto(workD48_, workDown16_);
 
-  out.reserve(workDown16_.size());
-  for (const int16_t s : workDown16_)
-    out.push_back(static_cast<float>(s) / 32768.0F);
+  out.resize(workDown16_.size());
+  std::ranges::transform(workDown16_, out.begin(),
+                         [](int16_t s) { return static_cast<float>(s) / 32768.0F; });
 #endif
 }
 
@@ -166,4 +165,12 @@ void NoiseSuppressor::reset()
   agcRms_ = 0.0F;
   agcGain_ = 1.0F;
   lastVoiceProb_ = 0.0F;
+}
+
+void NoiseSuppressor::resync()
+{
+  upsampler_.reset();
+  downsampler_.reset();
+  pending48_.clear();
+  pending48Offset_ = 0;
 }

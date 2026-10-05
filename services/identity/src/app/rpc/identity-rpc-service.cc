@@ -11,16 +11,8 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <sync/sync-operation.hxx>
-#include <sync/table-name.hxx>
-#include <sync/socket-emit-dto.hxx>
 #include <shared/services/face/face-service.hxx>
-#include <sqlite/db-service.hxx>
-#include <sqlite/transaction.hxx>
-#include <sync/identity-change-sink.hxx>
-#include <shared/vocabulary/person-status.hxx>
 #include <identity/person-category.hxx>
-#include <feature/visitor/services/visit-pattern.hxx>
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 #include <auth/user-role.hxx>
@@ -81,6 +73,13 @@ std::string accessToken(const grpc::CallbackServerContext* context)
 
 }
 
+void IdentityRpcService::finishInternal(const InternalFailure& failure)
+{
+  LOG_WARN << "Identity RPC: " << failure.call << " failed: " << failure.error.what();
+  failure.reactor->Finish(
+      grpc::Status(grpc::StatusCode::INTERNAL, "identity could not complete the call"));
+}
+
 IdentityRpcService::IdentityRpcService(Dependencies dependencies)
     : dependencies_(std::move(dependencies))
 {
@@ -135,64 +134,20 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
                                         responseWriter]() {
     drogon::async_run([this, reactor, userId, name,
                        responseWriter]() -> drogon::Task<void> {
-      std::shared_ptr<drogon::orm::Transaction> transaction;
       try {
-        transaction =
-            co_await db_transaction::begin(DbService::identityClient());
-
-        const auto before =
-            co_await userRepository_.findById(userId, transaction.get());
-        if (!before) {
-          db_transaction::rollback(transaction);
+        const auto user = co_await userService_.rename({.userId = userId, .name = name});
+        if (!user) {
           reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND,
                                        "user not found"));
           co_return;
         }
-
-        auto user = co_await userRepository_.update(
-            userId,
-            {.name = name,
-             .lastName = std::nullopt,
-             .role = std::nullopt,
-             .isActive = std::nullopt,
-             .client = transaction.get()});
-        if (user.id <= 0) {
-          db_transaction::rollback(transaction);
-          reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND,
-                                       "user not found"));
-          co_return;
-        }
-
-        std::vector<int64_t> recipients{user.id};
-        for (const auto& recipient :
-             co_await userRepository_.findAll(transaction.get())) {
-          if (recipient.role == UserRole::Owner ||
-              recipient.role == UserRole::Guard)
-            recipients.push_back(recipient.id);
-        }
-        if (const auto* sink = identity_change::getSink()) {
-          co_await sink->publishUsersAudit({
-              .recordId = user.id,
-              .tableName = TableName::User,
-              .before = before->toJson(),
-              .after = user.toJson(),
-              .userIds = std::move(recipients),
-              .client = transaction.get(),
-          });
-        }
-
-        if (!co_await db_transaction::Commit(std::move(transaction)))
-          throw ResponseException(IdentityErrors::ChangeNotRecorded);
-
-        responseWriter->mutable_user()->set_user_id(user.id);
-        responseWriter->mutable_user()->set_name(user.name);
-        responseWriter->mutable_user()->set_lang(user.lang);
+        responseWriter->mutable_user()->set_user_id(user->id);
+        responseWriter->mutable_user()->set_name(user->name);
+        responseWriter->mutable_user()->set_lang(user->lang);
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
-        db_transaction::rollback(transaction);
-        LOG_WARN << "Identity RPC: UpdateUser failed: " << e.what();
-        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+        finishInternal({.reactor = reactor, .call = "UpdateUser", .error = e});
       }
       co_return;
     });
@@ -200,6 +155,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
   return reactor;
 }
 
+namespace
+{
 argus::identity::v1::RegisterUserOutcome
 registerUserOutcome(EnrollmentOutcome outcome)
 {
@@ -226,8 +183,15 @@ registerUserOutcome(EnrollmentOutcome outcome)
     return argus::identity::v1::REGISTER_USER_FACE_INDEX_FAILED;
   case EnrollmentOutcome::AccountDisabled:
     return argus::identity::v1::REGISTER_USER_ACCOUNT_DISABLED;
+  case EnrollmentOutcome::LivenessFailed:
+    return argus::identity::v1::REGISTER_USER_LIVENESS_FAILED;
+  case EnrollmentOutcome::LivenessUnavailable:
+    return argus::identity::v1::REGISTER_USER_LIVENESS_UNAVAILABLE;
+  case EnrollmentOutcome::FaceQualityInsufficient:
+    return argus::identity::v1::REGISTER_USER_FACE_QUALITY_INSUFFICIENT;
   }
   return argus::identity::v1::REGISTER_USER_OUTCOME_UNSPECIFIED;
+}
 }
 
 grpc::ServerUnaryReactor* IdentityRpcService::RegisterUser(
@@ -280,8 +244,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::RegisterUser(
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
-        LOG_WARN << "Identity RPC: RegisterUser failed: " << e.what();
-        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+        finishInternal({.reactor = reactor, .call = "RegisterUser", .error = e});
       }
       co_return;
     });
@@ -331,8 +294,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::GetUser(
             reactor->Finish(grpc::Status::OK);
           }
           catch (const std::exception& e) {
-            LOG_WARN << "Identity RPC: GetUser failed: " << e.what();
-            reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+            finishInternal({.reactor = reactor, .call = "GetUser", .error = e});
           }
           co_return;
         });
@@ -369,8 +331,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::ListPersons(
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
-        LOG_WARN << "Identity RPC: ListPersons failed: " << e.what();
-        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+        finishInternal({.reactor = reactor, .call = "ListPersons", .error = e});
       }
       co_return;
     });
@@ -380,38 +341,20 @@ grpc::ServerUnaryReactor* IdentityRpcService::ListPersons(
 
 namespace
 {
-std::optional<std::pair<int64_t, float>> searchFace(
-    const std::optional<FaceService::FaceResult>& face)
+void fillMatch(argus::identity::v1::IdentifyPersonResponse& response,
+               const HouseholdMatch& match)
 {
-  if (!face)
-    return std::nullopt;
-  return FaceService::instance().faceDb().search(face->embedding.data());
-}
-}
-
-drogon::Task<void>
-IdentityRpcService::describeHousehold(const DescribeHouseholdInput& input)
-{
-  auto* response = input.response;
-  const auto person = co_await personRepository_.findById(input.personId);
-  if (!person)
-    co_return;
-  response->set_trusted(person->status == PersonStatus::Known &&
-                        person->category != PersonCategory::Watchlist);
-  if (!person->userId)
-    co_return;
-  const auto user = co_await userRepository_.findById(*person->userId);
-  if (user && !user->isActive)
-    response->set_account_disabled(true);
-  if (!user || !user->isActive)
-    co_return;
-  response->set_role(userRoleToString(user->role));
-  if (!input.forCamera ||
-      (co_await privacyGate_.effectiveFor(user->id)).faceCameras) {
-    response->set_user_id(user->id);
-    response->set_name(user->name);
-    response->set_last_name(user->lastName);
+  response.set_trusted(match.trusted);
+  if (match.accountDisabled)
+    response.set_account_disabled(true);
+  if (match.role)
+    response.set_role(userRoleToString(*match.role));
+  if (match.userId) {
+    response.set_user_id(*match.userId);
+    response.set_name(match.name);
+    response.set_last_name(match.lastName);
   }
+}
 }
 
 drogon::Task<void>
@@ -429,9 +372,8 @@ IdentityRpcService::identifySighting(const IdentifySightingInput& input)
     response->set_matched(true);
     response->set_person_id(result.decision.personId);
     response->set_confidence(result.decision.score);
-    co_await describeHousehold({.personId = result.decision.personId,
-                                .forCamera = true,
-                                .response = response});
+    fillMatch(*response, co_await personService_.describeMatch(
+                             {.personId = result.decision.personId, .forCamera = true}));
     co_return;
   }
   if (outcome != SightingOutcome::Visitor && outcome != SightingOutcome::NewVisitor)
@@ -452,6 +394,43 @@ IdentityRpcService::identifySighting(const IdentifySightingInput& input)
     if (person)
       response->set_name(person->name);
   }
+}
+
+drogon::Task<void> IdentityRpcService::identifyForCamera(const IdentifyInput& input)
+{
+  auto* response = input.response;
+  const auto face = co_await FaceService::instance().extractImageAsync(input.image);
+  response->set_face_found(face.has_value());
+  if (!face)
+    co_return;
+  const auto match = co_await BlockingTask<std::optional<std::pair<int64_t, float>>>(
+      [embedding = face->embedding]() {
+        return FaceService::instance().faceDb().search(embedding.data());
+      });
+  if (!match)
+    co_return;
+  response->set_matched(true);
+  response->set_person_id(match->first);
+  response->set_confidence(match->second);
+  fillMatch(*response, co_await personService_.describeMatch(
+                           {.personId = match->first, .forCamera = true}));
+}
+
+drogon::Task<void> IdentityRpcService::identifyForSignIn(const IdentifyInput& input)
+{
+  auto* response = input.response;
+  const auto signIn = co_await signInService_.identify(input.image);
+  response->set_face_check(std::string(face_check::statusToString(signIn.check)));
+  response->set_face_found(signIn.check != FaceCheckStatus::NoFace &&
+                           signIn.check != FaceCheckStatus::Undecodable &&
+                           signIn.check != FaceCheckStatus::Unavailable);
+  if (!signIn.match)
+    co_return;
+  response->set_matched(true);
+  response->set_person_id(signIn.match->personId);
+  response->set_confidence(signIn.match->score);
+  fillMatch(*response, co_await personService_.describeMatch(
+                           {.personId = signIn.match->personId, .forCamera = false}));
 }
 
 grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
@@ -487,36 +466,19 @@ grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
     drogon::async_run([this, reactor, image, forCamera, sighting,
                        responseWriter]() -> drogon::Task<void> {
       try {
-        if (sighting) {
+        if (sighting)
           co_await identifySighting({.image = image,
                                      .cameraId = sighting->camera_id(),
                                      .observedAt = sighting->observed_at(),
                                      .response = responseWriter});
-          reactor->Finish(grpc::Status::OK);
-          co_return;
-        }
-        const auto face =
-            co_await FaceService::instance().extractImageAsync(image);
-        responseWriter->set_face_found(face.has_value());
-        const auto match = co_await BlockingTask<
-            std::optional<std::pair<int64_t, float>>>(
-            [&face]() { return searchFace(face); });
-        if (!match) {
-          reactor->Finish(grpc::Status::OK);
-          co_return;
-        }
-
-        responseWriter->set_matched(true);
-        responseWriter->set_person_id(match->first);
-        responseWriter->set_confidence(match->second);
-        co_await describeHousehold({.personId = match->first,
-                                    .forCamera = forCamera,
-                                    .response = responseWriter});
+        else if (forCamera)
+          co_await identifyForCamera({.image = image, .response = responseWriter});
+        else
+          co_await identifyForSignIn({.image = image, .response = responseWriter});
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
-        LOG_WARN << "Identity RPC: IdentifyPerson failed: " << e.what();
-        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+        finishInternal({.reactor = reactor, .call = "IdentifyPerson", .error = e});
       }
       co_return;
     });
@@ -545,17 +507,12 @@ grpc::ServerUnaryReactor* IdentityRpcService::EnrollPerson(
   }
 
   const int64_t cameraId = request->camera_id();
-  const bool captureSnapshot = request->capture_snapshot();
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;
   drogon::app().getLoop()->queueInLoop(
-      [this, reactor, image, cameraId, captureSnapshot, responseWriter]() {
-        drogon::async_run([this, reactor, image, cameraId, captureSnapshot,
+      [this, reactor, image, cameraId, responseWriter]() {
+        drogon::async_run([this, reactor, image, cameraId,
                            responseWriter]() -> drogon::Task<void> {
-          std::optional<FaceService::FaceResult> face;
-          PersonSchema person;
-          std::shared_ptr<drogon::orm::Transaction> transaction;
-          int64_t faceEmbeddingId = 0;
           try {
             if (!(co_await privacyGate_.household()).visitorRecognition) {
               reactor->Finish(grpc::Status(
@@ -563,96 +520,28 @@ grpc::ServerUnaryReactor* IdentityRpcService::EnrollPerson(
                   "recognition of recurring visitors is turned off"));
               co_return;
             }
-            face = co_await FaceService::instance().extractImageAsync(image);
-            if (!face) {
+            const auto result = co_await visitorRecognition_.observe(
+                {.image = image,
+                 .cameraId = cameraId,
+                 .observedAt = static_cast<int64_t>(std::time(nullptr))});
+            if (!result.faceFound) {
               reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                                            "no face detected in the crop"));
               co_return;
             }
-            const auto existing = co_await BlockingTask<
-                std::optional<std::pair<int64_t, float>>>(
-                [&face]() { return searchFace(face); });
-            if (existing) {
-              responseWriter->set_person_id(existing->first);
-              responseWriter->set_created(false);
-              responseWriter->set_confidence(existing->second);
-              reactor->Finish(grpc::Status::OK);
-              co_return;
+            const auto outcome = result.decision.outcome;
+            if (outcome == SightingOutcome::Household ||
+                outcome == SightingOutcome::Visitor ||
+                outcome == SightingOutcome::NewVisitor) {
+              responseWriter->set_person_id(result.decision.personId);
+              responseWriter->set_confidence(result.decision.score);
             }
-
-            transaction =
-                co_await db_transaction::begin(DbService::identityClient());
-
-            person = co_await personRepository_.create(
-                {.userId = std::nullopt,
-                 .name = "",
-                 .alias = "",
-                 .observation = "",
-                 .status = PersonStatus::Candidate,
-                 .client = transaction.get()});
-            if (person.id <= 0) {
-              db_transaction::rollback(transaction);
-              reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
-                                           "person insert failed"));
-              co_return;
-            }
-
-            const std::string embedding(
-                reinterpret_cast<const char*>(face->embedding.data()),
-                face->embedding.size() * sizeof(float));
-            const auto row = co_await faceEmbeddingRepository_.create(
-                {.personId = person.id,
-                 .embedding = embedding,
-                 .angleLabel = "frontal",
-                 .quality = 1.0,
-                 .model = std::string(kFaceModelId),
-                 .client = transaction.get()});
-            if (row.id > 0)
-              faceEmbeddingId = row.id;
-
-            if (captureSnapshot)
-              co_await personSnapshotRepository_.store(
-                  {.personId = person.id,
-                   .image = image,
-                   .client = transaction.get()});
-
-            SocketEmitDto emit;
-            emit.operation = SyncOperation::Add;
-            emit.option = TableName::Person;
-            emit.obj = person.toJson();
-            if (const auto* sink = identity_change::getSink())
-              co_await sink->emitModule({.table = TableName::Person,
-                                         .body = emit,
-                                         .client = transaction.get()});
-
-            if (!co_await db_transaction::Commit(std::move(transaction)))
-              throw ResponseException(IdentityErrors::ChangeNotRecorded);
+            responseWriter->set_created(result.created);
+            reactor->Finish(grpc::Status::OK);
           }
           catch (const std::exception& e) {
-            db_transaction::rollback(transaction);
-            LOG_WARN << "Identity RPC: EnrollPerson failed: " << e.what();
-            reactor->Finish(
-                grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
-            co_return;
+            finishInternal({.reactor = reactor, .call = "EnrollPerson", .error = e});
           }
-
-          if (faceEmbeddingId > 0) {
-            co_await BlockingTask<void>([embedding = face->embedding,
-                                         personId = person.id,
-                                         faceEmbeddingId]() {
-              FaceService::instance().faceDb().insert(
-                  {.embedding = embedding.data(),
-                   .personId = personId,
-                   .faceEmbeddingId = faceEmbeddingId});
-            });
-          }
-
-          LOG_INFO << "Identity RPC: enrolled person " << person.id
-                   << " from camera " << cameraId;
-          responseWriter->set_person_id(person.id);
-          responseWriter->set_created(true);
-          responseWriter->set_confidence(face->confidence);
-          reactor->Finish(grpc::Status::OK);
           co_return;
         });
       });
@@ -688,19 +577,11 @@ grpc::ServerUnaryReactor* IdentityRpcService::TouchPerson(
         drogon::async_run([this, reactor, personId, at,
                            responseWriter]() -> drogon::Task<void> {
           try {
-            const auto person = co_await personRepository_.update(
-                personId,
-                {.name = std::nullopt,
-                 .alias = std::nullopt,
-                 .observation = std::nullopt,
-                 .lastSeenAt = at});
-            responseWriter->set_updated(person.id > 0);
+            responseWriter->set_updated(co_await personService_.touch(personId, at));
             reactor->Finish(grpc::Status::OK);
           }
           catch (const std::exception& e) {
-            LOG_WARN << "Identity RPC: TouchPerson failed: " << e.what();
-            reactor->Finish(
-                grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+            finishInternal({.reactor = reactor, .call = "TouchPerson", .error = e});
           }
           co_return;
         });
@@ -728,36 +609,23 @@ grpc::ServerUnaryReactor* IdentityRpcService::TagPerson(
     return reactor;
   }
 
-  const std::vector<std::string> tags(request->tags().begin(),
-                                      request->tags().end());
-  const std::string source =
-      request->source().empty() ? "llm" : request->source();
-  const std::string observation = request->observation();
+  PersonTagRequest tagRequest{
+      .personId = personId,
+      .tags = std::vector<std::string>(request->tags().begin(), request->tags().end()),
+      .source = request->source().empty() ? "llm" : request->source(),
+      .observation = request->observation()};
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;
   drogon::app().getLoop()->queueInLoop(
-      [this, reactor, personId, tags, source, observation,
-       responseWriter]() {
-        drogon::async_run([this, reactor, personId, tags, source, observation,
+      [this, reactor, tagRequest = std::move(tagRequest), responseWriter]() {
+        drogon::async_run([this, reactor, tagRequest,
                            responseWriter]() -> drogon::Task<void> {
           try {
-            const int added = co_await personTagRepository_.addMany(
-                {.personId = personId, .tags = tags, .source = source});
-            if (!observation.empty()) {
-              co_await personRepository_.update(
-                  personId,
-                  {.name = std::nullopt,
-                   .alias = std::nullopt,
-                   .observation = observation,
-                   .lastSeenAt = std::nullopt});
-            }
-            responseWriter->set_added(added);
+            responseWriter->set_added(co_await personService_.tag(tagRequest));
             reactor->Finish(grpc::Status::OK);
           }
           catch (const std::exception& e) {
-            LOG_WARN << "Identity RPC: TagPerson failed: " << e.what();
-            reactor->Finish(
-                grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+            finishInternal({.reactor = reactor, .call = "TagPerson", .error = e});
           }
           co_return;
         });
@@ -789,8 +657,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::ListNotifiableUsers(
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
-        LOG_WARN << "Identity RPC: ListNotifiableUsers failed: " << e.what();
-        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+        finishInternal({.reactor = reactor, .call = "ListNotifiableUsers", .error = e});
       }
       co_return;
     });
@@ -825,14 +692,12 @@ grpc::ServerUnaryReactor* IdentityRpcService::GetPersonTags(
     drogon::async_run([this, reactor, personId,
                        responseWriter]() -> drogon::Task<void> {
       try {
-        for (const auto& tag :
-             co_await personTagRepository_.findByPerson(personId))
+        for (const auto& tag : co_await personService_.tags(personId))
           responseWriter->add_tags(tag);
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
-        LOG_WARN << "Identity RPC: GetPersonTags failed: " << e.what();
-        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+        finishInternal({.reactor = reactor, .call = "GetPersonTags", .error = e});
       }
       co_return;
     });
@@ -867,54 +732,41 @@ grpc::ServerUnaryReactor* IdentityRpcService::GetPerson(
     drogon::async_run([this, reactor, personId,
                        responseWriter]() -> drogon::Task<void> {
       try {
-        const auto person = co_await personRepository_.findById(personId);
+        const auto person = co_await personService_.describe(personId);
         if (person) {
           auto* payload = responseWriter->mutable_person();
-          payload->set_person_id(person->id);
-          const bool named =
-              !person->userId ||
-              (co_await privacyGate_.effectiveFor(*person->userId)).faceCameras;
-          if (person->userId && named)
+          payload->set_person_id(person->personId);
+          if (person->userId)
             payload->set_user_id(*person->userId);
-          if (named) {
+          if (person->named) {
             payload->set_name(person->name);
             payload->set_alias(person->alias);
             payload->set_observation(person->observation);
           }
-          payload->set_trusted(person->status == PersonStatus::Known &&
-                               person->category != PersonCategory::Watchlist);
-          if (person->userId) {
-            const auto user =
-                co_await userRepository_.findById(*person->userId);
-            if (user && user->isActive)
-              payload->set_role(userRoleToString(user->role));
-          }
-          else {
-            payload->set_category(
-                std::string(personCategoryToString(person->category)));
-            payload->set_visits(static_cast<int32_t>(person->visitCount));
+          payload->set_trusted(person->trusted);
+          if (person->role)
+            payload->set_role(userRoleToString(*person->role));
+          if (person->visitor) {
+            payload->set_category(std::string(personCategoryToString(person->category)));
+            payload->set_visits(static_cast<int32_t>(person->visits));
             payload->set_first_seen_at(person->firstSeenAt);
             payload->set_last_seen_at(person->lastSeenAt);
             if (person->visitorNumber)
               payload->set_visitor_number(*person->visitorNumber);
-            const auto times = co_await visitorRepository_.visitTimes(person->id);
-            const auto summary = visit_pattern::summarize(times);
             auto* pattern = payload->mutable_pattern();
-            for (const int day : summary.weekdays)
+            for (const int day : person->pattern.weekdays)
               pattern->add_weekdays(day);
-            if (summary.usualHour)
-              pattern->set_usual_hour(*summary.usualHour);
-            pattern->set_visits_considered(summary.visitsConsidered);
+            if (person->pattern.usualHour)
+              pattern->set_usual_hour(*person->pattern.usualHour);
+            pattern->set_visits_considered(person->pattern.visitsConsidered);
           }
-          for (const auto& tag :
-               co_await personTagRepository_.findByPerson(personId))
+          for (const auto& tag : person->tags)
             payload->add_tags(tag);
         }
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
-        LOG_WARN << "Identity RPC: GetPerson failed: " << e.what();
-        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+        finishInternal({.reactor = reactor, .call = "GetPerson", .error = e});
       }
       co_return;
     });
@@ -957,9 +809,6 @@ grpc::ServerUnaryReactor* IdentityRpcService::PromotePerson(
       [this, reactor, responseWriter, personId, token, device]() {
         drogon::async_run([this, reactor, responseWriter, personId, token,
                            device]() -> drogon::Task<void> {
-          std::optional<PersonSchema> before;
-          bool promoted = false;
-          std::shared_ptr<drogon::orm::Transaction> transaction;
           try {
             const auto auth = dependencies_.auth;
             if (!auth) {
@@ -986,53 +835,23 @@ grpc::ServerUnaryReactor* IdentityRpcService::PromotePerson(
                                            "invalid access token"));
               co_return;
             }
-            const int64_t actorId = verdict->user().user_id();
             if (userRoleFromString(verdict->user().role()) != UserRole::Owner) {
               reactor->Finish(grpc::Status(grpc::StatusCode::PERMISSION_DENIED,
                                            "owner role required"));
               co_return;
             }
-
-            transaction =
-                co_await db_transaction::begin(DbService::identityClient());
-
-            before = co_await personRepository_.findById(personId,
-                                                         transaction.get());
-            if (!before) {
-              db_transaction::rollback(transaction);
+            const auto promoted = co_await personService_.promote(
+                {.personId = personId, .actorId = verdict->user().user_id()});
+            if (!promoted) {
               reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND,
                                            "person not found"));
               co_return;
             }
-            promoted = co_await personRepository_.promote(personId,
-                                                          transaction.get());
-            if (promoted) {
-              const auto after = co_await personRepository_.findById(
-                  personId, transaction.get());
-              if (after) {
-                if (const auto* sink = identity_change::getSink()) {
-                  co_await sink->publishModuleAudit(
-                      {.recordId = personId,
-                       .tableName = TableName::Person,
-                       .before = before->toJson(),
-                       .after = after->toJson(),
-                       .actorId = actorId,
-                       .client = transaction.get()});
-                }
-              }
-            }
-
-            if (!co_await db_transaction::Commit(std::move(transaction)))
-              throw ResponseException(IdentityErrors::ChangeNotRecorded);
-
-            responseWriter->set_promoted(promoted);
+            responseWriter->set_promoted(*promoted);
             reactor->Finish(grpc::Status::OK);
           }
           catch (const std::exception& e) {
-            db_transaction::rollback(transaction);
-            LOG_WARN << "Identity RPC: PromotePerson failed: " << e.what();
-            reactor->Finish(
-                grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+            finishInternal({.reactor = reactor, .call = "PromotePerson", .error = e});
           }
           co_return;
         });
@@ -1080,8 +899,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::ListPrivacy(
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
-        LOG_WARN << "Identity RPC: ListPrivacy failed: " << e.what();
-        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+        finishInternal({.reactor = reactor, .call = "ListPrivacy", .error = e});
       }
       co_return;
     });
@@ -1125,8 +943,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::ListUsers(
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
-        LOG_WARN << "Identity RPC: ListUsers failed: " << e.what();
-        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+        finishInternal({.reactor = reactor, .call = "ListUsers", .error = e});
       }
       co_return;
     });

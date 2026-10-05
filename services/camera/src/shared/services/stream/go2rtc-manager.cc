@@ -11,6 +11,7 @@
 #include <drogon/HttpClient.h>
 #include <drogon/drogon.h>
 #include <fcntl.h>
+#include <optional>
 #include <sstream>
 #include <ranges>
 #include <string_view>
@@ -25,6 +26,8 @@
 #include <thread>
 #include <unistd.h>
 
+extern char** environ;
+
 namespace
 {
 
@@ -37,6 +40,9 @@ constexpr const char* kSubStreamSuffix = "-sub";
 constexpr const char* kOpusAudioSuffix = "-opus";
 constexpr size_t kMaxListenBytes = 64;
 constexpr auto kHealthyResetAfter = std::chrono::seconds(60);
+constexpr auto kSuperviseTick = std::chrono::milliseconds(500);
+constexpr auto kRestartCoalesce = std::chrono::milliseconds(750);
+constexpr std::string_view kCredentialPrefix = "ARGUS_SRC_";
 
 struct PrivateFile
 {
@@ -125,6 +131,26 @@ std::string authorityHost(std::string_view url)
   return std::string(authority.substr(0, authority.find(':')));
 }
 
+struct UserInfoSpan
+{
+  size_t begin{0};
+  size_t length{0};
+};
+
+std::optional<UserInfoSpan> userInfoOf(std::string_view url)
+{
+  const auto scheme = url.find("://");
+  if (scheme == std::string_view::npos)
+    return std::nullopt;
+  const size_t begin = scheme + 3;
+  const std::string_view rest = url.substr(begin);
+  const std::string_view authority = rest.substr(0, rest.find_first_of("/?#"));
+  const auto at = authority.rfind('@');
+  if (at == std::string_view::npos || at == 0)
+    return std::nullopt;
+  return UserInfoSpan{.begin = begin, .length = at};
+}
+
 }
 
 Go2rtcManager::Go2rtcManager()
@@ -168,7 +194,7 @@ bool Go2rtcManager::isSafeUrl(const std::string& url)
       return false;
   }
 
-  return network_address::isPrivate(authorityHost(url));
+  return network_address::isCameraAddress(authorityHost(url));
 }
 
 bool Go2rtcManager::isSafeListen(const std::string& listen)
@@ -221,7 +247,7 @@ std::string Go2rtcManager::renderConfig(const Go2rtcConfigInput& input)
     return isSafeName(s.name) && isSafeUrl(s.url);
   };
   for (const auto& s : input.sources | std::views::filter(isServed)) {
-    out << "  " << s.name << ": " << s.url << "\n";
+    out << "  " << s.name << ": " << sealedUrl(s) << "\n";
     if (webrtc)
       out << "  " << opusAudioSource(s.name) << ": ffmpeg:" << s.name
           << "#video=copy#audio=opus\n";
@@ -235,6 +261,39 @@ std::string Go2rtcManager::renderConfig(const Go2rtcConfigInput& input)
       out << "  " << s.name << ":\n";
   }
   return out.str();
+}
+
+std::string Go2rtcManager::credentialVariable(const std::string& name)
+{
+  std::string variable(kCredentialPrefix);
+  variable.reserve(variable.size() + name.size());
+  for (const unsigned char c : name)
+    variable.push_back(std::isalnum(c) != 0 ? static_cast<char>(std::toupper(c)) : '_');
+  return variable;
+}
+
+std::string Go2rtcManager::sealedUrl(const Go2rtcSource& source)
+{
+  const auto userInfo = userInfoOf(source.url);
+  if (!userInfo)
+    return source.url;
+  std::string url = source.url;
+  url.replace(userInfo->begin, userInfo->length, "${" + credentialVariable(source.name) + "}");
+  return url;
+}
+
+std::vector<std::string> Go2rtcManager::credentialEnvironment(
+    const std::vector<Go2rtcSource>& sources)
+{
+  std::vector<std::string> environment;
+  for (const auto& source : sources) {
+    if (!isSafeName(source.name) || !isSafeUrl(source.url))
+      continue;
+    if (const auto userInfo = userInfoOf(source.url))
+      environment.push_back(credentialVariable(source.name) + "=" +
+                            source.url.substr(userInfo->begin, userInfo->length));
+  }
+  return environment;
 }
 
 std::string Go2rtcManager::apiBase()
@@ -286,6 +345,17 @@ bool Go2rtcManager::spawn()
     return false;
   }
 
+  std::vector<std::string> environment = credentialEnvironment(sources_);
+  for (char** entry = environ; entry != nullptr && *entry != nullptr; ++entry) {
+    if (!std::string_view(*entry).starts_with(kCredentialPrefix))
+      environment.emplace_back(*entry);
+  }
+  std::vector<char*> envp;
+  envp.reserve(environment.size() + 1);
+  for (auto& entry : environment)
+    envp.push_back(entry.data());
+  envp.push_back(nullptr);
+
   const pid_t pid = ::fork();
   if (pid < 0) {
     setError(std::string("fork failed: ") + std::strerror(errno));
@@ -304,7 +374,7 @@ bool Go2rtcManager::spawn()
     }
     const std::array<const char*, 4> argv{binPath_.c_str(), "-config",
                                           configPath_.c_str(), nullptr};
-    ::execv(binPath_.c_str(), const_cast<char* const*>(argv.data()));
+    ::execve(binPath_.c_str(), const_cast<char* const*>(argv.data()), envp.data());
     ::_exit(127);
   }
 
@@ -380,47 +450,97 @@ bool Go2rtcManager::waitReady(int maxMs)
   return false;
 }
 
-void Go2rtcManager::supervise()
+bool Go2rtcManager::waitFor(const std::stop_token& stop, std::chrono::milliseconds limit)
+{
+  std::unique_lock lock(wakeMutex_);
+  auto until = std::chrono::steady_clock::now() + limit;
+  if (restartDueAt_ && *restartDueAt_ < until)
+    until = *restartDueAt_;
+  wake_.wait_until(lock, stop, until,
+                   [this, until] { return restartDueAt_ && *restartDueAt_ < until; });
+  return !stop.stop_requested();
+}
+
+bool Go2rtcManager::restartDue()
+{
+  std::scoped_lock lock(wakeMutex_);
+  if (!restartDueAt_ || std::chrono::steady_clock::now() < *restartDueAt_)
+    return false;
+  restartDueAt_.reset();
+  return true;
+}
+
+void Go2rtcManager::serveRequestedRestart()
+{
+  std::scoped_lock lock(mutex_);
+  if (stopping_.load(std::memory_order_relaxed) || pid_ <= 0)
+    return;
+  const bool ok = respawn();
+  restartsServed_.fetch_add(1, std::memory_order_acq_rel);
+  LOG_INFO << "Go2rtc: restarted on request" << (ok ? "" : " (not ready yet)");
+}
+
+void Go2rtcManager::supervise(std::stop_token stop)
 {
   int backoffMs = 250;
+  bool exhausted = false;
   auto healthySince = std::chrono::steady_clock::now();
-  while (!stopping_.load(std::memory_order_relaxed)) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    if (stopping_.load(std::memory_order_relaxed))
+  while (waitFor(stop, kSuperviseTick)) {
+    if (restartDue()) {
+      serveRequestedRestart();
+      healthySince = std::chrono::steady_clock::now();
+      continue;
+    }
+    {
+      std::scoped_lock lock(mutex_);
+      if (stopping_.load(std::memory_order_relaxed))
+        break;
+      const bool ok = healthCheck();
+      healthy_.store(ok, std::memory_order_relaxed);
+      if (ok) {
+        backoffMs = 250;
+        exhausted = false;
+        if (std::chrono::steady_clock::now() - healthySince >= kHealthyResetAfter)
+          restarts_.store(0);
+        continue;
+      }
+      if (restarts_.load() >= maxRestarts_) {
+        if (!exhausted) {
+          setError("go2rtc restart limit reached");
+          LOG_ERROR << "Go2rtc: restart limit reached (" << restarts_.load()
+                    << "); no more crash restarts until the next init()";
+        }
+        exhausted = true;
+        continue;
+      }
+      const int restart = restarts_.fetch_add(1) + 1;
+      LOG_WARN << "Go2rtc: unhealthy, restart " << restart << "/"
+               << maxRestarts_ << " in " << backoffMs << "ms";
+      terminate();
+    }
+    if (!waitFor(stop, std::chrono::milliseconds(backoffMs)))
       break;
-
+    backoffMs = std::min(backoffMs * 2, 30000);
     std::scoped_lock lock(mutex_);
     if (stopping_.load(std::memory_order_relaxed))
       break;
-    const bool ok = healthCheck();
-    healthy_.store(ok, std::memory_order_relaxed);
-    if (ok) {
-      backoffMs = 250;
-      if (std::chrono::steady_clock::now() - healthySince >= kHealthyResetAfter)
-        restarts_.store(0);
-      continue;
-    }
-
-    if (restarts_.load() >= maxRestarts_) {
-      setError("go2rtc restart limit reached");
-      LOG_ERROR << "Go2rtc: restart limit reached (" << restarts_.load()
-                << "); giving up until the next init()";
-      return;
-    }
-
-    const int restart = restarts_.fetch_add(1) + 1;
-    LOG_WARN << "Go2rtc: unhealthy, restart " << restart << "/"
-             << maxRestarts_ << " in " << backoffMs << "ms";
-    terminate();
-    std::this_thread::sleep_for(std::chrono::milliseconds(backoffMs));
-    backoffMs = std::min(backoffMs * 2, 30000);
     writeConfig();
     spawn();
     healthySince = std::chrono::steady_clock::now();
   }
 }
 
-void Go2rtcManager::init()
+void Go2rtcManager::stopSupervisor()
+{
+  if (!supervisor_.joinable())
+    return;
+  supervisor_.request_stop();
+  wake_.notify_all();
+  if (supervisor_.get_id() != std::this_thread::get_id())
+    supervisor_.join();
+}
+
+void Go2rtcManager::configure()
 {
   std::scoped_lock lock(mutex_);
 
@@ -444,26 +564,42 @@ void Go2rtcManager::init()
   if (!webrtc_.listen.empty() && !isSafeListen(webrtc_.listen))
     LOG_WARN << "Go2rtc: streaming.webrtc_listen is not host:port; WebRTC stays off";
   webrtcOn_.store(isSafeListen(webrtc_.listen), std::memory_order_release);
+  std::scoped_lock hostsLock(hostsMutex_);
+  answerHosts_ = answerHostsOf(webrtc_.candidates);
+}
 
-  stopping_.store(false, std::memory_order_relaxed);
-  restarts_.store(0);
+void Go2rtcManager::start()
+{
+  stopSupervisor();
+  {
+    std::scoped_lock lock(mutex_);
+    stopping_.store(false, std::memory_order_relaxed);
+    restarts_.store(0);
 
-  if (!writeConfig()) {
-    LOG_ERROR << "Go2rtc: cannot write " << configPath_;
-    return;
+    if (!writeConfig()) {
+      LOG_ERROR << "Go2rtc: cannot write " << configPath_;
+      return;
+    }
+    if (!spawn())
+      return;
+    waitReady(5000);
   }
-  if (!spawn())
-    return;
-  waitReady(5000);
 
-  std::thread(&Go2rtcManager::supervise, this).detach();
+  supervisor_ = std::jthread([this](std::stop_token stop) { supervise(std::move(stop)); });
   LOG_INFO << "Go2rtc: supervisor running (max_restarts=" << maxRestarts_
            << ")";
+}
+
+void Go2rtcManager::init()
+{
+  configure();
+  start();
 }
 
 void Go2rtcManager::shutdown()
 {
   stopping_.store(true, std::memory_order_relaxed);
+  stopSupervisor();
   std::scoped_lock lock(mutex_);
   terminate();
   healthy_.store(false, std::memory_order_relaxed);
@@ -544,13 +680,48 @@ bool Go2rtcManager::applySources(const Go2rtcSourceChange& change)
   return respawn();
 }
 
-bool Go2rtcManager::restart()
+void Go2rtcManager::requestRestart()
 {
-  std::scoped_lock lock(mutex_);
-  return respawn();
+  {
+    std::scoped_lock lock(wakeMutex_);
+    if (!restartDueAt_)
+      restartDueAt_ = std::chrono::steady_clock::now() + kRestartCoalesce;
+  }
+  wake_.notify_all();
+}
+
+int64_t Go2rtcManager::restartsServed() const
+{
+  return restartsServed_.load(std::memory_order_acquire);
 }
 
 bool Go2rtcManager::webrtcEnabled() const
 {
   return webrtcOn_.load(std::memory_order_acquire);
+}
+
+std::vector<std::string> Go2rtcManager::answerHostsOf(const std::vector<std::string>& candidates)
+{
+  std::vector<std::string> hosts;
+  for (const auto& candidate : candidates) {
+    if (!isSafeCandidate(candidate))
+      continue;
+    if (candidate.starts_with("stun:"))
+      return {};
+    std::string_view host = candidate;
+    const auto bracket = host.rfind(']');
+    const auto colon = host.rfind(':');
+    if (host.starts_with('[') && bracket != std::string_view::npos)
+      host = host.substr(1, bracket - 1);
+    else if (colon != std::string_view::npos && host.find(':') == colon)
+      host = host.substr(0, colon);
+    hosts.emplace_back(host);
+  }
+  return hosts;
+}
+
+std::vector<std::string> Go2rtcManager::webrtcAnswerHosts()
+{
+  std::scoped_lock lock(hostsMutex_);
+  return answerHosts_;
 }

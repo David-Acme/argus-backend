@@ -43,25 +43,27 @@ inline constexpr std::string_view FIND_AFTER_FROM =
 
 inline constexpr std::string_view FIND_DELETED =
     "SELECT * FROM user "
-    "WHERE deleted_at IS NOT NULL AND deleted_at >= ? AND deleted_at <= ? "
+    "WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
+    "AND deleted_at >= ? AND deleted_at <= ? "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 
 inline constexpr std::string_view FIND_DELETED_FROM =
     "SELECT * FROM user "
-    "WHERE deleted_at IS NOT NULL AND deleted_at >= ? "
+    "WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
+    "AND deleted_at >= ? "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_AFTER =
     "SELECT * FROM user WHERE deleted_at IS NOT NULL AND "
-    "(deleted_at > ? OR (deleted_at = ? AND id > ?)) AND deleted_at <= ? "
+    "deleted_at < strftime('%s', 'now') - 1 AND (deleted_at > ? OR (deleted_at = ? AND id > ?)) AND deleted_at <= ? "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_DELETED_AFTER_FROM =
     "SELECT * FROM user WHERE deleted_at IS NOT NULL AND "
-    "(deleted_at > ? OR (deleted_at = ? AND id > ?)) "
+    "deleted_at < strftime('%s', 'now') - 1 AND (deleted_at > ? OR (deleted_at = ? AND id > ?)) "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 
 inline constexpr std::string_view FIND_DELETED_ALL =
     "SELECT * FROM user "
-    "WHERE deleted_at IS NOT NULL "
+    "WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
     "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 
 inline constexpr std::string_view FIND_LAST =
@@ -71,8 +73,8 @@ inline constexpr std::string_view FIND_LAST =
 
 inline constexpr std::string_view FIND_LAST_DELETED =
     "SELECT * FROM user "
-    "WHERE deleted_at IS NOT NULL "
-    "ORDER BY deleted_at DESC LIMIT 1";
+    "WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%s', 'now') - 1 "
+    "ORDER BY deleted_at DESC, id DESC LIMIT 1";
 
 inline constexpr std::string_view FIND_LAST_FOR_USER =
     "SELECT * FROM user WHERE deleted_at IS NULL AND id = ? "
@@ -80,7 +82,8 @@ inline constexpr std::string_view FIND_LAST_FOR_USER =
 
 inline constexpr std::string_view FIND_LAST_DELETED_FOR_USER =
     "SELECT * FROM user WHERE deleted_at IS NOT NULL AND id = ? "
-    "ORDER BY deleted_at DESC LIMIT 1";
+    "AND deleted_at < strftime('%s', 'now') - 1 "
+    "ORDER BY deleted_at DESC, id DESC LIMIT 1";
 
 inline constexpr std::string_view COUNT_OWNERS =
     "SELECT COUNT(*) FROM user "
@@ -106,6 +109,10 @@ inline constexpr std::string_view UPDATE_SUFFIX =
     ", updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
 
+inline constexpr std::string_view UPDATE_GUARD_OTHER_OWNER =
+    " AND EXISTS (SELECT 1 FROM user other WHERE other.role = 'owner' "
+    "AND other.is_active = 1 AND other.deleted_at IS NULL AND other.id != ?)";
+
 inline constexpr std::string_view REMOVE =
     "UPDATE user SET deleted_at = strftime('%s', 'now'), "
     "updated_at = strftime('%s', 'now') "
@@ -127,5 +134,6 @@ struct UserUpdateInput
   std::optional<std::string> lastName;
   std::optional<UserRole> role;
   std::optional<bool> isActive;
+  bool requireOtherActiveOwner{false};
   drogon::orm::DbClient* client{nullptr};
 };

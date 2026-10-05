@@ -57,6 +57,7 @@ private:
   int64_t nextPurgeMs_{0};
   std::atomic<bool> stopping_{false};
   std::atomic<int64_t> nextSequence_{1};
+  std::atomic<int64_t> enqueues_{0};
   std::atomic<bool> streamReady_{false};
   std::atomic<bool> workerStarted_{false};
   std::atomic<bool> exited_{false};

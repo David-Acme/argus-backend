@@ -191,6 +191,8 @@ void seedCameraDb()
       "config TEXT NOT NULL DEFAULT '{}', "
       "is_enabled INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)), "
       "is_online INTEGER NOT NULL DEFAULT 0, "
+      "tls_fingerprint TEXT NOT NULL DEFAULT '', "
+      "tapo_secure INTEGER NOT NULL DEFAULT 0, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
   exec(db.get(), "INSERT INTO camera (id, name, ip, driver) "
@@ -295,7 +297,8 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
 
   auto actuator = std::make_shared<StubActuator>();
   CameraDriverTestAccess::install(1, actuator);
-  SnapshotStore::instance().putPersonCrop(1, 7, "jpeg-bytes", 1234);
+  SnapshotStore::instance().putPersonCrop(
+      {.cameraId = 1, .trackId = 7, .jpeg = "jpeg-bytes", .atMs = 1234});
 
   FakeTtsServer tts;
   ConfigService::setRuntimeString("tts.remote_url",

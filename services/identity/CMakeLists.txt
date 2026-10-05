@@ -169,6 +169,9 @@ argus_service(NAME argus-identity
             argus::identity-invitation
             argus::identity-pairing
             argus::identity-enrollment
+            argus::identity-person
+            argus::identity-rate-gate
+            argus::identity-sign-in
             argus::identity-retention
             argus::identity-face-upgrade
             argus::identity-voiceprint

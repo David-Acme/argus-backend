@@ -1,7 +1,7 @@
 #include "update-zone-dto.hxx"
 
 #include <regex>
-#include <shared/utils/geometry/normalized-polygon.hxx>
+#include <feature/zone/dtos/normalized-polygon.hxx>
 
 UpdateZoneDto UpdateZoneDto::fromJson(const Json::Value& json)
 {

@@ -1,5 +1,13 @@
 #include "update-user-dto.hxx"
 
+namespace
+{
+bool namesRole(const std::string& value)
+{
+  return userRoleToString(userRoleFromString(value)) == value;
+}
+}
+
 UpdateUserDto UpdateUserDto::fromJson(const Json::Value& json)
 {
   UpdateUserDto dto;
@@ -8,7 +16,7 @@ UpdateUserDto UpdateUserDto::fromJson(const Json::Value& json)
   if (json.isMember("lastName") && json["lastName"].isString())
     dto.lastName = json["lastName"].asString();
   if (json.isMember("role") && json["role"].isString())
-    dto.roleValue = json["role"].asString();
+    dto.role = json["role"].asString();
   if (json.isMember("isActive") && json["isActive"].isBool())
     dto.isActive = json["isActive"].asBool();
 
@@ -18,20 +26,18 @@ UpdateUserDto UpdateUserDto::fromJson(const Json::Value& json)
   MAX_LENGTH_OPTIONAL(lastName, 120)
   CUSTOM_LAMBDA(role, [](const UpdateUserDto& value)
                     -> std::optional<std::string> {
-    if (value.roleValue && *value.roleValue != "owner" &&
-        *value.roleValue != "resident" && *value.roleValue != "guard" &&
-        *value.roleValue != "guest")
+    if (value.role && !namesRole(*value.role))
       return "role must be owner, resident, guard, or guest";
     return std::nullopt;
   })
   CUSTOM_LAMBDA(body, [](const UpdateUserDto& value)
                          -> std::optional<std::string> {
-    if (!value.name && !value.lastName && !value.roleValue && !value.isActive)
+    if (!value.name && !value.lastName && !value.role && !value.isActive)
       return "at least one editable field is required";
     return std::nullopt;
   })
   END_VALIDATION()
-  if (dto.roleValue)
-    dto.role = userRoleFromString(*dto.roleValue);
+  if (dto.role)
+    dto.userRole = userRoleFromString(*dto.role);
   return dto;
 }

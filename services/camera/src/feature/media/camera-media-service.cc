@@ -69,6 +69,8 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
     const auto camera = co_await cameraRepository_.findById(cameraId);
     if (!camera)
       throw ResponseException(404, CameraErrors::CameraNotFound);
+    if (!camera->isEnabled)
+      throw ResponseException(CameraErrors::CameraDisabled);
     if (conn->disconnected())
       co_return true;
 
@@ -85,7 +87,8 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
         {.sink = sink,
          .cameraId = cameraId,
          .stream = stream,
-         .fastStart = payload["fastStart"].isBool() && payload["fastStart"].asBool()},
+         .fastStart = payload["fastStart"].isBool() && payload["fastStart"].asBool(),
+         .priority = ctx.role == UserRole::Owner || ctx.role == UserRole::Resident},
         error);
     if (subId == 0) {
       const bool viewerLimit = error.rfind("too_many_viewers", 0) == 0;
@@ -110,7 +113,8 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
     const uint16_t subId =
         static_cast<uint16_t>(payload.get("subId", 0).asUInt());
     const int64_t bytes = payload.get("bytes", 0).asInt64();
-    StreamHub::instance().ack(subId, bytes);
+    if (const auto sink = sinkFor(conn))
+      StreamHub::instance().ack({.subId = subId, .bytes = bytes, .owner = sink.get()});
     co_return true;
   }
 

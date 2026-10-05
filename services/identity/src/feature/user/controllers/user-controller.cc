@@ -45,3 +45,15 @@ UserController::deactivate(drogon::HttpRequestPtr req, int64_t userId)
   co_await service_.deactivate(userId, ctx.sub);
   co_return ApiResponse::noContent();
 }
+
+drogon::Task<drogon::HttpResponsePtr>
+UserController::eraseBiometrics(drogon::HttpRequestPtr req, int64_t userId)
+{
+  if (userId <= 0)
+    throw ResponseException(IdentityErrors::InvalidUserId);
+  const auto& ctx =
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto erased = co_await eraseService_.erase(
+      {.actorId = ctx.sub, .actorRole = ctx.role, .subjectId = userId});
+  co_return ApiResponse::ok(erased.toJson());
+}

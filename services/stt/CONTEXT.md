@@ -29,6 +29,14 @@ pattern (F4-2) one engine later.
     the Drogon IO thread (the legacy global semantics, ledgered as the
     BE contention, not fixed here). Latency is logged per request
     (`samples`, `lang`, `ms`).
+  - Since the 2026-10-05 audit (#98) the body is parsed by
+    `TranscribeDto` (`feature/stt/dtos/`): content type and alignment are
+    still 400, an empty body or one longer than 120 s of audio
+    (3 840 000 bytes, the gRPC stream's own ceiling) is 422 on `body`, and
+    the int16 → float conversion runs inside the Heavy `BlockingTask` with
+    the transcription, reading the request's body in place, instead of on
+    the Drogon loop. `client_max_body_size` in the template drops from 64M
+    to 4M.
   - `GET /stt/v1/config` — `{language, defaultLanguage, loaded}`
     (additive, internal-only).
   - Errors: frozen `{status, info, errors}` envelope — 400 `BAD_REQUEST`
@@ -187,3 +195,13 @@ for English, and for Spanish only as a separate single-language model. That
 would mean two artifacts, a per-language accuracy regression against the
 offline model and a new provisioning path, so the offline model stays and
 only the decode moves.
+
+## Pinned model download (2026-10-05 audit #30)
+
+`scripts/provision.sh` downloads the model with `curl -fL` into a `.part`
+file and moves it into place only after its SHA-256 matches the pin in the
+script, from a pinned revision (no `resolve/main`). The pins could not be
+computed from the audit environment, so they are empty: until the
+maintainer fills them, the script refuses to download a missing file and
+says so; `ARGUS_ALLOW_UNPINNED_MODELS=1` downloads it and prints its hash
+to pin. A present file with a pinned hash that does not match is replaced.

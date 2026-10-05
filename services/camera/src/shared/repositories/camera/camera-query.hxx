@@ -80,9 +80,28 @@ inline constexpr std::string_view UPDATE_COL_CAPABILITIES = "capabilities = ?";
 inline constexpr std::string_view UPDATE_COL_CONFIG = "config = ?";
 inline constexpr std::string_view UPDATE_COL_IS_ENABLED = "is_enabled = ?";
 inline constexpr std::string_view UPDATE_COL_IS_ONLINE = "is_online = ?";
+inline constexpr std::string_view UPDATE_COL_RESET_TRUST =
+    "tls_fingerprint = '', tapo_secure = 0";
 inline constexpr std::string_view UPDATE_SUFFIX =
     ", updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
+inline constexpr std::string_view FIND_DELETED_BOUNDARY =
+    "SELECT * FROM camera WHERE deleted_at IS NOT NULL AND deleted_at = ? "
+    "AND id <= ? ORDER BY id ASC LIMIT 200";
+inline constexpr std::string_view TABLE_COLUMNS =
+    "SELECT name FROM pragma_table_info('camera')";
+inline constexpr std::string_view ADD_TLS_FINGERPRINT =
+    "ALTER TABLE camera ADD COLUMN tls_fingerprint TEXT NOT NULL DEFAULT ''";
+inline constexpr std::string_view ADD_TAPO_SECURE =
+    "ALTER TABLE camera ADD COLUMN tapo_secure INTEGER NOT NULL DEFAULT 0";
+inline constexpr std::string_view PLAINTEXT_SECRETS =
+    "SELECT id, password, cloud_password FROM camera "
+    "WHERE (password != '' AND password NOT LIKE 'enc:v1:%') "
+    "OR (cloud_password != '' AND cloud_password NOT LIKE 'enc:v1:%')";
+inline constexpr std::string_view SEAL_SECRETS =
+    "UPDATE camera SET password = ?, cloud_password = ? WHERE id = ?";
+inline constexpr std::string_view SAVE_TAPO_TRUST =
+    "UPDATE camera SET tls_fingerprint = ?, tapo_secure = ? WHERE id = ?";
 inline constexpr std::string_view REMOVE =
     "UPDATE camera SET deleted_at = strftime('%s', 'now'), "
     "updated_at = strftime('%s', 'now') WHERE id = ? AND deleted_at IS NULL";
@@ -108,6 +127,13 @@ struct CameraCreateInput
   drogon::orm::DbClient* client{nullptr};
 };
 
+struct CameraTapoTrustInput
+{
+  int64_t cameraId{0};
+  std::string fingerprint;
+  bool secure{false};
+};
+
 struct CameraUpdateInput
 {
   std::optional<std::string> name;
@@ -127,5 +153,6 @@ struct CameraUpdateInput
   std::optional<std::string> config;
   std::optional<bool> isEnabled;
   std::optional<bool> isOnline;
+  bool resetTapoTrust{false};
   drogon::orm::DbClient* client{nullptr};
 };

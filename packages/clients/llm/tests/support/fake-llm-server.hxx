@@ -5,6 +5,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <llm/llm-service.hxx>
+
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -63,6 +65,12 @@ public:
   {
     std::scoped_lock lock(mutex_);
     return lastBody_;
+  }
+
+  std::string lastHead() const
+  {
+    std::scoped_lock lock(mutex_);
+    return lastHead_;
   }
 
   void stop()
@@ -169,6 +177,7 @@ private:
         const auto split = request.find("\r\n\r\n");
         lastBody_ = split == std::string::npos ? std::string()
                                                : request.substr(split + 4);
+        lastHead_ = split == std::string::npos ? request : request.substr(0, split);
       }
 
       const std::string errorJson =
@@ -199,7 +208,7 @@ private:
           ::close(fd);
           continue;
         }
-        const std::string sentinel = "\n" + sentinelLine() + "\n";
+        const std::string sentinel = kStreamSentinelMark + sentinelLine() + "\n";
         if (options_.coalesce) {
           std::string everything;
           for (const auto& token : options_.tokens)
@@ -242,6 +251,7 @@ private:
   mutable std::mutex mutex_;
   std::map<std::string, int> requests_;
   std::string lastBody_;
+  std::string lastHead_;
   std::thread thread_;
 };
 

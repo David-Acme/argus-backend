@@ -94,7 +94,7 @@ ObjectEventOutboxRepository::enqueue(const ObjectEventEnqueueInput& input) const
                                  input.nowMs);
     }
 
-    if (input.maxPending > 0) {
+    if (input.maxPending > 0 && input.checkCap) {
       const auto count = transaction->execSqlSync(
           COUNT_PENDING.data(),
           objectEventStatusToString(ObjectEventStatus::Pending));

@@ -1,5 +1,6 @@
 #include "portrait-preview-service.hxx"
 
+#include <auth/role-access.hxx>
 #include <ctime>
 #include <openssl/evp.h>
 #include <identity/identity-errors.hxx>
@@ -33,7 +34,7 @@ std::string base64(const std::string& input)
 
 void PortraitPreviewService::requireAccess(UserRole role)
 {
-  if (role != UserRole::Owner && role != UserRole::Guard)
+  if (!role_access::readsUserDirectory(role))
     throw ResponseException(403, IdentityErrors::PortraitVerificationUnavailable);
 }
 
@@ -67,7 +68,9 @@ PortraitPreviewService::create(const PortraitPreviewCreateInput& input) const
     throw ResponseException(404, IdentityErrors::PortraitUnavailable);
 
   const auto token = newToken();
-  const auto expiresAt = std::time(nullptr) + kCapabilityLifetimeSeconds;
+  const int64_t now = std::time(nullptr);
+  const auto expiresAt = now + kCapabilityLifetimeSeconds;
+  co_await capabilityRepository_.purgeSpent(now);
   co_await capabilityRepository_.create({
       .tokenHash = hashToken(token),
       .portraitUserId = target->id,

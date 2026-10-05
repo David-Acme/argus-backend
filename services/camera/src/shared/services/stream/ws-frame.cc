@@ -39,16 +39,18 @@ void encode(uint8_t* out, const Header& header)
   out[11] = static_cast<uint8_t>(header.seq & 0xFF);
 }
 
+void frameInto(std::string& out, const FrameInput& input)
+{
+  out.resize(kHeaderSize + input.len);
+  encode(reinterpret_cast<uint8_t*>(out.data()), input.header);
+  if (input.len > 0)
+    std::memcpy(out.data() + kHeaderSize, input.payload, input.len);
+}
+
 std::string frame(const FrameInput& input)
 {
-  const Header& header = input.header;
-  const uint8_t* payload = input.payload;
-  const size_t len = input.len;
   std::string out;
-  out.resize(kHeaderSize + len);
-  encode(reinterpret_cast<uint8_t*>(out.data()), header);
-  if (len > 0)
-    std::memcpy(out.data() + kHeaderSize, payload, len);
+  frameInto(out, input);
   return out;
 }
 

@@ -7,8 +7,8 @@
 
 struct CreateInvitationDto
 {
-  UserRole role{UserRole::Guest};
-  std::string roleValue;
+  std::string role;
+  UserRole userRole{UserRole::Guest};
 
   static CreateInvitationDto fromJson(const Json::Value& json);
 };

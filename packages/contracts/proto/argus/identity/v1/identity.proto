@@ -58,6 +58,9 @@ enum RegisterUserOutcome
   REGISTER_USER_OWNER_ALREADY_EXISTS = 9;
   REGISTER_USER_FACE_INDEX_FAILED = 10;
   REGISTER_USER_ACCOUNT_DISABLED = 11;
+  REGISTER_USER_LIVENESS_FAILED = 12;
+  REGISTER_USER_LIVENESS_UNAVAILABLE = 13;
+  REGISTER_USER_FACE_QUALITY_INSUFFICIENT = 14;
 }
 
 message RegisterUserResponse
@@ -131,6 +134,7 @@ message IdentifyPersonResponse
   optional bool created = 14;
   optional string face_quality = 15;
   optional int64 visitor_number = 16;
+  optional string face_check = 17;
 }
 
 message EnrollPersonRequest

@@ -81,6 +81,9 @@ public:
   void shutdown();
   bool isLoaded() const;
 
+  void requestStop();
+  [[nodiscard]] bool drained() const;
+
   CaptureResult captureExplicit(const CaptureInput& input);
   CaptureResult captureImplicit(const CaptureInput& input);
   RecallContext recall(const RecallInput& input);
@@ -99,7 +102,6 @@ public:
   void waitForIdle(int waitMs);
 
   int64_t observeSystemEvent(const SystemEventInput& input);
-  int64_t recordProcedure(const ProcedureRecordInput& input);
 
   std::vector<tools::ToolDescriptor> toolDescriptors();
 
@@ -176,8 +178,9 @@ private:
   std::condition_variable queueCv_;
   std::deque<MemoryJob> queue_;
   size_t queueBound_ = 64;
-  bool stop_ = false;
-  bool running_ = false;
+  std::atomic<bool> stop_{false};
+  std::atomic<bool> running_{false};
+  std::atomic<bool> workerDone_{true};
   std::atomic<bool> working_{false};
 
   struct ProfileCache
@@ -221,5 +224,4 @@ private:
   scheduleReminderCall(const ReminderCallInput& input) const;
   tools::ToolResult handleRecall(const tools::ToolCall& call);
   tools::ToolResult handleForget(const tools::ToolCall& call);
-  tools::ToolResult handleProcedureRun(const tools::ToolCall& call);
 };

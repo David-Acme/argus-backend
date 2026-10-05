@@ -5,6 +5,7 @@ argus_module(NAME camera-repositories
         ../schemas/camera/camera-schema.cc
         ../schemas/zone/zone-schema.cc
     DEPENDS
+        argus::camera-secret-box
         argus::contracts::camera
         argus::contracts::sync
         argus::lib::sqlite

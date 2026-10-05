@@ -41,7 +41,7 @@ struct ObjectInZoneKindInput
 {
   const DetectedObject& object;
   const std::vector<OperatorZone>& zones;
-  const std::string& kind;
+  ZoneType kind{ZoneType::Monitor};
   int frameWidth{0};
   int frameHeight{0};
 };
@@ -93,7 +93,7 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
   const auto isExcluded = [&input](const DetectedObject& object) {
     return objectInZoneKind({.object = object,
                              .zones = input.zones,
-                             .kind = "exclude",
+                             .kind = ZoneType::Exclude,
                              .frameWidth = input.frameWidth,
                              .frameHeight = input.frameHeight});
   };
@@ -195,7 +195,7 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
   for (auto& entry : evaluated) {
     if (entry.object.name != "person")
       continue;
-    for (const std::string kind : {"alert", "monitor"}) {
+    for (const ZoneType kind : {ZoneType::Alert, ZoneType::Monitor}) {
       const OperatorZone* zone = zoneOfKind({.object = entry.object,
                                              .zones = input.zones,
                                              .kind = kind,
@@ -246,7 +246,7 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
   if (personDue) {
     for (const auto& entry : evaluated) {
       if (entry.object.name == "person" && isPrimary(entry.object.trackId) &&
-          dueFor(entry.object.trackId) && entry.zoneKind == "alert") {
+          dueFor(entry.object.trackId) && entry.zoneKind == ZoneType::Alert) {
         return finalize({.publish = true,
                          .rule = "person_in_alert_zone",
                          .severity = EventSeverity::Critical});
@@ -257,7 +257,7 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
   if (personDue) {
     for (const auto& entry : evaluated) {
       if (entry.object.name == "person" && isPrimary(entry.object.trackId) &&
-          dueFor(entry.object.trackId) && entry.zoneKind == "monitor") {
+          dueFor(entry.object.trackId) && entry.zoneKind == ZoneType::Monitor) {
         return finalize({.publish = true,
                          .rule = "person_in_monitor_zone",
                          .severity = EventSeverity::Warning});

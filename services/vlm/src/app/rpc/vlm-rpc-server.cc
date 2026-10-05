@@ -2,7 +2,7 @@
 
 #include <errors/response-exception.hxx>
 #include <grpc/grpc-server-identity.hxx>
-#include <opencv2/imgcodecs.hpp>
+#include <feature/vlm/services/jpeg-gate.hxx>
 #include <response/response-rpc.hxx>
 #include <vlm.grpc.pb.h>
 #include <vlm/vlm-errors.hxx>
@@ -54,13 +54,6 @@ bool validRequest(const wire::DescribeRequest& request)
          request.prompt().size() <= kMaxPromptBytes &&
          request.camera_id().size() <= kMaxCameraIdBytes &&
          request.max_tokens() >= 0 && request.max_tokens() <= kMaxTokens;
-}
-
-cv::Mat decodeJpeg(const std::string& jpeg)
-{
-  const cv::Mat raw(1, static_cast<int>(jpeg.size()), CV_8UC1,
-                    const_cast<char*>(jpeg.data()));
-  return cv::imdecode(raw, cv::IMREAD_COLOR);
 }
 }
 
@@ -132,12 +125,12 @@ struct VlmRpcServer::Impl final : wire::Vision::Service
       ~Release() { slots.release(); }
     } release{slots_};
     try {
-      const cv::Mat bgr = decodeJpeg(request->image_jpeg());
-      if (bgr.empty())
+      DecodedJpeg decoded = decodeCameraJpeg(request->image_jpeg());
+      if (decoded.refusal != JpegRefusal::None)
         return argus::response::toRpcStatus(
             ResponseException(400, VlmErrors::ImageNotDecodable));
       response->set_caption(input_.describe(VisionDescribeMatInput{
-          .bgr = bgr,
+          .bgr = std::move(decoded.bgr),
           .prompt = request->prompt(),
           .maxTokens = request->max_tokens()}));
     }

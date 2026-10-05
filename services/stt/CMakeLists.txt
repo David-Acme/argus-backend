@@ -26,6 +26,10 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
     endif()
+    if(NOT TARGET argus::lib::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/validation
+                         ${CMAKE_BINARY_DIR}/validation)
+    endif()
     if(NOT TARGET argus::lib::http)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
@@ -119,6 +123,16 @@ target_compile_options(stt-wire-test PRIVATE -Wall -Wextra)
 set_target_properties(stt-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME stt-wire-test COMMAND stt-wire-test)
+
+add_executable(stt-transcribe-dto-test tests/unit/stt-transcribe-dto-test.cc)
+
+target_link_libraries(stt-transcribe-dto-test PRIVATE argus::stt doctest::doctest)
+
+target_compile_options(stt-transcribe-dto-test PRIVATE -Wall -Wextra)
+
+set_target_properties(stt-transcribe-dto-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME stt-transcribe-dto-test COMMAND stt-transcribe-dto-test)
 
 add_executable(stt-rpc-test tests/unit/stt-rpc-test.cc)
 

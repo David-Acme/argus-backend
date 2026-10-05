@@ -14,14 +14,16 @@
 #include <cmath>
 #include <cstdlib>
 #include <exception>
+#include <drogon/drogon.h>
+#include <drogon/utils/coroutine.h>
 #include <span>
-#include <thread>
 
 namespace
 {
 constexpr int kSampleWidth = 160;
 constexpr int64_t kRescanMs = 5000;
 constexpr int kSampleHeight = 90;
+constexpr int64_t kFrameMaxAgeMs = 1000;
 
 constexpr double kInvertedSpread = 1.5957691216057308;
 constexpr double kFlatDeviation = 1.0;
@@ -272,9 +274,9 @@ drogon::Task<void> CameraHealthMonitor::run()
                  << " failed (" << error.what() << ")";
       }
     }
-    co_await BlockingTask<void>([rescanMs]() {
-      std::this_thread::sleep_for(std::chrono::milliseconds(rescanMs));
-    });
+    if (running_.load())
+      co_await drogon::sleepCoro(drogon::app().getLoop(),
+                                 std::chrono::milliseconds(rescanMs));
   }
   co_return;
 }
@@ -284,39 +286,65 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
   if (CameraSceneLog::instance().sceneOf(camera.id).privacy)
     co_return;
   auto frame = co_await dependencies_.source->grab(
-      {.cameraId = camera.id, .cameraName = camera.name});
+      {.cameraId = camera.id, .cameraName = camera.name, .maxAgeMs = kFrameMaxAgeMs});
 
-  CameraHealthState status = CameraHealthState::Unreachable;
-  HealthMetrics metrics;
-  int64_t capturedAt = nowMs();
-  bool reachable = false;
-  int frameWidth = 0;
-  int frameHeight = 0;
+  struct Sample
+  {
+    CameraHealthState status{CameraHealthState::Unreachable};
+    HealthMetrics metrics;
+    int64_t capturedAt{0};
+    bool reachable{false};
+    int frameWidth{0};
+    int frameHeight{0};
+  };
+  Sample sample{.status = CameraHealthState::Unreachable,
+                .metrics = {},
+                .capturedAt = nowMs(),
+                .reachable = false,
+                .frameWidth = 0,
+                .frameHeight = 0};
   if (frame && !frame->jpeg.empty()) {
-    reachable = true;
-    capturedAt = frame->capturedAtMs;
-    const cv::Mat raw = cv::imdecode(frame->jpeg, cv::IMREAD_COLOR);
-    if (!raw.empty()) {
-      frameWidth = raw.cols;
-      frameHeight = raw.rows;
-      cv::Mat small;
-      cv::resize(raw, small, cv::Size(kSampleWidth, kSampleHeight), 0, 0,
-                 cv::INTER_AREA);
-      std::vector<uint8_t> gray(small.total());
-      const cv::Mat grayMat(kSampleHeight, kSampleWidth, CV_8UC1, gray.data());
-      cv::cvtColor(small, grayMat, cv::COLOR_BGR2GRAY);
+    auto measureFrame =
+        [this, &camera, jpeg = std::move(frame->jpeg), capturedAt = frame->capturedAtMs]() {
+          Sample measured{.status = CameraHealthState::Unreachable,
+                          .metrics = {},
+                          .capturedAt = capturedAt,
+                          .reachable = true,
+                          .frameWidth = 0,
+                          .frameHeight = 0};
+          const cv::Mat raw = cv::imdecode(jpeg, cv::IMREAD_COLOR);
+          if (raw.empty())
+            return measured;
+          measured.frameWidth = raw.cols;
+          measured.frameHeight = raw.rows;
+          cv::Mat small;
+          cv::resize(raw, small, cv::Size(kSampleWidth, kSampleHeight), 0, 0, cv::INTER_AREA);
+          std::vector<uint8_t> gray(small.total());
+          const cv::Mat grayMat(kSampleHeight, kSampleWidth, CV_8UC1, gray.data());
+          cv::cvtColor(small, grayMat, cv::COLOR_BGR2GRAY);
 
-      std::scoped_lock lock(stateMutex_);
-      CameraState& state = states_[camera.id];
-      metrics = measure({.camera = camera,
-                         .rgb = std::move(gray),
-                         .width = kSampleWidth,
-                         .height = kSampleHeight,
-                         .capturedAtMs = capturedAt},
-                        state);
-      status = health_monitor::classify(metrics, config_.thresholds);
-    }
+          std::scoped_lock lock(stateMutex_);
+          CameraState& state = states_[camera.id];
+          measured.metrics = measure({.camera = camera,
+                                      .rgb = std::move(gray),
+                                      .width = kSampleWidth,
+                                      .height = kSampleHeight,
+                                      .capturedAtMs = capturedAt},
+                                     state);
+          measured.status = health_monitor::classify(measured.metrics, config_.thresholds);
+          return measured;
+        };
+    if (drogon::app().isRunning())
+      sample = co_await BlockingTask<Sample>(std::move(measureFrame), BlockingLane::Heavy);
+    else
+      sample = measureFrame();
   }
+  const CameraHealthState status = sample.status;
+  const HealthMetrics& metrics = sample.metrics;
+  const int64_t capturedAt = sample.capturedAt;
+  const bool reachable = sample.reachable;
+  const int frameWidth = sample.frameWidth;
+  const int frameHeight = sample.frameHeight;
 
   bool transitioned = false;
   bool heartbeatDue = false;

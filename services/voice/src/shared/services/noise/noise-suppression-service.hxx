@@ -7,6 +7,7 @@
 struct DenoiseState;
 #endif
 #include <audio/audio-resampler.hxx>
+#include <span>
 #include <vector>
 
 class NoiseSuppressor
@@ -18,9 +19,11 @@ public:
   NoiseSuppressor(const NoiseSuppressor&) = delete;
   NoiseSuppressor& operator=(const NoiseSuppressor&) = delete;
 
-  void process(const std::vector<float>& in, std::vector<float>& out);
+  void process(std::span<const float> in, std::vector<float>& out);
 
   void reset();
+
+  void resync();
 
   bool available() const { return state_ != nullptr; }
 
@@ -29,7 +32,7 @@ public:
   bool recentVoice() const { return lastVoiceProb_ > 0.35F; }
 
 private:
-  void applyAgc(const std::vector<float>& in, std::vector<float>& out);
+  void applyAgc(std::span<const float> in, std::vector<float>& out);
 
   DenoiseState* state_{nullptr};
   AudioResampler upsampler_{{.sourceRate = 16000, .targetRate = 48000}};

@@ -15,7 +15,9 @@ CropCapabilityRepository::create(const CropCapabilityCreateInput& input) const
 drogon::Task<std::optional<ConsumedCropCapability>>
 CropCapabilityRepository::consume(const CropCapabilityConsumeInput& input) const
 {
-  const auto rows = co_await DbService::client()->execSqlCoro(
+  const auto pooled = DbService::client();
+  auto* client = input.client != nullptr ? input.client : pooled.get();
+  const auto rows = co_await client->execSqlCoro(
       std::string(CONSUME), input.now, input.tokenHash, input.requesterUserId);
   if (rows.empty())
     co_return std::nullopt;

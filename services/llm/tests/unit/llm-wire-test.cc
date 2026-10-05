@@ -239,20 +239,18 @@ StreamBody joinChunks(const std::vector<std::string>& chunks)
     body.tokens += chunk;
 
   Json::Reader reader;
-  for (auto mark = body.tokens.rfind("\n{"); mark != std::string::npos;
-       mark = mark > 0 ? body.tokens.rfind("\n{", mark - 1)
-                       : std::string::npos) {
-    std::string candidate = body.tokens.substr(mark + 1);
-    if (!candidate.empty() && candidate.back() == '\n')
-      candidate.pop_back();
-    Json::Value json;
-    if (reader.parse(candidate, json, false) && json.isObject() &&
-        json.isMember("done") && json["done"].asBool()) {
-      body.sentinel = json;
-      body.sentinelFound = true;
-      body.tokens = body.tokens.substr(0, mark);
-      break;
-    }
+  const auto mark = body.tokens.find(kStreamSentinelMark);
+  if (mark == std::string::npos)
+    return body;
+  std::string candidate = body.tokens.substr(mark + 1);
+  if (!candidate.empty() && candidate.back() == '\n')
+    candidate.pop_back();
+  Json::Value json;
+  if (reader.parse(candidate, json, false) && json.isObject() &&
+      json.isMember("done") && json["done"].asBool()) {
+    body.sentinel = json;
+    body.sentinelFound = true;
+    body.tokens = body.tokens.substr(0, mark);
   }
   return body;
 }

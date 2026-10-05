@@ -18,6 +18,8 @@ public:
   [[nodiscard]] bool listening() const;
   [[nodiscard]] const std::string& address() const;
   void shutdown();
+  void requestStop();
+  [[nodiscard]] bool drained() const;
 private:
   struct Impl;
   std::unique_ptr<Impl> impl_;

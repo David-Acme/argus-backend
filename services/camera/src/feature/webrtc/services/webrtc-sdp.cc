@@ -1,5 +1,7 @@
 #include "webrtc-sdp.hxx"
 
+#include <shared/utils/network-address/private-address.hxx>
+
 #include <drogon/utils/Utilities.h>
 
 #include <algorithm>
@@ -86,6 +88,31 @@ std::string withAudioStream(std::string_view line)
   return std::string(line);
 }
 
+std::string_view fieldOf(std::string_view line, std::size_t index)
+{
+  std::size_t position = 0;
+  for (std::size_t field = 0; field <= index; ++field) {
+    while (position < line.size() && line[position] == ' ')
+      ++position;
+    const auto end = line.find(' ', position);
+    if (field == index)
+      return line.substr(position, end == std::string_view::npos ? std::string_view::npos
+                                                                 : end - position);
+    if (end == std::string_view::npos)
+      return {};
+    position = end;
+  }
+  return {};
+}
+
+bool keepsCandidate(std::string_view line, std::span<const std::string> allowedHosts)
+{
+  const std::string address(fieldOf(line, 4));
+  if (!network_address::isLiteral(address) || network_address::isHostLocal(address))
+    return false;
+  return allowedHosts.empty() || std::ranges::find(allowedHosts, address) != allowedHosts.end();
+}
+
 std::string_view directionFor(SectionKind kind, bool audio)
 {
   if (kind == SectionKind::Audio && !audio)
@@ -116,10 +143,35 @@ std::optional<std::string> prepareOffer(const WebRtcOfferInput& input)
     for (const std::string_view line : section.lines) {
       if ((media || section.kind == SectionKind::Session) && isDirection(line))
         continue;
+      if (isCandidate(line))
+        continue;
       out.append(line).append("\r\n");
     }
     if (media)
       out.append(directionFor(section.kind, input.audio)).append("\r\n");
+  }
+  return out;
+}
+
+bool isCandidate(std::string_view line)
+{
+  return line.starts_with("a=candidate:") || line == "a=end-of-candidates";
+}
+
+std::string screenCandidates(const WebRtcAnswerScreen& screen)
+{
+  std::string out;
+  out.reserve(screen.sdp.size());
+  std::string_view sdp = screen.sdp;
+  while (!sdp.empty()) {
+    const auto newline = sdp.find('\n');
+    const std::string_view line = trimmed(sdp.substr(0, newline));
+    sdp.remove_prefix(newline == std::string_view::npos ? sdp.size() : newline + 1);
+    if (line.empty())
+      continue;
+    if (line.starts_with("a=candidate:") && !keepsCandidate(line, screen.allowedHosts))
+      continue;
+    out.append(line).append("\r\n");
   }
   return out;
 }

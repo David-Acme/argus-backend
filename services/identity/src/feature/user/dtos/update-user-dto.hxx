@@ -10,8 +10,8 @@ struct UpdateUserDto
 {
   std::optional<std::string> name;
   std::optional<std::string> lastName;
-  std::optional<UserRole> role;
-  std::optional<std::string> roleValue;
+  std::optional<std::string> role;
+  std::optional<UserRole> userRole;
   std::optional<bool> isActive;
 
   static UpdateUserDto fromJson(const Json::Value& json);

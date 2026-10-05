@@ -6,12 +6,13 @@
 #include <tts/tts-errors.hxx>
 
 #include <feature/synthesis/services/tts-service.hxx>
+#include <runtime/blocking-pool.hxx>
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <memory>
 #include <string>
-#include <thread>
 
 namespace
 {
@@ -27,6 +28,10 @@ std::string pcmBytes(const std::vector<float>& pcm)
 
 struct PcmStreamJob
 {
+  explicit PcmStreamJob(StreamSlots& slots) : lease(slots), slots(&slots) {}
+
+  StreamLease lease;
+  StreamSlots* slots{nullptr};
   TtsRequest request;
   std::unique_ptr<drogon::ResponseStream> stream;
   size_t chunkCount{0};
@@ -51,7 +56,7 @@ void runStreamJob(const std::shared_ptr<PcmStreamJob>& job)
               job->chunkCount++;
               job->byteCount += bytes.size();
             },
-        .stopRequested = [&job] { return !job->stream; }});
+        .stopRequested = [&job] { return !job->stream || job->slots->stopping(); }});
   }
   catch (const std::exception& e) {
     LOG_ERROR << "TTS stream synthesis failed: " << e.what();
@@ -66,9 +71,17 @@ void runStreamJob(const std::shared_ptr<PcmStreamJob>& job)
           .count();
   LOG_INFO << "TTS stream: chunks=" << job->chunkCount << " bytes="
            << job->byteCount << " ms=" << static_cast<int>(ms);
+  job->lease.release();
+}
+
+int streamCapacity()
+{
+  return std::max(1, blocking_pool::limitsFor(BlockingLane::Heavy).maxThreads - 1);
 }
 
 }
+
+TtsController::TtsController() : streams_(streamCapacity()) {}
 
 drogon::Task<drogon::HttpResponsePtr>
 TtsController::synthesize(drogon::HttpRequestPtr req)
@@ -105,13 +118,15 @@ TtsController::synthesizeStream(drogon::HttpRequestPtr req)
   if (!tts.isLoaded())
     throw ResponseException(503, TtsErrors::TtsNotLoaded);
 
-  auto job = std::make_shared<PcmStreamJob>();
+  if (!streams_.tryAcquire())
+    throw ResponseException(429, TtsErrors::Busy);
+  auto job = std::make_shared<PcmStreamJob>(streams_);
   job->request = body.request();
 
   auto resp = drogon::HttpResponse::newAsyncStreamResponse(
       [job](drogon::ResponseStreamPtr stream) {
         job->stream = std::move(stream);
-        std::thread([job] { runStreamJob(job); }).detach();
+        blocking_pool::submit(BlockingLane::Heavy, [job] { runStreamJob(job); });
       },
       true);
   resp->setStatusCode(drogon::k200OK);

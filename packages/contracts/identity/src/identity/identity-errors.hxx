@@ -161,4 +161,24 @@ inline constexpr ErrorDefinition VisitorRecognitionOff{
     .code = ErrorCode::Conflict,
     .status = 409,
     .message = "Recognition of recurring visitors is turned off"};
+inline constexpr ErrorDefinition LivenessCheckFailed{
+    .code = ErrorCode::Unauthorized,
+    .status = 401,
+    .message = "The face did not pass the liveness check"};
+inline constexpr ErrorDefinition LivenessUnavailable{
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 503,
+    .message = "The liveness check is unavailable"};
+inline constexpr ErrorDefinition FaceQualityInsufficient{
+    .code = ErrorCode::BadRequest,
+    .status = 422,
+    .message = "Retake the photo: one face, close to the camera, facing it and in focus"};
+inline constexpr ErrorDefinition TooManyAttempts{
+    .code = ErrorCode::TooManyRequests,
+    .status = 429,
+    .message = "Too many attempts; try again later"};
+inline constexpr ErrorDefinition BiometricEraseOwnerOnly{
+    .code = ErrorCode::Forbidden,
+    .status = 403,
+    .message = "Only an owner can erase biometric data"};
 }

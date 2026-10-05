@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS camera (
     config         TEXT    NOT NULL  DEFAULT '{}',
     is_enabled     INTEGER NOT NULL  DEFAULT 1  CHECK (is_enabled IN (0, 1)),
     is_online      INTEGER NOT NULL  DEFAULT 0,
+    tls_fingerprint TEXT   NOT NULL  DEFAULT '',
+    tapo_secure    INTEGER NOT NULL  DEFAULT 0,
     created_at     INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     updated_at     INTEGER,
     deleted_at     INTEGER
@@ -96,6 +98,8 @@ CREATE TABLE IF NOT EXISTS siren_lease (
 
 CREATE INDEX IF NOT EXISTS idx_action_command_created
     ON action_command (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_action_command_updated
+    ON action_command (updated_at);
 CREATE INDEX IF NOT EXISTS idx_siren_lease_expires
     ON siren_lease (expires_at);
 

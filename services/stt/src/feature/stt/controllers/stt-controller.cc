@@ -1,38 +1,32 @@
 #include "stt-controller.hxx"
 
 #include <errors/response-exception.hxx>
+#include <feature/stt/dtos/transcribe-dto.hxx>
 #include <feature/stt/services/stt-service.hxx>
+#include <runtime/blocking-task.hxx>
 #include <http/api-response.hxx>
 #include <stt/stt-errors.hxx>
 #include <stt/stt-remote.hxx>
 
 #include <chrono>
-#include <cstring>
+#include <cstddef>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace
 {
-constexpr const char* kPcmMime = "audio/x-argus-pcm-s16";
 
-std::vector<float> pcmFromBytes(std::string_view bytes)
+struct TranscribedPcm
 {
-  std::vector<float> samples(bytes.size() / sizeof(int16_t));
-  for (size_t i = 0; i < samples.size(); ++i) {
-    int16_t raw = 0;
-    std::memcpy(&raw, bytes.data() + i * sizeof(int16_t), sizeof(raw));
-    samples[i] = static_cast<float>(raw) / kPcmScale;
-  }
-  return samples;
-}
+  std::string text;
+  std::size_t samples{0};
+};
 
-std::string langOf(const drogon::HttpRequestPtr& req)
+int elapsedMs(std::chrono::steady_clock::time_point start)
 {
-  std::string lang = req->getParameter("lang");
-  if (lang.empty())
-    lang = req->getHeader("lang");
-  return lang;
+  return static_cast<int>(std::chrono::duration<double, std::milli>(
+                              std::chrono::steady_clock::now() - start)
+                              .count());
 }
 
 }
@@ -43,41 +37,27 @@ SttController::transcribe(drogon::HttpRequestPtr req)
   auto& stt = SttService::instance();
   if (!stt.isLoaded())
     throw ResponseException(SttErrors::SpeechEngineNotLoaded);
-
-  const std::string_view body = req->getBody();
-  const std::string contentType =
-      std::string(req->getHeader("content-type"));
-  if (contentType.find(kPcmMime) == std::string::npos)
-    throw ResponseException(SttErrors::BodyNotPcmS16);
-  if (body.size() % sizeof(int16_t) != 0)
-    throw ResponseException(SttErrors::PcmBodyMisaligned);
-  if (body.empty()) {
-    Json::Value fields(Json::objectValue);
-    fields["body"] = "empty pcm body";
-    co_return ApiResponse::validationError(fields);
-  }
-
-  const std::string lang = langOf(req);
-  const std::string effective = lang.empty() ? stt.configLanguage() : lang;
-  if (!stt.isSupportedLanguage(effective)) {
+  const TranscribeDto body = TranscribeDto::fromRequest(req);
+  if (!stt.isSupportedLanguage(body.lang.empty() ? stt.configLanguage() : body.lang)) {
     Json::Value fields(Json::objectValue);
     fields["lang"] = "unsupported language (es, en, auto)";
     co_return ApiResponse::validationError(fields);
   }
 
-  const std::vector<float> samples = pcmFromBytes(body);
   const auto t0 = std::chrono::steady_clock::now();
-  std::string text = co_await stt.transcribeAsync(
-      {.samples = samples, .sampleRate = kWireSampleRate, .lang = lang});
-  const double ms =
-      std::chrono::duration<double, std::milli>(
-          std::chrono::steady_clock::now() - t0)
-          .count();
-  LOG_INFO << "STT transcribe: samples=" << samples.size()
-           << " lang=" << stt.language() << " ms=" << static_cast<int>(ms);
+  const TranscribedPcm heard = co_await BlockingTask<TranscribedPcm>(
+      [&stt, req, lang = body.lang] {
+        const TranscribeDto pcm{.body = req->getBody(), .lang = lang};
+        TranscribeRequest request{.samples = pcm.samples(), .sampleRate = kWireSampleRate, .lang = lang};
+        const std::size_t samples = request.samples.size();
+        return TranscribedPcm{.text = stt.transcribe(request), .samples = samples};
+      },
+      BlockingLane::Heavy);
+  LOG_INFO << "STT transcribe: samples=" << heard.samples << " lang=" << stt.language()
+           << " ms=" << elapsedMs(t0);
 
   Json::Value info(Json::objectValue);
-  info["text"] = std::move(text);
+  info["text"] = heard.text;
   co_return ApiResponse::ok(info);
 }
 

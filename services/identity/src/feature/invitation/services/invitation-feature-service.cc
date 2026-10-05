@@ -46,7 +46,7 @@ drogon::Task<ResponseInvitationDto>
 InvitationFeatureService::create(const CreateInvitationDto& body,
                                  int64_t actorId) const
 {
-  if (body.role == UserRole::Owner)
+  if (body.userRole == UserRole::Owner)
     throw ResponseException(422, IdentityErrors::InvitationOwnerAccessForbidden);
 
   const auto token = newOpaqueToken();
@@ -57,7 +57,7 @@ InvitationFeatureService::create(const CreateInvitationDto& body,
   try {
     invitation = co_await repository_.create({
         .tokenHash = hashToken(token),
-        .role = body.role,
+        .role = body.userRole,
         .maxRedemptions = kSingleUse,
         .expiresAt = static_cast<int64_t>(std::time(nullptr)) +
                      IdentityConfig::resolveInvitation().lifetimeSeconds,

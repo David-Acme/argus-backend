@@ -3,6 +3,7 @@
 #include <feature/webrtc/dtos/camera-webrtc-offer-dto.hxx>
 #include <feature/webrtc/dtos/response-camera-webrtc-dto.hxx>
 #include <feature/webrtc/infra/go2rtc-webrtc-gateway.hxx>
+#include <feature/webrtc/services/webrtc-admission.hxx>
 #include <feature/webrtc/services/webrtc-sdp.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 
@@ -17,6 +18,7 @@ struct CameraWebRtcRequest
   int64_t cameraId{0};
   CameraWebRtcOfferDto offer;
   WebRtcViewer viewer;
+  bool priority{false};
 };
 
 struct WebRtcViewerCount
@@ -40,6 +42,8 @@ public:
   static WebRtcViewerTally tally(const WebRtcViewerCount& count);
 
 private:
+  static WebRtcAdmission& admission();
+
   CameraRepository repository_;
   Go2rtcWebRtcGateway gateway_;
 };

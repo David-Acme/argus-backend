@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <json/value.h>
+#include <memory>
+#include <shared/services/tapo/tapo-trust.hxx>
 #include <string>
 
 enum class TapoTransportKind : uint8_t
@@ -47,6 +49,7 @@ struct TapoCredentials
   std::string password;
   int connectTimeoutMs{3000};
   int requestTimeoutMs{5000};
+  std::shared_ptr<TapoTrust> trust;
 };
 
 struct TapoResult

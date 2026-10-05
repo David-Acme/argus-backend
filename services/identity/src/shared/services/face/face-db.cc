@@ -6,8 +6,14 @@
 #include <map>
 #include <shared/repositories/face-embedding/face-embedding-repository.hxx>
 #include <config/config-service.hxx>
+#include <cstring>
+#include <exception>
+#include <sqlite/db-service.hxx>
 #include <sqlite/vec-db.hxx>
 #include <sqlite3.h>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 namespace
 {
@@ -32,18 +38,64 @@ std::mutex& FaceDB::vecMutex()
 
 void FaceDB::init()
 {
+  {
+    std::scoped_lock lock(vecMutex());
+    sqlite3* db = vecDb_.handle();
+    if (db) {
+      const auto stale = repository_.findStaleVecRows(db, kFaceModelId);
+      for (const int64_t rowid : stale)
+        repository_.deleteVecRow(db, rowid);
+      if (!stale.empty())
+        LOG_INFO << "FaceDB: dropped " << stale.size()
+                 << " index row(s) whose embedding is gone or belongs to "
+                    "another face model";
+    }
+  }
+  if (const auto repaired = repairIndex(); repaired > 0)
+    LOG_INFO << "FaceDB: indexed " << repaired
+             << " embedding(s) whose index row was missing";
+  LOG_INFO << "FaceDB: vec0 index ready";
+}
+
+std::size_t FaceDB::repairIndex()
+{
+  std::optional<drogon::orm::Result> rows;
+  try {
+    const auto client = DbService::identityClient();
+    if (!client)
+      return 0;
+    rows = client->execSqlSync(
+        std::string(face_embedding_query::FIND_INDEXABLE), std::string(kFaceModelId),
+        static_cast<int64_t>(kEmbeddingDim * sizeof(float)));
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "FaceDB: the index repair could not read the embeddings: "
+             << error.what();
+    return 0;
+  }
   std::scoped_lock lock(vecMutex());
   sqlite3* db = vecDb_.handle();
-  if (db) {
-    const auto stale = repository_.findStaleVecRows(db, kFaceModelId);
-    for (const int64_t rowid : stale)
-      repository_.deleteVecRow(db, rowid);
-    if (!stale.empty())
-      LOG_INFO << "FaceDB: dropped " << stale.size()
-               << " index row(s) whose embedding is gone or belongs to "
-                  "another face model";
+  if (!db)
+    return 0;
+  const auto rowids = repository_.findVecRowids(db);
+  const std::unordered_set<int64_t> indexed(rowids.begin(), rowids.end());
+  std::size_t repaired = 0;
+  std::vector<float> embedding(kEmbeddingDim);
+  for (const auto& row : *rows) {
+    const auto id = row["id"].as<int64_t>();
+    if (indexed.contains(id))
+      continue;
+    const auto blob = row["embedding"].as<std::vector<char>>();
+    if (blob.size() != embedding.size() * sizeof(float))
+      continue;
+    std::memcpy(embedding.data(), blob.data(), blob.size());
+    if (repository_.insertVec(db, {.embedding = embedding.data(),
+                                   .dims = kEmbeddingDim,
+                                   .personId = row["person_id"].as<int64_t>(),
+                                   .faceEmbeddingId = id}))
+      ++repaired;
   }
-  LOG_INFO << "FaceDB: vec0 index ready";
+  return repaired;
 }
 
 void FaceDB::shutdown() {}

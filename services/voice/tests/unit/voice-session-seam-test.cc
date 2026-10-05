@@ -556,6 +556,34 @@ TEST_CASE("Skip cancels a blocked voice config fetch")
   service.stop(sink);
 }
 
+TEST_CASE("A sentence that only contains \"soy\" is not taken as a name")
+{
+  FakeStt stt;
+  stt.transcript = "yo no soy de aquí, la verdad";
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
+  VoiceSessionService session(seam);
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  session.start(sink, voiceIdentity);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return tts.synthesizeCalls > 0 && !sess->speaking.load(); }));
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+  CHECK(identity.writes.empty());
+
+  stt.transcript = "hola, soy Marta";
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+  REQUIRE(identity.writes.size() == 1);
+  CHECK(identity.writes[0].name == "Marta");
+  session.stop(sink);
+}
+
 TEST_CASE("The spoken name is written once through the identity seam")
 {
   FakeStt stt;
@@ -812,7 +840,7 @@ TEST_CASE("A half-duplex session still drops PCM while the assistant speaks")
   CHECK(vad.windows->load() == 0);
   {
     std::scoped_lock lock(sess->pcmMutex);
-    CHECK(sess->pcmQueue.empty());
+    CHECK(sess->pcmRing.size() == 0);
   }
 
   service.stop(sink);
@@ -1181,8 +1209,10 @@ TEST_CASE("A failed app action is corrected aloud and joins the history")
     return entry.kind == CallEntryKind::Event &&
            entry.message.content == "The app could not complete app.show_camera: sin conexión.";
   }));
-  CHECK(entries.back().kind == CallEntryKind::Assistant);
-  CHECK(entries.back().message.content == "No he podido mostrarte la cámara: sin conexión.");
+  CHECK(entries.back().kind == CallEntryKind::Notice);
+  CHECK(entries.back().message.role == "system");
+  CHECK(entries.back().message.content.find("\"No he podido mostrarte la cámara: sin conexión.\"") !=
+        std::string::npos);
   session.stop(sink);
 }
 
@@ -1338,6 +1368,13 @@ TEST_CASE("A yes to Argus's camera offer shows the camera without asking the mod
   CHECK(shown);
   CHECK(std::ranges::any_of(sess->history.entries(), [](const CallEntry& entry) {
     return entry.kind == CallEntryKind::Event && entry.message.content == "The app is showing the Entrada camera.";
+  }));
+  CHECK(std::ranges::any_of(sess->history.entries(), [](const CallEntry& entry) {
+    return entry.kind == CallEntryKind::Notice && entry.message.role == "system" &&
+           entry.message.content.find("cámara Entrada") != std::string::npos;
+  }));
+  CHECK_FALSE(std::ranges::any_of(sess->history.entries(), [](const CallEntry& entry) {
+    return entry.message.role == "assistant" && entry.message.content.find("cámara Entrada") != std::string::npos;
   }));
   session.stop(sink);
 }

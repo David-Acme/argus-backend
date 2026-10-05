@@ -17,7 +17,8 @@ TapoCredentials credentialsOf(const TapoClientConfig& config,
           .username = candidate.username,
           .password = candidate.password,
           .connectTimeoutMs = config.connectTimeoutMs,
-          .requestTimeoutMs = config.requestTimeoutMs};
+          .requestTimeoutMs = config.requestTimeoutMs,
+          .trust = config.trust};
 }
 
 }
@@ -50,14 +51,22 @@ TapoResult TapoClient::tryCandidate(
       break;
   }
 
+  const bool secureSeen = config_.trust && config_.trust->secureSeen();
   TapoResult last = TapoResult::failure("no transport attempted");
   for (const auto kind : order) {
     if (excludedKind && kind == *excludedKind)
       continue;
+    if (secureSeen && kind == TapoTransportKind::LegacyStok) {
+      last = TapoResult::failure(
+          "legacy login refused: this camera already answered over secure passthrough");
+      continue;
+    }
     auto transport = makeTransport(kind, candidate);
     for (int attempt = 0; attempt < std::max(1, config_.loginAttempts); ++attempt) {
       last = transport->login();
       if (last.ok) {
+        if (kind == TapoTransportKind::SecurePassthrough && config_.trust)
+          config_.trust->noteSecure();
         transport_ = std::move(transport);
         credentialLabel_ = candidate.label;
         return last;

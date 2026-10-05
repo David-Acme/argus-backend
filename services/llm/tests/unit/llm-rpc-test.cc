@@ -43,6 +43,7 @@ using argus::llm::ClientConfig;
 using Clock = std::chrono::system_clock;
 
 constexpr const char* kSecret = "rpc-secret";
+constexpr const char* kGuardSecret = "guard-secret";
 constexpr const char* kScratchConfig = "/tmp/argus-llm-rpc-test.toml";
 
 struct Refusal
@@ -131,7 +132,7 @@ void silent(const LlmStreamInput& input)
 LlmRpcInput serverInput()
 {
   return {.address = "127.0.0.1:0",
-          .credentials = {{"guard", kSecret}},
+          .credentials = {{"voice", kSecret}, {"guard", kGuardSecret}},
           .capabilities = capabilities,
           .chat = answered,
           .chatStream = streamed,
@@ -850,6 +851,71 @@ TEST_CASE("the caller's role and language cross the wire, an absent role is a gu
   CHECK(seen[1].lang.empty());
   CHECK(seen[2].role == UserRole::Guest);
   CHECK(seen[2].lang.empty());
+}
+
+TEST_CASE("only the voice caller declares a user, a role and the tool loop")
+{
+  std::mutex seenMutex;
+  std::vector<ChatRequest> seen;
+  auto input = serverInput();
+  input.chat = [&seen, &seenMutex](const ChatRequest& request) {
+    std::scoped_lock lock(seenMutex);
+    seen.push_back(request);
+    return LlmChatOutcome{.text = "ok",
+                          .hops = 0,
+                          .toolCalls = 0,
+                          .generateMs = 0,
+                          .toolMs = 0};
+  };
+  LlmRpcServer server(std::move(input));
+  const auto stub = rawStub(server.port());
+
+  ChatRequest claimed = ask();
+  claimed.userId = 7;
+  claimed.role = UserRole::Owner;
+  claimed.toolsEnabled = true;
+  claimed.clientActions = true;
+  claimed.sessionId = "voice-7-1";
+  const auto send = [&stub, &claimed](const std::string& credential) {
+    grpc::ClientContext context;
+    context.set_deadline(Clock::now() + std::chrono::seconds(5));
+    argus::client::addCallerCredential(context, credential);
+    wire::ChatRequest request = wireRequest(claimed);
+    request.set_caller_role(wire::CALLER_ROLE_OWNER);
+    request.set_client_actions(true);
+    wire::ChatResponse response;
+    return stub->Chat(&context, request, &response).ok();
+  };
+  CHECK(send(kGuardSecret));
+  CHECK(send(kSecret));
+
+  std::scoped_lock lock(seenMutex);
+  REQUIRE(seen.size() == 2);
+  CHECK(seen[0].userId == 0);
+  CHECK(seen[0].role == UserRole::Guest);
+  CHECK_FALSE(seen[0].toolsEnabled);
+  CHECK_FALSE(seen[0].clientActions);
+  CHECK(seen[0].sessionId.empty());
+  CHECK(seen[1].userId == 7);
+  CHECK(seen[1].role == UserRole::Owner);
+  CHECK(seen[1].toolsEnabled);
+  CHECK(seen[1].clientActions);
+  CHECK(seen[1].sessionId == "voice-7-1");
+}
+
+TEST_CASE("boundToCaller strips the identity of every caller but voice")
+{
+  ChatRequest request = ask();
+  request.userId = 3;
+  request.role = UserRole::Resident;
+  request.toolsEnabled = true;
+  const auto voice = boundToCaller(request, "voice");
+  CHECK(voice.userId == 3);
+  CHECK(voice.role == UserRole::Resident);
+  const auto guard = boundToCaller(request, "guard");
+  CHECK(guard.userId == 0);
+  CHECK(guard.role == UserRole::Guest);
+  CHECK_FALSE(guard.toolsEnabled);
 }
 
 TEST_CASE("the wire refuses a language the tool runtime does not speak")

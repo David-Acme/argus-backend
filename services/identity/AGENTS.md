@@ -125,23 +125,35 @@ argus-identity/
                         (VoiceprintFeatureService, the journal helper)
     vocabulary/         VoiceProfileSource, VoiceSampleState, VoiceprintOutcome
   src/feature/user/
-    controllers/        the /user routes and /portrait-preview
-    dtos/               user update and portrait capability/image DTOs
-    services/           UserFeatureService, PortraitPreviewService,
-                        NatsIdentityChangeSink
+    controllers/        the /user routes (incl. DELETE /user/{id}/biometrics)
+                        and /portrait-preview
+    dtos/               user update, biometric erase and portrait DTOs
+    repositories/       biometric-erase, portrait-preview-capability
+    services/           UserFeatureService, BiometricEraseService,
+                        PortraitPreviewService, NatsIdentityChangeSink
+  src/feature/person/   PersonFeatureService (tags, touch, describe, promote)
+                        and the person-tag repository the RPC surface reads
+  src/feature/sign-in/  FaceSignInService: the verified, member-only face login
+  src/feature/rate-gate/ the per-client limit on /pairing and /invitation/resolve
   src/shared/repositories/
-                        user, person, person-tag, person-snapshot,
-                        face-embedding, user-invitation, user-portrait,
-                        stored-file and portrait-preview-capability (2+ features
-                        read them), plus change-outbox as its own module
+                        user, person, face-embedding, user-invitation,
+                        user-portrait, stored-file, privacy, visitor-setting
+                        and pending-object-delete (2+ features read them), plus
+                        change-outbox as its own module
   src/shared/schemas/   the row mappings of those tables
-  src/shared/services/face/     FaceService + FaceDB (vec0 index)
+  src/shared/services/face/     FaceService + FaceDB (vec0 index), the
+                                MiniFASNet liveness engine (anti-spoof), the
+                                biometric gate (face-check), the image decoder
+                                (face-image), the inference slots and the
+                                household member matcher
+  src/shared/services/object-deletion/ the worker that drains
+                                pending_object_delete
   src/shared/services/storage/  PrivatePortraitService
   src/shared/services/token/    opaque-token: the 256-bit capability tokens
                                 and their SHA-256 (invitation, portrait
                                 preview)
   src/shared/vocabulary/        person-status
-  database/schema.sql   this owner's fourteen tables and their indices
+  database/schema.sql   this owner's tables and their indices
   config.toml.example   identity keys + the peer targets; no AI keys
   tests/unit/           the config, migration, change-outbox,
                         change-transaction, change-outbox-sink, sync-RPC,
@@ -150,7 +162,8 @@ argus-identity/
   tests/fixtures/voiceprint/  nine LibriSpeech clips (CC BY 4.0, raw PCM)
   tools/migrate-identity/  argus-migrate-identity (argus.db -> identity.db)
   scripts/provision.sh  the deploy-time provisioning of this service: the
-                        face models and the SHA-256-pinned speaker model
+                        face models, the SHA-256-pinned anti-spoofing models
+                        (models/face/anti-spoof) and the speaker model
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 

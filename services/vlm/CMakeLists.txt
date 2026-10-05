@@ -136,6 +136,16 @@ target_compile_options(vlm-wire-test PRIVATE -Wall -Wextra)
 
 add_test(NAME vlm-wire-test COMMAND vlm-wire-test)
 
+add_executable(vlm-jpeg-gate-test tests/unit/vlm-jpeg-gate-test.cc)
+
+set_target_properties(vlm-jpeg-gate-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(vlm-jpeg-gate-test PRIVATE argus::vlm doctest::doctest)
+
+target_compile_options(vlm-jpeg-gate-test PRIVATE -Wall -Wextra)
+
+add_test(NAME vlm-jpeg-gate-test COMMAND vlm-jpeg-gate-test)
+
 add_executable(vlm-rpc-test tests/unit/vlm-rpc-test.cc)
 
 target_include_directories(vlm-rpc-test PRIVATE

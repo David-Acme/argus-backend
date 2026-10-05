@@ -1,6 +1,7 @@
 #pragma once
 
 #include <argus/camera/v1/actions.grpc.pb.h>
+#include <atomic>
 #include <cstdint>
 #include <feature/actions/stt-transcriber.hxx>
 #include <feature/camera-control/services/camera-control-feature-service.hxx>
@@ -55,6 +56,11 @@ public:
 
   void startLeaseSweeper();
 
+  static constexpr int64_t kCommandRecordSeconds = 7LL * 24 * 3600;
+
+  void requestStop();
+  [[nodiscard]] bool drained() const;
+
 private:
   struct CommandContext
   {
@@ -108,6 +114,11 @@ private:
   std::vector<argus::client::CallerCredential> callers_;
   std::unique_ptr<SttTranscriber> transcriber_;
 
+  drogon::Task<void> sweepLeases();
+  drogon::Task<void> purgeCommands();
+
+  std::atomic<bool> stopping_{false};
+  std::atomic<int64_t> inFlight_{0};
   ActionCommandRepository commandRepository_;
   CameraRepository cameraRepository_;
   CameraControlFeatureService cameraControlService_;

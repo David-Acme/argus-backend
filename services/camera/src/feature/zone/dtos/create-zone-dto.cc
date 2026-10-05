@@ -1,6 +1,6 @@
 #include "create-zone-dto.hxx"
 
-#include <shared/utils/geometry/normalized-polygon.hxx>
+#include <feature/zone/dtos/normalized-polygon.hxx>
 
 CreateZoneDto CreateZoneDto::fromJson(const Json::Value& json)
 {

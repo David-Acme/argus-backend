@@ -7,6 +7,8 @@
 #include <json/value.h>
 #include <sync/syncable.hxx>
 #include <optional>
+#include <span>
+#include <vector>
 #include <shared/schemas/person/person-schema.hxx>
 
 class PersonRepository : public Syncable
@@ -19,6 +21,8 @@ public:
   findById(int64_t id, drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<std::vector<PersonSchema>> findByUser(int64_t userId) const;
   drogon::Task<std::vector<PersonSchema>> findAllCatalog() const;
+  drogon::Task<std::vector<int64_t>>
+  findMemberIds(std::span<const int64_t> ids) const;
   drogon::Task<PersonSchema> create(const PersonCreateInput& input) const;
   drogon::Task<PersonSchema> update(int64_t id,
                                     const PersonUpdateInput& input) const;

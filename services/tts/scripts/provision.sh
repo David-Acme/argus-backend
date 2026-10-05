@@ -11,7 +11,25 @@ POCKET_SOURCE="git+https://github.com/kyutai-labs/pocket-tts@41cbc84af539ea78a80
 POCKET_WORK="${ARGUS_POCKET_WORK:-${XDG_CACHE_HOME:-$HOME/.cache}/argus/pocket-export}"
 POCKET_VARIANTS=(es-fast es-quality en)
 TTS_CONFIG="${ARGUS_TTS_CONFIG:-$ROOT/services/tts/config.toml}"
-DL=""
+SUPERTONIC_REVISION=""
+declare -A SUPERTONIC_SHA256=(
+  [onnx/duration_predictor.onnx]=""
+  [onnx/text_encoder.onnx]=""
+  [onnx/vector_estimator.onnx]=""
+  [onnx/vocoder.onnx]=""
+  [onnx/tts.json]=""
+  [onnx/unicode_indexer.json]=""
+  [voice_styles/F1.json]=""
+  [voice_styles/F2.json]=""
+  [voice_styles/F3.json]=""
+  [voice_styles/F4.json]=""
+  [voice_styles/F5.json]=""
+  [voice_styles/M1.json]=""
+  [voice_styles/M2.json]=""
+  [voice_styles/M3.json]=""
+  [voice_styles/M4.json]=""
+  [voice_styles/M5.json]=""
+)
 
 setup_tts_model() {
   log "Setting up Supertonic 3 TTS model..."
@@ -19,51 +37,41 @@ setup_tts_model() {
   local MODEL_DIR="$ROOT/models/tts"
   local ONNX_DIR="$MODEL_DIR/onnx"
   local VOICE_DIR="$MODEL_DIR/voice_styles"
-  local HF_BASE="https://huggingface.co/Supertone/supertonic-3/resolve/main"
+  local HF_REPO="https://huggingface.co/Supertone/supertonic-3"
 
-  if command -v curl >/dev/null 2>&1; then
-    DL="curl -L --retry 3 --progress-bar -o"
-  elif command -v wget >/dev/null 2>&1; then
-    DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
-  else
-    warn "Neither curl nor wget found; skipping TTS model download."
+  if ! command -v curl >/dev/null 2>&1; then
+    warn "curl not found; skipping TTS model download."
     return
   fi
 
   mkdir -p "$ONNX_DIR" "$VOICE_DIR"
 
-  local ONNX_FILES=(
-    duration_predictor.onnx
-    text_encoder.onnx
-    vector_estimator.onnx
-    vocoder.onnx
-    tts.json
-    unicode_indexer.json
-  )
-  local VOICE_FILES=(
-    F1.json F2.json F3.json F4.json F5.json
-    M1.json M2.json M3.json M4.json M5.json
-  )
+  local revision="$SUPERTONIC_REVISION"
+  if [ -z "$revision" ] && [ "${ARGUS_ALLOW_UNPINNED_MODELS:-0}" = "1" ]; then
+    revision="main"
+  fi
 
-  for f in "${ONNX_FILES[@]}"; do
-    if [ ! -f "$ONNX_DIR/$f" ]; then
-      log "Downloading onnx/$f..."
-      $DL "$ONNX_DIR/$f" "$HF_BASE/onnx/$f" || warn "Failed: onnx/$f"
-    fi
+  local file missing=0
+  for file in "${!SUPERTONIC_SHA256[@]}"; do
+    [ -f "$MODEL_DIR/$file" ] || missing=1
   done
+  if [ "$missing" = "1" ] && [ -z "$revision" ]; then
+    warn "No Supertonic revision pinned: pin SUPERTONIC_REVISION in $0, or run with ARGUS_ALLOW_UNPINNED_MODELS=1."
+    return
+  fi
 
-  for f in "${VOICE_FILES[@]}"; do
-    if [ ! -f "$VOICE_DIR/$f" ]; then
-      log "Downloading voice_styles/$f..."
-      $DL "$VOICE_DIR/$f" "$HF_BASE/voice_styles/$f" || warn "Failed: voice_styles/$f"
+  if [ -n "$revision" ]; then
+    for file in "${!SUPERTONIC_SHA256[@]}"; do
+      fetch_supertonic "$HF_REPO/resolve/$revision/$file" "$MODEL_DIR/$file" \
+        "${SUPERTONIC_SHA256[$file]}" || true
+    done
+    if [ ! -f "$MODEL_DIR/LICENSE.openrail-m" ]; then
+      log "Downloading Open RAIL-M license..."
+      curl -fL --retry 3 --silent --show-error -o "$MODEL_DIR/LICENSE.openrail-m.part" \
+          "$HF_REPO/raw/$revision/LICENSE" &&
+        mv "$MODEL_DIR/LICENSE.openrail-m.part" "$MODEL_DIR/LICENSE.openrail-m" ||
+        { rm -f "$MODEL_DIR/LICENSE.openrail-m.part"; warn "Failed: LICENSE.openrail-m"; }
     fi
-  done
-
-  if [ ! -f "$MODEL_DIR/LICENSE.openrail-m" ]; then
-    log "Downloading Open RAIL-M license..."
-    $DL "$MODEL_DIR/LICENSE.openrail-m" \
-        "https://huggingface.co/Supertone/supertonic-3/raw/main/LICENSE" || \
-      warn "Failed: LICENSE.openrail-m"
   fi
 
   if [ ! -f "$MODEL_DIR/NOTICE" ]; then
@@ -84,6 +92,34 @@ TTS_NOTICE_EOF
   fi
 
   log "TTS model ready (~415 MB)."
+}
+
+fetch_supertonic() {
+  local url="$1" target="$2" expected="$3"
+  if [ -f "$target" ]; then
+    if [ -z "$expected" ] || [ "$(sha256_file "$target")" = "$expected" ]; then
+      return 0
+    fi
+    warn "Checksum mismatch for the present $(basename "$target"); replacing it."
+    rm -f "$target"
+  fi
+  if [ -z "$expected" ] && [ "${ARGUS_ALLOW_UNPINNED_MODELS:-0}" != "1" ]; then
+    warn "No SHA-256 pinned for $(basename "$target"): pin it in $0, or run with ARGUS_ALLOW_UNPINNED_MODELS=1 to fetch it and print its hash."
+    return 1
+  fi
+  if [ -n "$expected" ]; then
+    fetch_pinned "$url" "$target" "$expected"
+    return
+  fi
+  rm -f "$target.part"
+  mkdir -p "$(dirname "$target")"
+  if ! curl -fL --retry 3 --silent --show-error -o "$target.part" "$url"; then
+    rm -f "$target.part"
+    warn "Download failed: $(basename "$target")"
+    return 1
+  fi
+  warn "Unpinned download of $(basename "$target"): sha256 $(sha256_file "$target.part"). Pin it before the next release."
+  mv "$target.part" "$target"
 }
 
 fetch_pinned() {

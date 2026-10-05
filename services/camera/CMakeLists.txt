@@ -127,6 +127,7 @@ endif()
 set(NCNN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn/src)
 
 add_subdirectory(src/config)
+add_subdirectory(src/shared/services/secret-box)
 add_subdirectory(src/shared/repositories)
 add_subdirectory(src/shared/repositories/change-outbox)
 add_subdirectory(src/shared/services/change-sink)
@@ -475,3 +476,17 @@ target_compile_options(camera-settings-test PRIVATE -Wall -Wextra)
 set_target_properties(camera-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 argus_runtime_rpath(camera-settings-test)
 add_test(NAME camera-settings-test COMMAND camera-settings-test)
+
+add_executable(camera-hardening-test tests/unit/camera-hardening-test.cc)
+target_link_libraries(camera-hardening-test PRIVATE
+    argus::camera-secret-box
+    argus::camera-tapo
+    argus::camera-repositories
+    argus::camera-sync
+    argus::camera-operator
+    argus::camera-media
+    doctest::doctest)
+target_compile_options(camera-hardening-test PRIVATE -Wall -Wextra)
+set_target_properties(camera-hardening-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+argus_runtime_rpath(camera-hardening-test)
+add_test(NAME camera-hardening-test COMMAND camera-hardening-test)

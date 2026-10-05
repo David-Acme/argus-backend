@@ -10,6 +10,7 @@
 #include <tuple>
 #include <utility>
 #include <drogon/drogon.h>
+#include <auth/role-access.hxx>
 #include <auth/user-role.hxx>
 #include <config/config-service.hxx>
 #include <feature/voice/offer-reply.hxx>
@@ -19,7 +20,6 @@ namespace
 {
 
 constexpr int kTargetRate = 16000;
-constexpr size_t kMaxQueuedSamples = static_cast<size_t>(kTargetRate) * 30;
 constexpr auto kIdleTick = std::chrono::milliseconds(150);
 
 std::string mintCallKey()
@@ -54,6 +54,7 @@ constexpr size_t kHardMaxChars = 110;
 constexpr size_t kLeadInMinChars = 2;
 constexpr size_t kLeadInMaxChars = 24;
 constexpr size_t kHardMinCut = 28;
+constexpr std::ptrdiff_t kMaxNameWords = 3;
 
 struct Greeting
 {
@@ -334,6 +335,17 @@ size_t nextChunkEnd(const std::string& text, bool firstSentence)
   return 0;
 }
 
+bool opensClause(const std::string& lower, size_t pos)
+{
+  const auto before = lower.find_last_not_of(' ', pos == 0 ? 0 : pos - 1);
+  if (pos == 0 || before == std::string::npos)
+    return true;
+  const char last = lower[before];
+  if (last == ',' || last == '.' || last == '!' || last == '?' || last == ';')
+    return true;
+  return lower.substr(0, before + 1) == "hola" || lower.substr(0, before + 1) == "pues";
+}
+
 std::optional<std::string> extractName(const std::string& text)
 {
   std::string lower = text;
@@ -343,7 +355,7 @@ std::optional<std::string> extractName(const std::string& text)
   for (const std::string_view pattern : {"mi nombre es ", "me llamo ",
                                          "yo soy ", "soy "}) {
     const auto pos = lower.find(pattern);
-    if (pos == std::string::npos)
+    if (pos == std::string::npos || !opensClause(lower, pos))
       continue;
     std::string name = text.substr(pos + pattern.size());
     while (!name.empty() &&
@@ -356,7 +368,8 @@ std::optional<std::string> extractName(const std::string& text)
     while (!name.empty() &&
            std::isspace(static_cast<unsigned char>(name.back())))
       name.pop_back();
-    if (name.size() >= 2 && name.size() <= 40) {
+    const auto words = std::ranges::count(name, ' ') + 1;
+    if (name.size() >= 2 && name.size() <= 40 && words <= kMaxNameWords) {
       name[0] = static_cast<char>(
           std::toupper(static_cast<unsigned char>(name[0])));
       return name;
@@ -427,7 +440,7 @@ bool VoiceSessionService::farewell(VoiceSessionSink& sink, FarewellReason reason
   session->muted.store(true);
   {
     std::scoped_lock lock(session->pcmMutex);
-    session->pcmQueue.clear();
+    session->pcmRing.clear();
   }
   std::stop_source cancellation;
   {
@@ -586,11 +599,7 @@ void VoiceSessionService::feedSamples(VoiceSessionSink& sink, std::span<const fl
 
   {
     std::scoped_lock lock(session->pcmMutex);
-    auto& queue = session->pcmQueue;
-    queue.insert(queue.end(), samples.begin(), samples.end());
-    if (queue.size() > kMaxQueuedSamples)
-      queue.erase(queue.begin(),
-                  queue.begin() + static_cast<std::ptrdiff_t>(queue.size() - kMaxQueuedSamples));
+    session->pcmRing.push(samples.data(), samples.size());
   }
   session->pcmCv.notify_one();
 }
@@ -660,27 +669,32 @@ void VoiceSessionService::stop(VoiceSessionSink& sink)
   }
 }
 
-std::optional<std::vector<float>> VoiceSessionService::nextBatch(Session& session)
+bool VoiceSessionService::nextBatch(Session& session)
 {
-  std::vector<float> batch;
   std::unique_lock<std::mutex> lock(session.pcmMutex);
   session.pcmCv.wait_for(lock, kIdleTick, [&] {
-    return !session.pcmQueue.empty() || !session.active.load();
+    return session.pcmRing.size() > 0 || !session.active.load();
   });
   if (!session.active.load())
-    return std::nullopt;
-  batch.swap(session.pcmQueue);
-  return batch;
+    return false;
+  session.pcmRing.drainInto(session.batch);
+  return true;
+}
+
+void VoiceSessionService::resetListening(Session& session)
+{
+  session.vad.reset();
+  session.denoiser.reset();
+  session.denoiseBypassed = false;
 }
 
 void VoiceSessionService::workerLoop(const std::shared_ptr<Session>& session)
 {
   while (session->active.load()) {
-    auto batch = nextBatch(*session);
-    if (!batch)
+    if (!nextBatch(*session))
       break;
     if (session->vadResetPending.exchange(false)) {
-      session->vad.reset();
+      resetListening(*session);
       followUtterance(*session);
     }
 
@@ -689,10 +703,10 @@ void VoiceSessionService::workerLoop(const std::shared_ptr<Session>& session)
         deliverNotice(*session, *notice);
     }
 
-    if (session->speaking || batch->empty())
+    if (session->speaking || session->batch.empty())
       continue;
 
-    std::vector<float> clean = cleanBatch(*session, *batch);
+    const std::span<const float> clean = cleanBatch(*session);
 
     size_t offset = 0;
     while (offset < clean.size() && session->active.load()) {
@@ -723,35 +737,34 @@ void VoiceSessionService::workerLoop(const std::shared_ptr<Session>& session)
   }
 }
 
-std::vector<float> VoiceSessionService::cleanBatch(Session& session,
-                                                   std::vector<float>& batch)
+std::span<const float> VoiceSessionService::cleanBatch(Session& session)
 {
-  std::vector<float> clean;
-  if (session.denoise) {
-    const bool silent = rmsOf(batch) < session.denoiseGateRms &&
-                        !session.denoiser.recentVoice();
-    if (silent) {
-      clean.swap(batch);
-    } else {
-      session.denoiser.process(batch, clean);
-    }
-    if ((++session.denoiseLogCounter % 25) == 0)
-      LOG_DEBUG << "Voice: denoise prob=" << session.denoiser.lastVoiceProb();
-  } else {
-    clean.swap(batch);
+  if (!session.denoise)
+    return session.batch;
+  const bool silent = rmsOf(session.batch) < session.denoiseGateRms &&
+                      !session.denoiser.recentVoice();
+  if (silent) {
+    session.denoiseBypassed = true;
+    return session.batch;
   }
-  return clean;
+  if (session.denoiseBypassed) {
+    session.denoiser.resync();
+    session.denoiseBypassed = false;
+  }
+  session.denoiser.process(session.batch, session.cleaned);
+  if ((++session.denoiseLogCounter % 25) == 0)
+    LOG_DEBUG << "Voice: denoise prob=" << session.denoiser.lastVoiceProb();
+  return session.cleaned;
 }
 
 void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
 {
   bool wasListening = false;
   while (session->active.load()) {
-    auto batch = nextBatch(*session);
-    if (!batch)
+    if (!nextBatch(*session))
       break;
     if (session->vadResetPending.exchange(false)) {
-      session->vad.reset();
+      resetListening(*session);
       followUtterance(*session);
       wasListening = false;
     }
@@ -763,10 +776,10 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
         });
     }
 
-    if (batch->empty())
+    if (session->batch.empty())
       continue;
 
-    const std::vector<float> clean = cleanBatch(*session, *batch);
+    const std::span<const float> clean = cleanBatch(*session);
 
     size_t offset = 0;
     while (offset < clean.size() && session->active.load()) {
@@ -951,14 +964,7 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
   applyNotes(session);
   const auto speakerProbe = probeSpeaker(session, samples);
   const std::string lang = langCode(session.lang);
-  const ReactionSignals sttFailed{.text = {},
-                                  .lang = lang,
-                                  .captureStored = false,
-                                  .captureQueued = false,
-                                  .recallHits = -1,
-                                  .cameraIntent = false,
-                                  .sttFailed = true,
-                                  .systemAlert = false};
+  const ReactionSignals sttFailed{.text = {}, .lang = lang, .sttFailed = true};
 
   std::string userText;
   bool streamed = false;
@@ -998,14 +1004,8 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
     }
   }
 
-  const Reaction reaction = emitReaction(session, {.text = userText,
-                                                   .lang = lang,
-                                                   .captureStored = false,
-                                                   .captureQueued = false,
-                                                   .recallHits = -1,
-                                                   .cameraIntent = false,
-                                                   .sttFailed = false,
-                                                   .systemAlert = false});
+  const Reaction reaction =
+      emitReaction(session, {.text = userText, .lang = lang, .sttFailed = false});
   session.history.addTone(ReactionEngine::toneNote(reaction, lang));
 
   if (answerOffer(session, userText)) {
@@ -1190,6 +1190,9 @@ bool VoiceSessionService::answerOffer(Session& session, const std::string& userT
     return false;
   const OfferReply reply = offerReplyOf(userText, session.lang);
   if (reply == OfferReply::Other)
+    return false;
+  if (reply == OfferReply::Accept &&
+      !role_access::hasAppAction(userRoleFromString(session.role), role_access::AppAction::ShowCamera))
     return false;
   const bool en = session.lang == VoiceLang::En;
   std::string line;
@@ -1388,7 +1391,7 @@ void VoiceSessionService::mute(VoiceSessionSink& sink, bool muted)
   if (muted) {
     {
       std::scoped_lock lock(session->pcmMutex);
-      session->pcmQueue.clear();
+      session->pcmRing.clear();
     }
     session->vadResetPending.store(true);
   }
@@ -1518,7 +1521,7 @@ void VoiceSessionService::deliverNotice(Session& session, const Notice& notice)
   applyNotes(session);
   session.history.addEvent(notice.event);
   if (speak(session, notice.spoken).audible) {
-    session.history.addAssistant(notice.spoken);
+    session.history.addNotice(notice.spoken);
     if (!notice.camera.empty())
       session.offer = CameraOffer{.camera = notice.camera, .at = std::chrono::steady_clock::now()};
   }

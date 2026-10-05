@@ -470,7 +470,7 @@ TEST_CASE("processFrame aggregates detections over the window")
   CHECK(event.cameraId == 1);
   CHECK(event.cameraName == "Front");
   CHECK(event.rule == "person_day");
-  CHECK(event.severity == "info");
+  CHECK(event.severity == EventSeverity::Info);
   REQUIRE(event.objects.size() == 2);
   CHECK(event.objects[0].name == "person");
   CHECK(event.objects[1].name == "car");
@@ -504,7 +504,7 @@ TEST_CASE("each eligible person gets its own event with its own verdict")
   inputs.operator_.cooldownMs = 60000;
   OperatorZone zone;
   zone.cameraId = 1;
-  zone.kind = "alert";
+  zone.kind = ZoneType::Alert;
   zone.points = {{0.5, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.5, 1.0}};
   inputs.operator_.zones.push_back(zone);
 
@@ -531,8 +531,8 @@ TEST_CASE("each eligible person gets its own event with its own verdict")
   REQUIRE(resident != nullptr);
   REQUIRE(intruder != nullptr);
   CHECK(resident->trackId != intruder->trackId);
-  CHECK(resident->severity == "info");
-  CHECK(intruder->severity == "critical");
+  CHECK(resident->severity == EventSeverity::Info);
+  CHECK(intruder->severity == EventSeverity::Critical);
   CHECK(intruder->dwellMs > 0);
 
   const auto primaryOf = [](const ObjectDetectedEvent& event)
@@ -549,10 +549,10 @@ TEST_CASE("each eligible person gets its own event with its own verdict")
   REQUIRE(intruderPrimary != nullptr);
   CHECK(residentPrimary->identity == "known");
   CHECK(residentPrimary->personId == 7);
-  CHECK(residentPrimary->zoneKind.empty());
+  CHECK_FALSE(residentPrimary->zoneKind.has_value());
   CHECK(intruderPrimary->identity == "unknown");
   CHECK(intruderPrimary->personId == 0);
-  CHECK(intruderPrimary->zoneKind == "alert");
+  CHECK(intruderPrimary->zoneKind == ZoneType::Alert);
   CHECK(residentPrimary->dwellMs > 0);
   CHECK(intruderPrimary->dwellMs > 0);
 }
@@ -648,7 +648,7 @@ TEST_CASE("the aggregation window keeps the dominant severity")
   inputs.operator_.cooldownMs = 60000;
   OperatorZone zone;
   zone.cameraId = 1;
-  zone.kind = "alert";
+  zone.kind = ZoneType::Alert;
   zone.points = {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}};
   inputs.operator_.zones.push_back(zone);
 
@@ -665,7 +665,7 @@ TEST_CASE("the aggregation window keeps the dominant severity")
 
   REQUIRE(sink.events.size() == 1);
   CHECK(sink.events.front().rule == "person_in_alert_zone");
-  CHECK(sink.events.front().severity == "critical");
+  CHECK(sink.events.front().severity == EventSeverity::Critical);
 }
 
 TEST_CASE("a class in cooldown suppresses the whole next window")
@@ -809,7 +809,7 @@ TEST_CASE("StaticZoneSource returns only the camera zones")
   OperatorZone first;
   first.cameraId = 1;
   first.name = "door";
-  first.kind = "alert";
+  first.kind = ZoneType::Alert;
   first.points = {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}};
   OperatorZone second = first;
   second.cameraId = 2;
@@ -843,7 +843,7 @@ TEST_CASE("the operator evaluates zones from its zone source")
   OperatorZone zone;
   zone.cameraId = 1;
   zone.name = "door";
-  zone.kind = "alert";
+  zone.kind = ZoneType::Alert;
   zone.points = {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}};
   zones.all.push_back(zone);
 
@@ -864,7 +864,7 @@ TEST_CASE("the operator evaluates zones from its zone source")
 
   REQUIRE(sink.events.size() == 1);
   CHECK(sink.events.front().rule == "person_in_alert_zone");
-  CHECK(sink.events.front().severity == "critical");
+  CHECK(sink.events.front().severity == EventSeverity::Critical);
 }
 
 class UnrecognizedStubMatcher final : public IKnownPersonMatcher
@@ -889,7 +889,7 @@ TEST_CASE("identity tri-state and track history flow to the published event")
   OperatorZone zone;
   zone.cameraId = 1;
   zone.name = "yard";
-  zone.kind = "monitor";
+  zone.kind = ZoneType::Monitor;
   zone.points = {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}};
   zones.all.push_back(zone);
 
@@ -929,7 +929,7 @@ TEST_CASE("schemaVersion 3 serializes the observation contract additively")
   event.eventId = "1:2:3";
   event.cameraId = 1;
   event.rule = "person_day";
-  event.severity = "info";
+  event.severity = EventSeverity::Info;
   DetectedEventObject object;
   object.name = "person";
   object.confidence = 0.9F;
@@ -945,7 +945,7 @@ TEST_CASE("schemaVersion 3 serializes the observation contract additively")
   object.firstSeenMs = 100;
   object.lastSeenMs = 200;
   object.dwellMs = 100;
-  object.zoneKind = "monitor";
+  object.zoneKind = ZoneType::Monitor;
   object.zoneName = "Back door";
   object.observationId = "1:4:100";
   event.objects.push_back(object);
@@ -1141,11 +1141,11 @@ TEST_CASE("a privacy mask blanks its polygon and leaves the rest of the frame")
   const std::vector<OperatorZone> zones{
       {.cameraId = 6,
        .name = "Vereda",
-       .kind = "privacy",
+       .kind = ZoneType::Privacy,
        .points = {{0.0, 0.0}, {0.5, 0.0}, {0.5, 1.0}, {0.0, 1.0}}},
       {.cameraId = 6,
        .name = "Puerta",
-       .kind = "alert",
+       .kind = ZoneType::Alert,
        .points = {{0.6, 0.0}, {1.0, 0.0}, {1.0, 1.0}}}};
   REQUIRE(privacy_mask::covers(zones));
   REQUIRE(privacy_mask::apply(rgb, zones));
@@ -1155,7 +1155,7 @@ TEST_CASE("a privacy mask blanks its polygon and leaves the rest of the frame")
 
   const std::vector<OperatorZone> none{{.cameraId = 6,
                                         .name = "Patio",
-                                        .kind = "monitor",
+                                        .kind = ZoneType::Monitor,
                                         .points = {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}}}};
   CHECK_FALSE(privacy_mask::covers(none));
   cv::Mat untouched(10, 10, CV_8UC3, cv::Scalar(1, 2, 3));

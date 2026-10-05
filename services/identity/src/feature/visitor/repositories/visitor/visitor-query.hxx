@@ -99,11 +99,15 @@ inline constexpr std::string_view VISITS_FROM_SAMPLES_PREFIX =
     "SELECT ?, COALESCE(camera_id, 0), created_at, created_at FROM face_embedding "
     "WHERE id IN (";
 
+inline constexpr std::string_view NEXT_VISITOR_NUMBER =
+    "UPDATE visitor_counter SET last_number = MAX(last_number, "
+    "(SELECT COALESCE(MAX(visitor_number), 0) FROM person)) + 1 "
+    "WHERE id = 1 RETURNING last_number";
+
 inline constexpr std::string_view INSERT_VISITOR =
     "INSERT INTO person (user_id, name, alias, observation, status, category, "
     "visitor_number, visit_count, first_seen_at, last_seen_at) "
-    "VALUES (NULL, '', '', '', 'candidate', '', "
-    "(SELECT COALESCE(MAX(visitor_number), 0) + 1 FROM person), 0, "
+    "VALUES (NULL, '', '', '', 'candidate', '', ?, 0, "
     "strftime('%s', 'now'), strftime('%s', 'now'))";
 
 inline constexpr std::string_view DELETE_SAMPLES_PREFIX =

@@ -5,7 +5,9 @@
 #include <grpc/grpc-server-identity.hxx>
 #include <grpcpp/grpcpp.h>
 
+#include <atomic>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -49,9 +51,12 @@ public:
                                      const argus::voice::v1::AnnounceRequest* request,
                                      argus::voice::v1::AnnounceResponse* reply) override;
 
+  [[nodiscard]] bool idle() const { return live_->load() == 0; }
+
 private:
   VoiceSessionService& sessions_;
   std::vector<argus::client::CallerCredential> syncCallers_;
   std::vector<argus::client::CallerCredential> notificationCallers_;
   VoiceRoomJoiner* rooms_;
+  std::shared_ptr<std::atomic<int>> live_{std::make_shared<std::atomic<int>>(0)};
 };

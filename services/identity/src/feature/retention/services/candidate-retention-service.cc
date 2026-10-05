@@ -2,10 +2,9 @@
 
 #include <drogon/drogon.h>
 #include <shared/services/face/face-service.hxx>
+#include <shared/services/object-deletion/object-deletion-worker.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
-#include <sync/identity-change-sink.hxx>
-#include <sync/socket-emit-dto.hxx>
 #include <runtime/blocking-task.hxx>
 
 #include <chrono>
@@ -98,18 +97,8 @@ drogon::Task<size_t> CandidateRetentionService::retireBatch(int64_t cutoff)
       co_return 0;
     }
     purged = co_await repository_.purgeBiometrics(retired, transaction.get());
-    if (const auto* sink = identity_change::getSink()) {
-      for (const auto& candidate : retired) {
-        SocketEmitDto emit;
-        emit.operation = SyncOperation::Delete;
-        emit.option = TableName::Person;
-        emit.obj["id"] = static_cast<Json::Int64>(candidate.id);
-        emit.obj["deletedAt"] = static_cast<Json::Int64>(candidate.deletedAt);
-        co_await sink->emitModule({.table = TableName::Person,
-                                   .body = emit,
-                                   .client = transaction.get()});
-      }
-    }
+    co_await pendingRepository_.enqueue(
+        {.objectKeys = purged.cropKeys, .client = transaction.get()});
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw std::runtime_error("the retention batch did not commit");
   }
@@ -121,7 +110,7 @@ drogon::Task<size_t> CandidateRetentionService::retireBatch(int64_t cutoff)
   co_await BlockingTask<void>([ids = std::move(purged.embeddingIds)] {
     FaceService::instance().faceDb().removeEmbeddings(ids);
   });
-  for (const auto& key : purged.cropKeys)
-    co_await cropStore_.remove(key);
+  if (!purged.cropKeys.empty())
+    ObjectDeletionWorker::instance().kick();
   co_return retired.size();
 }

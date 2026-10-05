@@ -20,7 +20,8 @@ TapoEndpoint endpointOf(const TapoCredentials& credentials)
           .port = credentials.port,
           .tls = true,
           .connectTimeoutMs = credentials.connectTimeoutMs,
-          .ioTimeoutMs = credentials.requestTimeoutMs};
+          .ioTimeoutMs = credentials.requestTimeoutMs,
+          .pin = credentials.trust ? credentials.trust->pin() : std::string()};
 }
 
 std::vector<TapoHttpHeader> commonHeaders()
@@ -126,6 +127,7 @@ TapoResult SecurePassthroughTransport::postPlain(const Json::Value& payload,
   if (!response.ok)
     return TapoResult::failure(response.error.empty() ? "transport error"
                                                       : response.error);
+  fingerprint_ = response.fingerprint;
   out = json_util::fromString(response.body);
   if (out.isNull())
     return TapoResult::failure("malformed response body");
@@ -189,9 +191,8 @@ bool SecurePassthroughTransport::resolveHashAlgorithm(
     return true;
   }
 
-  LOG_WARN << "tapo: device_confirm mismatch (sha256=" << sha256Confirm
-           << " md5=" << md5Confirm << " cnonce=" << cnonce_
-           << " nonce=" << handshake.nonce << ")";
+  LOG_WARN << "tapo: device_confirm mismatch for " << credentials_.host
+           << " (wrong password or user)";
   return false;
 }
 
@@ -243,6 +244,8 @@ TapoResult SecurePassthroughTransport::login()
   seq_ = result.isMember("start_seq") ? result["start_seq"].asInt64() : 0;
   deriveKeys(nonce_);
   authenticated_ = true;
+  if (credentials_.trust)
+    credentials_.trust->learn(fingerprint_);
 
   LOG_INFO << "tapo: secure passthrough session established with "
            << credentials_.host
@@ -290,8 +293,8 @@ TapoResult SecurePassthroughTransport::sendEncrypted(const Json::Value& payload)
 
   const int code = errorCodeOf(outer);
   if (!outer["result"].isMember("response")) {
-    LOG_WARN << "tapo: response without payload, outer="
-             << json_util::toString(outer) << " seq=" << seq;
+    LOG_WARN << "tapo: response without payload from " << credentials_.host
+             << " (error_code " << code << ")";
     return TapoResult::failure("response without payload", code);
   }
 

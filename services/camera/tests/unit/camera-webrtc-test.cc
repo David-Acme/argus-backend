@@ -6,9 +6,11 @@
 #include <feature/webrtc/dtos/response-camera-webrtc-dto.hxx>
 #include <feature/webrtc/infra/go2rtc-webrtc-gateway.hxx>
 #include <feature/webrtc/services/camera-webrtc-service.hxx>
+#include <feature/webrtc/services/webrtc-admission.hxx>
 #include <feature/webrtc/services/webrtc-sdp.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 
+#include <chrono>
 #include <json/reader.h>
 #include <memory>
 #include <json/value.h>
@@ -264,4 +266,89 @@ TEST_CASE("go2rtc listens for WebRTC on the configured port with no public STUN"
   CHECK(Go2rtcManager::isSafeCandidate("[fd00::2]:8555"));
   CHECK_FALSE(Go2rtcManager::isSafeCandidate("10.0.0.1:x"));
   CHECK_FALSE(Go2rtcManager::isSafeCandidate("10.0.0.1\n  - x"));
+}
+
+TEST_CASE("an offer loses its candidates and an answer keeps only reachable LAN ones")
+{
+  const std::string offer = std::string(kBrowserOffer) +
+                            "a=candidate:1 1 udp 2130706431 10.0.0.9 9000 typ host\r\n"
+                            "a=end-of-candidates\r\n";
+  const std::string prepared = webrtc_sdp::prepareOffer({.sdp = offer, .audio = true}).value_or("");
+  REQUIRE_FALSE(prepared.empty());
+  CHECK(prepared.find("a=candidate") == std::string::npos);
+  CHECK(prepared.find("a=end-of-candidates") == std::string::npos);
+
+  const std::string answer =
+      "v=0\r\n"
+      "m=video 9 UDP/TLS/RTP/SAVPF 96\r\n"
+      "a=candidate:1 1 udp 2130706431 192.168.1.10 8555 typ host\r\n"
+      "a=candidate:2 1 udp 2130706431 127.0.0.1 8555 typ host\r\n"
+      "a=candidate:3 1 udp 2130706431 169.254.3.3 8555 typ host\r\n"
+      "a=candidate:4 1 udp 2130706431 fe80::1 8555 typ host\r\n"
+      "a=candidate:5 1 tcp 1671430143 10.8.0.2 8555 typ host tcptype passive\r\n"
+      "a=candidate:6 1 udp 2130706431 host.local 8555 typ host\r\n";
+  const std::string open = webrtc_sdp::screenCandidates({.sdp = answer, .allowedHosts = {}});
+  CHECK(open.find("192.168.1.10") != std::string::npos);
+  CHECK(open.find("10.8.0.2") != std::string::npos);
+  CHECK(open.find("127.0.0.1") == std::string::npos);
+  CHECK(open.find("169.254.3.3") == std::string::npos);
+  CHECK(open.find("fe80::1") == std::string::npos);
+  CHECK(open.find("host.local") == std::string::npos);
+  CHECK(open.find("m=video 9 UDP/TLS/RTP/SAVPF 96\r\n") != std::string::npos);
+
+  const std::vector<std::string> configured{"192.168.1.10"};
+  const std::string pinned = webrtc_sdp::screenCandidates({.sdp = answer, .allowedHosts = configured});
+  CHECK(pinned.find("192.168.1.10") != std::string::npos);
+  CHECK(pinned.find("10.8.0.2") == std::string::npos);
+
+  CHECK(Go2rtcManager::answerHostsOf({"192.168.1.10:8555", "[fd00::4]:8555", "10.0.0.2"}) ==
+        std::vector<std::string>{"192.168.1.10", "fd00::4", "10.0.0.2"});
+  CHECK(Go2rtcManager::answerHostsOf({"192.168.1.10:8555", "stun:8555"}).empty());
+}
+
+TEST_CASE("WebRTC seats are reserved atomically, capped per user, and the household keeps one")
+{
+  WebRtcAdmission admission;
+  const auto now = std::chrono::steady_clock::now();
+  const std::vector<Go2rtcWebRtcConsumer> none;
+  const WebRtcViewerLimits limits{.perCamera = 2, .total = 3, .perUser = 2};
+  const auto request = [&](int64_t user, bool priority) {
+    return WebRtcSeatRequest{.cameraId = 6,
+                             .userId = user,
+                             .priority = priority,
+                             .perCamera = 0,
+                             .total = 0,
+                             .consumers = none,
+                             .limits = limits,
+                             .snapshotAt = now};
+  };
+
+  const auto guest = admission.reserve(request(9, false));
+  CHECK(guest.refusal == WebRtcSeatRefusal::None);
+  CHECK(admission.reserve(request(9, false)).refusal == WebRtcSeatRefusal::Camera);
+  const auto owner = admission.reserve(request(1, true));
+  CHECK(owner.refusal == WebRtcSeatRefusal::None);
+  CHECK(admission.reserve(request(1, true)).refusal == WebRtcSeatRefusal::Camera);
+
+  admission.release({.ticket = guest.ticket, .at = now + std::chrono::seconds(1)});
+  CHECK(admission.reserve(request(1, true)).refusal == WebRtcSeatRefusal::Camera);
+  admission.release({.ticket = guest.ticket, .at = now - std::chrono::seconds(1)});
+  CHECK(admission.reserve(request(1, true)).refusal == WebRtcSeatRefusal::None);
+
+  WebRtcAdmission perUser;
+  const std::vector<Go2rtcWebRtcConsumer> watching{{.stream = "cam7", .userAgent = "tag-a"},
+                                                   {.stream = "cam8", .userAgent = "tag-b"}};
+  perUser.remember({.tag = "tag-a", .userId = 4, .at = now});
+  perUser.remember({.tag = "tag-b", .userId = 4, .at = now});
+  const WebRtcViewerLimits wide{.perCamera = 8, .total = 8, .perUser = 2};
+  CHECK(perUser.reserve({.cameraId = 6, .userId = 4, .priority = true, .perCamera = 0, .total = 2,
+                         .consumers = watching, .limits = wide, .snapshotAt = now})
+            .refusal == WebRtcSeatRefusal::User);
+  CHECK(perUser.reserve({.cameraId = 6, .userId = 5, .priority = false, .perCamera = 0, .total = 2,
+                         .consumers = watching, .limits = wide, .snapshotAt = now})
+            .refusal == WebRtcSeatRefusal::None);
+
+  CHECK(WebRtcAdmission::hasRoom({.used = 7, .limit = 8, .priority = true}));
+  CHECK_FALSE(WebRtcAdmission::hasRoom({.used = 7, .limit = 8, .priority = false}));
+  CHECK(WebRtcAdmission::hasRoom({.used = 0, .limit = 1, .priority = false}));
 }

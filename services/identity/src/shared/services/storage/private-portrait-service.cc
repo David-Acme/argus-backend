@@ -5,12 +5,15 @@
 #include <drogon/drogon.h>
 #include <optional>
 #include <stdexcept>
+#include <shared/repositories/pending-object-delete/pending-object-delete-repository.hxx>
 #include <shared/repositories/stored-file/stored-file-repository.hxx>
 #include <shared/repositories/user-portrait/user-portrait-repository.hxx>
 
 drogon::Task<void>
-PrivatePortraitService::store(int64_t userId, const std::string& image) const
+PrivatePortraitService::store(int64_t userId, const std::string& portraitJpeg) const
 {
+  if (portraitJpeg.empty())
+    co_return;
   S3StorageService storage;
   if (!storage.isConfigured()) {
     LOG_WARN << "Portrait storage is not configured; skipping portrait for user "
@@ -21,18 +24,28 @@ PrivatePortraitService::store(int64_t userId, const std::string& image) const
   std::optional<S3StoredObject> object;
   std::string failure;
   try {
-    object = co_await storage.putPortrait(userId, image);
+    object = co_await storage.putPortrait(userId, portraitJpeg);
     StoredFileRepository files;
+    UserPortraitRepository portraits;
+    const auto previous = co_await portraits.findByUserId(userId);
     const auto file = co_await files.create({
         .objectKey = object->objectKey,
         .sha256 = object->sha256,
-        .mimeType = "image/jpeg",
+        .mimeType = std::string(kPortraitMimeType),
         .byteSize = object->byteSize,
         .category = StoredFileCategory::Portrait,
         .createdBy = userId,
     });
-    UserPortraitRepository portraits;
     co_await portraits.upsertCurrent({.userId = userId, .fileId = file.id});
+    if (previous && previous->fileId != file.id) {
+      if (const auto old = co_await files.findById(previous->fileId)) {
+        co_await files.remove(old->id);
+        const PendingObjectEnqueueInput pending{.objectKeys = {old->objectKey},
+                                                .client = nullptr};
+        const PendingObjectDeleteRepository repository;
+        co_await repository.enqueue(pending);
+      }
+    }
     co_return;
   }
   catch (const std::exception& error) {

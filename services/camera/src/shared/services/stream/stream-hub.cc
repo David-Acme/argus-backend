@@ -1,9 +1,11 @@
 #include "stream-hub.hxx"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstring>
 #include <drogon/drogon.h>
+#include <runtime/blocking-pool.hxx>
 #include <config/config-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/upstream-http.hxx>
@@ -18,6 +20,7 @@ constexpr size_t kDefaultChunkBytes = 16 * 1024;
 constexpr int64_t kDefaultGraceMs = 2000;
 constexpr int64_t kStallMs = 10000;
 constexpr int64_t kFreshGopMs = 3000;
+constexpr size_t kReadBytes = 64 * 1024;
 
 int64_t steadyNowMs()
 {
@@ -46,8 +49,8 @@ void StreamHub::sendFramed(const SendFramedInput& input)
   h.keyframe = input.keyframe;
   h.subId = sub->subId;
   h.seq = ++sub->seq;
-  const std::string blob =
-      ws_frame::frame({.header = h, .payload = input.data, .len = input.len});
+  thread_local std::string blob;
+  ws_frame::frameInto(blob, {.header = h, .payload = input.data, .len = input.len});
   if (!sub->sink->sendBinary(reinterpret_cast<const uint8_t*>(blob.data()),
                              blob.size())) {
     sub->sink = nullptr;
@@ -135,7 +138,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
 
   upstream_http::Upstream conn =
       upstream_http::open({.host = host, .port = port, .path = path,
-                           .timeoutSec = 10});
+                           .timeoutSec = 10, .cancel = &up->stopping});
   if (!conn.ok) {
     LOG_WARN << "StreamHub: upstream failed for " << up->name;
     std::scoped_lock lock(up->mtx);
@@ -172,12 +175,17 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
   int64_t emptySinceMs = 0;
   int64_t lastDataMs = steadyNowMs();
   std::string closeReason = "upstream_closed";
-  char buf[65536];
+  std::vector<char> buf(kReadBytes);
   while (!up->stopping.load(std::memory_order_relaxed)) {
-    const ssize_t n = ::recv(conn.fd, buf, sizeof(buf), 0);
+    const ssize_t n = ::recv(conn.fd, buf.data(), buf.size(), 0);
     if (n > 0) {
-      reader.feed(buf, static_cast<size_t>(n));
+      reader.feed(buf.data(), static_cast<size_t>(n));
       lastDataMs = steadyNowMs();
+      if (reader.corrupt()) {
+        LOG_WARN << "StreamHub: " << up->name << " sent a malformed MP4 box; reconnecting";
+        closeReason = "upstream_corrupt";
+        break;
+      }
       continue;
     }
     if (n == 0)
@@ -265,15 +273,49 @@ StreamHub::ViewerLimits StreamHub::viewerLimits()
 
 void StreamHub::shutdown()
 {
-  std::scoped_lock lock(hubMutex_);
-  for (auto& [name, up] : upstreams_)
-    up->stopping.store(true, std::memory_order_relaxed);
-  for (auto& [name, up] : upstreams_) {
-    if (up->reader.joinable())
-      up->reader.join();
+  std::vector<std::thread> readers;
+  {
+    std::scoped_lock lock(hubMutex_);
+    for (auto& [name, up] : upstreams_) {
+      up->stopping.store(true, std::memory_order_relaxed);
+      if (up->reader.joinable())
+        readers.push_back(std::move(up->reader));
+    }
+    upstreams_.clear();
+    subToUpstream_.clear();
+    for (auto& up : retired_) {
+      if (up->reader.joinable())
+        readers.push_back(std::move(up->reader));
+    }
+    retired_.clear();
   }
-  upstreams_.clear();
-  subToUpstream_.clear();
+  for (auto& reader : readers)
+    reader.join();
+}
+
+std::vector<std::thread> StreamHub::collectFinishedLocked()
+{
+  std::vector<std::thread> finished;
+  std::erase_if(retired_, [&finished](const std::shared_ptr<Upstream>& up) {
+    if (!up->dead.load(std::memory_order_acquire))
+      return false;
+    if (up->reader.joinable())
+      finished.push_back(std::move(up->reader));
+    return true;
+  });
+  return finished;
+}
+
+void StreamHub::reap(std::vector<std::thread> readers)
+{
+  if (readers.empty())
+    return;
+  auto shared = std::make_shared<std::vector<std::thread>>(std::move(readers));
+  blocking_pool::submit(BlockingLane::Light, [shared]() {
+    for (auto& reader : *shared)
+      if (reader.joinable())
+        reader.join();
+  });
 }
 
 void StreamHub::restartUpstreams()
@@ -298,17 +340,17 @@ StreamHub::getOrOpen(const SubscribeInput& input, std::string& error)
     if (!it->second->dead.load(std::memory_order_acquire) &&
         !it->second->stopping.load(std::memory_order_acquire))
       return it->second;
-    if (it->second->reader.joinable())
-      it->second->reader.join();
+    it->second->stopping.store(true, std::memory_order_release);
+    retired_.push_back(it->second);
     upstreams_.erase(it);
   }
 
-  auto up = std::make_shared<Upstream>(gopCacheBytes_);
-  up->name = name;
-  up->cameraId = input.cameraId;
-  up->reader = std::thread(&StreamHub::runUpstream, this, up);
-  upstreams_.emplace(name, up);
-  return up;
+  auto opened = std::make_shared<Upstream>(gopCacheBytes_);
+  opened->name = name;
+  opened->cameraId = input.cameraId;
+  opened->reader = std::thread(&StreamHub::runUpstream, this, opened);
+  upstreams_.emplace(name, opened);
+  return opened;
 }
 
 void StreamHub::pruneLocked()
@@ -320,27 +362,38 @@ void StreamHub::pruneLocked()
       return sub->subId == subId;
     });
   });
-  std::erase_if(upstreams_, [](auto& entry) {
-    auto& up = entry.second;
-    if (!up->dead.load(std::memory_order_acquire))
+  std::erase_if(upstreams_, [this](auto& entry) {
+    if (!entry.second->dead.load(std::memory_order_acquire))
       return false;
-    if (up->reader.joinable())
-      up->reader.join();
+    retired_.push_back(entry.second);
     return true;
   });
 }
 
-void StreamHub::countViewers(int64_t cameraId, int& perCamera, int& total)
+StreamHub::ViewerCount StreamHub::countViewers(int64_t cameraId)
 {
-  perCamera = 0;
-  total = 0;
+  ViewerCount count;
   for (const auto& [name, up] : upstreams_) {
     std::scoped_lock upLock(up->mtx);
-    const int count = static_cast<int>(up->subs.size());
-    total += count;
+    const int viewers = static_cast<int>(up->subs.size());
+    count.total += viewers;
     if (up->cameraId == cameraId)
-      perCamera += count;
+      count.perCamera += viewers;
   }
+  return count;
+}
+
+const char* StreamHub::viewerRefusal(const SubscribeInput& input)
+{
+  const auto ceiling = [&input](int limit) {
+    return input.priority || limit <= 1 ? limit : limit - 1;
+  };
+  const ViewerCount count = countViewers(input.cameraId);
+  if (maxTotalViewers_ > 0 && count.total >= ceiling(maxTotalViewers_))
+    return "too_many_viewers";
+  if (maxViewersPerCamera_ > 0 && count.perCamera >= ceiling(maxViewersPerCamera_))
+    return "too_many_viewers_for_camera";
+  return nullptr;
 }
 
 uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
@@ -350,21 +403,18 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
     return 0;
   }
 
+  std::vector<std::thread> finished;
   {
     std::scoped_lock hubLock(hubMutex_);
     pruneLocked();
-    int perCamera = 0;
-    int total = 0;
-    countViewers(input.cameraId, perCamera, total);
-    if (maxTotalViewers_ > 0 && total >= maxTotalViewers_) {
-      error = "too_many_viewers";
-      return 0;
-    }
-    if (maxViewersPerCamera_ > 0 && perCamera >= maxViewersPerCamera_) {
-      error = "too_many_viewers_for_camera";
+    finished = collectFinishedLocked();
+    if (const char* refusal = viewerRefusal(input)) {
+      error = refusal;
+      reap(std::move(finished));
       return 0;
     }
   }
+  reap(std::move(finished));
 
   auto up = getOrOpen(input, error);
   if (!up)
@@ -373,15 +423,8 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
   auto sub = std::make_shared<Subscriber>();
   {
     std::scoped_lock hubLock(hubMutex_);
-    int perCamera = 0;
-    int total = 0;
-    countViewers(input.cameraId, perCamera, total);
-    if (maxTotalViewers_ > 0 && total >= maxTotalViewers_) {
-      error = "too_many_viewers";
-      return 0;
-    }
-    if (maxViewersPerCamera_ > 0 && perCamera >= maxViewersPerCamera_) {
-      error = "too_many_viewers_for_camera";
+    if (const char* refusal = viewerRefusal(input)) {
+      error = refusal;
       return 0;
     }
     uint16_t subId = 0;
@@ -410,31 +453,29 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
   return sub->subId;
 }
 
-void StreamHub::ack(uint16_t subId, int64_t bytes)
+int64_t StreamHub::ack(const AckInput& input)
 {
-  if (bytes <= 0)
-    return;
+  if (input.bytes <= 0 || input.owner == nullptr)
+    return 0;
   std::shared_ptr<Upstream> up;
   {
     std::scoped_lock hubLock(hubMutex_);
-    const auto it = subToUpstream_.find(subId);
+    const auto it = subToUpstream_.find(input.subId);
     if (it == subToUpstream_.end())
-      return;
+      return 0;
     up = it->second;
   }
 
   std::shared_ptr<ISink> sink;
   {
     std::scoped_lock upLock(up->mtx);
-    for (auto& sub : up->subs) {
-      if (sub->subId == subId) {
-        sink = sub->sink;
-        break;
-      }
-    }
+    const auto sub = std::ranges::find(up->subs, input.subId, &Subscriber::subId);
+    if (sub != up->subs.end())
+      sink = (*sub)->sink;
   }
-  if (sink)
-    sink->release(bytes);
+  if (!sink || sink.get() != input.owner)
+    return 0;
+  return sink->release(input.bytes);
 }
 
 void StreamHub::unsubscribe(uint16_t subId, const ISink* owner)

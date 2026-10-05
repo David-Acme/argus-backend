@@ -232,7 +232,8 @@ TapoEndpoint TapoTalkClient::endpoint() const
           .port = config_.port,
           .tls = false,
           .connectTimeoutMs = config_.connectTimeoutMs,
-          .ioTimeoutMs = config_.ioTimeoutMs};
+          .ioTimeoutMs = config_.ioTimeoutMs,
+          .pin = {}};
 }
 
 bool TapoTalkClient::openConnection()

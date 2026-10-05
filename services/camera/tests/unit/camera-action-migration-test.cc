@@ -148,6 +148,18 @@ TEST_CASE("legacy action_command rows migrate fail-closed")
                                           .leaseSeconds = 120}));
   CHECK(changedFingerprint.kind == ActionClaimKind::Conflict);
 
+  const ActionClaim running =
+      drogon::sync_wait(repository.claim({.commandId = "fresh:2",
+                                          .kind = "greet_listen",
+                                          .cameraId = 1,
+                                          .fingerprint = "fp-c",
+                                          .at = 1006,
+                                          .leaseSeconds = 120}));
+  CHECK(running.kind == ActionClaimKind::New);
+  CHECK(drogon::sync_wait(repository.purgeSettled(2000)) == 1);
+  CHECK(scalar("SELECT COUNT(*) FROM action_command WHERE command_id = 'fresh:1'") == "0");
+  CHECK(scalar("SELECT COUNT(*) FROM action_command WHERE command_id = 'fresh:2'") == "1");
+
   std::remove(kMigrationDb);
   std::remove((std::string(kMigrationDb) + "-wal").c_str());
   std::remove((std::string(kMigrationDb) + "-shm").c_str());

@@ -5,6 +5,7 @@ argus_module(NAME camera-webrtc
         dtos/response-camera-webrtc-dto.cc
         infra/go2rtc-webrtc-gateway.cc
         services/camera-webrtc-service.cc
+        services/webrtc-admission.cc
         services/webrtc-sdp.cc
         services/webrtc-session-closer.cc
     INCLUDES
@@ -16,6 +17,7 @@ argus_module(NAME camera-webrtc
         argus::contracts::auth
         argus::contracts::camera
         argus::lib::auth
+        argus::lib::config
         argus::lib::errors
         argus::lib::http
         argus::lib::runtime

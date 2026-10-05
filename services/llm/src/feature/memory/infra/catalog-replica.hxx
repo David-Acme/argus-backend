@@ -1,9 +1,12 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <json/value.h>
+#include <memory>
 #include <nats/nats-bus.hxx>
 #include <optional>
+#include <runtime/blocking-pool.hxx>
 #include <feature/memory/services/memory/sqlite-graph.hxx>
 #include <string>
 #include <vector>
@@ -73,6 +76,10 @@ public:
   void subscribe();
   void stop();
 
+  void requestStop();
+
+  [[nodiscard]] bool drained() const;
+
   void seedFromSnapshot(const Snapshot& snapshot);
 
   struct SnapshotSources
@@ -93,6 +100,12 @@ private:
     std::optional<uint64_t> subscription;
   };
 
+  struct Inflight
+  {
+    std::atomic<bool> alive{true};
+    std::atomic<int> active{0};
+  };
+
   struct ApplyInput
   {
     std::string subject;
@@ -110,4 +123,6 @@ private:
   EntityResolver& resolver_;
   std::vector<Attachment> attachments_;
   std::optional<uint64_t> retryTimer_;
+  std::shared_ptr<Inflight> inflight_{std::make_shared<Inflight>()};
+  BlockingStrand strand_{BlockingLane::Light};
 };

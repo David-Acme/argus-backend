@@ -40,6 +40,7 @@ struct TapoClientConfig
   int connectTimeoutMs{3000};
   int requestTimeoutMs{5000};
   int loginAttempts{2};
+  std::shared_ptr<TapoTrust> trust;
 };
 
 class TapoClient

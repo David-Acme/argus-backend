@@ -38,6 +38,8 @@
 namespace
 {
 
+constexpr int kExtractBusyWaitMs = 2000;
+
 std::string memoryDbFile()
 {
   std::string file = ConfigService::getString("memory.db_file");
@@ -203,19 +205,18 @@ void MemoryService::waitForIdle(int waitMs)
     return;
   const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(waitMs);
-  while (!stop_ && chat_.busy() && std::chrono::steady_clock::now() < deadline)
+  while (!stop_.load() && chat_.busy() && std::chrono::steady_clock::now() < deadline)
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
 
 void MemoryService::processExtract(const MemoryJob& job)
 {
-  if (job.preferIdle) {
-    const int waitMs = ConfigService::getInt("memory.extract_wait_ms");
-    waitForIdle(waitMs > 0 ? waitMs : 15000);
-    if (chat_.busy()) {
+  const int waitMs = ConfigService::getInt("memory.extract_wait_ms");
+  waitForIdle(job.preferIdle ? (waitMs > 0 ? waitMs : 15000) : kExtractBusyWaitMs);
+  if (chat_.busy()) {
+    if (!stop_.load())
       enqueueJob(job);
-      return;
-    }
+    return;
   }
   const auto formed = formation_.observe({.channel = "user_turn",
                                           .text = job.text,
@@ -254,7 +255,8 @@ void MemoryService::processCompact(const MemoryJob& job)
     const int waitMs = ConfigService::getInt("memory.compact_wait_ms");
     waitForIdle(waitMs > 0 ? waitMs : 15000);
     if (chat_.busy()) {
-      enqueueJob(job);
+      if (!stop_.load())
+        enqueueJob(job);
       return;
     }
   }
@@ -331,9 +333,11 @@ void MemoryService::workerLoop()
     MemoryJob job;
     {
       std::unique_lock<std::mutex> lock(queueMutex_);
-      queueCv_.wait(lock, [this] { return stop_ || !queue_.empty(); });
-      if (stop_ && queue_.empty())
+      queueCv_.wait(lock, [this] { return stop_.load() || !queue_.empty(); });
+      if (stop_.load() && queue_.empty()) {
+        workerDone_.store(true);
         return;
+      }
       working_.store(true);
       job = std::move(queue_.front());
       queue_.pop_front();
@@ -355,19 +359,30 @@ void MemoryService::startWorker()
     return;
   stop_ = false;
   running_ = true;
+  workerDone_.store(false);
   worker_ = std::thread(&MemoryService::workerLoop, this);
 }
 
-void MemoryService::stopWorker()
+void MemoryService::requestStop()
 {
   {
     std::lock_guard<std::mutex> lock(queueMutex_);
     stop_ = true;
     std::erase_if(queue_, [](const MemoryJob& job) {
-      return job.kind == MemoryJob::Kind::Compact;
+      return job.kind == MemoryJob::Kind::Compact || job.kind == MemoryJob::Kind::Profile;
     });
   }
   queueCv_.notify_all();
+}
+
+bool MemoryService::drained() const
+{
+  return workerDone_.load();
+}
+
+void MemoryService::stopWorker()
+{
+  requestStop();
   if (worker_.joinable())
     worker_.join();
   running_ = false;
@@ -781,7 +796,8 @@ void MemoryService::processProfile(const MemoryJob& job)
   const int waitMs = ConfigService::getInt("memory.compact_wait_ms");
   waitForIdle(waitMs > 0 ? waitMs : 15000);
   if (chat_.busy()) {
-    enqueueJob(job);
+    if (!stop_.load())
+      enqueueJob(job);
     return;
   }
   if (!chat_.available())
@@ -857,19 +873,19 @@ void MemoryService::embedAndStore(int64_t factId, bool episode)
     return;
 
   const std::string partition = memory_vec::partitionFor(scope, refId);
+  const int64_t key =
+      episode ? memory_vec::episodeKey(factId) : memory_vec::factKey(factId);
 
-  std::scoped_lock lock(vecDb_.mutex());
-  sqlite3* db = vecDb_.handle();
-  if (!db)
-    return;
-
-  const std::string enc = memory_vec::encode(*primary);
   if (!episode) {
     const double dedupCfg = ConfigService::getDouble("memory.vector_dedup_sim");
     const float dedupFloor =
         dedupCfg > 0.0 ? static_cast<float>(dedupCfg) : 0.93F;
+    std::scoped_lock lock(vecDb_.mutex());
+    sqlite3* db = vecDb_.handle();
+    if (!db)
+      return;
     const float dupSim = graphRepo_.vecDedupSim(
-        db, {.encoded = enc, .partition = partition, .factId = factId});
+        db, {.encoded = memory_vec::encode(*primary), .partition = partition, .factId = key});
     if (dupSim >= dedupFloor) {
       graphRepo_.bumpFactImportance(db,
                                     {.factId = factId, .at = std::time(nullptr)});
@@ -881,44 +897,42 @@ void MemoryService::embedAndStore(int64_t factId, bool episode)
     LOG_DEBUG << "MemoryService: fact " << factId
               << " nearest neighbour sim=" << dupSim;
   }
-  graphRepo_.deleteVecRows(db, factId);
 
+  struct ViewVector
+  {
+    int view{0};
+    std::vector<float> vec;
+  };
+  std::vector<ViewVector> views;
+  views.reserve(chunks.size() + 1);
   int view = 0;
   for (const auto& chunk : chunks) {
-    if (chunk == content) {
-      graphRepo_.insertVecRow(db,
-                              {.partition = partition,
-                               .factId = factId,
-                               .view = view,
-                               .vec = *primary});
-      ++view;
-      continue;
+    if (chunk == content || view == 0) {
+      views.push_back({.view = view, .vec = *primary});
     }
-    const auto vec = embedding_.embed(chunk, "passage:");
-    if (vec)
-      graphRepo_.insertVecRow(db,
-                              {.partition = partition,
-                               .factId = factId,
-                               .view = view,
-                               .vec = *vec});
+    else if (auto vec = embedding_.embed(chunk, "passage:")) {
+      views.push_back({.view = view, .vec = std::move(*vec)});
+    }
     ++view;
   }
-  if (view == 0)
+  if (hasExpanded) {
+    if (auto vec = embedding_.embed(expanded, "passage:"))
+      views.push_back({.view = 100, .vec = std::move(*vec)});
+  }
+
+  std::scoped_lock lock(vecDb_.mutex());
+  sqlite3* db = vecDb_.handle();
+  if (!db)
+    return;
+  if (!episode && !graphRepo_.factExists(db, factId))
+    return;
+  graphRepo_.deleteVecRows(db, key);
+  for (const auto& row : views)
     graphRepo_.insertVecRow(db,
                             {.partition = partition,
-                             .factId = factId,
-                             .view = 0,
-                             .vec = *primary});
-
-  if (hasExpanded) {
-    const auto vec = embedding_.embed(expanded, "passage:");
-    if (vec)
-      graphRepo_.insertVecRow(db,
-                              {.partition = partition,
-                               .factId = factId,
-                               .view = 100,
-                               .vec = *vec});
-  }
+                             .factId = key,
+                             .view = row.view,
+                             .vec = row.vec});
 }
 
 void MemoryService::rebuildAll()
@@ -952,10 +966,6 @@ std::vector<tools::ToolDescriptor> MemoryService::toolDescriptors()
       descriptor.handler = [this](const tools::ToolCall& call) {
         return handleRecall(call);
       };
-    else if (descriptor.name == "procedure.run")
-      descriptor.handler = [this](const tools::ToolCall& call) {
-        return handleProcedureRun(call);
-      };
     else if (descriptor.name == "memory.forget")
       descriptor.handler = [this](const tools::ToolCall& call) {
         return handleForget(call);
@@ -980,12 +990,6 @@ int64_t MemoryService::observeSystemEvent(const SystemEventInput& input)
                                 .salience = 0.5F,
                                 .sourceId = std::nullopt,
                                 .mentionEntityIds = input.entitiesHint});
-}
-
-int64_t MemoryService::recordProcedure(const ProcedureRecordInput& input)
-{
-  std::scoped_lock lock(graph_->mutex());
-  return graph_->recordProcedure(input);
 }
 
 namespace
@@ -1069,30 +1073,6 @@ int recallLimit()
   return topK > 0 ? topK : 4;
 }
 
-}
-
-tools::ToolResult MemoryService::handleProcedureRun(const tools::ToolCall& call)
-{
-  tools::ToolResult result;
-  if (!hasUserScope(call.context.userId)) {
-    result.output = scopeRefusal(call);
-    return result;
-  }
-  const std::string goal = call.arguments.get("goal", "").asString();
-  std::optional<std::string> steps;
-  {
-    std::scoped_lock lock(graph_->mutex());
-    steps = graph_->findProcedure(goal);
-  }
-  if (!steps || steps->empty()) {
-    result.output = (english(call) ? "There is no known procedure for: "
-                                   : "No hay un procedimiento conocido para: ") +
-                    goal;
-    return result;
-  }
-  result.ok = true;
-  result.output = *steps;
-  return result;
 }
 
 tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
@@ -1293,7 +1273,16 @@ tools::ToolResult MemoryService::handleForget(const tools::ToolCall& call)
     result.output = scopeRefusal(call);
     return result;
   }
-  const std::string query = call.arguments.get("query", "").asString();
+  const std::string& utterance = call.context.utterance;
+  const RuleParseInput heard{.text = utterance, .lang = call.context.lang};
+  if (utterance.empty() || !ruleParser_.isCancellation(heard) || ruleParser_.parse(heard)) {
+    result.output = english(call) ? "Tell me in your own words what I should forget."
+                                  : "Dime con tus palabras qué quieres que olvide.";
+    return result;
+  }
+  std::string query = call.arguments.get("query", "").asString();
+  if (query.empty() || !groundedIn({.candidate = query, .utterance = utterance}))
+    query = utterance;
   const auto recalled = graphRecall_.recall({.text = query,
                                              .lang = call.context.lang,
                                              .scope = "user",
@@ -1312,15 +1301,20 @@ tools::ToolResult MemoryService::handleForget(const tools::ToolCall& call)
       target = hit;
     }
   }
-  const bool closed = target != recalled.hits.end() && [&] {
-    std::scoped_lock lock(graph_->mutex());
-    return graph_->closeFact({.factId = target->factId,
-                              .refId = call.context.userId,
-                              .at = std::time(nullptr)});
-  }();
-  if (!closed) {
+  std::vector<int64_t> forgotten;
+  if (target != recalled.hits.end()) {
+    std::scoped_lock lock(vecDb_.mutex());
+    forgotten = graphRepo_.forgetFact(
+        vecDb_.handle(), {.factId = target->factId, .refId = call.context.userId});
+  }
+  if (forgotten.empty()) {
     result.output = english(call) ? "I found no such memory." : "No encontré ese recuerdo.";
     return result;
+  }
+  {
+    std::lock_guard<std::mutex> lock(profileMutex_);
+    if (profileCache_.userId == call.context.userId)
+      profileCache_ = {};
   }
   result.ok = true;
   result.data["fact_id"] = static_cast<int64_t>(target->factId);

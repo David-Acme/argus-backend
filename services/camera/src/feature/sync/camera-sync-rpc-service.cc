@@ -4,7 +4,19 @@
 #include <grpc/grpc-server-identity.hxx>
 #include <sync/sync-filter.hxx>
 #include <trantor/utils/Logger.h>
+#include <type_traits>
 #include <utility>
+
+void camera_sync_projection::apply(Json::Value& row, UserRole role)
+{
+  if (role == UserRole::Owner || role == UserRole::Resident)
+    return;
+  row["ip"] = "";
+  row["port"] = 0;
+  row["username"] = "";
+  row["cloudUsername"] = "";
+  row["config"] = "{}";
+}
 
 namespace
 {
@@ -19,6 +31,15 @@ SyncFilter filterOf(const argus::camera::v1::SyncRange& range)
   if (range.has_end_time())
     filter.endTime = range.end_time();
   return filter;
+}
+
+std::string callerRole(const grpc::CallbackServerContext* context)
+{
+  for (const auto& [key, value] : context->client_metadata()) {
+    if (key == "x-argus-role")
+      return std::string(value.data(), value.size());
+  }
+  return {};
 }
 
 void toProto(const Json::Value& row, argus::camera::v1::CameraRow* out)
@@ -87,7 +108,15 @@ struct FillInput
   const argus::camera::v1::TablePull& body;
   TableRows* rows;
   const Repo& repo;
+  UserRole role{UserRole::Guest};
 };
+
+template <typename Row>
+void project(Json::Value& row, UserRole role)
+{
+  if constexpr (std::is_same_v<Row, argus::camera::v1::CameraRow>)
+    camera_sync_projection::apply(row, role);
+}
 
 template <typename TableRows, typename Repo>
 drogon::Task<void>
@@ -96,10 +125,13 @@ fill(const FillInput<TableRows, Repo>& input)
   const argus::camera::v1::TablePull& body = input.body;
   TableRows* rows = input.rows;
   const Repo& repo = input.repo;
+  using Row = std::remove_pointer_t<decltype(rows->add_created())>;
   if (body.required_create()) {
-    const auto data = co_await repo.find(filterOf(body.created()));
-    for (const auto& row : data)
+    auto data = co_await repo.find(filterOf(body.created()));
+    for (auto& row : data) {
+      project<Row>(row, input.role);
       toProto(row, rows->add_created());
+    }
   }
   if (body.required_deleted()) {
     const auto data = co_await repo.findDeleted(filterOf(body.deleted()));
@@ -110,9 +142,11 @@ fill(const FillInput<TableRows, Repo>& input)
     }
   }
   if (body.find_last_created()) {
-    const auto row = co_await repo.findLast({});
-    if (row)
+    auto row = co_await repo.findLast({});
+    if (row) {
+      project<Row>(*row, input.role);
       toProto(*row, rows->mutable_last_created());
+    }
   }
   if (body.find_last_deleted()) {
     const auto row = co_await repo.findLastDeleted({});
@@ -159,27 +193,31 @@ grpc::ServerUnaryReactor* CameraSyncRpcService::PullTable(
   }
 
   const argus::camera::v1::PullTableRequest pull = *request;
+  const UserRole role = userRoleFromString(callerRole(context));
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;
-  drogon::app().getLoop()->queueInLoop([this, reactor, pull, responseWriter]() {
-    drogon::async_run([this, reactor, pull,
+  drogon::app().getLoop()->queueInLoop([this, reactor, pull, responseWriter, role]() {
+    drogon::async_run([this, reactor, pull, role,
                        responseWriter]() -> drogon::Task<void> {
       try {
         switch (pull.table_case()) {
           case argus::camera::v1::PullTableRequest::kCamera:
             co_await fill(FillInput{.body = pull.camera(),
                                     .rows = responseWriter->mutable_camera(),
-                                    .repo = cameras_});
+                                    .repo = cameras_,
+                                    .role = role});
             break;
           case argus::camera::v1::PullTableRequest::kCameraStream:
             co_await fill(FillInput{.body = pull.camera_stream(),
                                     .rows = responseWriter->mutable_camera_stream(),
-                                    .repo = streams_});
+                                    .repo = streams_,
+                                    .role = role});
             break;
           case argus::camera::v1::PullTableRequest::kZone:
             co_await fill(FillInput{.body = pull.zone(),
                                     .rows = responseWriter->mutable_zone(),
-                                    .repo = zones_});
+                                    .repo = zones_,
+                                    .role = role});
             break;
           default:
             co_return;

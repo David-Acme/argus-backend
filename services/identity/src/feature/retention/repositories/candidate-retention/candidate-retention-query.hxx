@@ -12,7 +12,7 @@ namespace candidate_retention_query
 inline constexpr std::string_view RETIRE_STALE =
     "UPDATE person SET deleted_at = strftime('%s', 'now'), "
     "updated_at = strftime('%s', 'now') WHERE id IN ("
-    "SELECT id FROM person WHERE status = 'candidate' AND user_id IS NULL "
+    "SELECT id FROM person WHERE user_id IS NULL "
     "AND name = '' AND deleted_at IS NULL AND last_seen_at < ? "
     "ORDER BY last_seen_at ASC LIMIT ?) "
     "RETURNING id, deleted_at";

@@ -24,6 +24,7 @@ struct CreateCameraDto
   std::optional<std::string> streamPath;
   std::optional<std::string> subStreamPath;
   std::optional<std::string> catalogId;
+  std::optional<bool> retentionIncident;
 
   static CreateCameraDto fromJson(const Json::Value& json);
 };

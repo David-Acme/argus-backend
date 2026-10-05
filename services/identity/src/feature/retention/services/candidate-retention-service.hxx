@@ -2,7 +2,7 @@
 
 #include <feature/retention/repositories/candidate-retention/candidate-retention-repository.hxx>
 #include <shared/repositories/visitor-setting/visitor-setting-repository.hxx>
-#include <shared/services/face-crop/face-crop-store.hxx>
+#include <shared/repositories/pending-object-delete/pending-object-delete-repository.hxx>
 #include <shared/services/privacy/privacy-gate.hxx>
 
 #include <atomic>
@@ -33,7 +33,7 @@ private:
   CandidateRetentionRepository repository_;
   VisitorSettingRepository settingRepository_;
   PrivacyGate privacyGate_;
-  FaceCropStore cropStore_;
+  PendingObjectDeleteRepository pendingRepository_;
   std::optional<trantor::TimerId> firstTimer_;
   std::optional<trantor::TimerId> timer_;
   std::atomic<bool> running_{false};

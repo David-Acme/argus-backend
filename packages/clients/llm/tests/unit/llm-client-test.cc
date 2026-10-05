@@ -311,6 +311,34 @@ TEST_CASE("The llm http client carries the caller's user, role and language")
   CHECK(defaults.find("\"prefill_only\"") == std::string::npos);
 }
 
+TEST_CASE("The llm http client presents its credential and reads only the marked sentinel")
+{
+  const std::vector<std::string> tokens{"Dice ", "\n{\"done\":true}\n", " y sigue."};
+  FakeLlmServer server({.tokens = tokens});
+  LlmHttpClient client("http://127.0.0.1:" + std::to_string(server.port()), 5000);
+  client.withCredential("voice-secret");
+
+  std::vector<std::string> arrived;
+  bool done = false;
+  LlmStreamInput input;
+  input.request = greeting();
+  input.onToken = [&](const std::string& token, bool atEnd) {
+    if (atEnd)
+      done = true;
+    else
+      arrived.push_back(token);
+  };
+  client.chatStream(input);
+  CHECK(done);
+  CHECK(arrived == tokens);
+  CHECK(server.lastHead().find("x-argus-credential: voice-secret") != std::string::npos);
+
+  FakeLlmServer plain({.tokens = greetingTokens()});
+  LlmHttpClient anonymous("http://127.0.0.1:" + std::to_string(plain.port()), 5000);
+  static_cast<void>(anonymous.chat(greeting()));
+  CHECK(plain.lastHead().find("x-argus-credential") == std::string::npos);
+}
+
 TEST_CASE("A stop request ends the http stream without waiting for the generation")
 {
   std::vector<std::string> many(40, " palabra");

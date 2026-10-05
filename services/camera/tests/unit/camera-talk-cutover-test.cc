@@ -120,6 +120,8 @@ void seedCameraDb()
       "config TEXT NOT NULL DEFAULT '{}', "
       "is_enabled INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)), "
       "is_online INTEGER NOT NULL DEFAULT 0, "
+      "tls_fingerprint TEXT NOT NULL DEFAULT '', "
+      "tapo_secure INTEGER NOT NULL DEFAULT 0, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
   exec(db.get(), "INSERT INTO camera (id, name, ip, driver) "

@@ -9,16 +9,17 @@
 #include <feature/llm/services/lfm-adapter.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
+#include <runtime/blocking-pool.hxx>
 #include <runtime/blocking-task.hxx>
 
 #include <drogon/drogon.h>
 
+#include <algorithm>
 #include <chrono>
 #include <exception>
 #include <memory>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -112,6 +113,10 @@ struct ClientGone
 
 struct ChatStreamJob
 {
+  explicit ChatStreamJob(StreamSlots& slots) : lease(slots), slots(&slots) {}
+
+  StreamLease lease;
+  StreamSlots* slots{nullptr};
   LlmController* owner{nullptr};
   ChatRequest request;
   std::unique_ptr<drogon::ResponseStream> stream;
@@ -119,6 +124,28 @@ struct ChatStreamJob
   size_t tokenCount{0};
   size_t charCount{0};
 };
+
+bool sameSecret(std::string_view presented, std::string_view expected)
+{
+  if (presented.size() != expected.size())
+    return false;
+  unsigned char diff = 0;
+  for (std::size_t index = 0; index < presented.size(); ++index)
+    diff |= static_cast<unsigned char>(presented[index]) ^
+            static_cast<unsigned char>(expected[index]);
+  return diff == 0;
+}
+
+int streamCapacity()
+{
+  return std::max(1, blocking_pool::limitsFor(BlockingLane::Heavy).maxThreads - 1);
+}
+
+std::string withoutSentinelMark(std::string token)
+{
+  std::erase(token, kStreamSentinelMark);
+  return token;
+}
 
 std::string sentinelLine(const LlmPrefillStats& stats)
 {
@@ -136,10 +163,10 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
 {
   const auto t0 = std::chrono::steady_clock::now();
   const TokenCallback send = [&job](const std::string& token, bool done) {
-    if (!job->stream)
+    if (!job->stream || job->slots->stopping())
       throw ClientGone{};
     if (!done) {
-      if (!job->stream->send(token)) {
+      if (!job->stream->send(withoutSentinelMark(token))) {
         job->stream.reset();
         throw ClientGone{};
       }
@@ -147,7 +174,7 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
       job->charCount += token.size();
       return;
     }
-    const std::string line = "\n" + sentinelLine(job->stats);
+    const std::string line = kStreamSentinelMark + sentinelLine(job->stats);
     if (!job->stream->send(line))
       job->stream.reset();
   };
@@ -174,8 +201,41 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
           .count();
   LOG_INFO << "LLM stream: tokens=" << job->tokenCount << " chars="
            << job->charCount << " ms=" << static_cast<int>(ms);
+  job->lease.release();
 }
 
+}
+
+ChatRequest boundToCaller(ChatRequest request, std::string_view caller)
+{
+  if (caller == kIdentityCaller)
+    return request;
+  request.userId = 0;
+  request.role = UserRole::Guest;
+  request.toolsEnabled = false;
+  request.clientActions = false;
+  request.sessionId.clear();
+  return request;
+}
+
+LlmController::LlmController()
+    : adapter_(service_, &intentGate_.router()), streams_(streamCapacity())
+{
+}
+
+void LlmController::setIdentityCredential(std::string credential)
+{
+  identityCredential_ = std::move(credential);
+}
+
+ChatRequest LlmController::scopedRequest(const drogon::HttpRequestPtr& req,
+                                         ChatRequest request) const
+{
+  if (identityCredential_.empty())
+    return request;
+  const bool identified =
+      sameSecret(req->getHeader(kCallerCredentialHeader), identityCredential_);
+  return boundToCaller(std::move(request), identified ? kIdentityCaller : std::string_view{});
 }
 
 LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
@@ -238,7 +298,7 @@ LlmController::chat(drogon::HttpRequestPtr req)
 
   const auto t0 = std::chrono::steady_clock::now();
   auto outcome = co_await BlockingTask<LlmChatOutcome>(
-      [this, request = body.request()] { return chatSync(request); },
+      [this, request = scopedRequest(req, body.request())] { return chatSync(request); },
       BlockingLane::Heavy);
   const double ms =
       std::chrono::duration<double, std::milli>(
@@ -272,14 +332,16 @@ LlmController::chatStream(drogon::HttpRequestPtr req)
 
   const auto body = ChatCompletionDto::fromJson(*req->getJsonObject());
 
-  auto job = std::make_shared<ChatStreamJob>();
+  if (!streams_.tryAcquire())
+    throw ResponseException(429, LlmErrors::Busy);
+  auto job = std::make_shared<ChatStreamJob>(streams_);
   job->owner = this;
-  job->request = body.request();
+  job->request = scopedRequest(req, body.request());
 
   auto resp = drogon::HttpResponse::newAsyncStreamResponse(
       [job](drogon::ResponseStreamPtr stream) {
         job->stream = std::move(stream);
-        std::thread([job] { runStreamJob(job); }).detach();
+        blocking_pool::submit(BlockingLane::Heavy, [job] { runStreamJob(job); });
       },
       true);
   resp->setStatusCode(drogon::k200OK);

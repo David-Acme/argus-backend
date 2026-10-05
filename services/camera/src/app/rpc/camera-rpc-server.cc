@@ -2,12 +2,17 @@
 
 #include <http/listener-config.hxx>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 
 namespace
 {
 constexpr uint16_t kDefaultGrpcPort = 7036;
+constexpr auto kShutdownGrace = std::chrono::seconds(2);
 }
 
 struct CameraRpcServer::Impl
@@ -31,6 +36,9 @@ struct CameraRpcServer::Impl
 
   std::string address_;
   std::unique_ptr<grpc::Server> server_;
+  std::mutex stopMutex_;
+  std::jthread stopper_;
+  std::atomic<bool> stopped_{false};
 };
 
 CameraRpcServer::CameraRpcServer(const CameraRpcInput& input)
@@ -44,10 +52,32 @@ bool CameraRpcServer::listening() const { return impl_->server_ != nullptr; }
 
 const std::string& CameraRpcServer::address() const { return impl_->address_; }
 
+void CameraRpcServer::requestStop()
+{
+  std::scoped_lock lock(impl_->stopMutex_);
+  if (impl_->stopper_.joinable() || !impl_->server_) {
+    if (!impl_->server_)
+      impl_->stopped_.store(true, std::memory_order_release);
+    return;
+  }
+  impl_->stopper_ = std::jthread([impl = impl_.get()]() {
+    impl->server_->Shutdown(std::chrono::system_clock::now() + kShutdownGrace);
+    impl->stopped_.store(true, std::memory_order_release);
+  });
+}
+
+bool CameraRpcServer::drained() const
+{
+  return impl_->stopped_.load(std::memory_order_acquire);
+}
+
 void CameraRpcServer::shutdown()
 {
-  if (impl_->server_) {
-    impl_->server_->Shutdown();
-    impl_->server_.reset();
+  requestStop();
+  {
+    std::scoped_lock lock(impl_->stopMutex_);
+    if (impl_->stopper_.joinable())
+      impl_->stopper_.join();
   }
+  impl_->server_.reset();
 }

@@ -98,8 +98,14 @@ UserRepository::update(int64_t id, const UserUpdateInput& input) const
 
   sql += UPDATE_SUFFIX.data();
   args.push_back(std::to_string(id));
+  if (input.requireOtherActiveOwner) {
+    sql += UPDATE_GUARD_OTHER_OWNER;
+    args.push_back(std::to_string(id));
+  }
   const auto& argsRef = args;
-  co_await client->execSqlCoro(sql, argsRef);
+  const auto written = co_await client->execSqlCoro(sql, argsRef);
+  if (input.requireOtherActiveOwner && written.affectedRows() == 0)
+    co_return {};
 
   auto updated = co_await findById(id, client);
   if (!updated) {

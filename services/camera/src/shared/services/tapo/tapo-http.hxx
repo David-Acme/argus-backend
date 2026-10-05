@@ -19,6 +19,7 @@ struct TapoEndpoint
   bool tls{true};
   int connectTimeoutMs{3000};
   int ioTimeoutMs{5000};
+  std::string pin;
 };
 
 struct TapoHttpRequest
@@ -37,6 +38,7 @@ struct TapoHttpResponse
   std::vector<TapoHttpHeader> headers;
   std::string body;
   std::string error;
+  std::string fingerprint;
 
   std::string header(const std::string& name) const;
 };
@@ -60,6 +62,7 @@ public:
   bool readSome(std::string& out);
 
   const std::string& error() const;
+  const std::string& peerFingerprint() const;
 
 private:
   struct Impl;

@@ -34,7 +34,7 @@ struct EvaluatedObject
   float identityConfidence{0.0F};
   std::string identityState;
   int identifyAttempts{0};
-  std::string zoneKind;
+  std::optional<ZoneType> zoneKind;
   std::string zoneName;
 };
 

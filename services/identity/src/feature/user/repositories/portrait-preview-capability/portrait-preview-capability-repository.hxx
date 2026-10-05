@@ -5,7 +5,7 @@
 #include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <optional>
-#include <shared/schemas/portrait-preview-capability/portrait-preview-capability-schema.hxx>
+#include <feature/user/schemas/portrait-preview-capability/portrait-preview-capability-schema.hxx>
 
 class PortraitPreviewCapabilityRepository
 {
@@ -17,4 +17,5 @@ public:
                   drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<bool>
   tryConsume(const PortraitPreviewCapabilityConsumeInput& input) const;
+  drogon::Task<void> purgeSpent(int64_t now) const;
 };

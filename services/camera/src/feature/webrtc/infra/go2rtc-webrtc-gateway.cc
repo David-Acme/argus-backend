@@ -1,6 +1,6 @@
 #include "go2rtc-webrtc-gateway.hxx"
 
-#include <shared/services/stream/go2rtc-manager.hxx>
+#include <shared/services/stream/go2rtc-http.hxx>
 
 #include <drogon/HttpClient.h>
 #include <trantor/utils/Logger.h>
@@ -25,7 +25,7 @@ drogon::Task<std::optional<std::string>>
 Go2rtcWebRtcGateway::exchange(Go2rtcWebRtcExchange request) const
 {
   try {
-    const auto client = drogon::HttpClient::newHttpClient(Go2rtcManager::instance().apiBase());
+    const auto client = go2rtc_http::client("webrtc:" + request.source);
     auto http = drogon::HttpRequest::newHttpRequest();
     http->setMethod(drogon::Post);
     http->setPath("/api/webrtc");
@@ -54,7 +54,7 @@ Go2rtcWebRtcGateway::exchange(Go2rtcWebRtcExchange request) const
 drogon::Task<std::optional<Json::Value>> Go2rtcWebRtcGateway::streams() const
 {
   try {
-    const auto client = drogon::HttpClient::newHttpClient(Go2rtcManager::instance().apiBase());
+    const auto client = go2rtc_http::client("streams");
     auto http = drogon::HttpRequest::newHttpRequest();
     http->setPath("/api/streams");
     const auto response = co_await client->sendRequestCoro(http, kStreamsTimeoutSeconds);
