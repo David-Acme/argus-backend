@@ -7,10 +7,11 @@
 
 #include <cerrno>
 #include <cstring>
+#include <memory>
 
 #include <trantor/utils/Logger.h>
 
-TcpListener::TcpListener(const Params& params)
+TcpListener::TcpListener(Token, const Params& params)
     : loop_(*params.loop), onAccept_(params.onAccept)
 {
   sockaddr_in address{};
@@ -34,7 +35,7 @@ TcpListener::TcpListener(const Params& params)
 std::shared_ptr<TcpListener> TcpListener::create(const Params& params)
 {
   try {
-    auto listener = std::shared_ptr<TcpListener>(new TcpListener(params));
+    auto listener = std::make_shared<TcpListener>(Token{}, params);
     listener->loop_.watch(listener->fd_.get(), listener);
     return listener;
   } catch (const std::exception&) {

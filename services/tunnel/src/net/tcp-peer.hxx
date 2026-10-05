@@ -10,6 +10,11 @@
 
 class TcpPeer : public LoopActor
 {
+  struct Token
+  {
+    explicit Token() = default;
+  };
+
 public:
   using Ptr = std::shared_ptr<TcpPeer>;
 
@@ -38,6 +43,7 @@ public:
   static Ptr adopt(const Params& params);
   static Ptr connect(const Params& params);
 
+  TcpPeer(Token, const Params& params);
   ~TcpPeer() override;
 
   void send(const char* data, size_t size);
@@ -59,7 +65,6 @@ public:
   void handleEvents(uint32_t events) override;
 
 private:
-  explicit TcpPeer(const Params& params);
   static int openSocket(const Params& params, bool connecting);
   void dispatch(uint32_t events);
   void flush();

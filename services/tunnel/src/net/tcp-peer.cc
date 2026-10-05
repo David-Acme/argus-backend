@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <array>
 #include <cerrno>
 #include <cstring>
 #include <stdexcept>
@@ -17,7 +18,7 @@ constexpr size_t kReadChunk = 64 * 1024;
 constexpr uint32_t kBaseEvents = EPOLLRDHUP;
 }
 
-TcpPeer::TcpPeer(const Params& params)
+TcpPeer::TcpPeer(Token, const Params& params)
     : loop_(*params.loop),
       fd_(params.fd),
       callbacks_(params.callbacks),
@@ -36,7 +37,7 @@ TcpPeer::Ptr TcpPeer::adopt(const Params& params)
     int size = params.sndBuf;
     ::setsockopt(params.fd, SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
   }
-  Ptr peer(new TcpPeer(params));
+  Ptr peer = std::make_shared<TcpPeer>(Token{}, params);
   peer->connected_ = true;
   peer->loop_.watch(peer->fd_.get(), peer);
   int one = 1;
@@ -48,7 +49,7 @@ TcpPeer::Ptr TcpPeer::connect(const Params& params)
 {
   Params updated = params;
   updated.fd = openSocket(params, true);
-  Ptr peer(new TcpPeer(updated));
+  Ptr peer = std::make_shared<TcpPeer>(Token{}, updated);
   peer->connecting_ = true;
   peer->loop_.watch(peer->fd_.get(), peer);
   peer->loop_.update(
@@ -169,12 +170,12 @@ void TcpPeer::readAvailable()
 {
   if (eofSeen_)
     return;
-  char chunk[kReadChunk];
+  std::array<char, kReadChunk> chunk;
   while (true) {
-    ssize_t received = ::recv(fd_.get(), chunk, sizeof(chunk), 0);
+    ssize_t received = ::recv(fd_.get(), chunk.data(), chunk.size(), 0);
     if (received > 0) {
       if (callbacks_.onRead && !closeWhenFlushed_)
-        callbacks_.onRead(*this, chunk, static_cast<size_t>(received));
+        callbacks_.onRead(*this, chunk.data(), static_cast<size_t>(received));
       if (closed_ || readPaused_)
         return;
       continue;

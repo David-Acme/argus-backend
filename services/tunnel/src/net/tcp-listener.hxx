@@ -9,6 +9,11 @@
 
 class TcpListener : public LoopActor
 {
+  struct Token
+  {
+    explicit Token() = default;
+  };
+
 public:
   struct Params
   {
@@ -21,6 +26,8 @@ public:
 
   static std::shared_ptr<TcpListener> create(const Params& params);
 
+  TcpListener(Token, const Params& params);
+
   uint16_t boundPort() const;
   void handleEvents(uint32_t events) override;
   void pauseAccepting();
@@ -31,7 +38,6 @@ public:
   static constexpr int kAcceptBackoffMs = 200;
 
 private:
-  explicit TcpListener(const Params& params);
 
   PollLoop& loop_;
   UniqueFd fd_;

@@ -15,8 +15,8 @@
 #include <optional>
 #include <span>
 #include <llm/llm-service.hxx>
-#include <shared/services/noise/noise-suppression-service.hxx>
-#include <shared/services/reaction/reaction-engine.hxx>
+#include <feature/voice/services/noise/noise-suppression-service.hxx>
+#include <feature/voice/services/reaction/reaction-engine.hxx>
 #include <tts/tts-wire.hxx>
 #include <shared/services/vad/vad-service.hxx>
 #include <shared/wrapper/audio/sample-ring.hxx>

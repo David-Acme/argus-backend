@@ -63,7 +63,9 @@ argus-voice/
   src/config/           argus::voice-config — the health (7035) and gRPC
                         (7034) listeners
   src/feature/voice/    voice session, the call's history (call-history),
-                        remote-only engine seam, VoiceService RPC
+                        remote-only engine seam, VoiceService RPC; its
+                        services/ hold noise suppression and the reaction
+                        engine, which only the session reads
   src/feature/health/   grpc.health.v1 service
   src/feature/settings/ argus::voice-settings — the owner-editable catalog,
                         served by argus.settings.v1 on the gRPC listener
@@ -71,7 +73,7 @@ argus-voice/
                         argus::voice-rtc (the LiveKit agent: RtcCall per room,
                         RtcAgentService); the pinned LiveKit C++ SDK archive
                         hashes and its NOTICE
-  src/shared/services/  vad, noise suppression and the reaction engine
+  src/shared/services/  vad
   src/shared/wrapper/   the ring the voice paths carry samples in
   src/test-support/     the fake voice sink the suites drive
   config.toml.example   [server], [grpc] (caller_sync, caller_settings,

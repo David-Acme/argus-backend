@@ -86,8 +86,8 @@ find_package(doctest REQUIRED)
 
 set(VOICE_ENGINE_SOURCES
     src/shared/services/vad/vad-service.cc
-    src/shared/services/noise/noise-suppression-service.cc
-    src/shared/services/reaction/reaction-engine.cc
+    src/feature/voice/services/noise/noise-suppression-service.cc
+    src/feature/voice/services/reaction/reaction-engine.cc
 )
 
 argus_module(NAME voice-core
