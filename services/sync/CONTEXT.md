@@ -595,7 +595,10 @@ the directory not read yet) never arm, so a missed reschedule cannot fire at
 home and a server stopped on purpose while people are home raises nothing.
 Presence is cached in `PresenceBoard`, filled from the core-NATS feed and
 re-read from guard's `PresenceService.ListPresence` every `refill_seconds`
-(300) off the loop, because the feed is at-most-once.
+(300) off the loop, because the feed is at-most-once
+(`argus::clients::guard`, `[guard] presence_target` / `presence_credential`,
+the caller `sync` in guard's `[rpc.callers]`; an empty target skips the
+refill and leaves the feed alone).
 
 **Guard liveness.** The payload also carries `guard` (`alive` / `stale` /
 `unknown`) from `argus.guard.v1.heartbeat`: sync answering while guard is

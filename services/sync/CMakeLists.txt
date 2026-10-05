@@ -75,6 +75,11 @@ if(NOT TARGET argus::clients::sync)
                      ${CMAKE_BINARY_DIR}/clients/sync EXCLUDE_FROM_ALL)
 endif()
 
+if(NOT TARGET argus::clients::guard)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/guard
+                     ${CMAKE_BINARY_DIR}/clients/guard EXCLUDE_FROM_ALL)
+endif()
+
 if(NOT TARGET argus::clients::camera)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera
                      ${CMAKE_BINARY_DIR}/clients/camera EXCLUDE_FROM_ALL)

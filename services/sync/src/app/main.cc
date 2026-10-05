@@ -8,6 +8,7 @@
 #include <feature/fanout/services/notification-delivery-consumer.hxx>
 #include <feature/fanout/services/sync-fan-out.hxx>
 #include <feature/heartbeat/controllers/heartbeat-controller.hxx>
+#include <feature/heartbeat/infra/guard-presence-directory.hxx>
 #include <feature/heartbeat/services/heartbeat-feed.hxx>
 #include <feature/heartbeat/services/heartbeat-service.hxx>
 #include <feature/heartbeat/services/presence-board.hxx>
@@ -224,13 +225,18 @@ int main()
             .bus = natsBus.get(),
             .board = presenceBoard,
             .heartbeat = heartbeatService,
-            .directory = {},
+            .directory = heartbeatConfig.presenceTarget.empty()
+                             ? nullptr
+                             : std::make_shared<const GuardPresenceDirectory>(
+                                   std::make_shared<const GuardPresenceClient>(GuardPresenceClientConfig{
+                                       .target = heartbeatConfig.presenceTarget,
+                                       .credential = heartbeatConfig.presenceCredential})),
             .push = heartbeatPush.get(),
             .emit = [](int64_t userId, std::string_view frame) {
               RoomManager{}.emit(userRoom(userId), frame);
             }},
         HeartbeatFeed::Config{
-            .presenceSubject = {},
+            .presenceSubject = std::string(nats_subject::kGuardPresenceChanged),
             .guardHeartbeatSubject = std::string(nats_subject::kGuardHeartbeat),
             .pushIntervalSeconds =
                 static_cast<double>(heartbeatConfig.pushIntervalSeconds),

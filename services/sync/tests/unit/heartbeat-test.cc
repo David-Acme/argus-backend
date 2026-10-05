@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <feature/heartbeat/infra/guard-presence-directory.hxx>
 #include <feature/heartbeat/services/heartbeat-feed.hxx>
 #include <feature/heartbeat/services/heartbeat-policy.hxx>
 #include <feature/heartbeat/services/heartbeat-service.hxx>
@@ -202,4 +203,24 @@ TEST_CASE("a refill applies the directory and an unavailable directory keeps wha
   CHECK(rig.board->of(1).overall == "away");
   rig.feed.ingestGuardHeartbeat(4990);
   CHECK(rig.service->heartbeatFor(1)["guard"].asString() == "alive");
+}
+
+TEST_CASE("guard's presence list maps onto the board, unknown states stay unknown")
+{
+  argus::guard::v1::ListPresenceResponse response;
+  auto* away = response.add_users();
+  away->set_user_id(4);
+  away->set_overall(argus::guard::v1::PRESENCE_STATE_AWAY);
+  away->set_since(70);
+  auto* home = response.add_users();
+  home->set_user_id(5);
+  home->set_overall(argus::guard::v1::PRESENCE_STATE_HOME);
+  auto* unknown = response.add_users();
+  unknown->set_user_id(6);
+  const auto entries = heartbeat::presenceEntriesOf(response);
+  REQUIRE(entries.size() == 3);
+  CHECK(entries[0].overall == "away");
+  CHECK(entries[0].since == 70);
+  CHECK(entries[1].overall == "home");
+  CHECK(entries[2].overall == "unknown");
 }

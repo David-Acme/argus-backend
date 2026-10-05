@@ -79,6 +79,10 @@ refresh_ttl_days = 30
 fingerprint_secret = ""
 identity_mode = "ip"
 
+[guard]
+presence_target = "127.0.0.1:7139"
+presence_credential = ""
+
 [heartbeat]
 interval_seconds = 60
 grace_minutes = 45

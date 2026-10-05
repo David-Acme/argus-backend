@@ -119,5 +119,7 @@ SyncHeartbeatConfig SyncConfig::resolveHeartbeat()
           .refillSeconds = boundedSeconds({.key = "heartbeat.refill_seconds",
                                            .fallback = 300,
                                            .min = 30,
-                                           .max = 3600})};
+                                           .max = 3600}),
+          .presenceTarget = ConfigService::getString("guard.presence_target"),
+          .presenceCredential = ConfigService::getString("guard.presence_credential")};
 }

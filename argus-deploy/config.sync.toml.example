@@ -85,6 +85,10 @@ trusted_proxy_ips = ""
 target = "argus-auth:7043"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
+[guard]
+presence_target = "argus-guard:7139"
+presence_credential = "CHANGE_ME_PRESENCE_SYNC"
+
 [heartbeat]
 interval_seconds = 60
 grace_minutes = 45

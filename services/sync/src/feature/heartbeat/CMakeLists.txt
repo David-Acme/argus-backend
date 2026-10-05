@@ -6,8 +6,10 @@ argus_module(NAME sync-heartbeat
         services/presence-board.cc
         services/heartbeat-service.cc
         services/heartbeat-feed.cc
+        infra/guard-presence-directory.cc
     INCLUDES ../..
     DEPENDS
+        argus::clients::guard
         argus::contracts::auth
         argus::contracts::sync
         argus::lib::auth
