@@ -54,7 +54,7 @@ public:
 private:
   drogon::Task<std::vector<ResponseUser>> users() const;
 
-  int64_t now() const;
+  [[nodiscard]] int64_t now() const;
 
   ResponseFeatureDependencies dependencies_;
   EnvironmentRepository environmentRepository_;

@@ -1021,3 +1021,91 @@ retention, cascade), `guard-presence-test` (every signal, the grace, stale
 signals, consent withdrawal, account disable, the consent sweep, the owner
 view, the RPC with its caller check), `device-origin-test` (lib/auth) and the
 presence cases in auth's `session-verdict-test`.
+
+## Who is called, in what order, and how (2026-10, RESPONSE)
+
+David (2026-10-04): per environment the Owner edits a recipient list in
+Seguridad. By default Owner and Guards are called together, then the
+Residents one by one, then the external emergency contacts; Guests get
+nothing. A Resident may be lowered to notify. A Guard on duty cannot be taken
+off intruder calls.
+
+**Model.** `guard_response_recipient (environment_id, user_id, mode, step,
+on_duty)` holds only what the Owner changed. A NULL `mode`/`step` means the
+role default, so a user added later follows the defaults without a migration.
+Defaults (`response_plan::members`):
+- Owner and Guard: `call`, step 0.
+- Resident: `call`, one step each after the last explicit step, in id order.
+- Guest: `off`.
+- Inactive users are never listed.
+`guard_response_contact` holds up to ten external contacts (name, phone,
+note, position). `guard_response_setting` holds the emergency number (dialled
+by the phone; Argus cannot place calls) and the wait per step (15-300 s,
+default 45, the length of a ring). The user list comes from identity's
+`ListUsers` (`IdentityResponseDirectory`), never from identity's database.
+
+**Duty.** A Guard is on duty when their `on_duty` toggle is set (their own
+`POST /guard/environments/{id}/duty`, or the Owner's list) or while the
+environment is staffed or open (`response_plan::staffedAt`). On duty they are
+`mandatory`: called even if listed as notify, and the call engine skips their
+own call switches (`services/notification/CONTEXT.md`, "Intruder response").
+Setting them to `off` removes them; that is the Owner's explicit decision.
+
+**The decision table** (`response_plan::build`, pure, per call-worthy
+notification). It reads the plan members, PRESENCE's rows for the
+environment, the camera context and the posture.
+
+| Situation | Strategy | Who first | Notes |
+|---|---|---|---|
+| Panic, duress, or an episode turning worse (`escalated`) | `everyone` | every member at once | the actor (`excludeUserIds`) is never in the plan |
+| Somebody home, intruder on an indoor camera | `everyone` | every member at once | guard also silences that camera's voice and siren |
+| Night (night mode or the `night` reason), everyone with a presence row home, not critical | `night_quiet` | everyone, as notify | only a clear threat (critical) wakes people; a guard on duty still rings |
+| Somebody home, intruder outside | `inside_first` | the people home, `discreet` | then the owner's order, one step later |
+| Nobody known home, or tamper | `ordered` | the owner's steps | |
+
+Notes on the table:
+- "Somebody home" means a Home row. A user with no row (no consent, or
+  never seen) is unknown and never counts as home.
+- "Everyone home" needs at least one Home row and no Away row among the
+  members.
+- The siren is only *offered* (`offers: ["siren"]`) when every member is
+  Away and at least one is positively away through the tunnel. A timeout
+  alone could be a phone asleep on the nightstand (PRESENCE's caution).
+  Guard itself never sounds anything because of this table; the deterrence
+  ladder is unchanged except for the indoor rule below.
+
+**Indoor speakers stay silent with the family inside.** At the context stage
+the saga sets `checkpoint.familyInside`. It is true when the camera is
+configured indoors (`outdoor = false`) and the environment's presence
+`overall` is Home. It is persisted in the checkpoint, so a replay decides the
+same. `guard_policy::deterrence` then returns no voice and no siren: a
+speaker line or a siren in the room where the family is reveals them to the
+intruder. An unconfigured camera changes nothing, because we do not know it
+is indoors.
+
+**What guard sends.** For a call-worthy notification (a time-sensitive or
+critical `guard_episode`, a critical `guard_panic`, `guard_duress` or
+`guard_tamper`), the batches carry only the plan's first step, and `data`
+carries the plan as `response` (persisted in the outbox payload with the
+batches, so a replay sends the same plan). The call engine reaches later steps
+itself. Any other notification goes to every member not set to off, so a
+Resident now receives guard notifications; before this, guard's roster was
+owners and guards only. Without the identity directory, guard keeps the old
+owner+guard roster (`legacyRecipients`).
+
+**Feedback.** `ResponseVerdictFeed` subscribes to
+`argus.notification.v1.response_verdict`. A verdict on a `guard_episode`
+labels the episode, through the same `EpisodeRepository::review` the owner's
+review uses: `false_alarm` gives `false_alarm`, `real` gives `useful`.
+
+**API.** `GET /guard/environments/{id}/response`: Owner sees everyone;
+Resident and Guard see only their own row plus the contacts and the emergency
+number. `PUT /guard/environments/{id}/response` (Owner) replaces the list,
+the contacts and the settings in one transaction, and refuses a user who is
+not active (422 `RecipientUnknown`). `POST /guard/environments/{id}/duty
+{onDuty}` is the Guard's own toggle. `kGuardAccess` matches `{id}` segments
+now (`routeMatches`).
+
+Tests: `guard-response-test` (defaults, overrides, every row of the table,
+duty and staffed hours, the siren offer, panic actor exclusion, the JSON,
+the DTO validation, the repository), `role-access-test` (the three routes).

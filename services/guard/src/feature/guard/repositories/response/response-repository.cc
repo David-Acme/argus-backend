@@ -47,7 +47,7 @@ ResponseRepository::forEnvironment(int64_t environmentId) const
       recipient.mode = recipientModeFromString(row["mode"].as<std::string>());
     if (!row["step"].isNull())
       recipient.step = row["step"].as<int>();
-    config.recipients.push_back(std::move(recipient));
+    config.recipients.push_back(recipient);
   }
   for (const auto& row :
        co_await client->execSqlCoro(std::string(LIST_CONTACTS), environmentId))
@@ -80,7 +80,7 @@ ResponseRepository::replace(const ResponseReplaceInput& input) const
     recipientArgs.push_back(std::to_string(recipient.userId));
     recipientArgs.push_back(recipientModeToString(recipient.mode));
     recipientArgs.push_back(std::to_string(recipient.step));
-    recipientArgs.push_back(recipient.onDuty ? "1" : "0");
+    recipientArgs.emplace_back(recipient.onDuty ? "1" : "0");
     recipientArgs.push_back(at);
   }
   std::vector<std::string> contactArgs;
