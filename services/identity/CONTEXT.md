@@ -1194,7 +1194,23 @@ rotates the code itself (`feature/pairing/infra/pairing-code`), so it no longer
 depends on `CertService`'s 8-12 hex parser; legacy hex codes still verify until
 they are rotated. After the **first** successful pairing the code is replaced
 (atomic rename, 0600) once the server proof was computed with the old one;
-further devices pair with the new code, which is in `certs/pairing.code` (identity
-never logs the rotated code). The HMAC proof protocol is unchanged; the code is upper
+further devices pair with the new code (identity never logs the rotated code).
+The file is the one `cert.pairing_code` names, the same key `CertService`
+reads, and `<cert.dir>/pairing.code` only when that key is empty
+(`PairingCodeStore::defaultPath`). The deploy keeps the code beside the CA key
+(`ca/pairing.code`, a 0700 directory outside the shared `certs/`); reading
+`<cert.dir>` there made every `/pairing` fail and the rotation write a new code
+into `certs/`.
+
+The code is shown in one place only: the pairing banner `argus-identity`
+prints on its own console while the instance is unpaired. `scripts/lib/pki.sh`
+(run by `setup.sh` and `provision-host.sh`) used to print it too, which put a
+long-lived secret into provisioning logs and terminal scrollback even on an
+already-paired instance; it now prints only the file that holds it.
+`scripts/pki-test.sh` checks that, and that the leaf certificate it issues
+carries only the names its own CA's `nameConstraints` permit (one predicate,
+`pki_dns_label_ok`, for both: an `mdns.name` such as `Argus_Home` used to land
+in the leaf SAN while the CA excluded it, so strict verifiers refused the
+chain). The HMAC proof protocol is unchanged; the code is upper
 case on both sides. The frontend must accept a 26-character code in the QR
 payload and the typed field (it used to expect 12 hex digits).

@@ -50,7 +50,7 @@ public:
   [[nodiscard]] bool verifyCode(std::string_view candidate) const;
   [[nodiscard]] bool verifyProof(const PairingProofCheck& check) const;
   [[nodiscard]] std::string serverProof(const PairingServerProofInput& input) const;
-  bool rotate() const;
+  [[nodiscard]] bool rotate() const;
 
 private:
   std::string path_;

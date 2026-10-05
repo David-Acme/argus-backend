@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <config/config-service.hxx>
 #include <errors/validation-exception.hxx>
 
 namespace
@@ -31,13 +32,12 @@ TEST_CASE("the pairing code carries 128 bits as QR-friendly base32")
       reinterpret_cast<const unsigned char*>(foobar.data()), foobar.size());
   CHECK(pairing_code::encodeBase32(bytes) == "MZXW6YTBOI");
 
-  const auto code = pairing_code::mint();
-  REQUIRE(code.has_value());
-  CHECK(code->size() == pairing_code::kBase32Length);
-  CHECK(pairing_code::wellFormed(*code));
-  const auto other = pairing_code::mint();
-  REQUIRE(other.has_value());
-  CHECK(*code != *other);
+  const std::string code = pairing_code::mint().value_or("");
+  CHECK(code.size() == pairing_code::kBase32Length);
+  CHECK(pairing_code::wellFormed(code));
+  const std::string other = pairing_code::mint().value_or("");
+  CHECK(other.size() == pairing_code::kBase32Length);
+  CHECK(code != other);
 
   CHECK(pairing_code::wellFormed("A1B2C3D4E5F6"));
   CHECK(pairing_code::isLegacy("A1B2C3D4E5F6"));
@@ -75,16 +75,31 @@ TEST_CASE("the store verifies the code and its proofs and rotates it")
             {.code = code, .message = "argus-pair-server|" + nonce + "|AB"}));
 
   REQUIRE(store.rotate());
-  const auto rotated = store.current();
-  REQUIRE(rotated.has_value());
-  CHECK(*rotated != code);
-  CHECK(rotated->size() == pairing_code::kBase32Length);
+  const std::string rotated = store.current().value_or("");
+  CHECK(rotated != code);
+  CHECK(rotated.size() == pairing_code::kBase32Length);
   CHECK_FALSE(store.verifyCode(code));
   const auto permissions = std::filesystem::status(kCodeFile).permissions();
   CHECK((permissions & std::filesystem::perms::group_all) == std::filesystem::perms::none);
   CHECK((permissions & std::filesystem::perms::others_all) == std::filesystem::perms::none);
   std::remove(kCodeFile);
   CHECK_FALSE(store.current().has_value());
+}
+
+TEST_CASE("the pairing code file is the one cert.pairing_code names, as CertService reads it")
+{
+  ConfigService::setRuntimeString("cert.dir", "deploy-certs");
+  ConfigService::setRuntimeString("cert.pairing_code", "");
+  CHECK(PairingCodeStore::defaultPath() ==
+        (std::filesystem::path("deploy-certs") / "pairing.code").string());
+
+  ConfigService::setRuntimeString("cert.pairing_code", "ca/pairing.code");
+  CHECK(PairingCodeStore::defaultPath() == "ca/pairing.code");
+
+  ConfigService::setRuntimeString("cert.dir", "");
+  ConfigService::setRuntimeString("cert.pairing_code", "");
+  CHECK(PairingCodeStore::defaultPath() ==
+        (std::filesystem::path("certs") / "pairing.code").string());
 }
 
 TEST_CASE("the pairing body accepts the long code and refuses anything else")

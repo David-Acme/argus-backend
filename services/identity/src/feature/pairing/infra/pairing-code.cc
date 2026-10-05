@@ -106,8 +106,9 @@ std::string pairing_code::hmacHex(const PairingHmacInput& input)
   std::string hex;
   hex.reserve(static_cast<std::size_t>(length) * 2);
   for (unsigned int i = 0; i < length; ++i) {
-    hex.push_back(kHex[digest[i] >> 4]);
-    hex.push_back(kHex[digest[i] & 0x0F]);
+    const auto byte = static_cast<unsigned>(digest[i]);
+    hex.push_back(kHex[byte >> 4U]);
+    hex.push_back(kHex[byte & 0x0FU]);
   }
   return hex;
 }
@@ -116,6 +117,8 @@ PairingCodeStore::PairingCodeStore(std::string path) : path_(std::move(path)) {}
 
 std::string PairingCodeStore::defaultPath()
 {
+  if (std::string file = ConfigService::getString("cert.pairing_code"); !file.empty())
+    return file;
   std::string dir = ConfigService::getString("cert.dir");
   if (dir.empty())
     dir = kDefaultCertDir;

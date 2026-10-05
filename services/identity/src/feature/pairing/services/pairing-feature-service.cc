@@ -38,7 +38,7 @@ PairingVerdict settle(const PairingRequestInput& input)
     ConfigService::setBool("pairing.paired", true);
     if (store.rotate())
       LOG_INFO << "Pairing: the first device is paired; the pairing code was "
-                  "replaced and the new one is in the certificate directory";
+                  "replaced in its file (cert.pairing_code)";
   }
   return verdict;
 }
