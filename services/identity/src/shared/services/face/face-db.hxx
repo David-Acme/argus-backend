@@ -28,6 +28,7 @@ public:
   void remove(int64_t personId);
   void removeEmbeddings(std::span<const int64_t> faceEmbeddingIds);
   size_t count();
+  static float matchThreshold();
 
 private:
   std::mutex& vecMutex();

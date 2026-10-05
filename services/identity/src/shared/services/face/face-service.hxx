@@ -8,6 +8,7 @@
 #include <optional>
 #include <semaphore>
 #include <shared/services/face/face-db.hxx>
+#include <shared/services/face/face-quality.hxx>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,7 @@ public:
   static FaceService& instance();
 
   void init();
+  void init(const std::string& modelDir);
   void disable();
   void shutdown();
   bool isLoaded() const;
@@ -70,6 +72,18 @@ public:
     int height{0};
   };
 
+  struct AlignFaceInput
+  {
+    const uint8_t* rgbData{nullptr};
+    int width{0};
+    int height{0};
+    const float* landmarks{nullptr};
+  };
+
+  static constexpr int kAlignedSide = 112;
+
+  static std::vector<uint8_t> alignFace(const AlignFaceInput& input);
+
   std::vector<FaceBox> detectAll(const DetectAllInput& input);
 
   std::optional<FaceResult> extractFace(const ExtractFaceInput& input);
@@ -79,6 +93,25 @@ public:
   std::optional<int64_t> identify(std::string imageBytes);
 
   drogon::Task<std::optional<int64_t>> identifyAsync(std::string imageBytes);
+
+  struct FaceAnalysis
+  {
+    std::vector<float> embedding;
+    FaceBox box;
+    FaceQuality quality;
+    int faces{0};
+    std::string faceJpeg;
+  };
+
+  struct AnalyzeImageInput
+  {
+    std::string imageBytes;
+    bool encodeFace{false};
+  };
+
+  std::optional<FaceAnalysis> analyzeImage(const AnalyzeImageInput& input);
+  drogon::Task<std::optional<FaceAnalysis>>
+  analyzeImageAsync(AnalyzeImageInput input);
 
   std::optional<FaceResult> extractImage(std::string imageBytes);
   drogon::Task<std::optional<FaceResult>>
@@ -110,6 +143,20 @@ private:
   };
 
   static std::vector<FaceBox> runDetector(const RunDetectorInput& input);
+
+  struct EmbedBoxInput
+  {
+    Impl& impl;
+    const uint8_t* rgbData{nullptr};
+    int width{0};
+    int height{0};
+    const FaceBox& box;
+    bool encodeFace{false};
+  };
+
+  static FaceAnalysis embedBox(const EmbedBoxInput& input);
+  std::optional<FaceAnalysis> analyzePixels(const ExtractInput& input,
+                                            bool encodeFace);
 
   std::unique_ptr<Impl> impl_;
   FaceDB faceDb_;

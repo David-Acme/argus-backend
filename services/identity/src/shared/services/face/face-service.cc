@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <allocator.h>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <drogon/drogon.h>
@@ -104,9 +105,14 @@ bool FaceService::Impl::init(const std::string& modelDir)
 
 void FaceService::init()
 {
+  init("models/face");
+}
+
+void FaceService::init(const std::string& modelDir)
+{
   impl_ = std::make_unique<Impl>();
 
-  if (!impl_->init("models/face")) {
+  if (!impl_->init(modelDir)) {
     impl_.reset();
     LOG_WARN << "FaceService: models missing, recognition disabled";
     disable();
@@ -126,7 +132,7 @@ void FaceService::disable()
 
 void FaceService::shutdown()
 {
-  std::lock_guard<std::mutex> lock(implMutex_);
+  std::scoped_lock lock(implMutex_);
   faceDb_.shutdown();
 
   if (impl_ && impl_->pipelineCache)
@@ -138,7 +144,7 @@ void FaceService::shutdown()
 
 bool FaceService::isLoaded() const
 {
-  std::lock_guard<std::mutex> lock(implMutex_);
+  std::scoped_lock lock(implMutex_);
   return impl_ != nullptr;
 }
 
@@ -172,10 +178,8 @@ static float iou(const FaceService::FaceBox& a, const FaceService::FaceBox& b)
 static std::vector<FaceService::FaceBox>
 nms(std::vector<FaceService::FaceBox> boxes, float thresh)
 {
-  std::sort(boxes.begin(), boxes.end(),
-            [](const FaceService::FaceBox& a, const FaceService::FaceBox& b) {
-              return a.score > b.score;
-            });
+  std::ranges::sort(boxes, std::ranges::greater{},
+                    &FaceService::FaceBox::score);
   std::vector<FaceService::FaceBox> out;
   std::vector<bool> suppressed(boxes.size(), false);
   for (size_t i = 0; i < boxes.size(); ++i) {
@@ -315,101 +319,150 @@ FaceService::detectAll(const DetectAllInput& input)
   const int width = input.width;
   const int height = input.height;
 
-  std::lock_guard<std::mutex> lock(implMutex_);
+  std::scoped_lock lock(implMutex_);
   if (!impl_)
     return {};
   return runDetector(
       {.impl = *impl_, .rgbData = imageData, .width = width, .height = height});
 }
 
+std::vector<uint8_t> FaceService::alignFace(const AlignFaceInput& input)
+{
+  constexpr std::array<float, 10> kReference = {
+      30.2946F, 51.6963F, 65.5318F, 51.5014F, 48.0252F,
+      71.7366F, 33.5493F, 92.3655F, 62.7299F, 92.2041F};
+  std::array<float, 6> transform{};
+  std::array<float, 6> inverse{};
+  ncnn::get_affine_transform(input.landmarks, kReference.data(), 5,
+                             transform.data());
+  ncnn::invert_affine_transform(transform.data(), inverse.data());
+  std::vector<uint8_t> aligned(static_cast<size_t>(kAlignedSide) *
+                               kAlignedSide * 3);
+  ncnn::warpaffine_bilinear_c3(input.rgbData, input.width, input.height,
+                               aligned.data(), kAlignedSide, kAlignedSide,
+                               inverse.data());
+  return aligned;
+}
+
+FaceService::FaceAnalysis FaceService::embedBox(const EmbedBoxInput& input)
+{
+  constexpr int kAligned = kAlignedSide;
+  const FaceBox& box = input.box;
+  std::vector<uint8_t> aligned = alignFace({.rgbData = input.rgbData,
+                                            .width = input.width,
+                                            .height = input.height,
+                                            .landmarks = box.lm});
+
+  const ncnn::Mat in = ncnn::Mat::from_pixels(aligned.data(), ncnn::Mat::PIXEL_RGB,
+                                              kAligned, kAligned);
+  ncnn::Extractor extractor = input.impl.recognizer->create_extractor();
+  extractor.input("data", in);
+  ncnn::Mat embedding;
+  extractor.extract("fc1", embedding);
+
+  FaceAnalysis analysis;
+  analysis.embedding =
+      normalize(embedding.channel(0), embedding.w * embedding.h * embedding.c);
+  analysis.box = box;
+  analysis.quality = face_quality::geometry(
+      {.leftEyeX = box.lm[0],
+       .leftEyeY = box.lm[1],
+       .rightEyeX = box.lm[2],
+       .rightEyeY = box.lm[3],
+       .noseX = box.lm[4],
+       .noseY = box.lm[5],
+       .mouthLeftX = box.lm[6],
+       .mouthLeftY = box.lm[7],
+       .mouthRightX = box.lm[8],
+       .mouthRightY = box.lm[9]});
+  analysis.quality.detectorScore = box.score;
+  analysis.quality.faceWidthPx = box.x2 - box.x1;
+
+  const cv::Mat alignedRgb(kAligned, kAligned, CV_8UC3, aligned.data());
+  cv::Mat gray;
+  cv::cvtColor(alignedRgb, gray, cv::COLOR_RGB2GRAY);
+  cv::Mat laplacian;
+  cv::Laplacian(gray, laplacian, CV_32F);
+  cv::Scalar mean;
+  cv::Scalar deviation;
+  cv::meanStdDev(laplacian, mean, deviation);
+  analysis.quality.sharpness =
+      static_cast<float>(deviation[0] * deviation[0]);
+
+  if (input.encodeFace) {
+    const float faceWidth = box.x2 - box.x1;
+    const float faceHeight = box.y2 - box.y1;
+    const float margin = 0.35F * std::max(faceWidth, faceHeight);
+    const int x1 = std::clamp(static_cast<int>(box.x1 - margin), 0, input.width - 1);
+    const int y1 = std::clamp(static_cast<int>(box.y1 - margin), 0, input.height - 1);
+    const int x2 = std::clamp(static_cast<int>(box.x2 + margin), x1 + 1, input.width);
+    const int y2 = std::clamp(static_cast<int>(box.y2 + margin), y1 + 1, input.height);
+    const cv::Mat full(input.height, input.width, CV_8UC3,
+                       const_cast<uint8_t*>(input.rgbData));
+    cv::Mat face;
+    cv::cvtColor(full(cv::Rect(x1, y1, x2 - x1, y2 - y1)), face,
+                 cv::COLOR_RGB2BGR);
+    constexpr int kMaxCropSide = 192;
+    const int side = std::max(face.cols, face.rows);
+    if (side > kMaxCropSide) {
+      const double scale = static_cast<double>(kMaxCropSide) / side;
+      cv::resize(face, face, cv::Size(), scale, scale, cv::INTER_AREA);
+    }
+    std::vector<uchar> buffer;
+    if (cv::imencode(".jpg", face, buffer, {cv::IMWRITE_JPEG_QUALITY, 88}))
+      analysis.faceJpeg.assign(buffer.begin(), buffer.end());
+  }
+  return analysis;
+}
+
+std::optional<FaceService::FaceAnalysis>
+FaceService::analyzePixels(const ExtractInput& input, bool encodeFace)
+{
+  std::scoped_lock lock(implMutex_);
+  if (!impl_)
+    return std::nullopt;
+  const auto boxes = runDetector({.impl = *impl_,
+                                  .rgbData = input.rgbData,
+                                  .width = input.width,
+                                  .height = input.height});
+  if (boxes.empty())
+    return std::nullopt;
+  const auto best = std::ranges::max_element(
+      boxes, {}, [](const FaceBox& box) { return box.score; });
+  auto analysis = embedBox({.impl = *impl_,
+                            .rgbData = input.rgbData,
+                            .width = input.width,
+                            .height = input.height,
+                            .box = *best,
+                            .encodeFace = encodeFace});
+  analysis.faces = static_cast<int>(boxes.size());
+  return analysis;
+}
+
 std::optional<FaceService::FaceResult>
 FaceService::extractFace(const ExtractFaceInput& input)
 {
-  const uint8_t* imageData = input.rgbData;
-  const int width = input.width;
-  const int height = input.height;
-  const FaceBox& fb = input.box;
-
-  std::lock_guard<std::mutex> lock(implMutex_);
+  std::scoped_lock lock(implMutex_);
   if (!impl_)
     return std::nullopt;
-
-  const float refPts[10] = {30.2946F, 51.6963F, 65.5318F, 51.5014F, 48.0252F,
-                            71.7366F, 33.5493F, 92.3655F, 62.7299F, 92.2041F};
-
-  float tm[6];
-  float tmInv[6];
-  ncnn::get_affine_transform(fb.lm, refPts, 5, tm);
-  ncnn::invert_affine_transform(tm, tmInv);
-
-  int roiX = std::clamp(static_cast<int>(fb.x1), 0, width - 1);
-  int roiY = std::clamp(static_cast<int>(fb.y1), 0, height - 1);
-  int roiW = std::clamp(static_cast<int>(fb.x2 - fb.x1 + 1), 1, width - roiX);
-  int roiH = std::clamp(static_cast<int>(fb.y2 - fb.y1 + 1), 1, height - roiY);
-
-  ncnn::Mat src =
-      ncnn::Mat::from_pixels_roi(imageData, ncnn::Mat::PIXEL_RGB, width, height,
-                                 roiX, roiY, roiW, roiH);
-
-  ncnn::Mat warped;
-  warped.create(112, 112, 3, static_cast<size_t>(1),
-                static_cast<ncnn::Allocator*>(nullptr));
-  ncnn::warpaffine_bilinear_c3(static_cast<const unsigned char*>(src.data),
-                               src.w, src.h,
-                               static_cast<unsigned char*>(warped.data), 112,
-                               112, tmInv);
-
-  ncnn::Mat aligned;
-  aligned.create(112, 112, 3, static_cast<size_t>(4),
-                 static_cast<ncnn::Allocator*>(nullptr));
-  for (int c = 0; c < 3; ++c) {
-    const unsigned char* s = warped.channel(c);
-    float* d = aligned.channel(c);
-    for (int i = 0; i < 112 * 112; ++i)
-      d[i] = s[i];
-  }
-
-  ncnn::Extractor recEx = impl_->recognizer->create_extractor();
-  recEx.input("data", aligned);
-
-  ncnn::Mat emb;
-  recEx.extract("fc1", emb);
-
-  int dim = emb.w * emb.h * emb.c;
-  auto result = FaceResult{normalize(emb.channel(0), dim), fb.score};
-
-  return result;
+  auto analysis = embedBox({.impl = *impl_,
+                            .rgbData = input.rgbData,
+                            .width = input.width,
+                            .height = input.height,
+                            .box = input.box,
+                            .encodeFace = false});
+  return FaceResult{.embedding = std::move(analysis.embedding),
+                    .confidence = input.box.score};
 }
 
 std::optional<FaceService::FaceResult>
 FaceService::extract(const ExtractInput& input)
 {
-  const uint8_t* imageData = input.rgbData;
-  const int width = input.width;
-  const int height = input.height;
-
-  std::vector<FaceBox> kept;
-  {
-    std::lock_guard<std::mutex> lock(implMutex_);
-    if (!impl_)
-      return std::nullopt;
-    kept = runDetector({.impl = *impl_,
-                        .rgbData = imageData,
-                        .width = width,
-                        .height = height});
-  }
-  if (kept.empty())
+  auto analysis = analyzePixels(input, false);
+  if (!analysis)
     return std::nullopt;
-
-  int bestIdx = 0;
-  for (size_t i = 1; i < kept.size(); ++i)
-    if (kept[i].score > kept[bestIdx].score)
-      bestIdx = static_cast<int>(i);
-
-  return extractFace({.rgbData = imageData,
-                      .width = width,
-                      .height = height,
-                      .box = kept[bestIdx]});
+  return FaceResult{.embedding = std::move(analysis->embedding),
+                    .confidence = analysis->box.score};
 }
 
 namespace
@@ -554,5 +607,34 @@ FaceService::extractImageAsync(std::string imageBytes)
       [this, image = std::move(imageBytes)]() mutable {
         return extractImage(std::move(image));
       },
+      BlockingLane::Heavy);
+}
+
+std::optional<FaceService::FaceAnalysis>
+FaceService::analyzeImage(const AnalyzeImageInput& input)
+{
+  if (disabled_.load())
+    return std::nullopt;
+  concurrency_.acquire();
+  struct SlotGuard
+  {
+    ~SlotGuard() { owner->concurrency_.release(); }
+    FaceService* owner;
+  } slotGuard{this};
+
+  const auto decoded = decodeToRgb(input.imageBytes);
+  if (decoded.rgb.empty())
+    return std::nullopt;
+  return analyzePixels({.rgbData = decoded.rgb.data(),
+                        .width = decoded.width,
+                        .height = decoded.height},
+                       input.encodeFace);
+}
+
+drogon::Task<std::optional<FaceService::FaceAnalysis>>
+FaceService::analyzeImageAsync(AnalyzeImageInput input)
+{
+  co_return co_await BlockingTask<std::optional<FaceService::FaceAnalysis>>(
+      [this, request = std::move(input)]() { return analyzeImage(request); },
       BlockingLane::Heavy);
 }

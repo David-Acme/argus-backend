@@ -664,6 +664,77 @@ batch, the gRPC `ObserveTurn`/`CloseCall` path with the fleet secret, and the
 owner's forget (404 after). Without the model on disk the model-backed half
 reports itself skipped.
 
+## The face pipeline fed the recognizer garbage (2026-10, STRANGERS)
+
+Measured before any change, through `FaceService::extractImage` exactly as it
+shipped, on Labeled Faces in the Wild (`lfw-funneled`; 300 identities with at
+least four images, six images each, 1 560 faces; 3 391 genuine and 1.2 M
+impostor pairs): genuine cosine mean 0.872, impostor mean 0.866, equal error
+rate **48.8 %** — a coin flip. At the 0.80 threshold the search applied, 79 %
+of impostor pairs matched, so a face login accepted almost any face as some
+enrolled user, and the camera matcher's "known" verdicts meant nothing.
+
+The cause was the alignment in `extractFace`: `ncnn::Mat::from_pixels_roi`
+returns a planar *float* `Mat` of the face box, which was handed to
+`warpaffine_bilinear_c3` as interleaved `uint8` pixels; the landmarks were in
+full-image coordinates while the warp's source was the box; and the warped
+interleaved buffer was read back as if it were planar. The recognizer
+(MobileFaceNet, 128-d, normalisation inside the graph) received noise with a
+little of the face's brightness in it.
+
+`FaceService::alignFace` now warps the full interleaved RGB image straight
+into the 112×112 ArcFace template (similarity transform from the five
+landmarks, inverted for ncnn's warp) and the recognizer reads it with
+`Mat::from_pixels`. `identity-face-model-test` pins it twice: a synthetic
+image whose pixels encode their own coordinates must come out of the warp at
+exactly the coordinates the landmark transform names (no model needed), and
+the public-domain NASA crops in `tests/fixtures/face/` must separate (same
+person 0.90 and 0.71, every cross pair ≤ 0.15).
+
+Same LFW set after the fix:
+
+| | Before | After |
+|---|---|---|
+| EER | 48.8 % | **3.2 %** (at 0.20) |
+| TAR at FAR 1 % | 1.6 % | 96.6 % (threshold 0.25) |
+| TAR at FAR 0.1 % | 0.2 % | 95.7 % (0.34) |
+| TAR at FAR 0.01 % | 0.09 % | 93.2 % (0.42) |
+| TAR at FAR 0.001 % | 0 % | 81.8 % (0.53) |
+| impostor mean / p99.99 | 0.866 / 1.000 | 0.015 / 0.417 |
+
+**The threshold.** `face.match_threshold` (default **0.50**, clamped
+0.30–0.95) replaces the hard-coded 0.80, and enrollment's duplicate check
+reads the same value, because "already registered" signs the person in. A
+login is a 1:N search, so its false-accept rate is the per-pair rate times the
+enrolled people: 0.50 is 2·10⁻⁵ per pair on LFW, about 2·10⁻⁴ per attempt in a
+ten-person household, for 87 % TAR on LFW's unconstrained poses (a phone
+selfie scores higher: the fixtures' pairs sit at 0.71–0.90). Security first:
+a refused face falls back to the QR approval from a paired device, an
+accepted stranger is a break-in. Live check on the sandbox: a throwaway
+account enrolled from `barratt-a.jpg` signed in with `barratt-b.jpg`, and 0
+of 40 LFW strangers plus the other fixtures did.
+
+**Two embedding spaces are never compared.** `face_embedding.model` (added at
+boot by `FaceEmbeddingRepository::ensureModelColumn`, `'legacy'` for every
+row written before) names the space a vector lives in; new rows carry
+`kFaceModelId` (`shared/vocabulary/face-model.hxx`). `FaceDB::init` drops
+every `face_vec` row whose canonical row is gone *or* belongs to another
+model, so a legacy vector can never be matched. The feature `face-upgrade`
+then re-embeds, once per account, every user whose person has only legacy
+rows, from the enrollment portrait already kept in private storage, and
+indexes the new vector. Nothing is deleted: legacy rows stay in the table
+(unindexed), portraits and users are untouched. An account without a usable
+portrait is logged and signs in by QR until its face is registered again;
+unpromoted camera candidates are not re-embedded (they have no portrait) and
+expire through the candidate retention as before. Verified on a copy of the
+sandbox database and then live (a legacy row re-embedded from its portrait in
+S3, the account signing in afterwards).
+
+`tools/face-calibration/` (`argus-face-calibration`, not built by default)
+prints, per image, the detector score, face size, inter-ocular distance,
+yaw, pitch, sharpness and the embedding, which is how the numbers above were
+produced.
+
 ## Privacy choices and the household switches (2026-10-04)
 
 David asked for consent before anything is processed: a notice at host

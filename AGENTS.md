@@ -350,7 +350,9 @@ Never: `if (!json)`, `if (!attrs->find(AuthContext::kJwtKey))`, manual field ext
 **FaceDB** — vec0-backed embedding search (sqlite-vec, exact cosine KNN):
 - `search(embedding)` → `optional<pair<int64_t, float>>` (personId, confidence)
 - `insert(embedding, personId, faceEmbeddingId)` — rowid = face_embedding.id
-- Threshold: `distance > 0.20` (80% minimum cosine confidence)
+- Threshold: `face.match_threshold`, cosine 0.50 by default (measured on LFW:
+  FAR 2·10⁻⁵ per pair; `services/identity/CONTEXT.md`). Every vector carries
+  its `face_embedding.model`; two embedding spaces are never compared
 
 **FaceEmbedding repository** — canonical persisted embeddings (synced via the
 sync engine). `face_vec` (vec0) is the search index only. No boot-time load:

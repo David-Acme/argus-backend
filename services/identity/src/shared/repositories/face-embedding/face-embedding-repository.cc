@@ -63,7 +63,8 @@ FaceEmbeddingRepository::create(const FaceEmbeddingCreateInput& input) const
   const std::vector<char> blob(input.embedding.begin(), input.embedding.end());
   const auto result =
       co_await client->execSqlCoro(INSERT.data(), input.personId, blob,
-                                   input.angleLabel, input.quality);
+                                   input.angleLabel, input.quality,
+                                   input.model);
 
   FaceEmbeddingSchema schema;
   schema.id = result.insertId();
@@ -71,6 +72,7 @@ FaceEmbeddingRepository::create(const FaceEmbeddingCreateInput& input) const
   schema.embedding = input.embedding;
   schema.angleLabel = input.angleLabel;
   schema.quality = input.quality;
+  schema.model = input.model;
   schema.createdAt = std::time(nullptr);
   co_return schema;
 }
@@ -111,12 +113,15 @@ FaceEmbeddingRepository::findIdsByPerson(sqlite3* db, int64_t personId) const
   return ids;
 }
 
-std::vector<int64_t> FaceEmbeddingRepository::findOrphanVecRows(sqlite3* db) const
+std::vector<int64_t>
+FaceEmbeddingRepository::findStaleVecRows(sqlite3* db,
+                                          std::string_view model) const
 {
   std::vector<int64_t> ids;
   SqliteStmt stmt;
-  if (!stmt.prepare(db, std::string(VEC_ORPHANS).c_str()))
+  if (!stmt.prepare(db, std::string(VEC_STALE).c_str()))
     return ids;
+  stmt.bindText(1, std::string(model));
   while (stmt.step() == SQLITE_ROW)
     ids.push_back(stmt.columnInt64(0));
   return ids;
@@ -187,4 +192,12 @@ size_t FaceEmbeddingRepository::countVec(sqlite3* db) const
   if (stmt.step() != SQLITE_ROW)
     return 0;
   return static_cast<size_t>(stmt.columnInt64(0));
+}
+
+void FaceEmbeddingRepository::ensureModelColumn()
+{
+  const auto columns =
+      DbService::client()->execSqlSync(std::string(HAS_MODEL_COLUMN));
+  if (columns.empty() || columns.front()["total"].as<int>() == 0)
+    DbService::client()->execSqlSync(std::string(ADD_MODEL_COLUMN));
 }

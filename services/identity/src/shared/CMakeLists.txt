@@ -19,6 +19,7 @@ argus_module(NAME identity-shared
         schemas/user-portrait/user-portrait-schema.cc
         schemas/user/user-schema.cc
         services/face/face-db.cc
+        services/face/face-quality.cc
         services/face/face-service.cc
         services/privacy/privacy-gate.cc
         services/storage/private-portrait-service.cc

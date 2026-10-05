@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
+#include <shared/vocabulary/face-model.hxx>
 #include <string>
 #include <string_view>
 
@@ -13,8 +14,8 @@ inline constexpr std::string_view FIND_BY_PERSON =
     "SELECT * FROM face_embedding WHERE person_id = ?";
 
 inline constexpr std::string_view INSERT =
-    "INSERT INTO face_embedding (person_id, embedding, angle_label, quality) "
-    "VALUES (?, ?, ?, ?)";
+    "INSERT INTO face_embedding (person_id, embedding, angle_label, quality, "
+    "model) VALUES (?, ?, ?, ?, ?)";
 
 inline constexpr std::string_view DELETE_BY_PERSON =
     "DELETE FROM face_embedding WHERE person_id = ?";
@@ -37,9 +38,16 @@ inline constexpr std::string_view VEC_DELETE =
 
 inline constexpr std::string_view VEC_COUNT = "SELECT COUNT(*) FROM face_vec";
 
-inline constexpr std::string_view VEC_ORPHANS =
+inline constexpr std::string_view VEC_STALE =
     "SELECT rowid FROM face_vec "
-    "WHERE rowid NOT IN (SELECT id FROM face_embedding)";
+    "WHERE rowid NOT IN (SELECT id FROM face_embedding WHERE model = ?)";
+
+inline constexpr std::string_view HAS_MODEL_COLUMN =
+    "SELECT COUNT(*) AS total FROM pragma_table_info('face_embedding') "
+    "WHERE name = 'model'";
+
+inline constexpr std::string_view ADD_MODEL_COLUMN =
+    "ALTER TABLE face_embedding ADD COLUMN model TEXT NOT NULL DEFAULT 'legacy'";
 }
 
 struct FaceEmbeddingCreateInput
@@ -48,6 +56,7 @@ struct FaceEmbeddingCreateInput
   std::string embedding;
   std::string angleLabel{"frontal"};
   double quality{1.0};
+  std::string model{kFaceModelId};
   drogon::orm::DbClient* client{nullptr};
 };
 

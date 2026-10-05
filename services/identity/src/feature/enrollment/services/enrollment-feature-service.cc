@@ -18,8 +18,6 @@
 namespace
 {
 
-constexpr float kDuplicateFaceConfidence = 0.80F;
-
 EnrollmentResult outcomeResult(EnrollmentOutcome outcome)
 {
   return EnrollmentResult{.outcome = outcome,
@@ -57,7 +55,7 @@ EnrollmentFeatureService::recognizeRegistered(const std::string& image) const
   const auto existing = co_await BlockingTask<
       std::optional<std::pair<int64_t, float>>>(
       [&face]() { return FaceService::instance().faceDb().search(face->embedding.data()); });
-  if (!existing || existing->second < kDuplicateFaceConfidence)
+  if (!existing || existing->second < FaceDB::matchThreshold())
     co_return outcomeResult(EnrollmentOutcome::FaceExtractionFailed);
 
   const auto person = co_await personRepository_.findById(existing->first);
@@ -88,7 +86,7 @@ EnrollmentFeatureService::registerUser(const EnrollmentInput& input) const
       std::optional<std::pair<int64_t, float>>>(
       [&face]() { return FaceService::instance().faceDb().search(face->embedding.data()); });
 
-  if (existing && existing->second >= kDuplicateFaceConfidence) {
+  if (existing && existing->second >= FaceDB::matchThreshold()) {
     const auto person = co_await personRepository_.findById(existing->first);
     if (!person || !person->userId)
       co_return outcomeResult(EnrollmentOutcome::FaceAlreadyRegistered);

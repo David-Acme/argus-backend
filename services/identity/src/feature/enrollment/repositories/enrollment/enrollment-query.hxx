@@ -21,8 +21,8 @@ inline constexpr std::string_view INSERT_PERSON =
     "strftime('%s', 'now'))";
 
 inline constexpr std::string_view INSERT_FACE_EMBEDDING =
-    "INSERT INTO face_embedding (person_id, embedding, angle_label, quality) "
-    "VALUES (?, ?, 'frontal', ?)";
+    "INSERT INTO face_embedding (person_id, embedding, angle_label, quality, "
+    "model) VALUES (?, ?, 'frontal', ?, ?)";
 
 inline constexpr std::string_view CONSUME_INVITATION =
     "UPDATE user_invitation SET redemption_count = redemption_count + 1, "

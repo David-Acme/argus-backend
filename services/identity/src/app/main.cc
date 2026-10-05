@@ -12,6 +12,7 @@
 #include <config/config-service.hxx>
 #include <config/identity-config.hxx>
 #include <drogon/drogon.h>
+#include <feature/face-upgrade/services/face-upgrade-service.hxx>
 #include <feature/invitation/controllers/invitation-controller.hxx>
 #include <feature/pairing/controllers/pairing-controller.hxx>
 #include <feature/pairing/infra/pairing-banner.hxx>
@@ -36,7 +37,9 @@
 #include <nats/nats-bus.hxx>
 #include <runtime/shutdown-signal.hxx>
 #include <runtime/log-output.hxx>
+#include <shared/repositories/face-embedding/face-embedding-repository.hxx>
 #include <shared/services/face/face-service.hxx>
+#include <shared/services/storage/private-portrait-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
 #include <sync/identity-change-sink.hxx>
@@ -84,6 +87,20 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
   config["listeners"] = listeners;
 
   return config;
+}
+
+drogon::Task<std::optional<std::string>> readStoredPortrait(int64_t userId)
+{
+  const PrivatePortraitService portraits;
+  auto portrait = co_await portraits.read(userId);
+  if (!portrait)
+    co_return std::nullopt;
+  co_return std::move(portrait->bytes);
+}
+
+drogon::Task<void> upgradeFaces(const FaceUpgradeService* service)
+{
+  co_await service->run();
 }
 
 }
@@ -268,8 +285,9 @@ int main()
              << (remote.enabled ? " (remote requests allowed)"
                                 : " (remote pairing and registration refused)");
 
+  const FaceUpgradeService faceUpgrade(readStoredPortrait);
   drogon::app().registerBeginningAdvice([&identityDb, &identitySink, &face,
-                                         &voiceprint]() {
+                                         &voiceprint, &faceUpgrade]() {
     DbService::installExtensions();
 
     if (!DbService::runScriptFile(identityDb.schemaPath)) {
@@ -285,6 +303,7 @@ int main()
           "ALTER TABLE person ADD COLUMN status TEXT NOT NULL DEFAULT 'known'");
 
     VoiceProfileRepository::migrateLegacy();
+    FaceEmbeddingRepository::ensureModelColumn();
 
     DbService::applyPragmas();
 
@@ -295,6 +314,9 @@ int main()
       FaceService::instance().init();
       if (!FaceService::instance().isLoaded())
         LOG_WARN << "FaceService not loaded — facial login disabled";
+      else
+        drogon::async_run(
+            [service = &faceUpgrade] { return upgradeFaces(service); });
     }
     else {
       FaceService::instance().disable();

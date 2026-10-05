@@ -170,6 +170,7 @@ argus_service(NAME argus-identity
             argus::identity-pairing
             argus::identity-enrollment
             argus::identity-retention
+            argus::identity-face-upgrade
             argus::identity-voiceprint
             argus::identity-privacy
             argus::identity-rpc
@@ -193,5 +194,6 @@ if(DOCTEST_INCLUDE_DIRS)
 endif()
 
 add_subdirectory(tools/migrate-identity)
+add_subdirectory(tools/face-calibration)
 
 add_subdirectory(tests)

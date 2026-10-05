@@ -535,6 +535,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::EnrollPerson(
                  .embedding = embedding,
                  .angleLabel = "frontal",
                  .quality = 1.0,
+                 .model = std::string(kFaceModelId),
                  .client = transaction.get()});
             if (row.id > 0)
               faceEmbeddingId = row.id;

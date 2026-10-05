@@ -7,6 +7,7 @@ FaceEmbeddingSchema::FaceEmbeddingSchema(const drogon::orm::Row& row)
   embedding = row["embedding"].as<std::string>();
   angleLabel = row["angle_label"].as<std::string>();
   quality = row["quality"].as<double>();
+  model = row["model"].as<std::string>();
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
 }
 
@@ -17,6 +18,7 @@ Json::Value FaceEmbeddingSchema::toJson() const
   json["personId"] = personId;
   json["angleLabel"] = angleLabel;
   json["quality"] = quality;
+  json["model"] = model;
   json["createdAt"] = Json::Int64(createdAt);
   return json;
 }

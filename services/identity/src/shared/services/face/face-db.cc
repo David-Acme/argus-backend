@@ -13,8 +13,16 @@ namespace
 {
 
 constexpr int kEmbeddingDim = 128;
-constexpr float kMinConfidence = 0.80F;
+constexpr double kDefaultMatchThreshold = 0.50;
 
+}
+
+float FaceDB::matchThreshold()
+{
+  if (!ConfigService::hasKey("face.match_threshold"))
+    return static_cast<float>(kDefaultMatchThreshold);
+  return static_cast<float>(std::clamp(
+      ConfigService::getDouble("face.match_threshold"), 0.30, 0.95));
 }
 
 std::mutex& FaceDB::vecMutex()
@@ -27,12 +35,13 @@ void FaceDB::init()
   std::scoped_lock lock(vecMutex());
   sqlite3* db = vecDb_.handle();
   if (db) {
-    const auto orphans = repository_.findOrphanVecRows(db);
-    for (const int64_t rowid : orphans)
+    const auto stale = repository_.findStaleVecRows(db, kFaceModelId);
+    for (const int64_t rowid : stale)
       repository_.deleteVecRow(db, rowid);
-    if (!orphans.empty())
-      LOG_INFO << "FaceDB: dropped " << orphans.size()
-               << " index row(s) whose embedding is gone";
+    if (!stale.empty())
+      LOG_INFO << "FaceDB: dropped " << stale.size()
+               << " index row(s) whose embedding is gone or belongs to "
+                  "another face model";
   }
   LOG_INFO << "FaceDB: vec0 index ready";
 }
@@ -90,12 +99,10 @@ std::optional<std::pair<int64_t, float>> FaceDB::search(const float* query)
   if (bestByPerson.empty())
     return std::nullopt;
 
-  auto winner = std::max_element(bestByPerson.begin(), bestByPerson.end(),
-                                 [](const auto& a, const auto& b) {
-                                   return a.second < b.second;
-                                 });
+  const auto winner = std::ranges::max_element(
+      bestByPerson, {}, [](const auto& entry) { return entry.second; });
 
-  if (winner->second < kMinConfidence)
+  if (winner->second < matchThreshold())
     return std::nullopt;
 
   return std::make_pair(winner->first, winner->second);

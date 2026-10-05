@@ -1,5 +1,7 @@
 #include "enrollment-repository.hxx"
 
+#include <shared/vocabulary/face-model.hxx>
+
 #include <sqlite/db-service.hxx>
 #include <vector>
 
@@ -44,7 +46,8 @@ drogon::Task<int64_t> EnrollmentRepository::insertFaceEmbedding(
   auto* client = input.client ? input.client : pooled.get();
   const std::vector<char> blob(input.embedding.begin(), input.embedding.end());
   const auto result = co_await client->execSqlCoro(
-      INSERT_FACE_EMBEDDING.data(), input.personId, blob, input.quality);
+      INSERT_FACE_EMBEDDING.data(), input.personId, blob, input.quality,
+      std::string(kFaceModelId));
   co_return static_cast<int64_t>(result.insertId());
 }
 

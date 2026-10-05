@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <optional>
+#include <string_view>
 #include <shared/schemas/face-embedding/face-embedding-schema.hxx>
 #include <vector>
 
@@ -34,5 +35,7 @@ public:
                                     const FaceVecSearchInput& input) const;
   bool deleteVecRow(sqlite3* db, int64_t rowid) const;
   size_t countVec(sqlite3* db) const;
-  std::vector<int64_t> findOrphanVecRows(sqlite3* db) const;
+  std::vector<int64_t> findStaleVecRows(sqlite3* db,
+                                        std::string_view model) const;
+  static void ensureModelColumn();
 };

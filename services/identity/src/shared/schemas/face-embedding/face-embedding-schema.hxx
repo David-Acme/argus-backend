@@ -14,9 +14,10 @@ struct FaceEmbeddingSchema
   std::string embedding;
   std::string angleLabel;
   double quality{1.0};
+  std::string model;
   int64_t createdAt{0};
 
   FaceEmbeddingSchema() = default;
   explicit FaceEmbeddingSchema(const drogon::orm::Row& row);
-  Json::Value toJson() const;
+  [[nodiscard]] Json::Value toJson() const;
 };

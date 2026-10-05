@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS face_embedding (
     embedding   BLOB    NOT NULL,
     angle_label TEXT    NOT NULL  DEFAULT 'frontal',
     quality     REAL    NOT NULL  DEFAULT 1.0,
+    model       TEXT    NOT NULL  DEFAULT 'legacy',
     created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 

@@ -172,3 +172,18 @@ target_link_libraries(identity-privacy-test PRIVATE
 target_compile_options(identity-privacy-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-privacy-test)
 add_test(NAME identity-privacy-test COMMAND identity-privacy-test)
+
+add_executable(identity-face-model-test unit/identity-face-model-test.cc)
+target_compile_definitions(identity-face-model-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql"
+    ARGUS_TEST_FACE_MODELS="${CMAKE_CURRENT_SOURCE_DIR}/../../../models/face"
+    ARGUS_TEST_FACE_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/face")
+target_link_libraries(identity-face-model-test PRIVATE
+    argus::identity-face-upgrade
+    argus::identity-shared
+    argus::lib::sqlite
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-face-model-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-face-model-test)
+add_test(NAME identity-face-model-test COMMAND identity-face-model-test)
