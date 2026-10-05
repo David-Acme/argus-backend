@@ -9,13 +9,49 @@
 
 #include <drogon/utils/coroutine.h>
 
+#include <chrono>
 #include <memory>
+#include <string_view>
 #include <span>
 #include <utility>
 
 namespace
 {
 constexpr size_t kMaxMessageSize = 65536;
+constexpr std::string_view kAuthFrame = "camera:auth";
+
+drogon::Task<> renewAccess(MediaAccessCheck& access, const SyncFrameInput& frame)
+{
+  const Json::Value& token = frame.message["payload"]["token"];
+  if (!token.isString() || token.asString().empty()) {
+    sendSocketFrameError({.conn = frame.conn,
+                          .type = std::string(kAuthFrame),
+                          .status = 400,
+                          .error = "payload.token must be an access token"});
+    co_return;
+  }
+  const MediaRenewal renewal = co_await access.renew(
+      {.connection = frame.conn, .token = token.asString(), .at = std::chrono::steady_clock::now()});
+  if (renewal == MediaRenewal::Renewed) {
+    const auto context = frame.conn->getContext<JwtContext>();
+    Json::Value ack;
+    ack["type"] = "camera:auth:ok";
+    ack["payload"]["role"] =
+        context ? userRoleToString(context->role) : std::string();
+    frame.conn->sendJson(ack);
+    co_return;
+  }
+  if (renewal == MediaRenewal::Throttled)
+    sendSocketFrameError({.conn = frame.conn,
+                          .type = std::string(kAuthFrame),
+                          .status = 429,
+                          .error = "Renew the access at most once every 10 seconds"});
+  else if (renewal == MediaRenewal::Unknown)
+    sendSocketFrameError({.conn = frame.conn,
+                          .type = std::string(kAuthFrame),
+                          .status = 409,
+                          .error = "This socket has no access to renew"});
+}
 }
 
 void CameraMediaSocket::handleNewConnection(
@@ -34,6 +70,7 @@ void CameraMediaSocket::handleNewConnection(
                               .origin = device.origin == SessionOrigin::Unknown
                                             ? std::string{}
                                             : sessionOriginToString(device.origin),
+                              .userId = ctx.sub,
                               .role = ctx.role}});
 }
 
@@ -68,6 +105,10 @@ void CameraMediaSocket::handleNewMessage(
     const std::string frameType = json.get("type", "").asString();
     try {
       const SyncFrameInput frame{.conn = conn, .message = json, .raw = raw};
+      if (frameType == kAuthFrame) {
+        co_await renewAccess(self->access_, frame);
+        co_return;
+      }
       const bool handled = CameraTalkService::handles(frameType)
                                ? co_await self->talk_.handleText(frame)
                                : co_await self->service_.handleText(frame);

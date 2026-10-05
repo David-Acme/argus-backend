@@ -6,6 +6,7 @@
 #include <drogon/utils/coroutine.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -19,6 +20,13 @@ struct MediaCredential
   std::string token;
   std::string deviceHash;
   std::string origin;
+  int64_t userId{0};
+  UserRole role{UserRole::Guest};
+};
+
+struct MediaIdentity
+{
+  int64_t userId{0};
   UserRole role{UserRole::Guest};
 };
 
@@ -28,6 +36,13 @@ struct MediaAccessOpen
   MediaCredential credential;
 };
 
+struct MediaRenewInput
+{
+  drogon::WebSocketConnectionPtr connection;
+  std::string token;
+  std::chrono::steady_clock::time_point at;
+};
+
 enum class MediaAccessVerdict : uint8_t
 {
   Keep = 0,
@@ -35,20 +50,34 @@ enum class MediaAccessVerdict : uint8_t
   RoleChanged
 };
 
+enum class MediaRenewal : uint8_t
+{
+  Renewed = 0,
+  Throttled,
+  Unknown,
+  Closed
+};
+
 class MediaAccessCheck
 {
 public:
-  using Validate = std::function<std::optional<UserRole>(const MediaCredential&)>;
+  using Validate = std::function<std::optional<MediaIdentity>(const MediaCredential&)>;
+
+  static constexpr std::chrono::seconds kMinRenewInterval{10};
 
   explicit MediaAccessCheck(Validate validate);
 
   [[nodiscard]] static Validate remote();
   [[nodiscard]] static MediaAccessVerdict judge(const MediaCredential& credential,
-                                                const std::optional<UserRole>& current);
+                                                const std::optional<MediaIdentity>& current);
+  [[nodiscard]] static const char* closeReason(MediaAccessVerdict verdict);
 
   void add(const MediaAccessOpen& open);
   void remove(const drogon::WebSocketConnectionPtr& connection);
   drogon::Task<std::size_t> sweep();
+  [[nodiscard]] std::size_t sweepNow();
+  drogon::Task<MediaRenewal> renew(MediaRenewInput input);
+  [[nodiscard]] MediaRenewal renewNow(const MediaRenewInput& input);
   void start(double intervalSeconds);
 
   void requestStop();
@@ -59,7 +88,10 @@ private:
   {
     std::weak_ptr<drogon::WebSocketConnection> connection;
     MediaCredential credential;
+    std::optional<std::chrono::steady_clock::time_point> renewedAt;
   };
+
+  static void close(const drogon::WebSocketConnectionPtr& connection, MediaAccessVerdict verdict);
 
   Validate validate_;
   mutable std::mutex mutex_;

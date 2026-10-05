@@ -20,7 +20,11 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <chrono>
 #include <filesystem>
+#include <map>
+#include <mutex>
+#include <optional>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -74,6 +78,27 @@ void exec(sqlite3* db, const std::string& sql)
   if (rc != SQLITE_OK)
     throw std::runtime_error("sqlite3_exec: " + message);
 }
+
+class ClosingConnection final : public drogon::WebSocketConnection
+{
+public:
+  void send(const char*, uint64_t, const drogon::WebSocketMessageType) override {}
+  void send(std::string_view, const drogon::WebSocketMessageType) override {}
+  void sendJson(const Json::Value&, const drogon::WebSocketMessageType) override {}
+  const trantor::InetAddress& localAddr() const override { return address_; }
+  const trantor::InetAddress& peerAddr() const override { return address_; }
+  bool connected() const override { return closedWith.empty(); }
+  bool disconnected() const override { return !closedWith.empty(); }
+  void shutdown(const drogon::CloseCode, const std::string& reason) override { closedWith = reason; }
+  void forceClose() override { closedWith = "forced"; }
+  void setPingMessage(const std::string&, const std::chrono::duration<double>&) override {}
+  void disablePing() override {}
+
+  std::string closedWith;
+
+private:
+  trantor::InetAddress address_{"127.0.0.1", 0};
+};
 
 struct Tombstone
 {
@@ -344,10 +369,70 @@ TEST_CASE("evidence is kept for the camera's retention, capped at 60 days or 120
 TEST_CASE("a media socket is closed when its session lapses or its role changes")
 {
   const MediaCredential credential{.token = "t", .deviceHash = "d", .origin = "lan",
-                                   .role = UserRole::Resident};
-  CHECK(MediaAccessCheck::judge(credential, UserRole::Resident) == MediaAccessVerdict::Keep);
-  CHECK(MediaAccessCheck::judge(credential, UserRole::Guest) == MediaAccessVerdict::RoleChanged);
+                                   .userId = 7, .role = UserRole::Resident};
+  CHECK(MediaAccessCheck::judge(credential, MediaIdentity{.userId = 7, .role = UserRole::Resident}) ==
+        MediaAccessVerdict::Keep);
+  CHECK(MediaAccessCheck::judge(credential, MediaIdentity{.userId = 7, .role = UserRole::Guest}) ==
+        MediaAccessVerdict::RoleChanged);
+  CHECK(MediaAccessCheck::judge(credential, MediaIdentity{.userId = 8, .role = UserRole::Resident}) ==
+        MediaAccessVerdict::Expired);
   CHECK(MediaAccessCheck::judge(credential, std::nullopt) == MediaAccessVerdict::Expired);
+}
+
+TEST_CASE("a media socket renews its access in band and keeps every revocation")
+{
+  std::map<std::string, std::optional<MediaIdentity>> tokens{
+      {"old", MediaIdentity{.userId = 7, .role = UserRole::Resident}},
+      {"new", MediaIdentity{.userId = 7, .role = UserRole::Resident}},
+      {"other-user", MediaIdentity{.userId = 9, .role = UserRole::Resident}}};
+  std::mutex tokensMutex;
+  std::vector<std::string> deviceHashes;
+  MediaAccessCheck access([&](const MediaCredential& credential) -> std::optional<MediaIdentity> {
+    std::scoped_lock lock(tokensMutex);
+    deviceHashes.push_back(credential.deviceHash);
+    const auto found = tokens.find(credential.token);
+    return found == tokens.end() ? std::nullopt : found->second;
+  });
+  const auto expire = [&](const std::string& token) {
+    std::scoped_lock lock(tokensMutex);
+    tokens[token] = std::nullopt;
+  };
+  const MediaCredential credential{.token = "old", .deviceHash = "device-a", .origin = "lan",
+                                   .userId = 7, .role = UserRole::Resident};
+  const auto start = std::chrono::steady_clock::now();
+
+  const auto renewing = std::make_shared<ClosingConnection>();
+  access.add({.connection = renewing, .credential = credential});
+  CHECK(access.renewNow({.connection = renewing, .token = "new", .at = start}) ==
+        MediaRenewal::Renewed);
+  CHECK(deviceHashes.back() == "device-a");
+  CHECK(access.renewNow({.connection = renewing, .token = "new", .at = start + std::chrono::seconds(1)}) ==
+        MediaRenewal::Throttled);
+  expire("old");
+  CHECK(access.sweepNow() == 0);
+  CHECK(renewing->closedWith.empty());
+
+  const auto silent = std::make_shared<ClosingConnection>();
+  access.add({.connection = silent, .credential = credential});
+  CHECK(access.sweepNow() == 1);
+  CHECK(silent->closedWith == "session_expired");
+  CHECK(renewing->closedWith.empty());
+
+  const auto intruder = std::make_shared<ClosingConnection>();
+  access.add({.connection = intruder,
+              .credential = {.token = "new", .deviceHash = "device-b", .origin = "lan",
+                             .userId = 7, .role = UserRole::Resident}});
+  CHECK(access.renewNow({.connection = intruder, .token = "other-user", .at = start}) ==
+        MediaRenewal::Closed);
+  CHECK(intruder->closedWith == "session_expired");
+  CHECK(access.renewNow({.connection = std::make_shared<ClosingConnection>(), .token = "new",
+                         .at = start}) == MediaRenewal::Unknown);
+
+  access.remove(silent);
+  access.remove(intruder);
+  expire("new");
+  CHECK(access.sweepNow() == 1);
+  CHECK(renewing->closedWith == "session_expired");
 }
 
 TEST_CASE("a configured zone kind is parsed once and an unknown one is refused")

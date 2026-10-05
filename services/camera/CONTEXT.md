@@ -1610,6 +1610,26 @@ service, and why each looks the way it does.
   session verdict at argus-auth) every 60 s; an expired or revoked session is
   closed with `session_expired`, a changed role with `role_changed`, which also
   ends a talk session. An unreachable argus-auth keeps the socket (#102).
+- **A live view renews its access in band.** Closing at the access token's
+  expiry would cut every live view each token lifetime, so the app sends
+  `{"type":"camera:auth","payload":{"token":"<access token>"}}` on the open
+  `/media` socket after each refresh. The token is checked like the sweep
+  checks the stored one (signature and expiry, then argus-auth's session
+  verdict with the socket's own device hash and origin) and must name the
+  socket's user; it then replaces the stored token and the socket answers
+  `{"type":"camera:auth:ok","payload":{"role":"<role>"}}`. A token that fails,
+  belongs to another user or carries another role closes the socket like the
+  sweep would (1008 `session_expired` or `role_changed`). One renewal per
+  socket every 10 s (`MediaAccessCheck::kMinRenewInterval`, it costs a verdict
+  RPC); a faster one gets `camera:auth_error` 429 and changes nothing, a frame
+  without a token 400, a socket the check does not track 409. Renewal never
+  outlives a revocation: the sweep keeps validating the newest token every 60
+  s, and a sweep that judged a token replaced meanwhile does not act on it. A
+  client that never renews keeps the old behaviour and is closed once its
+  token expires. WebRTC views have no socket and no token after the
+  exchange: they end on a session revocation (the auth session feed restarts
+  go2rtc through `WebRtcSessionCloser`), not on token expiry, so they need no
+  renewal.
 
 ### Workers and lanes
 
