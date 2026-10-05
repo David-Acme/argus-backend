@@ -14,7 +14,7 @@ namespace
 {
 using DigestContext = std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>;
 
-constexpr std::size_t kReadChunk = 64 * 1024;
+constexpr std::size_t kReadChunk = std::size_t{64} * 1024;
 constexpr std::size_t kPlane =
     static_cast<std::size_t>(kAntiSpoofInputSide) * kAntiSpoofInputSide;
 
@@ -26,8 +26,9 @@ std::vector<float> tensorOf(const cv::Mat& bgr)
     for (int x = 0; x < bgr.cols; ++x) {
       const auto offset = static_cast<std::size_t>(y) * kAntiSpoofInputSide +
                           static_cast<std::size_t>(x);
-      for (std::size_t channel = 0; channel < 3; ++channel)
-        tensor[channel * kPlane + offset] = static_cast<float>(row[x][channel]);
+      for (int channel = 0; channel < 3; ++channel)
+        tensor[static_cast<std::size_t>(channel) * kPlane + offset] =
+            static_cast<float>(row[x][channel]);
     }
   }
   return tensor;
@@ -136,8 +137,9 @@ std::optional<std::string> anti_spoof::sha256File(const std::string& path)
   std::string hex;
   hex.reserve(static_cast<std::size_t>(length) * 2);
   for (unsigned int i = 0; i < length; ++i) {
-    hex.push_back(kHex[digest[i] >> 4]);
-    hex.push_back(kHex[digest[i] & 0x0F]);
+    const auto byte = static_cast<unsigned>(digest[i]);
+    hex.push_back(kHex[byte >> 4U]);
+    hex.push_back(kHex[byte & 0x0FU]);
   }
   return hex;
 }
@@ -244,7 +246,7 @@ std::optional<float> AntiSpoofEngine::realScore(const AntiSpoofScoreInput& input
     try {
       auto result = model.session->Run(Ort::RunOptions{nullptr}, inputs.data(), &value,
                                        1, outputs.data(), 1);
-      const float* logits = result.front().GetTensorData<float>();
+      const auto* logits = result.front().GetTensorData<float>();
       const std::span<const float, kAntiSpoofClasses> view(logits, kAntiSpoofClasses);
       realSum += anti_spoof::softmax(view)[kAntiSpoofRealClass];
     }

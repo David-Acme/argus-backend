@@ -5,9 +5,6 @@
 #include <drogon/drogon.h>
 #include <optional>
 #include <stdexcept>
-#include <shared/repositories/pending-object-delete/pending-object-delete-repository.hxx>
-#include <shared/repositories/stored-file/stored-file-repository.hxx>
-#include <shared/repositories/user-portrait/user-portrait-repository.hxx>
 
 drogon::Task<void>
 PrivatePortraitService::store(int64_t userId, const std::string& portraitJpeg) const
@@ -25,10 +22,8 @@ PrivatePortraitService::store(int64_t userId, const std::string& portraitJpeg) c
   std::string failure;
   try {
     object = co_await storage.putPortrait(userId, portraitJpeg);
-    StoredFileRepository files;
-    UserPortraitRepository portraits;
-    const auto previous = co_await portraits.findByUserId(userId);
-    const auto file = co_await files.create({
+    const auto previous = co_await portraitRepository_.findByUserId(userId);
+    const auto file = co_await fileRepository_.create({
         .objectKey = object->objectKey,
         .sha256 = object->sha256,
         .mimeType = std::string(kPortraitMimeType),
@@ -36,14 +31,13 @@ PrivatePortraitService::store(int64_t userId, const std::string& portraitJpeg) c
         .category = StoredFileCategory::Portrait,
         .createdBy = userId,
     });
-    co_await portraits.upsertCurrent({.userId = userId, .fileId = file.id});
+    co_await portraitRepository_.upsertCurrent({.userId = userId, .fileId = file.id});
     if (previous && previous->fileId != file.id) {
-      if (const auto old = co_await files.findById(previous->fileId)) {
-        co_await files.remove(old->id);
+      if (const auto old = co_await fileRepository_.findById(previous->fileId)) {
+        co_await fileRepository_.remove(old->id);
         const PendingObjectEnqueueInput pending{.objectKeys = {old->objectKey},
                                                 .client = nullptr};
-        const PendingObjectDeleteRepository repository;
-        co_await repository.enqueue(pending);
+        co_await pendingRepository_.enqueue(pending);
       }
     }
     co_return;
@@ -72,13 +66,11 @@ PrivatePortraitService::store(int64_t userId, const std::string& portraitJpeg) c
 drogon::Task<std::optional<PrivatePortrait>>
 PrivatePortraitService::read(int64_t userId) const
 {
-  UserPortraitRepository portraits;
-  const auto portrait = co_await portraits.findByUserId(userId);
+  const auto portrait = co_await portraitRepository_.findByUserId(userId);
   if (!portrait)
     co_return std::nullopt;
 
-  StoredFileRepository files;
-  const auto file = co_await files.findById(portrait->fileId);
+  const auto file = co_await fileRepository_.findById(portrait->fileId);
   if (!file || file->category != StoredFileCategory::Portrait)
     co_return std::nullopt;
 
@@ -94,12 +86,10 @@ PrivatePortraitService::read(int64_t userId) const
 
 drogon::Task<bool> PrivatePortraitService::has(int64_t userId) const
 {
-  UserPortraitRepository portraits;
-  const auto portrait = co_await portraits.findByUserId(userId);
+  const auto portrait = co_await portraitRepository_.findByUserId(userId);
   if (!portrait)
     co_return false;
 
-  StoredFileRepository files;
-  const auto file = co_await files.findById(portrait->fileId);
+  const auto file = co_await fileRepository_.findById(portrait->fileId);
   co_return file && file->category == StoredFileCategory::Portrait;
 }

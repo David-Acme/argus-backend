@@ -6,13 +6,9 @@
 #include <map>
 #include <shared/repositories/face-embedding/face-embedding-repository.hxx>
 #include <config/config-service.hxx>
-#include <cstring>
-#include <exception>
-#include <sqlite/db-service.hxx>
 #include <sqlite/vec-db.hxx>
 #include <sqlite3.h>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 namespace
@@ -59,40 +55,17 @@ void FaceDB::init()
 
 std::size_t FaceDB::repairIndex()
 {
-  std::optional<drogon::orm::Result> rows;
-  try {
-    const auto client = DbService::identityClient();
-    if (!client)
-      return 0;
-    rows = client->execSqlSync(
-        std::string(face_embedding_query::FIND_INDEXABLE), std::string(kFaceModelId),
-        static_cast<int64_t>(kEmbeddingDim * sizeof(float)));
-  }
-  catch (const std::exception& error) {
-    LOG_WARN << "FaceDB: the index repair could not read the embeddings: "
-             << error.what();
-    return 0;
-  }
   std::scoped_lock lock(vecMutex());
   sqlite3* db = vecDb_.handle();
   if (!db)
     return 0;
-  const auto rowids = repository_.findVecRowids(db);
-  const std::unordered_set<int64_t> indexed(rowids.begin(), rowids.end());
   std::size_t repaired = 0;
-  std::vector<float> embedding(kEmbeddingDim);
-  for (const auto& row : *rows) {
-    const auto id = row["id"].as<int64_t>();
-    if (indexed.contains(id))
-      continue;
-    const auto blob = row["embedding"].as<std::vector<char>>();
-    if (blob.size() != embedding.size() * sizeof(float))
-      continue;
-    std::memcpy(embedding.data(), blob.data(), blob.size());
-    if (repository_.insertVec(db, {.embedding = embedding.data(),
+  for (const auto& row :
+       repository_.findUnindexed(db, {.model = kFaceModelId, .dims = kEmbeddingDim})) {
+    if (repository_.insertVec(db, {.embedding = row.embedding.data(),
                                    .dims = kEmbeddingDim,
-                                   .personId = row["person_id"].as<int64_t>(),
-                                   .faceEmbeddingId = id}))
+                                   .personId = row.personId,
+                                   .faceEmbeddingId = row.id}))
       ++repaired;
   }
   return repaired;

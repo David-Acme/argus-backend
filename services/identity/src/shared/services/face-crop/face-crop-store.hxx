@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <optional>
+#include <shared/repositories/pending-object-delete/pending-object-delete-repository.hxx>
 #include <string>
 
 struct FaceCropPutInput
@@ -19,4 +20,7 @@ public:
   drogon::Task<std::optional<std::string>> put(const FaceCropPutInput& input) const;
   drogon::Task<std::optional<std::string>> read(const std::string& key) const;
   drogon::Task<void> remove(const std::string& key) const;
+
+private:
+  PendingObjectDeleteRepository pendingRepository_;
 };

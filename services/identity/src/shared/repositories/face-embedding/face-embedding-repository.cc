@@ -1,6 +1,8 @@
 #include "face-embedding-repository.hxx"
 
 #include <array>
+#include <cstring>
+#include <utility>
 #include <shared/services/schema/column-migration.hxx>
 
 #include <ctime>
@@ -130,15 +132,28 @@ FaceEmbeddingRepository::findStaleVecRows(sqlite3* db,
   return ids;
 }
 
-std::vector<int64_t> FaceEmbeddingRepository::findVecRowids(sqlite3* db) const
+std::vector<FaceUnindexedRow>
+FaceEmbeddingRepository::findUnindexed(sqlite3* db, const FaceUnindexedInput& input) const
 {
-  std::vector<int64_t> ids;
+  std::vector<FaceUnindexedRow> rows;
   SqliteStmt stmt;
-  if (!stmt.prepare(db, std::string(VEC_ROWIDS).c_str()))
-    return ids;
-  while (stmt.step() == SQLITE_ROW)
-    ids.push_back(stmt.columnInt64(0));
-  return ids;
+  if (!stmt.prepare(db, std::string(FIND_UNINDEXED).c_str()))
+    return rows;
+  const auto bytes = static_cast<std::size_t>(input.dims) * sizeof(float);
+  stmt.bindText(1, std::string(input.model));
+  stmt.bindInt64(2, static_cast<int64_t>(bytes));
+  while (stmt.step() == SQLITE_ROW) {
+    const void* blob = sqlite3_column_blob(stmt.get(), 2);
+    if (blob == nullptr ||
+        std::cmp_not_equal(sqlite3_column_bytes(stmt.get(), 2), bytes))
+      continue;
+    FaceUnindexedRow row{.id = stmt.columnInt64(0),
+                         .personId = stmt.columnInt64(1),
+                         .embedding = std::vector<float>(static_cast<std::size_t>(input.dims))};
+    std::memcpy(row.embedding.data(), blob, bytes);
+    rows.push_back(std::move(row));
+  }
+  return rows;
 }
 
 bool FaceEmbeddingRepository::insertVec(sqlite3* db,

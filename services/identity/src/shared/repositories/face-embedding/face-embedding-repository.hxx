@@ -37,6 +37,7 @@ public:
   size_t countVec(sqlite3* db) const;
   std::vector<int64_t> findStaleVecRows(sqlite3* db,
                                         std::string_view model) const;
-  std::vector<int64_t> findVecRowids(sqlite3* db) const;
+  std::vector<FaceUnindexedRow> findUnindexed(sqlite3* db,
+                                              const FaceUnindexedInput& input) const;
   static void ensureColumns();
 };

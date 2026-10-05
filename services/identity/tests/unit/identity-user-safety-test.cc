@@ -4,6 +4,7 @@
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
 #include <feature/enrollment/repositories/enrollment/enrollment-repository.hxx>
+#include <feature/person/services/person-feature-service.hxx>
 #include <feature/user/services/biometric-erase-service.hxx>
 #include <feature/user/services/portrait-preview-service.hxx>
 #include <feature/user/services/user-feature-service.hxx>
@@ -15,6 +16,7 @@
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 #include <sqlite/vec-db.hxx>
+#include <sync/identity-change-sink.hxx>
 
 #include <algorithm>
 #include <chrono>
@@ -109,6 +111,48 @@ std::string refusalOf(drogon::Task<T> task)
   return {};
 }
 
+class RecordingSink : public IdentityChangeSink
+{
+public:
+  [[nodiscard]] drogon::Task<void> publishCatalog(const IdentityCatalogInput&) const override
+  {
+    co_return;
+  }
+
+  [[nodiscard]] drogon::Task<void> emitModule(const ModuleEmitInput&) const override
+  {
+    ++moduleFrames_;
+    co_return;
+  }
+
+  [[nodiscard]] drogon::Task<void>
+  publishModuleAudit(const ModuleAuditInput& input) const override
+  {
+    moduleAudits_.push_back(input.recordId);
+    co_return;
+  }
+
+  [[nodiscard]] drogon::Task<void> publishUsersAudit(const UserAuditInput&) const override
+  {
+    co_return;
+  }
+
+  [[nodiscard]] drogon::Task<void> publishAction(const ActionPublishInput& input) const override
+  {
+    actions_.push_back(input.event.recordId);
+    co_return;
+  }
+
+  [[nodiscard]] const std::vector<int64_t>& moduleAudits() const { return moduleAudits_; }
+  [[nodiscard]] const std::vector<int64_t>& actions() const { return actions_; }
+  [[nodiscard]] int moduleFrames() const { return moduleFrames_; }
+
+private:
+  mutable std::vector<int64_t> moduleAudits_;
+  mutable std::vector<int64_t> actions_;
+  mutable int moduleFrames_{0};
+};
+
 UpdateUserDto roleChange(UserRole role)
 {
   UpdateUserDto body;
@@ -165,7 +209,7 @@ TEST_CASE("the last active owner can be neither demoted nor deactivated, and nob
 
   const auto renamed = drogon::sync_wait(users.rename({.userId = 1, .name = "Olga M."}));
   REQUIRE(renamed.has_value());
-  CHECK(renamed->name == "Olga M.");
+  CHECK(renamed.value_or(UserSchema{}).name == "Olga M.");
   CHECK_FALSE(drogon::sync_wait(users.rename({.userId = 99, .name = "Nobody"})).has_value());
 }
 
@@ -345,4 +389,28 @@ TEST_CASE("visitor numbers are never reused and visitor tombstones never reach s
   CHECK(std::ranges::find(ids, 410) != ids.end());
   CHECK(std::ranges::find(ids, 411) == ids.end());
   CHECK(std::ranges::find(ids, 412) == ids.end());
+}
+
+TEST_CASE("promoting a visitor journals it for the owner and never reaches the module rooms")
+{
+  boot();
+  const auto client = DbService::client();
+  client->execSqlSync("INSERT INTO user (id, name, last_name, role) VALUES "
+                      "(51, 'Rosa', '', 'resident')");
+  client->execSqlSync("INSERT INTO person (id, user_id, name, status) VALUES "
+                      "(510, 51, 'Rosa', 'candidate'), (511, NULL, 'Cartero', 'candidate'), "
+                      "(512, NULL, '', 'candidate')");
+  const RecordingSink sink;
+  identity_change::setSink(&sink);
+  const PersonFeatureService persons;
+
+  CHECK(drogon::sync_wait(persons.promote({.personId = 511, .actorId = 31})) == true);
+  CHECK(drogon::sync_wait(persons.promote({.personId = 512, .actorId = 31})) == false);
+  CHECK(drogon::sync_wait(persons.promote({.personId = 510, .actorId = 31})) == true);
+  identity_change::setSink(nullptr);
+
+  CHECK(sink.moduleAudits() == std::vector<int64_t>{510});
+  CHECK(sink.actions() == std::vector<int64_t>{511});
+  CHECK(sink.moduleFrames() == 0);
+  CHECK(scalar("SELECT COUNT(*) FROM person WHERE id = 512 AND status = 'candidate'") == 1);
 }

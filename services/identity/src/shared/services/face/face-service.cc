@@ -287,10 +287,10 @@ FaceService::runDetector(const RunDetectorInput& input)
           fb.y2 = (pbCy + pbH * 0.5F) * invScaleY;
           fb.score = score;
           for (int k = 0; k < 5; ++k) {
-            fb.lm[static_cast<std::size_t>(k * 2)] =
+            fb.lm[static_cast<std::size_t>(k) * 2] =
                 (acx + (anchorSize + 1) * lm.channel(a * 10 + k * 2).row(r)[c]) *
                 invScaleX;
-            fb.lm[static_cast<std::size_t>(k * 2 + 1)] =
+            fb.lm[static_cast<std::size_t>(k) * 2 + 1] =
                 (acy + (anchorSize + 1) * lm.channel(a * 10 + k * 2 + 1).row(r)[c]) *
                 invScaleY;
           }

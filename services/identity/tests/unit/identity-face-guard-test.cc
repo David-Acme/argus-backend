@@ -60,10 +60,11 @@ TEST_CASE("the anti-spoofing crop follows the upstream scaled box")
                                             .height = 80.0F,
                                             .scale = 2.7F});
   REQUIRE(centred.has_value());
-  CHECK(centred->x1 == 212);
-  CHECK(centred->y1 == 132);
-  CHECK(centred->x2 == 428);
-  CHECK(centred->y2 == 348);
+  const auto centredValue = centred.value_or(AntiSpoofCrop{});
+  CHECK(centredValue.x1 == 212);
+  CHECK(centredValue.y1 == 132);
+  CHECK(centredValue.x2 == 428);
+  CHECK(centredValue.y2 == 348);
 
   const auto shifted = anti_spoof::cropBox({.imageWidth = 640,
                                             .imageHeight = 480,
@@ -73,10 +74,11 @@ TEST_CASE("the anti-spoofing crop follows the upstream scaled box")
                                             .height = 100.0F,
                                             .scale = 4.0F});
   REQUIRE(shifted.has_value());
-  CHECK(shifted->x1 == 0);
-  CHECK(shifted->y1 == 0);
-  CHECK(shifted->width() == 401);
-  CHECK(shifted->height() == 401);
+  const auto shiftedValue = shifted.value_or(AntiSpoofCrop{});
+  CHECK(shiftedValue.x1 == 0);
+  CHECK(shiftedValue.y1 == 0);
+  CHECK(shiftedValue.width() == 401);
+  CHECK(shiftedValue.height() == 401);
 
   const auto clamped = anti_spoof::cropBox({.imageWidth = 200,
                                             .imageHeight = 200,
@@ -86,9 +88,10 @@ TEST_CASE("the anti-spoofing crop follows the upstream scaled box")
                                             .height = 100.0F,
                                             .scale = 4.0F});
   REQUIRE(clamped.has_value());
-  CHECK(clamped->x1 == 0);
-  CHECK(clamped->x2 == 199);
-  CHECK(clamped->y2 == 199);
+  const auto clampedValue = clamped.value_or(AntiSpoofCrop{});
+  CHECK(clampedValue.x1 == 0);
+  CHECK(clampedValue.x2 == 199);
+  CHECK(clampedValue.y2 == 199);
 
   CHECK_FALSE(anti_spoof::cropBox({.imageWidth = 1,
                                    .imageHeight = 1,
@@ -250,7 +253,8 @@ TEST_CASE("sign-in matches household members only, past the threshold and the ma
   const auto member = member_match::decide(
       {.candidates = visitorCloser, .threshold = 0.50F, .margin = 0.05F});
   REQUIRE(member.has_value());
-  CHECK(member->personId == 1);
+  const auto memberValue = member.value_or(MemberMatch{});
+  CHECK(memberValue.personId == 1);
 
   const std::vector<MemberCandidate> twins{
       {.personId = 1, .score = 0.71F, .member = true},

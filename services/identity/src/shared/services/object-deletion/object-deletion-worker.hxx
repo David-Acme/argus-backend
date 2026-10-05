@@ -17,7 +17,7 @@ struct ObjectDeletionBackoffInput
 namespace object_deletion
 {
 inline constexpr int64_t kBaseBackoffSeconds = 30;
-inline constexpr int64_t kMaxBackoffSeconds = 6 * 3600;
+inline constexpr int64_t kMaxBackoffSeconds = int64_t{6} * 3600;
 inline constexpr int64_t kBatch = 50;
 
 [[nodiscard]] int64_t nextAttemptAt(const ObjectDeletionBackoffInput& input);

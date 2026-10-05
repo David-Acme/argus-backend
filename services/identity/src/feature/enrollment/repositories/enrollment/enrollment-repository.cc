@@ -24,7 +24,7 @@ EnrollmentRepository::insertUser(const EnrollmentUserInput& input) const
   const auto pooled = DbService::identityClient();
   auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
-      INSERT_USER.data(), input.name, input.lastName, userRoleToString(input.role),
+      std::string(INSERT_USER), input.name, input.lastName, userRoleToString(input.role),
       input.lang);
   co_return static_cast<int64_t>(result.insertId());
 }

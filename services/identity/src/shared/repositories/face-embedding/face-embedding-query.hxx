@@ -4,6 +4,7 @@
 #include <shared/vocabulary/face-model.hxx>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace face_embedding_query
 {
@@ -38,17 +39,14 @@ inline constexpr std::string_view VEC_DELETE =
 
 inline constexpr std::string_view VEC_COUNT = "SELECT COUNT(*) FROM face_vec";
 
-inline constexpr std::string_view VEC_ROWIDS = "SELECT rowid FROM face_vec";
-
-inline constexpr std::string_view FIND_INDEXABLE =
+inline constexpr std::string_view FIND_UNINDEXED =
     "SELECT id, person_id, embedding FROM face_embedding "
-    "WHERE model = ? AND length(embedding) = ?";
+    "WHERE model = ? AND length(embedding) = ? "
+    "AND id NOT IN (SELECT rowid FROM face_vec)";
 
 inline constexpr std::string_view VEC_STALE =
     "SELECT rowid FROM face_vec "
     "WHERE rowid NOT IN (SELECT id FROM face_embedding WHERE model = ?)";
-
-
 }
 
 struct FaceEmbeddingCreateInput
@@ -74,6 +72,19 @@ struct FaceVecSearchInput
   const float* query;
   int dims;
   int topK;
+};
+
+struct FaceUnindexedInput
+{
+  std::string_view model;
+  int dims;
+};
+
+struct FaceUnindexedRow
+{
+  int64_t id;
+  int64_t personId;
+  std::vector<float> embedding;
 };
 
 struct FaceVecHit

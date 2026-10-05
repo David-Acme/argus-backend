@@ -1,5 +1,7 @@
 #include "rate-limiter.hxx"
 
+#include <utility>
+
 RateLimiter::RateLimiter(IdentityRateLimitConfig config) : config_(config) {}
 
 void RateLimiter::prune(std::chrono::steady_clock::time_point now)
@@ -30,7 +32,7 @@ bool RateLimiter::admit(const RateLimiterKey& input)
   const auto windowStart = input.now - std::chrono::seconds(config_.windowSeconds);
   while (!entry.hits.empty() && entry.hits.front() < windowStart)
     entry.hits.pop_front();
-  if (static_cast<int>(entry.hits.size()) >= config_.maxRequests)
+  if (std::cmp_greater_equal(entry.hits.size(), config_.maxRequests))
     return false;
   entry.hits.push_back(input.now);
   return true;

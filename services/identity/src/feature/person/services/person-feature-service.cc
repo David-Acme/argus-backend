@@ -124,13 +124,25 @@ PersonFeatureService::promote(const PersonPromoteRequest& request) const
       const auto after =
           co_await personRepository_.findById(request.personId, transaction.get());
       const auto* sink = identity_change::getSink();
-      if (after && sink != nullptr)
+      if (after && sink != nullptr && after->userId)
         co_await sink->publishModuleAudit({.recordId = request.personId,
                                            .tableName = TableName::Person,
                                            .before = before->toJson(),
                                            .after = after->toJson(),
                                            .actorId = request.actorId,
                                            .client = transaction.get()});
+      else if (after && sink != nullptr) {
+        Json::Value data(Json::objectValue);
+        data["event"] = "visitor_promote";
+        co_await sink->publishAction({.event = {.userId = request.actorId,
+                                                .recordId = request.personId,
+                                                .tableName = TableName::Person,
+                                                .action = UserAction::Update,
+                                                .oldData = Json::Value(),
+                                                .newData = std::move(data),
+                                                .ipAddress = ""},
+                                      .client = transaction.get()});
+      }
     }
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(IdentityErrors::ChangeNotRecorded);

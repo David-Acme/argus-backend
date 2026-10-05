@@ -1,6 +1,7 @@
 #include "object-deletion-worker.hxx"
 
 #include <algorithm>
+#include <cstdint>
 #include <ctime>
 #include <drogon/drogon.h>
 #include <exception>
@@ -15,7 +16,8 @@ constexpr int64_t kMaxShift = 20;
 int64_t object_deletion::nextAttemptAt(const ObjectDeletionBackoffInput& input)
 {
   const int64_t shift = std::clamp<int64_t>(input.attempts, 0, kMaxShift);
-  const int64_t delay = std::min(kBaseBackoffSeconds << shift, kMaxBackoffSeconds);
+  const auto factor = static_cast<int64_t>(std::uint64_t{1} << static_cast<unsigned>(shift));
+  const int64_t delay = std::min(kBaseBackoffSeconds * factor, kMaxBackoffSeconds);
   return input.now + delay;
 }
 

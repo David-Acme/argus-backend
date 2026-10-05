@@ -403,6 +403,7 @@ int main()
   drogon::app().setThreadNum(0).run();
 
   rpcDrain.stopAndWait();
+  FaceService::instance().shutdown();
   SpeakerEmbeddingService::instance().shutdown();
   return 0;
 }

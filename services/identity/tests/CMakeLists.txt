@@ -248,6 +248,7 @@ target_compile_definitions(identity-user-safety-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
 target_link_libraries(identity-user-safety-test PRIVATE
     argus::identity-enrollment
+    argus::identity-person
     argus::identity-user
     argus::identity-visitor
     argus::lib::sqlite

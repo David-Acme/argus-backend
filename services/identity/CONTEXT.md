@@ -391,7 +391,10 @@ retention forever. It is the one mutating call with a human gate:
 the owner bearer token plus the device fingerprint travel in the call, the
 service verifies the access token, requires an Owner actor with an active bound
 session on that device (`hasActiveSession`), promotes, and publishes the
-`person` module audit. `person.status` (`candidate`/`known`) defaults to
+`person` module audit only for a person with a user; promoting a visitor (a
+named person without a user) is journaled as a `visitor_promote` action
+instead, because a module audit reaches every Resident and Guard socket and
+visitors are Owner data (rule 7b, audit #8). `person.status` (`candidate`/`known`) defaults to
 `known` for legacy rows; `IdentifyPerson` reports
 `trusted = (status == known)` and attaches the linked user only for active
 users.
@@ -1106,7 +1109,13 @@ connection to the same file, so writing it inside the open write transaction
 would wait on itself). The insert is retried three times; if it still fails the
 answer is `FaceIndexFailed`, and `FaceDB::init` now also indexes every
 current-model embedding that has no index row, so the face becomes searchable
-at the next boot without a new registration. `identify` no longer logs the
+at the next boot without a new registration. That repair reads the embeddings
+through the vec connection itself (one `NOT IN (SELECT rowid FROM face_vec)`
+query), not through Drogon's client, so `FaceService::init` needs no Drogon
+database and the face suites run without one. `main` shuts the face service
+down after `run()` returns, before static destruction: the onnxruntime
+sessions of the liveness engine outlive onnxruntime's own statics otherwise,
+and the process aborted on exit ("pure virtual method called"). `identify` no longer logs the
 person and the score, and gRPC `INTERNAL` answers carry a generic text instead
 of the exception.
 

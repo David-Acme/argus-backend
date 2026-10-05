@@ -11,6 +11,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifndef ARGUS_TEST_FACE_MODELS
@@ -23,15 +24,19 @@
 namespace
 {
 constexpr const char* kDb = "identity-liveness-test.db";
-const std::string kModels = ARGUS_TEST_FACE_MODELS;
-const std::string kAntiSpoof = kModels + "/anti-spoof";
+constexpr std::string_view kModels = ARGUS_TEST_FACE_MODELS;
+
+std::string modelPath(std::string_view leaf)
+{
+  return std::string(kModels) + std::string(leaf);
+}
 
 bool modelsPresent()
 {
-  return std::filesystem::exists(kModels + "/detector.bin") &&
-         std::filesystem::exists(kModels + "/recognizer.bin") &&
-         std::filesystem::exists(kAntiSpoof + "/MiniFASNetV2.onnx") &&
-         std::filesystem::exists(kAntiSpoof + "/MiniFASNetV1SE.onnx");
+  return std::filesystem::exists(modelPath("/detector.bin")) &&
+         std::filesystem::exists(modelPath("/recognizer.bin")) &&
+         std::filesystem::exists(modelPath("/anti-spoof/MiniFASNetV2.onnx")) &&
+         std::filesystem::exists(modelPath("/anti-spoof/MiniFASNetV1SE.onnx"));
 }
 
 std::string fixture(const std::string& name)
@@ -89,9 +94,9 @@ TEST_CASE("without the anti-spoofing models face sign-in fails closed" *
 {
   useTestDatabase();
   FaceService faces;
-  faces.init(kModels);
+  faces.init(std::string(kModels));
   REQUIRE(faces.isLoaded());
-  CHECK(faces.initLiveness(kModels + "/missing") == AntiSpoofLoad::Missing);
+  CHECK(faces.initLiveness(modelPath("/missing")) == AntiSpoofLoad::Missing);
   CHECK_FALSE(faces.livenessLoaded());
   const auto check = faces.verifyImage(
       {.imageBytes = fixture("barratt-a.jpg"), .policy = livenessOnly()});
@@ -104,9 +109,9 @@ TEST_CASE("live portraits pass and a photo held up in a frame is refused" *
 {
   useTestDatabase();
   auto& faces = FaceService::instance();
-  faces.init(kModels);
+  faces.init(std::string(kModels));
   REQUIRE(faces.isLoaded());
-  REQUIRE(faces.initLiveness(kAntiSpoof) == AntiSpoofLoad::Loaded);
+  REQUIRE(faces.initLiveness(modelPath("/anti-spoof")) == AntiSpoofLoad::Loaded);
 
   for (const char* name :
        {"barratt-a.jpg", "barratt-b.jpg", "meir-a.jpg", "hathaway.jpg", "menon.jpg"}) {
@@ -114,9 +119,9 @@ TEST_CASE("live portraits pass and a photo held up in a frame is refused" *
     const auto live = faces.verifyImage({.imageBytes = fixture(name), .policy = livenessOnly()});
     CHECK(live.status == FaceCheckStatus::Accepted);
     REQUIRE(live.liveness.has_value());
-    CHECK(*live.liveness >= 0.80F);
+    CHECK(live.liveness.value_or(-1.0F) >= 0.80F);
     CHECK(live.embedding.size() == 128);
-    MESSAGE(name << " liveness " << *live.liveness << " inter-ocular "
+    MESSAGE(name << " liveness " << live.liveness.value_or(-1.0F) << " inter-ocular "
                  << live.quality.interOcularPx << " yaw " << live.quality.yaw
                  << " pitch " << live.quality.pitch << " sharpness "
                  << live.quality.sharpness);
@@ -136,4 +141,6 @@ TEST_CASE("live portraits pass and a photo held up in a frame is refused" *
   REQUIRE(enrolled.status == FaceCheckStatus::Accepted);
   REQUIRE(enrolled.portraitJpeg.size() > 2);
   CHECK(face_image::sniff(enrolled.portraitJpeg) == FaceImageFormat::Jpeg);
+  faces.shutdown();
+  CHECK_FALSE(faces.livenessLoaded());
 }

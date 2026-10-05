@@ -43,7 +43,7 @@ public:
   {
     std::unique_lock lock(mutex_);
     settled_.wait(lock, [this] { return committed_.has_value(); });
-    return *committed_;
+    return committed_.value_or(false);
   }
 
 private:

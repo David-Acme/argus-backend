@@ -62,6 +62,5 @@ drogon::Task<void> FaceCropStore::remove(const std::string& key) const
   if (removed)
     co_return;
   const PendingObjectEnqueueInput pending{.objectKeys = {key}, .client = nullptr};
-  const PendingObjectDeleteRepository repository;
-  co_await repository.enqueue(pending);
+  co_await pendingRepository_.enqueue(pending);
 }

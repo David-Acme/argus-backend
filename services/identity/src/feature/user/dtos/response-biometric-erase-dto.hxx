@@ -10,5 +10,5 @@ struct ResponseBiometricEraseDto
   bool voiceProfile{false};
   std::size_t voiceSamples{0};
 
-  Json::Value toJson() const;
+  [[nodiscard]] Json::Value toJson() const;
 };
