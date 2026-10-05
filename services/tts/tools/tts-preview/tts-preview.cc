@@ -139,6 +139,7 @@ int main(int argc, char** argv)
   ConfigService::load(options->config.string());
   ConfigService::setRuntimeString("tts.models_dir", options->models.string());
   ConfigService::setRuntimeString("tts.pocket_seed", options->seed);
+  ConfigService::setRuntimeString("tts.threads", "1");
   ConfigService::setRuntimeString("tts.normalize_text", "true");
   std::filesystem::create_directories(options->out);
 

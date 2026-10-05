@@ -446,7 +446,13 @@ the owner can hear an option before installing it, offline and instantly.
 shipped `config.toml.example`, sets the engine, variant and voice of each
 manifest line as runtime overrides and synthesizes through `TtsService`
 with `tts.pocket_seed = 7`, which seeds Pocket's sampling noise (0 keeps the
-per-process random seed). The sentences are "Hola, soy Argus. Tu reunión
+per-process random seed), and `tts.threads = 1`. The seed alone does not make
+a clip reproducible: with several intra-op threads onnxruntime splits the
+float reductions differently from run to run, and the same seed gave
+different samples in five runs out of six (measured 2026-10-05, four threads);
+with one thread six runs out of six were identical. `tts-pocket-test` pins the
+same single thread for its reproducibility case. The live service keeps its
+thread budget: it never needs two equal clips. The sentences are "Hola, soy Argus. Tu reunión
 empieza a las 16:30." and "Hi, I'm Argus. Your meeting starts at 4:30 pm."
 The clips are Supertonic es/en with `M3` (the only Supertonic voice callers
 use, since no setting chooses another), and Pocket es fast, es quality and en

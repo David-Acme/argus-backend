@@ -309,7 +309,7 @@ TEST_CASE("a fixed seed makes Pocket speech reproducible" *
           doctest::skip(!provisioned("es-fast")))
 {
   Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "tts-pocket-seed-test");
-  PocketEngine engine({.env = env, .directory = pocketRoot() / "es-fast", .precision = "int8", .threads = 4});
+  PocketEngine engine({.env = env, .directory = pocketRoot() / "es-fast", .precision = "int8", .threads = 1});
   const auto voice = engine.loadVoice(pocketRoot() / "es-fast" / "voices" / "lola.safetensors");
   const auto speak = [&engine, &voice](std::uint32_t seed) {
     std::vector<float> samples;
