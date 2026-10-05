@@ -42,6 +42,9 @@ public:
 
   std::chrono::milliseconds farewell(const drogon::WebSocketConnectionPtr& conn, std::string_view cause);
 
+  void requestStop();
+  [[nodiscard]] bool drained() const;
+
   static constexpr auto kFarewellGrace = std::chrono::milliseconds(2300);
 
   static Json::Value renderServerFrame(
@@ -88,4 +91,7 @@ private:
   const std::shared_ptr<const IUserDirectory> userDirectory_;
   mutable std::mutex sessionsMutex_;
   std::unordered_map<const void*, std::shared_ptr<Session>> sessions_;
+  const std::shared_ptr<std::atomic<int>> openStreams_{
+      std::make_shared<std::atomic<int>>(0)};
+  std::atomic<bool> stopping_{false};
 };

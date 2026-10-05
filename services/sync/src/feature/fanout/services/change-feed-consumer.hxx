@@ -6,7 +6,9 @@
 #include <feature/fanout/services/durable-disposition.hxx>
 #include <nats/nats-bus.hxx>
 
+#include <atomic>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -45,6 +47,8 @@ public:
 
   void start();
   void stop();
+  void requestStop();
+  [[nodiscard]] bool drained() const;
 
   drogon::Task<DurableDisposition>
   handle(const durable_delivery::Payload& message);
@@ -64,4 +68,6 @@ private:
   Config config_;
   std::vector<Attachment> attachments_;
   std::optional<uint64_t> retryTimer_;
+  durable_delivery::PendingCount pending_{
+      std::make_shared<std::atomic<int64_t>>(0)};
 };

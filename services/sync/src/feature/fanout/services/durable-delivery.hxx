@@ -5,6 +5,8 @@
 #include <feature/fanout/services/durable-disposition.hxx>
 #include <nats/nats-bus.hxx>
 
+#include <atomic>
+#include <cstdint>
 #include <deque>
 #include <exception>
 #include <memory>
@@ -28,6 +30,14 @@ struct Pending
   NatsBus::DurableSettlement settlement;
 };
 
+using PendingCount = std::shared_ptr<std::atomic<int64_t>>;
+
+struct HandlerOptions
+{
+  std::string label;
+  PendingCount pending;
+};
+
 template <typename Runner>
 struct SerialFeed
 {
@@ -35,6 +45,7 @@ struct SerialFeed
   Runner runner;
   std::deque<Pending> queue;
   bool draining{false};
+  PendingCount pending;
 };
 
 inline void settle(const NatsBus::DurableSettlement& settlement,
@@ -71,6 +82,8 @@ drogon::Task<void> drain(std::shared_ptr<SerialFeed<Runner>> feed)
       LOG_WARN << feed->label << ": redelivering (" << error.what() << ")";
     }
     settle(next.settlement, disposition);
+    if (feed->pending)
+      feed->pending->fetch_sub(1, std::memory_order_acq_rel);
     if (!loop->isInLoopThread())
       co_await drogon::switchThreadCoro(loop);
   }
@@ -78,15 +91,18 @@ drogon::Task<void> drain(std::shared_ptr<SerialFeed<Runner>> feed)
 }
 
 template <typename Runner>
-NatsBus::DurableHandler handler(std::string_view label, Runner runner)
+NatsBus::DurableHandler handler(const HandlerOptions& options, Runner runner)
 {
   auto feed = std::make_shared<SerialFeed<Runner>>(
-      SerialFeed<Runner>{.label = std::string(label),
+      SerialFeed<Runner>{.label = options.label,
                          .runner = std::move(runner),
                          .queue = {},
-                         .draining = false});
+                         .draining = false,
+                         .pending = options.pending});
   return [feed](const NatsBus::DurableMessage& message,
                 NatsBus::DurableSettlement settlement) {
+    if (feed->pending)
+      feed->pending->fetch_add(1, std::memory_order_acq_rel);
     Pending pending{.payload = {.subject = std::string(message.subject),
                                 .msgId = std::string(message.msgId),
                                 .body = std::string(message.payload)},

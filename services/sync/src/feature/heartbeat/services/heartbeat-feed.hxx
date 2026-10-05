@@ -4,6 +4,7 @@
 #include <feature/heartbeat/services/heartbeat-service.hxx>
 #include <feature/heartbeat/services/presence-board.hxx>
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -47,6 +48,8 @@ public:
 
   void start();
   void stop();
+  void requestStop();
+  [[nodiscard]] bool drained() const;
 
   bool ingestPresence(std::string_view payload);
   void ingestGuardHeartbeat(int64_t at);
@@ -62,6 +65,8 @@ private:
   std::optional<trantor::TimerId> pushTimer_;
   std::optional<trantor::TimerId> refillTimer_;
   std::shared_ptr<bool> alive_;
+  std::shared_ptr<std::atomic<int>> refilling_{
+      std::make_shared<std::atomic<int>>(0)};
 };
 
 namespace heartbeat

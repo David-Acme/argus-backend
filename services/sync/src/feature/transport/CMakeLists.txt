@@ -3,9 +3,9 @@ argus_module(NAME sync-transport
         controllers/sync-socket.cc
         services/sync-service.cc
         services/synchronized-service.cc
-        repositories/event/event-repository.cc
-        schemas/event/event-schema.cc
-        schemas/person-event/person-event-schema.cc
+        services/frame-lane.cc
+        services/connection-lanes.cc
+        infra/cached-user-directory.cc
         infra/camera-sync-gateway.cc
         infra/identity-sync-gateway.cc
         infra/notification-sync-gateway.cc

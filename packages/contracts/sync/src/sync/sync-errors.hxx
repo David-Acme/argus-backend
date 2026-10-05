@@ -45,6 +45,10 @@ inline constexpr ErrorDefinition FrameFailed{
     .code = ErrorCode::InternalError,
     .status = 500,
     .message = "The message could not be handled"};
+inline constexpr ErrorDefinition TooManyFrames{
+    .code = ErrorCode::TooManyRequests,
+    .status = 429,
+    .message = "Too many messages on this socket"};
 inline constexpr ErrorDefinition ReplicaTooOld{
     .code = ErrorCode::Conflict,
     .status = 409,

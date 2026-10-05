@@ -8,6 +8,7 @@
 #include <feature/heartbeat/services/presence-board.hxx>
 #include <text/json-util.hxx>
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -32,9 +33,15 @@ public:
 class FakeDirectory : public PresenceDirectory
 {
 public:
-  [[nodiscard]] std::optional<std::vector<PresenceEntry>> list() const override { return answer; }
+  [[nodiscard]] std::optional<std::vector<PresenceEntry>> list() const override
+  {
+    if (duringList)
+      duringList();
+    return answer;
+  }
 
   std::optional<std::vector<PresenceEntry>> answer;
+  std::function<void()> duringList;
 };
 
 struct Emitted
@@ -203,6 +210,48 @@ TEST_CASE("a refill applies the directory and an unavailable directory keeps wha
   CHECK(rig.board->of(1).overall == "away");
   rig.feed.ingestGuardHeartbeat(4990);
   CHECK(rig.service->heartbeatFor(1)["guard"].asString() == "alive");
+}
+
+TEST_CASE("a refill read before a presence event never overwrites it")
+{
+  FeedRig rig;
+  CHECK(rig.board->apply({.userId = 1, .overall = "home", .since = 10}));
+  rig.directory->answer = std::vector<PresenceEntry>{
+      {.userId = 1, .overall = "home", .since = 10}, {.userId = 2, .overall = "away", .since = 20}};
+  rig.directory->duringList = [&rig] {
+    CHECK(rig.feed.ingestPresence(R"({"userId":1,"overall":"away","since":30})"));
+  };
+  CHECK(rig.feed.refill());
+  CHECK(rig.board->of(1).overall == "away");
+  CHECK(rig.board->of(1).since == 30);
+  CHECK(rig.board->of(2).overall == "away");
+  CHECK(rig.board->armedUsers() == std::vector<int64_t>{1, 2});
+
+  rig.directory->duringList = {};
+  rig.directory->answer = std::vector<PresenceEntry>{{.userId = 1, .overall = "home", .since = 40}};
+  rig.emitted.clear();
+  CHECK(rig.feed.refill());
+  CHECK(rig.board->of(1).overall == "home");
+  CHECK(rig.board->of(2).overall == "unknown");
+  CHECK(rig.board->armedUsers().empty());
+  REQUIRE(rig.emitted.size() == 2);
+  CHECK(rig.emitted[0].userId == 1);
+  CHECK(rig.emitted[1].userId == 2);
+}
+
+TEST_CASE("the board fills by difference against a mark")
+{
+  PresenceBoard board;
+  const uint64_t before = board.mark();
+  CHECK(board.apply({.userId = 3, .overall = "away", .since = 5}));
+  CHECK(board.mark() > before);
+  const std::vector<PresenceEntry> stale{{.userId = 4, .overall = "home", .since = 1}};
+  CHECK(board.fill({.entries = stale, .readMark = before}) == std::vector<int64_t>{4});
+  CHECK(board.of(3).overall == "away");
+  const std::vector<PresenceEntry> fresh{{.userId = 4, .overall = "home", .since = 1}};
+  CHECK(board.fill({.entries = fresh, .readMark = board.mark()}) == std::vector<int64_t>{3});
+  CHECK(board.of(3).overall == "unknown");
+  CHECK(board.fill({.entries = fresh, .readMark = board.mark()}).empty());
 }
 
 TEST_CASE("guard's presence list maps onto the board, unknown states stay unknown")

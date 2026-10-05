@@ -5,6 +5,7 @@
 #include <config/sync-config.hxx>
 #include <feature/rtc/dtos/response-rtc-token-dto.hxx>
 #include <feature/rtc/dtos/rtc-token-dto.hxx>
+#include <feature/rtc/infra/livekit-room-client.hxx>
 #include <feature/rtc/infra/rtc-ports.hxx>
 
 #include <drogon/utils/coroutine.h>
@@ -18,6 +19,7 @@ struct RtcTokenServiceInput
   std::shared_ptr<const RtcVoiceJoiner> voice;
   std::shared_ptr<const RtcCallClaimer> calls;
   std::shared_ptr<const IUserDirectory> directory;
+  std::shared_ptr<const LiveKitRoomClient> rooms;
 };
 
 struct RtcTokenRequest
@@ -39,4 +41,5 @@ private:
   std::shared_ptr<const RtcVoiceJoiner> voice_;
   std::shared_ptr<const RtcCallClaimer> calls_;
   std::shared_ptr<const IUserDirectory> directory_;
+  std::shared_ptr<const LiveKitRoomClient> rooms_;
 };

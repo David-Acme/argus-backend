@@ -1,7 +1,7 @@
 # argus_contracts_sync
 
 The sync boundary's frozen wire values: the message types, the table names, the
-two audit enums, the filter that pages them, the nine refusals, and the
+two audit enums, the filter that pages them, the ten refusals, and the
 change-payload vocabulary the producers and the transport share.
 
 ## What this is
@@ -91,9 +91,11 @@ now `services/sync`'s `SyncSocket`.
   seven days in milliseconds, seconds and nanoseconds, the two-minute
   duplicate window, and the interval and retry cadence a settled-row purge
   runs at; 10 files.
-- `src/sync/sync-errors.hxx` — the nine refusals: `UserAccountDisabled` 401,
+- `src/sync/sync-errors.hxx` — the ten refusals: `UserAccountDisabled` 401,
   `MissingMessageType` and `UnknownMessageType` 400,
-  `ReplicaTooOld` 409, and the five `*Unavailable` answers at 503
+  `ReplicaTooOld` 409, `TooManyFrames` 429 (2026-10-05, additive: a socket
+  that outruns its frame budget, `services/sync/CONTEXT.md`, "Audit of
+  2026-10-05"), and the five `*Unavailable` answers at 503
   (`NotificationSyncUnavailable`, `CameraSyncUnavailable`,
   `ProductivitySyncUnavailable`, `IdentitySyncUnavailable`,
   `VoiceUnavailable`); 9 files.
@@ -212,7 +214,7 @@ now `services/sync`'s `SyncSocket`.
   round-trip with its numeric values pinned (the call operations made the case
   worth having), and the documented fallbacks; `AuditLogPriority` has none to
   make.
-- `tests/unit/sync-contract-catalog-test.cc` — the nine refusals as a pinned
+- `tests/unit/sync-contract-catalog-test.cc` — the ten refusals as a pinned
   table, each entry's wire legality, and that no two say the same thing.
 - `tests/unit/audit-retention-test.cc` — the window's default and the refusal
   the app re-bootstraps on: 90 days, and `ReplicaTooOld` carrying the frozen

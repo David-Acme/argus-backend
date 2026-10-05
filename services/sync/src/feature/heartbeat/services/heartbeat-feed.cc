@@ -8,6 +8,7 @@
 #include <trantor/utils/Logger.h>
 
 #include <chrono>
+#include <exception>
 #include <utility>
 
 namespace
@@ -100,11 +101,19 @@ void HeartbeatFeed::start()
                                 [this]() { static_cast<void>(publishPushHeartbeats()); });
   if (dependencies_.directory && config_.refillSeconds > 0) {
     const std::weak_ptr<bool> alive = alive_;
-    const auto refillOffLoop = [this, alive]() {
-      drogon::async_run([this, alive]() -> drogon::Task<> {
+    const auto refilling = refilling_;
+    const auto refillOffLoop = [this, alive, refilling]() {
+      drogon::async_run([this, alive, refilling]() -> drogon::Task<> {
         if (alive.expired())
           co_return;
-        co_await BlockingTask<bool>{[this]() { return refill(); }};
+        refilling->fetch_add(1, std::memory_order_acq_rel);
+        try {
+          co_await BlockingTask<bool>{[this]() { return refill(); }};
+        }
+        catch (const std::exception& error) {
+          LOG_WARN << "Heartbeat: presence refill failed: " << error.what();
+        }
+        refilling->fetch_sub(1, std::memory_order_acq_rel);
       });
     };
     loop->queueInLoop(refillOffLoop);
@@ -126,6 +135,16 @@ void HeartbeatFeed::stop()
   pushTimer_.reset();
   refillTimer_.reset();
   alive_.reset();
+}
+
+void HeartbeatFeed::requestStop()
+{
+  stop();
+}
+
+bool HeartbeatFeed::drained() const
+{
+  return refilling_->load(std::memory_order_acquire) == 0;
 }
 
 bool HeartbeatFeed::ingestPresence(std::string_view payload)
@@ -162,16 +181,16 @@ bool HeartbeatFeed::refill()
 {
   if (!dependencies_.directory || !dependencies_.board)
     return false;
+  const uint64_t readMark = dependencies_.board->mark();
   const auto entries = dependencies_.directory->list();
   if (!entries) {
     LOG_WARN << "Heartbeat: presence directory unavailable; keeping the "
                 "presence already known";
     return false;
   }
-  for (const auto& entry : *entries) {
-    if (dependencies_.board->apply(entry))
-      publishTo(entry.userId);
-  }
+  for (const int64_t userId :
+       dependencies_.board->fill({.entries = *entries, .readMark = readMark}))
+    publishTo(userId);
   return true;
 }
 

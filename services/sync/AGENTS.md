@@ -98,15 +98,17 @@ argus-sync/
   CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
   src/app/main.cc       config load, gRPC control listener, NATS legs, app run
   src/app/rpc/          argus.sync.v1.SyncControlService (fleet-secret gated)
+                        and the drain that shuts its server down
   src/config/           this service's typed config ([sync], [cert], upstreams)
   src/feature/transport/
     controllers/        SyncSocket, the /sync WebSocket controller
     dtos/               the sync DTOs (synchronized-dto.hxx)
-    services/           SyncService, SynchronizedService
-    repositories/       the event rows SynchronizedService pages
-    schemas/            event and person-event row mapping
-    infra/              the four domain pull sources, the socket registrar
-                        and the voice gRPC relay the forwarder rides
+    services/           SyncService, SynchronizedService, the per-socket
+                        FrameLane and the ConnectionLanes registry that
+                        revalidates sockets
+    infra/              the four domain pull sources, the socket registrar,
+                        the short-lived user cache and the voice gRPC relay
+                        the forwarder rides
   src/feature/rtc/      POST /rtc/token: controller, DTOs, the token service,
                         LiveKit token minting and the Twirp room client, the
                         session revoker the fan-out calls, the voice and

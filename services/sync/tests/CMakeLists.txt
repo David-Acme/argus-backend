@@ -3,7 +3,9 @@ target_link_libraries(sync-surface-test PRIVATE
     argus::sync-transport
     argus::sync-fanout
     argus::sync-repositories
+    argus::lib::auth
     argus::lib::config
+    argus::lib::nats
     argus::lib::sqlite
     argus::lib::text
     argus::contracts::auth
@@ -85,19 +87,6 @@ target_link_libraries(voice-leg-test PRIVATE
 target_compile_options(voice-leg-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(voice-leg-test)
 add_test(NAME voice-leg-test COMMAND voice-leg-test)
-
-add_executable(event-sync-empty-test unit/event-sync-empty-test.cc)
-target_link_libraries(event-sync-empty-test PRIVATE
-    argus::sync-transport
-    argus::sync-repositories
-    argus::lib::sqlite
-    argus::contracts::sync
-    Drogon::Drogon
-    sqlite-vec
-    doctest::doctest)
-target_compile_options(event-sync-empty-test PRIVATE -Wall -Wextra)
-argus_runtime_rpath(event-sync-empty-test)
-add_test(NAME event-sync-empty-test COMMAND event-sync-empty-test)
 
 add_executable(notification-delivery-live-test
                unit/notification-delivery-live-test.cc)

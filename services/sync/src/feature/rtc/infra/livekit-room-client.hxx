@@ -32,6 +32,7 @@ public:
 
   virtual drogon::Task<std::optional<std::vector<std::string>>> listRooms() const;
   virtual drogon::Task<bool> removeParticipant(LiveKitParticipantRef participant) const;
+  virtual drogon::Task<bool> createRoom(std::string room) const;
   virtual drogon::Task<bool> deleteRoom(std::string room) const;
   virtual drogon::Task<std::optional<std::vector<std::string>>> listParticipants(std::string room) const;
   virtual drogon::Task<bool> silenceParticipant(LiveKitParticipantRef participant) const;

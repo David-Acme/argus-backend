@@ -3,8 +3,20 @@
 #include <errors/response-exception.hxx>
 #include <auth/role-access.hxx>
 #include <sync/sync-operation.hxx>
-#include <stdexcept>
 #include <sync/sync-errors.hxx>
+#include <trantor/net/EventLoop.h>
+
+#include <algorithm>
+#include <atomic>
+#include <coroutine>
+#include <cstddef>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+#include <string_view>
+#include <utility>
 
 namespace
 {
@@ -56,18 +68,126 @@ std::optional<IdentitySyncTable> identitySyncTableFor(TableName table)
       return std::nullopt;
   }
 }
+
+constexpr std::size_t kPullWidth = 4;
+
+struct PullJoin
+{
+  std::mutex mutex;
+  std::size_t pending{0};
+  std::coroutine_handle<> waiter;
+  trantor::EventLoop* loop{nullptr};
+};
+
+class PullJoinAwaiter
+{
+public:
+  explicit PullJoinAwaiter(std::shared_ptr<PullJoin> join)
+      : join_(std::move(join))
+  {
+  }
+
+  [[nodiscard]] bool await_ready() const
+  {
+    std::scoped_lock lock(join_->mutex);
+    return join_->pending == 0;
+  }
+
+  bool await_suspend(std::coroutine_handle<> handle)
+  {
+    std::scoped_lock lock(join_->mutex);
+    if (join_->pending == 0)
+      return false;
+    join_->waiter = handle;
+    join_->loop = trantor::EventLoop::getEventLoopOfCurrentThread();
+    return true;
+  }
+
+  void await_resume() const noexcept {}
+
+private:
+  std::shared_ptr<PullJoin> join_;
+};
+
+void finishPullWorker(const std::shared_ptr<PullJoin>& join)
+{
+  std::coroutine_handle<> waiter;
+  trantor::EventLoop* loop = nullptr;
+  {
+    std::scoped_lock lock(join->mutex);
+    if (--join->pending != 0)
+      return;
+    waiter = join->waiter;
+    loop = join->loop;
+  }
+  if (!waiter)
+    return;
+  if (loop)
+    loop->queueInLoop([waiter]() { waiter.resume(); });
+  else
+    waiter.resume();
+}
+
+using PullJob = std::function<drogon::Task<void>(std::size_t)>;
+
+drogon::Task<void> runPulls(std::size_t count, PullJob job)
+{
+  if (count == 0)
+    co_return;
+  const auto join = std::make_shared<PullJoin>();
+  const auto next = std::make_shared<std::atomic<std::size_t>>(0);
+  const auto shared = std::make_shared<const PullJob>(std::move(job));
+  const std::size_t width = std::min(count, kPullWidth);
+  join->pending = width;
+  for (std::size_t worker = 0; worker < width; ++worker) {
+    drogon::async_run([join, next, shared, count]() -> drogon::Task<> {
+      for (std::size_t index = next->fetch_add(1); index < count;
+           index = next->fetch_add(1))
+        co_await (*shared)(index);
+      finishPullWorker(join);
+    });
+  }
+  co_await PullJoinAwaiter(join);
+}
+
+struct TablePull
+{
+  const std::string* name{nullptr};
+  TableName table{TableName::User};
+  const SynchronizedBodyDto* dto{nullptr};
+};
+
+struct PullBatch
+{
+  std::vector<TablePull> pulls;
+  std::vector<Json::Value> nodes;
+  std::vector<std::exception_ptr> errors;
+  JwtContext ctx;
+};
+
+Json::Value emptyTableNode(const SynchronizedBodyDto& dto)
+{
+  Json::Value node(Json::objectValue);
+  node["created"] = Json::arrayValue;
+  node["deleted"] = Json::arrayValue;
+  if (dto.findLastCreated || dto.findLastDeleted)
+    node["lastSyncDate"] = Json::objectValue;
+  return node;
+}
+
+Json::Value watermarkOf(const Json::Value& lastId, int64_t frontier)
+{
+  if (lastId.isIntegral() && lastId.asInt64() >= frontier)
+    return lastId;
+  return {static_cast<Json::Int64>(frontier)};
+}
 }
 
 const Syncable& SynchronizedService::repoFor(TableName table) const
 {
-  switch (table) {
-    case TableName::Event:
-      return eventRepository_;
-    case TableName::UserActionLog:
-      return userActionLogRepository_;
-    default:
-      throw std::invalid_argument("table is not syncable");
-  }
+  if (table == TableName::UserActionLog)
+    return userActionLogRepository_;
+  throw std::invalid_argument("table is not syncable");
 }
 
 SyncFilter
@@ -96,16 +216,16 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
   if (dto.requiredCreate) {
     SyncFilter filter = applyRange(base, dto.created);
     filter.scopeIds = dto.scope;
-    const auto rows = co_await repo.find(filter);
-    Json::Value arr(Json::arrayValue);
-    for (const auto& row : rows)
-      arr.append(row);
-    node["created"] = arr;
+    auto rows = co_await repo.find(filter);
     if (!rows.empty()) {
       const auto& last = rows.back();
       node["lastSyncDate"]["createdId"] = last.get("id", Json::Value());
       node["lastSyncDate"]["created"] = last.get("createdAt", Json::Value());
     }
+    Json::Value arr(Json::arrayValue);
+    for (auto& row : rows)
+      arr.append(std::move(row));
+    node["created"] = std::move(arr);
   }
   else {
     node["created"] = Json::arrayValue;
@@ -119,9 +239,9 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
       Json::Value record;
       record["id"] = row.get("id", Json::Value());
       record["deletedAt"] = row.get("deletedAt", Json::Value());
-      darr.append(record);
+      darr.append(std::move(record));
     }
-    node["deleted"] = darr;
+    node["deleted"] = std::move(darr);
     if (!rows.empty()) {
       const auto& last = rows.back();
       node["lastSyncDate"]["deletedId"] = last.get("id", Json::Value());
@@ -152,7 +272,7 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
           last["deleted"] = (*v)["deletedAt"];
       }
     }
-    node["lastSyncDate"] = last;
+    node["lastSyncDate"] = std::move(last);
   }
 
   co_return node;
@@ -173,16 +293,16 @@ drogon::Task<Json::Value> SynchronizedService::syncUserNotification(
       filter.startId = dto.created->startId;
       filter.endTime = dto.created->endTime;
     }
-    const auto rows = co_await notificationSyncSource_->find(ctx, filter);
-    Json::Value arr(Json::arrayValue);
-    for (const auto& row : rows)
-      arr.append(row);
-    node["created"] = arr;
+    auto rows = co_await notificationSyncSource_->find(ctx, filter);
     if (!rows.empty()) {
       const auto& last = rows.back();
       node["lastSyncDate"]["createdId"] = last.get("id", Json::Value());
       node["lastSyncDate"]["created"] = last.get("createdAt", Json::Value());
     }
+    Json::Value arr(Json::arrayValue);
+    for (auto& row : rows)
+      arr.append(std::move(row));
+    node["created"] = std::move(arr);
   }
   else {
     node["created"] = Json::arrayValue;
@@ -198,7 +318,7 @@ drogon::Task<Json::Value> SynchronizedService::syncUserNotification(
       if ((*v).isMember("createdAt"))
         last["created"] = (*v)["createdAt"];
     }
-    node["lastSyncDate"] = last;
+    node["lastSyncDate"] = std::move(last);
   }
 
   co_return node;
@@ -244,6 +364,10 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
   };
 
   Json::Value out(Json::objectValue);
+  const auto batch = std::make_shared<PullBatch>();
+  batch->ctx = ctx;
+  auto& pulls = batch->pulls;
+  pulls.reserve(kBodyFields.size());
   for (const auto& [name, member] : kBodyFields) {
     const auto& field = body.*member;
     if (!field.has_value())
@@ -255,49 +379,75 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
       out[name] = Json::nullValue;
       continue;
     }
+    pulls.push_back({.name = &name, .table = table, .dto = &*field});
+  }
 
-    if (table == TableName::Notification) {
-      out[name] = co_await syncUserNotification(*field, ctx);
-      continue;
-    }
+  batch->nodes.resize(pulls.size());
+  batch->errors.resize(pulls.size());
+  co_await runPulls(pulls.size(),
+                    [this, batch](std::size_t index) -> drogon::Task<void> {
+                      const TablePull& pull = batch->pulls[index];
+                      try {
+                        batch->nodes[index] = co_await pullTable(
+                            {.table = pull.table,
+                             .dto = *pull.dto,
+                             .ctx = batch->ctx});
+                      }
+                      catch (...) {
+                        batch->errors[index] = std::current_exception();
+                      }
+                    });
 
-    if (const auto cameraTable = cameraSyncTableFor(table)) {
-      if (!cameraSyncSource_ || !cameraSyncSource_->serves(*cameraTable))
-        throw ResponseException(503, SyncErrors::CameraSyncUnavailable);
-      const auto source = cameraSyncSource_->sourceFor(*cameraTable, ctx);
-      out[name] =
-          co_await syncWithRepo({.repo = *source, .dto = *field}, {});
-      continue;
-    }
-
-    if (const auto productivityTable = productivitySyncTableFor(table)) {
-      if (!productivitySyncSource_ ||
-          !productivitySyncSource_->serves(*productivityTable))
-        throw ResponseException(503, SyncErrors::ProductivitySyncUnavailable);
-      const auto source =
-          productivitySyncSource_->sourceFor(*productivityTable, ctx);
-      out[name] =
-          co_await syncWithRepo({.repo = *source, .dto = *field}, {});
-      continue;
-    }
-
-    if (const auto identityTable = identitySyncTableFor(table)) {
-      if (!identitySyncSource_ || !identitySyncSource_->serves(*identityTable))
-        throw ResponseException(503, SyncErrors::IdentitySyncUnavailable);
-      const auto source = identitySyncSource_->sourceFor(*identityTable, ctx);
-      out[name] =
-          co_await syncWithRepo({.repo = *source, .dto = *field}, {});
-      continue;
-    }
-
-    const auto& repo = repoFor(table);
-    out[name] = co_await syncWithRepo({.repo = repo, .dto = *field}, {});
+  for (std::size_t index = 0; index < pulls.size(); ++index) {
+    if (batch->errors[index])
+      std::rethrow_exception(batch->errors[index]);
+    out[*pulls[index].name] = std::move(batch->nodes[index]);
   }
 
   SocketEmitDto response;
   response.operation = SyncOperation::Synchronize;
-  response.obj = out;
+  response.obj = std::move(out);
   co_return response.toJson();
+}
+
+drogon::Task<Json::Value>
+SynchronizedService::pullTable(const TablePullInput& input) const
+{
+  const auto table = input.table;
+  const auto& dto = input.dto;
+  const auto& ctx = input.ctx;
+
+  if (table == TableName::Notification)
+    co_return co_await syncUserNotification(dto, ctx);
+
+  if (table == TableName::Event)
+    co_return emptyTableNode(dto);
+
+  if (const auto cameraTable = cameraSyncTableFor(table)) {
+    if (!cameraSyncSource_ || !cameraSyncSource_->serves(*cameraTable))
+      throw ResponseException(503, SyncErrors::CameraSyncUnavailable);
+    const auto source = cameraSyncSource_->sourceFor(*cameraTable, ctx);
+    co_return co_await syncWithRepo({.repo = *source, .dto = dto}, {});
+  }
+
+  if (const auto productivityTable = productivitySyncTableFor(table)) {
+    if (!productivitySyncSource_ ||
+        !productivitySyncSource_->serves(*productivityTable))
+      throw ResponseException(503, SyncErrors::ProductivitySyncUnavailable);
+    const auto source =
+        productivitySyncSource_->sourceFor(*productivityTable, ctx);
+    co_return co_await syncWithRepo({.repo = *source, .dto = dto}, {});
+  }
+
+  if (const auto identityTable = identitySyncTableFor(table)) {
+    if (!identitySyncSource_ || !identitySyncSource_->serves(*identityTable))
+      throw ResponseException(503, SyncErrors::IdentitySyncUnavailable);
+    const auto source = identitySyncSource_->sourceFor(*identityTable, ctx);
+    co_return co_await syncWithRepo({.repo = *source, .dto = dto}, {});
+  }
+
+  const auto& repo = repoFor(table);
+  co_return co_await syncWithRepo({.repo = repo, .dto = dto}, {});
 }
 
 drogon::Task<Json::Value>
@@ -315,9 +465,10 @@ SynchronizedService::syncAuditLog(const SynchronizedLogDto& body,
   if (body.endTime)
     filter.endTime = *body.endTime;
 
+  std::optional<int64_t> frontier;
   if (body.afterId && *body.afterId > 0) {
-    const int64_t frontier = co_await auditLogRepository_.findCompactionFrontier();
-    if (*body.afterId < frontier)
+    frontier = co_await auditLogRepository_.findCompactionFrontier();
+    if (*body.afterId < *frontier)
       throw ResponseException(SyncErrors::ReplicaTooOld);
   }
 
@@ -327,30 +478,32 @@ SynchronizedService::syncAuditLog(const SynchronizedLogDto& body,
     rows = std::vector<Json::Value>{};
   else
     rows = co_await auditLogRepository_.findSync(filter);
-  Json::Value arr(Json::arrayValue);
-  for (const auto& row : rows)
-    arr.append(row);
-  out["info"] = arr;
   if (!rows.empty())
     out["nextCursorId"] = rows.back().get("id", Json::Value());
+  Json::Value arr(Json::arrayValue);
+  for (auto& row : rows)
+    arr.append(std::move(row));
+  out["info"] = std::move(arr);
 
   if (body.findLast) {
     const auto last = co_await auditLogRepository_.findLastSync(filter);
     Json::Value record;
     if (last) {
+      if (!frontier)
+        frontier = co_await auditLogRepository_.findCompactionFrontier();
       record["id"] = (*last).get("id", Json::Value());
       record["lastSyncDate"] = (*last).get("eventTimestamp", Json::Value());
-      out["watermarkId"] = (*last).get("id", Json::Value());
+      out["watermarkId"] = watermarkOf(record["id"], *frontier);
     }
     else {
       record = Json::nullValue;
     }
-    out["lastSyncRecord"] = record;
+    out["lastSyncRecord"] = std::move(record);
   }
 
   SocketEmitDto response;
   response.operation = SyncOperation::SynchronizeAuditLog;
-  response.obj = out;
+  response.obj = std::move(out);
   co_return response.toJson();
 }
 
@@ -369,10 +522,10 @@ SynchronizedService::syncUserAuditLog(const SynchronizedLogDto& body,
   if (body.endTime)
     filter.endTime = *body.endTime;
 
+  std::optional<int64_t> frontier;
   if (body.afterId && *body.afterId > 0) {
-    const int64_t frontier =
-        co_await userAuditLogRepository_.findCompactionFrontier();
-    if (*body.afterId < frontier)
+    frontier = co_await userAuditLogRepository_.findCompactionFrontier();
+    if (*body.afterId < *frontier)
       throw ResponseException(SyncErrors::ReplicaTooOld);
   }
 
@@ -382,29 +535,31 @@ SynchronizedService::syncUserAuditLog(const SynchronizedLogDto& body,
     rows = std::vector<Json::Value>{};
   else
     rows = co_await userAuditLogRepository_.findSync(filter);
-  Json::Value arr(Json::arrayValue);
-  for (const auto& row : rows)
-    arr.append(row);
-  out["info"] = arr;
   if (!rows.empty())
     out["nextCursorId"] = rows.back().get("id", Json::Value());
+  Json::Value arr(Json::arrayValue);
+  for (auto& row : rows)
+    arr.append(std::move(row));
+  out["info"] = std::move(arr);
 
   if (body.findLast) {
     const auto last = co_await userAuditLogRepository_.findLastSync(filter);
     Json::Value record;
     if (last) {
+      if (!frontier)
+        frontier = co_await userAuditLogRepository_.findCompactionFrontier();
       record["id"] = (*last).get("id", Json::Value());
       record["lastSyncDate"] = (*last).get("eventTimestamp", Json::Value());
-      out["watermarkId"] = (*last).get("id", Json::Value());
+      out["watermarkId"] = watermarkOf(record["id"], *frontier);
     }
     else {
       record = Json::nullValue;
     }
-    out["lastSyncRecord"] = record;
+    out["lastSyncRecord"] = std::move(record);
   }
 
   SocketEmitDto response;
   response.operation = SyncOperation::SynchronizeUserAuditLog;
-  response.obj = out;
+  response.obj = std::move(out);
   co_return response.toJson();
 }

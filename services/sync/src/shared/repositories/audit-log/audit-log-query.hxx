@@ -26,19 +26,19 @@ inline constexpr std::string_view REMOVE =
 inline constexpr std::string_view FIND_SYNC =
     "SELECT * FROM audit_log WHERE table_name IN (%1%) "
     "AND event_timestamp >= ? AND event_timestamp <= ? "
-    "ORDER BY event_timestamp ASC LIMIT ";
+    "ORDER BY event_timestamp ASC, id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_FROM =
     "SELECT * FROM audit_log WHERE table_name IN (%1%) "
-    "AND event_timestamp >= ? ORDER BY event_timestamp ASC LIMIT ";
+    "AND event_timestamp >= ? ORDER BY event_timestamp ASC, id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_TO =
     "SELECT * FROM audit_log WHERE table_name IN (%1%) "
-    "AND event_timestamp <= ? ORDER BY event_timestamp ASC LIMIT ";
+    "AND event_timestamp <= ? ORDER BY event_timestamp ASC, id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_ALL =
     "SELECT * FROM audit_log WHERE table_name IN (%1%) "
-    "ORDER BY event_timestamp ASC LIMIT ";
+    "ORDER BY event_timestamp ASC, id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_AFTER_ID =
     "SELECT * FROM audit_log WHERE +table_name IN (%1%) AND id > ? "
@@ -57,7 +57,7 @@ inline constexpr std::string_view FIND_COMPACTION_PAIRS =
     "FROM audit_log o JOIN audit_log n ON n.id = ("
     "SELECT min(x.id) FROM audit_log x WHERE x.record_id = o.record_id "
     "AND x.table_name = o.table_name AND x.id > o.id) "
-    "WHERE n.event_timestamp < ? AND o.event_timestamp < ? "
+    "WHERE o.id > ? AND n.event_timestamp < ? AND o.event_timestamp < ? "
     "ORDER BY older_id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_COMPACTION_CHANGES =
@@ -118,6 +118,12 @@ struct AuditLogFindExistInput
   int64_t dayStart{0};
   int64_t dayEnd{0};
   drogon::orm::DbClient* client{nullptr};
+};
+
+struct AuditLogCompactionWindow
+{
+  int64_t cutoffMs{0};
+  int64_t afterId{0};
 };
 
 struct AuditLogCompactionPair

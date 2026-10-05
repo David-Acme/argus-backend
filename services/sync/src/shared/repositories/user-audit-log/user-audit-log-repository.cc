@@ -4,6 +4,7 @@
 #include <sync/sync-limits.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
+#include <unordered_map>
 
 using namespace user_audit_log_query;
 
@@ -32,47 +33,91 @@ std::string expand(const std::string_view query,
 }
 }
 
-drogon::Task<UserAuditLogSchema>
-UserAuditLogRepository::create(const UserAuditLogCreateInput& input) const
+drogon::Task<std::vector<UserAuditLogSchema>>
+UserAuditLogRepository::findExistMany(
+    const UserAuditLogFindExistManyInput& input) const
 {
+  if (input.userIds.empty())
+    co_return {};
+
   const auto pooled = DbService::client();
   auto* client = input.client ? input.client : pooled.get();
-  const auto result = co_await client->execSqlCoro(
-      std::string(INSERT), input.userId, input.recordId,
-      tableNameToString(input.tableName), json_util::toString(input.changes),
-      static_cast<int>(input.priority), input.eventTimestamp);
 
-  UserAuditLogSchema schema;
-  schema.id = result.insertId();
-  schema.userId = input.userId;
-  schema.recordId = input.recordId;
-  schema.tableName = input.tableName;
-  schema.changes = input.changes;
-  schema.priority = input.priority;
-  schema.eventTimestamp = input.eventTimestamp;
-  schema.createdAt = std::time(nullptr);
-  co_return schema;
+  std::vector<std::string> args;
+  args.reserve(input.userIds.size() + 4);
+  args.push_back(std::to_string(input.recordId));
+  args.push_back(tableNameToString(input.tableName));
+  for (const int64_t userId : input.userIds)
+    args.push_back(std::to_string(userId));
+  args.push_back(std::to_string(input.dayStart));
+  args.push_back(std::to_string(input.dayEnd));
+
+  const std::string query =
+      expand(FIND_EXIST_MANY, buildInPlaceholders(input.userIds.size()));
+  const auto& argsRef = args;
+  const auto result = co_await client->execSqlCoro(query, argsRef);
+
+  std::vector<UserAuditLogSchema> rows;
+  rows.reserve(result.size());
+  for (const auto& row : result)
+    rows.emplace_back(row);
+  co_return rows;
 }
 
-drogon::Task<std::optional<UserAuditLogSchema>>
-UserAuditLogRepository::findExist(const UserAuditLogFindExistInput& input) const
+drogon::Task<std::vector<UserAuditLogSchema>>
+UserAuditLogRepository::createMany(
+    const UserAuditLogCreateManyInput& input) const
 {
+  if (input.rows.empty())
+    co_return {};
+
   const auto pooled = DbService::client();
   auto* client = input.client ? input.client : pooled.get();
-  const auto result = co_await client->execSqlCoro(
-      std::string(FIND_EXIST), input.userId, input.recordId,
-      tableNameToString(input.tableName), input.dayStart, input.dayEnd);
-  if (result.empty())
-    co_return std::nullopt;
-  co_return UserAuditLogSchema(result.front());
-}
 
-drogon::Task<void>
-UserAuditLogRepository::remove(int64_t id, drogon::orm::DbClient* client) const
-{
-  const auto pooled = DbService::client();
-  auto* resolved = client ? client : pooled.get();
-  co_await resolved->execSqlCoro(std::string(REMOVE), id);
+  std::string values;
+  values.reserve(input.rows.size() * (INSERT_MANY_ROW.size() + 2));
+  std::vector<std::string> args;
+  args.reserve(input.rows.size() * 6);
+  std::unordered_map<int64_t, std::size_t> byUser;
+  byUser.reserve(input.rows.size());
+  for (std::size_t i = 0; i < input.rows.size(); ++i) {
+    const auto& row = input.rows[i];
+    if (i > 0)
+      values += ", ";
+    values += INSERT_MANY_ROW;
+    args.push_back(std::to_string(row.userId));
+    args.push_back(std::to_string(row.recordId));
+    args.push_back(tableNameToString(row.tableName));
+    args.push_back(json_util::toString(row.changes));
+    args.push_back(std::to_string(static_cast<int>(row.priority)));
+    args.push_back(std::to_string(row.eventTimestamp));
+    byUser.emplace(row.userId, i);
+  }
+
+  const auto& argsRef = args;
+  const auto result =
+      co_await client->execSqlCoro(expand(INSERT_MANY, values), argsRef);
+
+  const auto createdAt = std::time(nullptr);
+  std::vector<UserAuditLogSchema> written(input.rows.size());
+  for (const auto& inserted : result) {
+    const auto userId =
+        static_cast<int64_t>(inserted["user_id"].as<long long>());
+    const auto found = byUser.find(userId);
+    if (found == byUser.end())
+      continue;
+    const auto& row = input.rows[found->second];
+    auto& schema = written[found->second];
+    schema.id = static_cast<int64_t>(inserted["id"].as<long long>());
+    schema.userId = row.userId;
+    schema.recordId = row.recordId;
+    schema.tableName = row.tableName;
+    schema.changes = row.changes;
+    schema.priority = row.priority;
+    schema.eventTimestamp = row.eventTimestamp;
+    schema.createdAt = createdAt;
+  }
+  co_return written;
 }
 
 drogon::Task<std::vector<Json::Value>>
@@ -144,12 +189,13 @@ UserAuditLogRepository::findLastSync(const UserAuditLogSyncFilter& filter) const
 }
 
 drogon::Task<std::vector<UserAuditLogCompactionPair>>
-UserAuditLogRepository::findCompactionPairs(const int64_t cutoffMs) const
+UserAuditLogRepository::findCompactionPairs(
+    const UserAuditLogCompactionWindow& window) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(
-      std::string(FIND_COMPACTION_PAIRS) + SyncLimits::kMaxRows, cutoffMs,
-      cutoffMs);
+      std::string(FIND_COMPACTION_PAIRS) + SyncLimits::kMaxRows,
+      window.afterId, window.cutoffMs, window.cutoffMs);
 
   std::vector<UserAuditLogCompactionPair> pairs;
   pairs.reserve(result.size());

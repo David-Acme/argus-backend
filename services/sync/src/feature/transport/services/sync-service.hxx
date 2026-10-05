@@ -2,6 +2,8 @@
 
 #include <drogon/WebSocketController.h>
 #include <drogon/utils/coroutine.h>
+#include <feature/transport/services/connection-lanes.hxx>
+#include <feature/transport/services/frame-lane.hxx>
 #include <feature/transport/services/synchronized-service.hxx>
 #include <sync/sync-forwarder.hxx>
 #include <auth/jwt-filter.hxx>
@@ -19,10 +21,21 @@
 class SyncService
 {
 public:
+  SyncService();
+  SyncService(const SyncService&) = delete;
+  SyncService& operator=(const SyncService&) = delete;
+  SyncService(SyncService&&) = delete;
+  SyncService& operator=(SyncService&&) = delete;
+  ~SyncService() = default;
+
   drogon::Task<void>
   handleConnect(const drogon::HttpRequestPtr& req,
                 const drogon::WebSocketConnectionPtr& conn) const;
   drogon::Task<void> handleMessage(const SyncFrameInput& input) const;
+  [[nodiscard]] std::shared_ptr<FrameLane>
+  laneFor(const drogon::WebSocketConnectionPtr& conn) const;
+  void startDrain(const drogon::WebSocketConnectionPtr& conn,
+                  const std::shared_ptr<FrameLane>& lane) const;
   void handleBinary(const drogon::WebSocketConnectionPtr& conn,
                     const std::string& data) const;
   void handleDisconnect(const drogon::WebSocketConnectionPtr& conn) const;
@@ -34,12 +47,18 @@ public:
   void setIdentitySource(std::shared_ptr<IdentitySyncSource> source);
   void setUserDirectory(std::shared_ptr<const IUserDirectory> directory);
   void setHeartbeatSource(std::shared_ptr<const HeartbeatSource> source);
+  void setLanes(std::shared_ptr<ConnectionLanes> lanes);
 
 private:
   void sendHeartbeat(const drogon::WebSocketConnectionPtr& conn,
                      int64_t userId) const;
   drogon::Task<void>
   refreshContext(const drogon::WebSocketConnectionPtr& conn) const;
+  drogon::Task<void> runFrame(const drogon::WebSocketConnectionPtr& conn,
+                              FrameJob job) const;
+  drogon::Task<void>
+  revalidate(const drogon::WebSocketConnectionPtr& conn) const;
+  void closeDisabled(const drogon::WebSocketConnectionPtr& conn) const;
 
   SynchronizedService synchronizedService_;
   RoomManager roomManager_;
@@ -50,4 +69,5 @@ private:
   std::shared_ptr<IdentitySyncSource> identitySyncSource_;
   std::shared_ptr<const IUserDirectory> userDirectory_;
   std::shared_ptr<const HeartbeatSource> heartbeatSource_;
+  std::shared_ptr<ConnectionLanes> lanes_;
 };

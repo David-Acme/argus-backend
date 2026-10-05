@@ -180,10 +180,30 @@ bool VoiceGrpcRelay::resumeOf(const Json::Value& message)
 class VoiceGrpcRelay::StreamObserver final : public VoiceStreamObserver
 {
 public:
-  StreamObserver(drogon::WebSocketConnectionPtr conn,
-                 std::shared_ptr<Session> session)
-      : conn_(std::move(conn)), session_(std::move(session))
+  struct Input
   {
+    drogon::WebSocketConnectionPtr conn;
+    std::shared_ptr<Session> session;
+    std::shared_ptr<std::atomic<int>> openStreams;
+  };
+
+  explicit StreamObserver(Input input)
+      : conn_(std::move(input.conn)),
+        session_(std::move(input.session)),
+        openStreams_(std::move(input.openStreams))
+  {
+    openStreams_->fetch_add(1, std::memory_order_acq_rel);
+  }
+
+  StreamObserver(const StreamObserver&) = delete;
+  StreamObserver& operator=(const StreamObserver&) = delete;
+  StreamObserver(StreamObserver&&) = delete;
+  StreamObserver& operator=(StreamObserver&&) = delete;
+
+  ~StreamObserver() override
+  {
+    if (!closed_.exchange(true, std::memory_order_acq_rel))
+      openStreams_->fetch_sub(1, std::memory_order_acq_rel);
   }
 
   void onServerFrame(argus::voice::v1::ServerFrame frame) override
@@ -209,6 +229,8 @@ public:
 
   void onStreamClosed(const grpc::Status& status) override
   {
+    if (!closed_.exchange(true, std::memory_order_acq_rel))
+      openStreams_->fetch_sub(1, std::memory_order_acq_rel);
     const auto loop = session_->loop;
     if (!loop)
       return;
@@ -231,6 +253,8 @@ public:
 private:
   drogon::WebSocketConnectionPtr conn_;
   std::shared_ptr<Session> session_;
+  std::shared_ptr<std::atomic<int>> openStreams_;
+  std::atomic<bool> closed_{false};
 };
 
 VoiceGrpcRelay::VoiceGrpcRelay(
@@ -295,6 +319,8 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(const SyncFrameInput& input)
     co_return true;
 
   if (type == "voice:start") {
+    if (stopping_.load(std::memory_order_acquire))
+      throw ResponseException(503, SyncErrors::VoiceUnavailable);
     co_await startStream(
         {.conn = conn, .session = session, .mode = startModeOf(message), .resume = resumeOf(message)});
     co_return true;
@@ -393,7 +419,9 @@ drogon::Task<void> VoiceGrpcRelay::startStream(StartInput input)
     pending.swap(session->pending);
     if (up && !session->closing && !session->stream)
       session->stream = client_->connect(
-          start.identity(), std::make_shared<StreamObserver>(conn, session));
+          start.identity(),
+          std::make_shared<StreamObserver>(StreamObserver::Input{
+              .conn = conn, .session = session, .openStreams = openStreams_}));
     stream = session->stream;
   }
   if (!up)
@@ -437,6 +465,34 @@ std::chrono::milliseconds VoiceGrpcRelay::farewell(const drogon::WebSocketConnec
     return std::chrono::milliseconds(0);
   stream->sendFarewell(std::string(cause));
   return kFarewellGrace;
+}
+
+void VoiceGrpcRelay::requestStop()
+{
+  stopping_.store(true, std::memory_order_release);
+  std::vector<std::shared_ptr<Session>> sessions;
+  {
+    std::scoped_lock lock(sessionsMutex_);
+    sessions.reserve(sessions_.size());
+    for (const auto& [key, session] : sessions_)
+      sessions.push_back(session);
+  }
+  for (const auto& session : sessions) {
+    session->closing = true;
+    std::shared_ptr<VoiceStream> stream;
+    {
+      std::scoped_lock lock(session->mutex);
+      stream = std::move(session->stream);
+      session->pending.clear();
+    }
+    if (stream)
+      stream->finish();
+  }
+}
+
+bool VoiceGrpcRelay::drained() const
+{
+  return openStreams_->load(std::memory_order_acquire) == 0;
 }
 
 void VoiceGrpcRelay::onClose(const drogon::WebSocketConnectionPtr& conn)

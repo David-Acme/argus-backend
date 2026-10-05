@@ -24,6 +24,7 @@
 #include <auth/user-role.hxx>
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -695,6 +696,38 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
     userRefused = error.statusCode() == 409 && error.errorCode() == "CONFLICT";
   }
   CHECK(userRefused);
+
+  const auto findLastBody = [] {
+    Json::Value body;
+    body["findLast"] = true;
+    return SynchronizedLogDto::fromJson(body);
+  };
+  const auto expectedWatermark = [](const Json::Value& info, int64_t frontier) {
+    REQUIRE(info["lastSyncRecord"].isObject());
+    return std::max(info["lastSyncRecord"]["id"].asInt64(), frontier);
+  };
+
+  DbService::client()->execSqlSync(
+      "UPDATE audit_compaction_state SET compacted_through_id = 1000 "
+      "WHERE table_name = 'audit_log'");
+  const auto moduleMark = drogon::sync_wait(
+      synchronizedService.syncAuditLog(findLastBody(), ownerCtx));
+  REQUIRE(moduleMark["info"].isMember("watermarkId"));
+  const int64_t moduleWatermark = moduleMark["info"]["watermarkId"].asInt64();
+  CHECK(moduleMark["info"]["lastSyncRecord"]["id"].asInt64() < 1000);
+  CHECK(moduleWatermark == expectedWatermark(moduleMark["info"], 1000));
+  CHECK(moduleWatermark == 1000);
+  CHECK_NOTHROW(drogon::sync_wait(
+      synchronizedService.syncAuditLog(logBody(moduleWatermark), ownerCtx)));
+
+  const auto userMark = drogon::sync_wait(
+      synchronizedService.syncUserAuditLog(findLastBody(), residentCtx));
+  REQUIRE(userMark["info"].isMember("watermarkId"));
+  const int64_t userWatermark = userMark["info"]["watermarkId"].asInt64();
+  CHECK(userMark["info"]["lastSyncRecord"]["id"].asInt64() < 3);
+  CHECK(userWatermark == 3);
+  CHECK_NOTHROW(drogon::sync_wait(
+      synchronizedService.syncUserAuditLog(logBody(userWatermark), residentCtx)));
 
   drain(legacyDb);
   DbService::setReadOnlyClient(nullptr);

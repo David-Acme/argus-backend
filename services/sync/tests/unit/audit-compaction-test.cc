@@ -211,8 +211,8 @@ TEST_CASE("retention compacts each audit table into its own newest rows")
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") == "0");
   CHECK(drogon::sync_wait(auditRepository.findCompactionFrontier()) == 0);
   CHECK(drogon::sync_wait(userAuditRepository.findCompactionFrontier()) == 0);
-  CHECK(drogon::sync_wait(auditService.compact(cutoffMs)) == 0);
-  CHECK(drogon::sync_wait(userAuditService.compact(cutoffMs)) == 0);
+  CHECK(drogon::sync_wait(auditService.compact({.cutoffMs = cutoffMs, .afterId = 0})).removed == 0);
+  CHECK(drogon::sync_wait(userAuditService.compact({.cutoffMs = cutoffMs, .afterId = 0})).removed == 0);
 
   seedAuditRow({.id = 1,
                 .recordId = 1,
@@ -300,7 +300,7 @@ TEST_CASE("retention compacts each audit table into its own newest rows")
                 .priority = 1,
                 .eventTimestamp = kOldMs});
 
-  CHECK(drogon::sync_wait(auditService.compact(cutoffMs)) == 3);
+  CHECK(drogon::sync_wait(auditService.compact({.cutoffMs = cutoffMs, .afterId = 0})).removed == 3);
 
   CHECK(scalar("SELECT COUNT(*) FROM audit_log WHERE id IN (1, 3, 4)") == "0");
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") == "14");
@@ -340,7 +340,7 @@ TEST_CASE("retention compacts each audit table into its own newest rows")
   CHECK(drogon::sync_wait(auditRepository.findCompactionFrontier()) == 4);
   CHECK(drogon::sync_wait(userAuditRepository.findCompactionFrontier()) == 0);
 
-  CHECK(drogon::sync_wait(auditService.compact(cutoffMs)) == 0);
+  CHECK(drogon::sync_wait(auditService.compact({.cutoffMs = cutoffMs, .afterId = 0})).removed == 0);
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") == "14");
   CHECK(drogon::sync_wait(auditRepository.findCompactionFrontier()) == 4);
 
@@ -363,7 +363,7 @@ TEST_CASE("retention compacts each audit table into its own newest rows")
        .recordId = 1,
        .changes = R"({"name":{"previous":"B","current":"C"}})"});
 
-  CHECK(drogon::sync_wait(userAuditService.compact(cutoffMs)) == 1);
+  CHECK(drogon::sync_wait(userAuditService.compact({.cutoffMs = cutoffMs, .afterId = 0})).removed == 1);
   CHECK(scalar("SELECT COUNT(*) FROM user_audit_log WHERE id = 1") == "0");
   CHECK(scalar("SELECT COUNT(*) FROM user_audit_log WHERE id = 2") == "1");
   CHECK(storedUserAuditChanges(3)["name"]["previous"].asString() == "A");
@@ -371,7 +371,7 @@ TEST_CASE("retention compacts each audit table into its own newest rows")
   CHECK(storedUserAuditChanges(2)["name"]["current"].asString() == "B");
   CHECK(drogon::sync_wait(userAuditRepository.findCompactionFrontier()) == 1);
   CHECK(drogon::sync_wait(auditRepository.findCompactionFrontier()) == 4);
-  CHECK(drogon::sync_wait(userAuditService.compact(cutoffMs)) == 0);
+  CHECK(drogon::sync_wait(userAuditService.compact({.cutoffMs = cutoffMs, .afterId = 0})).removed == 0);
 
   const int64_t pageSize = std::stoll(SyncLimits::kMaxRows);
   const int64_t backlogRows = 2 * (pageSize + 1);
@@ -379,12 +379,22 @@ TEST_CASE("retention compacts each audit table into its own newest rows")
 
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") ==
         std::to_string(14 + backlogRows));
-  CHECK(drogon::sync_wait(auditService.compact(cutoffMs)) == pageSize);
+  const auto firstPage = drogon::sync_wait(
+      auditService.compact({.cutoffMs = cutoffMs, .afterId = 0}));
+  CHECK(firstPage.removed == pageSize);
+  CHECK(firstPage.lastOlderId == kBacklogFirstId + 2 * (pageSize - 1));
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") ==
         std::to_string(14 + backlogRows - pageSize));
   CHECK(drogon::sync_wait(auditRepository.findCompactionFrontier()) ==
         kBacklogFirstId + 2 * (pageSize - 1));
-  CHECK(drogon::sync_wait(auditService.compact(cutoffMs)) == 1);
+  CHECK(drogon::sync_wait(auditService.compact(
+                              {.cutoffMs = cutoffMs,
+                               .afterId = firstPage.lastOlderId + 2}))
+            .removed == 0);
+  const auto secondPage = drogon::sync_wait(auditService.compact(
+      {.cutoffMs = cutoffMs, .afterId = firstPage.lastOlderId}));
+  CHECK(secondPage.removed == 1);
+  CHECK(secondPage.lastOlderId == kBacklogFirstId + 2 * pageSize);
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") ==
         std::to_string(14 + backlogRows / 2));
   CHECK(drogon::sync_wait(auditRepository.findCompactionFrontier()) ==
@@ -393,5 +403,5 @@ TEST_CASE("retention compacts each audit table into its own newest rows")
             .asString() == "a");
   CHECK(storedAuditChanges(kBacklogFirstId + backlogRows - 1)["p"]["current"]
             .asString() == "c");
-  CHECK(drogon::sync_wait(auditService.compact(cutoffMs)) == 0);
+  CHECK(drogon::sync_wait(auditService.compact({.cutoffMs = cutoffMs, .afterId = 0})).removed == 0);
 }

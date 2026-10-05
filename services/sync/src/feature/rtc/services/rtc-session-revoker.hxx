@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 struct RtcSessionEnd
 {
@@ -24,6 +25,7 @@ struct RtcRevokeInput
   std::shared_ptr<const RtcVoiceJoiner> voice;
   RtcSessionEnd end;
   std::chrono::milliseconds farewellBudget{2400};
+  std::vector<std::chrono::milliseconds> listRetries;
 };
 
 class RtcSessionRevoker
@@ -36,6 +38,7 @@ public:
   static drogon::Task<int> revoke(RtcRevokeInput input);
 
   static constexpr auto kFarewellBudget = std::chrono::milliseconds(2400);
+  static std::vector<std::chrono::milliseconds> defaultListRetries();
 
 private:
   std::shared_ptr<const LiveKitRoomClient> rooms_;

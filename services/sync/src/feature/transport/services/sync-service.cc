@@ -1,6 +1,7 @@
 #include "sync-service.hxx"
 
 #include <errors/response-exception.hxx>
+#include <errors/validation-exception.hxx>
 #include <auth/request-context.hxx>
 #include <auth/role-access.hxx>
 #include <sync/sync-operation.hxx>
@@ -8,7 +9,112 @@
 #include <sync/socket-emit-dto.hxx>
 #include <sync/sync-errors.hxx>
 
+#include <trantor/utils/Logger.h>
+
+#include <exception>
 #include <utility>
+
+SyncService::SyncService() : lanes_(std::make_shared<ConnectionLanes>())
+{
+  setLanes(lanes_);
+}
+
+void SyncService::setLanes(std::shared_ptr<ConnectionLanes> lanes)
+{
+  if (!lanes)
+    return;
+  lanes_ = std::move(lanes);
+  lanes_->setDrainStarter(
+      [this](const drogon::WebSocketConnectionPtr& conn,
+             const std::shared_ptr<FrameLane>& lane) { startDrain(conn, lane); });
+}
+
+std::shared_ptr<FrameLane>
+SyncService::laneFor(const drogon::WebSocketConnectionPtr& conn) const
+{
+  if (auto lane = lanes_->find(conn))
+    return lane;
+  const int64_t userId =
+      conn->hasContext() ? conn->getContextRef<JwtContext>().sub : 0;
+  return lanes_->open(
+      {.conn = conn,
+       .userId = userId,
+       .loop = trantor::EventLoop::getEventLoopOfCurrentThread()});
+}
+
+void SyncService::startDrain(const drogon::WebSocketConnectionPtr& conn,
+                             const std::shared_ptr<FrameLane>& lane) const
+{
+  drogon::async_run([this, conn, lane]() -> drogon::Task<> {
+    for (auto job = lane->next(); job.has_value(); job = lane->next()) {
+      if (conn->disconnected())
+        continue;
+      if (job->kind == FrameJobKind::Revalidate)
+        co_await revalidate(conn);
+      else
+        co_await runFrame(conn, std::move(*job));
+    }
+  });
+}
+
+drogon::Task<void> SyncService::runFrame(const drogon::WebSocketConnectionPtr& conn,
+                                         FrameJob job) const
+{
+  const std::string type = std::move(job.type);
+  try {
+    co_await handleMessage({.conn = conn, .message = job.message, .raw = job.raw});
+  }
+  catch (const ValidationException& ex) {
+    sendSocketFrameError(
+        {.conn = conn, .type = type, .status = 422, .error = ex.what()});
+  }
+  catch (const ResponseException& ex) {
+    sendSocketFrameError({.conn = conn,
+                          .type = type,
+                          .status = ex.statusCode(),
+                          .error = ex.what()});
+    if (ex.statusCode() == SyncErrors::UserAccountDisabled.status)
+      closeDisabled(conn);
+  }
+  catch (const std::exception& ex) {
+    LOG_ERROR << "SyncSocket: " << type << " failed: " << ex.what();
+    sendSocketFrameError(
+        {.conn = conn,
+         .type = type,
+         .status = SyncErrors::FrameFailed.status,
+         .error = std::string(SyncErrors::FrameFailed.message)});
+  }
+}
+
+drogon::Task<void>
+SyncService::revalidate(const drogon::WebSocketConnectionPtr& conn) const
+{
+  try {
+    co_await refreshContext(conn);
+  }
+  catch (const ResponseException& ex) {
+    if (ex.statusCode() == SyncErrors::UserAccountDisabled.status)
+      closeDisabled(conn);
+  }
+  catch (const std::exception& ex) {
+    LOG_WARN << "Sync: socket revalidation failed: " << ex.what();
+  }
+}
+
+void SyncService::closeDisabled(const drogon::WebSocketConnectionPtr& conn) const
+{
+  const auto lane = lanes_->find(conn);
+  trantor::EventLoop* loop = lane ? lane->loop() : nullptr;
+  const auto close = [conn]() {
+    RoomManager{}.leaveAll(conn);
+    if (conn->connected())
+      conn->shutdown(drogon::CloseCode::kViolation, "account_disabled");
+  };
+  if (loop)
+    loop->runInLoop(close);
+  else
+    close();
+}
 
 drogon::Task<void>
 SyncService::refreshContext(const drogon::WebSocketConnectionPtr& conn) const
@@ -42,6 +148,9 @@ SyncService::handleConnect(const drogon::HttpRequestPtr& req,
       req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
 
   conn->setContext(std::make_shared<JwtContext>(ctx));
+  lanes_->open({.conn = conn,
+                .userId = ctx.sub,
+                .loop = trantor::EventLoop::getEventLoopOfCurrentThread()});
 
   std::vector<RoomId> rooms;
   for (const auto table : role_access::moduleTables(ctx.role))
@@ -128,6 +237,7 @@ void SyncService::handleDisconnect(
   if (forwarder_)
     forwarder_->onClose(conn);
   roomManager_.leaveAll(conn);
+  lanes_->close(conn);
 }
 
 void SyncService::sendHeartbeat(const drogon::WebSocketConnectionPtr& conn,

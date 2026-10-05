@@ -6,6 +6,7 @@
 #include <string_view>
 #include <sync/sync-change.hxx>
 #include <json/value.h>
+#include <nats/nats-subject.hxx>
 #include <sync/sync-operation.hxx>
 #include <sync/table-name.hxx>
 #include <text/json-util.hxx>
@@ -34,6 +35,24 @@ sync_fan_out::SessionEndListener& sessionEndListener()
   return listener;
 }
 
+sync_fan_out::IdentityChangeListener& identityChangeListener()
+{
+  static sync_fan_out::IdentityChangeListener listener;
+  return listener;
+}
+
+void noticeIdentityChange(const Json::Value& json)
+{
+  if (!identityChangeListener() || !json[sync_change::kTableField].isString() ||
+      !json[sync_change::kRecordIdField].isIntegral())
+    return;
+  const auto table = findTableName(json[sync_change::kTableField].asString());
+  const int64_t recordId = json[sync_change::kRecordIdField].asInt64();
+  if (!table || recordId <= 0)
+    return;
+  identityChangeListener()({.table = *table, .recordId = recordId});
+}
+
 std::string kindOf(const Json::Value& json)
 {
   return json.isObject() ? json.get(sync_change::kKindField, "").asString()
@@ -48,7 +67,18 @@ void onSessionEnd(SessionEndListener listener)
   sessionEndListener() = std::move(listener);
 }
 
-std::optional<Event> parseEvent(const Json::Value& json)
+void onIdentityChange(IdentityChangeListener listener)
+{
+  identityChangeListener() = std::move(listener);
+}
+
+ControlScope controlScopeOf(std::string_view subject)
+{
+  return subject == nats_subject::kAuthSession ? ControlScope::Session
+                                               : ControlScope::None;
+}
+
+std::optional<Event> parseEvent(const Json::Value& json, ControlScope scope)
 {
   if (!json.isObject() || !json.isMember("operation") ||
       !json["operation"].isInt() || !json.isMember("option") ||
@@ -79,6 +109,8 @@ std::optional<Event> parseEvent(const Json::Value& json)
   const std::string action =
       json.get(sync_change::kActionField, sync_change::kActionEmit).asString();
   if (action == sync_change::kActionDisconnectSession) {
+    if (scope == ControlScope::None)
+      return std::nullopt;
     if (!json.isMember(sync_change::kUserField) ||
         !json[sync_change::kUserField].isInt64() ||
         json[sync_change::kUserField].asInt64() <= 0 ||
@@ -94,6 +126,8 @@ std::optional<Event> parseEvent(const Json::Value& json)
   }
   if (action == sync_change::kActionDisconnect ||
       action == sync_change::kActionReplaceRoleRooms) {
+    if (scope != ControlScope::All)
+      return std::nullopt;
     if (!json.isMember(sync_change::kUserField) ||
         !json[sync_change::kUserField].isInt64() ||
         json[sync_change::kUserField].asInt64() <= 0)
@@ -177,21 +211,25 @@ void dispatchEvent(const Event& event)
   }
 }
 
-drogon::Task<DurableDisposition>
-handleChangePayload(const Json::Value& json, AuditFanOut& auditFanOut)
+drogon::Task<DurableDisposition> handleChangePayload(ChangePayloadInput input)
 {
+  const Json::Value& json = input.json;
   try {
     const std::string kind = kindOf(json);
-    if (kind == sync_change::kKindIdentity)
+    if (kind == sync_change::kKindIdentity) {
+      if (input.subject == nats_subject::kIdentityChange)
+        noticeIdentityChange(json);
       co_return DurableDisposition::Ack;
+    }
     if (kind == sync_change::kKindAudit)
-      co_return co_await auditFanOut.handleAuditChange(json)
+      co_return co_await input.auditFanOut.handleAuditChange(json)
                     ? DurableDisposition::Ack
                     : DurableDisposition::Term;
 
-    const auto event = parseEvent(json);
+    const auto event = parseEvent(json, controlScopeOf(input.subject));
     if (!event) {
-      LOG_WARN << "Sync fan-out: malformed change event refused";
+      LOG_WARN << "Sync fan-out: malformed or unauthorised change event on "
+               << input.subject << " refused";
       co_return DurableDisposition::Term;
     }
     dispatchEvent(*event);

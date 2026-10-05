@@ -12,7 +12,7 @@ rtc:
     enabled: true
     allow_pause: false
 room:
-  auto_create: true
+  auto_create: false
   empty_timeout: 60
   departure_timeout: 20
   max_participants: 8

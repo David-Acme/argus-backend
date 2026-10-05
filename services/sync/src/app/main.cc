@@ -1,3 +1,4 @@
+#include <app/rpc/grpc-server-drain.hxx>
 #include <app/rpc/sync-control-rpc-service.hxx>
 #include <config/config-service.hxx>
 #include <config/sync-config.hxx>
@@ -17,13 +18,16 @@
 #include <feature/rtc/infra/notification-call-claimer.hxx>
 #include <feature/rtc/infra/voice-room-joiner.hxx>
 #include <feature/rtc/services/rtc-session-revoker.hxx>
+#include <feature/transport/infra/cached-user-directory.hxx>
 #include <feature/transport/infra/camera-sync-gateway.hxx>
 #include <feature/transport/infra/identity-sync-gateway.hxx>
 #include <feature/transport/infra/notification-sync-gateway.hxx>
 #include <feature/transport/infra/productivity-sync-gateway.hxx>
 #include <feature/transport/infra/sync-socket-registrar.hxx>
 #include <feature/transport/infra/voice-grpc-relay.hxx>
+#include <feature/transport/services/connection-lanes.hxx>
 #include <auth/user-directory-identity.hxx>
+#include <chrono>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
@@ -44,10 +48,14 @@
 #include <shared/services/room/room-manager.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
+#include <sync/table-name.hxx>
 #include <unistd.h>
 
 namespace
 {
+
+constexpr double kSocketRevalidationSeconds = 60.0;
+constexpr std::chrono::milliseconds kControlShutdownDeadline{2000};
 
 Json::Value drogonConfig(const SyncDbConfig& syncDb,
                          const ListenerConfig& listener)
@@ -96,7 +104,10 @@ int main()
   const auto identitySource = std::make_shared<IdentitySyncGateway>(
       IdentitySyncClientConfig{.target = upstreams.identity,
                                .fleetSecret = upstreams.identitySecret});
-  const auto userDirectory = std::make_shared<IdentityUserDirectory>();
+  const auto userDirectory = std::make_shared<CachedUserDirectory>(
+      std::make_shared<IdentityUserDirectory>(),
+      CachedUserDirectoryConfig{.ttl = std::chrono::seconds(10), .clock = {}});
+  const auto lanes = std::make_shared<ConnectionLanes>();
   const VoiceGrpcConfig voice = VoiceGrpcConfig::resolve();
   std::shared_ptr<VoiceGrpcRelay> voiceLeg;
   if (!voice.target.empty()) {
@@ -120,7 +131,15 @@ int main()
                            .notificationSource = notificationSource,
                            .identitySource = identitySource,
                            .userDirectory = userDirectory,
-                           .heartbeatSource = heartbeatService});
+                           .heartbeatSource = heartbeatService,
+                           .lanes = lanes});
+  sync_fan_out::onIdentityChange(
+      [userDirectory, lanes](const sync_fan_out::IdentityChangeNotice& notice) {
+        if (notice.table != TableName::User)
+          return;
+        userDirectory->forget(notice.recordId);
+        lanes->revalidateUser(notice.recordId);
+      });
   drogon::app().registerController(
       std::make_shared<HeartbeatController>(heartbeatService));
   LOG_INFO << "Sync surface registered: " << sync.controllers << " controller, "
@@ -150,13 +169,14 @@ int main()
     rtcCalls = std::make_shared<NotificationCallClaimer>(std::make_shared<NotificationClient>(
         NotificationClientConfig{.target = upstreams.notification,
                                  .credential = ConfigService::getString("notifications.credential")}));
+  std::shared_ptr<const LiveKitRoomClient> rtcRooms;
+  if (rtc.enabled)
+    rtcRooms = std::make_shared<LiveKitRoomClient>(
+        LiveKitAdminConfig{.serverUrl = rtc.serverUrl, .apiKey = rtc.apiKey, .apiSecret = rtc.apiSecret});
   drogon::app().registerController(std::make_shared<RtcController>(RtcTokenServiceInput{
-      .config = rtc, .voice = rtcVoice, .calls = rtcCalls, .directory = userDirectory}));
-  if (rtc.enabled) {
-    const auto revoker = std::make_shared<RtcSessionRevoker>(
-        std::make_shared<LiveKitRoomClient>(
-            LiveKitAdminConfig{.serverUrl = rtc.serverUrl, .apiKey = rtc.apiKey, .apiSecret = rtc.apiSecret}),
-        rtcVoice);
+      .config = rtc, .voice = rtcVoice, .calls = rtcCalls, .directory = userDirectory, .rooms = rtcRooms}));
+  if (rtcRooms) {
+    const auto revoker = std::make_shared<RtcSessionRevoker>(rtcRooms, rtcVoice);
     sync_fan_out::onSessionEnd([revoker](const sync_fan_out::SessionEndNotice& notice) {
       revoker->sessionEnded({.userId = notice.userId, .sessionId = notice.sessionId, .cause = notice.cause});
     });
@@ -280,6 +300,7 @@ int main()
                                   grpc::InsecureServerCredentials());
   controlBuilder.RegisterService(&controlRpc);
   std::unique_ptr<grpc::Server> controlServer(controlBuilder.BuildAndStart());
+  GrpcServerDrain controlDrain(controlServer.get(), kControlShutdownDeadline);
   if (controlServer)
     LOG_INFO << "Sync control RPC listening on " << control.listener.host << ":"
              << control.listener.port << " (cleartext, "
@@ -301,7 +322,7 @@ int main()
   drogon::app().registerBeginningAdvice([&syncDb = syncDb, &auditFanOut,
                                          &changeFeedConsumer,
                                          &deliveryConsumer, &auditRetention,
-                                         &heartbeatFeed,
+                                         &heartbeatFeed, &lanes, &userDirectory,
                                          auditRetentionDays]() {
     if (!auditFanOut.migrateLegacySchema() ||
         !DbService::runScriptFile(syncDb.schemaPath)) {
@@ -318,7 +339,26 @@ int main()
     auditRetention.start(auditRetentionDays);
     if (heartbeatFeed)
       heartbeatFeed->start();
+    lanes->startRevalidation({.intervalSeconds = kSocketRevalidationSeconds,
+                              .directory = userDirectory});
   });
+
+  shutdown_signal::onStop(shutdown_signal::drainOf(*lanes, "sync-sockets"));
+  if (changeFeedConsumer)
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*changeFeedConsumer, "sync-change-feed"));
+  if (deliveryConsumer)
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*deliveryConsumer, "sync-delivery"));
+  if (heartbeatFeed)
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*heartbeatFeed, "sync-heartbeat"));
+  if (voiceLeg)
+    shutdown_signal::onStop(shutdown_signal::drainOf(*voiceLeg, "sync-voice"));
+  shutdown_signal::onStop(
+      shutdown_signal::drainOf(auditRetention, "sync-audit-retention"));
+  shutdown_signal::onStop(
+      shutdown_signal::drainOf(controlDrain, "sync-control-rpc"));
 
   shutdown_signal::onQuit(
       [dbPath = syncDb.dbPath] { DbService::freezeClient(dbPath); });
@@ -332,7 +372,6 @@ int main()
 
   drogon::app().setThreadNum(0).run();
 
-  if (controlServer)
-    controlServer->Shutdown();
+  controlDrain.finish();
   return 0;
 }

@@ -4,6 +4,7 @@
 
 #include <drogon/drogon.h>
 
+#include <algorithm>
 #include <utility>
 
 namespace
@@ -22,6 +23,23 @@ struct FarewellTarget
   const std::string& cause;
 };
 
+struct OnlyHumanInput
+{
+  const LiveKitRoomClient& rooms;
+  const std::string& room;
+  const std::string& identity;
+};
+
+drogon::Task<bool> onlyHumanIn(OnlyHumanInput input)
+{
+  const auto participants = co_await input.rooms.listParticipants(input.room);
+  if (!participants)
+    co_return false;
+  co_return std::ranges::none_of(*participants, [&input](const std::string& participant) {
+    return participant != input.identity && participant != rtc_naming::kAgentIdentity;
+  });
+}
+
 argus::voice::v1::RtcFarewell farewellOf(const FarewellTarget& target)
 {
   argus::voice::v1::RtcFarewell farewell;
@@ -31,6 +49,12 @@ argus::voice::v1::RtcFarewell farewellOf(const FarewellTarget& target)
   return farewell;
 }
 
+}
+
+std::vector<std::chrono::milliseconds> RtcSessionRevoker::defaultListRetries()
+{
+  return {std::chrono::milliseconds(500), std::chrono::milliseconds(1500),
+          std::chrono::milliseconds(4000)};
 }
 
 RtcSessionRevoker::RtcSessionRevoker(std::shared_ptr<const LiveKitRoomClient> rooms,
@@ -45,8 +69,11 @@ void RtcSessionRevoker::sessionEnded(RtcSessionEnd end) const
     return;
   drogon::app().getLoop()->queueInLoop([rooms = rooms_, voice = voice_, end = std::move(end)]() mutable {
     drogon::async_run([rooms = std::move(rooms), voice = std::move(voice), end = std::move(end)]() mutable {
-      return revoke({.rooms = std::move(rooms), .voice = std::move(voice), .end = std::move(end),
-                     .farewellBudget = kFarewellBudget});
+      return revoke({.rooms = std::move(rooms),
+                     .voice = std::move(voice),
+                     .end = std::move(end),
+                     .farewellBudget = kFarewellBudget,
+                     .listRetries = defaultListRetries()});
     });
   });
 }
@@ -56,9 +83,20 @@ drogon::Task<int> RtcSessionRevoker::revoke(RtcRevokeInput input)
   const auto started = std::chrono::steady_clock::now();
   const auto deadline = started + input.farewellBudget;
   const RtcSessionEnd& end = input.end;
-  const auto names = co_await input.rooms->listRooms();
-  if (!names)
+  auto names = co_await input.rooms->listRooms();
+  for (const auto backoff : input.listRetries) {
+    if (names)
+      break;
+    if (backoff.count() > 0)
+      co_await drogon::sleepCoro(drogon::app().getLoop(),
+                                 std::chrono::duration<double>(backoff));
+    names = co_await input.rooms->listRooms();
+  }
+  if (!names) {
+    LOG_WARN << "RTC: could not list the rooms to revoke user " << end.userId
+             << "; their calls were left as they were";
     co_return 0;
+  }
   const std::string prefix = rtc_naming::roomPrefixOf(end.userId);
   const std::string userPrefix = rtc_naming::userIdentityPrefixOf(end.userId);
   int removed = 0;
@@ -75,6 +113,11 @@ drogon::Task<int> RtcSessionRevoker::revoke(RtcRevokeInput input)
                     {.request = farewellOf({.room = room, .identity = identity, .cause = end.cause}),
                      .deadline = remainingOf(deadline)}) ||
                 spoke;
+      if (co_await onlyHumanIn({.rooms = *input.rooms, .room = room, .identity = identity})) {
+        if (co_await input.rooms->deleteRoom(room))
+          ++removed;
+        continue;
+      }
       if (co_await input.rooms->removeParticipant({.room = room, .identity = identity}))
         ++removed;
       continue;

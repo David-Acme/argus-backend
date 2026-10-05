@@ -154,12 +154,13 @@ AuditLogRepository::findLastSync(const AuditLogSyncFilter& filter) const
 }
 
 drogon::Task<std::vector<AuditLogCompactionPair>>
-AuditLogRepository::findCompactionPairs(const int64_t cutoffMs) const
+AuditLogRepository::findCompactionPairs(
+    const AuditLogCompactionWindow& window) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(
-      std::string(FIND_COMPACTION_PAIRS) + SyncLimits::kMaxRows, cutoffMs,
-      cutoffMs);
+      std::string(FIND_COMPACTION_PAIRS) + SyncLimits::kMaxRows,
+      window.afterId, window.cutoffMs, window.cutoffMs);
 
   std::vector<AuditLogCompactionPair> pairs;
   pairs.reserve(result.size());

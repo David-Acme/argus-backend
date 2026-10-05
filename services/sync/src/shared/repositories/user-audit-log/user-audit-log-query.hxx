@@ -7,39 +7,39 @@
 #include <text/json-diff.hxx>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace user_audit_log_query
 {
-inline constexpr std::string_view INSERT =
+inline constexpr std::string_view FIND_EXIST_MANY =
+    "SELECT * FROM user_audit_log WHERE id IN ("
+    "SELECT max(id) FROM user_audit_log INDEXED BY idx_user_audit_log_record "
+    "WHERE record_id = ? AND table_name = ? AND user_id IN (%1%) "
+    "GROUP BY user_id) "
+    "AND event_timestamp >= ? AND event_timestamp <= ?";
+
+inline constexpr std::string_view INSERT_MANY =
     "INSERT INTO user_audit_log (user_id, record_id, table_name, changes, "
-    "priority, event_timestamp) VALUES (?, ?, ?, ?, ?, ?)";
+    "priority, event_timestamp) VALUES %1% RETURNING id, user_id";
 
-inline constexpr std::string_view FIND_EXIST =
-    "SELECT * FROM (SELECT * FROM user_audit_log "
-    "INDEXED BY idx_user_audit_log_record "
-    "WHERE user_id = ? AND record_id = ? AND table_name = ? "
-    "ORDER BY id DESC LIMIT 1) "
-    "WHERE event_timestamp >= ? AND event_timestamp <= ?";
-
-inline constexpr std::string_view REMOVE =
-    "DELETE FROM user_audit_log WHERE id = ?";
+inline constexpr std::string_view INSERT_MANY_ROW = "(?, ?, ?, ?, ?, ?)";
 
 inline constexpr std::string_view FIND_SYNC =
     "SELECT * FROM user_audit_log WHERE user_id = ? "
     "AND event_timestamp >= ? AND event_timestamp <= ? "
-    "ORDER BY event_timestamp ASC LIMIT ";
+    "ORDER BY event_timestamp ASC, id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_FROM =
     "SELECT * FROM user_audit_log WHERE user_id = ? "
-    "AND event_timestamp >= ? ORDER BY event_timestamp ASC LIMIT ";
+    "AND event_timestamp >= ? ORDER BY event_timestamp ASC, id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_TO =
     "SELECT * FROM user_audit_log WHERE user_id = ? "
-    "AND event_timestamp <= ? ORDER BY event_timestamp ASC LIMIT ";
+    "AND event_timestamp <= ? ORDER BY event_timestamp ASC, id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_ALL =
     "SELECT * FROM user_audit_log WHERE user_id = ? "
-    "ORDER BY event_timestamp ASC LIMIT ";
+    "ORDER BY event_timestamp ASC, id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_AFTER_ID =
     "SELECT * FROM user_audit_log WHERE user_id = ? AND id > ? "
@@ -60,7 +60,7 @@ inline constexpr std::string_view FIND_COMPACTION_PAIRS =
     "WHERE x.user_id = o.user_id "
     "AND x.record_id = o.record_id AND x.table_name = o.table_name "
     "AND x.id > o.id) "
-    "WHERE n.event_timestamp < ? AND o.event_timestamp < ? "
+    "WHERE o.id > ? AND n.event_timestamp < ? AND o.event_timestamp < ? "
     "ORDER BY older_id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_COMPACTION_CHANGES =
@@ -91,7 +91,6 @@ struct UserAuditLogCreateInput
   Json::Value changes;
   AuditLogPriority priority{AuditLogPriority::Medium};
   int64_t eventTimestamp{0};
-  drogon::orm::DbClient* client{nullptr};
 };
 
 struct UserAuditLogSyncFilter
@@ -103,9 +102,9 @@ struct UserAuditLogSyncFilter
   std::optional<int64_t> endTime;
 };
 
-struct UserAuditLogWriteInput
+struct UserAuditLogBatchWriteInput
 {
-  int64_t userId{0};
+  std::vector<int64_t> userIds;
   int64_t recordId{0};
   TableName tableName{TableName::User};
   ChangesDiff changes;
@@ -114,14 +113,26 @@ struct UserAuditLogWriteInput
   drogon::orm::DbClient* client{nullptr};
 };
 
-struct UserAuditLogFindExistInput
+struct UserAuditLogFindExistManyInput
 {
-  int64_t userId{0};
+  const std::vector<int64_t>& userIds;
   int64_t recordId{0};
   TableName tableName{TableName::User};
   int64_t dayStart{0};
   int64_t dayEnd{0};
   drogon::orm::DbClient* client{nullptr};
+};
+
+struct UserAuditLogCreateManyInput
+{
+  const std::vector<UserAuditLogCreateInput>& rows;
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct UserAuditLogCompactionWindow
+{
+  int64_t cutoffMs{0};
+  int64_t afterId{0};
 };
 
 struct UserAuditLogCompactionPair

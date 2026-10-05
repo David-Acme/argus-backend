@@ -6,6 +6,7 @@
 #include <nats/nats-subject.hxx>
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
+#include <exception>
 #include <utility>
 
 namespace change_feed
@@ -84,10 +85,28 @@ void ChangeFeedConsumer::stop()
   }
 }
 
+void ChangeFeedConsumer::requestStop()
+{
+  stop();
+}
+
+bool ChangeFeedConsumer::drained() const
+{
+  return pending_->load(std::memory_order_acquire) == 0;
+}
+
 drogon::Task<DurableDisposition>
 ChangeFeedConsumer::handle(const durable_delivery::Payload& message)
 {
-  const Json::Value json = json_util::fromString(message.body);
+  Json::Value json;
+  try {
+    json = json_util::fromString(message.body);
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Change feed: unparsable payload on " << message.subject
+             << " refused: " << error.what();
+    co_return DurableDisposition::Term;
+  }
   if (message.subject == nats_subject::kIdentityUserAction ||
       message.subject == nats_subject::kAuthUserAction)
     co_return co_await sync_fan_out::handleActionPayload(
@@ -95,7 +114,9 @@ ChangeFeedConsumer::handle(const durable_delivery::Payload& message)
          .msgId = message.msgId,
          .auditFanOut = *dependencies_.auditFanOut});
   co_return co_await sync_fan_out::handleChangePayload(
-      json, *dependencies_.auditFanOut);
+      {.json = json,
+       .subject = message.subject,
+       .auditFanOut = *dependencies_.auditFanOut});
 }
 
 bool ChangeFeedConsumer::trySubscribe(Attachment& attachment)
@@ -108,7 +129,8 @@ bool ChangeFeedConsumer::trySubscribe(Attachment& attachment)
        .maxDeliver = config_.maxDeliver,
        .maxAckPending = attachment.feed.maxAckPending,
        .handler = durable_delivery::handler(
-           "Change feed " + attachment.feed.durable,
+           {.label = "Change feed " + attachment.feed.durable,
+            .pending = pending_},
            [this](const durable_delivery::Payload& payload) {
              return handle(payload);
            })});

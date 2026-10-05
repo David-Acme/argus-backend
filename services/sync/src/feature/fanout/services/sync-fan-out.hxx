@@ -5,16 +5,25 @@
 #include <feature/fanout/services/audit-fan-out.hxx>
 #include <feature/fanout/services/durable-disposition.hxx>
 #include <json/value.h>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <shared/services/room/room-manager.hxx>
 #include <string>
 #include <string_view>
 #include <sync/socket-emit-dto.hxx>
+#include <sync/table-name.hxx>
 #include <vector>
 
 namespace sync_fan_out
 {
+enum class ControlScope : uint8_t
+{
+  None,
+  Session,
+  All
+};
+
 struct Event
 {
   SocketEmitDto emit;
@@ -54,12 +63,31 @@ using SessionEndListener = std::function<void(const SessionEndNotice&)>;
 
 void onSessionEnd(SessionEndListener listener);
 
-std::optional<Event> parseEvent(const Json::Value& json);
+struct IdentityChangeNotice
+{
+  TableName table{TableName::User};
+  int64_t recordId{0};
+};
+
+using IdentityChangeListener = std::function<void(const IdentityChangeNotice&)>;
+
+void onIdentityChange(IdentityChangeListener listener);
+
+[[nodiscard]] ControlScope controlScopeOf(std::string_view subject);
+
+std::optional<Event> parseEvent(const Json::Value& json,
+                                ControlScope scope = ControlScope::All);
 FanOutPlan planEvent(const Event& event);
 void dispatchEvent(const Event& event);
 
-drogon::Task<DurableDisposition> handleChangePayload(const Json::Value& json,
-                                                     AuditFanOut& auditFanOut);
+struct ChangePayloadInput
+{
+  const Json::Value& json;
+  std::string_view subject;
+  AuditFanOut& auditFanOut;
+};
+
+drogon::Task<DurableDisposition> handleChangePayload(ChangePayloadInput input);
 struct ActionPayloadInput
 {
   const Json::Value& json;

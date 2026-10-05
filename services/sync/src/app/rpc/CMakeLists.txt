@@ -1,6 +1,7 @@
 argus_module(NAME sync-control-rpc
     SOURCES
         sync-control-rpc-service.cc
+        grpc-server-drain.cc
     INCLUDES ../..
     DEPENDS
         argus::sync-repositories

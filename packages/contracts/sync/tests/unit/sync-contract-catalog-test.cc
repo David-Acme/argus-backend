@@ -35,6 +35,11 @@ const std::vector<CatalogEntry> kCatalog{
      .message = "Identity sync unavailable"},
     {"VoiceUnavailable", &SyncErrors::VoiceUnavailable,
      ErrorCode::ServiceUnavailable, 503, "Voice unavailable"},
+    {.name = "TooManyFrames",
+     .definition = &SyncErrors::TooManyFrames,
+     .code = ErrorCode::TooManyRequests,
+     .status = 429,
+     .message = "Too many messages on this socket"},
     {.name = "ReplicaTooOld",
      .definition = &SyncErrors::ReplicaTooOld,
      .code = ErrorCode::Conflict,
@@ -54,7 +59,7 @@ TEST_CASE("the sync catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 9);
+  CHECK(kCatalog.size() == 10);
 }
 
 TEST_CASE("every sync entry is legal on the wire")

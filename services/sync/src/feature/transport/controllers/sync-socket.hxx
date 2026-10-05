@@ -29,6 +29,7 @@ public:
   void setIdentitySource(std::shared_ptr<IdentitySyncSource> source);
   void setUserDirectory(std::shared_ptr<const IUserDirectory> directory);
   void setHeartbeatSource(std::shared_ptr<const HeartbeatSource> source);
+  void setLanes(std::shared_ptr<ConnectionLanes> lanes);
 
   WS_PATH_LIST_BEGIN
   WS_PATH_ADD("/sync", "DeviceFilter", "JwtFilter");

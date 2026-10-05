@@ -36,7 +36,7 @@ struct SyncRtcConfig
   std::string serverUrl;
   std::string publicUrl;
   uint16_t publicPort{7046};
-  std::chrono::seconds tokenTtl{600};
+  std::chrono::seconds tokenTtl{60};
 };
 
 struct SyncHeartbeatConfig

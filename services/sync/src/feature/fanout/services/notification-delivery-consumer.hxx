@@ -2,11 +2,14 @@
 
 #include <drogon/utils/coroutine.h>
 #include <feature/fanout/repositories/delivery-inbox/delivery-inbox-repository.hxx>
+#include <feature/fanout/services/durable-delivery.hxx>
 #include <feature/fanout/services/durable-disposition.hxx>
 #include <nats/nats-subject.hxx>
 #include <notification/notification-delivery-sink.hxx>
 
+#include <atomic>
 #include <cstdint>
+#include <memory>
 #include <functional>
 #include <optional>
 #include <string>
@@ -36,6 +39,8 @@ public:
 
   void start();
   void stop();
+  void requestStop();
+  [[nodiscard]] bool drained() const;
 
   drogon::Task<DurableDisposition> handlePayload(const std::string& payload);
 
@@ -51,4 +56,6 @@ private:
   DeliveryInboxRepository repository_;
   std::optional<uint64_t> subscription_;
   std::optional<uint64_t> retryTimer_;
+  durable_delivery::PendingCount pending_{
+      std::make_shared<std::atomic<int64_t>>(0)};
 };

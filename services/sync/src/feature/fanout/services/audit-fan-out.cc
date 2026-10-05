@@ -8,7 +8,6 @@
 #include <sync/sync-operation.hxx>
 #include <sync/table-name.hxx>
 #include <trantor/utils/Logger.h>
-#include <unordered_set>
 #include <utility>
 
 namespace
@@ -56,23 +55,17 @@ drogon::Task<void> AuditFanOut::insertModuleAudit(const ModuleAuditEvent& event)
 
 drogon::Task<void> AuditFanOut::insertUsersAudit(const UserAuditEvent& event)
 {
-  std::unordered_set<int64_t> recipients;
   std::vector<UserAuditLogSchema> written;
-  written.reserve(event.users.size());
   auto transaction = co_await db_transaction::begin(DbService::client());
   try {
-    for (const auto userId : event.users) {
-      if (userId <= 0 || !recipients.insert(userId).second)
-        continue;
-      written.push_back(co_await userAuditLogService_.create(
-          {.userId = userId,
-           .recordId = event.recordId,
-           .tableName = event.tableName,
-           .changes = event.changes,
-           .priority = event.priority,
-           .eventTimestamp = event.eventTimestamp,
-           .client = transaction.get()}));
-    }
+    written = co_await userAuditLogService_.createMany(
+        {.userIds = event.users,
+         .recordId = event.recordId,
+         .tableName = event.tableName,
+         .changes = event.changes,
+         .priority = event.priority,
+         .eventTimestamp = event.eventTimestamp,
+         .client = transaction.get()});
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw std::runtime_error("user audit rows were not committed");
   }
@@ -82,12 +75,13 @@ drogon::Task<void> AuditFanOut::insertUsersAudit(const UserAuditEvent& event)
   }
 
   for (const auto& schema : written) {
-    const int64_t userId = schema.userId;
+    if (schema.id <= 0)
+      continue;
     sync_fan_out::Event fanout;
+    fanout.users = std::vector<int64_t>{schema.userId};
     fanout.emit.operation = SyncOperation::Log;
     fanout.emit.option = TableName::UserAuditLog;
     fanout.emit.obj = schema.toJson();
-    fanout.users = std::vector<int64_t>{userId};
     sync_fan_out::dispatchEvent(fanout);
   }
 }

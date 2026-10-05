@@ -107,7 +107,16 @@ public:
 
   drogon::Task<std::optional<std::vector<std::string>>> listRooms() const override
   {
+    ++listCalls;
+    if (listCalls <= failLists)
+      co_return std::nullopt;
     co_return std::vector<std::string>{"u7.rtc-aa", "u7.call-3", "u70.rtc-bb", "u8.rtc-cc"};
+  }
+
+  drogon::Task<bool> createRoom(std::string room) const override
+  {
+    calls.push_back("create " + room);
+    co_return createOk;
   }
 
   drogon::Task<bool> removeParticipant(LiveKitParticipantRef participant) const override
@@ -134,9 +143,13 @@ public:
   drogon::Task<bool> silenceParticipant(LiveKitParticipantRef participant) const override
   {
     calls.push_back("silence " + participant.room + "/" + participant.identity);
-    co_return participant.room == "u7.rtc-aa";
+    co_return silenceEverywhere || participant.room == "u7.rtc-aa";
   }
 
+  bool createOk{true};
+  bool silenceEverywhere{false};
+  int failLists{0};
+  mutable int listCalls{0};
   mutable std::vector<std::string> removed;
   mutable std::vector<std::string> deleted;
   mutable std::vector<std::string> calls;
@@ -263,7 +276,8 @@ TEST_CASE("the token request validates its call id, resume and mode")
 TEST_CASE("a new call asks argus-voice to join first, then hands the caller its own token")
 {
   const auto voice = std::make_shared<FakeVoice>(true);
-  const RtcTokenService service({.config = enabledConfig(), .voice = voice, .calls = nullptr, .directory = nullptr});
+  const auto rooms = std::make_shared<FakeRooms>();
+  const RtcTokenService service({.config = enabledConfig(), .voice = voice, .calls = nullptr, .directory = nullptr, .rooms = rooms});
   const ResponseRtcTokenDto response = drogon::sync_wait(
       service.issue({.body = bodyOf("{}"), .caller = caller(), .host = "argus.local:7025"}));
 
@@ -292,12 +306,27 @@ TEST_CASE("a new call asks argus-voice to join first, then hands the caller its 
   CHECK(agent.get_subject() == "argus-voice");
   CHECK(agent.get_payload_claim("kind").as_string() == "agent");
   CHECK(agent.get_payload_claim("video").to_json()["canUpdateOwnMetadata"] == true);
+  CHECK(rooms->calls == std::vector<std::string>{"create " + response.room});
+}
+
+TEST_CASE("a room LiveKit refuses to create is never handed to the agent")
+{
+  const auto voice = std::make_shared<FakeVoice>(true);
+  const auto rooms = std::make_shared<FakeRooms>();
+  rooms->createOk = false;
+  const RtcTokenService service(
+      {.config = enabledConfig(), .voice = voice, .calls = nullptr, .directory = nullptr, .rooms = rooms});
+  CHECK(statusOf([&] {
+          (void)drogon::sync_wait(service.issue({.body = bodyOf("{}"), .caller = caller(), .host = "argus.local"}));
+        }) == 503);
+  CHECK(voice->joins().empty());
+  CHECK(SyncRtcConfig{}.tokenTtl == std::chrono::seconds(60));
 }
 
 TEST_CASE("a resume keeps the room and tells the agent not to greet")
 {
   const auto voice = std::make_shared<FakeVoice>(true);
-  const RtcTokenService service({.config = enabledConfig(), .voice = voice, .calls = nullptr, .directory = nullptr});
+  const RtcTokenService service({.config = enabledConfig(), .voice = voice, .calls = nullptr, .directory = nullptr, .rooms = nullptr});
   const std::string callId = rtc_naming::mintUserCallId();
   const auto response = drogon::sync_wait(service.issue(
       {.body = bodyOf(R"({"callId":")" + callId + R"(","resume":true,"mode":"half"})"),
@@ -320,7 +349,7 @@ TEST_CASE("a proactive call is claimed first, and the opening line goes to the a
                                                           .cameraId = 6,
                                                           .cameraName = "Patio",
                                                           .episodeId = 41});
-  const RtcTokenService service({.config = enabledConfig(), .voice = voice, .calls = calls, .directory = nullptr});
+  const RtcTokenService service({.config = enabledConfig(), .voice = voice, .calls = calls, .directory = nullptr, .rooms = nullptr});
   const auto response = drogon::sync_wait(
       service.issue({.body = bodyOf(R"({"callId":"call-41"})"), .caller = caller(), .host = "argus.local"}));
   CHECK(calls->last.callId == "call-41");
@@ -352,7 +381,7 @@ TEST_CASE("a claim that fails maps to the call outcome, never to a token")
                                                                                   .cameraId = 0,
                                                                                   .cameraName = {},
                                                                                   .episodeId = 0}),
-                                   .directory = nullptr});
+                                   .directory = nullptr, .rooms = nullptr});
     return statusOf([&] {
       (void)drogon::sync_wait(
           service.issue({.body = bodyOf(R"({"callId":"call-9"})"), .caller = caller(), .host = "argus.local"}));
@@ -375,16 +404,16 @@ TEST_CASE("without LiveKit, without the agent or without a session id the route 
   };
   SyncRtcConfig disabled = enabledConfig();
   disabled.enabled = false;
-  CHECK(refused({.config = disabled, .voice = std::make_shared<FakeVoice>(true), .calls = nullptr, .directory = nullptr},
+  CHECK(refused({.config = disabled, .voice = std::make_shared<FakeVoice>(true), .calls = nullptr, .directory = nullptr, .rooms = nullptr},
                 caller()) == 503);
-  CHECK(refused({.config = enabledConfig(), .voice = std::make_shared<FakeVoice>(false), .calls = nullptr, .directory = nullptr},
+  CHECK(refused({.config = enabledConfig(), .voice = std::make_shared<FakeVoice>(false), .calls = nullptr, .directory = nullptr, .rooms = nullptr},
                 caller()) == 503);
-  CHECK(refused({.config = enabledConfig(), .voice = nullptr, .calls = nullptr, .directory = nullptr}, caller()) == 503);
+  CHECK(refused({.config = enabledConfig(), .voice = nullptr, .calls = nullptr, .directory = nullptr, .rooms = nullptr}, caller()) == 503);
   JwtContext legacy = caller();
   legacy.sessionId.clear();
-  CHECK(refused({.config = enabledConfig(), .voice = std::make_shared<FakeVoice>(true), .calls = nullptr, .directory = nullptr},
+  CHECK(refused({.config = enabledConfig(), .voice = std::make_shared<FakeVoice>(true), .calls = nullptr, .directory = nullptr, .rooms = nullptr},
                 legacy) == 503);
-  CHECK(refused({.config = enabledConfig(), .voice = std::make_shared<FakeVoice>(true), .calls = nullptr, .directory = nullptr},
+  CHECK(refused({.config = enabledConfig(), .voice = std::make_shared<FakeVoice>(true), .calls = nullptr, .directory = nullptr, .rooms = nullptr},
                 caller()) == 200);
 }
 
@@ -415,15 +444,56 @@ TEST_CASE("a revoked session is silenced, hears Argus say goodbye, then leaves; 
       {.rooms = rooms,
        .voice = voice,
        .end = {.userId = 7, .sessionId = std::string("s1"), .cause = "revokedByOwner"},
-       .farewellBudget = RtcSessionRevoker::kFarewellBudget}));
+       .farewellBudget = RtcSessionRevoker::kFarewellBudget,
+       .listRetries = {}}));
   CHECK(removed == 1);
-  CHECK(rooms->calls == std::vector<std::string>{"silence u7.rtc-aa/user:7:s1", "remove u7.rtc-aa/user:7:s1",
+  CHECK(rooms->calls == std::vector<std::string>{"silence u7.rtc-aa/user:7:s1", "delete u7.rtc-aa",
                                                  "silence u7.call-3/user:7:s1"});
   CHECK(voice->farewells() == std::vector<std::string>{"u7.rtc-aa/user:7:s1/revokedByOwner"});
   REQUIRE(voice->deadlines().size() == 1);
   CHECK(voice->deadlines()[0] <= RtcSessionRevoker::kFarewellBudget);
   CHECK(voice->deadlines()[0] > std::chrono::milliseconds(2000));
-  CHECK(rooms->deleted.empty());
+  CHECK(rooms->deleted == std::vector<std::string>{"u7.rtc-aa"});
+  CHECK(rooms->removed.empty());
+}
+
+TEST_CASE("a revoked session leaves a room another of its user's devices still holds")
+{
+  const auto rooms = std::make_shared<FakeRooms>();
+  rooms->silenceEverywhere = true;
+  CHECK(drogon::sync_wait(RtcSessionRevoker::revoke(
+            {.rooms = rooms,
+             .voice = nullptr,
+             .end = {.userId = 7, .sessionId = std::string("s1"), .cause = "revoked"},
+             .farewellBudget = RtcSessionRevoker::kFarewellBudget,
+             .listRetries = {}})) == 1);
+  CHECK(rooms->calls == std::vector<std::string>{"silence u7.rtc-aa/user:7:s1", "delete u7.rtc-aa",
+                                                 "silence u7.call-3/user:7:s1", "remove u7.call-3/user:7:s1"});
+}
+
+TEST_CASE("the room list is retried before a revocation gives up")
+{
+  const auto flaky = std::make_shared<FakeRooms>();
+  flaky->failLists = 2;
+  CHECK(drogon::sync_wait(RtcSessionRevoker::revoke(
+            {.rooms = flaky,
+             .voice = nullptr,
+             .end = {.userId = 7, .sessionId = std::string("s1"), .cause = "revoked"},
+             .farewellBudget = RtcSessionRevoker::kFarewellBudget,
+             .listRetries = {std::chrono::milliseconds(0), std::chrono::milliseconds(0)}})) == 1);
+  CHECK(flaky->listCalls == 3);
+
+  const auto down = std::make_shared<FakeRooms>();
+  down->failLists = 10;
+  CHECK(drogon::sync_wait(RtcSessionRevoker::revoke(
+            {.rooms = down,
+             .voice = nullptr,
+             .end = {.userId = 7, .sessionId = std::string("s1"), .cause = "revoked"},
+             .farewellBudget = RtcSessionRevoker::kFarewellBudget,
+             .listRetries = {std::chrono::milliseconds(0), std::chrono::milliseconds(0)}})) == 0);
+  CHECK(down->listCalls == 3);
+  CHECK(down->calls.empty());
+  CHECK(RtcSessionRevoker::defaultListRetries().size() == 3);
 }
 
 TEST_CASE("a disabled account silences every session of the user, says goodbye and ends the rooms")
@@ -433,7 +503,8 @@ TEST_CASE("a disabled account silences every session of the user, says goodbye a
   CHECK(drogon::sync_wait(RtcSessionRevoker::revoke({.rooms = rooms,
                                                      .voice = voice,
                                                      .end = {.userId = 7, .sessionId = std::nullopt, .cause = "accountDisabled"},
-                                                     .farewellBudget = RtcSessionRevoker::kFarewellBudget})) == 2);
+                                                     .farewellBudget = RtcSessionRevoker::kFarewellBudget,
+       .listRetries = {}})) == 2);
   CHECK(rooms->calls == std::vector<std::string>{"silence u7.rtc-aa/user:7:s1", "delete u7.rtc-aa",
                                                  "silence u7.call-3/user:7:s1", "silence u7.call-3/user:7:s2",
                                                  "delete u7.call-3"});
@@ -447,12 +518,14 @@ TEST_CASE("the goodbye never stretches the revocation past its budget")
   CHECK(drogon::sync_wait(RtcSessionRevoker::revoke({.rooms = rooms,
                                                      .voice = voice,
                                                      .end = {.userId = 7, .sessionId = std::string("s1"), .cause = ""},
-                                                     .farewellBudget = std::chrono::milliseconds(0)})) == 1);
+                                                     .farewellBudget = std::chrono::milliseconds(0),
+       .listRetries = {}})) == 1);
   REQUIRE(voice->deadlines().size() == 1);
   CHECK(voice->deadlines()[0] == std::chrono::milliseconds(0));
   const auto none = std::make_shared<FakeRooms>();
   CHECK(drogon::sync_wait(RtcSessionRevoker::revoke({.rooms = none,
                                                      .voice = nullptr,
                                                      .end = {.userId = 7, .sessionId = std::string("s1"), .cause = ""},
-                                                     .farewellBudget = RtcSessionRevoker::kFarewellBudget})) == 1);
+                                                     .farewellBudget = RtcSessionRevoker::kFarewellBudget,
+       .listRetries = {}})) == 1);
 }

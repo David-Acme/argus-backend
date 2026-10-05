@@ -1,5 +1,6 @@
 #include "audit-retention-service.hxx"
 
+#include <algorithm>
 #include <chrono>
 #include <drogon/drogon.h>
 #include <trantor/utils/Logger.h>
@@ -47,6 +48,16 @@ void AuditRetentionService::stop()
   clearTimer(dailyTimer_);
 }
 
+void AuditRetentionService::requestStop()
+{
+  stop();
+}
+
+bool AuditRetentionService::drained() const
+{
+  return !running_.load(std::memory_order_acquire);
+}
+
 void AuditRetentionService::clearTimer(std::optional<uint64_t>& timer)
 {
   if (!timer.has_value())
@@ -88,13 +99,25 @@ void AuditRetentionService::runSweep()
 drogon::Task<int64_t> AuditRetentionService::sweep(const int64_t cutoffMs) const
 {
   int64_t removed = 0;
-  while (true) {
-    const int64_t auditRemoved = co_await auditLogService_.compact(cutoffMs);
-    const int64_t userRemoved = co_await userAuditLogService_.compact(cutoffMs);
-    const int64_t roundRemoved = auditRemoved + userRemoved;
-    removed += roundRemoved;
-    if (roundRemoved == 0)
-      break;
+  int64_t auditCursor = 0;
+  int64_t userCursor = 0;
+  bool auditDone = false;
+  bool userDone = false;
+  while (!auditDone || !userDone) {
+    if (!auditDone) {
+      const auto round = co_await auditLogService_.compact(
+          {.cutoffMs = cutoffMs, .afterId = auditCursor});
+      removed += round.removed;
+      auditDone = round.removed == 0;
+      auditCursor = std::max(auditCursor, round.lastOlderId);
+    }
+    if (!userDone) {
+      const auto round = co_await userAuditLogService_.compact(
+          {.cutoffMs = cutoffMs, .afterId = userCursor});
+      removed += round.removed;
+      userDone = round.removed == 0;
+      userCursor = std::max(userCursor, round.lastOlderId);
+    }
   }
   co_return removed;
 }

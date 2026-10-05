@@ -1,17 +1,22 @@
 #include "sync-socket.hxx"
 
+#include <chrono>
 #include <drogon/utils/coroutine.h>
-#include <errors/response-exception.hxx>
-#include <errors/validation-exception.hxx>
 #include <feature/transport/dtos/socket-frame-dto.hxx>
 #include <sync/sync-errors.hxx>
 #include <text/json-util.hxx>
-#include <validation/validator.hxx>
 #include <trantor/utils/Logger.h>
 
 namespace
 {
 constexpr size_t kMaxMessageSize = 65536;
+
+double steadySeconds()
+{
+  return std::chrono::duration<double>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
 }
 
 void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
@@ -39,34 +44,22 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
     return;
   LOG_DEBUG << "SyncSocket: text " << message.substr(0, 120);
 
-  auto* self = this;
-  drogon::async_run([self, conn, json = std::move(json), type = frame->type,
-                     raw = std::move(message)]() mutable
-                    -> drogon::Task<> {
-    try {
-      co_await self->service_.handleMessage(
-          {.conn = conn, .message = json, .raw = raw});
-    }
-    catch (const ValidationException& ex) {
-      sendSocketFrameError({.conn = conn,
-                            .type = type,
-                            .status = 422,
-                            .error = ex.what()});
-    }
-    catch (const ResponseException& ex) {
-      sendSocketFrameError({.conn = conn,
-                            .type = type,
-                            .status = ex.statusCode(),
-                            .error = ex.what()});
-    }
-    catch (const std::exception& ex) {
-      LOG_ERROR << "SyncSocket: " << type << " failed: " << ex.what();
-      sendSocketFrameError({.conn = conn,
-                            .type = type,
-                            .status = SyncErrors::FrameFailed.status,
-                            .error = std::string(SyncErrors::FrameFailed.message)});
-    }
-  });
+  const auto lane = service_.laneFor(conn);
+  const std::string frameType = frame->type;
+  const auto admission = lane->admit({.kind = FrameJobKind::Frame,
+                                      .message = std::move(json),
+                                      .raw = std::move(message),
+                                      .type = frameType},
+                                     steadySeconds());
+  if (admission == FrameAdmission::Refused) {
+    sendSocketFrameError({.conn = conn,
+                          .type = frameType,
+                          .status = SyncErrors::TooManyFrames.status,
+                          .error = std::string(SyncErrors::TooManyFrames.message)});
+    return;
+  }
+  if (admission == FrameAdmission::Start)
+    service_.startDrain(conn, lane);
 }
 
 void SyncSocket::handleNewConnection(const drogon::HttpRequestPtr& req,
@@ -121,6 +114,11 @@ void SyncSocket::handleConnectionClosed(
     const drogon::WebSocketConnectionPtr& conn)
 {
   service_.handleDisconnect(conn);
+}
+
+void SyncSocket::setLanes(std::shared_ptr<ConnectionLanes> lanes)
+{
+  service_.setLanes(std::move(lanes));
 }
 
 void SyncSocket::setForwarder(std::shared_ptr<SyncForwarder> forwarder)

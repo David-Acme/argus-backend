@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <text/json-util.hxx>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace
 {
@@ -71,11 +72,13 @@ AuditLogService::create(const AuditLogWriteInput& input) const
   co_return schema;
 }
 
-drogon::Task<int64_t> AuditLogService::compact(const int64_t cutoffMs) const
+drogon::Task<AuditCompactionRound>
+AuditLogService::compact(const AuditCompactionStep& step) const
 {
-  const auto pairs = co_await repository_.findCompactionPairs(cutoffMs);
+  const auto pairs = co_await repository_.findCompactionPairs(
+      {.cutoffMs = step.cutoffMs, .afterId = step.afterId});
   if (pairs.empty())
-    co_return 0;
+    co_return AuditCompactionRound{};
 
   std::vector<int64_t> ids;
   ids.reserve(pairs.size() * 2);
@@ -88,6 +91,8 @@ drogon::Task<int64_t> AuditLogService::compact(const int64_t cutoffMs) const
   std::unordered_map<int64_t, Json::Value> pending;
   std::vector<int64_t> removeIds;
   removeIds.reserve(pairs.size());
+  std::unordered_set<int64_t> removed;
+  removed.reserve(pairs.size());
   int64_t frontier = 0;
   for (const auto& pair : pairs) {
     const auto olderIt = pending.find(pair.olderId);
@@ -104,13 +109,14 @@ drogon::Task<int64_t> AuditLogService::compact(const int64_t cutoffMs) const
     pending[pair.newerId] =
         merged.type == "DELETE" ? newer : JsonDiff::toJson(merged.changes);
     removeIds.push_back(pair.olderId);
+    removed.insert(pair.olderId);
     frontier = std::max(frontier, pair.olderId);
   }
 
   auto transaction = co_await db_transaction::begin(DbService::client());
   try {
     for (const auto& [id, changes] : pending) {
-      if (std::ranges::find(removeIds, id) != removeIds.end())
+      if (removed.contains(id))
         continue;
       co_await repository_.compactRow(
           {.id = id, .changes = changes, .client = transaction.get()});
@@ -126,5 +132,7 @@ drogon::Task<int64_t> AuditLogService::compact(const int64_t cutoffMs) const
     throw;
   }
 
-  co_return static_cast<int64_t>(removeIds.size());
+  co_return AuditCompactionRound{
+      .removed = static_cast<int64_t>(removeIds.size()),
+      .lastOlderId = pairs.back().olderId};
 }

@@ -16,6 +16,8 @@ public:
 
   void start(int retentionDays);
   void stop();
+  void requestStop();
+  [[nodiscard]] bool drained() const;
 
 private:
   [[nodiscard]] drogon::Task<int64_t> sweep(int64_t cutoffMs) const;

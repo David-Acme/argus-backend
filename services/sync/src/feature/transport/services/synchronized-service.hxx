@@ -13,16 +13,23 @@
 #include <sync/table-name.hxx>
 #include <sync/socket-emit-dto.hxx>
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
-#include <feature/transport/repositories/event/event-repository.hxx>
 #include <shared/repositories/user-action-log/user-action-log-repository.hxx>
 #include <shared/repositories/user-audit-log/user-audit-log-repository.hxx>
 #include <auth/user-role.hxx>
+#include <optional>
 #include <vector>
 
 struct SyncWithRepoInput
 {
   const Syncable& repo;
   const SynchronizedBodyDto& dto;
+};
+
+struct TablePullInput
+{
+  TableName table{TableName::User};
+  const SynchronizedBodyDto& dto;
+  const JwtContext& ctx;
 };
 
 class SynchronizedService
@@ -62,7 +69,6 @@ private:
   const ProductivitySyncSource* productivitySyncSource_{nullptr};
   const NotificationSyncSource* notificationSyncSource_{nullptr};
   const IdentitySyncSource* identitySyncSource_{nullptr};
-  EventRepository eventRepository_;
   UserActionLogRepository userActionLogRepository_;
   AuditLogRepository auditLogRepository_;
   UserAuditLogRepository userAuditLogRepository_;
@@ -72,6 +78,8 @@ private:
                         const std::optional<SynchronizedRangeDto>& range) const;
   drogon::Task<Json::Value>
   syncWithRepo(const SyncWithRepoInput& input, const SyncFilter& base) const;
+  [[nodiscard]] drogon::Task<Json::Value>
+  pullTable(const TablePullInput& input) const;
   drogon::Task<Json::Value>
   syncUserNotification(const SynchronizedBodyDto& dto,
                        const JwtContext& ctx) const;

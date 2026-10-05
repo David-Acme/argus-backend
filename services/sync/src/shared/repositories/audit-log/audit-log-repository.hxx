@@ -25,7 +25,7 @@ public:
   findLastSync(const AuditLogSyncFilter& filter) const;
 
   [[nodiscard]] drogon::Task<std::vector<AuditLogCompactionPair>>
-  findCompactionPairs(int64_t cutoffMs) const;
+  findCompactionPairs(const AuditLogCompactionWindow& window) const;
   [[nodiscard]] drogon::Task<std::unordered_map<int64_t, Json::Value>>
   findCompactionChanges(const std::vector<int64_t>& ids) const;
   [[nodiscard]] drogon::Task<int64_t> findCompactionFrontier() const;

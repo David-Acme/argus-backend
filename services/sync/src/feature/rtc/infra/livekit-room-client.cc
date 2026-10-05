@@ -81,6 +81,15 @@ drogon::Task<bool> LiveKitRoomClient::removeParticipant(LiveKitParticipantRef pa
       .has_value();
 }
 
+drogon::Task<bool> LiveKitRoomClient::createRoom(std::string room) const
+{
+  Json::Value body(Json::objectValue);
+  body["name"] = room;
+  co_return (co_await call(
+                 {.method = "CreateRoom", .body = std::move(body), .room = room, .list = false, .create = true}))
+      .has_value();
+}
+
 drogon::Task<bool> LiveKitRoomClient::deleteRoom(std::string room) const
 {
   Json::Value body(Json::objectValue);

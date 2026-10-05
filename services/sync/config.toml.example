@@ -63,7 +63,7 @@ api_secret = ""
 server_url = "http://127.0.0.1:7880"
 public_url = ""
 public_port = 7046
-token_ttl_seconds = 600
+token_ttl_seconds = 60
 
 [notifications]
 grpc_target = "127.0.0.1:7038"
@@ -77,7 +77,8 @@ refresh_ttl_days = 30
 
 [device]
 fingerprint_secret = ""
-identity_mode = "ip"
+identity_mode = "credential"
+lan_networks = ""
 
 [guard]
 presence_target = "127.0.0.1:7139"

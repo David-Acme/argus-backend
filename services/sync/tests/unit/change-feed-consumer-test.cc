@@ -4,6 +4,7 @@
 #include <drogon/drogon.h>
 #include <feature/fanout/services/audit-fan-out.hxx>
 #include <feature/fanout/services/change-feed-consumer.hxx>
+#include <feature/fanout/services/sync-fan-out.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 #include <sqlite/db-service.hxx>
@@ -19,6 +20,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -302,6 +304,21 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
         DurableDisposition::Ack);
   CHECK(scalar("SELECT COUNT(*) FROM user_audit_log") == "2");
   CHECK(scalar("SELECT COUNT(DISTINCT user_id) FROM user_audit_log") == "2");
+  const std::string firstUserAuditMax = scalar("SELECT max(id) FROM user_audit_log");
+
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kProductivityChange,
+             .msgId = "productivity-change:9b",
+             .body = json_util::toString(userAudit(9, {43, 42, 43, 0}))})) ==
+        DurableDisposition::Ack);
+  CHECK(scalar("SELECT COUNT(*) FROM user_audit_log") == "2");
+  CHECK(scalar("SELECT COUNT(DISTINCT user_id) FROM user_audit_log") == "2");
+  CHECK(std::stoll(scalar("SELECT min(id) FROM user_audit_log")) >
+        std::stoll(firstUserAuditMax));
+  CHECK(scalar("SELECT json_extract(changes, '$.name.previous') FROM "
+               "user_audit_log WHERE user_id = 42") == "before");
+  CHECK(scalar("SELECT json_extract(changes, '$.name.current') FROM "
+               "user_audit_log WHERE user_id = 42") == "after");
 
   CHECK(drogon::sync_wait(consumer.handle(
             {.subject = nats_subject::kCameraChange,
@@ -310,6 +327,11 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
         DurableDisposition::Ack);
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") == "1");
 
+  std::vector<int64_t> identityNotices;
+  sync_fan_out::onIdentityChange(
+      [&identityNotices](const sync_fan_out::IdentityChangeNotice& notice) {
+        identityNotices.push_back(notice.recordId);
+      });
   CHECK(drogon::sync_wait(consumer.handle(
             {.subject = nats_subject::kIdentityChange,
              .msgId = "identity-change:1",
@@ -317,6 +339,14 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
         DurableDisposition::Ack);
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") == "1");
   CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "0");
+  CHECK(identityNotices == std::vector<int64_t>{1});
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kCameraChange,
+             .msgId = "camera-change:catalog",
+             .body = json_util::toString(catalogChange())})) ==
+        DurableDisposition::Ack);
+  CHECK(identityNotices == std::vector<int64_t>{1});
+  sync_fan_out::onIdentityChange({});
 
   CHECK(drogon::sync_wait(consumer.handle(
             {.subject = nats_subject::kIdentityUserAction,
@@ -363,6 +393,26 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
                   .sessionId = "0123456789abcdef0123456789abcdef"}))})) ==
         DurableDisposition::Ack);
   CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kCameraChange,
+             .msgId = "camera-change:forged-session",
+             .body = json_util::toString(sync_change::disconnectSessionPayload(
+                 revokedFrame,
+                 {.userId = 42,
+                  .sessionId = "0123456789abcdef0123456789abcdef"}))})) ==
+        DurableDisposition::Term);
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kIdentityChange,
+             .msgId = "identity-change:forged-rooms",
+             .body = json_util::toString(sync_change::roleRoomsPayload(
+                 {.userId = 42, .oldRole = "guest", .newRole = "owner"}))})) ==
+        DurableDisposition::Term);
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kAuthSession,
+             .msgId = "auth-session:forged-disconnect",
+             .body = json_util::toString(
+                 sync_change::disconnectPayload(revokedFrame, 42))})) ==
+        DurableDisposition::Term);
+  CHECK(drogon::sync_wait(consumer.handle(
             {.subject = nats_subject::kAuthSession,
              .msgId = "auth-session:2",
              .body = R"({"operation":7,"option":"user","info":{},"user":42,"action":"disconnect_session"})"})) ==
@@ -385,13 +435,19 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
             {.subject = nats_subject::kNotificationChange,
              .msgId = "notification-change:garbage",
              .body = "not-json"})) == DurableDisposition::Term);
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kNotificationChange,
+             .msgId = "notification-change:deep",
+             .body = std::string(5000, '[') + std::string(5000, ']')})) ==
+        DurableDisposition::Term);
   CHECK(scalar("SELECT COUNT(*) FROM audit_log") == "1");
   CHECK(scalar("SELECT COUNT(*) FROM user_audit_log") == "2");
 
   std::atomic<int> acked{0};
   std::atomic<int> refused{0};
+  const auto pending = std::make_shared<std::atomic<int64_t>>(0);
   const auto burst = durable_delivery::handler(
-      "Change feed burst",
+      {.label = "Change feed burst", .pending = pending},
       [&consumer](const durable_delivery::Payload& payload) {
         return consumer.handle(payload);
       });
@@ -411,6 +467,7 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   CHECK(acked.load() == kBurst);
   CHECK(refused.load() == 0);
+  CHECK(pending->load() == 0);
   CHECK(scalar("SELECT COUNT(*) FROM audit_log WHERE record_id = 11") == "1");
   CHECK(scalar("SELECT json_extract(changes, '$.name.previous') FROM "
                "audit_log WHERE record_id = 11") == "v0");

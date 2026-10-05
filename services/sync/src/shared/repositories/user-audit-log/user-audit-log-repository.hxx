@@ -12,12 +12,10 @@ class UserAuditLogRepository
 public:
   UserAuditLogRepository() = default;
 
-  [[nodiscard]] drogon::Task<UserAuditLogSchema>
-  create(const UserAuditLogCreateInput& input) const;
-  [[nodiscard]] drogon::Task<std::optional<UserAuditLogSchema>>
-  findExist(const UserAuditLogFindExistInput& input) const;
-  [[nodiscard]] drogon::Task<void>
-  remove(int64_t id, drogon::orm::DbClient* client = nullptr) const;
+  [[nodiscard]] drogon::Task<std::vector<UserAuditLogSchema>>
+  findExistMany(const UserAuditLogFindExistManyInput& input) const;
+  [[nodiscard]] drogon::Task<std::vector<UserAuditLogSchema>>
+  createMany(const UserAuditLogCreateManyInput& input) const;
 
   [[nodiscard]] drogon::Task<std::vector<Json::Value>>
   findSync(const UserAuditLogSyncFilter& filter) const;
@@ -25,7 +23,7 @@ public:
   findLastSync(const UserAuditLogSyncFilter& filter) const;
 
   [[nodiscard]] drogon::Task<std::vector<UserAuditLogCompactionPair>>
-  findCompactionPairs(int64_t cutoffMs) const;
+  findCompactionPairs(const UserAuditLogCompactionWindow& window) const;
   [[nodiscard]] drogon::Task<std::unordered_map<int64_t, Json::Value>>
   findCompactionChanges(const std::vector<int64_t>& ids) const;
   [[nodiscard]] drogon::Task<int64_t> findCompactionFrontier() const;

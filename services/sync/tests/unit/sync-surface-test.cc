@@ -6,7 +6,13 @@
 #include <drogon/drogon.h>
 #include <feature/fanout/services/sync-fan-out.hxx>
 #include <feature/transport/dtos/socket-frame-dto.hxx>
+#include <feature/transport/infra/cached-user-directory.hxx>
 #include <feature/transport/infra/sync-socket-registrar.hxx>
+#include <feature/transport/services/connection-lanes.hxx>
+#include <feature/transport/services/frame-lane.hxx>
+#include <feature/transport/services/sync-service.hxx>
+#include <feature/transport/services/synchronized-service.hxx>
+#include <nats/nats-subject.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
@@ -224,6 +230,266 @@ TEST_CASE("a socket frame must be an object, and its type is read without throwi
     return;
   }
   CHECK(sync->type == "sync");
+}
+
+TEST_CASE("control actions are accepted only from the feed that owns them")
+{
+  CHECK(sync_fan_out::controlScopeOf(nats_subject::kAuthSession) ==
+        sync_fan_out::ControlScope::Session);
+  CHECK(sync_fan_out::controlScopeOf(nats_subject::kCameraChange) ==
+        sync_fan_out::ControlScope::None);
+  CHECK(sync_fan_out::controlScopeOf(nats_subject::kIdentityChange) ==
+        sync_fan_out::ControlScope::None);
+
+  SocketEmitDto frame;
+  frame.operation = SyncOperation::AuthContextChanged;
+  frame.option = TableName::User;
+  frame.obj = Json::Value(Json::objectValue);
+  const Json::Value session = sync_change::disconnectSessionPayload(
+      frame, {.userId = 7, .sessionId = "0123456789abcdef"});
+  const Json::Value disconnect = sync_change::disconnectPayload(frame, 7);
+  const Json::Value rooms = sync_change::roleRoomsPayload(
+      {.userId = 7, .oldRole = "guest", .newRole = "owner"});
+  const Json::Value emit = sync_change::userEmitPayload(frame, {7});
+
+  using sync_fan_out::ControlScope;
+  CHECK_FALSE(sync_fan_out::parseEvent(session, ControlScope::None));
+  CHECK_FALSE(sync_fan_out::parseEvent(disconnect, ControlScope::None));
+  CHECK_FALSE(sync_fan_out::parseEvent(rooms, ControlScope::None));
+  CHECK(sync_fan_out::parseEvent(emit, ControlScope::None));
+
+  CHECK(sync_fan_out::parseEvent(session, ControlScope::Session));
+  CHECK_FALSE(sync_fan_out::parseEvent(disconnect, ControlScope::Session));
+  CHECK_FALSE(sync_fan_out::parseEvent(rooms, ControlScope::Session));
+  CHECK(sync_fan_out::parseEvent(emit, ControlScope::Session));
+
+  CHECK(sync_fan_out::parseEvent(session, ControlScope::All));
+  CHECK(sync_fan_out::parseEvent(disconnect, ControlScope::All));
+  CHECK(sync_fan_out::parseEvent(rooms, ControlScope::All));
+}
+
+TEST_CASE("a socket lane runs its frames one at a time and rate limits the rest")
+{
+  FrameLane lane({.burst = 3.0, .refillPerSecond = 1.0, .maxQueued = 3},
+                 {.userId = 7, .loop = nullptr});
+  const auto frame = [](std::string type) {
+    return FrameJob{.kind = FrameJobKind::Frame,
+                    .message = Json::Value(Json::objectValue),
+                    .raw = {},
+                    .type = std::move(type)};
+  };
+
+  CHECK(lane.admit(frame("a"), 100.0) == FrameAdmission::Start);
+  CHECK(lane.draining());
+  CHECK(lane.admit(frame("b"), 100.0) == FrameAdmission::Queued);
+  CHECK(lane.admit(frame("c"), 100.0) == FrameAdmission::Queued);
+  CHECK(lane.admit(frame("d"), 100.0) == FrameAdmission::Refused);
+
+  CHECK(lane.next()->type == "a");
+  CHECK(lane.next()->type == "b");
+  CHECK(lane.admit(frame("e"), 100.5) == FrameAdmission::Refused);
+  CHECK(lane.admit(frame("f"), 101.0) == FrameAdmission::Queued);
+  CHECK(lane.admitRevalidation() == FrameAdmission::Queued);
+  CHECK(lane.admitRevalidation() == FrameAdmission::Refused);
+  CHECK(lane.next()->type == "c");
+  CHECK(lane.next()->type == "f");
+  CHECK(lane.next()->kind == FrameJobKind::Revalidate);
+  CHECK_FALSE(lane.next().has_value());
+  CHECK_FALSE(lane.draining());
+
+  CHECK(lane.admitRevalidation() == FrameAdmission::Start);
+  CHECK(lane.next()->kind == FrameJobKind::Revalidate);
+  CHECK_FALSE(lane.next().has_value());
+  CHECK(lane.admit(frame("g"), 1000.0) == FrameAdmission::Start);
+  CHECK(lane.userId() == 7);
+}
+
+namespace
+{
+class CountingDirectory final : public IUserDirectory
+{
+public:
+  drogon::Task<DirectoryLookup> lookup(int64_t userId) const override
+  {
+    ++calls;
+    if (unavailable)
+      co_return DirectoryLookup{};
+    co_return DirectoryLookup{
+        .status = DirectoryLookupStatus::Found,
+        .user = DirectoryUser{.id = userId,
+                              .name = "Ana",
+                              .lastName = "Garcia",
+                              .lang = "es",
+                              .role = role,
+                              .isActive = active}};
+  }
+
+  mutable int calls{0};
+  bool unavailable{false};
+  bool active{true};
+  UserRole role{UserRole::Resident};
+};
+
+class ClosingConnection final : public drogon::WebSocketConnection
+{
+public:
+  void send(const char* msg, uint64_t len, const drogon::WebSocketMessageType) override
+  {
+    messages.emplace_back(msg, len);
+  }
+  void send(std::string_view msg, const drogon::WebSocketMessageType) override
+  {
+    messages.emplace_back(msg);
+  }
+  void sendJson(const Json::Value& json, const drogon::WebSocketMessageType) override
+  {
+    messages.push_back(json_util::toString(json));
+  }
+  const trantor::InetAddress& localAddr() const override { return addr_; }
+  const trantor::InetAddress& peerAddr() const override { return addr_; }
+  bool connected() const override { return closeReason.empty(); }
+  bool disconnected() const override { return !closeReason.empty(); }
+  void shutdown(const drogon::CloseCode, const std::string& reason) override { closeReason = reason; }
+  void forceClose() override { closeReason = "forced"; }
+  void setPingMessage(const std::string&, const std::chrono::duration<double>&) override {}
+  void disablePing() override {}
+
+  std::vector<std::string> messages;
+  std::string closeReason;
+
+private:
+  trantor::InetAddress addr_{"127.0.0.1", 0};
+};
+}
+
+TEST_CASE("the directory cache answers within its window and forgets on an identity change")
+{
+  const auto inner = std::make_shared<CountingDirectory>();
+  auto now = std::chrono::steady_clock::time_point{};
+  const CachedUserDirectory cache(
+      inner, {.ttl = std::chrono::seconds(10), .clock = [&now] { return now; }});
+
+  CHECK(drogon::sync_wait(cache.lookup(7)).user->role == UserRole::Resident);
+  CHECK(drogon::sync_wait(cache.lookup(7)).user->role == UserRole::Resident);
+  CHECK(inner->calls == 1);
+
+  inner->role = UserRole::Guest;
+  now += std::chrono::seconds(9);
+  CHECK(drogon::sync_wait(cache.lookup(7)).user->role == UserRole::Resident);
+  cache.forget(7);
+  CHECK(drogon::sync_wait(cache.lookup(7)).user->role == UserRole::Guest);
+  CHECK(inner->calls == 2);
+
+  now += std::chrono::seconds(10);
+  CHECK(drogon::sync_wait(cache.lookup(7)).status == DirectoryLookupStatus::Found);
+  CHECK(inner->calls == 3);
+
+  inner->unavailable = true;
+  now += std::chrono::seconds(10);
+  CHECK(drogon::sync_wait(cache.lookup(7)).status ==
+        DirectoryLookupStatus::Unavailable);
+  CHECK(drogon::sync_wait(cache.lookup(7)).status ==
+        DirectoryLookupStatus::Unavailable);
+  CHECK(inner->calls == 5);
+}
+
+TEST_CASE("revalidation reaches every socket of one user, once while one is pending")
+{
+  ConnectionLanes lanes;
+  std::vector<int64_t> started;
+  lanes.setDrainStarter([&started](const drogon::WebSocketConnectionPtr&,
+                                   const std::shared_ptr<FrameLane>& lane) {
+    started.push_back(lane->userId());
+  });
+  const auto first = std::make_shared<ClosingConnection>();
+  const auto second = std::make_shared<ClosingConnection>();
+  const auto other = std::make_shared<ClosingConnection>();
+  const drogon::WebSocketConnectionPtr firstConn = first;
+  const drogon::WebSocketConnectionPtr secondConn = second;
+  const drogon::WebSocketConnectionPtr otherConn = other;
+  lanes.open({.conn = firstConn, .userId = 7, .loop = nullptr});
+  lanes.open({.conn = secondConn, .userId = 7, .loop = nullptr});
+  lanes.open({.conn = otherConn, .userId = 8, .loop = nullptr});
+
+  CHECK(lanes.connectedUsers() == std::vector<int64_t>{7, 8});
+  CHECK(lanes.revalidateUser(7) == 2);
+  CHECK(started == std::vector<int64_t>{7, 7});
+  CHECK_FALSE(lanes.drained());
+  CHECK(lanes.revalidateUser(7) == 2);
+  CHECK(started.size() == 2);
+
+  for (const auto& conn : {firstConn, secondConn}) {
+    const auto lane = lanes.find(conn);
+    REQUIRE(lane);
+    CHECK(lane->next()->kind == FrameJobKind::Revalidate);
+    CHECK_FALSE(lane->next().has_value());
+  }
+  CHECK(lanes.drained());
+  lanes.close(firstConn);
+  CHECK(lanes.find(firstConn) == nullptr);
+  CHECK(lanes.revalidateUser(7) == 1);
+}
+
+TEST_CASE("a socket whose account was disabled is closed by its revalidation")
+{
+  const auto directory = std::make_shared<CountingDirectory>();
+  const auto lanes = std::make_shared<ConnectionLanes>();
+  SyncService service;
+  service.setUserDirectory(directory);
+  service.setLanes(lanes);
+
+  const auto socket = std::make_shared<ClosingConnection>();
+  const drogon::WebSocketConnectionPtr conn = socket;
+  conn->setContext(std::make_shared<JwtContext>(JwtContext{.sub = 7,
+                                                           .name = "Ana",
+                                                           .role = UserRole::Resident,
+                                                           .isActive = true,
+                                                           .deviceHash = "device",
+                                                           .sessionId = "session"}));
+  REQUIRE(service.laneFor(conn));
+
+  CHECK(lanes->revalidateUser(7) == 1);
+  CHECK(socket->closeReason.empty());
+  CHECK(directory->calls == 1);
+
+  directory->unavailable = true;
+  CHECK(lanes->revalidateUser(7) == 1);
+  CHECK(socket->closeReason.empty());
+
+  directory->unavailable = false;
+  directory->active = false;
+  CHECK(lanes->revalidateUser(7) == 1);
+  CHECK(socket->closeReason == "account_disabled");
+  CHECK(lanes->drained());
+}
+
+TEST_CASE("the event table is answered empty, in the shape the app pages")
+{
+  const SynchronizedService service;
+  SynchronizedDto body;
+  SynchronizedBodyDto event;
+  event.requiredCreate = true;
+  event.requiredDeleted = true;
+  event.findLastCreated = true;
+  body.event = event;
+  const JwtContext owner{.sub = 1,
+                         .name = "Owner",
+                         .role = UserRole::Owner,
+                         .isActive = true,
+                         .deviceHash = "device",
+                         .sessionId = "session"};
+  const Json::Value frame = drogon::sync_wait(service.sync(body, owner));
+  const Json::Value& node = frame["info"]["event"];
+  CHECK(node["created"].isArray());
+  CHECK(node["created"].empty());
+  CHECK(node["deleted"].isArray());
+  CHECK(node["deleted"].empty());
+  CHECK(node["lastSyncDate"].isObject());
+  CHECK(node["lastSyncDate"].empty());
+
+  body.event->findLastCreated = false;
+  const Json::Value plain = drogon::sync_wait(service.sync(body, owner));
+  CHECK_FALSE(plain["info"]["event"].isMember("lastSyncDate"));
 }
 
 TEST_CASE("identity change events never fan out to the client sockets")

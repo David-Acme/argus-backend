@@ -221,9 +221,21 @@ and answers. A 200 therefore means the agent is already in the room.
   public_port>` (7046, the TLS front). The Host is checked to be a hostname or
   a bracketed IPv6 literal; anything else falls back to `argus.local`. The
   apps rewrite the host to the one they pinned and keep the port.
-- Token lifetime `[rtc] token_ttl_seconds` (600, clamped 60-3600): the token
-  only has to be valid at connect; LiveKit refreshes a connected participant's
-  token itself. `expiresAt` is the `exp`.
+- Token lifetime `[rtc] token_ttl_seconds` (60 since 2026-10-05, clamped
+  60-3600; it was 600): the token only has to be valid at connect; LiveKit
+  refreshes a connected participant's token itself. LiveKit checks `exp` only
+  at connect, so the lifetime is exactly how long a stolen or revoked token
+  can still open a call. `expiresAt` is the `exp`.
+- The room is created by this service (`RoomService.CreateRoom`, idempotent,
+  so a resume finds the room it named) before argus-voice is asked to join,
+  and LiveKit runs with `room.auto_create: false`
+  (`argus-deploy/livekit.yaml.example`). With auto-create on, a revoked
+  device could recreate a deleted room just by reconnecting with a token that
+  had not expired yet; now only this service, after the whole checklist
+  above, can bring a room into existence. CreateRoom needs the `roomCreate`
+  grant, which only the admin token of `LiveKitRoomClient` carries; neither
+  the agent's nor the caller's token gets it. A refused CreateRoom answers
+  503 `RTC_UNAVAILABLE` and argus-voice is never asked to join.
 - `rtc` is announced over mDNS with this service's other routes (it is a
   route segment of this listener); the LiveKit front is not announced.
 
@@ -234,7 +246,10 @@ control RPC). `RtcSessionRevoker` lists the rooms (`RoomService.ListRooms`
 over LiveKit's Twirp API, a 60 s admin token), and for each room of that user
 removes the session's participant (`RemoveParticipant`), or deletes the room
 when the whole account went (`DeleteRoom`, which also sends the agent away).
-It runs on the main loop, off the ordered feed's critical path.
+It runs on the main loop, off the ordered feed's critical path. A failed
+`ListRooms` is retried after 0.5 s, 1.5 s and 4 s before the revocation gives
+up with a warning (before, one failure left every call of the revoked session
+running).
 
 Before the removal the user is told (David's request, 2026-10-04): the
 revoker first revokes the participant's publish permissions
@@ -243,7 +258,12 @@ argus-voice to say goodbye (`VoiceService.Farewell` with the cause the auth
 session frame carries in `info.cause`, `accountDisabled` for an account
 disconnect), and removes the participant or deletes the room when it
 answers. The whole goodbye shares one 2.4 s budget from the revocation; with
-argus-voice down or no line cached the removal follows at once. DeleteRoom
+argus-voice down or no line cached the removal follows at once. When the
+revoked participant is the only human in the room (the agent aside), the
+room is deleted instead of the participant removed: `RemoveParticipant` does
+not stop a reconnect with the same token (nor with the one LiveKit refreshed
+for it), while a deleted room cannot be reopened because nothing but this
+service creates rooms. DeleteRoom
 needs LiveKit's `roomCreate` grant (it answered 401 with `roomAdmin` alone,
 measured). On the PCM path `RoomManager` asks the voice relay through a
 `SocketFarewell` hook before it closes a revoked socket: when that socket has
@@ -633,3 +653,139 @@ and App Standby".
 Code: `src/feature/heartbeat/` (`argus::sync-heartbeat`: policy, board,
 service, feed, `HeartbeatController`), the transport port
 `feature/transport/infra/heartbeat-source.hxx`, `tests/unit/heartbeat-test.cc`.
+
+## Audit of 2026-10-05: what changed and why
+
+`docs/history/reports/cloud-audit-2026-10-05.md` findings 10, 26 (the sync
+half), 52 (the sync half), 53, 54, 55, 56, 77, 78, 79 and 80, plus the
+performance notes that name this service.
+
+**The audit watermark (#10).** The compaction frontier is global per audit
+table, but `findLast` answered the last id of the caller's own scope. A Guest
+whose tables saw no change for longer than the window got a watermark below
+the frontier, paged with it, received `ReplicaTooOld`, re-bootstrapped, got
+the same watermark and looped. `watermarkId` is now
+`max(last id in scope, frontier)`: every row of the caller's scope at or
+below the frontier is already folded into a survivor the bootstrap delivered,
+so starting after the frontier loses nothing. `lastSyncRecord` still names
+the real last row. When the scope has no row at all the watermark stays
+absent, as before, and `afterId = 0` remains the legal empty baseline. With
+a frontier of 0 (a fresh install, the golden fixtures) the answer is byte for
+byte what it was.
+
+**Ordering ties (#77).** The four timestamp-paged audit queries of each table
+order by `event_timestamp, id`, so a page boundary inside one millisecond can
+neither skip nor repeat a row; the id-paged legs already sorted by id.
+
+**Compaction pages by cursor.** A sweep keeps one cursor per table: each round
+asks for pairs whose older row is above the last older id of the previous
+round (`o.id > ?`, a primary-key seek), so a sweep reads the table once
+instead of once per 200 pairs, and the round's "is this row folded away"
+test is a hash set. Every row at or below the cursor is settled by the round
+that passed it: a survivor below the cursor that still had an old successor
+would have been one of that round's pairs.
+
+**User audit in one round trip.** `UserAuditLogService::createMany` writes an
+event's recipients with three statements whatever their number: one select
+of each recipient's newest row of the record for that UTC day
+(`user_id IN (...)`), one multi-row `INSERT ... RETURNING id, user_id`, one
+delete of the superseded rows. The merge rule, the per-recipient row and the
+per-recipient `Log` frame are unchanged (rule 21), and the whole event still
+commits in one transaction.
+
+**The `event` table is gone from this service (#80, #52).** Its repository
+read `DbService::readOnlyClient()`, which nothing installs in production, so
+the `event` leg of a `Synchronize` always answered empty, and its tombstone
+paging had the same-second gap #52 describes. No owner serves `event` today
+(camera keeps its own notion of events and never published this table), so
+the repository and the two schemas were removed instead of fixed, and
+`event` is answered with the node it always produced: `created: []`,
+`deleted: []`, and `lastSyncDate: {}` when a `findLast` was asked. The wire
+shape is unchanged; if `event` ever gets an owner it is paged through that
+owner's client like the other domains.
+
+**Parallel pulls.** A `Synchronize` frame naming several tables pulls them
+four at a time (`kPullWidth`) instead of one after the other, so a bootstrap
+costs about its slowest pulls rather than their sum; four keeps a frame from
+holding more than four threads of the light blocking lane at once. The pulls
+share no reference into a suspended frame (rule 18): their state is one
+`shared_ptr` batch. Errors keep their old precedence: the first failing table
+in field order is the refusal the client gets. Page rows are moved into the
+answer instead of copied.
+
+**One frame at a time per socket, and a rate limit (#56).** Every socket has
+a `FrameLane`: its text frames run in arrival order, one after the other,
+instead of one `async_run` each, so a client can no longer start thousands
+of pulls at once, two frames of one socket never race on its `JwtContext`,
+and the answers come back in the order they were asked. A token bucket of 120
+frames refilled at 20 a second, and at most 64 frames waiting, bound what one
+socket can queue; a frame beyond either answers
+`{type:"<type>_error", status: 429}` with `SyncErrors::TooManyFrames`
+(`TOO_MANY_REQUESTS`, an additive refusal: the app already treats any
+`*_error` it does not know as a failed request). PCM stays on its own path.
+Serial frames cost a heartbeat the time of a slow page ahead of it, which the
+parallel pulls keep well inside the app's 10 s window.
+
+**The socket follows its account without waiting for a frame (#53).** Before,
+`refreshContext` corrected a socket only when its client sent something, and a
+disabled account got 401 on each frame with the socket still open. Three
+paths now:
+
+- identity's catalog row for a `user` (`kind: identity`, on
+  `argus.identity.v1.change`, written in the same transaction as the change,
+  so it is durable even when the best-effort control RPC failed) makes this
+  service forget the cached user and revalidate that user's sockets at once;
+- every 60 s a sweep revalidates every connected user (one directory lookup
+  per user, then one revalidation job per socket, which hits the cache);
+- a frame that meets `UserAccountDisabled` now also closes its socket.
+
+A revalidation runs inside the socket's lane, like a frame: a role change
+moves the socket's module rooms and updates its context; a disabled or
+deleted account leaves every room at once and the socket is closed (1008,
+`account_disabled`), and the reconnect meets `ACCOUNT_DISABLED` at the
+verdict. Identity being unreachable changes nothing.
+
+**A short user cache.** `CachedUserDirectory` keeps a `GetUser` answer for
+10 s (never an `Unavailable`), so the per-frame `refreshContext`, the voice
+leg and `/rtc/token` stop costing one identity RPC each. The identity
+catalog feed evicts a user the moment identity commits a change to them, and
+an answer that was in flight across an eviction is not stored.
+
+**Control actions only from their own feed (#26).** `disconnect_session` is
+accepted only on `argus.auth.v1.session` (argus-auth's session outbox);
+`disconnect` and `replace_role_rooms` are produced only by the control RPC
+(identity calls it) and are refused on every NATS feed. A frame on the wrong
+feed is terminated with a warning. Before, any producer able to publish on
+its own change subject could have moved a socket into Owner rooms. The
+emits, the audit diffs and the journal are unchanged.
+
+**A payload that cannot be parsed is terminated (#78).** A body jsoncpp
+refuses by throwing (nesting past its stack limit) used to escape before the
+handler's `try` and nak, holding the ordered feed for its 151 s of retries;
+it is terminated now, on the change feeds and on the delivery leg.
+
+**Shutdown drains (#79).** Next to the database freeze, `main.cc` registers a
+drain for the socket lanes (the revalidation timer stops; drained when no
+lane is running), each change-feed consumer and the delivery consumer (they
+unsubscribe; drained when every received message is settled, counted from
+receipt so a queued one counts too), the heartbeat feed (drained when no
+presence refill is in flight), the voice relay (every stream is finished;
+drained when every stream has closed), the retention sweep and the control
+RPC (a `Shutdown` with a 2 s deadline on its own thread). A delivery settled
+before the quit is not redelivered into a new UTC day, where it would have
+merged into a second audit row.
+
+**Presence refills never overwrite a newer event (#55).** The board numbers
+every feed event it applies. A refill takes the number before it reads guard's
+list and then applies by difference: a user the feed updated after that mark
+keeps the feed's state, a user missing from the list leaves the board (they
+withdrew consent or were deleted), and only the users whose state changed get
+a frame. A `since` comparison was not used: guard's snapshot reports the
+earliest `since` of the winning state across environments while the feed
+carries the changed row's, so the two clocks are not comparable and the rule
+would have refused the very refill that recovers a lost event.
+
+**Not changed here.** The `person` pull's index belongs to identity's schema
+(`person(created_at, id) WHERE user_id IS NOT NULL`); the agent-side check
+that a joining participant's session is still live and a per-user limit on
+concurrent calls belong to argus-voice.

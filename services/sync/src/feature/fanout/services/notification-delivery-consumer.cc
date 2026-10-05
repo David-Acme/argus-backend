@@ -74,10 +74,28 @@ void NotificationDeliveryConsumer::stop()
   subscription_.reset();
 }
 
+void NotificationDeliveryConsumer::requestStop()
+{
+  stop();
+}
+
+bool NotificationDeliveryConsumer::drained() const
+{
+  return pending_->load(std::memory_order_acquire) == 0;
+}
+
 drogon::Task<DurableDisposition>
 NotificationDeliveryConsumer::handlePayload(const std::string& payload)
 {
-  const Json::Value json = json_util::fromString(payload);
+  Json::Value json;
+  try {
+    json = json_util::fromString(payload);
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Delivery consumer: unparsable payload refused: "
+             << error.what();
+    co_return DurableDisposition::Term;
+  }
   if (notification_delivery::isProbe(json))
     co_return DurableDisposition::Ack;
   const auto event = NotificationDeliveryEvent::fromJson(json);
@@ -136,7 +154,7 @@ bool NotificationDeliveryConsumer::trySubscribe()
        .maxDeliver = config_.maxDeliver,
        .maxAckPending = NatsBus::kDefaultMaxAckPending,
        .handler = durable_delivery::handler(
-           "Delivery consumer", [this](const durable_delivery::Payload& payload) {
+           {.label = "Delivery consumer", .pending = pending_}, [this](const durable_delivery::Payload& payload) {
              return handlePayload(payload.body);
            })});
   if (!subscription)

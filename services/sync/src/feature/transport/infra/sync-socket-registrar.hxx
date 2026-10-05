@@ -9,6 +9,7 @@
 #include <feature/transport/infra/identity-sync-source.hxx>
 #include <feature/transport/infra/notification-sync-source.hxx>
 #include <feature/transport/infra/productivity-sync-source.hxx>
+#include <feature/transport/services/connection-lanes.hxx>
 
 struct SyncRegistrationStats
 {
@@ -25,6 +26,7 @@ struct SyncSurfaceInput
   std::shared_ptr<IdentitySyncSource> identitySource;
   std::shared_ptr<const IUserDirectory> userDirectory;
   std::shared_ptr<const HeartbeatSource> heartbeatSource;
+  std::shared_ptr<ConnectionLanes> lanes;
 };
 
 SyncRegistrationStats registerSyncSurface(SyncSurfaceInput input);

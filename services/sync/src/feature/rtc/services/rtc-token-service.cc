@@ -38,7 +38,8 @@ RtcTokenService::RtcTokenService(RtcTokenServiceInput input)
     : config_(std::move(input.config)),
       voice_(std::move(input.voice)),
       calls_(std::move(input.calls)),
-      directory_(std::move(input.directory))
+      directory_(std::move(input.directory)),
+      rooms_(std::move(input.rooms))
 {
 }
 
@@ -77,7 +78,7 @@ drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request
                                                    .roomJoin = true,
                                                    .roomAdmin = false,
                                                    .roomList = false,
-                                                   .roomCreate = false,
+                                               .roomCreate = false,
                                                    .canPublish = true,
                                                    .publishSources = {"microphone"},
                                                    .canSubscribe = true,
@@ -105,6 +106,8 @@ drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request
     join.set_call_kind(claim->kind);
   }
 
+  if (rooms_ && !co_await rooms_->createRoom(room))
+    throw ResponseException(RtcErrors::RtcUnavailable);
   if (!co_await voice_->join(std::move(join)))
     throw ResponseException(RtcErrors::RtcUnavailable);
 
@@ -119,7 +122,7 @@ drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request
                                                .roomJoin = true,
                                                .roomAdmin = false,
                                                .roomList = false,
-                                                   .roomCreate = false,
+                                               .roomCreate = false,
                                                .canPublish = true,
                                                .publishSources = {"microphone"},
                                                .canSubscribe = true,
