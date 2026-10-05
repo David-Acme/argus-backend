@@ -1426,3 +1426,60 @@ TEST_CASE("the history purge removes only settled rows past the window")
   CHECK(scalar("SELECT COUNT(*) FROM guard_encounter WHERE last_seen = 100 "
                "AND state = 'closed'") == "0");
 }
+
+TEST_CASE("a camera offline past the offline window is one critical tamper notice while away")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  harness.config.defaultMode = GuardMode::Away;
+  auto service = harness.makeService();
+
+  const int64_t base = testNowMs() / 1000;
+  for (int64_t step = 0; step < 240; step += 60) {
+    service->ingestHealth(171, "unreachable", (base + step) * 1000);
+    drogon::sync_wait(service->checkTamperSweep(base + step));
+  }
+  CHECK(harness.notifications.calls == 0);
+  for (int64_t step = 240; step <= 360; step += 60) {
+    service->ingestHealth(171, "unreachable", (base + step) * 1000);
+    drogon::sync_wait(service->checkTamperSweep(base + step));
+  }
+  REQUIRE(harness.notifications.calls == 1);
+  const Json::Value data = json_util::fromString(harness.notifications.sent.front().data);
+  CHECK(data["kind"].asString() == "guard_tamper");
+  CHECK(data["urgency"].asString() == "critical");
+  CHECK(data["danger"].asString() == "critical");
+  CHECK(data["threadKey"].asString() == "guard:tamper:171");
+  CHECK(harness.notifications.sent.front().body.find("desenchufada") != std::string::npos);
+  CHECK(scalar("SELECT danger FROM guard_incident WHERE event_id = 'tamper:171:" +
+               std::to_string(base + 240) + "'") == "critical");
+}
+
+TEST_CASE("a short offline blip stays quiet, and offline at home is not critical")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  auto service = harness.makeService();
+
+  const int64_t base = testNowMs() / 1000;
+  for (int64_t step = 0; step <= 180; step += 60) {
+    service->ingestHealth(172, "unreachable", (base + step) * 1000);
+    drogon::sync_wait(service->checkTamperSweep(base + step));
+  }
+  for (int64_t step = 240; step <= 600; step += 60) {
+    service->ingestHealth(172, "ok", (base + step) * 1000);
+    drogon::sync_wait(service->checkTamperSweep(base + step));
+  }
+  CHECK(harness.notifications.calls == 0);
+
+  for (int64_t step = 660; step <= 900; step += 60) {
+    service->ingestHealth(172, "unreachable", (base + step) * 1000);
+    drogon::sync_wait(service->checkTamperSweep(base + step));
+  }
+  REQUIRE(harness.notifications.calls == 1);
+  const Json::Value data = json_util::fromString(harness.notifications.sent.front().data);
+  CHECK(data["urgency"].asString() == "active");
+  CHECK(data["danger"].asString() == "high");
+}

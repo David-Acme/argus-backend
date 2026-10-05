@@ -267,9 +267,20 @@ NoticeText renderTamper(const GuardNotice& notice, bool english)
   else if (notice.tamperStatus == "blurred")
     text.body = english ? "The image has been blurry " + since + "."
                         : "La imagen está borrosa " + since + ".";
+  else if (notice.tamperStatus == "unreachable")
+    text.body = english ? "Argus has had no picture from it " + since +
+                              ": it may be unplugged, off the network or "
+                              "switched off. That area is not being watched."
+                        : "Argus no recibe imagen " + since +
+                              ": puede estar desenchufada, sin red o "
+                              "apagada. Esa zona no está vigilada.";
   else
     text.body = english ? "The image has been unreliable " + since + "."
                         : "La imagen no es fiable " + since + ".";
+  if (notice.danger == GuardDanger::Critical)
+    text.body += pick({.es = " La vigilancia está activa: revísalo cuanto antes.",
+                       .en = " Guarding is on: check it as soon as you can."},
+                      english);
   return text;
 }
 
@@ -426,7 +437,7 @@ std::string guard_copy::urgency(const GuardNotice& notice)
     case NoticeKind::Digest:
       return "passive";
     case NoticeKind::Tamper:
-      return "active";
+      return notice.danger == GuardDanger::Critical ? "critical" : "active";
     case NoticeKind::Episode:
     case NoticeKind::Escalation:
       break;

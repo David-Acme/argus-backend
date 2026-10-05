@@ -272,6 +272,7 @@ GuardServiceConfig GuardConfig::resolveService()
   config.notifyLang =
       configOr({.key = "guard.notify_lang", .fallback = config.announceLang});
   config.tamperSustainedS = configInt64Or("guard.tamper_sustained_s", 300);
+  config.offlineSustainedS = configInt64Or("guard.offline_sustained_s", 240);
   return config;
 }
 

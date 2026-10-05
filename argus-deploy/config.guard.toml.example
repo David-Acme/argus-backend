@@ -74,6 +74,7 @@ decision_mode = "shadow"
 health_stale_s = 300
 belief_refresh_s = 300
 tamper_sustained_s = 300
+offline_sustained_s = 240
 digest_hour = 21
 regroup_window_s = 600
 notify_lang = "es"

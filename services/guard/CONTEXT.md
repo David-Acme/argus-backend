@@ -382,6 +382,33 @@ starts a new episode. The live danger floor from camera health is removed
 entirely — poor image quality is distrusted through the belief penalty,
 never by raising unrelated traffic.
 
+## Offline cameras and critical tamper (2026-10, WATCHDOG)
+
+A camera that is unplugged, loses its video or its address used to be a
+badge in the app and nothing more: the monitor's `unreachable` never counted
+as tamper (Round 12), so an intruder who pulled a camera's cable was never
+told. The sweep now treats a sustained `unreachable` like the other tamper
+states, with its own window, `guard.offline_sustained_s` (240 s, the
+monitor samples every 60 s, so four consecutive misses): a Wi-Fi blip, a
+router reboot or a camera restart heals before it and says nothing, the
+episode keys, recovery and "one notification per episode" are the Round 13
+ones. Only explicit `unreachable` samples count: a camera that is disabled,
+put in privacy mode by Argus or deleted is not sampled, its feed goes stale
+and stale readings are skipped, so none of those alarms. The body says what
+is likely and what it costs ("Argus no recibe imagen desde hace 4 min: puede
+estar desenchufada, sin red o apagada. Esa zona no está vigilada.").
+
+Severity follows the place, not the camera: when the environment's
+effective mode is `away`, `armed` or `night` (nobody is expected to be
+watching, or everyone sleeps), a covered, moved, blurred or offline camera
+is `critical` (incident danger, journal, `urgency: critical`, plus "La
+vigilancia está activa: revísalo cuanto antes."), which the call engine
+rings through RESPONSE's plan (`guard_tamper` + `critical` is a
+`guard_critical` candidate); at home it stays `high` / `active`, a
+notification, never a call. A burglar covering or unplugging a camera on an
+empty house is the classic move this catches; the same at 15:00 with the
+family home is most likely a child or a cleaner.
+
 ## Notification threads (Round 6)
 
 One encounter owns one notification thread, persisted additively on the
@@ -526,6 +553,7 @@ owner page lists guard without a hand edit.
 | `guard.staging` | advanced | live | tracking | toggle | true |
 | `guard.encounter_timeout_s` | advanced | live | tracking | 30-3600 | 300 |
 | `guard.tamper_sustained_s` | advanced | live | health | 30-3600 | 300 |
+| `guard.offline_sustained_s` | advanced | live | health | 60-3600 | 240 |
 | `guard.health_stale_s` | advanced | live | health | 30-3600 | 300 |
 | `guard.journal_retention_days` | advanced | live | history | 1-3650 | 90 |
 

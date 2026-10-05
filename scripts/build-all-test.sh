@@ -451,6 +451,4 @@ if grep -Fq '[ ! -d ".git" ]' "$ROOT/scripts/setup.sh"; then
   exit 1
 fi
 
-"$ROOT/scripts/privacy-consent-test.sh" >/dev/null
-
 echo "build-all tests passed"

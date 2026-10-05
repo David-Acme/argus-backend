@@ -85,7 +85,14 @@ int64_t nowMillis()
 
 bool tamperIndicating(const std::string& status)
 {
-  return status == "moved" || status == "covered" || status == "blurred";
+  return status == "moved" || status == "covered" || status == "blurred" ||
+         status == "unreachable";
+}
+
+bool protectionExpected(GuardMode mode)
+{
+  return mode == GuardMode::Away || mode == GuardMode::Armed ||
+         mode == GuardMode::Night;
 }
 
 std::atomic<uint64_t> gCommandSequence{0};
@@ -353,6 +360,7 @@ void GuardService::refresh(const Config& fresh)
     next->beliefRefreshS = fresh.beliefRefreshS;
     next->journalRetentionDays = fresh.journalRetentionDays;
     next->tamperSustainedS = fresh.tamperSustainedS;
+    next->offlineSustainedS = fresh.offlineSustainedS;
     next->healthStaleS = fresh.healthStaleS;
     config_ = std::move(next);
   }
@@ -726,7 +734,10 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
     }
     co_await repository_.setState(
         {.key = seenKey, .value = std::to_string(now), .updatedAt = now});
-    if (now - onset < config->tamperSustainedS)
+    const int64_t sustainedS = reading.status == "unreachable"
+                                   ? config->offlineSustainedS
+                                   : config->tamperSustainedS;
+    if (now - onset < sustainedS)
       continue;
     if (co_await repository_.state(notifiedKey, "") ==
         std::to_string(onset))
@@ -734,15 +745,25 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
     const std::string eventId = "tamper:" + std::to_string(reading.cameraId) +
                                 ":" + std::to_string(now);
     const std::string name = cameraName(reading.cameraId);
+    const GuardEnvironmentScope scope =
+        co_await environmentScope(reading.cameraId);
+    const GuardSchedule schedule =
+        guard_schedule::fromEnvironment(scope.environment);
+    const GuardPosture posture = postureAt(
+        {.schedule = schedule, .manual = scope.environment.mode, .now = now});
+    const GuardDanger tamperDanger = protectionExpected(posture.mode)
+                                         ? GuardDanger::Critical
+                                         : GuardDanger::High;
     Json::Value tamperEvent(Json::objectValue);
     tamperEvent["status"] = reading.status;
+    tamperEvent["mode"] = guardModeToString(posture.mode);
     const int64_t incidentId =
         co_await repository_.insertIncidentForEvent(
             {.cameraId = reading.cameraId,
              .cameraName = name,
              .rule = "camera_tamper",
-             .danger = guard_policy::dangerToString(GuardDanger::High),
-             .severity = "high",
+             .danger = guard_policy::dangerToString(tamperDanger),
+             .severity = tamperDanger == GuardDanger::Critical ? "critical" : "high",
              .personId = 0,
              .identity = {},
              .eventId = eventId,
@@ -750,8 +771,6 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
              .createdAt = now});
     const GuardCameraContext camera =
         co_await cameraContextRepository_.find(reading.cameraId);
-    const GuardEnvironmentScope scope =
-        co_await environmentScope(reading.cameraId);
     const GuardNotice notice{.kind = NoticeKind::Tamper,
                              .subject = NoticeSubject::Stranger,
                              .people = 0,
@@ -765,7 +784,7 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
                              .zoneName = {},
                              .reasons = {},
                              .dwellS = now - onset,
-                             .danger = GuardDanger::High,
+                             .danger = tamperDanger,
                              .action = NoticeAction::Watching,
                              .tamperStatus = reading.status,
                              .held = {},
@@ -789,7 +808,7 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
          .incidentId = incidentId,
          .cameraId = reading.cameraId,
          .observationId = {},
-         .danger = GuardDanger::High,
+         .danger = tamperDanger,
          .hardFloor = false,
          .beliefScore = 0,
          .beliefSignals = {"camera_health_degraded"},
@@ -809,7 +828,7 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
          .at = now});
     const EffectResult sent = co_await performEffect(
         {.kind = GuardActionKind::Notify,
-         .danger = GuardDanger::High,
+         .danger = tamperDanger,
          .greetingEnabled = false,
          .replyRequested = false,
          .cameraId = reading.cameraId,

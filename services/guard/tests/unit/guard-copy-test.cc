@@ -114,6 +114,26 @@ TEST_CASE("tamper notices ask to check the camera")
         "La imagen está tapada desde hace 6 min. Argus no ve esa zona.");
 }
 
+TEST_CASE("an offline camera says the area is not watched, and critical adds the call to act")
+{
+  GuardNotice notice = episode();
+  notice.kind = NoticeKind::Tamper;
+  notice.tamperStatus = "unreachable";
+  notice.dwellS = 240;
+  notice.danger = GuardDanger::High;
+  const NoticeText text = guard_copy::render(notice, "es");
+  CHECK(text.title == "Revisa la cámara Puerta");
+  CHECK(text.body == "Argus no recibe imagen desde hace 4 min: puede estar desenchufada, "
+                     "sin red o apagada. Esa zona no está vigilada.");
+  CHECK(guard_copy::urgency(notice) == "active");
+  notice.danger = GuardDanger::Critical;
+  CHECK(guard_copy::urgency(notice) == "critical");
+  CHECK(guard_copy::render(notice, "en").body ==
+        "Argus has had no picture from it for 4 min: it may be unplugged, off the network "
+        "or switched off. That area is not being watched. Guarding is on: check it as soon "
+        "as you can.");
+}
+
 TEST_CASE("digests summarize held alerts and routine activity")
 {
   GuardNotice notice{.kind = NoticeKind::Digest,

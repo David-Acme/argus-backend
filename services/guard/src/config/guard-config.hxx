@@ -120,6 +120,7 @@ struct GuardServiceConfig
   int64_t regroupWindowS{600};
   std::string notifyLang{"es"};
   int64_t tamperSustainedS{300};
+  int64_t offlineSustainedS{240};
   int64_t healthStaleS{300};
   std::function<bool(const std::string&)> failPoint;
 };
