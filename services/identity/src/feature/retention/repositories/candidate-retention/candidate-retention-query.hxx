@@ -2,7 +2,9 @@
 
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace candidate_retention_query
 {
@@ -11,12 +13,24 @@ inline constexpr std::string_view RETIRE_STALE =
     "UPDATE person SET deleted_at = strftime('%s', 'now'), "
     "updated_at = strftime('%s', 'now') WHERE id IN ("
     "SELECT id FROM person WHERE status = 'candidate' AND user_id IS NULL "
-    "AND deleted_at IS NULL AND last_seen_at < ? "
+    "AND name = '' AND deleted_at IS NULL AND last_seen_at < ? "
     "ORDER BY last_seen_at ASC LIMIT ?) "
     "RETURNING id, deleted_at";
 
 inline constexpr std::string_view EMBEDDING_IDS =
     "SELECT id FROM face_embedding "
+    "WHERE person_id IN (SELECT value FROM json_each(?))";
+
+inline constexpr std::string_view CROP_KEYS =
+    "SELECT crop_key FROM face_embedding "
+    "WHERE person_id IN (SELECT value FROM json_each(?)) AND crop_key != ''";
+
+inline constexpr std::string_view DELETE_VISITS =
+    "DELETE FROM person_visit "
+    "WHERE person_id IN (SELECT value FROM json_each(?))";
+
+inline constexpr std::string_view DELETE_CROP_CAPABILITIES =
+    "DELETE FROM person_crop_capability "
     "WHERE person_id IN (SELECT value FROM json_each(?))";
 
 inline constexpr std::string_view DELETE_EMBEDDINGS =
@@ -49,4 +63,5 @@ struct RetiredCandidate
 struct RetiredBiometrics
 {
   std::vector<int64_t> embeddingIds;
+  std::vector<std::string> cropKeys;
 };

@@ -88,15 +88,6 @@ IdentityFaceConfig IdentityConfig::resolveFace()
   return config;
 }
 
-IdentityRetentionConfig IdentityConfig::resolveRetention()
-{
-  IdentityRetentionConfig config;
-  if (ConfigService::hasKey("retention.candidate_days"))
-    config.candidateDays =
-        std::max(0, ConfigService::getInt("retention.candidate_days"));
-  return config;
-}
-
 IdentityVoiceprintConfig IdentityConfig::resolveVoiceprint()
 {
   IdentityVoiceprintConfig config;

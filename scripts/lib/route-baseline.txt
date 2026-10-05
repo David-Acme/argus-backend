@@ -77,6 +77,17 @@ identity	DELETE	/user/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/
 identity	PATCH	/user/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/user/controllers/user-controller.hxx
 identity	DELETE	/voiceprint/user/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/voiceprint/controllers/voiceprint-controller.hxx
 identity	GET	/voiceprint/users	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/voiceprint/controllers/voiceprint-controller.hxx
+identity	GET	/visitor	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/visitor/controllers/visitor-controller.hxx
+identity	GET	/visitor-crop/{1}/content	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/visitor/controllers/visitor-controller.hxx
+identity	GET	/visitor-settings	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/visitor/controllers/visitor-controller.hxx
+identity	PATCH	/visitor-settings	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/visitor/controllers/visitor-controller.hxx
+identity	DELETE	/visitor/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/visitor/controllers/visitor-controller.hxx
+identity	GET	/visitor/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/visitor/controllers/visitor-controller.hxx
+identity	PATCH	/visitor/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/visitor/controllers/visitor-controller.hxx
+identity	GET	/visitor/{1}/crop-preview	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/visitor/controllers/visitor-controller.hxx
+identity	POST	/visitor/{1}/merge	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/visitor/controllers/visitor-controller.hxx
+identity	DELETE	/visitor/{1}/samples/{2}	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/visitor/controllers/visitor-controller.hxx
+identity	POST	/visitor/{1}/split	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/visitor/controllers/visitor-controller.hxx
 llm	POST	/llm/v1/chat	-	-	services/llm/src/feature/llm/controllers/llm-controller.hxx
 llm	POST	/llm/v1/chat-stream	-	-	services/llm/src/feature/llm/controllers/llm-controller.hxx
 llm	GET	/llm/v1/config	-	-	services/llm/src/feature/llm/controllers/llm-controller.hxx

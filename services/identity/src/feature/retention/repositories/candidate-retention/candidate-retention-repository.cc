@@ -41,6 +41,12 @@ drogon::Task<RetiredBiometrics> CandidateRetentionRepository::purgeBiometrics(
   purged.embeddingIds.reserve(embeddings.size());
   for (const auto& row : embeddings)
     purged.embeddingIds.push_back(row["id"].as<int64_t>());
+  const auto crops = co_await client->execSqlCoro(std::string(CROP_KEYS), ids);
+  purged.cropKeys.reserve(crops.size());
+  for (const auto& row : crops)
+    purged.cropKeys.push_back(row["crop_key"].as<std::string>());
+  co_await client->execSqlCoro(std::string(DELETE_CROP_CAPABILITIES), ids);
+  co_await client->execSqlCoro(std::string(DELETE_VISITS), ids);
   co_await client->execSqlCoro(std::string(DELETE_EMBEDDINGS), ids);
   co_await client->execSqlCoro(std::string(DELETE_SNAPSHOTS), ids);
   co_await client->execSqlCoro(std::string(DELETE_TAGS), ids);

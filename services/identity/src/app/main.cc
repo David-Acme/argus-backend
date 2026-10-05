@@ -21,6 +21,7 @@
 #include <feature/user/controllers/user-controller.hxx>
 #include <feature/user/services/nats-identity-change-sink.hxx>
 #include <feature/privacy/controllers/privacy-controller.hxx>
+#include <feature/visitor/controllers/visitor-controller.hxx>
 #include <feature/voiceprint/controllers/voiceprint-controller.hxx>
 #include <feature/voiceprint/repositories/voice-profile/voice-profile-repository.hxx>
 #include <feature/voiceprint/services/embedding/speaker-embedding-service.hxx>
@@ -38,6 +39,7 @@
 #include <runtime/shutdown-signal.hxx>
 #include <runtime/log-output.hxx>
 #include <shared/repositories/face-embedding/face-embedding-repository.hxx>
+#include <shared/repositories/person/person-repository.hxx>
 #include <shared/services/face/face-service.hxx>
 #include <shared/services/storage/private-portrait-service.hxx>
 #include <sqlite/db-service.hxx>
@@ -154,6 +156,7 @@ int main()
       std::make_shared<PortraitPreviewController>());
   drogon::app().registerController(std::make_shared<VoiceprintController>());
   drogon::app().registerController(std::make_shared<PrivacyController>());
+  drogon::app().registerController(std::make_shared<VisitorController>());
 
   RemoteGate remoteGate(remote);
 
@@ -295,15 +298,10 @@ int main()
       _exit(1);
     }
 
-    const auto personColumns = DbService::client()->execSqlSync(
-        "SELECT COUNT(*) AS total FROM pragma_table_info('person') "
-        "WHERE name = 'status'");
-    if (personColumns.empty() || personColumns.front()["total"].as<int>() == 0)
-      DbService::client()->execSqlSync(
-          "ALTER TABLE person ADD COLUMN status TEXT NOT NULL DEFAULT 'known'");
+    PersonRepository::ensureColumns();
 
     VoiceProfileRepository::migrateLegacy();
-    FaceEmbeddingRepository::ensureModelColumn();
+    FaceEmbeddingRepository::ensureColumns();
 
     DbService::applyPragmas();
 
@@ -340,7 +338,7 @@ int main()
   shutdown_signal::onQuit(
       [dbPath = identityDb.dbPath] { DbService::freezeClient(dbPath); });
 
-  CandidateRetentionService candidateRetention(IdentityConfig::resolveRetention());
+  CandidateRetentionService candidateRetention;
   std::unique_ptr<MdnsService> mdnsService;
   drogon::app().registerBeginningAdvice([&voiceprintRpcService]() {
     drogon::app().getLoop()->runEvery(

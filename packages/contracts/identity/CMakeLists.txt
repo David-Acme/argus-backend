@@ -11,6 +11,7 @@ argus_contracts(NAME identity
     INCLUDES src
     SOURCES
         src/identity/identity-errors.hxx
+        src/identity/person-category.hxx
     DEPENDS argus::lib::errors)
 
 enable_testing()

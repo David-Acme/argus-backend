@@ -27,6 +27,12 @@ CREATE TABLE IF NOT EXISTS person (
     observation    TEXT    NOT NULL  DEFAULT '',
     status         TEXT    NOT NULL  DEFAULT 'known'
                            CHECK (status IN ('candidate', 'known')),
+    category       TEXT    NOT NULL  DEFAULT ''
+                           CHECK (category IN ('', 'neighbor', 'delivery', 'service',
+                                               'family', 'acquaintance', 'watchlist')),
+    note           TEXT    NOT NULL  DEFAULT '',
+    visitor_number INTEGER,
+    visit_count    INTEGER NOT NULL  DEFAULT 0,
     first_seen_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     last_seen_at   INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     created_at     INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
@@ -41,6 +47,8 @@ CREATE TABLE IF NOT EXISTS face_embedding (
     angle_label TEXT    NOT NULL  DEFAULT 'frontal',
     quality     REAL    NOT NULL  DEFAULT 1.0,
     model       TEXT    NOT NULL  DEFAULT 'legacy',
+    camera_id   INTEGER,
+    crop_key    TEXT    NOT NULL  DEFAULT '',
     created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
@@ -176,6 +184,36 @@ CREATE TABLE IF NOT EXISTS household_privacy (
 
 INSERT OR IGNORE INTO household_privacy (id) VALUES (1);
 
+CREATE TABLE IF NOT EXISTS person_visit (
+    id             INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    person_id      INTEGER NOT NULL  REFERENCES person(id) ON DELETE CASCADE,
+    camera_id      INTEGER NOT NULL,
+    started_at     INTEGER NOT NULL,
+    last_seen_at   INTEGER NOT NULL,
+    sightings      INTEGER NOT NULL  DEFAULT 1  CHECK (sightings >= 1)
+);
+
+CREATE TABLE IF NOT EXISTS person_crop_capability (
+    id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    token_hash          TEXT    NOT NULL UNIQUE,
+    person_id           INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+    face_embedding_id   INTEGER NOT NULL REFERENCES face_embedding(id) ON DELETE CASCADE,
+    requester_user_id   INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    expires_at          INTEGER NOT NULL,
+    consumed_at         INTEGER,
+    created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS visitor_setting (
+    id                    INTEGER NOT NULL  PRIMARY KEY CHECK (id = 1),
+    unnamed_retention_days INTEGER NOT NULL DEFAULT 30
+                                   CHECK (unnamed_retention_days BETWEEN 1 AND 60),
+    updated_by            INTEGER,
+    updated_at            INTEGER
+);
+
+INSERT OR IGNORE INTO visitor_setting (id) VALUES (1);
+
 CREATE TABLE IF NOT EXISTS change_outbox (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     event_id    TEXT              UNIQUE,
@@ -227,6 +265,14 @@ CREATE INDEX IF NOT EXISTS idx_voice_sample_user
 
 CREATE INDEX IF NOT EXISTS idx_voice_sample_created
     ON voice_sample (state, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_person_visit_person
+    ON person_visit (person_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_person_visit_open
+    ON person_visit (person_id, camera_id, last_seen_at);
+
+CREATE INDEX IF NOT EXISTS idx_person_crop_capability_lookup
+    ON person_crop_capability (token_hash, expires_at, consumed_at);
 
 CREATE INDEX IF NOT EXISTS idx_change_outbox_status
     ON change_outbox (status, id);

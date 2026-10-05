@@ -1,7 +1,9 @@
 #pragma once
 
-#include <config/identity-config.hxx>
 #include <feature/retention/repositories/candidate-retention/candidate-retention-repository.hxx>
+#include <shared/repositories/visitor-setting/visitor-setting-repository.hxx>
+#include <shared/services/face-crop/face-crop-store.hxx>
+#include <shared/services/privacy/privacy-gate.hxx>
 
 #include <atomic>
 #include <cstdint>
@@ -12,7 +14,7 @@
 class CandidateRetentionService
 {
 public:
-  explicit CandidateRetentionService(IdentityRetentionConfig config);
+  CandidateRetentionService() = default;
   ~CandidateRetentionService();
 
   CandidateRetentionService(const CandidateRetentionService&) = delete;
@@ -22,13 +24,16 @@ public:
   void stop();
 
   drogon::Task<size_t> sweep(int64_t now);
+  [[nodiscard]] drogon::Task<int64_t> cutoffAt(int64_t now) const;
 
 private:
   drogon::Task<size_t> retireBatch(int64_t cutoff);
   void launch();
 
-  IdentityRetentionConfig config_;
   CandidateRetentionRepository repository_;
+  VisitorSettingRepository settingRepository_;
+  PrivacyGate privacyGate_;
+  FaceCropStore cropStore_;
   std::optional<trantor::TimerId> firstTimer_;
   std::optional<trantor::TimerId> timer_;
   std::atomic<bool> running_{false};

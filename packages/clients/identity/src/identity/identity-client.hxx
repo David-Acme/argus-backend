@@ -48,6 +48,21 @@ struct PersonProfile
   std::string observation;
   std::string role;
   std::vector<std::string> tags;
+  bool trusted{false};
+  std::string category;
+  int32_t visits{0};
+  int64_t firstSeenAt{0};
+  int64_t lastSeenAt{0};
+  std::optional<int64_t> visitorNumber;
+  std::vector<int32_t> usualWeekdays;
+  std::optional<int32_t> usualHour;
+};
+
+struct CameraIdentifyInput
+{
+  std::string image;
+  int64_t cameraId{0};
+  int64_t observedAt{0};
 };
 
 struct PromotePersonInput
@@ -83,7 +98,7 @@ public:
 
   [[nodiscard]] virtual std::optional<
       argus::identity::v1::IdentifyPersonResponse>
-  identifyForCamera(const std::string& image) const;
+  identifyForCamera(const CameraIdentifyInput& input) const;
 
   virtual std::optional<argus::identity::v1::EnrollPersonResponse>
   enrollPerson(const EnrollPersonInput& input) const;

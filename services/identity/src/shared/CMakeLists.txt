@@ -21,7 +21,10 @@ argus_module(NAME identity-shared
         services/face/face-db.cc
         services/face/face-quality.cc
         services/face/face-service.cc
+        services/face-crop/face-crop-store.cc
+        repositories/visitor-setting/visitor-setting-repository.cc
         services/privacy/privacy-gate.cc
+        services/schema/column-migration.cc
         services/storage/private-portrait-service.cc
         services/token/opaque-token.cc
     INCLUDES
@@ -33,6 +36,7 @@ argus_module(NAME identity-shared
         argus::lib::storage
         argus::lib::text
         argus::contracts::auth
+        argus::contracts::identity
         argus::contracts::sync
         argus::hardware-profile
         argus::hardware-profile-gpu

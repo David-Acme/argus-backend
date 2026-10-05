@@ -29,11 +29,6 @@ struct IdentityFaceConfig
   bool enabled{false};
 };
 
-struct IdentityRetentionConfig
-{
-  int64_t candidateDays{30};
-};
-
 struct IdentityInvitationConfig
 {
   static constexpr int64_t kMinLifetimeSeconds = 60;
@@ -103,7 +98,6 @@ public:
 
   [[nodiscard]] static IdentityFaceConfig resolveFace();
 
-  [[nodiscard]] static IdentityRetentionConfig resolveRetention();
 
   [[nodiscard]] static IdentityVoiceprintConfig resolveVoiceprint();
 

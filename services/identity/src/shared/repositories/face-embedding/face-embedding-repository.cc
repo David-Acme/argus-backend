@@ -1,5 +1,8 @@
 #include "face-embedding-repository.hxx"
 
+#include <array>
+#include <shared/services/schema/column-migration.hxx>
+
 #include <ctime>
 #include <sqlite/db-service.hxx>
 #include <string>
@@ -194,10 +197,16 @@ size_t FaceEmbeddingRepository::countVec(sqlite3* db) const
   return static_cast<size_t>(stmt.columnInt64(0));
 }
 
-void FaceEmbeddingRepository::ensureModelColumn()
+void FaceEmbeddingRepository::ensureColumns()
 {
-  const auto columns =
-      DbService::client()->execSqlSync(std::string(HAS_MODEL_COLUMN));
-  if (columns.empty() || columns.front()["total"].as<int>() == 0)
-    DbService::client()->execSqlSync(std::string(ADD_MODEL_COLUMN));
+  constexpr std::array<ColumnMigration, 3> kColumns = {{
+      {.table = "face_embedding",
+       .column = "model",
+       .definition = "TEXT NOT NULL DEFAULT 'legacy'"},
+      {.table = "face_embedding", .column = "camera_id", .definition = "INTEGER"},
+      {.table = "face_embedding",
+       .column = "crop_key",
+       .definition = "TEXT NOT NULL DEFAULT ''"},
+  }};
+  column_migration::ensure(kColumns);
 }

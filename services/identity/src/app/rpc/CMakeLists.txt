@@ -8,6 +8,7 @@ argus_module(NAME identity-rpc
         argus::identity-shared
         argus::identity-enrollment
         argus::identity-voiceprint
+        argus::identity-visitor
         argus::lib::auth
         argus::lib::errors
         argus::lib::grpc-health

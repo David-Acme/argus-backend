@@ -1,5 +1,8 @@
 #include "person-repository.hxx"
 
+#include <array>
+#include <shared/services/schema/column-migration.hxx>
+
 #include <ctime>
 #include <sqlite/db-service.hxx>
 #include <string>
@@ -195,4 +198,24 @@ drogon::Task<std::optional<Json::Value>> PersonRepository::findLastDeleted(const
   if (result.empty())
     co_return std::nullopt;
   co_return PersonSchema(result.front()).toJson();
+}
+
+void PersonRepository::ensureColumns()
+{
+  constexpr std::array<ColumnMigration, 5> kColumns = {{
+      {.table = "person",
+       .column = "status",
+       .definition = "TEXT NOT NULL DEFAULT 'known'"},
+      {.table = "person",
+       .column = "category",
+       .definition = "TEXT NOT NULL DEFAULT '' CHECK (category IN ('', "
+                     "'neighbor', 'delivery', 'service', 'family', "
+                     "'acquaintance', 'watchlist'))"},
+      {.table = "person", .column = "note", .definition = "TEXT NOT NULL DEFAULT ''"},
+      {.table = "person", .column = "visitor_number", .definition = "INTEGER"},
+      {.table = "person",
+       .column = "visit_count",
+       .definition = "INTEGER NOT NULL DEFAULT 0"},
+  }};
+  column_migration::ensure(kColumns);
 }

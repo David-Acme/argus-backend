@@ -137,4 +137,28 @@ inline constexpr ErrorDefinition VoiceprintNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,
     .message = "Argus has not learned this person's voice"};
+inline constexpr ErrorDefinition VisitorNotFound{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "This person is not in the gallery"};
+inline constexpr ErrorDefinition VisitorSampleNotFound{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "This face sample is not part of the person"};
+inline constexpr ErrorDefinition VisitorMergeInvalid{
+    .code = ErrorCode::BadRequest,
+    .status = 422,
+    .message = "Choose other people to merge into this one"};
+inline constexpr ErrorDefinition VisitorSplitInvalid{
+    .code = ErrorCode::BadRequest,
+    .status = 422,
+    .message = "Choose some, but not all, of the person's face samples"};
+inline constexpr ErrorDefinition VisitorCropUnavailable{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "The face picture is unavailable"};
+inline constexpr ErrorDefinition VisitorRecognitionOff{
+    .code = ErrorCode::Conflict,
+    .status = 409,
+    .message = "Recognition of recurring visitors is turned off"};
 }

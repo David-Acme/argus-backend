@@ -37,5 +37,5 @@ public:
   size_t countVec(sqlite3* db) const;
   std::vector<int64_t> findStaleVecRows(sqlite3* db,
                                         std::string_view model) const;
-  static void ensureModelColumn();
+  static void ensureColumns();
 };

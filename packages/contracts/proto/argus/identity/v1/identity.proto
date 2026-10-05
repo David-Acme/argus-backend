@@ -100,10 +100,17 @@ enum IdentifyPurpose
   IDENTIFY_PURPOSE_CAMERA = 1;
 }
 
+message SightingContext
+{
+  int64 camera_id = 1;
+  int64 observed_at = 2;
+}
+
 message IdentifyPersonRequest
 {
   bytes image = 1;
   IdentifyPurpose purpose = 2;
+  optional SightingContext sighting = 3;
 }
 
 message IdentifyPersonResponse
@@ -118,6 +125,12 @@ message IdentifyPersonResponse
   optional string last_name = 8;
   optional bool face_found = 9;
   optional bool account_disabled = 10;
+  optional string category = 11;
+  optional bool visitor = 12;
+  optional int32 visits = 13;
+  optional bool created = 14;
+  optional string face_quality = 15;
+  optional int64 visitor_number = 16;
 }
 
 message EnrollPersonRequest
@@ -178,6 +191,19 @@ message PersonIdentity
   optional string role = 6;
   repeated string tags = 7;
   bool trusted = 8;
+  optional string category = 9;
+  optional int32 visits = 10;
+  optional int64 first_seen_at = 11;
+  optional int64 last_seen_at = 12;
+  optional VisitPattern pattern = 13;
+  optional int64 visitor_number = 14;
+}
+
+message VisitPattern
+{
+  repeated int32 weekdays = 1;
+  optional int32 usual_hour = 2;
+  int32 visits_considered = 3;
 }
 
 message GetPersonRequest

@@ -173,6 +173,7 @@ argus_service(NAME argus-identity
             argus::identity-face-upgrade
             argus::identity-voiceprint
             argus::identity-privacy
+            argus::identity-visitor
             argus::identity-rpc
     DEPENDS argus::lib::http
             argus::lib::auth

@@ -187,3 +187,27 @@ target_link_libraries(identity-face-model-test PRIVATE
 target_compile_options(identity-face-model-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-face-model-test)
 add_test(NAME identity-face-model-test COMMAND identity-face-model-test)
+
+add_executable(identity-visitor-policy-test unit/identity-visitor-policy-test.cc)
+target_link_libraries(identity-visitor-policy-test PRIVATE
+    argus::identity-visitor
+    doctest::doctest)
+target_compile_options(identity-visitor-policy-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-visitor-policy-test)
+add_test(NAME identity-visitor-policy-test COMMAND identity-visitor-policy-test)
+
+add_executable(identity-visitor-test unit/identity-visitor-test.cc)
+target_compile_definitions(identity-visitor-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql"
+    ARGUS_TEST_FACE_MODELS="${CMAKE_CURRENT_SOURCE_DIR}/../../../models/face"
+    ARGUS_TEST_FACE_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/face")
+target_link_libraries(identity-visitor-test PRIVATE
+    argus::identity-visitor
+    argus::identity-retention
+    argus::identity-shared
+    argus::lib::sqlite
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-visitor-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-visitor-test)
+add_test(NAME identity-visitor-test COMMAND identity-visitor-test)

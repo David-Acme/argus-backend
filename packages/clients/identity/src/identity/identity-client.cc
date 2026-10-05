@@ -122,9 +122,9 @@ IdentityClient::identifyPerson(const std::string& image) const
 }
 
 std::optional<argus::identity::v1::IdentifyPersonResponse>
-IdentityClient::identifyForCamera(const std::string& image) const
+IdentityClient::identifyForCamera(const CameraIdentifyInput& input) const
 {
-  if (image.empty())
+  if (input.image.empty())
     return std::nullopt;
 
   grpc::ClientContext context;
@@ -132,8 +132,13 @@ IdentityClient::identifyForCamera(const std::string& image) const
   argus::client::addFleetSecret(context, fleetSecret_);
 
   argus::identity::v1::IdentifyPersonRequest request;
-  request.set_image(image);
+  request.set_image(input.image);
   request.set_purpose(argus::identity::v1::IDENTIFY_PURPOSE_CAMERA);
+  if (input.cameraId > 0) {
+    auto* sighting = request.mutable_sighting();
+    sighting->set_camera_id(input.cameraId);
+    sighting->set_observed_at(input.observedAt);
+  }
 
   argus::identity::v1::IdentifyPersonResponse response;
   if (const grpc::Status status =
@@ -286,6 +291,19 @@ std::optional<PersonProfile> IdentityClient::getPerson(
   identity.observation = person.observation();
   identity.role = person.role();
   identity.tags.assign(person.tags().begin(), person.tags().end());
+  identity.trusted = person.trusted();
+  identity.category = person.category();
+  identity.visits = person.visits();
+  identity.firstSeenAt = person.first_seen_at();
+  identity.lastSeenAt = person.last_seen_at();
+  if (person.has_visitor_number())
+    identity.visitorNumber = person.visitor_number();
+  if (person.has_pattern()) {
+    identity.usualWeekdays.assign(person.pattern().weekdays().begin(),
+                                  person.pattern().weekdays().end());
+    if (person.pattern().has_usual_hour())
+      identity.usualHour = person.pattern().usual_hour();
+  }
   return identity;
 }
 

@@ -12,6 +12,7 @@
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/privacy/privacy-gate.hxx>
 #include <feature/enrollment/services/enrollment-feature-service.hxx>
+#include <feature/visitor/services/visitor-recognition-service.hxx>
 
 class IdentityRpcService final
     : public argus::identity::v1::IdentityService::CallbackService
@@ -98,7 +99,24 @@ public:
             argus::identity::v1::ListUsersResponse* response) override;
 
 private:
+  struct DescribeHouseholdInput
+  {
+    int64_t personId{0};
+    bool forCamera{false};
+    argus::identity::v1::IdentifyPersonResponse* response{nullptr};
+  };
+
+  struct IdentifySightingInput
+  {
+    std::string image;
+    int64_t cameraId{0};
+    int64_t observedAt{0};
+    argus::identity::v1::IdentifyPersonResponse* response{nullptr};
+  };
+
   bool fleetAuthorized(const grpc::CallbackServerContext* context) const;
+  drogon::Task<void> describeHousehold(const DescribeHouseholdInput& input);
+  drogon::Task<void> identifySighting(const IdentifySightingInput& input);
 
   Dependencies dependencies_;
   EnrollmentFeatureService enrollmentService_;
@@ -108,4 +126,6 @@ private:
   PersonTagRepository personTagRepository_;
   PersonSnapshotRepository personSnapshotRepository_;
   PrivacyGate privacyGate_;
+  VisitorRecognitionService visitorRecognition_;
+  VisitorRepository visitorRepository_;
 };

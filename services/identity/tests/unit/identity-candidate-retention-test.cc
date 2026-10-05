@@ -150,7 +150,8 @@ int64_t biometricRows(int64_t personId)
 }
 }
 
-TEST_CASE("an unknown face unseen past the window leaves no biometrics behind")
+TEST_CASE("an unnamed visitor unseen past the Owner's window leaves no biometrics "
+          "behind, and all of them go when recognition is off")
 {
   std::remove(kRetentionDb);
   std::remove((std::string(kRetentionDb) + "-wal").c_str());
@@ -183,11 +184,26 @@ TEST_CASE("an unknown face unseen past the window leaves no biometrics behind")
                                           .lastSeenAt = stale,
                                           .linkedUser = true});
 
-  CandidateRetentionService disabled({.candidateDays = 0});
-  CHECK(drogon::sync_wait(disabled.sweep(now)) == 0);
-  CHECK_FALSE(retired(staleCandidate));
+  const int64_t namedVisitor = seedPerson({.status = "candidate",
+                                           .lastSeenAt = stale,
+                                           .linkedUser = false});
+  DbService::client()->execSqlSync("UPDATE person SET name = 'Juan' WHERE id = ?",
+                                   namedVisitor);
+  DbService::client()->execSqlSync(
+      "INSERT INTO person_visit (person_id, camera_id, started_at, last_seen_at) "
+      "VALUES (?, 6, ?, ?)",
+      staleCandidate, stale, stale);
 
-  CandidateRetentionService retention({.candidateDays = 30});
+  CandidateRetentionService retention;
+  DbService::client()->execSqlSync(
+      "UPDATE household_privacy SET visitor_recognition = 1 WHERE id = 1");
+  DbService::client()->execSqlSync(
+      "UPDATE visitor_setting SET unnamed_retention_days = 60 WHERE id = 1");
+  CHECK(drogon::sync_wait(retention.sweep(now)) == 0);
+  CHECK_FALSE(retired(staleCandidate));
+  DbService::client()->execSqlSync(
+      "UPDATE visitor_setting SET unnamed_retention_days = 30 WHERE id = 1");
+
   sink.refuse(true);
   CHECK_THROWS_AS(drogon::sync_wait(retention.sweep(now)), std::runtime_error);
   sink.refuse(false);
@@ -198,7 +214,13 @@ TEST_CASE("an unknown face unseen past the window leaves no biometrics behind")
 
   CHECK(retired(staleCandidate));
   CHECK(biometricRows(staleCandidate) == 0);
-  for (const int64_t kept : {freshCandidate, staleKnown, staleLinked}) {
+  CHECK(DbService::client()
+            ->execSqlSync("SELECT COUNT(*) AS n FROM person_visit WHERE person_id = ?",
+                          staleCandidate)
+            .front()["n"]
+            .as<int64_t>() == 0);
+  for (const int64_t kept :
+       {freshCandidate, staleKnown, staleLinked, namedVisitor}) {
     CAPTURE(kept);
     CHECK_FALSE(retired(kept));
     CHECK(biometricRows(kept) == 3);
@@ -212,5 +234,12 @@ TEST_CASE("an unknown face unseen past the window leaves no biometrics behind")
   CHECK(tombstone["info"].size() == 2);
 
   CHECK(drogon::sync_wait(retention.sweep(now)) == 0);
+
+  DbService::client()->execSqlSync(
+      "UPDATE household_privacy SET visitor_recognition = 0 WHERE id = 1");
+  CHECK(drogon::sync_wait(retention.sweep(now)) == 1);
+  CHECK(retired(freshCandidate));
+  for (const int64_t kept : {staleKnown, staleLinked, namedVisitor})
+    CHECK_FALSE(retired(kept));
   identity_change::setSink(nullptr);
 }

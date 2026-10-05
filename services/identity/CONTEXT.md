@@ -813,3 +813,152 @@ voice erase on withdrawal, the household switch with the unnamed `GetPerson`
 answer, `GetUser`/`ListPrivacy`/`ListUsers`, the visitor acknowledgement and
 `recordCall`'s refusal. `identity-voiceprint-test` seeds consent for its
 people, since learning now requires it.
+
+## Recurring visitors: faces that come back get a number, the Owner gives them a name (2026-10, STRANGERS)
+
+David's words: "guardar los rostros desconocidos, como vecino: por algo existe el
+person, que relaciona un usuario o una persona con varios rostros". A `person`
+was already "one user or one stranger, many faces"; this feature makes the
+stranger half real. The household is the persons with a `user_id`; a
+**visitor** is a person without one. An unnamed visitor is "Persona #N"
+(`person.visitor_number`, allocated once, never reused); the Owner can name it,
+give it a type (`person.category`: `neighbor`, `delivery`, `service`, `family`,
+`acquaintance`, `watchlist`, the `PersonCategory` wire enum in
+`packages/contracts/identity`) and a note.
+
+### Off by default, Owner's acknowledgement first
+
+Nothing in this section runs until the Owner turns on
+`household_privacy.visitor_recognition` with the acknowledgement
+ONBOARD-CONSENT records (who, when, notice version; Ley 29733 and the
+videovigilancia directive: notice sign, limited retention). Off means: no
+visitor is created, matched or learned; the household is still recognised;
+`EnrollPerson` answers `FAILED_PRECONDITION`; and the next retention sweep
+(within 6 h) deletes every unnamed visitor. Named visitors are kept but are not
+matched while it is off.
+
+### One sighting, end to end
+
+argus-camera's matcher sends the person crop with `IDENTIFY_PURPOSE_CAMERA`
+and a `SightingContext {camera_id, observed_at}` (`identifyForCamera`).
+`VisitorRecognitionService::observe` (`feature/visitor`):
+
+1. `FaceService::analyzeImageAsync` on the **heavy lane**: detection, the
+   aligned embedding, the quality geometry and, when recognition is on, a
+   ≤192 px JPEG of the face itself (never the body crop).
+2. On a `BlockingStrand` (one sighting at a time, so two crops of a new face
+   cannot create two people): the 24 nearest `face_vec` rows, grouped by
+   person and pooled as household / named / unnamed, go through the pure
+   `visitor_policy::decide`:
+   - **match gate** (detector ≥ 0.80, inter-ocular ≥ 12 px, yaw ≤ 0.35,
+     pitch 0.25–0.85) or nothing happens;
+   - household ≥ 0.50 and at least as close as any visitor → household (the
+     user is reported as before, gated by their own `face_cameras` consent);
+   - recognition off → stop;
+   - household ≥ 0.30 (the **guard band**) → nothing is stored: a household
+     member who matched badly is never turned into a visitor;
+   - a visitor ≥ 0.55 with a margin of 0.08 over the runner-up → that visitor;
+     inside the margin → ambiguous, nothing stored;
+   - best visitor 0.35–0.55 → uncertain, nothing stored (no duplicate);
+   - otherwise, and only past the **learn gate** (detector ≥ 0.90,
+     inter-ocular ≥ 16 px, yaw ≤ 0.25, pitch 0.30–0.80) → a new visitor.
+3. The sample is added (learn gate only) when its median similarity to the
+   person's samples is ≥ 0.35 (outlier rejection) and either fewer than 8
+   samples exist or it is better (`face_quality::score`: detector × size,
+   sharpness, frontality) than the worst, which it replaces (best K = 8).
+   A near duplicate (≥ 0.92 to an existing sample: the same frame seen
+   again) never takes a second slot; it replaces that sample only when it is
+   sharper.
+4. The visit: sightings of one person on one camera less than 10 min apart are
+   one `person_visit` row (`sightings` counts them); a new row raises
+   `person.visit_count`.
+5. The face crop goes to private object storage (`faces/<person>/<sample>.jpg`,
+   `face_embedding.crop_key`), and an evicted sample's crop is removed.
+6. **Household echo**: when a household sighting also lands ≥ 0.55 on an
+   unnamed visitor, that visitor was the household member leaking through the
+   guard band; it is deleted with its samples, crops and visits.
+
+Camera samples are **never** added to a household person: a household person's
+vectors are what face login matches, and a wrong camera sample there would let
+someone else sign in.
+
+### The thresholds, measured
+
+Same LFW subset as the fix above, run through the full pipeline after the
+detector letterboxes instead of stretching to 640×640 (a tall person crop was
+squashed 3× sideways: at 14/18 px between the eyes the stretched detector found
+73 %/80 % of the faces, the letterboxed one 100 %, and the EER fell from
+18.0 %/15.8 % to 13.2 %/10.3 %). "CCTV" probes are the LFW faces scaled to an
+inter-ocular distance of 14, 18, 24 or 32 px inside a person-shaped crop,
+Gaussian blur σ 0.6, JPEG 55 (stream) then 85 (the matcher's encode) —
+`tools/face-calibration` plus scratch scripts. Household = one clean
+enrollment per identity, probes = CCTV images of the same and other people:
+
+| probe iod | household TAR at 0.50 | FAR/pair at 0.50 | leak below 0.30 (learnable) |
+|---|---|---|---|
+| 18 px | 50.6 % | 3·10⁻⁶ | 8.3 % |
+| 24 px | 71.5 % | 3·10⁻⁶ | 6.6 % |
+| 32 px | 79.2 % | 5·10⁻⁶ | 7.8 % |
+
+Visitor against visitor (both CCTV):
+
+| probe iod | TAR at 0.55 | FAR/pair at 0.55 | genuine below 0.35 (would split) |
+|---|---|---|---|
+| 18 px | 33.3 % | 2·10⁻⁶ | 20.8 % |
+| 24 px | 51.7 % | 2·10⁻⁶ | 14.7 % |
+| 32 px | 63.3 % | 8·10⁻⁶ | 13.3 % |
+
+Reading them: the visitor pool is searched 1:N, so 0.55 keeps a false join
+around 10⁻³ per sighting with a few hundred visitors, while a missed join
+only costs a duplicate the Owner can merge — precision first. The leak
+column is LFW's hard pairs (years apart, other poses); same-day camera
+faces of a household member score higher, and the echo rule removes the
+residue. Below 12 px the model is near chance (EER 25 % at 10 px), hence the
+match gate; 16 px is where it gets usable (EER 4.5 % on the CCTV set), hence
+the learn gate. Sharpness is computed and logged but not gated: at these sizes
+it only restates resolution.
+
+### Owner surfaces (HTTP 7044)
+
+| Route | Who | |
+|---|---|---|
+| `GET /visitor[?scope=named]` | Owner all; Guard named only | list with visit count, first/last seen, cameras, best sample |
+| `GET /visitor/{id}` | Owner; Guard named only (no visit history) | samples, last 200 visits, visit pattern |
+| `PATCH /visitor/{id}` `{name?, category?, note?}` | Owner | naming makes it `known` (trusted unless `watchlist`); an empty name returns it to the unnamed pool and its retention |
+| `POST /visitor/{id}/merge` `{sourceIds}` | Owner | samples and visits move, sources are deleted, the result is trimmed to the best 8 |
+| `POST /visitor/{id}/split` `{sampleIds}` | Owner | the samples become a new "Persona #N" with one visit per sample |
+| `DELETE /visitor/{id}`, `DELETE /visitor/{id}/samples/{sampleId}` | Owner | embeddings, crops, visits and capabilities go (hard delete: visitors are not synced) |
+| `GET /visitor/{id}/crop-preview[?sampleId=]` → `GET /visitor-crop/{token}/content` | Owner; Guard for named | the portrait pattern: a 60 s, requester-bound, one-use capability, consumed before the object is read, journaled as `UserAction::Read` |
+| `GET/PATCH /visitor-settings` `{unnamedRetentionDays}` | Owner | 1–60 days, default 30 (`visitor_setting`) |
+
+Household persons never appear here, and merges or splits with one are refused
+(they are not visitors). Every name/type change, merge, split, delete and
+crop view is a journal event with safe metadata only (`named`, `category`,
+counts — never a vector, a key or a picture).
+
+### Retention and sync
+
+`CandidateRetentionService` now retires **unnamed visitors**
+(`user_id IS NULL AND name = ''`) unseen for the Owner's
+`unnamed_retention_days` (30 by default, never more than 60 — the directive's
+ceiling), or all of them while recognition is off, together with their
+samples, crops, visits and capabilities. `[retention] candidate_days` is gone.
+Named visitors stay until the Owner deletes them. The `person` sync pull and
+its live adds now carry household persons only: visitors are Owner data behind
+HTTP, never on Resident or Guard phones.
+
+`GetPerson` adds, for a visitor, `category`, `visits`, first/last seen, the
+number and `VisitPattern` (weekdays reached by ≥ 30 % of the last 60 visits,
+and the usual hour when the middle half of the visits lies within 3 h), which
+guard turns into "es el repartidor que suele venir los martes".
+
+### Tests
+
+`identity-visitor-policy-test` (pure: every branch of `decide`, best-K and
+outlier admission, the weekday/hour pattern) and `identity-visitor-test` (live
+loop, real model, the NASA fixtures as camera crops: off → nothing; a first
+sighting creates Persona #1; another photo two minutes later joins it without
+a new visit; the next day is a new visit; the household member is recognised
+and gets no camera sample; Owner names, merges, refuses a household merge,
+splits, deletes; the index stays in step with the canonical rows; turning
+recognition off purges the unnamed and stops matching).

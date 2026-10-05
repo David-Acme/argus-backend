@@ -132,7 +132,13 @@ TEST_CASE("identity schema applies cleanly to an in-memory database")
       "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE "
       "'idx_%' AND name NOT LIKE 'idx_change_outbox%' "
       "AND name NOT LIKE 'idx_voice%' ORDER BY name");
-  CHECK(indexes.size() == 13);
+  CHECK(indexes.size() == 16);
+
+  const auto visitors = queryColumn(db.get(),
+      "SELECT name FROM sqlite_master WHERE name IN ('person_visit', "
+      "'person_crop_capability', 'visitor_setting', 'idx_person_visit_person', "
+      "'idx_person_visit_open', 'idx_person_crop_capability_lookup')");
+  CHECK(visitors.size() == 6);
 
   const auto voices = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE name IN ('voice_profile', "

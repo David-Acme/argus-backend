@@ -90,9 +90,6 @@ window_days = 30
 max_profile_samples = 40
 call_idle_minutes = 5
 
-[retention]
-candidate_days = 30
-
 [invitation]
 lifetime_seconds = 1800
 

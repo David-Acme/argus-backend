@@ -102,6 +102,17 @@ argus-identity/
     services/           InvitationFeatureService: create, resolve, redeem
   src/feature/pairing/
     controllers/ dtos/  the /pairing routes and their DTOs
+  src/feature/visitor/
+    controllers/ dtos/  the /visitor, /visitor-settings and /visitor-crop routes
+    repositories/       visitor (gallery reads, merge/split/delete), sighting
+                        (the strand-side writes of one sighting) and
+                        crop-capability
+    services/           VisitorRecognitionService (camera sightings),
+                        VisitorFeatureService (the Owner's gallery),
+                        visitor-policy (pure thresholds), visit-pattern
+  src/feature/face-upgrade/
+                        re-embeds an account's legacy face from its portrait
+                        when the face model changes
   src/feature/voiceprint/
     controllers/ dtos/  the owner's /voiceprint routes and their DTO
     repositories/       voice-profile, voice-sample and voice-device (this

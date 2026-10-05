@@ -26,6 +26,7 @@ public:
   drogon::Task<bool> promote(int64_t id,
                              drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<bool> remove(int64_t id) const;
+  static void ensureColumns();
 
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;

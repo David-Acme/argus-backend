@@ -108,6 +108,31 @@ std::optional<std::pair<int64_t, float>> FaceDB::search(const float* query)
   return std::make_pair(winner->first, winner->second);
 }
 
+std::vector<FaceNeighbour> FaceDB::nearest(const FaceNearestInput& input)
+{
+  std::scoped_lock lock(vecMutex());
+  sqlite3* db = vecDb_.handle();
+  if (!db || input.query == nullptr || input.topK <= 0)
+    return {};
+  const auto hits = repository_.searchVec(
+      db, {.query = input.query, .dims = kEmbeddingDim, .topK = input.topK});
+  std::map<int64_t, float> bestByPerson;
+  for (const auto& hit : hits) {
+    const float score = 1.0F - hit.distance;
+    if (!std::isfinite(score))
+      continue;
+    auto [it, inserted] = bestByPerson.try_emplace(hit.personId, score);
+    if (!inserted)
+      it->second = std::max(it->second, score);
+  }
+  std::vector<FaceNeighbour> neighbours;
+  neighbours.reserve(bestByPerson.size());
+  for (const auto& [personId, score] : bestByPerson)
+    neighbours.push_back({.personId = personId, .score = score});
+  std::ranges::sort(neighbours, std::ranges::greater{}, &FaceNeighbour::score);
+  return neighbours;
+}
+
 void FaceDB::remove(int64_t personId)
 {
   std::scoped_lock lock(vecMutex());

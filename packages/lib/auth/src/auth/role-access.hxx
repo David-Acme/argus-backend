@@ -190,6 +190,13 @@ inline constexpr std::array<AuthRouteAccess, 4> kPrivacyAccess = {{
     {.path = "/privacy/household", .method = drogon::Patch, .roles = kOwnerOnly},
 }};
 
+inline constexpr std::array<AuthRouteAccess, 4> kVisitorAccess = {{
+    {.path = "/visitor", .method = drogon::Get, .roles = roleBit(UserRole::Guard)},
+    {.path = "/visitor/{id}", .method = drogon::Get, .roles = roleBit(UserRole::Guard)},
+    {.path = "/visitor/{id}/crop-preview", .method = drogon::Get, .roles = roleBit(UserRole::Guard)},
+    {.path = "/visitor-crop/{id}/content", .method = drogon::Get, .roles = roleBit(UserRole::Guard)},
+}};
+
 inline constexpr std::string_view kRouteSegment = "{id}";
 
 inline bool routeMatches(std::string_view pattern, std::string_view path)
@@ -366,18 +373,25 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
     return route != kRtcAccess.end() && (route->roles & roleBit(role)) != 0;
   }
 
-  if (path.starts_with("/sync/")) {
-    const auto route = std::ranges::find_if(kSyncAccess, [&](const AuthRouteAccess& entry) {
-      return entry.path == path && entry.method == method;
-    });
-    return route != kSyncAccess.end() && (route->roles & roleBit(role)) != 0;
-  }
-
   if (path.starts_with("/privacy")) {
     const auto route = std::ranges::find_if(kPrivacyAccess, [&](const AuthRouteAccess& entry) {
       return entry.path == path && entry.method == method;
     });
     return route != kPrivacyAccess.end() && (route->roles & roleBit(role)) != 0;
+  }
+
+  if (path.starts_with("/visitor")) {
+    const auto route = std::ranges::find_if(kVisitorAccess, [&](const AuthRouteAccess& entry) {
+      return entry.method == method && routeMatches(entry.path, path);
+    });
+    return route != kVisitorAccess.end() && (route->roles & roleBit(role)) != 0;
+  }
+
+  if (path.starts_with("/sync/")) {
+    const auto route = std::ranges::find_if(kSyncAccess, [&](const AuthRouteAccess& entry) {
+      return entry.path == path && entry.method == method;
+    });
+    return route != kSyncAccess.end() && (route->roles & roleBit(role)) != 0;
   }
 
   if (path.rfind("/guard", 0) == 0) {

@@ -4,7 +4,6 @@ argus_module(NAME identity-retention
         services/candidate-retention-service.cc
     INCLUDES ../..
     DEPENDS
-        argus::identity-config
         argus::identity-shared
         argus::lib::runtime
         argus::lib::sqlite

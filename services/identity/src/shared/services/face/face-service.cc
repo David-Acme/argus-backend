@@ -203,12 +203,21 @@ FaceService::runDetector(const RunDetectorInput& input)
   const int height = input.height;
 
   constexpr int kTarget = 640;
-  const float invScaleX = static_cast<float>(width) / kTarget;
-  const float invScaleY = static_cast<float>(height) / kTarget;
+  const float scale =
+      static_cast<float>(kTarget) / static_cast<float>(std::max(width, height));
+  const int resizedWidth =
+      std::clamp(static_cast<int>(std::lround(width * scale)), 1, kTarget);
+  const int resizedHeight =
+      std::clamp(static_cast<int>(std::lround(height * scale)), 1, kTarget);
+  const float invScaleX = static_cast<float>(width) / resizedWidth;
+  const float invScaleY = static_cast<float>(height) / resizedHeight;
 
-  ncnn::Mat detIn =
+  const ncnn::Mat resized =
       ncnn::Mat::from_pixels_resize(imageData, ncnn::Mat::PIXEL_RGB, width,
-                                    height, kTarget, kTarget);
+                                    height, resizedWidth, resizedHeight);
+  ncnn::Mat detIn;
+  ncnn::copy_make_border(resized, detIn, 0, kTarget - resizedHeight, 0,
+                         kTarget - resizedWidth, ncnn::BORDER_CONSTANT, 0.0F);
 
   ncnn::Extractor detEx = impl.detector->create_extractor();
   detEx.input("data", detIn);
@@ -255,8 +264,8 @@ FaceService::runDetector(const RunDetectorInput& input)
           float score = cls.channel(2 + a)[r * cls.w + c];
           if (score < scoreThresh)
             continue;
-          const float acx = 8.0F + c * stride;
-          const float acy = 8.0F + r * stride;
+          const float acx = 8.0F + static_cast<float>(c * stride);
+          const float acy = 8.0F + static_cast<float>(r * stride);
           const float dx = bbox.channel(a * 4).row(r)[c];
           const float dy = bbox.channel(a * 4 + 1).row(r)[c];
           const float dw = bbox.channel(a * 4 + 2).row(r)[c];

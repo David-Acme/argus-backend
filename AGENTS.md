@@ -243,6 +243,14 @@ the roles that read only their own row), `tableFromPath(path)`,
   Consume atomically before storage retrieval; do not expose bucket paths,
   signed URLs, credentials, binary or token in logs. A successful view writes a
   `UserAction::Read` audit event with safe metadata only.
+- Recurring visitors (persons without a user) are Owner data behind
+  `/visitor` (Guard reads named ones only); they never travel in the `person`
+  sync stream, which carries household persons only. Their face crops follow
+  the portrait rule: private objects, read once through
+  `/visitor/{id}/crop-preview` → `/visitor-crop/{token}/content`. Nothing
+  about visitors runs until the Owner turns on
+  `household_privacy.visitor_recognition` with the acknowledgement; unnamed
+  visitors expire after the Owner's 1–60 days (`services/identity/CONTEXT.md`).
 - Keep invitation creation/revoke/redemption, user creation/role/deactivation,
   and portrait viewing in the server audit history. Do not put audit-only
   private metadata in the sync stream.

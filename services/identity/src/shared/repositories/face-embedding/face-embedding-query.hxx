@@ -42,12 +42,7 @@ inline constexpr std::string_view VEC_STALE =
     "SELECT rowid FROM face_vec "
     "WHERE rowid NOT IN (SELECT id FROM face_embedding WHERE model = ?)";
 
-inline constexpr std::string_view HAS_MODEL_COLUMN =
-    "SELECT COUNT(*) AS total FROM pragma_table_info('face_embedding') "
-    "WHERE name = 'model'";
 
-inline constexpr std::string_view ADD_MODEL_COLUMN =
-    "ALTER TABLE face_embedding ADD COLUMN model TEXT NOT NULL DEFAULT 'legacy'";
 }
 
 struct FaceEmbeddingCreateInput

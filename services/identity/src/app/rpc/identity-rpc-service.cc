@@ -19,6 +19,8 @@
 #include <sqlite/transaction.hxx>
 #include <sync/identity-change-sink.hxx>
 #include <shared/vocabulary/person-status.hxx>
+#include <identity/person-category.hxx>
+#include <feature/visitor/services/visit-pattern.hxx>
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 #include <auth/user-role.hxx>
@@ -387,6 +389,71 @@ std::optional<std::pair<int64_t, float>> searchFace(
 }
 }
 
+drogon::Task<void>
+IdentityRpcService::describeHousehold(const DescribeHouseholdInput& input)
+{
+  auto* response = input.response;
+  const auto person = co_await personRepository_.findById(input.personId);
+  if (!person)
+    co_return;
+  response->set_trusted(person->status == PersonStatus::Known &&
+                        person->category != PersonCategory::Watchlist);
+  if (!person->userId)
+    co_return;
+  const auto user = co_await userRepository_.findById(*person->userId);
+  if (user && !user->isActive)
+    response->set_account_disabled(true);
+  if (!user || !user->isActive)
+    co_return;
+  response->set_role(userRoleToString(user->role));
+  if (!input.forCamera ||
+      (co_await privacyGate_.effectiveFor(user->id)).faceCameras) {
+    response->set_user_id(user->id);
+    response->set_name(user->name);
+    response->set_last_name(user->lastName);
+  }
+}
+
+drogon::Task<void>
+IdentityRpcService::identifySighting(const IdentifySightingInput& input)
+{
+  auto* response = input.response;
+  const auto result = co_await visitorRecognition_.observe(
+      {.image = input.image, .cameraId = input.cameraId, .observedAt = input.observedAt});
+  response->set_face_found(result.faceFound);
+  if (!result.faceFound)
+    co_return;
+  response->set_face_quality(std::string(face_quality::verdictToString(result.quality)));
+  const auto outcome = result.decision.outcome;
+  if (outcome == SightingOutcome::Household) {
+    response->set_matched(true);
+    response->set_person_id(result.decision.personId);
+    response->set_confidence(result.decision.score);
+    co_await describeHousehold({.personId = result.decision.personId,
+                                .forCamera = true,
+                                .response = response});
+    co_return;
+  }
+  if (outcome != SightingOutcome::Visitor && outcome != SightingOutcome::NewVisitor)
+    co_return;
+  response->set_matched(true);
+  response->set_person_id(result.decision.personId);
+  response->set_confidence(result.decision.score);
+  response->set_visitor(true);
+  response->set_created(result.created);
+  response->set_visits(static_cast<int32_t>(result.visits));
+  if (result.visitorNumber)
+    response->set_visitor_number(*result.visitorNumber);
+  response->set_category(std::string(personCategoryToString(result.category)));
+  response->set_trusted(result.known && result.named &&
+                        personCategoryLowersRisk(result.category));
+  if (result.named) {
+    const auto person = co_await personRepository_.findById(result.decision.personId);
+    if (person)
+      response->set_name(person->name);
+  }
+}
+
 grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
     grpc::CallbackServerContext* context,
     const argus::identity::v1::IdentifyPersonRequest* request,
@@ -409,13 +476,25 @@ grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
 
   const bool forCamera =
       request->purpose() == argus::identity::v1::IDENTIFY_PURPOSE_CAMERA;
+  const std::optional<argus::identity::v1::SightingContext> sighting =
+      forCamera && request->has_sighting()
+          ? std::optional<argus::identity::v1::SightingContext>(request->sighting())
+          : std::nullopt;
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;
-  drogon::app().getLoop()->queueInLoop([this, reactor, image, forCamera,
+  drogon::app().getLoop()->queueInLoop([this, reactor, image, forCamera, sighting,
                                         responseWriter]() {
-    drogon::async_run([this, reactor, image, forCamera,
+    drogon::async_run([this, reactor, image, forCamera, sighting,
                        responseWriter]() -> drogon::Task<void> {
       try {
+        if (sighting) {
+          co_await identifySighting({.image = image,
+                                     .cameraId = sighting->camera_id(),
+                                     .observedAt = sighting->observed_at(),
+                                     .response = responseWriter});
+          reactor->Finish(grpc::Status::OK);
+          co_return;
+        }
         const auto face =
             co_await FaceService::instance().extractImageAsync(image);
         responseWriter->set_face_found(face.has_value());
@@ -430,24 +509,9 @@ grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
         responseWriter->set_matched(true);
         responseWriter->set_person_id(match->first);
         responseWriter->set_confidence(match->second);
-        const auto person = co_await personRepository_.findById(match->first);
-        if (person) {
-          responseWriter->set_trusted(person->status == PersonStatus::Known);
-        }
-        if (person && person->userId) {
-          const auto user = co_await userRepository_.findById(*person->userId);
-          if (user && !user->isActive)
-            responseWriter->set_account_disabled(true);
-          if (user && user->isActive) {
-            responseWriter->set_role(userRoleToString(user->role));
-            if (!forCamera ||
-                (co_await privacyGate_.effectiveFor(user->id)).faceCameras) {
-              responseWriter->set_user_id(user->id);
-              responseWriter->set_name(user->name);
-              responseWriter->set_last_name(user->lastName);
-            }
-          }
-        }
+        co_await describeHousehold({.personId = match->first,
+                                    .forCamera = forCamera,
+                                    .response = responseWriter});
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
@@ -493,6 +557,12 @@ grpc::ServerUnaryReactor* IdentityRpcService::EnrollPerson(
           std::shared_ptr<drogon::orm::Transaction> transaction;
           int64_t faceEmbeddingId = 0;
           try {
+            if (!(co_await privacyGate_.household()).visitorRecognition) {
+              reactor->Finish(grpc::Status(
+                  grpc::StatusCode::FAILED_PRECONDITION,
+                  "recognition of recurring visitors is turned off"));
+              co_return;
+            }
             face = co_await FaceService::instance().extractImageAsync(image);
             if (!face) {
               reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
@@ -811,12 +881,30 @@ grpc::ServerUnaryReactor* IdentityRpcService::GetPerson(
             payload->set_alias(person->alias);
             payload->set_observation(person->observation);
           }
-          payload->set_trusted(person->status == PersonStatus::Known);
+          payload->set_trusted(person->status == PersonStatus::Known &&
+                               person->category != PersonCategory::Watchlist);
           if (person->userId) {
             const auto user =
                 co_await userRepository_.findById(*person->userId);
             if (user && user->isActive)
               payload->set_role(userRoleToString(user->role));
+          }
+          else {
+            payload->set_category(
+                std::string(personCategoryToString(person->category)));
+            payload->set_visits(static_cast<int32_t>(person->visitCount));
+            payload->set_first_seen_at(person->firstSeenAt);
+            payload->set_last_seen_at(person->lastSeenAt);
+            if (person->visitorNumber)
+              payload->set_visitor_number(*person->visitorNumber);
+            const auto times = co_await visitorRepository_.visitTimes(person->id);
+            const auto summary = visit_pattern::summarize(times);
+            auto* pattern = payload->mutable_pattern();
+            for (const int day : summary.weekdays)
+              pattern->add_weekdays(day);
+            if (summary.usualHour)
+              pattern->set_usual_hour(*summary.usualHour);
+            pattern->set_visits_considered(summary.visitsConsidered);
           }
           for (const auto& tag :
                co_await personTagRepository_.findByPerson(personId))

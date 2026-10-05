@@ -459,3 +459,24 @@ TEST_CASE("every role presses panic and reads the safety state; only disarmers k
   CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guest, .path = "/guard/safety/pin", .method = drogon::Put}));
   CHECK(role_access::hasHttpAccess({.role = UserRole::Owner, .path = "/guard/safety", .method = drogon::Patch}));
 }
+
+TEST_CASE("guards read named visitors and their pictures; only owners manage the gallery")
+{
+  using role_access::hasHttpAccess;
+  CHECK(hasHttpAccess({.role = UserRole::Guard, .path = "/visitor", .method = drogon::Get}));
+  CHECK(hasHttpAccess({.role = UserRole::Guard, .path = "/visitor/12", .method = drogon::Get}));
+  CHECK(hasHttpAccess(
+      {.role = UserRole::Guard, .path = "/visitor/12/crop-preview", .method = drogon::Get}));
+  CHECK(hasHttpAccess(
+      {.role = UserRole::Guard, .path = "/visitor-crop/abc/content", .method = drogon::Get}));
+  CHECK_FALSE(hasHttpAccess({.role = UserRole::Guard, .path = "/visitor/12", .method = drogon::Patch}));
+  CHECK_FALSE(hasHttpAccess({.role = UserRole::Guard, .path = "/visitor/12", .method = drogon::Delete}));
+  CHECK_FALSE(
+      hasHttpAccess({.role = UserRole::Guard, .path = "/visitor/12/merge", .method = drogon::Post}));
+  CHECK_FALSE(hasHttpAccess({.role = UserRole::Guard, .path = "/visitor-settings", .method = drogon::Get}));
+  for (const auto role : {UserRole::Resident, UserRole::Guest}) {
+    CHECK_FALSE(hasHttpAccess({.role = role, .path = "/visitor", .method = drogon::Get}));
+    CHECK_FALSE(hasHttpAccess({.role = role, .path = "/visitor/12", .method = drogon::Get}));
+  }
+  CHECK(hasHttpAccess({.role = UserRole::Owner, .path = "/visitor-settings", .method = drogon::Patch}));
+}

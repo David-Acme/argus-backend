@@ -15,7 +15,7 @@ struct CatalogEntry
   const char* message;
 };
 
-constexpr std::array<CatalogEntry, 32> kCatalog{{
+constexpr std::array<CatalogEntry, 38> kCatalog{{
     {.name = "FaceNotRecognized",
      .definition = &IdentityErrors::FaceNotRecognized,
      .code = ErrorCode::Unauthorized,
@@ -176,6 +176,36 @@ constexpr std::array<CatalogEntry, 32> kCatalog{{
      .code = ErrorCode::NotFound,
      .status = 404,
      .message = "Argus has not learned this person's voice"},
+    {.name = "VisitorNotFound",
+     .definition = &IdentityErrors::VisitorNotFound,
+     .code = ErrorCode::NotFound,
+     .status = 404,
+     .message = "This person is not in the gallery"},
+    {.name = "VisitorSampleNotFound",
+     .definition = &IdentityErrors::VisitorSampleNotFound,
+     .code = ErrorCode::NotFound,
+     .status = 404,
+     .message = "This face sample is not part of the person"},
+    {.name = "VisitorMergeInvalid",
+     .definition = &IdentityErrors::VisitorMergeInvalid,
+     .code = ErrorCode::BadRequest,
+     .status = 422,
+     .message = "Choose other people to merge into this one"},
+    {.name = "VisitorSplitInvalid",
+     .definition = &IdentityErrors::VisitorSplitInvalid,
+     .code = ErrorCode::BadRequest,
+     .status = 422,
+     .message = "Choose some, but not all, of the person's face samples"},
+    {.name = "VisitorCropUnavailable",
+     .definition = &IdentityErrors::VisitorCropUnavailable,
+     .code = ErrorCode::NotFound,
+     .status = 404,
+     .message = "The face picture is unavailable"},
+    {.name = "VisitorRecognitionOff",
+     .definition = &IdentityErrors::VisitorRecognitionOff,
+     .code = ErrorCode::Conflict,
+     .status = 409,
+     .message = "Recognition of recurring visitors is turned off"},
 }};
 
 constexpr std::size_t kMaxMessageBytes = 1024;
@@ -190,7 +220,7 @@ TEST_CASE("the identity catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 32);
+  CHECK(kCatalog.size() == 38);
 }
 
 TEST_CASE("every identity entry is legal on the wire")

@@ -23,11 +23,6 @@ constexpr double kSweepIntervalSeconds = 6.0 * 3600.0;
 
 }
 
-CandidateRetentionService::CandidateRetentionService(IdentityRetentionConfig config)
-    : config_(config)
-{
-}
-
 CandidateRetentionService::~CandidateRetentionService()
 {
   stop();
@@ -35,10 +30,6 @@ CandidateRetentionService::~CandidateRetentionService()
 
 void CandidateRetentionService::start()
 {
-  if (config_.candidateDays <= 0) {
-    LOG_INFO << "Candidate retention disabled: unknown faces are kept";
-    return;
-  }
   auto* loop = drogon::app().getLoop();
   firstTimer_ = loop->runAfter(kFirstSweepSeconds, [this] { launch(); });
   timer_ = loop->runEvery(kSweepIntervalSeconds, [this] { launch(); });
@@ -63,8 +54,7 @@ void CandidateRetentionService::launch()
       const size_t retired = co_await sweep(std::time(nullptr));
       if (retired > 0)
         LOG_INFO << "Candidate retention: retired " << retired
-                 << " unknown face(s) unseen for " << config_.candidateDays
-                 << " day(s)";
+                 << " unnamed visitor(s)";
     }
     catch (const std::exception& e) {
       LOG_WARN << "Candidate retention: sweep failed: " << e.what();
@@ -73,11 +63,17 @@ void CandidateRetentionService::launch()
   });
 }
 
+drogon::Task<int64_t> CandidateRetentionService::cutoffAt(int64_t now) const
+{
+  if (!(co_await privacyGate_.household()).visitorRecognition)
+    co_return now + 1;
+  const auto setting = co_await settingRepository_.find();
+  co_return now - setting.unnamedRetentionDays * kSecondsPerDay;
+}
+
 drogon::Task<size_t> CandidateRetentionService::sweep(int64_t now)
 {
-  if (config_.candidateDays <= 0)
-    co_return 0;
-  const int64_t cutoff = now - config_.candidateDays * kSecondsPerDay;
+  const int64_t cutoff = co_await cutoffAt(now);
   size_t total = 0;
   for (int batch = 0; batch < kMaxBatchesPerSweep; ++batch) {
     const size_t retired = co_await retireBatch(cutoff);
@@ -125,5 +121,7 @@ drogon::Task<size_t> CandidateRetentionService::retireBatch(int64_t cutoff)
   co_await BlockingTask<void>([ids = std::move(purged.embeddingIds)] {
     FaceService::instance().faceDb().removeEmbeddings(ids);
   });
+  for (const auto& key : purged.cropKeys)
+    co_await cropStore_.remove(key);
   co_return retired.size();
 }
