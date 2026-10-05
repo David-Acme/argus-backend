@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+#include <unistd.h>
+
 namespace
 {
 Json::Value drogonConfig(const ListenerConfig& listener)
@@ -50,6 +52,14 @@ int main()
 {
   log_output::flushEachLine();
   ConfigService::load("config.toml");
+
+  try {
+    DeviceFilter::requireFingerprintSecret();
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
 
   const ListenerConfig listener = SettingsConfig::resolveListener();
   const auto owners = SettingsConfig::resolveOwners();

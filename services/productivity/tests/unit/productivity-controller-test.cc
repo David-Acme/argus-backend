@@ -808,6 +808,23 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(cleared["location"] == "");
   CHECK(cleared["description"] == "");
   CHECK(cleared["endsAt"].isNull());
+  CHECK(cleared["projectId"].asInt64() == projectId);
+  const auto nullProject = patchEvent(R"({"projectId":null,"title":"Still linked"})");
+  CHECK(nullProject["title"] == "Still linked");
+  CHECK(nullProject["projectId"].asInt64() == projectId);
+
+  Json::Value zeroProject;
+  zeroProject["projectId"] = static_cast<Json::Int64>(0);
+  auto zeroProjectReq = drogon::HttpRequest::newHttpJsonRequest(zeroProject);
+  setActor({.req = zeroProjectReq, .sub = 42, .role = UserRole::Owner});
+  const auto zeroRefused = refusalOf(eventController.update(zeroProjectReq, eventId));
+  if (!zeroRefused) {
+    FAIL("expected a value in zeroRefused");
+    return;
+  }
+  CHECK(zeroRefused->status == 404);
+  CHECK(zeroRefused->message == "Project not found");
+  CHECK(patchEvent(R"({"title":"Still linked"})")["projectId"].asInt64() == projectId);
 
   const auto eventGone =
       drogon::sync_wait(eventController.remove(ownerRequest(), eventId));

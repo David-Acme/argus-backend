@@ -45,7 +45,18 @@ own `productivity.db`.
   service stopped: create the new table from the schema under a temporary
   name, `INSERT ... SELECT` the rows, check `PRAGMA foreign_key_check`, drop
   the old table, rename, recreate the indexes. Removing a deleted user's
-  rows is not wired: this service consumes no identity change feed; the
+  rows is not wired, on purpose (2026-10-05): identity never deletes a user,
+  it deactivates them (`DELETE /user/{id}` sets `isActive: false`), and the
+  Owner can re-enable the account and expects its projects, tasks, events
+  and memberships back. The identity catalog feed
+  (`argus.identity.v1.change`, `kind: identity`, `table: user`) carries
+  `deleted: false` for every user row it publishes today. If identity ever
+  gains a hard delete, the consumer belongs here, durable on
+  `ARGUS_IDENTITY_CHANGE` like argus-notification's
+  `notification-identity-user`, and it must decide ownership first: a
+  project owned by the deleted user either moves to an Owner or goes with its
+  tasks and members, a `project_member` or `calendar_event_share` row naming
+  them is soft-deleted so its tombstone reaches the other devices. The
   `ON DELETE CASCADE` toward `user` was never effective.
 - **Write-side feature surface, one module per feature**: the calendar-event,
   calendar-event-share, project, project-member and project-task trees are
@@ -358,7 +369,9 @@ scoping the other productivity tables have.
 
 The gRPC listener and the agenda sweep register with `shutdown_signal`
 before `run()`: `ProductivityRpcServer::requestStop` shuts the server down
-with a 2 s deadline on a thread of its own while the loop keeps answering,
+with a 2 s deadline on a thread of its own while the loop keeps answering
+(through `argus::client::GrpcServerDrain` from `packages/lib/grpc` since
+2026-10-05, the copy sync and notification share),
 and `AgendaSweeper` stops taking sweeps and reports drained once the running
 one returns. Before, the server was shut down only after the loop stopped,
 with no deadline, and a sweep could still be inside the database when
@@ -404,3 +417,18 @@ the spoken lines per user. Recurring events are announced for their stored
 `starts_at` only; expanding `recurrence_rule` into occurrences is an open
 item. `agenda.enabled = false`, or no notification target/credential, leaves
 the announcer off.
+
+## A calendar event's project must exist (2026-10-05, review finding D5)
+
+`POST /calendar-event` and `PATCH /calendar-event/{id}` check a `projectId`
+they are given against `project` inside the write's transaction and refuse an
+unknown one with 404 `Project not found` (`requireProject`). A body without
+`projectId`, or with `"projectId": null`, leaves the link as it is: the DTOs
+read the field only when it is an integer. There has never been an unlink
+path (before the check, `0` was stored as a dangling id, or refused by the
+foreign key), and the app sends no `projectId` for calendar events at all
+(`calendar-event-form.tsx` builds the body from title, place, notes, day and
+times), so the check breaks nothing it uses. `productivity-controller-test`
+pins all three: `null` keeps the project, an absent field keeps it, `0`
+answers 404 and changes nothing. Unlinking, if the app ever needs it, is an
+additive `"projectId": null` meaning "clear", like `endsAt`.

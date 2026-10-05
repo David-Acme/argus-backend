@@ -80,6 +80,14 @@ int main()
 
   ConfigService::load("config.toml");
 
+  try {
+    DeviceFilter::requireFingerprintSecret();
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+
   const ProductivityDbConfig productivityDb = ProductivityConfig::resolveDb();
   const ListenerConfig listener = ProductivityConfig::resolveListener();
 

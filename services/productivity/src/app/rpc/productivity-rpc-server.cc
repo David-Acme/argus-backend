@@ -1,44 +1,55 @@
 #include "productivity-rpc-server.hxx"
 
+#include <grpc/grpc-server-drain.hxx>
 #include <http/listener-config.hxx>
+
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <mutex>
+#include <memory>
 #include <stdexcept>
-#include <thread>
+#include <utility>
 
 namespace
 {
 constexpr uint16_t kDefaultGrpcPort = 7037;
 constexpr std::chrono::milliseconds kDrainDeadline{2000};
+
+std::string listenerAddress()
+{
+  const GrpcListenerConfig listener =
+      GrpcListenerConfig::resolve(kDefaultGrpcPort);
+  return listener.host + ":" + std::to_string(listener.port);
+}
+
+std::unique_ptr<grpc::Server> buildServer(const ProductivityRpcInput& input,
+                                          const std::string& address)
+{
+  if (input.services.empty() ||
+      std::ranges::any_of(input.services, [](const grpc::Service* service) {
+        return service == nullptr;
+      }))
+    throw std::invalid_argument("Invalid productivity RPC configuration");
+  grpc::ServerBuilder builder;
+  builder.AddListeningPort(address, grpc::InsecureServerCredentials());
+  for (grpc::Service* service : input.services)
+    builder.RegisterService(service);
+  return builder.BuildAndStart();
+}
 }
 
 struct ProductivityRpcServer::Impl
 {
-  explicit Impl(const ProductivityRpcInput& input)
+  explicit Impl(const ProductivityRpcInput& input) : address_(listenerAddress())
   {
-    if (input.services.empty() ||
-        std::ranges::any_of(input.services, [](const grpc::Service* service) {
-          return service == nullptr;
-        }))
-      throw std::invalid_argument("Invalid productivity RPC configuration");
-    const GrpcListenerConfig listener =
-        GrpcListenerConfig::resolve(kDefaultGrpcPort);
-    address_ = listener.host + ":" + std::to_string(listener.port);
-    grpc::ServerBuilder builder;
-    builder.AddListeningPort(address_, grpc::InsecureServerCredentials());
-    for (grpc::Service* service : input.services)
-      builder.RegisterService(service);
-    server_ = builder.BuildAndStart();
+    auto server = buildServer(input, address_);
+    listening_ = server != nullptr;
+    drain_ = std::make_unique<argus::client::GrpcServerDrain>(std::move(server), kDrainDeadline);
   }
 
   std::string address_;
-  std::unique_ptr<grpc::Server> server_;
-  std::mutex mutex_;
-  std::thread stopper_;
-  std::atomic<bool> finished_{false};
+  bool listening_{false};
+  std::unique_ptr<argus::client::GrpcServerDrain> drain_;
 };
 
 ProductivityRpcServer::ProductivityRpcServer(const ProductivityRpcInput& input)
@@ -50,7 +61,7 @@ ProductivityRpcServer::~ProductivityRpcServer() { shutdown(); }
 
 bool ProductivityRpcServer::listening() const
 {
-  return impl_->server_ != nullptr;
+  return impl_->listening_;
 }
 
 const std::string& ProductivityRpcServer::address() const
@@ -60,29 +71,15 @@ const std::string& ProductivityRpcServer::address() const
 
 void ProductivityRpcServer::requestStop()
 {
-  const std::scoped_lock lock(impl_->mutex_);
-  if (impl_->stopper_.joinable())
-    return;
-  if (!impl_->server_) {
-    impl_->finished_.store(true, std::memory_order_release);
-    return;
-  }
-  impl_->stopper_ = std::thread([impl = impl_.get()] {
-    impl->server_->Shutdown(std::chrono::system_clock::now() + kDrainDeadline);
-    impl->finished_.store(true, std::memory_order_release);
-  });
+  impl_->drain_->requestStop();
 }
 
 bool ProductivityRpcServer::drained() const
 {
-  return impl_->finished_.load(std::memory_order_acquire);
+  return impl_->drain_->drained();
 }
 
 void ProductivityRpcServer::shutdown()
 {
-  requestStop();
-  const std::scoped_lock lock(impl_->mutex_);
-  if (impl_->stopper_.joinable())
-    impl_->stopper_.join();
-  impl_->server_.reset();
+  impl_->drain_->stop();
 }
