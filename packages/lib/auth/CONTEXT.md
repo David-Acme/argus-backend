@@ -155,7 +155,10 @@ and let a guest through. Since the audit:
 `auth.rpc_port` as the fallback, default `127.0.0.1:7043`) and
 `filterIdentityClient()` resolves `identity.target` the same way
 (`identity.rpc_host` / `identity.rpc_port`, default `127.0.0.1:7040`). Each
-client is cached per resolved target (the `voice-engine-seam` precedent), so a
+presents the service's own credential, `auth.credential` and
+`identity.credential`, falling back to the legacy `auth.rpc_secret` /
+`identity.rpc_secret` only while that credential is empty (2026-10-05 audit,
+#25). Each client is cached per resolved target, credential and secret (the `voice-engine-seam` precedent), so a
 config change picks up a new client and tests can point the chain at a dead
 port to prove fail-closed.
 

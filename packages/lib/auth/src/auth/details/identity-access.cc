@@ -27,16 +27,22 @@ std::shared_ptr<const IdentityClient> filterIdentityClient()
 {
   static std::mutex mutex;
   static std::string cachedTarget;
+  static std::string cachedCredential;
   static std::string cachedSecret;
   static std::shared_ptr<const IdentityClient> client;
 
   const auto target = resolveTarget();
+  const auto credential = ConfigService::getString("identity.credential");
   const auto secret = ConfigService::getString("identity.rpc_secret");
-  const std::lock_guard<std::mutex> lock(mutex);
-  if (!client || target != cachedTarget || secret != cachedSecret) {
+  const std::scoped_lock lock(mutex);
+  if (!client || target != cachedTarget || credential != cachedCredential ||
+      secret != cachedSecret) {
     cachedTarget = target;
+    cachedCredential = credential;
     cachedSecret = secret;
-    client = std::make_shared<IdentityClient>(target, secret);
+    client = std::make_shared<IdentityClient>(
+        target, argus::client::PeerCredential{.credential = credential,
+                                              .fleetSecret = secret});
   }
   return client;
 }

@@ -104,9 +104,13 @@ header: the in-package suite, two in `packages/lib/auth`, five in
 - The session and device-credential legs are NOT here: `validateToken` and
   `checkDeviceCredential` belong to `packages/clients/auth`, since argus-auth
   owns the session tables (3b).
-- On the wire: the constructor's fleet secret rides every call as
-  `x-argus-fleet` (`addFleetSecret`, skipped when empty, so an unset secret
-  sends no header at all); `x-argus-user` and `x-argus-role` ride only
+- On the wire: the caller's own credential rides every call as
+  `x-argus-credential` (`addPeerCredential` over the
+  `argus::client::PeerCredential` the constructor takes, `IdentitySyncClientConfig`
+  and `VoiceprintClientConfig` carry); only when that credential is empty does
+  the legacy fleet secret ride instead as `x-argus-fleet`, and an unset pair
+  sends no header at all (2026-10-05 audit, #25). The string-only constructor
+  is that legacy form; `x-argus-user` and `x-argus-role` ride only
   `updateUserName`; `promotePerson` adds `authorization: Bearer <accessToken>`
   and `x-argus-device` only when the deviceHash is non-empty. One deadline per
   call, `kCallTimeoutMs` = 5000 ms (the sync pull's `kPullTimeoutMs` is the
@@ -115,8 +119,10 @@ header: the in-package suite, two in `packages/lib/auth`, five in
 - Config: `identity.target` in the eight
   `argus-deploy/config.{auth,camera,guard,llm,notification,productivity,sync,voice}.toml.example`
   trees (`argus-identity:7040` from the compose containers, `127.0.0.1:7040`
-  in a native-dev tree) with
-  `identity.rpc_secret` beside it in each, and in six project templates
+  in a native-dev tree) with the caller's own
+  `identity.credential` beside it in each (paired with identity's
+  `[rpc.callers]` entry for that caller; an older install's
+  `identity.rpc_secret` is still read as the legacy fallback), and in six project templates
   (`services/{auth,guard,notification,productivity,sync,voice}/config.toml.example`,
   all `127.0.0.1:7040`). The auth library and argus-auth also accept
   `identity.rpc_host` / `identity.rpc_port`

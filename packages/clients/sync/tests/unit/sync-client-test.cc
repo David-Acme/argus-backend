@@ -235,6 +235,27 @@ TEST_CASE("the fleet secret and the frozen frame are what this edge sends")
   server->Shutdown();
 }
 
+TEST_CASE("a paired client presents its own credential and never the fleet "
+          "secret")
+{
+  ScriptedSyncService service;
+  std::string target;
+  auto server = startServer(service, target);
+  REQUIRE(server);
+  const SyncClient client({.target = target,
+                           .credential = "identity-credential",
+                           .fleetSecret = kFleetSecret});
+  service.setAck(true);
+
+  CHECK(client.replaceRoleRooms(
+      {.userId = 12, .oldRole = "resident", .newRole = "guard"}));
+  const auto presented = service.seen();
+  CHECK(presented.at("x-argus-credential") == "identity-credential");
+  CHECK(presented.count("x-argus-fleet") == 0);
+
+  server->Shutdown();
+}
+
 TEST_CASE("the server's refusal is the answer, not the transport")
 {
   ScriptedSyncService service;

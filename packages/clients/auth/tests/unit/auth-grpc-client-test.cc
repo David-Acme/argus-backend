@@ -188,6 +188,28 @@ TEST_CASE("the fleet secret and the device leg are what this edge presents")
   server->Shutdown();
 }
 
+TEST_CASE("a paired client presents its own credential and never the fleet "
+          "secret")
+{
+  ScriptedAuthService service;
+  std::string target;
+  auto server = startServer(service, target);
+  REQUIRE(server);
+  const AuthClient client({.target = target,
+                           .credential = "camera-credential",
+                           .fleetSecret = kFleetSecret});
+
+  static_cast<void>(client.validateToken(
+      {.accessToken = "live", .deviceHash = "phone-hash",
+       .hasDeviceContext = true, .origin = "lan"}));
+  const auto headers = service.seen();
+  REQUIRE(headers.contains("x-argus-credential"));
+  CHECK(headers.at("x-argus-credential") == "camera-credential");
+  CHECK_FALSE(headers.contains("x-argus-fleet"));
+
+  server->Shutdown();
+}
+
 TEST_CASE("a listener that never answers is not an answer this edge invents")
 {
   ScriptedAuthService service;

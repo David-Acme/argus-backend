@@ -1,6 +1,7 @@
 #pragma once
 
 #include <argus/identity/v1/identity.grpc.pb.h>
+#include <grpc/grpc-client-base.hxx>
 #include <grpcpp/grpcpp.h>
 
 #include <memory>
@@ -75,7 +76,11 @@ struct PromotePersonInput
 class IdentityClient
 {
 public:
-  explicit IdentityClient(std::string target, std::string fleetSecret = {});
+  explicit IdentityClient(const std::string& target,
+                          std::string fleetSecret = {});
+
+  IdentityClient(const std::string& target,
+                 argus::client::PeerCredential credential);
 
   IdentityClient(const IdentityClient&) = delete;
   IdentityClient& operator=(const IdentityClient&) = delete;
@@ -127,5 +132,5 @@ private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::identity::v1::IdentityService::StubInterface>
       stub_;
-  std::string fleetSecret_;
+  argus::client::PeerCredential credential_;
 };

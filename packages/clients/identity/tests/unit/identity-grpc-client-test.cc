@@ -129,6 +129,27 @@ TEST_CASE("the fleet secret and the owner token are what this edge sends")
   server->Shutdown();
 }
 
+TEST_CASE("a paired client presents its own credential and never the fleet "
+          "secret")
+{
+  ScriptedIdentityService service;
+  std::string target;
+  auto server = startServer(service, target);
+  REQUIRE(server);
+  const IdentityClient client(
+      target, argus::client::PeerCredential{.credential = "guard-credential",
+                                            .fleetSecret = kFleetSecret});
+  service.promote.set_promoted(true);
+
+  CHECK(client.promotePerson(
+      {.personId = 12, .accessToken = "owner-token", .deviceHash = ""}));
+  const auto presented = service.seen();
+  CHECK(presented.at("x-argus-credential") == "guard-credential");
+  CHECK(presented.count("x-argus-fleet") == 0);
+
+  server->Shutdown();
+}
+
 TEST_CASE("the optional legs of an answer decide the profile")
 {
   ScriptedIdentityService service;

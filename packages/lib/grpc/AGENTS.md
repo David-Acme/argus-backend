@@ -26,6 +26,21 @@ per client.
 - `src/grpc/grpc-server-identity.hxx` — the receiving side: `metadata`,
   `constantTimeEquals`, `CallerCredential`, `callerCredentialsFromPairs`,
   `authorizeCaller`, `callerUserId`.
+- `src/grpc/fleet-caller-gate.{hxx,cc}` — `FleetCallerGate`, the receiving
+  side of the three surfaces that used to share one fleet secret (identity
+  7040, sync control 7041, auth 7043). It is built from the service's
+  `[rpc.callers]` pairs, the callers it expects and the legacy secret;
+  `admit(context, allowed)` names the caller whose credential matched and
+  answers `Admitted`, `Forbidden` (a known caller outside `allowed`) or
+  `Unauthenticated`. The legacy secret is admitted only while an expected
+  caller is unpaired, only for methods an unpaired caller may call, and its
+  first use calls `onFirstLegacy` once (the service logs the WARN). A
+  `CHANGE_ME` placeholder is never a credential. With nothing configured the
+  gate is open, which each service allows only on loopback. Compiled into
+  `argus_client_grpc_base`. The sending side is `PeerCredential` and
+  `addPeerCredential` in `grpc-client-base`: the caller's own credential as
+  `x-argus-credential`, or the legacy secret as `x-argus-fleet` only when it
+  has none.
 - `src/grpc/grpc-server-drain.hxx` — `argus::client::GrpcServerDrain`, the
   stop of an RPC server a service registers with `shutdown_signal`: it owns
   the `grpc::Server`, `requestStop()` starts `Shutdown(deadline)` on its own
@@ -74,6 +89,10 @@ per client.
 `tests/unit/grpc-server-identity-test.cc` — `constantTimeEquals` and
 `callerCredentialsFromPairs`, the two pieces of the receiving side that need
 no channel to exercise.
+`tests/unit/fleet-caller-gate-test.cc` — the gate's verdicts: a paired caller
+named, missing/wrong/other-caller credentials refused, the legacy secret
+refused once every caller is paired and narrowed while one is not, the WARN
+hook called once, placeholders never authenticating.
 `tests/unit/grpc-server-drain-test.cc` — a live loopback server is shut down
 once however often the stop is asked, and a drain without a server is
 drained as soon as it is asked to stop.

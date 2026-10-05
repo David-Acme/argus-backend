@@ -6,7 +6,8 @@ constexpr int kPullTimeoutMs = 5000;
 }
 
 IdentitySyncClient::IdentitySyncClient(IdentitySyncClientConfig config)
-    : fleetSecret_(std::move(config.fleetSecret)),
+    : credential_({.credential = std::move(config.credential),
+                   .fleetSecret = std::move(config.fleetSecret)}),
       channel_(argus::client::makeChannel(config.target)),
       stub_(argus::identity::v1::SyncService::NewStub(channel_))
 {
@@ -19,7 +20,7 @@ IdentitySyncClient::pullTable(
 {
   grpc::ClientContext context;
   argus::client::setDeadline(context, kPullTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
   argus::client::addCallerIdentity(context, identity);
 
   argus::identity::v1::PullTableResponse response;

@@ -11,7 +11,8 @@ constexpr int kCallTimeoutMs = 5000;
 AuthClient::AuthClient(AuthClientConfig config)
     : channel_(argus::client::makeChannel(config.target)),
       stub_(argus::auth::v1::AuthService::NewStub(channel_)),
-      fleetSecret_(std::move(config.fleetSecret))
+      credential_({.credential = std::move(config.credential),
+                   .fleetSecret = std::move(config.fleetSecret)})
 {
 }
 
@@ -20,7 +21,7 @@ AuthClient::validateToken(const ValidateSessionInput& input) const
 {
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::auth::v1::ValidateTokenRequest request;
   request.set_access_token(input.accessToken);
@@ -42,7 +43,7 @@ AuthClient::checkDeviceCredential(const std::string& secretHash) const
 {
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::auth::v1::CheckDeviceCredentialRequest request;
   request.set_secret_hash(secretHash);

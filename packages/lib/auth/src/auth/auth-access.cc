@@ -27,17 +27,21 @@ std::shared_ptr<const AuthClient> filterAuthClient()
 {
   static std::mutex mutex;
   static std::string cachedTarget;
+  static std::string cachedCredential;
   static std::string cachedSecret;
   static std::shared_ptr<const AuthClient> client;
 
   const auto target = resolveTarget();
+  const auto credential = ConfigService::getString("auth.credential");
   const auto secret = ConfigService::getString("auth.rpc_secret");
   const std::scoped_lock lock(mutex);
-  if (!client || target != cachedTarget || secret != cachedSecret) {
+  if (!client || target != cachedTarget || credential != cachedCredential ||
+      secret != cachedSecret) {
     cachedTarget = target;
+    cachedCredential = credential;
     cachedSecret = secret;
-    client = std::make_shared<AuthClient>(
-        AuthClientConfig{.target = target, .fleetSecret = secret});
+    client = std::make_shared<AuthClient>(AuthClientConfig{
+        .target = target, .credential = credential, .fleetSecret = secret});
   }
   return client;
 }

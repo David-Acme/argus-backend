@@ -50,9 +50,10 @@ identity side never reshapes this wire.
 - Neither call refuses anything locally: an empty token or secret hash is the
   service's to judge, and a filter that invented a refusal would answer a
   different question than the one the service answers.
-- On the wire: the constructor's fleet secret rides every call as
-  `x-argus-fleet` (`addFleetSecret`, skipped when empty, so an unset secret
-  sends no header at all); `validateToken` engages the request's device leg
+- On the wire: `AuthClientConfig.credential`, the caller's own credential,
+  rides every call as `x-argus-credential` (`addPeerCredential`); only when it
+  is empty does the legacy `fleetSecret` ride as `x-argus-fleet`, and an unset
+  pair sends no header at all (2026-10-05 audit, #25); `validateToken` engages the request's device leg
   whenever `hasDeviceContext` is set, empty hash included. One deadline,
   `kCallTimeoutMs` = 5000 ms, a `constexpr` in the `.cc`. The channel is
   plaintext (`makeChannel` is `InsecureChannelCredentials`), like every other
@@ -62,7 +63,8 @@ identity side never reshapes this wire.
   first consumer, `filterAuthClient()` in
   `packages/lib/auth/src/auth/auth-access.cc`, reading `auth.target` (or
   `auth.rpc_host` / `auth.rpc_port`, `127.0.0.1:7043` as the fallback) plus
-  `auth.rpc_secret`; `argus-identity` holds the same helper's client beside its
+  `auth.credential` (paired with argus-auth's `[rpc.callers]` entry for the
+  caller) and the legacy `auth.rpc_secret`; `argus-identity` holds the same helper's client beside its
   own RPC service.
 
 ## Tests

@@ -40,6 +40,17 @@ target_link_libraries(grpc-server-identity-test PRIVATE
 target_compile_options(grpc-server-identity-test PRIVATE -Wall -Wextra)
 add_test(NAME grpc-server-identity-test COMMAND grpc-server-identity-test)
 
+add_executable(fleet-caller-gate-test tests/unit/fleet-caller-gate-test.cc)
+
+set_target_properties(fleet-caller-gate-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(fleet-caller-gate-test PRIVATE
+    argus_client_grpc_base
+    doctest::doctest)
+target_compile_options(fleet-caller-gate-test PRIVATE -Wall -Wextra)
+add_test(NAME fleet-caller-gate-test COMMAND fleet-caller-gate-test)
+
 add_executable(grpc-server-drain-test tests/unit/grpc-server-drain-test.cc)
 
 set_target_properties(grpc-server-drain-test PROPERTIES

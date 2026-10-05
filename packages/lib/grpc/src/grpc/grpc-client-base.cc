@@ -55,4 +55,13 @@ void addCallerCredential(grpc::ClientContext& context,
     context.AddMetadata(kCallerCredentialKey, secret);
 }
 
+void addPeerCredential(grpc::ClientContext& context,
+                       const PeerCredential& credential)
+{
+  if (!credential.credential.empty())
+    addCallerCredential(context, credential.credential);
+  else
+    addFleetSecret(context, credential.fleetSecret);
+}
+
 }

@@ -7,10 +7,19 @@ namespace
 constexpr int kCallTimeoutMs = 5000;
 }
 
-IdentityClient::IdentityClient(std::string target, std::string fleetSecret)
+IdentityClient::IdentityClient(const std::string& target,
+                               std::string fleetSecret)
+    : IdentityClient(target,
+                     argus::client::PeerCredential{
+                         .credential = {}, .fleetSecret = std::move(fleetSecret)})
+{
+}
+
+IdentityClient::IdentityClient(const std::string& target,
+                               argus::client::PeerCredential credential)
     : channel_(argus::client::makeChannel(target)),
       stub_(argus::identity::v1::IdentityService::NewStub(channel_)),
-      fleetSecret_(std::move(fleetSecret))
+      credential_(std::move(credential))
 {
 }
 
@@ -19,7 +28,7 @@ IdentityClient::updateUserName(const UpdateUserNameInput& input) const
 {
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
   argus::client::addCallerIdentity(context,
                                 {.userId = input.userId, .role = input.role});
 
@@ -42,7 +51,7 @@ IdentityClient::registerUser(const RegisterUserInput& input) const
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::identity::v1::RegisterUserRequest request;
   request.set_image(input.image);
@@ -71,7 +80,7 @@ IdentityClient::getUser(int64_t userId) const
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::identity::v1::GetUserRequest request;
   request.set_user_id(userId);
@@ -88,7 +97,7 @@ IdentityClient::listPersons() const
 {
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   const argus::identity::v1::ListPersonsRequest request;
 
@@ -108,7 +117,7 @@ IdentityClient::identifyPerson(const std::string& image) const
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::identity::v1::IdentifyPersonRequest request;
   request.set_image(image);
@@ -129,7 +138,7 @@ IdentityClient::identifyForCamera(const CameraIdentifyInput& input) const
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::identity::v1::IdentifyPersonRequest request;
   request.set_image(input.image);
@@ -157,7 +166,7 @@ IdentityClient::enrollPerson(const EnrollPersonInput& input) const
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::identity::v1::EnrollPersonRequest request;
   request.set_image(input.image);
@@ -179,7 +188,7 @@ bool IdentityClient::touchPerson(int64_t personId, int64_t at) const
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::identity::v1::TouchPersonRequest request;
   request.set_person_id(personId);
@@ -200,7 +209,7 @@ bool IdentityClient::promotePerson(const PromotePersonInput& input) const
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
   context.AddMetadata("authorization", "Bearer " + input.accessToken);
   if (!input.deviceHash.empty())
     context.AddMetadata("x-argus-device", input.deviceHash);
@@ -223,7 +232,7 @@ bool IdentityClient::tagPerson(const TagPersonInput& input) const
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::identity::v1::TagPersonRequest request;
   request.set_person_id(input.personId);
@@ -248,7 +257,7 @@ std::optional<std::vector<std::string>> IdentityClient::personTags(
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::identity::v1::PersonTagsRequest request;
   request.set_person_id(personId);
@@ -270,7 +279,7 @@ std::optional<PersonProfile> IdentityClient::getPerson(
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::identity::v1::GetPersonRequest request;
   request.set_person_id(personId);
@@ -312,7 +321,7 @@ IdentityClient::listNotifiableUsers() const
 {
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   const argus::identity::v1::ListNotifiableUsersRequest request;
 
@@ -332,7 +341,7 @@ IdentityClient::listPrivacy() const
 {
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   const argus::identity::v1::ListPrivacyRequest request;
 
@@ -349,7 +358,7 @@ IdentityClient::listUsers() const
 {
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   const argus::identity::v1::ListUsersRequest request;
 

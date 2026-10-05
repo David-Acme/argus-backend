@@ -40,20 +40,21 @@ void fillClip(const VoiceClipView& clip, argus::identity::v1::VoiceClip* out)
 struct CallSetup
 {
   grpc::ClientContext& context;
-  const std::string& fleetSecret;
+  const argus::client::PeerCredential& credential;
   int timeoutMs{kCallTimeoutMs};
 };
 
 void prepare(const CallSetup& setup)
 {
   argus::client::setDeadline(setup.context, setup.timeoutMs);
-  argus::client::addFleetSecret(setup.context, setup.fleetSecret);
+  argus::client::addPeerCredential(setup.context, setup.credential);
 }
 
 }
 
 VoiceprintClient::VoiceprintClient(VoiceprintClientConfig config)
-    : fleetSecret_(std::move(config.fleetSecret)),
+    : credential_({.credential = std::move(config.credential),
+                   .fleetSecret = std::move(config.fleetSecret)}),
       channel_(argus::client::makeChannel(config.target)),
       stub_(argus::identity::v1::VoiceprintService::NewStub(channel_))
 {
@@ -73,7 +74,7 @@ VoiceprintClient::identifyWithin(const VoiceprintIdentifyInput& input) const
 
   grpc::ClientContext context;
   prepare({.context = context,
-           .fleetSecret = fleetSecret_,
+           .credential = credential_,
            .timeoutMs = input.timeoutMs});
 
   argus::identity::v1::IdentifyVoiceRequest request;
@@ -97,7 +98,7 @@ VoiceprintClient::observeTurn(const VoiceTurnObservation& input) const
 
   grpc::ClientContext context;
   prepare({.context = context,
-           .fleetSecret = fleetSecret_,
+           .credential = credential_,
            .timeoutMs = input.timeoutMs});
 
   argus::identity::v1::ObserveVoiceTurnRequest request;
@@ -121,7 +122,7 @@ bool VoiceprintClient::closeCall(const VoiceCallClose& input) const
 
   grpc::ClientContext context;
   prepare({.context = context,
-           .fleetSecret = fleetSecret_,
+           .credential = credential_,
            .timeoutMs = input.timeoutMs});
 
   argus::identity::v1::CloseVoiceCallRequest request;

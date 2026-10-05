@@ -2,6 +2,7 @@
 
 #include <argus/sync/v1/sync.grpc.pb.h>
 #include <cstdint>
+#include <grpc/grpc-client-base.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <string>
@@ -12,6 +13,7 @@
 struct SyncClientConfig
 {
   std::string target;
+  std::string credential{};
   std::string fleetSecret;
 };
 
@@ -36,5 +38,5 @@ public:
 private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::sync::v1::SyncControlService::StubInterface> stub_;
-  std::string fleetSecret_;
+  argus::client::PeerCredential credential_;
 };

@@ -2,6 +2,7 @@
 
 #include <argus/identity/v1/voiceprint.grpc.pb.h>
 #include <cstdint>
+#include <grpc/grpc-client-base.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <optional>
@@ -11,6 +12,7 @@
 struct VoiceprintClientConfig
 {
   std::string target;
+  std::string credential{};
   std::string fleetSecret;
 };
 
@@ -65,7 +67,7 @@ public:
   [[nodiscard]] virtual bool closeCall(const VoiceCallClose& input) const;
 
 private:
-  std::string fleetSecret_;
+  argus::client::PeerCredential credential_;
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::identity::v1::VoiceprintService::StubInterface> stub_;
 };

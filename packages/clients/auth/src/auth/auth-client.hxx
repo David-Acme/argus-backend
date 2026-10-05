@@ -1,6 +1,7 @@
 #pragma once
 
 #include <argus/auth/v1/auth.grpc.pb.h>
+#include <grpc/grpc-client-base.hxx>
 #include <grpcpp/grpcpp.h>
 
 #include <memory>
@@ -10,6 +11,7 @@
 struct AuthClientConfig
 {
   std::string target;
+  std::string credential{};
   std::string fleetSecret;
 };
 
@@ -39,5 +41,5 @@ public:
 private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::auth::v1::AuthService::StubInterface> stub_;
-  std::string fleetSecret_;
+  argus::client::PeerCredential credential_;
 };

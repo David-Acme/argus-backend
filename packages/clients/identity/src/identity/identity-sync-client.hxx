@@ -11,6 +11,7 @@
 struct IdentitySyncClientConfig
 {
   std::string target;
+  std::string credential{};
   std::string fleetSecret;
 };
 
@@ -28,7 +29,7 @@ public:
             const argus::client::CallerIdentity& identity) const;
 
 private:
-  std::string fleetSecret_;
+  argus::client::PeerCredential credential_;
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::identity::v1::SyncService::StubInterface> stub_;
 };

@@ -68,8 +68,10 @@ session revocation now travel its durable change outbox
   carries the frozen spellings the caller derived through
   `userRoleToString`, and the consumer's own `userRoleFromString` is the
   authority on what a name means.
-- On the wire: the fleet secret `SyncClientConfig` carries rides every call as
-  `x-argus-fleet` (`addFleetSecret`, skipped when empty). No caller identity
+- On the wire: `SyncClientConfig.credential`, the caller's own credential,
+  rides every call as `x-argus-credential` (`addPeerCredential`); only when it
+  is empty does the legacy `fleetSecret` ride as `x-argus-fleet` (2026-10-05
+  audit, #25). Sync answers each caller only for its own methods. No caller identity
   rides this leg — the control calls are the installation's own, not an
   actor's, and §3.5 puts no user context on them. One deadline,
   `kCallTimeoutMs` = 5000 ms, a `constexpr` in the `.cc`. The channel is
@@ -93,9 +95,10 @@ session revocation now travel its durable change outbox
   §3.5 is the change leg's, not this one's). `ControlAck.reason` is written by
   the server for diagnosability on the wire; this client's surface is the
   bool.
-- Config, since sub-step 3a-1c: the target and the fleet secret arrive in
+- Config, since sub-step 3a-1c: the target and the credential arrive in
   `SyncClientConfig`, resolved from `sync.control_target` and
-  `sync.control_secret` — the caller's `[sync]` block
+  `sync.control_credential` (the legacy `sync.control_secret` beside it on an
+  older install) — the caller's `[sync]` block
   (`services/identity/config.toml.example:65-67`) and, on the answering side,
   `services/sync/config.toml.example:37`. The deploy stack pairs them under
   the same keys (`argus-deploy/config.identity.toml.example`,

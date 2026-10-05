@@ -16,6 +16,12 @@ struct CallerIdentity
   std::optional<std::string> device;
 };
 
+struct PeerCredential
+{
+  std::string credential;
+  std::string fleetSecret;
+};
+
 std::shared_ptr<grpc::Channel> makeChannel(const std::string& target);
 
 std::shared_ptr<grpc::Channel> makeStreamingChannel(const std::string& target);
@@ -29,6 +35,9 @@ void addFleetSecret(grpc::ClientContext& context, const std::string& secret);
 
 void addCallerCredential(grpc::ClientContext& context,
                          const std::string& secret);
+
+void addPeerCredential(grpc::ClientContext& context,
+                       const PeerCredential& credential);
 
 inline constexpr const char* kFleetSecretKey = "x-argus-fleet";
 

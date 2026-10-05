@@ -26,7 +26,8 @@ bool answer(const grpc::Status& status, const argus::sync::v1::ControlAck& ack)
 SyncClient::SyncClient(SyncClientConfig config)
     : channel_(argus::client::makeChannel(config.target)),
       stub_(argus::sync::v1::SyncControlService::NewStub(channel_)),
-      fleetSecret_(std::move(config.fleetSecret))
+      credential_({.credential = std::move(config.credential),
+                   .fleetSecret = std::move(config.fleetSecret)})
 {
 }
 
@@ -38,7 +39,7 @@ bool SyncClient::replaceRoleRooms(
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::sync::v1::ReplaceRoleRoomsRequest request;
   request.set_user_id(change.userId);
@@ -57,7 +58,7 @@ bool SyncClient::disconnectUser(int64_t userId,
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::sync::v1::DisconnectUserRequest request;
   request.set_user_id(userId);
@@ -74,7 +75,7 @@ bool SyncClient::emitToUser(int64_t userId, const SocketEmitDto& frame) const
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
+  argus::client::addPeerCredential(context, credential_);
 
   argus::sync::v1::EmitToUserRequest request;
   request.set_user_id(userId);
