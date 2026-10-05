@@ -56,9 +56,27 @@ and migration closure it dragged into this project) went in Phase 2 step 4.
 - `remote.hostname` is validated before it becomes a SAN entry: an invalid
   value is logged and dropped, because a SAN that is not a hostname is a
   certificate clients refuse.
+- `mdns.address` (the LAN address provisioning writes) becomes an IP SAN when
+  it is a private, CGNAT or link-local address, so an app that reached the
+  service by IP validates the leaf; a public address is never baked in.
+- Every rotated leaf is a server leaf and says so: `basicConstraints
+  CA:FALSE`, `keyUsage digitalSignature` and `extendedKeyUsage serverAuth`.
+- A CA created since 2026-10 carries `nameConstraints` (scripts/lib/pki.sh:
+  `.local`, `localhost`, the host name, the mDNS name, `remote.hostname` and
+  the private/loopback/link-local IP ranges). Rotation drops, with a warning,
+  every SAN the CA's constraints do not permit — the container's own host
+  name, a `remote.hostname` set after the CA was made — so the leaf it writes
+  always verifies; a name that must be added means a new CA and a re-pair.
+  A CA without the extension (every install before 2026-10) keeps the full
+  SAN list.
+- The pairing code file accepts the base32 codes `pki.sh` now writes (26 to 32
+  of `A-Z2-7`) and still reads a legacy 8-12 hex code.
 - Paths and lifetimes are config, not constants: `cert.dir` seeds
-  `ca.pem`/`server.pem` unless `cert.ca_cert`, `cert.ca_key`,
-  `cert.server_cert` and `cert.server_key` name the files, and
+  `ca.pem`/`server.pem`/`pairing.code` unless `cert.ca_cert`, `cert.ca_key`,
+  `cert.server_cert`, `cert.server_key` and `cert.pairing_code` name the
+  files. The deploy keeps the CA key and the pairing code out of the shared
+  `certs/` directory (`ca/ca.key`, `ca/pairing.code`, a directory only
+  argus-identity mounts — argus-deploy/CONTEXT.md, "The instance CA"), and
   `cert.leaf_ttl_days`, `cert.rotation_threshold_days` and
   `cert.rotate_check_hours` decide when `rotateServerCertificate` reissues.
 - Nothing here goes on the wire but PEM and fingerprints: the private keys
@@ -68,3 +86,6 @@ and migration closure it dragged into this project) went in Phase 2 step 4.
 
 `tests/unit/cert-san-test.cc` — the SAN list and the rotation, against a live
 in-process listener; it is the reason this package configures on its own.
+It also pins the private LAN address becoming an IP SAN (and a public one not),
+the leaf's `serverAuth` usage and `CA:FALSE`, and a name-constrained CA whose
+rotation keeps the permitted names and leaves the rest out.

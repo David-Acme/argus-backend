@@ -59,13 +59,14 @@ void TunnelRelay::stop()
   loop_.post([this] {
     homeListener_.reset();
     deviceListener_.reset();
+    mux_.dropPendingHomes();
     mux_.dropLink();
   });
 }
 
 void TunnelRelay::onLinkUp()
 {
-  LOG_INFO << "argus-relay: home link connected; awaiting AUTH";
+  LOG_INFO << "argus-relay: home link authenticated";
 }
 
 void TunnelRelay::onAuthAccepted()
@@ -108,6 +109,17 @@ void TunnelRelay::onLinkDown()
     LOG_WARN << "argus-relay: home link down; device streams torn down";
 }
 
+void TunnelRelay::onStreamClosed(uint32_t streamId)
+{
+  const auto it = streamIps_.find(streamId);
+  if (it == streamIps_.end())
+    return;
+  const auto count = ipStreams_.find(it->second);
+  if (count != ipStreams_.end() && --count->second <= 0)
+    ipStreams_.erase(count);
+  streamIps_.erase(it);
+}
+
 void TunnelRelay::onHomeAccepted(const PeerAcceptedInput& input)
 {
   TcpPeer::Params params;
@@ -120,7 +132,8 @@ void TunnelRelay::onHomeAccepted(const PeerAcceptedInput& input)
     const TcpPeer::Ptr peer = TcpPeer::adopt(params);
     if (!mux_.adoptHome(peer)) {
       LOG_WARN << "argus-relay: refused a home connection from "
-               << input.peerIp << " while the authenticated link is alive";
+               << input.peerIp
+               << " (authenticated link alive or handshake slots full)";
       peer->close();
     }
   } catch (const std::exception& error) {
@@ -138,6 +151,15 @@ void TunnelRelay::onDeviceAccepted(const PeerAcceptedInput& input)
     ::close(input.fd);
     return;
   }
+  const auto held = ipStreams_.find(input.peerIp);
+  if (held != ipStreams_.end() &&
+      held->second >= options_.limits.maxStreamsPerIp) {
+    LOG_WARN << "argus-relay: device " << input.peerIp << ":"
+             << input.peerPort << " rejected; per-address stream quota of "
+             << options_.limits.maxStreamsPerIp << " reached";
+    ::close(input.fd);
+    return;
+  }
   const uint32_t streamId = mux_.openRemote();
   if (streamId == 0) {
     LOG_WARN << "argus-relay: device " << input.peerIp << ":"
@@ -146,6 +168,8 @@ void TunnelRelay::onDeviceAccepted(const PeerAcceptedInput& input)
     ::close(input.fd);
     return;
   }
+  streamIps_[streamId] = input.peerIp;
+  ++ipStreams_[input.peerIp];
   TcpPeer::Params params;
   params.loop = &loop_;
   params.fd = input.fd;

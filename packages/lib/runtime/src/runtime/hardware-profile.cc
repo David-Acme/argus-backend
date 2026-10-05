@@ -1,5 +1,7 @@
 #include "hardware-profile.hxx"
 
+#include "cpu-limits.hxx"
+
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -172,6 +174,7 @@ HardwareProfile probeAll()
 {
   HardwareProfile p;
   p.logicalThreads = probeLogicalThreads();
+  p.effectiveThreads = cpu_limits::probeEffectiveThreads();
   p.physicalCores = probePhysicalCores(p.logicalThreads);
   p.ramTotalMb = probeRamTotalMb();
   p.ramAvailableMb = probeRamAvailableMb();
@@ -230,7 +233,7 @@ std::string describe()
   const auto& p = get();
   std::ostringstream os;
   os << "tier=" << toString(p.tier) << " cores=" << p.physicalCores << "p/"
-     << p.logicalThreads << "l"
+     << p.logicalThreads << "l budget=" << p.effectiveThreads
      << " ram=" << p.ramTotalMb << "MB(avail " << p.ramAvailableMb << ")"
      << " isa=";
   if (p.avx512)

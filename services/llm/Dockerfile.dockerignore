@@ -24,3 +24,11 @@ third_party/go2rtc
 argus-deploy/config.*.toml
 argus-deploy/.env
 argus-deploy/data
+**/certs
+**/database/*.db
+**/database/*.db-*
+**/pairing.code
+**/ca.key
+**/server.key
+argus-deploy/livekit.yaml
+argus-deploy/livekit-keys.yaml

@@ -20,6 +20,9 @@ tunnel::TunnelMux::Limits resolveLimits()
   if (limits.maxStreams <= 0)
     limits.maxStreams = 256;
   limits.socketSndBuf = ConfigService::getInt("tunnel.socket_snd_buf");
+  if (const int perIp = ConfigService::getInt("tunnel.max_streams_per_ip");
+      perIp > 0)
+    limits.maxStreamsPerIp = perIp;
   return limits;
 }
 
@@ -47,12 +50,14 @@ ClientConfig ClientConfig::resolve()
   if (config.tunnel.gatewayHost.empty())
     config.tunnel.gatewayHost = "127.0.0.1";
   config.tunnel.gatewayPort =
-      clampPort(ConfigService::getInt("server.gateway_port"), 7024);
+      clampPort(ConfigService::getInt("server.gateway_port"), 7142);
   config.tunnel.secret = ConfigService::getString("tunnel.secret");
   const int reconnectWaitMs = ConfigService::getInt("tunnel.reconnect_wait_ms");
   config.tunnel.reconnectWaitMs = reconnectWaitMs > 0 ? reconnectWaitMs : 2000;
-  const int maxReconnects = ConfigService::getInt("tunnel.max_reconnects");
-  config.tunnel.maxReconnects = maxReconnects >= 0 ? maxReconnects : 60;
+  const int reconnectMaxWaitMs =
+      ConfigService::getInt("tunnel.reconnect_max_wait_ms");
+  config.tunnel.reconnectMaxWaitMs =
+      reconnectMaxWaitMs > 0 ? reconnectMaxWaitMs : 60000;
   const int pingIntervalSeconds =
       ConfigService::getInt("tunnel.ping_interval_seconds");
   config.tunnel.pingIntervalSeconds = pingIntervalSeconds > 0
@@ -61,6 +66,19 @@ ClientConfig ClientConfig::resolve()
   config.tunnel.limits = resolveLimits();
   config.tunnel.pushQueueCapacity = resolvePushQueueCapacity();
   return config;
+}
+
+std::optional<std::string> tunnelSecretProblem(std::string_view secret)
+{
+  if (secret.empty())
+    return "[tunnel] secret is empty";
+  if (secret.size() < kMinTunnelSecretBytes)
+    return "[tunnel] secret is shorter than " +
+           std::to_string(kMinTunnelSecretBytes) +
+           " bytes; generate one with scripts/provision-host.sh --with-tunnel";
+  if (secret.find("CHANGE_ME") != std::string_view::npos)
+    return "[tunnel] secret is still the template placeholder";
+  return std::nullopt;
 }
 
 RelayConfig RelayConfig::resolve()

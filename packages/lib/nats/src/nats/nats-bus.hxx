@@ -84,6 +84,13 @@ public:
     std::function<void()> ack;
     std::function<void()> nak;
     std::function<void()> term;
+    std::function<void()> inProgress{};
+
+    void markInProgress() const
+    {
+      if (inProgress)
+        inProgress();
+    }
   };
 
   using DurableHandler =
@@ -101,6 +108,13 @@ public:
     DurableHandler handler;
   };
   std::optional<uint64_t> subscribeDurable(const DurableInput& input);
+
+  struct DurableFeedInput
+  {
+    StreamInput stream;
+    DurableInput consumer;
+  };
+  std::optional<uint64_t> subscribeDurableFeed(const DurableFeedInput& input);
 
   std::optional<uint64_t> subscribe(const std::string& subject,
                                     MessageHandler handler);

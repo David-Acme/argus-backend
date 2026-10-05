@@ -2,10 +2,20 @@
 
 #include <drogon/drogon.h>
 
+#include <algorithm>
 #include <utility>
 
 namespace tunnel
 {
+int reconnectDelayMs(const BackoffInput& input)
+{
+  const int base = std::max(1, input.baseMs);
+  const int cap = std::max(base, input.maxMs);
+  const int doublings = std::clamp(input.attempt - 1, 0, 30);
+  const long long delay = static_cast<long long>(base) << std::min(doublings, 20);
+  return static_cast<int>(std::min<long long>(delay, cap));
+}
+
 TunnelClient::TunnelClient(PollLoop& loop, ClientOptions options)
     : loop_(loop), options_(std::move(options)),
       mux_({.loop = loop, .limits = options_.limits, .delegate = this})
@@ -139,19 +149,22 @@ void TunnelClient::onRemoteOpen(uint32_t streamId)
 
 void TunnelClient::scheduleReconnect()
 {
-  if (stopped_.load() || gaveUp_.load())
+  if (stopped_.load() || reconnectPending_)
     return;
+  reconnectPending_ = true;
   const int attempts = reconnectAttempts_.load() + 1;
   reconnectAttempts_.store(attempts);
-  if (options_.maxReconnects > 0 && attempts > options_.maxReconnects) {
-    gaveUp_.store(true);
-    LOG_ERROR << "argus-tunnel: giving up after " << options_.maxReconnects
-              << " reconnect attempts; the link stays down until restart";
-    return;
-  }
-  loop_.runAfter(options_.reconnectWaitMs, [this, token = aliveToken_] {
+  const int delay = reconnectDelayMs({.attempt = attempts,
+                                      .baseMs = options_.reconnectWaitMs,
+                                      .maxMs = options_.reconnectMaxWaitMs});
+  lastReconnectDelayMs_.store(delay);
+  if (attempts > 1 && delay >= options_.reconnectMaxWaitMs)
+    LOG_WARN << "argus-tunnel: relay still unreachable after " << attempts
+             << " attempts; retrying every " << delay << " ms";
+  loop_.runAfter(delay, [this, token = aliveToken_] {
     if (token.expired() || stopped_.load())
       return;
+    reconnectPending_ = false;
     connectHome();
   });
 }

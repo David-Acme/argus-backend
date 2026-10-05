@@ -95,7 +95,8 @@ replace_toml_value() {
 
   local temp
   temp="$(mktemp "${config}.tmp.XXXXXX")"
-  awk -v table="$table" -v key="$key" -v rendered="$rendered" '
+  ARGUS_TOML_RENDERED="$rendered" awk -v table="$table" -v key="$key" '
+    BEGIN { rendered = ENVIRON["ARGUS_TOML_RENDERED"] }
     function emit() {
       if (in_table && !found) {
         print key " = " rendered
@@ -119,6 +120,138 @@ replace_toml_value() {
   ' "$config" > "$temp"
   chmod 600 "$temp"
   mv "$temp" "$config"
+}
+
+remove_toml_key() {
+  local table="$1"
+  local key="$2"
+  local config="$3"
+  local temp
+
+  [ -f "$config" ] || return 0
+  toml_key_exists "$config" "$table" "$key" || return 0
+  temp="$(mktemp "${config}.tmp.XXXXXX")"
+  awk -v table="$table" -v key="$key" '
+    /^[[:space:]]*\[/ {
+      in_table = ($0 ~ "^\\[" table "\\][[:space:]]*$")
+    }
+    in_table && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" { next }
+    { print }
+  ' "$config" > "$temp"
+  chmod 600 "$temp"
+  mv "$temp" "$config"
+}
+
+propagate_config_value() {
+  local source="$1"
+  local table="$2"
+  local key="$3"
+  shift 3
+  local value config
+
+  [ -f "$source" ] || return 0
+  toml_key_exists "$source" "$table" "$key" || return 0
+  value="$(toml_value "$source" "$table" "$key")"
+  [ -n "$value" ] || return 0
+  for config in "$@"; do
+    [ -f "$config" ] && [ "$config" != "$source" ] || continue
+    toml_key_exists "$config" "$table" "$key" || continue
+    [ "$(toml_value "$config" "$table" "$key")" = "$value" ] && continue
+    replace_toml_value "$table" "$key" "$value" "$config"
+  done
+}
+
+ensure_distinct_refresh_secret() {
+  local config="$1"
+  local access refresh
+
+  [ -f "$config" ] || return 0
+  toml_key_exists "$config" jwt refresh_secret || return 0
+  access="$(toml_value "$config" jwt secret)"
+  refresh="$(toml_value "$config" jwt refresh_secret)"
+  if [ -n "$refresh" ] && [ "$refresh" = "$access" ]; then
+    replace_toml_value jwt refresh_secret "$(openssl rand -hex 48)" "$config"
+    warn "jwt.refresh_secret equalled jwt.secret in $config; a new one was generated (refresh sessions end once)"
+  fi
+}
+
+drop_verifier_refresh_secret() {
+  local config
+  for config in "$@"; do
+    case "$config" in
+      config.auth.toml|*/config.auth.toml|*/auth/config.toml) continue ;;
+    esac
+    remove_toml_key jwt refresh_secret "$config"
+  done
+}
+
+ensure_tunnel_secret() {
+  local first="$1"
+  local second="${2:-}"
+  local value="" candidate config
+
+  for config in "$first" "$second"; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    toml_key_exists "$config" tunnel secret || continue
+    candidate="$(toml_value "$config" tunnel secret)"
+    case "$candidate" in
+      ""|*CHANGE_ME*) continue ;;
+    esac
+    [ "${#candidate}" -ge 32 ] || continue
+    value="$candidate"
+    break
+  done
+  [ -n "$value" ] || value="$(openssl rand -hex 32)"
+  for config in "$first" "$second"; do
+    [ -n "$config" ] && [ -f "$config" ] || continue
+    replace_toml_value tunnel secret "$value" "$config"
+  done
+}
+
+ipv4_network_of() {
+  local cidr="$1"
+  local address="${cidr%/*}"
+  local prefix="${cidr#*/}"
+  local a b c d value mask
+
+  case "$cidr" in */*) ;; *) return 1 ;; esac
+  IFS=. read -r a b c d <<<"$address" || return 1
+  for value in "$a" "$b" "$c" "$d" "$prefix"; do
+    case "$value" in ""|*[!0-9]*) return 1 ;; esac
+  done
+  [ "$prefix" -le 32 ] || return 1
+  value=$(( (a << 24) | (b << 16) | (c << 8) | d ))
+  mask=$(( prefix == 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF ))
+  value=$(( value & mask ))
+  printf '%d.%d.%d.%d/%d' $(( (value >> 24) & 255 )) $(( (value >> 16) & 255 )) \
+    $(( (value >> 8) & 255 )) $(( value & 255 )) "$prefix"
+}
+
+host_lan_networks() {
+  local address="$1"
+  local cidr
+
+  command -v ip >/dev/null 2>&1 || return 0
+  [ -n "$address" ] || return 0
+  cidr="$(ip -o -f inet addr show 2>/dev/null \
+    | awk -v want="$address" '{ split($4, part, "/"); if (part[1] == want) { print $4; exit } }')"
+  [ -n "$cidr" ] || return 0
+  ipv4_network_of "$cidr"
+}
+
+configure_lan_networks() {
+  local networks="$1"
+  shift
+  local config current
+
+  [ -n "$networks" ] || return 0
+  for config in "$@"; do
+    [ -f "$config" ] || continue
+    toml_key_exists "$config" device lan_networks || continue
+    current="$(toml_value "$config" device lan_networks)"
+    [ -z "$current" ] || continue
+    replace_toml_value device lan_networks "$networks" "$config"
+  done
 }
 
 adopt_template_key() {
@@ -225,6 +358,7 @@ ensure_project_config() {
     cp "$template" "$config"
   fi
   adopt_wiring_keys "$template" "$config"
+  drop_verifier_refresh_secret "$config"
   chmod 600 "$config"
 }
 
@@ -267,6 +401,10 @@ ensure_shared_configs() {
   share_config_value jwt refresh_secret 48 "${configs[@]}"
   share_config_value device fingerprint_secret 48 "${configs[@]}"
   share_config_value identity rpc_secret 32 "${configs[@]}"
+  local config
+  for config in "${configs[@]}"; do
+    ensure_distinct_refresh_secret "$config"
+  done
 }
 
 shared_deploy_secret() {
@@ -476,7 +614,11 @@ ensure_deploy_configs() {
     fill_deploy_placeholder "$config" auth rpc_secret "$auth_rpc_secret"
     fill_deploy_placeholder "$config" sync control_secret "$control_secret"
     fill_deploy_placeholder "$config" nats password "$nats_password"
+    drop_verifier_refresh_secret "$config"
+    ensure_distinct_refresh_secret "$config"
   done
+  propagate_config_value "$deploy_dir/config.auth.toml" device identity_mode \
+    "$deploy_dir"/config.*.toml
 
   fill_config_pair "$deploy_dir/config.guard.toml" camera actions_credential \
     "$deploy_dir/config.camera.toml" grpc caller_guard 32

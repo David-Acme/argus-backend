@@ -38,7 +38,8 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 [cert]
 dir = "certs"
 ca_cert = "certs/ca.pem"
-ca_key = "certs/ca.key"
+ca_key = "ca/ca.key"
+pairing_code = "ca/pairing.code"
 server_cert = "certs/server.pem"
 server_key = "certs/server.key"
 leaf_ttl_days = 90
@@ -50,7 +51,6 @@ language = "es"
 
 [jwt]
 secret = ""
-refresh_secret = ""
 
 [device]
 fingerprint_secret = ""

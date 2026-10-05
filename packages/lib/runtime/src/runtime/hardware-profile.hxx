@@ -27,6 +27,7 @@ struct HardwareProfile
 {
   int physicalCores{1};
   int logicalThreads{1};
+  int effectiveThreads{1};
   bool avx2{false};
   bool avx512{false};
   bool fma{false};

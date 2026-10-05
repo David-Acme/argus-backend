@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 namespace tunnel
 {
@@ -38,6 +39,7 @@ public:
   uint16_t devicePort() const { return devicePort_; }
   uint16_t homePort() const { return homePort_; }
   size_t streamCount() const { return mux_.streamCount(); }
+  size_t pendingHomeCount() const { return mux_.pendingHomeCount(); }
   size_t pendingBytes() const { return mux_.pendingBytes(); }
 
   void postPushIntent(std::string payload);
@@ -55,6 +57,7 @@ private:
   void onAuthAccepted() override;
   void onLinkUp() override;
   void onLinkDown() override;
+  void onStreamClosed(uint32_t streamId) override;
 
   void onPushIntent(const std::string& payload);
   void drainPushQueue();
@@ -82,5 +85,7 @@ private:
   std::atomic<bool> stopped_{false};
   PushQueue pushQueue_{options_.pushQueueCapacity};
   std::atomic<uint64_t> pushForwarded_{0};
+  std::unordered_map<uint32_t, std::string> streamIps_;
+  std::unordered_map<std::string, int> ipStreams_;
 };
 }

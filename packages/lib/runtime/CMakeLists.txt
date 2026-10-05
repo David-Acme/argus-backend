@@ -8,6 +8,7 @@ argus_lib(NAME runtime
     SOURCES
         src/runtime/thread-budget.cc
         src/runtime/thread-budget.hxx
+        src/runtime/cpu-limits.hxx
         src/runtime/shutdown-signal.cc
         src/runtime/shutdown-signal.hxx
         src/runtime/log-output.cc
@@ -27,6 +28,7 @@ argus_module(NAME hardware-profile
     SOURCES
         src/runtime/hardware-profile.cc
         src/runtime/hardware-profile.hxx
+        src/runtime/cpu-limits.hxx
     INCLUDES src)
 
 target_compile_definitions(argus_hardware-profile PRIVATE ARGUS_NO_NCNN_GPU=1)
@@ -36,6 +38,7 @@ argus_module(NAME hardware-profile-gpu
     SOURCES
         src/runtime/hardware-profile.cc
         src/runtime/hardware-profile.hxx
+        src/runtime/cpu-limits.hxx
     INCLUDES src)
 
 target_compile_options(argus_hardware-profile-gpu PRIVATE -Wall -Wextra)
@@ -52,6 +55,18 @@ target_link_libraries(thread-budget-test PRIVATE argus::lib::runtime
     doctest::doctest)
 target_compile_options(thread-budget-test PRIVATE -Wall -Wextra)
 add_test(NAME thread-budget-test COMMAND thread-budget-test)
+
+add_executable(cpu-limits-test tests/unit/cpu-limits-test.cc)
+target_link_libraries(cpu-limits-test PRIVATE argus::lib::runtime
+    doctest::doctest)
+target_compile_options(cpu-limits-test PRIVATE -Wall -Wextra)
+add_test(NAME cpu-limits-test COMMAND cpu-limits-test)
+
+add_executable(shutdown-deadline-test tests/unit/shutdown-deadline-test.cc)
+target_link_libraries(shutdown-deadline-test PRIVATE argus::lib::runtime
+    doctest::doctest)
+target_compile_options(shutdown-deadline-test PRIVATE -Wall -Wextra)
+add_test(NAME shutdown-deadline-test COMMAND shutdown-deadline-test)
 
 add_executable(shutdown-signal-test tests/unit/shutdown-signal-test.cc)
 target_link_libraries(shutdown-signal-test PRIVATE argus::lib::runtime

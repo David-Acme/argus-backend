@@ -140,8 +140,14 @@ public read-pause on TcpConnection, which the back-pressure valves need.
 
 ## Reconnect semantics (NatsBus-style)
 
-The client reconnects with a fixed `reconnect_wait_ms` (default 2000, max
-`max_reconnects` attempts, then gives up until restart). Streams do NOT
+The client reconnects with an exponential backoff that never gives up:
+`reconnect_wait_ms` (default 2000) doubles per failed attempt up to
+`reconnect_max_wait_ms` (default 60000) and resets once a link authenticates.
+It used to stop for good after `max_reconnects` (60) failures, so a relay
+outage of a few minutes left the home unreachable until someone restarted the
+client; that key is gone (provisioning removes it from existing configs). One
+reconnect is pending at a time — a pending dial that closes and the link-down
+callback no longer schedule two. Streams do NOT
 survive a reconnect: dropping the home link tears down every multiplexed
 stream on both sides (device sockets are closed, the home dial is
 dropped) and the app retries at the TLS layer. Why: the relay's stream
@@ -155,6 +161,21 @@ burst are never dispatched, and each new link runs a fresh challenge →
 AUTH → AUTH_OK handshake. The relay replaces an existing home link with a
 newer authenticated one (latest wins) and rejects device connections while
 no home link is authenticated.
+
+The relay runs each home handshake on its own (`TunnelMux::PendingHome`: the
+connection, its parser and its challenge), up to `maxPendingHomes` (16) at
+once and `maxPendingHomesPerIp` (2) per address, each dropped after the 10 s
+auth timeout. A handshake used to share the single home slot, so any TCP
+connect to the home port displaced the real client between CHALLENGE and
+AUTH; now a stranger only occupies a slot of its own, and the first
+connection to prove the secret is promoted to the home link (its parser and
+whatever it pipelined behind AUTH come with it). A wrong AUTH answers
+AUTH_FAIL to that connection alone. AUTH on an already authenticated link drops
+it.
+
+Stream ids: the client ignores an OPEN for id 0 or for an id it already holds
+(it used to overwrite the live stream's slot), and the relay's allocator skips
+0 and every id in use when its counter wraps.
 
 ## Threat model
 
@@ -172,7 +193,11 @@ frames in the same read burst. A relay that never sends a valid AUTH_OK
 proof cannot get the client to dial the home remote listener.
 
 Everything else — the device port — is unauthenticated by design: a rogue
-device can open streams and reach the home remote listener. The
+device can open streams and reach the home remote listener. One address holds
+at most `max_streams_per_ip` (default 32) of the `max_streams` (256), so a
+single client can no longer fill the table with idle connections and lock the
+household out; many addresses still can, which is what the TLS front of a US
+deployment (and its own connection limits) is for. The
 defense is the home remote gate (argus-auth's and argus-identity's
 `[remote] tunnel_port` classification, 403 `REMOTE_NOT_ALLOWED` for
 forbidden routes such as `/pairing`). Carried TLS means the relay sees
@@ -191,20 +216,34 @@ chosen for F5-5 and the trade-off is accepted and documented here.
 
 ## Config
 
-`[tunnel]` carries the shared secret plus link knobs; `[server]` carries the
+`[tunnel]` carries the shared secret plus link knobs (`reconnect_wait_ms`,
+`reconnect_max_wait_ms`, `ping_interval_seconds`, `stream_idle_seconds`,
+`max_streams`, `max_streams_per_ip`, `socket_snd_buf`); `[server]` carries the
 per-binary listener keys (relay: `host`/`device_port`/`home_port`; client:
 `relay_host`/`relay_port`/`gateway_host`/`gateway_port`; health listeners
 default 7103 relay / 7104 client); `[push]` (F5-5, relay-only gate) carries
 `enabled` (default false) and `queue_capacity` (default 256), plus
 `nats.url` for the subscription. The secret must be identical on both
-sides and never committed.
+sides and never committed. Both binaries refuse to start with a secret
+shorter than 32 bytes or still holding a `CHANGE_ME` placeholder
+(`tunnelSecretProblem`); `scripts/provision-host.sh --with-tunnel` and
+`scripts/setup.sh` generate 64 hex characters (32 random bytes) when the
+current one is missing or short.
 
 `server.gateway_host`/`server.gateway_port` are the client's dial target for
-the home remote listener, and no live listener answers them today: the
-gateway they named is gone (Phase 3d step 1c) and the home remote listener
-belongs to argus-auth and argus-identity. Repointing the client at the
-service whose remote listener it wants is the tunnel's own unit of work
-(D19 defers it).
+the home remote listener: `127.0.0.1:7142` by default and in every template,
+argus-auth's `[remote] tunnel_port`, which the deploy compose publishes on the
+host loopback only (identity's 7144 likewise). The client is host-networked,
+so it reaches that publish; every byte it carries lands on the tunnel port and
+argus-auth classifies it `Tunnel` by local port, never by the address Docker's
+proxy presents. One client dials one listener: reaching identity (or any
+other service) through the tunnel needs a target per stream, which the OPEN
+frame does not carry yet — part of the plan in argus-deploy/CONTEXT.md.
+
+The accept loop backs off when the process runs out of descriptors
+(`EMFILE`/`ENFILE`/`ENOBUFS`/`ENOMEM`): the listener drops out of the epoll
+set for 200 ms and comes back, instead of spinning at 100 % CPU on a
+level-triggered socket it cannot accept from.
 
 ## What was NOT changed
 
@@ -218,6 +257,13 @@ service whose remote listener it wants is the tunnel's own unit of work
   policy lives in argus-notification.
 - The mobile app contracts are untouched: the app keeps talking TLS to the
   host it addresses through the tunnel's device port.
+
+## Not done here: TLS on the home link
+
+The home link still authenticates without encrypting, and frames after AUTH
+carry no MAC. The plan (TLS 1.3 on the home port with the relay pinned by
+the client, the HMAC challenge kept as the second factor) is in
+argus-deploy/CONTEXT.md, "Deferred hardening".
 
 ## A live home link is not replaceable by a stranger (2026-10)
 

@@ -1,7 +1,19 @@
 name: argus-cutover
 
+x-hardening: &hardening
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  stop_grace_period: 20s
+
+x-readonly-root: &readonly-root
+  read_only: true
+  tmpfs:
+    - "/tmp:size=64m,mode=1777"
+    - "/opt/argus/uploads:size=64m,mode=0700,uid=${ARGUS_UID:-1000},gid=${ARGUS_GID:-1000}"
+
 services:
   argus-auth:
+    <<: [*hardening, *readonly-root]
     build:
       context: ..
       dockerfile: services/auth/Dockerfile
@@ -18,6 +30,7 @@ services:
     ports:
       - "${AUTH_PORT:-7042}:7042"
       - "127.0.0.1:${AUTH_RPC_PORT:-7043}:7043"
+      - "127.0.0.1:${AUTH_TUNNEL_PORT:-7142}:7142"
     entrypoint: ["/opt/argus/argus-auth"]
     volumes:
       - type: bind
@@ -58,6 +71,7 @@ services:
     restart: unless-stopped
 
   argus-identity:
+    <<: *hardening
     build:
       context: ..
       dockerfile: services/identity/Dockerfile
@@ -74,6 +88,7 @@ services:
     ports:
       - "${IDENTITY_PORT:-7044}:7044"
       - "127.0.0.1:${IDENTITY_RPC_PORT:-7040}:7040"
+      - "127.0.0.1:${IDENTITY_TUNNEL_PORT:-7144}:7144"
     entrypoint: ["/opt/argus/argus-identity"]
     volumes:
       - type: bind
@@ -84,6 +99,11 @@ services:
       - type: bind
         source: ${ARGUS_CERTS_DIR:-../certs}
         target: /opt/argus/certs
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_CA_DIR:-./data/pki}
+        target: /opt/argus/ca
         bind:
           create_host_path: false
       - type: bind
@@ -120,6 +140,7 @@ services:
     restart: unless-stopped
 
   argus-camera:
+    <<: *hardening
     build:
       context: ..
       dockerfile: services/camera/Dockerfile
@@ -190,6 +211,7 @@ services:
     restart: unless-stopped
 
   argus-productivity:
+    <<: [*hardening, *readonly-root]
     build:
       context: ..
       dockerfile: services/productivity/Dockerfile
@@ -242,6 +264,7 @@ services:
     restart: unless-stopped
 
   argus-notification:
+    <<: [*hardening, *readonly-root]
     build:
       context: ..
       dockerfile: services/notification/Dockerfile
@@ -293,6 +316,7 @@ services:
     restart: unless-stopped
 
   argus-sync:
+    <<: [*hardening, *readonly-root]
     build:
       context: ..
       dockerfile: services/sync/Dockerfile
@@ -349,6 +373,7 @@ services:
     restart: unless-stopped
 
   argus-guard:
+    <<: [*hardening, *readonly-root]
     build:
       context: ..
       dockerfile: services/guard/Dockerfile
@@ -403,6 +428,7 @@ services:
     restart: unless-stopped
 
   argus-settings:
+    <<: [*hardening, *readonly-root]
     build:
       context: ..
       dockerfile: services/settings/Dockerfile
@@ -447,6 +473,7 @@ services:
     restart: unless-stopped
 
   argus-tts:
+    <<: *hardening
     build:
       context: ..
       dockerfile: services/tts/Dockerfile
@@ -488,6 +515,7 @@ services:
     restart: unless-stopped
 
   argus-stt:
+    <<: *hardening
     build:
       context: ..
       dockerfile: services/stt/Dockerfile
@@ -529,6 +557,7 @@ services:
     restart: unless-stopped
 
   argus-vlm:
+    <<: *hardening
     build:
       context: ..
       dockerfile: services/vlm/Dockerfile
@@ -572,6 +601,7 @@ services:
     restart: unless-stopped
 
   argus-llm:
+    <<: *hardening
     build:
       context: ..
       dockerfile: services/llm/Dockerfile
@@ -637,6 +667,7 @@ services:
     restart: unless-stopped
 
   argus-voice:
+    <<: *hardening
     build:
       context: ..
       dockerfile: services/voice/Dockerfile
@@ -682,6 +713,7 @@ services:
     restart: unless-stopped
 
   argus-relay:
+    <<: [*hardening, *readonly-root]
     profiles: ["tunnel"]
     build:
       context: ..
@@ -723,6 +755,7 @@ services:
     restart: unless-stopped
 
   argus-tunnel-client:
+    <<: [*hardening, *readonly-root]
     profiles: ["tunnel"]
     image: argus-tunnel:local
     pull_policy: never
@@ -751,6 +784,7 @@ services:
     restart: unless-stopped
 
   livekit:
+    <<: *hardening
     image: livekit/livekit-server:v1.13.7
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: host
@@ -780,14 +814,25 @@ services:
     restart: unless-stopped
 
   livekit-tls:
+    <<: *hardening
     image: nginx:1.28.3-alpine
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: host
-    entrypoint: ["nginx", "-g", "daemon off;"]
+    read_only: true
+    tmpfs:
+      - "/tmp:size=8m,mode=1777"
+      - "/var/cache/nginx:size=8m,mode=1777"
+    entrypoint: ["/bin/sh", "/opt/argus/livekit-tls-entrypoint.sh"]
     volumes:
       - type: bind
         source: ./livekit-tls.conf
         target: /etc/nginx/nginx.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./livekit-tls-entrypoint.sh
+        target: /opt/argus/livekit-tls-entrypoint.sh
         read_only: true
         bind:
           create_host_path: false
@@ -806,6 +851,7 @@ services:
     restart: unless-stopped
 
   rustfs:
+    <<: *hardening
     image: rustfs/rustfs:1.0.0-beta.12
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     entrypoint: ["/bin/sh", "/opt/argus/s3-entrypoint.sh"]
@@ -840,8 +886,9 @@ services:
     restart: unless-stopped
 
   rustfs-init:
+    <<: *hardening
     image: rustfs/rc:v0.1.31
-    user: "0:0"
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     entrypoint: ["/bin/sh", "/opt/argus/s3-init.sh"]
     environment:
       HOME: /tmp
@@ -864,13 +911,25 @@ services:
     restart: "no"
 
   nats:
+    <<: *hardening
     image: nats:2.11.14-alpine
-    command: ["-js", "-m", "8222", "-sd", "/data", "--user", "argus", "--pass", "${NATS_PASSWORD:?run scripts/provision-host.sh}"]
+    command: ["-c", "/etc/nats/argus.conf"]
     ports:
       - "127.0.0.1:${NATS_CLIENT_PORT:-4222}:4222"
-      - "127.0.0.1:${NATS_MONITOR_PORT:-8222}:8222"
     volumes:
       - nats-data:/data
+      - type: bind
+        source: ./nats.conf
+        target: /etc/nats/argus.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/nats/auth.conf
+        target: /etc/nats/auth.conf
+        read_only: true
+        bind:
+          create_host_path: false
     networks:
       internal:
         aliases:
@@ -885,6 +944,7 @@ services:
     restart: unless-stopped
 
   identity-init:
+    <<: *hardening
     profiles: ["identity-init"]
     image: argus-identity:local
     pull_policy: never
@@ -909,6 +969,7 @@ services:
     restart: "no"
 
   camera-init:
+    <<: *hardening
     profiles: ["camera-init"]
     image: argus-camera:local
     pull_policy: never
@@ -917,16 +978,17 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - >-
-        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-camera --source /opt/argus/database/argus.db --target /opt/argus/camera/camera.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; argus-camera applies the camera schema at boot.'; fi
+        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-camera --source /opt/argus/database/argus.db --target /opt/argus/camera/camera.db --schema /opt/argus/schema/schema.sql; else echo 'No argus.db yet; argus-camera applies the camera schema at boot.'; fi
     volumes:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}/identity
         target: /opt/argus/database
+        read_only: true
         bind:
           create_host_path: false
       - type: bind
         source: ../services/camera/database/schema.sql
-        target: /opt/argus/database/schema.sql
+        target: /opt/argus/schema/schema.sql
         read_only: true
         bind:
           create_host_path: false
@@ -934,6 +996,7 @@ services:
     restart: "no"
 
   productivity-init:
+    <<: *hardening
     profiles: ["productivity-init"]
     image: argus-productivity:local
     pull_policy: never
@@ -942,16 +1005,17 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - >-
-        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-productivity --source /opt/argus/database/argus.db --target /opt/argus/productivity/productivity.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; argus-productivity applies the productivity schema at boot.'; fi
+        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-productivity --source /opt/argus/database/argus.db --target /opt/argus/productivity/productivity.db --schema /opt/argus/schema/schema.sql; else echo 'No argus.db yet; argus-productivity applies the productivity schema at boot.'; fi
     volumes:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}/identity
         target: /opt/argus/database
+        read_only: true
         bind:
           create_host_path: false
       - type: bind
         source: ../services/productivity/database/schema.sql
-        target: /opt/argus/database/schema.sql
+        target: /opt/argus/schema/schema.sql
         read_only: true
         bind:
           create_host_path: false
@@ -959,6 +1023,7 @@ services:
     restart: "no"
 
   notification-init:
+    <<: *hardening
     profiles: ["notification-init"]
     image: argus-notification:local
     pull_policy: never
@@ -967,16 +1032,17 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - >-
-        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-notification --source /opt/argus/database/argus.db --target /opt/argus/notification/notification.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; argus-notification applies the notification schema at boot.'; fi
+        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-notification --source /opt/argus/database/argus.db --target /opt/argus/notification/notification.db --schema /opt/argus/schema/schema.sql; else echo 'No argus.db yet; argus-notification applies the notification schema at boot.'; fi
     volumes:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}/identity
         target: /opt/argus/database
+        read_only: true
         bind:
           create_host_path: false
       - type: bind
         source: ../services/notification/database/schema.sql
-        target: /opt/argus/database/schema.sql
+        target: /opt/argus/schema/schema.sql
         read_only: true
         bind:
           create_host_path: false
@@ -984,6 +1050,7 @@ services:
     restart: "no"
 
   sync-init:
+    <<: *hardening
     profiles: ["sync-init"]
     image: argus-sync:local
     pull_policy: never
@@ -1014,6 +1081,7 @@ services:
     restart: "no"
 
   sync-rollback:
+    <<: *hardening
     profiles: ["sync-rollback"]
     image: argus-sync:local
     pull_policy: never
@@ -1044,6 +1112,7 @@ services:
     restart: "no"
 
   vulkan-probe:
+    <<: [*hardening, *readonly-root]
     profiles: ["vulkan-probe"]
     image: argus-camera:local
     pull_policy: never

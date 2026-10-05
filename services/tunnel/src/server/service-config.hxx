@@ -4,7 +4,14 @@
 #include <relay/tunnel-relay.hxx>
 
 #include <json/value.h>
+#include <cstddef>
+#include <optional>
 #include <string>
+#include <string_view>
+
+inline constexpr std::size_t kMinTunnelSecretBytes = 32;
+
+std::optional<std::string> tunnelSecretProblem(std::string_view secret);
 
 struct ClientConfig
 {

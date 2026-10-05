@@ -14,16 +14,23 @@
 
 struct ElasticPool::State
 {
+  struct Queued
+  {
+    std::function<void()> job;
+    std::chrono::steady_clock::time_point enqueuedAt;
+  };
+
   explicit State(const BlockingLaneLimits& laneLimits) : limits(laneLimits) {}
 
   BlockingLaneLimits limits;
   mutable std::mutex mutex;
   std::condition_variable ready;
-  std::deque<std::function<void()>> queue;
+  std::deque<Queued> queue;
   int threads{0};
   int idle{0};
   int peakThreads{0};
   std::uint64_t completed{0};
+  std::uint64_t rejected{0};
   bool stopping{false};
 };
 
@@ -59,7 +66,7 @@ void work(const std::shared_ptr<ElasticPool::State>& state)
       }
       continue;
     }
-    auto job = std::move(state->queue.front());
+    auto job = std::move(state->queue.front().job);
     state->queue.pop_front();
     lock.unlock();
     runJob(job);
@@ -74,7 +81,8 @@ void work(const std::shared_ptr<ElasticPool::State>& state)
 ElasticPool::ElasticPool(const BlockingLaneLimits& limits)
     : limits_{.coreThreads = std::max(0, limits.coreThreads),
               .maxThreads = std::max({1, limits.maxThreads, limits.coreThreads}),
-              .keepAlive = limits.keepAlive},
+              .keepAlive = limits.keepAlive,
+              .maxQueued = limits.maxQueued},
       state_(std::make_shared<State>(limits_))
 {
 }
@@ -90,13 +98,29 @@ ElasticPool::~ElasticPool()
 
 void ElasticPool::submit(std::function<void()> job)
 {
+  static_cast<void>(enqueue(std::move(job), BlockingAdmission::Queue));
+}
+
+bool ElasticPool::trySubmit(std::function<void()> job)
+{
+  return enqueue(std::move(job), BlockingAdmission::RejectWhenFull);
+}
+
+bool ElasticPool::enqueue(std::function<void()> job, BlockingAdmission admission)
+{
   std::unique_lock lock(state_->mutex);
-  state_->queue.push_back(std::move(job));
+  if (admission == BlockingAdmission::RejectWhenFull && limits_.maxQueued > 0 &&
+      state_->queue.size() >= limits_.maxQueued) {
+    ++state_->rejected;
+    return false;
+  }
+  state_->queue.push_back(
+      {.job = std::move(job), .enqueuedAt = std::chrono::steady_clock::now()});
   const auto waiting = static_cast<int>(state_->queue.size());
   if (waiting <= state_->idle || state_->threads >= limits_.maxThreads) {
     lock.unlock();
     state_->ready.notify_one();
-    return;
+    return true;
   }
   try {
     std::thread(work, state_).detach();
@@ -111,16 +135,46 @@ void ElasticPool::submit(std::function<void()> job)
       throw;
     }
   }
+  return true;
 }
 
 BlockingLaneStats ElasticPool::stats() const
 {
+  return stats(std::chrono::steady_clock::now());
+}
+
+BlockingLaneStats ElasticPool::stats(std::chrono::steady_clock::time_point now) const
+{
   std::scoped_lock lock(state_->mutex);
+  std::chrono::milliseconds oldest{0};
+  if (!state_->queue.empty())
+    oldest = std::max(std::chrono::milliseconds{0},
+                      std::chrono::duration_cast<std::chrono::milliseconds>(
+                          now - state_->queue.front().enqueuedAt));
   return {.threads = state_->threads,
           .idle = state_->idle,
           .queued = state_->queue.size(),
           .peakThreads = state_->peakThreads,
-          .completed = state_->completed};
+          .completed = state_->completed,
+          .rejected = state_->rejected,
+          .oldestQueuedAge = oldest};
+}
+
+namespace
+{
+
+union ImmortalLane
+{
+  explicit ImmortalLane(const BlockingLaneLimits& limits) : pool(limits) {}
+  ImmortalLane(const ImmortalLane&) = delete;
+  ImmortalLane& operator=(const ImmortalLane&) = delete;
+  ImmortalLane(ImmortalLane&&) = delete;
+  ImmortalLane& operator=(ImmortalLane&&) = delete;
+  ~ImmortalLane() {}
+
+  ElasticPool pool;
+};
+
 }
 
 namespace blocking_pool
@@ -131,25 +185,34 @@ BlockingLaneLimits limitsFor(BlockingLane lane)
   if (lane == BlockingLane::Heavy)
     return {.coreThreads = 1,
             .maxThreads = ThreadBudget::blockingHeavyThreads(),
-            .keepAlive = std::chrono::seconds(30)};
+            .keepAlive = std::chrono::seconds(30),
+            .maxQueued = static_cast<std::size_t>(
+                ThreadBudget::blockingHeavyThreads()) * 16};
   return {.coreThreads = ThreadBudget::lightThreads(),
           .maxThreads = ThreadBudget::blockingLightThreads(),
-          .keepAlive = std::chrono::seconds(30)};
+          .keepAlive = std::chrono::seconds(30),
+          .maxQueued = static_cast<std::size_t>(
+              ThreadBudget::blockingLightThreads()) * 64};
 }
 
 ElasticPool& lane(BlockingLane lane)
 {
   if (lane == BlockingLane::Heavy) {
-    static ElasticPool heavy(limitsFor(BlockingLane::Heavy));
-    return heavy;
+    static ImmortalLane heavy(limitsFor(BlockingLane::Heavy));
+    return heavy.pool;
   }
-  static ElasticPool light(limitsFor(BlockingLane::Light));
-  return light;
+  static ImmortalLane light(limitsFor(BlockingLane::Light));
+  return light.pool;
 }
 
 void submit(BlockingLane laneName, std::function<void()> job)
 {
   lane(laneName).submit(std::move(job));
+}
+
+bool trySubmit(BlockingLane laneName, std::function<void()> job)
+{
+  return lane(laneName).trySubmit(std::move(job));
 }
 
 BlockingLaneStats statsOf(BlockingLane laneName)
@@ -161,10 +224,14 @@ BlockingLaneStats statsOf(BlockingLane laneName)
 
 struct BlockingStrand::State
 {
-  explicit State(ElasticPool& strandPool) : pool(&strandPool) {}
+  State(ElasticPool& strandPool, std::size_t strandMaxQueued)
+      : pool(&strandPool), maxQueued(strandMaxQueued)
+  {
+  }
 
   ElasticPool* pool;
-  std::mutex mutex;
+  std::size_t maxQueued;
+  mutable std::mutex mutex;
   std::deque<std::function<void()>> queue;
   bool scheduled{false};
 };
@@ -181,32 +248,41 @@ void scheduleStrand(const std::shared_ptr<BlockingStrand::State>& state)
 
 void drainStrand(const std::shared_ptr<BlockingStrand::State>& state)
 {
-  std::function<void()> job;
-  {
-    std::scoped_lock lock(state->mutex);
-    job = std::move(state->queue.front());
-    state->queue.pop_front();
-  }
-  runJob(job);
-  {
-    std::scoped_lock lock(state->mutex);
-    if (state->queue.empty()) {
-      state->scheduled = false;
+  for (;;) {
+    std::function<void()> job;
+    {
+      std::scoped_lock lock(state->mutex);
+      job = std::move(state->queue.front());
+      state->queue.pop_front();
+    }
+    runJob(job);
+    {
+      std::scoped_lock lock(state->mutex);
+      if (state->queue.empty()) {
+        state->scheduled = false;
+        return;
+      }
+    }
+    try {
+      scheduleStrand(state);
       return;
     }
+    catch (const std::exception& error) {
+      LOG_WARN << "Blocking strand: could not hand the next job to the pool ("
+               << error.what() << "), running it on this worker";
+    }
   }
-  scheduleStrand(state);
 }
 
 }
 
-BlockingStrand::BlockingStrand(BlockingLane lane)
-    : BlockingStrand(blocking_pool::lane(lane))
+BlockingStrand::BlockingStrand(BlockingLane lane, std::size_t maxQueued)
+    : BlockingStrand(blocking_pool::lane(lane), maxQueued)
 {
 }
 
-BlockingStrand::BlockingStrand(ElasticPool& pool)
-    : state_(std::make_shared<State>(pool))
+BlockingStrand::BlockingStrand(ElasticPool& pool, std::size_t maxQueued)
+    : state_(std::make_shared<State>(pool, maxQueued))
 {
 }
 
@@ -219,5 +295,43 @@ void BlockingStrand::post(std::function<void()> job)
       return;
     state_->scheduled = true;
   }
-  scheduleStrand(state_);
+  try {
+    scheduleStrand(state_);
+  }
+  catch (...) {
+    bool remaining = false;
+    {
+      std::scoped_lock lock(state_->mutex);
+      state_->queue.pop_front();
+      remaining = !state_->queue.empty();
+      state_->scheduled = remaining;
+    }
+    if (remaining) {
+      try {
+        scheduleStrand(state_);
+      }
+      catch (...) {
+        std::scoped_lock lock(state_->mutex);
+        state_->scheduled = false;
+      }
+    }
+    throw;
+  }
+}
+
+bool BlockingStrand::tryPost(std::function<void()> job)
+{
+  {
+    std::scoped_lock lock(state_->mutex);
+    if (state_->maxQueued > 0 && state_->queue.size() >= state_->maxQueued)
+      return false;
+  }
+  post(std::move(job));
+  return true;
+}
+
+std::size_t BlockingStrand::queued() const
+{
+  std::scoped_lock lock(state_->mutex);
+  return state_->queue.size();
 }

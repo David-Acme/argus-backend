@@ -23,6 +23,12 @@ public:
 
   uint16_t boundPort() const;
   void handleEvents(uint32_t events) override;
+  void pauseAccepting();
+  void resumeAccepting();
+  bool acceptPaused() const { return acceptPaused_; }
+  int acceptPauses() const { return acceptPauses_; }
+
+  static constexpr int kAcceptBackoffMs = 200;
 
 private:
   explicit TcpListener(const Params& params);
@@ -31,4 +37,6 @@ private:
   UniqueFd fd_;
   std::function<void(int fd, const std::string& peerIp, uint16_t peerPort)>
       onAccept_;
+  bool acceptPaused_{false};
+  int acceptPauses_{0};
 };

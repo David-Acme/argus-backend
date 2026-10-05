@@ -13,6 +13,7 @@ WITH_DOCKER=1
 WITH_MODELS=0
 WITH_S3=1
 START=0
+WITH_TUNNEL=0
 MIGRATE_VOLUMES=0
 PRIVACY_ACTION="require"
 
@@ -34,6 +35,7 @@ Usage:
   ./scripts/provision-host.sh --data-dir /srv/argus
   ./scripts/provision-host.sh --mdns-address 192.168.1.20
   ./scripts/provision-host.sh --with-models       download engine weights
+  ./scripts/provision-host.sh --with-tunnel       turn the remote tunnel profile on
   ./scripts/provision-host.sh --migrate-volumes   copy old named volumes
   ./scripts/provision-host.sh --no-docker -y
   ./scripts/provision-host.sh --no-s3             skip the object store
@@ -63,6 +65,7 @@ while [ "$#" -gt 0 ]; do
     --with-models) WITH_MODELS=1; shift ;;
     --no-s3) WITH_S3=0; shift ;;
     --start) START=1; shift ;;
+    --with-tunnel) WITH_TUNNEL=1; shift ;;
     --migrate-volumes) MIGRATE_VOLUMES=1; shift ;;
     --accept-privacy-notice) PRIVACY_ACCEPT=1; shift ;;
     --accept-visitor-notice) PRIVACY_VISITOR_ACCEPT=1; shift ;;
@@ -89,11 +92,14 @@ DATA_DIR="$(abs_path "${DATA_DIR_IN:-${ARGUS_DATA_DIR:-argus-deploy/data}}")"
 CERTS_DIR="$(abs_path "${ARGUS_CERTS_DIR:-certs}")"
 MODELS_DIR="$(abs_path "${ARGUS_MODELS_DIR:-models}")"
 GO2RTC_DIR="$(abs_path "${ARGUS_GO2RTC_DIR:-third_party/go2rtc}")"
+CA_DIR="$(abs_path "${ARGUS_CA_DIR:-$DATA_DIR/pki}")"
+AUTH_TUNNEL_PORT="${AUTH_TUNNEL_PORT:-7142}"
+IDENTITY_TUNNEL_PORT="${IDENTITY_TUNNEL_PORT:-7144}"
 
 ensure_data_tree() {
   local sub
   mkdir -p "$DATA_DIR"
-  for sub in identity auth camera productivity notification guard memory sync; do
+  for sub in identity auth camera productivity notification guard memory sync nats; do
     mkdir -p "$DATA_DIR/$sub"
   done
   chmod 700 "$DATA_DIR" "$DATA_DIR"/* 2>/dev/null || true
@@ -141,7 +147,8 @@ ensure_env_value() {
 
   if grep -q "^${key}=" "$file" 2>/dev/null; then
     temp="$(mktemp "${file}.tmp.XXXXXX")"
-    awk -v key="$key" -v value="$value" '
+    ARGUS_ENV_VALUE="$value" awk -v key="$key" '
+      BEGIN { value = ENVIRON["ARGUS_ENV_VALUE"] }
       $0 ~ "^" key "=" { print key "=" value; next }
       { print }' "$file" > "$temp"
     chmod 600 "$temp"
@@ -162,7 +169,83 @@ write_env() {
   ensure_env_value "$env_file" ARGUS_CERTS_DIR "$CERTS_DIR"
   ensure_env_value "$env_file" ARGUS_MODELS_DIR "$MODELS_DIR"
   ensure_env_value "$env_file" ARGUS_GO2RTC_DIR "$GO2RTC_DIR"
+  ensure_env_value "$env_file" ARGUS_CA_DIR "$CA_DIR"
+  if grep -Eq '^COMPOSE_PROFILES=.*(^|[=,])tunnel(,|$)' "$env_file" 2>/dev/null; then
+    WITH_TUNNEL=1
+  fi
+  if [ "$WITH_TUNNEL" -eq 1 ]; then
+    ensure_compose_profile "$env_file" tunnel
+  fi
   log "Compose environment ready: $env_file"
+}
+
+ensure_compose_profile() {
+  local env_file="$1"
+  local profile="$2"
+  local current
+
+  current="$(sed -n 's/^COMPOSE_PROFILES=//p' "$env_file" | head -1)"
+  case ",$current," in
+    *",$profile,"*) return 0 ;;
+  esac
+  ensure_env_value "$env_file" COMPOSE_PROFILES "${current:+$current,}$profile"
+}
+
+configure_identity_signer() {
+  local config="$DEPLOY_DIR/config.identity.toml"
+
+  [ -f "$config" ] || return 0
+  case "$(toml_value "$config" cert ca_key)" in
+    ""|certs/ca.key) replace_toml_value cert ca_key "ca/ca.key" "$config" ;;
+  esac
+  case "$(toml_value "$config" cert pairing_code)" in
+    ""|certs/pairing.code) replace_toml_value cert pairing_code "ca/pairing.code" "$config" ;;
+  esac
+}
+
+configure_tunnel() {
+  local auth="$DEPLOY_DIR/config.auth.toml"
+  local identity="$DEPLOY_DIR/config.identity.toml"
+  local client="$DEPLOY_DIR/config.tunnel.toml"
+  local relay="$DEPLOY_DIR/config.relay.toml"
+  local config port
+
+  for config in "$auth:$AUTH_TUNNEL_PORT" "$identity:$IDENTITY_TUNNEL_PORT"; do
+    port="${config##*:}"
+    config="${config%:*}"
+    [ -f "$config" ] || continue
+    case "$(toml_value "$config" remote tunnel_port)" in
+      ""|0) replace_toml_value remote tunnel_port "$port" "$config" literal ;;
+    esac
+    replace_toml_value remote tunnel_profile true "$config" literal
+  done
+  if [ -f "$client" ]; then
+    replace_toml_value server gateway_host "127.0.0.1" "$client"
+    replace_toml_value server gateway_port "$AUTH_TUNNEL_PORT" "$client" literal
+    remove_toml_key tunnel max_reconnects "$client"
+  fi
+  remove_toml_key tunnel max_reconnects "$relay"
+  ensure_tunnel_secret "$client" "$relay"
+  log "Tunnel profile on: argus-auth's remote listener on 127.0.0.1:$AUTH_TUNNEL_PORT, identity's on 127.0.0.1:$IDENTITY_TUNNEL_PORT"
+}
+
+write_nats_auth() {
+  local dir="$DATA_DIR/nats"
+  local password temp
+
+  password="$(toml_value "$DEPLOY_DIR/config.auth.toml" nats password)"
+  case "$password" in
+    ""|*CHANGE_ME*) err "no NATS password in config.auth.toml"; return 1 ;;
+  esac
+  case "$password" in
+    *[!A-Za-z0-9]*) err "the NATS password must be alphanumeric"; return 1 ;;
+  esac
+  mkdir -p "$dir"
+  chmod 700 "$dir"
+  temp="$(mktemp "$dir/auth.conf.XXXXXX")"
+  printf 'authorization {\n  user: argus\n  password: "%s"\n}\n' "$password" > "$temp"
+  chmod 644 "$temp"
+  mv "$temp" "$dir/auth.conf"
 }
 
 detect_lan_address() {
@@ -319,12 +402,13 @@ start_stack() {
 
 print_summary() {
   local pairing="unavailable"
-  [ -f "$CERTS_DIR/pairing.code" ] && pairing="$(cat "$CERTS_DIR/pairing.code")"
+  [ -f "$CA_DIR/pairing.code" ] && pairing="stored in $CA_DIR/pairing.code (0600)"
 
   echo
   log "Host ready."
   printf '  data dir       : %s\n' "$DATA_DIR"
   printf '  certs dir      : %s\n' "$CERTS_DIR"
+  printf '  CA signer dir  : %s\n' "$CA_DIR"
   printf '  models dir     : %s\n' "$MODELS_DIR"
   printf '  go2rtc dir     : %s\n' "$GO2RTC_DIR"
   printf '  objects dir    : %s\n' "$DATA_DIR/rustfs/objects"
@@ -346,20 +430,25 @@ main() {
   ensure_data_tree
   write_env
   ensure_deploy_configs "$DEPLOY_DIR"
-  ensure_env_value "$DEPLOY_DIR/.env" NATS_PASSWORD \
-    "$(toml_value "$DEPLOY_DIR/config.auth.toml" nats password)"
+  write_nats_auth
+  configure_identity_signer
+  if [ "$WITH_TUNNEL" -eq 1 ]; then
+    configure_tunnel
+  fi
 
   local lan_address
   lan_address="$(detect_lan_address)"
   if [ -n "$lan_address" ]; then
     configure_mdns_address "$lan_address"
     configure_webrtc_candidate "$lan_address"
+    configure_lan_networks "$(host_lan_networks "$lan_address")" "$DEPLOY_DIR"/config.*.toml
     log "mDNS announcements and the camera WebRTC candidate carry $lan_address (override with ARGUS_MDNS_ADDRESS)"
   else
     warn "No LAN address detected; set ARGUS_MDNS_ADDRESS and re-run, or the"
     warn "containers announce their own bridge interface and stay undiscoverable"
   fi
-  ensure_instance_certs "$ROOT" "$CERTS_DIR" "$DEPLOY_DIR/config.identity.toml"
+  ensure_instance_certs "$ROOT" "$CERTS_DIR" "$DEPLOY_DIR/config.identity.toml" \
+    "$CA_DIR" "$lan_address"
   if [ "$WITH_S3" -eq 1 ]; then
     ensure_object_store
   fi

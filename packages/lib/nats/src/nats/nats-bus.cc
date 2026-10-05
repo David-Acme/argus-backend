@@ -141,8 +141,11 @@ void NatsBus::onMessage(natsConnection* connection, natsSubscription* sub,
   (void)connection;
   auto* bus = static_cast<NatsBus*>(closure);
   if (bus == nullptr || msg == nullptr ||
-      bus->callbacksSuppressed_.load(std::memory_order_acquire))
+      bus->callbacksSuppressed_.load(std::memory_order_acquire)) {
+    if (msg != nullptr)
+      natsMsg_Destroy(msg);
     return;
+  }
 
   MessageHandler handler;
   {
@@ -233,6 +236,11 @@ void NatsBus::onDurableMessage(natsConnection* connection,
       return;
     natsMsg_Term(message.get(), nullptr);
   };
+  auto inProgress = [message, settled]() {
+    if (settled->load(std::memory_order_acquire))
+      return;
+    natsMsg_InProgress(message.get(), nullptr);
+  };
   const char* messageId = nullptr;
   if (natsMsgHeader_Get(msg, kMsgIdHeader, &messageId) != NATS_OK)
     messageId = nullptr;
@@ -246,7 +254,8 @@ void NatsBus::onDurableMessage(natsConnection* connection,
       .delivered = delivered};
   handler(durableMessage, DurableSettlement{.ack = std::move(ack),
                                             .nak = std::move(nak),
-                                            .term = std::move(term)});
+                                            .term = std::move(term),
+                                            .inProgress = std::move(inProgress)});
 }
 
 bool NatsBus::connect(const Options& options)
@@ -736,6 +745,24 @@ std::optional<uint64_t> NatsBus::subscribeDurable(const DurableInput& input)
   if (!attachDurable(input, id))
     return std::nullopt;
   return id;
+}
+
+std::optional<uint64_t>
+NatsBus::subscribeDurableFeed(const DurableFeedInput& input)
+{
+  const bool covered = std::ranges::any_of(
+      input.stream.subjects,
+      [&input](const std::string& subject) {
+        return subject == input.consumer.subject;
+      });
+  if (!covered || input.consumer.stream != input.stream.name) {
+    LOG_WARN << "NATS durable feed " << input.consumer.durable
+             << " names a stream or subject its own stream does not carry";
+    return std::nullopt;
+  }
+  if (!ensureStream(input.stream))
+    return std::nullopt;
+  return subscribeDurable(input.consumer);
 }
 
 std::optional<uint64_t> NatsBus::subscribe(const std::string& subject,

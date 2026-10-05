@@ -28,6 +28,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -385,6 +386,24 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
     CHECK(sansOf(rejectedLeaf.get()) == baseSans());
   }
 
+  ConfigService::setRuntimeString("remote.hostname", "");
+  ConfigService::setRuntimeString("mdns.address", "192.168.1.20");
+  REQUIRE(CertService::rotateServerCertificate());
+  {
+    const X509Ptr lanLeaf = firstCertFromPem(readFile(dir / "server.pem"));
+    REQUIRE(lanLeaf);
+    const auto lanSans = sansOf(lanLeaf.get());
+    CHECK(std::ranges::find(lanSans, "192.168.1.20") != lanSans.end());
+  }
+  ConfigService::setRuntimeString("mdns.address", "8.8.8.8");
+  REQUIRE(CertService::rotateServerCertificate());
+  {
+    const X509Ptr publicLeaf = firstCertFromPem(readFile(dir / "server.pem"));
+    REQUIRE(publicLeaf);
+    CHECK(sansOf(publicLeaf.get()) == baseSans());
+  }
+  ConfigService::setRuntimeString("mdns.address", "");
+
   ConfigService::setRuntimeString("remote.hostname", kRemoteHost);
   REQUIRE(CertService::rotateServerCertificate());
   const X509Ptr leaf = firstCertFromPem(readFile(dir / "server.pem"));
@@ -392,6 +411,18 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
   const std::vector<std::string> sans = sansOf(leaf.get());
   CHECK(sans.size() == baseSans().size() + 1);
   CHECK(sans.back() == kRemoteHost);
+  {
+    auto* usage = static_cast<EXTENDED_KEY_USAGE*>(
+        X509_get_ext_d2i(leaf.get(), NID_ext_key_usage, nullptr, nullptr));
+    REQUIRE(usage != nullptr);
+    bool serverAuth = false;
+    for (int i = 0; i < sk_ASN1_OBJECT_num(usage); ++i)
+      serverAuth = serverAuth ||
+                   OBJ_obj2nid(sk_ASN1_OBJECT_value(usage, i)) == NID_server_auth;
+    sk_ASN1_OBJECT_pop_free(usage, ASN1_OBJECT_free);
+    CHECK(serverAuth);
+    CHECK(X509_check_ca(leaf.get()) == 0);
+  }
   std::filesystem::copy_file(
       dir / "server.pem", dir / "leaf-with-hostname.pem",
       std::filesystem::copy_options::overwrite_existing);
@@ -416,6 +447,37 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
   CHECK(after.fingerprint != before.fingerprint);
   CHECK(after.fingerprint != absentFingerprint);
   CHECK(after.sans.back() == kRemoteHost);
+
+  X509Ptr constrained(X509_new(), X509_free);
+  REQUIRE(constrained);
+  REQUIRE(X509_set_version(constrained.get(), 2) == 1);
+  REQUIRE(X509_set_subject_name(constrained.get(), caSubject.get()) == 1);
+  REQUIRE(X509_set_issuer_name(constrained.get(), caSubject.get()) == 1);
+  REQUIRE(X509_set_pubkey(constrained.get(), caKey.get()) == 1);
+  X509_gmtime_adj(X509_getm_notBefore(constrained.get()), 0);
+  X509_gmtime_adj(X509_getm_notAfter(constrained.get()), 3650L * 86400L);
+  for (const auto& [nid, value] :
+       {std::pair{NID_basic_constraints, "critical,CA:TRUE,pathlen:0"},
+        std::pair{NID_name_constraints,
+                  "critical,permitted;DNS:local,permitted;DNS:localhost,"
+                  "permitted;IP:127.0.0.0/255.0.0.0,"
+                  "permitted;IP:::1/ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"}}) {
+    std::unique_ptr<X509_EXTENSION, void (*)(X509_EXTENSION*)> ext(
+        X509V3_EXT_conf_nid(nullptr, nullptr, nid, value), &X509_EXTENSION_free);
+    REQUIRE(ext);
+    REQUIRE(X509_add_ext(constrained.get(), ext.get(), -1) == 1);
+  }
+  REQUIRE(X509_sign(constrained.get(), caKey.get(), EVP_sha256()) > 0);
+  REQUIRE(writeCertPem(dir / "ca.pem", constrained.get()));
+  REQUIRE(CertService::rotateServerCertificate());
+  const X509Ptr constrainedLeaf = firstCertFromPem(readFile(dir / "server.pem"));
+  REQUIRE(constrainedLeaf);
+  const std::vector<std::string> kept = sansOf(constrainedLeaf.get());
+  CHECK(std::ranges::find(kept, "argus.local") != kept.end());
+  CHECK(std::ranges::find(kept, "localhost") != kept.end());
+  CHECK(std::ranges::find(kept, "127.0.0.1") != kept.end());
+  CHECK(std::ranges::find(kept, "::1") != kept.end());
+  CHECK(std::ranges::find(kept, kRemoteHost) == kept.end());
 
   CertService::shutdown();
 }

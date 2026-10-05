@@ -22,6 +22,7 @@ public:
   virtual void onAuthRejected() {}
   virtual void onPushFrame(const std::string& payload) { (void)payload; }
   virtual void onRemoteOpen(uint32_t streamId) { (void)streamId; }
+  virtual void onStreamClosed(uint32_t streamId) { (void)streamId; }
   virtual void onLinkUp() {}
   virtual void onLinkDown() {}
 };
@@ -52,6 +53,9 @@ public:
     std::chrono::seconds deadLinkTimeout{90};
     std::chrono::seconds authTimeout{10};
     int maxStreams{256};
+    int maxStreamsPerIp{32};
+    int maxPendingHomes{16};
+    int maxPendingHomesPerIp{2};
   };
 
   struct Deps
@@ -69,6 +73,7 @@ public:
   uint32_t openRemote();
   void closeStream(uint32_t streamId, CloseReason reason);
   void dropLink();
+  void dropPendingHomes();
   void teardownAll();
   void sweep();
   void sendPing();
@@ -77,6 +82,7 @@ public:
   bool hasHome() const { return homePeer_ != nullptr; }
   bool homeActive() const { return homeActive_; }
   size_t streamCount() const { return streams_.size(); }
+  size_t pendingHomeCount() const { return pendingHomes_.size(); }
   size_t pendingBytes() const
   {
     return globalPendingToHome_ + globalPendingToLocal_;
@@ -110,7 +116,27 @@ private:
     Clock::time_point deadline;
   };
 
+  struct PendingHome
+  {
+    TcpPeer::Ptr peer;
+    FrameParser parser;
+    std::string challenge;
+    Clock::time_point attachedAt;
+  };
+
+  struct PendingReadInput
+  {
+    TcpPeer* key;
+    const char* data;
+    size_t size{0};
+  };
+
   Stream* findStream(uint32_t streamId);
+  bool adoptRelayCandidate(const TcpPeer::Ptr& peer);
+  void installHomeCallbacks(const TcpPeer::Ptr& peer);
+  void handlePendingRead(const PendingReadInput& input);
+  void dropPendingHome(TcpPeer* key);
+  void promotePendingHome(TcpPeer* key);
   void handleHomeRead(const HomeReadInput& input);
   void handleHomeDrained(TcpPeer& peer);
   void dispatchFrame(Frame frame);
@@ -134,6 +160,7 @@ private:
   std::string authChallenge_;
   std::unordered_map<uint32_t, Stream> streams_;
   std::vector<DrainingPeer> draining_;
+  std::unordered_map<TcpPeer*, PendingHome> pendingHomes_;
   size_t globalPendingToHome_{0};
   size_t globalPendingToLocal_{0};
   uint32_t nextStreamId_{1};

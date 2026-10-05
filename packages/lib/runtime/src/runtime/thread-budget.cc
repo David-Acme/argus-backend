@@ -1,15 +1,16 @@
 #include "thread-budget.hxx"
 
+#include "cpu-limits.hxx"
+
 #include <algorithm>
-#include <thread>
 
 namespace ThreadBudget
 {
 
 int hardwareThreads()
 {
-  auto hw = std::thread::hardware_concurrency();
-  return static_cast<int>(std::max(1u, hw));
+  static const int threads = cpu_limits::probeEffectiveThreads();
+  return threads;
 }
 
 int computeThreads()

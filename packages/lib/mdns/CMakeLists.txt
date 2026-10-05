@@ -26,6 +26,7 @@ argus_lib(NAME mdns
     SOURCES
         src/mdns/mdns-service.cc
         src/mdns/mdns-service.hxx
+        src/mdns/link-filter.hxx
     INCLUDES src
     DEPENDS
         argus::lib::config
@@ -44,6 +45,13 @@ target_link_libraries(mdns-service-test PRIVATE
     doctest::doctest)
 target_compile_options(mdns-service-test PRIVATE -Wall -Wextra)
 add_test(NAME mdns-service-test COMMAND mdns-service-test)
+
+add_executable(mdns-link-filter-test tests/unit/mdns-link-filter-test.cc)
+target_link_libraries(mdns-link-filter-test PRIVATE
+    argus::lib::mdns
+    doctest::doctest)
+target_compile_options(mdns-link-filter-test PRIVATE -Wall -Wextra)
+add_test(NAME mdns-link-filter-test COMMAND mdns-link-filter-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

@@ -44,6 +44,7 @@ struct CertPaths
   std::string caKey;
   std::string serverCert;
   std::string serverKey;
+  std::string pairingCode;
   int leafTtlDays = 90;
   int rotationThresholdDays = 30;
   int rotateCheckHours = 24;
@@ -182,6 +183,11 @@ std::string loadPairingCode(const std::string& path)
   const bool hex = std::ranges::all_of(code, [](char c) {
     return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F');
   });
+  const bool base32 = std::ranges::all_of(code, [](char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= '2' && c <= '7');
+  });
+  if (base32 && code.size() >= 26 && code.size() <= 32)
+    return code;
   if (!hex || code.size() < 8 || code.size() > 12)
     return {};
   return code;
@@ -229,6 +235,21 @@ bool isValidHostname(const std::string& host)
              ".-") == std::string::npos;
 }
 
+bool isPrivateAddress(const std::string& text)
+{
+  std::array<unsigned char, 16> bytes{};
+  if (inet_pton(AF_INET, text.c_str(), bytes.data()) == 1) {
+    const unsigned first = bytes[0];
+    const unsigned second = bytes[1];
+    return first == 10 || (first == 172 && (second & 0xF0U) == 16) ||
+           (first == 192 && second == 168) || (first == 169 && second == 254) ||
+           (first == 100 && (second & 0xC0U) == 64);
+  }
+  if (inet_pton(AF_INET6, text.c_str(), bytes.data()) == 1)
+    return (bytes[0] & 0xFEU) == 0xFC || (bytes[0] == 0xFE && (bytes[1] & 0xC0U) == 0x80);
+  return false;
+}
+
 std::vector<std::string> instanceSans()
 {
   std::vector<std::string> names{"argus.local", "localhost", "127.0.0.1",
@@ -239,6 +260,10 @@ std::vector<std::string> instanceSans()
   std::array<char, 256> hostname{};
   if (gethostname(hostname.data(), hostname.size()) == 0)
     names.emplace_back(hostname.data());
+  const std::string lanAddress = ConfigService::getString("mdns.address");
+  if (isPrivateAddress(lanAddress) &&
+      std::ranges::find(names, lanAddress) == names.end())
+    names.push_back(lanAddress);
   const std::string remoteHost = ConfigService::getString("remote.hostname");
   if (remoteHost.empty())
     return names;
@@ -265,6 +290,40 @@ std::string buildSanString(const std::vector<std::string>& sans)
       out += "DNS:" + value;
   }
   return out;
+}
+
+bool permittedByCa(NAME_CONSTRAINTS* constraints, const std::string& san)
+{
+  X509Ptr probe(X509_new(), X509_free);
+  if (!probe)
+    return false;
+  std::unique_ptr<X509_EXTENSION, void (*)(X509_EXTENSION*)> ext(
+      X509V3_EXT_conf_nid(nullptr, nullptr, NID_subject_alt_name,
+                          buildSanString({san}).c_str()),
+      &X509_EXTENSION_free);
+  if (!ext || X509_add_ext(probe.get(), ext.get(), -1) != 1)
+    return false;
+  static_cast<void>(X509_check_purpose(probe.get(), -1, 0));
+  return NAME_CONSTRAINTS_check(probe.get(), constraints) == X509_V_OK;
+}
+
+std::vector<std::string> permittedSans(X509* ca, std::vector<std::string> sans)
+{
+  std::unique_ptr<NAME_CONSTRAINTS, void (*)(NAME_CONSTRAINTS*)> constraints(
+      static_cast<NAME_CONSTRAINTS*>(
+          X509_get_ext_d2i(ca, NID_name_constraints, nullptr, nullptr)),
+      &NAME_CONSTRAINTS_free);
+  if (!constraints)
+    return sans;
+  std::erase_if(sans, [&constraints](const std::string& san) {
+    if (permittedByCa(constraints.get(), san))
+      return false;
+    LOG_WARN << "cert rotation: '" << san
+             << "' is outside the instance CA's name constraints; left out "
+                "of the leaf";
+    return true;
+  });
+  return sans;
 }
 
 struct CertLeafInput
@@ -316,6 +375,16 @@ X509Ptr buildLeaf(const CertLeafInput& input)
   if (X509_set_pubkey(cert.get(), leafKey) != 1)
     return {nullptr, X509_free};
 
+  for (const auto& [nid, value] :
+       {std::pair{NID_basic_constraints, "critical,CA:FALSE"},
+        std::pair{NID_key_usage, "critical,digitalSignature"},
+        std::pair{NID_ext_key_usage, "serverAuth"}}) {
+    std::unique_ptr<X509_EXTENSION, void (*)(X509_EXTENSION*)> ext(
+        X509V3_EXT_conf_nid(nullptr, nullptr, nid, value), &X509_EXTENSION_free);
+    if (!ext || X509_add_ext(cert.get(), ext.get(), -1) != 1)
+      return {nullptr, X509_free};
+  }
+
   const std::string sanStr = buildSanString(sans);
   if (!sanStr.empty()) {
     std::unique_ptr<X509_EXTENSION, void (*)(X509_EXTENSION*)>
@@ -360,6 +429,7 @@ bool CertService::init()
   p.caKey = ConfigService::getString("cert.ca_key");
   p.serverCert = ConfigService::getString("cert.server_cert");
   p.serverKey = ConfigService::getString("cert.server_key");
+  p.pairingCode = ConfigService::getString("cert.pairing_code");
   if (p.caCert.empty())
     p.caCert = p.dir + "/ca.pem";
   if (p.caKey.empty())
@@ -368,6 +438,8 @@ bool CertService::init()
     p.serverCert = p.dir + "/server.pem";
   if (p.serverKey.empty())
     p.serverKey = p.dir + "/server.key";
+  if (p.pairingCode.empty())
+    p.pairingCode = p.dir + "/pairing.code";
   if (const int v = ConfigService::getInt("cert.leaf_ttl_days"); v > 0)
     p.leafTtlDays = v;
   if (const int v = ConfigService::getInt("cert.rotation_threshold_days");
@@ -387,10 +459,10 @@ bool CertService::init()
   gState.caPem = pemOf(ca.get());
   gState.caFingerprint = sha256Hex(ca.get());
   gState.serverFingerprint = sha256Hex(server.get());
-  gState.pairingCode = loadPairingCode(p.dir + "/pairing.code");
+  gState.pairingCode = loadPairingCode(p.pairingCode);
   if (gState.pairingCode.empty())
-    LOG_WARN << "No pairing code in " << p.dir
-             << "/pairing.code - run scripts/setup.sh; pairing is disabled";
+    LOG_WARN << "No pairing code in " << p.pairingCode
+             << " - run scripts/setup.sh; pairing is disabled";
   gState.loaded.store(true);
 
   if (certDaysRemaining(server.get()) <= p.rotationThresholdDays) {
@@ -517,7 +589,7 @@ bool CertService::rotateServerCertificate()
     return false;
   }
 
-  const std::vector<std::string> sans = instanceSans();
+  const std::vector<std::string> sans = permittedSans(ca.get(), instanceSans());
   X509Ptr leaf = buildLeaf({.leafKey = leafKey.get(),
                             .caCert = ca.get(),
                             .caKey = caKey.get(),

@@ -204,3 +204,74 @@ TEST_CASE("the process lanes are sized from the thread budget")
   CHECK(&blocking_pool::lane(BlockingLane::Light) !=
         &blocking_pool::lane(BlockingLane::Heavy));
 }
+
+TEST_CASE("a bounded lane rejects past its queue cap and counts the refusal")
+{
+  ElasticPool pool({.coreThreads = 1, .maxThreads = 1, .keepAlive = 5s, .maxQueued = 2});
+  Gate gate;
+  std::atomic<bool> holding{false};
+  REQUIRE(pool.trySubmit([&] {
+    holding.store(true);
+    gate.pass();
+  }));
+  REQUIRE(waitUntil([&holding] { return holding.load(); }, 5s));
+
+  std::atomic<int> ran{0};
+  CHECK(pool.trySubmit([&ran] { ran.fetch_add(1); }));
+  CHECK(pool.trySubmit([&ran] { ran.fetch_add(1); }));
+  CHECK_FALSE(pool.trySubmit([&ran] { ran.fetch_add(1); }));
+
+  const auto later = std::chrono::steady_clock::now() + 250ms;
+  const auto stats = pool.stats(later);
+  CHECK(stats.queued == 2);
+  CHECK(stats.rejected == 1);
+  CHECK(stats.oldestQueuedAge >= 250ms);
+
+  pool.submit([&ran] { ran.fetch_add(1); });
+  CHECK(pool.stats().queued == 3);
+
+  gate.open();
+  CHECK(waitUntil([&ran] { return ran.load() == 3; }, 5s));
+  CHECK(pool.stats().oldestQueuedAge == 0ms);
+}
+
+TEST_CASE("an unbounded lane never rejects")
+{
+  ElasticPool pool({.coreThreads = 1, .maxThreads = 1, .keepAlive = 5s, .maxQueued = 0});
+  std::atomic<int> ran{0};
+  for (int i = 0; i < 100; ++i)
+    CHECK(pool.trySubmit([&ran] { ran.fetch_add(1); }));
+  CHECK(waitUntil([&ran] { return ran.load() == 100; }, 5s));
+  CHECK(pool.stats().rejected == 0);
+}
+
+TEST_CASE("a bounded strand refuses past its own cap and keeps running")
+{
+  ElasticPool pool({.coreThreads = 1, .maxThreads = 1, .keepAlive = 5s, .maxQueued = 0});
+  Gate gate;
+  std::atomic<bool> holding{false};
+  pool.submit([&] {
+    holding.store(true);
+    gate.pass();
+  });
+  REQUIRE(waitUntil([&holding] { return holding.load(); }, 5s));
+
+  BlockingStrand strand(pool, 2);
+  std::atomic<int> ran{0};
+  CHECK(strand.tryPost([&ran] { ran.fetch_add(1); }));
+  CHECK(strand.tryPost([&ran] { ran.fetch_add(1); }));
+  CHECK_FALSE(strand.tryPost([&ran] { ran.fetch_add(1); }));
+  CHECK(strand.queued() == 2);
+
+  gate.open();
+  CHECK(waitUntil([&ran] { return ran.load() == 2; }, 5s));
+  CHECK(strand.queued() == 0);
+  strand.post([&ran] { ran.fetch_add(1); });
+  CHECK(waitUntil([&ran] { return ran.load() == 3; }, 5s));
+}
+
+TEST_CASE("the process lanes carry a queue cap for callers that ask to be refused")
+{
+  CHECK(blocking_pool::limitsFor(BlockingLane::Light).maxQueued >= 1024);
+  CHECK(blocking_pool::limitsFor(BlockingLane::Heavy).maxQueued >= 64);
+}

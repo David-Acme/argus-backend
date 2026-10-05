@@ -22,8 +22,8 @@ int main()
   ConfigService::load("config.toml");
 
   const RelayConfig config = RelayConfig::resolve();
-  if (config.relay.secret.empty()) {
-    LOG_FATAL << "argus-relay: [tunnel] secret is empty; refusing to start";
+  if (const auto problem = tunnelSecretProblem(config.relay.secret)) {
+    LOG_FATAL << "argus-relay: " << *problem << "; refusing to start";
     return 1;
   }
 

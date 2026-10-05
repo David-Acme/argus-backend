@@ -102,7 +102,7 @@ struct RogueRig
     options.gatewayPort = gateway.port();
     options.secret = "f5-4-loopback-secret";
     options.reconnectWaitMs = 50;
-    options.maxReconnects = 100;
+    options.reconnectMaxWaitMs = 200;
     options.limits.authTimeout = std::chrono::seconds(1);
     client = std::make_unique<TunnelClient>(loop, std::move(options));
 
@@ -230,4 +230,30 @@ TEST_CASE("a correct challenge handshake activates the client link")
   REQUIRE(waitFor([&] { return rig.client->homeActive(); }, 5000));
   CHECK(rig.client->streamCount() == 0);
   CHECK(rig.gateway.dials.load() == 0);
+}
+
+TEST_CASE("a duplicate OPEN for a live stream dials the gateway once")
+{
+  const std::string secret = "f5-4-loopback-secret";
+  const std::string challenge = randomChallenge();
+  RogueRig rig([&](TcpPeer& peer) {
+    const std::string proof = relayAuthMac(secret, challenge);
+    std::string burst = encodeFrame({.type = FrameType::Challenge,
+                                     .streamId = 0,
+                                     .payload = challenge.data(),
+                                     .size = challenge.size()});
+    burst += encodeFrame({.type = FrameType::AuthOk,
+                          .streamId = 0,
+                          .payload = proof.data(),
+                          .size = proof.size()});
+    burst += encodeFrame(FrameType::Open, 0);
+    burst += encodeFrame(FrameType::Open, 9);
+    burst += encodeFrame(FrameType::Open, 9);
+    peer.send(burst);
+  });
+
+  REQUIRE(waitFor([&] { return rig.client->homeActive(); }, 5000));
+  REQUIRE(waitFor([&] { return rig.gateway.dials.load() >= 1; }, 5000));
+  REQUIRE(waitFor([&] { return rig.client->streamCount() == 0; }, 5000));
+  CHECK(rig.gateway.dials.load() == 1);
 }

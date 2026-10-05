@@ -47,6 +47,9 @@ The keys are a contract with the rest of the installation, not private tuning:
   `shutdown`, `health`. The public header carries `jsoncpp` and nothing else.
 - `src/mdns/mdns-service.cc` — the socket set, the PTR/SRV/A/AAAA/TXT records,
   the responder loop and the goodbye packet.
+- `src/mdns/link-filter.hxx` — `mdns_link`: whether a query's source is on the
+  local link (one of the host's interface subnets, IPv4 link-local, IPv6
+  `fe80::/10` or loopback), read from `getifaddrs` with the netmasks.
 
 ## Rules
 
@@ -79,3 +82,9 @@ The keys are a contract with the rest of the installation, not private tuning:
   advertisable: it is skipped rather than defaulted, and a list with nothing
   advertisable leaves advertising off while `initialize()` still answers
   `true`.
+- A question from outside the local link is ignored (RFC 6762 §11): a unicast
+  answer to it would make the responder an amplifier and leak the route list
+  to anyone who can reach 5353/udp — a native install on a host with a public
+  address. The interface subnets are re-read at most every 30 s when an
+  unknown source arrives, so a DHCP change is picked up; the drops are logged
+  once per thousand. `tests/unit/mdns-link-filter-test.cc` pins the rule.

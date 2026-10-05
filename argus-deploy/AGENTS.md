@@ -10,6 +10,9 @@ any change; the cutover shape and its exceptions are documented there.
   `tunnel` profile, and the one-shot migration init tools.
 - `../services/<name>/Dockerfile` — one image per microservice; packages
   are compiled into the service images (no package image).
+- `nats.conf` (the broker config; its `auth.conf` include is generated per
+  installation) and `livekit-tls.conf` + `livekit-tls-entrypoint.sh` (the
+  TLS front and the loop that reloads it when the leaf rotates).
 - One `config.<service>.toml.example` template per service —
   per-installation copies (`config.auth.toml`, ...) are gitignored and hold
   the instance secrets.
@@ -36,6 +39,13 @@ any change; the cutover shape and its exceptions are documented there.
   and neither runs while the stack is up. argus-identity and
   argus-sync apply their own `database/schema.sql` at boot, so a fresh install
   works without either init profile.
+- Every service merges `x-hardening` (no capabilities, no new privileges, a
+  20 s stop grace period); a new service does too, and takes `x-readonly-root`
+  unless it writes outside its own mounts (CONTEXT.md, "Container
+  hardening"). Only argus-identity mounts the CA signer directory.
+- The `camera-init`, `productivity-init` and `notification-init` tools mount
+  identity's directory read-only (they read the legacy `argus.db`); that is
+  the same documented exception, never a writable mount.
 - This stack uses the `argus-cutover` project, `argus-cutover-*` volumes and
   networks only; never touch other compose projects or their volumes.
 - No C++ code in this folder: changes here are compose/config only.

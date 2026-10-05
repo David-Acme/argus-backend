@@ -90,9 +90,12 @@ cmd_up() {
     --user "$(id -u):$(id -g)" \
     --memory "$TLS_MEMORY" --memory-swap "$TLS_MEMORY" --cpus 0.25 \
     --pids-limit 32 --restart unless-stopped \
+    --cap-drop ALL --security-opt no-new-privileges:true --read-only \
+    --tmpfs /tmp:size=8m,mode=1777 --tmpfs /var/cache/nginx:size=8m,mode=1777 \
     -v "$ROOT/argus-deploy/livekit-tls.conf:/etc/nginx/nginx.conf:ro" \
+    -v "$ROOT/argus-deploy/livekit-tls-entrypoint.sh:/opt/argus/livekit-tls-entrypoint.sh:ro" \
     -v "$CERTS_DIR:/etc/argus/certs:ro" \
-    --entrypoint nginx "$TLS_IMAGE" -g 'daemon off;' >/dev/null
+    --entrypoint /bin/sh "$TLS_IMAGE" /opt/argus/livekit-tls-entrypoint.sh >/dev/null
   local waited=0
   until curl -fs http://127.0.0.1:7880/ >/dev/null 2>&1; do
     waited=$((waited + 1))

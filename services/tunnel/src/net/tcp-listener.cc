@@ -8,6 +8,8 @@
 #include <cerrno>
 #include <cstring>
 
+#include <trantor/utils/Logger.h>
+
 TcpListener::TcpListener(const Params& params)
     : loop_(*params.loop), onAccept_(params.onAccept)
 {
@@ -62,8 +64,11 @@ void TcpListener::handleEvents(uint32_t events)
     if (fd < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK)
         return;
-      if (errno == EINTR)
+      if (errno == EINTR || errno == ECONNABORTED)
         continue;
+      if (errno == EMFILE || errno == ENFILE || errno == ENOBUFS ||
+          errno == ENOMEM)
+        pauseAccepting();
       return;
     }
     char ip[INET_ADDRSTRLEN]{};
@@ -73,4 +78,33 @@ void TcpListener::handleEvents(uint32_t events)
     else
       ::close(fd);
   }
+}
+
+void TcpListener::pauseAccepting()
+{
+  if (acceptPaused_)
+    return;
+  acceptPaused_ = true;
+  ++acceptPauses_;
+  LOG_WARN << "argus-tunnel: out of descriptors while accepting; pausing the "
+              "listener for "
+           << kAcceptBackoffMs << " ms";
+  loop_.update({.fd = fd_.get(), .events = 0, .actor = weak_from_this()});
+  loop_.runAfter(kAcceptBackoffMs, [token = weak_from_this()] {
+    const auto actor = token.lock();
+    if (!actor)
+      return;
+    auto& listener = static_cast<TcpListener&>(*actor);
+    listener.resumeAccepting();
+  });
+}
+
+void TcpListener::resumeAccepting()
+{
+  if (!acceptPaused_)
+    return;
+  acceptPaused_ = false;
+  loop_.update({.fd = fd_.get(),
+                .events = EPOLLIN | EPOLLRDHUP,
+                .actor = weak_from_this()});
 }

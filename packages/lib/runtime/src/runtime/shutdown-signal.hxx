@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -29,6 +30,16 @@ void onStop(Drain drain);
 void onQuit(QuitHook hook);
 
 void requestStop();
+
+inline constexpr std::chrono::milliseconds kDefaultDeadline{15000};
+
+inline constexpr int kForcedExitCode = 130;
+
+void setDeadline(std::chrono::milliseconds deadline);
+
+[[nodiscard]] std::chrono::milliseconds deadline();
+
+void onSignal();
 
 [[nodiscard]] bool drained();
 

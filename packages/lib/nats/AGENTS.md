@@ -111,10 +111,28 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
   before the one behind it, after the backoff.
 - Handlers must not block: a subscription that needs to do real work hands it
   to `BlockingTask` (argus-runtime) rather than doing it on the cnats thread.
+- A handler whose work can outlast the 60 s ack window calls
+  `settlement.markInProgress()` between its stages (`natsMsg_InProgress`, the
+  broker's `+WPI`): the ack timer restarts and the message is not redelivered
+  to a second worker while the first is still on it. It is a no-op once the
+  message is settled and on a settlement a test builds without it, so a
+  handler calls it unconditionally. It is not a substitute for a bounded
+  handler: a stuck one keeps its message forever.
+- `subscribeDurableFeed({.stream, .consumer})` is the durable form of a core
+  subscription: it ensures the stream over the subjects the publishers already
+  use (a core publish on a stream subject is stored by JetStream, so no
+  publisher changes) and binds the durable consumer, refusing a consumer whose
+  stream or subject its own stream does not carry. A feed that must not lose
+  what was published while its consumer restarted (N16: guard's response
+  verdicts, notification's call feed) moves to it; the stream needs a
+  `maxAgeNs`, because nothing else trims it.
 
 ## Tests
 
-`tests/unit/nats-wrapper-test.cc` — publish subjects take plain dotted tokens
+`tests/unit/nats-wrapper-test.cc` — `markInProgress` on a settlement with and
+without the broker hook, a durable feed refusing a mismatched stream or subject
+(and refusing to attach while disconnected), and, against a live broker, a feed
+keeping what core publishes sent while its consumer was away; also: publish subjects take plain dotted tokens
 while subscribe subjects take `>`-only wildcards, the frozen subject
 spellings, the option defaults without config, a handler registered without a
 server, and a connect to a closed endpoint that fails instead of crashing. The

@@ -31,7 +31,6 @@ TEST_CASE("home link reconnect tears down streams and recovers")
     return harness.client->reconnectAttempts() >= 1;
   }, 10000));
   REQUIRE(waitFor([&] { return harness.client->homeActive(); }, 10000));
-  CHECK_FALSE(harness.client->gaveUp());
   REQUIRE(waitFor([&] {
     return harness.relay->streamCount() == 0 &&
            harness.client->streamCount() == 0;
@@ -73,13 +72,14 @@ TEST_CASE("auth rejection keeps the client reconnecting")
     ClientOptions clientOptions;
     clientOptions.relayPort = rogue->homePort();
     clientOptions.reconnectWaitMs = 20;
-    clientOptions.maxReconnects = 3;
+    clientOptions.reconnectMaxWaitMs = 80;
     clientOptions.secret = "wrong-secret";
     return clientOptions;
   }());
   harness.loop.post([&] { client2->start(); });
 
-  CHECK(waitFor([&] { return client2->gaveUp(); }, 10000));
+  CHECK(waitFor([&] { return client2->reconnectAttempts() >= 6; }, 10000));
+  CHECK(client2->lastReconnectDelayMs() == 80);
   CHECK_FALSE(client2->homeActive());
 
   harness.stop();

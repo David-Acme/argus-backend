@@ -1,10 +1,13 @@
 #include "mdns-service.hxx"
 
+#include "link-filter.hxx"
+
 #include <algorithm>
 #include <arpa/inet.h>
 #include <array>
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
@@ -281,6 +284,12 @@ struct MdnsService::Impl
   };
 
   int handleQuestion(const HandleQuestionInput& input) const;
+
+  std::vector<mdns_link::LinkNetwork> links;
+  std::chrono::steady_clock::time_point linksRefreshedAt{};
+  std::uint64_t offLinkDropped = 0;
+
+  bool acceptsSource(const struct sockaddr* from);
 
   void announce();
   void goodbye();
@@ -610,6 +619,8 @@ int MdnsService::Impl::callbackBridge(int sock, const struct sockaddr* from,
     return 0;
 
   auto* impl = static_cast<MdnsService::Impl*>(user_data);
+  if (!impl->acceptsSource(from))
+    return 0;
   return impl->handleQuestion({.sock = sock,
                                .from = from,
                                .addrlen = addrlen,
@@ -620,6 +631,24 @@ int MdnsService::Impl::callbackBridge(int sock, const struct sockaddr* from,
                                .size = size,
                                .nameOffset = name_offset,
                                .nameLength = name_length});
+}
+
+bool MdnsService::Impl::acceptsSource(const struct sockaddr* from)
+{
+  const mdns_link::SourceAddress source = mdns_link::sourceOf(from);
+  if (mdns_link::onLink(source, links))
+    return true;
+  const auto now = std::chrono::steady_clock::now();
+  if (now - linksRefreshedAt >= std::chrono::seconds(30)) {
+    links = mdns_link::interfaceNetworks();
+    linksRefreshedAt = now;
+    if (mdns_link::onLink(source, links))
+      return true;
+  }
+  if (offLinkDropped++ % 1000 == 0)
+    LOG_WARN << "mDNS: ignoring a query from outside the local link ("
+             << offLinkDropped << " so far)";
+  return false;
 }
 
 void MdnsService::Impl::announce()

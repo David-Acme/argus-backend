@@ -232,6 +232,8 @@ ensure_local_config() {
     configs+=("$ROOT/$dir/config.toml")
   done
   ensure_shared_configs "${configs[@]}"
+  propagate_config_value "$ROOT/services/auth/config.toml" device identity_mode \
+    "${configs[@]}"
   fill_config_pair "$ROOT/services/sync/config.toml" notifications credential \
     "$ROOT/services/notification/config.toml" grpc caller_sync 32
   fill_config_pair "$ROOT/services/sync/config.toml" productivity credential \
@@ -260,6 +262,8 @@ ensure_local_config() {
     "$ROOT/services/guard/config.toml" rpc.callers notification 32
   ensure_settings_owners "$ROOT/services/settings/config.toml" native "$ROOT"
   ensure_livekit_key_pair "$ROOT/services/sync/config.toml"
+  remove_toml_key tunnel max_reconnects "$ROOT/services/tunnel/config.toml"
+  ensure_tunnel_secret "$ROOT/services/tunnel/config.toml"
   log "Per-project configs are ready."
 }
 

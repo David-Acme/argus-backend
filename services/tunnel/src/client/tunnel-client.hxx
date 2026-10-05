@@ -12,15 +12,24 @@
 
 namespace tunnel
 {
+struct BackoffInput
+{
+  int attempt{1};
+  int baseMs{2000};
+  int maxMs{60000};
+};
+
+int reconnectDelayMs(const BackoffInput& input);
+
 struct ClientOptions
 {
   std::string relayHost{"127.0.0.1"};
   uint16_t relayPort{7101};
   std::string gatewayHost{"127.0.0.1"};
-  uint16_t gatewayPort{7024};
+  uint16_t gatewayPort{7142};
   std::string secret;
   int reconnectWaitMs{2000};
-  int maxReconnects{60};
+  int reconnectMaxWaitMs{60000};
   int pingIntervalSeconds{30};
   TunnelMux::Limits limits;
   size_t pushQueueCapacity{256};
@@ -41,7 +50,7 @@ public:
   bool homeActive() const { return mux_.homeActive(); }
   size_t streamCount() const { return mux_.streamCount(); }
   int reconnectAttempts() const { return reconnectAttempts_.load(); }
-  bool gaveUp() const { return gaveUp_.load(); }
+  int lastReconnectDelayMs() const { return lastReconnectDelayMs_.load(); }
   size_t pendingBytes() const { return mux_.pendingBytes(); }
 
   size_t pushQueued() const { return pushQueue_.size(); }
@@ -73,7 +82,8 @@ private:
   std::unordered_map<uint32_t, TcpPeer::Ptr> pendingDials_;
   std::atomic<bool> homeConnected_{false};
   std::atomic<int> reconnectAttempts_{0};
-  std::atomic<bool> gaveUp_{false};
+  std::atomic<int> lastReconnectDelayMs_{0};
+  bool reconnectPending_{false};
   std::atomic<bool> stopped_{false};
   PushQueue pushQueue_{options_.pushQueueCapacity};
 };

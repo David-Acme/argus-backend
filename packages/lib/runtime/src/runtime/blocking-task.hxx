@@ -3,6 +3,7 @@
 #include "blocking-pool.hxx"
 
 #include <coroutine>
+#include <cstddef>
 #include <drogon/drogon.h>
 #include <exception>
 #include <functional>
@@ -17,26 +18,68 @@ namespace blocking_task
 class Dispatch
 {
 public:
-  explicit Dispatch(BlockingLane lane) : lane_(lane) {}
+  explicit Dispatch(BlockingLane lane,
+                    BlockingAdmission admission = BlockingAdmission::Queue)
+      : lane_(lane), admission_(admission)
+  {
+  }
 
-  explicit Dispatch(BlockingStrand& strand) : strand_(&strand) {}
+  explicit Dispatch(BlockingStrand& strand,
+                    BlockingAdmission admission = BlockingAdmission::Queue)
+      : strand_(&strand), admission_(admission)
+  {
+  }
 
   void operator()(std::function<void()> job) const
   {
-    if (strand_)
-      strand_->post(std::move(job));
-    else
-      blocking_pool::submit(lane_, std::move(job));
+    if (admission_ == BlockingAdmission::Queue) {
+      if (strand_)
+        strand_->post(std::move(job));
+      else
+        blocking_pool::submit(lane_, std::move(job));
+      return;
+    }
+    const bool accepted = strand_ ? strand_->tryPost(std::move(job))
+                                  : blocking_pool::trySubmit(lane_, std::move(job));
+    if (!accepted)
+      throw BlockingLaneFull("the blocking lane queue is full");
   }
 
 private:
   BlockingLane lane_{BlockingLane::Light};
   BlockingStrand* strand_{nullptr};
+  BlockingAdmission admission_{BlockingAdmission::Queue};
 };
 
-inline void resumeOnLoop(std::coroutine_handle<> handle)
+inline bool isAppLoop(const trantor::EventLoop* loop)
 {
-  drogon::app().getLoop()->queueInLoop([handle]() { handle.resume(); });
+  auto& app = drogon::app();
+  if (loop == app.getLoop())
+    return true;
+  if (!app.isRunning())
+    return false;
+  const std::size_t count = app.getThreadNum();
+  for (std::size_t index = 0; index < count; ++index) {
+    if (app.getIOLoop(index) == loop)
+      return true;
+  }
+  return false;
+}
+
+inline trantor::EventLoop* resumeLoopFor(trantor::EventLoop* origin)
+{
+  if (origin != nullptr && isAppLoop(origin))
+    return origin;
+  return drogon::app().getLoop();
+}
+
+inline void resumeOn(trantor::EventLoop* loop, std::coroutine_handle<> handle)
+{
+  if (!loop->isRunning()) {
+    handle.resume();
+    return;
+  }
+  loop->queueInLoop([handle]() { handle.resume(); });
 }
 
 }
@@ -46,13 +89,15 @@ class BlockingTask
 {
 public:
   explicit BlockingTask(std::function<T()> fn,
-                        BlockingLane lane = BlockingLane::Light)
-      : fn_(std::move(fn)), dispatch_(lane)
+                        BlockingLane lane = BlockingLane::Light,
+                        BlockingAdmission admission = BlockingAdmission::Queue)
+      : fn_(std::move(fn)), dispatch_(lane, admission)
   {
   }
 
-  BlockingTask(std::function<T()> fn, BlockingStrand& strand)
-      : fn_(std::move(fn)), dispatch_(strand)
+  BlockingTask(std::function<T()> fn, BlockingStrand& strand,
+               BlockingAdmission admission = BlockingAdmission::Queue)
+      : fn_(std::move(fn)), dispatch_(strand, admission)
   {
   }
 
@@ -61,14 +106,16 @@ public:
   void await_suspend(std::coroutine_handle<> handle)
   {
     state_ = std::make_shared<State>();
-    dispatch_([state = state_, fn = std::move(fn_), handle]() mutable {
+    trantor::EventLoop* loop = blocking_task::resumeLoopFor(
+        trantor::EventLoop::getEventLoopOfCurrentThread());
+    dispatch_([state = state_, fn = std::move(fn_), handle, loop]() mutable {
       try {
         state->value.emplace(fn());
       }
       catch (...) {
         state->exception = std::current_exception();
       }
-      blocking_task::resumeOnLoop(handle);
+      blocking_task::resumeOn(loop, handle);
     });
   }
 
@@ -98,13 +145,15 @@ class BlockingTask<void>
 {
 public:
   explicit BlockingTask(std::function<void()> fn,
-                        BlockingLane lane = BlockingLane::Light)
-      : fn_(std::move(fn)), dispatch_(lane)
+                        BlockingLane lane = BlockingLane::Light,
+                        BlockingAdmission admission = BlockingAdmission::Queue)
+      : fn_(std::move(fn)), dispatch_(lane, admission)
   {
   }
 
-  BlockingTask(std::function<void()> fn, BlockingStrand& strand)
-      : fn_(std::move(fn)), dispatch_(strand)
+  BlockingTask(std::function<void()> fn, BlockingStrand& strand,
+               BlockingAdmission admission = BlockingAdmission::Queue)
+      : fn_(std::move(fn)), dispatch_(strand, admission)
   {
   }
 
@@ -113,14 +162,16 @@ public:
   void await_suspend(std::coroutine_handle<> handle)
   {
     state_ = std::make_shared<State>();
-    dispatch_([state = state_, fn = std::move(fn_), handle]() mutable {
+    trantor::EventLoop* loop = blocking_task::resumeLoopFor(
+        trantor::EventLoop::getEventLoopOfCurrentThread());
+    dispatch_([state = state_, fn = std::move(fn_), handle, loop]() mutable {
       try {
         fn();
       }
       catch (...) {
         state->exception = std::current_exception();
       }
-      blocking_task::resumeOnLoop(handle);
+      blocking_task::resumeOn(loop, handle);
     });
   }
 

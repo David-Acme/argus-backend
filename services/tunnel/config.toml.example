@@ -2,11 +2,12 @@
 secret = ""
 
 reconnect_wait_ms = 2000
-max_reconnects = 60
+reconnect_max_wait_ms = 60000
 ping_interval_seconds = 30
 
 stream_idle_seconds = 300
 max_streams = 256
+max_streams_per_ip = 32
 socket_snd_buf = 0
 
 [server]
@@ -17,7 +18,7 @@ home_port = 7101
 relay_host = "127.0.0.1"
 relay_port = 7101
 gateway_host = "127.0.0.1"
-gateway_port = 7024
+gateway_port = 7142
 
 health_host = "127.0.0.1"
 health_port = 7103

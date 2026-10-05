@@ -2,9 +2,12 @@
 
 #include <drogon/drogon.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <mutex>
 #include <utility>
 #include <vector>
@@ -16,15 +19,10 @@ namespace
 
 constexpr double kPollSeconds = 0.05;
 constexpr double kSignalPollSeconds = 0.2;
-constexpr std::chrono::milliseconds kDeadline{10000};
-
 static_assert(std::atomic<bool>::is_always_lock_free);
+static_assert(std::atomic<std::int64_t>::is_always_lock_free);
 constinit std::atomic<bool> signalled{false};
-
-void noteSignal()
-{
-  signalled.store(true, std::memory_order_release);
-}
+constinit std::atomic<std::int64_t> deadlineMs{kDefaultDeadline.count()};
 
 std::mutex& registryMutex()
 {
@@ -44,7 +42,7 @@ std::atomic<bool>& stopRequestedFlag()
   return flag;
 }
 
-std::chrono::steady_clock::time_point& deadline()
+std::chrono::steady_clock::time_point& deadlineAt()
 {
   static std::chrono::steady_clock::time_point at;
   return at;
@@ -108,7 +106,7 @@ bool drainedOrLog(const Drain& drain)
 void pollAndQuit()
 {
   if (!drained()) {
-    if (std::chrono::steady_clock::now() < deadline()) {
+    if (std::chrono::steady_clock::now() < deadlineAt()) {
       drogon::app().getLoop()->runAfter(kPollSeconds, pollAndQuit);
       return;
     }
@@ -131,8 +129,8 @@ void installHandlers()
 {
   static std::once_flag once;
   std::call_once(once, [] {
-    drogon::app().setTermSignalHandler(noteSignal);
-    drogon::app().setIntSignalHandler(noteSignal);
+    drogon::app().setTermSignalHandler(onSignal);
+    drogon::app().setIntSignalHandler(onSignal);
     drogon::app().getLoop()->runEvery(kSignalPollSeconds, [] {
       if (signalled.load(std::memory_order_acquire))
         requestStop();
@@ -156,6 +154,23 @@ void stopOrLog(const std::string& name,
   }
 }
 
+}
+
+void onSignal()
+{
+  if (signalled.exchange(true, std::memory_order_acq_rel))
+    std::_Exit(kForcedExitCode);
+}
+
+void setDeadline(std::chrono::milliseconds value)
+{
+  deadlineMs.store(std::max<std::int64_t>(0, value.count()),
+                   std::memory_order_release);
+}
+
+std::chrono::milliseconds deadline()
+{
+  return std::chrono::milliseconds{deadlineMs.load(std::memory_order_acquire)};
 }
 
 void onStop(Drain drain)
@@ -202,7 +217,7 @@ void requestStop()
 {
   if (stopRequestedFlag().exchange(true, std::memory_order_acq_rel))
     return;
-  deadline() = std::chrono::steady_clock::now() + kDeadline;
+  deadlineAt() = std::chrono::steady_clock::now() + deadline();
   const std::vector<Drain> pending = snapshot();
   for (const auto& drain : pending)
     stopOrLog(drain.name, drain.requestStop);

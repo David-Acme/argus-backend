@@ -462,3 +462,120 @@ TEST_CASE("streamInfo reports a missing stream without a server roundtrip lie")
   CHECK_FALSE(bus.streamInfo("argus-test-stream-that-cannot-exist").has_value());
   bus.drain();
 }
+
+TEST_CASE("an in-progress mark on a settlement without a broker message is a no-op")
+{
+  int acks = 0;
+  const NatsBus::DurableSettlement fake{.ack = [&acks] { ++acks; },
+                                        .nak = [] {},
+                                        .term = [] {}};
+  fake.markInProgress();
+  fake.ack();
+  CHECK(acks == 1);
+
+  int touches = 0;
+  const NatsBus::DurableSettlement touched{.ack = [] {},
+                                           .nak = [] {},
+                                           .term = [] {},
+                                           .inProgress = [&touches] { ++touches; }};
+  touched.markInProgress();
+  touched.markInProgress();
+  CHECK(touches == 2);
+}
+
+TEST_CASE("a durable feed refuses a consumer its own stream does not carry")
+{
+  NatsBus bus;
+  const NatsBus::StreamInput stream{.name = "argus-feed",
+                                    .subjects = {"argus.feed.v1.event"},
+                                    .maxAgeNs = 0,
+                                    .duplicatesNs = 0};
+  CHECK_FALSE(bus.subscribeDurableFeed(
+                     {.stream = stream,
+                      .consumer = {.stream = "argus-feed",
+                                   .durable = "argus-feed-reader",
+                                   .subject = "argus.other.v1.event",
+                                   .deliverAll = false,
+                                   .maxDeliver = 5,
+                                   .maxAckPending = NatsBus::kDefaultMaxAckPending,
+                                   .handler = {}}})
+                  .has_value());
+  CHECK_FALSE(bus.subscribeDurableFeed(
+                     {.stream = stream,
+                      .consumer = {.stream = "another-stream",
+                                   .durable = "argus-feed-reader",
+                                   .subject = "argus.feed.v1.event",
+                                   .deliverAll = false,
+                                   .maxDeliver = 5,
+                                   .maxAckPending = NatsBus::kDefaultMaxAckPending,
+                                   .handler = {}}})
+                  .has_value());
+  CHECK_FALSE(bus.subscribeDurableFeed(
+                     {.stream = stream,
+                      .consumer = {.stream = "argus-feed",
+                                   .durable = "argus-feed-reader",
+                                   .subject = "argus.feed.v1.event",
+                                   .deliverAll = false,
+                                   .maxDeliver = 5,
+                                   .maxAckPending = NatsBus::kDefaultMaxAckPending,
+                                   .handler = {}}})
+                  .has_value());
+}
+
+TEST_CASE("a durable feed turns core publishes into a backlog that survives the consumer")
+{
+  const char* url = std::getenv("ARGUS_TEST_NATS_URL");
+  if (url == nullptr || std::string(url).empty()) {
+    std::cout << "SKIP: ARGUS_TEST_NATS_URL not provided\n";
+    return;
+  }
+  NatsBus::Options options;
+  options.url = url;
+  const std::string stream = isolatedStream();
+  const std::string subject = isolatedSubject(stream);
+  const NatsBus::DurableFeedInput feed{
+      .stream = {.name = stream,
+                 .subjects = {subject},
+                 .maxAgeNs = 60LL * 1000000000,
+                 .duplicatesNs = 0},
+      .consumer = {.stream = stream,
+                   .durable = stream + "-durable",
+                   .subject = subject,
+                   .deliverAll = false,
+                   .maxDeliver = 5,
+                   .maxAckPending = NatsBus::kDefaultMaxAckPending,
+                   .handler = {}}};
+
+  NatsBus bus;
+  REQUIRE(bus.connect(options));
+  Deliveries first;
+  NatsBus::DurableFeedInput bound = feed;
+  bound.consumer.handler = [&first](const NatsBus::DurableMessage& message,
+                                    const NatsBus::DurableSettlement& settlement) {
+    settlement.markInProgress();
+    {
+      std::lock_guard lock(first.mutex);
+      first.payloads.emplace_back(message.payload);
+    }
+    settlement.ack();
+  };
+  const auto id = bus.subscribeDurableFeed(bound);
+  REQUIRE(id.has_value());
+  REQUIRE(bus.publish(subject, "one"));
+  CHECK(awaitPayloads(first, 1) == std::vector<std::string>{"one"});
+  CHECK(bus.unsubscribe(id.value_or(0)));
+
+  REQUIRE(bus.publish(subject, "while-away"));
+  Deliveries resumed;
+  NatsBus::DurableFeedInput again = feed;
+  again.consumer = collectingInto(feed.consumer, resumed);
+  std::optional<uint64_t> reattached;
+  for (int attempt = 0; attempt < 40 && !reattached; ++attempt) {
+    reattached = bus.subscribeDurableFeed(again);
+    if (!reattached)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  REQUIRE(reattached.has_value());
+  CHECK(awaitPayloads(resumed, 1) == std::vector<std::string>{"while-away"});
+  bus.drain();
+}

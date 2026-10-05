@@ -19,8 +19,8 @@ int main()
   ConfigService::load("config.toml");
 
   const ClientConfig config = ClientConfig::resolve();
-  if (config.tunnel.secret.empty()) {
-    LOG_FATAL << "argus-tunnel: [tunnel] secret is empty; refusing to start";
+  if (const auto problem = tunnelSecretProblem(config.tunnel.secret)) {
+    LOG_FATAL << "argus-tunnel: " << *problem << "; refusing to start";
     return 1;
   }
 

@@ -144,7 +144,7 @@ at 9.8 s and the same pids on either side of the sockets.
 
 **The announcement, browsed off the wire.** 17 routes answer under 17 distinct
 record names — `Argus-<route>._argus-route._tcp.local` — all 17 resolving to
-an SRV port and a TXT path, all carrying `192.168.18.205`, every label the
+an SRV port and a TXT path, all carrying `192.0.2.10`, every label the
 composition the contract declares for that route (prefix `Argus`, its own
 segment, one `.local`), and every route announced under a name of its own.
 Each route's announced port equals the port its own unit bound, its TXT
@@ -166,7 +166,7 @@ Negative control: `_argus-nothing._tcp.local` answers nothing. Two questions
 in one packet (`_argus-route._tcp.local` and `_services._dns-sd._udp.local`)
 are both answered — the check that fails against the pre-fix responder (§4.2).
 
-**Login, on the discovered `https://192.168.18.205:7042`.** `POST
+**Login, on the discovered `https://192.0.2.10:7042`.** `POST
 /auth/device-login` answers 200 with a 64-hex `challengeId` living 120 s; the
 new device polls `pending`; the paired device approves it over its own
 binding; the new device collects `approved` with `userId 1`, `role owner`,
@@ -176,7 +176,7 @@ answers 200 with a pair in which both tokens differ from the ones presented;
 and the rotated-away refresh token is refused **401** on the replay. The last
 two were the checks the token collision made impossible (§4.3).
 
-**Bootstrap, on the discovered `https://192.168.18.205:7025/sync`.** The
+**Bootstrap, on the discovered `https://192.0.2.10:7025/sync`.** The
 socket greets with `{operation: 0, option: "user", info: {id: 1, isActive:
 true, role: "owner"}}`; the `sync` frame answers **one** frame carrying all
 four requested tables in **13 ms** with the seeded rows (3 `user`, 1
@@ -184,7 +184,7 @@ four requested tables in **13 ms** with the seeded rows (3 `user`, 1
 list and an object, asserted as such; the `sync_audit_log {findLast: true}`
 sent on the **same** socket answers `operation 2` with `watermarkId=1`.
 
-**Media, on the discovered `https://192.168.18.205:7026/media`.**
+**Media, on the discovered `https://192.0.2.10:7026/media`.**
 `camera:subscribe{cameraId: 1, quality: "main"}` answers `camera:ready
 {mime: "video/mp4", subId: 3}` in 0.0 s, followed by
 `camera:closed{reason: "upstream_failed"}` — the seed's camera has no

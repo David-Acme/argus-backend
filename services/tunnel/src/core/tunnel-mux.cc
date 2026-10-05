@@ -25,16 +25,68 @@ Stream* TunnelMux::findStream(uint32_t streamId)
 
 bool TunnelMux::adoptHome(const TcpPeer::Ptr& peer)
 {
-  if (homePeer_ && homeActive_ && delegate_->validatesAuth() &&
-      Clock::now() - lastFrameAt_ < limits_.deadLinkTimeout)
-    return false;
+  if (delegate_->validatesAuth())
+    return adoptRelayCandidate(peer);
   if (homePeer_)
     dropLink();
   homePeer_ = peer;
   parser_ = FrameParser();
-  authChallenge_ = randomChallenge();
+  authChallenge_.clear();
   homeActive_ = false;
   homeReadPaused_ = false;
+  installHomeCallbacks(peer);
+  const auto now = Clock::now();
+  attachedAt_ = now;
+  lastFrameAt_ = now;
+  delegate_->onLinkUp();
+  return true;
+}
+
+bool TunnelMux::adoptRelayCandidate(const TcpPeer::Ptr& peer)
+{
+  if (homePeer_ && homeActive_ &&
+      Clock::now() - lastFrameAt_ < limits_.deadLinkTimeout)
+    return false;
+  if (static_cast<int>(pendingHomes_.size()) >= limits_.maxPendingHomes)
+    return false;
+  const std::string& ip = peer->peerIp();
+  const auto sameIp = std::ranges::count_if(pendingHomes_, [&ip](const auto& entry) {
+    return entry.second.peer->peerIp() == ip;
+  });
+  if (sameIp >= limits_.maxPendingHomesPerIp)
+    return false;
+
+  TcpPeer* key = peer.get();
+  PendingHome& pending = pendingHomes_[key];
+  pending.peer = peer;
+  pending.challenge = randomChallenge();
+  pending.attachedAt = Clock::now();
+  TcpPeer::Callbacks callbacks;
+  callbacks.onRead = [this, key](TcpPeer&, const char* data, size_t size) {
+    handlePendingRead({.key = key, .data = data, .size = size});
+  };
+  callbacks.onEof = [this, key](TcpPeer&) {
+    if (homePeer_.get() == key)
+      dropLink();
+    else
+      dropPendingHome(key);
+  };
+  callbacks.onClosed = [this, key](TcpPeer&) {
+    if (homePeer_.get() == key)
+      dropLink();
+    else
+      dropPendingHome(key);
+  };
+  peer->setCallbacks(std::move(callbacks));
+  peer->send(encodeFrame({.type = FrameType::Challenge,
+                          .streamId = 0,
+                          .payload = pending.challenge.data(),
+                          .size = pending.challenge.size()}));
+  return true;
+}
+
+void TunnelMux::installHomeCallbacks(const TcpPeer::Ptr& peer)
+{
   TcpPeer::Callbacks callbacks;
   callbacks.onRead = [this](TcpPeer&, const char* data, size_t size) {
     handleHomeRead({.data = data, .size = size});
@@ -49,16 +101,84 @@ bool TunnelMux::adoptHome(const TcpPeer::Ptr& peer)
       dropLink();
   };
   peer->setCallbacks(std::move(callbacks));
-  if (delegate_->validatesAuth())
-    sendFrameToHome({.type = FrameType::Challenge,
-                        .streamId = 0,
-                        .payload = authChallenge_.data(),
-                        .size = authChallenge_.size()});
+}
+
+void TunnelMux::handlePendingRead(const PendingReadInput& input)
+{
+  const auto it = pendingHomes_.find(input.key);
+  if (it == pendingHomes_.end()) {
+    if (homePeer_.get() == input.key)
+      handleHomeRead({.data = input.data, .size = input.size});
+    return;
+  }
+  PendingHome& pending = it->second;
+  pending.parser.feed(input.data, input.size);
+  if (pending.parser.failed()) {
+    dropPendingHome(input.key);
+    return;
+  }
+  if (!pending.parser.hasFrame())
+    return;
+  const Frame frame = pending.parser.popFrame();
+  const bool proven =
+      frame.type == FrameType::Auth &&
+      constantTimeEquals(frame.payload,
+                         authMac(delegate_->authSecret(), pending.challenge));
+  if (!proven) {
+    pending.peer->send(encodeFrame({.type = FrameType::AuthFail,
+                                    .streamId = 0,
+                                    .payload = nullptr,
+                                    .size = 0}));
+    dropPendingHome(input.key);
+    return;
+  }
+  promotePendingHome(input.key);
+}
+
+void TunnelMux::promotePendingHome(TcpPeer* key)
+{
+  const auto it = pendingHomes_.find(key);
+  if (it == pendingHomes_.end())
+    return;
+  PendingHome promoted = std::move(it->second);
+  pendingHomes_.erase(it);
+  if (homePeer_)
+    dropLink();
+  homePeer_ = promoted.peer;
+  parser_ = std::move(promoted.parser);
+  authChallenge_ = std::move(promoted.challenge);
+  homeActive_ = true;
+  homeReadPaused_ = false;
+  installHomeCallbacks(homePeer_);
   const auto now = Clock::now();
   attachedAt_ = now;
   lastFrameAt_ = now;
   delegate_->onLinkUp();
-  return true;
+  const std::string proof =
+      relayAuthMac(delegate_->authSecret(), authChallenge_);
+  sendFrameToHome({.type = FrameType::AuthOk,
+                   .streamId = 0,
+                   .payload = proof.data(),
+                   .size = proof.size()});
+  delegate_->onAuthAccepted();
+  pumpHomeFrames();
+}
+
+void TunnelMux::dropPendingHome(TcpPeer* key)
+{
+  const auto it = pendingHomes_.find(key);
+  if (it == pendingHomes_.end())
+    return;
+  const TcpPeer::Ptr peer = it->second.peer;
+  pendingHomes_.erase(it);
+  peer->setCallbacks(TcpPeer::Callbacks{});
+  peer->close();
+}
+
+void TunnelMux::dropPendingHomes()
+{
+  while (!pendingHomes_.empty())
+    dropPendingHome(pendingHomes_.begin()->first);
 }
 
 void TunnelMux::sendAuth()
@@ -78,7 +198,9 @@ uint32_t TunnelMux::openRemote()
     return 0;
   if (static_cast<int>(streams_.size()) >= limits_.maxStreams)
     return 0;
-  const uint32_t id = nextStreamId_++;
+  uint32_t id = nextStreamId_++;
+  while (id == 0 || streams_.contains(id))
+    id = nextStreamId_++;
   Stream& stream = streams_[id];
   stream.id = id;
   stream.lastActivity = Clock::now();
@@ -180,6 +302,13 @@ bool TunnelMux::sendPush(const std::string& payload)
 void TunnelMux::sweep()
 {
   const auto now = Clock::now();
+  std::vector<TcpPeer*> stale;
+  for (const auto& [key, pending] : pendingHomes_) {
+    if (now - pending.attachedAt > limits_.authTimeout)
+      stale.push_back(key);
+  }
+  for (TcpPeer* key : stale)
+    dropPendingHome(key);
   if (homePeer_ && !homeActive_ && now - attachedAt_ > limits_.authTimeout)
     dropLink();
   else if (homePeer_ && homeActive_ &&
@@ -239,29 +368,11 @@ void TunnelMux::dispatchFrame(Frame frame)
   lastFrameAt_ = Clock::now();
   switch (frame.type) {
   case FrameType::Auth:
-    if (delegate_->validatesAuth()) {
-      const std::string expected =
-          authMac(delegate_->authSecret(), authChallenge_);
-      if (constantTimeEquals(frame.payload, expected)) {
-        homeActive_ = true;
-        const std::string proof =
-            relayAuthMac(delegate_->authSecret(), authChallenge_);
-        sendFrameToHome({.type = FrameType::AuthOk,
-                      .streamId = 0,
-                      .payload = proof.data(),
-                      .size = proof.size()});
-        delegate_->onAuthAccepted();
-      } else {
-        sendFrameToHome({.type = FrameType::AuthFail,
-                      .streamId = 0,
-                      .payload = nullptr,
-                      .size = 0});
-        dropLink();
-      }
-    } else {
+    if (delegate_->validatesAuth())
+      LOG_WARN << "argus-tunnel: AUTH frame on an authenticated home link";
+    else
       LOG_WARN << "argus-tunnel: unexpected AUTH frame from the relay";
-      dropLink();
-    }
+    dropLink();
     break;
   case FrameType::AuthOk:
     if (homeActive_)
@@ -304,6 +415,11 @@ void TunnelMux::dispatchFrame(Frame frame)
     }
     if (delegate_->validatesAuth()) {
       LOG_WARN << "argus-tunnel: unexpected OPEN frame from the client";
+      break;
+    }
+    if (frame.streamId == 0 || streams_.contains(frame.streamId)) {
+      LOG_WARN << "argus-tunnel: OPEN for stream " << frame.streamId
+               << " which is invalid or already open; ignored";
       break;
     }
     if (static_cast<int>(streams_.size()) >= limits_.maxStreams) {
@@ -498,6 +614,7 @@ void TunnelMux::closeLocal(Stream& stream, CloseReason reason)
                      .size = 1});
   if (moved.local)
     releaseLocal(moved, reason);
+  delegate_->onStreamClosed(id);
   resumeHomeRead();
 }
 

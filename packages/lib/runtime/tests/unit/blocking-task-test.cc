@@ -139,6 +139,74 @@ static void thousandAwaitsStayCapped()
   CHECK(stats.peakThreads >= 2);
 }
 
+static void ioLoopAwaitStaysOnItsLoop()
+{
+  auto* io = drogon::app().getIOLoop(0);
+  REQUIRE(io != nullptr);
+  auto resumedOnIo = std::make_shared<std::atomic<int>>(0);
+  io->queueInLoop([io, resumedOnIo]() {
+    drogon::async_run([io, resumedOnIo]() -> drogon::Task<void> {
+      co_await BlockingTask<void>([] { std::this_thread::sleep_for(2ms); });
+      resumedOnIo->store(io->isInLoopThread() ? 1 : 2);
+    });
+  });
+
+  REQUIRE(waitUntil([resumedOnIo] { return resumedOnIo->load() != 0; }, 5s));
+  CHECK(resumedOnIo->load() == 1);
+}
+
+static void foreignThreadAwaitFallsBackToMainLoop()
+{
+  auto resumedOnMain = std::make_shared<std::atomic<int>>(0);
+  std::thread foreign([resumedOnMain]() {
+    drogon::async_run([resumedOnMain]() -> drogon::Task<void> {
+      co_await BlockingTask<void>([] {});
+      resumedOnMain->store(drogon::app().getLoop()->isInLoopThread() ? 1 : 2);
+    });
+  });
+  foreign.join();
+
+  REQUIRE(waitUntil([resumedOnMain] { return resumedOnMain->load() != 0; }, 5s));
+  CHECK(resumedOnMain->load() == 1);
+}
+
+static void boundedAdmissionThrowsIntoTheCoroutine()
+{
+  ElasticPool pool({.coreThreads = 1, .maxThreads = 1,
+                    .keepAlive = std::chrono::seconds(5), .maxQueued = 1});
+  BlockingStrand strand(pool, 1);
+  auto release = std::make_shared<std::atomic<bool>>(false);
+  strand.post([release] {
+    while (!release->load())
+      std::this_thread::sleep_for(1ms);
+  });
+  strand.post([] {});
+  auto refused = std::make_shared<std::atomic<int>>(0);
+  onLoop([&strand, refused]() -> drogon::Task<void> {
+    try {
+      co_await BlockingTask<void>([] {}, strand, BlockingAdmission::RejectWhenFull);
+      refused->store(2);
+    }
+    catch (const BlockingLaneFull&) {
+      refused->store(1);
+    }
+  });
+
+  REQUIRE(waitUntil([refused] { return refused->load() != 0; }, 5s));
+  CHECK(refused->load() == 1);
+  release->store(true);
+  CHECK(waitUntil([&strand] { return strand.queued() == 0; }, 5s));
+}
+
+TEST_CASE("a blocking task awaited before the app runs resumes inline")
+{
+  REQUIRE_FALSE(drogon::app().isRunning());
+  const int value = drogon::sync_wait([]() -> drogon::Task<int> {
+    co_return co_await BlockingTask<int>([] { return 7; });
+  }());
+  CHECK(value == 7);
+}
+
 TEST_CASE("blocking tasks resume their coroutines on the main loop")
 {
   AppRunner runner;
@@ -153,4 +221,10 @@ TEST_CASE("blocking tasks resume their coroutines on the main loop")
   strandKeepsArrivalOrder();
   INFO("a thousand concurrent awaits stay inside the light lane's cap");
   thousandAwaitsStayCapped();
+  INFO("an await started on an IO loop resumes on that IO loop");
+  ioLoopAwaitStaysOnItsLoop();
+  INFO("an await started off every app loop resumes on the main loop");
+  foreignThreadAwaitFallsBackToMainLoop();
+  INFO("a refused admission is thrown into the awaiting coroutine");
+  boundedAdmissionThrowsIntoTheCoroutine();
 }

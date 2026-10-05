@@ -96,6 +96,14 @@ target_link_libraries(tunnel-negauth-test PRIVATE tunnel-core
                                                   doctest::doctest)
 target_compile_options(tunnel-negauth-test PRIVATE -Wall -Wextra)
 
+add_executable(tunnel-hardening-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/tunnel-hardening-test.cc)
+target_include_directories(tunnel-hardening-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+target_link_libraries(tunnel-hardening-test PRIVATE tunnel-core
+                                                    doctest::doctest)
+target_compile_options(tunnel-hardening-test PRIVATE -Wall -Wextra)
+
 add_executable(service-config-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/service-config-test.cc)
 target_link_libraries(service-config-test PRIVATE tunnel-core
@@ -120,6 +128,7 @@ set_target_properties(framing-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-integration-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-reconnect-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-negauth-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(tunnel-hardening-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(service-config-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-push-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-health-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
@@ -128,6 +137,7 @@ add_test(NAME framing-test COMMAND framing-test)
 add_test(NAME tunnel-integration-test COMMAND tunnel-integration-test)
 add_test(NAME tunnel-reconnect-test COMMAND tunnel-reconnect-test)
 add_test(NAME tunnel-negauth-test COMMAND tunnel-negauth-test)
+add_test(NAME tunnel-hardening-test COMMAND tunnel-hardening-test)
 add_test(NAME service-config-test COMMAND service-config-test)
 add_test(NAME tunnel-push-test COMMAND tunnel-push-test)
 add_test(NAME tunnel-health-test COMMAND tunnel-health-test)

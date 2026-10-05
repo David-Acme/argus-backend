@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import sqlite3
 import sys
 import time
@@ -139,6 +140,12 @@ def clear_role_users(stack: Path) -> None:
 def mint_sessions(auth: sqlite3.Connection, auth_config: dict, ids: dict,
                   roles: tuple, now: int, device_ip: str, token_out: Path,
                   session_out: Path) -> None:
+    access_secret = auth_config["jwt"]["secret"]
+    refresh_secret = auth_config["jwt"]["refresh_secret"]
+    if not access_secret or not refresh_secret or \
+            access_secret == refresh_secret:
+        raise SystemExit("auth config: jwt.secret and jwt.refresh_secret must "
+                         "both be set and differ; run scripts/setup.sh")
     device_hash = hmac.new(
         auth_config["device"]["fingerprint_secret"].encode(),
         f"{RECORDER_UA}|{device_ip}".encode(),
@@ -148,10 +155,11 @@ def mint_sessions(auth: sqlite3.Connection, auth_config: dict, ids: dict,
         if role not in roles:
             continue
         access = mint({"iss": "argus", "sub": str(user_id), "iat": now,
-                       "exp": now + 900}, auth_config["jwt"]["secret"])
+                       "exp": now + 900, "typ": "access",
+                       "jti": secrets.token_hex(16)}, access_secret)
         refresh = mint({"iss": "argus", "sub": str(user_id), "iat": now,
-                        "exp": now + 864000},
-                       auth_config["jwt"]["refresh_secret"])
+                        "exp": now + 864000, "typ": "refresh",
+                        "jti": secrets.token_hex(16)}, refresh_secret)
         auth.execute("DELETE FROM refresh_token WHERE user_id = ?", (user_id,))
         auth.execute(
             "INSERT INTO refresh_token(user_id,access_token,refresh_token,"
