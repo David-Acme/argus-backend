@@ -5,6 +5,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 
 namespace
 {
@@ -22,7 +23,7 @@ void armSecrets()
 TEST_CASE("every token minted for one subject is distinct")
 {
   armSecrets();
-  const JwtService service;
+  const JwtService service{JwtRole::Issuer};
 
   std::set<std::string> tokens;
   std::set<std::string> identifiers;
@@ -42,7 +43,7 @@ TEST_CASE("every token minted for one subject is distinct")
 TEST_CASE("the refresh token of one subject is distinct too")
 {
   armSecrets();
-  const JwtService service;
+  const JwtService service{JwtRole::Issuer};
 
   CHECK(service.generateRefresh({{"sub", "1"}}) !=
         service.generateRefresh({{"sub", "1"}}));
@@ -51,18 +52,25 @@ TEST_CASE("the refresh token of one subject is distinct too")
 TEST_CASE("a caller keeps the identifier it supplies")
 {
   armSecrets();
-  const JwtService service;
+  const JwtService service{JwtRole::Issuer};
 
   const std::string token =
       service.generateAccess({{"sub", "1"}, {"jti", "caller-supplied"}});
   CHECK(service.verifyAccess(token).at("jti") == "caller-supplied");
 }
 
+TEST_CASE("a JwtService names its role: no default silently makes a verifier an issuer")
+{
+  CHECK_FALSE(std::is_default_constructible_v<JwtService>);
+  CHECK_FALSE(std::is_convertible_v<JwtRole, JwtService>);
+  CHECK(std::is_constructible_v<JwtService, JwtRole>);
+}
+
 TEST_CASE("an issuer refuses equal access and refresh secrets")
 {
   armSecrets();
   ConfigService::setRuntimeString("jwt.refresh_secret", std::string(40, 'a'));
-  CHECK_THROWS_AS(JwtService{}, std::runtime_error);
+  CHECK_THROWS_AS(JwtService{JwtRole::Issuer}, std::runtime_error);
   CHECK_NOTHROW(JwtService{JwtRole::Verifier});
   armSecrets();
 }
@@ -70,7 +78,7 @@ TEST_CASE("an issuer refuses equal access and refresh secrets")
 TEST_CASE("a refresh token never verifies as an access token, nor the reverse")
 {
   armSecrets();
-  const JwtService service;
+  const JwtService service{JwtRole::Issuer};
 
   const std::string access = service.generateAccess({{"sub", "1"}});
   const std::string refresh = service.generateRefresh({{"sub", "1"}, {"sid", "s"}});
@@ -95,7 +103,7 @@ TEST_CASE("a refresh token never verifies as an access token, nor the reverse")
 TEST_CASE("a verifier loads the access secret alone and can neither verify nor mint a refresh token")
 {
   armSecrets();
-  const JwtService issuer;
+  const JwtService issuer{JwtRole::Issuer};
   const std::string refresh = issuer.generateRefresh({{"sub", "1"}});
 
   ConfigService::setRuntimeString("jwt.refresh_secret", "");
@@ -103,6 +111,6 @@ TEST_CASE("a verifier loads the access secret alone and can neither verify nor m
   CHECK(verifier.verifyAccess(issuer.generateAccess({{"sub", "2"}})).at("sub") == "2");
   CHECK(verifier.verifyRefresh(refresh).empty());
   CHECK_THROWS(verifier.generateRefresh({{"sub", "1"}}));
-  CHECK_THROWS_AS(JwtService{}, std::runtime_error);
+  CHECK_THROWS_AS(JwtService{JwtRole::Issuer}, std::runtime_error);
   armSecrets();
 }

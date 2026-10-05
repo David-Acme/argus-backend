@@ -193,7 +193,9 @@ Guest    → read-only permitted resources; user read is limited to their own
 ```
 
 The guard surface (`/guard/*`) maps to no table: it is declared route by
-route in `kGuardAccess`, beside `kAuthAccess`. Guard is organised in
+route in `kGuardAccess`, beside the other route tables (`kSessionAccess`,
+`kRtcAccess`, `kSyncAccess`, `kPrivacyAccess`, `kVisitorAccess`,
+`kRouteOverrides`). Guard is organised in
 environments (a home, a restaurant, an office: each with its own kind, hours,
 mode and summary policy; every camera belongs to one). Resident reads the
 environments and their response lists, sets their mode (one or all), reads
@@ -209,13 +211,19 @@ review, feedback and person promotion stay Owner-only.
 The session routes (`GET /auth/sessions`, `DELETE /auth/sessions`,
 `DELETE /auth/sessions/{id}`) are declared the same way in `kSessionAccess`:
 every role reads and revokes its own sessions, and `argus-auth` scopes each
-query to `JwtContext.sub`, so `kAuthAccess` stays as narrow as it was.
+query to `JwtContext.sub`; the Owner-only `/auth/users/...sessions` rows sit
+in the same table. Every `/auth/*` path that table does not name is refused
+to the non-Owner roles.
 
-Helpers: `hasAccess(role, table, perm)`, `readableTables(role)`,
+Helpers: `hasAccess({role, table, perm})`, `readableTables(role)`,
 `readsUserDirectory(role)`, `moduleTables(role)` (the module rooms a socket
 joins and the global audit tables it pages: `readableTables` minus `user` for
 the roles that read only their own row), `tableFromPath(path)`,
-`permissionForMethod(method)`, `hasHttpAccess(...)`.
+`permissionForMethod(method)`, `hasHttpAccess({role, path, method})`,
+`hasCameraAction(role, action)` and `hasAppAction(role, action)` (the app
+actions the assistant may trigger on a user's behalf: `ShowCamera`,
+`OpenScreen`, `SetGuardMode`, each answered from the table or route that
+already governs it).
 
 ### 7b. People, invitations and private portraits
 

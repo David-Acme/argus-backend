@@ -21,7 +21,7 @@ struct JwtGenerateInput
 class JwtService
 {
 public:
-  explicit JwtService(JwtRole role = JwtRole::Issuer);
+  explicit JwtService(JwtRole role);
   ~JwtService() = default;
 
   std::string generate(const JwtGenerateInput& input) const;

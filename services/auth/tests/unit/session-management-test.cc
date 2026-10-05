@@ -264,7 +264,7 @@ struct LegacySeed
       "INTEGER, access_token TEXT, refresh_token TEXT, expires_at INTEGER NOT "
       "NULL, created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
 
-  const JwtService jwt;
+  const JwtService jwt{JwtRole::Issuer};
   LegacySeed seed{
       .accessToken = jwt.generateAccess({{"sub", std::to_string(kLegacyUserId)}}),
       .refreshToken =
@@ -387,12 +387,12 @@ public:
 private:
   std::string path_{tempPath()};
   ScriptedIdentityClient identity_;
-  SessionService sessions_{{.jwtService = JwtService{},
+  SessionService sessions_{{.jwtService = JwtService{JwtRole::Issuer},
                             .refreshTokenRepository = RefreshTokenRepository{},
                             .identity = &identity_},
                            SessionService::Config{.contextCacheSeconds = 0}};
   AuthFeatureService auth_{
-      {.jwtService = JwtService{},
+      {.jwtService = JwtService{JwtRole::Issuer},
        .refreshTokenRepository = RefreshTokenRepository{},
        .deviceCredentialRepository = DeviceCredentialRepository{},
        .challengeRepository = DeviceLoginChallengeRepository{},
@@ -822,7 +822,7 @@ TEST_CASE("a rotated refresh token races inside the window and is a theft outsid
 
   const auto first = drogon::sync_wait(app.auth().refreshToken(refreshInputOf(
       {.refreshToken = phone.refreshToken, .device = phone.device})));
-  CHECK(JwtService().verifyRefresh(first.refreshToken).at("sid") == sessionId);
+  CHECK(JwtService(JwtRole::Issuer).verifyRefresh(first.refreshToken).at("sid") == sessionId);
 
   app.sink().clear();
   const Refusal raced = refusedBy(app.auth().refreshToken(refreshInputOf(
@@ -926,7 +926,7 @@ TEST_CASE("an identity outage during a refresh rotates nothing and the token sur
       {.refreshToken = opened.refreshToken, .device = tablet})));
   CHECK_FALSE(rotated.refreshToken.empty());
   CHECK(rotated.refreshToken != opened.refreshToken);
-  CHECK(JwtService().verifyRefresh(rotated.refreshToken).at("sid") == sessionId);
+  CHECK(JwtService(JwtRole::Issuer).verifyRefresh(rotated.refreshToken).at("sid") == sessionId);
   const std::vector<std::string> rotatedOnly{
       argus::hash::sha256Hex(rotated.refreshToken)};
   CHECK(liveHashes(sessionId) == rotatedOnly);
@@ -967,7 +967,7 @@ TEST_CASE("a legacy agent moves to the stable agent once, from the device it is 
   upgraded.address = kLegacyAddress;
   const auto moved = drogon::sync_wait(app.auth().refreshToken(refreshInputOf(
       {.refreshToken = app.legacy().refreshToken, .device = upgraded})));
-  CHECK(JwtService().verifyRefresh(moved.refreshToken).at("sid") == sessionId);
+  CHECK(JwtService(JwtRole::Issuer).verifyRefresh(moved.refreshToken).at("sid") == sessionId);
   const OpenedSession movedSession{.accessToken = moved.accessToken,
                                    .refreshToken = moved.refreshToken,
                                    .device = upgraded};
@@ -988,7 +988,7 @@ TEST_CASE("a legacy agent moves to the stable agent once, from the device it is 
 
   ConfigService::setRuntimeString("device.identity_mode", "credential");
   const std::string secretHash = DeviceFilter::sha256Hex("device-secret-a");
-  const JwtService jwt;
+  const JwtService jwt{JwtRole::Issuer};
   const std::string legacyRefresh = jwt.generateRefresh({{"sub", "3"}});
   DbService::client()->execSqlSync(
       "INSERT INTO refresh_token (user_id, access_token, refresh_token, "

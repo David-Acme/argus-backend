@@ -156,11 +156,6 @@ const std::vector<CatalogEntry> kCatalog{
      .code = ErrorCode::AccountDisabled,
      .status = 403,
      .message = "User account is disabled"},
-    {.name = "LoginProofRequired",
-     .definition = &AuthErrors::LoginProofRequired,
-     .code = ErrorCode::BadRequest,
-     .status = 400,
-     .message = "A login proof hash is required"},
     {.name = "DeviceContextMissing",
      .definition = &AuthErrors::DeviceContextMissing,
      .code = ErrorCode::InternalError,
@@ -180,7 +175,7 @@ TEST_CASE("the auth catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 30);
+  CHECK(kCatalog.size() == 29);
 }
 
 TEST_CASE("every auth entry is legal on the wire")

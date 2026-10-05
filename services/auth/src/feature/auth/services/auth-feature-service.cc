@@ -304,8 +304,6 @@ AuthFeatureService::createDeviceLogin(const DeviceLoginStartInput& input) const
 {
   if (input.origin == SessionOrigin::Tunnel && !config_.allowRemoteQrLogin)
     throw ResponseException(AuthErrors::RemoteNotAllowed);
-  if (input.pollHash.empty())
-    throw ResponseException(AuthErrors::LoginProofRequired);
 
   const std::string challengeId = randomSecret();
   if (challengeId.empty())

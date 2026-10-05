@@ -10,6 +10,8 @@
 #include <config/config-service.hxx>
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
+#include <errors/validation-exception.hxx>
+#include <feature/auth/dtos/start-device-login-dto.hxx>
 #include <feature/auth/services/auth-feature-service.hxx>
 #include <feature/device/repositories/device-credential/device-credential-repository.hxx>
 #include <feature/device/repositories/device-login-challenge/device-login-challenge-repository.hxx>
@@ -349,7 +351,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   Fixture& app = fixture();
   REQUIRE(app.start());
 
-  SessionService sessions({.jwtService = JwtService{},
+  SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
                            .refreshTokenRepository = RefreshTokenRepository{},
                            .identity = &app.identity()},
                           SessionService::Config{.contextCacheSeconds = 0});
@@ -363,7 +365,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   seedCredential(DeviceFilter::sha256Hex(kSecret));
 
   AuthFeatureService authService(
-      {.jwtService = JwtService{},
+      {.jwtService = JwtService{JwtRole::Issuer},
        .refreshTokenRepository = RefreshTokenRepository{},
        .deviceCredentialRepository = DeviceCredentialRepository{},
        .challengeRepository = DeviceLoginChallengeRepository{},
@@ -410,7 +412,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   drogon::sync_wait(deviceFilter.doFilter(oversized));
   CHECK(deviceCtx(oversized).deviceHash.empty());
 
-  const auto seededToken = JwtService().generateAccess({{"sub", "1"}});
+  const auto seededToken = JwtService(JwtRole::Issuer).generateAccess({{"sub", "1"}});
   auto client = DbService::client();
   client->execSqlSync(
       "INSERT INTO refresh_token (user_id, access_token, refresh_token, "
@@ -682,7 +684,7 @@ TEST_CASE("a refresh keeps the session on the device and agent it was issued to"
   REQUIRE(app.start());
 
   AuthFeatureService authService(
-      {.jwtService = JwtService{},
+      {.jwtService = JwtService{JwtRole::Issuer},
        .refreshTokenRepository = RefreshTokenRepository{},
        .deviceCredentialRepository = DeviceCredentialRepository{},
        .challengeRepository = DeviceLoginChallengeRepository{},
@@ -697,7 +699,7 @@ TEST_CASE("a refresh keeps the session on the device and agent it was issued to"
     DbService::client()->execSqlSync(
         "INSERT INTO refresh_token (user_id, access_token, refresh_token, "
         "device_hash, user_agent, expires_at) VALUES (1, ?, ?, ?, ?, ?)",
-        JwtService().generateAccess({{"sub", "1"}}), refresh, boundHash, kUa,
+        JwtService(JwtRole::Issuer).generateAccess({{"sub", "1"}}), refresh, boundHash, kUa,
         static_cast<int64_t>(std::time(nullptr)) + 3600);
   };
   const auto refreshFrom = [&](const RefreshTokenInput& input) {
@@ -706,7 +708,7 @@ TEST_CASE("a refresh keeps the session on the device and agent it was issued to"
 
   ConfigService::setRuntimeString("device.identity_mode", "credential");
 
-  const auto stolen = JwtService().generateRefresh({{"sub", "1"}});
+  const auto stolen = JwtService(JwtRole::Issuer).generateRefresh({{"sub", "1"}});
   seed(stolen);
   const auto noCredential = refreshFrom(
       {.body = {.refreshToken = stolen},
@@ -739,7 +741,7 @@ TEST_CASE("a refresh keeps the session on the device and agent it was issued to"
 
   DbService::client()->execSqlSync("DELETE FROM refresh_token");
   ConfigService::setRuntimeString("device.identity_mode", "ip");
-  const auto roaming = JwtService().generateRefresh({{"sub", "1"}});
+  const auto roaming = JwtService(JwtRole::Issuer).generateRefresh({{"sub", "1"}});
   seed(roaming);
   CHECK(refreshFrom({.body = {.refreshToken = roaming},
                            .deviceHash = "another-network",
@@ -761,7 +763,7 @@ TEST_CASE("a QR challenge needs a poll proof, shows where it came from and refus
 
   const auto serviceWith = [&app](bool allowRemoteQrLogin) {
     return AuthFeatureService(
-        {.jwtService = JwtService{},
+        {.jwtService = JwtService{JwtRole::Issuer},
          .refreshTokenRepository = RefreshTokenRepository{},
          .deviceCredentialRepository = DeviceCredentialRepository{},
          .challengeRepository = DeviceLoginChallengeRepository{},
@@ -785,11 +787,21 @@ TEST_CASE("a QR challenge needs a poll proof, shows where it came from and refus
         .ipAddress = "203.0.113.9"};
   };
 
-  const auto missingProof =
-      refusalOf(closed.createDeviceLogin(startFrom(SessionOrigin::Lan, "")));
-  REQUIRE(missingProof.has_value());
-  CHECK(missingProof->status == 400);
-  CHECK(missingProof->message == "A login proof hash is required");
+  Json::Value withoutHash(Json::objectValue);
+  Json::Value emptyHash(Json::objectValue);
+  emptyHash["pollHash"] = "";
+  Json::Value upperHash(Json::objectValue);
+  upperHash["pollHash"] = std::string(64, 'A');
+  for (const auto& body : {withoutHash, emptyHash, upperHash}) {
+    const auto request = drogon::HttpRequest::newHttpJsonRequest(body);
+    try {
+      static_cast<void>(StartDeviceLoginDto::fromRequest(request));
+      FAIL("a QR challenge without a well-formed poll hash must be refused");
+    }
+    catch (const ValidationException& refusal) {
+      CHECK(refusal.statusCode() == 422);
+    }
+  }
 
   const auto tunnelled =
       refusalOf(closed.createDeviceLogin(startFrom(SessionOrigin::Tunnel, "x")));
@@ -857,7 +869,7 @@ TEST_CASE("in ip mode a refresh rotates only from the network the session was bo
   ConfigService::setRuntimeString("device.identity_mode", "ip");
 
   AuthFeatureService authService(
-      {.jwtService = JwtService{},
+      {.jwtService = JwtService{JwtRole::Issuer},
        .refreshTokenRepository = RefreshTokenRepository{},
        .deviceCredentialRepository = DeviceCredentialRepository{},
        .challengeRepository = DeviceLoginChallengeRepository{},
@@ -911,7 +923,7 @@ TEST_CASE("in ip mode a refresh rotates only from the network the session was bo
   REQUIRE(stored.size() == 1);
   CHECK(stored.front()["network_hash"].as<std::string>() == from("192.168.1.77"));
 
-  const auto legacyToken = JwtService().generateRefresh({{"sub", "1"}});
+  const auto legacyToken = JwtService(JwtRole::Issuer).generateRefresh({{"sub", "1"}});
   DbService::client()->execSqlSync("DELETE FROM refresh_token");
   DbService::client()->execSqlSync(
       "INSERT INTO refresh_token (user_id, access_token, refresh_token, "

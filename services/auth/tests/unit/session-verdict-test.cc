@@ -218,7 +218,7 @@ struct SessionSeed
 [[nodiscard]] std::string issueToken(int64_t userId)
 {
   static std::atomic<int> issued{0};
-  JwtService jwt;
+  JwtService jwt{JwtRole::Issuer};
   return jwt.generateAccess({{"sub", std::to_string(userId)},
                              {"iss", "argus"},
                              {"jti", std::to_string(issued.fetch_add(1))}});
@@ -396,7 +396,7 @@ TEST_CASE("a valid session answers the user the filters read")
   const int64_t now = std::time(nullptr);
   const std::string live = seedSession({.expiresAt = now + kHourSeconds});
 
-  SessionService sessions({.jwtService = JwtService{},
+  SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
                            .refreshTokenRepository = RefreshTokenRepository{},
                            .identity = &app.identity()},
                           SessionService::Config{.contextCacheSeconds = 0});
@@ -446,7 +446,7 @@ TEST_CASE("a verdict tells presence where a session comes from, at most once "
   const int64_t now = std::time(nullptr);
   const std::string live = seedSession({.expiresAt = now + kHourSeconds});
 
-  SessionService sessions({.jwtService = JwtService{},
+  SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
                            .refreshTokenRepository = RefreshTokenRepository{},
                            .identity = &app.identity()},
                           SessionService::Config{.contextCacheSeconds = 0});
@@ -523,7 +523,7 @@ TEST_CASE("the session verdict refuses in the identity gate's order")
   const std::string otherDevice = seedSession(
       {.deviceHash = kOtherDeviceHash, .expiresAt = now + kHourSeconds});
 
-  SessionService sessions({.jwtService = JwtService{},
+  SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
                            .refreshTokenRepository = RefreshTokenRepository{},
                            .identity = &app.identity()},
                           SessionService::Config{.contextCacheSeconds = 0});
@@ -594,7 +594,7 @@ TEST_CASE("a revoked or rotated session row refuses on both paths")
       "UPDATE refresh_token SET is_used = 1 WHERE access_token = ?",
       rotatedHash);
 
-  SessionService sessions({.jwtService = JwtService{},
+  SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
                            .refreshTokenRepository = RefreshTokenRepository{},
                            .identity = &app.identity()},
                           SessionService::Config{.contextCacheSeconds = 0});
@@ -637,7 +637,7 @@ TEST_CASE("tokens rest hashed, and a row written before that still verifies")
             .front()["total"]
             .as<int64_t>() == 0);
 
-  SessionService sessions({.jwtService = JwtService{},
+  SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
                            .refreshTokenRepository = RefreshTokenRepository{},
                            .identity = &app.identity()},
                           SessionService::Config{.contextCacheSeconds = 0});
@@ -677,7 +677,7 @@ TEST_CASE("a revocation ends every session the user holds")
   const int64_t now = std::time(nullptr);
   const std::string live = seedSession({.expiresAt = now + kHourSeconds});
 
-  SessionService sessions({.jwtService = JwtService{},
+  SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
                            .refreshTokenRepository = RefreshTokenRepository{},
                            .identity = &app.identity()},
                           SessionService::Config{.contextCacheSeconds = 0});
@@ -705,7 +705,7 @@ TEST_CASE("the context cache answers a repeat validation without identity")
   const std::string cached = seedSession({.expiresAt = now + kHourSeconds});
 
   SessionService cachedSessions(
-      {.jwtService = JwtService{},
+      {.jwtService = JwtService{JwtRole::Issuer},
        .refreshTokenRepository = RefreshTokenRepository{},
        .identity = &app.identity()},
       SessionService::Config{.contextCacheSeconds = 30});
@@ -724,7 +724,7 @@ TEST_CASE("the context cache answers a repeat validation without identity")
   CHECK(app.identity().calls.load() == before + 2);
 
   SessionService uncachedSessions(
-      {.jwtService = JwtService{},
+      {.jwtService = JwtService{JwtRole::Issuer},
        .refreshTokenRepository = RefreshTokenRepository{},
        .identity = &app.identity()},
       SessionService::Config{.contextCacheSeconds = 0});
@@ -748,7 +748,7 @@ TEST_CASE("the fleet secret gates every session verdict")
       {.userId = kGatedUserId, .expiresAt = now + kHourSeconds});
   seedCredential(DeviceFilter::sha256Hex(kDeviceSecret));
 
-  SessionService sessions({.jwtService = JwtService{},
+  SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
                            .refreshTokenRepository = RefreshTokenRepository{},
                            .identity = &app.identity()},
                           SessionService::Config{.contextCacheSeconds = 0});
@@ -790,7 +790,7 @@ TEST_CASE("device credentials answer active only for a live secret hash")
 
   seedCredential(DeviceFilter::sha256Hex(kDeviceSecret));
 
-  SessionService sessions({.jwtService = JwtService{},
+  SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
                            .refreshTokenRepository = RefreshTokenRepository{},
                            .identity = &app.identity()},
                           SessionService::Config{.contextCacheSeconds = 0});
@@ -837,7 +837,7 @@ TEST_CASE("an identity change drops the cached context")
                                         1000000000,
                             .duplicatesNs = 120LL * 1000000000}));
 
-  SessionService sessions({.jwtService = JwtService{},
+  SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
                            .refreshTokenRepository = RefreshTokenRepository{},
                            .identity = &app.identity()},
                           SessionService::Config{.contextCacheSeconds = 30});
