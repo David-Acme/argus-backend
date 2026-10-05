@@ -99,6 +99,7 @@ UpdateEnvironmentDto UpdateEnvironmentDto::fromJson(const Json::Value& json)
   dto.quietPolicy = read.text("quietPolicy");
   dto.quietStartHour = read.integer("quietStartHour");
   dto.quietEndHour = read.integer("quietEndHour");
+  dto.lanPresence = read.flag("lanPresence");
 
   START_VALIDATION(UpdateEnvironmentDto, dto)
   IS_NOT_EMPTY_OPTIONAL(name)

@@ -370,6 +370,7 @@ Json::Value environmentJson(const EnvironmentJsonInput& input)
   json["quietPolicy"] = quietPolicyToString(environment.quietPolicy);
   json["quietStartHour"] = environment.quietStartHour;
   json["quietEndHour"] = environment.quietEndHour;
+  json["lanPresence"] = environment.lanPresence;
   Json::Value cameras(Json::arrayValue);
   for (const int64_t cameraId : input.cameraIds)
     cameras.append(static_cast<Json::Int64>(cameraId));
@@ -598,6 +599,7 @@ GuardFeatureService::createEnvironment(const CreateEnvironmentDto& input) const
                           .value_or(QuietPolicy::Inherit),
        .quietStartHour = fields.quietStartHour.value_or(22),
        .quietEndHour = fields.quietEndHour.value_or(7),
+       .lanPresence = fields.lanPresence.value_or(false),
        .at = static_cast<int64_t>(std::time(nullptr))});
   co_return environmentJson(
       {.environment = created, .cameraIds = {}, .local = localNow()});
@@ -626,6 +628,7 @@ GuardFeatureService::updateEnvironment(const EnvironmentPatchInput& input) const
                                         : std::optional<QuietPolicy>{},
        .quietStartHour = patch.quietStartHour,
        .quietEndHour = patch.quietEndHour,
+       .lanPresence = patch.lanPresence,
        .at = static_cast<int64_t>(std::time(nullptr))};
   const auto updated = co_await environmentRepository_.update(update);
   if (!updated)

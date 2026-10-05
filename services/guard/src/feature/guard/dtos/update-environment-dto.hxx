@@ -17,6 +17,7 @@ struct UpdateEnvironmentDto
   std::optional<std::string> quietPolicy;
   std::optional<int> quietStartHour;
   std::optional<int> quietEndHour;
+  std::optional<bool> lanPresence;
   std::string invalidTypes;
 
   static UpdateEnvironmentDto fromJson(const Json::Value& json);

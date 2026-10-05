@@ -15,21 +15,21 @@ namespace environment_query
 inline constexpr std::string_view LIST_ENVIRONMENTS =
     "SELECT id, name, kind, is_default, mode, mode_updated_at, "
     "schedule_enabled, asleep_hours, open_hours, staffed_hours, closed_mode, "
-    "digest_hour, quiet_policy, quiet_start_hour, quiet_end_hour, created_at, "
-    "updated_at FROM guard_environment ORDER BY is_default DESC, id ASC "
+    "digest_hour, quiet_policy, quiet_start_hour, quiet_end_hour, lan_presence, "
+    "created_at, updated_at FROM guard_environment ORDER BY is_default DESC, id ASC "
     "LIMIT 200";
 
 inline constexpr std::string_view FIND_ENVIRONMENT =
     "SELECT id, name, kind, is_default, mode, mode_updated_at, "
     "schedule_enabled, asleep_hours, open_hours, staffed_hours, closed_mode, "
-    "digest_hour, quiet_policy, quiet_start_hour, quiet_end_hour, created_at, "
-    "updated_at FROM guard_environment WHERE id = ?";
+    "digest_hour, quiet_policy, quiet_start_hour, quiet_end_hour, lan_presence, "
+    "created_at, updated_at FROM guard_environment WHERE id = ?";
 
 inline constexpr std::string_view FOR_CAMERA =
     "SELECT e.id, e.name, e.kind, e.is_default, e.mode, e.mode_updated_at, "
     "e.schedule_enabled, e.asleep_hours, e.open_hours, e.staffed_hours, "
     "e.closed_mode, e.digest_hour, e.quiet_policy, e.quiet_start_hour, "
-    "e.quiet_end_hour, e.created_at, e.updated_at, "
+    "e.quiet_end_hour, e.lan_presence, e.created_at, e.updated_at, "
     "(SELECT COUNT(*) FROM guard_environment) AS total "
     "FROM guard_environment e WHERE e.id = COALESCE("
     "(SELECT c.environment_id FROM guard_camera_context c JOIN "
@@ -46,8 +46,8 @@ inline constexpr std::string_view INSERT_ENVIRONMENT =
     "INSERT INTO guard_environment (name, kind, is_default, mode, "
     "mode_updated_at, schedule_enabled, asleep_hours, open_hours, "
     "staffed_hours, closed_mode, digest_hour, quiet_policy, quiet_start_hour, "
-    "quiet_end_hour, created_at, updated_at) VALUES (?, ?, 0, ?, ?, ?, ?, ?, "
-    "?, ?, ?, ?, ?, ?, ?, ?) RETURNING id";
+    "quiet_end_hour, lan_presence, created_at, updated_at) VALUES (?, ?, 0, ?, "
+    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id";
 
 inline constexpr std::string_view UPDATE_ENVIRONMENT_PREFIX =
     "UPDATE guard_environment SET updated_at = ?";
@@ -66,6 +66,8 @@ inline constexpr std::string_view UPDATE_COL_QUIET_POLICY =
 inline constexpr std::string_view UPDATE_COL_QUIET_START =
     ", quiet_start_hour = ?";
 inline constexpr std::string_view UPDATE_COL_QUIET_END = ", quiet_end_hour = ?";
+inline constexpr std::string_view UPDATE_COL_LAN_PRESENCE =
+    ", lan_presence = ?";
 
 inline constexpr std::string_view UPDATE_ENVIRONMENT_SUFFIX = " WHERE id = ?";
 
@@ -110,6 +112,7 @@ struct GuardEnvironment
   QuietPolicy quietPolicy{QuietPolicy::Inherit};
   int quietStartHour{22};
   int quietEndHour{7};
+  bool lanPresence{false};
   int64_t createdAt{0};
   int64_t updatedAt{0};
 };
@@ -134,6 +137,7 @@ struct EnvironmentCreateInput
   QuietPolicy quietPolicy{QuietPolicy::Inherit};
   int quietStartHour{22};
   int quietEndHour{7};
+  bool lanPresence{false};
   int64_t at{0};
 };
 
@@ -151,6 +155,7 @@ struct EnvironmentUpdateInput
   std::optional<QuietPolicy> quietPolicy;
   std::optional<int> quietStartHour;
   std::optional<int> quietEndHour;
+  std::optional<bool> lanPresence;
   int64_t at{0};
 };
 

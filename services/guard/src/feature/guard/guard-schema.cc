@@ -674,12 +674,12 @@ bool insertDefaultEnvironment(const GuardEnvironment& seed)
       "INSERT INTO guard_environment (name, kind, is_default, mode, "
       "mode_updated_at, schedule_enabled, asleep_hours, open_hours, "
       "staffed_hours, closed_mode, digest_hour, quiet_policy, "
-      "quiet_start_hour, quiet_end_hour) VALUES (?, ?, 1, ?, 0, ?, ?, ?, ?, "
-      "?, ?, 'inherit', ?, ?) RETURNING id",
+      "quiet_start_hour, quiet_end_hour, lan_presence) VALUES (?, ?, 1, ?, 0, "
+      "?, ?, ?, ?, ?, ?, 'inherit', ?, ?, ?) RETURNING id",
       seed.name, row.kind, mode, row.scheduleEnabled, row.asleep, row.open,
       row.staffed, row.closedMode, row.digestHour,
       std::clamp(seed.quietStartHour, 0, 23),
-      std::clamp(seed.quietEndHour, 0, 23));
+      std::clamp(seed.quietEndHour, 0, 23), seed.lanPresence ? 1 : 0);
   if (inserted.empty())
     return false;
   const int64_t id = inserted.front()["id"].as<int64_t>();
@@ -701,6 +701,17 @@ bool insertDefaultEnvironment(const GuardEnvironment& seed)
       "DELETE FROM guard_state WHERE key IN ('digest_quiet_day', "
       "'digest_daily_day', 'digest_daily_until', 'mode')");
   return exec("DROP TABLE IF EXISTS guard_site");
+}
+
+bool migrateLanPresenceColumn()
+{
+  if (!tableExists("guard_environment") ||
+      columnExists("guard_environment", "lan_presence"))
+    return true;
+  return exec("ALTER TABLE guard_environment ADD COLUMN lan_presence INTEGER "
+              "NOT NULL DEFAULT 0 CHECK (lan_presence IN (0, 1))") &&
+         exec("UPDATE guard_environment SET lan_presence = 1 WHERE "
+              "is_default = 1");
 }
 
 bool migrateGuestColumns()
@@ -745,6 +756,7 @@ bool guard_schema::migrate(const std::string& schemaPath)
             "NOT NULL DEFAULT 0"))
     return false;
   if (!migrateGuestColumns() || !migrateEnvironmentColumns() ||
+      !migrateLanPresenceColumn() ||
       !migrateInboxColumns() ||
       !migrateIncidentColumns() || !migrateActionColumns() ||
       !migrateEncounterDialogueColumns() || !migrateAssessmentColumns() ||

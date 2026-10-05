@@ -330,6 +330,7 @@ CREATE TABLE IF NOT EXISTS guard_environment (
                        CHECK (quiet_start_hour >= 0 AND quiet_start_hour <= 23),
     quiet_end_hour   INTEGER NOT NULL DEFAULT 7
                        CHECK (quiet_end_hour >= 0 AND quiet_end_hour <= 23),
+    lan_presence     INTEGER NOT NULL DEFAULT 0 CHECK (lan_presence IN (0, 1)),
     created_at       INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     updated_at       INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
@@ -355,3 +356,23 @@ CREATE TABLE IF NOT EXISTS guard_camera_context (
 
 CREATE INDEX IF NOT EXISTS idx_guard_camera_context_environment
     ON guard_camera_context (environment_id);
+
+CREATE TABLE IF NOT EXISTS guard_presence (
+    user_id        INTEGER NOT NULL CHECK (user_id > 0),
+    environment_id INTEGER NOT NULL
+                     REFERENCES guard_environment (id) ON DELETE CASCADE,
+    state          TEXT    NOT NULL CHECK (state IN ('home', 'away')),
+    source         TEXT    NOT NULL
+                     CHECK (source IN ('lan_session', 'tunnel_session',
+                            'app_activity', 'camera', 'timeout')),
+    since          INTEGER NOT NULL,
+    last_home_at   INTEGER NOT NULL DEFAULT 0,
+    last_signal_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, environment_id)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_guard_presence_environment
+    ON guard_presence (environment_id, user_id);
+
+CREATE INDEX IF NOT EXISTS idx_guard_presence_home
+    ON guard_presence (last_home_at) WHERE state = 'home';

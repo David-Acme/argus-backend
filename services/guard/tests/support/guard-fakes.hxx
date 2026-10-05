@@ -83,6 +83,7 @@ public:
             .quietPolicy = QuietPolicy::Inherit,
             .quietStartHour = 22,
             .quietEndHour = 7,
+            .lanPresence = false,
             .createdAt = 0,
             .updatedAt = 0};
   }

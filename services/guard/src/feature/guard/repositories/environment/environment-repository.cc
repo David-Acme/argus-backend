@@ -35,6 +35,7 @@ GuardEnvironment fromRow(const drogon::orm::Row& row)
                   .value_or(QuietPolicy::Inherit),
           .quietStartHour = row["quiet_start_hour"].as<int>(),
           .quietEndHour = row["quiet_end_hour"].as<int>(),
+          .lanPresence = row["lan_presence"].as<int>() != 0,
           .createdAt = row["created_at"].as<int64_t>(),
           .updatedAt = row["updated_at"].as<int64_t>()};
 }
@@ -101,7 +102,7 @@ EnvironmentRepository::create(const EnvironmentCreateInput& input) const
       input.at, input.scheduleEnabled ? 1 : 0, input.asleep, input.open,
       input.staffed, closedModeName(input.closedMode), input.digestHour,
       quietPolicyToString(input.quietPolicy), input.quietStartHour,
-      input.quietEndHour, input.at, input.at);
+      input.quietEndHour, input.lanPresence ? 1 : 0, input.at, input.at);
   if (rows.empty())
     throw std::runtime_error("environment insert returned no row");
   const auto created = co_await find(rows.front()["id"].as<int64_t>());
@@ -142,6 +143,8 @@ EnvironmentRepository::update(const EnvironmentUpdateInput& input) const
     addField(UPDATE_COL_QUIET_START, std::to_string(*input.quietStartHour));
   if (input.quietEndHour)
     addField(UPDATE_COL_QUIET_END, std::to_string(*input.quietEndHour));
+  if (input.lanPresence)
+    addField(UPDATE_COL_LAN_PRESENCE, *input.lanPresence ? "1" : "0");
   sql += UPDATE_ENVIRONMENT_SUFFIX;
   args.push_back(std::to_string(input.id));
   const auto& argsRef = args;

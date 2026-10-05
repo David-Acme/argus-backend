@@ -147,6 +147,7 @@ int64_t environment(const EnvironmentSpec& spec)
                                               .quietPolicy = QuietPolicy::Inherit,
                                               .quietStartHour = 22,
                                               .quietEndHour = 7,
+                                              .lanPresence = false,
                                               .at = 1}))
       .id;
 }

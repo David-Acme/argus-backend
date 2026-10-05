@@ -218,6 +218,7 @@ GuardEnvironment guard_schedule::environmentSeed(const GuardServiceConfig& confi
           .quietPolicy = QuietPolicy::Inherit,
           .quietStartHour = config.quietStartHour,
           .quietEndHour = config.quietEndHour,
+          .lanPresence = true,
           .createdAt = 0,
           .updatedAt = 0};
 }

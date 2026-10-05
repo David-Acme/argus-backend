@@ -94,6 +94,7 @@ endif()
 find_package(doctest REQUIRED)
 
 add_subdirectory(${GUARD_SRC_ROOT}/config)
+add_subdirectory(${GUARD_SRC_ROOT}/shared/repositories/presence)
 
 file(GLOB GUARD_FEATURE_MODULES CONFIGURE_DEPENDS
     "${GUARD_SRC_ROOT}/feature/*/CMakeLists.txt")
@@ -137,12 +138,14 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
         guard-decision-journal-test guard-notify-thread-test
         guard-belief-scope-test guard-outbox-adopt-test
         guard-vocabulary-test guard-schedule-test guard-scenario-test
-        guard-episode-test guard-copy-test guard-context-test)
+        guard-episode-test guard-copy-test guard-context-test
+        guard-presence-repository-test guard-response-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
 
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-    target_link_libraries(${TEST_NAME} PRIVATE argus::guard doctest::doctest)
+    target_link_libraries(${TEST_NAME} PRIVATE argus::guard
+        argus::guard-presence-repository doctest::doctest)
     target_include_directories(${TEST_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
@@ -157,7 +160,9 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
        OR TEST_NAME STREQUAL "guard-outbox-adopt-test"
        OR TEST_NAME STREQUAL "guard-dlq-crash-test"
        OR TEST_NAME STREQUAL "guard-scenario-test"
-       OR TEST_NAME STREQUAL "guard-episode-test")
+       OR TEST_NAME STREQUAL "guard-episode-test"
+       OR TEST_NAME STREQUAL "guard-presence-repository-test"
+       OR TEST_NAME STREQUAL "guard-response-test")
         target_compile_definitions(${TEST_NAME} PRIVATE
             ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
     endif()

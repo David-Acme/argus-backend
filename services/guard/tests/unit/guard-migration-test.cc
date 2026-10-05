@@ -334,6 +334,7 @@ TEST_CASE("a legacy guard database migrates in place without data loss")
                               .quietPolicy = QuietPolicy::Inherit,
                               .quietStartHour = 22,
                               .quietEndHour = 7,
+                              .lanPresence = true,
                               .createdAt = 0,
                               .updatedAt = 0};
   REQUIRE(guard_schema::seedEnvironments(seed));
@@ -371,6 +372,8 @@ TEST_CASE("a legacy guard database migrates in place without data loss")
                "name = 'guard_site'") == "0");
   REQUIRE(guard_schema::seedEnvironments(seed));
   CHECK(scalar("SELECT COUNT(*) FROM guard_environment") == "1");
+  CHECK(scalar("SELECT lan_presence FROM guard_environment WHERE "
+               "is_default = 1") == "1");
   REQUIRE(DbService::runScriptFile(ARGUS_GUARD_SCHEMA_PATH));
   CHECK(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND "
                "name = 'guard_site'") == "0");
