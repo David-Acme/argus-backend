@@ -153,6 +153,13 @@ void resetSite()
   drogon::sync_wait(feature().updateEnvironment({.id = homeId(), .patch = patch}));
 }
 
+Json::Value applyMode(const GuardFeatureService& service, const Json::Value& body)
+{
+  const UpdateGuardModeDto dto = UpdateGuardModeDto::fromJson(body);
+  const GuardModeChange change{.body = dto, .userId = 2, .userName = "Test"};
+  return drogon::sync_wait(service.setMode(change));
+}
+
 Json::Value modeBody(const std::string& mode, int64_t environmentId)
 {
   Json::Value body(Json::objectValue);
@@ -219,20 +226,16 @@ TEST_CASE("environments: the seeded default, a second place, patches and modes")
                       {.id = 999999, .patch = laterPatch})),
                   ResponseException);
 
-  const Json::Value one = drogon::sync_wait(
-      service.setMode(UpdateGuardModeDto::fromJson(modeBody("armed", restaurant))));
+  const Json::Value one = applyMode(service, modeBody("armed", restaurant));
   CHECK(findEnvironment(one, restaurant)["mode"].asString() == "armed");
   CHECK(findEnvironment(one, restaurant)["effectiveMode"].asString() == "armed");
   CHECK(findEnvironment(one, homeId())["mode"].asString() == "home");
-  CHECK_THROWS_AS(drogon::sync_wait(service.setMode(
-                      UpdateGuardModeDto::fromJson(modeBody("away", 999999)))),
+  CHECK_THROWS_AS(applyMode(service, modeBody("away", 999999)),
                   ResponseException);
-  const Json::Value all = drogon::sync_wait(
-      service.setMode(UpdateGuardModeDto::fromJson(modeBody("night", 0))));
+  const Json::Value all = applyMode(service, modeBody("night", 0));
   for (const auto& row : all)
     CHECK(row["mode"].asString() == "night");
-  drogon::sync_wait(
-      service.setMode(UpdateGuardModeDto::fromJson(modeBody("home", 0))));
+  applyMode(service, modeBody("home", 0));
 
   Json::Value kitchen(Json::objectValue);
   kitchen["role"] = "kitchen";

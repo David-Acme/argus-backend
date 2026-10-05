@@ -445,3 +445,17 @@ TEST_CASE("every role reads the responses that reached it and gives a verdict by
     CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/notification/responses/4", .method = drogon::Delete}));
   }
 }
+
+TEST_CASE("every role presses panic and reads the safety state; only disarmers keep PINs; only owners switch duress")
+{
+  for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/guard/panic", .method = drogon::Post}));
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/guard/safety", .method = drogon::Get}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/guard/safety", .method = drogon::Patch}));
+  }
+  CHECK(role_access::hasHttpAccess({.role = UserRole::Resident, .path = "/guard/safety/pin", .method = drogon::Put}));
+  CHECK(role_access::hasHttpAccess({.role = UserRole::Resident, .path = "/guard/safety/pin", .method = drogon::Delete}));
+  CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guard, .path = "/guard/safety/pin", .method = drogon::Put}));
+  CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guest, .path = "/guard/safety/pin", .method = drogon::Put}));
+  CHECK(role_access::hasHttpAccess({.role = UserRole::Owner, .path = "/guard/safety", .method = drogon::Patch}));
+}

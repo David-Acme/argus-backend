@@ -4,6 +4,7 @@
 
 #include <errors/response-exception.hxx>
 #include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <identity/identity-client.hxx>
 #include <feature/guard/dtos/create-expected-guest-dto.hxx>
@@ -56,7 +57,9 @@ drogon::Task<drogon::HttpResponsePtr> GuardController::setMode(
     drogon::HttpRequestPtr req)
 {
   const auto body = UpdateGuardModeDto::fromJson(*req->getJsonObject());
-  co_return ApiResponse::ok(co_await service_.setMode(body));
+  const auto& caller = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  co_return ApiResponse::ok(
+      co_await service_.setMode({.body = body, .userId = caller.sub, .userName = caller.name}));
 }
 
 drogon::Task<drogon::HttpResponsePtr> GuardController::incidents(

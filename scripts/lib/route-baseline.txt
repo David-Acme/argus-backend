@@ -55,6 +55,11 @@ guard	POST	/guard/mode	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	servi
 guard	POST	/guard/person/{1}/promote	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
 guard	GET	/guard/presence	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/presence/controllers/presence-controller.hxx
 guard	GET	/health	-	-	services/guard/src/app/main.cc
+guard	POST	/guard/panic	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/safety-controller.hxx
+guard	GET	/guard/safety	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/safety-controller.hxx
+guard	PATCH	/guard/safety	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/safety-controller.hxx
+guard	DELETE	/guard/safety/pin	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/safety-controller.hxx
+guard	PUT	/guard/safety/pin	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/safety-controller.hxx
 identity	GET	/invitation	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/invitation/controllers/invitation-controller.hxx
 identity	POST	/invitation	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/invitation/controllers/invitation-controller.hxx
 identity	POST	/invitation/resolve	ValidJsonFilter	-	services/identity/src/feature/invitation/controllers/invitation-controller.hxx

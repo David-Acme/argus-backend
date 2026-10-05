@@ -48,10 +48,13 @@ TEST_CASE("every error code has exactly one wire string")
       {.code = ErrorCode::RtcUnavailable, .name = "RTC_UNAVAILABLE"},
       {.code = ErrorCode::CallNotFound, .name = "CALL_NOT_FOUND"},
       {.code = ErrorCode::CallTaken, .name = "CALL_TAKEN"},
-      {.code = ErrorCode::CallExpired, .name = "CALL_EXPIRED"}};
+      {.code = ErrorCode::CallExpired, .name = "CALL_EXPIRED"},
+      {.code = ErrorCode::PinRequired, .name = "PIN_REQUIRED"},
+      {.code = ErrorCode::PinInvalid, .name = "PIN_INVALID"},
+      {.code = ErrorCode::PinLocked, .name = "PIN_LOCKED"}};
 
   CHECK(table.size() ==
-        static_cast<std::size_t>(ErrorCode::CallExpired) + 1);
+        static_cast<std::size_t>(ErrorCode::PinLocked) + 1);
 
   for (const auto& row : table)
     CHECK(std::string(toString(row.code)) == row.name);

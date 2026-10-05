@@ -407,3 +407,30 @@ CREATE TABLE IF NOT EXISTS guard_response_setting (
                        CHECK (step_seconds >= 15 AND step_seconds <= 300),
     updated_at       INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS guard_user_pin (
+    user_id      INTEGER PRIMARY KEY,
+    disarm_hash  TEXT    NOT NULL,
+    duress_hash  TEXT    NOT NULL,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS guard_safety_setting (
+    id              INTEGER PRIMARY KEY CHECK (id = 1),
+    duress_enabled  INTEGER NOT NULL DEFAULT 0 CHECK (duress_enabled IN (0, 1)),
+    updated_at      INTEGER NOT NULL DEFAULT 0,
+    updated_by      INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS guard_safety_alert (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind            TEXT    NOT NULL CHECK (kind IN ('panic', 'duress')),
+    user_id         INTEGER NOT NULL,
+    environment_id  INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL,
+    notified_at     INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_guard_safety_alert_user_kind
+    ON guard_safety_alert(user_id, kind, created_at);

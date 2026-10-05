@@ -45,6 +45,18 @@ struct GuardLifecycle;
 class GuardService
 {
 public:
+  struct SafetyAlertInput
+  {
+    bool duress{false};
+    int64_t alertId{0};
+    int64_t actorUserId{0};
+    std::string actorName;
+    int64_t environmentId{0};
+    int64_t now{0};
+  };
+
+  [[nodiscard]] drogon::Task<bool> raiseSafetyAlert(const SafetyAlertInput& input);
+
   struct Dependencies
   {
     NatsBus* bus{nullptr};

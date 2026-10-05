@@ -13,6 +13,10 @@
 #include <feature/guard/guard-service.hxx>
 #include <feature/presence/controllers/presence-controller.hxx>
 #include <feature/presence/infra/identity-presence-directory.hxx>
+#include <feature/safety/controllers/safety-controller.hxx>
+#include <feature/safety/infra/guard-alert-sink.hxx>
+#include <feature/safety/infra/notification-actor-notifier.hxx>
+#include <feature/safety/services/safety-service.hxx>
 #include <feature/presence/infra/nats-presence-publisher.hxx>
 #include <feature/presence/services/presence-service.hxx>
 #include <feature/settings/guard-settings.hxx>
@@ -220,6 +224,12 @@ int main()
        .assessment = &assessment,
        .directory = responseDirectory},
       guardConfig);
+  const GuardAlertSink safetySink(guardService);
+  const NotificationActorNotifier safetyActor(
+      {.notifications = notifications.get(), .identity = identity.get()});
+  const auto safety = std::make_shared<const SafetyService>(
+      SafetyService::Dependencies{.sink = &safetySink, .actor = &safetyActor, .clock = {}},
+      SafetyService::Config{});
   ResponseVerdictFeed verdictFeed(natsBus.get());
   verdictFeed.start();
 
@@ -244,7 +254,8 @@ int main()
   drogon::app().registerFilter(std::make_shared<JwtFilter>());
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
   drogon::app().registerController(std::make_shared<GuardController>(
-      GuardFeatureDependencies{.identity = identity.get()}));
+      GuardFeatureDependencies{.identity = identity.get(), .disarm = safety.get()}));
+  drogon::app().registerController(std::make_shared<SafetyController>(safety));
   drogon::app().registerController(
       std::make_shared<PresenceController>(&presence));
   drogon::app().registerController(std::make_shared<ResponseController>(
@@ -286,6 +297,12 @@ int main()
   drogon::app().registerBeginningAdvice([&guardService, &presence]() {
     guardService.start();
     presence.start();
+  });
+  drogon::app().registerBeginningAdvice([safety]() {
+    drogon::async_run([safety]() -> drogon::Task<> {
+      if (const size_t resumed = co_await safety->resumePending(); resumed > 0)
+        LOG_WARN << "Guard safety: delivered " << resumed << " alert(s) left pending";
+    });
   });
 
   shutdown_signal::onQuit(

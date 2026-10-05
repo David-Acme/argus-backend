@@ -26,7 +26,7 @@ GuardNotice episode()
           .held = {},
           .routine = {},
           .notified = 0,
-          .afterQuiet = false};
+          .afterQuiet = false, .actorName = {}};
 }
 }
 
@@ -156,7 +156,7 @@ TEST_CASE("digests summarize held alerts and routine activity")
                                  {.cameraId = 3, .cameraName = "Entrada", .count = 2},
                                  {.cameraId = 4, .cameraName = {}, .count = 1}},
                      .notified = 0,
-                     .afterQuiet = false};
+                     .afterQuiet = false, .actorName = {}};
   NoticeText text = guard_copy::render(notice, "es");
   CHECK(text.title == "Resumen de vigilancia");
   CHECK(text.body == "Nada requirió tu atención. Actividad normal: Cocina 23, "

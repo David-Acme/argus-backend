@@ -88,7 +88,10 @@ constexpr std::uint8_t roleBit(UserRole role)
 
 inline constexpr std::uint8_t kResidentAndGuard = roleBit(UserRole::Resident) | roleBit(UserRole::Guard);
 
-inline constexpr std::array<GuardRouteAccess, 9> kGuardAccess = {{
+inline constexpr std::uint8_t kResidentGuardGuest =
+    roleBit(UserRole::Resident) | roleBit(UserRole::Guard) | roleBit(UserRole::Guest);
+
+inline constexpr std::array<GuardRouteAccess, 13> kGuardAccess = {{
     {.path = "/guard/environments", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/episodes", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/mode", .method = drogon::Post, .roles = roleBit(UserRole::Resident)},
@@ -98,6 +101,10 @@ inline constexpr std::array<GuardRouteAccess, 9> kGuardAccess = {{
     {.path = "/guard/expected-guests", .method = drogon::Delete, .roles = roleBit(UserRole::Resident)},
     {.path = "/guard/environments/{id}/response", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/environments/{id}/duty", .method = drogon::Post, .roles = roleBit(UserRole::Guard)},
+    {.path = "/guard/panic", .method = drogon::Post, .roles = kResidentGuardGuest},
+    {.path = "/guard/safety", .method = drogon::Get, .roles = kResidentGuardGuest},
+    {.path = "/guard/safety/pin", .method = drogon::Put, .roles = roleBit(UserRole::Resident)},
+    {.path = "/guard/safety/pin", .method = drogon::Delete, .roles = roleBit(UserRole::Resident)},
 }};
 
 enum class CameraAction : std::uint8_t

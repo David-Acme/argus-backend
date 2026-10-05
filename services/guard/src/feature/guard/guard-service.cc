@@ -224,6 +224,12 @@ Json::Value noticeData(const NoticeDataInput& input)
               ? "guard:episode:" + std::to_string(input.encounterId)
               : "guard:incident:" + std::to_string(input.incidentId);
       break;
+    case NoticeKind::Panic:
+      data["threadKey"] = "guard:panic:" + std::to_string(input.encounterId);
+      break;
+    case NoticeKind::Duress:
+      data["threadKey"] = "guard:duress:" + std::to_string(input.encounterId);
+      break;
   }
   return data;
 }
@@ -790,7 +796,7 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
                              .held = {},
                              .routine = {},
                              .notified = 0,
-                             .afterQuiet = false};
+                             .afterQuiet = false, .actorName = {}};
     const NotifyContent content{
         .notice = notice,
         .data = noticeData({.notice = notice,
@@ -2346,7 +2352,7 @@ GuardService::applyObservation(const ObservationInput& input)
           .held = {},
           .routine = {},
           .notified = 0,
-          .afterQuiet = false};
+          .afterQuiet = false, .actorName = {}};
       const NotifyContent content{
           .notice = notice,
           .data = noticeData(
@@ -2692,7 +2698,7 @@ GuardService::escalate(const EscalateInput& input)
         .held = {},
         .routine = {},
         .notified = 0,
-        .afterQuiet = false};
+        .afterQuiet = false, .actorName = {}};
     const NotifyContent content{
         .notice = notice,
         .data = noticeData(
@@ -3566,7 +3572,7 @@ drogon::Task<bool> GuardService::sendDigest(const DigestInput& input)
                            .held = std::move(held),
                            .routine = std::move(routine),
                            .notified = notified,
-                           .afterQuiet = input.afterQuiet};
+                           .afterQuiet = input.afterQuiet, .actorName = {}};
   Json::Value data = noticeData({.notice = notice,
                                  .environmentId = environment.id,
                                  .digestDay = input.day,
@@ -3975,4 +3981,66 @@ GuardService::notify(const NotifyInput& input)
          .rank = guard_policy::dangerRank(input.danger),
          .failPoint = config->failPoint});
   co_return EffectStatus::Succeeded;
+}
+
+drogon::Task<bool> GuardService::raiseSafetyAlert(const SafetyAlertInput& input)
+{
+  const int64_t environmentId = input.environmentId > 0
+                                    ? input.environmentId
+                                    : co_await environmentRepository_.defaultId();
+  const auto environment = co_await environmentRepository_.find(environmentId);
+  const bool several = co_await environmentRepository_.count() > 1;
+  const GuardNotice notice{.kind = input.duress ? NoticeKind::Duress : NoticeKind::Panic,
+                           .subject = NoticeSubject::Stranger,
+                           .people = 0,
+                           .cameraId = 0,
+                           .cameraName = {},
+                           .environmentName = several && environment ? environment->name
+                                                                     : std::string{},
+                           .role = CameraRole::Other,
+                           .outdoor = false,
+                           .zoneName = {},
+                           .reasons = {},
+                           .dwellS = 0,
+                           .danger = GuardDanger::Critical,
+                           .action = NoticeAction::Watching,
+                           .tamperStatus = {},
+                           .held = {},
+                           .routine = {},
+                           .notified = 0,
+                           .afterQuiet = false,
+                           .actorName = input.actorName};
+  Json::Value data = noticeData({.notice = notice,
+                                 .environmentId = environment ? environment->id : 0,
+                                 .digestDay = {},
+                                 .rule = input.duress ? "duress" : "panic",
+                                 .incidentId = 0,
+                                 .encounterId = input.alertId,
+                                 .zoneKind = {},
+                                 .identityState = {},
+                                 .phase = "opened"});
+  data["encounterId"] = 0;
+  data["alertId"] = static_cast<Json::Int64>(input.alertId);
+  data["actorUserId"] = static_cast<Json::Int64>(input.actorUserId);
+  data["actorName"] = input.actorName;
+  const EffectResult sent = co_await performEffect(
+      {.kind = GuardActionKind::Notify,
+       .danger = GuardDanger::Critical,
+       .greetingEnabled = false,
+       .replyRequested = false,
+       .cameraId = 0,
+       .incidentId = 0,
+       .encounterId = 0,
+       .personId = 0,
+       .now = input.now,
+       .text = {},
+       .lang = {},
+       .seconds = 0,
+       .correlationId = std::string(input.duress ? "duress:" : "panic:") +
+                        std::to_string(input.alertId),
+       .sequence = 1,
+       .notifyContent = {.notice = notice,
+                         .data = std::move(data),
+                         .excludeUserIds = {input.actorUserId}}});
+  co_return sent.accepted;
 }

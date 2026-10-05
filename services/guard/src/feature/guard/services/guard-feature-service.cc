@@ -17,7 +17,7 @@
 
 GuardFeatureService::GuardFeatureService(
     const GuardFeatureDependencies& dependencies)
-    : identity_(dependencies.identity)
+    : identity_(dependencies.identity), disarm_(dependencies.disarm)
 {
 }
 
@@ -654,14 +654,25 @@ drogon::Task<Json::Value> GuardFeatureService::removeEnvironment(int64_t id) con
 }
 
 drogon::Task<Json::Value>
-GuardFeatureService::setMode(const UpdateGuardModeDto& input) const
+GuardFeatureService::setMode(const GuardModeChange& input) const
 {
+  const UpdateGuardModeDto& body = input.body;
+  const GuardMode mode = guardModeFromString(body.mode);
+  const DisarmRequest request{.userId = input.userId,
+                              .userName = input.userName,
+                              .pin = body.pin,
+                              .environmentId = body.environmentId};
+  DisarmVerdict verdict = DisarmVerdict::Allowed;
+  if (mode == GuardMode::Home && disarm_)
+    verdict = co_await disarm_->authorize(request);
   const int64_t changed = co_await environmentRepository_.setMode(
-      {.environmentId = input.environmentId,
-       .mode = guardModeFromString(input.mode),
+      {.environmentId = body.environmentId,
+       .mode = mode,
        .at = static_cast<int64_t>(std::time(nullptr))});
-  if (input.environmentId && changed == 0)
+  if (body.environmentId && changed == 0)
     throw ResponseException(GuardErrors::EnvironmentNotFound);
+  if (verdict == DisarmVerdict::Duress)
+    disarm_->duress(request);
   co_return co_await environments();
 }
 

@@ -284,6 +284,31 @@ NoticeText renderTamper(const GuardNotice& notice, bool english)
   return text;
 }
 
+NoticeText renderSafety(const GuardNotice& notice, bool english)
+{
+  const std::string who = notice.actorName.empty()
+                              ? pick({.es = "Alguien de casa", .en = "Someone at home"}, english)
+                              : notice.actorName;
+  const std::string place =
+      notice.environmentName.empty() ? std::string{} : " (" + notice.environmentName + ")";
+  NoticeText text;
+  if (notice.kind == NoticeKind::Panic) {
+    text.title = (english ? "Panic button · " : "Botón de pánico · ") + who + place;
+    text.body = who + (english ? " asked for help silently from the app. Check carefully: a "
+                                 "call or a message could give them away."
+                               : " ha pedido ayuda en silencio desde la app. Compruébalo con "
+                                 "cuidado: una llamada o un mensaje podrían delatarle.");
+    return text;
+  }
+  text.title = (english ? "Silent alert · " : "Alerta silenciosa · ") + who + place;
+  text.body = who + (english ? " turned guarding off with their duress code: someone may be "
+                               "forcing them. Don't call them; check carefully or get help."
+                             : " ha desactivado la vigilancia con su código de coacción: puede "
+                               "que alguien le obligue. No le llames; compruébalo con cuidado "
+                               "o pide ayuda.");
+  return text;
+}
+
 std::string digestList(const std::vector<DigestLine>& lines, bool english)
 {
   std::vector<DigestLine> ordered = lines;
@@ -362,6 +387,10 @@ std::string noticeKindToString(NoticeKind kind)
       return "guard_tamper";
     case NoticeKind::Digest:
       return "guard_digest";
+    case NoticeKind::Panic:
+      return "guard_panic";
+    case NoticeKind::Duress:
+      return "guard_duress";
   }
   return "guard_episode";
 }
@@ -427,6 +456,9 @@ NoticeText guard_copy::render(const GuardNotice& notice, std::string_view lang)
       return renderTamper(notice, english);
     case NoticeKind::Digest:
       return renderDigest(notice, english);
+    case NoticeKind::Panic:
+    case NoticeKind::Duress:
+      return renderSafety(notice, english);
   }
   return renderEpisode(notice, english);
 }
@@ -438,6 +470,9 @@ std::string guard_copy::urgency(const GuardNotice& notice)
       return "passive";
     case NoticeKind::Tamper:
       return notice.danger == GuardDanger::Critical ? "critical" : "active";
+    case NoticeKind::Panic:
+    case NoticeKind::Duress:
+      return "critical";
     case NoticeKind::Episode:
     case NoticeKind::Escalation:
       break;

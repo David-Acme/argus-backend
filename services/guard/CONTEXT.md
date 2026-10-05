@@ -1109,3 +1109,166 @@ now (`routeMatches`).
 Tests: `guard-response-test` (defaults, overrides, every row of the table,
 duty and staffed hours, the siren offer, panic actor exclusion, the JSON,
 the DTO validation, the repository), `role-access-test` (the three routes).
+
+## Panic and duress (2026-10, WATCHDOG)
+
+The owner's plan ("SAFETY", point 4): a silent panic button in the app, and
+an optional duress code that looks like disarming but silently raises a
+critical alert. Both live in `src/feature/safety/` (`argus::guard-safety`)
+because guard owns the posture they act on and the notify pipeline they
+alert through.
+
+**Panic.** `POST /guard/panic {environmentId?}` (every role, Guest included:
+a babysitter in danger is exactly who needs it). It records a
+`guard_safety_alert` row and raises it through
+`GuardService::raiseSafetyAlert`: one critical notification, `data {kind:
+guard_panic, urgency: critical, threadKey: guard:panic:<id>, episodeId: <alert
+id>, cameraId: 0, actorUserId, actorName}`, sent through the normal notify
+effect with `NotifyContent.excludeUserIds = {actor}`, so RESPONSE's plan and
+the call engine ring everyone else and never the person who pressed it. The
+actor gets one separate row, `kind: guard_panic_sent`, `urgency: passive`,
+`silent: true` ("Aviso enviado"), so their screen confirms without any
+sound. A second press within 60 s answers the same alert (`repeated`), so a
+held finger or a retry never doubles the call. If the notification service
+is down the press still answers (`sent: false`), the alert retries with
+backoff and, after a restart, `resumePending` delivers rows younger than 15
+minutes that never settled. The app makes it a 2-second hold
+(`PANIC_HOLD_MS`), never a tap.
+
+**Duress codes.** The owner switches them on for the household (`PATCH
+/guard/safety {duressEnabled}`, Owner only). Then everyone who can disarm
+(Owner, Resident) may set two codes (`PUT /guard/safety/pin {disarmPin,
+duressPin}`: 4-8 digits, different; `DELETE` removes them). With codes set,
+`POST /guard/mode {mode: home}` requires `pin`:
+
+| PIN | Answer | Side effect |
+|---|---|---|
+| missing | 403 `PIN_REQUIRED` | none |
+| wrong | 403 `PIN_INVALID` (5 in 15 min → 429 `PIN_LOCKED`) | none |
+| normal code | the environment list, mode home | none |
+| duress code | the same environment list, mode home | a `guard_duress` critical alert to everyone but the actor |
+
+The duress answer is byte-for-byte the normal one and the mode really
+changes, so the screen, the `/sync` frames and the environment state other
+people see are those of an ordinary disarm. Arming (away/night/armed) never
+asks. Switching the feature off deletes every stored code.
+
+**Threat model.**
+- *Who it is for:* someone forced to disarm in front of an intruder (a home
+  invasion, a robbery at closing time). The attacker sees the app; the code
+  must look ordinary and nothing on the actor's device may change.
+- *What the attacker sees:* the same PIN prompt, the same answer and the same
+  mode. The actor receives no notification, ring, call, `response_update` or
+  hand-off frame (RESPONSE excludes `actorUserId` from the plan), and the
+  alert is not a guard incident or episode: it lives in
+  `guard_safety_alert`, which no list route returns, so "Vigilancia" on the
+  actor's phone shows nothing new. Other members get a critical call; if the
+  attacker holds *their* phone too, they see it, which is unavoidable.
+- *Secrets:* codes are stored only as PBKDF2-HMAC-SHA256 (600 000
+  iterations, 16-byte random salt, constant-time compare) in
+  `guard_user_pin`; neither code is logged, journaled, synced or returned.
+  Short PINs are brute-forceable offline from a stolen `guard.db`, so the
+  hash slows that down rather than prevents it; online guessing is capped by
+  the lockout. A lockout is per user and in memory, so a restart resets it;
+  that is an accepted gap.
+- *Not covered:* a household with a single member has nobody to alert (the
+  external emergency contacts of RESPONSE are the only fallback); a duress
+  phrase over voice is not built (an STT transcript cannot be matched
+  against a hash reliably, and the voice tool cannot disarm a user who has
+  codes, it gets `PIN_REQUIRED`); an attacker who knows the household uses
+  codes can demand the "other" one.
+
+Code: `src/feature/safety/` (controller, DTOs, `SafetyService` as the
+`DisarmGate` that `GuardFeatureService::setMode` consults, `pin-hash`,
+`pin-attempts`, three repositories, `GuardAlertSink`,
+`NotificationActorNotifier`), `src/feature/guard/services/disarm-gate.hxx`,
+tables `guard_user_pin`, `guard_safety_setting`, `guard_safety_alert`;
+`tests/unit/guard-safety-test.cc`.
+
+## Who is called, in what order, and how (2026-10, RESPONSE)
+
+David (2026-10-04): per environment the Owner edits a recipient list in
+Seguridad. By default Owner and Guards are called together, then the
+Residents one by one, then the external emergency contacts; Guests get
+nothing. A Resident may be lowered to notify. A Guard on duty cannot be taken
+off intruder calls.
+
+**Model.** `guard_response_recipient (environment_id, user_id, mode, step,
+on_duty)` holds only what the Owner changed. A NULL `mode`/`step` means the
+role default, so a user added later follows the defaults without a migration.
+Defaults (`response_plan::members`):
+- Owner and Guard: `call`, step 0.
+- Resident: `call`, one step each after the last explicit step, in id order.
+- Guest: `off`.
+- Inactive users are never listed.
+`guard_response_contact` holds up to ten external contacts (name, phone,
+note, position). `guard_response_setting` holds the emergency number (dialled
+by the phone; Argus cannot place calls) and the wait per step (15-300 s,
+default 45, the length of a ring). The user list comes from identity's
+`ListUsers` (`IdentityResponseDirectory`), never from identity's database.
+
+**Duty.** A Guard is on duty when their `on_duty` toggle is set (their own
+`POST /guard/environments/{id}/duty`, or the Owner's list) or while the
+environment is staffed or open (`response_plan::staffedAt`). On duty they are
+`mandatory`: called even if listed as notify, and the call engine skips their
+own call switches (`services/notification/CONTEXT.md`, "Intruder response").
+Setting them to `off` removes them; that is the Owner's explicit decision.
+
+**The decision table** (`response_plan::build`, pure, per call-worthy
+notification). It reads the plan members, PRESENCE's rows for the
+environment, the camera context and the posture.
+
+| Situation | Strategy | Who first | Notes |
+|---|---|---|---|
+| Panic, duress, or an episode turning worse (`escalated`) | `everyone` | every member at once | the actor (`excludeUserIds`) is never in the plan |
+| Somebody home, intruder on an indoor camera | `everyone` | every member at once | guard also silences that camera's voice and siren |
+| Night (night mode or the `night` reason), everyone with a presence row home, not critical | `night_quiet` | everyone, as notify | only a clear threat (critical) wakes people; a guard on duty still rings |
+| Somebody home, intruder outside | `inside_first` | the people home, `discreet` | then the owner's order, one step later |
+| Nobody known home, or tamper | `ordered` | the owner's steps | |
+
+Notes on the table:
+- "Somebody home" means a Home row. A user with no row (no consent, or
+  never seen) is unknown and never counts as home.
+- "Everyone home" needs at least one Home row and no Away row among the
+  members.
+- The siren is only *offered* (`offers: ["siren"]`) when every member is
+  Away and at least one is positively away through the tunnel. A timeout
+  alone could be a phone asleep on the nightstand (PRESENCE's caution).
+  Guard itself never sounds anything because of this table; the deterrence
+  ladder is unchanged except for the indoor rule below.
+
+**Indoor speakers stay silent with the family inside.** At the context stage
+the saga sets `checkpoint.familyInside`. It is true when the camera is
+configured indoors (`outdoor = false`) and the environment's presence
+`overall` is Home. It is persisted in the checkpoint, so a replay decides the
+same. `guard_policy::deterrence` then returns no voice and no siren: a
+speaker line or a siren in the room where the family is reveals them to the
+intruder. An unconfigured camera changes nothing, because we do not know it
+is indoors.
+
+**What guard sends.** For a call-worthy notification (a time-sensitive or
+critical `guard_episode`, a critical `guard_panic`, `guard_duress` or
+`guard_tamper`), the batches carry only the plan's first step, and `data`
+carries the plan as `response` (persisted in the outbox payload with the
+batches, so a replay sends the same plan). The call engine reaches later steps
+itself. Any other notification goes to every member not set to off, so a
+Resident now receives guard notifications; before this, guard's roster was
+owners and guards only. Without the identity directory, guard keeps the old
+owner+guard roster (`legacyRecipients`).
+
+**Feedback.** `ResponseVerdictFeed` subscribes to
+`argus.notification.v1.response_verdict`. A verdict on a `guard_episode`
+labels the episode, through the same `EpisodeRepository::review` the owner's
+review uses: `false_alarm` gives `false_alarm`, `real` gives `useful`.
+
+**API.** `GET /guard/environments/{id}/response`: Owner sees everyone;
+Resident and Guard see only their own row plus the contacts and the emergency
+number. `PUT /guard/environments/{id}/response` (Owner) replaces the list,
+the contacts and the settings in one transaction, and refuses a user who is
+not active (422 `RecipientUnknown`). `POST /guard/environments/{id}/duty
+{onDuty}` is the Guard's own toggle. `kGuardAccess` matches `{id}` segments
+now (`routeMatches`).
+
+Tests: `guard-response-test` (defaults, overrides, every row of the table,
+duty and staffed hours, the siren offer, panic actor exclusion, the JSON,
+the DTO validation, the repository), `role-access-test` (the three routes).

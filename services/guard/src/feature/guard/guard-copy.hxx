@@ -15,7 +15,9 @@ enum class NoticeKind : uint8_t
   Episode = 0,
   Escalation,
   Tamper,
-  Digest
+  Digest,
+  Panic,
+  Duress
 };
 
 enum class NoticeSubject : uint8_t
@@ -67,6 +69,7 @@ struct GuardNotice
   std::vector<DigestLine> routine;
   int64_t notified{0};
   bool afterQuiet{false};
+  std::string actorName;
 };
 
 struct NoticeText

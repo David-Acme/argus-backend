@@ -11,6 +11,7 @@
 #include <feature/guard/dtos/update-guard-mode-dto.hxx>
 #include <feature/guard/guard-repository.hxx>
 #include <feature/guard/guard-schedule.hxx>
+#include <feature/guard/services/disarm-gate.hxx>
 #include <feature/guard/repositories/camera-context/camera-context-repository.hxx>
 #include <feature/guard/repositories/episode/episode-repository.hxx>
 #include <feature/guard/repositories/environment/environment-repository.hxx>
@@ -24,6 +25,14 @@ class IdentityClient;
 struct GuardFeatureDependencies
 {
   IdentityClient* identity{nullptr};
+  const DisarmGate* disarm{nullptr};
+};
+
+struct GuardModeChange
+{
+  const UpdateGuardModeDto& body;
+  int64_t userId{0};
+  std::string userName;
 };
 
 class GuardFeatureService
@@ -56,8 +65,7 @@ public:
 
   [[nodiscard]] drogon::Task<Json::Value> removeEnvironment(int64_t id) const;
 
-  [[nodiscard]] drogon::Task<Json::Value>
-  setMode(const UpdateGuardModeDto& input) const;
+  [[nodiscard]] drogon::Task<Json::Value> setMode(const GuardModeChange& input) const;
 
   drogon::Task<Json::Value> incidents(int limit) const;
 
@@ -109,6 +117,7 @@ private:
   [[nodiscard]] drogon::Task<int64_t> resolveEnvironment(int64_t id) const;
 
   IdentityClient* identity_{nullptr};
+  const DisarmGate* disarm_{nullptr};
   GuardRepository guardRepository_;
   EnvironmentRepository environmentRepository_;
   CameraContextRepository cameraContextRepository_;

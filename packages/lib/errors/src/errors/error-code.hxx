@@ -31,7 +31,10 @@ enum class ErrorCode
   RtcUnavailable,
   CallNotFound,
   CallTaken,
-  CallExpired
+  CallExpired,
+  PinRequired,
+  PinInvalid,
+  PinLocked
 };
 
 constexpr std::string_view toString(ErrorCode code)
@@ -64,6 +67,9 @@ constexpr std::string_view toString(ErrorCode code)
   case ErrorCode::CallNotFound: return "CALL_NOT_FOUND";
   case ErrorCode::CallTaken: return "CALL_TAKEN";
   case ErrorCode::CallExpired: return "CALL_EXPIRED";
+  case ErrorCode::PinRequired: return "PIN_REQUIRED";
+  case ErrorCode::PinInvalid: return "PIN_INVALID";
+  case ErrorCode::PinLocked: return "PIN_LOCKED";
   }
   throw std::invalid_argument("Unknown response error code");
 }
