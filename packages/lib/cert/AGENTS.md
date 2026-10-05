@@ -30,9 +30,11 @@ and migration closure it dragged into this project) went in Phase 2 step 4.
 - `src/cert/cert-service.{cc,hxx}` — `CertService`: `init`/`isLoaded`/
   `shutdown`, `caPem`, `instanceId`, `caFingerprint`, `serverFingerprint`,
   `pairingCode`/`verifyPairingCode`, `rotateServerCertificate`, `health`.
-  The pairing code is read from `<cert.dir>/pairing.code`, a random 12-hex
-  secret `scripts/lib/pki.sh` writes 0600; it is never derived and never
-  logged. It used to be the first 8 hex of the CA fingerprint, and the CA
+  The pairing code is read from `cert.pairing_code` (falling back to
+  `<cert.dir>/pairing.code`): a random 26-character base32 secret (128 bits)
+  that `scripts/lib/pki.sh` writes 0600 in the signer directory beside the
+  CA key, never in `certs/`; a legacy 8-12 hex code is still accepted until
+  the first pairing rotates it. It is never derived and never logged. It used to be the first 8 hex of the CA fingerprint, and the CA
   travels in every TLS handshake, so any LAN peer could compute it.
 - Rotation writes the new key and chain through a temporary created with
   the final mode (the key 0600, the chain 0644), fsynced and renamed; the
