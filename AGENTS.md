@@ -566,7 +566,9 @@ Raw pointers only for non-owning access (`.get()`).
   service images — no package has an image of its own. There is no separate
   local compose stack.
 - `scripts/provision-host.sh` prepares a deployment host (Docker + Compose,
-  PKI, per-service deploy configs with unique shared secrets) and writes the
+  PKI, per-service deploy configs with one credential per internal RPC
+  caller and server: `[rpc.callers]` on identity 7040, sync control 7041 and
+  auth 7043, never a fleet-wide secret) and writes the
   gitignored `argus-deploy/.env`. State (`ARGUS_DATA_DIR`, certs, models,
   go2rtc) lives on the host and is bind-mounted, so updating is a rebuild plus
   `docker compose up -d`; never `down -v`.
@@ -1104,7 +1106,7 @@ for two different reasons, and says which when it does.
 | `services/settings/src/feature/settings/` | The owner-only `/settings` surface (`argus-settings`, HTTPS 7045): no data of its own; `SettingsGatewayService` reads every configured owner's `argus.settings.v1` catalog in parallel through `argus::clients::settings` and forwards a `PATCH /settings/{owner}` to that owner, which validates and persists it |
 | `services/voice/src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
 | `services/voice/src/shared/wrapper/audio/` | `SampleRing` — the fixed-capacity float ring the voice paths carry samples in across calls |
-| `services/voice/src/shared/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |
+| `services/voice/src/feature/voice/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |
 | `services/camera/src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over the camera's own `/media` socket, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`, viewers resume on a video keyframe, a bounded `GopCache` replayed to a `fastStart` subscriber, a silent upstream closed after 10 s), `Fmp4Reader` (encoding from headers, whole fragments, each classified by the video track it carries) |
 | `services/camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
 | `services/notification/src/feature/notification/services/notification-token/` | Push tokens per session (the feature that is their only reader, since Phase 4 step 2) |
