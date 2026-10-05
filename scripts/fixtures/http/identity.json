@@ -519,7 +519,7 @@
             "code": "VALIDATION_ERROR",
             "fields": {
               "code": [
-                "code must be 6 to 12 letters or digits"
+                "code must be the server's pairing code"
               ]
             },
             "message": "Validation failed"
@@ -2112,7 +2112,7 @@
     },
     {
       "method": "DELETE",
-      "path": "/voiceprint/user/999999",
+      "path": "/user/999999/biometrics",
       "probe": "no-token",
       "request": {
         "auth": "none",
@@ -2133,12 +2133,12 @@
         "pretty": true,
         "status": 401
       },
-      "route": "/voiceprint/user/{1}",
+      "route": "/user/{1}/biometrics",
       "unit": "identity"
     },
     {
       "method": "DELETE",
-      "path": "/voiceprint/user/999999",
+      "path": "/user/999999/biometrics",
       "probe": "other-device",
       "request": {
         "auth": "owner",
@@ -2159,12 +2159,12 @@
         "pretty": true,
         "status": 401
       },
-      "route": "/voiceprint/user/{1}",
+      "route": "/user/{1}/biometrics",
       "unit": "identity"
     },
     {
       "method": "DELETE",
-      "path": "/voiceprint/user/999999",
+      "path": "/user/999999/biometrics",
       "probe": "role-resident",
       "request": {
         "auth": "resident",
@@ -2185,12 +2185,12 @@
         "pretty": true,
         "status": 403
       },
-      "route": "/voiceprint/user/{1}",
+      "route": "/user/{1}/biometrics",
       "unit": "identity"
     },
     {
       "method": "DELETE",
-      "path": "/voiceprint/user/999999",
+      "path": "/user/999999/biometrics",
       "probe": "role-guest",
       "request": {
         "auth": "guest",
@@ -2211,12 +2211,12 @@
         "pretty": true,
         "status": 403
       },
-      "route": "/voiceprint/user/{1}",
+      "route": "/user/{1}/biometrics",
       "unit": "identity"
     },
     {
       "method": "DELETE",
-      "path": "/voiceprint/user/999999",
+      "path": "/user/999999/biometrics",
       "probe": "owner",
       "request": {
         "auth": "owner",
@@ -2237,137 +2237,7 @@
         "pretty": true,
         "status": 404
       },
-      "route": "/voiceprint/user/{1}",
-      "unit": "identity"
-    },
-    {
-      "method": "GET",
-      "path": "/voiceprint/users",
-      "probe": "no-token",
-      "request": {
-        "auth": "none",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Missing authorization token"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/voiceprint/users",
-      "unit": "identity"
-    },
-    {
-      "method": "GET",
-      "path": "/voiceprint/users",
-      "probe": "other-device",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "other"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Device mismatch"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/voiceprint/users",
-      "unit": "identity"
-    },
-    {
-      "method": "GET",
-      "path": "/voiceprint/users",
-      "probe": "role-resident",
-      "request": {
-        "auth": "resident",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/voiceprint/users",
-      "unit": "identity"
-    },
-    {
-      "method": "GET",
-      "path": "/voiceprint/users",
-      "probe": "role-guest",
-      "request": {
-        "auth": "guest",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/voiceprint/users",
-      "unit": "identity"
-    },
-    {
-      "method": "GET",
-      "path": "/voiceprint/users",
-      "probe": "owner",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": null,
-          "info": {
-            "available": true,
-            "recognized": []
-          },
-          "status": 200
-        },
-        "pretty": true,
-        "status": 200
-      },
-      "route": "/voiceprint/users",
+      "route": "/user/{1}/biometrics",
       "unit": "identity"
     },
     {
@@ -3952,6 +3822,266 @@
         "status": 422
       },
       "route": "/visitor/{1}/split",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/voiceprint/user/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/voiceprint/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/voiceprint/user/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/voiceprint/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/voiceprint/user/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/voiceprint/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/voiceprint/user/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/voiceprint/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/voiceprint/user/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "User not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/voiceprint/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/voiceprint/users",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/voiceprint/users",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/voiceprint/users",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/voiceprint/users",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/voiceprint/users",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/voiceprint/users",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/voiceprint/users",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/voiceprint/users",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/voiceprint/users",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "available": true,
+            "recognized": []
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/voiceprint/users",
       "unit": "identity"
     }
   ],

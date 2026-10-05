@@ -18,6 +18,8 @@ MISSING_ID = "999999"
 MISSING_TOKEN = "argus-golden-missing-capability"
 BOUNDARY = "argusgoldenboundary"
 SERVICE_REFRESH = "/auth/refresh-token"
+DEVICE_CREDENTIAL_HEADER = "X-Argus-Device-Credential"
+CREDENTIALS = {}
 
 EXPECTATIONS = {
     "no-token": 401,
@@ -245,6 +247,8 @@ def load_sessions(stack, mint):
         raise SystemExit(f"missing {session_path}; run "
                          "scripts/seed-golden.py --stack-dir " + str(stack))
     seed = json.loads(session_path.read_text())
+    CREDENTIALS.clear()
+    CREDENTIALS.update(seed.get("credentials", {}))
     return seed["ids"], seed["sessions"]
 
 
@@ -259,17 +263,25 @@ def session_killed(entry, record):
 
 def remint_sessions(stack, auth_base, timeout):
     run_seeder(stack, ["--roles"])
-    refresh = json.loads((stack / "seed.json").read_text())["sessions"]
+    seed = json.loads((stack / "seed.json").read_text())
+    refresh = seed["sessions"]
+    CREDENTIALS.clear()
+    CREDENTIALS.update(seed.get("credentials", {}))
     tokens = {}
     for role, value in refresh.items():
-        access, _ = exchange(auth_base, value, timeout)
+        access, _ = exchange(auth_base, value, timeout, role)
         tokens[role] = access
     return tokens
 
 
-def exchange(auth_base, refresh_token, timeout):
+def device_headers(role):
+    credential = CREDENTIALS.get(role) if role else None
+    return {DEVICE_CREDENTIAL_HEADER: credential} if credential else {}
+
+
+def exchange(auth_base, refresh_token, timeout, role=None):
     status, _, body = send(auth_base, "PATCH", SERVICE_REFRESH,
-                           {"User-Agent": RECORDER_UA},
+                           {"User-Agent": RECORDER_UA, **device_headers(role)},
                            json.dumps({"refreshToken": refresh_token}),
                            "application/json", timeout)
     if status != 200:
@@ -509,10 +521,11 @@ def session_of(name, sessions):
     return sessions[name]
 
 
-def current_session(base, token, timeout):
+def current_session(base, role, token, timeout):
     status, _, body = send(base, "GET", "/auth/sessions",
                            {"User-Agent": RECORDER_UA,
-                            "Authorization": f"Bearer {token}"},
+                            "Authorization": f"Bearer {token}",
+                            **device_headers(role)},
                            None, None, timeout)
     if status != 200:
         raise SystemExit(f"GET /auth/sessions answered {status} while "
@@ -526,7 +539,8 @@ def current_session(base, token, timeout):
 def resolve_path(path, base, sessions, timeout):
     return SESSION_SLOT_RE.sub(
         lambda match: current_session(
-            base, session_of(match.group(1), sessions), timeout), path)
+            base, match.group(1), session_of(match.group(1), sessions),
+            timeout), path)
 
 
 def run_probe(entry, base, sessions, timeout):
@@ -535,6 +549,8 @@ def run_probe(entry, base, sessions, timeout):
     token = session_of(probe["auth"], sessions)
     if token:
         headers["Authorization"] = f"Bearer {token}"
+        if probe["userAgent"] == RECORDER_UA:
+            headers.update(device_headers(probe["auth"]))
     payload = probe["body"]
     if payload is None:
         described = None
@@ -969,7 +985,7 @@ def main(argv):
               + "; the role matrix is not probed", file=sys.stderr)
     sessions = {}
     for role in roles:
-        access, _ = exchange(bases["auth"], refresh[role], args.timeout)
+        access, _ = exchange(bases["auth"], refresh[role], args.timeout, role)
         sessions[role] = access
     try:
         if args.command == "record":

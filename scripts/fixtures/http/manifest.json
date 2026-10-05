@@ -42,7 +42,7 @@
       "errors"
     ]
   },
-  "probes": 655,
+  "probes": 663,
   "sessions": "scripts/seed-golden.py --roles (owner, resident, guest)",
   "sources": "scripts/lib/route-baseline.txt (the route census)",
   "units": [

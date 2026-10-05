@@ -2072,6 +2072,167 @@
     },
     {
       "method": "POST",
+      "path": "/guard/episodes/999999/retain",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/guard/episodes/{1}/retain",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/episodes/999999/retain",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/guard/episodes/{1}/retain",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/episodes/999999/retain",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/guard/episodes/{1}/retain",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/episodes/999999/retain",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/guard/episodes/{1}/retain",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/episodes/999999/retain",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/guard/episodes/{1}/retain",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/episodes/999999/retain",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "retain": [
+                "retain must be true or false"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/guard/episodes/{1}/retain",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
       "path": "/guard/episodes/999999/review",
       "probe": "no-token",
       "request": {
@@ -2233,167 +2394,6 @@
       "unit": "guard"
     },
     {
-      "method": "POST",
-      "path": "/guard/episodes/999999/retain",
-      "probe": "no-token",
-      "request": {
-        "auth": "none",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Missing authorization token"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/guard/episodes/{1}/retain",
-      "unit": "guard"
-    },
-    {
-      "method": "POST",
-      "path": "/guard/episodes/999999/retain",
-      "probe": "bad-json",
-      "request": {
-        "auth": "none",
-        "body": "not-json",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "BAD_REQUEST",
-            "message": "Invalid JSON body"
-          },
-          "info": null,
-          "status": 400
-        },
-        "pretty": true,
-        "status": 400
-      },
-      "route": "/guard/episodes/{1}/retain",
-      "unit": "guard"
-    },
-    {
-      "method": "POST",
-      "path": "/guard/episodes/999999/retain",
-      "probe": "other-device",
-      "request": {
-        "auth": "owner",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "other"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Device mismatch"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/guard/episodes/{1}/retain",
-      "unit": "guard"
-    },
-    {
-      "method": "POST",
-      "path": "/guard/episodes/999999/retain",
-      "probe": "role-resident",
-      "request": {
-        "auth": "resident",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/guard/episodes/{1}/retain",
-      "unit": "guard"
-    },
-    {
-      "method": "POST",
-      "path": "/guard/episodes/999999/retain",
-      "probe": "role-guest",
-      "request": {
-        "auth": "guest",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/guard/episodes/{1}/retain",
-      "unit": "guard"
-    },
-    {
-      "method": "POST",
-      "path": "/guard/episodes/999999/retain",
-      "probe": "owner",
-      "request": {
-        "auth": "owner",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "fields": {
-              "retain": [
-                "retain must be true or false"
-              ]
-            },
-            "message": "Validation failed"
-          },
-          "info": null,
-          "status": 422
-        },
-        "pretty": true,
-        "status": 422
-      },
-      "route": "/guard/episodes/{1}/retain",
-      "unit": "guard"
-    },
-    {
       "method": "DELETE",
       "path": "/guard/expected-guests",
       "probe": "no-token",
@@ -3117,6 +3117,165 @@
         "status": 422
       },
       "route": "/guard/mode",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/panic",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/guard/panic",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/panic",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/guard/panic",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/panic",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/guard/panic",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/panic",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "alertId": 1,
+            "repeated": false,
+            "sent": true
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/guard/panic",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/panic",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "alertId": 2,
+            "repeated": false,
+            "sent": true
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/guard/panic",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/panic",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "alertId": 3,
+            "repeated": false,
+            "sent": true
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/guard/panic",
       "unit": "guard"
     },
     {
@@ -3401,187 +3560,6 @@
         "status": 200
       },
       "route": "/guard/presence",
-      "unit": "guard"
-    },
-    {
-      "method": "GET",
-      "path": "/health",
-      "probe": "plain",
-      "request": {
-        "auth": "none",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "service": "argus-guard",
-          "status": "ok"
-        },
-        "pretty": false,
-        "status": 200
-      },
-      "route": "/health",
-      "unit": "guard"
-    },
-    {
-      "method": "POST",
-      "path": "/guard/panic",
-      "probe": "no-token",
-      "request": {
-        "auth": "none",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Missing authorization token"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/guard/panic",
-      "unit": "guard"
-    },
-    {
-      "method": "POST",
-      "path": "/guard/panic",
-      "probe": "bad-json",
-      "request": {
-        "auth": "none",
-        "body": "not-json",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "BAD_REQUEST",
-            "message": "Invalid JSON body"
-          },
-          "info": null,
-          "status": 400
-        },
-        "pretty": true,
-        "status": 400
-      },
-      "route": "/guard/panic",
-      "unit": "guard"
-    },
-    {
-      "method": "POST",
-      "path": "/guard/panic",
-      "probe": "other-device",
-      "request": {
-        "auth": "owner",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "other"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Device mismatch"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/guard/panic",
-      "unit": "guard"
-    },
-    {
-      "method": "POST",
-      "path": "/guard/panic",
-      "probe": "role-resident",
-      "request": {
-        "auth": "resident",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": null,
-          "info": {
-            "alertId": 1,
-            "repeated": false,
-            "sent": true
-          },
-          "status": 200
-        },
-        "pretty": true,
-        "status": 200
-      },
-      "route": "/guard/panic",
-      "unit": "guard"
-    },
-    {
-      "method": "POST",
-      "path": "/guard/panic",
-      "probe": "role-guest",
-      "request": {
-        "auth": "guest",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": null,
-          "info": {
-            "alertId": 2,
-            "repeated": false,
-            "sent": true
-          },
-          "status": 200
-        },
-        "pretty": true,
-        "status": 200
-      },
-      "route": "/guard/panic",
-      "unit": "guard"
-    },
-    {
-      "method": "POST",
-      "path": "/guard/panic",
-      "probe": "owner",
-      "request": {
-        "auth": "owner",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": null,
-          "info": {
-            "alertId": 3,
-            "repeated": false,
-            "sent": true
-          },
-          "status": 200
-        },
-        "pretty": true,
-        "status": 200
-      },
-      "route": "/guard/panic",
       "unit": "guard"
     },
     {
@@ -4175,6 +4153,28 @@
         "status": 422
       },
       "route": "/guard/safety/pin",
+      "unit": "guard"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "service": "argus-guard",
+          "status": "ok"
+        },
+        "pretty": false,
+        "status": 200
+      },
+      "route": "/health",
       "unit": "guard"
     }
   ],

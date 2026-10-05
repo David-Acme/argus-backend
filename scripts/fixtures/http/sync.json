@@ -157,6 +157,26 @@
       "unit": "sync"
     },
     {
+      "method": "WS",
+      "path": "/sync",
+      "probe": "ws-plain-get",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "",
+        "json": null,
+        "pretty": false,
+        "status": 405,
+        "text": ""
+      },
+      "route": "/sync",
+      "unit": "sync"
+    },
+    {
       "method": "GET",
       "path": "/sync/heartbeat",
       "probe": "no-token",
@@ -224,7 +244,7 @@
           "errors": null,
           "info": {
             "armed": false,
-            "at": 1791208169,
+            "at": 1791230885,
             "graceSeconds": 2700,
             "guard": "unknown",
             "guardSeenAt": "<masked>",
@@ -257,7 +277,7 @@
           "errors": null,
           "info": {
             "armed": false,
-            "at": 1791208169,
+            "at": 1791230885,
             "graceSeconds": 2700,
             "guard": "unknown",
             "guardSeenAt": "<masked>",
@@ -290,7 +310,7 @@
           "errors": null,
           "info": {
             "armed": false,
-            "at": 1791208169,
+            "at": 1791230885,
             "graceSeconds": 2700,
             "guard": "unknown",
             "guardSeenAt": "<masked>",
@@ -305,26 +325,6 @@
         "status": 200
       },
       "route": "/sync/heartbeat",
-      "unit": "sync"
-    },
-    {
-      "method": "WS",
-      "path": "/sync",
-      "probe": "ws-plain-get",
-      "request": {
-        "auth": "none",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "",
-        "json": null,
-        "pretty": false,
-        "status": 405,
-        "text": ""
-      },
-      "route": "/sync",
       "unit": "sync"
     }
   ],

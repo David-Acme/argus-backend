@@ -129,6 +129,8 @@ def clear_role_users(stack: Path) -> None:
     ids = tuple(user_id for _, user_id in ROLE_USERS)
     marks = ",".join("?" for _ in ids)
     auth.execute(f"DELETE FROM refresh_token WHERE user_id IN ({marks})", ids)
+    auth.execute(f"DELETE FROM device_credential WHERE user_id IN ({marks})",
+                 ids)
     identity.execute(f"DELETE FROM user WHERE id IN ({marks})", ids)
     auth.commit()
     identity.commit()
@@ -146,14 +148,27 @@ def mint_sessions(auth: sqlite3.Connection, auth_config: dict, ids: dict,
             access_secret == refresh_secret:
         raise SystemExit("auth config: jwt.secret and jwt.refresh_secret must "
                          "both be set and differ; run scripts/setup.sh")
-    device_hash = hmac.new(
-        auth_config["device"]["fingerprint_secret"].encode(),
-        f"{RECORDER_UA}|{device_ip}".encode(),
-        hashlib.sha256).hexdigest()
+    fingerprint_secret = auth_config["device"]["fingerprint_secret"].encode()
+    credential_mode = auth_config["device"].get("identity_mode", "credential") != "ip"
     sessions = {}
+    credentials = {}
     for role, user_id in ROLES:
         if role not in roles:
             continue
+        auth.execute("DELETE FROM device_credential WHERE user_id = ?",
+                     (user_id,))
+        binding = device_ip
+        if credential_mode:
+            credential = secrets.token_hex(32)
+            binding = hashlib.sha256(credential.encode()).hexdigest()
+        device_hash = hmac.new(fingerprint_secret,
+                               f"{RECORDER_UA}|{binding}".encode(),
+                               hashlib.sha256).hexdigest()
+        if credential_mode:
+            auth.execute(
+                "INSERT INTO device_credential(user_id,device_hash,secret_hash)"
+                " VALUES(?,?,?)", (user_id, device_hash, binding))
+            credentials[role] = credential
         access = mint({"iss": "argus", "sub": str(user_id), "iat": now,
                        "exp": now + 900, "typ": "access",
                        "jti": secrets.token_hex(16)}, access_secret)
@@ -173,7 +188,8 @@ def mint_sessions(auth: sqlite3.Connection, auth_config: dict, ids: dict,
     token_out.parent.mkdir(parents=True, exist_ok=True)
     token_out.write_text(sessions["owner"] + "\n")
     os.chmod(token_out, 0o600)
-    session_out.write_text(json.dumps({"ids": ids, "sessions": sessions},
+    session_out.write_text(json.dumps({"ids": ids, "sessions": sessions,
+                                       "credentials": credentials},
                                       indent=2, sort_keys=True) + "\n")
     os.chmod(session_out, 0o600)
     print("recorder sessions written (0600):", token_out, session_out)

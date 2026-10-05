@@ -1608,162 +1608,6 @@
     },
     {
       "method": "POST",
-      "path": "/settings/profiles/999999/apply",
-      "probe": "no-token",
-      "request": {
-        "auth": "none",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Missing authorization token"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/settings/profiles/{1}/apply",
-      "unit": "settings"
-    },
-    {
-      "method": "POST",
-      "path": "/settings/profiles/999999/apply",
-      "probe": "bad-json",
-      "request": {
-        "auth": "none",
-        "body": "not-json",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "BAD_REQUEST",
-            "message": "Invalid JSON body"
-          },
-          "info": null,
-          "status": 400
-        },
-        "pretty": true,
-        "status": 400
-      },
-      "route": "/settings/profiles/{1}/apply",
-      "unit": "settings"
-    },
-    {
-      "method": "POST",
-      "path": "/settings/profiles/999999/apply",
-      "probe": "other-device",
-      "request": {
-        "auth": "owner",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "other"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Device mismatch"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/settings/profiles/{1}/apply",
-      "unit": "settings"
-    },
-    {
-      "method": "POST",
-      "path": "/settings/profiles/999999/apply",
-      "probe": "role-resident",
-      "request": {
-        "auth": "resident",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/settings/profiles/{1}/apply",
-      "unit": "settings"
-    },
-    {
-      "method": "POST",
-      "path": "/settings/profiles/999999/apply",
-      "probe": "role-guest",
-      "request": {
-        "auth": "guest",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/settings/profiles/{1}/apply",
-      "unit": "settings"
-    },
-    {
-      "method": "POST",
-      "path": "/settings/profiles/999999/apply",
-      "probe": "owner",
-      "request": {
-        "auth": "owner",
-        "body": "{}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "NOT_FOUND",
-            "message": "Unknown settings profile"
-          },
-          "info": null,
-          "status": 404
-        },
-        "pretty": true,
-        "status": 404
-      },
-      "route": "/settings/profiles/{1}/apply",
-      "unit": "settings"
-    },
-    {
-      "method": "POST",
       "path": "/settings/profiles/recommended/revert",
       "probe": "no-token",
       "request": {
@@ -1916,6 +1760,162 @@
         "status": 404
       },
       "route": "/settings/profiles/recommended/revert",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/settings/profiles/999999/apply",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/settings/profiles/{1}/apply",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/settings/profiles/999999/apply",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/settings/profiles/{1}/apply",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/settings/profiles/999999/apply",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/settings/profiles/{1}/apply",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/settings/profiles/999999/apply",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/settings/profiles/{1}/apply",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/settings/profiles/999999/apply",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/settings/profiles/{1}/apply",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/settings/profiles/999999/apply",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Unknown settings profile"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/settings/profiles/{1}/apply",
       "unit": "settings"
     },
     {

@@ -78,6 +78,7 @@
           "errors": null,
           "info": {
             "face": {
+              "liveness": true,
               "loaded": true
             },
             "nats": {

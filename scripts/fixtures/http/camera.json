@@ -3541,7 +3541,7 @@
           "info": {
             "cameras": [
               {
-                "health": "unknown",
+                "health": "unreachable",
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,
@@ -3580,7 +3580,7 @@
           "info": {
             "cameras": [
               {
-                "health": "unknown",
+                "health": "unreachable",
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,
@@ -3619,7 +3619,7 @@
           "info": {
             "cameras": [
               {
-                "health": "unknown",
+                "health": "unreachable",
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,
@@ -3732,54 +3732,20 @@
       "response": {
         "contentType": "application/json",
         "json": {
-          "errors": null,
-          "info": {
-            "catalogId": "",
-            "device": {},
-            "ok": false,
-            "steps": [
-              {
-                "code": "refused",
-                "detail": "connection refused by 127.0.0.1:1",
-                "id": "network",
-                "status": "failed"
-              },
-              {
-                "code": "",
-                "detail": "",
-                "id": "main",
-                "status": "skipped"
-              },
-              {
-                "code": "",
-                "detail": "",
-                "id": "sub",
-                "status": "skipped"
-              },
-              {
-                "code": "",
-                "detail": "",
-                "id": "device",
-                "status": "skipped"
-              },
-              {
-                "code": "cloud_password_missing",
-                "detail": "",
-                "id": "talk",
-                "status": "warning"
-              }
-            ],
-            "stream": {
-              "audioCodec": "",
-              "height": 0,
-              "videoCodec": "",
-              "width": 0
-            }
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "ip": [
+                "must be a camera on the local network, not a loopback or link-local address"
+              ]
+            },
+            "message": "Validation failed"
           },
-          "status": 200
+          "info": null,
+          "status": 422
         },
         "pretty": true,
-        "status": 200
+        "status": 422
       },
       "route": "/camera/probe",
       "unit": "camera"
@@ -3823,54 +3789,20 @@
       "response": {
         "contentType": "application/json",
         "json": {
-          "errors": null,
-          "info": {
-            "catalogId": "",
-            "device": {},
-            "ok": false,
-            "steps": [
-              {
-                "code": "refused",
-                "detail": "connection refused by 127.0.0.1:1",
-                "id": "network",
-                "status": "failed"
-              },
-              {
-                "code": "",
-                "detail": "",
-                "id": "main",
-                "status": "skipped"
-              },
-              {
-                "code": "",
-                "detail": "",
-                "id": "sub",
-                "status": "skipped"
-              },
-              {
-                "code": "",
-                "detail": "",
-                "id": "device",
-                "status": "skipped"
-              },
-              {
-                "code": "cloud_password_missing",
-                "detail": "",
-                "id": "talk",
-                "status": "warning"
-              }
-            ],
-            "stream": {
-              "audioCodec": "",
-              "height": 0,
-              "videoCodec": "",
-              "width": 0
-            }
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "ip": [
+                "must be a camera on the local network, not a loopback or link-local address"
+              ]
+            },
+            "message": "Validation failed"
           },
-          "status": 200
+          "info": null,
+          "status": 422
         },
         "pretty": true,
-        "status": 200
+        "status": 422
       },
       "route": "/camera/probe",
       "unit": "camera"
