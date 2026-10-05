@@ -1,5 +1,45 @@
 # Provisioning and models
 
+## The privacy notice comes first
+
+Both `setup.sh` and `provision-host.sh` print the Argus privacy notice and the
+pre-beta terms before they touch anything, and stop unless the owner accepts
+them for the household (David, 2026-10-04: consent before installing or
+configuring). The texts are `scripts/privacy/notice.{es,en}.md`, rendered with
+the country table `scripts/privacy/jurisdictions.tsv` (Peru first: Ley N°
+29733, D.S. N° 016-2024-JUS and the videovigilancia Directive N°
+01-2020-JUS/DGTAIPD with its 30/60/120-day periods); a new country is one row,
+never a code change. `scripts/lib/privacy.sh` holds the flow.
+
+- Interactive runs ask the owner to type `ACEPTO` (`ACCEPT` in English);
+  anything else cancels, and nothing is written.
+- Non-interactive runs stop with exit code 3 unless `--accept-privacy-notice`
+  (or `ARGUS_ACCEPT_PRIVACY_NOTICE=1`) is given. `-y` never accepts it: `-y`
+  answers package managers, not the owner.
+- The acceptance is recorded in `<data dir>/privacy/host-consent.json` (0600,
+  folder 0700): notice and terms version, jurisdiction, language, UTC time,
+  `user@host`, the method (`interactive` or `flag`), the script and the
+  SHA-256 of the rendered text; every acceptance and withdrawal is appended to
+  `host-consent.log`. A run with the current version recorded does not ask
+  again; a new `PRIVACY_NOTICE_VERSION` asks once more.
+- Recurring-visitor recognition (STRANGERS) has its own acknowledgement
+  (`scripts/privacy/visitors.{es,en}.md`, `--accept-visitor-notice`, offered
+  after the main notice and skipped by default). It is only recorded here:
+  the feature stays off until the owner enables it in the app, which asks for
+  the acknowledgement again.
+- `--show-privacy-notice` prints the notice; `--withdraw-privacy-consent`
+  removes the record (logged) and prints how to stop Argus and erase its data.
+- Each person's own choices (presence, faces at cameras, voice learning,
+  camera audio) are made in the app and stored by identity
+  (`services/identity/CONTEXT.md`, "Privacy choices").
+- `scripts/privacy-consent-test.sh` pins the refusal, the flag, the record's
+  fields and modes, the no-repeat, the visitor acknowledgement, the withdrawal
+  and the typed answer.
+
+The notice is not legal advice; a lawyer should review it before any
+commercial release (Peru's consumer code may limit how far the "as is"
+disclaimer applies).
+
 ## setup.sh
 
 `scripts/setup.sh [dev|prod]` is the native entry point. It:
@@ -14,7 +54,7 @@
 
 Flags: `--no-build` / `SKIP_BUILD=1` (install only), `camera` (camera
 artifacts only), `--no-docker` (skip the Docker check) and `-y`/`--yes`
-(non-interactive package installs).
+(non-interactive package installs). The privacy flags are described above.
 
 ## Deployment host provisioning
 
