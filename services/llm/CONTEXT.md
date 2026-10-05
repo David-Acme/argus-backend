@@ -907,8 +907,19 @@ stop in the middle, or no embedding model on disk, leaves it below 2 and
 the next start runs it again. A store with no vector rows takes layout 2
 at once. Vectors of facts that were only closed (superseded, or "forgotten"
 by the old close-only `memory.forget`) are not rebuilt. The rows of such
-closed facts stay in `memory_fact`: deleting them is a decision for the
-owner, not a side effect of a boot.
+closed facts stay in `memory_fact`, because a fact the old `memory.forget`
+closed cannot be told apart from one closed for another reason. Before
+4117d76d three paths closed a fact, all through the same `CLOSE_FACT`
+(`valid_to = updated_at = now`, nothing else written): supersession (the only
+one that also writes a `supersedes` edge from the old fact to the new),
+`memory.forget`, and the note refinement in `MemoryFormation`, which closes
+the refined note, or closes the new fact again when the note was already
+gone, with no edge either. A closed fact without a `supersedes` edge is
+therefore a forgotten fact or a refined note, and the only trace of a
+refinement is a fact of the same user created in the same second, which a
+forget can match by chance. Deleting on that guess could erase data the
+user never asked to forget, so the migration deletes nothing; a forget
+from now on deletes for real.
 
 ### `procedure.run` removed (#96)
 
