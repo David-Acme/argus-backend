@@ -2,6 +2,7 @@
 
 #include <feature/visitor/repositories/visitor/visitor-query.hxx>
 #include <json/value.h>
+#include <optional>
 #include <vector>
 
 struct ResponseVisitorDto
@@ -15,6 +16,7 @@ struct ResponseVisitorListDto
 {
   std::vector<VisitorRow> visitors;
   bool recognitionEnabled{false};
+  std::optional<VisitorCursor> nextCursor;
 
   [[nodiscard]] Json::Value toJson() const;
 };

@@ -17,6 +17,7 @@
 #include <sqlite/vec-db.hxx>
 #include <string>
 #include <thread>
+#include <utility>
 
 #ifndef ARGUS_IDENTITY_SCHEMA
 #error "ARGUS_IDENTITY_SCHEMA must point at database/schema.sql"
@@ -191,10 +192,31 @@ TEST_CASE("recurring unknown faces become numbered visitors, the household never
   const VisitorRequester guardActor{.userId = 2, .role = UserRole::Guard};
 
   const auto listed = drogon::sync_wait(
-      gallery.list({.requester = ownerActor, .namedOnly = false}));
+      gallery.list({.requester = ownerActor, .namedOnly = false, .page = {}}));
   CHECK(listed.recognitionEnabled);
   CHECK(listed.visitors.size() == 3);
-  CHECK(drogon::sync_wait(gallery.list({.requester = guardActor, .namedOnly = false}))
+  CHECK_FALSE(listed.nextCursor.has_value());
+
+  const auto pageOne = drogon::sync_wait(gallery.list(
+      {.requester = ownerActor,
+       .namedOnly = false,
+       .page = {.filter = VisitorListFilter::All, .search = "", .after = {}, .limit = 2}}));
+  REQUIRE(pageOne.visitors.size() == 2);
+  REQUIRE(pageOne.nextCursor.has_value());
+  CHECK(pageOne.visitors[0].lastSeenAt >= pageOne.visitors[1].lastSeenAt);
+  CHECK(pageOne.nextCursor->id == pageOne.visitors[1].id);
+  const auto pageTwo = drogon::sync_wait(gallery.list(
+      {.requester = ownerActor,
+       .namedOnly = false,
+       .page = {.filter = VisitorListFilter::All,
+                .search = "",
+                .after = *pageOne.nextCursor,
+                .limit = 2}}));
+  REQUIRE(pageTwo.visitors.size() == 1);
+  CHECK_FALSE(pageTwo.nextCursor.has_value());
+  CHECK(pageTwo.visitors[0].id != pageOne.visitors[0].id);
+  CHECK(pageTwo.visitors[0].id != pageOne.visitors[1].id);
+  CHECK(drogon::sync_wait(gallery.list({.requester = guardActor, .namedOnly = false, .page = {}}))
             .visitors.empty());
 
   const auto named = drogon::sync_wait(gallery.update(
@@ -208,7 +230,18 @@ TEST_CASE("recurring unknown faces become numbered visitors, the household never
   CHECK(named.visitor.category == PersonCategory::Neighbor);
   CHECK(named.visitor.visitCount == 2);
   CHECK(named.visits.size() == 2);
-  CHECK(drogon::sync_wait(gallery.list({.requester = guardActor, .namedOnly = false}))
+  const auto search = [&](VisitorListFilter filter, std::string term) {
+    return drogon::sync_wait(gallery.list(
+        {.requester = ownerActor,
+         .namedOnly = false,
+         .page = {.filter = filter, .search = std::move(term), .after = {}, .limit = 500}}));
+  };
+  CHECK(search(VisitorListFilter::All, "  MIKE ").visitors.size() == 1);
+  CHECK(search(VisitorListFilter::Named, "").visitors.size() == 1);
+  CHECK(search(VisitorListFilter::Unnamed, "").visitors.size() == 2);
+  CHECK(search(VisitorListFilter::Watchlist, "").visitors.empty());
+  CHECK(search(VisitorListFilter::Unnamed, "mike").visitors.empty());
+  CHECK(drogon::sync_wait(gallery.list({.requester = guardActor, .namedOnly = false, .page = {}}))
             .visitors.size() == 1);
 
   const auto trusted = observe(recognition, "barratt-a.jpg", t0 + 90000);

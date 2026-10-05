@@ -230,6 +230,8 @@ CREATE TABLE IF NOT EXISTS change_outbox (
 CREATE INDEX IF NOT EXISTS idx_face_embedding_person ON face_embedding (person_id);
 
 CREATE INDEX IF NOT EXISTS idx_person_tag_person ON person_tag (person_id);
+CREATE INDEX IF NOT EXISTS idx_person_visitor_seen ON person (last_seen_at DESC, id DESC)
+    WHERE deleted_at IS NULL AND user_id IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_user_created_at  ON user (created_at);
 CREATE INDEX IF NOT EXISTS idx_user_deleted_at  ON user (deleted_at);

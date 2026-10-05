@@ -29,7 +29,13 @@ drogon::Task<drogon::HttpResponsePtr> VisitorController::list(drogon::HttpReques
 {
   const auto query = ListVisitorsDto::fromRequest(req);
   const auto result = co_await service_.list(
-      {.requester = requesterOf(req), .namedOnly = query.scope == "named"});
+      {.requester = requesterOf(req),
+       .namedOnly = query.scope == "named",
+       .page = {.filter = visitorListFilterFromString(query.filter)
+                              .value_or(VisitorListFilter::All),
+                .search = query.search,
+                .after = {.lastSeenAt = query.beforeSeen, .id = query.beforeId},
+                .limit = query.limit}});
   co_return ApiResponse::ok(result.toJson());
 }
 

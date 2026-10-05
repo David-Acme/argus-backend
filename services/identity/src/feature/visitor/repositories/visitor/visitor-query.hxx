@@ -22,6 +22,13 @@ inline constexpr std::string_view LIST =
     "FROM person_visit v WHERE v.person_id = p.id)) AS camera_ids "
     "FROM person p WHERE p.deleted_at IS NULL AND p.user_id IS NULL "
     "AND (?2 = 0 OR p.name != '') "
+    "AND (?4 = 'all' OR (?4 = 'named' AND p.name != '') "
+    "OR (?4 = 'unnamed' AND p.name = '') "
+    "OR (?4 = 'watchlist' AND p.category = 'watchlist')) "
+    "AND (?5 = '' OR instr(lower(p.name), ?5) > 0 "
+    "OR instr(lower(p.note), ?5) > 0 "
+    "OR instr(CAST(p.visitor_number AS TEXT), ?5) > 0) "
+    "AND (p.last_seen_at, p.id) < (?6, ?7) "
     "ORDER BY p.last_seen_at DESC, p.id DESC LIMIT ?3";
 
 inline constexpr std::string_view FIND =
@@ -144,10 +151,58 @@ struct VisitorVisitRow
   int64_t sightings{0};
 };
 
+enum class VisitorListFilter : std::uint8_t
+{
+  All,
+  Named,
+  Unnamed,
+  Watchlist
+};
+
+[[nodiscard]] constexpr std::string_view visitorListFilterToString(VisitorListFilter filter)
+{
+  switch (filter)
+  {
+  case VisitorListFilter::Named:
+    return "named";
+  case VisitorListFilter::Unnamed:
+    return "unnamed";
+  case VisitorListFilter::Watchlist:
+    return "watchlist";
+  case VisitorListFilter::All:
+    break;
+  }
+  return "all";
+}
+
+[[nodiscard]] constexpr std::optional<VisitorListFilter>
+visitorListFilterFromString(std::string_view value)
+{
+  for (const auto filter : {VisitorListFilter::All, VisitorListFilter::Named,
+                            VisitorListFilter::Unnamed, VisitorListFilter::Watchlist})
+    if (visitorListFilterToString(filter) == value)
+      return filter;
+  return std::nullopt;
+}
+
+struct VisitorCursor
+{
+  int64_t lastSeenAt{0};
+  int64_t id{0};
+};
+
+struct VisitorPageQuery
+{
+  VisitorListFilter filter{VisitorListFilter::All};
+  std::string search;
+  VisitorCursor after;
+  int64_t limit{500};
+};
+
 struct VisitorListInput
 {
   bool namedOnly{false};
-  int64_t limit{500};
+  VisitorPageQuery page;
 };
 
 struct VisitorUpdateInput

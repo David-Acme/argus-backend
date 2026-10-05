@@ -922,7 +922,7 @@ it only restates resolution.
 
 | Route | Who | |
 |---|---|---|
-| `GET /visitor[?scope=named]` | Owner all; Guard named only | list with visit count, first/last seen, cameras, best sample |
+| `GET /visitor[?scope=named&filter=&q=&limit=&beforeSeen=&beforeId=]` | Owner all; Guard named only | one keyset page of the gallery (see "Paging the gallery") with visit count, first/last seen, cameras, best sample, and `nextCursor` |
 | `GET /visitor/{id}` | Owner; Guard named only (no visit history) | samples, last 200 visits, visit pattern |
 | `PATCH /visitor/{id}` `{name?, category?, note?}` | Owner | naming makes it `known` (trusted unless `watchlist`); an empty name returns it to the unnamed pool and its retention |
 | `POST /visitor/{id}/merge` `{sourceIds}` | Owner | samples and visits move, sources are deleted, the result is trimmed to the best 8 |
@@ -935,6 +935,34 @@ Household persons never appear here, and merges or splits with one are refused
 (they are not visitors). Every name/type change, merge, split, delete and
 crop view is a journal event with safe metadata only (`named`, `category`,
 counts — never a vector, a key or a picture).
+
+### Paging the gallery (2026-10, INFINITE)
+
+The gallery used to answer up to 500 visitors at once and filter and search
+them on the phone, so a busy place (a shop, a restaurant with a 30-day
+window) could have visitors the app never showed. `GET /visitor` now pages:
+`limit` (1-500, default 500 so an old client keeps its answer), `filter`
+(`all`, `named`, `unnamed`, `watchlist`), `q` (up to 64 characters, matched
+in the name, the note and the visitor number) and the keyset cursor
+`beforeSeen` + `beforeId`. Rows come in the order they always had,
+`last_seen_at DESC, id DESC`, and the next page starts strictly after the
+`(last_seen_at, id)` pair of the last row. That pair is a total order, so two
+visitors seen in the same second are never skipped or repeated across a page
+boundary. `nextCursor` is `{lastSeenAt, id}` while more rows exist and `null`
+on the last page. The service asks the repository for `limit + 1` rows to
+know which, so the client never has to guess from a short page.
+
+The cursor is a row value, `(p.last_seen_at, p.id) < (?, ?)`, and the first
+page passes the largest integer for both. With the partial index
+`idx_person_visitor_seen (last_seen_at DESC, id DESC) WHERE deleted_at IS NULL
+AND user_id IS NULL` every page is a range seek that stops at the limit
+(`SEARCH p USING INDEX idx_person_visitor_seen (last_seen_at<?)`). A
+`? = 0 OR ...` cursor would have scanned the skipped rows on every deep page.
+The filter is the typed `VisitorListFilter` (rule 1's shape: its own
+`ToString`/`FromString`, used only at the SQL boundary). The search is lowered
+in ASCII on both sides (`lower()` in SQLite, the same in C++), so an accented
+capital (Á, É) matches only itself. The app sends its query already in
+lowercase, so this covers what people type.
 
 ### Retention and sync
 
@@ -961,4 +989,6 @@ sighting creates Persona #1; another photo two minutes later joins it without
 a new visit; the next day is a new visit; the household member is recognised
 and gets no camera sample; Owner names, merges, refuses a household merge,
 splits, deletes; the index stays in step with the canonical rows; turning
-recognition off purges the unnamed and stops matching).
+recognition off purges the unnamed and stops matching; the gallery pages two
+at a time with a cursor that ends on the last page, and the filters and the
+search narrow it on the server).

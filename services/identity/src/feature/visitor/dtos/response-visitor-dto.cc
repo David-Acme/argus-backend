@@ -35,5 +35,13 @@ Json::Value ResponseVisitorListDto::toJson() const
   for (const auto& visitor : visitors)
     items.append(ResponseVisitorDto{.visitor = visitor}.toJson());
   json["visitors"] = std::move(items);
+  Json::Value next;
+  if (nextCursor)
+  {
+    next = Json::Value(Json::objectValue);
+    next["lastSeenAt"] = static_cast<Json::Int64>(nextCursor->lastSeenAt);
+    next["id"] = static_cast<Json::Int64>(nextCursor->id);
+  }
+  json["nextCursor"] = std::move(next);
   return json;
 }

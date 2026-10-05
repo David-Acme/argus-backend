@@ -29,6 +29,7 @@ struct VisitorListRequest
 {
   VisitorRequester requester;
   bool namedOnly{false};
+  VisitorPageQuery page;
 };
 
 struct VisitorRequest

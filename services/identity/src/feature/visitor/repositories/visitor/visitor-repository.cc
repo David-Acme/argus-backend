@@ -4,6 +4,7 @@
 #include <sqlite/db-service.hxx>
 
 #include <cstring>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -11,6 +12,8 @@ using namespace visitor_query;
 
 namespace
 {
+constexpr int64_t kUnbounded = std::numeric_limits<int64_t>::max();
+
 std::string idList(std::span<const int64_t> ids)
 {
   std::string out;
@@ -73,9 +76,13 @@ drogon::orm::DbClient& clientOr(drogon::orm::DbClient* client,
 drogon::Task<std::vector<VisitorRow>>
 VisitorRepository::list(const VisitorListInput& input) const
 {
+  const auto& page = input.page;
+  const bool fromTop = page.after.lastSeenAt == 0 && page.after.id == 0;
   const auto rows = co_await DbService::client()->execSqlCoro(
       std::string(LIST), std::string(kFaceModelId), input.namedOnly ? 1 : 0,
-      input.limit);
+      page.limit, std::string(visitorListFilterToString(page.filter)),
+      page.search, fromTop ? kUnbounded : page.after.lastSeenAt,
+      fromTop ? kUnbounded : page.after.id);
   std::vector<VisitorRow> visitors;
   visitors.reserve(rows.size());
   for (const auto& row : rows)

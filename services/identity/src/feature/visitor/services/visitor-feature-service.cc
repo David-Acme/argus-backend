@@ -17,6 +17,8 @@
 #include <openssl/evp.h>
 #include <ranges>
 #include <stdexcept>
+#include <string_view>
+#include <utility>
 
 namespace
 {
@@ -25,6 +27,19 @@ constexpr int64_t kVisitsInDetail = 200;
 int64_t now()
 {
   return static_cast<int64_t>(std::time(nullptr));
+}
+
+std::string searchTerm(std::string_view raw)
+{
+  const auto first = raw.find_first_not_of(' ');
+  if (first == std::string_view::npos)
+    return {};
+  const auto last = raw.find_last_not_of(' ');
+  std::string term(raw.substr(first, last - first + 1));
+  std::ranges::transform(term, term.begin(), [](unsigned char c) {
+    return static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+  });
+  return term;
 }
 
 std::string base64(const std::string& input)
@@ -124,8 +139,19 @@ VisitorFeatureService::list(const VisitorListRequest& request) const
   const bool namedOnly =
       request.namedOnly || request.requester.role != UserRole::Owner;
   ResponseVisitorListDto response;
-  response.visitors =
-      co_await repository_.list({.namedOnly = namedOnly, .limit = 500});
+  const auto& page = request.page;
+  response.visitors = co_await repository_.list(
+      {.namedOnly = namedOnly,
+       .page = {.filter = page.filter,
+                .search = searchTerm(page.search),
+                .after = page.after,
+                .limit = page.limit + 1}});
+  if (std::cmp_greater(response.visitors.size(), page.limit))
+  {
+    response.visitors.resize(static_cast<size_t>(page.limit));
+    const auto& last = response.visitors.back();
+    response.nextCursor = VisitorCursor{.lastSeenAt = last.lastSeenAt, .id = last.id};
+  }
   response.recognitionEnabled =
       (co_await privacyGate_.household()).visitorRecognition;
   co_return response;
