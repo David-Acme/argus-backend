@@ -146,7 +146,11 @@ private:
 class RpcHarness
 {
 public:
-  RpcHarness() : service_({.bus = nullptr, .fleetSecret = {}, .auth = nullptr})
+  RpcHarness()
+      : service_({.bus = nullptr,
+                  .gate = std::make_shared<const argus::client::FleetCallerGate>(
+                      argus::client::FleetGateConfig{}),
+                  .auth = nullptr})
   {
     int port = 0;
     grpc::ServerBuilder builder;

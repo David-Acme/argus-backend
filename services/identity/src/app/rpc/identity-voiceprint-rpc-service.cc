@@ -1,4 +1,5 @@
 #include "identity-voiceprint-rpc-service.hxx"
+#include "identity-callers.hxx"
 
 #include <auth/user-role.hxx>
 #include <ctime>
@@ -62,14 +63,15 @@ IdentityVoiceprintRpcService::IdentityVoiceprintRpcService(
 {
 }
 
-bool IdentityVoiceprintRpcService::fleetAuthorized(
-    const grpc::CallbackServerContext* context) const
+grpc::ServerUnaryReactor* IdentityVoiceprintRpcService::refuseCaller(
+    grpc::CallbackServerContext* context) const
 {
-  if (dependencies_.fleetSecret.empty())
-    return true;
-  return argus::client::constantTimeEquals(
-      argus::client::metadata(context, argus::client::kFleetSecretKey),
-      dependencies_.fleetSecret);
+  const auto admission =
+      dependencies_.gate->admit(context, identity_callers::kVoiceprint);
+  if (admission.admitted())
+    return nullptr;
+  return refuse(context,
+                argus::client::FleetCallerGate::refusal(admission.verdict));
 }
 
 grpc::ServerUnaryReactor*
@@ -126,9 +128,8 @@ IdentityVoiceprintRpcService::Identify(grpc::CallbackServerContext* context,
                                        const v1::IdentifyVoiceRequest* request,
                                        v1::IdentifyVoiceResponse* response)
 {
-  if (!fleetAuthorized(context))
-    return refuse(context, grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                        "fleet secret missing or wrong"));
+  if (auto* refused = refuseCaller(context))
+    return refused;
   if (!request->has_sample())
     return refuse(context, grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                                         "sample is required"));
@@ -144,9 +145,8 @@ grpc::ServerUnaryReactor* IdentityVoiceprintRpcService::ObserveTurn(
     const v1::ObserveVoiceTurnRequest* request,
     v1::IdentifyVoiceResponse* response)
 {
-  if (!fleetAuthorized(context))
-    return refuse(context, grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                        "fleet secret missing or wrong"));
+  if (auto* refused = refuseCaller(context))
+    return refused;
   if (!request->has_sample())
     return refuse(context, grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                                         "sample is required"));
@@ -184,9 +184,8 @@ IdentityVoiceprintRpcService::CloseCall(grpc::CallbackServerContext* context,
                                         const v1::CloseVoiceCallRequest* request,
                                         v1::CloseVoiceCallResponse* response)
 {
-  if (!fleetAuthorized(context))
-    return refuse(context, grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                        "fleet secret missing or wrong"));
+  if (auto* refused = refuseCaller(context))
+    return refused;
   if (request->call_key().empty() ||
       request->call_key().size() > kMaxCallKeyLength)
     return refuse(context, grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,

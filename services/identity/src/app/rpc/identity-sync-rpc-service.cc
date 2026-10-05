@@ -1,4 +1,5 @@
 #include "identity-sync-rpc-service.hxx"
+#include "identity-callers.hxx"
 
 #include <auth/role-access.hxx>
 #include <auth/user-role.hxx>
@@ -146,22 +147,8 @@ drogon::Task<void> fill(const FillInput<TableRows, Repo>& input)
 }
 
 IdentitySyncRpcService::IdentitySyncRpcService(Dependencies dependencies)
-    : fleetSecret_(std::move(dependencies.fleetSecret))
+    : gate_(std::move(dependencies.gate))
 {
-}
-
-bool IdentitySyncRpcService::fleetAuthorized(
-    const grpc::CallbackServerContext* context) const
-{
-  if (fleetSecret_.empty())
-    return true;
-  for (const auto& [key, value] : context->client_metadata()) {
-    if (key == argus::client::kFleetSecretKey) {
-      return argus::client::constantTimeEquals(
-          std::string(value.begin(), value.end()), fleetSecret_);
-    }
-  }
-  return false;
 }
 
 grpc::ServerUnaryReactor* IdentitySyncRpcService::PullTable(
@@ -169,10 +156,10 @@ grpc::ServerUnaryReactor* IdentitySyncRpcService::PullTable(
     const argus::identity::v1::PullTableRequest* request,
     argus::identity::v1::PullTableResponse* response)
 {
-  if (!fleetAuthorized(context)) {
+  if (const auto admission = gate_->admit(context, identity_callers::kPullTable);
+      !admission.admitted()) {
     auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "fleet secret missing or wrong"));
+    reactor->Finish(argus::client::FleetCallerGate::refusal(admission.verdict));
     return reactor;
   }
   const auto caller = argus::client::callerUserId(context);

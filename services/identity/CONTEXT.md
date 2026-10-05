@@ -1244,3 +1244,48 @@ listener drain; `main.cc` now hands the built server to the shared
 deadline, `stop()` after `run()` returns), the same class notification and
 sync use, and its suite (`grpc-server-drain-test`) runs in this service's
 CTest graph.
+
+## Every peer presents its own credential (2026-10-05 audit, #25)
+
+The RPC listener used to accept one `[identity] rpc_secret` that every
+service's config carried, so a compromised camera or guard container could
+call `RegisterUser`, feed `ObserveTurn` with any `user_id` (poisoning a
+voiceprint) or page the people wire as anyone. Each peer now has its own
+32-byte credential: `[rpc.callers]` here maps auth, camera, guard, llm,
+notification, productivity, sync and voice to one secret each, paired with
+that peer's `[identity] credential` by `ensure_fleet_callers`
+(`scripts/lib/common.sh`, run by `setup.sh`, `native-stack.sh` and
+`provision-host.sh`). The SDK (`argus::clients::identity`) sends it as
+`x-argus-credential` through `argus::client::addPeerCredential`; the server's
+`argus::client::FleetCallerGate` names the caller from the credential that
+matched, in constant time, and a `CHANGE_ME` placeholder never matches.
+
+`app/rpc/identity-callers.hxx` is the method table, kept to the calls the
+audit showed could be abused:
+
+| Method | Callers |
+|---|---|
+| `RegisterUser` | auth |
+| `UpdateUser` | auth, voice |
+| `IdentifyPerson` | auth, camera |
+| `EnrollPerson`, `TouchPerson` | camera |
+| `TagPerson`, `PromotePerson` | guard |
+| `SyncService.PullTable` | sync |
+| `VoiceprintService.*` | voice |
+| every read (`GetUser`, `GetPerson`, `GetPersonTags`, `ListPersons`, `ListNotifiableUsers`, `ListPrivacy`, `ListUsers`) | any paired caller |
+
+A caller that is known but not allowed gets `PERMISSION_DENIED`; a missing or
+unknown credential gets `UNAUTHENTICATED`.
+
+**Upgrade.** An install provisioned before this keeps its fleet secret in
+every config. The gate accepts that secret only while at least one expected
+caller has no credential, and then only for methods some unpaired caller may
+call, logging one WARN the first time; the SDK sends the fleet secret only
+when its own credential is empty. Running `scripts/setup.sh` (native) or
+`scripts/provision-host.sh` (deploy) adds and pairs every credential
+idempotently, never rotating an existing one, after which the fleet secret is
+refused everywhere and may be deleted from the configs. New templates carry
+no fleet secret at all. `main.cc` refuses to start when the listener is
+reachable beyond loopback with neither a paired caller nor a legacy secret.
+`identity-rpc-callers-test` pins the table; `identity-sync-rpc-test` and
+`identity-voiceprint-test` pin the paired paths of their services.

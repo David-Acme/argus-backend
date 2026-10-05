@@ -1,3 +1,4 @@
+#include <app/rpc/identity-callers.hxx>
 #include <app/rpc/identity-rpc-service.hxx>
 #include <app/rpc/identity-sync-rpc-service.hxx>
 #include <app/rpc/identity-voiceprint-rpc-service.hxx>
@@ -10,6 +11,7 @@
 #include <auth/valid-json-filter.hxx>
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
+#include <grpc/fleet-caller-gate.hxx>
 #include <grpc/grpc-server-drain.hxx>
 #include <config/identity-config.hxx>
 #include <drogon/drogon.h>
@@ -54,6 +56,7 @@
 #include <chrono>
 #include <exception>
 #include <utility>
+#include <vector>
 #include <unistd.h>
 
 namespace
@@ -149,8 +152,10 @@ int main()
                 "uninstalled";
   }
   else {
-    controlClient = std::make_shared<SyncClient>(SyncClientConfig{
-        .target = syncControl.target, .fleetSecret = syncControl.secret});
+    controlClient = std::make_shared<SyncClient>(
+        SyncClientConfig{.target = syncControl.target,
+                         .credential = syncControl.credential,
+                         .fleetSecret = syncControl.secret});
     sync_control::setSink(controlClient.get());
     LOG_INFO << "Sync control leg -> gRPC " << syncControl.target;
   }
@@ -276,20 +281,33 @@ int main()
                                  return status;
                                }}}}));
 
-  if (rpc.reachableBeyondLoopback() && rpc.secret.empty()) {
+  const auto rpcGate = std::make_shared<const argus::client::FleetCallerGate>(
+      argus::client::FleetGateConfig{
+          .expectedCallers = identity_callers::expected(),
+          .callerPairs = rpc.callers,
+          .legacySecret = rpc.secret,
+          .onFirstLegacy = [](const std::vector<std::string>& unpaired) {
+            LOG_WARN << "Identity RPC: a caller presented the fleet-wide "
+                        "[identity] rpc_secret; it reaches only what an "
+                        "unpaired caller may call until every caller has its "
+                        "own [rpc.callers] credential (unpaired: "
+                     << unpaired.size() << ", run scripts/setup.sh or "
+                        "scripts/provision-host.sh to pair them)";
+          }});
+  if (rpc.reachableBeyondLoopback() && rpcGate->open()) {
     LOG_FATAL << "[server] host " << rpc.listener.host
               << " is reachable beyond loopback and validates tokens for the "
-                 "whole fleet: set [identity] rpc_secret (and the same value "
-                 "in every service's config) — aborting startup";
+                 "whole fleet: pair every caller in [rpc.callers] — aborting "
+                 "startup";
     _exit(1);
   }
 
   IdentityRpcService rpcService({.bus = natsBus,
-                                 .fleetSecret = rpc.secret,
+                                 .gate = rpcGate,
                                  .auth = filterAuthClient()});
-  IdentitySyncRpcService syncRpcService({.fleetSecret = rpc.secret});
+  IdentitySyncRpcService syncRpcService({.gate = rpcGate});
   IdentityVoiceprintRpcService voiceprintRpcService(
-      {.fleetSecret = rpc.secret, .voiceprint = voiceprint});
+      {.gate = rpcGate, .voiceprint = voiceprint});
   grpc::ServerBuilder rpcBuilder;
   rpcBuilder.SetMaxReceiveMessageSize(kMaxRpcReceiveBytes);
   rpcBuilder.AddListeningPort(rpc.listener.host + ":" +
@@ -306,8 +324,13 @@ int main()
   if (rpcListening)
     LOG_INFO << "Identity RPC listening on " << rpc.listener.host << ":"
              << rpc.listener.port << " (cleartext, "
-             << (rpc.secret.empty() ? "loopback only, no fleet secret"
-                                    : "fleet secret required")
+             << (rpcGate->open() ? "loopback only, no caller credential"
+                                 : std::to_string(rpcGate->pairedCount()) +
+                                       " paired callers" +
+                                       (rpcGate->acceptsLegacy()
+                                            ? ", legacy fleet secret for the "
+                                              "unpaired ones"
+                                            : ""))
              << ")";
   else
     LOG_WARN << "Identity RPC failed to listen on " << rpc.listener.host << ":"

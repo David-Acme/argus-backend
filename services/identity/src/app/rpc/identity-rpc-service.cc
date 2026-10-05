@@ -7,6 +7,7 @@
 #include <errors/response-exception.hxx>
 #include <grpc/grpc-client-base.hxx>
 #include <grpc/grpc-server-identity.hxx>
+#include "identity-callers.hxx"
 #include <identity/identity-errors.hxx>
 #include <map>
 #include <memory>
@@ -85,18 +86,16 @@ IdentityRpcService::IdentityRpcService(Dependencies dependencies)
 {
 }
 
-bool IdentityRpcService::fleetAuthorized(
-    const grpc::CallbackServerContext* context) const
+grpc::ServerUnaryReactor*
+IdentityRpcService::refuseCaller(grpc::CallbackServerContext* context,
+                                 argus::client::CallerSet allowed) const
 {
-  if (dependencies_.fleetSecret.empty())
-    return true;
-  for (const auto& [key, value] : context->client_metadata()) {
-    if (key == argus::client::kFleetSecretKey) {
-      return argus::client::constantTimeEquals(
-          std::string(value.begin(), value.end()), dependencies_.fleetSecret);
-    }
-  }
-  return false;
+  const auto admission = dependencies_.gate->admit(context, allowed);
+  if (admission.admitted())
+    return nullptr;
+  auto* reactor = context->DefaultReactor();
+  reactor->Finish(argus::client::FleetCallerGate::refusal(admission.verdict));
+  return reactor;
 }
 
 grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
@@ -104,12 +103,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
     const argus::identity::v1::UpdateUserRequest* request,
     argus::identity::v1::UpdateUserResponse* response)
 {
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, identity_callers::kUpdateUser))
+    return refused;
 
   const std::optional<int64_t> scopedUser = scopedUserId(context);
   if (!scopedUser || *scopedUser != request->user_id()) {
@@ -199,12 +194,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::RegisterUser(
     const argus::identity::v1::RegisterUserRequest* request,
     argus::identity::v1::RegisterUserResponse* response)
 {
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, identity_callers::kRegisterUser))
+    return refused;
 
   const std::string image = request->image();
   if (image.empty()) {
@@ -257,12 +248,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::GetUser(
     const argus::identity::v1::GetUserRequest* request,
     argus::identity::v1::GetUserResponse* response)
 {
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, {}))
+    return refused;
 
   const int64_t userId = request->user_id();
   if (userId <= 0) {
@@ -308,12 +295,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::ListPersons(
     argus::identity::v1::ListPersonsResponse* response)
 {
   (void)request;
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, {}))
+    return refused;
 
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;
@@ -438,12 +421,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
     const argus::identity::v1::IdentifyPersonRequest* request,
     argus::identity::v1::IdentifyPersonResponse* response)
 {
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, identity_callers::kIdentifyPerson))
+    return refused;
 
   const std::string image = request->image();
   if (image.empty()) {
@@ -491,12 +470,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::EnrollPerson(
     const argus::identity::v1::EnrollPersonRequest* request,
     argus::identity::v1::EnrollPersonResponse* response)
 {
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, identity_callers::kCameraSighting))
+    return refused;
 
   const std::string image = request->image();
   if (image.empty()) {
@@ -553,12 +528,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::TouchPerson(
     const argus::identity::v1::TouchPersonRequest* request,
     argus::identity::v1::TouchPersonResponse* response)
 {
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, identity_callers::kCameraSighting))
+    return refused;
 
   const int64_t personId = request->person_id();
   if (personId <= 0) {
@@ -594,12 +565,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::TagPerson(
     const argus::identity::v1::TagPersonRequest* request,
     argus::identity::v1::TagPersonResponse* response)
 {
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, identity_callers::kGuardCuration))
+    return refused;
 
   const int64_t personId = request->person_id();
   if (personId <= 0) {
@@ -639,12 +606,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::ListNotifiableUsers(
     argus::identity::v1::ListNotifiableUsersResponse* response)
 {
   (void)request;
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, {}))
+    return refused;
 
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;
@@ -670,12 +633,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::GetPersonTags(
     const argus::identity::v1::PersonTagsRequest* request,
     argus::identity::v1::PersonTagsResponse* response)
 {
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, {}))
+    return refused;
 
   const int64_t personId = request->person_id();
   if (personId <= 0) {
@@ -710,12 +669,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::GetPerson(
     const argus::identity::v1::GetPersonRequest* request,
     argus::identity::v1::GetPersonResponse* response)
 {
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, {}))
+    return refused;
 
   const int64_t personId = request->person_id();
   if (personId <= 0) {
@@ -779,12 +734,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::PromotePerson(
     const argus::identity::v1::PromotePersonRequest* request,
     argus::identity::v1::PromotePersonResponse* response)
 {
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, identity_callers::kGuardCuration))
+    return refused;
 
   const std::string token = accessToken(context);
   if (token.empty()) {
@@ -865,12 +816,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::ListPrivacy(
     argus::identity::v1::ListPrivacyResponse* response)
 {
   (void)request;
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, {}))
+    return refused;
 
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;
@@ -913,12 +860,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::ListUsers(
     argus::identity::v1::ListUsersResponse* response)
 {
   (void)request;
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
+  if (auto* refused = refuseCaller(context, {}))
+    return refused;
 
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;

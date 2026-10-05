@@ -26,10 +26,14 @@ identity-service code; when in doubt, the root file wins.
    file for argus-sync's own `sync.db` in Phase 3c-2.
 3. **Two listeners, one process** — TLS HTTP on `7044` (`[identity] port`) and
    the `argus.identity.v1` gRPC surface on `7040` (`[server] grpc_port`). The
-   RPC listener is cleartext and fleet-gated by `[identity] rpc_secret`;
-   `main.cc` refuses to start when it is reachable beyond loopback without
-   one. An empty secret is legal only while the listener is bound to
-   loopback, which is the native default.
+   RPC listener is cleartext and gated per caller: `[rpc.callers]` holds one
+   credential per peer (auth, camera, guard, llm, notification, productivity,
+   sync, voice), each paired with that peer's `[identity] credential`, and
+   `app/rpc/identity-callers.hxx` says which caller may reach which method.
+   The old `[identity] rpc_secret` is accepted only while some caller is
+   still unpaired, and only for what an unpaired caller may call. `main.cc`
+   refuses to start when the listener is reachable beyond loopback with
+   neither; an open gate is legal only on loopback, the native default.
 4. **The invitation token never reaches storage or a log** — it is 256-bit
    opaque material, persisted as SHA-256 only and consumed atomically with the
    redemption row. `UserInvitationSchema` keeps the hash fields out of
@@ -189,8 +193,8 @@ became `src/app/rpc/identity-rpc-service.hxx` dropped it in the same rename.
 The HTTP surface terminates TLS on `7044` and the gRPC surface answers on
 `7040`. The compose publishes `7044` on the LAN, where the app dials this
 service's routes directly, and `7040` on `127.0.0.1` only, because the RPC
-listener is a fleet-internal answer gated by `[identity] rpc_secret` and
-reached by its peers as `argus-identity:7040`. A request that arrives on the
+listener is a fleet-internal answer gated by each caller's own credential
+(`[rpc.callers]`) and reached by its peers as `argus-identity:7040`. A request that arrives on the
 `[remote] tunnel_port` listener is what `RemoteGate` refuses for `/pairing`
 (`403 REMOTE_NOT_ALLOWED`) unless `[remote] enabled` is set.
 
@@ -207,8 +211,11 @@ overrides and the non-loopback RPC listener's secret gate;
 `identity-face-slots-test` pins that a disabled face service answers instead
 of blocking its caller;
 `identity-sync-rpc-test` drives the `SyncService` pull leg end to end (the
-role gate, the rule-7b user scope, the tombstones and both sides of the
-fleet-secret gate) against a live Drogon loop and an in-process listener, and
+role gate, the rule-7b user scope, the tombstones, both sides of the
+fleet-secret gate and the paired caller's credential) against a live Drogon
+loop and an in-process listener; `identity-rpc-callers-test` pins which caller
+may reach which method (`app/rpc/identity-callers.hxx`) and when the legacy
+fleet secret still answers, and
 `identity-change-outbox-sink-test` skips its live block unless `ARGUS_NATS_URL`
 names a broker, and drives an isolated stream, subject and durable name so it
 may run against the deployment broker:

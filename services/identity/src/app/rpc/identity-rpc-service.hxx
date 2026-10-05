@@ -2,6 +2,7 @@
 
 #include <argus/identity/v1/identity.grpc.pb.h>
 #include <auth/auth-client.hxx>
+#include <grpc/fleet-caller-gate.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <string_view>
@@ -23,7 +24,7 @@ public:
   struct Dependencies
   {
     std::shared_ptr<NatsBus> bus;
-    std::string fleetSecret;
+    std::shared_ptr<const argus::client::FleetCallerGate> gate;
     std::shared_ptr<const AuthClient> auth;
   };
 
@@ -123,7 +124,8 @@ private:
   };
 
   static void finishInternal(const InternalFailure& failure);
-  bool fleetAuthorized(const grpc::CallbackServerContext* context) const;
+  grpc::ServerUnaryReactor* refuseCaller(grpc::CallbackServerContext* context,
+                                         argus::client::CallerSet allowed) const;
   drogon::Task<void> identifySighting(const IdentifySightingInput& input);
   drogon::Task<void> identifyForCamera(const IdentifyInput& input);
   drogon::Task<void> identifyForSignIn(const IdentifyInput& input);

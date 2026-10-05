@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <app/rpc/identity-callers.hxx>
 #include <app/rpc/identity-sync-rpc-service.hxx>
 #include <argus/identity/v1/sync.grpc.pb.h>
 #include <drogon/drogon.h>
@@ -15,6 +16,7 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #ifndef ARGUS_IDENTITY_SCHEMA
 #error "ARGUS_IDENTITY_SCHEMA must point at database/schema.sql"
@@ -65,8 +67,15 @@ bool waitForBoot(std::chrono::milliseconds timeout)
 class RpcHarness
 {
 public:
-  explicit RpcHarness(std::string fleetSecret = {})
-      : service_({.fleetSecret = std::move(fleetSecret)})
+  explicit RpcHarness(
+      std::string fleetSecret = {},
+      std::vector<std::pair<std::string, std::string>> callers = {})
+      : service_({.gate = std::make_shared<const argus::client::FleetCallerGate>(
+                      argus::client::FleetGateConfig{
+                          .expectedCallers = identity_callers::expected(),
+                          .callerPairs = std::move(callers),
+                          .legacySecret = std::move(fleetSecret),
+                          .onFirstLegacy = {}})})
   {
     int port = 0;
     grpc::ServerBuilder builder;
@@ -325,6 +334,43 @@ TEST_CASE("identity sync RPC gates by fleet secret, role and caller scope")
     argus::identity::v1::PullTableResponse response;
     const grpc::Status status = raw->PullTable(&context, userPull(), &response);
     CHECK(status.error_code() == grpc::StatusCode::UNAUTHENTICATED);
+  }
+
+  {
+    std::vector<std::pair<std::string, std::string>> callers;
+    for (const auto& caller : identity_callers::expected())
+      callers.emplace_back(caller, caller + "-identity-credential");
+    RpcHarness paired(kFleetSecret, callers);
+    REQUIRE(paired.listening());
+
+    IdentitySyncClient sync({.target = paired.target(),
+                             .credential = "sync-identity-credential",
+                             .fleetSecret = {}});
+    const auto served = sync.pullTable(userPull(), identityFor(1, "owner"));
+    if (!served.has_value()) {
+      FAIL("the paired sync pull answered nothing");
+      return;
+    }
+    CHECK(served->user().created_size() == 4);
+
+    IdentitySyncClient camera({.target = paired.target(),
+                               .credential = "camera-identity-credential",
+                               .fleetSecret = {}});
+    CHECK_FALSE(camera.pullTable(userPull(), identityFor(1, "owner")).has_value());
+
+    IdentitySyncClient legacy({.target = paired.target(),
+                               .credential = {},
+                               .fleetSecret = kFleetSecret});
+    CHECK_FALSE(legacy.pullTable(userPull(), identityFor(1, "owner")).has_value());
+
+    auto raw = argus::identity::v1::SyncService::NewStub(
+        argus::client::makeChannel(paired.target()));
+    grpc::ClientContext context;
+    argus::client::addCallerCredential(context, "camera-identity-credential");
+    argus::client::addCallerIdentity(context, identityFor(1, "owner"));
+    argus::identity::v1::PullTableResponse response;
+    CHECK(raw->PullTable(&context, userPull(), &response).error_code() ==
+          grpc::StatusCode::PERMISSION_DENIED);
   }
 
   std::remove(kIdentityDb);

@@ -45,6 +45,16 @@ target_compile_options(identity-sync-rpc-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-sync-rpc-test)
 add_test(NAME identity-sync-rpc-test COMMAND identity-sync-rpc-test)
 
+add_executable(identity-rpc-callers-test unit/identity-rpc-callers-test.cc)
+target_link_libraries(identity-rpc-callers-test PRIVATE
+    argus::identity-rpc
+    argus::clients::identity
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-rpc-callers-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-rpc-callers-test)
+add_test(NAME identity-rpc-callers-test COMMAND identity-rpc-callers-test)
+
 add_executable(identity-change-transaction-test
     unit/identity-change-transaction-test.cc)
 target_compile_definitions(identity-change-transaction-test PRIVATE

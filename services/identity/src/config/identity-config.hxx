@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <http/listener-config.hxx>
 #include <string>
+#include <utility>
+#include <vector>
 
 struct IdentityDbConfig
 {
@@ -14,6 +16,7 @@ struct IdentityRpcConfig
 {
   GrpcListenerConfig listener;
   std::string secret;
+  std::vector<std::pair<std::string, std::string>> callers;
 
   [[nodiscard]] bool reachableBeyondLoopback() const;
 };
@@ -21,6 +24,7 @@ struct IdentityRpcConfig
 struct IdentitySyncControlConfig
 {
   std::string target;
+  std::string credential;
   std::string secret;
 };
 

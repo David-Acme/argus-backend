@@ -2,6 +2,16 @@
 host = "0.0.0.0"
 grpc_port = 7040
 
+[rpc.callers]
+auth = "CHANGE_ME_AUTH_IDENTITY"
+camera = "CHANGE_ME_CAMERA_IDENTITY"
+guard = "CHANGE_ME_GUARD_IDENTITY"
+llm = "CHANGE_ME_LLM_IDENTITY"
+notification = "CHANGE_ME_NOTIFICATION_IDENTITY"
+productivity = "CHANGE_ME_PRODUCTIVITY_IDENTITY"
+sync = "CHANGE_ME_SYNC_IDENTITY"
+voice = "CHANGE_ME_VOICE_IDENTITY"
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false
@@ -33,7 +43,6 @@ plain = false
 min_protocol = "TLSv1.2"
 db = "database/identity.db"
 schema = "database/schema.sql"
-rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [cert]
 dir = "certs"
@@ -61,11 +70,11 @@ trusted_proxy_ips = ""
 
 [auth]
 target = "argus-auth:7043"
-rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+credential = "CHANGE_ME_IDENTITY_AUTH"
 
 [sync]
 control_target = "argus-sync:7041"
-control_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+control_credential = "CHANGE_ME_IDENTITY_SYNC"
 
 [nats]
 url = "nats://nats:4222"

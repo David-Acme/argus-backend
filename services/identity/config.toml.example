@@ -2,6 +2,16 @@
 host = "127.0.0.1"
 grpc_port = 7040
 
+[rpc.callers]
+auth = ""
+camera = ""
+guard = ""
+llm = ""
+notification = ""
+productivity = ""
+sync = ""
+voice = ""
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false
@@ -33,7 +43,6 @@ plain = false
 min_protocol = "TLSv1.2"
 db = "database/identity.db"
 schema = "services/identity/database/schema.sql"
-rpc_secret = ""
 
 [cert]
 dir = "certs"
@@ -60,11 +69,11 @@ trusted_proxy_ips = ""
 
 [auth]
 target = "127.0.0.1:7043"
-rpc_secret = ""
+credential = ""
 
 [sync]
 control_target = "127.0.0.1:7041"
-control_secret = ""
+control_credential = ""
 
 [nats]
 url = "nats://127.0.0.1:4222"

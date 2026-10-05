@@ -64,6 +64,7 @@ IdentityRpcConfig IdentityConfig::resolveRpc()
   IdentityRpcConfig config;
   config.listener = GrpcListenerConfig::resolve(kDefaultRpcPort);
   config.secret = ConfigService::getString("identity.rpc_secret");
+  config.callers = ConfigService::getStringPairs("rpc.callers");
   return config;
 }
 
@@ -77,6 +78,7 @@ IdentitySyncControlConfig IdentityConfig::resolveSyncControl()
 {
   IdentitySyncControlConfig config;
   config.target = ConfigService::getString("sync.control_target");
+  config.credential = ConfigService::getString("sync.control_credential");
   config.secret = ConfigService::getString("sync.control_secret");
   return config;
 }

@@ -6,7 +6,9 @@
 #include <feature/voiceprint/services/passive/passive-enrollment-service.hxx>
 #include <feature/voiceprint/services/voiceprint/voiceprint-feature-service.hxx>
 #include <functional>
+#include <grpc/fleet-caller-gate.hxx>
 #include <grpcpp/grpcpp.h>
+#include <memory>
 #include <string>
 
 class IdentityVoiceprintRpcService final
@@ -15,7 +17,7 @@ class IdentityVoiceprintRpcService final
 public:
   struct Dependencies
   {
-    std::string fleetSecret;
+    std::shared_ptr<const argus::client::FleetCallerGate> gate;
     IdentityVoiceprintConfig voiceprint;
   };
 
@@ -48,8 +50,8 @@ public:
 private:
   using Work = std::function<drogon::Task<grpc::Status>()>;
 
-  [[nodiscard]] bool
-  fleetAuthorized(const grpc::CallbackServerContext* context) const;
+  [[nodiscard]] grpc::ServerUnaryReactor*
+  refuseCaller(grpc::CallbackServerContext* context) const;
 
   static grpc::ServerUnaryReactor* refuse(grpc::CallbackServerContext* context,
                                           const grpc::Status& status);

@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <algorithm>
+#include <app/rpc/identity-callers.hxx>
 #include <app/rpc/identity-voiceprint-rpc-service.hxx>
 #include <bit>
 #include <chrono>
@@ -28,6 +29,7 @@
 #include <string>
 #include <sync/identity-change-sink.hxx>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #ifndef ARGUS_IDENTITY_SCHEMA
@@ -324,12 +326,18 @@ std::vector<std::string> events(const RecordingSink& sink)
 
 struct Fleet
 {
-  IdentityVoiceprintRpcService service{
-      {.fleetSecret = kFleetSecret, .voiceprint = testConfig()}};
+  IdentityVoiceprintRpcService service;
   std::unique_ptr<grpc::Server> server;
   std::string target;
 
-  Fleet()
+  explicit Fleet(std::vector<std::pair<std::string, std::string>> callers = {})
+      : service({.gate = std::make_shared<const argus::client::FleetCallerGate>(
+                     argus::client::FleetGateConfig{
+                         .expectedCallers = identity_callers::expected(),
+                         .callerPairs = std::move(callers),
+                         .legacySecret = kFleetSecret,
+                         .onFirstLegacy = {}}),
+                 .voiceprint = testConfig()})
   {
     int port = 0;
     grpc::ServerBuilder builder;
@@ -703,6 +711,42 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
     CHECK(client.closeCall({.callKey = "grpc-call", .timeoutMs = 5000}));
     CHECK(fleet.service.passive().openCalls() == 0);
     CHECK_FALSE(client.closeCall({.callKey = "grpc-call", .timeoutMs = 5000}));
+  }
+
+  {
+    INFO("only argus-voice may feed or close a call once callers are paired");
+    Fleet fleet({{"voice", "voice-identity-credential"},
+                 {"guard", "guard-identity-credential"}});
+    REQUIRE(fleet.server);
+    const VoiceprintClient voice({.target = fleet.target,
+                                  .credential = "voice-identity-credential",
+                                  .fleetSecret = {}});
+    const VoiceprintClient guard({.target = fleet.target,
+                                  .credential = "guard-identity-credential",
+                                  .fleetSecret = {}});
+    const VoiceprintClient legacy(
+        {.target = fleet.target, .credential = {}, .fleetSecret = kFleetSecret});
+    const auto clip = turnSamples(
+        {.clip = "alpha-4", .offsetSeconds = 0.0F, .seconds = 2.9F, .seed = 3, .repeats = 1});
+    const VoiceTurnObservation observation{
+        .sample = {.samples = clip, .sampleRate = kRate},
+        .userId = kRita,
+        .deviceHash = "rita-phone",
+        .callKey = "paired-call",
+        .timeoutMs = 5000};
+    CHECK_FALSE(guard.observeTurn(observation).has_value());
+    CHECK_FALSE(guard.closeCall({.callKey = "paired-call", .timeoutMs = 5000}));
+    CHECK_FALSE(legacy.observeTurn(observation).has_value());
+    const auto answer = voice.observeTurn(observation);
+    if (!answer) {
+      FAIL("the paired voice relay answered nothing");
+      return;
+    }
+    CHECK(answer->user_id() == kRita);
+    for (int attempt = 0;
+         attempt < 500 && fleet.service.passive().openCalls() == 0; ++attempt)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    CHECK(voice.closeCall({.callKey = "paired-call", .timeoutMs = 5000}));
   }
 
   {
