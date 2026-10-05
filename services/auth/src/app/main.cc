@@ -14,6 +14,7 @@
 #include <feature/device/repositories/device-login-challenge/device-login-challenge-repository.hxx>
 #include <feature/session/repositories/change-outbox/change-outbox-repository.hxx>
 #include <feature/session/repositories/refresh-token/refresh-token-repository.hxx>
+#include <feature/session/infra/nats-presence-signal-sink.hxx>
 #include <feature/session/services/auth-action-sink.hxx>
 #include <feature/session/services/identity-change-consumer.hxx>
 #include <feature/session/services/session-service.hxx>
@@ -179,6 +180,7 @@ int main()
   std::shared_ptr<NatsBus> natsBus;
   std::shared_ptr<IdentityChangeConsumer> identityConsumer;
   std::shared_ptr<AuthActionSink> actionSink;
+  std::unique_ptr<NatsPresenceSignalSink> presenceSink;
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; the identity change feed is disabled";
   }
@@ -205,6 +207,8 @@ int main()
             .sessionSubject = nats_subject::kAuthSession,
             .sessionStreamName = nats_subject::kAuthSessionStream});
     auth_change::setSink(actionSink.get());
+    presenceSink = std::make_unique<NatsPresenceSignalSink>(natsBus);
+    sessions.setPresenceSink(presenceSink.get());
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*actionSink, "auth-action"));
     LOG_INFO << "Auth action journal -> " << nats_subject::kAuthUserAction
@@ -304,6 +308,7 @@ int main()
   });
 
   drogon::app().setThreadNum(0).run();
+  sessions.setPresenceSink(nullptr);
 
   if (rpcServer)
     rpcServer->Shutdown();

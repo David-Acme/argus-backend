@@ -314,7 +314,10 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
         AuthContext::kJwtKey,
         JwtContext{.sub = 7, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
     req->getAttributes()->insert(AuthContext::kDeviceKey,
-                                 DeviceContext{deviceHash, "ua", "127.0.0.1"});
+                                 DeviceContext{.deviceHash = deviceHash,
+                                               .userAgent = "ua",
+                                               .ip = "127.0.0.1",
+                                               .origin = SessionOrigin::Loopback});
     return req;
   };
 

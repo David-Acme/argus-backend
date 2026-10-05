@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <auth/device-login-status.hxx>
+#include <auth/session-origin.hxx>
 #include <auth/session-platform.hxx>
 #include <auth/user-role.hxx>
 
@@ -78,4 +79,21 @@ TEST_CASE("an unknown session platform string falls back to unknown")
 {
     CHECK(sessionPlatformFromString("Android") == SessionPlatform::Unknown);
     CHECK(sessionPlatformFromString("") == SessionPlatform::Unknown);
+}
+
+TEST_CASE("session origin strings round-trip")
+{
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {SessionOrigin::Unknown, SessionOrigin::Lan,
+                   SessionOrigin::Tunnel, SessionOrigin::Loopback,
+                   SessionOrigin::External},
+        .names = {"unknown", "lan", "tunnel", "loopback", "external"},
+        .toString = sessionOriginToString,
+        .fromString = sessionOriginFromString});
+}
+
+TEST_CASE("an unknown session origin string falls back to unknown")
+{
+    CHECK(sessionOriginFromString("LAN") == SessionOrigin::Unknown);
+    CHECK(sessionOriginFromString("") == SessionOrigin::Unknown);
 }

@@ -18,6 +18,7 @@ struct ValidateSessionInput
   std::string accessToken;
   std::string deviceHash;
   bool hasDeviceContext{false};
+  std::string origin;
 };
 
 class AuthClient

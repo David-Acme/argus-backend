@@ -30,6 +30,12 @@ public:
     return deviceHash_;
   }
 
+  std::string seenOrigin() const
+  {
+    const std::scoped_lock lock(mutex_);
+    return origin_;
+  }
+
   std::map<std::string, std::string> seen() const
   {
     const std::scoped_lock lock(mutex_);
@@ -41,6 +47,8 @@ public:
   {
     *out = verdict;
     record(context, request->has_device_hash() ? request->device_hash() : "");
+    const std::scoped_lock lock(mutex_);
+    origin_ = request->has_origin() ? request->origin() : "(absent)";
     return answer(context);
   }
 
@@ -75,6 +83,7 @@ private:
   mutable std::mutex mutex_;
   std::map<std::string, std::string> seen_;
   std::string deviceHash_;
+  std::string origin_;
 };
 
 std::unique_ptr<grpc::Server> startServer(ScriptedAuthService& service,
@@ -101,7 +110,10 @@ TEST_CASE("the verdict and the session's user are what this edge carries back")
   const AuthClient client({.target = target, .fleetSecret = kFleetSecret});
 
   const auto refused = client.validateToken(
-      {.accessToken = "stale", .deviceHash = "", .hasDeviceContext = false});
+      {.accessToken = "stale",
+       .deviceHash = "",
+       .hasDeviceContext = false,
+       .origin = {}});
   if (!refused.has_value()) {
     FAIL("the client answered no verdict for a stale token");
     return;
@@ -121,7 +133,10 @@ TEST_CASE("the verdict and the session's user are what this edge carries back")
   user->set_is_active(true);
 
   const auto accepted = client.validateToken(
-      {.accessToken = "live", .deviceHash = "", .hasDeviceContext = false});
+      {.accessToken = "live",
+       .deviceHash = "",
+       .hasDeviceContext = false,
+       .origin = {}});
   if (!accepted.has_value()) {
     FAIL("the client answered no verdict for a live token");
     return;
@@ -150,16 +165,18 @@ TEST_CASE("the fleet secret and the device leg are what this edge presents")
 
   static_cast<void>(client.validateToken(
       {.accessToken = "live", .deviceHash = "phone-hash",
-       .hasDeviceContext = true}));
+       .hasDeviceContext = true, .origin = "lan"}));
   const auto headers = service.seen();
   REQUIRE(headers.contains("x-argus-fleet"));
   CHECK(headers.at("x-argus-fleet") == kFleetSecret);
   CHECK(service.seenDeviceHash() == "phone-hash");
+  CHECK(service.seenOrigin() == "lan");
 
   static_cast<void>(client.validateToken(
       {.accessToken = "live", .deviceHash = "phone-hash",
-       .hasDeviceContext = false}));
+       .hasDeviceContext = false, .origin = {}}));
   CHECK(service.seenDeviceHash().empty());
+  CHECK(service.seenOrigin() == "(absent)");
 
   service.credentialActive = true;
   CHECK(client.checkDeviceCredential("secret-hash") == true);
@@ -183,7 +200,8 @@ TEST_CASE("a listener that never answers is not an answer this edge invents")
   CHECK_FALSE(client
                   .validateToken({.accessToken = "live",
                                   .deviceHash = "",
-                                  .hasDeviceContext = false})
+                                  .hasDeviceContext = false,
+                                  .origin = {}})
                   .has_value());
   CHECK_FALSE(client.checkDeviceCredential("secret-hash").has_value());
 }

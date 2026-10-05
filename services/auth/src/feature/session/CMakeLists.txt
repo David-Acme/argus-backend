@@ -9,6 +9,8 @@ argus_module(NAME auth-session
         services/session-revocation.cc
         services/session-service.cc
         services/identity-change-consumer.cc
+        services/presence-signal.cc
+        infra/nats-presence-signal-sink.cc
     INCLUDES ../..
     DEPENDS
         argus::contracts::auth

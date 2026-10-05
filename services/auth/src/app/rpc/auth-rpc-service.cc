@@ -46,6 +46,9 @@ grpc::ServerUnaryReactor* AuthRpcService::ValidateToken(
       .accessToken = request->access_token(),
       .deviceHash = request->has_device_hash() ? request->device_hash() : "",
       .hasDeviceContext = request->has_device_hash(),
+      .origin = request->has_origin()
+                    ? sessionOriginFromString(request->origin())
+                    : SessionOrigin::Unknown,
   };
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;

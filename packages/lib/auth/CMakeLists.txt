@@ -92,6 +92,11 @@ target_link_libraries(proxy-allowlist-test PRIVATE argus::lib::auth doctest::doc
 target_compile_options(proxy-allowlist-test PRIVATE -Wall -Wextra)
 add_test(NAME proxy-allowlist-test COMMAND proxy-allowlist-test)
 
+add_executable(device-origin-test tests/unit/device-origin-test.cc)
+target_link_libraries(device-origin-test PRIVATE argus::lib::auth doctest::doctest)
+target_compile_options(device-origin-test PRIVATE -Wall -Wextra)
+add_test(NAME device-origin-test COMMAND device-origin-test)
+
 add_executable(jwt-service-test tests/unit/jwt-service-test.cc)
 target_link_libraries(jwt-service-test PRIVATE argus::lib::auth doctest::doctest)
 target_compile_options(jwt-service-test PRIVATE -Wall -Wextra)

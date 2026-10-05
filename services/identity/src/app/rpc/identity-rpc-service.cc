@@ -856,7 +856,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::PromotePerson(
                   return auth->validateToken({.accessToken = token,
                                               .deviceHash = device,
                                               .hasDeviceContext =
-                                                  !device.empty()});
+                                                  !device.empty(),
+                                              .origin = {}});
                 });
             if (!verdict) {
               reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE,

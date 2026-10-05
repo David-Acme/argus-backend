@@ -65,11 +65,21 @@ SessionService::validate(const SessionValidationInput& input) const
   if (input.hasDeviceContext && session->deviceHash != input.deviceHash)
     co_return rejected("Device mismatch");
 
+  bool seenAdvanced = false;
   if (now - session->lastSeenAt >= kLastSeenThrottleSeconds)
-    static_cast<void>(co_await dependencies_.refreshTokenRepository.touch(
+    seenAdvanced = co_await dependencies_.refreshTokenRepository.touch(
         {.rowId = session->id,
          .now = now,
-         .throttleSeconds = kLastSeenThrottleSeconds}));
+         .throttleSeconds = kLastSeenThrottleSeconds});
+  if (presenceSink_ != nullptr &&
+      presenceThrottle_.admit({.sessionId = session->sessionId,
+                               .origin = input.origin,
+                               .seenAdvanced = seenAdvanced}))
+    presenceSink_->publish({.userId = userId,
+                            .sessionId = session->sessionId,
+                            .platform = session->platform,
+                            .origin = input.origin,
+                            .at = now});
 
   co_return SessionVerdict{.valid = true,
                            .reason = "",
@@ -88,6 +98,11 @@ SessionService::sessionOf(int64_t userId, const std::string& accessToken) const
     co_return session;
   co_await repository.adoptLegacySessions(userId);
   co_return co_await repository.findByAccessToken(userId, accessToken);
+}
+
+void SessionService::setPresenceSink(PresenceSignalSink* sink)
+{
+  presenceSink_ = sink;
 }
 
 void SessionService::forget(int64_t userId)

@@ -3,6 +3,7 @@
 #include <auth/auth-client.hxx>
 #include <auth/auth-access.hxx>
 #include <auth/details/proxy-allowlist.hxx>
+#include <auth/remote-config.hxx>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
@@ -18,6 +19,8 @@
 namespace
 {
 constexpr size_t kMaxCredentialLength = 128;
+constexpr std::string_view kAnyAddress = "0.0.0.0/0,::/0";
+constexpr std::string_view kLoopbackNetworks = "127.0.0.0/8,::1";
 
 bool trustedProxy(const std::string& peer)
 {
@@ -46,6 +49,7 @@ DeviceFilter::doFilter(const drogon::HttpRequestPtr& req)
   DeviceContext ctx;
   ctx.userAgent = ua;
   ctx.ip = ip;
+  ctx.origin = resolveOrigin(req, ip);
   if (credentialMode()) {
     const auto credential = req->getHeader("X-Argus-Device-Credential");
     std::string deviceHash;
@@ -154,6 +158,34 @@ std::string DeviceFilter::resolveIp(const drogon::HttpRequestPtr& req)
       return nearest;
   }
   return peer;
+}
+
+SessionOrigin DeviceFilter::resolveOrigin(const drogon::HttpRequestPtr& req,
+                                          const std::string& address)
+{
+  const std::string configured =
+      ConfigService::getString("device.lan_networks");
+  return classifyOrigin(
+      {.viaTunnel = requestIsRemote(req, RemoteConfig::resolve()),
+       .address = address,
+       .lanNetworks = configured.empty() ? kDefaultLanNetworks
+                                         : std::string_view(configured)});
+}
+
+SessionOrigin DeviceFilter::classifyOrigin(const OriginInput& input)
+{
+  if (input.viaTunnel)
+    return SessionOrigin::Tunnel;
+  if (!proxy_allowlist::contains(
+          {.configured = kAnyAddress, .address = input.address}))
+    return SessionOrigin::Unknown;
+  if (proxy_allowlist::contains(
+          {.configured = kLoopbackNetworks, .address = input.address}))
+    return SessionOrigin::Loopback;
+  if (proxy_allowlist::contains(
+          {.configured = input.lanNetworks, .address = input.address}))
+    return SessionOrigin::Lan;
+  return SessionOrigin::External;
 }
 
 bool DeviceFilter::credentialMode()

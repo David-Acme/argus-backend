@@ -26,6 +26,8 @@ AuthClient::validateToken(const ValidateSessionInput& input) const
   request.set_access_token(input.accessToken);
   if (input.hasDeviceContext)
     request.set_device_hash(input.deviceHash);
+  if (!input.origin.empty())
+    request.set_origin(input.origin);
 
   argus::auth::v1::ValidateTokenResponse response;
   if (const grpc::Status status =

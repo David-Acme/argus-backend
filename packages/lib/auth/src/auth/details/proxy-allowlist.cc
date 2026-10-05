@@ -117,17 +117,25 @@ std::vector<Range> parseRanges(std::string_view configured)
   return ranges;
 }
 
+struct CachedRanges
+{
+  std::string text;
+  std::vector<Range> ranges;
+};
+
+constexpr std::size_t kCachedLists = 8;
+
 const std::vector<Range>& rangesOf(std::string_view configured)
 {
-  thread_local std::string cachedText;
-  thread_local std::vector<Range> cachedRanges;
-  thread_local bool primed = false;
-  if (!primed || cachedText != configured) {
-    cachedText = std::string(configured);
-    cachedRanges = parseRanges(configured);
-    primed = true;
-  }
-  return cachedRanges;
+  thread_local std::vector<CachedRanges> cache;
+  const auto hit = std::ranges::find(cache, configured, &CachedRanges::text);
+  if (hit != cache.end())
+    return hit->ranges;
+  if (cache.size() >= kCachedLists)
+    cache.erase(cache.begin());
+  cache.push_back({.text = std::string(configured),
+                   .ranges = parseRanges(configured)});
+  return cache.back().ranges;
 }
 }
 

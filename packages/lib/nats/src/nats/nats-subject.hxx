@@ -30,6 +30,9 @@ inline constexpr const char* kAuthChangeStream = "ARGUS_AUTH_CHANGE";
 inline constexpr const char* kAuthSession = "argus.auth.v1.session";
 inline constexpr const char* kAuthSessionStream = "ARGUS_AUTH_SESSION";
 
+inline constexpr const char* kAuthPresenceSignal =
+    "argus.auth.v1.presence_signal";
+
 inline constexpr const char* kIdentityUserAction =
     "argus.identity.v1.user-action";
 inline constexpr const char* kIdentityChangeStream = "ARGUS_IDENTITY_CHANGE";
@@ -45,6 +48,12 @@ inline constexpr const char* kGuardEncounterClosed =
     "argus.guard.v1.encounter_closed";
 
 inline constexpr const char* kGuardKnownSeen = "argus.guard.v1.known_seen";
+
+inline constexpr const char* kNotificationResponseVerdict =
+    "argus.notification.v1.response_verdict";
+
+inline constexpr const char* kGuardPresenceChanged =
+    "argus.guard.v1.presence_changed";
 
 inline constexpr const char* kGuardStream = "ARGUS_GUARD";
 

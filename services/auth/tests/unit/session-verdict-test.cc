@@ -10,6 +10,7 @@
 #include <drogon/drogon.h>
 #include <feature/device/repositories/device-credential/device-credential-repository.hxx>
 #include <feature/session/repositories/refresh-token/refresh-token-repository.hxx>
+#include <feature/session/services/presence-signal.hxx>
 #include <feature/session/services/session-service.hxx>
 #include <grpcpp/grpcpp.h>
 #include <identity/identity-client.hxx>
@@ -32,6 +33,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 #include <unistd.h>
 
 #ifndef ARGUS_AUTH_SCHEMA_PATH
@@ -304,7 +306,8 @@ struct Verdict
 {
   const auto answer = client.validateToken({.accessToken = accessToken,
                                             .deviceHash = kDeviceHash,
-                                            .hasDeviceContext = true});
+                                            .hasDeviceContext = true,
+                                            .origin = {}});
   if (!answer.has_value())
     return Verdict{};
 
@@ -325,7 +328,10 @@ struct Verdict
                                     const std::string& accessToken)
 {
   const auto answer = client.validateToken(
-      {.accessToken = accessToken, .deviceHash = {}, .hasDeviceContext = false});
+      {.accessToken = accessToken,
+       .deviceHash = {},
+       .hasDeviceContext = false,
+       .origin = {}});
   if (!answer.has_value())
     return Verdict{};
 
@@ -405,6 +411,102 @@ TEST_CASE("a valid session answers the user the filters read")
   CHECK(verdict.role == "owner");
   CHECK(verdict.lang == "es");
   CHECK(verdict.expiresAt == now + kHourSeconds);
+}
+
+class RecordingPresenceSink final : public PresenceSignalSink
+{
+public:
+  void publish(const PresenceSignal& signal) override
+  {
+    signals.push_back(signal);
+  }
+
+  std::vector<PresenceSignal> signals;
+};
+
+[[nodiscard]] bool askFrom(const AuthClient& client,
+                           const std::string& accessToken,
+                           const std::string& origin)
+{
+  const auto answer = client.validateToken({.accessToken = accessToken,
+                                            .deviceHash = kDeviceHash,
+                                            .hasDeviceContext = true,
+                                            .origin = origin});
+  return answer.has_value() && answer->valid();
+}
+
+TEST_CASE("a verdict tells presence where a session comes from, at most once "
+          "a minute per origin")
+{
+  Fixture& app = fixture();
+  REQUIRE(app.start());
+
+  const int64_t now = std::time(nullptr);
+  const std::string live = seedSession({.expiresAt = now + kHourSeconds});
+
+  SessionService sessions({.jwtService = JwtService{},
+                           .refreshTokenRepository = RefreshTokenRepository{},
+                           .identity = &app.identity()},
+                          SessionService::Config{.contextCacheSeconds = 0});
+  RecordingPresenceSink sink;
+  sessions.setPresenceSink(&sink);
+  DeviceCredentialRepository credentials;
+  AuthRpcHarness harness(sessions, credentials, {});
+  REQUIRE(harness.listening());
+  AuthClient client(harness.clientConfig());
+
+  REQUIRE(askFrom(client, live, "lan"));
+  REQUIRE(sink.signals.size() == 1);
+  CHECK(sink.signals.front().userId == kUserId);
+  CHECK(sink.signals.front().origin == SessionOrigin::Lan);
+  CHECK(sink.signals.front().sessionId.size() == 32);
+  CHECK(sink.signals.front().at >= now);
+
+  REQUIRE(askFrom(client, live, "lan"));
+  CHECK(sink.signals.size() == 1);
+
+  REQUIRE(askFrom(client, live, "tunnel"));
+  REQUIRE(sink.signals.size() == 2);
+  CHECK(sink.signals.back().origin == SessionOrigin::Tunnel);
+
+  REQUIRE(askFrom(client, live, "loopback"));
+  REQUIRE(askFrom(client, live, "external"));
+  REQUIRE(askFrom(client, live, ""));
+  CHECK(sink.signals.size() == 2);
+
+  DbService::client()->execSqlSync(
+      "UPDATE refresh_token SET last_seen_at = last_seen_at - 120");
+  REQUIRE(askFrom(client, live, "tunnel"));
+  CHECK(sink.signals.size() == 3);
+
+  CHECK_FALSE(askFrom(client, issueToken(kUserId), "lan"));
+  CHECK(sink.signals.size() == 3);
+  sessions.setPresenceSink(nullptr);
+}
+
+TEST_CASE("the presence throttle forgets nothing it needs and keeps no "
+          "unbounded map")
+{
+  PresenceSignalThrottle throttle;
+  CHECK_FALSE(throttle.admit({.sessionId = "",
+                              .origin = SessionOrigin::Lan,
+                              .seenAdvanced = true}));
+  CHECK_FALSE(throttle.admit({.sessionId = "s",
+                              .origin = SessionOrigin::Unknown,
+                              .seenAdvanced = true}));
+  CHECK(throttle.admit(
+      {.sessionId = "s", .origin = SessionOrigin::Lan, .seenAdvanced = false}));
+  CHECK_FALSE(throttle.admit(
+      {.sessionId = "s", .origin = SessionOrigin::Lan, .seenAdvanced = false}));
+  CHECK(throttle.admit(
+      {.sessionId = "s", .origin = SessionOrigin::Lan, .seenAdvanced = true}));
+  for (std::size_t index = 0; index <= PresenceSignalThrottle::kMaxSessions;
+       ++index)
+    CHECK(throttle.admit({.sessionId = "x" + std::to_string(index),
+                          .origin = SessionOrigin::Tunnel,
+                          .seenAdvanced = false}));
+  CHECK(throttle.admit(
+      {.sessionId = "s", .origin = SessionOrigin::Lan, .seenAdvanced = false}));
 }
 
 TEST_CASE("the session verdict refuses in the identity gate's order")
@@ -654,7 +756,8 @@ TEST_CASE("the fleet secret gates every session verdict")
   AuthClient unauthorized(gatedRpc.clientConfig());
   CHECK_FALSE(unauthorized.validateToken({.accessToken = gated,
                                           .deviceHash = kDeviceHash,
-                                          .hasDeviceContext = true})
+                                          .hasDeviceContext = true,
+                                          .origin = {}})
                   .has_value());
   CHECK_FALSE(
       unauthorized.checkDeviceCredential(DeviceFilter::sha256Hex(kDeviceSecret))
@@ -664,7 +767,8 @@ TEST_CASE("the fleet secret gates every session verdict")
                           .fleetSecret = "not-the-fleet-secret"});
   CHECK_FALSE(wrongSecret.validateToken({.accessToken = gated,
                                          .deviceHash = kDeviceHash,
-                                         .hasDeviceContext = true})
+                                         .hasDeviceContext = true,
+                                         .origin = {}})
                   .has_value());
 
   AuthClient authorized(gatedRpc.gatedClientConfig());

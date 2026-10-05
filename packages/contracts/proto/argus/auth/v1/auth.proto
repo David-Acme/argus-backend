@@ -16,6 +16,7 @@ message ValidateTokenRequest
 {
   string access_token = 1;
   optional string device_hash = 2;
+  optional string origin = 3;
 }
 
 message ValidateTokenResponse

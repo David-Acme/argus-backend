@@ -41,19 +41,23 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
   const bool hasDeviceContext =
       req->getAttributes()->find(AuthContext::kDeviceKey);
   std::string deviceHash;
+  std::string origin;
   if (hasDeviceContext) {
-    deviceHash = req->getAttributes()
-                     ->get<DeviceContext>(AuthContext::kDeviceKey)
-                     .deviceHash;
+    const auto& device =
+        req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
+    deviceHash = device.deviceHash;
+    if (device.origin != SessionOrigin::Unknown)
+      origin = sessionOriginToString(device.origin);
   }
 
   const auto client = filterAuthClient();
   const auto verdict = co_await BlockingTask<
       std::optional<argus::auth::v1::ValidateTokenResponse>>(
-      [client, token, deviceHash, hasDeviceContext]() {
+      [client, token, deviceHash, hasDeviceContext, origin]() {
         return client->validateToken({.accessToken = token,
                                       .deviceHash = deviceHash,
-                                      .hasDeviceContext = hasDeviceContext});
+                                      .hasDeviceContext = hasDeviceContext,
+                                      .origin = origin});
       });
 
   if (!verdict)
