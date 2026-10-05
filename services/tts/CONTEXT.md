@@ -24,9 +24,13 @@ and instead call it over the internal wire.
     `audio/x-argus-pcm-f32` + `X-Argus-Sample-Rate`.
   - `POST /tts/v1/synthesize-stream` → chunked float32 PCM with the same
     headers, one HTTP chunk per engine chunk; synthesis runs on a worker
-    of the Heavy blocking lane admitted by `StreamSlots` (at most the Heavy
-    lane's thread cap minus one streams; one more is 429 `Busy`) and pushes
-    through the async stream. It used to start one detached thread per
+    of the Heavy blocking lane admitted by `StreamSlots`
+    (`packages/lib/runtime`, shared with argus-llm; at most the Heavy
+    lane's thread cap minus one streams; one more is 429
+    `TOO_MANY_REQUESTS`, and once the stop began it is 503
+    `SERVICE_UNAVAILABLE`) and pushes through the async stream. A lane
+    whose queue is full ends the stream at once instead of throwing on the
+    loop. It used to start one detached thread per
     request with no bound. `main.cc` registers the slots as a
     `shutdown_signal` drain: a stop request makes every stream stop at its
     next chunk, and the drain is done when none is running. A client that

@@ -28,6 +28,8 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <vector>
+#include <utility>
 #include <thread>
 #include <tts/tts-errors.hxx>
 
@@ -276,7 +278,8 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().registerController(std::make_shared<HealthController>(
       HealthStatus{.serviceName = "argus-tts", .extras = {}}));
-  drogon::app().registerController(std::make_shared<TtsController>());
+  const auto controller = std::make_shared<TtsController>();
+  drogon::app().registerController(controller);
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
   drogon::app().setExceptionHandler(ErrorHandler::handleException);
   drogon::app().setCustomErrorHandler(
@@ -348,6 +351,31 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   const std::string& pcm = stream.body;
   CHECK(pcm.size() % sizeof(float) == 0);
   CHECK_FALSE(pcm.empty());
+
+  {
+    const auto settleBy = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!controller->streams().drained() && std::chrono::steady_clock::now() < settleBy)
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    REQUIRE(controller->streams().drained());
+    std::vector<StreamLease> held;
+    while (auto lease = controller->streams().tryAcquire())
+      held.push_back(std::move(*lease));
+    REQUIRE_FALSE(held.empty());
+    const auto busy = request({.port = port,
+                               .method = "POST",
+                               .path = "/tts/v1/synthesize-stream",
+                               .body = R"({"text":"Hola argus","lang":"es"})",
+                               .closeConnection = true});
+    CHECK(busy.status == 429);
+    CHECK(envelope(busy)["errors"]["code"] == "TOO_MANY_REQUESTS");
+  }
+  const auto freed = request({.port = port,
+                              .method = "POST",
+                              .path = "/tts/v1/synthesize-stream",
+                              .body = R"({"text":"Hola argus","lang":"es"})",
+                              .closeConnection = false});
+  CHECK(freed.status == 200);
+  CHECK_FALSE(freed.body.empty());
 
   const auto invalid = request({.port = port,
                                 .method = "POST",

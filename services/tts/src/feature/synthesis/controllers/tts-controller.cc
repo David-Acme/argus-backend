@@ -13,6 +13,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace
 {
@@ -28,10 +29,7 @@ std::string pcmBytes(const std::vector<float>& pcm)
 
 struct PcmStreamJob
 {
-  explicit PcmStreamJob(StreamSlots& slots) : lease(slots), slots(&slots) {}
-
   StreamLease lease;
-  StreamSlots* slots{nullptr};
   TtsRequest request;
   std::unique_ptr<drogon::ResponseStream> stream;
   size_t chunkCount{0};
@@ -56,7 +54,7 @@ void runStreamJob(const std::shared_ptr<PcmStreamJob>& job)
               job->chunkCount++;
               job->byteCount += bytes.size();
             },
-        .stopRequested = [&job] { return !job->stream || job->slots->stopping(); }});
+        .stopRequested = [&job] { return !job->stream || job->lease.stopping(); }});
   }
   catch (const std::exception& e) {
     LOG_ERROR << "TTS stream synthesis failed: " << e.what();
@@ -118,15 +116,23 @@ TtsController::synthesizeStream(drogon::HttpRequestPtr req)
   if (!tts.isLoaded())
     throw ResponseException(503, TtsErrors::TtsNotLoaded);
 
-  if (!streams_.tryAcquire())
-    throw ResponseException(429, TtsErrors::Busy);
-  auto job = std::make_shared<PcmStreamJob>(streams_);
-  job->request = body.request();
+  auto lease = streams_.tryAcquire();
+  if (!lease)
+    throw ResponseException(streams_.stopping() ? TtsErrors::Unavailable : TtsErrors::Busy);
+  auto job = std::make_shared<PcmStreamJob>(PcmStreamJob{.lease = std::move(*lease),
+                                                         .request = body.request(),
+                                                         .stream = nullptr,
+                                                         .chunkCount = 0,
+                                                         .byteCount = 0});
 
   auto resp = drogon::HttpResponse::newAsyncStreamResponse(
       [job](drogon::ResponseStreamPtr stream) {
         job->stream = std::move(stream);
-        blocking_pool::submit(BlockingLane::Heavy, [job] { runStreamJob(job); });
+        if (!blocking_pool::trySubmit(BlockingLane::Heavy, [job] { runStreamJob(job); })) {
+          LOG_WARN << "TTS stream: the heavy lane is full, the stream ends unanswered";
+          job->stream->close();
+          job->stream.reset();
+        }
       },
       true);
   resp->setStatusCode(drogon::k200OK);

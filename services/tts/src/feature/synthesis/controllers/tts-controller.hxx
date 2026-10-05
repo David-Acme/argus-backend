@@ -4,7 +4,7 @@
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <drogon/utils/coroutine.h>
-#include <feature/synthesis/services/stream-slots.hxx>
+#include <runtime/stream-slots.hxx>
 
 class TtsController : public drogon::HttpController<TtsController, false>
 {
