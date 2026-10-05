@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <camera/camera-row-projection.hxx>
 #include <drogon/orm/DbClient.h>
 #include <feature/actions/repositories/action-command/action-command-query.hxx>
 #include <feature/media/media-access-check.hxx>
@@ -347,6 +348,8 @@ TEST_CASE("camera rows reach guards and guests without their address or account"
     CHECK(reduced["cloudUsername"].asString().empty());
     CHECK(reduced["config"].asString() == "{}");
     CHECK(reduced["name"].asString() == "Patio");
+    for (const std::string_view field : camera_projection::kConnectionFields)
+      CHECK(reduced[std::string(field)] != row[std::string(field)]);
   }
   for (const UserRole role : {UserRole::Owner, UserRole::Resident}) {
     Json::Value full = row;

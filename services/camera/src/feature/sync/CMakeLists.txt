@@ -11,6 +11,7 @@ argus_module(NAME camera-sync
         argus::contracts::auth
         argus::contracts::camera
         argus::contracts::sync
+        argus::lib::auth
         argus::lib::sqlite
         Drogon::Drogon)
 

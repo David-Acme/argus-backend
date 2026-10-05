@@ -1716,6 +1716,10 @@ voice it transcribed for the guard.
   `PullTable` projects camera rows by the caller's role (`x-argus-role`): for
   anything but Owner and Resident, `ip`, `username`, `cloudUsername` and
   `config` are empty and `port` is 0. The wire is unchanged (same fields). The
+  role test is `role_access::readsCameraConnection` and the reduction is
+  `camera_projection::reduceRow` (`contracts/camera`'s
+  `camera-row-projection.hxx`), the field list argus-sync's fan-out reduces by
+  too, so the two cannot drift. The
   live `Add`/`Log` frames for `camera` are fanned out by argus-sync to the
   module room as they are; projecting those per role belongs to argus-sync's
   fan-out (#76).

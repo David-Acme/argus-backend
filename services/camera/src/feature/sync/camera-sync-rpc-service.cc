@@ -1,5 +1,7 @@
 #include "camera-sync-rpc-service.hxx"
 
+#include <auth/role-access.hxx>
+#include <camera/camera-row-projection.hxx>
 #include <drogon/drogon.h>
 #include <grpc/grpc-server-identity.hxx>
 #include <sync/sync-filter.hxx>
@@ -9,13 +11,8 @@
 
 void camera_sync_projection::apply(Json::Value& row, UserRole role)
 {
-  if (role == UserRole::Owner || role == UserRole::Resident)
-    return;
-  row["ip"] = "";
-  row["port"] = 0;
-  row["username"] = "";
-  row["cloudUsername"] = "";
-  row["config"] = "{}";
+  if (!role_access::readsCameraConnection(role))
+    camera_projection::reduceRow(row);
 }
 
 namespace
