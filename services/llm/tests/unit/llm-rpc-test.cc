@@ -24,6 +24,7 @@
 #include <optional>
 #include <semaphore>
 #include <stop_token>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -1174,4 +1175,11 @@ TEST_CASE("real engine answers through the gRPC leg")
   server.shutdown();
   engine.shutdownEngine();
   llama_backend_free();
+}
+
+TEST_CASE("a listener whose callers are all placeholders refuses to start")
+{
+  LlmRpcInput input = serverInput();
+  input.credentials = {{"voice", "CHANGE_ME_VOICE_LLM"}, {"settings", "CHANGE_ME_SETTINGS_LLM"}};
+  CHECK_THROWS_AS(LlmRpcServer{std::move(input)}, std::invalid_argument);
 }

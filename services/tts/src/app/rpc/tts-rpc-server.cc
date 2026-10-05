@@ -1,7 +1,7 @@
 #include "tts-rpc-server.hxx"
 
 #include <errors/response-exception.hxx>
-#include <grpc/grpc-server-identity.hxx>
+#include <grpc/fleet-caller-gate.hxx>
 #include <tts/tts-errors.hxx>
 #include <tts.grpc.pb.h>
 #include <response/response-rpc.hxx>
@@ -37,20 +37,6 @@ ResponseException stoppedError(const grpc::ServerContext& context)
   return ResponseException(499, TtsErrors::Cancelled);
 }
 
-bool authorized(grpc::ServerContext& context,
-                const std::vector<std::pair<std::string, std::string>>& credentials)
-{
-  const auto& metadata = context.client_metadata();
-  const auto range = metadata.equal_range(argus::client::kCallerCredentialKey);
-  if (range.first == range.second || std::next(range.first) != range.second)
-    return false;
-  const std::string presented(range.first->second.data(), range.first->second.size());
-  return std::ranges::any_of(credentials, [&presented](const auto& credential) {
-    return !credential.first.empty() && !credential.second.empty() &&
-           argus::client::constantTimeEquals(presented, credential.second);
-  });
-}
-
 bool validRequest(const wire::SynthesisRequest& request,
                   const argus::tts::Capabilities& capabilities)
 {
@@ -67,10 +53,15 @@ bool validRequest(const wire::SynthesisRequest& request,
 struct TtsRpcServer::Impl final : wire::Synthesis::Service
 {
   explicit Impl(TtsRpcInput input)
-      : input_(std::move(input)), slots_(std::max(1, input_.slots))
+      : input_(std::move(input)),
+        gate_({.expectedCallers = {},
+               .callerPairs = input_.credentials,
+               .legacySecret = {},
+               .onFirstLegacy = {}}),
+        slots_(std::max(1, input_.slots))
   {
     if (!input_.synthesize || input_.capabilities.sampleRate <= 0 ||
-        input_.capabilities.channels != 1 || input_.credentials.empty() ||
+        input_.capabilities.channels != 1 || gate_.pairedCount() == 0 ||
         !std::isfinite(input_.capabilities.defaultSpeed) ||
         input_.capabilities.defaultSpeed <= 0)
       throw std::invalid_argument("Invalid TTS RPC configuration");
@@ -94,7 +85,7 @@ struct TtsRpcServer::Impl final : wire::Synthesis::Service
                             const wire::CapabilitiesRequest*,
                             wire::CapabilitiesResponse* response) override
   {
-    if (!authorized(*context, input_.credentials))
+    if (!gate_.admit(context, {}).admitted())
       return argus::response::toRpcStatus(ResponseException(401, TtsErrors::Unauthorized));
     response->set_sample_rate(input_.capabilities.sampleRate);
     response->set_channels(input_.capabilities.channels);
@@ -111,7 +102,7 @@ struct TtsRpcServer::Impl final : wire::Synthesis::Service
                           const wire::SynthesisRequest* request,
                           grpc::ServerWriter<wire::AudioChunk>* writer) override
   {
-    if (!authorized(*context, input_.credentials))
+    if (!gate_.admit(context, {}).admitted())
       return argus::response::toRpcStatus(ResponseException(401, TtsErrors::Unauthorized));
     if (!validRequest(*request, input_.capabilities))
       return argus::response::toRpcStatus(ResponseException(400, TtsErrors::InvalidRequest));
@@ -224,6 +215,7 @@ struct TtsRpcServer::Impl final : wire::Synthesis::Service
   }
 
   TtsRpcInput input_;
+  argus::client::FleetCallerGate gate_;
   std::counting_semaphore<> slots_;
   int port_{0};
   std::unique_ptr<grpc::Server> server_;

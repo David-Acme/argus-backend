@@ -100,6 +100,12 @@ client's own ceiling of two minutes was being refused at the boundary; a caller
 that sends no deadline at all is served, because the ceiling is a bound on what
 the caller asks for and not a requirement that it ask.
 
+The check is `argus::client::FleetCallerGate` (`packages/lib/grpc`), the same
+gate identity, sync control and auth use, built from the `[rpc.callers]` pairs
+with no legacy secret: a `CHANGE_ME` placeholder is never a credential, and a
+listener whose every pair is a placeholder refuses to start
+(`std::invalid_argument`) instead of answering an open gate.
+
 ## Build commands
 
 ```bash

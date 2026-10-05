@@ -3,6 +3,8 @@
 
 #include <app/rpc/tts-rpc-server.hxx>
 #include <tts/tts-client.hxx>
+#include <tts.grpc.pb.h>
+#include <grpc/grpc-client-base.hxx>
 #include <errors/response-exception.hxx>
 #include <tts/tts-errors.hxx>
 #include <response/response-rpc.hxx>
@@ -13,6 +15,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -372,4 +375,28 @@ TEST_CASE("client early-stop cancels the stream")
   }
   CHECK(stopped);
   CHECK(calls.load() == 2);
+}
+
+TEST_CASE("a listener whose callers are all placeholders refuses to start")
+{
+  TtsRpcInput input = serverInput();
+  input.credentials = {{"voice", "CHANGE_ME_VOICE_TTS"}, {"settings", "CHANGE_ME_SETTINGS_TTS"}};
+  CHECK_THROWS_AS(TtsRpcServer{std::move(input)}, std::invalid_argument);
+}
+
+TEST_CASE("the wire refuses a request that presents two credentials")
+{
+  TtsRpcServer server(serverInput());
+  const auto stub = argus::tts::v1::Synthesis::NewStub(
+      argus::client::makeChannel("127.0.0.1:" + std::to_string(server.port())));
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+  argus::client::addCallerCredential(context, kSecret);
+  argus::client::addCallerCredential(context, kSecret);
+  argus::tts::v1::CapabilitiesRequest request;
+  argus::tts::v1::CapabilitiesResponse response;
+  const auto status = stub->Capabilities(&context, request, &response);
+  REQUIRE_FALSE(status.ok());
+  CHECK(argus::response::fromRpcStatus(status).statusCode() == 401);
+  CHECK(response.sample_rate() == 0);
 }

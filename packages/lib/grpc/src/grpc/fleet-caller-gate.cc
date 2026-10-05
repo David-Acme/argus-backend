@@ -13,6 +13,28 @@ bool listed(CallerSet allowed, std::string_view caller)
   return std::ranges::find(allowed, caller) != allowed.end();
 }
 
+bool presentedOnce(const ClientMetadata& metadata, std::string_view key)
+{
+  return metadata.count(grpc::string_ref(key.data(), key.size())) <= 1;
+}
+
+std::string presentedValue(const ClientMetadata& metadata, std::string_view key)
+{
+  const auto found = metadata.find(grpc::string_ref(key.data(), key.size()));
+  if (found == metadata.end())
+    return {};
+  return {found->second.data(), found->second.size()};
+}
+
+}
+
+std::optional<PresentedCredential> presentedCredential(const ClientMetadata& metadata)
+{
+  if (!presentedOnce(metadata, kCallerCredentialKey) ||
+      !presentedOnce(metadata, kFleetSecretKey))
+    return std::nullopt;
+  return PresentedCredential{.credential = presentedValue(metadata, kCallerCredentialKey),
+                             .fleetSecret = presentedValue(metadata, kFleetSecretKey)};
 }
 
 bool FleetCallerGate::pairedSecret(std::string_view secret)
@@ -102,12 +124,15 @@ FleetAdmission FleetCallerGate::admit(const PresentedCredential& presented,
   return {.verdict = FleetVerdict::Unauthenticated, .caller = {}, .legacy = false};
 }
 
-FleetAdmission FleetCallerGate::admit(const grpc::CallbackServerContext* context,
+FleetAdmission FleetCallerGate::admit(const grpc::ServerContextBase* context,
                                       CallerSet allowed) const
 {
-  return admit(PresentedCredential{.credential = metadata(context, kCallerCredentialKey),
-                                   .fleetSecret = metadata(context, kFleetSecretKey)},
-               allowed);
+  if (open())
+    return {.verdict = FleetVerdict::Admitted, .caller = {}, .legacy = false};
+  const auto presented = presentedCredential(context->client_metadata());
+  if (!presented)
+    return {.verdict = FleetVerdict::Unauthenticated, .caller = {}, .legacy = false};
+  return admit(*presented, allowed);
 }
 
 grpc::Status FleetCallerGate::refusal(FleetVerdict verdict)

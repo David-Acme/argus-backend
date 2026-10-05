@@ -96,6 +96,12 @@ without audio with 400, takes a slot only for each decode (a partial skips
 when the slots are busy, the final waits for one until the deadline) and
 never holds one while it waits for audio.
 
+The check is `argus::client::FleetCallerGate` (`packages/lib/grpc`), the same
+gate identity, sync control and auth use, built from the `[rpc.callers]` pairs
+with no legacy secret: a `CHANGE_ME` placeholder is never a credential, and a
+listener whose every pair is a placeholder refuses to start
+(`std::invalid_argument`) instead of answering an open gate.
+
 ## Build commands
 
 ```bash

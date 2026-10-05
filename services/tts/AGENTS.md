@@ -111,6 +111,12 @@ by this pilot when `[rpc]` is configured. Two engines run behind it, chosen
 per language: Kyutai Pocket TTS (default for es and en) and Supertonic 3
 (every other language, and the fallback when Pocket models are missing). The
 wire shape and the announced sample rate are unchanged (see CONTEXT.md).
+The credential header must arrive exactly once (zero or two entries are 401).
+The check is `argus::client::FleetCallerGate` (`packages/lib/grpc`), the same
+gate identity, sync control and auth use, built from the `[rpc.callers]` pairs
+with no legacy secret: a `CHANGE_ME` placeholder is never a credential, and a
+listener whose every pair is a placeholder refuses to start
+(`std::invalid_argument`) instead of answering an open gate.
 
 ## Build commands
 

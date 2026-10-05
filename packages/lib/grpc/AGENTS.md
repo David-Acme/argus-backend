@@ -36,7 +36,14 @@ per client.
   caller is unpaired, only for methods an unpaired caller may call, and its
   first use calls `onFirstLegacy` once (the service logs the WARN). A
   `CHANGE_ME` placeholder is never a credential. With nothing configured the
-  gate is open, which each service allows only on loopback. Compiled into
+  gate is open, which each service allows only on loopback. `admit` takes any
+  `grpc::ServerContextBase`, so the synchronous servers of tts, stt, vlm and
+  llm use it too (with their `[rpc.callers]` pairs, no expected callers and no
+  legacy secret); they refuse to start when `pairedCount()` is 0, so their
+  gate is never open. `presentedCredential(metadata)` reads the two headers
+  and answers nothing when either arrives more than once, which `admit`
+  turns into `Unauthenticated`: a credential presented twice is no
+  credential, on every surface. Compiled into
   `argus_client_grpc_base`. The sending side is `PeerCredential` and
   `addPeerCredential` in `grpc-client-base`: the caller's own credential as
   `x-argus-credential`, or the legacy secret as `x-argus-fleet` only when it
@@ -92,7 +99,8 @@ no channel to exercise.
 `tests/unit/fleet-caller-gate-test.cc` — the gate's verdicts: a paired caller
 named, missing/wrong/other-caller credentials refused, the legacy secret
 refused once every caller is paired and narrowed while one is not, the WARN
-hook called once, placeholders never authenticating.
+hook called once, placeholders never authenticating, and a header presented
+twice read as no credential at all.
 `tests/unit/grpc-server-drain-test.cc` — a live loopback server is shut down
 once however often the stop is asked, and a drain without a server is
 drained as soon as it is asked to stop.

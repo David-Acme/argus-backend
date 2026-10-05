@@ -129,6 +129,12 @@ a declared temperature outside `-1..2`, a grammar over 8 KiB and a negative
 `kMaxTimeout` is the same 400 — the ceiling is a bound on what the caller asks
 for, not a requirement that it ask.
 
+The check is `argus::client::FleetCallerGate` (`packages/lib/grpc`), the same
+gate identity, sync control and auth use, built from the `[rpc.callers]` pairs
+with no legacy secret: a `CHANGE_ME` placeholder is never a credential, and a
+listener whose every pair is a placeholder refuses to start
+(`std::invalid_argument`) instead of answering an open gate.
+
 `ChatStream` is where this leg differs most from the HTTP one: the engine's
 token callback fires on a `std::jthread` producer into a 64-token bounded queue
 that polls its condition variable rather than blocking forever, the consumer

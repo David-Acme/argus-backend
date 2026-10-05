@@ -1,7 +1,7 @@
 #include "llm-rpc-server.hxx"
 
 #include <errors/response-exception.hxx>
-#include <grpc/grpc-server-identity.hxx>
+#include <grpc/fleet-caller-gate.hxx>
 #include <llm.grpc.pb.h>
 #include <llm/llm-errors.hxx>
 #include <response/response-rpc.hxx>
@@ -12,7 +12,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <iterator>
 #include <mutex>
 #include <optional>
 #include <semaphore>
@@ -63,24 +62,6 @@ ResponseException stoppedError(const grpc::ServerContext& context)
   if (Clock::now() >= context.deadline())
     return {504, LlmErrors::DeadlineExceeded};
   return {499, LlmErrors::Cancelled};
-}
-
-std::optional<std::string>
-authorizedCaller(grpc::ServerContext& context,
-                 const std::vector<std::pair<std::string, std::string>>& credentials)
-{
-  const auto& metadata = context.client_metadata();
-  const auto range = metadata.equal_range(argus::client::kCallerCredentialKey);
-  if (range.first == range.second || std::next(range.first) != range.second)
-    return std::nullopt;
-  const std::string presented(range.first->second.data(), range.first->second.size());
-  const auto match = std::ranges::find_if(credentials, [&presented](const auto& credential) {
-    return !credential.first.empty() && !credential.second.empty() &&
-           argus::client::constantTimeEquals(presented, credential.second);
-  });
-  if (match == credentials.end())
-    return std::nullopt;
-  return match->first;
 }
 
 bool validRequest(const wire::ChatRequest& request)
@@ -156,10 +137,15 @@ bool stopped(const grpc::ServerContext& context)
 struct LlmRpcServer::Impl final : wire::Chat::Service
 {
   explicit Impl(LlmRpcInput input)
-      : input_(std::move(input)), slots_(std::max(1, input_.slots))
+      : input_(std::move(input)),
+        gate_({.expectedCallers = {},
+               .callerPairs = input_.credentials,
+               .legacySecret = {},
+               .onFirstLegacy = {}}),
+        slots_(std::max(1, input_.slots))
   {
     if (!input_.capabilities || !input_.chat || !input_.chatStream ||
-        input_.credentials.empty())
+        gate_.pairedCount() == 0)
       throw std::invalid_argument("Invalid LLM RPC configuration");
     grpc::ServerBuilder builder;
     builder.SetMaxReceiveMessageSize(kMaxReceiveBytes);
@@ -177,7 +163,7 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
                             const wire::CapabilitiesRequest*,
                             wire::CapabilitiesResponse* response) override
   {
-    if (!authorizedCaller(*context, input_.credentials))
+    if (!gate_.admit(context, {}).admitted())
       return argus::response::toRpcStatus(
           ResponseException(401, LlmErrors::Unauthorized));
     argus::llm::Capabilities capabilities;
@@ -205,8 +191,8 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
                     const wire::ChatRequest* request,
                     wire::ChatResponse* response) override
   {
-    const auto caller = authorizedCaller(*context, input_.credentials);
-    if (!caller)
+    const auto admission = gate_.admit(context, {});
+    if (!admission.admitted())
       return argus::response::toRpcStatus(
           ResponseException(401, LlmErrors::Unauthorized));
     if (!validRequest(*request))
@@ -224,7 +210,7 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
       std::counting_semaphore<>& slots;
       ~Release() { slots.release(); }
     } release{slots_};
-    const ChatRequest chat = chatRequest(*request, *caller);
+    const ChatRequest chat = chatRequest(*request, admission.caller);
     try {
       response->set_text(input_.chat(chat).text);
     }
@@ -242,8 +228,8 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
                           const wire::ChatRequest* request,
                           grpc::ServerWriter<wire::ChatToken>* writer) override
   {
-    const auto caller = authorizedCaller(*context, input_.credentials);
-    if (!caller)
+    const auto admission = gate_.admit(context, {});
+    if (!admission.admitted())
       return argus::response::toRpcStatus(
           ResponseException(401, LlmErrors::Unauthorized));
     if (!validRequest(*request))
@@ -261,7 +247,7 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
       std::counting_semaphore<>& slots;
       ~Release() { slots.release(); }
     } release{slots_};
-    const ChatRequest chat = chatRequest(*request, *caller);
+    const ChatRequest chat = chatRequest(*request, admission.caller);
     StreamQueue queue;
     std::jthread producer([&] {
       const TokenCallback emit = [&](const std::string& token, bool done) {
@@ -373,6 +359,7 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
   }
 
   LlmRpcInput input_;
+  argus::client::FleetCallerGate gate_;
   std::counting_semaphore<> slots_;
   int port_{0};
   std::unique_ptr<grpc::Server> server_;

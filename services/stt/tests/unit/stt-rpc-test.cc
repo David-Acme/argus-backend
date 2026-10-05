@@ -24,6 +24,7 @@
 #include <span>
 #include <optional>
 #include <stop_token>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -813,4 +814,11 @@ TEST_CASE("real engine transcribes through the legacy client")
   engine.shutdown();
   ConfigService::setRuntimeString("stt.grpc_target", "");
   ConfigService::setRuntimeString("stt.grpc_credential", "");
+}
+
+TEST_CASE("a listener whose callers are all placeholders refuses to start")
+{
+  SttRpcInput input = serverInput();
+  input.credentials = {{"voice", "CHANGE_ME_VOICE_STT"}, {"settings", "CHANGE_ME_SETTINGS_STT"}};
+  CHECK_THROWS_AS(SttRpcServer{std::move(input)}, std::invalid_argument);
 }

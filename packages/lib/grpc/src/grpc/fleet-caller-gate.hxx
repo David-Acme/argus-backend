@@ -6,6 +6,8 @@
 #include <functional>
 #include <grpc/grpc-server-identity.hxx>
 #include <grpcpp/grpcpp.h>
+#include <map>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -32,6 +34,11 @@ struct PresentedCredential
   std::string credential;
   std::string fleetSecret;
 };
+
+using ClientMetadata = std::multimap<grpc::string_ref, grpc::string_ref>;
+
+[[nodiscard]] std::optional<PresentedCredential> presentedCredential(
+    const ClientMetadata& metadata);
 
 enum class FleetVerdict : std::uint8_t
 {
@@ -63,7 +70,7 @@ public:
   [[nodiscard]] FleetAdmission admit(const PresentedCredential& presented,
                                      CallerSet allowed) const;
 
-  [[nodiscard]] FleetAdmission admit(const grpc::CallbackServerContext* context,
+  [[nodiscard]] FleetAdmission admit(const grpc::ServerContextBase* context,
                                      CallerSet allowed) const;
 
   [[nodiscard]] bool open() const;

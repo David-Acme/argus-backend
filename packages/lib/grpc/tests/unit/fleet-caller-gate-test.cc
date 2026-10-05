@@ -168,3 +168,33 @@ TEST_CASE("refusals map onto the gRPC codes callers already handle")
   CHECK(FleetCallerGate::refusal(FleetVerdict::Forbidden).error_code() ==
         grpc::StatusCode::PERMISSION_DENIED);
 }
+
+TEST_CASE("a credential is read from the metadata only when it is presented once")
+{
+  using argus::client::ClientMetadata;
+  using argus::client::presentedCredential;
+  const std::string voice = voiceSecret();
+  const std::string fleetValue = fleetSecret();
+  const std::string other(64, 'x');
+
+  ClientMetadata single{{"x-argus-credential", voice}, {"x-argus-fleet", fleetValue}};
+  const auto read = presentedCredential(single);
+  REQUIRE(read.has_value());
+  CHECK(read.value_or(PresentedCredential{}).credential == voice);
+  CHECK(read.value_or(PresentedCredential{}).fleetSecret == fleetValue);
+
+  const auto absent = presentedCredential(ClientMetadata{});
+  REQUIRE(absent.has_value());
+  CHECK(absent.value_or(credential("x")).credential.empty());
+  CHECK(absent.value_or(fleet("x")).fleetSecret.empty());
+
+  CHECK_FALSE(presentedCredential(ClientMetadata{{"x-argus-credential", voice},
+                                                 {"x-argus-credential", other}})
+                  .has_value());
+  CHECK_FALSE(presentedCredential(ClientMetadata{{"x-argus-credential", voice},
+                                                 {"x-argus-credential", voice}})
+                  .has_value());
+  CHECK_FALSE(presentedCredential(ClientMetadata{{"x-argus-fleet", fleetValue},
+                                                 {"x-argus-fleet", fleetValue}})
+                  .has_value());
+}

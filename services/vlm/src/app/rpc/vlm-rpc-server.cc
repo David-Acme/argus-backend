@@ -1,7 +1,7 @@
 #include "vlm-rpc-server.hxx"
 
 #include <errors/response-exception.hxx>
-#include <grpc/grpc-server-identity.hxx>
+#include <grpc/fleet-caller-gate.hxx>
 #include <feature/vlm/services/jpeg-gate.hxx>
 #include <response/response-rpc.hxx>
 #include <vlm.grpc.pb.h>
@@ -33,20 +33,6 @@ ResponseException stoppedError(const grpc::ServerContext& context)
   return {499, VlmErrors::Cancelled};
 }
 
-bool authorized(grpc::ServerContext& context,
-                const std::vector<std::pair<std::string, std::string>>& credentials)
-{
-  const auto& metadata = context.client_metadata();
-  const auto range = metadata.equal_range(argus::client::kCallerCredentialKey);
-  if (range.first == range.second || std::next(range.first) != range.second)
-    return false;
-  const std::string presented(range.first->second.data(), range.first->second.size());
-  return std::ranges::any_of(credentials, [&presented](const auto& credential) {
-    return !credential.first.empty() && !credential.second.empty() &&
-           argus::client::constantTimeEquals(presented, credential.second);
-  });
-}
-
 bool validRequest(const wire::DescribeRequest& request)
 {
   return !request.image_jpeg().empty() &&
@@ -60,9 +46,14 @@ bool validRequest(const wire::DescribeRequest& request)
 struct VlmRpcServer::Impl final : wire::Vision::Service
 {
   explicit Impl(VlmRpcInput input)
-      : input_(std::move(input)), slots_(std::max(1, input_.slots))
+      : input_(std::move(input)),
+        gate_({.expectedCallers = {},
+               .callerPairs = input_.credentials,
+               .legacySecret = {},
+               .onFirstLegacy = {}}),
+        slots_(std::max(1, input_.slots))
   {
-    if (!input_.describe || !input_.capabilities || input_.credentials.empty())
+    if (!input_.describe || !input_.capabilities || gate_.pairedCount() == 0)
       throw std::invalid_argument("Invalid VLM RPC configuration");
     grpc::ServerBuilder builder;
     builder.SetMaxReceiveMessageSize(kMaxReceiveBytes);
@@ -80,7 +71,7 @@ struct VlmRpcServer::Impl final : wire::Vision::Service
                             const wire::CapabilitiesRequest*,
                             wire::CapabilitiesResponse* response) override
   {
-    if (!authorized(*context, input_.credentials))
+    if (!gate_.admit(context, {}).admitted())
       return argus::response::toRpcStatus(
           ResponseException(401, VlmErrors::Unauthorized));
     argus::vlm::Capabilities capabilities;
@@ -104,7 +95,7 @@ struct VlmRpcServer::Impl final : wire::Vision::Service
                         const wire::DescribeRequest* request,
                         wire::DescribeResponse* response) override
   {
-    if (!authorized(*context, input_.credentials))
+    if (!gate_.admit(context, {}).admitted())
       return argus::response::toRpcStatus(
           ResponseException(401, VlmErrors::Unauthorized));
     if (!validRequest(*request))
@@ -145,6 +136,7 @@ struct VlmRpcServer::Impl final : wire::Vision::Service
   }
 
   VlmRpcInput input_;
+  argus::client::FleetCallerGate gate_;
   std::counting_semaphore<> slots_;
   int port_{0};
   std::unique_ptr<grpc::Server> server_;

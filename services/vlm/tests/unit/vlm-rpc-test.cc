@@ -25,6 +25,7 @@
 #include <memory>
 #include <optional>
 #include <semaphore>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -566,4 +567,11 @@ TEST_CASE("real engine describes through the gRPC leg")
   llama_backend_free();
   ConfigService::setRuntimeString("vlm.grpc_target", "");
   ConfigService::setRuntimeString("vlm.grpc_credential", "");
+}
+
+TEST_CASE("a listener whose callers are all placeholders refuses to start")
+{
+  VlmRpcInput input = serverInput();
+  input.credentials = {{"voice", "CHANGE_ME_VOICE_VLM"}, {"settings", "CHANGE_ME_SETTINGS_VLM"}};
+  CHECK_THROWS_AS(VlmRpcServer{std::move(input)}, std::invalid_argument);
 }

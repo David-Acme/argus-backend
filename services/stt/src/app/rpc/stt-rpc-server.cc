@@ -1,7 +1,7 @@
 #include "stt-rpc-server.hxx"
 
 #include <errors/response-exception.hxx>
-#include <grpc/grpc-server-identity.hxx>
+#include <grpc/fleet-caller-gate.hxx>
 #include <response/response-rpc.hxx>
 #include <stt.grpc.pb.h>
 #include <stt/stt-errors.hxx>
@@ -31,20 +31,6 @@ ResponseException stoppedError(const grpc::ServerContext& context)
   if (Clock::now() >= context.deadline())
     return {504, SttErrors::DeadlineExceeded};
   return {499, SttErrors::Cancelled};
-}
-
-bool authorized(grpc::ServerContext& context,
-                const std::vector<std::pair<std::string, std::string>>& credentials)
-{
-  const auto& metadata = context.client_metadata();
-  const auto range = metadata.equal_range(argus::client::kCallerCredentialKey);
-  if (range.first == range.second || std::next(range.first) != range.second)
-    return false;
-  const std::string presented(range.first->second.data(), range.first->second.size());
-  return std::ranges::any_of(credentials, [&presented](const auto& credential) {
-    return !credential.first.empty() && !credential.second.empty() &&
-           argus::client::constantTimeEquals(presented, credential.second);
-  });
 }
 
 bool validRate(std::uint32_t rate)
@@ -113,10 +99,15 @@ bool validRequest(const wire::TranscribeRequest& request,
 struct SttRpcServer::Impl final : wire::Transcription::Service
 {
   explicit Impl(SttRpcInput input)
-      : input_(std::move(input)), slots_(std::max(1, input_.slots))
+      : input_(std::move(input)),
+        gate_({.expectedCallers = {},
+               .callerPairs = input_.credentials,
+               .legacySecret = {},
+               .onFirstLegacy = {}}),
+        slots_(std::max(1, input_.slots))
   {
     if (!input_.transcribe || !input_.capabilities || !input_.acceptsLanguage ||
-        input_.credentials.empty())
+        gate_.pairedCount() == 0)
       throw std::invalid_argument("Invalid STT RPC configuration");
     grpc::ServerBuilder builder;
     builder.SetMaxReceiveMessageSize(kMaxReceiveBytes);
@@ -133,7 +124,7 @@ struct SttRpcServer::Impl final : wire::Transcription::Service
                             const wire::CapabilitiesRequest*,
                             wire::CapabilitiesResponse* response) override
   {
-    if (!authorized(*context, input_.credentials))
+    if (!gate_.admit(context, {}).admitted())
       return argus::response::toRpcStatus(ResponseException(401, SttErrors::Unauthorized));
     argus::stt::Capabilities capabilities;
     try {
@@ -158,7 +149,7 @@ struct SttRpcServer::Impl final : wire::Transcription::Service
                           const wire::TranscribeRequest* request,
                           wire::TranscribeResponse* response) override
   {
-    if (!authorized(*context, input_.credentials))
+    if (!gate_.admit(context, {}).admitted())
       return argus::response::toRpcStatus(ResponseException(401, SttErrors::Unauthorized));
     try {
       if (!validRequest(*request, input_.acceptsLanguage))
@@ -198,7 +189,7 @@ struct SttRpcServer::Impl final : wire::Transcription::Service
 
   grpc::Status TranscribeStream(grpc::ServerContext* context, StreamIo* stream) override
   {
-    if (!authorized(*context, input_.credentials))
+    if (!gate_.admit(context, {}).admitted())
       return argus::response::toRpcStatus(ResponseException(401, SttErrors::Unauthorized));
     if (deadlineTooFar(*context))
       return argus::response::toRpcStatus(ResponseException(400, SttErrors::InvalidRequest));
@@ -267,6 +258,7 @@ struct SttRpcServer::Impl final : wire::Transcription::Service
   }
 
   SttRpcInput input_;
+  argus::client::FleetCallerGate gate_;
   std::counting_semaphore<> slots_;
   int port_{0};
   std::unique_ptr<grpc::Server> server_;

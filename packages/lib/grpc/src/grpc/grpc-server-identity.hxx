@@ -25,7 +25,7 @@ inline bool constantTimeEquals(const std::string& left,
   return diff == 0;
 }
 
-inline std::string metadata(const grpc::CallbackServerContext* context,
+inline std::string metadata(const grpc::ServerContextBase* context,
                             std::string_view key)
 {
   for (const auto& [metadataKey, value] : context->client_metadata()) {
