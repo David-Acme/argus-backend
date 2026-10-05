@@ -32,9 +32,11 @@ inline constexpr std::string_view UPDATE_INCIDENT_DANGER =
     "UPDATE guard_incident SET danger = ? WHERE id = ?";
 
 inline constexpr std::string_view INSERT_ACTION =
-    "INSERT OR IGNORE INTO guard_action (incident_id, encounter_id, camera_id, "
+    "INSERT INTO guard_action (incident_id, encounter_id, camera_id, "
     "person_id, command_id, kind, status, detail, created_at) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+    "ON CONFLICT (command_id) WHERE command_id != '' DO UPDATE SET "
+    "status = excluded.status, detail = excluded.detail";
 
 inline constexpr std::string_view COUNT_PERSON_SINCE =
     "SELECT COUNT(*) AS total FROM guard_encounter "
@@ -149,10 +151,8 @@ inline constexpr std::string_view RECORD_DIALOGUE =
 
 inline constexpr std::string_view TOUCH_ENCOUNTER =
     "UPDATE guard_encounter SET checks = checks + 1, best_camera_id = ?, "
-    "best_score = ?, last_seen = ? WHERE id = ? RETURNING checks";
-
-inline constexpr std::string_view SET_ENCOUNTER_STATE =
-    "UPDATE guard_encounter SET grade = ?, state = ? WHERE id = ?";
+    "best_score = ?, last_seen = ? WHERE id = ? AND state != 'closed' "
+    "RETURNING checks";
 
 inline constexpr std::string_view MARK_ENCOUNTER_ACTION =
     "UPDATE guard_encounter SET last_action_at = ? WHERE id = ?";
@@ -212,7 +212,7 @@ inline constexpr std::string_view SELECT_ENCOUNTER_STATE =
 
 inline constexpr std::string_view UPDATE_ENCOUNTER_STATE_REVISION =
     "UPDATE guard_encounter SET grade = ?, state = ?, "
-    "revision = revision + 1 WHERE id = ?";
+    "revision = revision + 1 WHERE id = ? AND state != 'closed'";
 
 inline constexpr std::string_view INSERT_TRANSITION =
     "INSERT INTO guard_encounter_transition (encounter_id, from_state, "
@@ -947,6 +947,20 @@ struct GuardIncidentPhaseResult
 {
   int64_t incidentId{0};
   bool committed{false};
+  bool guestTaken{false};
+};
+
+struct GuardEncounterMatchSpec
+{
+  int64_t personId{0};
+  std::string signature;
+  int64_t cameraId{0};
+  double bestScore{0.0};
+  int64_t now{0};
+  int64_t windowS{0};
+  int64_t continuityWindowS{0};
+  double minSimilarity{0.0};
+  bool createIfUnmatched{false};
 };
 
 struct GuardEncounterPhaseInput
@@ -959,6 +973,7 @@ struct GuardEncounterPhaseInput
   int64_t closePersonId{0};
   int64_t closeAt{0};
   GuardObservationAdvanceInput advance;
+  std::optional<GuardEncounterMatchSpec> match;
 };
 
 struct GuardEncounterPhaseResult

@@ -23,6 +23,9 @@ public:
 
   [[nodiscard]] drogon::Task<bool> upsert(const PresenceRow& row) const;
 
+  [[nodiscard]] drogon::Task<PresenceDecision>
+  transition(const PresenceTransition& input) const;
+
   [[nodiscard]] drogon::Task<std::vector<int64_t>>
   removeUser(int64_t userId) const;
 
@@ -33,5 +36,5 @@ public:
   [[nodiscard]] drogon::Task<std::vector<PresenceRow>>
   expireHome(const PresenceExpireInput& input) const;
 
-  [[nodiscard]] drogon::Task<int64_t> purgeStale(int64_t changedBefore) const;
+  [[nodiscard]] drogon::Task<int64_t> purgeStale(int64_t signalBefore) const;
 };

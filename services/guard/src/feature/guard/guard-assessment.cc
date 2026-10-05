@@ -10,6 +10,7 @@
 #include <llm/llm-remote.hxx>
 #include <vlm/vlm-remote.hxx>
 #include <runtime/blocking-task.hxx>
+#include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
@@ -133,6 +134,11 @@ std::string systemPrompt(const std::string& lang)
          "in language " + lang + ".";
 }
 
+std::string quoted(const std::string& text)
+{
+  return json_util::toString(Json::Value(text));
+}
+
 std::string contextMessage(const GuardAssessmentInput& input,
                            const std::string& caption)
 {
@@ -143,11 +149,11 @@ std::string contextMessage(const GuardAssessmentInput& input,
       " checks=" + std::to_string(input.checks) +
       " expected_guest=" + (input.expectedGuest ? "yes" : "no");
   if (input.personHasUser)
-    message += " known_user=" + input.personName + "(" + input.personRole + ")";
+    message += " known_user=" + quoted(input.personName) + "(" + input.personRole + ")";
   else
     message += " known_user=no";
   if (!input.personObservation.empty())
-    message += " observation=\"" + input.personObservation + "\"";
+    message += " observation=" + quoted(input.personObservation);
   if (!input.knownTags.empty()) {
     message += " prior_tags=";
     for (size_t i = 0; i < input.knownTags.size(); ++i) {
@@ -157,16 +163,16 @@ std::string contextMessage(const GuardAssessmentInput& input,
     }
   }
   if (input.greeted) {
-    message += " greeted=\"" + input.greetingText + "\"";
+    message += " greeted=" + quoted(input.greetingText);
     if (input.personReply.empty())
       message += " reply=none";
     else
-      message += " reply=\"" + input.personReply + "\"";
+      message += " reply=" + quoted(input.personReply);
   }
   if (input.replied)
-    message += " replied=\"" + input.replyText + "\"";
+    message += " replied=" + quoted(input.replyText);
   if (!caption.empty())
-    message += " vision_caption=\"" + caption + "\"";
+    message += " vision_caption=" + quoted(caption);
   return message + ". Decide with this information and reply with the final "
                    "JSON now.";
 }

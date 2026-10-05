@@ -54,7 +54,6 @@ public:
   drogon::Task<int64_t>
   insertAssessment(const GuardAssessmentRowInput& input) const;
 
-  drogon::Task<std::vector<GuardEncounter>> openEncounters(int64_t since) const;
 
   drogon::Task<std::vector<GuardEncounter>>
   staleEncounters(int64_t olderThan) const;

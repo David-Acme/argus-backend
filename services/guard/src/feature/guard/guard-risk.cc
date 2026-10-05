@@ -132,7 +132,10 @@ GuardRiskResult guard_risk::mergeEvidence(const GuardRiskInput& input)
     RiskEvidence evidence;
     if (!evidenceFromTag(tag, evidence))
       continue;
-    result.appliedTags.push_back(evidenceToString(evidence));
+    const std::string name = evidenceToString(evidence);
+    if (std::ranges::find(result.appliedTags, name) != result.appliedTags.end())
+      continue;
+    result.appliedTags.push_back(name);
     result.evidenceScore += evidenceScore(evidence);
     result.weapon = result.weapon || evidence == RiskEvidence::Weapon;
   }

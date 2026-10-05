@@ -7,6 +7,7 @@
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
 #include <feature/safety/dtos/panic-dto.hxx>
+#include <feature/safety/dtos/remove-pin-dto.hxx>
 #include <feature/safety/dtos/response-safety-dto.hxx>
 #include <feature/safety/dtos/set-pin-dto.hxx>
 #include <feature/safety/dtos/update-safety-dto.hxx>
@@ -64,11 +65,18 @@ drogon::Task<drogon::HttpResponsePtr> SafetyController::toggle(drogon::HttpReque
 drogon::Task<drogon::HttpResponsePtr> SafetyController::setPin(drogon::HttpRequestPtr req)
 {
   const auto body = SetPinDto::fromJson(*req->getJsonObject());
-  co_return ApiResponse::ok(statusJson(co_await service_->setPin(
-      {.userId = callerOf(req).sub, .disarmPin = body.disarmPin, .duressPin = body.duressPin})));
+  const auto& caller = callerOf(req);
+  co_return ApiResponse::ok(statusJson(co_await service_->setPin({.userId = caller.sub,
+                                                                  .userName = caller.name,
+                                                                  .disarmPin = body.disarmPin,
+                                                                  .duressPin = body.duressPin,
+                                                                  .currentPin = body.currentPin})));
 }
 
 drogon::Task<drogon::HttpResponsePtr> SafetyController::removePin(drogon::HttpRequestPtr req)
 {
-  co_return ApiResponse::ok(statusJson(co_await service_->removePin(callerOf(req).sub)));
+  const auto body = RemovePinDto::fromRequest(req);
+  const auto& caller = callerOf(req);
+  co_return ApiResponse::ok(statusJson(co_await service_->removePin(
+      {.userId = caller.sub, .userName = caller.name, .currentPin = body.currentPin})));
 }

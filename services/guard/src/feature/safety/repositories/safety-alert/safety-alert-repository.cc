@@ -14,7 +14,7 @@ drogon::Task<int64_t> SafetyAlertRepository::insert(const SafetyAlertInsertInput
   co_return rows.empty() ? 0 : rows.front()["id"].as<int64_t>();
 }
 
-drogon::Task<std::optional<int64_t>>
+drogon::Task<std::optional<SafetyAlertRecent>>
 SafetyAlertRepository::recent(const SafetyAlertRecentInput& input) const
 {
   const auto rows = co_await DbService::client()->execSqlCoro(
@@ -22,7 +22,15 @@ SafetyAlertRepository::recent(const SafetyAlertRecentInput& input) const
       input.since);
   if (rows.empty())
     co_return std::nullopt;
-  co_return rows.front()["id"].as<int64_t>();
+  co_return SafetyAlertRecent{.id = rows.front()["id"].as<int64_t>(),
+                              .notified = rows.front()["notified_at"].as<int64_t>() > 0};
+}
+
+drogon::Task<int64_t> SafetyAlertRepository::countSince(const SafetyAlertRecentInput& input) const
+{
+  const auto rows = co_await DbService::client()->execSqlCoro(
+      std::string(COUNT_SINCE), safetyAlertKindToString(input.kind), input.userId, input.since);
+  co_return rows.empty() ? 0 : rows.front()["total"].as<int64_t>();
 }
 
 drogon::Task<std::vector<SafetyAlertRow>> SafetyAlertRepository::pending(int64_t since) const
@@ -47,4 +55,11 @@ drogon::Task<std::vector<SafetyAlertRow>> SafetyAlertRepository::pending(int64_t
 drogon::Task<void> SafetyAlertRepository::markNotified(int64_t id, int64_t now) const
 {
   co_await DbService::client()->execSqlCoro(std::string(MARK_NOTIFIED), now, id);
+}
+
+drogon::Task<int64_t> SafetyAlertRepository::purgeBefore(int64_t createdBefore) const
+{
+  const auto result =
+      co_await DbService::client()->execSqlCoro(std::string(PURGE_BEFORE), createdBefore);
+  co_return static_cast<int64_t>(result.affectedRows());
 }

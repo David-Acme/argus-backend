@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
+#include <functional>
 #include <json/value.h>
 #include <memory>
 #include <mutex>
@@ -42,6 +43,7 @@ public:
     NatsBus* bus{nullptr};
     const PresenceDirectory* directory{nullptr};
     PresencePublisher* publisher{nullptr};
+    std::function<drogon::Task<void>(int64_t)> onAccountDisabled{};
   };
 
   static constexpr int64_t kConsentCacheSeconds = 300;
@@ -76,6 +78,7 @@ private:
   [[nodiscard]] drogon::Task<void> forget(int64_t userId);
   [[nodiscard]] drogon::Task<void> announce(PresenceRow row);
   void remember(int64_t userId, bool consent);
+  [[nodiscard]] bool withdrawn(int64_t userId) const;
   void dispatch(std::string payload, Handler handler);
   void subscribe();
   void unsubscribe();

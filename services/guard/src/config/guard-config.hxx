@@ -102,6 +102,7 @@ struct GuardServiceConfig
   int retryBaseMs{1000};
   int retryMaxMs{60000};
   int64_t retryLeaseMs{60000};
+  int64_t staleObservationS{120};
   int maxAnnounceWords{12};
   std::string consumerDurable{"argus-guard"};
   std::string eventStream{"ARGUS_CAMERA"};

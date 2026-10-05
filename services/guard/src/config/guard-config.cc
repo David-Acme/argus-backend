@@ -241,6 +241,7 @@ GuardServiceConfig GuardConfig::resolveService()
   config.maxObservationAttempts =
       configIntOr("guard.max_observation_attempts", 5);
   config.maxAnnounceWords = configIntOr("guard.max_announce_words", 12);
+  config.staleObservationS = configInt64Or("guard.stale_observation_s", 120);
   config.consumerDurable = configOr({.key = "guard.consumer_durable", .fallback = "argus-guard"});
   config.eventStream = configOr({.key = "guard.event_stream", .fallback = "ARGUS_CAMERA"});
   config.eventSubject = ConfigService::getString("guard.event_subject");

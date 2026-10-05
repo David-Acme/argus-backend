@@ -398,9 +398,15 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
   const GuardIncidentPhaseResult guestFirst =
       drogon::sync_wait(repository.commitIncidentPhase(guestPhase));
   CHECK(guestFirst.committed);
-  const GuardIncidentPhaseResult guestReplay =
-      drogon::sync_wait(repository.commitIncidentPhase(guestPhase));
-  CHECK(guestReplay.incidentId == guestFirst.incidentId);
+  GuardIncidentPhaseInput rivalPhase = guestPhase;
+  rivalPhase.incident.eventId = "fault:2b";
+  rivalPhase.advance.eventId = "fault:2b";
+  rivalPhase.consumeGuestAt = 260;
+  const GuardIncidentPhaseResult rival =
+      drogon::sync_wait(repository.commitIncidentPhase(rivalPhase));
+  CHECK(rival.guestTaken);
+  CHECK_FALSE(rival.committed);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_incident WHERE event_id = 'fault:2b'") == "0");
   CHECK(scalar("SELECT used_at FROM guard_expected_guest WHERE id = " +
                std::to_string(guestId)) == "250");
 
@@ -473,7 +479,8 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
                    .encounterId = 0,
                    .danger = "medium",
                    .checkpoint = "{}",
-                   .at = 500}};
+                   .at = 500},
+       .match = std::nullopt};
   const GuardEncounterPhaseResult encounterResult =
       drogon::sync_wait(repository.commitEncounterPhase(encounterPhase));
   CHECK(encounterResult.committed);
@@ -612,7 +619,8 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
                      .encounterId = 0,
                      .danger = "none",
                      .checkpoint = "{}",
-                     .at = 700}};
+                     .at = 700},
+         .match = std::nullopt};
     const auto created =
         drogon::sync_wait(repository.commitEncounterPhase(createPhase));
     REQUIRE(created.committed);
@@ -633,7 +641,8 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
                      .encounterId = created.encounterId,
                      .danger = "none",
                      .checkpoint = "{}",
-                     .at = 800}};
+                     .at = 800},
+         .match = std::nullopt};
     const auto closed =
         drogon::sync_wait(repository.commitEncounterPhase(closePhase));
     REQUIRE(closed.committed);
@@ -933,5 +942,90 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
                  "'replay-listen:1'") == "0");
     CHECK(scalar("SELECT status FROM guard_action_outbox WHERE command_id = "
                  "'replay-listen:1:greet_listen:2'") == "rejected");
+  }
+
+  {
+    const auto matchPhase = [](int64_t cameraId, int64_t now) {
+      GuardEncounterPhaseInput phase;
+      phase.match = GuardEncounterMatchSpec{.personId = 4242,
+                                            .signature = {},
+                                            .cameraId = cameraId,
+                                            .bestScore = 0.5,
+                                            .now = now,
+                                            .windowS = 60,
+                                            .continuityWindowS = 45,
+                                            .minSimilarity = 0.82,
+                                            .createIfUnmatched = true};
+      phase.advance = {.eventId = "match:" + std::to_string(now),
+                       .stage = 2,
+                       .incidentId = 0,
+                       .encounterId = 0,
+                       .danger = "medium",
+                       .checkpoint = "{}",
+                       .at = now};
+      return phase;
+    };
+    const auto opened = drogon::sync_wait(repository.commitEncounterPhase(matchPhase(9, 2000)));
+    REQUIRE(opened.committed);
+    CHECK(opened.encounterChecks == 1);
+    const auto joined = drogon::sync_wait(repository.commitEncounterPhase(matchPhase(10, 2010)));
+    CHECK(joined.encounterId == opened.encounterId);
+    CHECK(scalar("SELECT best_camera_id FROM guard_encounter WHERE id = " +
+                 std::to_string(opened.encounterId)) == "10");
+
+    scalar("UPDATE guard_encounter SET state = 'closed' WHERE id = " +
+           std::to_string(opened.encounterId));
+    CHECK_FALSE(drogon::sync_wait(repository.transitionEncounter(
+        {.encounterId = opened.encounterId,
+         .toState = EncounterState::Verifying,
+         .reason = "late",
+         .grade = "medium",
+         .at = 2015})));
+    CHECK(scalar("SELECT state FROM guard_encounter WHERE id = " +
+                 std::to_string(opened.encounterId)) == "closed");
+    const auto reopened = drogon::sync_wait(repository.commitEncounterPhase(matchPhase(9, 2020)));
+    CHECK(reopened.encounterId != opened.encounterId);
+    CHECK(reopened.encounterChecks == 1);
+
+    drogon::sync_wait(repository.insertAction({.incidentId = 0,
+                                               .encounterId = reopened.encounterId,
+                                               .cameraId = 9,
+                                               .personId = 4242,
+                                               .commandId = "upsert:1",
+                                               .kind = "notify",
+                                               .status = "in_flight",
+                                               .detail = "first",
+                                               .createdAt = 2020}));
+    drogon::sync_wait(repository.insertAction({.incidentId = 0,
+                                               .encounterId = reopened.encounterId,
+                                               .cameraId = 9,
+                                               .personId = 4242,
+                                               .commandId = "upsert:1",
+                                               .kind = "notify",
+                                               .status = "succeeded",
+                                               .detail = "notified",
+                                               .createdAt = 2021}));
+    CHECK(scalar("SELECT COUNT(*) FROM guard_action WHERE command_id = 'upsert:1'") == "1");
+    CHECK(scalar("SELECT status FROM guard_action WHERE command_id = 'upsert:1'") ==
+          "succeeded");
+
+    scalar("UPDATE guard_encounter SET notify_count = 1, notify_highest_rank = 2 WHERE id = " +
+           std::to_string(reopened.encounterId));
+    CHECK(drogon::sync_wait(repository.recordNotificationDispatch(
+        {.eventId = "esc:1:escalation",
+         .encounterId = reopened.encounterId,
+         .commandId = "esc:1:escalation:notify:1",
+         .rank = 4,
+         .failPoint = {}})));
+    CHECK(scalar("SELECT notify_highest_rank FROM guard_encounter WHERE id = " +
+                 std::to_string(reopened.encounterId)) == "4");
+    CHECK(drogon::sync_wait(repository.recordNotificationDispatch(
+        {.eventId = "esc:1:escalation",
+         .encounterId = reopened.encounterId,
+         .commandId = "esc:1:escalation:notify:1",
+         .rank = 4,
+         .failPoint = {}})));
+    CHECK(scalar("SELECT notify_count FROM guard_encounter WHERE id = " +
+                 std::to_string(reopened.encounterId)) == "2");
   }
 }

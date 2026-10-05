@@ -87,8 +87,10 @@ midnight.
 - `night` mode: any unknown is at least `High`, inside a zone too. The
   camera's `night` flag on the event feeds the same night floor in the
   other modes, so a monitor-zone intruder at 03:00 is no longer daytime.
-- An expected guest caps the result at `Medium` (one notification) in
-  every mode. A weapon is the exception, below.
+- An expected guest caps the result at `Medium` (one notification) at
+  home and at night. While the environment is `away` or `armed` nobody is
+  there to host a guest, so a pass never lowers those (the audit of
+  2026-10-05, finding 6). A weapon is the exception, below.
 
 **Weapons.** The assessment's tags are a closed vocabulary (the grammar
 enumerates them) and `weapon` (also `knife`, `gun`, `firearm`,
@@ -942,7 +944,7 @@ when, and the last home signal. A missing row means *unknown*. Every change
 overwrites the row: there is no history, no address and no location, ever.
 Rows go when the environment goes (`ON DELETE CASCADE`), when consent is
 withdrawn or the account disabled, and after `[presence] retention_days`
-(30) without a change. That retention is the one ONBOARD-CONSENT quotes in
+(30) without a signal. That retention is the one ONBOARD-CONSENT quotes in
 the privacy notice.
 
 **Signals.**
@@ -1040,30 +1042,35 @@ effect with `NotifyContent.excludeUserIds = {actor}`, so RESPONSE's plan and
 the call engine ring everyone else and never the person who pressed it. The
 actor gets one separate row, `kind: guard_panic_sent`, `urgency: passive`,
 `silent: true` ("Aviso enviado"), so their screen confirms without any
-sound. A second press within 60 s answers the same alert (`repeated`), so a
-held finger or a retry never doubles the call. If the notification service
-is down the press still answers (`sent: false`), the alert retries with
-backoff and, after a restart, `resumePending` delivers rows younger than 15
-minutes that never settled. The app makes it a 2-second hold
-(`PANIC_HOLD_MS`), never a tap.
+sound. A second press within 60 s answers the same alert (`repeated`, and
+`sent` tells whether that alert already reached anyone), so a held finger or
+a retry never doubles the call; past three new alerts in an hour a press
+answers the latest one the same way, so a Guest cannot ring the house every
+61 s. If the notification service is down the press still answers
+(`sent: false`) and the safety sweep (below) keeps delivering it. The app
+makes it a 2-second hold (`PANIC_HOLD_MS`), never a tap.
 
 **Duress codes.** The owner switches them on for the household (`PATCH
 /guard/safety {duressEnabled}`, Owner only). Then everyone who can disarm
 (Owner, Resident) may set two codes (`PUT /guard/safety/pin {disarmPin,
-duressPin}`: 4-8 digits, different; `DELETE` removes them). With codes set,
-`POST /guard/mode {mode: home}` requires `pin`:
+duressPin, currentPin?}`: 4-8 digits, different, not trivial; `DELETE` with
+`{currentPin}` removes them). With codes set, changing or removing them needs
+the current code, under the same lockout; the duress code there succeeds
+like the real one and raises the silent alert. With codes set, any change
+to a lower mode (`armed` > `away` > `night` > `home`) through
+`POST /guard/mode` requires `pin`:
 
 | PIN | Answer | Side effect |
 |---|---|---|
 | missing | 403 `PIN_REQUIRED` | none |
 | wrong | 403 `PIN_INVALID` (5 in 15 min → 429 `PIN_LOCKED`) | none |
+| duress code while locked out | 429 `PIN_LOCKED`, like any other code | the same silent alert |
 | normal code | the environment list, mode home | none |
 | duress code | the same environment list, mode home | a `guard_duress` critical alert to everyone but the actor |
 
 The duress answer is byte-for-byte the normal one and the mode really
 changes, so the screen, the `/sync` frames and the environment state other
-people see are those of an ordinary disarm. Arming (away/night/armed) never
-asks. Switching the feature off deletes every stored code.
+people see are those of an ordinary disarm. Raising the mode never asks. Switching the feature off deletes every stored code.
 
 **Threat model.**
 - *Who it is for:* someone forced to disarm in front of an intruder (a home
@@ -1089,6 +1096,37 @@ asks. Switching the feature off deletes every stored code.
   against a hash reliably, and the voice tool cannot disarm a user who has
   codes, it gets `PIN_REQUIRED`); an attacker who knows the household uses
   codes can demand the "other" one.
+
+**Hardening after the 2026-10-05 audit** (findings 4, 5, 42-44, 51, 92, 94):
+- *Attempts.* `PinAttempts::reserve` counts the attempt as a failure before
+  the PBKDF2 runs and admits one attempt per user at a time; a second
+  concurrent attempt answers 429 at once, so a burst can no longer try the
+  whole 4-digit space before the first failure lands. Success clears the
+  count (`settle`). While locked the attempt still runs: the disarm code is
+  refused with 429, and the duress code raises the silent alert and answers
+  the very same 429, so exhausting the attempts first cannot silence it.
+- *Cost.* Both derivations run on `BlockingLane::Heavy`, never on the light
+  lane that notifications and camera commands share. A stored hash below
+  100 000 iterations no longer verifies, and `PUT` refuses trivial codes
+  (all one digit, an ascending or descending run including the 9→0 wrap,
+  two repeated halves such as `1212`).
+- *Order.* A duress code raises its alert before the environment id is
+  validated, so a forced disarm against a wrong id still alerts.
+- *Delivery.* One attempt runs inline; on failure the safety sweep (every
+  5 s, started by `SafetyService::start`, a `shutdown_signal` drain named
+  `guard-safety`) re-delivers every pending alert younger than 24 hours with
+  a bounded backoff (2 s doubling to 60 s) and no attempt limit until it is
+  notified. Without the user directory the recipients come from the last
+  directory guard saw (kept in memory and as `guard_state`
+  `response_directory_snapshot`: ids, roles, languages and the active flag,
+  no names), then from the legacy owner+guard roster.
+- *Retention.* Alert rows go after `guard.journal_retention_days` (checked
+  hourly by the same sweep). A user's codes are deleted when identity's
+  change feed reports the account disabled: the presence consumer calls the
+  `onAccountDisabled` hook that `main.cc` wires to `SafetyService::forgetUser`.
+- *Trace.* Both kinds of alert use the opaque correlation `safety:<alertId>`
+  for their command ids, and the safety log lines say "alert", never which
+  kind.
 
 Code: `src/feature/safety/` (controller, DTOs, `SafetyService` as the
 `DisarmGate` that `GuardFeatureService::setMode` consults, `pin-hash`,
@@ -1232,3 +1270,81 @@ retained encounter (journal and actions by `encounter_id`, incidents and
 assessments through the journal's `incident_id`). Unmarking resets
 `retain_until` to 0 and pulls the evidence back to the standard window.
 `guard-episode-test` pins both and the watchlist path.
+
+## Saga, threads and feeds after the 2026-10-05 audit
+
+The cloud audit (`docs/history/reports/cloud-audit-2026-10-05.md`, findings
+6, 50, 93, N5, N16 and the guard review G1-G20) changed these behaviours:
+
+- **Expected visits.** A visit lasts 24 hours at most (`validUntil -
+  validFrom`, 422 `GuestWindowTooLong`). A Resident must name the person, or
+  the camera and the environment (422 `GuestScopeRequired`); only the Owner
+  creates an open pass. The host is the caller unless the Owner names
+  another (403 `GuestHostNotCaller` for anyone else). A one-time pass that a
+  concurrent observation consumed first (`CONSUME_GUEST` touched no row)
+  rolls the incident phase back and the observation is evaluated again
+  without the pass.
+- **Encounters.** Matching runs inside the encounter phase's `IMMEDIATE`
+  transaction (`GuardEncounterPhaseInput::match`), so two cameras can no
+  longer open two episodes for one visitor. A closed encounter is never
+  touched or moved to another state again (`TOUCH_ENCOUNTER` and the state
+  update require `state != 'closed'`); a sighting after the close opens a
+  new one.
+- **One notification per thread.** The notify effect takes an in-process
+  lease per encounter (`notify-thread:<id>`) and reads the thread again
+  under it: two cameras of one episode no longer both send the first alert,
+  and the loser journals `thread_suppressed` (a busy lease retries the
+  observation a second later). An escalation records its tier on the
+  thread even though its correlation (`<eventId>:escalation`) has no
+  journal row, and `escalate` skips the notification when the thread
+  already reached that tier.
+- **Action rows.** `guard_action` upserts on `command_id`, so a retried
+  effect shows its final status, not the first attempt's.
+- **Stale observations.** An observation already older than
+  `guard.stale_observation_s` (120 s) when it is first evaluated (a
+  redelivery after a crash) keeps its journal, incident and notification
+  but never greets, speaks or sounds: the person is long gone. `0` turns
+  the check off (tests). The decision is kept in the checkpoint (`stale`).
+- **Camera commands** carry an expiry taken from the clock when each command
+  leaves, not from the start of the observation, so a long dialogue no
+  longer sends an already-expired command.
+- **Dialogue.** An indeterminate reply or listen counts as not sent and the
+  saga continues to the notification, instead of completing silently.
+- **Assessment.** The context lines the model reads quote every free text
+  (name, observation, greeting, the visitor's reply, the caption) as JSON
+  strings, a heard reply cancels the model's veto (an unverified sentence
+  must not lower the danger), repeated tags count once, and the model's tags
+  are no longer written back to identity (`tagPerson` with source `llm`),
+  so they cannot return as `prior_tags`.
+- **Visitor data per role.** Recipients are batched by language and by
+  whether they may read the visitor: the Owner reads it all, a Guard only a
+  named visitor, Residents and Guests get the generic text and no
+  `data.visitor`. A redacted batch's command id ends in `:r`.
+- **Tamper.** The episode's event id is `tamper:<camera>:<onset>`, so a
+  failed notification retries the same intent instead of opening a new
+  incident every sweep.
+- **Vocabulary.** The alert zone is read through `ZoneType`, action rows
+  through `GuardActionKind`, the decision mode through `DecisionMode`.
+- **Lifecycle.** The encounter sweep skips a tick while the previous one
+  runs; the encounter outbox publishes and ensures its stream on the light
+  lane; the destructor waits at most 10 s for running coroutines;
+  `ResponseVerdictFeed` checks a liveness flag and is a drain
+  (`guard-verdicts`); the RPC listener's drain shuts the server down on its
+  own thread, so the main loop never blocks on it.
+- **Presence.** Retention purges by `last_signal_at` (someone home for a
+  month keeps their row while signals arrive), and a signal is applied in
+  one transaction (`PresenceRepository::transition`) with the consent
+  checked again afterwards, so a withdrawal that lands mid-signal cannot
+  revive the row.
+
+Still open, owned elsewhere:
+- *JetStream ack wait (50, G1).* The durable consumer acknowledges after the
+  saga; the 60 s `AckWait` is fixed in `packages/lib/nats` and
+  `DurableSettlement` has no `inProgress`, so an observation queued behind a
+  slow VLM/LLM evaluation of its camera can be redelivered and use up
+  `maxDeliver`. The fix belongs to `lib/nats` (an `inProgress` callback or
+  a per-consumer `ackWait`); guard would then heartbeat queued and running
+  entries.
+- *Verdict feed (N16).* `argus.notification.v1.response_verdict` is a core
+  publish on no stream, so guard cannot read it through a durable consumer;
+  argus-notification has to publish it into a stream first.

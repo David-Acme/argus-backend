@@ -97,7 +97,8 @@ std::string closeEncounter(GuardRepository& repository,
                    .encounterId = 0,
                    .danger = "none",
                    .checkpoint = "{}",
-                   .at = request.at}};
+                   .at = request.at},
+      .match = std::nullopt};
   const auto created =
       drogon::sync_wait(repository.commitEncounterPhase(createPhase));
   REQUIRE(created.committed);
@@ -118,7 +119,8 @@ std::string closeEncounter(GuardRepository& repository,
                    .encounterId = created.encounterId,
                    .danger = "none",
                    .checkpoint = "{}",
-                   .at = closedAt}};
+                   .at = closedAt},
+      .match = std::nullopt};
   const auto closed =
       drogon::sync_wait(repository.commitEncounterPhase(closePhase));
   REQUIRE(closed.committed);

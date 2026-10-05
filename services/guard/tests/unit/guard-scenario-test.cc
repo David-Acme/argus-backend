@@ -89,6 +89,7 @@ Json::Value personEvent(const PersonEventInput& input)
 GuardService::Config defaults()
 {
   GuardService::Config config;
+  config.staleObservationS = 0;
   config.enabled = true;
   config.profile = "home";
   config.defaultMode = GuardMode::Home;

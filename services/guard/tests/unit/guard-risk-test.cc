@@ -94,3 +94,20 @@ TEST_CASE("a delivery never raises the danger")
   CHECK(delivery.danger == GuardDanger::Low);
   CHECK(delivery.evidenceScore == 0);
 }
+
+TEST_CASE("a repeated tag counts once")
+{
+  const GuardRiskResult once = guard_risk::mergeEvidence(
+      {.floor = GuardDanger::Low,
+       .threat = "medium",
+       .tags = {"concealed_face"},
+       .hardFloor = false});
+  const GuardRiskResult repeated = guard_risk::mergeEvidence(
+      {.floor = GuardDanger::Low,
+       .threat = "medium",
+       .tags = {"concealed_face", "concealed_face", "concealed_face"},
+       .hardFloor = false});
+  CHECK(repeated.evidenceScore == once.evidenceScore);
+  CHECK(repeated.danger == once.danger);
+  CHECK(repeated.appliedTags.size() == 1);
+}

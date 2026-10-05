@@ -86,6 +86,7 @@ Json::Value visit(const VisitInput& input)
 GuardService::Config calmConfig()
 {
   GuardService::Config config;
+  config.staleObservationS = 0;
   config.enabled = true;
   config.defaultMode = GuardMode::Home;
   config.greetEnabled = false;

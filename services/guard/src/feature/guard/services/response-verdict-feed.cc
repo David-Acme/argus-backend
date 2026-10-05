@@ -6,8 +6,30 @@
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <atomic>
 #include <exception>
 #include <string>
+
+struct VerdictFeedState
+{
+  std::atomic<bool> alive{true};
+  std::atomic<int> active{0};
+};
+
+namespace
+{
+class VerdictScope
+{
+public:
+  explicit VerdictScope(std::shared_ptr<VerdictFeedState> state) : state_(std::move(state)) {}
+  ~VerdictScope() { state_->active.fetch_sub(1, std::memory_order_acq_rel); }
+  VerdictScope(const VerdictScope&) = delete;
+  VerdictScope& operator=(const VerdictScope&) = delete;
+
+private:
+  std::shared_ptr<VerdictFeedState> state_;
+};
+}
 
 std::optional<EpisodeReviewInput> response_verdict::reviewOf(std::string_view payload)
 {
@@ -24,26 +46,47 @@ std::optional<EpisodeReviewInput> response_verdict::reviewOf(std::string_view pa
                             .at = event.get("at", 0).asInt64()};
 }
 
-ResponseVerdictFeed::ResponseVerdictFeed(NatsBus* bus) : bus_(bus) {}
+ResponseVerdictFeed::ResponseVerdictFeed(NatsBus* bus)
+    : bus_(bus), state_(std::make_shared<VerdictFeedState>())
+{
+}
 
 ResponseVerdictFeed::~ResponseVerdictFeed()
 {
+  requestStop();
+}
+
+void ResponseVerdictFeed::requestStop()
+{
+  state_->alive.store(false, std::memory_order_release);
   if (bus_ != nullptr && subscription_)
     bus_->unsubscribe(*subscription_);
+  subscription_.reset();
+}
+
+bool ResponseVerdictFeed::drained() const
+{
+  return state_->active.load(std::memory_order_acquire) == 0;
 }
 
 void ResponseVerdictFeed::start()
 {
-  if (bus_ == nullptr || subscription_)
+  if (bus_ == nullptr || subscription_ || !state_->alive.load(std::memory_order_acquire))
     return;
   subscription_ = bus_->subscribe(
       std::string(nats_subject::kNotificationResponseVerdict),
-      [this](std::string_view, std::string_view payload) {
+      [this, state = state_](std::string_view, std::string_view payload) {
+        if (!state->alive.load(std::memory_order_acquire))
+          return;
         const auto review = response_verdict::reviewOf(payload);
         if (!review)
           return;
-        drogon::app().getLoop()->queueInLoop([this, input = *review]() {
-          drogon::async_run([this, input]() -> drogon::Task<void> {
+        state->active.fetch_add(1, std::memory_order_acq_rel);
+        drogon::app().getLoop()->queueInLoop([this, state, input = *review]() {
+          drogon::async_run([this, state, input]() -> drogon::Task<void> {
+            const VerdictScope scope(state);
+            if (!state->alive.load(std::memory_order_acquire))
+              co_return;
             try {
               if (!co_await repository_.review(input))
                 LOG_WARN << "Guard: verdict for episode " << input.encounterId

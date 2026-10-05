@@ -16,6 +16,7 @@
 #include <feature/guard/repositories/episode/episode-repository.hxx>
 #include <feature/guard/repositories/environment/environment-repository.hxx>
 #include <feature/guard/vocabulary/feedback-label.hxx>
+#include <auth/user-role.hxx>
 #include <optional>
 #include <json/value.h>
 #include <string>
@@ -26,6 +27,13 @@ struct GuardFeatureDependencies
 {
   IdentityClient* identity{nullptr};
   const DisarmGate* disarm{nullptr};
+};
+
+struct ExpectedGuestCreation
+{
+  const CreateExpectedGuestDto& body;
+  int64_t callerId{0};
+  UserRole callerRole{UserRole::Guest};
 };
 
 struct GuardModeChange
@@ -77,8 +85,7 @@ public:
   drogon::Task<bool> setFeedback(const std::string& eventId,
                                  const std::string& label) const;
 
-  drogon::Task<int64_t> createGuest(
-      const CreateExpectedGuestDto& input) const;
+  drogon::Task<int64_t> createGuest(const ExpectedGuestCreation& input) const;
 
   drogon::Task<Json::Value> guests() const;
 

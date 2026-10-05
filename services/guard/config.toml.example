@@ -72,6 +72,7 @@ max_actions_per_hour = 4
 max_dialogue_turns = 3
 max_observation_attempts = 5
 max_announce_words = 12
+stale_observation_s = 120
 expected_guests = true
 cross_camera_window_s = 60
 continuity_window_s = 45
@@ -151,7 +152,6 @@ credential = ""
 
 [jwt]
 secret = ""
-refresh_secret = ""
 access_ttl_minutes = 15
 refresh_ttl_days = 30
 

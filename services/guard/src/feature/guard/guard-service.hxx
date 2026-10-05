@@ -86,7 +86,14 @@ public:
 
   drogon::Task<bool> handleLocalRetry(const Json::Value& event);
 
-  void ingestHealth(int64_t cameraId, const std::string& status, int64_t atMs);
+  struct HealthSample
+  {
+    int64_t cameraId{0};
+    std::string status;
+    int64_t atMs{0};
+  };
+
+  void ingestHealth(const HealthSample& sample);
 
   drogon::Task<void> checkTamperSweep(int64_t now);
 
@@ -142,6 +149,7 @@ private:
   {
     std::string lang;
     std::vector<int64_t> userIds;
+    bool redacted{false};
   };
 
   struct RecipientQuery
@@ -161,7 +169,7 @@ private:
   recipientsFor(const RecipientQuery& query);
 
   drogon::Task<std::optional<RecipientResolution>>
-  legacyRecipients(const std::vector<int64_t>& excluded);
+  legacyRecipients(const RecipientQuery& query);
 
   struct PlanQuery
   {
@@ -172,6 +180,8 @@ private:
   };
 
   drogon::Task<RecipientResolution> planRecipients(const PlanQuery& query);
+
+  drogon::Task<std::optional<std::vector<ResponseUser>>> directoryUsers();
 
   drogon::Task<bool> familyInside(int64_t environmentId);
 
@@ -291,6 +301,7 @@ private:
     bool weapon{false};
     bool lateAssessed{false};
     bool lateRaised{false};
+    bool stale{false};
     std::string policyDanger;
     std::string danger;
     std::string greetingStatus;
@@ -555,6 +566,9 @@ private:
   std::vector<uint64_t> timerIds_;
   std::unordered_set<std::string> executing_;
 
+  std::atomic<bool> encounterSweepRunning_{false};
+  std::mutex directoryMutex_;
+  std::optional<std::vector<ResponseUser>> lastDirectory_;
   bool subscribed_{false};
   std::atomic<bool> encounterStreamReady_{false};
   bool advisoriesSubscribed_{false};

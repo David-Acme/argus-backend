@@ -43,9 +43,11 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -138,6 +140,40 @@ void stopRpcListener(const RpcListener& listener)
                               std::chrono::milliseconds(500));
 }
 
+class RpcListenerDrain
+{
+public:
+  explicit RpcListenerDrain(const RpcListener& listener) : listener_(listener) {}
+
+  ~RpcListenerDrain()
+  {
+    if (stopper_.joinable())
+      stopper_.join();
+  }
+
+  RpcListenerDrain(const RpcListenerDrain&) = delete;
+  RpcListenerDrain& operator=(const RpcListenerDrain&) = delete;
+
+  void requestStop()
+  {
+    if (stopper_.joinable() || !listener_.server) {
+      stopped_.store(true, std::memory_order_release);
+      return;
+    }
+    stopper_ = std::thread([this] {
+      stopRpcListener(listener_);
+      stopped_.store(true, std::memory_order_release);
+    });
+  }
+
+  [[nodiscard]] bool drained() const { return stopped_.load(std::memory_order_acquire); }
+
+private:
+  const RpcListener& listener_;
+  std::thread stopper_;
+  std::atomic<bool> stopped_{false};
+};
+
 void registerHealth()
 {
   drogon::app().registerHandler(
@@ -227,18 +263,24 @@ int main()
   const GuardAlertSink safetySink(guardService);
   const NotificationActorNotifier safetyActor(
       {.notifications = notifications.get(), .identity = identity.get()});
-  const auto safety = std::make_shared<const SafetyService>(
+  SafetyService::Config safetyConfig{};
+  safetyConfig.retentionS = static_cast<int64_t>(guardConfig.journalRetentionDays) * 86400;
+  const auto safety = std::make_shared<SafetyService>(
       SafetyService::Dependencies{.sink = &safetySink, .actor = &safetyActor, .clock = {}},
-      SafetyService::Config{});
+      safetyConfig);
   ResponseVerdictFeed verdictFeed(natsBus.get());
   verdictFeed.start();
 
   IdentityPresenceDirectory presenceDirectory(identity.get());
   NatsPresencePublisher presencePublisher(natsBus.get());
-  PresenceService presence({.bus = natsBus.get(),
-                            .directory = &presenceDirectory,
-                            .publisher = &presencePublisher},
-                           GuardConfig::resolvePresence());
+  PresenceService presence(
+      {.bus = natsBus.get(),
+       .directory = &presenceDirectory,
+       .publisher = &presencePublisher,
+       .onAccountDisabled = [safety](int64_t userId) -> drogon::Task<void> {
+         co_await safety->forgetUser(userId);
+       }},
+      GuardConfig::resolvePresence());
 
   SettingsRegistry settings(guardSettingsCatalog());
   settings.onChange([&guardService, &presence](const std::vector<std::string>&) {
@@ -298,20 +340,15 @@ int main()
     guardService.start();
     presence.start();
   });
-  drogon::app().registerBeginningAdvice([safety]() {
-    drogon::async_run([safety]() -> drogon::Task<> {
-      if (const size_t resumed = co_await safety->resumePending(); resumed > 0)
-        LOG_WARN << "Guard safety: delivered " << resumed << " alert(s) left pending";
-    });
-  });
+  drogon::app().registerBeginningAdvice([safety]() { safety->start(); });
 
   shutdown_signal::onQuit(
       [path = db.dbPath] { DbService::freezeClient(path); });
-  shutdown_signal::onStop(
-      {.name = "guard-rpc",
-       .requestStop = [&rpcListener] { stopRpcListener(rpcListener); },
-       .drained = [] { return true; }});
+  RpcListenerDrain rpcDrain(rpcListener);
+  shutdown_signal::onStop(shutdown_signal::drainOf(rpcDrain, "guard-rpc"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(verdictFeed, "guard-verdicts"));
   shutdown_signal::onStop(shutdown_signal::drainOf(presence, "guard-presence"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(*safety, "guard-safety"));
   shutdown_signal::onStop(shutdown_signal::drainOf(guardService, "guard"));
 
   std::unique_ptr<MdnsService> mdnsService;
@@ -322,6 +359,6 @@ int main()
   });
 
   drogon::app().setThreadNum(0).run();
-  stopRpcListener(rpcListener);
+  rpcDrain.requestStop();
   return 0;
 }

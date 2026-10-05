@@ -66,8 +66,10 @@ GuardDanger evaluate(const GuardContext& context)
   if (context.passerby)
     return context.visitCount >= 3 ? GuardDanger::Medium : GuardDanger::Low;
 
-  GuardDanger soft =
-      context.expectedGuest ? GuardDanger::Low : GuardDanger::Medium;
+  const bool unattended =
+      context.mode == GuardMode::Away || context.mode == GuardMode::Armed;
+  const bool guestLowers = context.expectedGuest && !unattended;
+  GuardDanger soft = guestLowers ? GuardDanger::Low : GuardDanger::Medium;
   const GuardDanger companion = companionRelaxation(context);
   if (companion != GuardDanger::None && companion < soft)
     soft = companion;
@@ -79,7 +81,7 @@ GuardDanger evaluate(const GuardContext& context)
   else if (context.severity == "warning")
     danger = std::max(danger, GuardDanger::Medium);
 
-  if (context.expectedGuest)
+  if (guestLowers)
     danger = std::min(danger, GuardDanger::Medium);
   return danger;
 }

@@ -26,4 +26,6 @@ struct VerifyInput
 [[nodiscard]] bool verify(const VerifyInput& input);
 
 [[nodiscard]] bool wellFormedPin(std::string_view pin);
+
+[[nodiscard]] bool trivialPin(std::string_view pin);
 }

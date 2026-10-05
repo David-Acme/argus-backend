@@ -198,6 +198,13 @@ drogon::Task<bool> PresenceService::consented(int64_t userId)
   co_return *answer;
 }
 
+bool PresenceService::withdrawn(int64_t userId) const
+{
+  const std::scoped_lock lock(mutex_);
+  const auto cached = consent_.find(userId);
+  return cached != consent_.end() && !cached->second.consent;
+}
+
 void PresenceService::remember(int64_t userId, bool consent)
 {
   const std::scoped_lock lock(mutex_);
@@ -222,16 +229,22 @@ drogon::Task<void> PresenceService::ingest(PresenceIngestInput input)
                                 .environmentId = environmentId,
                                 .kind = input.kind,
                                 .at = input.at};
-    const auto existing = co_await repository_.find(
-        {.userId = input.userId, .environmentId = environmentId});
-    const PresenceOutcome outcome = presence_engine::apply(
-        {.current = existing, .signal = signal, .rules = current});
-    if (!outcome.write)
+    const PresenceDecision decision = co_await repository_.transition(
+        {.key = {.userId = input.userId, .environmentId = environmentId},
+         .decide = [signal, current](const std::optional<PresenceRow>& existing) {
+           const PresenceOutcome outcome = presence_engine::apply(
+               {.current = existing, .signal = signal, .rules = current});
+           return PresenceDecision{
+               .row = outcome.row, .write = outcome.write, .changed = outcome.changed};
+         }});
+    if (!decision.write)
       continue;
-    if (!co_await repository_.upsert(outcome.row))
-      continue;
-    if (outcome.changed)
-      co_await announce(outcome.row);
+    if (withdrawn(input.userId)) {
+      co_await forget(input.userId);
+      co_return;
+    }
+    if (decision.changed)
+      co_await announce(decision.row);
   }
 }
 
@@ -282,6 +295,8 @@ drogon::Task<void> PresenceService::onIdentityChange(Json::Value event)
     co_return;
   if (!row.get("isActive", true).asBool()) {
     co_await forget(userId);
+    if (dependencies_.onAccountDisabled)
+      co_await dependencies_.onAccountDisabled(userId);
     co_return;
   }
   const Json::Value& privacy = row["privacy"];

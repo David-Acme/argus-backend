@@ -1,4 +1,5 @@
 #include "guard-repository.hxx"
+#include "guard-policy.hxx"
 #include <feature/guard/vocabulary/feedback-label.hxx>
 #include <feature/guard/vocabulary/guard-action-kind.hxx>
 #include <feature/guard/vocabulary/guard-danger.hxx>
@@ -337,19 +338,6 @@ GuardRepository::insertAssessment(const GuardAssessmentRowInput& input) const
 }
 
 drogon::Task<std::vector<GuardEncounter>>
-GuardRepository::openEncounters(int64_t since) const
-{
-  auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(OPEN_ENCOUNTERS.data(), since);
-  std::vector<GuardEncounter> encounters;
-  encounters.reserve(result.size());
-  for (const auto& row : result)
-    encounters.push_back(encounterFromRow(row));
-  co_return encounters;
-}
-
-drogon::Task<std::vector<GuardEncounter>>
 GuardRepository::staleEncounters(int64_t olderThan) const
 {
   auto client = DbService::client();
@@ -442,6 +430,8 @@ GuardRepository::transitionEncounter(const GuardTransitionInput& input) const
   const std::string from = current.front()["state"].as<std::string>();
   if (from == encounterStateToString(input.toState))
     co_return true;
+  if (from == encounterStateToString(EncounterState::Closed))
+    co_return false;
   const int64_t revision = current.front()["revision"].as<int64_t>() + 1;
   const auto updated =
       co_await client->execSqlCoro(UPDATE_ENCOUNTER_STATE_REVISION.data(),
@@ -606,10 +596,15 @@ GuardRepository::commitIncidentPhase(const GuardIncidentPhaseInput& input) const
       result.incidentId =
           existing.empty() ? 0 : existing.front()["id"].as<int64_t>();
     }
-    if (input.consumeGuestId > 0)
-      co_await transaction->execSqlCoro(CONSUME_GUEST.data(),
-                                        input.consumeGuestAt,
-                                        input.consumeGuestId);
+    if (input.consumeGuestId > 0) {
+      const auto consumed = co_await transaction->execSqlCoro(
+          CONSUME_GUEST.data(), input.consumeGuestAt, input.consumeGuestId);
+      if (consumed.affectedRows() == 0) {
+        transaction->rollback();
+        result.guestTaken = true;
+        co_return result;
+      }
+    }
     co_await transaction->execSqlCoro(ADVANCE_INBOX.data(), input.advance.stage,
                                       result.incidentId,
                                       input.advance.encounterId,
@@ -645,7 +640,45 @@ drogon::Task<GuardEncounterPhaseResult> GuardRepository::commitEncounterPhase(
   }
 
   try {
-    if (input.create) {
+    if (input.match) {
+      const GuardEncounterMatchSpec& spec = *input.match;
+      const auto open = co_await transaction->execSqlCoro(
+          OPEN_ENCOUNTERS.data(), spec.now - spec.windowS);
+      std::vector<GuardEncounterCandidate> candidates;
+      candidates.reserve(open.size());
+      for (const auto& row : open) {
+        const GuardEncounter encounter = encounterFromRow(row);
+        candidates.push_back({.id = encounter.id,
+                              .personId = encounter.personId,
+                              .signature = encounter.signature,
+                              .lastCameraId = encounter.bestCameraId,
+                              .lastSeen = encounter.lastSeen});
+      }
+      if (const auto matched = guard_policy::matchEncounter(
+              {.personId = spec.personId,
+               .signature = spec.signature,
+               .cameraId = spec.cameraId,
+               .now = spec.now,
+               .windowS = spec.windowS,
+               .continuityWindowS = spec.continuityWindowS,
+               .minSimilarity = spec.minSimilarity,
+               .candidates = candidates})) {
+        const auto touched = co_await transaction->execSqlCoro(
+            TOUCH_ENCOUNTER.data(), spec.cameraId, spec.bestScore, spec.now, *matched);
+        if (!touched.empty()) {
+          result.encounterId = *matched;
+          result.encounterChecks = touched.front()["checks"].as<int>();
+        }
+      }
+      if (result.encounterId == 0 && spec.createIfUnmatched) {
+        const auto inserted = co_await transaction->execSqlCoro(
+            INSERT_ENCOUNTER.data(), spec.personId, spec.signature, spec.cameraId,
+            spec.bestScore, spec.now, spec.now);
+        result.encounterId = inserted.insertId();
+        result.encounterChecks = 1;
+      }
+    }
+    else if (input.create) {
       const auto inserted =
           co_await transaction->execSqlCoro(INSERT_ENCOUNTER.data(),
                                             input.createInput.personId,
@@ -969,7 +1002,8 @@ drogon::Task<bool> GuardRepository::recordNotificationDispatch(
       const auto encounter = co_await transaction->execSqlCoro(
           FIND_ENCOUNTER.data(), input.encounterId);
       recorded = !encounter.empty() &&
-                 encounter.front()["notify_count"].as<int>() <= 0;
+                 (encounter.front()["notify_count"].as<int>() <= 0 ||
+                  input.rank > encounter.front()["notify_highest_rank"].as<int>());
     }
     if (recorded && input.encounterId > 0) {
       co_await transaction->execSqlCoro(RECORD_ENCOUNTER_NOTIFICATION.data(),

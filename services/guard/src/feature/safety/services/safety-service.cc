@@ -7,12 +7,37 @@
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <drogon/drogon.h>
+#include <map>
+#include <mutex>
+#include <unordered_set>
 #include <utility>
+
+struct SafetyRetry
+{
+  int failures{0};
+  int64_t nextAt{0};
+};
+
+struct SafetyRuntime
+{
+  std::atomic<bool> alive{true};
+  std::atomic<int> active{0};
+  std::atomic<bool> sweeping{false};
+  std::mutex mutex;
+  std::map<int64_t, SafetyRetry> retries;
+  std::unordered_set<int64_t> delivering;
+  int64_t lastPurgeAt{0};
+  std::optional<uint64_t> timer;
+};
 
 namespace
 {
+constexpr int64_t kPurgeIntervalS = 3600;
+
 int64_t systemNow()
 {
   return std::chrono::duration_cast<std::chrono::seconds>(
@@ -25,20 +50,96 @@ struct PinMatch
   bool disarm{false};
   bool duress{false};
 };
+
+class RuntimeScope
+{
+public:
+  explicit RuntimeScope(std::shared_ptr<SafetyRuntime> runtime) : runtime_(std::move(runtime)) {}
+  ~RuntimeScope() { runtime_->active.fetch_sub(1, std::memory_order_acq_rel); }
+  RuntimeScope(const RuntimeScope&) = delete;
+  RuntimeScope& operator=(const RuntimeScope&) = delete;
+
+private:
+  std::shared_ptr<SafetyRuntime> runtime_;
+};
+
+class PinAttemptScope
+{
+public:
+  PinAttemptScope(std::shared_ptr<PinAttempts> attempts, int64_t userId)
+      : attempts_(std::move(attempts)), userId_(userId)
+  {
+  }
+  ~PinAttemptScope() { attempts_->settle({.userId = userId_, .success = success_}); }
+  PinAttemptScope(const PinAttemptScope&) = delete;
+  PinAttemptScope& operator=(const PinAttemptScope&) = delete;
+
+  void succeed() { success_ = true; }
+
+private:
+  std::shared_ptr<PinAttempts> attempts_;
+  int64_t userId_{0};
+  bool success_{false};
+};
 }
 
 SafetyService::SafetyService(Dependencies dependencies, Config config)
     : dependencies_(std::move(dependencies)),
       config_(config),
-      attempts_(std::make_shared<PinAttempts>(config.attempts))
+      attempts_(std::make_shared<PinAttempts>(config.attempts)),
+      runtime_(std::make_shared<SafetyRuntime>())
 {
   if (!dependencies_.clock)
     dependencies_.clock = systemNow;
 }
 
+SafetyService::~SafetyService()
+{
+  requestStop();
+}
+
 int64_t SafetyService::now() const
 {
   return dependencies_.clock();
+}
+
+void SafetyService::start()
+{
+  if (runtime_->timer || !runtime_->alive.load(std::memory_order_acquire))
+    return;
+  const auto sweep = [this, runtime = runtime_]() {
+    if (!runtime->alive.load(std::memory_order_acquire) ||
+        runtime->sweeping.exchange(true, std::memory_order_acq_rel))
+      return;
+    runtime->active.fetch_add(1, std::memory_order_acq_rel);
+    drogon::async_run([this, runtime]() -> drogon::Task<void> {
+      const RuntimeScope scope(runtime);
+      try {
+        if (const size_t delivered = co_await sweepPending(); delivered > 0)
+          LOG_WARN << "Guard safety: delivered " << delivered << " pending alert(s)";
+        co_await purgeExpired();
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Guard safety: sweep failed: " << error.what();
+      }
+      runtime->sweeping.store(false, std::memory_order_release);
+    });
+  };
+  runtime_->timer = drogon::app().getLoop()->runEvery(config_.sweepIntervalS, sweep);
+  drogon::app().getLoop()->queueInLoop(sweep);
+}
+
+void SafetyService::requestStop()
+{
+  runtime_->alive.store(false, std::memory_order_release);
+  if (runtime_->timer && drogon::app().isRunning())
+    drogon::app().getLoop()->invalidateTimer(*runtime_->timer);
+  runtime_->timer.reset();
+}
+
+bool SafetyService::drained() const
+{
+  return runtime_->active.load(std::memory_order_acquire) == 0;
 }
 
 drogon::Task<SafetyStatus> SafetyService::status(int64_t userId) const
@@ -49,6 +150,47 @@ drogon::Task<SafetyStatus> SafetyService::status(int64_t userId) const
                          .hasPin = setting.duressEnabled && pin.has_value()};
 }
 
+drogon::Task<DisarmVerdict> SafetyService::verifyPin(const PinCheck& check) const
+{
+  const DisarmRequest& request = check.request;
+  if (!request.pin || request.pin->empty())
+    throw ResponseException(SafetyErrors::PinRequired);
+  const PinReservation reservation = attempts_->reserve({.userId = request.userId, .now = now()});
+  if (!reservation.admitted)
+    throw ResponseException(SafetyErrors::PinLocked);
+  PinAttemptScope attempt(attempts_, request.userId);
+  const PinMatch match = co_await BlockingTask<PinMatch>{
+      [entered = *request.pin, disarm = check.pin.disarmHash, duress = check.pin.duressHash]() {
+        const bool disarmMatch = pin_hash::verify({.pin = entered, .stored = disarm});
+        const bool duressMatch = pin_hash::verify({.pin = entered, .stored = duress});
+        return PinMatch{.disarm = disarmMatch, .duress = duressMatch};
+      },
+      BlockingLane::Heavy};
+  if (reservation.locked) {
+    if (match.duress)
+      duress(request);
+    throw ResponseException(SafetyErrors::PinLocked);
+  }
+  if (match.duress) {
+    attempt.succeed();
+    co_return DisarmVerdict::Duress;
+  }
+  if (match.disarm) {
+    attempt.succeed();
+    co_return DisarmVerdict::Allowed;
+  }
+  throw ResponseException(SafetyErrors::PinInvalid);
+}
+
+drogon::Task<void> SafetyService::requireCurrentPin(const DisarmRequest& request) const
+{
+  const auto stored = co_await pinRepository_.find(request.userId);
+  if (!stored)
+    co_return;
+  if (co_await verifyPin({.request = request, .pin = *stored}) == DisarmVerdict::Duress)
+    duress(request);
+}
+
 drogon::Task<SafetyStatus> SafetyService::setPin(const PinSetInput& input) const
 {
   const SafetySetting setting = co_await settingRepository_.find();
@@ -56,12 +198,18 @@ drogon::Task<SafetyStatus> SafetyService::setPin(const PinSetInput& input) const
     throw ResponseException(SafetyErrors::DuressDisabled);
   if (input.disarmPin == input.duressPin)
     throw ResponseException(SafetyErrors::PinsMustDiffer);
+  const DisarmRequest request{.userId = input.userId,
+                              .userName = input.userName,
+                              .pin = input.currentPin,
+                              .environmentId = std::nullopt};
+  co_await requireCurrentPin(request);
   const int iterations = config_.pinIterations;
   const auto hashes = co_await BlockingTask<std::pair<std::string, std::string>>{
       [disarm = input.disarmPin, duress = input.duressPin, iterations]() {
         return std::pair{pin_hash::make({.pin = disarm, .iterations = iterations}),
                          pin_hash::make({.pin = duress, .iterations = iterations})};
-      }};
+      },
+      BlockingLane::Heavy};
   co_await pinRepository_.upsert({.userId = input.userId,
                                   .disarmHash = hashes.first,
                                   .duressHash = hashes.second,
@@ -70,12 +218,23 @@ drogon::Task<SafetyStatus> SafetyService::setPin(const PinSetInput& input) const
   co_return SafetyStatus{.duressEnabled = true, .hasPin = true};
 }
 
-drogon::Task<SafetyStatus> SafetyService::removePin(int64_t userId) const
+drogon::Task<SafetyStatus> SafetyService::removePin(const PinRemoveInput& input) const
+{
+  const DisarmRequest request{.userId = input.userId,
+                              .userName = input.userName,
+                              .pin = input.currentPin,
+                              .environmentId = std::nullopt};
+  co_await requireCurrentPin(request);
+  co_await pinRepository_.remove(input.userId);
+  attempts_->clear(input.userId);
+  const SafetySetting setting = co_await settingRepository_.find();
+  co_return SafetyStatus{.duressEnabled = setting.duressEnabled, .hasPin = false};
+}
+
+drogon::Task<void> SafetyService::forgetUser(int64_t userId) const
 {
   co_await pinRepository_.remove(userId);
   attempts_->clear(userId);
-  const SafetySetting setting = co_await settingRepository_.find();
-  co_return SafetyStatus{.duressEnabled = setting.duressEnabled, .hasPin = false};
 }
 
 drogon::Task<SafetySetting> SafetyService::setting() const
@@ -102,32 +261,17 @@ drogon::Task<DisarmVerdict> SafetyService::authorize(const DisarmRequest& reques
   const auto pin = co_await pinRepository_.find(request.userId);
   if (!pin)
     co_return DisarmVerdict::Allowed;
-  if (!request.pin || request.pin->empty())
-    throw ResponseException(SafetyErrors::PinRequired);
-  if (attempts_->locked({.userId = request.userId, .now = now()}))
-    throw ResponseException(SafetyErrors::PinLocked);
-  const PinMatch match = co_await BlockingTask<PinMatch>{
-      [entered = *request.pin, disarm = pin->disarmHash, duress = pin->duressHash]() {
-        const bool disarmMatch = pin_hash::verify({.pin = entered, .stored = disarm});
-        const bool duressMatch = pin_hash::verify({.pin = entered, .stored = duress});
-        return PinMatch{.disarm = disarmMatch, .duress = duressMatch};
-      }};
-  if (match.duress) {
-    attempts_->clear(request.userId);
-    co_return DisarmVerdict::Duress;
-  }
-  if (match.disarm) {
-    attempts_->clear(request.userId);
-    co_return DisarmVerdict::Allowed;
-  }
-  attempts_->fail({.userId = request.userId, .now = now()});
-  throw ResponseException(SafetyErrors::PinInvalid);
+  co_return co_await verifyPin({.request = request, .pin = *pin});
 }
 
 void SafetyService::duress(const DisarmRequest& request) const
 {
+  if (!runtime_->alive.load(std::memory_order_acquire))
+    return;
   const int64_t at = now();
-  drogon::async_run([this, request, at]() -> drogon::Task<> {
+  runtime_->active.fetch_add(1, std::memory_order_acq_rel);
+  drogon::async_run([this, runtime = runtime_, request, at]() -> drogon::Task<> {
+    const RuntimeScope scope(runtime);
     try {
       const int64_t alertId = co_await alertRepository_.insert(
           {.kind = SafetyAlertKind::Duress,
@@ -142,7 +286,7 @@ void SafetyService::duress(const DisarmRequest& request) const
                         .now = at});
     }
     catch (const std::exception& error) {
-      LOG_ERROR << "Guard safety: silent alert could not be recorded: " << error.what();
+      LOG_ERROR << "Guard safety: an alert could not be recorded: " << error.what();
     }
   });
 }
@@ -154,7 +298,14 @@ drogon::Task<PanicResult> SafetyService::panic(const PanicInput& input) const
           {.kind = SafetyAlertKind::Panic,
            .userId = input.userId,
            .since = at - config_.panicRepeatWindowS}))
-    co_return PanicResult{.alertId = *repeated, .sent = true, .repeated = true};
+    co_return PanicResult{.alertId = repeated->id, .sent = repeated->notified, .repeated = true};
+  const SafetyAlertRecentInput limitWindow{.kind = SafetyAlertKind::Panic,
+                                           .userId = input.userId,
+                                           .since = at - config_.panicLimitWindowS};
+  if (co_await alertRepository_.countSince(limitWindow) >= config_.panicLimit) {
+    if (const auto latest = co_await alertRepository_.recent(limitWindow))
+      co_return PanicResult{.alertId = latest->id, .sent = latest->notified, .repeated = true};
+  }
   const int64_t alertId =
       co_await alertRepository_.insert({.kind = SafetyAlertKind::Panic,
                                         .userId = input.userId,
@@ -166,22 +317,68 @@ drogon::Task<PanicResult> SafetyService::panic(const PanicInput& input) const
                                  .actorName = input.userName,
                                  .environmentId = input.environmentId.value_or(0),
                                  .now = at};
-  bool sent = false;
-  if (dependencies_.sink)
-    sent = co_await dependencies_.sink->raise(notice);
-  if (sent)
-    co_await alertRepository_.markNotified(alertId, now());
-  else
-    drogon::async_run([this, notice]() -> drogon::Task<> { co_await deliver(notice); });
+  const bool sent = co_await deliver(notice);
   if (dependencies_.actor)
     static_cast<void>(co_await dependencies_.actor->confirmPanic(notice));
   co_return PanicResult{.alertId = alertId, .sent = sent, .repeated = false};
 }
 
-drogon::Task<size_t> SafetyService::resumePending() const
+int64_t SafetyService::retryDelay(int failures) const
+{
+  const int step = std::clamp(failures - 1, 0, 16);
+  const int64_t delay = std::max<int64_t>(1, config_.retryBaseS) << step;
+  return std::min(delay, std::max<int64_t>(1, config_.retryMaxS));
+}
+
+void SafetyService::recordOutcome(int64_t alertId, bool sent) const
+{
+  const int64_t at = now();
+  std::scoped_lock lock(runtime_->mutex);
+  runtime_->delivering.erase(alertId);
+  if (sent) {
+    runtime_->retries.erase(alertId);
+    return;
+  }
+  SafetyRetry& retry = runtime_->retries[alertId];
+  ++retry.failures;
+  retry.nextAt = at + retryDelay(retry.failures);
+}
+
+drogon::Task<bool> SafetyService::deliver(const SafetyAlertNotice& notice) const
+{
+  if (!dependencies_.sink)
+    co_return false;
+  {
+    std::scoped_lock lock(runtime_->mutex);
+    if (!runtime_->delivering.insert(notice.alertId).second)
+      co_return false;
+  }
+  bool sent = false;
+  try {
+    sent = co_await dependencies_.sink->raise(notice);
+    if (sent)
+      co_await alertRepository_.markNotified(notice.alertId, now());
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Guard safety: alert " << notice.alertId
+             << " delivery attempt failed: " << error.what();
+    sent = false;
+  }
+  recordOutcome(notice.alertId, sent);
+  co_return sent;
+}
+
+drogon::Task<size_t> SafetyService::sweepPending() const
 {
   size_t delivered = 0;
-  for (const auto& alert : co_await alertRepository_.pending(now() - config_.resumeWindowS)) {
+  const int64_t at = now();
+  for (const auto& alert : co_await alertRepository_.pending(at - config_.resumeWindowS)) {
+    {
+      std::scoped_lock lock(runtime_->mutex);
+      const auto retry = runtime_->retries.find(alert.id);
+      if (retry != runtime_->retries.end() && retry->second.nextAt > at)
+        continue;
+    }
     if (co_await deliver({.kind = alert.kind,
                           .alertId = alert.id,
                           .actorUserId = alert.userId,
@@ -193,30 +390,18 @@ drogon::Task<size_t> SafetyService::resumePending() const
   co_return delivered;
 }
 
-drogon::Task<bool> SafetyService::deliver(const SafetyAlertNotice& notice) const
+drogon::Task<int64_t> SafetyService::purgeExpired() const
 {
-  if (!dependencies_.sink)
-    co_return false;
-  double delay = 2.0;
-  for (int attempt = 0; attempt < config_.deliveryAttempts; ++attempt) {
-    if (attempt > 0) {
-      co_await drogon::sleepCoro(drogon::app().getLoop(), delay);
-      delay *= 2.0;
-    }
-    bool sent = false;
-    try {
-      sent = co_await dependencies_.sink->raise(notice);
-    }
-    catch (const std::exception& error) {
-      LOG_WARN << "Guard safety: alert " << notice.alertId
-               << " delivery attempt failed: " << error.what();
-    }
-    if (sent) {
-      co_await alertRepository_.markNotified(notice.alertId, now());
-      co_return true;
-    }
+  const int64_t at = now();
+  {
+    std::scoped_lock lock(runtime_->mutex);
+    if (runtime_->lastPurgeAt > 0 && at - runtime_->lastPurgeAt < kPurgeIntervalS)
+      co_return 0;
+    runtime_->lastPurgeAt = at;
   }
-  LOG_ERROR << "Guard safety: alert " << notice.alertId << " was not delivered after "
-            << config_.deliveryAttempts << " attempts";
-  co_return false;
+  const int64_t removed =
+      co_await alertRepository_.purgeBefore(at - std::max(config_.retentionS, config_.resumeWindowS));
+  if (removed > 0)
+    LOG_INFO << "Guard safety: purged " << removed << " alert row(s) past the retention window";
+  co_return removed;
 }

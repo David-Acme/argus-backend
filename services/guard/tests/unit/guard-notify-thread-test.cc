@@ -289,6 +289,7 @@ Json::Value threadObservation(const ThreadObservationInput& input)
 GuardService::Config threadConfig()
 {
   GuardService::Config config;
+  config.staleObservationS = 0;
   config.enabled = true;
   config.profile = "home";
   config.defaultMode = GuardMode::Home;
@@ -635,6 +636,32 @@ TEST_CASE("a thread-suppressed pass still runs announce and alarm")
   CHECK(journalField("nta:2", "did_notify") == "0");
 }
 
+TEST_CASE("an observation older than the stale window notifies but never speaks or sounds")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  harness.config.announceLevel = 3;
+  harness.config.alarmLevel = 4;
+  harness.config.defaultMode = GuardMode::Armed;
+  harness.config.staleObservationS = 120;
+  auto service = harness.makeService();
+
+  REQUIRE(drogon::sync_wait(service->handle(
+      threadObservation({.eventId = "stale:1",
+                         .cameraId = 37,
+                         .trackId = 1,
+                         .rule = "person_in_alert_zone",
+                         .severity = "critical",
+                         .zoneKind = "alert", .signature = {}}),
+      1)));
+  CHECK(harness.notifications.calls == 1);
+  CHECK(harness.camera.announceCalls == 0);
+  CHECK(harness.camera.alarmCalls == 0);
+  CHECK(scalar("SELECT json_extract(checkpoint, '$.stale') FROM guard_observation_inbox "
+               "WHERE event_id = 'stale:1'") == "1");
+}
+
 TEST_CASE("closing an encounter journals without notifying")
 {
   SharedBoot& boot = sharedBoot();
@@ -850,7 +877,7 @@ TEST_CASE("nightly darkness never floors to High")
   (void)boot;
   ThreadHarness harness;
   auto service = harness.makeService();
-  service->ingestHealth(41, "dark", testNowMs());
+  service->ingestHealth({.cameraId = 41, .status = "dark", .atMs = testNowMs()});
 
   REQUIRE(drogon::sync_wait(service->handle(
       threadObservation({.eventId = "tmp:1",
@@ -867,7 +894,7 @@ TEST_CASE("nightly darkness never floors to High")
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
   const int64_t baseMs = testNowMs();
   for (int back = 300; back >= 0; back -= 60)
-    service->ingestHealth(41, "dark", baseMs - back * 1000);
+    service->ingestHealth({.cameraId = 41, .status = "dark", .atMs = baseMs - back * 1000});
   drogon::sync_wait(service->checkTamperSweep(now));
   CHECK(harness.notifications.calls == 1);
   CHECK(scalar("SELECT COUNT(*) FROM guard_decision_journal WHERE event_id "
@@ -881,7 +908,7 @@ TEST_CASE("a covered camera respects the staging hold")
   ThreadHarness harness;
   harness.config.stagingEnabled = true;
   auto service = harness.makeService();
-  service->ingestHealth(42, "covered", testNowMs());
+  service->ingestHealth({.cameraId = 42, .status = "covered", .atMs = testNowMs()});
 
   REQUIRE(drogon::sync_wait(service->handle(
       threadObservation({.eventId = "tmc:1",
@@ -904,7 +931,7 @@ TEST_CASE("a blurred camera respects the staging hold")
   ThreadHarness harness;
   harness.config.stagingEnabled = true;
   auto service = harness.makeService();
-  service->ingestHealth(50, "blurred", testNowMs());
+  service->ingestHealth({.cameraId = 50, .status = "blurred", .atMs = testNowMs()});
 
   REQUIRE(drogon::sync_wait(service->handle(
       threadObservation({.eventId = "blh:1",
@@ -931,7 +958,7 @@ TEST_CASE("a week-long blur pages exactly once")
   const int64_t weekStart = testNowMs() / 1000;
   for (int64_t hour = 0; hour <= 7 * 24; ++hour) {
     const int64_t at = (weekStart + hour * 3600) * 1000;
-    service->ingestHealth(150, "blurred", at);
+    service->ingestHealth({.cameraId = 150, .status = "blurred", .atMs = at});
     drogon::sync_wait(service->checkTamperSweep(weekStart + hour * 3600));
   }
   CHECK(harness.notifications.calls == 1);
@@ -949,13 +976,13 @@ TEST_CASE("the alert re-arms after recovery and a new degradation")
   auto service = harness.makeService();
   const int64_t start = testNowMs() / 1000;
   for (int64_t step = 0; step <= 300; step += 60) {
-    service->ingestHealth(151, "blurred", (start + step) * 1000);
+    service->ingestHealth({.cameraId = 151, .status = "blurred", .atMs = (start + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(start + step));
   }
   CHECK(harness.notifications.calls == 1);
 
   for (int64_t step = 360; step <= 900; step += 60) {
-    service->ingestHealth(151, "ok", (start + step) * 1000);
+    service->ingestHealth({.cameraId = 151, .status = "ok", .atMs = (start + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(start + step));
   }
   CHECK(harness.notifications.calls == 1);
@@ -963,7 +990,7 @@ TEST_CASE("the alert re-arms after recovery and a new degradation")
                "'tamper_%_151'") == "0");
 
   for (int64_t step = 960; step <= 1260; step += 60) {
-    service->ingestHealth(151, "blurred", (start + step) * 1000);
+    service->ingestHealth({.cameraId = 151, .status = "blurred", .atMs = (start + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(start + step));
   }
   CHECK(harness.notifications.calls == 2);
@@ -980,7 +1007,7 @@ TEST_CASE("a restart mid-window still fires once the window completes")
   {
     auto service = harness.makeService();
     for (int64_t step = 0; step <= 150; step += 30) {
-      service->ingestHealth(152, "moved", (wall + step) * 1000);
+      service->ingestHealth({.cameraId = 152, .status = "moved", .atMs = (wall + step) * 1000});
       drogon::sync_wait(service->checkTamperSweep(wall + step));
     }
     CHECK(harness.notifications.calls == 0);
@@ -994,13 +1021,13 @@ TEST_CASE("a restart mid-window still fires once the window completes")
                           .assessment = nullptr},
                          harness.config);
   for (int64_t step = 151; step <= 301; step += 50) {
-    restarted.ingestHealth(152, "moved", (wall + step) * 1000);
+    restarted.ingestHealth({.cameraId = 152, .status = "moved", .atMs = (wall + step) * 1000});
     drogon::sync_wait(restarted.checkTamperSweep(wall + step));
   }
   CHECK(harness.notifications.calls == 1);
   CHECK(scalar("SELECT COUNT(*) FROM guard_decision_journal WHERE event_id = "
                "'tamper:152:" +
-               std::to_string(wall + 301) + "' AND did_notify = 1") == "1");
+               std::to_string(wall) + "' AND did_notify = 1") == "1");
   drogon::sync_wait(restarted.checkTamperSweep(wall + 301));
   CHECK(harness.notifications.calls == 1);
 }
@@ -1011,7 +1038,7 @@ TEST_CASE("an unknown health state is penalized but never escalates")
   (void)boot;
   ThreadHarness harness;
   auto service = harness.makeService();
-  service->ingestHealth(144, "insect", testNowMs());
+  service->ingestHealth({.cameraId = 144, .status = "insect", .atMs = testNowMs()});
 
   REQUIRE(drogon::sync_wait(service->handle(
       threadObservation({.eventId = "ins:1",
@@ -1028,7 +1055,7 @@ TEST_CASE("an unknown health state is penalized but never escalates")
 
   const int64_t base = testNowMs() / 1000;
   for (int64_t step = 0; step <= 300; step += 60) {
-    service->ingestHealth(144, "insect", (base + step) * 1000);
+    service->ingestHealth({.cameraId = 144, .status = "insect", .atMs = (base + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(base + step));
   }
   CHECK(harness.notifications.calls == 1);
@@ -1176,17 +1203,20 @@ TEST_CASE("a failed tamper notify is retried, not recorded")
   FakeIdentity identity;
   FlakyNotifications notifications;
   ThreadHarness harness;
+  GuardService::Config quickRetry = harness.config;
+  quickRetry.retryBaseMs = 1;
+  quickRetry.retryMaxMs = 1;
   auto service = std::make_unique<GuardService>(
       GuardService::Dependencies{.bus = nullptr,
                                  .identity = &identity,
                                  .notifications = &notifications,
                                  .actions = &camera,
                                  .assessment = nullptr},
-      harness.config);
+      quickRetry);
 
   const int64_t base = testNowMs() / 1000;
   for (int64_t step = 0; step <= 300; step += 60) {
-    service->ingestHealth(153, "moved", (base + step) * 1000);
+    service->ingestHealth({.cameraId = 153, .status = "moved", .atMs = (base + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(base + step));
   }
   CHECK(notifications.calls == 1);
@@ -1194,10 +1224,10 @@ TEST_CASE("a failed tamper notify is retried, not recorded")
                "'tamper_notified_onset_153'") == "");
   CHECK(scalar("SELECT COUNT(*) FROM guard_decision_journal WHERE event_id = "
                "'tamper:153:" +
-               std::to_string(base + 300) + "' AND did_notify = 1") == "0");
+               std::to_string(base) + "' AND did_notify = 1") == "0");
 
   for (int64_t step = 360; step <= 660; step += 60) {
-    service->ingestHealth(153, "moved", (base + step) * 1000);
+    service->ingestHealth({.cameraId = 153, .status = "moved", .atMs = (base + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(base + step));
   }
   CHECK(notifications.calls == 2);
@@ -1437,12 +1467,12 @@ TEST_CASE("a camera offline past the offline window is one critical tamper notic
 
   const int64_t base = testNowMs() / 1000;
   for (int64_t step = 0; step < 240; step += 60) {
-    service->ingestHealth(171, "unreachable", (base + step) * 1000);
+    service->ingestHealth({.cameraId = 171, .status = "unreachable", .atMs = (base + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(base + step));
   }
   CHECK(harness.notifications.calls == 0);
   for (int64_t step = 240; step <= 360; step += 60) {
-    service->ingestHealth(171, "unreachable", (base + step) * 1000);
+    service->ingestHealth({.cameraId = 171, .status = "unreachable", .atMs = (base + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(base + step));
   }
   REQUIRE(harness.notifications.calls == 1);
@@ -1453,7 +1483,7 @@ TEST_CASE("a camera offline past the offline window is one critical tamper notic
   CHECK(data["threadKey"].asString() == "guard:tamper:171");
   CHECK(harness.notifications.sent.front().body.find("desenchufada") != std::string::npos);
   CHECK(scalar("SELECT danger FROM guard_incident WHERE event_id = 'tamper:171:" +
-               std::to_string(base + 240) + "'") == "critical");
+               std::to_string(base) + "'") == "critical");
 }
 
 TEST_CASE("a short offline blip stays quiet, and offline at home is not critical")
@@ -1465,17 +1495,17 @@ TEST_CASE("a short offline blip stays quiet, and offline at home is not critical
 
   const int64_t base = testNowMs() / 1000;
   for (int64_t step = 0; step <= 180; step += 60) {
-    service->ingestHealth(172, "unreachable", (base + step) * 1000);
+    service->ingestHealth({.cameraId = 172, .status = "unreachable", .atMs = (base + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(base + step));
   }
   for (int64_t step = 240; step <= 600; step += 60) {
-    service->ingestHealth(172, "ok", (base + step) * 1000);
+    service->ingestHealth({.cameraId = 172, .status = "ok", .atMs = (base + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(base + step));
   }
   CHECK(harness.notifications.calls == 0);
 
   for (int64_t step = 660; step <= 900; step += 60) {
-    service->ingestHealth(172, "unreachable", (base + step) * 1000);
+    service->ingestHealth({.cameraId = 172, .status = "unreachable", .atMs = (base + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(base + step));
   }
   REQUIRE(harness.notifications.calls == 1);

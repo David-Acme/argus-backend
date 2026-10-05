@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 
 #include <string>
 
@@ -88,6 +89,36 @@ drogon::Task<bool> PresenceRepository::upsert(const PresenceRow& row) const
   co_return result.affectedRows() > 0;
 }
 
+drogon::Task<PresenceDecision>
+PresenceRepository::transition(const PresenceTransition& input) const
+{
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  PresenceDecision decision;
+  try {
+    const auto found = co_await transaction->execSqlCoro(
+        std::string(FIND), input.key.userId, input.key.environmentId);
+    std::optional<PresenceRow> current;
+    if (!found.empty())
+      current = fromRow(found.front());
+    decision = input.decide(current);
+    if (decision.write) {
+      const PresenceRow& row = decision.row;
+      const auto written = co_await transaction->execSqlCoro(
+          std::string(UPSERT), row.userId, presenceStateToString(row.state),
+          presenceSourceToString(row.source), row.since, row.lastHomeAt,
+          row.lastSignalAt, row.environmentId);
+      decision.write = written.affectedRows() > 0;
+    }
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  if (!co_await db_transaction::Commit(std::move(transaction)))
+    decision.write = false;
+  co_return decision;
+}
+
 drogon::Task<std::vector<int64_t>>
 PresenceRepository::removeUser(int64_t userId) const
 {
@@ -118,9 +149,9 @@ PresenceRepository::expireHome(const PresenceExpireInput& input) const
   co_return rowsOf(result);
 }
 
-drogon::Task<int64_t> PresenceRepository::purgeStale(int64_t changedBefore) const
+drogon::Task<int64_t> PresenceRepository::purgeStale(int64_t signalBefore) const
 {
   const auto result = co_await DbService::client()->execSqlCoro(
-      std::string(PURGE_STALE), changedBefore);
+      std::string(PURGE_STALE), signalBefore);
   co_return static_cast<int64_t>(result.affectedRows());
 }

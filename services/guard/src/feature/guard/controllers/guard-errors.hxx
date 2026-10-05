@@ -37,6 +37,18 @@ inline constexpr ErrorDefinition ExpectedGuestNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,
     .message = "Expected guest not found"};
+inline constexpr ErrorDefinition GuestWindowTooLong{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "An expected visit lasts 24 hours at most"};
+inline constexpr ErrorDefinition GuestScopeRequired{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "An expected visit needs a person, or a camera and an environment"};
+inline constexpr ErrorDefinition GuestHostNotCaller{
+    .code = ErrorCode::Forbidden,
+    .status = 403,
+    .message = "Only the owner names another host"};
 inline constexpr ErrorDefinition RecipientUnknown{
     .code = ErrorCode::ValidationError,
     .status = 422,

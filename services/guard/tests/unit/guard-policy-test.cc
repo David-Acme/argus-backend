@@ -749,14 +749,19 @@ TEST_CASE("night mode floors any unknown to high, even inside a zone")
   CHECK(guard_policy::evaluate(context) == GuardDanger::High);
 }
 
-TEST_CASE("an expected guest is capped at a notification in every mode")
+TEST_CASE("an expected guest caps a night visit, never an empty or armed home")
 {
-  for (const auto mode : {GuardMode::Away, GuardMode::Armed, GuardMode::Night}) {
+  auto night = unknownPerson();
+  night.mode = GuardMode::Night;
+  night.expectedGuest = true;
+  night.atNight = true;
+  CHECK(guard_policy::evaluate(night) == GuardDanger::Medium);
+  for (const auto mode : {GuardMode::Away, GuardMode::Armed}) {
     auto context = unknownPerson();
     context.mode = mode;
     context.expectedGuest = true;
     context.atNight = true;
-    CHECK(guard_policy::evaluate(context) == GuardDanger::Medium);
+    CHECK(guard_policy::evaluate(context) == GuardDanger::Critical);
   }
 }
 

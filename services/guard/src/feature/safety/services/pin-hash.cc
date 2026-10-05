@@ -14,7 +14,7 @@ namespace
 {
 constexpr size_t kSaltBytes = 16;
 constexpr size_t kHashBytes = 32;
-constexpr int kMinIterations = 1000;
+constexpr int kMinIterations = 100000;
 constexpr size_t kMinPinDigits = 4;
 constexpr size_t kMaxPinDigits = 8;
 
@@ -47,14 +47,20 @@ std::vector<unsigned char> fromHex(std::string_view hex)
   return bytes;
 }
 
-std::array<unsigned char, kHashBytes> derive(std::string_view pin,
-                                             const std::vector<unsigned char>& salt,
-                                             int iterations)
+struct DeriveInput
+{
+  std::string_view pin;
+  const std::vector<unsigned char>& salt;
+  int iterations{0};
+};
+
+std::array<unsigned char, kHashBytes> derive(const DeriveInput& input)
 {
   std::array<unsigned char, kHashBytes> out{};
-  if (PKCS5_PBKDF2_HMAC(pin.data(), static_cast<int>(pin.size()), salt.data(),
-                        static_cast<int>(salt.size()), iterations, EVP_sha256(),
-                        static_cast<int>(out.size()), out.data()) != 1)
+  if (PKCS5_PBKDF2_HMAC(input.pin.data(), static_cast<int>(input.pin.size()),
+                        input.salt.data(), static_cast<int>(input.salt.size()),
+                        input.iterations, EVP_sha256(), static_cast<int>(out.size()),
+                        out.data()) != 1)
     throw std::runtime_error("pin hash derivation failed");
   return out;
 }
@@ -82,13 +88,31 @@ bool pin_hash::wellFormedPin(std::string_view pin)
          std::ranges::all_of(pin, [](char c) { return c >= '0' && c <= '9'; });
 }
 
+bool pin_hash::trivialPin(std::string_view pin)
+{
+  if (pin.size() < 2)
+    return true;
+  const auto allSame = std::ranges::all_of(pin, [first = pin.front()](char c) { return c == first; });
+  bool ascending = true;
+  bool descending = true;
+  for (size_t index = 1; index < pin.size(); ++index) {
+    const int step = pin[index] - pin[index - 1];
+    ascending = ascending && (step == 1 || (pin[index - 1] == '9' && pin[index] == '0'));
+    descending = descending && (step == -1 || (pin[index - 1] == '0' && pin[index] == '9'));
+  }
+  const size_t half = pin.size() / 2;
+  const bool repeatedHalves =
+      pin.size() % 2 == 0 && half >= 2 && pin.substr(0, half) == pin.substr(half);
+  return allSame || ascending || descending || repeatedHalves;
+}
+
 std::string pin_hash::make(const HashInput& input)
 {
   std::vector<unsigned char> salt(kSaltBytes);
   if (RAND_bytes(salt.data(), static_cast<int>(salt.size())) != 1)
     throw std::runtime_error("pin salt generation failed");
   const int iterations = std::max(input.iterations, kMinIterations);
-  const auto hash = derive(input.pin, salt, iterations);
+  const auto hash = derive({.pin = input.pin, .salt = salt, .iterations = iterations});
   return std::string(kScheme) + "$" + std::to_string(iterations) + "$" +
          toHex(salt.data(), salt.size()) + "$" + toHex(hash.data(), hash.size());
 }
@@ -108,6 +132,6 @@ bool pin_hash::verify(const VerifyInput& input)
   const auto expected = fromHex(parts[3]);
   if (salt.empty() || expected.size() != kHashBytes)
     return false;
-  const auto actual = derive(input.pin, salt, iterations);
+  const auto actual = derive({.pin = input.pin, .salt = salt, .iterations = iterations});
   return CRYPTO_memcmp(actual.data(), expected.data(), kHashBytes) == 0;
 }

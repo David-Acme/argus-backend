@@ -118,9 +118,14 @@ struct Harness
 {
   FakeDirectory directory;
   RecordingPublisher publisher;
+  std::vector<int64_t> disabled;
   PresenceService service{{.bus = nullptr,
                            .directory = &directory,
-                           .publisher = &publisher},
+                           .publisher = &publisher,
+                           .onAccountDisabled = [this](int64_t userId) -> drogon::Task<void> {
+                             disabled.push_back(userId);
+                             co_return;
+                           }},
                           testConfig()};
 };
 
@@ -441,6 +446,7 @@ TEST_CASE("withdrawing consent or disabling the account deletes the rows at "
   disabled["isActive"] = false;
   drogon::sync_wait(harness.service.onIdentityChange(userChange(77, disabled)));
   CHECK_FALSE(rowOf(77, homeId()).has_value());
+  CHECK(harness.disabled == std::vector<int64_t>{77});
 
   Json::Value given = renamed;
   given["privacy"]["decided"] = true;

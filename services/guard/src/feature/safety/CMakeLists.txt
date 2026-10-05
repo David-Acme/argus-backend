@@ -2,6 +2,7 @@ argus_module(NAME guard-safety
     SOURCES
         controllers/safety-controller.cc
         dtos/panic-dto.cc
+        dtos/remove-pin-dto.cc
         dtos/response-safety-dto.cc
         dtos/set-pin-dto.cc
         dtos/update-safety-dto.cc

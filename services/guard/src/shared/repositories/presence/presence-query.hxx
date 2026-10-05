@@ -3,6 +3,8 @@
 #include <shared/vocabulary/presence-state.hxx>
 
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -56,7 +58,7 @@ inline constexpr std::string_view EXPIRE_HOME =
     "since, last_home_at, last_signal_at";
 
 inline constexpr std::string_view PURGE_STALE =
-    "DELETE FROM guard_presence WHERE since < ? OR environment_id NOT IN "
+    "DELETE FROM guard_presence WHERE last_signal_at < ? OR environment_id NOT IN "
     "(SELECT id FROM guard_environment)";
 
 }
@@ -71,6 +73,19 @@ struct PresenceKey
 {
   int64_t userId{0};
   int64_t environmentId{0};
+};
+
+struct PresenceDecision
+{
+  PresenceRow row;
+  bool write{false};
+  bool changed{false};
+};
+
+struct PresenceTransition
+{
+  PresenceKey key;
+  std::function<PresenceDecision(const std::optional<PresenceRow>&)> decide;
 };
 
 struct PresenceExpireInput

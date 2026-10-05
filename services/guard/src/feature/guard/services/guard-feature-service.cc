@@ -17,6 +17,26 @@
 #include <runtime/blocking-task.hxx>
 #include <feature/guard/vocabulary/feedback-label.hxx>
 
+namespace
+{
+constexpr int64_t kMaxGuestWindowS = 24LL * 3600;
+
+int modeRank(GuardMode mode)
+{
+  switch (mode) {
+    case GuardMode::Home:
+      return 0;
+    case GuardMode::Night:
+      return 1;
+    case GuardMode::Away:
+      return 2;
+    case GuardMode::Armed:
+      return 3;
+  }
+  return 0;
+}
+}
+
 GuardFeatureService::GuardFeatureService(
     const GuardFeatureDependencies& dependencies)
     : identity_(dependencies.identity), disarm_(dependencies.disarm)
@@ -285,26 +305,34 @@ drogon::Task<bool> GuardFeatureService::setFeedback(
        .at = static_cast<int64_t>(std::time(nullptr))});
 }
 
-drogon::Task<int64_t> GuardFeatureService::createGuest(
-    const CreateExpectedGuestDto& input) const
+drogon::Task<int64_t>
+GuardFeatureService::createGuest(const ExpectedGuestCreation& input) const
 {
-  if (input.environmentId > 0 &&
-      !(co_await environmentRepository_.find(input.environmentId)))
+  const CreateExpectedGuestDto& body = input.body;
+  const bool owner = input.callerRole == UserRole::Owner;
+  if (!owner && body.personId <= 0 && (body.cameraId <= 0 || body.environmentId <= 0))
+    throw ResponseException(GuardErrors::GuestScopeRequired);
+  if (!owner && body.hostUserId > 0 && body.hostUserId != input.callerId)
+    throw ResponseException(GuardErrors::GuestHostNotCaller);
+  if (body.environmentId > 0 &&
+      !(co_await environmentRepository_.find(body.environmentId)))
     throw ResponseException(GuardErrors::EnvironmentNotFound);
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
-  const int64_t validFrom = input.validFrom > 0 ? input.validFrom : now;
-  const int64_t validUntil = input.validUntil > 0
-                                 ? input.validUntil
-                                 : now + static_cast<int64_t>(input.hours) * 3600;
+  const int64_t validFrom = body.validFrom > 0 ? body.validFrom : now;
+  const int64_t validUntil = body.validUntil > 0
+                                 ? body.validUntil
+                                 : validFrom + static_cast<int64_t>(body.hours) * 3600;
+  if (validUntil - validFrom > kMaxGuestWindowS)
+    throw ResponseException(GuardErrors::GuestWindowTooLong);
   co_return co_await guardRepository_.insertGuest(
-      {.description = input.description,
-       .cameraId = input.cameraId,
-       .personId = input.personId,
-       .hostUserId = input.hostUserId,
-       .oneTime = input.oneTime,
+      {.description = body.description,
+       .cameraId = body.cameraId,
+       .personId = body.personId,
+       .hostUserId = body.hostUserId > 0 ? body.hostUserId : input.callerId,
+       .oneTime = body.oneTime,
        .validFrom = validFrom,
        .validUntil = validUntil,
-       .environmentId = input.environmentId});
+       .environmentId = body.environmentId});
 }
 
 drogon::Task<Json::Value> GuardFeatureService::guests() const
@@ -665,17 +693,23 @@ GuardFeatureService::setMode(const GuardModeChange& input) const
                               .userName = input.userName,
                               .pin = body.pin,
                               .environmentId = body.environmentId};
+  bool lowers = mode == GuardMode::Home;
+  for (const auto& environment : co_await environmentRepository_.list()) {
+    const bool targeted = !body.environmentId || environment.id == *body.environmentId;
+    if (targeted && modeRank(mode) < modeRank(environment.mode))
+      lowers = true;
+  }
   DisarmVerdict verdict = DisarmVerdict::Allowed;
-  if (mode == GuardMode::Home && disarm_)
+  if (lowers && disarm_)
     verdict = co_await disarm_->authorize(request);
+  if (verdict == DisarmVerdict::Duress)
+    disarm_->duress(request);
   const int64_t changed = co_await environmentRepository_.setMode(
       {.environmentId = body.environmentId,
        .mode = mode,
        .at = static_cast<int64_t>(std::time(nullptr))});
   if (body.environmentId && changed == 0)
     throw ResponseException(GuardErrors::EnvironmentNotFound);
-  if (verdict == DisarmVerdict::Duress)
-    disarm_->duress(request);
   co_return co_await environments();
 }
 

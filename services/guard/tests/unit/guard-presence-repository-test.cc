@@ -159,3 +159,42 @@ TEST_CASE("overall presence folds the environments of one user")
         PresenceSource::TunnelSession);
   CHECK(presenceSourceToString(PresenceSource::AppActivity) == "app_activity");
 }
+
+TEST_CASE("a long stay at home is kept while its signals keep coming")
+{
+  (void)boot();
+  const PresenceRepository repository;
+  const int64_t home = homeId();
+  PresenceRow settled = homeRow(51, home, 100);
+  settled.lastHomeAt = 9000;
+  settled.lastSignalAt = 9000;
+  REQUIRE(drogon::sync_wait(repository.upsert(settled)));
+  CHECK(drogon::sync_wait(repository.purgeStale(5000)) == 0);
+  CHECK(drogon::sync_wait(repository.find({.userId = 51, .environmentId = home})));
+  drogon::sync_wait(repository.removeUser(51));
+}
+
+TEST_CASE("a transition reads and writes the row in one transaction")
+{
+  (void)boot();
+  const PresenceRepository repository;
+  const int64_t home = homeId();
+  REQUIRE(drogon::sync_wait(repository.upsert(homeRow(61, home, 100))));
+  const PresenceDecision decision = drogon::sync_wait(repository.transition(
+      {.key = {.userId = 61, .environmentId = home},
+       .decide = [](const std::optional<PresenceRow>& current) {
+         PresenceRow row = current.value_or(PresenceRow{});
+         row.lastSignalAt = 200;
+         return PresenceDecision{.row = row, .write = current.has_value(), .changed = false};
+       }}));
+  CHECK(decision.write);
+  CHECK(drogon::sync_wait(repository.find({.userId = 61, .environmentId = home}))->lastSignalAt ==
+        200);
+  const PresenceDecision skipped = drogon::sync_wait(repository.transition(
+      {.key = {.userId = 62, .environmentId = home},
+       .decide = [](const std::optional<PresenceRow>& current) {
+         return PresenceDecision{.row = {}, .write = current.has_value(), .changed = false};
+       }}));
+  CHECK_FALSE(skipped.write);
+  drogon::sync_wait(repository.removeUser(61));
+}

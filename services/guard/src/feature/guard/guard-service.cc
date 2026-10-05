@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <array>
 #include <camera/camera-action-client.hxx>
+#include <camera/zone-type.hxx>
+#include <feature/guard/vocabulary/decision-mode.hxx>
 #include <map>
 #include <ranges>
 #include <charconv>
@@ -32,6 +34,8 @@
 #include <vector>
 
 constexpr double kRetryReconcileSeconds = 0.5;
+constexpr int64_t kDestroyDeadlineSeconds = 10;
+constexpr int64_t kThreadBusyRetryMs = 1000;
 
 class ObservationRetryPump
     : public std::enable_shared_from_this<ObservationRetryPump>
@@ -121,6 +125,11 @@ std::string tagsToJson(const std::vector<std::string>& tags)
   return json_util::toString(array);
 }
 
+int64_t effectExpiry()
+{
+  return static_cast<int64_t>(std::time(nullptr)) + 60;
+}
+
 int64_t nowMillis()
 {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -132,6 +141,12 @@ bool tamperIndicating(const std::string& status)
 {
   return status == "moved" || status == "covered" || status == "blurred" ||
          status == "unreachable";
+}
+
+bool alertZone(const GuardEventSignals& signals)
+{
+  return zoneTypeFromString(signals.zoneKind) == ZoneType::Alert ||
+         signals.rule == "person_in_alert_zone";
 }
 
 bool protectionExpected(GuardMode mode)
@@ -290,6 +305,55 @@ std::string languageOf(const argus::identity::v1::GetUserResponse& response)
   return response.has_user() ? response.user().lang() : std::string{};
 }
 
+bool visitorPresent(const Json::Value& data)
+{
+  return data.isObject() && data["visitor"].isObject();
+}
+
+bool visitorNamed(const Json::Value& data)
+{
+  return visitorPresent(data) && !data["visitor"].get("name", "").asString().empty();
+}
+
+bool visitorRedactedFor(const Json::Value& data, UserRole role)
+{
+  if (!visitorPresent(data) || role == UserRole::Owner)
+    return false;
+  return role != UserRole::Guard || !visitorNamed(data);
+}
+
+constexpr std::string_view kDirectorySnapshotKey = "response_directory_snapshot";
+
+std::string directorySnapshot(const std::vector<ResponseUser>& users)
+{
+  Json::Value array(Json::arrayValue);
+  for (const auto& user : users) {
+    Json::Value row(Json::objectValue);
+    row["userId"] = static_cast<Json::Int64>(user.userId);
+    row["role"] = userRoleToString(user.role);
+    row["active"] = user.active;
+    row["lang"] = user.lang;
+    array.append(std::move(row));
+  }
+  return json_util::toString(array);
+}
+
+std::optional<std::vector<ResponseUser>> directoryFromSnapshot(const std::string& stored)
+{
+  const Json::Value array = json_util::fromString(stored);
+  if (!array.isArray() || array.empty())
+    return std::nullopt;
+  std::vector<ResponseUser> users;
+  users.reserve(array.size());
+  for (const auto& row : array)
+    users.push_back({.userId = row.get("userId", 0).asInt64(),
+                     .role = userRoleFromString(row.get("role", "").asString()),
+                     .active = row.get("active", false).asBool(),
+                     .name = {},
+                     .lang = row.get("lang", "").asString()});
+  return users;
+}
+
 constexpr int64_t kLangCacheSeconds = 600;
 constexpr int64_t kDayS = 86400;
 constexpr int64_t kDigestLookbackS = 2 * kDayS;
@@ -301,6 +365,18 @@ struct GuardLifecycle
   std::atomic<int> active{0};
   std::mutex mutex;
   std::condition_variable idle;
+};
+
+class SweepFlag
+{
+public:
+  explicit SweepFlag(std::atomic<bool>& flag) : flag_(flag) {}
+  ~SweepFlag() { flag_.store(false, std::memory_order_release); }
+  SweepFlag(const SweepFlag&) = delete;
+  SweepFlag& operator=(const SweepFlag&) = delete;
+
+private:
+  std::atomic<bool>& flag_;
 };
 
 class LifecycleGuard
@@ -478,9 +554,14 @@ GuardService::~GuardService()
       dependencies_.bus->unsubscribe(*healthSubscription_);
   }
   std::unique_lock lock(lifecycle_->mutex);
-  lifecycle_->idle.wait(lock, [lifecycle = lifecycle_] {
-    return lifecycle->active.load(std::memory_order_acquire) == 0;
-  });
+  const bool idle = lifecycle_->idle.wait_for(
+      lock, std::chrono::seconds(kDestroyDeadlineSeconds), [lifecycle = lifecycle_] {
+        return lifecycle->active.load(std::memory_order_acquire) == 0;
+      });
+  if (!idle)
+    LOG_ERROR << "Guard service: destroyed with "
+              << lifecycle_->active.load(std::memory_order_acquire)
+              << " coroutine(s) still running";
 }
 
 void GuardService::requestStop()
@@ -701,8 +782,9 @@ void GuardService::subscribeHealth()
         if (cameraId <= 0)
           return;
         rememberCameraName(cameraId, health.get("cameraName", "").asString());
-        ingestHealth(cameraId, health.get("status", "").asString(),
-                     nowMillis());
+        ingestHealth({.cameraId = cameraId,
+                      .status = health.get("status", "").asString(),
+                      .atMs = nowMillis()});
       });
   if (subscription) {
     healthSubscription_ = *subscription;
@@ -710,18 +792,17 @@ void GuardService::subscribeHealth()
   }
 }
 
-void GuardService::ingestHealth(int64_t cameraId, const std::string& status,
-                                int64_t atMs)
+void GuardService::ingestHealth(const HealthSample& sample)
 {
-  if (cameraId <= 0)
+  if (sample.cameraId <= 0)
     return;
   std::scoped_lock lock(healthMutex_);
-  CameraHealth& health = healthByCamera_[cameraId];
-  if (health.status == status && health.lastSeenMs > 0) {
-    health.lastSeenMs = atMs;
+  CameraHealth& health = healthByCamera_[sample.cameraId];
+  if (health.status == sample.status && health.lastSeenMs > 0) {
+    health.lastSeenMs = sample.atMs;
     return;
   }
-  health = {.status = status, .firstSeenMs = atMs, .lastSeenMs = atMs};
+  health = {.status = sample.status, .firstSeenMs = sample.atMs, .lastSeenMs = sample.atMs};
 }
 
 std::string GuardService::cameraHealthStatus(int64_t cameraId) const
@@ -801,7 +882,7 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
         std::to_string(onset))
       continue;
     const std::string eventId = "tamper:" + std::to_string(reading.cameraId) +
-                                ":" + std::to_string(now);
+                                ":" + std::to_string(onset);
     const std::string name = cameraName(reading.cameraId);
     const GuardEnvironmentScope scope =
         co_await environmentScope(reading.cameraId);
@@ -1189,8 +1270,11 @@ void GuardService::publishKnownSeen(const KnownSeenInput& input)
 void GuardService::scheduleEncounterSweep()
 {
   trackTimer(drogon::app().getLoop()->runEvery(60.0, [this, lifecycle = lifecycle_]() {
+    if (encounterSweepRunning_.exchange(true, std::memory_order_acq_rel))
+      return;
     drogon::async_run([this, lifecycle]() -> drogon::Task<void> {
       const LifecycleGuard guard(lifecycle);
+      const SweepFlag running(encounterSweepRunning_);
       if (!guard.alive())
         co_return;
       try {
@@ -1253,7 +1337,9 @@ drogon::Task<void> GuardService::flushEncounterOutbox()
   if (!dependencies_.bus)
     co_return;
   if (!encounterStreamReady_.load(std::memory_order_acquire))
-    encounterStreamReady_.store(ensureGuardStream(), std::memory_order_release);
+    encounterStreamReady_.store(
+        co_await BlockingTask<bool>([this]() { return ensureGuardStream(); }),
+        std::memory_order_release);
   const std::string subject = config->guardEncounterSubject.empty()
                                   ? std::string(nats_subject::kGuardEncounterClosed)
                                   : config->guardEncounterSubject;
@@ -1261,8 +1347,10 @@ drogon::Task<void> GuardService::flushEncounterOutbox()
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
   int refused = 0;
   for (const auto& row : pending) {
-    const bool published = dependencies_.bus->publishWithMsgId(
-        {.subject = subject, .payload = row.payload, .msgId = row.eventId});
+    const bool published = co_await BlockingTask<bool>(
+        [bus = dependencies_.bus, subject, payload = row.payload, msgId = row.eventId]() {
+          return bus->publishWithMsgId({.subject = subject, .payload = payload, .msgId = msgId});
+        });
     if (!published) {
       encounterStreamReady_.store(false, std::memory_order_relaxed);
       co_await repository_.recordEncounterAttempt(row.eventId, now);
@@ -1411,6 +1499,7 @@ GuardService::checkpointToJson(const ObservationCheckpoint& checkpoint)
   json["weapon"] = checkpoint.weapon;
   json["lateAssessed"] = checkpoint.lateAssessed;
   json["lateRaised"] = checkpoint.lateRaised;
+  json["stale"] = checkpoint.stale;
   json["policyDanger"] = checkpoint.policyDanger;
   json["danger"] = checkpoint.danger;
   json["greetingStatus"] = checkpoint.greetingStatus;
@@ -1487,6 +1576,7 @@ GuardService::checkpointFromJson(const Json::Value& json)
   checkpoint.weapon = json.get("weapon", false).asBool();
   checkpoint.lateAssessed = json.get("lateAssessed", false).asBool();
   checkpoint.lateRaised = json.get("lateRaised", false).asBool();
+  checkpoint.stale = json.get("stale", false).asBool();
   checkpoint.policyDanger = json.get("policyDanger", "").asString();
   checkpoint.danger = json.get("danger", "").asString();
   checkpoint.greetingStatus = json.get("greetingStatus", "").asString();
@@ -1581,8 +1671,7 @@ GuardService::applyObservation(const ObservationInput& input)
     context.severity = signals.severity;
     context.hasKnown = signals.hasKnown;
     context.hasUnknown = signals.hasUnknown;
-    context.inAlertZone =
-        signals.zoneKind == "alert" || signals.rule == "person_in_alert_zone";
+    context.inAlertZone = alertZone(signals);
     context.atNight = signals.night || signals.rule == "person_night" ||
                       signals.rule == "vehicle_night";
     context.publicPresent = posture.publicPresent;
@@ -1607,6 +1696,8 @@ GuardService::applyObservation(const ObservationInput& input)
     checkpoint.passerby = area.passerby;
     checkpoint.expectedArea = posture.publicPresent || area.inUse;
     checkpoint.cameraRole = cameraRoleToString(camera.role);
+    checkpoint.stale = config->staleObservationS > 0 && signals.publishedAtMs > 0 &&
+                       nowMillis() - signals.publishedAtMs > config->staleObservationS * 1000;
     checkpoint.outdoor = camera.outdoor;
     checkpoint.familyInside = camera.configured && !camera.outdoor &&
                               co_await familyInside(environment.id);
@@ -1710,6 +1801,11 @@ GuardService::applyObservation(const ObservationInput& input)
                          .checkpoint =
                              json_util::toString(checkpointToJson(checkpoint)),
                          .at = now}});
+    if (phase.guestTaken) {
+      LOG_INFO << "Guard service: one-time pass already used; observation "
+               << eventId << " is evaluated again without it";
+      co_return ObservationResult{.completed = false, .retryAt = nowMillis()};
+    }
     if (!phase.committed) {
       throw std::runtime_error("incident phase commit failed");
     }
@@ -1719,26 +1815,6 @@ GuardService::applyObservation(const ObservationInput& input)
   }
 
   if (state.stage < kStageEncounter) {
-    const auto candidates =
-        co_await repository_.openEncounters(now - config->crossCameraWindowS);
-    std::vector<GuardEncounterCandidate> openEncounters;
-    openEncounters.reserve(candidates.size());
-    for (const auto& encounter : candidates) {
-      openEncounters.push_back({.id = encounter.id,
-                                .personId = encounter.personId,
-                                .signature = encounter.signature,
-                                .lastCameraId = encounter.bestCameraId,
-                                .lastSeen = encounter.lastSeen});
-    }
-    const auto matched = guard_policy::matchEncounter(
-        {.personId = signals.personId,
-         .signature = signals.signature,
-         .cameraId = signals.cameraId,
-         .now = now,
-         .windowS = config->crossCameraWindowS,
-         .continuityWindowS = config->continuityWindowS,
-         .minSimilarity = config->signatureMinSimilarity,
-         .candidates = openEncounters});
     GuardEncounterPhaseInput phase;
     phase.advance = {.eventId = eventId,
                      .stage = kStageEncounter,
@@ -1748,21 +1824,16 @@ GuardService::applyObservation(const ObservationInput& input)
                      .checkpoint =
                          json_util::toString(checkpointToJson(checkpoint)),
                      .at = now};
-    if (matched) {
-      phase.encounterIdToTouch = *matched;
-      phase.touchInput = {.id = *matched,
-                          .bestCameraId = signals.cameraId,
-                          .bestScore = signals.viewScore,
-                          .lastSeen = now};
-    }
-    else if (signals.hasUnknown) {
-      phase.create = true;
-      phase.createInput = {.personId = signals.personId,
-                           .signature = signals.signature,
-                           .bestCameraId = signals.cameraId,
-                           .bestScore = signals.viewScore,
-                           .at = now};
-    }
+    phase.match = GuardEncounterMatchSpec{
+        .personId = signals.personId,
+        .signature = signals.signature,
+        .cameraId = signals.cameraId,
+        .bestScore = signals.viewScore,
+        .now = now,
+        .windowS = config->crossCameraWindowS,
+        .continuityWindowS = config->continuityWindowS,
+        .minSimilarity = config->signatureMinSimilarity,
+        .createIfUnmatched = signals.hasUnknown};
     if (signals.hasKnown && !signals.hasUnknown && signals.personId > 0) {
       phase.closeForPerson = true;
       phase.closePersonId = signals.personId;
@@ -1806,7 +1877,8 @@ GuardService::applyObservation(const ObservationInput& input)
     if (config->greetEnabled && mode == GuardMode::Home &&
         !posture.publicPresent && !posture.staffOnly &&
         !checkpoint.expectedArea && !checkpoint.passerby &&
-        (knownVisit || unknownVisit || continuesDialogue) && !hardFloor) {
+        (knownVisit || unknownVisit || continuesDialogue) && !hardFloor &&
+        !checkpoint.stale) {
       checkpoint.dialogue =
           co_await runDialogue({.signals = signals,
                                 .knownVisit = knownVisit,
@@ -1984,9 +2056,6 @@ GuardService::applyObservation(const ObservationInput& input)
           co_return ObservationResult{.completed = false,
                                       .retryAt = reply.retryAt};
         }
-        if (reply.indeterminate) {
-          co_return ObservationResult{};
-        }
         checkpoint.dialogue.replied = reply.accepted;
         checkpoint.dialogue.replyText =
             reply.accepted ? grounded : std::string{};
@@ -2019,8 +2088,6 @@ GuardService::applyObservation(const ObservationInput& input)
             co_return ObservationResult{.completed = false,
                                         .retryAt = heard.retryAt};
           }
-          if (heard.indeterminate)
-            co_return ObservationResult{};
           checkpoint.dialogue.heardText =
               heard.accepted ? heard.heard : std::string{};
           nextGoal = checkpoint.dialogue.heardText.empty()
@@ -2117,7 +2184,8 @@ GuardService::applyObservation(const ObservationInput& input)
                                            .cameraId = signals.cameraId,
                                            .personId = signals.personId,
                                            .commandId = {},
-                                           .kind = "notify",
+                                           .kind = guardActionKindToString(
+                                               GuardActionKind::Notify),
                                            .status = "budget_denied",
                                            .detail = "cooldown_or_hourly_cap",
                                            .createdAt = now});
@@ -2144,17 +2212,18 @@ GuardService::applyObservation(const ObservationInput& input)
   DecisionSuppression suppression = DecisionSuppression::LegacySilent;
   std::vector<std::string> beliefSignalNames;
   std::vector<std::string> suppressedKinds;
-  const GuardDeterrence deterrent = guard_policy::deterrence(
+  GuardDeterrence deterrent = guard_policy::deterrence(
       {.mode = mode,
        .danger = danger,
        .publicPresent = posture.publicPresent,
        .staffOnly = posture.staffOnly,
        .weapon = checkpoint.weapon,
-       .inAlertZone = signals.zoneKind == "alert" ||
-                      signals.rule == "person_in_alert_zone",
+       .inAlertZone = alertZone(signals),
        .encounterChecks = checkpoint.encounterChecks,
        .quietArea = checkpoint.expectedArea || checkpoint.passerby,
        .familyInside = checkpoint.familyInside});
+  if (checkpoint.stale)
+    deterrent = {};
   bool notifySuppressed = false;
   bool announceSuppressed = false;
   bool alarmSuppressed = false;
@@ -2178,7 +2247,8 @@ GuardService::applyObservation(const ObservationInput& input)
          .config = beliefCfg});
     const int threshold = guard_belief::beliefThreshold(danger, beliefCfg);
     const bool beliefWould = belief.score >= threshold;
-    const bool enforce = config->decisionMode == "enforce";
+    const bool enforce =
+        decisionModeFromString(config->decisionMode) == DecisionMode::Enforce;
     bool threadRepeat = false;
     bool threadOpen = false;
     if (legacyWould && !checkpoint.effectsDenied && state.encounterId > 0) {
@@ -2382,13 +2452,49 @@ GuardService::applyObservation(const ObservationInput& input)
       retryAt =
           retryAt == 0 ? effect.retryAt : std::min(retryAt, effect.retryAt);
     };
-    if (rank >= config->notifyLevel && !notifySuppressed) {
-      bool threadOpen = false;
-      if (state.encounterId > 0) {
+    std::optional<ExecutionLease> threadLease;
+    bool threadTaken = false;
+    bool threadOpen = false;
+    const bool notifyWanted = rank >= config->notifyLevel && !notifySuppressed;
+    if (notifyWanted && state.encounterId > 0) {
+      threadLease.emplace(ExecutionLeaseInput{
+          .mutex = lifecycleMutex_,
+          .running = executing_,
+          .id = "notify-thread:" + std::to_string(state.encounterId)});
+      if (!threadLease->owned()) {
+        threadTaken = true;
+        EffectResult busy;
+        busy.resumable = true;
+        busy.retryAt = nowMillis() + kThreadBusyRetryMs;
+        note(busy);
+      }
+      else {
         const auto encounter =
             co_await repository_.findEncounter(state.encounterId);
         threadOpen = encounter.has_value() && encounter->notifyCount > 0;
+        const std::string ownCommand =
+            makeCommandId({.correlationId = eventId,
+                           .kind = GuardActionKind::Notify,
+                           .sequence = 1,
+                           .cameraId = signals.cameraId,
+                           .now = now});
+        if (threadOpen && rank <= encounter->notifyHighestRank &&
+            encounter->notifyCommandId != ownCommand) {
+          threadTaken = true;
+          co_await repository_.insertAction(
+              {.incidentId = state.incidentId,
+               .encounterId = state.encounterId,
+               .cameraId = signals.cameraId,
+               .personId = signals.personId,
+               .commandId = {},
+               .kind = guardActionKindToString(GuardActionKind::Notify),
+               .status = "thread_suppressed",
+               .detail = "same_tier_repeat",
+               .createdAt = now});
+        }
       }
+    }
+    if (notifyWanted && !threadTaken) {
       NoticeAction action = NoticeAction::Watching;
       if (rank >= config->alarmLevel && deterrent.alarm && !alarmSuppressed)
         action = NoticeAction::Alarm;
@@ -2446,6 +2552,7 @@ GuardService::applyObservation(const ObservationInput& input)
            .sequence = 1,
            .notifyContent = content}));
     }
+    threadLease.reset();
 
     if (rank >= config->alarmLevel && deterrent.alarm && !alarmSuppressed) {
       note(co_await performEffect({.kind = GuardActionKind::Alarm,
@@ -2481,7 +2588,8 @@ GuardService::applyObservation(const ObservationInput& input)
                                            .cameraId = signals.cameraId,
                                            .personId = signals.personId,
                                            .commandId = {},
-                                           .kind = "announce",
+                                           .kind = guardActionKindToString(
+                                               GuardActionKind::Announce),
                                            .status = "denied",
                                            .detail = "line_gate",
                                            .createdAt = now});
@@ -2640,6 +2748,8 @@ GuardService::assessInto(const AssessIntoInput& input)
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - assessStart)
           .count());
+  if (!checkpoint.dialogue.heardText.empty())
+    checkpoint.assessment.veto = false;
   const bool soft = guard_policy::dangerRank(danger) <
                     guard_policy::dangerRank(GuardDanger::High);
   if (checkpoint.assessment.performed && checkpoint.assessment.veto &&
@@ -2683,16 +2793,6 @@ GuardService::recordAssessment(const RecordAssessmentInput& input)
          .tags = tagsToJson(checkpoint.assessment.tags),
          .summary = checkpoint.assessment.summary,
          .createdAt = input.now});
-    if (!checkpoint.assessment.tags.empty() && signals.personId > 0 &&
-        dependencies_.identity) {
-      co_await BlockingTask<bool>([this, personId = signals.personId,
-                                   tags = checkpoint.assessment.tags]() {
-        return dependencies_.identity->tagPerson({.personId = personId,
-                                                  .tags = tags,
-                                                  .source = "llm",
-                                                  .observation = {}});
-      });
-    }
     int logIndex = 0;
     for (const auto& log : checkpoint.assessment.toolLogs) {
       co_await repository_.insertAction(
@@ -2726,19 +2826,27 @@ GuardService::escalate(const EscalateInput& input)
   };
   const std::string correlation = input.eventId + ":escalation";
   const int rank = guard_policy::dangerRank(input.danger);
-  const GuardDeterrence deterrent = guard_policy::deterrence(
+  GuardDeterrence deterrent = guard_policy::deterrence(
       {.mode = input.posture.mode,
        .danger = input.danger,
        .publicPresent = input.posture.publicPresent,
        .staffOnly = input.posture.staffOnly,
        .weapon = input.checkpoint.weapon,
-       .inAlertZone = signals.zoneKind == "alert" ||
-                      signals.rule == "person_in_alert_zone",
+       .inAlertZone = alertZone(signals),
        .encounterChecks = input.checkpoint.encounterChecks,
        .quietArea = input.checkpoint.expectedArea || input.checkpoint.passerby,
        .familyInside = input.checkpoint.familyInside});
+  if (input.checkpoint.stale)
+    deterrent = {};
 
-  if (rank >= config->notifyLevel) {
+  bool threadRepeat = false;
+  if (input.encounterId > 0) {
+    const auto encounter = co_await repository_.findEncounter(input.encounterId);
+    threadRepeat = encounter.has_value() && encounter->notifyCount > 0 &&
+                   rank <= encounter->notifyHighestRank;
+  }
+
+  if (rank >= config->notifyLevel && !threadRepeat) {
     NoticeAction action = NoticeAction::Watching;
     if (rank >= config->alarmLevel && deterrent.alarm)
       action = NoticeAction::Alarm;
@@ -3357,15 +3465,14 @@ GuardService::performEffect(const EffectInput& input)
       case GuardActionKind::Announce: {
         const auto ack = co_await BlockingTask<CameraCommandResult>(
             [this, cameraId = input.cameraId, text = input.text,
-             lang = input.lang, commandId, encounterId = input.encounterId,
-             expiresAt = input.now + 60]() {
+             lang = input.lang, commandId, encounterId = input.encounterId]() {
               return dependencies_.actions->announce(
                   {.cameraId = cameraId,
                    .text = text,
                    .lang = lang,
                    .commandId = commandId,
                    .encounterId = encounterId,
-                   .expiresAt = expiresAt});
+                   .expiresAt = effectExpiry()});
             });
         applyCamera(ack);
         break;
@@ -3395,12 +3502,12 @@ GuardService::performEffect(const EffectInput& input)
         const int seconds = std::clamp(input.seconds, 1, 10);
         const auto ack = co_await BlockingTask<CameraCommandResult>(
             [this, cameraId = input.cameraId, seconds, commandId,
-             encounterId = input.encounterId, expiresAt = input.now + 60]() {
+             encounterId = input.encounterId]() {
               return dependencies_.actions->alarm({.cameraId = cameraId,
                                                    .seconds = seconds,
                                                    .commandId = commandId,
                                                    .encounterId = encounterId,
-                                                   .expiresAt = expiresAt});
+                                                   .expiresAt = effectExpiry()});
             });
         applyCamera(ack);
         break;
@@ -3409,16 +3516,15 @@ GuardService::performEffect(const EffectInput& input)
       case GuardActionKind::SirenDisarm: {
         const bool enabled = input.kind == GuardActionKind::SirenArm;
         const int leaseSeconds = enabled ? config->sirenSeconds : 0;
-        const int64_t expiresAt = enabled ? input.now + 60 : 0;
         const auto ack = co_await BlockingTask<CameraCommandResult>(
             [this, cameraId = input.cameraId, enabled, commandId,
-             encounterId = input.encounterId, expiresAt, leaseSeconds]() {
+             encounterId = input.encounterId, leaseSeconds]() {
               return dependencies_.actions->setSiren(
                   {.cameraId = cameraId,
                    .enabled = enabled,
                    .commandId = commandId,
                    .encounterId = encounterId,
-                   .expiresAt = expiresAt,
+                   .expiresAt = enabled ? effectExpiry() : 0,
                    .leaseSeconds = leaseSeconds});
             });
         applyCamera(ack);
@@ -3702,14 +3808,15 @@ std::string GuardService::userLang(int64_t userId)
 }
 
 drogon::Task<std::optional<GuardService::RecipientResolution>>
-GuardService::legacyRecipients(const std::vector<int64_t>& excluded)
+GuardService::legacyRecipients(const RecipientQuery& query)
 {
   if (!dependencies_.identity) {
     LOG_WARN << "Guard service: identity SDK unavailable";
     co_return std::nullopt;
   }
+  const bool redacted = visitorPresent(query.data) && !visitorNamed(query.data);
   co_return co_await BlockingTask<std::optional<RecipientResolution>>(
-      [this, excluded]() -> std::optional<RecipientResolution> {
+      [this, excluded = query.excluded, redacted]() -> std::optional<RecipientResolution> {
         const auto users = dependencies_.identity->listNotifiableUsers();
         if (!users || users->empty())
           return std::nullopt;
@@ -3721,7 +3828,8 @@ GuardService::legacyRecipients(const std::vector<int64_t>& excluded)
         RecipientResolution resolution{.batches = {}, .plan = Json::Value()};
         resolution.batches.reserve(byLang.size());
         for (auto& [lang, ids] : byLang)
-          resolution.batches.push_back({.lang = lang, .userIds = std::move(ids)});
+          resolution.batches.push_back(
+              {.lang = lang, .userIds = std::move(ids), .redacted = redacted});
         return resolution;
       });
 }
@@ -3783,14 +3891,20 @@ GuardService::planRecipients(const PlanQuery& query)
         {.requested = user != query.users.end() ? user->lang : std::string{},
          .fallback = config->notifyLang});
   };
+  const auto redactedOf = [&](int64_t userId) {
+    const auto user = std::ranges::find(query.users, userId, &ResponseUser::userId);
+    return visitorRedactedFor(data,
+                              user != query.users.end() ? user->role : UserRole::Guest);
+  };
   const auto batchesOf = [&](const std::vector<int64_t>& userIds) {
-    std::map<std::string, std::vector<int64_t>> byLang;
+    std::map<std::pair<std::string, bool>, std::vector<int64_t>> byAudience;
     for (const int64_t userId : userIds)
-      byLang[langOf(userId)].push_back(userId);
+      byAudience[{langOf(userId), redactedOf(userId)}].push_back(userId);
     std::vector<RecipientBatch> batches;
-    batches.reserve(byLang.size());
-    for (auto& [lang, ids] : byLang)
-      batches.push_back({.lang = lang, .userIds = std::move(ids)});
+    batches.reserve(byAudience.size());
+    for (auto& [audience, ids] : byAudience)
+      batches.push_back(
+          {.lang = audience.first, .userIds = std::move(ids), .redacted = audience.second});
     return batches;
   };
 
@@ -3851,17 +3965,55 @@ GuardService::planRecipients(const PlanQuery& query)
                                 .plan = response_plan::toJson(plan)};
 }
 
+drogon::Task<std::optional<std::vector<ResponseUser>>> GuardService::directoryUsers()
+{
+  const auto directory = dependencies_.directory;
+  auto users = co_await BlockingTask<std::optional<std::vector<ResponseUser>>>(
+      [directory]() { return directory->users(); });
+  if (users && !users->empty()) {
+    const std::string snapshot = directorySnapshot(*users);
+    bool changed = false;
+    {
+      std::scoped_lock lock(directoryMutex_);
+      changed = !lastDirectory_ || directorySnapshot(*lastDirectory_) != snapshot;
+      lastDirectory_ = *users;
+    }
+    if (changed) {
+      try {
+        co_await repository_.setState({.key = std::string(kDirectorySnapshotKey),
+                                       .value = snapshot,
+                                       .updatedAt = static_cast<int64_t>(std::time(nullptr))});
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Guard service: directory snapshot not stored: " << error.what();
+      }
+    }
+    co_return users;
+  }
+  {
+    std::scoped_lock lock(directoryMutex_);
+    if (lastDirectory_)
+      co_return lastDirectory_;
+  }
+  try {
+    co_return directoryFromSnapshot(
+        co_await repository_.state(std::string(kDirectorySnapshotKey), ""));
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Guard service: directory snapshot unreadable: " << error.what();
+  }
+  co_return std::nullopt;
+}
+
 drogon::Task<std::optional<GuardService::RecipientResolution>>
 GuardService::recipientsFor(const RecipientQuery& query)
 {
   if (!dependencies_.directory)
-    co_return co_await legacyRecipients(query.excluded);
-  const auto directory = dependencies_.directory;
-  const auto users = co_await BlockingTask<std::optional<std::vector<ResponseUser>>>(
-      [directory]() { return directory->users(); });
+    co_return co_await legacyRecipients(query);
+  const auto users = co_await directoryUsers();
   if (!users) {
-    LOG_WARN << "Guard service: user directory unavailable";
-    co_return std::nullopt;
+    LOG_WARN << "Guard service: user directory unavailable; using the fallback roster";
+    co_return co_await legacyRecipients(query);
   }
   RecipientResolution resolution = co_await planRecipients(
       {.data = query.data, .excluded = query.excluded, .users = *users, .now = query.now});
@@ -3900,6 +4052,7 @@ GuardService::notify(const NotifyInput& input)
     std::vector<int64_t> userIds;
     std::string title;
     std::string body;
+    bool redacted{false};
   };
   std::vector<Delivery> deliveries;
   Json::Value data;
@@ -3918,13 +4071,15 @@ GuardService::notify(const NotifyInput& input)
           deliveries.push_back({.lang = batch.get("lang", "").asString(),
                                 .userIds = readIds(batch["userIds"]),
                                 .title = batch.get("title", "").asString(),
-                                .body = batch.get("body", "").asString()});
+                                .body = batch.get("body", "").asString(),
+                                .redacted = batch.get("redacted", false).asBool()});
       }
       else if (stored["userIds"].isArray()) {
         deliveries.push_back({.lang = {},
                               .userIds = readIds(stored["userIds"]),
                               .title = stored.get("title", "").asString(),
-                              .body = stored.get("body", "").asString()});
+                              .body = stored.get("body", "").asString(),
+                              .redacted = false});
       }
     }
     const bool usable =
@@ -3956,13 +4111,18 @@ GuardService::notify(const NotifyInput& input)
     payload["data"] = data;
     Json::Value storedBatches(Json::arrayValue);
     for (const auto& batch : batches) {
-      const NoticeText text = guard_copy::render(input.content.notice, batch.lang);
+      GuardNotice notice = input.content.notice;
+      if (batch.redacted)
+        notice.visitor = {};
+      const NoticeText text = guard_copy::render(notice, batch.lang);
       deliveries.push_back({.lang = batch.lang,
                             .userIds = batch.userIds,
                             .title = text.title,
-                            .body = text.body});
+                            .body = text.body,
+                            .redacted = batch.redacted});
       Json::Value stored(Json::objectValue);
       stored["lang"] = batch.lang;
+      stored["redacted"] = batch.redacted;
       Json::Value ids(Json::arrayValue);
       for (const int64_t userId : batch.userIds)
         ids.append(static_cast<Json::Int64>(userId));
@@ -3998,13 +4158,16 @@ GuardService::notify(const NotifyInput& input)
       request.add_user_ids(userId);
     request.set_command_id(deliveries.size() == 1
                                ? input.commandId
-                               : input.commandId + ":" + delivery.lang);
+                               : input.commandId + ":" + delivery.lang +
+                                     (delivery.redacted ? ":r" : ""));
     request.set_type("camera");
     request.set_title(delivery.title);
     request.set_body(delivery.body);
     Json::Value localized = data;
     if (localized.isObject() && !delivery.lang.empty())
       localized["lang"] = delivery.lang;
+    if (localized.isObject() && delivery.redacted)
+      localized.removeMember("visitor");
     request.set_data(json_util::toString(localized));
     const auto result =
         co_await BlockingTask<NotificationCreateResult>([this, request]() {
@@ -4107,8 +4270,7 @@ drogon::Task<bool> GuardService::raiseSafetyAlert(const SafetyAlertInput& input)
        .text = {},
        .lang = {},
        .seconds = 0,
-       .correlationId = std::string(input.duress ? "duress:" : "panic:") +
-                        std::to_string(input.alertId),
+       .correlationId = "safety:" + std::to_string(input.alertId),
        .sequence = 1,
        .notifyContent = {.notice = notice,
                          .data = std::move(data),
