@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <drogon/utils/coroutine.h>
+#include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 #include <runtime/blocking-pool.hxx>
 
@@ -11,7 +12,6 @@
 #include <optional>
 #include <string>
 
-class NatsBus;
 class SqliteGraph;
 class MemoryGraphRepository;
 struct EncounterLifecycle;
@@ -44,6 +44,13 @@ enum class EncounterDisposition : uint8_t
   Ack = 0,
   Nak,
   Term
+};
+
+struct EncounterDelivery
+{
+  bool alive{false};
+  const std::string& payload;
+  const NatsBus::DurableSettlement& settlement;
 };
 
 class EncounterClosedConsumer
@@ -88,6 +95,7 @@ private:
   EncounterDisposition settlePayload(const std::string& payload);
   EncounterDisposition settleEvent(const EncounterClosedEvent& event,
                                    const std::string& fingerprint);
+  void settleDelivery(const EncounterDelivery& delivery);
   bool trySubscribe();
   void scheduleSubscribeRetry();
   void purgeSettled(int64_t now);

@@ -205,8 +205,16 @@ private:
   int64_t captureInline(const InlineCapture& capture);
   void deferCapture(const InlineCapture& capture);
   void refineLater(const NoteRefinement& refinement);
-  void embedAndStore(int64_t factId, bool episode);
+  struct EmbedRequest
+  {
+    int64_t id{0};
+    bool episode{false};
+    bool dedup{true};
+  };
+
+  bool embedAndStore(const EmbedRequest& request);
   void rebuildAll();
+  bool vecLayoutOutdated();
 
   static bool hasUserScope(int64_t userId);
 

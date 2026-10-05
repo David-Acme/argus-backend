@@ -329,9 +329,9 @@ int main()
           if (replica)
             replica->seedFromSnapshot(snapshot);
           else
-            CatalogReplica::seedSnapshot(
-                {static_cast<SqliteGraph&>(memory.graph()), memory.resolver(),
-                 snapshot});
+            CatalogReplica::seedSnapshot({.graph = static_cast<SqliteGraph&>(memory.graph()),
+                                          .resolver = memory.resolver(),
+                                          .snapshot = snapshot});
         });
       }
       catch (const std::exception& error) {

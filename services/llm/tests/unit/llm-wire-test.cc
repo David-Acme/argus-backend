@@ -26,6 +26,8 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -248,7 +250,7 @@ StreamBody joinChunks(const std::vector<std::string>& chunks)
   Json::Value json;
   if (reader.parse(candidate, json, false) && json.isObject() &&
       json.isMember("done") && json["done"].asBool()) {
-    body.sentinel = json;
+    body.sentinel = std::move(json);
     body.sentinelFound = true;
     body.tokens = body.tokens.substr(0, mark);
   }
@@ -488,6 +490,26 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   CHECK(chunks.size() > 2);
   for (size_t i = 0; i + 1 < chunks.size(); ++i)
     CHECK(chunks[i].find("\"done\"") == std::string::npos);
+
+  {
+    const auto settleBy = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!llm->streams().drained() && std::chrono::steady_clock::now() < settleBy)
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    REQUIRE(llm->streams().drained());
+    std::vector<StreamLease> held;
+    while (auto lease = llm->streams().tryAcquire())
+      held.push_back(std::move(*lease));
+    REQUIRE_FALSE(held.empty());
+    const auto busy = request({.port = port,
+                               .method = "POST",
+                               .path = "/llm/v1/chat-stream",
+                               .body = divergentBody,
+                               .contentType = "application/json"});
+    CHECK(busy.status == 429);
+    CHECK(envelope(busy)["errors"]["code"] == "TOO_MANY_REQUESTS");
+  }
+  const StreamBody afterBusy = joinChunks(requestStream(port, divergentBody));
+  CHECK(afterBusy.sentinelFound);
 
   const auto notJson = request({.port = port,
                                 .method = "POST",

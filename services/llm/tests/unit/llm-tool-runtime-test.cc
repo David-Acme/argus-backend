@@ -353,7 +353,9 @@ TEST_CASE("app tools are permitted by the single app-action helper")
 {
   for (auto& descriptor : appToolDescriptors()) {
     const auto action = appActionOf(descriptor.name);
-    REQUIRE(action.has_value());
+    CHECK(action.has_value());
+    if (!action)
+      continue;
     for (const auto role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest})
       CHECK(ToolExecutor::permits(descriptor, role) == role_access::hasAppAction(role, *action));
   }

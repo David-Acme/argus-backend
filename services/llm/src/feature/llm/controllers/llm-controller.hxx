@@ -6,8 +6,8 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/llm/services/intent-gate.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
-#include <feature/llm/services/stream-slots.hxx>
 #include <llm/llm-service.hxx>
+#include <runtime/stream-slots.hxx>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -25,6 +25,14 @@ struct LlmChatOutcome
 inline constexpr std::string_view kIdentityCaller = "voice";
 
 [[nodiscard]] ChatRequest boundToCaller(ChatRequest request, std::string_view caller);
+
+struct CallerCredential
+{
+  std::string_view presented;
+  std::string_view expected;
+};
+
+[[nodiscard]] ChatRequest boundToCredential(ChatRequest request, const CallerCredential& credential);
 
 class LlmController : public drogon::HttpController<LlmController, false>
 {
@@ -59,9 +67,6 @@ public:
   drogon::Task<drogon::HttpResponsePtr> engine(drogon::HttpRequestPtr req);
 
 private:
-  [[nodiscard]] ChatRequest scopedRequest(const drogon::HttpRequestPtr& req,
-                                          ChatRequest request) const;
-
   LlmService service_;
   IntentGate intentGate_;
   LfmAdapter adapter_;

@@ -640,6 +640,77 @@ bool MemoryGraphRepository::factExists(sqlite3* db, int64_t factId)
   return stmt.step() == SQLITE_ROW;
 }
 
+bool MemoryGraphRepository::replaceVecRows(sqlite3* db, const VecRowsReplaceInput& input)
+{
+  if (!db || input.key == 0 || !execute(db, BEGIN_IMMEDIATE))
+    return false;
+  const bool episode = memory_vec::isEpisodeKey(input.key);
+  SqliteStmt exists;
+  SqliteStmt remove;
+  SqliteStmt insert;
+  bool ok = exists.prepare(db, episode ? FIND_EPISODE_EXISTS : FIND_FACT_EXISTS) &&
+            remove.prepare(db, DELETE_VEC_ROWS) && insert.prepare(db, INSERT_VEC_ROW);
+  if (ok) {
+    exists.bindInt64(1, memory_vec::idOfKey(input.key));
+    ok = exists.step() == SQLITE_ROW;
+  }
+  if (ok) {
+    remove.bindInt64(1, input.key);
+    ok = remove.step() == SQLITE_DONE;
+  }
+  for (const auto& row : input.views) {
+    if (!ok)
+      break;
+    insert.reset();
+    const std::string bytes = memory_vec::encode(row.vec);
+    bindVector(insert, 1, bytes);
+    insert.bindText(2, input.partition);
+    insert.bindInt64(3, input.key);
+    insert.bindInt(4, row.view);
+    ok = insert.step() == SQLITE_DONE;
+  }
+  if (!ok || !execute(db, COMMIT)) {
+    execute(db, ROLLBACK);
+    return false;
+  }
+  return true;
+}
+
+std::vector<int64_t> MemoryGraphRepository::embeddedEpisodeIds(sqlite3* db)
+{
+  std::vector<int64_t> out;
+  SqliteStmt stmt;
+  if (!db || !stmt.prepare(db, FIND_EMBEDDED_EPISODE_IDS))
+    return out;
+  while (stmt.step() == SQLITE_ROW)
+    out.push_back(stmt.columnInt64(0));
+  return out;
+}
+
+bool MemoryGraphRepository::hasVecRows(sqlite3* db)
+{
+  SqliteStmt stmt;
+  if (!db || !stmt.prepare(db, HAS_VEC_ROWS) || stmt.step() != SQLITE_ROW)
+    return false;
+  return stmt.columnInt64(0) != 0;
+}
+
+int MemoryGraphRepository::vecLayout(sqlite3* db)
+{
+  SqliteStmt stmt;
+  if (!db || !stmt.prepare(db, READ_VEC_LAYOUT) || stmt.step() != SQLITE_ROW)
+    return 0;
+  return static_cast<int>(stmt.columnInt64(0));
+}
+
+bool MemoryGraphRepository::setVecLayout(sqlite3* db, int layout)
+{
+  if (!db)
+    return false;
+  const std::string sql = writeVecLayout(layout);
+  return execute(db, sql.c_str());
+}
+
 std::vector<int64_t> MemoryGraphRepository::forgetFact(sqlite3* db,
                                                        const FactForgetInput& input)
 {

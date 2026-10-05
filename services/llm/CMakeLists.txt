@@ -395,6 +395,21 @@ set_target_properties(memory-forget-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME memory-forget-test COMMAND memory-forget-test)
 
+add_executable(memory-vec-layout-test tests/unit/memory-vec-layout-test.cc)
+
+target_link_libraries(memory-vec-layout-test PRIVATE argus::memory
+    argus::contracts::auth doctest::doctest)
+
+target_compile_definitions(memory-vec-layout-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
+    ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/memory")
+
+target_compile_options(memory-vec-layout-test PRIVATE -Wall -Wextra)
+
+set_target_properties(memory-vec-layout-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME memory-vec-layout-test COMMAND memory-vec-layout-test)
+
 add_executable(extract-tier-split-test tests/unit/extract-tier-split-test.cc)
 
 target_link_libraries(extract-tier-split-test PRIVATE argus::memory

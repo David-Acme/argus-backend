@@ -90,8 +90,10 @@ scaffolds.
     `\n{…}` sentinel). The sentinel is the client's exact end-of-stream
     marker; token framing is "chunks until the 0x1E mark". Generation runs
     on a worker of the Heavy blocking lane, admitted by `StreamSlots`
-    (at most the Heavy lane's thread cap minus one streams at a time; one
-    more is 429 `Busy`), and the engine mutex serializes concurrent
+    (`packages/lib/runtime`; at most the Heavy lane's thread cap minus one
+    streams at a time, so one Heavy worker stays free for the plain chat;
+    one more is 429 `TOO_MANY_REQUESTS`, and once the stop began it is 503
+    `SERVICE_UNAVAILABLE`), and the engine mutex serializes concurrent
     generations. It used to be one detached `std::thread` per request. A client
     that disconnects ends the generation at the next token: the token
     callback throws, as `ChatStream`'s does on a cancelled call, so a dropped
@@ -884,15 +886,29 @@ its id, an episode is its negated id. Facts and episodes used to share the
 id space, so re-embedding fact 42 deleted episode 42's vectors and the
 recall could return an unrelated fact for an episode's vector. The vec0 DDL
 lives in `packages/lib/sqlite`, so the discriminator is the sign rather than
-a `kind` column. Vectors are written as float32 BLOBs instead of JSON text
-(sqlite-vec accepts both; old JSON rows still match).
+a `kind` column. Vectors are written as float32 BLOBs instead of JSON text.
 
-**Schema change, explicit development reset (root rule 17b).** A
-`memory.db` created before this change keeps episode vectors under
-positive ids and facts that the old `memory.forget` only closed. Reset the
-development store explicitly (stop argus-llm, delete
-`database/memory.db*`, start it) or re-embed; nothing here migrates or
-deletes a user's database on its own.
+A vector write (`MemoryGraphRepository::replaceVecRows`) is one
+`BEGIN IMMEDIATE` transaction that first checks the memory still exists
+(an open fact, or the episode), then deletes the key's rows and inserts
+every view with one prepared statement. A queued embed can therefore not
+write vectors for a fact forgotten while it was embedding.
+
+**Boot migration of an older store (layout 2).** The vectors are an index
+derived from `memory_fact` and `memory_episode`; the memories themselves
+never move. `memory.db`'s `PRAGMA user_version` records the vector layout
+(`memory_vec::kLayout`, 2). At boot, a store below 2 that holds vector rows
+was written under the shared id space (and possibly as JSON text), so its
+`memory_vec` is recreated and the worker's `Rebuild` job re-embeds every
+open fact and every compaction episode that is not rolled up, with the
+semantic dedup off (a rebuild must neither drop a fact's vectors nor bump
+its priority). The layout is written only when the rebuild finished: a
+stop in the middle, or no embedding model on disk, leaves it below 2 and
+the next start runs it again. A store with no vector rows takes layout 2
+at once. Vectors of facts that were only closed (superseded, or "forgotten"
+by the old close-only `memory.forget`) are not rebuilt. The rows of such
+closed facts stay in `memory_fact`: deleting them is a decision for the
+owner, not a side effect of a boot.
 
 ### `procedure.run` removed (#96)
 
@@ -922,8 +938,8 @@ existing store keeps an unused empty table.
 
 - `embedAndStore` computes every embedding (chunks and the synonym view)
   outside the `VecDb` mutex; the lock is held only for the dedup probe and
-  for the delete+insert, so a background embed no longer holds the recall
-  of a live turn for 50-300 ms.
+  for the one replace transaction, so a background embed no longer holds
+  the recall of a live turn for 50-300 ms.
 - The memory worker's extraction (NuExtract) waits for the chat engine to
   be idle on every job, not only on `preferIdle` ones, so NuExtract, e5 and
   the main model do not run at once on the same cores; a busy engine

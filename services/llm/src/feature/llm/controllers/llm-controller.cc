@@ -113,10 +113,7 @@ struct ClientGone
 
 struct ChatStreamJob
 {
-  explicit ChatStreamJob(StreamSlots& slots) : lease(slots), slots(&slots) {}
-
   StreamLease lease;
-  StreamSlots* slots{nullptr};
   LlmController* owner{nullptr};
   ChatRequest request;
   std::unique_ptr<drogon::ResponseStream> stream;
@@ -129,11 +126,11 @@ bool sameSecret(std::string_view presented, std::string_view expected)
 {
   if (presented.size() != expected.size())
     return false;
-  unsigned char diff = 0;
+  unsigned diff = 0U;
   for (std::size_t index = 0; index < presented.size(); ++index)
-    diff |= static_cast<unsigned char>(presented[index]) ^
-            static_cast<unsigned char>(expected[index]);
-  return diff == 0;
+    diff |= static_cast<unsigned>(static_cast<unsigned char>(presented[index])) ^
+            static_cast<unsigned>(static_cast<unsigned char>(expected[index]));
+  return diff == 0U;
 }
 
 int streamCapacity()
@@ -163,7 +160,7 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
 {
   const auto t0 = std::chrono::steady_clock::now();
   const TokenCallback send = [&job](const std::string& token, bool done) {
-    if (!job->stream || job->slots->stopping())
+    if (!job->stream || job->lease.stopping())
       throw ClientGone{};
     if (!done) {
       if (!job->stream->send(withoutSentinelMark(token))) {
@@ -228,13 +225,11 @@ void LlmController::setIdentityCredential(std::string credential)
   identityCredential_ = std::move(credential);
 }
 
-ChatRequest LlmController::scopedRequest(const drogon::HttpRequestPtr& req,
-                                         ChatRequest request) const
+ChatRequest boundToCredential(ChatRequest request, const CallerCredential& credential)
 {
-  if (identityCredential_.empty())
+  if (credential.expected.empty())
     return request;
-  const bool identified =
-      sameSecret(req->getHeader(kCallerCredentialHeader), identityCredential_);
+  const bool identified = sameSecret(credential.presented, credential.expected);
   return boundToCaller(std::move(request), identified ? kIdentityCaller : std::string_view{});
 }
 
@@ -298,7 +293,11 @@ LlmController::chat(drogon::HttpRequestPtr req)
 
   const auto t0 = std::chrono::steady_clock::now();
   auto outcome = co_await BlockingTask<LlmChatOutcome>(
-      [this, request = scopedRequest(req, body.request())] { return chatSync(request); },
+      [this, request = boundToCredential(body.request(),
+                                         {.presented = req->getHeader(kCallerCredentialHeader),
+                                          .expected = identityCredential_})] {
+        return chatSync(request);
+      },
       BlockingLane::Heavy);
   const double ms =
       std::chrono::duration<double, std::milli>(
@@ -332,16 +331,28 @@ LlmController::chatStream(drogon::HttpRequestPtr req)
 
   const auto body = ChatCompletionDto::fromJson(*req->getJsonObject());
 
-  if (!streams_.tryAcquire())
-    throw ResponseException(429, LlmErrors::Busy);
-  auto job = std::make_shared<ChatStreamJob>(streams_);
-  job->owner = this;
-  job->request = scopedRequest(req, body.request());
+  auto lease = streams_.tryAcquire();
+  if (!lease)
+    throw ResponseException(streams_.stopping() ? LlmErrors::Unavailable : LlmErrors::Busy);
+  auto job = std::make_shared<ChatStreamJob>(ChatStreamJob{
+      .lease = std::move(*lease),
+      .owner = this,
+      .request = boundToCredential(body.request(),
+                                   {.presented = req->getHeader(kCallerCredentialHeader),
+                                    .expected = identityCredential_}),
+      .stream = nullptr,
+      .stats = {},
+      .tokenCount = 0,
+      .charCount = 0});
 
   auto resp = drogon::HttpResponse::newAsyncStreamResponse(
       [job](drogon::ResponseStreamPtr stream) {
         job->stream = std::move(stream);
-        blocking_pool::submit(BlockingLane::Heavy, [job] { runStreamJob(job); });
+        if (!blocking_pool::trySubmit(BlockingLane::Heavy, [job] { runStreamJob(job); })) {
+          LOG_WARN << "LLM stream: the heavy lane is full, the stream ends unanswered";
+          job->stream->close();
+          job->stream.reset();
+        }
       },
       true);
   resp->setStatusCode(drogon::k200OK);

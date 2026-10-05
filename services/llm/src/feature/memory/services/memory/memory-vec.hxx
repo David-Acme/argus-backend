@@ -8,6 +8,8 @@
 namespace memory_vec
 {
 
+inline constexpr int kLayout = 2;
+
 inline std::string partitionFor(const std::string& scope, int64_t refId)
 {
   if (scope == "global")

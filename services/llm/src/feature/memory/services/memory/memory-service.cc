@@ -310,7 +310,7 @@ void MemoryService::processJob(const MemoryJob& job)
 {
   switch (job.kind) {
     case MemoryJob::Kind::Embed:
-      embedAndStore(job.memoryId, job.episode);
+      embedAndStore({.id = job.memoryId, .episode = job.episode, .dedup = true});
       break;
     case MemoryJob::Kind::Compact:
       processCompact(job);
@@ -442,7 +442,7 @@ void MemoryService::openStore()
   vecDb_.setDbFile(dbFile);
   vecDb_.applySchema(memory_graph_query::schemaFile());
   startWorker();
-  if (vecDb_.schemaOutdated()) {
+  if (vecDb_.schemaOutdated() || vecLayoutOutdated()) {
     vecDb_.recreateMemoryVecTable();
     enqueueJob({.kind = MemoryJob::Kind::Rebuild,
                 .memoryId = 0,
@@ -833,10 +833,12 @@ void MemoryService::processProfile(const MemoryJob& job)
                    .built = std::time(nullptr)};
 }
 
-void MemoryService::embedAndStore(int64_t factId, bool episode)
+bool MemoryService::embedAndStore(const EmbedRequest& request)
 {
+  const int64_t factId = request.id;
+  const bool episode = request.episode;
   if (factId <= 0)
-    return;
+    return false;
 
   std::string scope;
   int64_t refId = 0;
@@ -845,7 +847,7 @@ void MemoryService::embedAndStore(int64_t factId, bool episode)
     std::scoped_lock lock(vecDb_.mutex());
     sqlite3* db = vecDb_.handle();
     if (!db)
-      return;
+      return false;
     const auto found = episode
                            ? graphRepo_.episodeContent(db,
                                                        {.id = factId,
@@ -856,11 +858,11 @@ void MemoryService::embedAndStore(int64_t factId, bool episode)
                                                      .scope = scope,
                                                      .refId = refId});
     if (!found)
-      return;
+      return false;
     content = *found;
   }
   if (scope.empty() || content.empty())
-    return;
+    return false;
 
   const int chunkChars = ConfigService::getInt("memory.chunk_chars");
   const int maxChars = chunkChars > 0 ? chunkChars : 400;
@@ -870,20 +872,20 @@ void MemoryService::embedAndStore(int64_t factId, bool episode)
 
   const auto primary = embedding_.embed(chunks.front(), "passage:");
   if (!primary)
-    return;
+    return false;
 
   const std::string partition = memory_vec::partitionFor(scope, refId);
   const int64_t key =
       episode ? memory_vec::episodeKey(factId) : memory_vec::factKey(factId);
 
-  if (!episode) {
+  if (!episode && request.dedup) {
     const double dedupCfg = ConfigService::getDouble("memory.vector_dedup_sim");
     const float dedupFloor =
         dedupCfg > 0.0 ? static_cast<float>(dedupCfg) : 0.93F;
     std::scoped_lock lock(vecDb_.mutex());
     sqlite3* db = vecDb_.handle();
     if (!db)
-      return;
+      return false;
     const float dupSim = graphRepo_.vecDedupSim(
         db, {.encoded = memory_vec::encode(*primary), .partition = partition, .factId = key});
     if (dupSim >= dedupFloor) {
@@ -892,62 +894,77 @@ void MemoryService::embedAndStore(int64_t factId, bool episode)
       LOG_INFO << "MemoryService: fact " << factId
                << " merged as semantic duplicate (sim=" << dupSim
                << ", partition=" << partition << ")";
-      return;
+      return true;
     }
     LOG_DEBUG << "MemoryService: fact " << factId
               << " nearest neighbour sim=" << dupSim;
   }
 
-  struct ViewVector
-  {
-    int view{0};
-    std::vector<float> vec;
-  };
-  std::vector<ViewVector> views;
-  views.reserve(chunks.size() + 1);
+  VecRowsReplaceInput rows{.key = key, .partition = partition, .views = {}};
+  rows.views.reserve(chunks.size() + 1);
   int view = 0;
   for (const auto& chunk : chunks) {
     if (chunk == content || view == 0) {
-      views.push_back({.view = view, .vec = *primary});
+      rows.views.push_back({.view = view, .vec = *primary});
     }
     else if (auto vec = embedding_.embed(chunk, "passage:")) {
-      views.push_back({.view = view, .vec = std::move(*vec)});
+      rows.views.push_back({.view = view, .vec = std::move(*vec)});
     }
     ++view;
   }
   if (hasExpanded) {
     if (auto vec = embedding_.embed(expanded, "passage:"))
-      views.push_back({.view = 100, .vec = std::move(*vec)});
+      rows.views.push_back({.view = 100, .vec = std::move(*vec)});
   }
 
   std::scoped_lock lock(vecDb_.mutex());
+  return graphRepo_.replaceVecRows(vecDb_.handle(), rows);
+}
+
+bool MemoryService::vecLayoutOutdated()
+{
+  std::scoped_lock lock(vecDb_.mutex());
   sqlite3* db = vecDb_.handle();
-  if (!db)
-    return;
-  if (!episode && !graphRepo_.factExists(db, factId))
-    return;
-  graphRepo_.deleteVecRows(db, key);
-  for (const auto& row : views)
-    graphRepo_.insertVecRow(db,
-                            {.partition = partition,
-                             .factId = key,
-                             .view = row.view,
-                             .vec = row.vec});
+  if (!db || graphRepo_.vecLayout(db) >= memory_vec::kLayout)
+    return false;
+  if (graphRepo_.hasVecRows(db))
+    return true;
+  graphRepo_.setVecLayout(db, memory_vec::kLayout);
+  return false;
 }
 
 void MemoryService::rebuildAll()
 {
-  std::vector<int64_t> ids;
+  std::vector<int64_t> facts;
+  std::vector<int64_t> episodes;
   {
     std::scoped_lock lock(vecDb_.mutex());
     sqlite3* db = vecDb_.handle();
     if (!db)
       return;
-    ids = graphRepo_.openFactIds(db);
+    facts = graphRepo_.openFactIds(db);
+    episodes = graphRepo_.embeddedEpisodeIds(db);
   }
-  LOG_INFO << "MemoryService: rebuilding " << ids.size() << " vectors";
-  for (int64_t id : ids)
-    embedAndStore(id, false);
+  LOG_INFO << "MemoryService: rebuilding the vectors of " << facts.size()
+           << " facts and " << episodes.size() << " episodes";
+  std::size_t stored = 0;
+  for (const int64_t id : facts) {
+    if (stop_.load())
+      return;
+    stored += embedAndStore({.id = id, .episode = false, .dedup = false}) ? 1 : 0;
+  }
+  for (const int64_t id : episodes) {
+    if (stop_.load())
+      return;
+    stored += embedAndStore({.id = id, .episode = true, .dedup = false}) ? 1 : 0;
+  }
+  if ((!facts.empty() || !episodes.empty()) && !embedding_.isLoaded()) {
+    LOG_WARN << "MemoryService: no embedding model; the vector rebuild runs again at the next start";
+    return;
+  }
+  std::scoped_lock lock(vecDb_.mutex());
+  graphRepo_.setVecLayout(vecDb_.handle(), memory_vec::kLayout);
+  LOG_INFO << "MemoryService: vector rebuild done (" << stored << " stored)";
 }
 
 std::vector<tools::ToolDescriptor> MemoryService::toolDescriptors()
@@ -1312,7 +1329,7 @@ tools::ToolResult MemoryService::handleForget(const tools::ToolCall& call)
     return result;
   }
   {
-    std::lock_guard<std::mutex> lock(profileMutex_);
+    std::scoped_lock lock(profileMutex_);
     if (profileCache_.userId == call.context.userId)
       profileCache_ = {};
   }

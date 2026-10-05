@@ -216,7 +216,9 @@ TEST_CASE("memory writes keep to the user's own words and forgetting stays in sc
   INFO("forget output: " << forgot.output);
   REQUIRE(forgot.ok);
   CHECK(forgot.output.starts_with("Olvidado: "));
-  CHECK(lowered(run(dog).output).find("toby") == std::string::npos);
+  const std::string afterForget = run(dog).output;
+  INFO("recall after forget: " << afterForget);
+  CHECK(lowered(afterForget).find("toby") == std::string::npos);
   CHECK_FALSE(run(forget).ok);
 
   auto timed = callFor("memory.remind", kSpeaker);

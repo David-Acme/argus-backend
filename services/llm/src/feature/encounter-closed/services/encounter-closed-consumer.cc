@@ -241,6 +241,32 @@ void EncounterClosedConsumer::purgeSettled(int64_t now)
     LOG_INFO << "Encounter consumer: purged " << purged << " settled receipt(s)";
 }
 
+void EncounterClosedConsumer::settleDelivery(const EncounterDelivery& delivery)
+{
+  const auto& settlement = delivery.settlement;
+  EncounterDisposition disposition = EncounterDisposition::Nak;
+  if (delivery.alive) {
+    try {
+      disposition = settlePayload(delivery.payload);
+    }
+    catch (const std::exception& error) {
+      LOG_WARN << "Encounter consumer: redelivering (" << error.what() << ")";
+      disposition = EncounterDisposition::Nak;
+    }
+  }
+  if (disposition == EncounterDisposition::Term) {
+    if (settlement.term)
+      settlement.term();
+  }
+  else if (disposition == EncounterDisposition::Ack) {
+    if (settlement.ack)
+      settlement.ack();
+  }
+  else if (settlement.nak) {
+    settlement.nak();
+  }
+}
+
 bool EncounterClosedConsumer::trySubscribe()
 {
   const auto subscription = dependencies_.bus->subscribeDurable(
@@ -253,34 +279,19 @@ bool EncounterClosedConsumer::trySubscribe()
        .handler = [this, lifecycle = lifecycle_](
                          const NatsBus::DurableMessage& message,
                          NatsBus::DurableSettlement settlement) {
-         strand_.post([this, lifecycle, payload = std::string(message.payload),
-                       settlement = std::move(settlement)]() {
-           const EncounterLifecycleGuard guard(lifecycle);
-           if (!guard.alive()) {
-             if (settlement.nak)
-               settlement.nak();
-             return;
-           }
-           EncounterDisposition disposition = EncounterDisposition::Nak;
-           try {
-             disposition = settlePayload(payload);
-           }
-           catch (const std::exception& error) {
-             LOG_WARN << "Encounter consumer: redelivering (" << error.what() << ")";
-             disposition = EncounterDisposition::Nak;
-           }
-           if (disposition == EncounterDisposition::Term) {
-             if (settlement.term)
-               settlement.term();
-           }
-           else if (disposition == EncounterDisposition::Ack) {
-             if (settlement.ack)
-               settlement.ack();
-           }
-           else if (settlement.nak) {
-             settlement.nak();
-           }
-         });
+         const auto nak = settlement.nak;
+         try {
+           strand_.post([this, lifecycle, payload = std::string(message.payload),
+                         settlement = std::move(settlement)]() {
+             const EncounterLifecycleGuard guard(lifecycle);
+             settleDelivery({.alive = guard.alive(), .payload = payload, .settlement = settlement});
+           });
+         }
+         catch (const std::exception& error) {
+           LOG_WARN << "Encounter consumer: redelivering, not scheduled (" << error.what() << ")";
+           if (nak)
+             nak();
+         }
        }});
   if (!subscription)
     return false;

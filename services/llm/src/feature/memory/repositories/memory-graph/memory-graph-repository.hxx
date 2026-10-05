@@ -141,6 +141,11 @@ public:
   float vecDedupSim(sqlite3* db, const VecDedupInput& input);
   void deleteVecRows(sqlite3* db, int64_t key);
   bool factExists(sqlite3* db, int64_t factId);
+  bool replaceVecRows(sqlite3* db, const VecRowsReplaceInput& input);
+  std::vector<int64_t> embeddedEpisodeIds(sqlite3* db);
+  bool hasVecRows(sqlite3* db);
+  int vecLayout(sqlite3* db);
+  bool setVecLayout(sqlite3* db, int layout);
   std::vector<int64_t> forgetFact(sqlite3* db, const FactForgetInput& input);
 
   std::vector<GazetteerRow> gazetteerAliases(sqlite3* db);

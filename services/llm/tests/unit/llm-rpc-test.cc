@@ -25,6 +25,7 @@
 #include <semaphore>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -916,6 +917,37 @@ TEST_CASE("boundToCaller strips the identity of every caller but voice")
   CHECK(guard.userId == 0);
   CHECK(guard.role == UserRole::Guest);
   CHECK_FALSE(guard.toolsEnabled);
+}
+
+TEST_CASE("the loopback http leg keeps a declared identity only behind the voice credential")
+{
+  ChatRequest request = ask();
+  request.userId = 5;
+  request.role = UserRole::Owner;
+  request.toolsEnabled = true;
+  request.clientActions = true;
+  request.sessionId = "voice-5-1";
+
+  const auto trusted = boundToCredential(request, {.presented = "", .expected = ""});
+  CHECK(trusted.userId == 5);
+  CHECK(trusted.toolsEnabled);
+
+  const auto voice = boundToCredential(request, {.presented = "voice-secret", .expected = "voice-secret"});
+  CHECK(voice.userId == 5);
+  CHECK(voice.role == UserRole::Owner);
+  CHECK(voice.clientActions);
+  CHECK(voice.sessionId == "voice-5-1");
+
+  for (const std::string_view presented : {"", "voice-secreT", "voice-secret-longer", "voice"}) {
+    INFO("presented: " << presented);
+    const auto anonymous =
+        boundToCredential(request, {.presented = presented, .expected = "voice-secret"});
+    CHECK(anonymous.userId == 0);
+    CHECK(anonymous.role == UserRole::Guest);
+    CHECK_FALSE(anonymous.toolsEnabled);
+    CHECK_FALSE(anonymous.clientActions);
+    CHECK(anonymous.sessionId.empty());
+  }
 }
 
 TEST_CASE("the wire refuses a language the tool runtime does not speak")

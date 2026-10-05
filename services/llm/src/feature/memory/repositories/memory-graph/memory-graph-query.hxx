@@ -157,6 +157,22 @@ inline constexpr const char* DELETE_VEC_ROWS =
 inline constexpr const char* FIND_FACT_EXISTS =
     "SELECT 1 FROM memory_fact WHERE id = ? AND valid_to = 0";
 
+inline constexpr const char* FIND_EPISODE_EXISTS =
+    "SELECT 1 FROM memory_episode WHERE id = ?";
+
+inline constexpr const char* FIND_EMBEDDED_EPISODE_IDS =
+    "SELECT id FROM memory_episode WHERE kind = 'compaction' AND rolled_up = 0";
+
+inline constexpr const char* HAS_VEC_ROWS =
+    "SELECT EXISTS (SELECT 1 FROM memory_vec)";
+
+inline constexpr const char* READ_VEC_LAYOUT = "PRAGMA user_version";
+
+inline std::string writeVecLayout(int layout)
+{
+  return "PRAGMA user_version = " + std::to_string(layout);
+}
+
 inline constexpr const char* FIND_FORGET_CHAIN = R"(
     WITH RECURSIVE chain(id) AS (
       SELECT id FROM memory_fact WHERE id = ?1 AND scope = 'user' AND ref_id = ?2
@@ -247,6 +263,19 @@ inline constexpr const char* INSERT_LEGACY_FACT =
     "VALUES (?, 'legacy', ?, ?, ?, ?, 0.5, 'es', ?, ?, ?, 0, ?, ?, ?)";
 
 }
+
+struct VecView
+{
+  int view{0};
+  std::vector<float> vec;
+};
+
+struct VecRowsReplaceInput
+{
+  int64_t key{0};
+  std::string partition;
+  std::vector<VecView> views;
+};
 
 struct FactForgetInput
 {
