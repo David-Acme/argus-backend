@@ -156,6 +156,21 @@ const std::vector<CatalogEntry> kCatalog{
      .code = ErrorCode::AccountDisabled,
      .status = 403,
      .message = "User account is disabled"},
+    {.name = "LivenessCheckFailed",
+     .definition = &AuthErrors::LivenessCheckFailed,
+     .code = ErrorCode::LivenessCheckFailed,
+     .status = 401,
+     .message = "The face did not pass the liveness check"},
+    {.name = "LivenessUnavailable",
+     .definition = &AuthErrors::LivenessUnavailable,
+     .code = ErrorCode::LivenessUnavailable,
+     .status = 503,
+     .message = "The liveness check is unavailable"},
+    {.name = "FaceQualityInsufficient",
+     .definition = &AuthErrors::FaceQualityInsufficient,
+     .code = ErrorCode::FaceQualityInsufficient,
+     .status = 422,
+     .message = "One clear, well-lit face is required"},
     {.name = "DeviceContextMissing",
      .definition = &AuthErrors::DeviceContextMissing,
      .code = ErrorCode::InternalError,
@@ -175,7 +190,7 @@ TEST_CASE("the auth catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 29);
+  CHECK(kCatalog.size() == 32);
 }
 
 TEST_CASE("every auth entry is legal on the wire")

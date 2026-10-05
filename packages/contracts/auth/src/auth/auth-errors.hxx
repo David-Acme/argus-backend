@@ -117,6 +117,18 @@ inline constexpr ErrorDefinition AccountDisabled{
     .code = ErrorCode::AccountDisabled,
     .status = 403,
     .message = "User account is disabled"};
+inline constexpr ErrorDefinition LivenessCheckFailed{
+    .code = ErrorCode::LivenessCheckFailed,
+    .status = 401,
+    .message = "The face did not pass the liveness check"};
+inline constexpr ErrorDefinition LivenessUnavailable{
+    .code = ErrorCode::LivenessUnavailable,
+    .status = 503,
+    .message = "The liveness check is unavailable"};
+inline constexpr ErrorDefinition FaceQualityInsufficient{
+    .code = ErrorCode::FaceQualityInsufficient,
+    .status = 422,
+    .message = "One clear, well-lit face is required"};
 inline constexpr ErrorDefinition DeviceContextMissing{
     .code = ErrorCode::InternalError,
     .status = 500,

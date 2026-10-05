@@ -339,6 +339,28 @@ TEST_CASE("only 401 and 403 count as failures; a 422 or a 404 locks nobody out")
   CHECK(gate.check(patchRequest("argus-app/1.0")));
 }
 
+TEST_CASE("a failed liveness check counts like a face that did not match; poor quality does not")
+{
+  loadGateConfig("");
+  AuthRateLimitConfig config = windowConfig();
+  config.maxRequests = 100;
+  AuthRateGate gate(config);
+
+  const auto blurred = ApiResponse::error(AuthErrors::FaceQualityInsufficient);
+  const auto unavailable = ApiResponse::error(AuthErrors::LivenessUnavailable);
+  for (int attempt = 0; attempt < config.lockoutThreshold + 2; ++attempt) {
+    gate.recordOutcome(patchRequest("argus-app/1.0"), blurred);
+    gate.recordOutcome(patchRequest("argus-app/1.0"), unavailable);
+  }
+  CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
+
+  const auto spoof = ApiResponse::error(AuthErrors::LivenessCheckFailed);
+  CHECK(spoof->getStatusCode() == drogon::k401Unauthorized);
+  for (int attempt = 0; attempt < config.lockoutThreshold; ++attempt)
+    gate.recordOutcome(patchRequest("argus-app/1.0"), spoof);
+  CHECK(gate.check(patchRequest("argus-app/1.0")));
+}
+
 [[nodiscard]] drogon::HttpRequestPtr refreshWith(const std::string& token)
 {
   Json::Value body(Json::objectValue);

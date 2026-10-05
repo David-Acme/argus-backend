@@ -39,7 +39,7 @@ the `{status, info, errors}` envelope's `errors.code`.
   `deviceLoginStatusToString`/`deviceLoginStatusFromString`: the QR pairing
   challenge's `status` column, which is both a `CHECK` constraint in
   `argus-auth`'s schema and the `status` string the polling device reads.
-- `src/auth/auth-errors.hxx` — the auth catalog, twenty-nine definitions: the
+- `src/auth/auth-errors.hxx` — the auth catalog, thirty-two definitions: the
   five the gate filters and the remote gate answer with (`MissingToken`,
   `AuthenticationRequired`, `AccessDenied`, `RemoteNotAllowed`,
   `InvalidJsonBody`), the refresh-limiter refusal
@@ -47,8 +47,12 @@ the `{status, info, errors}` envelope's `errors.code`.
   device credential, refresh token, user, `ChangeNotRecorded`) and the
   enrollment outcomes `argus-identity` reports through `AuthFeatureService`,
   plus `DeviceContextMissing` (500, `JwtFilter` reached without
-  `DeviceFilter`), which the 2026-10 audit appended; 14 files include it. The
-  catalog test pins twenty-nine entries. A QR challenge without its poll hash
+  `DeviceFilter`), which the 2026-10 audit appended, and the three face-check
+  refusals identity's presentation-attack and quality gate reports
+  (2026-10-05): `LivenessCheckFailed` 401, `LivenessUnavailable` 503 and
+  `FaceQualityInsufficient` 422, each with its own `ErrorCode` so the app can
+  tell the person what to do; 14 files include it. The catalog test pins
+  thirty-two entries. A QR challenge without its poll hash
   is refused by `StartDeviceLoginDto` (422, the validation envelope), the one
   path that answers it, so the catalog carries no 400 for it.
 

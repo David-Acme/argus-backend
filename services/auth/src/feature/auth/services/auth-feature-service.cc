@@ -175,6 +175,16 @@ bool sameBinding(const RefreshTokenSchema& session,
   return sameNetwork(session, input);
 }
 
+void refuseFaceCheck(std::string_view check)
+{
+  if (check == "liveness_failed")
+    throw ResponseException(AuthErrors::LivenessCheckFailed);
+  if (check == "liveness_unavailable")
+    throw ResponseException(AuthErrors::LivenessUnavailable);
+  if (check == "poor_quality" || check == "multiple_faces")
+    throw ResponseException(AuthErrors::FaceQualityInsufficient);
+}
+
 drogon::Task<std::optional<argus::identity::v1::IdentifyPersonResponse>>
 identifyPerson(const IdentityClient* client, std::string image)
 {
@@ -231,6 +241,8 @@ AuthFeatureService::login(LoginDto body, const LoginDeviceInput& device) const
       co_await identifyPerson(dependencies_.identity, std::move(body.image));
   if (answer && answer->account_disabled())
     throw ResponseException(AuthErrors::AccountDisabled);
+  if (answer)
+    refuseFaceCheck(answer->face_check());
   if (!answer || !answer->matched() || !answer->has_user_id() ||
       answer->user_id() <= 0)
     throw ResponseException(AuthErrors::FaceNotRecognized);
@@ -283,6 +295,12 @@ AuthFeatureService::registerUser(RegisterDto body,
       throw ResponseException(AuthErrors::EnrolledFaceIndexFailed);
     case argus::identity::v1::REGISTER_USER_ACCOUNT_DISABLED:
       throw ResponseException(AuthErrors::AccountDisabled);
+    case argus::identity::v1::REGISTER_USER_LIVENESS_FAILED:
+      throw ResponseException(AuthErrors::LivenessCheckFailed);
+    case argus::identity::v1::REGISTER_USER_LIVENESS_UNAVAILABLE:
+      throw ResponseException(AuthErrors::LivenessUnavailable);
+    case argus::identity::v1::REGISTER_USER_FACE_QUALITY_INSUFFICIENT:
+      throw ResponseException(AuthErrors::FaceQualityInsufficient);
     default:
       throw ResponseException(AuthErrors::IdentityUnavailable);
   }

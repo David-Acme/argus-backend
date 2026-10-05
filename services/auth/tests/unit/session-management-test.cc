@@ -146,6 +146,12 @@ public:
   [[nodiscard]] std::optional<argus::identity::v1::IdentifyPersonResponse>
   identifyPerson(const std::string& image) const override
   {
+    if (image.starts_with("check:")) {
+      argus::identity::v1::IdentifyPersonResponse refused;
+      refused.set_face_found(true);
+      refused.set_face_check(image.substr(6));
+      return refused;
+    }
     const int64_t userId = std::stoll(image);
     argus::identity::v1::IdentifyPersonResponse response;
     response.set_matched(true);
@@ -165,6 +171,12 @@ public:
   [[nodiscard]] std::optional<argus::identity::v1::RegisterUserResponse>
   registerUser(const RegisterUserInput& input) const override
   {
+    if (input.image.starts_with("outcome:")) {
+      argus::identity::v1::RegisterUserResponse refused;
+      refused.set_outcome(static_cast<argus::identity::v1::RegisterUserOutcome>(
+          std::stoi(input.image.substr(8))));
+      return refused;
+    }
     const int64_t userId = std::stoll(input.image);
     argus::identity::v1::RegisterUserResponse response;
     if (!active(userId)) {
@@ -1153,6 +1165,49 @@ TEST_CASE("the owner lists every user's sessions and closes another user's one o
   CHECK(selfAll.current);
   CHECK(contains(selfAll.revoked, ownerContext.sessionId));
   CHECK_FALSE(authenticate(owner).has_value());
+}
+
+TEST_CASE("identity's liveness and quality refusals reach the app as their own codes")
+{
+  Fixture& app = fixture();
+  REQUIRE(app.start());
+  const auto phoneLogin = [] { return loginOf(androidPhone()); };
+  const auto login = [&](const std::string& check) {
+    return refusedBy(app.auth().login(LoginDto{.image = "check:" + check}, phoneLogin()));
+  };
+  const auto enroll = [&](argus::identity::v1::RegisterUserOutcome outcome) {
+    return refusedBy(app.auth().registerUser(
+        RegisterDto{.image = "outcome:" + std::to_string(static_cast<int>(outcome)),
+                    .name = "Ada",
+                    .inviteCode = "",
+                    .lang = "es"},
+        phoneLogin()));
+  };
+
+  const Refusal spoof = login("liveness_failed");
+  CHECK(spoof.status == 401);
+  CHECK(spoof.code == "LIVENESS_CHECK_FAILED");
+  const Refusal down = login("liveness_unavailable");
+  CHECK(down.status == 503);
+  CHECK(down.code == "LIVENESS_UNAVAILABLE");
+  for (const char* check : {"poor_quality", "multiple_faces"}) {
+    const Refusal blurred = login(check);
+    CHECK(blurred.status == 422);
+    CHECK(blurred.code == "FACE_QUALITY_INSUFFICIENT");
+  }
+  const Refusal stranger = login("accepted");
+  CHECK(stranger.status == 401);
+  CHECK(stranger.code == "UNAUTHORIZED");
+
+  const Refusal spoofed = enroll(argus::identity::v1::REGISTER_USER_LIVENESS_FAILED);
+  CHECK(spoofed.status == 401);
+  CHECK(spoofed.code == "LIVENESS_CHECK_FAILED");
+  const Refusal unavailable = enroll(argus::identity::v1::REGISTER_USER_LIVENESS_UNAVAILABLE);
+  CHECK(unavailable.status == 503);
+  CHECK(unavailable.code == "LIVENESS_UNAVAILABLE");
+  const Refusal quality = enroll(argus::identity::v1::REGISTER_USER_FACE_QUALITY_INSUFFICIENT);
+  CHECK(quality.status == 422);
+  CHECK(quality.code == "FACE_QUALITY_INSUFFICIENT");
 }
 
 TEST_CASE("a disabled account loses every session and is refused at every way in")
