@@ -85,9 +85,7 @@ ensure_instance_certs() {
 
     local san="DNS:argus.local,DNS:localhost,IP:127.0.0.1,IP:::1"
     pki_dns_label_ok "$host" && san="$san,DNS:$host"
-    case "x$mdns_name" in
-      x[A-Za-z0-9_-]*) san="$san,DNS:${mdns_name}" ;;
-    esac
+    pki_dns_label_ok "$mdns_name" && san="$san,DNS:${mdns_name}"
     if pki_private_address "$lan_address"; then
       san="$san,IP:$lan_address"
     fi
@@ -120,5 +118,5 @@ ensure_instance_certs() {
   chmod 600 "$code_file"
 
   log "CA fingerprint (SHA-256): $fingerprint"
-  log "Pairing code: $code"
+  log "Pairing code stored in $code_file (argus-identity shows it until the first device pairs)"
 }
