@@ -80,6 +80,10 @@ fingerprint_secret = ""
 trust_forwarded_for = false
 trusted_proxy_ips = ""
 
+[identity]
+target = "127.0.0.1:7040"
+rpc_secret = ""
+
 [objects]
 enabled = false
 model = "models/objects"
