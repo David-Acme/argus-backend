@@ -1,6 +1,7 @@
 #include "auth-config.hxx"
 
 #include <config/config-service.hxx>
+#include <grpc/fleet-caller-gate.hxx>
 
 namespace
 {
@@ -42,6 +43,7 @@ AuthRpcConfig AuthConfig::resolveRpc()
   AuthRpcConfig config;
   config.listener = GrpcListenerConfig::resolve(kDefaultRpcPort);
   config.secret = ConfigService::getString("auth.rpc_secret");
+  config.callers = ConfigService::getStringPairs("rpc.callers");
   return config;
 }
 
@@ -53,11 +55,20 @@ bool AuthRpcConfig::reachableBeyondLoopback() const
 
 std::optional<std::string> AuthRpcConfig::secretProblem() const
 {
+  bool paired = false;
+  for (const auto& [caller, credential] : callers) {
+    if (!argus::client::FleetCallerGate::pairedSecret(credential))
+      continue;
+    if (credential.size() < kMinSecretLength)
+      return "[rpc.callers] " + caller + " must be at least " +
+             std::to_string(kMinSecretLength) + " characters";
+    paired = true;
+  }
   if (secret.empty()) {
-    if (reachableBeyondLoopback())
+    if (reachableBeyondLoopback() && !paired)
       return "[server] host " + listener.host +
-             " is reachable beyond loopback and answers session verdicts: set "
-             "[auth] rpc_secret (and the same value in every service's config)";
+             " is reachable beyond loopback and answers session verdicts: "
+             "pair its callers in [rpc.callers]";
     return std::nullopt;
   }
   if (secret.size() < kMinSecretLength)
@@ -80,6 +91,7 @@ AuthIdentityConfig AuthConfig::resolveIdentity()
         host + ":" +
         std::to_string(port > 0 ? port : kDefaultIdentityPort);
   }
+  config.credential = ConfigService::getString("identity.credential");
   config.secret = ConfigService::getString("identity.rpc_secret");
   return config;
 }

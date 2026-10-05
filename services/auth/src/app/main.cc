@@ -1,3 +1,4 @@
+#include <app/rpc/auth-callers.hxx>
 #include <app/rpc/auth-rpc-service.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
@@ -17,6 +18,8 @@
 #include <feature/session/services/auth-action-sink.hxx>
 #include <feature/session/services/identity-change-consumer.hxx>
 #include <feature/session/services/session-service.hxx>
+#include <grpc/fleet-caller-gate.hxx>
+#include <grpc/grpc-client-base.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
@@ -36,6 +39,7 @@
 #include <string>
 #include <sync/auth-change-sink.hxx>
 #include <unistd.h>
+#include <vector>
 
 namespace
 {
@@ -109,7 +113,10 @@ int main()
   std::unique_ptr<IdentityClient> identityClient;
   if (!identity.target.empty())
     identityClient =
-        std::make_unique<IdentityClient>(identity.target, identity.secret);
+        std::make_unique<IdentityClient>(
+            identity.target,
+            argus::client::PeerCredential{.credential = identity.credential,
+                                          .fleetSecret = identity.secret});
 
   SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
                            .refreshTokenRepository = RefreshTokenRepository{},
@@ -255,9 +262,21 @@ int main()
                                  return status;
                                }}}}));
 
+  const auto rpcGate = std::make_shared<const argus::client::FleetCallerGate>(
+      argus::client::FleetGateConfig{
+          .expectedCallers = auth_callers::expected(),
+          .callerPairs = rpc.callers,
+          .legacySecret = rpc.secret,
+          .onFirstLegacy = [](const std::vector<std::string>& unpaired) {
+            LOG_WARN << "Auth RPC: a caller presented the fleet-wide [auth] "
+                        "rpc_secret; it is accepted only until every caller "
+                        "has its own [rpc.callers] credential (unpaired: "
+                     << unpaired.size() << ", run scripts/setup.sh or "
+                        "scripts/provision-host.sh to pair them)";
+          }});
   AuthRpcService rpcService({.sessions = &sessions,
                              .deviceCredentials = &deviceCredentials},
-                            rpc.secret);
+                            rpcGate);
   grpc::ServerBuilder rpcBuilder;
   rpcBuilder.AddListeningPort(rpc.listener.host + ":" +
                                   std::to_string(rpc.listener.port),
@@ -267,8 +286,13 @@ int main()
   if (rpcServer)
     LOG_INFO << "Auth RPC listening on " << rpc.listener.host << ":"
              << rpc.listener.port << " (cleartext, "
-             << (rpc.secret.empty() ? "loopback only, no fleet secret"
-                                    : "fleet secret required")
+             << (rpcGate->open() ? "loopback only, no caller credential"
+                                 : std::to_string(rpcGate->pairedCount()) +
+                                       " paired callers" +
+                                       (rpcGate->acceptsLegacy()
+                                            ? ", legacy fleet secret for the "
+                                              "unpaired ones"
+                                            : ""))
              << ")";
   else
     LOG_WARN << "Auth RPC failed to listen on " << rpc.listener.host << ":"

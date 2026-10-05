@@ -4,6 +4,8 @@
 #include <http/listener-config.hxx>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 struct AuthDbConfig
 {
@@ -15,6 +17,7 @@ struct AuthRpcConfig
 {
   GrpcListenerConfig listener;
   std::string secret;
+  std::vector<std::pair<std::string, std::string>> callers;
 
   [[nodiscard]] bool reachableBeyondLoopback() const;
 
@@ -26,6 +29,7 @@ struct AuthRpcConfig
 struct AuthIdentityConfig
 {
   std::string target;
+  std::string credential;
   std::string secret;
 };
 

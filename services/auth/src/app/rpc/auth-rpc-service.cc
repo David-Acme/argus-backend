@@ -1,4 +1,5 @@
 #include "auth-rpc-service.hxx"
+#include "auth-callers.hxx"
 
 #include <drogon/drogon.h>
 #include <grpc/grpc-client-base.hxx>
@@ -6,32 +7,34 @@
 #include <trantor/utils/Logger.h>
 #include <utility>
 
-namespace
+AuthRpcService::AuthRpcService(
+    Dependencies dependencies,
+    std::shared_ptr<const argus::client::FleetCallerGate> gate)
+    : dependencies_(dependencies), gate_(std::move(gate))
 {
-grpc::ServerUnaryReactor*
-rejectUnauthenticated(grpc::CallbackServerContext* context)
-{
-  auto* reactor = context->DefaultReactor();
-  reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                               "Fleet secret missing or invalid"));
-  return reactor;
-}
 }
 
 AuthRpcService::AuthRpcService(Dependencies dependencies,
                                std::string fleetSecret)
-    : dependencies_(dependencies), fleetSecret_(std::move(fleetSecret))
+    : AuthRpcService(dependencies,
+                     std::make_shared<const argus::client::FleetCallerGate>(
+                         argus::client::FleetGateConfig{
+                             .expectedCallers = auth_callers::expected(),
+                             .callerPairs = {},
+                             .legacySecret = std::move(fleetSecret),
+                             .onFirstLegacy = {}}))
 {
 }
 
-bool AuthRpcService::fleetAuthorized(
-    const grpc::CallbackServerContext* context) const
+grpc::ServerUnaryReactor*
+AuthRpcService::refuseCaller(grpc::CallbackServerContext* context) const
 {
-  if (fleetSecret_.empty())
-    return true;
-  return argus::client::constantTimeEquals(
-      argus::client::metadata(context, argus::client::kFleetSecretKey),
-      fleetSecret_);
+  const auto admission = gate_->admit(context, {});
+  if (admission.admitted())
+    return nullptr;
+  auto* reactor = context->DefaultReactor();
+  reactor->Finish(argus::client::FleetCallerGate::refusal(admission.verdict));
+  return reactor;
 }
 
 grpc::ServerUnaryReactor* AuthRpcService::ValidateToken(
@@ -39,8 +42,8 @@ grpc::ServerUnaryReactor* AuthRpcService::ValidateToken(
     const argus::auth::v1::ValidateTokenRequest* request,
     argus::auth::v1::ValidateTokenResponse* response)
 {
-  if (!fleetAuthorized(context))
-    return rejectUnauthenticated(context);
+  if (auto* refused = refuseCaller(context))
+    return refused;
 
   const SessionValidationInput input{
       .accessToken = request->access_token(),
@@ -95,8 +98,8 @@ grpc::ServerUnaryReactor* AuthRpcService::CheckDeviceCredential(
     const argus::auth::v1::CheckDeviceCredentialRequest* request,
     argus::auth::v1::CheckDeviceCredentialResponse* response)
 {
-  if (!fleetAuthorized(context))
-    return rejectUnauthenticated(context);
+  if (auto* refused = refuseCaller(context))
+    return refused;
 
   const auto& secretHash = request->secret_hash();
   auto* reactor = context->DefaultReactor();

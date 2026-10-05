@@ -3,7 +3,9 @@
 #include <argus/auth/v1/auth.grpc.pb.h>
 #include <feature/device/repositories/device-credential/device-credential-repository.hxx>
 #include <feature/session/services/session-service.hxx>
+#include <grpc/fleet-caller-gate.hxx>
 #include <grpcpp/grpcpp.h>
+#include <memory>
 #include <string>
 
 class AuthRpcService final : public argus::auth::v1::AuthService::CallbackService
@@ -14,6 +16,9 @@ public:
     SessionService* sessions{nullptr};
     DeviceCredentialRepository* deviceCredentials{nullptr};
   };
+
+  AuthRpcService(Dependencies dependencies,
+                 std::shared_ptr<const argus::client::FleetCallerGate> gate);
 
   AuthRpcService(Dependencies dependencies, std::string fleetSecret);
 
@@ -29,9 +34,9 @@ public:
       argus::auth::v1::CheckDeviceCredentialResponse* response) override;
 
 private:
-  [[nodiscard]] bool
-  fleetAuthorized(const grpc::CallbackServerContext* context) const;
+  [[nodiscard]] grpc::ServerUnaryReactor*
+  refuseCaller(grpc::CallbackServerContext* context) const;
 
   Dependencies dependencies_;
-  std::string fleetSecret_;
+  std::shared_ptr<const argus::client::FleetCallerGate> gate_;
 };

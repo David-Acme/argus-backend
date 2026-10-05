@@ -93,3 +93,13 @@ target_link_libraries(session-management-test PRIVATE
 target_compile_options(session-management-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(session-management-test)
 add_test(NAME session-management-test COMMAND session-management-test)
+
+add_executable(auth-rpc-callers-test unit/auth-rpc-callers-test.cc)
+target_link_libraries(auth-rpc-callers-test PRIVATE
+    argus::auth-rpc
+    argus::auth-config
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(auth-rpc-callers-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(auth-rpc-callers-test)
+add_test(NAME auth-rpc-callers-test COMMAND auth-rpc-callers-test)

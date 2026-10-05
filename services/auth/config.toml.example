@@ -2,6 +2,15 @@
 host = "127.0.0.1"
 grpc_port = 7043
 
+[rpc.callers]
+camera = ""
+guard = ""
+identity = ""
+notification = ""
+productivity = ""
+settings = ""
+sync = ""
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false
@@ -33,7 +42,6 @@ plain = false
 min_protocol = "TLSv1.2"
 db = "database/auth.db"
 schema = "services/auth/database/schema.sql"
-rpc_secret = ""
 context_cache_seconds = 30
 refresh_reuse_grace_seconds = 30
 
@@ -43,7 +51,7 @@ server_key = "certs/server.key"
 
 [identity]
 target = "127.0.0.1:7040"
-rpc_secret = ""
+credential = ""
 
 [jwt]
 secret = ""

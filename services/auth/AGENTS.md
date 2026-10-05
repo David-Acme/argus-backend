@@ -25,11 +25,14 @@ auth-service code; when in doubt, the root file wins.
    identity context, disabled account, missing/expired session row, device
    mismatch. `reason` is set only where the filter chain reads it; the rest
    refuse silently.
-5. **The session verdict is fleet-gated** — `[auth] rpc_secret` is the same
-   value in every service's config. An empty secret is legal only while the
+5. **The session verdict is gated per caller** — `[rpc.callers]` holds one
+   credential per peer that verifies a session (camera, guard, identity,
+   notification, productivity, settings, sync), each paired with that peer's
+   `[auth] credential`. The old `[auth] rpc_secret` is accepted only while
+   some caller is still unpaired. An open gate is legal only while the
    listener is bound to loopback, which is the native default; `main.cc`
    refuses to start when the listener is reachable beyond loopback without
-   one. The deploy template binds `0.0.0.0` behind that secret, which is what
+   a paired caller or a legacy secret. The deploy template binds `0.0.0.0` behind that secret, which is what
    lets the peer containers reach `argus-auth:7043`; the compose publishes that
    port on `127.0.0.1` only, and the HTTP surface on the LAN.
 6. **Never serialize an invitation, portrait or credential secret** — a device
@@ -124,8 +127,8 @@ The top-level CMake auto-discovers feature folders and links
 The HTTP surface terminates TLS on `7042` and the RPC listener answers on
 `7043`. The compose publishes `7042` on the LAN, where the app dials this
 service's routes directly, and `7043` on `127.0.0.1` only, because the session
-verdict is a fleet-internal answer gated by `[auth] rpc_secret` and reached
-over the bridge as `argus-auth:7043`. A request that arrives on the
+verdict is a fleet-internal answer gated by each caller's own credential
+(`[rpc.callers]`) and reached over the bridge as `argus-auth:7043`. A request that arrives on the
 `[remote] tunnel_port` listener is what `RemoteGate` refuses for `/pairing` and
 `/auth/register` (`403 REMOTE_NOT_ALLOWED`) unless `[remote] enabled` is set.
 

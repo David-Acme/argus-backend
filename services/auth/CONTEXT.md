@@ -350,14 +350,28 @@ when the commit lands, and its `WakeSignal` keeps a wake that arrives
 mid-pass, instead of a wake before the commit that found nothing and left the
 row waiting the retry period.
 
-**The RPC listener is a fleet secret, not a route.** `[auth] rpc_secret` must
-be the same value in every service's config. An empty value is legal only
-while the listener is bound to loopback, which is the native development
-default; `main.cc` refuses to start when the listener is reachable beyond
-loopback without one, and refuses a non-empty secret shorter than 32
-characters in every mode, native included (`AuthRpcConfig::secretProblem`). The deploy template binds `0.0.0.0` behind that secret —
-which is what lets the peer containers the secret exists for reach
-`argus-auth:7043` — and the compose publishes 7043 on `127.0.0.1` only.
+**The RPC listener is a caller credential, not a route.** Since the
+2026-10 audit (#25) every peer that asks for a session verdict presents its
+own credential: `[rpc.callers]` here maps camera, guard, identity,
+notification, productivity, settings and sync to one 32-byte secret each,
+paired with that peer's `[auth] credential` by `fill_config_pair`
+(`ensure_fleet_callers` in `scripts/lib/common.sh`). The gate is
+`argus::client::FleetCallerGate` (`packages/lib/grpc`), and it names the
+caller from the credential that matched. Both methods are open to every
+paired caller: a verdict reveals nothing a caller can abuse, so there is no
+per-method table here, unlike identity and sync.
+
+The fleet-wide `[auth] rpc_secret` of an older install keeps working while
+any expected caller has no credential yet, so a rebuild without
+re-provisioning still runs; the first such call logs one WARN naming how
+many callers are unpaired. Once every caller is paired the secret is refused
+and can be deleted. An open gate (no credential, no secret) is legal only on
+loopback; `main.cc` refuses to start when the listener is reachable beyond
+loopback without one, and refuses a caller credential or a non-empty legacy
+secret shorter than 32 characters in every mode, native included
+(`AuthRpcConfig::secretProblem`). A `CHANGE_ME` placeholder never
+authenticates. The deploy template binds `0.0.0.0` and the compose publishes
+7043 on `127.0.0.1` only.
 
 **Ports.** 7042 is this service's HTTP subroute (TLS with the instance
 certificate), 7043 its RPC listener. The compose publishes 7042 on the LAN,
@@ -432,6 +446,11 @@ fleet gate, the device credential lookup, the refusal of a revoked or rotated
 session row on both validation paths, the effect a revocation has on the rows
 themselves, and — under `ARGUS_NATS_URL` — the live consumer, over a real gRPC
 server and a real `AuthClient` against a temporary database.
+
+`tests/unit/auth-rpc-callers-test.cc` pins the per-caller gate: a missing,
+unknown or placeholder credential and a retired fleet secret are
+unauthenticated before any work is done, and `AuthRpcConfig::secretProblem`
+refuses a short credential and an exposed listener with nothing paired.
 
 `tests/unit/session-management-test.cc` also drives the owner's routes (every
 user's list, one and all of another user's sessions, a session id of a third

@@ -2,6 +2,15 @@
 host = "0.0.0.0"
 grpc_port = 7043
 
+[rpc.callers]
+camera = "CHANGE_ME_CAMERA_AUTH"
+guard = "CHANGE_ME_GUARD_AUTH"
+identity = "CHANGE_ME_IDENTITY_AUTH"
+notification = "CHANGE_ME_NOTIFICATION_AUTH"
+productivity = "CHANGE_ME_PRODUCTIVITY_AUTH"
+settings = "CHANGE_ME_SETTINGS_AUTH"
+sync = "CHANGE_ME_SYNC_AUTH"
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false
@@ -33,7 +42,6 @@ plain = false
 min_protocol = "TLSv1.2"
 db = "database/auth.db"
 schema = "database/schema.sql"
-rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 context_cache_seconds = 30
 refresh_reuse_grace_seconds = 30
 
@@ -43,7 +51,7 @@ server_key = "certs/server.key"
 
 [identity]
 target = "argus-identity:7040"
-rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+credential = "CHANGE_ME_AUTH_IDENTITY"
 
 [jwt]
 secret = ""
