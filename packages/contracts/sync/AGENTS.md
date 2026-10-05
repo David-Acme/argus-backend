@@ -91,14 +91,15 @@ now `services/sync`'s `SyncSocket`.
   seven days in milliseconds, seconds and nanoseconds, the two-minute
   duplicate window, and the interval and retry cadence a settled-row purge
   runs at; 10 files.
-- `src/sync/sync-errors.hxx` — the ten refusals: `UserAccountDisabled` 401,
+- `src/sync/sync-errors.hxx` — the eleven refusals: `UserAccountDisabled` 401,
   `MissingMessageType` and `UnknownMessageType` 400,
   `ReplicaTooOld` 409, `TooManyFrames` 429 (2026-10-05, additive: a socket
   that outruns its frame budget, `services/sync/CONTEXT.md`, "Audit of
   2026-10-05"), and the five `*Unavailable` answers at 503
   (`NotificationSyncUnavailable`, `CameraSyncUnavailable`,
   `ProductivitySyncUnavailable`, `IdentitySyncUnavailable`,
-  `VoiceUnavailable`); 9 files.
+  `VoiceUnavailable`), and `SyncStopping` 503 (2026-10-05, additive: a frame
+  that reaches a socket once the service has begun to drain); 9 files.
 - `src/sync/socket-emit-dto.hxx` — `SocketEmitDto`, the triple the transport
   sends: the `SyncOperation`, the `TableName` it is scoped to, and the row as
   `Json`, with the `toJson()` that was a `.cc` in `packages/socket` until

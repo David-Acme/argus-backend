@@ -7,16 +7,21 @@ if(NOT TARGET argus::lib::errors)
                      ${CMAKE_CURRENT_BINARY_DIR}/errors)
 endif()
 
+if(NOT TARGET Drogon::Drogon)
+    find_package(Drogon CONFIG REQUIRED)
+endif()
+
 argus_contracts(NAME camera
     INCLUDES src
     SOURCES
         src/camera/camera-driver.hxx
         src/camera/camera-errors.hxx
         src/camera/camera-record-mode.hxx
+        src/camera/camera-row-projection.hxx
         src/camera/event-severity.hxx
         src/camera/identity-state.hxx
         src/camera/zone-type.hxx
-    DEPENDS argus::lib::errors)
+    DEPENDS argus::lib::errors Drogon::Drogon)
 
 enable_testing()
 find_package(doctest REQUIRED)

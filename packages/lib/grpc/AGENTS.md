@@ -26,6 +26,14 @@ per client.
 - `src/grpc/grpc-server-identity.hxx` — the receiving side: `metadata`,
   `constantTimeEquals`, `CallerCredential`, `callerCredentialsFromPairs`,
   `authorizeCaller`, `callerUserId`.
+- `src/grpc/grpc-server-drain.hxx` — `argus::client::GrpcServerDrain`, the
+  stop of an RPC server a service registers with `shutdown_signal`: it owns
+  the `grpc::Server`, `requestStop()` starts `Shutdown(deadline)` on its own
+  thread, `drained()` answers once it returned, `stop()` joins and destroys
+  the server. Compiled into `argus_client_grpc_base`, so every unit that
+  links a client or `grpc-health` has it. It replaced the copies sync,
+  notification and productivity each carried; it is namespaced so a unit's
+  older global copy still links until that unit switches.
 - `src/grpc/grpc-cq-bridge.hxx` and `grpc-cq-bridge-{entry,exit}.cc` — the ABI
   bridge over the system-versus-Conan abseil inline namespaces; the full why
   is in `packages/contracts/CONTEXT.md`. The stubs themselves
@@ -66,3 +74,6 @@ per client.
 `tests/unit/grpc-server-identity-test.cc` — `constantTimeEquals` and
 `callerCredentialsFromPairs`, the two pieces of the receiving side that need
 no channel to exercise.
+`tests/unit/grpc-server-drain-test.cc` — a live loopback server is shut down
+once however often the stop is asked, and a drain without a server is
+drained as soon as it is asked to stop.

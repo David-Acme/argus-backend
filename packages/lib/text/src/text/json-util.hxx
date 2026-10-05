@@ -26,7 +26,12 @@ inline bool isValid(const std::string& raw)
   std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
   Json::Value value;
   std::string errors;
-  return reader->parse(raw.data(), raw.data() + raw.size(), &value, &errors);
+  try {
+    return reader->parse(raw.data(), raw.data() + raw.size(), &value, &errors);
+  }
+  catch (const Json::Exception&) {
+    return false;
+  }
 }
 
 inline Json::Value fromString(const std::string& raw)
@@ -37,8 +42,13 @@ inline Json::Value fromString(const std::string& raw)
   Json::Value value;
   Json::CharReaderBuilder builder;
   std::string errors;
-  if (!Json::parseFromStream(builder, in, &value, &errors))
-    return Json::Value();
+  try {
+    if (!Json::parseFromStream(builder, in, &value, &errors))
+      return {};
+  }
+  catch (const Json::Exception&) {
+    return {};
+  }
   return value;
 }
 }

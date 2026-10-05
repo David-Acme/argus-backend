@@ -140,7 +140,8 @@ function(argus_grpc_client_base)
   endif()
   argus_contracts_substrate()
   set(base_dir ${ARGUS_CMAKE_DIR}/../packages/lib/grpc/src/grpc)
-  add_library(argus_client_grpc_base OBJECT ${base_dir}/grpc-client-base.cc)
+  add_library(argus_client_grpc_base OBJECT ${base_dir}/grpc-client-base.cc
+                                            ${base_dir}/grpc-server-drain.cc)
   set_target_properties(argus_client_grpc_base PROPERTIES
       POSITION_INDEPENDENT_CODE ON)
   target_include_directories(argus_client_grpc_base PUBLIC

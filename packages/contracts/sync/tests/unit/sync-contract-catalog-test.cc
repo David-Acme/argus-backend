@@ -45,6 +45,11 @@ const std::vector<CatalogEntry> kCatalog{
      .code = ErrorCode::Conflict,
      .status = 409,
      .message = "Audit cursor is older than the retention window"},
+    {.name = "SyncStopping",
+     .definition = &SyncErrors::SyncStopping,
+     .code = ErrorCode::ServiceUnavailable,
+     .status = 503,
+     .message = "Sync is shutting down"},
 };
 
 constexpr std::size_t kMaxMessageBytes = 1024;
@@ -59,7 +64,7 @@ TEST_CASE("the sync catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 10);
+  CHECK(kCatalog.size() == 11);
 }
 
 TEST_CASE("every sync entry is legal on the wire")

@@ -40,6 +40,17 @@ target_link_libraries(grpc-server-identity-test PRIVATE
 target_compile_options(grpc-server-identity-test PRIVATE -Wall -Wextra)
 add_test(NAME grpc-server-identity-test COMMAND grpc-server-identity-test)
 
+add_executable(grpc-server-drain-test tests/unit/grpc-server-drain-test.cc)
+
+set_target_properties(grpc-server-drain-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(grpc-server-drain-test PRIVATE
+    argus::lib::grpc-health
+    doctest::doctest)
+target_compile_options(grpc-server-drain-test PRIVATE -Wall -Wextra)
+add_test(NAME grpc-server-drain-test COMMAND grpc-server-drain-test)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)

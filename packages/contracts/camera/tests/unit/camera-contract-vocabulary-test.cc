@@ -3,6 +3,7 @@
 
 #include <camera/camera-driver.hxx>
 #include <camera/camera-record-mode.hxx>
+#include <camera/camera-row-projection.hxx>
 #include <camera/event-severity.hxx>
 #include <camera/identity-state.hxx>
 #include <camera/zone-type.hxx>
@@ -92,4 +93,36 @@ TEST_CASE("unknown strings fall back to documented defaults")
     CHECK(cameraRecordModeFromString("bogus") == CameraRecordMode::Events);
     CHECK(zoneTypeFromString("bogus") == ZoneType::Monitor);
     CHECK(cameraDriverFromString("bogus") == CameraDriver::Tapo);
+}
+
+TEST_CASE("a reduced camera row and diff carry no connection detail")
+{
+  Json::Value row(Json::objectValue);
+  row["id"] = 3;
+  row["name"] = "Patio";
+  row["ip"] = "192.168.1.20";
+  row["port"] = 554;
+  row["username"] = "admin";
+  row["cloudUsername"] = "owner@example.com";
+  row["config"] = R"({"stream":"rtsp://admin:pw@192.168.1.20"})";
+  camera_projection::reduceRow(row);
+  CHECK(row["name"] == "Patio");
+  CHECK(row["ip"] == "");
+  CHECK(row["port"] == 0);
+  CHECK(row["username"] == "");
+  CHECK(row["cloudUsername"] == "");
+  CHECK(row["config"] == "{}");
+
+  Json::Value changes(Json::objectValue);
+  changes["name"]["current"] = "Jardin";
+  changes["ip"]["current"] = "10.0.0.2";
+  changes["port"]["current"] = 8554;
+  changes["config.stream"]["current"] = "rtsp://x";
+  changes["portrait"]["current"] = true;
+  camera_projection::reduceDiff(changes);
+  CHECK(changes.isMember("name"));
+  CHECK(changes.isMember("portrait"));
+  CHECK_FALSE(changes.isMember("ip"));
+  CHECK_FALSE(changes.isMember("port"));
+  CHECK_FALSE(changes.isMember("config.stream"));
 }

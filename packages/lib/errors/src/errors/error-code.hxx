@@ -34,7 +34,10 @@ enum class ErrorCode
   CallExpired,
   PinRequired,
   PinInvalid,
-  PinLocked
+  PinLocked,
+  LivenessCheckFailed,
+  LivenessUnavailable,
+  FaceQualityInsufficient
 };
 
 constexpr std::string_view toString(ErrorCode code)
@@ -70,6 +73,9 @@ constexpr std::string_view toString(ErrorCode code)
   case ErrorCode::PinRequired: return "PIN_REQUIRED";
   case ErrorCode::PinInvalid: return "PIN_INVALID";
   case ErrorCode::PinLocked: return "PIN_LOCKED";
+  case ErrorCode::LivenessCheckFailed: return "LIVENESS_CHECK_FAILED";
+  case ErrorCode::LivenessUnavailable: return "LIVENESS_UNAVAILABLE";
+  case ErrorCode::FaceQualityInsufficient: return "FACE_QUALITY_INSUFFICIENT";
   }
   throw std::invalid_argument("Unknown response error code");
 }

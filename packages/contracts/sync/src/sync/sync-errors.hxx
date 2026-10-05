@@ -53,4 +53,8 @@ inline constexpr ErrorDefinition ReplicaTooOld{
     .code = ErrorCode::Conflict,
     .status = 409,
     .message = "Audit cursor is older than the retention window"};
+inline constexpr ErrorDefinition SyncStopping{
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 503,
+    .message = "Sync is shutting down"};
 }

@@ -47,3 +47,13 @@ TEST_CASE("the wire form round-trips through fromJsonString")
   CHECK(parsed.at("due").previous.asInt() == 5);
   CHECK(parsed.at("due").current.isNull());
 }
+
+TEST_CASE("a payload nested past the reader's stack limit is not JSON, and parsing it never throws")
+{
+  const std::string deep = std::string(5000, '[') + std::string(5000, ']');
+  CHECK_NOTHROW(static_cast<void>(json_util::fromString(deep)));
+  CHECK(json_util::fromString(deep).isNull());
+  CHECK_FALSE(json_util::isValid(deep));
+  CHECK(json_util::fromString("not-json").isNull());
+  CHECK(json_util::fromString(R"({"a":1})")["a"].asInt() == 1);
+}

@@ -307,6 +307,11 @@ inline bool readsUserDirectory(UserRole role)
   return role == UserRole::Owner || role == UserRole::Guard;
 }
 
+inline bool readsCameraConnection(UserRole role)
+{
+  return role == UserRole::Owner || role == UserRole::Resident;
+}
+
 inline std::vector<TableName> moduleTables(UserRole role)
 {
   auto tables = readableTables(role);
