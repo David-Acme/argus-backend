@@ -99,9 +99,15 @@ inline constexpr std::string_view PLAINTEXT_SECRETS =
     "WHERE (password != '' AND password NOT LIKE 'enc:v1:%') "
     "OR (cloud_password != '' AND cloud_password NOT LIKE 'enc:v1:%')";
 inline constexpr std::string_view SEAL_SECRETS =
-    "UPDATE camera SET password = ?, cloud_password = ? WHERE id = ?";
+    "UPDATE camera SET password = ?, cloud_password = ? "
+    "WHERE id = ? AND password = ? AND cloud_password = ?";
+inline constexpr std::string_view SEALED_SECRETS =
+    "SELECT id, password, cloud_password FROM camera "
+    "WHERE password LIKE 'enc:v1:%' OR cloud_password LIKE 'enc:v1:%'";
 inline constexpr std::string_view SAVE_TAPO_TRUST =
-    "UPDATE camera SET tls_fingerprint = ?, tapo_secure = ? WHERE id = ?";
+    "UPDATE camera SET tls_fingerprint = ?, tapo_secure = ? "
+    "WHERE id = ? AND ip = ? AND deleted_at IS NULL "
+    "AND (tls_fingerprint = '' OR tls_fingerprint = ?)";
 inline constexpr std::string_view REMOVE =
     "UPDATE camera SET deleted_at = strftime('%s', 'now'), "
     "updated_at = strftime('%s', 'now') WHERE id = ? AND deleted_at IS NULL";
@@ -130,6 +136,7 @@ struct CameraCreateInput
 struct CameraTapoTrustInput
 {
   int64_t cameraId{0};
+  std::string ip;
   std::string fingerprint;
   bool secure{false};
 };

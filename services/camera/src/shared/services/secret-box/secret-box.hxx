@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -36,6 +37,6 @@ void clearKey();
 [[nodiscard]] KeyFileResult loadOrCreateKey(const std::string& path);
 
 [[nodiscard]] bool isSealed(std::string_view stored);
-[[nodiscard]] std::string seal(const SealInput& input);
-[[nodiscard]] std::string open(const OpenInput& input);
+[[nodiscard]] std::optional<std::string> seal(const SealInput& input);
+[[nodiscard]] std::optional<std::string> open(const OpenInput& input);
 }

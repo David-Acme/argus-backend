@@ -1,6 +1,8 @@
 #include "camera-repository.hxx"
 
+#include <camera/camera-errors.hxx>
 #include <ctime>
+#include <errors/response-exception.hxx>
 #include <shared/repositories/tombstone-page.hxx>
 #include <shared/services/secret-box/secret-box.hxx>
 #include <sqlite/db-service.hxx>
@@ -12,14 +14,27 @@ using namespace camera_query;
 
 namespace
 {
+std::string sealOrRefuse(const secret_box::SealInput& input)
+{
+  auto sealed = secret_box::seal(input);
+  if (!sealed)
+    throw ResponseException(CameraErrors::SecretNotSealed);
+  return std::move(*sealed);
+}
+
 std::string sealPassword(const std::string& plain)
 {
-  return secret_box::seal({.plain = plain, .label = camera_secret::kPasswordLabel});
+  return sealOrRefuse({.plain = plain, .label = camera_secret::kPasswordLabel});
 }
 
 std::string sealCloudPassword(const std::string& plain)
 {
-  return secret_box::seal({.plain = plain, .label = camera_secret::kCloudPasswordLabel});
+  return sealOrRefuse({.plain = plain, .label = camera_secret::kCloudPasswordLabel});
+}
+
+bool unreadable(const std::string& stored, const char* label)
+{
+  return secret_box::isSealed(stored) && !secret_box::open({.stored = stored, .label = label});
 }
 }
 
@@ -249,7 +264,8 @@ CameraRepository::findDeleted(const SyncFilter& filter) const
   if (!tombstone_page::rereadsBoundary(filter))
     co_return data;
   const auto boundaryRows = co_await client->execSqlCoro(
-      FIND_DELETED_BOUNDARY.data(), *filter.startTime, *filter.startId);
+      std::string(FIND_DELETED_BOUNDARY), filter.startTime.value_or(0),
+      filter.startId.value_or(0));
   std::vector<Json::Value> boundary;
   boundary.reserve(boundaryRows.size());
   for (const auto& row : boundaryRows)
@@ -303,22 +319,41 @@ int64_t CameraRepository::sealPlaintextSecrets()
   int64_t sealed = 0;
   for (const auto& row : client->execSqlSync(std::string(PLAINTEXT_SECRETS))) {
     const auto reseal = [](const std::string& stored, const char* label) {
-      return secret_box::isSealed(stored) ? stored
-                                          : secret_box::seal({.plain = stored, .label = label});
+      return secret_box::isSealed(stored)
+                 ? std::optional<std::string>(stored)
+                 : secret_box::seal({.plain = stored, .label = label});
     };
-    client->execSqlSync(
-        std::string(SEAL_SECRETS),
-        reseal(row["password"].as<std::string>(), camera_secret::kPasswordLabel),
-        reseal(row["cloud_password"].as<std::string>(), camera_secret::kCloudPasswordLabel),
-        row["id"].as<int64_t>());
+    const auto id = row["id"].as<int64_t>();
+    const auto password = reseal(row["password"].as<std::string>(), camera_secret::kPasswordLabel);
+    const auto cloudPassword =
+        reseal(row["cloud_password"].as<std::string>(), camera_secret::kCloudPasswordLabel);
+    if (!password || !cloudPassword) {
+      LOG_WARN << "Camera secrets: camera " << id << " stays unencrypted until the next boot";
+      continue;
+    }
+    client->execSqlSync(std::string(SEAL_SECRETS), *password, *cloudPassword, id,
+                        row["password"].as<std::string>(),
+                        row["cloud_password"].as<std::string>());
     ++sealed;
   }
   return sealed;
 }
 
+int64_t CameraRepository::unreadableSecrets()
+{
+  int64_t unreadableRows = 0;
+  for (const auto& row :
+       DbService::cameraClient()->execSqlSync(std::string(SEALED_SECRETS))) {
+    if (unreadable(row["password"].as<std::string>(), camera_secret::kPasswordLabel) ||
+        unreadable(row["cloud_password"].as<std::string>(), camera_secret::kCloudPasswordLabel))
+      ++unreadableRows;
+  }
+  return unreadableRows;
+}
+
 void CameraRepository::saveTapoTrust(const CameraTapoTrustInput& input)
 {
-  if (input.cameraId <= 0)
+  if (input.cameraId <= 0 || input.ip.empty())
     return;
   DbService::cameraClient()->execSqlAsync(
       std::string(SAVE_TAPO_TRUST),
@@ -327,5 +362,5 @@ void CameraRepository::saveTapoTrust(const CameraTapoTrustInput& input)
         LOG_WARN << "Camera " << cameraId << ": Tapo trust not saved ("
                  << error.base().what() << ")";
       },
-      input.fingerprint, input.secure ? 1 : 0, input.cameraId);
+      input.fingerprint, input.secure ? 1 : 0, input.cameraId, input.ip, input.fingerprint);
 }

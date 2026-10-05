@@ -74,6 +74,10 @@ inline constexpr ErrorDefinition ProbeBusy{
     .code = ErrorCode::TooManyRequests,
     .status = 429,
     .message = "A connection test is already running for this user"};
+inline constexpr ErrorDefinition SecretNotSealed{
+    .code = ErrorCode::InternalError,
+    .status = 500,
+    .message = "The camera password could not be encrypted"};
 inline constexpr ErrorDefinition ChangeNotRecorded{
     .code = ErrorCode::InternalError,
     .status = 500,

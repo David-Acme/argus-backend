@@ -13,11 +13,13 @@ CameraSchema::CameraSchema(const drogon::orm::Row& row)
   username = row["username"].as<std::string>();
   cloudUsername = row["cloud_username"].as<std::string>();
   cloudPassword = secret_box::open({.stored = row["cloud_password"].as<std::string>(),
-                                    .label = camera_secret::kCloudPasswordLabel});
+                                    .label = camera_secret::kCloudPasswordLabel})
+                      .value_or(std::string());
   driver = cameraDriverFromString(row["driver"].as<std::string>());
   icon = row["icon"].as<std::string>();
   password = secret_box::open({.stored = row["password"].as<std::string>(),
-                               .label = camera_secret::kPasswordLabel});
+                               .label = camera_secret::kPasswordLabel})
+                 .value_or(std::string());
   recordMode = cameraRecordModeFromString(row["record_mode"].as<std::string>());
   if (!row["retention_days"].isNull())
     retentionDays = static_cast<int64_t>(row["retention_days"].as<long long>());

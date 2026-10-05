@@ -158,10 +158,12 @@ int main()
     LOG_FATAL << error.what() << " — aborting startup";
     return 1;
   }
+  bool keyCreated = false;
   switch (secret_box::loadOrCreateKey(cameraDb.secretKeyPath)) {
     case secret_box::KeyFileResult::Loaded:
       break;
     case secret_box::KeyFileResult::Created:
+      keyCreated = true;
       LOG_INFO << "Camera secrets: created the instance key at " << cameraDb.secretKeyPath;
       break;
     case secret_box::KeyFileResult::Failed:
@@ -359,7 +361,7 @@ int main()
 
   drogon::app().registerBeginningAdvice(
       [&cameraDb, &operatorService, &healthMonitor, &cameraActionRpc,
-       &objectSink, &changeSink]() {
+       &objectSink, &changeSink, keyCreated]() {
     DbService::installExtensions();
 
     if (!DbService::runScriptFile(cameraDb.schemaPath)) {
@@ -369,6 +371,15 @@ int main()
 
     ZoneRepository::acceptPrivacyZones();
     CameraRepository::acceptTapoTrust();
+    if (const int64_t unreadable = CameraRepository::unreadableSecrets(); unreadable > 0) {
+      if (keyCreated)
+        ::unlink(cameraDb.secretKeyPath.c_str());
+      LOG_FATAL << "Camera secrets: " << unreadable
+                << " camera(s) hold passwords sealed with another key than "
+                << cameraDb.secretKeyPath
+                << "; restore that key file (or point [camera] secret_key at it) — aborting startup";
+      _exit(1);
+    }
     if (const int64_t sealed = CameraRepository::sealPlaintextSecrets(); sealed > 0)
       LOG_INFO << "Camera secrets: encrypted the stored passwords of " << sealed
                << " camera(s)";

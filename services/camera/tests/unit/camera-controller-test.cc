@@ -280,7 +280,10 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   checkNoCredentials(body(talking)["info"]);
   {
     const auto stored = drogon::sync_wait(CameraRepository().findById(cameraId));
-    REQUIRE(stored);
+    if (!stored) {
+      FAIL("expected the camera after its Tapo update");
+      return;
+    }
     CHECK(stored->cloudPassword == "cloud-secret");
   }
   Json::Value moved;
@@ -290,7 +293,10 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK(body(relocated)["info"]["ip"] == "192.168.1.31");
   {
     const auto stored = drogon::sync_wait(CameraRepository().findById(cameraId));
-    REQUIRE(stored);
+    if (!stored) {
+      FAIL("expected the camera after it moved");
+      return;
+    }
     CHECK(stored->cloudPassword.empty());
     CHECK(stored->password.empty());
     CHECK(stored->tlsFingerprint.empty());
@@ -299,7 +305,10 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   tooLong["retentionDays"] = Json::Int64(90);
   const auto refusedRetention = refusalOf(
       cameraController.update(drogon::HttpRequest::newHttpJsonRequest(tooLong), cameraId));
-  REQUIRE(refusedRetention);
+  if (!refusedRetention) {
+    FAIL("expected a refusal for 90 days without an incident");
+    return;
+  }
   CHECK(refusedRetention->status == 422);
   tooLong["retentionIncident"] = true;
   const auto incident = drogon::sync_wait(
@@ -677,20 +686,24 @@ TEST_CASE("a probe reuses stored secrets only against the stored address, one at
   CameraSchema stored;
   stored.ip = "192.168.1.30";
   stored.port = 554;
+  stored.password = "rtsp-secret";
   ProbeCameraDto body;
   body.ip = "192.168.1.30";
   body.port = 554;
   body.cameraId = 4;
-  CHECK(camera_probe::reusesStoredSecrets(body));
   CHECK(camera_probe::storedAddressMatches({.body = body, .stored = stored}));
+  CHECK(camera_probe::needsStoredSecrets({.body = body, .stored = stored}));
   body.ip = "192.168.1.99";
   CHECK_FALSE(camera_probe::storedAddressMatches({.body = body, .stored = stored}));
   body.ip = "192.168.1.30";
   body.port = 8554;
   CHECK_FALSE(camera_probe::storedAddressMatches({.body = body, .stored = stored}));
   body.password = "typed";
+  CHECK_FALSE(camera_probe::needsStoredSecrets({.body = body, .stored = stored}));
+  stored.cloudPassword = "cloud-secret";
+  CHECK(camera_probe::needsStoredSecrets({.body = body, .stored = stored}));
   body.cloudPassword = "typed-cloud";
-  CHECK_FALSE(camera_probe::reusesStoredSecrets(body));
+  CHECK_FALSE(camera_probe::needsStoredSecrets({.body = body, .stored = stored}));
 
   ProbeSlots slots;
   auto first = slots.acquire(7);

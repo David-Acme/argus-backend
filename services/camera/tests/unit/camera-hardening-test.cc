@@ -1,19 +1,26 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <drogon/orm/DbClient.h>
 #include <feature/media/media-access-check.hxx>
 #include <feature/operator/services/evidence/evidence-uploader.hxx>
 #include <feature/sync/camera-sync-rpc-service.hxx>
+#include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/repositories/tombstone-page.hxx>
 #include <shared/services/secret-box/secret-box.hxx>
 #include <shared/services/tapo/tapo-client.hxx>
 #include <shared/services/tapo/tapo-trust.hxx>
 #include <shared/vocabulary/operator-zone.hxx>
+#include <sqlite/db-service.hxx>
+
+#include <sqlite3.h>
 
 #include <array>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <memory>
+#include <stdexcept>
 #include <string>
 #include <sys/stat.h>
 #include <vector>
@@ -24,8 +31,57 @@ constexpr std::array<uint8_t, secret_box::kKeyBytes> kKey{
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
     17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32};
 
-Json::Value tombstone(int64_t id, int64_t deletedAt)
+using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
+
+constexpr const char* kLegacyCameraTable =
+    "CREATE TABLE camera ("
+    "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+    "name TEXT NOT NULL, manufacturer TEXT NOT NULL DEFAULT '', "
+    "model TEXT NOT NULL DEFAULT '', ip TEXT NOT NULL, "
+    "port INTEGER NOT NULL DEFAULT 554, "
+    "username TEXT NOT NULL DEFAULT 'admin', "
+    "password TEXT NOT NULL DEFAULT '', "
+    "cloud_username TEXT NOT NULL DEFAULT '', "
+    "cloud_password TEXT NOT NULL DEFAULT '', "
+    "driver TEXT NOT NULL DEFAULT 'tapo', "
+    "icon TEXT NOT NULL DEFAULT 'video', "
+    "record_mode TEXT NOT NULL DEFAULT 'events', "
+    "retention_days INTEGER, capabilities TEXT NOT NULL DEFAULT '[]', "
+    "config TEXT NOT NULL DEFAULT '{}', "
+    "is_enabled INTEGER NOT NULL DEFAULT 1, "
+    "is_online INTEGER NOT NULL DEFAULT 0, "
+    "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+    "updated_at INTEGER, deleted_at INTEGER)";
+
+DbHandle openFile(const std::string& path)
 {
+  sqlite3* raw = nullptr;
+  if (sqlite3_open(path.c_str(), &raw) != SQLITE_OK) {
+    sqlite3_close_v2(raw);
+    throw std::runtime_error("sqlite3_open " + path);
+  }
+  return {raw, sqlite3_close_v2};
+}
+
+void exec(sqlite3* db, const std::string& sql)
+{
+  char* error = nullptr;
+  const int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &error);
+  const std::string message = error != nullptr ? error : "";
+  sqlite3_free(error);
+  if (rc != SQLITE_OK)
+    throw std::runtime_error("sqlite3_exec: " + message);
+}
+
+struct Tombstone
+{
+  int64_t id{0};
+  int64_t deletedAt{0};
+};
+
+Json::Value tombstone(const Tombstone& input)
+{
+  const auto [id, deletedAt] = input;
   Json::Value row(Json::objectValue);
   row["id"] = Json::Int64(id);
   row["deletedAt"] = Json::Int64(deletedAt);
@@ -38,20 +94,22 @@ TEST_CASE("camera secrets are sealed with the instance key and bound to their co
   secret_box::clearKey();
   CHECK(secret_box::seal({.plain = "pw", .label = "camera.password"}) == "pw");
   REQUIRE(secret_box::installKey(kKey));
-  const std::string sealed = secret_box::seal({.plain = "c0nfidential", .label = "camera.password"});
+  const std::string sealed =
+      secret_box::seal({.plain = "c0nfidential", .label = "camera.password"}).value_or("");
   CHECK(secret_box::isSealed(sealed));
   CHECK(sealed.find("c0nfidential") == std::string::npos);
   CHECK(sealed != secret_box::seal({.plain = "c0nfidential", .label = "camera.password"}));
   CHECK(secret_box::open({.stored = sealed, .label = "camera.password"}) == "c0nfidential");
-  CHECK(secret_box::open({.stored = sealed, .label = "camera.cloud_password"}).empty());
+  CHECK_FALSE(secret_box::open({.stored = sealed, .label = "camera.cloud_password"}).has_value());
   CHECK(secret_box::open({.stored = "legacy-plain", .label = "camera.password"}) == "legacy-plain");
-  CHECK(secret_box::seal({.plain = "", .label = "camera.password"}).empty());
+  CHECK(secret_box::seal({.plain = "", .label = "camera.password"}) == "");
 
   std::string tampered = sealed;
-  tampered[tampered.size() - 3] = tampered[tampered.size() - 3] == 'A' ? 'B' : 'A';
-  CHECK(secret_box::open({.stored = tampered, .label = "camera.password"}).empty());
+  const std::size_t inner = secret_box::kPrefix.size() + 8;
+  tampered[inner] = tampered[inner] == 'A' ? 'B' : 'A';
+  CHECK_FALSE(secret_box::open({.stored = tampered, .label = "camera.password"}).has_value());
   secret_box::clearKey();
-  CHECK(secret_box::open({.stored = sealed, .label = "camera.password"}).empty());
+  CHECK_FALSE(secret_box::open({.stored = sealed, .label = "camera.password"}).has_value());
 }
 
 TEST_CASE("the instance key file is created once, private, and read back")
@@ -65,11 +123,71 @@ TEST_CASE("the instance key file is created once, private, and read back")
   REQUIRE(::stat(path.c_str(), &info) == 0);
   CHECK((info.st_mode & 0777) == 0600);
   CHECK(info.st_size == static_cast<off_t>(secret_box::kKeyBytes));
-  const std::string sealed = secret_box::seal({.plain = "x", .label = "l"});
+  const std::string sealed = secret_box::seal({.plain = "x", .label = "l"}).value_or("");
   secret_box::clearKey();
   CHECK(secret_box::loadOrCreateKey(path) == secret_box::KeyFileResult::Loaded);
   CHECK(secret_box::open({.stored = sealed, .label = "l"}) == "x");
   secret_box::clearKey();
+  std::remove(path.c_str());
+}
+
+TEST_CASE("an upgraded camera.db keeps every password, sealed in place, and refuses a foreign key")
+{
+  const std::string path =
+      (std::filesystem::temp_directory_path() / "camera-hardening-secrets.db").string();
+  std::remove(path.c_str());
+  {
+    const auto db = openFile(path);
+    exec(db.get(), kLegacyCameraTable);
+    exec(db.get(),
+         "INSERT INTO camera (id, name, ip, password, cloud_password) VALUES "
+         "(1, 'Patio', '192.168.1.30', 'rtsp-pass', 'cloud-pass'), "
+         "(2, 'Sala', '192.168.1.31', '', ''), "
+         "(3, 'Garaje', '192.168.1.32', 'only-rtsp', '')");
+  }
+  const auto client = drogon::orm::DbClient::newSqlite3Client("filename=" + path, 1);
+  DbService::setCameraClient(client);
+
+  secret_box::clearKey();
+  REQUIRE(secret_box::installKey(kKey));
+  CHECK(CameraRepository::acceptTapoTrust());
+  CHECK(CameraRepository::sealPlaintextSecrets() == 2);
+  CHECK(CameraRepository::sealPlaintextSecrets() == 0);
+  CHECK(CameraRepository::unreadableSecrets() == 0);
+
+  const auto rows = client->execSqlSync("SELECT * FROM camera ORDER BY id");
+  REQUIRE(rows.size() == 3);
+  CHECK(secret_box::isSealed(rows[0]["password"].as<std::string>()));
+  CHECK(secret_box::isSealed(rows[0]["cloud_password"].as<std::string>()));
+  CHECK(rows[1]["password"].as<std::string>().empty());
+  CHECK(rows[2]["cloud_password"].as<std::string>().empty());
+  CHECK(CameraSchema(rows[0]).password == "rtsp-pass");
+  CHECK(CameraSchema(rows[0]).cloudPassword == "cloud-pass");
+  CHECK(CameraSchema(rows[2]).password == "only-rtsp");
+  CHECK(CameraSchema(rows[0]).toJson().isMember("ip"));
+  CHECK_FALSE(CameraSchema(rows[0]).toJson().isMember("password"));
+  CHECK_FALSE(CameraSchema(rows[0]).toJson().isMember("tlsFingerprint"));
+
+  std::array<uint8_t, secret_box::kKeyBytes> foreign = kKey;
+  foreign[0] = 99;
+  REQUIRE(secret_box::installKey(foreign));
+  CHECK(CameraRepository::unreadableSecrets() == 2);
+  CHECK(CameraRepository::sealPlaintextSecrets() == 0);
+  const auto untouched = client->execSqlSync("SELECT password FROM camera WHERE id = 1");
+  CHECK(untouched.front()["password"].as<std::string>() == rows[0]["password"].as<std::string>());
+
+  client->execSqlSync(std::string(camera_query::SAVE_TAPO_TRUST), std::string("aa11"), 1,
+                      int64_t{1}, std::string("192.168.1.30"), std::string("aa11"));
+  client->execSqlSync(std::string(camera_query::SAVE_TAPO_TRUST), std::string("ff99"), 1,
+                      int64_t{1}, std::string("192.168.1.30"), std::string("ff99"));
+  client->execSqlSync(std::string(camera_query::SAVE_TAPO_TRUST), std::string("ee77"), 1,
+                      int64_t{2}, std::string("192.168.1.99"), std::string("ee77"));
+  const auto pins = client->execSqlSync("SELECT id, tls_fingerprint FROM camera ORDER BY id");
+  CHECK(pins[0]["tls_fingerprint"].as<std::string>() == "aa11");
+  CHECK(pins[1]["tls_fingerprint"].as<std::string>().empty());
+
+  secret_box::clearKey();
+  DbService::setCameraClient(nullptr);
   std::remove(path.c_str());
 }
 
@@ -109,8 +227,8 @@ TEST_CASE("a tombstone page re-reads its boundary second and keeps each id once"
   filter.startId = 50;
   CHECK(tombstone_page::rereadsBoundary(filter));
   const auto rows = tombstone_page::merge(
-      {.boundary = {tombstone(10, 100), tombstone(50, 100)},
-       .page = {tombstone(50, 100), tombstone(51, 100), tombstone(7, 101)}});
+      {.boundary = {tombstone({.id = 10, .deletedAt = 100}), tombstone({.id = 50, .deletedAt = 100})},
+       .page = {tombstone({.id = 50, .deletedAt = 100}), tombstone({.id = 51, .deletedAt = 100}), tombstone({.id = 7, .deletedAt = 101})}});
   REQUIRE(rows.size() == 4);
   CHECK(rows[0]["id"].asInt64() == 10);
   CHECK(rows[1]["id"].asInt64() == 50);

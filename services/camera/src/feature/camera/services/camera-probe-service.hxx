@@ -21,7 +21,7 @@ struct StoredSecretsUse
   const CameraSchema& stored;
 };
 
-[[nodiscard]] bool reusesStoredSecrets(const ProbeCameraDto& body);
+[[nodiscard]] bool needsStoredSecrets(const StoredSecretsUse& use);
 [[nodiscard]] bool storedAddressMatches(const StoredSecretsUse& use);
 }
 

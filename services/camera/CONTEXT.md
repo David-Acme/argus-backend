@@ -1026,9 +1026,11 @@ use.
 The form calls the probe with what the user typed (`driver`, `ip`, `port`,
 user/password, cloud user/password, paths, and `cameraId` on an edit so the
 stored secrets fill blank password fields). Stored secrets are only ever sent
-to the stored `ip` and `port`: a probe that leaves a password blank for an
-edited address is a 422 (`StoredCredentialsElsewhere`), so nobody can aim a
-camera's password at a host of their choosing. One probe runs per user at a
+to the stored `ip` and `port`: a probe for an edited address that leaves blank
+a password the camera has stored is a 422 (`StoredCredentialsElsewhere`), so
+nobody can aim a camera's password at a host of their choosing. A blank field
+whose stored value is empty too (the cloud password of an RTSP camera) is not
+a refusal, and a probe of an edited address never borrows any stored secret. One probe runs per user at a
 time (429 `ProbeBusy`). The probe runs off the loop and
 answers `{ok, steps[], stream, device, catalogId}`: each step (`network`,
 `main`, `sub`, and for Tapo `device` and `talk`) is `ok`, `failed`, `skipped`
@@ -1497,8 +1499,24 @@ service, and why each looks the way it does.
   before this change), and every write seals; a read accepts both forms. The
   key must be backed up with the database and kept out of any backup that
   leaves the house: a copy of `camera.db` alone no longer reveals the TP-Link
-  account. Losing the key loses the stored passwords (they read back empty),
-  never the cameras.
+  account. The key's bytes are never logged; only its path is, once, when it
+  is created.
+- **No credential is lost on upgrade or by a misplaced key.** The boot pass
+  seals a plaintext row only when both of its values seal, and writes it with
+  a compare-and-set on the old values, so a failed or concurrent seal leaves
+  the row as it was (still readable, sealed on the next boot). A write whose
+  password cannot be sealed is refused (500 `SecretNotSealed`) instead of
+  storing an empty or plaintext value. Before anything else uses the table,
+  `CameraRepository::unreadableSecrets()` opens every sealed value with the
+  loaded key; if any does not open, argus-camera refuses to start, and a key
+  file it created on that same boot is removed again. That is the case of a
+  wrong `[camera] secret_key`, an unmounted data directory or a restored
+  database without its key: the stored ciphertext is never overwritten and
+  never read back as empty, so restoring the key file brings every password
+  back. Only an owner who has really lost the key clears the sealed values
+  by hand (`UPDATE camera SET password = '', cloud_password = '' WHERE
+  password LIKE 'enc:v1:%' OR cloud_password LIKE 'enc:v1:%'` with the
+  service stopped, then types the passwords again in the app).
 - **Tapo TLS is pinned on first use.** The cameras present self-signed
   certificates, often with TLS 1.0 and weak ciphers, so verification against a
   CA is impossible and the legacy settings stay. Instead the SHA-256 of the
@@ -1509,7 +1527,15 @@ service, and why each looks the way it does.
   login is never tried again, so a man in the middle cannot downgrade it. The
   two columns are added by `CameraRepository::acceptTapoTrust` on old
   databases and never leave the process (`toJson` omits them). The talk port
-  (8800) is plain HTTP with Digest and is not pinned.
+  (8800) is plain HTTP with Digest and is not pinned. Only a camera's own
+  driver records what it learned, and only while the row still has the
+  address it was learned at and no other pin (`SAVE_TAPO_TRUST` is guarded by
+  `ip` and by `tls_fingerprint` being empty or equal): a driver that was
+  connected before a PATCH moved the camera cannot write the old pin back,
+  and nothing replaces a pin once set. The connection probe enforces a stored
+  pin when it tests the stored address but never records one, so a probe
+  aimed at another host cannot plant that host's certificate in a camera's
+  row.
 - The secure-passthrough transport no longer logs `device_confirm`, the
   derived hashes or the nonces (they allowed an offline brute force of the
   password from the logs), nor the raw outer response.

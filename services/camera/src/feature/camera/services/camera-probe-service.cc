@@ -131,9 +131,10 @@ Json::Value camera_probe::run(const CameraSchema& camera)
   return out;
 }
 
-bool camera_probe::reusesStoredSecrets(const ProbeCameraDto& body)
+bool camera_probe::needsStoredSecrets(const StoredSecretsUse& use)
 {
-  return body.cameraId.has_value() && (body.password.empty() || body.cloudPassword.empty());
+  return (use.body.password.empty() && !use.stored.password.empty()) ||
+         (use.body.cloudPassword.empty() && !use.stored.cloudPassword.empty());
 }
 
 bool camera_probe::storedAddressMatches(const StoredSecretsUse& use)
@@ -170,14 +171,18 @@ drogon::Task<Json::Value> CameraProbeService::probe(CameraProbeRequest request) 
     throw ResponseException(CameraErrors::ProbeBusy);
   const ProbeCameraDto& body = request.body;
   CameraSchema camera;
-  if (camera_probe::reusesStoredSecrets(body)) {
+  if (body.cameraId) {
     if (const auto stored = co_await repository_.findById(*body.cameraId)) {
-      if (!camera_probe::storedAddressMatches({.body = body, .stored = *stored}))
+      const camera_probe::StoredSecretsUse use{.body = body, .stored = *stored};
+      if (camera_probe::storedAddressMatches(use)) {
+        camera.password = stored->password;
+        camera.cloudPassword = stored->cloudPassword;
+        camera.tlsFingerprint = stored->tlsFingerprint;
+        camera.tapoSecure = stored->tapoSecure;
+      }
+      else if (camera_probe::needsStoredSecrets(use)) {
         throw ResponseException(CameraErrors::StoredCredentialsElsewhere);
-      camera.password = stored->password;
-      camera.cloudPassword = stored->cloudPassword;
-      camera.tlsFingerprint = stored->tlsFingerprint;
-      camera.tapoSecure = stored->tapoSecure;
+      }
     }
   }
   camera.id = body.cameraId.value_or(0);

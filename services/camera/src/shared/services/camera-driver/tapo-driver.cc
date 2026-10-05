@@ -14,20 +14,30 @@ namespace
 {
 constexpr int kSpeakWaitSeconds = 3;
 
-std::shared_ptr<TapoTrust> trustOf(const CameraSchema& camera)
+enum class TrustMemory : uint8_t
 {
+  Persisted = 0,
+  Transient
+};
+
+std::shared_ptr<TapoTrust> trustOf(const CameraSchema& camera, TrustMemory memory)
+{
+  const TapoTrustState initial{.fingerprint = camera.tlsFingerprint, .secure = camera.tapoSecure};
+  if (memory == TrustMemory::Transient)
+    return std::make_shared<TapoTrust>(initial, TapoTrust::Persist{});
   return std::make_shared<TapoTrust>(
-      TapoTrustState{.fingerprint = camera.tlsFingerprint, .secure = camera.tapoSecure},
-      [cameraId = camera.id](const TapoTrustState& state) {
-        CameraRepository::saveTapoTrust(
-            {.cameraId = cameraId, .fingerprint = state.fingerprint, .secure = state.secure});
+      initial, [cameraId = camera.id, ip = camera.ip](const TapoTrustState& state) {
+        CameraRepository::saveTapoTrust({.cameraId = cameraId,
+                                         .ip = ip,
+                                         .fingerprint = state.fingerprint,
+                                         .secure = state.secure});
       });
 }
 
-TapoClientConfig controlConfig(const CameraSchema& camera)
+TapoClientConfig controlConfig(const CameraSchema& camera, TrustMemory memory)
 {
   TapoClientConfig config;
-  config.trust = trustOf(camera);
+  config.trust = trustOf(camera, memory);
   config.host = camera.ip;
   config.port = static_cast<int>(ConfigService::getInt("tapo.control_port"));
   config.connectTimeoutMs = static_cast<int>(ConfigService::getInt("tapo.connect_timeout_ms"));
@@ -55,7 +65,7 @@ DriverResult toDriverResult(const TapoResult& result)
 
 DriverResult TapoDriver::probe(const CameraSchema& camera)
 {
-  TapoApi api(controlConfig(camera));
+  TapoApi api(controlConfig(camera, TrustMemory::Transient));
   const auto connected = api.connect();
   if (!connected.ok) {
     const bool silent = connected.error.find("no answer") != std::string::npos ||
@@ -79,7 +89,7 @@ DriverResult TapoDriver::probe(const CameraSchema& camera)
 
 TapoDriver::TapoDriver(const CameraSchema& camera)
     : camera_(camera),
-      api_(std::make_unique<TapoApi>(controlConfig(camera))),
+      api_(std::make_unique<TapoApi>(controlConfig(camera, TrustMemory::Persisted))),
       lineMutex_(std::make_shared<std::timed_mutex>())
 {
 }

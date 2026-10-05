@@ -138,16 +138,16 @@ bool isSealed(std::string_view stored)
   return stored.starts_with(kPrefix);
 }
 
-std::string seal(const SealInput& input)
+std::optional<std::string> seal(const SealInput& input)
 {
   if (input.plain.empty())
-    return {};
+    return std::string();
   const auto key = currentKey();
   if (!key)
     return std::string(input.plain);
   std::array<uint8_t, kNonceBytes> nonce{};
   if (RAND_bytes(nonce.data(), static_cast<int>(nonce.size())) != 1)
-    return {};
+    return std::nullopt;
   CipherContext context(EVP_CIPHER_CTX_new(), &EVP_CIPHER_CTX_free);
   std::vector<uint8_t> sealed(kNonceBytes + input.plain.size() + kTagBytes);
   std::ranges::copy(nonce, sealed.begin());
@@ -167,21 +167,21 @@ std::string seal(const SealInput& input)
       EVP_CIPHER_CTX_ctrl(context.get(), EVP_CTRL_GCM_GET_TAG, static_cast<int>(kTagBytes),
                           sealed.data() + kNonceBytes + input.plain.size()) == 1;
   if (!ok)
-    return {};
+    return std::nullopt;
   return std::string(kPrefix) +
          base64::encode(std::string_view(reinterpret_cast<const char*>(sealed.data()), sealed.size()));
 }
 
-std::string open(const OpenInput& input)
+std::optional<std::string> open(const OpenInput& input)
 {
   if (!isSealed(input.stored))
     return std::string(input.stored);
   const auto key = currentKey();
   if (!key)
-    return {};
+    return std::nullopt;
   const auto decoded = base64::decode(input.stored.substr(kPrefix.size()));
   if (!decoded || decoded->size() < kNonceBytes + kTagBytes)
-    return {};
+    return std::nullopt;
   const std::string_view sealed = *decoded;
   const std::string_view nonce = sealed.substr(0, kNonceBytes);
   const std::string_view cipher = sealed.substr(kNonceBytes, sealed.size() - kNonceBytes - kTagBytes);
@@ -206,7 +206,7 @@ std::string open(const OpenInput& input)
                           reinterpret_cast<unsigned char*>(plain.data()) + written, &finished) == 1;
   if (!ok) {
     OPENSSL_cleanse(plain.data(), plain.size());
-    return {};
+    return std::nullopt;
   }
   return plain;
 }

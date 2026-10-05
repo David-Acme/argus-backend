@@ -27,6 +27,7 @@ public:
 
   static bool acceptTapoTrust();
   static int64_t sealPlaintextSecrets();
+  static int64_t unreadableSecrets();
   static void saveTapoTrust(const CameraTapoTrustInput& input);
 
   drogon::Task<std::vector<Json::Value>>
