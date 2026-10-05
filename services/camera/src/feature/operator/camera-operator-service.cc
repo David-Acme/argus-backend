@@ -1,5 +1,7 @@
 #include <feature/operator/camera-operator-service.hxx>
 #include <feature/operator/privacy-mask.hxx>
+#include <drogon/HttpAppFramework.h>
+#include <drogon/utils/coroutine.h>
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -130,8 +132,6 @@ void CameraOperatorService::start()
   if (running_.exchange(true))
     return;
 
-  rescan();
-
   drogon::async_run([this]() -> drogon::Task<void> {
     try {
       co_await supervise();
@@ -220,13 +220,12 @@ void CameraOperatorService::rescan()
 drogon::Task<void> CameraOperatorService::supervise()
 {
   while (running_.load()) {
-    co_await BlockingTask<void>{[this]() {
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(inputs_.operator_.cameraRescanMs));
-    }};
+    co_await BlockingTask<void>{[this]() { rescan(); }};
     if (!running_.load())
       break;
-    co_await BlockingTask<void>{[this]() { rescan(); }};
+    co_await drogon::sleepCoro(
+        drogon::app().getLoop(),
+        std::chrono::milliseconds(inputs_.operator_.cameraRescanMs));
   }
   co_return;
 }

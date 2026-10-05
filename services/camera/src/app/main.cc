@@ -126,6 +126,7 @@ drogon::Task<void> startAfterSources(CameraOperatorService* operatorService,
 {
   co_await applyInitialSources();
   co_await reconcileCapabilities();
+  co_await drogon::switchThreadCoro(drogon::app().getLoop());
   if (operatorService)
     operatorService->start();
   if (healthMonitor)

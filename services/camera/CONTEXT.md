@@ -1212,6 +1212,26 @@ only on focus, so a camera switched from RTSP to the Tapo driver kept showing
 - At boot `CameraFeatureService::reconcileCapabilities` rewrites every live
   camera whose stored list differs (the rows created before this change), as
   an ordinary audited update.
+- That reconcile froze `argus-camera` whenever `[objects]` was on (2026-10,
+  CAMHANG). A coroutine resumes after `co_await execSqlCoro` on the sqlite
+  connection's own loop thread, and `camera.db` has one connection. With
+  nothing to rewrite, `startAfterSources` resumed there after `findLive()` and
+  called `CameraOperatorService::start()`, which ran `rescan()`'s
+  `execSqlSync` inline. That thread waited on a query only it could run, so
+  every later query queued behind it: snapshot, capabilities and overview
+  never answered, and the `camera-operator`, `camera-object-event` and
+  `camera-change` drains never reported drained (gdb: the connection thread
+  sat in `SqlBinder::exec` under `rescan` ← `start` ←
+  `reconcileCapabilities` ← `Sqlite3Connection::execSqlInQueue`). Before
+  the reconcile, the last await in that sequence was a `BlockingTask`, so
+  `start()` happened to run on a pool worker. Two changes fix it.
+  `startAfterSources` now returns to the app loop (`switchThreadCoro`) before
+  it starts any unit. `start()` itself no longer queries: `supervise()` runs
+  the first `rescan()` on the light lane and then waits `camera_rescan_ms` on
+  `sleepCoro`, instead of holding a light-lane worker asleep. The rule: a sync
+  database call never runs on a thread that a database callback may resume.
+  `camera-operator-start-test` calls `start()` from inside a database
+  callback and fails within 5 s if the thread blocks.
 
 ## What the Tapo encoder offers: `video` in the device status (2026-10, CAMERA3)
 

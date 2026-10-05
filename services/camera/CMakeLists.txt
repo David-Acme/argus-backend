@@ -417,6 +417,19 @@ set_target_properties(object-event-outbox-sink-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 add_test(NAME object-event-outbox-sink-test COMMAND object-event-outbox-sink-test)
 
+add_executable(camera-operator-start-test
+    tests/unit/camera-operator-start-test.cc)
+target_link_libraries(camera-operator-start-test PRIVATE
+    argus::camera-operator
+    argus::camera-stream
+    doctest::doctest)
+target_compile_definitions(camera-operator-start-test PRIVATE
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(camera-operator-start-test PRIVATE -Wall -Wextra)
+set_target_properties(camera-operator-start-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+add_test(NAME camera-operator-start-test COMMAND camera-operator-start-test)
+
 add_executable(change-outbox-test
     tests/unit/change-outbox-test.cc)
 target_link_libraries(change-outbox-test PRIVATE
