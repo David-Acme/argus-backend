@@ -51,8 +51,10 @@ ABSENT_DEPENDENCY_ANSWERS = {
 BODY_OVERRIDES = {
     ("auth", "PATCH", "/auth/me"): json.dumps({"name": "p" * 125}),
     ("identity", "POST", "/invitation"): json.dumps({"role": "owner"}),
+    ("auth", "POST", "/auth/device-login"): json.dumps(
+        {"pollHash": "0" * 64}),
     ("camera", "POST", "/camera/probe"): json.dumps(
-        {"driver": "tapo", "ip": "127.0.0.1", "port": 1}),
+        {"driver": "tapo", "ip": "10.255.255.1", "port": 1}),
     ("guard", "POST", "/guard/mode"): json.dumps(
         {"mode": "argus-probe", "environmentId": 0}),
     ("settings", "PATCH", "/settings/{1}"): json.dumps(
@@ -89,6 +91,8 @@ EXTRA_PROBES = {
     ),
 }
 
+CHALLENGE_DETAILS = "/auth/device-login/{1}/details"
+CHALLENGE_SLOT = "{challenge}"
 SESSION_SLOT_RE = re.compile(r"\{session:([a-z]+)\}")
 
 ID_SLOTS = {
@@ -369,6 +373,8 @@ def normalize(value, masking=True):
 def slot_id(route, ids):
     if route["methods"] == ["DELETE"]:
         return MISSING_ID
+    if route["path"] == CHALLENGE_DETAILS:
+        return CHALLENGE_SLOT
     if route["path"].endswith("/content"):
         return MISSING_TOKEN
     for prefix, slot in ID_SLOTS.items():
@@ -536,7 +542,20 @@ def current_session(base, role, token, timeout):
     raise SystemExit("the recorder session is missing from its own list")
 
 
+def fresh_challenge(base, timeout):
+    status, _, body = send(base, "POST", "/auth/device-login",
+                           {"User-Agent": RECORDER_UA},
+                           json.dumps({"pollHash": "0" * 64}),
+                           "application/json", timeout)
+    if status != 200:
+        raise SystemExit(f"POST /auth/device-login answered {status} while "
+                         "opening a challenge for a details probe")
+    return json.loads(body)["info"]["challengeId"]
+
+
 def resolve_path(path, base, sessions, timeout):
+    if CHALLENGE_SLOT in path:
+        path = path.replace(CHALLENGE_SLOT, fresh_challenge(base, timeout))
     return SESSION_SLOT_RE.sub(
         lambda match: current_session(
             base, match.group(1), session_of(match.group(1), sessions),

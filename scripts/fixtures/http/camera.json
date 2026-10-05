@@ -3647,7 +3647,7 @@
       "probe": "no-token",
       "request": {
         "auth": "none",
-        "body": "{\"driver\": \"tapo\", \"ip\": \"127.0.0.1\", \"port\": 1}",
+        "body": "{\"driver\": \"tapo\", \"ip\": \"10.255.255.1\", \"port\": 1}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },
@@ -3699,7 +3699,7 @@
       "probe": "other-device",
       "request": {
         "auth": "owner",
-        "body": "{\"driver\": \"tapo\", \"ip\": \"127.0.0.1\", \"port\": 1}",
+        "body": "{\"driver\": \"tapo\", \"ip\": \"10.255.255.1\", \"port\": 1}",
         "contentType": "application/json",
         "userAgent": "other"
       },
@@ -3725,27 +3725,61 @@
       "probe": "role-resident",
       "request": {
         "auth": "resident",
-        "body": "{\"driver\": \"tapo\", \"ip\": \"127.0.0.1\", \"port\": 1}",
+        "body": "{\"driver\": \"tapo\", \"ip\": \"10.255.255.1\", \"port\": 1}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },
       "response": {
         "contentType": "application/json",
         "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "fields": {
-              "ip": [
-                "must be a camera on the local network, not a loopback or link-local address"
-              ]
-            },
-            "message": "Validation failed"
+          "errors": null,
+          "info": {
+            "catalogId": "",
+            "device": {},
+            "ok": false,
+            "steps": [
+              {
+                "code": "unreachable",
+                "detail": "no answer from 10.255.255.1:1",
+                "id": "network",
+                "status": "failed"
+              },
+              {
+                "code": "",
+                "detail": "",
+                "id": "main",
+                "status": "skipped"
+              },
+              {
+                "code": "",
+                "detail": "",
+                "id": "sub",
+                "status": "skipped"
+              },
+              {
+                "code": "",
+                "detail": "",
+                "id": "device",
+                "status": "skipped"
+              },
+              {
+                "code": "cloud_password_missing",
+                "detail": "",
+                "id": "talk",
+                "status": "warning"
+              }
+            ],
+            "stream": {
+              "audioCodec": "",
+              "height": 0,
+              "videoCodec": "",
+              "width": 0
+            }
           },
-          "info": null,
-          "status": 422
+          "status": 200
         },
         "pretty": true,
-        "status": 422
+        "status": 200
       },
       "route": "/camera/probe",
       "unit": "camera"
@@ -3756,7 +3790,7 @@
       "probe": "role-guest",
       "request": {
         "auth": "guest",
-        "body": "{\"driver\": \"tapo\", \"ip\": \"127.0.0.1\", \"port\": 1}",
+        "body": "{\"driver\": \"tapo\", \"ip\": \"10.255.255.1\", \"port\": 1}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },
@@ -3782,27 +3816,61 @@
       "probe": "owner",
       "request": {
         "auth": "owner",
-        "body": "{\"driver\": \"tapo\", \"ip\": \"127.0.0.1\", \"port\": 1}",
+        "body": "{\"driver\": \"tapo\", \"ip\": \"10.255.255.1\", \"port\": 1}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },
       "response": {
         "contentType": "application/json",
         "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "fields": {
-              "ip": [
-                "must be a camera on the local network, not a loopback or link-local address"
-              ]
-            },
-            "message": "Validation failed"
+          "errors": null,
+          "info": {
+            "catalogId": "",
+            "device": {},
+            "ok": false,
+            "steps": [
+              {
+                "code": "unreachable",
+                "detail": "no answer from 10.255.255.1:1",
+                "id": "network",
+                "status": "failed"
+              },
+              {
+                "code": "",
+                "detail": "",
+                "id": "main",
+                "status": "skipped"
+              },
+              {
+                "code": "",
+                "detail": "",
+                "id": "sub",
+                "status": "skipped"
+              },
+              {
+                "code": "",
+                "detail": "",
+                "id": "device",
+                "status": "skipped"
+              },
+              {
+                "code": "cloud_password_missing",
+                "detail": "",
+                "id": "talk",
+                "status": "warning"
+              }
+            ],
+            "stream": {
+              "audioCodec": "",
+              "height": 0,
+              "videoCodec": "",
+              "width": 0
+            }
           },
-          "info": null,
-          "status": 422
+          "status": 200
         },
         "pretty": true,
-        "status": 422
+        "status": 200
       },
       "route": "/camera/probe",
       "unit": "camera"
