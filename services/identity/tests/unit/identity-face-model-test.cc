@@ -200,12 +200,9 @@ TEST_CASE("geometry reads a frontal face as frontal and a turned one as turned")
   CHECK(turned.yaw > 0.5F);
 }
 
-TEST_CASE("the recognizer separates people on the public-domain fixtures")
+TEST_CASE("the recognizer separates people on the public-domain fixtures" *
+          doctest::skip(!modelsPresent()))
 {
-  if (!modelsPresent()) {
-    MESSAGE("face models not provisioned; skipped");
-    return;
-  }
   const auto barrattA = embed("barratt-a.jpg");
   const auto barrattB = embed("barratt-b.jpg");
   const auto meirA = embed("meir-a.jpg");
@@ -235,12 +232,9 @@ TEST_CASE("the recognizer separates people on the public-domain fixtures")
 }
 
 TEST_CASE("an account's legacy face is re-embedded from its portrait and the "
-          "legacy rows leave the index")
+          "legacy rows leave the index" *
+          doctest::skip(!modelsPresent()))
 {
-  if (!modelsPresent()) {
-    MESSAGE("face models not provisioned; skipped");
-    return;
-  }
   loadedFaces();
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(drogon::orm::Sqlite3Config{.connectionNumber = 1,

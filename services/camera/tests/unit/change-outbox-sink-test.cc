@@ -1,4 +1,4 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
 #include <shared/services/change-sink/nats-camera-change-sink.hxx>
@@ -9,6 +9,7 @@
 #include <outbox/outbox-status.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 
@@ -18,6 +19,7 @@
 #include <cstdlib>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -120,23 +122,56 @@ SocketEmitDto addCamera(int64_t id, const std::string& name)
   body.obj["name"] = name;
   return body;
 }
-}
 
-TEST_CASE("the change sink lands every transition in the durable outbox")
+void removeSinkDb()
 {
   std::remove(kSinkDb);
   std::remove((std::string(kSinkDb) + "-wal").c_str());
   std::remove((std::string(kSinkDb) + "-shm").c_str());
-  drogon::app().setLogLevel(trantor::Logger::kWarn);
-  drogon::app().addDbClient(
-      drogon::orm::Sqlite3Config{.connectionNumber = 1,
-                                 .filename = kSinkDb,
-                                 .name = "default",
-                                 .timeout = -1});
-  AppRunner runner;
-  REQUIRE(waitForBoot(std::chrono::seconds(30)));
-  REQUIRE(DbService::runScriptFile(ARGUS_CAMERA_SCHEMA_PATH));
+}
 
+void resetOutbox()
+{
+  DbService::client()->execSqlSync("DELETE FROM change_outbox");
+}
+
+class Host
+{
+public:
+  Host()
+  {
+    removeSinkDb();
+    drogon::app().setLogLevel(trantor::Logger::kWarn);
+    drogon::app().addDbClient(
+        drogon::orm::Sqlite3Config{.connectionNumber = 1,
+                                   .filename = kSinkDb,
+                                   .name = "default",
+                                   .timeout = -1});
+    runner_.emplace();
+    ready_ = waitForBoot(std::chrono::seconds(30)) &&
+             DbService::runScriptFile(ARGUS_CAMERA_SCHEMA_PATH);
+  }
+
+  ~Host()
+  {
+    runner_.reset();
+    removeSinkDb();
+  }
+
+  Host(const Host&) = delete;
+  Host& operator=(const Host&) = delete;
+
+  [[nodiscard]] bool ready() const { return ready_; }
+
+private:
+  std::optional<AppRunner> runner_;
+  bool ready_ = false;
+};
+}
+
+TEST_CASE("the change sink lands every transition in the durable outbox")
+{
+  resetOutbox();
   const auto outbox = NatsCameraChangeSink::repository();
   const SocketEmitDto add = addCamera(7, "patio");
 
@@ -259,148 +294,159 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     CHECK(sink.drained());
     CHECK(outbox.markSent(waiting.id, 3000));
   }
+}
 
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url != nullptr && *url != '\0') {
-    const std::string run = std::to_string(::getpid());
-    const std::string stream = "argus-test-change-" + run;
-    const std::string subject = "argus.test.change.flush." + run;
-    auto liveBus = std::make_shared<NatsBus>();
-    NatsBus::Options options;
-    options.url = url;
-    options.reconnectWaitMs = 200;
-    options.maxReconnects = 5;
-    REQUIRE(liveBus->connect(options));
-    REQUIRE(liveBus->ensureStream({.name = stream,
-                                   .subjects = {subject},
-                                   .maxAgeNs = 3600000000000LL,
-                                   .duplicatesNs = 120000000000LL}));
+TEST_CASE("a live change sink publishes, heals its stream and strands a bad row" *
+          doctest::skip(live_broker::skipped()))
+{
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
+  resetOutbox();
+  const auto outbox = NatsCameraChangeSink::repository();
+  const std::string run = std::to_string(::getpid());
+  const std::string stream = "argus-test-change-" + run;
+  const std::string subject = "argus.test.change.flush." + run;
+  auto liveBus = std::make_shared<NatsBus>();
+  NatsBus::Options options;
+  options.url = url;
+  options.reconnectWaitMs = 200;
+  options.maxReconnects = 5;
+  REQUIRE(liveBus->connect(options));
+  REQUIRE(liveBus->ensureStream({.name = stream,
+                                 .subjects = {subject},
+                                 .maxAgeNs = 3600000000000LL,
+                                 .duplicatesNs = 120000000000LL}));
 
-    std::mutex mutex;
-    std::condition_variable cv;
-    std::string received;
-    const auto subscription = liveBus->subscribeDurable(
-        {.stream = stream,
-         .durable = "change-outbox-live-" + run,
-         .subject = subject,
-         .deliverAll = true,
-         .maxDeliver = 3,
-         .maxAckPending = NatsBus::kDefaultMaxAckPending,
-         .handler = [&mutex, &cv, &received](
-                        const NatsBus::DurableMessage& message,
-                        const NatsBus::DurableSettlement& settlement) {
-           {
-             std::scoped_lock lock(mutex);
-             received = std::string(message.payload);
-           }
-           settlement.ack();
-           cv.notify_all();
-         }});
-    REQUIRE(subscription.has_value());
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::string received;
+  const auto subscription = liveBus->subscribeDurable(
+      {.stream = stream,
+       .durable = "change-outbox-live-" + run,
+       .subject = subject,
+       .deliverAll = true,
+       .maxDeliver = 3,
+       .maxAckPending = NatsBus::kDefaultMaxAckPending,
+       .handler = [&mutex, &cv, &received](
+                      const NatsBus::DurableMessage& message,
+                      const NatsBus::DurableSettlement& settlement) {
+         {
+           std::scoped_lock lock(mutex);
+           received = std::string(message.payload);
+         }
+         settlement.ack();
+         cv.notify_all();
+       }});
+  REQUIRE(subscription.has_value());
 
-    const SocketEmitDto live = addCamera(99, "hall-" + run);
-    const std::string expected = json_util::toString(live.toJson());
-    {
-      NatsCameraChangeSink liveSink(
-          liveBus,
-          NatsCameraChangeSink::Config{.retryMs = 20,
-                                       .publishSubject = subject,
-                                       .streamName = stream});
-      liveSink.reconcile();
-      drogon::sync_wait(liveSink.emitModule(
-          {.table = TableName::Camera, .body = live, .client = nullptr}));
-
-      {
-        std::unique_lock lock(mutex);
-        cv.wait_for(lock, std::chrono::seconds(10),
-                    [&received, &expected]() { return received == expected; });
-      }
-      for (int attempt = 0;
-           attempt < 200 && hasPending(outbox); ++attempt)
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      CHECK_FALSE(hasPending(outbox));
-
-      std::string seen;
-      {
-        std::scoped_lock lock(mutex);
-        seen = received;
-      }
-      CHECK(seen == expected);
-    }
-
-    {
-      NatsCameraChangeSink bursts(
-          liveBus,
-          NatsCameraChangeSink::Config{.retryMs = 20,
-                                       .publishSubject = subject,
-                                       .streamName = stream});
-      const int64_t watermark = outboxWatermark();
-      const auto started = std::chrono::steady_clock::now();
-      for (int64_t recordId = 200; recordId < 300; ++recordId)
-        drogon::sync_wait(bursts.emitModule(
-            {.table = TableName::Camera,
-             .body = addCamera(recordId, "hall"),
-             .client = nullptr}));
-      CHECK(rowsAfter(watermark) == 100);
-      bursts.reconcile();
-      for (int attempt = 0;
-           attempt < 200 && hasPending(outbox); ++attempt)
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      CHECK_FALSE(hasPending(outbox));
-      CHECK(sentRowsAfter(watermark) == 100);
-      CHECK(std::chrono::steady_clock::now() - started <
-            std::chrono::seconds(3));
-    }
-
-    {
-      const std::string freshStream = "argus-test-heal-" + run;
-      const std::string freshSubject = "argus.test.heal.change." + run;
-      REQUIRE_FALSE(liveBus->streamInfo(freshStream).has_value());
-      NatsCameraChangeSink healing(
-          liveBus,
-          NatsCameraChangeSink::Config{.retryMs = 20,
-                                       .publishSubject = freshSubject,
-                                       .streamName = freshStream});
-      healing.reconcile();
-      drogon::sync_wait(healing.emitModule(
-          {.table = TableName::Camera,
-           .body = addCamera(300, "gate"),
-           .client = nullptr}));
-      for (int attempt = 0; attempt < 200 && hasPending(outbox); ++attempt)
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      CHECK_FALSE(hasPending(outbox));
-      CHECK(liveBus->streamInfo(freshStream).has_value());
-    }
-
-    NatsCameraChangeSink stranded(
+  const SocketEmitDto live = addCamera(99, "hall-" + run);
+  const std::string expected = json_util::toString(live.toJson());
+  {
+    NatsCameraChangeSink liveSink(
         liveBus,
         NatsCameraChangeSink::Config{.retryMs = 20,
-                                     .publishSubject = "argus.test.change.*",
+                                     .publishSubject = subject,
                                      .streamName = stream});
-    stranded.reconcile();
-    const SocketEmitDto attic = addCamera(100, "attic");
-    const SocketEmitDto cellar = addCamera(101, "cellar");
-    drogon::sync_wait(stranded.emitModule(
-        {.table = TableName::Camera, .body = attic, .client = nullptr}));
-    drogon::sync_wait(stranded.emitModule(
-        {.table = TableName::Camera, .body = cellar, .client = nullptr}));
+    liveSink.reconcile();
+    drogon::sync_wait(liveSink.emitModule(
+        {.table = TableName::Camera, .body = live, .client = nullptr}));
 
-    bool attempted = false;
-    for (int attempt = 0; attempt < 100 && !attempted; ++attempt) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
-      const auto stuck = outbox.pendingBatch(1);
-      attempted = !stuck.empty() && stuck.front().attempts > 0;
+    {
+      std::unique_lock lock(mutex);
+      cv.wait_for(lock, std::chrono::seconds(10),
+                  [&received, &expected]() { return received == expected; });
     }
-    CHECK(attempted);
-    CHECK(pendingRow(outbox.pendingBatch(1)).eventId ==
-          outbox::transitionId(
-              {.prefix = NatsCameraChangeSink::kEventIdPrefix,
-               .table = "camera",
-               .recordId = 100,
-               .discriminator = json_util::toString(attic.toJson())}));
+    for (int attempt = 0;
+         attempt < 200 && hasPending(outbox); ++attempt)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK_FALSE(hasPending(outbox));
+
+    std::string seen;
+    {
+      std::scoped_lock lock(mutex);
+      seen = received;
+    }
+    CHECK(seen == expected);
   }
 
-  std::remove(kSinkDb);
-  std::remove((std::string(kSinkDb) + "-wal").c_str());
-  std::remove((std::string(kSinkDb) + "-shm").c_str());
+  {
+    NatsCameraChangeSink bursts(
+        liveBus,
+        NatsCameraChangeSink::Config{.retryMs = 20,
+                                     .publishSubject = subject,
+                                     .streamName = stream});
+    const int64_t watermark = outboxWatermark();
+    const auto started = std::chrono::steady_clock::now();
+    for (int64_t recordId = 200; recordId < 300; ++recordId)
+      drogon::sync_wait(bursts.emitModule(
+          {.table = TableName::Camera,
+           .body = addCamera(recordId, "hall"),
+           .client = nullptr}));
+    CHECK(rowsAfter(watermark) == 100);
+    bursts.reconcile();
+    for (int attempt = 0;
+         attempt < 200 && hasPending(outbox); ++attempt)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK_FALSE(hasPending(outbox));
+    CHECK(sentRowsAfter(watermark) == 100);
+    CHECK(std::chrono::steady_clock::now() - started <
+          std::chrono::seconds(3));
+  }
+
+  {
+    const std::string freshStream = "argus-test-heal-" + run;
+    const std::string freshSubject = "argus.test.heal.change." + run;
+    REQUIRE_FALSE(liveBus->streamInfo(freshStream).has_value());
+    NatsCameraChangeSink healing(
+        liveBus,
+        NatsCameraChangeSink::Config{.retryMs = 20,
+                                     .publishSubject = freshSubject,
+                                     .streamName = freshStream});
+    healing.reconcile();
+    drogon::sync_wait(healing.emitModule(
+        {.table = TableName::Camera,
+         .body = addCamera(300, "gate"),
+         .client = nullptr}));
+    for (int attempt = 0; attempt < 200 && hasPending(outbox); ++attempt)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK_FALSE(hasPending(outbox));
+    CHECK(liveBus->streamInfo(freshStream).has_value());
+  }
+
+  NatsCameraChangeSink stranded(
+      liveBus,
+      NatsCameraChangeSink::Config{.retryMs = 20,
+                                   .publishSubject = "argus.test.change.*",
+                                   .streamName = stream});
+  stranded.reconcile();
+  const SocketEmitDto attic = addCamera(100, "attic");
+  const SocketEmitDto cellar = addCamera(101, "cellar");
+  drogon::sync_wait(stranded.emitModule(
+      {.table = TableName::Camera, .body = attic, .client = nullptr}));
+  drogon::sync_wait(stranded.emitModule(
+      {.table = TableName::Camera, .body = cellar, .client = nullptr}));
+
+  bool attempted = false;
+  for (int attempt = 0; attempt < 100 && !attempted; ++attempt) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    const auto stuck = outbox.pendingBatch(1);
+    attempted = !stuck.empty() && stuck.front().attempts > 0;
+  }
+  CHECK(attempted);
+  CHECK(pendingRow(outbox.pendingBatch(1)).eventId ==
+        outbox::transitionId(
+            {.prefix = NatsCameraChangeSink::kEventIdPrefix,
+             .table = "camera",
+             .recordId = 100,
+             .discriminator = json_util::toString(attic.toJson())}));
+}
+
+int main(int argc, char** argv)
+{
+  const Host host;
+  if (!host.ready())
+    return 1;
+  doctest::Context context(argc, argv);
+  return context.run();
 }

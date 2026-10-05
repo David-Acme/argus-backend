@@ -1,10 +1,11 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
 #include <feature/operator/nats-object-event-sink.hxx>
 #include <feature/operator/repositories/object-event-outbox/object-event-outbox-repository.hxx>
 #include <sqlite/db-service.hxx>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 
 #include <atomic>
@@ -14,6 +15,7 @@
 #include <cstdlib>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -122,20 +124,56 @@ ObjectDetectedEvent personEvent(const std::string& eventId)
   event.objects.push_back(object);
   return event;
 }
-}
 
-TEST_CASE("the sink health counters equal the durable outbox state")
+void removeSinkDb()
 {
   std::remove(kSinkDb);
   std::remove((std::string(kSinkDb) + "-wal").c_str());
   std::remove((std::string(kSinkDb) + "-shm").c_str());
-  drogon::app().setLogLevel(trantor::Logger::kWarn);
-  drogon::app().addDbClient(
-      drogon::orm::Sqlite3Config{1, kSinkDb, "default", -1});
-  AppRunner runner;
-  REQUIRE(waitForBoot(std::chrono::seconds(30)));
-  REQUIRE(DbService::runScriptFile(ARGUS_CAMERA_SCHEMA_PATH));
+}
 
+void resetOutbox()
+{
+  DbService::client()->execSqlSync("DELETE FROM object_event_outbox");
+}
+
+class Host
+{
+public:
+  Host()
+  {
+    removeSinkDb();
+    drogon::app().setLogLevel(trantor::Logger::kWarn);
+    drogon::app().addDbClient(
+        drogon::orm::Sqlite3Config{.connectionNumber = 1,
+                                   .filename = kSinkDb,
+                                   .name = "default",
+                                   .timeout = -1});
+    runner_.emplace();
+    ready_ = waitForBoot(std::chrono::seconds(30)) &&
+             DbService::runScriptFile(ARGUS_CAMERA_SCHEMA_PATH);
+  }
+
+  ~Host()
+  {
+    runner_.reset();
+    removeSinkDb();
+  }
+
+  Host(const Host&) = delete;
+  Host& operator=(const Host&) = delete;
+
+  [[nodiscard]] bool ready() const { return ready_; }
+
+private:
+  std::optional<AppRunner> runner_;
+  bool ready_ = false;
+};
+}
+
+TEST_CASE("the sink health counters equal the durable outbox state")
+{
+  resetOutbox();
   auto bus = std::make_shared<NatsBus>();
   ObjectEventOutboxRepository outbox;
   NatsObjectEventSink::Config config;
@@ -199,54 +237,6 @@ TEST_CASE("the sink health counters equal the durable outbox state")
           ObjectEventPublishResult::Suppressed);
   }
 
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url != nullptr && *url != '\0') {
-    auto liveBus = std::make_shared<NatsBus>();
-    NatsBus::Options options;
-    options.url = url;
-    options.reconnectWaitMs = 200;
-    options.maxReconnects = 5;
-    REQUIRE(liveBus->connect(options));
-    NatsObjectEventSink::Config liveConfig;
-    liveConfig.cooldownMs = 0;
-    liveConfig.maxPending = 1000;
-    liveConfig.retryMs = 20;
-    liveConfig.sessionTag = "flush-test";
-    liveConfig.streamName = "ARGUS_SINK_TEST";
-    liveConfig.publishSubject = "argus.test.sink.flush";
-    NatsObjectEventSink liveSink(liveBus, liveConfig);
-
-    const ObjectEventOutboxStats rowsBeforeBurst = outbox.stats();
-    const auto started = std::chrono::steady_clock::now();
-    Worker producer([&liveSink]() {
-      for (int index = 0; index < 100; ++index)
-        liveSink.publish(personEvent("flush:" + std::to_string(index)));
-    });
-    producer.join();
-    CHECK(outbox.stats().pending == rowsBeforeBurst.pending + 100);
-
-    liveSink.reconcile();
-    for (int attempt = 0; attempt < 200; ++attempt) {
-      if (outbox.stats().pending == 0)
-        break;
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-    const ObjectEventOutboxStats rowsAfterBurst = outbox.stats();
-    CHECK(rowsAfterBurst.pending == 0);
-    CHECK(rowsAfterBurst.pending + rowsAfterBurst.sent ==
-          rowsBeforeBurst.pending + rowsBeforeBurst.sent + 100);
-    CHECK(countersMatch(liveSink.health(), outbox.stats()));
-    CHECK(std::chrono::steady_clock::now() - started <
-          std::chrono::seconds(3));
-
-    {
-      NatsObjectEventSink restarted(liveBus, liveConfig);
-      restarted.reconcile();
-      CHECK(countersMatch(restarted.health(), outbox.stats()));
-    }
-    liveBus->drain();
-  }
-
   {
     NatsObjectEventSink barrierSink(bus, config);
     barrierSink.reconcile();
@@ -271,8 +261,67 @@ TEST_CASE("the sink health counters equal the durable outbox state")
     publisher.join();
     CHECK(countersMatch(barrierSink.health(), outbox.stats()));
   }
+}
 
-  std::remove(kSinkDb);
-  std::remove((std::string(kSinkDb) + "-wal").c_str());
-  std::remove((std::string(kSinkDb) + "-shm").c_str());
+TEST_CASE("a live object event sink flushes a burst within its bound" *
+          doctest::skip(live_broker::skipped()))
+{
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
+  resetOutbox();
+  ObjectEventOutboxRepository outbox;
+  auto liveBus = std::make_shared<NatsBus>();
+  NatsBus::Options options;
+  options.url = url;
+  options.reconnectWaitMs = 200;
+  options.maxReconnects = 5;
+  REQUIRE(liveBus->connect(options));
+  NatsObjectEventSink::Config liveConfig;
+  liveConfig.cooldownMs = 0;
+  liveConfig.maxPending = 1000;
+  liveConfig.retryMs = 20;
+  liveConfig.sessionTag = "flush-test";
+  liveConfig.streamName = "ARGUS_SINK_TEST";
+  liveConfig.publishSubject = "argus.test.sink.flush";
+  NatsObjectEventSink liveSink(liveBus, liveConfig);
+
+  const ObjectEventOutboxStats rowsBeforeBurst = outbox.stats();
+  const auto started = std::chrono::steady_clock::now();
+  Worker producer([&liveSink]() {
+    for (int index = 0; index < 100; ++index)
+      liveSink.publish(personEvent("flush:" + std::to_string(index)));
+  });
+  producer.join();
+  CHECK(outbox.stats().pending == rowsBeforeBurst.pending + 100);
+
+  liveSink.reconcile();
+  for (int attempt = 0; attempt < 200; ++attempt) {
+    if (outbox.stats().pending == 0)
+      break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  const ObjectEventOutboxStats rowsAfterBurst = outbox.stats();
+  CHECK(rowsAfterBurst.pending == 0);
+  CHECK(rowsAfterBurst.pending + rowsAfterBurst.sent ==
+        rowsBeforeBurst.pending + rowsBeforeBurst.sent + 100);
+  CHECK(countersMatch(liveSink.health(), outbox.stats()));
+  CHECK(std::chrono::steady_clock::now() - started <
+        std::chrono::seconds(3));
+
+  {
+    NatsObjectEventSink restarted(liveBus, liveConfig);
+    restarted.reconcile();
+    CHECK(countersMatch(restarted.health(), outbox.stats()));
+  }
+  liveBus->drain();
+}
+
+int main(int argc, char** argv)
+{
+  const Host host;
+  if (!host.ready())
+    return 1;
+  doctest::Context context(argc, argv);
+  return context.run();
 }

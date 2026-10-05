@@ -5,6 +5,7 @@
 #include <shared/services/delivery-sink/nats-notification-delivery-sink.hxx>
 #include <shared/services/notification/notification-service.hxx>
 #include <sqlite/db-service.hxx>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 
 #include <atomic>
@@ -142,13 +143,12 @@ NatsNotificationDeliverySink::Config sinkConfig(const std::string& stream,
 }
 }
 
-TEST_CASE("create settles fan-out only on broker ack, across an outage")
+TEST_CASE("create settles fan-out only on broker ack, across an outage" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url == nullptr || *url == '\0') {
-    MESSAGE("ARGUS_NATS_URL not set; delivery fan-out live check skipped");
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
 
   const TempDb db;
   drogon::app().setLogLevel(trantor::Logger::kWarn);

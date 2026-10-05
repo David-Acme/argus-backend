@@ -23,6 +23,7 @@ argus_lib(NAME nats
         src/nats/nats-bus.cc
         src/nats/nats-bus.hxx
         src/nats/nats-subject.hxx
+        src/nats/live-broker.hxx
         src/nats/nats-push-intent-sink.hxx
         src/nats/push-intent-sink.hxx
     INCLUDES src

@@ -6,6 +6,7 @@
 #include <feature/guard/guard-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 
 #include <atomic>
@@ -60,13 +61,12 @@ std::string scalar(const std::string& sql)
 }
 }
 
-TEST_CASE("the guard service parks a poison observation before the last delivery")
+TEST_CASE("the guard service parks a poison observation before the last delivery" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url == nullptr || *url == '\0') {
-    MESSAGE("ARGUS_NATS_URL not set; guard DLQ service check skipped");
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
 
   const TempDb db("guard-dlq-service-test");
   drogon::app().setLogLevel(trantor::Logger::kWarn);

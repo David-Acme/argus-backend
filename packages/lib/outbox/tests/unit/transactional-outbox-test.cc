@@ -3,6 +3,7 @@
 
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 #include <outbox/transactional-outbox.hxx>
 #include <sqlite/db-service.hxx>
@@ -266,11 +267,12 @@ TEST_CASE("the relay drains on request and leaves undelivered rows pending")
 }
 
 TEST_CASE("a live relay publishes legacy rows on the default subject with "
-          "their legacy id")
+          "their legacy id" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url == nullptr || *url == '\0')
-    return;
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
 
   reshape();
   const std::string run = std::to_string(::getpid());

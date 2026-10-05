@@ -18,6 +18,7 @@
 
 #include <feature/session/services/identity-change-consumer.hxx>
 #include <json/value.h>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 #include <sync/sync-change.hxx>
 #include <sync/table-name.hxx>
@@ -807,13 +808,12 @@ TEST_CASE("device credentials answer active only for a live secret hash")
   CHECK(client.checkDeviceCredential("") == false);
 }
 
-TEST_CASE("an identity change drops the cached context")
+TEST_CASE("an identity change drops the cached context" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url == nullptr || *url == '\0') {
-    MESSAGE("ARGUS_NATS_URL not set; the identity change live check skipped");
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
 
   Fixture& app = fixture();
   REQUIRE(app.start());

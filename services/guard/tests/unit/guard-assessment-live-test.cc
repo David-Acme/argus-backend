@@ -133,12 +133,14 @@ int freePort()
 }
 }
 
-TEST_CASE("guard assessment describes the fetched crop with the live VLM")
+TEST_CASE("guard assessment describes the fetched crop with the live VLM" *
+          doctest::skip(std::getenv("ARGUS_VLM_TEST_URL") == nullptr ||
+                        std::getenv("ARGUS_VLM_TEST_IMAGE") == nullptr))
 {
   const char* vlmUrl = std::getenv("ARGUS_VLM_TEST_URL");
   const char* imagePath = std::getenv("ARGUS_VLM_TEST_IMAGE");
-  if (!vlmUrl || !imagePath)
-    return;
+  REQUIRE(vlmUrl != nullptr);
+  REQUIRE(imagePath != nullptr);
 
   std::ifstream in(imagePath, std::ios::binary);
   REQUIRE(in.is_open());

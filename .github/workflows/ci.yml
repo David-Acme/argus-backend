@@ -12,6 +12,8 @@ jobs:
   build:
     name: Build and unit tests
     runs-on: ubuntu-24.04
+    env:
+      ARGUS_NATS_URL: nats://127.0.0.1:4222
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -48,6 +50,18 @@ jobs:
           for f in services/*/config.toml.example packages/*/config.toml.example; do
             cp "$f" "${f%.example}"
           done
+
+      - name: Start a JetStream broker for the live suites
+        run: |
+          docker run -d --name argus-ci-nats -p 127.0.0.1:4222:4222 nats:2 -js
+          for _ in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/4222) 2>/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs argus-ci-nats
+          exit 1
 
       - name: Test build orchestrator
         run: ./scripts/build-all-test.sh

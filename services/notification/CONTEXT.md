@@ -498,7 +498,7 @@ error. Three layers hold that contract:
 
 ## Live tests (opt-in, never green by default)
 
-`notification-delivery-live-test` skips silently without `ARGUS_NATS_URL`
+`notification-delivery-live-test` is a doctest skip without `ARGUS_NATS_URL` (a failure under `CI=true`)
 (e.g. `nats://127.0.0.1:4222`); it runs the fan-out against an isolated
 stream, subject, durable name and temporary database. A default run passing
 means nothing about the wire — every live-test claim must state the variable

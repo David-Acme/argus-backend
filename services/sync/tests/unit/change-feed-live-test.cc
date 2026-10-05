@@ -4,6 +4,7 @@
 #include <drogon/drogon.h>
 #include <feature/fanout/services/audit-fan-out.hxx>
 #include <feature/fanout/services/change-feed-consumer.hxx>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/module-audit-event.hxx>
@@ -152,13 +153,12 @@ bool publishChange(const PublishInput& input)
 constexpr const char* kAuditCount = "SELECT COUNT(*) FROM audit_log";
 }
 
-TEST_CASE("a durable change feed drains what arrived while it was detached")
+TEST_CASE("a durable change feed drains what arrived while it was detached" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url == nullptr || *url == '\0') {
-    MESSAGE("ARGUS_NATS_URL not set; change feed live check skipped");
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
 
   const TempDb db;
   drogon::app().setLogLevel(trantor::Logger::kWarn);
@@ -167,9 +167,6 @@ TEST_CASE("a durable change feed drains what arrived while it was detached")
   AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
   REQUIRE(DbService::runScriptFile(ARGUS_SYNC_SCHEMA_PATH));
-  DbService::client()->execSqlSync(
-      "CREATE TABLE user (id INTEGER PRIMARY KEY)");
-  DbService::client()->execSqlSync("INSERT INTO user (id) VALUES (42)");
 
   NatsBus bus;
   NatsBus::Options options;

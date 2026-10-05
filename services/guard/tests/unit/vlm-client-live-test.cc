@@ -43,12 +43,14 @@ private:
 };
 }
 
-TEST_CASE("the VLM client describes a real JPEG against a live service")
+TEST_CASE("the VLM client describes a real JPEG against a live service" *
+          doctest::skip(std::getenv("ARGUS_VLM_TEST_URL") == nullptr ||
+                        std::getenv("ARGUS_VLM_TEST_IMAGE") == nullptr))
 {
   const char* url = std::getenv("ARGUS_VLM_TEST_URL");
   const char* imagePath = std::getenv("ARGUS_VLM_TEST_IMAGE");
-  if (!url || !imagePath)
-    return;
+  REQUIRE(url != nullptr);
+  REQUIRE(imagePath != nullptr);
 
   std::ifstream in(imagePath, std::ios::binary);
   REQUIRE(in.is_open());

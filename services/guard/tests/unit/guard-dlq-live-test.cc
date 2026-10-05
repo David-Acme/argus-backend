@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 
 #include <chrono>
@@ -11,13 +12,12 @@
 #include <unistd.h>
 #include <vector>
 
-TEST_CASE("a durable consumer exhausts MaxDeliver and settles the message")
+TEST_CASE("a durable consumer exhausts MaxDeliver and settles the message" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url == nullptr || *url == '\0') {
-    MESSAGE("ARGUS_NATS_URL not set; live DLQ check skipped");
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
 
   NatsBus bus;
   NatsBus::Options options;

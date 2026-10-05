@@ -6,6 +6,7 @@
 #include <feature/guard/guard-repository.hxx>
 #include <feature/guard/guard-schema.hxx>
 #include <feature/guard/guard-service.hxx>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 #include <sqlite/db-service.hxx>
 
@@ -129,13 +130,12 @@ std::string closeEncounter(GuardRepository& repository,
 }
 }
 
-TEST_CASE("the encounter drain creates its own stream and settles what it publishes")
+TEST_CASE("the encounter drain creates its own stream and settles what it publishes" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url == nullptr || *url == '\0') {
-    MESSAGE("ARGUS_NATS_URL not set; guard encounter drain check skipped");
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
 
   const TempDb db("guard-encounter-drain-test");
   drogon::app().setLogLevel(trantor::Logger::kWarn);

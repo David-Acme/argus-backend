@@ -270,12 +270,9 @@ TEST_CASE("the boot warm-up names exactly the configured engine, variant and voi
   std::filesystem::remove_all(root);
 }
 
-TEST_CASE("the Pocket tokenizer reproduces the reference token ids")
+TEST_CASE("the Pocket tokenizer reproduces the reference token ids" *
+          doctest::skip(!provisioned("es-fast") || !provisioned("en")))
 {
-  if (!provisioned("es-fast") || !provisioned("en")) {
-    MESSAGE("Pocket models are not provisioned under " << pocketRoot().string() << "; skipped");
-    return;
-  }
   const auto spanish = UnigramTokenizer::load(pocketRoot() / "es-fast" / "tokenizer.json");
   CHECK(spanish.vocabularySize() == 4000);
   CHECK(spanish.encode("Hola, ¿cómo estás?") == std::vector<std::int64_t>{1878, 307, 261, 260, 198, 195, 2017, 436, 534, 263, 67});
@@ -287,12 +284,9 @@ TEST_CASE("the Pocket tokenizer reproduces the reference token ids")
   CHECK(english.encode("naïve café 3.5") == std::vector<std::int64_t>{913, 199, 179, 314, 331, 2250, 745, 260, 450, 263, 437});
 }
 
-TEST_CASE("the Pocket engine streams speech and honours cancellation")
+TEST_CASE("the Pocket engine streams speech and honours cancellation" *
+          doctest::skip(!provisioned("es-fast")))
 {
-  if (!provisioned("es-fast")) {
-    MESSAGE("Pocket models are not provisioned under " << pocketRoot().string() << "; skipped");
-    return;
-  }
   Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "tts-pocket-test");
   PocketEngine engine({.env = env, .directory = pocketRoot() / "es-fast", .precision = "int8", .threads = 4});
   CHECK(engine.sampleRate() == 24000);
@@ -311,12 +305,9 @@ TEST_CASE("the Pocket engine streams speech and honours cancellation")
   CHECK(stopped.samples.size() < full.samples.size());
 }
 
-TEST_CASE("a fixed seed makes Pocket speech reproducible")
+TEST_CASE("a fixed seed makes Pocket speech reproducible" *
+          doctest::skip(!provisioned("es-fast")))
 {
-  if (!provisioned("es-fast")) {
-    MESSAGE("Pocket models are not provisioned under " << pocketRoot().string() << "; skipped");
-    return;
-  }
   Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "tts-pocket-seed-test");
   PocketEngine engine({.env = env, .directory = pocketRoot() / "es-fast", .precision = "int8", .threads = 4});
   const auto voice = engine.loadVoice(pocketRoot() / "es-fast" / "voices" / "lola.safetensors");
@@ -335,12 +326,9 @@ TEST_CASE("a fixed seed makes Pocket speech reproducible")
   CHECK(speak(8) != first);
 }
 
-TEST_CASE("the service answers Pocket languages at the announced rate and falls back when Pocket is absent")
+TEST_CASE("the service answers Pocket languages at the announced rate and falls back when Pocket is absent" *
+          doctest::skip(!provisioned("es-fast") || !std::filesystem::exists(modelsRoot() / "onnx" / "tts.json")))
 {
-  if (!provisioned("es-fast") || !std::filesystem::exists(modelsRoot() / "onnx" / "tts.json")) {
-    MESSAGE("Supertonic or Pocket models are not provisioned under " << modelsRoot().string() << "; skipped");
-    return;
-  }
   const auto empty = std::filesystem::temp_directory_path() / "tts-pocket-empty";
   std::filesystem::create_directories(empty);
   {
@@ -373,12 +361,9 @@ TEST_CASE("the service answers Pocket languages at the announced rate and falls 
   std::filesystem::remove_all(empty);
 }
 
-TEST_CASE("a warm-up that cannot load a Pocket model leaves the lazy fallback where it was")
+TEST_CASE("a warm-up that cannot load a Pocket model leaves the lazy fallback where it was" *
+          doctest::skip(!std::filesystem::exists(modelsRoot() / "onnx" / "tts.json")))
 {
-  if (!std::filesystem::exists(modelsRoot() / "onnx" / "tts.json")) {
-    MESSAGE("Supertonic models are not provisioned under " << modelsRoot().string() << "; skipped");
-    return;
-  }
   const auto root = fakePocketTree();
   {
     const ScopedConfig config(pocketConfig(root, "models_dir = \"" + modelsRoot().string() +
@@ -403,13 +388,11 @@ TEST_CASE("a warm-up that cannot load a Pocket model leaves the lazy fallback wh
   std::filesystem::remove_all(root);
 }
 
-TEST_CASE("a reference recording becomes a Pocket voice when the bundle carries the encoder")
+TEST_CASE("a reference recording becomes a Pocket voice when the bundle carries the encoder" *
+          doctest::skip(std::getenv("ARGUS_TEST_POCKET_CLONING_DIR") == nullptr))
 {
   const auto* const configured = std::getenv("ARGUS_TEST_POCKET_CLONING_DIR");
-  if (configured == nullptr) {
-    MESSAGE("ARGUS_TEST_POCKET_CLONING_DIR is not set; skipped");
-    return;
-  }
+  REQUIRE(configured != nullptr);
   const std::filesystem::path bundle(configured);
   Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "tts-pocket-cloning-test");
   PocketEngine engine({.env = env, .directory = bundle, .precision = "int8", .threads = 4});

@@ -5,6 +5,7 @@
 #include <notification/notification-delivery-sink.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 #include <feature/fanout/services/notification-delivery-consumer.hxx>
@@ -215,13 +216,12 @@ NotificationDeliveryConsumer makeConsumer(const ConsumerInput& input)
 }
 }
 
-TEST_CASE("delivery fan-out is at-least-once with inbox dedup")
+TEST_CASE("delivery fan-out is at-least-once with inbox dedup" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url == nullptr || *url == '\0') {
-    MESSAGE("ARGUS_NATS_URL not set; delivery live check skipped");
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
 
   const TempDb db;
   drogon::app().setLogLevel(trantor::Logger::kWarn);

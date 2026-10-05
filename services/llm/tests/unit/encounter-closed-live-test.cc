@@ -7,6 +7,7 @@
 #include <feature/memory/services/memory/sqlite-graph.hxx>
 #include <config/config-service.hxx>
 #include <text/json-util.hxx>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 #include <sqlite/sqlite-stmt.hxx>
@@ -214,13 +215,12 @@ EncounterClosedConsumer makeConsumer(const ConsumerInput& input)
 }
 }
 
-TEST_CASE("encounter fan-out captures exactly once with inbox dedup")
+TEST_CASE("encounter fan-out captures exactly once with inbox dedup" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url == nullptr || *url == '\0') {
-    MESSAGE("ARGUS_NATS_URL not set; encounter live check skipped");
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
 
   const TempDir dir(uniqueStem("encounter-closed-live-test"));
   writeConfig(dir.file("config.toml"), dir.file("memory.db"));

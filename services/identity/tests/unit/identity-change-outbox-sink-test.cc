@@ -1,4 +1,4 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
@@ -8,6 +8,7 @@
 #include <outbox/outbox-repository.hxx>
 #include <outbox/outbox-status.hxx>
 #include <sqlite/db-service.hxx>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 
 #include <algorithm>
@@ -202,24 +203,57 @@ UserActionEvent portraitRead(int64_t portraitUserId)
   event.ipAddress = "";
   return event;
 }
+
+void removeSinkDb()
+{
+  std::remove(kSinkDb);
+  std::remove((std::string(kSinkDb) + "-wal").c_str());
+  std::remove((std::string(kSinkDb) + "-shm").c_str());
+}
+
+void resetOutbox()
+{
+  DbService::client()->execSqlSync("DELETE FROM change_outbox");
+}
+
+class Host
+{
+public:
+  Host()
+  {
+    removeSinkDb();
+    drogon::app().setLogLevel(trantor::Logger::kWarn);
+    drogon::app().addDbClient(
+        drogon::orm::Sqlite3Config{.connectionNumber = 1,
+                                   .filename = kSinkDb,
+                                   .name = "default",
+                                   .timeout = -1});
+    runner_.emplace();
+    ready_ = waitForBoot(std::chrono::seconds(30)) &&
+             DbService::runScriptFile(ARGUS_IDENTITY_SCHEMA);
+  }
+
+  ~Host()
+  {
+    runner_.reset();
+    removeSinkDb();
+  }
+
+  Host(const Host&) = delete;
+  Host& operator=(const Host&) = delete;
+
+  [[nodiscard]] bool ready() const { return ready_; }
+
+private:
+  std::optional<AppRunner> runner_;
+  bool ready_ = false;
+};
 }
 
 TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
           "row in the durable outbox")
 {
-  std::remove(kSinkDb);
-  std::remove((std::string(kSinkDb) + "-wal").c_str());
-  std::remove((std::string(kSinkDb) + "-shm").c_str());
-  drogon::app().setLogLevel(trantor::Logger::kWarn);
-  drogon::app().addDbClient(
-      drogon::orm::Sqlite3Config{.connectionNumber = 1,
-                                 .filename = kSinkDb,
-                                 .name = "default",
-                                 .timeout = -1});
-  AppRunner runner;
-  REQUIRE(waitForBoot(std::chrono::seconds(30)));
-  REQUIRE(DbService::runScriptFile(ARGUS_IDENTITY_SCHEMA));
-
+  resetOutbox();
   const auto outbox = NatsIdentityChangeSink::repository();
 
   {
@@ -410,198 +444,209 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     CHECK(outbox.markSent(action.id, 3100));
     CHECK_FALSE(hasPending(outbox));
   }
+}
 
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url != nullptr && *url != '\0') {
-    const std::string run = std::to_string(::getpid());
-    const std::string stream = "argus-test-identity-change-" + run;
-    const std::string changeSubject = "argus.test.identity.change." + run;
-    const std::string actionSubject = "argus.test.identity.action." + run;
-    auto liveBus = std::make_shared<NatsBus>();
-    NatsBus::Options options;
-    options.url = url;
-    options.reconnectWaitMs = 200;
-    options.maxReconnects = 5;
-    REQUIRE(liveBus->connect(options));
-    REQUIRE(liveBus->ensureStream({.name = stream,
-                                   .subjects = {changeSubject, actionSubject},
-                                   .maxAgeNs = 3600000000000LL,
-                                   .duplicatesNs = 120000000000LL}));
+TEST_CASE("a live identity change sink publishes every row onto the stream" *
+          doctest::skip(live_broker::skipped()))
+{
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
+  resetOutbox();
+  const auto outbox = NatsIdentityChangeSink::repository();
+  const std::string run = std::to_string(::getpid());
+  const std::string stream = "argus-test-identity-change-" + run;
+  const std::string changeSubject = "argus.test.identity.change." + run;
+  const std::string actionSubject = "argus.test.identity.action." + run;
+  auto liveBus = std::make_shared<NatsBus>();
+  NatsBus::Options options;
+  options.url = url;
+  options.reconnectWaitMs = 200;
+  options.maxReconnects = 5;
+  REQUIRE(liveBus->connect(options));
+  REQUIRE(liveBus->ensureStream({.name = stream,
+                                 .subjects = {changeSubject, actionSubject},
+                                 .maxAgeNs = 3600000000000LL,
+                                 .duplicatesNs = 120000000000LL}));
 
-    std::mutex mutex;
-    std::condition_variable cv;
-    std::string changed;
-    std::string changedMsgId;
-    const auto changeSubscription = liveBus->subscribeDurable(
-        {.stream = stream,
-         .durable = "identity-change-outbox-live-" + run,
-         .subject = changeSubject,
-         .deliverAll = true,
-         .maxDeliver = 3,
-         .maxAckPending = NatsBus::kDefaultMaxAckPending,
-         .handler = [&mutex, &cv, &changed, &changedMsgId](
-                        const NatsBus::DurableMessage& message,
-                        const NatsBus::DurableSettlement& settlement) {
-           {
-             std::scoped_lock lock(mutex);
-             changed = std::string(message.payload);
-             changedMsgId = std::string(message.msgId);
-           }
-           settlement.ack();
-           cv.notify_all();
-         }});
-    REQUIRE(changeSubscription.has_value());
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::string changed;
+  std::string changedMsgId;
+  const auto changeSubscription = liveBus->subscribeDurable(
+      {.stream = stream,
+       .durable = "identity-change-outbox-live-" + run,
+       .subject = changeSubject,
+       .deliverAll = true,
+       .maxDeliver = 3,
+       .maxAckPending = NatsBus::kDefaultMaxAckPending,
+       .handler = [&mutex, &cv, &changed, &changedMsgId](
+                      const NatsBus::DurableMessage& message,
+                      const NatsBus::DurableSettlement& settlement) {
+         {
+           std::scoped_lock lock(mutex);
+           changed = std::string(message.payload);
+           changedMsgId = std::string(message.msgId);
+         }
+         settlement.ack();
+         cv.notify_all();
+       }});
+  REQUIRE(changeSubscription.has_value());
 
-    std::size_t journalDeliveries = 0;
-    std::vector<std::string> journalPayloads;
-    std::vector<std::string> journalMsgIds;
-    const auto actionSubscription = liveBus->subscribeDurable(
-        {.stream = stream,
-         .durable = "identity-action-journal-live-" + run,
-         .subject = actionSubject,
-         .deliverAll = true,
-         .maxDeliver = 3,
-         .maxAckPending = NatsBus::kDefaultMaxAckPending,
-         .handler = [&mutex, &cv, &journalDeliveries, &journalPayloads,
-                     &journalMsgIds](
-                        const NatsBus::DurableMessage& message,
-                        const NatsBus::DurableSettlement& settlement) {
-           {
-             std::scoped_lock lock(mutex);
-             ++journalDeliveries;
-             journalPayloads.emplace_back(message.payload);
-             journalMsgIds.emplace_back(message.msgId);
-           }
-           settlement.ack();
-           cv.notify_all();
-         }});
-    REQUIRE(actionSubscription.has_value());
+  std::size_t journalDeliveries = 0;
+  std::vector<std::string> journalPayloads;
+  std::vector<std::string> journalMsgIds;
+  const auto actionSubscription = liveBus->subscribeDurable(
+      {.stream = stream,
+       .durable = "identity-action-journal-live-" + run,
+       .subject = actionSubject,
+       .deliverAll = true,
+       .maxDeliver = 3,
+       .maxAckPending = NatsBus::kDefaultMaxAckPending,
+       .handler = [&mutex, &cv, &journalDeliveries, &journalPayloads,
+                   &journalMsgIds](
+                      const NatsBus::DurableMessage& message,
+                      const NatsBus::DurableSettlement& settlement) {
+         {
+           std::scoped_lock lock(mutex);
+           ++journalDeliveries;
+           journalPayloads.emplace_back(message.payload);
+           journalMsgIds.emplace_back(message.msgId);
+         }
+         settlement.ack();
+         cv.notify_all();
+       }});
+  REQUIRE(actionSubscription.has_value());
 
-    {
-      NatsIdentityChangeSink liveSink(
-          liveBus,
-          NatsIdentityChangeSink::Config{.retryMs = 20,
-                                         .changeSubject = changeSubject,
-                                         .actionSubject = actionSubject,
-                                         .streamName = stream});
-      drogon::sync_wait(liveSink.publishCatalog(userCatalog(99, "Ana")));
-      const auto catalogRow = pendingRow(outbox.pendingBatch(1));
-      const std::string expected = catalogRow.payload;
-      liveSink.reconcile();
-
-      {
-        std::unique_lock lock(mutex);
-        cv.wait_for(lock, std::chrono::seconds(10),
-                    [&changed, &expected]() { return changed == expected; });
-      }
-      for (int attempt = 0; attempt < 200 && hasPending(outbox); ++attempt)
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      CHECK_FALSE(hasPending(outbox));
-      std::string seen;
-      std::string seenMsgId;
-      {
-        std::scoped_lock lock(mutex);
-        seen = changed;
-        seenMsgId = changedMsgId;
-      }
-      CHECK(seen == expected);
-      CHECK(seenMsgId == catalogRow.eventId);
-
-      for (int i = 0; i < 2; ++i)
-        drogon::sync_wait(
-            liveSink.publishAction({.event = portraitRead(99),
-                                    .client = nullptr}));
-      {
-        std::unique_lock lock(mutex);
-        cv.wait_for(lock, std::chrono::seconds(10),
-                    [&journalDeliveries]() { return journalDeliveries >= 2; });
-      }
-      for (int attempt = 0;
-           attempt < 200 && (hasPending(outbox) || journalDeliveries < 2);
-           ++attempt)
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      CHECK_FALSE(hasPending(outbox));
-      {
-        std::scoped_lock lock(mutex);
-        CHECK(journalDeliveries == 2);
-        if (journalPayloads.size() == 2)
-          CHECK(journalPayloads.front() == journalPayloads.back());
-        if (journalMsgIds.size() == 2) {
-          CHECK(isMintedActionId(journalMsgIds.front()));
-          CHECK(isMintedActionId(journalMsgIds.back()));
-          CHECK(journalMsgIds.front() != journalMsgIds.back());
-        }
-      }
-    }
-
-    {
-      const std::string healed = stream + "-healed";
-      const std::string healedChange = changeSubject + ".healed";
-      const std::string healedAction = actionSubject + ".healed";
-      NatsIdentityChangeSink healer(
-          liveBus,
-          NatsIdentityChangeSink::Config{.retryMs = 20,
-                                         .changeSubject = healedChange,
-                                         .actionSubject = healedAction,
-                                         .streamName = healed});
-      healer.reconcile();
-      drogon::sync_wait(healer.publishCatalog(userCatalog(102, "Ana")));
-      drogon::sync_wait(healer.publishAction(
-          {.event = portraitRead(102), .client = nullptr}));
-      for (int attempt = 0; attempt < 400 && hasPending(outbox); ++attempt)
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      CHECK_FALSE(hasPending(outbox));
-      const auto info = streamStatus(liveBus->streamInfo(healed));
-      CHECK(info.subjects.size() == 2);
-    }
-
-    {
-      const std::string burstStream = stream + "-burst";
-      const std::string burstChange = changeSubject + ".burst";
-      const std::string burstAction = actionSubject + ".burst";
-      NatsIdentityChangeSink bursts(
-          liveBus,
-          NatsIdentityChangeSink::Config{.retryMs = 20,
-                                         .changeSubject = burstChange,
-                                         .actionSubject = burstAction,
-                                         .streamName = burstStream});
-      const int64_t watermark = outboxWatermark();
-      const auto started = std::chrono::steady_clock::now();
-      for (int64_t recordId = 200; recordId < 300; ++recordId)
-        drogon::sync_wait(
-            bursts.publishCatalog(userCatalog(recordId, "Ana")));
-      CHECK(rowsAfter(watermark) == 100);
-      bursts.reconcile();
-      for (int attempt = 0; attempt < 400 && hasPending(outbox); ++attempt)
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      CHECK_FALSE(hasPending(outbox));
-      CHECK(sentRowsAfter(watermark) == 100);
-      CHECK(std::chrono::steady_clock::now() - started <
-            std::chrono::seconds(3));
-    }
-
-    NatsIdentityChangeSink stranded(
+  {
+    NatsIdentityChangeSink liveSink(
         liveBus,
         NatsIdentityChangeSink::Config{.retryMs = 20,
-                                       .changeSubject = changeSubject + ".*",
+                                       .changeSubject = changeSubject,
                                        .actionSubject = actionSubject,
                                        .streamName = stream});
-    stranded.reconcile();
-    drogon::sync_wait(stranded.publishCatalog(userCatalog(100, "Ana")));
-    drogon::sync_wait(stranded.publishCatalog(userCatalog(101, "Ana")));
+    drogon::sync_wait(liveSink.publishCatalog(userCatalog(99, "Ana")));
+    const auto catalogRow = pendingRow(outbox.pendingBatch(1));
+    const std::string expected = catalogRow.payload;
+    liveSink.reconcile();
 
-    bool attempted = false;
-    for (int attempt = 0; attempt < 100 && !attempted; ++attempt) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
-      const auto stuck = outbox.pendingBatch(1);
-      attempted = !stuck.empty() && stuck.front().attempts > 0;
+    {
+      std::unique_lock lock(mutex);
+      cv.wait_for(lock, std::chrono::seconds(10),
+                  [&changed, &expected]() { return changed == expected; });
     }
-    CHECK(attempted);
-    CHECK(pendingRow(outbox.pendingBatch(1)).payload.find("\"id\":100") !=
-          std::string::npos);
+    for (int attempt = 0; attempt < 200 && hasPending(outbox); ++attempt)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK_FALSE(hasPending(outbox));
+    std::string seen;
+    std::string seenMsgId;
+    {
+      std::scoped_lock lock(mutex);
+      seen = changed;
+      seenMsgId = changedMsgId;
+    }
+    CHECK(seen == expected);
+    CHECK(seenMsgId == catalogRow.eventId);
+
+    for (int i = 0; i < 2; ++i)
+      drogon::sync_wait(
+          liveSink.publishAction({.event = portraitRead(99),
+                                  .client = nullptr}));
+    {
+      std::unique_lock lock(mutex);
+      cv.wait_for(lock, std::chrono::seconds(10),
+                  [&journalDeliveries]() { return journalDeliveries >= 2; });
+    }
+    for (int attempt = 0;
+         attempt < 200 && (hasPending(outbox) || journalDeliveries < 2);
+         ++attempt)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK_FALSE(hasPending(outbox));
+    {
+      std::scoped_lock lock(mutex);
+      CHECK(journalDeliveries == 2);
+      if (journalPayloads.size() == 2)
+        CHECK(journalPayloads.front() == journalPayloads.back());
+      if (journalMsgIds.size() == 2) {
+        CHECK(isMintedActionId(journalMsgIds.front()));
+        CHECK(isMintedActionId(journalMsgIds.back()));
+        CHECK(journalMsgIds.front() != journalMsgIds.back());
+      }
+    }
   }
 
-  std::remove(kSinkDb);
-  std::remove((std::string(kSinkDb) + "-wal").c_str());
-  std::remove((std::string(kSinkDb) + "-shm").c_str());
+  {
+    const std::string healed = stream + "-healed";
+    const std::string healedChange = changeSubject + ".healed";
+    const std::string healedAction = actionSubject + ".healed";
+    NatsIdentityChangeSink healer(
+        liveBus,
+        NatsIdentityChangeSink::Config{.retryMs = 20,
+                                       .changeSubject = healedChange,
+                                       .actionSubject = healedAction,
+                                       .streamName = healed});
+    healer.reconcile();
+    drogon::sync_wait(healer.publishCatalog(userCatalog(102, "Ana")));
+    drogon::sync_wait(healer.publishAction(
+        {.event = portraitRead(102), .client = nullptr}));
+    for (int attempt = 0; attempt < 400 && hasPending(outbox); ++attempt)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK_FALSE(hasPending(outbox));
+    const auto info = streamStatus(liveBus->streamInfo(healed));
+    CHECK(info.subjects.size() == 2);
+  }
+
+  {
+    const std::string burstStream = stream + "-burst";
+    const std::string burstChange = changeSubject + ".burst";
+    const std::string burstAction = actionSubject + ".burst";
+    NatsIdentityChangeSink bursts(
+        liveBus,
+        NatsIdentityChangeSink::Config{.retryMs = 20,
+                                       .changeSubject = burstChange,
+                                       .actionSubject = burstAction,
+                                       .streamName = burstStream});
+    const int64_t watermark = outboxWatermark();
+    const auto started = std::chrono::steady_clock::now();
+    for (int64_t recordId = 200; recordId < 300; ++recordId)
+      drogon::sync_wait(
+          bursts.publishCatalog(userCatalog(recordId, "Ana")));
+    CHECK(rowsAfter(watermark) == 100);
+    bursts.reconcile();
+    for (int attempt = 0; attempt < 400 && hasPending(outbox); ++attempt)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK_FALSE(hasPending(outbox));
+    CHECK(sentRowsAfter(watermark) == 100);
+    CHECK(std::chrono::steady_clock::now() - started <
+          std::chrono::seconds(3));
+  }
+
+  NatsIdentityChangeSink stranded(
+      liveBus,
+      NatsIdentityChangeSink::Config{.retryMs = 20,
+                                     .changeSubject = changeSubject + ".*",
+                                     .actionSubject = actionSubject,
+                                     .streamName = stream});
+  stranded.reconcile();
+  drogon::sync_wait(stranded.publishCatalog(userCatalog(100, "Ana")));
+  drogon::sync_wait(stranded.publishCatalog(userCatalog(101, "Ana")));
+
+  bool attempted = false;
+  for (int attempt = 0; attempt < 100 && !attempted; ++attempt) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    const auto stuck = outbox.pendingBatch(1);
+    attempted = !stuck.empty() && stuck.front().attempts > 0;
+  }
+  CHECK(attempted);
+  CHECK(pendingRow(outbox.pendingBatch(1)).payload.find("\"id\":100") !=
+        std::string::npos);
+}
+
+int main(int argc, char** argv)
+{
+  const Host host;
+  if (!host.ready())
+    return 1;
+  doctest::Context context(argc, argv);
+  return context.run();
 }

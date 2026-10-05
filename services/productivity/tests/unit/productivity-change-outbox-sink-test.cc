@@ -1,4 +1,4 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
@@ -8,6 +8,7 @@
 #include <outbox/outbox-repository.hxx>
 #include <outbox/outbox-status.hxx>
 #include <sqlite/db-service.hxx>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 
@@ -145,23 +146,56 @@ UserAuditInput projectAudit(int64_t recordId, std::vector<int64_t> userIds)
   input.userIds = std::move(userIds);
   return input;
 }
-}
 
-TEST_CASE("the change sink lands every emit and audit in the durable outbox")
+void removeSinkDb()
 {
   std::remove(kSinkDb);
   std::remove((std::string(kSinkDb) + "-wal").c_str());
   std::remove((std::string(kSinkDb) + "-shm").c_str());
-  drogon::app().setLogLevel(trantor::Logger::kWarn);
-  drogon::app().addDbClient(
-      drogon::orm::Sqlite3Config{.connectionNumber = 1,
-                                 .filename = kSinkDb,
-                                 .name = "default",
-                                 .timeout = -1});
-  AppRunner runner;
-  REQUIRE(waitForBoot(std::chrono::seconds(30)));
-  REQUIRE(DbService::runScriptFile(ARGUS_PRODUCTIVITY_SCHEMA));
+}
 
+void resetOutbox()
+{
+  DbService::client()->execSqlSync("DELETE FROM change_outbox");
+}
+
+class Host
+{
+public:
+  Host()
+  {
+    removeSinkDb();
+    drogon::app().setLogLevel(trantor::Logger::kWarn);
+    drogon::app().addDbClient(
+        drogon::orm::Sqlite3Config{.connectionNumber = 1,
+                                   .filename = kSinkDb,
+                                   .name = "default",
+                                   .timeout = -1});
+    runner_.emplace();
+    ready_ = waitForBoot(std::chrono::seconds(30)) &&
+             DbService::runScriptFile(ARGUS_PRODUCTIVITY_SCHEMA);
+  }
+
+  ~Host()
+  {
+    runner_.reset();
+    removeSinkDb();
+  }
+
+  Host(const Host&) = delete;
+  Host& operator=(const Host&) = delete;
+
+  [[nodiscard]] bool ready() const { return ready_; }
+
+private:
+  std::optional<AppRunner> runner_;
+  bool ready_ = false;
+};
+}
+
+TEST_CASE("the change sink lands every emit and audit in the durable outbox")
+{
+  resetOutbox();
   const auto outbox = NatsProductivityChangeSink::repository();
 
   {
@@ -290,164 +324,175 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
     CHECK(sink.drained());
     CHECK(outbox.markSent(waiting.id, 3000));
   }
+}
 
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url != nullptr && *url != '\0') {
-    const std::string run = std::to_string(::getpid());
-    const std::string stream = "argus-test-productivity-change-" + run;
-    const std::string subject = "argus.test.productivity.change.flush." + run;
-    auto liveBus = std::make_shared<NatsBus>();
-    NatsBus::Options options;
-    options.url = url;
-    options.reconnectWaitMs = 200;
-    options.maxReconnects = 5;
-    REQUIRE(liveBus->connect(options));
-    REQUIRE(liveBus->ensureStream({.name = stream,
-                                   .subjects = {subject},
-                                   .maxAgeNs = 3600000000000LL,
-                                   .duplicatesNs = 120000000000LL}));
+TEST_CASE("a live productivity change sink publishes every emit onto the stream" *
+          doctest::skip(live_broker::skipped()))
+{
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
+  resetOutbox();
+  const auto outbox = NatsProductivityChangeSink::repository();
+  const std::string run = std::to_string(::getpid());
+  const std::string stream = "argus-test-productivity-change-" + run;
+  const std::string subject = "argus.test.productivity.change.flush." + run;
+  auto liveBus = std::make_shared<NatsBus>();
+  NatsBus::Options options;
+  options.url = url;
+  options.reconnectWaitMs = 200;
+  options.maxReconnects = 5;
+  REQUIRE(liveBus->connect(options));
+  REQUIRE(liveBus->ensureStream({.name = stream,
+                                 .subjects = {subject},
+                                 .maxAgeNs = 3600000000000LL,
+                                 .duplicatesNs = 120000000000LL}));
 
-    std::mutex mutex;
-    std::condition_variable cv;
-    std::string received;
-    const auto subscription = liveBus->subscribeDurable(
-        {.stream = stream,
-         .durable = "productivity-change-outbox-live-" + run,
-         .subject = subject,
-         .deliverAll = true,
-         .maxDeliver = 3,
-         .maxAckPending = NatsBus::kDefaultMaxAckPending,
-         .handler = [&mutex, &cv, &received](
-                        const NatsBus::DurableMessage& message,
-                        const NatsBus::DurableSettlement& settlement) {
-           {
-             std::scoped_lock lock(mutex);
-             received = std::string(message.payload);
-           }
-           settlement.ack();
-           cv.notify_all();
-         }});
-    REQUIRE(subscription.has_value());
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::string received;
+  const auto subscription = liveBus->subscribeDurable(
+      {.stream = stream,
+       .durable = "productivity-change-outbox-live-" + run,
+       .subject = subject,
+       .deliverAll = true,
+       .maxDeliver = 3,
+       .maxAckPending = NatsBus::kDefaultMaxAckPending,
+       .handler = [&mutex, &cv, &received](
+                      const NatsBus::DurableMessage& message,
+                      const NatsBus::DurableSettlement& settlement) {
+         {
+           std::scoped_lock lock(mutex);
+           received = std::string(message.payload);
+         }
+         settlement.ack();
+         cv.notify_all();
+       }});
+  REQUIRE(subscription.has_value());
 
-    {
-      NatsProductivityChangeSink liveSink(
-          liveBus, NatsProductivityChangeSink::Config{.retryMs = 20,
-                                                      .publishSubject = subject,
-                                                      .streamName = stream});
-      drogon::sync_wait(
-          liveSink.emitUsers({.userIds = {42, 7},
-                              .body = projectRow(SyncOperation::Add, 99,
-                                                 "Gate")}));
-      const std::string expected = pendingRow(outbox.pendingBatch(1)).payload;
-      liveSink.reconcile();
-
-      {
-        std::unique_lock lock(mutex);
-        cv.wait_for(lock, std::chrono::seconds(10),
-                    [&received, &expected]() { return received == expected; });
-      }
-      for (int attempt = 0;
-           attempt < 200 && hasPending(outbox); ++attempt)
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      CHECK_FALSE(hasPending(outbox));
-
-      std::string seen;
-      {
-        std::scoped_lock lock(mutex);
-        seen = received;
-      }
-      CHECK(seen == expected);
-    }
+  {
+    NatsProductivityChangeSink liveSink(
+        liveBus, NatsProductivityChangeSink::Config{.retryMs = 20,
+                                                    .publishSubject = subject,
+                                                    .streamName = stream});
+    drogon::sync_wait(
+        liveSink.emitUsers({.userIds = {42, 7},
+                            .body = projectRow(SyncOperation::Add, 99,
+                                               "Gate")}));
+    const std::string expected = pendingRow(outbox.pendingBatch(1)).payload;
+    liveSink.reconcile();
 
     {
-      const std::string healed = stream + "-healed";
-      const std::string healedSubject = subject + ".healed";
-      NatsProductivityChangeSink healer(
-          liveBus, NatsProductivityChangeSink::Config{
-                       .retryMs = 20,
-                       .publishSubject = healedSubject,
-                       .streamName = healed});
-      healer.reconcile();
-      drogon::sync_wait(healer.emitUsers(
-          {.userIds = {42},
-           .body = projectRow(SyncOperation::Add, 102, "Gate")}));
-      for (int attempt = 0;
-           attempt < 200 && hasPending(outbox); ++attempt)
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      CHECK_FALSE(hasPending(outbox));
-      const auto info = streamStatus(liveBus->streamInfo(healed));
-      CHECK(info.subjects.size() == 1);
-      CHECK(info.subjects.front() == healedSubject);
+      std::unique_lock lock(mutex);
+      cv.wait_for(lock, std::chrono::seconds(10),
+                  [&received, &expected]() { return received == expected; });
     }
+    for (int attempt = 0;
+         attempt < 200 && hasPending(outbox); ++attempt)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK_FALSE(hasPending(outbox));
 
+    std::string seen;
     {
-      const std::string eager = stream + "-eager";
-      NatsProductivityChangeSink eagerSink(
-          liveBus, NatsProductivityChangeSink::Config{
-                       .retryMs = 20,
-                       .publishSubject = subject + ".eager",
-                       .streamName = eager});
-      eagerSink.reconcile();
-      bool created = false;
-      for (int attempt = 0; attempt < 200 && !created; ++attempt) {
-        created = liveBus->streamInfo(eager).has_value();
-        if (!created)
-          std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      }
-      CHECK(created);
-      CHECK_FALSE(hasPending(outbox));
+      std::scoped_lock lock(mutex);
+      seen = received;
     }
-
-    {
-      const std::string burstStream = stream + "-burst";
-      const std::string burstSubject = subject + ".burst";
-      NatsProductivityChangeSink bursts(
-          liveBus, NatsProductivityChangeSink::Config{.retryMs = 20,
-                                                      .publishSubject =
-                                                          burstSubject,
-                                                      .streamName = burstStream});
-      const int64_t watermark = outboxWatermark();
-      const auto started = std::chrono::steady_clock::now();
-      for (int64_t recordId = 200; recordId < 300; ++recordId)
-        drogon::sync_wait(bursts.emitUsers(
-            {.userIds = {42},
-             .body = projectRow(SyncOperation::Add, recordId, "Gate")}));
-      CHECK(rowsAfter(watermark) == 100);
-      bursts.reconcile();
-      for (int attempt = 0;
-           attempt < 400 && hasPending(outbox); ++attempt)
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      CHECK_FALSE(hasPending(outbox));
-      CHECK(sentRowsAfter(watermark) == 100);
-      CHECK(std::chrono::steady_clock::now() - started <
-            std::chrono::seconds(3));
-    }
-
-    NatsProductivityChangeSink stranded(
-        liveBus, NatsProductivityChangeSink::Config{
-                     .retryMs = 20,
-                     .publishSubject = "argus.test.productivity.change.*",
-                     .streamName = stream});
-    stranded.reconcile();
-    drogon::sync_wait(stranded.emitUsers(
-        {.userIds = {42},
-         .body = projectRow(SyncOperation::Add, 100, "Gate")}));
-    drogon::sync_wait(stranded.emitUsers(
-        {.userIds = {42},
-         .body = projectRow(SyncOperation::Add, 101, "Gate")}));
-
-    bool attempted = false;
-    for (int attempt = 0; attempt < 100 && !attempted; ++attempt) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
-      const auto stuck = outbox.pendingBatch(1);
-      attempted = !stuck.empty() && stuck.front().attempts > 0;
-    }
-    CHECK(attempted);
-    CHECK(pendingRow(outbox.pendingBatch(1)).payload.find("\"id\":100") !=
-          std::string::npos);
+    CHECK(seen == expected);
   }
 
-  std::remove(kSinkDb);
-  std::remove((std::string(kSinkDb) + "-wal").c_str());
-  std::remove((std::string(kSinkDb) + "-shm").c_str());
+  {
+    const std::string healed = stream + "-healed";
+    const std::string healedSubject = subject + ".healed";
+    NatsProductivityChangeSink healer(
+        liveBus, NatsProductivityChangeSink::Config{
+                     .retryMs = 20,
+                     .publishSubject = healedSubject,
+                     .streamName = healed});
+    healer.reconcile();
+    drogon::sync_wait(healer.emitUsers(
+        {.userIds = {42},
+         .body = projectRow(SyncOperation::Add, 102, "Gate")}));
+    for (int attempt = 0;
+         attempt < 200 && hasPending(outbox); ++attempt)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK_FALSE(hasPending(outbox));
+    const auto info = streamStatus(liveBus->streamInfo(healed));
+    CHECK(info.subjects.size() == 1);
+    CHECK(info.subjects.front() == healedSubject);
+  }
+
+  {
+    const std::string eager = stream + "-eager";
+    NatsProductivityChangeSink eagerSink(
+        liveBus, NatsProductivityChangeSink::Config{
+                     .retryMs = 20,
+                     .publishSubject = subject + ".eager",
+                     .streamName = eager});
+    eagerSink.reconcile();
+    bool created = false;
+    for (int attempt = 0; attempt < 200 && !created; ++attempt) {
+      created = liveBus->streamInfo(eager).has_value();
+      if (!created)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    CHECK(created);
+    CHECK_FALSE(hasPending(outbox));
+  }
+
+  {
+    const std::string burstStream = stream + "-burst";
+    const std::string burstSubject = subject + ".burst";
+    NatsProductivityChangeSink bursts(
+        liveBus, NatsProductivityChangeSink::Config{.retryMs = 20,
+                                                    .publishSubject =
+                                                        burstSubject,
+                                                    .streamName = burstStream});
+    const int64_t watermark = outboxWatermark();
+    const auto started = std::chrono::steady_clock::now();
+    for (int64_t recordId = 200; recordId < 300; ++recordId)
+      drogon::sync_wait(bursts.emitUsers(
+          {.userIds = {42},
+           .body = projectRow(SyncOperation::Add, recordId, "Gate")}));
+    CHECK(rowsAfter(watermark) == 100);
+    bursts.reconcile();
+    for (int attempt = 0;
+         attempt < 400 && hasPending(outbox); ++attempt)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK_FALSE(hasPending(outbox));
+    CHECK(sentRowsAfter(watermark) == 100);
+    CHECK(std::chrono::steady_clock::now() - started <
+          std::chrono::seconds(3));
+  }
+
+  NatsProductivityChangeSink stranded(
+      liveBus, NatsProductivityChangeSink::Config{
+                   .retryMs = 20,
+                   .publishSubject = "argus.test.productivity.change.*",
+                   .streamName = stream});
+  stranded.reconcile();
+  drogon::sync_wait(stranded.emitUsers(
+      {.userIds = {42},
+       .body = projectRow(SyncOperation::Add, 100, "Gate")}));
+  drogon::sync_wait(stranded.emitUsers(
+      {.userIds = {42},
+       .body = projectRow(SyncOperation::Add, 101, "Gate")}));
+
+  bool attempted = false;
+  for (int attempt = 0; attempt < 100 && !attempted; ++attempt) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    const auto stuck = outbox.pendingBatch(1);
+    attempted = !stuck.empty() && stuck.front().attempts > 0;
+  }
+  CHECK(attempted);
+  CHECK(pendingRow(outbox.pendingBatch(1)).payload.find("\"id\":100") !=
+        std::string::npos);
+}
+
+int main(int argc, char** argv)
+{
+  const Host host;
+  if (!host.ready())
+    return 1;
+  doctest::Context context(argc, argv);
+  return context.run();
 }

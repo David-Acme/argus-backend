@@ -3,6 +3,7 @@
 
 #include <doctest/doctest.h>
 #include <feature/guard/services/response-verdict-feed.hxx>
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 #include <text/json-util.hxx>
 
@@ -15,13 +16,12 @@
 using guard_test::GuardBoot;
 using guard_test::scalar;
 
-TEST_CASE("a verdict published into the stream while guard is away is reviewed once it attaches")
+TEST_CASE("a verdict published into the stream while guard is away is reviewed once it attaches" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_NATS_URL");
-  if (url == nullptr || *url == '\0') {
-    MESSAGE("ARGUS_NATS_URL not set; live verdict check skipped");
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
   static GuardBoot boot("guard-verdict-live-test");
   scalar("INSERT INTO guard_encounter (first_seen, last_seen) VALUES (1, 2)");
   const std::string episode = scalar("SELECT MAX(id) FROM guard_encounter");

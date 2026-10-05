@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 
@@ -9,7 +10,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
-#include <iostream>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -209,15 +209,12 @@ TEST_CASE("connect to a closed endpoint fails without crashing")
   bus.drain();
 }
 
-TEST_CASE("live roundtrip against a running nats-server")
+TEST_CASE("live roundtrip against a running nats-server" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_TEST_NATS_URL");
-  if (url == nullptr || std::string(url).empty()) {
-    std::cout << "SKIP: ARGUS_TEST_NATS_URL not provided; start a local "
-                 "nats-server and export ARGUS_TEST_NATS_URL to run the "
-                 "live NATS roundtrip\n";
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
 
   NatsBus bus;
   NatsBus::Options options;
@@ -268,13 +265,12 @@ TEST_CASE("live roundtrip against a running nats-server")
   CHECK_FALSE(bus.isConnected());
 }
 
-TEST_CASE("ensureStream reconciles an existing stream instead of assuming it")
+TEST_CASE("ensureStream reconciles an existing stream instead of assuming it" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_TEST_NATS_URL");
-  if (url == nullptr || std::string(url).empty()) {
-    std::cout << "SKIP: ARGUS_TEST_NATS_URL not provided\n";
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
 
   NatsBus bus;
   NatsBus::Options options;
@@ -319,13 +315,12 @@ TEST_CASE("ensureStream reconciles an existing stream instead of assuming it")
   bus.drain();
 }
 
-TEST_CASE("a durable consumer outlives the subscriber that bound it")
+TEST_CASE("a durable consumer outlives the subscriber that bound it" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_TEST_NATS_URL");
-  if (url == nullptr || std::string(url).empty()) {
-    std::cout << "SKIP: ARGUS_TEST_NATS_URL not provided\n";
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
   NatsBus::Options options;
   options.url = url;
 
@@ -396,13 +391,12 @@ TEST_CASE("a durable consumer outlives the subscriber that bound it")
   second.drain();
 }
 
-TEST_CASE("an ordered durable redelivers a nak'd message before the next one")
+TEST_CASE("an ordered durable redelivers a nak'd message before the next one" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_TEST_NATS_URL");
-  if (url == nullptr || std::string(url).empty()) {
-    std::cout << "SKIP: ARGUS_TEST_NATS_URL not provided\n";
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
   NatsBus::Options options;
   options.url = url;
   NatsBus bus;
@@ -522,13 +516,12 @@ TEST_CASE("a durable feed refuses a consumer its own stream does not carry")
                   .has_value());
 }
 
-TEST_CASE("a durable feed turns core publishes into a backlog that survives the consumer")
+TEST_CASE("a durable feed turns core publishes into a backlog that survives the consumer" *
+          doctest::skip(live_broker::skipped()))
 {
-  const char* url = std::getenv("ARGUS_TEST_NATS_URL");
-  if (url == nullptr || std::string(url).empty()) {
-    std::cout << "SKIP: ARGUS_TEST_NATS_URL not provided\n";
-    return;
-  }
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  const char* url = broker.c_str();
   NatsBus::Options options;
   options.url = url;
   const std::string stream = isolatedStream();
@@ -554,7 +547,7 @@ TEST_CASE("a durable feed turns core publishes into a backlog that survives the 
                                     const NatsBus::DurableSettlement& settlement) {
     settlement.markInProgress();
     {
-      std::lock_guard lock(first.mutex);
+      std::scoped_lock lock(first.mutex);
       first.payloads.emplace_back(message.payload);
     }
     settlement.ack();

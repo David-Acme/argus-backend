@@ -105,7 +105,7 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
   cnats delivers that callback later, on its own thread, with the bus as its
   closure.
 - `tests/unit/nats-wrapper-test.cc` pins the durable rules against a live
-  broker (`ARGUS_TEST_NATS_URL`): the backlog survives an unsubscribe and a
+  broker (`ARGUS_NATS_URL`): the backlog survives an unsubscribe and a
   drain, a second binder is refused while the first is bound, a changed
   deliver policy is refused, and an ordered durable redelivers a nak'd message
   before the one behind it, after the backoff.
@@ -136,8 +136,12 @@ keeping what core publishes sent while its consumer was away; also: publish subj
 while subscribe subjects take `>`-only wildcards, the frozen subject
 spellings, the option defaults without config, a handler registered without a
 server, and a connect to a closed endpoint that fails instead of crashing. The
-live roundtrip and the stream reconcile run only when `ARGUS_TEST_NATS_URL`
-names a broker, and say so when it does not.
+live roundtrip and the stream reconcile run only when `ARGUS_NATS_URL`
+names a broker. Every live suite of the tree reads that one variable through
+`nats/live-broker.hxx`: without it the case is a doctest skip (counted as
+`skipped` in the summary, never as passed), and with `CI=true` and no variable
+the case runs and fails on its first `REQUIRE`, so CI cannot go green without
+a broker. `.github/workflows/ci.yml` starts `nats:2 -js` for that reason.
 
 `[nats] user` and `[nats] password`, when both are set, are passed to the
 broker with `natsOptions_SetUserInfo`; credentials never go into the URL,
