@@ -23,6 +23,17 @@ std::string contactList(const Json::Value& contacts, bool english)
 std::string response_copy::escalationBody(const ResponseEscalationInput& input)
 {
   const bool english = call_copy::normalizeLang(input.lang) == "en";
+  switch (input.reason) {
+    case ResponseReach::Worse:
+      return input.summary + (english ? " It has got worse." : " La situación ha empeorado.");
+    case ResponseReach::Confirmed:
+      if (input.confirmedBy.empty())
+        return input.summary + (english ? " It is confirmed as real." : " Está confirmado que es real.");
+      return input.summary + (english ? " " + input.confirmedBy + " confirmed it is real."
+                                      : " " + input.confirmedBy + " ha confirmado que es real.");
+    case ResponseReach::NextStep:
+      break;
+  }
   return input.summary +
          (english ? " Nobody has answered yet." : " Nadie ha contestado todavía.");
 }

@@ -2,6 +2,7 @@
 
 #include <json/value.h>
 
+#include <cstdint>
 #include <string>
 
 struct ResponseNotice
@@ -10,10 +11,19 @@ struct ResponseNotice
   std::string body;
 };
 
+enum class ResponseReach : uint8_t
+{
+  NextStep = 0,
+  Worse,
+  Confirmed
+};
+
 struct ResponseEscalationInput
 {
   std::string lang;
   std::string summary;
+  ResponseReach reason{ResponseReach::NextStep};
+  std::string confirmedBy;
 };
 
 struct ResponseContactsInput

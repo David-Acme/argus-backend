@@ -9,6 +9,7 @@
 #include <feature/call/repositories/scheduled-call/scheduled-call-repository.hxx>
 #include <feature/call/services/call-copy.hxx>
 #include <feature/call/services/call-policy.hxx>
+#include <feature/call/services/response-copy.hxx>
 #include <feature/call/services/call-ports.hxx>
 #include <feature/call/services/call-trigger-classifier.hxx>
 #include <nats/push-intent-sink.hxx>
@@ -263,6 +264,7 @@ private:
     const CallResponseSchema& response;
     std::vector<CallResponseMember> members;
     bool critical{false};
+    ResponseReach reason{ResponseReach::NextStep};
     int64_t now{0};
   };
 
@@ -270,6 +272,7 @@ private:
   {
     const CallResponseSchema& response;
     int64_t exceptUserId{0};
+    int64_t onlyUserId{0};
     std::string reason;
     std::string attendedBy;
     int64_t now{0};

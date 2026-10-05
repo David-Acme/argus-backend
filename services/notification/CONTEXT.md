@@ -734,9 +734,15 @@ so the app shows "<Name> está atendiendo".
 false_alarm}`, by a member the response reached.
 - `false_alarm` closes the response, cancels every ringing call of the
   thread (reason `resolved`), and stops the steps.
-- `real` (`confirmed`) reaches everyone not yet reached at once, with critical
+- `real` (`confirmed`) stops the decider's own ring, since they already
+  acted. It then reaches everyone not yet reached at once, with critical
   urgency so their quiet hours with `criticalBypass` let it through, and sends
   the contacts notification ("Alerta confirmada · <place>").
+- The note a newly reached member gets says why they are reached now:
+  "Nadie ha contestado todavía" for a next step, "<Name> ha confirmado que es
+  real" after a verdict, "La situación ha empeorado" after an escalation
+  (`ResponseReach`). The live sandbox check caught the confirmed case reading
+  "nobody answered".
 - A second identical verdict answers the same. The opposite one after a false
   alarm is 409 `ResponseClosed`. `real` can still become `false_alarm`.
 - The person who gives the verdict becomes the responder if there was none.

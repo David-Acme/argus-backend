@@ -67,7 +67,7 @@ inline constexpr std::string_view FIND_RINGING =
 inline constexpr std::string_view CANCEL_RINGING_FOR_KEY =
     "UPDATE call SET state = 'missed', reason = ?, ended_at = ? "
     "WHERE dedupe_key = ? AND state = 'ringing' AND user_id != ? "
-    "RETURNING id, user_id";
+    "AND (? = 0 OR user_id = ?) RETURNING id, user_id";
 
 inline constexpr std::string_view CLOSE_STALE_ANSWERED =
     "UPDATE call SET state = 'completed', ended_at = ? "
@@ -139,6 +139,7 @@ struct CallCancelForKeyInput
 {
   std::string dedupeKey;
   int64_t exceptUserId{0};
+  int64_t onlyUserId{0};
   std::string reason;
   int64_t now{0};
 };

@@ -904,6 +904,7 @@ CallEngine::respond(const ResponseRequest& request) const
     co_await reach({.response = response,
                     .members = std::move(others),
                     .critical = candidate->critical,
+                    .reason = ResponseReach::Worse,
                     .now = at});
   }
   for (const int64_t userId : userIds)
@@ -955,7 +956,10 @@ drogon::Task<void> CallEngine::reach(const ReachInput& input) const
         {.userId = member.userId,
          .type = "camera",
          .title = copy.title,
-         .body = response_copy::escalationBody({.lang = lang, .summary = copy.summary}),
+         .body = response_copy::escalationBody({.lang = lang,
+                                                .summary = copy.summary,
+                                                .reason = input.reason,
+                                                .confirmedBy = input.response.verdictByName}),
          .data = data,
          .commandId = "response:" + std::to_string(response.id) + ":reach:" +
                       std::to_string(member.userId)});
@@ -973,6 +977,7 @@ drogon::Task<void> CallEngine::cancelRinging(const CancelInput& input) const
   const auto cancelled = co_await callRepository_.cancelRingingForKey(
       {.dedupeKey = input.response.dedupeKey,
        .exceptUserId = input.exceptUserId,
+       .onlyUserId = input.onlyUserId,
        .reason = input.reason,
        .now = input.now});
   for (const auto& call : cancelled) {
@@ -1054,6 +1059,7 @@ drogon::Task<void> CallEngine::attendAnswered(const CallSchema& call) const
     co_return;
   co_await cancelRinging({.response = *response,
                           .exceptUserId = call.userId,
+                          .onlyUserId = 0,
                           .reason = "attended",
                           .attendedBy = recipient.name,
                           .now = at});
@@ -1087,6 +1093,7 @@ drogon::Task<int64_t> CallEngine::advanceResponses(int64_t now) const
       co_await reach({.response = response,
                       .members = std::move(stepMembers),
                       .critical = false,
+                      .reason = ResponseReach::NextStep,
                       .now = now});
     }
     else {
@@ -1129,14 +1136,22 @@ CallEngine::verdict(const ResponseVerdictRequest& request) const
   if (request.verdict == ResponseVerdict::FalseAlarm) {
     co_await cancelRinging({.response = *fresh,
                             .exceptUserId = 0,
+                            .onlyUserId = 0,
                             .reason = "resolved",
                             .attendedBy = recipient.name,
                             .now = at});
   }
   else {
+    co_await cancelRinging({.response = *fresh,
+                            .exceptUserId = 0,
+                            .onlyUserId = request.userId,
+                            .reason = "attended",
+                            .attendedBy = recipient.name,
+                            .now = at});
     co_await reach({.response = *fresh,
                     .members = unreached(co_await responseRepository_.members(fresh->id)),
                     .critical = true,
+                    .reason = ResponseReach::Confirmed,
                     .now = at});
     co_await promptContacts({.response = *fresh, .confirmed = true, .now = at});
   }

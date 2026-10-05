@@ -1110,7 +1110,14 @@ TEST_CASE("it is real: everyone left is called now and the contacts are offered"
   CHECK(responseState(id) == "confirmed");
   CHECK(confirmed.response["showContacts"].asBool());
   CHECK(confirmed.response["emergencyNumber"].asString() == "105");
-  CHECK(ringingUsers() == std::vector<int64_t>{1, 2, 5, 6});
+  CHECK(ringingUsers() == std::vector<int64_t>{2, 5, 6});
+  bool lauraStopped = false;
+  for (const auto& cancel : harness.signal->of(SyncOperation::CallCancel))
+    lauraStopped = lauraStopped || (cancel.userId == 1 && cancel.info["reason"].asString() == "attended");
+  CHECK(lauraStopped);
+  const auto tomReached = noticesFor(harness, 2);
+  REQUIRE(tomReached.size() >= 2);
+  CHECK(tomReached.front().body.ends_with("Laura confirmed it is real."));
   const auto incoming = harness.signal->of(SyncOperation::CallIncoming);
   bool tomCritical = false;
   for (const auto& frame : incoming) {

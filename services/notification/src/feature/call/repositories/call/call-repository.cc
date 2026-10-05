@@ -154,7 +154,8 @@ CallRepository::cancelRingingForKey(const CallCancelForKeyInput& input) const
   const auto client = DbService::client();
   const auto rows = co_await client->execSqlCoro(std::string(CANCEL_RINGING_FOR_KEY),
                                                  input.reason, input.now,
-                                                 input.dedupeKey, input.exceptUserId);
+                                                 input.dedupeKey, input.exceptUserId,
+                                                 input.onlyUserId, input.onlyUserId);
   std::vector<CallCancelled> cancelled;
   cancelled.reserve(rows.size());
   for (const auto& row : rows)

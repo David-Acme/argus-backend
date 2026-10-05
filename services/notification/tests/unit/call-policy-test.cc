@@ -568,8 +568,15 @@ TEST_CASE("panic, duress and tamper read as what they are, and contacts are offe
        .confirmed = true, .confirmedBy = "Pedro"});
   CHECK(confirmed.title == "Confirmed alert");
   CHECK(confirmed.body == "Pedro confirmed it is real.");
-  CHECK(response_copy::escalationBody({.lang = "es", .summary = "Hay alguien."}) ==
+  CHECK(response_copy::escalationBody({.lang = "es", .summary = "Hay alguien.",
+                                       .reason = ResponseReach::NextStep, .confirmedBy = ""}) ==
         "Hay alguien. Nadie ha contestado todavía.");
+  CHECK(response_copy::escalationBody({.lang = "es", .summary = "Hay alguien.",
+                                       .reason = ResponseReach::Confirmed, .confirmedBy = "Lucía"}) ==
+        "Hay alguien. Lucía ha confirmado que es real.");
+  CHECK(response_copy::escalationBody({.lang = "en", .summary = "Someone is there.",
+                                       .reason = ResponseReach::Worse, .confirmedBy = ""}) ==
+        "Someone is there. It has got worse.");
 }
 
 TEST_CASE("a response plan parses defensively")
