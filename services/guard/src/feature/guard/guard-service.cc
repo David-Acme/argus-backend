@@ -3841,7 +3841,7 @@ GuardService::planRecipients(const PlanQuery& query)
        .trigger = *trigger,
        .indoor = indoor,
        .night = posture.mode == GuardMode::Night || hasReason(data, "night"),
-       .clearThreat = data.get("urgency", "").asString() == "critical",
+       .clearThreat = response_plan::clearThreat(data),
        .staffedNow = response_plan::staffedAt(schedule, local),
        .hasCamera = cameraId > 0,
        .stepSeconds = rows.setting.stepSeconds,

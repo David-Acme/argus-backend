@@ -81,6 +81,7 @@ struct ResponsePlan
 
 namespace response_plan
 {
+[[nodiscard]] bool clearThreat(const Json::Value& data);
 inline constexpr int kMaxStep = 32;
 
 std::vector<ResponseMember> members(const ResponseMembersInput& input);

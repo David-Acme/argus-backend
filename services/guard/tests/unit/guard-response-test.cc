@@ -641,3 +641,17 @@ TEST_CASE("the repository replaces a list in one go and keeps duty apart")
   CHECK(config.contacts.empty());
   CHECK(drogon::sync_wait(repository.forEnvironment(99999)).recipients.empty());
 }
+
+TEST_CASE("a watchlist face is a clear threat even below critical")
+{
+  Json::Value data(Json::objectValue);
+  data["urgency"] = "time_sensitive";
+  data["reasons"] = Json::Value(Json::arrayValue);
+  data["reasons"].append("night");
+  CHECK_FALSE(response_plan::clearThreat(data));
+  data["reasons"].append("watchlist");
+  CHECK(response_plan::clearThreat(data));
+  data["reasons"] = Json::Value(Json::arrayValue);
+  data["urgency"] = "critical";
+  CHECK(response_plan::clearThreat(data));
+}

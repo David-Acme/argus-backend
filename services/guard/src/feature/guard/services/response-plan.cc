@@ -282,3 +282,13 @@ bool response_plan::staffedAt(const GuardSchedule& schedule,
          (guard_schedule::inWindows(schedule.staffed, local) ||
           guard_schedule::inWindows(schedule.open, local));
 }
+
+bool response_plan::clearThreat(const Json::Value& data)
+{
+  if (data.get("urgency", "").asString() == "critical")
+    return true;
+  for (const auto& reason : data["reasons"])
+    if (reason.isString() && reason.asString() == "watchlist")
+      return true;
+  return false;
+}
