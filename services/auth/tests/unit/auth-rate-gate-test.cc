@@ -11,12 +11,28 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
-#include <thread>
 #include <unistd.h>
 
 namespace
 {
+class ManualClock
+{
+public:
+  [[nodiscard]] AuthRateGate::Clock reader() const
+  {
+    return [now = now_] { return *now; };
+  }
+
+  void advance(std::chrono::milliseconds step) { *now_ += step; }
+
+private:
+  std::shared_ptr<std::chrono::steady_clock::time_point> now_ =
+      std::make_shared<std::chrono::steady_clock::time_point>(
+          std::chrono::steady_clock::now());
+};
+
 
 std::string configPath(const std::string& stem)
 {
@@ -234,11 +250,15 @@ TEST_CASE("an expired window admits the key again")
   config.windowSeconds = 1;
   config.maxRequests = 1;
   AuthRateGate gate(config);
+  ManualClock clock;
+  gate.useClock(clock.reader());
 
   CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
   REQUIRE(gate.check(patchRequest("argus-app/1.0")));
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+  clock.advance(std::chrono::milliseconds(999));
+  REQUIRE(gate.check(patchRequest("argus-app/1.0")));
+  clock.advance(std::chrono::milliseconds(2));
   CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
   REQUIRE(gate.check(patchRequest("argus-app/1.0")));
 }
@@ -252,15 +272,19 @@ TEST_CASE("an expired lockout admits the key again")
   config.lockoutThreshold = 1;
   config.lockoutSeconds = 1;
   AuthRateGate gate(config);
+  ManualClock clock;
+  gate.useClock(clock.reader());
 
   CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
   gate.recordOutcome(patchRequest("argus-app/1.0"), refusal());
   REQUIRE(gate.check(patchRequest("argus-app/1.0")));
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  clock.advance(std::chrono::milliseconds(500));
   gate.recordOutcome(patchRequest("argus-app/1.0"), refusal());
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(600));
+  clock.advance(std::chrono::milliseconds(499));
+  REQUIRE(gate.check(patchRequest("argus-app/1.0")));
+  clock.advance(std::chrono::milliseconds(2));
   CHECK_FALSE(gate.check(patchRequest("argus-app/1.0")));
 }
 

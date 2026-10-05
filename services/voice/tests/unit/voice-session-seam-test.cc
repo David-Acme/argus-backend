@@ -6,6 +6,7 @@
 #include <config/config-service.hxx>
 
 #include <algorithm>
+#include <cmath>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -67,13 +68,25 @@ struct BlockingTts final : IVoiceTts
 
   void synthesizeStream(TtsRemoteStreamInput input) override
   {
-    std::mutex mutex;
-    std::condition_variable_any ready;
     std::unique_lock lock(mutex);
     entered.store(true);
-    ready.wait_for(lock, input.cancellation, std::chrono::seconds(3), [] { return false; });
+    ready.wait_for(lock, input.cancellation, std::chrono::seconds(3),
+                   [this] { return released; });
     cancelled.store(input.cancellation.stop_requested());
   }
+
+  void release()
+  {
+    {
+      std::scoped_lock lock(mutex);
+      released = true;
+    }
+    ready.notify_all();
+  }
+
+  std::mutex mutex;
+  std::condition_variable_any ready;
+  bool released{false};
 };
 
 struct ConfigBlockingTts final : IVoiceTts
@@ -199,31 +212,38 @@ struct BlockingLlm final : IVoiceLlm
 };
 
 
+constexpr float kFenceProb = 0.0421F;
+
 struct ScriptedVadModel final : VadModel
 {
-  explicit ScriptedVadModel(std::shared_ptr<std::atomic<int>> counter)
-      : windows(std::move(counter))
+  ScriptedVadModel(std::shared_ptr<std::atomic<int>> counter,
+                   std::shared_ptr<std::atomic<int>> fenceCounter)
+      : windows(std::move(counter)), fences(std::move(fenceCounter))
   {
   }
 
   float probability(std::span<const float> window) override
   {
     ++*windows;
+    if (std::abs(window.back() - kFenceProb) < 1e-3F)
+      ++*fences;
     return window.back();
   }
 
   void reset() override {}
 
   std::shared_ptr<std::atomic<int>> windows;
+  std::shared_ptr<std::atomic<int>> fences;
 };
 
 struct ScriptedVad final : IVoiceVad
 {
   std::shared_ptr<std::atomic<int>> windows = std::make_shared<std::atomic<int>>(0);
+  std::shared_ptr<std::atomic<int>> fences = std::make_shared<std::atomic<int>>(0);
 
   [[nodiscard]] std::unique_ptr<VadModel> createModel() const override
   {
-    return std::make_unique<ScriptedVadModel>(windows);
+    return std::make_unique<ScriptedVadModel>(windows, fences);
   }
 };
 
@@ -328,6 +348,20 @@ void feed(const FeedInput& input)
   input.service.feedPcm(input.sink, {.data = pcm.data(), .size = pcm.size()});
 }
 
+struct FenceInput
+{
+  VoiceSessionService& service;
+  VoiceSessionSink& sink;
+  const ScriptedVad& vad;
+};
+
+bool fence(const FenceInput& input)
+{
+  const int before = input.vad.fences->load();
+  feed({.service = input.service, .sink = input.sink, .prob = kFenceProb, .windows = 1});
+  return waitFor([&] { return input.vad.fences->load() > before; }, 3000);
+}
+
 argus::voice::v1::VoiceStart duplexStart()
 {
   argus::voice::v1::VoiceStart start;
@@ -389,6 +423,23 @@ struct VoiceSessionTestAccess
   static const IVoiceIdentity& identityOf(VoiceSessionService& service)
   {
     return service.identity_;
+  }
+
+  static bool armed(VoiceSessionService& service, VoiceSessionSink& sink)
+  {
+    return service.listenState(*sessionOf(service, sink)).armed;
+  }
+
+  static bool listening(VoiceSessionService& service, VoiceSessionSink& sink)
+  {
+    return service.listenState(*sessionOf(service, sink)).listening;
+  }
+
+  static bool turnRunning(VoiceSessionService& service, VoiceSessionSink& sink)
+  {
+    const auto session = sessionOf(service, sink);
+    std::scoped_lock lock(session->duplexMutex);
+    return session->turn.running;
   }
 };
 
@@ -836,12 +887,14 @@ TEST_CASE("A half-duplex session still drops PCM while the assistant speaks")
   CHECK(waitFor([&] { return tts.entered.load() && sess->speaking.load(); }, 1000));
 
   feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 4});
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  CHECK(vad.windows->load() == 0);
   {
     std::scoped_lock lock(sess->pcmMutex);
     CHECK(sess->pcmRing.size() == 0);
   }
+  tts.release();
+  CHECK(waitFor([&] { return !sess->speaking.load(); }, 3000));
+  REQUIRE(fence({.service = service, .sink = sink, .vad = vad}));
+  CHECK(vad.windows->load() == 1);
 
   service.stop(sink);
   CHECK_FALSE(sink.hasType("voice:turn"));
@@ -860,7 +913,7 @@ TEST_CASE("Sustained speech over the assistant interrupts its turn exactly once"
   FakeVoiceSink sink;
   service.start(sink, duplexStart());
   CHECK(waitFor([&] { return sink.hasType("voice:turn"); }, 1000));
-  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+  CHECK(waitFor([&] { return VoiceSessionTestAccess::armed(service, sink); }, 2000));
 
   feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 12});
   CHECK(waitFor([&] { return sink.hasType("voice:interrupted"); }, 2000));
@@ -910,15 +963,15 @@ TEST_CASE("Short or weak speech over the assistant does not interrupt it")
   FakeVoiceSink sink;
   service.start(sink, duplexStart());
   CHECK(waitFor([&] { return sink.hasType("voice:turn"); }, 1000));
-  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+  CHECK(waitFor([&] { return VoiceSessionTestAccess::armed(service, sink); }, 2000));
 
   for (int blip = 0; blip < 4; ++blip) {
     feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 7});
     feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 2});
   }
   feed({.service = service, .sink = sink, .prob = 0.6F, .windows = 30});
-  CHECK(waitFor([&] { return vad.windows->load() >= 66; }, 2000));
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  REQUIRE(fence({.service = service, .sink = sink, .vad = vad}));
+  CHECK(vad.windows->load() == 67);
 
   CHECK_FALSE(sink.hasType("voice:interrupted"));
   CHECK(tts.cancelled.load() == 0);
@@ -941,8 +994,8 @@ TEST_CASE("Nothing interrupts the assistant before the barge-in guard elapses")
   CHECK(waitFor([&] { return sink.hasType("voice:turn"); }, 1000));
 
   feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 24});
-  CHECK(waitFor([&] { return vad.windows->load() >= 24; }, 2000));
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  REQUIRE(fence({.service = service, .sink = sink, .vad = vad}));
+  CHECK(vad.windows->load() == 25);
 
   CHECK_FALSE(sink.hasType("voice:interrupted"));
   CHECK(tts.cancelled.load() == 0);
@@ -963,7 +1016,7 @@ TEST_CASE("voice:turn precedes the first audio of every duplex turn")
   FakeVoiceSink sink;
   service.start(sink, duplexStart());
   CHECK(waitFor([&] { return sink.hasType("voice:assistant"); }, 1000));
-  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+  CHECK(waitFor([&] { return !VoiceSessionTestAccess::listening(service, sink); }, 3000));
 
   feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 20});
   feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 14});
@@ -1071,6 +1124,7 @@ TEST_CASE("A note joins the next prompt and the LLM's app action reaches the cli
 
 TEST_CASE("A camera event is offered aloud once, while nobody is talking")
 {
+  DuplexConfig config(300);
   FakeStt stt;
   FakeTts tts;
   FakeLlm llm;
@@ -1100,12 +1154,10 @@ TEST_CASE("A camera event is offered aloud once, while nobody is talking")
   session.context(sink, cameraEvent("Patio"));
   for (int round = 0; round < 10; ++round)
     feed({.service = session, .sink = sink, .prob = 0.0F, .windows = 1});
-  CHECK_FALSE(waitFor([&] {
-    for (const auto& text : assistantTexts(sink))
-      if (text.find("cámara Patio") != std::string::npos)
-        return true;
-    return false;
-  }, 1500));
+  REQUIRE(fence({.service = session, .sink = sink, .vad = vad}));
+  CHECK_FALSE(std::ranges::any_of(assistantTexts(sink), [](const std::string& text) {
+    return text.find("cámara Patio") != std::string::npos;
+  }));
   session.stop(sink);
 }
 
@@ -1260,7 +1312,7 @@ TEST_CASE("A camera offer waits until the user has finished speaking")
   feed({.service = session, .sink = sink, .prob = 0.95F, .windows = 20});
   CHECK(waitFor([&] { return vad.windows->load() >= 20; }, 2000));
   session.context(sink, cameraEvent("Entrada"));
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  REQUIRE(fence({.service = session, .sink = sink, .vad = vad}));
   CHECK_FALSE(spokeText(sink, "cámara Entrada"));
   CHECK(stt.transcribeCalls.load() == 0);
 
@@ -1295,13 +1347,13 @@ TEST_CASE("Muting drops the half-said utterance instead of finishing it on unmut
   CHECK(waitFor([&] { return vad.windows->load() >= 20; }, 2000));
   session.mute(sink, true);
   feed({.service = session, .sink = sink, .prob = 0.0F, .windows = 14});
-  std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  CHECK(vad.windows->load() == 20);
 
   session.mute(sink, false);
+  REQUIRE(fence({.service = session, .sink = sink, .vad = vad}));
+  CHECK(vad.windows->load() == 21);
   feed({.service = session, .sink = sink, .prob = 0.0F, .windows = 14});
-  CHECK(waitFor([&] { return vad.windows->load() >= 34; }, 2000));
-  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  REQUIRE(fence({.service = session, .sink = sink, .vad = vad}));
+  CHECK(vad.windows->load() == 36);
   CHECK(stt.count() == 0);
   session.stop(sink);
 }
@@ -1586,7 +1638,8 @@ TEST_CASE("Speech that starts while Argus is finishing keeps its first syllables
 {
   DuplexConfig config(300);
   auto windows = std::make_shared<std::atomic<int>>(0);
-  VadService vad(std::make_unique<ScriptedVadModel>(windows));
+  VadService vad(std::make_unique<ScriptedVadModel>(
+      windows, std::make_shared<std::atomic<int>>(0)));
   const std::vector<float> onset(kWindow, 0.96F);
   const std::vector<float> speech(kWindow, 0.95F);
   const std::vector<float> silence(kWindow, 0.0F);
@@ -1844,8 +1897,8 @@ TEST_CASE("A blip the VAD discards closes its stream without a transcription")
 
   call.say(0.9F, 6);
   call.say(0.0F, 14);
-  REQUIRE(waitFor([&] { return call.vad.windows->load() >= 20; }));
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  REQUIRE(fence({.service = call.service, .sink = call.sink, .vad = call.vad}));
+  CHECK(call.vad.windows->load() == 21);
 
   CHECK_FALSE(call.sink.hasType("voice:stt"));
   CHECK(call.stt.unaryCalls.load() == 0);
@@ -1905,9 +1958,8 @@ TEST_CASE("A farewell drops the call's input and plays only the cached line")
     note.set_text("nota");
     return note;
   }());
-  std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  CHECK(second.size() == after);
   warmed.stop(second);
+  CHECK(second.size() == after);
   session.stop(sink);
 }
 

@@ -15,6 +15,7 @@ class AuthRateGate
 {
 public:
   using SessionOfRefreshToken = std::function<std::string(const std::string&)>;
+  using Clock = std::function<std::chrono::steady_clock::time_point()>;
 
   explicit AuthRateGate(AuthRateLimitConfig config,
                         SessionOfRefreshToken sessionOf = {});
@@ -24,6 +25,8 @@ public:
 
   void recordOutcome(const drogon::HttpRequestPtr& req,
                      const drogon::HttpResponsePtr& resp);
+
+  void useClock(Clock clock);
 
   static constexpr int kPeerCeilingFactor = 20;
   static constexpr int kIpv6GroupBits = 64;
@@ -59,6 +62,7 @@ private:
 
   AuthRateLimitConfig config_;
   SessionOfRefreshToken sessionOf_;
+  Clock clock_ = [] { return std::chrono::steady_clock::now(); };
   std::mutex mutex_;
   std::unordered_map<std::string, Entry> entries_;
 };

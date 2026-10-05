@@ -241,6 +241,7 @@ public:
       const argus::notification::v1::CreateNotificationsRequest& request,
       const argus::client::CallerIdentity&) const override
   {
+    entered.store(true);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
     calls.fetch_add(1);
     NotificationCreateResult result;
@@ -250,6 +251,7 @@ public:
   }
 
   mutable std::atomic<int> calls{0};
+  mutable std::atomic<bool> entered{false};
 };
 
 class GatedNotifications final : public NotificationClient
@@ -476,7 +478,8 @@ TEST_CASE("durable retries survive destroy, races and teardown")
         catch (const std::exception&) {
         }
       });
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      CHECK(waitUntil([&slow] { return slow.entered.load(); },
+                      std::chrono::seconds(10)));
     }
     worker.join();
     CHECK(slow.calls.load() == 1);

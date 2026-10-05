@@ -38,17 +38,18 @@ bool samePath(std::string_view lhs, std::string_view rhs)
            std::tolower(static_cast<unsigned char>(b));
   });
 }
-
-std::chrono::steady_clock::time_point now()
-{
-  return std::chrono::steady_clock::now();
-}
 }
 
 AuthRateGate::AuthRateGate(AuthRateLimitConfig config,
                            SessionOfRefreshToken sessionOf)
     : config_(config), sessionOf_(std::move(sessionOf))
 {
+}
+
+void AuthRateGate::useClock(Clock clock)
+{
+  std::scoped_lock lock(mutex_);
+  clock_ = std::move(clock);
 }
 
 bool AuthRateGate::enabled() const
@@ -116,7 +117,7 @@ AuthRateGate::check(const drogon::HttpRequestPtr& req)
 {
   if (!enabled() || guardedRoute(req).empty())
     return nullptr;
-  const auto at = now();
+  const auto at = clock_();
   const auto keys = gateKeys(req);
   if (std::ranges::all_of(keys, [this, at](const GateKey& key) { return admit(key, at); }))
     return nullptr;
@@ -142,7 +143,7 @@ void AuthRateGate::recordOutcome(const drogon::HttpRequestPtr& req,
       recordSuccess(key.key);
     return;
   }
-  const auto at = now();
+  const auto at = clock_();
   for (const auto& key : keys) {
     if (recordFailure(key, at))
       LOG_WARN << "Auth rate limit locked a " << guardedRoute(req)
