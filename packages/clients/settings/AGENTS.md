@@ -25,6 +25,15 @@ reaches a consumer through it. Its one consumer is `services/settings`.
   credential (`x-argus-credential` through `addCallerCredential`) and the
   wire-to-vocabulary mapping.
 
+- `SettingsClient` also carries the component and module data calls
+  (`componentStates`, `installComponent`, `cancelComponent`,
+  `removeComponent`, `moduleDataSummary`, `purgeModuleData`,
+  `verifyOwnerPin`); each returns `std::nullopt` when the owner answers
+  `UNIMPLEMENTED` and throws like the other calls otherwise.
+- `ModulesClient` (same config struct) reads argus-settings'
+  `Modules/ModuleStates`: `moduleStates()` → `ModuleStatesReply`. Services
+  read it at boot with their `[modules] target`/`credential`.
+
 ## Rules
 
 - The constructor is the gate: an empty target, an empty credential, a

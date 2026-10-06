@@ -52,6 +52,35 @@ is `src/`: `<settings/settings-rpc.hxx>`, `<settings/settings-errors.hxx>`.
   choice with `REJECTION_REASON_NOT_INSTALLED` (re-sending the current value
   is still accepted, so the owner can retry an install).
 
+- Component and module calls (additive): `ComponentStates`,
+  `InstallComponent`, `CancelComponent`, `RemoveComponent` (a
+  `ComponentSpec`: id, `download`/`provisioned`, files with path, url, size
+  and SHA-256, host command → a `ComponentStatus`: state installed, missing,
+  installing, failed or host_only, bytes present/total, `ready`, host command,
+  reason), `ModuleDataSummary` and `PurgeModuleData` (by module id →
+  `[{kind, count}]` and bytes, or purged + reason) and `VerifyOwnerPin` (user
+  id + PIN → no_pin, accepted, required, invalid, locked). An owner registers
+  nothing for them by default and answers `UNIMPLEMENTED`; it opts in with
+  `SettingsRpcService::attachComponents(ComponentHost&)`,
+  `attachModuleData(ModuleDataHost&)` and `attachOwnerPin(OwnerPinHost&)`.
+  The C++ vocabulary is header-only in
+  `src/settings/component-vocabulary.hxx`; `component-wire.{hxx,cc}` maps it
+  to and from the wire.
+- `DiskComponentHost` (`src/settings/component-host.{hxx,cc}`) is the shared
+  owner side: the state comes from the files under the owner's models root (a
+  download is complete when its size matches, a provisioned file when it
+  exists; `<file>.part` counts as bytes present), installs run one
+  `std::jthread` per component through the `ComponentFetch` the owner passes
+  (the `lib/http` downloader: `.part` + sidecar, `Range` resume, SHA-256,
+  atomic rename; it returns an empty string or a reason code), cancel stops
+  the thread through its `stop_token` and keeps the partial file, remove
+  deletes a download's files and partials. Specs are refused (`INVALID_ARGUMENT`)
+  when the id is not one the owner declared, a path is absolute or climbs out,
+  or a download lacks a `https` URL or a SHA-256.
+- `Modules` is a second service in the same proto, served only by
+  argus-settings: `ModuleStates` → the enabled set
+  (`{id, enabled, lifecycle, data_purged_at}`, `version`, `settled`).
+
 ## Rules
 
 - A service exposes only what its registry declares. Paths, ports,

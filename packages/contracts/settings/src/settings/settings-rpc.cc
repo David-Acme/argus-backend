@@ -2,6 +2,7 @@
 
 #include <config/config-service.hxx>
 #include <response/response-rpc.hxx>
+#include <settings/component-wire.hxx>
 #include <settings/settings-errors.hxx>
 
 #include <stdexcept>
@@ -100,6 +101,18 @@ grpc::ServerUnaryReactor* finish(grpc::CallbackServerContext* context, grpc::Sta
   reactor->Finish(std::move(status));
   return reactor;
 }
+
+constexpr int kMaxComponents = 32;
+
+grpc::Status unimplemented()
+{
+  return {grpc::StatusCode::UNIMPLEMENTED, "This owner installs no components"};
+}
+
+grpc::Status malformed()
+{
+  return argus::response::toRpcStatus(ResponseException(SettingsErrors::InvalidRequest));
+}
 }
 
 std::vector<argus::client::CallerCredential> settingsCallers(
@@ -161,6 +174,132 @@ grpc::ServerUnaryReactor* SettingsRpcService::Update(grpc::CallbackServerContext
   if (marks && result.rejected.empty())
     response->set_profile_recorded(input_.registry->recordProfile(markerFrom(request->profile())));
   fillCatalog(*response->mutable_catalog());
+  return finish(context, grpc::Status::OK);
+}
+
+void SettingsRpcService::attachComponents(ComponentHost& host)
+{
+  components_ = &host;
+}
+
+grpc::ServerUnaryReactor* SettingsRpcService::ComponentStates(grpc::CallbackServerContext* context,
+                                                              const wire::ComponentStatesRequest* request,
+                                                              wire::ComponentStatesResponse* response)
+{
+  if (!argus::client::authorizeCaller(context, input_.credentials))
+    return finish(context, argus::response::toRpcStatus(ResponseException(SettingsErrors::Unauthorized)));
+  if (components_ == nullptr)
+    return finish(context, unimplemented());
+  if (request->components_size() > kMaxComponents)
+    return finish(context, malformed());
+  try {
+    for (const auto& spec : request->components())
+      component_wire::fill(*response->add_components(), components_->status(component_wire::specFrom(spec)));
+  }
+  catch (const std::invalid_argument&) {
+    response->clear_components();
+    return finish(context, malformed());
+  }
+  return finish(context, grpc::Status::OK);
+}
+
+grpc::ServerUnaryReactor* SettingsRpcService::componentCall(grpc::CallbackServerContext* context,
+                                                            const wire::ComponentRequest& request,
+                                                            wire::ComponentResponse& response,
+                                                            ComponentAction action)
+{
+  if (!argus::client::authorizeCaller(context, input_.credentials))
+    return finish(context, argus::response::toRpcStatus(ResponseException(SettingsErrors::Unauthorized)));
+  if (components_ == nullptr)
+    return finish(context, unimplemented());
+  try {
+    component_wire::fill(*response.mutable_status(),
+                         (components_->*action)(component_wire::specFrom(request.component())));
+  }
+  catch (const std::invalid_argument&) {
+    return finish(context, malformed());
+  }
+  return finish(context, grpc::Status::OK);
+}
+
+grpc::ServerUnaryReactor* SettingsRpcService::InstallComponent(grpc::CallbackServerContext* context,
+                                                               const wire::ComponentRequest* request,
+                                                               wire::ComponentResponse* response)
+{
+  return componentCall(context, *request, *response, &ComponentHost::install);
+}
+
+grpc::ServerUnaryReactor* SettingsRpcService::CancelComponent(grpc::CallbackServerContext* context,
+                                                              const wire::ComponentRequest* request,
+                                                              wire::ComponentResponse* response)
+{
+  return componentCall(context, *request, *response, &ComponentHost::cancel);
+}
+
+grpc::ServerUnaryReactor* SettingsRpcService::RemoveComponent(grpc::CallbackServerContext* context,
+                                                               const wire::ComponentRequest* request,
+                                                               wire::ComponentResponse* response)
+{
+  return componentCall(context, *request, *response, &ComponentHost::remove);
+}
+
+void SettingsRpcService::attachModuleData(ModuleDataHost& host)
+{
+  moduleData_ = &host;
+}
+
+grpc::ServerUnaryReactor* SettingsRpcService::ModuleDataSummary(grpc::CallbackServerContext* context,
+                                                                const wire::ModuleDataRequest* request,
+                                                                wire::ModuleDataSummaryResponse* response)
+{
+  if (!argus::client::authorizeCaller(context, input_.credentials))
+    return finish(context, argus::response::toRpcStatus(ResponseException(SettingsErrors::Unauthorized)));
+  if (moduleData_ == nullptr)
+    return finish(context, {grpc::StatusCode::UNIMPLEMENTED, "This owner keeps no module data"});
+  if (request->module_id().empty())
+    return finish(context, malformed());
+  const auto summary = moduleData_->summary(request->module_id());
+  for (const auto& item : summary.items) {
+    auto* entry = response->add_items();
+    entry->set_kind(item.kind);
+    entry->set_count(item.count);
+  }
+  response->set_bytes(summary.bytes);
+  return finish(context, grpc::Status::OK);
+}
+
+grpc::ServerUnaryReactor* SettingsRpcService::PurgeModuleData(grpc::CallbackServerContext* context,
+                                                              const wire::ModuleDataRequest* request,
+                                                              wire::PurgeModuleDataResponse* response)
+{
+  if (!argus::client::authorizeCaller(context, input_.credentials))
+    return finish(context, argus::response::toRpcStatus(ResponseException(SettingsErrors::Unauthorized)));
+  if (moduleData_ == nullptr)
+    return finish(context, {grpc::StatusCode::UNIMPLEMENTED, "This owner keeps no module data"});
+  if (request->module_id().empty())
+    return finish(context, malformed());
+  const auto outcome = moduleData_->purge(request->module_id());
+  response->set_purged(outcome.purged);
+  response->set_reason(outcome.reason);
+  return finish(context, grpc::Status::OK);
+}
+
+void SettingsRpcService::attachOwnerPin(OwnerPinHost& host)
+{
+  ownerPin_ = &host;
+}
+
+grpc::ServerUnaryReactor* SettingsRpcService::VerifyOwnerPin(grpc::CallbackServerContext* context,
+                                                             const wire::VerifyOwnerPinRequest* request,
+                                                             wire::VerifyOwnerPinResponse* response)
+{
+  if (!argus::client::authorizeCaller(context, input_.credentials))
+    return finish(context, argus::response::toRpcStatus(ResponseException(SettingsErrors::Unauthorized)));
+  if (ownerPin_ == nullptr)
+    return finish(context, {grpc::StatusCode::UNIMPLEMENTED, "This owner keeps no PIN"});
+  if (request->user_id() <= 0)
+    return finish(context, malformed());
+  response->set_verdict(component_wire::verdictOf(ownerPin_->verify({.userId = request->user_id(), .pin = request->pin()})));
   return finish(context, grpc::Status::OK);
 }
 

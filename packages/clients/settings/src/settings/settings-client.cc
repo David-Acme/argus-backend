@@ -4,6 +4,7 @@
 #include <grpc/grpc-client-base.hxx>
 #include <response/response-rpc.hxx>
 #include <settings.grpc.pb.h>
+#include <settings/component-wire.hxx>
 #include <settings/settings-errors.hxx>
 
 #include <optional>
@@ -19,6 +20,21 @@ void check(const grpc::Status& status)
 {
   if (!status.ok())
     throw argus::response::fromRpcStatus(status);
+}
+
+bool implemented(const grpc::Status& status)
+{
+  if (status.error_code() == grpc::StatusCode::UNIMPLEMENTED)
+    return false;
+  check(status);
+  return true;
+}
+
+void checkConfig(const SettingsClientConfig& config)
+{
+  if (config.target.empty() || config.credential.empty() || config.timeout.count() <= 0 ||
+      config.timeout > kMaxTimeout)
+    throw ResponseException(400, SettingsErrors::InvalidRequest);
 }
 
 std::optional<SettingType> typeOf(wire::SettingType type)
@@ -163,9 +179,7 @@ struct SettingsClient::Impl
 
 SettingsClient::SettingsClient(SettingsClientConfig config)
 {
-  if (config.target.empty() || config.credential.empty() || config.timeout.count() <= 0 ||
-      config.timeout > kMaxTimeout)
-    throw ResponseException(400, SettingsErrors::InvalidRequest);
+  checkConfig(config);
   auto stub = wire::Settings::NewStub(argus::client::makeChannel(config.target));
   impl_ = std::make_unique<Impl>(Impl{.config = std::move(config), .stub = std::move(stub)});
 }
@@ -215,5 +229,132 @@ SettingsUpdateReply SettingsClient::update(const std::vector<SettingChange>& cha
   reply.rejected.reserve(static_cast<std::size_t>(response.rejected_size()));
   for (const auto& rejection : response.rejected())
     reply.rejected.push_back({.key = rejection.key(), .reason = reasonOf(rejection.reason())});
+  return reply;
+}
+
+std::optional<std::vector<ComponentStatus>> SettingsClient::componentStates(
+    const std::vector<ComponentSpec>& components) const
+{
+  grpc::ClientContext context;
+  impl_->prepare(context);
+  wire::ComponentStatesRequest request;
+  for (const auto& component : components)
+    component_wire::fill(*request.add_components(), component);
+  wire::ComponentStatesResponse response;
+  if (!implemented(impl_->stub->ComponentStates(&context, request, &response)))
+    return std::nullopt;
+  std::vector<ComponentStatus> states;
+  states.reserve(static_cast<std::size_t>(response.components_size()));
+  for (const auto& status : response.components())
+    states.push_back(component_wire::statusFrom(status));
+  return states;
+}
+
+std::optional<ComponentStatus> SettingsClient::installComponent(const ComponentSpec& component) const
+{
+  grpc::ClientContext context;
+  impl_->prepare(context);
+  wire::ComponentRequest request;
+  component_wire::fill(*request.mutable_component(), component);
+  wire::ComponentResponse response;
+  if (!implemented(impl_->stub->InstallComponent(&context, request, &response)))
+    return std::nullopt;
+  return component_wire::statusFrom(response.status());
+}
+
+std::optional<ComponentStatus> SettingsClient::cancelComponent(const ComponentSpec& component) const
+{
+  grpc::ClientContext context;
+  impl_->prepare(context);
+  wire::ComponentRequest request;
+  component_wire::fill(*request.mutable_component(), component);
+  wire::ComponentResponse response;
+  if (!implemented(impl_->stub->CancelComponent(&context, request, &response)))
+    return std::nullopt;
+  return component_wire::statusFrom(response.status());
+}
+
+std::optional<ComponentStatus> SettingsClient::removeComponent(const ComponentSpec& component) const
+{
+  grpc::ClientContext context;
+  impl_->prepare(context);
+  wire::ComponentRequest request;
+  component_wire::fill(*request.mutable_component(), component);
+  wire::ComponentResponse response;
+  if (!implemented(impl_->stub->RemoveComponent(&context, request, &response)))
+    return std::nullopt;
+  return component_wire::statusFrom(response.status());
+}
+
+std::optional<ModuleDataSummary> SettingsClient::moduleDataSummary(const std::string& moduleId) const
+{
+  grpc::ClientContext context;
+  impl_->prepare(context);
+  wire::ModuleDataRequest request;
+  request.set_module_id(moduleId);
+  wire::ModuleDataSummaryResponse response;
+  if (!implemented(impl_->stub->ModuleDataSummary(&context, request, &response)))
+    return std::nullopt;
+  ModuleDataSummary summary{.items = {}, .bytes = response.bytes()};
+  summary.items.reserve(static_cast<std::size_t>(response.items_size()));
+  for (const auto& item : response.items())
+    summary.items.push_back({.kind = item.kind(), .count = item.count()});
+  return summary;
+}
+
+std::optional<ModuleDataPurge> SettingsClient::purgeModuleData(const std::string& moduleId) const
+{
+  grpc::ClientContext context;
+  impl_->prepare(context);
+  wire::ModuleDataRequest request;
+  request.set_module_id(moduleId);
+  wire::PurgeModuleDataResponse response;
+  if (!implemented(impl_->stub->PurgeModuleData(&context, request, &response)))
+    return std::nullopt;
+  return ModuleDataPurge{.purged = response.purged(), .reason = response.reason()};
+}
+
+std::optional<PinVerdict> SettingsClient::verifyOwnerPin(std::int64_t userId, const std::string& pin) const
+{
+  grpc::ClientContext context;
+  impl_->prepare(context);
+  wire::VerifyOwnerPinRequest request;
+  request.set_user_id(userId);
+  request.set_pin(pin);
+  wire::VerifyOwnerPinResponse response;
+  if (!implemented(impl_->stub->VerifyOwnerPin(&context, request, &response)))
+    return std::nullopt;
+  return component_wire::verdictFrom(response.verdict());
+}
+
+struct ModulesClient::Impl
+{
+  SettingsClientConfig config;
+  std::unique_ptr<wire::Modules::Stub> stub;
+};
+
+ModulesClient::ModulesClient(SettingsClientConfig config)
+{
+  checkConfig(config);
+  auto stub = wire::Modules::NewStub(argus::client::makeChannel(config.target));
+  impl_ = std::make_unique<Impl>(Impl{.config = std::move(config), .stub = std::move(stub)});
+}
+
+ModulesClient::~ModulesClient() = default;
+
+ModuleStatesReply ModulesClient::moduleStates() const
+{
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() + impl_->config.timeout);
+  argus::client::addCallerCredential(context, impl_->config.credential);
+  wire::ModuleStatesResponse response;
+  check(impl_->stub->ModuleStates(&context, wire::ModuleStatesRequest{}, &response));
+  ModuleStatesReply reply{.modules = {}, .version = response.version(), .settled = response.settled()};
+  reply.modules.reserve(static_cast<std::size_t>(response.modules_size()));
+  for (const auto& module : response.modules())
+    reply.modules.push_back({.id = module.id(),
+                             .enabled = module.enabled(),
+                             .lifecycle = module.lifecycle(),
+                             .dataPurgedAt = module.data_purged_at()});
   return reply;
 }

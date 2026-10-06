@@ -115,7 +115,125 @@ message UpdateSettingsResponse {
   bool profile_recorded = 4;
 }
 
+enum ComponentSource {
+  COMPONENT_SOURCE_UNSPECIFIED = 0;
+  COMPONENT_SOURCE_DOWNLOAD = 1;
+  COMPONENT_SOURCE_PROVISIONED = 2;
+}
+
+enum ComponentState {
+  COMPONENT_STATE_UNSPECIFIED = 0;
+  COMPONENT_STATE_INSTALLED = 1;
+  COMPONENT_STATE_MISSING = 2;
+  COMPONENT_STATE_INSTALLING = 3;
+  COMPONENT_STATE_FAILED = 4;
+  COMPONENT_STATE_HOST_ONLY = 5;
+}
+
+message ComponentFile {
+  string path = 1;
+  string url = 2;
+  int64 size_bytes = 3;
+  string sha256 = 4;
+}
+
+message ComponentSpec {
+  string id = 1;
+  ComponentSource source = 2;
+  repeated ComponentFile files = 3;
+  string host_command = 4;
+}
+
+message ComponentStatus {
+  string id = 1;
+  ComponentState state = 2;
+  int64 bytes_present = 3;
+  int64 bytes_total = 4;
+  bool ready = 5;
+  string host_command = 6;
+  string reason = 7;
+}
+
+message ComponentStatesRequest {
+  repeated ComponentSpec components = 1;
+}
+
+message ComponentStatesResponse {
+  repeated ComponentStatus components = 1;
+}
+
+message ComponentRequest {
+  ComponentSpec component = 1;
+}
+
+message ComponentResponse {
+  ComponentStatus status = 1;
+}
+
+message ModuleDataRequest {
+  string module_id = 1;
+}
+
+message ModuleDataItem {
+  string kind = 1;
+  int64 count = 2;
+}
+
+message ModuleDataSummaryResponse {
+  repeated ModuleDataItem items = 1;
+  int64 bytes = 2;
+}
+
+message PurgeModuleDataResponse {
+  bool purged = 1;
+  string reason = 2;
+}
+
+enum PinVerdict {
+  PIN_VERDICT_UNSPECIFIED = 0;
+  PIN_VERDICT_NO_PIN = 1;
+  PIN_VERDICT_ACCEPTED = 2;
+  PIN_VERDICT_REQUIRED = 3;
+  PIN_VERDICT_INVALID = 4;
+  PIN_VERDICT_LOCKED = 5;
+}
+
+message VerifyOwnerPinRequest {
+  int64 user_id = 1;
+  string pin = 2;
+}
+
+message VerifyOwnerPinResponse {
+  PinVerdict verdict = 1;
+}
+
+message ModuleStatesRequest {}
+
+message ModuleEnabled {
+  string id = 1;
+  bool enabled = 2;
+  string lifecycle = 3;
+  int64 data_purged_at = 4;
+}
+
+message ModuleStatesResponse {
+  repeated ModuleEnabled modules = 1;
+  int64 version = 2;
+  bool settled = 3;
+}
+
 service Settings {
   rpc List(ListSettingsRequest) returns (SettingsCatalog);
   rpc Update(UpdateSettingsRequest) returns (UpdateSettingsResponse);
+  rpc ComponentStates(ComponentStatesRequest) returns (ComponentStatesResponse);
+  rpc InstallComponent(ComponentRequest) returns (ComponentResponse);
+  rpc CancelComponent(ComponentRequest) returns (ComponentResponse);
+  rpc RemoveComponent(ComponentRequest) returns (ComponentResponse);
+  rpc ModuleDataSummary(ModuleDataRequest) returns (ModuleDataSummaryResponse);
+  rpc PurgeModuleData(ModuleDataRequest) returns (PurgeModuleDataResponse);
+  rpc VerifyOwnerPin(VerifyOwnerPinRequest) returns (VerifyOwnerPinResponse);
+}
+
+service Modules {
+  rpc ModuleStates(ModuleStatesRequest) returns (ModuleStatesResponse);
 }

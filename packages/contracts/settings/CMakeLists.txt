@@ -11,6 +11,9 @@ argus_contracts(NAME settings
     INCLUDES src
     SOURCES
         src/settings/settings-errors.hxx
+        src/settings/component-vocabulary.hxx
+        src/settings/module-data-host.hxx
+        src/settings/owner-pin-host.hxx
     DEPENDS argus::lib::errors)
 
 if(NOT COMMAND argus_response_rpc_contract)
@@ -33,6 +36,10 @@ function(argus_settings_rpc_contract)
             PROTO ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/settings.proto
             SOURCES ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/settings/settings-rpc.cc
                     ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/settings/settings-rpc.hxx
+                    ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/settings/component-wire.cc
+                    ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/settings/component-wire.hxx
+                    ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/settings/component-host.cc
+                    ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/settings/component-host.hxx
             INCLUDES ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src
             DEPENDS argus::contracts::response-wire
                     argus::contracts::settings
@@ -56,6 +63,12 @@ target_link_libraries(settings-contract-rpc-test PRIVATE
     argus::contracts::settings-wire doctest::doctest)
 target_compile_options(settings-contract-rpc-test PRIVATE -Wall -Wextra)
 add_test(NAME settings-contract-rpc-test COMMAND settings-contract-rpc-test)
+
+add_executable(component-host-test tests/unit/component-host-test.cc)
+target_link_libraries(component-host-test PRIVATE
+    argus::contracts::settings-wire doctest::doctest)
+target_compile_options(component-host-test PRIVATE -Wall -Wextra)
+add_test(NAME component-host-test COMMAND component-host-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

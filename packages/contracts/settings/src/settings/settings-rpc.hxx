@@ -2,6 +2,9 @@
 
 #include <config/settings-registry.hxx>
 #include <grpc/grpc-server-identity.hxx>
+#include <settings/component-host.hxx>
+#include <settings/module-data-host.hxx>
+#include <settings/owner-pin-host.hxx>
 #include <settings.grpc.pb.h>
 
 #include <string>
@@ -33,9 +36,46 @@ public:
   grpc::ServerUnaryReactor* Update(grpc::CallbackServerContext* context,
                                    const argus::settings::v1::UpdateSettingsRequest* request,
                                    argus::settings::v1::UpdateSettingsResponse* response) override;
+  grpc::ServerUnaryReactor* ComponentStates(grpc::CallbackServerContext* context,
+                                            const argus::settings::v1::ComponentStatesRequest* request,
+                                            argus::settings::v1::ComponentStatesResponse* response) override;
+  grpc::ServerUnaryReactor* InstallComponent(grpc::CallbackServerContext* context,
+                                             const argus::settings::v1::ComponentRequest* request,
+                                             argus::settings::v1::ComponentResponse* response) override;
+  grpc::ServerUnaryReactor* CancelComponent(grpc::CallbackServerContext* context,
+                                            const argus::settings::v1::ComponentRequest* request,
+                                            argus::settings::v1::ComponentResponse* response) override;
+  grpc::ServerUnaryReactor* RemoveComponent(grpc::CallbackServerContext* context,
+                                             const argus::settings::v1::ComponentRequest* request,
+                                             argus::settings::v1::ComponentResponse* response) override;
+
+  grpc::ServerUnaryReactor* ModuleDataSummary(grpc::CallbackServerContext* context,
+                                              const argus::settings::v1::ModuleDataRequest* request,
+                                              argus::settings::v1::ModuleDataSummaryResponse* response) override;
+  grpc::ServerUnaryReactor* PurgeModuleData(grpc::CallbackServerContext* context,
+                                            const argus::settings::v1::ModuleDataRequest* request,
+                                            argus::settings::v1::PurgeModuleDataResponse* response) override;
+
+  void attachComponents(ComponentHost& host);
+  grpc::ServerUnaryReactor* VerifyOwnerPin(grpc::CallbackServerContext* context,
+                                           const argus::settings::v1::VerifyOwnerPinRequest* request,
+                                           argus::settings::v1::VerifyOwnerPinResponse* response) override;
+
+  void attachModuleData(ModuleDataHost& host);
+  void attachOwnerPin(OwnerPinHost& host);
 
 private:
+  using ComponentAction = ComponentStatus (ComponentHost::*)(const ComponentSpec&);
+
+  grpc::ServerUnaryReactor* componentCall(grpc::CallbackServerContext* context,
+                                          const argus::settings::v1::ComponentRequest& request,
+                                          argus::settings::v1::ComponentResponse& response,
+                                          ComponentAction action);
+
   void fillCatalog(argus::settings::v1::SettingsCatalog& catalog) const;
 
   SettingsRpcInput input_;
+  ComponentHost* components_{nullptr};
+  ModuleDataHost* moduleData_{nullptr};
+  OwnerPinHost* ownerPin_{nullptr};
 };

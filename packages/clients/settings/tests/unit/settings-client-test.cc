@@ -3,6 +3,9 @@
 
 #include <config/config-service.hxx>
 #include <errors/response-exception.hxx>
+#include <settings/component-host.hxx>
+#include <settings/module-data-host.hxx>
+#include <settings/owner-pin-host.hxx>
 #include <settings/settings-client.hxx>
 #include <settings/settings-rpc.hxx>
 
@@ -267,4 +270,162 @@ TEST_CASE("the catalog carries units, the config path, capabilities and a profil
   }
   CHECK(kept.profile->id == "balanced");
   std::filesystem::remove(configPath());
+}
+
+TEST_CASE("component calls read an owner's host and an owner without one answers nothing")
+{
+  loadConfig("[tts]\nspeed = 1.0\n");
+  Owner owner;
+  const SettingsClient client({.target = owner.target(), .credential = kSecret, .timeout = std::chrono::seconds(5)});
+  const ComponentSpec spec{.id = "voice-tts",
+                           .source = ComponentSource::Provisioned,
+                           .files = {{.path = "tts/model.onnx", .url = {}, .sizeBytes = 3, .sha256 = {}}},
+                           .hostCommand = "services/tts/scripts/provision.sh"};
+
+  CHECK_FALSE(client.componentStates({spec}).has_value());
+  CHECK_FALSE(client.installComponent(spec).has_value());
+
+  const auto models = std::filesystem::temp_directory_path() / "argus-settings-client-components";
+  std::filesystem::create_directories(models / "tts");
+  std::ofstream(models / "tts/model.onnx") << "abc";
+  DiskComponentHost host({.modelsDir = models, .owned = {"voice-tts"}, .fetch = {}, .ready = {}});
+  owner.service.attachComponents(host);
+
+  const auto states = client.componentStates({spec}).value_or(std::vector<ComponentStatus>{});
+  REQUIRE(states.size() == 1);
+  CHECK(states.front().state == ComponentState::Installed);
+  CHECK(states.front().bytesPresent == 3);
+  CHECK(states.front().ready);
+  const auto cancelled = client.cancelComponent(spec);
+  CHECK(cancelled.has_value());
+  CHECK(cancelled.value_or(ComponentStatus{}).state == ComponentState::Installed);
+  std::filesystem::remove_all(models);
+}
+
+namespace
+{
+class FakeModules final : public argus::settings::v1::Modules::CallbackService
+{
+public:
+  grpc::ServerUnaryReactor* ModuleStates(grpc::CallbackServerContext* context,
+                                         const argus::settings::v1::ModuleStatesRequest*,
+                                         argus::settings::v1::ModuleStatesResponse* response) override
+  {
+    auto* reactor = context->DefaultReactor();
+    if (argus::client::metadata(context, argus::client::kCallerCredentialKey) != kSecret) {
+      reactor->Finish({grpc::StatusCode::UNAUTHENTICATED, "no"});
+      return reactor;
+    }
+    auto* module = response->add_modules();
+    module->set_id("surveillance");
+    module->set_enabled(true);
+    response->set_version(7);
+    response->set_settled(true);
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+  }
+};
+}
+
+TEST_CASE("the modules client reads the enabled set")
+{
+  FakeModules service;
+  int port = 0;
+  grpc::ServerBuilder builder;
+  builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+  builder.RegisterService(&service);
+  const auto server = builder.BuildAndStart();
+  const std::string target = "127.0.0.1:" + std::to_string(port);
+
+  const ModulesClient client({.target = target, .credential = kSecret, .timeout = std::chrono::seconds(5)});
+  const auto reply = client.moduleStates();
+  REQUIRE(reply.modules.size() == 1);
+  CHECK(reply.modules.front().id == "surveillance");
+  CHECK(reply.modules.front().enabled);
+  CHECK(reply.version == 7);
+  CHECK(reply.settled);
+
+  const ModulesClient stranger({.target = target, .credential = "wrong", .timeout = std::chrono::seconds(5)});
+  CHECK(statusOf([&stranger] { static_cast<void>(stranger.moduleStates()); }) == 401);
+  CHECK_THROWS(ModulesClient({.target = "", .credential = kSecret, .timeout = std::chrono::seconds(5)}));
+  server->Shutdown();
+}
+
+namespace
+{
+class FakeModuleData final : public ModuleDataHost
+{
+public:
+  [[nodiscard]] ModuleDataSummary summary(const std::string& moduleId) const override
+  {
+    if (moduleId != "surveillance")
+      return {};
+    return {.items = {{.kind = "camera", .count = 2}, {.kind = "event", .count = 40}}, .bytes = 1024};
+  }
+
+  ModuleDataPurge purge(const std::string& moduleId) override
+  {
+    purged = moduleId;
+    return {.purged = true, .reason = {}};
+  }
+
+  std::string purged;
+};
+}
+
+TEST_CASE("module data calls answer nothing without a host and report and purge with one")
+{
+  loadConfig("[tts]\nspeed = 1.0\n");
+  Owner owner;
+  const SettingsClient client({.target = owner.target(), .credential = kSecret, .timeout = std::chrono::seconds(5)});
+  CHECK_FALSE(client.moduleDataSummary("surveillance").has_value());
+  CHECK_FALSE(client.purgeModuleData("surveillance").has_value());
+
+  FakeModuleData data;
+  owner.service.attachModuleData(data);
+  const auto reported = client.moduleDataSummary("surveillance");
+  CHECK(reported.has_value());
+  const auto summary = reported.value_or(ModuleDataSummary{});
+  REQUIRE(summary.items.size() == 2);
+  CHECK(summary.items[1].kind == "event");
+  CHECK(summary.items[1].count == 40);
+  CHECK(summary.bytes == 1024);
+  CHECK_FALSE(summary.empty());
+  const auto empty = client.moduleDataSummary("productivity");
+  CHECK(empty.has_value());
+  CHECK(empty.value_or(ModuleDataSummary{.items = {{.kind = "x", .count = 1}}, .bytes = 1}).empty());
+
+  const auto purge = client.purgeModuleData("surveillance");
+  CHECK(purge.value_or(ModuleDataPurge{}).purged);
+  CHECK(data.purged == "surveillance");
+  CHECK(statusOf([&client] { static_cast<void>(client.purgeModuleData("")); }) == 400);
+}
+
+namespace
+{
+class FakeOwnerPin final : public OwnerPinHost
+{
+public:
+  PinVerdict verify(const OwnerPinCheck& check) override
+  {
+    if (check.pin.empty())
+      return PinVerdict::Required;
+    return check.pin == "2468" ? PinVerdict::Accepted : PinVerdict::Invalid;
+  }
+};
+}
+
+TEST_CASE("the owner PIN check answers nothing without a host and the guard's verdict with one")
+{
+  loadConfig("[tts]\nspeed = 1.0\n");
+  Owner owner;
+  const SettingsClient client({.target = owner.target(), .credential = kSecret, .timeout = std::chrono::seconds(5)});
+  CHECK_FALSE(client.verifyOwnerPin(1, "2468").has_value());
+
+  FakeOwnerPin pin;
+  owner.service.attachOwnerPin(pin);
+  CHECK(client.verifyOwnerPin(1, "2468") == PinVerdict::Accepted);
+  CHECK(client.verifyOwnerPin(1, "0000") == PinVerdict::Invalid);
+  CHECK(client.verifyOwnerPin(1, "") == PinVerdict::Required);
+  CHECK(statusOf([&client] { static_cast<void>(client.verifyOwnerPin(0, "2468")); }) == 400);
 }

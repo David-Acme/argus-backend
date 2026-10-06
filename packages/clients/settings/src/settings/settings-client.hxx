@@ -1,6 +1,7 @@
 #pragma once
 
 #include <config/settings-registry.hxx>
+#include <settings/component-vocabulary.hxx>
 
 #include <chrono>
 #include <memory>
@@ -44,6 +45,30 @@ public:
   [[nodiscard]] SettingsUpdateReply update(const std::vector<SettingChange>& changes) const;
   [[nodiscard]] SettingsUpdateReply update(const std::vector<SettingChange>& changes,
                                            const std::optional<ProfileMarker>& profile) const;
+
+  [[nodiscard]] std::optional<std::vector<ComponentStatus>> componentStates(
+      const std::vector<ComponentSpec>& components) const;
+  [[nodiscard]] std::optional<ComponentStatus> installComponent(const ComponentSpec& component) const;
+  [[nodiscard]] std::optional<ComponentStatus> cancelComponent(const ComponentSpec& component) const;
+  [[nodiscard]] std::optional<ComponentStatus> removeComponent(const ComponentSpec& component) const;
+  [[nodiscard]] std::optional<ModuleDataSummary> moduleDataSummary(const std::string& moduleId) const;
+  [[nodiscard]] std::optional<ModuleDataPurge> purgeModuleData(const std::string& moduleId) const;
+  [[nodiscard]] std::optional<PinVerdict> verifyOwnerPin(std::int64_t userId, const std::string& pin) const;
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+class ModulesClient
+{
+public:
+  explicit ModulesClient(SettingsClientConfig config);
+  ~ModulesClient();
+  ModulesClient(const ModulesClient&) = delete;
+  ModulesClient& operator=(const ModulesClient&) = delete;
+
+  [[nodiscard]] ModuleStatesReply moduleStates() const;
 
 private:
   struct Impl;
