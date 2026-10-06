@@ -429,11 +429,6 @@ int main(int argc, char** argv)
     for (const auto& tool : controller.adapter().executor().offered({.role = UserRole::Owner, .modules = moduleGate().snapshot()}))
       names += tool->spec.name + " ";
     std::printf("offered to the owner: %s\n", names.c_str());
-    std::printf("declarations: %s\n",
-                LfmAdapter::buildToolDeclarations(controller.adapter().executor().offered(
-                                                      {.role = UserRole::Owner, .modules = moduleGate().snapshot()}))
-                    .substr(0, 1500)
-                    .c_str());
   }
 
   std::string extra;

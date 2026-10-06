@@ -318,7 +318,6 @@ struct Spoken
         adapter({.engine = script.engine(),
                  .registry = world.registry,
                  .router = nullptr,
-                 .turnFlow = true,
                  .decider = &world.rules,
                  .text = &world.text,
                  .policies = turn::PolicySet({.act = 0.90, .ask = 0.60, .margin = 0.10})})
@@ -738,7 +737,7 @@ TEST_CASE("an anonymous caller keeps no questions and no confirmations between t
   CHECK(next.steps.empty());
 }
 
-TEST_CASE("the voice is told the persona and what was done, with no tool list and no call syntax")
+TEST_CASE("the voice is told what was done and nothing else is added, with no tool list and no call syntax")
 {
   Spoken spoken;
   spoken.script.replies = {"Listo, quedó agendada."};
@@ -752,7 +751,7 @@ TEST_CASE("the voice is told the persona and what was done, with no tool list an
   CHECK_FALSE(request.toolCallsAllowed);
   REQUIRE(request.messages.size() == 3);
   CHECK(request.messages.front().role == "system");
-  CHECK(request.messages.front().content == "persona\n" + turn_texts::persona("es"));
+  CHECK(request.messages.front().content == "persona");
   CHECK(request.messages[1].role == "user");
   CHECK(request.messages.back().role == "system");
   CHECK(request.messages.back().content.find("Agendé «Reunión con Andrea» para " + tomorrowAtFive()) != std::string::npos);

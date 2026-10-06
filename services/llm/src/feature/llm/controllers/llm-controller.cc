@@ -4,7 +4,6 @@
 #include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/llm/services/tools/time-arguments.hxx>
-#include <feature/llm/services/tools/tool-policy.hxx>
 
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
@@ -98,8 +97,6 @@ std::function<void(const std::string&, const Json::Value&)> actionEmitter(Action
 ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
 {
   ToolChatInput input;
-  const std::string_view lang = args.request.lang.empty() ? kDefaultToolLang : std::string_view(args.request.lang);
-  input.systemPrompt = tool_policy::systemPrompt({.tools = args.tools, .lang = lang, .clientActions = args.request.clientActions});
   input.tools = args.tools;
   input.audience = audienceOf(args.request);
   input.context = tools::ToolContext{.userId = args.request.userId,
@@ -117,7 +114,6 @@ ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
         return time_arguments::needsClock(tool->spec);
       }))
     input.clock = time_arguments::clockLine(static_cast<int64_t>(std::time(nullptr)), input.context.lang);
-  input.maxHops = 3;
   input.temperature = args.request.temperature;
   input.resetContext = args.request.resetContext;
   input.answerMaxTokens = args.request.maxTokens > 0 ? args.request.maxTokens

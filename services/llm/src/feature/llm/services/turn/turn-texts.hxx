@@ -13,8 +13,6 @@ struct Fact
   std::string_view result;
 };
 
-[[nodiscard]] std::string persona(std::string_view lang);
-
 [[nodiscard]] std::string done(std::string_view lang, const Fact& fact);
 
 [[nodiscard]] std::string refused(std::string_view lang, const Fact& fact);

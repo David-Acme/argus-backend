@@ -234,9 +234,9 @@ std::function<tools::ToolResult(const tools::ToolCall&)> handlerFor(const ToolSp
       const std::string code = input.ledger->issue(key);
       input.recorder->previewed(call.name);
       result.ok = true;
-      result.output = "Esto detendría o cancelaría «" + key.target + "». Pídele al usuario que lo confirme; si dice que sí, llama otra "
-                      "vez a " + call.name + " con confirmation=" + code + ".";
+      result.output = "Esto detendría o cancelaría «" + key.target + "».";
       result.data["needsConfirmation"] = true;
+      result.data["confirmation"] = code;
       return result;
     }
     if (!input.ledger->consume(key, token)) {

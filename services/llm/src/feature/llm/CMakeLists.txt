@@ -20,7 +20,6 @@ argus_module(NAME llm
         services/tools/tool-directory.cc
         services/tools/tool-executor.cc
         services/tools/tool-grounding.cc
-        services/tools/tool-policy.cc
         services/tools/tool-registry.cc
         services/turn/deciders.cc
         services/turn/decision-tally.cc

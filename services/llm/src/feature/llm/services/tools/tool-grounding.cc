@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <chrono>
 #include <string_view>
 
@@ -18,20 +17,6 @@ constexpr std::string_view kRequestTool = "modules.request";
 constexpr std::string_view kConfirmation = "confirmation";
 constexpr std::chrono::seconds kPreviewLife{120};
 constexpr std::chrono::minutes kOfferLife{10};
-constexpr std::size_t kCodeLength = 6;
-
-std::string codeIn(const std::string& text)
-{
-  const std::string marker = "confirmation=";
-  const std::size_t at = text.find(marker);
-  if (at == std::string::npos)
-    return {};
-  const std::size_t begin = at + marker.size();
-  std::size_t end = begin;
-  while (end < text.size() && end - begin < kCodeLength && std::isalnum(static_cast<unsigned char>(text[end])) != 0)
-    ++end;
-  return end - begin == kCodeLength ? text.substr(begin, kCodeLength) : std::string();
-}
 
 struct Label
 {
@@ -202,8 +187,8 @@ void ToolGrounding::remember(const GroundingInput& input, const tools::ToolResul
   const std::scoped_lock lock(mutex_);
   if (result.ok && result.data["needsConfirmation"].isBool() && result.data["needsConfirmation"].asBool()) {
     previews_[{input.call.context.userId, input.spec.name}] = input.call.context.turn;
-    const std::string structured = result.data["confirmation"].isString() ? result.data["confirmation"].asString() : std::string();
-    if (const std::string code = structured.empty() ? codeIn(result.output) : structured; !code.empty()) {
+    if (const std::string code = result.data["confirmation"].isString() ? result.data["confirmation"].asString() : std::string();
+        !code.empty()) {
       PendingPreview preview{.tool = input.spec.name, .arguments = input.call.arguments, .turn = input.call.context.turn};
       preview.arguments[std::string(kConfirmation)] = code;
       latestPreview_[input.call.context.userId] = {.preview = std::move(preview), .at = std::chrono::steady_clock::now()};

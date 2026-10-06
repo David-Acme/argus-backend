@@ -251,26 +251,15 @@ set_target_properties(llm-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-settings-test COMMAND llm-settings-test)
 
-add_executable(llm-tool-parse-test tests/unit/llm-tool-parse-test.cc)
+add_executable(llm-app-command-test tests/unit/llm-app-command-test.cc)
 
-target_link_libraries(llm-tool-parse-test PRIVATE argus::llm doctest::doctest
-    argus::contracts::sync)
+target_link_libraries(llm-app-command-test PRIVATE argus::llm doctest::doctest)
 
-target_compile_options(llm-tool-parse-test PRIVATE -Wall -Wextra)
+target_compile_options(llm-app-command-test PRIVATE -Wall -Wextra)
 
-set_target_properties(llm-tool-parse-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(llm-app-command-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-add_test(NAME llm-tool-parse-test COMMAND llm-tool-parse-test)
-
-add_executable(llm-tool-loop-test tests/unit/llm-tool-loop-test.cc)
-
-target_link_libraries(llm-tool-loop-test PRIVATE argus::llm doctest::doctest)
-
-target_compile_options(llm-tool-loop-test PRIVATE -Wall -Wextra)
-
-set_target_properties(llm-tool-loop-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-
-add_test(NAME llm-tool-loop-test COMMAND llm-tool-loop-test)
+add_test(NAME llm-app-command-test COMMAND llm-app-command-test)
 
 add_executable(llm-tool-providers-test tests/unit/llm-tool-providers-test.cc)
 
@@ -282,16 +271,6 @@ target_compile_options(llm-tool-providers-test PRIVATE -Wall -Wextra)
 set_target_properties(llm-tool-providers-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-tool-providers-test COMMAND llm-tool-providers-test)
-
-add_executable(llm-tool-policy-test tests/unit/llm-tool-policy-test.cc)
-
-target_link_libraries(llm-tool-policy-test PRIVATE argus::llm doctest::doctest)
-
-target_compile_options(llm-tool-policy-test PRIVATE -Wall -Wextra)
-
-set_target_properties(llm-tool-policy-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-
-add_test(NAME llm-tool-policy-test COMMAND llm-tool-policy-test)
 
 add_executable(llm-reply-claims-test tests/unit/llm-reply-claims-test.cc)
 

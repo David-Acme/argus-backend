@@ -16,14 +16,11 @@
 
 struct ToolChatInput
 {
-  std::string systemPrompt;
   std::vector<tools::ToolHandle> tools;
   ToolAudience audience;
   tools::ToolContext context;
   std::string clock{};
-  int maxHops = 3;
   float temperature = -1.0F;
-  float toolTemperature = 0.0F;
   bool resetContext = false;
   int32_t answerMaxTokens = 0;
   bool prefillOnly = false;
@@ -44,17 +41,6 @@ struct TurnState
   bool asked{false};
   bool appAsked{false};
   bool wrote{false};
-  bool failed{false};
-};
-
-struct ToolHopContext
-{
-  const ToolChatInput& input;
-  std::vector<ChatMessage>& history;
-  ToolChatOutput& output;
-  const TokenCallback* onToken = nullptr;
-  const std::string& declarations;
-  TurnState& state;
 };
 
 struct ChatWithToolsStreamInput
@@ -62,14 +48,6 @@ struct ChatWithToolsStreamInput
   const ToolChatInput& input;
   std::vector<ChatMessage>& history;
   const TokenCallback& onToken;
-};
-
-struct StreamHopInput
-{
-  const ChatRequest& request;
-  const TokenCallback& onToken;
-  bool& streamed;
-  bool holdAll{false};
 };
 
 struct ChatEngine
@@ -83,7 +61,6 @@ struct LfmAdapterInput
   ChatEngine engine;
   ToolRegistry& registry;
   const IntentRouter* router{nullptr};
-  bool turnFlow{false};
   const turn::Decider* decider{nullptr};
   const slots::TextSlots* text{nullptr};
   turn::PolicySet policies{};
@@ -103,19 +80,11 @@ public:
 
   explicit LfmAdapter(LfmAdapterInput input);
 
-  static std::string buildToolDeclarations(const std::vector<tools::ToolHandle>& tools);
-  static std::vector<tools::ToolCall> parseToolCalls(const std::string& text);
-
-  static bool mayOpenToolCall(const std::string& text);
-
   static std::string spokenText(const std::string& content);
 
   static std::string lastUtterance(const std::vector<ChatMessage>& history);
 
-  static std::string renderToolCall(const tools::ToolCall& call);
-
-  ToolChatOutput chatWithTools(const ToolChatInput& input,
-                               std::vector<ChatMessage>& history);
+  ToolChatOutput chatWithTools(const ToolChatInput& input, std::vector<ChatMessage>& history);
 
   ToolChatOutput chatWithToolsStream(const ChatWithToolsStreamInput& args);
 
@@ -128,26 +97,11 @@ private:
 
   [[nodiscard]] std::vector<ChatMessage> speakMessages(const SpeakInput& args, const std::string& notes) const;
 
-  bool routedTurn(ToolHopContext ctx);
-
-  bool toolHops(ToolHopContext ctx);
-
-  [[nodiscard]] ChatRequest hopRequest(const ToolHopContext& ctx) const;
-
-  void proseAnswer(ToolHopContext ctx, float temperature);
-
-  std::string streamHop(const StreamHopInput& args);
-
-  [[nodiscard]] bool offered(const tools::ToolCall& call, const std::vector<tools::ToolHandle>& tools) const;
-
   ChatEngine engine_;
-  ToolRegistry& registry_;
-  const IntentRouter* router_ = nullptr;
   ToolExecutor executor_;
   turn::RuleDecider ruleDecider_;
   turn::RouterDecider routerDecider_;
   turn::FirstOf stack_;
   slots::RuleText ruleText_;
   turn::TurnFlow flow_;
-  bool turnFlow_{false};
 };

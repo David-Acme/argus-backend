@@ -237,8 +237,9 @@ TEST_CASE("a destructive preview and a module offer are remembered for the next 
        .handler =
            [](const tools::ToolCall& call) {
              if (call.arguments.get("confirmation", "").asString().empty()) {
-               tools::ToolResult preview = tool_stubs::okResult("Cancelaría la reunión. confirmation=XY12Z9");
+               tools::ToolResult preview = tool_stubs::okResult("Cancelaría la reunión.");
                preview.data["needsConfirmation"] = true;
+               preview.data["confirmation"] = "XY12Z9";
                return preview;
              }
              return tool_stubs::okResult("Cancelada.");

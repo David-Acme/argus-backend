@@ -49,14 +49,6 @@ const Pair* find(const std::array<ByTool, N>& table, std::string_view tool)
   return nullptr;
 }
 
-constexpr Pair kPersona{
-    .es = "Eres Argus, el asistente de voz de la casa. Hablas natural, cálido y breve, en una o dos frases. Solo "
-          "afirmas lo que está en los hechos que recibes: nunca digas que hiciste algo que no está ahí. Si no sabes "
-          "algo, dilo.",
-    .en = "You are Argus, the home's voice assistant. You speak naturally, warmly and briefly, in one or two "
-          "sentences. You only state what the facts you receive say: never claim you did something that is not "
-          "there. If you do not know something, say so."};
-
 constexpr Pair kDoneBefore{.es = "Hecho: ", .en = "Done: "};
 constexpr Pair kDoneAfter{.es = " Cuéntaselo al usuario en una o dos frases cortas, usando solo estos datos.",
                           .en = " Tell the user in one or two short sentences, using only this."};
@@ -177,11 +169,6 @@ std::string joined(const Pair& before, const Pair& after, const Fact& fact, std:
   out += pick(after, lang);
   return out;
 }
-}
-
-std::string persona(std::string_view lang)
-{
-  return std::string(pick(kPersona, lang));
 }
 
 std::string done(std::string_view lang, const Fact& fact)
