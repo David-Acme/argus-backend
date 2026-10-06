@@ -446,6 +446,7 @@ TEST_CASE("a stray message of an old epoch after adoption is corrected by the ne
                   feedConfig(file));
   CHECK(feed.handle(enabledEvent(false, 5, "5000-new")) == ModuleFeedDisposition::Applied);
   CHECK_FALSE(gate.enabled(kSurveillance));
+  CHECK(pulls.load() == 0);
   const int adopted = pulls.load();
 
   CHECK(feed.handle(enabledEvent(true, 900, "1000-old")) == ModuleFeedDisposition::Applied);
@@ -472,6 +473,8 @@ TEST_CASE("when settings does not answer the re-pull the adopted message stands"
                      return std::nullopt;
                    }},
                   feedConfig(file));
+  CHECK(feed.handle(enabledEvent(true, 2, "1000-a")) == ModuleFeedDisposition::Applied);
+  CHECK(pulls.load() == 0);
   CHECK(feed.handle(enabledEvent(false, 3, "2000-aa")) == ModuleFeedDisposition::Applied);
   CHECK(pulls.load() == 1);
   CHECK_FALSE(gate.enabled(kSurveillance));

@@ -252,11 +252,12 @@ rule 5 is unchanged and `scripts/check-routes.sh` needs no new row.
    new boot for ever. A different epoch is always adopted: the version
    tracking resets and the message applies, so a settings.db that was reset or
    restored restarts its counter low without any consumer having to restart.
-   Adopting an epoch from a message then re-pulls `ModuleStates` over RPC and
-   applies that answer as authoritative, so a stray message of an older epoch
-   that arrives afterwards is corrected within one round trip (the answer is
-   itself never followed by another re-pull; if settings does not answer, the
-   message stands). A message with no epoch (an older settings build) is
+   Replacing a known epoch with another from a message then re-pulls
+   `ModuleStates` over RPC and applies that answer as authoritative, so a stray
+   message of an older epoch that arrives afterwards is corrected within one
+   round trip (the first adoption after a start does not: the boot read is
+   already authoritative; the answer is itself never followed by another
+   re-pull; if settings does not answer, the message stands). A message with no epoch (an older settings build) is
    judged by version alone. Stale replays are prevented structurally: the
    durable asks for the last message per subject (`deliverLastPerSubject`),
    never the whole history (the set is a snapshot and the boot read supplies

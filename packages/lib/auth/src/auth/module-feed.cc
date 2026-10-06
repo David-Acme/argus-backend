@@ -89,9 +89,9 @@ ModuleFeed::Application ModuleFeed::apply(const Snapshot& snapshot)
   std::scoped_lock lock(applyMutex_);
   bool epochChanged = false;
   if (!snapshot.epoch.empty() && snapshot.epoch != epoch_) {
+    epochChanged = !epoch_.empty();
     epoch_ = snapshot.epoch;
     version_ = 0;
-    epochChanged = true;
   }
   if (snapshot.version > 0 && snapshot.version < version_)
     return {};
