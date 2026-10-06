@@ -15,6 +15,7 @@
 namespace
 {
 constexpr const char* kMsgIdHeader = "Nats-Msg-Id";
+constexpr const char* kImmutableConfigText = "can not be updated";
 
 const char* lastErrorText()
 {
@@ -422,16 +423,38 @@ bool NatsBus::ensureDurable(const DurableInput& input)
   config.FilterSubject = input.subject.c_str();
 
   auto errorCode = jsErrCode(0);
-  const natsStatus status = js_AddConsumer(
+  natsStatus status = js_AddConsumer(
       nullptr, js_.get(), input.stream.c_str(), &config, &options, &errorCode);
 
   if (status == NATS_OK || errorCode == JSConsumerNameExistErr ||
       errorCode == JSConsumerExistingActiveErr)
     return true;
 
+  const std::string reason = lastErrorText();
+  if (input.recreateOnPolicyChange && errorCode == JSConsumerCreateErr &&
+      reason.find(kImmutableConfigText) != std::string::npos) {
+    LOG_WARN << "NATS durable consumer " << input.durable << " on " << input.stream
+             << " was created under another configuration (" << reason
+             << "); this feed recovers its state from the last message, so it is deleted and created again";
+    auto deleteCode = jsErrCode(0);
+    const natsStatus deleted = js_DeleteConsumer(js_.get(), input.stream.c_str(), input.durable.c_str(), &options, &deleteCode);
+    if (deleted != NATS_OK && deleteCode != JSConsumerNotFoundErr) {
+      LOG_WARN << "NATS durable consumer " << input.durable << " could not be deleted: " << natsStatus_GetText(deleted)
+               << " (err " << deleteCode << ": " << lastErrorText() << ")";
+      return false;
+    }
+    errorCode = jsErrCode(0);
+    status = js_AddConsumer(nullptr, js_.get(), input.stream.c_str(), &config, &options, &errorCode);
+    if (status == NATS_OK || errorCode == JSConsumerNameExistErr || errorCode == JSConsumerExistingActiveErr)
+      return true;
+  }
+
   LOG_WARN << "NATS durable consumer " << input.durable << " on "
            << input.stream << " is not ready: " << natsStatus_GetText(status)
-           << " (err " << errorCode << ": " << lastErrorText() << ")";
+           << " (err " << errorCode << ": " << lastErrorText() << ")"
+           << (reason.find(kImmutableConfigText) != std::string::npos && !input.recreateOnPolicyChange
+                   ? "; the existing durable is left as it is"
+                   : "");
   return false;
 }
 

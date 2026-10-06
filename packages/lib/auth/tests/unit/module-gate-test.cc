@@ -10,6 +10,8 @@
 #include <drogon/HttpRequest.h>
 #include <drogon/utils/coroutine.h>
 #include <errors/response-exception.hxx>
+#include <nats/live-broker.hxx>
+#include <nats/nats-bus.hxx>
 
 #include <atomic>
 #include <chrono>
@@ -312,6 +314,61 @@ std::string enabledEvent(bool surveillance, int version, const std::string& epoc
          R"(}],"settled":true,"version":)" + std::to_string(version) +
          (epoch.empty() ? std::string() : R"(,"epoch":")" + epoch + "\"") + "}";
 }
+}
+
+TEST_CASE("a feed whose durable the previous build made under another delivery policy works with no restart" *
+          doctest::skip(live_broker::skipped()))
+{
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  NatsBus::Options options;
+  options.url = broker;
+  auto bus = std::make_shared<NatsBus>();
+  REQUIRE(bus->connect(options));
+
+  const std::string stream = "argus-test-module-feed-" + std::to_string(::getpid());
+  const std::string subject = stream + ".module";
+  REQUIRE(bus->ensureStream({.name = stream,
+                             .subjects = {subject},
+                             .maxAgeNs = 60LL * 1000000000,
+                             .duplicatesNs = 60LL * 1000000000}));
+  const auto publish = [&](const std::string& body, const std::string& id) {
+    return bus->publishWithMsgId({.subject = subject, .payload = body, .msgId = subject + "-" + id});
+  };
+  REQUIRE(publish(enabledEvent(true, 40, "1000-old"), "old"));
+
+  const std::string durable = "argus-test-feed-modules";
+  const auto previousBuild = bus->subscribeDurable({.stream = stream,
+                                                    .durable = durable,
+                                                    .subject = subject,
+                                                    .deliverAll = true,
+                                                    .maxDeliver = 10,
+                                                    .maxAckPending = NatsBus::kOrderedMaxAckPending,
+                                                    .handler = [](const NatsBus::DurableMessage&,
+                                                                  const NatsBus::DurableSettlement& settlement) {
+                                                      settlement.ack();
+                                                    }});
+  REQUIRE(previousBuild.has_value());
+  REQUIRE(bus->unsubscribe(previousBuild.value_or(0)));
+
+  ModuleGate gate;
+  const std::string file = tempPath("feed-upgrade.json");
+  auto config = feedConfig(file);
+  config.stream = stream;
+  config.subject = subject;
+  config.durable = durable;
+  config.retrySeconds = 0.05;
+  ModuleFeed feed({.bus = bus, .gate = &gate, .bootRead = {}}, config);
+  feed.start();
+  REQUIRE(waitUntil([&feed] { return feed.drained(); }));
+
+  REQUIRE(publish(enabledEvent(false, 1, "2000-new"), "disable"));
+  CHECK(waitUntil([&gate] { return !gate.enabled(kSurveillance); }));
+  REQUIRE(publish(enabledEvent(true, 2, "2000-new"), "enable"));
+  CHECK(waitUntil([&gate] { return gate.enabled(kSurveillance); }));
+  feed.requestStop();
+  bus->drain();
+  std::filesystem::remove(file);
 }
 
 TEST_CASE("a lower version under a new epoch applies, under the same epoch it is ignored")

@@ -438,6 +438,74 @@ TEST_CASE("a durable that asks for the last message per subject starts at the ne
   bus.drain();
 }
 
+TEST_CASE("a durable under another delivery policy is deleted and created again only for a feed that opts in" *
+          doctest::skip(live_broker::skipped()))
+{
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  NatsBus::Options options;
+  options.url = broker;
+  NatsBus bus;
+  REQUIRE(bus.connect(options));
+
+  const std::string stream = isolatedStream();
+  const std::string subject = isolatedSubject(stream);
+  REQUIRE(bus.ensureStream({.name = stream,
+                            .subjects = {subject},
+                            .maxAgeNs = 60LL * 1000000000,
+                            .duplicatesNs = 60LL * 1000000000}));
+  const auto publish = [&](const char* body) {
+    return bus.publishWithMsgId({.subject = subject, .payload = body, .msgId = subject + "-" + body});
+  };
+  for (const char* body : {"a", "b", "c"})
+    REQUIRE(publish(body));
+
+  const NatsBus::DurableInput previousBuild{.stream = stream,
+                                            .durable = stream + "-feed",
+                                            .subject = subject,
+                                            .deliverAll = true,
+                                            .deliverLastPerSubject = false,
+                                            .recreateOnPolicyChange = false,
+                                            .maxDeliver = 5,
+                                            .maxAckPending = NatsBus::kOrderedMaxAckPending,
+                                            .handler = {}};
+  NatsBus::DurableInput conflicting = previousBuild;
+  conflicting.deliverAll = false;
+  conflicting.deliverLastPerSubject = true;
+  NatsBus::DurableInput optedIn = conflicting;
+  optedIn.recreateOnPolicyChange = true;
+
+  Deliveries history;
+  const auto first = bus.subscribeDurable(collectingInto(previousBuild, history));
+  REQUIRE(first.has_value());
+  CHECK(awaitPayloads(history, 3) == std::vector<std::string>{"a", "b", "c"});
+  REQUIRE(bus.unsubscribe(first.value_or(0)));
+
+  Deliveries refused;
+  CHECK_FALSE(bus.subscribeDurable(collectingInto(conflicting, refused)).has_value());
+  REQUIRE(publish("x"));
+  Deliveries kept;
+  const auto reattached = attachWithin(bus, collectingInto(previousBuild, kept));
+  REQUIRE(reattached.has_value());
+  CHECK(awaitPayloads(kept, 1).front() == "x");
+  REQUIRE(bus.unsubscribe(reattached.value_or(0)));
+
+  Deliveries recreated;
+  const auto recreatedId = attachWithin(bus, collectingInto(optedIn, recreated));
+  REQUIRE(recreatedId.has_value());
+  CHECK(awaitPayloads(recreated, 1).front() == "x");
+  REQUIRE(publish("y"));
+  CHECK(awaitPayloads(recreated, 2) == std::vector<std::string>{"x", "y"});
+  REQUIRE(bus.unsubscribe(recreatedId.value_or(0)));
+
+  Deliveries untouched;
+  const auto again = attachWithin(bus, collectingInto(optedIn, untouched));
+  REQUIRE(again.has_value());
+  REQUIRE(publish("z"));
+  CHECK(awaitPayloads(untouched, 1).front() == "z");
+  bus.drain();
+}
+
 TEST_CASE("an ordered durable redelivers a nak'd message before the next one" *
           doctest::skip(live_broker::skipped()))
 {

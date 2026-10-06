@@ -67,7 +67,16 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
   Its deliver policy is fixed at creation: asking for a different `deliverAll`
   is refused by the broker ("deliver policy can not be updated") and the attach
   fails on every retry, so a feed whose policy changes takes a new durable name,
-  which is a new cursor. One durable has one bound subscriber: a second
+  which is a new cursor. The one exception is a feed that sets
+  `DurableInput::recreateOnPolicyChange` (the module feed, whose state is the
+  last message per subject plus an RPC read): when the broker refuses with
+  "can not be updated" it deletes the durable and creates it again under the
+  same name, once per attach, logging both steps. A new name would leave the
+  old durable behind on the broker for ever and make the name a moving target;
+  deleting is safe only because nothing the feed needs lives in the cursor.
+  Every other durable, the outbox feeds and `encounter_closed` included, is
+  never deleted: its conflict is logged with the broker's reason on every
+  attempt and the existing durable is left as it is. One durable has one bound subscriber: a second
   process's bind is refused ("consumer is already bound to a subscription")
   until the first has left, and its retry then resumes from the shared cursor.
   Both refusals reach the log with the broker's own reason.

@@ -104,6 +104,7 @@ public:
     std::string subject;
     bool deliverAll{false};
     bool deliverLastPerSubject{false};
+    bool recreateOnPolicyChange{false};
     int maxDeliver{5};
     int maxAckPending{kDefaultMaxAckPending};
     DurableHandler handler;

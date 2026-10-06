@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <utility>
 
 namespace
@@ -18,6 +19,8 @@ namespace
 constexpr std::string_view kSettledField = "settled";
 constexpr std::string_view kVersionField = "version";
 constexpr std::string_view kEpochField = "epoch";
+constexpr int kMaxBackoffDoublings = 6;
+constexpr double kMaxSubscribeRetrySeconds = 300.0;
 constexpr const char* kStateFileKey = "modules.state_file";
 constexpr const char* kDefaultStateFile = "database/module-state.json";
 
@@ -155,7 +158,8 @@ void ModuleFeed::run(const std::stop_token& stop)
 {
   int bootAttempts = dependencies_.bootRead ? config_.bootAttempts : 0;
   bool subscribed = !dependencies_.bus;
-  bool warned = false;
+  int subscribeFailures = 0;
+  auto nextSubscribe = std::chrono::steady_clock::now();
   while (!stop.stop_requested()) {
     if (bootAttempts > 0) {
       if (const auto snapshot = dependencies_.bootRead()) {
@@ -166,11 +170,17 @@ void ModuleFeed::run(const std::stop_token& stop)
         LOG_WARN << "Modules: settings did not answer the enabled set; keeping the last known state";
       }
     }
-    if (!subscribed) {
+    if (!subscribed && std::chrono::steady_clock::now() >= nextSubscribe) {
       subscribed = subscribe();
-      if (!subscribed && !warned)
-        LOG_WARN << "Modules: " << config_.subject << " not ready; retrying";
-      warned = warned || !subscribed;
+      if (!subscribed) {
+        const double delay = std::min(config_.retrySeconds * std::pow(2.0, std::min(subscribeFailures, kMaxBackoffDoublings)),
+                                      kMaxSubscribeRetrySeconds);
+        ++subscribeFailures;
+        nextSubscribe = std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                                              std::chrono::duration<double>(delay));
+        LOG_WARN << "Modules: durable " << config_.durable << " on " << config_.subject << " is not ready; retrying in "
+                 << delay << " s";
+      }
     }
     if (subscribed && bootAttempts == 0)
       break;
@@ -191,6 +201,7 @@ bool ModuleFeed::subscribe()
        .subject = config_.subject,
        .deliverAll = false,
        .deliverLastPerSubject = true,
+       .recreateOnPolicyChange = true,
        .maxDeliver = config_.maxDeliver,
        .maxAckPending = NatsBus::kOrderedMaxAckPending,
        .handler = [this](const NatsBus::DurableMessage& message,

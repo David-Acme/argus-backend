@@ -261,7 +261,16 @@ rule 5 is unchanged and `scripts/check-routes.sh` needs no new row.
    durable asks for the last message per subject (`deliverLastPerSubject`),
    never the whole history (the set is a snapshot and the boot read supplies
    the rest), and a durable that already exists never redelivers what it
-   acked.
+   acked. A durable that an earlier build made under another delivery policy
+   (`all`) cannot be updated in place (JetStream err 10012); this feed, and only
+   this feed (`DurableInput.recreateOnPolicyChange`), deletes it and creates it
+   again, because the set is recovered from the last message and the boot read.
+   The recreated durable keeps its name, so nothing is left behind to monitor;
+   a durable already on the new policy is untouched, and every other durable
+   whose configuration conflicts keeps failing loudly and is never deleted
+   (the outbox feeds, encounter_closed and the identity changes carry work that
+   must not be dropped). A subscription that fails is retried with a backoff
+   that doubles from `retrySeconds` to five minutes, logging each step.
 3. **The last known state**: every applied set is written atomically
    (`.part` then rename) to `[modules] state_file`, default
    `database/module-state.json` in the service's working directory, and read
