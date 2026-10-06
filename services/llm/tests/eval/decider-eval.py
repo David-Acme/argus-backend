@@ -536,18 +536,22 @@ def apply_calibration(decisions, model):
     return out
 
 
+def cache_key(case):
+    return hashlib.sha1((case["text"] + "\0" + case["role"]).encode()).hexdigest()
+
+
 def cached_decisions(decider, cases, path):
     if not path:
         return decider.decide_all(cases)
     cache = pathlib.Path(path)
-    keys = [hashlib.sha1((c["text"] + "\0" + c["role"]).encode()).hexdigest() for c in cases]
-    if cache.exists():
-        stored = json.loads(cache.read_text())
-        if all(key in stored for key in keys):
-            return [tuple(stored[key]) for key in keys]
-    decisions = decider.decide_all(cases)
-    cache.write_text(json.dumps({key: list(d) for key, d in zip(keys, decisions)}))
-    return decisions
+    stored = json.loads(cache.read_text()) if cache.exists() else {}
+    missing = [c for c in cases if cache_key(c) not in stored]
+    if missing:
+        fresh = decider.decide_all(missing)
+        for case, decision in zip(missing, fresh):
+            stored[cache_key(case)] = list(decision)
+        cache.write_text(json.dumps(stored))
+    return [tuple(stored[cache_key(c)]) for c in cases]
 
 
 def read_sealed(path, section, gates):
@@ -574,6 +578,7 @@ def main():
     parser.add_argument("--report")
     parser.add_argument("--errors")
     parser.add_argument("--cache")
+    parser.add_argument("--chunk")
     parser.add_argument("--calibrate-out")
     parser.add_argument("--calibration")
     parser.add_argument("--guard-scope", choices=["both", "all", "low-risk-open"], default="both")
@@ -586,6 +591,20 @@ def main():
     selection = load_cases(args.select)
     if args.select_negatives:
         selection += load_negatives(args.select_negatives)
+    if args.chunk:
+        index, count = (int(part) for part in args.chunk.split("/"))
+        if not 0 <= index < count:
+            raise SystemExit(f"--chunk {args.chunk}: the index must be below the count")
+        part = [c for i, c in enumerate(selection) if i % count == index]
+        try:
+            filled = cached_decisions(decider, part, args.cache)
+        except OSError as error:
+            print(f"decider-eval: cannot start the decider: {error}")
+            return SKIP
+        finally:
+            decider.close()
+        print(f"chunk {index}/{count}: {len(filled)} selection decisions are in the cache")
+        return 0
     report = {"decider": args.decider, "selectionCases": len(selection), "limits": limits}
     failures = []
     try:

@@ -346,6 +346,27 @@ class RunTest(unittest.TestCase):
         self.assertEqual(second.returncode, 0, second.stdout)
         self.assertIn("confidences calibrated", second.stdout)
 
+    def test_a_cache_can_be_filled_in_chunks_and_then_scored_without_the_decider(self):
+        cache = self.directory / "chunks.json"
+        for index in range(2):
+            result, _ = self.run_harness("--cache", str(cache), "--chunk", f"{index}/2")
+            self.assertEqual(result.returncode, 0, result.stdout)
+            self.assertIn(f"chunk {index}/2", result.stdout)
+        stored = json.loads(cache.read_text())
+        self.assertEqual(len(stored), 5)
+        report = self.directory / "scored.json"
+        result = subprocess.run(
+            [sys.executable, "-I", str(HARNESS), "--decider", "/nonexistent/decider", "--gates", str(self.gates),
+             "--select", str(self.select), "--cache", str(cache), "--report", str(report)],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertTrue(json.loads(report.read_text())["selectionPassed"])
+
+    def test_a_chunk_index_outside_the_count_is_refused(self):
+        result, _ = self.run_harness("--cache", str(self.directory / "bad.json"), "--chunk", "2/2")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("below the count", result.stdout + result.stderr)
+
     def test_a_member_is_only_offered_the_request_tool(self):
         self.assertIn("modules.request", harness.offered("resident"))
         self.assertNotIn("modules.enable", harness.offered("resident"))
