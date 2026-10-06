@@ -410,9 +410,7 @@ std::shared_ptr<argus::mcp::McpServer> moduleToolServer(const ModuleToolsInput& 
                       .inputSchema = schema::emptyObject(),
                       .annotations = {.readOnly = true},
                       .module = "",
-                      .capability = "modules.read",
-                    .policy = {.spanish = "Si pregunta qué módulos tiene Argus o cuáles están activos, llama a modules.list.",
-                               .english = "If they ask which modules Argus has or which are on, call modules.list."}}),
+                      .capability = "modules.read"}),
               withLoop(input, [desk](const argus::mcp::ToolInvocation& invocation) { return listModules(desk, invocation); }));
   server->add(specOf({.name = "modules.explain",
                       .title = "",
@@ -420,9 +418,7 @@ std::shared_ptr<argus::mcp::McpServer> moduleToolServer(const ModuleToolsInput& 
                       .inputSchema = schema::object({{.name = "module", .schema = moduleProperty(), .required = true}}),
                       .annotations = {.readOnly = true},
                       .module = "",
-                      .capability = "modules.read",
-                    .policy = {.spanish = "Si pregunta qué es o qué hace un módulo, llama a modules.explain.",
-                               .english = "If they ask what a module is or does, call modules.explain."}}),
+                      .capability = "modules.read"}),
               withLoop(input, [desk](const argus::mcp::ToolInvocation& invocation) { return explainModule(desk, invocation); }));
   server->add(specOf({.name = "modules.request",
                       .title = "",
@@ -430,9 +426,7 @@ std::shared_ptr<argus::mcp::McpServer> moduleToolServer(const ModuleToolsInput& 
                       .inputSchema = schema::object({{.name = "module", .schema = moduleProperty(), .required = true}}),
                       .annotations = {},
                       .module = "",
-                      .capability = "modules.request",
-                    .policy = {.spanish = "Si quiere un módulo apagado y no puede activarlo él, ofrécele pedírselo al dueño y, si dice que sí, llama a modules.request.",
-                               .english = "If they want a module that is off and cannot turn it on themselves, offer to ask the owner and, if they say yes, call modules.request."}}),
+                      .capability = "modules.request"}),
               withLoop(input, [desk](const argus::mcp::ToolInvocation& invocation) { return requestModule(desk, invocation); }));
   server->add(specOf({.name = "modules.enable",
                       .title = "",
@@ -440,9 +434,7 @@ std::shared_ptr<argus::mcp::McpServer> moduleToolServer(const ModuleToolsInput& 
                       .inputSchema = schema::object({{.name = "module", .schema = moduleProperty(), .required = true}}),
                       .annotations = {.idempotent = true},
                       .module = "",
-                      .capability = "modules.manage",
-                    .policy = {.spanish = "Si el usuario pide activar un módulo, o dice que sí cuando le ofreces activarlo, llama a modules.enable.",
-                               .english = "If the user asks to turn on a module, or says yes when you offer to, call modules.enable."}}),
+                      .capability = "modules.manage"}),
               withLoop(input, [desk](const argus::mcp::ToolInvocation& invocation) { return enableModule(desk, invocation); }));
   server->add(specOf({.name = "modules.disable",
                       .title = "",
@@ -452,9 +444,7 @@ std::shared_ptr<argus::mcp::McpServer> moduleToolServer(const ModuleToolsInput& 
                                                      {.name = "confirmation", .schema = schema::text(), .required = false}}),
                       .annotations = {.destructive = true},
                       .module = "",
-                      .capability = "modules.manage",
-                    .policy = {.spanish = "Si pide apagar un módulo, llama a modules.disable; primero cuéntale lo que se detendría y espera su sí.",
-                               .english = "If they ask to turn a module off, call modules.disable; first tell them what would stop and wait for their yes."}}),
+                      .capability = "modules.manage"}),
               withLoop(input, [desk, ledger](const argus::mcp::ToolInvocation& invocation) {
                 return disableModule(desk, ledger, invocation);
               }));
@@ -465,9 +455,7 @@ std::shared_ptr<argus::mcp::McpServer> moduleToolServer(const ModuleToolsInput& 
                       .inputSchema = schema::object({{.name = "module", .schema = moduleProperty(), .required = true}}),
                       .annotations = {},
                       .module = "",
-                      .capability = "modules.manage",
-                    .policy = {.spanish = "Si pide borrar los datos de un módulo, llama a modules.open_purge_screen: tú nunca los borras.",
-                               .english = "If they ask to delete a module's data, call modules.open_purge_screen: you never delete them yourself."}}),
+                      .capability = "modules.manage"}),
               withLoop(input, [desk](const argus::mcp::ToolInvocation& invocation) { return openPurgeScreen(desk, invocation); }));
   server->setGate(tool_gate::capabilities());
   return server;

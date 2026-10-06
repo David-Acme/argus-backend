@@ -68,12 +68,6 @@ Json::Value toJson(const ToolSpec& spec)
     meta[std::string(kModuleKey)] = spec.module;
   if (!spec.capability.empty())
     meta[std::string(kCapabilityKey)] = spec.capability;
-  if (!spec.policy.spanish.empty() || !spec.policy.english.empty()) {
-    Json::Value policy(Json::objectValue);
-    policy["es"] = spec.policy.spanish;
-    policy["en"] = spec.policy.english;
-    meta[std::string(kPolicyKey)] = std::move(policy);
-  }
   if (!meta.empty())
     out["_meta"] = std::move(meta);
   return out;
@@ -99,8 +93,6 @@ std::optional<ToolSpec> toolSpecFrom(const Json::Value& json)
   const Json::Value& meta = json["_meta"];
   spec.module = stringAt(meta, std::string(kModuleKey).c_str());
   spec.capability = stringAt(meta, std::string(kCapabilityKey).c_str());
-  const Json::Value& policy = meta[std::string(kPolicyKey)];
-  spec.policy = {.spanish = stringAt(policy, "es"), .english = stringAt(policy, "en")};
   return spec;
 }
 

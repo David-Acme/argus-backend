@@ -74,9 +74,7 @@ std::vector<tools::ToolDescriptor> memoryToolDescriptors()
                       .required = false}}),
                 .annotations = {.readOnly = true},
                 .module = kCore,
-                .capability = "reminders.read",
-                    .policy = {.spanish = "Si pregunta qué recordatorios tiene, llama a reminder.list.",
-                               .english = "If they ask which reminders they have, call reminder.list."}},
+                .capability = "reminders.read"},
        .handler = nullptr});
   return descriptors;
 }

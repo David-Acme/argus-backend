@@ -53,23 +53,6 @@ TEST_CASE("a tool spec round trips with its module and capability in _meta")
   CHECK(back.inputSchema["required"][0].asString() == "title");
 }
 
-TEST_CASE("a tool's policy lines travel in _meta in both languages and are omitted when empty")
-{
-  ToolSpec spec = sample();
-  spec.policy = {.spanish = "Para agendar usa esta herramienta.", .english = "To schedule, use this tool."};
-  const Json::Value json = toJson(spec);
-  CHECK(json["_meta"]["argus/policy"]["es"].asString() == "Para agendar usa esta herramienta.");
-  CHECK(json["_meta"]["argus/policy"]["en"].asString() == "To schedule, use this tool.");
-  const auto back = must(toolSpecFrom(json));
-  CHECK(back.policy.spanish == "Para agendar usa esta herramienta.");
-  CHECK(back.policy.english == "To schedule, use this tool.");
-
-  const auto bare = must(toolSpecFrom(toJson(sample())));
-  CHECK(bare.policy.spanish.empty());
-  CHECK(bare.policy.english.empty());
-  CHECK_FALSE(toJson(sample())["_meta"].isMember("argus/policy"));
-}
-
 TEST_CASE("a spec without a module or capability omits _meta")
 {
   ToolSpec spec = sample();

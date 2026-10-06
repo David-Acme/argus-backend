@@ -167,8 +167,6 @@ TEST_CASE("every module tool is core, names the capability the access table know
     REQUIRE(spec != nullptr);
     CHECK(spec->module == "core");
     CHECK(spec->capability == capability);
-    CHECK(spec->policy.spanish.find(name) != std::string::npos);
-    CHECK(spec->policy.english.find(name) != std::string::npos);
   }
   CHECK(harness.server->find("modules.disable")->annotations.destructive);
   CHECK_FALSE(harness.server->find("modules.enable")->annotations.destructive);

@@ -418,8 +418,6 @@ void theToolsDeclareTheirModuleAndCapability(Env& env)
     REQUIRE(spec != nullptr);
     CHECK(spec->module == "productivity");
     CHECK(spec->capability == capability);
-    CHECK(spec->policy.spanish.find(name) != std::string::npos);
-    CHECK(spec->policy.english.find(name) != std::string::npos);
   }
   CHECK(env.server->find("calendar.cancel_event")->annotations.destructive);
   CHECK(env.server->find("calendar.list_events")->annotations.readOnly);

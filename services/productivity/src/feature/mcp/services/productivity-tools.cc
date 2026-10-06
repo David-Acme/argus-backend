@@ -61,9 +61,7 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                                                    {.name = "limit", .schema = schema::integer({.description = "", .minimum = 1, .maximum = 20}), .required = false}}),
                     .annotations = {.readOnly = true},
                     .module = "",
-                    .capability = "agenda.read",
-                    .policy = {.spanish = "Si el usuario pregunta qué tiene en su agenda o en su calendario, llama a calendar.list_events; no inventes eventos.",
-                               .english = "If the user asks what is on their agenda or calendar, call calendar.list_events; never invent events."}}),
+                    .capability = "agenda.read"}),
               withLoop(input, listEvents));
   server->add(spec({.name = "calendar.create_event",
                     .title = "",
@@ -77,9 +75,7 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                                                    {.name = "all_day", .schema = schema::boolean(), .required = false}}),
                     .annotations = {},
                     .module = "",
-                    .capability = "agenda.write",
-                    .policy = {.spanish = "Si el usuario pide agendar, programar o anotar una reunión, cita o evento en su agenda, llama a calendar.create_event y confirma solo cuando responda.",
-                               .english = "If the user asks to schedule or add a meeting, appointment or event to their agenda, call calendar.create_event and confirm only once it answers."}}),
+                    .capability = "agenda.write"}),
               withLoop(input, createEvent));
   server->add(spec({.name = "calendar.cancel_event",
                     .title = "",
@@ -90,9 +86,7 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                                                    {.name = "confirmation", .schema = schema::text(), .required = false}}),
                     .annotations = {.destructive = true},
                     .module = "",
-                    .capability = "agenda.write",
-                    .policy = {.spanish = "Si pide cancelar o quitar un evento de la agenda, llama a calendar.cancel_event.",
-                               .english = "If they ask to cancel or remove an agenda event, call calendar.cancel_event."}}),
+                    .capability = "agenda.write"}),
               withLoop(input, [ledger](const argus::mcp::ToolInvocation& invocation) {
                 return cancelEvent({.invocation = invocation, .ledger = ledger});
               }));
@@ -104,9 +98,7 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                          {.name = "limit", .schema = schema::integer({.description = "", .minimum = 1, .maximum = 20}), .required = false}}),
                     .annotations = {.readOnly = true},
                     .module = "",
-                    .capability = "projects.read",
-                    .policy = {.spanish = "Si pregunta por sus proyectos, llama a project.list.",
-                               .english = "If they ask about their projects, call project.list."}}),
+                    .capability = "projects.read"}),
               withLoop(input, listProjects));
   server->add(spec({.name = "project.create",
                     .title = "",
@@ -116,9 +108,7 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                                                    {.name = "target_at", .schema = moment(kIsoHint), .required = false}}),
                     .annotations = {},
                     .module = "",
-                    .capability = "projects.write",
-                    .policy = {.spanish = "Si pide crear un proyecto, llama a project.create.",
-                               .english = "If they ask to create a project, call project.create."}}),
+                    .capability = "projects.write"}),
               withLoop(input, createProject));
   server->add(spec({.name = "task.list",
                     .title = "",
@@ -128,9 +118,7 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                                                    {.name = "limit", .schema = schema::integer({.description = "", .minimum = 1, .maximum = 20}), .required = false}}),
                     .annotations = {.readOnly = true},
                     .module = "",
-                    .capability = "projects.read",
-                    .policy = {.spanish = "Si pregunta por sus tareas pendientes, llama a task.list.",
-                               .english = "If they ask about their pending tasks, call task.list."}}),
+                    .capability = "projects.read"}),
               withLoop(input, listTasks));
   server->add(spec({.name = "task.create",
                     .title = "",
@@ -144,9 +132,7 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                          {.name = "due_at", .schema = moment(kIsoHint), .required = false}}),
                     .annotations = {},
                     .module = "",
-                    .capability = "projects.write",
-                    .policy = {.spanish = "Si pide anotar, añadir o crear una tarea, llama a task.create.",
-                               .english = "If they ask to note, add or create a task, call task.create."}}),
+                    .capability = "projects.write"}),
               withLoop(input, createTask));
   server->add(spec({.name = "task.complete",
                     .title = "",
@@ -155,9 +141,7 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                                                    {.name = "title", .schema = schema::text(), .required = false}}),
                     .annotations = {.idempotent = true},
                     .module = "",
-                    .capability = "projects.write",
-                    .policy = {.spanish = "Si dice que terminó una tarea o pide marcarla como hecha, llama a task.complete.",
-                               .english = "If they say a task is finished or ask to mark it done, call task.complete."}}),
+                    .capability = "projects.write"}),
               withLoop(input, completeTask));
   server->setGate(tool_gate::capabilities());
   return server;
