@@ -9,6 +9,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
+if(NOT TARGET argus::lib::test-support)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/test-support
+                     ${CMAKE_BINARY_DIR}/test-support)
+endif()
+
 set(IDENTITY_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(PROJECT_IS_TOP_LEVEL)

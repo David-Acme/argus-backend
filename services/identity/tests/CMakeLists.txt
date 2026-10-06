@@ -276,6 +276,7 @@ argus_runtime_rpath(identity-liveness-test)
 add_test(NAME identity-liveness-test COMMAND identity-liveness-test)
 
 add_executable(identity-user-safety-test unit/identity-user-safety-test.cc)
+target_link_libraries(identity-user-safety-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-user-safety-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
 target_link_libraries(identity-user-safety-test PRIVATE
@@ -292,6 +293,7 @@ argus_runtime_rpath(identity-user-safety-test)
 add_test(NAME identity-user-safety-test COMMAND identity-user-safety-test)
 
 add_executable(identity-invitation-module-test unit/identity-invitation-module-test.cc)
+target_link_libraries(identity-invitation-module-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-invitation-module-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
 target_link_libraries(identity-invitation-module-test PRIVATE

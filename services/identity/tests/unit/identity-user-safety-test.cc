@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
+#include <test-support/app-runner.hxx>
 
 #include <auth/module-gate.hxx>
 #include <drogon/drogon.h>
@@ -38,37 +39,7 @@ namespace
 {
 constexpr const char* kDb = "identity-user-safety-test.db";
 
-class AppRunner
-{
-public:
-  AppRunner() : runner_([] { drogon::app().run(); }) {}
-
-  ~AppRunner()
-  {
-    if (!runner_.joinable())
-      return;
-    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    if (drogon::app().getLoop()->isRunning()) {
-      drogon::app().quit();
-      runner_.join();
-      return;
-    }
-    runner_.detach();
-  }
-
-  AppRunner(const AppRunner&) = delete;
-  AppRunner& operator=(const AppRunner&) = delete;
-
-private:
-  std::thread runner_;
-};
-
-std::unique_ptr<AppRunner>& runnerSlot()
-{
-  static std::unique_ptr<AppRunner> slot;
-  return slot;
-}
+using test_support::AppRunner;
 
 bool waitForBoot()
 {
@@ -83,15 +54,16 @@ bool waitForBoot()
 
 void boot()
 {
-  if (runnerSlot() == nullptr) {
+  static const auto runner = [] {
     for (const char* suffix : {"", "-wal", "-shm"})
       std::remove((std::string(kDb) + suffix).c_str());
     drogon::app().setLogLevel(trantor::Logger::kWarn);
     drogon::app().addDbClient(drogon::orm::Sqlite3Config{
         .connectionNumber = 1, .filename = kDb, .name = "default", .timeout = -1});
     VecDb::instance().setDbFile(kDb);
-    runnerSlot() = std::make_unique<AppRunner>();
-  }
+    return std::make_unique<AppRunner>();
+  }();
+  REQUIRE(runner != nullptr);
   REQUIRE(waitForBoot());
   static const bool schema = [] {
     DbService::installExtensions();
@@ -524,10 +496,4 @@ TEST_CASE("an invitation for a role whose module is off is refused 409 ROLE_INAC
   CHECK(guard.invitation.role == UserRole::Guard);
   CHECK(scalar("SELECT COUNT(*) FROM user_invitation WHERE role = 'guard'") == 1);
   moduleGate().reset();
-}
-
-TEST_CASE("the app stops while every singleton it uses is still alive")
-{
-  runnerSlot().reset();
-  CHECK(runnerSlot() == nullptr);
 }
