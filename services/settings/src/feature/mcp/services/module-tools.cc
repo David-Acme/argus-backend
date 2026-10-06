@@ -323,13 +323,9 @@ drogon::Task<argus::mcp::ToolOutcome> disableModule(std::shared_ptr<ModuleDesk> 
                                impact.refusalCode.empty() ? "refused" : impact.refusalCode);
     const std::string code = ledger->issue(key);
     argus::mcp::ToolOutcome preview;
-    preview.text = impactText(*card, impact, invocation) +
-                   speech::say({.invocation = invocation,
-                                .spanish = " Pídele al usuario que lo confirme; si dice que sí, llama otra vez a modules.disable "
-                                           "con module=" + card->id + " y confirmation=" + code + ".",
-                                .english = " Ask the user to confirm; if they say yes, call modules.disable again with module=" +
-                                           card->id + " and confirmation=" + code + "."});
+    preview.text = impactText(*card, impact, invocation);
     preview.structured["needsConfirmation"] = true;
+    preview.structured["confirmation"] = code;
     preview.structured["module"] = card->id;
     co_return preview;
   }

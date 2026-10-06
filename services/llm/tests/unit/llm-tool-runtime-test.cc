@@ -228,6 +228,67 @@ TEST_CASE("a tool with no arguments at all runs whatever the model put in them")
   CHECK(probe.ran);
 }
 
+TEST_CASE("a destructive preview and a module offer are remembered for the next turn, per user, and forgotten once used")
+{
+  ToolRegistry registry;
+  registry.registerTool(tool_stubs::stub(
+      {.name = "calendar.cancel_event",
+       .capability = "agenda.write",
+       .handler =
+           [](const tools::ToolCall& call) {
+             if (call.arguments.get("confirmation", "").asString().empty()) {
+               tools::ToolResult preview = tool_stubs::okResult("Cancelaría la reunión. confirmation=XY12Z9");
+               preview.data["needsConfirmation"] = true;
+               return preview;
+             }
+             return tool_stubs::okResult("Cancelada.");
+           },
+       .module = "productivity",
+       .schema = argus::mcp::schema::object({{.name = "title", .schema = argus::mcp::schema::text(), .required = false},
+                                             {.name = "confirmation", .schema = argus::mcp::schema::text(), .required = false}}),
+       .destructive = true}));
+  registry.registerTool(tool_stubs::stub({.name = "task.list",
+                                          .capability = "projects.read",
+                                          .handler = [](const tools::ToolCall&) { return tool_stubs::okResult("Nada."); },
+                                          .module = "productivity",
+                                          .schema = argus::mcp::schema::emptyObject()}));
+  const ToolExecutor executor(registry);
+
+  auto ask = callFor("calendar.cancel_event");
+  ask.arguments["title"] = "reunión del jueves";
+  ask.context.turn = 1;
+  CHECK(executor.execute(ask, audienceOf(UserRole::Owner)).ok);
+  REQUIRE(executor.pendingPreview(7).has_value());
+  const PendingPreview preview = executor.pendingPreview(7).value_or(PendingPreview{});
+  CHECK(preview.tool == "calendar.cancel_event");
+  CHECK(preview.arguments["title"].asString() == "reunión del jueves");
+  CHECK(preview.arguments["confirmation"].asString() == "XY12Z9");
+  CHECK_FALSE(executor.pendingPreview(8).has_value());
+
+  ModuleFlag off;
+  off.id = "productivity";
+  off.enabled = false;
+  off.name = {.es = "Productividad", .en = "Productivity"};
+  const ToolAudience inactive{.role = UserRole::Owner, .modules = ModuleSnapshot({off})};
+  auto list = callFor("task.list");
+  list.context.turn = 2;
+  CHECK(executor.execute(list, inactive).code == "module_inactive");
+  REQUIRE(executor.pendingOffer(7).has_value());
+  CHECK(executor.pendingOffer(7).value_or(PendingOffer{}).module == "productivity");
+  CHECK_FALSE(executor.pendingOffer(8).has_value());
+
+  auto confirmed = callFor("calendar.cancel_event");
+  confirmed.arguments = preview.arguments;
+  confirmed.context.turn = 3;
+  confirmed.context.utterance = "sí, cancélala";
+  CHECK(executor.execute(confirmed, audienceOf(UserRole::Owner)).ok);
+  CHECK_FALSE(executor.pendingPreview(7).has_value());
+  CHECK(executor.pendingOffer(7).has_value());
+
+  executor.forgetPending(7);
+  CHECK_FALSE(executor.pendingOffer(7).has_value());
+}
+
 TEST_CASE("a dispatch comes back under the tool that was called")
 {
   Probe probe;

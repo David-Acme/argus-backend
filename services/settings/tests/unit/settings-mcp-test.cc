@@ -146,11 +146,12 @@ Json::Value module(const std::string& id)
   return confirmed({.id = id, .confirmation = ""});
 }
 
-std::string codeIn(const std::string& text)
+std::string codeIn(const argus::mcp::ToolOutcome& preview)
 {
-  const auto at = text.find("confirmation=");
-  REQUIRE(at != std::string::npos);
-  return text.substr(at + 13, 6);
+  const std::string code = preview.structured["confirmation"].asString();
+  REQUIRE(code.size() == 6);
+  CHECK(preview.text.find("confirmation") == std::string::npos);
+  return code;
 }
 }
 
@@ -267,7 +268,7 @@ TEST_CASE("turning a module off previews what stops and who is affected, then ne
   CHECK(preview.text.find("Invitaciones pendientes que se revocarían: 1.") != std::string::npos);
   CHECK(preview.text.find("No se borra nada") != std::string::npos);
   CHECK(harness.desk->disabled.empty());
-  const std::string code = codeIn(preview.text);
+  const std::string code = codeIn(preview);
 
   const auto wrong = harness.call("modules.disable", confirmed({.id = "surveillance", .confirmation = "000000"}), "owner", "es", 1);
   CHECK(wrong.isError);
@@ -292,7 +293,7 @@ TEST_CASE("another person cannot spend the owner's code, and the preview is spok
   Harness harness;
   const auto preview = harness.call("modules.disable", module("surveillance"), "owner", "en", 1);
   CHECK(preview.text.find("Turning off Vigilancia would stop live views, guard duty in progress (2) and something new.") == 0);
-  const std::string code = codeIn(preview.text);
+  const std::string code = codeIn(preview);
   const auto other = harness.call("modules.disable", confirmed({.id = "surveillance", .confirmation = code}), "owner", "en", 2);
   CHECK(other.isError);
   CHECK(harness.desk->disabled.empty());
@@ -310,13 +311,11 @@ TEST_CASE("the preview speaks what keeps running, from the impact and in the use
   const auto keeps = spanish.text.find("las alertas de pánico o coacción en curso seguirán hasta que alguien las atienda.");
   REQUIRE(keeps != std::string::npos);
   CHECK(keeps < spanish.text.find("No se borra nada"));
-  CHECK(keeps < spanish.text.find("confirmation="));
   CHECK(spanish.structured["needsConfirmation"].asBool());
 
   const auto english = harness.call("modules.disable", module("surveillance"), "owner", "en", 1);
   const auto keepsEnglish = english.text.find("panic or duress alerts already raised keep going until someone answers them.");
   REQUIRE(keepsEnglish != std::string::npos);
-  CHECK(keepsEnglish < english.text.find("confirmation="));
   CHECK(english.text.find("pánico") == std::string::npos);
 }
 
@@ -407,13 +406,14 @@ TEST_CASE("a module that cannot be turned off says why and issues no code")
   CHECK(refused.isError);
   CHECK(refused.text == "No se puede apagar Núcleo: otro módulo lo necesita");
   CHECK(refused.structured["code"].asString() == "MODULE_REQUIRED_BY");
-  CHECK(refused.text.find("confirmation=") == std::string::npos);
+  CHECK(refused.text.find("confirmation") == std::string::npos);
+  CHECK_FALSE(refused.structured.isMember("confirmation"));
 }
 
 TEST_CASE("a failed disable after a valid code is reported and the module is not claimed off")
 {
   Harness harness;
-  const std::string code = codeIn(harness.call("modules.disable", module("surveillance"), "owner").text);
+  const std::string code = codeIn(harness.call("modules.disable", module("surveillance"), "owner"));
   harness.desk->disableAnswer = {.kind = DisableKind::Refused, .detail = "hay un trabajo en curso"};
   const auto outcome = harness.call("modules.disable", confirmed({.id = "surveillance", .confirmation = code}), "owner");
   CHECK(outcome.isError);

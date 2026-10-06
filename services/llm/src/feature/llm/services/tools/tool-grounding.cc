@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <chrono>
 #include <string_view>
 
 namespace
@@ -14,6 +16,22 @@ constexpr std::string_view kGuardModeTool = "app.set_guard_mode";
 constexpr std::string_view kEnableTool = "modules.enable";
 constexpr std::string_view kRequestTool = "modules.request";
 constexpr std::string_view kConfirmation = "confirmation";
+constexpr std::chrono::seconds kPreviewLife{120};
+constexpr std::chrono::minutes kOfferLife{10};
+constexpr std::size_t kCodeLength = 6;
+
+std::string codeIn(const std::string& text)
+{
+  const std::string marker = "confirmation=";
+  const std::size_t at = text.find(marker);
+  if (at == std::string::npos)
+    return {};
+  const std::size_t begin = at + marker.size();
+  std::size_t end = begin;
+  while (end < text.size() && end - begin < kCodeLength && std::isalnum(static_cast<unsigned char>(text[end])) != 0)
+    ++end;
+  return end - begin == kCodeLength ? text.substr(begin, kCodeLength) : std::string();
+}
 
 struct Label
 {
@@ -142,14 +160,66 @@ std::optional<tools::ToolResult> ToolGrounding::refuse(const GroundingInput& inp
   return refuseModuleChange(input);
 }
 
+std::optional<PendingPreview> ToolGrounding::pendingPreview(int64_t userId) const
+{
+  const std::scoped_lock lock(mutex_);
+  const auto found = latestPreview_.find(userId);
+  if (found == latestPreview_.end())
+    return std::nullopt;
+  if (std::chrono::steady_clock::now() - found->second.at > kPreviewLife) {
+    latestPreview_.erase(found);
+    return std::nullopt;
+  }
+  PendingPreview preview = found->second.preview;
+  preview.at = found->second.at;
+  return preview;
+}
+
+std::optional<PendingOffer> ToolGrounding::pendingOffer(int64_t userId) const
+{
+  const std::scoped_lock lock(mutex_);
+  const auto found = latestOffer_.find(userId);
+  if (found == latestOffer_.end())
+    return std::nullopt;
+  if (std::chrono::steady_clock::now() - found->second.at > kOfferLife) {
+    latestOffer_.erase(found);
+    return std::nullopt;
+  }
+  PendingOffer offer = found->second.offer;
+  offer.at = found->second.at;
+  return offer;
+}
+
+void ToolGrounding::forgetPending(int64_t userId) const
+{
+  const std::scoped_lock lock(mutex_);
+  latestPreview_.erase(userId);
+  latestOffer_.erase(userId);
+}
+
 void ToolGrounding::remember(const GroundingInput& input, const tools::ToolResult& result) const
 {
   const std::scoped_lock lock(mutex_);
-  if (result.ok && result.data["needsConfirmation"].isBool() && result.data["needsConfirmation"].asBool())
+  if (result.ok && result.data["needsConfirmation"].isBool() && result.data["needsConfirmation"].asBool()) {
     previews_[{input.call.context.userId, input.spec.name}] = input.call.context.turn;
+    const std::string structured = result.data["confirmation"].isString() ? result.data["confirmation"].asString() : std::string();
+    if (const std::string code = structured.empty() ? codeIn(result.output) : structured; !code.empty()) {
+      PendingPreview preview{.tool = input.spec.name, .arguments = input.call.arguments, .turn = input.call.context.turn};
+      preview.arguments[std::string(kConfirmation)] = code;
+      latestPreview_[input.call.context.userId] = {.preview = std::move(preview), .at = std::chrono::steady_clock::now()};
+    }
+  }
+  if (result.ok && input.call.arguments[std::string(kConfirmation)].isString() &&
+      !input.call.arguments[std::string(kConfirmation)].asString().empty())
+    latestPreview_.erase(input.call.context.userId);
   const bool changesModule = input.spec.name == kEnableTool || input.spec.name == kRequestTool;
-  if (changesModule && result.ok)
+  if (changesModule && result.ok) {
     offers_.erase({input.call.context.userId, input.call.arguments.get("module", "").asString()});
-  if (result.code == "module_inactive" && result.data["module"].isString())
+    latestOffer_.erase(input.call.context.userId);
+  }
+  if (result.code == "module_inactive" && result.data["module"].isString()) {
     offers_[{input.call.context.userId, result.data["module"].asString()}] = input.call.context.turn;
+    latestOffer_[input.call.context.userId] = {.offer = {.module = result.data["module"].asString(), .turn = input.call.context.turn},
+                                               .at = std::chrono::steady_clock::now()};
+  }
 }

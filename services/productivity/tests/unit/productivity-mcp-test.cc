@@ -263,9 +263,9 @@ void cancellingNeedsTheConfirmationCodeAndTheOwner(Env& env)
   CHECK_FALSE(preview.isError);
   CHECK(preview.structured["needsConfirmation"].asBool());
   CHECK(preview.text.find("Esto cancelaría «Cena con Marta»") == 0);
-  const auto at = preview.text.find("confirmation=");
-  REQUIRE(at != std::string::npos);
-  const std::string code = preview.text.substr(at + 13, 6);
+  CHECK(preview.text.find("confirmation") == std::string::npos);
+  const std::string code = preview.structured["confirmation"].asString();
+  REQUIRE(code.size() == 6);
   CHECK(liveEvents("Cena con Marta") == 2);
   CHECK(env.sink.operations.empty());
 

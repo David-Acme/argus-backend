@@ -11,6 +11,8 @@ struct ModuleOfferInput
   std::string lang;
 };
 
+[[nodiscard]] std::string moduleOfferFacts(const ModuleOfferInput& input);
+
 [[nodiscard]] std::string moduleOfferText(const ModuleOfferInput& input);
 
 [[nodiscard]] const ModuleFlag* moduleNamed(const ModuleSnapshot& modules, const std::string& id);

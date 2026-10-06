@@ -33,10 +33,11 @@ const ModuleFlag* moduleNamed(const ModuleSnapshot& modules, const std::string& 
   return found == modules.modules().end() ? nullptr : &*found;
 }
 
-std::string moduleOfferText(const ModuleOfferInput& input)
+namespace
+{
+std::string introduction(const ModuleOfferInput& input)
 {
   const bool english = input.lang == "en";
-  const bool owner = input.audience.role == UserRole::Owner;
   const ModuleFlag* module = moduleNamed(input.audience.modules, input.module);
   const std::string name = module != nullptr ? displayName(*module, english) : input.module;
   const std::string what = module != nullptr ? whatIs(*module, english) : std::string();
@@ -47,6 +48,28 @@ std::string moduleOfferText(const ModuleOfferInput& input)
     text += what + " ";
   if (!examples.empty())
     text += (english ? "For example: " : "Por ejemplo: ") + examples + ". ";
+  return text;
+}
+}
+
+std::string moduleOfferFacts(const ModuleOfferInput& input)
+{
+  const bool english = input.lang == "en";
+  const bool owner = input.audience.role == UserRole::Owner;
+  std::string text = introduction(input);
+  if (owner)
+    text += english ? "If the user says yes, it can be turned on now." : "Si el usuario dice que sí, se puede activar ahora.";
+  else
+    text += english ? "If the user says yes, the owner of the house can be asked to turn it on."
+                    : "Si el usuario dice que sí, se le puede pedir al dueño de la casa que lo active.";
+  return text;
+}
+
+std::string moduleOfferText(const ModuleOfferInput& input)
+{
+  const bool english = input.lang == "en";
+  const bool owner = input.audience.role == UserRole::Owner;
+  std::string text = introduction(input);
   if (owner)
     text += english ? "Tell the user in a natural way that it is off and offer to turn it on. If they answer yes, call "
                       "modules.enable with module=" + input.module + ". Do not turn it on without their yes."

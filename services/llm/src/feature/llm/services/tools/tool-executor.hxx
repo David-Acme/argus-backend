@@ -7,6 +7,7 @@
 #include <shared/vocabulary/tool-contracts.hxx>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 class ToolExecutor
@@ -19,6 +20,12 @@ public:
   [[nodiscard]] tools::ToolResult execute(const tools::ToolCall& call, const ToolAudience& audience) const;
 
   [[nodiscard]] std::vector<tools::ToolHandle> offered(const ToolAudience& audience) const;
+
+  [[nodiscard]] std::optional<PendingPreview> pendingPreview(int64_t userId) const { return grounding_.pendingPreview(userId); }
+
+  [[nodiscard]] std::optional<PendingOffer> pendingOffer(int64_t userId) const { return grounding_.pendingOffer(userId); }
+
+  void forgetPending(int64_t userId) const { grounding_.forgetPending(userId); }
 
 private:
   [[nodiscard]] tools::ToolResult inactive(const tools::ToolCall& call, const tools::ToolDescriptor& tool,

@@ -56,6 +56,7 @@ tools::ToolResult ToolExecutor::inactive(const tools::ToolCall& call, const tool
   tools::ToolResult result = refused(
       call, "module_inactive", moduleOfferText({.audience = audience, .module = tool.spec.module, .lang = call.context.lang}));
   result.data["module"] = tool.spec.module;
+  result.data["facts"] = moduleOfferFacts({.audience = audience, .module = tool.spec.module, .lang = call.context.lang});
   grounding_.remember({.call = call, .spec = tool.spec, .audience = audience}, result);
   if (ledger_ && !isAppTool(tool.spec.name) && !tool.spec.annotations.destructive)
     ledger_->offered({.userId = call.context.userId,

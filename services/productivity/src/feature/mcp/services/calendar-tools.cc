@@ -195,12 +195,10 @@ drogon::Task<argus::mcp::ToolOutcome> cancelEvent(CancelRequest request)
   argus::mcp::ToolOutcome outcome;
   if (token.empty()) {
     const std::string code = request.ledger->issue(key);
-    outcome.text = argus::mcp::speech::inEnglish(invocation)
-                       ? "This would cancel " + describe(event, invocation) + ". Ask the user to confirm; if they say yes, "
-                         "call calendar.cancel_event again with confirmation=" + code + "."
-                       : "Esto cancelaría " + describe(event, invocation) + ". Pídele al usuario que lo confirme; si dice que "
-                         "sí, llama otra vez a calendar.cancel_event con confirmation=" + code + ".";
+    outcome.text = argus::mcp::speech::inEnglish(invocation) ? "This would cancel " + describe(event, invocation) + "."
+                                                             : "Esto cancelaría " + describe(event, invocation) + ".";
     outcome.structured["needsConfirmation"] = true;
+    outcome.structured["confirmation"] = code;
     outcome.structured["eventId"] = event.id;
     co_return outcome;
   }

@@ -79,7 +79,9 @@ argus::mcp::ToolOutcome openScreen(const argus::mcp::ToolInvocation& invocation)
                               .modules = moduleGate().snapshot()};
   if (!audience.modules.enabled(screen->module)) {
     outcome.isError = true;
-    outcome.text = moduleOfferText({.audience = audience, .module = std::string(screen->module), .lang = english ? "en" : "es"});
+    const ModuleOfferInput offer{.audience = audience, .module = std::string(screen->module), .lang = english ? "en" : "es"};
+    outcome.text = moduleOfferText(offer);
+    outcome.structured["facts"] = moduleOfferFacts(offer);
     outcome.structured["code"] = "module_inactive";
     outcome.structured["module"] = std::string(screen->module);
     return outcome;
