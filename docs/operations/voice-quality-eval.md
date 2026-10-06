@@ -19,7 +19,10 @@ python3 -I services/llm/tests/eval/decider-eval.py --decider '<command>' \
     --select services/llm/tests/fixtures/eval/cases.jsonl <holdout.jsonl> \
     --select-negatives <real-negatives.txt> \
     --traffic services/llm/tests/fixtures/intent/eval-production.tsv \
-    [--sealed services/llm/tests/fixtures/eval/sealed.jsonl --final]
+    [--cache <file>] [--errors <file>] \
+    [--sealed services/llm/tests/fixtures/eval/sealed.jsonl --sealed2 services/llm/tests/fixtures/eval/sealed2.jsonl --final]
+python3 -I services/llm/tests/eval/perf-eval.py --decider '<command>' --artifact <model files> \
+    --gates services/llm/tests/eval/gates.json
 python3 -I services/llm/tests/eval/slot-eval.py --cases services/llm/tests/fixtures/eval/slots.jsonl \
     --gates services/llm/tests/eval/gates.json --filler '<command>'
 python3 -I services/llm/tests/eval/conversation-eval.py --cases services/llm/tests/fixtures/eval/conversation.jsonl \
@@ -43,6 +46,8 @@ from the sibling `intent-training/` project (`CONTEXT.md` there).
 | `fixtures/eval/cases.jsonl` | 789 (629 distinct utterances) | the judge corpus the rule tier and the classifier were developed against |
 | `intent-training/data/eval/holdout.jsonl` | 185 | fresh cases written without reading any rule tier's vocabulary, used to choose an operating point |
 | `fixtures/eval/sealed.jsonl` | 2,482 | the sealed held-out set: judges whichever decider wins, read once per frozen decider |
+| `fixtures/eval/sealed2.jsonl` | 4,156 | SEALED-2: 3,311 near-miss negatives, 700 positives, 145 ambiguous utterances by three authors who never saw the training data; certifies the 0.1% wrong-ACT ceiling that 363 near-misses cannot |
+| `intent-training/build/laya/selection.jsonl` | 7,523 | the held-out selection set of the round-1 corpus (the group-disjoint test split), where the policy and the calibration are fitted |
 | `fixtures/eval/slots.jsonl` | 100 | utterance, tool, reference clock; expected arguments or the slot that must be reported missing |
 | `fixtures/eval/conversation.jsonl` | 127 | a turn's facts (done, listing, empty, failed, refused, module-off offer, destructive preview, clarifying question, plain chat, undecided action) and what the reply must and must not say |
 
@@ -73,19 +78,30 @@ on the selection sets, not on it.
 
 Request: `{seq, text, lang, role, tools}`, where `tools` are the tool names offered to that role (the
 choice options; modules.enable, modules.disable and modules.open_purge_screen only to the Owner,
-modules.request only to the others). Answer: `{seq, tool|null, confidence}`. A null stays null at
-every threshold.
+modules.request only to the others). Answer: `{seq, tool|null, confidence, runnerUp:{tool, confidence},
+now}`: the best option and how sure the decider is, the next best, and (optionally) the probability that
+the user asks to do it now. A policy turns an answer into one of three outcomes: ACT (confidence at or
+above `act` and clearly ahead of the runner-up by `margin`), ASK (the middle band, or two options close
+together: the system asks "¿Lo agendo para el jueves a las tres?" or "¿Lo agendo o lo guardo como
+recordatorio?" and acts on a yes) and conversation. A write or destroy tool (everything outside
+calendar.list_events, task.list, project.list, modules.list/explain, reminder.list, memory.recall,
+app.open and app.show_camera; app.set_guard_mode changes the house's security state and is a write)
+ACTs only when the second signal `now` also passes `nowMin`, otherwise it is an ASK. The policy
+(`act`, `ask`, `margin`, `nowMin`) is chosen on the selection sets as the one with the most coverage
+(a correct ACT, or an ASK that names the right tool, over the clear commands) such that the wrong-ACT rate
+on the negatives is at or below `decider.wrongActMax` (0.1%) pooled, per family and on the authored
+near-miss stratum, at most `askRateClearMax` (10%) of the clear commands are asked about and at most 1%
+are acted on with the wrong tool. Ambiguous cases (`expect.ambiguous.tools`) are scored apart: asking is
+right, acting is wrong. `--final` then reads the sealed set and SEALED-2, each pinned by sha256, at that
+policy and prints each sealed sweep as information only; `--errors` writes the selection-set errors
+(never the sealed ones) for `intent-training/scripts/error_analysis.py`.
 
 What is counted, per family (calendar, task, project, modules, reminder list, memory, app, camera):
-*coverage* (positives routed to the right tool), *precision* (routes that were right), and the
-*false-route rate*: a negative, or a positive of another family, routed to that family's tools. For
-the five module families the ceiling is 0.5% (`sealed.falseRouteMax`) pooled, per family and on the
-authored near-miss stratum alone, because a pooled rate over easy real utterances is diluted: a
-router that sends 2.3% of the near-misses to a calendar tool still shows 0.49% pooled. The harness
-sweeps the confidence threshold, chooses the lowest one at which all of those rates are at or below
-the ceiling on the selection set (cases, the fresh holdout and 8,694 real held-out negatives free
-of every schedule, memory and module cue), and `--final` scores the sealed set at that threshold,
-printing the sealed sweep as information only.
+*coverage*, *precision* of the ACTs and the *wrong-ACT rate*: a negative, or a positive of another family,
+acted on with that family's tools. A pooled rate over easy real utterances is diluted, which is why the
+authored near-miss stratum is gated on its own: a router that sends 2.3% of the near-misses to a
+calendar tool still shows 0.49% pooled. 0.1% cannot be certified on 363 near-misses (zero errors still
+leaves a Wilson upper bound of about 1%); 3,311 of SEALED-2 give 0.12%.
 
 Baseline: the fastText classifier with twenty classes (the six of the memory router plus fourteen
 for the module families, `intent-training` `CONTEXT.md`), adapter `scripts/decider_fasttext.py`,
@@ -120,6 +136,44 @@ precision are 0.873 for `memory_save`, 0.840 for `memory_recall`, 0.908 for `rem
 size: three of them miss on this build (`memory_recall` by 0.010 and `camera` by 0.019 on the lower
 bound, `none` recall on the case judge 0.968 against 0.97), which is why the decision to publish is
 taken on the sealed reading and not on them.
+
+### Round 0 of the fine-tuned model, on the selection sets only
+
+Laya (`jhu-clsp/mmBERT-base` fine-tuned on 5,978 folded rows, 2 epochs) against fastText families-v1.1 on
+the same selection set (the judge corpus, the fresh holdout and 2,500 real negatives; the sealed sets
+untouched), module families pooled, ACT only:
+
+| ACT at | decider | coverage | precision | wrong tool | wrong ACT | near-miss stratum |
+|---|---|---|---|---|---|---|
+| 0.90 | Laya | 0.849 | 0.869 | 1.59% | 1.005% | 3.09% |
+| 0.90 | fastText | 0.669 | 0.966 | 1.99% | 0.100% | 0.617% |
+| 0.93 | Laya | 0.653 | 0.906 | 0.80% | 0.502% | 2.06% |
+| 0.93 | fastText | 0.622 | 0.969 | 1.59% | 0.067% | 0.412% |
+| 0.94 | Laya | 0.167 | 0.933 | 0.40% | 0.067% | 0.206% |
+
+Laya's confidence is compressed (it stops near 0.945 and falls off a cliff above it), so thresholds must
+be fitted by calibration before two deciders are compared at equal wrong-ACT; no non-trivial ACT / ASK
+policy meets the 0.1% ceiling on that selection set for either decider. The production router today
+(`appCommandFor` + the six-class memory router, `tests/eval/production-decider`) routes no module family and
+sends 3.98% of module-family requests to a memory tool.
+
+## Performance and consumption
+
+`perf-eval.py` measures latency per decision (p50, p95, max), resident and peak memory of the process
+tree, threads, CPU milliseconds per call, load time and artifact size, sequentially, and refuses to
+record a number when `/proc/stat` shows the machine busy (exit 77; `--allow-busy` measures anyway and
+marks it not reportable). `gates.json` (`performance.metrics`) holds the budget: p95 150 ms, resident
+600 MB, CPU 400 ms per call after INT8 with 4 threads.
+
+| decider | p50 / p95 ms | CPU ms per call | resident / peak MB | threads | artifact MB |
+|---|---|---|---|---|---|
+| fastText router, C++ dev build (today) | 0.28 / 0.39 | 0.27 | 54.8 / 54.8 | 1 | 12.3 |
+| fastText 20 classes, Python adapter | 0.06 / 0.14 | 0.03 | 52.3 / 52.3 | 1 | 12.5 |
+| Laya round 0, PyTorch fp32, CPU | 91.7 / 101.4 | 740.6 | 1,733 / 2,324 | 39 | 1,294 (615 weights) |
+
+Laya passes the latency budget and fails the memory budget by 2.9 times in the form nobody ships. The plan
+for the shipped form (vocabulary pruned to the Spanish and English tokens, ONNX, INT8, 4 threads) is
+measured before it is claimed.
 
 ## The slots
 
