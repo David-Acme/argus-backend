@@ -9,6 +9,7 @@
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <feature/llm/services/tools/core-tools.hxx>
 #include <feature/llm/services/tools/tool-directory.hxx>
+#include <feature/llm/services/turn/model-text.hxx>
 #include <auth/module-feed.hxx>
 #include <auth/module-gate.hxx>
 #include <mcp/client.hxx>
@@ -148,6 +149,20 @@ CatalogReplica::Snapshot fetchCatalogSnapshotWithRetry()
   return CatalogReplica::Snapshot{};
 }
 
+turn::PolicySet configuredPolicies()
+{
+  const auto policyOf = [](const LlmDecisionConfig& decision) {
+    return turn::DecisionPolicy{.act = decision.act, .ask = decision.ask, .margin = decision.margin};
+  };
+  turn::PolicySet policies;
+  if (const auto fallback = LlmConfig::resolveDecision())
+    policies.setFallback(policyOf(*fallback));
+  for (const std::string_view id : turn::kDeciderIds)
+    if (const auto own = LlmConfig::resolveDecision(id))
+      policies.set(std::string(id), policyOf(*own));
+  return policies;
+}
+
 }
 
 int main()
@@ -160,6 +175,7 @@ int main()
   drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-llm", .extras = {}}));
   const auto llm = std::make_shared<LlmController>();
   drogon::app().registerController(llm);
+  llm->adapter().flow().usePolicies(configuredPolicies());
 
   drogon::app().loadConfigJson(drogonConfig(listener));
 
@@ -191,6 +207,8 @@ int main()
     llama_backend_free();
     return 1;
   }
+  const turn::ModelText modelText(memory.extraction());
+  llm->adapter().flow().useText(modelText);
   std::shared_ptr<NotificationClient> notificationClient;
   if (const LlmNotificationConfig notifications = LlmConfig::resolveNotifications();
       !notifications.target.empty() && !notifications.credential.empty()) {

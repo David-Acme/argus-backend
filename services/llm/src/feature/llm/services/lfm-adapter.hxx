@@ -6,6 +6,10 @@
 #include <llm/llm-service.hxx>
 #include <feature/llm/services/tools/tool-access.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
+#include <feature/llm/services/turn/deciders.hxx>
+#include <feature/llm/services/turn/decision-policy.hxx>
+#include <feature/llm/services/turn/slots.hxx>
+#include <feature/llm/services/turn/turn-flow.hxx>
 #include <functional>
 #include <string>
 #include <vector>
@@ -79,6 +83,17 @@ struct LfmAdapterInput
   ChatEngine engine;
   ToolRegistry& registry;
   const IntentRouter* router{nullptr};
+  bool turnFlow{false};
+  const turn::Decider* decider{nullptr};
+  const slots::TextSlots* text{nullptr};
+  turn::PolicySet policies{};
+};
+
+struct SpeakInput
+{
+  const ToolChatInput& input;
+  std::vector<ChatMessage>& history;
+  const TokenCallback* onToken{nullptr};
 };
 
 class LfmAdapter
@@ -106,7 +121,13 @@ public:
 
   ToolExecutor& executor() { return executor_; }
 
+  turn::TurnFlow& flow() { return flow_; }
+
 private:
+  ToolChatOutput chatTurn(const SpeakInput& args);
+
+  [[nodiscard]] std::vector<ChatMessage> speakMessages(const SpeakInput& args, const std::string& notes) const;
+
   bool routedTurn(ToolHopContext ctx);
 
   bool toolHops(ToolHopContext ctx);
@@ -123,4 +144,10 @@ private:
   ToolRegistry& registry_;
   const IntentRouter* router_ = nullptr;
   ToolExecutor executor_;
+  turn::RuleDecider ruleDecider_;
+  turn::RouterDecider routerDecider_;
+  turn::FirstOf stack_;
+  slots::RuleText ruleText_;
+  turn::TurnFlow flow_;
+  bool turnFlow_{false};
 };

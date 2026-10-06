@@ -10,6 +10,8 @@
 #include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
+#include <feature/llm/services/turn/turn-texts.hxx>
+#include <ctime>
 #include <optional>
 #include <ranges>
 #include <sstream>
@@ -602,14 +604,22 @@ LfmAdapter::LfmAdapter(LlmService& llm, const IntentRouter* router)
                            llm.chatStream(request, std::move(onToken));
                          }},
           .registry = ToolRegistry::instance(),
-          .router = router})
+          .router = router,
+          .turnFlow = true})
 {
 }
 
 LfmAdapter::LfmAdapter(LfmAdapterInput input)
     : engine_(std::move(input.engine)), registry_(input.registry),
-      router_(input.router), executor_(input.registry)
+      router_(input.router), executor_(input.registry),
+      routerDecider_(input.router), stack_({&ruleDecider_, &routerDecider_}),
+      flow_({.executor = executor_,
+             .decider = input.decider != nullptr ? input.decider : &stack_,
+             .text = input.text != nullptr ? input.text : &ruleText_,
+             .policies = std::move(input.policies)}),
+      turnFlow_(input.turnFlow)
 {
+  flow_.useWitnesses({&ruleDecider_, &routerDecider_});
 }
 
 bool LfmAdapter::offered(const tools::ToolCall& call, const std::vector<tools::ToolHandle>& tools) const
@@ -875,9 +885,115 @@ bool LfmAdapter::toolHops(ToolHopContext ctx)
   return false;
 }
 
+std::vector<ChatMessage> LfmAdapter::speakMessages(const SpeakInput& args, const std::string& notes) const
+{
+  std::vector<ChatMessage> msgs = args.history;
+  const std::string persona = turn_texts::persona(args.input.context.lang);
+  if (!msgs.empty() && msgs.front().role == "system")
+    msgs.front().content += "\n" + persona;
+  else
+    msgs.insert(msgs.begin(), ChatMessage{.role = "system", .content = persona});
+  if (!args.input.clock.empty()) {
+    for (auto& message : std::views::reverse(msgs)) {
+      if (message.role != "user")
+        continue;
+      message.content += '\n';
+      message.content += args.input.clock;
+      break;
+    }
+  }
+  if (!notes.empty())
+    msgs.push_back({.role = "system", .content = notes});
+  return msgs;
+}
+
+ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
+{
+  const ToolChatInput& input = args.input;
+  std::vector<ChatMessage>& history = args.history;
+  ToolChatOutput output;
+  const std::string utterance = lastUserMessage(history);
+
+  ChatRequest req;
+  req.maxTokens = input.answerMaxTokens > 0 ? input.answerMaxTokens : 512;
+  req.temperature = input.temperature;
+  req.resetContext = input.resetContext;
+  req.stop = {};
+  req.toolCallsAllowed = false;
+
+  if (input.prefillOnly) {
+    req.messages = speakMessages(args, {});
+    req.prefillOnly = true;
+    if (args.onToken != nullptr) {
+      engine_.chatStream(req, *args.onToken);
+      output.emitted = true;
+    }
+    else {
+      engine_.chat(req);
+    }
+    return output;
+  }
+
+  const turn::Outcome outcome = flow_.run({.utterance = utterance,
+                                           .offered = input.tools,
+                                           .audience = input.audience,
+                                           .context = input.context,
+                                           .now = static_cast<int64_t>(std::time(nullptr))});
+  for (const auto& step : outcome.steps)
+    output.executed.push_back(step.call);
+  output.toolMs = outcome.toolMs;
+  output.hops = outcome.steps.empty() ? 0 : 1;
+
+  if (outcome.question) {
+    output.reply = *outcome.question;
+    if (args.onToken != nullptr) {
+      (*args.onToken)(output.reply, false);
+      (*args.onToken)("", true);
+      output.emitted = true;
+    }
+    history.push_back({.role = "assistant", .content = output.reply});
+    return output;
+  }
+
+  TurnState state = turnOf(utterance, input.tools);
+  state.wrote = outcome.wrote;
+  state.failed = std::ranges::any_of(outcome.steps, [](const turn::Step& step) { return !step.result.ok; });
+  req.messages = speakMessages(args, turn::TurnFlow::notes(outcome, input.context.lang));
+
+  const auto started = std::chrono::steady_clock::now();
+  if (args.onToken != nullptr) {
+    reply_claims::ClaimGate gate({.sink = *args.onToken,
+                                  .lang = input.context.lang,
+                                  .asked = state.asked,
+                                  .legitimate = [&state] { return state.wrote; }});
+    const TokenCallback guarded = gate.callback();
+    std::string spoken;
+    engine_.chatStream(req, [&spoken, &guarded](const std::string& token, bool done) {
+      spoken += token;
+      guarded(token, done);
+    });
+    output.emitted = true;
+    output.reply = gate.cut() ? gate.spoken() : spoken;
+    if (gate.cut())
+      LOG_WARN << "LfmAdapter: a streamed reply claimed something no tool did; it was cut";
+  }
+  else {
+    output.reply = engine_.chat(req);
+    if (claimedWithoutTool(output.reply, state)) {
+      LOG_WARN << "LfmAdapter: the reply claims something no tool did; answering honestly";
+      output.reply = reply_claims::honest(input.context.lang);
+    }
+  }
+  output.generateMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+  history.push_back({.role = "assistant", .content = output.reply});
+  return output;
+}
+
 ToolChatOutput LfmAdapter::chatWithTools(const ToolChatInput& input,
                                          std::vector<ChatMessage>& history)
 {
+  if (turnFlow_)
+    return chatTurn({.input = input, .history = history, .onToken = nullptr});
   ToolChatOutput output;
   TurnState state = turnOf(lastUserMessage(history), input.tools);
   const std::string declarations = input.tools.empty()
@@ -924,6 +1040,8 @@ ToolChatOutput LfmAdapter::chatWithToolsStream(
   const ToolChatInput& input = args.input;
   std::vector<ChatMessage>& history = args.history;
 
+  if (turnFlow_)
+    return chatTurn({.input = input, .history = history, .onToken = &args.onToken});
   ToolChatOutput output;
   TurnState state = turnOf(lastUserMessage(history), input.tools);
   reply_claims::ClaimGate gate({.sink = args.onToken,

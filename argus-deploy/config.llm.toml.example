@@ -70,6 +70,16 @@ extract_wait_ms = 15000
 [intent]
 model_file = "models/intent/intent.bin"
 
+[decide]
+act = 0.90
+ask = 0.60
+margin = 0.10
+
+[decide.router]
+act = 0.90
+ask = 0.60
+margin = 0.10
+
 [extract]
 model_path = "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"
 prompt_format = "v1.5"

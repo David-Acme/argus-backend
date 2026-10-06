@@ -4,7 +4,9 @@
 #include <http/listener-config.hxx>
 
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -25,6 +27,13 @@ struct LlmIdentityConfig
 struct LlmMemoryConfig
 {
   bool observeCameraEvents{false};
+};
+
+struct LlmDecisionConfig
+{
+  double act{0.0};
+  double ask{0.0};
+  double margin{0.0};
 };
 
 struct LlmNotificationConfig
@@ -55,6 +64,8 @@ public:
   [[nodiscard]] static std::string resolveCameraCredential();
 
   [[nodiscard]] static LlmMemoryConfig resolveMemory();
+
+  [[nodiscard]] static std::optional<LlmDecisionConfig> resolveDecision(std::string_view decider = {});
 
   [[nodiscard]] static LlmNotificationConfig resolveNotifications();
 

@@ -22,6 +22,13 @@ argus_module(NAME llm
         services/tools/tool-grounding.cc
         services/tools/tool-policy.cc
         services/tools/tool-registry.cc
+        services/turn/deciders.cc
+        services/turn/model-text.cc
+        services/turn/pending-turn.cc
+        services/turn/slot-lexicon.cc
+        services/turn/slots.cc
+        services/turn/turn-flow.cc
+        services/turn/turn-texts.cc
     INCLUDES
         ../..
     DEPENDS

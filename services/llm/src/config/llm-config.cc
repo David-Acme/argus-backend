@@ -49,6 +49,19 @@ LlmMemoryConfig LlmConfig::resolveMemory()
               ConfigService::getBool("memory.observe_camera_events")};
 }
 
+std::optional<LlmDecisionConfig> LlmConfig::resolveDecision(std::string_view decider)
+{
+  const std::string section = decider.empty() ? std::string("decide") : "decide." + std::string(decider);
+  if (!ConfigService::hasKey(section + ".act") || !ConfigService::hasKey(section + ".ask"))
+    return std::nullopt;
+  const LlmDecisionConfig decision{.act = ConfigService::getDouble(section + ".act"),
+                                   .ask = ConfigService::getDouble(section + ".ask"),
+                                   .margin = ConfigService::hasKey(section + ".margin") ? ConfigService::getDouble(section + ".margin") : 0.0};
+  if (decision.ask <= 0.0 || decision.ask > decision.act || decision.act > 1.0 || decision.margin < 0.0 || decision.margin > 1.0)
+    return std::nullopt;
+  return decision;
+}
+
 LlmNotificationConfig LlmConfig::resolveNotifications()
 {
   return {.target = ConfigService::getString("notifications.target"),

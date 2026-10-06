@@ -73,6 +73,8 @@ struct IntentDecision
   bool fromRules = false;
   bool confident = false;
   DecisionSource source = DecisionSource::Model;
+  ToolIntent runnerUp = ToolIntent::None;
+  float runnerUpScore = 0.0F;
 };
 
 inline std::string normalizeInput(const std::string& text)

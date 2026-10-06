@@ -37,6 +37,16 @@ gpu_layers = -1
 [intent]
 model_file = "models/intent/intent.bin"
 
+[decide]
+act = 0.90
+ask = 0.60
+margin = 0.10
+
+[decide.router]
+act = 0.90
+ask = 0.60
+margin = 0.10
+
 [components]
 models_dir = "models"
 

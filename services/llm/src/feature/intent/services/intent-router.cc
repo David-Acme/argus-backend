@@ -105,8 +105,11 @@ intent::IntentDecision IntentRouter::decide(const std::string& text,
 
   const intent::IntentHit& top = hits.front();
   const float runner = hits.size() > 1 ? hits[1].score : 0.0F;
-  intent::IntentDecision decision{
-      .intent = top.intent, .score = top.score, .margin = top.score - runner};
+  intent::IntentDecision decision{.intent = top.intent,
+                                  .score = top.score,
+                                  .margin = top.score - runner,
+                                  .runnerUp = hits.size() > 1 ? hits[1].intent : intent::ToolIntent::None,
+                                  .runnerUpScore = runner};
 
   if (top.score >= kThreshold && decision.margin >= kMargin) {
     if (explicitTrigger)

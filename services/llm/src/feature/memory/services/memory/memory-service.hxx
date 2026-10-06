@@ -109,6 +109,7 @@ public:
   void setReminderCalls(std::shared_ptr<const ReminderCallScheduler> scheduler);
   void setReminderRows(std::shared_ptr<const ReminderRowWriter> writer);
 
+  ExtractionService& extraction() { return extractModel_; }
   SemanticGraph& graph() { return *graph_; }
   MemoryFormation& formation() { return formation_; }
   GraphRecall& graphRecall() { return graphRecall_; }
