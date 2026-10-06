@@ -10,6 +10,7 @@
 #include <feature/modules/repositories/module-audit/module-audit-repository.hxx>
 #include <feature/modules/repositories/module-job/module-job-repository.hxx>
 #include <feature/modules/repositories/module-purge/module-purge-repository.hxx>
+#include <feature/modules/repositories/module-role-move/module-role-move-repository.hxx>
 #include <feature/modules/repositories/module-state/module-state-repository.hxx>
 #include <feature/modules/schemas/module-view.hxx>
 #include <feature/modules/services/module-event-throttle.hxx>
@@ -107,6 +108,7 @@ struct ModuleImpactView
   std::int64_t filesBytes{0};
   std::vector<KeepsRunningItem> keepsRunning;
   std::vector<std::string> unreachable;
+  std::vector<ModuleRoleMove> roleMoves;
 };
 
 struct RequestCommand
@@ -275,7 +277,8 @@ private:
   [[nodiscard]] std::optional<ErrorDefinition> impactRefusalLocked(const CatalogModule& module,
                                                                    ImpactAction action) const;
   [[nodiscard]] std::vector<std::string> assignableRolesLocked(const CatalogModule& leaving) const;
-  void settleRoles(const UninstallCommand& command);
+  [[nodiscard]] std::vector<ModuleRoleMove> settleRoles(const UninstallCommand& command);
+  [[nodiscard]] const std::vector<ModuleRoleMove>& roleMovesLocked(std::int64_t jobId) const;
 
   void flush(const Outbox& outbox);
   void wake();
@@ -291,6 +294,7 @@ private:
   ModuleJobRepository jobRepository_;
   ModuleAuditRepository auditRepository_;
   ModulePurgeRepository purgeRepository_;
+  ModuleRoleMoveRepository roleMoveRepository_;
 
   mutable std::mutex mutex_;
   std::mutex tickMutex_;
@@ -306,6 +310,7 @@ private:
   std::int64_t bootMs_{0};
   std::int64_t refreshedAt_{0};
   std::map<std::string, ModuleJobSchema> jobs_;
+  std::map<std::int64_t, std::vector<ModuleRoleMove>> roleMoves_;
   std::map<std::string, ComponentReading> readings_;
   std::map<std::int64_t, Rate> rates_;
   std::set<std::string> pendingStops_;

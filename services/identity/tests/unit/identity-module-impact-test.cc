@@ -6,11 +6,13 @@
 #include <feature/module-impact/services/identity-module-impact.hxx>
 #include <feature/module-impact/services/identity-role-reassign.hxx>
 #include <sqlite/db-service.hxx>
+#include <sync/identity-change-sink.hxx>
 
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #ifndef ARGUS_IDENTITY_SCHEMA
 #error "ARGUS_IDENTITY_SCHEMA must point at database/schema.sql"
@@ -29,6 +31,23 @@ ModuleFlag surveillance()
           .summary = {},
           .intro = {}};
 }
+
+class ActionRecorder : public IdentityChangeSink
+{
+public:
+  [[nodiscard]] drogon::Task<void> publishCatalog(const IdentityCatalogInput&) const override { co_return; }
+  [[nodiscard]] drogon::Task<void> emitModule(const ModuleEmitInput&) const override { co_return; }
+  [[nodiscard]] drogon::Task<void> publishModuleAudit(const ModuleAuditInput&) const override { co_return; }
+  [[nodiscard]] drogon::Task<void> publishUsersAudit(const UserAuditInput&) const override { co_return; }
+
+  [[nodiscard]] drogon::Task<void> publishAction(const ActionPublishInput& input) const override
+  {
+    actions.push_back(input.event);
+    co_return;
+  }
+
+  mutable std::vector<UserActionEvent> actions;
+};
 
 struct Database
 {
@@ -115,10 +134,20 @@ void reassignsThroughTheNormalUpdate(const Database& database)
   CHECK(partial.failedUserId == 99);
   CHECK(database.roleOf(7) == "resident");
 
+  ActionRecorder recorder;
+  identity_change::setSink(&recorder);
   const auto done = host.reassign({.actorUserId = 1, .reassignments = {{.userId = 8, .role = "guest"}}});
+  identity_change::setSink(nullptr);
   CHECK(done.status == ReassignStatus::Applied);
   CHECK(done.applied == 1);
   CHECK(database.roleOf(8) == "guest");
+  REQUIRE(recorder.actions.size() == 1);
+  CHECK(recorder.actions[0].userId == 1);
+  CHECK(recorder.actions[0].recordId == 8);
+  CHECK(recorder.actions[0].tableName == TableName::User);
+  CHECK(recorder.actions[0].action == UserAction::Update);
+  CHECK(recorder.actions[0].oldData["role"].asString() == "guard");
+  CHECK(recorder.actions[0].newData["role"].asString() == "guest");
   CHECK(impactHost.impact("surveillance").roleHolders.empty());
 }
 }

@@ -3,6 +3,7 @@
 #include <feature/modules/infra/component-owners.hxx>
 #include <feature/modules/schemas/module-catalog.hxx>
 #include <feature/modules/schemas/module-job.hxx>
+#include <feature/modules/schemas/module-role-move.hxx>
 #include <feature/modules/schemas/module-state.hxx>
 #include <feature/modules/services/hardware-check.hxx>
 
@@ -23,6 +24,7 @@ struct JobView
   double progress{0};
   std::int64_t bytesPerSecond{0};
   std::optional<std::int64_t> etaSeconds;
+  std::vector<ModuleRoleMove> roleMoves{};
 };
 
 struct ModuleView

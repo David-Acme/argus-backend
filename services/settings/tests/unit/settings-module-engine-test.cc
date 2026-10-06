@@ -4,6 +4,7 @@
 #include <drogon/orm/DbClient.h>
 #include <errors/response-exception.hxx>
 #include <errors/validation-exception.hxx>
+#include <feature/modules/dtos/module-json.hxx>
 #include <feature/modules/infra/module-catalog-file.hxx>
 #include <feature/modules/services/module-engine.hxx>
 #include <feature/modules/services/module-journal.hxx>
@@ -1233,4 +1234,125 @@ TEST_CASE("the settings of the owners a module brings are visible only while the
   harness.step(3);
   CHECK(harness.enabled("surveillance"));
   CHECK(harness.engine->settingsOwnerVisible("camera"));
+}
+
+namespace
+{
+RoleReassignmentOutcome applied(std::int32_t count)
+{
+  return {.status = ReassignStatus::Applied, .applied = count, .failedUserId = 0, .reason = {}};
+}
+
+const ModuleActionRecord* journaled(const ActionSink& actions, const std::string& event)
+{
+  const auto found = std::ranges::find_if(actions.records, [&event](const ModuleActionRecord& record) {
+    return record.event.module == "surveillance" && record.event.newData["event"].asString() == event;
+  });
+  return found == actions.records.end() ? nullptr : &*found;
+}
+}
+
+TEST_CASE("an uninstall that fails after the roles moved keeps them, says so on the job and in the impact, and journals both")
+{
+  Harness harness;
+  surveillanceOn(harness);
+  describeImpact(harness);
+  harness.owners.reassignReply = {.reach = OwnerReach::Answered, .value = applied(2)};
+  ActionSink actions;
+  ModuleJournal journal({.db = drogon::orm::DbClient::newSqlite3Client("filename=" + harness.path.string(), 1),
+                         .sink = &actions,
+                         .pollInterval = std::chrono::milliseconds(50)});
+
+  const auto queued = harness.engine->uninstall({.moduleId = "surveillance",
+                                                 .userId = 1,
+                                                 .keepData = true,
+                                                 .pin = {},
+                                                 .reassign = {{.userId = 7, .role = "resident"}, {.userId = 8, .role = "guest"}}});
+  REQUIRE(queued.roleMoves.size() == 2);
+  CHECK(queued.roleMoves[0].name == "Gus7");
+  CHECK(queued.roleMoves[0].from == "guard");
+  CHECK(queued.roleMoves[0].to == "resident");
+  CHECK_FALSE(module_json::job(queued).isMember("roleMovesNote"));
+
+  harness.owners.owners["vlm"].reach = OwnerReach::Unreachable;
+  harness.step(3);
+  REQUIRE(harness.state("surveillance") == JobState::Failed);
+  const auto failed = harness.job("surveillance");
+  CHECK(failed.job.reason == "owner_unreachable");
+  REQUIRE(failed.roleMoves.size() == 2);
+
+  const auto json = module_json::job(failed);
+  CHECK(json["state"].asString() == "failed");
+  REQUIRE(json["roleMoves"].size() == 2);
+  CHECK(json["roleMoves"][1]["userId"].asInt64() == 8);
+  CHECK(json["roleMoves"][1]["from"].asString() == "guard");
+  CHECK(json["roleMoves"][1]["to"].asString() == "guest");
+  CHECK(json["roleMovesNote"]["es"].asString().find("Gus7, Gus8 ya tienen su nuevo rol y lo conservan") != std::string::npos);
+  CHECK(json["roleMovesNote"]["es"].asString().find("el módulo sigue instalado") != std::string::npos);
+  CHECK(json["roleMovesNote"]["en"].asString().find("Gus7, Gus8 already have their new role and keep it") != std::string::npos);
+  CHECK(json["roleMovesNote"]["en"].asString().find("the module is still installed") != std::string::npos);
+
+  CHECK(harness.owners.callsOf("reassign:").size() == 1);
+  const auto impact = harness.engine->impact({.moduleId = "surveillance", .action = ImpactAction::Disable});
+  REQUIRE(impact.roleMoves.size() == 2);
+  CHECK(impact.roleMoves[0].userId == 7);
+  CHECK(impact.roleMoves[0].to == "resident");
+
+  CHECK(journal.relay() > 0);
+  const auto* requested = journaled(actions, "uninstall_requested");
+  REQUIRE(requested != nullptr);
+  CHECK(requested->event.userId == 1);
+  CHECK(requested->event.newData["detail"].asString() == "keep_data");
+  REQUIRE(requested->event.newData["roleMoves"].size() == 2);
+  CHECK(requested->event.newData["roleMoves"][0]["userId"].asInt64() == 7);
+  CHECK(requested->event.newData["roleMoves"][0]["from"].asString() == "guard");
+  CHECK(requested->event.newData["roleMoves"][0]["to"].asString() == "resident");
+  CHECK(journaled(actions, "failed") != nullptr);
+
+  harness.boot();
+  const auto restarted = harness.job("surveillance");
+  REQUIRE(restarted.roleMoves.size() == 2);
+  CHECK(restarted.roleMoves[1].name == "Gus8");
+}
+
+TEST_CASE("a cancelled uninstall reads the same, and one that finished carries no warning or listing")
+{
+  Harness cancelled;
+  surveillanceOn(cancelled);
+  describeImpact(cancelled);
+  cancelled.owners.reassignReply = {.reach = OwnerReach::Answered, .value = applied(2)};
+  static_cast<void>(cancelled.engine->uninstall({.moduleId = "surveillance",
+                                                 .userId = 1,
+                                                 .keepData = true,
+                                                 .pin = {},
+                                                 .reassign = {{.userId = 7, .role = "resident"}, {.userId = 8, .role = "guest"}}}));
+  static_cast<void>(cancelled.engine->cancel({.moduleId = "surveillance", .userId = 1}));
+  REQUIRE(cancelled.state("surveillance") == JobState::Cancelled);
+  const auto json = module_json::job(cancelled.job("surveillance"));
+  CHECK(json["roleMoves"].size() == 2);
+  CHECK(json["roleMovesNote"]["en"].asString().find("did not finish") != std::string::npos);
+  CHECK(cancelled.engine->impact({.moduleId = "surveillance", .action = ImpactAction::Uninstall}).roleMoves.size() == 2);
+  CHECK(cancelled.owners.callsOf("reassign:").size() == 1);
+
+  Harness finished;
+  surveillanceOn(finished);
+  describeImpact(finished);
+  finished.owners.reassignReply = {.reach = OwnerReach::Answered, .value = applied(2)};
+  const auto started = finished.engine->uninstall({.moduleId = "surveillance",
+                                                    .userId = 1,
+                                                    .keepData = true,
+                                                    .pin = {},
+                                                    .reassign = {{.userId = 7, .role = "resident"}, {.userId = 8, .role = "guest"}}});
+  finished.step(3);
+  CHECK_FALSE(finished.view("surveillance").job.has_value());
+  CHECK(finished.view("surveillance").lifecycle == ModuleLifecycle::UninstalledDataKept);
+  const auto done = module_json::job(started);
+  CHECK(done["roleMoves"].size() == 2);
+  CHECK_FALSE(done.isMember("roleMovesNote"));
+  CHECK(finished.engine->impact({.moduleId = "surveillance", .action = ImpactAction::Uninstall}).roleMoves.empty());
+
+  Harness untouched;
+  surveillanceOn(untouched);
+  static_cast<void>(untouched.engine->uninstall({.moduleId = "surveillance", .userId = 1, .keepData = true, .pin = {}}));
+  CHECK_FALSE(module_json::job(untouched.job("surveillance")).isMember("roleMoves"));
 }

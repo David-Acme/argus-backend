@@ -82,7 +82,8 @@ ModuleEngine::ModuleEngine(ModuleEngineInput input)
       stateRepository_(db_),
       jobRepository_(db_),
       auditRepository_(db_),
-      purgeRepository_(db_)
+      purgeRepository_(db_),
+      roleMoveRepository_(db_)
 {
   if (!db_ || !host_ || !clock_)
     throw std::invalid_argument("The module engine needs a database, a host probe and a clock");
@@ -150,6 +151,9 @@ void ModuleEngine::reloadLocked()
   jobs_.clear();
   for (auto& job : jobRepository_.findLatestPerModule())
     jobs_[job.moduleId] = std::move(job);
+  roleMoves_.clear();
+  for (auto& row : roleMoveRepository_.findAll())
+    roleMoves_[row.jobId].push_back(std::move(row.move));
 }
 
 std::set<std::string> ModuleEngine::ownersOf(const CatalogModule& module) const
@@ -833,7 +837,7 @@ HardwareAssessment ModuleEngine::hardwareLocked(const CatalogModule& module) con
 
 JobView ModuleEngine::jobViewLocked(const ModuleJobSchema& job) const
 {
-  JobView view{.job = job, .progress = 0, .bytesPerSecond = 0, .etaSeconds = std::nullopt};
+  JobView view{.job = job, .progress = 0, .bytesPerSecond = 0, .etaSeconds = std::nullopt, .roleMoves = roleMovesLocked(job.id)};
   if (job.state == JobState::Done)
     view.progress = 1;
   else if (job.bytesTotal > 0)
@@ -1138,7 +1142,7 @@ JobView ModuleEngine::uninstall(const UninstallCommand& command)
         throw ResponseException(ModuleErrors::PinLocked);
     }
   }
-  settleRoles(command);
+  const auto moves = settleRoles(command);
   Outbox outbox;
   JobView result;
   {
@@ -1161,8 +1165,13 @@ JobView ModuleEngine::uninstall(const UninstallCommand& command)
                                        .bytesTotal = 0,
                                        .requestedBy = command.userId,
                                        .at = now});
-      auditLocked(audit, ModuleAuditAction::UninstallRequested, command.keepData ? "keep_data" : "purge");
+      auditLocked(audit, ModuleAuditAction::UninstallRequested,
+                  module_role_move::detailOf({.data = command.keepData ? "keep_data" : "purge", .moves = moves}));
+      roleMoveRepository_.create(
+          {.jobId = created.id, .moduleId = module.id, .actorUserId = command.userId, .moves = moves, .at = now});
     });
+    if (!moves.empty())
+      roleMoves_[created.id] = moves;
     jobs_[module.id] = created;
     if (throttle_.admit({.jobId = created.id, .state = created.state, .progress = 0, .nowMs = now}))
       outbox.modules.push_back(viewLocked(module));

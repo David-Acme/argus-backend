@@ -207,3 +207,39 @@ TEST_CASE("every audit action becomes a module action the activity history can r
     CHECK(wire.value_or(UserActionEvent{}).module == "surveillance");
   }
 }
+
+TEST_CASE("an uninstall request that moved people to new roles journals who moved from which role to which")
+{
+  const auto event = module_journal::eventOf({.id = 9,
+                                              .moduleId = "surveillance",
+                                              .action = ModuleAuditAction::UninstallRequested,
+                                              .userId = 1,
+                                              .detail = "keep_data;moved=7:guard>resident,8:guard>guest",
+                                              .createdAt = 1700000200});
+  CHECK(event.newData["event"].asString() == "uninstall_requested");
+  CHECK(event.newData["detail"].asString() == "keep_data");
+  REQUIRE(event.newData["roleMoves"].size() == 2);
+  CHECK(event.newData["roleMoves"][0]["userId"].asInt64() == 7);
+  CHECK(event.newData["roleMoves"][0]["from"].asString() == "guard");
+  CHECK(event.newData["roleMoves"][0]["to"].asString() == "resident");
+  CHECK(event.newData["roleMoves"][1]["to"].asString() == "guest");
+  CHECK(event.userId == 1);
+
+  const auto plain = module_journal::eventOf({.id = 10,
+                                              .moduleId = "surveillance",
+                                              .action = ModuleAuditAction::UninstallRequested,
+                                              .userId = 1,
+                                              .detail = "purge",
+                                              .createdAt = 1700000201});
+  CHECK(plain.newData["detail"].asString() == "purge");
+  CHECK_FALSE(plain.newData.isMember("roleMoves"));
+
+  const auto torn = module_journal::eventOf({.id = 11,
+                                             .moduleId = "surveillance",
+                                             .action = ModuleAuditAction::UninstallRequested,
+                                             .userId = 1,
+                                             .detail = "keep_data;moved=x:guard>resident,9guard>guest,3:>",
+                                             .createdAt = 1700000202});
+  CHECK(torn.newData["detail"].asString() == "keep_data");
+  CHECK(torn.newData["roleMoves"].size() == 1);
+}

@@ -618,6 +618,25 @@ changes a role, an identity that refuses or cannot be reached answers 409 or
 ignored. A new role must be a role of a module that stays, never the Owner's
 (422 field `reassign`). Disabling needs no reassignment.
 
+The roles are not rolled back if the uninstall then fails or is cancelled: the
+Owner chose them, and the module stays installed with its people already moved.
+That state is kept and shown, not hidden. Each move is stored with the job
+(`module_role_move`: job, person, name as it was, from, to, who did it) in the
+same transaction that creates the job, and survives a restart. The job JSON
+(`GET /modules` and the answer of the uninstall) then carries `roleMoves: [{
+userId, name, from, to }]`, and, only when the job is `failed` or `cancelled`,
+`roleMovesNote: { es, en }`, a sentence the app shows as it is ("The uninstall
+did not finish. Gus already has the new role and keeps it; the module is still
+installed."). `GET /modules/{id}/impact` carries the same `roleMoves` for the
+module's latest uninstall or purge job while it has not finished, so a retry
+explains why nobody holds the role any more. The activity history has both
+sides: identity journals each role change as a `user` update by the Owner (old
+and new role), and the `uninstall_requested` module action carries `roleMoves:
+[{ userId, from, to }]` next to `detail` (`keep_data` or `purge`), followed by
+the job's own `failed`, `cancelled` or `removed` event
+(`settings-module-engine-test`, "an uninstall that fails after the roles moved",
+`settings-module-journal-test`, `identity-module-impact-test`).
+
 `POST /modules/{id}/request` is how a person without the Owner's rights asks
 for a module. The notification owner (settings wire `RequestModule`) finds the
 active Owners through identity and writes one `module_request` notification

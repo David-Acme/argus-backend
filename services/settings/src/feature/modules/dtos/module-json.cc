@@ -62,6 +62,20 @@ Json::Value component(const ComponentView& view)
 
 namespace module_json
 {
+Json::Value roleMoves(const std::vector<ModuleRoleMove>& moves)
+{
+  Json::Value list(Json::arrayValue);
+  for (const auto& move : moves) {
+    Json::Value entry(Json::objectValue);
+    entry["userId"] = static_cast<Json::Int64>(move.userId);
+    entry["name"] = move.name;
+    entry["from"] = move.from;
+    entry["to"] = move.to;
+    list.append(std::move(entry));
+  }
+  return list;
+}
+
 Json::Value job(const JobView& view)
 {
   Json::Value json(Json::objectValue);
@@ -76,6 +90,16 @@ Json::Value job(const JobView& view)
   json["etaSeconds"] =
       view.etaSeconds ? Json::Value(static_cast<Json::Int64>(*view.etaSeconds)) : Json::Value(Json::nullValue);
   json["reason"] = view.job.reason.empty() ? Json::Value(Json::nullValue) : Json::Value(view.job.reason);
+  if (!view.roleMoves.empty()) {
+    json["roleMoves"] = roleMoves(view.roleMoves);
+    if (view.job.state == JobState::Failed || view.job.state == JobState::Cancelled) {
+      const auto note = module_role_move::noteOf(view.roleMoves);
+      Json::Value text(Json::objectValue);
+      text["es"] = note.es;
+      text["en"] = note.en;
+      json["roleMovesNote"] = std::move(text);
+    }
+  }
   return json;
 }
 

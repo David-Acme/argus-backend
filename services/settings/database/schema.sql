@@ -49,6 +49,20 @@ CREATE TABLE IF NOT EXISTS module_audit (
 
 CREATE INDEX IF NOT EXISTS idx_module_audit_module ON module_audit (module_id, id);
 
+CREATE TABLE IF NOT EXISTS module_role_move (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER NOT NULL,
+  module_id TEXT NOT NULL,
+  user_id INTEGER NOT NULL,
+  user_name TEXT NOT NULL DEFAULT '',
+  from_role TEXT NOT NULL,
+  to_role TEXT NOT NULL,
+  actor_user_id INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_module_role_move_job ON module_role_move (job_id);
+
 CREATE TABLE IF NOT EXISTS module_journal (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   published_through INTEGER NOT NULL DEFAULT 0

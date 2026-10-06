@@ -100,6 +100,9 @@ ModuleImpactView ModuleEngine::impact(const ImpactCommand& command) const
     view.refusal = impactRefusalLocked(module, command.action);
     if (command.action == ImpactAction::Uninstall)
       view.reassignRoles = assignableRolesLocked(module);
+    if (const auto latest = jobs_.find(module.id);
+        latest != jobs_.end() && latest->second.kind != JobKind::Install && latest->second.state != JobState::Done)
+      view.roleMoves = roleMovesLocked(latest->second.id);
     view.filesBytes = presentBytesLocked(module);
   }
   view.moduleId = module.id;
@@ -172,7 +175,14 @@ ModuleRequestView ModuleEngine::request(const RequestCommand& command) const
   return {.moduleId = module.id, .duplicate = reply.value->duplicate};
 }
 
-void ModuleEngine::settleRoles(const UninstallCommand& command)
+const std::vector<ModuleRoleMove>& ModuleEngine::roleMovesLocked(std::int64_t jobId) const
+{
+  static const std::vector<ModuleRoleMove> none;
+  const auto found = roleMoves_.find(jobId);
+  return found == roleMoves_.end() ? none : found->second;
+}
+
+std::vector<ModuleRoleMove> ModuleEngine::settleRoles(const UninstallCommand& command)
 {
   CatalogModule module;
   std::vector<std::string> assignable;
@@ -182,15 +192,15 @@ void ModuleEngine::settleRoles(const UninstallCommand& command)
     assignable = assignableRolesLocked(module);
   }
   if (module.roles.empty())
-    return;
+    return {};
   const auto reply = owners_.impact(std::string(kIdentityOwner), module.id);
   if (reply.reach == OwnerReach::Unsupported)
-    return;
+    return {};
   if (reply.reach != OwnerReach::Answered || !reply.value)
     throw ResponseException(ModuleErrors::RolesUnverifiable);
   const auto& holders = reply.value->roleHolders;
   if (holders.empty())
-    return;
+    return {};
 
   std::map<std::int64_t, std::string> chosen;
   for (const auto& entry : command.reassign)
@@ -207,11 +217,16 @@ void ModuleEngine::settleRoles(const UninstallCommand& command)
   }
 
   RoleReassignmentBatch batch{.actorUserId = command.userId, .reassignments = {}};
+  std::vector<ModuleRoleMove> moves;
   for (const auto& holder : holders) {
     const auto& role = chosen.at(holder.userId);
     if (std::ranges::find(assignable, role) == assignable.end())
       throw ValidationException({{"reassign", {"Role " + role + " cannot be given while " + module.id + " is removed"}}});
     batch.reassignments.push_back({.userId = holder.userId, .role = role});
+    moves.push_back({.userId = holder.userId,
+                     .name = holder.lastName.empty() ? holder.name : holder.name + " " + holder.lastName,
+                     .from = holder.role,
+                     .to = role});
   }
   const auto applied = owners_.reassignRoles(std::string(kIdentityOwner), batch);
   if (applied.reach != OwnerReach::Answered || !applied.value)
@@ -220,6 +235,7 @@ void ModuleEngine::settleRoles(const UninstallCommand& command)
     throw ResponseException(ModuleErrors::ReassignRefused.withMessage(applied.value->reason.empty()
                                                                            ? std::string_view(ModuleErrors::ReassignRefused.message)
                                                                            : std::string_view(applied.value->reason)));
+  return moves;
 }
 
 drogon::Task<ModuleImpactView> ModuleEngine::impactAsync(ImpactCommand command) const

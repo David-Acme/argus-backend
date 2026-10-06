@@ -1,5 +1,6 @@
 #include "response-module-impact-dto.hxx"
 
+#include <feature/modules/dtos/module-json.hxx>
 #include <feature/modules/dtos/response-module-data-dto.hxx>
 
 #include <string>
@@ -87,5 +88,6 @@ Json::Value ResponseModuleImpactDto::toJson() const
   }
   json["keepsRunning"] = std::move(keeps);
   json["unreachable"] = strings(impact.unreachable);
+  json["roleMoves"] = module_json::roleMoves(impact.roleMoves);
   return json;
 }

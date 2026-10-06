@@ -1,5 +1,6 @@
 #include "module-journal.hxx"
 
+#include <feature/modules/schemas/module-role-move.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <string>
@@ -28,6 +29,19 @@ UserAction actionOf(ModuleAuditAction action)
       return UserAction::Update;
   }
   return UserAction::Update;
+}
+
+Json::Value moveList(const std::vector<ModuleRoleMove>& moves)
+{
+  Json::Value list(Json::arrayValue);
+  for (const auto& move : moves) {
+    Json::Value entry(Json::objectValue);
+    entry["userId"] = static_cast<Json::Int64>(move.userId);
+    entry["from"] = move.from;
+    entry["to"] = move.to;
+    list.append(std::move(entry));
+  }
+  return list;
 }
 
 std::string_view lifecycleAfter(ModuleAuditAction action)
@@ -59,8 +73,11 @@ UserActionEvent module_journal::eventOf(const ModuleAuditSchema& entry)
   event.newData["event"] = std::string(moduleAuditActionToString(entry.action));
   if (const auto lifecycle = lifecycleAfter(entry.action); !lifecycle.empty())
     event.newData["lifecycle"] = std::string(lifecycle);
-  if (!entry.detail.empty())
-    event.newData["detail"] = entry.detail;
+  const auto detail = module_role_move::parse(entry.detail);
+  if (!detail.data.empty())
+    event.newData["detail"] = detail.data;
+  if (!detail.moves.empty())
+    event.newData["roleMoves"] = moveList(detail.moves);
   event.newData["at"] = static_cast<Json::Int64>(entry.createdAt);
   return event;
 }

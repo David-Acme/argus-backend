@@ -18,7 +18,9 @@ argus_module(NAME settings-modules
         repositories/module-job/module-job-repository.cc
         repositories/module-journal/module-journal-repository.cc
         repositories/module-purge/module-purge-repository.cc
+        repositories/module-role-move/module-role-move-repository.cc
         repositories/module-state/module-state-repository.cc
+        schemas/module-role-move.cc
         services/hardware-check.cc
         services/module-engine.cc
         services/module-engine-impact.cc

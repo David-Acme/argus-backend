@@ -4,9 +4,11 @@
 #include <json/value.h>
 
 #include <string_view>
+#include <vector>
 
 namespace module_json
 {
+[[nodiscard]] Json::Value roleMoves(const std::vector<ModuleRoleMove>& moves);
 [[nodiscard]] Json::Value job(const JobView& view);
 [[nodiscard]] Json::Value module(const ModuleView& view, std::string_view lang);
 [[nodiscard]] Json::Value member(const ModuleView& view, std::string_view lang);
