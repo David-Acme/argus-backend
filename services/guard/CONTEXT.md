@@ -1494,3 +1494,30 @@ as a success for the lockout, as it does for a disarm, so it never locks the
 Owner out). The alert has no actor name (the wire carries only the user id);
 the notification still names the alert and excludes the actor.
 `guard-safety-test` pins every row of the table.
+
+## Guard tool over MCP (2026-10, the context plan)
+
+`feature/mcp/` serves `app.set_guard_mode {mode, environment?}` to argus-llm:
+module `surveillance`, capability `guard.mode.set`, `mode` one of `home`,
+`night`, `away`, `armed`. Like the camera tool it acts on the app, not on the
+guard: the result is an `argus/appAction` (`app.set_guard_mode` with the mode
+and, when one was named, the environment) and the app calls `/guard/mode`,
+which keeps the route's own rules. The mode is spoken in words ("en casa",
+"noche", "fuera de casa", "máxima alerta"). The rule that lowering the guard
+needs the user's own words stays in argus-llm's grounding (`services/llm/CONTEXT.md`,
+"Tools over MCP"); this provider adds nothing to it and removes nothing.
+
+`environment` is resolved against the environments the guard owns
+(`EnvironmentRepository`) with `text_norm::matchName`: an exact or one-word
+match acts on that environment, several ask which (`ambiguous_environment`),
+none lists the places (`unknown_environment`), and no `environment` keeps the
+old meaning, every environment.
+
+The server is `guardToolServer`, gated by `tool_gate::capabilities()`, served
+as `argus.mcp.v1.Mcp/Rpc` on the guard's gRPC listener (`[rpc] address`) for the
+caller `llm` only (`[rpc.callers] llm`; `GuardConfig::resolveRpc` reads it as
+`toolCredential`). Unpaired, the service starts without the tool.
+
+`tests/unit/guard-mcp-test.cc` pins the descriptor (module, capability), every
+mode in both languages, the environment resolution and its three refusals, the
+gate for each role and the unpaired case.

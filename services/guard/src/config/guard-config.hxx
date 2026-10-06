@@ -23,6 +23,7 @@ struct GuardRpcConfig
   std::string address;
   std::vector<argus::client::CallerCredential> settingsCredentials;
   std::vector<argus::client::CallerCredential> presenceCredentials;
+  std::string toolCredential;
 };
 
 struct GuardPeerConfig

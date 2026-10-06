@@ -26,6 +26,7 @@ address = "0.0.0.0:7139"
 settings = "CHANGE_ME_SETTINGS_GUARD"
 sync = "CHANGE_ME_PRESENCE_SYNC"
 notification = "CHANGE_ME_PRESENCE_NOTIFICATION"
+llm = "CHANGE_ME_LLM_GUARD"
 
 [presence]
 enabled = true

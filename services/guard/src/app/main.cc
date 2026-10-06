@@ -1,4 +1,7 @@
 #include <app/rpc/presence-rpc-service.hxx>
+#include <feature/guard/repositories/environment/environment-repository.hxx>
+#include <feature/mcp/services/guard-tools.hxx>
+#include <mcp/mcp-rpc.hxx>
 #include <camera/camera-action-client.hxx>
 #include <config/guard-config.hxx>
 #include <drogon/drogon.h>
@@ -89,6 +92,7 @@ struct RpcListener
 {
   std::unique_ptr<SettingsRpcService> settings;
   std::unique_ptr<PresenceRpcService> presence;
+  std::unique_ptr<argus::mcp::McpRpcService> tools;
   std::unique_ptr<grpc::Server> server;
 };
 
@@ -98,7 +102,24 @@ struct RpcListenerInput
   const PresenceService& presence;
   ModuleDataHost& moduleData;
   OwnerPinHost& ownerPin;
+  EnvironmentCatalog environments;
 };
+
+std::unique_ptr<argus::mcp::McpRpcService> toolsService(const RpcListenerInput& input, const GuardRpcConfig& rpc)
+{
+  if (!argus::client::FleetCallerGate::pairedSecret(rpc.toolCredential)) {
+    LOG_INFO << "Guard tools RPC not served: [rpc.callers] llm is empty";
+    return nullptr;
+  }
+  return std::make_unique<argus::mcp::McpRpcService>(argus::mcp::McpRpcInput{
+      .server = guardToolServer({.catalog = input.environments, .loop = {}}),
+      .gate = std::make_shared<const argus::client::FleetCallerGate>(argus::client::FleetGateConfig{
+          .expectedCallers = {},
+          .callerPairs = {{std::string(argus::mcp::kToolCaller), rpc.toolCredential}},
+          .legacySecret = {},
+          .onFirstLegacy = {}}),
+      .callers = {std::string(argus::mcp::kToolCaller)}});
+}
 
 RpcListener startRpcListener(const RpcListenerInput& input)
 {
@@ -130,7 +151,10 @@ RpcListener startRpcListener(const RpcListenerInput& input)
                          .credentials = std::move(rpc.presenceCredentials)});
     builder.RegisterService(listener.presence.get());
   }
-  if (!listener.settings && !listener.presence)
+  listener.tools = toolsService(input, rpc);
+  if (listener.tools)
+    builder.RegisterService(listener.tools.get());
+  if (!listener.settings && !listener.presence && !listener.tools)
     return {};
   builder.AddListeningPort(rpc.address, grpc::InsecureServerCredentials());
   listener.server = builder.BuildAndStart();
@@ -329,7 +353,16 @@ int main()
   GuardModuleData moduleData;
   GuardOwnerPin ownerPin(safety);
   const RpcListener rpcListener = startRpcListener(
-      {.registry = settings, .presence = presence, .moduleData = moduleData, .ownerPin = ownerPin});
+      {.registry = settings,
+       .presence = presence,
+       .moduleData = moduleData,
+       .ownerPin = ownerPin,
+       .environments = [repository = std::make_shared<EnvironmentRepository>()]() -> drogon::Task<std::vector<EnvironmentChoice>> {
+         std::vector<EnvironmentChoice> places;
+         for (const auto& environment : co_await repository->list())
+           places.push_back({.id = environment.id, .name = environment.name});
+         co_return places;
+       }});
 
   registerHealth();
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());

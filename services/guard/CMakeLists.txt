@@ -95,6 +95,12 @@ if(NOT COMMAND argus_settings_rpc_contract)
                      ${CMAKE_BINARY_DIR}/contracts/settings)
 endif()
 
+if(NOT COMMAND argus_mcp_rpc_contract)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/mcp
+                     ${CMAKE_BINARY_DIR}/contracts/mcp)
+endif()
+argus_mcp_rpc_contract()
+
 find_package(doctest REQUIRED)
 
 add_subdirectory(${GUARD_SRC_ROOT}/config)
@@ -118,6 +124,8 @@ argus_service(NAME argus-guard
         argus::guard-safety
         argus::guard-settings
         argus::guard-module-data
+        argus::guard-mcp
+        argus::contracts::mcp-wire
         argus::contracts::settings-wire
         argus::lib::auth
         argus::lib::config
@@ -180,6 +188,12 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
     endif()
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
+
+add_executable(guard-mcp-test tests/unit/guard-mcp-test.cc)
+set_target_properties(guard-mcp-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(guard-mcp-test PRIVATE argus::guard-mcp doctest::doctest)
+target_compile_options(guard-mcp-test PRIVATE -Wall -Wextra)
+add_test(NAME guard-mcp-test COMMAND guard-mcp-test)
 
 add_executable(guard-presence-test tests/unit/guard-presence-test.cc)
 set_target_properties(guard-presence-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
