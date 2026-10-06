@@ -99,7 +99,7 @@ IDENTITY_TUNNEL_PORT="${IDENTITY_TUNNEL_PORT:-7144}"
 ensure_data_tree() {
   local sub
   mkdir -p "$DATA_DIR"
-  for sub in identity auth camera productivity notification guard memory sync settings nats; do
+  for sub in identity auth camera productivity notification guard memory sync nats; do
     mkdir -p "$DATA_DIR/$sub"
   done
   chmod 700 "$DATA_DIR" "$DATA_DIR"/* 2>/dev/null || true

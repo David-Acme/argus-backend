@@ -199,3 +199,83 @@ identity domain (users, persons, invitations, portraits) is
 `services/identity/`; the RPC surface that serves this package is
 `services/identity/src/app/rpc/`. The sessions and the device credentials
 behind a verdict are `services/auth/`'s.
+
+## Module gating (2026-10, the modules plan)
+
+`docs/history/plans/modules-and-welcome-plan.md` makes surveillance and
+productivity selectable modules. The gate lives here because `RoleFilter` is
+the one place every app-facing route already passes, so the filter chain of
+rule 5 is unchanged and `scripts/check-routes.sh` needs no new row.
+
+- **The map is data beside the route tables.** `role_access::kModuleRoutes`
+  maps a whole first path segment to a module: `camera`, `zone`, `media`,
+  `guard`, `visitor`, `visitor-settings` and `visitor-crop` to
+  `surveillance`; `project`, `project-task`, `project-member`,
+  `calendar-event` and `calendar-event-share` to `productivity`.
+  `moduleOfPath` normalizes the path the way `hasHttpAccess` does (case,
+  trailing slash), so `/CAMERA/` is gated like `/camera`. A segment the map
+  does not name is core and is never gated, whatever the enabled set says.
+- **`RoleFilter` asks the gate first.** A route of a disabled module is
+  refused with 403 `MODULE_DISABLED` to every role, the Owner included,
+  before the role check: the enabled set is not secret (`GET /modules`
+  answers it to every role), and the app needs the reason to hide the screen
+  instead of reporting a permission problem. The `/media` WebSocket runs
+  without `RoleFilter`, so argus-camera's socket asks the same gate on
+  connect.
+- **`/modules` routes** are in `kModuleAccess`: `GET /modules` for every
+  role, the six `POST /modules/{id}/…` actions Owner-only.
+
+### The cache, and why it fails open
+
+`moduleGate()` is one `ModuleGate` per process. A module it has no word on is
+**enabled**. The state reaches it in three ways, in this order of authority:
+
+1. **The boot read** (`settingsBootRead`): `argus.settings.v1.Modules/
+   ModuleStates` on `[modules] target` with `[modules] credential`, retried
+   every 5 s up to 12 times off the event loop, so a service that boots before
+   argus-settings still learns the set within a minute.
+2. **The durable feed**: each service binds its own durable
+   (`argus-<service>-modules`, deliver-all at creation, ordered) on
+   `argus.settings.v1.module`. A message whose top level carries
+   `modules: [{id, enabled, lifecycle?}]` is applied, a module counting as
+   enabled only when `enabled` is true and its `lifecycle`, when present, is
+   `active` (`disabled`, `not_installed` and `uninstalled_data_kept` all
+   gate); one with `settled: false`, or with
+   any other shape (the per-job progress frames), is acked and ignored; a
+   malformed enabled set is terminated. Messages and the boot read carry a
+   `version`; anything older than the last applied version is ignored, so the
+   boot read and a replayed backlog cannot undo a newer state whatever order
+   they arrive in.
+3. **The last known state**: every applied set is written atomically
+   (`.part` then rename) to `[modules] state_file`, default
+   `database/module-state.json` in the service's working directory, and read
+   back synchronously by `install` before the listener opens.
+
+The decision is **fail open**, for three reasons. The gate is a product
+switch, not a security boundary: the role table still decides who may do
+what, and a disabled module's data is kept, not hidden. A service that cannot
+reach argus-settings at boot must not lock the household out (the plan's own
+requirement), and core routes are never in the map at all. And an upgraded
+installation has no module state anywhere: argus-settings seeds its enabled
+set by adoption and publishes `settled: false` until it has (every component
+owner answered), which this cache treats as "no word", so surveillance and
+productivity stay enabled on an upgraded install until the Owner changes
+them. When a state is known, the last one wins over the default: a service
+restarted while argus-settings is down keeps a disabled module disabled from
+its file.
+
+No repository, no schema and no `DbService` call came with it: the state file
+is a cache this package can rebuild from the feed at any time, which is what
+the package's no-database rule protects.
+
+### What a service does with it
+
+`module_gate::install({.service, .bus})` in `main.cc` is the whole wiring: it
+restores the file, registers the start in a beginning advice and the drain
+with `shutdown_signal`. A service that owns background work reads
+`moduleGate().enabled(role_access::kSurveillanceModule)` (argus-camera's
+operator and health monitor, argus-guard's evaluation) and may register
+`moduleGate().onChange` (argus-camera closes its open views when surveillance
+is disabled). argus-camera, argus-guard, argus-identity (`/visitor*`) and
+argus-productivity install it; a service whose routes are all core needs
+nothing, its `RoleFilter` simply finds no module.

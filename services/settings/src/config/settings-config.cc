@@ -4,7 +4,6 @@
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
-#include <string_view>
 #include <utility>
 
 namespace
@@ -13,23 +12,6 @@ constexpr int kMaxTimeoutMs = 120000;
 constexpr const char* kDefaultProfilesPath = "profiles.json";
 constexpr int kMinFirstRunIntervalS = 5;
 constexpr int kMaxFirstRunIntervalS = 3600;
-constexpr int kMinPollMs = 50;
-constexpr int kMaxPollMs = 60000;
-constexpr int kMaxModuleSeconds = 86400;
-
-std::string stringOr(std::string_view key, const std::string& fallback)
-{
-  auto value = ConfigService::getString(std::string(key));
-  return value.empty() ? fallback : value;
-}
-
-std::chrono::seconds secondsOr(const std::string& key, std::chrono::seconds fallback)
-{
-  const int value = ConfigService::getInt(key);
-  if (value <= 0 || value > kMaxModuleSeconds)
-    return fallback;
-  return std::chrono::seconds(value);
-}
 
 std::chrono::milliseconds timeoutOr(const std::string& key, std::chrono::milliseconds fallback)
 {
@@ -96,28 +78,4 @@ std::string SettingsConfig::resolveProfilesPath()
 {
   auto path = ConfigService::getString("settings.profiles_path");
   return path.empty() ? std::string(kDefaultProfilesPath) : path;
-}
-
-ModulesConfig SettingsConfig::resolveModules()
-{
-  const ModulesConfig defaults;
-  const int poll = ConfigService::getInt("modules.poll_interval_ms");
-  return {.catalogPath = stringOr("modules.catalog_path", defaults.catalogPath),
-          .dbPath = stringOr("modules.db_path", defaults.dbPath),
-          .schemaPath = stringOr("modules.schema", defaults.schemaPath),
-          .modelsDir = stringOr("modules.models_dir", defaults.modelsDir),
-          .pollInterval =
-              poll >= kMinPollMs && poll <= kMaxPollMs ? std::chrono::milliseconds(poll) : defaults.pollInterval,
-          .idleRefresh = secondsOr("modules.idle_refresh_s", defaults.idleRefresh),
-          .healthTimeout = secondsOr("modules.health_timeout_s", defaults.healthTimeout),
-          .seedWait = secondsOr("modules.seed_wait_s", defaults.seedWait)};
-}
-
-ModulesRpcConfig SettingsConfig::resolveModulesRpc()
-{
-  ModulesRpcConfig config{.address = ConfigService::getString("rpc.address"), .callers = {}};
-  for (auto& [caller, secret] : ConfigService::getStringPairs("rpc.callers"))
-    if (std::ranges::find(kModuleStateCallers, caller) != kModuleStateCallers.end())
-      config.callers.emplace_back(std::move(caller), std::move(secret));
-  return config;
 }

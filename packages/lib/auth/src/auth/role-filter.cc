@@ -3,6 +3,7 @@
 #include <auth/auth-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <auth/jwt-filter.hxx>
+#include <auth/module-gate.hxx>
 #include <auth/request-context.hxx>
 #include <auth/role-access.hxx>
 
@@ -15,6 +16,10 @@ RoleFilter::doFilter(const drogon::HttpRequestPtr& req)
 
   const auto& ctx =
       req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+
+  if (moduleGate().disabledModuleOf(req->getPath())) {
+    throw ResponseException(AuthErrors::ModuleDisabled);
+  }
 
   if (!role_access::hasHttpAccess(
           {.role = ctx.role,

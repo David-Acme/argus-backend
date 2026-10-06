@@ -7,6 +7,7 @@
 #include <auth/jwt-filter.hxx>
 #include <auth/remote-config.hxx>
 #include <auth/remote-gate.hxx>
+#include <auth/module-feed.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
 #include <cert/cert-service.hxx>
@@ -246,6 +247,8 @@ int main()
       LOG_WARN << "NATS unavailable at " << natsUrl
                << "; subscriptions stay pending until reconnected";
   }
+
+  const auto modules = module_gate::install({.service = "identity", .bus = natsBus});
 
   const std::weak_ptr<NatsBus> healthBus = natsBus;
   drogon::app().registerController(std::make_shared<HealthController>(

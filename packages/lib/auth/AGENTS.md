@@ -26,7 +26,18 @@ sync and tts.
   verifies its signature locally, then asks `argus-auth` for the session
   verdict (`ValidateToken`) and stores the `JwtContext` the handlers read.
 - `src/auth/role-filter.{cc,hxx}`, `src/auth/role-access.hxx` — RoleFilter:
-  the static role/route table (`TableName` → permission set). No I/O.
+  the static role/route table (`TableName` → permission set) and the
+  route-prefix → module map (`kModuleRoutes`). It refuses a route of a
+  disabled module with 403 `MODULE_DISABLED` before the role check. No I/O.
+- `src/auth/module-gate.{cc,hxx}` — `ModuleGate` (`moduleGate()`, one per
+  process): the enabled set of the selectable modules, read by `RoleFilter`
+  through `role_access::moduleOfPath` and by a service's background loops;
+  the enabled-set parser and the last-known-state file.
+- `src/auth/module-feed.{cc,hxx}`, `src/auth/module-settings-read.cc` —
+  `ModuleFeed` and `module_gate::install`: the boot read over
+  `argus.settings.v1.Modules` and the per-service durable on
+  `argus.settings.v1.module` that keep the gate current. CONTEXT.md, "Module
+  gating".
 - `src/auth/valid-json-filter.{cc,hxx}` — ValidJsonFilter: request body shape.
   No I/O.
 - `src/auth/remote-config.{cc,hxx}` — `RemoteConfig` (`tunnelPort`,
@@ -74,7 +85,11 @@ sync and tts.
 
 ## Tests
 
-Five suites of its own. `tests/unit/role-access-test.cc` pins the
+Seven suites of its own. `tests/unit/module-gate-test.cc` pins the module
+map (every gated prefix, core never gated), `RoleFilter`'s
+`MODULE_DISABLED` for every role, the `/modules` rows, the cache defaults,
+the enabled-set parser, the persisted last known state, the versioned live
+update and the boot read's retry and fallback. `tests/unit/role-access-test.cc` pins the
 `kTableAccess` map role by role (`readableTables`, `permissionForMethod`,
 `tableFromPath`, `hasHttpAccess`, the Owner-only guard administration, the
 case and trailing-slash normalization, deny-by-default for unlisted `/auth`

@@ -41,13 +41,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /opt/argus
 COPY --from=build /opt/argus/services/settings/build/prod/argus-settings /opt/argus/argus-settings
 COPY --from=build /opt/argus/services/settings/profiles.json /opt/argus/profiles.json
-COPY --from=build /opt/argus/services/settings/modules.json /opt/argus/modules.json
 
 RUN groupadd --gid "$ARGUS_GID" argus \
     && useradd --uid "$ARGUS_UID" --gid "$ARGUS_GID" --create-home \
       --shell /usr/sbin/nologin argus \
     && chown -R argus:argus /opt/argus
 
-EXPOSE 7045 7047
+EXPOSE 7045
 USER argus
 ENTRYPOINT ["/opt/argus/argus-settings"]

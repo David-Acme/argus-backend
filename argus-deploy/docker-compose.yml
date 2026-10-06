@@ -458,27 +458,8 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - type: bind
-        source: ${ARGUS_DATA_DIR:-./data}/settings
-        target: /opt/argus/database
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ../services/settings/database/schema.sql
-        target: /opt/argus/schema/schema.sql
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${ARGUS_MODELS_DIR:-../models}
-        target: /opt/argus/models
-        read_only: true
-        bind:
-          create_host_path: false
     depends_on:
       argus-auth:
-        condition: service_started
-      nats:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -kfs https://127.0.0.1:7045/health >/dev/null"]

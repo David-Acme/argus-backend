@@ -9,35 +9,6 @@ profiles_path = "profiles.json"
 first_run = true
 first_run_interval_s = 30
 
-[modules]
-catalog_path = "modules.json"
-db_path = "database/settings.db"
-schema = "schema/schema.sql"
-models_dir = "/opt/argus/models"
-poll_interval_ms = 1000
-idle_refresh_s = 30
-health_timeout_s = 180
-seed_wait_s = 300
-
-[rpc]
-address = "0.0.0.0:7047"
-
-[rpc.callers]
-auth = ""
-camera = ""
-guard = ""
-identity = ""
-notification = ""
-productivity = ""
-sync = ""
-voice = ""
-llm = ""
-
-[nats]
-url = "nats://nats:4222"
-user = "argus"
-password = "CHANGE_ME_NATS"
-
 [drogon.app]
 number_of_threads = 0
 enable_session = false

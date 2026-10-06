@@ -32,6 +32,20 @@ if(NOT TARGET argus::clients::identity)
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
 
+if(NOT TARGET argus::lib::nats)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../nats
+                     ${CMAKE_BINARY_DIR}/nats)
+endif()
+if(NOT TARGET argus::lib::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+                     ${CMAKE_BINARY_DIR}/text)
+endif()
+
+if(NOT TARGET argus::clients::settings)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../clients/settings
+                     ${CMAKE_BINARY_DIR}/clients/settings)
+endif()
+
 if(NOT TARGET argus::clients::auth)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../clients/auth
                      ${CMAKE_BINARY_DIR}/clients/auth EXCLUDE_FROM_ALL)
@@ -49,6 +63,9 @@ argus_lib(NAME auth
         src/auth/details/identity-access.cc
         src/auth/details/proxy-allowlist.cc
         src/auth/jwt-filter.cc
+        src/auth/module-feed.cc
+        src/auth/module-gate.cc
+        src/auth/module-settings-read.cc
         src/auth/role-filter.cc
         src/auth/remote-config.cc
         src/auth/remote-gate.cc
@@ -58,6 +75,8 @@ argus_lib(NAME auth
         src/auth/role-access.hxx
         src/auth/admitted-call.hxx
         src/auth/linked-filter.hxx
+        src/auth/module-feed.hxx
+        src/auth/module-gate.hxx
         src/auth/remote-config.hxx
         src/auth/remote-gate.hxx
         src/auth/user-directory.hxx
@@ -67,6 +86,9 @@ argus_lib(NAME auth
         argus::contracts::auth argus::contracts::sync argus::lib::config argus::lib::runtime argus::lib::errors argus::lib::http
         argus::clients::identity
         argus::clients::auth
+        argus::clients::settings
+        argus::lib::nats
+        argus::lib::text
         Drogon::Drogon
         jwt-cpp::jwt-cpp
         nlohmann_json::nlohmann_json
@@ -82,6 +104,11 @@ add_executable(role-access-test tests/unit/role-access-test.cc)
 target_link_libraries(role-access-test PRIVATE argus::lib::auth doctest::doctest)
 target_compile_options(role-access-test PRIVATE -Wall -Wextra)
 add_test(NAME role-access-test COMMAND role-access-test)
+
+add_executable(module-gate-test tests/unit/module-gate-test.cc)
+target_link_libraries(module-gate-test PRIVATE argus::lib::auth doctest::doctest)
+target_compile_options(module-gate-test PRIVATE -Wall -Wextra)
+add_test(NAME module-gate-test COMMAND module-gate-test)
 
 add_executable(remote-gate-test tests/unit/remote-gate-test.cc)
 target_link_libraries(remote-gate-test PRIVATE argus::lib::auth doctest::doctest)

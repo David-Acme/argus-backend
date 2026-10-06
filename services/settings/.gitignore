@@ -2,5 +2,3 @@ build/
 config.toml
 certs/
 *.log
-settings.db
-settings.db-*

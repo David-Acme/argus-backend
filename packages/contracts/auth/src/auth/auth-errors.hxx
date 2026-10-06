@@ -21,6 +21,10 @@ inline constexpr ErrorDefinition RemoteNotAllowed{
     .code = ErrorCode::RemoteNotAllowed,
     .status = 403,
     .message = "Remote requests are not allowed"};
+inline constexpr ErrorDefinition ModuleDisabled{
+    .code = ErrorCode::ModuleDisabled,
+    .status = 403,
+    .message = "This module is disabled"};
 inline constexpr ErrorDefinition InvalidJsonBody{
     .code = ErrorCode::BadRequest,
     .status = 400,

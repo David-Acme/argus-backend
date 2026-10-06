@@ -1,4 +1,3 @@
-#include <app/rpc/modules-rpc-service.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/role-filter.hxx>
@@ -6,12 +5,6 @@
 #include <config/config-service.hxx>
 #include <config/settings-config.hxx>
 #include <drogon/drogon.h>
-#include <feature/modules/controllers/modules-controller.hxx>
-#include <feature/modules/infra/component-owners.hxx>
-#include <feature/modules/infra/host-resources.hxx>
-#include <feature/modules/infra/module-catalog-file.hxx>
-#include <feature/modules/infra/module-event-sink.hxx>
-#include <feature/modules/services/module-engine.hxx>
 #include <feature/settings/controllers/settings-controller.hxx>
 #include <feature/settings/infra/hardware-facts.hxx>
 #include <feature/settings/infra/profile-file.hxx>
@@ -22,18 +15,10 @@
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
-#include <grpc/fleet-caller-gate.hxx>
-#include <grpc/grpc-server-drain.hxx>
 #include <mdns/mdns-service.hxx>
-#include <nats/nats-bus.hxx>
-#include <nats/nats-subject.hxx>
 #include <runtime/log-output.hxx>
 #include <runtime/shutdown-signal.hxx>
-#include <sqlite/db-service.hxx>
 
-#include <grpcpp/grpcpp.h>
-
-#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -61,26 +46,6 @@ std::string ownerList(const std::vector<SettingsOwnerConfig>& owners)
   }
   return names.empty() ? "none" : names;
 }
-
-constexpr std::chrono::milliseconds kGrpcDrainDeadline{2000};
-
-std::int64_t unixMs()
-{
-  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
-      .count();
-}
-
-drogon::orm::DbClientPtr openModulesDb(const ModulesConfig& config)
-{
-  auto client = drogon::orm::DbClient::newSqlite3Client("filename=" + config.dbPath, 1);
-  if (!client || !DbService::runScriptFile(config.schemaPath, client)) {
-    LOG_ERROR << "Modules: " << config.dbPath << " could not apply " << config.schemaPath
-              << "; the module routes answer 503";
-    return nullptr;
-  }
-  DbService::applyPragmas(client);
-  return client;
-}
 }
 
 int main()
@@ -103,67 +68,11 @@ int main()
                                      .unconfigured = SettingsConfig::unconfiguredOwners(owners)};
   const auto profiles = loadProfileFile(SettingsConfig::resolveProfilesPath());
   const auto hardware = probeHardwareFacts();
-  const auto modules = SettingsConfig::resolveModules();
-
-  NatsBus natsBus;
-  if (!natsBus.connect())
-    LOG_WARN << "Modules: NATS is not reachable yet; module events are published once it is";
-  NatsModuleEventSink moduleEvents(natsBus);
-  if (!moduleEvents.ensureStream())
-    LOG_WARN << "Modules: the " << nats_subject::kSettingsModuleStream << " stream is not confirmed yet";
-  const SettingsComponentOwners componentOwners({.owners = owners, .timeout = gateway.timeouts.update});
-  std::unique_ptr<ModuleEngine> moduleEngine;
-  if (auto catalog = loadModuleCatalog(modules.catalogPath)) {
-    if (auto db = openModulesDb(modules))
-      moduleEngine = std::make_unique<ModuleEngine>(ModuleEngineInput{
-          .catalog = std::move(*catalog),
-          .db = std::move(db),
-          .owners = componentOwners,
-          .events = &moduleEvents,
-          .host =
-              [modelsDir = modules.modelsDir] {
-                auto host = hostResourcesOf(HardwareProbe::get());
-                host.freeDiskBytes = freeDiskBytes(modelsDir);
-                return host;
-              },
-          .clock = unixMs,
-          .timing = modules});
-  }
 
   drogon::app().registerController(
       std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-settings", .extras = {}}));
   drogon::app().registerController(std::make_shared<SettingsController>(
       SettingsControllerInput{.gateway = gateway, .profiles = profiles, .hardware = hardware}));
-  drogon::app().registerController(std::make_shared<ModulesController>(moduleEngine.get()));
-
-  const auto rpc = SettingsConfig::resolveModulesRpc();
-  const auto rpcGate = std::make_shared<const argus::client::FleetCallerGate>(argus::client::FleetGateConfig{
-      .expectedCallers = {kModuleStateCallers.begin(), kModuleStateCallers.end()},
-      .callerPairs = rpc.callers,
-      .legacySecret = {},
-      .onFirstLegacy = {}});
-  ModulesRpcService modulesRpc(
-      [engine = moduleEngine.get()] { return engine != nullptr ? engine->enabledSet() : ModuleStatesReply{}; },
-      rpcGate);
-  std::unique_ptr<argus::client::GrpcServerDrain> rpcDrain;
-  if (!rpc.address.empty()) {
-    grpc::ServerBuilder rpcBuilder;
-    rpcBuilder.AddListeningPort(rpc.address, grpc::InsecureServerCredentials());
-    rpcBuilder.RegisterService(&modulesRpc);
-    std::unique_ptr<grpc::Server> rpcServer(rpcBuilder.BuildAndStart());
-    if (!rpcServer) {
-      LOG_FATAL << "Modules RPC failed to listen on " << rpc.address;
-      return 1;
-    }
-    LOG_INFO << "Modules RPC listening on " << rpc.address << " ("
-             << (rpcGate->open() ? std::string("no caller paired")
-                                 : std::to_string(rpcGate->pairedCount()) + " paired callers")
-             << ")";
-    rpcDrain = std::make_unique<argus::client::GrpcServerDrain>(std::move(rpcServer), kGrpcDrainDeadline);
-    shutdown_signal::onStop(shutdown_signal::drainOf(*rpcDrain, "settings-modules-rpc"));
-  }
-  if (moduleEngine)
-    shutdown_signal::onStop(shutdown_signal::drainOf(*moduleEngine, "settings-modules"));
 
   const SettingsGatewayService firstRunGateway(gateway);
   FirstRunService firstRun(
@@ -204,15 +113,8 @@ int main()
   });
 
   drogon::app().registerBeginningAdvice([&firstRun]() { firstRun.start(); });
-  drogon::app().registerBeginningAdvice([&moduleEngine]() {
-    if (moduleEngine)
-      moduleEngine->start();
-  });
 
   drogon::app().setThreadNum(0).run();
   firstRun.requestStop();
-  if (moduleEngine)
-    moduleEngine->requestStop();
-  natsBus.drain();
   return 0;
 }

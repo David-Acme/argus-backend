@@ -208,6 +208,13 @@ and those two are the only guard routes a Guest has; creating, editing and
 removing environments, episode detail and review, camera context, decision
 review, feedback and person promotion stay Owner-only.
 
+Selectable modules gate their routes in the same file: `kModuleRoutes` maps
+a route's first segment to `surveillance` or `productivity`, and `RoleFilter`
+refuses a route of a module that is not `active` with 403 `MODULE_DISABLED`
+for every role, from the per-process cache `module_gate::install` keeps
+(`packages/lib/auth/CONTEXT.md`, "Module gating"); a segment the map does not
+name is core and never gated.
+
 The session routes (`GET /auth/sessions`, `DELETE /auth/sessions`,
 `DELETE /auth/sessions/{id}`) are declared the same way in `kSessionAccess`:
 every role reads and revokes its own sessions, and `argus-auth` scopes each
@@ -608,6 +615,14 @@ Raw pointers only for non-owning access (`.get()`).
   guardSeenAt}`; `armed` is true only while the user is away, so a phone
   never schedules its "Argus no responde" alarm at home
   (`services/sync/CONTEXT.md`, "Dead man's switch").
+  `ModuleUpdate=12` (additive, `module_update`) carries the selectable
+  modules: argus-sync builds it only from argus-settings' durable
+  `argus.settings.v1.module` feed (a frame with that operation arriving on
+  any other subject or over the control RPC is refused) and sends the bare
+  module JSON to the Owner role room, `{modules: [{id, enabled, lifecycle}]}`
+  to every connected socket when the enabled set changes, and a trimmed
+  `{id, enabled, lifecycle, dataPurgedAt}` to every socket when a module's
+  `dataPurgedAt` advances (`services/sync/CONTEXT.md`, "Selectable modules").
 - **Normal rows are creation-only after bootstrap**: `Synchronize` pages by
   `created_at`; do not switch it to `updated_at`/`syncAt` to represent an
   update. Every persisted update/revocation must instead publish a granular
@@ -972,12 +987,11 @@ at `database/schema.sql` in its container and every config points at
 `database/schema.sql`; a unit applies only its own schema, never the schema of
 another. The gateway's 23-line file was its `gateway.db` degraded-fallback
 record — it held no table of another domain and said so — and it went away in
-Phase 3d step 1 with the camera notifier that wrote to it. Nine units carry
+Phase 3d step 1 with the camera notifier that wrote to it. Eight units carry
 one today: `auth`, `camera`, `guard`, `identity`, `llm`, `notification` and
 `productivity`, plus
 `services/sync` (`sync.db`, split out of identity's file by `argus-migrate-sync`
-in Phase 3c-2) and `services/settings` (`settings.db`, the module manager's
-state).
+in Phase 3c-2).
 
 ### 27. Database isolation between microservices
 
@@ -1105,8 +1119,7 @@ for two different reasons, and says which when it does.
 | `services/vlm/src/feature/vlm/services/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
 | `services/stt/src/feature/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
 | `services/tts/src/feature/synthesis/` | `TtsService` (`services/`, engine chosen per language by `tts.engine_es`/`tts.engine_en`) + the Supertonic engine set (`infra/supertonic/`: `TtsEngine`, `Style`, `UnicodeProcessor`, onnx loading) + the Kyutai Pocket TTS runtime (`infra/pocket/`: `PocketEngine`, `UnigramTokenizer`, voice states, 24 kHz→announced-rate conversion) + `text/` (speech normalizer, prosodic chunker); `services/tts/src/feature/provisioning/` reports each engine/variant/voice choice's install state over the settings wire and installs the missing ones on demand through `scripts/provision.sh` |
-| `services/settings/src/feature/modules/` | The module manager (`argus-settings`): `modules.json` catalog, the persistent job engine over each owner's settings-wire component calls, lifecycle and purge, `/modules`, the `argus.settings.v1.module` events and the `Modules/ModuleStates` RPC on 7047 |
-| `services/settings/src/feature/settings/` | The owner-only `/settings` surface (`argus-settings`, HTTPS 7045): no setting of its own; `SettingsGatewayService` reads every configured owner's `argus.settings.v1` catalog in parallel through `argus::clients::settings` and forwards a `PATCH /settings/{owner}` to that owner, which validates and persists it |
+| `services/settings/src/feature/settings/` | The owner-only `/settings` surface (`argus-settings`, HTTPS 7045): no data of its own; `SettingsGatewayService` reads every configured owner's `argus.settings.v1` catalog in parallel through `argus::clients::settings` and forwards a `PATCH /settings/{owner}` to that owner, which validates and persists it |
 | `services/voice/src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
 | `services/voice/src/shared/wrapper/audio/` | `SampleRing` — the fixed-capacity float ring the voice paths carry samples in across calls |
 | `services/voice/src/feature/voice/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |

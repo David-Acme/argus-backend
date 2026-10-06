@@ -11,6 +11,7 @@
 #include <feature/project-task/controllers/project-task-controller.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
+#include <auth/module-feed.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
 #include <grpcpp/grpcpp.h>
@@ -159,6 +160,8 @@ int main()
         natsBus, NatsProductivityChangeSink::Config{});
     user_change::setProductivitySink(changeSink.get());
   }
+
+  const auto modules = module_gate::install({.service = "productivity", .bus = natsBus});
 
   drogon::app().registerBeginningAdvice([&productivityDb, &changeSink]() {
     if (!DbService::runScriptFile(productivityDb.schemaPath,

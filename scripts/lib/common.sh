@@ -324,11 +324,6 @@ rpc.callers productivity
 llm grpc_credential
 guard presence_target
 guard presence_credential
-modules target
-modules credential
-nats url
-nats user
-nats password
 rpc address
 owners.llm target
 owners.llm credential
@@ -501,15 +496,6 @@ settings auth credential auth
 sync auth credential auth
 identity sync control_credential sync
 notification sync control_credential sync
-auth modules credential settings
-camera modules credential settings
-guard modules credential settings
-identity modules credential settings
-notification modules credential settings
-productivity modules credential settings
-sync modules credential settings
-voice modules credential settings
-llm modules credential settings
 CALLERS
 }
 

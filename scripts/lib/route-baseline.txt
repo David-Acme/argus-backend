@@ -119,14 +119,6 @@ productivity	DELETE	/project-task/{1}	DeviceFilter,JwtFilter,RoleFilter	-	servic
 productivity	PATCH	/project-task/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/project-task/controllers/project-task-controller.hxx
 productivity	DELETE	/project/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/project/controllers/project-controller.hxx
 productivity	PATCH	/project/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/project/controllers/project-controller.hxx
-settings	GET	/modules	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
-settings	POST	/modules/{1}/cancel	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
-settings	GET	/modules/{1}/data	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
-settings	POST	/modules/{1}/disable	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
-settings	POST	/modules/{1}/install	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
-settings	POST	/modules/{1}/pause	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
-settings	POST	/modules/{1}/resume	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
-settings	POST	/modules/{1}/uninstall	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
 settings	GET	/settings	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/settings/controllers/settings-controller.hxx
 settings	GET	/settings/profiles	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/settings/controllers/settings-controller.hxx
 settings	POST	/settings/profiles/recommended/revert	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/settings/controllers/settings-controller.hxx

@@ -202,6 +202,40 @@ inline constexpr std::array<AuthRouteAccess, 4> kVisitorAccess = {{
     {.path = "/visitor-crop/{id}/content", .method = drogon::Get, .roles = roleBit(UserRole::Guard)},
 }};
 
+inline constexpr std::array<AuthRouteAccess, 7> kModuleAccess = {{
+    {.path = "/modules", .method = drogon::Get, .roles = kEveryRole},
+    {.path = "/modules/{id}/install", .method = drogon::Post, .roles = kOwnerOnly},
+    {.path = "/modules/{id}/pause", .method = drogon::Post, .roles = kOwnerOnly},
+    {.path = "/modules/{id}/resume", .method = drogon::Post, .roles = kOwnerOnly},
+    {.path = "/modules/{id}/cancel", .method = drogon::Post, .roles = kOwnerOnly},
+    {.path = "/modules/{id}/disable", .method = drogon::Post, .roles = kOwnerOnly},
+    {.path = "/modules/{id}/release", .method = drogon::Post, .roles = kOwnerOnly},
+}};
+
+inline constexpr std::string_view kSurveillanceModule = "surveillance";
+inline constexpr std::string_view kProductivityModule = "productivity";
+
+struct ModuleRoute
+{
+  std::string_view segment;
+  std::string_view module;
+};
+
+inline constexpr std::array<ModuleRoute, 12> kModuleRoutes = {{
+    {.segment = "camera", .module = kSurveillanceModule},
+    {.segment = "zone", .module = kSurveillanceModule},
+    {.segment = "media", .module = kSurveillanceModule},
+    {.segment = "guard", .module = kSurveillanceModule},
+    {.segment = "visitor", .module = kSurveillanceModule},
+    {.segment = "visitor-settings", .module = kSurveillanceModule},
+    {.segment = "visitor-crop", .module = kSurveillanceModule},
+    {.segment = "project", .module = kProductivityModule},
+    {.segment = "project-task", .module = kProductivityModule},
+    {.segment = "project-member", .module = kProductivityModule},
+    {.segment = "calendar-event", .module = kProductivityModule},
+    {.segment = "calendar-event-share", .module = kProductivityModule},
+}};
+
 inline constexpr std::array<AuthRouteAccess, 1> kRouteOverrides = {{
     {.path = "/notification/delivery-summary", .method = drogon::Get, .roles = kOwnerOnly},
 }};
@@ -414,6 +448,8 @@ inline bool normalizedRouteAccess(const HasHttpAccessInput& input)
     return routeTableAllows(kSyncAccess, input);
   if (segment == "guard")
     return routeTableAllows(kGuardAccess, input);
+  if (segment == "modules")
+    return routeTableAllows(kModuleAccess, input);
 
   if (const auto* route = routeOf(kRouteOverrides, input.path, input.method))
     return roleHolds(route->roles, input.role);
@@ -444,6 +480,16 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
   const std::string child = path + "/0";
   return normalizedRouteAccess(
       {.role = input.role, .path = child, .method = input.method});
+}
+
+inline std::optional<std::string_view> moduleOfPath(std::string_view path)
+{
+  const std::string normalized = normalizedPath(path);
+  const std::string_view segment = firstSegment(normalized);
+  const auto route = std::ranges::find(kModuleRoutes, segment, &ModuleRoute::segment);
+  if (route == kModuleRoutes.end())
+    return std::nullopt;
+  return route->module;
 }
 
 enum class AppAction : std::uint8_t
