@@ -27,6 +27,9 @@ FAMILY_OF = {tool: family for family, tools in FAMILIES.items() for tool in tool
 MODULE_FAMILIES = ("calendar", "task", "project", "modules", "reminders")
 OWNER_ONLY = {"modules.enable", "modules.disable", "modules.open_purge_screen"}
 MEMBER_ONLY = {"modules.request"}
+READ_TOOLS = {"calendar.list_events", "task.list", "project.list", "modules.list", "modules.explain",
+              "reminder.list", "memory.recall", "app.open", "app.show_camera"}
+NOWS = (0.0, 0.5, 0.7, 0.8, 0.9, 0.95)
 ACTS = (0.5, 0.6, 0.7, 0.8, 0.85, 0.88, 0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99, 0.995)
 ASKS = (0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95)
 MARGINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
@@ -151,19 +154,21 @@ class Decider:
                 continue
             reply = json.loads(line)
             runner = reply.get("runnerUp") or {}
+            now = reply.get("now")
             answers[reply["seq"]] = (reply.get("tool"), float(reply.get("confidence", 0.0)),
-                                     runner.get("tool"), float(runner.get("confidence", 0.0)))
+                                     runner.get("tool"), float(runner.get("confidence", 0.0)),
+                                     None if now is None else float(now))
         writer.join()
         decisions = []
         for seq, case in enumerate(cases):
-            tool, confidence, runner_tool, runner_confidence = answers[seq]
+            tool, confidence, runner_tool, runner_confidence, now = answers[seq]
             allowed = offered(case["role"])
             if tool is not None and tool not in allowed:
                 self.violations += 1
                 tool, confidence = None, 0.0
             if runner_tool is not None and runner_tool not in allowed:
                 runner_tool, runner_confidence = None, 0.0
-            decisions.append((tool, confidence, runner_tool, runner_confidence))
+            decisions.append((tool, confidence, runner_tool, runner_confidence, now))
         return decisions
 
     def latencies(self, cases):
@@ -184,12 +189,16 @@ class Decider:
 
 
 def outcome(decision, policy):
-    tool, confidence, runner_tool, runner_confidence = decision
-    act, ask, margin = policy
+    tool, confidence, runner_tool, runner_confidence = decision[:4]
+    now = decision[4] if len(decision) > 4 else None
+    act, ask, margin = policy[:3]
+    now_min = policy[3] if len(policy) > 3 else 0.0
     if tool is None:
         return "none", ()
     gap = confidence - (runner_confidence if runner_tool else 0.0)
     if confidence >= act and gap >= margin:
+        if now_min > 0.0 and tool not in READ_TOOLS and (now is None or now < now_min):
+            return "ask", (tool,)
         return "act", (tool,)
     if confidence >= ask:
         if runner_tool and runner_confidence >= ask:
@@ -279,7 +288,8 @@ def digest(entry):
 
 def summarise(cases, decisions, policy):
     counts = tally(cases, decisions, policy, scopes_of())
-    out = {"policy": {"act": policy[0], "ask": policy[1], "margin": policy[2]}, "cases": len(cases),
+    out = {"policy": {"act": policy[0], "ask": policy[1], "margin": policy[2],
+                      "now": policy[3] if len(policy) > 3 else 0.0}, "cases": len(cases),
            "moduleFamilies": digest(counts["moduleFamilies"]),
            "families": {f: digest(counts[f]) for f in MODULE_FAMILIES}, "variants": {}}
     for variant in sorted({c["variant"] for c in cases}):
@@ -297,11 +307,12 @@ def feasible(summary, limits):
     return pooled["askRateClear"] <= limits["askClear"] and pooled["wrongToolRate"] <= limits["wrongTool"]
 
 
-def policies():
+def policies(guard):
     for act in ACTS:
         for ask in (a for a in ASKS if a <= act):
             for margin in MARGINS:
-                yield (act, ask, margin)
+                for now in (NOWS if guard else (0.0,)):
+                    yield (act, ask, margin, now)
 
 
 def act_only_policies():
@@ -311,7 +322,8 @@ def act_only_policies():
 
 def choose_policy(cases, decisions, limits):
     best, best_key = None, None
-    for policy in policies():
+    guard = any(len(d) > 4 and d[4] is not None for d in decisions)
+    for policy in policies(guard):
         summary = summarise_pooled(cases, decisions, policy, limits)
         if summary is None:
             continue
@@ -348,7 +360,7 @@ def print_sweep(title, cases, decisions):
 
 def print_families(title, summary):
     p = summary["policy"]
-    print(f"\n{title} at ACT >= {p['act']} / ASK >= {p['ask']} / margin {p['margin']}")
+    print(f"\n{title} at ACT >= {p['act']} / ASK >= {p['ask']} / margin {p['margin']} / now >= {p['now']}")
     print(f"  {'family':10s}{'pos':>5s}{'cover':>8s}{'act':>8s}{'prec':>8s}{'askClr':>8s}{'wrongA':>8s}{'rate':>8s}"
           f"{'up95':>8s}{'amb':>5s}{'ambAsk':>8s}")
     for family, e in summary["families"].items():
@@ -520,13 +532,15 @@ def main():
                          default=None)
         else:
             policy = choose_policy(selection, chosen_decisions, limits)
-        report["policy"] = None if policy is None else {"act": policy[0], "ask": policy[1], "margin": policy[2]}
+        report["policy"] = None if policy is None else {"act": policy[0], "ask": policy[1], "margin": policy[2],
+                                                         "now": policy[3] if len(policy) > 3 else 0.0}
         if policy is None:
             print(f"\nno ACT / ASK policy keeps every wrong-ACT rate at or below {limits['wrongAct']:.2%} "
                   f"with at most {limits['askClear']:.0%} asks on clear commands on the selection set")
             report["selectionPassed"] = False
         else:
-            print(f"\npolicy chosen on the selection set: ACT >= {policy[0]}, ASK >= {policy[1]}, margin {policy[2]} "
+            print(f"\npolicy chosen on the selection set: ACT >= {policy[0]}, ASK >= {policy[1]}, margin {policy[2]}, "
+                  f"second signal >= {policy[3] if len(policy) > 3 else 0.0} on write tools "
                   f"(maximum coverage with every wrong-ACT rate, pooled, per family and on the near-miss stratum, "
                   f"at or below {limits['wrongAct']:.2%} and at most {limits['askClear']:.0%} asks on clear commands)")
             report["selectionPassed"] = True

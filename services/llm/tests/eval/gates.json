@@ -613,5 +613,15 @@
         "min": 0.456
       }
     }
+  },
+  "performance": {
+    "metrics": {
+      "latencyP95Ms": {
+        "max": 150
+      },
+      "residentMb": {
+        "max": 600
+      }
+    }
   }
 }

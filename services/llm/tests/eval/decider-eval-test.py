@@ -55,6 +55,38 @@ class OutcomeTest(unittest.TestCase):
         self.assertEqual(harness.outcome(("a", 0.9, None, 0.0), (0.9, 0.9, 0.0)), ("act", ("a",)))
 
 
+class SecondSignalTest(unittest.TestCase):
+    def test_a_write_tool_below_the_second_signal_is_asked_not_acted(self):
+        decision = ("calendar.create_event", 0.97, None, 0.0, 0.4)
+        self.assertEqual(harness.outcome(decision, (0.9, 0.5, 0.0, 0.8)), ("ask", ("calendar.create_event",)))
+        self.assertEqual(harness.outcome(decision, (0.9, 0.5, 0.0, 0.0)), ("act", ("calendar.create_event",)))
+
+    def test_a_read_tool_is_never_held_by_the_second_signal(self):
+        decision = ("calendar.list_events", 0.97, None, 0.0, 0.1)
+        self.assertEqual(harness.outcome(decision, (0.9, 0.5, 0.0, 0.9)), ("act", ("calendar.list_events",)))
+
+    def test_changing_the_guard_mode_is_a_write_and_waits_for_the_second_signal(self):
+        decision = ("app.set_guard_mode", 0.97, None, 0.0, 0.3)
+        self.assertEqual(harness.outcome(decision, (0.9, 0.5, 0.0, 0.8)), ("ask", ("app.set_guard_mode",)))
+        self.assertNotIn("app.set_guard_mode", harness.READ_TOOLS)
+        self.assertEqual(harness.outcome(("app.set_guard_mode", 0.97, None, 0.0, 0.95), (0.9, 0.5, 0.0, 0.8)),
+                         ("act", ("app.set_guard_mode",)))
+
+    def test_a_write_tool_without_a_second_signal_is_asked_when_the_guard_is_on(self):
+        decision = ("task.create", 0.97, None, 0.0, None)
+        self.assertEqual(harness.outcome(decision, (0.9, 0.5, 0.0, 0.5)), ("ask", ("task.create",)))
+
+    def test_the_guard_removes_a_wrong_act_the_confidence_alone_cannot(self):
+        cases = loaded([case("p", "agenda una cita", ["calendar.create_event"]), case("n", "ayer agendé una cita")])
+        decisions = [("calendar.create_event", 0.97, None, 0.0, 0.95), ("calendar.create_event", 0.97, None, 0.0, 0.1)]
+        self.assertEqual(harness.summarise(cases, decisions, (0.9, 0.9, 0.0))["moduleFamilies"]["wrongAct"], 1)
+        guarded = harness.summarise(cases, decisions, (0.9, 0.9, 0.0, 0.8))["moduleFamilies"]
+        self.assertEqual(guarded["wrongAct"], 0)
+        self.assertAlmostEqual(guarded["actCoverage"], 1.0)
+        limits = {"wrongAct": 0.0, "askClear": 0.1, "wrongTool": 0.01}
+        self.assertEqual(harness.choose_policy(cases, decisions, limits)[3] > 0, True)
+
+
 class ScoreTest(unittest.TestCase):
     def setUp(self):
         self.cases = loaded([
