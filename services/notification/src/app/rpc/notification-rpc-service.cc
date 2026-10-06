@@ -12,6 +12,8 @@
 namespace
 {
 
+constexpr const char* kAssistantTaskType = "assistant_task";
+
 NotificationSyncFilter
 filterOf(const argus::notification::v1::NotificationPull& pull, int64_t userId)
 {
@@ -44,6 +46,16 @@ void toProto(const Json::Value& row,
   out->set_created_at(row["createdAt"].asInt64());
 }
 
+
+bool assistantNoticeOnly(
+    const argus::notification::v1::CreateNotificationsRequest& request)
+{
+  if (request.type() != kAssistantTaskType || request.user_ids_size() != 1)
+    return false;
+  const Json::Value data = json_util::fromString(request.data());
+  return !data.isObject() || !data.isMember("response");
+}
+
 }
 
 NotificationRpcService::NotificationRpcService(Dependencies dependencies)
@@ -51,6 +63,10 @@ NotificationRpcService::NotificationRpcService(Dependencies dependencies)
           {argus::client::CallerCredential{.service = "argus-guard",
                                         .secret = ConfigService::getString(
                                             "grpc.caller_guard")}}),
+      assistantCallers_(
+          {argus::client::CallerCredential{.service = "argus-llm",
+                                        .secret = ConfigService::getString(
+                                            "grpc.caller_llm")}}),
       syncCallers_(
           {argus::client::CallerCredential{.service = "argus-sync",
                                         .secret = ConfigService::getString(
@@ -161,10 +177,20 @@ grpc::ServerUnaryReactor* NotificationRpcService::CreateNotifications(
     const argus::notification::v1::CreateNotificationsRequest* request,
     argus::notification::v1::CreateNotificationsResponse* response)
 {
-  if (!argus::client::authorizeCaller(context, guardCallers_).has_value()) {
+  const bool guard =
+      argus::client::authorizeCaller(context, guardCallers_).has_value();
+  if (!guard &&
+      !argus::client::authorizeCaller(context, assistantCallers_).has_value()) {
     auto* reactor = context->DefaultReactor();
     reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
                                  "notification caller credential required"));
+    return reactor;
+  }
+  if (!guard && !assistantNoticeOnly(*request)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(
+        grpc::StatusCode::PERMISSION_DENIED,
+        "this caller may only create one assistant_task notice"));
     return reactor;
   }
   if (request->command_id().empty()) {

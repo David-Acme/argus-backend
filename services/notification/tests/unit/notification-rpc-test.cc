@@ -28,6 +28,7 @@ namespace
 {
 constexpr const char* kGuardCredential = "guard-notif-cred";
 constexpr const char* kSyncCredential = "sync-notif-cred";
+constexpr const char* kLlmCredential = "llm-notif-cred";
 
 int tempCounter()
 {
@@ -78,7 +79,7 @@ void writeConfig(const std::string& path)
 {
   std::ofstream out(path, std::ios::trunc);
   out << "[grpc]\ncaller_guard = \"" << kGuardCredential
-      << "\"\ncaller_sync = \"" << kSyncCredential << "\"\n";
+      << "\"\ncaller_sync = \"" << kSyncCredential << "\"\ncaller_llm = \"" << kLlmCredential << "\"\n";
 }
 
 class AppRunner
@@ -480,6 +481,53 @@ TEST_CASE("notification RPC creates fan-out rows and serves user pulls")
     CHECK(
         raw->CreateNotifications(&context, noCommand, &response).error_code() ==
         grpc::StatusCode::INVALID_ARGUMENT);
+  }
+
+  {
+    auto raw = argus::notification::v1::NotificationService::NewStub(
+        argus::client::makeChannel(harness.target()));
+    struct SendAsInput
+    {
+      const char* credential{nullptr};
+      std::string type;
+      std::vector<int64_t> users;
+      std::string data;
+    };
+    const auto sendAs = [&raw](const SendAsInput& input) {
+      grpc::ClientContext context;
+      argus::client::addCallerCredential(context, input.credential);
+      argus::client::addCallerIdentity(context, identityFor(0));
+      argus::notification::v1::CreateNotificationsRequest request;
+      for (const int64_t user : input.users)
+        request.add_user_ids(user);
+      request.set_command_id("intent-llm-" + input.type + "-" + std::to_string(input.users.size()) + input.data);
+      request.set_type(input.type);
+      request.set_title("Tu petición está lista");
+      request.set_body("Agendado.");
+      request.set_data(input.data);
+      argus::notification::v1::CreateNotificationsResponse response;
+      return raw->CreateNotifications(&context, request, &response);
+    };
+
+    CHECK(sendAs({.credential = kLlmCredential,
+                  .type = "assistant_task",
+                  .users = {7},
+                  .data = "{\"kind\":\"assistant_task\"}"})
+              .ok());
+    CHECK(sendAs({.credential = kLlmCredential, .type = "camera", .users = {7}, .data = ""}).error_code() ==
+          grpc::StatusCode::PERMISSION_DENIED);
+    CHECK(sendAs({.credential = kLlmCredential, .type = "assistant_task", .users = {7, 8}, .data = ""}).error_code() ==
+          grpc::StatusCode::PERMISSION_DENIED);
+    CHECK(sendAs({.credential = kLlmCredential, .type = "assistant_task", .users = {}, .data = ""}).error_code() ==
+          grpc::StatusCode::PERMISSION_DENIED);
+    CHECK(sendAs({.credential = kLlmCredential,
+                  .type = "assistant_task",
+                  .users = {7},
+                  .data = "{\"response\":{\"steps\":[]}}"})
+              .error_code() == grpc::StatusCode::PERMISSION_DENIED);
+    CHECK(sendAs({.credential = "wrong", .type = "assistant_task", .users = {7}, .data = ""}).error_code() ==
+          grpc::StatusCode::UNAUTHENTICATED);
+    CHECK(sendAs({.credential = kGuardCredential, .type = "camera", .users = {7}, .data = ""}).ok());
   }
 }
 

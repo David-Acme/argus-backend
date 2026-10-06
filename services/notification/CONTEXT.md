@@ -1063,3 +1063,20 @@ payloads) and none of it visible to another service:
 - A relay that cannot publish backs off exponentially to 5 s instead of
   retrying every 500 ms.
 - `notification-shared` no longer links an outbox module it never included.
+
+## argus-llm tells the user about a kept request (2026-10, the context plan)
+
+`CreateNotifications` admitted the guard alone. argus-llm is now admitted too
+(`grpc.caller_llm`, the credential it already uses to schedule calls), but only
+for what a pending intent needs (`services/llm/CONTEXT.md`, "Pending intents"):
+the type must be `assistant_task`, exactly one recipient, and no `response`
+plan in `data` (so it can never start a call). Anything else from that caller
+is `PERMISSION_DENIED`; an unknown credential stays `UNAUTHENTICATED`; the
+guard's behaviour is unchanged. `assistant_task` is a core kind (it is not in
+`kModuleKinds`), so it is created while any module is off. The row is a plain
+title and body for the user's list, with `data {kind: "assistant_task",
+commandId}`; the command id is derived from the intent so a retry is a
+duplicate, not a second notice.
+
+`notification-rpc-test` pins the admitted notice and the five refusals (another
+type, two recipients, none, a call plan, a wrong credential).
