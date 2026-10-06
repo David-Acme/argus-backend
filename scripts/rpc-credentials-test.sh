@@ -35,6 +35,8 @@ guard:modules:credential:settings
 identity:modules:credential:settings
 productivity:modules:credential:settings
 notification:modules:credential:settings
+llm:modules:credential:settings
+llm:guard:credential:guard
 sync:modules:credential:settings"
 
 DATA_OWNERS="identity:rpc.callers:settings:7040
@@ -89,10 +91,14 @@ cp "$ROOT"/argus-deploy/config.*.toml.example "$deploy"/
 ensure_deploy_configs "$deploy" > "$TEST_TMP/deploy-first.log" 2>&1 || fail "ensure_deploy_configs failed"
 check_pairs deploy "$deploy"
 check_data_owners "$deploy"
-for service in camera guard identity notification productivity sync; do
+for service in camera guard identity llm notification productivity sync; do
   [ "$(toml_value "$deploy/config.$service.toml" modules target)" = "argus-settings:7047" ] ||
     fail "deploy: $service does not read the enabled set from argus-settings:7047"
 done
+llm_tools="$(toml_value "$deploy/config.llm.toml" productivity credential)"
+[ "${#llm_tools}" -eq 64 ] || fail "deploy: llm has no productivity credential"
+[ "$llm_tools" = "$(toml_value "$deploy/config.productivity.toml" grpc caller_llm)" ] ||
+  fail "deploy: llm and productivity disagree on the tools credential"
 while IFS= read -r value; do
   if grep -Fq "$value" "$TEST_TMP/deploy-first.log"; then
     fail "a credential was printed to the console"

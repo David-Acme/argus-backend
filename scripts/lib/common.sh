@@ -516,6 +516,7 @@ productivity modules credential settings
 sync modules credential settings
 voice modules credential settings
 llm modules credential settings
+llm guard credential guard
 CALLERS
 }
 
@@ -714,6 +715,8 @@ ensure_deploy_configs() {
     "$deploy_dir/config.camera.toml" grpc caller_sync 32
   fill_config_pair "$deploy_dir/config.llm.toml" camera credential \
     "$deploy_dir/config.camera.toml" grpc caller_llm 32
+  fill_config_pair "$deploy_dir/config.llm.toml" productivity credential \
+    "$deploy_dir/config.productivity.toml" grpc caller_llm 32
   fill_config_pair "$deploy_dir/config.voice.toml" stt grpc_credential \
     "$deploy_dir/config.stt.toml" rpc.callers voice 32
   fill_config_pair "$deploy_dir/config.voice.toml" tts grpc_credential \
