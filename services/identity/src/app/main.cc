@@ -3,6 +3,8 @@
 #include <app/rpc/identity-sync-rpc-service.hxx>
 #include <app/rpc/identity-voiceprint-rpc-service.hxx>
 #include <feature/module-data/services/identity-module-data.hxx>
+#include <feature/module-impact/services/identity-module-impact.hxx>
+#include <feature/module-impact/services/identity-role-reassign.hxx>
 #include <settings/settings-rpc.hxx>
 #include <auth/auth-access.hxx>
 #include <auth/device-filter.hxx>
@@ -344,6 +346,8 @@ int main()
   rpcBuilder.RegisterService(&syncRpcService);
   rpcBuilder.RegisterService(&voiceprintRpcService);
   IdentityModuleData moduleData;
+  const IdentityModuleImpact moduleImpact;
+  IdentityRoleReassign roleReassign;
   SettingsRegistry noSettings({});
   std::unique_ptr<SettingsRpcService> settingsRpc;
   if (settingsCredentials.empty()) {
@@ -353,6 +357,8 @@ int main()
     settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
         .service = "identity", .registry = &noSettings, .credentials = std::move(settingsCredentials)});
     settingsRpc->attachModuleData(moduleData);
+    settingsRpc->attachModuleImpact(moduleImpact);
+    settingsRpc->attachRoleReassign(roleReassign);
     rpcBuilder.RegisterService(settingsRpc.get());
   }
   std::unique_ptr<grpc::Server> rpcServer(rpcBuilder.BuildAndStart());

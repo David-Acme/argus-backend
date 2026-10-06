@@ -304,6 +304,19 @@ target_compile_options(identity-invitation-module-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-invitation-module-test)
 add_test(NAME identity-invitation-module-test COMMAND identity-invitation-module-test)
 
+add_executable(identity-module-impact-test unit/identity-module-impact-test.cc)
+target_compile_definitions(identity-module-impact-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(identity-module-impact-test PRIVATE
+    argus::identity-module-impact
+    argus::identity-user
+    argus::lib::sqlite
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-module-impact-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-module-impact-test)
+add_test(NAME identity-module-impact-test COMMAND identity-module-impact-test)
+
 add_executable(identity-module-data-test unit/identity-module-data-test.cc)
 target_compile_definitions(identity-module-data-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")

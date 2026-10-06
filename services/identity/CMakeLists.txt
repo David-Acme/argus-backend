@@ -182,6 +182,7 @@ argus_service(NAME argus-identity
             argus::identity-privacy
             argus::identity-visitor
             argus::identity-module-data
+            argus::identity-module-impact
             argus::identity-rpc
     DEPENDS argus::lib::http
             argus::contracts::settings-wire

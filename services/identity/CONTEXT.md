@@ -1375,6 +1375,22 @@ reachable beyond loopback with neither a paired caller nor a legacy secret.
 `identity-rpc-callers-test` pins the table; `identity-sync-rpc-test` and
 `identity-voiceprint-test` pin the paired paths of their services.
 
+## Module impact and role reassignment for argus-settings (2026-10, module effects)
+
+`feature/module-impact` serves two calls of the settings wire on identity's
+gRPC listener. `IdentityModuleImpact` reports, for a module whose catalog entry
+brings roles (`ModuleFlag::roles`, read from the gate), the people who hold
+those roles (`roleHolders`: id, name, last name, role, active) and the pending
+invitations of those roles with the name of whoever created them
+(`PendingInvitation`); a module with no roles, or an unknown one, reports
+nothing. `IdentityRoleReassign` moves each holder to the role argus-settings
+chose through `UserFeatureService::update`, the same path as `PATCH /user/{id}`
+(persist, replace the socket's role rooms, `AuthContextChanged` with resync,
+audit trail), with the Owner who pressed uninstall as the actor; it stops at
+the first refusal and says which user and why (`role_invalid` for the owner
+role or an unknown one, otherwise the refusal's code), so the uninstall queues
+nothing. Tests: `identity-module-impact-test`.
+
 ## Visitors as surveillance data: summary and purge (2026-10, the modules plan)
 
 Recurring visitors are what the cameras taught identity, so they belong to
