@@ -1203,22 +1203,25 @@ root.
 
 ## Voice quality evaluation (2026-10-06)
 
-`tests/eval/` measures what the assistant understands, in three runners that share a corpus
-(`tests/fixtures/eval/cases.jsonl`, authored in `intent-training` and published here) and a gate
-file (`tests/eval/gates.json`, one section per tier). `fast-tier-eval` runs in every build: the
-production router over the distinct utterances, gated on precision and recall per memory tool and
-per variant, on the false-action rate of everything the fast tier must leave to the LLM (agenda,
-calendar, task, project, module and app utterances in four variants, each also asked with its
-module off) and on the share of turns that fall through. `llm-tier-eval` runs the real tool loop
-with stub tools in Release builds and scores selection, arguments, false actions and writes, the
-module-off answer, the confirmation before a destructive tool and the offer that is accepted; its
-false-completion gate (a reply that claims an action no successful tool performed) is zero and
-red until the assistant stops doing it. A runner with nothing to run exits 77, which ctest reports
-as skipped. The scoring core is tested without a model (`eval-score-test`) and the corpus is
-checked for structure (`eval-corpus-test`). Why the numbers are what they are, and how they were
+`tests/eval/` measures what the assistant understands, in harnesses that share corpora
+(`tests/fixtures/eval/`, authored in `intent-training` and published here) and one gate file
+(`tests/eval/gates.json`, one section per harness). Since the owner's decision that the LLM only
+speaks, a decider picks the tool, a slot layer fills its arguments and the LLM speaks about the
+result, so there is one harness per stage and each drives a process over a language-neutral
+line protocol: `decider-eval.py` (coverage, precision and false-route rate per family, a confidence
+sweep, an operating point chosen on the selection sets and then one reading of the sealed set),
+`slot-eval.py` (arguments to the minute, a missing slot reported and never guessed) and
+`conversation-eval.py` (false completion at zero, faithfulness to the result, language, length). The
+sealed set `fixtures/eval/sealed.jsonl` is pinned by sha256 in `gates.json`, never opened by whoever
+tunes a decider and never reported utterance by utterance; its ceiling for module-family false routes
+(0.5%) is judged pooled, per family and on the authored near-miss stratum. A process that cannot
+start is a visible skip (77). The scoring is tested without a model (`decider-eval-test`,
+`slot-eval-test`, `conversation-eval-test`, each mutation-checked). `fast-tier-eval` still drives the
+production memory router over the judge corpus; `llm-tier-eval` still drives the removed tool loop
+with stub tools and is retired with it. Why the numbers are what they are, and how they were
 measured: `docs/operations/voice-quality-eval.md`.
 
 The tool specs of the other services' MCP providers are mirrored by hand in `tests/eval/eval-tools.cc`
-because a service cannot link another service's source; when a provider's name, description or
-schema changes, copy it there or the eval measures a tool the model no longer sees. A snapshot of
-every provider's `tools/list` that both sides test against would remove that duplication.
+(for `llm-tier-eval`) and in the tool and role table of `decider-eval.py` (`offered`); when a provider's
+name or a role's offer changes, copy it there or the eval measures a tool that is not offered. A
+snapshot of every provider's `tools/list` that both sides test against would remove that duplication.
