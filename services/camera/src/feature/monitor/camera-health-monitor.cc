@@ -17,6 +17,7 @@
 #include <drogon/drogon.h>
 #include <drogon/utils/coroutine.h>
 #include <span>
+#include <utility>
 
 namespace
 {
@@ -119,7 +120,7 @@ std::string health_monitor::statusName(CameraHealthState status)
 
 CameraHealthMonitor::CameraHealthMonitor(Dependencies dependencies,
                                          CameraHealthConfig config)
-    : dependencies_(dependencies), config_(config)
+    : dependencies_(std::move(dependencies)), config_(std::move(config))
 {
 }
 
