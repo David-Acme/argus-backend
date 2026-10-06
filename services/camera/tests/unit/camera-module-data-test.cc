@@ -3,6 +3,7 @@
 
 #include <drogon/drogon.h>
 #include <feature/module-data/services/camera-module-data.hxx>
+#include <feature/module-data/services/camera-module-impact.hxx>
 #include <sqlite/db-service.hxx>
 
 #include <algorithm>
@@ -176,4 +177,24 @@ TEST_CASE("argus-camera purges the surveillance data and its evidence objects, r
   }
   CHECK(data.summary("surveillance").empty());
   CHECK(data.purge("surveillance").purged);
+}
+
+TEST_CASE("the camera reports its open talk sessions and live views as what surveillance stops, and nothing for another module")
+{
+  std::size_t talks = 2;
+  std::size_t views = 5;
+  const CameraModuleImpact host({.talkSessions = [&talks] { return talks; }, .liveViews = [&views] { return views; }});
+
+  const auto report = host.impact("surveillance");
+  REQUIRE(report.stops.size() == 2);
+  CHECK(report.stops[0].kind == "camera_talk");
+  CHECK(report.stops[0].count == 2);
+  CHECK(report.stops[1].kind == "live_views");
+  CHECK(report.stops[1].count == 5);
+
+  talks = 0;
+  views = 0;
+  CHECK(host.impact("surveillance").stops[0].count == 0);
+  CHECK(host.impact("productivity").stops.empty());
+  CHECK(host.impact("surveillance").roleHolders.empty());
 }

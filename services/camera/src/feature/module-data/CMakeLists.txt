@@ -2,6 +2,7 @@ argus_module(NAME camera-module-data
     SOURCES
         repositories/module-data/module-data-repository.cc
         services/camera-module-data.cc
+        services/camera-module-impact.cc
     INCLUDES
         ../..
     DEPENDS

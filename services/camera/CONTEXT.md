@@ -1782,6 +1782,15 @@ surveillance is not `active`, and the `/media` socket, which runs without
   session's. The 60 s `MediaAccessCheck` sweep stays as the backstop. Other
   identity changes (names, catalog rows) are acked and ignored.
 
+## What turning surveillance off would stop (impact preview)
+
+`CameraModuleImpact` answers argus-settings' `ModuleImpact` call for
+`surveillance` with `camera_talk` (open talk sessions, `CameraTalkService::
+active`) and `live_views` (open media sockets, `MediaSessionRegistry::size`);
+both are what the module-off hook closes. WebRTC views are not counted: go2rtc
+owns them and they close with the media sockets' viewers. Any other module
+answers nothing (`camera-module-data-test`).
+
 ## Surveillance data: summary and purge (2026-10, the modules plan)
 
 argus-camera is a data owner of the `surveillance` module

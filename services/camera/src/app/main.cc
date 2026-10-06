@@ -16,6 +16,7 @@
 #include <feature/actions/camera-action-rpc-service.hxx>
 #include <feature/health/health-rpc-service.hxx>
 #include <feature/module-data/services/camera-module-data.hxx>
+#include <feature/module-data/services/camera-module-impact.hxx>
 #include <feature/settings/camera-settings.hxx>
 #include <feature/sync/camera-sync-rpc-service.hxx>
 #include <auth/device-filter.hxx>
@@ -250,6 +251,11 @@ int main()
   MediaSessionRegistry mediaSessions;
   CameraTalkService talkService(
       {}, [] { return moduleGate().enabled(role_access::kSurveillanceModule); });
+  const CameraModuleImpact moduleImpact(
+      {.talkSessions = [&talkService] { return talkService.active(); },
+       .liveViews = [&mediaSessions] { return mediaSessions.size(); }});
+  if (settingsRpc)
+    settingsRpc->attachModuleImpact(moduleImpact);
   MediaAccessCheck mediaAccess(MediaAccessCheck::remote());
   drogon::app().registerController(std::make_shared<CameraMediaSocket>(
       CameraMediaSocket::Dependencies{
