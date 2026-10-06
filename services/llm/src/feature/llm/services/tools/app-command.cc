@@ -240,6 +240,16 @@ std::optional<tools::ToolCall> openScreen(const Words& words)
 
 }
 
+std::vector<std::string> spokenWords(const std::string& utterance)
+{
+  return wordsOf(utterance);
+}
+
+bool isAppTool(std::string_view name)
+{
+  return name.starts_with("app.");
+}
+
 bool asksForAppAction(const std::string& utterance)
 {
   if (utterance.find('?') != std::string::npos)

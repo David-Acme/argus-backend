@@ -1,11 +1,25 @@
 #pragma once
 
-#include <memory>
-#include <mutex>
+#include <mcp/client.hxx>
 #include <shared/vocabulary/tool-contracts.hxx>
+
+#include <memory>
+#include <shared_mutex>
 #include <string>
-#include <unordered_map>
+#include <string_view>
 #include <vector>
+
+struct ToolProvider
+{
+  std::string id;
+  std::shared_ptr<argus::mcp::McpClient> client;
+};
+
+struct RefreshOutcome
+{
+  std::vector<std::string> refreshed;
+  std::vector<std::string> failed;
+};
 
 class ToolRegistry
 {
@@ -15,10 +29,26 @@ public:
   ToolRegistry() = default;
 
   void registerTool(tools::ToolDescriptor descriptor);
-  const tools::ToolDescriptor* find(const std::string& name) const;
-  std::vector<std::string> names() const;
+  void addProvider(ToolProvider provider);
+  RefreshOutcome refresh(std::string_view only = {});
+
+  [[nodiscard]] tools::ToolHandle find(const std::string& name) const;
+  [[nodiscard]] std::vector<tools::ToolHandle> all() const;
+  [[nodiscard]] std::vector<std::string> names() const;
+  [[nodiscard]] std::vector<std::string> unlisted() const;
 
 private:
-  std::unordered_map<std::string, tools::ToolDescriptor> tools_;
-  mutable std::mutex mutex_;
+  struct ProviderState
+  {
+    ToolProvider provider;
+    std::vector<tools::ToolHandle> tools;
+    bool listed{false};
+  };
+
+  void rebuild();
+
+  std::vector<tools::ToolHandle> local_;
+  std::vector<ProviderState> providers_;
+  std::vector<tools::ToolHandle> merged_;
+  mutable std::shared_mutex mutex_;
 };

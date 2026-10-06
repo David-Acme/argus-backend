@@ -1,14 +1,18 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/vocabulary/tool-contracts.hxx>
-#include <feature/memory/services/memory/memory-tool-descriptors.hxx>
-#include <feature/llm/services/tools/app-tool-descriptors.hxx>
+#include <auth/capability.hxx>
+#include <feature/llm/services/tools/app-command.hxx>
+#include <feature/llm/services/tools/core-tools.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
-#include <feature/llm/services/tools/tool-validator.hxx>
+#include <feature/memory/services/memory/memory-tool-descriptors.hxx>
+#include <mcp/schema.hxx>
+#include <shared/vocabulary/tool-contracts.hxx>
+#include "tool-stubs.hxx"
 
 #include <algorithm>
+#include <array>
 #include <json/value.h>
 #include <optional>
 #include <string>
@@ -23,28 +27,20 @@ struct Probe
   std::string seen;
 };
 
-tools::ToolDescriptor probeDescriptor(const std::string& name, Probe& probe,
-                                      TableName table, RolePermission perm)
+tools::ToolDescriptor probeDescriptor(const std::string& name, Probe& probe, const std::string& capability)
 {
-  return {.name = name,
-          .description = "probe",
-          .arguments = {{.name = "query",
-                         .type = "string",
-                         .required = false,
-                         .enumValues = {},
-                         .description = ""}},
-          .accessTable = table,
-          .accessPermission = perm,
-          .handler = [&probe](const tools::ToolCall& call) {
-            probe.ran = true;
-            probe.seen = call.arguments.get("query", "").asString();
-            tools::ToolResult result;
-            result.ok = true;
-            result.output = "ran " + call.name;
-            result.tool = "probe";
-            result.data["seen"] = probe.seen;
-            return result;
-          }};
+  return tool_stubs::stub({.name = name,
+                           .capability = capability,
+                           .handler = [&probe](const tools::ToolCall& call) {
+                             probe.ran = true;
+                             probe.seen = call.arguments.get("text", "").asString();
+                             tools::ToolResult result;
+                             result.ok = true;
+                             result.output = "ran " + call.name;
+                             result.tool = "probe";
+                             result.data["seen"] = probe.seen;
+                             return result;
+                           }});
 }
 
 tools::ToolCall callFor(const std::string& name)
@@ -68,51 +64,52 @@ tools::ToolCall bareCall(const std::string& name)
   return call;
 }
 
+ToolAudience audienceOf(UserRole role)
+{
+  return {.role = role, .modules = {}};
+}
+
 const tools::ToolDescriptor* declaredByMemory(const std::string& name)
 {
-  static const std::vector<tools::ToolDescriptor> declared =
-      memoryToolDescriptors();
+  static const std::vector<tools::ToolDescriptor> declared = memoryToolDescriptors();
   for (const auto& descriptor : declared)
-    if (descriptor.name == name)
+    if (descriptor.spec.name == name)
       return &descriptor;
   return nullptr;
 }
 
 void registerMemoryTools(ToolRegistry& registry)
 {
-  for (auto descriptor : memoryToolDescriptors())
+  for (auto descriptor : memoryToolDescriptors()) {
+    descriptor.handler = [](const tools::ToolCall&) { return tool_stubs::okResult("stored"); };
     registry.registerTool(std::move(descriptor));
+  }
 }
 
 }
 
-TEST_CASE("the executor dispatches a registered tool and refuses a name it "
-          "does not hold")
+TEST_CASE("the executor dispatches a registered tool and refuses a name it does not hold")
 {
   Probe probe;
   Probe never;
   ToolRegistry registry;
-  registry.registerTool(
-      probeDescriptor("probe.remember", probe, TableName::Memory,
-                      RolePermission::Create));
-  registry.registerTool(
-      probeDescriptor("probe.forget", never, TableName::Memory,
-                      RolePermission::Delete));
+  registry.registerTool(probeDescriptor("probe.remember", probe, "memory.manage"));
+  registry.registerTool(probeDescriptor("probe.forget", never, "settings.manage"));
   const ToolExecutor executor(registry);
 
   auto call = callFor("probe.remember");
-  call.arguments["query"] = "dentista";
-  const auto dispatched = executor.execute(call, UserRole::Resident);
+  call.arguments["text"] = "dentista";
+  const auto dispatched = executor.execute(call, audienceOf(UserRole::Resident));
   INFO("dispatch output: " << dispatched.output);
   CHECK(dispatched.ok);
   CHECK(probe.ran);
   CHECK(probe.seen == "dentista");
   CHECK_FALSE(never.ran);
 
-  const auto unknown =
-      executor.execute(callFor("probe.forgotten"), UserRole::Resident);
+  const auto unknown = executor.execute(callFor("probe.forgotten"), audienceOf(UserRole::Resident));
   CHECK_FALSE(unknown.ok);
   CHECK(unknown.output == "unknown tool: probe.forgotten");
+  CHECK(unknown.code == "unknown_tool");
   CHECK_FALSE(never.ran);
 }
 
@@ -122,63 +119,79 @@ TEST_CASE("a call the schema rejects never reaches the handler")
   registerMemoryTools(registry);
   const ToolExecutor executor(registry);
 
-  const auto missing =
-      executor.execute(bareCall("memory.recall"), UserRole::Resident);
+  const auto missing = executor.execute(bareCall("memory.recall"), audienceOf(UserRole::Resident));
   CHECK_FALSE(missing.ok);
   CHECK(missing.output == "missing required argument 'query'");
+  CHECK(missing.code == "invalid_arguments");
 
   auto wrongEnum = callFor("memory.remember");
   wrongEnum.arguments["type"] = "inventado";
-  const auto enumRefused = executor.execute(wrongEnum, UserRole::Resident);
+  const auto enumRefused = executor.execute(wrongEnum, audienceOf(UserRole::Resident));
   CHECK_FALSE(enumRefused.ok);
   CHECK(enumRefused.output == "argument 'type' has an invalid value");
 
   auto wrongType = callFor("memory.forget");
   wrongType.arguments["query"] = 42;
-  const auto typeRefused = executor.execute(wrongType, UserRole::Resident);
+  const auto typeRefused = executor.execute(wrongType, audienceOf(UserRole::Resident));
   CHECK_FALSE(typeRefused.ok);
   CHECK(typeRefused.output == "argument 'query' must be a string");
 
   auto notObject = callFor("memory.remember");
   notObject.arguments = Json::Value("guardalo");
-  const auto shapeRefused = executor.execute(notObject, UserRole::Resident);
+  const auto shapeRefused = executor.execute(notObject, audienceOf(UserRole::Resident));
   CHECK_FALSE(shapeRefused.ok);
   CHECK(shapeRefused.output == "arguments must be a JSON object");
 }
 
-TEST_CASE("a role the table does not grant never reaches the handler")
+TEST_CASE("a role that does not hold the capability never reaches the handler")
 {
   Probe probe;
   ToolRegistry registry;
-  registry.registerTool(
-      probeDescriptor("probe.remember", probe, TableName::Memory,
-                      RolePermission::Create));
+  registry.registerTool(probeDescriptor("probe.remember", probe, "memory.manage"));
   const ToolExecutor executor(registry);
 
-  const auto refused =
-      executor.execute(callFor("probe.remember"), UserRole::Guest);
+  const auto refused = executor.execute(callFor("probe.remember"), audienceOf(UserRole::Guest));
   CHECK_FALSE(refused.ok);
   CHECK(refused.output == "permission denied for tool: probe.remember");
+  CHECK(refused.code == "forbidden");
   CHECK_FALSE(probe.ran);
 
-  const auto granted =
-      executor.execute(callFor("probe.remember"), UserRole::Resident);
+  const auto unknownRole = executor.execute(callFor("probe.remember"), audienceOf(UserRole::Unknown));
+  CHECK_FALSE(unknownRole.ok);
+  CHECK_FALSE(probe.ran);
+
+  const auto granted = executor.execute(callFor("probe.remember"), audienceOf(UserRole::Resident));
   CHECK(granted.ok);
   CHECK(probe.ran);
+}
+
+TEST_CASE("a tool that declares no capability or an unknown one is never run")
+{
+  Probe none;
+  Probe made;
+  ToolRegistry registry;
+  registry.registerTool(probeDescriptor("probe.none", none, ""));
+  registry.registerTool(probeDescriptor("probe.made", made, "invented.capability"));
+  const ToolExecutor executor(registry);
+  for (const auto role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CHECK_FALSE(executor.execute(callFor("probe.none"), audienceOf(role)).ok);
+    CHECK_FALSE(executor.execute(callFor("probe.made"), audienceOf(role)).ok);
+  }
+  CHECK_FALSE(none.ran);
+  CHECK_FALSE(made.ran);
+  CHECK(executor.offered(audienceOf(UserRole::Owner)).empty());
 }
 
 TEST_CASE("a dispatch comes back under the tool that was called")
 {
   Probe probe;
   ToolRegistry registry;
-  registry.registerTool(
-      probeDescriptor("probe.remember", probe, TableName::Memory,
-                      RolePermission::Create));
+  registry.registerTool(probeDescriptor("probe.remember", probe, "memory.manage"));
   const ToolExecutor executor(registry);
 
   auto call = callFor("probe.remember");
-  call.arguments["query"] = "el dentista";
-  const auto result = executor.execute(call, UserRole::Resident);
+  call.arguments["text"] = "el dentista";
+  const auto result = executor.execute(call, audienceOf(UserRole::Resident));
 
   REQUIRE(result.ok);
   CHECK(result.tool == "probe.remember");
@@ -186,68 +199,81 @@ TEST_CASE("a dispatch comes back under the tool that was called")
   CHECK(result.data["seen"].asString() == "el dentista");
 }
 
-TEST_CASE("the memory descriptors declare the access the gate reads")
+TEST_CASE("the memory descriptors declare the capability the gate reads")
 {
-  const struct
+  struct Declared
   {
     const char* name;
-    TableName table;
-    RolePermission permission;
-  } declared[] = {
-      {"memory.remember", TableName::Memory, RolePermission::Create},
-      {"memory.remind", TableName::Memory, RolePermission::Create},
-      {"memory.recall", TableName::Memory, RolePermission::Read},
-      {"memory.forget", TableName::Memory, RolePermission::Delete}};
+    const char* capability;
+  };
+  const std::array<Declared, 5> declared{{{.name = "memory.remember", .capability = "memory.manage"},
+                                          {.name = "memory.remind", .capability = "reminders.write"},
+                                          {.name = "memory.recall", .capability = "memory.manage"},
+                                          {.name = "memory.forget", .capability = "memory.manage"},
+                                          {.name = "reminder.list", .capability = "reminders.read"}}};
 
   for (const auto& expected : declared) {
     const auto* descriptor = declaredByMemory(expected.name);
     REQUIRE(descriptor != nullptr);
-    CHECK(descriptor->accessTable == expected.table);
-    CHECK(descriptor->accessPermission == expected.permission);
+    CHECK(descriptor->spec.capability == expected.capability);
+    CHECK(descriptor->spec.module == "core");
+    CHECK(role_access::knownCapability(descriptor->spec.capability));
+  }
+  CHECK(declaredByMemory("memory.forget")->spec.annotations.destructive);
+  CHECK(declaredByMemory("memory.recall")->spec.annotations.readOnly);
+  CHECK(declaredByMemory("reminder.list")->spec.annotations.readOnly);
+}
+
+TEST_CASE("every tool the core server exposes names a capability the access table knows")
+{
+  const auto server = coreToolServer({});
+  CHECK(server->find("app.open") != nullptr);
+  for (const auto& spec : server->tools()) {
+    CHECK(role_access::knownCapability(spec.capability));
+    CHECK_FALSE(spec.module.empty());
   }
 }
 
 TEST_CASE("the memory descriptors declare their required arguments")
 {
-  const struct
+  struct Required
   {
     const char* name;
     const char* argument;
-  } required[] = {{"memory.recall", "query"},
-                  {"memory.forget", "query"}};
+  };
+  const std::array<Required, 2> required{{{.name = "memory.recall", .argument = "query"},
+                                          {.name = "memory.forget", .argument = "query"}}};
 
   for (const auto& expected : required) {
     const auto* descriptor = declaredByMemory(expected.name);
     REQUIRE(descriptor != nullptr);
-    const auto error = tools::validateArguments(*descriptor,
-                                               bareCall(expected.name));
-    CHECK(error == std::optional<std::string>{
-                       std::string("missing required argument '") +
-                       expected.argument + "'"});
-    CHECK_FALSE(tools::validateArguments(*descriptor, callFor(expected.name))
-                    .has_value());
+    CHECK(argus::mcp::schema::violation(descriptor->spec.inputSchema, bareCall(expected.name).arguments) ==
+          std::optional<std::string>{std::string("missing required argument '") + expected.argument + "'"});
+    CHECK_FALSE(argus::mcp::schema::violation(descriptor->spec.inputSchema, callFor(expected.name).arguments).has_value());
   }
 
   for (const char* name : {"memory.remember", "memory.remind"}) {
     const auto* descriptor = declaredByMemory(name);
     REQUIRE(descriptor != nullptr);
-    CHECK_FALSE(tools::validateArguments(*descriptor, bareCall(name))
-                    .has_value());
+    CHECK_FALSE(argus::mcp::schema::violation(descriptor->spec.inputSchema, bareCall(name).arguments).has_value());
   }
 }
 
-TEST_CASE("the gate refuses every memory tool for a role with no Memory row")
+TEST_CASE("a guard or a guest keeps reminders and loses the rest of memory")
 {
   ToolRegistry registry;
   registerMemoryTools(registry);
   const ToolExecutor executor(registry);
 
-  for (const char* name : {"memory.remember", "memory.remind", "memory.recall",
-                           "memory.forget"}) {
-    const auto refused = executor.execute(callFor(name), UserRole::Guest);
-    INFO("refused " << name << ": " << refused.output);
-    CHECK_FALSE(refused.ok);
-    CHECK(refused.output == std::string("permission denied for tool: ") + name);
+  for (const auto role : {UserRole::Guard, UserRole::Guest}) {
+    for (const char* name : {"memory.remember", "memory.recall", "memory.forget"}) {
+      const auto refused = executor.execute(callFor(name), audienceOf(role));
+      INFO("refused " << name << ": " << refused.output);
+      CHECK_FALSE(refused.ok);
+      CHECK(refused.output == std::string("permission denied for tool: ") + name);
+    }
+    CHECK(executor.execute(callFor("memory.remind"), audienceOf(role)).ok);
+    CHECK(executor.execute(callFor("reminder.list"), audienceOf(role)).ok);
   }
 }
 
@@ -256,35 +282,32 @@ TEST_CASE("only the tools a role may run are offered to the model")
   ToolRegistry registry;
   registerMemoryTools(registry);
   Probe probe;
-  registry.registerTool(probeDescriptor("probe.camera", probe, TableName::Camera,
-                                        RolePermission::Read));
+  registry.registerTool(probeDescriptor("probe.camera", probe, "camera.view"));
+  registry.registerTool(probeDescriptor("probe.duress", probe, "safety.duress"));
   const ToolExecutor executor(registry);
 
   const auto namesFor = [&executor](UserRole role) {
     std::vector<std::string> names;
-    for (const auto* descriptor : executor.permittedTools(role))
-      names.push_back(descriptor->name);
+    for (const auto& tool : executor.offered(audienceOf(role)))
+      names.push_back(tool->spec.name);
     std::ranges::sort(names);
     return names;
   };
 
-  const std::vector<std::string> everything = {
-      "memory.forget", "memory.recall", "memory.remember", "memory.remind",
-      "probe.camera"};
+  const std::vector<std::string> everything = {"memory.forget", "memory.recall", "memory.remember", "memory.remind",
+                                               "probe.camera",  "probe.duress",  "reminder.list"};
   CHECK(namesFor(UserRole::Owner) == everything);
   CHECK(namesFor(UserRole::Resident) == everything);
-  CHECK(namesFor(UserRole::Guard) == std::vector<std::string>{"probe.camera"});
-  CHECK(namesFor(UserRole::Guest) == std::vector<std::string>{"probe.camera"});
-
-  for (const auto* descriptor : executor.permittedTools(UserRole::Guest))
-    CHECK(ToolExecutor::permits(*descriptor, UserRole::Guest));
+  const std::vector<std::string> everyone = {"memory.remind", "probe.camera", "reminder.list"};
+  CHECK(namesFor(UserRole::Guard) == everyone);
+  CHECK(namesFor(UserRole::Guest) == everyone);
+  CHECK(namesFor(UserRole::Unknown).empty());
 }
 
-TEST_CASE("an app tool hands its validated call to the conversation and speaks a confirmation")
+TEST_CASE("an app tool hands its validated call to the conversation and the guard mode needs the user's words")
 {
   ToolRegistry registry;
-  for (auto& descriptor : appToolDescriptors())
-    registry.registerTool(std::move(descriptor));
+  registry.registerTool(tool_stubs::appAction({.name = "app.set_guard_mode", .capability = "guard.mode.set", .module = "surveillance"}));
   const ToolExecutor executor(registry);
 
   std::vector<std::pair<std::string, Json::Value>> emitted;
@@ -296,82 +319,51 @@ TEST_CASE("an app tool hands its validated call to the conversation and speaks a
   };
 
   call.context.utterance = "qué tal ha ido el día";
-  const auto injected = executor.execute(call, UserRole::Resident);
+  const auto injected = executor.execute(call, audienceOf(UserRole::Resident));
   CHECK_FALSE(injected.ok);
+  CHECK(injected.code == "needs_spoken_words");
   CHECK(injected.output.find("pon la vigilancia en modo noche") != std::string::npos);
   CHECK(emitted.empty());
 
   call.context.utterance = "pon la vigilancia en modo noche";
-  const auto result = executor.execute(call, UserRole::Resident);
+  const auto result = executor.execute(call, audienceOf(UserRole::Resident));
   CHECK(result.ok);
   REQUIRE(emitted.size() == 1);
   CHECK(emitted[0].first == "app.set_guard_mode");
   CHECK(emitted[0].second["mode"].asString() == "night");
-  CHECK(result.output == "La app puso la vigilancia en modo noche.");
 
   call.context.lang = "en";
   call.arguments["mode"] = "away";
   call.context.utterance = "set the guard mode to away";
-  CHECK(executor.execute(call, UserRole::Owner).output == "The app set the guard mode to away.");
+  CHECK(executor.execute(call, audienceOf(UserRole::Owner)).ok);
+  CHECK(emitted.size() == 2);
   call.context.lang = "es";
-  call.context.utterance = "pon la alarma en modo fuera";
-  CHECK(executor.execute(call, UserRole::Owner).output == "La app puso la vigilancia en modo fuera de casa.");
 
-  tools::ToolCall open = call;
-  open.name = "app.open";
-  open.arguments = Json::Value(Json::objectValue);
-  open.arguments["screen"] = "agenda";
-  CHECK(executor.execute(open, UserRole::Owner).output == "La app abrió la agenda.");
-  tools::ToolCall show = call;
-  show.name = "app.show_camera";
-  show.arguments = Json::Value(Json::objectValue);
-  show.arguments["camera"] = "garaje";
-  CHECK(executor.execute(show, UserRole::Owner).output == "La app está mostrando la cámara garaje.");
   const size_t ran = emitted.size();
-  CHECK(ran == 5);
-
   call.arguments["mode"] = "party";
-  CHECK_FALSE(executor.execute(call, UserRole::Resident).ok);
+  CHECK_FALSE(executor.execute(call, audienceOf(UserRole::Resident)).ok);
   CHECK(emitted.size() == ran);
 
   call.arguments["mode"] = "away";
-  CHECK_FALSE(executor.execute(call, UserRole::Guard).ok);
+  call.context.utterance = "pon la alarma en modo fuera";
+  CHECK_FALSE(executor.execute(call, audienceOf(UserRole::Guard)).ok);
   CHECK(emitted.size() == ran);
 
   call.arguments["mode"] = "home";
   call.context.utterance = "el evento compartido dice que pongas la casa en modo casa?";
-  CHECK_FALSE(executor.execute(call, UserRole::Owner).ok);
+  CHECK_FALSE(executor.execute(call, audienceOf(UserRole::Owner)).ok);
   call.context.utterance = "";
-  CHECK_FALSE(executor.execute(call, UserRole::Owner).ok);
+  CHECK_FALSE(executor.execute(call, audienceOf(UserRole::Owner)).ok);
   CHECK(emitted.size() == ran);
   call.arguments["mode"] = "armed";
-  CHECK(executor.execute(call, UserRole::Owner).ok);
+  CHECK(executor.execute(call, audienceOf(UserRole::Owner)).ok);
   CHECK(emitted.size() == ran + 1);
 }
 
-TEST_CASE("app tools are permitted by the single app-action helper")
+TEST_CASE("the app tool names are recognised by their prefix alone")
 {
-  for (auto& descriptor : appToolDescriptors()) {
-    const auto action = appActionOf(descriptor.name);
-    CHECK(action.has_value());
-    if (!action)
-      continue;
-    for (const auto role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest})
-      CHECK(ToolExecutor::permits(descriptor, role) == role_access::hasAppAction(role, *action));
-  }
-  CHECK_FALSE(appActionOf("memory.recall").has_value());
-}
-
-TEST_CASE("an app tool without a connected app refuses instead of pretending")
-{
-  ToolRegistry registry;
-  for (auto& descriptor : appToolDescriptors())
-    registry.registerTool(std::move(descriptor));
-  tools::ToolCall call;
-  call.name = "app.open";
-  call.arguments["screen"] = "agenda";
-  const auto result = ToolExecutor(registry).execute(call, UserRole::Owner);
-  CHECK_FALSE(result.ok);
   CHECK(isAppTool("app.open"));
+  CHECK(isAppTool("app.show_camera"));
   CHECK_FALSE(isAppTool("memory.recall"));
+  CHECK_FALSE(isAppTool("modules.open_purge_screen"));
 }

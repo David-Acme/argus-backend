@@ -7,6 +7,8 @@
 #include <config/config-service.hxx>
 #include <feature/memory/services/memory/memory-chat.hxx>
 #include <feature/memory/services/memory/memory-service.hxx>
+#include <feature/memory/services/memory/reminder-call-scheduler.hxx>
+#include <feature/memory/services/memory/reminder-row-writer.hxx>
 #include <sqlite/vec-db.hxx>
 
 #include <algorithm>
@@ -102,7 +104,7 @@ TEST_CASE("a reminder is written for the speaking user and no one else")
   const auto descriptors = service.toolDescriptors();
   const auto tool = [&descriptors](const std::string& name) {
     for (const auto& descriptor : descriptors)
-      if (descriptor.name == name)
+      if (descriptor.spec.name == name)
         return &descriptor;
     return static_cast<const tools::ToolDescriptor*>(nullptr);
   };
@@ -154,7 +156,7 @@ TEST_CASE("memory writes keep to the user's own words and forgetting stays in sc
   const auto descriptors = service.toolDescriptors();
   const auto run = [&descriptors](const tools::ToolCall& call) {
     for (const auto& descriptor : descriptors)
-      if (descriptor.name == call.name)
+      if (descriptor.spec.name == call.name)
         return descriptor.handler(call);
     return tools::ToolResult{};
   };
@@ -307,7 +309,7 @@ TEST_CASE("an explicit request kept as a note is refined off the turn by the ext
     const auto descriptors = service.toolDescriptors();
     const auto run = [&descriptors](const tools::ToolCall& call) {
       for (const auto& descriptor : descriptors)
-        if (descriptor.name == call.name)
+        if (descriptor.spec.name == call.name)
           return descriptor.handler(call);
       return tools::ToolResult{};
     };
@@ -366,7 +368,7 @@ TEST_CASE("a newer value of the same fact closes the older one, and notes never 
   const auto descriptors = service.toolDescriptors();
   const auto run = [&descriptors](const tools::ToolCall& call) {
     for (const auto& descriptor : descriptors)
-      if (descriptor.name == call.name)
+      if (descriptor.spec.name == call.name)
         return descriptor.handler(call);
     return tools::ToolResult{};
   };
@@ -433,7 +435,7 @@ TEST_CASE("a reminder that names a time schedules a call at that time")
   const auto descriptors = service.toolDescriptors();
   const auto run = [&descriptors](const tools::ToolCall& call) {
     for (const auto& descriptor : descriptors)
-      if (descriptor.name == call.name)
+      if (descriptor.spec.name == call.name)
         return descriptor.handler(call);
     return tools::ToolResult{};
   };
@@ -466,6 +468,222 @@ TEST_CASE("a reminder that names a time schedules a call at that time")
   INFO("untimed output: " << plain.output);
   CHECK(calls->requests.size() == 1);
   CHECK(plain.output.find("llamaré") == std::string::npos);
+
+  service.shutdown();
+  std::remove(kScratchConfig);
+}
+
+namespace
+{
+class RecordingRows final : public ReminderRowWriter
+{
+public:
+  [[nodiscard]] bool create(const ReminderRowRequest& request) const override
+  {
+    created.push_back(request);
+    return accepts;
+  }
+
+  [[nodiscard]] std::optional<std::vector<ReminderRowInfo>> list(const ReminderRowQuery& query) const override
+  {
+    queries.push_back(query);
+    if (!reachable)
+      return std::nullopt;
+    std::vector<ReminderRowInfo> rows;
+    for (const auto& [owner, row] : stored)
+      if (owner == query.userId && (query.includeCompleted || !row.completed))
+        rows.push_back(row);
+    return rows;
+  }
+
+  bool accepts{true};
+  bool reachable{true};
+  std::vector<std::pair<int64_t, ReminderRowInfo>> stored;
+  mutable std::vector<ReminderRowRequest> created;
+  mutable std::vector<ReminderRowQuery> queries;
+};
+
+class RecordingCalls final : public ReminderCallScheduler
+{
+public:
+  [[nodiscard]] bool schedule(const ReminderCallRequest& request) const override
+  {
+    scheduled.push_back(request);
+    return true;
+  }
+
+  mutable std::vector<ReminderCallRequest> scheduled;
+};
+
+tools::ToolCall remindCall(int64_t userId, const std::string& utterance)
+{
+  auto call = callFor("memory.remind", userId);
+  call.context.role = UserRole::Resident;
+  call.context.utterance = utterance;
+  call.arguments["text"] = utterance;
+  call.context.decided = true;
+  return call;
+}
+}
+
+TEST_CASE("a timed reminder is written once, for the speaker, through the reminder rows and never for another user")
+{
+  std::filesystem::create_directories(kScratchDir);
+  writeConfig("rows.db");
+  ConfigService::load(kScratchConfig);
+  std::filesystem::remove(std::string(kScratchDir) + "/rows.db");
+
+  SilentChat chat;
+  MemoryService service(VecDb::instance(), chat);
+  service.init({});
+  REQUIRE(service.isLoaded());
+  const auto rows = std::make_shared<RecordingRows>();
+  const auto calls = std::make_shared<RecordingCalls>();
+  service.setReminderRows(rows);
+  service.setReminderCalls(calls);
+
+  const auto descriptors = service.toolDescriptors();
+  const auto run = [&descriptors](const tools::ToolCall& call) {
+    for (const auto& descriptor : descriptors)
+      if (descriptor.spec.name == call.name)
+        return descriptor.handler(call);
+    return tools::ToolResult{};
+  };
+
+  auto timed = remindCall(kSpeaker, "Recuérdame mañana a las nueve llamar al dentista.");
+  timed.arguments["userId"] = static_cast<Json::Int64>(kOtherUser);
+  timed.arguments["user_id"] = static_cast<Json::Int64>(kOtherUser);
+  timed.arguments["targetUserId"] = static_cast<Json::Int64>(kOtherUser);
+  timed.arguments["target_user_id"] = static_cast<Json::Int64>(kOtherUser);
+  timed.arguments["user"] = "9";
+  const auto saved = run(timed);
+  INFO("timed output: " << saved.output);
+  REQUIRE(saved.ok);
+  REQUIRE(rows->created.size() == 1);
+  CHECK(rows->created.front().userId == kSpeaker);
+  CHECK(rows->created.front().role == "resident");
+  CHECK(rows->created.front().title.find("dentista") != std::string::npos);
+  CHECK(rows->created.front().title.find("mañana") == std::string::npos);
+  CHECK(rows->created.front().scheduledAt > static_cast<int64_t>(std::time(nullptr)));
+  CHECK(rows->created.front().commandId.starts_with("memory-remind:"));
+  REQUIRE(calls->scheduled.size() == 1);
+  CHECK(calls->scheduled.front().userId == kSpeaker);
+  CHECK(calls->scheduled.front().commandId == rows->created.front().commandId);
+  CHECK(saved.output.find("Te llamaré a las") != std::string::npos);
+
+  auto another = remindCall(kOtherUser, "Recuérdame mañana a las diez comprar pan.");
+  another.arguments["userId"] = static_cast<Json::Int64>(kSpeaker);
+  REQUIRE(run(another).ok);
+  REQUIRE(rows->created.size() == 2);
+  CHECK(rows->created.back().userId == kOtherUser);
+  CHECK(std::ranges::none_of(rows->created, [](const ReminderRowRequest& row) { return row.userId != kSpeaker && row.userId != kOtherUser; }));
+
+  const size_t before = rows->created.size();
+  const auto timeless = run(remindCall(kSpeaker, "Recuérdame que mi cita con el dentista es el lunes."));
+  CHECK(timeless.ok);
+  CHECK(rows->created.size() == before);
+
+  service.shutdown();
+  std::remove(kScratchConfig);
+}
+
+TEST_CASE("a reminder that no row writer accepts is not claimed, and rows alone are spoken as the reminders list")
+{
+  std::filesystem::create_directories(kScratchDir);
+  writeConfig("rows-only.db");
+  ConfigService::load(kScratchConfig);
+  std::filesystem::remove(std::string(kScratchDir) + "/rows-only.db");
+
+  SilentChat chat;
+  MemoryService service(VecDb::instance(), chat);
+  service.init({});
+  REQUIRE(service.isLoaded());
+  const auto rows = std::make_shared<RecordingRows>();
+  service.setReminderRows(rows);
+
+  const auto descriptors = service.toolDescriptors();
+  const auto run = [&descriptors](const tools::ToolCall& call) {
+    for (const auto& descriptor : descriptors)
+      if (descriptor.spec.name == call.name)
+        return descriptor.handler(call);
+    return tools::ToolResult{};
+  };
+
+  const auto listed = run(remindCall(kSpeaker, "Recuérdame mañana a las nueve llamar al dentista."));
+  REQUIRE(listed.ok);
+  CHECK(listed.output.find("Quedó en tus recordatorios para las") != std::string::npos);
+  CHECK(listed.output.find("Te llamaré") == std::string::npos);
+
+  rows->accepts = false;
+  const auto refused = run(remindCall(kSpeaker, "Recuérdame mañana a las once pagar la luz."));
+  REQUIRE(refused.ok);
+  CHECK(refused.output.find("recordatorios para las") == std::string::npos);
+  CHECK(refused.output.find("Te llamaré") == std::string::npos);
+
+  service.shutdown();
+  std::remove(kScratchConfig);
+}
+
+TEST_CASE("the reminders list is the caller's own and says so when it cannot be read")
+{
+  std::filesystem::create_directories(kScratchDir);
+  writeConfig("rows-list.db");
+  ConfigService::load(kScratchConfig);
+  std::filesystem::remove(std::string(kScratchDir) + "/rows-list.db");
+
+  SilentChat chat;
+  MemoryService service(VecDb::instance(), chat);
+  service.init({});
+  REQUIRE(service.isLoaded());
+  const auto rows = std::make_shared<RecordingRows>();
+  rows->stored = {{kSpeaker, {.id = 1, .title = "Llamar al dentista", .scheduledAt = 1900000000, .completed = false}},
+                  {kSpeaker, {.id = 2, .title = "Pagar la luz", .scheduledAt = 1900003600, .completed = true}},
+                  {kOtherUser, {.id = 3, .title = "Secreto de otro", .scheduledAt = 1900000000, .completed = false}}};
+
+  const auto descriptors = service.toolDescriptors();
+  const auto run = [&descriptors](const tools::ToolCall& call) {
+    for (const auto& descriptor : descriptors)
+      if (descriptor.spec.name == call.name)
+        return descriptor.handler(call);
+    return tools::ToolResult{};
+  };
+
+  auto list = callFor("reminder.list", kSpeaker);
+  list.context.role = UserRole::Guest;
+
+  const auto unreachable = run(list);
+  CHECK_FALSE(unreachable.ok);
+  CHECK(unreachable.output == "Ahora no puedo leer tus recordatorios.");
+
+  service.setReminderRows(rows);
+  const auto mine = run(list);
+  REQUIRE(mine.ok);
+  CHECK(mine.output.find("Llamar al dentista") != std::string::npos);
+  CHECK(mine.output.find("Pagar la luz") == std::string::npos);
+  CHECK(mine.output.find("Secreto de otro") == std::string::npos);
+  CHECK(mine.data["reminders"].size() == 1);
+  REQUIRE_FALSE(rows->queries.empty());
+  CHECK(rows->queries.back().userId == kSpeaker);
+  CHECK(rows->queries.back().role == "guest");
+
+  list.arguments["include_done"] = true;
+  list.arguments["user_id"] = static_cast<Json::Int64>(kOtherUser);
+  const auto all = run(list);
+  CHECK(all.data["reminders"].size() == 2);
+  CHECK(all.output.find("Secreto de otro") == std::string::npos);
+  CHECK(rows->queries.back().userId == kSpeaker);
+
+  auto others = callFor("reminder.list", kOtherUser);
+  others.context.role = UserRole::Guard;
+  CHECK(run(others).output.find("Secreto de otro") != std::string::npos);
+  CHECK(run(others).output.find("Llamar al dentista") == std::string::npos);
+
+  auto english = callFor("reminder.list", 11);
+  english.context.lang = "en";
+  CHECK(run(english).output == "You have no pending reminders.");
+
+  auto nobody = callFor("reminder.list", 0);
+  CHECK_FALSE(run(nobody).ok);
 
   service.shutdown();
   std::remove(kScratchConfig);

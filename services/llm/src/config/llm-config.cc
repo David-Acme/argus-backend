@@ -1,9 +1,12 @@
 #include "llm-config.hxx"
 
 #include <config/config-service.hxx>
+#include <grpc/fleet-caller-gate.hxx>
 #include <settings/settings-rpc.hxx>
 
 #include <algorithm>
+#include <array>
+#include <utility>
 
 ListenerConfig LlmConfig::resolveListener()
 {
@@ -56,4 +59,29 @@ std::filesystem::path LlmConfig::resolveComponentsRoot()
 {
   const std::string root = ConfigService::getString("components.models_dir");
   return root.empty() ? std::filesystem::path("models") : std::filesystem::path(root);
+}
+
+std::vector<LlmToolProviderConfig> LlmConfig::resolveToolProviders()
+{
+  struct Source
+  {
+    const char* id;
+    const char* targetKey;
+    const char* credentialKey;
+  };
+  constexpr std::array<Source, 4> kSources{{{.id = "camera", .targetKey = "camera.grpc_target", .credentialKey = "camera.credential"},
+                                            {.id = "guard", .targetKey = "guard.target", .credentialKey = "guard.credential"},
+                                            {.id = "productivity",
+                                             .targetKey = "productivity.grpc_target",
+                                             .credentialKey = "productivity.credential"},
+                                            {.id = "settings", .targetKey = "modules.target", .credentialKey = "modules.credential"}}};
+  std::vector<LlmToolProviderConfig> providers;
+  for (const auto& source : kSources) {
+    LlmToolProviderConfig provider{.id = source.id,
+                                   .target = ConfigService::getString(source.targetKey),
+                                   .credential = ConfigService::getString(source.credentialKey)};
+    if (!provider.target.empty() && argus::client::FleetCallerGate::pairedSecret(provider.credential))
+      providers.push_back(std::move(provider));
+  }
+  return providers;
 }

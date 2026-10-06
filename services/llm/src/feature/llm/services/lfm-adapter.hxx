@@ -1,10 +1,10 @@
 #pragma once
 
-#include <auth/user-role.hxx>
 #include <cstdint>
 #include <shared/vocabulary/tool-contracts.hxx>
 #include <feature/intent/services/intent-router.hxx>
 #include <llm/llm-service.hxx>
+#include <feature/llm/services/tools/tool-access.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
 #include <functional>
 #include <string>
@@ -13,9 +13,10 @@
 struct ToolChatInput
 {
   std::string systemPrompt;
-  std::vector<const tools::ToolDescriptor*> tools;
-  UserRole role;
+  std::vector<tools::ToolHandle> tools;
+  ToolAudience audience;
   tools::ToolContext context;
+  std::string clock{};
   int maxHops = 3;
   float temperature = -1.0F;
   float toolTemperature = 0.0F;
@@ -78,8 +79,7 @@ public:
 
   explicit LfmAdapter(LfmAdapterInput input);
 
-  static std::string
-  buildToolDeclarations(const std::vector<const tools::ToolDescriptor*>& tools);
+  static std::string buildToolDeclarations(const std::vector<tools::ToolHandle>& tools);
   static std::vector<tools::ToolCall> parseToolCalls(const std::string& text);
 
   static bool mayOpenToolCall(const std::string& text);
@@ -93,6 +93,8 @@ public:
 
   ToolChatOutput chatWithToolsStream(const ChatWithToolsStreamInput& args);
 
+  ToolExecutor& executor() { return executor_; }
+
 private:
   bool routedTurn(ToolHopContext ctx);
 
@@ -104,8 +106,7 @@ private:
 
   std::string streamHop(const StreamHopInput& args);
 
-  [[nodiscard]] bool offered(const tools::ToolCall& call,
-                             const std::vector<const tools::ToolDescriptor*>& tools) const;
+  [[nodiscard]] bool offered(const tools::ToolCall& call, const std::vector<tools::ToolHandle>& tools) const;
 
   ChatEngine engine_;
   ToolRegistry& registry_;

@@ -33,6 +33,13 @@ struct LlmNotificationConfig
   std::string credential;
 };
 
+struct LlmToolProviderConfig
+{
+  std::string id;
+  std::string target;
+  std::string credential;
+};
+
 class LlmConfig
 {
 public:
@@ -50,4 +57,6 @@ public:
   [[nodiscard]] static LlmMemoryConfig resolveMemory();
 
   [[nodiscard]] static LlmNotificationConfig resolveNotifications();
+
+  [[nodiscard]] static std::vector<LlmToolProviderConfig> resolveToolProviders();
 };

@@ -1,88 +1,80 @@
 #include "memory-tool-descriptors.hxx"
 
+#include <mcp/schema.hxx>
+
+namespace
+{
+namespace schema = argus::mcp::schema;
+
+constexpr const char* kCore = "core";
+}
+
 std::vector<tools::ToolDescriptor> memoryToolDescriptors()
 {
   std::vector<tools::ToolDescriptor> descriptors;
   descriptors.push_back(
-      {.name = "memory.remember",
-       .description = "Almacena un hecho sobre una persona, dispositivo o "
-                      "lugar de la casa. El hecho completo va en el argumento "
-                      "text, tal cual lo pidió el usuario",
-       .arguments = {{.name = "text",
-                      .type = "string",
-                      .required = false,
-                      .enumValues = {},
-                      .description = ""},
-                     {.name = "subject",
-                      .type = "string",
-                      .required = false,
-                      .enumValues = {},
-                      .description = ""},
-                     {.name = "predicate",
-                      .type = "string",
-                      .required = false,
-                      .enumValues = {},
-                      .description = ""},
-                     {.name = "value",
-                      .type = "string",
-                      .required = false,
-                      .enumValues = {},
-                      .description = ""},
+      {.spec = {.name = "memory.remember",
+                .title = "",
+                .description = "Almacena un hecho sobre una persona, dispositivo o "
+                               "lugar de la casa. El hecho completo va en el argumento "
+                               "text, tal cual lo pidió el usuario",
+                .inputSchema = schema::object(
+                    {{.name = "text", .schema = schema::text(), .required = false},
+                     {.name = "subject", .schema = schema::text(), .required = false},
+                     {.name = "predicate", .schema = schema::text(), .required = false},
+                     {.name = "value", .schema = schema::text(), .required = false},
                      {.name = "type",
-                      .type = "enum",
-                      .required = false,
-                      .enumValues = {"persona", "preference", "schedule",
-                                     "instruction", "attribute"},
-                      .description = ""},
-                     {.name = "confidence",
-                      .type = "number",
-                      .required = false,
-                      .enumValues = {},
-                      .description = ""}},
-       .accessTable = TableName::Memory,
-       .accessPermission = RolePermission::Create,
+                      .schema = schema::choice({"persona", "preference", "schedule", "instruction", "attribute"}),
+                      .required = false},
+                     {.name = "confidence", .schema = schema::number(), .required = false}}),
+                .annotations = {},
+                .module = kCore,
+                .capability = "memory.manage"},
        .handler = nullptr});
   descriptors.push_back(
-      {.name = "memory.remind",
-       .description = "Guarda un recordatorio del usuario que habla: un hecho "
-                      "con un momento concreto. Si dice la hora, Argus le "
-                      "llama a esa hora para recordárselo",
-       .arguments = {{.name = "text",
-                      .type = "string",
-                      .required = false,
-                      .enumValues = {},
-                      .description = ""},
-                     {.name = "when",
-                      .type = "string",
-                      .required = false,
-                      .enumValues = {},
-                      .description = ""}},
-       .accessTable = TableName::Memory,
-       .accessPermission = RolePermission::Create,
+      {.spec = {.name = "memory.remind",
+                .title = "",
+                .description = "Guarda un recordatorio del usuario que habla: un hecho "
+                               "con un momento concreto. Si dice la hora, Argus le "
+                               "llama a esa hora para recordárselo",
+                .inputSchema = schema::object({{.name = "text", .schema = schema::text(), .required = false},
+                                               {.name = "when", .schema = schema::text(), .required = false}}),
+                .annotations = {},
+                .module = kCore,
+                .capability = "reminders.write"},
        .handler = nullptr});
   descriptors.push_back(
-      {.name = "memory.recall",
-       .description = "Recupera hechos guardados sobre la casa, las personas "
-                      "o los dispositivos",
-       .arguments = {{.name = "query",
-                      .type = "string",
-                      .required = true,
-                      .enumValues = {},
-                      .description = ""}},
-       .accessTable = TableName::Memory,
-       .accessPermission = RolePermission::Read,
+      {.spec = {.name = "memory.recall",
+                .title = "",
+                .description = "Recupera hechos guardados sobre la casa, las personas "
+                               "o los dispositivos",
+                .inputSchema = schema::object({{.name = "query", .schema = schema::text(), .required = true}}),
+                .annotations = {.readOnly = true},
+                .module = kCore,
+                .capability = "memory.manage"},
        .handler = nullptr});
   descriptors.push_back(
-      {.name = "memory.forget",
-       .description = "Olvida un hecho guardado que el usuario pide olvidar; "
-                      "query describe ese hecho con sus palabras",
-       .arguments = {{.name = "query",
-                      .type = "string",
-                      .required = true,
-                      .enumValues = {},
-                      .description = ""}},
-       .accessTable = TableName::Memory,
-       .accessPermission = RolePermission::Delete,
+      {.spec = {.name = "memory.forget",
+                .title = "",
+                .description = "Olvida un hecho guardado que el usuario pide olvidar; "
+                               "query describe ese hecho con sus palabras",
+                .inputSchema = schema::object({{.name = "query", .schema = schema::text(), .required = true}}),
+                .annotations = {.destructive = true},
+                .module = kCore,
+                .capability = "memory.manage"},
+       .handler = nullptr});
+  descriptors.push_back(
+      {.spec = {.name = "reminder.list",
+                .title = "",
+                .description = "Lista los recordatorios pendientes del usuario que habla",
+                .inputSchema = schema::object(
+                    {{.name = "include_done", .schema = schema::boolean(), .required = false},
+                     {.name = "limit",
+                      .schema = schema::integer({.description = "", .minimum = 1, .maximum = 20}),
+                      .required = false}}),
+                .annotations = {.readOnly = true},
+                .module = kCore,
+                .capability = "reminders.read"},
        .handler = nullptr});
   return descriptors;
 }

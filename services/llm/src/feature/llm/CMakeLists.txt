@@ -7,16 +7,23 @@ argus_module(NAME llm
         services/llm-service.cc
         services/sampling-config.cc
         services/tools/app-command.cc
-        services/tools/app-tool-descriptors.cc
+        services/tools/core-tools.cc
+        services/tools/module-offer.cc
+        services/tools/remote-tool.cc
+        services/tools/spoken-intent.cc
+        services/tools/time-arguments.cc
+        services/tools/tool-access.cc
+        services/tools/tool-directory.cc
         services/tools/tool-executor.cc
+        services/tools/tool-grounding.cc
         services/tools/tool-registry.cc
-        services/tools/tool-validator.cc
     INCLUDES
         ../..
     DEPENDS
         argus::llm-shared
         argus::lib::config
         argus::lib::auth
+        argus::lib::mcp
         argus::hardware-profile
         argus::lib::phrase
         argus::lib::text

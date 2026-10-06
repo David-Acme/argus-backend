@@ -1,55 +1,89 @@
 #include "tool-executor.hxx"
 
-#include <auth/role-access.hxx>
-#include <feature/llm/services/tools/app-tool-descriptors.hxx>
-#include <feature/llm/services/tools/tool-validator.hxx>
+#include <feature/llm/services/tools/app-command.hxx>
+#include <feature/llm/services/tools/module-offer.hxx>
+#include <feature/llm/services/tools/remote-tool.hxx>
+#include <feature/llm/services/tools/time-arguments.hxx>
 
-tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call,
-                                        UserRole role) const
+#include <mcp/schema.hxx>
+
+#include <algorithm>
+#include <ctime>
+#include <utility>
+
+namespace
+{
+constexpr std::string_view kEnableTool = "modules.enable";
+
+tools::ToolResult refused(const tools::ToolCall& call, std::string code, std::string output)
 {
   tools::ToolResult result;
   result.tool = call.name;
+  result.code = std::move(code);
+  result.output = std::move(output);
+  return result;
+}
+}
 
-  const auto* descriptor = registry_.find(call.name);
-  if (!descriptor) {
-    result.output = "unknown tool: " + call.name;
-    return result;
-  }
+void ToolExecutor::attachLedger(std::shared_ptr<tools::IntentLedger> ledger)
+{
+  ledger_ = std::move(ledger);
+}
 
-  if (!permits(*descriptor, role)) {
-    result.output = "permission denied for tool: " + call.name;
-    return result;
-  }
+std::vector<tools::ToolHandle> ToolExecutor::offered(const ToolAudience& audience) const
+{
+  std::vector<tools::ToolHandle> out;
+  for (const auto& tool : registry_.all())
+    if (tool_access::holds(audience, tool->spec))
+      out.push_back(tool);
+  return out;
+}
 
-  const auto error = tools::validateArguments(*descriptor, call);
-  if (error) {
-    result.output = *error;
-    return result;
-  }
-
-  result = descriptor->handler(call);
-  result.tool = call.name;
+tools::ToolResult ToolExecutor::inactive(const tools::ToolCall& call, const tools::ToolDescriptor& tool,
+                                         const ToolAudience& audience) const
+{
+  tools::ToolResult result = refused(
+      call, "module_inactive", moduleOfferText({.audience = audience, .module = tool.spec.module, .lang = call.context.lang}));
+  result.data["module"] = tool.spec.module;
+  grounding_.remember({.call = call, .spec = tool.spec, .audience = audience}, result);
+  if (ledger_ && !isAppTool(tool.spec.name) && !tool.spec.annotations.destructive)
+    ledger_->offered({.userId = call.context.userId,
+                      .role = audience.role,
+                      .module = tool.spec.module,
+                      .tool = tool.spec.name,
+                      .arguments = call.arguments,
+                      .lang = call.context.lang,
+                      .utterance = call.context.utterance,
+                      .sessionId = call.context.sessionId});
   return result;
 }
 
-bool ToolExecutor::permits(const tools::ToolDescriptor& descriptor,
-                           UserRole role)
+tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call, const ToolAudience& audience) const
 {
-  if (const auto action = appActionOf(descriptor.name))
-    return role_access::hasAppAction(role, *action);
-  return role_access::hasAccess({.role = role,
-                                 .table = descriptor.accessTable,
-                                 .perm = descriptor.accessPermission});
-}
+  const auto tool = registry_.find(call.name);
+  if (!tool)
+    return refused(call, "unknown_tool", "unknown tool: " + call.name);
+  const argus::mcp::ToolSpec& spec = tool->spec;
+  if (!tool_access::holds(audience, spec))
+    return refused(call, "forbidden", "permission denied for tool: " + call.name);
 
-std::vector<const tools::ToolDescriptor*>
-ToolExecutor::permittedTools(UserRole role) const
-{
-  std::vector<const tools::ToolDescriptor*> out;
-  for (const auto& name : registry_.names()) {
-    const auto* descriptor = registry_.find(name);
-    if (descriptor != nullptr && permits(*descriptor, role))
-      out.push_back(descriptor);
-  }
-  return out;
+  tools::ToolCall prepared = call;
+  prepared.context.role = audience.role;
+  time_arguments::normalize({.call = prepared, .spec = spec, .now = static_cast<int64_t>(std::time(nullptr))});
+  if (const auto invalid = argus::mcp::schema::violation(spec.inputSchema, prepared.arguments))
+    return refused(call, "invalid_arguments", *invalid);
+  if (tool_access::moduleInactive(audience, spec))
+    return inactive(prepared, *tool, audience);
+  const GroundingInput grounding{.call = prepared, .spec = spec, .audience = audience};
+  if (auto grounded = grounding_.refuse(grounding))
+    return *grounded;
+
+  if (!tool->handler)
+    return refused(call, "unavailable", std::string(toolUnreachable(call.context.lang)));
+  tools::ToolResult result = tool->handler(prepared);
+  result.tool = call.name;
+  grounding_.remember(grounding, result);
+  if (ledger_ && result.ok && spec.name == kEnableTool && prepared.arguments["module"].isString())
+    ledger_->accepted({.userId = prepared.context.userId, .module = prepared.arguments["module"].asString()});
+  return result;
 }

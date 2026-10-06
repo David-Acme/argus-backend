@@ -87,6 +87,18 @@ credential = "CHANGE_ME_LLM_IDENTITY"
 grpc_target = "argus-camera:7036"
 credential = "CHANGE_ME_LLM_CAMERA"
 
+[guard]
+target = "argus-guard:7139"
+credential = "CHANGE_ME_LLM_GUARD"
+
+[productivity]
+grpc_target = "argus-productivity:7037"
+credential = "CHANGE_ME_LLM_PRODUCTIVITY"
+
+[modules]
+target = "argus-settings:7047"
+credential = "CHANGE_ME_LLM_MODULES"
+
 [notifications]
 target = "argus-notification:7038"
 credential = "CHANGE_ME_LLM_NOTIFICATION"

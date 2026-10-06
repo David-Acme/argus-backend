@@ -5,9 +5,9 @@
 #include <feature/intent/services/intent-router.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
 #include <feature/llm/services/tools/app-command.hxx>
-#include <feature/llm/services/tools/app-tool-descriptors.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <phrase/phrase-catalog.hxx>
+#include "tool-stubs.hxx"
 
 #include <deque>
 #include <string>
@@ -57,22 +57,12 @@ struct ProbeLog
 
 tools::ToolDescriptor probe(const std::string& name, ProbeLog& log)
 {
-  return {.name = name,
-          .description = "probe",
-          .arguments = {{.name = "text",
-                         .type = "string",
-                         .required = false,
-                         .enumValues = {},
-                         .description = ""}},
-          .accessTable = TableName::Memory,
-          .accessPermission = RolePermission::Create,
-          .handler = [&log](const tools::ToolCall& call) {
-            log.calls.push_back(call);
-            tools::ToolResult result;
-            result.ok = true;
-            result.output = "Guardado.";
-            return result;
-          }};
+  return tool_stubs::stub({.name = name,
+                           .capability = "memory.manage",
+                           .handler = [&log](const tools::ToolCall& call) {
+                             log.calls.push_back(call);
+                             return tool_stubs::okResult("Guardado.");
+                           }});
 }
 
 class SilentClassifier final : public intent::IIntentClassifier
@@ -82,18 +72,20 @@ public:
   [[nodiscard]] std::vector<intent::IntentHit> score(const std::string&) const override { return {}; }
 };
 
-ToolChatInput loopInput(const std::vector<const tools::ToolDescriptor*>& offered)
+ToolChatInput loopInput(const std::vector<tools::ToolHandle>& offered)
 {
   ToolChatInput input;
   input.systemPrompt = "Eres Argus.";
   input.tools = offered;
-  input.role = UserRole::Resident;
+  input.audience = {.role = UserRole::Resident, .modules = {}};
   input.context = {.userId = 7,
+                   .role = UserRole::Resident,
                    .lang = "es",
                    .sessionId = "voice-7-1",
                    .channel = "tool_result",
                    .utterance = {},
                    .decided = false,
+                   .turn = 0,
                    .emitAction = {}};
   input.maxHops = 3;
   return input;
@@ -279,21 +271,14 @@ TEST_CASE("a routed call the tool refuses falls back to the model with every too
 {
   ToolRegistry registry;
   int runs = 0;
-  registry.registerTool({.name = "memory.remember",
-                         .description = "probe",
-                         .arguments = {{.name = "text",
-                                        .type = "string",
-                                        .required = false,
-                                        .enumValues = {},
-                                        .description = ""}},
-                         .accessTable = TableName::Memory,
-                         .accessPermission = RolePermission::Create,
-                         .handler = [&runs](const tools::ToolCall&) {
-                           ++runs;
-                           tools::ToolResult result;
-                           result.output = "No pude guardar eso.";
-                           return result;
-                         }});
+  registry.registerTool(tool_stubs::stub({.name = "memory.remember",
+                                          .capability = "memory.manage",
+                                          .handler = [&runs](const tools::ToolCall&) {
+                                            ++runs;
+                                            tools::ToolResult result;
+                                            result.output = "No pude guardar eso.";
+                                            return result;
+                                          }}));
   PhraseCatalog catalog;
   catalog.build();
   const SilentClassifier classifier;
@@ -358,15 +343,15 @@ TEST_CASE("explicit app commands become app calls and questions do not")
 TEST_CASE("an app command runs before the model when the call offers app tools")
 {
   ToolRegistry registry;
-  for (auto& descriptor : appToolDescriptors())
-    registry.registerTool(std::move(descriptor));
+  registry.registerTool(tool_stubs::appAction({.name = "app.set_guard_mode", .capability = "guard.mode.set", .module = "surveillance"}));
+  registry.registerTool(tool_stubs::appAction({.name = "app.show_camera", .capability = "camera.view", .module = "surveillance"}));
   ScriptedEngine script;
   script.replies = {"Listo, modo noche activado."};
   LfmAdapter adapter({.engine = script.engine(), .registry = registry, .router = nullptr});
 
   std::vector<std::string> actions;
   auto input = loopInput({registry.find("app.set_guard_mode"), registry.find("app.show_camera")});
-  input.role = UserRole::Owner;
+  input.audience.role = UserRole::Owner;
   input.context.emitAction = [&actions](const std::string& name, const Json::Value&) {
     actions.push_back(name);
   };
@@ -395,15 +380,15 @@ struct AppTurn
 
   AppTurn()
   {
-    for (auto& descriptor : appToolDescriptors())
-      registry.registerTool(std::move(descriptor));
+    registry.registerTool(tool_stubs::appAction({.name = "app.set_guard_mode", .capability = "guard.mode.set", .module = "surveillance"}));
+    registry.registerTool(tool_stubs::appAction({.name = "app.show_camera", .capability = "camera.view", .module = "surveillance"}));
   }
 
   ToolChatOutput run(const std::string& utterance)
   {
     LfmAdapter adapter({.engine = script.engine(), .registry = registry, .router = nullptr});
     auto input = loopInput({registry.find("app.set_guard_mode"), registry.find("app.show_camera")});
-    input.role = UserRole::Owner;
+    input.audience.role = UserRole::Owner;
     input.context.emitAction = [this](const std::string& name, const Json::Value&) {
       actions.push_back(name);
     };

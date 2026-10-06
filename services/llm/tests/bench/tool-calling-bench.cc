@@ -8,7 +8,7 @@
 #include <config/config-service.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
-#include <feature/llm/services/tools/app-tool-descriptors.hxx>
+#include <mcp/schema.hxx>
 #include <feature/memory/services/memory/memory-tool-descriptors.hxx>
 #include <llm/llm-service.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
@@ -153,8 +153,33 @@ int voiceSuite(const std::vector<Case>& cases, const VoicePersona& persona)
     };
     ToolRegistry::instance().registerTool(std::move(descriptor));
   }
-  for (auto descriptor : appToolDescriptors())
-    ToolRegistry::instance().registerTool(std::move(descriptor));
+  namespace schema = argus::mcp::schema;
+  const auto appStub = [&ran](const std::string& name, const std::string& capability, const Json::Value& arguments) {
+    return tools::ToolDescriptor{.spec = {.name = name,
+                                          .title = "",
+                                          .description = "",
+                                          .inputSchema = arguments,
+                                          .annotations = {},
+                                          .module = "surveillance",
+                                          .capability = capability},
+                                 .handler = [&ran](const tools::ToolCall& call) {
+                                   ran.push_back(call.name);
+                                   tools::ToolResult result;
+                                   result.ok = true;
+                                   result.output = "done";
+                                   return result;
+                                 }};
+  };
+  ToolRegistry::instance().registerTool(appStub(
+      "app.show_camera", "camera.view",
+      schema::object({{.name = "camera", .schema = schema::text(), .required = false}})));
+  ToolRegistry::instance().registerTool(appStub(
+      "app.set_guard_mode", "guard.mode.set",
+      schema::object({{.name = "mode", .schema = schema::choice({"home", "night", "away", "armed"}), .required = true},
+                      {.name = "environment", .schema = schema::text(), .required = false}})));
+  ToolRegistry::instance().registerTool(appStub(
+      "app.open", "notifications.read",
+      schema::object({{.name = "screen", .schema = schema::text(), .required = true}})));
 
   LlmController controller;
   controller.initEngine();
@@ -306,20 +331,22 @@ int main(int argc, char** argv)
             << (filter.empty() ? "" : ", filter=" + filter) << ")\n";
 
   ToolRegistry& registry = ToolRegistry::instance();
+  namespace schema = argus::mcp::schema;
   tools::ToolDescriptor remember;
-  remember.name = "memory.remember";
-  remember.accessTable = TableName::Memory;
-  remember.accessPermission = RolePermission::Create;
-  remember.arguments = {{"text", "string", false, {}, ""},
-                        {"subject", "string", false, {}, ""},
-                        {"predicate", "string", false, {}, ""},
-                        {"value", "string", false, {}, ""},
-                        {"type",
-                         "enum",
-                         false,
-                         {"persona", "preference", "schedule", "instruction",
-                          "attribute"},
-                         ""}};
+  remember.spec = {.name = "memory.remember",
+                   .title = "",
+                   .description = "",
+                   .inputSchema = schema::object(
+                       {{.name = "text", .schema = schema::text(), .required = false},
+                        {.name = "subject", .schema = schema::text(), .required = false},
+                        {.name = "predicate", .schema = schema::text(), .required = false},
+                        {.name = "value", .schema = schema::text(), .required = false},
+                        {.name = "type",
+                         .schema = schema::choice({"persona", "preference", "schedule", "instruction", "attribute"}),
+                         .required = false}}),
+                   .annotations = {},
+                   .module = "core",
+                   .capability = "memory.manage"};
   remember.handler = [](const tools::ToolCall&) {
     tools::ToolResult r;
     r.ok = true;
@@ -328,7 +355,7 @@ int main(int argc, char** argv)
   };
   registry.registerTool(remember);
 
-  const std::vector<const tools::ToolDescriptor*> tools = {&remember};
+  const std::vector<tools::ToolHandle> tools = {registry.find("memory.remember")};
   LfmAdapter adapter(gLlm);
   const std::string systemPrompt =
       "Eres Argus. Si el usuario pide guardar o recordar algo, usa "
@@ -373,8 +400,9 @@ int main(int argc, char** argv)
     const long long t0 = nowMs();
     const auto output = adapter.chatWithTools({.systemPrompt = systemPrompt,
                                                .tools = tools,
-                                               .role = UserRole::Resident,
+                                               .audience = {.role = UserRole::Resident, .modules = {}},
                                                .context = {.userId = 7,
+                                                           .role = UserRole::Resident,
                                                            .lang = "es",
                                                            .sessionId = {},
                                                            .channel = "tool_result",

@@ -2,6 +2,7 @@ argus_module(NAME memory
     SOURCES
         infra/catalog-replica.cc
         infra/notification-reminder-calls.cc
+        infra/productivity-reminder-rows.cc
         repositories/memory-graph/memory-graph-repository.cc
         services/embedding/embedding-service.cc
         services/embedding/unigram-tokenizer.cc
@@ -30,6 +31,7 @@ argus_module(NAME memory
         argus::contracts::sync
         argus::clients::llm
         argus::clients::notification
+        argus::clients::productivity
         argus::hardware-profile
         Drogon::Drogon
         nlohmann_json::nlohmann_json

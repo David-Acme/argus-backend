@@ -5,6 +5,11 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
+
+[[nodiscard]] std::vector<std::string> spokenWords(const std::string& utterance);
+
+[[nodiscard]] bool isAppTool(std::string_view name);
 
 [[nodiscard]] std::optional<tools::ToolCall> appCommandFor(const std::string& utterance);
 

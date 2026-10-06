@@ -2,8 +2,18 @@
 #include <config/llm-config.hxx>
 #include <camera/camera-sync-client.hxx>
 #include <feature/memory/infra/notification-reminder-calls.hxx>
+#include <feature/memory/infra/productivity-reminder-rows.hxx>
+#include <feature/pending-intent/infra/notification-intent-notifier.hxx>
+#include <feature/pending-intent/services/module-intent-feed.hxx>
+#include <feature/pending-intent/services/pending-intent-service.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
-#include <feature/llm/services/tools/app-tool-descriptors.hxx>
+#include <feature/llm/services/tools/core-tools.hxx>
+#include <feature/llm/services/tools/tool-directory.hxx>
+#include <auth/module-feed.hxx>
+#include <auth/module-gate.hxx>
+#include <mcp/client.hxx>
+#include <mcp/grpc-tool-transport.hxx>
+#include <mcp/local-transport.hxx>
 #include <feature/settings/llm-components.hxx>
 #include <feature/settings/llm-settings.hxx>
 #include <settings/settings-rpc.hxx>
@@ -181,19 +191,52 @@ int main()
     llama_backend_free();
     return 1;
   }
+  std::shared_ptr<NotificationClient> notificationClient;
   if (const LlmNotificationConfig notifications = LlmConfig::resolveNotifications();
       !notifications.target.empty() && !notifications.credential.empty()) {
-    memory.setReminderCalls(std::make_shared<NotificationReminderCalls>(
-        std::make_shared<NotificationClient>(
-            NotificationClientConfig{.target = notifications.target,
-                                     .credential = notifications.credential})));
+    notificationClient = std::make_shared<NotificationClient>(
+        NotificationClientConfig{.target = notifications.target, .credential = notifications.credential});
+    memory.setReminderCalls(std::make_shared<NotificationReminderCalls>(notificationClient));
     LOG_INFO << "argus-llm: timed reminders schedule a call through "
              << notifications.target;
   }
-  for (auto& descriptor : memory.toolDescriptors())
-    ToolRegistry::instance().registerTool(std::move(descriptor));
-  for (auto& descriptor : appToolDescriptors())
-    ToolRegistry::instance().registerTool(std::move(descriptor));
+  ToolRegistry& tools = ToolRegistry::instance();
+  const argus::mcp::ClientIdentity toolClient{.name = "argus-llm", .version = "1"};
+  tools.addProvider({.id = "llm",
+                     .client = std::make_shared<argus::mcp::McpClient>(
+                         std::make_shared<argus::mcp::LocalTransport>(coreToolServer(memory.toolDescriptors())),
+                         toolClient)});
+  const auto providers = LlmConfig::resolveToolProviders();
+  std::shared_ptr<const ReminderRowWriter> reminderRows;
+  if (const auto productivity = std::ranges::find(providers, std::string("productivity"), &LlmToolProviderConfig::id);
+      productivity != providers.end()) {
+    try {
+      reminderRows = std::make_shared<ProductivityReminderRows>(std::make_shared<ProductivityReminderClient>(
+          ReminderClientConfig{.target = productivity->target, .credential = productivity->credential}));
+      memory.setReminderRows(reminderRows);
+    }
+    catch (const std::exception& error) {
+      LOG_WARN << "argus-llm: reminders will not be listed in productivity: " << error.what();
+    }
+  }
+  for (const auto& provider : providers) {
+    try {
+      tools.addProvider(
+          {.id = provider.id,
+           .client = std::make_shared<argus::mcp::McpClient>(
+               std::make_shared<argus::mcp::GrpcToolTransport>(
+                   argus::mcp::ToolEndpoint{.target = provider.target,
+                                            .credential = provider.credential,
+                                            .timeout = std::chrono::milliseconds(15000)}),
+               toolClient)});
+    }
+    catch (const std::exception& error) {
+      LOG_WARN << "argus-llm: tools of " << provider.id << " are not served: " << error.what();
+    }
+  }
+  tools.refresh("llm");
+  ToolDirectory toolDirectory(tools, {});
+  toolDirectory.start();
 
   SettingsRegistry settings(llmSettingsCatalog());
   DiskComponentHost components(llmComponents(
@@ -245,10 +288,10 @@ int main()
     LOG_INFO << "argus-llm gRPC chat listening on " << rpcConfig.address;
   }
 
-  std::unique_ptr<NatsBus> bus;
+  std::shared_ptr<NatsBus> bus;
   std::unique_ptr<CatalogReplica> replica;
   if (!ConfigService::getString("nats.url").empty()) {
-    bus = std::make_unique<NatsBus>();
+    bus = std::make_shared<NatsBus>();
     if (!bus->connect())
       LOG_WARN << "argus-llm: NATS unavailable; the catalog replica attaches "
                   "when the bus reconnects";
@@ -257,6 +300,33 @@ int main()
         .graph = static_cast<SqliteGraph&>(memory.graph()),
         .resolver = memory.resolver()});
   }
+
+  const auto modules = module_gate::install({.service = "llm", .bus = bus});
+  moduleGate().onChange([&toolDirectory](const ModuleChange&) { toolDirectory.requestRefresh(); });
+
+  const auto intents = std::make_shared<PendingIntentService>(
+      PendingIntentDependencies{
+          .graph = static_cast<SqliteGraph*>(&memory.graph()),
+          .run = [&llm](const tools::ToolCall& call, UserRole role) {
+            return llm->adapter().executor().execute(call, {.role = role, .modules = moduleGate().snapshot()});
+          },
+          .notifier = notificationClient ? std::make_shared<NotificationIntentNotifier>(notificationClient) : nullptr,
+          .reminders = reminderRows,
+          .moduleName = [](const ModuleLabel& label) {
+            const ModuleSnapshot snapshot = moduleGate().snapshot();
+            const auto found = std::ranges::find(snapshot.modules(), label.module, &ModuleFlag::id);
+            if (found == snapshot.modules().end())
+              return label.module;
+            const std::string& name = label.lang == "en" ? found->name.en : found->name.es;
+            return name.empty() ? label.module : name;
+          },
+          .moduleActive = [](const std::string& module) { return moduleGate().snapshot().enabled(module); },
+          .clock = {}},
+      PendingIntentLimits{});
+  llm->adapter().executor().attachLedger(intents);
+  std::unique_ptr<ModuleIntentFeed> intentFeed;
+  if (bus)
+    intentFeed = std::make_unique<ModuleIntentFeed>(bus, *intents, ModuleIntentFeed::defaults());
 
   std::unique_ptr<EncounterClosedConsumer> encounterConsumer;
   MemoryGraphRepository encounterRepository;
@@ -327,7 +397,10 @@ int main()
   }
 
   drogon::app().registerBeginningAdvice([&memory, &replica,
-                                         &encounterConsumer]() {
+                                         &encounterConsumer, &intents, &intentFeed]() {
+    intents->start();
+    if (intentFeed)
+      intentFeed->start();
     if (encounterConsumer)
       encounterConsumer->start();
     drogon::async_run([&memory,
@@ -358,6 +431,10 @@ int main()
   });
 
   shutdown_signal::onStop(shutdown_signal::drainOf(llm->streams(), "llm-streams"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(toolDirectory, "llm-tools"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(*intents, "llm-intents"));
+  if (intentFeed)
+    shutdown_signal::onStop(shutdown_signal::drainOf(*intentFeed, "llm-intent-feed"));
   if (rpc)
     shutdown_signal::onStop(shutdown_signal::drainOf(*rpc, "llm-rpc"));
   if (encounterConsumer)

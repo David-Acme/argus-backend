@@ -8,9 +8,9 @@
 #include <json/reader.h>
 #include <json/writer.h>
 #include <feature/llm/services/tools/app-command.hxx>
-#include <feature/llm/services/tools/app-tool-descriptors.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <optional>
+#include <ranges>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -21,13 +21,19 @@ namespace
 constexpr const char* kToolOpen = "<|tool_call_start|>";
 constexpr const char* kToolClose = "<|tool_call_end|>";
 
-std::string jsonType(const tools::ToolArgumentSpec& spec)
+Json::Value declaredProperty(const Json::Value& property)
 {
-  if (spec.type == "number")
-    return "number";
-  if (spec.type == "boolean")
-    return "boolean";
-  return "string";
+  Json::Value out(Json::objectValue);
+  out["type"] = property["type"].isString() ? property["type"].asString() : std::string("string");
+  if (property["enum"].isArray() && !property["enum"].empty())
+    out["enum"] = property["enum"];
+  if (property["description"].isString() && !property["description"].asString().empty())
+    out["description"] = property["description"];
+  if (property["format"].isString())
+    out["format"] = property["format"];
+  if (property["items"].isObject())
+    out["items"] = declaredProperty(property["items"]);
+  return out;
 }
 
 Json::Value bareValue(const std::string& token)
@@ -328,6 +334,7 @@ struct HopMessagesInput
   const std::vector<ChatMessage>& history;
   const std::string& system;
   const std::string& declarations;
+  const std::string& clock;
 };
 
 std::vector<ChatMessage> hopMessages(const HopMessagesInput& input)
@@ -337,6 +344,15 @@ std::vector<ChatMessage> hopMessages(const HopMessagesInput& input)
   const std::string& declarations = input.declarations;
 
   std::vector<ChatMessage> msgs = history;
+  if (!input.clock.empty()) {
+    for (auto& message : std::views::reverse(msgs)) {
+      if (message.role != "user")
+        continue;
+      message.content += '\n';
+      message.content += input.clock;
+      break;
+    }
+  }
   std::string content = system;
   if (!declarations.empty())
     content += "\nList of tools: " + declarations;
@@ -350,44 +366,32 @@ std::vector<ChatMessage> hopMessages(const HopMessagesInput& input)
 
 }
 
-std::string LfmAdapter::buildToolDeclarations(
-    const std::vector<const tools::ToolDescriptor*>& tools)
+std::string LfmAdapter::buildToolDeclarations(const std::vector<tools::ToolHandle>& tools)
 {
   std::string out = "[";
   bool first = true;
-  for (const auto* tool : tools) {
+  for (const auto& tool : tools) {
     if (!first)
       out += ", ";
     first = false;
     Json::Value decl(Json::objectValue);
-    decl["name"] = tool->name;
-    decl["description"] = tool->description;
+    decl["name"] = tool->spec.name;
+    decl["description"] = tool->spec.description;
     Json::Value parameters(Json::objectValue);
     parameters["type"] = "object";
     Json::Value properties(Json::objectValue);
-    Json::Value required(Json::arrayValue);
-    for (const auto& spec : tool->arguments) {
-      Json::Value prop(Json::objectValue);
-      prop["type"] = jsonType(spec);
-      if (!spec.enumValues.empty()) {
-        Json::Value allowed(Json::arrayValue);
-        for (const auto& value : spec.enumValues)
-          allowed.append(value);
-        prop["enum"] = allowed;
-      }
-      properties[spec.name] = prop;
-      if (spec.required)
-        required.append(spec.name);
-    }
+    const Json::Value& declared = tool->spec.inputSchema["properties"];
+    for (const auto& name : declared.getMemberNames())
+      properties[name] = declaredProperty(declared[name]);
     parameters["properties"] = properties;
-    if (!required.empty())
-      parameters["required"] = required;
+    if (tool->spec.inputSchema["required"].isArray() && !tool->spec.inputSchema["required"].empty())
+      parameters["required"] = tool->spec.inputSchema["required"];
     decl["parameters"] = parameters;
     Json::StreamWriterBuilder builder;
     builder["indentation"] = "";
     out += Json::writeString(builder, decl);
   }
-  out += "]";
+  out += ']';
   return out;
 }
 
@@ -600,11 +604,12 @@ LfmAdapter::LfmAdapter(LfmAdapterInput input)
 {
 }
 
-bool LfmAdapter::offered(const tools::ToolCall& call,
-                         const std::vector<const tools::ToolDescriptor*>& tools) const
+bool LfmAdapter::offered(const tools::ToolCall& call, const std::vector<tools::ToolHandle>& tools) const
 {
-  const auto* descriptor = registry_.find(call.name);
-  return descriptor != nullptr && std::ranges::find(tools, descriptor) != tools.end();
+  const auto found = registry_.find(call.name);
+  return found != nullptr && std::ranges::any_of(tools, [&found](const tools::ToolHandle& tool) {
+           return tool->spec.name == found->spec.name;
+         });
 }
 
 std::string LfmAdapter::spokenText(const std::string& content)
@@ -674,7 +679,7 @@ bool LfmAdapter::routedTurn(ToolHopContext ctx)
   call->context.decided = true;
 
   const auto toolStart = std::chrono::steady_clock::now();
-  const tools::ToolResult executed = executor_.execute(*call, ctx.input.role);
+  const tools::ToolResult executed = executor_.execute(*call, ctx.input.audience);
   ctx.output.toolMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::steady_clock::now() - toolStart)
                           .count();
@@ -700,7 +705,8 @@ void LfmAdapter::proseAnswer(ToolHopContext ctx, float temperature)
   ChatRequest req;
   req.messages = hopMessages({.history = ctx.history,
                               .system = ctx.input.systemPrompt,
-                              .declarations = ctx.declarations});
+                              .declarations = ctx.declarations,
+                              .clock = ctx.input.clock});
   req.maxTokens =
       ctx.input.answerMaxTokens > 0 ? ctx.input.answerMaxTokens : 512;
   req.temperature = temperature;
@@ -735,7 +741,8 @@ ChatRequest LfmAdapter::hopRequest(const ToolHopContext& ctx) const
   ChatRequest req;
   req.messages = hopMessages({.history = ctx.history,
                               .system = ctx.input.systemPrompt,
-                              .declarations = ctx.declarations});
+                              .declarations = ctx.declarations,
+                              .clock = ctx.input.clock});
   req.maxTokens = ctx.input.answerMaxTokens > 0 ? ctx.input.answerMaxTokens : 512;
   req.temperature = ctx.input.toolTemperature;
   req.resetContext = ctx.output.hops == 0 && ctx.input.resetContext;
@@ -754,7 +761,7 @@ bool LfmAdapter::toolHops(ToolHopContext ctx)
   std::vector<tools::ToolResult> succeeded;
   const bool watchClaims =
       std::ranges::any_of(input.tools,
-                          [](const tools::ToolDescriptor* tool) { return isAppTool(tool->name); }) &&
+                          [](const tools::ToolHandle& tool) { return isAppTool(tool->spec.name); }) &&
       asksForAppAction(lastUserMessage(history));
   bool challenged = false;
   for (output.hops = 0; output.hops < input.maxHops; ++output.hops) {
@@ -830,7 +837,7 @@ bool LfmAdapter::toolHops(ToolHopContext ctx)
       call.context = input.context;
       call.context.utterance = utterance;
       const auto toolStart = std::chrono::steady_clock::now();
-      const auto executed = executor_.execute(call, input.role);
+      const auto executed = executor_.execute(call, input.audience);
       output.toolMs += std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - toolStart)
                            .count();

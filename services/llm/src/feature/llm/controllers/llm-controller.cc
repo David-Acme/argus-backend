@@ -1,6 +1,8 @@
 #include "llm-controller.hxx"
 
-#include <feature/llm/services/tools/app-tool-descriptors.hxx>
+#include <auth/module-gate.hxx>
+#include <feature/llm/services/tools/app-command.hxx>
+#include <feature/llm/services/tools/time-arguments.hxx>
 
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
@@ -15,7 +17,9 @@
 #include <drogon/drogon.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <ctime>
 #include <exception>
 #include <memory>
 #include <string>
@@ -52,19 +56,30 @@ constexpr const char* kClientActionPolicy =
     "app.set_guard_mode. Nunca digas que hiciste algo en la app sin haber usado "
     "su herramienta. Confirma en una frase lo que hiciste.";
 
-std::vector<const tools::ToolDescriptor*> requestTools(const ChatRequest& request)
+ToolAudience audienceOf(const ChatRequest& request)
+{
+  return {.role = request.role, .modules = moduleGate().snapshot()};
+}
+
+std::vector<tools::ToolHandle> requestTools(const ToolExecutor& executor, const ChatRequest& request)
 {
   if (!request.toolsEnabled)
     return {};
-  auto tools = ToolExecutor(ToolRegistry::instance()).permittedTools(request.role);
+  auto tools = executor.offered(audienceOf(request));
   if (!request.clientActions)
-    std::erase_if(tools, [](const tools::ToolDescriptor* tool) { return isAppTool(tool->name); });
+    std::erase_if(tools, [](const tools::ToolHandle& tool) { return isAppTool(tool->spec.name); });
   return tools;
+}
+
+std::atomic<int64_t>& turnCounter()
+{
+  static std::atomic<int64_t> turns{0};
+  return turns;
 }
 
 struct ToolLoopInputArgs
 {
-  const std::vector<const tools::ToolDescriptor*>& tools;
+  const std::vector<tools::ToolHandle>& tools;
   ChatRequest request;
   int32_t defaultMaxTokens{0};
   ActionCallback onAction{};
@@ -88,8 +103,9 @@ ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
                            ? std::string(kToolPolicy) + kClientActionPolicy
                            : std::string(kToolPolicy);
   input.tools = args.tools;
-  input.role = args.request.role;
+  input.audience = audienceOf(args.request);
   input.context = tools::ToolContext{.userId = args.request.userId,
+                                     .role = args.request.role,
                                      .lang = args.request.lang.empty()
                                                  ? std::string(kDefaultToolLang)
                                                  : args.request.lang,
@@ -97,7 +113,12 @@ ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
                                      .channel = "tool_result",
                                      .utterance = {},
                                      .decided = false,
+                                     .turn = ++turnCounter(),
                                      .emitAction = actionEmitter(args.onAction)};
+  if (std::ranges::any_of(args.tools, [](const tools::ToolHandle& tool) {
+        return time_arguments::needsClock(tool->spec);
+      }))
+    input.clock = time_arguments::clockLine(static_cast<int64_t>(std::time(nullptr)), input.context.lang);
   input.maxHops = 3;
   input.temperature = args.request.temperature;
   input.resetContext = args.request.resetContext;
@@ -236,7 +257,7 @@ ChatRequest boundToCredential(ChatRequest request, const CallerCredential& crede
 LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
 {
   LlmChatOutcome outcome;
-  const auto tools = requestTools(request);
+  const auto tools = requestTools(adapter_.executor(), request);
   if (tools.empty()) {
     outcome.text = service_.chat(request);
     return outcome;
@@ -248,6 +269,7 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
   outcome.text = output.reply;
   outcome.hops = output.hops;
   outcome.toolCalls = output.executed.size();
+  outcome.attempted = output.executed;
   outcome.generateMs = output.generateMs;
   outcome.toolMs = output.toolMs;
   return outcome;
@@ -263,7 +285,7 @@ void LlmController::chatStreamSync(const LlmStreamInput& input)
       *stats = service_.lastPrefillStats();
     forward(token, done);
   };
-  const auto tools = requestTools(input.request);
+  const auto tools = requestTools(adapter_.executor(), input.request);
   if (tools.empty()) {
     service_.chatStream(input.request, emit);
     return;

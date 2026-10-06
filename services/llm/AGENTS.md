@@ -20,8 +20,12 @@ that apply to llm-service code; when in doubt, the root file wins.
 3. **Frozen envelope** — every JSON response uses the
    `{status, info, errors}` envelope (`ApiResponse`); the chat body is JSON
    `{messages, max_tokens?, temperature?, reset_context?}`.
-4. **Tool loop stays here** — `LfmAdapter`, `ToolRegistry` and the fast intent
-   gate are part of the brain. Memory tools execute in process; unconfident
+4. **Tool loop stays here** — `LfmAdapter`, `ToolRegistry`/`ToolExecutor` and
+   the fast intent gate are part of the brain. Tools are MCP tools: the core
+   ones (memory, reminders, `app.open`) are served in process, the modules'
+   by their own services and aggregated by `ToolDirectory`, filtered per turn
+   by the caller's capabilities; argus-llm never decides what a role may do and
+   never enables a module by itself (CONTEXT.md, "Tools over MCP"). Unconfident
    classification falls through to the model rather than guessing.
 5. **Parameter structs for 3+ params** — any function with 3+ parameters
    must take a struct (designated initializers, every member listed).
@@ -79,28 +83,39 @@ argus-llm/
                         argus::encounter-closed — the camera guard feed's
                           durable JetStream consumer, writing the memory
                           graph through the injected capture
+  src/feature/pending-intent/
+                        argus::pending-intent — requests kept while a module
+                          was off (table pending_intent), the module feed that
+                          completes them and the notice that tells the user
   src/feature/settings/ argus::llm-settings — the owner-editable catalog
                           served by argus.settings.v1 on the gRPC leg
   src/shared/           argus::llm-shared — vocabulary 2+ features read
-                          (vocabulary/tool-contracts.hxx)
+                          (vocabulary/tool-contracts.hxx,
+                          vocabulary/intent-ledger.hxx)
   database/schema.sql   memory.db: graph tables, memory_vec partitions,
-                          catalog replicas, encounter_closed_inbox
-  config.toml.example   listener, LLM, intent, [rpc], memory/extract/nats
+                          catalog replicas, encounter_closed_inbox,
+                          pending_intent
+  config.toml.example   listener, LLM, intent, [rpc], memory/extract/nats,
+                          [camera]/[guard]/[productivity]/[modules] tool
+                          providers
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
-There are five features and seven modules: `argus::llm` compiles the engine
+There are six features and eight modules: `argus::llm` compiles the engine
 facade, the DTOs, the tool runtime and the HTTP surface together,
 `argus::memory` the memory stack the tool loop calls in process,
 `argus::intent` the fastText router tier `argus::llm`'s gate drives,
 `argus::encounter-closed` the consumer `app/main.cc` starts on the beginning
-advice and stops before `memory.shutdown()`, `argus::llm-settings` the
+advice and stops before `memory.shutdown()`, `argus::pending-intent` the
+ledger and module-feed consumer `app/main.cc` starts and drains with it,
+`argus::llm-settings` the
 owner settings catalog, `argus::llm-rpc` the gRPC
 server under `src/app/rpc/`, and `argus::llm-shared` the vocabulary two
 features read (`vocabulary/tool-contracts.hxx`). `app/main.cc` registers its
 controllers explicitly (Drogon `HttpController<…, false>`), so no route
 depends on static-init registration. The folder IS the module (root rule 25) —
 a consumer links `argus::llm`, `argus::memory`, `argus::intent`,
-`argus::encounter-closed`, `argus::llm-rpc` or `argus::llm-shared`
+`argus::encounter-closed`, `argus::pending-intent`, `argus::llm-rpc` or
+`argus::llm-shared`
 and never lists `.cc` files. `src/shared/` holds what 2+ features of this
 service read and nothing else (root rule 23).
 

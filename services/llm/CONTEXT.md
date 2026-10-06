@@ -164,15 +164,14 @@ scaffolds.
 - **Caller role and language**: a chat request names the role of the user it
   speaks for (`caller_role` on the gRPC wire, `role` in the HTTP body) and the
   turn's language (`lang`, `es`/`en`). Both are additive: an absent or
-  unknown wire role is `UserRole::Guest`, the least privileged role, never
-  Resident, and an absent `lang` keeps the tool runtime's Spanish default; a
+  unknown wire role is `UserRole::Unknown`, which holds nothing (it used to be
+  Guest), and an absent `lang` keeps the tool runtime's Spanish default; a
   `lang` outside `es`/`en` is refused. The tool loop used to run every turn
   as a Resident in Spanish. Now the controller offers the model only the
-  tools `role_access::hasAccess` grants that role for each descriptor's
-  `accessTable`/`accessPermission` (`ToolExecutor::permittedTools`), and the
-  executor still checks every call, the routed ones included. A role with no
-  permitted tool (Guard and Guest have no `memory` row) gets the direct
-  engine path.
+  tools whose capability the role holds (`ToolExecutor::offered`, over
+  `role_access::hasCapability`; "Tools over MCP"), and the executor still
+  checks every call, the routed ones included. A role with no permitted tool
+  gets the direct engine path.
 - **Config**: `[llm]` (engine knobs, mirroring the legacy block) +
   `[intent]` (the router's model path and operating point) +
   `[server]` (loopback listener, default 7032) + `[rpc]`/`[rpc.callers]`
@@ -214,7 +213,7 @@ untouched.
 - No tool loop at the time (Ruling BV) — superseded by f8-b4, which landed
   the loop here: the tool runtime lives in this feature at
   `src/feature/llm/services/tools/` (`ToolRegistry`, `ToolExecutor`,
-  `validateArguments`) and the controller drives
+  the schema check in `lib/mcp`) and the controller drives
   `chatWithTools`/`chatWithToolsStream`.
 - Model artifacts stay in the shared `models/llm/` tree — never copied.
 - The legacy `LlmService` stays linked and initialized in the legacy binary
@@ -550,31 +549,164 @@ catalog-snapshot fill and by the encounter consumer),
 (`memory.observe_camera_events`). `main.cc` keeps `config.toml` loading,
 `drogonConfig` and the `nats.url` gate on the optional bus.
 
-## App tools (conversation mode)
+## Tools over MCP (2026-10, context plan section 5)
 
-`feature/llm/services/tools/app-tool-descriptors.cc` registers
-`app.show_camera`, `app.open` and `app.set_guard_mode`. Who may run them is
-`role_access::hasAppAction` (`packages/lib/auth`), the one answer the voice
-session's offer path also asks: `ToolExecutor::permits` maps the three
-names to `AppAction` (`appActionOf`) and asks the helper instead of the
-descriptor's table pair, so `app.set_guard_mode` follows `/guard/mode` in
-`kGuardAccess` rather than camera update. They are offered only when the
-request sets `clientActions`, which only voice calls do; their handler
-hands the validated call to `ToolContext::emitAction`, which the
-controller turns into a `ClientAction` on the stream (`ChatToken.action`,
-ordered with the text tokens). Without an emitter the tool refuses, so a
-non-call caller never hears that something happened when nothing did.
+One assistant serves the whole system; the modules are tool providers and
+argus-llm is the MCP client that aggregates them (`packages/lib/mcp`,
+`packages/contracts/mcp`, `packages/clients/mcp`). Why MCP and why the
+stateless 2026-07-28 revision: every provider is a request in and a result out,
+nothing remembered between two calls, which a unary RPC carries without a
+session to lose on a restart.
 
-`app.set_guard_mode` takes an optional `environment` (2026-10, guard
-environments): the place the user named ("pon el restaurante en modo
-armado"). The model fills it from the environment names the app's situation
-note lists; the deterministic parser passes the words left after removing
-guard words, verbs, the mode word and fillers as a hint ("restaurante",
-"casa campo"). The app resolves the hint against its environments by word,
-treats a hint that names no environment as "every environment" unless it
-contains a place noun it cannot match (then it refuses and the call
-corrects itself aloud), and no `environment` keeps the old meaning: every
-environment.
+- **Providers.** The core tools are served in process by a provider named
+  `llm` over `LocalTransport` (`core-tools.cc`): `memory.remember`,
+  `memory.recall`, `memory.forget` (destructive), `memory.remind`,
+  `reminder.list` and `app.open`. The modules' tools come from their own
+  services over `argus.mcp.v1.Mcp/Rpc` on the provider's existing internal gRPC
+  listener: camera `app.show_camera`, guard `app.set_guard_mode`, productivity
+  `calendar.*`, `project.*` and `task.*`, settings `modules.*`. Every tool
+  declares `argus/module` and `argus/capability` in its `_meta`; the provider
+  is the authority and checks them again (`tool_gate::capabilities()`), the
+  model never decides one.
+- **Wiring.** `LlmConfig::resolveToolProviders()` reads `[camera]
+  grpc_target/credential`, `[guard] target/credential`, `[productivity]
+  grpc_target/credential` and `[modules] target/credential` (the settings
+  listener); a provider whose target is empty or whose credential is not a
+  paired secret is skipped, so a partial install serves the tools it has. Each
+  provider's credential is its own (`[rpc.callers] llm` on guard and settings,
+  `[grpc] caller_llm` on camera and productivity), never a fleet secret;
+  `scripts/lib/common.sh` pairs them.
+- **`ToolDirectory`.** One thread reads every provider at boot, retries a
+  failed one with a 2 s to 30 s backoff, refreshes all of them every five
+  minutes and whenever the module feed says the enabled set changed
+  (`requestRefresh`). A provider that answered keeps its last list while it is
+  unreachable and a call to it answers `unavailable` in the user's language
+  (`toolUnreachable`); one that never answered contributes nothing. The registry
+  merges local and remote tools sorted by name, so the declarations, and with
+  them the cached prompt prefix, are the same in every process; a name declared
+  twice keeps its first declaration.
+- **Per turn.** The controller builds a `ToolAudience{role, modules}` (the
+  caller's role from the wire, the module snapshot of the gate) and
+  `ToolExecutor::offered` returns the tools whose capability the role holds
+  ignoring modules: a tool of a module that is off is still offered, because
+  the model must be able to answer naturally. An absent or unknown role holds
+  nothing, so such a turn gets the direct engine path.
+- **Execution order** (`tool-executor.cc`): unknown tool, permission denied,
+  date-time normalization, schema validation, module inactive, grounding,
+  handler. Permission precedes the schema so an unpermitted caller learns
+  nothing of a tool's shape; the schema precedes the module check so a vague
+  call is corrected before an offer is made.
+- **A tool of a module that is off** answers `module_inactive` with an
+  instruction the model turns into the offer, built from the module's own
+  intro (what it is and its examples, `module-offer.cc`): to the Owner, say it
+  is off naturally and offer to turn it on (call `modules.enable` only on a
+  yes); to anyone else, offer to ask the household owner (`modules.request`).
+  The ledger keeps the original request as a pending intent (below), except for
+  `app.*` tools, which only ever act on the live app, and destructive ones.
+- **Turning a module on or asking for it is never a model's whim.**
+  `modules.enable` and `modules.request` run only when the user's own
+  utterance asked for it or is an affirmative reply, on a later turn, to an
+  offer made for that module (`spoken-intent.cc`, refusal code
+  `needs_spoken_yes`). A destructive tool whose schema carries a `confirmation`
+  argument (`modules.disable`, `calendar.cancel_event`) is two calls: the first
+  returns the preview and a one-use six-character token
+  (`argus::mcp::ConfirmationLedger`, 120 s, bound to user, tool and target), the
+  second must carry it and the runtime refuses it unless the current utterance
+  is an affirmation from a later turn than the preview. `memory.forget` is also
+  destructive but keeps its older rule, enforced by the memory service: it runs
+  only when the utterance is a forget request. Purging a module's data is not a
+  tool at all: `modules.open_purge_screen` only emits `app.open {screen:
+  "modules", module}`.
+- **Grounding** (`tool-grounding.cc`) holds the rules above and the older one:
+  `app.set_guard_mode` to any mode but armed runs only when the user's own
+  utterance names that mode or is that command (`needs_spoken_words`).
+- **Date-times.** A property with `format: "date-time"` is the one place a
+  time travels. `time-arguments.cc` rewrites it before validation: a required
+  one is first read from the user's own utterance (`call_time`, the resolver
+  `memory.remind` always used), which wins over what the model wrote; otherwise
+  the model's ISO string (`iso_time::parse`) or natural phrase ("mañana a las
+  tres") is used; the result is ISO with the host's offset, the only form the
+  providers parse. When nothing resolves the schema check refuses the missing
+  argument. The turn carries a clock line ("Fecha y hora actuales: ...") that is
+  appended to the last user message, never to the persona, so the cached prefix
+  stays byte-identical.
+- **Reminders.** `memory.remind` keeps scheduling the call exactly as before
+  and, for a reminder with a time, also writes the user's row through
+  `ProductivityReminderClient` (`infra/productivity-reminder-rows.cc`): the
+  target is always the caller (`JwtContext.sub` as the wire declares it),
+  whatever the model puts in the arguments, and another user's row is a 404 in
+  productivity; there is no second write path and no Owner override.
+  `reminder.list` reads the caller's own rows the same way. A reminder with no
+  time creates no row.
+- **App actions.** A provider that wants the app to do something returns
+  `argus/appAction {name, arguments}`; `remote-tool.cc` hands it to
+  `ToolContext::emitAction`, which the controller turns into a `ClientAction`
+  on the stream, ordered with the text tokens. Without an emitter the tool
+  refuses, so a non-call caller never hears that something happened when
+  nothing did. `app.show_camera` takes a `camera` (id or words, resolved by
+  `text_norm::matchName`) and a `view` (`live` or `snapshot`);
+  `app.set_guard_mode` takes an optional `environment` (guard environments,
+  2026-10): an exact or one-word match acts, several matches ask which, none
+  lists the places, and no `environment` keeps the old meaning, every
+  environment.
+- **The fast tier is unchanged.** fastText still decides explicit commands
+  and abstains otherwise (`services/llm/src/feature/intent`); a routed call
+  goes through the same executor, so permissions, the module check and grounding
+  apply to it as to the model's.
+
+`tests/unit/llm-tool-runtime-test.cc`, `llm-tool-loop-test.cc`,
+`llm-tool-parse-test.cc`, `llm-tool-providers-test.cc` (provider aggregation,
+per-turn filtering, unreachable providers, the core server acting for the
+declared caller), `llm-spoken-intent-test.cc` and `llm-time-arguments-test.cc`
+pin the above; `memory-reminder-test.cc` pins the reminder rows, among them
+that the tool cannot create or change a reminder for another user whatever
+the model puts in the arguments.
+
+## Pending intents (2026-10, context plan section 5)
+
+A request for a tool of a module that is off is not lost. `ToolExecutor` hands
+it to an `IntentLedger` (`PendingIntentService`, `feature/pending-intent/`,
+one table `pending_intent` in memory.db: user, role, module, tool, arguments,
+language, the utterance, the session, the state and the times). Lifecycle:
+**offered** (the user was offered to turn the module on; one open offer per
+user and module, a newer one replaces the older) -> **waiting** (the user said
+yes and `modules.enable` succeeded) -> **done** (the module became active, the
+stored call ran as the user who asked, with their role, language and the
+utterance, `decided` set because a person chose it, and the user was told) or
+**failed** (the install failed or was cancelled, or 24 hours passed: the
+request is saved as the user's own reminder through the shared reminder
+service, due at its own time when it has a future one and in a minute
+otherwise, and the user is told so) or **expired** (an offer unanswered for an
+hour). Settled rows are purged after 30 days.
+
+- **Survives restarts.** It is a table, not memory; a sweep every minute
+  expires stale offers, fails stale waits and also runs the intents of a module
+  that came up while nobody was watching.
+- **The module feed.** `ModuleIntentFeed` is argus-llm's own durable consumer
+  (`argus-llm-intents`) on `argus.settings.v1.module`: an enabled-set frame
+  with a module that is now enabled and active posts `activated`, a job that
+  ended `failed` or `cancelled` posts `failed` with its reason. Ignored: frames
+  that are not settled, jobs that are not installs, anything malformed.
+- **At least once, idempotent.** The feed and the sweep may both fire, and a
+  restart between the call and the row moving to done runs the call again: the
+  order is call, then `done`, then the notice. The tools it can run are
+  idempotent for that reason (`calendar.create_event` carries an idempotency key
+  derived from the arguments). A call that answers `module_inactive` leaves the
+  row waiting and says nothing; one that fails for any other reason becomes a
+  reminder and a notice like a failed install.
+- **Telling the user.** `NotificationIntentNotifier` creates one notification
+  of type `assistant_task` through `CreateNotifications` (argus-llm is admitted
+  there only for that type, one recipient and no call plan:
+  `services/notification/CONTEXT.md`), with a command id derived from the row so
+  a retry is a duplicate, not a second notice. A notice that cannot be
+  delivered is logged and does not undo the work.
+- **Not here.** Argus-llm never enables a module on its own and never installs
+  anything; it only asks the settings provider on a clear spoken yes from the
+  Owner.
+
+`tests/unit/llm-pending-intent-test.cc` covers every transition, the language
+of the notice, the failure fallback, the sweeps, a restart over the same
+database, the worker thread and the whole path through the executor.
 
 ## The tool loop in a call (2026-10-03)
 

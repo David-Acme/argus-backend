@@ -16,6 +16,7 @@
 #include <feature/memory/services/memory/memory-chat.hxx>
 #include <feature/memory/services/memory/memory-formation.hxx>
 #include <feature/memory/services/memory/reminder-call-scheduler.hxx>
+#include <feature/memory/services/memory/reminder-row-writer.hxx>
 #include <phrase/phrase-catalog.hxx>
 #include <feature/memory/services/memory/sqlite-graph.hxx>
 #include <feature/memory/services/memory/tool-parser.hxx>
@@ -106,6 +107,7 @@ public:
   std::vector<tools::ToolDescriptor> toolDescriptors();
 
   void setReminderCalls(std::shared_ptr<const ReminderCallScheduler> scheduler);
+  void setReminderRows(std::shared_ptr<const ReminderRowWriter> writer);
 
   SemanticGraph& graph() { return *graph_; }
   MemoryFormation& formation() { return formation_; }
@@ -154,6 +156,7 @@ private:
   VecDb& vecDb_;
   IMemoryChat& chat_;
   std::shared_ptr<const ReminderCallScheduler> reminderCalls_;
+  std::shared_ptr<const ReminderRowWriter> reminderRows_;
   std::unique_ptr<SqliteGraph> graph_{std::make_unique<SqliteGraph>()};
   MemoryGraphRepository graphRepo_;
   EntityResolver resolver_{*graph_};
@@ -228,8 +231,15 @@ private:
     int64_t factId{0};
   };
 
-  std::optional<std::string>
-  scheduleReminderCall(const ReminderCallInput& input) const;
+  struct ReminderScheduled
+  {
+    std::string clock;
+    bool called{false};
+    bool listed{false};
+  };
+
+  std::optional<ReminderScheduled> scheduleReminder(const ReminderCallInput& input) const;
+  tools::ToolResult handleReminderList(const tools::ToolCall& call);
   tools::ToolResult handleRecall(const tools::ToolCall& call);
   tools::ToolResult handleForget(const tools::ToolCall& call);
 };

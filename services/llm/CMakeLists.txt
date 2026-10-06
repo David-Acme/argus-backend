@@ -93,6 +93,18 @@ if(PROJECT_IS_TOP_LEVEL)
         target_link_libraries(fasttext PUBLIC Threads::Threads)
         target_compile_options(fasttext PRIVATE -w)
     endif()
+    if(NOT TARGET argus::lib::mcp)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/mcp
+                         ${CMAKE_BINARY_DIR}/mcp)
+    endif()
+    if(NOT TARGET argus::clients::mcp)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/mcp
+                         ${CMAKE_BINARY_DIR}/clients/mcp)
+    endif()
+    if(NOT TARGET argus::clients::productivity)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/productivity
+                         ${CMAKE_BINARY_DIR}/clients/productivity EXCLUDE_FROM_ALL)
+    endif()
     if(NOT TARGET argus::clients::identity)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                          ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
@@ -165,6 +177,7 @@ argus_service(NAME argus-llm
         argus::llm-config
         argus::llm-rpc
         argus::llm
+        argus::pending-intent
         argus::llm-settings
         argus::contracts::settings-wire
         argus::llm-shared
@@ -179,6 +192,9 @@ argus_service(NAME argus-llm
         argus::clients::llm
         argus::clients::identity
         argus::clients::camera
+        argus::clients::mcp
+        argus::clients::productivity
+        argus::lib::mcp
         Drogon::Drogon
     PORTS 7032)
 
@@ -267,6 +283,51 @@ target_compile_options(llm-tool-loop-test PRIVATE -Wall -Wextra)
 set_target_properties(llm-tool-loop-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-tool-loop-test COMMAND llm-tool-loop-test)
+
+add_executable(llm-tool-providers-test tests/unit/llm-tool-providers-test.cc)
+
+target_link_libraries(llm-tool-providers-test PRIVATE argus::llm
+    doctest::doctest)
+
+target_compile_options(llm-tool-providers-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-tool-providers-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-tool-providers-test COMMAND llm-tool-providers-test)
+
+add_executable(llm-spoken-intent-test tests/unit/llm-spoken-intent-test.cc)
+
+target_link_libraries(llm-spoken-intent-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-spoken-intent-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-spoken-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-spoken-intent-test COMMAND llm-spoken-intent-test)
+
+add_executable(llm-time-arguments-test tests/unit/llm-time-arguments-test.cc)
+
+target_link_libraries(llm-time-arguments-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-time-arguments-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-time-arguments-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-time-arguments-test COMMAND llm-time-arguments-test)
+
+add_executable(llm-pending-intent-test tests/unit/llm-pending-intent-test.cc)
+
+target_link_libraries(llm-pending-intent-test PRIVATE argus::llm argus::pending-intent
+    doctest::doctest)
+
+target_compile_definitions(llm-pending-intent-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(llm-pending-intent-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-pending-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-pending-intent-test COMMAND llm-pending-intent-test)
 
 add_executable(llm-tool-runtime-test tests/unit/llm-tool-runtime-test.cc)
 

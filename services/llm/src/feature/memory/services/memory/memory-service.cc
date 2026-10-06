@@ -971,21 +971,25 @@ std::vector<tools::ToolDescriptor> MemoryService::toolDescriptors()
 {
   std::vector<tools::ToolDescriptor> descriptors = memoryToolDescriptors();
   for (auto& descriptor : descriptors) {
-    if (descriptor.name == "memory.remember")
+    if (descriptor.spec.name == "memory.remember")
       descriptor.handler = [this](const tools::ToolCall& call) {
         return handleRemember(call);
       };
-    else if (descriptor.name == "memory.remind")
+    else if (descriptor.spec.name == "memory.remind")
       descriptor.handler = [this](const tools::ToolCall& call) {
         return handleRemind(call);
       };
-    else if (descriptor.name == "memory.recall")
+    else if (descriptor.spec.name == "memory.recall")
       descriptor.handler = [this](const tools::ToolCall& call) {
         return handleRecall(call);
       };
-    else if (descriptor.name == "memory.forget")
+    else if (descriptor.spec.name == "memory.forget")
       descriptor.handler = [this](const tools::ToolCall& call) {
         return handleForget(call);
+      };
+    else if (descriptor.spec.name == "reminder.list")
+      descriptor.handler = [this](const tools::ToolCall& call) {
+        return handleReminderList(call);
       };
   }
   return descriptors;
@@ -1202,55 +1206,106 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
               .episode = false});
   result.output = (english(call) ? "Reminder saved: " : "Recordatorio guardado: ") +
                   spoken(formed->canonical);
-  if (const auto when = scheduleReminderCall({.call = call,
-                                              .text = text,
-                                              .factId = formed->factId}))
-    result.output += (english(call) ? " I will call you at " : " Te llamaré a las ") +
-                     *when + ".";
+  if (const auto when = scheduleReminder({.call = call, .text = text, .factId = formed->factId})) {
+    if (when->called)
+      result.output += (english(call) ? " I will call you at " : " Te llamaré a las ") + when->clock + ".";
+    else
+      result.output += (english(call) ? " It is in your reminders for " : " Quedó en tus recordatorios para las ") +
+                       when->clock + ".";
+  }
   return result;
 }
 
-std::optional<std::string>
-MemoryService::scheduleReminderCall(const ReminderCallInput& input) const
+std::optional<MemoryService::ReminderScheduled>
+MemoryService::scheduleReminder(const ReminderCallInput& input) const
 {
-  if (!reminderCalls_ || input.call.context.userId <= 0)
+  const tools::ToolCall& call = input.call;
+  if ((!reminderCalls_ && !reminderRows_) || call.context.userId <= 0)
     return std::nullopt;
   const auto now = static_cast<int64_t>(std::time(nullptr));
-  const std::string& utterance = input.call.context.utterance.empty()
-                                     ? input.text
-                                     : input.call.context.utterance;
-  const auto when = call_time::resolve(
-      {.text = utterance, .lang = input.call.context.lang, .now = now});
+  const std::string& utterance = call.context.utterance.empty() ? input.text : call.context.utterance;
+  const auto when = call_time::resolve({.text = utterance, .lang = call.context.lang, .now = now});
   if (!when)
     return std::nullopt;
   std::string topic = input.text;
-  if (const auto inText = call_time::resolve(
-          {.text = input.text, .lang = input.call.context.lang, .now = now}))
+  if (const auto inText = call_time::resolve({.text = input.text, .lang = call.context.lang, .now = now}))
     topic = call_time::withoutPhrase(input.text, *inText);
   if (topic.empty())
     topic = input.text;
-  const bool scheduled = reminderCalls_->schedule(
-      {.userId = input.call.context.userId,
-       .fireAt = when->fireAt,
-       .topic = topic,
-       .lang = input.call.context.lang,
-       .commandId = "memory-remind:" + std::to_string(input.factId) + ":" +
-                    std::to_string(when->fireAt)});
-  if (!scheduled)
+  const std::string commandId =
+      "memory-remind:" + std::to_string(input.factId) + ":" + std::to_string(when->fireAt);
+  ReminderScheduled scheduled;
+  scheduled.called = reminderCalls_ && reminderCalls_->schedule({.userId = call.context.userId,
+                                                                 .fireAt = when->fireAt,
+                                                                 .topic = topic,
+                                                                 .lang = call.context.lang,
+                                                                 .commandId = commandId});
+  scheduled.listed = reminderRows_ && reminderRows_->create({.userId = call.context.userId,
+                                                             .role = userRoleToString(call.context.role),
+                                                             .title = topic,
+                                                             .scheduledAt = when->fireAt,
+                                                             .commandId = commandId});
+  if (!scheduled.called && !scheduled.listed)
     return std::nullopt;
   const auto seconds = static_cast<std::time_t>(when->fireAt);
   std::tm local{};
   localtime_r(&seconds, &local);
   std::array<char, 8> clock{};
-  const std::size_t written =
-      std::strftime(clock.data(), clock.size(), "%H:%M", &local);
-  return std::string(clock.data(), written);
+  const std::size_t written = std::strftime(clock.data(), clock.size(), "%H:%M", &local);
+  scheduled.clock = std::string(clock.data(), written);
+  return scheduled;
+}
+
+void MemoryService::setReminderRows(std::shared_ptr<const ReminderRowWriter> writer)
+{
+  reminderRows_ = std::move(writer);
 }
 
 void MemoryService::setReminderCalls(
     std::shared_ptr<const ReminderCallScheduler> scheduler)
 {
   reminderCalls_ = std::move(scheduler);
+}
+
+tools::ToolResult MemoryService::handleReminderList(const tools::ToolCall& call)
+{
+  tools::ToolResult result;
+  if (!hasUserScope(call.context.userId)) {
+    result.output = scopeRefusal(call);
+    return result;
+  }
+  const auto rows = reminderRows_ ? reminderRows_->list({.userId = call.context.userId,
+                                                         .role = userRoleToString(call.context.role),
+                                                         .includeCompleted = call.arguments.get("include_done", false).asBool(),
+                                                         .limit = call.arguments.get("limit", 10).asInt()})
+                                  : std::nullopt;
+  if (!rows) {
+    result.output = english(call) ? "I cannot read your reminders right now." : "Ahora no puedo leer tus recordatorios.";
+    return result;
+  }
+  result.ok = true;
+  Json::Value listed(Json::arrayValue);
+  std::string spoken;
+  for (const auto& row : *rows) {
+    const auto seconds = static_cast<std::time_t>(row.scheduledAt);
+    std::tm local{};
+    localtime_r(&seconds, &local);
+    std::array<char, 16> when{};
+    const std::size_t written = std::strftime(when.data(), when.size(), "%d/%m %H:%M", &local);
+    spoken += (spoken.empty() ? "" : "; ") + ("«" + row.title + "» (" + std::string(when.data(), written) + ")");
+    Json::Value entry(Json::objectValue);
+    entry["id"] = static_cast<Json::Int64>(row.id);
+    entry["title"] = row.title;
+    entry["scheduledAt"] = static_cast<Json::Int64>(row.scheduledAt);
+    entry["completed"] = row.completed;
+    listed.append(std::move(entry));
+  }
+  result.data["reminders"] = std::move(listed);
+  if (rows->empty())
+    result.output = english(call) ? "You have no pending reminders." : "No tienes recordatorios pendientes.";
+  else
+    result.output = (english(call) ? "Your reminders: " : "Tus recordatorios: ") + spoken + ".";
+  return result;
 }
 
 tools::ToolResult MemoryService::handleRecall(const tools::ToolCall& call)

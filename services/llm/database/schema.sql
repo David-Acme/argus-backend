@@ -140,3 +140,22 @@ CREATE INDEX IF NOT EXISTS idx_memory_episode_scope ON memory_episode (scope, re
 
 CREATE INDEX IF NOT EXISTS idx_encounter_closed_inbox_status
     ON encounter_closed_inbox (status, event_id);
+
+CREATE TABLE IF NOT EXISTS pending_intent (
+  id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL,
+  role        TEXT    NOT NULL,
+  module      TEXT    NOT NULL,
+  tool        TEXT    NOT NULL,
+  arguments   TEXT    NOT NULL,
+  lang        TEXT    NOT NULL  DEFAULT 'es',
+  utterance   TEXT    NOT NULL  DEFAULT '',
+  session_id  TEXT    NOT NULL  DEFAULT '',
+  state       TEXT    NOT NULL  CHECK (state IN ('offered', 'waiting', 'done', 'failed', 'expired')),
+  detail      TEXT    NOT NULL  DEFAULT '',
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_intent_open
+  ON pending_intent (state, module, user_id);

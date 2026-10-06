@@ -8,16 +8,19 @@
 #include <feature/llm/services/lfm-adapter.hxx>
 #include <llm/llm-service.hxx>
 #include <runtime/stream-slots.hxx>
+#include <shared/vocabulary/tool-contracts.hxx>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 struct LlmChatOutcome
 {
   std::string text;
   int hops{0};
   size_t toolCalls{0};
+  std::vector<tools::ToolCall> attempted{};
   int64_t generateMs{0};
   int64_t toolMs{0};
 };

@@ -111,6 +111,18 @@ max_reconnects = 60
 grpc_target = ""
 credential = ""
 
+[guard]
+target = "127.0.0.1:7139"
+credential = ""
+
+[productivity]
+grpc_target = "127.0.0.1:7037"
+credential = ""
+
+[modules]
+target = "127.0.0.1:7047"
+credential = ""
+
 [notifications]
 target = "127.0.0.1:7038"
 credential = ""

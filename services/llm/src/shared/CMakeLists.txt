@@ -5,4 +5,6 @@ argus_module(NAME llm-shared
     INCLUDES
         ..
     DEPENDS
-        argus::contracts::sync)
+        argus::contracts::auth
+        argus::contracts::sync
+        argus::lib::mcp)
