@@ -9,6 +9,33 @@ profiles_path = "profiles.json"
 first_run = true
 first_run_interval_s = 30
 
+[modules]
+catalog_path = "modules.json"
+db_path = "settings.db"
+schema = "database/schema.sql"
+models_dir = "../../models"
+poll_interval_ms = 1000
+idle_refresh_s = 30
+health_timeout_s = 180
+seed_wait_s = 300
+
+[rpc]
+address = "127.0.0.1:7047"
+
+[rpc.callers]
+auth = ""
+camera = ""
+guard = ""
+identity = ""
+notification = ""
+productivity = ""
+sync = ""
+voice = ""
+llm = ""
+
+[nats]
+url = "nats://127.0.0.1:4222"
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false
