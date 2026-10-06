@@ -92,6 +92,7 @@ add_custom_command(TARGET argus-tts POST_BUILD
             $<TARGET_FILE_DIR:argus-tts>/models)
 
 add_subdirectory(tools/tts-preview)
+add_subdirectory(tools/tts-batch)
 
 add_executable(tts-wire-test tests/unit/tts-wire-test.cc)
 
