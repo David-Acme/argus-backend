@@ -158,7 +158,10 @@ and let a guest through. Since the audit:
 presents the service's own credential, `auth.credential` and
 `identity.credential`, falling back to the legacy `auth.rpc_secret` /
 `identity.rpc_secret` only while that credential is empty (2026-10-05 audit,
-#25). Each client is cached per resolved target, credential and secret (the `voice-engine-seam` precedent), so a
+#25). `installLocalAuthClient` lets the session authority itself (argus-auth)
+answer its own filters in process instead of over its own listener; while one
+is installed `filterAuthClient()` returns it. Each client is cached per
+resolved target, credential and secret (the `voice-engine-seam` precedent), so a
 config change picks up a new client and tests can point the chain at a dead
 port to prove fail-closed.
 

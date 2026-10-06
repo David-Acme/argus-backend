@@ -38,6 +38,9 @@ public:
   [[nodiscard]] virtual std::optional<bool>
   checkDeviceCredential(const std::string& secretHash) const;
 
+protected:
+  AuthClient() = default;
+
 private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::auth::v1::AuthService::StubInterface> stub_;

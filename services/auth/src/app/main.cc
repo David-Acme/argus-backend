@@ -1,5 +1,6 @@
 #include <app/rpc/auth-callers.hxx>
 #include <app/rpc/auth-rpc-service.hxx>
+#include <app/rpc/local-auth-client.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/remote-config.hxx>
@@ -30,6 +31,7 @@
 #include <identity/identity-client.hxx>
 #include <json/value.h>
 #include <mdns/mdns-service.hxx>
+#include <chrono>
 #include <memory>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
@@ -125,6 +127,9 @@ int main()
                               .contextCacheSeconds =
                                   AuthConfig::resolveContextCacheSeconds()});
   DeviceCredentialRepository deviceCredentials;
+  LocalAuthClient::install({.sessions = &sessions,
+                            .deviceCredentials = &deviceCredentials,
+                            .timeout = std::chrono::milliseconds(5000)});
   const outbox::OutboxRepository changeOutbox = AuthActionSink::repository();
   RefreshTokenRepository refreshTokens;
   DeviceLoginChallengeRepository loginChallenges;

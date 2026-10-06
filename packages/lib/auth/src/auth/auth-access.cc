@@ -4,6 +4,7 @@
 #include <config/config-service.hxx>
 #include <mutex>
 #include <string>
+#include <utility>
 
 namespace
 {
@@ -21,10 +22,33 @@ std::string resolveTarget()
   return host + ":" + std::to_string(port > 0 ? port : 7043);
 }
 
+std::mutex& localMutex()
+{
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::shared_ptr<const AuthClient>& localClient()
+{
+  static std::shared_ptr<const AuthClient> client;
+  return client;
+}
+
+}
+
+void installLocalAuthClient(std::shared_ptr<const AuthClient> client)
+{
+  const std::scoped_lock lock(localMutex());
+  localClient() = std::move(client);
 }
 
 std::shared_ptr<const AuthClient> filterAuthClient()
 {
+  {
+    const std::scoped_lock lock(localMutex());
+    if (localClient())
+      return localClient();
+  }
   static std::mutex mutex;
   static std::string cachedTarget;
   static std::string cachedCredential;

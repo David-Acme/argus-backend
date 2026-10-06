@@ -1,7 +1,11 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
+#include <app/rpc/auth-callers.hxx>
 #include <app/rpc/auth-rpc-service.hxx>
+#include <app/rpc/local-auth-client.hxx>
+#include <auth/auth-access.hxx>
+#include <grpc/fleet-caller-gate.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/device-login-status.hxx>
 #include <auth/jwt-filter.hxx>
@@ -30,6 +34,8 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 #include <unistd.h>
 
 #ifndef ARGUS_AUTH_SCHEMA_PATH
@@ -960,6 +966,100 @@ TEST_CASE("a forwarded address is the hop the trusted proxy saw, not the client'
   };
   CHECK(keyFor("6.6.6.6, 10.0.0.9") == keyFor("10.0.0.9"));
   CHECK(keyFor("6.6.6.6, 10.0.0.9") != keyFor("6.6.6.6"));
+  ConfigService::setRuntimeString("device.identity_mode", "ip");
+}
+
+TEST_CASE("argus-auth verifies its own devices and sessions in process once "
+          "every other caller is paired")
+{
+  Fixture& app = fixture();
+  REQUIRE(app.start());
+
+  SessionService sessions({.jwtService = JwtService{JwtRole::Issuer},
+                           .refreshTokenRepository = RefreshTokenRepository{},
+                           .identity = &app.identity()},
+                          SessionService::Config{.contextCacheSeconds = 0});
+  DeviceCredentialRepository credentials;
+  std::vector<std::pair<std::string, std::string>> callers;
+  for (const auto& caller : auth_callers::expected())
+    callers.emplace_back(caller, caller + "-auth-credential-0123456789abcdef");
+  AuthRpcService paired({.sessions = &sessions, .deviceCredentials = &credentials},
+                        std::make_shared<const argus::client::FleetCallerGate>(
+                            argus::client::FleetGateConfig{
+                                .expectedCallers = auth_callers::expected(),
+                                .callerPairs = std::move(callers),
+                                .legacySecret = kFleetSecret,
+                                .onFirstLegacy = {}}));
+  int port = 0;
+  grpc::ServerBuilder builder;
+  builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+  builder.RegisterService(&paired);
+  const std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
+  REQUIRE(server);
+  ConfigService::setRuntimeString("auth.target", "127.0.0.1:" + std::to_string(port));
+  ConfigService::setRuntimeString("auth.credential", "");
+  ConfigService::setRuntimeString("auth.rpc_secret", kFleetSecret);
+  ConfigService::setRuntimeString("device.identity_mode", "credential");
+
+  const std::string ownSecret = "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5";
+  const std::string secretHash = DeviceFilter::sha256Hex(ownSecret);
+  seedCredential(secretHash);
+  const auto request = [&ownSecret] {
+    auto req = drogon::HttpRequest::newHttpRequest();
+    req->addHeader("User-Agent", kUa);
+    req->addHeader("X-Argus-Device-Credential", ownSecret);
+    return req;
+  };
+
+  const auto overRpc = refusalOf(DeviceFilter().doFilter(request()));
+  CHECK((overRpc.has_value() && overRpc->status == 503));
+
+  LocalAuthClient::install({.sessions = &sessions,
+                            .deviceCredentials = &credentials,
+                            .timeout = std::chrono::milliseconds(5000)});
+
+  auto device = request();
+  drogon::sync_wait(DeviceFilter().doFilter(device));
+  const std::string boundHash = DeviceFilter::credentialFingerprint(kUa, secretHash);
+  CHECK(deviceCtx(device).deviceHash == boundHash);
+
+  const auto refresh = JwtService(JwtRole::Issuer).generateRefresh({{"sub", "1"}});
+  const auto access = JwtService(JwtRole::Issuer).generateAccess({{"sub", "1"}});
+  DbService::client()->execSqlSync(
+      "INSERT INTO refresh_token (user_id, access_token, refresh_token, "
+      "device_hash, user_agent, expires_at) VALUES (1, ?, ?, ?, ?, ?)",
+      access, refresh, boundHash, std::string(kUa),
+      static_cast<int64_t>(std::time(nullptr)) + 3600);
+
+  device->addHeader("Authorization", "Bearer " + access);
+  CHECK_FALSE(drogon::sync_wait(JwtFilter().doFilter(device)));
+  CHECK(jwtCtx(device).sub == kUserId);
+
+  AuthFeatureService authService(
+      {.jwtService = JwtService{JwtRole::Issuer},
+       .refreshTokenRepository = RefreshTokenRepository{},
+       .deviceCredentialRepository = DeviceCredentialRepository{},
+       .challengeRepository = DeviceLoginChallengeRepository{},
+       .sessions = SessionManagementService(
+           {.refreshTokenRepository = RefreshTokenRepository{}}),
+       .identity = &app.identity()},
+      AuthFeatureService::Config{.refreshReuseGraceSeconds = 30, .allowRemoteQrLogin = false});
+  CHECK_FALSE(refusalOf(authService.refreshToken(
+                            {.body = {.refreshToken = refresh},
+                             .deviceHash = deviceCtx(device).deviceHash,
+                             .userAgent = kUa,
+                             .ip = "10.0.0.1",
+                             .credentialHash = secretHash,
+                             .client = {},
+                             .networkHash = ""}))
+                  .has_value());
+
+  installLocalAuthClient(nullptr);
+  server->Shutdown();
+  DbService::client()->execSqlSync("DELETE FROM refresh_token");
+  DbService::client()->execSqlSync(
+      "DELETE FROM device_credential WHERE secret_hash = ?", secretHash);
+  ConfigService::setRuntimeString("auth.rpc_secret", "");
   ConfigService::setRuntimeString("device.identity_mode", "ip");
 }
 

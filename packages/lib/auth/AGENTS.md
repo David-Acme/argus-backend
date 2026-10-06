@@ -47,7 +47,9 @@ sync and tts.
   `JwtRole::Verifier` (every `JwtFilter`) loads `jwt.secret` alone.
 - `src/auth/auth-access.{cc,hxx}` — `filterAuthClient()`: the package's
   single auth RPC client, cached per resolved target, so the filters and a
-  service's composition root share one connection to `argus-auth`.
+  service's composition root share one connection to `argus-auth`;
+  `installLocalAuthClient()` replaces it inside argus-auth itself with the
+  in-process authority, so the session owner never dials its own listener.
 - `src/auth/details/identity-access.{cc,hxx}` — the shared identity RPC
   client, cached per resolved target. Private by convention.
 

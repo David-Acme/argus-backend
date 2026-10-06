@@ -361,6 +361,21 @@ caller from the credential that matched. Both methods are open to every
 paired caller: a verdict reveals nothing a caller can abuse, so there is no
 per-method table here, unlike identity and sync.
 
+argus-auth's own filters never dial this listener. Its `DeviceFilter` and
+`JwtFilter` used to reach `filterAuthClient()` like every verifier, which
+meant a call from argus-auth to itself over 7043; once the seven real callers
+were paired the fleet secret stopped answering and every authenticated or
+refreshing request to argus-auth answered 503 `AUTH_UNAVAILABLE`. `main.cc`
+now installs `LocalAuthClient` (`src/app/rpc/local-auth-client.*`) through
+`installLocalAuthClient`: the same `SessionService::validate` and
+`DeviceCredentialRepository::findActiveBySecretHash` the RPC serves, run on
+the event loop and awaited from the filter's blocking lane with the RPC's
+5 s bound, the verdict mapped by the same `session_verdict_wire::write`.
+So `auth` is not, and need not be, a caller of its own listener.
+`device-login-test` pins it: with every other caller paired, the RPC path
+answers 503 and the in-process path binds the device, admits the session
+and refreshes.
+
 The fleet-wide `[auth] rpc_secret` of an older install keeps working while
 any expected caller has no credential yet, so a rebuild without
 re-provisioning still runs; the first such call logs one WARN naming how

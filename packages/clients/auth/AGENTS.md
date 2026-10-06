@@ -53,7 +53,9 @@ identity side never reshapes this wire.
 - On the wire: `AuthClientConfig.credential`, the caller's own credential,
   rides every call as `x-argus-credential` (`addPeerCredential`); only when it
   is empty does the legacy `fleetSecret` ride as `x-argus-fleet`, and an unset
-  pair sends no header at all (2026-10-05 audit, #25); `validateToken` engages the request's device leg
+  pair sends no header at all (2026-10-05 audit, #25). A protected default
+  constructor, with no channel, exists for argus-auth's in-process
+  `LocalAuthClient`, which overrides both calls; `validateToken` engages the request's device leg
   whenever `hasDeviceContext` is set, empty hash included. One deadline,
   `kCallTimeoutMs` = 5000 ms, a `constexpr` in the `.cc`. The channel is
   plaintext (`makeChannel` is `InsecureChannelCredentials`), like every other

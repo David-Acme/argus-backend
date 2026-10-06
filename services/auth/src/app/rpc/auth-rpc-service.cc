@@ -1,5 +1,6 @@
 #include "auth-rpc-service.hxx"
 #include "auth-callers.hxx"
+#include "session-verdict-wire.hxx"
 
 #include <drogon/drogon.h>
 #include <grpc/grpc-client-base.hxx>
@@ -62,24 +63,7 @@ grpc::ServerUnaryReactor* AuthRpcService::ValidateToken(
           try {
             const SessionVerdict verdict =
                 co_await dependencies_.sessions->validate(input);
-            if (!verdict.valid || !verdict.user.has_value()) {
-              responseWriter->set_valid(false);
-              responseWriter->set_reason(verdict.reason);
-              reactor->Finish(grpc::Status::OK);
-              co_return;
-            }
-
-            const UserContext& user = *verdict.user;
-            auto* payload = responseWriter->mutable_user();
-            payload->set_user_id(user.userId);
-            payload->set_name(user.name);
-            payload->set_lang(user.lang);
-            payload->set_last_name(user.lastName);
-            payload->set_role(user.role);
-            payload->set_is_active(user.isActive);
-            responseWriter->set_expires_at(verdict.expiresAt);
-            responseWriter->set_session_id(verdict.sessionId);
-            responseWriter->set_valid(true);
+            session_verdict_wire::write(verdict, *responseWriter);
             reactor->Finish(grpc::Status::OK);
           }
           catch (const std::exception& error) {

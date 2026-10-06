@@ -5,3 +5,5 @@
 class AuthClient;
 
 std::shared_ptr<const AuthClient> filterAuthClient();
+
+void installLocalAuthClient(std::shared_ptr<const AuthClient> client);
