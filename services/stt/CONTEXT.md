@@ -249,9 +249,9 @@ whose error rate rises above it plus a margin.
 
 | set | license | clips | words | WER (accents kept) | WER (accents folded) | CER |
 |---|---|---|---|---|---|---|
-| Common Voice es, test split, 14 accent groups plus unlabelled | CC0-1.0 | 136 | ~1,150 | 5.98% | 5.52% | 1.87% |
+| Common Voice es, test split, 14 accent groups plus unlabelled | CC0-1.0 | 136 | 1,287 | 5.98% | 5.52% | 1.87% |
 | OpenSLR 73, Peruvian Spanish, 40 female and 40 male clips | CC-BY-SA-4.0 | 80 | 763 | 5.50% | 3.67% | 1.60% |
-| both | | 216 | ~1,900 | 5.80% | 4.83% | 1.77% |
+| both | | 216 | 2,050 | 5.80% | 4.83% | 1.77% |
 
 Decode time is 0.25 of real time on this machine (16 threads, debug build). Normalisation
 lowercases, drops punctuation and hyphens and keeps digits as the reference wrote them.
