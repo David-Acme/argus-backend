@@ -241,6 +241,16 @@ TEST_CASE("cancel stops a running fetch and leaves the component missing, remove
   CHECK_FALSE(fs::exists(models.path / "vision/lm.gguf.part"));
 }
 
+TEST_CASE("a provisioned component is never removed by its owner")
+{
+  TempDir models;
+  writeBytes(models.path / "objects/yolo26n.param", 4);
+  DiskComponentHost host({.modelsDir = models.path, .owned = {"detector"}, .fetch = {}, .ready = {}});
+  CHECK_THROWS_AS(static_cast<void>(host.remove(provisionedSpec())), std::invalid_argument);
+  CHECK(fs::exists(models.path / "objects/yolo26n.param"));
+  CHECK(host.status(provisionedSpec()).state == ComponentState::Installed);
+}
+
 TEST_CASE("a component that is not this owner's is refused")
 {
   TempDir models;

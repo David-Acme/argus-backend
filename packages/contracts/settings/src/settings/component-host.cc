@@ -222,15 +222,15 @@ ComponentStatus DiskComponentHost::cancel(const ComponentSpec& spec)
 ComponentStatus DiskComponentHost::remove(const ComponentSpec& spec)
 {
   check(spec);
+  if (spec.source == ComponentSource::Provisioned)
+    throw std::invalid_argument("A provisioned component belongs to the host and is never removed by its owner");
   stop(spec.id);
-  if (spec.source == ComponentSource::Download) {
-    for (const auto& file : spec.files) {
-      const auto target = input_.modelsDir / file.path;
-      std::error_code error;
-      std::filesystem::remove(target, error);
-      std::filesystem::remove(withSuffix(target, kPartSuffix), error);
-      std::filesystem::remove(withSuffix(target, kSidecarSuffix), error);
-    }
+  for (const auto& file : spec.files) {
+    const auto target = input_.modelsDir / file.path;
+    std::error_code error;
+    std::filesystem::remove(target, error);
+    std::filesystem::remove(withSuffix(target, kPartSuffix), error);
+    std::filesystem::remove(withSuffix(target, kSidecarSuffix), error);
   }
   return status(spec);
 }

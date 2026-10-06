@@ -74,7 +74,9 @@ is `src/`: `<settings/settings-rpc.hxx>`, `<settings/settings-errors.hxx>`.
   (the `lib/http` downloader: `.part` + sidecar, `Range` resume, SHA-256,
   atomic rename; it returns an empty string or a reason code), cancel stops
   the thread through its `stop_token` and keeps the partial file, remove
-  deletes a download's files and partials. Specs are refused (`INVALID_ARGUMENT`)
+  deletes a download's files and partials and refuses a provisioned
+  component (`INVALID_ARGUMENT`: its files are the host's, and a core
+  component is never removed). Specs are refused (`INVALID_ARGUMENT`)
   when the id is not one the owner declared, a path is absolute or climbs out,
   or a download lacks a `https` URL or a SHA-256.
 - `Modules` is a second service in the same proto, served only by
