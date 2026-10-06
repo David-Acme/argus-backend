@@ -63,6 +63,8 @@ is `src/`: `<settings/settings-rpc.hxx>`, `<settings/settings-errors.hxx>`.
   nothing for them by default and answers `UNIMPLEMENTED`; it opts in with
   `SettingsRpcService::attachComponents(ComponentHost&)`,
   `attachModuleData(ModuleDataHost&)` and `attachOwnerPin(OwnerPinHost&)`.
+  A host that throws is answered `UNAVAILABLE`, never left to end the gRPC
+  thread.
   The C++ vocabulary is header-only in
   `src/settings/component-vocabulary.hxx`; `component-wire.{hxx,cc}` maps it
   to and from the wire.

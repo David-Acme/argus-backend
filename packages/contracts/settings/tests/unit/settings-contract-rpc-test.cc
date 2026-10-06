@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <fstream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 namespace
@@ -180,5 +181,60 @@ TEST_CASE("each choice's installation state reaches the wire, and a host-only ch
   CHECK(response.rejected(0).reason() == wire::REJECTION_REASON_NOT_INSTALLED);
   CHECK(response.catalog().settings(0).value() == "fast");
   server->Shutdown();
+  std::remove(path.c_str());
+}
+
+namespace
+{
+class FailingModuleData final : public ModuleDataHost
+{
+public:
+  [[nodiscard]] ModuleDataSummary summary(const std::string&) const override
+  {
+    throw std::runtime_error("the owner's database is not open");
+  }
+
+  ModuleDataPurge purge(const std::string&) override { throw std::runtime_error("the owner's database is not open"); }
+};
+
+class FailingOwnerPin final : public OwnerPinHost
+{
+public:
+  PinVerdict verify(const OwnerPinCheck&) override { throw std::runtime_error("the owner's database is not open"); }
+};
+}
+
+TEST_CASE("an owner whose data or PIN host fails answers UNAVAILABLE instead of ending the process")
+{
+  const std::string path = "/tmp/settings-contract-rpc.toml";
+  std::ofstream(path) << "[tts]\nspeed = 1.0\n";
+  ConfigService::load(path);
+  Harness harness;
+  FailingModuleData data;
+  FailingOwnerPin pin;
+  harness.service.attachModuleData(data);
+  harness.service.attachOwnerPin(pin);
+
+  wire::ModuleDataRequest request;
+  request.set_module_id("surveillance");
+
+  grpc::ClientContext summaryContext;
+  authorize(summaryContext, kSecret);
+  wire::ModuleDataSummaryResponse summary;
+  CHECK(harness.stub->ModuleDataSummary(&summaryContext, request, &summary).error_code() ==
+        grpc::StatusCode::UNAVAILABLE);
+
+  grpc::ClientContext purgeContext;
+  authorize(purgeContext, kSecret);
+  wire::PurgeModuleDataResponse purged;
+  CHECK(harness.stub->PurgeModuleData(&purgeContext, request, &purged).error_code() == grpc::StatusCode::UNAVAILABLE);
+
+  wire::VerifyOwnerPinRequest pinRequest;
+  pinRequest.set_user_id(1);
+  pinRequest.set_pin("2468");
+  grpc::ClientContext pinContext;
+  authorize(pinContext, kSecret);
+  wire::VerifyOwnerPinResponse verdict;
+  CHECK(harness.stub->VerifyOwnerPin(&pinContext, pinRequest, &verdict).error_code() == grpc::StatusCode::UNAVAILABLE);
   std::remove(path.c_str());
 }

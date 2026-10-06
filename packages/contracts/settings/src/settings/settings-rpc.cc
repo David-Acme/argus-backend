@@ -5,6 +5,7 @@
 #include <settings/component-wire.hxx>
 #include <settings/settings-errors.hxx>
 
+#include <exception>
 #include <stdexcept>
 #include <utility>
 
@@ -112,6 +113,11 @@ grpc::Status unimplemented()
 grpc::Status malformed()
 {
   return argus::response::toRpcStatus(ResponseException(SettingsErrors::InvalidRequest));
+}
+
+grpc::Status ownerBusy()
+{
+  return argus::response::toRpcStatus(ResponseException(SettingsErrors::Unavailable));
 }
 }
 
@@ -258,7 +264,13 @@ grpc::ServerUnaryReactor* SettingsRpcService::ModuleDataSummary(grpc::CallbackSe
     return finish(context, {grpc::StatusCode::UNIMPLEMENTED, "This owner keeps no module data"});
   if (request->module_id().empty())
     return finish(context, malformed());
-  const auto summary = moduleData_->summary(request->module_id());
+  ::ModuleDataSummary summary;
+  try {
+    summary = moduleData_->summary(request->module_id());
+  }
+  catch (const std::exception&) {
+    return finish(context, ownerBusy());
+  }
   for (const auto& item : summary.items) {
     auto* entry = response->add_items();
     entry->set_kind(item.kind);
@@ -278,7 +290,13 @@ grpc::ServerUnaryReactor* SettingsRpcService::PurgeModuleData(grpc::CallbackServ
     return finish(context, {grpc::StatusCode::UNIMPLEMENTED, "This owner keeps no module data"});
   if (request->module_id().empty())
     return finish(context, malformed());
-  const auto outcome = moduleData_->purge(request->module_id());
+  ModuleDataPurge outcome;
+  try {
+    outcome = moduleData_->purge(request->module_id());
+  }
+  catch (const std::exception&) {
+    return finish(context, ownerBusy());
+  }
   response->set_purged(outcome.purged);
   response->set_reason(outcome.reason);
   return finish(context, grpc::Status::OK);
@@ -299,7 +317,13 @@ grpc::ServerUnaryReactor* SettingsRpcService::VerifyOwnerPin(grpc::CallbackServe
     return finish(context, {grpc::StatusCode::UNIMPLEMENTED, "This owner keeps no PIN"});
   if (request->user_id() <= 0)
     return finish(context, malformed());
-  response->set_verdict(component_wire::verdictOf(ownerPin_->verify({.userId = request->user_id(), .pin = request->pin()})));
+  try {
+    response->set_verdict(
+        component_wire::verdictOf(ownerPin_->verify({.userId = request->user_id(), .pin = request->pin()})));
+  }
+  catch (const std::exception&) {
+    return finish(context, ownerBusy());
+  }
   return finish(context, grpc::Status::OK);
 }
 
