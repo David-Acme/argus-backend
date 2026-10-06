@@ -603,5 +603,15 @@
         "min": 0.45
       }
     }
+  },
+  "decider": {
+    "wrongActMax": 0.001,
+    "askRateClearMax": 0.1,
+    "wrongToolActMax": 0.01,
+    "metrics": {
+      "moduleFamilies.coverage": {
+        "min": 0.456
+      }
+    }
   }
 }

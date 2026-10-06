@@ -27,7 +27,12 @@ FAMILY_OF = {tool: family for family, tools in FAMILIES.items() for tool in tool
 MODULE_FAMILIES = ("calendar", "task", "project", "modules", "reminders")
 OWNER_ONLY = {"modules.enable", "modules.disable", "modules.open_purge_screen"}
 MEMBER_ONLY = {"modules.request"}
-THRESHOLDS = (0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95, 0.97, 0.98, 0.99, 0.995)
+ACTS = (0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95, 0.97, 0.98, 0.99, 0.995)
+ASKS = (0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
+MARGINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
+DEFAULT_WRONG_ACT = 0.001
+DEFAULT_ASK_CLEAR = 0.10
+DEFAULT_WRONG_TOOL = 0.01
 
 
 def offered(role):
@@ -47,23 +52,36 @@ def wilson(hits, total, z=1.96):
     return max(0.0, centre - half), min(1.0, centre + half)
 
 
-def expected_tools(record):
+def rate(hits, total):
+    return hits / total if total else 0.0
+
+
+def expected_of(record):
     expect = record.get("expect", {})
+    ambiguous = expect.get("ambiguous")
+    if ambiguous:
+        return "ambiguous", set(ambiguous["tools"]), []
     calls = [call["tool"] for call in expect.get("calls") or []]
-    optional = []
     if calls:
-        return set(calls), optional
+        return "positive", set(calls), []
     if record.get("role", "owner") != "owner":
-        return None, optional
+        return None, set(), []
     for key, field in (("confirm", "tool"), ("inactive", "attempted"), ("offerAccept", "attempted")):
         entry = expect.get(key)
         if entry and entry.get(field):
-            return {entry[field]}, optional
+            return "positive", {entry[field]}, []
     if "offerDecline" in expect:
-        return None, optional
+        return None, set(), []
     if record.get("route") == "camera":
-        return set(), ["app.show_camera"]
-    return set(), optional
+        return "negative", set(), ["app.show_camera"]
+    return "negative", set(), []
+
+
+def describe(case):
+    wanted = case["expected"]
+    case["families"] = {FAMILY_OF[t] for t in wanted if t in FAMILY_OF}
+    case["authored"] = case["stratum"] != "real"
+    return case
 
 
 def load_cases(paths):
@@ -73,29 +91,28 @@ def load_cases(paths):
             if not line.strip():
                 continue
             record = json.loads(line)
-            wanted, optional = expected_tools(record)
-            if wanted is None:
+            kind, wanted, optional = expected_of(record)
+            if kind is None:
                 continue
             text = record["script"][0]
-            key = (text, tuple(sorted(wanted)))
+            key = (text, kind, tuple(sorted(wanted)))
             if key in seen:
                 continue
             seen.add(key)
-            cases.append({"text": text, "lang": record["lang"], "role": record.get("role", "owner"),
-                          "expected": wanted, "optional": optional,
-                          "stratum": "real" if record.get("variant") == "real" else "authored",
-                          "set": pathlib.Path(path).stem})
+            cases.append(describe({
+                "text": text, "lang": record["lang"], "role": record.get("role", "owner"),
+                "kind": kind, "expected": wanted, "optional": optional,
+                "variant": record.get("variant", "neutral"),
+                "stratum": "real" if record.get("variant") == "real" else "authored",
+                "set": pathlib.Path(path).stem}))
     return cases
 
 
 def load_negatives(path):
-    cases = []
-    for line in pathlib.Path(path).read_text().splitlines():
-        text = line.strip()
-        if text:
-            cases.append({"text": text, "lang": "es", "role": "owner", "expected": set(), "optional": [],
-                          "stratum": "real", "set": pathlib.Path(path).stem})
-    return cases
+    return [describe({"text": line.strip(), "lang": "es", "role": "owner", "kind": "negative",
+                      "expected": set(), "optional": [], "variant": "real", "stratum": "real",
+                      "set": pathlib.Path(path).stem})
+            for line in pathlib.Path(path).read_text().splitlines() if line.strip()]
 
 
 class Decider:
@@ -123,15 +140,20 @@ class Decider:
             if not line:
                 raise SystemExit("decider closed its output before answering every request")
             reply = json.loads(line)
-            answers[reply["seq"]] = (reply.get("tool"), float(reply.get("confidence", 0.0)))
+            runner = reply.get("runnerUp") or {}
+            answers[reply["seq"]] = (reply.get("tool"), float(reply.get("confidence", 0.0)),
+                                     runner.get("tool"), float(runner.get("confidence", 0.0)))
         writer.join()
         decisions = []
         for seq, case in enumerate(cases):
-            tool, confidence = answers[seq]
-            if tool is not None and tool not in offered(case["role"]):
+            tool, confidence, runner_tool, runner_confidence = answers[seq]
+            allowed = offered(case["role"])
+            if tool is not None and tool not in allowed:
                 self.violations += 1
                 tool, confidence = None, 0.0
-            decisions.append((tool, confidence))
+            if runner_tool is not None and runner_tool not in allowed:
+                runner_tool, runner_confidence = None, 0.0
+            decisions.append((tool, confidence, runner_tool, runner_confidence))
         return decisions
 
     def latencies(self, cases):
@@ -149,150 +171,218 @@ class Decider:
         self.process.wait(timeout=60)
 
 
-def score(cases, decisions, threshold):
-    stats = {family: {"positives": 0, "routed": 0, "correct": 0, "others": 0, "falseRoute": 0,
-                      "authoredOthers": 0, "authoredFalse": 0}
-             for family in FAMILIES}
-    pooled = {"positives": 0, "routed": 0, "correct": 0, "others": 0, "falseRoute": 0, "wrong": 0,
-              "authoredOthers": 0, "authoredFalse": 0, "realOthers": 0, "realFalse": 0,
-              "destructiveOthers": 0, "destructiveFalse": 0}
-    for case, (tool, confidence) in zip(cases, decisions):
-        if tool is not None and confidence < threshold:
-            tool = None
-        wanted = case["expected"]
-        families = {FAMILY_OF[t] for t in wanted if t in FAMILY_OF}
-        decided = FAMILY_OF.get(tool) if tool else None
-        is_module_positive = bool(families & set(MODULE_FAMILIES))
-        for family in FAMILIES:
-            entry = stats[family]
-            if family in families:
+def outcome(decision, policy):
+    tool, confidence, runner_tool, runner_confidence = decision
+    act, ask, margin = policy
+    if tool is None:
+        return "none", ()
+    gap = confidence - (runner_confidence if runner_tool else 0.0)
+    if confidence >= act and gap >= margin:
+        return "act", (tool,)
+    if confidence >= ask:
+        if runner_tool and runner_confidence >= ask:
+            return "ask", (tool, runner_tool)
+        return "ask", (tool,)
+    return "none", ()
+
+
+def blank():
+    return {"positives": 0, "actCorrect": 0, "askCorrect": 0, "askAny": 0, "wrongTool": 0, "routed": 0,
+            "others": 0, "wrongAct": 0, "askOther": 0, "authoredOthers": 0, "authoredWrongAct": 0,
+            "ambiguous": 0, "ambiguousAct": 0, "ambiguousAskCorrect": 0, "ambiguousAsk": 0}
+
+
+def tally(cases, decisions, policy, scopes):
+    counts = {name: blank() for name in scopes}
+    for case, decision in zip(cases, decisions):
+        result, options = outcome(decision, policy)
+        kind = case["kind"]
+        for name, (members, select) in scopes.items():
+            if select is not None and not select(case):
+                continue
+            entry = counts[name]
+            wanted_here = case["families"] & members
+            if kind == "ambiguous":
+                if not (case["expected"] and {FAMILY_OF[t] for t in case["expected"] if t in FAMILY_OF} & members):
+                    continue
+                entry["ambiguous"] += 1
+                if result == "act":
+                    entry["ambiguousAct"] += 1
+                elif result == "ask":
+                    entry["ambiguousAsk"] += 1
+                    entry["ambiguousAskCorrect"] += bool(set(options) & case["expected"])
+                continue
+            acted_here = result == "act" and FAMILY_OF.get(options[0]) in members
+            if result == "act" and FAMILY_OF.get(options[0]) in members:
+                entry["routed"] += 1
+            if wanted_here and kind == "positive":
                 entry["positives"] += 1
-                if tool in wanted and decided == family:
-                    entry["correct"] += 1
+                if result == "act":
+                    if options[0] in case["expected"]:
+                        entry["actCorrect"] += 1
+                    else:
+                        entry["wrongTool"] += 1
+                elif result == "ask":
+                    entry["askAny"] += 1
+                    entry["askCorrect"] += bool(set(options) & case["expected"])
             else:
                 entry["others"] += 1
-                authored = case["stratum"] != "real"
-                entry["authoredOthers"] += authored
-                if decided == family and tool not in case["optional"]:
-                    entry["falseRoute"] += 1
-                    entry["authoredFalse"] += authored
-            if decided == family:
-                entry["routed"] += 1
-        if is_module_positive:
-            pooled["positives"] += 1
-            if tool in wanted:
-                pooled["correct"] += 1
-            elif decided in MODULE_FAMILIES:
-                pooled["wrong"] += 1
-        else:
-            pooled["others"] += 1
-            stratum = "real" if case["stratum"] == "real" else "authored"
-            pooled[stratum + "Others"] += 1
-            if decided in MODULE_FAMILIES:
-                pooled["falseRoute"] += 1
-                pooled[stratum + "False"] += 1
-        if decided in MODULE_FAMILIES:
-            pooled["routed"] += 1
-    return stats, pooled
+                entry["authoredOthers"] += case["authored"]
+                if acted_here and options[0] not in case["optional"]:
+                    entry["wrongAct"] += 1
+                    entry["authoredWrongAct"] += case["authored"]
+                if result == "ask" and FAMILY_OF.get(options[0]) in members:
+                    entry["askOther"] += 1
+    return counts
 
 
-def rate(hits, total):
-    return hits / total if total else 0.0
-
-
-def summarise(cases, decisions, threshold):
-    stats, pooled = score(cases, decisions, threshold)
-    out = {"threshold": threshold, "cases": len(cases), "families": {}}
-    for family, entry in stats.items():
-        out["families"][family] = {
-            "positives": entry["positives"], "routed": entry["routed"],
-            "coverage": rate(entry["correct"], entry["positives"]),
-            "precision": rate(entry["correct"], entry["routed"]),
-            "falseRouteRate": rate(entry["falseRoute"], entry["others"]),
-            "falseRoute": entry["falseRoute"], "others": entry["others"],
-            "falseRouteUpper": wilson(entry["falseRoute"], entry["others"])[1],
-            "authoredFalseRouteRate": rate(entry["authoredFalse"], entry["authoredOthers"])}
-    out["moduleFamilies"] = {
-        "positives": pooled["positives"], "routed": pooled["routed"],
-        "coverage": rate(pooled["correct"], pooled["positives"]),
-        "precision": rate(pooled["correct"], pooled["routed"]),
-        "wrongTool": pooled["wrong"],
-        "falseRoute": pooled["falseRoute"], "others": pooled["others"],
-        "falseRouteRate": rate(pooled["falseRoute"], pooled["others"]),
-        "falseRouteUpper": wilson(pooled["falseRoute"], pooled["others"])[1],
-        "authoredFalseRouteRate": rate(pooled["authoredFalse"], pooled["authoredOthers"]),
-        "authoredFalseRouteUpper": wilson(pooled["authoredFalse"], pooled["authoredOthers"])[1],
-        "authoredOthers": pooled["authoredOthers"],
-        "realFalseRouteRate": rate(pooled["realFalse"], pooled["realOthers"]),
-        "realFalseRouteUpper": wilson(pooled["realFalse"], pooled["realOthers"])[1],
-        "realOthers": pooled["realOthers"]}
+def scopes_of(select=None):
+    out = {"moduleFamilies": (set(MODULE_FAMILIES), select)}
+    for family in MODULE_FAMILIES:
+        out[family] = ({family}, select)
     return out
 
 
-def rates_of(summary):
+def digest(entry):
+    positives = entry["positives"]
+    return {
+        "positives": positives,
+        "coverage": rate(entry["actCorrect"] + entry["askCorrect"], positives),
+        "actCoverage": rate(entry["actCorrect"], positives),
+        "precision": rate(entry["actCorrect"], entry["routed"]),
+        "askRateClear": rate(entry["askAny"], positives),
+        "wrongToolRate": rate(entry["wrongTool"], positives),
+        "wrongAct": entry["wrongAct"], "others": entry["others"],
+        "wrongActRate": rate(entry["wrongAct"], entry["others"]),
+        "wrongActUpper": wilson(entry["wrongAct"], entry["others"])[1],
+        "authoredWrongActRate": rate(entry["authoredWrongAct"], entry["authoredOthers"]),
+        "authoredWrongActUpper": wilson(entry["authoredWrongAct"], entry["authoredOthers"])[1],
+        "authoredOthers": entry["authoredOthers"],
+        "askRateOther": rate(entry["askOther"], entry["others"]),
+        "ambiguous": entry["ambiguous"],
+        "ambiguousAskRate": rate(entry["ambiguousAskCorrect"], entry["ambiguous"]),
+        "ambiguousActRate": rate(entry["ambiguousAct"], entry["ambiguous"]),
+    }
+
+
+def summarise(cases, decisions, policy):
+    counts = tally(cases, decisions, policy, scopes_of())
+    out = {"policy": {"act": policy[0], "ask": policy[1], "margin": policy[2]}, "cases": len(cases),
+           "moduleFamilies": digest(counts["moduleFamilies"]),
+           "families": {f: digest(counts[f]) for f in MODULE_FAMILIES}, "variants": {}}
+    for variant in sorted({c["variant"] for c in cases}):
+        part = tally(cases, decisions, policy, {"moduleFamilies": (set(MODULE_FAMILIES),
+                                                                   lambda c, v=variant: c["variant"] == v)})
+        out["variants"][variant] = digest(part["moduleFamilies"])
+    return out
+
+
+def feasible(summary, limits):
+    rows = [summary["moduleFamilies"]] + [summary["families"][f] for f in MODULE_FAMILIES]
+    if any(r["wrongActRate"] > limits["wrongAct"] or r["authoredWrongActRate"] > limits["wrongAct"] for r in rows):
+        return False
     pooled = summary["moduleFamilies"]
-    values = {"pooled": pooled["falseRouteRate"], "pooled authored": pooled["authoredFalseRouteRate"]}
-    for family in MODULE_FAMILIES:
-        values[family] = summary["families"][family]["falseRouteRate"]
-        values[family + " authored"] = summary["families"][family]["authoredFalseRouteRate"]
-    return values
+    return pooled["askRateClear"] <= limits["askClear"] and pooled["wrongToolRate"] <= limits["wrongTool"]
 
 
-def passes(summary, ceiling):
-    return all(value <= ceiling for value in rates_of(summary).values())
+def policies():
+    for act in ACTS:
+        for ask in (a for a in ASKS if a <= act):
+            for margin in MARGINS:
+                yield (act, ask, margin)
 
 
-def choose_threshold(cases, decisions, ceiling):
-    for threshold in THRESHOLDS:
-        if passes(summarise(cases, decisions, threshold), ceiling):
-            return threshold
-    return None
+def act_only_policies():
+    for act in ACTS:
+        yield (act, act, 0.0)
+
+
+def choose_policy(cases, decisions, limits):
+    best, best_key = None, None
+    for policy in policies():
+        summary = summarise_pooled(cases, decisions, policy, limits)
+        if summary is None:
+            continue
+        key = (summary["coverage"], -summary["askRateClear"], -summary["askRateOther"], -policy[0])
+        if best_key is None or key > best_key:
+            best, best_key = policy, key
+    return best
+
+
+def summarise_pooled(cases, decisions, policy, limits):
+    counts = tally(cases, decisions, policy, scopes_of())
+    rows = {name: digest(entry) for name, entry in counts.items()}
+    if any(r["wrongActRate"] > limits["wrongAct"] or r["authoredWrongActRate"] > limits["wrongAct"]
+           for r in rows.values()):
+        return None
+    pooled = rows["moduleFamilies"]
+    if pooled["askRateClear"] > limits["askClear"] or pooled["wrongToolRate"] > limits["wrongTool"]:
+        return None
+    return pooled
 
 
 def print_sweep(title, cases, decisions):
-    print(f"\n{title}: {len(cases)} cases")
-    print(f"  {'thr':>6s}{'cover':>8s}{'prec':>8s}{'wrong':>7s}{'falseR':>8s}{'rate':>8s}{'up95':>8s}"
-          f"{'authored':>10s}{'real':>8s}  per-family false-route")
-    for threshold in THRESHOLDS:
-        s = summarise(cases, decisions, threshold)
+    print(f"\n{title}: {len(cases)} cases (act only: no ASK band)")
+    print(f"  {'act':>6s}{'cover':>8s}{'prec':>8s}{'wrongT':>8s}{'wrongA':>8s}{'rate':>8s}{'up95':>8s}"
+          f"{'authored':>10s}  per-family wrong ACT")
+    for policy in act_only_policies():
+        s = summarise(cases, decisions, policy)
         m = s["moduleFamilies"]
-        per = " ".join(f"{f[:4]}={s['families'][f]['falseRouteRate']:.2%}" for f in MODULE_FAMILIES)
-        print(f"  {threshold:6.3f}{m['coverage']:8.3f}{m['precision']:8.3f}{m['wrongTool']:7d}"
-              f"{m['falseRoute']:8d}{m['falseRouteRate']:8.3%}{m['falseRouteUpper']:8.3%}"
-              f"{m['authoredFalseRouteRate']:10.3%}{m['realFalseRouteRate']:8.3%}  {per}")
+        per = " ".join(f"{f[:4]}={s['families'][f]['wrongActRate']:.2%}" for f in MODULE_FAMILIES)
+        print(f"  {policy[0]:6.3f}{m['coverage']:8.3f}{m['precision']:8.3f}{m['wrongToolRate']:8.2%}"
+              f"{m['wrongAct']:8d}{m['wrongActRate']:8.3%}{m['wrongActUpper']:8.3%}"
+              f"{m['authoredWrongActRate']:10.3%}  {per}")
 
 
 def print_families(title, summary):
-    print(f"\n{title} at threshold {summary['threshold']}")
-    print(f"  {'family':10s}{'pos':>5s}{'cover':>8s}{'prec':>8s}{'falseR':>8s}{'rate':>8s}{'up95':>8s}")
-    for family, entry in summary["families"].items():
-        print(f"  {family:10s}{entry['positives']:5d}{entry['coverage']:8.3f}{entry['precision']:8.3f}"
-              f"{entry['falseRoute']:8d}{entry['falseRouteRate']:8.3%}{entry['falseRouteUpper']:8.3%}")
+    p = summary["policy"]
+    print(f"\n{title} at ACT >= {p['act']} / ASK >= {p['ask']} / margin {p['margin']}")
+    print(f"  {'family':10s}{'pos':>5s}{'cover':>8s}{'act':>8s}{'prec':>8s}{'askClr':>8s}{'wrongA':>8s}{'rate':>8s}"
+          f"{'up95':>8s}{'amb':>5s}{'ambAsk':>8s}")
+    for family, e in summary["families"].items():
+        print(f"  {family:10s}{e['positives']:5d}{e['coverage']:8.3f}{e['actCoverage']:8.3f}{e['precision']:8.3f}"
+              f"{e['askRateClear']:8.3f}{e['wrongAct']:8d}{e['wrongActRate']:8.3%}{e['wrongActUpper']:8.3%}"
+              f"{e['ambiguous']:5d}{e['ambiguousAskRate']:8.3f}")
     m = summary["moduleFamilies"]
-    print(f"  {'MODULES':10s}{m['positives']:5d}{m['coverage']:8.3f}{m['precision']:8.3f}"
-          f"{m['falseRoute']:8d}{m['falseRouteRate']:8.3%}{m['falseRouteUpper']:8.3%}"
-          f"  authored {m['authoredFalseRouteRate']:.3%} (n={m['authoredOthers']}, up95 "
-          f"{m['authoredFalseRouteUpper']:.3%}), real {m['realFalseRouteRate']:.3%} (n={m['realOthers']})")
+    print(f"  {'MODULES':10s}{m['positives']:5d}{m['coverage']:8.3f}{m['actCoverage']:8.3f}{m['precision']:8.3f}"
+          f"{m['askRateClear']:8.3f}{m['wrongAct']:8d}{m['wrongActRate']:8.3%}{m['wrongActUpper']:8.3%}"
+          f"{m['ambiguous']:5d}{m['ambiguousAskRate']:8.3f}"
+          f"  near-miss {m['authoredWrongActRate']:.3%} (n={m['authoredOthers']}, up95 {m['authoredWrongActUpper']:.3%})"
+          f", ask on others {m['askRateOther']:.3%}, wrong tool {m['wrongToolRate']:.2%}")
+    for variant, e in summary["variants"].items():
+        print(f"    variant {variant:8s} pos {e['positives']:4d} cover {e['coverage']:.3f} act {e['actCoverage']:.3f} "
+              f"askClear {e['askRateClear']:.3f} wrong ACT {e['wrongActRate']:.3%} ({e['wrongAct']})")
 
 
-def check_gates(gates, summary):
+def limits_of(gates):
+    section = gates.get("decider", {})
+    return {"wrongAct": section.get("wrongActMax", gates.get("sealed", {}).get("falseRouteMax", DEFAULT_WRONG_ACT)),
+            "askClear": section.get("askRateClearMax", DEFAULT_ASK_CLEAR),
+            "wrongTool": section.get("wrongToolActMax", DEFAULT_WRONG_TOOL)}
+
+
+def check_gates(gates, summary, limits, label):
     failures = []
-    metrics = gates.get("router", {}).get("metrics", {})
-    values = {"moduleFamilies.falseRouteRate": summary["moduleFamilies"]["falseRouteRate"],
-              "moduleFamilies.precision": summary["moduleFamilies"]["precision"],
-              "moduleFamilies.coverage": summary["moduleFamilies"]["coverage"]}
-    for family, entry in summary["families"].items():
-        values[f"{family}.falseRouteRate"] = entry["falseRouteRate"]
-        values[f"{family}.precision"] = entry["precision"]
-        values[f"{family}.coverage"] = entry["coverage"]
+    rows = {"moduleFamilies": summary["moduleFamilies"], **summary["families"]}
+    for name, row in rows.items():
+        for key in ("wrongActRate", "authoredWrongActRate"):
+            if row[key] > limits["wrongAct"]:
+                failures.append(f"{label} {name}.{key}: {row[key]:.4%} above {limits['wrongAct']:.2%}")
+    pooled = summary["moduleFamilies"]
+    if pooled["askRateClear"] > limits["askClear"]:
+        failures.append(f"{label} moduleFamilies.askRateClear: {pooled['askRateClear']:.4f} above {limits['askClear']}")
+    if pooled["wrongToolRate"] > limits["wrongTool"]:
+        failures.append(f"{label} moduleFamilies.wrongToolRate: {pooled['wrongToolRate']:.4f} above {limits['wrongTool']}")
+    values = {f"{name}.{key}": value for name, row in rows.items() for key, value in row.items()}
+    metrics = {**gates.get("router", {}).get("metrics", {}), **gates.get("decider", {}).get("metrics", {})}
     for name, bound in metrics.items():
         if name not in values:
             failures.append(f"{name}: no such metric")
             continue
         if "max" in bound and values[name] > bound["max"]:
-            failures.append(f"{name}: {values[name]:.4f} above {bound['max']}")
+            failures.append(f"{label} {name}: {values[name]:.4f} above {bound['max']}")
         if "min" in bound and values[name] < bound["min"]:
-            failures.append(f"{name}: {values[name]:.4f} below {bound['min']}")
+            failures.append(f"{label} {name}: {values[name]:.4f} below {bound['min']}")
     return failures
 
 
@@ -305,45 +395,60 @@ def load_traffic(path):
     for line in pathlib.Path(path).read_text().splitlines():
         parts = line.split("\t")
         if len(parts) >= 2 and parts[0]:
-            cases.append({"text": parts[-1], "lang": parts[1] if len(parts) > 2 else "es", "role": "owner",
-                          "expected": {ROUTE_TOOL[parts[0]]} if parts[0] in ROUTE_TOOL else set(),
-                          "optional": ["app.show_camera"] if parts[0] == "camera" else [],
-                          "label": parts[0], "stratum": "real", "set": pathlib.Path(path).stem})
+            cases.append(describe({
+                "text": parts[-1], "lang": parts[1] if len(parts) > 2 else "es", "role": "owner",
+                "kind": "positive" if parts[0] in ROUTE_TOOL else "negative",
+                "expected": {ROUTE_TOOL[parts[0]]} if parts[0] in ROUTE_TOOL else set(),
+                "optional": ["app.show_camera"] if parts[0] == "camera" else [],
+                "variant": "real", "stratum": "real", "set": pathlib.Path(path).stem}))
     return cases
 
 
-def traffic_share(cases, decisions, threshold):
-    routed = correct = positives = false_actions = negatives = 0
-    for case, (tool, confidence) in zip(cases, decisions):
-        if tool is not None and confidence < threshold:
-            tool = None
-        routed += tool is not None
-        if case["expected"]:
+def traffic_share(cases, decisions, policy):
+    acted = asked = correct = positives = false_actions = negatives = 0
+    for case, decision in zip(cases, decisions):
+        result, options = outcome(decision, policy)
+        acted += result == "act"
+        asked += result == "ask"
+        if case["kind"] == "positive":
             positives += 1
-            correct += tool in case["expected"]
+            correct += (result == "act" and options[0] in case["expected"]) or \
+                       (result == "ask" and bool(set(options) & case["expected"]))
         else:
             negatives += 1
-            false_actions += tool is not None and tool not in case["optional"]
-    return {"turns": len(cases), "routedShare": rate(routed, len(cases)),
-            "conversationShare": 1 - rate(routed, len(cases)),
+            false_actions += result == "act" and options[0] not in case["optional"]
+    total = len(cases)
+    return {"turns": total, "actShare": rate(acted, total), "askShare": rate(asked, total),
+            "conversationShare": 1 - rate(acted + asked, total),
             "memoryCoverage": rate(correct, positives), "falseActionRate": rate(false_actions, negatives)}
+
+
+def read_sealed(path, section, gates):
+    sealed_path = pathlib.Path(path)
+    actual = hashlib.sha256(sealed_path.read_bytes()).hexdigest()
+    if actual != gates[section]["sha256"]:
+        print(f"the {section} set changed: {actual}")
+        return None, actual
+    return load_cases([sealed_path]), actual
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--traffic", nargs="*", default=[])
     parser.add_argument("--decider", required=True)
     parser.add_argument("--gates", required=True)
     parser.add_argument("--select", nargs="+", required=True)
     parser.add_argument("--select-negatives")
+    parser.add_argument("--traffic", nargs="*", default=[])
     parser.add_argument("--sealed")
+    parser.add_argument("--sealed2")
     parser.add_argument("--final", action="store_true")
+    parser.add_argument("--act-only", action="store_true")
     parser.add_argument("--latency", type=int, default=200)
     parser.add_argument("--report")
     args = parser.parse_args()
 
     gates = json.loads(pathlib.Path(args.gates).read_text())
-    ceiling = gates["sealed"]["falseRouteMax"]
+    limits = limits_of(gates)
     try:
         decider = Decider(args.decider)
     except OSError as error:
@@ -353,28 +458,36 @@ def main():
     selection = load_cases(args.select)
     if args.select_negatives:
         selection += load_negatives(args.select_negatives)
-    report = {"decider": args.decider, "selection": len(selection)}
+    report = {"decider": args.decider, "selectionCases": len(selection), "limits": limits}
+    failures = []
     try:
         chosen_decisions = decider.decide_all(selection)
         print_sweep("selection sweep (cases, holdout, real negatives; chooses the operating point)",
                     selection, chosen_decisions)
-        threshold = choose_threshold(selection, chosen_decisions, ceiling)
-        report["threshold"] = threshold
-        if threshold is None:
-            print(f"\nno threshold keeps the false-route rate at or below {ceiling:.2%} on the selection set")
+        if args.act_only:
+            options = [p for p in act_only_policies() if summarise_pooled(selection, chosen_decisions, p, limits)]
+            policy = max(options, key=lambda p: summarise_pooled(selection, chosen_decisions, p, limits)["coverage"],
+                         default=None)
+        else:
+            policy = choose_policy(selection, chosen_decisions, limits)
+        report["policy"] = None if policy is None else {"act": policy[0], "ask": policy[1], "margin": policy[2]}
+        if policy is None:
+            print(f"\nno ACT / ASK policy keeps every wrong-ACT rate at or below {limits['wrongAct']:.2%} "
+                  f"with at most {limits['askClear']:.0%} asks on clear commands on the selection set")
             report["selectionPassed"] = False
         else:
-            print(f"\noperating point chosen on the selection set: confidence >= {threshold} "
-                  f"(lowest threshold with the pooled, the per-family and the authored near-miss false-route rates all <= {ceiling:.2%})")
+            print(f"\npolicy chosen on the selection set: ACT >= {policy[0]}, ASK >= {policy[1]}, margin {policy[2]} "
+                  f"(maximum coverage with every wrong-ACT rate, pooled, per family and on the near-miss stratum, "
+                  f"at or below {limits['wrongAct']:.2%} and at most {limits['askClear']:.0%} asks on clear commands)")
             report["selectionPassed"] = True
-            report["selection"] = summarise(selection, chosen_decisions, threshold)
+            report["selection"] = summarise(selection, chosen_decisions, policy)
             print_families("selection", report["selection"])
         for path in args.traffic:
             traffic = load_traffic(path)
-            share = traffic_share(traffic, decider.decide_all(traffic), threshold or 0.0)
+            share = traffic_share(traffic, decider.decide_all(traffic), policy or (1.01, 1.01, 0.0))
             report.setdefault("traffic", {})[pathlib.Path(path).name] = share
-            print(f"\nreal traffic {pathlib.Path(path).name} at confidence >= {threshold}: {share['turns']} turns, "
-                  f"{share['routedShare']:.1%} reach a tool, {share['conversationShare']:.1%} stay conversation, "
+            print(f"\nreal traffic {pathlib.Path(path).name}: {share['turns']} turns, {share['actShare']:.1%} ACT, "
+                  f"{share['askShare']:.1%} ASK, {share['conversationShare']:.1%} conversation, "
                   f"memory coverage {share['memoryCoverage']:.1%}, false action {share['falseActionRate']:.1%}")
         sample = [c for c in selection if c["stratum"] == "authored"][:args.latency]
         if sample:
@@ -383,28 +496,23 @@ def main():
                                    "p95": sorted(times)[max(0, int(len(times) * 0.95) - 1)], "n": len(times)}
             print(f"\ndecision latency over {len(times)} sequential requests: "
                   f"p50 {report['latencyMs']['p50']:.2f} ms, p95 {report['latencyMs']['p95']:.2f} ms")
-        failures = []
         if args.final:
-            sealed_path = pathlib.Path(args.sealed)
-            actual = hashlib.sha256(sealed_path.read_bytes()).hexdigest()
-            if actual != gates["sealed"]["sha256"]:
-                print(f"the sealed set changed: {actual}")
-                return 1
-            sealed = load_cases([sealed_path])
-            decisions = decider.decide_all(sealed)
-            print("\nFINAL MEASUREMENT on the sealed set (sha256 " + actual + ")")
-            print_sweep("sealed sweep, information only: the operating point is NOT chosen from it",
-                        sealed, decisions)
-            if threshold is not None:
-                final = summarise(sealed, decisions, threshold)
-                report["sealed"] = final
-                print_families("sealed", final)
-                failures = check_gates(gates, final)
-                for name, value in rates_of(final).items():
-                    if value > ceiling:
-                        failures.append(f"sealed {name} false-route {value:.3%} above {ceiling:.2%}")
-            else:
-                failures.append("no operating point meets the ceiling on the selection set")
+            for section, path in (("sealed", args.sealed), ("sealed2", args.sealed2)):
+                if not path:
+                    continue
+                sealed, actual = read_sealed(path, section, gates)
+                if sealed is None:
+                    return 1
+                decisions = decider.decide_all(sealed)
+                print(f"\nFINAL MEASUREMENT on {section} (sha256 {actual})")
+                print_sweep(f"{section} sweep, information only: the policy is NOT chosen from it", sealed, decisions)
+                if policy is None:
+                    failures.append(f"{section}: no operating point meets the ceilings on the selection set")
+                    continue
+                final = summarise(sealed, decisions, policy)
+                report[section] = final
+                print_families(section, final)
+                failures += check_gates(gates, final, limits, section)
     finally:
         decider.close()
     report["offeredViolations"] = decider.violations
@@ -412,7 +520,7 @@ def main():
         print(f"\n{decider.violations} answers named a tool that was not offered and were counted as none")
     report["failures"] = failures
     if args.report:
-        pathlib.Path(args.report).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        pathlib.Path(args.report).write_text(json.dumps(report, indent=2, sort_keys=True, default=list) + "\n")
     print()
     if failures:
         print("GATE FAILED")
