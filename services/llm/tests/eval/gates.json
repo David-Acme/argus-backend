@@ -565,5 +565,33 @@
         "min": 0.9
       }
     }
+  },
+  "slots": {
+    "metrics": {
+      "guessedRate": {
+        "max": 0
+      },
+      "spuriousClarifyRate": {
+        "max": 0.05
+      },
+      "timeAccuracy": {
+        "min": 0.9
+      },
+      "titleAccuracy": {
+        "min": 0.9
+      },
+      "nameAccuracy": {
+        "min": 0.9
+      },
+      "moduleAccuracy": {
+        "min": 0.95
+      },
+      "rangeAccuracy": {
+        "min": 0.9
+      },
+      "missingAccuracy": {
+        "min": 0.9
+      }
+    }
   }
 }

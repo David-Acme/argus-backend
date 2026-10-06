@@ -53,6 +53,10 @@ if(ARGUS_PYTHON3)
     add_test(NAME conversation-eval-test
         COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/conversation-eval-test.py)
     set_tests_properties(conversation-eval-test PROPERTIES LABELS eval)
+
+    add_test(NAME slot-eval-test
+        COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/slot-eval-test.py)
+    set_tests_properties(slot-eval-test PROPERTIES LABELS eval)
 endif()
 
 add_executable(eval-score-test eval-score-test.cc)
