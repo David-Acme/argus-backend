@@ -708,7 +708,10 @@ def main():
             print(f"\n{len(rows)} selection-set errors written to {args.errors}")
         for path in args.traffic:
             traffic = load_traffic(path)
-            share = traffic_share(traffic, decider.decide_all(traffic), policy or FALLBACK_POLICY)
+            heard = decider.decide_all(traffic)
+            if args.calibration:
+                heard = apply_calibration(heard, json.loads(pathlib.Path(args.calibration).read_text()))
+            share = traffic_share(traffic, heard, policy or FALLBACK_POLICY)
             report.setdefault("traffic", {})[pathlib.Path(path).name] = share
             note = "" if policy else f" (no feasible policy: reported at ACT >= {FALLBACK_POLICY[0]})"
             print(f"\nreal traffic {pathlib.Path(path).name}{note}: {share['turns']} turns, {share['actShare']:.1%} ACT, "

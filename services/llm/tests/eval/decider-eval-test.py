@@ -303,6 +303,16 @@ class RunTest(unittest.TestCase):
         self.assertAlmostEqual(share["memoryCoverage"], 0.5)
         self.assertAlmostEqual(share["falseActionRate"], 0.5)
 
+    def test_real_traffic_is_scored_with_the_same_calibration_as_the_selection_set(self):
+        traffic = self.directory / "traffic.tsv"
+        traffic.write_text("memory_save\tes\trecuerda que la llave está abajo\nnone\tes\tuna agenda\n")
+        flattened = self.directory / "flat.json"
+        flattened.write_text(json.dumps({"confidence": {"type": "platt", "scale": 1.0, "shift": -10.0}}))
+        _, raw = self.run_harness("--traffic", str(traffic))
+        _, calibrated = self.run_harness("--traffic", str(traffic), "--calibration", str(flattened))
+        self.assertAlmostEqual(raw["traffic"]["traffic.tsv"]["actShare"], 1.0)
+        self.assertAlmostEqual(calibrated["traffic"]["traffic.tsv"]["actShare"], 0.0)
+
     def test_a_tool_that_was_not_offered_is_counted_as_none(self):
         rogue = self.directory / "rogue.py"
         rogue.write_text("import json, sys\nfor line in sys.stdin:\n    r = json.loads(line)\n"
