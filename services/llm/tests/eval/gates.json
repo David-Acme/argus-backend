@@ -593,5 +593,15 @@
         "min": 0.9
       }
     }
+  },
+  "router": {
+    "metrics": {
+      "moduleFamilies.precision": {
+        "min": 0.87
+      },
+      "moduleFamilies.coverage": {
+        "min": 0.45
+      }
+    }
   }
 }
