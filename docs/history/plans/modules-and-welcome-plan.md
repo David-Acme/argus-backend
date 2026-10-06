@@ -47,12 +47,15 @@ welcome and the modules screen render whatever the catalog says.
 - Each service **installs its own components** through the settings wire (rule 27: nobody writes
   another owner's models dir). The wire gains `ComponentStates` (installed / missing / installing,
   bytes present) and `InstallComponent` / `CancelComponent` (start or stop fetching one component;
-  progress is read back with `ComponentStates`). A `download` component is fetched by the new
-  tier-1 `lib/fetch`; a `provisioned` one answers `hostOnly` with its command.
-- `lib/fetch` (libcurl from Conan, tier 1): one call downloads a pinned file to `<target>.part`
-  with a `<target>.part.json` sidecar (`{url, size, sha256, etag}`), resumes with `Range` (206
-  appends, 200 truncates and restarts), reports bytes through a callback, honours a cancellation
-  token, verifies SHA-256 and renames atomically. Redirects followed, TLS verified, bounded retries.
+  progress is read back with `ComponentStates`). A `download` component is fetched by the
+  downloader in `lib/http`; a `provisioned` one answers `hostOnly` with its command.
+- The downloader lives in the existing `lib/http` and uses Drogon's own `HttpClient` (no new
+  dependency). Drogon's client buffers a whole response, so a file is fetched in bounded chunks of
+  successive `Range` requests appended to `<target>.part`, with a `<target>.part.json` sidecar
+  (`{url, finalUrl, size, sha256, etag, bytes}`): bounded memory, natural resume and per-chunk
+  progress. Redirects are followed by hand with a bounded number of hops, TLS is verified, every
+  chunk must answer 206 with a matching `Content-Range`, SHA-256 is computed incrementally and the
+  final rename is atomic.
 - **Gating**: `role_access` maps route prefixes to modules; `RoleFilter` refuses a route of a
   disabled module with 403 `MODULE_DISABLED` (no new filter, the chain of rule 5 is unchanged). The
   enabled set reaches every service through the durable NATS subject `argus.settings.v1.module`
