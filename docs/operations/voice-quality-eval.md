@@ -63,7 +63,9 @@ MINDS-14, FLEURS, Tatoeba; CC-BY-4.0 and CC-BY-2.0-FR, named per case in `source
 module, schedule and memory cue was filtered. Its sha256 is pinned in `gates.json` and the ctest
 `eval-sealed-hash` fails the day a byte changes; `intent-training` refuses to build a corpus when it
 differs and drops from training every row that is within Jaccard 0.65 or token containment 0.8 of a
-sealed text (`scripts/filter_sealed.py` applies the same test to any file). Nobody who tunes a decider
+sealed text (`scripts/filter_sealed.py` applies the same test to any file). It is not fully independent of the judge corpus a rule tier was tuned on: 22 of its 352 positives
+and 16 of its 363 authored near-misses are within Jaccard 0.65 of a `cases.jsonl` text (89 and 37 within
+0.5), the exact duplicates having been dropped when it was written. Nobody who tunes a decider
 reads it: the harness reports numbers, never failing utterances, and the operating point is chosen
 on the selection sets, not on it.
 
