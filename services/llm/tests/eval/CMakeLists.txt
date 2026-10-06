@@ -43,6 +43,14 @@ add_test(NAME eval-sealed-hash
         -DDIR=${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check-sealed.cmake)
 
+find_program(ARGUS_PYTHON3 python3)
+
+if(ARGUS_PYTHON3)
+    add_test(NAME decider-eval-test
+        COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/decider-eval-test.py)
+    set_tests_properties(decider-eval-test PROPERTIES LABELS eval)
+endif()
+
 add_executable(eval-score-test eval-score-test.cc)
 
 target_link_libraries(eval-score-test PRIVATE llm-eval-core doctest::doctest)
