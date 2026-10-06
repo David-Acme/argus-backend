@@ -9,6 +9,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
+if(NOT TARGET argus::lib::test-support)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/test-support
+                     ${CMAKE_BINARY_DIR}/test-support)
+endif()
+
 set(NOTIFICATION_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(PROJECT_IS_TOP_LEVEL)
@@ -211,6 +216,7 @@ add_test(NAME notification-rpc-test COMMAND notification-rpc-test)
 
 add_executable(notification-no-nats-test
     tests/unit/notification-no-nats-test.cc)
+target_link_libraries(notification-no-nats-test PRIVATE argus::lib::test-support)
 
 set_target_properties(notification-no-nats-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -285,6 +291,7 @@ add_test(NAME notification-change-transaction-test
          COMMAND notification-change-transaction-test)
 
 add_executable(notification-ack-test tests/unit/notification-ack-test.cc)
+target_link_libraries(notification-ack-test PRIVATE argus::lib::test-support)
 
 set_target_properties(notification-ack-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -337,6 +344,7 @@ add_test(NAME push-intent-test COMMAND push-intent-test)
 
 add_executable(camera-notifier-test
     tests/unit/camera-notifier-test.cc)
+target_link_libraries(camera-notifier-test PRIVATE argus::lib::test-support)
 
 set_target_properties(camera-notifier-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -361,6 +369,7 @@ add_test(NAME camera-notifier-test COMMAND camera-notifier-test)
 
 add_executable(notification-module-request-test
     tests/unit/notification-module-request-test.cc)
+target_link_libraries(notification-module-request-test PRIVATE argus::lib::test-support)
 
 set_target_properties(notification-module-request-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -409,6 +418,7 @@ foreach(TEST_NAME IN ITEMS call-policy-test call-engine-test call-verdict-wire-t
     target_link_libraries(${TEST_NAME} PRIVATE
         argus::notification-call
         argus::lib::sqlite
+        argus::lib::test-support
         doctest::doctest)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})

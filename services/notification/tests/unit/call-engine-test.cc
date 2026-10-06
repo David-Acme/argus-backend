@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
+#include <test-support/app-runner.hxx>
 
 #include <drogon/drogon.h>
 #include <feature/call/services/call-engine.hxx>
@@ -34,29 +35,7 @@ namespace
 {
 constexpr int64_t kStart = 1800000000;
 
-class AppRunner
-{
-public:
-  AppRunner() : runner_([] { drogon::app().run(); }) {}
-
-  ~AppRunner()
-  {
-    if (!runner_.joinable())
-      return;
-    if (drogon::app().getLoop()->isRunning()) {
-      drogon::app().quit();
-      runner_.join();
-      return;
-    }
-    runner_.detach();
-  }
-
-  AppRunner(const AppRunner&) = delete;
-  AppRunner& operator=(const AppRunner&) = delete;
-
-private:
-  std::thread runner_;
-};
+using test_support::AppRunner;
 
 struct SharedBoot
 {
