@@ -303,6 +303,20 @@ set_target_properties(llm-reply-claims-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-reply-claims-test COMMAND llm-reply-claims-test)
 
+add_executable(llm-module-command-test tests/unit/llm-module-command-test.cc)
+
+target_link_libraries(llm-module-command-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_definitions(llm-module-command-test PRIVATE
+    ARGUS_EVAL_CASES_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/eval/cases.jsonl"
+    ARGUS_SETTINGS_MODULES_FILE="${CMAKE_CURRENT_SOURCE_DIR}/../settings/modules.json")
+
+target_compile_options(llm-module-command-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-module-command-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-module-command-test COMMAND llm-module-command-test)
+
 add_executable(llm-spoken-intent-test tests/unit/llm-spoken-intent-test.cc)
 
 target_link_libraries(llm-spoken-intent-test PRIVATE argus::llm doctest::doctest)

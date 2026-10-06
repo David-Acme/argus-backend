@@ -8,6 +8,8 @@ argus_module(NAME llm
         services/sampling-config.cc
         services/tools/app-command.cc
         services/tools/core-tools.cc
+        services/tools/module-command-lexicon.cc
+        services/tools/module-command.cc
         services/tools/module-offer.cc
         services/tools/remote-tool.cc
         services/tools/reply-claim-lexicon.cc
