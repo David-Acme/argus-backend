@@ -2626,6 +2626,78 @@
       "unit": "productivity"
     },
     {
+      "method": "POST",
+      "path": "/reminder",
+      "probe": "owner-create",
+      "request": {
+        "auth": "owner",
+        "body": "{\"title\": \"Golden created\", \"scheduledAt\": 4102444800}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "completedAt": "<masked>",
+            "createdAt": "<masked>",
+            "createdBy": 1,
+            "deletedAt": "<masked>",
+            "description": "",
+            "id": 2,
+            "isCompleted": false,
+            "recurrenceRule": null,
+            "scheduledAt": "<masked>",
+            "targetUserId": 1,
+            "title": "Golden created",
+            "updatedAt": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/reminder",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/reminder",
+      "probe": "resident-create-ignores-target",
+      "request": {
+        "auth": "resident",
+        "body": "{\"title\": \"Golden resident\", \"scheduledAt\": 4102444800, \"targetUserId\": 1}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "completedAt": "<masked>",
+            "createdAt": "<masked>",
+            "createdBy": 2,
+            "deletedAt": "<masked>",
+            "description": "",
+            "id": 3,
+            "isCompleted": false,
+            "recurrenceRule": null,
+            "scheduledAt": "<masked>",
+            "targetUserId": 2,
+            "title": "Golden resident",
+            "updatedAt": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/reminder",
+      "unit": "productivity"
+    },
+    {
       "method": "DELETE",
       "path": "/reminder/999999",
       "probe": "no-token",
@@ -2735,6 +2807,52 @@
       "probe": "owner",
       "request": {
         "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Reminder not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/reminder/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/reminder/{id:deleteReminder}",
+      "probe": "owner-delete-own",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": null,
+        "pretty": false,
+        "status": 204,
+        "text": ""
+      },
+      "route": "/reminder/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/reminder/{id:foreignDelete}",
+      "probe": "resident-foreign-row",
+      "request": {
+        "auth": "resident",
         "body": null,
         "contentType": null,
         "userAgent": "recorder"
@@ -2892,6 +3010,68 @@
       "request": {
         "auth": "owner",
         "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Reminder not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/reminder/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/reminder/{id:patchReminder}",
+      "probe": "owner-complete-own",
+      "request": {
+        "auth": "owner",
+        "body": "{\"isCompleted\": true}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "completedAt": "<masked>",
+            "createdAt": "<masked>",
+            "createdBy": 1,
+            "deletedAt": "<masked>",
+            "description": "",
+            "id": 6,
+            "isCompleted": true,
+            "recurrenceRule": null,
+            "scheduledAt": "<masked>",
+            "targetUserId": 1,
+            "title": "Golden patch target",
+            "updatedAt": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/reminder/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/reminder/{id:foreignPatch}",
+      "probe": "resident-foreign-row",
+      "request": {
+        "auth": "resident",
+        "body": "{\"title\": \"not yours\"}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },

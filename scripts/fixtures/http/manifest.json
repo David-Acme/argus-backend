@@ -42,7 +42,7 @@
       "errors"
     ]
   },
-  "probes": 747,
+  "probes": 767,
   "sessions": "scripts/seed-golden.py --roles (owner, resident, guest)",
   "sources": "scripts/lib/route-baseline.txt (the route census)",
   "units": [
@@ -114,6 +114,15 @@
       "reason": "the Owner's activity history grows with every write the fleet makes, and the rows reach argus-sync asynchronously over NATS, so the page a probe reads depends on how many had landed; the envelope, the access answers beside it and the filters and paging (pinned by sync-activity-test) stay checked",
       "route": "/sync/activity",
       "unit": "sync"
+    },
+    {
+      "keys": [
+        "data",
+        "filesBytes"
+      ],
+      "reason": "the module's data summary is read live from five owners (the synced change history arrives asynchronously over NATS) and the bytes of its files come from the model files present on the answering host; the refusal, the stops, the role holders, the invitations, the roles an uninstall may give and what keeps running stay pinned, and the data summary itself is pinned by GET /modules/{id}/data",
+      "route": "/modules/{1}/impact",
+      "unit": "settings"
     }
   ]
 }

@@ -128,6 +128,45 @@
       "unit": "identity"
     },
     {
+      "method": "GET",
+      "path": "/invitation",
+      "probe": "owner-module-revoked",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "modulesOff": [
+          "surveillance"
+        ],
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": [
+            {
+              "createdAt": "<masked>",
+              "createdBy": 1,
+              "expiresAt": "<masked>",
+              "id": 1,
+              "maxRedemptions": 1,
+              "redemptionCount": 0,
+              "revokedAt": "<masked>",
+              "revokedModule": "surveillance",
+              "revokedReason": "module_disabled",
+              "role": "guard"
+            }
+          ],
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
       "method": "POST",
       "path": "/invitation",
       "probe": "no-token",

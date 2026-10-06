@@ -106,6 +106,131 @@ EXTRA_PROBES = {
          "body": json.dumps({"role": "guard"}),
          "modulesOff": ("surveillance",)},
     ),
+    ("identity", "GET", "/invitation"): (
+        {"name": "owner-module-revoked", "auth": "owner",
+         "path": "/invitation",
+         "before": ({"method": "POST", "path": "/invitation",
+                     "body": json.dumps({"role": "guard"})},),
+         "modulesOff": ("surveillance",),
+         "settle": True},
+    ),
+    ("settings", "GET", "/modules/{1}/impact"): (
+        {"name": "owner-surveillance-disable", "auth": "owner",
+         "path": "/modules/surveillance/impact?action=disable"},
+        {"name": "owner-surveillance-uninstall", "auth": "owner",
+         "path": "/modules/surveillance/impact?action=uninstall"},
+        {"name": "owner-productivity-disable", "auth": "owner",
+         "path": "/modules/productivity/impact?action=disable"},
+        {"name": "owner-core-refused", "auth": "owner",
+         "path": "/modules/core/impact?action=disable"},
+        {"name": "owner-surveillance-uninstall-with-holder", "auth": "owner",
+         "path": "/modules/surveillance/impact?action=uninstall",
+         "before": ({"unit": "identity", "method": "PATCH",
+                     "path": "/user/{user:resident}",
+                     "body": json.dumps({"role": "guard"})},
+                    {"unit": "identity", "method": "POST",
+                     "path": "/invitation",
+                     "body": json.dumps({"role": "guard"}),
+                     "remember": ("pendingInvitation", "info.id")}),
+         "after": ({"unit": "identity", "method": "PATCH",
+                    "path": "/user/{user:resident}",
+                    "body": json.dumps({"role": "resident"}),
+                    "tolerate": True},
+                   {"unit": "identity", "method": "DELETE",
+                    "path": "/invitation/{id:pendingInvitation}",
+                    "tolerate": True})},
+    ),
+    ("settings", "POST", "/modules/{1}/request"): (
+        {"name": "resident-productivity-off", "auth": "resident",
+         "path": "/modules/productivity/request",
+         "modulesOff": ("productivity",)},
+        {"name": "guest-productivity-off", "auth": "guest",
+         "path": "/modules/productivity/request",
+         "modulesOff": ("productivity",)},
+        {"name": "resident-productivity-off-again", "auth": "resident",
+         "path": "/modules/productivity/request",
+         "modulesOff": ("productivity",)},
+        {"name": "owner-productivity-off", "auth": "owner",
+         "path": "/modules/productivity/request",
+         "modulesOff": ("productivity",)},
+        {"name": "resident-module-on", "auth": "resident",
+         "path": "/modules/productivity/request"},
+        {"name": "resident-coming-soon", "auth": "resident",
+         "path": "/modules/agronomy/request"},
+    ),
+    ("settings", "POST", "/modules/{1}/uninstall"): (
+        {"name": "owner-surveillance-roles-held", "auth": "owner",
+         "path": "/modules/surveillance/uninstall",
+         "body": json.dumps({"keepData": True}),
+         "before": ({"unit": "identity", "method": "PATCH",
+                     "path": "/user/{user:resident}",
+                     "body": json.dumps({"role": "guard"})},),
+         "after": ({"unit": "identity", "method": "PATCH",
+                    "path": "/user/{user:resident}",
+                    "body": json.dumps({"role": "resident"}),
+                    "tolerate": True},)},
+        {"name": "owner-surveillance-reassign", "auth": "owner",
+         "path": "/modules/surveillance/uninstall",
+         "body": json.dumps({"keepData": True,
+                             "reassign": {"{user:resident}": "resident"}}),
+         "before": ({"unit": "identity", "method": "PATCH",
+                     "path": "/user/{user:resident}",
+                     "body": json.dumps({"role": "guard"})},),
+         "modulesOff": ("surveillance",)},
+    ),
+    ("productivity", "POST", "/reminder"): (
+        {"name": "owner-create", "auth": "owner", "path": "/reminder",
+         "body": json.dumps({"title": "Golden created",
+                             "scheduledAt": 4102444800}),
+         "remember": ("createdReminder", "info.id"),
+         "after": ({"method": "DELETE", "path": "/reminder/{id:createdReminder}",
+                    "tolerate": True},)},
+        {"name": "resident-create-ignores-target", "auth": "resident",
+         "path": "/reminder",
+         "body": json.dumps({"title": "Golden resident",
+                             "scheduledAt": 4102444800,
+                             "targetUserId": 1}),
+         "remember": ("residentReminder", "info.id"),
+         "after": ({"method": "DELETE", "auth": "resident",
+                    "path": "/reminder/{id:residentReminder}",
+                    "tolerate": True},)},
+    ),
+    ("productivity", "PATCH", "/reminder/{1}"): (
+        {"name": "owner-complete-own", "auth": "owner",
+         "path": "/reminder/{id:patchReminder}",
+         "body": json.dumps({"isCompleted": True}),
+         "before": ({"method": "POST", "path": "/reminder",
+                     "body": json.dumps({"title": "Golden patch target",
+                                         "scheduledAt": 4102444800}),
+                     "remember": ("patchReminder", "info.id")},),
+         "after": ({"method": "DELETE", "path": "/reminder/{id:patchReminder}",
+                    "tolerate": True},)},
+        {"name": "resident-foreign-row", "auth": "resident",
+         "path": "/reminder/{id:foreignPatch}",
+         "body": json.dumps({"title": "not yours"}),
+         "before": ({"method": "POST", "path": "/reminder",
+                     "body": json.dumps({"title": "Golden owner row",
+                                         "scheduledAt": 4102444800}),
+                     "remember": ("foreignPatch", "info.id")},),
+         "after": ({"method": "DELETE", "path": "/reminder/{id:foreignPatch}",
+                    "tolerate": True},)},
+    ),
+    ("productivity", "DELETE", "/reminder/{1}"): (
+        {"name": "owner-delete-own", "auth": "owner",
+         "path": "/reminder/{id:deleteReminder}",
+         "before": ({"method": "POST", "path": "/reminder",
+                     "body": json.dumps({"title": "Golden delete target",
+                                         "scheduledAt": 4102444800}),
+                     "remember": ("deleteReminder", "info.id")},)},
+        {"name": "resident-foreign-row", "auth": "resident",
+         "path": "/reminder/{id:foreignDelete}",
+         "before": ({"method": "POST", "path": "/reminder",
+                     "body": json.dumps({"title": "Golden owner row",
+                                         "scheduledAt": 4102444800}),
+                     "remember": ("foreignDelete", "info.id")},),
+         "after": ({"method": "DELETE", "path": "/reminder/{id:foreignDelete}",
+                    "tolerate": True},)},
+    ),
 }
 
 MODULE_GATES = {
@@ -120,6 +245,10 @@ CHALLENGE_SLOT = "{challenge}"
 MODULE_DATA = "/modules/{1}/data"
 MODULE_DATA_ID = "productivity"
 SESSION_SLOT_RE = re.compile(r"\{session:([a-z]+)\}")
+RUNTIME_SLOT_RE = re.compile(r"\{id:([A-Za-z]+)\}")
+USER_SLOT_RE = re.compile(r"\{user:([a-z]+)\}")
+RUNTIME_IDS = {}
+SETTLE_SECONDS = 1.0
 
 ID_SLOTS = {
     "/auth/device-login/": MISSING_ID,
@@ -436,6 +565,29 @@ def is_control(unit, path):
             and parts[0] == "" and parts[3] in CONTROL_ROUTES)
 
 
+def fill_users(text, ids):
+    if text is None:
+        return None
+    slots = {"resident": ids.get("residentUser"), "guest": ids.get("guestUser")}
+    return USER_SLOT_RE.sub(
+        lambda match: str(slots.get(match.group(1)) or MISSING_ID), text)
+
+
+def fill_runtime(text):
+    if text is None or isinstance(text, bytes):
+        return text
+    return RUNTIME_SLOT_RE.sub(
+        lambda match: str(RUNTIME_IDS[match.group(1)]), text)
+
+
+def dig(node, path):
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
+
+
 def probe_plan(route, ids, roles):
     method = route["methods"][0]
     filters = route["filters"]
@@ -444,7 +596,8 @@ def probe_plan(route, ids, roles):
 
     def add(name, auth=None, ua=RECORDER_UA, body=None,
             content_type="application/json", missing=False, path=None,
-            modules_off=(), after=None):
+            modules_off=(), after=None, before=(), remember=None,
+            settle=False):
         probes.append({
             "name": name,
             "auth": auth,
@@ -454,6 +607,9 @@ def probe_plan(route, ids, roles):
             "path": path or route_identity(route, ids, missing),
             "modulesOff": list(modules_off),
             "after": after,
+            "before": list(before),
+            "remember": remember,
+            "settle": settle,
         })
 
     if route["multipart"]:
@@ -502,14 +658,21 @@ def probe_plan(route, ids, roles):
     for extra in EXTRA_PROBES.get((route["unit"], method, route["path"]), ()):
         if extra["auth"] in roles and all(
                 role in roles for role in SESSION_SLOT_RE.findall(extra["path"])):
-            resolved = extra["path"].replace(
-                "{user:resident}", str(ids.get("residentUser") or MISSING_ID))
-            after = extra.get("after")
-            if after:
-                after = {**after, "path": resolved}
+            resolved = fill_users(extra["path"], ids)
+            after = extra.get("after") or ()
+            if isinstance(after, dict):
+                after = (after,)
+            hooks = lambda items: [
+                {**hook, "path": fill_users(hook.get("path", resolved), ids),
+                 "body": fill_users(hook.get("body"), ids)}
+                for hook in items]
+            extra_body = extra.get("body", body)
             add(extra["name"], auth=extra["auth"],
-                body=extra.get("body", body), path=resolved,
-                modules_off=extra.get("modulesOff", ()), after=after)
+                body=fill_users(extra_body, ids), path=resolved,
+                modules_off=extra.get("modulesOff", ()),
+                after=hooks(after), before=hooks(extra.get("before") or ()),
+                remember=extra.get("remember"),
+                settle=extra.get("settle", False))
     return probes
 
 
@@ -611,6 +774,7 @@ def fresh_challenge(base, timeout):
 
 
 def resolve_path(path, base, sessions, timeout):
+    path = fill_runtime(path)
     if CHALLENGE_SLOT in path:
         path = path.replace(CHALLENGE_SLOT, fresh_challenge(base, timeout))
     return SESSION_SLOT_RE.sub(
@@ -653,52 +817,95 @@ def module_gated(base, path, sessions, timeout):
 
 
 def switch_module_off(entry, bases, module, sessions, timeout):
-    gate = MODULE_GATES[(entry["baseUnit"], module)]
-    base = bases[entry["baseUnit"]]
+    gate = MODULE_GATES.get((entry["baseUnit"], module))
     status, _, body = owner_call(bases["settings"], "POST",
                                  f"/modules/{module}/disable", sessions,
                                  timeout, "{}")
     if status != 200:
         raise SystemExit(f"disabling {module} answered {status} "
                          f"{body[:200]!r}")
+    if gate is None:
+        wait_until(lambda: module_lifecycle(bases, module, sessions, timeout)
+                   == "disabled", f"{module} to be disabled")
+        return
+    base = bases[entry["baseUnit"]]
     wait_until(lambda: module_gated(base, gate, sessions, timeout),
                f"{entry['baseUnit']} to refuse {module} routes")
 
 
+def install_module(bases, module, sessions, timeout):
+    deadline = time.monotonic() + MODULE_WAIT_SECONDS
+    while True:
+        status, _, body = owner_call(bases["settings"], "POST",
+                                     f"/modules/{module}/install", sessions,
+                                     timeout, "{}")
+        if status in (200, 202):
+            return
+        if status != 409 or b"MODULE_JOB_RUNNING" not in body \
+                or time.monotonic() > deadline:
+            raise SystemExit(f"enabling {module} answered {status} "
+                             f"{body[:200]!r}")
+        time.sleep(MODULE_POLL_SECONDS)
+
+
 def switch_module_on(entry, bases, module, sessions, timeout):
-    gate = MODULE_GATES[(entry["baseUnit"], module)]
-    base = bases[entry["baseUnit"]]
-    status, _, body = owner_call(bases["settings"], "POST",
-                                 f"/modules/{module}/install", sessions,
-                                 timeout, "{}")
-    if status not in (200, 202):
-        raise SystemExit(f"enabling {module} answered {status} "
-                         f"{body[:200]!r}")
+    gate = MODULE_GATES.get((entry["baseUnit"], module))
+    install_module(bases, module, sessions, timeout)
     wait_until(lambda: module_lifecycle(bases, module, sessions, timeout)
                == "active", f"{module} to be active again")
+    if gate is None:
+        return
+    base = bases[entry["baseUnit"]]
     wait_until(lambda: not module_gated(base, gate, sessions, timeout),
                f"{entry['baseUnit']} to serve {module} routes again")
 
 
+def run_hook(hook, entry, bases, sessions, timeout):
+    base = bases[hook.get("unit", entry["baseUnit"])]
+    role = hook.get("auth", "owner")
+    body = fill_runtime(hook.get("body"))
+    headers = {"User-Agent": RECORDER_UA, "Accept": "application/json",
+               "Authorization": f"Bearer {session_of(role, sessions)}",
+               **device_headers(role)}
+    path = fill_runtime(hook["path"])
+    status, _, raw = send(base, hook["method"], path, headers, body,
+                          "application/json" if body is not None else None,
+                          timeout)
+    if status >= 400 and not hook.get("tolerate"):
+        raise SystemExit(f"setup call {hook['method']} {path} answered "
+                         f"{status} {raw[:200]!r}")
+    if hook.get("remember") and 200 <= status < 300:
+        slot, where = hook["remember"]
+        RUNTIME_IDS[slot] = dig(json.loads(raw), where)
+
+
 def run_entry(entry, bases, sessions, timeout):
     base = bases[entry["baseUnit"]]
-    off = entry["probe"].get("modulesOff") or []
-    if not off:
+    probe = entry["probe"]
+    off = probe.get("modulesOff") or []
+    before = probe.get("before") or []
+    after = probe.get("after") or []
+    if isinstance(after, dict):
+        after = [after]
+    if not off and not before and not after:
         return run_probe(entry, base, sessions, timeout)
-    if "settings" not in bases:
+    if off and "settings" not in bases:
         raise SystemExit("a probe that switches a module off needs "
                          "argus-settings booted")
     switched = []
     try:
+        for hook in before:
+            run_hook(hook, entry, bases, sessions, timeout)
         for module in off:
             switch_module_off(entry, bases, module, sessions, timeout)
             switched.append(module)
+        if probe.get("settle"):
+            time.sleep(SETTLE_SECONDS)
         return run_probe(entry, base, sessions, timeout)
     finally:
-        after = entry["probe"].get("after")
-        if after:
-            owner_call(base, after["method"], after["path"], sessions,
-                       timeout, after["body"])
+        for hook in after:
+            run_hook({"tolerate": True, **hook}, entry, bases, sessions,
+                     timeout)
         for module in reversed(switched):
             switch_module_on(entry, bases, module, sessions, timeout)
 
@@ -711,7 +918,7 @@ def run_probe(entry, base, sessions, timeout):
         headers["Authorization"] = f"Bearer {token}"
         if probe["userAgent"] == RECORDER_UA:
             headers.update(device_headers(probe["auth"]))
-    payload = probe["body"]
+    payload = fill_runtime(probe["body"])
     if payload is None:
         described = None
     elif isinstance(payload, bytes):
@@ -751,6 +958,9 @@ def run_probe(entry, base, sessions, timeout):
         record["response"]["text"] = mask_text(body)[:TEXT_LIMIT]
     else:
         record["response"]["json"] = normalize(parsed)
+        if probe.get("remember") and 200 <= status < 300:
+            slot, where = probe["remember"]
+            RUNTIME_IDS[slot] = dig(parsed, where)
     return record
 
 

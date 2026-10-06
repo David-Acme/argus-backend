@@ -1071,6 +1071,667 @@
       "unit": "settings"
     },
     {
+      "method": "GET",
+      "path": "/modules/surveillance/impact?action=disable",
+      "probe": "owner-surveillance-disable",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "action": "disable",
+            "allowed": true,
+            "data": {
+              "owners": [
+                {
+                  "bytes": 647,
+                  "items": [
+                    {
+                      "count": 1,
+                      "kind": "cameras"
+                    },
+                    {
+                      "count": 1,
+                      "kind": "zones"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "evidence_photos"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "camera_actions"
+                    }
+                  ],
+                  "owner": "camera",
+                  "reachable": true,
+                  "reported": true
+                },
+                {
+                  "bytes": 3622,
+                  "items": [
+                    {
+                      "count": 0,
+                      "kind": "environments"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "episodes"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "incidents"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "decisions"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "expected_guests"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "evidence_photos"
+                    }
+                  ],
+                  "owner": "guard",
+                  "reachable": true,
+                  "reported": true
+                },
+                {
+                  "bytes": 0,
+                  "items": [
+                    {
+                      "count": 0,
+                      "kind": "visitors"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "visitor_face_samples"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "visits"
+                    }
+                  ],
+                  "owner": "identity",
+                  "reachable": true,
+                  "reported": true
+                },
+                {
+                  "bytes": 369,
+                  "items": [
+                    {
+                      "count": 2,
+                      "kind": "change_history"
+                    }
+                  ],
+                  "owner": "sync",
+                  "reachable": true,
+                  "reported": true
+                }
+              ]
+            },
+            "filesBytes": 578108270,
+            "invitations": [],
+            "keepsRunning": [
+              {
+                "id": "safety_alerts",
+                "text": {
+                  "en": "Panic or duress alerts already raised keep going until someone attends them.",
+                  "es": "Las alertas de p\u00e1nico o coacci\u00f3n en curso seguir\u00e1n hasta que alguien las atienda."
+                }
+              }
+            ],
+            "moduleId": "surveillance",
+            "reassignRoles": [],
+            "refusal": null,
+            "roleEffect": "none",
+            "roleHolders": [],
+            "roleMoves": [],
+            "stops": [
+              {
+                "count": 0,
+                "kind": "live_views"
+              },
+              {
+                "count": 0,
+                "kind": "camera_talk"
+              },
+              {
+                "count": null,
+                "kind": "camera_detection"
+              },
+              {
+                "count": null,
+                "kind": "guard_evaluation"
+              },
+              {
+                "count": null,
+                "kind": "guard_digests"
+              },
+              {
+                "count": 0,
+                "kind": "guard_duty"
+              },
+              {
+                "count": 0,
+                "kind": "pending_alerts"
+              },
+              {
+                "count": null,
+                "kind": "visitor_recognition"
+              }
+            ],
+            "unreachable": []
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/modules/{1}/impact",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules/surveillance/impact?action=uninstall",
+      "probe": "owner-surveillance-uninstall",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "action": "uninstall",
+            "allowed": true,
+            "data": {
+              "owners": [
+                {
+                  "bytes": 647,
+                  "items": [
+                    {
+                      "count": 1,
+                      "kind": "cameras"
+                    },
+                    {
+                      "count": 1,
+                      "kind": "zones"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "evidence_photos"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "camera_actions"
+                    }
+                  ],
+                  "owner": "camera",
+                  "reachable": true,
+                  "reported": true
+                },
+                {
+                  "bytes": 3622,
+                  "items": [
+                    {
+                      "count": 0,
+                      "kind": "environments"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "episodes"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "incidents"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "decisions"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "expected_guests"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "evidence_photos"
+                    }
+                  ],
+                  "owner": "guard",
+                  "reachable": true,
+                  "reported": true
+                },
+                {
+                  "bytes": 0,
+                  "items": [
+                    {
+                      "count": 0,
+                      "kind": "visitors"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "visitor_face_samples"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "visits"
+                    }
+                  ],
+                  "owner": "identity",
+                  "reachable": true,
+                  "reported": true
+                },
+                {
+                  "bytes": 369,
+                  "items": [
+                    {
+                      "count": 2,
+                      "kind": "change_history"
+                    }
+                  ],
+                  "owner": "sync",
+                  "reachable": true,
+                  "reported": true
+                }
+              ]
+            },
+            "filesBytes": 578108270,
+            "invitations": [],
+            "keepsRunning": [
+              {
+                "id": "safety_alerts",
+                "text": {
+                  "en": "Panic or duress alerts already raised keep going until someone attends them.",
+                  "es": "Las alertas de p\u00e1nico o coacci\u00f3n en curso seguir\u00e1n hasta que alguien las atienda."
+                }
+              }
+            ],
+            "moduleId": "surveillance",
+            "reassignRoles": [
+              "resident",
+              "guest"
+            ],
+            "refusal": null,
+            "roleEffect": "none",
+            "roleHolders": [],
+            "roleMoves": [],
+            "stops": [
+              {
+                "count": 0,
+                "kind": "live_views"
+              },
+              {
+                "count": 0,
+                "kind": "camera_talk"
+              },
+              {
+                "count": null,
+                "kind": "camera_detection"
+              },
+              {
+                "count": null,
+                "kind": "guard_evaluation"
+              },
+              {
+                "count": null,
+                "kind": "guard_digests"
+              },
+              {
+                "count": 0,
+                "kind": "guard_duty"
+              },
+              {
+                "count": 0,
+                "kind": "pending_alerts"
+              },
+              {
+                "count": null,
+                "kind": "visitor_recognition"
+              }
+            ],
+            "unreachable": []
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/modules/{1}/impact",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules/productivity/impact?action=disable",
+      "probe": "owner-productivity-disable",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "action": "disable",
+            "allowed": true,
+            "data": {
+              "owners": [
+                {
+                  "bytes": 315,
+                  "items": [
+                    {
+                      "count": 1,
+                      "kind": "projects"
+                    },
+                    {
+                      "count": 1,
+                      "kind": "tasks"
+                    },
+                    {
+                      "count": 1,
+                      "kind": "project_members"
+                    },
+                    {
+                      "count": 1,
+                      "kind": "calendar_events"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "calendar_shares"
+                    }
+                  ],
+                  "owner": "productivity",
+                  "reachable": true,
+                  "reported": true
+                },
+                {
+                  "bytes": 0,
+                  "items": [
+                    {
+                      "count": 0,
+                      "kind": "change_history"
+                    }
+                  ],
+                  "owner": "sync",
+                  "reachable": true,
+                  "reported": true
+                }
+              ]
+            },
+            "filesBytes": 0,
+            "invitations": [],
+            "keepsRunning": [],
+            "moduleId": "productivity",
+            "reassignRoles": [],
+            "refusal": null,
+            "roleEffect": "none",
+            "roleHolders": [],
+            "roleMoves": [],
+            "stops": [
+              {
+                "count": 0,
+                "kind": "agenda_calls"
+              }
+            ],
+            "unreachable": []
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/modules/{1}/impact",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules/core/impact?action=disable",
+      "probe": "owner-core-refused",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "action": "disable",
+            "allowed": false,
+            "data": {
+              "owners": []
+            },
+            "filesBytes": 1085866221,
+            "invitations": [],
+            "keepsRunning": [],
+            "moduleId": "core",
+            "reassignRoles": [],
+            "refusal": {
+              "code": "MODULE_CORE",
+              "message": "The core module cannot be disabled"
+            },
+            "roleEffect": "none",
+            "roleHolders": [],
+            "roleMoves": [],
+            "stops": [],
+            "unreachable": []
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/modules/{1}/impact",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules/surveillance/impact?action=uninstall",
+      "probe": "owner-surveillance-uninstall-with-holder",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "action": "uninstall",
+            "allowed": true,
+            "data": {
+              "owners": [
+                {
+                  "bytes": 647,
+                  "items": [
+                    {
+                      "count": 1,
+                      "kind": "cameras"
+                    },
+                    {
+                      "count": 1,
+                      "kind": "zones"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "evidence_photos"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "camera_actions"
+                    }
+                  ],
+                  "owner": "camera",
+                  "reachable": true,
+                  "reported": true
+                },
+                {
+                  "bytes": 3622,
+                  "items": [
+                    {
+                      "count": 0,
+                      "kind": "environments"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "episodes"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "incidents"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "decisions"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "expected_guests"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "evidence_photos"
+                    }
+                  ],
+                  "owner": "guard",
+                  "reachable": true,
+                  "reported": true
+                },
+                {
+                  "bytes": 0,
+                  "items": [
+                    {
+                      "count": 0,
+                      "kind": "visitors"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "visitor_face_samples"
+                    },
+                    {
+                      "count": 0,
+                      "kind": "visits"
+                    }
+                  ],
+                  "owner": "identity",
+                  "reachable": true,
+                  "reported": true
+                },
+                {
+                  "bytes": 369,
+                  "items": [
+                    {
+                      "count": 2,
+                      "kind": "change_history"
+                    }
+                  ],
+                  "owner": "sync",
+                  "reachable": true,
+                  "reported": true
+                }
+              ]
+            },
+            "filesBytes": 578108270,
+            "invitations": [
+              {
+                "createdBy": 1,
+                "createdByName": "Golden",
+                "expiresAt": "<masked>",
+                "id": 2,
+                "role": "guard"
+              }
+            ],
+            "keepsRunning": [
+              {
+                "id": "safety_alerts",
+                "text": {
+                  "en": "Panic or duress alerts already raised keep going until someone attends them.",
+                  "es": "Las alertas de p\u00e1nico o coacci\u00f3n en curso seguir\u00e1n hasta que alguien las atienda."
+                }
+              }
+            ],
+            "moduleId": "surveillance",
+            "reassignRoles": [
+              "resident",
+              "guest"
+            ],
+            "refusal": null,
+            "roleEffect": "reassign_required",
+            "roleHolders": [
+              {
+                "isActive": true,
+                "lastName": "Resident",
+                "name": "Golden",
+                "role": "guard",
+                "userId": 2
+              }
+            ],
+            "roleMoves": [],
+            "stops": [
+              {
+                "count": 0,
+                "kind": "live_views"
+              },
+              {
+                "count": 0,
+                "kind": "camera_talk"
+              },
+              {
+                "count": null,
+                "kind": "camera_detection"
+              },
+              {
+                "count": null,
+                "kind": "guard_evaluation"
+              },
+              {
+                "count": null,
+                "kind": "guard_digests"
+              },
+              {
+                "count": 0,
+                "kind": "guard_duty"
+              },
+              {
+                "count": 0,
+                "kind": "pending_alerts"
+              },
+              {
+                "count": null,
+                "kind": "visitor_recognition"
+              }
+            ],
+            "unreachable": []
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/modules/{1}/impact",
+      "unit": "settings"
+    },
+    {
       "method": "POST",
       "path": "/modules/999999/install",
       "probe": "no-token",
@@ -1540,6 +2201,177 @@
     },
     {
       "method": "POST",
+      "path": "/modules/productivity/request",
+      "probe": "resident-productivity-off",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "modulesOff": [
+          "productivity"
+        ],
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "duplicate": false,
+            "moduleId": "productivity",
+            "requested": true
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/modules/{1}/request",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/productivity/request",
+      "probe": "guest-productivity-off",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "modulesOff": [
+          "productivity"
+        ],
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "duplicate": false,
+            "moduleId": "productivity",
+            "requested": true
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/modules/{1}/request",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/productivity/request",
+      "probe": "resident-productivity-off-again",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "modulesOff": [
+          "productivity"
+        ],
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "duplicate": true,
+            "moduleId": "productivity",
+            "requested": true
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/modules/{1}/request",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/productivity/request",
+      "probe": "owner-productivity-off",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "modulesOff": [
+          "productivity"
+        ],
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "CONFLICT",
+            "message": "The Owner turns modules on directly"
+          },
+          "info": null,
+          "status": 409
+        },
+        "pretty": true,
+        "status": 409
+      },
+      "route": "/modules/{1}/request",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/productivity/request",
+      "probe": "resident-module-on",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "CONFLICT",
+            "message": "The module is already enabled"
+          },
+          "info": null,
+          "status": 409
+        },
+        "pretty": true,
+        "status": 409
+      },
+      "route": "/modules/{1}/request",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/agronomy/request",
+      "probe": "resident-coming-soon",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "MODULE_COMING_SOON",
+            "message": "This module is not available yet"
+          },
+          "info": null,
+          "status": 409
+        },
+        "pretty": true,
+        "status": 409
+      },
+      "route": "/modules/{1}/request",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
       "path": "/modules/999999/resume",
       "probe": "no-token",
       "request": {
@@ -1846,6 +2678,83 @@
         },
         "pretty": true,
         "status": 404
+      },
+      "route": "/modules/{1}/uninstall",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/surveillance/uninstall",
+      "probe": "owner-surveillance-roles-held",
+      "request": {
+        "auth": "owner",
+        "body": "{\"keepData\": true}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": [
+            {
+              "code": "MODULE_ROLES_HELD",
+              "message": "People hold roles of this module; give each a new role to uninstall it"
+            },
+            {
+              "code": "ROLE_HOLDER",
+              "message": "2:guard"
+            }
+          ],
+          "info": null,
+          "status": 409
+        },
+        "pretty": true,
+        "status": 409
+      },
+      "route": "/modules/{1}/uninstall",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/surveillance/uninstall",
+      "probe": "owner-surveillance-reassign",
+      "request": {
+        "auth": "owner",
+        "body": "{\"keepData\": true, \"reassign\": {\"2\": \"resident\"}}",
+        "contentType": "application/json",
+        "modulesOff": [
+          "surveillance"
+        ],
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "bytesDone": 0,
+            "bytesPerSecond": 0,
+            "bytesTotal": 0,
+            "etaSeconds": null,
+            "id": 8,
+            "kind": "uninstall",
+            "owner": null,
+            "progress": 0.0,
+            "reason": null,
+            "roleMoves": [
+              {
+                "from": "guard",
+                "name": "Golden Resident",
+                "to": "resident",
+                "userId": 2
+              }
+            ],
+            "state": "queued"
+          },
+          "status": 202
+        },
+        "pretty": true,
+        "status": 202
       },
       "route": "/modules/{1}/uninstall",
       "unit": "settings"

@@ -152,8 +152,11 @@ A run is additive on three tables and leaves every domain table byte-identical:
 | `identity.user`, `auth.refresh_token` | the run's own transient users and sessions; three rows become one at the owner's re-mint, and the last one stays |
 | `auth.sqlite_sequence`, `sync.sqlite_sequence` | SQLite's AUTOINCREMENT high-water marks, which gain a row the first time such a table is written |
 
-No fixture row of any domain — person, camera, zone, reminder, project,
-notification, invitation — is created, updated or deleted.
+No fixture row of any domain — person, camera, zone, project — is created,
+updated or deleted. The probes that describe a success a refusal cannot (the
+module-effects routes) build the state they need through the same API, record,
+and put it back in their `after` steps; what they leave is listed next to the
+role probes below.
 
 Three probes of the role-per-module contract change state on purpose and put
 it back before the next probe: `PATCH /user/{resident}` to `guard` while the
@@ -168,6 +171,22 @@ six `settings.module_audit` rows and two `settings.module_job` rows for those
 two switches, rewrites `settings.module_state` and `module_journal`, and adds
 eight `identity.change_outbox` rows for the role writes; the resident's role
 and every module end as they began.
+
+The module-effects probes use three more hooks of the harness (`before` and
+`after` request lists, `remember` of an id from an answer, `settle` for an
+asynchronous reaction) and are:
+
+| Probe | What it builds, and what stays |
+|-------|--------------------------------|
+| `GET /modules/{id}/impact` (surveillance and productivity, both actions; core refused; uninstall with a holder and a pending invitation) | the holder (the resident moved to `guard`) and the invitation exist only for the last probe; the `after` steps move the resident back and revoke the invitation by hand, which leaves one revoked row |
+| `POST /modules/{id}/request` (resident, guest, resident again, owner, module on, coming soon) | the first three disable productivity and enable it again; the sandbox's notification service keeps one `module_request` per person and day for the Owner, and the second ask by the resident answers `duplicate: true` |
+| `POST /modules/{id}/uninstall` (`MODULE_ROLES_HELD`; 202 with `reassign`) | the resident becomes a guard; the 202 probe runs with surveillance switched off, moves the resident back to `resident`, queues an uninstall job that fails in the sandbox (its vlm owner is not booted) and is followed by the install that restores the module; the roles-held probe moves the resident back in its `after` step |
+| `GET /invitation` (module-revoked row) | creates a guard invitation, switches surveillance off, waits for the revocation and reads the list; the revoked row stays |
+| `POST /reminder`, `PATCH` and `DELETE /reminder/{id}` | each success creates its own reminder and deletes it again (a soft-deleted row stays per probe); a resident's attempt on the Owner's row answers 404 |
+
+The 410 of `POST /invitation/resolve` is not recorded: `resolve` answers 409
+`Server is not paired yet` until `[pairing] paired = true` in the identity
+sandbox config, so that row is checked by the live script, not by the replay.
 
 ## Coverage
 
@@ -191,10 +210,10 @@ more than it is:
   statically.
 - **multipart success paths**: both multipart routes are recorded only in the
   refusal shapes (422, 401, 409), never with a face that would log in.
-- **`PATCH /auth/me`, `POST /guard/mode` and `POST /invitation` success
-  paths**: their probes carry a body built to fail validation, on purpose, so
-  a replay cannot rename the owner, flip the guard mode or mint an
-  invitation. `POST /camera/probe` probes the fixture camera's own address,
+- **`PATCH /auth/me` and `POST /guard/mode` success paths**: their probes
+  carry a body built to fail validation, on purpose, so a replay cannot rename
+  the owner or flip the guard mode. The success of `POST /invitation` is
+  exercised only as the setup of the module-revoked listing above. `POST /camera/probe` probes the fixture camera's own address,
   `127.0.0.1:1`, which refuses at once, so its success shape is pinned
   without reaching a device.
 - **the settings first run**: `native-stack.sh` turns it off in the sandbox
