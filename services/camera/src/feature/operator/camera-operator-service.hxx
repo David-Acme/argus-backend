@@ -11,6 +11,7 @@
 #include <atomic>
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -39,6 +40,7 @@ public:
     IObjectEventSink* sink{nullptr};
     const IKnownPersonMatcher* matcher{nullptr};
     IZoneSource* zones{nullptr};
+    std::function<bool()> active{};
   };
 
   struct Inputs
@@ -57,6 +59,8 @@ public:
   [[nodiscard]] bool drained() const;
 
   [[nodiscard]] bool running() const { return running_.load(); }
+
+  [[nodiscard]] std::size_t cameraLoops() const;
 
   struct ProcessFrameInput
   {
@@ -195,6 +199,10 @@ private:
   drogon::Task<void> supervise();
   void rescan();
 
+  [[nodiscard]] bool active() const;
+
+  void idleCameraLoops();
+
   bool isNightHour(int hour) const;
 
   bool cameraHasMotion(const cv::Mat& rgb, CameraState& state) const;
@@ -219,6 +227,6 @@ private:
   std::atomic<int64_t> inFlight_{0};
   std::mutex stateMutex_;
   std::map<int64_t, CameraState> states_;
-  std::mutex camerasMutex_;
+  mutable std::mutex camerasMutex_;
   std::map<int64_t, std::shared_ptr<std::atomic<bool>>> cameraStop_;
 };

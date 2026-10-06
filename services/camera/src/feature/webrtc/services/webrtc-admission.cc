@@ -79,3 +79,14 @@ void WebRtcAdmission::remember(const WebRtcTagOwner& owner)
   std::scoped_lock lock(mutex_);
   owners_[owner.tag] = {.userId = owner.userId, .at = owner.at};
 }
+
+std::vector<std::string> WebRtcAdmission::tagsOf(int64_t userId)
+{
+  std::scoped_lock lock(mutex_);
+  std::vector<std::string> tags;
+  for (const auto& [tag, owner] : owners_) {
+    if (owner.userId == userId)
+      tags.push_back(tag);
+  }
+  return tags;
+}

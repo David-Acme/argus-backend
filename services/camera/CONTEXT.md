@@ -1744,3 +1744,30 @@ voice it transcribed for the guard.
 - `scripts/provision.sh` installs go2rtc v1.9.14 only: the asset for the host
   is downloaded to `.part`, checked against its pinned SHA-256 and moved into
   place (macOS assets are zips and are unpacked first).
+
+## Surveillance as a selectable module (2026-10, the modules plan)
+
+`main.cc` installs the module gate (`module_gate::install`, durable
+`argus-camera-modules`, `packages/lib/auth/CONTEXT.md`, "Module gating"), so
+`RoleFilter` answers 403 `MODULE_DISABLED` on `/camera` and `/zone` while
+surveillance is not `active`, and the `/media` socket, which runs without
+`RoleFilter`, closes itself on connect with `module_disabled`.
+
+- **Background work idles, nothing is deleted.** The operator's rescan stops
+  every camera loop and starts none while the gate says surveillance is off
+  (`Dependencies::active`); the next rescan after the enable starts them
+  again (at most `operator.camera_rescan_ms`). The health monitor skips its
+  sampling the same way and reports `idle()`. Streams, rows, zones and
+  evidence stay as they are.
+- **Open views end on disable.** A gate change to disabled closes every
+  `/media` socket (`module_disabled`) and every tagged WebRTC viewer
+  (`WebRtcSessionCloser::closeAll`).
+- **A role or account change ends that user's views.** The session
+  revocation consumer gained a second ordered durable,
+  `argus-camera-identity-user` on `argus.identity.v1.change`: a user audit
+  whose diff names `role` or `isActive` closes every `/media` socket of that
+  user (`role_changed`) and the WebRTC viewers whose tags the admission
+  remembers for that user (`WebRtcAdmission::tagsOf`,
+  `WebRtcSessionCloser::closeUser`), the way a revocation closes one
+  session's. The 60 s `MediaAccessCheck` sweep stays as the backstop. Other
+  identity changes (names, catalog rows) are acked and ignored.

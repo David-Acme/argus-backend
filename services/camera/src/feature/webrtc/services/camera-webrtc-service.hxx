@@ -11,7 +11,9 @@
 #include <json/value.h>
 
 #include <cstdint>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 struct CameraWebRtcRequest
 {
@@ -40,6 +42,8 @@ public:
   drogon::Task<ResponseCameraWebRtcDto> answer(CameraWebRtcRequest request) const;
 
   static WebRtcViewerTally tally(const WebRtcViewerCount& count);
+
+  [[nodiscard]] static std::vector<std::string> viewerTagsOf(int64_t userId);
 
 private:
   static WebRtcAdmission& admission();

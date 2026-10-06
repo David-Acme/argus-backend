@@ -2,6 +2,7 @@
 
 #include <json/value.h>
 #include <sync/sync-change.hxx>
+#include <sync/table-name.hxx>
 #include <text/json-util.hxx>
 
 #include <vector>
@@ -25,23 +26,44 @@ void MediaSessionRegistry::remove(const drogon::WebSocketConnectionPtr& connecti
   open_.erase(connection.get());
 }
 
-std::size_t MediaSessionRegistry::closeSession(const MediaSessionKey& session)
+std::size_t MediaSessionRegistry::closeWhere(
+    const std::function<bool(const MediaSessionOpen&)>& matches, const std::string& reason)
 {
-  std::vector<drogon::WebSocketConnectionPtr> revoked;
+  std::vector<drogon::WebSocketConnectionPtr> closed;
   {
     std::scoped_lock lock(mutex_);
-    std::erase_if(open_, [&session, &revoked](const auto& entry) {
-      const MediaSessionOpen& open = entry.second;
-      if (open.session.userId != session.userId ||
-          open.session.sessionId != session.sessionId)
+    std::erase_if(open_, [&matches, &closed](const auto& entry) {
+      if (!matches(entry.second))
         return false;
-      revoked.push_back(open.connection);
+      closed.push_back(entry.second.connection);
       return true;
     });
   }
-  for (const auto& connection : revoked)
-    connection->shutdown(drogon::CloseCode::kViolation, "session_revoked");
-  return revoked.size();
+  for (const auto& connection : closed)
+    connection->shutdown(drogon::CloseCode::kViolation, reason);
+  return closed.size();
+}
+
+std::size_t MediaSessionRegistry::closeSession(const MediaSessionKey& session)
+{
+  return closeWhere(
+      [&session](const MediaSessionOpen& open) {
+        return open.session.userId == session.userId &&
+               open.session.sessionId == session.sessionId;
+      },
+      "session_revoked");
+}
+
+std::size_t MediaSessionRegistry::closeUser(int64_t userId)
+{
+  return closeWhere(
+      [userId](const MediaSessionOpen& open) { return open.session.userId == userId; },
+      "role_changed");
+}
+
+std::size_t MediaSessionRegistry::closeAll(const std::string& reason)
+{
+  return closeWhere([](const MediaSessionOpen&) { return true; }, reason);
 }
 
 std::size_t MediaSessionRegistry::size() const
@@ -65,4 +87,20 @@ std::optional<MediaSessionKey> session_revocation::parse(const std::string& body
   if (sessionId.empty() || sessionId.size() > kMaxSessionIdBytes)
     return std::nullopt;
   return MediaSessionKey{.userId = user.asInt64(), .sessionId = std::move(sessionId)};
+}
+
+std::optional<int64_t> session_revocation::parseUserChange(const std::string& body)
+{
+  const Json::Value change = json_util::fromString(body);
+  if (!change.isObject() ||
+      change.get(sync_change::kKindField, "").asString() != sync_change::kKindAudit ||
+      change.get("table_name", "").asString() != tableNameToString(TableName::User))
+    return std::nullopt;
+  const Json::Value& record = change["record_id"];
+  const Json::Value& changes = change["changes"];
+  if (!record.isInt64() || record.asInt64() <= 0 || !changes.isObject())
+    return std::nullopt;
+  if (!changes.isMember("role") && !changes.isMember("isActive"))
+    return std::nullopt;
+  return record.asInt64();
 }

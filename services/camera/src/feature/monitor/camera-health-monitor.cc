@@ -251,6 +251,17 @@ drogon::Task<void> CameraHealthMonitor::run()
 {
   const int64_t rescanMs = std::min<int64_t>(kRescanMs, config_.intervalMs);
   while (running_.load()) {
+    if (dependencies_.active && !dependencies_.active()) {
+      if (!idle_.exchange(true)) {
+        std::scoped_lock lock(stateMutex_);
+        states_.clear();
+        LOG_INFO << "Camera health monitor: surveillance is disabled; idle until it is enabled again";
+      }
+      co_await drogon::sleepCoro(drogon::app().getLoop(),
+                                 std::chrono::milliseconds(rescanMs));
+      continue;
+    }
+    idle_.store(false);
     const auto cameras = co_await BlockingTask<std::vector<CameraRef>>(
         [this]() { return loadCameras(); });
     {

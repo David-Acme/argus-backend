@@ -138,9 +138,44 @@ bool CameraOperatorService::drained() const
   return inFlight_.load(std::memory_order_acquire) == 0;
 }
 
+bool CameraOperatorService::active() const
+{
+  return !inputs_.dependencies.active || inputs_.dependencies.active();
+}
+
+std::size_t CameraOperatorService::cameraLoops() const
+{
+  std::scoped_lock lock(camerasMutex_);
+  return cameraStop_.size();
+}
+
+void CameraOperatorService::idleCameraLoops()
+{
+  std::size_t stopped = 0;
+  {
+    std::scoped_lock lock(camerasMutex_);
+    for (const auto& [id, stop] : cameraStop_)
+      stop->store(true);
+    stopped = cameraStop_.size();
+    cameraStop_.clear();
+  }
+  if (stopped == 0)
+    return;
+  {
+    std::scoped_lock stateLock(stateMutex_);
+    states_.clear();
+  }
+  LOG_INFO << "Camera operator: surveillance is disabled; " << stopped
+           << " camera loop(s) idle until it is enabled again";
+}
+
 void CameraOperatorService::rescan()
 {
   const in_flight::Guard guard(inFlight_);
+  if (!active()) {
+    idleCameraLoops();
+    return;
+  }
   std::vector<CameraRef> cameras;
   try {
     const auto rows = DbService::client()->execSqlSync(

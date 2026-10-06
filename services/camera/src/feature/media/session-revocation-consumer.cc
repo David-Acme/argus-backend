@@ -31,9 +31,12 @@ bool namesSessionAction(const std::string& body)
 
 SessionRevocationConsumer::Config SessionRevocationConsumer::defaults()
 {
-  return {.stream = nats_subject::kAuthSessionStream,
-          .subject = nats_subject::kAuthSession,
-          .durable = "argus-camera-auth-session",
+  return {.sessions = {.stream = nats_subject::kAuthSessionStream,
+                       .subject = nats_subject::kAuthSession,
+                       .durable = "argus-camera-auth-session"},
+          .users = {.stream = nats_subject::kIdentityChangeStream,
+                    .subject = nats_subject::kIdentityChange,
+                    .durable = "argus-camera-identity-user"},
           .maxDeliver = 10};
 }
 
@@ -62,7 +65,7 @@ void SessionRevocationConsumer::connect(const std::stop_token& stop)
 {
   bool warned = false;
   while (!stop.stop_requested()) {
-    if (subscribe()) {
+    if (subscribePending()) {
       if (stop.stop_requested())
         requestStop();
       break;
@@ -77,16 +80,41 @@ void SessionRevocationConsumer::connect(const std::stop_token& stop)
   connecting_.store(false, std::memory_order_release);
 }
 
+bool SessionRevocationConsumer::subscribePending()
+{
+  bool sessionsPending = false;
+  bool usersPending = false;
+  {
+    std::scoped_lock lock(mutex_);
+    sessionsPending = !sessionSubscription_.has_value();
+    usersPending = !userSubscription_.has_value() && dependencies_.onUserChanged;
+  }
+  bool attached = true;
+  if (sessionsPending) {
+    const bool subscribed = subscribe(config_.sessions);
+    attached = attached && subscribed;
+  }
+  if (usersPending) {
+    const bool subscribed = subscribe(config_.users);
+    attached = attached && subscribed;
+  }
+  return attached;
+}
+
 void SessionRevocationConsumer::requestStop()
 {
   connector_.request_stop();
-  std::optional<uint64_t> subscription;
+  std::optional<uint64_t> sessions;
+  std::optional<uint64_t> users;
   {
     std::scoped_lock lock(mutex_);
-    subscription.swap(subscription_);
+    sessions.swap(sessionSubscription_);
+    users.swap(userSubscription_);
   }
-  if (subscription.has_value() && dependencies_.bus)
-    dependencies_.bus->unsubscribe(*subscription);
+  for (const auto& subscription : {sessions, users}) {
+    if (subscription.has_value() && dependencies_.bus)
+      dependencies_.bus->unsubscribe(*subscription);
+  }
 }
 
 bool SessionRevocationConsumer::drained() const
@@ -95,12 +123,12 @@ bool SessionRevocationConsumer::drained() const
          !connecting_.load(std::memory_order_acquire);
 }
 
-bool SessionRevocationConsumer::subscribe()
+bool SessionRevocationConsumer::subscribe(const Feed& feed)
 {
   const auto subscription = dependencies_.bus->subscribeDurable(
-      {.stream = config_.stream,
-       .durable = config_.durable,
-       .subject = config_.subject,
+      {.stream = feed.stream,
+       .durable = feed.durable,
+       .subject = feed.subject,
        .deliverAll = false,
        .maxDeliver = config_.maxDeliver,
        .maxAckPending = NatsBus::kOrderedMaxAckPending,
@@ -112,10 +140,13 @@ bool SessionRevocationConsumer::subscribe()
     return false;
   {
     std::scoped_lock lock(mutex_);
-    subscription_ = subscription;
+    if (feed.durable == config_.users.durable)
+      userSubscription_ = subscription;
+    else
+      sessionSubscription_ = subscription;
   }
-  LOG_INFO << "Media session revocations: durable " << config_.durable
-           << " connected on " << config_.subject;
+  LOG_INFO << "Media session revocations: durable " << feed.durable
+           << " connected on " << feed.subject;
   return true;
 }
 
@@ -124,6 +155,16 @@ void SessionRevocationConsumer::handle(const NatsBus::DurableMessage& message,
 {
   const in_flight::Guard guard(inFlight_);
   const std::string body(message.payload);
+  if (message.subject == config_.users.subject) {
+    handleUser(body, settlement);
+    return;
+  }
+  handleSession(body, settlement);
+}
+
+void SessionRevocationConsumer::handleSession(const std::string& body,
+                                              const NatsBus::DurableSettlement& settlement)
+{
   const auto session = session_revocation::parse(body);
   if (!session) {
     settleWith(namesSessionAction(body) ? settlement.term : settlement.ack);
@@ -135,5 +176,18 @@ void SessionRevocationConsumer::handle(const NatsBus::DurableMessage& message,
   if (closed > 0)
     LOG_INFO << "Media session revocations: closed " << closed
              << " live view(s) of a revoked session of user " << session->userId;
+  settleWith(settlement.ack);
+}
+
+void SessionRevocationConsumer::handleUser(const std::string& body,
+                                           const NatsBus::DurableSettlement& settlement)
+{
+  if (const auto userId = session_revocation::parseUserChange(body)) {
+    const std::size_t closed = dependencies_.sessions->closeUser(*userId);
+    if (dependencies_.onUserChanged)
+      dependencies_.onUserChanged(*userId);
+    LOG_INFO << "Media session revocations: the role or the account of user " << *userId
+             << " changed; closed " << closed << " live view(s)";
+  }
   settleWith(settlement.ack);
 }

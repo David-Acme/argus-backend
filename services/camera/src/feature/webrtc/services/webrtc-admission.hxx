@@ -69,6 +69,7 @@ public:
   [[nodiscard]] WebRtcSeatVerdict reserve(const WebRtcSeatRequest& request);
   void release(const WebRtcSeatRelease& seat);
   void remember(const WebRtcTagOwner& owner);
+  [[nodiscard]] std::vector<std::string> tagsOf(int64_t userId);
 
   [[nodiscard]] static bool hasRoom(const WebRtcRoomCheck& check);
 

@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -111,4 +112,58 @@ TEST_CASE("a closed socket leaves the registry, and one with no session is never
   CHECK(registry.size() == 0);
   CHECK(registry.closeSession({.userId = 7, .sessionId = "aa11"}) == 0);
   CHECK_FALSE(live->closed);
+}
+
+namespace
+{
+std::string userAudit(int64_t user, const std::string& changes)
+{
+  return R"({"kind":"audit","record_id":)" + std::to_string(user) +
+         R"(,"table_name":"user","changes":)" + changes +
+         R"(,"priority":1,"users":[1],"event_timestamp":1})";
+}
+}
+
+TEST_CASE("a role or account change of a user names that user, any other change names nobody")
+{
+  CHECK(session_revocation::parseUserChange(
+            userAudit(7, R"({"role":{"previous":"resident","current":"guest"}})")) ==
+        std::optional<int64_t>(7));
+  CHECK(session_revocation::parseUserChange(
+            userAudit(9, R"({"isActive":{"previous":true,"current":false}})")) ==
+        std::optional<int64_t>(9));
+  CHECK_FALSE(session_revocation::parseUserChange(
+                  userAudit(7, R"({"name":{"previous":"Ana","current":"Ana M"}})"))
+                  .has_value());
+  CHECK_FALSE(session_revocation::parseUserChange(
+                  R"({"kind":"audit","record_id":7,"table_name":"person","changes":{"role":{}}})")
+                  .has_value());
+  CHECK_FALSE(session_revocation::parseUserChange(
+                  R"({"kind":"identity","table":"user","id":7,"row":{"role":"guest"}})")
+                  .has_value());
+  CHECK_FALSE(session_revocation::parseUserChange(userAudit(0, R"({"role":{}})")).has_value());
+  CHECK_FALSE(session_revocation::parseUserChange("not json").has_value());
+}
+
+TEST_CASE("a role change closes every live view of that user, and only theirs")
+{
+  MediaSessionRegistry registry;
+  const auto first = std::make_shared<ClosingConnection>();
+  const auto second = std::make_shared<ClosingConnection>();
+  const auto other = std::make_shared<ClosingConnection>();
+  registry.add({.connection = first, .session = {.userId = 7, .sessionId = "aa11"}});
+  registry.add({.connection = second, .session = {.userId = 7, .sessionId = "bb22"}});
+  registry.add({.connection = other, .session = {.userId = 8, .sessionId = "aa11"}});
+
+  CHECK(registry.closeUser(7) == 2);
+  CHECK(first->closed);
+  CHECK(second->closed);
+  CHECK(first->closeReason == "role_changed");
+  CHECK_FALSE(other->closed);
+  CHECK(registry.size() == 1);
+
+  CHECK(registry.closeAll("module_disabled") == 1);
+  CHECK(other->closed);
+  CHECK(other->closeReason == "module_disabled");
+  CHECK(registry.size() == 0);
 }

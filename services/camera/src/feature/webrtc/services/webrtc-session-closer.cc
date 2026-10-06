@@ -1,5 +1,6 @@
 #include "webrtc-session-closer.hxx"
 
+#include <feature/webrtc/services/camera-webrtc-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 
 #include <drogon/drogon.h>
@@ -29,6 +30,16 @@ drogon::Task<std::size_t> WebRtcSessionCloser::closeAll() const
 {
   co_return co_await closeWhere(
       [](const std::string& userAgent) { return webrtc_viewer::isTagged(userAgent); });
+}
+
+drogon::Task<std::size_t> WebRtcSessionCloser::closeUser(int64_t userId) const
+{
+  auto tags = CameraWebRtcService::viewerTagsOf(userId);
+  if (tags.empty())
+    co_return 0;
+  co_return co_await closeWhere([tags = std::move(tags)](const std::string& userAgent) {
+    return std::ranges::find(tags, userAgent) != tags.end();
+  });
 }
 
 drogon::Task<std::size_t>

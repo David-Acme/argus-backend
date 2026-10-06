@@ -1,6 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <algorithm>
+
 #include <errors/validation-exception.hxx>
 #include <feature/webrtc/dtos/camera-webrtc-offer-dto.hxx>
 #include <feature/webrtc/dtos/response-camera-webrtc-dto.hxx>
@@ -351,4 +353,24 @@ TEST_CASE("WebRTC seats are reserved atomically, capped per user, and the househ
   CHECK(WebRtcAdmission::hasRoom({.used = 7, .limit = 8, .priority = true}));
   CHECK_FALSE(WebRtcAdmission::hasRoom({.used = 7, .limit = 8, .priority = false}));
   CHECK(WebRtcAdmission::hasRoom({.used = 0, .limit = 1, .priority = false}));
+}
+
+TEST_CASE("a role change finds every WebRTC view its user holds, so the closer can end them")
+{
+  WebRtcAdmission admission;
+  const auto now = std::chrono::steady_clock::now();
+  const std::string first = webrtc_viewer::tagOf({.userId = 4, .sessionId = "aa11"});
+  const std::string second = webrtc_viewer::tagOf({.userId = 4, .sessionId = "bb22"});
+  const std::string other = webrtc_viewer::tagOf({.userId = 5, .sessionId = "aa11"});
+  admission.remember({.tag = first, .userId = 4, .at = now});
+  admission.remember({.tag = second, .userId = 4, .at = now});
+  admission.remember({.tag = other, .userId = 5, .at = now});
+
+  auto tags = admission.tagsOf(4);
+  std::ranges::sort(tags);
+  std::vector<std::string> expected{first, second};
+  std::ranges::sort(expected);
+  CHECK(tags == expected);
+  CHECK(admission.tagsOf(5) == std::vector<std::string>{other});
+  CHECK(admission.tagsOf(6).empty());
 }

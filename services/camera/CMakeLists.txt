@@ -430,6 +430,7 @@ add_executable(camera-operator-start-test
     tests/unit/camera-operator-start-test.cc)
 target_link_libraries(camera-operator-start-test PRIVATE
     argus::camera-operator
+    argus::camera-monitor
     argus::camera-stream
     doctest::doctest)
 target_compile_definitions(camera-operator-start-test PRIVATE

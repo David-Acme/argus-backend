@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -24,6 +25,7 @@ public:
     IFrameSource* source{nullptr};
     IHealthEventSink* sink{nullptr};
     ICameraPresenceSink* presence{nullptr};
+    std::function<bool()> active{};
   };
 
   struct CameraRef
@@ -41,6 +43,8 @@ public:
   [[nodiscard]] bool drained() const;
 
   [[nodiscard]] bool running() const { return running_.load(); }
+
+  [[nodiscard]] bool idle() const { return idle_.load(); }
 
   drogon::Task<void> tick(CameraRef camera);
 
@@ -77,6 +81,7 @@ private:
   Dependencies dependencies_;
   CameraHealthConfig config_;
   std::atomic<bool> running_{false};
+  std::atomic<bool> idle_{false};
   std::atomic<int64_t> inFlight_{0};
   std::mutex stateMutex_;
   std::map<int64_t, CameraState> states_;

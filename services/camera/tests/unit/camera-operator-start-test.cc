@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
+#include <feature/monitor/camera-health-monitor.hxx>
 #include <feature/operator/camera-operator-service.hxx>
 #include <sqlite/db-service.hxx>
 
@@ -130,5 +131,61 @@ TEST_CASE("starting the operator from the database thread keeps the database ans
   service.requestStop();
   CHECK(waitUntil([&service] { return service.drained(); },
                   std::chrono::seconds(5)));
+
+  INFO("the operator idles its camera loops while surveillance is disabled and resumes on enable");
+  {
+    auto active = std::make_shared<std::atomic<bool>>(true);
+    CountingSource gated;
+    CameraOperatorService::Inputs gatedInputs;
+    gatedInputs.dependencies = {.detector = nullptr,
+                                .source = &gated,
+                                .sink = nullptr,
+                                .matcher = nullptr,
+                                .zones = nullptr,
+                                .active = [active] { return active->load(); }};
+    gatedInputs.objects.maxFpsInference = 20.0;
+    gatedInputs.operator_.cameraRescanMs = 50;
+    CameraOperatorService gatedService(gatedInputs);
+    drogon::app().getLoop()->queueInLoop([&gatedService] { gatedService.start(); });
+    CHECK(waitUntil([&gatedService] { return gatedService.cameraLoops() == 1; },
+                    std::chrono::seconds(5)));
+
+    active->store(false);
+    CHECK(waitUntil([&gatedService] { return gatedService.cameraLoops() == 0; },
+                    std::chrono::seconds(5)));
+
+    const int grabsWhileIdle = gated.grabs.load();
+    active->store(true);
+    CHECK(waitUntil([&gatedService] { return gatedService.cameraLoops() == 1; },
+                    std::chrono::seconds(5)));
+    CHECK(waitUntil([&gated, grabsWhileIdle] { return gated.grabs.load() > grabsWhileIdle; },
+                    std::chrono::seconds(5)));
+    gatedService.requestStop();
+    CHECK(waitUntil([&gatedService] { return gatedService.drained(); },
+                    std::chrono::seconds(5)));
+  }
+
+  INFO("the health monitor idles while surveillance is disabled and samples again on enable");
+  {
+    auto active = std::make_shared<std::atomic<bool>>(false);
+    CountingSource sampled;
+    CameraHealthMonitor monitor({.source = &sampled,
+                                 .sink = nullptr,
+                                 .presence = nullptr,
+                                 .active = [active] { return active->load(); }},
+                                {.enabled = true,
+                                 .intervalMs = 50,
+                                 .thresholds = {},
+                                 .rebaselineAfterMs = 900000});
+    drogon::app().getLoop()->queueInLoop([&monitor] { monitor.start(); });
+    CHECK(waitUntil([&monitor] { return monitor.idle(); }, std::chrono::seconds(5)));
+    CHECK(sampled.grabs.load() == 0);
+
+    active->store(true);
+    CHECK(waitUntil([&sampled] { return sampled.grabs.load() > 0; }, std::chrono::seconds(5)));
+    CHECK_FALSE(monitor.idle());
+    monitor.requestStop();
+    CHECK(waitUntil([&monitor] { return monitor.drained(); }, std::chrono::seconds(5)));
+  }
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
 }

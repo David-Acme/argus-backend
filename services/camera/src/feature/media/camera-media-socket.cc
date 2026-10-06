@@ -4,6 +4,7 @@
 #include <sync/sync-forwarder.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
+#include <auth/module-gate.hxx>
 #include <auth/request-context.hxx>
 #include <text/json-util.hxx>
 
@@ -58,6 +59,10 @@ void CameraMediaSocket::handleNewConnection(
     const drogon::HttpRequestPtr& req,
     const drogon::WebSocketConnectionPtr& conn)
 {
+  if (moduleGate().disabledModuleOf(req->getPath())) {
+    conn->shutdown(drogon::CloseCode::kViolation, "module_disabled");
+    return;
+  }
   const auto& ctx =
       req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   conn->setContext(std::make_shared<JwtContext>(ctx));

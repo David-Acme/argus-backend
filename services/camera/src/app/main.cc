@@ -17,6 +17,8 @@
 #include <feature/sync/camera-sync-rpc-service.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
+#include <auth/module-feed.hxx>
+#include <auth/role-access.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
 #include <http/certificate-reload.hxx>
@@ -283,8 +285,27 @@ int main()
                   viewer = WebRtcViewer{.userId = session.userId, .sessionId = session.sessionId}]() {
                    drogon::async_run([closer, viewer]() { return closer->closeViewer(viewer); });
                  });
+           },
+       .onUserChanged =
+           [&webrtcSessions](int64_t userId) {
+             drogon::app().getLoop()->queueInLoop([closer = &webrtcSessions, userId]() {
+               drogon::async_run([closer, userId]() { return closer->closeUser(userId); });
+             });
            }},
       SessionRevocationConsumer::defaults());
+
+  const auto modules = module_gate::install({.service = "camera", .bus = natsBus});
+  const auto surveillanceActive = [] {
+    return moduleGate().enabled(role_access::kSurveillanceModule);
+  };
+  moduleGate().onChange([&mediaSessions, &webrtcSessions](const ModuleChange& change) {
+    if (change.id != role_access::kSurveillanceModule || change.enabled)
+      return;
+    static_cast<void>(mediaSessions.closeAll("module_disabled"));
+    drogon::app().getLoop()->queueInLoop([closer = &webrtcSessions]() {
+      drogon::async_run([closer]() { return closer->closeAll(); });
+    });
+  });
 
   const ObjectsConfig objectsConfig = operator_config::resolveObjects();
   std::unique_ptr<ObjectDetectorService> detector;
@@ -323,6 +344,7 @@ int main()
       else {
         inputs.dependencies.matcher = &noKnownPersonMatcher;
       }
+      inputs.dependencies.active = surveillanceActive;
       inputs.objects = objectsConfig;
       inputs.operator_ = operator_config::resolveOperator();
       if (inputs.operator_.zonesFromDb) {
@@ -345,7 +367,8 @@ int main()
     healthMonitor = std::make_unique<CameraHealthMonitor>(
         CameraHealthMonitor::Dependencies{.source = &frameSource(),
                                            .sink = healthSink.get(),
-                                           .presence = &presenceRecorder},
+                                           .presence = &presenceRecorder,
+                                           .active = surveillanceActive},
         healthConfig);
   }
 

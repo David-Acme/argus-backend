@@ -62,6 +62,11 @@ private:
 };
 }
 
+std::vector<std::string> CameraWebRtcService::viewerTagsOf(int64_t userId)
+{
+  return admission().tagsOf(userId);
+}
+
 WebRtcAdmission& CameraWebRtcService::admission()
 {
   static WebRtcAdmission seats;
