@@ -52,7 +52,7 @@ struct SessionUser
   int64_t userId{0};
   std::string name;
   std::string lastName;
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
 };
 
 struct IssuedDeviceCredential

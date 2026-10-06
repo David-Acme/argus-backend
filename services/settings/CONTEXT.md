@@ -380,6 +380,31 @@ Q8 VLM plus its projector compute at 384 px, YOLO26n and the decode
 pipelines), productivity 64 / 128 MB. Core and surveillance recommend AVX2,
 the ISA every speed number was measured on.
 
+### Roles and intro (the context plan)
+
+A module also declares `roles`, the roles it brings (`surveillance` brings
+`guard`; the others none, and `core` may not: the Owner, Resident and Guest
+belong to the household and no module owns them), and an `intro` per language
+(`{ "es": { "what", "examples": [2-3] }, "en": { ... } }`: what the module is and a
+few things to say to Argus). The parser refuses a role that is `owner`, a role
+two modules bring, an id that is not `[a-z0-9-]` and more than five examples;
+`intro` and `roles` are optional so a catalog written before them still loads,
+and the shipped one carries both for every module (a test pins it). A role whose
+module is not `active` is inactive everywhere
+(`packages/lib/auth/CONTEXT.md`, "Roles per module"): the user keeps it, the
+server grants core only and the app shows the inactive-role screen.
+
+Both reach every service with the enabled set: each entry of the `enabled`
+event and of `ModuleStates` carries `roles`, `name`, `summary` and `intro` in
+both languages besides `id`, `enabled`, `lifecycle` and `dataPurgedAt`, so a
+service's gate and argus-sync's context can name a module without asking. The
+Owner's module JSON (`GET /modules`, the `module` event) gains `roles` and
+`intro` (in the caller's language). `Modules/OwnerCatalog` returns the Owner's
+whole list as one JSON array (`modules_json`, names in Spanish like the `module`
+event, plus the `version`): argus-sync reads it when an Owner connects and on
+each change to fill `ownerCatalog` of the context, so the app stops polling
+`GET /modules`.
+
 ### Lifecycle and the enabled set
 
 `module_state` keeps one row per module: `lifecycle` (`not_installed`,
@@ -537,8 +562,13 @@ create-or-bind it with that exact configuration. Every message has a
 
 ```json
 { "kind": "enabled", "version": 42, "settled": true, "at": 1790000000000,
-  "modules": [ { "id": "core", "enabled": true, "lifecycle": "active",
-                 "dataPurgedAt": null }, ... every catalog module ... ] }
+  "modules": [ { "id": "surveillance", "enabled": true, "lifecycle": "active",
+                 "dataPurgedAt": null, "roles": ["guard"], "kind": "available",
+                 "name": { "es": "Vigilancia", "en": "Surveillance" },
+                 "summary": { "es": "...", "en": "..." },
+                 "intro": { "es": { "what": "...", "examples": ["...", "..."] },
+                            "en": { ... } } },
+               ... every catalog module ... ] }
 
 { "kind": "module", "version": 42, "settled": true, "at": 1790000000000,
   "module": { ...the Owner's module JSON above, names in Spanish... } }
@@ -565,7 +595,9 @@ create-or-bind it with that exact configuration. Every message has a
 - argus-settings serves `argus.settings.v1.Modules/ModuleStates` on
   `[rpc] address` (127.0.0.1:7047 native, 0.0.0.0:7047 deploy) for the
   services' boot read: `{ modules: [{ id, enabled, lifecycle,
-  data_purged_at }], version, settled }`. Callers present their own
+  data_purged_at, roles, name_es, name_en, summary_es, summary_en,
+  intro_es, intro_en }], version, settled }`, and `OwnerCatalog` (the Owner's
+  whole module list as one JSON array, for argus-sync's context). Callers present their own
   credential from `[rpc.callers]` (auth, camera, guard, identity,
   notification, productivity, sync, voice, llm; `ensure_fleet_callers` pairs
   them with the caller's `[modules] credential`); the gate is open while none

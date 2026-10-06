@@ -40,6 +40,8 @@ void addCallerIdentity(grpc::ClientContext& context,
   context.AddMetadata("x-argus-role", identity.role);
   if (identity.device)
     context.AddMetadata("x-argus-device", *identity.device);
+  if (!identity.roleActive)
+    context.AddMetadata(kRoleActiveKey, "0");
 }
 
 void addFleetSecret(grpc::ClientContext& context, const std::string& secret)

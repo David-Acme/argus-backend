@@ -356,3 +356,192 @@ TEST_CASE("a boot read that never answers leaves the last known state in force")
   CHECK(gate.enabled(kSurveillance));
   std::filesystem::remove(file);
 }
+
+TEST_CASE("the enabled set carries the roles, texts and lifecycle of each module and reads them back")
+{
+  const auto parsed = module_gate::parseEnabledSet(
+      R"({"modules":[{"id":"surveillance","enabled":true,"lifecycle":"active","dataPurgedAt":1700,
+          "kind":"available","roles":["guard"],"name":{"es":"Vigilancia","en":"Surveillance"},
+          "summary":{"es":"Cámaras","en":"Cameras"},
+          "intro":{"es":{"what":"Qué es","examples":["a","b","c"]},"en":{"what":"What","examples":["x"]}}},
+         {"id":"core","enabled":true}],"version":2})");
+  REQUIRE(parsed.has_value());
+  const ModuleFlags flags = parsed.value_or(ModuleFlags{});
+  REQUIRE(flags.size() == 2);
+  CHECK(flags[0].roles == std::vector<std::string>{"guard"});
+  CHECK(flags[0].name.es == "Vigilancia");
+  CHECK(flags[0].name.en == "Surveillance");
+  CHECK(flags[0].summary.en == "Cameras");
+  CHECK(flags[0].intro.es.what == "Qué es");
+  CHECK(flags[0].intro.es.examples == std::vector<std::string>{"a", "b", "c"});
+  CHECK(flags[0].intro.en.examples.size() == 1);
+  CHECK(flags[0].dataPurgedAt == 1700);
+  CHECK(flags[0].lifecycle == "active");
+  CHECK(flags[0].kind == "available");
+  CHECK(flags[1].kind.empty());
+  CHECK(flags[1].roles.empty());
+
+  const auto again = module_gate::parseEnabledSet(module_gate::serializeEnabledSet(flags));
+  REQUIRE(again.has_value());
+  CHECK(again.value_or(ModuleFlags{}) == flags);
+
+  for (const auto* body : {
+           R"({"modules":[{"id":"a","enabled":true,"roles":"guard"}]})",
+           R"({"modules":[{"id":"a","enabled":true,"roles":["Guard"]}]})",
+           R"({"modules":[{"id":"a","enabled":true,"roles":[1]}]})",
+           R"({"modules":[{"id":"a","enabled":true,"name":"x"}]})",
+           R"({"modules":[{"id":"a","enabled":true,"name":{"es":1}}]})",
+           R"({"modules":[{"id":"a","enabled":true,"intro":{"es":{"what":7}}}]})",
+           R"({"modules":[{"id":"a","enabled":true,"intro":{"es":{"what":"x","examples":"y"}}}]})",
+           R"({"modules":[{"id":"a","enabled":true,"intro":{"es":{"what":"x","examples":[1]}}}]})",
+           R"({"modules":[{"id":"a","enabled":true,"dataPurgedAt":"soon"}]})",
+           R"({"modules":[{"id":"a","enabled":true,"kind":4}]})"}) {
+    CAPTURE(body);
+    CHECK_FALSE(module_gate::parseEnabledSet(body).has_value());
+  }
+}
+
+TEST_CASE("a role is inactive while its module is not, and every other role never is")
+{
+  ModuleGate gate;
+  CHECK(gate.roleActive(UserRole::Guard));
+  gate.apply({{.id = "surveillance", .enabled = false, .lifecycle = "disabled", .dataPurgedAt = 0,
+               .roles = {"guard"}, .name = {}, .summary = {}, .intro = {}},
+              {.id = "productivity", .enabled = true, .lifecycle = "active", .dataPurgedAt = 0,
+               .roles = {}, .name = {}, .summary = {}, .intro = {}}});
+  CHECK_FALSE(gate.roleActive(UserRole::Guard));
+  CHECK(gate.roleActive(UserRole::Owner));
+  CHECK(gate.roleActive(UserRole::Resident));
+  CHECK(gate.roleActive(UserRole::Guest));
+  CHECK_FALSE(gate.roleActive(UserRole::Unknown));
+  CHECK(gate.snapshot().moduleOfRole(UserRole::Guard) == std::optional<std::string_view>("surveillance"));
+  CHECK_FALSE(gate.snapshot().moduleOfRole(UserRole::Resident).has_value());
+
+  gate.apply({{.id = "surveillance", .enabled = true, .lifecycle = "active", .dataPurgedAt = 0,
+               .roles = {"guard"}, .name = {}, .summary = {}, .intro = {}}});
+  CHECK(gate.roleActive(UserRole::Guard));
+}
+
+TEST_CASE("an owner can never be made inactive by a catalog that names it")
+{
+  ModuleGate gate;
+  gate.apply({{.id = "surveillance", .enabled = false, .lifecycle = "disabled", .dataPurgedAt = 0,
+               .roles = {"owner"}, .name = {}, .summary = {}, .intro = {}}});
+  CHECK(gate.roleActive(UserRole::Owner));
+}
+
+TEST_CASE("the state listener fires once per change of any field and not for a repeat")
+{
+  ModuleGate gate;
+  int told = 0;
+  gate.onStateChange([&told] { ++told; });
+  const ModuleFlag base{.id = "surveillance", .enabled = true, .lifecycle = "active", .dataPurgedAt = 0,
+                        .roles = {"guard"}, .name = {}, .summary = {}, .intro = {}};
+  gate.apply({base});
+  CHECK(told == 1);
+  gate.apply({base});
+  CHECK(told == 1);
+  ModuleFlag renamed = base;
+  renamed.name.es = "Vigilancia";
+  gate.apply({renamed});
+  CHECK(told == 2);
+  ModuleFlag purged = renamed;
+  purged.dataPurgedAt = 99;
+  gate.apply({purged});
+  CHECK(told == 3);
+  ModuleFlag withoutRole = purged;
+  withoutRole.roles.clear();
+  gate.apply({withoutRole});
+  CHECK(told == 4);
+}
+
+TEST_CASE("the roles and texts survive the last known state file")
+{
+  const std::string file = tempPath("roles.json");
+  ModuleGate first;
+  ModuleFeed feed({.bus = nullptr, .gate = &first, .bootRead = {}}, feedConfig(file));
+  CHECK(feed.handle(
+            R"({"modules":[{"id":"surveillance","enabled":false,"lifecycle":"disabled","roles":["guard"],
+                "name":{"es":"Vigilancia","en":"Surveillance"},
+                "intro":{"es":{"what":"Qué","examples":["uno"]},"en":{"what":"What","examples":["one"]}}}],"version":2})") ==
+        ModuleFeedDisposition::Applied);
+
+  ModuleGate second;
+  ModuleFeed restarted({.bus = nullptr, .gate = &second, .bootRead = {}}, feedConfig(file));
+  restarted.restore();
+  CHECK_FALSE(second.roleActive(UserRole::Guard));
+  const auto known = second.known();
+  REQUIRE(known.size() == 1);
+  CHECK(known[0].name.en == "Surveillance");
+  CHECK(known[0].intro.en.examples == std::vector<std::string>{"one"});
+  std::filesystem::remove(file);
+}
+
+TEST_CASE("RoleFilter keeps panic open while surveillance is off and names an inactive role")
+{
+  moduleGate().reset();
+  moduleGate().apply({{.id = std::string(kSurveillance), .enabled = false, .lifecycle = "disabled",
+                       .dataPurgedAt = 0, .roles = {"guard"}, .name = {}, .summary = {}, .intro = {}}});
+
+  for (const auto role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CAPTURE(static_cast<int>(role));
+    CHECK(runRoleFilter({.role = role, .method = drogon::Post, .path = "/guard/panic"}).admitted);
+    CHECK(runRoleFilter({.role = role, .method = drogon::Get, .path = "/guard/safety"}).admitted);
+    CHECK(runRoleFilter({.role = role, .method = drogon::Post, .path = "/guard/mode"}).code ==
+          "MODULE_DISABLED");
+  }
+
+  CHECK(runRoleFilter({.role = UserRole::Guard, .method = drogon::Get, .path = "/person"}).code ==
+        "ROLE_INACTIVE");
+  CHECK(runRoleFilter({.role = UserRole::Guard, .method = drogon::Get, .path = "/auth/sessions"}).admitted);
+  CHECK(runRoleFilter({.role = UserRole::Guard, .method = drogon::Patch, .path = "/reminder/2"}).admitted);
+  CHECK(runRoleFilter({.role = UserRole::Resident, .method = drogon::Get, .path = "/person"}).admitted);
+  CHECK(runRoleFilter({.role = UserRole::Guest, .method = drogon::Get, .path = "/memory"}).code ==
+        "FORBIDDEN");
+
+  moduleGate().apply({{.id = std::string(kSurveillance), .enabled = true, .lifecycle = "active",
+                       .dataPurgedAt = 0, .roles = {"guard"}, .name = {}, .summary = {}, .intro = {}}});
+  CHECK(runRoleFilter({.role = UserRole::Guard, .method = drogon::Get, .path = "/person"}).admitted);
+  moduleGate().reset();
+}
+
+TEST_CASE("RoleFilter refuses a role this build does not know everywhere, even on a core route")
+{
+  moduleGate().reset();
+  for (const auto* path : {"/person", "/reminder", "/auth/sessions", "/privacy/me", "/modules",
+                           "/guard/panic", "/camera", "/user"}) {
+    CAPTURE(path);
+    const auto outcome = runRoleFilter({.role = UserRole::Unknown,
+                                        .method = path == std::string("/guard/panic") ? drogon::Post : drogon::Get,
+                                        .path = path});
+    CHECK_FALSE(outcome.admitted);
+    CHECK(outcome.code == "FORBIDDEN");
+  }
+}
+
+TEST_CASE("RoleFilter lets an inactive guard read and answer a raised alert while surveillance is off")
+{
+  moduleGate().reset();
+  moduleGate().apply({{.id = std::string(kSurveillance), .enabled = false, .lifecycle = "disabled",
+                       .dataPurgedAt = 0, .roles = {"guard"}, .name = {}, .summary = {}, .intro = {}}});
+  struct Request
+  {
+    drogon::HttpMethod method;
+    const char* path;
+  };
+  for (const auto& request : {Request{drogon::Get, "/guard/safety"}, Request{drogon::Get, "/notification/responses"},
+                              Request{drogon::Get, "/notification/responses/4"},
+                              Request{drogon::Patch, "/notification/responses/4"},
+                              Request{drogon::Post, "/rtc/token"}, Request{drogon::Post, "/guard/panic"}}) {
+    CAPTURE(request.path);
+    for (const auto role : {UserRole::Guard, UserRole::Resident, UserRole::Guest, UserRole::Owner})
+      CHECK(runRoleFilter({.role = role, .method = request.method, .path = request.path}).admitted);
+  }
+  CHECK(runRoleFilter({.role = UserRole::Guard, .method = drogon::Put, .path = "/guard/safety/pin"}).code ==
+        "MODULE_DISABLED");
+  CHECK(runRoleFilter({.role = UserRole::Owner, .method = drogon::Patch, .path = "/guard/safety"}).code ==
+        "MODULE_DISABLED");
+  CHECK(runRoleFilter({.role = UserRole::Guard, .method = drogon::Post, .path = "/guard/environments/1/duty"}).code ==
+        "MODULE_DISABLED");
+  moduleGate().reset();
+}

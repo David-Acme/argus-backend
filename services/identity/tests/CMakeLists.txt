@@ -7,6 +7,30 @@ target_compile_options(identity-config-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-config-test)
 add_test(NAME identity-config-test COMMAND identity-config-test)
 
+add_executable(identity-user-update-test unit/identity-user-update-test.cc)
+target_compile_definitions(identity-user-update-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(identity-user-update-test PRIVATE
+    argus::identity-user
+    argus::lib::auth
+    argus::lib::sqlite
+    argus::lib::text
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-user-update-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-user-update-test)
+add_test(NAME identity-user-update-test COMMAND identity-user-update-test)
+
+add_executable(identity-role-input-test unit/identity-role-input-test.cc)
+target_link_libraries(identity-role-input-test PRIVATE
+    argus::identity-invitation
+    argus::identity-user
+    argus::lib::validation
+    doctest::doctest)
+target_compile_options(identity-role-input-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-role-input-test)
+add_test(NAME identity-role-input-test COMMAND identity-role-input-test)
+
 add_executable(identity-migration-test unit/identity-migration-test.cc)
 target_link_libraries(identity-migration-test PRIVATE
     identity-migration
@@ -256,6 +280,7 @@ target_compile_definitions(identity-user-safety-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
 target_link_libraries(identity-user-safety-test PRIVATE
     argus::identity-enrollment
+    argus::identity-invitation
     argus::identity-person
     argus::identity-user
     argus::identity-visitor

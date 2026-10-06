@@ -837,12 +837,15 @@ TEST_CASE("the caller's role and language cross the wire, an absent role is a gu
   ChatRequest guard = ask();
   guard.role = UserRole::Guard;
   CHECK(client.chat(guard) == "ok");
+  ChatRequest guest = ask();
+  guest.role = UserRole::Guest;
+  CHECK(client.chat(guest) == "ok");
 
   const auto stub = rawStub(server.port());
   CHECK(rawChat(*stub, {.input = ask()}) == "ok");
 
   std::scoped_lock lock(seenMutex);
-  REQUIRE(seen.size() == 3);
+  REQUIRE(seen.size() == 4);
   CHECK(seen[0].role == UserRole::Owner);
   CHECK(seen[0].lang == "en");
   CHECK(seen[0].sessionId == "voice-7-1700000000000");
@@ -852,7 +855,8 @@ TEST_CASE("the caller's role and language cross the wire, an absent role is a gu
   CHECK(seen[1].role == UserRole::Guard);
   CHECK(seen[1].lang.empty());
   CHECK(seen[2].role == UserRole::Guest);
-  CHECK(seen[2].lang.empty());
+  CHECK(seen[3].role == UserRole::Unknown);
+  CHECK(seen[3].lang.empty());
 }
 
 TEST_CASE("only the voice caller declares a user, a role and the tool loop")
@@ -894,7 +898,7 @@ TEST_CASE("only the voice caller declares a user, a role and the tool loop")
   std::scoped_lock lock(seenMutex);
   REQUIRE(seen.size() == 2);
   CHECK(seen[0].userId == 0);
-  CHECK(seen[0].role == UserRole::Guest);
+  CHECK(seen[0].role == UserRole::Unknown);
   CHECK_FALSE(seen[0].toolsEnabled);
   CHECK_FALSE(seen[0].clientActions);
   CHECK(seen[0].sessionId.empty());
@@ -916,7 +920,7 @@ TEST_CASE("boundToCaller strips the identity of every caller but voice")
   CHECK(voice.role == UserRole::Resident);
   const auto guard = boundToCaller(request, "guard");
   CHECK(guard.userId == 0);
-  CHECK(guard.role == UserRole::Guest);
+  CHECK(guard.role == UserRole::Unknown);
   CHECK_FALSE(guard.toolsEnabled);
 }
 
@@ -944,7 +948,7 @@ TEST_CASE("the loopback http leg keeps a declared identity only behind the voice
     const auto anonymous =
         boundToCredential(request, {.presented = presented, .expected = "voice-secret"});
     CHECK(anonymous.userId == 0);
-    CHECK(anonymous.role == UserRole::Guest);
+    CHECK(anonymous.role == UserRole::Unknown);
     CHECK_FALSE(anonymous.toolsEnabled);
     CHECK_FALSE(anonymous.clientActions);
     CHECK(anonymous.sessionId.empty());

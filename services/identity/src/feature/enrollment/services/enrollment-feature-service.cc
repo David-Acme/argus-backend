@@ -29,7 +29,7 @@ EnrollmentResult outcomeResult(EnrollmentOutcome outcome)
                           .name = "",
                           .lastName = "",
                           .lang = "",
-                          .role = UserRole::Guest};
+                          .role = UserRole::Unknown};
 }
 
 EnrollmentResult registeredResult(const UserSchema& user,

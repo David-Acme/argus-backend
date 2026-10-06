@@ -69,6 +69,7 @@ public:
   ModulesClient& operator=(const ModulesClient&) = delete;
 
   [[nodiscard]] ModuleStatesReply moduleStates() const;
+  [[nodiscard]] OwnerCatalogReply ownerCatalog() const;
 
 private:
   struct Impl;

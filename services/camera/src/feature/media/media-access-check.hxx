@@ -21,13 +21,13 @@ struct MediaCredential
   std::string deviceHash;
   std::string origin;
   int64_t userId{0};
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
 };
 
 struct MediaIdentity
 {
   int64_t userId{0};
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
 };
 
 struct MediaAccessOpen

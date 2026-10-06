@@ -33,7 +33,7 @@ struct ExpectedGuestCreation
 {
   const CreateExpectedGuestDto& body;
   int64_t callerId{0};
-  UserRole callerRole{UserRole::Guest};
+  UserRole callerRole{UserRole::Unknown};
 };
 
 struct GuardModeChange

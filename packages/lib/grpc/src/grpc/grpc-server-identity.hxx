@@ -69,6 +69,11 @@ authorizeCaller(const grpc::CallbackServerContext* context,
   return std::nullopt;
 }
 
+inline bool callerRoleActive(const grpc::CallbackServerContext* context)
+{
+  return metadata(context, "x-argus-role-active") != "0";
+}
+
 inline std::optional<int64_t>
 callerUserId(const grpc::CallbackServerContext* context)
 {

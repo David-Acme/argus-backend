@@ -73,6 +73,10 @@ inline constexpr ErrorDefinition InvitationOwnerAccessForbidden{
     .code = ErrorCode::BadRequest,
     .status = 422,
     .message = "Invitations cannot grant owner access"};
+inline constexpr ErrorDefinition InvitationRoleInactive{
+    .code = ErrorCode::RoleInactive,
+    .status = 409,
+    .message = "The module that brings this role is not active"};
 inline constexpr ErrorDefinition InvitationNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,

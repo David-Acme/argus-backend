@@ -37,7 +37,7 @@ struct ChatRequest
   std::string grammar;
   bool grammarRequired{false};
   int64_t userId{0};
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
   std::string lang{};
   bool clientActions{false};
   std::string sessionId{};

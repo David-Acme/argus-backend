@@ -1,5 +1,9 @@
 #include "invitation-feature-service.hxx"
 
+#include "role-copy.hxx"
+
+#include <algorithm>
+#include <auth/module-gate.hxx>
 #include <ctime>
 #include <errors/response-exception.hxx>
 #include <identity/identity-errors.hxx>
@@ -48,6 +52,7 @@ InvitationFeatureService::create(const CreateInvitationDto& body,
 {
   if (body.userRole == UserRole::Owner)
     throw ResponseException(422, IdentityErrors::InvitationOwnerAccessForbidden);
+  co_await requireActiveRole(body.userRole, actorId);
 
   const auto token = newOpaqueToken();
 
@@ -81,6 +86,23 @@ InvitationFeatureService::create(const CreateInvitationDto& body,
     throw;
   }
   co_return ResponseInvitationDto{.invitation = invitation, .token = token};
+}
+
+drogon::Task<void>
+InvitationFeatureService::requireActiveRole(UserRole role, int64_t actorId) const
+{
+  const auto modules = moduleGate().current();
+  if (modules->roleActive(role))
+    co_return;
+  const auto actor = co_await userRepository_.findById(actorId);
+  const std::string lang = actor ? actor->lang : std::string("es");
+  const auto module = modules->moduleOfRole(role);
+  const auto flag = module ? std::ranges::find(modules->modules(), *module, &ModuleFlag::id)
+                           : modules->modules().end();
+  const std::string message = flag != modules->modules().end()
+                                  ? role_copy::needsModule(role, *flag, lang)
+                                  : role_copy::label(role, lang);
+  throw ResponseException(IdentityErrors::InvitationRoleInactive.withMessage(message));
 }
 
 drogon::Task<std::vector<ResponseInvitationDto>>

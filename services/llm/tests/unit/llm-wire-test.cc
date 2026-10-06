@@ -605,7 +605,7 @@ TEST_CASE("the chat body reaches the engine with every field it carried")
   CHECK(absent.userId == 0);
   CHECK(absent.grammar.empty());
   CHECK_FALSE(absent.grammarRequired);
-  CHECK(absent.role == UserRole::Guest);
+  CHECK(absent.role == UserRole::Unknown);
   CHECK(absent.lang.empty());
 
   Json::Value caller;

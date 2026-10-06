@@ -81,9 +81,11 @@ wire::CallerRole wireRole(UserRole role)
     case UserRole::Guard:
       return wire::CALLER_ROLE_GUARD;
     case UserRole::Guest:
+      return wire::CALLER_ROLE_GUEST;
+    case UserRole::Unknown:
       break;
   }
-  return wire::CALLER_ROLE_GUEST;
+  return wire::CALLER_ROLE_UNSPECIFIED;
 }
 
 bool validCapabilities(const wire::CapabilitiesResponse& response)

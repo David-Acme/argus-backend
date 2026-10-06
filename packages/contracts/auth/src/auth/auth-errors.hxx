@@ -25,6 +25,10 @@ inline constexpr ErrorDefinition ModuleDisabled{
     .code = ErrorCode::ModuleDisabled,
     .status = 403,
     .message = "This module is disabled"};
+inline constexpr ErrorDefinition RoleInactive{
+    .code = ErrorCode::RoleInactive,
+    .status = 403,
+    .message = "This role is inactive while its module is off"};
 inline constexpr ErrorDefinition InvalidJsonBody{
     .code = ErrorCode::BadRequest,
     .status = 400,

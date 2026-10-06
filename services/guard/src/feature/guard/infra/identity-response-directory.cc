@@ -21,7 +21,7 @@ std::optional<std::vector<ResponseUser>> IdentityResponseDirectory::users() cons
     if (user.has_last_name() && !user.last_name().empty() && name.empty())
       name = user.last_name();
     users.push_back({.userId = user.user_id(),
-                     .role = userRoleFromString(user.has_role() ? user.role() : "guest"),
+                     .role = userRoleFromString(user.has_role() ? user.role() : std::string()),
                      .active = !user.has_is_active() || user.is_active(),
                      .name = std::move(name),
                      .lang = user.lang()});

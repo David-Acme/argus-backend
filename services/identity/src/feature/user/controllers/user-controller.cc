@@ -1,6 +1,8 @@
 #include "user-controller.hxx"
 
 #include <errors/response-exception.hxx>
+#include <auth/module-gate.hxx>
+#include <feature/user/dtos/response-update-user-dto.hxx>
 #include <feature/user/dtos/update-user-dto.hxx>
 #include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
@@ -32,7 +34,8 @@ UserController::update(drogon::HttpRequestPtr req, int64_t userId)
       .actorId = ctx.sub,
       .body = body,
   });
-  co_return ApiResponse::ok(user.toJson());
+  co_return ApiResponse::ok(
+      ResponseUpdateUserDto{.user = user, .roleActive = moduleGate().roleActive(user.role)}.toJson());
 }
 
 drogon::Task<drogon::HttpResponsePtr>

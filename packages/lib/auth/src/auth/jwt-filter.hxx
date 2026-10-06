@@ -10,7 +10,7 @@ struct JwtContext
 {
   int64_t sub{0};
   std::string name;
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
   bool isActive{false};
   std::string deviceHash;
   std::string sessionId;

@@ -22,7 +22,7 @@
 struct VisitorRequester
 {
   int64_t userId{0};
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
 };
 
 struct VisitorListRequest

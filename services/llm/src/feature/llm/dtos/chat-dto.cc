@@ -111,7 +111,7 @@ ChatRequest ChatCompletionDto::request() const
   req.userId = userId.value_or(0);
   req.grammar = grammar;
   req.grammarRequired = grammarRequired;
-  req.role = userRoleFromString(role.value_or(userRoleToString(UserRole::Guest)));
+  req.role = userRoleFromString(role.value_or(std::string()));
   req.lang = lang.value_or(std::string());
   req.sessionId = sessionId;
   req.prefillOnly = prefillOnly;

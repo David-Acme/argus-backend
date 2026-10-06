@@ -7,7 +7,7 @@
 
 struct ResponseInvitationResolveDto
 {
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
   int64_t expiresAt{0};
   std::string instanceId;
   std::string caFingerprint;

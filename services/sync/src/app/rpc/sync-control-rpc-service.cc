@@ -25,7 +25,7 @@ SocketEmitDto fromFrame(const argus::sync::v1::SyncFrame& frame)
 
 bool isRoleName(const std::string& name)
 {
-  return userRoleToString(userRoleFromString(name)) == name;
+  return parseUserRole(name).has_value();
 }
 
 bool dispatchPayload(const Json::Value& payload)

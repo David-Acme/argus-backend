@@ -96,9 +96,12 @@ TEST_CASE("Guard permissions follow the kTableAccess map")
                                         .table = TableName::Person,
                                         .perm = RolePermission::Update}));
 
-    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guard,
-                                        .table = TableName::Reminder,
-                                        .perm = RolePermission::Read}));
+    CHECK(role_access::hasAccess({.role = UserRole::Guard,
+                                  .table = TableName::Reminder,
+                                  .perm = RolePermission::Read}));
+    CHECK(role_access::hasAccess({.role = UserRole::Guard,
+                                  .table = TableName::ReminderDetail,
+                                  .perm = RolePermission::Update}));
     CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guard,
                                         .table = TableName::Memory,
                                         .perm = RolePermission::Read}));
@@ -116,6 +119,13 @@ TEST_CASE("Guest permissions follow the kTableAccess map")
     CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guest,
                                         .table = TableName::Person,
                                         .perm = RolePermission::Read}));
+
+    CHECK(role_access::hasAccess({.role = UserRole::Guest,
+                                  .table = TableName::Reminder,
+                                  .perm = RolePermission::Delete}));
+    CHECK(role_access::hasAccess({.role = UserRole::Guest,
+                                  .table = TableName::ReminderDetail,
+                                  .perm = RolePermission::Read}));
 
     CHECK(role_access::hasAccess({.role = UserRole::Guest,
                                   .table = TableName::NotificationToken,
@@ -139,10 +149,10 @@ TEST_CASE("readableTables lists every table a role can read")
     CHECK(resident.size() == 18);
 
     const auto guard = role_access::readableTables(UserRole::Guard);
-    CHECK(guard.size() == 9);
+    CHECK(guard.size() == 11);
 
     const auto guest = role_access::readableTables(UserRole::Guest);
-    CHECK(guest.size() == 5);
+    CHECK(guest.size() == 7);
 }
 
 TEST_CASE("permissionForMethod maps HTTP methods to permissions")
@@ -213,7 +223,7 @@ TEST_CASE("hasHttpAccess enforces table permissions per role")
         {.role = UserRole::Guard, .path = "/camera/1", .method = drogon::Post}));
     CHECK(role_access::hasHttpAccess(
         {.role = UserRole::Guest, .path = "/camera", .method = drogon::Get}));
-    CHECK_FALSE(role_access::hasHttpAccess(
+    CHECK(role_access::hasHttpAccess(
         {.role = UserRole::Guest, .path = "/reminder", .method = drogon::Get}));
     CHECK_FALSE(role_access::hasHttpAccess(
         {.role = UserRole::Guest, .path = "/sync", .method = drogon::Get}));
@@ -362,8 +372,11 @@ TEST_CASE("only directory roles receive the user module stream")
       contains(role_access::moduleTables(UserRole::Guest), TableName::User));
   CHECK(contains(role_access::readableTables(UserRole::Resident),
                  TableName::User));
-  CHECK(contains(role_access::moduleTables(UserRole::Resident),
-                 TableName::Reminder));
+  for (const auto role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CAPTURE(userRoleToString(role));
+    CHECK_FALSE(contains(role_access::moduleTables(role), TableName::Reminder));
+    CHECK_FALSE(contains(role_access::moduleTables(role), TableName::ReminderDetail));
+  }
 }
 
 TEST_CASE("hasHttpAccess applies kGuardAccess route by route")

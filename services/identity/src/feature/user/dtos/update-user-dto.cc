@@ -4,7 +4,7 @@ namespace
 {
 bool namesRole(const std::string& value)
 {
-  return userRoleToString(userRoleFromString(value)) == value;
+  return parseUserRole(value).has_value();
 }
 }
 

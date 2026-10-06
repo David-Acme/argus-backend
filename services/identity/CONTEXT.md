@@ -1197,6 +1197,25 @@ are overwritten in the file instead of lingering in free pages.
   failures lock the client out for 5 minutes, 429 `TooManyAttempts`), in
   `feature/rate-gate`, the same shape as argus-auth's gate.
 
+## Roles of an inactive module (2026-10, the context plan)
+
+Roles of an inactive module (supervisor decision of 2026-10-06): an Owner
+cannot **invite** into a role whose module is not active. `POST /invitation`
+answers 409 `ROLE_INACTIVE` with a message that names the role and the module
+in the Owner's own language (`user.lang`; "Guard needs the Surveillance
+module" / "Vigilante necesita el módulo Vigilancia"), because an invitation is
+single use, never comes back and an invitee who redeems it into a screen that
+offers nothing is a bad first minute. A **role change** is permissive: `PATCH
+/user/{id}` to an inactive role is accepted, its answer is the user plus
+`roleActive: false`, the person keeps the role, gets the inactive-role screen
+(the context says `roleActive: false`) and uses it the day the module returns.
+The re-check at redemption and resolve time, where an invitation made while the
+module was on is found with the module off, is argus-identity's invitation
+revocation (`user_invitation.revoked_reason`), not this check; both ask
+`moduleGate().roleActive(role)` and `moduleGate().snapshot().moduleOfRole(role)`.
+Tests: `identity-user-safety-test` (the 409, both languages, the active and the
+owner paths) and `identity-user-update-test` (the permissive PATCH).
+
 ## The pairing code is 128 bits and rotates (2026-10, audit #40)
 
 `scripts/lib/pki.sh` writes a 26-character base32 code (`A-Z2-7`, 16 random

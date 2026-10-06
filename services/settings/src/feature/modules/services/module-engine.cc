@@ -754,7 +754,12 @@ ModuleStatesReply ModuleEngine::enabledSetLocked() const
                            .enabled = module.kind == ModuleKind::Core || enabled_.contains(module.id),
                            .lifecycle = std::string(moduleLifecycleToString(
                                module.kind == ModuleKind::Core ? ModuleLifecycle::Active : lifecycleLocked(module.id))),
-                           .dataPurgedAt = purgedAt_.contains(module.id) ? purgedAt_.at(module.id) : 0});
+                           .dataPurgedAt = purgedAt_.contains(module.id) ? purgedAt_.at(module.id) : 0,
+                           .roles = module.roles,
+                           .name = {.es = module.name.es, .en = module.name.en},
+                           .summary = {.es = module.summary.es, .en = module.summary.en},
+                           .intro = module.intro,
+                           .kind = std::string(moduleKindToString(module.kind))});
   return set;
 }
 

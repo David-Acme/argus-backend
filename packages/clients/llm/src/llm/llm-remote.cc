@@ -235,7 +235,8 @@ std::string LlmHttpClient::chatBody(const ChatRequest& request) const
   }
   if (request.userId > 0)
     body["user_id"] = Json::Int64{request.userId};
-  body["role"] = userRoleToString(request.role);
+  if (userRoleKnown(request.role))
+    body["role"] = userRoleToString(request.role);
   if (!request.lang.empty())
     body["lang"] = request.lang;
   if (!request.sessionId.empty())

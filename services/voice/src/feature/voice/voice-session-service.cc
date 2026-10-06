@@ -521,7 +521,8 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   session->userId = identity.user_id();
   session->deviceHash = identity.device_hash();
   session->callKey = mintCallKey();
-  session->role = voiceRoleToString(identity.role());
+  session->role = identity.has_role() ? voiceRoleToString(identity.role())
+                                      : userRoleToString(UserRole::Unknown);
   session->nameKnown = userName.size() >= 2;
   session->callId = "voice-" + std::to_string(identity.user_id()) + "-" +
                     std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(

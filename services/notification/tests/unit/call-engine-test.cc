@@ -170,6 +170,8 @@ public:
       return {.found = true, .name = "Pedro", .lang = "es", .role = UserRole::Guard, .active = true};
     if (userId == 6)
       return {.found = true, .name = "Lucía", .lang = "es", .role = UserRole::Resident, .active = true};
+    if (userId == 7)
+      return {.found = true, .name = "Futura", .lang = "es", .role = UserRole::Unknown, .active = true};
     return {};
   }
 
@@ -634,6 +636,7 @@ TEST_CASE("an arrival calls only those who asked, once per absence")
   drogon::sync_wait(preferences.update(1, wants));
   drogon::sync_wait(preferences.update(2, wants));
   drogon::sync_wait(preferences.update(4, wants));
+  drogon::sync_wait(preferences.update(7, wants));
   UpdateCallPreferenceDto notifyOnly;
   notifyOnly.guardArrival = "notify";
   drogon::sync_wait(preferences.update(5, notifyOnly));

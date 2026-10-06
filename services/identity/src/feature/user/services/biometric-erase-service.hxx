@@ -12,7 +12,7 @@
 struct BiometricEraseRequest
 {
   int64_t actorId{0};
-  UserRole actorRole{UserRole::Guest};
+  UserRole actorRole{UserRole::Unknown};
   int64_t subjectId{0};
 };
 

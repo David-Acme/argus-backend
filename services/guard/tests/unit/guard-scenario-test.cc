@@ -599,3 +599,51 @@ TEST_CASE("guard stops evaluating while surveillance is disabled and resumes on 
     CHECK(drogon::sync_wait(service.handle(event, 1)));
   CHECK(notifications.sent().size() == 1);
 }
+
+TEST_CASE("a panic alert is raised and escalated while surveillance is disabled, because panic is core")
+{
+  (void)boot();
+  QuietCameraActions camera;
+  RosterIdentity identity({{1, "es"}, {2, "es"}});
+  RecordingNotifications notifications;
+  GuardService service({.bus = nullptr,
+                        .identity = &identity,
+                        .notifications = &notifications,
+                        .actions = &camera,
+                        .assessment = nullptr,
+                        .directory = {},
+                        .active = [] { return false; }},
+                       defaults());
+  REQUIRE_FALSE(service.evaluating());
+
+  const auto outcome = drogon::sync_wait(service.raiseSafetyAlert({.duress = false,
+                                                                    .alertId = 77,
+                                                                    .actorUserId = 2,
+                                                                    .actorName = "Marta",
+                                                                    .environmentId = 0,
+                                                                    .now = 1000,
+                                                                    .sequence = 1}));
+  CHECK(outcome.accepted);
+  CHECK_FALSE(outcome.terminal);
+  CHECK(notifications.sent().size() == 1);
+
+  const auto escalation = drogon::sync_wait(service.raiseSafetyAlert({.duress = false,
+                                                                      .alertId = 77,
+                                                                      .actorUserId = 2,
+                                                                      .actorName = "Marta",
+                                                                      .environmentId = 0,
+                                                                      .now = 1060,
+                                                                      .sequence = 2}));
+  CHECK(escalation.accepted);
+  CHECK(notifications.sent().size() == 2);
+
+  const auto duress = drogon::sync_wait(service.raiseSafetyAlert({.duress = true,
+                                                                  .alertId = 78,
+                                                                  .actorUserId = 2,
+                                                                  .actorName = "Marta",
+                                                                  .environmentId = 0,
+                                                                  .now = 1100,
+                                                                  .sequence = 1}));
+  CHECK(duress.accepted);
+  CHECK(notifications.sent().size() == 3);
+}

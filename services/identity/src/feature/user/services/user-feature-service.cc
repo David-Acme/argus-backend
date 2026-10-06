@@ -1,6 +1,7 @@
 #include "user-feature-service.hxx"
 
 #include <runtime/blocking-task.hxx>
+#include <auth/module-gate.hxx>
 #include <auth/role-access.hxx>
 #include <auth/user-role.hxx>
 #include <errors/response-exception.hxx>
@@ -36,7 +37,7 @@ bool removesLastActiveOwner(const UserSchema& before,
 drogon::Task<std::vector<UserSchema>>
 UserFeatureService::list(int64_t actorId, UserRole actorRole) const
 {
-  if (role_access::readsUserDirectory(actorRole))
+  if (role_access::readsUserDirectory(actorRole, moduleGate().roleActive(actorRole)))
     co_return co_await repository_.findAll();
 
   const auto user = co_await repository_.findById(actorId);
@@ -173,7 +174,7 @@ UserFeatureService::publishDirectoryAudit(const DirectoryAuditInput& input) cons
   std::vector<int64_t> recipientIds{input.after.id};
   for (const auto& recipient : co_await repository_.findAll(input.client)) {
     if (recipient.id != input.after.id &&
-        role_access::readsUserDirectory(recipient.role))
+        role_access::readsUserDirectory(recipient.role, moduleGate().roleActive(recipient.role)))
       recipientIds.push_back(recipient.id);
   }
   co_await sink->publishUsersAudit({

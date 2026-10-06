@@ -304,7 +304,7 @@ TEST_CASE("The llm http client carries the caller's user, role and language")
 
   static_cast<void>(client.chat(greeting()));
   const std::string defaults = server.lastBody();
-  CHECK(defaults.find("\"role\":\"guest\"") != std::string::npos);
+  CHECK(defaults.find("\"role\"") == std::string::npos);
   CHECK(defaults.find("\"lang\"") == std::string::npos);
   CHECK(defaults.find("\"user_id\"") == std::string::npos);
   CHECK(defaults.find("\"session_id\"") == std::string::npos);

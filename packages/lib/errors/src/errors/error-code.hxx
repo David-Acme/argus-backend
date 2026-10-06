@@ -43,7 +43,8 @@ enum class ErrorCode
   ModuleComingSoon,
   ModuleJobRunning,
   ModuleRequiredBy,
-  ModuleCore
+  ModuleCore,
+  RoleInactive
 };
 
 constexpr std::string_view toString(ErrorCode code)
@@ -88,6 +89,7 @@ constexpr std::string_view toString(ErrorCode code)
   case ErrorCode::ModuleJobRunning: return "MODULE_JOB_RUNNING";
   case ErrorCode::ModuleRequiredBy: return "MODULE_REQUIRED_BY";
   case ErrorCode::ModuleCore: return "MODULE_CORE";
+  case ErrorCode::RoleInactive: return "ROLE_INACTIVE";
   }
   throw std::invalid_argument("Unknown response error code");
 }

@@ -12,7 +12,7 @@ struct DirectoryUser
   std::string name;
   std::string lastName;
   std::string lang;
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
   bool isActive{false};
 };
 

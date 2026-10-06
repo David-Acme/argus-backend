@@ -1,9 +1,11 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <auth/module-gate.hxx>
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
 #include <feature/enrollment/repositories/enrollment/enrollment-repository.hxx>
+#include <feature/invitation/services/invitation-feature-service.hxx>
 #include <feature/person/services/person-feature-service.hxx>
 #include <feature/user/services/biometric-erase-service.hxx>
 #include <feature/user/services/portrait-preview-service.hxx>
@@ -413,4 +415,108 @@ TEST_CASE("promoting a visitor journals it for the owner and never reaches the m
   CHECK(sink.actions() == std::vector<int64_t>{511});
   CHECK(sink.moduleFrames() == 0);
   CHECK(scalar("SELECT COUNT(*) FROM person WHERE id = 512 AND status = 'candidate'") == 1);
+}
+
+TEST_CASE("the user directory is read by an active guard and shrinks to its own row when its module is off")
+{
+  boot();
+  DbService::client()->execSqlSync("INSERT OR IGNORE INTO user (id, name, last_name, role) VALUES "
+                                   "(31, 'Gus', '', 'guard'), (32, 'Rita', '', 'resident'), "
+                                   "(33, 'Odd', '', 'agronomist')");
+  const UserFeatureService users;
+
+  moduleGate().reset();
+  CHECK(drogon::sync_wait(users.list(31, UserRole::Guard)).size() >= 3);
+  CHECK(drogon::sync_wait(users.list(32, UserRole::Resident)).size() == 1);
+
+  moduleGate().apply({{.id = "surveillance", .enabled = false, .lifecycle = "disabled", .dataPurgedAt = 0,
+                       .roles = {"guard"}, .name = {}, .summary = {}, .intro = {}}});
+  const auto own = drogon::sync_wait(users.list(31, UserRole::Guard));
+  REQUIRE(own.size() == 1);
+  CHECK(own.front().id == 31);
+  CHECK(drogon::sync_wait(users.list(32, UserRole::Resident)).size() == 1);
+  const PortraitPreviewService previews;
+  CHECK(refusalOf(previews.create({.portraitUserId = 32, .requesterUserId = 31, .requesterRole = UserRole::Guard})) ==
+        IdentityErrors::PortraitVerificationUnavailable.message);
+
+  moduleGate().apply({{.id = "surveillance", .enabled = true, .lifecycle = "active", .dataPurgedAt = 0,
+                       .roles = {"guard"}, .name = {}, .summary = {}, .intro = {}}});
+  CHECK(drogon::sync_wait(users.list(31, UserRole::Guard)).size() >= 3);
+
+  const auto stored = drogon::sync_wait(UserRepository{}.findById(33));
+  REQUIRE(stored.has_value());
+  CHECK(stored.value_or(UserSchema{}).role == UserRole::Unknown);
+  CHECK(drogon::sync_wait(users.list(33, UserRole::Unknown)).size() == 1);
+  moduleGate().reset();
+}
+
+namespace
+{
+ModuleFlag surveillance(bool enabled)
+{
+  return {.id = "surveillance",
+          .enabled = enabled,
+          .lifecycle = enabled ? "active" : "disabled",
+          .dataPurgedAt = 0,
+          .roles = {"guard"},
+          .name = {.es = "Vigilancia", .en = "Surveillance"},
+          .summary = {},
+          .intro = {}};
+}
+
+struct RefusalDetail
+{
+  int status{0};
+  std::string code;
+  std::string message;
+};
+
+template <typename T>
+RefusalDetail detailOf(drogon::Task<T> task)
+{
+  try {
+    static_cast<void>(drogon::sync_wait(std::move(task)));
+  }
+  catch (const ResponseException& error) {
+    return {.status = error.statusCode(), .code = error.errorCode(), .message = error.what()};
+  }
+  return {};
+}
+}
+
+TEST_CASE("an invitation for a role whose module is off is refused 409 ROLE_INACTIVE, naming the module in the Owner's language")
+{
+  boot();
+  DbService::client()->execSqlSync(
+      "INSERT OR IGNORE INTO user (id, name, last_name, role, lang) VALUES "
+      "(61, 'Olivia', '', 'owner', 'en'), (62, 'Oscar', '', 'owner', 'es')");
+  const InvitationFeatureService invitations;
+  const auto ask = [](UserRole role) {
+    CreateInvitationDto body;
+    body.role = userRoleToString(role);
+    body.userRole = role;
+    return body;
+  };
+
+  moduleGate().reset();
+  moduleGate().apply({surveillance(false)});
+
+  const auto english = detailOf(invitations.create(ask(UserRole::Guard), 61));
+  CHECK(english.status == 409);
+  CHECK(english.code == "ROLE_INACTIVE");
+  CHECK(english.message == "Guard needs the Surveillance module");
+  const auto spanish = detailOf(invitations.create(ask(UserRole::Guard), 62));
+  CHECK(spanish.status == 409);
+  CHECK(spanish.message == "Vigilante necesita el módulo Vigilancia");
+  CHECK(scalar("SELECT COUNT(*) FROM user_invitation WHERE role = 'guard'") == 0);
+
+  const auto resident = drogon::sync_wait(invitations.create(ask(UserRole::Resident), 61));
+  CHECK(resident.invitation.role == UserRole::Resident);
+  CHECK(detailOf(invitations.create(ask(UserRole::Owner), 61)).status == 422);
+
+  moduleGate().apply({surveillance(true)});
+  const auto guard = drogon::sync_wait(invitations.create(ask(UserRole::Guard), 61));
+  CHECK(guard.invitation.role == UserRole::Guard);
+  CHECK(scalar("SELECT COUNT(*) FROM user_invitation WHERE role = 'guard'") == 1);
+  moduleGate().reset();
 }

@@ -105,7 +105,7 @@ struct FillInput
   const argus::camera::v1::TablePull& body;
   TableRows* rows;
   const Repo& repo;
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
 };
 
 template <typename Row>

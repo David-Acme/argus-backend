@@ -37,9 +37,17 @@
 
 ### 1. Enums, never raw strings for constrained columns
 
-Every DB column with a CHECK constraint (`role`, `severity`, `record_mode`,
+Every DB column with a CHECK constraint (`severity`, `record_mode`,
 `zone_type`, `status`, `action`) MUST use its `enum class` from the
-contract that owns the domain: `UserRole`
+contract that owns the domain, and so does `role`, which is the one column
+that has no CHECK any more: roles grow with the modules (the catalog names
+the roles each module brings), so identity stores `user.role` and
+`user_invitation.role` as plain text and `UserRole` is the only gate.
+`parseUserRole` validates every input boundary (it answers nothing for a
+name outside the enum), a stored or received name the build does not know
+reads as `UserRole::Unknown`, and `Unknown` holds no permission anywhere: no
+table, no route, no capability, no app action. Nothing defaults to Guest.
+The enums are `UserRole`
 (`packages/contracts/auth/src/auth/user-role.hxx`), `EventSeverity`,
 `CameraRecordMode` and `ZoneType`
 (`packages/contracts/camera/src/camera/`), `ReminderDetailStatus`
@@ -213,7 +221,22 @@ a route's first segment to `surveillance` or `productivity`, and `RoleFilter`
 refuses a route of a module that is not `active` with 403 `MODULE_DISABLED`
 for every role, from the per-process cache `module_gate::install` keeps
 (`packages/lib/auth/CONTEXT.md`, "Module gating"); a segment the map does not
-name is core and never gated.
+name is core and never gated. `POST /guard/panic` and `GET /guard/safety` are
+core too (`kCoreRoutes`): never gated, whatever the enabled set says, so an
+alert already raised can always be read and answered.
+
+A role belongs to the module that brings it (`modules.json` `roles`:
+`guard` belongs to `surveillance`). A role whose module is not active is
+**inactive**: the user keeps it, `RoleFilter` answers 403 `ROLE_INACTIVE` on
+every route that is not in the baseline (the rows tagged `kBaselineBit`, the
+`kBaselineTables`), and sync pulls and rooms serve it the baseline only. What a
+user can use now is one answer, `role_access::capabilitiesFor({role,
+modules})` (`capability.hxx`, `packages/lib/auth/CONTEXT.md`, "Capabilities"):
+the role's capabilities whose module is active, the baseline alone for an
+inactive role, nothing for `Unknown`; the app and the assistant's tools read
+that list, the routes and sync projections decide from the same tables.
+`reminder` and `reminder_detail` are core and own-row for every role, the
+Owner included: no module room, no global audit table, never gated.
 
 The session routes (`GET /auth/sessions`, `DELETE /auth/sessions`,
 `DELETE /auth/sessions/{id}`) are declared the same way in `kSessionAccess`:
@@ -222,11 +245,15 @@ query to `JwtContext.sub`; the Owner-only `/auth/users/...sessions` rows sit
 in the same table. Every `/auth/*` path that table does not name is refused
 to the non-Owner roles.
 
-Helpers: `hasAccess({role, table, perm})`, `readableTables(role)`,
-`readsUserDirectory(role)`, `moduleTables(role)` (the module rooms a socket
-joins and the global audit tables it pages: `readableTables` minus `user` for
-the roles that read only their own row), `tableFromPath(path)`,
-`permissionForMethod(method)`, `hasHttpAccess({role, path, method})`,
+Helpers: `hasAccess({role, table, perm, roleActive})`, `readableTables(role)`,
+`readsUserDirectory(role, roleActive)`, `moduleTables(role, modules)` (the
+module rooms a socket joins and the global audit tables it pages:
+`readableTables` minus `user` for the roles that read only their own row,
+minus the own-row and inactive-module tables), `tableReadable(role, table,
+modules)`, `tableFromPath(path)`, `permissionForMethod(method)`,
+`hasHttpAccess({role, path, method, roleActive})`, `routeVerdict({role, path,
+method, modules})` (Allowed, ModuleDisabled, RoleInactive or Denied),
+`capabilitiesFor` and `hasCapability`,
 `hasCameraAction(role, action)` and `hasAppAction(role, action)` (the app
 actions the assistant may trigger on a user's behalf: `ShowCamera`,
 `OpenScreen`, `SetGuardMode`, each answered from the table or route that

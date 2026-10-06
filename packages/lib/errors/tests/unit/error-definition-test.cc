@@ -60,10 +60,11 @@ TEST_CASE("every error code has exactly one wire string")
       {.code = ErrorCode::ModuleComingSoon, .name = "MODULE_COMING_SOON"},
       {.code = ErrorCode::ModuleJobRunning, .name = "MODULE_JOB_RUNNING"},
       {.code = ErrorCode::ModuleRequiredBy, .name = "MODULE_REQUIRED_BY"},
-      {.code = ErrorCode::ModuleCore, .name = "MODULE_CORE"}};
+      {.code = ErrorCode::ModuleCore, .name = "MODULE_CORE"},
+      {.code = ErrorCode::RoleInactive, .name = "ROLE_INACTIVE"}};
 
   CHECK(table.size() ==
-        static_cast<std::size_t>(ErrorCode::ModuleCore) + 1);
+        static_cast<std::size_t>(ErrorCode::RoleInactive) + 1);
 
   for (const auto& row : table)
     CHECK(std::string(toString(row.code)) == row.name);

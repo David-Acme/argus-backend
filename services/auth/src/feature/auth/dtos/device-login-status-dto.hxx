@@ -14,7 +14,7 @@ struct DeviceLoginStatusDto
   int64_t userId{0};
   std::string name;
   std::string deviceSecret;
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
 
   Json::Value toJson() const;
 };

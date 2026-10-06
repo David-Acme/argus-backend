@@ -13,7 +13,7 @@ struct UserSchema
   int64_t id{0};
   std::string name;
   std::string lastName;
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
   std::string lang{"es"};
   bool isActive{true};
   int64_t createdAt{0};

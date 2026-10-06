@@ -93,10 +93,12 @@ UserRole callerRole(wire::CallerRole role)
       return UserRole::Resident;
     case wire::CALLER_ROLE_GUARD:
       return UserRole::Guard;
+    case wire::CALLER_ROLE_GUEST:
+      return UserRole::Guest;
     default:
       break;
   }
-  return UserRole::Guest;
+  return UserRole::Unknown;
 }
 
 ChatRequest chatRequest(const wire::ChatRequest& wireRequest, std::string_view caller)

@@ -3,6 +3,10 @@
 
 #include <app/rpc/modules-rpc-service.hxx>
 #include <auth/jwt-filter.hxx>
+#include <auth/module-gate.hxx>
+#include <feature/modules/dtos/module-json.hxx>
+#include <feature/modules/infra/module-event-sink.hxx>
+#include <text/json-util.hxx>
 #include <auth/request-context.hxx>
 #include <auth/role-access.hxx>
 #include <drogon/drogon.h>
@@ -185,7 +189,15 @@ TEST_CASE("the ModuleStates RPC serves the enabled set to a paired caller and re
       .callerPairs = {{"camera", "camera-secret"}},
       .legacySecret = {},
       .onFirstLegacy = {}});
-  ModulesRpcService rpc([&service] { return service.engine->enabledSet(); }, gate);
+  ModulesRpcService rpc({.states = [&service] { return service.engine->enabledSet(); },
+                         .catalog = [&service] {
+                           Json::Value list(Json::arrayValue);
+                           for (const auto& view : service.engine->list())
+                             list.append(module_json::module(view, "es"));
+                           return OwnerCatalogReply{.modulesJson = json_util::toString(list),
+                                                    .version = service.engine->enabledSet().version};
+                         },
+                         .gate = gate});
   int port = 0;
   grpc::ServerBuilder builder;
   builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
@@ -201,6 +213,31 @@ TEST_CASE("the ModuleStates RPC serves the enabled set to a paired caller and re
   CHECK(reply.modules[0].enabled);
   CHECK(reply.modules[0].lifecycle == "active");
   CHECK(reply.modules[1].enabled);
+  CHECK(reply.modules[0].roles.empty());
+  CHECK(reply.modules[1].id == "surveillance");
+  CHECK(reply.modules[1].roles == std::vector<std::string>{"guard"});
+  CHECK(reply.modules[0].kind == "core");
+  CHECK(reply.modules[1].kind == "available");
+  CHECK(reply.modules[3].kind == "coming_soon");
+  CHECK(reply.modules[1].name.es == "Vigilancia");
+  CHECK(reply.modules[1].name.en == "Surveillance");
+  CHECK(reply.modules[1].summary.en.starts_with("Live cameras"));
+  CHECK_FALSE(reply.modules[1].intro.es.what.empty());
+  CHECK(reply.modules[1].intro.es.examples.size() == 3);
+  CHECK(reply.modules[1].intro.en.examples.size() == 3);
+  CHECK(reply.modules[2].roles.empty());
+
+  const auto catalog =
+      ModulesClient({.target = target, .credential = "camera-secret", .timeout = std::chrono::seconds(5)}).ownerCatalog();
+  CHECK(catalog.version == reply.version);
+  const auto owner = json_util::fromString(catalog.modulesJson);
+  REQUIRE(owner.isArray());
+  REQUIRE(owner.size() == 4);
+  CHECK(owner[1]["id"] == "surveillance");
+  CHECK(owner[1]["roles"][0] == "guard");
+  CHECK(owner[1]["intro"]["examples"].size() == 3);
+  CHECK(owner[1].isMember("hardware"));
+  CHECK(owner[1].isMember("components"));
 
   int status = 0;
   try {
@@ -212,4 +249,30 @@ TEST_CASE("the ModuleStates RPC serves the enabled set to a paired caller and re
   }
   CHECK(status == 401);
   server->Shutdown();
+}
+
+TEST_CASE("the enabled-set event is read back by every service's gate with its roles and texts")
+{
+  Service service;
+  const auto set = service.engine->enabledSet();
+  const auto flags = module_gate::parseEnabledSet(module_event::enabledPayload(set, 1));
+  REQUIRE(flags.has_value());
+  const auto modules = flags.value_or(ModuleFlags{});
+  REQUIRE(modules.size() == 4);
+  CHECK(modules[1].id == "surveillance");
+  CHECK(modules[1].roles == std::vector<std::string>{"guard"});
+  CHECK(modules[1].kind == "available");
+  CHECK(modules[3].kind == "coming_soon");
+  CHECK(modules[1].name.es == "Vigilancia");
+  CHECK(modules[1].intro.en.examples.size() == 3);
+  CHECK(modules[0].roles.empty());
+
+  ModuleGate gate;
+  gate.apply(modules);
+  CHECK(gate.roleActive(UserRole::Guard) == modules[1].enabled);
+  ModuleFlags off = modules;
+  off[1].enabled = false;
+  gate.apply(off);
+  CHECK_FALSE(gate.roleActive(UserRole::Guard));
+  CHECK(gate.roleActive(UserRole::Resident));
 }

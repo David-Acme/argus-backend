@@ -80,6 +80,8 @@ struct CatalogModule
   std::vector<std::string> dataOwners;
   HardwareRequirement hardware;
   std::vector<GettingStartedItem> gettingStarted;
+  std::vector<std::string> roles;
+  ModuleIntroLocalized intro;
 };
 
 struct ModuleCatalog

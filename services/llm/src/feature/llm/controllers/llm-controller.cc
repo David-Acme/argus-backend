@@ -208,7 +208,7 @@ ChatRequest boundToCaller(ChatRequest request, std::string_view caller)
   if (caller == kIdentityCaller)
     return request;
   request.userId = 0;
-  request.role = UserRole::Guest;
+  request.role = UserRole::Unknown;
   request.toolsEnabled = false;
   request.clientActions = false;
   request.sessionId.clear();

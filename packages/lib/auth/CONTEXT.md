@@ -279,3 +279,147 @@ operator and health monitor, argus-guard's evaluation) and may register
 is disabled). argus-camera, argus-guard, argus-identity (`/visitor*`) and
 argus-productivity install it; a service whose routes are all core needs
 nothing, its `RoleFilter` simply finds no module.
+
+## Roles per module, capabilities and the unknown role (2026-10, the context plan)
+
+`docs/history/plans/context-roles-tools-quality-plan.md` (sections 2 and 3).
+What a user can use now is one answer computed in one place, and every
+decision below reads the same tables.
+
+### The role vocabulary grows; the database stores text
+
+`UserRole` stays an enum, but identity stores `user.role` and
+`user_invitation.role` as plain text with no CHECK (a module that brings a role
+would otherwise force a table rebuild per module; the boot rebuild that drops
+the old CHECKs is `services/identity/CONTEXT.md`, "Role storage"). The enum is
+therefore the only gate:
+
+- `parseUserRole(name)` is the input validator: it answers nothing for a name
+  outside the enum (`"unknown"` included), and every DTO that takes a role
+  uses it.
+- `userRoleFromString(name)` is the reader of a stored or received name and
+  answers `UserRole::Unknown` for anything else. `Unknown` is not a role: it
+  has no `roleBit` (`roleBit(Unknown) == 0`), no row in `kTableAccess`, no
+  capability and no app action; `ModuleSnapshot::roleActive(Unknown)` is false.
+  The places that used to default to Guest (`userRoleFromString`, the llm chat
+  DTO, the llm controller, the llm rpc server, the guard directory, every
+  `UserRole role{...}` member) now default to `Unknown`, and the voice wire's
+  `VoiceIdentity.role` is `optional` so that a missing role is not the Owner
+  (`VOICE_ROLE_OWNER = 0`); `VOICE_ROLE_UNKNOWN = 4` is what an `Unknown` role
+  travels as.
+
+### Which module brings a role
+
+`modules.json` names the roles a module brings (`"roles": ["guard"]` on
+`surveillance`; a role belongs to at most one module and `owner` to none). The
+list travels on `ModuleStates`, on every enabled-set message of the feed and in
+the last known state file, so every service's gate knows it. `ModuleFlag`
+(`module-snapshot.hxx`) carries `{id, enabled, lifecycle, dataPurgedAt, roles,
+name, summary, intro}` and `ModuleSnapshot` answers `enabled(module)` (a module
+with no word is enabled, `core` always), `moduleOfRole(role)`, `roleActive(role)`
+and `activeModules()`. A role whose module is off is **inactive**; every
+other role, the Owner always, is active. `moduleGate().snapshot()` is the copy
+a decision reads, `moduleGate().roleActive(role)` the shortcut, and
+`moduleGate().onStateChange(fn)` fires once per `apply` that changed any field
+of any module (argus-sync turns it into `ContextUpdate`).
+
+### Inactive role: the baseline
+
+An inactive role keeps the user and costs the household nothing, but the server
+grants core only, and "core only" means the **baseline**, a small fixed set
+every role holds in core: its own profile, sessions, privacy, notifications and
+push tokens, calls, the heartbeat, the module list and the request for one,
+the panic button and its own reminders. In the tables it is
+`kBaselineBit` on a route row (`kEveryRoleBaseline`, `kNonOwnerBaseline`,
+`kResidentGuardGuestBaseline`) and `kBaselineTables` (`user`, `audit_log`,
+`user_audit_log`, `notification`, `notification_token`, `reminder`,
+`reminder_detail`). `roleGranted(mask, role, roleActive)` and
+`hasAccess({.., .roleActive})` apply it; `readsUserDirectory(role, roleActive)`
+is false for an inactive Guard (its own row only) and `moduleTables(role,
+modules)` leaves the directory and every non-baseline table out.
+
+`RoleFilter` decides with `routeVerdict`, in this order: the route's module is
+off (403 `MODULE_DISABLED`, for every role); the role is inactive and the route
+is beyond the baseline (403 `ROLE_INACTIVE`, new `AuthErrors::RoleInactive`, so
+the app can show the calm screen instead of a permission problem); the role
+table says no (403 `FORBIDDEN`). `POST /guard/panic` is core:
+`moduleOfRoute(path, method)` knows `kCoreRoutes` and never gates it, and it
+carries the baseline bit, so panic works with surveillance off and for an
+inactive guard. `GET /guard/safety`, the safety state of the caller, is core the
+same way: a panic or duress alert already raised is never cancelled by a module
+change, so what reads and answers it stays reachable with surveillance off and
+for an inactive Guard (supervisor decision of 2026-10-06). The answer itself
+rides the notification routes (`GET /notification/responses`, `GET` and `PATCH
+/notification/responses/{id}`, `PATCH /notification/ack` and `read`), which are
+the `notification` table, a baseline table, and the call it rings
+(`POST /rtc/token`, `calls.join`). Whether the caller was a recipient of the
+alert is the notification service's own check (404 for anyone else:
+`call-engine-test`). The capability that opens the path is `safety.respond`, in
+the baseline, independent of `guard.read` and of every module. What stays
+surveillance is enabling, configuring and entering duress (`PATCH
+/guard/safety`, `PUT` and `DELETE /guard/safety/pin`), the modes and every
+other `/guard` route.
+
+`role_access::hasAppAction({.role, .action, .modules})` is the module-aware twin
+of `hasAppAction(role, action)`: the app actions the assistant may trigger
+(`ShowCamera`, `OpenScreen`, `SetGuardMode`) answered from `camera.view`,
+`notifications.read` and `guard.mode.set`, so a module that is off or an
+inactive role refuses them.
+
+Who may be put into an inactive role is identity's call, not this package's:
+an invitation into one is refused 409 `ROLE_INACTIVE`, a role change into one
+is allowed (`services/identity/CONTEXT.md`, "Role storage"). Any service that
+asks "is this role active under the current modules" uses
+`moduleGate().roleActive(role)`, or `moduleGate().current()->roleActive(role)`
+when it also needs `moduleOfRole`.
+
+### Capabilities
+
+`capability.hxx` holds `kCapabilities` (`{id, module, roles}`) and
+`capabilitiesFor({.role, .modules})`: the capability ids the role holds whose
+module is active, in table order; an inactive role keeps only the entries
+whose mask carries the baseline bit, `Unknown` gets none.
+`hasCapability({.role, .modules, .capability})` answers one. The app reads the
+list in its context (`useCapabilities()`), argus-llm filters its tools by it;
+the server stays the authority (routes, sync pulls, the tools' own checks).
+`tests/unit/capability-test.cc` keeps the list from drifting from the routes:
+for every role and every combination of the two modules it asserts that each
+capability's probe route or table answers exactly what the capability says.
+
+| Capability | Module | Roles besides the Owner (who holds all but `modules.request`) |
+|---|---|---|
+| `profile.read` `sessions.manage` `privacy.own` `notifications.read` `notifications.register` `calls.join` `heartbeat.read` `modules.read` `safety.panic` `safety.read` `safety.respond` `reminders.read` `reminders.write` | core | every role; **baseline** |
+| `modules.request` | core | Resident, Guard, Guest; baseline |
+| `assistant.voice` | core | Resident, Guard, Guest |
+| `directory.read` | core | Guard |
+| `people.read` | core | Resident, Guard |
+| `people.write` `memory.manage` | core | Resident |
+| `users.manage` `invitations.manage` `privacy.household` `settings.manage` `modules.manage` `activity.read` | core | Owner only |
+| `camera.view` | surveillance | Resident, Guard, Guest |
+| `camera.talk` `zones.read` `events.read` `guard.read` | surveillance | Resident, Guard |
+| `camera.manage` `zones.write` `guard.mode.set` `guard.guests.write` `safety.duress` | surveillance | Resident |
+| `response.duty` `visitors.read` | surveillance | Guard |
+| `guard.admin` `visitors.manage` `presence.read` | surveillance | Owner only |
+| `agenda.read` `agenda.write` `projects.read` `projects.write` | productivity | Resident |
+
+`safety.duress` covers the duress switch and the safety PINs; the panic button
+is the core `safety.panic`, the caller's safety state the core `safety.read` and
+answering a raised alert the core `safety.respond`. `reminders.read` and `reminders.write` are held by
+every role, the Owner included, for rows whose target user is the caller only
+(owner decision of 2026-10-06): the tables give `reminder` and
+`reminder_detail` to Guard and Guest as to Resident, the service query keeps
+the rows to `JwtContext.sub` and answers 404 for another user's, and nothing
+in the sync projections widens it for the Owner: they are in no module room
+and no global audit list (`isOwnRowTable`), their changes reach the target's
+own room alone, and `kModuleRoutes` never names `reminder` so the routes are
+never module-gated and the tables keep syncing with productivity off.
+
+### Tables of a module
+
+`kTableModules` maps the tables of a gated module (`camera`, `camera_stream`,
+`zone`, `event` to surveillance; `calendar_event`, `calendar_event_share`,
+`project`, `project_member`, `project_task` to productivity) and
+`tableReadable(role, table, modules)` is what a sync pull asks: the role
+reads it, the table's module is active and the role is not inactive. A pull of
+an inactive module's table answers `null`, like a table the role may not read;
+the rows stay in their owners' databases.

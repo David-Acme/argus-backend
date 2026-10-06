@@ -11,7 +11,7 @@ struct UserInvitationSchema
 {
   int64_t id{0};
   std::string tokenHash;
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
   int maxRedemptions{1};
   int redemptionCount{0};
   int64_t expiresAt{0};

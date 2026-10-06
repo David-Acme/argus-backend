@@ -40,7 +40,7 @@ struct EnrollmentUserInput
 {
   std::string name;
   std::string lastName;
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
   std::string lang;
   drogon::orm::DbClient* client{nullptr};
 };

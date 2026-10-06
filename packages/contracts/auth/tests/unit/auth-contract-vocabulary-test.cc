@@ -44,9 +44,19 @@ TEST_CASE("user role strings round-trip")
         .fromString = userRoleFromString});
 }
 
-TEST_CASE("unknown strings fall back to documented defaults")
+TEST_CASE("a role name outside the enum is Unknown, never a role with permissions")
 {
-    CHECK(userRoleFromString("bogus") == UserRole::Guest);
+    for (const auto* name : {"bogus", "", "Owner", "GUARD", "owner ", "unknown", "agronomist"}) {
+        CAPTURE(name);
+        CHECK(userRoleFromString(name) == UserRole::Unknown);
+        CHECK_FALSE(parseUserRole(name).has_value());
+    }
+    CHECK_FALSE(userRoleKnown(UserRole::Unknown));
+    for (const auto role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest})
+        CHECK(userRoleKnown(role));
+    CHECK(userRoleToString(UserRole::Unknown) == "unknown");
+    CHECK(parseUserRole("guard") == UserRole::Guard);
+    CHECK(parseUserRole("owner") == UserRole::Owner);
 }
 
 TEST_CASE("device login status strings round-trip")

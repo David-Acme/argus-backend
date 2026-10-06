@@ -1,5 +1,6 @@
 #include "portrait-preview-service.hxx"
 
+#include <auth/module-gate.hxx>
 #include <auth/role-access.hxx>
 #include <ctime>
 #include <openssl/evp.h>
@@ -34,7 +35,7 @@ std::string base64(const std::string& input)
 
 void PortraitPreviewService::requireAccess(UserRole role)
 {
-  if (!role_access::readsUserDirectory(role))
+  if (!role_access::readsUserDirectory(role, moduleGate().roleActive(role)))
     throw ResponseException(403, IdentityErrors::PortraitVerificationUnavailable);
 }
 

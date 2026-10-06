@@ -146,7 +146,8 @@ public:
   {
     argus::client::addCallerIdentity(
         *context_, {.userId = identity_.user_id(),
-                    .role = voiceRoleToString(identity_.role())});
+                    .role = identity_.has_role() ? voiceRoleToString(identity_.role())
+                                                 : userRoleToString(UserRole::Unknown)});
 
     {
       std::scoped_lock lock(mutex_);
@@ -280,9 +281,11 @@ std::string voiceRoleToString(argus::voice::v1::VoiceRole role)
     case argus::voice::v1::VOICE_ROLE_GUARD:
       return "guard";
     case argus::voice::v1::VOICE_ROLE_GUEST:
+      return "guest";
+    default:
       break;
   }
-  return "guest";
+  return userRoleToString(UserRole::Unknown);
 }
 
 argus::voice::v1::VoiceRole voiceRoleToProto(UserRole role)
@@ -295,9 +298,11 @@ argus::voice::v1::VoiceRole voiceRoleToProto(UserRole role)
     case UserRole::Guard:
       return argus::voice::v1::VOICE_ROLE_GUARD;
     case UserRole::Guest:
+      return argus::voice::v1::VOICE_ROLE_GUEST;
+    case UserRole::Unknown:
       break;
   }
-  return argus::voice::v1::VOICE_ROLE_GUEST;
+  return argus::voice::v1::VOICE_ROLE_UNKNOWN;
 }
 
 argus::voice::v1::VoiceLanguage voiceLanguageToProto(std::string_view lang)

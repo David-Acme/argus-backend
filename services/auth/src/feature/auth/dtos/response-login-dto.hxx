@@ -11,7 +11,7 @@ struct ResponseLoginDto
   std::string refreshToken;
   int64_t userId{0};
   std::string name;
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
   int64_t personId{0};
   bool alreadyRegistered{false};
   std::string deviceSecret;

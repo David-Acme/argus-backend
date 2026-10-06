@@ -17,6 +17,9 @@ namespace
 {
 constexpr std::size_t kMaxIdLength = 32;
 constexpr std::size_t kMaxTextLength = 240;
+constexpr std::size_t kMaxIntroLength = 600;
+constexpr std::size_t kMaxIntroExamples = 5;
+constexpr std::string_view kOwnerRole = "owner";
 constexpr std::size_t kMaxPathLength = 256;
 constexpr std::size_t kMaxUrlLength = 512;
 constexpr std::size_t kMaxCommandLength = 200;
@@ -129,6 +132,27 @@ LocalizedText localized(const Node& node)
   return {.es = text(child(node, "es"), kMaxTextLength), .en = text(child(node, "en"), kMaxTextLength)};
 }
 
+ModuleIntroLine introLine(const Node& node)
+{
+  requireObject(node);
+  ModuleIntroLine line{.what = text(child(node, "what"), kMaxIntroLength), .examples = {}};
+  const auto examples = child(node, "examples");
+  const auto& list = arrayAt(examples);
+  if (list.size() > kMaxIntroExamples)
+    reject(examples.where + ": holds at most " + std::to_string(kMaxIntroExamples) + " examples");
+  for (Json::ArrayIndex index = 0; index < list.size(); ++index)
+    line.examples.push_back(text(element(examples, index), kMaxTextLength));
+  return line;
+}
+
+ModuleIntroLocalized readIntro(const Node& node)
+{
+  if (node.value.isNull())
+    return {};
+  requireObject(node);
+  return {.es = introLine(child(node, "es")), .en = introLine(child(node, "en"))};
+}
+
 bool pinnedUrl(const std::string& url)
 {
   if (url.find("/releases/download/") != std::string::npos)
@@ -236,7 +260,9 @@ CatalogModule readModule(const Node& node)
                        .gates = {},
                        .dataOwners = identifiers(child(node, "dataOwners")),
                        .hardware = readHardware(child(node, "hardware")),
-                       .gettingStarted = {}};
+                       .gettingStarted = {},
+                       .roles = identifiers(child(node, "roles")),
+                       .intro = readIntro(child(node, "intro"))};
   const auto gates = child(node, "gates");
   for (Json::ArrayIndex index = 0; index < arrayAt(gates).size(); ++index)
     module.gates.push_back(route(element(gates, index)));
@@ -257,6 +283,10 @@ CatalogModule readModule(const Node& node)
     reject(node.where + ": a coming_soon module installs nothing");
   if (module.kind == ModuleKind::Core && !module.required.empty())
     reject(node.where + ": the core module requires nothing");
+  if (module.kind == ModuleKind::Core && !module.roles.empty())
+    reject(node.where + ".roles: the core module brings no role of its own");
+  if (std::ranges::find(module.roles, kOwnerRole) != module.roles.end())
+    reject(node.where + ".roles: the owner role belongs to no module");
   return module;
 }
 
@@ -273,7 +303,11 @@ void crossCheck(const ModuleCatalog& catalog)
   if (std::ranges::count(catalog.modules, ModuleKind::Core, &CatalogModule::kind) != 1)
     reject("module catalog.modules: exactly one module is core");
   std::set<std::string> gates;
+  std::set<std::string> roles;
   for (const auto& module : catalog.modules) {
+    for (const auto& role : module.roles)
+      if (!roles.insert(role).second)
+        reject("module catalog." + module.id + ".roles: " + role + " is brought by two modules");
     for (const auto& required : module.required)
       if (catalog.module(required) == nullptr || required == module.id)
         reject("module catalog." + module.id + ".requires: names an unknown module " + required);

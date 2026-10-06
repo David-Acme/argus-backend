@@ -7,6 +7,7 @@
 #include <config/settings-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/modules/controllers/modules-controller.hxx>
+#include <feature/modules/dtos/module-json.hxx>
 #include <feature/modules/infra/component-owners.hxx>
 #include <feature/modules/infra/host-resources.hxx>
 #include <feature/modules/infra/module-catalog-file.hxx>
@@ -32,6 +33,7 @@
 #include <runtime/log-output.hxx>
 #include <runtime/shutdown-signal.hxx>
 #include <sqlite/db-service.hxx>
+#include <text/json-util.hxx>
 
 #include <grpcpp/grpcpp.h>
 
@@ -51,6 +53,16 @@ Json::Value drogonConfig(const ListenerConfig& listener)
     config = Json::Value(Json::objectValue);
   config["listeners"] = listenerJson(listener);
   return config;
+}
+
+OwnerCatalogReply ownerCatalogOf(const ModuleEngine* engine)
+{
+  if (engine == nullptr)
+    return {};
+  Json::Value list(Json::arrayValue);
+  for (const auto& view : engine->list())
+    list.append(module_json::module(view, "es"));
+  return {.modulesJson = json_util::toString(list), .version = engine->enabledSet().version};
 }
 
 std::string ownerList(const std::vector<SettingsOwnerConfig>& owners)
@@ -167,8 +179,9 @@ int main()
   }
 
   ModulesRpcService modulesRpc(
-      [engine = moduleEngine.get()] { return engine != nullptr ? engine->enabledSet() : ModuleStatesReply{}; },
-      rpcGate);
+      {.states = [engine = moduleEngine.get()] { return engine != nullptr ? engine->enabledSet() : ModuleStatesReply{}; },
+       .catalog = [engine = moduleEngine.get()] { return ownerCatalogOf(engine); },
+       .gate = rpcGate});
   std::unique_ptr<argus::client::GrpcServerDrain> rpcDrain;
   if (!rpc.address.empty()) {
     grpc::ServerBuilder rpcBuilder;

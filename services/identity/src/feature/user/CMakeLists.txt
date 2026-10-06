@@ -5,6 +5,7 @@ argus_module(NAME identity-user
         dtos/response-biometric-erase-dto.cc
         dtos/response-portrait-preview-capability-dto.cc
         dtos/response-portrait-preview-image-dto.cc
+        dtos/response-update-user-dto.cc
         dtos/update-user-dto.cc
         repositories/biometric-erase/biometric-erase-repository.cc
         repositories/portrait-preview-capability/portrait-preview-capability-repository.cc

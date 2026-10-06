@@ -3968,7 +3968,7 @@ GuardService::planRecipients(const PlanQuery& query)
   const auto redactedOf = [&](int64_t userId) {
     const auto user = std::ranges::find(query.users, userId, &ResponseUser::userId);
     return visitorRedactedFor(data,
-                              user != query.users.end() ? user->role : UserRole::Guest);
+                              user != query.users.end() ? user->role : UserRole::Unknown);
   };
   const auto batchesOf = [&](const std::vector<int64_t>& userIds) {
     std::map<std::pair<std::string, bool>, std::vector<int64_t>> byAudience;

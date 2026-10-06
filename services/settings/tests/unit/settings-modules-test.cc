@@ -130,6 +130,71 @@ TEST_CASE("the shipped catalog is valid and names its modules, components and da
   CHECK(catalog.module("surveillance")->gates.size() == 7);
 }
 
+TEST_CASE("the shipped catalog declares the roles a module brings and an intro for every module")
+{
+  const auto parsed = parseModuleCatalog(shipped());
+  if (!parsed.catalog) {
+    FAIL("the shipped catalog is invalid");
+    return;
+  }
+  const auto& catalog = *parsed.catalog;
+  CHECK(catalog.module("surveillance")->roles == std::vector<std::string>{"guard"});
+  CHECK(catalog.module("core")->roles.empty());
+  CHECK(catalog.module("productivity")->roles.empty());
+  CHECK(catalog.module("agronomy")->roles.empty());
+  std::set<std::string> brought;
+  for (const auto& module : catalog.modules) {
+    CAPTURE(module.id);
+    for (const auto& role : module.roles) {
+      CHECK(role != "owner");
+      CHECK(brought.insert(role).second);
+    }
+    for (const auto* line : {&module.intro.es, &module.intro.en}) {
+      CHECK_FALSE(line->what.empty());
+      CHECK(line->examples.size() >= 2);
+      CHECK(line->examples.size() <= 3);
+      for (const auto& example : line->examples)
+        CHECK_FALSE(example.empty());
+    }
+  }
+}
+
+TEST_CASE("the catalog refuses a role the owner owns, a role two modules bring and an intro that overflows")
+{
+  auto root = shipped();
+  root["modules"][1]["roles"].append("owner");
+  CHECK(problemOf(root).find("owner role belongs to no module") != std::string::npos);
+
+  root = shipped();
+  root["modules"][2]["roles"].append("guard");
+  CHECK(problemOf(root).find("guard is brought by two modules") != std::string::npos);
+
+  root = shipped();
+  root["modules"][0]["roles"].append("steward");
+  CHECK(problemOf(root).find("core module brings no role") != std::string::npos);
+
+  root = shipped();
+  root["modules"][1]["roles"].append("Bad Role");
+  CHECK(problemOf(root).find("lowercase") != std::string::npos);
+
+  root = shipped();
+  for (int index = 0; index < 4; ++index)
+    root["modules"][1]["intro"]["es"]["examples"].append("one more");
+  CHECK(problemOf(root).find("at most 5 examples") != std::string::npos);
+
+  root = shipped();
+  root["modules"][1]["intro"]["en"].removeMember("what");
+  CHECK(problemOf(root).find("what") != std::string::npos);
+
+  root = shipped();
+  root["modules"][1].removeMember("roles");
+  root["modules"][1].removeMember("intro");
+  const auto parsed = parseModuleCatalog(root);
+  REQUIRE(parsed.catalog.has_value());
+  CHECK(parsed.catalog->module("surveillance")->roles.empty());
+  CHECK(parsed.catalog->module("surveillance")->intro.es.what.empty());
+}
+
 TEST_CASE("the catalog refuses cycles, unknown references and unpinned downloads")
 {
   CHECK(problemOf(catalogOf({module({.id = "core", .kind = "core", .required = {}}), module({.id = "a", .kind = "available", .required = {"b"}}),
@@ -342,7 +407,33 @@ TEST_CASE("the event payloads carry the kind, version, settled flag and either t
   CHECK(enabled["modules"][1]["lifecycle"] == "not_installed");
   CHECK(enabled["modules"][1]["dataPurgedAt"] == 77);
   CHECK(enabled["modules"][0]["dataPurgedAt"].isNull());
+  CHECK(enabled["modules"][0]["kind"] == "");
+  CHECK(enabled["modules"][0]["roles"].isArray());
+  CHECK(enabled["modules"][0]["roles"].empty());
+  CHECK(enabled["modules"][0]["name"]["es"] == "");
   CHECK_FALSE(enabled.isMember("module"));
+
+  const ModuleStatesReply described{
+      .modules = {{.id = "surveillance",
+                   .enabled = true,
+                   .lifecycle = "active",
+                   .dataPurgedAt = 0,
+                   .roles = {"guard"},
+                   .name = {.es = "Vigilancia", .en = "Surveillance"},
+                   .summary = {.es = "Cámaras", .en = "Cameras"},
+                   .intro = {.es = {.what = "Qué es", .examples = {"uno", "dos"}},
+                             .en = {.what = "What it is", .examples = {"one"}}},
+                   .kind = "available"}},
+      .version = 3,
+      .settled = true};
+  const Json::Value rich = parse(module_event::enabledPayload(described, 1));
+  CHECK(rich["modules"][0]["roles"][0] == "guard");
+  CHECK(rich["modules"][0]["kind"] == "available");
+  CHECK(rich["modules"][0]["name"]["en"] == "Surveillance");
+  CHECK(rich["modules"][0]["summary"]["es"] == "Cámaras");
+  CHECK(rich["modules"][0]["intro"]["es"]["what"] == "Qué es");
+  CHECK(rich["modules"][0]["intro"]["es"]["examples"].size() == 2);
+  CHECK(rich["modules"][0]["intro"]["en"]["examples"][0] == "one");
 
   const auto parsed = parseModuleCatalog(shipped());
   if (!parsed.catalog) {

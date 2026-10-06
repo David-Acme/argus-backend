@@ -14,6 +14,7 @@ struct CallerIdentity
   int64_t userId{0};
   std::string role;
   std::optional<std::string> device;
+  bool roleActive{true};
 };
 
 struct PeerCredential
@@ -40,6 +41,8 @@ void addPeerCredential(grpc::ClientContext& context,
                        const PeerCredential& credential);
 
 inline constexpr const char* kFleetSecretKey = "x-argus-fleet";
+
+inline constexpr const char* kRoleActiveKey = "x-argus-role-active";
 
 inline constexpr const char* kCallerCredentialKey = "x-argus-credential";
 

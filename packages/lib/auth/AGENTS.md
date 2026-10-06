@@ -30,9 +30,16 @@ sync and tts.
   route-prefix → module map (`kModuleRoutes`). It refuses a route of a
   disabled module with 403 `MODULE_DISABLED` before the role check. No I/O.
 - `src/auth/module-gate.{cc,hxx}` — `ModuleGate` (`moduleGate()`, one per
-  process): the enabled set of the selectable modules, read by `RoleFilter`
-  through `role_access::moduleOfPath` and by a service's background loops;
-  the enabled-set parser and the last-known-state file.
+  process): the state of the selectable modules (enabled, lifecycle, the roles
+  each brings, their names and intros), read by `RoleFilter` through
+  `role_access::routeVerdict` and by a service's background loops; the
+  enabled-set parser and the last-known-state file.
+- `src/auth/module-snapshot.hxx` — `ModuleFlag` and `ModuleSnapshot`: a copy
+  of that state with `enabled`, `moduleOfRole`, `roleActive` and
+  `activeModules`.
+- `src/auth/capability.hxx` — `kCapabilities`, `capabilitiesFor` and
+  `hasCapability`: what a role can use with the modules that are active.
+  CONTEXT.md, "Roles per module, capabilities and the unknown role".
 - `src/auth/module-feed.{cc,hxx}`, `src/auth/module-settings-read.cc` —
   `ModuleFeed` and `module_gate::install`: the boot read over
   `argus.settings.v1.Modules` and the per-service durable on
@@ -85,7 +92,9 @@ sync and tts.
 
 ## Tests
 
-Seven suites of its own. `tests/unit/module-gate-test.cc` pins the module
+Eight suites of its own. `tests/unit/capability-test.cc` pins the capability
+table and keeps it from drifting from the route and table rules.
+`tests/unit/module-gate-test.cc` pins the module
 map (every gated prefix, core never gated), `RoleFilter`'s
 `MODULE_DISABLED` for every role, the `/modules` rows, the cache defaults,
 the enabled-set parser, the persisted last known state, the versioned live

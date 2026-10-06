@@ -51,7 +51,7 @@ struct FanOutPlan
   std::vector<RoomId> rooms;
   int64_t userId{0};
   std::string sessionId;
-  RoleRoomReplaceInput replaceInput{0, UserRole::Guest, UserRole::Guest};
+  RoleRoomReplaceInput replaceInput{0, UserRole::Unknown, UserRole::Unknown};
 };
 
 struct SessionEndNotice

@@ -51,7 +51,7 @@ struct EnrollmentResult
   std::string name;
   std::string lastName;
   std::string lang;
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
 };
 
 class EnrollmentFeatureService

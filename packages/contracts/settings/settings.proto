@@ -209,11 +209,31 @@ message VerifyOwnerPinResponse {
 
 message ModuleStatesRequest {}
 
+message ModuleIntroLine {
+  string what = 1;
+  repeated string examples = 2;
+}
+
 message ModuleEnabled {
   string id = 1;
   bool enabled = 2;
   string lifecycle = 3;
   int64 data_purged_at = 4;
+  repeated string roles = 5;
+  string name_es = 6;
+  string name_en = 7;
+  string summary_es = 8;
+  string summary_en = 9;
+  ModuleIntroLine intro_es = 10;
+  ModuleIntroLine intro_en = 11;
+  string kind = 12;
+}
+
+message OwnerCatalogRequest {}
+
+message OwnerCatalogResponse {
+  string modules_json = 1;
+  int64 version = 2;
 }
 
 message ModuleStatesResponse {
@@ -236,4 +256,5 @@ service Settings {
 
 service Modules {
   rpc ModuleStates(ModuleStatesRequest) returns (ModuleStatesResponse);
+  rpc OwnerCatalog(OwnerCatalogRequest) returns (OwnerCatalogResponse);
 }

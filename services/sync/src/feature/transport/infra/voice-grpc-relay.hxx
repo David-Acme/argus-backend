@@ -62,7 +62,7 @@ private:
   struct Session
   {
     int64_t userId{0};
-    UserRole role{UserRole::Guest};
+    UserRole role{UserRole::Unknown};
     std::string deviceHash;
     trantor::EventLoop* loop{nullptr};
     std::atomic<bool> closing{false};

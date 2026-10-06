@@ -64,7 +64,7 @@ inline constexpr std::string_view INSERT_REDEMPTION =
 struct UserInvitationCreateInput
 {
   std::string tokenHash;
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
   int maxRedemptions{1};
   int64_t expiresAt{0};
   int64_t createdBy{0};

@@ -6,6 +6,7 @@ argus_module(NAME identity-invitation
         dtos/response-invitation-dto.cc
         dtos/response-invitation-resolve-dto.cc
         services/invitation-feature-service.cc
+        services/role-copy.cc
     INCLUDES ../..
     DEPENDS
         argus::identity-config

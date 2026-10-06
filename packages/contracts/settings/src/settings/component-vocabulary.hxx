@@ -97,12 +97,41 @@ struct ComponentStatus
   std::string reason;
 };
 
+struct ModuleLocalized
+{
+  std::string es;
+  std::string en;
+};
+
+struct ModuleIntroLine
+{
+  std::string what;
+  std::vector<std::string> examples;
+};
+
+struct ModuleIntroLocalized
+{
+  ModuleIntroLine es;
+  ModuleIntroLine en;
+};
+
 struct ModuleEnabled
 {
   std::string id;
   bool enabled{false};
   std::string lifecycle{};
   std::int64_t dataPurgedAt{0};
+  std::vector<std::string> roles{};
+  ModuleLocalized name{};
+  ModuleLocalized summary{};
+  ModuleIntroLocalized intro{};
+  std::string kind{};
+};
+
+struct OwnerCatalogReply
+{
+  std::string modulesJson;
+  std::int64_t version{0};
 };
 
 struct ModuleStatesReply

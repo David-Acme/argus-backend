@@ -351,10 +351,32 @@ ModuleStatesReply ModulesClient::moduleStates() const
   check(impl_->stub->ModuleStates(&context, wire::ModuleStatesRequest{}, &response));
   ModuleStatesReply reply{.modules = {}, .version = response.version(), .settled = response.settled()};
   reply.modules.reserve(static_cast<std::size_t>(response.modules_size()));
-  for (const auto& module : response.modules())
-    reply.modules.push_back({.id = module.id(),
-                             .enabled = module.enabled(),
-                             .lifecycle = module.lifecycle(),
-                             .dataPurgedAt = module.data_purged_at()});
+  for (const auto& module : response.modules()) {
+    ModuleEnabled entry{.id = module.id(),
+                        .enabled = module.enabled(),
+                        .lifecycle = module.lifecycle(),
+                        .dataPurgedAt = module.data_purged_at(),
+                        .roles = {module.roles().begin(), module.roles().end()},
+                        .name = {.es = module.name_es(), .en = module.name_en()},
+                        .summary = {.es = module.summary_es(), .en = module.summary_en()},
+                        .intro = {.es = {.what = module.intro_es().what(),
+                                         .examples = {module.intro_es().examples().begin(),
+                                                      module.intro_es().examples().end()}},
+                                  .en = {.what = module.intro_en().what(),
+                                         .examples = {module.intro_en().examples().begin(),
+                                                      module.intro_en().examples().end()}}},
+                        .kind = module.kind()};
+    reply.modules.push_back(std::move(entry));
+  }
   return reply;
+}
+
+OwnerCatalogReply ModulesClient::ownerCatalog() const
+{
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() + impl_->config.timeout);
+  argus::client::addCallerCredential(context, impl_->config.credential);
+  wire::OwnerCatalogResponse response;
+  check(impl_->stub->OwnerCatalog(&context, wire::OwnerCatalogRequest{}, &response));
+  return {.modulesJson = response.modules_json(), .version = response.version()};
 }

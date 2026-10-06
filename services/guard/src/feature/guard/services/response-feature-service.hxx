@@ -26,7 +26,7 @@ public:
   {
     int64_t environmentId{0};
     int64_t userId{0};
-    UserRole role{UserRole::Guest};
+    UserRole role{UserRole::Unknown};
   };
 
   [[nodiscard]] drogon::Task<Json::Value> view(const ViewInput& input) const;
@@ -45,7 +45,7 @@ public:
   {
     int64_t environmentId{0};
     int64_t userId{0};
-    UserRole role{UserRole::Guest};
+    UserRole role{UserRole::Unknown};
     bool onDuty{false};
   };
 

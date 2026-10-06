@@ -14,6 +14,7 @@ enum VoiceRole
   VOICE_ROLE_RESIDENT = 1;
   VOICE_ROLE_GUARD = 2;
   VOICE_ROLE_GUEST = 3;
+  VOICE_ROLE_UNKNOWN = 4;
 }
 
 message VoiceIdentity
@@ -21,7 +22,7 @@ message VoiceIdentity
   int64 user_id = 1;
   string name = 2;
   VoiceLanguage language = 3;
-  VoiceRole role = 4;
+  optional VoiceRole role = 4;
   string device_hash = 5;
 }
 

@@ -13,14 +13,14 @@ struct PortraitPreviewCreateInput
 {
   int64_t portraitUserId{0};
   int64_t requesterUserId{0};
-  UserRole requesterRole{UserRole::Guest};
+  UserRole requesterRole{UserRole::Unknown};
 };
 
 struct PortraitPreviewConsumeInput
 {
   std::string token;
   int64_t requesterUserId{0};
-  UserRole requesterRole{UserRole::Guest};
+  UserRole requesterRole{UserRole::Unknown};
 };
 
 class PortraitPreviewService

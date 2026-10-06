@@ -180,9 +180,11 @@ grpc::ServerUnaryReactor* IdentitySyncRpcService::PullTable(
   }
 
   const UserRole role = userRoleFromString(roleName);
+  const bool roleActive = argus::client::callerRoleActive(context);
   if (!role_access::hasAccess({.role = role,
                                .table = *table,
-                               .perm = RolePermission::Read})) {
+                               .perm = RolePermission::Read,
+                               .roleActive = roleActive})) {
     auto* reactor = context->DefaultReactor();
     reactor->Finish(grpc::Status(grpc::StatusCode::PERMISSION_DENIED,
                                  "table is not readable by this role"));
@@ -190,7 +192,7 @@ grpc::ServerUnaryReactor* IdentitySyncRpcService::PullTable(
   }
 
   SyncFilter scope;
-  if (*table == TableName::User && !role_access::readsUserDirectory(role))
+  if (*table == TableName::User && !role_access::readsUserDirectory(role, roleActive))
     scope.userId = caller;
 
   const argus::identity::v1::PullTableRequest pull = *request;

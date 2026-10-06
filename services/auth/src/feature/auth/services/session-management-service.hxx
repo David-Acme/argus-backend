@@ -15,7 +15,7 @@ struct SessionOwnerInput
 {
   int64_t userId{0};
   std::string currentSessionId;
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
 };
 
 struct RevokeSessionInput

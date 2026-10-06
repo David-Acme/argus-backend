@@ -13,11 +13,17 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <auth/module-snapshot.hxx>
 #include <auth/user-role.hxx>
 #include <vector>
 
 namespace role_access
 {
+
+using RoleMask = std::uint16_t;
+
+inline constexpr unsigned kRoleBitCount = 15;
+inline constexpr RoleMask kBaselineBit = static_cast<RoleMask>(1U << kRoleBitCount);
 
 using PermSet = std::unordered_set<RolePermission>;
 using TableAccess = std::unordered_map<TableName, PermSet>;
@@ -51,6 +57,8 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::Memory, kFull}}},
     {UserRole::Guard,
      {{TableName::Camera, kRead},
+      {TableName::Reminder, kFull},
+      {TableName::ReminderDetail, kFull},
       {TableName::CameraStream, kRead},
       {TableName::Event, kRead},
       {TableName::Person, kRead},
@@ -62,6 +70,8 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::NotificationToken, kCreateOwn}}},
     {UserRole::Guest,
      {{TableName::Camera, kRead},
+      {TableName::Reminder, kFull},
+      {TableName::ReminderDetail, kFull},
       {TableName::User, kRead},
       {TableName::AuditLog, kRead},
       {TableName::UserAuditLog, kRead},
@@ -73,26 +83,30 @@ struct GuardRouteAccess
 {
   std::string_view path;
   drogon::HttpMethod method;
-  std::uint8_t roles;
+  RoleMask roles;
 };
 
-constexpr std::uint8_t roleBit(UserRole role)
+constexpr RoleMask roleBit(UserRole role)
 {
-  return static_cast<std::uint8_t>(1U << static_cast<unsigned>(role));
+  const auto index = static_cast<unsigned>(role);
+  return index < kRoleBitCount ? static_cast<RoleMask>(1U << index) : RoleMask{0};
 }
 
-constexpr std::uint8_t roleBits(std::initializer_list<UserRole> roles)
+constexpr RoleMask roleBits(std::initializer_list<UserRole> roles)
 {
-  unsigned bits = 0U;
+  RoleMask bits = 0U;
   for (const UserRole role : roles)
-    bits |= 1U << static_cast<unsigned>(role);
-  return static_cast<std::uint8_t>(bits);
+    bits = static_cast<RoleMask>(bits | roleBit(role));
+  return bits;
 }
 
-inline constexpr std::uint8_t kResidentAndGuard = roleBits({UserRole::Resident, UserRole::Guard});
+inline constexpr RoleMask kResidentAndGuard = roleBits({UserRole::Resident, UserRole::Guard});
 
-inline constexpr std::uint8_t kResidentGuardGuest =
+inline constexpr RoleMask kResidentGuardGuest =
     roleBits({UserRole::Resident, UserRole::Guard, UserRole::Guest});
+
+inline constexpr RoleMask kResidentGuardGuestBaseline =
+    static_cast<RoleMask>(kResidentGuardGuest | kBaselineBit);
 
 inline constexpr std::array<GuardRouteAccess, 13> kGuardAccess = {{
     {.path = "/guard/environments", .method = drogon::Get, .roles = kResidentAndGuard},
@@ -104,8 +118,8 @@ inline constexpr std::array<GuardRouteAccess, 13> kGuardAccess = {{
     {.path = "/guard/expected-guests", .method = drogon::Delete, .roles = roleBit(UserRole::Resident)},
     {.path = "/guard/environments/{id}/response", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/environments/{id}/duty", .method = drogon::Post, .roles = roleBit(UserRole::Guard)},
-    {.path = "/guard/panic", .method = drogon::Post, .roles = kResidentGuardGuest},
-    {.path = "/guard/safety", .method = drogon::Get, .roles = kResidentGuardGuest},
+    {.path = "/guard/panic", .method = drogon::Post, .roles = kResidentGuardGuestBaseline},
+    {.path = "/guard/safety", .method = drogon::Get, .roles = kResidentGuardGuestBaseline},
     {.path = "/guard/safety/pin", .method = drogon::Put, .roles = roleBit(UserRole::Resident)},
     {.path = "/guard/safety/pin", .method = drogon::Delete, .roles = roleBit(UserRole::Resident)},
 }};
@@ -121,7 +135,7 @@ struct CameraActionAccess
   CameraAction action;
   std::string_view segment;
   drogon::HttpMethod method;
-  std::uint8_t roles;
+  RoleMask roles;
 };
 
 inline constexpr std::array<CameraActionAccess, 2> kCameraActionAccess = {{
@@ -161,19 +175,23 @@ struct AuthRouteAccess
 {
   std::string_view path;
   drogon::HttpMethod method;
-  std::uint8_t roles;
+  RoleMask roles;
 };
 
-inline constexpr std::uint8_t kEveryRole =
-    roleBit(UserRole::Owner) | roleBit(UserRole::Resident) |
-    roleBit(UserRole::Guard) | roleBit(UserRole::Guest);
+inline constexpr RoleMask kEveryRole =
+    roleBits({UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest});
 
-inline constexpr std::uint8_t kOwnerOnly = roleBit(UserRole::Owner);
+inline constexpr RoleMask kEveryRoleBaseline = static_cast<RoleMask>(kEveryRole | kBaselineBit);
+
+inline constexpr RoleMask kNonOwnerBaseline =
+    static_cast<RoleMask>(kResidentGuardGuest | kBaselineBit);
+
+inline constexpr RoleMask kOwnerOnly = roleBit(UserRole::Owner);
 
 inline constexpr std::array<AuthRouteAccess, 7> kSessionAccess = {{
-    {.path = "/auth/sessions", .method = drogon::Get, .roles = kEveryRole},
-    {.path = "/auth/sessions", .method = drogon::Delete, .roles = kEveryRole},
-    {.path = "/auth/sessions/{id}", .method = drogon::Delete, .roles = kEveryRole},
+    {.path = "/auth/sessions", .method = drogon::Get, .roles = kEveryRoleBaseline},
+    {.path = "/auth/sessions", .method = drogon::Delete, .roles = kEveryRoleBaseline},
+    {.path = "/auth/sessions/{id}", .method = drogon::Delete, .roles = kEveryRoleBaseline},
     {.path = "/auth/users/sessions", .method = drogon::Get, .roles = kOwnerOnly},
     {.path = "/auth/users/{id}/sessions", .method = drogon::Get, .roles = kOwnerOnly},
     {.path = "/auth/users/{id}/sessions", .method = drogon::Delete, .roles = kOwnerOnly},
@@ -181,16 +199,16 @@ inline constexpr std::array<AuthRouteAccess, 7> kSessionAccess = {{
 }};
 
 inline constexpr std::array<AuthRouteAccess, 1> kRtcAccess = {{
-    {.path = "/rtc/token", .method = drogon::Post, .roles = kEveryRole},
+    {.path = "/rtc/token", .method = drogon::Post, .roles = kEveryRoleBaseline},
 }};
 
 inline constexpr std::array<AuthRouteAccess, 1> kSyncAccess = {{
-    {.path = "/sync/heartbeat", .method = drogon::Get, .roles = kEveryRole},
+    {.path = "/sync/heartbeat", .method = drogon::Get, .roles = kEveryRoleBaseline},
 }};
 
 inline constexpr std::array<AuthRouteAccess, 4> kPrivacyAccess = {{
-    {.path = "/privacy/me", .method = drogon::Get, .roles = kEveryRole},
-    {.path = "/privacy/me", .method = drogon::Put, .roles = kEveryRole},
+    {.path = "/privacy/me", .method = drogon::Get, .roles = kEveryRoleBaseline},
+    {.path = "/privacy/me", .method = drogon::Put, .roles = kEveryRoleBaseline},
     {.path = "/privacy/users", .method = drogon::Get, .roles = kOwnerOnly},
     {.path = "/privacy/household", .method = drogon::Patch, .roles = kOwnerOnly},
 }};
@@ -202,14 +220,17 @@ inline constexpr std::array<AuthRouteAccess, 4> kVisitorAccess = {{
     {.path = "/visitor-crop/{id}/content", .method = drogon::Get, .roles = roleBit(UserRole::Guard)},
 }};
 
-inline constexpr std::array<AuthRouteAccess, 7> kModuleAccess = {{
-    {.path = "/modules", .method = drogon::Get, .roles = kEveryRole},
+inline constexpr std::array<AuthRouteAccess, 10> kModuleAccess = {{
+    {.path = "/modules", .method = drogon::Get, .roles = kEveryRoleBaseline},
     {.path = "/modules/{id}/install", .method = drogon::Post, .roles = kOwnerOnly},
     {.path = "/modules/{id}/pause", .method = drogon::Post, .roles = kOwnerOnly},
     {.path = "/modules/{id}/resume", .method = drogon::Post, .roles = kOwnerOnly},
     {.path = "/modules/{id}/cancel", .method = drogon::Post, .roles = kOwnerOnly},
     {.path = "/modules/{id}/disable", .method = drogon::Post, .roles = kOwnerOnly},
-    {.path = "/modules/{id}/release", .method = drogon::Post, .roles = kOwnerOnly},
+    {.path = "/modules/{id}/uninstall", .method = drogon::Post, .roles = kOwnerOnly},
+    {.path = "/modules/{id}/data", .method = drogon::Get, .roles = kOwnerOnly},
+    {.path = "/modules/{id}/impact", .method = drogon::Get, .roles = kOwnerOnly},
+    {.path = "/modules/{id}/request", .method = drogon::Post, .roles = kNonOwnerBaseline},
 }};
 
 inline constexpr std::string_view kSurveillanceModule = "surveillance";
@@ -263,9 +284,14 @@ inline bool routeMatches(std::string_view pattern, std::string_view path)
   return true;
 }
 
-inline bool roleHolds(std::uint8_t roles, UserRole role)
+inline bool roleHolds(RoleMask roles, UserRole role)
 {
   return (roles & roleBit(role)) != 0;
+}
+
+inline bool roleGranted(RoleMask roles, UserRole role, bool roleActive)
+{
+  return roleHolds(roles, role) && (roleActive || (roles & kBaselineBit) != 0);
 }
 
 template <typename Route, std::size_t Count>
@@ -284,11 +310,63 @@ inline const AuthRouteAccess* sessionRouteOf(std::string_view path,
   return routeOf(kSessionAccess, path, method);
 }
 
+inline constexpr std::array<TableName, 7> kBaselineTables = {
+    TableName::User,
+    TableName::AuditLog,
+    TableName::UserAuditLog,
+    TableName::Notification,
+    TableName::NotificationToken,
+    TableName::Reminder,
+    TableName::ReminderDetail,
+};
+
+inline constexpr std::array<TableName, 2> kOwnRowTables = {
+    TableName::Reminder,
+    TableName::ReminderDetail,
+};
+
+inline bool isBaselineTable(TableName table)
+{
+  return std::ranges::find(kBaselineTables, table) != kBaselineTables.end();
+}
+
+inline bool isOwnRowTable(TableName table)
+{
+  return std::ranges::find(kOwnRowTables, table) != kOwnRowTables.end();
+}
+
+struct TableModule
+{
+  TableName table;
+  std::string_view module;
+};
+
+inline constexpr std::array<TableModule, 9> kTableModules = {{
+    {.table = TableName::Camera, .module = kSurveillanceModule},
+    {.table = TableName::CameraStream, .module = kSurveillanceModule},
+    {.table = TableName::Zone, .module = kSurveillanceModule},
+    {.table = TableName::Event, .module = kSurveillanceModule},
+    {.table = TableName::CalendarEvent, .module = kProductivityModule},
+    {.table = TableName::CalendarEventShare, .module = kProductivityModule},
+    {.table = TableName::Project, .module = kProductivityModule},
+    {.table = TableName::ProjectMember, .module = kProductivityModule},
+    {.table = TableName::ProjectTask, .module = kProductivityModule},
+}};
+
+inline std::optional<std::string_view> moduleOfTable(TableName table)
+{
+  const auto entry = std::ranges::find(kTableModules, table, &TableModule::table);
+  if (entry == kTableModules.end())
+    return std::nullopt;
+  return entry->module;
+}
+
 struct HasAccessInput
 {
   UserRole role;
   TableName table;
   RolePermission perm;
+  bool roleActive{true};
 };
 
 inline bool hasAccess(const HasAccessInput& input)
@@ -299,6 +377,8 @@ inline bool hasAccess(const HasAccessInput& input)
 
   if (role == UserRole::Owner)
     return true;
+  if (!input.roleActive && !isBaselineTable(table))
+    return false;
 
   const auto roleIt = kTableAccess.find(role);
   if (roleIt == kTableAccess.end())
@@ -336,9 +416,9 @@ inline std::vector<TableName> readableTables(UserRole role)
   return out;
 }
 
-inline bool readsUserDirectory(UserRole role)
+inline bool readsUserDirectory(UserRole role, bool roleActive = true)
 {
-  return role == UserRole::Owner || role == UserRole::Guard;
+  return roleActive && (role == UserRole::Owner || role == UserRole::Guard);
 }
 
 inline bool readsCameraConnection(UserRole role)
@@ -346,12 +426,37 @@ inline bool readsCameraConnection(UserRole role)
   return role == UserRole::Owner || role == UserRole::Resident;
 }
 
-inline std::vector<TableName> moduleTables(UserRole role)
+inline std::vector<TableName> moduleTables(UserRole role, bool roleActive = true)
 {
   auto tables = readableTables(role);
-  if (!readsUserDirectory(role))
+  if (!readsUserDirectory(role, roleActive))
     std::erase(tables, TableName::User);
+  std::erase_if(tables, isOwnRowTable);
+  if (!roleActive)
+    std::erase_if(tables, [](TableName table) { return !isBaselineTable(table); });
   return tables;
+}
+
+inline bool moduleTableActive(TableName table, const ModuleSnapshot& modules)
+{
+  const auto module = moduleOfTable(table);
+  return !module || modules.enabled(*module);
+}
+
+inline std::vector<TableName> moduleTables(UserRole role, const ModuleSnapshot& modules)
+{
+  auto tables = moduleTables(role, modules.roleActive(role));
+  std::erase_if(tables, [&](TableName table) { return !moduleTableActive(table, modules); });
+  return tables;
+}
+
+inline bool tableReadable(UserRole role, TableName table, const ModuleSnapshot& modules)
+{
+  return moduleTableActive(table, modules) &&
+         hasAccess({.role = role,
+                    .table = table,
+                    .perm = RolePermission::Read,
+                    .roleActive = modules.roleActive(role)});
 }
 
 inline std::optional<RolePermission> permissionForMethod(drogon::HttpMethod method)
@@ -423,6 +528,7 @@ struct HasHttpAccessInput
   UserRole role;
   std::string_view path;
   drogon::HttpMethod method;
+  bool roleActive{true};
 };
 
 template <typename Route, std::size_t Count>
@@ -430,7 +536,7 @@ inline bool routeTableAllows(const std::array<Route, Count>& routes,
                              const HasHttpAccessInput& input)
 {
   const Route* route = routeOf(routes, input.path, input.method);
-  return route != nullptr && roleHolds(route->roles, input.role);
+  return route != nullptr && roleGranted(route->roles, input.role, input.roleActive);
 }
 
 inline bool normalizedRouteAccess(const HasHttpAccessInput& input)
@@ -452,17 +558,20 @@ inline bool normalizedRouteAccess(const HasHttpAccessInput& input)
     return routeTableAllows(kModuleAccess, input);
 
   if (const auto* route = routeOf(kRouteOverrides, input.path, input.method))
-    return roleHolds(route->roles, input.role);
+    return roleGranted(route->roles, input.role, input.roleActive);
 
   if (const auto* action = cameraActionRouteOf(input.path, input.method))
-    return roleHolds(action->roles, input.role);
+    return roleGranted(action->roles, input.role, input.roleActive);
 
   const auto table = tableFromPath(input.path);
   const auto perm = permissionForMethod(input.method);
   if (!table || !perm)
     return false;
 
-  return hasAccess({.role = input.role, .table = *table, .perm = *perm});
+  return hasAccess({.role = input.role,
+                    .table = *table,
+                    .perm = *perm,
+                    .roleActive = input.roleActive});
 }
 
 inline bool hasHttpAccess(const HasHttpAccessInput& input)
@@ -471,15 +580,19 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
     return true;
 
   const std::string path = normalizedPath(input.path);
-  if (!normalizedRouteAccess(
-          {.role = input.role, .path = path, .method = input.method}))
+  if (!normalizedRouteAccess({.role = input.role,
+                              .path = path,
+                              .method = input.method,
+                              .roleActive = input.roleActive}))
     return false;
   if (path.size() == input.path.size())
     return true;
 
   const std::string child = path + "/0";
-  return normalizedRouteAccess(
-      {.role = input.role, .path = child, .method = input.method});
+  return normalizedRouteAccess({.role = input.role,
+                                .path = child,
+                                .method = input.method,
+                                .roleActive = input.roleActive});
 }
 
 inline std::optional<std::string_view> moduleOfPath(std::string_view path)
@@ -490,6 +603,64 @@ inline std::optional<std::string_view> moduleOfPath(std::string_view path)
   if (route == kModuleRoutes.end())
     return std::nullopt;
   return route->module;
+}
+
+struct CoreRoute
+{
+  std::string_view path;
+  drogon::HttpMethod method;
+};
+
+inline constexpr std::array<CoreRoute, 2> kCoreRoutes = {{
+    {.path = "/guard/panic", .method = drogon::Post},
+    {.path = "/guard/safety", .method = drogon::Get},
+}};
+
+inline std::optional<std::string_view> moduleOfRoute(std::string_view path, drogon::HttpMethod method)
+{
+  const std::string normalized = normalizedPath(path);
+  const bool core = std::ranges::any_of(kCoreRoutes, [&](const CoreRoute& route) {
+    return route.method == method && routeMatches(route.path, normalized);
+  });
+  if (core)
+    return std::nullopt;
+  return moduleOfPath(normalized);
+}
+
+enum class RouteVerdict : std::uint8_t
+{
+  Allowed = 0,
+  ModuleDisabled,
+  RoleInactive,
+  Denied
+};
+
+struct RouteInput
+{
+  UserRole role;
+  std::string_view path;
+  drogon::HttpMethod method;
+  const ModuleSnapshot& modules;
+};
+
+inline RouteVerdict routeVerdict(const RouteInput& input)
+{
+  if (const auto module = moduleOfRoute(input.path, input.method);
+      module && !input.modules.enabled(*module))
+    return RouteVerdict::ModuleDisabled;
+  const bool active = input.modules.roleActive(input.role);
+  if (hasHttpAccess({.role = input.role,
+                     .path = input.path,
+                     .method = input.method,
+                     .roleActive = active}))
+    return RouteVerdict::Allowed;
+  if (!active && userRoleKnown(input.role) &&
+      hasHttpAccess({.role = input.role,
+                     .path = input.path,
+                     .method = input.method,
+                     .roleActive = true}))
+    return RouteVerdict::RoleInactive;
+  return RouteVerdict::Denied;
 }
 
 enum class AppAction : std::uint8_t

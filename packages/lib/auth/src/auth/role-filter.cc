@@ -17,15 +17,19 @@ RoleFilter::doFilter(const drogon::HttpRequestPtr& req)
   const auto& ctx =
       req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
 
-  if (moduleGate().disabledModuleOf(req->getPath())) {
-    throw ResponseException(AuthErrors::ModuleDisabled);
-  }
-
-  if (!role_access::hasHttpAccess(
-          {.role = ctx.role,
-           .path = req->getPath(),
-           .method = req->method()})) {
-    throw ResponseException(AuthErrors::AccessDenied);
+  const auto modules = moduleGate().current();
+  switch (role_access::routeVerdict({.role = ctx.role,
+                                     .path = req->getPath(),
+                                     .method = req->method(),
+                                     .modules = *modules})) {
+    case role_access::RouteVerdict::Allowed:
+      break;
+    case role_access::RouteVerdict::ModuleDisabled:
+      throw ResponseException(AuthErrors::ModuleDisabled);
+    case role_access::RouteVerdict::RoleInactive:
+      throw ResponseException(AuthErrors::RoleInactive);
+    case role_access::RouteVerdict::Denied:
+      throw ResponseException(AuthErrors::AccessDenied);
   }
 
   co_return drogon::HttpResponsePtr{};

@@ -807,7 +807,8 @@ CallEngine::announceArrival(const KnownSeenEvent& event) const
   userIds.reserve(listeners.size());
   for (const int64_t userId : listeners) {
     const CallRecipient recipient = recipientIn(recipients, userId);
-    if (recipient.found && recipient.role == UserRole::Guest)
+    if (recipient.found &&
+        (recipient.role == UserRole::Guest || recipient.role == UserRole::Unknown))
       continue;
     userIds.push_back(userId);
   }

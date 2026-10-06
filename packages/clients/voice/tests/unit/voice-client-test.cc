@@ -160,7 +160,41 @@ TEST_CASE("the role string is the one a receiver gates on")
   CHECK(voiceRoleToString(v1::VOICE_ROLE_RESIDENT) == "resident");
   CHECK(voiceRoleToString(v1::VOICE_ROLE_GUARD) == "guard");
   CHECK(voiceRoleToString(v1::VOICE_ROLE_GUEST) == "guest");
-  CHECK(voiceRoleToString(static_cast<v1::VoiceRole>(42)) == "guest");
+  CHECK(voiceRoleToString(v1::VOICE_ROLE_UNKNOWN) == "unknown");
+  CHECK(voiceRoleToString(static_cast<v1::VoiceRole>(42)) == "unknown");
+  CHECK(userRoleFromString(voiceRoleToString(static_cast<v1::VoiceRole>(42))) == UserRole::Unknown);
+}
+
+TEST_CASE("a voice identity with no role is no owner: the role is optional on the wire")
+{
+  v1::VoiceIdentity identity;
+  CHECK_FALSE(identity.has_role());
+  identity.set_role(v1::VOICE_ROLE_OWNER);
+  CHECK(identity.has_role());
+  CHECK(identity.role() == v1::VOICE_ROLE_OWNER);
+}
+
+TEST_CASE("a stream whose identity names no role presents the unknown role, never owner")
+{
+  RecordingVoiceService service;
+  int port = 0;
+  auto server = startServer(service, port);
+  REQUIRE(server);
+  VoiceClient client(
+      {.target = "127.0.0.1:" + std::to_string(port), .credential = ""});
+  CHECK(client.waitConnected(5000));
+  CallCleanup cleanup{service, *server};
+
+  const auto observer = std::make_shared<CollectingObserver>();
+  v1::VoiceIdentity connectIdentity;
+  connectIdentity.set_user_id(7);
+  const auto stream = client.connect(connectIdentity, observer);
+  stream->stop();
+  stream->finish();
+  REQUIRE(observer->waitClosed(5000));
+
+  std::scoped_lock lock(service.mutex);
+  CHECK(service.metadata.at("x-argus-role") == "unknown");
 }
 
 TEST_CASE("one stream carries the connect identity and the frames in order")
@@ -293,6 +327,7 @@ TEST_CASE("a user role and a language reach the voice wire as their proto values
   CHECK(voiceRoleToProto(UserRole::Resident) == v1::VOICE_ROLE_RESIDENT);
   CHECK(voiceRoleToProto(UserRole::Guard) == v1::VOICE_ROLE_GUARD);
   CHECK(voiceRoleToProto(UserRole::Guest) == v1::VOICE_ROLE_GUEST);
+  CHECK(voiceRoleToProto(UserRole::Unknown) == v1::VOICE_ROLE_UNKNOWN);
   CHECK(voiceLanguageToProto("es") == v1::VOICE_LANGUAGE_ES);
   CHECK(voiceLanguageToProto("en") == v1::VOICE_LANGUAGE_EN);
   CHECK(voiceLanguageToProto("fr") == v1::VOICE_LANGUAGE_SYSTEM);

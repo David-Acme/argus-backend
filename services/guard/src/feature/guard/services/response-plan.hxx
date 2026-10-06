@@ -17,7 +17,7 @@
 struct ResponseUser
 {
   int64_t userId{0};
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
   bool active{true};
   std::string name;
   std::string lang;
@@ -26,7 +26,7 @@ struct ResponseUser
 struct ResponseMember
 {
   int64_t userId{0};
-  UserRole role{UserRole::Guest};
+  UserRole role{UserRole::Unknown};
   std::string name;
   RecipientMode mode{RecipientMode::Off};
   int step{0};

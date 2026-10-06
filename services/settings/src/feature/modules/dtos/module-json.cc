@@ -12,6 +12,22 @@ Json::Value strings(const std::vector<std::string>& values)
   return list;
 }
 
+Json::Value introLine(const ModuleIntroLine& line)
+{
+  Json::Value json(Json::objectValue);
+  json["what"] = line.what;
+  json["examples"] = strings(line.examples);
+  return json;
+}
+
+Json::Value localized(const ModuleLocalized& text)
+{
+  Json::Value json(Json::objectValue);
+  json["es"] = text.es;
+  json["en"] = text.en;
+  return json;
+}
+
 Json::Value hardware(const HardwareAssessment& assessment)
 {
   Json::Value json(Json::objectValue);
@@ -77,6 +93,8 @@ Json::Value module(const ModuleView& view, std::string_view lang)
   json["dataPurgedAt"] =
       view.dataPurgedAt > 0 ? Json::Value(static_cast<Json::Int64>(view.dataPurgedAt)) : Json::Value(Json::nullValue);
   json["requires"] = strings(entry.required);
+  json["roles"] = strings(entry.roles);
+  json["intro"] = introLine(lang == "en" ? entry.intro.en : entry.intro.es);
   json["sizeBytes"] = static_cast<Json::Int64>(view.sizeBytes);
   json["installedBytes"] = static_cast<Json::Int64>(view.installedBytes);
   json["hardware"] = hardware(view.hardware);
@@ -119,6 +137,14 @@ Json::Value enabledModules(const ModuleStatesReply& set)
     item["lifecycle"] = entry.lifecycle;
     item["dataPurgedAt"] =
         entry.dataPurgedAt > 0 ? Json::Value(static_cast<Json::Int64>(entry.dataPurgedAt)) : Json::Value(Json::nullValue);
+    item["roles"] = strings(entry.roles);
+    item["kind"] = entry.kind;
+    item["name"] = localized(entry.name);
+    item["summary"] = localized(entry.summary);
+    Json::Value intro(Json::objectValue);
+    intro["es"] = introLine(entry.intro.es);
+    intro["en"] = introLine(entry.intro.en);
+    item["intro"] = std::move(intro);
     list.append(item);
   }
   return list;

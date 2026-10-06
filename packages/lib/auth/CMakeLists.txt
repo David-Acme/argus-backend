@@ -73,6 +73,8 @@ argus_lib(NAME auth
         src/auth/jwt-service.cc
         src/auth/user-directory-identity.cc
         src/auth/role-access.hxx
+        src/auth/capability.hxx
+        src/auth/module-snapshot.hxx
         src/auth/admitted-call.hxx
         src/auth/linked-filter.hxx
         src/auth/module-feed.hxx
@@ -104,6 +106,11 @@ add_executable(role-access-test tests/unit/role-access-test.cc)
 target_link_libraries(role-access-test PRIVATE argus::lib::auth doctest::doctest)
 target_compile_options(role-access-test PRIVATE -Wall -Wextra)
 add_test(NAME role-access-test COMMAND role-access-test)
+
+add_executable(capability-test tests/unit/capability-test.cc)
+target_link_libraries(capability-test PRIVATE argus::lib::auth doctest::doctest)
+target_compile_options(capability-test PRIVATE -Wall -Wextra)
+add_test(NAME capability-test COMMAND capability-test)
 
 add_executable(module-gate-test tests/unit/module-gate-test.cc)
 target_link_libraries(module-gate-test PRIVATE argus::lib::auth doctest::doctest)

@@ -16,13 +16,16 @@ int roleOrder(UserRole role)
       return 2;
     case UserRole::Guest:
       return 3;
+    case UserRole::Unknown:
+      break;
   }
-  return 3;
+  return 4;
 }
 
 RecipientMode defaultMode(UserRole role)
 {
-  return role == UserRole::Guest ? RecipientMode::Off : RecipientMode::Call;
+  const bool stays = role == UserRole::Guest || role == UserRole::Unknown;
+  return stays ? RecipientMode::Off : RecipientMode::Call;
 }
 
 const PresenceRow* presenceOf(std::span<const PresenceRow> rows, int64_t userId)

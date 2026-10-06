@@ -6,6 +6,7 @@
 #include <feature/invitation/dtos/response-invitation-dto.hxx>
 #include <feature/invitation/dtos/response-invitation-resolve-dto.hxx>
 #include <shared/repositories/user-invitation/user-invitation-repository.hxx>
+#include <shared/repositories/user/user-repository.hxx>
 #include <string>
 #include <sync/user-action.hxx>
 #include <vector>
@@ -42,5 +43,8 @@ private:
   drogon::Task<void>
   recordInvitationAction(const InvitationActionLogInput& input) const;
 
+  drogon::Task<void> requireActiveRole(UserRole role, int64_t actorId) const;
+
   UserInvitationRepository repository_;
+  UserRepository userRepository_;
 };
