@@ -210,18 +210,6 @@ add_custom_command(TARGET argus-llm POST_BUILD
             ${CMAKE_CURRENT_SOURCE_DIR}/../../models
             $<TARGET_FILE_DIR:argus-llm>/models)
 
-add_executable(argus-tool-bench tests/bench/tool-calling-bench.cc)
-
-target_link_libraries(argus-tool-bench PRIVATE argus::llm
-    argus::contracts::auth argus::contracts::sync)
-
-target_compile_definitions(argus-tool-bench PRIVATE
-    ARGUS_BENCH_CASES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tools/check.tsv")
-
-target_compile_options(argus-tool-bench PRIVATE -Wall -Wextra)
-
-set_target_properties(argus-tool-bench PROPERTIES EXCLUDE_FROM_ALL FALSE)
-
 add_executable(llm-wire-test tests/unit/llm-wire-test.cc)
 
 target_compile_definitions(llm-wire-test PRIVATE

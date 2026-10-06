@@ -917,6 +917,11 @@ with 4 threads. A sweep at load 4–6 gave 4 threads 28.7–29.3, 6 threads
 (decode is memory-bandwidth bound), so `lightThreads()` stays and keeps the
 other cores for STT and TTS during a call.
 
+The measurements below used `argus-tool-bench` and `tests/fixtures/tools/` (`check.tsv`,
+`negatives.tsv`); both are gone. `tests/eval` replaced them in 2026-10 (judge corpus
+`tests/fixtures/eval/cases.jsonl`, gates in `tests/eval/gates.json`,
+`docs/operations/voice-quality-eval.md`), and the numbers stay here as the 2026-08 history.
+
 **Tool selection, HTTP chat without app tools** (`check.tsv` +
 `negatives.tsv`, 150 rows, temperature 0, each row in its own language;
 "stored" means a memory write that succeeded):

@@ -39,8 +39,9 @@ order below.
   `/sync` fixtures and where they live.
 - [NATS subjects](architecture/wire-nats-subjects.md) — the frozen subject
   contract.
-- [Tool-calling evaluation set](operations/tool-calling-eval-set.md) — the
-  labelled utterances behind the intent-router gates.
+- [Voice quality evaluation](operations/voice-quality-eval.md) — the judge
+  corpus, the fast-tier, LLM-tier and speech-recogniser gates and their
+  measured baselines.
 
 ## History and traceability
 
