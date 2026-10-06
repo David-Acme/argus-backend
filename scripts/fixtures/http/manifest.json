@@ -42,7 +42,7 @@
       "errors"
     ]
   },
-  "probes": 714,
+  "probes": 747,
   "sessions": "scripts/seed-golden.py --roles (owner, resident, guest)",
   "sources": "scripts/lib/route-baseline.txt (the route census)",
   "units": [
@@ -104,6 +104,15 @@
       ],
       "reason": "a heartbeat stamps the second it answers and the presence change it reports, so both move on every call; the interval, grace and armed state beside them stay pinned",
       "route": "/sync/heartbeat",
+      "unit": "sync"
+    },
+    {
+      "keys": [
+        "items",
+        "nextCursor"
+      ],
+      "reason": "the Owner's activity history grows with every write the fleet makes, and the rows reach argus-sync asynchronously over NATS, so the page a probe reads depends on how many had landed; the envelope, the access answers beside it and the filters and paging (pinned by sync-activity-test) stay checked",
+      "route": "/sync/activity",
       "unit": "sync"
     }
   ]

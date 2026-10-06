@@ -178,6 +178,982 @@
     },
     {
       "method": "GET",
+      "path": "/sync/activity",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/sync/activity",
+      "unit": "sync"
+    },
+    {
+      "method": "GET",
+      "path": "/sync/activity",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/sync/activity",
+      "unit": "sync"
+    },
+    {
+      "method": "GET",
+      "path": "/sync/activity",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/sync/activity",
+      "unit": "sync"
+    },
+    {
+      "method": "GET",
+      "path": "/sync/activity",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/sync/activity",
+      "unit": "sync"
+    },
+    {
+      "method": "GET",
+      "path": "/sync/activity",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "items": [
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 40,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303789093,
+                  "event": "enabled",
+                  "lifecycle": "active"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 39,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "resident",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "oldData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "guard",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "recordId": 2,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 38,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "guard",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "oldData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "resident",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "recordId": 2,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 37,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "resident",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "oldData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "resident",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "recordId": 2,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 36,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303788219,
+                  "event": "enabled",
+                  "lifecycle": "active"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "create",
+                "createdAt": "<masked>",
+                "id": 35,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303788214,
+                  "event": "install_requested"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 34,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303788189,
+                  "event": "disabled",
+                  "lifecycle": "disabled"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "delete",
+                "createdAt": "<masked>",
+                "id": 33,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "event": "sessionRevoked",
+                  "reason": "revokedByOwner",
+                  "revokedBy": 1,
+                  "scope": "one"
+                },
+                "oldData": {
+                  "platform": "unknown",
+                  "sessionId": "<masked-hex32>"
+                },
+                "recordId": 2,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "delete",
+                "createdAt": "<masked>",
+                "id": 32,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "event": "sessionRevoked",
+                  "reason": "revoked",
+                  "revokedBy": 3,
+                  "scope": "one"
+                },
+                "oldData": {
+                  "platform": "unknown",
+                  "sessionId": "<masked-hex32>"
+                },
+                "recordId": 3,
+                "table": "user",
+                "userId": 3
+              },
+              {
+                "action": "delete",
+                "createdAt": "<masked>",
+                "id": 31,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "event": "sessionRevoked",
+                  "reason": "revoked",
+                  "revokedBy": 3,
+                  "scope": "all"
+                },
+                "oldData": {
+                  "platform": "unknown",
+                  "sessionId": "<masked-hex32>"
+                },
+                "recordId": 3,
+                "table": "user",
+                "userId": 3
+              },
+              {
+                "action": "delete",
+                "createdAt": "<masked>",
+                "id": 30,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "event": "sessionRevoked",
+                  "reason": "logout",
+                  "revokedBy": 1,
+                  "scope": "one"
+                },
+                "oldData": {
+                  "platform": "unknown",
+                  "sessionId": "<masked-hex32>"
+                },
+                "recordId": 1,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 29,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303766412,
+                  "event": "enabled",
+                  "lifecycle": "active"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "create",
+                "createdAt": "<masked>",
+                "id": 28,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303766408,
+                  "event": "install_requested"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 27,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303766344,
+                  "event": "disabled",
+                  "lifecycle": "disabled"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 26,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "resident",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "oldData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "guard",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "recordId": 2,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 25,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "guard",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "oldData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "resident",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "recordId": 2,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 24,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "resident",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "oldData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "resident",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "recordId": 2,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 23,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303765695,
+                  "event": "enabled",
+                  "lifecycle": "active"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "create",
+                "createdAt": "<masked>",
+                "id": 22,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303765689,
+                  "event": "install_requested"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 21,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303765660,
+                  "event": "disabled",
+                  "lifecycle": "disabled"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "delete",
+                "createdAt": "<masked>",
+                "id": 20,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "event": "sessionRevoked",
+                  "reason": "revokedByOwner",
+                  "revokedBy": 1,
+                  "scope": "one"
+                },
+                "oldData": {
+                  "platform": "unknown",
+                  "sessionId": "<masked-hex32>"
+                },
+                "recordId": 2,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "delete",
+                "createdAt": "<masked>",
+                "id": 19,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "event": "sessionRevoked",
+                  "reason": "revoked",
+                  "revokedBy": 3,
+                  "scope": "one"
+                },
+                "oldData": {
+                  "platform": "unknown",
+                  "sessionId": "<masked-hex32>"
+                },
+                "recordId": 3,
+                "table": "user",
+                "userId": 3
+              },
+              {
+                "action": "delete",
+                "createdAt": "<masked>",
+                "id": 18,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "event": "sessionRevoked",
+                  "reason": "revoked",
+                  "revokedBy": 3,
+                  "scope": "all"
+                },
+                "oldData": {
+                  "platform": "unknown",
+                  "sessionId": "<masked-hex32>"
+                },
+                "recordId": 3,
+                "table": "user",
+                "userId": 3
+              },
+              {
+                "action": "delete",
+                "createdAt": "<masked>",
+                "id": 17,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "event": "sessionRevoked",
+                  "reason": "logout",
+                  "revokedBy": 1,
+                  "scope": "one"
+                },
+                "oldData": {
+                  "platform": "unknown",
+                  "sessionId": "<masked-hex32>"
+                },
+                "recordId": 1,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 16,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303747938,
+                  "event": "enabled",
+                  "lifecycle": "active"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "create",
+                "createdAt": "<masked>",
+                "id": 15,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303747931,
+                  "event": "install_requested"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 14,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303747853,
+                  "event": "disabled",
+                  "lifecycle": "disabled"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 13,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "resident",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "oldData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "guard",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "recordId": 2,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 12,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "guard",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "oldData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "resident",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "recordId": 2,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 11,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "resident",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "oldData": {
+                  "createdAt": "<masked>",
+                  "deletedAt": "<masked>",
+                  "id": 2,
+                  "isActive": true,
+                  "lang": "en",
+                  "lastName": "Resident",
+                  "name": "Golden",
+                  "role": "resident",
+                  "syncAt": "<masked>",
+                  "updatedAt": "<masked>"
+                },
+                "recordId": 2,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 10,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303747164,
+                  "event": "enabled",
+                  "lifecycle": "active"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "create",
+                "createdAt": "<masked>",
+                "id": 9,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303747156,
+                  "event": "install_requested"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "update",
+                "createdAt": "<masked>",
+                "id": 8,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303747096,
+                  "event": "disabled",
+                  "lifecycle": "disabled"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 1
+              },
+              {
+                "action": "delete",
+                "createdAt": "<masked>",
+                "id": 7,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "event": "sessionRevoked",
+                  "reason": "revokedByOwner",
+                  "revokedBy": 1,
+                  "scope": "one"
+                },
+                "oldData": {
+                  "platform": "unknown",
+                  "sessionId": "<masked-hex32>"
+                },
+                "recordId": 2,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "delete",
+                "createdAt": "<masked>",
+                "id": 6,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "event": "sessionRevoked",
+                  "reason": "revoked",
+                  "revokedBy": 3,
+                  "scope": "one"
+                },
+                "oldData": {
+                  "platform": "unknown",
+                  "sessionId": "<masked-hex32>"
+                },
+                "recordId": 3,
+                "table": "user",
+                "userId": 3
+              },
+              {
+                "action": "delete",
+                "createdAt": "<masked>",
+                "id": 5,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "event": "sessionRevoked",
+                  "reason": "revoked",
+                  "revokedBy": 3,
+                  "scope": "all"
+                },
+                "oldData": {
+                  "platform": "unknown",
+                  "sessionId": "<masked-hex32>"
+                },
+                "recordId": 3,
+                "table": "user",
+                "userId": 3
+              },
+              {
+                "action": "delete",
+                "createdAt": "<masked>",
+                "id": 4,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "event": "sessionRevoked",
+                  "reason": "logout",
+                  "revokedBy": 1,
+                  "scope": "one"
+                },
+                "oldData": {
+                  "platform": "unknown",
+                  "sessionId": "<masked-hex32>"
+                },
+                "recordId": 1,
+                "table": "user",
+                "userId": 1
+              },
+              {
+                "action": "create",
+                "createdAt": "<masked>",
+                "id": 3,
+                "ipAddress": "",
+                "module": "productivity",
+                "newData": {
+                  "at": 1791303720697,
+                  "detail": "seed",
+                  "event": "adopted"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 0
+              },
+              {
+                "action": "create",
+                "createdAt": "<masked>",
+                "id": 2,
+                "ipAddress": "",
+                "module": "surveillance",
+                "newData": {
+                  "at": 1791303720697,
+                  "detail": "seed",
+                  "event": "adopted"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 0
+              },
+              {
+                "action": "create",
+                "createdAt": "<masked>",
+                "id": 1,
+                "ipAddress": "",
+                "module": "core",
+                "newData": {
+                  "at": 1791303720697,
+                  "detail": "seed",
+                  "event": "adopted"
+                },
+                "oldData": {},
+                "recordId": 0,
+                "table": "module",
+                "userId": 0
+              }
+            ],
+            "nextCursor": null
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/sync/activity",
+      "unit": "sync"
+    },
+    {
+      "method": "GET",
       "path": "/sync/heartbeat",
       "probe": "no-token",
       "request": {

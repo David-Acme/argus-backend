@@ -1128,6 +1128,12 @@
         "json": {
           "errors": null,
           "info": {
+            "applicable": {
+              "cameraAudio": true,
+              "faceCameras": true,
+              "presence": true,
+              "voiceLearning": true
+            },
             "choices": {
               "cameraAudio": false,
               "faceCameras": false,
@@ -1176,6 +1182,12 @@
         "json": {
           "errors": null,
           "info": {
+            "applicable": {
+              "cameraAudio": true,
+              "faceCameras": true,
+              "presence": true,
+              "voiceLearning": true
+            },
             "choices": {
               "cameraAudio": false,
               "faceCameras": false,
@@ -1224,6 +1236,12 @@
         "json": {
           "errors": null,
           "info": {
+            "applicable": {
+              "cameraAudio": true,
+              "faceCameras": true,
+              "presence": true,
+              "voiceLearning": true
+            },
             "choices": {
               "cameraAudio": false,
               "faceCameras": false,
@@ -1583,6 +1601,12 @@
         "json": {
           "errors": null,
           "info": {
+            "applicable": {
+              "cameraAudio": true,
+              "faceCameras": true,
+              "presence": true,
+              "voiceLearning": true
+            },
             "currentNoticeVersion": 1,
             "household": {
               "cameraAudio": true,
