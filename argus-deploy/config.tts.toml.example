@@ -39,6 +39,9 @@ pocket_lsd_steps = 1
 pocket_seed = 0
 normalize_text = true
 
+[components]
+models_dir = "/opt/argus/models"
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false

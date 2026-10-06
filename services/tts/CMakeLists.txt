@@ -152,3 +152,15 @@ add_test(NAME tts-provisioning-test COMMAND tts-provisioning-test)
 find_program(TTS_BASH bash REQUIRED)
 add_test(NAME tts-provision-test
     COMMAND ${TTS_BASH} ${CMAKE_CURRENT_SOURCE_DIR}/tests/unit/tts-provision-test.sh)
+
+add_executable(tts-components-test tests/unit/tts-components-test.cc)
+
+target_link_libraries(tts-components-test PRIVATE argus::tts-settings argus::tts-config
+    argus::contracts::settings-wire doctest::doctest)
+argus_runtime_rpath(tts-components-test)
+
+target_compile_options(tts-components-test PRIVATE -Wall -Wextra)
+
+set_target_properties(tts-components-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME tts-components-test COMMAND tts-components-test)

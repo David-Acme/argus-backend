@@ -11,6 +11,7 @@
 #include <auth/valid-json-filter.hxx>
 #include <config/config-service.hxx>
 #include <feature/provisioning/services/pocket-provisioning.hxx>
+#include <feature/settings/tts-components.hxx>
 #include <feature/settings/tts-settings.hxx>
 #include <feature/synthesis/services/tts-service.hxx>
 #include <settings/settings-rpc.hxx>
@@ -67,6 +68,8 @@ int main()
                                              .toolchainPython = defaultToolchainPython()},
                                    .configFile = std::filesystem::absolute("config.toml")});
   SettingsRegistry settings(ttsSettingsCatalog());
+  DiskComponentHost components(ttsComponents(
+      {.modelsDir = TtsConfig::resolveComponentsRoot(), .loaded = [] { return TtsService::instance().isLoaded(); }}));
   settings.describeChoices([&provisioning](const SettingSpec& spec) { return provisioning.choiceStates(spec); });
   settings.onChange([&provisioning](const std::vector<std::string>& keys) {
     TtsService::instance().refreshDefaults();
@@ -82,6 +85,7 @@ int main()
     if (!rpcConfig.settingsCredentials.empty()) {
       settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
           .service = "tts", .registry = &settings, .credentials = rpcConfig.settingsCredentials});
+      settingsRpc->attachComponents(components);
       services.push_back(settingsRpc.get());
     }
     rpc = std::make_unique<TtsRpcServer>(TtsRpcInput{

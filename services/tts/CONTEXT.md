@@ -507,3 +507,33 @@ the script refuse to download that file and say so, and
 `ARGUS_ALLOW_UNPINNED_MODELS=1` fetches from `main` and prints each file's
 hash to pin. Present files are kept. The stt, vlm and voice provisioning
 scripts follow the same rule.
+
+## The `voice-tts` component (selectable modules, 2026-10-05)
+
+argus-tts owns the core catalog component `voice-tts`
+(`services/settings/modules.json`; `services/settings/CONTEXT.md`,
+"Modules"): the Pocket `es-fast` and `en` bundles under `tts/pocket/`. Its source is `provisioned`: only the host produces
+it (`services/tts/scripts/provision.sh`), so this service reports it and
+never fetches it.
+
+- `feature/settings/tts-components.{hxx,cc}` builds the shared
+  `DiskComponentHost` for `voice-tts` with no fetch; `main.cc` attaches it to the
+  `SettingsRpcService` when the settings caller is paired. The models root is
+  `[components] models_dir` (`models` by default, `/opt/argus/models` in the
+  deploy), the root the catalog's paths are relative to.
+- `ComponentStates`: `installed` when every catalog file exists and is
+  non-empty, otherwise `host_only` with the host command; `bytesPresent` sums
+  the catalog sizes of the files present. `ready` is `TtsService::instance().isLoaded()`, never the
+  files alone.
+- `InstallComponent` answers `host_only` and touches nothing;
+  `RemoveComponent` is refused (`INVALID_ARGUMENT`): a provisioned
+  component's files are the host's and `voice-tts` is core.
+- The engine still refuses to boot without its model, as before, so a missing
+  component normally shows as an unreachable owner in `GET /modules`; the
+  states above answer while the service runs. Caveat: an engine choice whose files are not the catalog's (Supertonic, `es-quality`) keeps working; the component still reads from the catalog's Pocket files. The per-choice installs of "Installing on demand" are a separate surface (`choiceStates` on the settings catalog) and are unchanged.
+
+`tests/unit/tts-components-test.cc` drives the wire in process: host_only and
+the command when missing, partial byte counts, installed, `ready` following
+the engine flag, install answering host_only with an untouched models dir,
+remove refused with the files kept, a foreign component refused, the default
+root.
