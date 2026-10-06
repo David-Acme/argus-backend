@@ -1216,6 +1216,59 @@ revocation (`user_invitation.revoked_reason`), not this check; both ask
 Tests: `identity-user-safety-test` (the 409, both languages, the active and the
 owner paths) and `identity-user-update-test` (the permissive PATCH).
 
+## A module that goes off revokes its pending invitations (2026-10, module effects)
+
+Turning a module off ends what its roles could still be handed. When the
+enabled-set feed says a module is off (`moduleGate().onChange`, from
+`argus-settings`; uninstalling an active module disables it first, so it is the
+same event), `InvitationModuleRevocation` revokes every invitation of that
+module's roles that is still pending (not revoked, not redeemed, not expired)
+in one transaction: `revoked_at` is stamped, `revoked_by` stays NULL (the
+system did it), and the two columns added for this say why, `revoked_reason =
+'module_disabled'` (`InvitationRevocationReason`) and `revoked_module = <module
+id>`. The roles of a module come from the catalog the gate carries
+(`ModuleFlag::roles`), never from a list in this service. Each revocation
+publishes the usual before/after audit diff for the Owner room and a journal
+action with no actor, and the row JSON (`GET /invitation`, the sync stream)
+gains `revokedReason` and `revokedModule` (null while unrevoked). The boot pass
+(`revokeDisabledModules`, after the schema and `UserInvitationRepository::
+ensureColumns`) covers a disable that happened while identity was down; the
+two columns are additive `ALTER TABLE ... ADD COLUMN` at boot like the person
+and face-embedding ones, so an existing database is never rebuilt for them.
+
+A revoked invitation is never restored: turning the module back on does not
+revive it, the Owner invites again. What the invitee sees is decided by
+`invitation_standing::assess`, the one function behind resolve and redemption:
+
+| stored state | standing | answer |
+|---|---|---|
+| unknown, expired, revoked by the Owner, redeemed, unknown role | invalid | 404 `NOT_FOUND` (resolve), `INVITATION_INVALID` (redeem) |
+| revoked with `module_disabled` | module disabled, module = `revoked_module` | 410 |
+| usable, but `moduleGate().roleActive(role)` is false now | module disabled, module = the role's module | 410 |
+
+The third row is the invitation made while the module was on and found after
+it went off before the revocation row was written (the feed arrives on its own
+thread): it is refused the same way. The 410 is a list so the app can say which
+module without parsing prose: `errors = [{code: "INVITATION_MODULE_DISABLED",
+message}, {code: "MODULE_ID", message: "<module id>"}]` (`error_list::forModule`
+in `packages/lib/errors`), on `POST /invitation/resolve` and, through
+`REGISTER_USER_INVITATION_MODULE_DISABLED` plus `RegisterUserResponse.
+module_id`, on `POST /auth/register`.
+
+Redemption keeps the single use honest: `InvitationRedemption::consume`, inside
+the enrolment transaction and before any write, refuses a role whose module is
+off, and, when the guarded `UPDATE` finds nothing, reads the row again to tell
+a module revocation from any other dead invitation. A refusal rolls the
+transaction back, so the invitation is not consumed and a person who comes
+back after the Owner turns the module on redeems it normally (unless the
+revocation had already run, in which case it is gone).
+
+Tests: `identity-invitation-module-test` (the revocation with its reason and
+audit, only the pending invitations of that module's roles, the boot pass, the
+refusal that does not burn the invitation, the revoked-by-module refusal against
+the other dead ones, the 410 list, the old database that gets the columns);
+`session-management-test` in argus-auth (the 410 and `MODULE_ID` on register).
+
 ## The pairing code is 128 bits and rotates (2026-10, audit #40)
 
 `scripts/lib/pki.sh` writes a 26-character base32 code (`A-Z2-7`, 16 random

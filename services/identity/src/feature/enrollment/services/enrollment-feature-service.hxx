@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <feature/enrollment/repositories/enrollment/enrollment-repository.hxx>
+#include <feature/enrollment/services/invitation-redemption.hxx>
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/user-invitation/user-invitation-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
@@ -35,6 +36,7 @@ enum class EnrollmentOutcome : uint8_t
   FaceNotRecognized,
   InvitationRequired,
   InvitationInvalid,
+  InvitationModuleDisabled,
   OwnerAlreadyExists,
   FaceIndexFailed,
   AccountDisabled,
@@ -52,6 +54,7 @@ struct EnrollmentResult
   std::string lastName;
   std::string lang;
   UserRole role{UserRole::Unknown};
+  std::string moduleId{};
 };
 
 class EnrollmentFeatureService
@@ -73,6 +76,7 @@ private:
     UserRole role{UserRole::Owner};
     std::optional<UserInvitationSchema> invitation;
     std::string invitationHash;
+    std::string moduleId;
   };
 
   [[nodiscard]] drogon::Task<Admission> admit(const EnrollmentInput& input) const;
@@ -85,5 +89,6 @@ private:
   UserRepository userRepository_;
   PersonRepository personRepository_;
   UserInvitationRepository invitationRepository_;
+  InvitationRedemption redemption_;
   PrivatePortraitService privatePortraitService_;
 };

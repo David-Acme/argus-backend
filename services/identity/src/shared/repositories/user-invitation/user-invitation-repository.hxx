@@ -14,6 +14,8 @@ class UserInvitationRepository : public Syncable
 public:
   UserInvitationRepository() = default;
 
+  static void ensureColumns();
+
   drogon::Task<UserInvitationSchema>
   create(const UserInvitationCreateInput& input) const;
   drogon::Task<std::optional<UserInvitationSchema>>
@@ -23,6 +25,10 @@ public:
                   drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<std::vector<UserInvitationSchema>> findAll() const;
   drogon::Task<bool> revoke(const UserInvitationRevokeInput& input) const;
+  drogon::Task<std::vector<UserInvitationSchema>>
+  findPending(const UserInvitationPendingInput& input) const;
+  drogon::Task<bool>
+  revokeForModule(const UserInvitationModuleRevokeInput& input) const;
 
   drogon::Task<bool> tryConsume(int64_t invitationId, int64_t now) const;
   drogon::Task<bool>

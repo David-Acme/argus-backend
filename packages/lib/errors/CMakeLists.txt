@@ -5,6 +5,7 @@ argus_lib(NAME errors
         src/errors/response-exception.cc
         src/errors/error-code.hxx
         src/errors/error-definition.hxx
+        src/errors/error-list.hxx
         src/errors/response-exception.hxx
         src/errors/validation-exception.hxx
     INCLUDES src)

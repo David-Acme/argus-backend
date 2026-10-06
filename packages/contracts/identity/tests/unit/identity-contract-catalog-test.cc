@@ -15,7 +15,7 @@ struct CatalogEntry
   const char* message;
 };
 
-constexpr std::array<CatalogEntry, 43> kCatalog{{
+constexpr std::array<CatalogEntry, 44> kCatalog{{
     {.name = "FaceNotRecognized",
      .definition = &IdentityErrors::FaceNotRecognized,
      .code = ErrorCode::Unauthorized,
@@ -46,6 +46,11 @@ constexpr std::array<CatalogEntry, 43> kCatalog{{
      .code = ErrorCode::NotFound,
      .status = 404,
      .message = "Invitation is invalid or expired"},
+    {.name = "InvitationModuleDisabled",
+     .definition = &IdentityErrors::InvitationModuleDisabled,
+     .code = ErrorCode::InvitationModuleDisabled,
+     .status = 410,
+     .message = "The module this invitation belongs to was turned off"},
     {.name = "OwnerAlreadyExists",
      .definition = &IdentityErrors::OwnerAlreadyExists,
      .code = ErrorCode::Conflict,
@@ -245,7 +250,7 @@ TEST_CASE("the identity catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 43);
+  CHECK(kCatalog.size() == 44);
 }
 
 TEST_CASE("every identity entry is legal on the wire")

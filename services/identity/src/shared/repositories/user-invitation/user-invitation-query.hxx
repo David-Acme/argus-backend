@@ -5,6 +5,8 @@
 #include <string>
 #include <string_view>
 #include <auth/user-role.hxx>
+#include <shared/vocabulary/invitation-revocation-reason.hxx>
+#include <vector>
 
 namespace user_invitation_query
 {
@@ -49,6 +51,19 @@ inline constexpr std::string_view REVOKE =
     "updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND revoked_at IS NULL";
 
+inline constexpr std::string_view FIND_PENDING_FOR_ROLES_HEAD =
+    "SELECT * FROM user_invitation WHERE revoked_at IS NULL "
+    "AND redemption_count < max_redemptions AND expires_at > ? AND role IN (";
+inline constexpr std::string_view FIND_PENDING_FOR_ROLES_TAIL = ") ORDER BY id ASC";
+
+inline constexpr std::string_view REVOKE_FOR_MODULE =
+    "UPDATE user_invitation "
+    "SET revoked_at = strftime('%s', 'now'), revoked_by = NULL, "
+    "revoked_reason = ?, revoked_module = ?, "
+    "updated_at = strftime('%s', 'now') "
+    "WHERE id = ? AND revoked_at IS NULL "
+    "AND redemption_count < max_redemptions";
+
 inline constexpr std::string_view TRY_CONSUME =
     "UPDATE user_invitation "
     "SET redemption_count = redemption_count + 1, "
@@ -75,6 +90,21 @@ struct UserInvitationRevokeInput
 {
   int64_t invitationId{0};
   int64_t revokedBy{0};
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct UserInvitationPendingInput
+{
+  std::vector<std::string> roles;
+  int64_t now{0};
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct UserInvitationModuleRevokeInput
+{
+  int64_t invitationId{0};
+  InvitationRevocationReason reason{InvitationRevocationReason::ModuleDisabled};
+  std::string moduleId;
   drogon::orm::DbClient* client{nullptr};
 };
 

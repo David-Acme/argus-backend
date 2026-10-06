@@ -44,7 +44,9 @@ enum class ErrorCode
   ModuleJobRunning,
   ModuleRequiredBy,
   ModuleCore,
-  RoleInactive
+  RoleInactive,
+  InvitationModuleDisabled,
+  ModuleRolesHeld
 };
 
 constexpr std::string_view toString(ErrorCode code)
@@ -90,6 +92,8 @@ constexpr std::string_view toString(ErrorCode code)
   case ErrorCode::ModuleRequiredBy: return "MODULE_REQUIRED_BY";
   case ErrorCode::ModuleCore: return "MODULE_CORE";
   case ErrorCode::RoleInactive: return "ROLE_INACTIVE";
+  case ErrorCode::InvitationModuleDisabled: return "INVITATION_MODULE_DISABLED";
+  case ErrorCode::ModuleRolesHeld: return "MODULE_ROLES_HELD";
   }
   throw std::invalid_argument("Unknown response error code");
 }

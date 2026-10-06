@@ -20,6 +20,7 @@
 #include <drogon/drogon.h>
 #include <feature/face-upgrade/services/face-upgrade-service.hxx>
 #include <feature/invitation/controllers/invitation-controller.hxx>
+#include <feature/invitation/services/invitation-module-revocation.hxx>
 #include <feature/pairing/controllers/pairing-controller.hxx>
 #include <feature/pairing/infra/pairing-banner.hxx>
 #include <feature/retention/services/candidate-retention-service.hxx>
@@ -48,6 +49,7 @@
 #include <runtime/log-output.hxx>
 #include <shared/repositories/face-embedding/face-embedding-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>
+#include <shared/repositories/user-invitation/user-invitation-repository.hxx>
 #include <shared/services/face/face-service.hxx>
 #include <shared/services/object-deletion/object-deletion-worker.hxx>
 #include <shared/services/schema/secure-delete.hxx>
@@ -255,6 +257,23 @@ int main()
 
   const auto modules = module_gate::install({.service = "identity", .bus = natsBus});
 
+  const InvitationModuleRevocation invitationRevocation;
+  moduleGate().onChange([&invitationRevocation](const ModuleChange& change) {
+    if (change.enabled)
+      return;
+    drogon::app().getLoop()->queueInLoop([&invitationRevocation, id = change.id] {
+      drogon::async_run([&invitationRevocation, id]() -> drogon::Task<void> {
+        try {
+          co_await invitationRevocation.revokeModule(id);
+        }
+        catch (const std::exception& error) {
+          LOG_WARN << "Identity: the pending invitations of " << id << " could not be revoked: " << error.what();
+        }
+        co_return;
+      });
+    });
+  });
+
   const std::weak_ptr<NatsBus> healthBus = natsBus;
   drogon::app().registerController(std::make_shared<HealthController>(
       HealthStatus{.serviceName = "argus-identity",
@@ -368,7 +387,8 @@ int main()
 
   const FaceUpgradeService faceUpgrade(readStoredPortrait);
   drogon::app().registerBeginningAdvice([&identityDb, &identitySink, &face,
-                                         &voiceprint, &faceUpgrade]() {
+                                         &voiceprint, &faceUpgrade,
+                                         &invitationRevocation]() {
     DbService::installExtensions();
 
     if (!DbService::runScriptFile(identityDb.schemaPath)) {
@@ -384,6 +404,7 @@ int main()
     static_cast<void>(role_check_migration::applyToFile(identityDb.dbPath));
 
     PersonRepository::ensureColumns();
+    UserInvitationRepository::ensureColumns();
 
     VoiceProfileRepository::migrateLegacy();
     FaceEmbeddingRepository::ensureColumns();
@@ -395,6 +416,18 @@ int main()
 
     if (identitySink)
       identitySink->reconcile();
+
+    drogon::async_run([&invitationRevocation]() -> drogon::Task<void> {
+      try {
+        const auto revoked = co_await invitationRevocation.revokeDisabledModules();
+        if (revoked > 0)
+          LOG_INFO << "Identity: " << revoked << " pending invitation(s) of modules that are off were revoked";
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Identity: the invitations of the modules that are off could not be reconciled: " << error.what();
+      }
+      co_return;
+    });
 
     if (face.enabled) {
       FaceService::instance().init();

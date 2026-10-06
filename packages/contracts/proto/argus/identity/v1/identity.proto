@@ -61,6 +61,7 @@ enum RegisterUserOutcome
   REGISTER_USER_LIVENESS_FAILED = 12;
   REGISTER_USER_LIVENESS_UNAVAILABLE = 13;
   REGISTER_USER_FACE_QUALITY_INSUFFICIENT = 14;
+  REGISTER_USER_INVITATION_MODULE_DISABLED = 15;
 }
 
 message RegisterUserResponse
@@ -68,6 +69,7 @@ message RegisterUserResponse
   RegisterUserOutcome outcome = 1;
   UserIdentity user = 2;
   optional int64 person_id = 3;
+  optional string module_id = 4;
 }
 
 message GetUserRequest

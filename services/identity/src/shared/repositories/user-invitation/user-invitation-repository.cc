@@ -1,6 +1,8 @@
 #include "user-invitation-repository.hxx"
 
+#include <array>
 #include <ctime>
+#include <shared/services/schema/column-migration.hxx>
 #include <sqlite/db-service.hxx>
 
 using namespace user_invitation_query;
@@ -70,6 +72,52 @@ UserInvitationRepository::revoke(const UserInvitationRevokeInput& input) const
   const auto result = co_await client->execSqlCoro(
       REVOKE.data(), input.revokedBy, input.invitationId);
   co_return result.affectedRows() > 0;
+}
+
+drogon::Task<std::vector<UserInvitationSchema>>
+UserInvitationRepository::findPending(const UserInvitationPendingInput& input) const
+{
+  std::vector<UserInvitationSchema> invitations;
+  if (input.roles.empty())
+    co_return invitations;
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
+  std::string sql(FIND_PENDING_FOR_ROLES_HEAD);
+  std::vector<std::string> args{std::to_string(input.now)};
+  for (const auto& role : input.roles) {
+    if (args.size() > 1)
+      sql += ", ";
+    sql += '?';
+    args.push_back(role);
+  }
+  sql += FIND_PENDING_FOR_ROLES_TAIL;
+  const auto& argsRef = args;
+  const auto rows = co_await client->execSqlCoro(sql, argsRef);
+  invitations.reserve(rows.size());
+  for (const auto& row : rows)
+    invitations.emplace_back(row);
+  co_return invitations;
+}
+
+drogon::Task<bool> UserInvitationRepository::revokeForModule(
+    const UserInvitationModuleRevokeInput& input) const
+{
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
+  const auto result = co_await client->execSqlCoro(
+      std::string(REVOKE_FOR_MODULE),
+      std::string(invitationRevocationReasonToString(input.reason)),
+      input.moduleId, input.invitationId);
+  co_return result.affectedRows() > 0;
+}
+
+void UserInvitationRepository::ensureColumns()
+{
+  constexpr std::array<ColumnMigration, 2> kColumns = {{
+      {.table = "user_invitation", .column = "revoked_reason", .definition = "TEXT"},
+      {.table = "user_invitation", .column = "revoked_module", .definition = "TEXT"},
+  }};
+  column_migration::ensure(kColumns);
 }
 
 drogon::Task<bool>

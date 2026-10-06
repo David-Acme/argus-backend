@@ -29,6 +29,10 @@ inline constexpr ErrorDefinition InvitationInvalidOrExpired{
     .code = ErrorCode::NotFound,
     .status = 404,
     .message = "Invitation is invalid or expired"};
+inline constexpr ErrorDefinition InvitationModuleDisabled{
+    .code = ErrorCode::InvitationModuleDisabled,
+    .status = 410,
+    .message = "The module this invitation belongs to was turned off"};
 inline constexpr ErrorDefinition OwnerAlreadyExists{
     .code = ErrorCode::Conflict,
     .status = 409,

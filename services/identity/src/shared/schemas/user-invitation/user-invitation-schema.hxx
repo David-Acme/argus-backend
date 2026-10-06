@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <auth/user-role.hxx>
+#include <shared/vocabulary/invitation-revocation-reason.hxx>
 
 struct UserInvitationSchema
 {
@@ -18,6 +19,8 @@ struct UserInvitationSchema
   int64_t createdBy{0};
   std::optional<int64_t> revokedAt;
   std::optional<int64_t> revokedBy;
+  std::optional<InvitationRevocationReason> revokedReason;
+  std::optional<std::string> revokedModule;
   int64_t createdAt{0};
   std::optional<int64_t> updatedAt;
 

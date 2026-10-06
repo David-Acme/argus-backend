@@ -6,6 +6,7 @@
 #include <ctime>
 #include <errors/response-exception.hxx>
 #include <feature/invitation/services/invitation-feature-service.hxx>
+#include <feature/invitation/services/invitation-standing.hxx>
 #include <identity/identity-errors.hxx>
 #include <runtime/blocking-task.hxx>
 #include <shared/services/face/face-service.hxx>
@@ -30,6 +31,15 @@ EnrollmentResult outcomeResult(EnrollmentOutcome outcome)
                           .lastName = "",
                           .lang = "",
                           .role = UserRole::Unknown};
+}
+
+EnrollmentResult refusedRedemption(const InvitationRedemptionResult& redeemed)
+{
+  if (redeemed.status != RedemptionStatus::ModuleDisabled)
+    return outcomeResult(EnrollmentOutcome::InvitationInvalid);
+  auto result = outcomeResult(EnrollmentOutcome::InvitationModuleDisabled);
+  result.moduleId = redeemed.moduleId;
+  return result;
 }
 
 EnrollmentResult registeredResult(const UserSchema& user,
@@ -96,14 +106,17 @@ EnrollmentFeatureService::admit(const EnrollmentInput& input) const
   admission.invitationHash = InvitationFeatureService::hashToken(input.invitationToken);
   admission.invitation =
       co_await invitationRepository_.findByTokenHash(admission.invitationHash);
-  const int64_t now = std::time(nullptr);
-  const auto& invitation = admission.invitation;
-  if (!invitation || invitation->revokedAt || invitation->expiresAt <= now ||
-      invitation->redemptionCount >= invitation->maxRedemptions) {
+  const auto standing = invitation_standing::assess(admission.invitation, std::time(nullptr));
+  if (standing.standing == InvitationStanding::ModuleDisabled) {
+    admission.refusal = EnrollmentOutcome::InvitationModuleDisabled;
+    admission.moduleId = standing.moduleId;
+    co_return admission;
+  }
+  if (standing.standing == InvitationStanding::Invalid) {
     admission.refusal = EnrollmentOutcome::InvitationInvalid;
     co_return admission;
   }
-  admission.role = invitation->role;
+  admission.role = admission.invitation.value_or(UserInvitationSchema{}).role;
   co_return admission;
 }
 
@@ -128,8 +141,11 @@ EnrollmentFeatureService::registerUser(const EnrollmentInput& input) const
     co_return outcomeResult(EnrollmentOutcome::NotPaired);
 
   const auto admission = co_await admit(input);
-  if (admission.refusal)
-    co_return outcomeResult(*admission.refusal);
+  if (admission.refusal) {
+    auto refused = outcomeResult(*admission.refusal);
+    refused.moduleId = admission.moduleId;
+    co_return refused;
+  }
 
   const IdentityFaceConfig faceConfig = IdentityConfig::resolveFace();
   auto face = co_await FaceService::instance().verifyImageAsync(
@@ -176,13 +192,13 @@ EnrollmentFeatureService::registerUser(const EnrollmentInput& input) const
       co_return outcomeResult(EnrollmentOutcome::OwnerAlreadyExists);
     }
     if (!isInitialOwner) {
-      const bool consumed = co_await enrollmentRepository_.consumeInvitation(
-          {.tokenHash = invitationHash,
-           .now = now,
-           .client = transaction.get()});
-      if (!consumed) {
+      const auto redeemed = co_await redemption_.consume({.tokenHash = invitationHash,
+                                                          .role = role,
+                                                          .now = now,
+                                                          .client = transaction.get()});
+      if (redeemed.status != RedemptionStatus::Consumed) {
         db_transaction::rollback(transaction);
-        co_return outcomeResult(EnrollmentOutcome::InvitationInvalid);
+        co_return refusedRedemption(redeemed);
       }
     }
 

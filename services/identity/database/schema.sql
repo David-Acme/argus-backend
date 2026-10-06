@@ -80,6 +80,8 @@ CREATE TABLE IF NOT EXISTS user_invitation (
     created_by        INTEGER NOT NULL REFERENCES user(id) ON DELETE RESTRICT,
     revoked_at        INTEGER,
     revoked_by        INTEGER REFERENCES user(id) ON DELETE SET NULL,
+    revoked_reason    TEXT,
+    revoked_module    TEXT,
     created_at        INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     updated_at        INTEGER,
     CHECK (revoked_at IS NULL OR revoked_at >= created_at)

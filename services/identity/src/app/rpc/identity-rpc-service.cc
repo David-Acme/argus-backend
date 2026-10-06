@@ -172,6 +172,8 @@ registerUserOutcome(EnrollmentOutcome outcome)
     return argus::identity::v1::REGISTER_USER_INVITATION_REQUIRED;
   case EnrollmentOutcome::InvitationInvalid:
     return argus::identity::v1::REGISTER_USER_INVITATION_INVALID;
+  case EnrollmentOutcome::InvitationModuleDisabled:
+    return argus::identity::v1::REGISTER_USER_INVITATION_MODULE_DISABLED;
   case EnrollmentOutcome::OwnerAlreadyExists:
     return argus::identity::v1::REGISTER_USER_OWNER_ALREADY_EXISTS;
   case EnrollmentOutcome::FaceIndexFailed:
@@ -232,6 +234,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::RegisterUser(
         }
         if (result.personId > 0)
           responseWriter->set_person_id(result.personId);
+        if (!result.moduleId.empty())
+          responseWriter->set_module_id(result.moduleId);
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {

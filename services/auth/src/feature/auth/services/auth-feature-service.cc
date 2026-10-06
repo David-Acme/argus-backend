@@ -8,6 +8,7 @@
 #include <charconv>
 #include <ctime>
 #include <drogon/drogon.h>
+#include <errors/error-list.hxx>
 #include <errors/response-exception.hxx>
 #include <identity/identity-client.hxx>
 #include <map>
@@ -290,6 +291,9 @@ AuthFeatureService::registerUser(RegisterDto body,
       throw ResponseException(AuthErrors::InvitationRequired);
     case argus::identity::v1::REGISTER_USER_INVITATION_INVALID:
       throw ResponseException(AuthErrors::InvitationInvalidOrExpired);
+    case argus::identity::v1::REGISTER_USER_INVITATION_MODULE_DISABLED:
+      throw ResponseException(AuthErrors::InvitationModuleDisabled.status,
+                              error_list::forModule(AuthErrors::InvitationModuleDisabled, answer->module_id()));
     case argus::identity::v1::REGISTER_USER_OWNER_ALREADY_EXISTS:
       throw ResponseException(AuthErrors::OwnerAlreadyExists);
     case argus::identity::v1::REGISTER_USER_FACE_INDEX_FAILED:

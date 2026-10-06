@@ -1,5 +1,6 @@
 #include "invitation-feature-service.hxx"
 
+#include "invitation-standing.hxx"
 #include "role-copy.hxx"
 
 #include <algorithm>
@@ -29,12 +30,6 @@ std::string newOpaqueToken()
   if (!token)
     throw ResponseException(503, IdentityErrors::InvitationCreationFailed);
   return std::move(*token);
-}
-
-bool isUsable(const UserInvitationSchema& invitation, int64_t now)
-{
-  return !invitation.revokedAt && invitation.expiresAt > now &&
-         invitation.redemptionCount < invitation.maxRedemptions;
 }
 }
 
@@ -208,13 +203,12 @@ InvitationFeatureService::resolve(const std::string& token) const
   if (!CertService::isLoaded())
     throw ResponseException(503, IdentityErrors::ServerCertificateUnavailable);
 
-  const auto invitation = co_await repository_.findByTokenHash(hashToken(token));
-  if (!invitation || !isUsable(*invitation, std::time(nullptr)))
-    throw ResponseException(404, IdentityErrors::InvitationInvalidOrExpired);
+  const auto stored = co_await repository_.findByTokenHash(hashToken(token));
+  const auto invitation = invitation_standing::require(stored, std::time(nullptr));
 
   ResponseInvitationResolveDto result;
-  result.role = invitation->role;
-  result.expiresAt = invitation->expiresAt;
+  result.role = invitation.role;
+  result.expiresAt = invitation.expiresAt;
   result.instanceId = CertService::instanceId();
   result.caFingerprint = CertService::caFingerprint();
   result.serverFingerprint = CertService::serverFingerprint();

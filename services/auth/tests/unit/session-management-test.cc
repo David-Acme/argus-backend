@@ -38,6 +38,8 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #ifndef ARGUS_AUTH_SCHEMA_PATH
@@ -68,6 +70,7 @@ struct Refusal
 {
   int status;
   std::string code;
+  std::string detail{};
 };
 
 template <typename T>
@@ -77,7 +80,10 @@ template <typename T>
     drogon::sync_wait(std::move(task));
   }
   catch (const ResponseException& error) {
-    return Refusal{.status = error.statusCode(), .code = error.errorCode()};
+    std::string detail;
+    if (const auto* list = std::get_if<std::vector<ResponseError>>(&error.errors()))
+      detail = list->back().code + "=" + list->back().message;
+    return Refusal{.status = error.statusCode(), .code = error.errorCode(), .detail = std::move(detail)};
   }
   return std::nullopt;
 }
@@ -179,8 +185,11 @@ public:
   {
     if (input.image.starts_with("outcome:")) {
       argus::identity::v1::RegisterUserResponse refused;
-      refused.set_outcome(static_cast<argus::identity::v1::RegisterUserOutcome>(
-          std::stoi(input.image.substr(8))));
+      const std::string spec = input.image.substr(8);
+      const auto split = spec.find(':');
+      refused.set_outcome(static_cast<argus::identity::v1::RegisterUserOutcome>(std::stoi(spec.substr(0, split))));
+      if (split != std::string::npos)
+        refused.set_module_id(spec.substr(split + 1));
       return refused;
     }
     const int64_t userId = std::stoll(input.image);
@@ -1211,9 +1220,9 @@ TEST_CASE("identity's liveness and quality refusals reach the app as their own c
   const auto login = [&](const std::string& check) {
     return refusedBy(app.auth().login(LoginDto{.image = "check:" + check}, phoneLogin()));
   };
-  const auto enroll = [&](argus::identity::v1::RegisterUserOutcome outcome) {
+  const auto enroll = [&](argus::identity::v1::RegisterUserOutcome outcome, const std::string& module = "") {
     return refusedBy(app.auth().registerUser(
-        RegisterDto{.image = "outcome:" + std::to_string(static_cast<int>(outcome)),
+        RegisterDto{.image = "outcome:" + std::to_string(static_cast<int>(outcome)) + (module.empty() ? "" : ":" + module),
                     .name = "Ada",
                     .inviteCode = "",
                     .lang = "es"},
@@ -1244,6 +1253,16 @@ TEST_CASE("identity's liveness and quality refusals reach the app as their own c
   const Refusal quality = enroll(argus::identity::v1::REGISTER_USER_FACE_QUALITY_INSUFFICIENT);
   CHECK(quality.status == 422);
   CHECK(quality.code == "FACE_QUALITY_INSUFFICIENT");
+
+  const Refusal moduleOff =
+      enroll(argus::identity::v1::REGISTER_USER_INVITATION_MODULE_DISABLED, "surveillance");
+  CHECK(moduleOff.status == 410);
+  CHECK(moduleOff.code == "INVITATION_MODULE_DISABLED");
+  CHECK(moduleOff.detail == "MODULE_ID=surveillance");
+  const Refusal unnamed = enroll(argus::identity::v1::REGISTER_USER_INVITATION_MODULE_DISABLED);
+  CHECK(unnamed.status == 410);
+  CHECK(unnamed.code == "INVITATION_MODULE_DISABLED");
+  CHECK(unnamed.detail.find("MODULE_ID") == std::string::npos);
 }
 
 TEST_CASE("a disabled account loses every session and is refused at every way in")

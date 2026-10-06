@@ -2,6 +2,7 @@ argus_module(NAME identity-enrollment
     SOURCES
         repositories/enrollment/enrollment-repository.cc
         services/enrollment-feature-service.cc
+        services/invitation-redemption.cc
     INCLUDES ../..
     DEPENDS
         argus::identity-config

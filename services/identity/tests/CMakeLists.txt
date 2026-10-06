@@ -291,6 +291,19 @@ target_compile_options(identity-user-safety-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-user-safety-test)
 add_test(NAME identity-user-safety-test COMMAND identity-user-safety-test)
 
+add_executable(identity-invitation-module-test unit/identity-invitation-module-test.cc)
+target_compile_definitions(identity-invitation-module-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(identity-invitation-module-test PRIVATE
+    argus::identity-enrollment
+    argus::identity-invitation
+    argus::lib::sqlite
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-invitation-module-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-invitation-module-test)
+add_test(NAME identity-invitation-module-test COMMAND identity-invitation-module-test)
+
 add_executable(identity-module-data-test unit/identity-module-data-test.cc)
 target_compile_definitions(identity-module-data-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")

@@ -25,6 +25,10 @@ contracts, the four wire clients and four other libs (`auth`, `http`,
 - `src/errors/response-exception.hxx` — `ResponseException` in its three
   shapes (a bare message, a definition, a status plus a list of errors) with
   the `ResponseError`/`ResponseErrors` types it carries.
+- `src/errors/error-list.hxx` — `error_list::headed`/`entry`/`forModule`: the
+  list shape of a refusal that carries one more fact than its code, a catalog
+  entry first and detail entries after it (`MODULE_ID`, `ROLE_HOLDER`), so a
+  client reads the fact from an entry instead of parsing a message.
 - `src/errors/validation-exception.hxx` — `ValidationException` and the
   per-field `ValidationErrors` map the validation DSL produces.
 

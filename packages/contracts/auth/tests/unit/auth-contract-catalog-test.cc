@@ -146,6 +146,11 @@ const std::vector<CatalogEntry> kCatalog{
      .code = ErrorCode::NotFound,
      .status = 404,
      .message = "Invitation is invalid or expired"},
+    {.name = "InvitationModuleDisabled",
+     .definition = &AuthErrors::InvitationModuleDisabled,
+     .code = ErrorCode::InvitationModuleDisabled,
+     .status = 410,
+     .message = "The module this invitation belongs to was turned off"},
     {.name = "OwnerAlreadyExists",
      .definition = &AuthErrors::OwnerAlreadyExists,
      .code = ErrorCode::Conflict,
@@ -200,7 +205,7 @@ TEST_CASE("the auth catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 34);
+  CHECK(kCatalog.size() == 35);
 }
 
 TEST_CASE("every auth entry is legal on the wire")

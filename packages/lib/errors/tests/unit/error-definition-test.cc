@@ -3,6 +3,7 @@
 
 #include <errors/error-code.hxx>
 #include <errors/error-definition.hxx>
+#include <errors/error-list.hxx>
 #include <errors/response-exception.hxx>
 
 #include <stdexcept>
@@ -61,10 +62,12 @@ TEST_CASE("every error code has exactly one wire string")
       {.code = ErrorCode::ModuleJobRunning, .name = "MODULE_JOB_RUNNING"},
       {.code = ErrorCode::ModuleRequiredBy, .name = "MODULE_REQUIRED_BY"},
       {.code = ErrorCode::ModuleCore, .name = "MODULE_CORE"},
-      {.code = ErrorCode::RoleInactive, .name = "ROLE_INACTIVE"}};
+      {.code = ErrorCode::RoleInactive, .name = "ROLE_INACTIVE"},
+      {.code = ErrorCode::InvitationModuleDisabled, .name = "INVITATION_MODULE_DISABLED"},
+      {.code = ErrorCode::ModuleRolesHeld, .name = "MODULE_ROLES_HELD"}};
 
   CHECK(table.size() ==
-        static_cast<std::size_t>(ErrorCode::RoleInactive) + 1);
+        static_cast<std::size_t>(ErrorCode::ModuleRolesHeld) + 1);
 
   for (const auto& row : table)
     CHECK(std::string(toString(row.code)) == row.name);
@@ -152,4 +155,32 @@ TEST_CASE("an empty error list is rejected at construction")
 {
   CHECK_THROWS_AS(ResponseException(422, std::vector<ResponseError>{}),
                   std::invalid_argument);
+}
+
+TEST_CASE("a headed list opens with the catalog entry and keeps the detail entries after it")
+{
+  constexpr ErrorDefinition head{.code = ErrorCode::InvitationModuleDisabled, .status = 410, .message = "The module of this invitation is off"};
+  const ResponseException error(
+      head.status, error_list::headed(head, {error_list::entry(error_list::kModuleId, "surveillance")}));
+
+  CHECK(error.statusCode() == 410);
+  CHECK(error.errorCode() == "INVITATION_MODULE_DISABLED");
+  const auto& list = std::get<std::vector<ResponseError>>(error.errors());
+  REQUIRE(list.size() == 2);
+  CHECK(list[0].message == "The module of this invitation is off");
+  CHECK(list[1].code == "MODULE_ID");
+  CHECK(list[1].message == "surveillance");
+}
+
+TEST_CASE("a module list names the module only when it is known")
+{
+  constexpr ErrorDefinition head{.code = ErrorCode::InvitationModuleDisabled, .status = 410, .message = "off"};
+
+  const auto named = error_list::forModule(head, "surveillance");
+  REQUIRE(named.size() == 2);
+  CHECK(named[0].code == "INVITATION_MODULE_DISABLED");
+  CHECK(named[1].code == "MODULE_ID");
+  CHECK(named[1].message == "surveillance");
+
+  CHECK(error_list::forModule(head, "").size() == 1);
 }

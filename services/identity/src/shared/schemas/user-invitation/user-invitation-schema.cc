@@ -15,6 +15,10 @@ UserInvitationSchema::UserInvitationSchema(const drogon::orm::Row& row)
     revokedAt = static_cast<int64_t>(row["revoked_at"].as<long long>());
   if (!row["revoked_by"].isNull())
     revokedBy = static_cast<int64_t>(row["revoked_by"].as<long long>());
+  if (!row["revoked_reason"].isNull())
+    revokedReason = invitationRevocationReasonFromString(row["revoked_reason"].as<std::string>());
+  if (!row["revoked_module"].isNull())
+    revokedModule = row["revoked_module"].as<std::string>();
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
   if (!row["updated_at"].isNull())
     updatedAt = static_cast<int64_t>(row["updated_at"].as<long long>());
@@ -31,6 +35,9 @@ Json::Value UserInvitationSchema::toJson() const
   value["createdBy"] = createdBy;
   value["revokedAt"] = revokedAt ? Json::Value(Json::Int64(*revokedAt))
                                : Json::Value();
+  value["revokedReason"] = revokedReason ? Json::Value(std::string(invitationRevocationReasonToString(*revokedReason)))
+                                         : Json::Value();
+  value["revokedModule"] = revokedModule ? Json::Value(*revokedModule) : Json::Value();
   value["createdAt"] = Json::Int64(createdAt);
   value["updatedAt"] = updatedAt ? Json::Value(Json::Int64(*updatedAt))
                                 : Json::Value();
