@@ -1,183 +1,154 @@
 # Voice quality evaluation
 
-What Argus understands when somebody speaks to it is measured, not reviewed. Three things are
-measured, each against numbers kept in the repository: the fast tier (the fastText classifier and
-the rules that decide a turn without the LLM), the LLM tier (which tool the model picks, with
-which arguments, and what it answers when a module is off) and the speech recogniser. A change
-that makes a gated number worse fails the test that carries it.
+What Argus understands when somebody speaks to it is measured, not reviewed. Since the owner's
+decision of 2026-10-06 the LLM no longer chooses tools: a decider (rules, a learned classifier, a
+fine-tuned model) picks the tool, a slot layer fills its arguments, the executor runs it through the
+capability filter and the spoken confirmation, and the LLM only speaks about the result. So four
+things are measured, each against numbers kept in the repository, and a change that makes a gated
+number worse fails the test that carries it: the **decider** (which tool, how often it is wrong),
+the **slots** (the arguments, and that a missing one is asked for, never guessed), the
+**conversation** (what the LLM says about a result) and the **speech recogniser**.
 
 Measured on 2026-10-06 on the development machine (Ryzen 7 5725U, 16 threads, 32 GB, CPU only).
 
 ## How to run it
 
 ```
-bash scripts/build-all.sh dev --only llm
+python3 -I services/llm/tests/eval/decider-eval.py --decider '<command>' \
+    --gates services/llm/tests/eval/gates.json \
+    --select services/llm/tests/fixtures/eval/cases.jsonl <holdout.jsonl> \
+    --select-negatives <real-negatives.txt> \
+    --traffic services/llm/tests/fixtures/intent/eval-production.tsv \
+    [--sealed services/llm/tests/fixtures/eval/sealed.jsonl --final]
+python3 -I services/llm/tests/eval/slot-eval.py --cases services/llm/tests/fixtures/eval/slots.jsonl \
+    --gates services/llm/tests/eval/gates.json --filler '<command>'
+python3 -I services/llm/tests/eval/conversation-eval.py --cases services/llm/tests/fixtures/eval/conversation.jsonl \
+    --gates services/llm/tests/eval/gates.json --speaker '<command>'
 ctest --test-dir services/llm/build/dev -L eval --output-on-failure
-ctest --test-dir services/llm/build/prod -L eval-llm --output-on-failure
 
 python3 scripts/stt-eval-data.py
 ctest --test-dir services/stt/build/dev -R stt-wer-eval --output-on-failure
 ```
 
-A test that has nothing to run (no intent model, no LLM weights, no speech clips) exits with code
-77 and ctest reports it as skipped, so a missing model cannot pass for a good number. Reports
-(JSON, every metric) are written beside each runner in its build directory. The classifier is
-retrained and republished from the sibling `intent-training/` project (`CONTEXT.md` there).
+A decider, a filler and a speaker are processes that read one JSON request per line on stdin and
+write one JSON answer per line on stdout, so the rule tier, the fastText families, a fine-tuned
+model and the pipeline's own stages are scored by the same code and the same numbers. A command that
+cannot start is a visible skip (exit 77), never a pass. The classifier is retrained and republished
+from the sibling `intent-training/` project (`CONTEXT.md` there).
 
-## The judge corpus
+## The corpora
 
-`services/llm/tests/fixtures/eval/cases.jsonl`: 789 cases, 629 distinct first utterances. It is
-authored in `intent-training/data/eval/` (training must exclude it, rows near it included) and
-copied here by `intent-training/scripts/publish.py`; do not edit it in place.
-
-| group | cases | what it holds |
+| file | cases | role |
 |---|---|---|
-| memory | 261 | a fact to keep, a question about what was told, a reminder, a retraction naming a fact |
-| camera | 40 | looking at a camera or asking what is at the door |
-| none | 129 | chit-chat, world knowledge, device control, a bare "olvídalo" |
-| productivity | 123 | agenda, calendar, task and project requests and their cancellations |
-| modules | 50 | list, explain, enable, request, disable, open the purge screen |
-| app | 34 | open a screen, set the guard mode, list reminders |
-| inactive | 152 | the same requests asked with their module off, as Owner and as Resident |
+| `fixtures/eval/cases.jsonl` | 789 (629 distinct utterances) | the judge corpus the rule tier and the classifier were developed against |
+| `intent-training/data/eval/holdout.jsonl` | 185 | fresh cases written without reading any rule tier's vocabulary, used to choose an operating point |
+| `fixtures/eval/sealed.jsonl` | 2,482 | the sealed held-out set: judges whichever decider wins, read once per frozen decider |
+| `fixtures/eval/slots.jsonl` | 100 | utterance, tool, reference clock; expected arguments or the slot that must be reported missing |
+| `fixtures/eval/conversation.jsonl` | 127 | a turn's facts (done, listing, empty, failed, refused, module-off offer, destructive preview, clarifying question, plain chat, undecided action) and what the reply must and must not say |
 
-Language variants: neutral Spanish 320, English 239, Peruvian-register Spanish 131 and STT-style
-Spanish 99 (lower case, no punctuation, fillers, "agenda me"). The Peruvian rows are written by the
-assistant in a Peruvian register (gasfitero, cochera, chibolo, "ya pues", yapear, Sedapal); no
-Peruvian speaker has reviewed them, so they stress vocabulary, not usage. Every case has a fast-tier
-route (`memory_save`, `memory_recall`, `reminder_set`, `memory_forget`, `camera` or `none`) and the
-tools the LLM must call, may call and must not call, with argument matchers that read any string
-value (so a renamed argument does not break a case). A case may also expect a module-off answer,
-a confirmation before a destructive tool, or the spoken yes after an offer. `eval-corpus-test`
-checks the structure, including that every agenda, calendar, task and project request exists
-labelled `none` in all four variants and again with productivity off.
+`cases.jsonl` is authored in `intent-training/data/eval/` and copied here by
+`intent-training/scripts/publish.py`; do not edit it in place. Its groups are memory 261, camera 40,
+none 129, productivity 123, modules 50, app 34 and inactive 152 (the same requests with their module
+off); the language variants are neutral Spanish 320, English 239, Peruvian-register Spanish 131 and
+STT-style Spanish 99. The Peruvian rows are written by the assistant in a Peruvian register
+(gasfitero, cochera, chibolo, "ya pues", yapear, Sedapal); no Peruvian speaker has reviewed them, so
+they stress vocabulary, not usage.
 
-Existing judges stay: `tests/fixtures/intent/eval-production.tsv` (61 real production utterances)
-and `eval-check.tsv`, `tests/fixtures/memory/eval-usage.tsv` (real lab sessions).
+The sealed set holds 352 positives (calendar 68, task 52, project 27, modules 67, reminder list 14,
+memory 81, app 30, camera 13; Spanish, Peruvian Spanish, STT-noise Spanish and English) and 2,130
+negatives: 363 authored near-misses and plain talk (`ayer tuve una reunión`, `la tarea de mi hijo`,
+agenda the noun, `programa` the television show, plans in the future tense, other devices, 100 of
+them rendered with STT noise) and 1,767 real utterances never trained on (MASSIVE, Multi3NLU++,
+MINDS-14, FLEURS, Tatoeba; CC-BY-4.0 and CC-BY-2.0-FR, named per case in `source`) from which every
+module, schedule and memory cue was filtered. Its sha256 is pinned in `gates.json` and the ctest
+`eval-sealed-hash` fails the day a byte changes; `intent-training` refuses to build a corpus when it
+differs and drops from training every row that is within Jaccard 0.65 or token containment 0.8 of a
+sealed text (`scripts/filter_sealed.py` applies the same test to any file). Nobody who tunes a decider
+reads it: the harness reports numbers, never failing utterances, and the operating point is chosen
+on the selection sets, not on it.
 
-## Fast tier
+## The decider
 
-`fast-tier-eval` drives the production router (`IntentGate`: rules, fastText, the arbitration in
-`services/llm/CONTEXT.md`) over the distinct utterances and checks `tests/eval/gates.json`
-(section `fast`). Definitions: a turn is *routed* when the router is confident of one of the four
-memory classes; every other turn *falls through* to the LLM. A *false action* is a routed turn whose
-gold route is `none` or `camera`.
+Request: `{seq, text, lang, role, tools}`, where `tools` are the tool names offered to that role (the
+choice options; modules.enable, modules.disable and modules.open_purge_screen only to the Owner,
+modules.request only to the others). Answer: `{seq, tool|null, confidence}`. A null stays null at
+every threshold.
 
-| | shipped model, old router | shipped model, new router | retrained model, new router |
-|---|---|---|---|
-| false-action rate, all negatives | 27.7% | 18.5% | 1.4% |
-| productivity requests routed to a memory tool | 52.6% | 46.5% | 0.9% |
-| camera asks routed to a memory tool | 17.5% | 2.5% | 2.5% |
-| turns that fall through to the LLM | 56.9% | 66.1% | 72.7% |
-| `memory_save` precision / recall | 0.54 / 0.49 | 0.82 / 0.51 | 0.90 / 0.57 |
-| `memory_recall` precision / recall | 0.38 / 0.40 | 0.48 / 0.37 | 0.98 / 0.52 |
-| `reminder_set` precision / recall | 0.49 / 0.63 | 0.64 / 0.76 | 0.98 / 0.81 |
-| `memory_forget` precision / recall | 0.72 / 0.56 | 1.00 / 0.53 | 1.00 / 0.63 |
+What is counted, per family (calendar, task, project, modules, reminder list, memory, app, camera):
+*coverage* (positives routed to the right tool), *precision* (routes that were right), and the
+*false-route rate*: a negative, or a positive of another family, routed to that family's tools. For
+the five module families the ceiling is 0.5% (`sealed.falseRouteMax`) pooled, per family and on the
+authored near-miss stratum alone, because a pooled rate over easy real utterances is diluted: a
+router that sends 2.3% of the near-misses to a calendar tool still shows 0.49% pooled. The harness
+sweeps the confidence threshold, chooses the lowest one at which all of those rates are at or below
+the ceiling on the selection set (cases, the fresh holdout and 8,694 real held-out negatives free
+of every schedule, memory and module cue), and `--final` scores the sealed set at that threshold,
+printing the sealed sweep as information only.
 
-Where the wrong routes came from: with the old router the rule layer decided alone and was right
-44% of the time for statements and 31% for recall markers, against 96% for the model; 47 of the 49
-false actions of the first measurement were rules ("remind me to call my mom" was a recall,
-"who's at the door right now" a saved fact). The share that falls through is the right number to
-report next to the false-action rate: the fast tier now handles the clear cases and leaves 73% of
-this deliberately hard set (51% of its utterances are module commands, chit-chat and camera asks that no memory tool should take) to the LLM. On the 61
-production utterances 39% fall through and `memory_save` is routed with precision 0.97 and recall
-0.81. Per variant, precision and recall: Spanish 0.95 / 0.59, English 0.92 / 0.67, Peruvian 1.00 /
-0.58, STT-style 1.00 / 0.77.
+Baseline: the fastText classifier with twenty classes (the six of the memory router plus fourteen
+for the module families, `intent-training` `CONTEXT.md`), adapter `scripts/decider_fasttext.py`,
+margin 0.10.
 
-The classifier itself (`intent-training`, 4,921 test rows, 22,813 held-out negatives): valid
-precision@1 0.920; test Wilson 95% lower bound per class 0.865-0.908 (`memory_forget` lowest); `none`
-recall 0.991; held-out `none` rows fire `memory_save` 0.123% of the time (gate 0.25%) and any tool
-0.697% (gate 2%). The card that said 19.100% for the first of those printed a fraction as a percent
-twice: the shipped model measured 19 of 9,934 = 0.191% and passed.
+| reading | model sha256 | threshold | module-family coverage | precision | pooled false-route | near-miss stratum |
+|---|---|---|---|---|---|---|
+| first (trained on a corpus with 1,247 containment near-duplicates of the sealed set) | d8c93ec5... | 0.93 | 0.456 | 0.852 | 0.665% | 2.875% |
+| clean (0 near-duplicates; same hyperparameters) | 44bd49cf... | 0.93 | 0.456 | 0.874 | 0.488% | 2.259% |
 
-## LLM tier
+The clean reading is the bar: per family (coverage / precision / false-route) calendar 0.500 / 0.756
+/ 0.456% (near-miss 1.700%), task 0.423 / 0.957 / 0.041%, project 0.630 / 0.944 / 0.041%, modules
+0.403 / 0.931 / 0.083%, reminder list 0.286 / 1.000 / 0.000%; memory coverage 0.556, precision 0.900,
+false action 0.167%; the real stratum has no false route at all. On the sealed sweep the near-miss
+stratum is at or under 0.5% only at confidence 0.99 and above, where coverage is 0.180. The model
+fails the gate and is not published: the false routes are near-miss sentences that use the family
+nouns in the past tense or as plain nouns, and calendar is where nearly all of them land. The
+sealed set has been read twice for fastText; any later number of it on the sealed set is a tuned
+number and is labelled so.
 
-`llm-tier-eval` (ctest labels `eval` and `eval-llm`, Release builds; a debug build decodes about
-twenty times slower and exits 77) drives the production `LlmController::chatSync` with the
-LFM2.5-1.2B QAD Q4_0 model, the real tool loop and executor, the router with the published intent
-model, the production module catalog (`services/settings/modules.json`) and stub tools. The tool
-specs are the committed ones: the memory and `app.open` descriptors from the code, the provider
-tools mirrored by hand from their MCP servers in `eval-tools.cc` (they live in other services and
-cannot be linked; a rename there must be copied here). Handlers record what ran and call nothing;
-destructive tools answer with the same `ConfirmationLedger` two-phase protocol the providers use.
-Temperature 0, one session per case, text-only history between the turns of a case as the voice wire
-carries it. What it scores:
+On real traffic (turns that came from the product or lab sessions) at the selected threshold the
+clean model sends 44.3% of the 61 production turns to a tool and leaves 55.7% to plain conversation
+(memory coverage 43.1%); 44.6% of the 92 lab-session turns and 61.2% of the 103 check turns reach a
+tool. With the LLM no longer a second chance, that share is the number to move: a turn nothing
+decides is conversation, never a guess.
 
-- per tool: precision and recall of the call, with argument matchers; false action (a successful call
-  the case does not allow) and false write; selection accuracy by group and by variant;
-- **false completion**: a reply that says something was created, saved, enabled, scheduled,
-  cancelled, opened, or just "listo", "confirmado", "done", without a successful tool result of that
-  kind in the turn. Offers, questions and negations are not claims, a claim after a successful tool is
-  not counted, a failed or merely previewed tool is not a success, and a write claim after only
-  `app.open` succeeded still counts. Gated at 0, overall and per variant;
-- module off: the model attempted the inactive tool, called nothing else, answered in prose with the
-  offer (turn it on for the Owner, ask the owner for anyone else) and never answered from
-  `memory.recall`;
-- destructive tools: nothing executed before a spoken yes, preview then execution after it;
-- an offer that is accepted (`modules.enable` / `modules.request`) or declined.
+The classifier's own split (`intent-training`, 5,649 test rows): the Wilson 95% lower bounds of
+precision are 0.873 for `memory_save`, 0.840 for `memory_recall`, 0.908 for `reminder_set`, 0.839 for
+`memory_forget` and 0.831 for `camera`, and the pooled precision of the fourteen family classes is
+0.956 (lower bound 0.936); held-out `none` rows fire a module family 0.170% of the time (ceiling
+0.5%) and `memory_save` 0.089% (ceiling 0.25%). Its gates sit within the noise of a split of that
+size: three of them miss on this build (`memory_recall` by 0.010 and `camera` by 0.019 on the lower
+bound, `none` recall on the case judge 0.968 against 0.97), which is why the decision to publish is
+taken on the sealed reading and not on them.
 
-Runs are saved as JSONL (`--runs-out`) and can be merged and rescored without a model (`--score a,b`),
-so the full corpus runs in chunks (`--skip`, `--limit`) of at most fifteen minutes under
-`heavy.sh 6`; `--no-fast-tier` removes the intent model and `--offer calendar.,memory.` narrows the
-offered tools for experiments. Measured at the committed tool loop (4dcc876a), 789 cases, 809 turns,
-Release, 4.7 s per turn on average and 13.9 s at the 95th percentile on a busy machine:
+## The slots
 
-| tool | precision | recall | cases | note |
-|---|---|---|---|---|
-| memory.recall | 0.975 | 0.52 | 75 | |
-| memory.remember | 0.90 | 0.57 | 79 | |
-| memory.remind | 0.97 | 0.81 | 75 | |
-| memory.forget | 1.00 | 0.66 | 32 | |
-| app.open | 0.80 | 0.86 | 14 | |
-| app.set_guard_mode | 1.00 | 0.85 | 13 | |
-| modules.list | 0.50 | 0.10 | 10 | one call in the whole corpus |
-| calendar.create_event, calendar.list_events | 0 | 0 | 32, 21 | never called |
-| task.create, task.list, task.complete | 0 | 0 | 15, 11, 10 | never called |
-| project.create, project.list | 0 | 0 | 9, 7 | never called |
-| modules.explain, modules.enable, modules.request, modules.open_purge_screen | 0 | 0 | 8, 7, 4, 6 | never called |
-| reminder.list | 0 | 0 | 7 | never called |
+`slot-eval.py` scores the layer that turns an utterance into arguments, against a fixed clock
+(Tuesday 2026-10-06 12:30): the start time to the minute, the title or name (it must hold the words
+of the object and none of the trigger or time words), a due date, a day range, the module id, and
+twelve cases where a required slot is absent. Gates: a guessed slot 0, an unneeded clarifying
+question 0.05, time, title, name and range 0.90, module 0.95, missing-slot detection 0.90.
 
-Argument accuracy is 190 of 190 when a tool is called. Selection accuracy is 59.1% (memory 63.6%,
-camera 97.5%, none 98.5%, app 67.7%, modules 10.5%, productivity 0%); Spanish 56%, English 62%,
-Peruvian 58%, STT-style 63%. False actions are rare (2.0% of cases, 1.1% writes), which makes the
-fast-tier arbitration and the existing guards the reason the system does not write what it should
-not; the failure is the opposite one.
+## The conversation
 
-- **The LLM alone almost never calls a tool.** With the fast tier removed (`--no-fast-tier`: no intent
-  model, only explicit triggers and the deterministic app-command rules left) the 261 memory cases
-  give `memory.remember` 2 calls of 79 (precision 1.0, recall 0.025), `memory.recall` 0 of 75,
-  `memory.remind` 0 of 75 and `memory.forget` 0 of 32: selection accuracy 0.8%. Every memory
-  tool call in the table above is the router's, and the app tools that work are the rule layer's
-  (`appCommandFor`), not the model's. So all four memory classes deserve their fast route, none can be
-  handed back to the LLM today, and the sentence in the project notes that the LLM keeps every turn the
-  router abstains on is true of the architecture and untrue of the measured tool calling for the
-  trigger-less utterances this corpus is made of.
-- **False completion: 13.2% of turns** (neutral Spanish 17.8%, Peruvian 19.5%, STT-style 12.1%,
-  English 4.1%); by group app 23.5%, productivity 22.7%, modules 21.8%, module-off cases 21.5%, none
-  9.3%, camera 5.0%, memory 3.5%. Examples: "He agendado la cita..." with `app.open` as the only
-  successful call; "Confirmado: reunión con Andrea el jueves" with no call; "He registrado que el
-  colegio termina a las 4:10" with no `memory.remember`. The gate is red by design until it is zero.
-- **Module off: 0 of 146** cases attempt the tool, offer to turn it on or ask the owner; the model
-  never answers them from `memory.recall` (99.3%) and calls nothing else (95.9%), and it makes the
-  same prose claims it makes with the module on.
-- **Why the new tools are never called** was checked, not guessed: offering only `calendar.*` (and
-  `memory.*`) the model still answers "Creo una reunión con Andrea para el jueves a las 3:00 PM.
-  Confirmado." in prose, with no call and no dropped call in the adapter log, so it is neither tool
-  overload nor the harness. The tool policy sentence in `llm-controller.cc` names only `memory.*` and
-  `app.*`.
-- Destructive confirmation: nothing is ever executed without a spoken yes (16 of 16), but the two-turn
-  execution cannot be judged because `calendar.cancel_event` and `modules.disable` are never called.
-  Whether the confirmation code reaches turn 2 through text-only history is open; the case is in the
-  corpus and will be measured the day the model calls them.
+`conversation-eval.py` gives the LLM the turn's facts and scores what it says with no judge model:
+*false completion* (it claims to have done something the turn did not do; a read-only success does
+not legitimise a write claim; gated at 0 overall and per variant), the facts it must mention,
+forbidden invention, digits and names that are in no fact and not in the user's words (ungrounded),
+reply language, voice length, and a question when the case needs one (an offer, a preview, a
+clarifying question). The undecided-action cases are the trap: the user asked for something, no
+decider decided, and the reply must neither claim it nor pretend. Gates: mentions 0.90, ungrounded
+0.05, language 0.98, length 0.95, question 0.90. The marker lists for a completion claim are the ones
+the old tool-loop metric used (`gates.json`, `llm.scoring`).
 
-Before this wave the whole system (shipped router, shipped model, seven tools, old rule layer) gave, on
-the same utterances: `memory.remember` P 0.57 R 0.49, `memory.remind` P 0.52 R 0.63, `memory.recall` P
-0.40 R 0.40, `memory.forget` P 0.72 R 0.56, a false action on 20.8% of the cases and an unwanted memory
-write on 12.9% (31.6% of the agenda, calendar, task and project requests were saved as something they
-were not). Those are 620 distinct utterances measured with the old release bench; the router and
-classifier work removed that failure and the new tools reveal the next one.
+## History: the LLM as a tool chooser
 
-The gates in `tests/eval/gates.json` (section `llm`) hold the measured numbers above for everything the
-model does today and zero for false completion; the module tools are gated the day they are called.
+Measured before the decision above, at the committed tool loop (4dcc876a, 789 cases, Release), and
+the reason for it: with the fast tier removed the model called `memory.remember` in 2 of 79 cases and
+the other three memory tools in none; it never called a calendar, task, project or module tool (28 of
+28 requests with a policy sentence in its prompt: 0 calls); 13.2% of its turns claimed an action
+nothing had done (22.7% of the productivity requests); and with a module off it never made the offer
+(0 of 146). The router before this wave sent 27.7% of the negatives to a memory tool, which the new
+arbitration and the retrained classifier took to 1.4% (productivity requests routed to a memory tool
+52.6% to 0.9%). `llm-tier-eval` and its stub tools still drive that loop and are retired with it.
 
 ## Speech recogniser
 
@@ -194,9 +165,14 @@ unchanged.
   far-field microphone, so the fast tier's recall on speech and the STT error rate on speech in a
   room are unmeasured.
 - Peruvian coverage is lexical and written by the assistant; the speech set is read sentences.
-- `memory_recall` has the thinnest data (about 1,200 training rows after calendar questions moved
-  to `none`); its real-traffic recall on the production judge is 0 of 14, every one falling to the
-  LLM.
+- `memory_recall` has the thinnest memory data (about 1,200 training rows); its real-traffic recall
+  on the production judge is 0 of 14, every one left to conversation.
+- The module-family classes have no public data beyond MASSIVE's calendar rows; tasks, projects,
+  modules and reminder list are authored by one author, who also wrote the judge cases and the sealed
+  set (without reading any rule tier's vocabulary, but in one style).
+- The sealed set holds 363 authored near-misses, so a false-route rate on that stratum has a Wilson
+  upper bound of about 1% even at zero errors; the pooled 0.5% ceiling cannot be certified by it
+  alone.
 - The held-out negatives come from datasets built for other assistants. The labels were audited
   against the taxonomy after a model fired on them, so the held-out rates are slightly optimistic.
 
@@ -206,4 +182,9 @@ unchanged.
    deployed STT and label it; it replaces every proxy above.
 2. Have Peruvian speakers review and extend the `pe` rows.
 3. More `memory_recall` data: questions about what was told, in the three variants.
-4. Run the LLM tier on every model or prompt change; gates tighten when a number improves.
+4. Score the pipeline's own stages (decide, slots, speak) through the three harnesses the day they
+   land, and the module-command rule tier on the sealed set once it is behind the decider protocol.
+5. Score a fine-tuned multilingual decider on the same sealed set; it has to beat coverage 0.456 and
+   precision 0.874 with pooled and near-miss false-route rates at or under 0.5%.
+6. Measure turn latency (decide, slots, execute, speak) end to end on an idle machine through the
+   helpers, before and after.

@@ -288,8 +288,42 @@ def check_gates(gates, summary):
     return failures
 
 
+ROUTE_TOOL = {"memory_save": "memory.remember", "memory_recall": "memory.recall",
+              "reminder_set": "memory.remind", "memory_forget": "memory.forget"}
+
+
+def load_traffic(path):
+    cases = []
+    for line in pathlib.Path(path).read_text().splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 2 and parts[0]:
+            cases.append({"text": parts[-1], "lang": parts[1] if len(parts) > 2 else "es", "role": "owner",
+                          "expected": {ROUTE_TOOL[parts[0]]} if parts[0] in ROUTE_TOOL else set(),
+                          "optional": ["app.show_camera"] if parts[0] == "camera" else [],
+                          "label": parts[0], "stratum": "real", "set": pathlib.Path(path).stem})
+    return cases
+
+
+def traffic_share(cases, decisions, threshold):
+    routed = correct = positives = false_actions = negatives = 0
+    for case, (tool, confidence) in zip(cases, decisions):
+        if tool is not None and confidence < threshold:
+            tool = None
+        routed += tool is not None
+        if case["expected"]:
+            positives += 1
+            correct += tool in case["expected"]
+        else:
+            negatives += 1
+            false_actions += tool is not None and tool not in case["optional"]
+    return {"turns": len(cases), "routedShare": rate(routed, len(cases)),
+            "conversationShare": 1 - rate(routed, len(cases)),
+            "memoryCoverage": rate(correct, positives), "falseActionRate": rate(false_actions, negatives)}
+
+
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--traffic", nargs="*", default=[])
     parser.add_argument("--decider", required=True)
     parser.add_argument("--gates", required=True)
     parser.add_argument("--select", nargs="+", required=True)
@@ -327,6 +361,13 @@ def main():
             report["selectionPassed"] = True
             report["selection"] = summarise(selection, chosen_decisions, threshold)
             print_families("selection", report["selection"])
+        for path in args.traffic:
+            traffic = load_traffic(path)
+            share = traffic_share(traffic, decider.decide_all(traffic), threshold or 0.0)
+            report.setdefault("traffic", {})[pathlib.Path(path).name] = share
+            print(f"\nreal traffic {pathlib.Path(path).name} at confidence >= {threshold}: {share['turns']} turns, "
+                  f"{share['routedShare']:.1%} reach a tool, {share['conversationShare']:.1%} stay conversation, "
+                  f"memory coverage {share['memoryCoverage']:.1%}, false action {share['falseActionRate']:.1%}")
         sample = [c for c in selection if c["stratum"] == "authored"][:args.latency]
         if sample:
             times = decider.latencies(sample)

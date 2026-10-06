@@ -112,6 +112,18 @@ class DeciderEvalTest(unittest.TestCase):
             capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 77)
 
+    def test_real_traffic_reports_how_many_turns_reach_a_tool(self):
+        traffic = self.directory / "traffic.tsv"
+        traffic.write_text("memory_save\tes\trecuerda que la llave está abajo\nnone\tes\tcuéntame un chiste\n"
+                           "none\tes\tuna agenda\nmemory_recall\tes\tdónde está nada\n")
+        result, data = self.run_harness("--traffic", str(traffic))
+        share = data["traffic"]["traffic.tsv"]
+        self.assertEqual(share["turns"], 4)
+        self.assertAlmostEqual(share["routedShare"], 0.5)
+        self.assertAlmostEqual(share["conversationShare"], 0.5)
+        self.assertAlmostEqual(share["memoryCoverage"], 0.5)
+        self.assertAlmostEqual(share["falseActionRate"], 0.5)
+
     def test_a_member_is_only_offered_the_request_tool(self):
         sys.path.insert(0, str(HERE))
         import importlib.util
