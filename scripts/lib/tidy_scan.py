@@ -105,9 +105,16 @@ def tidy(job, checks, header_filter, tool):
     return path, findings, None
 
 
+def scan_workers():
+    configured = os.environ.get("ARGUS_TIDY_JOBS", "")
+    if configured.isdigit() and int(configured) > 0:
+        return int(configured)
+    return max(1, len(os.sched_getaffinity(0)))
+
+
 def scan(root, jobs, checks, header_filter, tool):
     distinct, failures = {}, []
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=scan_workers()) as pool:
         for path, findings, failure in pool.map(
                 lambda job: tidy(job, checks, header_filter, tool), jobs):
             if failure:
