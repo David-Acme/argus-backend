@@ -525,6 +525,14 @@ payloads) and none of it visible to another service:
 - A relay that cannot publish backs off exponentially to 5 s instead of
   retrying every 500 ms.
 
+## What turning productivity off would stop (impact preview)
+
+`ProductivityModuleImpact` answers argus-settings' `ModuleImpact` call for
+`productivity` with `agenda_calls`: the calendar events that are still to come
+or repeat (`starts_at` after now, or a recurrence rule), the ones the agenda
+announcer stops calling about while the module is off. Reminders are core and
+are not counted (`productivity-module-data-test`).
+
 ## Productivity data: summary and purge (2026-10, the modules plan)
 
 argus-productivity is the data owner of the `productivity` module

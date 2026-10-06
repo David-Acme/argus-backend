@@ -3,11 +3,13 @@
 
 #include <drogon/drogon.h>
 #include <feature/module-data/services/productivity-module-data.hxx>
+#include <feature/module-data/services/productivity-module-impact.hxx>
 #include <sqlite/db-service.hxx>
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <ctime>
 #include <string>
 #include <thread>
 
@@ -113,6 +115,20 @@ TEST_CASE("the productivity data is summarized, purged in one transaction, and a
   CHECK(itemCount(before, "calendar_shares") == 1);
   CHECK(before.bytes > 0);
   CHECK_FALSE(before.empty());
+
+  const ProductivityModuleImpact impact;
+  const auto tomorrow = std::to_string(static_cast<std::int64_t>(std::time(nullptr)) + 86400);
+  const auto agenda = impact.impact("productivity");
+  REQUIRE(agenda.stops.size() == 1);
+  CHECK(agenda.stops[0].kind == "agenda_calls");
+  CHECK(agenda.stops[0].count == 0);
+  exec("INSERT INTO calendar_event (id, owner_id, title, starts_at) VALUES (2, 11, 'Pasado', 1)");
+  exec("INSERT INTO calendar_event (id, owner_id, title, starts_at, recurrence_rule) VALUES (3, 11, 'Semanal', 1, 'FREQ=WEEKLY')");
+  exec("INSERT INTO calendar_event (id, owner_id, title, starts_at, deleted_at) VALUES (4, 11, 'Borrado', " + tomorrow + ", 1)");
+  exec("INSERT INTO calendar_event (id, owner_id, title, starts_at) VALUES (5, 11, 'Manana', " + tomorrow + ")");
+  CHECK(impact.impact("productivity").stops[0].count == 2);
+  CHECK(impact.impact("surveillance").stops.empty());
+  exec("DELETE FROM calendar_event WHERE id IN (2, 3, 4, 5)");
 
   CHECK(data.summary("surveillance").empty());
   const auto foreign = data.purge("surveillance");

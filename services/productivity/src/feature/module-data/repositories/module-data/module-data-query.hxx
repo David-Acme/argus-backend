@@ -21,6 +21,10 @@ inline constexpr std::string_view SUMMARY =
     "length(color) + COALESCE(length(recurrence_rule), 0)), 0) FROM calendar_event) + "
     "(SELECT COUNT(*) * ?1 FROM calendar_event_share) AS bytes";
 
+inline constexpr std::string_view UPCOMING_EVENTS =
+    "SELECT COUNT(*) AS total FROM calendar_event "
+    "WHERE deleted_at IS NULL AND (starts_at > ? OR recurrence_rule IS NOT NULL)";
+
 inline constexpr std::array<std::string_view, 8> PURGE{
     "DELETE FROM calendar_event_share",
     "DELETE FROM calendar_event",

@@ -23,3 +23,9 @@ drogon::Task<void> ModuleDataRepository::purge(drogon::orm::DbClient* client) co
   for (const std::string_view statement : PURGE)
     co_await client->execSqlCoro(std::string(statement));
 }
+
+drogon::Task<std::int64_t> ModuleDataRepository::upcomingEvents(drogon::orm::DbClient* client, std::int64_t now) const
+{
+  const auto rows = co_await client->execSqlCoro(std::string(UPCOMING_EVENTS), now);
+  co_return rows.empty() ? 0 : rows.front()["total"].as<std::int64_t>();
+}

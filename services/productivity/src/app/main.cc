@@ -7,6 +7,7 @@
 #include <drogon/drogon.h>
 #include <feature/sync/productivity-sync-rpc-service.hxx>
 #include <feature/module-data/services/productivity-module-data.hxx>
+#include <feature/module-data/services/productivity-module-impact.hxx>
 #include <feature/calendar-event/controllers/calendar-event-controller.hxx>
 #include <feature/calendar-event-share/controllers/calendar-event-share-controller.hxx>
 #include <feature/project/controllers/project-controller.hxx>
@@ -104,6 +105,7 @@ int main()
   ProductivitySyncRpcService productivitySyncRpc;
   ReminderRpcService reminderRpc;
   ProductivityModuleData moduleData;
+  const ProductivityModuleImpact moduleImpact;
   SettingsRegistry noSettings({});
   std::vector<grpc::Service*> rpcServices{&productivitySyncRpc, &reminderRpc};
   std::unique_ptr<SettingsRpcService> settingsRpc;
@@ -111,6 +113,7 @@ int main()
     settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
         .service = "productivity", .registry = &noSettings, .credentials = settingsCallers({{kSettingsCaller, secret}})});
     settingsRpc->attachModuleData(moduleData);
+    settingsRpc->attachModuleImpact(moduleImpact);
     rpcServices.push_back(settingsRpc.get());
   }
   else {

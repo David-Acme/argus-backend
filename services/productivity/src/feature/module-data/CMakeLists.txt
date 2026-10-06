@@ -2,6 +2,7 @@ argus_module(NAME productivity-module-data
     SOURCES
         repositories/module-data/module-data-repository.cc
         services/productivity-module-data.cc
+        services/productivity-module-impact.cc
     INCLUDES
         ../..
     DEPENDS
