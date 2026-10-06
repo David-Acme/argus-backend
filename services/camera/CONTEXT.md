@@ -1817,3 +1817,30 @@ Any other module id answers an empty summary and `purged: true`.
 - `tests/unit/camera-module-data-test.cc` pins the counts, the rollback when
   a statement fails, the forgotten cameras, the storage verdicts and the
   resumed retry.
+
+## Camera tools over MCP (2026-10, the context plan)
+
+`feature/mcp/` serves one tool to argus-llm: `app.show_camera {camera?, view}`
+(`live` or `snapshot`), module `surveillance`, capability `camera.view`. It
+shows nothing itself; the result carries an `argus/appAction` that the
+assistant's stream turns into the app's `ClientAction` (`app.show_camera`
+with `camera`, `cameraId`, `view`), so the app opens the live view or the
+latest picture. An empty `camera` means the camera of the last notice. A name
+is resolved against the camera catalog by id first, then with
+`text_norm::matchName`: an exact or one-word match acts, several matches ask
+which ("¿A cuál cámara te refieres?", code `ambiguous_camera`), none lists the
+cameras (`unknown_camera`) and a house with no cameras says so (`no_cameras`).
+
+The tool server is `cameraToolServer` over `McpServer`, gated by
+`tool_gate::capabilities()` (the role must hold `camera.view` and surveillance
+must be active, otherwise `forbidden` or `module_inactive`), and is exposed as
+`argus.mcp.v1.Mcp/Rpc` on the existing internal gRPC listener (7036), admitted
+for the caller `llm` only through `[grpc] caller_llm`. With the credential
+unpaired the service starts without the tool and says so in the log. The
+handler runs on the Drogon loop (`argus::mcp::onLoop`) because the catalog is a
+repository read.
+
+`tests/unit/camera-mcp-test.cc` pins the matching (case, accents, ids, a word
+only one camera has, an ambiguous word, a missing name), the app action in
+both views and both languages, the gate (role, module off) and the catalog
+being empty.

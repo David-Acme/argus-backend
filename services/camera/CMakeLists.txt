@@ -127,6 +127,11 @@ if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
+if(NOT COMMAND argus_mcp_rpc_contract)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/mcp
+                     ${CMAKE_BINARY_DIR}/contracts/mcp)
+endif()
+argus_mcp_rpc_contract()
 
 set(NCNN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn/src)
 
@@ -169,6 +174,8 @@ argus_service(NAME argus-camera
         argus::camera-settings
         argus::camera-privacy
         argus::camera-module-data
+        argus::camera-mcp
+        argus::contracts::mcp-wire
         argus::contracts::settings-wire
         argus::lib::auth
         argus::lib::http
@@ -408,6 +415,16 @@ set_target_properties(camera-action-rpc-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME camera-action-rpc-test COMMAND camera-action-rpc-test)
+
+add_executable(camera-mcp-test tests/unit/camera-mcp-test.cc)
+
+target_link_libraries(camera-mcp-test PRIVATE argus::camera-mcp doctest::doctest)
+
+target_compile_options(camera-mcp-test PRIVATE -Wall -Wextra)
+
+set_target_properties(camera-mcp-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME camera-mcp-test COMMAND camera-mcp-test)
 
 add_executable(camera-action-migration-test
     tests/unit/camera-action-migration-test.cc)

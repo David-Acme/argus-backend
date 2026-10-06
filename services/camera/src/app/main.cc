@@ -1,4 +1,6 @@
 #include <app/rpc/camera-rpc-server.hxx>
+#include <feature/mcp/services/camera-tools.hxx>
+#include <mcp/mcp-rpc.hxx>
 #include <config/camera-config.hxx>
 #include <feature/media/camera-media-socket.hxx>
 #include <feature/media/media-access-check.hxx>
@@ -203,6 +205,30 @@ int main()
                          .credentials = std::move(callers)});
     settingsRpc->attachModuleData(moduleData);
     rpcServices.push_back(settingsRpc.get());
+  }
+
+  std::unique_ptr<argus::mcp::McpRpcService> toolsRpc;
+  if (const std::string llmSecret = CameraConfig::resolveLlmCallerSecret();
+      argus::client::FleetCallerGate::pairedSecret(llmSecret)) {
+    toolsRpc = std::make_unique<argus::mcp::McpRpcService>(argus::mcp::McpRpcInput{
+        .server = cameraToolServer(
+            {.catalog = [repository = std::make_shared<CameraRepository>()]() -> drogon::Task<std::vector<CameraChoice>> {
+               std::vector<CameraChoice> cameras;
+               for (const auto& camera : co_await repository->findEnabled())
+                 cameras.push_back({.id = camera.id, .name = camera.name});
+               co_return cameras;
+             },
+             .loop = {}}),
+        .gate = std::make_shared<const argus::client::FleetCallerGate>(argus::client::FleetGateConfig{
+            .expectedCallers = {},
+            .callerPairs = {{std::string(argus::mcp::kToolCaller), llmSecret}},
+            .legacySecret = {},
+            .onFirstLegacy = {}}),
+        .callers = {std::string(argus::mcp::kToolCaller)}});
+    rpcServices.push_back(toolsRpc.get());
+  }
+  else {
+    LOG_INFO << "Camera tools RPC not served: [grpc] caller_llm is empty";
   }
 
   CameraRpcServer rpc({.services = std::move(rpcServices)});
