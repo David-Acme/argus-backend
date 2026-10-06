@@ -24,6 +24,14 @@ add_test(NAME fast-tier-eval
 
 set_tests_properties(fast-tier-eval PROPERTIES SKIP_RETURN_CODE 77 LABELS eval)
 
+add_executable(production-decider production-decider.cc)
+
+target_link_libraries(production-decider PRIVATE argus::llm)
+
+target_compile_options(production-decider PRIVATE -Wall -Wextra)
+
+set_target_properties(production-decider PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
 add_executable(eval-corpus-test eval-corpus-test.cc)
 
 target_compile_definitions(eval-corpus-test PRIVATE
