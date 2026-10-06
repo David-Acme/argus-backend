@@ -252,6 +252,16 @@ class RunTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertNotIn("latencyMs", json.loads(report.read_text()))
 
+    def test_log_lines_on_the_decider_output_are_ignored(self):
+        noisy = self.directory / "noisy.py"
+        noisy.write_text("import json, sys\nprint('20261006 INFO model loaded', flush=True)\nfor line in sys.stdin:\n"
+                         "    r = json.loads(line)\n    print(json.dumps({'seq': r['seq'], 'tool': None, 'confidence': 0.0}), flush=True)\n")
+        report = self.directory / "noisy.json"
+        result = subprocess.run([sys.executable, "-I", str(HARNESS), "--decider", f"{sys.executable} -I {noisy}",
+                                 "--gates", str(self.gates), "--select", str(self.select), "--report", str(report)],
+                                capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_a_member_is_only_offered_the_request_tool(self):
         self.assertIn("modules.request", harness.offered("resident"))
         self.assertNotIn("modules.enable", harness.offered("resident"))

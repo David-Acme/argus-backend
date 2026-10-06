@@ -33,6 +33,7 @@ MARGINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
 DEFAULT_WRONG_ACT = 0.001
 DEFAULT_ASK_CLEAR = 0.10
 DEFAULT_WRONG_TOOL = 0.01
+FALLBACK_POLICY = (0.9, 0.9, 0.0)
 
 
 def offered(role):
@@ -146,6 +147,8 @@ class Decider:
             line = self.process.stdout.readline()
             if not line:
                 raise SystemExit("decider closed its output before answering every request")
+            if not line.lstrip().startswith("{"):
+                continue
             reply = json.loads(line)
             runner = reply.get("runnerUp") or {}
             answers[reply["seq"]] = (reply.get("tool"), float(reply.get("confidence", 0.0)),
@@ -169,7 +172,8 @@ class Decider:
             started = time.perf_counter()
             self.process.stdin.write(self.request(seq, case) + "\n")
             self.process.stdin.flush()
-            self.process.stdout.readline()
+            while not self.process.stdout.readline().lstrip().startswith("{"):
+                pass
             out.append((time.perf_counter() - started) * 1000.0)
         return out
 
@@ -529,14 +533,15 @@ def main():
             report["selection"] = summarise(selection, chosen_decisions, policy)
             print_families("selection", report["selection"])
         if args.errors:
-            rows = error_rows(selection, chosen_decisions, policy or (0.9, 0.5, 0.1))
+            rows = error_rows(selection, chosen_decisions, policy or FALLBACK_POLICY)
             pathlib.Path(args.errors).write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
             print(f"\n{len(rows)} selection-set errors written to {args.errors}")
         for path in args.traffic:
             traffic = load_traffic(path)
-            share = traffic_share(traffic, decider.decide_all(traffic), policy or (1.01, 1.01, 0.0))
+            share = traffic_share(traffic, decider.decide_all(traffic), policy or FALLBACK_POLICY)
             report.setdefault("traffic", {})[pathlib.Path(path).name] = share
-            print(f"\nreal traffic {pathlib.Path(path).name}: {share['turns']} turns, {share['actShare']:.1%} ACT, "
+            note = "" if policy else f" (no feasible policy: reported at ACT >= {FALLBACK_POLICY[0]})"
+            print(f"\nreal traffic {pathlib.Path(path).name}{note}: {share['turns']} turns, {share['actShare']:.1%} ACT, "
                   f"{share['askShare']:.1%} ASK, {share['conversationShare']:.1%} conversation, "
                   f"memory coverage {share['memoryCoverage']:.1%}, false action {share['falseActionRate']:.1%}")
         sample = [c for c in selection if c["stratum"] == "authored"][:args.latency]
