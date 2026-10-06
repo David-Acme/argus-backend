@@ -5,6 +5,7 @@
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
 #include <feature/enrollment/services/invitation-redemption.hxx>
+#include <feature/invitation/dtos/response-invitation-dto.hxx>
 #include <feature/invitation/services/invitation-module-revocation.hxx>
 #include <feature/invitation/services/invitation-standing.hxx>
 #include <shared/repositories/user-invitation/user-invitation-repository.hxx>
@@ -220,6 +221,13 @@ TEST_CASE("a module that goes off revokes the pending invitations of its roles, 
   CHECK(json["revokedReason"].asString() == "module_disabled");
   CHECK(json["revokedModule"].asString() == "surveillance");
   CHECK(json["revokedAt"].isInt64());
+  const auto listed = ResponseInvitationDto{.invitation = revoked.value_or(UserInvitationSchema{}), .token = ""}.toJson();
+  CHECK(listed["revokedReason"].asString() == "module_disabled");
+  CHECK(listed["revokedModule"].asString() == "surveillance");
+  CHECK(listed["revokedAt"].isInt64());
+  const auto open = ResponseInvitationDto{.invitation = stored("r-resident").value_or(UserInvitationSchema{}), .token = ""}.toJson();
+  CHECK(open["revokedReason"].isNull());
+  CHECK(open["revokedModule"].isNull());
 
   CHECK(text("SELECT revoked_reason FROM user_invitation WHERE token_hash = 'r-expired'") == "<null>");
   CHECK(text("SELECT revoked_reason FROM user_invitation WHERE token_hash = 'r-spent'") == "<null>");

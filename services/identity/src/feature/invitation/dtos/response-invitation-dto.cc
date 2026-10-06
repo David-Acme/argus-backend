@@ -12,6 +12,10 @@ Json::Value ResponseInvitationDto::toJson() const
   value["revokedAt"] = invitation.revokedAt
                            ? Json::Value(Json::Int64(*invitation.revokedAt))
                            : Json::Value();
+  value["revokedReason"] = invitation.revokedReason
+                               ? Json::Value(std::string(invitationRevocationReasonToString(*invitation.revokedReason)))
+                               : Json::Value();
+  value["revokedModule"] = invitation.revokedModule ? Json::Value(*invitation.revokedModule) : Json::Value();
   value["createdAt"] = Json::Int64(invitation.createdAt);
   if (!token.empty())
     value["token"] = token;
