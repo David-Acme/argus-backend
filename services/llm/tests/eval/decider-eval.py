@@ -423,6 +423,28 @@ def traffic_share(cases, decisions, policy):
             "memoryCoverage": rate(correct, positives), "falseActionRate": rate(false_actions, negatives)}
 
 
+def error_rows(cases, decisions, policy):
+    rows = []
+    for case, decision in zip(cases, decisions):
+        result, options = outcome(decision, policy)
+        wanted = case["expected"]
+        if case["kind"] == "positive":
+            good = (result == "act" and options[0] in wanted) or (result == "ask" and bool(set(options) & wanted))
+            category = "right" if good else ("wrong-act" if result == "act" else ("wrong-ask" if result == "ask" else "miss"))
+        elif case["kind"] == "ambiguous":
+            category = "wrong-act" if result == "act" else ("right" if result == "ask" and set(options) & wanted
+                                                            else ("wrong-ask" if result == "ask" else "miss"))
+        else:
+            category = "wrong-act" if result == "act" and options[0] not in case["optional"] else \
+                ("spurious-ask" if result == "ask" else "right")
+        if category != "right":
+            rows.append({"category": category, "kind": case["kind"], "variant": case["variant"], "set": case["set"],
+                         "text": case["text"], "expected": sorted(wanted), "outcome": result, "options": list(options),
+                         "tool": decision[0], "confidence": decision[1], "runnerUp": decision[2],
+                         "runnerConfidence": decision[3]})
+    return rows
+
+
 def read_sealed(path, section, gates):
     sealed_path = pathlib.Path(path)
     actual = hashlib.sha256(sealed_path.read_bytes()).hexdigest()
@@ -445,6 +467,7 @@ def main():
     parser.add_argument("--act-only", action="store_true")
     parser.add_argument("--latency", type=int, default=200)
     parser.add_argument("--report")
+    parser.add_argument("--errors")
     args = parser.parse_args()
 
     gates = json.loads(pathlib.Path(args.gates).read_text())
@@ -482,6 +505,10 @@ def main():
             report["selectionPassed"] = True
             report["selection"] = summarise(selection, chosen_decisions, policy)
             print_families("selection", report["selection"])
+        if args.errors:
+            rows = error_rows(selection, chosen_decisions, policy or (0.9, 0.5, 0.1))
+            pathlib.Path(args.errors).write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
+            print(f"\n{len(rows)} selection-set errors written to {args.errors}")
         for path in args.traffic:
             traffic = load_traffic(path)
             share = traffic_share(traffic, decider.decide_all(traffic), policy or (1.01, 1.01, 0.0))

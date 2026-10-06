@@ -231,6 +231,14 @@ class RunTest(unittest.TestCase):
         data = json.loads(report.read_text())
         self.assertEqual(data["offeredViolations"], 1)
 
+    def test_the_selection_errors_can_be_written_and_the_sealed_set_never_is(self):
+        errors = self.directory / "errors.jsonl"
+        write(self.select, [case("a", "agenda una cita", ["calendar.create_event"]), case("d", "algo dudoso")])
+        result, data = self.run_harness("--errors", str(errors), "--final", "--sealed", str(self.sealed))
+        rows = [json.loads(line) for line in errors.read_text().splitlines()]
+        self.assertTrue(all(r["set"] == "select" for r in rows))
+        self.assertNotIn("buenos días", errors.read_text())
+
     def test_a_member_is_only_offered_the_request_tool(self):
         self.assertIn("modules.request", harness.offered("resident"))
         self.assertNotIn("modules.enable", harness.offered("resident"))
