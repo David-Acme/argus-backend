@@ -13,6 +13,8 @@
 #include <feature/modules/infra/module-action-sink.hxx>
 #include <feature/modules/infra/module-catalog-file.hxx>
 #include <feature/modules/infra/module-event-sink.hxx>
+#include <feature/mcp/infra/engine-module-desk.hxx>
+#include <feature/mcp/services/module-tools.hxx>
 #include <feature/modules/services/module-engine.hxx>
 #include <feature/modules/services/module-journal.hxx>
 #include <feature/settings/controllers/settings-controller.hxx>
@@ -27,6 +29,7 @@
 #include <http/route-announcements.hxx>
 #include <grpc/fleet-caller-gate.hxx>
 #include <grpc/grpc-server-drain.hxx>
+#include <mcp/mcp-rpc.hxx>
 #include <mdns/mdns-service.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
@@ -37,6 +40,7 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -182,11 +186,22 @@ int main()
       {.states = [engine = moduleEngine.get()] { return engine != nullptr ? engine->enabledSet() : ModuleStatesReply{}; },
        .catalog = [engine = moduleEngine.get()] { return ownerCatalogOf(engine); },
        .gate = rpcGate});
+  std::unique_ptr<argus::mcp::McpRpcService> moduleTools;
+  if (std::ranges::any_of(rpc.callers, [](const auto& pair) {
+        return pair.first == argus::mcp::kToolCaller && argus::client::FleetCallerGate::pairedSecret(pair.second);
+      }))
+    moduleTools = std::make_unique<argus::mcp::McpRpcService>(argus::mcp::McpRpcInput{
+        .server = moduleToolServer({.desk = std::make_shared<EngineModuleDesk>(EngineModuleDeskInput{.engine = moduleEngine.get()}),
+                                    .loop = {}}),
+        .gate = rpcGate,
+        .callers = {std::string(argus::mcp::kToolCaller)}});
   std::unique_ptr<argus::client::GrpcServerDrain> rpcDrain;
   if (!rpc.address.empty()) {
     grpc::ServerBuilder rpcBuilder;
     rpcBuilder.AddListeningPort(rpc.address, grpc::InsecureServerCredentials());
     rpcBuilder.RegisterService(&modulesRpc);
+    if (moduleTools)
+      rpcBuilder.RegisterService(moduleTools.get());
     std::unique_ptr<grpc::Server> rpcServer(rpcBuilder.BuildAndStart());
     if (!rpcServer) {
       LOG_FATAL << "Modules RPC failed to listen on " << rpc.address;

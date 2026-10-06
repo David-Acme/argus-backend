@@ -60,6 +60,12 @@ if(NOT TARGET argus::clients::settings)
                      ${CMAKE_BINARY_DIR}/clients/settings)
 endif()
 
+if(NOT COMMAND argus_mcp_rpc_contract)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/mcp
+                     ${CMAKE_BINARY_DIR}/contracts/mcp)
+endif()
+argus_mcp_rpc_contract()
+
 find_package(doctest REQUIRED)
 
 add_subdirectory(${SETTINGS_SRC_ROOT}/config)
@@ -77,8 +83,10 @@ argus_service(NAME argus-settings
     MODULES
         argus::settings-gateway
         argus::settings-modules
+        argus::settings-mcp
         argus::settings-rpc
         argus::settings-config
+        argus::contracts::mcp-wire
         argus::clients::settings
         argus::lib::auth
         argus::lib::config
@@ -124,3 +132,17 @@ foreach(TEST_NAME IN ITEMS settings-modules-test settings-module-engine-test set
         ARGUS_SETTINGS_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
+
+add_executable(settings-mcp-test tests/unit/settings-mcp-test.cc)
+set_target_properties(settings-mcp-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(settings-mcp-test PRIVATE argus::settings-mcp doctest::doctest)
+target_compile_options(settings-mcp-test PRIVATE -Wall -Wextra)
+add_test(NAME settings-mcp-test COMMAND settings-mcp-test)
+
+add_executable(settings-engine-desk-test tests/unit/settings-engine-desk-test.cc)
+set_target_properties(settings-engine-desk-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(settings-engine-desk-test PRIVATE argus::settings-mcp argus::settings-modules doctest::doctest)
+target_compile_options(settings-engine-desk-test PRIVATE -Wall -Wextra)
+target_compile_definitions(settings-engine-desk-test PRIVATE
+    ARGUS_SETTINGS_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+add_test(NAME settings-engine-desk-test COMMAND settings-engine-desk-test)

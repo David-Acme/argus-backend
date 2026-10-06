@@ -657,3 +657,35 @@ their templates carry `target = "127.0.0.1:7047"` (deploy
 `active` module, with its `lifecycle` on every entry
 (`settings-module-engine-test`, "the enabled set answers enabled only for an
 active module").
+
+## Module tools over MCP (2026-10, the context plan)
+
+`feature/mcp/` serves the voice surface of the module manager to argus-llm
+(`argus.mcp.v1.Mcp/Rpc` on the modules RPC listener, 7047, for the caller `llm`
+only, reusing the listener's `FleetCallerGate` and the `[rpc.callers] llm`
+credential the module-state reads already use; unpaired, the tools are not
+served). The tools sit behind a `ModuleDesk` port; `EngineModuleDesk` adapts
+the `ModuleEngine` to it and the tests drive a fake desk.
+
+| Tool | Capability | Behaviour |
+|---|---|---|
+| `modules.list`, `modules.explain {module}` | `modules.read` (every role) | what each module is, its state ("instalándose 42%"), its intro and examples, in the user's language |
+| `modules.request {module}` | `modules.request` (non-Owner) | asks the household Owner to turn a module on; an Owner cannot ask itself; the route that records the request and notifies the Owner is the module-effects work (`POST /modules/{id}/request`), so until it exists the desk answers unavailable and the tool says so |
+| `modules.enable {module}` | `modules.manage` (Owner) | starts the install; the answer says it started, is already on, is coming soon, does not fit this hardware or has a job running; argus-llm only calls it on the user's spoken yes |
+| `modules.disable {module, confirmation?}` | `modules.manage` (Owner), destructive | first call: the impact preview in the user's words (what stops, who is affected, invitations that would be revoked, what keeps running, what stays) and a one-use token; second call with the token: turns it off. Nothing is deleted |
+| `modules.open_purge_screen {module}` | `modules.manage` (Owner) | emits `app.open {screen: "modules", module}`; deleting a module's data is never done by voice |
+
+The preview speaks `ModuleImpact::keepsRunning`, the localized lines the
+impact carries for what a module change does not touch, most importantly that
+a raised panic or duress alert goes on until someone answers it; the tool never
+writes that sentence itself. Until the impact preview of the module-effects work
+is reachable from here, `EngineModuleDesk::impact` answers a known module
+"cannot be previewed from here, turn it off from the app" (code
+`impact_unavailable`), so `modules.disable` refuses and issues no token rather
+than turning a module off with an invented summary.
+
+`tests/unit/settings-mcp-test.cc` pins every tool per role and language, the
+one-use token (another user's, a spent one, another module's), the refusal
+paths and the spoken `keepsRunning`; `settings-engine-desk-test.cc` runs the
+adapter over a real `ModuleEngine` (states, enable outcomes, disable refusals in
+both languages, the unavailable impact and request, no engine).
