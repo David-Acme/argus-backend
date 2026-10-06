@@ -84,13 +84,39 @@ CPU/GPU features when declared. Verdict `ok`, `slow` (allowed, explained) or `in
 | `POST /modules/{id}/install` | Owner | 202 with the job; 409 `MODULE_HARDWARE_INSUFFICIENT`, 409 `MODULE_COMING_SOON`, 409 `MODULE_JOB_RUNNING` |
 | `POST /modules/{id}/pause`, `/resume`, `/cancel` | Owner | the job |
 | `POST /modules/{id}/disable` | Owner | the module; 409 for `core` or a module another enabled one requires |
-| `POST /modules/{id}/release` | Owner | frees a disabled module's downloaded files (explicit, confirmed in the app) |
+| `POST /modules/{id}/uninstall` | Owner | body `{keepData: bool, pin?: string}`; frees the module's downloaded files; with `keepData: false` also purges its data (requires the Owner's current guard PIN when one is set, typed confirmation in the app); 409 `MODULE_CORE`, 409 `MODULE_REQUIRED_BY` (names the dependant), 409 `MODULE_JOB_RUNNING`; 202 with the job |
+| `GET /modules/{id}/data` | Owner | the data the module holds, per owning service: `[{owner, items: [{kind, count}], bytes}]` |
 
-Module JSON: `{id, name, summary, kind: core|available|coming_soon, enabled, requires[], sizeBytes,
-installedBytes, hardware: {verdict: ok|slow|insufficient, reasons[], minRamMb, recommendedRamMb,
+Module JSON: `{id, name, summary, kind: core|available|coming_soon, lifecycle:
+not_installed|active|disabled|uninstalled_data_kept, enabled, requires[], sizeBytes, installedBytes,
+hasData, dataPurgedAt, hardware: {verdict: ok|slow|insufficient, reasons[], minRamMb, recommendedRamMb,
 freeDiskMb}, job: null | {id, state, progress (0-1), bytesDone, bytesTotal, bytesPerSecond,
 etaSeconds, reason}, gettingStarted[]}`. Names and summaries come back in the caller's language
 (es first, en).
+
+## Lifecycle: disable, uninstall, purge, reinstall
+
+| Lifecycle | Model files | Module data | Reached by |
+|---|---|---|---|
+| `not_installed` | absent | absent | never installed, or uninstalled with `keepData: false` |
+| `active` | present | present | install, enable |
+| `disabled` | present | kept | disable; enabling again is instant (no download) |
+| `uninstalled_data_kept` | removed | kept | uninstall with `keepData: true` (the default) |
+
+- Uninstalling a module without data needs one confirmation. With data, the app shows what exists
+  (`GET /modules/{id}/data`) and offers keep (default) or purge; purge is irreversible, needs the
+  typed module name and the Owner's PIN when set, and lands in `module_audit`.
+- Purge runs as a job like an install: each owning service deletes only its own data for that module
+  through the settings wire (`ModuleDataSummary` and `PurgeModuleData` RPCs, additive), in one
+  transaction per service, including private objects (evidence, crops) through its storage service.
+  A failed owner leaves the job `failed` with the owner named; retrying resumes from the owners
+  not yet purged. `dataPurgedAt` is stamped when every owner confirmed.
+- Devices drop the module's local tables when a `ModuleUpdate` carries a newer `dataPurgedAt`; a
+  device that was offline does it on its next `GET /modules`.
+- Reinstalling after `uninstalled_data_kept` brings the data back; after a purge it starts clean.
+- Installing a new module checks hardware counting every installed one. `core` cannot be disabled or
+  uninstalled; a module another enabled module requires cannot either; a running job must be
+  cancelled first.
 
 ## Live progress over `/sync`
 
