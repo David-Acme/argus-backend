@@ -26,6 +26,8 @@ CREATE INDEX IF NOT EXISTS idx_reminder_target_user  ON reminder (target_user_id
 CREATE INDEX IF NOT EXISTS idx_reminder_scheduled    ON reminder (scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_reminder_created_at   ON reminder (created_at);
 CREATE INDEX IF NOT EXISTS idx_reminder_deleted_at   ON reminder (deleted_at);
+CREATE INDEX IF NOT EXISTS idx_reminder_target_live_created
+    ON reminder (target_user_id, created_at, id) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS project (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,

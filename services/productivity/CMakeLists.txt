@@ -115,6 +115,7 @@ argus_service(NAME argus-productivity
         argus::productivity-project
         argus::productivity-project-member
         argus::productivity-project-task
+        argus::productivity-reminder
         argus::productivity-sync
         argus::productivity-agenda
         argus::productivity-module-data
@@ -297,3 +298,22 @@ target_link_libraries(productivity-module-data-test PRIVATE
 target_compile_options(productivity-module-data-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-module-data-test
          COMMAND productivity-module-data-test)
+
+add_executable(productivity-reminder-test
+    tests/unit/productivity-reminder-test.cc)
+set_target_properties(productivity-reminder-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+target_compile_definitions(productivity-reminder-test PRIVATE
+    ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_link_libraries(productivity-reminder-test PRIVATE
+    argus::productivity-reminder
+    argus::productivity-repositories
+    argus::clients::productivity
+    argus::lib::auth
+    argus::lib::config
+    argus::lib::sqlite
+    argus::lib::validation
+    argus::contracts::sync
+    doctest::doctest)
+target_compile_options(productivity-reminder-test PRIVATE -Wall -Wextra)
+add_test(NAME productivity-reminder-test COMMAND productivity-reminder-test)

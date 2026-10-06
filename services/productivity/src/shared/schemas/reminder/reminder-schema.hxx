@@ -24,5 +24,5 @@ struct ReminderSchema
 
   ReminderSchema() = default;
   explicit ReminderSchema(const drogon::orm::Row& row);
-  Json::Value toJson() const;
+  [[nodiscard]] Json::Value toJson() const;
 };

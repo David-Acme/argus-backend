@@ -314,14 +314,14 @@ grpc::ServerUnaryReactor* ProductivitySyncRpcService::PullTable(
             co_await fill(FillInput{.body = pull.reminder(),
                                     .rows = responseWriter->mutable_reminder(),
                                     .repo = reminderRepository_,
-                                    .base = scopedBase(false, sub)});
+                                    .base = scopedBase(true, sub)});
             break;
           case argus::productivity::v1::PullTableRequest::kReminderDetail:
             co_await fill(FillInput{
                 .body = pull.reminder_detail(),
                 .rows = responseWriter->mutable_reminder_detail(),
                 .repo = reminderDetailRepository_,
-                .base = scopedBase(false, sub)});
+                .base = scopedBase(true, sub)});
             break;
           case argus::productivity::v1::PullTableRequest::kCalendarEvent:
             co_await fill(FillInput{

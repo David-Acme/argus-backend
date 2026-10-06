@@ -10,6 +10,8 @@
 #include <feature/project/controllers/project-controller.hxx>
 #include <feature/project-member/controllers/project-member-controller.hxx>
 #include <feature/project-task/controllers/project-task-controller.hxx>
+#include <feature/reminder/controllers/reminder-controller.hxx>
+#include <feature/reminder/reminder-rpc-service.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/module-feed.hxx>
@@ -97,9 +99,10 @@ int main()
   const ListenerConfig listener = ProductivityConfig::resolveListener();
 
   ProductivitySyncRpcService productivitySyncRpc;
+  ReminderRpcService reminderRpc;
   ProductivityModuleData moduleData;
   SettingsRegistry noSettings({});
-  std::vector<grpc::Service*> rpcServices{&productivitySyncRpc};
+  std::vector<grpc::Service*> rpcServices{&productivitySyncRpc, &reminderRpc};
   std::unique_ptr<SettingsRpcService> settingsRpc;
   if (const auto secret = ProductivityConfig::resolveSettingsCredential(); !secret.empty()) {
     settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
@@ -123,6 +126,7 @@ int main()
   drogon::app().registerController(std::make_shared<ProjectController>());
   drogon::app().registerController(std::make_shared<ProjectMemberController>());
   drogon::app().registerController(std::make_shared<ProjectTaskController>());
+  drogon::app().registerController(std::make_shared<ReminderController>());
 
   drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-productivity", .extras = {}}));
 

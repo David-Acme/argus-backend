@@ -32,6 +32,16 @@ RPC test above and this package's own suite.
   it.
 - `src/productivity/productivity-sync-client.cc` — the deadline (5000 ms,
   `kPullTimeoutMs`) and the nullopt.
+- `src/productivity/productivity-reminder-client.{hxx,cc}` — the second
+  surface, for the assistant: `ProductivityReminderClient({target,
+  credential})` with `create`, `update`, `remove`, `get` and `list`, each
+  taking one call struct that carries the `CallerIdentity` of the user the
+  call acts for and answering a `ReminderRpcOutcome` (`Success`, `NotFound`,
+  `Invalid`, `Refused`, `Unavailable`) with the `ReminderRow`. It sends
+  `x-argus-credential` (the receiver's `[grpc] caller_llm`) and the identity
+  legs; the receiver acts on the identity's user and never on a body field,
+  and only on that user's own reminders
+  (`services/productivity/CONTEXT.md`, "Reminders: core, own rows only").
 - `tests/unit/productivity-sync-client-test.cc` — the suite below.
 
 ## Rules

@@ -8,8 +8,8 @@
 #include <shared/repositories/project-member/project-member-repository.hxx>
 #include <shared/repositories/project-task/project-task-repository.hxx>
 #include <shared/repositories/project/project-repository.hxx>
+#include <shared/repositories/reminder/reminder-repository.hxx>
 #include <feature/sync/repositories/reminder-detail/reminder-detail-repository.hxx>
-#include <feature/sync/repositories/reminder/reminder-repository.hxx>
 #include <vector>
 
 class ProductivitySyncRpcService final

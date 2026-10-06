@@ -67,6 +67,7 @@ url = "nats://127.0.0.1:4222"
 [grpc]
 caller_sync = ""
 caller_settings = ""
+caller_llm = ""
 
 [mdns]
 enabled = true

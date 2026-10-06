@@ -417,6 +417,67 @@ the spoken lines per user. Recurring events are announced for their stored
 item. `agenda.enabled = false`, or no notification target/credential, leaves
 the announcer off.
 
+## Reminders: core, own rows only (2026-10, the roles-and-tools wave)
+
+`src/feature/reminder/` (`argus::productivity-reminder`) is the write side of
+`reminder`, which until now only the sync pull read. Reminders are core: the
+first path segment `reminder` is not in `role_access::kModuleRoutes`, so
+`RoleFilter` never gates them, and `reminder` and `reminder_detail` keep
+syncing when the productivity module is off. The agenda announcer still
+announces due reminders; only calendar events stop with the module.
+
+**Every role, the Owner included, reads and writes only the rows whose
+`target_user_id` is its own `JwtContext.sub`.** The owner confirmed that there
+is no Owner override. The predicate is in the SQL, not only in the route:
+`findOwned` selects `WHERE id = ? AND target_user_id = ?`, and the `UPDATE`
+and the soft delete repeat `AND target_user_id = ?`, so a statement that
+reached the repository with another user's id changes nothing. A row of
+another user answers `404 NOT_FOUND`, never 403, so existence does not leak.
+`POST /reminder` always sets target and creator to the caller and ignores
+any target in the body (the DTO has no such field).
+
+- `POST /reminder` `{title, description?, scheduledAt (unix seconds),
+  recurrenceRule?}` answers the row JSON. An `Idempotency-Key` header makes a
+  retry return the first row and publish once (route `reminder` of the
+  `idempotency_key` table).
+- `PATCH /reminder/{id}` `{title?, description?, scheduledAt?, isCompleted?}`
+  answers the row JSON. `isCompleted: true` stamps `completedAt` once (a
+  second `true` keeps the first time) and `false` clears it. A body that
+  changes nothing answers the row and publishes nothing.
+- `DELETE /reminder/{id}` soft deletes and answers 204.
+- DTOs use the validation DSL (title 1-200, description at most 2000,
+  recurrenceRule at most 512, positive timestamps); the controller is thin and
+  every rule lives in `ReminderFeatureService`.
+
+**One write path.** `ReminderFeatureService` is the only writer. The HTTP
+controller and `ReminderRpcService` (`argus.productivity.v1.ReminderService`:
+`CreateReminder`, `UpdateReminder`, `DeleteReminder`, `GetReminder`,
+`ListReminders`, in `reminder.proto`) both call it, and argus-llm's reminder
+tool reaches it through `ProductivityReminderClient`
+(`argus::clients::productivity`, `<productivity/productivity-reminder-client.hxx>`),
+so the assistant has no second way to write a reminder. The RPC takes the
+user from the `x-argus-user` metadata the client attaches (`CallerIdentity`),
+never from the request body, and admits only the caller whose credential is
+`[grpc] caller_llm` (empty means closed). A refusal maps to a status the
+client folds into `ReminderRpcOutcome`: `NotFound`, `Invalid` (validation),
+`Refused` (credential), `Unavailable`.
+
+**Sync.** Every mutation is published through the productivity sink inside
+its transaction (rule 18): a creation is an `Add` with the complete row to the
+target, an update is a `publishAudit` with the before and after rows (a
+per-field diff in the target's `user_audit_log`), and a deletion is the
+`{id, deletedAt}` tombstone. Because the sync pull used to hand every
+reminder to every device, `PullTable` for `reminder` and `reminder_detail` is
+now personal (`scopedBase(true, sub)`): the repository adds the same
+`target_user_id` predicate to every cursor query (a reminder detail through
+its parent), and a missing user answers nothing. The additive index
+`idx_reminder_target_live_created (target_user_id, created_at, id) WHERE
+deleted_at IS NULL` serves those cursors (rule 22).
+
+Tests: `productivity-reminder-test` (service, controller and the RPC with its
+client in one process, a recording sink, the real `schema.sql`) and the
+extended `productivity-sync-rpc-test`.
+
 ## A calendar event's project must exist (2026-10-05, review finding D5)
 
 `POST /calendar-event` and `PATCH /calendar-event/{id}` check a `projectId`

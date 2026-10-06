@@ -6,11 +6,13 @@ argus_module(NAME productivity-repositories
         project/project-repository.cc
         project-member/project-member-repository.cc
         project-task/project-task-repository.cc
+        reminder/reminder-repository.cc
         ../schemas/calendar-event/calendar-event-schema.cc
         ../schemas/calendar-event-share/calendar-event-share-schema.cc
         ../schemas/project/project-schema.cc
         ../schemas/project-member/project-member-schema.cc
         ../schemas/project-task/project-task-schema.cc
+        ../schemas/reminder/reminder-schema.cc
     INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}/../..
     DEPENDS

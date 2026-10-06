@@ -2,9 +2,7 @@ argus_module(NAME productivity-sync
     SOURCES
         productivity-sync-rpc-service.cc
         repositories/reminder-detail/reminder-detail-repository.cc
-        repositories/reminder/reminder-repository.cc
         schemas/reminder-detail/reminder-detail-schema.cc
-        schemas/reminder/reminder-schema.cc
     INCLUDES
         ../..
     DEPENDS

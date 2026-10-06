@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package argus.productivity.v1;
+
+import "argus/productivity/v1/sync.proto";
+
+option cc_enable_arenas = true;
+
+message CreateReminderRequest {
+  string title = 1;
+  string description = 2;
+  int64 scheduled_at = 3;
+  optional string recurrence_rule = 4;
+  string idempotency_key = 5;
+}
+
+message UpdateReminderRequest {
+  int64 id = 1;
+  optional string title = 2;
+  optional string description = 3;
+  optional int64 scheduled_at = 4;
+  optional bool is_completed = 5;
+}
+
+message DeleteReminderRequest {
+  int64 id = 1;
+}
+
+message GetReminderRequest {
+  int64 id = 1;
+}
+
+message ListRemindersRequest {
+  bool include_completed = 1;
+  int32 limit = 2;
+}
+
+message ReminderResponse {
+  ReminderRow reminder = 1;
+}
+
+message DeleteReminderResponse {}
+
+message ListRemindersResponse {
+  repeated ReminderRow reminders = 1;
+}
+
+service ReminderService {
+  rpc CreateReminder(CreateReminderRequest) returns (ReminderResponse);
+  rpc UpdateReminder(UpdateReminderRequest) returns (ReminderResponse);
+  rpc DeleteReminder(DeleteReminderRequest) returns (DeleteReminderResponse);
+  rpc GetReminder(GetReminderRequest) returns (ReminderResponse);
+  rpc ListReminders(ListRemindersRequest) returns (ListRemindersResponse);
+}

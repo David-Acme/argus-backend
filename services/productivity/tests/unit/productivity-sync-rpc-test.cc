@@ -212,6 +212,35 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
     REQUIRE(rows->has_reminder());
     REQUIRE(rows->reminder().created_size() == 1);
     CHECK(rows->reminder().created(0).target_user_id() == 7);
+
+    const auto others = sdk.pullTable(reminderPull(), identityFor(42));
+    if (!others) {
+      FAIL("expected a value in others");
+      return;
+    }
+    CHECK(others->reminder().created_size() == 0);
+
+    argus::productivity::v1::PullTableRequest details;
+    details.mutable_reminder_detail()->set_required_create(true);
+    const auto mine = sdk.pullTable(details, identityFor(7));
+    const auto theirs = sdk.pullTable(details, identityFor(42));
+    if (!mine || !theirs) {
+      FAIL("expected the reminder detail pulls to answer");
+      return;
+    }
+    CHECK(mine->reminder_detail().created_size() == 1);
+    CHECK(theirs->reminder_detail().created_size() == 0);
+
+    argus::productivity::v1::PullTableRequest last;
+    last.mutable_reminder()->set_find_last_created(true);
+    const auto lastMine = sdk.pullTable(last, identityFor(7));
+    const auto lastTheirs = sdk.pullTable(last, identityFor(42));
+    if (!lastMine || !lastTheirs) {
+      FAIL("expected the last-reminder pulls to answer");
+      return;
+    }
+    CHECK(lastMine->reminder().has_last_created());
+    CHECK_FALSE(lastTheirs->reminder().has_last_created());
   }
 
   {

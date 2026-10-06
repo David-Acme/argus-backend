@@ -10,8 +10,9 @@ endif()
 if(NOT TARGET argus::clients::productivity)
   argus_clients(NAME productivity
       PROTO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/proto
-      PROTO argus/productivity/v1/sync.proto
+      PROTO argus/productivity/v1/sync.proto argus/productivity/v1/reminder.proto
       SOURCES src/productivity/productivity-sync-client.cc
+              src/productivity/productivity-reminder-client.cc
       INCLUDES src)
 endif()
 

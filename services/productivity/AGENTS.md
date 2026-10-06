@@ -50,7 +50,9 @@ argus-productivity/
                         listener
   src/feature/<feature>/  one vertical slice per resource: controllers/,
                         dtos/, services/ — the folder IS the module
-  src/feature/sync/     argus::productivity-sync — sync RPC + reminder rows
+  src/feature/reminder/ argus::productivity-reminder — the reminder routes and
+                        the ReminderService RPC over one feature service
+  src/feature/sync/     argus::productivity-sync — sync RPC + reminder detail rows
   src/shared/repositories/  rows 2+ features read
   src/shared/services/change-sink/  argus::productivity-change-sink — the
                         NATS change sink over `argus::lib::outbox`

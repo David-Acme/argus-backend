@@ -17,6 +17,10 @@ inline constexpr ErrorDefinition CalendarEventNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,
     .message = "Calendar event not found"};
+inline constexpr ErrorDefinition ReminderNotFound{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "Reminder not found"};
 inline constexpr ErrorDefinition ShareNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,

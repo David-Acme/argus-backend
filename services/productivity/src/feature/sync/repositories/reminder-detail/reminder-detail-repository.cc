@@ -115,13 +115,15 @@ ReminderDetailRepository::find(const SyncFilter& filter) const
 {
   auto client = DbService::productivityClient();
 
-  const auto [query, args] =
-      sync_query::buildSyncQuery({.filter = filter,
-                                  .queryBoth = FIND,
-                                  .queryFrom = FIND_FROM,
-                                  .queryAll = FIND_ALL,
-                                  .queryAfterBoth = FIND_AFTER,
-                                  .queryAfterFrom = FIND_AFTER_FROM});
+  const auto [query, args] = sync_query::withUser(
+      {.parts = sync_query::buildSyncQuery({.filter = filter,
+                                            .queryBoth = FIND,
+                                            .queryFrom = FIND_FROM,
+                                            .queryAll = FIND_ALL,
+                                            .queryAfterBoth = FIND_AFTER,
+                                            .queryAfterFrom = FIND_AFTER_FROM}),
+       .userId = filter.userId,
+       .placeholders = OWNERSHIP_PLACEHOLDERS});
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 
@@ -136,13 +138,16 @@ ReminderDetailRepository::findDeleted(const SyncFilter& filter) const
 {
   auto client = DbService::productivityClient();
 
-  const auto [query, args] =
-      sync_query::buildSyncQuery({.filter = filter,
-                                  .queryBoth = FIND_DELETED,
-                                  .queryFrom = FIND_DELETED_FROM,
-                                  .queryAll = FIND_DELETED_ALL,
-                                  .queryAfterBoth = FIND_DELETED_AFTER,
-                                  .queryAfterFrom = FIND_DELETED_AFTER_FROM});
+  const auto [query, args] = sync_query::withUser(
+      {.parts = sync_query::buildSyncQuery(
+           {.filter = filter,
+            .queryBoth = FIND_DELETED,
+            .queryFrom = FIND_DELETED_FROM,
+            .queryAll = FIND_DELETED_ALL,
+            .queryAfterBoth = FIND_DELETED_AFTER,
+            .queryAfterFrom = FIND_DELETED_AFTER_FROM}),
+       .userId = filter.userId,
+       .placeholders = OWNERSHIP_PLACEHOLDERS});
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 
@@ -153,20 +158,22 @@ ReminderDetailRepository::findDeleted(const SyncFilter& filter) const
 }
 
 drogon::Task<std::optional<Json::Value>>
-ReminderDetailRepository::findLast(const SyncFilter&) const
+ReminderDetailRepository::findLast(const SyncFilter& filter) const
 {
   auto client = DbService::productivityClient();
-  const auto result = co_await client->execSqlCoro(FIND_LAST.data());
+  const auto result = co_await client->execSqlCoro(
+      FIND_LAST.data(), filter.userId.value_or(0));
   if (result.empty())
     co_return std::nullopt;
   co_return ReminderDetailSchema(result.front()).toJson();
 }
 
 drogon::Task<std::optional<Json::Value>>
-ReminderDetailRepository::findLastDeleted(const SyncFilter&) const
+ReminderDetailRepository::findLastDeleted(const SyncFilter& filter) const
 {
   auto client = DbService::productivityClient();
-  const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());
+  const auto result = co_await client->execSqlCoro(
+      FIND_LAST_DELETED.data(), filter.userId.value_or(0));
   if (result.empty())
     co_return std::nullopt;
   co_return ReminderDetailSchema(result.front()).toJson();
