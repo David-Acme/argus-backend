@@ -20,6 +20,15 @@ def synthetic(count, power, seed):
     return pairs
 
 
+def clustered(count, seed):
+    rng = random.Random(seed)
+    pairs = []
+    for _ in range(count):
+        x = 3.5 + 10.0 * rng.random()
+        pairs.append((1.0 / (1.0 + math.exp(-x)), rng.random() < 0.75 + 0.1 * (x - 8.5) / 5.0))
+    return pairs
+
+
 class CalibrationTest(unittest.TestCase):
     def test_the_expected_error_of_a_calibrated_source_is_small_and_of_an_overconfident_one_is_large(self):
         honest = synthetic(6000, 1.0, 1)
@@ -50,6 +59,21 @@ class CalibrationTest(unittest.TestCase):
         model = calibration.fit(pairs, "platt")
         self.assertGreater(calibration.apply(model, 0.69), 0.8)
         self.assertLess(calibration.apply(model, 0.51), 0.2)
+
+    def test_a_source_packed_against_one_converges_to_a_finite_rank_preserving_map(self):
+        train, held = clustered(4000, 9), clustered(4000, 10)
+        before = calibration.evaluate({"type": "identity"}, held)["ece"]
+        for kind in ("temperature", "platt"):
+            model = calibration.fit(train, kind)
+            self.assertTrue(0.0 < model["scale"] < 5.0, (kind, model))
+            self.assertLess(calibration.evaluate(model, held)["ece"], before, kind)
+            self.assertLess(calibration.apply(model, 0.98), calibration.apply(model, 0.99999), kind)
+
+    def test_a_source_with_no_signal_keeps_a_positive_scale(self):
+        rng = random.Random(11)
+        pairs = [(0.5 + 0.5 * rng.random(), rng.random() < 0.5) for _ in range(2000)]
+        for kind in ("temperature", "platt"):
+            self.assertGreater(calibration.fit(pairs, kind)["scale"], 0.0)
 
     def test_isotonic_is_monotone_and_stays_inside_zero_and_one(self):
         model = calibration.fit(synthetic(3000, 3.0, 7), "isotonic")

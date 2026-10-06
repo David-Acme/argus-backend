@@ -126,6 +126,20 @@ class CalibrationHarnessTest(unittest.TestCase):
         self.assertNotEqual([m[1] for m in mapped], [d[1] for d in decisions])
 
 
+    def test_isotonic_is_reported_but_never_chosen_because_its_plateaus_erase_the_ranking(self):
+        records, decisions = [], []
+        for index in range(600):
+            confidence = 0.5 + 0.5 * index / 600
+            records.append(case(f"c{index}", f"agenda algo {index}", ["calendar.create_event"]))
+            correct = confidence > 0.8
+            decisions.append(("calendar.create_event" if correct else "task.create", confidence, None, 0.0, None))
+        fitted = harness.fit_calibration(loaded(records), decisions)
+        row = fitted["report"]["confidence"]
+        self.assertLess(row["heldOutEce"]["isotonic"], min(row["heldOutEce"]["temperature"], row["heldOutEce"]["platt"]))
+        self.assertIn(row["chosen"], ("temperature", "platt", "identity"))
+        self.assertNotEqual(fitted["confidence"]["type"], "isotonic")
+
+
 class ScoreTest(unittest.TestCase):
     def setUp(self):
         self.cases = loaded([

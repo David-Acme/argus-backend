@@ -43,6 +43,7 @@ ASKS = (0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95)
 MARGINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
 CEILINGS = (0.0025, 0.005, 0.01, 0.02)
 CACHE_BATCH = 250
+RANK_PRESERVING = ("temperature", "platt")
 DEFAULT_WRONG_ACT = 0.001
 DEFAULT_ASK_CLEAR = 0.10
 DEFAULT_WRONG_TOOL = 0.01
@@ -555,7 +556,7 @@ def fit_calibration(cases, decisions):
         for kind in ("temperature", "platt", "isotonic"):
             model = calibration.fit(train, kind)
             rows[kind] = calibration.evaluate(model, held)["ece"]
-            if rows[kind] < best_ece:
+            if kind in RANK_PRESERVING and rows[kind] < best_ece:
                 best_kind, best_ece = kind, rows[kind]
         out[name] = calibration.fit(pairs, best_kind) if best_kind != "identity" else {"type": "identity"}
         out["report"][name] = {"pairs": len(pairs), "heldOutEce": rows, "chosen": best_kind}

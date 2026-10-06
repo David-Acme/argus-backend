@@ -1,6 +1,10 @@
 import math
 
 EPSILON = 1e-6
+RIDGE = 1e-6
+MIN_SCALE = 1e-3
+MAX_SHIFT = 50.0
+MAX_ITERATIONS = 100
 
 
 def clip(value):
@@ -19,36 +23,57 @@ def sigmoid(value):
     return exp / (1.0 + exp)
 
 
+def log_loss(features, scale, shift):
+    total = 0.0
+    for x, y in features:
+        z = scale * x + shift
+        total += max(z, 0.0) + math.log1p(math.exp(-abs(z))) - y * z
+    return total / len(features)
+
+
+def newton_step(features, scale, shift, temperature_only):
+    g_scale = g_shift = h_ss = h_sb = h_bb = 0.0
+    for x, y in features:
+        p = sigmoid(scale * x + shift)
+        error = p - y
+        weight = p * (1.0 - p)
+        g_scale += error * x
+        g_shift += error
+        h_ss += weight * x * x
+        h_sb += weight * x
+        h_bb += weight
+    n = len(features)
+    g_scale, g_shift = g_scale / n, g_shift / n
+    h_ss, h_sb, h_bb = h_ss / n + RIDGE, h_sb / n, h_bb / n + RIDGE
+    if temperature_only:
+        return g_scale / h_ss, 0.0, g_scale * g_scale / h_ss
+    determinant = h_ss * h_bb - h_sb * h_sb
+    step_scale = (h_bb * g_scale - h_sb * g_shift) / determinant
+    step_shift = (h_ss * g_shift - h_sb * g_scale) / determinant
+    return step_scale, step_shift, g_scale * step_scale + g_shift * step_shift
+
+
 def fit_platt(pairs, temperature_only=False):
     scale, shift = 1.0, 0.0
     features = [(logit(confidence), 1.0 if correct else 0.0) for confidence, correct in pairs]
-    for _ in range(60):
-        g_scale = g_shift = h_ss = h_sb = h_bb = 0.0
-        for x, y in features:
-            p = sigmoid(scale * x + shift)
-            error = p - y
-            weight = max(p * (1.0 - p), 1e-9)
-            g_scale += error * x
-            g_shift += error
-            h_ss += weight * x * x
-            h_sb += weight * x
-            h_bb += weight
-        n = len(features)
-        g_scale, g_shift, h_ss, h_sb, h_bb = g_scale / n, g_shift / n, h_ss / n, h_sb / n, h_bb / n
-        if temperature_only:
-            step_scale, step_shift = g_scale / (h_ss + 1e-9), 0.0
+    loss = log_loss(features, scale, shift)
+    for _ in range(MAX_ITERATIONS):
+        step_scale, step_shift, slope = newton_step(features, scale, shift, temperature_only)
+        fraction = 1.0
+        while fraction > 1e-10:
+            trial_scale = max(MIN_SCALE, scale - fraction * step_scale)
+            trial_shift = max(-MAX_SHIFT, min(MAX_SHIFT, shift - fraction * step_shift))
+            trial = log_loss(features, trial_scale, trial_shift)
+            if trial <= loss - 1e-4 * fraction * slope:
+                break
+            fraction /= 2.0
         else:
-            determinant = h_ss * h_bb - h_sb * h_sb
-            if abs(determinant) < 1e-12:
-                step_scale, step_shift = g_scale / (h_ss + 1e-9), g_shift / (h_bb + 1e-9)
-            else:
-                step_scale = (h_bb * g_scale - h_sb * g_shift) / determinant
-                step_shift = (h_ss * g_shift - h_sb * g_scale) / determinant
-        scale -= step_scale
-        shift -= step_shift
-        if abs(step_scale) < 1e-9 and abs(step_shift) < 1e-9:
             break
-    return {"type": "platt", "scale": scale, "shift": shift, "temperature": 1.0 / scale if scale else math.inf}
+        improvement = loss - trial
+        scale, shift, loss = trial_scale, trial_shift, trial
+        if improvement < 1e-12:
+            break
+    return {"type": "platt", "scale": scale, "shift": shift, "temperature": 1.0 / scale}
 
 
 def fit_isotonic(pairs):
