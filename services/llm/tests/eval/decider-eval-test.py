@@ -183,6 +183,30 @@ class ScoreTest(unittest.TestCase):
         self.assertIsNone(harness.summarise_pooled(cases, decisions, (0.9, 0.9, 0.0), limits))
 
 
+class CacheTest(unittest.TestCase):
+    class Dying:
+        def __init__(self):
+            self.calls = 0
+
+        def decide_all(self, cases):
+            self.calls += 1
+            if self.calls > 1:
+                raise RuntimeError("the time ran out")
+            return [("calendar.create_event", 0.9, None, 0.0, None) for _ in cases]
+
+    def test_a_decider_that_dies_midway_leaves_the_finished_batches_in_the_cache(self):
+        cases = loaded([case(f"c{i}", f"frase {i}") for i in range(5)])
+        path = pathlib.Path(tempfile.mkdtemp()) / "cache.json"
+        original = harness.CACHE_BATCH
+        harness.CACHE_BATCH = 2
+        try:
+            with self.assertRaises(RuntimeError):
+                harness.cached_decisions(self.Dying(), cases, str(path))
+        finally:
+            harness.CACHE_BATCH = original
+        self.assertEqual(len(json.loads(path.read_text())), 2)
+
+
 class RunTest(unittest.TestCase):
     def setUp(self):
         self.directory = pathlib.Path(tempfile.mkdtemp())

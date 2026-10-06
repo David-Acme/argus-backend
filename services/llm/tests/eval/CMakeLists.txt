@@ -61,6 +61,14 @@ if(ARGUS_PYTHON3)
         COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/decider-eval-test.py)
     set_tests_properties(decider-eval-test PROPERTIES LABELS eval)
 
+    add_test(NAME round-report-test
+        COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/round-report-test.py)
+    set_tests_properties(round-report-test PROPERTIES LABELS eval)
+
+    add_test(NAME run-round-test
+        COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/run-round-test.py)
+    set_tests_properties(run-round-test PROPERTIES LABELS eval)
+
     add_test(NAME conversation-eval-test
         COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/conversation-eval-test.py)
     set_tests_properties(conversation-eval-test PROPERTIES LABELS eval)

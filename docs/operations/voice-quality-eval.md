@@ -39,6 +39,22 @@ model and the pipeline's own stages are scored by the same code and the same num
 cannot start is a visible skip (exit 77), never a pass. The classifier is retrained and republished
 from the sibling `intent-training/` project (`CONTEXT.md` there).
 
+A slow decider (a fine-tuned model) is run in rounds by `run-round.py`, which splits the selection
+set into chunks that each fit a fifteen-minute window, writes the decision cache after every batch
+of 250 (a chunk that is killed loses at most one batch, and running it again continues), then scores
+from the cache alone: first uncalibrated with `--calibrate-out`, then calibrated, then
+`round-report.py` turns the two reports into the tables a review reads (the operating point, per
+family and per variant, the price of each wrong-ACT ceiling, calibration, real traffic, performance).
+Only the `perf` stage needs an idle machine and it refuses a busy one with exit 77.
+
+```
+python3 -I services/llm/tests/eval/run-round.py --name <round> --out <dir> --decider '<command>' \
+    --select <cases.jsonl> <holdout.jsonl> <selection.jsonl> --negatives <real-negatives.txt> \
+    --traffic services/llm/tests/fixtures/intent/eval-production.tsv --artifact <model files> \
+    --runner '<prefix that bounds memory and serialises heavy jobs>' --chunks 8 [--stages fill,score,perf,report]
+python3 -I services/llm/tests/eval/round-report.py --round joint=<dir> --round choice-only=<dir> --ceiling 0.01
+```
+
 ## The corpora
 
 | file | cases | role |

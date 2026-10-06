@@ -42,6 +42,7 @@ ACTS = (0.5, 0.6, 0.7, 0.8, 0.85, 0.88, 0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96,
 ASKS = (0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95)
 MARGINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
 CEILINGS = (0.0025, 0.005, 0.01, 0.02)
+CACHE_BATCH = 250
 DEFAULT_WRONG_ACT = 0.001
 DEFAULT_ASK_CLEAR = 0.10
 DEFAULT_WRONG_TOOL = 0.01
@@ -584,11 +585,13 @@ def cached_decisions(decider, cases, path):
     cache = pathlib.Path(path)
     stored = json.loads(cache.read_text()) if cache.exists() else {}
     missing = [c for c in cases if cache_key(c) not in stored]
-    if missing:
-        fresh = decider.decide_all(missing)
-        for case, decision in zip(missing, fresh):
+    for start in range(0, len(missing), CACHE_BATCH):
+        batch = missing[start:start + CACHE_BATCH]
+        for case, decision in zip(batch, decider.decide_all(batch)):
             stored[cache_key(case)] = list(decision)
-        cache.write_text(json.dumps(stored))
+        partial = cache.with_name(cache.name + ".part")
+        partial.write_text(json.dumps(stored))
+        partial.replace(cache)
     return [tuple(stored[cache_key(c)]) for c in cases]
 
 
