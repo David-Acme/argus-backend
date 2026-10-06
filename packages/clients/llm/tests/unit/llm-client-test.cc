@@ -6,10 +6,12 @@
 #include <doctest/doctest.h>
 #include <errors/response-exception.hxx>
 #include <exception>
+#include <json/json.h>
 #include <llm/llm-client.hxx>
 #include <llm/llm-errors.hxx>
 #include <llm/llm-remote.hxx>
 #include <llm/llm-service.hxx>
+#include <sstream>
 #include <stop_token>
 #include <string>
 #include <vector>
@@ -30,6 +32,16 @@ void pointRpcAt(const std::string& target, const std::string& credential)
 {
   ConfigService::setRuntimeString("llm.grpc_target", target);
   ConfigService::setRuntimeString("llm.grpc_credential", credential);
+}
+
+Json::Value parseBody(const std::string& body)
+{
+  Json::Value root;
+  std::istringstream stream(body);
+  Json::CharReaderBuilder builder;
+  std::string errors;
+  REQUIRE(Json::parseFromStream(builder, stream, &root, &errors));
+  return root;
 }
 
 struct Refusal
@@ -303,12 +315,13 @@ TEST_CASE("The llm http client carries the caller's user, role and language")
   CHECK(body.find("\"prefill_only\":true") != std::string::npos);
 
   static_cast<void>(client.chat(greeting()));
-  const std::string defaults = server.lastBody();
-  CHECK(defaults.find("\"role\"") == std::string::npos);
-  CHECK(defaults.find("\"lang\"") == std::string::npos);
-  CHECK(defaults.find("\"user_id\"") == std::string::npos);
-  CHECK(defaults.find("\"session_id\"") == std::string::npos);
-  CHECK(defaults.find("\"prefill_only\"") == std::string::npos);
+  const Json::Value defaults = parseBody(server.lastBody());
+  CHECK_FALSE(defaults.isMember("role"));
+  CHECK_FALSE(defaults.isMember("lang"));
+  CHECK_FALSE(defaults.isMember("user_id"));
+  CHECK_FALSE(defaults.isMember("session_id"));
+  CHECK_FALSE(defaults.isMember("prefill_only"));
+  CHECK(defaults["messages"][0]["role"].asString() == "user");
 }
 
 TEST_CASE("The llm http client presents its credential and reads only the marked sentinel")
