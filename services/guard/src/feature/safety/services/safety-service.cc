@@ -269,6 +269,32 @@ drogon::Task<DisarmVerdict> SafetyService::authorize(const DisarmRequest& reques
   co_return co_await verifyPin({.request = request, .pin = *pin});
 }
 
+drogon::Task<OwnerPinOutcome> SafetyService::verifyOwnerPin(DisarmRequest request) const
+{
+  const SafetySetting setting = co_await settingRepository_.find();
+  if (!setting.duressEnabled)
+    co_return OwnerPinOutcome::NoPin;
+  const auto pin = co_await pinRepository_.find(request.userId);
+  if (!pin)
+    co_return OwnerPinOutcome::NoPin;
+  try {
+    if (co_await verifyPin({.request = request, .pin = *pin}) == DisarmVerdict::Duress) {
+      duress(request);
+      co_return OwnerPinOutcome::Invalid;
+    }
+    co_return OwnerPinOutcome::Accepted;
+  }
+  catch (const ResponseException& refusal) {
+    if (refusal.errorCode() == ResponseException(SafetyErrors::PinRequired).errorCode())
+      co_return OwnerPinOutcome::Required;
+    if (refusal.errorCode() == ResponseException(SafetyErrors::PinLocked).errorCode())
+      co_return OwnerPinOutcome::Locked;
+    if (refusal.errorCode() == ResponseException(SafetyErrors::PinInvalid).errorCode())
+      co_return OwnerPinOutcome::Invalid;
+    throw;
+  }
+}
+
 void SafetyService::duress(const DisarmRequest& request) const
 {
   if (!runtime_->alive.load(std::memory_order_acquire))

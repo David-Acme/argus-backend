@@ -117,6 +117,7 @@ argus_service(NAME argus-guard
         argus::guard-rpc
         argus::guard-safety
         argus::guard-settings
+        argus::guard-module-data
         argus::contracts::settings-wire
         argus::lib::auth
         argus::lib::config
@@ -309,6 +310,7 @@ set_target_properties(guard-safety-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-safety-test PRIVATE
     argus::guard
     argus::guard-safety
+    argus::guard-module-data
     argus::guard-presence-repository
     doctest::doctest)
 target_include_directories(guard-safety-test PRIVATE
@@ -317,3 +319,17 @@ target_compile_options(guard-safety-test PRIVATE -Wall -Wextra)
 target_compile_definitions(guard-safety-test PRIVATE
     ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 add_test(NAME guard-safety-test COMMAND guard-safety-test)
+
+add_executable(guard-module-data-test tests/unit/guard-module-data-test.cc)
+set_target_properties(guard-module-data-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(guard-module-data-test PRIVATE
+    argus::guard
+    argus::guard-module-data
+    doctest::doctest)
+target_include_directories(guard-module-data-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+target_compile_options(guard-module-data-test PRIVATE -Wall -Wextra)
+target_compile_definitions(guard-module-data-test PRIVATE
+    ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+argus_runtime_rpath(guard-module-data-test)
+add_test(NAME guard-module-data-test COMMAND guard-module-data-test)

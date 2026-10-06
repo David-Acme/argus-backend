@@ -9,6 +9,7 @@
 #include <feature/guard/guard-copy.hxx>
 #include <feature/guard/guard-service.hxx>
 #include <feature/guard/services/guard-feature-service.hxx>
+#include <feature/module-data/services/guard-owner-pin.hxx>
 #include <feature/safety/dtos/remove-pin-dto.hxx>
 #include <feature/safety/dtos/set-pin-dto.hxx>
 #include <feature/safety/infra/guard-alert-sink.hxx>
@@ -719,4 +720,31 @@ TEST_CASE("expected visits are bounded, scoped for residents and hosted by the c
   CHECK(refusalOf([&] { create(endless, UserRole::Owner); }) == 422);
   endless["validUntil"] = static_cast<Json::Int64>(1'700'000'000 + 24 * 3600);
   CHECK(create(endless, UserRole::Owner) > 0);
+}
+
+TEST_CASE("the owner PIN for a destructive purge: none, accepted, required, invalid, locked, and duress refuses while alerting")
+{
+  boot();
+  SafetyRig rig;
+  GuardOwnerPin owner(std::shared_ptr<const SafetyService>(std::shared_ptr<void>{}, &rig.safety));
+
+  CHECK(owner.verify({.userId = 2, .pin = "1111"}) == PinVerdict::NoPin);
+  rig.armPins();
+  CHECK(owner.verify({.userId = 1, .pin = ""}) == PinVerdict::NoPin);
+  CHECK(owner.verify({.userId = 2, .pin = ""}) == PinVerdict::Required);
+  CHECK(owner.verify({.userId = 2, .pin = "1111"}) == PinVerdict::Accepted);
+  CHECK(owner.verify({.userId = 2, .pin = "9999"}) == PinVerdict::Invalid);
+
+  CHECK(owner.verify({.userId = 2, .pin = "2222"}) == PinVerdict::Invalid);
+  rig.waitForKind("guard_duress", 1);
+  const auto alerts = rig.ofKind("guard_duress");
+  REQUIRE_FALSE(alerts.empty());
+  CHECK_FALSE(contains(alerts.front().userIds, 2));
+  CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE kind = 'duress' AND user_id = 2") == "1");
+
+  for (int attempt = 0; attempt < 3; ++attempt)
+    CHECK(owner.verify({.userId = 2, .pin = "9999"}) == PinVerdict::Invalid);
+  CHECK(owner.verify({.userId = 2, .pin = "1111"}) == PinVerdict::Locked);
+  rig.clock += 901;
+  CHECK(owner.verify({.userId = 2, .pin = "1111"}) == PinVerdict::Accepted);
 }

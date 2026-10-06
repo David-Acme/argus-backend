@@ -58,6 +58,15 @@ struct SafetyToggleInput
   std::optional<std::string> currentPin;
 };
 
+enum class OwnerPinOutcome : uint8_t
+{
+  NoPin,
+  Accepted,
+  Required,
+  Invalid,
+  Locked
+};
+
 struct SafetyRuntime;
 
 class SafetyService : public DisarmGate
@@ -105,6 +114,7 @@ public:
 
   [[nodiscard]] drogon::Task<DisarmVerdict>
   authorize(const DisarmRequest& request) const override;
+  [[nodiscard]] drogon::Task<OwnerPinOutcome> verifyOwnerPin(DisarmRequest request) const;
   void duress(const DisarmRequest& request) const override;
 
   [[nodiscard]] drogon::Task<bool> deliver(const SafetyAlertNotice& notice) const;

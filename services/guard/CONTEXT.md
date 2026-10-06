@@ -1406,3 +1406,62 @@ without a decision and the tamper sweep skips, through
 `Dependencies::active`. Encounters already open still close on their timeout
 and the outboxes still drain, so nothing is lost or half written; no data is
 deleted. Evaluation resumes with the next event after the enable.
+
+### Surveillance data: summary and purge
+
+argus-guard is a data owner of `surveillance`: `src/feature/module-data/`
+(`argus::guard-module-data`) implements `ModuleDataSummary` and
+`PurgeModuleData` through `GuardModuleData`, attached to the settings RPC on
+the guard RPC listener (`[rpc] address`, `[rpc.callers] settings`).
+
+- **Purged** (what the cameras taught guard), in one transaction: incidents,
+  actions, assessments, encounters and their transitions, the observation
+  inbox, dead letters, both outboxes, the hourly baselines, signature visits,
+  the decision journal, expected visits, camera context, the tamper onsets in
+  `guard_state`, and every environment except the default one, with the
+  presence and response rows (recipients, contacts, setting) of those
+  environments. Evidence is handled like argus-camera's: the rows are marked
+  expired in the transaction, the objects are removed after it within 3 s
+  through guard's `S3StorageService`, and `purged` is false
+  (`storage_unavailable`, `storage_failed`, `objects_pending`) until no
+  evidence row is left, so a retry resumes.
+- **Kept**, decided on purpose: the default environment (presence, the
+  heartbeat's "who is home" and the call plan hang off it, and those serve
+  core), its response directory, the safety PINs, the duress switch and the
+  panic/duress alert history. A panic or duress alert is a record of someone
+  in danger, not something a camera observed; erasing it with a module would
+  erase the trace of a coerced purge too. The plan gates `/guard` whole, so
+  these screens are unreachable while surveillance is off, and they come back
+  as they were on a reinstall.
+- **Summary**: `environments` (non-default), `episodes`, `incidents`,
+  `decisions`, `expected_guests`, `evidence_photos`; `bytes` estimates the
+  rows.
+- `tests/unit/guard-module-data-test.cc` pins both lists, the rollback and the
+  storage verdicts.
+
+### The Owner's PIN for a purge (`VerifyOwnerPin`)
+
+A purge (`POST /modules/{id}/uninstall` with `keepData: false`) asks guard
+for the Owner's safety PIN over the settings wire. `GuardOwnerPin` answers it
+from `SafetyService::verifyOwnerPin` with the same rules as a disarm:
+
+| State | Verdict |
+|---|---|
+| duress codes off, or the user has no codes | `no_pin` (settings goes on) |
+| codes set, no PIN or an empty one | `required` (403 `PIN_REQUIRED`) |
+| the disarm code | `accepted` |
+| a wrong code | `invalid` (403 `PIN_INVALID`), counted toward the lockout |
+| locked out (5 in 15 min) | `locked` (429 `PIN_LOCKED`), any code |
+| the duress code | `invalid`, and the silent duress alert is raised |
+
+The duress code does **not** approve a purge. For a disarm it must succeed,
+because the threat is a forced disarm and anything else would reveal the
+code. A purge is different: it is irreversible and destroys exactly the
+evidence a coerced Owner's household would need, so the duress code raises
+the same silent critical alert to everyone but the actor and answers like a
+mistyped PIN. The attacker sees an ordinary "wrong PIN", the data stays, and
+repeated attempts run into the normal lockout (a duress attempt itself counts
+as a success for the lockout, as it does for a disarm, so it never locks the
+Owner out). The alert has no actor name (the wire carries only the user id);
+the notification still names the alert and excludes the actor.
+`guard-safety-test` pins every row of the table.

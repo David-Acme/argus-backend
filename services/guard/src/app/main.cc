@@ -13,6 +13,8 @@
 #include <feature/guard/guard-service.hxx>
 #include <feature/presence/controllers/presence-controller.hxx>
 #include <feature/presence/infra/identity-presence-directory.hxx>
+#include <feature/module-data/services/guard-module-data.hxx>
+#include <feature/module-data/services/guard-owner-pin.hxx>
 #include <feature/safety/controllers/safety-controller.hxx>
 #include <feature/safety/infra/guard-alert-sink.hxx>
 #include <feature/safety/infra/notification-actor-notifier.hxx>
@@ -93,6 +95,8 @@ struct RpcListenerInput
 {
   SettingsRegistry& registry;
   const PresenceService& presence;
+  ModuleDataHost& moduleData;
+  OwnerPinHost& ownerPin;
 };
 
 RpcListener startRpcListener(const RpcListenerInput& input)
@@ -111,6 +115,8 @@ RpcListener startRpcListener(const RpcListenerInput& input)
         SettingsRpcInput{.service = "guard",
                          .registry = &input.registry,
                          .credentials = std::move(rpc.settingsCredentials)});
+    listener.settings->attachModuleData(input.moduleData);
+    listener.settings->attachOwnerPin(input.ownerPin);
     builder.RegisterService(listener.settings.get());
   }
   if (rpc.presenceCredentials.empty()) {
@@ -301,8 +307,10 @@ int main()
     guardService.refresh(GuardConfig::resolveService());
     presence.refresh(GuardConfig::resolvePresence());
   });
-  const RpcListener rpcListener =
-      startRpcListener({.registry = settings, .presence = presence});
+  GuardModuleData moduleData;
+  GuardOwnerPin ownerPin(safety);
+  const RpcListener rpcListener = startRpcListener(
+      {.registry = settings, .presence = presence, .moduleData = moduleData, .ownerPin = ownerPin});
 
   registerHealth();
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());

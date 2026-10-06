@@ -191,3 +191,7 @@ grpc_credential = "CHANGE_ME_GUARD_VLM"
 [llm]
 grpc_target = "argus-llm:7132"
 grpc_credential = "CHANGE_ME_GUARD_LLM"
+
+[modules]
+target = "argus-settings:7047"
+credential = "CHANGE_ME_GUARD_MODULES"
