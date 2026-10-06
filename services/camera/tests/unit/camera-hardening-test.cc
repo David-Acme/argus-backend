@@ -111,8 +111,8 @@ Json::Value tombstone(const Tombstone& input)
 {
   const auto [id, deletedAt] = input;
   Json::Value row(Json::objectValue);
-  row["id"] = Json::Int64(id);
-  row["deletedAt"] = Json::Int64(deletedAt);
+  row["id"] = static_cast<Json::Int64>(id);
+  row["deletedAt"] = static_cast<Json::Int64>(deletedAt);
   return row;
 }
 }

@@ -102,7 +102,7 @@ drogon::Task<drogon::HttpResponsePtr> GuardController::createGuest(
   const auto body = CreateExpectedGuestDto::fromJson(*req->getJsonObject());
   const auto& caller = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   Json::Value response;
-  response["id"] = Json::Int64(co_await service_.createGuest(
+  response["id"] = static_cast<Json::Int64>(co_await service_.createGuest(
       {.body = body, .callerId = caller.sub, .callerRole = caller.role}));
   co_return ApiResponse::ok(response);
 }

@@ -241,7 +241,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     for (int64_t id = 1; id <= static_cast<int64_t>(
                                    NotificationReadDto::kMaxIdsPerRequest) + 1;
          ++id)
-      oversized["ids"].append(Json::Int64(id));
+      oversized["ids"].append(static_cast<Json::Int64>(id));
     const auto dto = NotificationReadDto::fromJson(oversized);
     (void)dto;
   }

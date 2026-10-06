@@ -59,7 +59,10 @@ TEST_CASE("a container's own cgroup v2 root carries its compose cpus limit")
       {.procSelfCgroup = "0::/\n",
        .mountRoot = "/sys/fs/cgroup",
        .readFile = readerOf({{"/sys/fs/cgroup/cpu.max", "150000 100000\n"}})});
-  REQUIRE(quota.has_value());
+  if (!quota.has_value()) {
+    FAIL("the cgroup tree yielded no quota");
+    return;
+  }
   CHECK(*quota == doctest::Approx(1.5));
 }
 
@@ -71,7 +74,10 @@ TEST_CASE("a nested cgroup v2 path takes the tightest ancestor")
        .readFile = readerOf(
            {{"/sys/fs/cgroup/system.slice/docker-abc.scope/cpu.max", "max 100000"},
             {"/sys/fs/cgroup/system.slice/cpu.max", "300000 100000"}})});
-  REQUIRE(quota.has_value());
+  if (!quota.has_value()) {
+    FAIL("the cgroup tree yielded no quota");
+    return;
+  }
   CHECK(*quota == doctest::Approx(3.0));
 }
 
@@ -94,7 +100,10 @@ TEST_CASE("a cgroup v1 container reads the cfs quota at its mount root")
        .readFile = readerOf(
            {{"/sys/fs/cgroup/cpu,cpuacct/cpu.cfs_quota_us", "200000\n"},
             {"/sys/fs/cgroup/cpu,cpuacct/cpu.cfs_period_us", "100000\n"}})});
-  REQUIRE(quota.has_value());
+  if (!quota.has_value()) {
+    FAIL("the cgroup tree yielded no quota");
+    return;
+  }
   CHECK(*quota == doctest::Approx(2.0));
 }
 

@@ -32,6 +32,7 @@
 #include <fstream>
 #include <future>
 #include <memory>
+#include <optional>
 #include <sqlite3.h>
 #include <stdexcept>
 #include <vector>
@@ -270,6 +271,32 @@ TEST_CASE("control actions are accepted only from the feed that owns them")
   CHECK(sync_fan_out::parseEvent(rooms, ControlScope::All));
 }
 
+namespace
+{
+std::optional<std::string> nextType(FrameLane& lane)
+{
+  const auto job = lane.next();
+  if (!job.has_value())
+    return std::nullopt;
+  return job->type;
+}
+
+std::optional<FrameJobKind> nextKind(FrameLane& lane)
+{
+  const auto job = lane.next();
+  if (!job.has_value())
+    return std::nullopt;
+  return job->kind;
+}
+
+std::optional<UserRole> roleOf(const DirectoryLookup& found)
+{
+  if (!found.user.has_value())
+    return std::nullopt;
+  return found.user->role;
+}
+}
+
 TEST_CASE("a socket lane runs its frames one at a time and rate limits the rest")
 {
   FrameLane lane({.burst = 3.0, .refillPerSecond = 1.0, .maxQueued = 3},
@@ -287,20 +314,20 @@ TEST_CASE("a socket lane runs its frames one at a time and rate limits the rest"
   CHECK(lane.admit(frame("c"), 100.0) == FrameAdmission::Queued);
   CHECK(lane.admit(frame("d"), 100.0) == FrameAdmission::Refused);
 
-  CHECK(lane.next()->type == "a");
-  CHECK(lane.next()->type == "b");
+  CHECK(nextType(lane) == "a");
+  CHECK(nextType(lane) == "b");
   CHECK(lane.admit(frame("e"), 100.5) == FrameAdmission::Refused);
   CHECK(lane.admit(frame("f"), 101.0) == FrameAdmission::Queued);
   CHECK(lane.admitRevalidation() == FrameAdmission::Queued);
   CHECK(lane.admitRevalidation() == FrameAdmission::Refused);
-  CHECK(lane.next()->type == "c");
-  CHECK(lane.next()->type == "f");
-  CHECK(lane.next()->kind == FrameJobKind::Revalidate);
+  CHECK(nextType(lane) == "c");
+  CHECK(nextType(lane) == "f");
+  CHECK(nextKind(lane) == FrameJobKind::Revalidate);
   CHECK_FALSE(lane.next().has_value());
   CHECK_FALSE(lane.draining());
 
   CHECK(lane.admitRevalidation() == FrameAdmission::Start);
-  CHECK(lane.next()->kind == FrameJobKind::Revalidate);
+  CHECK(nextKind(lane) == FrameJobKind::Revalidate);
   CHECK_FALSE(lane.next().has_value());
   CHECK(lane.admit(frame("g"), 1000.0) == FrameAdmission::Start);
   CHECK(lane.userId() == 7);
@@ -371,15 +398,15 @@ TEST_CASE("the directory cache answers within its window and forgets on an ident
   const CachedUserDirectory cache(
       inner, {.ttl = std::chrono::seconds(10), .clock = [&now] { return now; }});
 
-  CHECK(drogon::sync_wait(cache.lookup(7)).user->role == UserRole::Resident);
-  CHECK(drogon::sync_wait(cache.lookup(7)).user->role == UserRole::Resident);
+  CHECK(roleOf(drogon::sync_wait(cache.lookup(7))) == UserRole::Resident);
+  CHECK(roleOf(drogon::sync_wait(cache.lookup(7))) == UserRole::Resident);
   CHECK(inner->calls == 1);
 
   inner->role = UserRole::Guest;
   now += std::chrono::seconds(9);
-  CHECK(drogon::sync_wait(cache.lookup(7)).user->role == UserRole::Resident);
+  CHECK(roleOf(drogon::sync_wait(cache.lookup(7))) == UserRole::Resident);
   cache.forget(7);
-  CHECK(drogon::sync_wait(cache.lookup(7)).user->role == UserRole::Guest);
+  CHECK(roleOf(drogon::sync_wait(cache.lookup(7))) == UserRole::Guest);
   CHECK(inner->calls == 2);
 
   now += std::chrono::seconds(10);
@@ -423,7 +450,7 @@ TEST_CASE("revalidation reaches every socket of one user, once while one is pend
   for (const auto& conn : {firstConn, secondConn}) {
     const auto lane = lanes.find(conn);
     REQUIRE(lane);
-    CHECK(lane->next()->kind == FrameJobKind::Revalidate);
+    CHECK(nextKind(*lane) == FrameJobKind::Revalidate);
     CHECK_FALSE(lane->next().has_value());
   }
   CHECK(lanes.drained());

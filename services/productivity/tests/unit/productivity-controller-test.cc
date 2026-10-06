@@ -671,8 +671,8 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
 
   Json::Value strayEventBody;
   strayEventBody["title"] = "Stray";
-  strayEventBody["startsAt"] = Json::Int64(1735689600000);
-  strayEventBody["projectId"] = Json::Int64(999);
+  strayEventBody["startsAt"] = static_cast<Json::Int64>(1735689600000);
+  strayEventBody["projectId"] = static_cast<Json::Int64>(999);
   auto strayEventReq = drogon::HttpRequest::newHttpJsonRequest(strayEventBody);
   setActor({.req = strayEventReq, .sub = 42, .role = UserRole::Owner});
   const std::size_t emitsBeforeStray = sink.emits.size();

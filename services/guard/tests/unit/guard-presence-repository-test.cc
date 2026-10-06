@@ -188,8 +188,10 @@ TEST_CASE("a transition reads and writes the row in one transaction")
          return PresenceDecision{.row = row, .write = current.has_value(), .changed = false};
        }}));
   CHECK(decision.write);
-  CHECK(drogon::sync_wait(repository.find({.userId = 61, .environmentId = home}))->lastSignalAt ==
-        200);
+  const auto touched =
+      drogon::sync_wait(repository.find({.userId = 61, .environmentId = home}));
+  REQUIRE(touched.has_value());
+  CHECK(touched.value_or(PresenceRow{}).lastSignalAt == 200);
   const PresenceDecision skipped = drogon::sync_wait(repository.transition(
       {.key = {.userId = 62, .environmentId = home},
        .decide = [](const std::optional<PresenceRow>& current) {

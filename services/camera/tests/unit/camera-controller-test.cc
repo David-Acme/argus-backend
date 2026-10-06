@@ -302,7 +302,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
     CHECK(stored->tlsFingerprint.empty());
   }
   Json::Value tooLong;
-  tooLong["retentionDays"] = Json::Int64(90);
+  tooLong["retentionDays"] = static_cast<Json::Int64>(90);
   const auto refusedRetention = refusalOf(
       cameraController.update(drogon::HttpRequest::newHttpJsonRequest(tooLong), cameraId));
   if (!refusedRetention) {

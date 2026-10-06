@@ -805,7 +805,10 @@ TEST_CASE("a QR challenge needs a poll proof, shows where it came from and refus
 
   const auto tunnelled =
       refusalOf(closed.createDeviceLogin(startFrom(SessionOrigin::Tunnel, "x")));
-  REQUIRE(tunnelled.has_value());
+  if (!tunnelled.has_value()) {
+    FAIL("a tunnelled QR challenge on a closed instance was not refused");
+    return;
+  }
   CHECK(tunnelled->status == 403);
   CHECK(tunnelled->code == "REMOTE_NOT_ALLOWED");
 
@@ -825,12 +828,18 @@ TEST_CASE("a QR challenge needs a poll proof, shows where it came from and refus
   CHECK_FALSE(shown.isMember("deviceHash"));
 
   const auto unknown = refusalOf(open.deviceLoginDetails(std::string(64, 'e')));
-  REQUIRE(unknown.has_value());
+  if (!unknown.has_value()) {
+    FAIL("an unknown challenge was not refused");
+    return;
+  }
   CHECK(unknown->status == 404);
 
   REQUIRE_NOTHROW(drogon::sync_wait(open.approveDeviceLogin(remote.challengeId, 1)));
   const auto afterApproval = refusalOf(open.deviceLoginDetails(remote.challengeId));
-  REQUIRE(afterApproval.has_value());
+  if (!afterApproval.has_value()) {
+    FAIL("an approved challenge still showed its details");
+    return;
+  }
   CHECK(afterApproval->status == 404);
 
   const auto stored = DbService::client()->execSqlSync(
@@ -913,7 +922,10 @@ TEST_CASE("in ip mode a refresh rotates only from the network the session was bo
   REQUIRE(session.status == DeviceLoginStatus::Approved);
 
   const auto elsewhere = refusalOf(authService.refreshToken(input(session.refreshToken, "198.51.100.4")));
-  REQUIRE(elsewhere.has_value());
+  if (!elsewhere.has_value()) {
+    FAIL("a refresh from another network was not refused");
+    return;
+  }
   CHECK(elsewhere->status == 401);
 
   const auto rotated = drogon::sync_wait(authService.refreshToken(input(session.refreshToken, "192.168.1.77")));

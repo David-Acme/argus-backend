@@ -28,6 +28,14 @@ std::optional<Frame> firstFrameOf(const std::string& bytes, FrameType type)
   return std::nullopt;
 }
 
+std::string payloadOf(const std::string& bytes, FrameType type)
+{
+  const auto frame = firstFrameOf(bytes, type);
+  if (!frame.has_value())
+    return {};
+  return frame->payload;
+}
+
 struct RelayRig
 {
   explicit RelayRig(const TunnelMux::Limits& limits)
@@ -78,7 +86,7 @@ TEST_CASE("a home handshake in progress is not displaced by a stranger")
     return firstFrameOf(home->bytes(), FrameType::Challenge).has_value();
   }, 5000));
   const std::string challenge =
-      firstFrameOf(home->bytes(), FrameType::Challenge)->payload;
+      payloadOf(home->bytes(), FrameType::Challenge);
 
   auto stranger = rig.dialHome();
   REQUIRE(waitFor([&] {
@@ -96,7 +104,7 @@ TEST_CASE("a home handshake in progress is not displaced by a stranger")
   REQUIRE(waitFor([&] {
     return firstFrameOf(home->bytes(), FrameType::AuthOk).has_value();
   }, 5000));
-  CHECK(firstFrameOf(home->bytes(), FrameType::AuthOk)->payload ==
+  CHECK(payloadOf(home->bytes(), FrameType::AuthOk) ==
         relayAuthMac(kSecret, challenge));
   CHECK(waitFor([&] { return rig.relay->hasHome(); }, 5000));
 
@@ -129,7 +137,7 @@ TEST_CASE("a wrong AUTH on one handshake leaves the others untouched")
   CHECK(firstFrameOf(liar->bytes(), FrameType::AuthFail).has_value());
 
   const std::string challenge =
-      firstFrameOf(honest->bytes(), FrameType::Challenge)->payload;
+      payloadOf(honest->bytes(), FrameType::Challenge);
   const std::string mac = authMac(kSecret, challenge);
   postSend({.loop = rig.loop,
             .peer = honest->peer,
