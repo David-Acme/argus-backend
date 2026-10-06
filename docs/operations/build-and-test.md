@@ -46,6 +46,11 @@ carry.
   shared build infrastructure changes.
 - `./scripts/build-all-test.sh` mocks Conan/CMake/CTest and locks the
   orchestrator flags that CI depends on.
+- Evaluation tests (ctest label `eval`: `fast-tier-eval`, `llm-tier-eval`,
+  `llm-tier-smoke`, `stt-wer-eval`) measure what Argus understands against
+  versioned gates and exit 77, reported as skipped, when the model or the
+  clips they need are absent; the LLM tier also skips in a debug build, which
+  decodes twenty times slower (`docs/operations/voice-quality-eval.md`).
 - The image build is the integration gate: build every service image with
   `COMPOSE_PARALLEL_LIMIT=1 docker compose -f argus-deploy/docker-compose.yml
   --profile tunnel --profile identity-init build`.

@@ -546,21 +546,25 @@ shared file-static behind a mutex.
   `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in docs/history/project-log.md.
 - **fastText as a submodule** (`third_party/fastText`, `1142dc4`) — inference
   only, built as a static lib by `services/llm`'s project file. It backs the fast
-  tier of the intent router: rules (`argus::lib::phrase`) decide explicit triggers,
-  fastText classifies the rest into six classes (`memory_save`,
-  `memory_recall`, `reminder_set`, `memory_forget`, `camera`, `none`), and the
-  LLM's own tool calling keeps every turn the router is not confident about.
-  The classifier picks the tool; the model only writes its arguments and the
-  prose. Operating point 0.90 / 0.10, precision-gated — a gated false `none`
-  costs one LLM round trip, a false tool call writes a fact nobody stated.
-  The model is a published artifact carried in-repo
-  (`models/intent/intent.bin`, 12.6 MB) with a configure-time SHA256 pin in
-  `services/llm/src/feature/intent/models/`; training lives OUTSIDE this repo, in the
-  sibling `intent-training/` project, and only the artifact, its card and the
-  frozen eval fixtures cross over. **Degradation is a contract**: no model on
-  disk, or a sub-threshold score, and the router abstains so tool calling runs
-  byte for byte as it did before. The labelled tool-calling evaluation set
-  stays at `services/llm/tests/fixtures/tools/`.
+  tier of the intent router: rules (`argus::lib::phrase`) and fastText each
+  propose, and the router arbitrates (an explicit trigger decides alone, a
+  confident model outranks a rule, a statement or recall marker stands only when
+  the model agrees); fastText classifies into six classes (`memory_save`,
+  `memory_recall`, `reminder_set`, `memory_forget`, `camera`, `none`) where
+  `none` means the LLM decides, and the LLM's own tool calling keeps every turn
+  the router is not confident about. The classifier picks the tool; the model
+  only writes its arguments and the prose. Operating point 0.90 / 0.10,
+  precision-gated — a gated false `none` costs one LLM round trip, a false tool
+  call writes a fact nobody stated. The model is a published artifact carried
+  in-repo (`models/intent/intent.bin`, 12.9 MB) with a configure-time SHA256 pin
+  in `services/llm/src/feature/intent/models/`; training lives OUTSIDE this
+  repo, in the sibling `intent-training/` project, and only the artifact, its
+  card and the frozen eval fixtures cross over. **Degradation is a contract**: no
+  model on disk, or a sub-threshold score, and only an explicit trigger can still
+  route, so tool calling runs as it did before the router. The judge corpus is
+  `services/llm/tests/fixtures/eval/cases.jsonl`, measured by
+  `services/llm/tests/eval` against versioned gates
+  (`docs/operations/voice-quality-eval.md`).
 - **NO spdlog** — use Drogon's built-in logging (`LOG_INFO`, `LOG_WARN`, `LOG_FATAL`)
 - **NO libsodium** — auth is face-based
 - **NO ORM** — raw SQL via `DbService::client()->execSqlCoro()`
@@ -1150,7 +1154,9 @@ for two different reasons, and says which when it does.
 | `services/{camera,guard,productivity,settings}/src/feature/mcp/` | each owner's tools served over MCP (`app.show_camera`, `app.set_guard_mode`, `calendar.*`/`project.*`/`task.*`, `modules.*`), gated by `tool_gate::capabilities()` |
 | `services/llm/src/feature/encounter-closed/` | The camera guard feed's durable JetStream consumer: receipts in `encounter_closed_inbox`, captured once into the memory graph |
 | `services/llm/src/feature/memory/services/{memory,embedding,extract}/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`EntityResolver`/`ToolParser`/`MemoryChat` — semantic-graph long-term memory (async worker, episode recall, L3 profile) — and the artifacts it drives: `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer`, and the NuExtract/lexicon/tiered extractors |
-| `services/llm/src/feature/intent/` | `argus::intent` — the fast tier of the router: the fastText classifier + the intent router, with the model pin and NOTICE beside them |
+| `services/llm/src/feature/intent/` | `argus::intent` — the fast tier of the router: the fastText classifier + the intent router (rules and model propose, the router arbitrates), with the model pin and NOTICE beside them |
+| `services/llm/tests/eval/` | The voice-quality harness: `fast-tier-eval` (the production router over the judge corpus), `llm-tier-eval` (the LLM with stub tools, Release builds), the scoring core and `gates.json`; a missing model exits 77 (skipped) and a worse gated number fails (`docs/operations/voice-quality-eval.md`) |
+| `services/stt/tests/eval/` | `stt-wer-eval`: the deployed engine's word error rate on Common Voice es and Peruvian clips fetched by `scripts/stt-eval-data.py` |
 | `services/llm/src/shared/vocabulary/tool-contracts.hxx` | `tools::ToolContext`/`ToolDescriptor`/`ToolCall` — the vocabulary the tool runtime and the memory feature both read, in the service's `src/shared/` because 2+ features read it (root rule 23) |
 | `services/identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
 | `services/identity/src/feature/voiceprint/` | Speaker identification (3D-Speaker ERes2Net via sherpa-onnx), learned passively: the voice relay sends each call turn with its account, device and call key (`ObserveTurn`/`CloseCall`), and a voice is linked only after consistent single-speaker calls on separate days from the holder's own device, then refreshed gradually; only embeddings are stored (`voice_profile`, `voice_sample`, `voice_vec`); the owner can see and forget them (`/voiceprint/users`); a match is a soft signal, never authentication |

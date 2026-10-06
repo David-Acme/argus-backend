@@ -1148,3 +1148,25 @@ the command when missing, partial byte counts, installed, `ready` following
 the engine flag, install answering host_only with an untouched models dir,
 remove refused with the files kept, a foreign component refused, the default
 root.
+
+## Voice quality evaluation (2026-10-06)
+
+`tests/eval/` measures what the assistant understands, in three runners that share a corpus
+(`tests/fixtures/eval/cases.jsonl`, authored in `intent-training` and published here) and a gate
+file (`tests/eval/gates.json`, one section per tier). `fast-tier-eval` runs in every build: the
+production router over the distinct utterances, gated on precision and recall per memory tool and
+per variant, on the false-action rate of everything the fast tier must leave to the LLM (agenda,
+calendar, task, project, module and app utterances in four variants, each also asked with its
+module off) and on the share of turns that fall through. `llm-tier-eval` runs the real tool loop
+with stub tools in Release builds and scores selection, arguments, false actions and writes, the
+module-off answer, the confirmation before a destructive tool and the offer that is accepted; its
+false-completion gate (a reply that claims an action no successful tool performed) is zero and
+red until the assistant stops doing it. A runner with nothing to run exits 77, which ctest reports
+as skipped. The scoring core is tested without a model (`eval-score-test`) and the corpus is
+checked for structure (`eval-corpus-test`). Why the numbers are what they are, and how they were
+measured: `docs/operations/voice-quality-eval.md`.
+
+The tool specs of the other services' MCP providers are mirrored by hand in `tests/eval/eval-tools.cc`
+because a service cannot link another service's source; when a provider's name, description or
+schema changes, copy it there or the eval measures a tool the model no longer sees. A snapshot of
+every provider's `tools/list` that both sides test against would remove that duplication.
