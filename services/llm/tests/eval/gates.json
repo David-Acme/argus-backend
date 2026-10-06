@@ -622,6 +622,10 @@
       "moduleFamilies.coverage": {
         "min": 0.456
       }
+    },
+    "gateObeyingFastText": {
+      "selection": 0.154,
+      "sealed": 0.101
     }
   },
   "performance": {

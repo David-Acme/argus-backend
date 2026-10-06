@@ -441,6 +441,17 @@ def print_families(title, summary):
               f"askClear {e['askRateClear']:.3f} wrong ACT {e['wrongActRate']:.3%} ({e['wrongAct']})")
 
 
+def print_bar(gates, section, summary):
+    section_gates = gates.get("decider", {})
+    bar = section_gates.get("metrics", {}).get("moduleFamilies.coverage", {}).get("min")
+    beside = section_gates.get("gateObeyingFastText", {}).get(section)
+    if bar is None or beside is None:
+        return
+    coverage = summary["moduleFamilies"]["coverage"]
+    print(f"  coverage {coverage:.3f} against the bar {bar} (fastText where it broke the wrong-ACT gate) and "
+          f"{beside} (gate-obeying fastText on the {section} set)")
+
+
 def limits_of(gates):
     section = gates.get("decider", {})
     return {"wrongAct": section.get("wrongActMax", gates.get("sealed", {}).get("falseRouteMax", DEFAULT_WRONG_ACT)),
@@ -701,6 +712,7 @@ def main():
             report["selectionPassed"] = True
             report["selection"] = summarise(selection, chosen_decisions, policy)
             print_families("selection", report["selection"])
+            print_bar(gates, "selection", report["selection"])
         for row in report.get("priceOfCeiling", []):
             if policy is None and row["policy"] is not None and row["ceiling"] > limits["wrongAct"]:
                 print_families(f"selection at the {row['ceiling']:.2%} ceiling (NOT the gate: information)",
@@ -747,6 +759,7 @@ def main():
                 final = summarise(sealed, decisions, policy)
                 report[section] = final
                 print_families(section, final)
+                print_bar(gates, section, final)
                 failures += check_gates(gates, final, limits, section)
     finally:
         decider.close()

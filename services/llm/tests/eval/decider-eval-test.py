@@ -289,6 +289,16 @@ class RunTest(unittest.TestCase):
         self.assertAlmostEqual(data["sealed"]["moduleFamilies"]["coverage"], 1.0)
         self.assertIn("FINAL MEASUREMENT", result.stdout)
 
+    def test_the_gate_obeying_baseline_is_printed_beside_the_bar(self):
+        self.gates.write_text(json.dumps({
+            "sealed": {"file": "sealed.jsonl", "sha256": hashlib.sha256(self.sealed.read_bytes()).hexdigest()},
+            "decider": {"wrongActMax": 0.0, "metrics": {"moduleFamilies.coverage": {"min": 0.456}},
+                        "gateObeyingFastText": {"selection": 0.154, "sealed": 0.101}}}))
+        result, _ = self.run_harness("--final", "--sealed", str(self.sealed))
+        self.assertIn("against the bar 0.456 (fastText where it broke the wrong-ACT gate) and 0.154 "
+                      "(gate-obeying fastText on the selection set)", result.stdout)
+        self.assertIn("0.101 (gate-obeying fastText on the sealed set)", result.stdout)
+
     def test_a_changed_sealed_set_is_refused(self):
         self.write_gates("0" * 64, 0.0)
         result, _ = self.run_harness("--final", "--sealed", str(self.sealed))

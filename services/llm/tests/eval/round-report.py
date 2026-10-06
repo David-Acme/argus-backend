@@ -13,6 +13,10 @@ PERF_ROWS = (("latencyP50Ms", "latency p50 (ms)"), ("latencyP95Ms", "latency p95
              ("artifactMb", "artifact (MB)"), ("loadSeconds", "load (s)"))
 
 
+BAR = "0.456"
+BESIDE = "gate-obeying fastText 0.154 on the selection set, 0.101 on the sealed set"
+
+
 def load(path):
     path = pathlib.Path(path)
     return json.loads(path.read_text()) if path.exists() else None
@@ -56,7 +60,7 @@ def table(title, rows):
     return out + [""]
 
 
-def decider_section(name, report, ceiling, baseline):
+def decider_section(name, report, ceiling, baseline, beside):
     summary, used, at_gate = operating_point(report, ceiling)
     out = [f"## {name}", ""]
     if summary is None:
@@ -65,7 +69,7 @@ def decider_section(name, report, ceiling, baseline):
     label = "the 0.1% gate" if at_gate else f"the {used:.2%} ceiling (NOT the gate: information)"
     pooled = summary["moduleFamilies"]
     out += [f"Operating point chosen on the selection set at {label}: {policy_line(summary)}.", "",
-            f"Selection cases {summary['cases']}; coverage {pooled['coverage']:.3f} (baseline {baseline}), ACT coverage "
+            f"Selection cases {summary['cases']}; coverage {pooled['coverage']:.3f} (bar {baseline}; {beside}), ACT coverage "
             f"{pooled['actCoverage']:.3f}, precision {pooled['precision']:.3f}, ASK on clear commands "
             f"{pooled['askRateClear']:.3f}, wrong ACT {pooled['wrongAct']} of {pooled['others']} "
             f"({percent(pooled['wrongActRate'])}, upper 95% {percent(pooled['wrongActUpper'])}), near-miss stratum "
@@ -135,7 +139,7 @@ def performance_section(name, perf):
     return out + [""]
 
 
-def comparison(rounds, ceiling, baseline):
+def comparison(rounds, ceiling, baseline, beside):
     out = ["## Comparison", "", "| round | coverage | ACT | precision | ASK on clear | wrong ACT rate | near-miss | wrong tool | ceiling |",
            "|---|---|---|---|---|---|---|---|---|"]
     for name, report in rounds:
@@ -147,14 +151,16 @@ def comparison(rounds, ceiling, baseline):
         out.append(f"| {name} | {p['coverage']:.3f} | {p['actCoverage']:.3f} | {p['precision']:.3f} | {p['askRateClear']:.3f} | "
                    f"{percent(p['wrongActRate'])} | {percent(p['authoredWrongActRate'])} | {percent(p['wrongToolRate'])} | "
                    f"{percent(used)}{'' if at_gate else ' (information)'} |")
-    return out + ["", f"The coverage baseline to beat is {baseline} (families-v1.1 fastText).", ""]
+    return out + ["", f"The coverage bar is {baseline}, fastText families-v1.1 at the sealed point where it broke the wrong-ACT gate; "
+                  f"beside it, {beside}. A pass is under the gate and above the bar.", ""]
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--round", action="append", required=True, metavar="NAME=DIR")
     parser.add_argument("--ceiling", type=float)
-    parser.add_argument("--baseline", default="0.456")
+    parser.add_argument("--baseline", default=BAR)
+    parser.add_argument("--beside", default=BESIDE)
     args = parser.parse_args()
     rounds, sections = [], []
     for spec in args.round:
@@ -164,7 +170,7 @@ def main():
             print(f"round-report: no calibrated.json or uncalibrated.json in {directory}", file=sys.stderr)
             return 1
         rounds.append((name, report))
-        body, _ = decider_section(name, report, args.ceiling, args.baseline)
+        body, _ = decider_section(name, report, args.ceiling, args.baseline, args.beside)
         sections += body
         sections += price_section(name, report)
         sections += calibration_section(name, load(pathlib.Path(directory) / "calibration.json"))
@@ -172,7 +178,7 @@ def main():
         sections += performance_section(name, load(pathlib.Path(directory) / "perf.json"))
     lines = ["# Decider round report", ""]
     if len(rounds) > 1:
-        lines += comparison(rounds, args.ceiling, args.baseline)
+        lines += comparison(rounds, args.ceiling, args.baseline, args.beside)
     print("\n".join(lines + sections))
     return 0
 
