@@ -64,6 +64,12 @@ private:
   std::thread runner_;
 };
 
+std::unique_ptr<AppRunner>& runnerSlot()
+{
+  static std::unique_ptr<AppRunner> slot;
+  return slot;
+}
+
 bool waitForBoot()
 {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
@@ -77,16 +83,15 @@ bool waitForBoot()
 
 void boot()
 {
-  static const auto runner = [] {
+  if (runnerSlot() == nullptr) {
     for (const char* suffix : {"", "-wal", "-shm"})
       std::remove((std::string(kDb) + suffix).c_str());
     drogon::app().setLogLevel(trantor::Logger::kWarn);
     drogon::app().addDbClient(drogon::orm::Sqlite3Config{
         .connectionNumber = 1, .filename = kDb, .name = "default", .timeout = -1});
     VecDb::instance().setDbFile(kDb);
-    return std::make_unique<AppRunner>();
-  }();
-  REQUIRE(runner != nullptr);
+    runnerSlot() = std::make_unique<AppRunner>();
+  }
   REQUIRE(waitForBoot());
   static const bool schema = [] {
     DbService::installExtensions();
@@ -519,4 +524,10 @@ TEST_CASE("an invitation for a role whose module is off is refused 409 ROLE_INAC
   CHECK(guard.invitation.role == UserRole::Guard);
   CHECK(scalar("SELECT COUNT(*) FROM user_invitation WHERE role = 'guard'") == 1);
   moduleGate().reset();
+}
+
+TEST_CASE("the app stops while every singleton it uses is still alive")
+{
+  runnerSlot().reset();
+  CHECK(runnerSlot() == nullptr);
 }
