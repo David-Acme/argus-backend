@@ -48,3 +48,8 @@ CREATE TABLE IF NOT EXISTS module_audit (
 );
 
 CREATE INDEX IF NOT EXISTS idx_module_audit_module ON module_audit (module_id, id);
+
+CREATE TABLE IF NOT EXISTS module_journal (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  published_through INTEGER NOT NULL DEFAULT 0
+);

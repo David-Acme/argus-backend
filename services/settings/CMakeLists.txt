@@ -109,7 +109,8 @@ endforeach()
 target_compile_definitions(settings-profile-test PRIVATE
     ARGUS_SETTINGS_PROFILES_FILE="${CMAKE_CURRENT_SOURCE_DIR}/profiles.json")
 
-foreach(TEST_NAME IN ITEMS settings-modules-test settings-module-engine-test settings-modules-http-test)
+foreach(TEST_NAME IN ITEMS settings-modules-test settings-module-engine-test settings-modules-http-test
+                         settings-module-journal-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
     target_link_libraries(${TEST_NAME} PRIVATE

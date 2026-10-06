@@ -462,6 +462,29 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
   CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "3");
 
   CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kSettingsUserAction,
+             .msgId = "settings-action:11",
+             .body = R"({"user_id":42,"record_id":0,"table_name":"module","module":"surveillance","action":"update","old_data":{},"new_data":{"event":"disabled","lifecycle":"disabled"},"ip_address":""})"})) ==
+        DurableDisposition::Ack);
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "4");
+  CHECK(scalar("SELECT table_name FROM user_action_log WHERE msg_id = 'settings-action:11'") == "module");
+  CHECK(scalar("SELECT module FROM user_action_log WHERE msg_id = 'settings-action:11'") == "surveillance");
+  CHECK(scalar("SELECT user_id FROM user_action_log WHERE msg_id = 'settings-action:11'") == "42");
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kSettingsUserAction,
+             .msgId = "settings-action:11",
+             .body = R"({"user_id":42,"record_id":0,"table_name":"module","module":"surveillance","action":"update","old_data":{},"new_data":{"event":"disabled"},"ip_address":""})"})) ==
+        DurableDisposition::Ack);
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "4");
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kSettingsUserAction,
+             .msgId = "settings-action:12",
+             .body = R"({"user_id":42,"record_id":0,"table_name":"not_a_table","action":"update"})"})) ==
+        DurableDisposition::Term);
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "4");
+  DbService::client()->execSqlSync("DELETE FROM user_action_log WHERE msg_id = 'settings-action:11'");
+
+  CHECK(drogon::sync_wait(consumer.handle(
             {.subject = nats_subject::kNotificationChange,
              .msgId = "notification-change:malformed",
              .body = "{\"users\":[]}"})) == DurableDisposition::Term);

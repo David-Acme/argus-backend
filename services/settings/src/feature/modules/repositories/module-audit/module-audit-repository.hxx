@@ -14,6 +14,8 @@ public:
 
   [[nodiscard]] ModuleAuditSchema create(const ModuleAuditCreateInput& input) const;
   [[nodiscard]] std::int64_t enabledVersion() const;
+  [[nodiscard]] std::int64_t lastId() const;
+  [[nodiscard]] std::vector<ModuleAuditSchema> findAfter(const ModuleAuditAfterInput& input) const;
   [[nodiscard]] std::vector<ModuleAuditSchema> findByModule(const std::string& moduleId) const;
 
 private:

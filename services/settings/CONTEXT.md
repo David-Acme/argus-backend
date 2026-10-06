@@ -584,6 +584,34 @@ component owners the engine calls, and the settings gateway never lists them
 listener (identity 7040, productivity 7037, sync 7041) behind its own
 `settings` caller credential, paired by `ensure_settings_owners`. sync is last
 on purpose: it deletes the audit history of the module's tables after the
+### The action journal: who did what to a module
+
+`module_audit` already records every lifecycle action with the user who asked
+for it; the Owner's activity history (`GET /sync/activity`,
+`services/sync/CONTEXT.md`) reads it from `user_action_log`, so each row is
+also published as a `UserActionEvent` on `argus.settings.v1.user-action`
+(stream `ARGUS_SETTINGS_ACTION`, 7 days, 120 s duplicate window). `ModuleJournal`
+(`services/module-journal.*`, its own thread and its own SQLite connection,
+because the engine's synchronous `BEGIN IMMEDIATE` transactions share one
+connection and a statement from another thread would run inside them) relays
+`module_audit` rows past the cursor kept in `module_journal`
+(`published_through`, one row), in id order, one `Nats-Msg-Id`
+`settings-action:<audit id>` each. The cursor advances only after the broker
+accepted the entry, so a down broker holds the journal and the next pass
+resumes at the same entry; a replay is absorbed by the message id and by
+argus-sync's unique `user_action_log.msg_id`. The first journal of an existing
+database starts at the last audit row (history is not invented into the
+activity feed); on a fresh database it starts at zero, so the adoption rows
+are journaled too.
+
+An event is `table_name: "module"`, `record_id: 0`, `module: <module id>`,
+`user_id: <who asked, 0 for the engine itself>`, an action (`adopted` and
+`install_requested` create; `uninstall_requested`, `removed` and `purged`
+delete; everything else updates) and `new_data: { event: <audit action>,
+lifecycle?: <lifecycle after, for enabled, disabled, rolled_back and purged>,
+detail?: <audit detail>, at: <unix seconds> }`. Sync stamps `created_at` when
+it writes the row, as it does for identity's and auth's actions.
+
 owners deleted the rows. What each owner deletes, keeps and reports is in its
 CONTEXT.md ("summary and purge"). An owner whose data host throws answers
 `UNAVAILABLE` (the contract catches it), which the engine treats as

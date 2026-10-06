@@ -8,15 +8,18 @@ argus_module(NAME settings-modules
         dtos/uninstall-module-dto.cc
         infra/component-owners.cc
         infra/host-resources.cc
+        infra/module-action-sink.cc
         infra/module-catalog-file.cc
         infra/module-event-sink.cc
         repositories/module-audit/module-audit-repository.cc
         repositories/module-job/module-job-repository.cc
+        repositories/module-journal/module-journal-repository.cc
         repositories/module-purge/module-purge-repository.cc
         repositories/module-state/module-state-repository.cc
         services/hardware-check.cc
         services/module-engine.cc
         services/module-event-throttle.cc
+        services/module-journal.cc
         services/module-resolver.cc
     INCLUDES
         ../..
@@ -25,6 +28,7 @@ argus_module(NAME settings-modules
         argus::contracts::auth
         argus::contracts::settings
         argus::contracts::settings-wire
+        argus::contracts::sync
         argus::settings-config
         argus::lib::auth
         argus::lib::config

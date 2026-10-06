@@ -24,9 +24,10 @@ std::int64_t ModuleAuditRepository::enabledVersion() const
   return rows.empty() ? 0 : rows.front()["version"].as<std::int64_t>();
 }
 
-std::vector<ModuleAuditSchema> ModuleAuditRepository::findByModule(const std::string& moduleId) const
+namespace
 {
-  const auto rows = client_->execSqlSync(SELECT_BY_MODULE, moduleId);
+std::vector<ModuleAuditSchema> entriesOf(const drogon::orm::Result& rows)
+{
   std::vector<ModuleAuditSchema> entries;
   entries.reserve(rows.size());
   for (const auto& row : rows)
@@ -38,4 +39,21 @@ std::vector<ModuleAuditSchema> ModuleAuditRepository::findByModule(const std::st
                        .detail = row["detail"].as<std::string>(),
                        .createdAt = row["created_at"].as<std::int64_t>()});
   return entries;
+}
+}
+
+std::int64_t ModuleAuditRepository::lastId() const
+{
+  const auto rows = client_->execSqlSync(SELECT_LAST_ID);
+  return rows.empty() ? 0 : rows.front()["last"].as<std::int64_t>();
+}
+
+std::vector<ModuleAuditSchema> ModuleAuditRepository::findAfter(const ModuleAuditAfterInput& input) const
+{
+  return entriesOf(client_->execSqlSync(SELECT_AFTER, input.afterId, static_cast<std::int64_t>(input.limit)));
+}
+
+std::vector<ModuleAuditSchema> ModuleAuditRepository::findByModule(const std::string& moduleId) const
+{
+  return entriesOf(client_->execSqlSync(SELECT_BY_MODULE, moduleId));
 }

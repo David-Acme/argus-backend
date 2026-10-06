@@ -5,9 +5,11 @@
 #include <errors/response-exception.hxx>
 #include <feature/modules/infra/module-catalog-file.hxx>
 #include <feature/modules/services/module-engine.hxx>
+#include <feature/modules/services/module-journal.hxx>
 #include <json/reader.h>
 #include <sqlite/db-service.hxx>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -149,6 +151,18 @@ public:
     const std::scoped_lock lock(mutex);
     calls.push_back("pin:" + owner + ":" + check.pin);
     return pin;
+  }
+};
+
+class ActionSink final : public ModuleActionSink
+{
+public:
+  std::vector<ModuleActionRecord> records;
+
+  bool publish(const ModuleActionRecord& record) override
+  {
+    records.push_back(record);
+    return true;
   }
 };
 
@@ -846,4 +860,32 @@ TEST_CASE("the enabled set answers enabled only for an active module and carries
   CHECK_FALSE(lifecycleOf("surveillance").enabled);
   CHECK(lifecycleOf("surveillance").lifecycle == "uninstalled_data_kept");
   CHECK(consistent());
+}
+
+TEST_CASE("the engine's module actions reach the activity journal with who did them")
+{
+  Harness harness;
+  ActionSink actions;
+  ModuleJournal journal({.db = drogon::orm::DbClient::newSqlite3Client("filename=" + harness.path.string(), 1),
+                         .sink = &actions,
+                         .pollInterval = std::chrono::milliseconds(50)});
+  harness.step();
+  static_cast<void>(harness.engine->disable({.moduleId = "productivity", .userId = 5}));
+  harness.step();
+  CHECK(journal.relay() > 0);
+
+  std::vector<ModuleActionRecord> disabled;
+  for (const auto& record : actions.records)
+    if (record.event.module == "productivity" && record.event.newData["event"].asString() == "disabled")
+      disabled.push_back(record);
+  REQUIRE(disabled.size() == 1);
+  CHECK(disabled.front().event.userId == 5);
+  CHECK(disabled.front().event.subject == "module");
+  CHECK(disabled.front().event.newData["lifecycle"].asString() == "disabled");
+  CHECK(disabled.front().event.action == UserAction::Update);
+
+  const auto adopted = std::ranges::count_if(actions.records, [](const ModuleActionRecord& record) {
+    return record.event.newData["event"].asString() == "adopted";
+  });
+  CHECK(adopted > 0);
 }

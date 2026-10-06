@@ -10,8 +10,9 @@ this service. The MUST-FOLLOW rules below restate the ones that apply.
    only reads catalogs and forwards changes over `argus.settings.v1` through
    `argus::clients::settings`. Its one database, `settings.db`
    (`database/schema.sql`), holds the module manager's state only
-   (`module_state`, `module_job`, `module_purge`, `module_audit`; CONTEXT.md,
-   "Modules"), and it reaches another service's models or data only through
+   (`module_state`, `module_job`, `module_purge`, `module_audit` and the
+   `module_journal` cursor of the action journal; CONTEXT.md, "Modules"), and
+   it reaches another service's models or data only through
    that service's settings wire. `modules.json` is the module catalog,
    validated at boot (an invalid one turns every `/modules` route into 503).
    The other file it reads is `profiles.json` (`settings.profiles_path`), at boot:
@@ -61,8 +62,9 @@ services/settings/
                           controllers/, dtos/, infra/ (catalog file, owners
                           over the settings wire, NATS sink, disk/host probe),
                           repositories/ (module-state, module-job,
-                          module-purge, module-audit), schemas/, services/
-                          (engine, resolver, hardware check, throttle)
+                          module-purge, module-audit, module-journal), schemas/, services/
+                          (engine, resolver, hardware check, throttle,
+                          action journal)
   database/schema.sql   settings.db (module tables only)
   modules.json          the module catalog
   tests/unit/           gateway and profiles (in-process owners), DTOs, config,
