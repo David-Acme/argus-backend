@@ -18,11 +18,22 @@ Json::Value stateJson(const PrivacyState& state)
   json["effective"] = state.effective.toJson();
   return json;
 }
+
+Json::Value applicableJson(bool surveillanceActive)
+{
+  Json::Value json(Json::objectValue);
+  json["presence"] = surveillanceActive;
+  json["faceCameras"] = surveillanceActive;
+  json["voiceLearning"] = true;
+  json["cameraAudio"] = surveillanceActive;
+  return json;
+}
 }
 
 Json::Value ResponsePrivacyDto::toJson() const
 {
   Json::Value json = stateJson(view.state);
+  json["applicable"] = applicableJson(surveillanceActive);
   json["currentNoticeVersion"] = static_cast<Json::Int64>(kPrivacyNoticeVersion);
   json["household"] = view.household.toJson();
   return json;
@@ -31,6 +42,7 @@ Json::Value ResponsePrivacyDto::toJson() const
 Json::Value ResponsePrivacyDirectoryDto::toJson() const
 {
   Json::Value json(Json::objectValue);
+  json["applicable"] = applicableJson(surveillanceActive);
   json["currentNoticeVersion"] = static_cast<Json::Int64>(kPrivacyNoticeVersion);
   json["household"] = directory.household.toJson();
   json["household"]["visitorRecognition"] = directory.visitorRecognition;

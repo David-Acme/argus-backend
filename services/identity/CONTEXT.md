@@ -820,6 +820,19 @@ and `PATCH /privacy/household` (Owner, `kPrivacyAccess` in role-access). gRPC
 `ListUsers` (every non-deleted user ordered by id, for guard's recipient
 lists) were added beside `GetUser`.
 
+**Which signals apply (2026-10, the effects wave).** Every privacy answer
+(`GET`/`PUT /privacy/me`, `GET /privacy/users`, `PATCH /privacy/household`)
+carries one top-level `applicable: {presence, faceCameras, voiceLearning,
+cameraAudio}`. Presence, face-at-cameras and camera audio belong to the
+surveillance module (guard's presence, camera sightings, camera audio), so they
+are `false` while the module gate says surveillance is not active;
+`voiceLearning` is core (the voice assistant) and always `true`. Nothing else
+changes: `choices`, `effective` and the household switches keep the stored
+values, so the person finds their answers as they left them when the module
+returns, and the app simply hides what does not apply. The flag is computed by
+the controller from `moduleGate()` and passed to the DTOs
+(`surveillanceActive`), which render it; it is module-wide, not per user.
+
 `identity-privacy-test` pins the route access, the DTO refusals, the undecided
 default, the outdated notice, the published and journaled decision, the
 voice erase on withdrawal, the household switch with the unnamed `GetPerson`

@@ -6,6 +6,7 @@
 struct ResponsePrivacyDto
 {
   PrivacyView view;
+  bool surveillanceActive{true};
 
   [[nodiscard]] Json::Value toJson() const;
 };
@@ -13,6 +14,7 @@ struct ResponsePrivacyDto
 struct ResponsePrivacyDirectoryDto
 {
   PrivacyDirectory directory;
+  bool surveillanceActive{true};
 
   [[nodiscard]] Json::Value toJson() const;
 };
