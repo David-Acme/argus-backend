@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package argus.mcp.v1;
+
+option cc_enable_arenas = true;
+
+message Frame {
+  string payload = 1;
+}
+
+service Mcp {
+  rpc Rpc(Frame) returns (Frame) {}
+}
