@@ -17,13 +17,26 @@
 namespace
 {
 
+std::string previousAssistantMessage(const std::vector<ChatMessage>& history)
+{
+  bool seenUser = false;
+  for (const ChatMessage& message : std::views::reverse(history)) {
+    if (!seenUser) {
+      seenUser = message.role == "user";
+      continue;
+    }
+    if (message.role == "assistant")
+      return message.content;
+  }
+  return {};
+}
+
 std::string lastUserMessage(const std::vector<ChatMessage>& history)
 {
-  const auto found = std::find_if(
-      history.rbegin(), history.rend(),
-      [](const ChatMessage& message) { return message.role == "user"; });
-  return found == history.rend() ? std::string()
-                                 : LfmAdapter::spokenText(found->content);
+  for (const ChatMessage& message : std::views::reverse(history))
+    if (message.role == "user")
+      return LfmAdapter::spokenText(message.content);
+  return {};
 }
 
 TurnState turnOf(const std::string& utterance, const std::vector<tools::ToolHandle>& tools)
@@ -136,11 +149,13 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
     return output;
   }
 
+  const std::string previous = previousAssistantMessage(history);
   const turn::Outcome outcome = flow_.run({.utterance = utterance,
                                            .offered = input.tools,
                                            .audience = input.audience,
                                            .context = input.context,
-                                           .now = static_cast<int64_t>(std::time(nullptr))});
+                                           .now = static_cast<int64_t>(std::time(nullptr)),
+                                           .previousAssistant = previous});
   for (const auto& step : outcome.steps)
     output.executed.push_back(step.call);
   output.toolMs = outcome.toolMs;

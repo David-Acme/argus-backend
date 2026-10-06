@@ -1,3 +1,37 @@
+set(TOOL_EFFECTS_JSON ${CMAKE_CURRENT_SOURCE_DIR}/services/turn/tool-effects.json)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${TOOL_EFFECTS_JSON})
+file(READ ${TOOL_EFFECTS_JSON} TOOL_EFFECTS)
+string(JSON READ_ONLY_COUNT LENGTH "${TOOL_EFFECTS}" readOnly)
+math(EXPR READ_ONLY_LAST "${READ_ONLY_COUNT} - 1")
+set(READ_ONLY_ENTRIES "")
+foreach(index RANGE ${READ_ONLY_LAST})
+    string(JSON read_only_tool GET "${TOOL_EFFECTS}" readOnly ${index})
+    string(APPEND READ_ONLY_ENTRIES "    \"${read_only_tool}\",\n")
+endforeach()
+set(TOOL_EFFECTS_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/feature/llm/services/turn)
+file(CONFIGURE OUTPUT ${TOOL_EFFECTS_DIR}/tool-effects.hxx CONTENT
+"#pragma once
+
+#include <array>
+#include <string_view>
+
+namespace turn
+{
+
+inline constexpr std::array<std::string_view, ${READ_ONLY_COUNT}> kReadOnlyTools{
+${READ_ONLY_ENTRIES}};
+
+[[nodiscard]] constexpr bool isReadOnlyTool(std::string_view name)
+{
+  for (const std::string_view tool : kReadOnlyTools)
+    if (tool == name)
+      return true;
+  return false;
+}
+
+}
+" @ONLY)
+
 argus_module(NAME llm
     SOURCES
         controllers/llm-controller.cc
@@ -49,6 +83,8 @@ argus_module(NAME llm
         nlohmann_json::nlohmann_json
         argus::contracts::auth
         llama)
+
+target_include_directories(argus_llm PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 target_include_directories(argus_llm SYSTEM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../third_party)

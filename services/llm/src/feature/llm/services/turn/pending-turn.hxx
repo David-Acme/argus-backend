@@ -25,6 +25,7 @@ struct Pending
   Candidate candidate;
   std::optional<Candidate> alternative;
   std::string slot;
+  std::string utterance{};
   int attempts{0};
   std::chrono::steady_clock::time_point at{};
 };

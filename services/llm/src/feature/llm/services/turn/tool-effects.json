@@ -1,0 +1,13 @@
+{
+  "readOnly": [
+    "calendar.list_events",
+    "task.list",
+    "project.list",
+    "modules.list",
+    "modules.explain",
+    "reminder.list",
+    "memory.recall",
+    "app.open",
+    "app.show_camera"
+  ]
+}

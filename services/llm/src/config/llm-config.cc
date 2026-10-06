@@ -56,8 +56,10 @@ std::optional<LlmDecisionConfig> LlmConfig::resolveDecision(std::string_view dec
     return std::nullopt;
   const LlmDecisionConfig decision{.act = ConfigService::getDouble(section + ".act"),
                                    .ask = ConfigService::getDouble(section + ".ask"),
-                                   .margin = ConfigService::hasKey(section + ".margin") ? ConfigService::getDouble(section + ".margin") : 0.0};
-  if (decision.ask <= 0.0 || decision.ask > decision.act || decision.act > 1.0 || decision.margin < 0.0 || decision.margin > 1.0)
+                                   .margin = ConfigService::hasKey(section + ".margin") ? ConfigService::getDouble(section + ".margin") : 0.0,
+                                   .nowMin = ConfigService::hasKey(section + ".now_min") ? ConfigService::getDouble(section + ".now_min") : 0.0};
+  if (decision.ask <= 0.0 || decision.ask > decision.act || decision.act > 1.0 || decision.margin < 0.0 || decision.margin > 1.0 ||
+      decision.nowMin < 0.0 || decision.nowMin > 1.0)
     return std::nullopt;
   return decision;
 }

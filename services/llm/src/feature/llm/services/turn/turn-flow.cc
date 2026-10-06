@@ -7,6 +7,7 @@
 #include <feature/llm/services/tools/module-offer.hxx>
 #include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/llm/services/tools/spoken-intent.hxx>
+#include <feature/llm/services/turn/tool-effects.hxx>
 
 #include <trantor/utils/Logger.h>
 
@@ -179,6 +180,7 @@ struct TurnFlow::Move
   std::string slot;
   int attempts{0};
   bool answering{false};
+  std::string utterance{};
 };
 
 TurnFlow::TurnFlow(FlowDeps deps)
@@ -210,8 +212,9 @@ Outcome TurnFlow::unactionable(const TurnRequest& request) const
 
 void TurnFlow::execute(const TurnRequest& request, tools::ToolCall call, Outcome& outcome)
 {
+  const std::string spoken = call.context.utterance.empty() ? std::string(request.utterance) : call.context.utterance;
   call.context = request.context;
-  call.context.utterance = std::string(request.utterance);
+  call.context.utterance = spoken;
   call.context.decided = true;
   const auto started = std::chrono::steady_clock::now();
   tools::ToolResult result = executor_.execute(call, request.audience);
@@ -241,6 +244,7 @@ Outcome TurnFlow::ask(const Move& move)
                    .candidate = move.candidate,
                    .alternative = std::nullopt,
                    .slot = move.slot,
+                   .utterance = {},
                    .attempts = move.attempts,
                    .at = {}});
   outcome.question = turn_texts::slotQuestion({.tool = move.candidate.tool, .slot = move.slot, .lang = lang});
@@ -257,7 +261,7 @@ Outcome TurnFlow::proceed(const Move& move)
     return outcome;
 
   tools::ToolCall call{.name = move.candidate.tool, .arguments = move.candidate.arguments, .context = request.context};
-  call.context.utterance = std::string(request.utterance);
+  call.context.utterance = move.utterance.empty() ? std::string(request.utterance) : move.utterance;
   const std::vector<std::string> fields =
       move.answering ? std::vector<std::string>{move.slot} : missingFields(tool->spec, move.candidate, move.candidate.arguments);
   const slots::Filled filled = slots::fill({.spec = tool->spec,
@@ -303,7 +307,13 @@ Outcome TurnFlow::confirm(const TurnRequest& request, const Candidate& candidate
   }
   if (request.context.userId > 0)
     pendings_.put(request.context.userId,
-                  {.awaiting = Awaiting::Approval, .candidate = held, .alternative = std::nullopt, .slot = {}, .attempts = 0, .at = {}});
+                  {.awaiting = Awaiting::Approval,
+                   .candidate = held,
+                   .alternative = std::nullopt,
+                   .slot = {},
+                   .utterance = std::string(request.utterance),
+                   .attempts = 0,
+                   .at = {}});
   outcome.question = turn_texts::confirmQuestion(
       {.tool = held.tool, .lang = request.context.lang, .details = detailsOf(held, request)});
   return outcome;
@@ -321,6 +331,7 @@ Outcome TurnFlow::choose(const TurnRequest& request, const Candidate& candidate)
                    .candidate = candidate,
                    .alternative = candidateOf(*candidate.runnerUp, candidate),
                    .slot = {},
+                   .utterance = std::string(request.utterance),
                    .attempts = 0,
                    .at = {}});
   outcome.question = turn_texts::chooseQuestion({.first = candidate.tool, .second = candidate.runnerUp->tool, .lang = request.context.lang});
@@ -331,6 +342,8 @@ bool TurnFlow::corroborated(const SecondOpinion& opinion) const
 {
   if (secondSignal_)
     return secondSignal_(opinion);
+  if (const double nowMin = policies_.of(opinion.candidate.decider).nowMin; nowMin > 0.0)
+    return opinion.candidate.now && *opinion.candidate.now >= nowMin;
   for (const Decider* witness : witnesses_) {
     if (witness->id() == opinion.candidate.decider)
       continue;
@@ -361,10 +374,9 @@ Verdict TurnFlow::verdictOf(const Candidate& candidate) const
   return verdict == Verdict::Act && !candidate.confident ? Verdict::Ask : verdict;
 }
 
-bool TurnFlow::needsSecondSignal(const Candidate& candidate, const tools::ToolDescriptor& tool) const
+bool TurnFlow::needsSecondSignal(const Candidate& candidate) const
 {
-  const bool writes = tool.spec.annotations.destructive || !tool.spec.annotations.readOnly;
-  return writes && (!candidate.exact || policies_.of(candidate.decider).witnessOnly);
+  return !isReadOnlyTool(candidate.tool) && (!candidate.exact || policies_.of(candidate.decider).witnessOnly);
 }
 
 std::optional<Outcome> TurnFlow::followUpPreview(const TurnRequest& request, const Deciding& deciding, const PendingPreview& preview)
@@ -412,9 +424,19 @@ std::optional<Outcome> TurnFlow::followUpOwn(const TurnRequest& request, const D
   if (pending.awaiting == Awaiting::Choice) {
     pendings_.forget(userId);
     if (pending.alternative && slots::namesOther(request.utterance))
-      return proceed({.request = request, .candidate = *pending.alternative, .slot = {}, .attempts = 0, .answering = false});
+      return proceed({.request = request,
+                      .candidate = *pending.alternative,
+                      .slot = {},
+                      .attempts = 0,
+                      .answering = false,
+                      .utterance = pending.utterance});
     if (affirmed(request.utterance))
-      return proceed({.request = request, .candidate = pending.candidate, .slot = {}, .attempts = 0, .answering = false});
+      return proceed({.request = request,
+                      .candidate = pending.candidate,
+                      .slot = {},
+                      .attempts = 0,
+                      .answering = false,
+                      .utterance = pending.utterance});
     clearAll(userId);
     if (supersedes(deciding))
       return std::nullopt;
@@ -425,7 +447,12 @@ std::optional<Outcome> TurnFlow::followUpOwn(const TurnRequest& request, const D
   if (pending.awaiting == Awaiting::Approval) {
     pendings_.forget(userId);
     if (affirmed(request.utterance))
-      return proceed({.request = request, .candidate = pending.candidate, .slot = {}, .attempts = 0, .answering = false});
+      return proceed({.request = request,
+                      .candidate = pending.candidate,
+                      .slot = {},
+                      .attempts = 0,
+                      .answering = false,
+                      .utterance = pending.utterance});
     clearAll(userId);
     if (supersedes(deciding))
       return std::nullopt;
@@ -475,7 +502,7 @@ Outcome TurnFlow::decided(const TurnRequest& request, const Deciding& deciding)
     return unactionable(request);
   Verdict verdict = verdictOf(*candidate);
   std::string_view named = verdictName(verdict);
-  if (verdict == Verdict::Act && needsSecondSignal(*candidate, *tool) &&
+  if (verdict == Verdict::Act && needsSecondSignal(*candidate) &&
       !corroborated({.candidate = *candidate, .input = deciding.input()})) {
     verdict = Verdict::Ask;
     named = "guard";
@@ -505,7 +532,8 @@ Outcome TurnFlow::run(const TurnRequest& request)
   const Deciding deciding(*decider_, {.utterance = request.utterance,
                                       .lang = request.context.lang,
                                       .offered = request.offered,
-                                      .modules = request.audience.modules});
+                                      .modules = request.audience.modules,
+                                      .previousAssistant = request.previousAssistant});
   if (auto followed = followUp(request, deciding))
     return *std::move(followed);
   return decided(request, deciding);

@@ -11,6 +11,7 @@
 #include <feature/llm/services/turn/model-text.hxx>
 #include <feature/llm/services/turn/decision-policy.hxx>
 #include <feature/llm/services/turn/slots.hxx>
+#include <feature/llm/services/turn/tool-effects.hxx>
 #include <feature/llm/services/turn/turn-flow.hxx>
 #include <feature/llm/services/turn/turn-texts.hxx>
 #include <feature/memory/services/extract/extraction-service.hxx>
@@ -60,6 +61,7 @@ class ScriptedDecider final : public turn::Decider
 public:
   std::optional<turn::Candidate> next;
   mutable int asked{0};
+  mutable std::string heardPrevious;
   std::string name{"script"};
 
   [[nodiscard]] std::string_view id() const override { return name; }
@@ -67,6 +69,7 @@ public:
   [[nodiscard]] std::optional<turn::Candidate> decide(const turn::DecideInput& input) const override
   {
     ++asked;
+    heardPrevious = std::string(input.previousAssistant);
     if (next && turn::isOffered(input, next->tool))
       return next;
     return std::nullopt;
@@ -100,6 +103,7 @@ struct World
   tools::ToolContext context;
   int64_t now{static_cast<int64_t>(std::time(nullptr))};
   bool createOk{true};
+  std::string previous;
 
   explicit World(UserRole role = UserRole::Owner)
       : flow({.executor = executor, .decider = &rules, .text = &text, .policies = turn::PolicySet({.act = 0.90, .ask = 0.60, .margin = 0.10})})
@@ -224,7 +228,12 @@ struct World
   turn::Outcome say(const std::string& utterance)
   {
     ++context.turn;
-    return flow.run({.utterance = utterance, .offered = offered, .audience = audience, .context = context, .now = now});
+    return flow.run({.utterance = utterance,
+                     .offered = offered,
+                     .audience = audience,
+                     .context = context,
+                     .now = now,
+                     .previousAssistant = previous});
   }
 };
 
@@ -1045,6 +1054,7 @@ TEST_CASE("a write that only one decider believes is asked about, and a second s
   const auto yes = world.say("sí");
   REQUIRE(world.ran.size() == 1);
   CHECK(yes.wrote);
+  CHECK(world.ran.front().context.utterance == "llamar al dentista");
 
   world.flow.useWitnesses({&witness});
   witness.next = candidate("task.list", 1.0);
@@ -1335,4 +1345,164 @@ TEST_CASE("every decision is counted by decider, family, language and what becam
   }
   CHECK(english);
   CHECK(world.flow.decisions().size() == 3);
+}
+
+TEST_CASE("the second signal and the decider are given the words, the tool and its arguments, the language and the assistant's last turn")
+{
+  World world;
+  world.flow.useDecider(world.scripted);
+  world.scripted.name = "laya";
+  turn::Candidate write = candidate("task.create", 0.97);
+  write.decider = "laya";
+  write.exact = false;
+  write.arguments["title"] = "llamar al dentista";
+  world.scripted.next = write;
+
+  struct Seen
+  {
+    std::string utterance;
+    std::string previous;
+    std::string lang;
+    std::string tool;
+    std::string title;
+    int calls{0};
+  };
+  Seen seen;
+  world.flow.useSecondSignal([&seen](const turn::SecondOpinion& opinion) {
+    seen = {.utterance = std::string(opinion.input.utterance),
+            .previous = std::string(opinion.input.previousAssistant),
+            .lang = std::string(opinion.input.lang),
+            .tool = opinion.candidate.tool,
+            .title = opinion.candidate.arguments["title"].asString(),
+            .calls = seen.calls + 1};
+    return true;
+  });
+  world.previous = "¿Algo más que quieras que haga?";
+  world.say("sí, llamar al dentista");
+  CHECK(seen.calls == 1);
+  CHECK(seen.utterance == "sí, llamar al dentista");
+  CHECK(seen.previous == "¿Algo más que quieras que haga?");
+  CHECK(seen.lang == "es");
+  CHECK(seen.tool == "task.create");
+  CHECK(seen.title == "llamar al dentista");
+  CHECK(world.scripted.heardPrevious == "¿Algo más que quieras que haga?");
+  CHECK(world.ran.size() == 1);
+}
+
+TEST_CASE("the adapter hands the decider the assistant turn that came before the user's words")
+{
+  Spoken spoken;
+  spoken.adapter.flow().useDecider(spoken.world.scripted);
+  spoken.script.replies = {"Dime."};
+  std::vector<ChatMessage> history{{.role = "system", .content = "persona"},
+                                   {.role = "assistant", .content = "Hola, soy Argus."},
+                                   {.role = "user", .content = "hola"},
+                                   {.role = "assistant", .content = "¿Qué necesitas?"},
+                                   {.role = "user", .content = "una cosa"}};
+  spoken.adapter.chatWithTools(spoken.input(), history);
+  CHECK(spoken.world.scripted.heardPrevious == "¿Qué necesitas?");
+}
+
+TEST_CASE("the read-only tools are exactly the list in tool-effects.json and every other tool is a write")
+{
+  const std::vector<std::string> expected{"calendar.list_events", "task.list", "project.list", "modules.list", "modules.explain",
+                                          "reminder.list", "memory.recall", "app.open", "app.show_camera"};
+  CHECK(turn::kReadOnlyTools.size() == expected.size());
+  for (const std::string& name : expected)
+    CHECK(turn::isReadOnlyTool(name));
+  for (const std::string name : {"app.set_guard_mode", "calendar.create_event", "calendar.cancel_event", "task.create", "task.complete",
+                                 "project.create", "modules.enable", "modules.disable", "modules.request", "modules.open_purge_screen",
+                                 "memory.remember", "memory.remind", "memory.forget", "tool.unknown"})
+    CHECK_FALSE(turn::isReadOnlyTool(name));
+}
+
+TEST_CASE("the guard of a learned decider is the question it answers itself, now against its own threshold")
+{
+  World world;
+  world.flow.useDecider(world.scripted);
+  world.scripted.name = "laya";
+  turn::PolicySet policies({.act = 0.90, .ask = 0.60, .margin = 0.10});
+  policies.set("laya", {.act = 0.90, .ask = 0.60, .margin = 0.10, .nowMin = 0.80});
+  world.flow.usePolicies(policies);
+  const auto write = [](std::optional<double> now) {
+    turn::Candidate candidate = ::candidate("task.create", 0.97);
+    candidate.decider = "laya";
+    candidate.exact = false;
+    candidate.arguments["title"] = "llamar al dentista";
+    candidate.now = now;
+    return candidate;
+  };
+
+  world.scripted.next = write(0.92);
+  CHECK_FALSE(world.say("llamar al dentista").question.has_value());
+  CHECK(world.ran.size() == 1);
+
+  world.scripted.next = write(0.50);
+  CHECK(world.say("llamar al dentista").question.has_value());
+  CHECK(world.ran.size() == 1);
+  world.scripted.next.reset();
+  world.say("no");
+
+  world.scripted.next = write(std::nullopt);
+  CHECK(world.say("llamar al dentista").question.has_value());
+  CHECK(world.ran.size() == 1);
+  world.scripted.next.reset();
+  world.say("no");
+
+  ScriptedDecider witness;
+  witness.name = "witness";
+  witness.next = candidate("task.create", 1.0);
+  world.flow.useWitnesses({&witness});
+  world.scripted.next = write(0.50);
+  CHECK(world.say("llamar al dentista").question.has_value());
+  CHECK(world.ran.size() == 1);
+  world.scripted.next.reset();
+  world.say("no");
+
+  turn::Candidate read = candidate("task.list", 0.97);
+  read.decider = "laya";
+  read.exact = false;
+  world.scripted.next = read;
+  CHECK_FALSE(world.say("qué tareas tengo").question.has_value());
+  CHECK(world.ran.size() == 2);
+
+  const auto counts = world.flow.decisions();
+  const auto guarded = std::ranges::find_if(counts, [](const turn::DecisionCount& tally) { return tally.key.verdict == "guard"; });
+  REQUIRE(guarded != counts.end());
+  CHECK(guarded->count == 3);
+}
+
+TEST_CASE("changing the guard mode is a write that waits, whatever the tool says about itself, and showing a camera never waits")
+{
+  World world;
+  auto guardMode = tool_stubs::appAction({.name = "app.set_guard_mode", .capability = "guard.mode.set", .module = "surveillance"});
+  guardMode.spec.annotations.readOnly = true;
+  world.add(std::move(guardMode));
+  world.add(tool_stubs::appAction({.name = "app.show_camera", .capability = "camera.view", .module = "surveillance"}));
+  world.refresh();
+  std::vector<std::string> actions;
+  world.context.emitAction = [&actions](const std::string& name, const Json::Value&) { actions.push_back(name); };
+  world.flow.useDecider(world.scripted);
+  world.scripted.name = "laya";
+
+  turn::Candidate mode = candidate("app.set_guard_mode", 0.97);
+  mode.decider = "laya";
+  mode.exact = false;
+  mode.arguments["mode"] = "night";
+  world.scripted.next = mode;
+  const auto asked = world.say("pon la vigilancia en modo noche");
+  CHECK(said(asked) == turn_texts::confirmQuestion({.tool = "app.set_guard_mode", .lang = "es"}));
+  CHECK(actions.empty());
+  world.scripted.next.reset();
+  const auto yes = world.say("sí");
+  CHECK(actions.size() == 1);
+  CHECK(yes.wrote);
+
+  turn::Candidate camera = candidate("app.show_camera", 0.97);
+  camera.decider = "laya";
+  camera.exact = false;
+  world.scripted.next = camera;
+  CHECK_FALSE(world.say("muéstrame la cámara").question.has_value());
+  REQUIRE(actions.size() == 2);
+  CHECK(actions.back() == "app.show_camera");
 }

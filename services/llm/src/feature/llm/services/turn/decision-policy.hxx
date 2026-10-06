@@ -14,6 +14,7 @@ struct DecisionPolicy
   double act{0.90};
   double ask{0.90};
   double margin{0.0};
+  double nowMin{0.0};
   bool witnessOnly{false};
 };
 

@@ -152,7 +152,7 @@ CatalogReplica::Snapshot fetchCatalogSnapshotWithRetry()
 turn::PolicySet configuredPolicies()
 {
   const auto policyOf = [](const LlmDecisionConfig& decision) {
-    return turn::DecisionPolicy{.act = decision.act, .ask = decision.ask, .margin = decision.margin};
+    return turn::DecisionPolicy{.act = decision.act, .ask = decision.ask, .margin = decision.margin, .nowMin = decision.nowMin};
   };
   turn::PolicySet policies;
   if (const auto fallback = LlmConfig::resolveDecision())

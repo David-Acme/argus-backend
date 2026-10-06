@@ -34,6 +34,7 @@ struct LlmDecisionConfig
   double act{0.0};
   double ask{0.0};
   double margin{0.0};
+  double nowMin{0.0};
 };
 
 struct LlmNotificationConfig

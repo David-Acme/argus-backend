@@ -35,6 +35,7 @@ struct Candidate
   bool exact{false};
   bool confident{true};
   std::optional<Pick> runnerUp;
+  std::optional<double> now{};
 };
 
 struct DecideInput
@@ -43,6 +44,7 @@ struct DecideInput
   std::string_view lang;
   const std::vector<tools::ToolHandle>& offered;
   const ModuleSnapshot& modules;
+  std::string_view previousAssistant{};
 };
 
 class Decider
@@ -76,7 +78,8 @@ public:
           .decider = from.decider,
           .exact = false,
           .confident = true,
-          .runnerUp = std::nullopt};
+          .runnerUp = std::nullopt,
+          .now = std::nullopt};
 }
 
 }

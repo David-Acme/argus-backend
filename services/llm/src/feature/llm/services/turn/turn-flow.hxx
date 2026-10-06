@@ -60,6 +60,7 @@ struct TurnRequest
   const ToolAudience& audience;
   const tools::ToolContext& context;
   int64_t now{0};
+  std::string_view previousAssistant{};
 };
 
 struct FlowDeps
@@ -113,7 +114,7 @@ private:
   [[nodiscard]] bool corroborated(const SecondOpinion& opinion) const;
   [[nodiscard]] Verdict levelOf(const Candidate& candidate) const;
   [[nodiscard]] Verdict verdictOf(const Candidate& candidate) const;
-  [[nodiscard]] bool needsSecondSignal(const Candidate& candidate, const tools::ToolDescriptor& tool) const;
+  [[nodiscard]] bool needsSecondSignal(const Candidate& candidate) const;
   [[nodiscard]] bool supersedes(const Deciding& deciding) const;
   [[nodiscard]] Outcome proceed(const Move& move);
   [[nodiscard]] Outcome ask(const Move& move);
