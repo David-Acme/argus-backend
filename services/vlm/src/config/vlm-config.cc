@@ -22,3 +22,9 @@ VlmRpcConfig VlmConfig::resolveRpc()
   withoutSettingsCaller(config.credentials);
   return config;
 }
+
+std::filesystem::path VlmConfig::resolveComponentsRoot()
+{
+  const std::string root = ConfigService::getString("components.models_dir");
+  return root.empty() ? std::filesystem::path("models") : std::filesystem::path(root);
+}

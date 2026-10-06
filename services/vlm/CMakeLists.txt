@@ -99,6 +99,7 @@ argus_service(NAME argus-vlm
         argus::vlm-rpc
         argus::vlm
         argus::vlm-settings
+        argus::vlm-components
         argus::lib::config
         argus::hardware-profile
         argus::lib::runtime
@@ -173,3 +174,19 @@ target_compile_options(vlm-settings-test PRIVATE -Wall -Wextra)
 set_target_properties(vlm-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME vlm-settings-test COMMAND vlm-settings-test)
+
+add_executable(vlm-components-test tests/unit/vlm-components-test.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http/tests/unit/download/range-server.cc)
+
+target_include_directories(vlm-components-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http/tests/unit/download)
+
+target_link_libraries(vlm-components-test PRIVATE argus::vlm-components argus::vlm
+    argus::vlm-config argus::vlm-settings doctest::doctest)
+argus_runtime_rpath(vlm-components-test)
+
+target_compile_options(vlm-components-test PRIVATE -Wall -Wextra)
+
+set_target_properties(vlm-components-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME vlm-components-test COMMAND vlm-components-test)

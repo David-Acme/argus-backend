@@ -58,6 +58,16 @@ struct VisionEngineSettings
 
 [[nodiscard]] VisionEngineSettings resolveVisionEngineSettings();
 
+struct VisionModelFiles
+{
+  std::string model;
+  std::string mmproj;
+
+  [[nodiscard]] bool present() const;
+};
+
+[[nodiscard]] VisionModelFiles resolveVisionModelFiles();
+
 class VisionService
 {
 public:

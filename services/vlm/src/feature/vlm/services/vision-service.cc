@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <filesystem>
+#include <system_error>
 #include <drogon/drogon.h>
 #include <llama.h>
 #include <mtmd-helper.h>
@@ -77,6 +79,20 @@ VisionEngineSettings resolveVisionEngineSettings()
           .imageMaxTokens = std::max(0, ConfigService::getInt("vision.image_max_tokens"))};
 }
 
+VisionModelFiles resolveVisionModelFiles()
+{
+  std::string model = ConfigService::getString("vision.model_path");
+  std::string mmproj = ConfigService::getString("vision.mmproj_path");
+  return {.model = model.empty() ? std::string(kDefaultModel) : std::move(model),
+          .mmproj = mmproj.empty() ? std::string(kDefaultMmproj) : std::move(mmproj)};
+}
+
+bool VisionModelFiles::present() const
+{
+  std::error_code error;
+  return std::filesystem::is_regular_file(model, error) && std::filesystem::is_regular_file(mmproj, error);
+}
+
 VisionService::VisionService()
     : model_(nullptr, llama_model_free), context_(nullptr, llama_free),
       mtmd_(nullptr, mtmdDeleter), defaultPrompt_(kFallbackPrompt)
@@ -99,12 +115,7 @@ void VisionService::init()
       return;
     }
 
-    std::string modelPath = ConfigService::getString("vision.model_path");
-    if (modelPath.empty())
-      modelPath = kDefaultModel;
-    std::string mmprojPath = ConfigService::getString("vision.mmproj_path");
-    if (mmprojPath.empty())
-      mmprojPath = kDefaultMmproj;
+    const auto [modelPath, mmprojPath] = resolveVisionModelFiles();
 
     const VisionEngineSettings engine = resolveVisionEngineSettings();
     const int threads = engine.threads > 0 ? engine.threads : ThreadBudget::computeThreads();
@@ -266,6 +277,8 @@ std::string VisionService::run(const VisionRunInput& input)
     return "";
 
   std::scoped_lock lock(mutex_);
+  if (!loaded_)
+    throw ResponseException(VlmErrors::VisionEngineNotLoaded);
   cancelled_.store(false, std::memory_order_relaxed);
 
   const std::string question =

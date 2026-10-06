@@ -21,6 +21,9 @@ caption_cache_slots = 8
 threads = 0
 gpu_layers = 999
 
+[components]
+models_dir = "/opt/argus/models"
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false

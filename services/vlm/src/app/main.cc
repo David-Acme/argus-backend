@@ -1,3 +1,5 @@
+#include <feature/components/infra/vision-fetch.hxx>
+#include <feature/components/services/vision-component-host.hxx>
 #include <feature/vlm/services/jpeg-gate.hxx>
 #include <app/rpc/vlm-rpc-server.hxx>
 #include <config/vlm-config.hxx>
@@ -57,12 +59,17 @@ int main()
 
   llama_backend_init();
 
-  vlm->initEngine();
-  if (!vlm->isEngineLoaded()) {
-    LOG_FATAL << "Vision engine failed to load — aborting startup";
-    llama_backend_free();
-    return 1;
-  }
+  if (resolveVisionModelFiles().present())
+    vlm->initEngine();
+  if (!vlm->isEngineLoaded())
+    LOG_WARN << "argus-vlm: the vision engine is not loaded; it loads once the vision component is installed";
+
+  auto components = std::make_unique<VisionComponentHost>(VisionComponentHostInput{
+      .modelsDir = VlmConfig::resolveComponentsRoot(),
+      .fetch = visionFetch({.transport = {}, .policy = {}}),
+      .loaded = [&vlm] { return vlm->isEngineLoaded(); },
+      .load = [&vlm] { vlm->initEngine(); },
+      .unload = [&vlm] { vlm->shutdownEngine(); }});
 
   SettingsRegistry settings(vlmSettingsCatalog());
   settings.onChange([&vlm](const std::vector<std::string>&) { vlm->service().refreshDefaults(); });
@@ -77,6 +84,7 @@ int main()
     if (!rpcConfig.settingsCredentials.empty()) {
       settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
           .service = "vlm", .registry = &settings, .credentials = rpcConfig.settingsCredentials});
+      settingsRpc->attachComponents(*components);
       services.push_back(settingsRpc.get());
     }
     rpc = std::make_unique<VlmRpcServer>(VlmRpcInput{
@@ -107,6 +115,7 @@ int main()
 
   if (rpc)
     rpc->shutdown();
+  components.reset();
   vlm->shutdownEngine();
   llama_backend_free();
   return 0;

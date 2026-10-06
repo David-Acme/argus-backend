@@ -45,7 +45,7 @@ that apply to vision-service code; when in doubt, the root file wins.
 ```
 argus-vlm/
   CMakeLists.txt        standalone buildable: module graph + test targets
-  src/app/main.cc       config load, llama_backend_init/free, engine boot gate,
+  src/app/main.cc       config load, llama_backend_init/free, engine boot load,
                           rpc leg, app run
   src/app/rpc/          argus::vlm-rpc — the internal gRPC face (the
                           argus.vlm.v1 Vision service), dormant unless
@@ -58,11 +58,15 @@ argus-vlm/
                           services/ (the LFM2.5-VL engine facade and the
                                      caption cache)
   src/feature/settings/ argus::vlm-settings — the owner-editable catalog
+  src/feature/components/ argus::vlm-components — the `vision` component:
+                          install, cancel and remove through the settings
+                          wire, the lib/http download, the engine (re)load
   config.toml.example   [vision] engine keys + [server] + [rpc] only; no other domains
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
-There are two features and three modules: `argus::vlm-settings` is the
+There are three features and four modules: `argus::vlm-components` installs
+the `vision` component (CONTEXT.md, "The vision component"), `argus::vlm-settings` is the
 owner catalog (lib/config only, served by `argus.settings.v1` on the gRPC
 listener), `argus::vlm` compiles the engine facade,
 the DTOs and the HTTP surface together, `argus::vlm-rpc` compiles the gRPC

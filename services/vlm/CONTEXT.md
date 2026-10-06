@@ -17,8 +17,10 @@ the legacy's RAM/VRAM with zero functional risk. It mirrors the argus-tts
   (GGUF Q8_0 + mmproj F16) through llama.cpp + `libmtmd`, loaded at boot from
   the shared `models/vision/lfm2vl-25/` tree (`[vision] model_path` and
   `mmproj_path`; the build symlinks `../models` next to the binary). Boot
-  aborts if the engine fails to load — the service is useless without its
-  capacity. `VisionService` is owned BY VALUE by the controller (the adapter
+  loads the engine when both files are on disk and otherwise starts without
+  it (see "The vision component"): the `/health` route answers, `Capabilities`
+  says `loaded: false` and a description is refused with
+  `VISION_ENGINE_NOT_LOADED` until the component is installed. `VisionService` is owned BY VALUE by the controller (the adapter
   shape — no singleton), and takes `ai_init::llamaMutex()` exactly as the
   legacy vision-service.cc does; `argus-vlm`'s main owns its own
   `llama_backend_init/free` (Ruling BR): the process-global llama mutex
@@ -115,7 +117,10 @@ legacy reads.
 
 The docker compose must mount the shared `models/` tree (at least
 `models/vision/lfm2vl-25`) into this service's working directory — the
-engine reads the GGUF pair relative to the `[vision]` config keys.
+engine reads the GGUF pair relative to the `[vision]` config keys. The
+mount is writable (`argus-deploy/docker-compose.yml`, `models/vision`), since
+this service installs its own component there; the host directory must
+exist and belong to `ARGUS_UID`.
 
 ## Phase 4 step 9: config resolution into `src/config/` (D20)
 
@@ -256,3 +261,55 @@ of that revision, and checked against the files installed on the
 development host. A present file whose hash does not match is replaced; a
 pin left empty makes the script refuse to download and say so, and
 `ARGUS_ALLOW_UNPINNED_MODELS=1` downloads it and prints its hash to pin.
+
+## The vision component (selectable modules, 2026-10-05)
+
+argus-vlm owns the catalog component `vision` (`services/settings/modules.json`,
+module `surveillance`) and installs it itself when argus-settings asks over
+the settings wire (`ComponentStates`, `InstallComponent`, `CancelComponent`,
+`RemoveComponent`; `services/settings/CONTEXT.md`, "Modules"). The spec
+arrives in the request (paths relative to the models root, pinned URL, size,
+SHA-256); this service declares only that it owns `vision`.
+
+- `feature/components/` (`argus::vlm-components`): `VisionComponentHost`
+  wraps the shared `DiskComponentHost` (state from the files under
+  `[components] models_dir`, `models` by default, `/opt/argus/models` in the
+  deploy; one fetch thread per install; cancel keeps the `.part`), and
+  `infra/vision-fetch` is its fetch: `file_download::downloadFile` from
+  `lib/http` on the host's own worker thread (never an event loop or a
+  `BlockingTask` lane), the thread's `stop_token` bridged to the download's
+  `CancellationToken`. Failures map to the codes argus-settings shows:
+  `network`; `checksum_mismatch` (hash, size, oversize); `source_unavailable`
+  (TLS, HTTP status, redirect loop, range refused or mismatched, source
+  changed); `disk_full` when a filesystem failure meets less free space than
+  the bytes left, else `filesystem`; the downloader's own spelling for the
+  rest.
+- `ready` is "the engine is loaded", never "the files are there". The first
+  `ComponentStates` that finds both files complete while the engine is not
+  loaded starts one load on the host's loader thread (`VisionService::init`,
+  under `ai_init::llamaMutex()`) and answers `ready: false`; the next poll
+  after the load answers `true`. No restart is needed. A load that fails, or
+  a tier where the VLM is disabled, is tried once per install, so a health
+  check polling every second never reloads 568 MB in a loop; argus-settings
+  then fails the job with `health_check_failed` after its timeout.
+- `RemoveComponent` waits for a load in progress, unloads the engine
+  (`VisionService::shutdown` takes the engine mutex, so a description in
+  flight finishes first, and `run` re-checks `loaded` under that mutex, so
+  one that was waiting is refused instead of using freed handles), then
+  deletes the two files, their `.part` and sidecars. Nothing else in the
+  models tree is touched (the license and `NOTICE` stay).
+- The engine reads `[vision] model_path`/`mmproj_path`; the catalog's paths
+  are `vision/lfm2vl-25/lm-Q8_0.gguf` and `mmproj-F16.gguf` under the models
+  root, the same files as the defaults. An operator who points the keys
+  elsewhere gets `ready: false` after an install.
+- The host is attached only when the settings caller is paired (`[rpc.callers]
+  settings`), like the catalog.
+
+`tests/unit/vlm-components-test.cc` drives the real downloader and Drogon's
+client against two loopback HTTP servers (the `RangeServer` of lib/http's
+tests; a transport maps the pinned `https` URLs onto them and can hold the
+second chunk): missing, installing with the first chunk's bytes, installed
+with the exact bytes on disk, one load and `ready`; cancel keeps the partial
+and the resume never re-fetches byte 0; remove unloads and deletes; a hash
+mismatch fails as `checksum_mismatch`; an engine that does not load is tried
+once per install; the wire answers through `SettingsRpcService`.
