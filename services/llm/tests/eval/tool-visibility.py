@@ -75,11 +75,20 @@ def capabilities(root):
     return found
 
 
+def module_helpers(text, local):
+    helpers = {}
+    for name, value in re.findall(
+            r"ToolSpec (\w+)\(argus::mcp::ToolSpec base\)\s*\{\s*base\.module = (\"\w*\"|k\w+);", text):
+        helpers[name] = value.strip('"') if value.startswith('"') else local[value]
+    return helpers
+
+
 def tool_specs(root):
     specs = {}
     for relative in TOOL_SOURCES:
         text = read(root, relative)
         local = dict(re.findall(r"constexpr (?:const char\*|std::string_view) (k\w+) = \"(\w*)\";", text))
+        helpers = module_helpers(text, local)
         marks = list(re.finditer(r"\.name = \"([a-z_]+\.[a-z_]+)\"", text))
         for index, mark in enumerate(marks):
             end = marks[index + 1].start() if index + 1 < len(marks) else len(text)
@@ -89,8 +98,10 @@ def tool_specs(root):
                 continue
             module = re.search(r"\.module = (?:\"(\w*)\"|(k\w+))", body)
             annotations = re.search(r"\.annotations = \{([^}]*)\}", body)
+            wrapper = re.search(r"(\w+)\(\{\s*$", text[max(0, mark.start() - 40):mark.start()])
+            literal = (module.group(1) if module.group(1) is not None else local[module.group(2)]) if module else ""
             spec = {"capability": capability.group(1),
-                    "declaredModule": (module.group(1) if module.group(1) is not None else local[module.group(2)]) if module else "",
+                    "resolvedModule": helpers.get(wrapper.group(1), literal) if wrapper else literal,
                     "readOnly": bool(annotations and ".readOnly = true" in annotations.group(1)),
                     "source": relative}
             name = mark.group(1)
@@ -109,8 +120,8 @@ def parse(root=ROOT):
         if capability is None:
             problems.append(f"{name} requires {spec['capability']}, which kCapabilities does not declare")
             continue
-        if spec["declaredModule"] not in ("", capability["module"]):
-            problems.append(f"{name} declares module {spec['declaredModule']} but {spec['capability']} belongs to "
+        if spec["resolvedModule"] != capability["module"]:
+            problems.append(f"{name} resolves to module '{spec['resolvedModule']}' but {spec['capability']} belongs to "
                             f"{capability['module']}")
         tools[name] = {"capability": spec["capability"], "module": capability["module"]}
     roles = {role.lower(): sorted(name for name, tool in tools.items()

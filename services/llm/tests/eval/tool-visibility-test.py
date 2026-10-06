@@ -40,7 +40,7 @@ inline constexpr std::array kCapabilities = std::to_array<CapabilitySpec>({
 """
 
 
-def spec(name, capability, module='""', annotations="{}"):
+def spec(name, capability, module='"core"', annotations="{}"):
     return (f'server->add(spec({{.name = "{name}", .title = "", .annotations = {annotations}, '
             f'.module = {module}, .capability = "{capability}"}}), handler);\n')
 
@@ -72,7 +72,26 @@ class ParserTest(unittest.TestCase):
     def test_a_declared_module_that_is_not_the_capabilitys_is_a_problem(self):
         _, problems = visibility.parse(self.build(spec("note.show", "notes.read", '"surveillance"')))
         self.assertEqual(len(problems), 1)
-        self.assertIn("declares module surveillance", problems[0])
+        self.assertIn("resolves to module 'surveillance'", problems[0])
+
+    def test_a_helper_that_assigns_the_module_wins_over_the_literal(self):
+        helper = ("constexpr const char* kNotes = \"core\";\n"
+                  "argus::mcp::ToolSpec wrap(argus::mcp::ToolSpec base)\n{\n  base.module = kNotes;\n  return base;\n}\n")
+        root = self.build(helper + spec("note.show", "notes.read", '""').replace("spec(", "wrap("))
+        document, problems = visibility.parse(root)
+        self.assertEqual(problems, [])
+        self.assertEqual(document["tools"]["note.show"]["module"], "core")
+
+    def test_a_tool_whose_resolved_module_is_empty_is_a_problem(self):
+        _, problems = visibility.parse(self.build(spec("note.show", "notes.read", '""')))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("resolves to module ''", problems[0])
+
+    def test_a_helper_does_not_touch_a_tool_it_does_not_wrap(self):
+        helper = ("constexpr const char* kNotes = \"surveillance\";\n"
+                  "argus::mcp::ToolSpec wrap(argus::mcp::ToolSpec base)\n{\n  base.module = kNotes;\n  return base;\n}\n")
+        _, problems = visibility.parse(self.build(helper + spec("note.show", "notes.read", '"core"')))
+        self.assertEqual(problems, [])
 
     def test_a_capability_the_table_does_not_declare_is_a_problem(self):
         _, problems = visibility.parse(self.build(spec("note.show", "notes.nothing")))

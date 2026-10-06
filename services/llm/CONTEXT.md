@@ -1286,7 +1286,8 @@ generated from the sources that decide it (`role-access.hxx` and `capability.hxx
 capability table, the six MCP provider files for each tool's `.capability` and `.module`) by
 `python3 -I services/llm/tests/eval/tool-visibility.py --write services/llm/tests/eval/tool-visibility.json`,
 and `tool-visibility-test.py` fails when the committed file differs from what those sources declare, when a
-tool declares a module other than its capability's, when the decider's vocabulary is not exactly the tools
+tool resolves to a module other than its capability's (a helper such as `spec()` that assigns the module wins over the
+literal, as it does at run time), when the decider's vocabulary is not exactly the tools
 the backend declares, or when a tool annotated read-only is missing from `turn/tool-effects.json` (the
 harness reads its read-only list from that file, which is what the turn flow compiles). The test needs
 no build. `tests/eval/eval-tools.cc` (for `llm-tier-eval`) is still a hand mirror of the providers' tool
