@@ -55,6 +55,7 @@ struct Options
   std::string dump;
   std::string filter;
   std::string offer;
+  std::string section = "llm";
   std::string runsOut;
   std::string score;
   int skip = 0;
@@ -87,6 +88,8 @@ Options parseOptions(int argc, char** argv)
       options.dump = argv[++i];
     else if (arg == "--filter" && hasValue)
       options.filter = argv[++i];
+    else if (arg == "--section" && hasValue)
+      options.section = argv[++i];
     else if (arg == "--runs-out" && hasValue)
       options.runsOut = argv[++i];
     else if (arg == "--score" && hasValue)
@@ -315,7 +318,7 @@ int finish(const Options& options, const std::vector<eval::CaseRun>& runs)
 {
   std::string error;
   const eval::ScoreConfig scoring = eval::loadScoreConfig(options.gates, error);
-  const auto gates = eval::loadGates(options.gates, "llm");
+  const auto gates = eval::loadGates(options.gates, options.section);
   if (!gates.error.empty() || !error.empty()) {
     std::printf("[ERROR] %s%s\n", gates.error.c_str(), error.c_str());
     return 1;
@@ -323,7 +326,7 @@ int finish(const Options& options, const std::vector<eval::CaseRun>& runs)
   const eval::Metrics metrics = eval::aggregate(runs, scoring);
   const eval::Verdict verdict = eval::check(gates.gates, metrics);
   eval::printMetrics(metrics);
-  if (!options.report.empty() && !eval::writeReport(options.report, {.section = "llm", .metrics = metrics, .verdict = verdict}))
+  if (!options.report.empty() && !eval::writeReport(options.report, {.section = options.section, .metrics = metrics, .verdict = verdict}))
     std::printf("[ERROR] cannot write %s\n", options.report.c_str());
   std::fflush(stdout);
   if (!verdict.passed()) {

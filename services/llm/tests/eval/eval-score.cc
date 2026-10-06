@@ -96,6 +96,36 @@ struct Collector
   void count(const std::string& name, bool hit) { counters[name].add(hit); }
 };
 
+bool isAppTool(const std::string& tool)
+{
+  return tool.starts_with("app.") || tool == "modules.open_purge_screen";
+}
+
+std::vector<std::string> sentencesOf(const std::string& folded)
+{
+  std::vector<std::string> out;
+  std::string current;
+  for (const char c : folded) {
+    if (c == '.' || c == '!' || c == '?' || c == '\n' || c == ';') {
+      if (c == '?')
+        current.clear();
+      else if (!current.empty())
+        out.push_back(current);
+      current.clear();
+      continue;
+    }
+    current.push_back(c);
+  }
+  if (!current.empty())
+    out.push_back(current);
+  return out;
+}
+
+bool isWriteCall(const RecordedCall& call, const ScoreConfig& config)
+{
+  return std::ranges::find(config.writeTools, call.tool) != config.writeTools.end();
+}
+
 bool isSelectionCase(const EvalCase& item)
 {
   return !item.inactive && !item.confirm && !item.offerAccept && !item.offerDecline;
@@ -248,6 +278,12 @@ std::string fold(const std::string& text)
         continue;
       }
     }
+    if (c == 0xE2 && i + 2 < text.size() && static_cast<unsigned char>(text[i + 1]) == 0x80 &&
+        (static_cast<unsigned char>(text[i + 2]) == 0x99 || static_cast<unsigned char>(text[i + 2]) == 0x98)) {
+      out.push_back('\'');
+      i += 2;
+      continue;
+    }
     out.push_back(c >= 'A' && c <= 'Z' ? static_cast<char>(c + 0x20) : static_cast<char>(c));
   }
   return out;
@@ -282,14 +318,39 @@ bool matchesArguments(const ArgumentProbe& probe)
   return true;
 }
 
+bool claimsWithoutSuccess(const ClaimProbe& probe)
+{
+  const TurnResult& turn = probe.turn;
+  const ScoreConfig& config = probe.config;
+  const bool wrote = std::ranges::any_of(turn.executed, [&config](const RecordedCall& call) { return isWriteCall(call, config); });
+  const bool appRan = std::ranges::any_of(turn.executed, [](const RecordedCall& call) { return isAppTool(call.tool); });
+  const bool anyRan = !turn.executed.empty();
+  for (const auto& sentence : sentencesOf(fold(turn.reply))) {
+    if (containsAny(sentence, config.notAClaimMarkers))
+      continue;
+    if (containsAny(sentence, config.writeClaimMarkers) && !wrote)
+      return true;
+    if (containsAny(sentence, config.appClaimMarkers) && !appRan)
+      return true;
+    if (containsAny(sentence, config.generalClaimMarkers) && !anyRan)
+      return true;
+  }
+  return false;
+}
+
 Metrics aggregate(const std::vector<CaseRun>& runs, const ScoreConfig& config)
 {
   Collector out;
   for (const auto& run : runs) {
     if (run.turns.empty())
       continue;
-    for (const auto& turn : run.turns)
+    for (const auto& turn : run.turns) {
       out.latencies.push_back(turn.ms);
+      const bool claim = claimsWithoutSuccess({.turn = turn, .config = config});
+      out.count("falseCompletionRate", claim);
+      out.count("variant." + run.item.variant + ".falseCompletionRate", claim);
+      out.count("group." + run.item.group + ".falseCompletionRate", claim);
+    }
     if (isSelectionCase(run.item)) {
       scoreSelection(run, config, out);
       continue;
@@ -436,6 +497,10 @@ ScoreConfig loadScoreConfig(const std::string& gatesPath, std::string& error)
   config.memberOfferMarkers = list("memberOfferMarkers");
   config.inactiveMarkers = list("inactiveMarkers");
   config.questionMarkers = list("questionMarkers");
+  config.writeClaimMarkers = list("writeClaimMarkers");
+  config.appClaimMarkers = list("appClaimMarkers");
+  config.generalClaimMarkers = list("generalClaimMarkers");
+  config.notAClaimMarkers = list("notAClaimMarkers");
   return config;
 }
 

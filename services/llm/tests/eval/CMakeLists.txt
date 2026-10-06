@@ -63,7 +63,7 @@ set(LLM_EVAL_ARGS
     --catalog ${CMAKE_CURRENT_SOURCE_DIR}/../../../settings/modules.json)
 
 add_test(NAME llm-tier-smoke
-    COMMAND llm-tier-eval ${LLM_EVAL_ARGS} --smoke
+    COMMAND llm-tier-eval ${LLM_EVAL_ARGS} --smoke --section llmSmoke
         --report ${CMAKE_CURRENT_BINARY_DIR}/llm-tier-smoke-report.json)
 
 add_test(NAME llm-tier-eval

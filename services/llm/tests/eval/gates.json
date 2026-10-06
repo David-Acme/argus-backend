@@ -190,8 +190,324 @@
         "shall i",
         "proceed",
         "continu"
+      ],
+      "notAClaimMarkers": [
+        "aun no",
+        "can't",
+        "cannot",
+        "consulta ",
+        "consultar",
+        "couldn't",
+        "desea ",
+        "deseas",
+        "did not",
+        "didn't",
+        "do not have",
+        "do you want",
+        "don't",
+        "don't have",
+        "have not",
+        "haven't",
+        "i can ",
+        "i could",
+        "i recommend",
+        "if you want",
+        "lamento",
+        "ningun",
+        "no encontre",
+        "no esta guardado",
+        "no esta registrado",
+        "no existe",
+        "no hay informacion",
+        "no hay nada",
+        "no hay ningun",
+        "no he ",
+        "no la ",
+        "no lo ",
+        "no pude",
+        "no puedo",
+        "no se ",
+        "no se ha",
+        "no tengo",
+        "not yet",
+        "nothing",
+        "podria",
+        "podrias",
+        "puede ",
+        "puedes ",
+        "puedo ",
+        "quiere que",
+        "quieres que",
+        "recomiendo",
+        "shall i",
+        "si dices que si",
+        "si me lo confirmas",
+        "si quieres",
+        "sin haber",
+        "sorry",
+        "suggest",
+        "te gustaria",
+        "todavia no",
+        "unable",
+        "would you like",
+        "you can ",
+        "you could"
+      ],
+      "writeClaimMarkers": [
+        "active ",
+        "added to",
+        "agendada",
+        "agendado",
+        "agende ",
+        "agregada",
+        "agregado",
+        "agregue ",
+        "anadi ",
+        "anadida",
+        "anadido",
+        "anote ",
+        "apague ",
+        "borre ",
+        "cancelada",
+        "cancelado",
+        "cancele ",
+        "canceled",
+        "cancelled",
+        "completada",
+        "complete ",
+        "completed",
+        "creada",
+        "creado",
+        "created",
+        "cree ",
+        "desactive ",
+        "eliminada",
+        "eliminado",
+        "elimine ",
+        "fije ",
+        "forgotten",
+        "guardada",
+        "guardado",
+        "guarde ",
+        "he activado",
+        "he agendado",
+        "he agregado",
+        "he anadido",
+        "he anotado",
+        "he apagado",
+        "he borrado",
+        "he cancelado",
+        "he completado",
+        "he creado",
+        "he creado un recordatorio",
+        "he desactivado",
+        "he eliminado",
+        "he encendido",
+        "he fijado",
+        "he guardado",
+        "he marcado",
+        "he programado",
+        "he puesto un recordatorio",
+        "he registrado",
+        "he tachado",
+        "i added",
+        "i created",
+        "i disabled",
+        "i enabled",
+        "i have created",
+        "i set a reminder",
+        "i turned off",
+        "i turned on",
+        "i've added",
+        "i've created",
+        "i've disabled",
+        "i've enabled",
+        "i've set a reminder",
+        "i've turned",
+        "marcada como",
+        "marked as",
+        "marque ",
+        "noted",
+        "olvidado",
+        "programada",
+        "programado",
+        "programe ",
+        "queda agendad",
+        "quedo agendad",
+        "recordado",
+        "registrada",
+        "registrado",
+        "registre ",
+        "remembered",
+        "reminder is set",
+        "reminder set",
+        "saved",
+        "scheduled"
+      ],
+      "appClaimMarkers": [
+        "abri ",
+        "abro ",
+        "estoy abriendo",
+        "he abierto",
+        "te muestro",
+        "muestro la",
+        "estoy mostrando",
+        "he mostrado",
+        "he cambiado el modo",
+        "cambie el modo",
+        "he puesto la vigilancia",
+        "puse la vigilancia",
+        "i'm opening",
+        "i am opening",
+        "i've opened",
+        "i opened",
+        "i'm showing",
+        "i am showing",
+        "i've shown",
+        "i've switched",
+        "i switched",
+        "i set the guard",
+        "i've set the guard",
+        "set the guard to"
+      ],
+      "generalClaimMarkers": [
+        "confirmado",
+        "listo",
+        "hecho",
+        "ya esta",
+        "done",
+        "all set",
+        "perfecto, ya"
       ]
     },
-    "metrics": {}
+    "metrics": {
+      "argument.accuracy": {
+        "min": 0.95
+      },
+      "cases": {
+        "min": 700
+      },
+      "confirm.ask.neverExecuted": {
+        "min": 0.98
+      },
+      "falseActionRate": {
+        "max": 0.03
+      },
+      "falseCompletionRate": {
+        "max": 0.0
+      },
+      "falseWriteRate": {
+        "max": 0.02
+      },
+      "group.app.falseActionRate": {
+        "max": 0.06
+      },
+      "group.camera.falseActionRate": {
+        "max": 0.05
+      },
+      "group.memory.falseActionRate": {
+        "max": 0.03
+      },
+      "group.modules.falseActionRate": {
+        "max": 0.02
+      },
+      "group.none.falseActionRate": {
+        "max": 0.03
+      },
+      "group.productivity.falseActionRate": {
+        "max": 0.07
+      },
+      "inactive.neverMemoryRecall": {
+        "min": 0.97
+      },
+      "inactive.noOtherTool": {
+        "min": 0.9
+      },
+      "selection.accuracy": {
+        "min": 0.55
+      },
+      "selection.app.accuracy": {
+        "min": 0.6
+      },
+      "selection.camera.accuracy": {
+        "min": 0.93
+      },
+      "selection.memory.accuracy": {
+        "min": 0.6
+      },
+      "selection.none.accuracy": {
+        "min": 0.95
+      },
+      "tool.app.open.precision": {
+        "min": 0.75
+      },
+      "tool.app.open.recall": {
+        "min": 0.8
+      },
+      "tool.app.set_guard_mode.precision": {
+        "min": 0.9
+      },
+      "tool.app.set_guard_mode.recall": {
+        "min": 0.75
+      },
+      "tool.memory.forget.precision": {
+        "min": 0.9
+      },
+      "tool.memory.forget.recall": {
+        "min": 0.6
+      },
+      "tool.memory.recall.precision": {
+        "min": 0.93
+      },
+      "tool.memory.recall.recall": {
+        "min": 0.45
+      },
+      "tool.memory.remember.precision": {
+        "min": 0.85
+      },
+      "tool.memory.remember.recall": {
+        "min": 0.5
+      },
+      "tool.memory.remind.precision": {
+        "min": 0.9
+      },
+      "tool.memory.remind.recall": {
+        "min": 0.75
+      },
+      "variant.en.falseCompletionRate": {
+        "max": 0.0
+      },
+      "variant.en.selection.accuracy": {
+        "min": 0.55
+      },
+      "variant.neutral.falseCompletionRate": {
+        "max": 0.0
+      },
+      "variant.neutral.selection.accuracy": {
+        "min": 0.5
+      },
+      "variant.pe.falseCompletionRate": {
+        "max": 0.0
+      },
+      "variant.pe.selection.accuracy": {
+        "min": 0.5
+      },
+      "variant.stt.falseCompletionRate": {
+        "max": 0.0
+      },
+      "variant.stt.selection.accuracy": {
+        "min": 0.55
+      }
+    }
+  },
+  "llmSmoke": {
+    "metrics": {
+      "cases": {
+        "min": 15
+      },
+      "falseWriteRate": {
+        "max": 0.35
+      }
+    }
   }
 }

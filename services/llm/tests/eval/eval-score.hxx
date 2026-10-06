@@ -43,6 +43,10 @@ struct ScoreConfig
   std::vector<std::string> memberOfferMarkers;
   std::vector<std::string> inactiveMarkers;
   std::vector<std::string> questionMarkers;
+  std::vector<std::string> writeClaimMarkers;
+  std::vector<std::string> appClaimMarkers;
+  std::vector<std::string> generalClaimMarkers;
+  std::vector<std::string> notAClaimMarkers;
 };
 
 struct ArgumentProbe
@@ -52,6 +56,14 @@ struct ArgumentProbe
 };
 
 std::string fold(const std::string& text);
+
+struct ClaimProbe
+{
+  const TurnResult& turn;
+  const ScoreConfig& config;
+};
+
+bool claimsWithoutSuccess(const ClaimProbe& probe);
 
 bool matchesArguments(const ArgumentProbe& probe);
 
