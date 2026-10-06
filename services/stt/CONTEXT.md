@@ -206,3 +206,33 @@ of that revision, and checked against the files installed on the
 development host. A present file whose hash does not match is replaced; a
 pin left empty makes the script refuse to download and say so, and
 `ARGUS_ALLOW_UNPINNED_MODELS=1` downloads it and prints its hash to pin.
+
+## The `voice-stt` component (selectable modules, 2026-10-05)
+
+argus-stt owns the core catalog component `voice-stt`
+(`services/settings/modules.json`; `services/settings/CONTEXT.md`,
+"Modules"): the four NeMo FastConformer transducer files (`stt/nemo-transducer-*`). Its source is `provisioned`: only the host produces
+it (`services/stt/scripts/provision.sh`), so this service reports it and
+never fetches it.
+
+- `feature/settings/stt-components.{hxx,cc}` builds the shared
+  `DiskComponentHost` for `voice-stt` with no fetch; `main.cc` attaches it to the
+  `SettingsRpcService` when the settings caller is paired. The models root is
+  `[components] models_dir` (`models` by default, `/opt/argus/models` in the
+  deploy), the root the catalog's paths are relative to.
+- `ComponentStates`: `installed` when every catalog file exists and is
+  non-empty, otherwise `host_only` with the host command; `bytesPresent` sums
+  the catalog sizes of the files present. `ready` is `SttService::instance().isLoaded()`, never the
+  files alone.
+- `InstallComponent` answers `host_only` and touches nothing;
+  `RemoveComponent` is refused (`INVALID_ARGUMENT`): a provisioned
+  component's files are the host's and `voice-stt` is core.
+- The engine still refuses to boot without its model, as before, so a missing
+  component normally shows as an unreachable owner in `GET /modules`; the
+  states above answer while the service runs. Caveat: `[stt] engine` selects another model (whisper, canary, ...): the engine then loads, `ready` would be true, but the transducer files may be missing, so the component reads `host_only` while the service transcribes.
+
+`tests/unit/stt-components-test.cc` drives the wire in process: host_only and
+the command when missing, partial byte counts, installed, `ready` following
+the engine flag, install answering host_only with an untouched models dir,
+remove refused with the files kept, a foreign component refused, the default
+root.

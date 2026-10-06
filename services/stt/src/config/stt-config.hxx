@@ -3,6 +3,7 @@
 #include <grpc/grpc-server-identity.hxx>
 #include <http/listener-config.hxx>
 
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -20,4 +21,6 @@ public:
   [[nodiscard]] static ListenerConfig resolveListener();
 
   [[nodiscard]] static SttRpcConfig resolveRpc();
+
+  [[nodiscard]] static std::filesystem::path resolveComponentsRoot();
 };

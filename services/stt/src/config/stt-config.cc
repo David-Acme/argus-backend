@@ -22,3 +22,9 @@ SttRpcConfig SttConfig::resolveRpc()
   withoutSettingsCaller(config.credentials);
   return config;
 }
+
+std::filesystem::path SttConfig::resolveComponentsRoot()
+{
+  const std::string root = ConfigService::getString("components.models_dir");
+  return root.empty() ? std::filesystem::path("models") : std::filesystem::path(root);
+}

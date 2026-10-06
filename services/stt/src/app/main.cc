@@ -2,6 +2,7 @@
 #include <config/stt-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/stt/controllers/stt-controller.hxx>
+#include <feature/settings/stt-components.hxx>
 #include <feature/settings/stt-settings.hxx>
 #include <feature/stt/services/stt-service.hxx>
 #include <http/error-handler.hxx>
@@ -57,6 +58,8 @@ int main()
   }
 
   SettingsRegistry settings(sttSettingsCatalog());
+  DiskComponentHost components(sttComponents(
+      {.modelsDir = SttConfig::resolveComponentsRoot(), .loaded = [] { return SttService::instance().isLoaded(); }}));
 
   std::unique_ptr<SettingsRpcService> settingsRpc;
   std::unique_ptr<SttRpcServer> rpc;
@@ -67,6 +70,7 @@ int main()
     if (!rpcConfig.settingsCredentials.empty()) {
       settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
           .service = "stt", .registry = &settings, .credentials = rpcConfig.settingsCredentials});
+      settingsRpc->attachComponents(components);
       services.push_back(settingsRpc.get());
     }
     rpc = std::make_unique<SttRpcServer>(SttRpcInput{

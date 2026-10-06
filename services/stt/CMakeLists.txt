@@ -161,3 +161,15 @@ target_compile_options(stt-settings-test PRIVATE -Wall -Wextra)
 set_target_properties(stt-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME stt-settings-test COMMAND stt-settings-test)
+
+add_executable(stt-components-test tests/unit/stt-components-test.cc)
+
+target_link_libraries(stt-components-test PRIVATE argus::stt-settings argus::stt-config
+    argus::contracts::settings-wire doctest::doctest)
+argus_runtime_rpath(stt-components-test)
+
+target_compile_options(stt-components-test PRIVATE -Wall -Wextra)
+
+set_target_properties(stt-components-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME stt-components-test COMMAND stt-components-test)

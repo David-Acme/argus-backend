@@ -16,6 +16,9 @@ language = "es"
 
 models_dir = "models/stt"
 
+[components]
+models_dir = "models"
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false
