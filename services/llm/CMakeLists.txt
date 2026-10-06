@@ -434,3 +434,15 @@ foreach(TEST_NAME IN ITEMS intent-router-test intent-accuracy-test)
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
+
+add_executable(llm-components-test tests/unit/llm-components-test.cc)
+
+target_link_libraries(llm-components-test PRIVATE argus::llm-settings argus::llm-config
+    argus::contracts::settings-wire doctest::doctest)
+argus_runtime_rpath(llm-components-test)
+
+target_compile_options(llm-components-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-components-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-components-test COMMAND llm-components-test)

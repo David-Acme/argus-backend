@@ -37,6 +37,9 @@ gpu_layers = -1
 [intent]
 model_file = "models/intent/intent.bin"
 
+[components]
+models_dir = "models"
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false

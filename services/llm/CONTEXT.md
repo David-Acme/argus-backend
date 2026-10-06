@@ -956,3 +956,33 @@ existing store keeps an unused empty table.
   the main model do not run at once on the same cores; a busy engine
   requeues the job (dropped once the worker is stopping).
 - `ExtractionService::extractAsync` had no caller and is gone (#111).
+
+## The `llm` component (selectable modules, 2026-10-05)
+
+argus-llm owns the core catalog component `llm`
+(`services/settings/modules.json`; `services/settings/CONTEXT.md`,
+"Modules"): `llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf`. Its source is `provisioned`: only the host produces
+it (`services/llm/scripts/provision.sh`), so this service reports it and
+never fetches it.
+
+- `feature/settings/llm-components.{hxx,cc}` builds the shared
+  `DiskComponentHost` for `llm` with no fetch; `main.cc` attaches it to the
+  `SettingsRpcService` when the settings caller is paired. The models root is
+  `[components] models_dir` (`models` by default, `/opt/argus/models` in the
+  deploy), the root the catalog's paths are relative to.
+- `ComponentStates`: `installed` when every catalog file exists and is
+  non-empty, otherwise `host_only` with the host command; `bytesPresent` sums
+  the catalog sizes of the files present. `ready` is `the controller's `LlmService::isLoaded()``, never the
+  files alone.
+- `InstallComponent` answers `host_only` and touches nothing;
+  `RemoveComponent` is refused (`INVALID_ARGUMENT`): a provisioned
+  component's files are the host's and `llm` is core.
+- The engine still refuses to boot without its model, as before, so a missing
+  component normally shows as an unreachable owner in `GET /modules`; the
+  states above answer while the service runs. Caveat: `[llm] model_path` pointing at another file loads that file; the component reads the catalog's file only.
+
+`tests/unit/llm-components-test.cc` drives the wire in process: host_only and
+the command when missing, partial byte counts, installed, `ready` following
+the engine flag, install answering host_only with an untouched models dir,
+remove refused with the files kept, a foreign component refused, the default
+root.

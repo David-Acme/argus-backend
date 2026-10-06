@@ -51,3 +51,9 @@ LlmNotificationConfig LlmConfig::resolveNotifications()
   return {.target = ConfigService::getString("notifications.target"),
           .credential = ConfigService::getString("notifications.credential")};
 }
+
+std::filesystem::path LlmConfig::resolveComponentsRoot()
+{
+  const std::string root = ConfigService::getString("components.models_dir");
+  return root.empty() ? std::filesystem::path("models") : std::filesystem::path(root);
+}

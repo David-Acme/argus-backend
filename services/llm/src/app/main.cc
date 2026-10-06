@@ -4,6 +4,7 @@
 #include <feature/memory/infra/notification-reminder-calls.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <feature/llm/services/tools/app-tool-descriptors.hxx>
+#include <feature/settings/llm-components.hxx>
 #include <feature/settings/llm-settings.hxx>
 #include <settings/settings-rpc.hxx>
 #include <drogon/drogon.h>
@@ -195,6 +196,8 @@ int main()
     ToolRegistry::instance().registerTool(std::move(descriptor));
 
   SettingsRegistry settings(llmSettingsCatalog());
+  DiskComponentHost components(llmComponents(
+      {.modelsDir = LlmConfig::resolveComponentsRoot(), .loaded = [&llm] { return llm->service().isLoaded(); }}));
   settings.onChange([&llm](const std::vector<std::string>&) { llm->service().refreshSampling(); });
   if (llama_supports_gpu_offload())
     settings.declareCapability("gpu");
@@ -214,6 +217,7 @@ int main()
     if (!rpcConfig.settingsCredentials.empty()) {
       settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
           .service = "llm", .registry = &settings, .credentials = rpcConfig.settingsCredentials});
+      settingsRpc->attachComponents(components);
       services.push_back(settingsRpc.get());
     }
     rpc = std::make_unique<LlmRpcServer>(LlmRpcInput{

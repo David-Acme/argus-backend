@@ -95,6 +95,9 @@ password = "CHANGE_ME_NATS"
 reconnect_wait_ms = 2000
 max_reconnects = 60
 
+[components]
+models_dir = "/opt/argus/models"
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false
