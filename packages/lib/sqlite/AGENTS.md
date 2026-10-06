@@ -33,6 +33,12 @@ own.
   forgets into the first one.
 - `src/sqlite/schema-runner.{cc,hxx}` — `runSchemaFile`: executes every
   statement of a schema file, logging and skipping the ones that fail.
+- `src/sqlite/table-rebuild.{cc,hxx}` — `table_rebuild::run`: rebuilds tables
+  whose stored definition a callback rewrites (SQLite cannot drop a CHECK in
+  place): backup first, foreign keys off outside the transaction, copy,
+  compare counts, drop, rename, recreate indexes and triggers, keep the
+  AUTOINCREMENT sequence, `foreign_key_check` before commit, keys back on. Its
+  one consumer is identity's role CHECK removal.
 - `src/sqlite/transaction.{cc,hxx}` — `db_transaction`: `begin` over a
   `DbClient`, the `Commit` awaiter a unit of work co_awaits (it resumes with
   whether the commit landed), `rollback`, and `CommitObserver`: an RAII

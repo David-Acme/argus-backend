@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS user (
     id             INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     name           TEXT    NOT NULL,
     last_name      TEXT    NOT NULL,
-    role           TEXT    NOT NULL  CHECK (role IN ('owner', 'resident', 'guard', 'guest')),
+    role           TEXT    NOT NULL,
     lang           TEXT    NOT NULL  DEFAULT 'es'  CHECK (lang IN ('es', 'en')),
     is_active      INTEGER NOT NULL  DEFAULT 1  CHECK (is_active IN (0, 1)),
     created_at     INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS person_snapshot (
 CREATE TABLE IF NOT EXISTS user_invitation (
     id                INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     token_hash        TEXT    NOT NULL UNIQUE,
-    role              TEXT    NOT NULL CHECK (role IN ('resident', 'guard', 'guest')),
+    role              TEXT    NOT NULL,
     max_redemptions   INTEGER NOT NULL CHECK (max_redemptions BETWEEN 1 AND 100),
     redemption_count  INTEGER NOT NULL DEFAULT 0
                                 CHECK (redemption_count BETWEEN 0 AND max_redemptions),

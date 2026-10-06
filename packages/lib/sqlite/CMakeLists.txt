@@ -35,6 +35,8 @@ argus_lib(NAME sqlite
         src/sqlite/sql-escape.hxx
         src/sqlite/schema-runner.cc
         src/sqlite/schema-runner.hxx
+        src/sqlite/table-rebuild.cc
+        src/sqlite/table-rebuild.hxx
         src/sqlite/transaction.cc
         src/sqlite/transaction.hxx
     INCLUDES src)

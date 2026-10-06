@@ -23,6 +23,7 @@
 #include <feature/pairing/controllers/pairing-controller.hxx>
 #include <feature/pairing/infra/pairing-banner.hxx>
 #include <feature/retention/services/candidate-retention-service.hxx>
+#include <feature/role-storage/services/role-check-migration.hxx>
 #include <feature/user/controllers/portrait-preview-controller.hxx>
 #include <feature/user/controllers/user-controller.hxx>
 #include <feature/user/services/nats-identity-change-sink.hxx>
@@ -379,6 +380,8 @@ int main()
       LOG_FATAL << "Identity change outbox migration failed — aborting startup";
       _exit(1);
     }
+
+    static_cast<void>(role_check_migration::applyToFile(identityDb.dbPath));
 
     PersonRepository::ensureColumns();
 

@@ -1326,3 +1326,49 @@ paired, and takes that entry out of the fleet gate's caller table.
   are core and stay.
 - `tests/unit/identity-module-data-test.cc` pins the counts, the rollback,
   what stays, the queued crop keys and the idempotent retry.
+
+## Role storage: no CHECK, a safe table rebuild (2026-10, the context plan)
+
+Roles grow with the modules (`docs/history/plans/context-roles-tools-quality-plan.md`,
+section 2), so `user.role` and `user_invitation.role` are plain text:
+`database/schema.sql` carries no CHECK on either, `UserRole` is the gate and
+`parseUserRole` the validator (`create-invitation-dto`, `update-user-dto`),
+and a stored name the build does not know reads as `UserRole::Unknown`, which
+holds nothing (root AGENTS.md rule 1).
+
+An existing database still has the two CHECKs. At boot, after the schema script
+and the outbox migration, `role_check_migration::applyToFile` rebuilds
+`user` and `user_invitation` without them (`src/feature/role-storage/`, over
+the generic `table_rebuild::run` of `argus::lib::sqlite`), the way
+sqlite.org prescribes for a constraint change:
+
+1. it only acts when a table's stored definition still has a `CHECK (role IN
+   (...))`; a database that has none (any fresh one, a second boot) takes no
+   backup and touches nothing;
+2. a consistent copy of the database is taken first with SQLite's backup API,
+   `<db>.role-rebuild-<unix>.bak` beside it (none for an in-memory or URI
+   database);
+3. `PRAGMA foreign_keys = OFF` on its own connection, outside the transaction
+   (the read-back must say 0, else it stops), so dropping `user` cascades into
+   nothing: portraits, voice profiles and samples, privacy rows, person links,
+   invitations and their redemptions all point at the table by name and stay;
+4. one `BEGIN IMMEDIATE`: create the new table from the stored definition with
+   the role CHECK removed (every other column, default and CHECK, including any
+   column an additive boot migration added, is carried because the definition
+   is the live one), copy every column of every row, compare the row counts,
+   drop the old table, rename the new one, recreate the indexes and triggers,
+   keep the AUTOINCREMENT sequence (`sqlite_sequence` never goes backwards),
+   run `PRAGMA foreign_key_check` and commit only when it reports nothing;
+5. foreign keys are switched back on whatever happened.
+
+A failure rolls everything back and the service starts with the old
+constraint and logs an error (an Owner could not yet be given a role the old
+CHECK refuses, nothing else changes); it does not abort the boot, because the
+household must not be locked out by a migration. A view over either table is
+not carried: the rebuild refuses instead (none exists). The development rule
+holds: nothing is deleted or recreated silently, the backup is the way back.
+`tests/unit/identity-role-check-migration-test.cc` runs the whole shipped schema
+with the CHECKs put back, seeds every dependent table and proves that no row of
+any of them is lost, the cascades are still wired afterwards, ids continue, the
+backup keeps the old state, a second run is a no-op and a dangling reference
+aborts without a change.

@@ -176,6 +176,7 @@ argus_service(NAME argus-identity
             argus::identity-rate-gate
             argus::identity-sign-in
             argus::identity-retention
+            argus::identity-role-storage
             argus::identity-face-upgrade
             argus::identity-voiceprint
             argus::identity-privacy

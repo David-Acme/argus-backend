@@ -15,6 +15,18 @@ target_compile_options(identity-migration-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-migration-test)
 add_test(NAME identity-migration-test COMMAND identity-migration-test)
 
+add_executable(identity-role-check-migration-test unit/identity-role-check-migration-test.cc)
+target_compile_definitions(identity-role-check-migration-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(identity-role-check-migration-test PRIVATE
+    argus::identity-role-storage
+    argus::lib::sqlite
+    SQLite::SQLite3
+    doctest::doctest)
+target_compile_options(identity-role-check-migration-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-role-check-migration-test)
+add_test(NAME identity-role-check-migration-test COMMAND identity-role-check-migration-test)
+
 add_executable(identity-change-outbox-sink-test
     unit/identity-change-outbox-sink-test.cc)
 target_compile_definitions(identity-change-outbox-sink-test PRIVATE
