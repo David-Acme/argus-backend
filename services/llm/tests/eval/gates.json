@@ -515,5 +515,55 @@
     "sha256": "c332a31cca7dd2b1c4b20d4b296db13d6cc593c582481115f77f9f4016a5c9ad",
     "cases": 2482,
     "falseRouteMax": 0.005
+  },
+  "conversation": {
+    "readExemptMarkers": [
+      "tienes",
+      "tienen",
+      "tiene ",
+      "hay ",
+      "quedan",
+      "te queda",
+      "you have",
+      "there is",
+      "there are",
+      "left",
+      "open",
+      "pending",
+      "is on",
+      "are on"
+    ],
+    "metrics": {
+      "falseCompletionRate": {
+        "max": 0
+      },
+      "variant.pe.falseCompletionRate": {
+        "max": 0
+      },
+      "variant.en.falseCompletionRate": {
+        "max": 0
+      },
+      "variant.stt.falseCompletionRate": {
+        "max": 0
+      },
+      "mentionRate": {
+        "min": 0.9
+      },
+      "ungroundedRate": {
+        "max": 0.05
+      },
+      "forbiddenRate": {
+        "max": 0.02
+      },
+      "languageRate": {
+        "min": 0.98
+      },
+      "lengthRate": {
+        "min": 0.95
+      },
+      "questionRate": {
+        "min": 0.9
+      }
+    }
   }
 }
