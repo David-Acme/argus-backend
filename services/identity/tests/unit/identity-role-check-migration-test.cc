@@ -5,6 +5,7 @@
 
 #include <sqlite3.h>
 
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -22,7 +23,7 @@ DbHandle open(const std::string& path)
 {
   sqlite3* raw = nullptr;
   REQUIRE(sqlite3_open(path.c_str(), &raw) == SQLITE_OK);
-  return DbHandle(raw, sqlite3_close_v2);
+  return {raw, sqlite3_close_v2};
 }
 
 bool run(sqlite3* db, const std::string& sql, std::string* error = nullptr)
@@ -122,18 +123,17 @@ struct Scratch
   [[nodiscard]] std::string file(const std::string& name) const { return (directory / name).string(); }
 };
 
-constexpr const char* kRoleTables[] = {"user", "user_invitation"};
-constexpr const char* kDependants[] = {"person",
-                                       "stored_file",
-                                       "user_portrait",
-                                       "portrait_preview_capability",
-                                       "voice_profile",
-                                       "voice_sample",
-                                       "voice_device",
-                                       "user_privacy",
-                                       "invitation_redemption",
-                                       "user_invitation",
-                                       "user"};
+constexpr std::array kDependants = {"person",
+                                    "stored_file",
+                                    "user_portrait",
+                                    "portrait_preview_capability",
+                                    "voice_profile",
+                                    "voice_sample",
+                                    "voice_device",
+                                    "user_privacy",
+                                    "invitation_redemption",
+                                    "user_invitation",
+                                    "user"};
 
 void seed(sqlite3* db)
 {
@@ -171,6 +171,7 @@ void seed(sqlite3* db)
 std::vector<int64_t> counts(sqlite3* db)
 {
   std::vector<int64_t> list;
+  list.reserve(std::size(kDependants));
   for (const auto* table : kDependants)
     list.push_back(number(db, std::string("SELECT COUNT(*) FROM \"") + table + "\""));
   return list;

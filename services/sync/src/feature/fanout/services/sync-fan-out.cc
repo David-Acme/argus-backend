@@ -215,7 +215,7 @@ FanOutPlan planEvent(const Event& event)
     }
     if (event.oldRole) {
       plan.kind = FanOutPlan::Kind::ReplaceRoleRooms;
-      plan.replaceInput = {*event.user, *event.oldRole, *event.newRole};
+      plan.replaceInput = {.userId = *event.user, .oldRole = *event.oldRole, .newRole = event.newRole.value_or(UserRole::Unknown)};
       return plan;
     }
     plan.kind = FanOutPlan::Kind::Disconnect;

@@ -8,5 +8,5 @@ struct ResponseUpdateUserDto
   UserSchema user;
   bool roleActive{true};
 
-  Json::Value toJson() const;
+  [[nodiscard]] Json::Value toJson() const;
 };

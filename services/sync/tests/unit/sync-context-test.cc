@@ -50,7 +50,7 @@ public:
   void setPingMessage(const std::string&, const std::chrono::duration<double>&) override {}
   void disablePing() override {}
 
-  Json::Value last() const { return json_util::fromString(messages.back()); }
+  [[nodiscard]] Json::Value last() const { return json_util::fromString(messages.back()); }
 
   std::vector<std::string> messages;
   bool closed{false};
@@ -134,7 +134,7 @@ private:
     {
       Json::Value row(Json::objectValue);
       row["id"] = 1;
-      row["userId"] = Json::Int64(userId_);
+      row["userId"] = static_cast<Json::Int64>(userId_);
       co_return std::vector<Json::Value>{row};
     }
     drogon::Task<std::vector<Json::Value>> findDeleted(const SyncFilter&) const override

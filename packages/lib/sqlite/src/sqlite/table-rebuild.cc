@@ -182,7 +182,7 @@ bool rebuildOne(Db db, const Pending& pending, std::string& error)
     if (!exec(db, statement, error))
       return false;
   if (sequence && !sequence->empty()) {
-    const std::string kept = *sequence;
+    const std::string& kept = *sequence;
     if (!exec(db,
               "UPDATE sqlite_sequence SET seq = MAX(seq, " + kept + ") WHERE name = '" + pending.table + "'",
               error))
@@ -222,6 +222,7 @@ Outcome run(const Input& input)
   if (pending.empty())
     return outcome;
   std::vector<std::string> names;
+  names.reserve(pending.size());
   for (const auto& item : pending)
     names.push_back(item.table);
   if (!std::ranges::all_of(names, plainName)) {

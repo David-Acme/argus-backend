@@ -42,7 +42,7 @@ TEST_CASE("a role update names a role of this build, never the placeholder of an
     CAPTURE(role);
     const auto dto = UpdateUserDto::fromJson(parse(std::string(R"({"role":")") + role + "\"}"));
     REQUIRE(dto.userRole.has_value());
-    CHECK(userRoleToString(*dto.userRole) == role);
+    CHECK(userRoleToString(dto.userRole.value_or(UserRole::Unknown)) == role);
   }
   for (const auto* body : {R"({"role":"unknown"})", R"({"role":"agronomist"})", R"({"role":""})",
                            R"({"role":"OWNER"})"}) {

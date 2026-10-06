@@ -529,10 +529,12 @@ TEST_CASE("RoleFilter lets an inactive guard read and answer a raised alert whil
     drogon::HttpMethod method;
     const char* path;
   };
-  for (const auto& request : {Request{drogon::Get, "/guard/safety"}, Request{drogon::Get, "/notification/responses"},
-                              Request{drogon::Get, "/notification/responses/4"},
-                              Request{drogon::Patch, "/notification/responses/4"},
-                              Request{drogon::Post, "/rtc/token"}, Request{drogon::Post, "/guard/panic"}}) {
+  for (const auto& request : {Request{.method = drogon::Get, .path = "/guard/safety"},
+                              Request{.method = drogon::Get, .path = "/notification/responses"},
+                              Request{.method = drogon::Get, .path = "/notification/responses/4"},
+                              Request{.method = drogon::Patch, .path = "/notification/responses/4"},
+                              Request{.method = drogon::Post, .path = "/rtc/token"},
+                              Request{.method = drogon::Post, .path = "/guard/panic"}}) {
     CAPTURE(request.path);
     for (const auto role : {UserRole::Guard, UserRole::Resident, UserRole::Guest, UserRole::Owner})
       CHECK(runRoleFilter({.role = role, .method = request.method, .path = request.path}).admitted);

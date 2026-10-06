@@ -96,7 +96,7 @@ InvitationFeatureService::requireActiveRole(UserRole role, int64_t actorId) cons
                            : modules->modules().end();
   const std::string message = flag != modules->modules().end()
                                   ? role_copy::needsModule(role, *flag, lang)
-                                  : role_copy::label(role, lang);
+                                  : std::string(role_copy::label(role, lang));
   throw ResponseException(IdentityErrors::InvitationRoleInactive.withMessage(message));
 }
 

@@ -7,7 +7,7 @@ constexpr std::string_view kEnglish = "en";
 
 namespace role_copy
 {
-std::string label(UserRole role, std::string_view lang)
+std::string_view label(UserRole role, std::string_view lang)
 {
   const bool english = lang == kEnglish;
   switch (role) {
@@ -31,7 +31,7 @@ std::string needsModule(UserRole role, const ModuleFlag& module, std::string_vie
   const std::string& named = english ? module.name.en : module.name.es;
   const std::string name = named.empty() ? module.id : named;
   if (english)
-    return label(role, lang) + " needs the " + name + " module";
-  return label(role, lang) + " necesita el módulo " + name;
+    return std::string(label(role, lang)) + " needs the " + name + " module";
+  return std::string(label(role, lang)) + " necesita el módulo " + name;
 }
 }

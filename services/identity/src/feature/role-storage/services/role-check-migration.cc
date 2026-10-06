@@ -9,6 +9,7 @@
 namespace
 {
 constexpr int kBusyTimeoutMs = 5000;
+constexpr unsigned kOpenFlags = static_cast<unsigned>(SQLITE_OPEN_READWRITE) | static_cast<unsigned>(SQLITE_OPEN_URI);
 constexpr std::string_view kUriPrefix = "file:";
 constexpr std::string_view kMemoryDatabase = ":memory:";
 
@@ -47,7 +48,7 @@ std::string backupPathFor(const std::string& dbPath, std::int64_t unixSeconds)
 bool applyToFile(const std::string& dbPath)
 {
   sqlite3* raw = nullptr;
-  if (sqlite3_open_v2(dbPath.c_str(), &raw, SQLITE_OPEN_READWRITE | SQLITE_OPEN_URI, nullptr) != SQLITE_OK) {
+  if (sqlite3_open_v2(dbPath.c_str(), &raw, static_cast<int>(kOpenFlags), nullptr) != SQLITE_OK) {
     LOG_ERROR << "Identity roles: could not open " << dbPath << " for the role check migration";
     sqlite3_close(raw);
     return false;

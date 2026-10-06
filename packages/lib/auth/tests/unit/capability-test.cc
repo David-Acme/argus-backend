@@ -34,12 +34,16 @@ ModuleSnapshot snapshotWith(bool surveillance, bool productivity)
                          flag("productivity", productivity, {})});
 }
 
-const std::array kStates = {
-    snapshotWith(true, true),
-    snapshotWith(false, true),
-    snapshotWith(true, false),
-    snapshotWith(false, false),
-};
+const std::array<ModuleSnapshot, 4>& moduleStates()
+{
+  static const std::array<ModuleSnapshot, 4> states = {
+      snapshotWith(true, true),
+      snapshotWith(false, true),
+      snapshotWith(true, false),
+      snapshotWith(false, false),
+  };
+  return states;
+}
 
 bool has(const std::vector<std::string_view>& list, std::string_view id)
 {
@@ -61,60 +65,60 @@ struct TableProbe
 };
 
 constexpr std::array kRouteProbes = std::to_array<RouteProbe>({
-    {"sessions.manage", drogon::Get, "/auth/sessions"},
-    {"privacy.own", drogon::Get, "/privacy/me"},
-    {"notifications.register", drogon::Post, "/notification-token"},
-    {"calls.join", drogon::Post, "/rtc/token"},
-    {"heartbeat.read", drogon::Get, "/sync/heartbeat"},
-    {"modules.read", drogon::Get, "/modules"},
-    {"safety.panic", drogon::Post, "/guard/panic"},
-    {"users.manage", drogon::Patch, "/user/1"},
-    {"invitations.manage", drogon::Post, "/invitation"},
-    {"privacy.household", drogon::Patch, "/privacy/household"},
-    {"settings.manage", drogon::Patch, "/settings/llm"},
-    {"modules.manage", drogon::Post, "/modules/surveillance/install"},
-    {"activity.read", drogon::Get, "/sync/activity"},
-    {"camera.view", drogon::Get, "/camera/overview"},
-    {"camera.view", drogon::Post, "/camera/1/webrtc"},
-    {"camera.talk", drogon::Post, "/camera/1/talk"},
-    {"camera.manage", drogon::Post, "/camera"},
-    {"zones.read", drogon::Get, "/zone"},
-    {"zones.write", drogon::Post, "/zone"},
-    {"guard.read", drogon::Get, "/guard/environments"},
-    {"guard.read", drogon::Get, "/guard/incidents"},
-    {"guard.mode.set", drogon::Post, "/guard/mode"},
-    {"guard.guests.write", drogon::Post, "/guard/expected-guests"},
-    {"guard.admin", drogon::Post, "/guard/environments"},
-    {"response.duty", drogon::Post, "/guard/environments/1/duty"},
-    {"safety.read", drogon::Get, "/guard/safety"},
-    {"safety.respond", drogon::Get, "/notification/responses"},
-    {"safety.respond", drogon::Get, "/notification/responses/1"},
-    {"safety.respond", drogon::Patch, "/notification/responses/1"},
-    {"safety.duress", drogon::Put, "/guard/safety/pin"},
-    {"visitors.read", drogon::Get, "/visitor"},
-    {"visitors.manage", drogon::Delete, "/visitor/1"},
-    {"presence.read", drogon::Get, "/guard/presence"},
-    {"agenda.read", drogon::Get, "/calendar-event"},
-    {"agenda.write", drogon::Post, "/calendar-event"},
-    {"projects.read", drogon::Get, "/project"},
-    {"projects.write", drogon::Post, "/project"},
-    {"people.read", drogon::Get, "/person"},
-    {"people.write", drogon::Post, "/person"},
-    {"reminders.read", drogon::Get, "/reminder"},
-    {"reminders.write", drogon::Post, "/reminder"},
-    {"reminders.write", drogon::Patch, "/reminder/1"},
-    {"reminders.write", drogon::Delete, "/reminder/1"},
+    {.capability = "sessions.manage", .method = drogon::Get, .path = "/auth/sessions"},
+    {.capability = "privacy.own", .method = drogon::Get, .path = "/privacy/me"},
+    {.capability = "notifications.register", .method = drogon::Post, .path = "/notification-token"},
+    {.capability = "calls.join", .method = drogon::Post, .path = "/rtc/token"},
+    {.capability = "heartbeat.read", .method = drogon::Get, .path = "/sync/heartbeat"},
+    {.capability = "modules.read", .method = drogon::Get, .path = "/modules"},
+    {.capability = "safety.panic", .method = drogon::Post, .path = "/guard/panic"},
+    {.capability = "users.manage", .method = drogon::Patch, .path = "/user/1"},
+    {.capability = "invitations.manage", .method = drogon::Post, .path = "/invitation"},
+    {.capability = "privacy.household", .method = drogon::Patch, .path = "/privacy/household"},
+    {.capability = "settings.manage", .method = drogon::Patch, .path = "/settings/llm"},
+    {.capability = "modules.manage", .method = drogon::Post, .path = "/modules/surveillance/install"},
+    {.capability = "activity.read", .method = drogon::Get, .path = "/sync/activity"},
+    {.capability = "camera.view", .method = drogon::Get, .path = "/camera/overview"},
+    {.capability = "camera.view", .method = drogon::Post, .path = "/camera/1/webrtc"},
+    {.capability = "camera.talk", .method = drogon::Post, .path = "/camera/1/talk"},
+    {.capability = "camera.manage", .method = drogon::Post, .path = "/camera"},
+    {.capability = "zones.read", .method = drogon::Get, .path = "/zone"},
+    {.capability = "zones.write", .method = drogon::Post, .path = "/zone"},
+    {.capability = "guard.read", .method = drogon::Get, .path = "/guard/environments"},
+    {.capability = "guard.read", .method = drogon::Get, .path = "/guard/incidents"},
+    {.capability = "guard.mode.set", .method = drogon::Post, .path = "/guard/mode"},
+    {.capability = "guard.guests.write", .method = drogon::Post, .path = "/guard/expected-guests"},
+    {.capability = "guard.admin", .method = drogon::Post, .path = "/guard/environments"},
+    {.capability = "response.duty", .method = drogon::Post, .path = "/guard/environments/1/duty"},
+    {.capability = "safety.read", .method = drogon::Get, .path = "/guard/safety"},
+    {.capability = "safety.respond", .method = drogon::Get, .path = "/notification/responses"},
+    {.capability = "safety.respond", .method = drogon::Get, .path = "/notification/responses/1"},
+    {.capability = "safety.respond", .method = drogon::Patch, .path = "/notification/responses/1"},
+    {.capability = "safety.duress", .method = drogon::Put, .path = "/guard/safety/pin"},
+    {.capability = "visitors.read", .method = drogon::Get, .path = "/visitor"},
+    {.capability = "visitors.manage", .method = drogon::Delete, .path = "/visitor/1"},
+    {.capability = "presence.read", .method = drogon::Get, .path = "/guard/presence"},
+    {.capability = "agenda.read", .method = drogon::Get, .path = "/calendar-event"},
+    {.capability = "agenda.write", .method = drogon::Post, .path = "/calendar-event"},
+    {.capability = "projects.read", .method = drogon::Get, .path = "/project"},
+    {.capability = "projects.write", .method = drogon::Post, .path = "/project"},
+    {.capability = "people.read", .method = drogon::Get, .path = "/person"},
+    {.capability = "people.write", .method = drogon::Post, .path = "/person"},
+    {.capability = "reminders.read", .method = drogon::Get, .path = "/reminder"},
+    {.capability = "reminders.write", .method = drogon::Post, .path = "/reminder"},
+    {.capability = "reminders.write", .method = drogon::Patch, .path = "/reminder/1"},
+    {.capability = "reminders.write", .method = drogon::Delete, .path = "/reminder/1"},
 });
 
 constexpr std::array kTableProbes = std::to_array<TableProbe>({
-    {"profile.read", TableName::User, RolePermission::Read},
-    {"notifications.read", TableName::Notification, RolePermission::Read},
-    {"events.read", TableName::Event, RolePermission::Read},
-    {"memory.manage", TableName::Memory, RolePermission::Create},
-    {"reminders.read", TableName::Reminder, RolePermission::Read},
-    {"reminders.read", TableName::ReminderDetail, RolePermission::Read},
-    {"reminders.write", TableName::Reminder, RolePermission::Update},
-    {"reminders.write", TableName::ReminderDetail, RolePermission::Create},
+    {.capability = "profile.read", .table = TableName::User, .perm = RolePermission::Read},
+    {.capability = "notifications.read", .table = TableName::Notification, .perm = RolePermission::Read},
+    {.capability = "events.read", .table = TableName::Event, .perm = RolePermission::Read},
+    {.capability = "memory.manage", .table = TableName::Memory, .perm = RolePermission::Create},
+    {.capability = "reminders.read", .table = TableName::Reminder, .perm = RolePermission::Read},
+    {.capability = "reminders.read", .table = TableName::ReminderDetail, .perm = RolePermission::Read},
+    {.capability = "reminders.write", .table = TableName::Reminder, .perm = RolePermission::Update},
+    {.capability = "reminders.write", .table = TableName::ReminderDetail, .perm = RolePermission::Create},
 });
 
 bool tableAllowed(UserRole role, const TableProbe& probe, const ModuleSnapshot& modules)
@@ -204,7 +208,7 @@ TEST_CASE("a role whose module is off keeps the baseline and nothing else")
 
 TEST_CASE("a role this build does not know holds nothing, active or not")
 {
-  for (const auto& modules : kStates) {
+  for (const auto& modules : moduleStates()) {
     CHECK(role_access::capabilitiesFor({.role = UserRole::Unknown, .modules = modules}).empty());
     CHECK_FALSE(modules.roleActive(UserRole::Unknown));
     CHECK_FALSE(role_access::hasCapability(
@@ -214,7 +218,7 @@ TEST_CASE("a role this build does not know holds nothing, active or not")
 
 TEST_CASE("capabilities and the route and table rules never drift apart")
 {
-  for (const auto& modules : kStates) {
+  for (const auto& modules : moduleStates()) {
     for (const auto role : kKnownRoles) {
       for (const auto& probe : kRouteProbes) {
         CAPTURE(userRoleToString(role));
@@ -245,7 +249,7 @@ TEST_CASE("capabilities and the route and table rules never drift apart")
 
 TEST_CASE("an app action the assistant may trigger follows the capability, so a module that is off refuses it")
 {
-  for (const auto& modules : kStates) {
+  for (const auto& modules : moduleStates()) {
     for (const auto role : kKnownRoles) {
       for (const auto action : {role_access::AppAction::ShowCamera, role_access::AppAction::OpenScreen,
                                 role_access::AppAction::SetGuardMode}) {
@@ -282,7 +286,7 @@ TEST_CASE("the request for a module is held by every role but the Owner, an inac
 
 TEST_CASE("reminders are core and own-row for every role, the Owner included")
 {
-  for (const auto& modules : kStates) {
+  for (const auto& modules : moduleStates()) {
     for (const auto role : kKnownRoles) {
       CAPTURE(userRoleToString(role));
       CHECK(role_access::hasCapability({.role = role, .modules = modules, .capability = "reminders.read"}));
@@ -311,7 +315,7 @@ TEST_CASE("reminders are core and own-row for every role, the Owner included")
 
 TEST_CASE("the panic route is core: never module-gated, kept by an inactive role")
 {
-  for (const auto& modules : kStates) {
+  for (const auto& modules : moduleStates()) {
     for (const auto role : {UserRole::Resident, UserRole::Guard, UserRole::Guest, UserRole::Owner}) {
       CAPTURE(userRoleToString(role));
       CHECK(role_access::routeVerdict({.role = role,
@@ -400,7 +404,7 @@ TEST_CASE("every table of a gated module is gated by the same module as its rout
     CAPTURE(tableNameToString(entry.table));
     const auto module = role_access::moduleOfTable(entry.table);
     REQUIRE(module.has_value());
-    CHECK(*module == entry.module);
+    CHECK(module.value_or(std::string_view()) == entry.module);
   }
   for (const auto& route : role_access::kModuleRoutes) {
     const std::string path = "/" + std::string(route.segment) + "/1";
@@ -414,7 +418,7 @@ TEST_CASE("the baseline keeps reminders, panic, the safety state and the respond
 {
   constexpr std::array kBaseline = {"reminders.read", "reminders.write", "safety.panic", "safety.read",
                                     "safety.respond", "calls.join", "notifications.read", "profile.read"};
-  for (const auto& modules : kStates) {
+  for (const auto& modules : moduleStates()) {
     for (const auto role : kKnownRoles) {
       CAPTURE(userRoleToString(role));
       const auto held = role_access::capabilitiesFor({.role = role, .modules = modules});
@@ -434,7 +438,7 @@ TEST_CASE("the baseline keeps reminders, panic, the safety state and the respond
 
 TEST_CASE("modules.request goes to every role but the Owner, active or inactive, in every module state")
 {
-  for (const auto& modules : kStates) {
+  for (const auto& modules : moduleStates()) {
     for (const auto role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
       CAPTURE(userRoleToString(role));
       CHECK(has(role_access::capabilitiesFor({.role = role, .modules = modules}), "modules.request"));
@@ -453,15 +457,15 @@ TEST_CASE("a raised alert stays answerable with surveillance off: the safety sta
     drogon::HttpMethod method;
     std::string_view path;
   };
-  constexpr std::array steps = {Step{drogon::Get, "/guard/safety"},
-                                Step{drogon::Get, "/notification/responses"},
-                                Step{drogon::Get, "/notification/responses/9"},
-                                Step{drogon::Patch, "/notification/responses/9"},
-                                Step{drogon::Patch, "/notification/ack"},
-                                Step{drogon::Patch, "/notification/read"},
-                                Step{drogon::Post, "/rtc/token"},
-                                Step{drogon::Post, "/guard/panic"}};
-  for (const auto& modules : kStates) {
+  constexpr std::array steps = {Step{.method = drogon::Get, .path = "/guard/safety"},
+                                Step{.method = drogon::Get, .path = "/notification/responses"},
+                                Step{.method = drogon::Get, .path = "/notification/responses/9"},
+                                Step{.method = drogon::Patch, .path = "/notification/responses/9"},
+                                Step{.method = drogon::Patch, .path = "/notification/ack"},
+                                Step{.method = drogon::Patch, .path = "/notification/read"},
+                                Step{.method = drogon::Post, .path = "/rtc/token"},
+                                Step{.method = drogon::Post, .path = "/guard/panic"}};
+  for (const auto& modules : moduleStates()) {
     for (const auto role : kKnownRoles) {
       for (const auto& step : steps) {
         CAPTURE(userRoleToString(role));

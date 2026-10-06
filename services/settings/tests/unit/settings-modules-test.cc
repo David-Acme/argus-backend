@@ -191,8 +191,9 @@ TEST_CASE("the catalog refuses a role the owner owns, a role two modules bring a
   root["modules"][1].removeMember("intro");
   const auto parsed = parseModuleCatalog(root);
   REQUIRE(parsed.catalog.has_value());
-  CHECK(parsed.catalog->module("surveillance")->roles.empty());
-  CHECK(parsed.catalog->module("surveillance")->intro.es.what.empty());
+  const auto& stripped = parsed.catalog.value();
+  CHECK(stripped.module("surveillance")->roles.empty());
+  CHECK(stripped.module("surveillance")->intro.es.what.empty());
 }
 
 TEST_CASE("the catalog refuses cycles, unknown references and unpinned downloads")
