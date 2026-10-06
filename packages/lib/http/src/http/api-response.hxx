@@ -27,6 +27,7 @@ class ApiResponse
 public:
   static drogon::HttpResponsePtr ok(const Json::Value& data = Json::Value());
   static drogon::HttpResponsePtr created(const Json::Value& data);
+  static drogon::HttpResponsePtr accepted(const Json::Value& data);
   static drogon::HttpResponsePtr noContent();
 
   static drogon::HttpResponsePtr error(const ErrorInput& input);

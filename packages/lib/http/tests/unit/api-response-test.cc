@@ -83,6 +83,17 @@ TEST_CASE("ApiResponse::created returns 201 with the payload")
   CHECK(body["errors"].isNull());
 }
 
+TEST_CASE("ApiResponse::accepted returns 202 with the payload")
+{
+  const auto response = ApiResponse::accepted(sampleData());
+  CHECK(response->getStatusCode() == drogon::k202Accepted);
+
+  const auto body = bodyOf(response);
+  CHECK(body["status"] == 202);
+  CHECK(body["info"]["id"] == 7);
+  CHECK(body["errors"].isNull());
+}
+
 TEST_CASE("ApiResponse::noContent keeps info and errors null")
 {
   const auto response = ApiResponse::noContent();

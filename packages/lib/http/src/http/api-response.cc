@@ -20,6 +20,11 @@ drogon::HttpResponsePtr ApiResponse::created(const Json::Value& data)
   return json({.status = 201, .info = &data, .errors = nullptr});
 }
 
+drogon::HttpResponsePtr ApiResponse::accepted(const Json::Value& data)
+{
+  return json({.status = 202, .info = &data, .errors = nullptr});
+}
+
 drogon::HttpResponsePtr ApiResponse::noContent()
 {
   return json({.status = 204, .info = nullptr, .errors = nullptr});
