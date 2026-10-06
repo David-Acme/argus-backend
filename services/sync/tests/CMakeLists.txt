@@ -164,3 +164,15 @@ target_link_libraries(sync-control-callers-test PRIVATE
 target_compile_options(sync-control-callers-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-control-callers-test)
 add_test(NAME sync-control-callers-test COMMAND sync-control-callers-test)
+
+add_executable(sync-module-data-test unit/sync-module-data-test.cc)
+target_compile_definitions(sync-module-data-test PRIVATE
+    ARGUS_SYNC_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(sync-module-data-test PRIVATE
+    argus::sync-module-data
+    argus::lib::sqlite
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(sync-module-data-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(sync-module-data-test)
+add_test(NAME sync-module-data-test COMMAND sync-module-data-test)

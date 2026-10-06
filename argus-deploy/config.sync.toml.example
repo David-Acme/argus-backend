@@ -5,6 +5,7 @@ grpc_port = 7041
 [rpc.callers]
 identity = "CHANGE_ME_IDENTITY_SYNC"
 notification = "CHANGE_ME_NOTIFICATION_SYNC"
+settings = "CHANGE_ME_SETTINGS_SYNC"
 
 [drogon.app]
 number_of_threads = 0

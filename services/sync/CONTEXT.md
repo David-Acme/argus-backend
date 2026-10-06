@@ -917,3 +917,29 @@ message on the settings subject that carries neither shape is terminated.
 `tests/unit/sync-surface-test.cc` pins the rooms, the trimming, the purge
 watermark and the refusal; `change-feed-consumer-test.cc` pins the feed and
 its routing.
+
+## Module change history: summary and purge (2026-10, the modules plan)
+
+A module purge must not leave its rows' old values in argus-sync: the audit
+diffs carry previous field values. argus-sync is therefore the last data owner
+of `surveillance` and `productivity` in `modules.json` (`dataOwners` run in
+order, so the owners have already deleted their rows when sync runs).
+`src/feature/module-data/` (`argus::sync-module-data`) maps a module to its
+synced tables (`surveillance`: `camera`, `camera_stream`, `zone`;
+`productivity`: `project`, `project_task`, `project_member`,
+`calendar_event`, `calendar_event_share`) and, in one transaction, deletes
+their `audit_log`, `user_audit_log` and `user_action_log` rows and their
+`audit_compaction_state` frontier. The summary is one item,
+`change_history`, with an estimate of its bytes. `main.cc` serves it through
+a `SettingsRpcService` (empty catalog) on the control listener (7041) when
+`[rpc.callers] settings` is paired; that entry is taken out of the control
+gate's caller table, so it never admits a control call.
+
+Audit cursors survive the gap: clients page by id, and deleted ids are simply
+not returned. Devices drop the module's local tables on the newer
+`dataPurgedAt` of the `ModuleUpdate` frame. A change event an owner had
+already published before its purge and that argus-sync consumes after its own
+purge would write one audit row again; the window is the few seconds between
+the owner's purge and sync's, and the next purge removes it.
+`tests/unit/sync-module-data-test.cc` pins the table scope, the rollback and
+the idempotent retry.

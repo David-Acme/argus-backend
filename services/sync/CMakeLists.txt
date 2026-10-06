@@ -123,10 +123,12 @@ argus_service(NAME argus-sync
             argus::sync-rtc
             argus::sync-heartbeat
             argus::sync-control-rpc
+            argus::sync-module-data
             argus::sync-repositories
             argus::sync-services
     DEPENDS argus::lib::http
             argus::lib::auth
+            argus::contracts::settings-wire
             argus::clients::sync
             Drogon::Drogon
     PORTS 7025 7041)

@@ -9,6 +9,7 @@
 #include <feature/fanout/services/notification-delivery-consumer.hxx>
 #include <feature/fanout/services/sync-fan-out.hxx>
 #include <feature/heartbeat/controllers/heartbeat-controller.hxx>
+#include <feature/module-data/services/sync-module-data.hxx>
 #include <feature/heartbeat/infra/guard-presence-directory.hxx>
 #include <feature/heartbeat/services/heartbeat-feed.hxx>
 #include <feature/heartbeat/services/heartbeat-service.hxx>
@@ -47,6 +48,7 @@
 #include <notification/notification-client.hxx>
 #include <voice/voice-client.hxx>
 #include <runtime/shutdown-signal.hxx>
+#include <settings/settings-rpc.hxx>
 #include <runtime/log-output.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <sqlite/db-service.hxx>
@@ -103,7 +105,9 @@ int main()
 
   const SyncDbConfig syncDb = SyncConfig::resolveDb();
   const ListenerConfig listener = SyncConfig::resolveListener();
-  const SyncControlConfig control = SyncConfig::resolveControl();
+  SyncControlConfig control = SyncConfig::resolveControl();
+  auto settingsCredentials = settingsCallers(control.callers);
+  withoutSettingsCaller(control.callers);
   const SyncUpstreams upstreams = SyncConfig::resolveUpstreams();
   const int auditRetentionDays = SyncConfig::resolveAuditRetentionDays();
 
@@ -319,11 +323,23 @@ int main()
   }
 
   SyncControlRpcService controlRpc(controlGate);
+  SyncModuleData moduleData;
+  SettingsRegistry noSettings({});
+  std::unique_ptr<SettingsRpcService> settingsRpc;
   grpc::ServerBuilder controlBuilder;
   controlBuilder.AddListeningPort(control.listener.host + ":" +
                                       std::to_string(control.listener.port),
                                   grpc::InsecureServerCredentials());
   controlBuilder.RegisterService(&controlRpc);
+  if (settingsCredentials.empty()) {
+    LOG_INFO << "Module data RPC not served: [rpc.callers] settings is empty";
+  }
+  else {
+    settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
+        .service = "sync", .registry = &noSettings, .credentials = std::move(settingsCredentials)});
+    settingsRpc->attachModuleData(moduleData);
+    controlBuilder.RegisterService(settingsRpc.get());
+  }
   std::unique_ptr<grpc::Server> controlServer(controlBuilder.BuildAndStart());
   if (controlServer)
     LOG_INFO << "Sync control RPC listening on " << control.listener.host << ":"
