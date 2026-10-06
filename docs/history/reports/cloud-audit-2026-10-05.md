@@ -284,9 +284,9 @@ corren como root.
 | sync | `8e8c1101` | Terminado (golden `/sync` sin ejecutar: necesita flota viva) | #10, #26 (sync), #53-#56, #77-#80 y mejoras de rendimiento |
 | runtime, nats, cert, mdns, deploy, túnel | `d4be3515` | Terminado (sin Docker para probar el compose en ejecución) | #9, #14, #15, #26-#29, #66, #103, #105-#108, N2, N3, N6-N8 |
 | guard | `a1482fe5` | Terminado; `guard-dialogue-service-test` ya fallaba antes en este entorno | #4-#6, #42-#44, #51, #92-#94, #109, G2-G20, N5 |
-| identity (+PAD), camera, IA/voz | commit "wip" siguiente | **En curso, sin verificar**: se cortó por falta de presupuesto | ver pendientes |
+| identity (+PAD), camera, IA/voz | commit "wip" siguiente | Terminado en local (ver "Cierre en local") | ver "Cierre en local" |
 
-### Pendiente para terminar en local
+### Pendiente para terminar en local (cerrado: ver "Cierre en local")
 
 1. **identity** (en curso): modelo PAD MiniFASNet (ONNX, Apache-2.0, ficha en
    `models/face/anti-spoof/MODEL-CARD.md`; los `.onnx` no se versionan: falta fijar su descarga con SHA-256
@@ -313,3 +313,91 @@ corren como root.
 6. **Despliegue**: volver a ejecutar `provision-host.sh` con el stack parado antes de `up -d` (nuevo
    `auth.conf` de NATS y directorio de la CA); las instalaciones existentes conservan su CA antigua y deben
    dar por expuesta la `ca.key` que estaba en `certs/`.
+
+---
+
+## Cierre en local (2026-10-05)
+
+La rama se terminó y se verificó en el portátil de desarrollo, con Conan y los pines reales de los
+submódulos. Cada informe de un agente se trató como no fiable hasta comprobarlo en el código y con los
+tests ejecutados aquí.
+
+### Correcciones a lo que la sesión cloud dio por hecho
+
+- El puntero de los submódulos `ncnn` y `sherpa-onnx` **sí** había cambiado (contra lo que decía este
+  informe); se restauró el de `master` (`e9e002b8`).
+- Los modelos PAD ya tenían su descarga fijada con SHA-256 en `services/identity/scripts/provision.sh`;
+  se descargaron y los hashes coinciden.
+- Los SHA-256 de stt, vlm, voice y tts se fijaron desde los metadatos LFS de Hugging Face y el digest de
+  la release de GitHub, y coinciden con los archivos instalados (`349a37ce`).
+
+### Revisión de los cinco bloques "terminados"
+
+Cuatro revisiones independientes confirmaron la mayoría de los arreglos y encontraron defectos que se
+corrigieron: alertas de pánico que podían quedar atascadas para siempre tras un rechazo no transitorio
+(D1), el Owner podía desactivar la coacción sin PIN (D2), abandono silencioso de alertas a las 24 h (D3),
+invitado esperado más veto del modelo por debajo del tope (D4), fuga de nombres de visitantes por la
+ruta de respaldo (D5), "stale" medido por latencia y no por reentrega (D6), llegadas perdidas al
+reintentar y push duplicados con el broker lento en notification, el código de emparejamiento que el
+`wip` leía de otra ruta (rompía `/pairing` tras reaprovisionar), SAN de la hoja fuera de los
+`nameConstraints` de la CA, lanes acotadas sin uso real (N2), un `try/catch` de #78 que sí hacía falta
+y fallos de arranque tardíos por `fingerprint_secret` en cinco servicios.
+
+### Terminado después
+
+| Bloque | Commits | Hallazgos |
+|---|---|---|
+| identity (PAD, borrado biométrico, visitantes, emparejamiento, PKI) | `328c8928`, `94ebb483`, `bfdad817`, `1cd77128` | #7, #8, #17-#19, #36-#41, #67, #70, #86-#91, N1, N15, limitador de `/pairing` e `/invitation/resolve`; nueva fuga al promover visitantes |
+| camera (credenciales cifradas, sonda, retención, WebRTC, `/media`) | `985d8018`, `1aae1a12`, `6f6910ef`, `eefb0755`, `eaa4aa01` | #3, #11-#13, #57-#64, #76, #100-#102; renovación del acceso dentro del socket `/media` |
+| guard (seguridad personal, invitados, entregas) | `0d030cf5`, `a4effcd8` | D1-D6, #50/G1, N16 |
+| IA/voz | `61960028`, `7c51e72f`, `d2362f35`, `a5101e28`, `2fce1333`, `f0f0b1b3`, `0ba26e61`, `b6ac7da0`, `376db23b` | #30-#35, #96-#99, N4, N9-N14; `VecDb` abría el archivo equivocado |
+| plataforma (auth, notification, sync, productivity, settings) | `3dc3b3ed`, `b3f84778`, `d7ace14d`, `5cce273e`, `778da703`, `dc0b005a` | #45, #54, #65, #76 (en vivo), #78, errores de liveness para la app |
+| outbox único | `63206e4c`, `a8321bc9`, `b91fcb9e` | #69 (las cinco copias ya habían divergido) |
+| credencial por llamante en 7040/7041/7043 | `0a6ab744` … `95592e16` | #25 (parte de credenciales y permisos por método) |
+| calidad de tests e higiene | `2c0e7b74`, `6b5c052f`, `01080842`, `eb6acdcc`, `19859c07`, `85effefa` | #16, #72, #108, #110-#112 (parcial), N2 |
+| auth resuelve sus propios filtros en proceso | `b8cba9a2` | regresión de #25: con todos los llamantes emparejados, argus-auth se llamaba a sí mismo por 7043 sin credencial y respondía 503 a todo refresh (la detectó la réplica golden, no los tests unitarios) |
+| duplicados restantes | `16e672e9`, `731f247c`, `6e01aae6` | #111 (`connectLoopback` en `lib/net`, gates de llamante de stt/tts/vlm/llm en `FleetCallerGate`), #112 (fixture estático de auth) |
+| TTS reproducible | `a4f2a635` | el caso de semilla fija fallaba 5 de 6 con 4 hilos de onnxruntime; 6 de 6 con uno |
+| goldens en modo `credential` | `5b7c2d29`, `01760428`, `c1463f41` | contrato HTTP de la app |
+| clang-tidy | `9dc5aa2d`, `2f143aa6`, `7d2914f9`, `cadb138f` | reglas 16 y 19; línea base bajada a 2392 y escaneo con todos los hilos |
+
+### Verificación final (2026-10-05)
+
+| Comprobación | Resultado |
+|---|---|
+| 16 proyectos, `build/dev`, `ARGUS_NATS_URL` con broker real | 0 errores, 0 warnings; ctest 891/891 con `-j 8` y ningún reintento en serie |
+| `check-comments` / `check-deps` / `check-routes` | 0 comentarios en 2205 archivos / 0 aristas prohibidas, 0 ciclos / 0 rutas añadidas o quitadas |
+| `check-tidy` | 935 TUs, 2392 hallazgos (línea base anterior 2472), rc 0 |
+| Réplica golden sobre sandbox nativo recién creado, modo `credential` | 664 sondas, 0 fallos, 0 obsoletas |
+| Frontend (`bun run verify`, contrato HTTP contra estas fixtures) | 617/617; `cargo check` de `src-tauri` limpio |
+
+### Decisiones tomadas
+
+- `device.identity_mode = "credential"` queda por defecto (decisión del dueño: más seguridad sin
+  fricción); la app ya lleva la credencial de dispositivo de forma transparente.
+- Un Owner sin PIN puede desactivar la coacción sin PIN: nada protege su propio desarme.
+- Los hechos que el `forget` antiguo solo cerró no se purgan automáticamente: no se distinguen de forma
+  segura de notas refinadas, y la regla 17b prohíbe borrar datos como efecto lateral. Todo `forget`
+  nuevo borra de verdad.
+- El VLM acepta como máximo 4096 px por lado.
+- Al cambiar la IP de una cámara la app pide la contraseña de nuevo, con una opción explícita "Esta
+  cámara no usa contraseña".
+
+### Diferido (infraestructura, decisión del dueño)
+
+mTLS interno con la CA de la instancia, cuentas NATS con ACL por subject, credenciales S3 por servicio y
+TLS en el enlace del túnel (`argus-deploy/CONTEXT.md`, "Deferred hardening"); un cambio de rol no corta
+una vista WebRTC ya abierta; el `object_event_outbox` de camera podría pasar a `lib/outbox`.
+
+### Actualizar una instalación existente
+
+1. `docker compose stop` (nunca `down -v`).
+2. Reconstruir las imágenes y ejecutar `scripts/provision-host.sh`: crea `nats/auth.conf`, mueve
+   `ca.key` y `pairing.code` fuera de `certs/`, empareja las credenciales por llamante, alinea
+   `identity_mode` en toda la flota y separa los secretos JWT.
+3. `docker compose up -d`.
+4. La CA antigua estuvo montada en todos los contenedores: considérala expuesta y planifica rotarla
+   (exige volver a emparejar los dispositivos).
+5. En nativo: rellenar las claves nuevas (`adopt_wiring_keys` y `ensure_fleet_callers` de
+   `scripts/lib/common.sh`) y poner el mismo `identity_mode` en todos los servicios.
+
