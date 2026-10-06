@@ -168,6 +168,7 @@ argus_service(NAME argus-camera
         argus::camera-operator
         argus::camera-settings
         argus::camera-privacy
+        argus::camera-module-data
         argus::contracts::settings-wire
         argus::lib::auth
         argus::lib::http
@@ -480,3 +481,15 @@ target_compile_options(camera-hardening-test PRIVATE -Wall -Wextra)
 set_target_properties(camera-hardening-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 argus_runtime_rpath(camera-hardening-test)
 add_test(NAME camera-hardening-test COMMAND camera-hardening-test)
+
+add_executable(camera-module-data-test tests/unit/camera-module-data-test.cc)
+target_link_libraries(camera-module-data-test PRIVATE
+    argus::camera-module-data
+    argus::lib::sqlite
+    doctest::doctest)
+target_compile_definitions(camera-module-data-test PRIVATE
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(camera-module-data-test PRIVATE -Wall -Wextra)
+set_target_properties(camera-module-data-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME camera-module-data-test COMMAND camera-module-data-test)
+argus_runtime_rpath(camera-module-data-test)

@@ -13,6 +13,7 @@
 #include <feature/webrtc/services/webrtc-session-closer.hxx>
 #include <feature/actions/camera-action-rpc-service.hxx>
 #include <feature/health/health-rpc-service.hxx>
+#include <feature/module-data/services/camera-module-data.hxx>
 #include <feature/settings/camera-settings.hxx>
 #include <feature/sync/camera-sync-rpc-service.hxx>
 #include <auth/device-filter.hxx>
@@ -194,11 +195,13 @@ int main()
   std::vector<grpc::Service*> rpcServices{&cameraSyncRpc, &cameraActionRpc,
                                           &healthRpc};
   std::unique_ptr<SettingsRpcService> settingsRpc;
+  CameraModuleData moduleData;
   if (auto callers = CameraConfig::resolveSettingsCallers(); !callers.empty()) {
     settingsRpc = std::make_unique<SettingsRpcService>(
         SettingsRpcInput{.service = "camera",
                          .registry = &settings,
                          .credentials = std::move(callers)});
+    settingsRpc->attachModuleData(moduleData);
     rpcServices.push_back(settingsRpc.get());
   }
 

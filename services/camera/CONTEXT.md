@@ -1771,3 +1771,39 @@ surveillance is not `active`, and the `/media` socket, which runs without
   `WebRtcSessionCloser::closeUser`), the way a revocation closes one
   session's. The 60 s `MediaAccessCheck` sweep stays as the backstop. Other
   identity changes (names, catalog rows) are acked and ignored.
+
+## Surveillance data: summary and purge (2026-10, the modules plan)
+
+argus-camera is a data owner of the `surveillance` module
+(`services/settings/CONTEXT.md`, "Modules"): `src/feature/module-data/`
+(`argus::camera-module-data`) implements the settings wire's
+`ModuleDataSummary` and `PurgeModuleData` through `CameraModuleData`, attached
+to the settings RPC on the camera's gRPC listener (`[grpc] caller_settings`).
+Any other module id answers an empty summary and `purged: true`.
+
+- **Summary**: `cameras` and `zones` (live rows), `evidence_photos` (evidence
+  objects not yet removed) and `camera_actions`; `bytes` is an estimate of the
+  rows (64 bytes per row plus the text columns), not of the objects, whose
+  sizes the database does not keep.
+- **Purge**, one `BEGIN` transaction: every `camera`, `camera_stream` and
+  `zone` row (deleted, not soft-deleted, so a `/sync` pull returns none and
+  the deleted leg has nothing to replay), `action_command`, `siren_lease`,
+  `object_event_outbox`, `camera_event_cooldown`, the whole `change_outbox`
+  (it only carries camera, zone and stream changes, and an undelivered one
+  would bring an audit row back to argus-sync), the evidence rows whose
+  objects are already gone, and every remaining evidence row is marked
+  expired. After the commit the in-memory state of each camera is forgotten
+  (driver, scene log, snapshot, live board, go2rtc sources), then the
+  evidence objects are removed through the camera's `S3StorageService`
+  within a 3 s budget (the settings call has a 5 s deadline), each row going
+  only after its object did. `purged` is true once no evidence row is left;
+  otherwise the answer is `storage_unavailable` (no object storage
+  configured), `storage_failed` or `objects_pending`, the job fails naming
+  `camera`, and the Owner's retry resumes where it stopped. The rows marked
+  expired are also what the six-hourly retention sweep removes, so the
+  objects go even without a retry. The purge only runs once the module is
+  disabled (an uninstall disables it in the same transaction that queues the
+  job), so the operator and the routes are idle while it runs.
+- `tests/unit/camera-module-data-test.cc` pins the counts, the rollback when
+  a statement fails, the forgotten cameras, the storage verdicts and the
+  resumed retry.

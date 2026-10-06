@@ -173,3 +173,7 @@ secret_key = ""
 enabled = true
 name = "Argus"
 address = ""
+
+[modules]
+target = "argus-settings:7047"
+credential = "CHANGE_ME_CAMERA_MODULES"
