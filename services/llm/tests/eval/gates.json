@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "fast": {
+    "metrics": {
+      "cases": {"min": 600},
+      "falseActionRate": {"max": 0.02},
+      "fallThroughShare": {"max": 0.80},
+      "group.productivity.falseActionRate": {"max": 0.02},
+      "group.modules.falseActionRate": {"max": 0.02},
+      "group.inactive.falseActionRate": {"max": 0.02},
+      "group.app.falseActionRate": {"max": 0.06},
+      "group.none.falseActionRate": {"max": 0.03},
+      "group.camera.falseActionRate": {"max": 0.05},
+      "variant.neutral.falseActionRate": {"max": 0.02},
+      "variant.pe.falseActionRate": {"max": 0.02},
+      "variant.stt.falseActionRate": {"max": 0.02},
+      "variant.en.falseActionRate": {"max": 0.05},
+      "memory_save.precision": {"min": 0.85},
+      "memory_save.precisionLower": {"min": 0.70},
+      "memory_save.recall": {"min": 0.45},
+      "memory_recall.precision": {"min": 0.90},
+      "memory_recall.precisionLower": {"min": 0.80},
+      "memory_recall.recall": {"min": 0.42},
+      "reminder_set.precision": {"min": 0.92},
+      "reminder_set.precisionLower": {"min": 0.85},
+      "reminder_set.recall": {"min": 0.70},
+      "memory_forget.precision": {"min": 0.90},
+      "memory_forget.precisionLower": {"min": 0.75},
+      "memory_forget.recall": {"min": 0.50},
+      "source.model.precision": {"min": 0.92},
+      "source.statement.precision": {"min": 0.85},
+      "real.memory_save.precision": {"min": 0.90},
+      "real.memory_save.recall": {"min": 0.70},
+      "real.fallThroughShare": {"max": 0.50}
+    }
+  }
+}

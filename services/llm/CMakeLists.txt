@@ -435,6 +435,8 @@ foreach(TEST_NAME IN ITEMS intent-router-test intent-accuracy-test)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
+add_subdirectory(tests/eval)
+
 add_executable(llm-components-test tests/unit/llm-components-test.cc)
 
 target_link_libraries(llm-components-test PRIVATE argus::llm-settings argus::llm-config

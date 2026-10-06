@@ -32,8 +32,8 @@ public:
 
   explicit IntentRouter(IntentRouterInput input);
 
-  intent::IntentDecision decide(const std::string& text,
-                                const std::string& lang) const;
+  [[nodiscard]] intent::IntentDecision decide(const std::string& text,
+                                              const std::string& lang) const;
 
 private:
   struct RuleProposal
@@ -42,16 +42,16 @@ private:
     intent::DecisionSource source;
   };
 
-  std::optional<RuleProposal> propose(const std::string& text,
-                                      const std::string& lang) const;
+  [[nodiscard]] std::optional<RuleProposal> propose(const std::string& text,
+                                                    const std::string& lang) const;
 
-  bool asksToBeReminded(const std::string& text) const;
+  [[nodiscard]] bool asksToBeReminded(const std::string& text) const;
 
-  intent::ToolIntent factOrReminder(const std::string& text,
-                                    const std::string& lang) const;
+  [[nodiscard]] intent::ToolIntent factOrReminder(const std::string& text,
+                                                  const std::string& lang) const;
 
-  bool recallMarkerOpens(const std::string& lowered,
-                         const std::string& lang) const;
+  [[nodiscard]] bool recallMarkerOpens(const std::string& lowered,
+                                       const std::string& lang) const;
 
   const PhraseCatalog& catalog_;
   const intent::IIntentClassifier& model_;
