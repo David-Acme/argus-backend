@@ -554,3 +554,32 @@ is a data-only owner.
   as the module's last data owner.
 - `tests/unit/productivity-module-data-test.cc` pins the counts, the rollback,
   what stays (reminders) and the idempotent retry.
+
+## Productivity tools over MCP (2026-10, the context plan)
+
+`feature/mcp/` serves the module's tools to argus-llm (`argus.mcp.v1.Mcp/Rpc`
+on the gRPC listener, 7037, for the caller `llm` through `[grpc] caller_llm`,
+gated by `tool_gate::capabilities()`; unpaired, the service starts without
+them). All of them act for the caller, `JwtContext.sub` as the paired caller
+declares it, never for another user, and run on the Drogon loop:
+
+| Tool | Capability | What it does |
+|---|---|---|
+| `calendar.list_events {from?, to?, limit?}` | `agenda.read` | the caller's events in a window (default: from yesterday for five years ahead, the ten next) |
+| `calendar.create_event {title, starts_at, ends_at?, location?, description?, all_day?}` | `agenda.write` | creates an event through the same service the routes use, with an idempotency key (`mcp-` plus the SHA-256 of the user, the tool and the arguments) so a retry never duplicates it |
+| `calendar.cancel_event {event_id or title, confirmation?}` | `agenda.write` | destructive: the first call previews which event and returns a one-use token, the second (with `confirmation`) deletes it; the event is found by id or by words (`text_norm::matchName`), several matches ask which |
+| `project.list {status?, limit?}` / `project.create {name, description?, target_at?}` | `projects.read` / `projects.write` | the caller's projects, newest first / a new project (idempotent) |
+| `task.list {project?, project_id?, limit?}` / `task.create {title, project?, project_id?, priority?, due_at?}` / `task.complete {task_id or title}` | `projects.read` / `projects.write` | open tasks of the caller's projects / a task in a project / marks one done (by id or words) |
+
+`task.create` without a project does not invent one: it answers with the
+caller's projects and asks which (open decision, "DECISION NEEDED MCP" on the
+BOARD; the alternative is a default "Tareas" project). Date-time arguments
+carry `format: "date-time"`, so argus-llm normalizes natural phrases and the
+service only parses ISO (`iso_time::parse`). Answers are spoken in the
+caller's language (`argus::mcp::speech`), dates written out ("el miércoles 7 de
+octubre a las 15:30", "Wednesday, October 7 at 3:30 PM").
+
+`tests/unit/productivity-mcp-test.cc` runs the whole surface against a real
+Drogon application and database: each tool for its owner, another user's rows
+never reachable, the idempotent retries, the confirmation token (one use,
+another user's token refused), both languages and the gate for each role.

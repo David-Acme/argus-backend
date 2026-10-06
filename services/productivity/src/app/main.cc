@@ -2,6 +2,8 @@
 #include <feature/agenda/services/agenda-announcer.hxx>
 #include <feature/agenda/services/agenda-sweeper.hxx>
 #include <app/rpc/productivity-rpc-server.hxx>
+#include <feature/mcp/services/productivity-tools.hxx>
+#include <mcp/mcp-rpc.hxx>
 #include <drogon/drogon.h>
 #include <feature/sync/productivity-sync-rpc-service.hxx>
 #include <feature/module-data/services/productivity-module-data.hxx>
@@ -113,6 +115,23 @@ int main()
   }
   else {
     LOG_INFO << "Module data RPC not served: [grpc] caller_settings is empty";
+  }
+
+  std::unique_ptr<argus::mcp::McpRpcService> toolsRpc;
+  if (const std::string llmSecret = ConfigService::getString("grpc.caller_llm");
+      argus::client::FleetCallerGate::pairedSecret(llmSecret)) {
+    toolsRpc = std::make_unique<argus::mcp::McpRpcService>(argus::mcp::McpRpcInput{
+        .server = productivityToolServer({.loop = {}}),
+        .gate = std::make_shared<const argus::client::FleetCallerGate>(argus::client::FleetGateConfig{
+            .expectedCallers = {},
+            .callerPairs = {{std::string(argus::mcp::kToolCaller), llmSecret}},
+            .legacySecret = {},
+            .onFirstLegacy = {}}),
+        .callers = {std::string(argus::mcp::kToolCaller)}});
+    rpcServices.push_back(toolsRpc.get());
+  }
+  else {
+    LOG_INFO << "Productivity tools RPC not served: [grpc] caller_llm is empty";
   }
 
   ProductivityRpcServer rpc({.services = std::move(rpcServices)});

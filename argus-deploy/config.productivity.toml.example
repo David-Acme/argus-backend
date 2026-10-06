@@ -76,6 +76,7 @@ credential = "CHANGE_ME_PRODUCTIVITY_IDENTITY"
 [grpc]
 caller_sync = "CHANGE_ME_SYNC_PRODUCTIVITY"
 caller_settings = "CHANGE_ME_SETTINGS_PRODUCTIVITY"
+caller_llm = "CHANGE_ME_LLM_PRODUCTIVITY"
 
 [mdns]
 enabled = true

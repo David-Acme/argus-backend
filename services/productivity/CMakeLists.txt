@@ -90,6 +90,11 @@ if(NOT TARGET argus::lib::grpc-health)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/grpc
                      ${CMAKE_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
 endif()
+if(NOT COMMAND argus_mcp_rpc_contract)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/mcp
+                     ${CMAKE_BINARY_DIR}/contracts/mcp)
+endif()
+argus_mcp_rpc_contract()
 
 add_subdirectory(src/config)
 add_subdirectory(src/shared/services/change-sink)
@@ -120,6 +125,8 @@ argus_service(NAME argus-productivity
         argus::productivity-agenda
         argus::productivity-module-data
         argus::productivity-rpc-server
+        argus::productivity-mcp
+        argus::contracts::mcp-wire
         argus::contracts::settings-wire
         argus::lib::auth
         argus::lib::http
@@ -317,3 +324,19 @@ target_link_libraries(productivity-reminder-test PRIVATE
     doctest::doctest)
 target_compile_options(productivity-reminder-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-reminder-test COMMAND productivity-reminder-test)
+
+add_executable(productivity-mcp-test tests/unit/productivity-mcp-test.cc)
+set_target_properties(productivity-mcp-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_compile_definitions(productivity-mcp-test PRIVATE
+    ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_link_libraries(productivity-mcp-test PRIVATE
+    argus::productivity-mcp
+    argus::productivity-repositories
+    argus::lib::auth
+    argus::lib::config
+    argus::lib::sqlite
+    argus::lib::validation
+    argus::contracts::sync
+    doctest::doctest)
+target_compile_options(productivity-mcp-test PRIVATE -Wall -Wextra)
+add_test(NAME productivity-mcp-test COMMAND productivity-mcp-test)
