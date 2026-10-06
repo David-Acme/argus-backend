@@ -62,6 +62,16 @@ declare errors and this package formats them.
 - `src/http/logical-routes.hxx` — `logicalRoutes()`: the leading path segment of
   every route the app has registered, deduplicated and sorted, which is the set
   a service announces. `/health` and non-`/` patterns are skipped.
+- `src/http/download/` — a second module of this package, `argus_lib(NAME
+  http-download)`, linked as `argus::lib::http-download` and only by the
+  services that install model files: `file_download::downloadFile` fetches one
+  pinned file (url, target, size, SHA-256) in bounded `Range` chunks over a
+  `ChunkTransport`, resumes from `<target>.part` + `<target>.part.json`, checks
+  the hash and renames atomically; `presentBytes(target)` reports progress
+  without a running download. `DrogonChunkTransport` is the one transport. It
+  blocks: run it on a worker thread of its own, never on an event loop (it
+  refuses with `on_event_loop`) and not on a `BlockingTask` lane for minutes.
+  `CONTEXT.md` holds the design and the libcurl fallback path.
 - `src/http/route-announcements.hxx` — `routeAnnouncements()`: one
   `_argus-route._tcp` `MdnsInstance` per logical route, TXT `path=<segment>` and
   `https="true"` when the listener terminates TLS. It is the join between this

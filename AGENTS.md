@@ -1044,7 +1044,7 @@ for two different reasons, and says which when it does.
 |------|---------|
 | `packages/lib/validation/src/validation/` | Validation DSL (rules, macros, validator) |
 | `packages/lib/errors/src/errors/` | `ErrorCode`, `ErrorDefinition`, `ResponseException` — the refusals every boundary throws |
-| `packages/lib/http/src/http/` | The `{status, info, errors}` envelope (`ApiResponse`), the one advice (`ErrorHandler`), CORS, health, listener resolution (`resolveServiceTls` for the app-facing TLS listener, `resolve` for the internal plain one) and the discovery join (`logicalRoutes`, `routeAnnouncements`) |
+| `packages/lib/http/src/http/` | The `{status, info, errors}` envelope (`ApiResponse`), the one advice (`ErrorHandler`), CORS, health, listener resolution (`resolveServiceTls` for the app-facing TLS listener, `resolve` for the internal plain one) and the discovery join (`logicalRoutes`, `routeAnnouncements`); its second module `argus::lib::http-download` (`src/http/download/`) is the resumable, SHA-256-verified chunked downloader the services install their model files with (`packages/lib/http/CONTEXT.md`) |
 | `packages/lib/mdns/src/mdns/` | `MdnsService` — the multi-instance LAN responder (one record set per `MdnsInstance`), driven by `mdns.enabled`/`mdns.name`; every app-facing service announces its logical routes through it |
 | `packages/lib/audio/src/audio/` | `AudioResampler` (stateful sinc) + `EndpointDetector` — every block-processed audio path MUST use these, never a custom conversion |
 | `packages/lib/phrase/src/phrase/details/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |

@@ -23,6 +23,11 @@ if(NOT TARGET argus::lib::mdns)
                      ${CMAKE_BINARY_DIR}/mdns)
 endif()
 
+if(NOT TARGET argus::lib::runtime)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../runtime
+                     ${CMAKE_BINARY_DIR}/runtime)
+endif()
+
 if(NOT TARGET argus::contracts::routes)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/routes
                      ${CMAKE_BINARY_DIR}/contracts-routes)
@@ -58,6 +63,31 @@ argus_lib(NAME http
 
 target_compile_options(argus_lib_http PRIVATE -Wall -Wextra)
 
+argus_lib(NAME http-download
+    SOURCES
+        src/http/download/chunk-transport.hxx
+        src/http/download/drogon-chunk-transport.cc
+        src/http/download/drogon-chunk-transport.hxx
+        src/http/download/file-download.cc
+        src/http/download/file-download.hxx
+        src/http/download/details/download-sidecar.cc
+        src/http/download/details/download-sidecar.hxx
+        src/http/download/details/download-url.cc
+        src/http/download/details/download-url.hxx
+        src/http/download/details/part-file.cc
+        src/http/download/details/part-file.hxx
+        src/http/download/details/peer-name.cc
+        src/http/download/details/peer-name.hxx
+        src/http/download/details/sha256-stream.cc
+        src/http/download/details/sha256-stream.hxx
+    INCLUDES src
+    DEPENDS
+        argus::lib::runtime
+        Drogon::Drogon
+        OpenSSL::Crypto)
+
+target_compile_options(argus_lib_http-download PRIVATE -Wall -Wextra)
+
 enable_testing()
 find_package(doctest REQUIRED)
 
@@ -85,3 +115,18 @@ target_link_libraries(certificate-reload-test PRIVATE argus::lib::http OpenSSL::
 target_compile_options(certificate-reload-test PRIVATE -Wall -Wextra)
 
 add_test(NAME certificate-reload-test COMMAND certificate-reload-test)
+
+add_executable(download-url-test tests/unit/download/download-url-test.cc)
+target_link_libraries(download-url-test PRIVATE argus::lib::http-download doctest::doctest)
+target_compile_options(download-url-test PRIVATE -Wall -Wextra)
+
+add_test(NAME download-url-test COMMAND download-url-test)
+
+add_executable(file-download-test
+    tests/unit/download/file-download-test.cc
+    tests/unit/download/fake-transport.cc
+    tests/unit/download/range-server.cc)
+target_link_libraries(file-download-test PRIVATE argus::lib::http-download doctest::doctest)
+target_compile_options(file-download-test PRIVATE -Wall -Wextra)
+
+add_test(NAME file-download-test COMMAND file-download-test)
