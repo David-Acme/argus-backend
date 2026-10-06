@@ -142,6 +142,15 @@ Peruvian 58%, STT-style 63%. False actions are rare (2.0% of cases, 1.1% writes)
 fast-tier arbitration and the existing guards the reason the system does not write what it should
 not; the failure is the opposite one.
 
+- **The LLM alone almost never calls a tool.** With the fast tier removed (`--no-fast-tier`: no intent
+  model, only explicit triggers and the deterministic app-command rules left) the 261 memory cases
+  give `memory.remember` 2 calls of 79 (precision 1.0, recall 0.025), `memory.recall` 0 of 75,
+  `memory.remind` 0 of 75 and `memory.forget` 0 of 32: selection accuracy 0.8%. Every memory
+  tool call in the table above is the router's, and the app tools that work are the rule layer's
+  (`appCommandFor`), not the model's. So all four memory classes deserve their fast route, none can be
+  handed back to the LLM today, and the sentence in the project notes that the LLM keeps every turn the
+  router abstains on is true of the architecture and untrue of the measured tool calling for the
+  trigger-less utterances this corpus is made of.
 - **False completion: 13.2% of turns** (neutral Spanish 17.8%, Peruvian 19.5%, STT-style 12.1%,
   English 4.1%); by group app 23.5%, productivity 22.7%, modules 21.8%, module-off cases 21.5%, none
   9.3%, camera 5.0%, memory 3.5%. Examples: "He agendado la cita..." with `app.open` as the only
