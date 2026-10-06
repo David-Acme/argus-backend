@@ -9,6 +9,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
+if(NOT TARGET argus::lib::test-support)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/test-support
+                     ${CMAKE_BINARY_DIR}/test-support)
+endif()
+
 set(GUARD_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(PROJECT_IS_TOP_LEVEL)
@@ -164,7 +169,7 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
     target_link_libraries(${TEST_NAME} PRIVATE argus::guard
-        argus::guard-presence-repository doctest::doctest)
+        argus::guard-presence-repository argus::lib::test-support doctest::doctest)
     target_include_directories(${TEST_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
