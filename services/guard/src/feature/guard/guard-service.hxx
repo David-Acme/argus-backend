@@ -73,6 +73,7 @@ public:
     CameraActionClient* actions{nullptr};
     GuardAssessment* assessment{nullptr};
     std::shared_ptr<const ResponseDirectory> directory{};
+    std::function<bool()> active{};
   };
 
   using Config = GuardServiceConfig;
@@ -93,6 +94,8 @@ public:
   drogon::Task<bool> handle(const Json::Value& event, int delivered);
 
   drogon::Task<bool> handleLocalRetry(const Json::Value& event);
+
+  [[nodiscard]] bool evaluating() const;
 
   struct Delivery
   {

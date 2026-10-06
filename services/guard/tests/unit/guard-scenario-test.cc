@@ -6,6 +6,7 @@
 #include <feature/guard/guard-service.hxx>
 #include <feature/guard/repositories/environment/environment-repository.hxx>
 #include <iostream>
+#include <atomic>
 #include <memory>
 #include <string>
 #include <text/json-util.hxx>
@@ -522,4 +523,50 @@ TEST_CASE("one summary per environment and per day, each in its own thread")
   drogon::sync_wait(service.maybeSendDigests(now + 60));
   CHECK(notifications.sent().size() == sent.size());
   DbService::client()->execSqlSync("UPDATE guard_environment SET digest_hour = -1");
+}
+
+TEST_CASE("guard stops evaluating while surveillance is disabled and resumes on enable")
+{
+  (void)boot();
+  describeCamera(
+      {.cameraId = 391, .role = "perimeter", .outdoor = true, .publicArea = false});
+  const auto strangerAt = [](const std::string& prefix) {
+    std::vector<Json::Value> events;
+    for (int step = 1; step <= 4; ++step)
+      events.push_back(personEvent({.eventId = prefix + std::to_string(step),
+                                    .cameraId = 391,
+                                    .cameraName = "Patio",
+                                    .trackId = 1,
+                                    .personId = 0,
+                                    .rule = "person_night",
+                                    .severity = "warning",
+                                    .night = true,
+                                    .zoneKind = {},
+                                    .identityState = "unrecognized"}));
+    return events;
+  };
+
+  QuietCameraActions camera;
+  RosterIdentity identity({{1, "es"}});
+  RecordingNotifications notifications;
+  auto active = std::make_shared<std::atomic<bool>>(false);
+  GuardService service({.bus = nullptr,
+                        .identity = &identity,
+                        .notifications = &notifications,
+                        .actions = &camera,
+                        .assessment = nullptr,
+                        .directory = {},
+                        .active = [active] { return active->load(); }},
+                       defaults());
+  CHECK_FALSE(service.evaluating());
+  for (const auto& event : strangerAt("gate-off:"))
+    CHECK(drogon::sync_wait(service.handle(event, 1)));
+  CHECK(notifications.sent().empty());
+  CHECK(camera.announces.load() == 0);
+
+  active->store(true);
+  CHECK(service.evaluating());
+  for (const auto& event : strangerAt("gate-on:"))
+    CHECK(drogon::sync_wait(service.handle(event, 1)));
+  CHECK(notifications.sent().size() == 1);
 }

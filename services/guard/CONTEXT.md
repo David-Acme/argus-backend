@@ -1394,3 +1394,15 @@ The cloud audit (`docs/history/reports/cloud-audit-2026-10-05.md`, findings
   every other HTTP service, so a missing or short `[device]
   fingerprint_secret` stops the process at boot instead of at the first
   request.
+
+## Surveillance as a selectable module (2026-10, the modules plan)
+
+`main.cc` installs the module gate (durable `argus-guard-modules`,
+`packages/lib/auth/CONTEXT.md`, "Module gating"): every `/guard` route
+answers 403 `MODULE_DISABLED` while surveillance is not `active` (the panic
+and safety routes included, as the plan lists `/guard` whole), and
+`GuardService` stops evaluating: an object event that arrives is acked
+without a decision and the tamper sweep skips, through
+`Dependencies::active`. Encounters already open still close on their timeout
+and the outboxes still drain, so nothing is lost or half written; no data is
+deleted. Evaluation resumes with the next event after the enable.

@@ -22,6 +22,8 @@
 #include <feature/settings/guard-settings.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
+#include <auth/module-feed.hxx>
+#include <auth/role-access.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
 #include <http/certificate-reload.hxx>
@@ -268,8 +270,10 @@ int main()
        .notifications = notifications.get(),
        .actions = actions.get(),
        .assessment = &assessment,
-       .directory = responseDirectory},
+       .directory = responseDirectory,
+       .active = [] { return moduleGate().enabled(role_access::kSurveillanceModule); }},
       guardConfig);
+  const auto modules = module_gate::install({.service = "guard", .bus = natsBus});
   const GuardAlertSink safetySink(guardService);
   const NotificationActorNotifier safetyActor(
       {.notifications = notifications.get(), .identity = identity.get()});

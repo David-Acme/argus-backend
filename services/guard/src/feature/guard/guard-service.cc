@@ -844,6 +844,8 @@ std::string GuardService::cameraHealthStatus(int64_t cameraId) const
 
 drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
 {
+  if (!evaluating())
+    co_return;
   const auto config = currentConfig();
   struct TamperReading
   {
@@ -1423,12 +1425,19 @@ drogon::Task<bool> GuardService::handleLocalRetry(const Json::Value& event)
       {.event = event, .delivered = 0, .leased = true});
 }
 
+bool GuardService::evaluating() const
+{
+  return !dependencies_.active || dependencies_.active();
+}
+
 drogon::Task<bool>
 GuardService::handleEvent(HandleEventInput input)
 {
   const auto config = currentConfig();
   const LifecycleGuard aliveGuard(lifecycle_);
   if (!aliveGuard.alive())
+    co_return true;
+  if (!evaluating())
     co_return true;
   const GuardEventSignals signals =
       guard_policy::parseObjectEvent(input.event);
