@@ -50,6 +50,15 @@ constexpr ToolIntent toolIntentFromString(std::string_view name)
   return ToolIntent::Unknown;
 }
 
+enum class DecisionSource : uint8_t
+{
+  Model = 0,
+  Trigger,
+  Cancellation,
+  Statement,
+  RecallMarker
+};
+
 struct IntentHit
 {
   ToolIntent intent = ToolIntent::None;
@@ -63,6 +72,7 @@ struct IntentDecision
   float margin = 0.0F;
   bool fromRules = false;
   bool confident = false;
+  DecisionSource source = DecisionSource::Model;
 };
 
 inline std::string normalizeInput(const std::string& text)

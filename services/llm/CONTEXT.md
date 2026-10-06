@@ -496,23 +496,48 @@ receipt captures exactly one owner-scoped episode through `observeSystemEvent`
 ## The intent router (Phase 4 step 7)
 
 `packages/intent` became `src/feature/intent/` (`argus::intent`), the fast tier
-of the router `argus::llm`'s gate drives: rules (`argus::lib::phrase`) decide
-explicit triggers, fastText classifies the rest into six classes
-(`memory_save`, `memory_recall`, `reminder_set`, `memory_forget`, `camera`,
-`none`), and the LLM's own tool calling keeps every turn the router is not
-confident about. The classifier picks the tool; the model only writes its
-arguments and the prose. Operating point 0.90 / 0.10, precision-gated — a
-gated false `none` costs one LLM round trip, a false tool call writes a fact
-nobody stated. **Degradation is a contract**: no model on disk, or a
-sub-threshold score, and the router abstains so tool calling runs byte for
-byte as it did before. The model is a published artifact carried in-repo
-(`models/intent/intent.bin`, 12.6 MB) with a configure-time SHA256 pin in
-`src/feature/intent/models/`; training lives OUTSIDE this repo, in the sibling
-`intent-training/` project, and only the artifact, its card and the frozen
-eval fixtures cross over. `fasttext` is built from the `third_party/fastText`
-submodule (inference only, static lib) by this service's project file, the way
-it bootstraps llama.cpp and sqlite-vec.
+of the router `argus::llm`'s gate drives. The rules (`argus::lib::phrase`) and
+the fastText model each propose; `IntentRouter::decide` arbitrates:
 
+1. an explicit trigger ("recuerda que", "remind me that") decides alone, even
+   against the model, because the user asked for a write in so many words;
+2. otherwise a model score at or above 0.90 with a 0.10 margin decides, and
+   outranks any rule that proposed another class;
+3. otherwise a rule proposal (a statement, a recall marker, a cancellation)
+   stands only if the model's own top class is the same and scores at least
+   0.50 (`kAgreeFloor`);
+4. otherwise the router abstains and the LLM's tool calling keeps the turn.
+
+A fact becomes a reminder only when the utterance asks to be reminded
+(`recuérdame`, `avísame`, `remind me`, an alarm or timer) and names a single
+instant; "apunta que el mecánico llega el martes" is a fact. Six classes
+(`memory_save`, `memory_recall`, `reminder_set`, `memory_forget`, `camera`,
+`none`); the adapter routes only the first four, and `camera` is a decoy class
+that keeps camera asks out of `memory_recall`. `none` means the fast tier
+abstains: agenda, calendar, task and project utterances carry it because the
+productivity tools sit behind a module the classifier cannot see.
+`IntentDecision::source` records which proposal decided.
+
+Why the arbitration: measured over 629 distinct judge utterances
+(`tests/eval`, `docs/operations/voice-quality-eval.md`), the rules decided
+alone with a precision of 0.44 (statements) and 0.31 (recall markers) while
+the model decided with 0.96; "remind me to call my mom" was a recall, "who's
+at the door" was a saved fact, and a calendar request was a reminder, so 13%
+of the turns that should fall through to the LLM were routed to a memory tool.
+With the arbitration the same set routes 1.4% of them wrongly. Operating point
+0.90 / 0.10, precision-gated: a false `none` costs one LLM round trip, a false
+tool call writes a fact nobody stated. **Degradation is a contract**: no model
+on disk, or a sub-threshold score, and only an explicit trigger can still
+route; every other turn reaches the LLM exactly as before the router existed.
+The model is a published artifact carried in-repo (`models/intent/intent.bin`,
+12.9 MB) with a configure-time SHA256 pin in `src/feature/intent/models/`;
+training lives OUTSIDE this repo, in the sibling `intent-training/` project, and
+only the artifact, its card and the frozen eval fixtures (`tests/fixtures/intent`,
+`tests/fixtures/eval/cases.jsonl`) cross over. `argus-deploy` mounts
+`models/intent` into `argus-llm` (`scripts/deploy-mounts-test.sh` checks it);
+before that mount existed the fast tier was off in Docker. `fasttext` is built
+from the `third_party/fastText` submodule (inference only, static lib) by this
+service's project file, the way it bootstraps llama.cpp and sqlite-vec.
 
 ## Phase 4 step 9: config resolution into `src/config/` (D20)
 

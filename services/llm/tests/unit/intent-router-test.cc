@@ -135,17 +135,101 @@ TEST_CASE("a thin margin hands the turn back to the LLM tier")
         false);
 }
 
-TEST_CASE("a cancellation is a forget decided by the rules")
+TEST_CASE("a cancellation is a forget only when the model agrees")
 {
   BuiltCatalog catalog;
-  const AlwaysCameraClassifier wrong;
+  const ScriptedClassifier agrees(
+      {{.intent = intent::ToolIntent::MemoryForget, .score = 0.62F},
+       {.intent = intent::ToolIntent::None, .score = 0.30F}});
   const IntentRouter router(
-      {.catalog = catalog.value, .model = wrong, .recurrent = nullptr});
+      {.catalog = catalog.value, .model = agrees, .recurrent = nullptr});
 
-  CHECK(router.decide("olvida lo que te dije del perro", "es").intent ==
-        intent::ToolIntent::MemoryForget);
+  const auto decision = router.decide("olvida lo que te dije del perro", "es");
+  CHECK(decision.confident);
+  CHECK(decision.fromRules);
+  CHECK(decision.source == intent::DecisionSource::Cancellation);
+  CHECK(decision.intent == intent::ToolIntent::MemoryForget);
   CHECK(router.decide("forget that, it doesn't matter", "en").intent ==
         intent::ToolIntent::MemoryForget);
+}
+
+TEST_CASE("a cancellation the model does not back is left to the LLM tier")
+{
+  BuiltCatalog catalog;
+  const ScriptedClassifier none(
+      {{.intent = intent::ToolIntent::None, .score = 0.80F},
+       {.intent = intent::ToolIntent::MemoryForget, .score = 0.10F}});
+  const IntentRouter router(
+      {.catalog = catalog.value, .model = none, .recurrent = nullptr});
+
+  CHECK_FALSE(router.decide("olvidalo, no era importante", "es").confident);
+  CHECK_FALSE(router.decide("never mind, forget it", "en").confident);
+
+  const NullClassifier absent;
+  const IntentRouter blind(
+      {.catalog = catalog.value, .model = absent, .recurrent = nullptr});
+  CHECK_FALSE(blind.decide("olvida lo que te dije del perro", "es").confident);
+}
+
+TEST_CASE("a statement or a recall marker needs the model to agree with it")
+{
+  BuiltCatalog catalog;
+  const ScriptedClassifier saves(
+      {{.intent = intent::ToolIntent::MemorySave, .score = 0.62F},
+       {.intent = intent::ToolIntent::None, .score = 0.30F}});
+  const IntentRouter agreeing(
+      {.catalog = catalog.value, .model = saves, .recurrent = nullptr});
+  const auto agreed = agreeing.decide("la lavadora nueva tiene dos anos de garantia", "es");
+  CHECK(agreed.confident);
+  CHECK(agreed.source == intent::DecisionSource::Statement);
+  CHECK(agreed.intent == intent::ToolIntent::MemorySave);
+
+  const ScriptedClassifier none(
+      {{.intent = intent::ToolIntent::None, .score = 0.85F},
+       {.intent = intent::ToolIntent::MemorySave, .score = 0.05F}});
+  const IntentRouter silent(
+      {.catalog = catalog.value, .model = none, .recurrent = nullptr});
+  CHECK_FALSE(silent.decide("la lavadora nueva tiene dos anos de garantia", "es").confident);
+  CHECK_FALSE(silent.decide("tell me a joke", "en").confident);
+
+  const ScriptedClassifier weak(
+      {{.intent = intent::ToolIntent::MemorySave, .score = 0.40F},
+       {.intent = intent::ToolIntent::None, .score = 0.35F}});
+  const IntentRouter hesitant(
+      {.catalog = catalog.value, .model = weak, .recurrent = nullptr});
+  CHECK_FALSE(hesitant.decide("la lavadora nueva tiene dos anos de garantia", "es").confident);
+}
+
+TEST_CASE("a confident model outranks a rule that proposes another class")
+{
+  BuiltCatalog catalog;
+  const ScriptedClassifier reminder(
+      {{.intent = intent::ToolIntent::ReminderSet, .score = 0.97F},
+       {.intent = intent::ToolIntent::None, .score = 0.01F}});
+  const IntentRouter router(
+      {.catalog = catalog.value, .model = reminder, .recurrent = nullptr});
+
+  const auto decision = router.decide("remind me to call my mom this afternoon at six", "en");
+  CHECK(decision.confident);
+  CHECK_FALSE(decision.fromRules);
+  CHECK(decision.intent == intent::ToolIntent::ReminderSet);
+}
+
+TEST_CASE("only an explicit ask to be reminded can turn a trigger into a reminder")
+{
+  BuiltCatalog catalog;
+  const NullClassifier absent;
+  const IntentRouter once(
+      {.catalog = catalog.value,
+       .model = absent,
+       .recurrent = [](const std::string&, const std::string&) { return false; }});
+
+  CHECK(once.decide("apunta que el mecanico llega el martes", "es").intent ==
+        intent::ToolIntent::MemorySave);
+  CHECK(once.decide("ten en cuenta que la vecina cuida del gato el sabado", "es").intent ==
+        intent::ToolIntent::MemorySave);
+  CHECK(once.decide("recuerdame que el mecanico llega el martes", "es").intent ==
+        intent::ToolIntent::ReminderSet);
 }
 
 TEST_CASE("a save trigger that contains a cancellation phrase is still a save")
@@ -158,6 +242,7 @@ TEST_CASE("a save trigger that contains a cancellation phrase is still a save")
   const auto decision = router.decide("don't forget that the dog eats at 7", "en");
   CHECK(decision.confident);
   CHECK(decision.fromRules);
+  CHECK(decision.source == intent::DecisionSource::Trigger);
   CHECK(decision.intent != intent::ToolIntent::MemoryForget);
 }
 

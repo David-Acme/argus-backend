@@ -3,6 +3,7 @@
 #include <feature/intent/services/intent-contracts.hxx>
 
 #include <functional>
+#include <optional>
 #include <string>
 
 class PhraseCatalog;
@@ -27,6 +28,7 @@ class IntentRouter
 public:
   static constexpr float kThreshold = 0.90F;
   static constexpr float kMargin = 0.10F;
+  static constexpr float kAgreeFloor = 0.50F;
 
   explicit IntentRouter(IntentRouterInput input);
 
@@ -34,6 +36,17 @@ public:
                                 const std::string& lang) const;
 
 private:
+  struct RuleProposal
+  {
+    intent::ToolIntent intent;
+    intent::DecisionSource source;
+  };
+
+  std::optional<RuleProposal> propose(const std::string& text,
+                                      const std::string& lang) const;
+
+  bool asksToBeReminded(const std::string& text) const;
+
   intent::ToolIntent factOrReminder(const std::string& text,
                                     const std::string& lang) const;
 

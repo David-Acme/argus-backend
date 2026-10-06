@@ -1,6 +1,8 @@
-The intent classifier was trained in part on the MASSIVE dataset.
+The intent classifier was trained in part on the datasets below. Each is
+used under its own license; attribution follows.
 
-MASSIVE: A 1M-Example Multilingual Natural Language Understanding Dataset
-with 51 Typologically-Diverse Languages. Copyright Amazon.com, Inc.
-Licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
-Source: https://github.com/alexa/massive
+- massive (CC-BY-4.0): https://github.com/alexa/massive (es-ES and en-US, release 1.1)
+- multi3nlu-es (CC-BY-4.0): https://huggingface.co/datasets/uoe-nlp/multi3-nlu (Spanish, banking and hotels)
+- minds14-es (CC-BY-4.0): https://huggingface.co/datasets/PolyAI/minds14 (es-ES transcriptions of spoken banking requests)
+- fleurs-es419 (CC-BY-4.0): https://huggingface.co/datasets/google/fleurs (es_419 dev and test transcriptions)
+- tatoeba-spa (CC-BY-2.0-FR): https://tatoeba.org (Spanish sentences, questions and statements without household or scheduling cues)
