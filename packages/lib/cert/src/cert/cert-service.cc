@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <drogon/drogon.h>
 #include <fstream>
@@ -19,6 +20,7 @@
 #include <openssl/x509v3.h>
 #include <config/config-service.hxx>
 #include <sstream>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -58,8 +60,7 @@ struct CertState
   std::string serverFingerprint;
   std::string pairingCode;
   std::atomic<bool> loaded{false};
-  std::atomic<bool> running{false};
-  std::thread rotationThread;
+  std::jthread rotationThread;
 };
 
 CertState gState;
@@ -401,19 +402,22 @@ X509Ptr buildLeaf(const CertLeafInput& input)
   return cert;
 }
 
-void rotationLoop()
+void rotationLoop(const std::stop_token& stop)
 {
   const int checkHours = std::max(1, gState.paths.rotateCheckHours);
   const auto interval = std::chrono::hours(checkHours);
   auto next = std::chrono::steady_clock::now() + interval;
-  while (gState.running.load(std::memory_order_relaxed)) {
+  std::mutex idle;
+  std::condition_variable_any wake;
+  while (!stop.stop_requested()) {
     const auto now = std::chrono::steady_clock::now();
     if (now >= next) {
       next = now + interval;
       if (drogon::app().isRunning())
         CertService::rotateServerCertificate();
     }
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::unique_lock lock(idle);
+    wake.wait_for(lock, stop, std::chrono::seconds(5), [] { return false; });
   }
 }
 
@@ -470,8 +474,7 @@ bool CertService::init()
     rotateServerCertificate();
   }
 
-  gState.running.store(true, std::memory_order_relaxed);
-  gState.rotationThread = std::thread(rotationLoop);
+  gState.rotationThread = std::jthread(rotationLoop);
 
   LOG_INFO << "PKI loaded (instance " << gState.caFingerprint
            << ")";
@@ -485,7 +488,7 @@ bool CertService::isLoaded()
 
 void CertService::shutdown()
 {
-  gState.running.store(false, std::memory_order_relaxed);
+  gState.rotationThread.request_stop();
   if (gState.rotationThread.joinable())
     gState.rotationThread.join();
   gState.loaded.store(false);

@@ -1,4 +1,5 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <chrono>
 #include <doctest/doctest.h>
 
 #include <cctype>
@@ -479,5 +480,7 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
   CHECK(std::ranges::find(kept, "::1") != kept.end());
   CHECK(std::ranges::find(kept, kRemoteHost) == kept.end());
 
+  const auto stopping = std::chrono::steady_clock::now();
   CertService::shutdown();
+  CHECK(std::chrono::steady_clock::now() - stopping < std::chrono::seconds(2));
 }

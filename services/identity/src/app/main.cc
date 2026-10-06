@@ -470,8 +470,10 @@ int main()
       LOG_WARN << "PKI not loaded — pairing disabled";
   });
 
-  shutdown_signal::onQuit(
-      [dbPath = identityDb.dbPath] { DbService::freezeClient(dbPath); });
+  shutdown_signal::onQuit([dbPath = identityDb.dbPath] {
+    CertService::shutdown();
+    DbService::freezeClient(dbPath);
+  });
 
   CandidateRetentionService candidateRetention;
   std::unique_ptr<MdnsService> mdnsService;
