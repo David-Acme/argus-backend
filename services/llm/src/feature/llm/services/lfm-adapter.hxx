@@ -35,6 +35,14 @@ struct ToolChatOutput
   int64_t toolMs = 0;
 };
 
+struct TurnState
+{
+  bool asked{false};
+  bool appAsked{false};
+  bool wrote{false};
+  bool failed{false};
+};
+
 struct ToolHopContext
 {
   const ToolChatInput& input;
@@ -42,6 +50,7 @@ struct ToolHopContext
   ToolChatOutput& output;
   const TokenCallback* onToken = nullptr;
   const std::string& declarations;
+  TurnState& state;
 };
 
 struct ChatWithToolsStreamInput
@@ -85,6 +94,8 @@ public:
   static bool mayOpenToolCall(const std::string& text);
 
   static std::string spokenText(const std::string& content);
+
+  static std::string lastUtterance(const std::vector<ChatMessage>& history);
 
   static std::string renderToolCall(const tools::ToolCall& call);
 

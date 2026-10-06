@@ -8,6 +8,7 @@
 #include <json/reader.h>
 #include <json/writer.h>
 #include <feature/llm/services/tools/app-command.hxx>
+#include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <optional>
 #include <ranges>
@@ -532,20 +533,27 @@ std::optional<tools::ToolCall> routedCall(intent::ToolIntent decided,
   return call;
 }
 
-std::string unclaimedNote(const std::string& lang)
+bool writes(const tools::ToolResult& result, const std::vector<tools::ToolHandle>& tools)
 {
-  if (lang == "en")
-    return "You have not used any tool yet. If the user asked for a change in the app, call its "
-           "tool now; otherwise do not say that you did anything.";
-  return "Todavía no has usado ninguna herramienta. Si el usuario pidió un cambio en la app, llama "
-         "ahora a su herramienta; si no, no digas que hiciste nada.";
+  if (!result.ok)
+    return false;
+  const auto found = std::ranges::find_if(
+      tools, [&result](const tools::ToolHandle& tool) { return tool->spec.name == result.tool; });
+  return found != tools.end() && (!(*found)->spec.annotations.readOnly || isAppTool(result.tool));
 }
 
-std::string honestAnswer(const std::string& lang)
+TurnState turnOf(const std::string& utterance, const std::vector<tools::ToolHandle>& tools)
 {
-  if (lang == "en")
-    return "I have not done it yet. Do you want me to?";
-  return "Todavía no lo he hecho. ¿Quieres que lo haga?";
+  const bool appOffered = std::ranges::any_of(
+      tools, [](const tools::ToolHandle& tool) { return isAppTool(tool->spec.name); });
+  const bool appAsked = appOffered && asksForAppAction(utterance);
+  return {.asked = appAsked || reply_claims::asksForAction(utterance), .appAsked = appAsked, .wrote = false, .failed = false};
+}
+
+bool claimedWithoutTool(const std::string& reply, const TurnState& state)
+{
+  return !state.wrote && (reply_claims::claimsDone({.text = reply, .asked = state.asked}) ||
+                          (state.appAsked && claimsAppAction(reply)));
 }
 
 std::string quotedArgument(const std::string& value)
@@ -634,6 +642,11 @@ std::string LfmAdapter::spokenText(const std::string& content)
   }
 }
 
+std::string LfmAdapter::lastUtterance(const std::vector<ChatMessage>& history)
+{
+  return lastUserMessage(history);
+}
+
 std::string LfmAdapter::renderToolCall(const tools::ToolCall& call)
 {
   std::string rendered = std::string(kToolOpen) + "[" + call.name + "(";
@@ -693,6 +706,7 @@ bool LfmAdapter::routedTurn(ToolHopContext ctx)
   LOG_INFO << "LfmAdapter: router picked '" << call->name << "' (" << reason
            << "): " << executed.output;
   ctx.output.executed.push_back(*call);
+  ctx.state.wrote = ctx.state.wrote || writes(executed, ctx.input.tools);
   ctx.output.hops = 1;
   ctx.history.push_back({.role = "assistant", .content = renderToolCall(*call)});
   ctx.history.push_back({.role = "tool", .content = executed.output});
@@ -759,16 +773,11 @@ bool LfmAdapter::toolHops(ToolHopContext ctx)
   ToolChatOutput& output = ctx.output;
   const TokenCallback* onToken = ctx.onToken;
   std::vector<tools::ToolResult> succeeded;
-  const bool watchClaims =
-      std::ranges::any_of(input.tools,
-                          [](const tools::ToolHandle& tool) { return isAppTool(tool->spec.name); }) &&
-      asksForAppAction(lastUserMessage(history));
+  TurnState& state = ctx.state;
   bool challenged = false;
   for (output.hops = 0; output.hops < input.maxHops; ++output.hops) {
     const ChatRequest req = hopRequest(ctx);
-    const bool appRan = std::ranges::any_of(
-        succeeded, [](const tools::ToolResult& result) { return isAppTool(result.tool); });
-    const bool holdAll = watchClaims && !appRan;
+    const bool holdAll = state.asked && !state.wrote;
 
     bool streamed = false;
     const auto genStart = std::chrono::steady_clock::now();
@@ -803,17 +812,16 @@ bool LfmAdapter::toolHops(ToolHopContext ctx)
                     "answering in prose";
         return false;
       }
-      if (holdAll && claimsAppAction(reply)) {
+      if (!streamed && claimedWithoutTool(reply, state)) {
         history.pop_back();
-        if (!challenged) {
+        if (state.asked && !challenged) {
           challenged = true;
-          LOG_WARN << "LfmAdapter: the reply claims an app action no tool ran; asking again";
-          history.push_back({.role = "system", .content = unclaimedNote(input.context.lang)});
+          LOG_WARN << "LfmAdapter: the reply claims something no tool did; asking again";
+          history.push_back({.role = "system", .content = reply_claims::nudge(input.context.lang)});
           continue;
         }
-        LOG_WARN << "LfmAdapter: the reply still claims an app action no tool ran; "
-                    "answering honestly";
-        output.reply = honestAnswer(input.context.lang);
+        LOG_WARN << "LfmAdapter: the reply claims something no tool did; answering honestly";
+        output.reply = reply_claims::honest(input.context.lang);
         output.emitted = false;
         history.push_back({.role = "assistant", .content = output.reply});
         return true;
@@ -845,8 +853,10 @@ bool LfmAdapter::toolHops(ToolHopContext ctx)
         LOG_INFO << "LfmAdapter: tool '" << call.name
                  << "' ok: " << executed.output;
         succeeded.push_back(executed);
+        state.wrote = state.wrote || writes(executed, input.tools);
       }
       else {
+        state.failed = true;
         Json::StreamWriterBuilder builder;
         builder["indentation"] = "";
         LOG_WARN << "LfmAdapter: tool '" << call.name
@@ -869,6 +879,7 @@ ToolChatOutput LfmAdapter::chatWithTools(const ToolChatInput& input,
                                          std::vector<ChatMessage>& history)
 {
   ToolChatOutput output;
+  TurnState state = turnOf(lastUserMessage(history), input.tools);
   const std::string declarations = input.tools.empty()
                                        ? std::string()
                                        : buildToolDeclarations(input.tools);
@@ -876,20 +887,34 @@ ToolChatOutput LfmAdapter::chatWithTools(const ToolChatInput& input,
                            .history = history,
                            .output = output,
                            .onToken = nullptr,
-                           .declarations = declarations};
+                           .declarations = declarations,
+                           .state = state};
+  const auto settle = [&]() {
+    if (!claimedWithoutTool(output.reply, state))
+      return;
+    LOG_WARN << "LfmAdapter: the final reply claims something no tool did; answering honestly";
+    output.reply = reply_claims::honest(input.context.lang);
+    if (!history.empty() && history.back().role == "assistant")
+      history.back().content = output.reply;
+  };
 
   if (input.prefillOnly) {
     engine_.chat(hopRequest(ctx));
     return output;
   }
-  if (routedTurn(ctx))
+  if (routedTurn(ctx)) {
+    settle();
     return output;
-  if (toolHops(ctx))
+  }
+  if (toolHops(ctx)) {
+    settle();
     return output;
+  }
 
   LOG_WARN << "LfmAdapter: tool loop ended after " << output.hops
            << " hops without a prose answer";
   proseAnswer(ctx, input.temperature);
+  settle();
   return output;
 }
 
@@ -898,9 +923,14 @@ ToolChatOutput LfmAdapter::chatWithToolsStream(
 {
   const ToolChatInput& input = args.input;
   std::vector<ChatMessage>& history = args.history;
-  const TokenCallback& onToken = args.onToken;
 
   ToolChatOutput output;
+  TurnState state = turnOf(lastUserMessage(history), input.tools);
+  reply_claims::ClaimGate gate({.sink = args.onToken,
+                                .lang = input.context.lang,
+                                .asked = state.asked,
+                                .legitimate = [&state] { return state.wrote; }});
+  const TokenCallback onToken = gate.callback();
   const std::string declarations = input.tools.empty()
                                        ? std::string()
                                        : buildToolDeclarations(input.tools);
@@ -908,26 +938,39 @@ ToolChatOutput LfmAdapter::chatWithToolsStream(
                            .history = history,
                            .output = output,
                            .onToken = &onToken,
-                           .declarations = declarations};
+                           .declarations = declarations,
+                           .state = state};
+  const auto settle = [&]() {
+    if (!gate.cut())
+      return;
+    LOG_WARN << "LfmAdapter: a streamed reply claimed something no tool did; it was cut";
+    output.reply = gate.spoken();
+    if (!history.empty() && history.back().role == "assistant")
+      history.back().content = output.reply;
+  };
 
   if (input.prefillOnly) {
-    engine_.chatStream(hopRequest(ctx), onToken);
+    engine_.chatStream(hopRequest(ctx), args.onToken);
     output.emitted = true;
     return output;
   }
-  if (routedTurn(ctx))
+  if (routedTurn(ctx)) {
+    settle();
     return output;
+  }
 
   if (toolHops(ctx)) {
     if (!output.emitted) {
       onToken(output.reply, false);
       onToken("", true);
     }
+    settle();
     return output;
   }
 
   LOG_WARN << "LfmAdapter: tool loop ended after " << output.hops
            << " hops without a prose answer";
   proseAnswer(ctx, input.temperature);
+  settle();
   return output;
 }

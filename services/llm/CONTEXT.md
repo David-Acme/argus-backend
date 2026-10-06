@@ -649,12 +649,64 @@ session to lose on a restart.
   2026-10): an exact or one-word match acts, several matches ask which, none
   lists the places, and no `environment` keeps the old meaning, every
   environment.
+- **What the model is told about the tools is generated.** The first
+  end-to-end measurement of the assistant (789 judged cases, QUALITY,
+  2026-10-06) found that the model made no call at all to `calendar.*`,
+  `task.*`, `project.*`, `modules.*` or `reminder.list`: the system prompt named
+  only `memory.*` and `app.*`, so for everything else it answered in prose and
+  claimed work it had not done ("Creo una reunión con Andrea... Confirmado.").
+  Each tool now carries its own policy line in both languages in its spec
+  (`_meta` `argus/policy`, `ToolSpec::policy`), written by the service that owns
+  the tool, and `tool_policy::systemPrompt` (`tool-policy.cc`) builds the tool
+  loop's system prompt from the tools offered this turn: the memory policy
+  first (unchanged), then each offered tool's line once in the user's language,
+  then two generic rules (a tool that says its module is off: tell the user and
+  offer to turn it on; never say something was scheduled, created, saved,
+  enabled or cancelled unless the tool confirmed it), then the client-action
+  policy. A tool with no line adds nothing, so an offer without policies yields
+  the old prompt byte for byte, and the prompt follows the role and the modules:
+  a tool the role does not hold, or an Owner-only module tool for a Resident,
+  contributes no line. The memory and app sentences stay hand-written here
+  because their wording is what the recall and app-action measurements were
+  taken with.
+- **A reply that claims what no tool did never reaches the user**
+  (`reply-claims.cc`, phrase tables in `reply-claim-lexicon.cc`, one table per
+  language: Spanish with its Peruvian colloquialisms, English). A claim is a
+  first-person completion ("agendé", "he guardado", "ya te lo anoté", "I've
+  scheduled"), a present-tense performative with an object ("creo una reunión",
+  "agendo la cita"), a "quedó agendada", and, only when the user's own words
+  asked for something, a bare marker ("listo", "confirmado", "hecho", "done",
+  "all set"). Questions, offers, plans, conditions and negations ("¿quieres que
+  lo agende?", "voy a agendar", "no lo agendé", "cuando lo agende te aviso",
+  "creo que mañana llueve") are not claims. A claim is legitimate when a tool
+  that writes (not read-only, or an app action) succeeded in the turn; a failed
+  tool or a read-only success does not make it true. Where it applies: in the
+  tool loop (`LfmAdapter::chatWithTools` and `chatWithToolsStream`) a reply that
+  claims without a tool is, when the user asked for something, held and the
+  model is asked once more with a system note (a second claim, or a claim nobody
+  asked for, becomes the honest reply "No pude hacerlo. ¿Lo intento de nuevo?" /
+  "I could not do it. Shall I try again?"); in the streaming path every reply
+  passes `ClaimGate`, which lets a sentence through only when it has ended and
+  judges it first, so a clean reply still arrives sentence by sentence and a
+  claim is replaced by the honest reply mid-stream (what was already spoken
+  stays); and for an assistant turn with no tools offered at all
+  (`toolsEnabled` but the role holds none) the controller applies the same check
+  (`withoutFalseClaims`, `ClaimGate`). Requests that did not enable tools
+  (summaries, extraction) are never touched. The app-action claim check that
+  existed before (`claimsAppAction`) still runs for turns that ask for an app
+  action.
 - **The fast tier is unchanged.** fastText still decides explicit commands
   and abstains otherwise (`services/llm/src/feature/intent`); a routed call
   goes through the same executor, so permissions, the module check and grounding
   apply to it as to the model's.
 
-`tests/unit/llm-tool-runtime-test.cc`, `llm-tool-loop-test.cc`,
+`tests/unit/llm-tool-runtime-test.cc`, `llm-tool-loop-test.cc` (including the
+claim guard on the sync and streaming paths: a claim asked again once and then
+answered honestly, a failed tool, a read-only tool, a claim after a write that
+is spoken whole, English, a streamed claim cut at its sentence, a clean stream
+arriving sentence by sentence), `llm-reply-claims-test.cc` (the phrase tables
+against claims and non-claims in es, Peruvian es and en, the request detector,
+`ClaimGate`, `withoutFalseClaims`), `llm-tool-policy-test.cc`,
 `llm-tool-parse-test.cc`, `llm-tool-providers-test.cc` (provider aggregation,
 per-turn filtering, unreachable providers, the core server acting for the
 declared caller), `llm-spoken-intent-test.cc` and `llm-time-arguments-test.cc`

@@ -2,6 +2,7 @@
 
 #include <auth/module-gate.hxx>
 #include <feature/llm/services/tools/app-command.hxx>
+#include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/llm/services/tools/time-arguments.hxx>
 #include <feature/llm/services/tools/tool-policy.hxx>
 
@@ -56,6 +57,17 @@ std::vector<tools::ToolHandle> requestTools(const ToolExecutor& executor, const 
   if (!request.clientActions)
     std::erase_if(tools, [](const tools::ToolHandle& tool) { return isAppTool(tool->spec.name); });
   return tools;
+}
+
+std::string langOf(const ChatRequest& request)
+{
+  return request.lang.empty() ? std::string(kDefaultToolLang) : request.lang;
+}
+
+std::string withoutFalseClaims(std::string text, const ChatRequest& request)
+{
+  return reply_claims::withoutFalseClaims(
+      {.text = std::move(text), .utterance = LfmAdapter::lastUtterance(request.messages), .lang = langOf(request)});
 }
 
 std::atomic<int64_t>& turnCounter()
@@ -246,6 +258,8 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
   const auto tools = requestTools(adapter_.executor(), request);
   if (tools.empty()) {
     outcome.text = service_.chat(request);
+    if (request.toolsEnabled)
+      outcome.text = withoutFalseClaims(std::move(outcome.text), request);
     return outcome;
   }
   const ToolChatInput loop = toolLoopInput(
@@ -273,7 +287,15 @@ void LlmController::chatStreamSync(const LlmStreamInput& input)
   };
   const auto tools = requestTools(adapter_.executor(), input.request);
   if (tools.empty()) {
-    service_.chatStream(input.request, emit);
+    if (!input.request.toolsEnabled) {
+      service_.chatStream(input.request, emit);
+      return;
+    }
+    reply_claims::ClaimGate gate({.sink = emit,
+                                  .lang = langOf(input.request),
+                                  .asked = reply_claims::asksForAction(LfmAdapter::lastUtterance(input.request.messages)),
+                                  .legitimate = [] { return false; }});
+    service_.chatStream(input.request, gate.callback());
     return;
   }
   const ToolChatInput loop = toolLoopInput({.tools = tools,

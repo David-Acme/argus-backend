@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/intent/services/intent-contracts.hxx>
 #include <feature/intent/services/intent-router.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
@@ -21,6 +22,7 @@ struct ScriptedEngine
 {
   std::deque<std::string> replies;
   std::vector<ChatRequest> requests;
+  std::size_t chunk{0};
 
   std::string next(const ChatRequest& request)
   {
@@ -37,7 +39,14 @@ struct ScriptedEngine
     return {.chat = [this](const ChatRequest& request) { return next(request); },
             .chatStream =
                 [this](const ChatRequest& request, const TokenCallback& onToken) {
-                  onToken(next(request), false);
+                  const std::string reply = next(request);
+                  if (chunk == 0) {
+                    onToken(reply, false);
+                  }
+                  else {
+                    for (std::size_t at = 0; at < reply.size(); at += chunk)
+                      onToken(reply.substr(at, chunk), false);
+                  }
                   onToken("", true);
                 }};
   }
@@ -284,7 +293,7 @@ TEST_CASE("a routed call the tool refuses falls back to the model with every too
   const SilentClassifier classifier;
   const IntentRouter router({.catalog = catalog, .model = classifier, .recurrent = {}});
   ScriptedEngine script;
-  script.replies = {"Claro, enciendo la luz de la cocina."};
+  script.replies = {"Lo siento, no pude guardar eso."};
   LfmAdapter adapter({.engine = script.engine(), .registry = registry, .router = &router});
 
   std::vector<ChatMessage> history{{.role = "user", .content = "recuerda que el wifi se cae cada semana"}};
@@ -294,7 +303,7 @@ TEST_CASE("a routed call the tool refuses falls back to the model with every too
   REQUIRE(script.requests.size() == 1);
   CHECK(script.requests.front().toolCallsAllowed);
   CHECK(script.requests.front().messages.back().role == "user");
-  CHECK(output.reply == "Claro, enciendo la luz de la cocina.");
+  CHECK(output.reply == "Lo siento, no pude guardar eso.");
 }
 
 TEST_CASE("explicit app commands become app calls and questions do not")
@@ -421,7 +430,7 @@ TEST_CASE("a claim that survives the second ask becomes an honest question")
   turn.script.replies = {"Cambié la vigilancia a modo noche.", "Ya está activado el modo noche."};
   const auto output = turn.run("oye la vigilancia esta noche que esté atenta a todo por favor");
   CHECK(turn.actions.empty());
-  CHECK(turn.spoken == "Todavía no lo he hecho. ¿Quieres que lo haga?");
+  CHECK(turn.spoken == "No pude hacerlo. ¿Lo intento de nuevo?");
   CHECK(output.reply == turn.spoken);
 }
 
@@ -439,4 +448,207 @@ TEST_CASE("a question about the app or a turn without app words streams as befor
   chat.run("mi hermana ya llegó a casa");
   CHECK(chat.spoken == "¡Qué bien! Ya está hecho entonces.");
   CHECK(chat.script.requests.size() == 1);
+}
+
+namespace
+{
+constexpr std::string_view kScheduleCall =
+    "<|tool_call_start|>[calendar.create_event(text='reunión con Andrea')]<|tool_call_end|>";
+
+struct Behaviour
+{
+  bool ok{true};
+  bool readOnly{false};
+};
+
+struct ClaimTurn
+{
+  ToolRegistry registry;
+  ScriptedEngine script;
+  int runs{0};
+  std::string spoken;
+  std::vector<std::string> pieces;
+  std::string lang{"es"};
+
+  explicit ClaimTurn(Behaviour behaviour = {})
+  {
+    auto descriptor = tool_stubs::stub({.name = "calendar.create_event",
+                                        .capability = "agenda.write",
+                                        .handler = [this, behaviour](const tools::ToolCall&) {
+                                          ++runs;
+                                          tools::ToolResult result;
+                                          result.ok = behaviour.ok;
+                                          result.output = behaviour.ok ? "Agendado." : "No pude agendar.";
+                                          return result;
+                                        },
+                                        .module = "productivity"});
+    descriptor.spec.annotations.readOnly = behaviour.readOnly;
+    registry.registerTool(std::move(descriptor));
+  }
+
+  ToolChatInput input() const
+  {
+    auto loop = loopInput({registry.find("calendar.create_event")});
+    loop.context.lang = lang;
+    return loop;
+  }
+
+  ToolChatOutput sync(const std::string& utterance)
+  {
+    LfmAdapter adapter({.engine = script.engine(), .registry = registry, .router = nullptr});
+    std::vector<ChatMessage> history{{.role = "user", .content = utterance}};
+    return adapter.chatWithTools(input(), history);
+  }
+
+  ToolChatOutput stream(const std::string& utterance)
+  {
+    LfmAdapter adapter({.engine = script.engine(), .registry = registry, .router = nullptr});
+    std::vector<ChatMessage> history{{.role = "user", .content = utterance}};
+    const TokenCallback onToken = [this](const std::string& token, bool) {
+      if (!token.empty())
+        pieces.push_back(token);
+      spoken += token;
+    };
+    return adapter.chatWithToolsStream({.input = input(), .history = history, .onToken = onToken});
+  }
+};
+
+std::string honestSpanish()
+{
+  return reply_claims::honest("es");
+}
+}
+
+TEST_CASE("a claim with no tool behind it is asked again once and then answered honestly")
+{
+  ClaimTurn turn;
+  turn.script.replies = {"Creo una reunión con Andrea para el jueves a las 3:00 PM. Confirmado.",
+                         "Listo, ya te la agendé."};
+  const auto output = turn.sync("Agéndame una reunión con Andrea el jueves a las tres");
+  CHECK(turn.runs == 0);
+  CHECK(output.reply == honestSpanish());
+  REQUIRE(turn.script.requests.size() == 2);
+  CHECK(turn.script.requests[1].messages.back().role == "system");
+  CHECK(turn.script.requests[1].messages.back().content == reply_claims::nudge("es"));
+}
+
+TEST_CASE("the second ask can become a real call, and what follows the tool is spoken as it is")
+{
+  ClaimTurn turn;
+  turn.script.replies = {"Agendé la reunión con Andrea.", std::string(kScheduleCall), "Listo, quedó agendada con Andrea."};
+  const auto output = turn.sync("Agéndame una reunión con Andrea el jueves a las tres");
+  CHECK(turn.runs == 1);
+  CHECK(output.reply == "Listo, quedó agendada con Andrea.");
+  CHECK(turn.script.requests.size() == 3);
+}
+
+TEST_CASE("a tool that failed does not make a later claim true")
+{
+  ClaimTurn turn({.ok = false, .readOnly = false});
+  turn.script.replies = {std::string(kScheduleCall), "Listo, ya lo agendé.", "Ya lo agendé pues."};
+  const auto output = turn.sync("Agéndame una reunión con Andrea el jueves a las tres");
+  CHECK(turn.runs == 1);
+  CHECK(output.reply == honestSpanish());
+  CHECK(output.executed.size() == 1);
+}
+
+TEST_CASE("a claim after a tool that worked is spoken, and so is a claim in English")
+{
+  ClaimTurn turn;
+  turn.script.replies = {std::string(kScheduleCall), "Listo, ya lo agendé para el jueves."};
+  const auto output = turn.sync("Agéndame una reunión con Andrea el jueves a las tres");
+  CHECK(turn.runs == 1);
+  CHECK(output.reply == "Listo, ya lo agendé para el jueves.");
+
+  ClaimTurn english;
+  english.lang = "en";
+  english.script.replies = {std::string(kScheduleCall), "Done, I've scheduled it for Thursday."};
+  const auto spoken = english.sync("Schedule a meeting with Andrea on Thursday at three");
+  CHECK(spoken.reply == "Done, I've scheduled it for Thursday.");
+}
+
+TEST_CASE("a tool that only reads does not make a claim of writing true")
+{
+  ClaimTurn turn({.ok = true, .readOnly = true});
+  turn.script.replies = {std::string(kScheduleCall), "Agendé la reunión con Andrea."};
+  const auto output = turn.sync("¿Qué tengo mañana en la agenda?");
+  CHECK(turn.runs == 1);
+  CHECK(output.reply == honestSpanish());
+}
+
+TEST_CASE("a claim nobody asked for is answered honestly at once, and a plain reply is untouched")
+{
+  ClaimTurn claim;
+  claim.script.replies = {"Guardé tu nota."};
+  const auto output = claim.sync("gracias");
+  CHECK(output.reply == honestSpanish());
+  CHECK(claim.script.requests.size() == 1);
+
+  ClaimTurn plain;
+  plain.script.replies = {"Tienes tres eventos mañana."};
+  CHECK(plain.sync("¿qué tengo mañana?").reply == "Tienes tres eventos mañana.");
+
+  ClaimTurn english;
+  english.lang = "en";
+  english.script.replies = {"I have created the task.", "I've added it to your list."};
+  CHECK(english.sync("Add a task to call the dentist").reply == reply_claims::honest("en"));
+}
+
+TEST_CASE("a streamed claim is cut at its sentence and what came before it was already spoken")
+{
+  ClaimTurn turn;
+  turn.script.chunk = 4;
+  turn.script.replies = {"Hola, Ana. Creo una reunión con Andrea para el jueves. Confirmado."};
+  const auto output = turn.stream("gracias por todo");
+  CHECK(turn.spoken == "Hola, Ana. " + honestSpanish());
+  CHECK(output.reply == turn.spoken);
+  REQUIRE_FALSE(turn.pieces.empty());
+  CHECK(turn.pieces.front() == "Hola, Ana.");
+  CHECK(turn.runs == 0);
+}
+
+TEST_CASE("a streamed reply with no claim arrives sentence by sentence, not all at the end")
+{
+  ClaimTurn turn;
+  turn.script.chunk = 3;
+  turn.script.replies = {"Claro que sí. Dime qué necesitas. Aquí estoy."};
+  const auto output = turn.stream("hola Argus");
+  CHECK(turn.spoken == "Claro que sí. Dime qué necesitas. Aquí estoy.");
+  CHECK(output.reply == turn.spoken);
+  CHECK(turn.pieces.size() == 3);
+}
+
+TEST_CASE("a streamed claim after a tool that worked is spoken whole")
+{
+  ClaimTurn turn;
+  turn.script.chunk = 5;
+  turn.script.replies = {std::string(kScheduleCall), "Listo, ya lo agendé para el jueves. Confirmado."};
+  const auto output = turn.stream("Agéndame una reunión con Andrea el jueves a las tres");
+  CHECK(turn.runs == 1);
+  CHECK(turn.spoken == "Listo, ya lo agendé para el jueves. Confirmado.");
+  CHECK(output.reply == turn.spoken);
+}
+
+TEST_CASE("a streamed turn that was asked for something holds the claim, asks again and speaks the real answer")
+{
+  ClaimTurn turn;
+  turn.script.chunk = 6;
+  turn.script.replies = {"Creo una reunión con Andrea para el jueves. Confirmado.", std::string(kScheduleCall),
+                         "Listo, quedó agendada."};
+  const auto output = turn.stream("Agéndame una reunión con Andrea el jueves a las tres");
+  CHECK(turn.runs == 1);
+  CHECK(turn.spoken == "Listo, quedó agendada.");
+  CHECK(output.reply == "Listo, quedó agendada.");
+  CHECK(turn.spoken.find("Creo") == std::string::npos);
+  CHECK(turn.script.requests.size() == 3);
+}
+
+TEST_CASE("a streamed turn whose tool failed ends honestly and never speaks the claim")
+{
+  ClaimTurn turn({.ok = false, .readOnly = false});
+  turn.script.chunk = 7;
+  turn.script.replies = {std::string(kScheduleCall), "Listo, ya lo agendé.", "Ya lo agendé pues."};
+  const auto output = turn.stream("Agéndame una reunión con Andrea el jueves a las tres");
+  CHECK(turn.spoken == honestSpanish());
+  CHECK(output.reply == honestSpanish());
 }

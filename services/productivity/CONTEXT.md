@@ -579,6 +579,11 @@ declares it, never for another user, and run on the Drogon loop:
 | `project.list {status?, limit?}` / `project.create {name, description?, target_at?}` | `projects.read` / `projects.write` | the caller's projects, newest first / a new project (idempotent) |
 | `task.list {project?, project_id?, limit?}` / `task.create {title, project?, project_id?, priority?, due_at?}` / `task.complete {task_id or title}` | `projects.read` / `projects.write` | open tasks of the caller's projects / a task in a project / marks one done (by id or words) |
 
+Every tool carries a policy line in both languages in its spec (`argus/policy`,
+"si el usuario pide agendar... llama a calendar.create_event y confirma solo
+cuando responda"); argus-llm builds its system prompt from them, so what the
+model is told about the agenda is written here, next to the tools.
+
 `task.create` without a project does not invent one: it answers with the
 caller's projects and asks which (open decision, "DECISION NEEDED MCP" on the
 BOARD; the alternative is a default "Tareas" project). Date-time arguments

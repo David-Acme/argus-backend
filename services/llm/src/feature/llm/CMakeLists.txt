@@ -10,6 +10,8 @@ argus_module(NAME llm
         services/tools/core-tools.cc
         services/tools/module-offer.cc
         services/tools/remote-tool.cc
+        services/tools/reply-claim-lexicon.cc
+        services/tools/reply-claims.cc
         services/tools/spoken-intent.cc
         services/tools/time-arguments.cc
         services/tools/tool-access.cc

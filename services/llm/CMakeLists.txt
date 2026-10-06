@@ -293,6 +293,16 @@ set_target_properties(llm-tool-policy-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-tool-policy-test COMMAND llm-tool-policy-test)
 
+add_executable(llm-reply-claims-test tests/unit/llm-reply-claims-test.cc)
+
+target_link_libraries(llm-reply-claims-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-reply-claims-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-reply-claims-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-reply-claims-test COMMAND llm-reply-claims-test)
+
 add_executable(llm-spoken-intent-test tests/unit/llm-spoken-intent-test.cc)
 
 target_link_libraries(llm-spoken-intent-test PRIVATE argus::llm doctest::doctest)
