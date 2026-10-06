@@ -8,6 +8,7 @@
 #include <feature/guard/services/response-verdict-feed.hxx>
 #include <feature/guard/guard-assessment.hxx>
 #include <feature/guard/guard-repository.hxx>
+#include <feature/guard/services/guard-module-wind-down.hxx>
 #include <feature/guard/guard-schedule.hxx>
 #include <feature/guard/guard-schema.hxx>
 #include <feature/guard/guard-service.hxx>
@@ -304,6 +305,24 @@ int main()
 
   SettingsRegistry settings(guardSettingsCatalog());
   settings.onChange([&guardService, &presence](const std::vector<std::string>&) {
+  const GuardModuleWindDown surveillanceWindDown;
+  const auto windDown = [&surveillanceWindDown] {
+    drogon::app().getLoop()->queueInLoop([&surveillanceWindDown] {
+      drogon::async_run([&surveillanceWindDown]() -> drogon::Task<void> {
+        try {
+          co_await surveillanceWindDown.run();
+        }
+        catch (const std::exception& error) {
+          LOG_WARN << "Guard: the surveillance wind-down failed: " << error.what();
+        }
+        co_return;
+      });
+    });
+  };
+  moduleGate().onChange([windDown](const ModuleChange& change) {
+    if (change.id == role_access::kSurveillanceModule && !change.enabled)
+      windDown();
+  });
     guardService.refresh(GuardConfig::resolveService());
     presence.refresh(GuardConfig::resolvePresence());
   });
@@ -358,7 +377,7 @@ int main()
            << (listener.tls ? " (TLS" : " (plain") << ", cert "
            << listener.certPath << "); guard database " << db.dbPath;
 
-  drogon::app().registerBeginningAdvice([&guardService, &presence]() {
+  drogon::app().registerBeginningAdvice([&guardService, &presence, windDown]() {
     guardService.start();
     presence.start();
   });
@@ -384,3 +403,5 @@ int main()
   rpcDrain.requestStop();
   return 0;
 }
+    if (!moduleGate().enabled(role_access::kSurveillanceModule))
+      windDown();

@@ -1402,10 +1402,39 @@ The cloud audit (`docs/history/reports/cloud-audit-2026-10-05.md`, findings
 answers 403 `MODULE_DISABLED` while surveillance is not `active` (the panic
 and safety routes included, as the plan lists `/guard` whole), and
 `GuardService` stops evaluating: an object event that arrives is acked
-without a decision and the tamper sweep skips, through
-`Dependencies::active`. Encounters already open still close on their timeout
-and the outboxes still drain, so nothing is lost or half written; no data is
-deleted. Evaluation resumes with the next event after the enable.
+without a decision and the tamper sweep and the daily and quiet-day summaries
+skip, through `Dependencies::active`. Encounters already open still close on
+their timeout and the encounter outbox still drains, so nothing is lost or
+half written; no data is deleted. Evaluation resumes with the next event after
+the enable.
+
+### What stops when surveillance is turned off (2026-10, the effects wave)
+
+Skipping new work is not enough: work already queued would fire when the
+module comes back, hours or days stale, or loop on its lease while it is off.
+`GuardModuleWindDown` (`feature/guard/services/guard-module-wind-down.*`, SQL
+in `repositories/wind-down/`) runs once, in one transaction, when the gate
+reports surveillance turned off (a `moduleGate().onChange` hook in `main.cc`)
+and once at boot when the module is already off (the persisted state), and it
+is idempotent:
+
+- **Pending observations are dropped**: every `guard_observation_inbox` row
+  still `processing` becomes `completed`, so the retry pump stops leasing it.
+- **Pending alerts are dropped**: `guard_action_outbox` rows `pending`,
+  `in_flight` or `retryable_failed` become `rejected` with detail
+  `module_disabled`; rows already settled keep their verdict.
+- **Duty ends**: every `guard_response_recipient.on_duty` goes back to 0; a
+  Guard goes on duty again after the module returns
+  (`POST /guard/environments/{id}/duty` is gated meanwhile).
+
+Left alone on purpose: `guard_safety_alert` (a panic or duress alert already
+raised keeps escalating, it is a person in danger and panic is core), the
+encounter outbox (a memory capture, not an alert), and all data. Notification
+kinds of the module are not created while it is off, and the rings of its
+kinds end (`services/notification/CONTEXT.md`, "Kinds of a module that is
+off"). `tests/unit/guard-module-wind-down-test.cc` pins the three effects, the
+rows it must not touch and the idempotence, and `guard-scenario-test.cc`
+("daily summaries stay silent while surveillance is disabled") the summaries.
 
 ### Surveillance data: summary and purge
 

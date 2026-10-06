@@ -34,7 +34,9 @@ argus_module(NAME guard
         repositories/environment/environment-repository.cc
         repositories/episode/episode-repository.cc
         repositories/response/response-repository.cc
+        repositories/wind-down/wind-down-repository.cc
         services/guard-feature-service.cc
+        services/guard-module-wind-down.cc
         services/response-feature-service.cc
         services/response-plan.cc
         services/delivery-keepalive.cc

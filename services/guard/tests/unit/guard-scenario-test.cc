@@ -525,6 +525,35 @@ TEST_CASE("one summary per environment and per day, each in its own thread")
   DbService::client()->execSqlSync("UPDATE guard_environment SET digest_hour = -1");
 }
 
+TEST_CASE("daily summaries stay silent while surveillance is disabled and resume with it")
+{
+  (void)boot();
+  DbService::client()->execSqlSync("DELETE FROM guard_state WHERE key LIKE 'digest_%'");
+  DbService::client()->execSqlSync("UPDATE guard_environment SET digest_hour = ?", currentHour());
+  QuietCameraActions camera;
+  RosterIdentity identity({{1, "es"}});
+  RecordingNotifications notifications;
+  auto active = std::make_shared<std::atomic<bool>>(false);
+  GuardService service({.bus = nullptr,
+                        .identity = &identity,
+                        .notifications = &notifications,
+                        .actions = &camera,
+                        .assessment = nullptr,
+                        .directory = {},
+                        .active = [active] { return active->load(); }},
+                       defaults());
+  const int64_t now = static_cast<int64_t>(std::time(nullptr)) + 1;
+
+  drogon::sync_wait(service.maybeSendDigests(now));
+  CHECK(notifications.sent().empty());
+  CHECK(scalar("SELECT COUNT(*) FROM guard_state WHERE key LIKE 'digest_daily_day_%'") == "0");
+
+  active->store(true);
+  drogon::sync_wait(service.maybeSendDigests(now));
+  CHECK(scalar("SELECT COUNT(*) FROM guard_state WHERE key LIKE 'digest_daily_day_%'") != "0");
+  DbService::client()->execSqlSync("UPDATE guard_environment SET digest_hour = -1");
+}
+
 TEST_CASE("guard stops evaluating while surveillance is disabled and resumes on enable")
 {
   (void)boot();

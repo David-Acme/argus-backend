@@ -3692,6 +3692,8 @@ void GuardService::scheduleSirenDisarm(const EffectInput& input)
 
 drogon::Task<void> GuardService::maybeSendDigests(int64_t now)
 {
+  if (!evaluating())
+    co_return;
   const auto config = currentConfig();
   const auto at = static_cast<std::time_t>(now);
   std::tm local{};
