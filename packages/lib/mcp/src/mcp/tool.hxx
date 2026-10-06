@@ -20,6 +20,7 @@ inline constexpr std::string_view kModuleKey = "argus/module";
 inline constexpr std::string_view kCapabilityKey = "argus/capability";
 inline constexpr std::string_view kContextKey = "argus/context";
 inline constexpr std::string_view kAppActionKey = "argus/appAction";
+inline constexpr std::string_view kPolicyKey = "argus/policy";
 
 struct ToolAnnotations
 {
@@ -27,6 +28,12 @@ struct ToolAnnotations
   bool destructive{false};
   bool idempotent{false};
   bool openWorld{false};
+};
+
+struct ToolPolicy
+{
+  std::string spanish;
+  std::string english;
 };
 
 struct ToolSpec
@@ -38,6 +45,7 @@ struct ToolSpec
   ToolAnnotations annotations;
   std::string module;
   std::string capability;
+  ToolPolicy policy{};
 };
 
 struct CallerContext

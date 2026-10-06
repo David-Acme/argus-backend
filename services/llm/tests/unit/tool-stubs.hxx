@@ -18,6 +18,7 @@ struct StubTool
   std::string module{"core"};
   Json::Value schema{argus::mcp::schema::object({{.name = "text", .schema = argus::mcp::schema::text(), .required = false}})};
   bool destructive{false};
+  argus::mcp::ToolPolicy policy{};
 };
 
 inline tools::ToolDescriptor stub(StubTool input)
@@ -28,7 +29,8 @@ inline tools::ToolDescriptor stub(StubTool input)
                    .inputSchema = std::move(input.schema),
                    .annotations = {.destructive = input.destructive},
                    .module = std::move(input.module),
-                   .capability = std::move(input.capability)},
+                   .capability = std::move(input.capability),
+                   .policy = std::move(input.policy)},
           .handler = std::move(input.handler)};
 }
 

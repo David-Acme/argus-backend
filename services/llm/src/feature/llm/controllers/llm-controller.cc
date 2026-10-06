@@ -3,6 +3,7 @@
 #include <auth/module-gate.hxx>
 #include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/time-arguments.hxx>
+#include <feature/llm/services/tools/tool-policy.hxx>
 
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
@@ -41,20 +42,6 @@ drogon::HttpResponsePtr badRequest()
 }
 
 constexpr std::string_view kDefaultToolLang = "es";
-
-constexpr const char* kToolPolicy =
-    "Eres Argus. Usa memory.remember cuando el usuario te pide guardar un dato, "
-    "memory.remind para un recordatorio con día u hora, memory.recall cuando "
-    "pregunta por algo que te contó y memory.forget cuando pide olvidar algo. "
-    "Nunca digas que guardaste u olvidaste algo sin haber usado esa herramienta. "
-    "Si no hace falta ninguna, responde brevemente.";
-
-constexpr const char* kClientActionPolicy =
-    " Estás en una llamada y la app del usuario está abierta: si pide ver una "
-    "cámara usa app.show_camera, si pide abrir una sección usa app.open, y si "
-    "pide cambiar la vigilancia o dice que se va, que duerme o que vuelve, usa "
-    "app.set_guard_mode. Nunca digas que hiciste algo en la app sin haber usado "
-    "su herramienta. Confirma en una frase lo que hiciste.";
 
 ToolAudience audienceOf(const ChatRequest& request)
 {
@@ -99,9 +86,8 @@ std::function<void(const std::string&, const Json::Value&)> actionEmitter(Action
 ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
 {
   ToolChatInput input;
-  input.systemPrompt = args.request.clientActions
-                           ? std::string(kToolPolicy) + kClientActionPolicy
-                           : std::string(kToolPolicy);
+  const std::string_view lang = args.request.lang.empty() ? kDefaultToolLang : std::string_view(args.request.lang);
+  input.systemPrompt = tool_policy::systemPrompt({.tools = args.tools, .lang = lang, .clientActions = args.request.clientActions});
   input.tools = args.tools;
   input.audience = audienceOf(args.request);
   input.context = tools::ToolContext{.userId = args.request.userId,
