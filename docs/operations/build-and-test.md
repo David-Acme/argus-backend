@@ -62,6 +62,18 @@ Every test binary must clean up its own TempDb files; a `.db*` file left in a
 build directory after a run is a failure to investigate, whatever the exit
 code says.
 
+A skip is counted, never silent. ctest reports as Skipped a doctest binary whose
+summary says `0 failed` and at least one `skipped` (every `doctest::skip` on a
+missing broker, model or environment variable: `argus_service` sets
+`SKIP_REGULAR_EXPRESSION` once per project, and the expression demands `0
+failed` because one that also matched a failure would hide it), a test that
+exits 77 (`SKIP_RETURN_CODE`: the evaluations and `golden-sync-test`, which
+fails instead once a native stack is announced), and the script tests, which
+print a `SKIPPED:` line and exit 77 when a tool they need (`script(1)`,
+clang-tidy) is absent. A test that needs a file the repository carries
+(`models/intent/intent.bin`) fails without it. The final sweep counts each
+project's Skipped tests and the `SKIPPED:` lines of the scripts.
+
 ## Current scale
 
 15 projects in `dev`. Per-suite test and assertion counts move with the

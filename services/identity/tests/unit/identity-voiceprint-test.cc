@@ -360,7 +360,8 @@ struct Fleet
 
 }
 
-TEST_CASE("a voice is learned from its owner's own calls, and only from them")
+TEST_CASE("a voice is learned from its owner's own calls, and only from them" *
+          doctest::skip(!std::filesystem::exists(ARGUS_TEST_SPEAKER_MODEL)))
 {
   for (const char* suffix : {"", "-wal", "-shm"})
     std::remove((std::string(kDb) + suffix).c_str());
@@ -419,11 +420,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them")
       engine.init(ARGUS_TEST_SPEAKER_MODEL) &&
       VoiceprintIndex::instance().init(
           {.dims = engine.dims(), .model = engine.modelId()});
-  if (!modelPresent) {
-    MESSAGE("speaker model not provisioned at " ARGUS_TEST_SPEAKER_MODEL
-            "; the model-backed half of the suite is skipped");
-    return;
-  }
+  REQUIRE_MESSAGE(modelPresent, "the speaker model at " ARGUS_TEST_SPEAKER_MODEL " exists but did not load");
   REQUIRE(engine.dims() == 192);
 
   const PassiveVoiceConfig gates = testConfig().passive;

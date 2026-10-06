@@ -566,6 +566,16 @@ def unbooted(routes, bases):
                   - {"shared"})
 
 
+def unsent_probes(routes, bases, ids, roles):
+    left = [route for route in routes if route["unit"] in unbooted(routes, bases)]
+    return len(build_plan(left, ids, roles, {route["unit"]: "" for route in left}))
+
+
+def report_unsent(routes, bases, ids, roles):
+    print(f"{unsent_probes(routes, bases, ids, roles)} probes not sent "
+          "(service not booted)")
+
+
 def session_of(name, sessions):
     if name is None:
         return None
@@ -869,6 +879,7 @@ def record(fixtures, routes, bases, sessions, ids, roles, timeout, stack):
     unknown = unbooted(routes, bases)
     for unit in unknown:
         print(f"skip: {unit} is not booted in this stack")
+    report_unsent(routes, bases, ids, roles)
     dropped = dropped_units(fixtures, bases)
     if dropped:
         print("refusing to record: the stack is missing the units "
@@ -1001,6 +1012,7 @@ def verify(fixtures, routes, bases, sessions, ids, roles, timeout, verbose,
            stack):
     for unit in unbooted(routes, bases):
         print(f"skip: {unit} is not booted in this stack")
+    report_unsent(routes, bases, ids, roles)
     manifest = load_manifest(fixtures)
     deviations = manifest["declaredDeviations"]
     volatile = volatile_of(manifest)

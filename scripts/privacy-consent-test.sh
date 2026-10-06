@@ -104,6 +104,9 @@ if command -v script >/dev/null 2>&1; then
     [ ! -e "$declined/privacy/host-consent.json" ] || fail "a word other than ACEPTO was accepted"
   fi
   [ ! -e "$declined/privacy/host-consent.json" ] || fail "a word other than ACEPTO wrote a record"
+else
+  printf 'SKIPPED: privacy-consent-test: the interactive half needs script(1), which is not on PATH\n'
+  exit 77
 fi
 
 printf 'privacy-consent-test: ok\n'

@@ -127,14 +127,18 @@ T present(const std::optional<T>& value)
   return value.value_or(T{});
 }
 
-TEST_CASE("recurring unknown faces become numbered visitors, the household never "
-          "does, and the Owner can name, merge, split and delete them")
+namespace
 {
-  if (!std::filesystem::exists(std::string(ARGUS_TEST_FACE_MODELS) +
-                               "/recognizer.bin")) {
-    MESSAGE("face models not provisioned; skipped");
-    return;
-  }
+bool faceModelsProvisioned()
+{
+  return std::filesystem::exists(std::string(ARGUS_TEST_FACE_MODELS) + "/recognizer.bin");
+}
+}
+
+TEST_CASE("recurring unknown faces become numbered visitors, the household never "
+          "does, and the Owner can name, merge, split and delete them" *
+          doctest::skip(!faceModelsProvisioned()))
+{
   for (const char* suffix : {"", "-wal", "-shm"})
     std::remove((std::string(kDb) + suffix).c_str());
   VecDb::instance().setDbFile(kDb);

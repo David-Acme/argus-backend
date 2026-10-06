@@ -6,6 +6,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_TMP="$(mktemp -d)"
 trap 'rm -rf "$TEST_TMP"' EXIT
 
+skipped=()
+
+run_script_test() {
+  local script="$1" code=0 output
+  output="$("$ROOT/scripts/$script" 2>&1)" || code=$?
+  case "$code" in
+    0) ;;
+    77) skipped+=("$(grep -m1 '^SKIPPED:' <<<"$output" || echo "SKIPPED: $script")") ;;
+    *) printf '%s\n' "$output" >&2
+       exit "$code" ;;
+  esac
+}
+
 CALL_LOG="$TEST_TMP/calls.log"
 MOCK_BIN="$TEST_TMP/bin"
 mkdir -p "$MOCK_BIN"
@@ -228,6 +241,7 @@ esac
 NOGIT="$TEST_TMP/nogit"
 mkdir -p "$NOGIT/packages/lib/y"
 cp -R "$ROOT/scripts" "$NOGIT/scripts"
+: > "$NOGIT/scripts/lib/route-baseline.txt"
 printf 'argus_lib(NAME y\n    DEPENDS\n        Drogon::Drogon)\n' \
   > "$NOGIT/packages/lib/y/CMakeLists.txt"
 : > "$CALL_LOG"
@@ -437,7 +451,7 @@ if command -v "$tidy_tool" >/dev/null 2>&1; then
     exit 1
   fi
 else
-  echo "check-tidy tests skipped: no clang-tidy on PATH" >&2
+  skipped+=("SKIPPED: build-all-test: the check-tidy tests need clang-tidy, which is not on PATH")
 fi
 
 grep -Fq '"$ROOT/scripts/build-all.sh" "$PROFILE" --install-only' \
@@ -451,9 +465,13 @@ if grep -Fq '[ ! -d ".git" ]' "$ROOT/scripts/setup.sh"; then
   exit 1
 fi
 
-"$ROOT/scripts/privacy-consent-test.sh" >/dev/null
-"$ROOT/scripts/pki-test.sh" >/dev/null
-"$ROOT/scripts/rpc-credentials-test.sh" >/dev/null
-"$ROOT/scripts/deploy-mounts-test.sh" >/dev/null
+run_script_test privacy-consent-test.sh
+run_script_test pki-test.sh
+run_script_test rpc-credentials-test.sh
+run_script_test deploy-mounts-test.sh
 
 echo "build-all tests passed"
+if [ "${#skipped[@]}" -gt 0 ]; then
+  printf '%s\n' "${skipped[@]}"
+  exit 77
+fi

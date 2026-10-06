@@ -65,10 +65,7 @@ TEST_CASE("the published model keeps memory_save precision on the judges")
 {
   const FastTextClassifier model(
       std::string(ARGUS_TEST_INTENT_MODELS_DIR) + "/intent.bin");
-  if (!model.isLoaded()) {
-    MESSAGE("no intent model on disk; accuracy gate skipped");
-    return;
-  }
+  REQUIRE_MESSAGE(model.isLoaded(), "models/intent/intent.bin is carried in the repository and must load");
 
   for (const std::string fixture : {"eval-check.tsv", "eval-production.tsv"}) {
     const auto rows =
@@ -98,10 +95,7 @@ TEST_CASE("the router covers the judge set the LLM tier under-fired")
 {
   const FastTextClassifier model(
       std::string(ARGUS_TEST_INTENT_MODELS_DIR) + "/intent.bin");
-  if (!model.isLoaded()) {
-    MESSAGE("no intent model on disk; coverage measurement skipped");
-    return;
-  }
+  REQUIRE_MESSAGE(model.isLoaded(), "models/intent/intent.bin is carried in the repository and must load");
 
   PhraseCatalog catalog;
   catalog.build();

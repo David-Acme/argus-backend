@@ -179,7 +179,9 @@ more than it is:
   each of them has a native binary — but `native-stack.sh` prepares configs
   for the seven request-serving services only, so the harness finds no base
   unit for them (`stack_base` reads `<stack>/<unit>/config.toml`) and prints
-  `skip: <unit> is not booted in this stack`. Their ten censused routes carry
+  `skip: <unit> is not booted in this stack` and, as its own line,
+  `12 probes not sent (service not booted)` (record and verify both). Their ten
+  censused routes carry
   no recording, and the twelve probes the census plans for them (`llm` 3,
   `stt` 2, `tts` 5, `vlm` 2) are the only planned probes the replay never
   sends. All twelve would be `plain` probes — no route of those four carries
