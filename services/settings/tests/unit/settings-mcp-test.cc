@@ -72,6 +72,7 @@ public:
   drogon::Task<RequestOutcome> request(const DeskCommand& command) override
   {
     requested.emplace_back(command.userId, command.moduleId);
+    requestedRoles.push_back(command.role);
     co_return requestAnswer;
   }
 
@@ -88,10 +89,12 @@ public:
                                       {.kind = "something_new", .count = std::nullopt}},
                             .holders = {{.name = "Ana", .role = "guard"}},
                             .invitations = {{.role = "guard", .invitedBy = "Luis"}},
-                            .keepsRunning = {}};
+                            .keepsRunning = {},
+                            .unreachable = {}};
   std::vector<std::string> enabled;
   std::vector<std::string> disabled;
   std::vector<std::pair<int64_t, std::string>> requested;
+  std::vector<std::string> requestedRoles;
 };
 
 struct Harness
@@ -332,10 +335,74 @@ TEST_CASE("a note with one language is spoken in both, a blank one is skipped an
   CHECK(bare.text.find("seguirán") == std::string::npos);
 }
 
+TEST_CASE("an owner that did not answer is named and the list is called incomplete")
+{
+  Harness harness;
+  harness.desk->impactAnswer.unreachable = {"cámaras", "guardia"};
+  const auto spanish = harness.call("modules.disable", module("surveillance"), "owner", "es", 1);
+  CHECK(spanish.text.find("No pude consultar a cámaras y guardia, así que esta lista puede estar incompleta.") != std::string::npos);
+  const auto english = harness.call("modules.disable", module("surveillance"), "owner", "en", 1);
+  CHECK(english.text.find("I could not reach cámaras and guardia, so this list may be incomplete.") != std::string::npos);
+  CHECK(english.structured["needsConfirmation"].asBool());
+}
+
+TEST_CASE("a huge impact is said in a bounded preview: eight of each, the rest counted, long names clipped")
+{
+  Harness harness;
+  ModuleImpact huge{.known = true,
+                    .allowed = true,
+                    .refusal = "",
+                    .refusalCode = "",
+                    .stops = {},
+                    .holders = {},
+                    .invitations = {},
+                    .keepsRunning = {},
+                    .unreachable = {}};
+  for (int index = 0; index < 500; ++index)
+    huge.stops.push_back({.kind = "effect_" + std::to_string(index), .count = std::nullopt});
+  for (int index = 0; index < 1000; ++index) {
+    huge.holders.push_back({.name = index == 0 ? std::string(100000, 'a') : "Persona " + std::to_string(index), .role = "guard"});
+    huge.invitations.push_back({.role = "guard", .invitedBy = "Luis"});
+  }
+  for (int index = 0; index < 300; ++index) {
+    huge.unreachable.push_back("dueño" + std::to_string(index));
+    huge.keepsRunning.push_back({.spanish = "nota " + std::to_string(index) + std::string(5000, 'x'), .english = ""});
+  }
+  harness.desk->impactAnswer = huge;
+
+  const auto spanish = harness.call("modules.disable", module("surveillance"), "owner", "es", 1);
+  CHECK_FALSE(spanish.isError);
+  CHECK(spanish.text.size() < 6000);
+  CHECK(spanish.text.find("492 más") != std::string::npos);
+  CHECK(spanish.text.find("992 más") != std::string::npos);
+  CHECK(spanish.text.find("292 más") != std::string::npos);
+  CHECK(spanish.text.find("…") != std::string::npos);
+  CHECK(spanish.text.find("nota 7") != std::string::npos);
+  CHECK(spanish.text.find("nota 8") == std::string::npos);
+  CHECK(spanish.text.find("Invitaciones pendientes que se revocarían: 1000.") != std::string::npos);
+  CHECK(spanish.structured["needsConfirmation"].asBool());
+
+  const auto english = harness.call("modules.disable", module("surveillance"), "owner", "en", 1);
+  CHECK(english.text.size() < 6000);
+  CHECK(english.text.find("492 more") != std::string::npos);
+}
+
+TEST_CASE("a request that finds the module being installed says so and carries the caller's role")
+{
+  Harness harness;
+  harness.desk->requestAnswer = {.kind = RequestKind::Installing};
+  const auto outcome = harness.call("modules.request", module("productivity"), "guest", "es", 7);
+  CHECK(outcome.isError);
+  CHECK(outcome.text == "Productividad ya se está instalando.");
+  CHECK(outcome.structured["code"].asString() == "job_running");
+  REQUIRE(harness.desk->requestedRoles.size() == 1);
+  CHECK(harness.desk->requestedRoles.front() == "guest");
+}
+
 TEST_CASE("a module that cannot be turned off says why and issues no code")
 {
   Harness harness;
-  harness.desk->impactAnswer = {.known = true, .allowed = false, .refusal = "otro módulo lo necesita", .refusalCode = "MODULE_REQUIRED_BY", .stops = {}, .holders = {}, .invitations = {}, .keepsRunning = {}};
+  harness.desk->impactAnswer = {.known = true, .allowed = false, .refusal = "otro módulo lo necesita", .refusalCode = "MODULE_REQUIRED_BY", .stops = {}, .holders = {}, .invitations = {}, .keepsRunning = {}, .unreachable = {}};
   const auto refused = harness.call("modules.disable", module("core"), "owner");
   CHECK(refused.isError);
   CHECK(refused.text == "No se puede apagar Núcleo: otro módulo lo necesita");

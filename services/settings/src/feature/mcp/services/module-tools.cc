@@ -7,6 +7,7 @@
 #include <mcp/speech.hxx>
 
 #include <algorithm>
+#include <ranges>
 #include <array>
 #include <string_view>
 #include <utility>
@@ -45,7 +46,7 @@ std::string phraseOf(const ImpactStop& stop, bool english)
     phrase = std::string(english ? found->en : found->es);
   }
   else {
-    phrase = stop.kind;
+    phrase = stop.kind.substr(0, 80);
     std::ranges::replace(phrase, '_', ' ');
   }
   if (stop.count && *stop.count > 0)
@@ -82,6 +83,7 @@ DeskCommand commandOf(const argus::mcp::ToolInvocation& invocation)
 {
   return {.moduleId = moduleArgument(invocation),
           .userId = invocation.caller.userId,
+          .role = invocation.caller.role,
           .lang = std::string(speech::languageOf(invocation))};
 }
 
@@ -171,6 +173,11 @@ drogon::Task<argus::mcp::ToolOutcome> requestModule(std::shared_ptr<ModuleDesk> 
                                 .spanish = card->name + " ya está activo.",
                                 .english = card->name + " is already on."},
                                "already_active");
+    case RequestKind::Installing:
+      co_return speech::refuse({.invocation = invocation,
+                                .spanish = card->name + " ya se está instalando.",
+                                .english = card->name + " is already being installed."},
+                               "job_running");
     case RequestKind::ComingSoon:
       co_return speech::refuse({.invocation = invocation,
                                 .spanish = card->name + " todavía no está disponible.",
@@ -227,34 +234,67 @@ drogon::Task<argus::mcp::ToolOutcome> enableModule(std::shared_ptr<ModuleDesk> d
   co_return unavailable(invocation);
 }
 
+constexpr std::size_t kMostSpoken = 8;
+constexpr std::size_t kLongestName = 80;
+constexpr std::size_t kLongestNote = 400;
+
+std::string moreLabel(std::size_t rest, bool english)
+{
+  return std::to_string(rest) + (english ? " more" : " más");
+}
+
+std::string clipped(const std::string& text, std::size_t most)
+{
+  if (text.size() <= most)
+    return text;
+  std::size_t end = most;
+  while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0U) == 0x80U)
+    --end;
+  return text.substr(0, end) + "…";
+}
+
 std::string impactText(const ModuleCard& card, const ModuleImpact& impact, const argus::mcp::ToolInvocation& invocation)
 {
   const bool english = speech::inEnglish(invocation);
   const auto language = speech::languageOf(invocation);
   std::string text = (english ? "Turning off " : "Apagar ") + card.name + (english ? " would stop " : " detendría ");
   std::vector<std::string> stops;
-  stops.reserve(impact.stops.size());
-  for (const auto& stop : impact.stops)
+  stops.reserve(std::min(impact.stops.size(), kMostSpoken + 1));
+  for (const auto& stop : impact.stops | std::views::take(kMostSpoken))
     stops.push_back(phraseOf(stop, english));
+  if (impact.stops.size() > kMostSpoken)
+    stops.push_back(moreLabel(impact.stops.size() - kMostSpoken, english));
   text += stops.empty() ? std::string(english ? "nothing that is running" : "nada que esté en marcha") : speech::joined(stops, language);
   text += '.';
   if (!impact.holders.empty()) {
     std::vector<std::string> names;
-    names.reserve(impact.holders.size());
-    for (const auto& holder : impact.holders)
-      names.push_back(holder.name + " (" + holder.role + ")");
+    names.reserve(std::min(impact.holders.size(), kMostSpoken + 1));
+    for (const auto& holder : impact.holders | std::views::take(kMostSpoken))
+      names.push_back(clipped(holder.name, kLongestName) + " (" + clipped(holder.role, kLongestName) + ")");
+    if (impact.holders.size() > kMostSpoken)
+      names.push_back(moreLabel(impact.holders.size() - kMostSpoken, english));
     text += english ? " Their role would become inactive for: " : " Su rol quedaría inactivo para: ";
     text += speech::joined(names, language) + ".";
   }
   if (!impact.invitations.empty())
     text += (english ? " Pending invitations that would be revoked: " : " Invitaciones pendientes que se revocarían: ") +
             std::to_string(impact.invitations.size()) + ".";
-  for (const auto& note : impact.keepsRunning) {
+  if (!impact.unreachable.empty()) {
+    std::vector<std::string> silent;
+    silent.reserve(std::min(impact.unreachable.size(), kMostSpoken + 1));
+    for (const auto& owner : impact.unreachable | std::views::take(kMostSpoken))
+      silent.push_back(clipped(owner, kLongestName));
+    if (impact.unreachable.size() > kMostSpoken)
+      silent.push_back(moreLabel(impact.unreachable.size() - kMostSpoken, english));
+    text += (english ? " I could not reach " : " No pude consultar a ") + speech::joined(silent, language) +
+            (english ? ", so this list may be incomplete." : ", así que esta lista puede estar incompleta.");
+  }
+  for (const auto& note : impact.keepsRunning | std::views::take(kMostSpoken)) {
     const std::string& line = english ? (note.english.empty() ? note.spanish : note.english)
                                       : (note.spanish.empty() ? note.english : note.spanish);
     if (line.empty())
       continue;
-    text += " " + line;
+    text += " " + clipped(line, kLongestNote);
     if (!line.ends_with('.'))
       text += '.';
   }

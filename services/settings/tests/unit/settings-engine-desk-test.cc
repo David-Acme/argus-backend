@@ -10,6 +10,7 @@
 #include <chrono>
 #include <filesystem>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -70,6 +71,32 @@ public:
   {
     return {.reach = OwnerReach::Unsupported, .value = std::nullopt};
   }
+
+  [[nodiscard]] OwnerReply<ModuleImpactReport> impact(const std::string& owner, const std::string&) const override
+  {
+    if (owner == "guard") {
+      if (guardReach != OwnerReach::Answered)
+        return {.reach = guardReach, .value = std::nullopt};
+      return {.reach = OwnerReach::Answered,
+              .value = ModuleImpactReport{.stops = {{.kind = "guard_duty", .count = 2}}, .roleHolders = {}, .invitations = {}}};
+    }
+    return {.reach = OwnerReach::Answered,
+            .value = ModuleImpactReport{
+                .stops = {},
+                .roleHolders = {{.userId = 5, .name = "Ana", .lastName = "Pérez", .role = "guard", .isActive = true},
+                                {.userId = 6, .name = "Beto", .lastName = "", .role = "guard", .isActive = true}},
+                .invitations = {{.id = 1, .role = "guard", .createdBy = 1, .createdByName = "Luis", .expiresAt = 2000000}}}};
+  }
+
+  [[nodiscard]] OwnerReply<ModuleRequestOutcome> requestModule(const std::string&, const ModuleRequestInput& input) const override
+  {
+    const std::string key = std::to_string(input.userId) + ":" + input.moduleId;
+    const bool duplicate = !asked.insert(key).second;
+    return {.reach = OwnerReach::Answered, .value = ModuleRequestOutcome{.notified = 1, .duplicate = duplicate}};
+  }
+
+  OwnerReach guardReach{OwnerReach::Answered};
+  mutable std::set<std::string> asked;
 };
 
 struct Named
@@ -129,6 +156,17 @@ ModuleCatalog catalogOfDesk()
   surveillance["components"].append("vision");
   root["modules"].append(surveillance);
   root["modules"].append(named({.id = "agronomy", .kind = "coming_soon", .required = {"core"}}));
+  auto watch = named({.id = "watch", .kind = "available", .required = {"core"}});
+  watch["roles"].append("guard");
+  watch["dataOwners"].append("guard");
+  watch["effects"].append("live_views");
+  watch["effects"].append("guard_duty");
+  Json::Value keeps(Json::objectValue);
+  keeps["id"] = "safety_alerts";
+  keeps["text"]["es"] = "Las alertas de pánico o coacción en curso seguirán hasta que alguien las atienda.";
+  keeps["text"]["en"] = "Panic or duress alerts already raised keep going until someone attends them.";
+  watch["keepsRunning"].append(keeps);
+  root["modules"].append(watch);
   auto parsed = parseModuleCatalog(root);
   INFO(parsed.problem);
   REQUIRE(parsed.catalog.has_value());
@@ -198,12 +236,12 @@ struct Harness
 
   [[nodiscard]] EnableOutcome enable(const std::string& id, const std::string& lang = "es") const
   {
-    return drogon::sync_wait(desk->enable({.moduleId = id, .userId = 1, .lang = lang}));
+    return drogon::sync_wait(desk->enable({.moduleId = id, .userId = 1, .role = "owner", .lang = lang}));
   }
 
   [[nodiscard]] DisableOutcome disable(const std::string& id, const std::string& lang = "es") const
   {
-    return drogon::sync_wait(desk->disable({.moduleId = id, .userId = 1, .lang = lang}));
+    return drogon::sync_wait(desk->disable({.moduleId = id, .userId = 1, .role = "owner", .lang = lang}));
   }
 };
 }
@@ -213,7 +251,7 @@ TEST_CASE("the desk lists every module in the user's language with its state and
   Harness harness;
   harness.settle();
   const auto cards = drogon::sync_wait(harness.desk->list("es"));
-  REQUIRE(cards.size() == 5);
+  REQUIRE(cards.size() == 6);
   CHECK(harness.card("core").state == ModuleState::Active);
   CHECK(harness.card("productivity").state == ModuleState::Active);
   CHECK(harness.card("surveillance").state == ModuleState::Off);
@@ -277,27 +315,84 @@ TEST_CASE("disabling turns a module off and refuses the core and the ones anothe
   CHECK(harness.disable("nope").kind == DisableKind::Unknown);
 }
 
-TEST_CASE("the impact is never invented: a known module says it cannot be previewed here and an unknown one is unknown")
+TEST_CASE("the impact is what the owners report: what stops, who is affected, what keeps running")
 {
   Harness harness;
   harness.settle();
-  const auto spanish = drogon::sync_wait(harness.desk->impact({.moduleId = "productivity", .lang = "es"}));
-  CHECK(spanish.known);
-  CHECK_FALSE(spanish.allowed);
-  CHECK(spanish.refusalCode == "impact_unavailable");
-  CHECK(spanish.stops.empty());
-  CHECK(spanish.refusal.find("apágalo desde la app") != std::string::npos);
-  const auto english = drogon::sync_wait(harness.desk->impact({.moduleId = "productivity", .lang = "en"}));
-  CHECK(english.refusal.find("turn it off from the app") != std::string::npos);
+  const auto impact = drogon::sync_wait(harness.desk->impact({.moduleId = "watch", .lang = "es"}));
+  REQUIRE(impact.known);
+  CHECK(impact.allowed);
+  REQUIRE(impact.stops.size() == 2);
+  CHECK(impact.stops[0].kind == "live_views");
+  CHECK_FALSE(impact.stops[0].count.has_value());
+  CHECK(impact.stops[1].kind == "guard_duty");
+  CHECK(impact.stops[1].count == 2);
+  REQUIRE(impact.holders.size() == 2);
+  CHECK(impact.holders[0].name == "Ana Pérez");
+  CHECK(impact.holders[0].role == "guard");
+  CHECK(impact.holders[1].name == "Beto");
+  REQUIRE(impact.invitations.size() == 1);
+  CHECK(impact.invitations[0].invitedBy == "Luis");
+  REQUIRE(impact.keepsRunning.size() == 1);
+  CHECK(impact.keepsRunning[0].spanish == "Las alertas de pánico o coacción en curso seguirán hasta que alguien las atienda.");
+  CHECK(impact.keepsRunning[0].english == "Panic or duress alerts already raised keep going until someone attends them.");
+  CHECK(impact.unreachable.empty());
+}
+
+TEST_CASE("an owner that does not answer is named so the preview can say it may be incomplete")
+{
+  Harness harness;
+  harness.settle();
+  harness.owners.guardReach = OwnerReach::Unreachable;
+  const auto impact = drogon::sync_wait(harness.desk->impact({.moduleId = "watch", .lang = "es"}));
+  CHECK(impact.allowed);
+  CHECK(impact.unreachable == std::vector<std::string>{"guard"});
+}
+
+TEST_CASE("a module that cannot be turned off answers the engine's refusal in the user's language")
+{
+  Harness harness;
+  harness.settle();
+  const auto base = drogon::sync_wait(harness.desk->impact({.moduleId = "core", .lang = "es"}));
+  CHECK(base.known);
+  CHECK_FALSE(base.allowed);
+  CHECK(base.refusalCode == "MODULE_CORE");
+  CHECK(base.refusal == "el módulo base siempre está activo");
+  const auto needed = drogon::sync_wait(harness.desk->impact({.moduleId = "productivity", .lang = "en"}));
+  CHECK_FALSE(needed.allowed);
+  CHECK(needed.refusalCode == "MODULE_REQUIRED_BY");
+  CHECK(needed.refusal == "another module that is on needs it");
   CHECK_FALSE(drogon::sync_wait(harness.desk->impact({.moduleId = "nope", .lang = "es"})).known);
 }
 
-TEST_CASE("a request to the owner is unavailable until the request route exists")
+TEST_CASE("before the engine is settled the impact says it cannot be previewed and never invents one")
+{
+  Harness harness;
+  const auto early = drogon::sync_wait(harness.desk->impact({.moduleId = "watch", .lang = "es"}));
+  CHECK(early.known);
+  CHECK_FALSE(early.allowed);
+  CHECK(early.refusalCode == "impact_unavailable");
+  CHECK(early.stops.empty());
+  CHECK(early.refusal.find("apágalo desde la app") != std::string::npos);
+  const auto english = drogon::sync_wait(harness.desk->impact({.moduleId = "watch", .lang = "en"}));
+  CHECK(english.refusal.find("turn it off from the app") != std::string::npos);
+}
+
+TEST_CASE("a member's request reaches the owner once a day and the engine's refusals are spoken kinds")
 {
   Harness harness;
   harness.settle();
-  CHECK(drogon::sync_wait(harness.desk->request({.moduleId = "surveillance", .userId = 7, .lang = "es"})).kind ==
-        RequestKind::Unavailable);
+  const auto ask = [&harness](const std::string& id, const std::string& role) {
+    return drogon::sync_wait(harness.desk->request({.moduleId = id, .userId = 7, .role = role, .lang = "es"})).kind;
+  };
+  CHECK(ask("surveillance", "resident") == RequestKind::Requested);
+  CHECK(ask("surveillance", "resident") == RequestKind::Duplicate);
+  CHECK(ask("productivity", "resident") == RequestKind::AlreadyActive);
+  CHECK(ask("agronomy", "resident") == RequestKind::ComingSoon);
+  CHECK(ask("nope", "resident") == RequestKind::Unknown);
+  CHECK(ask("surveillance", "owner") == RequestKind::Unavailable);
+  CHECK(harness.enable("surveillance").kind == EnableKind::Started);
+  CHECK(ask("surveillance", "resident") == RequestKind::Installing);
 }
 
 TEST_CASE("without an engine the desk lists nothing and refuses everything")
@@ -305,7 +400,7 @@ TEST_CASE("without an engine the desk lists nothing and refuses everything")
   EngineModuleDesk desk(EngineModuleDeskInput{.engine = nullptr});
   CHECK(drogon::sync_wait(desk.list("es")).empty());
   CHECK_FALSE(drogon::sync_wait(desk.find({.moduleId = "core", .lang = "es"})).has_value());
-  CHECK(drogon::sync_wait(desk.enable({.moduleId = "core", .userId = 1, .lang = "es"})).kind == EnableKind::Unavailable);
-  CHECK(drogon::sync_wait(desk.disable({.moduleId = "core", .userId = 1, .lang = "es"})).kind == DisableKind::Unavailable);
+  CHECK(drogon::sync_wait(desk.enable({.moduleId = "core", .userId = 1, .role = "owner", .lang = "es"})).kind == EnableKind::Unavailable);
+  CHECK(drogon::sync_wait(desk.disable({.moduleId = "core", .userId = 1, .role = "owner", .lang = "es"})).kind == DisableKind::Unavailable);
   CHECK_FALSE(drogon::sync_wait(desk.impact({.moduleId = "core", .lang = "es"})).known);
 }

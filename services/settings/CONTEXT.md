@@ -792,22 +792,31 @@ the `ModuleEngine` to it and the tests drive a fake desk.
 | Tool | Capability | Behaviour |
 |---|---|---|
 | `modules.list`, `modules.explain {module}` | `modules.read` (every role) | what each module is, its state ("instalándose 42%"), its intro and examples, in the user's language |
-| `modules.request {module}` | `modules.request` (non-Owner) | asks the household Owner to turn a module on; an Owner cannot ask itself; the route that records the request and notifies the Owner is the module-effects work (`POST /modules/{id}/request`), so until it exists the desk answers unavailable and the tool says so |
+| `modules.request {module}` | `modules.request` (non-Owner) | asks the household Owner to turn a module on through `ModuleEngine::requestAsync` (the Owner is notified once per user, module and day; a second ask the same day answers that it was already told); an Owner cannot ask itself, a module that is on, being installed or coming soon is answered as such |
 | `modules.enable {module}` | `modules.manage` (Owner) | starts the install; the answer says it started, is already on, is coming soon, does not fit this hardware or has a job running; argus-llm only calls it on the user's spoken yes |
 | `modules.disable {module, confirmation?}` | `modules.manage` (Owner), destructive | first call: the impact preview in the user's words (what stops, who is affected, invitations that would be revoked, what keeps running, what stays) and a one-use token; second call with the token: turns it off. Nothing is deleted |
 | `modules.open_purge_screen {module}` | `modules.manage` (Owner) | emits `app.open {screen: "modules", module}`; deleting a module's data is never done by voice |
 
-The preview speaks `ModuleImpact::keepsRunning`, the localized lines the
-impact carries for what a module change does not touch, most importantly that
-a raised panic or duress alert goes on until someone answers it; the tool never
-writes that sentence itself. Until the impact preview of the module-effects work
-is reachable from here, `EngineModuleDesk::impact` answers a known module
-"cannot be previewed from here, turn it off from the app" (code
-`impact_unavailable`), so `modules.disable` refuses and issues no token rather
-than turning a module off with an invented summary.
+Every tool carries a policy line in both languages in its spec (`argus/policy`),
+the sentence argus-llm puts in its prompt to tell the model when to call it.
+
+The preview is the engine's own impact (`ModuleEngine::impactAsync`, the same
+answer as `GET /modules/{id}/impact`) said in the user's language: what stops
+(`stops`, with counts where the owners reported them), who loses a role
+(`roleHolders`) and which invitations are revoked, and then, verbatim, the
+lines of `keepsRunning` (`{id, text{es,en}}` from the module's catalog entry),
+most importantly that a raised panic or duress alert goes on until someone
+answers it; the tool never writes that sentence itself and says it before
+asking for the confirmation. An owner that did not answer is named and the list
+is called incomplete. A module that cannot be turned off (core, needed by
+another that is on, a job in progress) answers the engine's refusal as words
+and issues no token; so does an engine that cannot answer at all (not settled
+yet): `impact_unavailable`, never an invented summary.
 
 `tests/unit/settings-mcp-test.cc` pins every tool per role and language, the
 one-use token (another user's, a spent one, another module's), the refusal
 paths and the spoken `keepsRunning`; `settings-engine-desk-test.cc` runs the
 adapter over a real `ModuleEngine` (states, enable outcomes, disable refusals in
-both languages, the unavailable impact and request, no engine).
+both languages, the impact an owner reports with the catalog's `keepsRunning`,
+an unreachable owner, the engine's refusals, the unsettled engine, the request
+kinds, no engine).

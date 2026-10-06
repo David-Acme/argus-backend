@@ -2,6 +2,8 @@
 
 #include <feature/modules/module-errors.hxx>
 
+#include <auth/user-role.hxx>
+
 #include <errors/response-exception.hxx>
 
 #include <algorithm>
@@ -13,7 +15,8 @@ constexpr std::string_view kEnglish = "en";
 
 struct Refusal
 {
-  const ResponseException& error;
+  std::string_view code;
+  std::string_view fallback;
   bool english{false};
 };
 
@@ -22,17 +25,21 @@ bool codeIs(const ResponseException& error, const ErrorDefinition& definition)
   return error.errorCode() == definition.wireCode();
 }
 
+bool isExactly(const ResponseException& error, const ErrorDefinition& definition)
+{
+  return codeIs(error, definition) && error.what() == definition.message;
+}
+
 std::string refusalText(const Refusal& refusal)
 {
-  const auto& error = refusal.error;
   const bool english = refusal.english;
-  if (codeIs(error, ModuleErrors::CoreModule))
+  if (refusal.code == ModuleErrors::CoreModule.wireCode())
     return english ? "the core module is always on" : "el módulo base siempre está activo";
-  if (codeIs(error, ModuleErrors::RequiredBy))
+  if (refusal.code == ModuleErrors::RequiredBy.wireCode())
     return english ? "another module that is on needs it" : "otro módulo que está activo lo necesita";
-  if (codeIs(error, ModuleErrors::JobRunning))
+  if (refusal.code == ModuleErrors::JobRunning.wireCode())
     return english ? "it already has a job in progress" : "ya tiene un trabajo en curso";
-  return error.what();
+  return std::string(refusal.fallback);
 }
 
 ModuleState stateOf(const ModuleView& view)
@@ -111,7 +118,7 @@ drogon::Task<EnableOutcome> EngineModuleDesk::enable(const DeskCommand& command)
       outcome.kind = EnableKind::HardwareInsufficient;
     else if (codeIs(error, ModuleErrors::JobRunning))
       outcome.kind = EnableKind::JobRunning;
-    else if (codeIs(error, ModuleErrors::AlreadyEnabled))
+    else if (isExactly(error, ModuleErrors::AlreadyEnabled))
       outcome.kind = EnableKind::AlreadyActive;
     else if (codeIs(error, ModuleErrors::UnknownModule))
       outcome.kind = EnableKind::Unknown;
@@ -130,13 +137,45 @@ drogon::Task<ModuleImpact> EngineModuleDesk::impact(const DeskLookup& lookup)
                       .stops = {},
                       .holders = {},
                       .invitations = {},
-                      .keepsRunning = {}};
-  const auto card = co_await find(lookup);
-  if (!card)
+                      .keepsRunning = {},
+                      .unreachable = {}};
+  if (engine_ == nullptr)
+    co_return answer;
+  std::optional<ModuleImpactView> view;
+  bool unknown = false;
+  try {
+    view = co_await engine_->impactAsync({.moduleId = lookup.moduleId, .action = ImpactAction::Disable});
+  }
+  catch (const ResponseException& error) {
+    unknown = codeIs(error, ModuleErrors::UnknownModule);
+  }
+  if (unknown)
     co_return answer;
   answer.known = true;
-  answer.refusal = unavailableImpact(lookup.lang);
-  answer.refusalCode = "impact_unavailable";
+  if (!view) {
+    answer.refusal = std::string(unavailableImpact(lookup.lang));
+    answer.refusalCode = "impact_unavailable";
+    co_return answer;
+  }
+  if (view->refusal) {
+    answer.refusalCode = std::string(view->refusal->wireCode());
+    answer.refusal = refusalText({.code = view->refusal->wireCode(), .fallback = view->refusal->message, .english = lookup.lang == kEnglish});
+    co_return answer;
+  }
+  answer.allowed = true;
+  answer.stops.reserve(view->stops.size());
+  for (const auto& stop : view->stops)
+    answer.stops.push_back({.kind = stop.kind, .count = stop.count});
+  answer.holders.reserve(view->roleHolders.size());
+  for (const auto& holder : view->roleHolders)
+    answer.holders.push_back({.name = holder.lastName.empty() ? holder.name : holder.name + " " + holder.lastName, .role = holder.role});
+  answer.invitations.reserve(view->invitations.size());
+  for (const auto& invitation : view->invitations)
+    answer.invitations.push_back({.role = invitation.role, .invitedBy = invitation.createdByName});
+  answer.keepsRunning.reserve(view->keepsRunning.size());
+  for (const auto& item : view->keepsRunning)
+    answer.keepsRunning.push_back({.spanish = item.text.es, .english = item.text.en});
+  answer.unreachable = view->unreachable;
   co_return answer;
 }
 
@@ -149,7 +188,7 @@ drogon::Task<DisableOutcome> EngineModuleDesk::disable(const DeskCommand& comman
     static_cast<void>(co_await engine_->disableAsync({.moduleId = command.moduleId, .userId = command.userId}));
   }
   catch (const ResponseException& error) {
-    outcome.detail = refusalText({.error = error, .english = command.lang == kEnglish});
+    outcome.detail = refusalText({.code = error.errorCode(), .fallback = error.what(), .english = command.lang == kEnglish});
     if (codeIs(error, ModuleErrors::UnknownModule))
       outcome.kind = DisableKind::Unknown;
     else if (codeIs(error, ModuleErrors::CoreModule) || codeIs(error, ModuleErrors::RequiredBy) ||
@@ -161,7 +200,27 @@ drogon::Task<DisableOutcome> EngineModuleDesk::disable(const DeskCommand& comman
   co_return outcome;
 }
 
-drogon::Task<RequestOutcome> EngineModuleDesk::request(const DeskCommand&)
+drogon::Task<RequestOutcome> EngineModuleDesk::request(const DeskCommand& command)
 {
-  co_return RequestOutcome{.kind = RequestKind::Unavailable};
+  if (engine_ == nullptr)
+    co_return RequestOutcome{.kind = RequestKind::Unavailable};
+  RequestOutcome outcome{.kind = RequestKind::Requested};
+  try {
+    const auto view = co_await engine_->requestAsync(
+        {.moduleId = command.moduleId, .userId = command.userId, .role = userRoleFromString(command.role)});
+    outcome.kind = view.duplicate ? RequestKind::Duplicate : RequestKind::Requested;
+  }
+  catch (const ResponseException& error) {
+    if (codeIs(error, ModuleErrors::ComingSoon))
+      outcome.kind = RequestKind::ComingSoon;
+    else if (isExactly(error, ModuleErrors::AlreadyEnabled))
+      outcome.kind = RequestKind::AlreadyActive;
+    else if (codeIs(error, ModuleErrors::JobRunning))
+      outcome.kind = RequestKind::Installing;
+    else if (codeIs(error, ModuleErrors::UnknownModule))
+      outcome.kind = RequestKind::Unknown;
+    else
+      outcome.kind = RequestKind::Unavailable;
+  }
+  co_return outcome;
 }

@@ -37,6 +37,7 @@ struct DeskCommand
 {
   std::string moduleId;
   std::int64_t userId{0};
+  std::string role;
   std::string lang;
 };
 
@@ -76,6 +77,7 @@ enum class RequestKind : std::uint8_t
   Requested,
   Duplicate,
   AlreadyActive,
+  Installing,
   ComingSoon,
   Unknown,
   Unavailable
@@ -120,6 +122,7 @@ struct ModuleImpact
   std::vector<ImpactHolder> holders;
   std::vector<ImpactInvitation> invitations;
   std::vector<ImpactNote> keepsRunning;
+  std::vector<std::string> unreachable;
 };
 
 class ModuleDesk
