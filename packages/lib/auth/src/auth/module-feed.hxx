@@ -70,6 +70,14 @@ public:
   [[nodiscard]] std::string epoch() const;
 
 private:
+  struct Application
+  {
+    bool applied{false};
+    bool epochChanged{false};
+  };
+
+  [[nodiscard]] Application apply(const Snapshot& snapshot);
+  void repull();
   [[nodiscard]] bool subscribe();
   void run(const std::stop_token& stop);
 

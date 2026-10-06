@@ -245,15 +245,23 @@ rule 5 is unchanged and `scripts/check-routes.sh` needs no new row.
    malformed enabled set is terminated. Messages and the boot read carry a
    `version` and an `epoch`. Within one epoch anything older than the last
    applied version is ignored, so the boot read and a replayed backlog cannot
-   undo a newer state whatever order they arrive in. A different epoch resets
-   the version the consumer judges by: settings mints an epoch at every boot
-   (`<mintedAtMs>-<16 hex>`), so a settings.db that was reset or restored
-   restarts its counter low without any consumer having to restart; an epoch
-   whose mint time is older than the one already adopted is a stale replay
-   and is ignored, and a message with no epoch (an older settings) is judged
-   by version alone. The durable asks for the last message per subject
-   (`deliverLastPerSubject`), never the whole history: the set is a snapshot,
-   and the boot read already supplies the rest.
+   undo a newer state whatever order they arrive in. The epoch is an opaque
+   string: settings mints one at every boot (`<bootMs>-<16 hex>` only for
+   uniqueness) and no consumer parses or compares it, because a host whose
+   clock goes backwards across a restart would otherwise ignore a genuinely
+   new boot for ever. A different epoch is always adopted: the version
+   tracking resets and the message applies, so a settings.db that was reset or
+   restored restarts its counter low without any consumer having to restart.
+   Adopting an epoch from a message then re-pulls `ModuleStates` over RPC and
+   applies that answer as authoritative, so a stray message of an older epoch
+   that arrives afterwards is corrected within one round trip (the answer is
+   itself never followed by another re-pull; if settings does not answer, the
+   message stands). A message with no epoch (an older settings build) is
+   judged by version alone. Stale replays are prevented structurally: the
+   durable asks for the last message per subject (`deliverLastPerSubject`),
+   never the whole history (the set is a snapshot and the boot read supplies
+   the rest), and a durable that already exists never redelivers what it
+   acked.
 3. **The last known state**: every applied set is written atomically
    (`.part` then rename) to `[modules] state_file`, default
    `database/module-state.json` in the service's working directory, and read

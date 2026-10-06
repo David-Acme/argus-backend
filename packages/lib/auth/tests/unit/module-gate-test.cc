@@ -341,7 +341,7 @@ TEST_CASE("a lower version under a new epoch applies, under the same epoch it is
   std::filesystem::remove(file);
 }
 
-TEST_CASE("an epoch that names no mint time is adopted as soon as it changes")
+TEST_CASE("a different epoch is always adopted, whatever its text or its mint time looks like")
 {
   ModuleGate gate;
   const std::string file = tempPath("epoch-opaque.json");
@@ -354,16 +354,71 @@ TEST_CASE("an epoch that names no mint time is adopted as soon as it changes")
   std::filesystem::remove(file);
 }
 
-TEST_CASE("an event of an older epoch that arrives after a newer one is ignored")
+TEST_CASE("a host whose clock went backwards across a restart still adopts the new epoch")
 {
   ModuleGate gate;
-  const std::string file = tempPath("epoch-stale.json");
+  const std::string file = tempPath("epoch-clock.json");
   ModuleFeed feed({.bus = nullptr, .gate = &gate, .bootRead = {}}, feedConfig(file));
-  CHECK(feed.handle(enabledEvent(true, 2, "5000-new")) == ModuleFeedDisposition::Applied);
-  CHECK(feed.handle(enabledEvent(false, 900, "1000-old")) == ModuleFeedDisposition::Ignored);
+  CHECK(feed.handle(enabledEvent(false, 80, "1791300000000-aaaaaaaaaaaaaaaa")) == ModuleFeedDisposition::Applied);
+  CHECK_FALSE(gate.enabled(kSurveillance));
+
+  CHECK(feed.handle(enabledEvent(true, 2, "946684800000-bbbbbbbbbbbbbbbb")) == ModuleFeedDisposition::Applied);
   CHECK(gate.enabled(kSurveillance));
-  CHECK(feed.epoch() == "5000-new");
+  CHECK(feed.epoch() == "946684800000-bbbbbbbbbbbbbbbb");
   CHECK(feed.version() == 2);
+
+  CHECK(feed.handle(enabledEvent(false, 3, "946684800000-bbbbbbbbbbbbbbbb")) == ModuleFeedDisposition::Applied);
+  CHECK_FALSE(gate.enabled(kSurveillance));
+  std::filesystem::remove(file);
+}
+
+TEST_CASE("a stray message of an old epoch after adoption is corrected by the next ModuleStates re-pull")
+{
+  ModuleGate gate;
+  const std::string file = tempPath("epoch-stray.json");
+  std::atomic<int> pulls{0};
+  ModuleFeed feed({.bus = nullptr,
+                   .gate = &gate,
+                   .bootRead = [&pulls]() -> std::optional<ModuleFeed::Snapshot> {
+                     ++pulls;
+                     return ModuleFeed::Snapshot{
+                         .flags = {{.id = std::string(kSurveillance), .enabled = false, .lifecycle = "disabled"}},
+                         .version = 5,
+                         .epoch = "5000-new"};
+                   }},
+                  feedConfig(file));
+  CHECK(feed.handle(enabledEvent(false, 5, "5000-new")) == ModuleFeedDisposition::Applied);
+  CHECK_FALSE(gate.enabled(kSurveillance));
+  const int adopted = pulls.load();
+
+  CHECK(feed.handle(enabledEvent(true, 900, "1000-old")) == ModuleFeedDisposition::Applied);
+  CHECK(pulls.load() == adopted + 1);
+  CHECK_FALSE(gate.enabled(kSurveillance));
+  CHECK(feed.epoch() == "5000-new");
+  CHECK(feed.version() == 5);
+
+  CHECK(feed.handle(enabledEvent(true, 6, "5000-new")) == ModuleFeedDisposition::Applied);
+  CHECK(pulls.load() == adopted + 1);
+  CHECK(gate.enabled(kSurveillance));
+  std::filesystem::remove(file);
+}
+
+TEST_CASE("when settings does not answer the re-pull the adopted message stands")
+{
+  ModuleGate gate;
+  const std::string file = tempPath("epoch-silent.json");
+  std::atomic<int> pulls{0};
+  ModuleFeed feed({.bus = nullptr,
+                   .gate = &gate,
+                   .bootRead = [&pulls]() -> std::optional<ModuleFeed::Snapshot> {
+                     ++pulls;
+                     return std::nullopt;
+                   }},
+                  feedConfig(file));
+  CHECK(feed.handle(enabledEvent(false, 3, "2000-aa")) == ModuleFeedDisposition::Applied);
+  CHECK(pulls.load() == 1);
+  CHECK_FALSE(gate.enabled(kSurveillance));
+  CHECK(feed.epoch() == "2000-aa");
   std::filesystem::remove(file);
 }
 

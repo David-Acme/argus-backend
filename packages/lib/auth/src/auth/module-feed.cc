@@ -10,7 +10,6 @@
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
-#include <charconv>
 #include <chrono>
 #include <utility>
 
@@ -35,26 +34,6 @@ struct InFlight
 private:
   std::atomic<int64_t>& counter_;
 };
-
-std::optional<int64_t> epochMintedAt(std::string_view epoch)
-{
-  const auto dash = epoch.find('-');
-  if (dash == std::string_view::npos || dash == 0)
-    return std::nullopt;
-  int64_t minted = 0;
-  const auto digits = epoch.substr(0, dash);
-  const auto [end, error] = std::from_chars(digits.data(), digits.data() + digits.size(), minted);
-  if (error != std::errc{} || end != digits.data() + digits.size())
-    return std::nullopt;
-  return minted;
-}
-
-bool supersededEpoch(std::string_view incoming, std::string_view current)
-{
-  const auto incomingAt = epochMintedAt(incoming);
-  const auto currentAt = epochMintedAt(current);
-  return incomingAt && currentAt && *incomingAt < *currentAt;
-}
 
 void settleWith(const std::function<void()>& outcome)
 {
@@ -97,22 +76,37 @@ void ModuleFeed::restore()
 
 bool ModuleFeed::applyAuthoritative(const Snapshot& snapshot)
 {
+  return apply(snapshot).applied;
+}
+
+ModuleFeed::Application ModuleFeed::apply(const Snapshot& snapshot)
+{
   if (dependencies_.gate == nullptr)
-    return false;
+    return {};
   std::scoped_lock lock(applyMutex_);
+  bool epochChanged = false;
   if (!snapshot.epoch.empty() && snapshot.epoch != epoch_) {
-    if (!epoch_.empty() && supersededEpoch(snapshot.epoch, epoch_))
-      return false;
     epoch_ = snapshot.epoch;
     version_ = 0;
+    epochChanged = true;
   }
   if (snapshot.version > 0 && snapshot.version < version_)
-    return false;
+    return {};
   version_ = std::max(version_, snapshot.version);
   dependencies_.gate->apply(snapshot.flags);
   if (!module_gate::saveStateFile(config_.stateFile, dependencies_.gate->known()))
     LOG_WARN << "Modules: could not keep the last known state at " << config_.stateFile;
-  return true;
+  return {.applied = true, .epochChanged = epochChanged};
+}
+
+void ModuleFeed::repull()
+{
+  if (!dependencies_.bootRead)
+    return;
+  if (const auto snapshot = dependencies_.bootRead())
+    applyAuthoritative(*snapshot);
+  else
+    LOG_WARN << "Modules: settings did not answer the enabled set after the epoch changed";
 }
 
 int64_t ModuleFeed::version() const
@@ -143,9 +137,10 @@ ModuleFeedDisposition ModuleFeed::handle(std::string_view body)
   const Json::Value& version = json[std::string(kVersionField)];
   const int64_t at = version.isIntegral() ? version.asInt64() : 0;
   const Json::Value& epoch = json[std::string(kEpochField)];
-  return applyAuthoritative({.flags = *flags, .version = at, .epoch = epoch.isString() ? epoch.asString() : std::string()})
-             ? ModuleFeedDisposition::Applied
-             : ModuleFeedDisposition::Ignored;
+  const auto result = apply({.flags = *flags, .version = at, .epoch = epoch.isString() ? epoch.asString() : std::string()});
+  if (result.epochChanged)
+    repull();
+  return result.applied ? ModuleFeedDisposition::Applied : ModuleFeedDisposition::Ignored;
 }
 
 void ModuleFeed::start()

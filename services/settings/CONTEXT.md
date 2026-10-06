@@ -413,10 +413,11 @@ ms, 0 = never). A module is enabled exactly when its lifecycle is `active`;
 `core` is always active. The enabled set's `version` is the id of the last
 `module_audit` row that changed a lifecycle (`adopted`, `enabled`,
 `disabled`, `rolled_back`, `removed`, `purged`), so it only grows within one
-database. Its `epoch` (`<bootMs>-<16 hex>`, minted when the engine loads, so
-at every boot) names the stretch over which `version` can be compared: a
-database that was reset or restored restarts the counter low, and the new epoch
-tells every consumer to start judging again from it.
+database. Its `epoch` (an opaque string, `<bootMs>-<16 hex>` only so that it is
+unique; minted when the engine loads, so at every boot, and never parsed or
+ordered by a consumer) names the stretch over which `version` can be compared:
+a database that was reset or restored restarts the counter low, and the new
+epoch tells every consumer to start judging again from it.
 
 The first boot of `settings.db` (no `module_state` rows) adopts what exists,
 so an upgraded installation keeps its cameras: core is active, and every
