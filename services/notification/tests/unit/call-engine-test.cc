@@ -5,6 +5,8 @@
 #include <feature/call/services/call-engine.hxx>
 #include <feature/call/services/call-feed.hxx>
 #include <feature/call/services/call-preference-service.hxx>
+#include <shared/services/notification/notification-service.hxx>
+#include <shared/vocabulary/notification-kind.hxx>
 #include <sqlite/db-service.hxx>
 
 #include <atomic>
@@ -16,6 +18,9 @@
 #include <stdexcept>
 #include <string>
 #include <condition_variable>
+#include <functional>
+#include <memory>
+#include <string_view>
 #include <thread>
 #include <unistd.h>
 #include <unordered_map>
@@ -1409,4 +1414,221 @@ TEST_CASE("the sweep purges call history past the retention window")
   CHECK(drogon::sync_wait(harness.engine.sweep()).purged == 0);
   harness.advance(call_engine::kPurgeIntervalS);
   CHECK(drogon::sync_wait(harness.engine.sweep()).purged == 1);
+}
+
+namespace
+{
+struct ModuleSwitches
+{
+  std::shared_ptr<std::atomic<bool>> surveillance = std::make_shared<std::atomic<bool>>(true);
+  std::shared_ptr<std::atomic<bool>> productivity = std::make_shared<std::atomic<bool>>(true);
+
+  [[nodiscard]] std::function<bool(std::string_view)> predicate() const
+  {
+    return [surveillance = surveillance, productivity = productivity](std::string_view kind) {
+      const auto module = notification_kind::moduleOf(kind);
+      if (module == notification_kind::kSurveillance)
+        return surveillance->load();
+      if (module == notification_kind::kProductivity)
+        return productivity->load();
+      return true;
+    };
+  }
+};
+
+struct GatedHarness
+{
+  ModuleSwitches modules;
+  std::shared_ptr<RecordingSignal> signal = std::make_shared<RecordingSignal>();
+  std::shared_ptr<RecordingNotifier> notifier = std::make_shared<RecordingNotifier>();
+  std::shared_ptr<FixedDirectory> directory = std::make_shared<FixedDirectory>();
+  std::shared_ptr<std::atomic<int64_t>> clock = std::make_shared<std::atomic<int64_t>>(kStart);
+  CallEngine engine;
+
+  GatedHarness()
+      : engine(CallEngineConfig{},
+               CallEngineDependencies{.signal = signal,
+                                      .announcer = std::make_shared<ScriptedAnnouncer>(),
+                                      .directory = directory,
+                                      .notifier = notifier,
+                                      .push = std::make_shared<RecordingPush>(),
+                                      .verdicts = std::make_shared<RecordingVerdicts>(),
+                                      .clock = [clock = clock]() { return clock->load(); },
+                                      .localTime = [](int64_t) { return CallLocalTime{.hour = 12, .weekday = 3}; },
+                                      .blockingOffLoop = false,
+                                      .kindAllowed = modules.predicate()})
+  {
+    reset();
+  }
+};
+
+Json::Value panicData(int64_t alert)
+{
+  Json::Value data = guardData("critical", alert);
+  data["kind"] = "guard_panic";
+  data["threadKey"] = "guard:panic:" + std::to_string(alert);
+  return data;
+}
+}
+
+TEST_CASE("the notification kinds of a module name that module and nothing else does")
+{
+  CHECK(notification_kind::moduleOf("guard_episode") == notification_kind::kSurveillance);
+  CHECK(notification_kind::moduleOf("guard_tamper") == notification_kind::kSurveillance);
+  CHECK(notification_kind::moduleOf("guard_digest") == notification_kind::kSurveillance);
+  CHECK(notification_kind::moduleOf("guard_arrival") == notification_kind::kSurveillance);
+  CHECK(notification_kind::moduleOf("camera_fallback") == notification_kind::kSurveillance);
+  CHECK(notification_kind::moduleOf("camera_fallback_digest") == notification_kind::kSurveillance);
+  CHECK(notification_kind::moduleOf("agenda_event") == notification_kind::kProductivity);
+  for (const char* core : {"guard_panic", "guard_duress", "guard_panic_sent", "guard_response", "agenda_reminder",
+                           "assistant_reminder", "call", "module_request", "system", ""})
+    CHECK(notification_kind::moduleOf(core).empty());
+}
+
+TEST_CASE("an agenda event is not announced while productivity is off, a reminder still is")
+{
+  GatedHarness harness;
+  harness.modules.productivity->store(false);
+
+  const Json::Value event = agendaData(80, kStart + 600);
+  const auto skipped = drogon::sync_wait(harness.engine.announceAgenda(
+      {.userIds = {1, 2},
+       .leadMinutes = 10,
+       .title = "Dentista",
+       .body = "17:00",
+       .data = event,
+       .commandId = "agenda:event:80:" + std::to_string(kStart + 600) + ":10"}));
+  CHECK(skipped.notified == 0);
+  CHECK(skipped.rang == 0);
+  CHECK(harness.notifier->all().empty());
+  CHECK(harness.signal->of(SyncOperation::CallIncoming).empty());
+
+  Json::Value reminder(Json::objectValue);
+  reminder["kind"] = "agenda_reminder";
+  reminder["threadKey"] = "agenda:reminder:8:" + std::to_string(kStart);
+  reminder["title"] = "Sacar la basura";
+  const auto due = drogon::sync_wait(harness.engine.announceAgenda(
+      {.userIds = {1},
+       .leadMinutes = 0,
+       .title = "Sacar la basura",
+       .body = "",
+       .data = reminder,
+       .commandId = "agenda:reminder:8:" + std::to_string(kStart) + ":0"}));
+  CHECK(due.notified == 1);
+  CHECK(due.rang == 1);
+
+  harness.modules.productivity->store(true);
+  const auto back = drogon::sync_wait(harness.engine.announceAgenda(
+      {.userIds = {1, 2},
+       .leadMinutes = 10,
+       .title = "Dentista",
+       .body = "17:00",
+       .data = event,
+       .commandId = "agenda:event:80:" + std::to_string(kStart + 600) + ":10"}));
+  CHECK(back.notified == 2);
+}
+
+TEST_CASE("an arrival does not call while surveillance is off")
+{
+  GatedHarness harness;
+  const CallPreferenceService preferences;
+  UpdateCallPreferenceDto wants;
+  wants.guardArrival = "call";
+  drogon::sync_wait(preferences.update(1, wants));
+
+  KnownSeenEvent event;
+  event.personId = 50;
+  event.cameraId = 6;
+  event.cameraName = "Entrada";
+  event.environmentId = 1;
+  event.at = kStart;
+
+  harness.modules.surveillance->store(false);
+  CHECK(drogon::sync_wait(harness.engine.arrival(event)).empty());
+  CHECK(harness.signal->of(SyncOperation::CallIncoming).empty());
+
+  harness.modules.surveillance->store(true);
+  event.at = kStart + 10800 + 600;
+  harness.clock->store(event.at);
+  const auto back = drogon::sync_wait(harness.engine.arrival(event));
+  CHECK(back.size() == 1);
+  CHECK(harness.signal->of(SyncOperation::CallIncoming).size() == 1);
+}
+
+TEST_CASE("turning a module off ends the rings of its kinds and leaves every other ring")
+{
+  GatedHarness harness;
+  const auto episode = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 90), {1}));
+  const auto panic = drogon::sync_wait(
+      harness.engine.considerNotification(panicData(91), {2}));
+  const auto agenda = drogon::sync_wait(
+      harness.engine.considerNotification(agendaData(92, kStart + 300), {5}));
+  REQUIRE(episode.size() == 1);
+  REQUIRE(panic.size() == 1);
+  REQUIRE(agenda.size() == 1);
+  CHECK(outcomeFor(episode, 1).resolution == CallResolution::Rang);
+  CHECK(outcomeFor(panic, 2).resolution == CallResolution::Rang);
+  CHECK(outcomeFor(agenda, 5).resolution == CallResolution::Rang);
+  const int64_t episodeCall = outcomeFor(episode, 1).callId;
+  const int64_t panicCall = outcomeFor(panic, 2).callId;
+  const int64_t agendaCall = outcomeFor(agenda, 5).callId;
+
+  CHECK(drogon::sync_wait(harness.engine.cancelForModule("agronomy")) == 0);
+  CHECK(drogon::sync_wait(harness.engine.cancelForModule("surveillance")) == 1);
+  CHECK(stateOf(episodeCall) == "missed");
+  CHECK(stateOf(panicCall) == "ringing");
+  CHECK(stateOf(agendaCall) == "ringing");
+  const auto cancels = harness.signal->of(SyncOperation::CallCancel);
+  REQUIRE(cancels.size() == 1);
+  CHECK(cancels.front().userId == 1);
+  CHECK(cancels.front().info["reason"].asString() == "module_disabled");
+  CHECK(harness.notifier->all().empty());
+  CHECK(drogon::sync_wait(harness.engine.cancelForModule("surveillance")) == 0);
+
+  CHECK(drogon::sync_wait(harness.engine.cancelForModule("productivity")) == 1);
+  CHECK(stateOf(agendaCall) == "missed");
+  CHECK(stateOf(panicCall) == "ringing");
+  CHECK(harness.notifier->all().empty());
+}
+
+TEST_CASE("the notification funnel drops the kinds of a module that is off and keeps the rest")
+{
+  boot();
+  const ModuleSwitches modules;
+  const NotificationService service({.deliverySink = nullptr,
+                                     .pushSink = nullptr,
+                                     .pushRequired = false,
+                                     .kindAllowed = modules.predicate()});
+  const auto count = [] {
+    const auto rows = DbService::client()->execSqlSync("SELECT COUNT(*) AS total FROM notification");
+    return rows.front()["total"].as<int64_t>();
+  };
+  const auto before = count();
+  const auto batchOf = [](const std::string& kind, const std::string& command) {
+    NotificationBatchInput batch;
+    batch.userIds = {1, 2};
+    batch.notification.type = "camera";
+    batch.notification.title = kind;
+    batch.notification.body = "body";
+    batch.notification.data = Json::Value(Json::objectValue);
+    batch.notification.data["kind"] = kind;
+    batch.commandId = command;
+    return batch;
+  };
+
+  modules.surveillance->store(false);
+  CHECK(drogon::sync_wait(service.createManyAndEmit(batchOf("guard_episode", "gate:episode:off"))).createdCount == 0);
+  CHECK(drogon::sync_wait(service.createManyAndEmit(batchOf("camera_fallback", "gate:fallback:off"))).createdCount == 0);
+  CHECK(count() == before);
+  CHECK(drogon::sync_wait(service.createManyAndEmit(batchOf("guard_panic", "gate:panic:off"))).createdCount == 2);
+  CHECK(drogon::sync_wait(service.createManyAndEmit(batchOf("agenda_event", "gate:agenda:on"))).createdCount == 2);
+  CHECK(count() == before + 4);
+
+  modules.surveillance->store(true);
+  modules.productivity->store(false);
+  CHECK(drogon::sync_wait(service.createManyAndEmit(batchOf("guard_episode", "gate:episode:on"))).createdCount == 2);
+  CHECK(drogon::sync_wait(service.createManyAndEmit(batchOf("agenda_event", "gate:agenda:off"))).createdCount == 0);
+  CHECK(drogon::sync_wait(service.createManyAndEmit(batchOf("agenda_reminder", "gate:reminder:off"))).createdCount == 2);
+  CHECK(count() == before + 8);
 }

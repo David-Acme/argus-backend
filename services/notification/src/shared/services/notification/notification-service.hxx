@@ -5,7 +5,9 @@
 #include <nats/push-intent-sink.hxx>
 #include <shared/repositories/notification/notification-repository.hxx>
 #include <sync/user-change-sink.hxx>
+#include <functional>
 #include <memory>
+#include <string_view>
 #include <vector>
 
 struct NotificationBatchInput
@@ -52,6 +54,7 @@ public:
     std::shared_ptr<const NotificationDeliverySink> deliverySink;
     std::shared_ptr<const push_intent::PushIntentSink> pushSink;
     bool pushRequired{false};
+    std::function<bool(std::string_view)> kindAllowed{};
   };
 
   NotificationService() = default;

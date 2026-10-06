@@ -108,3 +108,7 @@ caller_productivity = "CHANGE_ME_PRODUCTIVITY_NOTIFICATION"
 enabled = true
 name = "Argus"
 address = ""
+
+[modules]
+target = "argus-settings:7047"
+credential = "CHANGE_ME_NOTIFICATION_MODULES"

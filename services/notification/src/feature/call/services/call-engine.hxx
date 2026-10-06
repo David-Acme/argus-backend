@@ -22,6 +22,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -42,6 +43,7 @@ struct CallEngineDependencies
   std::function<int64_t()> clock;
   std::function<CallLocalTime(int64_t)> localTime;
   bool blockingOffLoop{true};
+  std::function<bool(std::string_view)> kindAllowed{};
 };
 
 struct CallRequest
@@ -241,6 +243,8 @@ public:
 
   drogon::Task<CallSweepReport> sweep() const;
 
+  drogon::Task<int64_t> cancelForModule(std::string moduleId) const;
+
   void reconfigure(const CallEngineConfig& config);
 
   [[nodiscard]] CallEngineConfig config() const;
@@ -314,7 +318,10 @@ private:
     const CallSchema& call;
     std::string cancelReason;
     int64_t now{0};
+    bool notify{true};
   };
+
+  [[nodiscard]] bool allows(std::string_view kind) const;
 
   drogon::Task<PreparedCall> prepareUser(const ConsiderUserInput& input) const;
 

@@ -33,7 +33,8 @@ notification:sync:control_credential:sync
 camera:modules:credential:settings
 guard:modules:credential:settings
 identity:modules:credential:settings
-productivity:modules:credential:settings"
+productivity:modules:credential:settings
+notification:modules:credential:settings"
 
 DATA_OWNERS="identity:rpc.callers:settings:7040
 productivity:grpc:caller_settings:7037
@@ -87,7 +88,7 @@ cp "$ROOT"/argus-deploy/config.*.toml.example "$deploy"/
 ensure_deploy_configs "$deploy" > "$TEST_TMP/deploy-first.log" 2>&1 || fail "ensure_deploy_configs failed"
 check_pairs deploy "$deploy"
 check_data_owners "$deploy"
-for service in camera guard identity productivity; do
+for service in camera guard identity notification productivity; do
   [ "$(toml_value "$deploy/config.$service.toml" modules target)" = "argus-settings:7047" ] ||
     fail "deploy: $service does not read the enabled set from argus-settings:7047"
 done

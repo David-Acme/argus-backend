@@ -25,6 +25,13 @@ int64_t nowMillis()
       .count();
 }
 
+std::string kindOf(const Json::Value& data)
+{
+  if (!data.isObject() || !data["kind"].isString())
+    return {};
+  return data["kind"].asString();
+}
+
 constexpr int64_t kProbeRetentionS = 7LL * 24 * 3600;
 constexpr int64_t kCommandRetentionS = 30LL * 24 * 3600;
 }
@@ -38,6 +45,8 @@ drogon::Task<NotificationCreateOutcome> NotificationService::createManyAndEmit(
     const NotificationBatchInput& input) const
 {
   NotificationCreateOutcome outcome;
+  if (dependencies_.kindAllowed && !dependencies_.kindAllowed(kindOf(input.notification.data)))
+    co_return outcome;
   std::vector<NotificationCreateInput> inputs;
   inputs.reserve(input.userIds.size());
   for (const auto userId : input.userIds) {

@@ -599,6 +599,52 @@ The TLS listener also reloads a rotated instance certificate
 (`certificate_reload::watch`, lib/http 897c23bf) instead of failing 30 days
 after a rotation until restarted; argus-guard does the same.
 
+## Kinds of a module that is off (2026-10, the effects wave)
+
+A disabled module must not keep producing what it used to: no summary,
+no intruder alert, no agenda call, no ring, while the history already written
+stays. argus-notification now reads the enabled set like camera, guard,
+identity and productivity (`module_gate::install` in `main.cc`, durable
+`argus-notification-modules`, `[modules] target/credential`, the pair that
+`ensure_fleet_callers` already minted), and one table decides what is a
+module's: `src/shared/vocabulary/notification-kind.hxx`, a map from the
+`data.kind` of a notification to a module.
+
+| Module | Kinds |
+|---|---|
+| `surveillance` | `guard_episode`, `guard_tamper`, `guard_digest`, `guard_arrival`, `camera_fallback`, `camera_fallback_digest` |
+| `productivity` | `agenda_event` |
+| core (not in the table) | everything else: `guard_panic`, `guard_duress`, `guard_panic_sent`, `guard_response`, `agenda_reminder`, `assistant_reminder`, `call`, `module_request`, the app's own |
+
+Panic, duress, the response plan and reminders are core on purpose: they are
+safety and the user's own words, and a household that turned cameras off still
+presses the panic button.
+
+- **The funnel refuses.** `NotificationService::createManyAndEmit`, the one
+  place every notification row is created (the `CreateNotifications` RPC, the
+  camera fallback notifier and the call engine's notices), asks
+  `Dependencies::kindAllowed` first; a kind of a module that is off creates
+  nothing (`createdCount` 0, no delivery, no push). The RPC then does not hand
+  the batch to the call engine either, since it only does for created rows.
+- **The call engine refuses its own sources.** `announceAgenda` skips an
+  `agenda_event` and `announceArrival` a `guard_arrival` while their module is
+  off (an `agenda_reminder` still rings). A call has no schedule of its own
+  here: the agenda's schedule is productivity's sweep (it stops announcing
+  events, `services/productivity/CONTEXT.md`) and the only `scheduled_call`
+  rows are the assistant's reminders, which are core.
+- **Rings end.** When the gate reports a module off, `CallEngine::
+  cancelForModule` settles every ringing call whose `data.kind` belongs to it
+  as missed with `CallCancel` reason `module_disabled`, without the "missed
+  call" note (the module is off, there is nothing to catch up on); a panic ring
+  next to it keeps ringing. A follow-up queued under a ring of another kind
+  still reads out when that ring is answered; that is the one case this does
+  not cover.
+- **History stays.** Notifications already written are not touched and still
+  sync; the app hides the kinds of an inactive module itself.
+
+Tests: `call-engine-test` ("the notification kinds of a module name that module
+and nothing else does", the agenda, the arrival, the cancel and the funnel).
+
 ## Argus calls you (2026-10, RTC wave)
 
 The owner's words: "When something important happens the LLM can 'call' the

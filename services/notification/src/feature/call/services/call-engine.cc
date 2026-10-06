@@ -1,5 +1,7 @@
 #include "call-engine.hxx"
 
+#include <shared/vocabulary/notification-kind.hxx>
+
 #include <feature/call/services/response-copy.hxx>
 #include <runtime/blocking-task.hxx>
 #include <shared/services/notification/push-copy.hxx>
@@ -162,6 +164,11 @@ CallEngineConfig CallEngine::config() const
 {
   const std::scoped_lock lock(configMutex_);
   return config_;
+}
+
+bool CallEngine::allows(std::string_view kind) const
+{
+  return !dependencies_.kindAllowed || dependencies_.kindAllowed(kind);
 }
 
 int64_t CallEngine::now() const
@@ -689,7 +696,7 @@ drogon::Task<void> CallEngine::settleMissed(const MissedInput& input) const
                  .operation = SyncOperation::CallCancel,
                  .info = info});
 
-  if (!dependencies_.notifier)
+  if (!input.notify || !dependencies_.notifier)
     co_return;
   std::vector<std::string> lines;
   lines.reserve(followups.size());
@@ -782,6 +789,8 @@ drogon::Task<std::vector<CallUserOutcome>>
 CallEngine::announceArrival(const KnownSeenEvent& event) const
 {
   std::vector<CallUserOutcome> outcomes;
+  if (!allows("guard_arrival"))
+    co_return outcomes;
   const auto subscribers = co_await preferenceRepository_.findArrivalSubscribers();
   if (subscribers.empty())
     co_return outcomes;
@@ -825,6 +834,22 @@ CallEngine::announceArrival(const KnownSeenEvent& event) const
 }
 
 drogon::Task<CallSweepReport> CallEngine::sweep() const
+drogon::Task<int64_t> CallEngine::cancelForModule(std::string moduleId) const
+{
+  int64_t cancelled = 0;
+  const int64_t at = now();
+  for (const auto& call : co_await callRepository_.findRinging()) {
+    if (notification_kind::moduleOf(text(call.data, "kind")) != moduleId)
+      continue;
+    co_await settleMissed({.call = call, .cancelReason = "module_disabled", .now = at, .notify = false});
+    ++cancelled;
+  }
+  if (cancelled > 0)
+    LOG_INFO << "Call engine: " << cancelled << " ringing call(s) of the " << moduleId
+             << " module were cancelled because it was turned off";
+  co_return cancelled;
+}
+
 {
   const CallEngineConfig config = this->config();
   const int64_t at = now();
@@ -923,6 +948,8 @@ CallEngine::announceAgenda(const AgendaAnnouncement& announcement) const
   if (userIds.empty() || announcement.commandId.empty())
     co_return outcome;
   const bool reminder = text(announcement.data, "kind") == "agenda_reminder";
+  if (!allows(text(announcement.data, "kind")))
+    co_return outcome;
   const auto preferences = co_await preferenceRepository_.findMany(userIds);
   std::vector<int64_t> matched;
   for (const int64_t userId : userIds) {

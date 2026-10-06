@@ -14,6 +14,7 @@
 #include <feature/settings/notification-settings.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
+#include <auth/module-feed.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
 #include <grpc/grpc-server-drain.hxx>
@@ -29,6 +30,7 @@
 #include <shared/services/change-sink/nats-notification-change-sink.hxx>
 #include <shared/services/delivery-sink/nats-notification-delivery-sink.hxx>
 #include <shared/services/task-gate/task-gate.hxx>
+#include <shared/vocabulary/notification-kind.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-push-intent-sink.hxx>
 #include <nats/nats-subject.hxx>
@@ -182,10 +184,17 @@ int main()
     }
   }
 
+  const auto modules = module_gate::install({.service = "notification", .bus = natsBus});
+  const auto kindAllowed = [](std::string_view kind) {
+    const auto module = notification_kind::moduleOf(kind);
+    return module.empty() || moduleGate().enabled(module);
+  };
+
   const NotificationService::Dependencies deliveryDeps{
       .deliverySink = deliverySink,
       .pushSink = pushIntentSink,
-      .pushRequired = push_intent::enabledFromConfig()};
+      .pushRequired = push_intent::enabledFromConfig(),
+      .kindAllowed = kindAllowed};
 
   const NotificationIdentityConfig identityConfig =
       NotificationConfig::resolveIdentity();
@@ -250,7 +259,26 @@ int main()
                               : nullptr,
           .clock = {},
           .localTime = {},
-          .blockingOffLoop = true});
+          .blockingOffLoop = true,
+          .kindAllowed = kindAllowed});
+  moduleGate().onChange([callEngine, tasks](const ModuleChange& change) {
+    if (change.enabled)
+      return;
+    drogon::app().getLoop()->queueInLoop([callEngine, tasks, module = change.id]() {
+      drogon::async_run([callEngine, tasks, module]() -> drogon::Task<void> {
+        const auto ticket = TaskGate::enter(tasks);
+        if (!ticket)
+          co_return;
+        try {
+          co_await callEngine->cancelForModule(module);
+        }
+        catch (const std::exception& error) {
+          LOG_WARN << "Call engine: cancelling the rings of " << module << " failed: " << error.what();
+        }
+        co_return;
+      });
+    });
+  });
   drogon::app().registerController(std::make_shared<CallPreferenceController>());
   drogon::app().registerController(std::make_shared<CallResponseController>(callEngine));
   if (natsBus) {
