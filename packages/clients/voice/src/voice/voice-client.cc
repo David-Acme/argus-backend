@@ -21,7 +21,8 @@ struct VoiceStreamInput
 class VoiceStreamImpl final
     : public VoiceStream,
       public grpc::ClientBidiReactor<argus::voice::v1::ClientFrame,
-                                     argus::voice::v1::ServerFrame>
+                                     argus::voice::v1::ServerFrame>,
+      public std::enable_shared_from_this<VoiceStreamImpl>
 {
 public:
   explicit VoiceStreamImpl(VoiceStreamInput input)
@@ -151,7 +152,7 @@ public:
 
     {
       std::scoped_lock lock(mutex_);
-      self_ = std::shared_ptr<VoiceStreamImpl>(this, [](VoiceStreamImpl*) {});
+      self_ = shared_from_this();
     }
     stub_->async()->Connect(context_.get(), this);
     StartCall();

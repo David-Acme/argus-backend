@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 #include <voice/voice-client.hxx>
 
@@ -195,6 +196,47 @@ TEST_CASE("a stream whose identity names no role presents the unknown role, neve
 
   std::scoped_lock lock(service.mutex);
   CHECK(service.metadata.at("x-argus-role") == "unknown");
+}
+
+TEST_CASE("a stream its owner let go of lives until the call is done")
+{
+  RecordingVoiceService service;
+  int port = 0;
+  auto server = startServer(service, port);
+  REQUIRE(server);
+  VoiceClient client(
+      {.target = "127.0.0.1:" + std::to_string(port), .credential = ""});
+  CHECK(client.waitConnected(5000));
+  CallCleanup cleanup{service, *server};
+
+  const auto observer = std::make_shared<CollectingObserver>();
+  v1::VoiceIdentity connectIdentity;
+  connectIdentity.set_user_id(7);
+  std::weak_ptr<VoiceStream> weak;
+  {
+    const auto stream = client.connect(connectIdentity, observer);
+    stream->stop();
+    weak = stream;
+  }
+  CHECK_FALSE(weak.expired());
+
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (std::chrono::steady_clock::now() < deadline) {
+    {
+      std::scoped_lock lock(service.mutex);
+      if (service.context_ != nullptr)
+        break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  service.cancelActiveCall();
+  REQUIRE(observer->waitClosed(5000));
+  CHECK_FALSE(observer->closeStatus.ok());
+
+  const auto released = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (!weak.expired() && std::chrono::steady_clock::now() < released)
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  CHECK(weak.expired());
 }
 
 TEST_CASE("one stream carries the connect identity and the frames in order")
