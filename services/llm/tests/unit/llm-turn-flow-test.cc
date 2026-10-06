@@ -425,6 +425,24 @@ TEST_CASE("the rule decider proposes only a tool the turn offers")
   CHECK_FALSE(rules.decide({.utterance = utterance, .lang = "es", .offered = memoryOnly, .modules = world.audience.modules}).has_value());
 }
 
+TEST_CASE("an explicit agenda command is the agenda's, and the app grammar keeps what is the app's")
+{
+  World world;
+  world.add(tool_stubs::appAction({.name = "app.open", .capability = "notifications.read", .module = "core"}));
+  world.add(tool_stubs::appAction({.name = "app.show_camera", .capability = "camera.view", .module = "surveillance"}));
+  world.refresh();
+  const turn::RuleDecider rules;
+  const auto toolOf = [&](const std::string& utterance) {
+    const auto decided = rules.decide({.utterance = utterance, .lang = "es", .offered = world.offered, .modules = world.audience.modules});
+    return decided ? decided->tool : std::string();
+  };
+  CHECK(toolOf("pon en mi calendario la cita con el dentista el martes a las diez de la mañana") == "calendar.create_event");
+  CHECK(toolOf("a ver pon en el calendario la cita del médico el martes a las nueve") == "calendar.create_event");
+  CHECK(toolOf("abre la agenda") == "app.open");
+  CHECK(toolOf("muéstrame la cámara del garaje") == "app.show_camera");
+  CHECK(toolOf("hola qué tal").empty());
+}
+
 TEST_CASE("the router decider names a memory tool with the words as its argument and never carries a code")
 {
   World world;

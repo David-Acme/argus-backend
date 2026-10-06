@@ -43,16 +43,6 @@ std::optional<tools::ToolCall> memoryCall(intent::ToolIntent decided, const std:
 
 std::optional<Candidate> RuleDecider::decide(const DecideInput& input) const
 {
-  const std::string utterance(input.utterance);
-  if (auto command = appCommandFor(utterance); command && isOffered(input, command->name))
-    return Candidate{.tool = command->name,
-                     .arguments = command->arguments,
-                     .fill = {},
-                     .confidence = kRuleConfidence,
-                     .source = "app command",
-                     .decider = std::string(id()),
-                     .exact = true,
-                     .runnerUp = std::nullopt};
   if (auto family = module_command::commandFor({.utterance = input.utterance, .modules = input.modules});
       family && isOffered(input, family->tool))
     return Candidate{.tool = family->tool,
@@ -60,6 +50,16 @@ std::optional<Candidate> RuleDecider::decide(const DecideInput& input) const
                      .fill = family->fill,
                      .confidence = kRuleConfidence,
                      .source = "module command",
+                     .decider = std::string(id()),
+                     .exact = true,
+                     .runnerUp = std::nullopt};
+  const std::string utterance(input.utterance);
+  if (auto command = appCommandFor(utterance); command && isOffered(input, command->name))
+    return Candidate{.tool = command->name,
+                     .arguments = command->arguments,
+                     .fill = {},
+                     .confidence = kRuleConfidence,
+                     .source = "app command",
                      .decider = std::string(id()),
                      .exact = true,
                      .runnerUp = std::nullopt};
