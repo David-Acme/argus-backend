@@ -509,5 +509,11 @@
         "max": 0.35
       }
     }
+  },
+  "sealed": {
+    "file": "sealed.jsonl",
+    "sha256": "c332a31cca7dd2b1c4b20d4b296db13d6cc593c582481115f77f9f4016a5c9ad",
+    "cases": 2482,
+    "falseRouteMax": 0.005
   }
 }

@@ -1,0 +1,8 @@
+file(READ "${GATES}" gates)
+string(JSON expected GET "${gates}" sealed sha256)
+string(JSON name GET "${gates}" sealed file)
+file(SHA256 "${DIR}/${name}" actual)
+if(NOT actual STREQUAL expected)
+  message(FATAL_ERROR "the sealed set ${name} changed: ${actual} is not the pinned ${expected}")
+endif()
+message(STATUS "sealed set ${name} matches ${expected}")

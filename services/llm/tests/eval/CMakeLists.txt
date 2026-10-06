@@ -37,6 +37,12 @@ set_target_properties(eval-corpus-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME eval-corpus-test COMMAND eval-corpus-test)
 
+add_test(NAME eval-sealed-hash
+    COMMAND ${CMAKE_COMMAND}
+        -DGATES=${CMAKE_CURRENT_SOURCE_DIR}/gates.json
+        -DDIR=${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check-sealed.cmake)
+
 add_executable(eval-score-test eval-score-test.cc)
 
 target_link_libraries(eval-score-test PRIVATE llm-eval-core doctest::doctest)
