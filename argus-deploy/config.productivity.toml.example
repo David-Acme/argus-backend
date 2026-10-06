@@ -75,8 +75,13 @@ credential = "CHANGE_ME_PRODUCTIVITY_IDENTITY"
 
 [grpc]
 caller_sync = "CHANGE_ME_SYNC_PRODUCTIVITY"
+caller_settings = "CHANGE_ME_SETTINGS_PRODUCTIVITY"
 
 [mdns]
 enabled = true
 name = "Argus"
 address = ""
+
+[modules]
+target = "argus-settings:7047"
+credential = "CHANGE_ME_PRODUCTIVITY_MODULES"

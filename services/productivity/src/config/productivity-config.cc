@@ -32,3 +32,11 @@ ProductivityAgendaConfig ProductivityConfig::resolveAgenda()
     config.enabled = ConfigService::getBool("agenda.enabled");
   return config;
 }
+
+std::string ProductivityConfig::resolveSettingsCredential()
+{
+  std::string secret = ConfigService::getString("grpc.caller_settings");
+  if (!secret.empty() && secret == ConfigService::getString("grpc.caller_sync"))
+    return {};
+  return secret;
+}

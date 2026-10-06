@@ -30,4 +30,5 @@ public:
   static ListenerConfig resolveListener();
   static ProductivityNotificationConfig resolveNotifications();
   static ProductivityAgendaConfig resolveAgenda();
+  static std::string resolveSettingsCredential();
 };

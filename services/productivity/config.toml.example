@@ -66,6 +66,7 @@ url = "nats://127.0.0.1:4222"
 
 [grpc]
 caller_sync = ""
+caller_settings = ""
 
 [mdns]
 enabled = true
@@ -73,4 +74,8 @@ name = "Argus"
 address = ""
 
 [auth]
+credential = ""
+
+[modules]
+target = "127.0.0.1:7047"
 credential = ""

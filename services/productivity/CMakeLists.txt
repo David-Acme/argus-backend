@@ -117,7 +117,9 @@ argus_service(NAME argus-productivity
         argus::productivity-project-task
         argus::productivity-sync
         argus::productivity-agenda
+        argus::productivity-module-data
         argus::productivity-rpc-server
+        argus::contracts::settings-wire
         argus::lib::auth
         argus::lib::http
         argus::lib::validation
@@ -281,3 +283,17 @@ if(DOCTEST_INCLUDE_DIRS)
     set_target_properties(doctest::doctest PROPERTIES
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
+
+add_executable(productivity-module-data-test
+    tests/unit/productivity-module-data-test.cc)
+set_target_properties(productivity-module-data-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+target_compile_definitions(productivity-module-data-test PRIVATE
+    ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_link_libraries(productivity-module-data-test PRIVATE
+    argus::productivity-module-data
+    argus::lib::sqlite
+    doctest::doctest)
+target_compile_options(productivity-module-data-test PRIVATE -Wall -Wextra)
+add_test(NAME productivity-module-data-test
+         COMMAND productivity-module-data-test)

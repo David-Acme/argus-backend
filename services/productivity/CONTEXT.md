@@ -453,3 +453,33 @@ payloads) and none of it visible to another service:
   rowid`.
 - A relay that cannot publish backs off exponentially to 5 s instead of
   retrying every 500 ms.
+
+## Productivity data: summary and purge (2026-10, the modules plan)
+
+argus-productivity is the data owner of the `productivity` module
+(`services/settings/CONTEXT.md`, "Modules"). `src/feature/module-data/`
+(`argus::productivity-module-data`) implements `ModuleDataSummary` and
+`PurgeModuleData`; `main.cc` serves them through a `SettingsRpcService` with
+an empty settings catalog on the gRPC listener (7037), only when
+`[grpc] caller_settings` is paired (and differs from `caller_sync`), so
+argus-settings reaches productivity with its own credential
+(`[owners.productivity]` on the settings side, paired by
+`ensure_settings_owners`). The settings screen never lists productivity: it
+is a data-only owner.
+
+- **What the module owns** is what its gated routes write: projects, tasks,
+  members, calendar events and their shares. Reminders are **not** purged:
+  `/reminder` is not a gated route, the voice assistant (core) creates them,
+  and purging productivity must not delete what core keeps working with. The
+  agenda notices of calendar events (`agenda_notice` kind `event`), the
+  idempotency keys of the five tables and the whole change outbox (it carries
+  only those five tables) go with them; reminder notices and keys stay.
+- **Summary**: `projects`, `tasks`, `project_members`, `calendar_events`,
+  `calendar_shares` (live rows); `bytes` estimates every row, tombstones
+  included.
+- **Purge**: one transaction of hard deletes, so a `/sync` pull returns none
+  and nothing is left for the deleted leg; a retry finds nothing and answers
+  `purged: true`. argus-sync purges the change history of the same tables
+  as the module's last data owner.
+- `tests/unit/productivity-module-data-test.cc` pins the counts, the rollback,
+  what stays (reminders) and the idempotent retry.

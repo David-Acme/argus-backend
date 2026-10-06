@@ -4,6 +4,7 @@
 #include <app/rpc/productivity-rpc-server.hxx>
 #include <drogon/drogon.h>
 #include <feature/sync/productivity-sync-rpc-service.hxx>
+#include <feature/module-data/services/productivity-module-data.hxx>
 #include <feature/calendar-event/controllers/calendar-event-controller.hxx>
 #include <feature/calendar-event-share/controllers/calendar-event-share-controller.hxx>
 #include <feature/project/controllers/project-controller.hxx>
@@ -30,10 +31,13 @@
 #include <sync/user-change-sink.hxx>
 #include <config/config-service.hxx>
 #include <sqlite/db-service.hxx>
+#include <settings/settings-rpc.hxx>
 #include <unistd.h>
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -93,8 +97,21 @@ int main()
   const ListenerConfig listener = ProductivityConfig::resolveListener();
 
   ProductivitySyncRpcService productivitySyncRpc;
+  ProductivityModuleData moduleData;
+  SettingsRegistry noSettings({});
+  std::vector<grpc::Service*> rpcServices{&productivitySyncRpc};
+  std::unique_ptr<SettingsRpcService> settingsRpc;
+  if (const auto secret = ProductivityConfig::resolveSettingsCredential(); !secret.empty()) {
+    settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
+        .service = "productivity", .registry = &noSettings, .credentials = settingsCallers({{kSettingsCaller, secret}})});
+    settingsRpc->attachModuleData(moduleData);
+    rpcServices.push_back(settingsRpc.get());
+  }
+  else {
+    LOG_INFO << "Module data RPC not served: [grpc] caller_settings is empty";
+  }
 
-  ProductivityRpcServer rpc({.services = {&productivitySyncRpc}});
+  ProductivityRpcServer rpc({.services = std::move(rpcServices)});
   if (!rpc.listening()) {
     LOG_FATAL << "gRPC server failed to listen on " << rpc.address();
     return 1;
