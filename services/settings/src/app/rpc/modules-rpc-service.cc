@@ -46,6 +46,7 @@ grpc::ServerUnaryReactor* ModulesRpcService::ModuleStates(grpc::CallbackServerCo
   }
   response->set_version(set.version);
   response->set_settled(set.settled);
+  response->set_epoch(set.epoch);
   reactor->Finish(grpc::Status::OK);
   return reactor;
 }

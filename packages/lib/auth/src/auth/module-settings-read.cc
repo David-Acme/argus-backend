@@ -23,7 +23,7 @@ std::optional<ModuleFeed::Snapshot> snapshotOf(const ModuleStatesReply& reply)
 {
   if (!reply.settled)
     return std::nullopt;
-  ModuleFeed::Snapshot snapshot{.flags = {}, .version = reply.version};
+  ModuleFeed::Snapshot snapshot{.flags = {}, .version = reply.version, .epoch = reply.epoch};
   snapshot.flags.reserve(reply.modules.size());
   for (const auto& module : reply.modules)
     snapshot.flags.push_back({.id = module.id,

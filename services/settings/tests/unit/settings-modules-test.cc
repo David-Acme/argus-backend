@@ -397,10 +397,12 @@ TEST_CASE("the event payloads carry the kind, version, settled flag and either t
   const ModuleStatesReply set{.modules = {{.id = "core", .enabled = true, .lifecycle = "active", .dataPurgedAt = 0},
                                           {.id = "surveillance", .enabled = false, .lifecycle = "not_installed", .dataPurgedAt = 77}},
                               .version = 12,
-                              .settled = true};
+                              .settled = true,
+                              .epoch = "100-abc"};
   Json::Value enabled = parse(module_event::enabledPayload(set, 99));
   CHECK(enabled["kind"] == "enabled");
   CHECK(enabled["version"] == 12);
+  CHECK(enabled["epoch"] == "100-abc");
   CHECK(enabled["settled"] == true);
   CHECK(enabled["at"] == 99);
   CHECK(enabled["modules"][1]["id"] == "surveillance");
@@ -453,6 +455,7 @@ TEST_CASE("the event payloads carry the kind, version, settled flag and either t
                         .components = {}};
   Json::Value moduleEvent = parse(module_event::modulePayload(view, set, 5));
   CHECK(moduleEvent["kind"] == "module");
+  CHECK(moduleEvent["epoch"] == "100-abc");
   CHECK(moduleEvent["module"]["id"] == "productivity");
   CHECK(moduleEvent["module"]["name"] == "Productividad");
   CHECK(moduleEvent["module"]["job"].isNull());

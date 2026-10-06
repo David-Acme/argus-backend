@@ -227,6 +227,7 @@ private:
   std::map<std::string, bool> hasData_;
   bool settled_{false};
   std::int64_t version_{0};
+  std::string epoch_;
   std::int64_t publishedVersion_{-1};
   std::int64_t bootMs_{0};
   std::int64_t refreshedAt_{0};

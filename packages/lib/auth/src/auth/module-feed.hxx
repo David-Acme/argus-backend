@@ -28,6 +28,7 @@ public:
   {
     ModuleFlags flags;
     int64_t version{0};
+    std::string epoch{};
   };
 
   using BootRead = std::function<std::optional<Snapshot>()>;
@@ -66,6 +67,7 @@ public:
   ModuleFeedDisposition handle(std::string_view body);
   bool applyAuthoritative(const Snapshot& snapshot);
   [[nodiscard]] int64_t version() const;
+  [[nodiscard]] std::string epoch() const;
 
 private:
   [[nodiscard]] bool subscribe();
@@ -78,6 +80,7 @@ private:
   std::optional<uint64_t> subscription_;
   mutable std::mutex applyMutex_;
   int64_t version_{0};
+  std::string epoch_;
   std::atomic<int64_t> inFlight_{0};
   std::atomic<bool> connecting_{false};
   std::jthread connector_;

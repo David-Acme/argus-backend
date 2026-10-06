@@ -391,6 +391,53 @@ TEST_CASE("a durable consumer outlives the subscriber that bound it" *
   second.drain();
 }
 
+TEST_CASE("a durable that asks for the last message per subject starts at the newest one" *
+          doctest::skip(live_broker::skipped()))
+{
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  NatsBus::Options options;
+  options.url = broker;
+  NatsBus bus;
+  REQUIRE(bus.connect(options));
+
+  const std::string stream = isolatedStream();
+  const std::string subject = isolatedSubject(stream);
+  REQUIRE(bus.ensureStream({.name = stream,
+                            .subjects = {subject},
+                            .maxAgeNs = 60LL * 1000000000,
+                            .duplicatesNs = 60LL * 1000000000}));
+  for (const char* body : {"a", "b", "c"})
+    REQUIRE(bus.publishWithMsgId({.subject = subject, .payload = body, .msgId = subject + "-" + body}));
+
+  const NatsBus::DurableInput lastOnly{.stream = stream,
+                                       .durable = stream + "-last",
+                                       .subject = subject,
+                                       .deliverAll = false,
+                                       .deliverLastPerSubject = true,
+                                       .maxDeliver = 5,
+                                       .maxAckPending = NatsBus::kDefaultMaxAckPending,
+                                       .handler = {}};
+  Deliveries newest;
+  REQUIRE(bus.subscribeDurable(collectingInto(lastOnly, newest)).has_value());
+  CHECK(awaitPayloads(newest, 1) == std::vector<std::string>{"c"});
+  REQUIRE(bus.publishWithMsgId({.subject = subject, .payload = "d", .msgId = subject + "-d"}));
+  CHECK(awaitPayloads(newest, 2) == std::vector<std::string>{"c", "d"});
+
+  const NatsBus::DurableInput everything{.stream = stream,
+                                         .durable = stream + "-all",
+                                         .subject = subject,
+                                         .deliverAll = true,
+                                         .deliverLastPerSubject = false,
+                                         .maxDeliver = 5,
+                                         .maxAckPending = NatsBus::kDefaultMaxAckPending,
+                                         .handler = {}};
+  Deliveries replay;
+  REQUIRE(bus.subscribeDurable(collectingInto(everything, replay)).has_value());
+  CHECK(awaitPayloads(replay, 4) == std::vector<std::string>{"a", "b", "c", "d"});
+  bus.drain();
+}
+
 TEST_CASE("an ordered durable redelivers a nak'd message before the next one" *
           doctest::skip(live_broker::skipped()))
 {

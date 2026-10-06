@@ -412,7 +412,11 @@ each change to fill `ownerCatalog` of the context, so the app stops polling
 ms, 0 = never). A module is enabled exactly when its lifecycle is `active`;
 `core` is always active. The enabled set's `version` is the id of the last
 `module_audit` row that changed a lifecycle (`adopted`, `enabled`,
-`disabled`, `rolled_back`, `removed`, `purged`), so it only grows.
+`disabled`, `rolled_back`, `removed`, `purged`), so it only grows within one
+database. Its `epoch` (`<bootMs>-<16 hex>`, minted when the engine loads, so
+at every boot) names the stretch over which `version` can be compared: a
+database that was reset or restored restarts the counter low, and the new epoch
+tells every consumer to start judging again from it.
 
 The first boot of `settings.db` (no `module_state` rows) adopts what exists,
 so an upgraded installation keeps its cameras: core is active, and every
@@ -561,7 +565,8 @@ create-or-bind it with that exact configuration. Every message has a
 `Nats-Msg-Id` `<bootMs>-<sequence>`. Two kinds, both JSON objects:
 
 ```json
-{ "kind": "enabled", "version": 42, "settled": true, "at": 1790000000000,
+{ "kind": "enabled", "version": 42, "epoch": "1790000000000-9f3a2c4e11b07d58",
+  "settled": true, "at": 1790000000000,
   "modules": [ { "id": "surveillance", "enabled": true, "lifecycle": "active",
                  "dataPurgedAt": null, "roles": ["guard"], "kind": "available",
                  "name": { "es": "Vigilancia", "en": "Surveillance" },
@@ -570,15 +575,18 @@ create-or-bind it with that exact configuration. Every message has a
                             "en": { ... } } },
                ... every catalog module ... ] }
 
-{ "kind": "module", "version": 42, "settled": true, "at": 1790000000000,
+{ "kind": "module", "version": 42, "epoch": "1790000000000-9f3a2c4e11b07d58",
+  "settled": true, "at": 1790000000000,
   "module": { ...the Owner's module JSON above, names in Spanish... } }
 ```
 
 - `enabled` is published on every lifecycle change and once per boot after
-  the seed (retried each engine pass until NATS takes it), so a
-  `deliverAll` consumer learns the latest set. A consumer drops a message
-  whose `version` is lower than the last it applied and ignores
-  `settled: false`. argus-sync fans it out as `ModuleUpdate` to every socket.
+  the seed (retried each engine pass until NATS takes it), so a consumer
+  that starts from the last message per subject learns the latest set. A
+  consumer drops a message whose `version` is lower than the last it applied
+  in the same `epoch`, starts over when the `epoch` changes, and ignores
+  `settled: false`. argus-sync fans it out as `ModuleUpdate` to every socket. The
+  `ModuleStates` reply carries the same `epoch` beside `version`.
 - `module` goes to the Owner's room (`ModuleUpdate`, info = the bare module).
   Throttle per job: a state change always goes out; a progress-only change
   only when at least a second passed and progress grew by at least 1 % since

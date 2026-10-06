@@ -349,7 +349,7 @@ ModuleStatesReply ModulesClient::moduleStates() const
   argus::client::addCallerCredential(context, impl_->config.credential);
   wire::ModuleStatesResponse response;
   check(impl_->stub->ModuleStates(&context, wire::ModuleStatesRequest{}, &response));
-  ModuleStatesReply reply{.modules = {}, .version = response.version(), .settled = response.settled()};
+  ModuleStatesReply reply{.modules = {}, .version = response.version(), .settled = response.settled(), .epoch = response.epoch()};
   reply.modules.reserve(static_cast<std::size_t>(response.modules_size()));
   for (const auto& module : response.modules()) {
     ModuleEnabled entry{.id = module.id(),

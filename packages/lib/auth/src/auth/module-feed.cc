@@ -10,6 +10,7 @@
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <utility>
 
@@ -17,6 +18,7 @@ namespace
 {
 constexpr std::string_view kSettledField = "settled";
 constexpr std::string_view kVersionField = "version";
+constexpr std::string_view kEpochField = "epoch";
 constexpr const char* kStateFileKey = "modules.state_file";
 constexpr const char* kDefaultStateFile = "database/module-state.json";
 
@@ -33,6 +35,26 @@ struct InFlight
 private:
   std::atomic<int64_t>& counter_;
 };
+
+std::optional<int64_t> epochMintedAt(std::string_view epoch)
+{
+  const auto dash = epoch.find('-');
+  if (dash == std::string_view::npos || dash == 0)
+    return std::nullopt;
+  int64_t minted = 0;
+  const auto digits = epoch.substr(0, dash);
+  const auto [end, error] = std::from_chars(digits.data(), digits.data() + digits.size(), minted);
+  if (error != std::errc{} || end != digits.data() + digits.size())
+    return std::nullopt;
+  return minted;
+}
+
+bool supersededEpoch(std::string_view incoming, std::string_view current)
+{
+  const auto incomingAt = epochMintedAt(incoming);
+  const auto currentAt = epochMintedAt(current);
+  return incomingAt && currentAt && *incomingAt < *currentAt;
+}
 
 void settleWith(const std::function<void()>& outcome)
 {
@@ -78,6 +100,12 @@ bool ModuleFeed::applyAuthoritative(const Snapshot& snapshot)
   if (dependencies_.gate == nullptr)
     return false;
   std::scoped_lock lock(applyMutex_);
+  if (!snapshot.epoch.empty() && snapshot.epoch != epoch_) {
+    if (!epoch_.empty() && supersededEpoch(snapshot.epoch, epoch_))
+      return false;
+    epoch_ = snapshot.epoch;
+    version_ = 0;
+  }
   if (snapshot.version > 0 && snapshot.version < version_)
     return false;
   version_ = std::max(version_, snapshot.version);
@@ -91,6 +119,12 @@ int64_t ModuleFeed::version() const
 {
   std::scoped_lock lock(applyMutex_);
   return version_;
+}
+
+std::string ModuleFeed::epoch() const
+{
+  std::scoped_lock lock(applyMutex_);
+  return epoch_;
 }
 
 ModuleFeedDisposition ModuleFeed::handle(std::string_view body)
@@ -108,8 +142,10 @@ ModuleFeedDisposition ModuleFeed::handle(std::string_view body)
     return ModuleFeedDisposition::Refused;
   const Json::Value& version = json[std::string(kVersionField)];
   const int64_t at = version.isIntegral() ? version.asInt64() : 0;
-  return applyAuthoritative({.flags = *flags, .version = at}) ? ModuleFeedDisposition::Applied
-                                                              : ModuleFeedDisposition::Ignored;
+  const Json::Value& epoch = json[std::string(kEpochField)];
+  return applyAuthoritative({.flags = *flags, .version = at, .epoch = epoch.isString() ? epoch.asString() : std::string()})
+             ? ModuleFeedDisposition::Applied
+             : ModuleFeedDisposition::Ignored;
 }
 
 void ModuleFeed::start()
@@ -158,7 +194,8 @@ bool ModuleFeed::subscribe()
       {.stream = config_.stream,
        .durable = config_.durable,
        .subject = config_.subject,
-       .deliverAll = true,
+       .deliverAll = false,
+       .deliverLastPerSubject = true,
        .maxDeliver = config_.maxDeliver,
        .maxAckPending = NatsBus::kOrderedMaxAckPending,
        .handler = [this](const NatsBus::DurableMessage& message,

@@ -22,6 +22,7 @@ Json::Value envelope(std::string_view kind, const ModuleStatesReply& set, std::i
   json["kind"] = std::string(kind);
   json["version"] = static_cast<Json::Int64>(set.version);
   json["settled"] = set.settled;
+  json["epoch"] = set.epoch;
   json["at"] = static_cast<Json::Int64>(atMs);
   return json;
 }

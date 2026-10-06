@@ -425,6 +425,25 @@ TEST_CASE("the first boot adopts what is installed and publishes the settled set
   CHECK(harness.engine->enabledSet().version == set.version);
 }
 
+TEST_CASE("every boot of the engine mints its own epoch, and every event and reply of that boot carries it")
+{
+  Harness harness;
+  harness.step();
+  const auto first = harness.engine->enabledSet();
+  REQUIRE_FALSE(first.epoch.empty());
+  CHECK(first.epoch.starts_with(std::to_string(harness.now.load() - 1000) + "-"));
+  REQUIRE_FALSE(harness.sink.sets.empty());
+  for (const auto& set : harness.sink.sets)
+    CHECK(set.epoch == first.epoch);
+
+  harness.boot();
+  const auto second = harness.engine->enabledSet();
+  CHECK(second.version == first.version);
+  REQUIRE_FALSE(second.epoch.empty());
+  CHECK(second.epoch != first.epoch);
+  CHECK(harness.engine->enabledSet().epoch == second.epoch);
+}
+
 TEST_CASE("an owner that cannot be reached holds the seed back until the wait ends, then counts as installed")
 {
   Harness harness;

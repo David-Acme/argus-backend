@@ -139,6 +139,7 @@ struct ModuleStatesReply
   std::vector<ModuleEnabled> modules;
   std::int64_t version{0};
   bool settled{false};
+  std::string epoch{};
 };
 
 struct ModuleDataItem

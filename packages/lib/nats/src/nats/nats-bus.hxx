@@ -103,6 +103,7 @@ public:
     std::string durable;
     std::string subject;
     bool deliverAll{false};
+    bool deliverLastPerSubject{false};
     int maxDeliver{5};
     int maxAckPending{kDefaultMaxAckPending};
     DurableHandler handler;

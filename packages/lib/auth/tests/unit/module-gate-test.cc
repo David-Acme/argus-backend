@@ -304,6 +304,123 @@ TEST_CASE("a live update applies, persists, and survives a restart without setti
   std::filesystem::remove(file);
 }
 
+namespace
+{
+std::string enabledEvent(bool surveillance, int version, const std::string& epoch)
+{
+  return std::string(R"({"modules":[{"id":"surveillance","enabled":)") + (surveillance ? "true" : "false") +
+         R"(}],"settled":true,"version":)" + std::to_string(version) +
+         (epoch.empty() ? std::string() : R"(,"epoch":")" + epoch + "\"") + "}";
+}
+}
+
+TEST_CASE("a lower version under a new epoch applies, under the same epoch it is ignored")
+{
+  ModuleGate gate;
+  const std::string file = tempPath("epoch-lower.json");
+  ModuleFeed feed({.bus = nullptr, .gate = &gate, .bootRead = {}}, feedConfig(file));
+
+  CHECK(feed.handle(enabledEvent(false, 40, "1000-aa")) == ModuleFeedDisposition::Applied);
+  CHECK_FALSE(gate.enabled(kSurveillance));
+  CHECK(feed.version() == 40);
+  CHECK(feed.epoch() == "1000-aa");
+
+  CHECK(feed.handle(enabledEvent(true, 12, "1000-aa")) == ModuleFeedDisposition::Ignored);
+  CHECK_FALSE(gate.enabled(kSurveillance));
+  CHECK(feed.version() == 40);
+
+  CHECK(feed.handle(enabledEvent(true, 3, "2000-bb")) == ModuleFeedDisposition::Applied);
+  CHECK(gate.enabled(kSurveillance));
+  CHECK(feed.version() == 3);
+  CHECK(feed.epoch() == "2000-bb");
+
+  CHECK(feed.handle(enabledEvent(false, 2, "2000-bb")) == ModuleFeedDisposition::Ignored);
+  CHECK(gate.enabled(kSurveillance));
+  CHECK(feed.handle(enabledEvent(false, 4, "2000-bb")) == ModuleFeedDisposition::Applied);
+  CHECK_FALSE(gate.enabled(kSurveillance));
+  std::filesystem::remove(file);
+}
+
+TEST_CASE("an epoch that names no mint time is adopted as soon as it changes")
+{
+  ModuleGate gate;
+  const std::string file = tempPath("epoch-opaque.json");
+  ModuleFeed feed({.bus = nullptr, .gate = &gate, .bootRead = {}}, feedConfig(file));
+  CHECK(feed.handle(enabledEvent(false, 90, "zulu")) == ModuleFeedDisposition::Applied);
+  CHECK(feed.handle(enabledEvent(true, 1, "alfa")) == ModuleFeedDisposition::Applied);
+  CHECK(gate.enabled(kSurveillance));
+  CHECK(feed.epoch() == "alfa");
+  CHECK(feed.version() == 1);
+  std::filesystem::remove(file);
+}
+
+TEST_CASE("an event of an older epoch that arrives after a newer one is ignored")
+{
+  ModuleGate gate;
+  const std::string file = tempPath("epoch-stale.json");
+  ModuleFeed feed({.bus = nullptr, .gate = &gate, .bootRead = {}}, feedConfig(file));
+  CHECK(feed.handle(enabledEvent(true, 2, "5000-new")) == ModuleFeedDisposition::Applied);
+  CHECK(feed.handle(enabledEvent(false, 900, "1000-old")) == ModuleFeedDisposition::Ignored);
+  CHECK(gate.enabled(kSurveillance));
+  CHECK(feed.epoch() == "5000-new");
+  CHECK(feed.version() == 2);
+  std::filesystem::remove(file);
+}
+
+TEST_CASE("a feed without an epoch keeps judging by version alone")
+{
+  ModuleGate gate;
+  const std::string file = tempPath("epoch-none.json");
+  ModuleFeed feed({.bus = nullptr, .gate = &gate, .bootRead = {}}, feedConfig(file));
+  CHECK(feed.handle(enabledEvent(false, 5, "")) == ModuleFeedDisposition::Applied);
+  CHECK(feed.handle(enabledEvent(true, 4, "")) == ModuleFeedDisposition::Ignored);
+  CHECK(feed.handle(enabledEvent(true, 6, "")) == ModuleFeedDisposition::Applied);
+  CHECK(feed.epoch().empty());
+  CHECK(feed.handle(enabledEvent(false, 7, "3000-x")) == ModuleFeedDisposition::Applied);
+  CHECK(feed.handle(enabledEvent(true, 1, "")) == ModuleFeedDisposition::Ignored);
+  std::filesystem::remove(file);
+}
+
+TEST_CASE("a fresh consumer over a stream holding an old epoch's high versions and a new epoch's low ones ends on the new state")
+{
+  ModuleGate gate;
+  const std::string file = tempPath("epoch-replay.json");
+  ModuleFeed feed({.bus = nullptr, .gate = &gate, .bootRead = {}}, feedConfig(file));
+
+  for (int version = 60; version <= 64; ++version)
+    CHECK(feed.handle(enabledEvent(version % 2 == 0, version, "1000-old")) == ModuleFeedDisposition::Applied);
+  CHECK(feed.version() == 64);
+
+  CHECK(feed.handle(enabledEvent(false, 1, "9000-reset")) == ModuleFeedDisposition::Applied);
+  CHECK_FALSE(gate.enabled(kSurveillance));
+  CHECK(feed.handle(enabledEvent(true, 2, "9000-reset")) == ModuleFeedDisposition::Applied);
+  CHECK(gate.enabled(kSurveillance));
+  CHECK(feed.handle(enabledEvent(false, 3, "9000-reset")) == ModuleFeedDisposition::Applied);
+  CHECK_FALSE(gate.enabled(kSurveillance));
+  CHECK(feed.epoch() == "9000-reset");
+  CHECK(feed.version() == 3);
+  std::filesystem::remove(file);
+}
+
+TEST_CASE("the boot read and the feed share one epoch: a snapshot of a new epoch resets the version it judges by")
+{
+  ModuleGate gate;
+  const std::string file = tempPath("epoch-boot.json");
+  ModuleFeed feed({.bus = nullptr, .gate = &gate, .bootRead = {}}, feedConfig(file));
+  CHECK(feed.handle(enabledEvent(true, 80, "1000-old")) == ModuleFeedDisposition::Applied);
+  CHECK(feed.applyAuthoritative({.flags = {{.id = std::string(kSurveillance), .enabled = false, .lifecycle = "disabled"}},
+                                 .version = 2,
+                                 .epoch = "7000-new"}));
+  CHECK_FALSE(gate.enabled(kSurveillance));
+  CHECK(feed.epoch() == "7000-new");
+  CHECK(feed.version() == 2);
+  CHECK_FALSE(feed.applyAuthoritative({.flags = {{.id = std::string(kSurveillance), .enabled = true, .lifecycle = "active"}},
+                                       .version = 1,
+                                       .epoch = "7000-new"}));
+  CHECK_FALSE(gate.enabled(kSurveillance));
+  std::filesystem::remove(file);
+}
+
 TEST_CASE("the boot read wins over the last known state, and retries until settings answers")
 {
   ModuleGate gate;

@@ -321,6 +321,7 @@ public:
     module->set_enabled(true);
     response->set_version(7);
     response->set_settled(true);
+    response->set_epoch("1700-feed");
     reactor->Finish(grpc::Status::OK);
     return reactor;
   }
@@ -344,6 +345,7 @@ TEST_CASE("the modules client reads the enabled set")
   CHECK(reply.modules.front().enabled);
   CHECK(reply.version == 7);
   CHECK(reply.settled);
+  CHECK(reply.epoch == "1700-feed");
 
   const ModulesClient stranger({.target = target, .credential = "wrong", .timeout = std::chrono::seconds(5)});
   CHECK(statusOf([&stranger] { static_cast<void>(stranger.moduleStates()); }) == 401);

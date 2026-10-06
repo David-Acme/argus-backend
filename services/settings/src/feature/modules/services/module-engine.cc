@@ -7,6 +7,8 @@
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
+#include <format>
+#include <random>
 #include <ranges>
 #include <stdexcept>
 #include <utility>
@@ -16,6 +18,13 @@ namespace
 constexpr int kMaxStepsPerTick = 8;
 constexpr double kRateWeight = 0.3;
 constexpr std::int64_t kMillisPerSecond = 1000;
+
+std::string mintEpoch(std::int64_t bootMs)
+{
+  std::random_device entropy;
+  const std::uint64_t salt = (static_cast<std::uint64_t>(entropy()) << 32U) | entropy();
+  return std::format("{}-{:016x}", bootMs, salt);
+}
 
 bool settledReading(const ComponentStatus& status, OwnerReach reach)
 {
@@ -103,6 +112,7 @@ void ModuleEngine::load()
 {
   const std::scoped_lock lock(mutex_);
   bootMs_ = clock_();
+  epoch_ = mintEpoch(bootMs_);
   for (const auto& job : jobRepository_.findOpen()) {
     if (jobRunning(job.state))
       static_cast<void>(jobRepository_.update(job.id, {.at = bootMs_,
@@ -747,7 +757,7 @@ void ModuleEngine::flush(const Outbox& outbox)
 
 ModuleStatesReply ModuleEngine::enabledSetLocked() const
 {
-  ModuleStatesReply set{.modules = {}, .version = version_, .settled = settled_};
+  ModuleStatesReply set{.modules = {}, .version = version_, .settled = settled_, .epoch = epoch_};
   set.modules.reserve(catalog_.modules.size());
   for (const auto& module : catalog_.modules)
     set.modules.push_back({.id = module.id,

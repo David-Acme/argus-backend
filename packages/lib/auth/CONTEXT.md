@@ -243,9 +243,17 @@ rule 5 is unchanged and `scripts/check-routes.sh` needs no new row.
    gate); one with `settled: false`, or with
    any other shape (the per-job progress frames), is acked and ignored; a
    malformed enabled set is terminated. Messages and the boot read carry a
-   `version`; anything older than the last applied version is ignored, so the
-   boot read and a replayed backlog cannot undo a newer state whatever order
-   they arrive in.
+   `version` and an `epoch`. Within one epoch anything older than the last
+   applied version is ignored, so the boot read and a replayed backlog cannot
+   undo a newer state whatever order they arrive in. A different epoch resets
+   the version the consumer judges by: settings mints an epoch at every boot
+   (`<mintedAtMs>-<16 hex>`), so a settings.db that was reset or restored
+   restarts its counter low without any consumer having to restart; an epoch
+   whose mint time is older than the one already adopted is a stale replay
+   and is ignored, and a message with no epoch (an older settings) is judged
+   by version alone. The durable asks for the last message per subject
+   (`deliverLastPerSubject`), never the whole history: the set is a snapshot,
+   and the boot read already supplies the rest.
 3. **The last known state**: every applied set is written atomically
    (`.part` then rename) to `[modules] state_file`, default
    `database/module-state.json` in the service's working directory, and read

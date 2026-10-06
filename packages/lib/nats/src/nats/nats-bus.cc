@@ -411,7 +411,9 @@ bool NatsBus::ensureDurable(const DurableInput& input)
   jsConsumerConfig_Init(&config);
   config.Durable = input.durable.c_str();
   config.DeliverSubject = inbox.get();
-  config.DeliverPolicy = input.deliverAll ? js_DeliverAll : js_DeliverNew;
+  config.DeliverPolicy = input.deliverLastPerSubject ? js_DeliverLastPerSubject
+                         : input.deliverAll          ? js_DeliverAll
+                                                     : js_DeliverNew;
   config.AckPolicy = js_AckExplicit;
   config.AckWait = 60LL * 1000 * 1000 * 1000;
   config.MaxDeliver = effectiveMaxDeliver(input);
