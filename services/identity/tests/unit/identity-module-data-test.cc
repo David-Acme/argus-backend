@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
+#include <test-support/app-runner.hxx>
 
 #include <drogon/drogon.h>
 #include <feature/module-data/services/identity-module-data.hxx>
@@ -22,31 +23,7 @@ namespace
 {
 constexpr const char* kModuleDataDb = "identity-module-data-test.db";
 
-class AppRunner
-{
-public:
-  AppRunner() : runner_([] { drogon::app().run(); }) {}
-
-  ~AppRunner()
-  {
-    if (!runner_.joinable())
-      return;
-    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    if (drogon::app().getLoop()->isRunning()) {
-      drogon::app().quit();
-      runner_.join();
-      return;
-    }
-    runner_.detach();
-  }
-
-  AppRunner(const AppRunner&) = delete;
-  AppRunner& operator=(const AppRunner&) = delete;
-
-private:
-  std::thread runner_;
-};
+using test_support::AppRunner;
 
 bool waitForBoot(std::chrono::milliseconds timeout)
 {

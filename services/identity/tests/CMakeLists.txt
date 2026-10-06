@@ -53,6 +53,7 @@ add_test(NAME identity-role-check-migration-test COMMAND identity-role-check-mig
 
 add_executable(identity-change-outbox-sink-test
     unit/identity-change-outbox-sink-test.cc)
+target_link_libraries(identity-change-outbox-sink-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-change-outbox-sink-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
 target_link_libraries(identity-change-outbox-sink-test PRIVATE
@@ -69,6 +70,7 @@ add_test(NAME identity-change-outbox-sink-test
          COMMAND identity-change-outbox-sink-test)
 
 add_executable(identity-sync-rpc-test unit/identity-sync-rpc-test.cc)
+target_link_libraries(identity-sync-rpc-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-sync-rpc-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
 target_link_libraries(identity-sync-rpc-test PRIVATE
@@ -93,6 +95,7 @@ add_test(NAME identity-rpc-callers-test COMMAND identity-rpc-callers-test)
 
 add_executable(identity-change-transaction-test
     unit/identity-change-transaction-test.cc)
+target_link_libraries(identity-change-transaction-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-change-transaction-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
 target_link_libraries(identity-change-transaction-test PRIVATE
@@ -118,6 +121,7 @@ add_test(NAME identity-face-slots-test COMMAND identity-face-slots-test)
 
 add_executable(identity-candidate-retention-test
     unit/identity-candidate-retention-test.cc)
+target_link_libraries(identity-candidate-retention-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-candidate-retention-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
 target_link_libraries(identity-candidate-retention-test PRIVATE
@@ -160,6 +164,7 @@ add_test(NAME identity-voiceprint-passive-test
          COMMAND identity-voiceprint-passive-test)
 
 add_executable(identity-voiceprint-test unit/identity-voiceprint-test.cc)
+target_link_libraries(identity-voiceprint-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-voiceprint-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql"
     ARGUS_TEST_SPEAKER_MODEL="${CMAKE_CURRENT_SOURCE_DIR}/../../../models/speaker/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx"
@@ -177,6 +182,7 @@ add_test(NAME identity-voiceprint-test COMMAND identity-voiceprint-test)
 
 add_executable(identity-face-embedding-test
     unit/identity-face-embedding-test.cc)
+target_link_libraries(identity-face-embedding-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-face-embedding-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
 target_link_libraries(identity-face-embedding-test PRIVATE
@@ -190,6 +196,7 @@ add_test(NAME identity-face-embedding-test
          COMMAND identity-face-embedding-test)
 
 add_executable(identity-privacy-test unit/identity-privacy-test.cc)
+target_link_libraries(identity-privacy-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-privacy-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
 target_link_libraries(identity-privacy-test PRIVATE
@@ -206,6 +213,7 @@ argus_runtime_rpath(identity-privacy-test)
 add_test(NAME identity-privacy-test COMMAND identity-privacy-test)
 
 add_executable(identity-face-model-test unit/identity-face-model-test.cc)
+target_link_libraries(identity-face-model-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-face-model-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql"
     ARGUS_TEST_FACE_MODELS="${CMAKE_CURRENT_SOURCE_DIR}/../../../models/face"
@@ -229,6 +237,7 @@ argus_runtime_rpath(identity-visitor-policy-test)
 add_test(NAME identity-visitor-policy-test COMMAND identity-visitor-policy-test)
 
 add_executable(identity-visitor-test unit/identity-visitor-test.cc)
+target_link_libraries(identity-visitor-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-visitor-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql"
     ARGUS_TEST_FACE_MODELS="${CMAKE_CURRENT_SOURCE_DIR}/../../../models/face"
@@ -320,6 +329,7 @@ argus_runtime_rpath(identity-module-impact-test)
 add_test(NAME identity-module-impact-test COMMAND identity-module-impact-test)
 
 add_executable(identity-module-data-test unit/identity-module-data-test.cc)
+target_link_libraries(identity-module-data-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-module-data-test PRIVATE
     ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
 target_link_libraries(identity-module-data-test PRIVATE
