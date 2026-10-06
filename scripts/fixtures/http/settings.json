@@ -242,11 +242,20 @@
                 "hasData": false,
                 "id": "core",
                 "installedBytes": 1085866221,
+                "intro": {
+                  "examples": [
+                    "P\u00eddele a Argus que te recuerde llamar al plomero ma\u00f1ana a las 9",
+                    "Invita a tu familia con un c\u00f3digo QR",
+                    "Revisa qui\u00e9n tiene acceso a la casa y con qu\u00e9 rol"
+                  ],
+                  "what": "La base de Argus: tu cuenta, las personas de la casa, los avisos, la privacidad y el asistente de voz. Siempre est\u00e1 activa."
+                },
                 "job": null,
                 "kind": "core",
                 "lifecycle": "active",
                 "name": "Asistente y hogar",
                 "requires": [],
+                "roles": [],
                 "sizeBytes": 1085866221,
                 "summary": "Tu cuenta, las personas de casa, avisos, privacidad y el asistente de voz. Siempre activo."
               },
@@ -308,12 +317,23 @@
                 "hasData": true,
                 "id": "surveillance",
                 "installedBytes": 578108270,
+                "intro": {
+                  "examples": [
+                    "Mira la c\u00e1mara de la puerta en vivo desde el celular",
+                    "Pide que Argus te avise si un desconocido se acerca de noche",
+                    "Activa el modo Noche antes de dormir con una sola frase"
+                  ],
+                  "what": "Convierte tus c\u00e1maras en un guardia atento: mira la casa en vivo, dibuja zonas, reconoce qui\u00e9n entra y te avisa de lo importante con calma."
+                },
                 "job": null,
                 "kind": "available",
                 "lifecycle": "active",
                 "name": "Vigilancia",
                 "requires": [
                   "core"
+                ],
+                "roles": [
+                  "guard"
                 ],
                 "sizeBytes": 578108270,
                 "summary": "C\u00e1maras en vivo, zonas, detecci\u00f3n de personas y el guardia que te avisa de lo importante."
@@ -344,6 +364,14 @@
                 "hasData": true,
                 "id": "productivity",
                 "installedBytes": 0,
+                "intro": {
+                  "examples": [
+                    "Agrega la reuni\u00f3n del jueves a la agenda habl\u00e1ndole a Argus",
+                    "Crea un proyecto para la mudanza y reparte las tareas",
+                    "Comparte el calendario de la semana con tu pareja"
+                  ],
+                  "what": "Organiza la vida de la casa: una agenda, proyectos y tareas que compartes con tu familia, con avisos de voz a tiempo."
+                },
                 "job": null,
                 "kind": "available",
                 "lifecycle": "active",
@@ -351,6 +379,7 @@
                 "requires": [
                   "core"
                 ],
+                "roles": [],
                 "sizeBytes": 0,
                 "summary": "Agenda, proyectos y tareas compartidas con tu familia."
               },
@@ -369,6 +398,14 @@
                 "hasData": false,
                 "id": "agronomy",
                 "installedBytes": 0,
+                "intro": {
+                  "examples": [
+                    "Saber cu\u00e1ndo regar seg\u00fan el clima de tu terreno",
+                    "Llevar el cuaderno de tus cultivos por voz",
+                    "Recibir un aviso antes de una helada o una lluvia fuerte"
+                  ],
+                  "what": "Cultivos, riego y clima de tu terreno, con consejos de Argus. Muy pronto."
+                },
                 "job": null,
                 "kind": "coming_soon",
                 "lifecycle": "not_installed",
@@ -376,6 +413,7 @@
                 "requires": [
                   "core"
                 ],
+                "roles": [],
                 "sizeBytes": 0,
                 "summary": "Cultivos, riego y clima de tu terreno. Muy pronto."
               }

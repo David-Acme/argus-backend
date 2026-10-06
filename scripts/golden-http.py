@@ -6,6 +6,7 @@ import ssl
 import struct
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 import zlib
@@ -89,7 +90,30 @@ EXTRA_PROBES = {
         {"name": "owner-resident-session", "auth": "owner",
          "path": "/auth/users/{user:resident}/sessions/{session:resident}"},
     ),
+    ("identity", "PATCH", "/user/{1}"): (
+        {"name": "owner-resident-role", "auth": "owner",
+         "path": "/user/{user:resident}",
+         "body": json.dumps({"role": "resident"})},
+        {"name": "owner-guard-role-while-surveillance-off", "auth": "owner",
+         "path": "/user/{user:resident}",
+         "body": json.dumps({"role": "guard"}),
+         "modulesOff": ("surveillance",),
+         "after": {"method": "PATCH", "body": json.dumps({"role": "resident"})}},
+    ),
+    ("identity", "POST", "/invitation"): (
+        {"name": "owner-guard-while-surveillance-off", "auth": "owner",
+         "path": "/invitation",
+         "body": json.dumps({"role": "guard"}),
+         "modulesOff": ("surveillance",)},
+    ),
 }
+
+MODULE_GATES = {
+    ("identity", "surveillance"): "/visitor-settings",
+}
+
+MODULE_WAIT_SECONDS = 90.0
+MODULE_POLL_SECONDS = 0.25
 
 CHALLENGE_DETAILS = "/auth/device-login/{1}/details"
 CHALLENGE_SLOT = "{challenge}"
@@ -419,7 +443,8 @@ def probe_plan(route, ids, roles):
     probes = []
 
     def add(name, auth=None, ua=RECORDER_UA, body=None,
-            content_type="application/json", missing=False, path=None):
+            content_type="application/json", missing=False, path=None,
+            modules_off=(), after=None):
         probes.append({
             "name": name,
             "auth": auth,
@@ -427,6 +452,8 @@ def probe_plan(route, ids, roles):
             "body": body,
             "contentType": content_type if body is not None else None,
             "path": path or route_identity(route, ids, missing),
+            "modulesOff": list(modules_off),
+            "after": after,
         })
 
     if route["multipart"]:
@@ -475,9 +502,14 @@ def probe_plan(route, ids, roles):
     for extra in EXTRA_PROBES.get((route["unit"], method, route["path"]), ()):
         if extra["auth"] in roles and all(
                 role in roles for role in SESSION_SLOT_RE.findall(extra["path"])):
-            add(extra["name"], auth=extra["auth"], body=body,
-                path=extra["path"].replace(
-                    "{user:resident}", str(ids.get("residentUser") or MISSING_ID)))
+            resolved = extra["path"].replace(
+                "{user:resident}", str(ids.get("residentUser") or MISSING_ID))
+            after = extra.get("after")
+            if after:
+                after = {**after, "path": resolved}
+            add(extra["name"], auth=extra["auth"],
+                body=extra.get("body", body), path=resolved,
+                modules_off=extra.get("modulesOff", ()), after=after)
     return probes
 
 
@@ -577,6 +609,90 @@ def resolve_path(path, base, sessions, timeout):
             timeout), path)
 
 
+def owner_call(base, method, path, sessions, timeout, body=None):
+    headers = {"User-Agent": RECORDER_UA, "Accept": "application/json",
+               "Authorization": f"Bearer {sessions['owner']}",
+               **device_headers("owner")}
+    return send(base, method, path, headers, body,
+                "application/json" if body is not None else None, timeout)
+
+
+def wait_until(condition, what):
+    deadline = time.monotonic() + MODULE_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        if condition():
+            return
+        time.sleep(MODULE_POLL_SECONDS)
+    raise SystemExit(f"timed out waiting for {what}")
+
+
+def module_lifecycle(bases, module, sessions, timeout):
+    status, _, body = owner_call(bases["settings"], "GET", "/modules",
+                                 sessions, timeout)
+    if status != 200:
+        return None
+    for item in json.loads(body)["info"]["modules"]:
+        if item["id"] == module:
+            return item["lifecycle"]
+    return None
+
+
+def module_gated(base, path, sessions, timeout):
+    status, _, body = owner_call(base, "GET", path, sessions, timeout)
+    return status == 403 and b"MODULE_DISABLED" in body
+
+
+def switch_module_off(entry, bases, module, sessions, timeout):
+    gate = MODULE_GATES[(entry["baseUnit"], module)]
+    base = bases[entry["baseUnit"]]
+    status, _, body = owner_call(bases["settings"], "POST",
+                                 f"/modules/{module}/disable", sessions,
+                                 timeout, "{}")
+    if status != 200:
+        raise SystemExit(f"disabling {module} answered {status} "
+                         f"{body[:200]!r}")
+    wait_until(lambda: module_gated(base, gate, sessions, timeout),
+               f"{entry['baseUnit']} to refuse {module} routes")
+
+
+def switch_module_on(entry, bases, module, sessions, timeout):
+    gate = MODULE_GATES[(entry["baseUnit"], module)]
+    base = bases[entry["baseUnit"]]
+    status, _, body = owner_call(bases["settings"], "POST",
+                                 f"/modules/{module}/install", sessions,
+                                 timeout, "{}")
+    if status not in (200, 202):
+        raise SystemExit(f"enabling {module} answered {status} "
+                         f"{body[:200]!r}")
+    wait_until(lambda: module_lifecycle(bases, module, sessions, timeout)
+               == "active", f"{module} to be active again")
+    wait_until(lambda: not module_gated(base, gate, sessions, timeout),
+               f"{entry['baseUnit']} to serve {module} routes again")
+
+
+def run_entry(entry, bases, sessions, timeout):
+    base = bases[entry["baseUnit"]]
+    off = entry["probe"].get("modulesOff") or []
+    if not off:
+        return run_probe(entry, base, sessions, timeout)
+    if "settings" not in bases:
+        raise SystemExit("a probe that switches a module off needs "
+                         "argus-settings booted")
+    switched = []
+    try:
+        for module in off:
+            switch_module_off(entry, bases, module, sessions, timeout)
+            switched.append(module)
+        return run_probe(entry, base, sessions, timeout)
+    finally:
+        after = entry["probe"].get("after")
+        if after:
+            owner_call(base, after["method"], after["path"], sessions,
+                       timeout, after["body"])
+        for module in reversed(switched):
+            switch_module_on(entry, bases, module, sessions, timeout)
+
+
 def run_probe(entry, base, sessions, timeout):
     probe = entry["probe"]
     headers = {"User-Agent": probe["userAgent"], "Accept": "application/json"}
@@ -609,6 +725,8 @@ def run_probe(entry, base, sessions, timeout):
                          else "recorder",
             "contentType": probe["contentType"],
             "body": described,
+            **({"modulesOff": probe["modulesOff"]}
+               if probe.get("modulesOff") else {}),
         },
         "response": {
             "status": status,
@@ -771,8 +889,7 @@ def record(fixtures, routes, bases, sessions, ids, roles, timeout, stack):
     units = {}
     fixtures.mkdir(parents=True, exist_ok=True)
     for entry in plan:
-        record_entry = run_probe(entry, bases[entry["baseUnit"]], sessions,
-                                timeout)
+        record_entry = run_entry(entry, bases, sessions, timeout)
         problems = violates(entry, record_entry, deviations)
         for problem in problems:
             failures += 1
@@ -902,7 +1019,7 @@ def verify(fixtures, routes, bases, sessions, ids, roles, timeout, verbose,
                   f"{entry['route']} [{entry['probe']['name']}]",
                   file=sys.stderr)
             continue
-        actual = run_probe(entry, bases[entry["baseUnit"]], sessions, timeout)
+        actual = run_entry(entry, bases, sessions, timeout)
         problems = compare(expected, actual, volatile)
         problems += violates(entry, actual, deviations)
         checked += 1

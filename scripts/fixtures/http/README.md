@@ -155,6 +155,20 @@ A run is additive on three tables and leaves every domain table byte-identical:
 No fixture row of any domain — person, camera, zone, reminder, project,
 notification, invitation — is created, updated or deleted.
 
+Three probes of the role-per-module contract change state on purpose and put
+it back before the next probe: `PATCH /user/{resident}` to `guard` while the
+`surveillance` module is switched off (the probe's `after` step writes
+`resident` again), the same `PATCH` to `resident`, and `POST /invitation` for
+`guard` under the same switch (refused with 409 `ROLE_INACTIVE`, so no
+invitation row exists). The two probes that declare `modulesOff` disable
+`surveillance` through settings, wait until the serving unit answers
+`MODULE_DISABLED` on its gate route, record, then enable it and wait for
+`active` and for the unit to serve it again. Measured the same way, a run adds
+six `settings.module_audit` rows and two `settings.module_job` rows for those
+two switches, rewrites `settings.module_state` and `module_journal`, and adds
+eight `identity.change_outbox` rows for the role writes; the resident's role
+and every module end as they began.
+
 ## Coverage
 
 What the replay does not pin, so a reader does not mistake the green line for

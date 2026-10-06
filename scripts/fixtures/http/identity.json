@@ -290,6 +290,35 @@
     },
     {
       "method": "POST",
+      "path": "/invitation",
+      "probe": "owner-guard-while-surveillance-off",
+      "request": {
+        "auth": "owner",
+        "body": "{\"role\": \"guard\"}",
+        "contentType": "application/json",
+        "modulesOff": [
+          "surveillance"
+        ],
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "ROLE_INACTIVE",
+            "message": "Guard needs the Surveillance module"
+          },
+          "info": null,
+          "status": 409
+        },
+        "pretty": true,
+        "status": 409
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
+      "method": "POST",
       "path": "/invitation/resolve",
       "probe": "bad-json",
       "request": {
@@ -2106,6 +2135,79 @@
         },
         "pretty": true,
         "status": 422
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/user/2",
+      "probe": "owner-resident-role",
+      "request": {
+        "auth": "owner",
+        "body": "{\"role\": \"resident\"}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "createdAt": "<masked>",
+            "deletedAt": "<masked>",
+            "id": 2,
+            "isActive": true,
+            "lang": "en",
+            "lastName": "Resident",
+            "name": "Golden",
+            "role": "resident",
+            "roleActive": true,
+            "syncAt": "<masked>",
+            "updatedAt": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/user/2",
+      "probe": "owner-guard-role-while-surveillance-off",
+      "request": {
+        "auth": "owner",
+        "body": "{\"role\": \"guard\"}",
+        "contentType": "application/json",
+        "modulesOff": [
+          "surveillance"
+        ],
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "createdAt": "<masked>",
+            "deletedAt": "<masked>",
+            "id": 2,
+            "isActive": true,
+            "lang": "en",
+            "lastName": "Resident",
+            "name": "Golden",
+            "role": "guard",
+            "roleActive": false,
+            "syncAt": "<masked>",
+            "updatedAt": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
       },
       "route": "/user/{1}",
       "unit": "identity"
