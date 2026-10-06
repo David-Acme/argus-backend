@@ -605,7 +605,6 @@ services:
       - type: bind
         source: ${ARGUS_MODELS_DIR:-../models}/vision
         target: /opt/argus/models/vision
-        read_only: true
         bind:
           create_host_path: false
     healthcheck:

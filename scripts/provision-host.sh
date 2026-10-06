@@ -453,6 +453,7 @@ main() {
     ensure_object_store
   fi
 
+  install -d -m 0755 "$MODELS_DIR/vision"
   if [ "$WITH_MODELS" -eq 1 ]; then
     provision_models
   elif [ ! -d "$MODELS_DIR/llm" ] || [ ! -d "$MODELS_DIR/stt" ]; then
