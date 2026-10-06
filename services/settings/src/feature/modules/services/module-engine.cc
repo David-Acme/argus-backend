@@ -1138,6 +1138,7 @@ JobView ModuleEngine::uninstall(const UninstallCommand& command)
         throw ResponseException(ModuleErrors::PinLocked);
     }
   }
+  settleRoles(command);
   Outbox outbox;
   JobView result;
   {

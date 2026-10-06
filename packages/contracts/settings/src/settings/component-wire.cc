@@ -106,4 +106,110 @@ ComponentStatus statusFrom(const wire::ComponentStatus& wire)
           .hostCommand = wire.host_command(),
           .reason = wire.reason()};
 }
+
+void fill(wire::ModuleImpactResponse& wire, const ModuleImpactReport& report)
+{
+  for (const auto& stop : report.stops) {
+    auto* entry = wire.add_stops();
+    entry->set_kind(stop.kind);
+    entry->set_count(stop.count);
+  }
+  for (const auto& holder : report.roleHolders) {
+    auto* entry = wire.add_role_holders();
+    entry->set_user_id(holder.userId);
+    entry->set_name(holder.name);
+    entry->set_last_name(holder.lastName);
+    entry->set_role(holder.role);
+    entry->set_is_active(holder.isActive);
+  }
+  for (const auto& invitation : report.invitations) {
+    auto* entry = wire.add_invitations();
+    entry->set_id(invitation.id);
+    entry->set_role(invitation.role);
+    entry->set_created_by(invitation.createdBy);
+    entry->set_created_by_name(invitation.createdByName);
+    entry->set_expires_at(invitation.expiresAt);
+  }
+}
+
+ModuleImpactReport impactFrom(const wire::ModuleImpactResponse& wire)
+{
+  ModuleImpactReport report;
+  for (const auto& stop : wire.stops())
+    report.stops.push_back({.kind = stop.kind(), .count = stop.count()});
+  for (const auto& holder : wire.role_holders())
+    report.roleHolders.push_back({.userId = holder.user_id(),
+                                  .name = holder.name(),
+                                  .lastName = holder.last_name(),
+                                  .role = holder.role(),
+                                  .isActive = holder.is_active()});
+  for (const auto& invitation : wire.invitations())
+    report.invitations.push_back({.id = invitation.id(),
+                                  .role = invitation.role(),
+                                  .createdBy = invitation.created_by(),
+                                  .createdByName = invitation.created_by_name(),
+                                  .expiresAt = invitation.expires_at()});
+  return report;
+}
+
+void fill(wire::ReassignRolesRequest& wire, const RoleReassignmentBatch& batch)
+{
+  wire.set_actor_user_id(batch.actorUserId);
+  for (const auto& entry : batch.reassignments) {
+    auto* item = wire.add_reassignments();
+    item->set_user_id(entry.userId);
+    item->set_role(entry.role);
+  }
+}
+
+RoleReassignmentBatch batchFrom(const wire::ReassignRolesRequest& wire)
+{
+  RoleReassignmentBatch batch{.actorUserId = wire.actor_user_id(), .reassignments = {}};
+  for (const auto& item : wire.reassignments())
+    batch.reassignments.push_back({.userId = item.user_id(), .role = item.role()});
+  return batch;
+}
+
+void fill(wire::ReassignRolesResponse& wire, const RoleReassignmentOutcome& outcome)
+{
+  switch (outcome.status) {
+  case ReassignStatus::Applied: wire.set_status(wire::REASSIGN_STATUS_APPLIED); break;
+  case ReassignStatus::Refused: wire.set_status(wire::REASSIGN_STATUS_REFUSED); break;
+  case ReassignStatus::Failed: wire.set_status(wire::REASSIGN_STATUS_FAILED); break;
+  }
+  wire.set_applied(outcome.applied);
+  wire.set_failed_user_id(outcome.failedUserId);
+  wire.set_reason(outcome.reason);
+}
+
+RoleReassignmentOutcome outcomeFrom(const wire::ReassignRolesResponse& wire)
+{
+  RoleReassignmentOutcome outcome{
+      .status = ReassignStatus::Failed,
+      .applied = wire.applied(),
+      .failedUserId = wire.failed_user_id(),
+      .reason = wire.reason()};
+  if (wire.status() == wire::REASSIGN_STATUS_APPLIED)
+    outcome.status = ReassignStatus::Applied;
+  else if (wire.status() == wire::REASSIGN_STATUS_REFUSED)
+    outcome.status = ReassignStatus::Refused;
+  return outcome;
+}
+
+void fill(wire::RequestModuleRequest& wire, const ModuleRequestInput& input)
+{
+  wire.set_module_id(input.moduleId);
+  wire.set_module_name_es(input.moduleName.es);
+  wire.set_module_name_en(input.moduleName.en);
+  wire.set_user_id(input.userId);
+  wire.set_day(input.day);
+}
+
+ModuleRequestInput requestFrom(const wire::RequestModuleRequest& wire)
+{
+  return {.moduleId = wire.module_id(),
+          .moduleName = {.es = wire.module_name_es(), .en = wire.module_name_en()},
+          .userId = wire.user_id(),
+          .day = wire.day()};
+}
 }

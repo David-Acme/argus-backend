@@ -207,6 +207,69 @@ message VerifyOwnerPinResponse {
   PinVerdict verdict = 1;
 }
 
+message ModuleImpactRequest {
+  string module_id = 1;
+}
+
+message ImpactRoleHolder {
+  int64 user_id = 1;
+  string name = 2;
+  string last_name = 3;
+  string role = 4;
+  bool is_active = 5;
+}
+
+message ImpactInvitation {
+  int64 id = 1;
+  string role = 2;
+  int64 created_by = 3;
+  string created_by_name = 4;
+  int64 expires_at = 5;
+}
+
+message ModuleImpactResponse {
+  repeated ModuleDataItem stops = 1;
+  repeated ImpactRoleHolder role_holders = 2;
+  repeated ImpactInvitation invitations = 3;
+}
+
+message RoleReassignment {
+  int64 user_id = 1;
+  string role = 2;
+}
+
+message ReassignRolesRequest {
+  int64 actor_user_id = 1;
+  repeated RoleReassignment reassignments = 2;
+}
+
+enum ReassignStatus {
+  REASSIGN_STATUS_UNSPECIFIED = 0;
+  REASSIGN_STATUS_APPLIED = 1;
+  REASSIGN_STATUS_REFUSED = 2;
+  REASSIGN_STATUS_FAILED = 3;
+}
+
+message ReassignRolesResponse {
+  ReassignStatus status = 1;
+  int32 applied = 2;
+  int64 failed_user_id = 3;
+  string reason = 4;
+}
+
+message RequestModuleRequest {
+  string module_id = 1;
+  string module_name_es = 2;
+  string module_name_en = 3;
+  int64 user_id = 4;
+  string day = 5;
+}
+
+message RequestModuleResponse {
+  int32 notified = 1;
+  bool duplicate = 2;
+}
+
 message ModuleStatesRequest {}
 
 message ModuleIntroLine {
@@ -253,6 +316,9 @@ service Settings {
   rpc ModuleDataSummary(ModuleDataRequest) returns (ModuleDataSummaryResponse);
   rpc PurgeModuleData(ModuleDataRequest) returns (PurgeModuleDataResponse);
   rpc VerifyOwnerPin(VerifyOwnerPinRequest) returns (VerifyOwnerPinResponse);
+  rpc ModuleImpact(ModuleImpactRequest) returns (ModuleImpactResponse);
+  rpc ReassignRoles(ReassignRolesRequest) returns (ReassignRolesResponse);
+  rpc RequestModule(RequestModuleRequest) returns (RequestModuleResponse);
 }
 
 service Modules {

@@ -7,20 +7,22 @@
 #include <feature/settings/dtos/response-list-settings-dto.hxx>
 #include <feature/settings/dtos/response-update-settings-dto.hxx>
 #include <feature/settings/dtos/update-settings-dto.hxx>
+#include <feature/settings/services/owner-visibility.hxx>
 #include <http/api-response.hxx>
 
 #include <utility>
 
 SettingsController::SettingsController(const SettingsControllerInput& input)
     : service_(input.gateway),
-      profiles_({.gateway = service_, .catalog = input.profiles, .hardware = input.hardware})
+      profiles_({.gateway = service_, .catalog = input.profiles, .hardware = input.hardware}),
+      ownerVisible_(input.ownerVisible)
 {
 }
 
 drogon::Task<drogon::HttpResponsePtr> SettingsController::list(drogon::HttpRequestPtr)
 {
-  const auto owners = co_await service_.catalogsAsync();
-  co_return ApiResponse::ok(ResponseListSettingsDto{.owners = owners}.toJson());
+  auto owners = co_await service_.catalogsAsync();
+  co_return ApiResponse::ok(ResponseListSettingsDto{.owners = owner_visibility::visible(std::move(owners), ownerVisible_)}.toJson());
 }
 
 drogon::Task<drogon::HttpResponsePtr> SettingsController::profiles(drogon::HttpRequestPtr)

@@ -7,6 +7,7 @@
 #include <feature/settings/services/settings-gateway-service.hxx>
 #include <feature/settings/services/settings-profile-service.hxx>
 
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -15,6 +16,7 @@ struct SettingsControllerInput
   SettingsGatewayInput gateway;
   std::optional<ProfileCatalog> profiles;
   HardwareFacts hardware;
+  std::function<bool(const std::string&)> ownerVisible{};
 };
 
 class SettingsController : public drogon::HttpController<SettingsController, false>
@@ -43,4 +45,5 @@ public:
 private:
   SettingsGatewayService service_;
   SettingsProfileService profiles_;
+  std::function<bool(const std::string&)> ownerVisible_;
 };

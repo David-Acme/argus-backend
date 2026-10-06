@@ -1,7 +1,9 @@
 #pragma once
 
+#include <auth/user-role.hxx>
 #include <config/settings-config.hxx>
 #include <drogon/orm/DbClient.h>
+#include <errors/error-definition.hxx>
 #include <drogon/utils/coroutine.h>
 #include <feature/modules/infra/component-owners.hxx>
 #include <feature/modules/infra/module-event-sink.hxx>
@@ -22,6 +24,7 @@
 #include <set>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -42,19 +45,81 @@ struct ModuleCommand
   std::int64_t userId{0};
 };
 
+struct OwnerDataView
+{
+  std::string owner;
+  OwnerReach reach{OwnerReach::Unreachable};
+  ModuleDataSummary summary;
+};
+
 struct UninstallCommand
 {
   std::string moduleId;
   std::int64_t userId{0};
   bool keepData{true};
   std::optional<std::string> pin;
+  std::vector<RoleReassignment> reassign{};
 };
 
-struct OwnerDataView
+enum class ImpactAction : std::uint8_t
 {
-  std::string owner;
-  OwnerReach reach{OwnerReach::Unreachable};
-  ModuleDataSummary summary;
+  Disable,
+  Uninstall
+};
+
+constexpr std::string_view impactActionToString(ImpactAction action)
+{
+  return action == ImpactAction::Disable ? "disable" : "uninstall";
+}
+
+constexpr std::optional<ImpactAction> impactActionFromString(std::string_view text)
+{
+  if (text == "disable")
+    return ImpactAction::Disable;
+  if (text == "uninstall")
+    return ImpactAction::Uninstall;
+  return std::nullopt;
+}
+
+struct ImpactCommand
+{
+  std::string moduleId;
+  ImpactAction action{ImpactAction::Disable};
+};
+
+struct StopView
+{
+  std::string kind;
+  std::optional<std::int64_t> count;
+};
+
+struct ModuleImpactView
+{
+  std::string moduleId;
+  ImpactAction action{ImpactAction::Disable};
+  std::optional<ErrorDefinition> refusal;
+  std::vector<StopView> stops;
+  std::vector<ImpactRoleHolder> roleHolders;
+  std::string roleEffect;
+  std::vector<std::string> reassignRoles;
+  std::vector<PendingInvitation> invitations;
+  std::vector<OwnerDataView> data;
+  std::int64_t filesBytes{0};
+  std::vector<KeepsRunningItem> keepsRunning;
+  std::vector<std::string> unreachable;
+};
+
+struct RequestCommand
+{
+  std::string moduleId;
+  std::int64_t userId{0};
+  UserRole role{UserRole::Unknown};
+};
+
+struct ModuleRequestView
+{
+  std::string moduleId;
+  bool duplicate{false};
 };
 
 namespace job_reason
@@ -92,6 +157,9 @@ public:
   ModuleView disable(const ModuleCommand& command);
   JobView uninstall(const UninstallCommand& command);
   [[nodiscard]] std::vector<OwnerDataView> moduleData(const std::string& moduleId) const;
+  [[nodiscard]] bool settingsOwnerVisible(const std::string& owner) const;
+  [[nodiscard]] ModuleImpactView impact(const ImpactCommand& command) const;
+  [[nodiscard]] ModuleRequestView request(const RequestCommand& command) const;
 
   [[nodiscard]] drogon::Task<std::vector<ModuleView>> listAsync() const;
   [[nodiscard]] drogon::Task<JobView> installAsync(ModuleCommand command);
@@ -101,6 +169,8 @@ public:
   [[nodiscard]] drogon::Task<ModuleView> disableAsync(ModuleCommand command);
   [[nodiscard]] drogon::Task<JobView> uninstallAsync(UninstallCommand command);
   [[nodiscard]] drogon::Task<std::vector<OwnerDataView>> moduleDataAsync(std::string moduleId) const;
+  [[nodiscard]] drogon::Task<ModuleImpactView> impactAsync(ImpactCommand command) const;
+  [[nodiscard]] drogon::Task<ModuleRequestView> requestAsync(RequestCommand command) const;
 
   void tick();
 
@@ -202,6 +272,10 @@ private:
   [[nodiscard]] std::optional<ModuleJobSchema> openJobLocked(const std::string& moduleId) const;
   [[nodiscard]] const CatalogModule& moduleOrThrow(const std::string& moduleId) const;
   void requireSettledLocked() const;
+  [[nodiscard]] std::optional<ErrorDefinition> impactRefusalLocked(const CatalogModule& module,
+                                                                   ImpactAction action) const;
+  [[nodiscard]] std::vector<std::string> assignableRolesLocked(const CatalogModule& leaving) const;
+  void settleRoles(const UninstallCommand& command);
 
   void flush(const Outbox& outbox);
   void wake();

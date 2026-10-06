@@ -4,7 +4,10 @@
 #include <grpc/grpc-server-identity.hxx>
 #include <settings/component-host.hxx>
 #include <settings/module-data-host.hxx>
+#include <settings/module-impact-host.hxx>
+#include <settings/module-request-host.hxx>
 #include <settings/owner-pin-host.hxx>
+#include <settings/role-reassign-host.hxx>
 #include <settings.grpc.pb.h>
 
 #include <string>
@@ -61,8 +64,21 @@ public:
                                            const argus::settings::v1::VerifyOwnerPinRequest* request,
                                            argus::settings::v1::VerifyOwnerPinResponse* response) override;
 
+  grpc::ServerUnaryReactor* ModuleImpact(grpc::CallbackServerContext* context,
+                                         const argus::settings::v1::ModuleImpactRequest* request,
+                                         argus::settings::v1::ModuleImpactResponse* response) override;
+  grpc::ServerUnaryReactor* ReassignRoles(grpc::CallbackServerContext* context,
+                                          const argus::settings::v1::ReassignRolesRequest* request,
+                                          argus::settings::v1::ReassignRolesResponse* response) override;
+  grpc::ServerUnaryReactor* RequestModule(grpc::CallbackServerContext* context,
+                                          const argus::settings::v1::RequestModuleRequest* request,
+                                          argus::settings::v1::RequestModuleResponse* response) override;
+
   void attachModuleData(ModuleDataHost& host);
   void attachOwnerPin(OwnerPinHost& host);
+  void attachModuleImpact(const ModuleImpactHost& host);
+  void attachRoleReassign(RoleReassignHost& host);
+  void attachModuleRequest(ModuleRequestHost& host);
 
 private:
   using ComponentAction = ComponentStatus (ComponentHost::*)(const ComponentSpec&);
@@ -78,4 +94,7 @@ private:
   ComponentHost* components_{nullptr};
   ModuleDataHost* moduleData_{nullptr};
   OwnerPinHost* ownerPin_{nullptr};
+  const ModuleImpactHost* moduleImpact_{nullptr};
+  RoleReassignHost* roleReassign_{nullptr};
+  ModuleRequestHost* moduleRequest_{nullptr};
 };

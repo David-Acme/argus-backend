@@ -255,6 +255,30 @@
         "identity",
         "sync"
       ],
+      "settingsOwners": [
+        "camera",
+        "guard",
+        "vlm"
+      ],
+      "effects": [
+        "live_views",
+        "camera_talk",
+        "camera_detection",
+        "guard_evaluation",
+        "guard_digests",
+        "guard_duty",
+        "pending_alerts",
+        "visitor_recognition"
+      ],
+      "keepsRunning": [
+        {
+          "id": "safety_alerts",
+          "text": {
+            "es": "Las alertas de pánico o coacción en curso seguirán hasta que alguien las atienda.",
+            "en": "Panic or duress alerts already raised keep going until someone attends them."
+          }
+        }
+      ],
       "hardware": {
         "minRamMb": 1536,
         "recommendedRamMb": 3072,
@@ -335,6 +359,9 @@
       "dataOwners": [
         "productivity",
         "sync"
+      ],
+      "effects": [
+        "agenda_calls"
       ],
       "hardware": {
         "minRamMb": 64,

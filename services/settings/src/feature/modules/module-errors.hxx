@@ -35,4 +35,17 @@ inline constexpr ErrorDefinition Unavailable{
 inline constexpr ErrorDefinition NotSettled{.code = ErrorCode::ServiceUnavailable,
                                             .status = 503,
                                             .message = "Modules are still being read from their services"};
+inline constexpr ErrorDefinition RolesHeld{.code = ErrorCode::ModuleRolesHeld,
+                                           .status = 409,
+                                           .message = "People hold roles of this module; give each a new role to uninstall it"};
+inline constexpr ErrorDefinition ReassignRefused{
+    .code = ErrorCode::Conflict, .status = 409, .message = "A role could not be reassigned"};
+inline constexpr ErrorDefinition RolesUnverifiable{.code = ErrorCode::ServiceUnavailable,
+                                                   .status = 503,
+                                                   .message = "Who holds the roles of this module cannot be checked right now"};
+inline constexpr ErrorDefinition OwnerRequest{
+    .code = ErrorCode::Conflict, .status = 409, .message = "The Owner turns modules on directly"};
+inline constexpr ErrorDefinition RequestUnavailable{.code = ErrorCode::ServiceUnavailable,
+                                                    .status = 503,
+                                                    .message = "The request cannot reach the Owner right now"};
 }

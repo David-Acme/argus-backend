@@ -461,3 +461,64 @@ TEST_CASE("the event payloads carry the kind, version, settled flag and either t
   CHECK(moduleEvent["module"]["job"].isNull());
   CHECK_FALSE(moduleEvent.isMember("modules"));
 }
+
+TEST_CASE("the shipped catalog names what each module stops, what keeps running and whose settings it hides")
+{
+  const auto loaded = loadModuleCatalog(ARGUS_SETTINGS_MODULES_FILE);
+  REQUIRE(loaded.has_value());
+  const auto catalog = loaded.value_or(ModuleCatalog{});
+  const auto* surveillance = catalog.module("surveillance");
+  REQUIRE(surveillance != nullptr);
+  CHECK(surveillance->effects.size() == 8);
+  CHECK(surveillance->effects[0] == "live_views");
+  REQUIRE(surveillance->keepsRunning.size() == 1);
+  CHECK(surveillance->keepsRunning[0].id == "safety_alerts");
+  CHECK(surveillance->keepsRunning[0].text.es.find("pánico o coacción") != std::string::npos);
+  CHECK(surveillance->keepsRunning[0].text.en.find("Panic or duress") != std::string::npos);
+  CHECK(surveillance->settingsOwners == std::vector<std::string>{"camera", "guard", "vlm"});
+  REQUIRE(catalog.module("productivity") != nullptr);
+  CHECK(catalog.module("productivity")->effects == std::vector<std::string>{"agenda_calls"});
+  REQUIRE(catalog.module("core") != nullptr);
+  CHECK(catalog.module("core")->keepsRunning.empty());
+}
+
+TEST_CASE("the catalog refuses an effect that is not a code, a repeated item, a settings owner that is unknown or shared")
+{
+  auto root = shipped();
+  root["modules"][1]["effects"].append("Live Views");
+  CHECK(problemOf(root).find("lowercase letters, digits and '_'") != std::string::npos);
+
+  root = shipped();
+  root["modules"][1]["effects"].append("live_views");
+  CHECK(problemOf(root).find("repeats live_views") != std::string::npos);
+
+  root = shipped();
+  root["modules"][1]["keepsRunning"].append(root["modules"][1]["keepsRunning"][0]);
+  CHECK(problemOf(root).find("repeats safety_alerts") != std::string::npos);
+
+  root = shipped();
+  root["modules"][1]["keepsRunning"][0]["text"].removeMember("en");
+  CHECK(problemOf(root).find("en") != std::string::npos);
+
+  root = shipped();
+  root["modules"][1]["settingsOwners"].append("billing");
+  CHECK(problemOf(root).find("billing is not a settings owner") != std::string::npos);
+
+  root = shipped();
+  root["modules"][2]["settingsOwners"].append("camera");
+  CHECK(problemOf(root).find("camera belongs to two modules") != std::string::npos);
+
+  root = shipped();
+  root["modules"][0]["settingsOwners"].append("llm");
+  CHECK(problemOf(root).find("core module hides no settings") != std::string::npos);
+
+  root = shipped();
+  root["modules"][1].removeMember("effects");
+  root["modules"][1].removeMember("keepsRunning");
+  root["modules"][1].removeMember("settingsOwners");
+  const auto parsed = parseModuleCatalog(root);
+  REQUIRE(parsed.catalog.has_value());
+  const auto stripped = parsed.catalog.value_or(ModuleCatalog{});
+  REQUIRE(stripped.module("surveillance") != nullptr);
+  CHECK(stripped.module("surveillance")->effects.empty());
+}

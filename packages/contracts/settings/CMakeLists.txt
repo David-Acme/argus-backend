@@ -13,7 +13,10 @@ argus_contracts(NAME settings
         src/settings/settings-errors.hxx
         src/settings/component-vocabulary.hxx
         src/settings/module-data-host.hxx
+        src/settings/module-impact-host.hxx
+        src/settings/module-request-host.hxx
         src/settings/owner-pin-host.hxx
+        src/settings/role-reassign-host.hxx
     DEPENDS argus::lib::errors)
 
 if(NOT COMMAND argus_response_rpc_contract)

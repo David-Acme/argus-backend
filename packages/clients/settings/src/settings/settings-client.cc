@@ -327,6 +327,42 @@ std::optional<PinVerdict> SettingsClient::verifyOwnerPin(std::int64_t userId, co
   return component_wire::verdictFrom(response.verdict());
 }
 
+std::optional<ModuleImpactReport> SettingsClient::moduleImpact(const std::string& moduleId) const
+{
+  grpc::ClientContext context;
+  impl_->prepare(context);
+  wire::ModuleImpactRequest request;
+  request.set_module_id(moduleId);
+  wire::ModuleImpactResponse response;
+  if (!implemented(impl_->stub->ModuleImpact(&context, request, &response)))
+    return std::nullopt;
+  return component_wire::impactFrom(response);
+}
+
+std::optional<RoleReassignmentOutcome> SettingsClient::reassignRoles(const RoleReassignmentBatch& batch) const
+{
+  grpc::ClientContext context;
+  impl_->prepare(context);
+  wire::ReassignRolesRequest request;
+  component_wire::fill(request, batch);
+  wire::ReassignRolesResponse response;
+  if (!implemented(impl_->stub->ReassignRoles(&context, request, &response)))
+    return std::nullopt;
+  return component_wire::outcomeFrom(response);
+}
+
+std::optional<ModuleRequestOutcome> SettingsClient::requestModule(const ModuleRequestInput& input) const
+{
+  grpc::ClientContext context;
+  impl_->prepare(context);
+  wire::RequestModuleRequest request;
+  component_wire::fill(request, input);
+  wire::RequestModuleResponse response;
+  if (!implemented(impl_->stub->RequestModule(&context, request, &response)))
+    return std::nullopt;
+  return ModuleRequestOutcome{.notified = response.notified(), .duplicate = response.duplicate()};
+}
+
 struct ModulesClient::Impl
 {
   SettingsClientConfig config;

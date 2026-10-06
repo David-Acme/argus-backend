@@ -3,6 +3,7 @@
 
 #include <drogon/orm/DbClient.h>
 #include <errors/response-exception.hxx>
+#include <errors/validation-exception.hxx>
 #include <feature/modules/infra/module-catalog-file.hxx>
 #include <feature/modules/services/module-engine.hxx>
 #include <feature/modules/services/module-journal.hxx>
@@ -27,6 +28,12 @@ namespace fs = std::filesystem;
 constexpr const char* kSha = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 constexpr const char* kRevision = "1abed04b6fe71314d8c446a1371c03d7c332266d";
 
+struct ImpactState
+{
+  OwnerReach reach{OwnerReach::Answered};
+  ModuleImpactReport report;
+};
+
 struct OwnerState
 {
   OwnerReach reach{OwnerReach::Answered};
@@ -43,6 +50,11 @@ public:
   std::map<std::string, OwnerState> owners;
   mutable std::vector<std::string> calls;
   OwnerReply<PinVerdict> pin{.reach = OwnerReach::Unsupported, .value = std::nullopt};
+  std::map<std::string, ImpactState> impacts;
+  OwnerReply<RoleReassignmentOutcome> reassignReply{.reach = OwnerReach::Unsupported, .value = std::nullopt};
+  OwnerReply<ModuleRequestOutcome> requestReply{.reach = OwnerReach::Unsupported, .value = std::nullopt};
+  mutable RoleReassignmentBatch lastBatch;
+  mutable ModuleRequestInput lastRequest;
 
   void set(const std::string& owner, const ComponentStatus& status)
   {
@@ -152,6 +164,39 @@ public:
     calls.push_back("pin:" + owner + ":" + check.pin);
     return pin;
   }
+
+  [[nodiscard]] OwnerReply<ModuleImpactReport> impact(const std::string& owner, const std::string& moduleId) const override
+  {
+    const std::scoped_lock lock(mutex);
+    calls.push_back("impact:" + owner + ":" + moduleId);
+    const auto found = impacts.find(owner);
+    if (found == impacts.end())
+      return {.reach = OwnerReach::Unsupported, .value = std::nullopt};
+    if (found->second.reach != OwnerReach::Answered)
+      return {.reach = found->second.reach, .value = std::nullopt};
+    return {.reach = OwnerReach::Answered, .value = found->second.report};
+  }
+
+  [[nodiscard]] OwnerReply<RoleReassignmentOutcome> reassignRoles(const std::string& owner,
+                                                                  const RoleReassignmentBatch& batch) const override
+  {
+    const std::scoped_lock lock(mutex);
+    std::string text = "reassign:" + owner + ":" + std::to_string(batch.actorUserId);
+    for (const auto& entry : batch.reassignments)
+      text += ":" + std::to_string(entry.userId) + "=" + entry.role;
+    calls.push_back(text);
+    lastBatch = batch;
+    return reassignReply;
+  }
+
+  [[nodiscard]] OwnerReply<ModuleRequestOutcome> requestModule(const std::string& owner,
+                                                               const ModuleRequestInput& input) const override
+  {
+    const std::scoped_lock lock(mutex);
+    calls.push_back("request:" + owner + ":" + input.moduleId + ":" + std::to_string(input.userId));
+    lastRequest = input;
+    return requestReply;
+  }
 };
 
 class ActionSink final : public ModuleActionSink
@@ -260,6 +305,16 @@ ModuleCatalog testCatalog()
   auto surveillance = module({.id = "surveillance", .kind = "available", .required = {"core"}, .components = {"detector", "vision"}});
   surveillance["dataOwners"].append("camera");
   surveillance["dataOwners"].append("guard");
+  surveillance["roles"].append("guard");
+  surveillance["settingsOwners"].append("camera");
+  surveillance["settingsOwners"].append("guard");
+  for (const auto* effect : {"live_views", "camera_talk", "guard_duty", "pending_alerts"})
+    surveillance["effects"].append(effect);
+  Json::Value safety(Json::objectValue);
+  safety["id"] = "safety_alerts";
+  safety["text"]["es"] = "Las alertas de pánico seguirán.";
+  safety["text"]["en"] = "Panic alerts keep going.";
+  surveillance["keepsRunning"].append(safety);
   root["modules"].append(surveillance);
   root["modules"].append(module({.id = "productivity", .kind = "available", .required = {"core"}, .components = {}}));
   root["modules"].append(module({.id = "insights", .kind = "available", .required = {"surveillance"}, .components = {"insight"}}));
@@ -907,4 +962,275 @@ TEST_CASE("the engine's module actions reach the activity journal with who did t
     return record.event.newData["event"].asString() == "adopted";
   });
   CHECK(adopted > 0);
+}
+
+namespace
+{
+ImpactRoleHolder holder(std::int64_t id, const std::string& role)
+{
+  return {.userId = id, .name = "Gus" + std::to_string(id), .lastName = "", .role = role, .isActive = true};
+}
+
+std::string refusalCode(const ModuleImpactView& view)
+{
+  return view.refusal ? std::string(view.refusal->wireCode()) : std::string();
+}
+
+void surveillanceOn(Harness& harness)
+{
+  harness.owners.set("vlm", installed("vision"));
+  harness.step();
+  REQUIRE(harness.enabled("surveillance"));
+}
+
+void describeImpact(Harness& harness)
+{
+  harness.owners.impacts["identity"] = {.reach = OwnerReach::Answered,
+                                        .report = {.stops = {},
+                                                   .roleHolders = {holder(7, "guard"), holder(8, "guard")},
+                                                   .invitations = {{.id = 3,
+                                                                    .role = "guard",
+                                                                    .createdBy = 1,
+                                                                    .createdByName = "Olga",
+                                                                    .expiresAt = 5000}}}};
+  harness.owners.impacts["guard"] = {.reach = OwnerReach::Answered,
+                                     .report = {.stops = {{.kind = "pending_alerts", .count = 3}, {.kind = "guard_duty", .count = 1}},
+                                                .roleHolders = {},
+                                                .invitations = {}}};
+  harness.owners.impacts["camera"] = {.reach = OwnerReach::Answered,
+                                      .report = {.stops = {{.kind = "camera_talk", .count = 2}},
+                                                 .roleHolders = {},
+                                                 .invitations = {}}};
+}
+}
+
+TEST_CASE("the impact of a module lists what stops, who holds its role, its invitations and what keeps running")
+{
+  Harness harness;
+  surveillanceOn(harness);
+  describeImpact(harness);
+
+  const auto disable = harness.engine->impact({.moduleId = "surveillance", .action = ImpactAction::Disable});
+  CHECK_FALSE(disable.refusal.has_value());
+  REQUIRE(disable.stops.size() == 4);
+  CHECK(disable.stops[0].kind == "live_views");
+  CHECK_FALSE(disable.stops[0].count.has_value());
+  CHECK(disable.stops[1].kind == "camera_talk");
+  CHECK(disable.stops[1].count == 2);
+  CHECK(disable.stops[2].kind == "guard_duty");
+  CHECK(disable.stops[2].count == 1);
+  CHECK(disable.stops[3].kind == "pending_alerts");
+  CHECK(disable.stops[3].count == 3);
+  REQUIRE(disable.roleHolders.size() == 2);
+  CHECK(disable.roleHolders[0].userId == 7);
+  CHECK(disable.roleEffect == "inactive");
+  CHECK(disable.reassignRoles.empty());
+  REQUIRE(disable.invitations.size() == 1);
+  CHECK(disable.invitations[0].createdByName == "Olga");
+  REQUIRE(disable.keepsRunning.size() == 1);
+  CHECK(disable.keepsRunning[0].id == "safety_alerts");
+  CHECK(disable.keepsRunning[0].text.es == "Las alertas de pánico seguirán.");
+  CHECK(disable.filesBytes == 2000);
+  CHECK(disable.data.size() == 2);
+  CHECK(disable.unreachable.empty());
+
+  const auto uninstall = harness.engine->impact({.moduleId = "surveillance", .action = ImpactAction::Uninstall});
+  CHECK(uninstall.roleEffect == "reassign_required");
+  CHECK(uninstall.reassignRoles == std::vector<std::string>{"resident", "guest"});
+
+  harness.owners.impacts["identity"].report.roleHolders.clear();
+  CHECK(harness.engine->impact({.moduleId = "surveillance", .action = ImpactAction::Uninstall}).roleEffect == "none");
+  CHECK(harness.engine->impact({.moduleId = "productivity", .action = ImpactAction::Disable}).stops.empty());
+}
+
+TEST_CASE("the impact refuses what the action would refuse and names the owner that did not answer")
+{
+  Harness harness;
+  surveillanceOn(harness);
+  describeImpact(harness);
+
+  const auto core = harness.engine->impact({.moduleId = "core", .action = ImpactAction::Disable});
+  REQUIRE(core.refusal.has_value());
+  CHECK(refusalCode(core) == "MODULE_CORE");
+
+  harness.owners.set("llm", installed("insight"));
+  static_cast<void>(harness.engine->install({.moduleId = "insights", .userId = 1}));
+  harness.step();
+  REQUIRE(harness.enabled("insights"));
+  const auto required = harness.engine->impact({.moduleId = "surveillance", .action = ImpactAction::Uninstall});
+  REQUIRE(required.refusal.has_value());
+  CHECK(refusalCode(required) == "MODULE_REQUIRED_BY");
+
+  CHECK(statusOf([&] { static_cast<void>(harness.engine->impact({.moduleId = "ghost", .action = ImpactAction::Disable})); }) == 404);
+
+  harness.owners.impacts["identity"].reach = OwnerReach::Unreachable;
+  const auto blind = harness.engine->impact({.moduleId = "surveillance", .action = ImpactAction::Disable});
+  CHECK(blind.unreachable == std::vector<std::string>{"identity"});
+  CHECK(blind.roleHolders.empty());
+}
+
+TEST_CASE("uninstalling a module whose role people hold is refused with the holders unless each gets a role of an active module")
+{
+  Harness harness;
+  surveillanceOn(harness);
+  describeImpact(harness);
+  harness.owners.reassignReply = {.reach = OwnerReach::Answered,
+                                  .value = RoleReassignmentOutcome{.status = ReassignStatus::Applied,
+                                                                   .applied = 2,
+                                                                   .failedUserId = 0,
+                                                                   .reason = {}}};
+  const auto uninstall = [&](std::vector<RoleReassignment> reassign) {
+    return harness.engine->uninstall(
+        {.moduleId = "surveillance", .userId = 1, .keepData = true, .pin = {}, .reassign = std::move(reassign)});
+  };
+
+  try {
+    static_cast<void>(uninstall({}));
+    FAIL("the uninstall must be refused while two people hold the guard role");
+  }
+  catch (const ResponseException& error) {
+    CHECK(error.statusCode() == 409);
+    CHECK(error.errorCode() == "MODULE_ROLES_HELD");
+    const auto* list = std::get_if<std::vector<ResponseError>>(&error.errors());
+    REQUIRE(list != nullptr);
+    REQUIRE(list->size() == 3);
+    CHECK((*list)[1].code == "ROLE_HOLDER");
+    CHECK((*list)[1].message == "7:guard");
+    CHECK((*list)[2].message == "8:guard");
+  }
+  CHECK(harness.enabled("surveillance"));
+  CHECK_FALSE(harness.view("surveillance").job.has_value());
+  CHECK(harness.owners.callsOf("reassign:").empty());
+
+  CHECK(codeOf([&] { static_cast<void>(uninstall({{.userId = 7, .role = "resident"}})); }) == "MODULE_ROLES_HELD");
+  CHECK_THROWS_AS(static_cast<void>(uninstall({{.userId = 7, .role = "guard"}, {.userId = 8, .role = "resident"}})),
+                  ValidationException);
+  CHECK(harness.owners.callsOf("reassign:").empty());
+
+  harness.owners.reassignReply = {.reach = OwnerReach::Answered,
+                                  .value = RoleReassignmentOutcome{.status = ReassignStatus::Refused,
+                                                                   .applied = 1,
+                                                                   .failedUserId = 8,
+                                                                   .reason = "user_inactive"}};
+  CHECK(codeOf([&] { static_cast<void>(uninstall({{.userId = 7, .role = "resident"}, {.userId = 8, .role = "guest"}})); }) ==
+        "CONFLICT");
+  CHECK_FALSE(harness.view("surveillance").job.has_value());
+
+  harness.owners.reassignReply = {.reach = OwnerReach::Unreachable, .value = std::nullopt};
+  CHECK(statusOf([&] { static_cast<void>(uninstall({{.userId = 7, .role = "resident"}, {.userId = 8, .role = "guest"}})); }) ==
+        503);
+  CHECK_FALSE(harness.view("surveillance").job.has_value());
+
+  harness.owners.reassignReply = {.reach = OwnerReach::Answered,
+                                  .value = RoleReassignmentOutcome{.status = ReassignStatus::Applied,
+                                                                   .applied = 2,
+                                                                   .failedUserId = 0,
+                                                                   .reason = {}}};
+  const auto job = uninstall({{.userId = 7, .role = "resident"}, {.userId = 8, .role = "guest"}, {.userId = 99, .role = "guest"}});
+  CHECK(job.job.kind == JobKind::Uninstall);
+  CHECK(harness.owners.lastBatch.actorUserId == 1);
+  REQUIRE(harness.owners.lastBatch.reassignments.size() == 2);
+  CHECK(harness.owners.lastBatch.reassignments[0].userId == 7);
+  CHECK(harness.owners.lastBatch.reassignments[0].role == "resident");
+  CHECK(harness.owners.lastBatch.reassignments[1].role == "guest");
+}
+
+TEST_CASE("a wrong PIN is refused before any role is reassigned, and a module nobody holds a role of needs no reassignment")
+{
+  Harness harness;
+  surveillanceOn(harness);
+  describeImpact(harness);
+  harness.owners.pin = {.reach = OwnerReach::Answered, .value = PinVerdict::Invalid};
+  CHECK(codeOf([&] {
+          static_cast<void>(harness.engine->uninstall({.moduleId = "surveillance",
+                                                       .userId = 1,
+                                                       .keepData = false,
+                                                       .pin = "0000",
+                                                       .reassign = {{.userId = 7, .role = "resident"}, {.userId = 8, .role = "guest"}}}));
+        }) == "PIN_INVALID");
+  CHECK(harness.owners.callsOf("reassign:").empty());
+
+  harness.owners.impacts["identity"].report.roleHolders.clear();
+  harness.owners.pin = {.reach = OwnerReach::Answered, .value = PinVerdict::Accepted};
+  const auto job = harness.engine->uninstall(
+      {.moduleId = "surveillance", .userId = 1, .keepData = false, .pin = "2468"});
+  CHECK(job.job.kind == JobKind::Purge);
+  CHECK(harness.owners.callsOf("reassign:").empty());
+}
+
+TEST_CASE("an identity that cannot be asked blocks the uninstall of a role-bearing module instead of guessing")
+{
+  Harness harness;
+  surveillanceOn(harness);
+  harness.owners.impacts["identity"] = {.reach = OwnerReach::Unreachable, .report = {}};
+  CHECK(statusOf([&] {
+          static_cast<void>(harness.engine->uninstall({.moduleId = "surveillance", .userId = 1, .keepData = true, .pin = {}}));
+        }) == 503);
+  CHECK(harness.enabled("surveillance"));
+}
+
+TEST_CASE("a request names the module to the notification owner and refuses what needs none")
+{
+  Harness harness;
+  harness.step();
+  harness.owners.requestReply = {.reach = OwnerReach::Answered,
+                                 .value = ModuleRequestOutcome{.notified = 1, .duplicate = false}};
+  const auto ask = [&](UserRole role, const std::string& id = "insights") {
+    return harness.engine->request({.moduleId = id, .userId = 5, .role = role});
+  };
+
+  const auto first = ask(UserRole::Resident);
+  CHECK(first.moduleId == "insights");
+  CHECK_FALSE(first.duplicate);
+  CHECK(harness.owners.lastRequest.userId == 5);
+  CHECK(harness.owners.lastRequest.moduleName.en == "insights");
+  CHECK(harness.owners.lastRequest.day.size() == 10);
+  CHECK(harness.owners.lastRequest.day[4] == '-');
+  CHECK(harness.owners.callsOf("request:notification:insights:5").size() == 1);
+
+  harness.owners.requestReply = {.reach = OwnerReach::Answered,
+                                 .value = ModuleRequestOutcome{.notified = 0, .duplicate = true}};
+  CHECK(ask(UserRole::Guard).duplicate);
+
+  CHECK(codeOf([&] { static_cast<void>(ask(UserRole::Owner)); }) == "CONFLICT");
+  CHECK(codeOf([&] { static_cast<void>(ask(UserRole::Resident, "core")); }) == "CONFLICT");
+  CHECK(codeOf([&] { static_cast<void>(ask(UserRole::Resident, "agronomy")); }) == "MODULE_COMING_SOON");
+  CHECK(statusOf([&] { static_cast<void>(ask(UserRole::Resident, "ghost")); }) == 404);
+
+  harness.owners.requestReply = {.reach = OwnerReach::Unreachable, .value = std::nullopt};
+  CHECK(statusOf([&] { static_cast<void>(ask(UserRole::Resident)); }) == 503);
+  harness.owners.requestReply = {.reach = OwnerReach::Unsupported, .value = std::nullopt};
+  CHECK(statusOf([&] { static_cast<void>(ask(UserRole::Resident)); }) == 503);
+
+  harness.owners.requestReply = {.reach = OwnerReach::Answered,
+                                 .value = ModuleRequestOutcome{.notified = 1, .duplicate = false}};
+  harness.owners.set("llm", installed("insight"));
+  harness.owners.set("vlm", installed("vision"));
+  harness.step();
+  static_cast<void>(harness.engine->install({.moduleId = "insights", .userId = 1}));
+  CHECK(codeOf([&] { static_cast<void>(ask(UserRole::Resident)); }) == "MODULE_JOB_RUNNING");
+}
+
+TEST_CASE("the settings of the owners a module brings are visible only while the module is on")
+{
+  Harness harness;
+  harness.owners.set("vlm", installed("vision"));
+  harness.step();
+  REQUIRE(harness.enabled("surveillance"));
+  CHECK(harness.engine->settingsOwnerVisible("camera"));
+  CHECK(harness.engine->settingsOwnerVisible("guard"));
+  CHECK(harness.engine->settingsOwnerVisible("llm"));
+
+  static_cast<void>(harness.engine->disable({.moduleId = "surveillance", .userId = 1}));
+  CHECK_FALSE(harness.engine->settingsOwnerVisible("camera"));
+  CHECK_FALSE(harness.engine->settingsOwnerVisible("guard"));
+  CHECK(harness.engine->settingsOwnerVisible("llm"));
+  CHECK(harness.engine->settingsOwnerVisible("tts"));
+
+  harness.step();
+  harness.owners.set("vlm", installed("vision"));
+  static_cast<void>(harness.engine->install({.moduleId = "surveillance", .userId = 1}));
+  harness.step(3);
+  CHECK(harness.enabled("surveillance"));
+  CHECK(harness.engine->settingsOwnerVisible("camera"));
 }

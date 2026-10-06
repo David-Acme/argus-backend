@@ -17,4 +17,15 @@ void fill(argus::settings::v1::ComponentStatus& wire, const ComponentStatus& sta
 [[nodiscard]] argus::settings::v1::PinVerdict verdictOf(PinVerdict verdict);
 [[nodiscard]] PinVerdict verdictFrom(argus::settings::v1::PinVerdict verdict);
 [[nodiscard]] ComponentStatus statusFrom(const argus::settings::v1::ComponentStatus& wire);
+
+void fill(argus::settings::v1::ModuleImpactResponse& wire, const ModuleImpactReport& report);
+[[nodiscard]] ModuleImpactReport impactFrom(const argus::settings::v1::ModuleImpactResponse& wire);
+
+void fill(argus::settings::v1::ReassignRolesRequest& wire, const RoleReassignmentBatch& batch);
+[[nodiscard]] RoleReassignmentBatch batchFrom(const argus::settings::v1::ReassignRolesRequest& wire);
+void fill(argus::settings::v1::ReassignRolesResponse& wire, const RoleReassignmentOutcome& outcome);
+[[nodiscard]] RoleReassignmentOutcome outcomeFrom(const argus::settings::v1::ReassignRolesResponse& wire);
+
+void fill(argus::settings::v1::RequestModuleRequest& wire, const ModuleRequestInput& input);
+[[nodiscard]] ModuleRequestInput requestFrom(const argus::settings::v1::RequestModuleRequest& wire);
 }

@@ -164,6 +164,72 @@ struct ModuleDataSummary
   }
 };
 
+struct ImpactRoleHolder
+{
+  std::int64_t userId{0};
+  std::string name;
+  std::string lastName;
+  std::string role;
+  bool isActive{true};
+};
+
+struct PendingInvitation
+{
+  std::int64_t id{0};
+  std::string role;
+  std::int64_t createdBy{0};
+  std::string createdByName;
+  std::int64_t expiresAt{0};
+};
+
+struct ModuleImpactReport
+{
+  std::vector<ModuleDataItem> stops;
+  std::vector<ImpactRoleHolder> roleHolders;
+  std::vector<PendingInvitation> invitations;
+};
+
+struct RoleReassignment
+{
+  std::int64_t userId{0};
+  std::string role;
+};
+
+struct RoleReassignmentBatch
+{
+  std::int64_t actorUserId{0};
+  std::vector<RoleReassignment> reassignments;
+};
+
+enum class ReassignStatus : std::uint8_t
+{
+  Applied,
+  Refused,
+  Failed
+};
+
+struct RoleReassignmentOutcome
+{
+  ReassignStatus status{ReassignStatus::Failed};
+  std::int32_t applied{0};
+  std::int64_t failedUserId{0};
+  std::string reason;
+};
+
+struct ModuleRequestInput
+{
+  std::string moduleId;
+  ModuleLocalized moduleName;
+  std::int64_t userId{0};
+  std::string day;
+};
+
+struct ModuleRequestOutcome
+{
+  std::int32_t notified{0};
+  bool duplicate{false};
+};
+
 struct ModuleDataPurge
 {
   bool purged{false};

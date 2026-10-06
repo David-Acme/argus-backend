@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <config/config-service.hxx>
+#include <settings/component-wire.hxx>
 #include <settings/settings-rpc.hxx>
 
 #include <grpcpp/grpcpp.h>
@@ -236,5 +237,174 @@ TEST_CASE("an owner whose data or PIN host fails answers UNAVAILABLE instead of 
   authorize(pinContext, kSecret);
   wire::VerifyOwnerPinResponse verdict;
   CHECK(harness.stub->VerifyOwnerPin(&pinContext, pinRequest, &verdict).error_code() == grpc::StatusCode::UNAVAILABLE);
+  std::remove(path.c_str());
+}
+
+namespace
+{
+class FixedImpact final : public ModuleImpactHost
+{
+public:
+  [[nodiscard]] ModuleImpactReport impact(const std::string& moduleId) const override
+  {
+    if (moduleId == "broken")
+      throw std::runtime_error("the owner's database is not open");
+    return {.stops = {{.kind = "pending_alerts", .count = 3}},
+            .roleHolders = {{.userId = 7, .name = "Gus", .lastName = "Vela", .role = "guard", .isActive = true}},
+            .invitations = {{.id = 9, .role = "guard", .createdBy = 1, .createdByName = "Olga", .expiresAt = 1700}}};
+  }
+};
+
+class RecordingReassign final : public RoleReassignHost
+{
+public:
+  RoleReassignmentOutcome reassign(const RoleReassignmentBatch& batch) override
+  {
+    seen = batch;
+    if (batch.reassignments.size() > 1)
+      return {.status = ReassignStatus::Refused, .applied = 1, .failedUserId = batch.reassignments[1].userId, .reason = "owner_required"};
+    return {.status = ReassignStatus::Applied, .applied = 1, .failedUserId = 0, .reason = {}};
+  }
+
+  RoleReassignmentBatch seen;
+};
+
+class RecordingRequest final : public ModuleRequestHost
+{
+public:
+  ModuleRequestOutcome request(const ModuleRequestInput& input) override
+  {
+    seen = input;
+    return {.notified = 2, .duplicate = input.day == "2026-10-06-again"};
+  }
+
+  ModuleRequestInput seen;
+};
+}
+
+TEST_CASE("an owner without the impact, reassign and request hosts answers UNIMPLEMENTED")
+{
+  const std::string path = "/tmp/settings-contract-rpc.toml";
+  std::ofstream(path) << "[tts]\nspeed = 1.0\n";
+  ConfigService::load(path);
+  Harness harness;
+
+  wire::ModuleImpactRequest impactRequest;
+  impactRequest.set_module_id("surveillance");
+  grpc::ClientContext impactContext;
+  authorize(impactContext, kSecret);
+  wire::ModuleImpactResponse impact;
+  CHECK(harness.stub->ModuleImpact(&impactContext, impactRequest, &impact).error_code() ==
+        grpc::StatusCode::UNIMPLEMENTED);
+
+  wire::ReassignRolesRequest reassignRequest;
+  reassignRequest.set_actor_user_id(1);
+  reassignRequest.add_reassignments()->set_user_id(7);
+  grpc::ClientContext reassignContext;
+  authorize(reassignContext, kSecret);
+  wire::ReassignRolesResponse reassigned;
+  CHECK(harness.stub->ReassignRoles(&reassignContext, reassignRequest, &reassigned).error_code() ==
+        grpc::StatusCode::UNIMPLEMENTED);
+
+  wire::RequestModuleRequest moduleRequest;
+  moduleRequest.set_module_id("surveillance");
+  moduleRequest.set_user_id(7);
+  moduleRequest.set_day("2026-10-06");
+  grpc::ClientContext requestContext;
+  authorize(requestContext, kSecret);
+  wire::RequestModuleResponse requested;
+  CHECK(harness.stub->RequestModule(&requestContext, moduleRequest, &requested).error_code() ==
+        grpc::StatusCode::UNIMPLEMENTED);
+
+  grpc::ClientContext anonymous;
+  CHECK(harness.stub->ModuleImpact(&anonymous, impactRequest, &impact).error_code() ==
+        grpc::StatusCode::UNAUTHENTICATED);
+  std::remove(path.c_str());
+}
+
+TEST_CASE("the impact, reassign and request answers cross the wire intact, and a failing host answers UNAVAILABLE")
+{
+  const std::string path = "/tmp/settings-contract-rpc.toml";
+  std::ofstream(path) << "[tts]\nspeed = 1.0\n";
+  ConfigService::load(path);
+  Harness harness;
+  const FixedImpact impactHost;
+  RecordingReassign reassignHost;
+  RecordingRequest requestHost;
+  harness.service.attachModuleImpact(impactHost);
+  harness.service.attachRoleReassign(reassignHost);
+  harness.service.attachModuleRequest(requestHost);
+
+  wire::ModuleImpactRequest impactRequest;
+  impactRequest.set_module_id("surveillance");
+  grpc::ClientContext impactContext;
+  authorize(impactContext, kSecret);
+  wire::ModuleImpactResponse impact;
+  REQUIRE(harness.stub->ModuleImpact(&impactContext, impactRequest, &impact).ok());
+  const auto report = component_wire::impactFrom(impact);
+  REQUIRE(report.stops.size() == 1);
+  CHECK(report.stops[0].kind == "pending_alerts");
+  CHECK(report.stops[0].count == 3);
+  REQUIRE(report.roleHolders.size() == 1);
+  CHECK(report.roleHolders[0].userId == 7);
+  CHECK(report.roleHolders[0].role == "guard");
+  CHECK(report.roleHolders[0].lastName == "Vela");
+  REQUIRE(report.invitations.size() == 1);
+  CHECK(report.invitations[0].createdByName == "Olga");
+  CHECK(report.invitations[0].expiresAt == 1700);
+
+  impactRequest.set_module_id("broken");
+  grpc::ClientContext brokenContext;
+  authorize(brokenContext, kSecret);
+  CHECK(harness.stub->ModuleImpact(&brokenContext, impactRequest, &impact).error_code() ==
+        grpc::StatusCode::UNAVAILABLE);
+
+  wire::ReassignRolesRequest reassignRequest;
+  component_wire::fill(reassignRequest, {.actorUserId = 1, .reassignments = {{.userId = 7, .role = "resident"}}});
+  grpc::ClientContext reassignContext;
+  authorize(reassignContext, kSecret);
+  wire::ReassignRolesResponse reassigned;
+  REQUIRE(harness.stub->ReassignRoles(&reassignContext, reassignRequest, &reassigned).ok());
+  CHECK(component_wire::outcomeFrom(reassigned).status == ReassignStatus::Applied);
+  CHECK(reassignHost.seen.actorUserId == 1);
+  REQUIRE(reassignHost.seen.reassignments.size() == 1);
+  CHECK(reassignHost.seen.reassignments[0].role == "resident");
+
+  wire::ReassignRolesRequest pair;
+  component_wire::fill(pair, {.actorUserId = 1,
+                              .reassignments = {{.userId = 7, .role = "resident"}, {.userId = 8, .role = "guest"}}});
+  grpc::ClientContext refusedContext;
+  authorize(refusedContext, kSecret);
+  REQUIRE(harness.stub->ReassignRoles(&refusedContext, pair, &reassigned).ok());
+  const auto refused = component_wire::outcomeFrom(reassigned);
+  CHECK(refused.status == ReassignStatus::Refused);
+  CHECK(refused.failedUserId == 8);
+  CHECK(refused.reason == "owner_required");
+
+  wire::ReassignRolesRequest empty;
+  empty.set_actor_user_id(1);
+  grpc::ClientContext emptyContext;
+  authorize(emptyContext, kSecret);
+  CHECK(harness.stub->ReassignRoles(&emptyContext, empty, &reassigned).error_code() != grpc::StatusCode::OK);
+
+  wire::RequestModuleRequest moduleRequest;
+  component_wire::fill(moduleRequest, {.moduleId = "surveillance",
+                                        .moduleName = {.es = "Vigilancia", .en = "Surveillance"},
+                                        .userId = 7,
+                                        .day = "2026-10-06-again"});
+  grpc::ClientContext requestContext;
+  authorize(requestContext, kSecret);
+  wire::RequestModuleResponse requested;
+  REQUIRE(harness.stub->RequestModule(&requestContext, moduleRequest, &requested).ok());
+  CHECK(requested.notified() == 2);
+  CHECK(requested.duplicate());
+  CHECK(requestHost.seen.moduleName.en == "Surveillance");
+  CHECK(requestHost.seen.userId == 7);
+
+  moduleRequest.set_user_id(0);
+  grpc::ClientContext invalidContext;
+  authorize(invalidContext, kSecret);
+  CHECK(harness.stub->RequestModule(&invalidContext, moduleRequest, &requested).error_code() !=
+        grpc::StatusCode::OK);
   std::remove(path.c_str());
 }

@@ -1,10 +1,13 @@
 argus_module(NAME settings-modules
     SOURCES
         controllers/modules-controller.cc
+        dtos/impact-module-dto.cc
         dtos/module-json.cc
         dtos/response-list-modules-dto.cc
         dtos/response-module-data-dto.cc
         dtos/response-module-dto.cc
+        dtos/response-module-impact-dto.cc
+        dtos/response-module-request-dto.cc
         dtos/uninstall-module-dto.cc
         infra/component-owners.cc
         infra/host-resources.cc
@@ -18,6 +21,7 @@ argus_module(NAME settings-modules
         repositories/module-state/module-state-repository.cc
         services/hardware-check.cc
         services/module-engine.cc
+        services/module-engine-impact.cc
         services/module-event-throttle.cc
         services/module-journal.cc
         services/module-resolver.cc

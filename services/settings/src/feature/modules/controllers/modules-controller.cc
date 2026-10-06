@@ -3,9 +3,12 @@
 #include <auth/jwt-filter.hxx>
 #include <auth/request-context.hxx>
 #include <errors/response-exception.hxx>
+#include <feature/modules/dtos/impact-module-dto.hxx>
 #include <feature/modules/dtos/response-list-modules-dto.hxx>
 #include <feature/modules/dtos/response-module-data-dto.hxx>
 #include <feature/modules/dtos/response-module-dto.hxx>
+#include <feature/modules/dtos/response-module-impact-dto.hxx>
+#include <feature/modules/dtos/response-module-request-dto.hxx>
 #include <feature/modules/dtos/uninstall-module-dto.hxx>
 #include <feature/modules/module-errors.hxx>
 #include <http/api-response.hxx>
@@ -80,8 +83,11 @@ drogon::Task<drogon::HttpResponsePtr> ModulesController::uninstall(drogon::HttpR
 {
   auto body = UninstallModuleDto::fromJson(*req->getJsonObject());
   const auto& jwt = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
-  const auto job = co_await engine().uninstallAsync(
-      {.moduleId = std::move(id), .userId = jwt.sub, .keepData = body.keepData, .pin = std::move(body.pin)});
+  const auto job = co_await engine().uninstallAsync({.moduleId = std::move(id),
+                                                     .userId = jwt.sub,
+                                                     .keepData = body.keepData,
+                                                     .pin = std::move(body.pin),
+                                                     .reassign = std::move(body.reassign)});
   co_return ApiResponse::accepted(ResponseModuleJobDto{.job = job}.toJson());
 }
 
@@ -89,4 +95,18 @@ drogon::Task<drogon::HttpResponsePtr> ModulesController::data(drogon::HttpReques
 {
   auto owners = co_await engine().moduleDataAsync(std::move(id));
   co_return ApiResponse::ok(ResponseModuleDataDto{.owners = std::move(owners)}.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr> ModulesController::impact(drogon::HttpRequestPtr req, std::string id)
+{
+  const auto query = ImpactModuleDto::fromAction(req->getParameter("action"));
+  auto view = co_await engine().impactAsync({.moduleId = std::move(id), .action = query.impactAction});
+  co_return ApiResponse::ok(ResponseModuleImpactDto{.impact = std::move(view)}.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr> ModulesController::requestModule(drogon::HttpRequestPtr req, std::string id)
+{
+  const auto& jwt = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  auto view = co_await engine().requestAsync({.moduleId = std::move(id), .userId = jwt.sub, .role = jwt.role});
+  co_return ApiResponse::ok(ResponseModuleRequestDto{.request = std::move(view)}.toJson());
 }

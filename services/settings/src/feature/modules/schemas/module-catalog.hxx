@@ -52,6 +52,12 @@ struct GettingStartedItem
   std::string route;
 };
 
+struct KeepsRunningItem
+{
+  std::string id;
+  LocalizedText text;
+};
+
 struct CatalogComponent
 {
   ComponentSpec spec;
@@ -82,6 +88,9 @@ struct CatalogModule
   std::vector<GettingStartedItem> gettingStarted;
   std::vector<std::string> roles;
   ModuleIntroLocalized intro;
+  std::vector<std::string> effects{};
+  std::vector<KeepsRunningItem> keepsRunning{};
+  std::vector<std::string> settingsOwners{};
 };
 
 struct ModuleCatalog

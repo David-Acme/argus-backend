@@ -4,7 +4,9 @@
 #include <app/rpc/modules-rpc-service.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/module-gate.hxx>
+#include <errors/validation-exception.hxx>
 #include <feature/modules/dtos/module-json.hxx>
+#include <feature/modules/dtos/uninstall-module-dto.hxx>
 #include <feature/modules/infra/module-event-sink.hxx>
 #include <text/json-util.hxx>
 #include <auth/request-context.hxx>
@@ -47,6 +49,13 @@ public:
   {
     return {.reach = OwnerReach::Unsupported, .value = std::nullopt};
   }
+  [[nodiscard]] OwnerReply<ModuleRequestOutcome> requestModule(const std::string&,
+                                                               const ModuleRequestInput&) const override
+  {
+    return requestReply;
+  }
+
+  OwnerReply<ModuleRequestOutcome> requestReply{.reach = OwnerReach::Unsupported, .value = std::nullopt};
 };
 
 ModuleCatalog shippedCatalog()
@@ -179,6 +188,13 @@ TEST_CASE("only the owner reaches the module actions; every role reads the list"
   for (const auto role : {UserRole::Resident, UserRole::Guard, UserRole::Guest})
     CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/modules/surveillance/data", .method = drogon::Get}));
   CHECK(role_access::hasHttpAccess({.role = UserRole::Owner, .path = "/modules/surveillance/uninstall", .method = drogon::Post}));
+
+  CHECK(role_access::hasHttpAccess({.role = UserRole::Owner, .path = "/modules/surveillance/impact", .method = drogon::Get}));
+  for (const auto role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/modules/surveillance/impact", .method = drogon::Get}));
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/modules/surveillance/request", .method = drogon::Post}));
+  }
+  CHECK(role_access::hasHttpAccess({.role = UserRole::Owner, .path = "/modules/surveillance/request", .method = drogon::Post}));
 }
 
 TEST_CASE("the ModuleStates RPC serves the enabled set to a paired caller and refuses a stranger")
@@ -275,4 +291,142 @@ TEST_CASE("the enabled-set event is read back by every service's gate with its r
   gate.apply(off);
   CHECK_FALSE(gate.roleActive(UserRole::Guard));
   CHECK(gate.roleActive(UserRole::Resident));
+}
+
+namespace
+{
+drogon::HttpRequestPtr impactRequest(const std::string& action)
+{
+  auto req = requestAs(UserRole::Owner, "");
+  if (!action.empty())
+    req->setParameter("action", action);
+  return req;
+}
+
+Json::Value parsed(const std::string& text)
+{
+  Json::CharReaderBuilder builder;
+  Json::Value root;
+  std::string errors;
+  std::istringstream stream(text);
+  REQUIRE(Json::parseFromStream(builder, stream, &root, &errors));
+  return root;
+}
+}
+
+TEST_CASE("GET /modules/{id}/impact answers the shape the app renders, with what keeps running from the catalog")
+{
+  Service service;
+  const auto disable = drogon::sync_wait(service.controller->impact(impactRequest("disable"), "surveillance"));
+  CHECK(disable->getStatusCode() == drogon::k200OK);
+  const auto info = bodyOf(disable)["info"];
+  CHECK(info["moduleId"] == "surveillance");
+  CHECK(info["action"] == "disable");
+  CHECK(info["allowed"].asBool());
+  CHECK(info["refusal"].isNull());
+  REQUIRE(info["stops"].size() == 8);
+  CHECK(info["stops"][0]["kind"] == "live_views");
+  CHECK(info["stops"][0]["count"].isNull());
+  CHECK(info["roleHolders"].isArray());
+  CHECK(info["roleHolders"].empty());
+  CHECK(info["roleEffect"] == "none");
+  CHECK(info["reassignRoles"].empty());
+  CHECK(info["invitations"].isArray());
+  CHECK(info["data"]["owners"].isArray());
+  CHECK(info["filesBytes"].isInt64());
+  REQUIRE(info["keepsRunning"].size() == 1);
+  CHECK(info["keepsRunning"][0]["id"] == "safety_alerts");
+  CHECK(info["keepsRunning"][0]["text"]["es"] ==
+        "Las alertas de pánico o coacción en curso seguirán hasta que alguien las atienda.");
+  CHECK(info["keepsRunning"][0]["text"]["en"] ==
+        "Panic or duress alerts already raised keep going until someone attends them.");
+  CHECK(info["unreachable"].isArray());
+
+  const auto uninstall = bodyOf(drogon::sync_wait(service.controller->impact(impactRequest("uninstall"), "surveillance")))["info"];
+  CHECK(uninstall["action"] == "uninstall");
+  REQUIRE(uninstall["reassignRoles"].size() == 2);
+  CHECK(uninstall["reassignRoles"][0] == "resident");
+  CHECK(uninstall["reassignRoles"][1] == "guest");
+  CHECK(uninstall["keepsRunning"].size() == 1);
+
+  const auto core = bodyOf(drogon::sync_wait(service.controller->impact(impactRequest("disable"), "core")))["info"];
+  CHECK_FALSE(core["allowed"].asBool());
+  CHECK(core["refusal"]["code"] == "MODULE_CORE");
+  CHECK(core["keepsRunning"].empty());
+
+  const auto productivity = bodyOf(drogon::sync_wait(service.controller->impact(impactRequest("disable"), "productivity")))["info"];
+  REQUIRE(productivity["stops"].size() == 1);
+  CHECK(productivity["stops"][0]["kind"] == "agenda_calls");
+  CHECK(productivity["keepsRunning"].empty());
+}
+
+TEST_CASE("the impact route refuses a missing or unknown action with 422 and an unknown module with 404")
+{
+  Service service;
+  CHECK_THROWS_AS(static_cast<void>(drogon::sync_wait(service.controller->impact(impactRequest(""), "surveillance"))),
+                  ValidationException);
+  CHECK_THROWS_AS(static_cast<void>(drogon::sync_wait(service.controller->impact(impactRequest("purge"), "surveillance"))),
+                  ValidationException);
+  int status = 0;
+  try {
+    static_cast<void>(drogon::sync_wait(service.controller->impact(impactRequest("disable"), "ghost")));
+  }
+  catch (const ResponseException& error) {
+    status = error.statusCode();
+  }
+  CHECK(status == 404);
+}
+
+TEST_CASE("POST /modules/{id}/request answers requested with the duplicate flag the owner of notifications reported")
+{
+  Service service;
+  static_cast<void>(service.engine->disable({.moduleId = "productivity", .userId = 1}));
+  const auto codeOf = [&](UserRole role, const std::string& id) {
+    try {
+      static_cast<void>(drogon::sync_wait(service.controller->requestModule(requestAs(role, ""), id)));
+    }
+    catch (const ResponseException& error) {
+      return error.errorCode();
+    }
+    return std::string();
+  };
+
+  CHECK(codeOf(UserRole::Guard, "productivity") == "SERVICE_UNAVAILABLE");
+  service.owners.requestReply = {.reach = OwnerReach::Answered,
+                                 .value = ModuleRequestOutcome{.notified = 1, .duplicate = false}};
+  const auto first = drogon::sync_wait(service.controller->requestModule(requestAs(UserRole::Guard, ""), "productivity"));
+  CHECK(first->getStatusCode() == drogon::k200OK);
+  const auto info = bodyOf(first)["info"];
+  CHECK(info["moduleId"] == "productivity");
+  CHECK(info["requested"].asBool());
+  CHECK_FALSE(info["duplicate"].asBool());
+
+  service.owners.requestReply = {.reach = OwnerReach::Answered,
+                                 .value = ModuleRequestOutcome{.notified = 0, .duplicate = true}};
+  CHECK(bodyOf(drogon::sync_wait(service.controller->requestModule(requestAs(UserRole::Resident, ""), "productivity")))["info"]
+            ["duplicate"]
+                .asBool());
+
+  CHECK(codeOf(UserRole::Owner, "productivity") == "CONFLICT");
+  CHECK(codeOf(UserRole::Guard, "core") == "CONFLICT");
+  CHECK(codeOf(UserRole::Guard, "agronomy") == "MODULE_COMING_SOON");
+  CHECK(codeOf(UserRole::Guard, "ghost") == "NOT_FOUND");
+}
+
+TEST_CASE("the uninstall body names a new role for each holder, never the owner role, and refuses what it cannot read")
+{
+  const auto dto = UninstallModuleDto::fromJson(parsed(R"({"keepData":true,"reassign":{"7":"resident","8":"guest"}})"));
+  REQUIRE(dto.reassign.size() == 2);
+  CHECK(dto.reassign[0].userId == 7);
+  CHECK(dto.reassign[0].role == "resident");
+  CHECK(UninstallModuleDto::fromJson(parsed(R"({"keepData":true})")).reassign.empty());
+  CHECK(UninstallModuleDto::fromJson(parsed(R"({"keepData":true,"reassign":null})")).reassign.empty());
+
+  for (const auto* body : {R"({"reassign":{"7":"owner"}})", R"({"reassign":{"seven":"guest"}})",
+                           R"({"reassign":{"7":"astronaut"}})", R"({"reassign":{"0":"guest"}})",
+                           R"({"reassign":{"-3":"guest"}})", R"({"reassign":["guest"]})",
+                           R"({"reassign":{"7":4}})", R"({"reassign":"guest"})"}) {
+    INFO(body);
+    CHECK_THROWS_AS(UninstallModuleDto::fromJson(parsed(body)), ValidationException);
+  }
 }

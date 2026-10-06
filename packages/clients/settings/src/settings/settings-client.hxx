@@ -54,6 +54,9 @@ public:
   [[nodiscard]] std::optional<ModuleDataSummary> moduleDataSummary(const std::string& moduleId) const;
   [[nodiscard]] std::optional<ModuleDataPurge> purgeModuleData(const std::string& moduleId) const;
   [[nodiscard]] std::optional<PinVerdict> verifyOwnerPin(std::int64_t userId, const std::string& pin) const;
+  [[nodiscard]] std::optional<ModuleImpactReport> moduleImpact(const std::string& moduleId) const;
+  [[nodiscard]] std::optional<RoleReassignmentOutcome> reassignRoles(const RoleReassignmentBatch& batch) const;
+  [[nodiscard]] std::optional<ModuleRequestOutcome> requestModule(const ModuleRequestInput& input) const;
 
 private:
   struct Impl;

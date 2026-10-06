@@ -52,6 +52,20 @@ public:
                                                                   const std::string& moduleId) const = 0;
   [[nodiscard]] virtual OwnerReply<ModuleDataPurge> purgeData(const std::string& owner, const std::string& moduleId) const = 0;
   [[nodiscard]] virtual OwnerReply<PinVerdict> verifyPin(const std::string& owner, const OwnerPinCheck& check) const = 0;
+  [[nodiscard]] virtual OwnerReply<ModuleImpactReport> impact(const std::string&, const std::string&) const
+  {
+    return {.reach = OwnerReach::Unsupported, .value = std::nullopt};
+  }
+  [[nodiscard]] virtual OwnerReply<RoleReassignmentOutcome> reassignRoles(const std::string&,
+                                                                          const RoleReassignmentBatch&) const
+  {
+    return {.reach = OwnerReach::Unsupported, .value = std::nullopt};
+  }
+  [[nodiscard]] virtual OwnerReply<ModuleRequestOutcome> requestModule(const std::string&,
+                                                                       const ModuleRequestInput&) const
+  {
+    return {.reach = OwnerReach::Unsupported, .value = std::nullopt};
+  }
 };
 
 struct SettingsComponentOwnersInput
@@ -78,6 +92,12 @@ public:
                                                           const std::string& moduleId) const override;
   [[nodiscard]] OwnerReply<ModuleDataPurge> purgeData(const std::string& owner, const std::string& moduleId) const override;
   [[nodiscard]] OwnerReply<PinVerdict> verifyPin(const std::string& owner, const OwnerPinCheck& check) const override;
+  [[nodiscard]] OwnerReply<ModuleImpactReport> impact(const std::string& owner,
+                                                      const std::string& moduleId) const override;
+  [[nodiscard]] OwnerReply<RoleReassignmentOutcome> reassignRoles(const std::string& owner,
+                                                                  const RoleReassignmentBatch& batch) const override;
+  [[nodiscard]] OwnerReply<ModuleRequestOutcome> requestModule(const std::string& owner,
+                                                               const ModuleRequestInput& input) const override;
 
 private:
   [[nodiscard]] const SettingsClient* client(const std::string& owner) const;

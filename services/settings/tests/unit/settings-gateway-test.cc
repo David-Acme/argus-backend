@@ -4,6 +4,7 @@
 #include <config/config-service.hxx>
 #include <errors/response-exception.hxx>
 #include <errors/validation-exception.hxx>
+#include <feature/settings/services/owner-visibility.hxx>
 #include <feature/settings/services/settings-gateway-service.hxx>
 #include <settings/settings-rpc.hxx>
 
@@ -325,4 +326,26 @@ TEST_CASE("unconfigured owners are listed in display order as not configured, be
                                       .timeouts = {.list = 1500ms, .update = 1500ms}});
   CHECK(plain.catalogs()[0].configFile == std::filesystem::absolute(configPath()).lexically_normal().string());
   std::filesystem::remove(configPath());
+}
+
+TEST_CASE("the catalogs of the owners a module that is off brings are left out, and every owner shows when nothing is hidden")
+{
+  const auto catalogs = [] {
+    std::vector<OwnerCatalog> list;
+    for (const auto* name : {"llm", "guard", "camera", "vlm", "tts"})
+      list.push_back({.service = name, .reachable = true, .settings = {}});
+    return list;
+  };
+  const auto names = [](const std::vector<OwnerCatalog>& list) {
+    std::vector<std::string> out;
+    out.reserve(list.size());
+    for (const auto& catalog : list)
+      out.push_back(catalog.service);
+    return out;
+  };
+  const auto surveillanceOff = [](const std::string& owner) { return owner != "guard" && owner != "camera" && owner != "vlm"; };
+
+  CHECK(names(owner_visibility::visible(catalogs(), surveillanceOff)) == std::vector<std::string>{"llm", "tts"});
+  CHECK(names(owner_visibility::visible(catalogs(), {})).size() == 5);
+  CHECK(names(owner_visibility::visible(catalogs(), [](const std::string&) { return true; })).size() == 5);
 }

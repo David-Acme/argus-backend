@@ -173,7 +173,12 @@ int main()
   drogon::app().registerController(
       std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-settings", .extras = {}}));
   drogon::app().registerController(std::make_shared<SettingsController>(
-      SettingsControllerInput{.gateway = gateway, .profiles = profiles, .hardware = hardware}));
+      SettingsControllerInput{.gateway = gateway,
+                              .profiles = profiles,
+                              .hardware = hardware,
+                              .ownerVisible = [engine = moduleEngine.get()](const std::string& owner) {
+                                return engine == nullptr || engine->settingsOwnerVisible(owner);
+                              }}));
   drogon::app().registerController(std::make_shared<ModulesController>(moduleEngine.get()));
 
   const auto rpc = SettingsConfig::resolveModulesRpc();

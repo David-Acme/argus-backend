@@ -327,6 +327,80 @@ grpc::ServerUnaryReactor* SettingsRpcService::VerifyOwnerPin(grpc::CallbackServe
   return finish(context, grpc::Status::OK);
 }
 
+void SettingsRpcService::attachModuleImpact(const ModuleImpactHost& host)
+{
+  moduleImpact_ = &host;
+}
+
+void SettingsRpcService::attachRoleReassign(RoleReassignHost& host)
+{
+  roleReassign_ = &host;
+}
+
+void SettingsRpcService::attachModuleRequest(ModuleRequestHost& host)
+{
+  moduleRequest_ = &host;
+}
+
+grpc::ServerUnaryReactor* SettingsRpcService::ModuleImpact(grpc::CallbackServerContext* context,
+                                                          const wire::ModuleImpactRequest* request,
+                                                          wire::ModuleImpactResponse* response)
+{
+  if (!argus::client::authorizeCaller(context, input_.credentials))
+    return finish(context, argus::response::toRpcStatus(ResponseException(SettingsErrors::Unauthorized)));
+  if (moduleImpact_ == nullptr)
+    return finish(context, {grpc::StatusCode::UNIMPLEMENTED, "This owner reports no module impact"});
+  if (request->module_id().empty())
+    return finish(context, malformed());
+  try {
+    component_wire::fill(*response, moduleImpact_->impact(request->module_id()));
+  }
+  catch (const std::exception&) {
+    return finish(context, ownerBusy());
+  }
+  return finish(context, grpc::Status::OK);
+}
+
+grpc::ServerUnaryReactor* SettingsRpcService::ReassignRoles(grpc::CallbackServerContext* context,
+                                                           const wire::ReassignRolesRequest* request,
+                                                           wire::ReassignRolesResponse* response)
+{
+  if (!argus::client::authorizeCaller(context, input_.credentials))
+    return finish(context, argus::response::toRpcStatus(ResponseException(SettingsErrors::Unauthorized)));
+  if (roleReassign_ == nullptr)
+    return finish(context, {grpc::StatusCode::UNIMPLEMENTED, "This owner assigns no roles"});
+  if (request->actor_user_id() <= 0 || request->reassignments().empty() || request->reassignments_size() > kMaxChanges)
+    return finish(context, malformed());
+  try {
+    component_wire::fill(*response, roleReassign_->reassign(component_wire::batchFrom(*request)));
+  }
+  catch (const std::exception&) {
+    return finish(context, ownerBusy());
+  }
+  return finish(context, grpc::Status::OK);
+}
+
+grpc::ServerUnaryReactor* SettingsRpcService::RequestModule(grpc::CallbackServerContext* context,
+                                                           const wire::RequestModuleRequest* request,
+                                                           wire::RequestModuleResponse* response)
+{
+  if (!argus::client::authorizeCaller(context, input_.credentials))
+    return finish(context, argus::response::toRpcStatus(ResponseException(SettingsErrors::Unauthorized)));
+  if (moduleRequest_ == nullptr)
+    return finish(context, {grpc::StatusCode::UNIMPLEMENTED, "This owner takes no module requests"});
+  if (request->module_id().empty() || request->user_id() <= 0 || request->day().empty())
+    return finish(context, malformed());
+  try {
+    const auto outcome = moduleRequest_->request(component_wire::requestFrom(*request));
+    response->set_notified(outcome.notified);
+    response->set_duplicate(outcome.duplicate);
+  }
+  catch (const std::exception&) {
+    return finish(context, ownerBusy());
+  }
+  return finish(context, grpc::Status::OK);
+}
+
 void SettingsRpcService::fillCatalog(wire::SettingsCatalog& catalog) const
 {
   catalog.set_service(input_.service);

@@ -96,3 +96,29 @@ OwnerReply<PinVerdict> SettingsComponentOwners::verifyPin(const std::string& own
     return {.reach = OwnerReach::Unsupported, .value = std::nullopt};
   return attempt<PinVerdict>(owner, [link, &check] { return link->verifyOwnerPin(check.userId, check.pin); });
 }
+
+OwnerReply<ModuleImpactReport> SettingsComponentOwners::impact(const std::string& owner, const std::string& moduleId) const
+{
+  const auto* link = client(owner);
+  if (link == nullptr)
+    return {.reach = OwnerReach::Unsupported, .value = std::nullopt};
+  return attempt<ModuleImpactReport>(owner, [link, &moduleId] { return link->moduleImpact(moduleId); });
+}
+
+OwnerReply<RoleReassignmentOutcome> SettingsComponentOwners::reassignRoles(const std::string& owner,
+                                                                          const RoleReassignmentBatch& batch) const
+{
+  const auto* link = client(owner);
+  if (link == nullptr)
+    return {.reach = OwnerReach::Unsupported, .value = std::nullopt};
+  return attempt<RoleReassignmentOutcome>(owner, [link, &batch] { return link->reassignRoles(batch); });
+}
+
+OwnerReply<ModuleRequestOutcome> SettingsComponentOwners::requestModule(const std::string& owner,
+                                                                       const ModuleRequestInput& input) const
+{
+  const auto* link = client(owner);
+  if (link == nullptr)
+    return {.reach = OwnerReach::Unsupported, .value = std::nullopt};
+  return attempt<ModuleRequestOutcome>(owner, [link, &input] { return link->requestModule(input); });
+}

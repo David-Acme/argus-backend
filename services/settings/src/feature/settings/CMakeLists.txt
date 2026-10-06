@@ -10,6 +10,7 @@ argus_module(NAME settings-gateway
         dtos/update-settings-dto.cc
         infra/hardware-facts.cc
         infra/profile-file.cc
+        services/owner-visibility.cc
         services/profile-planner.cc
         services/first-run-service.cc
         services/settings-gateway-service.cc

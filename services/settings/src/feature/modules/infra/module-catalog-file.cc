@@ -96,6 +96,30 @@ std::string identifier(const Node& node)
   return id;
 }
 
+std::string code(const Node& node)
+{
+  auto value = text(node, kMaxIdLength);
+  const bool legal = std::ranges::all_of(value, [](char letter) {
+    return (letter >= 'a' && letter <= 'z') || (letter >= '0' && letter <= '9') || letter == '_';
+  });
+  if (!legal)
+    reject(node.where + ": must hold only lowercase letters, digits and '_'");
+  return value;
+}
+
+std::vector<std::string> codes(const Node& node)
+{
+  std::vector<std::string> list;
+  const auto& values = arrayAt(node);
+  for (Json::ArrayIndex index = 0; index < values.size(); ++index) {
+    auto entry = code(element(node, index));
+    if (std::ranges::find(list, entry) != list.end())
+      reject(node.where + ": repeats " + entry);
+    list.push_back(std::move(entry));
+  }
+  return list;
+}
+
 std::int64_t integer(const Node& node, std::int64_t maxValue)
 {
   if (!node.value.isIntegral() || node.value.asInt64() < 0 || node.value.asInt64() > maxValue)
@@ -151,6 +175,21 @@ ModuleIntroLocalized readIntro(const Node& node)
     return {};
   requireObject(node);
   return {.es = introLine(child(node, "es")), .en = introLine(child(node, "en"))};
+}
+
+std::vector<KeepsRunningItem> readKeepsRunning(const Node& node)
+{
+  std::vector<KeepsRunningItem> items;
+  const auto& list = arrayAt(node);
+  for (Json::ArrayIndex index = 0; index < list.size(); ++index) {
+    const auto entry = element(node, index);
+    requireObject(entry);
+    KeepsRunningItem item{.id = code(child(entry, "id")), .text = localized(child(entry, "text"))};
+    if (std::ranges::find(items, item.id, &KeepsRunningItem::id) != items.end())
+      reject(entry.where + ".id: repeats " + item.id);
+    items.push_back(std::move(item));
+  }
+  return items;
 }
 
 bool pinnedUrl(const std::string& url)
@@ -262,7 +301,10 @@ CatalogModule readModule(const Node& node)
                        .hardware = readHardware(child(node, "hardware")),
                        .gettingStarted = {},
                        .roles = identifiers(child(node, "roles")),
-                       .intro = readIntro(child(node, "intro"))};
+                       .intro = readIntro(child(node, "intro")),
+                       .effects = codes(child(node, "effects")),
+                       .keepsRunning = readKeepsRunning(child(node, "keepsRunning")),
+                       .settingsOwners = identifiers(child(node, "settingsOwners"))};
   const auto gates = child(node, "gates");
   for (Json::ArrayIndex index = 0; index < arrayAt(gates).size(); ++index)
     module.gates.push_back(route(element(gates, index)));
@@ -279,6 +321,11 @@ CatalogModule readModule(const Node& node)
   for (const auto& owner : module.dataOwners)
     if (!knownDataOwner(owner))
       reject(node.where + ".dataOwners: " + owner + " is not a service that keeps module data");
+  for (const auto& owner : module.settingsOwners)
+    if (!knownOwner(owner))
+      reject(node.where + ".settingsOwners: " + owner + " is not a settings owner");
+  if (module.kind == ModuleKind::Core && !module.settingsOwners.empty())
+    reject(node.where + ".settingsOwners: the core module hides no settings");
   if (module.kind == ModuleKind::ComingSoon && !module.components.empty())
     reject(node.where + ": a coming_soon module installs nothing");
   if (module.kind == ModuleKind::Core && !module.required.empty())
@@ -304,7 +351,11 @@ void crossCheck(const ModuleCatalog& catalog)
     reject("module catalog.modules: exactly one module is core");
   std::set<std::string> gates;
   std::set<std::string> roles;
+  std::set<std::string> settingsOwners;
   for (const auto& module : catalog.modules) {
+    for (const auto& owner : module.settingsOwners)
+      if (!settingsOwners.insert(owner).second)
+        reject("module catalog." + module.id + ".settingsOwners: " + owner + " belongs to two modules");
     for (const auto& role : module.roles)
       if (!roles.insert(role).second)
         reject("module catalog." + module.id + ".roles: " + role + " is brought by two modules");

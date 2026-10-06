@@ -126,8 +126,10 @@ settings	GET	/modules	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/
 settings	POST	/modules/{1}/cancel	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
 settings	GET	/modules/{1}/data	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
 settings	POST	/modules/{1}/disable	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
+settings	GET	/modules/{1}/impact	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
 settings	POST	/modules/{1}/install	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
 settings	POST	/modules/{1}/pause	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
+settings	POST	/modules/{1}/request	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
 settings	POST	/modules/{1}/resume	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
 settings	POST	/modules/{1}/uninstall	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
 settings	GET	/settings	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/settings/controllers/settings-controller.hxx

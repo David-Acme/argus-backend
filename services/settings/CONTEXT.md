@@ -350,6 +350,9 @@ validates it at boot like `profiles.json`: ids `[a-z0-9-]`, unique per kind;
 exactly one `core` module, which requires nothing; every required module and
 every component known, no dependency cycle (`services/module-resolver.cc`);
 a route prefix gated by one module only; `coming_soon` installs nothing;
+`effects` (the codes of what the module stops, `[a-z0-9_]`, unique), `keepsRunning`
+(`{ id, text { es, en } }` items said by the impact preview) and `settingsOwners`
+(settings owners hidden while the module is off, one module each, never core);
 `dataOwners` are settings owners or the data-only owners `identity`,
 `productivity` and `sync`. A component
 names its `owner`, its `source` (`download`: the owner fetches it;
@@ -554,8 +557,82 @@ nothing to say). Names, summaries and getting-started titles come in the
 | `POST /modules/{id}/install` | 202 with the job. 404 unknown; 409 `MODULE_COMING_SOON`, `MODULE_HARDWARE_INSUFFICIENT`, `MODULE_JOB_RUNNING` (this module already has an unfinished job), `CONFLICT` (already active); 503 before the seed. |
 | `POST /modules/{id}/pause`, `/resume`, `/cancel` | 200 with the job; 404 `NOT_FOUND` when the module has no unfinished job; 409 `CONFLICT` while activating or in health check. |
 | `POST /modules/{id}/disable` | 200 with the module; 409 `MODULE_CORE`, `MODULE_REQUIRED_BY`, `MODULE_JOB_RUNNING`. |
-| `POST /modules/{id}/uninstall` | body `{ "keepData": true (default) | false, "pin": "digits" }`; 202 with the job; 409 `MODULE_CORE`, `MODULE_REQUIRED_BY` (message "Required by <id>"), `MODULE_JOB_RUNNING`; 403/429 PIN codes and 503 as above; 422 for a non-boolean `keepData` or a non-numeric or over-32-character `pin`. |
+| `POST /modules/{id}/uninstall` | body `{ "keepData": true (default) | false, "pin": "digits", "reassign": { "<userId>": "<role>" } }`; 202 with the job; 409 `MODULE_CORE`, `MODULE_REQUIRED_BY` (message "Required by <id>"), `MODULE_JOB_RUNNING`, `MODULE_ROLES_HELD` (below); 403/429 PIN codes and 503 as above; 422 for a non-boolean `keepData`, a non-numeric or over-32-character `pin`, or a `reassign` that is not a map of user id to a non-owner role. |
+| `GET /modules/{id}/impact?action=disable\|uninstall` | Owner only; the preview of that action (below), 200; 404 unknown module, 422 a missing or other `action`, 503 before the seed. |
+| `POST /modules/{id}/request` | any role but the Owner takes it; `{ "moduleId", "requested": true, "duplicate": bool }`; 404 unknown, 409 `MODULE_COMING_SOON`, `MODULE_JOB_RUNNING` (being installed), `CONFLICT` (already on, or the caller is the Owner), 503 when the Owner cannot be told. |
 | `GET /modules/{id}/data` | `{ "owners": [ { "owner", "reachable", "reported", "items": [ { "kind", "count" } ], "bytes" } ] }`, one entry per `dataOwners` service, read live in parallel. |
+
+### What turning a module off does to people, and what a request is (module effects)
+
+`GET /modules/{id}/impact?action=disable|uninstall` is what the app shows
+before the Owner presses the button, and what `modules.disable` says aloud
+(`ModuleEngine::impact`, `services/module-engine-impact.cc`). One answer, the
+same for both actions, read live and in parallel from the owners:
+
+```json
+{ "moduleId": "surveillance", "action": "disable", "allowed": true,
+  "refusal": null,
+  "stops": [ { "kind": "camera_talk", "count": 2 }, { "kind": "live_views", "count": null } ],
+  "roleHolders": [ { "userId": 7, "name": "Gus", "lastName": null, "role": "guard", "isActive": true } ],
+  "roleEffect": "inactive",
+  "reassignRoles": [],
+  "invitations": [ { "id": 3, "role": "guard", "createdBy": 1, "createdByName": "Olga", "expiresAt": 1790000000 } ],
+  "data": { "owners": [ { "owner": "camera", "reachable": true, "reported": true, "items": [], "bytes": 0 } ] },
+  "filesBytes": 578108270,
+  "keepsRunning": [ { "id": "safety_alerts", "text": { "es": "…", "en": "…" } } ],
+  "unreachable": [] }
+```
+
+- `refusal` is the code the action would be refused with (`MODULE_CORE`,
+  `MODULE_REQUIRED_BY`, `MODULE_JOB_RUNNING`) as `{ code, message }` and
+  `allowed` is false then. Disabling a module that is already off is allowed
+  (a no-op).
+- `stops` follows the module's `effects` list in `modules.json`, in that order;
+  a count is the sum of what the owners that know the kind reported (guard
+  `pending_alerts`, `guard_duty`; camera `camera_talk`, `live_views`;
+  productivity `agenda_calls`) and `null` when no owner reported it, which is
+  not the same as zero.
+- `roleHolders` and `invitations` come from identity (who holds a role of the
+  module, which pending invitations of those roles would be revoked). The
+  `roleEffect` is `inactive` for a disable (the people keep the role, it turns
+  inactive), `reassign_required` for an uninstall while someone holds it, `none`
+  when nobody does. `reassignRoles` (uninstall only) are the non-owner roles of
+  modules that stay on and of no module at all.
+- `keepsRunning` is data in the catalog, never prose in code, so the app and
+  the voice say exactly what the file says. Surveillance carries the one that
+  matters: the panic or duress alerts already raised go on until someone
+  attends them (a module change never cancels a safety alarm).
+- `unreachable` names the owners that did not answer, so a partial preview is
+  never presented as complete. `data` is `GET /modules/{id}/data` verbatim.
+
+An uninstall of a module whose role people hold is refused until each holder
+gets a new role. `POST /modules/{id}/uninstall` without a `reassign` entry for
+every holder answers 409 `MODULE_ROLES_HELD`, `errors = [ { code:
+"MODULE_ROLES_HELD", message }, { code: "ROLE_HOLDER", message: "<userId>:<role>" }, … ]`
+(one entry per holder), and queues nothing. With the map, argus-settings asks
+identity (`ReassignRoles`) to move each holder through its ordinary role update
+(persist, the socket's rooms replaced, `AuthContextChanged` with resync, the
+audit trail), after the PIN check and before the job exists: a wrong PIN never
+changes a role, an identity that refuses or cannot be reached answers 409 or
+503 and queues nothing, and entries for people who do not hold the role are
+ignored. A new role must be a role of a module that stays, never the Owner's
+(422 field `reassign`). Disabling needs no reassignment.
+
+`POST /modules/{id}/request` is how a person without the Owner's rights asks
+for a module. The notification owner (settings wire `RequestModule`) finds the
+active Owners through identity and writes one `module_request` notification
+for each, in that Owner's language, with `data { kind, moduleId, requestedBy,
+requestedByName, action: "enable_module", threadKey, urgency: "active" }`; the
+command id is `module_request:<module>:<userId>:<local day>:<owner>`, so a
+second request by the same person for the same module the same day tells
+nobody twice and answers `duplicate: true`. The Owner's button in the
+notification calls `POST /modules/{moduleId}/install`.
+
+`GET /settings` leaves out the settings of the owners a module that is off
+brings (`settingsOwners` of the catalog entry: surveillance brings camera,
+guard and vlm), so the Owner is not offered knobs for something that does not
+run; the values stay in each owner's config and `PATCH /settings/{owner}` and
+the profiles are untouched.
 
 ### Events on `argus.settings.v1.module`
 
@@ -626,7 +703,8 @@ it writes the row, as it does for identity's and auth's actions.
 - argus-settings calls each owner through `argus::clients::settings`
   (`SettingsClient::componentStates`, `installComponent`,
   `cancelComponent`, `removeComponent`, `moduleDataSummary`,
-  `purgeModuleData`, `verifyOwnerPin`), on the owner's existing settings
+  `purgeModuleData`, `verifyOwnerPin`, `moduleImpact`, `reassignRoles`,
+  `requestModule`), on the owner's existing settings
   credential and the update deadline. Each answers `std::nullopt` when the
   owner says `UNIMPLEMENTED`.
 - argus-settings serves `argus.settings.v1.Modules/ModuleStates` on
@@ -639,6 +717,22 @@ it writes the row, as it does for identity's and auth's actions.
   notification, productivity, sync, voice, llm; `ensure_fleet_callers` pairs
   them with the caller's `[modules] credential`); the gate is open while none
   is paired. Before the seed, or with no catalog, it answers `settled: false`.
+
+### Impact, reassignment and request owners
+
+The three additive calls of the settings wire (`settings.proto`: `ModuleImpact`,
+`ReassignRoles`, `RequestModule`; hosts `ModuleImpactHost`, `RoleReassignHost`,
+`ModuleRequestHost` in `packages/contracts/settings`) are answered by the
+service that knows the thing: identity holders, pending invitations and role
+reassignment (`feature/module-impact`), guard the pending alert actions and
+duty shifts (`GuardModuleImpact`), camera the open talk sessions and live views
+(`CameraModuleImpact`), productivity the upcoming calendar events
+(`ProductivityModuleImpact`), notification the request (`NotificationModuleRequest`).
+An owner without the host answers `UNIMPLEMENTED`, which the engine reads as
+"nothing to report"; one that fails answers `UNAVAILABLE` and is named in
+`unreachable`. The engine asks the module's `dataOwners` plus identity when the
+module brings roles; an identity that cannot be asked blocks an uninstall of a
+role-bearing module (503) instead of guessing that nobody holds the role.
 
 ### Data owners
 

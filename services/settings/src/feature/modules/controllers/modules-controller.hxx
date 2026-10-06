@@ -29,6 +29,10 @@ public:
   ADD_METHOD_TO(ModulesController::uninstall, "/modules/{1}/uninstall", drogon::Post, "DeviceFilter",
                 "ValidJsonFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(ModulesController::data, "/modules/{1}/data", drogon::Get, "DeviceFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(ModulesController::impact, "/modules/{1}/impact", drogon::Get, "DeviceFilter", "JwtFilter",
+                "RoleFilter");
+  ADD_METHOD_TO(ModulesController::requestModule, "/modules/{1}/request", drogon::Post, "DeviceFilter",
+                "ValidJsonFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> list(drogon::HttpRequestPtr req);
@@ -39,6 +43,8 @@ public:
   drogon::Task<drogon::HttpResponsePtr> disable(drogon::HttpRequestPtr req, std::string id);
   drogon::Task<drogon::HttpResponsePtr> uninstall(drogon::HttpRequestPtr req, std::string id);
   drogon::Task<drogon::HttpResponsePtr> data(drogon::HttpRequestPtr req, std::string id);
+  drogon::Task<drogon::HttpResponsePtr> impact(drogon::HttpRequestPtr req, std::string id);
+  drogon::Task<drogon::HttpResponsePtr> requestModule(drogon::HttpRequestPtr req, std::string id);
 
   [[nodiscard]] static std::string_view languageOf(const drogon::HttpRequestPtr& req);
 

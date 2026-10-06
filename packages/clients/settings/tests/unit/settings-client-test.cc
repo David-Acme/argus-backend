@@ -5,7 +5,10 @@
 #include <errors/response-exception.hxx>
 #include <settings/component-host.hxx>
 #include <settings/module-data-host.hxx>
+#include <settings/module-impact-host.hxx>
+#include <settings/module-request-host.hxx>
 #include <settings/owner-pin-host.hxx>
+#include <settings/role-reassign-host.hxx>
 #include <settings/settings-client.hxx>
 #include <settings/settings-rpc.hxx>
 
@@ -430,4 +433,74 @@ TEST_CASE("the owner PIN check answers nothing without a host and the guard's ve
   CHECK(client.verifyOwnerPin(1, "0000") == PinVerdict::Invalid);
   CHECK(client.verifyOwnerPin(1, "") == PinVerdict::Required);
   CHECK(statusOf([&client] { static_cast<void>(client.verifyOwnerPin(0, "2468")); }) == 400);
+}
+
+namespace
+{
+class FakeImpact final : public ModuleImpactHost
+{
+public:
+  [[nodiscard]] ModuleImpactReport impact(const std::string& moduleId) const override
+  {
+    return {.stops = {{.kind = "pending_alerts", .count = moduleId == "surveillance" ? 4 : 0}},
+            .roleHolders = {{.userId = 7, .name = "Gus", .lastName = "", .role = "guard", .isActive = true}},
+            .invitations = {{.id = 3, .role = "guard", .createdBy = 1, .createdByName = "Olga", .expiresAt = 99}}};
+  }
+};
+
+class FakeReassign final : public RoleReassignHost
+{
+public:
+  RoleReassignmentOutcome reassign(const RoleReassignmentBatch& batch) override
+  {
+    return {.status = ReassignStatus::Applied,
+            .applied = static_cast<std::int32_t>(batch.reassignments.size()),
+            .failedUserId = 0,
+            .reason = {}};
+  }
+};
+
+class FakeRequest final : public ModuleRequestHost
+{
+public:
+  ModuleRequestOutcome request(const ModuleRequestInput& input) override
+  {
+    return {.notified = 1, .duplicate = input.day == "again"};
+  }
+};
+}
+
+TEST_CASE("impact, role reassignment and module request answer nothing without a host and their reports with one")
+{
+  loadConfig("[tts]\nspeed = 1.0\n");
+  Owner owner;
+  const SettingsClient client({.target = owner.target(), .credential = kSecret, .timeout = std::chrono::seconds(5)});
+  CHECK_FALSE(client.moduleImpact("surveillance").has_value());
+  CHECK_FALSE(client.reassignRoles({.actorUserId = 1, .reassignments = {{.userId = 7, .role = "resident"}}}).has_value());
+  CHECK_FALSE(client.requestModule({.moduleId = "surveillance", .moduleName = {}, .userId = 7, .day = "d"}).has_value());
+
+  const FakeImpact impact;
+  FakeReassign reassign;
+  FakeRequest request;
+  owner.service.attachModuleImpact(impact);
+  owner.service.attachRoleReassign(reassign);
+  owner.service.attachModuleRequest(request);
+
+  const auto report = client.moduleImpact("surveillance");
+  REQUIRE(report.has_value());
+  CHECK(report.value_or(ModuleImpactReport{}).stops.at(0).count == 4);
+  CHECK(report.value_or(ModuleImpactReport{}).roleHolders.at(0).name == "Gus");
+  CHECK(report.value_or(ModuleImpactReport{}).invitations.at(0).createdByName == "Olga");
+
+  const auto moved = client.reassignRoles(
+      {.actorUserId = 1, .reassignments = {{.userId = 7, .role = "resident"}, {.userId = 8, .role = "guest"}}});
+  REQUIRE(moved.has_value());
+  CHECK(moved.value_or(RoleReassignmentOutcome{}).status == ReassignStatus::Applied);
+  CHECK(moved.value_or(RoleReassignmentOutcome{}).applied == 2);
+  CHECK(statusOf([&client] { static_cast<void>(client.reassignRoles({.actorUserId = 0, .reassignments = {}})); }) == 400);
+
+  const auto asked = client.requestModule({.moduleId = "surveillance", .moduleName = {}, .userId = 7, .day = "again"});
+  REQUIRE(asked.has_value());
+  CHECK(asked.value_or(ModuleRequestOutcome{}).duplicate);
+  CHECK(asked.value_or(ModuleRequestOutcome{}).notified == 1);
 }
