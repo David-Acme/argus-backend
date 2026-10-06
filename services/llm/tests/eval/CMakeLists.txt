@@ -46,3 +46,29 @@ target_compile_options(eval-score-test PRIVATE -Wall -Wextra)
 set_target_properties(eval-score-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME eval-score-test COMMAND eval-score-test)
+
+add_executable(llm-tier-eval llm-tier-eval.cc eval-tools.cc)
+
+target_link_libraries(llm-tier-eval PRIVATE llm-eval-core argus::llm)
+
+target_compile_options(llm-tier-eval PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-tier-eval PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+set(LLM_EVAL_ARGS
+    --cases ${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/cases.jsonl
+    --gates ${CMAKE_CURRENT_SOURCE_DIR}/gates.json
+    --llm-model ${CMAKE_CURRENT_SOURCE_DIR}/../../../../models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf
+    --intent-model ${CMAKE_CURRENT_SOURCE_DIR}/../../../../models/intent/intent.bin
+    --catalog ${CMAKE_CURRENT_SOURCE_DIR}/../../../settings/modules.json)
+
+add_test(NAME llm-tier-smoke
+    COMMAND llm-tier-eval ${LLM_EVAL_ARGS} --smoke
+        --report ${CMAKE_CURRENT_BINARY_DIR}/llm-tier-smoke-report.json)
+
+add_test(NAME llm-tier-eval
+    COMMAND llm-tier-eval ${LLM_EVAL_ARGS}
+        --report ${CMAKE_CURRENT_BINARY_DIR}/llm-tier-report.json)
+
+set_tests_properties(llm-tier-smoke PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 1200)
+set_tests_properties(llm-tier-eval PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 7200)

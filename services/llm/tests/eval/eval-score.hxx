@@ -5,6 +5,8 @@
 
 #include <json/value.h>
 
+#include <optional>
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -56,5 +58,15 @@ bool matchesArguments(const ArgumentProbe& probe);
 Metrics aggregate(const std::vector<CaseRun>& runs, const ScoreConfig& config);
 
 ScoreConfig loadScoreConfig(const std::string& gatesPath, std::string& error);
+
+Json::Value toJson(const CaseRun& run);
+
+struct RunLine
+{
+  std::string id;
+  std::vector<TurnResult> turns;
+};
+
+std::optional<RunLine> runLineFrom(const std::string& line);
 
 }

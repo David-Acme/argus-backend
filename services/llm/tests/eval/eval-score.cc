@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <fstream>
+#include <sstream>
 #include <regex>
 #include <set>
 #include <string_view>
@@ -329,6 +330,87 @@ Metrics aggregate(const std::vector<CaseRun>& runs, const ScoreConfig& config)
     metrics["turnMs.p95"] = static_cast<double>(out.latencies[out.latencies.size() * 95 / 100]);
   }
   return metrics;
+}
+
+namespace
+{
+
+Json::Value callsJson(const std::vector<RecordedCall>& calls)
+{
+  Json::Value out(Json::arrayValue);
+  for (const auto& call : calls) {
+    Json::Value entry(Json::objectValue);
+    entry["tool"] = call.tool;
+    entry["arguments"] = call.arguments;
+    out.append(entry);
+  }
+  return out;
+}
+
+Json::Value namesJson(const std::vector<std::string>& names)
+{
+  Json::Value out(Json::arrayValue);
+  for (const auto& name : names)
+    out.append(name);
+  return out;
+}
+
+std::vector<RecordedCall> callsFrom(const Json::Value& node)
+{
+  std::vector<RecordedCall> out;
+  for (const auto& entry : node)
+    out.push_back({.tool = entry["tool"].asString(), .arguments = entry["arguments"]});
+  return out;
+}
+
+std::vector<std::string> namesFrom(const Json::Value& node)
+{
+  std::vector<std::string> out;
+  for (const auto& name : node)
+    out.push_back(name.asString());
+  return out;
+}
+
+}
+
+Json::Value toJson(const CaseRun& run)
+{
+  Json::Value out(Json::objectValue);
+  out["id"] = run.item.id;
+  Json::Value turns(Json::arrayValue);
+  for (const auto& turn : run.turns) {
+    Json::Value entry(Json::objectValue);
+    entry["reply"] = turn.reply;
+    entry["executed"] = callsJson(turn.executed);
+    entry["offered"] = callsJson(turn.offered);
+    entry["previews"] = namesJson(turn.previews);
+    entry["confirmed"] = namesJson(turn.confirmed);
+    entry["ms"] = static_cast<Json::Int64>(turn.ms);
+    turns.append(entry);
+  }
+  out["turns"] = std::move(turns);
+  return out;
+}
+
+std::optional<RunLine> runLineFrom(const std::string& line)
+{
+  Json::Value node;
+  std::string errors;
+  Json::CharReaderBuilder builder;
+  std::istringstream stream(line);
+  if (!Json::parseFromStream(builder, stream, &node, &errors) || !node.isMember("id"))
+    return std::nullopt;
+  RunLine out;
+  out.id = node["id"].asString();
+  for (const auto& entry : node["turns"]) {
+    out.turns.push_back({.reply = entry["reply"].asString(),
+                         .executed = callsFrom(entry["executed"]),
+                         .offered = callsFrom(entry["offered"]),
+                         .previews = namesFrom(entry["previews"]),
+                         .confirmed = namesFrom(entry["confirmed"]),
+                         .ms = entry["ms"].asInt64()});
+  }
+  return out;
 }
 
 ScoreConfig loadScoreConfig(const std::string& gatesPath, std::string& error)
