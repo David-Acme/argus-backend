@@ -51,6 +51,39 @@ TEST_CASE("a first-person completion is a claim in Spanish, Peruvian Spanish and
   CHECK(claims("Sure, I cancelled the appointment."));
 }
 
+TEST_CASE("Peruvian and colloquial Spanish completions are claims")
+{
+  CHECK(claims("Ya pues, jefe, quedó agendado para el jueves."));
+  CHECK(claims("Ya te lo dejé anotado, causa."));
+  CHECK(claims("Listo pues, ya lo programé."));
+  CHECK(claims("Dale, ya lo guardé en tu lista."));
+  CHECK(claims("Ya está pues, anotado.", true));
+  CHECK(claims("Ya fue, jefe.", true));
+  CHECK(claims("Hecho, hermano.", true));
+  CHECK(claims("Todo listo, ya quedó.", true));
+  CHECK(claims("Ya te creé la tarea, no te preocupes."));
+  CHECK(claims("Te avisé al dueño de la casa."));
+  CHECK_FALSE(claims("Ya pues, dime la hora y lo agendo.", true));
+  CHECK_FALSE(claims("Ya pues, no pude anotarlo.", true));
+  CHECK_FALSE(claims("¿Ya está listo el informe?", true));
+}
+
+TEST_CASE("English completions and their hedged forms")
+{
+  CHECK(claims("Got it. I've added the meeting to your agenda."));
+  CHECK(claims("Sure thing, I booked it for Thursday."));
+  CHECK(claims("I've enabled the productivity module."));
+  CHECK(claims("Alright, I created the project for you."));
+  CHECK(claims("It's scheduled.", true));
+  CHECK(claims("Done! Your reminder is set.", true));
+  CHECK(claims("Perfect, all set.", true));
+  CHECK_FALSE(claims("I can't schedule that because the module is off.", true));
+  CHECK_FALSE(claims("I wasn't able to save it.", true));
+  CHECK_FALSE(claims("Should I schedule it for Thursday?", true));
+  CHECK_FALSE(claims("I'll schedule it as soon as you confirm the time.", true));
+  CHECK_FALSE(claims("When it's scheduled I will tell you.", true));
+}
+
 TEST_CASE("a bare marker is a claim only after the user asked for something")
 {
   CHECK(claims("Confirmado.", true));
