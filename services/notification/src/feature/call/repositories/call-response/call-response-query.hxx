@@ -77,6 +77,12 @@ inline constexpr std::string_view EXPIRE =
     "WHERE state IN ('active', 'attended', 'unanswered', 'confirmed') "
     "AND created_at < ? RETURNING id";
 
+inline constexpr std::string_view EXPIRE_KINDS_HEAD =
+    "UPDATE call_response SET state = 'expired', updated_at = ? "
+    "WHERE state IN ('active', 'attended', 'unanswered', 'confirmed') "
+    "AND kind IN (";
+inline constexpr std::string_view EXPIRE_KINDS_TAIL = ") RETURNING id";
+
 inline constexpr std::string_view FOR_USER =
     "SELECT r.*, m.user_id AS member_user_id, m.step AS member_step, "
     "m.mode AS member_mode, m.mandatory AS member_mandatory, "
@@ -125,6 +131,12 @@ struct CallResponseReachInput
 {
   int64_t responseId{0};
   int64_t userId{0};
+  int64_t at{0};
+};
+
+struct CallResponseExpireKindsInput
+{
+  std::vector<std::string> kinds;
   int64_t at{0};
 };
 

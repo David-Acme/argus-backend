@@ -834,6 +834,14 @@ CallEngine::announceArrival(const KnownSeenEvent& event) const
        .notificationExists = false});
 }
 
+namespace
+{
+bool responseKindOf(std::string_view kind)
+{
+  return kind == "guard_episode" || kind == "guard_tamper" || kind == "guard_panic" || kind == "guard_duress";
+}
+}
+
 drogon::Task<int64_t> CallEngine::cancelForModule(std::string moduleId) const
 {
   int64_t cancelled = 0;
@@ -844,9 +852,16 @@ drogon::Task<int64_t> CallEngine::cancelForModule(std::string moduleId) const
     co_await settleMissed({.call = call, .cancelReason = "module_disabled", .now = at, .notify = false});
     ++cancelled;
   }
-  if (cancelled > 0)
-    LOG_INFO << "Call engine: " << cancelled << " ringing call(s) of the " << moduleId
-             << " module were cancelled because it was turned off";
+  std::vector<std::string> kinds;
+  for (const auto& entry : notification_kind::kModuleKinds)
+    if (entry.module == moduleId && responseKindOf(entry.kind))
+      kinds.emplace_back(entry.kind);
+  const auto closed = co_await responseRepository_.expireKinds({.kinds = std::move(kinds), .at = at});
+  for (const int64_t responseId : closed)
+    co_await emitResponse(responseId);
+  if (cancelled > 0 || !closed.empty())
+    LOG_INFO << "Call engine: " << cancelled << " ringing call(s) and " << closed.size()
+             << " response(s) of the " << moduleId << " module were ended because it was turned off";
   co_return cancelled;
 }
 

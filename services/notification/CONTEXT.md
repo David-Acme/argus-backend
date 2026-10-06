@@ -639,11 +639,32 @@ presses the panic button.
   next to it keeps ringing. A follow-up queued under a ring of another kind
   still reads out when that ring is answered; that is the one case this does
   not cover.
+- **Responses of the module end, a raised panic or duress alert does not.**
+  The same call also expires the open `call_response` rows of the module's
+  kinds (`guard_episode`, `guard_tamper`; `ResponseUpdate` with `expired` goes
+  to the members already reached) so the escalation of an intruder alert stops
+  stepping through the household. A `guard_panic` or `guard_duress` response is
+  core: it keeps ringing, escalating step by step and asking for the contacts
+  until someone answers it, with surveillance on or off.
+- **Answering stays reachable, scoped to the recipient.** Reading and
+  answering a response (`GET /notification/responses`, `GET` and `PATCH
+  /notification/responses/{id}`) never look at the gate: `CallEngine::response`
+  and `verdict` require that the caller was reached by that response
+  (`call_response_member.reached_at`) and answer 404 otherwise, whatever the
+  caller's role or the module's state. A Guard whose role went inactive with
+  surveillance reads and resolves the alert it received; a person it never
+  reached gets 404 on both. `GET /guard/safety` and `POST /guard/panic` are core
+  routes of argus-guard (`kCoreRoutes`, packages/lib/auth), and guard's own
+  retries of an alert already raised do not look at the gate either.
 - **History stays.** Notifications already written are not touched and still
   sync; the app hides the kinds of an inactive module itself.
 
 Tests: `call-engine-test` ("the notification kinds of a module name that module
-and nothing else does", the agenda, the arrival, the cancel and the funnel).
+and nothing else does", the agenda, the arrival, the cancel, the funnel, "a
+raised panic or duress alert survives surveillance going off and its recipients
+still answer it" and "a surveillance response ends with the module while a
+panic response next to it stays open"); guard's `guard-scenario-test` raises
+and escalates a panic and a duress alert with the module off.
 
 ## Argus calls you (2026-10, RTC wave)
 

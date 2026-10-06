@@ -54,6 +54,7 @@ public:
   [[nodiscard]] drogon::Task<bool> verdict(const CallResponseVerdictInput& input) const;
 
   [[nodiscard]] drogon::Task<std::vector<int64_t>> expire(int64_t createdBefore, int64_t at) const;
+  [[nodiscard]] drogon::Task<std::vector<int64_t>> expireKinds(const CallResponseExpireKindsInput& input) const;
 
   [[nodiscard]] drogon::Task<std::vector<CallResponseForUser>>
   forUser(const CallResponseUserInput& input) const;

@@ -1635,3 +1635,91 @@ TEST_CASE("the notification funnel drops the kinds of a module that is off and k
   CHECK(drogon::sync_wait(service.createManyAndEmit(batchOf("agenda_reminder", "gate:reminder:off"))).createdCount == 2);
   CHECK(count() == before + 8);
 }
+
+namespace
+{
+std::vector<CallUserOutcome> respondGated(GatedHarness& harness, const RespondInput& input)
+{
+  return drogon::sync_wait(harness.engine.respond(
+      {.data = input.data, .userIds = input.userIds, .plan = input.plan}));
+}
+
+Json::Value alertData(const std::string& kind, int64_t alert)
+{
+  Json::Value data = guardData("critical", alert);
+  data["kind"] = kind;
+  data["threadKey"] = "guard:" + kind + ":" + std::to_string(alert);
+  return data;
+}
+}
+
+TEST_CASE("a raised panic or duress alert survives surveillance going off and its recipients still answer it")
+{
+  for (const std::string kind : {"guard_panic", "guard_duress"}) {
+    CAPTURE(kind);
+    GatedHarness harness;
+    const Json::Value data = alertData(kind, kind == "guard_panic" ? 160 : 161);
+    const Json::Value plan = planOf(orderedHousehold(), "ordered");
+    respondGated(harness, {.data = data, .userIds = {1, 5}, .plan = plan});
+    const int64_t id = responseIdOf("guard:" + kind + ":" + std::to_string(kind == "guard_panic" ? 160 : 161));
+    REQUIRE(id > 0);
+    CHECK(ringingUsers() == std::vector<int64_t>{1, 5});
+
+    harness.modules.surveillance->store(false);
+    CHECK(drogon::sync_wait(harness.engine.cancelForModule("surveillance")) == 0);
+    CHECK(ringingUsers() == std::vector<int64_t>{1, 5});
+    CHECK(responseState(id) == "active");
+
+    harness.clock->fetch_add(46);
+    const auto escalated = drogon::sync_wait(harness.engine.sweep());
+    CHECK(escalated.escalated == 1);
+    CHECK(ringingUsers() == std::vector<int64_t>{2});
+    CHECK(responseState(id) == "active");
+
+    const auto stranger = drogon::sync_wait(harness.engine.response({.userId = 9, .responseId = id}));
+    CHECK_FALSE(stranger.has_value());
+    CHECK(drogon::sync_wait(harness.engine.verdict(
+                                {.responseId = id, .userId = 9, .verdict = ResponseVerdict::FalseAlarm}))
+              .status == ResponseVerdictStatus::NotFound);
+    CHECK(responseState(id) == "active");
+
+    const auto guard = drogon::sync_wait(harness.engine.response({.userId = 5, .responseId = id}));
+    REQUIRE(guard.has_value());
+    CHECK(guard.value_or(Json::Value())["state"].asString() == "active");
+    const auto resolved = drogon::sync_wait(harness.engine.verdict(
+        {.responseId = id, .userId = 5, .verdict = ResponseVerdict::FalseAlarm}));
+    CHECK(resolved.status == ResponseVerdictStatus::Recorded);
+    CHECK(responseState(id) == "false_alarm");
+    CHECK(ringingUsers().empty());
+  }
+}
+
+TEST_CASE("a surveillance response ends with the module while a panic response next to it stays open")
+{
+  GatedHarness harness;
+  const Json::Value plan = planOf(orderedHousehold(), "ordered");
+  const Json::Value episode = alertData("guard_episode", 170);
+  const Json::Value panic = alertData("guard_panic", 171);
+  respondGated(harness, {.data = episode, .userIds = {1}, .plan = plan});
+  respondGated(harness, {.data = panic, .userIds = {5}, .plan = plan});
+  const int64_t episodeId = responseIdOf("guard:guard_episode:170");
+  const int64_t panicId = responseIdOf("guard:guard_panic:171");
+  REQUIRE(episodeId > 0);
+  REQUIRE(panicId > 0);
+
+  harness.modules.surveillance->store(false);
+  CHECK(drogon::sync_wait(harness.engine.cancelForModule("surveillance")) == 1);
+  CHECK(responseState(episodeId) == "expired");
+  CHECK(responseState(panicId) == "active");
+  CHECK(ringingUsers() == std::vector<int64_t>{5});
+  const auto updates = harness.signal->of(SyncOperation::ResponseUpdate);
+  bool episodeClosed = false;
+  for (const auto& update : updates)
+    episodeClosed = episodeClosed || (update.userId == 1 && update.info["state"].asString() == "expired");
+  CHECK(episodeClosed);
+
+  harness.clock->fetch_add(46);
+  const auto swept = drogon::sync_wait(harness.engine.sweep());
+  CHECK(swept.escalated == 1);
+  CHECK(responseState(episodeId) == "expired");
+}

@@ -187,6 +187,29 @@ CallResponseRepository::expire(int64_t createdBefore, int64_t at) const
   co_return ids;
 }
 
+drogon::Task<std::vector<int64_t>>
+CallResponseRepository::expireKinds(const CallResponseExpireKindsInput& input) const
+{
+  if (input.kinds.empty())
+    co_return std::vector<int64_t>{};
+  std::string sql(EXPIRE_KINDS_HEAD);
+  std::vector<std::string> args{std::to_string(input.at)};
+  for (const auto& kind : input.kinds) {
+    if (args.size() > 1)
+      sql += ", ";
+    sql += '?';
+    args.push_back(kind);
+  }
+  sql += EXPIRE_KINDS_TAIL;
+  const auto& argsRef = args;
+  const auto rows = co_await DbService::client()->execSqlCoro(sql, argsRef);
+  std::vector<int64_t> ids;
+  ids.reserve(rows.size());
+  for (const auto& row : rows)
+    ids.push_back(row["id"].as<int64_t>());
+  co_return ids;
+}
+
 drogon::Task<std::vector<CallResponseForUser>>
 CallResponseRepository::forUser(const CallResponseUserInput& input) const
 {
