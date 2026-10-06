@@ -1,7 +1,8 @@
 # argus-settings
 
-The single owner-facing HTTP surface of the app's Settings area. It owns no
-data: every microservice that exposes tunable behaviour publishes its own
+The single owner-facing HTTP surface of the app's Settings area and the
+module manager (see "Modules"). Apart from the module state in `settings.db`
+it owns no data: every microservice that exposes tunable behaviour publishes its own
 catalog over `argus.settings.v1` (`packages/contracts/settings`) on the gRPC
 server it already runs, accepting only the caller named `settings`. This
 service reads those catalogs and forwards changes to their owners.
@@ -328,3 +329,241 @@ its `stack` mode, on `prepare` and on every `restart` of settings or one of
 them. `GET /settings` on the sandbox therefore lists guard (40 keys), camera
 (17) and notification (10) as reachable; the golden fixture of that route
 has to be recorded with them.
+
+## Modules
+
+argus-settings is the module manager of the selectable-modules plan
+(`docs/history/plans/modules-and-welcome-plan.md`): the catalog, dependency
+resolution, the hardware check, the persistent job queue, the module
+lifecycle, the REST surface and the progress events. It is the one piece of
+this service that owns data: `settings.db` (`[modules] db_path`), created at
+boot from `database/schema.sql` (`[modules] schema`, statements are
+`IF NOT EXISTS`, so a boot never resets it). Each other service still owns
+its own files: settings asks an owner over the settings wire to fetch, stop,
+remove or purge, it never touches another models dir or database (rule 27).
+
+### The catalog
+
+`modules.json` (`[modules] catalog_path`, baked at `/opt/argus/modules.json`
+in the image) holds `components` and `modules`. `infra/module-catalog-file.cc`
+validates it at boot like `profiles.json`: ids `[a-z0-9-]`, unique per kind;
+exactly one `core` module, which requires nothing; every required module and
+every component known, no dependency cycle (`services/module-resolver.cc`);
+a route prefix gated by one module only; `coming_soon` installs nothing;
+`dataOwners` are settings owners or `identity`/`productivity`. A component
+names its `owner`, its `source` (`download`: the owner fetches it;
+`provisioned`: only the host produces it and `hostCommand` says how), the
+`ramMb` it needs loaded and its files (`path` relative to the owner's models
+root, `sizeBytes`, and for a download a `https` `url` pinned to a 40-hex
+revision or a release asset plus its `sha256`). A missing or invalid file is
+logged with the place of the problem and every `/modules` route answers 503
+`SERVICE_UNAVAILABLE`; the settings routes keep working.
+
+The shipped components and where their numbers come from:
+
+| Component | Owner | Source | Files and size | Pin |
+|---|---|---|---|---|
+| `voice-stt` | stt | provisioned | NeMo FastConformer transducer int8 (encoder, decoder, joiner, tokens), 138 474 010 B | tarball SHA-256 in `services/stt/scripts/provision.sh` |
+| `voice-tts` | tts | provisioned | Pocket `es-fast` + `en` bundles, 251 636 723 B | exported locally by `services/tts/scripts/provision.sh` |
+| `llm` | llm | provisioned | `LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf`, 695 755 488 B | SHA-256 `bb741e…` (root AGENTS.md 13e) |
+| `vision` | vlm | download | `LFM2.5-VL-450M-Q8_0.gguf` 379 219 104 B + `mmproj-LFM2.5-VL-450m-F16.gguf` 189 126 080 B | revision `1abed04b…` and the two SHA-256 of `services/vlm/scripts/provision.sh`; sizes from the Hugging Face LFS metadata of that revision |
+| `detector` | camera | provisioned | `yolo26n.param` 26 150 B + `yolo26n.bin` 9 736 936 B | NCNN export of `services/camera/scripts/provision.sh` |
+
+Sizes of the provisioned files are the ones on the reference host. RAM per
+module is an estimate, not a measurement of a loaded fleet (no service was
+restarted to measure it): core 4 GB minimum / 8 GB recommended (Pocket TTS
+measured 994 MB resident in services/tts CONTEXT.md, the 696 MB Q4 LLM plus
+its KV cache about 1.3 GB, STT about 0.45 GB, and the always-on services; 8 GB
+is the "balanced" floor of the profiles), surveillance 1.5 / 3 GB (the 568 MB
+Q8 VLM plus its projector compute at 384 px, YOLO26n and the decode
+pipelines), productivity 64 / 128 MB. Core and surveillance recommend AVX2,
+the ISA every speed number was measured on.
+
+### Lifecycle and the enabled set
+
+`module_state` keeps one row per module: `lifecycle` (`not_installed`,
+`active`, `disabled`, `uninstalled_data_kept`) and `data_purged_at` (unix
+ms, 0 = never). A module is enabled exactly when its lifecycle is `active`;
+`core` is always active. The enabled set's `version` is the id of the last
+`module_audit` row that changed a lifecycle (`adopted`, `enabled`,
+`disabled`, `rolled_back`, `removed`, `purged`), so it only grows.
+
+The first boot of `settings.db` (no `module_state` rows) adopts what exists,
+so an upgraded installation keeps its cameras: core is active, and every
+`available` module whose components all report installed is active; the rest
+is `not_installed`. The seed waits until every component owner answered; an
+owner that answers `UNIMPLEMENTED` (built before the component calls, or not
+configured) counts as installed, and after `[modules] seed_wait_s` (300 s)
+an owner that still cannot be reached counts as installed too. Until the
+seed, `settled` is false everywhere and the module routes that change state
+answer 503; consumers keep their last known state.
+
+### Jobs
+
+`module_job` is the persistent queue: `kind` (`install`, `uninstall`,
+`purge`), `state`, `reason`, `owner` (the service a failure names),
+`bytes_done`/`bytes_total`, `requested_by`, `state_since`. One job runs at a
+time on the engine's own worker thread (`ModuleEngine`, a `jthread`
+registered as the `settings-modules` drain, woken by every request and
+otherwise every `poll_interval_ms`); the owner RPCs and the synchronous
+SQLite writes run there or, for a request, inside a `BlockingTask` on the
+light lane, never on the event loop. Every state change of the database runs
+in one `BEGIN IMMEDIATE` transaction (job, lifecycle and audit together); a
+failed write rolls back and reloads the in-memory state.
+
+- Install: `queued → checking → downloading → verifying → activating →
+  health_check → done`. `checking` reads the owners fresh: an unreachable
+  owner keeps the job there with reason `owner_unreachable`; a hardware
+  verdict of `insufficient` fails it (`hardware_insufficient`); a
+  provisioned component that is not on disk fails it (`host_only`); if
+  everything is installed it skips to `verifying`, otherwise it asks each
+  owner to `InstallComponent` the missing downloads. `downloading` polls
+  `ComponentStates`: progress is the bytes present over the module's bytes,
+  stored as `max(previous, present)` so it never decreases; a component in
+  `failed` cancels the module's downloads and fails the job with the owner's
+  own reason (`disk_full`, `network`, `source_unavailable`,
+  `checksum_mismatch`); a component that went missing again is asked again.
+  `verifying` confirms every component installed (the owner verifies the
+  SHA-256 before it renames). `activating` makes the module `active` in the
+  same transaction that moves the job on (never half enabled) and publishes
+  the enabled set; `health_check` waits for every component's `ready` and
+  after `[modules] health_timeout_s` (180 s) rolls the module back to
+  `disabled` and fails the job with `health_check_failed`.
+- A module's requirements are queued first (deps-first order); a job whose
+  requirement ended without enabling it fails with `dependency_failed`.
+- Pause (`queued` to `verifying`) stops the owners' fetches with
+  `CancelComponent` (the partial files stay for the resume); resume queues
+  again; cancel ends the job. `activating` and `health_check` refuse both
+  (409 `CONFLICT`).
+- Boot resumes every job that was running: it goes back to `queued` with its
+  counters, so progress continues from what the owners already hold; a paused
+  job stays paused and its fetches are stopped again.
+- Uninstall (`kind` `uninstall`, keep data) and purge (`kind` `purge`):
+  `queued → removing (→ purging) → done`. Asking for it disables an active
+  module at once, in the same transaction that creates the job. `removing`
+  asks each owner to `RemoveComponent` the module's downloaded components
+  that no other active module uses (provisioned files are the host's and
+  stay); an owner that answers `UNIMPLEMENTED` fails the job with
+  `remove_unsupported`, one that cannot be reached with `owner_unreachable`,
+  one whose files remain with `remove_failed`, each naming the `owner`. Keep
+  data ends `uninstalled_data_kept` (or stays `not_installed`). `purging`
+  asks every `dataOwners` service that has not purged yet to
+  `PurgeModuleData`; each confirmation is a `module_purge` row, so a retry
+  (a new purge request) resumes from the owners left; `UNIMPLEMENTED` fails
+  with `purge_unsupported`, a refusal with `purge_failed`. When every owner
+  confirmed, the module is `not_installed`, `data_purged_at` is stamped and
+  the purge rows are cleared.
+- A purge needs the Owner's guard PIN when one is set. Settings asks argus-guard
+  over the settings wire (`VerifyOwnerPin`): no PIN or the right one goes on,
+  a missing PIN is 403 `PIN_REQUIRED`, a wrong one 403 `PIN_INVALID`, too
+  many 429 `PIN_LOCKED`, an unreachable guard 503. A guard that answers
+  `UNIMPLEMENTED` (today) leaves the app's typed confirmation as the only
+  check.
+
+### Hardware check
+
+`services/hardware-check.cc`, fed by `HardwareProbe::get()` and `statvfs` on
+`[modules] models_dir` (in the deploy the models root bind-mounted read-only
+at `/opt/argus/models`). RAM counts the minimum and recommended RAM of every
+active module plus the target and what it requires; below the sum of minimums
+is `insufficient` (`ram_below_minimum`), below the recommended sum `slow`
+(`ram_below_recommended`). Free disk must hold the remaining download bytes
+plus 10 % (`disk_insufficient`, insufficient); an unreadable disk is left out.
+A missing `requiredCpu` feature is insufficient, a missing `recommendedCpu`
+one slow (`cpu_feature_missing`), a recommended GPU without Vulkan slow
+(`gpu_missing`). Install refuses `insufficient` with 409
+`MODULE_HARDWARE_INSUFFICIENT`; `slow` is allowed and shown.
+
+### HTTP contract
+
+Filters `DeviceFilter → (ValidJsonFilter on POST) → JwtFilter → RoleFilter`;
+`role_access::kModuleAccess` lets every role read `GET /modules` and keeps
+the rest owner-only. Every POST takes a JSON object body (`{}` when it has
+nothing to say). Names, summaries and getting-started titles come in the
+`Accept-Language` language (`en…` gives English, anything else Spanish).
+
+`GET /modules` → `{ "modules": [...] }` in catalog order. The Owner gets:
+
+```json
+{ "id": "surveillance", "name": "Vigilancia", "summary": "…",
+  "kind": "available", "lifecycle": "not_installed", "enabled": false,
+  "requires": ["core"], "sizeBytes": 578108270, "installedBytes": 9763086,
+  "hasData": false, "dataPurgedAt": null,
+  "hardware": { "verdict": "ok", "reasons": [], "minRamMb": 1536,
+                "recommendedRamMb": 3072, "freeDiskMb": 120000 },
+  "job": null,
+  "gettingStarted": [ { "id": "add-camera", "title": "Agrega tu primera cámara",
+                        "route": "/cameras" } ],
+  "components": [ { "id": "detector", "owner": "camera", "source": "provisioned",
+    "reachable": true, "reported": true, "state": "installed",
+    "bytesPresent": 9763086, "bytesTotal": 9763086, "ready": true,
+    "hostCommand": "services/camera/scripts/provision.sh", "reason": null } ] }
+```
+
+- `kind`: `core` | `available` | `coming_soon`. `lifecycle` as above.
+  `dataPurgedAt`: unix ms or null. `freeDiskMb` is null when unreadable.
+- `job`: the module's latest job unless it is `done`, else null:
+  `{ "id", "kind": "install"|"uninstall"|"purge", "state", "progress" (0-1),
+  "bytesDone", "bytesTotal", "bytesPerSecond", "etaSeconds" (null when
+  unknown), "reason" (null or a code), "owner" (null or the service a
+  failure names) }`. States: `queued`, `checking`, `downloading`,
+  `verifying`, `activating`, `health_check`, `removing`, `purging`, `done`,
+  `paused`, `failed`, `cancelled`.
+- `components` (an addition to the plan's JSON): the app shows a provisioned
+  component's `hostCommand`; `reported` is false for an owner that does not
+  implement the component calls yet, `reachable` false for one that did not
+  answer.
+- Every other role gets `{ "id", "name", "enabled", "lifecycle",
+  "dataPurgedAt" }` only, so their devices also drop purged data.
+
+| Route | Answer |
+|---|---|
+| `POST /modules/{id}/install` | 202 with the job. 404 unknown; 409 `MODULE_COMING_SOON`, `MODULE_HARDWARE_INSUFFICIENT`, `MODULE_JOB_RUNNING` (this module already has an unfinished job), `CONFLICT` (already active); 503 before the seed. |
+| `POST /modules/{id}/pause`, `/resume`, `/cancel` | 200 with the job; 404 `NOT_FOUND` when the module has no unfinished job; 409 `CONFLICT` while activating or in health check. |
+| `POST /modules/{id}/disable` | 200 with the module; 409 `MODULE_CORE`, `MODULE_REQUIRED_BY`, `MODULE_JOB_RUNNING`. |
+| `POST /modules/{id}/uninstall` | body `{ "keepData": true (default) | false, "pin": "digits" }`; 202 with the job; 409 `MODULE_CORE`, `MODULE_REQUIRED_BY` (message "Required by <id>"), `MODULE_JOB_RUNNING`; 403/429 PIN codes and 503 as above; 422 for a non-boolean `keepData` or a non-numeric or over-32-character `pin`. |
+| `GET /modules/{id}/data` | `{ "owners": [ { "owner", "reachable", "reported", "items": [ { "kind", "count" } ], "bytes" } ] }`, one entry per `dataOwners` service, read live in parallel. |
+
+### Events on `argus.settings.v1.module`
+
+The producer creates the stream at boot (`ARGUS_SETTINGS_MODULE`, subjects
+`[argus.settings.v1.module]`, max age 24 h, duplicate window 120 s;
+`nats_subject::kSettingsModule`/`kSettingsModuleStream`); consumers may
+create-or-bind it with that exact configuration. Every message has a
+`Nats-Msg-Id` `<bootMs>-<sequence>`. Two kinds, both JSON objects:
+
+```json
+{ "kind": "enabled", "version": 42, "settled": true, "at": 1790000000000,
+  "modules": [ { "id": "core", "enabled": true, "lifecycle": "active",
+                 "dataPurgedAt": null }, ... every catalog module ... ] }
+
+{ "kind": "module", "version": 42, "settled": true, "at": 1790000000000,
+  "module": { ...the Owner's module JSON above, names in Spanish... } }
+```
+
+- `enabled` is published on every lifecycle change and once per boot after
+  the seed (retried each engine pass until NATS takes it), so a
+  `deliverAll` consumer learns the latest set. A consumer drops a message
+  whose `version` is lower than the last it applied and ignores
+  `settled: false`. argus-sync fans it out as `ModuleUpdate` to every socket.
+- `module` goes to the Owner's room (`ModuleUpdate`, info = the bare module).
+  Throttle per job: a state change always goes out; a progress-only change
+  only when at least a second passed and progress grew by at least 1 % since
+  the job's last frame. The frame of a finished job carries that job.
+
+### Wire
+
+- argus-settings calls each owner through `argus::clients::settings`
+  (`SettingsClient::componentStates`, `installComponent`,
+  `cancelComponent`, `removeComponent`, `moduleDataSummary`,
+  `purgeModuleData`, `verifyOwnerPin`), on the owner's existing settings
+  credential and the update deadline. Each answers `std::nullopt` when the
+  owner says `UNIMPLEMENTED`.
+- argus-settings serves `argus.settings.v1.Modules/ModuleStates` on
+  `[rpc] address` (127.0.0.1:7047 native, 0.0.0.0:7047 deploy) for the
+  services' boot read: `{ modules: [{ id, enabled, lifecycle,
+  data_purged_at }], version, settled }`. Callers present their own
+  credential from `[rpc.callers]` (auth, camera, guard, identity,
+  notification, productivity, sync, voice, llm; `ensure_fleet_callers` pairs
+  them with the caller's `[modules] credential`); the gate is open while none
+  is paired. Before the seed, or with no catalog, it answers `settled: false`.

@@ -6,6 +6,7 @@
 #include <chrono>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 inline constexpr std::array<std::string_view, 8> kSettingsOwnerOrder{
@@ -31,6 +32,27 @@ struct SettingsTimeouts
   std::chrono::milliseconds update{5000};
 };
 
+struct ModulesConfig
+{
+  std::string catalogPath{"modules.json"};
+  std::string dbPath{"settings.db"};
+  std::string schemaPath{"database/schema.sql"};
+  std::string modelsDir{"../../models"};
+  std::chrono::milliseconds pollInterval{1000};
+  std::chrono::seconds idleRefresh{30};
+  std::chrono::seconds healthTimeout{180};
+  std::chrono::seconds seedWait{300};
+};
+
+struct ModulesRpcConfig
+{
+  std::string address;
+  std::vector<std::pair<std::string, std::string>> callers;
+};
+
+inline constexpr std::array<std::string_view, 9> kModuleStateCallers{
+    "auth", "camera", "guard", "identity", "notification", "productivity", "sync", "voice", "llm"};
+
 class SettingsConfig
 {
 public:
@@ -45,4 +67,8 @@ public:
   [[nodiscard]] static SettingsTimeouts resolveTimeouts();
 
   [[nodiscard]] static std::string resolveProfilesPath();
+
+  [[nodiscard]] static ModulesConfig resolveModules();
+
+  [[nodiscard]] static ModulesRpcConfig resolveModulesRpc();
 };
