@@ -47,6 +47,15 @@ class RunRoundTest(unittest.TestCase):
         self.assertIn("| calendar |", (self.out / "report.md").read_text())
         self.assertIn("chunk 1/2", result.stdout)
 
+    def test_slices_reach_the_calibrated_report_and_the_markdown(self):
+        slices = self.directory / "slices.json"
+        slices.write_text(json.dumps({"origin": {"pon una agenda el lunes": "borrowed", "cuéntame un chiste": "own"}}))
+        result = self.run_round("--stages", "fill,score,report", "--slices", str(slices))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        data = json.loads((self.out / "calibrated.json").read_text())
+        self.assertEqual(set(data["slices"]["origin"]), {"borrowed", "own"})
+        self.assertIn("| origin / borrowed |", (self.out / "report.md").read_text())
+
     def test_a_second_run_scores_from_the_cache_without_the_decider(self):
         self.assertEqual(self.run_round("--stages", "fill").returncode, 0)
         again = self.run_round("--stages", "score,report", decider="/nonexistent/decider")

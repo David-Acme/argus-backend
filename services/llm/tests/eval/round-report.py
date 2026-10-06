@@ -109,6 +109,22 @@ def price_section(name, report):
     return out + [""]
 
 
+def slices_section(name, report):
+    slices = report.get("slices")
+    if not slices:
+        return []
+    out = [f"### Slices, {name}", "", "| slice | cases | modules positives | coverage | precision | wrong ACT | memory positives | "
+           "coverage | precision | wrong ACT |", "|---|---|---|---|---|---|---|---|---|---|"]
+    for grouping, labels in slices.items():
+        for label, row in labels.items():
+            m, k = row["moduleFamilies"], row["memory"]
+            out.append(f"| {grouping} / {label} | {row['cases']} | {m['positives']} | {m['coverage']:.3f} | "
+                       f"{m['precision']:.3f} | {m['wrongAct']} | {k['positives']} | {k['coverage']:.3f} | "
+                       f"{k['precision']:.3f} | {k['wrongAct']} |")
+    return out + ["", "Each slice is scored at the reference policy of the round, over the same selection set; a slice is an "
+                  "association with the data a case resembles, not the effect of removing that data.", ""]
+
+
 def calibration_section(name, calibration):
     if not calibration:
         return []
@@ -179,6 +195,7 @@ def main():
         body, _ = decider_section(name, report, args.ceiling, args.baseline, beside_text(args.gates))
         sections += body
         sections += price_section(name, report)
+        sections += slices_section(name, report)
         sections += calibration_section(name, load(pathlib.Path(directory) / "calibration.json"))
         sections += traffic_section(name, report)
         sections += performance_section(name, load(pathlib.Path(directory) / "perf.json"))

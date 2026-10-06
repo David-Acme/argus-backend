@@ -54,10 +54,11 @@ def fill(args, out):
 def score(args, out):
     common = ["--cache", str(out / "cache.json"), "--latency", "0", "--guard-scope", args.guard_scope]
     traffic = ["--traffic", *args.traffic] if args.traffic else []
+    sliced = ["--slices", args.slices] if args.slices else []
     passes = (("uncalibrated", ["--calibrate-out", str(out / "calibration.json"),
                                 "--errors", str(out / "errors-uncalibrated.jsonl")] + traffic),
               ("calibrated", ["--calibration", str(out / "calibration.json"), "--errors", str(out / "errors.jsonl")]
-               + traffic))
+               + traffic + sliced))
     for name, extra in passes:
         command = harness_command(args, *common, *extra, "--report", str(out / f"{name}.json"))
         code = execute(wrapped(args, command), out / f"{name}.txt")
@@ -97,6 +98,7 @@ def main():
     parser.add_argument("--decider", required=True)
     parser.add_argument("--select", nargs="+", required=True)
     parser.add_argument("--negatives")
+    parser.add_argument("--slices")
     parser.add_argument("--traffic", nargs="*", default=[])
     parser.add_argument("--artifact", nargs="*", default=[])
     parser.add_argument("--gates", default=str(HERE / "gates.json"))

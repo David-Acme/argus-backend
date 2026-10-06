@@ -289,6 +289,30 @@ class RunTest(unittest.TestCase):
         self.assertAlmostEqual(data["sealed"]["moduleFamilies"]["coverage"], 1.0)
         self.assertIn("FINAL MEASUREMENT", result.stdout)
 
+    def test_slices_score_the_selection_cases_by_a_label_of_their_text(self):
+        slices = self.directory / "slices.json"
+        slices.write_text(json.dumps({"origin": {"pon una agenda el lunes": "borrowed", "crea una tarea de pintar": "own",
+                                                 "cuéntame un chiste": "own"}}))
+        result, data = self.run_harness("--slices", str(slices))
+        self.assertEqual(result.returncode, 0, result.stdout)
+        rows = data["slices"]["origin"]
+        self.assertEqual(rows["borrowed"]["cases"], 1)
+        self.assertEqual(rows["own"]["cases"], 2)
+        self.assertEqual(rows["borrowed"]["moduleFamilies"]["positives"], 1)
+        self.assertAlmostEqual(rows["borrowed"]["moduleFamilies"]["coverage"], 1.0)
+        self.assertEqual(rows["own"]["moduleFamilies"]["positives"], 1)
+        self.assertIn("origin / borrowed", result.stdout)
+
+    def test_slices_of_a_round_with_no_feasible_policy_use_the_first_feasible_ceiling(self):
+        write(self.select, [case("a", "pon una agenda el lunes", ["calendar.create_event"]),
+                            case("c", "una certeza absoluta", variant="real")]
+              + [case(f"r{i}", f"frase {i}", variant="real") for i in range(99)])
+        slices = self.directory / "slices.json"
+        slices.write_text(json.dumps({"origin": {"pon una agenda el lunes": "x"}}))
+        result, data = self.run_harness("--slices", str(slices))
+        self.assertIsNone(data["policy"])
+        self.assertAlmostEqual(data["slices"]["origin"]["x"]["moduleFamilies"]["coverage"], 1.0)
+
     def test_the_gate_obeying_baseline_is_printed_beside_the_bar(self):
         self.gates.write_text(json.dumps({
             "sealed": {"file": "sealed.jsonl", "sha256": hashlib.sha256(self.sealed.read_bytes()).hexdigest()},

@@ -46,6 +46,11 @@ from the cache alone: first uncalibrated with `--calibrate-out`, then calibrated
 `round-report.py` turns the two reports into the tables a review reads (the operating point, per
 family and per variant, the price of each wrong-ACT ceiling, calibration, real traffic, performance).
 Only the `perf` stage needs an idle machine and it refuses a busy one with exit 77.
+`--slices <file>` scores the selection set again by a label of each case's text (a JSON object of
+groupings, each mapping an utterance to a label) at the round's reference policy, which is how a round is
+read by where its training data came from: `intent-training/scripts/slice_by_neighbours.py` writes the
+labels (the license of a case's nearest trained-on row, and of its own row). A slice is an association with
+the data a case resembles, not the effect of removing that data; that effect is measured by training without it.
 
 ```
 python3 -I services/llm/tests/eval/run-round.py --name <round> --out <dir> --decider '<command>' \

@@ -450,6 +450,34 @@ def print_bar(gates, section, summary):
           f"{beside['coverage']} (gate-obeying fastText on the {section} set {beside['label']})")
 
 
+def slice_rows(cases, decisions, policy, groupings):
+    out = {}
+    for grouping, labels in groupings.items():
+        members = {}
+        for index, case in enumerate(cases):
+            label = labels.get(case["text"])
+            if label is not None:
+                members.setdefault(label, []).append(index)
+        out[grouping] = {}
+        for label, indexes in sorted(members.items()):
+            summary = summarise([cases[i] for i in indexes], [decisions[i] for i in indexes], policy)
+            out[grouping][label] = {"cases": len(indexes), "moduleFamilies": summary["moduleFamilies"],
+                                    "memory": summary["memory"]}
+    return out
+
+
+def print_slices(slices, policy):
+    print(f"\nslices at ACT >= {policy[0]} / ASK >= {policy[1]} / margin {policy[2]} (the reference policy)")
+    print(f"  {'slice':34s}{'cases':>6s}  {'modules: pos':>12s}{'cover':>7s}{'prec':>7s}{'wrongA':>7s}"
+          f"  {'memory: pos':>11s}{'cover':>7s}{'prec':>7s}{'wrongA':>7s}")
+    for grouping, labels in slices.items():
+        for label, row in labels.items():
+            m, k = row["moduleFamilies"], row["memory"]
+            print(f"  {grouping + ' / ' + label:34s}{row['cases']:6d}  {m['positives']:12d}{m['coverage']:7.3f}"
+                  f"{m['precision']:7.3f}{m['wrongAct']:7d}  {k['positives']:11d}{k['coverage']:7.3f}"
+                  f"{k['precision']:7.3f}{k['wrongAct']:7d}")
+
+
 def limits_of(gates):
     section = gates.get("decider", {})
     return {"wrongAct": section.get("wrongActMax", gates.get("sealed", {}).get("falseRouteMax", DEFAULT_WRONG_ACT)),
@@ -630,6 +658,7 @@ def main():
     parser.add_argument("--errors")
     parser.add_argument("--cache")
     parser.add_argument("--chunk")
+    parser.add_argument("--slices")
     parser.add_argument("--calibrate-out")
     parser.add_argument("--calibration")
     parser.add_argument("--guard-scope", choices=["both", "all", "low-risk-open"], default="both")
@@ -658,6 +687,7 @@ def main():
         return 0
     report = {"decider": args.decider, "selectionCases": len(selection), "limits": limits}
     failures = []
+    found = []
     try:
         try:
             chosen_decisions = cached_decisions(decider, selection, args.cache)
@@ -716,6 +746,11 @@ def main():
                 print_families(f"selection at the {row['ceiling']:.2%} ceiling (NOT the gate: information)",
                                row["summary"])
                 break
+        if args.slices:
+            reference = policy or next((p for p in map(policy_of, found) if p), None) or FALLBACK_POLICY
+            report["slices"] = slice_rows(selection, chosen_decisions, reference,
+                                          json.loads(pathlib.Path(args.slices).read_text()))
+            print_slices(report["slices"], reference)
         if args.errors:
             rows = error_rows(selection, chosen_decisions, policy or FALLBACK_POLICY)
             pathlib.Path(args.errors).write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))

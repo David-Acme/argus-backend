@@ -94,6 +94,18 @@ class RoundReportTest(unittest.TestCase):
         unmeasured = self.run_report(self.write_round("later", rows, True))
         self.assertIn("Not measured on an idle machine in this round.", unmeasured.stdout)
 
+    def test_slices_are_tabulated_with_the_warning_that_they_are_an_association(self):
+        rows = [{"ceiling": 0.001, "policy": {}, "summary": summary(0.62)}]
+        rep = report(rows, True)
+        rep["slices"] = {"neighbour": {"CC-BY-SA-4.0": {"cases": 120, "moduleFamilies": entry(positives=40, coverage=0.5),
+                                                       "memory": entry(positives=30, coverage=0.7)}}}
+        path = self.directory / "sliced"
+        path.mkdir()
+        (path / "calibrated.json").write_text(json.dumps(rep))
+        result = self.run_report(f"sliced={path}")
+        self.assertIn("| neighbour / CC-BY-SA-4.0 | 120 | 40 | 0.500 | 0.990 | 1 | 30 | 0.700 | 0.990 | 1 |", result.stdout)
+        self.assertIn("not the effect of removing that data", result.stdout)
+
     def test_a_directory_without_a_report_is_an_error(self):
         empty = self.directory / "empty"
         empty.mkdir()
