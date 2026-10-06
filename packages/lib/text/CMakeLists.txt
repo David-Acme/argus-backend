@@ -11,7 +11,11 @@ argus_lib(NAME text
         src/text/fnv-hash.hxx
         src/text/json-diff.cc
         src/text/json-diff.hxx
+        src/text/iso-time.cc
+        src/text/iso-time.hxx
         src/text/json-util.hxx
+        src/text/name-match.cc
+        src/text/name-match.hxx
         src/text/sha256.hxx
         src/text/text-norm.cc
         src/text/text-norm.hxx
@@ -32,6 +36,16 @@ add_executable(json-diff-test tests/unit/json-diff-test.cc)
 target_link_libraries(json-diff-test PRIVATE argus::lib::text doctest::doctest)
 target_compile_options(json-diff-test PRIVATE -Wall -Wextra)
 add_test(NAME json-diff-test COMMAND json-diff-test)
+
+add_executable(iso-time-test tests/unit/iso-time-test.cc)
+target_link_libraries(iso-time-test PRIVATE argus::lib::text doctest::doctest)
+target_compile_options(iso-time-test PRIVATE -Wall -Wextra)
+add_test(NAME iso-time-test COMMAND iso-time-test)
+
+add_executable(name-match-test tests/unit/name-match-test.cc)
+target_link_libraries(name-match-test PRIVATE argus::lib::text doctest::doctest)
+target_compile_options(name-match-test PRIVATE -Wall -Wextra)
+add_test(NAME name-match-test COMMAND name-match-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

@@ -29,6 +29,18 @@ absorption.
   `ChangesComparisonResult`: `createFlatDiff`, `compareChanges`,
   `compareObjects`, `applyChanges`, `fromJsonString`, `toJson` — the flat
   object diff the sync stream and the audit trail carry.
+- `src/text/name-match.{cc,hxx}` — `text_norm::folded` (accents, case and
+  punctuation dropped, words single-spaced) and `matchName(names, asked)`: the
+  one way a spoken name finds an item ("el patio" among "Patio trasero" and
+  "Patio delantero"). An exact folded equality wins; otherwise every word asked
+  must be a word of the name; one hit is `Exact`, several `Ambiguous` (the
+  caller asks which), none `Missing`. Camera, guard and productivity tools use
+  it so a user's wording resolves the same way everywhere.
+- `src/text/iso-time.{cc,hxx}` — `iso_time::parse` (an ISO-8601 date-time with
+  an optional `Z` or `±hh:mm` offset and optional seconds; without an offset
+  the host's local zone is meant; anything else is `nullopt`) and `format`
+  (epoch to ISO-8601 with its offset in the host's zone, the form a clock line
+  shows the model and a tool argument carries).
 - `src/text/sha256.hxx` — `argus::hash::Sha256`, self-contained so no service
   needs a crypto dependency to hash a payload.
 - `src/text/fnv-hash.hxx` — `Fnv1a`, the content checksum the migration tools
@@ -56,7 +68,9 @@ absorption.
 
 `tests/unit/sha256-test.cc` — the known-answer vectors, the block boundaries,
 chunked updates against a single update, and the length-prefixed field
-encode.
+encode. `name-match-test` (folding, exact, one-word, ambiguous and missing
+names) and `iso-time-test` (with and without an offset or seconds, the local zone,
+malformed text, the write-back round trip).
 
 `tests/unit/json-diff-test.cc` — the wire form of a diff: every entry carries
 both `previous` and `current`, null included, because a replica applies a
