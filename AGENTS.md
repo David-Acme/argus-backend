@@ -927,13 +927,13 @@ package: it is the executable `argus-<name>`.
 The target-name half of that rule is structural: `argus_lib`,
 `argus_contracts` and `argus_clients` build the group into the name, so a
 package cannot declare itself into the wrong tier (rule 25's own names are in
-`cmake/argus-module.cmake`). The dependency half is still prose — 26 packages
+`cmake/argus-module.cmake`). The dependency half is still prose — 28 packages
 name a first-party `argus::` alias by hand inside the dependency list of one of
-the group helpers: twelve of the fourteen contracts (all but `routes` and
+the group helpers: thirteen of the fifteen contracts (all but `routes` and
 `voice`, which name only their own test target; the `response`, `settings`,
-`stt`, `tts`, `llm` and `vlm` wire modules among the twelve), seven of the
-thirteen clients (`llm`, `settings`, `stt`, `sync`, `tts`, `vlm`, `voice`)
-and seven of the seventeen libs
+`stt`, `tts`, `llm`, `vlm` and `mcp` wire modules among the thirteen), eight of the
+fourteen clients (`llm`, `mcp`, `settings`, `stt`, `sync`, `tts`, `vlm`, `voice`)
+and seven of the eighteen libs
 (`auth`, `http`, `mdns`, `nats`, `outbox`, `storage`, `validation`). Every package is in
 a group since Phase 4 step 7: `packages/memory` and `packages/intent` were the
 two that sat outside the helpers — declaring themselves with literal
@@ -946,18 +946,18 @@ The three groups sit where they belong — `packages/lib/<name>`,
 `packages/contracts/<domain>`, `packages/clients/<domain>`, each declared by
 its group's helper: `argus_lib_<name>` / `argus::lib::<name>`,
 `argus_contracts_<domain>` / `argus::contracts::<domain>`,
-`argus_clients_<domain>` / `argus::clients::<domain>`. Every one of the thirteen
+`argus_clients_<domain>` / `argus::clients::<domain>`. Every one of the fourteen
 clients wraps a generated gRPC stub — eight of them pass `PROTO` to
 `argus_clients`, the four wire clients (`llm`, `stt`, `tts`, `vlm`)
 speak HTTP beside the stub and reach it through a wire contract module
 (`argus::contracts::{llm,stt,tts,vlm}-wire`) instead of passing `PROTO`
 themselves, each carrying an HTTP transport next to it, and `settings`
-reaches its stub through `argus::contracts::settings-wire` the same way, with
-no HTTP transport. Seven wire
+and `mcp` reach their stubs through `argus::contracts::settings-wire` and
+`argus::contracts::mcp-wire` the same way, with no HTTP transport. Eight wire
 modules are
 not a domain SDK and call `argus_client_module` with the group they live in:
 `lib/grpc`'s health stubs (`GROUP lib`) and the `response`, `settings`, `stt`,
-`tts`, `llm` and `vlm` wire
+`tts`, `llm`, `vlm` and `mcp` wire
 contracts, which live in `packages/contracts/` and are aliased
 `argus::contracts::…`.
 
@@ -969,7 +969,7 @@ data (D18):
 
 | Tier | Packages | May depend on | May never depend on |
 |---|---|---|---|
-| 1 · foundation | `lib/`: audio, cert, config, errors, grpc, mdns, nats, net, outbox, phrase, runtime, sqlite, storage, text, validation | third-party, other tier-1 `lib` packages | contracts, clients, services |
+| 1 · foundation | `lib/`: audio, cert, config, errors, grpc, mcp, mdns, nats, net, outbox, phrase, runtime, sqlite, storage, text, validation | third-party, other tier-1 `lib` packages | contracts, clients, services |
 | 2 · wire | `contracts/*`, `lib/http` | tier 1 (`lib/errors`, `lib/grpc`), third-party (Drogon), generated protobuf | clients, services |
 | 3 · transport | `clients/*` | tier 1 + tier 2 | other clients, services |
 | 4 · service-aware lib | `lib/auth` | tiers 1–3 | services |
@@ -984,16 +984,16 @@ data (D18):
   source.
 - Interface dependencies (types in public headers) are `PUBLIC`;
   implementation-only dependencies are `PRIVATE`.
-- Header-only where nothing is compiled: thirteen of the fourteen contracts go
+- Header-only where nothing is compiled: thirteen of the fifteen contracts go
   through
   `argus_contracts`, which is `INTERFACE` by construction (`auth`, `camera`,
   `identity`, `llm`, `notification`, `productivity`, `routes`, `settings`,
   `stt`, `sync`, `tts`, `vlm`, `voice`), and `validation` declares `HEADER_ONLY` to `argus_lib`
   for
-  the same result. `response` is the exception under `packages/contracts/`: it
-  carries no vocabulary but the response wire, declared
-  `argus_client_module(NAME response-wire GROUP contracts …)` and compiling
-  `response-rpc.cc`. `cert` is a `STATIC` `argus_lib` over one `.cc`; `text`
+  the same result. `response` and `mcp` are the exceptions under `packages/contracts/`: each
+  carries no vocabulary but its wire, declared
+  `argus_client_module(NAME response-wire GROUP contracts …)` (and `mcp-wire`) and compiling
+  `response-rpc.cc` (and `mcp-rpc.cc`). `cert` is a `STATIC` `argus_lib` over one `.cc`; `text`
   and `phrase` compile real sources and are not candidates for it.
 - **Enums live where they are used.** A service declares its domain enums
   inside the feature that uses them; the vocabulary that crosses the wire
@@ -1108,6 +1108,9 @@ for two different reasons, and says which when it does.
 | `packages/lib/runtime/src/runtime/hardware-profile.{cc,hxx}` | CPU/RAM/ISA and video-accel probe (`HardwareProfile`), ncnn-free and ncnn variants |
 | `packages/lib/runtime/src/runtime/shutdown-signal.{cc,hxx}` | `shutdown_signal::onStop(Drain)` — the process-wide stop sequence: a unit registers its drain before `drogon::app().run()`, the module requests the stops and holds Drogon's `quit()` until every drain reports drained (D22, §4.6 of the plan); `onQuit(hook)` runs what belongs between that last drain and the quit itself (the database freeze) |
 | `packages/lib/text/src/text/json-diff.{cc,hxx}` | Diff JSON + snapshot (`JsonDiff`) |
+| `packages/lib/text/src/text/name-match.{cc,hxx}` | `text_norm::matchName`: a spoken name against a list (exact, one-word, ambiguous, missing) — the one matcher the camera, guard and productivity tools share |
+| `packages/lib/text/src/text/iso-time.{cc,hxx}` | `iso_time::parse`/`format`: ISO-8601 date-times with their offset, the one form a tool argument carries a time in |
+| `packages/lib/mcp/src/mcp/` | `argus::lib::mcp`: JSON-RPC 2.0, the stateless MCP 2026-07-28 methods (`server/discover`, `tools/list`, `tools/call`), a JSON Schema subset, `McpServer`/`McpClient`, `LocalTransport`, `ConfirmationLedger`, `onLoop` (coroutine tools) and `speech` (words in the user's language) |
 | `packages/lib/text/src/text/json-util.hxx` | `json_util::toString` (compact, `{}` for null), `isValid` (empty is not valid) and `fromString` |
 | `packages/lib/net/src/net/loopback-socket.{cc,hxx}` | `argus::net`: the one plain-TCP transport the `stt`, `tts` and `llm` wire clients share for their HTTP leg — `Socket` (RAII fd), `parseEndpoint`, `connectLoopback` (close-on-exec, bounded non-blocking connect that retries `EINTR`, a `std::stop_token` that shuts the socket down, the failing `errno` reported), `sendAll` (`MSG_NOSIGNAL`), `receiveSome` and `readUntilClosed` |
 
@@ -1123,7 +1126,8 @@ for two different reasons, and says which when it does.
 
 | File | Purpose |
 |------|---------|
-| `packages/clients/<domain>/src/<domain>/` (all thirteen now hold a single `src/<domain>/`; `camera-actions` shares `camera`'s domain folder) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`auth`, `camera`, `identity`, `notification`, `productivity`, `settings`, `sync`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
+| `packages/contracts/mcp/src/mcp/` | `argus.mcp.v1.Mcp/Rpc` (`McpRpcService`): one unary frame in, one out, on a provider's internal gRPC listener, admitted for the caller `llm` alone and never built open |
+| `packages/clients/<domain>/src/<domain>/` (all fourteen now hold a single `src/<domain>/`; `camera-actions` shares `camera`'s domain folder) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`auth`, `camera`, `identity`, `notification`, `productivity`, `settings`, `sync`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
 
 **Tier 4 — `lib/auth`**
 
@@ -1134,13 +1138,16 @@ for two different reasons, and says which when it does.
 | `packages/lib/auth/src/auth/jwt-filter.{cc,hxx}` | JWT verification + refresh token validation |
 | `packages/lib/auth/src/auth/role-filter.{cc,hxx}` | Role-based access control |
 | `packages/lib/auth/src/auth/valid-json-filter.{cc,hxx}` | JSON body validation for POST/PATCH/PUT |
+| `packages/lib/auth/src/auth/tool-gate.{cc,hxx}` | `tool_gate::capabilities()`: the gate every MCP tool server installs, so a tool call answers to the same capability table as the routes |
 | `packages/lib/auth/src/auth/jwt-service.{cc,hxx}` | JWT sign/verify (HS256, instance class) |
 
 **Tier 5 — services, and the packages that are on their way to one**
 
 | File | Purpose |
 |------|---------|
-| `services/llm/src/feature/llm/services/` | LLM inference (llama.cpp) + the tool runtime under its own `tools/` |
+| `services/llm/src/feature/llm/services/` | LLM inference (llama.cpp) + the tool runtime under its own `tools/`: `ToolRegistry`/`ToolExecutor` over MCP providers (the core tools in process, the modules' by their services through `ToolDirectory`), filtered per turn by capability |
+| `services/llm/src/feature/pending-intent/` | `argus::pending-intent`: requests kept while a module was off (`pending_intent`), completed from the module feed, the user told through an `assistant_task` notification |
+| `services/{camera,guard,productivity,settings}/src/feature/mcp/` | each owner's tools served over MCP (`app.show_camera`, `app.set_guard_mode`, `calendar.*`/`project.*`/`task.*`, `modules.*`), gated by `tool_gate::capabilities()` |
 | `services/llm/src/feature/encounter-closed/` | The camera guard feed's durable JetStream consumer: receipts in `encounter_closed_inbox`, captured once into the memory graph |
 | `services/llm/src/feature/memory/services/{memory,embedding,extract}/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`EntityResolver`/`ToolParser`/`MemoryChat` — semantic-graph long-term memory (async worker, episode recall, L3 profile) — and the artifacts it drives: `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer`, and the NuExtract/lexicon/tiered extractors |
 | `services/llm/src/feature/intent/` | `argus::intent` — the fast tier of the router: the fastText classifier + the intent router, with the model pin and NOTICE beside them |
