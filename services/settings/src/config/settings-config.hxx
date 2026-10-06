@@ -12,6 +12,8 @@
 inline constexpr std::array<std::string_view, 8> kSettingsOwnerOrder{
     "llm", "voice", "tts", "stt", "vlm", "guard", "camera", "notification"};
 
+inline constexpr std::array<std::string_view, 3> kSettingsDataOwnerOrder{"identity", "productivity", "sync"};
+
 struct SettingsOwnerConfig
 {
   std::string name;
@@ -59,6 +61,8 @@ public:
   [[nodiscard]] static ListenerConfig resolveListener();
 
   [[nodiscard]] static std::vector<SettingsOwnerConfig> resolveOwners();
+
+  [[nodiscard]] static std::vector<SettingsOwnerConfig> resolveDataOwners();
 
   [[nodiscard]] static std::vector<std::string> unconfiguredOwners(const std::vector<SettingsOwnerConfig>& owners);
 

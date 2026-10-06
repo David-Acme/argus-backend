@@ -29,7 +29,31 @@ productivity:auth:credential:auth
 settings:auth:credential:auth
 sync:auth:credential:auth
 identity:sync:control_credential:sync
-notification:sync:control_credential:sync"
+notification:sync:control_credential:sync
+camera:modules:credential:settings
+guard:modules:credential:settings
+identity:modules:credential:settings
+productivity:modules:credential:settings"
+
+DATA_OWNERS="identity:rpc.callers:settings:7040
+productivity:grpc:caller_settings:7037
+sync:rpc.callers:settings:7041"
+
+check_data_owners() {
+  local deploy_dir="$1"
+  local owner table key port credential served
+  while IFS=: read -r owner table key port; do
+    credential="$(toml_value "$deploy_dir/config.settings.toml" "owners.$owner" credential)"
+    served="$(toml_value "$deploy_dir/config.$owner.toml" "$table" "$key")"
+    [ "${#credential}" -eq 64 ] || fail "deploy: settings has no credential for the data owner $owner"
+    [ "$credential" = "$served" ] || fail "deploy: settings and $owner disagree on [$table] $key"
+    [ "$(toml_value "$deploy_dir/config.settings.toml" "owners.$owner" target)" = "argus-$owner:$port" ] ||
+      fail "deploy: settings does not target the data owner $owner on $port"
+    if grep -Fxq "$credential" "$TEST_TMP/seen-deploy"; then
+      fail "deploy: the data owner $owner reuses another pair's credential"
+    fi
+  done <<<"$DATA_OWNERS"
+}
 
 check_pairs() {
   local mode="$1"
@@ -62,6 +86,11 @@ cp "$ROOT"/argus-deploy/config.*.toml.example "$deploy"/
 [ -f "$ROOT/argus-deploy/livekit.yaml.example" ] && cp "$ROOT/argus-deploy/livekit.yaml.example" "$deploy"/
 ensure_deploy_configs "$deploy" > "$TEST_TMP/deploy-first.log" 2>&1 || fail "ensure_deploy_configs failed"
 check_pairs deploy "$deploy"
+check_data_owners "$deploy"
+for service in camera guard identity productivity; do
+  [ "$(toml_value "$deploy/config.$service.toml" modules target)" = "argus-settings:7047" ] ||
+    fail "deploy: $service does not read the enabled set from argus-settings:7047"
+done
 while IFS= read -r value; do
   if grep -Fq "$value" "$TEST_TMP/deploy-first.log"; then
     fail "a credential was printed to the console"

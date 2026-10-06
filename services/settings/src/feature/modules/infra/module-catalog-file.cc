@@ -164,11 +164,9 @@ bool knownOwner(const std::string& owner)
   return std::ranges::find(kSettingsOwnerOrder, owner) != kSettingsOwnerOrder.end();
 }
 
-constexpr std::array<std::string_view, 2> kDataOnlyOwners{"identity", "productivity"};
-
 bool knownDataOwner(const std::string& owner)
 {
-  return knownOwner(owner) || std::ranges::find(kDataOnlyOwners, owner) != kDataOnlyOwners.end();
+  return knownOwner(owner) || std::ranges::find(kSettingsDataOwnerOrder, owner) != kSettingsDataOwnerOrder.end();
 }
 
 CatalogComponent readComponent(const Node& node)

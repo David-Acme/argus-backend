@@ -36,15 +36,16 @@ own database under ARGUS_STACK_DIR (settings owns none), so a golden replay
 can run against a real fleet without touching the developer's own databases.
 The sandbox's settings service reaches only owners the sandbox boots, so
 every other owner's target is emptied in its copy of the config. Guard,
-camera and notification are paired with it (settings credential and target)
-on prepare and on every restart of settings or of one of them; restart
+camera and notification (settings owners) and identity, productivity and
+sync (module data owners) are paired with it (settings credential and
+target) on prepare and on every restart of settings or of one of them; restart
 settings after a restart that minted a new pair. The sandbox's settings
 service never applies the recommended profile on its own (first_run =
 false), so a replay finds every owner's values as the copied config left
 them.
 
 The sandbox claims the standard ports (7025-7045, plus guard's settings
-listener on 7139). Stop any other native
+listener on 7139 and the settings module-state listener on 7047). Stop any other native
 run of these services before `up`; the docker compose stack may stay up
 for nats, rustfs, voice, stt, tts and vlm.
 
@@ -199,7 +200,7 @@ prepare_service() {
 
 settings_owner() {
   case "$1" in
-    settings | guard | camera | notification) return 0 ;;
+    settings | guard | camera | notification | identity | productivity | sync) return 0 ;;
   esac
   return 1
 }
@@ -208,7 +209,7 @@ wire_settings_owners() {
   local settings_config owner config
   settings_config="$(config_of settings)"
   [ -f "$settings_config" ] || return 0
-  for owner in guard camera notification; do
+  for owner in guard camera notification identity productivity sync; do
     config="$(config_of "$owner")"
     [ -f "$config" ] || continue
     adopt_wiring_keys "$ROOT/services/$owner/config.toml.example" "$config"

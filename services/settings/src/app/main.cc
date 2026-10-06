@@ -111,7 +111,10 @@ int main()
   NatsModuleEventSink moduleEvents(natsBus);
   if (!moduleEvents.ensureStream())
     LOG_WARN << "Modules: the " << nats_subject::kSettingsModuleStream << " stream is not confirmed yet";
-  const SettingsComponentOwners componentOwners({.owners = owners, .timeout = gateway.timeouts.update});
+  auto moduleOwners = owners;
+  for (auto& owner : SettingsConfig::resolveDataOwners())
+    moduleOwners.push_back(std::move(owner));
+  const SettingsComponentOwners componentOwners({.owners = moduleOwners, .timeout = gateway.timeouts.update});
   std::unique_ptr<ModuleEngine> moduleEngine;
   if (auto catalog = loadModuleCatalog(modules.catalogPath)) {
     if (auto db = openModulesDb(modules))

@@ -813,3 +813,37 @@ TEST_CASE("progress frames reach the sink throttled while state changes always d
   CHECK(harness.sink.frames.size() > before + 1);
   CHECK(harness.sink.frames.back() == "surveillance:done");
 }
+
+TEST_CASE("the enabled set answers enabled only for an active module and carries every lifecycle")
+{
+  Harness harness;
+  harness.owners.set("vlm", installed("vision"));
+  harness.step();
+  const auto lifecycleOf = [&](const std::string& id) {
+    for (const auto& module : harness.engine->enabledSet().modules)
+      if (module.id == id)
+        return module;
+    return ModuleEnabled{};
+  };
+  const auto consistent = [&] {
+    for (const auto& module : harness.engine->enabledSet().modules)
+      if (module.enabled != (module.lifecycle == "active"))
+        return false;
+    return true;
+  };
+  CHECK(lifecycleOf("surveillance").enabled);
+  CHECK(lifecycleOf("surveillance").lifecycle == "active");
+  CHECK(lifecycleOf("core").lifecycle == "active");
+  CHECK(consistent());
+
+  static_cast<void>(harness.engine->disable({.moduleId = "surveillance", .userId = 1}));
+  CHECK_FALSE(lifecycleOf("surveillance").enabled);
+  CHECK(lifecycleOf("surveillance").lifecycle == "disabled");
+  CHECK(consistent());
+
+  static_cast<void>(harness.engine->uninstall({.moduleId = "surveillance", .userId = 1, .keepData = true, .pin = {}}));
+  harness.step(2);
+  CHECK_FALSE(lifecycleOf("surveillance").enabled);
+  CHECK(lifecycleOf("surveillance").lifecycle == "uninstalled_data_kept");
+  CHECK(consistent());
+}

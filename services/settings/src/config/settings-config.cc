@@ -45,11 +45,14 @@ ListenerConfig SettingsConfig::resolveListener()
   return ListenerConfig::resolveServiceTls("settings", 7045);
 }
 
-std::vector<SettingsOwnerConfig> SettingsConfig::resolveOwners()
+namespace
+{
+template <std::size_t N>
+std::vector<SettingsOwnerConfig> ownersOf(const std::array<std::string_view, N>& names)
 {
   std::vector<SettingsOwnerConfig> owners;
-  owners.reserve(kSettingsOwnerOrder.size());
-  for (const auto name : kSettingsOwnerOrder) {
+  owners.reserve(names.size());
+  for (const auto name : names) {
     const std::string prefix = "owners." + std::string(name) + ".";
     SettingsOwnerConfig owner{.name = std::string(name),
                               .target = ConfigService::getString(prefix + "target"),
@@ -64,6 +67,17 @@ std::vector<SettingsOwnerConfig> SettingsConfig::resolveOwners()
     owners.push_back(std::move(owner));
   }
   return owners;
+}
+}
+
+std::vector<SettingsOwnerConfig> SettingsConfig::resolveOwners()
+{
+  return ownersOf(kSettingsOwnerOrder);
+}
+
+std::vector<SettingsOwnerConfig> SettingsConfig::resolveDataOwners()
+{
+  return ownersOf(kSettingsDataOwnerOrder);
 }
 
 std::vector<std::string> SettingsConfig::unconfiguredOwners(const std::vector<SettingsOwnerConfig>& owners)

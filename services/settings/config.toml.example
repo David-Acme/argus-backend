@@ -97,6 +97,18 @@ target = ""
 credential = ""
 config_file = ""
 
+[owners.identity]
+target = ""
+credential = ""
+
+[owners.productivity]
+target = ""
+credential = ""
+
+[owners.sync]
+target = ""
+credential = ""
+
 [jwt]
 secret = ""
 access_ttl_minutes = 15

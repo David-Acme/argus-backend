@@ -354,6 +354,12 @@ owners.camera config_file
 owners.notification target
 owners.notification credential
 owners.notification config_file
+owners.identity target
+owners.identity credential
+owners.productivity target
+owners.productivity credential
+owners.sync target
+owners.sync credential
 settings profiles_path
 mdns enabled
 EOF
@@ -596,6 +602,9 @@ vlm rpc.callers settings rpc
 guard rpc.callers settings rpc
 camera grpc caller_settings grpc
 notification grpc caller_settings grpc
+identity rpc.callers settings grpc
+productivity grpc caller_settings grpc
+sync rpc.callers settings grpc
 OWNERS
 }
 

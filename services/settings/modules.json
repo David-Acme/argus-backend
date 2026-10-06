@@ -212,7 +212,8 @@
       "dataOwners": [
         "camera",
         "guard",
-        "identity"
+        "identity",
+        "sync"
       ],
       "hardware": {
         "minRamMb": 1536,
@@ -273,7 +274,8 @@
         "/calendar-event-share"
       ],
       "dataOwners": [
-        "productivity"
+        "productivity",
+        "sync"
       ],
       "hardware": {
         "minRamMb": 64,

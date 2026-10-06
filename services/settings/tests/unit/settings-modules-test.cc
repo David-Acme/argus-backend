@@ -125,7 +125,8 @@ TEST_CASE("the shipped catalog is valid and names its modules, components and da
   CHECK(catalog.component("detector")->spec.source == ComponentSource::Provisioned);
   CHECK(catalog.component("llm")->owner == "llm");
   CHECK(catalog.sizeBytes(*catalog.module("surveillance")) == 568345184 + 9763086);
-  CHECK(catalog.module("surveillance")->dataOwners == std::vector<std::string>{"camera", "guard", "identity"});
+  CHECK(catalog.module("surveillance")->dataOwners == std::vector<std::string>{"camera", "guard", "identity", "sync"});
+  CHECK(catalog.module("productivity")->dataOwners == std::vector<std::string>{"productivity", "sync"});
   CHECK(catalog.module("surveillance")->gates.size() == 7);
 }
 

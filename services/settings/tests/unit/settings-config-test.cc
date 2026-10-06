@@ -117,3 +117,34 @@ TEST_CASE("the profile file defaults beside the working directory and follows th
   CHECK(SettingsConfig::resolveProfilesPath() == "/opt/argus/profiles.json");
   std::filesystem::remove(configPath());
 }
+
+TEST_CASE("the data-only owners resolve apart from the settings owners, so the settings screen never lists them")
+{
+  loadConfig(R"([owners.camera]
+target = "127.0.0.1:7036"
+credential = "c"
+
+[owners.sync]
+target = "127.0.0.1:7041"
+credential = "s"
+
+[owners.identity]
+target = "127.0.0.1:7040"
+credential = "i"
+
+[owners.productivity]
+target = "127.0.0.1:7037"
+credential = ""
+)");
+
+  const auto owners = SettingsConfig::resolveOwners();
+  REQUIRE(owners.size() == 1);
+  CHECK(owners[0].name == "camera");
+  const auto data = SettingsConfig::resolveDataOwners();
+  REQUIRE(data.size() == 2);
+  CHECK(data[0].name == "identity");
+  CHECK(data[0].target == "127.0.0.1:7040");
+  CHECK(data[1].name == "sync");
+  CHECK(data[1].credential == "s");
+  std::filesystem::remove(configPath());
+}

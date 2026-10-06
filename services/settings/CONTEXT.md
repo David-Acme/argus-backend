@@ -350,7 +350,8 @@ validates it at boot like `profiles.json`: ids `[a-z0-9-]`, unique per kind;
 exactly one `core` module, which requires nothing; every required module and
 every component known, no dependency cycle (`services/module-resolver.cc`);
 a route prefix gated by one module only; `coming_soon` installs nothing;
-`dataOwners` are settings owners or `identity`/`productivity`. A component
+`dataOwners` are settings owners or the data-only owners `identity`,
+`productivity` and `sync`. A component
 names its `owner`, its `source` (`download`: the owner fetches it;
 `provisioned`: only the host produces it and `hostCommand` says how), the
 `ramMb` it needs loaded and its files (`path` relative to the owner's models
@@ -456,9 +457,11 @@ failed write rolls back and reloads the in-memory state.
 - A purge needs the Owner's guard PIN when one is set. Settings asks argus-guard
   over the settings wire (`VerifyOwnerPin`): no PIN or the right one goes on,
   a missing PIN is 403 `PIN_REQUIRED`, a wrong one 403 `PIN_INVALID`, too
-  many 429 `PIN_LOCKED`, an unreachable guard 503. A guard that answers
-  `UNIMPLEMENTED` (today) leaves the app's typed confirmation as the only
-  check.
+  many 429 `PIN_LOCKED`, an unreachable guard 503. argus-guard implements it
+  (its duress code answers `invalid` and raises the silent alert, never
+  approving a purge: `services/guard/CONTEXT.md`); a guard that answers
+  `UNIMPLEMENTED` (an older build) leaves the app's typed confirmation as the
+  only check.
 
 ### Hardware check
 
@@ -567,3 +570,30 @@ create-or-bind it with that exact configuration. Every message has a
   notification, productivity, sync, voice, llm; `ensure_fleet_callers` pairs
   them with the caller's `[modules] credential`); the gate is open while none
   is paired. Before the seed, or with no catalog, it answers `settled: false`.
+
+### Data owners
+
+`dataOwners` in `modules.json` run in order and each deletes only its own data
+through `ModuleDataSummary`/`PurgeModuleData`: `surveillance` is camera,
+guard, identity and sync; `productivity` is productivity and sync. Camera and
+guard are settings owners already; identity, productivity and sync are
+**data-only owners**: `SettingsConfig::resolveDataOwners` reads
+`[owners.identity|productivity|sync] target/credential`, they join the
+component owners the engine calls, and the settings gateway never lists them
+(their catalogs are empty). Each serves the calls on its existing gRPC
+listener (identity 7040, productivity 7037, sync 7041) behind its own
+`settings` caller credential, paired by `ensure_settings_owners`. sync is last
+on purpose: it deletes the audit history of the module's tables after the
+owners deleted the rows. What each owner deletes, keeps and reports is in its
+CONTEXT.md ("summary and purge"). An owner whose data host throws answers
+`UNAVAILABLE` (the contract catches it), which the engine treats as
+unreachable and retries.
+
+The callers of the enabled set (`[modules] target`/`credential`) are camera,
+guard, identity and productivity, the services that install the module gate;
+their templates carry `target = "127.0.0.1:7047"` (deploy
+`argus-settings:7047`) and `ensure_fleet_callers` pairs the credential with
+`[rpc.callers] <caller>` here. `ModuleStates` answers `enabled` only for an
+`active` module, with its `lifecycle` on every entry
+(`settings-module-engine-test`, "the enabled set answers enabled only for an
+active module").
