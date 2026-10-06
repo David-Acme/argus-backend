@@ -1,6 +1,6 @@
 tool 23.1.1
-tus 935
-modernize-use-nodiscard 392
+tus 1000
+modernize-use-nodiscard 390
 modernize-avoid-c-style-cast 317
 bugprone-suspicious-stringview-data-usage 265
 bugprone-signed-bitwise 191
@@ -28,8 +28,8 @@ performance-unnecessary-copy-initialization 20
 performance-inefficient-string-concatenation 18
 modernize-use-integer-sign-comparison 15
 bugprone-empty-catch 9
+performance-move-const-arg 9
 performance-no-automatic-move 9
-performance-move-const-arg 8
 bugprone-macro-parentheses 7
 bugprone-branch-clone 5
 bugprone-unchecked-string-to-number-conversion 5
