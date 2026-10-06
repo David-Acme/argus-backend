@@ -38,6 +38,7 @@ constexpr size_t kHexPreviewBytes = 256;
 
 const std::string kRecorderUserAgent = "argus-golden-recorder/1.0";
 constexpr const char* kDeviceCredentialHeader = "X-Argus-Device-Credential";
+constexpr int kSkipExitCode = 77;
 
 #ifndef ARGUS_TEST_SYNC_FIXTURES_DIR
 #define ARGUS_TEST_SYNC_FIXTURES_DIR "src/test/fixtures/sync"
@@ -70,6 +71,12 @@ void addDeviceCredential(const drogon::HttpRequestPtr& request)
 {
   if (const auto credential = envValue("ARGUS_TEST_DEVICE_CREDENTIAL"); !credential.empty())
     request->addHeader(kDeviceCredentialHeader, credential);
+}
+
+int stackFailure(const std::string& reason)
+{
+  std::cout << "FAIL: " << reason << "\n";
+  return 1;
 }
 
 std::string jsonToString(const Json::Value& json)
@@ -743,10 +750,10 @@ int main(int argc, char* argv[])
   const std::string refreshToken = envValue("ARGUS_TEST_REFRESH_TOKEN");
 
   if (refreshToken.empty()) {
-    std::cout << "SKIP: no ARGUS_TEST_REFRESH_TOKEN provided; golden /sync "
-                 "recording needs a locally running backend and a test "
-                 "session\n";
-    return 0;
+    std::cout << "SKIPPED: golden-sync-test: no ARGUS_TEST_REFRESH_TOKEN, so no native "
+                 "stack to replay against (scripts/native-stack.sh up, then eval "
+                 "\"$(scripts/native-stack.sh env)\")\n";
+    return kSkipExitCode;
   }
 
   const std::string authBaseUrl =
@@ -756,20 +763,15 @@ int main(int argc, char* argv[])
 
   const auto url = parseUrl(baseUrl);
   if (!url) {
-    std::cout << "SKIP: invalid ARGUS_TEST_BASE_URL '" << baseUrl << "'\n";
-    return 0;
+    return stackFailure("invalid ARGUS_TEST_BASE_URL '" + baseUrl + "'");
   }
   const auto authUrl = parseUrl(authBaseUrl);
   if (!authUrl) {
-    std::cout << "SKIP: invalid ARGUS_TEST_AUTH_BASE_URL '" << authBaseUrl
-              << "'\n";
-    return 0;
+    return stackFailure("invalid ARGUS_TEST_AUTH_BASE_URL '" + authBaseUrl + "'");
   }
   const auto mediaUrl = parseUrl(mediaBaseUrl);
   if (!mediaUrl) {
-    std::cout << "SKIP: invalid ARGUS_TEST_MEDIA_BASE_URL '" << mediaBaseUrl
-              << "'\n";
-    return 0;
+    return stackFailure("invalid ARGUS_TEST_MEDIA_BASE_URL '" + mediaBaseUrl + "'");
   }
 
   trantor::EventLoopThread loopThread;
@@ -831,21 +833,24 @@ int main(int argc, char* argv[])
     const auto outcome =
         done.waitFor(std::chrono::seconds(kConnectTimeoutSeconds + 2));
     if (!outcome) {
-      std::cout << "SKIP: backend not reachable at " << authBaseUrl << "\n";
-      return 0;
+      return stackFailure("backend not reachable at " + authBaseUrl);
     }
     if (!*outcome) {
-      std::cout << "SKIP: /auth/refresh-token did not accept the test session"
-                << " (unreachable server, expired token or wrong UA)\n";
+      std::string reason = "/auth/refresh-token did not accept the test session";
+      if (envValue("ARGUS_TEST_DEVICE_CREDENTIAL").empty())
+        reason += "; ARGUS_TEST_DEVICE_CREDENTIAL is not set, and argus-auth in credential "
+                  "identity mode refuses a session without it (eval \"$(scripts/native-stack.sh "
+                  "env)\" exports it)";
+      else
+        reason += " (expired token, wrong credential or wrong UA)";
       if (!authFailure.empty())
-        std::cout << "      detail: " << authFailure << "\n";
-      return 0;
+        reason += "; " + authFailure;
+      return stackFailure(reason);
     }
   }
 
   if (!session.isMember("accessToken") || !session.isMember("refreshToken")) {
-    std::cout << "SKIP: unexpected /auth/refresh-token response shape\n";
-    return 0;
+    return stackFailure("unexpected /auth/refresh-token response shape");
   }
   const std::string accessToken = session["accessToken"].asString();
   std::cout << "auth ok; the rotated ARGUS_TEST_REFRESH_TOKEN must be reused "
@@ -859,8 +864,7 @@ int main(int argc, char* argv[])
   if (!openSocket(syncSocket,
                   {.parts = *url, .path = "/sync", .token = accessToken},
                   wsLoopThread)) {
-    std::cout << "SKIP: could not open /sync WebSocket at " << baseUrl << "\n";
-    return 0;
+    return stackFailure("could not open /sync WebSocket at " + baseUrl);
   }
   std::cout << "ws connected: " << baseUrl << "/sync\n";
 
@@ -871,9 +875,7 @@ int main(int argc, char* argv[])
                    .path = "/media",
                    .token = accessToken},
                   wsLoopThread)) {
-    std::cout << "SKIP: could not open /media WebSocket at " << mediaBaseUrl
-              << "\n";
-    return 0;
+    return stackFailure("could not open /media WebSocket at " + mediaBaseUrl);
   }
   std::cout << "ws connected: " << mediaBaseUrl << "/media\n";
 

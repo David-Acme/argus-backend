@@ -150,6 +150,7 @@ target_link_libraries(golden-sync-test PRIVATE Drogon::Drogon)
 target_compile_options(golden-sync-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(golden-sync-test)
 add_test(NAME golden-sync-test COMMAND golden-sync-test)
+set_tests_properties(golden-sync-test PROPERTIES SKIP_RETURN_CODE 77 LABELS e2e)
 
 add_executable(rtc-token-test unit/rtc-token-test.cc)
 target_link_libraries(rtc-token-test PRIVATE

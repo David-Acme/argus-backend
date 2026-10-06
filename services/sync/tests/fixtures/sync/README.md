@@ -52,7 +52,13 @@ services/sync/build/dev/tests/golden-sync-test verify
 In credential identity mode (the default) the replay presents the owner's
 device credential on the refresh call and on both WebSocket upgrades:
 `native-stack.sh env` exports it as `ARGUS_TEST_DEVICE_CREDENTIAL` beside the
-refresh token. Without it argus-auth refuses the session and the replay skips.
+refresh token. Without it argus-auth refuses the session and the replay fails.
+
+The replay skips in one case only: no `ARGUS_TEST_REFRESH_TOKEN`, that is no
+sandbox at all. It then prints a `SKIPPED:` line and exits 77, which ctest
+reports as Skipped (`SKIP_RETURN_CODE`, label `e2e`). Once the token is set,
+an unreachable backend, a refused session, a malformed URL or a socket that
+does not open is a `FAIL:` and exit 1.
 
 State of the recording: it predates the heartbeat frame (`Heartbeat = 11`,
 pushed after `InitialInfo`), which the replay reads as one frame too many in
