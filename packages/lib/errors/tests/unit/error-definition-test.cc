@@ -54,10 +54,16 @@ TEST_CASE("every error code has exactly one wire string")
       {.code = ErrorCode::PinLocked, .name = "PIN_LOCKED"},
       {.code = ErrorCode::LivenessCheckFailed, .name = "LIVENESS_CHECK_FAILED"},
       {.code = ErrorCode::LivenessUnavailable, .name = "LIVENESS_UNAVAILABLE"},
-      {.code = ErrorCode::FaceQualityInsufficient, .name = "FACE_QUALITY_INSUFFICIENT"}};
+      {.code = ErrorCode::FaceQualityInsufficient, .name = "FACE_QUALITY_INSUFFICIENT"},
+      {.code = ErrorCode::ModuleDisabled, .name = "MODULE_DISABLED"},
+      {.code = ErrorCode::ModuleHardwareInsufficient, .name = "MODULE_HARDWARE_INSUFFICIENT"},
+      {.code = ErrorCode::ModuleComingSoon, .name = "MODULE_COMING_SOON"},
+      {.code = ErrorCode::ModuleJobRunning, .name = "MODULE_JOB_RUNNING"},
+      {.code = ErrorCode::ModuleRequiredBy, .name = "MODULE_REQUIRED_BY"},
+      {.code = ErrorCode::ModuleCore, .name = "MODULE_CORE"}};
 
   CHECK(table.size() ==
-        static_cast<std::size_t>(ErrorCode::FaceQualityInsufficient) + 1);
+        static_cast<std::size_t>(ErrorCode::ModuleCore) + 1);
 
   for (const auto& row : table)
     CHECK(std::string(toString(row.code)) == row.name);

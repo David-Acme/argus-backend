@@ -37,7 +37,13 @@ enum class ErrorCode
   PinLocked,
   LivenessCheckFailed,
   LivenessUnavailable,
-  FaceQualityInsufficient
+  FaceQualityInsufficient,
+  ModuleDisabled,
+  ModuleHardwareInsufficient,
+  ModuleComingSoon,
+  ModuleJobRunning,
+  ModuleRequiredBy,
+  ModuleCore
 };
 
 constexpr std::string_view toString(ErrorCode code)
@@ -76,6 +82,12 @@ constexpr std::string_view toString(ErrorCode code)
   case ErrorCode::LivenessCheckFailed: return "LIVENESS_CHECK_FAILED";
   case ErrorCode::LivenessUnavailable: return "LIVENESS_UNAVAILABLE";
   case ErrorCode::FaceQualityInsufficient: return "FACE_QUALITY_INSUFFICIENT";
+  case ErrorCode::ModuleDisabled: return "MODULE_DISABLED";
+  case ErrorCode::ModuleHardwareInsufficient: return "MODULE_HARDWARE_INSUFFICIENT";
+  case ErrorCode::ModuleComingSoon: return "MODULE_COMING_SOON";
+  case ErrorCode::ModuleJobRunning: return "MODULE_JOB_RUNNING";
+  case ErrorCode::ModuleRequiredBy: return "MODULE_REQUIRED_BY";
+  case ErrorCode::ModuleCore: return "MODULE_CORE";
   }
   throw std::invalid_argument("Unknown response error code");
 }
