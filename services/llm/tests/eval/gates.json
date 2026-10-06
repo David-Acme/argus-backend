@@ -623,5 +623,11 @@
         "max": 600
       }
     }
+  },
+  "sealed2": {
+    "file": "sealed2.jsonl",
+    "sha256": "4403de5d49bcd08f6f46eecb3a4c047cfc2f91a701962e7f65c78a2a87b03e26",
+    "cases": 4156,
+    "wrongActMax": 0.001
   }
 }
