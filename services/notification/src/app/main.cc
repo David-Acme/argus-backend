@@ -11,6 +11,7 @@
 #include <feature/call/infra/voice-call-announcer.hxx>
 #include <feature/call/services/call-feed.hxx>
 #include <feature/notification/services/token-revocation/token-revocation.hxx>
+#include <feature/module-request/services/notification-module-request.hxx>
 #include <feature/settings/notification-settings.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
@@ -424,13 +425,17 @@ int main()
       camera_notifier::refresh(*cameraNotifier);
     callEngine->reconfigure(NotificationConfig::resolveCalls());
   });
+  NotificationModuleRequest moduleRequest(
+      {.identity = identityClient, .delivery = deliveryDeps});
   std::unique_ptr<SettingsRpcService> settingsRpc;
   if (auto callers = NotificationConfig::resolveSettingsCallers();
-      !callers.empty())
+      !callers.empty()) {
     settingsRpc = std::make_unique<SettingsRpcService>(
         SettingsRpcInput{.service = "notification",
                          .registry = &settings,
                          .credentials = std::move(callers)});
+    settingsRpc->attachModuleRequest(moduleRequest);
+  }
 
   grpc::ServerBuilder grpcBuilder;
   const std::string grpcAddress =

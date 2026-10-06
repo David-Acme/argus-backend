@@ -136,6 +136,7 @@ target_link_libraries(argus-notification PRIVATE
     $<LINK_LIBRARY:WHOLE_ARCHIVE,argus::notification-feature>
     argus::notification-rpc
     argus::notification-camera-notification
+    argus::notification-module-request
     argus::notification-call
     argus::notification-settings
     argus::contracts::settings-wire
@@ -357,6 +358,30 @@ target_link_libraries(camera-notifier-test PRIVATE
 target_compile_options(camera-notifier-test PRIVATE -Wall -Wextra)
 
 add_test(NAME camera-notifier-test COMMAND camera-notifier-test)
+
+add_executable(notification-module-request-test
+    tests/unit/notification-module-request-test.cc)
+
+set_target_properties(notification-module-request-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_include_directories(notification-module-request-test PRIVATE
+    ${NOTIFICATION_SRC_ROOT})
+
+target_compile_definitions(notification-module-request-test PRIVATE
+    ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(notification-module-request-test PRIVATE
+    argus::notification-module-request
+    argus::clients::identity
+    argus::lib::config
+    argus::lib::sqlite
+    argus::lib::text
+    doctest::doctest)
+
+target_compile_options(notification-module-request-test PRIVATE -Wall -Wextra)
+
+add_test(NAME notification-module-request-test COMMAND notification-module-request-test)
 
 add_executable(notification-settings-test
     tests/unit/notification-settings-test.cc)

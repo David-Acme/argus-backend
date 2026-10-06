@@ -1080,3 +1080,23 @@ duplicate, not a second notice.
 
 `notification-rpc-test` pins the admitted notice and the five refusals (another
 type, two recipients, none, a call plan, a wrong credential).
+
+## Module requests (2026-10, module effects)
+
+`NotificationModuleRequest` answers argus-settings' `RequestModule` call (the
+settings wire, on the existing settings credential) behind `POST
+/modules/{id}/request`. It lists the household through identity, picks the
+active Owners and writes one `module_request` notification for each in that
+Owner's language (`module-request-copy`): title "Piden un módulo" / "Module
+request", body "<name> quiere usar el módulo <module>. ¿Lo activas?" /
+"<name> would like to use the <module> module. Turn it on?", `data { kind:
+"module_request", moduleId, requestedBy, requestedByName, action:
+"enable_module", threadKey, urgency: "active", lang }`. `module_request` is a
+core kind (not in `kModuleKinds`): it must reach the Owner whatever is on. The
+command id `module_request:<module>:<userId>:<local day>:<owner>` makes the same
+person's second request for the same module the same day a duplicate, which the
+route answers as `duplicate: true` instead of telling the Owner twice. Without an
+identity target, or when identity does not answer, the call fails (the route
+answers 503) rather than reporting a request nobody will read
+(`notification-module-request-test`).
+
