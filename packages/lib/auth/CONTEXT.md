@@ -414,6 +414,21 @@ and no global audit list (`isOwnRowTable`), their changes reach the target's
 own room alone, and `kModuleRoutes` never names `reminder` so the routes are
 never module-gated and the tables keep syncing with productivity off.
 
+### The tool gate
+
+A service that serves tools over MCP (`packages/lib/mcp`) installs
+`tool_gate::capabilities()` on its `McpServer`. It is the same table the routes
+answer to, asked once per call with the caller context the paired `llm`
+credential declares: the role must hold the tool's `capability` ignoring
+modules (otherwise `forbidden`: permission denied for tool), and then must hold
+it with the modules active now (otherwise `module_inactive`: the module is
+turned off, which argus-llm turns into the offer to turn it on). A tool that
+names no capability, or one the table does not know, is refused as forbidden:
+a tool is never open by omission. The gate reads `moduleGate().snapshot()`,
+so a toggle reaches the next call without a restart. The model never decides
+any of this; argus-llm filters what it offers by the same function and the
+provider checks again, because the provider is the authority.
+
 ### Tables of a module
 
 `kTableModules` maps the tables of a gated module (`camera`, `camera_stream`,

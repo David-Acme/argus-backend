@@ -41,6 +41,11 @@ if(NOT TARGET argus::lib::text)
                      ${CMAKE_BINARY_DIR}/text)
 endif()
 
+if(NOT TARGET argus::lib::mcp)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../mcp
+                     ${CMAKE_BINARY_DIR}/mcp)
+endif()
+
 if(NOT TARGET argus::clients::settings)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../clients/settings
                      ${CMAKE_BINARY_DIR}/clients/settings)
@@ -67,11 +72,13 @@ argus_lib(NAME auth
         src/auth/module-gate.cc
         src/auth/module-settings-read.cc
         src/auth/role-filter.cc
+        src/auth/tool-gate.cc
         src/auth/remote-config.cc
         src/auth/remote-gate.cc
         src/auth/valid-json-filter.cc
         src/auth/jwt-service.cc
         src/auth/user-directory-identity.cc
+        src/auth/tool-gate.hxx
         src/auth/role-access.hxx
         src/auth/capability.hxx
         src/auth/module-snapshot.hxx
@@ -89,6 +96,7 @@ argus_lib(NAME auth
         argus::clients::identity
         argus::clients::auth
         argus::clients::settings
+        argus::lib::mcp
         argus::lib::nats
         argus::lib::text
         Drogon::Drogon
@@ -111,6 +119,11 @@ add_executable(capability-test tests/unit/capability-test.cc)
 target_link_libraries(capability-test PRIVATE argus::lib::auth doctest::doctest)
 target_compile_options(capability-test PRIVATE -Wall -Wextra)
 add_test(NAME capability-test COMMAND capability-test)
+
+add_executable(tool-gate-test tests/unit/tool-gate-test.cc)
+target_link_libraries(tool-gate-test PRIVATE argus::lib::auth doctest::doctest)
+target_compile_options(tool-gate-test PRIVATE -Wall -Wextra)
+add_test(NAME tool-gate-test COMMAND tool-gate-test)
 
 add_executable(module-gate-test tests/unit/module-gate-test.cc)
 target_link_libraries(module-gate-test PRIVATE argus::lib::auth doctest::doctest)

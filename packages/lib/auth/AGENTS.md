@@ -40,6 +40,11 @@ sync and tts.
 - `src/auth/capability.hxx` — `kCapabilities`, `capabilitiesFor` and
   `hasCapability`: what a role can use with the modules that are active.
   CONTEXT.md, "Roles per module, capabilities and the unknown role".
+- `src/auth/tool-gate.{cc,hxx}` — `tool_gate::capabilities()`: the gate a
+  provider's `argus::mcp::McpServer` installs so a tool call answers to the
+  same capability table as the routes (`forbidden` for a role that does not
+  hold the tool's capability, `module_inactive` while its module is off, a tool
+  with no or an unknown capability refused). CONTEXT.md, "The tool gate".
 - `src/auth/module-feed.{cc,hxx}`, `src/auth/module-settings-read.cc` —
   `ModuleFeed` and `module_gate::install`: the boot read over
   `argus.settings.v1.Modules` and the per-service durable on
@@ -92,7 +97,11 @@ sync and tts.
 
 ## Tests
 
-Eight suites of its own. `tests/unit/capability-test.cc` pins the capability
+Nine suites of its own. `tests/unit/tool-gate-test.cc` pins the tool gate (a
+tool passes when the role holds its capability and the module is on, is
+forbidden whatever the module says otherwise, an unknown role or a tool with no
+or an invented capability holds nothing, and a module that is off refuses with
+a code its owner can tell apart). `tests/unit/capability-test.cc` pins the capability
 table and keeps it from drifting from the route and table rules.
 `tests/unit/module-gate-test.cc` pins the module
 map (every gated prefix, core never gated), `RoleFilter`'s
