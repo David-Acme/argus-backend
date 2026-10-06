@@ -2,6 +2,1461 @@
   "probes": [
     {
       "method": "GET",
+      "path": "/modules",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "modules": [
+              {
+                "dataPurgedAt": "<masked>",
+                "enabled": true,
+                "id": "core",
+                "lifecycle": "active",
+                "name": "Asistente y hogar"
+              },
+              {
+                "dataPurgedAt": "<masked>",
+                "enabled": true,
+                "id": "surveillance",
+                "lifecycle": "active",
+                "name": "Vigilancia"
+              },
+              {
+                "dataPurgedAt": "<masked>",
+                "enabled": true,
+                "id": "productivity",
+                "lifecycle": "active",
+                "name": "Productividad"
+              },
+              {
+                "dataPurgedAt": "<masked>",
+                "enabled": false,
+                "id": "agronomy",
+                "lifecycle": "not_installed",
+                "name": "Agronom\u00eda"
+              }
+            ]
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/modules",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "modules": [
+              {
+                "dataPurgedAt": "<masked>",
+                "enabled": true,
+                "id": "core",
+                "lifecycle": "active",
+                "name": "Asistente y hogar"
+              },
+              {
+                "dataPurgedAt": "<masked>",
+                "enabled": true,
+                "id": "surveillance",
+                "lifecycle": "active",
+                "name": "Vigilancia"
+              },
+              {
+                "dataPurgedAt": "<masked>",
+                "enabled": true,
+                "id": "productivity",
+                "lifecycle": "active",
+                "name": "Productividad"
+              },
+              {
+                "dataPurgedAt": "<masked>",
+                "enabled": false,
+                "id": "agronomy",
+                "lifecycle": "not_installed",
+                "name": "Agronom\u00eda"
+              }
+            ]
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/modules",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "modules": [
+              {
+                "components": [
+                  {
+                    "bytesPresent": 138474010,
+                    "bytesTotal": 138474010,
+                    "hostCommand": "services/stt/scripts/provision.sh",
+                    "id": "voice-stt",
+                    "owner": "stt",
+                    "reachable": true,
+                    "ready": true,
+                    "reason": null,
+                    "reported": false,
+                    "source": "provisioned",
+                    "state": "installed"
+                  },
+                  {
+                    "bytesPresent": 251636723,
+                    "bytesTotal": 251636723,
+                    "hostCommand": "services/tts/scripts/provision.sh",
+                    "id": "voice-tts",
+                    "owner": "tts",
+                    "reachable": true,
+                    "ready": true,
+                    "reason": null,
+                    "reported": false,
+                    "source": "provisioned",
+                    "state": "installed"
+                  },
+                  {
+                    "bytesPresent": 695755488,
+                    "bytesTotal": 695755488,
+                    "hostCommand": "services/llm/scripts/provision.sh",
+                    "id": "llm",
+                    "owner": "llm",
+                    "reachable": true,
+                    "ready": true,
+                    "reason": null,
+                    "reported": false,
+                    "source": "provisioned",
+                    "state": "installed"
+                  }
+                ],
+                "dataPurgedAt": "<masked>",
+                "enabled": true,
+                "gettingStarted": [
+                  {
+                    "id": "meet-argus",
+                    "route": "/voice",
+                    "title": "Habla con Argus"
+                  },
+                  {
+                    "id": "invite-people",
+                    "route": "/users",
+                    "title": "Invita a tu familia"
+                  }
+                ],
+                "hardware": {
+                  "freeDiskMb": 196762,
+                  "minRamMb": 4096,
+                  "reasons": [],
+                  "recommendedRamMb": 8192,
+                  "verdict": "ok"
+                },
+                "hasData": false,
+                "id": "core",
+                "installedBytes": 1085866221,
+                "job": null,
+                "kind": "core",
+                "lifecycle": "active",
+                "name": "Asistente y hogar",
+                "requires": [],
+                "sizeBytes": 1085866221,
+                "summary": "Tu cuenta, las personas de casa, avisos, privacidad y el asistente de voz. Siempre activo."
+              },
+              {
+                "components": [
+                  {
+                    "bytesPresent": 9763086,
+                    "bytesTotal": 9763086,
+                    "hostCommand": "services/camera/scripts/provision.sh",
+                    "id": "detector",
+                    "owner": "camera",
+                    "reachable": true,
+                    "ready": true,
+                    "reason": null,
+                    "reported": false,
+                    "source": "provisioned",
+                    "state": "installed"
+                  },
+                  {
+                    "bytesPresent": 568345184,
+                    "bytesTotal": 568345184,
+                    "hostCommand": null,
+                    "id": "vision",
+                    "owner": "vlm",
+                    "reachable": true,
+                    "ready": true,
+                    "reason": null,
+                    "reported": false,
+                    "source": "download",
+                    "state": "installed"
+                  }
+                ],
+                "dataPurgedAt": "<masked>",
+                "enabled": true,
+                "gettingStarted": [
+                  {
+                    "id": "add-camera",
+                    "route": "/cameras",
+                    "title": "Agrega tu primera c\u00e1mara"
+                  },
+                  {
+                    "id": "draw-zone",
+                    "route": "/cameras",
+                    "title": "Dibuja una zona"
+                  },
+                  {
+                    "id": "guard-mode",
+                    "route": "/guard",
+                    "title": "Elige el modo del guardia"
+                  }
+                ],
+                "hardware": {
+                  "freeDiskMb": 196762,
+                  "minRamMb": 1536,
+                  "reasons": [],
+                  "recommendedRamMb": 3072,
+                  "verdict": "ok"
+                },
+                "hasData": false,
+                "id": "surveillance",
+                "installedBytes": 578108270,
+                "job": null,
+                "kind": "available",
+                "lifecycle": "active",
+                "name": "Vigilancia",
+                "requires": [
+                  "core"
+                ],
+                "sizeBytes": 578108270,
+                "summary": "C\u00e1maras en vivo, zonas, detecci\u00f3n de personas y el guardia que te avisa de lo importante."
+              },
+              {
+                "components": [],
+                "dataPurgedAt": "<masked>",
+                "enabled": true,
+                "gettingStarted": [
+                  {
+                    "id": "first-event",
+                    "route": "/agenda",
+                    "title": "Crea tu primer evento"
+                  },
+                  {
+                    "id": "first-project",
+                    "route": "/projects",
+                    "title": "Empieza un proyecto"
+                  }
+                ],
+                "hardware": {
+                  "freeDiskMb": 196762,
+                  "minRamMb": 64,
+                  "reasons": [],
+                  "recommendedRamMb": 128,
+                  "verdict": "ok"
+                },
+                "hasData": false,
+                "id": "productivity",
+                "installedBytes": 0,
+                "job": null,
+                "kind": "available",
+                "lifecycle": "active",
+                "name": "Productividad",
+                "requires": [
+                  "core"
+                ],
+                "sizeBytes": 0,
+                "summary": "Agenda, proyectos y tareas compartidas con tu familia."
+              },
+              {
+                "components": [],
+                "dataPurgedAt": "<masked>",
+                "enabled": false,
+                "gettingStarted": [],
+                "hardware": {
+                  "freeDiskMb": 196762,
+                  "minRamMb": 0,
+                  "reasons": [],
+                  "recommendedRamMb": 0,
+                  "verdict": "ok"
+                },
+                "hasData": false,
+                "id": "agronomy",
+                "installedBytes": 0,
+                "job": null,
+                "kind": "coming_soon",
+                "lifecycle": "not_installed",
+                "name": "Agronom\u00eda",
+                "requires": [
+                  "core"
+                ],
+                "sizeBytes": 0,
+                "summary": "Cultivos, riego y clima de tu terreno. Muy pronto."
+              }
+            ]
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/modules",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/cancel",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/cancel",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/cancel",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/modules/{1}/cancel",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/cancel",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/cancel",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/cancel",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/cancel",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/cancel",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/cancel",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/cancel",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Unknown module"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/modules/{1}/cancel",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules/999999/data",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/data",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules/999999/data",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/data",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules/999999/data",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/data",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules/999999/data",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/data",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules/999999/data",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Unknown module"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/modules/{1}/data",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/disable",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/disable",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/disable",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/modules/{1}/disable",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/disable",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/disable",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/disable",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/disable",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/disable",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/disable",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/disable",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Unknown module"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/modules/{1}/disable",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/install",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/install",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/install",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/modules/{1}/install",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/install",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/install",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/install",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/install",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/install",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/install",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/install",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Unknown module"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/modules/{1}/install",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/pause",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/pause",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/pause",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/modules/{1}/pause",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/pause",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/pause",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/pause",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/pause",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/pause",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/pause",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/pause",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Unknown module"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/modules/{1}/pause",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/resume",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/resume",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/resume",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/modules/{1}/resume",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/resume",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/resume",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/resume",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/resume",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/resume",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/resume",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/resume",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Unknown module"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/modules/{1}/resume",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/uninstall",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/uninstall",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/uninstall",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/modules/{1}/uninstall",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/uninstall",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/modules/{1}/uninstall",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/uninstall",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/uninstall",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/uninstall",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/modules/{1}/uninstall",
+      "unit": "settings"
+    },
+    {
+      "method": "POST",
+      "path": "/modules/999999/uninstall",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Unknown module"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/modules/{1}/uninstall",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
       "path": "/settings",
       "probe": "no-token",
       "request": {

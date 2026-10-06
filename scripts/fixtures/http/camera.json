@@ -3541,7 +3541,7 @@
           "info": {
             "cameras": [
               {
-                "health": "unreachable",
+                "health": "unknown",
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,
@@ -3580,7 +3580,7 @@
           "info": {
             "cameras": [
               {
-                "health": "unreachable",
+                "health": "unknown",
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,
@@ -3619,7 +3619,7 @@
           "info": {
             "cameras": [
               {
-                "health": "unreachable",
+                "health": "unknown",
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,

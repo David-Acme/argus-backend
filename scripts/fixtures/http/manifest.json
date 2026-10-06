@@ -42,7 +42,7 @@
       "errors"
     ]
   },
-  "probes": 664,
+  "probes": 710,
   "sessions": "scripts/seed-golden.py --roles (owner, resident, guest)",
   "sources": "scripts/lib/route-baseline.txt (the route census)",
   "units": [
@@ -71,11 +71,23 @@
         "latencyMsP50",
         "latencyMsP95",
         "probeMs",
-        "probeOk"
+        "probeOk",
+        "sent",
+        "unacked"
       ],
-      "reason": "the push channel's self-test runs on its own schedule, so these fields report the last probe's outcome rather than a contract; the counters beside them stay pinned",
+      "reason": "the push channel's self-test runs on its own schedule, so these fields report the last probe's outcome rather than a contract; sent and unacked count deliveries that drain asynchronously over NATS, so a probe can land before or after the seeded rows' last delivery (seen 7 or 9 on fresh sandboxes); the other counters stay pinned",
       "route": "/notification/delivery-summary",
       "unit": "notification"
+    },
+    {
+      "keys": [
+        "modules[].hardware",
+        "modules[].installedBytes",
+        "modules[].components"
+      ],
+      "reason": "the hardware verdict, free disk and installed bytes are read from the host that answers, and a component's state comes from the model files and engines present on it; the catalog, lifecycle, sizes and jobs beside them stay pinned",
+      "route": "/modules",
+      "unit": "settings"
     },
     {
       "keys": [

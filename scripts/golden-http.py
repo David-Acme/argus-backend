@@ -142,6 +142,14 @@ VOLATILE_FIELDS = {
                   "after it for the fixture camera; the rest of each row stays "
                   "pinned",
     },
+    ("settings", "/modules"): {
+        "keys": ("modules[].hardware", "modules[].installedBytes",
+                 "modules[].components"),
+        "reason": "the hardware verdict, free disk and installed bytes are "
+                  "read from the host that answers, and a component's state "
+                  "comes from the model files and engines present on it; the "
+                  "catalog, lifecycle, sizes and jobs beside them stay pinned",
+    },
     ("settings", "/settings/profiles"): {
         "keys": ("recommendation",),
         "reason": "the recommendation is derived from the cores, RAM, ISA "
