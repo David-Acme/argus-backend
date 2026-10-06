@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "wer": {
+    "metrics": {
+      "overall.clips": {"min": 200},
+      "overall.wer": {"max": 0.075},
+      "overall.werNoAccent": {"max": 0.065},
+      "overall.cer": {"max": 0.025},
+      "common-voice-es.wer": {"max": 0.08},
+      "slr73-peruvian-es.wer": {"max": 0.075}
+    }
+  }
+}

@@ -173,3 +173,20 @@ target_compile_options(stt-components-test PRIVATE -Wall -Wextra)
 set_target_properties(stt-components-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME stt-components-test COMMAND stt-components-test)
+
+add_executable(stt-wer-eval tests/eval/stt-wer-eval.cc)
+
+target_link_libraries(stt-wer-eval PRIVATE argus::stt)
+
+target_compile_options(stt-wer-eval PRIVATE -Wall -Wextra)
+
+set_target_properties(stt-wer-eval PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME stt-wer-eval
+    COMMAND stt-wer-eval
+        --manifest ${CMAKE_CURRENT_SOURCE_DIR}/../../models/stt-eval/manifest.tsv
+        --gates ${CMAKE_CURRENT_SOURCE_DIR}/tests/eval/gates.json
+        --models ${CMAKE_CURRENT_SOURCE_DIR}/../../models/stt
+        --report ${CMAKE_CURRENT_BINARY_DIR}/stt-wer-report.json)
+
+set_tests_properties(stt-wer-eval PROPERTIES SKIP_RETURN_CODE 77 LABELS eval)

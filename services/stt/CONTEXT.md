@@ -236,3 +236,30 @@ the command when missing, partial byte counts, installed, `ready` following
 the engine flag, install answering host_only with an untouched models dir,
 remove refused with the files kept, a foreign component refused, the default
 root.
+
+## Accuracy baseline (measured 2026-10-06)
+
+`tests/eval/stt-wer-eval.cc` loads the deployed engine in-process (`nemo_transducer`, `es`, the
+same models directory the service mounts), decodes 16 kHz mono clips and reports word and
+character error rates per set. `scripts/stt-eval-data.py` fetches the clips into `models/stt-eval/`
+(untracked) and writes `manifest.tsv` with the license and SHA-256 of every clip; the ctest entry
+`stt-wer-eval` (label `eval`) skips with exit code 77 when the clips or the model are missing.
+Nothing here changes the engine: it is a baseline, and `tests/eval/gates.json` fails a build
+whose error rate rises above it plus a margin.
+
+| set | license | clips | words | WER (accents kept) | WER (accents folded) | CER |
+|---|---|---|---|---|---|---|
+| Common Voice es, test split, 14 accent groups plus unlabelled | CC0-1.0 | 136 | ~1,150 | 5.98% | 5.52% | 1.87% |
+| OpenSLR 73, Peruvian Spanish, 40 female and 40 male clips | CC-BY-SA-4.0 | 80 | 763 | 5.50% | 3.67% | 1.60% |
+| both | | 216 | ~1,900 | 5.80% | 4.83% | 1.77% |
+
+Decode time is 0.25 of real time on this machine (16 threads, debug build). Normalisation
+lowercases, drops punctuation and hyphens and keeps digits as the reference wrote them.
+
+What the number does not say: the clips are read sentences (Wikipedia-style text for Common
+Voice, short phrases for OpenSLR) recorded close to the microphone, not conversational household
+speech through a far-field microphone or a phone call. Common Voice names its own accent group
+`Andino-Pacífico: Colombia, Perú, Ecuador, oeste de Bolivia y Venezuela andina`; it scored 14.1% on
+85 words, which is too few to separate from the 5.8% mean, so it is reported and not gated. About
+2,000 words give a 95% interval of roughly one percentage point either way. OpenSLR 73 is
+CC-BY-SA, used here only to measure; no clip or transcript is stored in the repository.
