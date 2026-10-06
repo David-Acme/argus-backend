@@ -1289,3 +1289,27 @@ no fleet secret at all. `main.cc` refuses to start when the listener is
 reachable beyond loopback with neither a paired caller nor a legacy secret.
 `identity-rpc-callers-test` pins the table; `identity-sync-rpc-test` and
 `identity-voiceprint-test` pin the paired paths of their services.
+
+## Visitors as surveillance data: summary and purge (2026-10, the modules plan)
+
+Recurring visitors are what the cameras taught identity, so they belong to
+the `surveillance` module. `src/feature/module-data/`
+(`argus::identity-module-data`) implements `ModuleDataSummary` and
+`PurgeModuleData`; `main.cc` registers a `SettingsRpcService` (empty
+catalog) on the identity RPC listener (7040) when `[rpc.callers] settings` is
+paired, and takes that entry out of the fleet gate's caller table.
+
+- **Summary**: `visitors` (live persons without a user), their
+  `visitor_face_samples` and `visits`; `bytes` estimates the rows, the
+  embedding and snapshot bytes included.
+- **Purge** reuses the retention machinery in one transaction: every person
+  without a user (named or not, soft-deleted or not) is deleted with its crop
+  capabilities, visits, face samples, snapshot and tags, `visitor_counter`
+  goes back to 0 (a reinstall starts at Persona #1), and every crop key is
+  queued in `pending_object_delete` in the same transaction. After the commit
+  the samples leave `face_vec` and the `ObjectDeletionWorker` is kicked; the
+  queue retries the private objects until they are gone. Household persons,
+  their faces and portraits, voiceprints and the household privacy switches
+  are core and stay.
+- `tests/unit/identity-module-data-test.cc` pins the counts, the rollback,
+  what stays, the queued crop keys and the idempotent retry.

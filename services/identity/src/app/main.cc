@@ -2,6 +2,8 @@
 #include <app/rpc/identity-rpc-service.hxx>
 #include <app/rpc/identity-sync-rpc-service.hxx>
 #include <app/rpc/identity-voiceprint-rpc-service.hxx>
+#include <feature/module-data/services/identity-module-data.hxx>
+#include <settings/settings-rpc.hxx>
 #include <auth/auth-access.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
@@ -130,7 +132,9 @@ int main()
   ConfigService::setRuntimeString("database.file", identityDb.dbPath);
   const ListenerConfig listener = IdentityConfig::resolveListener();
   const RemoteConfig remote = RemoteConfig::resolve();
-  const IdentityRpcConfig rpc = IdentityConfig::resolveRpc();
+  IdentityRpcConfig rpc = IdentityConfig::resolveRpc();
+  auto settingsCredentials = settingsCallers(rpc.callers);
+  withoutSettingsCaller(rpc.callers);
   const IdentitySyncControlConfig syncControl =
       IdentityConfig::resolveSyncControl();
   const IdentityFaceConfig face = IdentityConfig::resolveFace();
@@ -319,6 +323,18 @@ int main()
   rpcBuilder.RegisterService(&rpcService);
   rpcBuilder.RegisterService(&syncRpcService);
   rpcBuilder.RegisterService(&voiceprintRpcService);
+  IdentityModuleData moduleData;
+  SettingsRegistry noSettings({});
+  std::unique_ptr<SettingsRpcService> settingsRpc;
+  if (settingsCredentials.empty()) {
+    LOG_INFO << "Module data RPC not served: [rpc.callers] settings is empty";
+  }
+  else {
+    settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
+        .service = "identity", .registry = &noSettings, .credentials = std::move(settingsCredentials)});
+    settingsRpc->attachModuleData(moduleData);
+    rpcBuilder.RegisterService(settingsRpc.get());
+  }
   std::unique_ptr<grpc::Server> rpcServer(rpcBuilder.BuildAndStart());
   const bool rpcListening = rpcServer != nullptr;
   argus::client::GrpcServerDrain rpcDrain(std::move(rpcServer),

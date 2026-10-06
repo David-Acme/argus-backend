@@ -11,6 +11,7 @@ notification = "CHANGE_ME_NOTIFICATION_IDENTITY"
 productivity = "CHANGE_ME_PRODUCTIVITY_IDENTITY"
 sync = "CHANGE_ME_SYNC_IDENTITY"
 voice = "CHANGE_ME_VOICE_IDENTITY"
+settings = "CHANGE_ME_SETTINGS_IDENTITY"
 
 [drogon.app]
 number_of_threads = 0
@@ -129,3 +130,7 @@ hostname = ""
 enabled = true
 name = "Argus"
 address = ""
+
+[modules]
+target = "argus-settings:7047"
+credential = "CHANGE_ME_IDENTITY_MODULES"

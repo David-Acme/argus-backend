@@ -180,8 +180,10 @@ argus_service(NAME argus-identity
             argus::identity-voiceprint
             argus::identity-privacy
             argus::identity-visitor
+            argus::identity-module-data
             argus::identity-rpc
     DEPENDS argus::lib::http
+            argus::contracts::settings-wire
             argus::lib::auth
             argus::lib::nats
             argus::lib::cert
