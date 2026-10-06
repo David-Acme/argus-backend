@@ -41,7 +41,8 @@ server speaks; `-32022` names it for any other version a request asks for.
   `exclusiveMinimum`, `exclusiveMaximum`, `allOf`, `anyOf`, `oneOf`. Other
   keywords (`description`, `format`, `x-*`) are annotations and are ignored.
 - `src/mcp/tool.{hxx,cc}` — `ToolSpec`, `ToolAnnotations`, `CallerContext`,
-  `ToolInvocation`, `ToolOutcome`, `AppAction` and their JSON. The Argus
+  `ToolInvocation`, `ToolOutcome`, `AppAction`, `ToolFailure` with
+  `toolFailure` (a tool error with a stable `code`) and their JSON. The Argus
   extensions live in `_meta` under the `argus/` prefix: a tool's
   `argus/module` and `argus/capability`, a call's `argus/context` (who is
   asking: user id, role, language, session, the utterance, whether the
@@ -58,6 +59,15 @@ server speaks; `-32022` names it for any other version a request asks for.
   `listTools` (follows `nextCursor`, at most 64 pages) and `callTool`. A
   failure says which kind it was: `Transport` (nothing came back), `Protocol`
   (a JSON-RPC error) or `Malformed` (an answer that is not one).
+- `src/mcp/loop-tool.{hxx,cc}` — `onLoop({loop, handler})`: wraps a coroutine
+  handler (`Task<ToolOutcome>(const ToolInvocation&)`) so it runs on a Drogon
+  event loop, which is where a service's repositories and gRPC clients live;
+  an empty `loop` means the application's loop. A tool that needs the database
+  or another service never runs on the transport's thread.
+- `src/mcp/speech.{hxx,cc}` — `speech::say`/`refuse` (one text per language,
+  chosen from the caller's `lang`), `inEnglish`, `languageOf` and `joined`
+  ("a, b y c" / "a, b and c"): a tool answers in the words the user spoke, and
+  nothing here translates at run time.
 - `src/mcp/local-transport.hxx` — the in-process `Transport`: `argus-llm`
   reads its own core tools through it, so its memory tools travel the same
   path as everyone else's.
@@ -89,4 +99,6 @@ trips), `confirmation-test` (one use, binding, expiry, capacity),
 `mcp-server-test` (discover, list order, call, gate, handler faults,
 asynchronous replies, the timeout, registration refusals) and
 `mcp-client-test` (an end-to-end read over `LocalTransport`, pagination, every
-failure kind).
+failure kind), `loop-tool-test` (a coroutine tool runs on the loop it was given and answers,
+a coroutine that throws becomes a tool error that hides the cause, no loop
+means a tool error and not a wait) and `speech-test` (both languages, the joiner).

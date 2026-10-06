@@ -71,6 +71,14 @@ struct ToolOutcome
   std::optional<AppAction> appAction;
 };
 
+struct ToolFailure
+{
+  std::string text;
+  std::string code;
+};
+
+[[nodiscard]] ToolOutcome toolFailure(const ToolFailure& failure);
+
 [[nodiscard]] bool validToolName(std::string_view name);
 
 [[nodiscard]] Json::Value toJson(const ToolSpec& spec);

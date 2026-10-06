@@ -13,10 +13,14 @@ argus_lib(NAME mcp
         src/mcp/json-rpc.cc
         src/mcp/json-rpc.hxx
         src/mcp/local-transport.hxx
+        src/mcp/loop-tool.cc
+        src/mcp/loop-tool.hxx
         src/mcp/schema.cc
         src/mcp/schema.hxx
         src/mcp/server.cc
         src/mcp/server.hxx
+        src/mcp/speech.cc
+        src/mcp/speech.hxx
         src/mcp/tool.cc
         src/mcp/tool.hxx
     INCLUDES src
@@ -34,7 +38,7 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-foreach(test_name json-rpc-test schema-test tool-test confirmation-test mcp-server-test mcp-client-test)
+foreach(test_name json-rpc-test schema-test tool-test speech-test confirmation-test loop-tool-test mcp-server-test mcp-client-test)
     add_executable(${test_name} tests/unit/${test_name}.cc)
     target_link_libraries(${test_name} PRIVATE argus::lib::mcp doctest::doctest)
     target_compile_options(${test_name} PRIVATE -Wall -Wextra)

@@ -154,3 +154,15 @@ TEST_CASE("the request meta names the version and declares no client capability"
   CHECK(meta["io.modelcontextprotocol/clientCapabilities"].isObject());
   CHECK(meta["io.modelcontextprotocol/clientInfo"]["name"].asString() == "argus-llm");
 }
+
+TEST_CASE("a failure is an error outcome that carries its code and no action")
+{
+  const auto failure = toolFailure({.text = "No encuentro esa cámara", .code = "unknown_camera"});
+  CHECK(failure.isError);
+  CHECK(failure.text == "No encuentro esa cámara");
+  CHECK(failure.structured["code"].asString() == "unknown_camera");
+  CHECK_FALSE(failure.appAction.has_value());
+  const auto back = must(toolOutcomeFrom(toJson(failure)));
+  CHECK(back.isError);
+  CHECK(back.structured["code"].asString() == "unknown_camera");
+}

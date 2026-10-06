@@ -39,6 +39,16 @@ Json::Value annotationsJson(const ToolSpec& spec)
 }
 }
 
+ToolOutcome toolFailure(const ToolFailure& failure)
+{
+  ToolOutcome outcome;
+  outcome.isError = true;
+  outcome.text = failure.text;
+  outcome.structured = Json::Value(Json::objectValue);
+  outcome.structured["code"] = failure.code;
+  return outcome;
+}
+
 bool validToolName(std::string_view name)
 {
   return !name.empty() && name.size() <= kMaxNameLength && std::ranges::all_of(name, nameCharacter);
