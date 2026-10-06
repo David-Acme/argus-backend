@@ -7,11 +7,13 @@
 #include <runtime/blocking-pool.hxx>
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <functional>
 #include <latch>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace
@@ -21,13 +23,16 @@ class LightLaneHold
 public:
   LightLaneHold()
   {
-    while (blocking_pool::trySubmit(BlockingLane::Light,
-                                    [gate = gate_, done = done_] {
-                                      gate->wait();
-                                      done->fetch_add(1);
-                                      done->notify_all();
-                                    }))
-      ++held_;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    for (;;) {
+      fill();
+      const auto threads = static_cast<std::size_t>(blocking_pool::statsOf(BlockingLane::Light).threads);
+      if (started_->load() >= threads && saturated())
+        return;
+      if (std::chrono::steady_clock::now() >= deadline)
+        return;
+      std::this_thread::yield();
+    }
   }
 
   ~LightLaneHold()
@@ -42,8 +47,30 @@ public:
 
   [[nodiscard]] std::size_t held() const { return held_; }
 
+  [[nodiscard]] bool saturated() const
+  {
+    const auto stats = blocking_pool::statsOf(BlockingLane::Light);
+    return stats.idle == 0 &&
+           stats.queued >= blocking_pool::limitsFor(BlockingLane::Light).maxQueued &&
+           started_->load() >= static_cast<std::size_t>(stats.threads);
+  }
+
 private:
+  void fill()
+  {
+    while (blocking_pool::trySubmit(BlockingLane::Light,
+                                    [gate = gate_, started = started_, done = done_] {
+                                      started->fetch_add(1);
+                                      gate->wait();
+                                      done->fetch_add(1);
+                                      done->notify_all();
+                                    }))
+      ++held_;
+  }
+
   std::shared_ptr<std::latch> gate_ = std::make_shared<std::latch>(1);
+  std::shared_ptr<std::atomic<std::size_t>> started_ =
+      std::make_shared<std::atomic<std::size_t>>(0);
   std::shared_ptr<std::atomic<std::size_t>> done_ =
       std::make_shared<std::atomic<std::size_t>>(0);
   std::size_t held_{0};
@@ -80,6 +107,7 @@ TEST_CASE("a full light lane refuses the call with the busy answer instead of "
   {
     const LightLaneHold hold;
     REQUIRE(hold.held() >= blocking_pool::limitsFor(BlockingLane::Light).maxQueued);
+    REQUIRE(hold.saturated());
     const auto refusal = refusalOf([&ran] {
       ran.store(true);
       return 1;
