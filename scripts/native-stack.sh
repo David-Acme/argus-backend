@@ -186,6 +186,11 @@ prepare_service() {
   if [ "$svc" = settings ]; then
     isolate_settings_owners "$config"
     replace_toml_value settings profiles_path "$ROOT/services/settings/profiles.json" "$config"
+    mkdir -p "$STACK_DIR/settings/database"
+    replace_toml_value modules catalog_path "$ROOT/services/settings/modules.json" "$config"
+    replace_toml_value modules db_path "$STACK_DIR/settings/database/settings.db" "$config"
+    replace_toml_value modules schema "$ROOT/services/settings/database/schema.sql" "$config"
+    replace_toml_value modules models_dir "$ROOT/models" "$config"
     replace_toml_value settings first_run false "$config" literal
   fi
 
