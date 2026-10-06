@@ -41,6 +41,7 @@ GUARD_MARGINS = (0.0, 0.1, 0.3)
 ACTS = (0.5, 0.6, 0.7, 0.8, 0.85, 0.88, 0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99, 0.995)
 ASKS = (0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95)
 MARGINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
+CEILINGS = (0.0025, 0.005, 0.01, 0.02)
 DEFAULT_WRONG_ACT = 0.001
 DEFAULT_ASK_CLEAR = 0.10
 DEFAULT_WRONG_TOOL = 0.01
@@ -335,18 +336,21 @@ def act_only_policies():
         yield (act, act, 0.0)
 
 
-def choose_policies(cases, decisions, limits, scopes=(1,)):
-    best = {}
+def best_per_limit(cases, decisions, all_limits, scopes=(1,)):
+    best = [{} for _ in all_limits]
     guard = any(len(d) > 4 and d[4] is not None for d in decisions)
     for policy in policies(guard, scopes):
-        summary = summarise_pooled(cases, decisions, policy, limits)
-        if summary is None:
-            continue
-        key = (summary["coverage"], -summary["askRateClear"], -summary["askRateOther"], -policy[0])
+        rows, pooled = pooled_rows(cases, decisions, policy)
+        key = (pooled["coverage"], -pooled["askRateClear"], -pooled["askRateOther"], -policy[0])
         scope = policy[4] if len(policy) > 4 else 1
-        if scope not in best or key > best[scope][1]:
-            best[scope] = (policy, key)
+        for slot, limits in zip(best, all_limits):
+            if within(rows, pooled, limits) and (scope not in slot or key > slot[scope][1]):
+                slot[scope] = (policy, key)
     return best
+
+
+def choose_policies(cases, decisions, limits, scopes=(1,)):
+    return best_per_limit(cases, decisions, [limits], scopes)[0]
 
 
 def choose_policy(cases, decisions, limits, scopes=(1,)):
@@ -356,16 +360,50 @@ def choose_policy(cases, decisions, limits, scopes=(1,)):
     return max(best.values(), key=lambda item: item[1])[0]
 
 
-def summarise_pooled(cases, decisions, policy, limits):
+def pooled_rows(cases, decisions, policy):
     counts = tally(cases, decisions, policy, scopes_of())
     rows = {name: digest(entry) for name, entry in counts.items()}
+    return rows, rows["moduleFamilies"]
+
+
+def within(rows, pooled, limits):
     if any(r["wrongActRate"] > limits["wrongAct"] or r["authoredWrongActRate"] > limits["wrongAct"]
            for r in rows.values()):
-        return None
-    pooled = rows["moduleFamilies"]
-    if pooled["askRateClear"] > limits["askClear"] or pooled["wrongToolRate"] > limits["wrongTool"]:
-        return None
-    return pooled
+        return False
+    return pooled["askRateClear"] <= limits["askClear"] and pooled["wrongToolRate"] <= limits["wrongTool"]
+
+
+def summarise_pooled(cases, decisions, policy, limits):
+    rows, pooled = pooled_rows(cases, decisions, policy)
+    return pooled if within(rows, pooled, limits) else None
+
+
+def price_table(cases, decisions, all_limits, found):
+    rows = []
+    print("\nprice of the wrong-ACT ceiling on the selection set (the gate is the first row; the others are "
+          "information, never a pass)")
+    print(f"  {'ceiling':>8s}{'cover':>8s}{'act':>8s}{'askClr':>8s}{'prec':>8s}  policy")
+    for limits, best in zip(all_limits, found):
+        policy = policy_of(best)
+        if policy is None:
+            print(f"  {limits['wrongAct']:8.2%}  no policy keeps every wrong-ACT rate at or below it")
+            rows.append({"ceiling": limits["wrongAct"], "policy": None, "summary": None})
+            continue
+        summary = summarise(cases, decisions, policy)
+        pooled = summary["moduleFamilies"]
+        print(f"  {limits['wrongAct']:8.2%}{pooled['coverage']:8.3f}{pooled['actCoverage']:8.3f}"
+              f"{pooled['askRateClear']:8.3f}{pooled['precision']:8.3f}  ACT >= {policy[0]} ASK >= {policy[1]} "
+              f"margin {policy[2]}" + (f" now >= {policy[3]}" if len(policy) > 3 and policy[3] > 0.0 else ""))
+        rows.append({"ceiling": limits["wrongAct"], "policy": summary["policy"], "summary": summary})
+    return rows
+
+
+def relaxed_limits(limits):
+    return [dict(limits, wrongAct=ceiling) for ceiling in CEILINGS if ceiling > limits["wrongAct"]]
+
+
+def policy_of(best):
+    return max(best.values(), key=lambda item: item[1])[0] if best else None
 
 
 def print_sweep(title, cases, decisions):
@@ -630,8 +668,11 @@ def main():
                          default=None)
         else:
             scopes = {"both": (1, 0), "all": (1,), "low-risk-open": (0,)}[args.guard_scope]
-            per_scope = choose_policies(selection, chosen_decisions, limits, scopes)
-            policy = max(per_scope.values(), key=lambda item: item[1])[0] if per_scope else None
+            relaxed = relaxed_limits(limits)
+            found = best_per_limit(selection, chosen_decisions, [limits] + relaxed, scopes)
+            per_scope = found[0]
+            policy = policy_of(per_scope)
+            report["priceOfCeiling"] = price_table(selection, chosen_decisions, [limits] + relaxed, found)
             if args.guard_scope == "both":
                 for scope, name in ((1, "every write guarded"), (0, "memory writes not guarded")):
                     one = per_scope.get(scope, (None,))[0]
@@ -656,6 +697,11 @@ def main():
             report["selectionPassed"] = True
             report["selection"] = summarise(selection, chosen_decisions, policy)
             print_families("selection", report["selection"])
+        for row in report.get("priceOfCeiling", []):
+            if policy is None and row["policy"] is not None and row["ceiling"] > limits["wrongAct"]:
+                print_families(f"selection at the {row['ceiling']:.2%} ceiling (NOT the gate: information)",
+                               row["summary"])
+                break
         if args.errors:
             rows = error_rows(selection, chosen_decisions, policy or FALLBACK_POLICY)
             pathlib.Path(args.errors).write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))

@@ -231,6 +231,19 @@ class RunTest(unittest.TestCase):
         self.assertIsNone(data["policy"])
         self.assertFalse(data["selectionPassed"])
 
+    def test_the_price_of_each_ceiling_is_reported_when_the_gate_cannot_be_met(self):
+        write(self.select, [case("a", "pon una agenda el lunes", ["calendar.create_event"]),
+                            case("c", "una certeza absoluta", variant="real")]
+              + [case(f"r{i}", f"frase {i}", variant="real") for i in range(99)])
+        result, data = self.run_harness()
+        self.assertIsNone(data["policy"])
+        prices = {row["ceiling"]: row for row in data["priceOfCeiling"]}
+        self.assertIsNone(prices[0.0]["policy"])
+        self.assertIsNone(prices[0.005]["policy"])
+        self.assertIsNotNone(prices[0.01]["policy"])
+        self.assertAlmostEqual(prices[0.01]["summary"]["moduleFamilies"]["coverage"], 1.0)
+        self.assertIn("NOT the gate: information", result.stdout)
+
     def test_the_final_measurement_scores_the_sealed_set_at_the_chosen_policy(self):
         result, data = self.run_harness("--final", "--sealed", str(self.sealed))
         self.assertEqual(result.returncode, 0, result.stdout)
