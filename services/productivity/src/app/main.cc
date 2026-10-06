@@ -17,6 +17,7 @@
 #include <auth/module-feed.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
+#include <auth/role-access.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
@@ -224,9 +225,11 @@ int main()
       AgendaAnnouncerConfig{.enabled = agendaConfig.enabled,
                             .graceS = agendaConfig.graceS,
                             .retentionS = 2592000},
-      AgendaAnnouncerDependencies{.notifier = agendaNotifier,
-                                  .clock = {},
-                                  .blockingOffLoop = true});
+      AgendaAnnouncerDependencies{
+          .notifier = agendaNotifier,
+          .clock = {},
+          .blockingOffLoop = true,
+          .eventsActive = [] { return moduleGate().enabled(role_access::kProductivityModule); }});
   const auto agendaSweeper = std::make_shared<AgendaSweeper>(agenda);
   if (agenda->enabled()) {
     agendaSweeper->start(kAgendaSweepPeriodS);

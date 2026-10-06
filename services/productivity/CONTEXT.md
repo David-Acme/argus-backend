@@ -417,6 +417,16 @@ the spoken lines per user. Recurring events are announced for their stored
 item. `agenda.enabled = false`, or no notification target/credential, leaves
 the announcer off.
 
+**When productivity is turned off** (2026-10, the effects wave) the sweep keeps
+running because reminders are core: `AgendaAnnouncerDependencies::eventsActive`
+(the module gate, `main.cc`) makes it skip the calendar events (no
+`agenda_notice` is recorded, so an event still ahead is announced normally if
+the module comes back before it starts) while due reminders are announced as
+before. That sweep is the whole schedule of agenda announcements, so there is
+nothing else to cancel here; the notification service refuses any event notice
+that is already in flight and ends its ring (`services/notification/CONTEXT.md`,
+"Kinds of a module that is off"). `productivity-agenda-test` pins it.
+
 ## Reminders: core, own rows only (2026-10, the roles-and-tools wave)
 
 `src/feature/reminder/` (`argus::productivity-reminder`) is the write side of

@@ -40,6 +40,7 @@ struct AgendaAnnouncerDependencies
   std::shared_ptr<const AgendaNotifier> notifier;
   std::function<int64_t()> clock;
   bool blockingOffLoop{true};
+  std::function<bool()> eventsActive{};
 };
 
 struct AgendaSweepReport

@@ -113,8 +113,10 @@ drogon::Task<AgendaSweepReport> AgendaAnnouncer::sweep() const
     co_return report;
   const int64_t at = now();
 
-  const auto events = co_await repository_.dueEvents(
-      {.after = at - config_.graceS, .until = at, .limit = kBatch});
+  std::vector<DueEventRow> events;
+  if (!dependencies_.eventsActive || dependencies_.eventsActive())
+    events = co_await repository_.dueEvents(
+        {.after = at - config_.graceS, .until = at, .limit = kBatch});
   std::vector<int64_t> eventIds;
   eventIds.reserve(events.size());
   for (const auto& event : events)

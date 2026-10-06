@@ -238,6 +238,40 @@ TEST_CASE("due reminders are announced to their target, completed ones never")
   CHECK(sent.front().data["kind"].asString() == "agenda_reminder");
 }
 
+TEST_CASE("calendar events stop being announced while productivity is off, reminders keep going")
+{
+  reset();
+  auto notifier = std::make_shared<RecordingNotifier>();
+  auto active = std::make_shared<std::atomic<bool>>(false);
+  const AgendaAnnouncer announcer(
+      {.enabled = true, .graceS = 120, .retentionS = 2592000},
+      {.notifier = notifier,
+       .clock = []() { return kNow; },
+       .blockingOffLoop = false,
+       .eventsActive = [active]() { return active->load(); }});
+  const int64_t event = insertEvent({.owner = 1, .title = "Dentista", .startsAt = kNow + 300});
+  const auto client = DbService::productivityClient();
+  client->execSqlSync(
+      "INSERT INTO reminder (target_user_id, title, scheduled_at) VALUES (5, 'Sacar la basura', ?)", kNow - 10);
+
+  const auto off = drogon::sync_wait(announcer.sweep());
+  CHECK(off.events == 0);
+  CHECK(off.reminders == 1);
+  const auto sent = notifier->all();
+  REQUIRE(sent.size() == 1);
+  CHECK(sent.front().data["kind"].asString() == "agenda_reminder");
+  CHECK(client->execSqlSync("SELECT COUNT(*) AS total FROM agenda_notice WHERE kind = 'event'")
+            .front()["total"]
+            .as<int64_t>() == 0);
+
+  active->store(true);
+  const auto on = drogon::sync_wait(announcer.sweep());
+  CHECK(on.events == 5);
+  CHECK(on.reminders == 0);
+  CHECK(notifier->all().size() == 6);
+  CHECK(notifier->all().back().data["eventId"].asInt64() == event);
+}
+
 TEST_CASE("without a notifier or switched off, the announcer does nothing")
 {
   reset();
