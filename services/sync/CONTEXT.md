@@ -943,3 +943,52 @@ purge would write one audit row again; the window is the few seconds between
 the owner's purge and sync's, and the next purge removes it.
 `tests/unit/sync-module-data-test.cc` pins the table scope, the rollback and
 the idempotent retry.
+
+## Activity history: `GET /sync/activity` (2026-10, the roles-and-tools wave)
+
+`user_action_log` is the household's action journal (who read, changed, created
+or deleted what), and with modules it needs to be read by module, by person and
+by time. Three additive changes carry it:
+
+- **A `module` column** (`TEXT NOT NULL DEFAULT ''`). The writer sets it:
+  `AuditFanOut::insertAction` takes the event's own `module` (a module action
+  names the module it concerns) or derives it from the table through
+  `shared/vocabulary/module-tables.hxx` (`camera`, `camera_stream`, `zone` are
+  `surveillance`; `project`, `project_task`, `project_member`, `calendar_event`,
+  `calendar_event_share` are `productivity`; everything else is `core`). The
+  same header answers `SyncModuleData`'s tables of a module, so purge and
+  activity cannot disagree. `UserActionLogRepository::migrateLegacySchema` adds
+  the column to an existing table before `schema.sql` runs (the indexes need
+  it), and `backfillModules` fills the rows that still have `''` once the
+  schema is applied (an old journal, or rows copied by `argus-migrate-sync`,
+  whose column check tolerates a source without `module`).
+- **A table subject for actions that touch no table.** `UserActionEvent`
+  (`argus::contracts::sync`) gains `module` and `subject`; `subject` is
+  `"module"` today and is the text stored in `table_name`, because `TableName`
+  is the frozen, wire-visible list of synced tables and a module is not one of
+  them. A `table_name` that is neither a known table nor `module` makes the
+  event malformed (Term), where it used to become `user` silently. argus-settings
+  publishes its module actions on `argus.settings.v1.user-action` (stream
+  `ARGUS_SETTINGS_ACTION`), consumed by the durable `argus-sync-settings-action`
+  and written by the same `handleActionPayload` as the identity and auth ones.
+- **Three composite indexes** for the filters, each ending in `(created_at, id)`
+  so the newest-first order never needs a temporary b-tree:
+  `(module, created_at, id)`, `(user_id, created_at, id)` and
+  `(table_name, created_at, id)`; the date range and the unfiltered page use the
+  existing `(created_at, id)` index. `sync-activity-test` reads the query plan
+  of each shape and refuses a temp b-tree (rule 22).
+
+`GET /sync/activity` (`src/feature/activity/`, argus-sync's TLS listener,
+`DeviceFilter -> JwtFilter -> RoleFilter`) is Owner only: `kSyncAccess` names
+only `/sync/heartbeat`, so every other role is refused by the table, and the
+Owner passes. Query: `module`, `userId`, `action` (`create`, `read`, `update`,
+`delete`), `table` (a table name, or `module`), `from` and `to` (unix seconds,
+inclusive), `limit` (default 50, clamped to 200) and `cursor`. Answer:
+`{ items: [{ id, userId, recordId, table, module, action, oldData, newData,
+ipAddress, createdAt }], nextCursor }`, newest first. The cursor is
+`<createdAt>-<id>` and the page is a keyset (`created_at < ? OR (created_at = ?
+AND id < ?)`), so the volume never costs an offset scan; the service reads one
+row more than the limit to know whether there is a next page, and a cursor that
+this endpoint did not issue is a 422. Names are not joined (sync cannot read
+identity); the app maps `userId` through its own user table. Module actions are
+rows with `table: "module"`, `recordId: 0` and the module id in `module`.

@@ -85,6 +85,12 @@ target_link_libraries(sync-change-test PRIVATE
 target_compile_options(sync-change-test PRIVATE -Wall -Wextra)
 add_test(NAME sync-change-test COMMAND sync-change-test)
 
+add_executable(user-action-event-test tests/unit/user-action-event-test.cc)
+target_link_libraries(user-action-event-test PRIVATE
+    argus::contracts::sync doctest::doctest)
+target_compile_options(user-action-event-test PRIVATE -Wall -Wextra)
+add_test(NAME user-action-event-test COMMAND user-action-event-test)
+
 add_executable(stream-retention-test tests/unit/stream-retention-test.cc)
 target_link_libraries(stream-retention-test PRIVATE
     argus::contracts::sync doctest::doctest)

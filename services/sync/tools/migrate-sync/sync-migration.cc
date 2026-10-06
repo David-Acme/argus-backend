@@ -13,6 +13,7 @@
 #include <optional>
 #include <sstream>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace
@@ -37,6 +38,16 @@ constexpr std::string_view kTargetSchema = "main";
 constexpr std::string_view kPathUnreserved =
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~/";
 constexpr std::string_view kUpperHex = "0123456789ABCDEF";
+
+struct AdditiveColumn
+{
+  std::string_view table;
+  std::string_view column;
+};
+
+constexpr std::array<AdditiveColumn, 1> kAdditiveColumns = {{
+    {.table = "user_action_log", .column = "module"},
+}};
 
 struct SyncPathPair
 {
@@ -209,6 +220,25 @@ std::string joinColumns(const std::vector<std::string>& columns)
     joined += column;
   }
   return joined;
+}
+
+struct ExpectedColumnsInput
+{
+  std::string table;
+  std::vector<std::string> source;
+  std::vector<std::string> target;
+};
+
+std::vector<std::string> expectedColumns(ExpectedColumnsInput input)
+{
+  for (const auto& additive : kAdditiveColumns) {
+    if (additive.table != input.table)
+      continue;
+    const std::string column(additive.column);
+    if (std::ranges::find(input.source, column) == input.source.end())
+      std::erase(input.target, column);
+  }
+  return input.target;
 }
 
 bool sameColumnSet(std::vector<std::string> source,
@@ -388,7 +418,8 @@ SyncResult buildPlans(sqlite3* db,
                                             .table = table});
     if (!targetColumns.ok)
       return {.ok = false, .error = targetColumns.error};
-    if (!sameColumnSet(sourceColumns.names, targetColumns.names)) {
+    auto expected = expectedColumns({.table = table, .source = sourceColumns.names, .target = targetColumns.names});
+    if (!sameColumnSet(sourceColumns.names, expected)) {
       return {.ok = false,
               .error = "column shape mismatch on " + table + ": source ("
                        + joinColumns(sourceColumns.names) + ") vs target ("
@@ -398,7 +429,7 @@ SyncResult buildPlans(sqlite3* db,
     plans.push_back({.index = index,
                      .table = table,
                      .key = std::string(spec.key),
-                     .columns = targetColumns.names});
+                     .columns = std::move(expected)});
   }
   return {.ok = true, .error = ""};
 }

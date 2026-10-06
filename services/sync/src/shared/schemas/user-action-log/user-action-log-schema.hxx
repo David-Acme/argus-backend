@@ -4,16 +4,16 @@
 #include <drogon/orm/Field.h>
 #include <drogon/orm/Row.h>
 #include <json/value.h>
-#include <sync/table-name.hxx>
-#include <sync/user-action.hxx>
 #include <string>
+#include <sync/user-action.hxx>
 
 struct UserActionLogSchema
 {
   int64_t id{0};
   int64_t userId{0};
   int64_t recordId{0};
-  TableName tableName{TableName::User};
+  std::string tableName;
+  std::string module;
   UserAction action{UserAction::Create};
   Json::Value oldData;
   Json::Value newData;
@@ -22,5 +22,6 @@ struct UserActionLogSchema
 
   UserActionLogSchema() = default;
   explicit UserActionLogSchema(const drogon::orm::Row& row);
-  Json::Value toJson() const;
+  [[nodiscard]] Json::Value toJson() const;
+  [[nodiscard]] Json::Value toActivityJson() const;
 };

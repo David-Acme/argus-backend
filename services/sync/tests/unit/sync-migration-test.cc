@@ -192,7 +192,10 @@ TEST_CASE("the sync schema carries the five tables without a user reference")
                                             "idx_audit_log_table_ts",
                                             "idx_notification_delivery_inbox_status",
                                             "idx_user_action_log_created",
+                                            "idx_user_action_log_module_created",
                                             "idx_user_action_log_msg_id",
+                                            "idx_user_action_log_table_created",
+                                            "idx_user_action_log_user_created",
                                             "idx_user_audit_log_record",
                                             "idx_user_audit_log_user_id",
                                             "idx_user_audit_log_user_ts"});
@@ -412,6 +415,8 @@ TEST_CASE("a source whose journal columns are out of order still migrates")
         == "");
   CHECK(scalar(target.get(),
                "SELECT created_at FROM user_action_log WHERE id = 2") == 1500);
+  CHECK(scalar(target.get(),
+               "SELECT COUNT(*) FROM user_action_log WHERE module = ''") == 2);
 }
 
 TEST_CASE("a source with a different column set is refused")

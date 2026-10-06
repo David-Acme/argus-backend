@@ -119,6 +119,8 @@ argus-sync/
                         LiveKit token minting and the Twirp room client, the
                         session revoker the fan-out calls, the voice and
                         notification ports
+  src/feature/activity/ the Owner-only GET /sync/activity: controller, DTOs,
+                        the keyset service over user_action_log
   src/feature/fanout/
     repositories/       delivery inbox (query + repository + receipt)
     services/           the change-feed consumer (one durable per change
@@ -129,8 +131,9 @@ argus-sync/
   src/shared/repositories/  audit_log, user_audit_log, user_action_log
   src/shared/schemas/       their three row mappings
   src/shared/services/      RoomManager
+  src/shared/vocabulary/    module-tables.hxx: which module a synced table belongs to
   src/shared/infra/         the notification row JSON both features render
-  database/schema.sql   this owner's five tables and their six indexes
+  database/schema.sql   this owner's five tables and their eleven indexes
   config.toml.example   sync keys + the upstream targets; no AI keys
   tools/migrate-sync/   argus-migrate-sync (identity.db -> sync.db, and back)
   tests/{unit,e2e,fixtures}

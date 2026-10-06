@@ -1,6 +1,7 @@
 #include "audit-fan-out.hxx"
 
 #include <feature/fanout/services/sync-fan-out.hxx>
+#include <shared/vocabulary/module-tables.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 #include <stdexcept>
@@ -22,6 +23,11 @@ bool namesRecipients(const Json::Value& json)
 bool AuditFanOut::migrateLegacySchema() const
 {
   return userActionLogRepository_.migrateLegacySchema();
+}
+
+bool AuditFanOut::backfillActivityModules() const
+{
+  return userActionLogRepository_.backfillModules();
 }
 
 drogon::Task<void> AuditFanOut::insertModuleAudit(const ModuleAuditEvent& event)
@@ -89,10 +95,14 @@ drogon::Task<void> AuditFanOut::insertUsersAudit(const UserAuditEvent& event)
 drogon::Task<void> AuditFanOut::insertAction(const UserActionEvent& event,
                                              std::string_view msgId)
 {
+  const std::string module = event.module.empty()
+                                  ? std::string(module_tables::moduleOf(event.tableName))
+                                  : event.module;
   const auto inserted =
       co_await userActionLogRepository_.create({.userId = event.userId,
                                                 .recordId = event.recordId,
-                                                .tableName = event.tableName,
+                                                .tableName = event.tableText(),
+                                                .module = module,
                                                 .action = event.action,
                                                 .oldData = event.oldData,
                                                 .newData = event.newData,

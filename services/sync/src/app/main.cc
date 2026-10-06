@@ -8,6 +8,7 @@
 #include <feature/fanout/services/change-feed-consumer.hxx>
 #include <feature/fanout/services/notification-delivery-consumer.hxx>
 #include <feature/fanout/services/sync-fan-out.hxx>
+#include <feature/activity/controllers/activity-controller.hxx>
 #include <feature/heartbeat/controllers/heartbeat-controller.hxx>
 #include <feature/module-data/services/sync-module-data.hxx>
 #include <feature/heartbeat/infra/guard-presence-directory.hxx>
@@ -190,6 +191,7 @@ int main()
   if (rtc.enabled)
     rtcRooms = std::make_shared<LiveKitRoomClient>(
         LiveKitAdminConfig{.serverUrl = rtc.serverUrl, .apiKey = rtc.apiKey, .apiSecret = rtc.apiSecret});
+  drogon::app().registerController(std::make_shared<ActivityController>());
   drogon::app().registerController(std::make_shared<RtcController>(RtcTokenServiceInput{
       .config = rtc, .voice = rtcVoice, .calls = rtcCalls, .directory = userDirectory, .rooms = rtcRooms}));
   if (rtcRooms) {
@@ -371,7 +373,8 @@ int main()
                                          &heartbeatFeed, &lanes, &userDirectory,
                                          auditRetentionDays]() {
     if (!auditFanOut.migrateLegacySchema() ||
-        !DbService::runScriptFile(syncDb.schemaPath)) {
+        !DbService::runScriptFile(syncDb.schemaPath) ||
+        !auditFanOut.backfillActivityModules()) {
       LOG_FATAL << "Sync database schema failed to apply — aborting startup";
       _exit(1);
     }

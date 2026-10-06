@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS user_action_log (
     user_id    INTEGER NOT NULL,
     record_id  INTEGER NOT NULL,
     table_name TEXT    NOT NULL,
+    module     TEXT    NOT NULL  DEFAULT '',
     action     TEXT    NOT NULL  CHECK (action IN ('create', 'read', 'update', 'delete')),
     old_data   TEXT    NOT NULL  DEFAULT '{}',
     new_data   TEXT    NOT NULL  DEFAULT '{}',
@@ -75,3 +76,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_user_action_log_msg_id
 
 CREATE INDEX IF NOT EXISTS idx_user_action_log_created
     ON user_action_log (created_at, id);
+
+CREATE INDEX IF NOT EXISTS idx_user_action_log_module_created
+    ON user_action_log (module, created_at, id);
+
+CREATE INDEX IF NOT EXISTS idx_user_action_log_user_created
+    ON user_action_log (user_id, created_at, id);
+
+CREATE INDEX IF NOT EXISTS idx_user_action_log_table_created
+    ON user_action_log (table_name, created_at, id);

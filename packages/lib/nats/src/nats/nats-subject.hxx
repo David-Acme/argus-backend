@@ -71,6 +71,10 @@ inline constexpr const char* kNotificationPushIntent =
 inline constexpr const char* kSettingsModule = "argus.settings.v1.module";
 inline constexpr const char* kSettingsModuleStream = "ARGUS_SETTINGS_MODULE";
 
+inline constexpr const char* kSettingsUserAction =
+    "argus.settings.v1.user-action";
+inline constexpr const char* kSettingsActionStream = "ARGUS_SETTINGS_ACTION";
+
 enum class SubjectKind
 {
   Publish,

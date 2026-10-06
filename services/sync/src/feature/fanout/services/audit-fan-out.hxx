@@ -13,7 +13,8 @@
 class AuditFanOut
 {
 public:
-  bool migrateLegacySchema() const;
+  [[nodiscard]] bool migrateLegacySchema() const;
+  [[nodiscard]] bool backfillActivityModules() const;
 
   drogon::Task<bool> handleAuditChange(const Json::Value& json);
   drogon::Task<bool> handleActionJournal(const Json::Value& json,

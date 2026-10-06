@@ -1,6 +1,6 @@
 #include "sync-module-data.hxx"
 
-#include <auth/role-access.hxx>
+#include <shared/vocabulary/module-tables.hxx>
 #include <json/value.h>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
@@ -13,10 +13,6 @@
 
 namespace
 {
-constexpr std::array kSurveillanceTables{TableName::Camera, TableName::CameraStream, TableName::Zone};
-constexpr std::array kProductivityTables{TableName::Project, TableName::ProjectTask, TableName::ProjectMember,
-                                         TableName::CalendarEvent, TableName::CalendarEventShare};
-
 std::string tableList(std::span<const TableName> tables)
 {
   Json::Value list(Json::arrayValue);
@@ -28,11 +24,7 @@ std::string tableList(std::span<const TableName> tables)
 
 std::span<const TableName> SyncModuleData::tablesOf(std::string_view moduleId)
 {
-  if (moduleId == role_access::kSurveillanceModule)
-    return kSurveillanceTables;
-  if (moduleId == role_access::kProductivityModule)
-    return kProductivityTables;
-  return {};
+  return module_tables::tablesOf(moduleId);
 }
 
 ModuleDataSummary SyncModuleData::summary(const std::string& moduleId) const

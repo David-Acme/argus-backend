@@ -121,6 +121,7 @@ argus_service(NAME argus-sync
             argus::sync-transport
             argus::sync-fanout
             argus::sync-rtc
+            argus::sync-activity
             argus::sync-heartbeat
             argus::sync-control-rpc
             argus::sync-module-data
