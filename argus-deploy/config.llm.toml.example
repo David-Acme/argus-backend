@@ -79,6 +79,10 @@ margin = 0.10
 act = 0.90
 ask = 0.60
 margin = 0.10
+witness_only = false
+
+[decide.rules]
+witness_only = false
 
 [extract]
 model_path = "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"

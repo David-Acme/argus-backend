@@ -402,6 +402,18 @@ LlmController::engine(drogon::HttpRequestPtr)
   info["lastPromptTokens"] = stats.promptTokens;
   info["lastReusedTokens"] = stats.reusedTokens;
   info["lastDecodedTokens"] = stats.decodedTokens;
+  Json::Value decisions(Json::arrayValue);
+  for (const auto& tally : adapter_.flow().decisions()) {
+    Json::Value row(Json::objectValue);
+    row["decider"] = tally.key.decider;
+    row["exact"] = tally.key.exact;
+    row["family"] = tally.key.family;
+    row["lang"] = tally.key.lang;
+    row["verdict"] = tally.key.verdict;
+    row["count"] = Json::Value::UInt64(tally.count);
+    decisions.append(std::move(row));
+  }
+  info["decisions"] = std::move(decisions);
   co_return ApiResponse::ok(info);
 }
 

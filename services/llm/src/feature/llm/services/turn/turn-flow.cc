@@ -126,6 +126,21 @@ turn_texts::Details detailsOf(const Candidate& candidate, const TurnRequest& req
   return details;
 }
 
+std::string_view verdictName(Verdict verdict)
+{
+  switch (verdict) {
+    case Verdict::Act:
+      return "act";
+    case Verdict::Ask:
+      return "ask";
+    case Verdict::Choose:
+      return "choose";
+    case Verdict::Pass:
+      return "pass";
+  }
+  return "pass";
+}
+
 bool affirmed(std::string_view utterance)
 {
   return spoken_intent::affirms(std::string(utterance));
@@ -320,7 +335,7 @@ bool TurnFlow::corroborated(const SecondOpinion& opinion) const
     if (witness->id() == opinion.candidate.decider)
       continue;
     const auto other = witness->decide(opinion.input);
-    if (other && other->confident && other->tool == opinion.candidate.tool && verdictOf(*other) == Verdict::Act)
+    if (other && other->confident && other->tool == opinion.candidate.tool && levelOf(*other) == Verdict::Act)
       return true;
   }
   return false;
@@ -332,27 +347,24 @@ bool TurnFlow::supersedes(const Deciding& deciding) const
   return fresh && verdictOf(*fresh) == Verdict::Act;
 }
 
-Verdict TurnFlow::verdictOf(const Candidate& candidate) const
+Verdict TurnFlow::levelOf(const Candidate& candidate) const
 {
   Reading reading{.confidence = candidate.confidence, .runnerUp = std::nullopt};
   if (candidate.runnerUp)
     reading.runnerUp = candidate.runnerUp->confidence;
-  const Verdict verdict = judge(policies_.of(candidate.decider), reading);
+  return judge(policies_.of(candidate.decider), reading);
+}
+
+Verdict TurnFlow::verdictOf(const Candidate& candidate) const
+{
+  const Verdict verdict = levelOf(candidate);
   return verdict == Verdict::Act && !candidate.confident ? Verdict::Ask : verdict;
 }
 
-Outcome TurnFlow::actOn(const TurnRequest& request, const Deciding& deciding, const Candidate& candidate)
+bool TurnFlow::needsSecondSignal(const Candidate& candidate, const tools::ToolDescriptor& tool) const
 {
-  const tools::ToolDescriptor* tool = handleOf(request.offered, candidate.tool);
-  if (tool == nullptr)
-    return unactionable(request);
-  const bool writes = tool->spec.annotations.destructive || !tool->spec.annotations.readOnly;
-  if (writes && !candidate.exact && !corroborated({.candidate = candidate, .input = deciding.input()})) {
-    LOG_INFO << "TurnFlow: '" << candidate.tool << "' from " << candidate.decider << " has no second signal; asking";
-    return confirm(request, candidate);
-  }
-  LOG_INFO << "TurnFlow: '" << candidate.tool << "' decided by " << candidate.source << " at " << candidate.confidence;
-  return proceed({.request = request, .candidate = candidate, .slot = {}, .attempts = 0, .answering = false});
+  const bool writes = tool.spec.annotations.destructive || !tool.spec.annotations.readOnly;
+  return writes && (!candidate.exact || policies_.of(candidate.decider).witnessOnly);
 }
 
 std::optional<Outcome> TurnFlow::followUpPreview(const TurnRequest& request, const Deciding& deciding, const PendingPreview& preview)
@@ -456,11 +468,26 @@ std::optional<Outcome> TurnFlow::followUp(const TurnRequest& request, const Deci
 Outcome TurnFlow::decided(const TurnRequest& request, const Deciding& deciding)
 {
   const auto& candidate = deciding.get();
-  if (!candidate || handleOf(request.offered, candidate->tool) == nullptr)
+  if (!candidate)
     return unactionable(request);
-  switch (verdictOf(*candidate)) {
+  const tools::ToolDescriptor* tool = handleOf(request.offered, candidate->tool);
+  if (tool == nullptr)
+    return unactionable(request);
+  Verdict verdict = verdictOf(*candidate);
+  std::string_view named = verdictName(verdict);
+  if (verdict == Verdict::Act && needsSecondSignal(*candidate, *tool) &&
+      !corroborated({.candidate = *candidate, .input = deciding.input()})) {
+    verdict = Verdict::Ask;
+    named = "guard";
+  }
+  tally_.note({.decider = candidate->decider,
+               .exact = candidate->exact,
+               .tool = candidate->tool,
+               .lang = request.context.lang,
+               .verdict = named});
+  switch (verdict) {
     case Verdict::Act:
-      return actOn(request, deciding, *candidate);
+      return proceed({.request = request, .candidate = *candidate, .slot = {}, .attempts = 0, .answering = false});
     case Verdict::Ask:
       return confirm(request, *candidate);
     case Verdict::Choose:

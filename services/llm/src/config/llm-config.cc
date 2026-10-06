@@ -62,6 +62,12 @@ std::optional<LlmDecisionConfig> LlmConfig::resolveDecision(std::string_view dec
   return decision;
 }
 
+bool LlmConfig::resolveWitnessOnly(std::string_view decider)
+{
+  const std::string key = "decide." + std::string(decider) + ".witness_only";
+  return ConfigService::hasKey(key) && ConfigService::getBool(key);
+}
+
 LlmNotificationConfig LlmConfig::resolveNotifications()
 {
   return {.target = ConfigService::getString("notifications.target"),

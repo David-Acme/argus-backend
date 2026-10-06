@@ -157,9 +157,15 @@ turn::PolicySet configuredPolicies()
   turn::PolicySet policies;
   if (const auto fallback = LlmConfig::resolveDecision())
     policies.setFallback(policyOf(*fallback));
-  for (const std::string_view id : turn::kDeciderIds)
-    if (const auto own = LlmConfig::resolveDecision(id))
-      policies.set(std::string(id), policyOf(*own));
+  for (const std::string_view id : turn::kDeciderIds) {
+    const auto own = LlmConfig::resolveDecision(id);
+    const bool witnessOnly = LlmConfig::resolveWitnessOnly(id);
+    if (!own && !witnessOnly)
+      continue;
+    turn::DecisionPolicy policy = own ? policyOf(*own) : policies.of(id);
+    policy.witnessOnly = witnessOnly;
+    policies.set(std::string(id), policy);
+  }
   return policies;
 }
 

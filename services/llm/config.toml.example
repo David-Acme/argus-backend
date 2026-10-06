@@ -46,6 +46,10 @@ margin = 0.10
 act = 0.90
 ask = 0.60
 margin = 0.10
+witness_only = false
+
+[decide.rules]
+witness_only = false
 
 [components]
 models_dir = "models"

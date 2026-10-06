@@ -67,6 +67,8 @@ public:
 
   [[nodiscard]] static std::optional<LlmDecisionConfig> resolveDecision(std::string_view decider = {});
 
+  [[nodiscard]] static bool resolveWitnessOnly(std::string_view decider);
+
   [[nodiscard]] static LlmNotificationConfig resolveNotifications();
 
   [[nodiscard]] static std::vector<LlmToolProviderConfig> resolveToolProviders();

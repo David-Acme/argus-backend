@@ -2,6 +2,7 @@
 
 #include "decider.hxx"
 #include "decision-policy.hxx"
+#include "decision-tally.hxx"
 #include "pending-turn.hxx"
 #include "slots.hxx"
 
@@ -96,6 +97,8 @@ public:
 
   [[nodiscard]] static std::string notes(const Outcome& outcome, std::string_view lang);
 
+  [[nodiscard]] std::vector<DecisionCount> decisions() const { return tally_.snapshot(); }
+
 private:
   class Deciding;
   struct Move;
@@ -105,11 +108,12 @@ private:
   [[nodiscard]] std::optional<Outcome> followUpPreview(const TurnRequest& request, const Deciding& deciding, const PendingPreview& preview);
   [[nodiscard]] std::optional<Outcome> followUpOffer(const TurnRequest& request, const Deciding& deciding, const PendingOffer& offer);
   [[nodiscard]] Outcome decided(const TurnRequest& request, const Deciding& deciding);
-  [[nodiscard]] Outcome actOn(const TurnRequest& request, const Deciding& deciding, const Candidate& candidate);
   [[nodiscard]] Outcome confirm(const TurnRequest& request, const Candidate& candidate);
   [[nodiscard]] Outcome choose(const TurnRequest& request, const Candidate& candidate);
   [[nodiscard]] bool corroborated(const SecondOpinion& opinion) const;
+  [[nodiscard]] Verdict levelOf(const Candidate& candidate) const;
   [[nodiscard]] Verdict verdictOf(const Candidate& candidate) const;
+  [[nodiscard]] bool needsSecondSignal(const Candidate& candidate, const tools::ToolDescriptor& tool) const;
   [[nodiscard]] bool supersedes(const Deciding& deciding) const;
   [[nodiscard]] Outcome proceed(const Move& move);
   [[nodiscard]] Outcome ask(const Move& move);
@@ -125,6 +129,7 @@ private:
   std::vector<const Decider*> witnesses_;
   SecondSignal secondSignal_;
   PendingTurns pendings_;
+  DecisionTally tally_;
 };
 
 }

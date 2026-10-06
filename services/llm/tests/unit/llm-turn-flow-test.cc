@@ -1232,3 +1232,108 @@ TEST_CASE("a tool that failed does not make a later claim true, and what it said
   const auto spoken = english.sync("Schedule a meeting with Andrea tomorrow at 5 pm");
   CHECK(spoken.reply == "Done, I've scheduled it.");
 }
+
+namespace
+{
+std::uint64_t counted(const World& world, std::string_view decider, std::string_view family, std::string_view verdict)
+{
+  std::uint64_t total = 0;
+  for (const auto& tally : world.flow.decisions())
+    if (tally.key.decider == decider && tally.key.family == family && tally.key.verdict == verdict)
+      total += tally.count;
+  return total;
+}
+
+turn::PolicySet witnessOnlyRules()
+{
+  turn::PolicySet policies({.act = 0.90, .ask = 0.60, .margin = 0.10});
+  policies.set("rules", {.act = 0.90, .ask = 0.60, .margin = 0.10, .witnessOnly = true});
+  return policies;
+}
+}
+
+TEST_CASE("a decider marked witness-only asks for every write, whatever its confidence, and still acts on a read")
+{
+  World world;
+  world.flow.usePolicies(witnessOnlyRules());
+  const auto asked = world.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
+  CHECK(world.ran.empty());
+  CHECK(said(asked) == "¿Quieres que agende «Reunión con Andrea» para mañana a las 5 de la tarde?");
+  CHECK_FALSE(asked.wrote);
+  const auto yes = world.say("sí");
+  REQUIRE(world.ran.size() == 1);
+  CHECK(yes.wrote);
+
+  world.flow.useDecider(world.scripted);
+  world.scripted.name = "rules";
+  world.scripted.next = candidate("task.list", 1.0);
+  world.scripted.next->decider = "rules";
+  CHECK_FALSE(world.say("qué tareas tengo").question.has_value());
+  CHECK(world.ran.size() == 2);
+  world.scripted.next = candidate("task.create", 1.0);
+  world.scripted.next->decider = "rules";
+  world.scripted.next->arguments["title"] = "llamar al dentista";
+  CHECK(world.say("anota llamar al dentista").question.has_value());
+  CHECK(world.ran.size() == 2);
+}
+
+TEST_CASE("the same decider acts alone on a write when it is not marked, and the mark is per decider")
+{
+  World plain;
+  const auto acted = plain.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
+  CHECK_FALSE(acted.question.has_value());
+  CHECK(plain.ran.size() == 1);
+
+  World other;
+  turn::PolicySet policies({.act = 0.90, .ask = 0.60, .margin = 0.10});
+  policies.set("router", {.act = 0.90, .ask = 0.60, .margin = 0.10, .witnessOnly = true});
+  other.flow.usePolicies(policies);
+  CHECK_FALSE(other.say("agéndame una reunión con Andrea mañana a las 5 de la tarde").question.has_value());
+  CHECK(other.ran.size() == 1);
+}
+
+TEST_CASE("a witness-only decider is the second signal another decider's write needs")
+{
+  World world;
+  world.flow.usePolicies(witnessOnlyRules());
+  world.flow.useDecider(world.scripted);
+  world.flow.useWitnesses({&world.rules});
+  world.scripted.name = "laya";
+  turn::Candidate write = candidate("calendar.create_event", 0.97);
+  write.decider = "laya";
+  write.exact = false;
+  write.fill = {"title", "starts_at"};
+  world.scripted.next = write;
+
+  const auto agreed = world.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
+  CHECK_FALSE(agreed.question.has_value());
+  REQUIRE(world.ran.size() == 1);
+  CHECK(world.ran.front().arguments["title"].asString() == "Reunión con Andrea");
+
+  const auto alone = world.say("una reunión con Andrea mañana a las 5 de la tarde");
+  CHECK(alone.question.has_value());
+  CHECK(world.ran.size() == 1);
+}
+
+TEST_CASE("every decision is counted by decider, family, language and what became of it, and written to the log without the words")
+{
+  World world;
+  world.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
+  world.say("agéndame una reunión con Marta mañana a las 5 de la tarde");
+  CHECK(counted(world, "rules", "calendar", "act") == 2);
+
+  world.flow.usePolicies(witnessOnlyRules());
+  world.say("agéndame una reunión con Pedro mañana a las 5 de la tarde");
+  CHECK(counted(world, "rules", "calendar", "guard") == 1);
+  CHECK(counted(world, "rules", "calendar", "act") == 2);
+
+  world.context.lang = "en";
+  world.say("Schedule a meeting with Andrea tomorrow at 5 pm");
+  bool english = false;
+  for (const auto& tally : world.flow.decisions()) {
+    CHECK(tally.key.exact);
+    english = english || tally.key.lang == "en";
+  }
+  CHECK(english);
+  CHECK(world.flow.decisions().size() == 3);
+}
