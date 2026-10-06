@@ -12,7 +12,8 @@ int reconnectDelayMs(const BackoffInput& input)
   const int base = std::max(1, input.baseMs);
   const int cap = std::max(base, input.maxMs);
   const int doublings = std::clamp(input.attempt - 1, 0, 30);
-  const long long delay = static_cast<long long>(base) << std::min(doublings, 20);
+  const auto delay = static_cast<long long>(
+      static_cast<unsigned long long>(base) << static_cast<unsigned>(std::min(doublings, 20)));
   return static_cast<int>(std::min<long long>(delay, cap));
 }
 

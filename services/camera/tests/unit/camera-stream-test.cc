@@ -259,7 +259,7 @@ TEST_CASE("an init segment that never reaches moov is bounded")
 {
   Collected collected;
   auto reader = collectingReader(collected, false);
-  const std::string filler = box({.type = "free", .body = std::string(1024 * 1024, 'f')});
+  const std::string filler = box({.type = "free", .body = std::string(std::size_t{1024} * 1024, 'f')});
   for (int i = 0; i < 6 && !reader.corrupt(); ++i)
     reader.feed(filler.data(), filler.size());
   CHECK(reader.corrupt());

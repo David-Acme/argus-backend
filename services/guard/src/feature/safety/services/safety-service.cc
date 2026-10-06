@@ -335,7 +335,8 @@ drogon::Task<PanicResult> SafetyService::panic(const PanicInput& input) const
 int64_t SafetyService::retryDelay(int failures) const
 {
   const int step = std::clamp(failures - 1, 0, 16);
-  const int64_t delay = std::max<int64_t>(1, config_.retryBaseS) << step;
+  const auto delay = static_cast<int64_t>(
+      static_cast<uint64_t>(std::max<int64_t>(1, config_.retryBaseS)) << static_cast<unsigned>(step));
   return std::min(delay, std::max<int64_t>(1, config_.retryMaxS));
 }
 

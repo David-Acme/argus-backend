@@ -20,7 +20,7 @@ constexpr size_t kDefaultChunkBytes = 16 * 1024;
 constexpr int64_t kDefaultGraceMs = 2000;
 constexpr int64_t kStallMs = 10000;
 constexpr int64_t kFreshGopMs = 3000;
-constexpr size_t kReadBytes = 64 * 1024;
+constexpr size_t kReadBytes = size_t{64} * 1024;
 
 int64_t steadyNowMs()
 {

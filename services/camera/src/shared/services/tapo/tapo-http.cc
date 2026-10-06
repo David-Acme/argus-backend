@@ -75,8 +75,8 @@ std::string fingerprintOf(SSL* ssl)
   std::string hex;
   hex.reserve(static_cast<size_t>(length) * 2);
   for (unsigned int i = 0; i < length; ++i) {
-    hex.push_back(kHexDigits[digest.at(i) >> 4]);
-    hex.push_back(kHexDigits[digest.at(i) & 0x0F]);
+    hex.push_back(kHexDigits[static_cast<unsigned>(digest.at(i)) >> 4U]);
+    hex.push_back(kHexDigits[static_cast<unsigned>(digest.at(i)) & 0x0FU]);
   }
   return hex;
 }

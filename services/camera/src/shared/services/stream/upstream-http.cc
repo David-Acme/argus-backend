@@ -126,7 +126,8 @@ Upstream open(const OpenInput& input)
   if (!up.ok)
     return closed(std::move(up));
   const int flags = ::fcntl(up.fd, F_GETFL, 0);
-  ::fcntl(up.fd, F_SETFL, flags & ~O_NONBLOCK);
+  ::fcntl(up.fd, F_SETFL,
+          static_cast<int>(static_cast<unsigned>(flags) & ~static_cast<unsigned>(O_NONBLOCK)));
   return up;
 }
 
@@ -431,7 +432,7 @@ void Fmp4Reader::consume()
     if (compact == 1) {
       if (window.size() < 16)
         break;
-      size = (static_cast<uint64_t>(be32(window, 8)) << 32) | be32(window, 12);
+      size = (static_cast<uint64_t>(be32(window, 8)) << 32U) | static_cast<uint64_t>(be32(window, 12));
     }
     const uint64_t headerLen = compact == 1 ? 16 : 8;
     if (size < headerLen || size > kMaxBoxBytes) {

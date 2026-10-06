@@ -69,8 +69,8 @@ inline bool isHostLocal(std::string_view host)
   in_addr v4{};
   if (::inet_pton(AF_INET, text.c_str(), &v4) == 1) {
     const uint32_t address = ntohl(v4.s_addr);
-    const auto first = static_cast<uint8_t>(address >> 24);
-    const auto second = static_cast<uint8_t>((address >> 16) & 0xFFU);
+    const auto first = static_cast<uint8_t>(address >> 24U);
+    const auto second = static_cast<uint8_t>((address >> 16U) & 0xFFU);
     return first == 127 || first == 0 || (first == 169 && second == 254);
   }
   in6_addr v6{};

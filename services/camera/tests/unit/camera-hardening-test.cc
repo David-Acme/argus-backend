@@ -149,7 +149,7 @@ TEST_CASE("the instance key file is created once, private, and read back")
   CHECK(secret_box::loadOrCreateKey(path) == secret_box::KeyFileResult::Created);
   struct stat info{};
   REQUIRE(::stat(path.c_str(), &info) == 0);
-  CHECK((info.st_mode & 0777) == 0600);
+  CHECK((info.st_mode & 0777U) == 0600U);
   CHECK(info.st_size == static_cast<off_t>(secret_box::kKeyBytes));
   const std::string sealed = secret_box::seal({.plain = "x", .label = "l"}).value_or("");
   secret_box::clearKey();
@@ -221,7 +221,7 @@ TEST_CASE("an upgraded camera.db keeps every password, sealed in place, and refu
 
 TEST_CASE("expired evidence follows the camera's current retention, and settled commands are purged")
 {
-  constexpr int64_t kDay = 24 * 3600;
+  constexpr int64_t kDay = int64_t{24} * 3600;
   constexpr int64_t kNow = 400 * kDay;
   const std::string path =
       (std::filesystem::temp_directory_path() / "camera-hardening-retention.db").string();
@@ -360,7 +360,7 @@ TEST_CASE("camera rows reach guards and guests without their address or account"
 
 TEST_CASE("evidence is kept for the camera's retention, capped at 60 days or 120 with an incident")
 {
-  constexpr int64_t kDay = 24 * 3600;
+  constexpr int64_t kDay = int64_t{24} * 3600;
   CHECK(EvidenceUploader::retentionSecondsOf({.retentionDays = std::nullopt, .incident = false}) ==
         7 * kDay);
   CHECK(EvidenceUploader::retentionSecondsOf({.retentionDays = 30, .incident = false}) == 30 * kDay);

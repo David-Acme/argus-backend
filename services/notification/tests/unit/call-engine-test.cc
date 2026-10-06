@@ -1366,7 +1366,7 @@ TEST_CASE("live-call probes for several recipients run side by side")
 TEST_CASE("the sweep purges call history past the retention window")
 {
   Harness harness;
-  const int64_t old = kStart - 31 * 86400;
+  const int64_t old = kStart - (int64_t{31} * 86400);
   const int64_t recent = kStart - 86400;
   const auto client = DbService::client();
   client->execSqlSync(
@@ -1378,7 +1378,7 @@ TEST_CASE("the sweep purges call history past the retention window")
       "INSERT INTO scheduled_call (user_id, command_id, fire_at, topic, state, "
       "created_at) VALUES (1, 'fired-old', ?, 't', 'fired', ?), "
       "(1, 'pending-old', ?, 't', 'pending', ?)",
-      old, old, kStart + 10 * 86400, old);
+      old, old, kStart + (int64_t{10} * 86400), old);
   client->execSqlSync(
       "INSERT INTO call_arrival_seen (person_id, last_seen) VALUES (90, ?), (91, ?)",
       old, recent);

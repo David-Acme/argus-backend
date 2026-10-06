@@ -975,7 +975,7 @@ TEST_CASE("nightly darkness never floors to High")
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
   const int64_t baseMs = testNowMs();
   for (int back = 300; back >= 0; back -= 60)
-    service->ingestHealth({.cameraId = 41, .status = "dark", .atMs = baseMs - back * 1000});
+    service->ingestHealth({.cameraId = 41, .status = "dark", .atMs = baseMs - (back * int64_t{1000})});
   drogon::sync_wait(service->checkTamperSweep(now));
   CHECK(harness.notifications.calls == 1);
   CHECK(scalar("SELECT COUNT(*) FROM guard_decision_journal WHERE event_id "

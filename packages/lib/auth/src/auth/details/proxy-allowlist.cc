@@ -163,7 +163,7 @@ std::string proxy_allowlist::prefixOf(const PrefixInput& input)
   for (auto& byte : address->bytes) {
     const int kept = std::clamp(remaining, 0, kByteBits);
     byte = static_cast<unsigned char>(
-        kept == 0 ? 0U : byte & (0xffU << (kByteBits - kept)));
+        kept == 0 ? 0U : static_cast<unsigned>(byte) & (0xffU << static_cast<unsigned>(kByteBits - kept)));
     remaining -= kept;
   }
   std::array<char, INET6_ADDRSTRLEN> buffer{};

@@ -79,7 +79,7 @@ inline bool alwaysOnLink(const SourceAddress& source)
                     [](std::uint8_t byte) { return byte == 0; }) &&
         source.bytes[15] == 1;
     const bool linkLocal =
-        source.bytes[0] == 0xfe && (source.bytes[1] & 0xc0) == 0x80;
+        source.bytes[0] == 0xfe && (static_cast<unsigned>(source.bytes[1]) & 0xc0U) == 0x80U;
     return loopback || linkLocal;
   }
   return false;
