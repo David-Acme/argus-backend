@@ -68,6 +68,9 @@ inline constexpr const char* kNotificationDelivery =
 inline constexpr const char* kNotificationPushIntent =
     "argus.notification.v1.push_intent";
 
+inline constexpr const char* kSettingsModule = "argus.settings.v1.module";
+inline constexpr const char* kSettingsModuleStream = "ARGUS_SETTINGS_MODULE";
+
 enum class SubjectKind
 {
   Publish,

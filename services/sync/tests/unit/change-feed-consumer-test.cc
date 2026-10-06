@@ -190,7 +190,7 @@ Json::Value cameraEmit()
 TEST_CASE("every producer stream carries the durable the change feed holds")
 {
   const auto& feeds = change_feed::defaults();
-  REQUIRE(feeds.size() == 7);
+  REQUIRE(feeds.size() == 8);
 
   CHECK(feeds[0].stream == std::string(nats_subject::kCameraStream));
   CHECK(feeds[0].subject == std::string(nats_subject::kCameraChange));
@@ -227,6 +227,11 @@ TEST_CASE("every producer stream carries the durable the change feed holds")
   CHECK(feeds[6].subject == std::string(nats_subject::kAuthSession));
   CHECK(feeds[6].durable == "argus-sync-auth-session");
   CHECK(feeds[6].maxAckPending == NatsBus::kOrderedMaxAckPending);
+
+  CHECK(feeds[7].stream == std::string(nats_subject::kSettingsModuleStream));
+  CHECK(feeds[7].subject == std::string(nats_subject::kSettingsModule));
+  CHECK(feeds[7].durable == "argus-sync-settings-module");
+  CHECK(feeds[7].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
   std::unordered_set<std::string> durables;
   for (const auto& feed : feeds) {
@@ -424,6 +429,30 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
              .msgId = "identity-action:3",
              .body = json_util::toString(
                  moduleAudit(7, TableName::Camera))})) ==
+        DurableDisposition::Term);
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kSettingsModule,
+             .msgId = "settings-module:1",
+             .body = R"({"modules":[{"id":"surveillance","enabled":false}],"version":2,"settled":true})"})) ==
+        DurableDisposition::Ack);
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kSettingsModule,
+             .msgId = "settings-module:2",
+             .body = R"({"module":{"id":"surveillance","enabled":false,"job":null}})"})) ==
+        DurableDisposition::Ack);
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kSettingsModule,
+             .msgId = "settings-module:3",
+             .body = R"({"settled":false})"})) == DurableDisposition::Ack);
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kSettingsModule,
+             .msgId = "settings-module:forged-emit",
+             .body = R"({"operation":4,"option":"camera","info":{"id":1}})"})) ==
+        DurableDisposition::Term);
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kCameraChange,
+             .msgId = "camera-change:forged-module",
+             .body = R"({"operation":12,"option":"user","info":{"modules":[]}})"})) ==
         DurableDisposition::Term);
   CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "3");
 

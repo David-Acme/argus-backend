@@ -808,3 +808,133 @@ TEST_CASE("sync surface registers the socket and both filters")
   CHECK(stats.controllers == 1);
   CHECK(stats.filters == 2);
 }
+
+TEST_CASE("a module's progress reaches the Owner room as the bare module JSON")
+{
+  sync_fan_out::PurgeWatermarks purges;
+  const Json::Value event = json_util::fromString(
+      R"({"module":{"id":"surveillance","name":"Vigilancia","enabled":false,
+          "job":{"id":3,"state":"downloading","progress":0.25}}})");
+  const auto frames = sync_fan_out::moduleUpdateFrames(event, purges);
+  REQUIRE(frames.size() == 1);
+  CHECK(frames[0].room == roleRoom(UserRole::Owner));
+  const Json::Value frame = json_util::fromString(frames[0].message);
+  CHECK(frame["operation"].asInt() == static_cast<int>(SyncOperation::ModuleUpdate));
+  CHECK(frame["info"]["id"] == "surveillance");
+  CHECK(frame["info"]["job"]["progress"].asDouble() == doctest::Approx(0.25));
+}
+
+TEST_CASE("an enabled-set change reaches every connected socket, trimmed to id and enabled")
+{
+  sync_fan_out::PurgeWatermarks purges;
+  const Json::Value event = json_util::fromString(
+      R"({"modules":[{"id":"surveillance","enabled":false,"secret":"x"},
+                     {"id":"productivity","enabled":true}],"version":7,"settled":true})");
+  const auto frames = sync_fan_out::moduleUpdateFrames(event, purges);
+  REQUIRE(frames.size() == 1);
+  CHECK(frames[0].room == kConnectedRoom);
+  const Json::Value frame = json_util::fromString(frames[0].message);
+  CHECK(frame["operation"].asInt() == 12);
+  REQUIRE(frame["info"]["modules"].size() == 2);
+  CHECK(frame["info"]["modules"][0]["id"] == "surveillance");
+  CHECK(frame["info"]["modules"][0]["enabled"] == false);
+  CHECK_FALSE(frame["info"]["modules"][0].isMember("secret"));
+
+  const auto both = sync_fan_out::moduleUpdateFrames(json_util::fromString(
+      R"({"module":{"id":"productivity"},"modules":[{"id":"productivity","enabled":true}]})"), purges);
+  REQUIRE(both.size() == 2);
+  CHECK(both[0].room == roleRoom(UserRole::Owner));
+  CHECK(both[1].room == kConnectedRoom);
+}
+
+TEST_CASE("an unsettled or malformed enabled set reaches nobody")
+{
+  sync_fan_out::PurgeWatermarks purges;
+  CHECK(sync_fan_out::moduleUpdateFrames(json_util::fromString(
+            R"({"modules":[{"id":"surveillance","enabled":false}],"settled":false})"), purges)
+            .empty());
+  CHECK(sync_fan_out::moduleUpdateFrames(json_util::fromString(
+            R"({"modules":[{"id":"surveillance","enabled":"no"}]})"), purges)
+            .empty());
+  CHECK(sync_fan_out::moduleUpdateFrames(json_util::fromString(R"({"module":{"name":"x"}})"), purges).empty());
+  CHECK(sync_fan_out::moduleUpdateFrames(Json::Value(Json::arrayValue), purges).empty());
+  CHECK(sync_fan_out::handleModulePayload(json_util::fromString(R"({"other":1})")) ==
+        DurableDisposition::Term);
+  CHECK(sync_fan_out::handleModulePayload(json_util::fromString(R"({"settled":false})")) ==
+        DurableDisposition::Ack);
+}
+
+TEST_CASE("module_update is accepted only from the settings feed")
+{
+  SocketEmitDto frame;
+  frame.operation = SyncOperation::ModuleUpdate;
+  frame.option = TableName::User;
+  frame.obj["modules"] = Json::Value(Json::arrayValue);
+  for (const auto scope : {sync_fan_out::ControlScope::None, sync_fan_out::ControlScope::Session,
+                           sync_fan_out::ControlScope::All}) {
+    CHECK(sync_fan_out::parseEvent(sync_change::emitPayload(frame), scope) == std::nullopt);
+    CHECK(sync_fan_out::parseEvent(sync_change::userEmitPayload(frame, {42}), scope) ==
+          std::nullopt);
+  }
+}
+
+TEST_CASE("a socket holds its role room, and a role change moves only that one")
+{
+  for (const auto role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    const auto rooms = roleRoomsOf(role);
+    CHECK(std::ranges::count(rooms, roleRoom(role)) == 1);
+    CHECK(std::ranges::find(rooms, kConnectedRoom) == rooms.end());
+    for (const auto other : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+      if (other != role)
+        CHECK(std::ranges::find(rooms, roleRoom(other)) == rooms.end());
+    }
+  }
+  CHECK(roleRoom(UserRole::Owner) != kConnectedRoom);
+  CHECK(roleRoom(UserRole::Guest) < kConnectedRoom);
+  CHECK(kConnectedRoom < reducedModuleRoom(TableName::User));
+}
+
+TEST_CASE("a newer dataPurgedAt reaches every connected socket once, trimmed")
+{
+  sync_fan_out::PurgeWatermarks purges;
+  const Json::Value purged = json_util::fromString(
+      R"({"module":{"id":"surveillance","lifecycle":"not_installed","enabled":false,
+          "hasData":false,"dataPurgedAt":1700000000,"hardware":{"verdict":"ok"},
+          "job":{"id":4,"state":"done"}}})");
+  const auto frames = sync_fan_out::moduleUpdateFrames(purged, purges);
+  REQUIRE(frames.size() == 2);
+  CHECK(frames[0].room == roleRoom(UserRole::Owner));
+  CHECK(frames[1].room == kConnectedRoom);
+  const Json::Value notice = json_util::fromString(frames[1].message)["info"];
+  CHECK(notice["id"] == "surveillance");
+  CHECK(notice["dataPurgedAt"].asInt64() == 1700000000);
+  CHECK(notice["lifecycle"] == "not_installed");
+  CHECK_FALSE(notice.isMember("hardware"));
+  CHECK_FALSE(notice.isMember("job"));
+
+  CHECK(sync_fan_out::moduleUpdateFrames(purged, purges).size() == 1);
+
+  const Json::Value older = json_util::fromString(
+      R"({"module":{"id":"surveillance","dataPurgedAt":1600000000}})");
+  CHECK(sync_fan_out::moduleUpdateFrames(older, purges).size() == 1);
+
+  const Json::Value newer = json_util::fromString(
+      R"({"module":{"id":"surveillance","dataPurgedAt":1800000000}})");
+  CHECK(sync_fan_out::moduleUpdateFrames(newer, purges).size() == 2);
+
+  const Json::Value never = json_util::fromString(
+      R"({"module":{"id":"productivity","dataPurgedAt":null}})");
+  CHECK(sync_fan_out::moduleUpdateFrames(never, purges).size() == 1);
+}
+
+TEST_CASE("an enabled set keeps each module's lifecycle for the app")
+{
+  sync_fan_out::PurgeWatermarks purges;
+  const auto frames = sync_fan_out::moduleUpdateFrames(
+      json_util::fromString(
+          R"({"modules":[{"id":"surveillance","enabled":false,"lifecycle":"uninstalled_data_kept"}]})"),
+      purges);
+  REQUIRE(frames.size() == 1);
+  const Json::Value info = json_util::fromString(frames[0].message)["info"];
+  CHECK(info["modules"][0]["lifecycle"] == "uninstalled_data_kept");
+}

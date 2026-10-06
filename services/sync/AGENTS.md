@@ -89,7 +89,8 @@ that apply to sync-service code; when in doubt, the root file wins.
     no spdlog.
 18. **No std::future** — plain `std::thread` + join when parallelism is
     needed.
-19. **Frozen protocol** — `SyncOperation` 0-7, `TableName` 0-23,
+19. **Frozen protocol** — `SyncOperation` 0-7 (8-12 are additive:
+    calls, `ResponseUpdate`, `Heartbeat`, `ModuleUpdate`), `TableName` 0-23,
     `SYNC_LIMIT = 200`, the `{type, payload}` request and
     `{operation, option, info}` response envelopes and the `voice:*` frame
     names never change here; the mobile app must keep working unmodified.

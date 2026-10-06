@@ -67,6 +67,20 @@ inline std::vector<RoomId> moduleRoomsOf(UserRole role)
   return rooms;
 }
 
+inline RoomId roleRoom(UserRole role)
+{
+  return 400 + static_cast<uint64_t>(role);
+}
+
+inline constexpr RoomId kConnectedRoom = 450;
+
+inline std::vector<RoomId> roleRoomsOf(UserRole role)
+{
+  auto rooms = moduleRoomsOf(role);
+  rooms.push_back(roleRoom(role));
+  return rooms;
+}
+
 inline RoomId userRoom(int64_t userId)
 {
   return 1000 + static_cast<uint64_t>(userId);

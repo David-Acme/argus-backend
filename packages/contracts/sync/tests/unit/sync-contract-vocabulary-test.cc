@@ -43,11 +43,12 @@ TEST_CASE("sync operation strings round-trip and keep their wire numbers")
                    SyncOperation::Delete, SyncOperation::Log,
                    SyncOperation::AuthContextChanged,
                    SyncOperation::CallIncoming, SyncOperation::CallCancel,
-                   SyncOperation::ResponseUpdate, SyncOperation::Heartbeat},
+                   SyncOperation::ResponseUpdate, SyncOperation::Heartbeat,
+                   SyncOperation::ModuleUpdate},
         .names = {"initial_info", "sync", "sync_audit_log",
                   "sync_user_audit_log", "add", "delete", "log",
                   "auth_context_changed", "call_incoming", "call_cancel",
-                  "response_update", "heartbeat"},
+                  "response_update", "heartbeat", "module_update"},
         .toString = syncOperationToString,
         .fromString = syncOperationFromString});
     CHECK(static_cast<int>(SyncOperation::AuthContextChanged) == 7);
@@ -55,6 +56,7 @@ TEST_CASE("sync operation strings round-trip and keep their wire numbers")
     CHECK(static_cast<int>(SyncOperation::CallCancel) == 9);
     CHECK(static_cast<int>(SyncOperation::ResponseUpdate) == 10);
     CHECK(static_cast<int>(SyncOperation::Heartbeat) == 11);
+    CHECK(static_cast<int>(SyncOperation::ModuleUpdate) == 12);
     CHECK(syncOperationFromString("unknown") == SyncOperation::Synchronize);
 }
 

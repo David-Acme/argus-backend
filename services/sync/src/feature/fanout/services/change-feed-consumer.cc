@@ -42,6 +42,10 @@ const std::vector<Feed>& defaults()
        .subject = nats_subject::kAuthSession,
        .durable = "argus-sync-auth-session",
        .maxAckPending = NatsBus::kOrderedMaxAckPending},
+      {.stream = nats_subject::kSettingsModuleStream,
+       .subject = nats_subject::kSettingsModule,
+       .durable = "argus-sync-settings-module",
+       .maxAckPending = NatsBus::kOrderedMaxAckPending},
   };
   return feeds;
 }
@@ -104,6 +108,8 @@ ChangeFeedConsumer::handle(const durable_delivery::Payload& message)
              << " is not a JSON object; refused";
     co_return DurableDisposition::Term;
   }
+  if (message.subject == nats_subject::kSettingsModule)
+    co_return sync_fan_out::handleModulePayload(json);
   if (message.subject == nats_subject::kIdentityUserAction ||
       message.subject == nats_subject::kAuthUserAction)
     co_return co_await sync_fan_out::handleActionPayload(

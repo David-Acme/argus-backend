@@ -54,6 +54,56 @@ void noticeIdentityChange(const Json::Value& json)
   identityChangeListener()({.table = *table, .recordId = recordId});
 }
 
+constexpr const char* kSettledField = "settled";
+constexpr const char* kModuleField = "module";
+constexpr const char* kModulesField = "modules";
+constexpr const char* kModuleIdField = "id";
+constexpr const char* kModuleEnabledField = "enabled";
+constexpr Json::ArrayIndex kMaxModules = 64;
+
+std::string moduleUpdateMessage(const Json::Value& info)
+{
+  SocketEmitDto frame;
+  frame.operation = SyncOperation::ModuleUpdate;
+  frame.option = TableName::User;
+  frame.obj = info;
+  return json_util::toString(frame.toJson());
+}
+
+constexpr const char* kDataPurgedAtField = "dataPurgedAt";
+constexpr const char* kLifecycleField = "lifecycle";
+
+Json::Value purgeNoticeOf(const Json::Value& module)
+{
+  Json::Value notice(Json::objectValue);
+  for (const char* field : {kModuleIdField, kModuleEnabledField, kLifecycleField, kDataPurgedAtField}) {
+    if (module.isMember(field))
+      notice[field] = module[field];
+  }
+  return notice;
+}
+
+std::optional<Json::Value> enabledSetOf(const Json::Value& modules)
+{
+  if (modules.size() > kMaxModules)
+    return std::nullopt;
+  Json::Value list(Json::arrayValue);
+  for (const auto& entry : modules) {
+    if (!entry.isObject() || !entry[kModuleIdField].isString() ||
+        !entry[kModuleEnabledField].isBool())
+      return std::nullopt;
+    Json::Value flag(Json::objectValue);
+    flag[kModuleIdField] = entry[kModuleIdField];
+    flag[kModuleEnabledField] = entry[kModuleEnabledField];
+    if (entry[kLifecycleField].isString())
+      flag[kLifecycleField] = entry[kLifecycleField];
+    list.append(std::move(flag));
+  }
+  Json::Value info(Json::objectValue);
+  info[kModulesField] = std::move(list);
+  return info;
+}
+
 std::string kindOf(const Json::Value& json)
 {
   return json.isObject() ? json.get(sync_change::kKindField, "").asString()
@@ -92,6 +142,8 @@ std::optional<Event> parseEvent(const Json::Value& json, ControlScope scope)
 
   Event event;
   event.emit.operation = static_cast<SyncOperation>(json["operation"].asInt());
+  if (event.emit.operation == SyncOperation::ModuleUpdate)
+    return std::nullopt;
   event.emit.option = *table;
   event.emit.obj = json["info"];
 
@@ -228,6 +280,62 @@ void dispatchEvent(const Event& event)
         roomManager.emit(frame.room, frame.message);
       return;
   }
+}
+
+bool PurgeWatermarks::advance(const std::string& module, const Json::Value& purgedAt)
+{
+  const bool comparable = purgedAt.isIntegral() || (purgedAt.isString() && !purgedAt.asString().empty());
+  if (!comparable)
+    return false;
+  std::scoped_lock lock(mutex_);
+  const auto found = seen_.find(module);
+  if (found != seen_.end() && found->second.type() == purgedAt.type()) {
+    const bool newer = purgedAt.isIntegral() ? purgedAt.asInt64() > found->second.asInt64()
+                                             : purgedAt.asString() > found->second.asString();
+    if (!newer)
+      return false;
+  }
+  seen_[module] = purgedAt;
+  return true;
+}
+
+std::vector<RoomFrame> moduleUpdateFrames(const Json::Value& json, PurgeWatermarks& purges)
+{
+  std::vector<RoomFrame> frames;
+  if (!json.isObject())
+    return frames;
+  const Json::Value& settled = json[kSettledField];
+  const bool unsettled = settled.isBool() && !settled.asBool();
+  const Json::Value& module = json[kModuleField];
+  if (module.isObject() && module[kModuleIdField].isString()) {
+    frames.push_back({.room = roleRoom(UserRole::Owner),
+                      .message = moduleUpdateMessage(module)});
+    if (purges.advance(module[kModuleIdField].asString(), module[kDataPurgedAtField]))
+      frames.push_back({.room = kConnectedRoom, .message = moduleUpdateMessage(purgeNoticeOf(module))});
+  }
+  const Json::Value& modules = json[kModulesField];
+  if (modules.isArray() && !unsettled) {
+    if (const auto enabledSet = enabledSetOf(modules))
+      frames.push_back({.room = kConnectedRoom,
+                        .message = moduleUpdateMessage(*enabledSet)});
+  }
+  return frames;
+}
+
+DurableDisposition handleModulePayload(const Json::Value& json)
+{
+  if (!json.isObject())
+    return DurableDisposition::Term;
+  static PurgeWatermarks purges;
+  const auto frames = moduleUpdateFrames(json, purges);
+  const Json::Value& settled = json[kSettledField];
+  if (frames.empty() && !(settled.isBool() && !settled.asBool())) {
+    LOG_WARN << "Sync fan-out: a module event with neither a module nor an enabled set refused";
+    return DurableDisposition::Term;
+  }
+  for (const auto& frame : frames)
+    roomManager.emit(frame.room, frame.message);
+  return DurableDisposition::Ack;
 }
 
 drogon::Task<DurableDisposition> handleChangePayload(ChangePayloadInput input)

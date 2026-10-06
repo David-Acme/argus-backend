@@ -872,3 +872,48 @@ install is accepted only while a caller is unpaired, and only for what that
 caller may do; one WARN marks the first such call. `setup.sh` and
 `provision-host.sh` pair both callers idempotently, after which the secret is
 refused and may be deleted. `sync-control-callers-test` pins all of it.
+
+## Selectable modules: `ModuleUpdate = 12` (2026-10, the modules plan)
+
+`docs/history/plans/modules-and-welcome-plan.md` lets the Owner install,
+disable, uninstall and purge `surveillance` and `productivity`. argus-settings
+owns the state and publishes it on the durable subject
+`argus.settings.v1.module` (stream `ARGUS_SETTINGS_MODULE`); this service
+binds its own ordered durable `argus-sync-settings-module` beside the change
+feeds and turns each event into frames. Nothing is persisted here.
+
+**Rooms.** Every socket now also joins its **role room** (`400 + role`) and
+the **connected room** (`450`) on connect. A role change moves the role room
+with the module rooms (`roleRoomsOf`); the connected room is never left while
+the socket lives.
+
+**What the app receives** — always `{operation: 12, option: "user", info}`,
+`option` carrying no meaning (dispatch on `operation`):
+
+| Event on the subject | Frame | Room |
+|---|---|---|
+| top-level `module: {…}` (progress, lifecycle, a job's end; throttled by the producer) | `info` = the bare module JSON of the plan, unchanged | Owner role room |
+| the same event when that module's `dataPurgedAt` is newer than the last one this process saw (integer or ISO string) | `info` = `{id, enabled, lifecycle, dataPurgedAt}` | every connected socket |
+| top-level `modules: [{id, enabled, lifecycle?}]` (the enabled set changed) | `info` = `{modules: [{id, enabled, lifecycle?}]}`, every other field dropped | every connected socket |
+| `settled: false` | an enabled set is not forwarded (a progress module still is) | — |
+
+One event may carry both `module` and `modules`. The purge watermark lives in
+memory, so after a restart the first purged module event reaches every socket
+once more; the app compares `dataPurgedAt` with its own record and drops the
+module's local tables only when it is newer, so the repeat is harmless. A
+device that was offline learns it from `GET /modules` (plan, "Lifecycle").
+
+**What the app must do**: paint its cached modules, call `GET /modules` on
+open and after every reconnect (frames are live only: the durable starts at
+new messages and nothing is replayed to a socket), then follow the frames;
+treat any `lifecycle` other than `active` as not usable; drop a module's local
+tables on a newer `dataPurgedAt`. After a purge the owners' pulls simply hold
+no rows for those tables: no tombstones are sent for purged rows.
+
+**Only the settings feed may speak it.** `parseEvent` refuses operation 12 on
+every change subject and over the control RPC (`EmitToUser` included), so no
+producer and no control caller can forge an enabled set into every socket; a
+message on the settings subject that carries neither shape is terminated.
+`tests/unit/sync-surface-test.cc` pins the rooms, the trimming, the purge
+watermark and the refusal; `change-feed-consumer-test.cc` pins the feed and
+its routing.

@@ -152,8 +152,9 @@ SyncService::handleConnect(const drogon::HttpRequestPtr& req,
                 .userId = ctx.sub,
                 .loop = trantor::EventLoop::getEventLoopOfCurrentThread()});
 
-  std::vector<RoomId> rooms = moduleRoomsOf(ctx.role);
+  std::vector<RoomId> rooms = roleRoomsOf(ctx.role);
   rooms.push_back(userRoom(ctx.sub));
+  rooms.push_back(kConnectedRoom);
   roomManager_.joinMany(rooms, conn);
 
   Json::Value user;

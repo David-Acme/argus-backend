@@ -7,6 +7,8 @@
 #include <json/value.h>
 #include <cstdint>
 #include <functional>
+#include <mutex>
+#include <unordered_map>
 #include <optional>
 #include <shared/services/room/room-manager.hxx>
 #include <string>
@@ -87,6 +89,20 @@ struct RoomFrame
 
 [[nodiscard]] std::vector<RoomFrame> moduleFrames(const Event& event);
 void dispatchEvent(const Event& event);
+
+class PurgeWatermarks
+{
+public:
+  bool advance(const std::string& module, const Json::Value& purgedAt);
+
+private:
+  std::mutex mutex_;
+  std::unordered_map<std::string, Json::Value> seen_;
+};
+
+[[nodiscard]] std::vector<RoomFrame> moduleUpdateFrames(const Json::Value& json,
+                                                       PurgeWatermarks& purges);
+DurableDisposition handleModulePayload(const Json::Value& json);
 
 struct ChangePayloadInput
 {

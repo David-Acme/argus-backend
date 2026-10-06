@@ -54,7 +54,7 @@ std::vector<std::pair<trantor::EventLoop*, trantor::TimerId>> g_pruneTimers;
 
 std::unordered_set<RoomId> moduleRoomsFor(UserRole role)
 {
-  const auto list = moduleRoomsOf(role);
+  const auto list = roleRoomsOf(role);
   return {list.begin(), list.end()};
 }
 }

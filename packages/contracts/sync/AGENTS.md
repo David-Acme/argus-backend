@@ -52,7 +52,10 @@ now `services/sync`'s `SyncSocket`.
   additive as well: argus-sync answers `{type:"heartbeat"}` with it, sends one
   after `InitialInfo` and pushes one to a user's room when their presence
   changes (`services/sync/CONTEXT.md`, "Dead man's switch"); `10` is
-  `ResponseUpdate`.
+  `ResponseUpdate`. `ModuleUpdate = 12` (`"module_update"`, 2026-10, the
+  modules plan) is additive too; argus-sync builds it only from the settings
+  module feed and refuses it everywhere else (`services/sync/CONTEXT.md`,
+  "Selectable modules").
 - `src/sync/table-name.hxx` — `TableName`, 24 enumerators `User = 0` through
   `Memory = 23`, with its round-trip helpers, `kLastTableName` for the sweeps
   that must not miss a new table, and a lookup map; 35 files, the
