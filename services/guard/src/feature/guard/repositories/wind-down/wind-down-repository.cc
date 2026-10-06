@@ -1,5 +1,6 @@
 #include "wind-down-repository.hxx"
 
+#include <sqlite/db-service.hxx>
 #include <string>
 
 using namespace wind_down_query;
@@ -14,5 +15,16 @@ drogon::Task<WindDownReport> WindDownRepository::run(const WindDownInput& input)
           .affectedRows());
   report.duty =
       static_cast<int64_t>((co_await input.client->execSqlCoro(std::string(END_DUTY), input.at)).affectedRows());
+  co_return report;
+}
+
+drogon::Task<WindDownReport> WindDownRepository::pending() const
+{
+  const auto client = DbService::client();
+  WindDownReport report;
+  report.observations =
+      (co_await client->execSqlCoro(std::string(COUNT_OBSERVATIONS))).front()["total"].as<int64_t>();
+  report.actions = (co_await client->execSqlCoro(std::string(COUNT_ACTIONS))).front()["total"].as<int64_t>();
+  report.duty = (co_await client->execSqlCoro(std::string(COUNT_DUTY))).front()["total"].as<int64_t>();
   co_return report;
 }

@@ -8,4 +8,5 @@ class WindDownRepository
 {
 public:
   [[nodiscard]] drogon::Task<WindDownReport> run(const WindDownInput& input) const;
+  [[nodiscard]] drogon::Task<WindDownReport> pending() const;
 };

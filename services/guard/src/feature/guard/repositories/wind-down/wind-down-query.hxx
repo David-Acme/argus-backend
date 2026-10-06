@@ -17,6 +17,16 @@ inline constexpr std::string_view DROP_ACTIONS =
 inline constexpr std::string_view END_DUTY =
     "UPDATE guard_response_recipient SET on_duty = 0, updated_at = ? WHERE on_duty = 1";
 
+inline constexpr std::string_view COUNT_OBSERVATIONS =
+    "SELECT COUNT(*) AS total FROM guard_observation_inbox WHERE status = 'processing'";
+
+inline constexpr std::string_view COUNT_ACTIONS =
+    "SELECT COUNT(*) AS total FROM guard_action_outbox "
+    "WHERE status IN ('pending', 'in_flight', 'retryable_failed')";
+
+inline constexpr std::string_view COUNT_DUTY =
+    "SELECT COUNT(*) AS total FROM guard_response_recipient WHERE on_duty = 1";
+
 inline constexpr std::string_view kDropReason = "module_disabled";
 }
 

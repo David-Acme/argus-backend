@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <drogon/drogon.h>
+#include <feature/guard/services/guard-module-impact.hxx>
 #include <feature/guard/services/guard-module-wind-down.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
@@ -107,6 +108,15 @@ TEST_CASE("turning surveillance off drops pending work and duty, and leaves safe
   seedSafetyAlert("panic", 10);
   seedSafetyAlert("duress", 11);
 
+  const GuardModuleImpact impact;
+  const auto before = drogon::sync_wait(impact.impactAsync("surveillance"));
+  REQUIRE(before.stops.size() == 2);
+  CHECK(before.stops[0].kind == "pending_alerts");
+  CHECK(before.stops[0].count == 5);
+  CHECK(before.stops[1].kind == "guard_duty");
+  CHECK(before.stops[1].count == 2);
+  CHECK(drogon::sync_wait(impact.impactAsync("productivity")).stops.empty());
+
   const auto report = drogon::sync_wait(windDown.run());
   CHECK(report.observations == 2);
   CHECK(report.actions == 3);
@@ -124,6 +134,11 @@ TEST_CASE("turning surveillance off drops pending work and duty, and leaves safe
   CHECK(scalar("SELECT COUNT(*) FROM guard_response_recipient WHERE on_duty = 1") == "0");
   CHECK(scalar("SELECT COUNT(*) FROM guard_response_recipient") == "3");
   CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert") == "2");
+
+  const auto after = drogon::sync_wait(impact.impactAsync("surveillance"));
+  REQUIRE(after.stops.size() == 2);
+  CHECK(after.stops[0].count == 0);
+  CHECK(after.stops[1].count == 0);
 
   const auto again = drogon::sync_wait(windDown.run());
   CHECK(again.empty());

@@ -8,6 +8,7 @@
 #include <feature/guard/controllers/guard-controller.hxx>
 #include <feature/guard/controllers/response-controller.hxx>
 #include <feature/guard/infra/identity-response-directory.hxx>
+#include <feature/guard/services/guard-module-impact.hxx>
 #include <feature/guard/services/guard-module-wind-down.hxx>
 #include <feature/guard/services/response-verdict-feed.hxx>
 #include <feature/guard/guard-assessment.hxx>
@@ -101,6 +102,7 @@ struct RpcListenerInput
   SettingsRegistry& registry;
   const PresenceService& presence;
   ModuleDataHost& moduleData;
+  const ModuleImpactHost& moduleImpact;
   OwnerPinHost& ownerPin;
   EnvironmentCatalog environments;
 };
@@ -139,6 +141,7 @@ RpcListener startRpcListener(const RpcListenerInput& input)
                          .credentials = std::move(rpc.settingsCredentials)});
     listener.settings->attachModuleData(input.moduleData);
     listener.settings->attachOwnerPin(input.ownerPin);
+    listener.settings->attachModuleImpact(input.moduleImpact);
     builder.RegisterService(listener.settings.get());
   }
   if (rpc.presenceCredentials.empty()) {
@@ -351,11 +354,13 @@ int main()
     presence.refresh(GuardConfig::resolvePresence());
   });
   GuardModuleData moduleData;
+  const GuardModuleImpact moduleImpact;
   GuardOwnerPin ownerPin(safety);
   const RpcListener rpcListener = startRpcListener(
       {.registry = settings,
        .presence = presence,
        .moduleData = moduleData,
+       .moduleImpact = moduleImpact,
        .ownerPin = ownerPin,
        .environments = [repository = std::make_shared<EnvironmentRepository>()]() -> drogon::Task<std::vector<EnvironmentChoice>> {
          std::vector<EnvironmentChoice> places;

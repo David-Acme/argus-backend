@@ -1436,6 +1436,16 @@ off"). `tests/unit/guard-module-wind-down-test.cc` pins the three effects, the
 rows it must not touch and the idempotence, and `guard-scenario-test.cc`
 ("daily summaries stay silent while surveillance is disabled") the summaries.
 
+### What turning surveillance off would stop (impact preview)
+
+`GuardModuleImpact` answers argus-settings' `ModuleImpact` call for
+`surveillance` with two counts, read live from the same tables the wind-down
+changes (`WindDownRepository::pending`): `pending_alerts` (observations still
+processing plus alert actions pending, in flight or retrying) and `guard_duty`
+(shifts on duty). Panic and duress alerts are not counted: nothing in the
+module change ends them (`guard-module-wind-down-test` pins the counts before
+and after the wind-down).
+
 ### Surveillance data: summary and purge
 
 argus-guard is a data owner of `surveillance`: `src/feature/module-data/`
