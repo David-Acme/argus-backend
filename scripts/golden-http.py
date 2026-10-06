@@ -93,6 +93,8 @@ EXTRA_PROBES = {
 
 CHALLENGE_DETAILS = "/auth/device-login/{1}/details"
 CHALLENGE_SLOT = "{challenge}"
+MODULE_DATA = "/modules/{1}/data"
+MODULE_DATA_ID = "productivity"
 SESSION_SLOT_RE = re.compile(r"\{session:([a-z]+)\}")
 
 ID_SLOTS = {
@@ -386,6 +388,8 @@ def slot_id(route, ids):
         return MISSING_ID
     if route["path"] == CHALLENGE_DETAILS:
         return CHALLENGE_SLOT
+    if route["path"] == MODULE_DATA:
+        return MODULE_DATA_ID
     if route["path"].endswith("/content"):
         return MISSING_TOKEN
     for prefix, slot in ID_SLOTS.items():

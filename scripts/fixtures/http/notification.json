@@ -859,9 +859,9 @@
           "errors": null,
           "info": {
             "acked": 0,
-            "latencyMsMax": 2,
-            "latencyMsP50": 1,
-            "latencyMsP95": 2,
+            "latencyMsMax": 10,
+            "latencyMsP50": 6,
+            "latencyMsP95": 10,
             "pending": 0,
             "probeAt": "<masked>",
             "probeMs": 0,

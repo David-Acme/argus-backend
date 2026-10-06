@@ -233,7 +233,7 @@
                   }
                 ],
                 "hardware": {
-                  "freeDiskMb": 196762,
+                  "freeDiskMb": 196608,
                   "minRamMb": 4096,
                   "reasons": [],
                   "recommendedRamMb": 8192,
@@ -299,13 +299,13 @@
                   }
                 ],
                 "hardware": {
-                  "freeDiskMb": 196762,
+                  "freeDiskMb": 196608,
                   "minRamMb": 1536,
                   "reasons": [],
                   "recommendedRamMb": 3072,
                   "verdict": "ok"
                 },
-                "hasData": false,
+                "hasData": true,
                 "id": "surveillance",
                 "installedBytes": 578108270,
                 "job": null,
@@ -335,13 +335,13 @@
                   }
                 ],
                 "hardware": {
-                  "freeDiskMb": 196762,
+                  "freeDiskMb": 196608,
                   "minRamMb": 64,
                   "reasons": [],
                   "recommendedRamMb": 128,
                   "verdict": "ok"
                 },
-                "hasData": false,
+                "hasData": true,
                 "id": "productivity",
                 "installedBytes": 0,
                 "job": null,
@@ -360,7 +360,7 @@
                 "enabled": false,
                 "gettingStarted": [],
                 "hardware": {
-                  "freeDiskMb": 196762,
+                  "freeDiskMb": 196608,
                   "minRamMb": 0,
                   "reasons": [],
                   "recommendedRamMb": 0,
@@ -547,7 +547,7 @@
     },
     {
       "method": "GET",
-      "path": "/modules/999999/data",
+      "path": "/modules/productivity/data",
       "probe": "no-token",
       "request": {
         "auth": "none",
@@ -573,7 +573,7 @@
     },
     {
       "method": "GET",
-      "path": "/modules/999999/data",
+      "path": "/modules/productivity/data",
       "probe": "other-device",
       "request": {
         "auth": "owner",
@@ -599,7 +599,7 @@
     },
     {
       "method": "GET",
-      "path": "/modules/999999/data",
+      "path": "/modules/productivity/data",
       "probe": "role-resident",
       "request": {
         "auth": "resident",
@@ -625,7 +625,7 @@
     },
     {
       "method": "GET",
-      "path": "/modules/999999/data",
+      "path": "/modules/productivity/data",
       "probe": "role-guest",
       "request": {
         "auth": "guest",
@@ -651,8 +651,74 @@
     },
     {
       "method": "GET",
-      "path": "/modules/999999/data",
+      "path": "/modules/productivity/data",
       "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "owners": [
+              {
+                "bytes": 315,
+                "items": [
+                  {
+                    "count": 1,
+                    "kind": "projects"
+                  },
+                  {
+                    "count": 1,
+                    "kind": "tasks"
+                  },
+                  {
+                    "count": 1,
+                    "kind": "project_members"
+                  },
+                  {
+                    "count": 1,
+                    "kind": "calendar_events"
+                  },
+                  {
+                    "count": 0,
+                    "kind": "calendar_shares"
+                  }
+                ],
+                "owner": "productivity",
+                "reachable": true,
+                "reported": true
+              },
+              {
+                "bytes": 0,
+                "items": [
+                  {
+                    "count": 0,
+                    "kind": "change_history"
+                  }
+                ],
+                "owner": "sync",
+                "reachable": true,
+                "reported": true
+              }
+            ]
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/modules/{1}/data",
+      "unit": "settings"
+    },
+    {
+      "method": "GET",
+      "path": "/modules/999999/data",
+      "probe": "owner-missing",
       "request": {
         "auth": "owner",
         "body": null,
