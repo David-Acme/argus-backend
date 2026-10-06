@@ -626,6 +626,9 @@
   },
   "performance": {
     "metrics": {
+      "cpuMsPerCall": {
+        "max": 400
+      },
       "latencyP95Ms": {
         "max": 150
       },
