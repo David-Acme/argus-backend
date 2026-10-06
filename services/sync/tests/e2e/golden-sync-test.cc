@@ -37,6 +37,7 @@ constexpr size_t kBinaryKeepBytes = 64 * 1024;
 constexpr size_t kHexPreviewBytes = 256;
 
 const std::string kRecorderUserAgent = "argus-golden-recorder/1.0";
+constexpr const char* kDeviceCredentialHeader = "X-Argus-Device-Credential";
 
 #ifndef ARGUS_TEST_SYNC_FIXTURES_DIR
 #define ARGUS_TEST_SYNC_FIXTURES_DIR "src/test/fixtures/sync"
@@ -63,6 +64,12 @@ std::string envValue(const std::string& name, const std::string& fallback = {})
 {
   const char* raw = std::getenv(name.c_str());
   return raw != nullptr && *raw != '\0' ? std::string(raw) : fallback;
+}
+
+void addDeviceCredential(const drogon::HttpRequestPtr& request)
+{
+  if (const auto credential = envValue("ARGUS_TEST_DEVICE_CREDENTIAL"); !credential.empty())
+    request->addHeader(kDeviceCredentialHeader, credential);
 }
 
 std::string jsonToString(const Json::Value& json)
@@ -241,6 +248,22 @@ std::string messageTypeOf(const Frame& frame)
   return op >= 0 && op < 8 ? kNames[op] : "unknown";
 }
 
+void dropHostFields(Json::Value& frame)
+{
+  constexpr std::array<const char*, 3> kHostFields = {"hardware", "installedBytes", "components"};
+  if (!frame.isObject() || !frame.isMember("info") || !frame["info"].isObject() ||
+      !frame["info"].isMember("context") || !frame["info"]["context"].isObject() ||
+      !frame["info"]["context"].isMember("ownerCatalog") ||
+      !frame["info"]["context"]["ownerCatalog"].isArray())
+    return;
+  for (auto& module : frame["info"]["context"]["ownerCatalog"]) {
+    if (!module.isObject())
+      continue;
+    for (const char* field : kHostFields)
+      module.removeMember(field);
+  }
+}
+
 std::optional<Json::Value> normalizedFrameJson(const Frame& frame)
 {
   const auto json = parseJson(frame.text);
@@ -248,6 +271,7 @@ std::optional<Json::Value> normalizedFrameJson(const Frame& frame)
     return std::nullopt;
   Json::Value copy = *json;
   normalizeInPlace(copy);
+  dropHostFields(copy);
   return copy;
 }
 
@@ -679,6 +703,7 @@ bool openSocket(SocketSession& session, const OpenSocketInput& input,
   request->setPath(input.path);
   request->setParameter("token", input.token);
   request->addHeader("User-Agent", kRecorderUserAgent);
+  addDeviceCredential(request);
 
   WaitFlag connected;
   session.client->connectToServer(
@@ -764,6 +789,7 @@ int main(int argc, char* argv[])
   authReq->setMethod(drogon::Patch);
   authReq->setPath("/auth/refresh-token");
   authReq->addHeader("User-Agent", kRecorderUserAgent);
+  addDeviceCredential(authReq);
 
   Json::Value session(Json::objectValue);
   std::string authFailure;
@@ -1101,6 +1127,12 @@ int main(int argc, char* argv[])
   rules["maskedSecrets"] =
       "key containing token/hash/secret/nonce/password/credential (string) -> "
       "'<masked>'";
+  rules["ownerCatalogHostFields"] =
+      "the Owner's context.ownerCatalog is the module list the settings "
+      "service answers; each module's hardware verdict, installedBytes and "
+      "components come from the host that answers, so they are removed from "
+      "the normalized comparison; the catalog, lifecycle, roles, intro and "
+      "jobs beside them stay pinned";
   rules["binaryFrames"] =
       "normalized files record kind only; raw files record byteLength, sha256 "
       "and the first 256 bytes hex; the first 64 KiB of a binary frame is also "

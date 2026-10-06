@@ -242,6 +242,8 @@ prepare() {
     "$STACK_DIR/camera/config.toml" grpc caller_sync 32
   fill_config_pair "$STACK_DIR/llm/config.toml" camera credential \
     "$STACK_DIR/camera/config.toml" grpc caller_llm 32
+  fill_config_pair "$STACK_DIR/llm/config.toml" productivity credential \
+    "$STACK_DIR/productivity/config.toml" grpc caller_llm 32
   fill_config_pair "$STACK_DIR/productivity/config.toml" notifications credential \
     "$STACK_DIR/notification/config.toml" grpc caller_productivity 32
   fill_config_pair "$STACK_DIR/llm/config.toml" notifications credential \
@@ -446,6 +448,14 @@ harness_env() {
   printf 'export ARGUS_TEST_FIXTURES_DIR=%s/services/sync/tests/fixtures/sync\n' \
     "$ROOT"
   printf 'export ARGUS_TEST_REFRESH_TOKEN=%s\n' "$(cat "$(token_file)")"
+  python3 - "$STACK_DIR/seed.json" <<'PY'
+import json
+import sys
+
+credential = json.load(open(sys.argv[1])).get("credentials", {}).get("owner")
+if credential:
+    print(f"export ARGUS_TEST_DEVICE_CREDENTIAL={credential}")
+PY
 }
 
 require_service() {

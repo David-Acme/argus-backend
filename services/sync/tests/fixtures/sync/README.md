@@ -49,6 +49,19 @@ eval "$(./scripts/native-stack.sh env)"
 services/sync/build/dev/tests/golden-sync-test verify
 ```
 
+In credential identity mode (the default) the replay presents the owner's
+device credential on the refresh call and on both WebSocket upgrades:
+`native-stack.sh env` exports it as `ARGUS_TEST_DEVICE_CREDENTIAL` beside the
+refresh token. Without it argus-auth refuses the session and the replay skips.
+
+State of the recording: it predates the heartbeat frame (`Heartbeat = 11`,
+pushed after `InitialInfo`), which the replay reads as one frame too many in
+every later scenario, so a replay today reports differences from the second
+scenario on until the set is re-recorded. The first scenario differs by one
+field only, the user's `context` (`InitialInfo.context`, the role, its
+capabilities and the module list, plus the Owner's `ownerCatalog` whose host
+measurements the normalization drops).
+
 A passing run prints one `OK <scenario>` line per scenario and ends with
 `PASS: golden /sync contract matches fixtures`. Eight scenarios: the initial
 info frame, the sync bootstrap, both audit-log and both user-audit-log legs,
