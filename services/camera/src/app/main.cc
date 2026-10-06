@@ -222,7 +222,8 @@ int main()
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
 
   MediaSessionRegistry mediaSessions;
-  CameraTalkService talkService;
+  CameraTalkService talkService(
+      {}, [] { return moduleGate().enabled(role_access::kSurveillanceModule); });
   MediaAccessCheck mediaAccess(MediaAccessCheck::remote());
   drogon::app().registerController(std::make_shared<CameraMediaSocket>(
       CameraMediaSocket::Dependencies{
@@ -330,6 +331,7 @@ int main()
     if (detector->isLoaded()) {
       LOG_INFO << "Object detector backend: " << detector->backend();
       CameraOperatorService::Inputs inputs;
+    static_cast<void>(talkService.stopAll("module_disabled"));
       inputs.dependencies.detector = detector.get();
       inputs.dependencies.source = &frameSource();
       inputs.dependencies.sink = objectSink.get();

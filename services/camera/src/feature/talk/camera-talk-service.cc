@@ -2,6 +2,7 @@
 
 #include <auth/jwt-filter.hxx>
 #include <auth/role-access.hxx>
+#include <auth/auth-errors.hxx>
 #include <camera/camera-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
@@ -9,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <string_view>
+#include <utility>
 
 namespace
 {
@@ -24,7 +26,10 @@ void sendIfOpen(const std::weak_ptr<drogon::WebSocketConnection>& weak, const Js
 }
 }
 
-CameraTalkService::CameraTalkService(TalkLimits limits) : limits_(limits) {}
+CameraTalkService::CameraTalkService(TalkLimits limits, std::function<bool()> active)
+    : limits_(limits), active_(std::move(active))
+{
+}
 
 CameraTalkService::~CameraTalkService()
 {
@@ -64,6 +69,8 @@ drogon::Task<bool> CameraTalkService::handleText(const SyncFrameInput& input)
 drogon::Task<void> CameraTalkService::start(const SyncFrameInput& input)
 {
   const auto& conn = input.conn;
+  if (active_ && !active_())
+    throw ResponseException(AuthErrors::ModuleDisabled);
   const auto& ctx = conn->getContextRef<JwtContext>();
   if (!role_access::hasCameraAction(ctx.role, role_access::CameraAction::Talk))
     throw ResponseException(403, CameraErrors::Forbidden);
@@ -179,6 +186,19 @@ void CameraTalkService::reap()
   }
   for (const auto& session : done)
     session->join();
+}
+
+size_t CameraTalkService::stopAll(const std::string& reason)
+{
+  std::scoped_lock lock(mutex_);
+  size_t stopped = 0;
+  for (auto& [key, session] : sessions_) {
+    if (session->finished())
+      continue;
+    session->stop(reason);
+    ++stopped;
+  }
+  return stopped;
 }
 
 void CameraTalkService::requestStop()

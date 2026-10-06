@@ -1762,6 +1762,16 @@ surveillance is not `active`, and the `/media` socket, which runs without
 - **Open views end on disable.** A gate change to disabled closes every
   `/media` socket (`module_disabled`) and every tagged WebRTC viewer
   (`WebRtcSessionCloser::closeAll`).
+- **Open talk sessions end on disable, and none starts while it is off.** A
+  talk session lives and dies with its `/media` socket, so closing the sockets
+  already ended it, but only when Drogon got to the close callback. The hook
+  now also calls `CameraTalkService::stopAll("module_disabled")` first, which
+  releases every open line at once (the client sees `camera:talk:closed` with
+  that reason), and `start` refuses with 403 `MODULE_DISABLED` while the gate
+  says surveillance is off, so a frame that slips through a socket opened
+  before the change cannot open a line. `camera-talk-module-test` drives the
+  service with a fake driver and connection through start, stop-all, refusal
+  and restart.
 - **A role or account change ends that user's views.** The session
   revocation consumer gained a second ordered durable,
   `argus-camera-identity-user` on `argus.identity.v1.change`: a user audit

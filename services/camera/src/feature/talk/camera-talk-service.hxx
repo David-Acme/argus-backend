@@ -7,6 +7,7 @@
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <sync/sync-forwarder.hxx>
 
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <span>
@@ -23,7 +24,7 @@ struct TalkLimits
 class CameraTalkService
 {
 public:
-  explicit CameraTalkService(TalkLimits limits = {});
+  explicit CameraTalkService(TalkLimits limits = {}, std::function<bool()> active = {});
   ~CameraTalkService();
 
   CameraTalkService(const CameraTalkService&) = delete;
@@ -35,6 +36,7 @@ public:
   void handleBinary(const drogon::WebSocketConnectionPtr& conn, std::span<const uint8_t> data);
   void handleClose(const drogon::WebSocketConnectionPtr& conn);
 
+  size_t stopAll(const std::string& reason);
   void requestStop();
   [[nodiscard]] bool drained() const;
   [[nodiscard]] size_t active() const;
@@ -45,6 +47,7 @@ private:
   void reap();
 
   TalkLimits limits_;
+  std::function<bool()> active_;
   CameraRepository cameraRepository_;
   mutable std::mutex mutex_;
   std::unordered_map<const void*, std::shared_ptr<CameraTalkSession>> sessions_;

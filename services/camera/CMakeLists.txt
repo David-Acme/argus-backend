@@ -312,6 +312,23 @@ target_link_libraries(camera-catalog-test PRIVATE
     argus::camera-driver
     argus::camera-feature
     doctest::doctest)
+add_executable(camera-talk-module-test
+    tests/unit/camera-talk-module-test.cc)
+target_link_libraries(camera-talk-module-test PRIVATE
+    argus::camera-talk
+    argus::camera-driver
+    argus::camera-repositories
+    argus::lib::auth
+    argus::lib::config
+    argus::lib::errors
+    argus::lib::sqlite
+    doctest::doctest)
+target_compile_definitions(camera-talk-module-test PRIVATE
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+set_target_properties(camera-talk-module-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_compile_options(camera-talk-module-test PRIVATE -Wall -Wextra)
+add_test(NAME camera-talk-module-test COMMAND camera-talk-module-test)
+
 set_target_properties(camera-catalog-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_compile_options(camera-catalog-test PRIVATE -Wall -Wextra)
 add_test(NAME camera-catalog-test COMMAND camera-catalog-test)
