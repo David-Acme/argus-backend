@@ -182,6 +182,52 @@ TEST_CASE("a tool that declares no capability or an unknown one is never run")
   CHECK(executor.offered(audienceOf(UserRole::Owner)).empty());
 }
 
+TEST_CASE("an argument the schema does not declare is dropped instead of refusing the call")
+{
+  Probe probe;
+  ToolRegistry registry;
+  registry.registerTool(probeDescriptor("probe.remember", probe, "memory.manage"));
+  const ToolExecutor executor(registry);
+
+  auto call = callFor("probe.remember");
+  call.arguments["text"] = "el dentista";
+  call.arguments["module"]["description"] = "Módulos de Argus";
+  call.arguments["volume"] = 11;
+  const auto result = executor.execute(call, audienceOf(UserRole::Resident));
+
+  REQUIRE(result.ok);
+  CHECK(probe.seen == "el dentista");
+
+  auto wrongType = callFor("probe.remember");
+  wrongType.arguments["text"] = 7;
+  wrongType.arguments["module"] = "x";
+  const auto refused = executor.execute(wrongType, audienceOf(UserRole::Resident));
+  CHECK_FALSE(refused.ok);
+  CHECK(refused.code == "invalid_arguments");
+}
+
+TEST_CASE("a tool with no arguments at all runs whatever the model put in them")
+{
+  Probe probe;
+  ToolRegistry registry;
+  registry.registerTool(tool_stubs::stub({.name = "probe.list",
+                                          .capability = "modules.read",
+                                          .handler = [&probe](const tools::ToolCall& call) {
+                                            probe.ran = call.arguments.empty();
+                                            return tool_stubs::okResult("listed");
+                                          },
+                                          .module = "core",
+                                          .schema = argus::mcp::schema::emptyObject()}));
+  const ToolExecutor executor(registry);
+
+  auto call = callFor("probe.list");
+  call.arguments["module"]["type"] = "object";
+  const auto result = executor.execute(call, audienceOf(UserRole::Guest));
+
+  REQUIRE(result.ok);
+  CHECK(probe.ran);
+}
+
 TEST_CASE("a dispatch comes back under the tool that was called")
 {
   Probe probe;

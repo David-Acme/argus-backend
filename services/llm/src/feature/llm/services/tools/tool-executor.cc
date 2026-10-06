@@ -15,6 +15,17 @@ namespace
 {
 constexpr std::string_view kEnableTool = "modules.enable";
 
+void dropUndeclared(const Json::Value& schema, Json::Value& arguments)
+{
+  const Json::Value& extra = schema["additionalProperties"];
+  const Json::Value& properties = schema["properties"];
+  if (!arguments.isObject() || !extra.isBool() || extra.asBool())
+    return;
+  for (const auto& name : arguments.getMemberNames())
+    if (!properties.isObject() || !properties.isMember(name))
+      arguments.removeMember(name);
+}
+
 tools::ToolResult refused(const tools::ToolCall& call, std::string code, std::string output)
 {
   tools::ToolResult result;
@@ -69,6 +80,7 @@ tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call, const ToolA
 
   tools::ToolCall prepared = call;
   prepared.context.role = audience.role;
+  dropUndeclared(spec.inputSchema, prepared.arguments);
   time_arguments::normalize({.call = prepared, .spec = spec, .now = static_cast<int64_t>(std::time(nullptr))});
   if (const auto invalid = argus::mcp::schema::violation(spec.inputSchema, prepared.arguments))
     return refused(call, "invalid_arguments", *invalid);
