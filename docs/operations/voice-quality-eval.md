@@ -138,6 +138,14 @@ nouns in the past tense or as plain nouns, and calendar is where nearly all of t
 sealed set has been read twice for fastText; any later number of it on the sealed set is a tuned
 number and is labelled so.
 
+The coverage bar is 0.456, fastText at the sealed point where it broke the wrong-ACT gate; a pass is
+under the gate AND above the bar. Beside it every report prints what a fastText that obeys the gate
+reaches: 0.154 on the selection set at the 0.1% ceiling (calibrated, `ACT >= 0.91 ASK >= 0.85`, 8,807
+non-positives, upper 95% bound 0.10%) and 0.101 on the sealed set (the figure of the first sealed
+reading, at the 0.5% false-route gate that held then, so it is a tuned number and not the same
+ceiling as the selection figure). `gates.json` carries both under `decider.gateObeyingFastText`, and
+`decider-eval.py` and `round-report.py` print them beside the coverage they report.
+
 On real traffic (turns that came from the product or lab sessions) at the selected threshold the
 clean model sends 44.3% of the 61 production turns to a tool and leaves 55.7% to plain conversation
 (memory coverage 43.1%); 44.6% of the 92 lab-session turns and 61.2% of the 103 check turns reach a
