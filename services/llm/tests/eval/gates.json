@@ -2,36 +2,196 @@
   "version": 1,
   "fast": {
     "metrics": {
-      "cases": {"min": 600},
-      "falseActionRate": {"max": 0.02},
-      "fallThroughShare": {"max": 0.80},
-      "group.productivity.falseActionRate": {"max": 0.02},
-      "group.modules.falseActionRate": {"max": 0.02},
-      "group.inactive.falseActionRate": {"max": 0.02},
-      "group.app.falseActionRate": {"max": 0.06},
-      "group.none.falseActionRate": {"max": 0.03},
-      "group.camera.falseActionRate": {"max": 0.05},
-      "variant.neutral.falseActionRate": {"max": 0.02},
-      "variant.pe.falseActionRate": {"max": 0.02},
-      "variant.stt.falseActionRate": {"max": 0.02},
-      "variant.en.falseActionRate": {"max": 0.05},
-      "memory_save.precision": {"min": 0.85},
-      "memory_save.precisionLower": {"min": 0.70},
-      "memory_save.recall": {"min": 0.45},
-      "memory_recall.precision": {"min": 0.90},
-      "memory_recall.precisionLower": {"min": 0.80},
-      "memory_recall.recall": {"min": 0.42},
-      "reminder_set.precision": {"min": 0.92},
-      "reminder_set.precisionLower": {"min": 0.85},
-      "reminder_set.recall": {"min": 0.70},
-      "memory_forget.precision": {"min": 0.90},
-      "memory_forget.precisionLower": {"min": 0.75},
-      "memory_forget.recall": {"min": 0.50},
-      "source.model.precision": {"min": 0.92},
-      "source.statement.precision": {"min": 0.85},
-      "real.memory_save.precision": {"min": 0.90},
-      "real.memory_save.recall": {"min": 0.70},
-      "real.fallThroughShare": {"max": 0.50}
+      "cases": {
+        "min": 600
+      },
+      "falseActionRate": {
+        "max": 0.02
+      },
+      "fallThroughShare": {
+        "max": 0.8
+      },
+      "group.productivity.falseActionRate": {
+        "max": 0.02
+      },
+      "group.modules.falseActionRate": {
+        "max": 0.02
+      },
+      "group.inactive.falseActionRate": {
+        "max": 0.02
+      },
+      "group.app.falseActionRate": {
+        "max": 0.06
+      },
+      "group.none.falseActionRate": {
+        "max": 0.03
+      },
+      "group.camera.falseActionRate": {
+        "max": 0.05
+      },
+      "variant.neutral.falseActionRate": {
+        "max": 0.02
+      },
+      "variant.pe.falseActionRate": {
+        "max": 0.02
+      },
+      "variant.stt.falseActionRate": {
+        "max": 0.02
+      },
+      "variant.en.falseActionRate": {
+        "max": 0.05
+      },
+      "memory_save.precision": {
+        "min": 0.85
+      },
+      "memory_save.precisionLower": {
+        "min": 0.7
+      },
+      "memory_save.recall": {
+        "min": 0.45
+      },
+      "memory_recall.precision": {
+        "min": 0.9
+      },
+      "memory_recall.precisionLower": {
+        "min": 0.8
+      },
+      "memory_recall.recall": {
+        "min": 0.42
+      },
+      "reminder_set.precision": {
+        "min": 0.92
+      },
+      "reminder_set.precisionLower": {
+        "min": 0.85
+      },
+      "reminder_set.recall": {
+        "min": 0.7
+      },
+      "memory_forget.precision": {
+        "min": 0.9
+      },
+      "memory_forget.precisionLower": {
+        "min": 0.75
+      },
+      "memory_forget.recall": {
+        "min": 0.5
+      },
+      "source.model.precision": {
+        "min": 0.92
+      },
+      "source.statement.precision": {
+        "min": 0.85
+      },
+      "real.memory_save.precision": {
+        "min": 0.9
+      },
+      "real.memory_save.recall": {
+        "min": 0.7
+      },
+      "real.fallThroughShare": {
+        "max": 0.5
+      },
+      "variant.neutral.precision": {
+        "min": 0.9
+      },
+      "variant.neutral.recall": {
+        "min": 0.5
+      },
+      "variant.pe.precision": {
+        "min": 0.88
+      },
+      "variant.pe.recall": {
+        "min": 0.45
+      },
+      "variant.stt.precision": {
+        "min": 0.88
+      },
+      "variant.stt.recall": {
+        "min": 0.62
+      },
+      "variant.en.precision": {
+        "min": 0.85
+      },
+      "variant.en.recall": {
+        "min": 0.55
+      }
     }
+  },
+  "llm": {
+    "scoring": {
+      "writeTools": [
+        "memory.remember",
+        "memory.remind",
+        "memory.forget",
+        "calendar.create_event",
+        "calendar.cancel_event",
+        "project.create",
+        "task.create",
+        "task.complete",
+        "modules.enable",
+        "modules.disable",
+        "modules.request"
+      ],
+      "ownerOfferMarkers": [
+        "activ",
+        "habilit",
+        "enable",
+        "turn it on",
+        "turn on",
+        "instal",
+        "encend",
+        "prend"
+      ],
+      "memberOfferMarkers": [
+        "dueno",
+        "duena",
+        "propietari",
+        "administrador",
+        "owner",
+        "household",
+        "admin",
+        "pedir",
+        "pido",
+        "pedirle",
+        "solicit",
+        "avis",
+        "ask",
+        "request"
+      ],
+      "inactiveMarkers": [
+        "productividad",
+        "productivity",
+        "vigilancia",
+        "surveillance",
+        "desactiv",
+        "apagad",
+        "no esta activ",
+        "no esta habilit",
+        "no esta instal",
+        "not active",
+        "not enabled",
+        "turned off",
+        "disabled",
+        "isn't on",
+        "is off",
+        "not installed",
+        "no disponible",
+        "unavailable"
+      ],
+      "questionMarkers": [
+        "?",
+        "confirm",
+        "seguro",
+        "quieres que",
+        "desea",
+        "are you sure",
+        "do you want",
+        "shall i",
+        "proceed",
+        "continu"
+      ]
+    },
+    "metrics": {}
   }
 }

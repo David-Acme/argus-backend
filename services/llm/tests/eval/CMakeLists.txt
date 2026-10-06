@@ -1,4 +1,4 @@
-add_library(llm-eval-core STATIC eval-case.cc eval-report.cc)
+add_library(llm-eval-core STATIC eval-case.cc eval-report.cc eval-score.cc)
 
 target_include_directories(llm-eval-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -23,3 +23,26 @@ add_test(NAME fast-tier-eval
         --report ${CMAKE_CURRENT_BINARY_DIR}/fast-tier-report.json)
 
 set_tests_properties(fast-tier-eval PROPERTIES SKIP_RETURN_CODE 77 LABELS eval)
+
+add_executable(eval-corpus-test eval-corpus-test.cc)
+
+target_compile_definitions(eval-corpus-test PRIVATE
+    ARGUS_EVAL_CASES="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/cases.jsonl")
+
+target_link_libraries(eval-corpus-test PRIVATE llm-eval-core doctest::doctest)
+
+target_compile_options(eval-corpus-test PRIVATE -Wall -Wextra)
+
+set_target_properties(eval-corpus-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME eval-corpus-test COMMAND eval-corpus-test)
+
+add_executable(eval-score-test eval-score-test.cc)
+
+target_link_libraries(eval-score-test PRIVATE llm-eval-core doctest::doctest)
+
+target_compile_options(eval-score-test PRIVATE -Wall -Wextra)
+
+set_target_properties(eval-score-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME eval-score-test COMMAND eval-score-test)

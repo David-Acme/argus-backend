@@ -255,6 +255,7 @@ TEST_CASE("normalizeInput reproduces the training normalisation")
   CHECK(intent::normalizeInput("  Recuerda...   la   leche  ") ==
         "recuerda la leche");
   CHECK(intent::normalizeInput("Año: 2024") == "ano 2024");
+  CHECK(intent::normalizeInput("Él llegó. ÁNGEL, ¿qué ÉPOCA?") == "el llego angel que epoca");
 }
 
 TEST_CASE("the label round trip covers every class")

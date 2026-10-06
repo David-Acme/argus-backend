@@ -174,6 +174,7 @@ eval::Metrics measure(const IntentGate& gate, const std::vector<eval::EvalCase>&
   std::map<std::string, Rates> byGroup;
   std::map<std::string, Rates> byVariant;
   std::map<std::string, SourceTally> bySource;
+  std::map<std::string, Tally> byVariantTool;
   Rates overall;
   int fallThrough = 0;
   int ruleDecided = 0;
@@ -188,6 +189,12 @@ eval::Metrics measure(const IntentGate& gate, const std::vector<eval::EvalCase>&
     }
     if (isPositive(item.route))
       ++tallies[item.route].support;
+    if (isPositive(item.route))
+      ++byVariantTool[item.variant].support;
+    if (outcome.routed != "none")
+      ++byVariantTool[item.variant].predicted;
+    if (outcome.routed == item.route && isPositive(item.route))
+      ++byVariantTool[item.variant].correct;
     if (outcome.routed != "none") {
       ++tallies[outcome.routed].predicted;
       ++bySource[outcome.source].routed;
@@ -220,6 +227,10 @@ eval::Metrics measure(const IntentGate& gate, const std::vector<eval::EvalCase>&
     metrics[name + ".precisionLower"] = eval::wilson({.hits = tally.correct, .total = tally.predicted}).lower;
     metrics[name + ".recall"] = ratio(tally.correct, tally.support);
     metrics[name + ".support"] = tally.support;
+  }
+  for (const auto& [variant, tally] : byVariantTool) {
+    metrics["variant." + variant + ".precision"] = ratio(tally.correct, tally.predicted);
+    metrics["variant." + variant + ".recall"] = ratio(tally.correct, tally.support);
   }
   for (const auto& [source, tally] : bySource) {
     metrics["source." + source + ".routed"] = tally.routed;
