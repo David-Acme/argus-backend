@@ -87,6 +87,45 @@ class SecondSignalTest(unittest.TestCase):
         self.assertEqual(harness.choose_policy(cases, decisions, limits)[3] > 0, True)
 
 
+class GuardScopeTest(unittest.TestCase):
+    def setUp(self):
+        self.cases = loaded([case("p", "recuerda que la llave está abajo", ["memory.remember"]),
+                             case("n", "ayer recordé a mi abuela")])
+        self.decisions = [("memory.remember", 0.97, None, 0.0, 0.95), ("memory.remember", 0.97, None, 0.0, 0.1)]
+
+    def test_guarding_memory_writes_removes_a_wrong_memory_act_that_leaving_them_open_keeps(self):
+        guarded = harness.summarise(self.cases, self.decisions, (0.9, 0.9, 0.0, 0.8, 1))["memory"]
+        open_ = harness.summarise(self.cases, self.decisions, (0.9, 0.9, 0.0, 0.8, 0))["memory"]
+        self.assertEqual(guarded["wrongAct"], 0)
+        self.assertEqual(open_["wrongAct"], 1)
+        self.assertAlmostEqual(guarded["actCoverage"], 1.0)
+
+    def test_the_policy_search_reports_the_best_policy_of_each_scope(self):
+        limits = {"wrongAct": 0.5, "askClear": 1.0, "wrongTool": 1.0}
+        best = harness.choose_policies(self.cases, self.decisions, limits, (1, 0))
+        self.assertEqual(set(best), {1, 0})
+
+
+class CalibrationHarnessTest(unittest.TestCase):
+    def test_a_fitted_calibration_maps_an_overconfident_decider_and_is_applied_to_decisions(self):
+        import random
+        rng = random.Random(3)
+        records, decisions = [], []
+        for index in range(400):
+            confidence = 0.6 + 0.4 * rng.random()
+            correct = rng.random() < confidence ** 5
+            records.append(case(f"c{index}", f"agenda algo {index}", ["calendar.create_event"]))
+            decisions.append(("calendar.create_event" if correct else "task.create", confidence, None, 0.0, None))
+        cases = loaded(records)
+        fitted = harness.fit_calibration(cases, decisions)
+        self.assertIn(fitted["report"]["confidence"]["chosen"], ("temperature", "platt", "isotonic"))
+        row = fitted["report"]["confidence"]["heldOutEce"]
+        self.assertLess(min(row["temperature"], row["platt"], row["isotonic"]), row["before"])
+        mapped = harness.apply_calibration(decisions, fitted)
+        self.assertEqual(len(mapped), len(decisions))
+        self.assertNotEqual([m[1] for m in mapped], [d[1] for d in decisions])
+
+
 class ScoreTest(unittest.TestCase):
     def setUp(self):
         self.cases = loaded([
@@ -293,6 +332,19 @@ class RunTest(unittest.TestCase):
                                  "--gates", str(self.gates), "--select", str(self.select), "--report", str(report)],
                                 capture_output=True, text=True, timeout=120)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_a_calibration_can_be_fitted_written_and_applied_from_the_command_line(self):
+        calibration_file = self.directory / "calibration.json"
+        write(self.select, [case(f"a{i}", f"pon una agenda {i}", ["calendar.create_event"]) for i in range(30)]
+              + [case(f"d{i}", f"algo dudoso {i}") for i in range(30)])
+        first, data = self.run_harness("--calibrate-out", str(calibration_file))
+        self.assertEqual(first.returncode, 0, first.stdout)
+        fitted = json.loads(calibration_file.read_text())
+        self.assertIn("confidence", fitted)
+        self.assertIn("calibration of confidence", first.stdout)
+        second, _ = self.run_harness("--calibration", str(calibration_file))
+        self.assertEqual(second.returncode, 0, second.stdout)
+        self.assertIn("confidences calibrated", second.stdout)
 
     def test_a_member_is_only_offered_the_request_tool(self):
         self.assertIn("modules.request", harness.offered("resident"))

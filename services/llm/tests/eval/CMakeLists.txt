@@ -65,6 +65,10 @@ if(ARGUS_PYTHON3)
         COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/conversation-eval-test.py)
     set_tests_properties(conversation-eval-test PROPERTIES LABELS eval)
 
+    add_test(NAME calibration-test
+        COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/calibration-test.py)
+    set_tests_properties(calibration-test PROPERTIES LABELS eval)
+
     add_test(NAME perf-eval-test
         COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/perf-eval-test.py)
     set_tests_properties(perf-eval-test PROPERTIES LABELS eval)

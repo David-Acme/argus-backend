@@ -7,11 +7,15 @@ import pathlib
 import shlex
 import statistics
 import subprocess
+import importlib.util
 import sys
 import threading
 import time
 
 SKIP = 77
+_SPEC = importlib.util.spec_from_file_location("calibration", pathlib.Path(__file__).resolve().parent / "calibration.py")
+calibration = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(calibration)
 FAMILIES = {
     "calendar": ("calendar.create_event", "calendar.list_events", "calendar.cancel_event"),
     "task": ("task.create", "task.list", "task.complete"),
@@ -29,7 +33,11 @@ OWNER_ONLY = {"modules.enable", "modules.disable", "modules.open_purge_screen"}
 MEMBER_ONLY = {"modules.request"}
 READ_TOOLS = {"calendar.list_events", "task.list", "project.list", "modules.list", "modules.explain",
               "reminder.list", "memory.recall", "app.open", "app.show_camera"}
-NOWS = (0.0, 0.5, 0.7, 0.8, 0.9, 0.95)
+LOW_RISK_WRITES = {"memory.remember", "memory.remind"}
+NOWS = (0.0, 0.5, 0.8, 0.9, 0.95)
+GUARD_ACTS = (0.7, 0.8, 0.9, 0.93, 0.95, 0.97, 0.98, 0.99)
+GUARD_ASKS = (0.5, 0.7, 0.85, 0.93)
+GUARD_MARGINS = (0.0, 0.1, 0.3)
 ACTS = (0.5, 0.6, 0.7, 0.8, 0.85, 0.88, 0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99, 0.995)
 ASKS = (0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95)
 MARGINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
@@ -193,11 +201,13 @@ def outcome(decision, policy):
     now = decision[4] if len(decision) > 4 else None
     act, ask, margin = policy[:3]
     now_min = policy[3] if len(policy) > 3 else 0.0
+    guard_memory = policy[4] if len(policy) > 4 else 1
     if tool is None:
         return "none", ()
     gap = confidence - (runner_confidence if runner_tool else 0.0)
     if confidence >= act and gap >= margin:
-        if now_min > 0.0 and tool not in READ_TOOLS and (now is None or now < now_min):
+        guarded = tool not in READ_TOOLS and (guard_memory or tool not in LOW_RISK_WRITES)
+        if now_min > 0.0 and guarded and (now is None or now < now_min):
             return "ask", (tool,)
         return "act", (tool,)
     if confidence >= ask:
@@ -257,9 +267,11 @@ def tally(cases, decisions, policy, scopes):
     return counts
 
 
-def scopes_of(select=None):
+def scopes_of(select=None, reported=()):
     out = {"moduleFamilies": (set(MODULE_FAMILIES), select)}
     for family in MODULE_FAMILIES:
+        out[family] = ({family}, select)
+    for family in reported:
         out[family] = ({family}, select)
     return out
 
@@ -287,10 +299,11 @@ def digest(entry):
 
 
 def summarise(cases, decisions, policy):
-    counts = tally(cases, decisions, policy, scopes_of())
+    counts = tally(cases, decisions, policy, scopes_of(reported=("memory",)))
     out = {"policy": {"act": policy[0], "ask": policy[1], "margin": policy[2],
-                      "now": policy[3] if len(policy) > 3 else 0.0}, "cases": len(cases),
-           "moduleFamilies": digest(counts["moduleFamilies"]),
+                      "now": policy[3] if len(policy) > 3 else 0.0,
+                      "guardMemory": bool(policy[4]) if len(policy) > 4 else True}, "cases": len(cases),
+           "moduleFamilies": digest(counts["moduleFamilies"]), "memory": digest(counts["memory"]),
            "families": {f: digest(counts[f]) for f in MODULE_FAMILIES}, "variants": {}}
     for variant in sorted({c["variant"] for c in cases}):
         part = tally(cases, decisions, policy, {"moduleFamilies": (set(MODULE_FAMILIES),
@@ -307,12 +320,14 @@ def feasible(summary, limits):
     return pooled["askRateClear"] <= limits["askClear"] and pooled["wrongToolRate"] <= limits["wrongTool"]
 
 
-def policies(guard):
-    for act in ACTS:
-        for ask in (a for a in ASKS if a <= act):
-            for margin in MARGINS:
-                for now in (NOWS if guard else (0.0,)):
-                    yield (act, ask, margin, now)
+def policies(guard, scopes=(1,)):
+    acts, asks, margins, nows = (GUARD_ACTS, GUARD_ASKS, GUARD_MARGINS, NOWS) if guard else (ACTS, ASKS, MARGINS, (0.0,))
+    for act in acts:
+        for ask in (a for a in asks if a <= act):
+            for margin in margins:
+                for now in nows:
+                    for scope in (scopes if now > 0.0 else (1,)):
+                        yield (act, ask, margin, now, scope)
 
 
 def act_only_policies():
@@ -320,17 +335,25 @@ def act_only_policies():
         yield (act, act, 0.0)
 
 
-def choose_policy(cases, decisions, limits):
-    best, best_key = None, None
+def choose_policies(cases, decisions, limits, scopes=(1,)):
+    best = {}
     guard = any(len(d) > 4 and d[4] is not None for d in decisions)
-    for policy in policies(guard):
+    for policy in policies(guard, scopes):
         summary = summarise_pooled(cases, decisions, policy, limits)
         if summary is None:
             continue
         key = (summary["coverage"], -summary["askRateClear"], -summary["askRateOther"], -policy[0])
-        if best_key is None or key > best_key:
-            best, best_key = policy, key
+        scope = policy[4] if len(policy) > 4 else 1
+        if scope not in best or key > best[scope][1]:
+            best[scope] = (policy, key)
     return best
+
+
+def choose_policy(cases, decisions, limits, scopes=(1,)):
+    best = choose_policies(cases, decisions, limits, scopes)
+    if not best:
+        return None
+    return max(best.values(), key=lambda item: item[1])[0]
 
 
 def summarise_pooled(cases, decisions, policy, limits):
@@ -360,7 +383,7 @@ def print_sweep(title, cases, decisions):
 
 def print_families(title, summary):
     p = summary["policy"]
-    print(f"\n{title} at ACT >= {p['act']} / ASK >= {p['ask']} / margin {p['margin']} / now >= {p['now']}")
+    print(f"\n{title} at ACT >= {p['act']} / ASK >= {p['ask']} / margin {p['margin']} / now >= {p['now']} (memory writes {'guarded' if p['guardMemory'] else 'not guarded'})")
     print(f"  {'family':10s}{'pos':>5s}{'cover':>8s}{'act':>8s}{'prec':>8s}{'askClr':>8s}{'wrongA':>8s}{'rate':>8s}"
           f"{'up95':>8s}{'amb':>5s}{'ambAsk':>8s}")
     for family, e in summary["families"].items():
@@ -469,6 +492,50 @@ def error_rows(cases, decisions, policy):
     return rows
 
 
+def calibration_pairs(cases, decisions):
+    confidence, now = [], []
+    for case, decision in zip(cases, decisions):
+        tool = decision[0]
+        if tool is not None:
+            confidence.append((decision[1], case["kind"] == "positive" and tool in case["expected"]))
+            if len(decision) > 4 and decision[4] is not None:
+                now.append((decision[4], case["kind"] == "positive"))
+    return confidence, now
+
+
+def fit_calibration(cases, decisions):
+    confidence, now = calibration_pairs(cases, decisions)
+    out = {"report": {}}
+    for name, pairs in (("confidence", confidence), ("now", now)):
+        if not pairs:
+            continue
+        train = [p for i, p in enumerate(pairs) if i % 2 == 0]
+        held = [p for i, p in enumerate(pairs) if i % 2 == 1]
+        rows = {"before": calibration.evaluate({"type": "identity"}, held)["ece"]}
+        best_kind, best_ece = "identity", rows["before"]
+        for kind in ("temperature", "platt", "isotonic"):
+            model = calibration.fit(train, kind)
+            rows[kind] = calibration.evaluate(model, held)["ece"]
+            if rows[kind] < best_ece:
+                best_kind, best_ece = kind, rows[kind]
+        out[name] = calibration.fit(pairs, best_kind) if best_kind != "identity" else {"type": "identity"}
+        out["report"][name] = {"pairs": len(pairs), "heldOutEce": rows, "chosen": best_kind}
+    return out
+
+
+def apply_calibration(decisions, model):
+    out = []
+    for decision in decisions:
+        tool, confidence, runner_tool, runner_confidence = decision[:4]
+        now = decision[4] if len(decision) > 4 else None
+        mapped = calibration.apply(model["confidence"], confidence) if "confidence" in model and tool else confidence
+        mapped_runner = calibration.apply(model["confidence"], runner_confidence) \
+            if "confidence" in model and runner_tool else runner_confidence
+        mapped_now = calibration.apply(model["now"], now) if "now" in model and now is not None else now
+        out.append((tool, mapped, runner_tool, mapped_runner, mapped_now))
+    return out
+
+
 def cached_decisions(decider, cases, path):
     if not path:
         return decider.decide_all(cases)
@@ -507,6 +574,9 @@ def main():
     parser.add_argument("--report")
     parser.add_argument("--errors")
     parser.add_argument("--cache")
+    parser.add_argument("--calibrate-out")
+    parser.add_argument("--calibration")
+    parser.add_argument("--guard-scope", choices=["both", "all", "low-risk-open"], default="both")
     args = parser.parse_args()
 
     gates = json.loads(pathlib.Path(args.gates).read_text())
@@ -524,6 +594,15 @@ def main():
         except OSError as error:
             print(f"decider-eval: cannot start the decider: {error}")
             return SKIP
+        if args.calibrate_out:
+            fitted = fit_calibration(selection, chosen_decisions)
+            pathlib.Path(args.calibrate_out).write_text(json.dumps(fitted, indent=2, sort_keys=True) + "\n")
+            for name, row in fitted["report"].items():
+                print(f"\ncalibration of {name} on {row['pairs']} decisions, held-out expected calibration error: "
+                      + ", ".join(f"{k} {v:.4f}" for k, v in row["heldOutEce"].items()) + f" -> {row['chosen']}")
+        if args.calibration:
+            chosen_decisions = apply_calibration(chosen_decisions, json.loads(pathlib.Path(args.calibration).read_text()))
+            print(f"\nconfidences calibrated by {args.calibration}")
         print_sweep("selection sweep (cases, holdout, real negatives; chooses the operating point)",
                     selection, chosen_decisions)
         if args.act_only:
@@ -531,9 +610,21 @@ def main():
             policy = max(options, key=lambda p: summarise_pooled(selection, chosen_decisions, p, limits)["coverage"],
                          default=None)
         else:
-            policy = choose_policy(selection, chosen_decisions, limits)
+            scopes = {"both": (1, 0), "all": (1,), "low-risk-open": (0,)}[args.guard_scope]
+            per_scope = choose_policies(selection, chosen_decisions, limits, scopes)
+            policy = max(per_scope.values(), key=lambda item: item[1])[0] if per_scope else None
+            if args.guard_scope == "both":
+                for scope, name in ((1, "every write guarded"), (0, "memory writes not guarded")):
+                    one = per_scope.get(scope, (None,))[0]
+                    full = None if one is None else summarise(selection, chosen_decisions, one)
+                    summary = None if full is None else full["moduleFamilies"]
+                    print(f"\nbest policy with {name}: " + ("none" if one is None else
+                          f"ACT >= {one[0]} ASK >= {one[1]} margin {one[2]} now >= {one[3] if len(one) > 3 else 0.0}, "
+                          f"coverage {summary['coverage']:.3f}, ask on clear {summary['askRateClear']:.3f}; memory family: "
+                          f"coverage {full['memory']['coverage']:.3f}, wrong ACT {full['memory']['wrongActRate']:.3%}"))
         report["policy"] = None if policy is None else {"act": policy[0], "ask": policy[1], "margin": policy[2],
-                                                         "now": policy[3] if len(policy) > 3 else 0.0}
+                                                         "now": policy[3] if len(policy) > 3 else 0.0,
+                                                         "guardMemory": bool(policy[4]) if len(policy) > 4 else True}
         if policy is None:
             print(f"\nno ACT / ASK policy keeps every wrong-ACT rate at or below {limits['wrongAct']:.2%} "
                   f"with at most {limits['askClear']:.0%} asks on clear commands on the selection set")
@@ -574,6 +665,8 @@ def main():
                 if sealed is None:
                     return 1
                 decisions = decider.decide_all(sealed)
+                if args.calibration:
+                    decisions = apply_calibration(decisions, json.loads(pathlib.Path(args.calibration).read_text()))
                 print(f"\nFINAL MEASUREMENT on {section} (sha256 {actual})")
                 print_sweep(f"{section} sweep, information only: the policy is NOT chosen from it", sealed, decisions)
                 if policy is None:
