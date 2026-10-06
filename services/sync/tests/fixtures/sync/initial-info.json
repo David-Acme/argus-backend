@@ -6,11 +6,428 @@
       {
         "info" : 
         {
+          "context" : 
+          {
+            "capabilities" : 
+            [
+              "profile.read",
+              "sessions.manage",
+              "privacy.own",
+              "notifications.read",
+              "notifications.register",
+              "calls.join",
+              "heartbeat.read",
+              "modules.read",
+              "safety.panic",
+              "safety.read",
+              "safety.respond",
+              "reminders.read",
+              "reminders.write",
+              "assistant.voice",
+              "directory.read",
+              "people.read",
+              "people.write",
+              "memory.manage",
+              "users.manage",
+              "invitations.manage",
+              "privacy.household",
+              "settings.manage",
+              "modules.manage",
+              "activity.read",
+              "camera.view",
+              "camera.talk",
+              "camera.manage",
+              "zones.read",
+              "zones.write",
+              "events.read",
+              "guard.read",
+              "guard.mode.set",
+              "guard.guests.write",
+              "guard.admin",
+              "response.duty",
+              "safety.duress",
+              "visitors.read",
+              "visitors.manage",
+              "presence.read",
+              "agenda.read",
+              "agenda.write",
+              "projects.read",
+              "projects.write"
+            ],
+            "modules" : 
+            [
+              {
+                "dataPurgedAt" : null,
+                "enabled" : false,
+                "id" : "agronomy",
+                "intro" : 
+                {
+                  "en" : 
+                  {
+                    "examples" : 
+                    [
+                      "Know when to water according to your land's weather",
+                      "Keep your crop notebook by voice",
+                      "Get a heads-up before a frost or heavy rain"
+                    ],
+                    "what" : "Crops, irrigation and weather for your land, with advice from Argus. Coming soon."
+                  },
+                  "es" : 
+                  {
+                    "examples" : 
+                    [
+                      "Saber cu\u00e1ndo regar seg\u00fan el clima de tu terreno",
+                      "Llevar el cuaderno de tus cultivos por voz",
+                      "Recibir un aviso antes de una helada o una lluvia fuerte"
+                    ],
+                    "what" : "Cultivos, riego y clima de tu terreno, con consejos de Argus. Muy pronto."
+                  }
+                },
+                "kind" : "coming_soon",
+                "lifecycle" : "not_installed",
+                "name" : 
+                {
+                  "en" : "Agronomy",
+                  "es" : "Agronom\u00eda"
+                },
+                "roles" : [],
+                "summary" : 
+                {
+                  "en" : "Crops, irrigation and weather for your land. Coming soon.",
+                  "es" : "Cultivos, riego y clima de tu terreno. Muy pronto."
+                }
+              },
+              {
+                "dataPurgedAt" : null,
+                "enabled" : true,
+                "id" : "core",
+                "intro" : 
+                {
+                  "en" : 
+                  {
+                    "examples" : 
+                    [
+                      "Ask Argus to remind you to call the plumber tomorrow at 9",
+                      "Invite your family with a QR code",
+                      "Check who has access to the home and with which role"
+                    ],
+                    "what" : "The base of Argus: your account, the people at home, alerts, privacy and the voice assistant. It is always on."
+                  },
+                  "es" : 
+                  {
+                    "examples" : 
+                    [
+                      "P\u00eddele a Argus que te recuerde llamar al plomero ma\u00f1ana a las 9",
+                      "Invita a tu familia con un c\u00f3digo QR",
+                      "Revisa qui\u00e9n tiene acceso a la casa y con qu\u00e9 rol"
+                    ],
+                    "what" : "La base de Argus: tu cuenta, las personas de la casa, los avisos, la privacidad y el asistente de voz. Siempre est\u00e1 activa."
+                  }
+                },
+                "kind" : "core",
+                "lifecycle" : "active",
+                "name" : 
+                {
+                  "en" : "Assistant and home",
+                  "es" : "Asistente y hogar"
+                },
+                "roles" : [],
+                "summary" : 
+                {
+                  "en" : "Your account, the people at home, alerts, privacy and the voice assistant. Always on.",
+                  "es" : "Tu cuenta, las personas de casa, avisos, privacidad y el asistente de voz. Siempre activo."
+                }
+              },
+              {
+                "dataPurgedAt" : null,
+                "enabled" : true,
+                "id" : "productivity",
+                "intro" : 
+                {
+                  "en" : 
+                  {
+                    "examples" : 
+                    [
+                      "Add Thursday's meeting to the calendar by talking to Argus",
+                      "Create a project for the move and hand out the tasks",
+                      "Share the week's calendar with your partner"
+                    ],
+                    "what" : "Organises the life of the home: a calendar, projects and tasks you share with your family, with timely spoken reminders."
+                  },
+                  "es" : 
+                  {
+                    "examples" : 
+                    [
+                      "Agrega la reuni\u00f3n del jueves a la agenda habl\u00e1ndole a Argus",
+                      "Crea un proyecto para la mudanza y reparte las tareas",
+                      "Comparte el calendario de la semana con tu pareja"
+                    ],
+                    "what" : "Organiza la vida de la casa: una agenda, proyectos y tareas que compartes con tu familia, con avisos de voz a tiempo."
+                  }
+                },
+                "kind" : "available",
+                "lifecycle" : "active",
+                "name" : 
+                {
+                  "en" : "Productivity",
+                  "es" : "Productividad"
+                },
+                "roles" : [],
+                "summary" : 
+                {
+                  "en" : "Calendar, projects and tasks shared with your family.",
+                  "es" : "Agenda, proyectos y tareas compartidas con tu familia."
+                }
+              },
+              {
+                "dataPurgedAt" : null,
+                "enabled" : true,
+                "id" : "surveillance",
+                "intro" : 
+                {
+                  "en" : 
+                  {
+                    "examples" : 
+                    [
+                      "Watch the door camera live from your phone",
+                      "Ask Argus to alert you when a stranger approaches at night",
+                      "Set Night mode before bed with a single sentence"
+                    ],
+                    "what" : "Turns your cameras into an attentive guard: watch the home live, draw zones, recognise who comes in and be told what matters, calmly."
+                  },
+                  "es" : 
+                  {
+                    "examples" : 
+                    [
+                      "Mira la c\u00e1mara de la puerta en vivo desde el celular",
+                      "Pide que Argus te avise si un desconocido se acerca de noche",
+                      "Activa el modo Noche antes de dormir con una sola frase"
+                    ],
+                    "what" : "Convierte tus c\u00e1maras en un guardia atento: mira la casa en vivo, dibuja zonas, reconoce qui\u00e9n entra y te avisa de lo importante con calma."
+                  }
+                },
+                "kind" : "available",
+                "lifecycle" : "active",
+                "name" : 
+                {
+                  "en" : "Surveillance",
+                  "es" : "Vigilancia"
+                },
+                "roles" : 
+                [
+                  "guard"
+                ],
+                "summary" : 
+                {
+                  "en" : "Live cameras, zones, person detection and the guard that tells you what matters.",
+                  "es" : "C\u00e1maras en vivo, zonas, detecci\u00f3n de personas y el guardia que te avisa de lo importante."
+                }
+              }
+            ],
+            "ownerCatalog" : 
+            [
+              {
+                "dataPurgedAt" : null,
+                "enabled" : true,
+                "gettingStarted" : 
+                [
+                  {
+                    "id" : "meet-argus",
+                    "route" : "/voice",
+                    "title" : "Habla con Argus"
+                  },
+                  {
+                    "id" : "invite-people",
+                    "route" : "/users",
+                    "title" : "Invita a tu familia"
+                  }
+                ],
+                "id" : "core",
+                "intro" : 
+                {
+                  "examples" : 
+                  [
+                    "P\u00eddele a Argus que te recuerde llamar al plomero ma\u00f1ana a las 9",
+                    "Invita a tu familia con un c\u00f3digo QR",
+                    "Revisa qui\u00e9n tiene acceso a la casa y con qu\u00e9 rol"
+                  ],
+                  "what" : "La base de Argus: tu cuenta, las personas de la casa, los avisos, la privacidad y el asistente de voz. Siempre est\u00e1 activa."
+                },
+                "job" : null,
+                "kind" : "core",
+                "lifecycle" : "active",
+                "name" : "Asistente y hogar",
+                "requires" : [],
+                "roles" : [],
+                "sizeBytes" : 1085866221,
+                "summary" : "Tu cuenta, las personas de casa, avisos, privacidad y el asistente de voz. Siempre activo."
+              },
+              {
+                "dataPurgedAt" : null,
+                "enabled" : true,
+                "gettingStarted" : 
+                [
+                  {
+                    "id" : "add-camera",
+                    "route" : "/cameras",
+                    "title" : "Agrega tu primera c\u00e1mara"
+                  },
+                  {
+                    "id" : "draw-zone",
+                    "route" : "/cameras",
+                    "title" : "Dibuja una zona"
+                  },
+                  {
+                    "id" : "guard-mode",
+                    "route" : "/guard",
+                    "title" : "Elige el modo del guardia"
+                  }
+                ],
+                "id" : "surveillance",
+                "intro" : 
+                {
+                  "examples" : 
+                  [
+                    "Mira la c\u00e1mara de la puerta en vivo desde el celular",
+                    "Pide que Argus te avise si un desconocido se acerca de noche",
+                    "Activa el modo Noche antes de dormir con una sola frase"
+                  ],
+                  "what" : "Convierte tus c\u00e1maras en un guardia atento: mira la casa en vivo, dibuja zonas, reconoce qui\u00e9n entra y te avisa de lo importante con calma."
+                },
+                "job" : null,
+                "kind" : "available",
+                "lifecycle" : "active",
+                "name" : "Vigilancia",
+                "requires" : 
+                [
+                  "core"
+                ],
+                "roles" : 
+                [
+                  "guard"
+                ],
+                "sizeBytes" : 578108270,
+                "summary" : "C\u00e1maras en vivo, zonas, detecci\u00f3n de personas y el guardia que te avisa de lo importante."
+              },
+              {
+                "dataPurgedAt" : null,
+                "enabled" : true,
+                "gettingStarted" : 
+                [
+                  {
+                    "id" : "first-event",
+                    "route" : "/agenda",
+                    "title" : "Crea tu primer evento"
+                  },
+                  {
+                    "id" : "first-project",
+                    "route" : "/projects",
+                    "title" : "Empieza un proyecto"
+                  }
+                ],
+                "id" : "productivity",
+                "intro" : 
+                {
+                  "examples" : 
+                  [
+                    "Agrega la reuni\u00f3n del jueves a la agenda habl\u00e1ndole a Argus",
+                    "Crea un proyecto para la mudanza y reparte las tareas",
+                    "Comparte el calendario de la semana con tu pareja"
+                  ],
+                  "what" : "Organiza la vida de la casa: una agenda, proyectos y tareas que compartes con tu familia, con avisos de voz a tiempo."
+                },
+                "job" : null,
+                "kind" : "available",
+                "lifecycle" : "active",
+                "name" : "Productividad",
+                "requires" : 
+                [
+                  "core"
+                ],
+                "roles" : [],
+                "sizeBytes" : 0,
+                "summary" : "Agenda, proyectos y tareas compartidas con tu familia."
+              },
+              {
+                "dataPurgedAt" : null,
+                "enabled" : false,
+                "gettingStarted" : [],
+                "id" : "agronomy",
+                "intro" : 
+                {
+                  "examples" : 
+                  [
+                    "Saber cu\u00e1ndo regar seg\u00fan el clima de tu terreno",
+                    "Llevar el cuaderno de tus cultivos por voz",
+                    "Recibir un aviso antes de una helada o una lluvia fuerte"
+                  ],
+                  "what" : "Cultivos, riego y clima de tu terreno, con consejos de Argus. Muy pronto."
+                },
+                "job" : null,
+                "kind" : "coming_soon",
+                "lifecycle" : "not_installed",
+                "name" : "Agronom\u00eda",
+                "requires" : 
+                [
+                  "core"
+                ],
+                "roles" : [],
+                "sizeBytes" : 0,
+                "summary" : "Cultivos, riego y clima de tu terreno. Muy pronto."
+              }
+            ],
+            "role" : "owner",
+            "roleActive" : true,
+            "roles" : 
+            [
+              {
+                "active" : true,
+                "id" : "owner",
+                "module" : "core"
+              },
+              {
+                "active" : true,
+                "id" : "resident",
+                "module" : "core"
+              },
+              {
+                "active" : true,
+                "id" : "guard",
+                "module" : "surveillance"
+              },
+              {
+                "active" : true,
+                "id" : "guest",
+                "module" : "core"
+              }
+            ],
+            "userId" : 0
+          },
           "id" : 0,
           "isActive" : true,
           "role" : "owner"
         },
         "operation" : 0,
+        "option" : "user"
+      },
+      "kind" : "text"
+    },
+    {
+      "json" : 
+      {
+        "info" : 
+        {
+          "armed" : false,
+          "at" : 0,
+          "graceSeconds" : 2700,
+          "guard" : "unknown",
+          "guardSeenAt" : 0,
+          "intervalSeconds" : 60,
+          "presence" : "unknown",
+          "presenceSince" : 0,
+          "socketGraceSeconds" : 180
+        },
+        "operation" : 11,
         "option" : "user"
       },
       "kind" : "text"

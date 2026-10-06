@@ -5,8 +5,8 @@
       "byteLength" : 255,
       "kind" : "text",
       "messageType" : "sync_audit_log",
-      "raw" : "{\"info\":{\"info\":[{\"changes\":{\"name\":{\"current\":\"Golden Zone\",\"previous\":\"Old Zone\"}},\"createUserId\":1,\"createdAt\":1788844101,\"eventTimestamp\":1788844101,\"id\":1,\"priority\":1,\"recordId\":1,\"tableName\":\"zone\"}],\"nextCursorId\":1},\"operation\":2,\"option\":\"user\"}",
-      "sha256" : "c292aeee720fa93cdcee50468417e53d84d3c0f10582f62040752fb1f8dd5fdc"
+      "raw" : "{\"info\":{\"info\":[{\"changes\":{\"name\":{\"current\":\"Golden Zone\",\"previous\":\"Old Zone\"}},\"createUserId\":1,\"createdAt\":1791327989,\"eventTimestamp\":1791327989,\"id\":1,\"priority\":1,\"recordId\":1,\"tableName\":\"zone\"}],\"nextCursorId\":1},\"operation\":2,\"option\":\"user\"}",
+      "sha256" : "9d11568e9beb5be391039aef57696823299d85873f9feb9c2ea30e7d83838a8a"
     }
   ],
   "request" : "{\"type\":\"sync_audit_log\",\"payload\":{\"afterId\":0,\"endId\":1}}"

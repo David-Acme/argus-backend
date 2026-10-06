@@ -2,7 +2,7 @@
 
 These fixtures are a byte-level recording of one session against a real
 Argus fleet: the `/sync` WebSocket and the camera `/media` socket. They were
-captured on 2026-09-08 (`recordedAtUtc` in `manifest.json`) and pin Phase 5
+re-recorded on 2026-10-06 (`recordedAtUtc` in `manifest.json`) and pin Phase 5
 step 2 of `docs/history/plans/architecture-plan.md`: the wire the mobile app
 already speaks must not move.
 
@@ -23,8 +23,8 @@ a running stack and compares two things:
 The run fails on any difference that `manifest.acceptedAdditions` does not
 declare. An accepted addition is a wire field that landed *after* the
 recording: it names the exact path, the exact value, the commit and the
-date. Today there is one — `person.status`, added by `f58167d7` on
-2026-09-14. Adding a second entry is a deliberate act with a reviewable
+date. Today there are none: the 2026-10-06 re-recording folded in `person.status`
+(`f58167d7`, 2026-09-14). Adding an entry is a deliberate act with a reviewable
 reason; a re-recording clears the block by construction.
 
 ## Reproducing the run
@@ -60,13 +60,14 @@ reports as Skipped (`SKIP_RETURN_CODE`, label `e2e`). Once the token is set,
 an unreachable backend, a refused session, a malformed URL or a socket that
 does not open is a `FAIL:` and exit 1.
 
-State of the recording: it predates the heartbeat frame (`Heartbeat = 11`,
-pushed after `InitialInfo`), which the replay reads as one frame too many in
-every later scenario, so a replay today reports differences from the second
-scenario on until the set is re-recorded. The first scenario differs by one
-field only, the user's `context` (`InitialInfo.context`, the role, its
-capabilities and the module list, plus the Owner's `ownerCatalog` whose host
-measurements the normalization drops).
+State of the recording: it was made on a freshly reset sandbox seeded by
+`scripts/seed-golden.py`, and a replay on a freshly reset and seeded sandbox passes
+all eight scenarios. A replay on a sandbox a replay already used does not: the first
+one leaves notification rows behind. Beside the first recording the `initial-info`
+scenario now holds the user's `context` (frame 0) and the heartbeat frame that
+follows it (frame 1), and the Owner's `ownerCatalog` leaves out each module's
+`hardware`, `installedBytes`, `components` and `hasData`, which the answering host
+and the settings engine's own refresh schedule decide.
 
 A passing run prints one `OK <scenario>` line per scenario and ends with
 `PASS: golden /sync contract matches fixtures`. Eight scenarios: the initial

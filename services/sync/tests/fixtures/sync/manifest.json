@@ -1,51 +1,52 @@
 {
-  "acceptedAdditions" :
-  [
-    {
-      "commit" : "f58167d7",
-      "path" : "sync-bootstrap.frames[0].json.info.person.created[0].status",
-      "reason" : "PersonStatus landed 2026-09-14, after this recording",
-      "since" : "2026-09-14",
-      "value" : "known"
-    }
-  ],
-  "baseUrl" : "https://127.0.0.1:7024",
+  "authBaseUrl" : "https://127.0.0.1:7042",
+  "baseUrl" : "https://127.0.0.1:7025",
   "frames" : 
   [
     {
-      "byteLength" : 78,
+      "byteLength" : 9585,
       "direction" : "in",
       "fixture" : "initial-info.json",
       "index" : 0,
       "kind" : "text",
       "messageType" : "initial_info",
       "scenario" : "initial-info",
-      "sha256" : "c0542f8436b70d73473a6e49622b7ae4a694407f1151ab6186efff41c9c29f64"
+      "sha256" : "9736a3099dfc0ac3085e24618e5d80a4e1f59195cb8b117cbac878a9c0e1eb5c"
+    },
+    {
+      "byteLength" : 210,
+      "direction" : "in",
+      "fixture" : "initial-info.json",
+      "index" : 1,
+      "kind" : "text",
+      "messageType" : "heartbeat",
+      "scenario" : "initial-info",
+      "sha256" : "d7e692765430c85da78d463ded44323d5d3be562548596dc93062fc072602d70"
     },
     {
       "byteLength" : 1576,
       "direction" : "out",
       "fixture" : "sync-bootstrap.json",
-      "index" : 1,
+      "index" : 2,
       "kind" : "text",
       "messageType" : "sync",
       "sha256" : "7a91dcd83d6ca8e2ddc54bf70e27edd386c8b2f6c69ef5255946628be5ab395e"
     },
     {
-      "byteLength" : 3233,
+      "byteLength" : 3250,
       "direction" : "in",
       "fixture" : "sync-bootstrap.json",
-      "index" : 2,
+      "index" : 3,
       "kind" : "text",
       "messageType" : "sync",
       "scenario" : "sync-bootstrap",
-      "sha256" : "5e5a181acda93868909e715845368d8d141af108584946d753aa45a146c132d2"
+      "sha256" : "57b2846e9deb6a92c5675335365d5fe183c1cc3ef591c56e22cfb70e251b7f9c"
     },
     {
       "byteLength" : 53,
       "direction" : "out",
       "fixture" : "sync-audit-log-watermark.json",
-      "index" : 3,
+      "index" : 4,
       "kind" : "text",
       "messageType" : "sync_audit_log",
       "sha256" : "d0f664de9ed11b341be698ade0a5932567cfd46a1595537a80a7b12040292c10"
@@ -54,17 +55,17 @@
       "byteLength" : 118,
       "direction" : "in",
       "fixture" : "sync-audit-log-watermark.json",
-      "index" : 4,
+      "index" : 5,
       "kind" : "text",
       "messageType" : "sync_audit_log",
       "scenario" : "sync-audit-log-watermark",
-      "sha256" : "131cd2f18eb3779bb6151b05d1c5650f742f3cfd36b5c3be76db4f6430090d63"
+      "sha256" : "9fdb7d8ffd7d27effcbaa2aedec2b5c8adb1dda0b78953070da341802b5ecf2b"
     },
     {
       "byteLength" : 59,
       "direction" : "out",
       "fixture" : "sync-audit-log-page.json",
-      "index" : 5,
+      "index" : 6,
       "kind" : "text",
       "messageType" : "sync_audit_log",
       "sha256" : "0e0b10941824d103514ce4a91ec0448c32522815d158fc25672dea11a36197da"
@@ -73,17 +74,17 @@
       "byteLength" : 255,
       "direction" : "in",
       "fixture" : "sync-audit-log-page.json",
-      "index" : 6,
+      "index" : 7,
       "kind" : "text",
       "messageType" : "sync_audit_log",
       "scenario" : "sync-audit-log-page",
-      "sha256" : "c292aeee720fa93cdcee50468417e53d84d3c0f10582f62040752fb1f8dd5fdc"
+      "sha256" : "9d11568e9beb5be391039aef57696823299d85873f9feb9c2ea30e7d83838a8a"
     },
     {
       "byteLength" : 58,
       "direction" : "out",
       "fixture" : "sync-user-audit-log-watermark.json",
-      "index" : 7,
+      "index" : 8,
       "kind" : "text",
       "messageType" : "sync_user_audit_log",
       "sha256" : "14a6552e2ef80ed14b157e0ea3c27a5d1de13051aac6dcca3c18876023790d80"
@@ -92,17 +93,17 @@
       "byteLength" : 118,
       "direction" : "in",
       "fixture" : "sync-user-audit-log-watermark.json",
-      "index" : 8,
+      "index" : 9,
       "kind" : "text",
       "messageType" : "sync_user_audit_log",
       "scenario" : "sync-user-audit-log-watermark",
-      "sha256" : "e08aaefd4f246d5d2d9b06a5ff0ff7b81fcba82c3419fa187636dbb5f3d3f735"
+      "sha256" : "112d56f941f31862079c27a3e15a209ba904e5a918be6eef52fd75079bc8d9f0"
     },
     {
       "byteLength" : 64,
       "direction" : "out",
       "fixture" : "sync-user-audit-log-page.json",
-      "index" : 9,
+      "index" : 10,
       "kind" : "text",
       "messageType" : "sync_user_audit_log",
       "sha256" : "f7c1cf0aaf7a54486717ceb2280975ca2610885624bbbe21ed6a059b154bf76b"
@@ -111,17 +112,17 @@
       "byteLength" : 262,
       "direction" : "in",
       "fixture" : "sync-user-audit-log-page.json",
-      "index" : 10,
+      "index" : 11,
       "kind" : "text",
       "messageType" : "sync_user_audit_log",
       "scenario" : "sync-user-audit-log-page",
-      "sha256" : "55ca9ef970a7c41a08adf3e33383725d7dae88eb5230f4dc4d01fa205989e6fa"
+      "sha256" : "bdc0ac9bf16bd8252812e184e6f790158e4fd1927582ebb835d4476773541634"
     },
     {
       "byteLength" : 69,
       "direction" : "out",
       "fixture" : "camera-subscribe.json",
-      "index" : 11,
+      "index" : 12,
       "kind" : "text",
       "messageType" : "camera:subscribe",
       "sha256" : "9bcf1ed44aff54716368f3bdb22f83b817d107f468d685d749578f1ec899d6ec"
@@ -130,21 +131,11 @@
       "byteLength" : 64,
       "direction" : "in",
       "fixture" : "camera-subscribe.json",
-      "index" : 12,
+      "index" : 13,
       "kind" : "text",
       "messageType" : "camera:ready",
       "scenario" : "camera-subscribe",
-      "sha256" : "786b07fb9862da797384a3e8cb3e8e2b625207bb50395ce862bd0b8c1bf065fd"
-    },
-    {
-      "byteLength" : 73,
-      "direction" : "in",
-      "fixture" : "camera-subscribe.json",
-      "index" : 13,
-      "kind" : "text",
-      "messageType" : "camera:closed",
-      "scenario" : "camera-subscribe",
-      "sha256" : "6e552db03d25ca54bd8b72f5c08f5136d90e409a93eafe101dc101c8e655478e"
+      "sha256" : "dec3d2fe6539a280ea2a35d67ba1f89ff6d976e9726e4a9fe91a7d0187f98f2c"
     },
     {
       "byteLength" : 40,
@@ -167,16 +158,17 @@
     }
   ],
   "generator" : "golden-sync-test",
-  "normalization" :
+  "mediaBaseUrl" : "https://127.0.0.1:7026",
+  "normalization" : 
   {
-    "acceptedAdditions" : "wire fields that landed after the recording, each declared with its exact value, its landing commit and its date; the replay passes only when every difference from the fixture is a declared addition, and fails on anything else",
     "binaryFrames" : "normalized files record kind only; raw files record byteLength, sha256 and the first 256 bytes hex; the first 64 KiB of a binary frame is also stored as .bin",
     "cameraClosedFrames" : "camera:closed is emitted by the go2rtc relay on its own retry schedule, so its arrival is timing-dependent; it is kept in the raw fixtures but excluded from the normalized comparison",
     "description" : "Fixtures compare structurally: per-boot-varying values are masked in the normalized .json files; the .raw.json files keep the session as received.",
     "maskedIds" : "key == id/sub/subId, key ending in 'Id' or 'By' (integer) -> 0",
     "maskedSecrets" : "key containing token/hash/secret/nonce/password/credential (string) -> '<masked>'",
-    "maskedTimestamps" : "key ending in 'At'/'_at'/'Date', containing 'timestamp', or exactly 'created'/'deleted' (integer) -> 0"
+    "maskedTimestamps" : "key ending in 'At'/'_at'/'Date', containing 'timestamp', or exactly 'created'/'deleted'/'at' (integer) -> 0",
+    "ownerCatalogHostFields" : "the Owner's context.ownerCatalog is the module list the settings service answers; each module's hardware verdict, installedBytes, components and hasData (a count its engine refreshes on its own schedule, false until the first refresh after a boot) come from the host that answers, so they are removed from the normalized comparison; the catalog, lifecycle, roles, intro and jobs beside them stay pinned"
   },
-  "recordedAtUtc" : "2026-09-08T05:20:26Z",
+  "recordedAtUtc" : "2026-10-06T23:06:43Z",
   "userAgent" : "argus-golden-recorder/1.0"
 }

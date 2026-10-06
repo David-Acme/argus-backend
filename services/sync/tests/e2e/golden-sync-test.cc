@@ -182,7 +182,7 @@ bool isMaskedTimeKey(const std::string& key)
 {
   return endsWith(key, "At") || endsWith(key, "_at") ||
          endsWith(key, "Date") || containsLower(key, "timestamp") ||
-         key == "created" || key == "deleted";
+         key == "created" || key == "deleted" || key == "at";
 }
 
 bool isMaskedSecretKey(const std::string& key)
@@ -248,16 +248,19 @@ std::string messageTypeOf(const Frame& frame)
     return (*json)["type"].asString();
   if (!json->isMember("operation"))
     return "unknown";
-  static const std::string kNames[] = {
-      "initial_info", "sync", "sync_audit_log", "sync_user_audit_log",
-      "add",          "delete", "log",          "auth_context_changed"};
+  static const std::array<std::string, 14> kNames = {
+      "initial_info",  "sync",        "sync_audit_log",    "sync_user_audit_log",
+      "add",           "delete",      "log",               "auth_context_changed",
+      "call_incoming", "call_cancel", "response_update",   "heartbeat",
+      "module_update", "context_update"};
   const int op = (*json)["operation"].asInt();
-  return op >= 0 && op < 8 ? kNames[op] : "unknown";
+  return op >= 0 && static_cast<size_t>(op) < kNames.size() ? kNames[static_cast<size_t>(op)]
+                                                           : "unknown";
 }
 
 void dropHostFields(Json::Value& frame)
 {
-  constexpr std::array<const char*, 3> kHostFields = {"hardware", "installedBytes", "components"};
+  constexpr std::array<const char*, 4> kHostFields = {"hardware", "installedBytes", "components", "hasData"};
   if (!frame.isObject() || !frame.isMember("info") || !frame["info"].isObject() ||
       !frame["info"].isMember("context") || !frame["info"]["context"].isObject() ||
       !frame["info"]["context"].isMember("ownerCatalog") ||
@@ -909,9 +912,13 @@ int main(int argc, char* argv[])
   const auto stopOnFirst = [](const Frame&) { return false; };
   const auto drainBinary = [](const Frame& frame) { return frame.binary; };
 
+  const auto untilHeartbeat = [](const Frame& frame) {
+    return messageTypeOf(frame) == "initial_info";
+  };
+
   Scenario initialInfo;
   initialInfo.name = "initial-info";
-  runScenario(syncSocket, std::move(initialInfo), stopOnFirst);
+  runScenario(syncSocket, std::move(initialInfo), untilHeartbeat);
 
   const std::string fullBody = R"({"requiredCreate":true,"findLastCreated":true,)"
                                R"("requiredDeleted":true,"findLastDeleted":true})";
@@ -1125,16 +1132,17 @@ int main(int argc, char* argv[])
       "key == id/sub/subId, key ending in 'Id' or 'By' (integer) -> 0";
   rules["maskedTimestamps"] =
       "key ending in 'At'/'_at'/'Date', containing 'timestamp', or exactly "
-      "'created'/'deleted' (integer) -> 0";
+      "'created'/'deleted'/'at' (integer) -> 0";
   rules["maskedSecrets"] =
       "key containing token/hash/secret/nonce/password/credential (string) -> "
       "'<masked>'";
   rules["ownerCatalogHostFields"] =
       "the Owner's context.ownerCatalog is the module list the settings "
-      "service answers; each module's hardware verdict, installedBytes and "
-      "components come from the host that answers, so they are removed from "
-      "the normalized comparison; the catalog, lifecycle, roles, intro and "
-      "jobs beside them stay pinned";
+      "service answers; each module's hardware verdict, installedBytes, "
+      "components and hasData (a count its engine refreshes on its own "
+      "schedule, false until the first refresh after a boot) come from the "
+      "host that answers, so they are removed from the normalized comparison; "
+      "the catalog, lifecycle, roles, intro and jobs beside them stay pinned";
   rules["binaryFrames"] =
       "normalized files record kind only; raw files record byteLength, sha256 "
       "and the first 256 bytes hex; the first 64 KiB of a binary frame is also "

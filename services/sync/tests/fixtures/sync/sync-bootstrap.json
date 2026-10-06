@@ -122,6 +122,7 @@
                 "lastSeenAt" : 0,
                 "name" : "Golden",
                 "observation" : "",
+                "status" : "known",
                 "updatedAt" : null,
                 "userId" : 0
               }
