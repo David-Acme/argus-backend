@@ -116,3 +116,7 @@ max_reconnects = 60
 enabled = true
 name = "Argus"
 address = ""
+
+[modules]
+target = "argus-settings:7047"
+credential = "CHANGE_ME_SYNC_MODULES"

@@ -650,6 +650,12 @@ Raw pointers only for non-owning access (`.get()`).
   to every connected socket when the enabled set changes, and a trimmed
   `{id, enabled, lifecycle, dataPurgedAt}` to every socket when a module's
   `dataPurgedAt` advances (`services/sync/CONTEXT.md`, "Selectable modules").
+  `InitialInfo` carries `info.context` (`{userId, role, roleActive,
+  capabilities[], roles[], modules[], ownerCatalog?}`) and `ContextUpdate=13`
+  (additive, `context_update`) sends the same bare context to the user's
+  sockets whenever their role, a module or their capabilities change; argus-sync
+  builds both from its module gate and refuses the operation on every feed
+  (`services/sync/CONTEXT.md`, "Live user context").
 - **Normal rows are creation-only after bootstrap**: `Synchronize` pages by
   `created_at`; do not switch it to `updated_at`/`syncAt` to represent an
   update. Every persisted update/revocation must instead publish a granular

@@ -3,6 +3,7 @@
 #include <camera/camera-row-projection.hxx>
 
 #include <errors/response-exception.hxx>
+#include <auth/module-gate.hxx>
 #include <auth/role-access.hxx>
 #include <sync/sync-operation.hxx>
 #include <sync/sync-errors.hxx>
@@ -328,6 +329,12 @@ drogon::Task<Json::Value> SynchronizedService::syncUserNotification(
 
 std::vector<TableName> SynchronizedService::auditTablesForRole(UserRole role) const
 {
+  return auditTablesFor(role, *moduleGate().current());
+}
+
+std::vector<TableName>
+SynchronizedService::auditTablesFor(UserRole role, const ModuleSnapshot& modules)
+{
   static const std::unordered_set<TableName> kExcluded = {
       TableName::AuditLog, TableName::UserAuditLog, TableName::Notification,
       TableName::NotificationToken, TableName::RefreshToken,
@@ -335,7 +342,7 @@ std::vector<TableName> SynchronizedService::auditTablesForRole(UserRole role) co
   };
 
   std::vector<TableName> tables;
-  for (const auto table : role_access::moduleTables(role)) {
+  for (const auto table : role_access::moduleTables(role, modules)) {
     if (!kExcluded.contains(table))
       tables.push_back(table);
   }
@@ -366,6 +373,7 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
   };
 
   Json::Value out(Json::objectValue);
+  const auto modules = moduleGate().current();
   const auto batch = std::make_shared<PullBatch>();
   batch->ctx = ctx;
   auto& pulls = batch->pulls;
@@ -376,8 +384,7 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
       continue;
 
     const auto table = tableNameFromString(name);
-    if (!role_access::hasAccess(
-            {.role = ctx.role, .table = table, .perm = RolePermission::Read})) {
+    if (!role_access::tableReadable(ctx.role, table, *modules)) {
       out[name] = Json::nullValue;
       continue;
     }

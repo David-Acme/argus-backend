@@ -992,3 +992,68 @@ row more than the limit to know whether there is a next page, and a cursor that
 this endpoint did not issue is a 422. Names are not joined (sync cannot read
 identity); the app maps `userId` through its own user table. Module actions are
 rows with `table: "module"`, `recordId: 0` and the module id in `module`.
+
+## Live user context: `InitialInfo.context` and `ContextUpdate = 13` (2026-10, the context plan)
+
+`docs/history/plans/context-roles-tools-quality-plan.md`, section 1. The app
+reads what a user may use from the socket alone: no `GET /modules` polling,
+actions stay HTTP. argus-sync builds the context from its own module gate
+(`module_gate::install({.service = "sync"})`: the boot read over
+`Modules/ModuleStates` with `[modules] target/credential`, the durable
+`argus-sync-modules` and the last-known-state file, like every service) and the
+user's role.
+
+**The context** (`src/shared/services/context/user-context.{hxx,cc}`):
+
+```json
+{ "userId": 7, "role": "guard", "roleActive": false,
+  "capabilities": ["safety.panic", "reminders.read", ...],
+  "roles": [ { "id": "owner", "module": "core", "active": true },
+             { "id": "guard", "module": "surveillance", "active": false }, ... ],
+  "modules": [ { "id": "surveillance", "kind": "available", "name": { "es", "en" },
+                 "summary": { "es", "en" },
+                 "intro": { "es": { "what", "examples": [..] }, "en": { ... } },
+                 "roles": ["guard"], "enabled": false, "lifecycle": "disabled",
+                 "dataPurgedAt": null }, ... ],
+  "ownerCatalog": [ ...the Owner's module JSON, only for the Owner... ] }
+```
+
+`InitialInfo` carries it as `info.context` beside `id`, `role` and `isActive`;
+`ContextUpdate` (`context_update`, `{operation: 13, option: "user", info}`) sends
+the bare context. Texts come in both languages so the app picks one without a
+round trip and a cached context paints in either. `kind` (`core`, `available` or
+`coming_soon`, from the catalog) lets the app refuse to ask the Owner for a
+module that cannot be enabled yet. `roles` lists the roles the
+household can assign, so a picker offers only those of an active module. A role
+this build does not know gets `role: "unknown"`, `roleActive: false` and no
+capabilities, and joins no module room. An inactive-role user keeps the socket,
+the user room and the context.
+
+**When it is sent.** `UserContextService::modulesChanged()` (the gate's
+`onStateChange`) reaches every connected socket, one frame each, whenever any
+field of any module changes; `userChanged(userId, role)` reaches one user's
+sockets after a role change, from the control RPC's `replace_role_rooms` and
+from a revalidation that finds the role changed. Delivery runs on each socket's
+own loop (`RoomManager::forEachConnection`, `forEachUserConnection`), moves the
+socket's role and module rooms to what its role and the active modules allow
+(`reconcileRoleRooms`: module rooms of an inactive module are left, the others
+joined, user and connected rooms untouched) and then sends the frame, so a
+module that goes off stops its live frames and one that comes back resumes
+them. `ModuleUpdate = 12` is unchanged and keeps carrying install progress to
+the Owner.
+
+**The Owner's catalog** is not kept here: argus-sync asks `Modules/OwnerCatalog`
+(1.5 s) when an Owner connects and once per change, and leaves `ownerCatalog`
+out when settings does not answer; the app keeps its last one.
+
+**Only this module speaks it.** `parseEvent` refuses operation 13 on every
+feed and over the control RPC, like 12.
+
+**Sync pulls and the audit** read the same gate: `tableReadable` answers `null`
+for a table of an inactive module or beyond an inactive role's baseline, and
+`auditTablesFor(role, modules)` leaves those tables, and every own-row table,
+out of the global audit pages. `reminder` and `reminder_detail` (own-row, core)
+never get a module room or a global audit page for any role, the Owner
+included: a reminder change reaches the target's own room only.
+`tests/unit/sync-context-test.cc` pins the context, the frames, the room moves,
+the pulls and the refusal.

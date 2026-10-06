@@ -130,6 +130,7 @@ argus_service(NAME argus-sync
     DEPENDS argus::lib::http
             argus::lib::auth
             argus::contracts::settings-wire
+            argus::clients::settings
             argus::clients::sync
             Drogon::Drogon
     PORTS 7025 7041)

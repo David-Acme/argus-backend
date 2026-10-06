@@ -3,6 +3,7 @@
 #include <atomic>
 #include <drogon/drogon.h>
 #include <auth/jwt-filter.hxx>
+#include <auth/module-gate.hxx>
 #include <auth/role-access.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -52,11 +53,6 @@ thread_local Local g_local;
 std::atomic<bool> g_initialized{false};
 std::vector<std::pair<trantor::EventLoop*, trantor::TimerId>> g_pruneTimers;
 
-std::unordered_set<RoomId> moduleRoomsFor(UserRole role)
-{
-  const auto list = roleRoomsOf(role);
-  return {list.begin(), list.end()};
-}
 }
 
 void RoomManager::init()
@@ -275,44 +271,87 @@ void RoomManager::disconnectSession(const SessionDisconnectInput& input) const
 
 void RoomManager::replaceLocalRoleRooms(const RoleRoomReplaceInput& input)
 {
-  const auto userRoomId = userRoom(input.userId);
-  const auto userRoomIt = g_local.rooms.find(userRoomId);
-  if (userRoomIt == g_local.rooms.end())
+  const ModuleSnapshot modules = moduleGate().snapshot();
+  visitLocalMembers(userRoom(input.userId), [&](const Conn& conn) {
+    RoomManager{}.reconcileRoleRooms(conn, {.role = input.newRole, .modules = modules});
+    if (conn->hasContext())
+      conn->getContextRef<JwtContext>().role = input.newRole;
+  });
+}
+
+void RoomManager::visitLocalMembers(RoomId room, const ConnectionVisitor& visit)
+{
+  const auto roomIt = g_local.rooms.find(room);
+  if (roomIt == g_local.rooms.end())
     return;
-
-  const auto oldModuleRooms = moduleRoomsFor(input.oldRole);
-  const auto newModuleRooms = moduleRoomsFor(input.newRole);
-  const auto members = userRoomIt->second.members;
-
+  const auto members = roomIt->second.members;
+  std::vector<Conn> connections;
+  connections.reserve(members.size());
   for (auto* raw : members) {
     const auto weakIt = g_local.weakRefs.find(raw);
     if (weakIt == g_local.weakRefs.end())
       continue;
-
-    const auto conn = weakIt->second.lock();
+    auto conn = weakIt->second.lock();
     if (!conn || !conn->connected()) {
       pruneDeadConnection(raw);
       continue;
     }
+    connections.push_back(std::move(conn));
+  }
+  for (const auto& conn : connections)
+    visit(conn);
+}
 
-    const auto reverseIt = g_local.reverse.find(raw);
-    if (reverseIt == g_local.reverse.end())
-      continue;
+void RoomManager::reconcileRoleRooms(const Conn& conn, const RoleRoomsInput& input) const
+{
+  if (!conn)
+    return;
+  auto* raw = conn.get();
+  const auto desiredList = roleRoomsOf(input.role, input.modules);
+  const std::unordered_set<RoomId> desired(desiredList.begin(), desiredList.end());
+  g_local.weakRefs[raw] = conn;
+  auto& joined = g_local.reverse[raw];
 
-    for (const auto room : oldModuleRooms) {
-      const auto roomIt = g_local.rooms.find(room);
-      if (roomIt != g_local.rooms.end()) {
-        roomIt->second.remove(raw);
-        if (roomIt->second.members.empty())
-          g_local.rooms.erase(roomIt);
-      }
-      reverseIt->second.erase(room);
+  std::vector<RoomId> stale;
+  for (const auto room : joined) {
+    if (isRoleScopedRoom(room) && !desired.contains(room))
+      stale.push_back(room);
+  }
+  for (const auto room : stale) {
+    const auto roomIt = g_local.rooms.find(room);
+    if (roomIt != g_local.rooms.end()) {
+      roomIt->second.remove(raw);
+      if (roomIt->second.members.empty())
+        g_local.rooms.erase(roomIt);
     }
+    joined.erase(room);
+  }
+  for (const auto room : desired) {
+    g_local.rooms[room].add(raw);
+    joined.insert(room);
+  }
+}
 
-    for (const auto room : newModuleRooms) {
-      g_local.rooms[room].add(raw);
-      reverseIt->second.insert(room);
-    }
+void RoomManager::forEachConnection(const ConnectionVisitor& visit) const
+{
+  const auto shared = std::make_shared<const ConnectionVisitor>(visit);
+  const size_t threadCount = drogon::app().getThreadNum();
+  for (size_t i = 0; i < threadCount; ++i) {
+    auto* loop = drogon::app().getIOLoop(i);
+    loop->runInLoop([shared]() { RoomManager::visitLocalMembers(kConnectedRoom, *shared); });
+  }
+}
+
+void RoomManager::forEachUserConnection(int64_t userId, const ConnectionVisitor& visit) const
+{
+  if (userId <= 0)
+    return;
+  const auto shared = std::make_shared<const ConnectionVisitor>(visit);
+  const auto room = userRoom(userId);
+  const size_t threadCount = drogon::app().getThreadNum();
+  for (size_t i = 0; i < threadCount; ++i) {
+    auto* loop = drogon::app().getIOLoop(i);
+    loop->runInLoop([shared, room]() { RoomManager::visitLocalMembers(room, *shared); });
   }
 }
 

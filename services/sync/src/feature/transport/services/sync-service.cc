@@ -2,12 +2,14 @@
 
 #include <errors/response-exception.hxx>
 #include <errors/validation-exception.hxx>
+#include <auth/module-gate.hxx>
 #include <auth/request-context.hxx>
 #include <auth/role-access.hxx>
 #include <sync/sync-operation.hxx>
 #include <auth/user-directory.hxx>
 #include <sync/socket-emit-dto.hxx>
 #include <sync/sync-errors.hxx>
+#include <shared/services/context/user-context.hxx>
 
 #include <trantor/utils/Logger.h>
 
@@ -132,9 +134,12 @@ SyncService::refreshContext(const drogon::WebSocketConnectionPtr& conn) const
     throw ResponseException(401, SyncErrors::UserAccountDisabled);
 
   ctx.name = resolved->name + " " + resolved->lastName;
-  if (resolved->role != ctx.role)
+  const bool roleChanged = resolved->role != ctx.role;
+  if (roleChanged) {
     roomManager_.replaceRoleRooms(
         {.userId = ctx.sub, .oldRole = ctx.role, .newRole = resolved->role});
+    userContext().userChanged(ctx.sub, resolved->role);
+  }
   ctx.role = resolved->role;
   ctx.isActive = resolved->isActive;
   co_return;
@@ -144,7 +149,7 @@ drogon::Task<void>
 SyncService::handleConnect(const drogon::HttpRequestPtr& req,
                            const drogon::WebSocketConnectionPtr& conn) const
 {
-  const auto& ctx =
+  const JwtContext ctx =
       req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
 
   conn->setContext(std::make_shared<JwtContext>(ctx));
@@ -152,15 +157,23 @@ SyncService::handleConnect(const drogon::HttpRequestPtr& req,
                 .userId = ctx.sub,
                 .loop = trantor::EventLoop::getEventLoopOfCurrentThread()});
 
-  std::vector<RoomId> rooms = roleRoomsOf(ctx.role);
+  const Json::Value ownerCatalog = co_await userContext().ownerCatalogFor(ctx.role);
+  if (!conn->connected())
+    co_return;
+  const ModuleSnapshot modules = moduleGate().snapshot();
+  const UserRole role = conn->getContextRef<JwtContext>().role;
+
+  std::vector<RoomId> rooms = roleRoomsOf(role, modules);
   rooms.push_back(userRoom(ctx.sub));
   rooms.push_back(kConnectedRoom);
   roomManager_.joinMany(rooms, conn);
 
   Json::Value user;
   user["id"] = ctx.sub;
-  user["role"] = userRoleToString(ctx.role);
+  user["role"] = userRoleToString(role);
   user["isActive"] = ctx.isActive;
+  user["context"] = user_context::build(
+      {.userId = ctx.sub, .role = role, .modules = modules, .ownerCatalog = ownerCatalog});
 
   SocketEmitDto response;
   response.operation = SyncOperation::InitialInfo;

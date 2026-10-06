@@ -15,6 +15,7 @@
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
 #include <shared/repositories/user-action-log/user-action-log-repository.hxx>
 #include <shared/repositories/user-audit-log/user-audit-log-repository.hxx>
+#include <auth/module-snapshot.hxx>
 #include <auth/user-role.hxx>
 #include <optional>
 #include <vector>
@@ -63,6 +64,8 @@ public:
                                          const JwtContext& ctx) const;
   drogon::Task<Json::Value> syncUserAuditLog(const SynchronizedLogDto& body,
                                              const JwtContext& ctx) const;
+  [[nodiscard]] static std::vector<TableName>
+  auditTablesFor(UserRole role, const ModuleSnapshot& modules);
 
 private:
   const CameraSyncSource* cameraSyncSource_{nullptr};

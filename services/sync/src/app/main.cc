@@ -29,6 +29,8 @@
 #include <feature/transport/infra/voice-grpc-relay.hxx>
 #include <feature/transport/services/connection-lanes.hxx>
 #include <auth/device-filter.hxx>
+#include <auth/module-feed.hxx>
+#include <auth/module-gate.hxx>
 #include <auth/user-directory-identity.hxx>
 #include <chrono>
 #include <grpc/fleet-caller-gate.hxx>
@@ -49,8 +51,10 @@
 #include <notification/notification-client.hxx>
 #include <voice/voice-client.hxx>
 #include <runtime/shutdown-signal.hxx>
+#include <settings/settings-client.hxx>
 #include <settings/settings-rpc.hxx>
 #include <runtime/log-output.hxx>
+#include <shared/services/context/user-context.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
@@ -63,6 +67,33 @@ namespace
 
 constexpr double kSocketRevalidationSeconds = 60.0;
 constexpr std::chrono::milliseconds kControlShutdownDeadline{2000};
+constexpr std::chrono::milliseconds kOwnerCatalogTimeout{1500};
+
+UserContextService::CatalogFetch ownerCatalogFetch()
+{
+  const std::string target = ConfigService::getString("modules.target");
+  if (target.empty())
+    return {};
+  try {
+    const auto client = std::make_shared<const ModulesClient>(
+        SettingsClientConfig{.target = target,
+                             .credential = ConfigService::getString("modules.credential"),
+                             .timeout = kOwnerCatalogTimeout});
+    return [client]() -> std::optional<std::string> {
+      try {
+        return client->ownerCatalog().modulesJson;
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Context: settings did not answer the owner catalog (" << error.what() << ")";
+        return std::nullopt;
+      }
+    };
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Context: the [modules] target is unusable (" << error.what() << ")";
+    return {};
+  }
+}
 
 Json::Value drogonConfig(const SyncDbConfig& syncDb,
                          const ListenerConfig& listener)
@@ -286,6 +317,10 @@ int main()
       LOG_WARN << "NATS unavailable at " << natsUrl
                << "; subscriptions stay pending until reconnected";
   }
+
+  userContext().setCatalogFetch(ownerCatalogFetch());
+  moduleGate().onStateChange([] { userContext().modulesChanged(); });
+  const auto modules = module_gate::install({.service = "sync", .bus = natsBus});
 
   const std::weak_ptr<NatsBus> healthBus = natsBus;
   drogon::app().registerController(std::make_shared<HealthController>(

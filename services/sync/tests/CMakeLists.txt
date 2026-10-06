@@ -16,6 +16,21 @@ target_compile_options(sync-surface-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-surface-test)
 add_test(NAME sync-surface-test COMMAND sync-surface-test)
 
+add_executable(sync-context-test unit/sync-context-test.cc)
+target_link_libraries(sync-context-test PRIVATE
+    argus::sync-transport
+    argus::sync-fanout
+    argus::sync-services
+    argus::lib::auth
+    argus::lib::text
+    argus::contracts::auth
+    argus::contracts::sync
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(sync-context-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(sync-context-test)
+add_test(NAME sync-context-test COMMAND sync-context-test)
+
 add_executable(audit-sync-read-test unit/audit-sync-read-test.cc)
 target_link_libraries(audit-sync-read-test PRIVATE
     argus::sync-fanout

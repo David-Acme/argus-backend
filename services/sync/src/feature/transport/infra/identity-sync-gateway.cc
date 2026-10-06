@@ -1,5 +1,6 @@
 #include "identity-sync-gateway.hxx"
 
+#include <auth/module-gate.hxx>
 #include <errors/response-exception.hxx>
 #include <grpc/grpc-client-base.hxx>
 #include <sync/sync-errors.hxx>
@@ -18,7 +19,8 @@ argus::client::CallerIdentity identityFor(const JwtContext& ctx)
 {
   return {.userId = ctx.sub,
           .role = userRoleToString(ctx.role),
-          .device = ctx.deviceHash};
+          .device = ctx.deviceHash,
+          .roleActive = moduleGate().roleActive(ctx.role)};
 }
 
 argus::identity::v1::SyncRange toRange(const SyncFilter& filter)

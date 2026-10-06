@@ -2,6 +2,7 @@
 
 #include <camera/camera-row-projection.hxx>
 #include <feature/fanout/services/audit-fan-out.hxx>
+#include <shared/services/context/user-context.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <string>
 #include <string_view>
@@ -142,7 +143,8 @@ std::optional<Event> parseEvent(const Json::Value& json, ControlScope scope)
 
   Event event;
   event.emit.operation = static_cast<SyncOperation>(json["operation"].asInt());
-  if (event.emit.operation == SyncOperation::ModuleUpdate)
+  if (event.emit.operation == SyncOperation::ModuleUpdate ||
+      event.emit.operation == SyncOperation::ContextUpdate)
     return std::nullopt;
   event.emit.option = *table;
   event.emit.obj = json["info"];
@@ -255,6 +257,7 @@ void dispatchEvent(const Event& event)
   switch (plan.kind) {
     case FanOutPlan::Kind::ReplaceRoleRooms:
       roomManager.replaceRoleRooms(plan.replaceInput);
+      userContext().userChanged(plan.replaceInput.userId, plan.replaceInput.newRole);
       return;
     case FanOutPlan::Kind::Disconnect:
       roomManager.disconnectUser(plan.userId, message);
