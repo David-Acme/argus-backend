@@ -239,6 +239,19 @@ class RunTest(unittest.TestCase):
         self.assertTrue(all(r["set"] == "select" for r in rows))
         self.assertNotIn("buenos días", errors.read_text())
 
+    def test_cached_selection_decisions_are_reused_without_the_decider(self):
+        cache = self.directory / "cache.json"
+        first, _ = self.run_harness("--cache", str(cache))
+        self.assertEqual(first.returncode, 0, first.stdout)
+        self.assertTrue(cache.exists())
+        report = self.directory / "again.json"
+        result = subprocess.run(
+            [sys.executable, "-I", str(HARNESS), "--decider", "/nonexistent/decider", "--gates", str(self.gates),
+             "--select", str(self.select), "--cache", str(cache), "--report", str(report)],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("latencyMs", json.loads(report.read_text()))
+
     def test_a_member_is_only_offered_the_request_tool(self):
         self.assertIn("modules.request", harness.offered("resident"))
         self.assertNotIn("modules.enable", harness.offered("resident"))

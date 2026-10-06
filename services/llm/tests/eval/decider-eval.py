@@ -27,8 +27,8 @@ FAMILY_OF = {tool: family for family, tools in FAMILIES.items() for tool in tool
 MODULE_FAMILIES = ("calendar", "task", "project", "modules", "reminders")
 OWNER_ONLY = {"modules.enable", "modules.disable", "modules.open_purge_screen"}
 MEMBER_ONLY = {"modules.request"}
-ACTS = (0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95, 0.97, 0.98, 0.99, 0.995)
-ASKS = (0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
+ACTS = (0.5, 0.6, 0.7, 0.8, 0.85, 0.88, 0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99, 0.995)
+ASKS = (0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95)
 MARGINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
 DEFAULT_WRONG_ACT = 0.001
 DEFAULT_ASK_CLEAR = 0.10
@@ -117,9 +117,14 @@ def load_negatives(path):
 
 class Decider:
     def __init__(self, command):
-        self.process = subprocess.Popen(shlex.split(command), stdin=subprocess.PIPE,
-                                        stdout=subprocess.PIPE, text=True, bufsize=1)
+        self.command = command
+        self.process = None
         self.violations = 0
+
+    def start(self):
+        if self.process is None:
+            self.process = subprocess.Popen(shlex.split(self.command), stdin=subprocess.PIPE,
+                                            stdout=subprocess.PIPE, text=True, bufsize=1)
 
     def request(self, seq, case):
         return json.dumps({"seq": seq, "text": case["text"], "lang": case["lang"],
@@ -127,6 +132,8 @@ class Decider:
                           ensure_ascii=False)
 
     def decide_all(self, cases):
+        self.start()
+
         def feed():
             for seq, case in enumerate(cases):
                 self.process.stdin.write(self.request(seq, case) + "\n")
@@ -167,8 +174,9 @@ class Decider:
         return out
 
     def close(self):
-        self.process.stdin.close()
-        self.process.wait(timeout=60)
+        if self.process is not None:
+            self.process.stdin.close()
+            self.process.wait(timeout=60)
 
 
 def outcome(decision, policy):
@@ -445,6 +453,20 @@ def error_rows(cases, decisions, policy):
     return rows
 
 
+def cached_decisions(decider, cases, path):
+    if not path:
+        return decider.decide_all(cases)
+    cache = pathlib.Path(path)
+    keys = [hashlib.sha1((c["text"] + "\0" + c["role"]).encode()).hexdigest() for c in cases]
+    if cache.exists():
+        stored = json.loads(cache.read_text())
+        if all(key in stored for key in keys):
+            return [tuple(stored[key]) for key in keys]
+    decisions = decider.decide_all(cases)
+    cache.write_text(json.dumps({key: list(d) for key, d in zip(keys, decisions)}))
+    return decisions
+
+
 def read_sealed(path, section, gates):
     sealed_path = pathlib.Path(path)
     actual = hashlib.sha256(sealed_path.read_bytes()).hexdigest()
@@ -468,15 +490,12 @@ def main():
     parser.add_argument("--latency", type=int, default=200)
     parser.add_argument("--report")
     parser.add_argument("--errors")
+    parser.add_argument("--cache")
     args = parser.parse_args()
 
     gates = json.loads(pathlib.Path(args.gates).read_text())
     limits = limits_of(gates)
-    try:
-        decider = Decider(args.decider)
-    except OSError as error:
-        print(f"decider-eval: cannot start the decider: {error}")
-        return SKIP
+    decider = Decider(args.decider)
 
     selection = load_cases(args.select)
     if args.select_negatives:
@@ -484,7 +503,11 @@ def main():
     report = {"decider": args.decider, "selectionCases": len(selection), "limits": limits}
     failures = []
     try:
-        chosen_decisions = decider.decide_all(selection)
+        try:
+            chosen_decisions = cached_decisions(decider, selection, args.cache)
+        except OSError as error:
+            print(f"decider-eval: cannot start the decider: {error}")
+            return SKIP
         print_sweep("selection sweep (cases, holdout, real negatives; chooses the operating point)",
                     selection, chosen_decisions)
         if args.act_only:
@@ -517,7 +540,8 @@ def main():
                   f"{share['askShare']:.1%} ASK, {share['conversationShare']:.1%} conversation, "
                   f"memory coverage {share['memoryCoverage']:.1%}, false action {share['falseActionRate']:.1%}")
         sample = [c for c in selection if c["stratum"] == "authored"][:args.latency]
-        if sample:
+        if sample and decider.process is not None:
+            decider.start()
             times = decider.latencies(sample)
             report["latencyMs"] = {"p50": statistics.median(times),
                                    "p95": sorted(times)[max(0, int(len(times) * 0.95) - 1)], "n": len(times)}
