@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <string>
@@ -56,6 +57,7 @@ struct Options
   std::string filter;
   std::string offer;
   std::string section = "llm";
+  std::string personaExtra;
   std::string runsOut;
   std::string score;
   int skip = 0;
@@ -88,6 +90,8 @@ Options parseOptions(int argc, char** argv)
       options.dump = argv[++i];
     else if (arg == "--filter" && hasValue)
       options.filter = argv[++i];
+    else if (arg == "--persona-extra" && hasValue)
+      options.personaExtra = argv[++i];
     else if (arg == "--section" && hasValue)
       options.section = argv[++i];
     else if (arg == "--runs-out" && hasValue)
@@ -178,10 +182,21 @@ std::string writeScratchConfig(const std::string& model)
   return path;
 }
 
-ChatRequest requestFor(const std::vector<ChatMessage>& history, const eval::EvalCase& item)
+struct RequestInput
 {
+  const std::vector<ChatMessage>& history;
+  const eval::EvalCase& item;
+  const std::string& personaExtra;
+};
+
+ChatRequest requestFor(const RequestInput& input)
+{
+  const std::vector<ChatMessage>& history = input.history;
+  const eval::EvalCase& item = input.item;
   ChatRequest request;
-  request.messages.push_back({.role = "system", .content = std::string(item.lang == "en" ? kPersonaEn : kPersonaEs)});
+  request.messages.push_back({.role = "system",
+                              .content = std::string(item.lang == "en" ? kPersonaEn : kPersonaEs) +
+                                         (input.personaExtra.empty() ? std::string() : "\n" + input.personaExtra)});
   request.messages.insert(request.messages.end(), history.begin(), history.end());
   request.maxTokens = kMaxTokens;
   request.temperature = 0.0F;
@@ -205,15 +220,27 @@ std::vector<eval::RecordedCall> inactiveAttempts(const LlmChatOutcome& outcome, 
   return out;
 }
 
-eval::CaseRun runCase(LlmController& controller, const eval::EvalCase& item, const eval::StubInput& stubs)
+struct CaseInput
 {
+  LlmController& controller;
+  const eval::EvalCase& item;
+  const eval::StubInput& stubs;
+  const std::string& personaExtra;
+};
+
+eval::CaseRun runCase(const CaseInput& input)
+{
+  LlmController& controller = input.controller;
+  const eval::EvalCase& item = input.item;
+  const eval::StubInput& stubs = input.stubs;
+  const std::string& personaExtra = input.personaExtra;
   eval::CaseRun run{.item = item, .turns = {}};
   std::vector<ChatMessage> history;
   for (const auto& utterance : item.script) {
     history.push_back({.role = "user", .content = utterance});
     stubs.recorder->clear();
     const auto started = std::chrono::steady_clock::now();
-    const LlmChatOutcome outcome = controller.chatSync(requestFor(history, item));
+    const LlmChatOutcome outcome = controller.chatSync(requestFor({.history = history, .item = item, .personaExtra = personaExtra}));
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
     eval::TurnResult turn;
     turn.reply = outcome.text;
@@ -409,6 +436,11 @@ int main(int argc, char** argv)
                     .c_str());
   }
 
+  std::string extra;
+  if (!options.personaExtra.empty()) {
+    std::ifstream extraIn(options.personaExtra);
+    extra.assign(std::istreambuf_iterator<char>(extraIn), std::istreambuf_iterator<char>());
+  }
   const std::vector<eval::EvalCase> cases = selected(loaded.cases, options);
   std::printf("llm tier: %zu cases of %zu\n", cases.size(), loaded.cases.size());
   std::vector<eval::CaseRun> runs;
@@ -420,7 +452,7 @@ int main(int argc, char** argv)
     runsOut.open(options.runsOut, std::ios::app);
   for (const auto& item : cases) {
     moduleGate().apply(flagsFor(catalog, item));
-    runs.push_back(runCase(controller, item, stubs));
+    runs.push_back(runCase({.controller = controller, .item = item, .stubs = stubs, .personaExtra = extra}));
     if (dump)
       dump << describe(runs.back()) << "\n";
     if (runsOut) {
