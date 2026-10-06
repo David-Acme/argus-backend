@@ -5,10 +5,10 @@
 #include <feature/guard/controllers/guard-controller.hxx>
 #include <feature/guard/controllers/response-controller.hxx>
 #include <feature/guard/infra/identity-response-directory.hxx>
+#include <feature/guard/services/guard-module-wind-down.hxx>
 #include <feature/guard/services/response-verdict-feed.hxx>
 #include <feature/guard/guard-assessment.hxx>
 #include <feature/guard/guard-repository.hxx>
-#include <feature/guard/services/guard-module-wind-down.hxx>
 #include <feature/guard/guard-schedule.hxx>
 #include <feature/guard/guard-schema.hxx>
 #include <feature/guard/guard-service.hxx>
@@ -281,6 +281,24 @@ int main()
        .active = [] { return moduleGate().enabled(role_access::kSurveillanceModule); }},
       guardConfig);
   const auto modules = module_gate::install({.service = "guard", .bus = natsBus});
+  const GuardModuleWindDown surveillanceWindDown;
+  const auto windDown = [&surveillanceWindDown] {
+    drogon::app().getLoop()->queueInLoop([&surveillanceWindDown] {
+      drogon::async_run([&surveillanceWindDown]() -> drogon::Task<void> {
+        try {
+          co_await surveillanceWindDown.run();
+        }
+        catch (const std::exception& error) {
+          LOG_WARN << "Guard: the surveillance wind-down failed: " << error.what();
+        }
+        co_return;
+      });
+    });
+  };
+  moduleGate().onChange([windDown](const ModuleChange& change) {
+    if (change.id == role_access::kSurveillanceModule && !change.enabled)
+      windDown();
+  });
   const GuardAlertSink safetySink(guardService);
   const NotificationActorNotifier safetyActor(
       {.notifications = notifications.get(), .identity = identity.get()});
@@ -305,24 +323,6 @@ int main()
 
   SettingsRegistry settings(guardSettingsCatalog());
   settings.onChange([&guardService, &presence](const std::vector<std::string>&) {
-  const GuardModuleWindDown surveillanceWindDown;
-  const auto windDown = [&surveillanceWindDown] {
-    drogon::app().getLoop()->queueInLoop([&surveillanceWindDown] {
-      drogon::async_run([&surveillanceWindDown]() -> drogon::Task<void> {
-        try {
-          co_await surveillanceWindDown.run();
-        }
-        catch (const std::exception& error) {
-          LOG_WARN << "Guard: the surveillance wind-down failed: " << error.what();
-        }
-        co_return;
-      });
-    });
-  };
-  moduleGate().onChange([windDown](const ModuleChange& change) {
-    if (change.id == role_access::kSurveillanceModule && !change.enabled)
-      windDown();
-  });
     guardService.refresh(GuardConfig::resolveService());
     presence.refresh(GuardConfig::resolvePresence());
   });
@@ -380,6 +380,8 @@ int main()
   drogon::app().registerBeginningAdvice([&guardService, &presence, windDown]() {
     guardService.start();
     presence.start();
+    if (!moduleGate().enabled(role_access::kSurveillanceModule))
+      windDown();
   });
   drogon::app().registerBeginningAdvice([safety]() { safety->start(); });
 
@@ -403,5 +405,3 @@ int main()
   rpcDrain.requestStop();
   return 0;
 }
-    if (!moduleGate().enabled(role_access::kSurveillanceModule))
-      windDown();

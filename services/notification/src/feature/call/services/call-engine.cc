@@ -834,7 +834,6 @@ CallEngine::announceArrival(const KnownSeenEvent& event) const
        .notificationExists = false});
 }
 
-drogon::Task<CallSweepReport> CallEngine::sweep() const
 drogon::Task<int64_t> CallEngine::cancelForModule(std::string moduleId) const
 {
   int64_t cancelled = 0;
@@ -851,6 +850,7 @@ drogon::Task<int64_t> CallEngine::cancelForModule(std::string moduleId) const
   co_return cancelled;
 }
 
+drogon::Task<CallSweepReport> CallEngine::sweep() const
 {
   const CallEngineConfig config = this->config();
   const int64_t at = now();
@@ -948,9 +948,9 @@ CallEngine::announceAgenda(const AgendaAnnouncement& announcement) const
   }
   if (userIds.empty() || announcement.commandId.empty())
     co_return outcome;
-  const bool reminder = text(announcement.data, "kind") == "agenda_reminder";
   if (!allows(text(announcement.data, "kind")))
     co_return outcome;
+  const bool reminder = text(announcement.data, "kind") == "agenda_reminder";
   const auto preferences = co_await preferenceRepository_.findMany(userIds);
   std::vector<int64_t> matched;
   for (const int64_t userId : userIds) {

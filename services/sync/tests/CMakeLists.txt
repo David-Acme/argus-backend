@@ -146,21 +146,6 @@ target_compile_options(rtc-token-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(rtc-token-test)
 add_test(NAME rtc-token-test COMMAND rtc-token-test)
 
-add_executable(heartbeat-test unit/heartbeat-test.cc)
-target_link_libraries(heartbeat-test PRIVATE
-    argus::sync-heartbeat
-    argus::lib::text
-    argus::lib::nats
-    Drogon::Drogon
-    doctest::doctest)
-target_compile_options(heartbeat-test PRIVATE -Wall -Wextra)
-argus_runtime_rpath(heartbeat-test)
-add_test(NAME heartbeat-test COMMAND heartbeat-test)
-
-add_executable(sync-control-callers-test unit/sync-control-callers-test.cc)
-target_link_libraries(sync-control-callers-test PRIVATE
-    argus::sync-control-rpc
-    doctest::doctest)
 add_executable(sync-activity-test unit/sync-activity-test.cc)
 target_compile_definitions(sync-activity-test PRIVATE
     ARGUS_SYNC_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
@@ -180,6 +165,21 @@ target_compile_options(sync-activity-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-activity-test)
 add_test(NAME sync-activity-test COMMAND sync-activity-test)
 
+add_executable(heartbeat-test unit/heartbeat-test.cc)
+target_link_libraries(heartbeat-test PRIVATE
+    argus::sync-heartbeat
+    argus::lib::text
+    argus::lib::nats
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(heartbeat-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(heartbeat-test)
+add_test(NAME heartbeat-test COMMAND heartbeat-test)
+
+add_executable(sync-control-callers-test unit/sync-control-callers-test.cc)
+target_link_libraries(sync-control-callers-test PRIVATE
+    argus::sync-control-rpc
+    doctest::doctest)
 target_compile_options(sync-control-callers-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-control-callers-test)
 add_test(NAME sync-control-callers-test COMMAND sync-control-callers-test)

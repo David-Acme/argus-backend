@@ -160,6 +160,7 @@ int main()
       });
   drogon::app().registerController(
       std::make_shared<HeartbeatController>(heartbeatService));
+  drogon::app().registerController(std::make_shared<ActivityController>());
   LOG_INFO << "Sync surface registered: " << sync.controllers << " controller, "
            << sync.filters << " filters; voice leg -> "
            << (voice.target.empty() ? "unconfigured (503)"
@@ -191,7 +192,6 @@ int main()
   if (rtc.enabled)
     rtcRooms = std::make_shared<LiveKitRoomClient>(
         LiveKitAdminConfig{.serverUrl = rtc.serverUrl, .apiKey = rtc.apiKey, .apiSecret = rtc.apiSecret});
-  drogon::app().registerController(std::make_shared<ActivityController>());
   drogon::app().registerController(std::make_shared<RtcController>(RtcTokenServiceInput{
       .config = rtc, .voice = rtcVoice, .calls = rtcCalls, .directory = userDirectory, .rooms = rtcRooms}));
   if (rtcRooms) {

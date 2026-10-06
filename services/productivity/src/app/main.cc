@@ -15,9 +15,9 @@
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/module-feed.hxx>
+#include <auth/role-access.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
-#include <auth/role-access.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>

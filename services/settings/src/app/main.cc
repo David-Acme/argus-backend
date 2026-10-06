@@ -10,12 +10,12 @@
 #include <feature/modules/dtos/module-json.hxx>
 #include <feature/modules/infra/component-owners.hxx>
 #include <feature/modules/infra/host-resources.hxx>
-#include <feature/modules/infra/module-catalog-file.hxx>
 #include <feature/modules/infra/module-action-sink.hxx>
+#include <feature/modules/infra/module-catalog-file.hxx>
 #include <feature/modules/infra/module-event-sink.hxx>
 #include <feature/modules/services/module-engine.hxx>
-#include <feature/settings/controllers/settings-controller.hxx>
 #include <feature/modules/services/module-journal.hxx>
+#include <feature/settings/controllers/settings-controller.hxx>
 #include <feature/settings/infra/hardware-facts.hxx>
 #include <feature/settings/infra/profile-file.hxx>
 #include <feature/settings/services/first-run-service.hxx>
@@ -84,6 +84,17 @@ std::int64_t unixMs()
       .count();
 }
 
+drogon::orm::DbClientPtr openJournalDb(const ModulesConfig& config)
+{
+  auto client = drogon::orm::DbClient::newSqlite3Client("filename=" + config.dbPath, 1);
+  if (!client) {
+    LOG_ERROR << "Modules: " << config.dbPath << " could not be opened for the action journal";
+    return nullptr;
+  }
+  DbService::applyPragmas(client);
+  return client;
+}
+
 drogon::orm::DbClientPtr openModulesDb(const ModulesConfig& config)
 {
   auto client = drogon::orm::DbClient::newSqlite3Client("filename=" + config.dbPath, 1);
@@ -96,17 +107,6 @@ drogon::orm::DbClientPtr openModulesDb(const ModulesConfig& config)
   return client;
 }
 }
-drogon::orm::DbClientPtr openJournalDb(const ModulesConfig& config)
-{
-  auto client = drogon::orm::DbClient::newSqlite3Client("filename=" + config.dbPath, 1);
-  if (!client) {
-    LOG_ERROR << "Modules: " << config.dbPath << " could not be opened for the action journal";
-    return nullptr;
-  }
-  DbService::applyPragmas(client);
-  return client;
-}
-
 
 int main()
 {
@@ -158,6 +158,14 @@ int main()
           .timing = modules});
   }
 
+  NatsModuleActionSink moduleActions(natsBus);
+  std::unique_ptr<ModuleJournal> moduleJournal;
+  if (moduleEngine) {
+    if (auto journalDb = openJournalDb(modules))
+      moduleJournal = std::make_unique<ModuleJournal>(
+          ModuleJournalInput{.db = std::move(journalDb), .sink = &moduleActions, .pollInterval = modules.pollInterval});
+  }
+
   drogon::app().registerController(
       std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-settings", .extras = {}}));
   drogon::app().registerController(std::make_shared<SettingsController>(
@@ -170,14 +178,6 @@ int main()
       .callerPairs = rpc.callers,
       .legacySecret = {},
       .onFirstLegacy = {}});
-  NatsModuleActionSink moduleActions(natsBus);
-  std::unique_ptr<ModuleJournal> moduleJournal;
-  if (moduleEngine) {
-    if (auto journalDb = openJournalDb(modules))
-      moduleJournal = std::make_unique<ModuleJournal>(
-          ModuleJournalInput{.db = std::move(journalDb), .sink = &moduleActions, .pollInterval = modules.pollInterval});
-  }
-
   ModulesRpcService modulesRpc(
       {.states = [engine = moduleEngine.get()] { return engine != nullptr ? engine->enabledSet() : ModuleStatesReply{}; },
        .catalog = [engine = moduleEngine.get()] { return ownerCatalogOf(engine); },
@@ -201,6 +201,8 @@ int main()
   }
   if (moduleEngine)
     shutdown_signal::onStop(shutdown_signal::drainOf(*moduleEngine, "settings-modules"));
+  if (moduleJournal)
+    shutdown_signal::onStop(shutdown_signal::drainOf(*moduleJournal, "settings-modules-journal"));
 
   const SettingsGatewayService firstRunGateway(gateway);
   FirstRunService firstRun(
@@ -214,8 +216,6 @@ int main()
 
   drogon::app().loadConfigJson(drogonConfig(listener));
   certificate_reload::watch(listener);
-  if (moduleJournal)
-    shutdown_signal::onStop(shutdown_signal::drainOf(*moduleJournal, "settings-modules-journal"));
 
   drogon::app().registerPreRoutingAdvice(
       [](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&& cb, drogon::AdviceChainCallback&& chain) {
@@ -246,16 +246,16 @@ int main()
   drogon::app().registerBeginningAdvice([&moduleEngine, &moduleJournal]() {
     if (moduleEngine)
       moduleEngine->start();
+    if (moduleJournal)
+      moduleJournal->start();
   });
 
   drogon::app().setThreadNum(0).run();
   firstRun.requestStop();
   if (moduleEngine)
     moduleEngine->requestStop();
+  if (moduleJournal)
+    moduleJournal->requestStop();
   natsBus.drain();
   return 0;
 }
-    if (moduleJournal)
-      moduleJournal->start();
-  if (moduleJournal)
-    moduleJournal->requestStop();

@@ -302,9 +302,10 @@ int main()
   const auto surveillanceActive = [] {
     return moduleGate().enabled(role_access::kSurveillanceModule);
   };
-  moduleGate().onChange([&mediaSessions, &webrtcSessions](const ModuleChange& change) {
+  moduleGate().onChange([&mediaSessions, &webrtcSessions, &talkService](const ModuleChange& change) {
     if (change.id != role_access::kSurveillanceModule || change.enabled)
       return;
+    static_cast<void>(talkService.stopAll("module_disabled"));
     static_cast<void>(mediaSessions.closeAll("module_disabled"));
     drogon::app().getLoop()->queueInLoop([closer = &webrtcSessions]() {
       drogon::async_run([closer]() { return closer->closeAll(); });
@@ -331,7 +332,6 @@ int main()
     if (detector->isLoaded()) {
       LOG_INFO << "Object detector backend: " << detector->backend();
       CameraOperatorService::Inputs inputs;
-    static_cast<void>(talkService.stopAll("module_disabled"));
       inputs.dependencies.detector = detector.get();
       inputs.dependencies.source = &frameSource();
       inputs.dependencies.sink = objectSink.get();
