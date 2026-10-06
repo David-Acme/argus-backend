@@ -1419,7 +1419,10 @@ sqlite.org prescribes for a constraint change:
    backup and touches nothing;
 2. a consistent copy of the database is taken first with SQLite's backup API,
    `<db>.role-rebuild-<unix>.bak` beside it (none for an in-memory or URI
-   database);
+   database), created exclusively with mode 0600 and never over an existing
+   file: a taken name gets `-1`, `-2`, and the rebuild itself refuses a target
+   that exists. A failed copy removes its partial file, and a database with no
+   role CHECK left takes no backup at all, so a second boot changes nothing;
 3. `PRAGMA foreign_keys = OFF` on its own connection, outside the transaction
    (the read-back must say 0, else it stops), so dropping `user` cascades into
    nothing: portraits, voice profiles and samples, privacy rows, person links,

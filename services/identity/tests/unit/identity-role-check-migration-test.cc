@@ -316,6 +316,88 @@ TEST_CASE("a second run finds nothing to do and takes no backup")
   CHECK(number(db.get(), "PRAGMA foreign_keys") == 1);
 }
 
+TEST_CASE("a backup never overwrites a file that is already there, and a refused backup changes nothing")
+{
+  const Scratch scratch;
+  const std::string path = scratch.file("identity.db");
+  legacyDatabase(path);
+  const std::string taken = scratch.file("taken.bak");
+  {
+    std::ofstream earlier(taken);
+    earlier << "an earlier backup";
+  }
+  const auto db = open(path);
+  const auto outcome = role_check_migration::apply({.db = db.get(), .backupPath = taken});
+  CHECK_FALSE(outcome.ok());
+  CHECK(outcome.error.find("never overwritten") != std::string::npos);
+  CHECK(outcome.rebuilt.empty());
+
+  std::ifstream kept(taken);
+  std::stringstream content;
+  content << kept.rdbuf();
+  CHECK(content.str() == "an earlier backup");
+  CHECK(text(db.get(), "SELECT sql FROM sqlite_master WHERE name = 'user'").find("CHECK") != std::string::npos);
+  CHECK(number(db.get(), "SELECT COUNT(*) FROM user") == 4);
+}
+
+TEST_CASE("a backup is readable by its owner alone")
+{
+  const Scratch scratch;
+  const std::string path = scratch.file("identity.db");
+  legacyDatabase(path);
+  const auto db = open(path);
+  const std::string backup = scratch.file("private.bak");
+  REQUIRE(role_check_migration::apply({.db = db.get(), .backupPath = backup}).ok());
+  const auto permissions = fs::status(backup).permissions();
+  CHECK((permissions & (fs::perms::group_all | fs::perms::others_all)) == fs::perms::none);
+  CHECK((permissions & fs::perms::owner_read) != fs::perms::none);
+}
+
+TEST_CASE("the boot entry point takes a free backup name beside an earlier backup and leaves the earlier one intact")
+{
+  const Scratch scratch;
+  const std::string taken = scratch.file("identity.db.role-rebuild-9.bak");
+  CHECK(role_check_migration::freeBackupPath(taken) == taken);
+  {
+    std::ofstream earlier(taken);
+    earlier << "x";
+  }
+  CHECK(role_check_migration::freeBackupPath(taken) == taken + "-1");
+  {
+    std::ofstream earlier(taken + "-1");
+    earlier << "y";
+  }
+  CHECK(role_check_migration::freeBackupPath(taken) == taken + "-2");
+  CHECK(role_check_migration::freeBackupPath("").empty());
+
+  const std::string path = scratch.file("identity.db");
+  legacyDatabase(path);
+  REQUIRE(role_check_migration::applyToFile(path));
+  std::vector<std::string> first;
+  for (const auto& entry : fs::directory_iterator(scratch.directory))
+    if (entry.path().filename().string().find("identity.db.role-rebuild-") == 0 &&
+        entry.path().string() != taken && entry.path().string() != taken + "-1")
+      first.push_back(entry.path().string());
+  REQUIRE(first.size() == 1);
+  const auto keptName = text(open(first.front()).get(), "SELECT name FROM user WHERE id = 1");
+  CHECK(keptName != "Changed");
+
+  fs::remove(path);
+  fs::remove(path + "-wal");
+  fs::remove(path + "-shm");
+  legacyDatabase(path);
+  const auto db = open(path);
+  must(db.get(), "UPDATE user SET name = 'Changed' WHERE id = 1");
+  REQUIRE(role_check_migration::applyToFile(path));
+  std::size_t backups = 0;
+  for (const auto& entry : fs::directory_iterator(scratch.directory))
+    if (entry.path().filename().string().find("identity.db.role-rebuild-") == 0 &&
+        entry.path().string() != taken && entry.path().string() != taken + "-1")
+      ++backups;
+  CHECK(backups == 2);
+  CHECK(text(open(first.front()).get(), "SELECT name FROM user WHERE id = 1") == keptName);
+}
+
 TEST_CASE("a database created from the shipped schema needs no rebuild")
 {
   const Scratch scratch;

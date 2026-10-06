@@ -4,7 +4,11 @@
 
 #include <sqlite3.h>
 
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <algorithm>
+#include <cerrno>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -124,18 +128,38 @@ std::string columnList(const std::vector<std::string>& columns)
   return list;
 }
 
+bool createExclusive(const std::string& path, std::string& error)
+{
+  const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+  if (fd < 0) {
+    error = std::string("backup: ") + path + (errno == EEXIST ? " already exists and is never overwritten" : " could not be created");
+    return false;
+  }
+  ::close(fd);
+  return true;
+}
+
+void discard(const std::string& path)
+{
+  static_cast<void>(::unlink(path.c_str()));
+}
+
 bool backUp(Db db, const std::string& path, std::string& error)
 {
+  if (!createExclusive(path, error))
+    return false;
   Db copy = nullptr;
   if (sqlite3_open(path.c_str(), &copy) != SQLITE_OK) {
-    error = "backup: could not create " + path;
+    error = "backup: could not open " + path;
     sqlite3_close(copy);
+    discard(path);
     return false;
   }
   sqlite3_backup* backup = sqlite3_backup_init(copy, "main", db, "main");
   if (backup == nullptr) {
     error = lastError(copy, "backup");
     sqlite3_close(copy);
+    discard(path);
     return false;
   }
   const int stepped = sqlite3_backup_step(backup, -1);
@@ -144,6 +168,8 @@ bool backUp(Db db, const std::string& path, std::string& error)
   if (!done)
     error = "backup: copy did not complete";
   sqlite3_close(copy);
+  if (!done)
+    discard(path);
   return done;
 }
 

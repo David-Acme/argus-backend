@@ -4,7 +4,9 @@
 #include <sqlite3.h>
 
 #include <chrono>
+#include <filesystem>
 #include <regex>
+#include <system_error>
 
 namespace
 {
@@ -45,6 +47,17 @@ std::string backupPathFor(const std::string& dbPath, std::int64_t unixSeconds)
   return dbPath + ".role-rebuild-" + std::to_string(unixSeconds) + ".bak";
 }
 
+std::string freeBackupPath(const std::string& path)
+{
+  if (path.empty())
+    return path;
+  std::error_code ignored;
+  std::string candidate = path;
+  for (int attempt = 1; std::filesystem::exists(candidate, ignored); ++attempt)
+    candidate = path + "-" + std::to_string(attempt);
+  return candidate;
+}
+
 bool applyToFile(const std::string& dbPath)
 {
   sqlite3* raw = nullptr;
@@ -57,7 +70,7 @@ bool applyToFile(const std::string& dbPath)
   const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                        std::chrono::system_clock::now().time_since_epoch())
                        .count();
-  const auto outcome = apply({.db = raw, .backupPath = backupPathFor(dbPath, now)});
+  const auto outcome = apply({.db = raw, .backupPath = freeBackupPath(backupPathFor(dbPath, now))});
   sqlite3_close(raw);
   if (!outcome.ok()) {
     LOG_ERROR << "Identity roles: the role check migration failed and changed nothing: " << outcome.error;
