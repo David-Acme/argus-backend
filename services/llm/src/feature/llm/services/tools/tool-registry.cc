@@ -66,6 +66,8 @@ RefreshOutcome ToolRegistry::refresh(std::string_view only)
       for (auto& state : providers_) {
         if (state.provider.id != id)
           continue;
+        if (!state.listed || state.tools.size() != fresh.size())
+          LOG_INFO << "tools: provider " << id << " serves " << fresh.size() << " tools";
         state.tools = std::move(fresh);
         state.listed = true;
         break;
