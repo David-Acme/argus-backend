@@ -624,8 +624,14 @@
       }
     },
     "gateObeyingFastText": {
-      "selection": 0.154,
-      "sealed": 0.101
+      "selection": {
+        "coverage": 0.154,
+        "label": "at the 0.1% ceiling after calibration"
+      },
+      "sealed": {
+        "coverage": 0.101,
+        "label": "at confidence >= 0.995 under the older 0.5% gate"
+      }
     }
   },
   "performance": {

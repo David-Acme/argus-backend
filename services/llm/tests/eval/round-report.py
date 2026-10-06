@@ -14,7 +14,13 @@ PERF_ROWS = (("latencyP50Ms", "latency p50 (ms)"), ("latencyP95Ms", "latency p95
 
 
 BAR = "0.456"
-BESIDE = "gate-obeying fastText 0.154 on the selection set, 0.101 on the sealed set"
+GATES = pathlib.Path(__file__).resolve().parent / "gates.json"
+
+
+def beside_text(gates):
+    entries = json.loads(pathlib.Path(gates).read_text()).get("decider", {}).get("gateObeyingFastText", {})
+    return "gate-obeying fastText " + ", ".join(
+        f"{entry['coverage']} on the {name} set {entry['label']}" for name, entry in entries.items())
 
 
 def load(path):
@@ -160,7 +166,7 @@ def main():
     parser.add_argument("--round", action="append", required=True, metavar="NAME=DIR")
     parser.add_argument("--ceiling", type=float)
     parser.add_argument("--baseline", default=BAR)
-    parser.add_argument("--beside", default=BESIDE)
+    parser.add_argument("--gates", default=str(GATES))
     args = parser.parse_args()
     rounds, sections = [], []
     for spec in args.round:
@@ -170,7 +176,7 @@ def main():
             print(f"round-report: no calibrated.json or uncalibrated.json in {directory}", file=sys.stderr)
             return 1
         rounds.append((name, report))
-        body, _ = decider_section(name, report, args.ceiling, args.baseline, args.beside)
+        body, _ = decider_section(name, report, args.ceiling, args.baseline, beside_text(args.gates))
         sections += body
         sections += price_section(name, report)
         sections += calibration_section(name, load(pathlib.Path(directory) / "calibration.json"))
@@ -178,7 +184,7 @@ def main():
         sections += performance_section(name, load(pathlib.Path(directory) / "perf.json"))
     lines = ["# Decider round report", ""]
     if len(rounds) > 1:
-        lines += comparison(rounds, args.ceiling, args.baseline, args.beside)
+        lines += comparison(rounds, args.ceiling, args.baseline, beside_text(args.gates))
     print("\n".join(lines + sections))
     return 0
 

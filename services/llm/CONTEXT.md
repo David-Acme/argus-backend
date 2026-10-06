@@ -1280,7 +1280,14 @@ production memory router over the judge corpus; `llm-tier-eval` drives the whole
 with stub tools and the real model. Why the numbers are what they are, and how they were
 measured: `docs/operations/voice-quality-eval.md`.
 
-The tool specs of the other services' MCP providers are mirrored by hand in `tests/eval/eval-tools.cc`
-(for `llm-tier-eval`) and in the tool and role table of `decider-eval.py` (`offered`); when a provider's
-name or a role's offer changes, copy it there or the eval measures a tool that is not offered. A
-snapshot of every provider's `tools/list` that both sides test against would remove that duplication.
+Which tools a role is offered is data, not a table in the harness: `tests/eval/tool-visibility.json` lists, per
+role, the tools whose required capability the role holds, and per tool its capability and module. It is
+generated from the sources that decide it (`role-access.hxx` and `capability.hxx` for the roles and the
+capability table, the six MCP provider files for each tool's `.capability` and `.module`) by
+`python3 -I services/llm/tests/eval/tool-visibility.py --write services/llm/tests/eval/tool-visibility.json`,
+and `tool-visibility-test.py` fails when the committed file differs from what those sources declare, when a
+tool declares a module other than its capability's, when the decider's vocabulary is not exactly the tools
+the backend declares, or when a tool annotated read-only is missing from `turn/tool-effects.json` (the
+harness reads its read-only list from that file, which is what the turn flow compiles). The test needs
+no build. `tests/eval/eval-tools.cc` (for `llm-tier-eval`) is still a hand mirror of the providers' tool
+specs; a snapshot of every provider's `tools/list` that both sides test against would remove it.

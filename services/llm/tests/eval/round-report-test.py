@@ -56,7 +56,8 @@ class RoundReportTest(unittest.TestCase):
         result = self.run_report(self.write_round("joint", rows, True))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("at the 0.1% gate", result.stdout)
-        self.assertIn("coverage 0.620 (bar 0.456; gate-obeying fastText 0.154 on the selection set, 0.101 on the sealed set)",
+        self.assertIn("coverage 0.620 (bar 0.456; gate-obeying fastText 0.154 on the selection set at the 0.1% ceiling "
+                      "after calibration, 0.101 on the sealed set at confidence >= 0.995 under the older 0.5% gate)",
                       result.stdout)
         self.assertIn("| confidence | 900 | 0.2000 | 0.0500 | 0.0300 | 0.0400 | platt |", result.stdout)
         self.assertIn("| production.tsv | 61 | 40.00% | 10.00% | 50.00% | 2.00% |", result.stdout)
@@ -80,7 +81,7 @@ class RoundReportTest(unittest.TestCase):
         self.assertIn("| choice-only | 0.660 |", result.stdout)
         self.assertIn("1.00% (information)", result.stdout)
         self.assertIn("The coverage bar is 0.456", result.stdout)
-        self.assertIn("beside it, gate-obeying fastText 0.154", result.stdout)
+        self.assertIn("beside it, gate-obeying fastText 0.154 on the selection set at the 0.1% ceiling", result.stdout)
 
     def test_performance_is_reported_with_its_gate_verdict_and_an_unmeasured_round_says_so(self):
         rows = [{"ceiling": 0.001, "policy": {}, "summary": summary(0.62)}]

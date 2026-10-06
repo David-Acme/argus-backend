@@ -293,11 +293,14 @@ class RunTest(unittest.TestCase):
         self.gates.write_text(json.dumps({
             "sealed": {"file": "sealed.jsonl", "sha256": hashlib.sha256(self.sealed.read_bytes()).hexdigest()},
             "decider": {"wrongActMax": 0.0, "metrics": {"moduleFamilies.coverage": {"min": 0.456}},
-                        "gateObeyingFastText": {"selection": 0.154, "sealed": 0.101}}}))
+                        "gateObeyingFastText": {
+                            "selection": {"coverage": 0.154, "label": "at the 0.1% ceiling after calibration"},
+                            "sealed": {"coverage": 0.101, "label": "at confidence >= 0.995 under the older 0.5% gate"}}}}))
         result, _ = self.run_harness("--final", "--sealed", str(self.sealed))
         self.assertIn("against the bar 0.456 (fastText where it broke the wrong-ACT gate) and 0.154 "
-                      "(gate-obeying fastText on the selection set)", result.stdout)
-        self.assertIn("0.101 (gate-obeying fastText on the sealed set)", result.stdout)
+                      "(gate-obeying fastText on the selection set at the 0.1% ceiling after calibration)", result.stdout)
+        self.assertIn("0.101 (gate-obeying fastText on the sealed set at confidence >= 0.995 under the older 0.5% gate)",
+                      result.stdout)
 
     def test_a_changed_sealed_set_is_refused(self):
         self.write_gates("0" * 64, 0.0)

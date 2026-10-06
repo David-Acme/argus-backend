@@ -1,0 +1,156 @@
+{
+  "roles": {
+    "guard": [
+      "app.open",
+      "app.show_camera",
+      "memory.remind",
+      "modules.explain",
+      "modules.list",
+      "modules.request",
+      "reminder.list"
+    ],
+    "guest": [
+      "app.open",
+      "app.show_camera",
+      "memory.remind",
+      "modules.explain",
+      "modules.list",
+      "modules.request",
+      "reminder.list"
+    ],
+    "owner": [
+      "app.open",
+      "app.set_guard_mode",
+      "app.show_camera",
+      "calendar.cancel_event",
+      "calendar.create_event",
+      "calendar.list_events",
+      "memory.forget",
+      "memory.recall",
+      "memory.remember",
+      "memory.remind",
+      "modules.disable",
+      "modules.enable",
+      "modules.explain",
+      "modules.list",
+      "modules.open_purge_screen",
+      "project.create",
+      "project.list",
+      "reminder.list",
+      "task.complete",
+      "task.create",
+      "task.list"
+    ],
+    "resident": [
+      "app.open",
+      "app.set_guard_mode",
+      "app.show_camera",
+      "calendar.cancel_event",
+      "calendar.create_event",
+      "calendar.list_events",
+      "memory.forget",
+      "memory.recall",
+      "memory.remember",
+      "memory.remind",
+      "modules.explain",
+      "modules.list",
+      "modules.request",
+      "project.create",
+      "project.list",
+      "reminder.list",
+      "task.complete",
+      "task.create",
+      "task.list"
+    ]
+  },
+  "tools": {
+    "app.open": {
+      "capability": "notifications.read",
+      "module": "core"
+    },
+    "app.set_guard_mode": {
+      "capability": "guard.mode.set",
+      "module": "surveillance"
+    },
+    "app.show_camera": {
+      "capability": "camera.view",
+      "module": "surveillance"
+    },
+    "calendar.cancel_event": {
+      "capability": "agenda.write",
+      "module": "productivity"
+    },
+    "calendar.create_event": {
+      "capability": "agenda.write",
+      "module": "productivity"
+    },
+    "calendar.list_events": {
+      "capability": "agenda.read",
+      "module": "productivity"
+    },
+    "memory.forget": {
+      "capability": "memory.manage",
+      "module": "core"
+    },
+    "memory.recall": {
+      "capability": "memory.manage",
+      "module": "core"
+    },
+    "memory.remember": {
+      "capability": "memory.manage",
+      "module": "core"
+    },
+    "memory.remind": {
+      "capability": "reminders.write",
+      "module": "core"
+    },
+    "modules.disable": {
+      "capability": "modules.manage",
+      "module": "core"
+    },
+    "modules.enable": {
+      "capability": "modules.manage",
+      "module": "core"
+    },
+    "modules.explain": {
+      "capability": "modules.read",
+      "module": "core"
+    },
+    "modules.list": {
+      "capability": "modules.read",
+      "module": "core"
+    },
+    "modules.open_purge_screen": {
+      "capability": "modules.manage",
+      "module": "core"
+    },
+    "modules.request": {
+      "capability": "modules.request",
+      "module": "core"
+    },
+    "project.create": {
+      "capability": "projects.write",
+      "module": "productivity"
+    },
+    "project.list": {
+      "capability": "projects.read",
+      "module": "productivity"
+    },
+    "reminder.list": {
+      "capability": "reminders.read",
+      "module": "core"
+    },
+    "task.complete": {
+      "capability": "projects.write",
+      "module": "productivity"
+    },
+    "task.create": {
+      "capability": "projects.write",
+      "module": "productivity"
+    },
+    "task.list": {
+      "capability": "projects.read",
+      "module": "productivity"
+    }
+  }
+}

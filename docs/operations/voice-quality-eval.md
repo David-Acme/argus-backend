@@ -55,6 +55,11 @@ python3 -I services/llm/tests/eval/run-round.py --name <round> --out <dir> --dec
 python3 -I services/llm/tests/eval/round-report.py --round joint=<dir> --round choice-only=<dir> --ceiling 0.01
 ```
 
+The offered tools of a request are the tools the case's role holds, read from
+`tests/eval/tool-visibility.json` (generated from the capability table and the providers' tool specs,
+and checked against them by `tool-visibility-test.py`); a guard or a guest is offered seven tools, a
+resident nineteen, an owner twenty-one.
+
 ## The corpora
 
 | file | cases | role |
@@ -142,7 +147,7 @@ The coverage bar is 0.456, fastText at the sealed point where it broke the wrong
 under the gate AND above the bar. Beside it every report prints what a fastText that obeys the gate
 reaches: 0.154 on the selection set at the 0.1% ceiling (calibrated, `ACT >= 0.91 ASK >= 0.85`, 8,807
 non-positives, upper 95% bound 0.10%) and 0.101 on the sealed set (the figure of the first sealed
-reading, at the 0.5% false-route gate that held then, so it is a tuned number and not the same
+reading, at confidence >= 0.995 under the 0.5% false-route gate that held then, so it is a tuned number and not the same
 ceiling as the selection figure). `gates.json` carries both under `decider.gateObeyingFastText`, and
 `decider-eval.py` and `round-report.py` print them beside the coverage they report.
 

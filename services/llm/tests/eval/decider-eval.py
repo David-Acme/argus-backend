@@ -29,10 +29,9 @@ FAMILIES = {
 }
 FAMILY_OF = {tool: family for family, tools in FAMILIES.items() for tool in tools}
 MODULE_FAMILIES = ("calendar", "task", "project", "modules", "reminders")
-OWNER_ONLY = {"modules.enable", "modules.disable", "modules.open_purge_screen"}
-MEMBER_ONLY = {"modules.request"}
-READ_TOOLS = {"calendar.list_events", "task.list", "project.list", "modules.list", "modules.explain",
-              "reminder.list", "memory.recall", "app.open", "app.show_camera"}
+HERE = pathlib.Path(__file__).resolve().parent
+VISIBILITY = json.loads((HERE / "tool-visibility.json").read_text())
+READ_TOOLS = set(json.loads((HERE.parents[1] / "src/feature/llm/services/turn/tool-effects.json").read_text())["readOnly"])
 LOW_RISK_WRITES = {"memory.remember", "memory.remind"}
 NOWS = (0.0, 0.5, 0.8, 0.9, 0.95)
 GUARD_ACTS = (0.7, 0.8, 0.9, 0.93, 0.95, 0.97, 0.98, 0.99)
@@ -51,10 +50,9 @@ FALLBACK_POLICY = (0.9, 0.9, 0.0)
 
 
 def offered(role):
-    tools = set(FAMILY_OF)
-    if role == "owner":
-        return sorted(tools - MEMBER_ONLY)
-    return sorted(tools - OWNER_ONLY)
+    if role not in VISIBILITY["roles"]:
+        raise SystemExit(f"tool-visibility.json has no tools for the role {role}")
+    return [tool for tool in VISIBILITY["roles"][role] if tool in FAMILY_OF]
 
 
 def wilson(hits, total, z=1.96):
@@ -449,7 +447,7 @@ def print_bar(gates, section, summary):
         return
     coverage = summary["moduleFamilies"]["coverage"]
     print(f"  coverage {coverage:.3f} against the bar {bar} (fastText where it broke the wrong-ACT gate) and "
-          f"{beside} (gate-obeying fastText on the {section} set)")
+          f"{beside['coverage']} (gate-obeying fastText on the {section} set {beside['label']})")
 
 
 def limits_of(gates):

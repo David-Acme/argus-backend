@@ -10,6 +10,7 @@ import sys
 import time
 
 SKIP = 77
+OWNER_TOOLS = json.loads((pathlib.Path(__file__).resolve().parent / "tool-visibility.json").read_text())["roles"]["owner"]
 CLOCK_TICKS = os.sysconf("SC_CLK_TCK")
 SAMPLE_TEXTS = [
     ("es", "agéndame una reunión con Andrea el jueves a las tres de la tarde"),
@@ -103,12 +104,7 @@ def percentile(values, share):
 
 
 def exchange(process, seq, lang, text):
-    request = {"seq": seq, "text": text, "lang": lang, "role": "owner",
-               "tools": ["calendar.create_event", "calendar.list_events", "calendar.cancel_event", "task.create",
-                         "task.list", "task.complete", "project.create", "project.list", "modules.list",
-                         "modules.explain", "modules.enable", "modules.disable", "modules.open_purge_screen",
-                         "reminder.list", "memory.remember", "memory.recall", "memory.remind", "memory.forget",
-                         "app.open", "app.set_guard_mode", "app.show_camera"]}
+    request = {"seq": seq, "text": text, "lang": lang, "role": "owner", "tools": OWNER_TOOLS}
     started = time.perf_counter()
     process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
     process.stdin.flush()
