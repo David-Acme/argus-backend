@@ -102,6 +102,7 @@ class Decider:
     def __init__(self, command):
         self.process = subprocess.Popen(shlex.split(command), stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, text=True, bufsize=1)
+        self.violations = 0
 
     def request(self, seq, case):
         return json.dumps({"seq": seq, "text": case["text"], "lang": case["lang"],
@@ -124,7 +125,14 @@ class Decider:
             reply = json.loads(line)
             answers[reply["seq"]] = (reply.get("tool"), float(reply.get("confidence", 0.0)))
         writer.join()
-        return [answers[seq] for seq in range(len(cases))]
+        decisions = []
+        for seq, case in enumerate(cases):
+            tool, confidence = answers[seq]
+            if tool is not None and tool not in offered(case["role"]):
+                self.violations += 1
+                tool, confidence = None, 0.0
+            decisions.append((tool, confidence))
+        return decisions
 
     def latencies(self, cases):
         out = []
@@ -399,6 +407,9 @@ def main():
                 failures.append("no operating point meets the ceiling on the selection set")
     finally:
         decider.close()
+    report["offeredViolations"] = decider.violations
+    if decider.violations:
+        print(f"\n{decider.violations} answers named a tool that was not offered and were counted as none")
     report["failures"] = failures
     if args.report:
         pathlib.Path(args.report).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")

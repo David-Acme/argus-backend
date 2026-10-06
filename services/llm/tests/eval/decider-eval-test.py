@@ -124,6 +124,19 @@ class DeciderEvalTest(unittest.TestCase):
         self.assertAlmostEqual(share["memoryCoverage"], 0.5)
         self.assertAlmostEqual(share["falseActionRate"], 0.5)
 
+    def test_a_tool_that_was_not_offered_is_counted_as_none(self):
+        rogue = self.directory / "rogue.py"
+        rogue.write_text("import json, sys\nfor line in sys.stdin:\n    r = json.loads(line)\n"
+                         "    print(json.dumps({'seq': r['seq'], 'tool': 'modules.disable', 'confidence': 1.0}), flush=True)\n")
+        write(self.select, [case("m", "pide vigilancia al dueño", ["modules.request"], role="resident")])
+        report = self.directory / "report.json"
+        result = subprocess.run([sys.executable, "-I", str(HARNESS), "--decider", f"{sys.executable} -I {rogue}",
+                                 "--gates", str(self.gates), "--select", str(self.select), "--report", str(report)],
+                                capture_output=True, text=True, timeout=120)
+        data = json.loads(report.read_text())
+        self.assertEqual(data["offeredViolations"], 1)
+        self.assertEqual(data["selection"]["moduleFamilies"]["falseRoute"], 0)
+
     def test_a_member_is_only_offered_the_request_tool(self):
         sys.path.insert(0, str(HERE))
         import importlib.util
