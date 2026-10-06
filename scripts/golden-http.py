@@ -127,10 +127,13 @@ VOLATILE_FIELDS = {
     },
     ("notification", "/notification/delivery-summary"): {
         "keys": ("latencyMsMax", "latencyMsP50", "latencyMsP95",
-                 "probeMs", "probeOk"),
+                 "probeMs", "probeOk", "sent", "unacked"),
         "reason": "the push channel's self-test runs on its own schedule, so "
                   "these fields report the last probe's outcome rather than a "
-                  "contract; the counters beside them stay pinned",
+                  "contract; sent and unacked count deliveries that drain "
+                  "asynchronously over NATS, so a probe can land before or "
+                  "after the seeded rows' last delivery (seen 7 or 9 on fresh "
+                  "sandboxes); the other counters stay pinned",
     },
     ("camera", "/camera/overview"): {
         "keys": ("cameras[].health",),
