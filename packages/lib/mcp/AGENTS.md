@@ -44,9 +44,7 @@ server speaks; `-32022` names it for any other version a request asks for.
   `ToolInvocation`, `ToolOutcome`, `AppAction`, `ToolFailure` with
   `toolFailure` (a tool error with a stable `code`) and their JSON. The Argus
   extensions live in `_meta` under the `argus/` prefix: a tool's
-  `argus/module` and `argus/capability`, a tool's `argus/policy` (`{es, en}`: the one or two
-  sentences that tell the model when to call it, written by the owner of the
-  tool and assembled by the assistant into its prompt), a call's `argus/context` (who is
+  `argus/module` and `argus/capability`, a call's `argus/context` (who is
   asking: user id, role, language, session, the utterance, whether the
   decision was the model's) and a result's `argus/appAction` (an action the
   conversation's app must run).

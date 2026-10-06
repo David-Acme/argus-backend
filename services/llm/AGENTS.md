@@ -7,7 +7,7 @@ that apply to llm-service code; when in doubt, the root file wins.
 ## MUST-FOLLOW Rules
 
 1. **Brain process** — this service runs LFM2.5 chat, intent routing, the
-   tool-calling loop and the memory stack. It must not absorb
+   assistant turn (decide, fill, run, speak) and the memory stack. It must not absorb
    camera, face, VLM, STT, TTS or voice-session responsibilities.
 2. **Internal wire only** — the service serves the legacy voice session over
    loopback plain HTTP (`/llm/v1/*`) and the internal gRPC leg (`argus.llm.v1`)
@@ -16,17 +16,20 @@ that apply to llm-service code; when in doubt, the root file wins.
    bind, and binds a declared identity to the `voice` caller's credential
    when one is configured; the gRPC face lists its callers in
    `[rpc.callers]`, answers an unlisted credential with 401 and lets only
-   `voice` declare a user, a role or the tool loop.
+   `voice` declare a user, a role or the tools.
 3. **Frozen envelope** — every JSON response uses the
    `{status, info, errors}` envelope (`ApiResponse`); the chat body is JSON
    `{messages, max_tokens?, temperature?, reset_context?}`.
-4. **Tool loop stays here** — `LfmAdapter`, `ToolRegistry`/`ToolExecutor` and
-   the fast intent gate are part of the brain. Tools are MCP tools: the core
+4. **The turn stays here** — `LfmAdapter`, the turn flow (deciders, slots,
+   pendings), `ToolRegistry`/`ToolExecutor` and the fast intent gate are part of
+   the brain. The LLM never chooses a tool: it is not told one exists, and it only
+   speaks. Tools are MCP tools: the core
    ones (memory, reminders, `app.open`) are served in process, the modules'
    by their own services and aggregated by `ToolDirectory`, filtered per turn
    by the caller's capabilities; argus-llm never decides what a role may do and
-   never enables a module by itself (CONTEXT.md, "Tools over MCP"). Unconfident
-   classification falls through to the model rather than guessing.
+   never enables a module by itself (CONTEXT.md, "Tools over MCP" and "The turn: decide, fill,
+   run, speak"). A decision below its threshold asks or abstains rather than
+   guessing.
 5. **Parameter structs for 3+ params** — any function with 3+ parameters
    must take a struct (designated initializers, every member listed).
 6. **Dependency injection** — services/controllers hold dependencies as
@@ -102,7 +105,7 @@ argus-llm/
 ```
 There are six features and eight modules: `argus::llm` compiles the engine
 facade, the DTOs, the tool runtime and the HTTP surface together,
-`argus::memory` the memory stack the tool loop calls in process,
+`argus::memory` the memory stack the assistant turn calls in process,
 `argus::intent` the fastText router tier `argus::llm`'s gate drives,
 `argus::encounter-closed` the consumer `app/main.cc` starts on the beginning
 advice and stops before `memory.shutdown()`, `argus::pending-intent` the
@@ -121,7 +124,7 @@ service read and nothing else (root rule 23).
 
 The gRPC leg is composed in `main.cc` and nowhere else, only when `rpc.address`
 and at least one non-empty `[rpc.callers]` pair are set — the RPC server answers
-`argus.llm.v1` through the same controller the HTTP route drives, tool loop
+`argus.llm.v1` through the same controller the HTTP route drives, assistant turn
 included, refuses an unlisted caller with 401 and sanitizes anything that is not
 a `ResponseException` into 500. Both keys are empty in `config.toml.example`, no
 deploy config sets them, and nothing in the tree sets `llm.grpc_target`, so a
@@ -158,7 +161,7 @@ stream ends with a `done` token carrying the token count and the three prefill
 counters. That last token is the client's exact end-of-stream marker, the same
 role the HTTP sentinel line plays; a stream that ends without one is 502 at the
 client. `temperature` and `tools` are proto3 `optional`, so a caller that
-declares neither gets the engine's default and the tool loop exactly as an HTTP
+declares neither gets the engine's default and the assistant turn exactly as an HTTP
 caller that omits both keys does. The
 two legs do not share an error type: the gRPC leg throws `ResponseException`, so
 a caller sees the shared vocabulary, while the HTTP leg keeps its older

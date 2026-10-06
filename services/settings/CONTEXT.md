@@ -797,8 +797,10 @@ the `ModuleEngine` to it and the tests drive a fake desk.
 | `modules.disable {module, confirmation?}` | `modules.manage` (Owner), destructive | first call: the impact preview in the user's words (what stops, who is affected, invitations that would be revoked, what keeps running, what stays) and a one-use token; second call with the token: turns it off. Nothing is deleted |
 | `modules.open_purge_screen {module}` | `modules.manage` (Owner) | emits `app.open {screen: "modules", module}`; deleting a module's data is never done by voice |
 
-Every tool carries a policy line in both languages in its spec (`argus/policy`),
-the sentence argus-llm puts in its prompt to tell the model when to call it.
+argus-llm never tells its model about these tools (a decider names the tool, the
+slot layer fills its arguments and the model only speaks about the result), so a
+tool's text is spoken material and a preview's one-use code travels as
+`structured.confirmation`, never inside the text.
 
 The preview is the engine's own impact (`ModuleEngine::impactAsync`, the same
 answer as `GET /modules/{id}/impact`) said in the user's language: what stops

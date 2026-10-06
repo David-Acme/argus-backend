@@ -338,7 +338,11 @@ argus-llm configuration. Copy to config.toml (gitignored) to run.
 
 | Key | Notes |
 |---|---|
-| `intent.model_file` | An absent file makes the router abstain; every turn stays on tool calling. |
+| `intent.model_file` | An absent file makes the router abstain; the turn goes on without a tool and the LLM only speaks. |
+| `decide.act`, `decide.ask`, `decide.margin` | The thresholds the turn judges a decider's confidence by: act at or above `act`, ask a question between `ask` and `act`, ask which of two tools when the runner-up is within `margin`. Absent or invalid keeps `act = ask = 0.90` and no margin. |
+| `decide.router.act`, `decide.router.ask`, `decide.router.margin` | The same thresholds for one decider (`rules`, `router`): its own section overrides the default. |
+| `decide.<id>.now_min` | The write guard of a learned decider: a write or destroy tool acts only when the decider's own `now` (the probability that the user asks to do it now) is at least this; `0` leaves the guard to the witnesses. |
+| `decide.rules.witness_only`, `decide.router.witness_only` | `true` demotes that decider to a second signal: it can never reach Act alone on a write or destroy tool. Default `false`. |
 | `memory.observe_camera_events` | Camera events become system episodes for the owner. |
 | `memory.catalog_person_table` | Catalog replicas fed by the change subjects. |
 | `memory.create_face_vec` | The face recognition index belongs to the face service. |

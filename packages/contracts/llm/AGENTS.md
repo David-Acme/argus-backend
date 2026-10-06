@@ -61,12 +61,12 @@ controller.
   generation is a legitimate answer on both legs, so a stream that produced no
   text still ends with its `done` token. `Unavailable` is exported with no
   in-tree reader exactly as the `stt`, `tts` and `vlm` catalogs' is.
-- The proto is the contract for the tool loop as well: `tools` false keeps a
+- The proto is the contract for the assistant turn as well: `tools` false keeps a
   request on the direct engine path and `user_id` scopes tool execution, so a
   gRPC caller that omits `user_id` runs tools with `0`, the same scope the HTTP
   leg gives a body that omits `user_id`. `tools` and `temperature` are declared
   proto3 `optional`, so a caller that declares neither takes the engine's
-  defaults — the tool loop on, the engine's own temperature — exactly as an
+  defaults — the tools on, the engine's own temperature — exactly as an
   HTTP body that omits both keys does; an explicit `temperature` of `-1` is the
   engine-default sentinel the client sends by default, while the HTTP DTO
   refuses that value and expects the key to be absent instead. `grammar` is the

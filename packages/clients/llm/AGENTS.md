@@ -75,7 +75,7 @@ the `Chat` service `packages/contracts/llm/llm.proto` declares.
   `InvalidResponse`. The client declares `temperature` and `tools` on every
   call, so the wire never sees either absent from this side; an absent one
   belongs to a raw caller, and the server resolves it to the engine's default
-  (`temperature` `-1`, the tool loop on) exactly as an omitted HTTP key.
+  (`temperature` `-1`, the tools on) exactly as an omitted HTTP key.
 - Statuses map the way the rest of the tree's clients map them, with the one
   llm-specific split: `CANCELLED` is 504 `DeadlineExceeded` once the call's own
   deadline has passed and 499 `Cancelled` otherwise, and every other status
@@ -107,7 +107,7 @@ the `Chat` service `packages/contracts/llm/llm.proto` declares.
   that does not parse is `argus-llm malformed stream sentinel`. The HTTP
   client sends `llm.grpc_credential` as `x-argus-credential`
   (`kCallerCredentialHeader`) on both legs, and argus-llm binds a declared
-  user, role and tool loop to the `voice` caller's credential.
+  user, role and tools to the `voice` caller's credential.
 - The HTTP leg keeps its own, older failure type: every failure is a
   `std::runtime_error` — `argus-llm <code>: <message>` off the frozen
   `{status, info, errors}` envelope, or `argus-llm <what>` for a transport

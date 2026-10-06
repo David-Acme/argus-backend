@@ -52,9 +52,9 @@ scaffolds.
   boundaries. A full hit (the same prompt again) restores the checkpoint
   before the generation prompt instead of failing.
 - **Priming (`prefill_only`).** A chat request with `prefill_only` builds the
-  exact prompt the next turn starts from: persona, policy, declarations and
-  history, through the same hop path. It prefills that prompt and answers an
-  empty completion, without routing and without running a tool. The voice
+  exact prompt the next turn starts from: the caller's history, through the same
+  speak path. It prefills that prompt and answers an empty completion, without
+  deciding and without running a tool. The voice
   session sends one after the greeting and after it rebuilds history[0], so
   the first turn decodes only the user's message. A prefill-only call takes
   the engine with `try_lock`: when a real generation holds the engine, the
@@ -166,8 +166,8 @@ scaffolds.
   turn's language (`lang`, `es`/`en`). Both are additive: an absent or
   unknown wire role is `UserRole::Unknown`, which holds nothing (it used to be
   Guest), and an absent `lang` keeps the tool runtime's Spanish default; a
-  `lang` outside `es`/`en` is refused. The tool loop used to run every turn
-  as a Resident in Spanish. Now the controller offers the model only the
+  `lang` outside `es`/`en` is refused. The turn used to run every turn
+  as a Resident in Spanish. Now the controller offers the deciders only the
   tools whose capability the role holds (`ToolExecutor::offered`, over
   `role_access::hasCapability`; "Tools over MCP"), and the executor still
   checks every call, the routed ones included. A role with no permitted tool
@@ -273,10 +273,9 @@ were. Each key carries its unit for the app (`tokens`, `entries`, `ms`,
 `layers`, `threads`; unitless otherwise).
 
 The engine keys still say "restart": they shape the llama context, which is
-built once. Inside the tool loop, tool hops and the answer to a routed call
-run at `toolTemperature` 0; the plain prose answer of a turn, which is what a
-voice call hears on most turns (the voice session sends no temperature), uses
-`llm.temperature`, and every answer takes `llm.max_tokens` as its budget.
+built once. Every spoken answer, which is what a voice call hears on every turn (the voice
+session sends no temperature), uses `llm.temperature` and takes `llm.max_tokens`
+as its budget.
 
 The `settings` entry of `[rpc.callers]` is the only credential the settings
 service accepts, and `LlmConfig::resolveRpc()` removes it from the chat
@@ -331,7 +330,7 @@ episodic throttle beside it.
 `src/feature/memory/` (`argus::memory`) and `src/feature/intent/`
 (`argus::intent`), with the schema at `database/schema.sql` and the
 provisioning in this service's `scripts/provision.sh`. Nothing links them
-from outside — the memory stack's only caller is the tool loop beside it and
+from outside — the memory stack's only caller is the assistant turn beside it and
 the intent router's only caller is this feature's gate — so the two
 `add_library` targets (`memory-core`, `memory-catalog`) and the standalone
 project behind them bought a build graph nobody read. The history that made
@@ -435,12 +434,12 @@ F4-6 of the `migracion-microservicios` plan extracted the memory stack out of
 the legacy monolith (Rulings BW-CA). `argus-memory` was a capacity-only
 sibling service (like argus-vlm): the voice session never talked to it; the
 CONSUMERS are the background workers (memory formation, compaction, profiling,
-procedures) and, since f8-b3, the LLM's own tool loop.
+procedures) and, since f8-b3, the LLM's own turn.
 
 ### f8-b3: the service becomes a package (2026-09-08)
 
 The user's ruling: the LLM's memory should not be a wire hop away — the
-tool-calling loop needs the memory tools in process, and the memory worker
+assistant turn needs the memory tools in process, and the memory worker
 gets LlmService as a direct call. What died with the process: `src/main.cc`,
 the `/memory/v1/*` HTTP surface and its controller, port 7033 with its compose
 service and config template, and the remote wire adapter (`memory-remote` /
@@ -505,7 +504,7 @@ the fastText model each propose; `IntentRouter::decide` arbitrates:
 3. otherwise a rule proposal (a statement, a recall marker, a cancellation)
    stands only if the model's own top class is the same and scores at least
    0.50 (`kAgreeFloor`);
-4. otherwise the router abstains and the LLM's tool calling keeps the turn.
+4. otherwise the router abstains and the turn goes on without a tool; the LLM only speaks.
 
 A fact becomes a reminder only when the utterance asks to be reminded
 (`recuérdame`, `avísame`, `remind me`, an alarm or timer) and names a single
@@ -588,19 +587,22 @@ session to lose on a restart.
 - **Per turn.** The controller builds a `ToolAudience{role, modules}` (the
   caller's role from the wire, the module snapshot of the gate) and
   `ToolExecutor::offered` returns the tools whose capability the role holds
-  ignoring modules: a tool of a module that is off is still offered, because
-  the model must be able to answer naturally. An absent or unknown role holds
-  nothing, so such a turn gets the direct engine path.
+  ignoring modules: a tool of a module that is off is still offered, because a
+  decider must be able to name it so the user can be offered the module. The
+  offered tools are what the deciders may name; none of them is declared to the
+  model. An absent or unknown role holds nothing, so such a turn gets the
+  direct engine path.
 - **Execution order** (`tool-executor.cc`): unknown tool, permission denied,
   date-time normalization, schema validation, module inactive, grounding,
   handler. Permission precedes the schema so an unpermitted caller learns
   nothing of a tool's shape; the schema precedes the module check so a vague
   call is corrected before an offer is made.
-- **A tool of a module that is off** answers `module_inactive` with an
-  instruction the model turns into the offer, built from the module's own
-  intro (what it is and its examples, `module-offer.cc`): to the Owner, say it
-  is off naturally and offer to turn it on (call `modules.enable` only on a
-  yes); to anyone else, offer to ask the household owner (`modules.request`).
+- **A tool of a module that is off** answers `module_inactive`. The result
+  carries the module's own facts (what it is and its examples, `module-offer.cc`:
+  `data.facts`), the grounding records an offer for the user, and the speaker is
+  told that the module is off and what could be offered; the user's yes on the
+  next turn becomes `modules.enable` for the Owner and `modules.request` for
+  anyone else, run by the turn itself ("The turn: decide, fill, run, speak").
   The ledger keeps the original request as a pending intent (below), except for
   `app.*` tools, which only ever act on the live app, and destructive ones.
 - **Turning a module on or asking for it is never a model's whim.**
@@ -649,26 +651,14 @@ session to lose on a restart.
   2026-10): an exact or one-word match acts, several matches ask which, none
   lists the places, and no `environment` keeps the old meaning, every
   environment.
-- **What the model is told about the tools is generated.** The first
-  end-to-end measurement of the assistant (789 judged cases, QUALITY,
-  2026-10-06) found that the model made no call at all to `calendar.*`,
-  `task.*`, `project.*`, `modules.*` or `reminder.list`: the system prompt named
-  only `memory.*` and `app.*`, so for everything else it answered in prose and
-  claimed work it had not done ("Creo una reunión con Andrea... Confirmado.").
-  Each tool now carries its own policy line in both languages in its spec
-  (`_meta` `argus/policy`, `ToolSpec::policy`), written by the service that owns
-  the tool, and `tool_policy::systemPrompt` (`tool-policy.cc`) builds the tool
-  loop's system prompt from the tools offered this turn: the memory policy
-  first (unchanged), then each offered tool's line once in the user's language,
-  then two generic rules (a tool that says its module is off: tell the user and
-  offer to turn it on; never say something was scheduled, created, saved,
-  enabled or cancelled unless the tool confirmed it), then the client-action
-  policy. A tool with no line adds nothing, so an offer without policies yields
-  the old prompt byte for byte, and the prompt follows the role and the modules:
-  a tool the role does not hold, or an Owner-only module tool for a Resident,
-  contributes no line. The memory and app sentences stay hand-written here
-  because their wording is what the recall and app-action measurements were
-  taken with.
+- **The model is told nothing about the tools.** The first end-to-end measurement
+  of the assistant (789 judged cases, 2026-10-06) found that the model made no
+  call at all to `calendar.*`, `task.*`, `project.*`, `modules.*` or
+  `reminder.list` and claimed work it had not done, and a prompt sentence per
+  tool was tried first (`argus/policy`, `ToolSpec::policy`, `tool_policy`). The
+  owner's decision replaced it: the model never sees a tool, a declaration, a
+  policy sentence or a call, and those lines, the `argus/policy` `_meta` key
+  and the loop that parsed calls are gone.
 - **A reply that claims what no tool did never reaches the user**
   (`reply-claims.cc`, phrase tables in `reply-claim-lexicon.cc`, one table per
   language: Spanish with its Peruvian colloquialisms, English). A claim is a
@@ -680,39 +670,132 @@ session to lose on a restart.
   lo agende?", "voy a agendar", "no lo agendé", "cuando lo agende te aviso",
   "creo que mañana llueve") are not claims. A claim is legitimate when a tool
   that writes (not read-only, or an app action) succeeded in the turn; a failed
-  tool or a read-only success does not make it true. Where it applies: in the
-  tool loop (`LfmAdapter::chatWithTools` and `chatWithToolsStream`) a reply that
-  claims without a tool is, when the user asked for something, held and the
-  model is asked once more with a system note (a second claim, or a claim nobody
-  asked for, becomes the honest reply "No pude hacerlo. ¿Lo intento de nuevo?" /
-  "I could not do it. Shall I try again?"); in the streaming path every reply
-  passes `ClaimGate`, which lets a sentence through only when it has ended and
-  judges it first, so a clean reply still arrives sentence by sentence and a
-  claim is replaced by the honest reply mid-stream (what was already spoken
-  stays); and for an assistant turn with no tools offered at all
-  (`toolsEnabled` but the role holds none) the controller applies the same check
-  (`withoutFalseClaims`, `ClaimGate`). Requests that did not enable tools
-  (summaries, extraction) are never touched. The app-action claim check that
+  tool or a read-only success does not make it true. Where it applies: in the speak
+  stage (`LfmAdapter::chatTurn`) every streamed reply passes `ClaimGate`, which
+  lets a sentence through only when it has ended and judges it first, so a clean
+  reply still arrives sentence by sentence and a claim is replaced by the honest
+  reply mid-stream (what was already spoken stays), and a synchronous reply is
+  judged whole; what counts as a write is what the turn really performed (a
+  destructive tool's preview is not a write); for an assistant turn with no tools
+  offered at all (`toolsEnabled` but the role holds none) the controller applies
+  the same check (`withoutFalseClaims`, `ClaimGate`). Requests that did not
+  enable tools (summaries, extraction) are never touched. The app-action claim check that
   existed before (`claimsAppAction`) still runs for turns that ask for an app
   action.
-- **The fast tier is unchanged.** fastText still decides explicit commands
-  and abstains otherwise (`services/llm/src/feature/intent`); a routed call
-  goes through the same executor, so permissions, the module check and grounding
-  apply to it as to the model's.
+- **The router is one decider.** fastText still decides explicit commands and
+  abstains otherwise (`services/llm/src/feature/intent`); `RouterDecider` hands
+  its decision to the turn, which judges it with its own thresholds, and a routed
+  call goes through the same executor, so permissions, the module check and
+  grounding apply to it as to any other.
 
-`tests/unit/llm-tool-runtime-test.cc`, `llm-tool-loop-test.cc` (including the
-claim guard on the sync and streaming paths: a claim asked again once and then
-answered honestly, a failed tool, a read-only tool, a claim after a write that
-is spoken whole, English, a streamed claim cut at its sentence, a clean stream
-arriving sentence by sentence), `llm-reply-claims-test.cc` (the phrase tables
-against claims and non-claims in es, Peruvian es and en, the request detector,
-`ClaimGate`, `withoutFalseClaims`), `llm-tool-policy-test.cc`,
-`llm-tool-parse-test.cc`, `llm-tool-providers-test.cc` (provider aggregation,
-per-turn filtering, unreachable providers, the core server acting for the
-declared caller), `llm-spoken-intent-test.cc` and `llm-time-arguments-test.cc`
-pin the above; `memory-reminder-test.cc` pins the reminder rows, among them
-that the tool cannot create or change a reminder for another user whatever
-the model puts in the arguments.
+`tests/unit/llm-tool-runtime-test.cc`, `llm-turn-flow-test.cc` (the turn and the
+claim guard on its sync and streaming paths), `llm-reply-claims-test.cc` (the
+phrase tables against claims and non-claims in es, Peruvian es and en, the
+request detector, `ClaimGate`, `withoutFalseClaims`), `llm-app-command-test.cc`,
+`llm-tool-providers-test.cc` (provider aggregation, per-turn filtering,
+unreachable providers, the core server acting for the declared caller),
+`llm-spoken-intent-test.cc` and `llm-time-arguments-test.cc` pin the above;
+`memory-reminder-test.cc` pins the reminder rows, among them that the tool
+cannot create or change a reminder for another user whatever the arguments.
+
+## The turn: decide, fill, run, speak (2026-10-06)
+
+The owner's decision of 2026-10-06: the LLM is only the conversational layer. It is never told a
+tool exists, never writes a call and never chooses one. A 1.2B model given the whole tool list
+called none of the agenda, task, project and module tools in 789 judged cases and claimed the work in
+prose; a larger model was not an option on this hardware. Every turn that carries tools
+(`LfmAdapter::chatWithTools` and `chatWithToolsStream`, both `chatTurn`) now runs four stages, the
+first three without a generation (decide, which includes the judgement of the decision, fill, run, speak):
+
+1. **Decide** (`services/turn/decider.hxx`, `deciders.{hxx,cc}`, `turn-flow.cc`). A `Decider` reads
+   the utterance, the tools this turn offers and the module snapshot and answers with at most one
+   `Candidate`: the tool, the arguments it already knows, the slots it wants filled (`fill`), a
+   `confidence`, its own `id()` (`rules`, `router`), the `runnerUp` (another tool and its own
+   confidence), `exact` (the decision came from words that name the tool, not from a score) and
+   `confident` (the decider's own gate said act). `RuleDecider` is `appCommandFor` and the module
+   command rules (`tools/module-command.cc`); `RouterDecider` wraps the fastText `IntentRouter` and
+   names the four memory tools, with the argument being the user's own words and the runner-up class
+   as `runnerUp`; `FirstOf` stacks deciders, so a rule, the router and a fine-tuned model are
+   interchangeable and stackable behind the same interface. A decider that is not here (a learned
+   model) is one more `Decider`; nothing else changes.
+   **The judgement.** `DecisionPolicy{act, ask, margin}` is data, per decider: `[decide]` is the default and
+   `[decide.<id>]` overrides it (`LlmConfig::resolveDecision`, `PolicySet`, main.cc composes them).
+   `judge` answers **Pass** below `ask` (plain conversation; if the user asked for something, the
+   speaker is told nothing matched and that it must not say it did anything), **Choose** when the
+   runner-up is itself above `ask` and closer than `margin`, **Act** at or above `act`, **Ask**
+   between. A decider that does not trust its own decision (`confident = false`) never reaches Act.
+   A tool that writes or destroys acts only when the candidate is `exact` or a second signal agrees.
+   What is a write is data: the read-only tools are the list in `turn/tool-effects.json` (compiled
+   into `tool-effects.hxx` by CMake; `calendar.list_events`, `task.list`, `project.list`,
+   `modules.list`, `modules.explain`, `reminder.list`, `memory.recall`, `app.open`,
+   `app.show_camera`), every other tool is a write, whatever it says about itself, so
+   `app.set_guard_mode` waits. The second signal is, in order: `useSecondSignal`'s function when one
+   is installed (it receives the candidate, the words, the language and the assistant's previous
+   turn); else the decider's own `now` (`Candidate::now`, the probability that the user asks to do it
+   now, from the same forward pass as the choice) against its policy's `nowMin`, when `nowMin > 0`,
+   and a decider that sends no `now` is asked; else `TurnFlow::useWitnesses`, the other deciders,
+   one of which must name the same tool at its own Act level. Without a second signal the turn
+   Asks. Demotion is configuration: `[decide.<id>] witness_only = true` makes that
+   decider's word a second signal only, so it can never reach Act alone on a write or destroy tool
+   (it still acts on reads), which is how the rule paths step aside once a learned decider covers
+   their families. Every decision is counted (`DecisionTally`, by decider, exactness, tool family,
+   language and what became of it: act, ask, choose, pass or guard) and written to the log as
+   `turn-decision decider=... exact=... family=... tool=... lang=... verdict=...` without the
+   utterance; `GET /llm/v1/config` returns the counts as `decisions`.
+2. **Slots** (`slots.{hxx,cc}`, `slot-lexicon.cc`, `model-text.{hxx,cc}`). The fields to fill are
+   the candidate's `fill` plus the schema's required properties not yet present. A date-time goes
+   through the same normalization the executor uses (`call_time` over the user's words, ISO
+   accepted); a module is matched against the snapshot's names; a title or name comes from
+   `RuleText` (what is left of the sentence once verb, noun and time are taken out) and, where the
+   rules find nothing and NuExtract is already loaded, from `ModelText`, accepted only if every
+   word of it was said. NuExtract is never loaded inside a turn: asking is cheaper than loading.
+   A slot nothing fills is never guessed: the system asks it in its own words
+   (`turn-texts.cc`, es and en, per tool and slot) without a generation, keeps a `Pending` of kind
+   `Slot` for five minutes, treats the next utterance as the answer (unless it is itself a command
+   the deciders Act on), asks again once and gives up on the third failure.
+3. **Run** through `ToolExecutor` exactly as before: capability filter, schema, module gate, grounding,
+   then the provider. The executor's refusal, the module-off offer and a destructive tool's preview
+   are results like any other.
+4. **Speak.** The model receives the caller's history untouched and, when something was decided, one
+   final system note with the findings: what was
+   done (the tool's own words: the stored title and time are in it), what was refused, what is waiting
+   for confirmation (never the code), what module is off and what can be offered, that the user said
+   no, or that nothing matched. `toolCallsAllowed` is false, there is no tool list in the prompt and no
+   call syntax anywhere. The reply guard of the claims section still stands after it: a claim with no
+   write behind it is replaced. A turn that ended in a question is answered by the system with the
+   question itself, no generation.
+
+**Pendings** are what makes a turn answerable by "yes": the executor keeps the latest destructive
+preview (with its code) and the latest module offer per user (`ToolGrounding`), `PendingTurns` keeps
+the latest slot question, intent confirmation or two-way choice per user. The newest of them is the one
+the next utterance answers. A yes runs it (a preview is re-issued with the stored code, an offer
+becomes `modules.enable` for the Owner and `modules.request` for anyone else, a confirmation or a
+choice runs the held candidate with the words the user first said, because a bare "sí" cannot ground
+`app.set_guard_mode`, `modules.enable` or a memory write); "the other one" (`slot_lexicon::Group::Other`)
+runs the runner-up of a choice; a no drops everything and the speaker is told so; anything else drops
+the pending and is decided as a new utterance. A caller with no user id keeps no pending. The preview's
+code reaches the grounding as
+structured data (`data.confirmation`), never in the text the speaker reads.
+
+Questions the system asks itself are `turn_texts::confirmQuestion` (the held arguments are spoken
+back: "¿Quieres que agende «Reunión con Andrea» para mañana a las 5 de la tarde?"),
+`chooseQuestion` ("¿Quieres que lo agende o que te lo recuerde?") and `slotQuestion`; the findings
+and the questions are the only texts the turn adds besides what a tool says.
+
+Configuration (`config.toml.example`, deploy template): `[decide]`, `[decide.router]` and `[decide.rules]` with `act`,
+`ask`, `margin` and `witness_only`. Absent or invalid keys leave the default policy (`act = ask = 0.90`, no margin),
+which is the router's published operating point with no question band.
+
+`tests/unit/llm-turn-flow-test.cc` pins the stages: the judge and the per-decider policies, deciders
+that stack and abstain, the rule decider offering only offered tools, the router decider carrying no
+code, the title and time stored and spoken back, a missing time, title and module asked and answered,
+a new command replacing a question, the ask band and the choice (yes, the other one, no), the write
+guard with and without a second signal, previews that never leak the code, confirmed with the stored
+code and refused after a no, a module offered and then enabled or requested by role, an anonymous
+caller, the speak prompt with no tool list, a question answered without a generation (sync and
+streamed), the claim guard after a failed tool, a preview and a read, and the prefill prefix.
+`llm-module-command-test.cc` pins the rule tier (tuning numbers, not a held-out result); the sealed
+set is judged by `tests/eval/decider-eval.py`.
 
 ## Pending intents (2026-10, context plan section 5)
 
@@ -760,7 +843,7 @@ hour). Settled rows are purged after 30 days.
 of the notice, the failure fallback, the sweeps, a restart over the same
 database, the worker thread and the whole path through the executor.
 
-## The tool loop in a call (2026-10-03)
+## The assistant in a call (2026-10-03, turn since 2026-10-06)
 
 The voice session and argus-llm agreed this contract with the voice agent:
 
@@ -771,26 +854,15 @@ The voice session and argus-llm agreed this contract with the voice agent:
   words. The router and every tool read the last user message through
   `LfmAdapter::spokenText`, which also drops a trailing parenthesized line,
   the shape the tone note had when it was appended to the user's content.
-- **Same system prompt on every hop.** The routed prose answer, the prose
-  answer after an exhausted or repeated loop, and every tool hop carry the
-  same persona, policy and declarations, so their prompts share the cached
-  prefix. Prose answers are generated with `toolCallsAllowed = false`: the
-  sampler gives `<|tool_call_start|>` a −∞ logit bias, so the declarations
-  being present cannot make a prose answer open a call that would be spoken.
-- **A routed call is shown as a call.** The fast tier's call is rendered into
-  the history as the model would have written it
-  (`<|tool_call_start|>[memory.remember(text='…')]<|tool_call_end|>`, the
-  template's own pythonic form) before the tool's result, so the model
-  confirms a call it can see. A routed call the tool refuses still falls
-  back to the tool loop with every tool offered. The eval showed the router's
-  false positives ("enciende la luz de la cocina", "cuándo viene mi
-  hermana") are exactly the calls memory formation refuses, and a reply
-  built from "No pude guardar eso" answered them worse than the model did.
-  The baseline's other failure, routed saves that formation dropped while
-  the model claimed "lo he guardado", is fixed at its source: explicit
-  requests now store.
-- **Explicit app commands are routed before the intent router**
-  (`feature/llm/services/tools/app-command.cc`) when the turn offers the app
+- **One speak prompt.** Every spoken answer is the caller's history as it
+  came, then (only when something was decided) one final system note with the
+  findings, so a turn with nothing to say is exactly a plain chat and shares the
+  cached prefix of the call, and a prefill-only request (`prefill_only`, sent
+  while the greeting plays) primes exactly it. Answers are
+  generated with `toolCallsAllowed = false`: the sampler gives
+  `<|tool_call_start|>` a -inf logit bias.
+- **Explicit app commands are decided first**
+  (`feature/llm/services/tools/app-command.cc`, the first rule of `RuleDecider`) when the turn offers the app
   tools, which only a call with `clientActions` does. Guard mode needs a
   guard word (vigilancia, modo, guardia, alarma, seguridad, guard, mode,
   security, alarm), a verb (pon, activa, cambia, pasa, set, switch, turn,
@@ -807,22 +879,14 @@ The voice session and argus-llm agreed this contract with the voice agent:
   of a barged-in command ("con la vigilancia en modo noche"), and the model,
   given the bare words, claimed the change without calling the tool. A live
   call showed the model answering "¡Listo!" to "pon la vigilancia en modo
-  noche" without calling the tool. The call policy also forbids confirming an action that no tool
-  ran.
-- **A claimed app action is checked before it is spoken.** When a call
-  offers the app tools and the user's words ask for something in the app
-  (a guard word, a camera, "abre" plus a screen, never a question), the
-  first reply is held instead of streamed. If it claims an action ("cambié",
-  "activado", "abrí", "mostrando", "listo", "changed", …) while no app tool
-  ran this turn, it is dropped. A system note ("you have not used any tool
-  yet…") goes into the history and the model answers again. A second claim
-  becomes an honest question ("Todavía no lo he hecho. ¿Quieres que lo
-  haga?") rather than a false confirmation. The live call that found this
-  had lost its first word to speech recognition ("con la vigilancia en modo
-  noche"), and the model answered "Cambié la vigilancia a modo noche" with no
-  tool. The prompt rule alone ("nunca digas que hiciste algo… sin haber
-  usado su herramienta") did not hold on a 1.2B model. Holding costs the
-  reply's generation time as first-audio delay, only on those turns.
+  noche" without calling the tool. The reply guard forbids confirming an action that no tool ran.
+- **A claimed app action is checked before it is spoken.** When the user's
+  words ask for something in the app (a guard word, a camera, "abre" plus a
+  screen, never a question) and no app tool ran this turn, a reply that claims
+  the action ("cambié", "activado", "abrí", "mostrando", "listo", "changed", ...)
+  is replaced by the honest reply. The live call that found this had lost its
+  first word to speech recognition ("con la vigilancia en modo noche") and the
+  model answered "Cambié la vigilancia a modo noche" with no tool.
 - **App tool results speak the call's language.** The guard modes, screens
   and camera reach the model as labels in the call's language: "La app puso
   la vigilancia en modo fuera de casa.", "The app set the guard mode to
@@ -830,21 +894,6 @@ The voice session and argus-llm agreed this contract with the voice agent:
   garaje." The enum values (`home`, `night`, `away`, `armed`) never appear in
   the text the model reads. A live call had the model say "modo outside of
   home" in a Spanish answer.
-- **A prose answer cannot end before it starts.** On the first sampled token
-  of a prose answer every end-of-generation token and `<|tool_call_start|>`
-  carry a −∞ bias. With greedy decoding (`toolTemperature` 0) the model
-  sometimes put `<|im_end|>` first after a routed call, and the call answered
-  "" or a stray "¡Hola!".
-- **Each tool runs at most once per turn.** A tool that already succeeded in
-  this turn is not run again in a later hop: the model gets the earlier
-  result. A hop made only of repeats ends the loop with a prose answer.
-  Calls to a tool the turn did not offer are dropped. A reply that tried to
-  call but held nothing runnable is answered in prose instead of being spoken
-  with its markup.
-- **The parser reads the template's form exactly.** `PythonicScanner` is
-  quote-aware: brackets, parentheses and commas inside a quoted argument do
-  not end the call, and escapes decode. It accepts JSON arguments, `True`,
-  `False` and `None`, and a bare call without the list brackets.
 - **Memory writes keep to the user's words.** `memory.remember` and
   `memory.remind` check the model-written `text` and `value` against the
   user's utterance. When fewer than 60 % of the argument's words were said,
@@ -969,6 +1018,16 @@ with 4 threads. A sweep at load 4–6 gave 4 threads 28.7–29.3, 6 threads
 (decode is memory-bandwidth bound), so `lightThreads()` stays and keeps the
 other cores for STT and TTS during a call.
 
+**The turn without the model loop (2026-10-06).** Same host, prod build, the real LFM2.5-1.2B,
+`llm-tier-eval` over 220 turns of the judge corpus (productivity 50, memory 50, none 40, modules 30,
+app 20, inactive 30; stub tools with instant handlers; load average about 5), one sequential run each,
+through `heavy.sh 6` in chunks. The model loop (the build of 11:33) took mean 1694 ms, p50 1424,
+p90 2567, p95 3217 and max 14054, and ran 62 tool calls; the turn (decide, fill, run, speak) took mean
+1316 ms, p50 1355, p90 1969, p95 2184 and max 2708, and ran 105. A first run of the turn that still
+appended a persona sentence to the first system message measured p50 1566 ms, because those tokens were
+prefilled again every turn: the speak stage adds nothing to the caller's history now. A tool turn is one
+generation and a question is none, so the tail disappears; the median moves little.
+
 The measurements below used `argus-tool-bench` and `tests/fixtures/tools/` (`check.tsv`,
 `negatives.tsv`); both are gone. `tests/eval` replaced them in 2026-10 (judge corpus
 `tests/fixtures/eval/cases.jsonl`, gates in `tests/eval/gates.json`,
@@ -1057,7 +1116,7 @@ run the memory tools as any user. The server now resolves which
 `[rpc.callers]` entry presented the credential and passes the request
 through `boundToCaller` (`feature/llm/controllers/llm-controller.hxx`):
 only the `voice` caller (`kIdentityCaller`) declares a user, a role, the
-tool loop, client actions and a session id; every other caller is a Guest
+tools, client actions and a session id; every other caller is a Guest
 with `userId = 0`, `tools = false`, no client actions and no session.
 argus-guard already sends `tools = false`, so nothing it relies on changes.
 
@@ -1217,8 +1276,8 @@ tunes a decider and never reported utterance by utterance; its ceiling for modul
 (0.5%) is judged pooled, per family and on the authored near-miss stratum. A process that cannot
 start is a visible skip (77). The scoring is tested without a model (`decider-eval-test`,
 `slot-eval-test`, `conversation-eval-test`, each mutation-checked). `fast-tier-eval` still drives the
-production memory router over the judge corpus; `llm-tier-eval` still drives the removed tool loop
-with stub tools and is retired with it. Why the numbers are what they are, and how they were
+production memory router over the judge corpus; `llm-tier-eval` drives the whole turn (decide, fill, run, speak)
+with stub tools and the real model. Why the numbers are what they are, and how they were
 measured: `docs/operations/voice-quality-eval.md`.
 
 The tool specs of the other services' MCP providers are mirrored by hand in `tests/eval/eval-tools.cc`

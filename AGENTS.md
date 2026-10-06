@@ -551,9 +551,9 @@ shared file-static behind a mutex.
   confident model outranks a rule, a statement or recall marker stands only when
   the model agrees); fastText classifies into six classes (`memory_save`,
   `memory_recall`, `reminder_set`, `memory_forget`, `camera`, `none`) where
-  `none` means the LLM decides, and the LLM's own tool calling keeps every turn
-  the router is not confident about. The classifier picks the tool; the model
-  only writes its arguments and the prose. Operating point 0.90 / 0.10,
+  `none` means no tool, and the router abstains on every turn it is not confident
+  about: the LLM never chooses a tool, it only speaks. The classifier picks the
+  tool, the turn fills its arguments, and the model speaks about the result. Operating point 0.90 / 0.10,
   precision-gated — a gated false `none` costs one LLM round trip, a false tool
   call writes a fact nobody stated. The model is a published artifact carried
   in-repo (`models/intent/intent.bin`, 12.9 MB) with a configure-time SHA256 pin
@@ -561,7 +561,7 @@ shared file-static behind a mutex.
   repo, in the sibling `intent-training/` project, and only the artifact, its
   card and the frozen eval fixtures cross over. **Degradation is a contract**: no
   model on disk, or a sub-threshold score, and only an explicit trigger can still
-  route, so tool calling runs as it did before the router. The judge corpus is
+  route, so the turn runs on the rule tier alone. The judge corpus is
   `services/llm/tests/fixtures/eval/cases.jsonl`, measured by
   `services/llm/tests/eval` against versioned gates
   (`docs/operations/voice-quality-eval.md`).
@@ -1150,6 +1150,7 @@ for two different reasons, and says which when it does.
 | File | Purpose |
 |------|---------|
 | `services/llm/src/feature/llm/services/` | LLM inference (llama.cpp) + the tool runtime under its own `tools/`: `ToolRegistry`/`ToolExecutor` over MCP providers (the core tools in process, the modules' by their services through `ToolDirectory`), filtered per turn by capability |
+| `services/llm/src/feature/llm/services/turn/` | The turn (the LLM only speaks): the `Decider` interface (`Candidate` with `runnerUp`, `exact`, `confident`; per-decider `DecisionPolicy{act, ask, margin}` as data), the judge (Act, Ask, Choose, Pass), the write guard's second signal, the slot layer (`slots`, `ModelText`), the pendings (slot question, confirmation, choice) and the flow that runs them through the executor |
 | `services/llm/src/feature/pending-intent/` | `argus::pending-intent`: requests kept while a module was off (`pending_intent`), completed from the module feed, the user told through an `assistant_task` notification |
 | `services/{camera,guard,productivity,settings}/src/feature/mcp/` | each owner's tools served over MCP (`app.show_camera`, `app.set_guard_mode`, `calendar.*`/`project.*`/`task.*`, `modules.*`), gated by `tool_gate::capabilities()` |
 | `services/llm/src/feature/encounter-closed/` | The camera guard feed's durable JetStream consumer: receipts in `encounter_closed_inbox`, captured once into the memory graph |
