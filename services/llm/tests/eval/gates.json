@@ -517,22 +517,6 @@
     "falseRouteMax": 0.005
   },
   "conversation": {
-    "readExemptMarkers": [
-      "tienes",
-      "tienen",
-      "tiene ",
-      "hay ",
-      "quedan",
-      "te queda",
-      "you have",
-      "there is",
-      "there are",
-      "left",
-      "open",
-      "pending",
-      "is on",
-      "are on"
-    ],
     "metrics": {
       "falseCompletionRate": {
         "max": 0
@@ -564,6 +548,32 @@
       "questionRate": {
         "min": 0.9
       }
+    },
+    "claims": {
+      "strongWrite": [
+        "\\bhe (agendado|agregado|anadido|anotado|apagado|borrado|cancelado|completado|creado|desactivado|eliminado|encendido|guardado|marcado|programado|registrado|puesto|fijado|activado|tachado|reprogramado)\\b",
+        "\\bya (lo |la |los |las |te lo |te la |se lo )?(agende|agregue|anote|anadi|apague|borre|cancele|programe|registre|active|desactive|elimine|guarde|complete|marque|puse|fije)\\b",
+        "\\b(agende|agregue|anote|anadi|apague|borre|cancele|programe|registre|active|desactive|elimine|guarde|complete|marque|puse|fije) (el|la|los|las|un|una|tu|tus|su|sus|lo|ese|esa|eso|todo|ya)\\b",
+        "\\bcree (el|la|los|las|un|una|tu|tus|su|sus|lo)\\b",
+        "\\bqued(a|o) (agendad|programad|guardad|cread|registrad|anotad|cancelad|eliminad|apagad|encendid|activad|desactivad|marcad|completad)(o|a)s?\\b",
+        "\\b(ha|han) sido (agendad|programad|guardad|cread|registrad|anotad|cancelad|eliminad|apagad|encendid|activad|desactivad|marcad|completad)(o|a)s?\\b",
+        "\\b(fue|fueron) (agendad|programad|guardad|cread|registrad|anotad|cancelad|eliminad|apagad|encendid|activad|desactivad|marcad|completad)(o|a)s?\\b",
+        "\\bse (agendo|agrego|anadio|anoto|apago|borro|cancelo|programo|registro|activo|desactivo|elimino|guardo|completo|marco|creo|fijo)\\b",
+        "\\bse han (agendado|agregado|anadido|anotado|apagado|borrado|cancelado|programado|registrado|activado|desactivado|eliminado|guardado|completado|marcado|creado|fijado)\\b",
+        "\\bi('| ha)?(ve| have)? (just )?(added|created|scheduled|saved|set|cancelled|canceled|deleted|removed|turned|enabled|disabled|marked|noted|booked|put|updated|completed|closed)\\b",
+        "\\bi (will|'ll) (add|create|schedule|save|set|cancel|delete|remove|turn|enable|disable|mark|book|put) (it|that|this)? ?now\\b",
+        "\\b(has|have) been (added|created|scheduled|saved|set up|set|cancelled|canceled|deleted|removed|enabled|disabled|turned|marked|booked|completed|noted)\\b",
+        "\\b(is|are) now (scheduled|set|saved|created|added|enabled|disabled|cancelled|canceled|deleted|booked)\\b",
+        "\\breminder (is )?set\\b"
+      ],
+      "weakWrite": [
+        "\\b(agendad|agregad|programad|guardad|cread|cancelad|eliminad|completad|registrad|anotad|recordad|marcad|apagad|encendid|activad|desactivad)(o|a)s?\\b",
+        "\\b(scheduled|created|saved|canceled|cancelled|completed|noted|remembered|forgotten|deleted|added|booked)\\b"
+      ],
+      "generalAnchored": [
+        "^(ok|okay|vale|claro|bueno|perfecto|entendido|sure|alright)?,? ?(listo(?! para)|hecho|confirmado|done|all set|ya esta|ya quedo)\\b",
+        "^perfecto, ya\\b"
+      ]
     }
   },
   "slots": {

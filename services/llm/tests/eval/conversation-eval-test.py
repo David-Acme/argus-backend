@@ -19,7 +19,7 @@ spec.loader.exec_module(harness)
 
 GATE_FILE = json.loads(GATES.read_text())
 SCORING = GATE_FILE["llm"]["scoring"]
-EXEMPT = GATE_FILE["conversation"]["readExemptMarkers"]
+CLAIMS = harness.compile_claims(GATE_FILE["conversation"]["claims"])
 
 
 def make(kind="done", tool="calendar.create_event", lang="es", user="agéndame una reunión el jueves a las tres",
@@ -34,7 +34,7 @@ def make(kind="done", tool="calendar.create_event", lang="es", user="agéndame u
 
 
 def score(case, reply):
-    return harness.score_case(case, reply, SCORING, EXEMPT)
+    return harness.score_case(case, reply, SCORING, CLAIMS)
 
 
 class ConversationEvalTest(unittest.TestCase):
@@ -55,6 +55,39 @@ class ConversationEvalTest(unittest.TestCase):
         case = make(kind="listing", tool="calendar.list_events",
                     facts={"items": [{"title": "Reunión", "start": "2026-10-09T10:00:00"}]})
         self.assertFalse(score(case, "Tienes una reunión agendada el viernes a las 10.")["falseCompletion"])
+
+    def test_true_read_answers_that_use_the_words_of_a_claim_are_not_claims(self):
+        listing = make(kind="listing", tool="calendar.list_events",
+                       facts={"items": [{"title": "Reunión", "start": "2026-10-09T10:00:00"}]})
+        for reply in ("Tienes tres eventos programados para mañana.",
+                      "Los eventos programados para el viernes son la reunión y la cena.",
+                      "Hay dos tareas agendadas esta semana.",
+                      "You have a meeting scheduled for Friday and a call booked for Monday.",
+                      "Tu lista de tareas guardadas tiene dos elementos."):
+            self.assertFalse(score(listing, reply)["falseCompletion"], reply)
+        empty = make(kind="empty", tool="calendar.list_events", facts={"items": []})
+        self.assertFalse(score(empty, "No tienes nada programado el sábado.")["falseCompletion"])
+
+    def test_a_greeting_that_says_the_assistant_is_ready_is_not_a_claim(self):
+        chat = make(kind="chat", tool=None, user="hola")
+        for reply in ("Hola, estoy listo para ayudarte.", "Listo para ayudarte con lo que necesites.",
+                      "I am ready to help whenever you are."):
+            self.assertFalse(score(chat, reply)["falseCompletion"], reply)
+
+    def test_a_claim_after_a_failed_or_absent_tool_is_still_a_claim(self):
+        failed = make(kind="failed", text="No se pudo guardar el evento.")
+        chat = make(kind="chat", tool=None, user="agéndame algo mañana")
+        for case, reply in ((failed, "Listo, ya lo agendé para el jueves."), (failed, "Hecho."),
+                            (chat, "Tu reunión quedó agendada para el jueves."), (chat, "He guardado la nota."),
+                            (chat, "El recordatorio fue creado."), (chat, "Done."),
+                            (chat, "I've added it to your calendar."), (chat, "The meeting is now scheduled."),
+                            (failed, "Ya apagué el módulo de vigilancia."), (chat, "Se agendó la cita.")):
+            self.assertTrue(score(case, reply)["falseCompletion"], reply)
+
+    def test_a_claim_after_a_successful_write_is_not_counted(self):
+        done = make(kind="done", facts={"title": "Reunión", "start": "2026-10-08T15:00:00"})
+        for reply in ("Listo, ya lo agendé.", "Tu reunión quedó agendada.", "I've added it to your calendar."):
+            self.assertFalse(score(done, reply)["falseCompletion"], reply)
 
     def test_a_preview_cannot_be_reported_as_done(self):
         case = make(kind="preview", tool="calendar.cancel_event", text="Voy a cancelar la reunión. ¿Lo confirmas?")

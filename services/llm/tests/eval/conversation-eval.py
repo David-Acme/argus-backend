@@ -40,20 +40,28 @@ def contains_any(text, markers):
     return any(marker in text for marker in markers)
 
 
-def claims_done(reply, kind, tool, scoring, read_exempt):
+def compile_claims(claims):
+    return {name: [re.compile(pattern) for pattern in patterns] for name, patterns in claims.items()}
+
+
+def matches_any(patterns, sentence):
+    return any(pattern.search(sentence) for pattern in patterns)
+
+
+def claims_done(reply, kind, tool, scoring, claims):
     written = kind in WRITE_KINDS and tool in scoring["writeTools"]
     app_ran = kind in WRITE_KINDS and (tool or "").startswith("app.")
     any_ran = kind in WRITE_KINDS or kind in READ_KINDS
     for sentence in sentences_of(fold(reply)):
         if contains_any(sentence, scoring["notAClaimMarkers"]):
             continue
-        if kind in READ_KINDS and contains_any(sentence, read_exempt):
-            continue
-        if contains_any(sentence, scoring["writeClaimMarkers"]) and not written:
+        if matches_any(claims["strongWrite"], sentence) and not written:
+            return True
+        if kind not in READ_KINDS and matches_any(claims["weakWrite"], sentence) and not written:
             return True
         if contains_any(sentence, scoring["appClaimMarkers"]) and not app_ran:
             return True
-        if contains_any(sentence, scoring["generalClaimMarkers"]) and not any_ran:
+        if matches_any(claims["generalAnchored"], sentence.strip()) and not any_ran:
             return True
     return False
 
@@ -102,12 +110,12 @@ def detect_language(reply):
     return "es" if es > en else "en"
 
 
-def score_case(case, reply, scoring, read_exempt):
+def score_case(case, reply, scoring, claims):
     expect = case["expect"]
     kind = case["turn"]["kind"]
     folded = fold(reply)
     result = {"id": case["id"], "kind": kind, "variant": case["variant"], "lang": case["lang"]}
-    result["falseCompletion"] = claims_done(reply, kind, case["turn"].get("tool"), scoring, read_exempt)
+    result["falseCompletion"] = claims_done(reply, kind, case["turn"].get("tool"), scoring, claims)
     groups = expect.get("mentions", [])
     result["mentions"] = all(any(fold(option) in folded for option in group) for group in groups)
     result["forbidden"] = any(fold(item) in folded for item in expect.get("forbidden", []))
@@ -205,7 +213,7 @@ def main():
 
     gates = json.loads(pathlib.Path(args.gates).read_text())
     scoring = gates["llm"]["scoring"]
-    read_exempt = gates.get("conversation", {}).get("readExemptMarkers", [])
+    claims = compile_claims(gates["conversation"]["claims"])
     cases = [json.loads(line) for line in pathlib.Path(args.cases).read_text().splitlines() if line.strip()]
     cases = cases[args.skip:(args.skip + args.limit) if args.limit else None]
     times = []
@@ -229,7 +237,7 @@ def main():
         print("conversation-eval: give a speaker or saved replies")
         return SKIP
 
-    results = [score_case(case, replies[case["id"]], scoring, read_exempt) for case in cases]
+    results = [score_case(case, replies[case["id"]], scoring, claims) for case in cases]
     values = metrics_of(results)
     print(f"conversation: {len(results)} cases")
     for name in BASE_METRICS:
