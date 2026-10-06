@@ -257,8 +257,11 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
   consumes the bus (the guard encounter-closed stream, durable
   `argus-llm-encounters`) and hosts the memory stack: memory.db under its
   `${ARGUS_DATA_DIR:-./data}/memory` mount, plus the
-  `services/llm/database/schema.sql`, `models/memory` and `models/extract`
-  binds. argus-memory (7033) is retired since f8-b3: the memory capacity is
+  `services/llm/database/schema.sql`, `models/memory`, `models/extract` and
+  `models/intent` binds (without the last one the fast tier of the intent router is
+  silently off and every turn pays an LLM round trip; `provision-host.sh` copies the
+  tracked `models/intent/intent.bin` into a custom `ARGUS_MODELS_DIR`).
+  argus-memory (7033) is retired since f8-b3: the memory capacity is
   a feature of argus-llm and the worker chat is an in-process
   call. None of them is
   reachable from the LAN — the AI wire is internal-only and loopback-published.
@@ -307,7 +310,8 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
 - **Models (Ruling CB).** Per-service read-only subpath binds, never the
   whole tree: `models/tts` → argus-tts, `models/stt` → argus-stt,
   `models/vision` → argus-vlm (the GGUF + its mmproj projector),
-  `models/llm` → argus-llm. `models/memory` + `models/extract` are
+  `models/llm` → argus-llm, `models/intent` → argus-llm (the fast tier's
+  fastText classifier). `models/memory` + `models/extract` are
   argus-llm binds since f8-b4, which hosts the memory stack (their
   argus-memory binds are gone with the process, f8-b3).
 - **memory.db single-owner exception (Ruling CB).** memory.db lives in

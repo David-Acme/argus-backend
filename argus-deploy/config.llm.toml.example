@@ -67,6 +67,9 @@ compact_wait_ms = 15000
 compact_max_tokens = 256
 extract_wait_ms = 15000
 
+[intent]
+model_file = "models/intent/intent.bin"
+
 [extract]
 model_path = "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"
 prompt_format = "v1.5"

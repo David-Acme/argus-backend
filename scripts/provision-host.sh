@@ -453,7 +453,10 @@ main() {
     ensure_object_store
   fi
 
-  install -d -m 0755 "$MODELS_DIR/vision"
+  install -d -m 0755 "$MODELS_DIR/vision" "$MODELS_DIR/intent"
+  if [ ! -f "$MODELS_DIR/intent/intent.bin" ] && [ -f "$ROOT/models/intent/intent.bin" ]; then
+    install -m 0644 "$ROOT/models/intent/intent.bin" "$MODELS_DIR/intent/intent.bin"
+  fi
   if [ "$WITH_MODELS" -eq 1 ]; then
     provision_models
   elif [ ! -d "$MODELS_DIR/llm" ] || [ ! -d "$MODELS_DIR/stt" ]; then
