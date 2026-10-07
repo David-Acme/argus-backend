@@ -16,12 +16,44 @@ The script resolves the root graph once — `conan install <root>
 (`cmake -S . -B build/<profile> -G Ninja` with `CMAKE_TOOLCHAIN_FILE` and
 `CMAKE_PREFIX_PATH` pointing into
 `build/<profile>/build/<Debug|Release>/generators`), builds with
-`cmake --build build/<profile> -j 8`, builds the owner CLI targets
+`cmake --build build/<profile> -j <jobs>`, builds the owner CLI targets
 (`argus-migrate-*`, `argus-vulkan-probe`) and runs `ctest`.
+
+`<jobs>` is the first of: `--jobs N` on the command line, the
+`CMAKE_BUILD_PARALLEL_LEVEL` environment variable, the memory the host has
+free at start:
+
+```
+jobs = clamp(min(MemAvailable - 6 GiB, cgroup headroom) / 4 GiB, 1, nproc)
+```
+
+The 6 GiB reserve is the floor the build gate enforces before it admits a
+capped job, and it applies to the host's figure. The 4 GiB per job is the
+worst job measured in this tree: the `dev` `argus-llm` link at 3349 MiB (the
+heaviest compile measured is `ggml-vulkan.cpp` at 1799 MiB). The budget is
+set by a *link* on purpose — a build's tail runs nothing but links, so a
+budget below the heaviest link would overrun the cgroup on the first tail.
+
+The second term is the headroom of the process's own cgroup v2 directory
+(`memory.max - memory.current`, read from `/proc/self/cgroup`), which is what
+honours a capped `systemd-run` scope or a `docker run --memory`; `/proc/meminfo`
+alone would not, because inside a container it reports the host's memory, not
+the container's limit. The same count is handed to `conan install` as
+`-c tools.build:jobs=<jobs>`, so a cold dependency cache cannot compile at
+`nproc` either. The script prints what it chose before it builds:
+
+```
+[setup] build jobs: 3 (memory-derived: MemAvailable 20021 MiB - reserve 6144 MiB, cgroup headroom 13307 MiB, over 4096 MiB per job, 16 cpus)
+```
+
+That line is from a `heavy-gate.sh 13` run: the host had 20021 MiB free and the
+scope allowed 13307 MiB, so the scope set the count.
 
 ## Working inside one project
 
 The root graph has to exist first; `--install-only` is just that step.
+`<jobs>` below is the count the orchestrator printed, or what `--jobs N`
+asked for; it is never a fixed number.
 
 ```bash
 ./scripts/build-all.sh dev --install-only   # once for the whole tree
@@ -30,7 +62,7 @@ cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_TOOLCHAIN_FILE=../../build/dev/build/Debug/generators/conan_toolchain.cmake \
   -DCMAKE_PREFIX_PATH=../../build/dev/build/Debug/generators \
   -DCMAKE_CXX_STANDARD=20 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-cmake --build build/dev -j 8
+cmake --build build/dev -j <jobs>
 ctest --test-dir build/dev --output-on-failure
 ```
 

@@ -20,6 +20,7 @@ run_script_test() {
 }
 
 CALL_LOG="$TEST_TMP/calls.log"
+CALL_OUT="$TEST_TMP/calls.out"
 MOCK_BIN="$TEST_TMP/bin"
 mkdir -p "$MOCK_BIN"
 
@@ -34,8 +35,9 @@ ln -s tool "$MOCK_BIN/ctest"
 
 run_build_all() {
   : > "$CALL_LOG"
-  PATH="$MOCK_BIN:$PATH" ARGUS_BUILD_ALL_TEST_LOG="$CALL_LOG" \
-    "$ROOT/scripts/build-all.sh" "$@"
+  : > "$CALL_OUT"
+  PATH="$MOCK_BIN:$PATH" ARGUS_BUILD_ALL_TEST_LOG="$CALL_LOG" CMAKE_BUILD_PARALLEL_LEVEL=8 \
+    "$ROOT/scripts/build-all.sh" "$@" > "$CALL_OUT" 2>&1
 }
 
 run_build_all dev --only cert --install-only
@@ -60,9 +62,50 @@ run_build_all prod --only camera --no-tests
 test "$(grep -c '^cmake ' "$CALL_LOG")" -eq 3
 grep -q '^cmake --build build/prod -j 8 --target argus-migrate-camera argus-vulkan-probe$' "$CALL_LOG"
 
+run_build_all dev --only cert --jobs 3 --no-tests
+grep -q '^cmake --build build/dev -j 3$' "$CALL_LOG"
+grep -Fq 'build jobs: 3 (--jobs)' "$CALL_OUT"
+
+run_build_all dev --only identity --jobs 3 --no-tests
+grep -q '^cmake --build build/dev -j 3 --target argus-migrate-identity$' "$CALL_LOG"
+
+run_build_all dev --only cert --no-tests
+grep -q '^cmake --build build/dev -j 8$' "$CALL_LOG"
+grep -Fq 'build jobs: 8 (CMAKE_BUILD_PARALLEL_LEVEL)' "$CALL_OUT"
+
+if run_build_all dev --only cert --jobs 0 --no-tests; then
+  echo "--jobs 0 was accepted" >&2
+  exit 1
+fi
+
+if run_build_all dev --only cert --jobs -1 --no-tests; then
+  echo "--jobs -1 was accepted" >&2
+  exit 1
+fi
+
+if PATH="$MOCK_BIN:$PATH" ARGUS_BUILD_ALL_TEST_LOG="$CALL_LOG" CMAKE_BUILD_PARALLEL_LEVEL=eight \
+    "$ROOT/scripts/build-all.sh" dev --only cert --no-tests > "$CALL_OUT" 2>&1; then
+  echo "an invalid CMAKE_BUILD_PARALLEL_LEVEL was accepted" >&2
+  exit 1
+fi
+
+: > "$CALL_LOG"
+: > "$CALL_OUT"
+PATH="$MOCK_BIN:$PATH" ARGUS_BUILD_ALL_TEST_LOG="$CALL_LOG" \
+  env -u CMAKE_BUILD_PARALLEL_LEVEL "$ROOT/scripts/build-all.sh" dev --only cert --no-tests \
+  > "$CALL_OUT" 2>&1
+grep -Eq 'build jobs: [0-9]+ \(memory-derived: MemAvailable [0-9]+ MiB - reserve [0-9]+ MiB, cgroup headroom ([0-9]+ MiB|unlimited), over [0-9]+ MiB per job, [0-9]+ cpus\)' "$CALL_OUT"
+derived_jobs="$(sed -n 's/^.*build jobs: \([0-9][0-9]*\) (memory-derived:.*$/\1/p' "$CALL_OUT")"
+derived_cpus="$(sed -n 's/^.*per job, \([0-9][0-9]*\) cpus).*$/\1/p' "$CALL_OUT")"
+test -n "$derived_jobs"
+test -n "$derived_cpus"
+test "$derived_jobs" -ge 1
+test "$derived_jobs" -le "$derived_cpus"
+grep -q "^cmake --build build/dev -j $derived_jobs$" "$CALL_LOG"
+
 run_build_all dev --only camera
 test "$(grep -c '^conan install ' "$CALL_LOG")" -eq 1
-grep -Fq "conan install $ROOT --output-folder=$ROOT/build/dev -s build_type=Debug --build=missing" "$CALL_LOG"
+grep -Fq "conan install $ROOT --output-folder=$ROOT/build/dev -s build_type=Debug --build=missing -c tools.build:jobs=8" "$CALL_LOG"
 test "$(grep -c '^ctest ' "$CALL_LOG")" -eq 1
 grep -Fq "cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$ROOT/build/dev/build/Debug/generators/conan_toolchain.cmake -DCMAKE_PREFIX_PATH=$ROOT/build/dev/build/Debug/generators -DCMAKE_CXX_STANDARD=20 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON" "$CALL_LOG"
 if grep -q -- '--preset' "$CALL_LOG"; then
@@ -372,7 +415,8 @@ expect_rejected "a tree with no argus_* declaration" "nothing was checked" \
   "$EMPTY_FIXTURE"
 
 grep -Fq '"$ROOT/scripts/check-tidy.sh"' "$ROOT/scripts/build-all.sh"
-if run_build_all dev --only camera 2>&1 | grep -q 'rules 16 and 19'; then
+run_build_all dev --only camera
+if grep -q 'rules 16 and 19' "$CALL_OUT"; then
   echo "a --only run reached the clang-tidy gate" >&2
   exit 1
 fi

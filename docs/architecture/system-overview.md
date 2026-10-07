@@ -74,7 +74,8 @@ Useful scoped modes:
 ```
 
 Build one project directly (the root graph first, then the same flags the
-orchestrator passes):
+orchestrator passes, `<jobs>` included — it is the count `build-all.sh`
+printed, or what `--jobs N` asked for):
 
 ```bash
 ./scripts/build-all.sh dev --install-only
@@ -83,7 +84,7 @@ cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_TOOLCHAIN_FILE=../../build/dev/build/Debug/generators/conan_toolchain.cmake \
   -DCMAKE_PREFIX_PATH=../../build/dev/build/Debug/generators \
   -DCMAKE_CXX_STANDARD=20 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-cmake --build build/dev -j 8
+cmake --build build/dev -j <jobs>
 ctest --test-dir build/dev --output-on-failure
 ```
 

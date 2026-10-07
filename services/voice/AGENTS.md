@@ -89,12 +89,13 @@ argus-voice/
 ./scripts/build-all.sh dev --only voice
 
 # From services/voice: install the root graph once, then configure by hand
+# <jobs> is the count build-all.sh printed, or what --jobs N asked for
 ./scripts/build-all.sh dev --install-only
 cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_TOOLCHAIN_FILE=../../build/dev/build/Debug/generators/conan_toolchain.cmake \
   -DCMAKE_PREFIX_PATH=../../build/dev/build/Debug/generators \
   -DCMAKE_CXX_STANDARD=20
-cmake --build build/dev -j 8
+cmake --build build/dev -j <jobs>
 ctest --test-dir build/dev --output-on-failure
 ```
 
