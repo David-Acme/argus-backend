@@ -1,6 +1,8 @@
 # Proposal: opt-in capture of real turns for training (version 2)
 
-Status: proposal, no code. Written 2026-10-07 for the owner's decision. It extends the per-person consent record of
+Status: shelved by the owner on 2026-10-07; not to be implemented
+
+Kept as the record of what was proposed. Written 2026-10-07 for the owner's decision; it extends the per-person consent record of
 `services/identity` ("Privacy consent", `user_privacy`) and the retention rules of `docs/operations/provisioning-and-models.md`.
 
 ## Why
