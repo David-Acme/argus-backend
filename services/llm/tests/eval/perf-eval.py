@@ -103,13 +103,21 @@ def percentile(values, share):
     return ordered[max(0, int(len(ordered) * share) - 1)]
 
 
+class DeciderGone(Exception):
+    pass
+
+
 def exchange(process, seq, lang, text):
     request = {"seq": seq, "text": text, "lang": lang, "role": "owner", "tools": OWNER_TOOLS}
     started = time.perf_counter()
     process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
     process.stdin.flush()
-    while not process.stdout.readline().lstrip().startswith("{"):
-        pass
+    while True:
+        line = process.stdout.readline()
+        if not line:
+            raise DeciderGone("the decider closed its output before answering")
+        if line.lstrip().startswith("{"):
+            break
     return (time.perf_counter() - started) * 1000.0
 
 
@@ -187,6 +195,9 @@ def main():
     except OSError as error:
         print(f"perf-eval: cannot start the decider: {error}")
         return SKIP
+    except DeciderGone as error:
+        print(f"perf-eval: {error}")
+        return 1
     values["idle"] = idle
     print(f"{args.label}: " + ("idle machine" if idle else f"BUSY machine (cpu {busy:.0%}, load {load:.1f}): NOT REPORTABLE"))
     for name in ("latencyP50Ms", "latencyP95Ms", "latencyMaxMs", "cpuMsPerCall", "residentMb", "peakMb", "threads",

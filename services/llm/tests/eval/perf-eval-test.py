@@ -67,6 +67,12 @@ class PerfEvalTest(unittest.TestCase):
                                  "--busy-limit", "1.0"], capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 77)
 
+    def test_a_decider_that_starts_and_then_exits_fails_the_run_instead_of_hanging(self):
+        result = subprocess.run([sys.executable, "-I", str(HARNESS), "--decider", f"{sys.executable} -I -c pass",
+                                 "--busy-limit", "1.0"], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("closed its output", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -221,6 +221,16 @@ class CacheTest(unittest.TestCase):
         self.assertEqual(len(json.loads(path.read_text())), 2)
 
 
+class LatencyTest(unittest.TestCase):
+    def test_a_decider_that_closes_its_output_during_the_latency_sample_stops_the_run(self):
+        import io
+        import types
+        decider = harness.Decider("unused")
+        decider.process = types.SimpleNamespace(stdin=io.StringIO(), stdout=io.StringIO(""))
+        with self.assertRaises(SystemExit):
+            decider.latencies(loaded([case("a", "pon una agenda el lunes", ["calendar.create_event"])]))
+
+
 class RunTest(unittest.TestCase):
     def setUp(self):
         self.directory = pathlib.Path(tempfile.mkdtemp())

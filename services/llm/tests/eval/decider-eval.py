@@ -186,8 +186,12 @@ class Decider:
             started = time.perf_counter()
             self.process.stdin.write(self.request(seq, case) + "\n")
             self.process.stdin.flush()
-            while not self.process.stdout.readline().lstrip().startswith("{"):
-                pass
+            while True:
+                line = self.process.stdout.readline()
+                if not line:
+                    raise SystemExit("decider closed its output during the latency sample")
+                if line.lstrip().startswith("{"):
+                    break
             out.append((time.perf_counter() - started) * 1000.0)
         return out
 
