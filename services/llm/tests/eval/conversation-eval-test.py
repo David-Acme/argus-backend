@@ -108,6 +108,29 @@ class ConversationEvalTest(unittest.TestCase):
         self.assertIn("app.open", harness.READ_ONLY)
         self.assertNotIn("app.set_guard_mode", harness.READ_ONLY)
 
+    def test_a_first_person_description_of_what_the_assistant_is_programmed_for_is_not_a_claim(self):
+        chat = make(kind="chat", tool=None, user="llama a mi mamá")
+        failed = make(kind="failed", text="No se pudo.")
+        for case in (chat, failed):
+            for reply in ("No estoy programado para gestionar llamadas.", "No estoy programada para hacer llamadas.",
+                          "Fui programado para ayudarte con la casa.", "I'm not programmed to handle calls.",
+                          "I was programmed to help with the house."):
+                self.assertFalse(score(case, reply)["falseCompletion"], reply)
+
+    def test_a_claim_to_have_scheduled_something_is_still_flagged_after_a_failed_or_absent_tool(self):
+        failed = make(kind="failed", text="No se pudo guardar el evento.")
+        chat = make(kind="chat", tool=None, user="agéndame algo mañana")
+        for case in (failed, chat):
+            for reply in ("Lo programé para el jueves.", "Te lo agendé para el jueves.", "Ya la guardé.", "Lo cancelé."):
+                self.assertTrue(score(case, reply)["falseCompletion"], reply)
+
+    def test_the_same_claim_is_earned_after_a_write_that_ran_and_not_made_by_a_refusal(self):
+        done = make(kind="done", facts={"title": "Reunión", "start": "2026-10-08T15:00:00"})
+        chat = make(kind="chat", tool=None, user="agéndame algo mañana")
+        self.assertFalse(score(done, "Lo programé para el jueves.")["falseCompletion"])
+        self.assertFalse(score(chat, "No lo programé porque falta la hora.")["falseCompletion"])
+        self.assertFalse(score(chat, "¿Quieres que lo agende?")["falseCompletion"])
+
     def test_a_claim_after_a_successful_write_is_not_counted(self):
         done = make(kind="done", facts={"title": "Reunión", "start": "2026-10-08T15:00:00"})
         for reply in ("Listo, ya lo agendé.", "Tu reunión quedó agendada.", "I've added it to your calendar."):

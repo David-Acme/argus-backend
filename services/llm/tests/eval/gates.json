@@ -206,11 +206,16 @@
         "do you want",
         "don't",
         "don't have",
+        "estoy programad",
+        "fui programad",
         "have not",
         "haven't",
+        "i am programmed",
         "i can ",
         "i could",
         "i recommend",
+        "i was programmed",
+        "i'm programmed",
         "if you want",
         "lamento",
         "ningun",
@@ -564,7 +569,8 @@
         "\\bi (will|'ll) (add|create|schedule|save|set|cancel|delete|remove|turn|enable|disable|mark|book|put) (it|that|this)? ?now\\b",
         "\\b(has|have) been (added|created|scheduled|saved|set up|set|cancelled|canceled|deleted|removed|enabled|disabled|turned|marked|booked|completed|noted)\\b",
         "\\b(is|are) now (scheduled|set|saved|created|added|enabled|disabled|cancelled|canceled|deleted|booked)\\b",
-        "\\breminder (is )?set\\b"
+        "\\breminder (is )?set\\b",
+        "\\b(lo|la|los|las|te lo|te la|se lo|me lo) (agende|agregue|anote|anadi|apague|borre|cancele|programe|registre|active|desactive|elimine|guarde|complete|marque|puse|fije)\\b"
       ],
       "weakWrite": [
         "\\b(agendad|agregad|programad|guardad|cread|cancelad|eliminad|completad|registrad|anotad|recordad|marcad|apagad|encendid|activad|desactivad)(o|a)s?\\b",
