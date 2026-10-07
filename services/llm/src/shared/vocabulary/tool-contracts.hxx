@@ -26,6 +26,7 @@ struct ToolContext
   int64_t turn = 0;
   std::function<void(const std::string& name, const Json::Value& arguments)> emitAction = {};
   std::optional<int64_t> heardAt = std::nullopt;
+  std::optional<int64_t> now = std::nullopt;
 };
 
 struct ToolCall

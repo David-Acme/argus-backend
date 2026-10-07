@@ -1157,7 +1157,7 @@ menos cuarto" is 17:45 and "a las 8 menos cuarto" 07:45.
 | Day part | Reading |
 |---|---|
 | none | today when the instant is still ahead, otherwise tomorrow |
-| "hoy", "today", "esta tarde/noche/mañana", "tonight", "this evening" | today; a time already past resolves nothing |
+| "hoy", "today", "esta tarde/noche/mañana", "tonight", "this evening" | today; a bare 7 to 11 whose morning has gone is tonight ("hoy a las nueve" at 15:20 is 21:00); when every reading of today has passed `read` answers `passedToday` (tomorrow at that hour) and resolves nothing, and the turn asks "Esa hora ya pasó hoy. ¿Mañana a las 8 de la mañana?" / "That time has already passed today. Do you want tomorrow at 8 AM?": a yes takes tomorrow, another time is read, a no drops it |
 | "mañana", "tomorrow", "pasado mañana", "day after tomorrow" | +1, +2 days |
 | a weekday ("el viernes", "on Friday") | the next one strictly after today, unless "hoy" is said |
 | a day of the month, no month ("el 15", "el quince", "the 15th") | the next occurrence: this month while the instant is still ahead, otherwise the next month that has that day |
@@ -1170,8 +1170,10 @@ menos cuarto" is 17:45 and "a las 8 menos cuarto" 07:45.
 With no day named, a bare 7 to 11 whose morning has already passed today is
 tonight's reading when that is still ahead ("a las nueve" at 15:20 is 21:00,
 "a las ocho menos cuarto" 19:45, "at 9:15" 21:15) and tomorrow morning when
-it is not; with a day named (or "hoy") it is that day's morning, and a bare
-1 to 6 is always the afternoon.
+it is not; with "hoy" the same evening fallback applies but a morning and an
+evening that have both passed are asked about, never moved to tomorrow
+silently; with any other day named it is that day's morning, and a bare 1 to
+6 is always the afternoon.
 
 Relative phrases ("en 20 minutos", "in half an hour") are capped at 30 days;
 explicit dates are accepted up to 12 months from now (`read` answers
@@ -1185,9 +1187,8 @@ Judgement calls the rules left open, kept as they stand until the owner
 decides (each is one line in `call-time.cc`): "12 de la mañana" is noon;
 "las 2 de la noche" is 02:00 (the small hours) and "las 5 de la noche" too;
 "mañana a medianoche" is the 00:00 that ends tomorrow while "12 a. m." on a
-named day is that day's 00:00; "next friday" is the coming Friday; "hoy a las
-nueve" with the morning gone resolves nothing (an explicit today has no
-evening fallback); a year is read only as four digits after a month.
+named day is that day's 00:00; "next friday" is the coming Friday; a year is
+read only as four digits after a month.
 
 A weekday that disagrees with the day of the month is a clarifying question,
 never a guess. `slots::fill` (for a date-time slot) and the turn before
@@ -1203,7 +1204,9 @@ and the call goes on with the other slots read again from the original words
 day first, and `slots::chooseDay` also reads "mañana", "hoy" or "tomorrow"
 for it), while `memory.remind`, whose time is its user's words, is run with
 `ToolContext::heardAt` set to the chosen instant, which `scheduleReminder`
-prefers over resolving the words. An answer that names neither is asked once
+prefers over resolving the words (the executor normalizes a call's times with
+the turn's own clock, `ToolContext::now`, so a question answered later is not
+read again against another instant). An answer that names neither is asked once
 more and then given up; a new command or a no replaces the question.
 
 Every created event and reminder is read back with the day and the time it

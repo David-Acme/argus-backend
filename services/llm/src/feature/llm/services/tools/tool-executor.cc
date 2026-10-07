@@ -82,7 +82,7 @@ tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call, const ToolA
   tools::ToolCall prepared = call;
   prepared.context.role = audience.role;
   dropUndeclared(spec.inputSchema, prepared.arguments);
-  time_arguments::normalize({.call = prepared, .spec = spec, .now = static_cast<int64_t>(std::time(nullptr))});
+  time_arguments::normalize({.call = prepared, .spec = spec, .now = prepared.context.now.value_or(static_cast<int64_t>(std::time(nullptr)))});
   if (const auto invalid = argus::mcp::schema::violation(spec.inputSchema, prepared.arguments))
     return refused(call, "invalid_arguments", *invalid);
   if (tool_access::moduleInactive(audience, spec))

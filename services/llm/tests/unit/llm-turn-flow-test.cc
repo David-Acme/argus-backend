@@ -1933,6 +1933,89 @@ TEST_CASE("a weekday that disagrees with tomorrow or today asks which of the two
   CHECK(agreeing.ran.front().arguments["starts_at"].asString() == "2026-10-08T17:00:00+00:00");
 }
 
+TEST_CASE("an explicit today takes the evening reading of a bare 7 to 11, and asks when every reading of today has passed")
+{
+  const UtcZone zone;
+  World evening;
+  evening.now = at({.day = 7, .hour = 15, .minute = 20});
+  CHECK_FALSE(evening.say("agenda una reunión con Andrea hoy a las nueve").question.has_value());
+  REQUIRE(evening.ran.size() == 1);
+  CHECK(evening.ran.front().arguments["starts_at"].asString() == "2026-10-07T21:00:00+00:00");
+
+  World late;
+  late.now = at({.day = 7, .hour = 21, .minute = 30});
+  CHECK(said(late.say("agenda una reunión con Andrea hoy a las ocho")) == "Esa hora ya pasó hoy. ¿Mañana a las 8 de la mañana?");
+  CHECK(late.ran.empty());
+  const auto done = late.say("sí");
+  REQUIRE(late.ran.size() == 1);
+  CHECK(late.ran.front().arguments["title"].asString() == "Reunión con Andrea");
+  CHECK(late.ran.front().arguments["starts_at"].asString() == "2026-10-08T08:00:00+00:00");
+  CHECK(done.wrote);
+
+  World another;
+  another.now = at({.day = 7, .hour = 21, .minute = 30});
+  REQUIRE(another.say("agenda una reunión con Andrea hoy a las ocho").question.has_value());
+  another.say("mañana a las 9 de la noche");
+  REQUIRE(another.ran.size() == 1);
+  CHECK(another.ran.front().arguments["starts_at"].asString() == "2026-10-08T21:00:00+00:00");
+
+  World refused;
+  refused.now = at({.day = 7, .hour = 21, .minute = 30});
+  REQUIRE(refused.say("agenda una reunión con Andrea hoy a las ocho").question.has_value());
+  CHECK(findingOf(refused.say("no"), turn::FindingKind::Declined) != nullptr);
+  CHECK(refused.ran.empty());
+
+  World lost;
+  lost.now = at({.day = 7, .hour = 21, .minute = 30});
+  const std::string asked = "Esa hora ya pasó hoy. ¿Mañana a las 8 de la mañana?";
+  CHECK(said(lost.say("agenda una reunión con Andrea hoy a las ocho")) == asked);
+  CHECK(said(lost.say("mmm")) == asked);
+  CHECK(said(lost.say("mmm")) == turn_texts::misunderstood("es"));
+  CHECK(lost.ran.empty());
+
+  World noDay;
+  noDay.now = at({.day = 7, .hour = 21, .minute = 30});
+  CHECK_FALSE(noDay.say("agenda una reunión con Andrea a las ocho").question.has_value());
+  REQUIRE(noDay.ran.size() == 1);
+  CHECK(noDay.ran.front().arguments["starts_at"].asString() == "2026-10-08T08:00:00+00:00");
+
+  World english;
+  english.now = at({.day = 7, .hour = 21, .minute = 30});
+  english.context.lang = "en";
+  english.flow.useDecider(english.scripted);
+  turn::Candidate meeting = candidate("calendar.create_event", 0.95);
+  meeting.fill = {"title", "starts_at"};
+  english.scripted.next = meeting;
+  CHECK(said(english.say("schedule a meeting with Andrea today at eight")) == "That time has already passed today. Do you want tomorrow at 8 AM?");
+  english.scripted.next.reset();
+  english.say("yes");
+  REQUIRE(english.ran.size() == 1);
+  CHECK(english.ran.front().arguments["starts_at"].asString() == "2026-10-08T08:00:00+00:00");
+
+  World reminder;
+  reminder.now = at({.day = 7, .hour = 21, .minute = 30});
+  reminder.add(tool_stubs::stub({.name = "memory.remind",
+                                 .capability = "reminders.write",
+                                 .handler = [&reminder](const tools::ToolCall& call) {
+                                   reminder.ran.push_back(call);
+                                   return tool_stubs::okResult("Recordatorio guardado.");
+                                 },
+                                 .module = "core",
+                                 .schema = schema::object({{.name = "text", .schema = schema::text(), .required = false}})}));
+  reminder.refresh();
+  reminder.flow.useDecider(reminder.scripted);
+  turn::Candidate remind = candidate("memory.remind", 0.95);
+  remind.arguments["text"] = "recuérdame hoy a las ocho llamar a Juan";
+  reminder.scripted.next = remind;
+  CHECK(said(reminder.say("recuérdame hoy a las ocho llamar a Juan")) == asked);
+  CHECK(reminder.ran.empty());
+  reminder.scripted.next.reset();
+  reminder.say("sí");
+  REQUIRE(reminder.ran.size() == 1);
+  CHECK(reminder.ran.front().context.heardAt.value_or(0) == at({.day = 8, .hour = 8}));
+  CHECK(reminder.ran.front().context.utterance == "recuérdame hoy a las ocho llamar a Juan");
+}
+
 TEST_CASE("a date beyond the twelve months is asked about, never dropped, and the answer completes the call")
 {
   const UtcZone zone;

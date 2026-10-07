@@ -256,7 +256,7 @@ TEST_CASE("today names a time that is still ahead, never a past one and never to
 {
   CHECK(fireAt("hoy a las cinco") == utc(today(17)));
   CHECK(fireAt("hoy a las 4") == utc(today(16)));
-  CHECK_FALSE(fireAt("hoy a las nueve"));
+  CHECK(fireAt("hoy a las nueve") == utc(today(21)));
   CHECK_FALSE(fireAt("hoy a las 9 de la mañana"));
   CHECK_FALSE(fireAt("esta mañana a las 9"));
   CHECK(fireAt("esta tarde a las 5") == utc(today(17)));
@@ -368,7 +368,9 @@ TEST_CASE("a bare 7 to 11 whose morning has passed is tonight when no day is nam
   CHECK(fireAt("a las 9 de la mañana") == utc(tomorrow(9)));
   CHECK(fireAt("mañana a las nueve") == utc(tomorrow(9)));
   CHECK(fireAt("el viernes a las nueve") == utc({.day = 9, .hour = 9}));
-  CHECK_FALSE(fireAt("hoy a las nueve"));
+  CHECK(fireAt("hoy a las nueve") == utc(today(21)));
+  CHECK(fireAt("today at nine", "en") == utc(today(21)));
+  CHECK(fireAt("hoy a las siete y media") == utc(today(19, 30)));
   const auto late = [](const std::string& text) {
     const auto found = call_time::resolve({.text = text, .lang = "es", .now = utc({.day = 7, .hour = 23, .minute = 40})});
     return found ? std::optional<int64_t>(found->fireAt) : std::nullopt;
@@ -376,6 +378,32 @@ TEST_CASE("a bare 7 to 11 whose morning has passed is tonight when no day is nam
   CHECK(late("a las nueve") == utc(tomorrow(9)));
   CHECK(late("a las 7:30") == utc(tomorrow(7, 30)));
   CHECK(late("a las cinco") == utc(tomorrow(17)));
+}
+
+TEST_CASE("an explicit today whose every reading has passed proposes tomorrow at that hour and schedules nothing")
+{
+  const int64_t evening = utc({.day = 7, .hour = 21, .minute = 30});
+  const auto proposed = [evening](const std::string& text, const std::string& lang = "es") {
+    const CallReading reading = call_time::read({.text = text, .lang = lang, .now = evening});
+    return std::make_pair(reading.time.has_value(), reading.passedToday.value_or(0));
+  };
+  CHECK(proposed("hoy a las ocho") == std::make_pair(false, utc(tomorrow(8))));
+  CHECK(proposed("hoy a las nueve") == std::make_pair(false, utc(tomorrow(9))));
+  CHECK(proposed("today at eight", "en") == std::make_pair(false, utc(tomorrow(8))));
+  CHECK(proposed("hoy a las 9 de la mañana") == std::make_pair(false, utc(tomorrow(9))));
+  CHECK(proposed("esta tarde a las 5") == std::make_pair(false, utc(tomorrow(17))));
+  CHECK(proposed("hoy a las 5") == std::make_pair(false, utc(tomorrow(17))));
+  CHECK(proposed("hoy a las 8 y media") == std::make_pair(false, utc(tomorrow(8, 30))));
+  CHECK(proposed("hoy a las diez") == std::make_pair(true, int64_t{0}));
+  CHECK(proposed("hoy a las 11 de la noche") == std::make_pair(true, int64_t{0}));
+  CHECK(proposed("mañana a las ocho") == std::make_pair(true, int64_t{0}));
+  const auto tonight = [evening](const std::string& text) {
+    const auto found = call_time::resolve({.text = text, .lang = "es", .now = evening});
+    return found ? std::optional<int64_t>(found->fireAt) : std::nullopt;
+  };
+  CHECK(tonight("a las ocho") == utc(tomorrow(8)));
+  CHECK(tonight("a las diez") == utc(today(22)));
+  CHECK_FALSE(tonight("hoy a las ocho"));
 }
 
 TEST_CASE("a weekday that disagrees with today, tomorrow or the day after is a question naming both days")

@@ -273,6 +273,14 @@ std::string farQuestion(std::string_view lang)
   return std::string(pick(kFarAway, lang));
 }
 
+std::string passedQuestion(const PassedQuestion& question)
+{
+  const std::string clock = spoken_time::clock({.epoch = question.tomorrowAt, .now = question.now, .lang = question.lang});
+  if (question.lang == "en")
+    return "That time has already passed today. Do you want tomorrow " + clock + "?";
+  return "Esa hora ya pasó hoy. ¿Mañana " + clock + "?";
+}
+
 std::string projectQuestion(const ProjectQuestion& question)
 {
   return std::string(pick(kWhichProject, question.lang)) + listed(question.options, question.lang) + ".";

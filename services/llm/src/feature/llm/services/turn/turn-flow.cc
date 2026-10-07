@@ -241,6 +241,7 @@ void TurnFlow::execute(const TurnRequest& request, tools::ToolCall call, Outcome
   call.context = request.context;
   call.context.utterance = spoken;
   call.context.heardAt = heard;
+  call.context.now = request.now;
   call.context.decided = true;
   const auto started = std::chrono::steady_clock::now();
   tools::ToolResult result = executor_.execute(call, request.audience);
@@ -297,6 +298,8 @@ Outcome TurnFlow::proceed(const Move& move)
       return askDay(move, move.candidate, {.field = std::string(kHeardField), .conflict = *reading.conflict});
     if (reading.farAway)
       return askFar(move, move.candidate, std::string(kHeardField));
+    if (reading.passedToday)
+      return askPassed(move, move.candidate, {.field = std::string(kHeardField), .tomorrowAt = *reading.passedToday});
   }
   const std::vector<std::string> fields =
       move.answering ? std::vector<std::string>{move.slot} : missingFields(tool->spec, move.candidate, move.candidate.arguments);
@@ -314,6 +317,8 @@ Outcome TurnFlow::proceed(const Move& move)
     return askDay(move, next, *filled.dispute);
   if (filled.farField)
     return askFar(move, next, *filled.farField);
+  if (filled.passed)
+    return askPassed(move, next, *filled.passed);
   if (!filled.missing.empty())
     return ask({.request = request, .candidate = std::move(next), .slot = filled.missing.front(), .attempts = move.attempts + 1, .answering = false});
   if (move.answering)
@@ -392,6 +397,33 @@ Outcome TurnFlow::askDay(const Move& move, const Candidate& candidate, const slo
   return outcome;
 }
 
+Outcome TurnFlow::askPassed(const Move& move, const Candidate& candidate, const slots::Passed& passed)
+{
+  const TurnRequest& request = move.request;
+  Outcome outcome;
+  outcome.source = candidate.source;
+  const int attempts = move.attempts + 1;
+  if (attempts > kMaxAttempts) {
+    outcome.question = turn_texts::misunderstood(request.context.lang);
+    return outcome;
+  }
+  if (request.context.userId > 0)
+    pendings_.put(request.context.userId,
+                  {.awaiting = Awaiting::Day,
+                   .candidate = candidate,
+                   .alternative = std::nullopt,
+                   .slot = passed.field,
+                   .utterance = move.utterance.empty() ? std::string(request.utterance) : move.utterance,
+                   .attempts = attempts,
+                   .at = {},
+                   .options = {},
+                   .held = std::nullopt,
+                   .values = {iso_time::format(passed.tomorrowAt)},
+                   .relative = -1});
+  outcome.question = turn_texts::passedQuestion({.tomorrowAt = passed.tomorrowAt, .now = request.now, .lang = request.context.lang});
+  return outcome;
+}
+
 Outcome TurnFlow::askFar(const Move& move, const Candidate& candidate, const std::string& field)
 {
   const TurnRequest& request = move.request;
@@ -438,13 +470,22 @@ std::optional<Outcome> TurnFlow::followUpDay(const TurnRequest& request, const D
                    .answering = false,
                    .utterance = pending.utterance};
   std::optional<std::string> chosen;
-  if (pending.values.empty()) {
-    const CallReading reading = slots::dayReading({.utterance = request.utterance, .lang = request.context.lang, .now = request.now});
-    if (reading.conflict)
-      return askDay(again, pending.candidate, {.field = pending.slot, .conflict = *reading.conflict});
-    if (!reading.time)
-      return askFar(again, pending.candidate, pending.slot);
-    chosen = iso_time::format(reading.time->fireAt);
+  if (pending.values.size() <= 1) {
+    const auto proposed = pending.values.empty() ? std::nullopt : iso_time::parse(pending.values.front());
+    if (proposed && affirmed(request.utterance)) {
+      chosen = pending.values.front();
+    }
+    else {
+      const CallReading reading = slots::dayReading({.utterance = request.utterance, .lang = request.context.lang, .now = request.now});
+      if (reading.conflict)
+        return askDay(again, pending.candidate, {.field = pending.slot, .conflict = *reading.conflict});
+      if (reading.time)
+        chosen = iso_time::format(reading.time->fireAt);
+      else if (proposed)
+        return askPassed(again, pending.candidate, {.field = pending.slot, .tomorrowAt = *proposed});
+      else
+        return askFar(again, pending.candidate, pending.slot);
+    }
   }
   else {
     const auto picked = slots::chooseDay({.utterance = request.utterance, .values = pending.values, .relative = pending.relative});

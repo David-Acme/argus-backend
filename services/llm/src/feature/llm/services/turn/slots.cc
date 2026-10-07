@@ -433,12 +433,14 @@ Filled fill(const FillInput& input)
         filled.arguments[field] = value;
         continue;
       }
-      if (!filled.dispute && !filled.farField) {
+      if (!filled.dispute && !filled.farField && !filled.passed) {
         const CallReading reading = dayReading({.utterance = input.context.utterance, .lang = input.context.lang, .now = input.now});
         if (reading.conflict)
           filled.dispute = Dispute{.field = field, .conflict = *reading.conflict};
         else if (reading.farAway)
           filled.farField = field;
+        else if (reading.passedToday)
+          filled.passed = Passed{.field = field, .tomorrowAt = *reading.passedToday};
       }
       filled.missing.push_back(field);
       continue;

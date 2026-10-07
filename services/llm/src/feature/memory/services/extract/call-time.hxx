@@ -34,6 +34,7 @@ struct CallReading
   std::optional<CallTime> time{};
   std::optional<DayConflict> conflict{};
   bool farAway{false};
+  std::optional<int64_t> passedToday{};
 };
 
 namespace call_time

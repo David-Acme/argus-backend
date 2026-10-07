@@ -66,6 +66,15 @@ struct DayQuestion
 
 [[nodiscard]] std::string farQuestion(std::string_view lang);
 
+struct PassedQuestion
+{
+  int64_t tomorrowAt{0};
+  int64_t now{0};
+  std::string_view lang;
+};
+
+[[nodiscard]] std::string passedQuestion(const PassedQuestion& question);
+
 struct ProjectQuestion
 {
   const std::vector<std::string>& options;

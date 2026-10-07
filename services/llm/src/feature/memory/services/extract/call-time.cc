@@ -686,6 +686,7 @@ struct Resolved
   std::optional<int64_t> fireAt;
   std::optional<DayConflict> conflict;
   bool far{false};
+  std::optional<int64_t> passed{};
 };
 
 bool bareMorning(const ClockReading& clock)
@@ -753,14 +754,14 @@ Resolved instantFor(const Parsed& parsed, ClockReading clock, int64_t now)
   int64_t fireAt = instantOf(today, clock);
   if (fireAt > now)
     return {.fireAt = fireAt, .conflict = std::nullopt};
-  if (parsed.offset == 0 || parsed.today)
-    return {};
   if (bareMorning(clock)) {
     ClockReading evening = clock;
     evening.period = Period::Pm;
     if (const int64_t tonight = instantOf(today, evening); tonight > now)
-      return {.fireAt = tonight, .conflict = std::nullopt, .far = false};
+      return {.fireAt = tonight, .conflict = std::nullopt, .far = false, .passed = std::nullopt};
   }
+  if (parsed.offset == 0 || parsed.today)
+    return {.fireAt = std::nullopt, .conflict = std::nullopt, .far = false, .passed = instantOf(shifted(today, 1), clock)};
   fireAt = instantOf(shifted(today, 1), clock);
   return {.fireAt = fireAt, .conflict = std::nullopt, .far = false};
 }
@@ -778,7 +779,7 @@ CallReading read(const CallTimeInput& input)
   if (const auto found = relative(tokens, input.now)) {
     if (found->fireAt - input.now > kRelativeAheadS)
       return {};
-    return {.time = timeOf(found->fireAt, found->first, found->last), .conflict = std::nullopt, .farAway = false};
+    return {.time = timeOf(found->fireAt, found->first, found->last), .conflict = std::nullopt, .farAway = false, .passedToday = std::nullopt};
   }
   const Parsed parsed = Scanner(tokens).run();
   if (!parsed.clock)
@@ -787,17 +788,19 @@ CallReading read(const CallTimeInput& input)
   const int64_t limit = yearAfter(input.now);
   if (result.conflict) {
     if (std::max(result.conflict->byWeekday, result.conflict->byDate) > limit)
-      return {.time = std::nullopt, .conflict = std::nullopt, .farAway = true};
+      return {.time = std::nullopt, .conflict = std::nullopt, .farAway = true, .passedToday = std::nullopt};
     DayConflict conflict = *result.conflict;
     conflict.phraseBegin = folded.origin[tokens[parsed.first].begin];
     conflict.phraseEnd = folded.origin[tokens[parsed.last].end];
-    return {.time = std::nullopt, .conflict = conflict, .farAway = false};
+    return {.time = std::nullopt, .conflict = conflict, .farAway = false, .passedToday = std::nullopt};
   }
   if (result.far || (result.fireAt && *result.fireAt > limit && parsed.date))
-    return {.time = std::nullopt, .conflict = std::nullopt, .farAway = true};
+    return {.time = std::nullopt, .conflict = std::nullopt, .farAway = true, .passedToday = std::nullopt};
+  if (result.passed)
+    return {.time = std::nullopt, .conflict = std::nullopt, .farAway = false, .passedToday = result.passed};
   if (!result.fireAt || *result.fireAt > limit)
     return {};
-  return {.time = timeOf(*result.fireAt, parsed.first, parsed.last), .conflict = std::nullopt, .farAway = false};
+  return {.time = timeOf(*result.fireAt, parsed.first, parsed.last), .conflict = std::nullopt, .farAway = false, .passedToday = std::nullopt};
 }
 
 std::optional<CallTime> resolve(const CallTimeInput& input)

@@ -59,12 +59,19 @@ struct Dispute
   DayConflict conflict;
 };
 
+struct Passed
+{
+  std::string field;
+  int64_t tomorrowAt{0};
+};
+
 struct Filled
 {
   Json::Value arguments;
   std::vector<std::string> missing;
   std::optional<Dispute> dispute{};
   std::optional<std::string> farField{};
+  std::optional<Passed> passed{};
 };
 
 [[nodiscard]] Filled fill(const FillInput& input);
