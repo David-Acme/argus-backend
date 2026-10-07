@@ -84,6 +84,7 @@ target_link_libraries(session-management-test PRIVATE
     argus::lib::auth
     argus::lib::config
     argus::lib::sqlite
+    argus::lib::test-support
     argus::lib::text
     argus::contracts::auth
     argus::contracts::sync

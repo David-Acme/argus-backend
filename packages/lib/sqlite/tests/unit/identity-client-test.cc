@@ -3,6 +3,7 @@
 
 #include <drogon/drogon.h>
 #include <sqlite/db-service.hxx>
+#include <test-support/app-runner.hxx>
 
 #include <atomic>
 #include <chrono>
@@ -69,44 +70,7 @@ void drain(const drogon::orm::DbClientPtr& client)
     throw std::runtime_error("the client's loop did not drain");
 }
 
-class AppRunner
-{
-public:
-  AppRunner()
-      : finished_(std::make_shared<std::atomic<bool>>(false)),
-        runner_([flag = finished_] {
-          drogon::app().run();
-          flag->store(true, std::memory_order_release);
-        })
-  {
-  }
-
-  ~AppRunner()
-  {
-    if (!runner_.joinable())
-      return;
-    for (int i = 0; i < 3000 && !finished_->load(std::memory_order_acquire) &&
-                    !drogon::app().isRunning(); ++i)
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    if (drogon::app().isRunning()) {
-      drogon::app().quit();
-      runner_.join();
-      return;
-    }
-    if (finished_->load(std::memory_order_acquire)) {
-      runner_.join();
-      return;
-    }
-    runner_.detach();
-  }
-
-  AppRunner(const AppRunner&) = delete;
-  AppRunner& operator=(const AppRunner&) = delete;
-
-private:
-  std::shared_ptr<std::atomic<bool>> finished_;
-  std::thread runner_;
-};
+using test_support::AppRunner;
 
 bool loopIsRunning()
 {

@@ -22,6 +22,7 @@
 #include <identity/identity-client.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/auth-change-sink.hxx>
+#include <test-support/app-runner.hxx>
 #include <text/json-util.hxx>
 #include <text/sha256.hxx>
 
@@ -352,15 +353,7 @@ public:
 
   ~Runtime()
   {
-    if (runner_.joinable()) {
-      if (drogon::app().isRunning()) {
-        drogon::app().quit();
-        runner_.join();
-      }
-      else {
-        runner_.detach();
-      }
-    }
+    runner_.reset();
     std::remove(path_.c_str());
     std::remove((path_ + "-wal").c_str());
     std::remove((path_ + "-shm").c_str());
@@ -380,19 +373,14 @@ public:
                                    .filename = path_,
                                    .name = "default",
                                    .timeout = -1});
-    runner_ = std::thread([] { drogon::app().run(); });
-    const auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(30);
-    while (!drogon::app().isRunning() &&
-           std::chrono::steady_clock::now() < deadline)
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    running_ = drogon::app().isRunning();
+    runner_.emplace();
+    running_ = drogon::app().isRunning() && drogon::app().getLoop()->isRunning();
     return running_;
   }
 
 private:
   std::string path_{tempPath()};
-  std::thread runner_;
+  std::optional<test_support::AppRunner> runner_;
   bool started_{false};
   bool running_{false};
 };

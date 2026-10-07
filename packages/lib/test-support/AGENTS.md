@@ -9,7 +9,10 @@ A PACKAGE, header-only (INTERFACE), tier 1: it depends on Drogon alone. A test
 links `argus::lib::test-support`; no service links it.
 
 `test_support::AppRunner` runs `drogon::app().run()` on its own thread and stops
-it in its destructor: wait for the main loop, `quit()`, `join()`.
+it in its destructor: wait for the main loop, `quit()`, `join()`. A test that quit
+the app itself leaves the runner nothing to stop: the thread's completion is
+tracked, so the destructor joins at once instead of waiting for a loop that is
+gone (`app-runner-test`).
 
 ## The one rule behind it
 
@@ -35,3 +38,10 @@ static storage: a `static` AppRunner, a `static` initializer that builds one, or
 `test-support/app-runner.hxx` may keep it anywhere. `test-runner-lifetime-selftest`
 runs the same rules over `tests/fixtures`, whose `bad-*` samples must be flagged and
 whose `good-*` samples must not.
+
+The gate also fails on any test source, whoever defines the runner, that guards a
+`quit()` with `drogon::app().isRunning()`. Drogon sets that flag before it builds its
+routers, starts its IO loops and enters the main loop, and `quit()` does nothing while
+the main loop is not running: a quit inside that window is dropped for good and the
+join after it never returns. The guard is `drogon::app().getLoop()->isRunning()`, which
+is what the helper waits for.

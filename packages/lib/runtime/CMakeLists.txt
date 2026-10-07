@@ -4,6 +4,11 @@ if(NOT TARGET Drogon::Drogon)
     find_package(Drogon CONFIG REQUIRED)
 endif()
 
+if(NOT TARGET argus::lib::test-support)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../test-support
+                     ${CMAKE_BINARY_DIR}/test-support)
+endif()
+
 argus_lib(NAME runtime
     SOURCES
         src/runtime/thread-budget.cc
@@ -65,19 +70,19 @@ add_test(NAME cpu-limits-test COMMAND cpu-limits-test)
 
 add_executable(shutdown-deadline-test tests/unit/shutdown-deadline-test.cc)
 target_link_libraries(shutdown-deadline-test PRIVATE argus::lib::runtime
-    doctest::doctest)
+    argus::lib::test-support doctest::doctest)
 target_compile_options(shutdown-deadline-test PRIVATE -Wall -Wextra)
 add_test(NAME shutdown-deadline-test COMMAND shutdown-deadline-test)
 
 add_executable(shutdown-signal-test tests/unit/shutdown-signal-test.cc)
 target_link_libraries(shutdown-signal-test PRIVATE argus::lib::runtime
-    doctest::doctest)
+    argus::lib::test-support doctest::doctest)
 target_compile_options(shutdown-signal-test PRIVATE -Wall -Wextra)
 add_test(NAME shutdown-signal-test COMMAND shutdown-signal-test)
 
 add_executable(shutdown-quit-hook-test tests/unit/shutdown-quit-hook-test.cc)
 target_link_libraries(shutdown-quit-hook-test PRIVATE argus::lib::runtime
-    doctest::doctest)
+    argus::lib::test-support doctest::doctest)
 target_compile_options(shutdown-quit-hook-test PRIVATE -Wall -Wextra)
 add_test(NAME shutdown-quit-hook-test COMMAND shutdown-quit-hook-test)
 
@@ -107,7 +112,7 @@ add_test(NAME blocking-pool-test COMMAND blocking-pool-test)
 
 add_executable(blocking-task-test tests/unit/blocking-task-test.cc)
 target_link_libraries(blocking-task-test PRIVATE argus::lib::runtime
-    doctest::doctest)
+    argus::lib::test-support doctest::doctest)
 target_compile_options(blocking-task-test PRIVATE -Wall -Wextra)
 add_test(NAME blocking-task-test COMMAND blocking-task-test)
 

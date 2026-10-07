@@ -26,6 +26,11 @@ if(NOT TARGET argus::lib::config)
                      ${CMAKE_BINARY_DIR}/config)
 endif()
 
+if(NOT TARGET argus::lib::test-support)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../test-support
+                     ${CMAKE_BINARY_DIR}/test-support)
+endif()
+
 argus_lib(NAME sqlite
     SOURCES
         src/sqlite/db-service.cc
@@ -59,6 +64,7 @@ add_executable(identity-client-test tests/unit/identity-client-test.cc)
 target_link_libraries(identity-client-test PRIVATE
     argus::lib::sqlite
     argus::lib::config
+    argus::lib::test-support
     Drogon::Drogon
     sqlite-vec
     doctest::doctest)

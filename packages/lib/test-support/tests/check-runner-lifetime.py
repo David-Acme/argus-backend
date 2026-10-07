@@ -5,6 +5,7 @@ from pathlib import Path
 
 HELPER_INCLUDE = "test-support/app-runner.hxx"
 SUFFIXES = {".cc", ".hxx"}
+EARLY_FLAG_QUIT = re.compile(r"\bif\s*\(\s*drogon::app\(\)\.isRunning\(\)\s*\)\s*\{[^{}]*?drogon::app\(\)\.quit\(\)")
 STATIC_RUNNER = re.compile(r"\bstatic\b[^;{}]*\bAppRunner\b")
 STATIC_LAMBDA = re.compile(r"\bstatic\b[^;{}]*=\s*\[[^\]]*\]\s*(?:\([^)]*\))?\s*(?:->[^{]*)?\{")
 CLASS_HEAD = re.compile(r"\b(?:class|struct)\s+(\w+)[^;{]*\{")
@@ -39,9 +40,11 @@ def line_of(text, index):
 
 
 def findings(text):
-    if HELPER_INCLUDE in text and "class AppRunner" not in text:
-        return []
     found = []
+    for match in EARLY_FLAG_QUIT.finditer(text):
+        found.append((line_of(text, match.start()), "a quit guarded by the early isRunning flag, which Drogon sets before its main loop runs"))
+    if HELPER_INCLUDE in text and "class AppRunner" not in text:
+        return sorted(found)
     for match in STATIC_RUNNER.finditer(text):
         found.append((line_of(text, match.start()), "a static AppRunner"))
     for match in STATIC_LAMBDA.finditer(text):
@@ -98,7 +101,7 @@ def main():
     failures = scan(Path(arguments.root).resolve())
     for failure in failures:
         print(failure, file=sys.stderr)
-    print(f"runner lifetime: {len(failures)} static runners")
+    print(f"runner lifetime: {len(failures)} runners to fix")
     return 1 if failures else 0
 
 
