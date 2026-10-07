@@ -7,7 +7,9 @@
 #include <mcp/json-rpc.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/user-change-sink.hxx>
+#include <text/iso-time.hxx>
 
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -193,7 +195,7 @@ void creatingAnEventBelongsToTheCaller(Env& env)
   reset(env);
   const auto created = env.ana("calendar.create_event", args({{"title", "Reunión con Pedro"}, {"starts_at", kStart}, {"location", "Oficina"}}));
   CHECK_FALSE(created.isError);
-  CHECK(created.text == "Agendado: «Reunión con Pedro», el miércoles 6 de marzo a las 15:00.");
+  CHECK(created.text == "Agendado: «Reunión con Pedro», el miércoles 6 de marzo a las 3 de la tarde.");
   CHECK(liveEvents("Reunión con Pedro") == 1);
   CHECK(ownerOfEvent("Reunión con Pedro") == kAna);
   CHECK(created.structured["title"].asString() == "Reunión con Pedro");
@@ -207,7 +209,30 @@ void creatingAnEventBelongsToTheCaller(Env& env)
   CHECK(again.structured["id"].asInt64() == created.structured["id"].asInt64());
 
   const auto english = env.call("calendar.create_event", args({{"title", "Dentist"}, {"starts_at", "2030-03-07T09:30:00+00:00"}}), {.userId = kAna, .role = "owner", .lang = "en"});
-  CHECK(english.text == "Scheduled: «Dentist», Thursday, March 7 at 9:30 AM.");
+  CHECK(english.text == "Scheduled: «Dentist», on Thursday, March 7th at 9:30 AM.");
+}
+
+void theReadBackNamesTheDayAndTheTimeInWords(Env& env)
+{
+  reset(env);
+  const std::time_t now = std::time(nullptr);
+  std::tm today{};
+  localtime_r(&now, &today);
+  today.tm_hour = 17;
+  today.tm_min = 0;
+  today.tm_sec = 0;
+  today.tm_isdst = -1;
+  const auto startsAt = static_cast<int64_t>(std::mktime(&today));
+  const std::array<const char*, 7> days{"domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"};
+  const std::array<const char*, 7> englishDays{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+  const auto weekday = static_cast<std::size_t>(today.tm_wday);
+  const std::string iso = iso_time::format(startsAt);
+  const auto spanish = env.ana("calendar.create_event", args({{"title", "Café"}, {"starts_at", iso}}));
+  CHECK(spanish.text == std::string("Agendado: «Café», el ") + days.at(weekday) + " " + std::to_string(today.tm_mday) + " a las 5 de la tarde.");
+  const auto english = env.call("calendar.create_event", args({{"title", "Coffee"}, {"starts_at", iso}}), {.userId = kAna, .role = "owner", .lang = "en"});
+  const int day = today.tm_mday;
+  const std::string suffix = day % 10 == 1 && day != 11 ? "st" : (day % 10 == 2 && day != 12 ? "nd" : (day % 10 == 3 && day != 13 ? "rd" : "th"));
+  CHECK(english.text == std::string("Scheduled: «Coffee», on ") + englishDays.at(weekday) + " the " + std::to_string(day) + suffix + " at 5 PM.");
 }
 
 void anEventNeedsAUnderstandableStart(Env& env)
@@ -439,6 +464,7 @@ TEST_CASE("the productivity tools act for the caller on the caller's own rows")
   user_change::setProductivitySink(&env.sink);
   theToolsDeclareTheirModuleAndCapability(env);
   creatingAnEventBelongsToTheCaller(env);
+  theReadBackNamesTheDayAndTheTimeInWords(env);
   anEventNeedsAUnderstandableStart(env);
   listingShowsOnlyTheCallersEvents(env);
   cancellingNeedsTheConfirmationCodeAndTheOwner(env);

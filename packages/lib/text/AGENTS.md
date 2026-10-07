@@ -36,6 +36,15 @@ absorption.
   must be a word of the name; one hit is `Exact`, several `Ambiguous` (the
   caller asks which), none `Missing`. Camera, guard and productivity tools use
   it so a user's wording resolves the same way everywhere.
+- `src/text/spoken-time.{cc,hxx}` — `spoken_time`: an instant spoken in the
+  local clock in es or en, the one wording the confirmation question, the
+  read-back of a created event and of a reminder, and the day question share:
+  `moment` ("hoy a las 3:30 de la tarde", "el jueves 8 a las 3 de la tarde",
+  "on Thursday the 8th at 3 PM"), `day`, `clock` and `weekdayDate` ("lunes 12").
+  `Day::Relative` says hoy/mañana, `Day::Weekday` always the weekday and date;
+  the month is named only when it is not the current one. Noon is "a mediodía"
+  and 00:00 "a las 12 de la madrugada", so the llm resolver reads every phrase
+  back as the same instant.
 - `src/text/iso-time.{cc,hxx}` — `iso_time::parse` (an ISO-8601 date-time with
   an optional `Z` or `±hh:mm` offset and optional seconds; without an offset
   the host's local zone is meant; anything else is `nullopt`) and `format`

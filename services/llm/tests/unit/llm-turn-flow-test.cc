@@ -1202,7 +1202,7 @@ TEST_CASE("a time is spoken as today, tomorrow or the weekday, in the 12-hour cl
   CHECK(when(at({.day = 7, .hour = 9, .minute = 0}), "es") == "mañana a las 9 de la mañana");
   CHECK(when(at({.day = 7, .hour = 9, .minute = 0}), "en") == "tomorrow at 9 AM");
   CHECK(when(at({.day = 9, .hour = 13, .minute = 0}), "es") == "el viernes 9 a la 1 de la tarde");
-  CHECK(when(at({.day = 9, .hour = 13, .minute = 0}), "en") == "on Friday the 9 at 1 PM");
+  CHECK(when(at({.day = 9, .hour = 13, .minute = 0}), "en") == "on Friday the 9th at 1 PM");
   CHECK(when(at({.day = 6, .hour = 21, .minute = 5}), "es") == "hoy a las 9:05 de la noche");
   CHECK(turn_texts::spokenWhen({.iso = "not a time", .now = now, .lang = "es"}).empty());
 }

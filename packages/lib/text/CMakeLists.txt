@@ -17,6 +17,8 @@ argus_lib(NAME text
         src/text/name-match.cc
         src/text/name-match.hxx
         src/text/sha256.hxx
+        src/text/spoken-time.cc
+        src/text/spoken-time.hxx
         src/text/text-norm.cc
         src/text/text-norm.hxx
     INCLUDES src
@@ -46,6 +48,11 @@ add_executable(name-match-test tests/unit/name-match-test.cc)
 target_link_libraries(name-match-test PRIVATE argus::lib::text doctest::doctest)
 target_compile_options(name-match-test PRIVATE -Wall -Wextra)
 add_test(NAME name-match-test COMMAND name-match-test)
+
+add_executable(spoken-time-test tests/unit/spoken-time-test.cc)
+target_link_libraries(spoken-time-test PRIVATE argus::lib::text doctest::doctest)
+target_compile_options(spoken-time-test PRIVATE -Wall -Wextra)
+add_test(NAME spoken-time-test COMMAND spoken-time-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

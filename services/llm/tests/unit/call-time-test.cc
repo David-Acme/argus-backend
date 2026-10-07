@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <feature/memory/services/extract/call-time.hxx>
+#include <text/spoken-time.hxx>
 
 #include <array>
 #include <cstdlib>
@@ -462,6 +463,23 @@ TEST_CASE("a weekday that disagrees with the day of the month is not resolved an
   const DayConflict conflict = reading.conflict.value_or(DayConflict{});
   CHECK(conflict.byWeekday == Lima::at({.month = 11, .day = 3, .hour = 8, .minute = 5}));
   CHECK(conflict.byDate == Lima::at({.month = 11, .day = 4, .hour = 8, .minute = 5}));
+}
+
+TEST_CASE("what the read-back says, said back to the resolver, is the same instant")
+{
+  const int64_t reference = now();
+  const std::array<Moment, 6> days{{{.day = 8}, {.day = 9}, {.day = 12}, {.month = 11, .day = 5}, {.month = 12, .day = 25}, {.year = 2027, .month = 2, .day = 3}}};
+  for (const std::string_view lang : {"es", "en"}) {
+    for (const Moment& day : days) {
+      for (int hour = 0; hour < 24; ++hour) {
+        for (const int minute : {0, 15, 30, 45}) {
+          const int64_t epoch = utc({.year = day.year, .month = day.month, .day = day.day, .hour = hour, .minute = minute});
+          const std::string said = spoken_time::moment({.epoch = epoch, .now = reference, .lang = lang, .day = spoken_time::Day::Weekday});
+          CHECK_MESSAGE(fireAt(said, std::string(lang)) == epoch, said);
+        }
+      }
+    }
+  }
 }
 
 TEST_CASE("relative times")

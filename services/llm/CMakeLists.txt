@@ -429,6 +429,16 @@ set_target_properties(memory-reminder-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME memory-reminder-test COMMAND memory-reminder-test)
 
+add_executable(reminder-readback-test tests/unit/reminder-readback-test.cc)
+
+target_link_libraries(reminder-readback-test PRIVATE argus::memory doctest::doctest)
+
+target_compile_options(reminder-readback-test PRIVATE -Wall -Wextra)
+
+set_target_properties(reminder-readback-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME reminder-readback-test COMMAND reminder-readback-test)
+
 add_executable(call-time-test tests/unit/call-time-test.cc)
 
 target_link_libraries(call-time-test PRIVATE argus::memory doctest::doctest)

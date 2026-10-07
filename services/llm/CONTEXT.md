@@ -1180,6 +1180,19 @@ before the rules it was 21:00 today); "next friday" is the coming Friday; a
 weekday that disagrees with "hoy" or "mañana" resolves nothing and asks
 nothing; a year in the text is not read.
 
+Every created event and reminder is read back with the day and the time it
+resolved to, in words, from the tool's own result and not from the model:
+`calendar.create_event` says "Agendado: «Reunión con Pedro», el jueves 8 a las
+3 de la tarde." (and "Scheduled: «Dentist», on Thursday the 8th at 3 PM."),
+`memory.remind` appends "Te llamaré el jueves 8 a las 3 de la tarde." or, when
+only a reminder row was saved, "Quedó en tus recordatorios para el jueves 8 a
+las 3 de la tarde." (`reminder-readback.{hxx,cc}`). The wording is
+`spoken_time` (`packages/lib/text`), shared with the confirmation question,
+and is built to be said back: the resolver reads "a las 3 de la tarde", "a
+mediodía" and "a las 12 de la madrugada" (00:00) as the same instants
+(`call-time-test`'s round trip over every hour and quarter). The month is named
+only when it is not the current one.
+
 Whether the scheduled call rings, is only a
 notification or is spoken into a live call is the user's call preference
 (`assistant`), decided by the notification service. The descriptor no longer

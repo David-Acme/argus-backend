@@ -1,5 +1,7 @@
 #include "memory-service.hxx"
 
+#include "reminder-readback.hxx"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -1206,13 +1208,11 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
               .episode = false});
   result.output = (english(call) ? "Reminder saved: " : "Recordatorio guardado: ") +
                   spoken(formed->canonical);
-  if (const auto when = scheduleReminder({.call = call, .text = text, .factId = formed->factId})) {
-    if (when->called)
-      result.output += (english(call) ? " I will call you at " : " Te llamaré a las ") + when->clock + ".";
-    else
-      result.output += (english(call) ? " It is in your reminders for " : " Quedó en tus recordatorios para las ") +
-                       when->clock + ".";
-  }
+  if (const auto when = scheduleReminder({.call = call, .text = text, .factId = formed->factId}))
+    result.output += reminder_readback::sentence({.fireAt = when->fireAt,
+                                                  .now = static_cast<int64_t>(std::time(nullptr)),
+                                                  .lang = call.context.lang,
+                                                  .called = when->called});
   return result;
 }
 
@@ -1247,12 +1247,7 @@ MemoryService::scheduleReminder(const ReminderCallInput& input) const
                                                              .commandId = commandId});
   if (!scheduled.called && !scheduled.listed)
     return std::nullopt;
-  const auto seconds = static_cast<std::time_t>(when->fireAt);
-  std::tm local{};
-  localtime_r(&seconds, &local);
-  std::array<char, 8> clock{};
-  const std::size_t written = std::strftime(clock.data(), clock.size(), "%H:%M", &local);
-  scheduled.clock = std::string(clock.data(), written);
+  scheduled.fireAt = when->fireAt;
   return scheduled;
 }
 

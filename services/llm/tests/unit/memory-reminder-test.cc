@@ -12,6 +12,7 @@
 #include <sqlite/vec-db.hxx>
 
 #include <algorithm>
+#include <array>
 #include <ctime>
 #include <memory>
 #include <cctype>
@@ -67,6 +68,12 @@ void writeConfig(const std::string& database = "reminder.db",
          << "embedding_preload = true\n"
          << "[extract]\n"
          << "model_path = \"" << extractModel << "\"\n";
+}
+
+std::string weekdayName(int weekday)
+{
+  constexpr std::array<const char*, 7> kDays{"domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"};
+  return kDays.at(static_cast<std::size_t>(weekday));
 }
 
 std::string lowered(std::string text)
@@ -459,7 +466,8 @@ TEST_CASE("a reminder that names a time schedules a call at that time")
   CHECK(local.tm_hour == 9);
   CHECK(local.tm_min == 0);
   CHECK(request.fireAt > std::time(nullptr));
-  CHECK(stored.output.ends_with("Te llamaré a las 09:00."));
+  CHECK(stored.output.find(std::string("Te llamaré el ") + weekdayName(local.tm_wday) + " " + std::to_string(local.tm_mday)) != std::string::npos);
+  CHECK(stored.output.ends_with(" a las 9 de la mañana."));
 
   auto untimed = callFor("memory.remind", kSpeaker);
   untimed.arguments["text"] = "mi cita con el dentista es el lunes";
@@ -569,7 +577,8 @@ TEST_CASE("a timed reminder is written once, for the speaker, through the remind
   REQUIRE(calls->scheduled.size() == 1);
   CHECK(calls->scheduled.front().userId == kSpeaker);
   CHECK(calls->scheduled.front().commandId == rows->created.front().commandId);
-  CHECK(saved.output.find("Te llamaré a las") != std::string::npos);
+  CHECK(saved.output.find("Te llamaré el ") != std::string::npos);
+  CHECK(saved.output.ends_with(" a las 9 de la mañana."));
 
   auto another = remindCall(kOtherUser, "Recuérdame mañana a las diez comprar pan.");
   another.arguments["userId"] = static_cast<Json::Int64>(kSpeaker);
@@ -611,13 +620,14 @@ TEST_CASE("a reminder that no row writer accepts is not claimed, and rows alone 
 
   const auto listed = run(remindCall(kSpeaker, "Recuérdame mañana a las nueve llamar al dentista."));
   REQUIRE(listed.ok);
-  CHECK(listed.output.find("Quedó en tus recordatorios para las") != std::string::npos);
+  CHECK(listed.output.find("Quedó en tus recordatorios para el ") != std::string::npos);
+  CHECK(listed.output.ends_with(" a las 9 de la mañana."));
   CHECK(listed.output.find("Te llamaré") == std::string::npos);
 
   rows->accepts = false;
   const auto refused = run(remindCall(kSpeaker, "Recuérdame mañana a las once pagar la luz."));
   REQUIRE(refused.ok);
-  CHECK(refused.output.find("recordatorios para las") == std::string::npos);
+  CHECK(refused.output.find("recordatorios para el ") == std::string::npos);
   CHECK(refused.output.find("Te llamaré") == std::string::npos);
 
   service.shutdown();

@@ -17,6 +17,7 @@ argus_module(NAME memory
         services/memory/memory-formation.cc
         services/memory/memory-service.cc
         services/memory/memory-tool-descriptors.cc
+        services/memory/reminder-readback.cc
         services/memory/sqlite-graph.cc
         services/memory/tool-parser.cc
     INCLUDES

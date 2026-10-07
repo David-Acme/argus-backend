@@ -6,6 +6,7 @@
 #include <feature/calendar-event/services/calendar-event-feature-service.hxx>
 #include <shared/repositories/calendar-event/calendar-event-repository.hxx>
 #include <text/name-match.hxx>
+#include <text/spoken-time.hxx>
 
 #include <algorithm>
 #include <ctime>
@@ -30,6 +31,17 @@ std::string lang(const argus::mcp::ToolInvocation& invocation)
 std::string describe(const CalendarEventSchema& event, const argus::mcp::ToolInvocation& invocation)
 {
   return "«" + event.title + "», " + spokenWhen({.epoch = event.startsAt, .allDay = event.isAllDay}, lang(invocation));
+}
+
+std::string readBack(const CalendarEventSchema& event, const argus::mcp::ToolInvocation& invocation)
+{
+  const std::string language = lang(invocation);
+  const spoken_time::When when{.epoch = event.startsAt,
+                               .now = static_cast<int64_t>(std::time(nullptr)),
+                               .lang = language,
+                               .day = spoken_time::Day::Weekday,
+                               .bare = false};
+  return "«" + event.title + "», " + (event.isAllDay ? spoken_time::day(when) : spoken_time::moment(when));
 }
 
 Json::Value summary(const CalendarEventSchema& event)
@@ -137,7 +149,7 @@ drogon::Task<argus::mcp::ToolOutcome> createEvent(argus::mcp::ToolInvocation inv
     co_return invalid(error, invocation);
   }
   argus::mcp::ToolOutcome outcome;
-  outcome.text = (argus::mcp::speech::inEnglish(invocation) ? "Scheduled: " : "Agendado: ") + describe(row, invocation) + ".";
+  outcome.text = (argus::mcp::speech::inEnglish(invocation) ? "Scheduled: " : "Agendado: ") + readBack(row, invocation) + ".";
   outcome.structured = summary(row);
   co_return outcome;
 }

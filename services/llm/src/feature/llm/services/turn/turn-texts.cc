@@ -1,9 +1,9 @@
 #include "turn-texts.hxx"
 
 #include <text/iso-time.hxx>
+#include <text/spoken-time.hxx>
 
 #include <array>
-#include <ctime>
 
 namespace turn_texts
 {
@@ -281,40 +281,7 @@ std::string spokenWhen(const WhenInput& input)
   const auto at = iso_time::parse(input.iso);
   if (!at)
     return {};
-  const auto thenSeconds = static_cast<std::time_t>(*at);
-  const auto nowSeconds = static_cast<std::time_t>(input.now);
-  std::tm then{};
-  std::tm today{};
-  localtime_r(&thenSeconds, &then);
-  localtime_r(&nowSeconds, &today);
-  const bool english = input.lang == "en";
-  constexpr std::array<std::string_view, 7> kEsDays{"domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"};
-  constexpr std::array<std::string_view, 7> kEnDays{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-  const auto weekday = static_cast<std::size_t>(then.tm_wday);
-  std::tm tomorrow = today;
-  tomorrow.tm_mday += 1;
-  tomorrow.tm_isdst = -1;
-  const std::time_t next = std::mktime(&tomorrow);
-  std::tm following{};
-  localtime_r(&next, &following);
-  const bool sameDay = then.tm_year == today.tm_year && then.tm_yday == today.tm_yday;
-  const bool nextDay = then.tm_year == following.tm_year && then.tm_yday == following.tm_yday;
-  std::string day;
-  if (sameDay)
-    day = english ? "today" : "hoy";
-  else if (nextDay)
-    day = english ? "tomorrow" : "mañana";
-  else
-    day = english ? "on " + std::string(kEnDays.at(weekday)) + " the " + std::to_string(then.tm_mday)
-                  : "el " + std::string(kEsDays.at(weekday)) + " " + std::to_string(then.tm_mday);
-  const int hour12 = then.tm_hour % 12 == 0 ? 12 : then.tm_hour % 12;
-  std::string clock = std::to_string(hour12);
-  if (then.tm_min != 0)
-    clock += (then.tm_min < 10 ? ":0" : ":") + std::to_string(then.tm_min);
-  if (english)
-    return day + " at " + clock + (then.tm_hour < 12 ? " AM" : " PM");
-  const std::string_view period = then.tm_hour < 12 ? "de la mañana" : (then.tm_hour < 19 ? "de la tarde" : "de la noche");
-  return day + (hour12 == 1 ? " a la " : " a las ") + clock + " " + std::string(period);
+  return spoken_time::moment({.epoch = *at, .now = input.now, .lang = input.lang});
 }
 
 std::string slotQuestion(const SlotQuestion& question)

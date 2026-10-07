@@ -234,7 +234,7 @@ private:
 
   struct ReminderScheduled
   {
-    std::string clock;
+    int64_t fireAt{0};
     bool called{false};
     bool listed{false};
   };
