@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <auth/module-gate.hxx>
 #include <feature/llm/services/tools/core-tools.hxx>
 #include <feature/llm/services/tools/tool-directory.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
@@ -582,4 +583,61 @@ TEST_CASE("a tool of the core server acts for the caller the conversation declar
   CHECK(executor.execute(call, {.role = UserRole::Owner, .modules = {}}).ok);
   CHECK(actedFor == 11);
   CHECK(withRole == UserRole::Owner);
+}
+
+TEST_CASE("the real app.open opens the notifications panel for every role even when the modules are off, and still offers a module's own screen")
+{
+  const auto spec = appOpenSpec();
+  CHECK(spec.module == "core");
+  CHECK(spec.capability == "notifications.read");
+  CHECK(spec.annotations.readOnly);
+  Json::Value arguments(Json::objectValue);
+  arguments["screen"] = "notifications";
+  CHECK_FALSE(argus::mcp::schema::violation(spec.inputSchema, arguments).has_value());
+
+  ToolRegistry registry;
+  registry.addProvider({.id = "llm", .client = clientOver(std::make_shared<argus::mcp::LocalTransport>(coreToolServer({})))});
+  registry.refresh();
+  const ToolExecutor executor(registry);
+  ModuleFlag productivity;
+  productivity.id = "productivity";
+  productivity.enabled = false;
+  ModuleFlag surveillance;
+  surveillance.id = "surveillance";
+  surveillance.enabled = false;
+  const ModuleSnapshot off({productivity, surveillance});
+  static_cast<void>(moduleGate().apply({productivity, surveillance}));
+  struct GateReset
+  {
+    ~GateReset() { static_cast<void>(moduleGate().apply({})); }
+  } const reset;
+
+  for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    std::vector<std::pair<std::string, Json::Value>> actions;
+    tools::ToolCall call;
+    call.name = "app.open";
+    call.arguments["screen"] = "notifications";
+    call.context.userId = 7;
+    call.context.lang = "es";
+    call.context.emitAction = [&actions](const std::string& name, const Json::Value& payload) { actions.emplace_back(name, payload); };
+    const auto result = executor.execute(call, {.role = role, .modules = off});
+    CHECK(result.ok);
+    CHECK(result.output == "La app abrió las notificaciones.");
+    REQUIRE(actions.size() == 1);
+    CHECK(actions.front().first == "app.open");
+    CHECK(actions.front().second["screen"].asString() == "notifications");
+    CHECK_FALSE(actions.front().second.isMember("module"));
+  }
+
+  tools::ToolCall english;
+  english.name = "app.open";
+  english.arguments["screen"] = "notifications";
+  english.context.userId = 7;
+  english.context.lang = "en";
+  english.context.emitAction = [](const std::string&, const Json::Value&) {};
+  CHECK(executor.execute(english, {.role = UserRole::Guest, .modules = off}).output == "The app opened the notifications.");
+
+  tools::ToolCall agenda = english;
+  agenda.arguments["screen"] = "agenda";
+  CHECK(executor.execute(agenda, {.role = UserRole::Owner, .modules = off}).code == "module_inactive");
 }

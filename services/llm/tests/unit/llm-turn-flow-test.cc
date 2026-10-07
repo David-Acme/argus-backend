@@ -1721,3 +1721,36 @@ TEST_CASE("a provider that names no projects leaves its own refusal to be said, 
   CHECK(outcome.findings.front().kind == turn::FindingKind::Refused);
   CHECK(world.say("el de la casa").steps.empty());
 }
+
+TEST_CASE("the notifications panel opens by an app command in both languages, for every role, with a module off")
+{
+  const auto opened = [](UserRole role, const std::string& lang, const std::string& utterance) {
+    Spoken spoken(role);
+    spoken.world.add(tool_stubs::appAction({.name = "app.open", .capability = "notifications.read", .module = "core"}));
+    spoken.world.productivityOff();
+    spoken.world.context.lang = lang;
+    std::vector<std::pair<std::string, Json::Value>> actions;
+    spoken.world.context.emitAction = [&actions](const std::string& name, const Json::Value& arguments) {
+      actions.emplace_back(name, arguments);
+    };
+    spoken.script.replies = {lang == "en" ? "Here they are." : "Aquí están."};
+    const auto output = spoken.sync(utterance);
+    return std::make_pair(actions, output.reply);
+  };
+  for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    const auto [spanish, spoken] = opened(role, "es", "abre las notificaciones");
+    REQUIRE(spanish.size() == 1);
+    CHECK(spanish.front().first == "app.open");
+    CHECK(spanish.front().second["screen"].asString() == "notifications");
+    CHECK_FALSE(spanish.front().second.isMember("module"));
+    CHECK(spoken == "Aquí están.");
+  }
+  const auto novedades = opened(UserRole::Resident, "es", "muéstrame las novedades");
+  REQUIRE(novedades.first.size() == 1);
+  CHECK(novedades.first.front().second["screen"].asString() == "notifications");
+  const auto english = opened(UserRole::Guest, "en", "open my notifications");
+  REQUIRE(english.first.size() == 1);
+  CHECK(english.first.front().second["screen"].asString() == "notifications");
+  CHECK(english.second == "Here they are.");
+  CHECK(opened(UserRole::Owner, "es", "tengo muchas notificaciones sin leer").first.empty());
+}

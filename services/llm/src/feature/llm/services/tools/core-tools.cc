@@ -22,7 +22,7 @@ struct Screen
   std::string_view module;
 };
 
-constexpr std::array<Screen, 8> kScreens{
+constexpr std::array<Screen, 9> kScreens{
     {{.value = "home", .es = "el inicio", .en = "the home screen", .module = "core"},
      {.value = "agenda", .es = "la agenda", .en = "the agenda", .module = "productivity"},
      {.value = "projects", .es = "los proyectos", .en = "the projects", .module = "productivity"},
@@ -30,7 +30,8 @@ constexpr std::array<Screen, 8> kScreens{
      {.value = "security", .es = "la seguridad", .en = "security", .module = "surveillance"},
      {.value = "people", .es = "las personas", .en = "the people", .module = "core"},
      {.value = "settings", .es = "los ajustes", .en = "the settings", .module = "core"},
-     {.value = "modules", .es = "los módulos", .en = "the modules", .module = "core"}}};
+     {.value = "modules", .es = "los módulos", .en = "the modules", .module = "core"},
+     {.value = "notifications", .es = "las notificaciones", .en = "the notifications", .module = "core"}}};
 
 std::vector<std::string> screenNames()
 {

@@ -55,7 +55,7 @@ constexpr std::array<std::string_view, 24> kPlaceNoise{
     "nos", "vamos", "ya", "que", "porfa", "todo", "toda", "todos", "todas", "everything", "all", "it"};
 constexpr std::array<std::string_view, 12> kOpenVerbs{
     "abre", "abreme", "ve", "vamos", "llevame", "muestrame", "ensename", "open", "go", "take", "show", "pon"};
-constexpr std::array<std::pair<std::string_view, std::string_view>, 15> kScreens{{{"agenda", "agenda"},
+constexpr std::array<std::pair<std::string_view, std::string_view>, 20> kScreens{{{"agenda", "agenda"},
                                                                                  {"calendario", "agenda"},
                                                                                  {"calendar", "agenda"},
                                                                                  {"proyectos", "projects"},
@@ -69,7 +69,12 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 15> kScreens
                                                                                  {"ajustes", "settings"},
                                                                                  {"configuracion", "settings"},
                                                                                  {"settings", "settings"},
-                                                                                 {"inicio", "home"}}};
+                                                                                 {"inicio", "home"},
+                                                                                 {"notificaciones", "notifications"},
+                                                                                 {"notificacion", "notifications"},
+                                                                                 {"novedades", "notifications"},
+                                                                                 {"notifications", "notifications"},
+                                                                                 {"notification", "notifications"}}};
 
 Words wordsOf(const std::string& utterance)
 {

@@ -69,5 +69,15 @@ TEST_CASE("explicit app commands become app calls and questions do not")
   CHECK(agenda.name == "app.open");
   CHECK(agenda.arguments["screen"].asString() == "agenda");
   CHECK(commandOf("abre las cámaras").arguments["screen"].asString() == "cameras");
+  CHECK(commandOf("abre las notificaciones").arguments["screen"].asString() == "notifications");
+  CHECK(commandOf("muéstrame las novedades").arguments["screen"].asString() == "notifications");
+  CHECK(commandOf("open my notifications").arguments["screen"].asString() == "notifications");
+  CHECK(commandOf("show me the notifications please").arguments["screen"].asString() == "notifications");
+  CHECK(commandOf("ve a las notificaciones").name == "app.open");
+  CHECK_FALSE(commandOf("abre las notificaciones").arguments.isMember("module"));
+  CHECK_FALSE(appCommandFor("¿tengo notificaciones?").has_value());
+  CHECK_FALSE(appCommandFor("no me llegan notificaciones desde ayer").has_value());
+  CHECK_FALSE(appCommandFor("hay novedades en la casa").has_value());
+  CHECK_FALSE(appCommandFor("apaga las notificaciones").has_value());
   CHECK_FALSE(appCommandFor("hola, ¿cómo estás?").has_value());
 }
