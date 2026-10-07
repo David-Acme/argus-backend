@@ -49,6 +49,12 @@ constexpr std::array<Entry, 21> kEnglishOrdinals{{{"first", 1},       {"second",
 constexpr std::array<Entry, 9> kEnglishUnits{{{"first", 1}, {"second", 2}, {"third", 3}, {"fourth", 4}, {"fifth", 5},
                                               {"sixth", 6}, {"seventh", 7}, {"eighth", 8}, {"ninth", 9}}};
 
+constexpr std::array<Entry, 21> kEnglishCardinals{{{"one", 1},       {"two", 2},       {"three", 3},     {"four", 4},     {"five", 5},
+                                                   {"six", 6},       {"seven", 7},     {"eight", 8},     {"nine", 9},     {"ten", 10},
+                                                   {"eleven", 11},   {"twelve", 12},   {"thirteen", 13}, {"fourteen", 14}, {"fifteen", 15},
+                                                   {"sixteen", 16},  {"seventeen", 17}, {"eighteen", 18}, {"nineteen", 19}, {"twenty", 20},
+                                                   {"thirty", 30}}};
+
 constexpr std::array<Entry, 6> kSpanishMinutes{{{"cuarto", 15}, {"media", 30}, {"cinco", 5}, {"diez", 10}, {"veinte", 20}, {"veinticinco", 25}}};
 
 constexpr std::array<Entry, 15> kEnglishMinutes{{{"ten", 10},     {"eleven", 11},   {"twelve", 12},   {"thirteen", 13}, {"fourteen", 14},
@@ -183,6 +189,22 @@ std::optional<Counted> dayNumberAt(const Tokens& tokens, std::size_t at)
   if (const int value = valueOf(kEnglishOrdinals, head); value > 0)
     return Counted{.value = value, .length = 1, .ordinal = true};
   return std::nullopt;
+}
+
+std::optional<Counted> cardinalDayAt(const Tokens& tokens, std::size_t at)
+{
+  if (at >= tokens.size())
+    return std::nullopt;
+  const std::string& head = tokens[at].text;
+  const int value = valueOf(kEnglishCardinals, head);
+  if (value <= 0)
+    return std::nullopt;
+  if ((head == "twenty" || head == "thirty") && at + 1 < tokens.size()) {
+    const int unit = valueOf(kEnglishDigits, tokens[at + 1].text);
+    if (unit > 0 && (head == "twenty" || unit == 1))
+      return Counted{.value = value + unit, .length = 2, .ordinal = true};
+  }
+  return Counted{.value = value, .length = 1, .ordinal = true};
 }
 
 std::optional<Counted> minutesAt(const Tokens& tokens, std::size_t at)

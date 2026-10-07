@@ -283,7 +283,12 @@ std::optional<ClockReading> clockAt(const Tokens& tokens, std::size_t at)
     reading.literal = hour == 0 || hour >= kNoon + 1 || (onlyDigits(head) && head.size() == 2 && head.front() == '0');
   }
   std::size_t next = at + 1;
-  if (!reading.midday && !reading.midnight) {
+  if (spelled && wordAt(tokens, next, "hundred")) {
+    ++next;
+    if (wordAt(tokens, next, "hours"))
+      ++next;
+  }
+  else if (!reading.midday && !reading.midnight) {
     if (wordAt(tokens, next, "y")) {
       if (const auto minutes = minutesAt(tokens, next + 1)) {
         reading.minute = minutes->value;
@@ -540,7 +545,9 @@ private:
       return end - at + 1;
     }
     if (const int month = monthOf(tokens_[at].text); month > 0) {
-      const auto number = dayNumberAt(tokens_, at + 1);
+      auto number = dayNumberAt(tokens_, at + 1);
+      if (!number)
+        number = cardinalDayAt(tokens_, at + 1);
       if (!number || (!onlyDigits(tokens_[at + 1].text) && !number->ordinal))
         return 0;
       if (strictMarkerAt(tokens_, at + 1 + number->length))

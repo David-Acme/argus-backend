@@ -44,6 +44,8 @@ struct Counted
 
 [[nodiscard]] std::optional<Counted> dayNumberAt(const Tokens& tokens, std::size_t at);
 
+[[nodiscard]] std::optional<Counted> cardinalDayAt(const Tokens& tokens, std::size_t at);
+
 [[nodiscard]] std::optional<Counted> minutesAt(const Tokens& tokens, std::size_t at);
 
 [[nodiscard]] std::optional<Counted> englishMinutesAt(const Tokens& tokens, std::size_t at);

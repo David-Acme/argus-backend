@@ -3,6 +3,7 @@
 
 #include <feature/memory/services/extract/call-time.hxx>
 
+#include <array>
 #include <cstdlib>
 #include <ctime>
 #include <optional>
@@ -194,6 +195,8 @@ TEST_CASE("minutes keep their value in every spelling")
   CHECK(fireAt("at five thirty", "en") == utc(today(17, 30)));
   CHECK(fireAt("at five forty five", "en") == utc(today(17, 45)));
   CHECK(fireAt("at five oh five", "en") == utc(today(17, 5)));
+  CHECK(fireAt("at nine hundred p. m.", "en") == utc(today(21)));
+  CHECK(fireAt("on march nineteen at one pm", "en") == utc({.year = 2027, .month = 3, .day = 19, .hour = 13}));
   CHECK(fireAt("at half past five", "en") == utc(today(17, 30)));
   CHECK(fireAt("call me half past five", "en") == utc(today(17, 30)));
   CHECK(fireAt("at half past five pm", "en") == utc(today(17, 30)));
@@ -369,6 +372,96 @@ TEST_CASE("the local clock decides, so Lima time reads the same words at its own
   CHECK(at("a las 11 de la noche") == utc({.day = 8, .hour = 4}));
   setenv("TZ", "UTC", 1);
   tzset();
+}
+
+namespace
+{
+constexpr int64_t kLimaOffsetS = int64_t{5} * 3600;
+
+struct Lima
+{
+  Lima()
+  {
+    setenv("TZ", "<-05>5", 1);
+    tzset();
+  }
+
+  Lima(const Lima&) = delete;
+  Lima& operator=(const Lima&) = delete;
+
+  ~Lima()
+  {
+    setenv("TZ", "UTC", 1);
+    tzset();
+  }
+
+  [[nodiscard]] static int64_t at(const Moment& moment) { return utc(moment) + kLimaOffsetS; }
+
+  [[nodiscard]] static int64_t reference() { return at({.day = 6, .hour = 12, .minute = 30}); }
+
+  [[nodiscard]] static CallReading read(const std::string& text, const std::string& lang)
+  {
+    return call_time::read({.text = text, .lang = lang, .now = reference()});
+  }
+};
+
+struct Phrase
+{
+  const char* id;
+  const char* lang;
+  const char* text;
+  Moment expected;
+};
+}
+
+TEST_CASE("the phrases of the extraction test split, read at Lima's Tuesday 2026-10-06 12:30 by the owner's rules")
+{
+  const Lima lima;
+  const std::array<Phrase, 28> phrases{{
+      {.id = "ct-01", .lang = "en", .text = "Monday at 6:45", .expected = {.day = 12, .hour = 18, .minute = 45}},
+      {.id = "ct-02", .lang = "en", .text = "Sunday at 3", .expected = {.day = 11, .hour = 15}},
+      {.id = "ct-03", .lang = "en", .text = "Wednesday at 12:30", .expected = {.day = 7, .hour = 12, .minute = 30}},
+      {.id = "ct-04", .lang = "en", .text = "friday at five p. m.", .expected = {.day = 9, .hour = 17}},
+      {.id = "ct-05", .lang = "en", .text = "friday at two hundred p. m.", .expected = {.day = 9, .hour = 14}},
+      {.id = "ct-06", .lang = "en", .text = "march nineteen at one p. m.", .expected = {.year = 2027, .month = 3, .day = 19, .hour = 13}},
+      {.id = "ct-07", .lang = "en", .text = "october twenty eighth at six thirty", .expected = {.day = 28, .hour = 18, .minute = 30}},
+      {.id = "ct-08", .lang = "en", .text = "thursday at eleven fifteen", .expected = {.day = 8, .hour = 11, .minute = 15}},
+      {.id = "ct-09", .lang = "en", .text = "tomorrow at two p. m.", .expected = {.day = 7, .hour = 14}},
+      {.id = "ct-10", .lang = "es", .text = "doce de febrero a las seis de la tarde", .expected = {.year = 2027, .month = 2, .day = 12, .hour = 18}},
+      {.id = "ct-11", .lang = "es", .text = "el 21 a las ocho", .expected = {.day = 21, .hour = 8}},
+      {.id = "ct-12", .lang = "es", .text = "el 9 a las once", .expected = {.day = 9, .hour = 11}},
+      {.id = "ct-13", .lang = "es", .text = "el doce de noviembre a las siete", .expected = {.month = 11, .day = 12, .hour = 7}},
+      {.id = "ct-14", .lang = "es", .text = "el jueves a las 18:30", .expected = {.day = 8, .hour = 18, .minute = 30}},
+      {.id = "ct-15", .lang = "es", .text = "el lunes a las cuatro", .expected = {.day = 12, .hour = 16}},
+      {.id = "ct-16", .lang = "es", .text = "el lunes a las tres", .expected = {.day = 12, .hour = 15}},
+      {.id = "ct-18", .lang = "es", .text = "el martes a las 8:15", .expected = {.day = 13, .hour = 8, .minute = 15}},
+      {.id = "ct-19", .lang = "es", .text = "el martes a las cinco", .expected = {.day = 13, .hour = 17}},
+      {.id = "ct-20", .lang = "es", .text = "el martes a las cinco y media", .expected = {.day = 13, .hour = 17, .minute = 30}},
+      {.id = "ct-21", .lang = "es", .text = "el martes a las dos", .expected = {.day = 13, .hour = 14}},
+      {.id = "ct-22", .lang = "es", .text = "el quince a las diez de la mañana", .expected = {.day = 15, .hour = 10}},
+      {.id = "ct-23", .lang = "es", .text = "el veinte a las diez de la mañana", .expected = {.day = 20, .hour = 10}},
+      {.id = "ct-24", .lang = "es", .text = "el viernes toca reunión del cole a las seis", .expected = {.day = 9, .hour = 18}},
+      {.id = "ct-25", .lang = "es", .text = "jueves a la una", .expected = {.day = 8, .hour = 13}},
+      {.id = "ct-26", .lang = "es", .text = "jueves a las dos p. m.", .expected = {.day = 8, .hour = 14}},
+      {.id = "ct-27", .lang = "es", .text = "mañana a las cuatro y media", .expected = {.day = 7, .hour = 16, .minute = 30}},
+      {.id = "ct-28", .lang = "es", .text = "mañana a las dos p. m.", .expected = {.day = 7, .hour = 14}},
+      {.id = "ct-29", .lang = "es", .text = "pasado mañana a las cuatro", .expected = {.day = 8, .hour = 16}},
+  }};
+  for (const Phrase& phrase : phrases) {
+    const auto found = Lima::read(phrase.text, phrase.lang).time;
+    CHECK_MESSAGE(found.has_value(), phrase.id);
+    CHECK_MESSAGE(found.value_or(CallTime{}).fireAt == Lima::at(phrase.expected), phrase.id);
+  }
+}
+
+TEST_CASE("a weekday that disagrees with the day of the month is not resolved and names both days (ct-17)")
+{
+  const Lima lima;
+  const CallReading reading = Lima::read("el martes 4 a las 8:05", "es");
+  CHECK_FALSE(reading.time);
+  const DayConflict conflict = reading.conflict.value_or(DayConflict{});
+  CHECK(conflict.byWeekday == Lima::at({.month = 11, .day = 3, .hour = 8, .minute = 5}));
+  CHECK(conflict.byDate == Lima::at({.month = 11, .day = 4, .hour = 8, .minute = 5}));
 }
 
 TEST_CASE("relative times")
