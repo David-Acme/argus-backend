@@ -90,7 +90,7 @@ struct Bench
     config.loginAttempts = 2;
     config.candidates = {
         {.label = "cloud_admin", .username = "admin", .password = "cloud", .memoryKey = "k-cloud"},
-        {.label = "camera_account", .username = "acme01", .password = "cam", .memoryKey = "k-cam"}};
+        {.label = "camera_account", .username = "camera-user", .password = "cam", .memoryKey = "k-cam"}};
     config.transportFactory = [ledger = ledger](const TapoTransportRequest& request) {
       return std::make_unique<FakeTransport>(ledger, request);
     };
@@ -126,14 +126,14 @@ TEST_CASE("a remembered winner is the only credential tried")
 {
   tapo_control_hub::reset();
   Bench bench;
-  bench.ledger->rules = {{.username = "acme01", .answer = Answer::Accept, .secLeft = 0}};
+  bench.ledger->rules = {{.username = "camera-user", .answer = Answer::Accept, .secLeft = 0}};
   auto config = bench.config();
   config.remembered = {.label = "camera_account", .key = "k-cam"};
   TapoClient client(std::move(config));
 
   REQUIRE(client.connect().ok);
   CHECK(bench.logins() == 1);
-  CHECK(bench.ledger->logins.front().first == "acme01");
+  CHECK(bench.ledger->logins.front().first == "camera-user");
   CHECK(bench.persisted.empty());
 }
 
