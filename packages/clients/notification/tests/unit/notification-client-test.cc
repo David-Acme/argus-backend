@@ -274,6 +274,19 @@ TEST_CASE("the call methods carry their fields and the credential")
   CHECK(service.announced.lead_minutes() == 15);
   CHECK(service.announced.command_id() == "agenda:event:1:2:15");
 
+  for (const auto* refusal : {"SCHEDULE_TOO_FAR", "SCHEDULE_IN_PAST"}) {
+    service.status = grpc::Status(grpc::StatusCode::OUT_OF_RANGE, refusal);
+    const auto refused = client.scheduleCall({.userId = 7,
+                                              .fireAt = 1900000000,
+                                              .topic = "llamar al dentista",
+                                              .lang = "es",
+                                              .commandId = "remind-far"});
+    CHECK(refused.outcome == NotificationRpcOutcome::Rejected);
+    CHECK(refused.status.error_code() == grpc::StatusCode::OUT_OF_RANGE);
+    CHECK(refused.status.error_message() == refusal);
+    CHECK(refused.scheduledId == 0);
+  }
+
   service.status = grpc::Status(grpc::StatusCode::UNAVAILABLE, "down");
   CHECK(client.claimCall({.callId = "call-4", .userId = 7, .sessionId = ""})
             .outcome == NotificationRpcOutcome::Unavailable);

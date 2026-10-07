@@ -33,6 +33,9 @@ struct NotificationVoiceConfig
   std::string credential;
 };
 
+inline constexpr int64_t kSecondsPerDay = 86400;
+inline constexpr int64_t kScheduleHorizonDays = 366;
+
 struct CallEngineConfig
 {
   bool enabled{true};
@@ -40,7 +43,7 @@ struct CallEngineConfig
   int maxCallsPerHour{4};
   int64_t arrivalAbsenceS{10800};
   int64_t scheduledLateS{900};
-  int64_t scheduleHorizonS{2592000};
+  int64_t scheduleHorizonS{kScheduleHorizonDays * kSecondsPerDay};
   int64_t maxPendingScheduled{20};
   int64_t answeredStaleS{7200};
   int64_t retentionDays{30};

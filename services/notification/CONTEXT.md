@@ -704,11 +704,55 @@ duplicate command never calls twice). Tamper and digests never call.
 
 The LLM contract is deliberately narrow: the model cannot call anyone. The
 only path is `memory.remind` when the *user's* words carry a time that
-`call_time::resolve` turns into an instant within 30 days ("mañana a las
-nueve", "en 20 minutos", "at 7 pm"); the call goes to the speaking user only,
-its topic is the grounded reminder text with the time phrase cut out, and
-the engine validates it again (`ScheduleCall`: 1-300 bytes, at most 20
-pending per user, idempotent by command id).
+`call_time::resolve` turns into an instant (relative phrases within 30 days,
+explicit dates within 12 months: "mañana a las nueve", "en 20 minutos", "at 7
+pm", "el 3 de marzo"); the call goes to the speaking user only, its topic is
+the grounded reminder text with the time phrase cut out, and the engine
+validates it again (`ScheduleCall`: 1-300 bytes, at most 20 pending per user,
+idempotent by command id, inside the horizon below).
+
+**The schedule horizon is 12 months.** `kScheduleHorizonDays = 366`
+(`config/notification-config.hxx`, the only place the number is written,
+`CallEngineConfig::scheduleHorizonS`) is 12 months counted as 366 days, so the
+same date a year later is always inside whichever year it falls in; it matches
+the 12 months the voice date resolver accepts, and it replaced a 30-day literal
+that left a reminder resolved for next March as a row with no call. It is not a
+`config.toml` key, so an install with an old config changes with the binary
+alone: nothing to migrate, nothing to set. A farther reminder is still saved by
+argus-llm as a reminder row, but `ScheduleCall` refuses it.
+
+A long-dated call costs one `scheduled_call` row and nothing else: no timer, no
+task. `sweep()` reads the due rows through `idx_scheduled_call_due (state,
+fire_at)`, a restart finds the row where it was, and the history purge only
+deletes rows that are no longer `pending`, so a call 12 months out survives
+every purge and every restart until its instant. The due instant is a unix
+second: no calendar arithmetic, so Lima (UTC-5, no daylight saving) and any
+other zone fire a stored call at the same instant, and the local hour only
+decides quiet hours and the do-not-disturb window at the moment it fires.
+
+What `ScheduleCall` answers (argus-llm's `memory.remind` must say a call was set
+only on an OK answer, and a duplicate is an OK answer: the call exists):
+
+| Answer | gRPC status | message | Meaning |
+|---|---|---|---|
+| scheduled | OK | | the row exists (`scheduled_id`) |
+| duplicate command id, same call | OK, `duplicate = true` | | it already exists |
+| command id reused for another call | ALREADY_EXISTS | `command id reused with another call` | nothing stored |
+| more than 20 pending | RESOURCE_EXHAUSTED | `too many pending calls` | nothing stored |
+| later than the horizon | OUT_OF_RANGE | `SCHEDULE_TOO_FAR` | nothing stored |
+| earlier than the grace (60 s) before now | OUT_OF_RANGE | `SCHEDULE_IN_PAST` | nothing stored |
+| bad user, command or topic | INVALID_ARGUMENT | the reason | nothing stored |
+| not authorized | UNAUTHENTICATED | | |
+| the service failed | INTERNAL, UNAVAILABLE or DEADLINE_EXCEEDED (client) | | unknown: do not say it was set |
+
+`NotificationClient::scheduleCall` maps ALREADY_EXISTS to `Conflict`,
+UNAVAILABLE and DEADLINE_EXCEEDED to `Unavailable` and every other failure to
+`Rejected`, with the code in `result.status.error_code()` and the text above in
+`result.status.error_message()`. Tests: `call-engine-test` ("a call can be
+scheduled up to 12 months ahead...", "a refusal for the horizon follows the
+configured horizon...", "a call scheduled months ahead is one stored row that
+survives a restart and fires at its own instant on the Lima clock"),
+`notification-client-test` (the two refusal codes reach the caller).
 
 ### Policy (`call_policy::decide`, pure)
 

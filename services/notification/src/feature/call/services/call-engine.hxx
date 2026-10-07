@@ -158,7 +158,9 @@ enum class CallScheduleStatus : uint8_t
   Duplicate,
   Conflict,
   Invalid,
-  TooMany
+  TooMany,
+  InPast,
+  TooFar
 };
 
 struct CallScheduleOutcome
@@ -382,6 +384,9 @@ namespace call_engine
 inline constexpr std::size_t kProbeParallel = 8;
 inline constexpr int64_t kArrivalStaleS = 600;
 inline constexpr int64_t kPurgeIntervalS = 3600;
+inline constexpr int64_t kSchedulePastGraceS = 60;
+inline constexpr std::string_view kScheduleInPast = "SCHEDULE_IN_PAST";
+inline constexpr std::string_view kScheduleTooFar = "SCHEDULE_TOO_FAR";
 
 Json::Value incomingInfo(const CallSchema& call);
 

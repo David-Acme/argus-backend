@@ -682,12 +682,13 @@ TEST_CASE("scheduled calls: validated, idempotent, rung on time, noted when late
                                                    .lang = "es",
                                                    .commandId = "remind-1"}))
             .status == CallScheduleStatus::Conflict);
-  CHECK(drogon::sync_wait(harness.engine.schedule({.userId = 1,
-                                                   .fireAt = kStart - 3600,
-                                                   .topic = "tarde",
-                                                   .lang = "es",
-                                                   .commandId = "remind-2"}))
-            .status == CallScheduleStatus::Invalid);
+  const auto past = drogon::sync_wait(harness.engine.schedule({.userId = 1,
+                                                               .fireAt = kStart - 3600,
+                                                               .topic = "tarde",
+                                                               .lang = "es",
+                                                               .commandId = "remind-2"}));
+  CHECK(past.status == CallScheduleStatus::InPast);
+  CHECK(past.reason == "SCHEDULE_IN_PAST");
   CHECK(drogon::sync_wait(harness.engine.schedule({.userId = 1,
                                                    .fireAt = kStart + 60,
                                                    .topic = "",
@@ -1701,4 +1702,144 @@ TEST_CASE("a surveillance response ends with the module while a panic response n
   const auto swept = drogon::sync_wait(harness.engine.sweep());
   CHECK(swept.escalated == 1);
   CHECK(responseState(episodeId) == "expired");
+}
+
+namespace
+{
+constexpr int64_t kDay = 86400;
+constexpr int64_t kHourS = 3600;
+constexpr int64_t kLimaOffsetS = 5 * kHourS;
+
+CallLocalTime limaTime(int64_t at)
+{
+  const int64_t local = at - kLimaOffsetS;
+  return {.hour = static_cast<int>((local % kDay) / kHourS), .weekday = static_cast<int>(((local / kDay) + 4) % 7)};
+}
+
+int64_t scheduledRows(const std::string& where)
+{
+  return DbService::client()
+      ->execSqlSync("SELECT COUNT(*) AS total FROM scheduled_call WHERE " + where)
+      .front()["total"]
+      .as<int64_t>();
+}
+}
+
+TEST_CASE("a call can be scheduled up to 12 months ahead, and past that it is refused with its own code")
+{
+  Harness harness;
+  const int64_t horizon = kScheduleHorizonDays * kDay;
+  const auto ask = [&harness](int64_t offset, const std::string& id) {
+    return drogon::sync_wait(harness.engine.schedule(
+        {.userId = 1, .fireAt = kStart + offset, .topic = "dentista", .lang = "es", .commandId = id}));
+  };
+
+  CHECK(horizon == 366 * kDay);
+  CHECK(ask(30 * kDay - 1, "h-under-30").status == CallScheduleStatus::Scheduled);
+  CHECK(ask(30 * kDay, "h-30").status == CallScheduleStatus::Scheduled);
+  CHECK(ask(30 * kDay + 1, "h-over-30").status == CallScheduleStatus::Scheduled);
+  CHECK(ask(334 * kDay, "h-11-months").status == CallScheduleStatus::Scheduled);
+  CHECK(ask(365 * kDay, "h-same-date-next-year").status == CallScheduleStatus::Scheduled);
+  CHECK(ask(horizon, "h-12-months").status == CallScheduleStatus::Scheduled);
+
+  const auto beyond = ask(horizon + 1, "h-past-12-months");
+  CHECK(beyond.status == CallScheduleStatus::TooFar);
+  CHECK(beyond.reason == "SCHEDULE_TOO_FAR");
+  CHECK(beyond.scheduledId == 0);
+  CHECK(ask(2 * horizon, "h-two-years").status == CallScheduleStatus::TooFar);
+  CHECK(scheduledRows("command_id IN ('h-past-12-months', 'h-two-years')") == 0);
+  CHECK(scheduledRows("command_id LIKE 'h-%'") == 6);
+
+  const auto yesterday = ask(-kDay, "h-yesterday");
+  CHECK(yesterday.status == CallScheduleStatus::InPast);
+  CHECK(yesterday.reason == "SCHEDULE_IN_PAST");
+  CHECK(ask(-60, "h-just-late").status == CallScheduleStatus::Scheduled);
+  CHECK(ask(-61, "h-too-late").status == CallScheduleStatus::InPast);
+}
+
+TEST_CASE("a refusal for the horizon follows the configured horizon, and a call row has no timer behind it")
+{
+  Harness harness;
+  CallEngineConfig short30;
+  short30.scheduleHorizonS = 30 * kDay;
+  harness.engine.reconfigure(short30);
+  const auto ask = [&harness](int64_t offset, const std::string& id) {
+    return drogon::sync_wait(harness.engine.schedule(
+        {.userId = 1, .fireAt = kStart + offset, .topic = "dentista", .lang = "es", .commandId = id}));
+  };
+  CHECK(ask(30 * kDay, "c-30").status == CallScheduleStatus::Scheduled);
+  CHECK(ask(30 * kDay + 1, "c-over-30").status == CallScheduleStatus::TooFar);
+  harness.engine.reconfigure(CallEngineConfig{});
+  CHECK(ask(30 * kDay + 1, "c-over-30").status == CallScheduleStatus::Scheduled);
+  CHECK(CallEngineConfig{}.scheduleHorizonS == kScheduleHorizonDays * kSecondsPerDay);
+}
+
+TEST_CASE("a call scheduled months ahead is one stored row that survives a restart and fires at its own instant on the Lima clock")
+{
+  Harness harness;
+  const int64_t nearInstant = kStart + 7 * kHourS;
+  const int64_t farInstant = kStart + 330 * kDay + 7 * kHourS;
+  const int64_t quietNear = kStart + kDay;
+  const int64_t quietFar = kStart + 330 * kDay;
+  const auto schedule = [&harness](int64_t instant, const std::string& id) {
+    return drogon::sync_wait(harness.engine.schedule(
+        {.userId = 1, .fireAt = instant, .topic = "tomar la pastilla", .lang = "es", .commandId = id}));
+  };
+  CHECK(schedule(nearInstant, "lima-near").status == CallScheduleStatus::Scheduled);
+  CHECK(schedule(farInstant, "lima-far").status == CallScheduleStatus::Scheduled);
+  CHECK(schedule(quietNear, "lima-quiet-near").status == CallScheduleStatus::Scheduled);
+  CHECK(schedule(quietFar, "lima-quiet-far").status == CallScheduleStatus::Scheduled);
+  CHECK(scheduledRows("state = 'pending'") == 4);
+
+  std::atomic<int> seenHour{-1};
+  std::atomic<int> seenWeekday{-1};
+  CallEngine restarted(CallEngineConfig{},
+                       CallEngineDependencies{.signal = harness.signal,
+                                              .announcer = harness.announcer,
+                                              .directory = harness.directory,
+                                              .notifier = harness.notifier,
+                                              .push = harness.push,
+                                              .verdicts = harness.verdicts,
+                                              .clock = [clock = harness.clock]() { return clock->load(); },
+                                              .localTime =
+                                                  [&seenHour, &seenWeekday](int64_t at) {
+                                                    const auto local = limaTime(at);
+                                                    seenHour = local.hour;
+                                                    seenWeekday = local.weekday;
+                                                    return local;
+                                                  },
+                                              .blockingOffLoop = false});
+  const auto ringsAt = [&](int64_t instant) {
+    harness.clock->store(instant);
+    const auto before = harness.signal->of(SyncOperation::CallIncoming).size();
+    const auto report = drogon::sync_wait(restarted.sweep());
+    return std::pair{report.fired, harness.signal->of(SyncOperation::CallIncoming).size() - before};
+  };
+
+  harness.clock->store(nearInstant - 1);
+  CHECK(drogon::sync_wait(restarted.sweep()).fired == 0);
+  const auto near = ringsAt(nearInstant);
+  CHECK(near.first == 1);
+  CHECK(seenHour.load() == 10);
+
+  const auto quietShort = ringsAt(quietNear);
+  CHECK(quietShort.first == 1);
+  CHECK(seenHour.load() == 3);
+
+  const auto quietLong = ringsAt(quietFar);
+  CHECK(quietLong.first == 1);
+  CHECK(seenHour.load() == 3);
+  CHECK(quietLong == quietShort);
+  CHECK(scheduledRows("state = 'pending'") == 1);
+
+  const auto farBefore = ringsAt(farInstant - 1);
+  CHECK(farBefore.first == 0);
+  CHECK(farBefore.second == 0);
+  const auto far = ringsAt(farInstant);
+  CHECK(far.first == 1);
+  CHECK(seenHour.load() == 10);
+  CHECK(seenWeekday.load() == static_cast<int>(((farInstant - kLimaOffsetS) / kDay + 4) % 7));
+  CHECK(far == near);
+  CHECK(scheduledRows("state = 'fired' AND command_id = 'lima-far'") == 1);
+  CHECK(scheduledRows("state = 'pending'") == 0);
 }

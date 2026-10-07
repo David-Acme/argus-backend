@@ -734,8 +734,14 @@ CallEngine::schedule(const CallScheduleRequest& request) const
     outcome.reason = "topic must be 1-300 bytes";
     co_return outcome;
   }
-  if (request.fireAt < at - 60 || request.fireAt > at + config.scheduleHorizonS) {
-    outcome.reason = "fire_at outside the schedule window";
+  if (request.fireAt < at - call_engine::kSchedulePastGraceS) {
+    outcome.status = CallScheduleStatus::InPast;
+    outcome.reason = std::string(call_engine::kScheduleInPast);
+    co_return outcome;
+  }
+  if (request.fireAt > at + config.scheduleHorizonS) {
+    outcome.status = CallScheduleStatus::TooFar;
+    outcome.reason = std::string(call_engine::kScheduleTooFar);
     co_return outcome;
   }
   if (co_await scheduledRepository_.pendingCount(request.userId) >=

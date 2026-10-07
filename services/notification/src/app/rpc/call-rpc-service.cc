@@ -177,6 +177,11 @@ CallRpcService::ScheduleCall(grpc::CallbackServerContext* context,
             reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                                          outcome.reason));
             break;
+          case CallScheduleStatus::InPast:
+          case CallScheduleStatus::TooFar:
+            reactor->Finish(grpc::Status(grpc::StatusCode::OUT_OF_RANGE,
+                                         outcome.reason));
+            break;
         }
       }
       catch (const std::exception& error) {
