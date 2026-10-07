@@ -52,12 +52,40 @@ struct TapoCredentials
   std::shared_ptr<TapoTrust> trust;
 };
 
+enum class TapoFailureKind : uint8_t
+{
+  None = 0,
+  Transport,
+  NotSecure,
+  CredentialRefused,
+  LockedOut
+};
+
+inline std::string tapoFailureKindToString(TapoFailureKind kind)
+{
+  switch (kind) {
+    case TapoFailureKind::None:
+      return "none";
+    case TapoFailureKind::Transport:
+      return "transport";
+    case TapoFailureKind::NotSecure:
+      return "not_secure";
+    case TapoFailureKind::CredentialRefused:
+      return "credential_refused";
+    case TapoFailureKind::LockedOut:
+      return "locked_out";
+  }
+  return "none";
+}
+
 struct TapoResult
 {
   bool ok{false};
   int errorCode{0};
   std::string error;
   Json::Value data;
+  TapoFailureKind kind{TapoFailureKind::None};
+  int secLeft{0};
 
   static TapoResult failure(const std::string& message, int code = 0)
   {
@@ -68,6 +96,14 @@ struct TapoResult
     return result;
   }
 
+  [[nodiscard]] TapoResult as(TapoFailureKind failureKind, int secondsLeft = 0) const
+  {
+    TapoResult copy = *this;
+    copy.kind = failureKind;
+    copy.secLeft = secondsLeft;
+    return copy;
+  }
+
   static TapoResult success(Json::Value payload)
   {
     TapoResult result;
@@ -75,6 +111,12 @@ struct TapoResult
     result.data = std::move(payload);
     return result;
   }
+};
+
+struct TapoTransportRequest
+{
+  TapoTransportKind kind{TapoTransportKind::SecurePassthrough};
+  TapoCredentials credentials;
 };
 
 class ITapoTransport

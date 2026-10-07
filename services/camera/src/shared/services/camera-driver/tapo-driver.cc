@@ -7,12 +7,18 @@
 #include <shared/services/tapo/tapo-talk-client.hxx>
 #include <runtime/cancellation-token.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
+#include <text/sha256.hxx>
 #include <trantor/utils/Logger.h>
 #include <utility>
 
 namespace
 {
 constexpr int kSpeakWaitSeconds = 3;
+
+std::string credentialKey(const std::string& username, const std::string& password)
+{
+  return argus::hash::sha256Hex(username + '\n' + password);
+}
 
 enum class TrustMemory : uint8_t
 {
@@ -45,21 +51,36 @@ TapoClientConfig controlConfig(const CameraSchema& camera, TrustMemory memory)
   config.loginAttempts = static_cast<int>(ConfigService::getInt("tapo.login_attempts"));
   config.transport = tapoTransportPreferenceFromString(ConfigService::getString("tapo.transport"));
 
+  if (!camera.cloudPassword.empty()) {
+    const std::string cloudUser = camera.cloudUsername.empty() ? "admin" : camera.cloudUsername;
+    config.candidates.push_back({.label = "cloud_admin",
+                                 .username = cloudUser,
+                                 .password = camera.cloudPassword,
+                                 .memoryKey = credentialKey(cloudUser, camera.cloudPassword)});
+  }
   if (!camera.username.empty() && !camera.password.empty())
     config.candidates.push_back({.label = "camera_account",
                                  .username = camera.username,
-                                 .password = camera.password});
-  if (!camera.cloudPassword.empty())
-    config.candidates.push_back(
-        {.label = "cloud_admin",
-         .username = camera.cloudUsername.empty() ? "admin" : camera.cloudUsername,
-         .password = camera.cloudPassword});
+                                 .password = camera.password,
+                                 .memoryKey = credentialKey(camera.username, camera.password)});
+  config.remembered = {.label = camera.controlCredential, .key = camera.controlCredentialKey};
+  if (memory == TrustMemory::Persisted && camera.id > 0) {
+    config.persistWinner = [cameraId = camera.id](const TapoWinnerMemory& winner) {
+      CameraRepository::saveControlCredential(
+          {.cameraId = cameraId, .label = winner.label, .key = winner.key});
+    };
+  }
   return config;
 }
 
 DriverResult toDriverResult(const TapoResult& result)
 {
-  return {.ok = result.ok, .error = result.error, .data = result.data};
+  DriverResult out{.ok = result.ok, .error = result.error, .data = result.data};
+  if (!result.ok) {
+    out.failure = tapoFailureKindToString(result.kind);
+    out.retryAfterSeconds = result.secLeft;
+  }
+  return out;
 }
 }
 
@@ -72,8 +93,16 @@ DriverResult TapoDriver::probe(const CameraSchema& camera)
                         connected.error.find("refused") != std::string::npos ||
                         connected.error.find("timeout") != std::string::npos ||
                         connected.error.find("transport error") != std::string::npos;
-    DriverResult failed = DriverResult::failure(connected.error);
-    failed.data["reason"] = silent ? "unreachable" : "auth_failed";
+    DriverResult failed = DriverResult::failed(connected.error);
+    failed.failure = tapoFailureKindToString(connected.kind);
+    failed.retryAfterSeconds = connected.secLeft;
+    if (connected.kind == TapoFailureKind::LockedOut) {
+      failed.data["reason"] = "locked_out";
+      failed.data["retryAfterSeconds"] = connected.secLeft;
+    }
+    else {
+      failed.data["reason"] = silent ? "unreachable" : "auth_failed";
+    }
     return failed;
   }
   const auto info = api.getDeviceInfo();
@@ -97,6 +126,11 @@ TapoDriver::TapoDriver(const CameraSchema& camera)
 Json::Value TapoDriver::capabilities() const
 {
   return camera_capabilities::of(camera_);
+}
+
+Json::Value TapoDriver::controlStatus() const
+{
+  return tapo_control::toJson(api_->controlStatus(), tapo_control::systemNowMs());
 }
 
 DriverResult TapoDriver::ensureConnected()
@@ -212,13 +246,13 @@ TapoTalkConfig talkConfigOf(const CameraSchema& camera)
 DriverResult TapoDriver::speak(const DriverSpeakInput& input)
 {
   if (camera_.cloudPassword.empty())
-    return DriverResult::failure("The talk channel needs the vendor cloud password");
+    return DriverResult::failed("The talk channel needs the vendor cloud password");
   if (input.samples.empty())
-    return DriverResult::failure("Nothing to say");
+    return DriverResult::failed("Nothing to say");
 
   std::unique_lock lock(*lineMutex_, std::chrono::seconds(kSpeakWaitSeconds));
   if (!lock.owns_lock())
-    return DriverResult::failure("Someone is talking through this camera right now");
+    return DriverResult::failed("Someone is talking through this camera right now");
 
   if (!talkClient_)
     talkClient_ = std::make_shared<TapoTalkClient>(talkConfigOf(camera_));
@@ -229,7 +263,7 @@ DriverResult TapoDriver::speak(const DriverSpeakInput& input)
       token);
   if (!sent.ok) {
     talkClient_.reset();
-    return DriverResult::failure(sent.error.empty() ? "The camera refused the audio"
+    return DriverResult::failed(sent.error.empty() ? "The camera refused the audio"
                                                     : sent.error);
   }
 
@@ -260,7 +294,7 @@ public:
       return {.ok = true, .error = {}, .data = Json::Value()};
     const auto opened = client_->open();
     if (!opened.ok)
-      return DriverResult::failure(opened.error.empty() ? "The camera refused the talk session"
+      return DriverResult::failed(opened.error.empty() ? "The camera refused the talk session"
                                                         : opened.error);
     return {.ok = true, .error = {}, .data = Json::Value()};
   }
@@ -269,7 +303,7 @@ public:
   {
     const auto sent = client_->sendPacket(encoder_.encode(pcm8k));
     if (!sent.ok)
-      return DriverResult::failure(sent.error);
+      return DriverResult::failed(sent.error);
     return {.ok = true, .error = {}, .data = Json::Value()};
   }
 

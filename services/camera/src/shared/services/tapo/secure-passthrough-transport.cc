@@ -3,6 +3,7 @@
 #include <drogon/drogon.h>
 #include <shared/services/tapo/tapo-crypto.hxx>
 #include <shared/services/tapo/tapo-http.hxx>
+#include <shared/services/tapo/tapo-lockout.hxx>
 #include <text/json-util.hxx>
 #include <utility>
 
@@ -126,11 +127,12 @@ TapoResult SecurePassthroughTransport::postPlain(const Json::Value& payload,
   const auto response = TapoHttp::send(request);
   if (!response.ok)
     return TapoResult::failure(response.error.empty() ? "transport error"
-                                                      : response.error);
+                                                      : response.error)
+        .as(TapoFailureKind::Transport);
   fingerprint_ = response.fingerprint;
   out = json_util::fromString(response.body);
   if (out.isNull())
-    return TapoResult::failure("malformed response body");
+    return TapoResult::failure("malformed response body").as(TapoFailureKind::Transport);
   return TapoResult::success(out);
 }
 
@@ -154,8 +156,14 @@ bool SecurePassthroughTransport::fetchHandshake(HandshakeData& handshake,
 
   const auto& data = response["result"]["data"];
   if (!data.isMember("nonce") || !data.isMember("device_confirm")) {
+    if (const auto lockout = tapo_lockout::of(response)) {
+      failure = TapoResult::failure("camera locked login", lockout->code != 0 ? lockout->code : errorCodeOf(response))
+                    .as(TapoFailureKind::LockedOut, lockout->secLeft);
+      return false;
+    }
     failure = TapoResult::failure("device does not advertise secure mode",
-                                  errorCodeOf(response));
+                                  errorCodeOf(response))
+                  .as(TapoFailureKind::NotSecure);
     return false;
   }
   if (errorCodeOf(response) != kSecureModeProbeCode)
@@ -216,8 +224,8 @@ TapoResult SecurePassthroughTransport::login()
     return failure;
 
   if (!resolveHashAlgorithm(handshake))
-    return TapoResult::failure(
-        "device_confirm mismatch: wrong password or user");
+    return TapoResult::failure("device_confirm mismatch: wrong password or user")
+        .as(TapoFailureKind::CredentialRefused);
 
   nonce_ = handshake.nonce;
   const std::string digestPassword =
@@ -237,8 +245,13 @@ TapoResult SecurePassthroughTransport::login()
     return sent;
 
   const auto& result = response["result"];
-  if (!result.isMember("stok"))
-    return TapoResult::failure("login rejected", errorCodeOf(response));
+  if (!result.isMember("stok")) {
+    if (const auto lockout = tapo_lockout::of(response))
+      return TapoResult::failure("camera locked login", lockout->code != 0 ? lockout->code : errorCodeOf(response))
+          .as(TapoFailureKind::LockedOut, lockout->secLeft);
+    return TapoResult::failure("login rejected", errorCodeOf(response))
+        .as(TapoFailureKind::CredentialRefused);
+  }
 
   stok_ = result["stok"].asString();
   seq_ = result.isMember("start_seq") ? result["start_seq"].asInt64() : 0;
@@ -285,11 +298,12 @@ TapoResult SecurePassthroughTransport::sendEncrypted(const Json::Value& payload)
   const auto response = TapoHttp::send(request);
   if (!response.ok)
     return TapoResult::failure(response.error.empty() ? "transport error"
-                                                      : response.error);
+                                                      : response.error)
+        .as(TapoFailureKind::Transport);
 
   const Json::Value outer = json_util::fromString(response.body);
   if (outer.isNull())
-    return TapoResult::failure("malformed response body");
+    return TapoResult::failure("malformed response body").as(TapoFailureKind::Transport);
 
   const int code = errorCodeOf(outer);
   if (!outer["result"].isMember("response")) {

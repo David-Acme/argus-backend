@@ -46,7 +46,9 @@ enum class ErrorCode
   ModuleCore,
   RoleInactive,
   InvitationModuleDisabled,
-  ModuleRolesHeld
+  ModuleRolesHeld,
+  CameraControlLocked,
+  CameraControlRefused
 };
 
 constexpr std::string_view toString(ErrorCode code)
@@ -94,6 +96,8 @@ constexpr std::string_view toString(ErrorCode code)
   case ErrorCode::RoleInactive: return "ROLE_INACTIVE";
   case ErrorCode::InvitationModuleDisabled: return "INVITATION_MODULE_DISABLED";
   case ErrorCode::ModuleRolesHeld: return "MODULE_ROLES_HELD";
+  case ErrorCode::CameraControlLocked: return "CAMERA_CONTROL_LOCKED";
+  case ErrorCode::CameraControlRefused: return "CAMERA_CONTROL_REFUSED";
   }
   throw std::invalid_argument("Unknown response error code");
 }

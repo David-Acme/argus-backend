@@ -3,6 +3,7 @@
 #include <camera/camera-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
+#include <string>
 namespace
 {
 drogon::HttpResponsePtr respond(const CameraControlResult& result)
@@ -10,6 +11,15 @@ drogon::HttpResponsePtr respond(const CameraControlResult& result)
   if (!result)
     throw ResponseException(CameraErrors::CameraNotFound);
   if (!result->ok) {
+    if (result->failure == "locked_out")
+      throw ResponseException(CameraErrors::CameraControlLocked.withMessage(
+          "The camera locked its control login; Argus tries again in " +
+          std::to_string(result->retryAfterSeconds) + " s"));
+    if (result->failure == "credential_refused")
+      throw ResponseException(result->error.empty()
+                                  ? CameraErrors::CameraControlRefused
+                                  : CameraErrors::CameraControlRefused.withMessage(
+                                        result->error));
     throw ResponseException(result->error.empty()
                                 ? CameraErrors::CameraUnreachable
                                 : CameraErrors::CameraUnreachable.withMessage(

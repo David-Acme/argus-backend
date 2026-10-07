@@ -115,6 +115,11 @@ bool TapoApi::isConnected() const
   return client_.isConnected();
 }
 
+TapoControlStatus TapoApi::controlStatus() const
+{
+  return client_.status();
+}
+
 Json::Value TapoApi::state() const
 {
   return client_.state();

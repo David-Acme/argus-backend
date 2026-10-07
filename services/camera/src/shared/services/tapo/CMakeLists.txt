@@ -5,8 +5,11 @@ argus_module(NAME camera-tapo
         tapo-api.cc
         tapo-audio.cc
         tapo-client.cc
+        tapo-control-status.cc
+        tapo-control-hub.cc
         tapo-crypto.cc
         tapo-http.cc
+        tapo-lockout.cc
         tapo-motor.cc
         tapo-talk-client.cc
         tapo-trust.cc

@@ -47,7 +47,7 @@ public:
     std::scoped_lock lock(log_->mutex);
     ++log_->opened;
     if (log_->failOpen)
-      return DriverResult::failure("digest rejected");
+      return DriverResult::failed("digest rejected");
     return {.ok = true, .error = {}, .data = Json::Value()};
   }
 
@@ -55,7 +55,7 @@ public:
   {
     std::scoped_lock lock(log_->mutex);
     if (log_->failAfter >= 0 && std::cmp_greater_equal(log_->packets.size(), log_->failAfter))
-      return DriverResult::failure("talk channel write failed");
+      return DriverResult::failed("talk channel write failed");
     log_->packets.push_back(pcm8k.size());
     return {.ok = true, .error = {}, .data = Json::Value()};
   }
@@ -79,12 +79,12 @@ public:
   }
 
   [[nodiscard]] Json::Value capabilities() const override { return {}; }
-  DriverResult status() override { return DriverResult::failure("noop"); }
-  DriverResult presets() override { return DriverResult::failure("noop"); }
-  DriverResult move(const DriverMoveInput&) override { return DriverResult::failure("noop"); }
-  DriverResult preset(const DriverPresetInput&) override { return DriverResult::failure("noop"); }
-  DriverResult settings(const DriverSettingsInput&) override { return DriverResult::failure("noop"); }
-  DriverResult speak(const DriverSpeakInput&) override { return DriverResult::failure("noop"); }
+  DriverResult status() override { return DriverResult::failed("noop"); }
+  DriverResult presets() override { return DriverResult::failed("noop"); }
+  DriverResult move(const DriverMoveInput&) override { return DriverResult::failed("noop"); }
+  DriverResult preset(const DriverPresetInput&) override { return DriverResult::failed("noop"); }
+  DriverResult settings(const DriverSettingsInput&) override { return DriverResult::failed("noop"); }
+  DriverResult speak(const DriverSpeakInput&) override { return DriverResult::failed("noop"); }
 
   TalkLineOpen talkLine() override
   {

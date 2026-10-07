@@ -29,6 +29,8 @@ CameraSchema::CameraSchema(const drogon::orm::Row& row)
   isOnline = row["is_online"].as<int>() != 0;
   tlsFingerprint = row["tls_fingerprint"].as<std::string>();
   tapoSecure = row["tapo_secure"].as<int>() != 0;
+  controlCredential = row["control_credential"].as<std::string>();
+  controlCredentialKey = row["control_credential_key"].as<std::string>();
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
   if (!row["updated_at"].isNull())
     updatedAt = static_cast<int64_t>(row["updated_at"].as<long long>());

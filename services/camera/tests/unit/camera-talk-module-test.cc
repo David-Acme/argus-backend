@@ -104,12 +104,12 @@ public:
     caps["talk"] = true;
     return caps;
   }
-  DriverResult status() override { return DriverResult::failure("noop"); }
-  DriverResult presets() override { return DriverResult::failure("noop"); }
-  DriverResult move(const DriverMoveInput&) override { return DriverResult::failure("noop"); }
-  DriverResult preset(const DriverPresetInput&) override { return DriverResult::failure("noop"); }
-  DriverResult settings(const DriverSettingsInput&) override { return DriverResult::failure("noop"); }
-  DriverResult speak(const DriverSpeakInput&) override { return DriverResult::failure("noop"); }
+  DriverResult status() override { return DriverResult::failed("noop"); }
+  DriverResult presets() override { return DriverResult::failed("noop"); }
+  DriverResult move(const DriverMoveInput&) override { return DriverResult::failed("noop"); }
+  DriverResult preset(const DriverPresetInput&) override { return DriverResult::failed("noop"); }
+  DriverResult settings(const DriverSettingsInput&) override { return DriverResult::failed("noop"); }
+  DriverResult speak(const DriverSpeakInput&) override { return DriverResult::failed("noop"); }
 
   TalkLineOpen talkLine() override { return {.line = std::make_unique<RecordingLine>(log_), .error = {}}; }
 

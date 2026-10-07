@@ -37,6 +37,8 @@ struct CameraSchema
   bool isOnline{false};
   std::string tlsFingerprint;
   bool tapoSecure{false};
+  std::string controlCredential;
+  std::string controlCredentialKey;
   int64_t createdAt{0};
   std::optional<int64_t> updatedAt;
   std::optional<int64_t> deletedAt;

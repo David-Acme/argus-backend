@@ -99,6 +99,7 @@ public:
   TapoResult connect();
   bool isConnected() const;
   Json::Value state() const;
+  TapoControlStatus controlStatus() const;
 
   TapoResult getDeviceInfo();
   TapoResult getDeviceTime();

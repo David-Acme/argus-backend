@@ -3,6 +3,7 @@
 #include <drogon/drogon.h>
 #include <shared/services/tapo/tapo-crypto.hxx>
 #include <shared/services/tapo/tapo-http.hxx>
+#include <shared/services/tapo/tapo-lockout.hxx>
 #include <text/json-util.hxx>
 #include <utility>
 
@@ -86,13 +87,19 @@ TapoResult LegacyStokTransport::login()
   const auto response = TapoHttp::send(request);
   if (!response.ok)
     return TapoResult::failure(response.error.empty() ? "transport error"
-                                                      : response.error);
+                                                      : response.error)
+        .as(TapoFailureKind::Transport);
 
   const Json::Value parsed = json_util::fromString(response.body);
   if (parsed.isNull())
-    return TapoResult::failure("malformed response body");
-  if (!parsed["result"].isMember("stok"))
-    return TapoResult::failure("legacy login rejected", errorCodeOf(parsed));
+    return TapoResult::failure("malformed response body").as(TapoFailureKind::Transport);
+  if (!parsed["result"].isMember("stok")) {
+    if (const auto lockout = tapo_lockout::of(parsed))
+      return TapoResult::failure("camera locked login", lockout->code != 0 ? lockout->code : errorCodeOf(parsed))
+          .as(TapoFailureKind::LockedOut, lockout->secLeft);
+    return TapoResult::failure("legacy login rejected", errorCodeOf(parsed))
+        .as(TapoFailureKind::CredentialRefused);
+  }
 
   stok_ = parsed["result"]["stok"].asString();
   authenticated_ = true;
@@ -115,11 +122,12 @@ TapoResult LegacyStokTransport::send(const Json::Value& payload)
   const auto response = TapoHttp::send(request);
   if (!response.ok)
     return TapoResult::failure(response.error.empty() ? "transport error"
-                                                      : response.error);
+                                                      : response.error)
+        .as(TapoFailureKind::Transport);
 
   const Json::Value parsed = json_util::fromString(response.body);
   if (parsed.isNull())
-    return TapoResult::failure("malformed response body");
+    return TapoResult::failure("malformed response body").as(TapoFailureKind::Transport);
 
   const int code = errorCodeOf(parsed);
   if (code != 0) {

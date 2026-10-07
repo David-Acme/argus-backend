@@ -3,6 +3,7 @@
 #include <utility>
 
 #include <auth/role-access.hxx>
+#include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/stream/camera-live-board.hxx>
 #include <feature/camera/infra/rtsp-probe.hxx>
 #include <shared/services/stream/go2rtc-http.hxx>
@@ -112,6 +113,8 @@ drogon::Task<Json::Value> CameraOverviewService::overview(UserRole role) const
     row["lastEvent"] = readsEvents && known && state->second.lastEvent
                            ? state->second.lastEvent->toJson()
                            : Json::Value();
+    const auto driver = CameraDriverRegistry::instance().driverFor(camera);
+    row["control"] = driver ? driver->controlStatus() : Json::Value();
     rows.append(row);
   }
 

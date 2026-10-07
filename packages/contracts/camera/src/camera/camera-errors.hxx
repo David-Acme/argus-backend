@@ -45,6 +45,14 @@ inline constexpr ErrorDefinition CameraUnreachable{
     .code = ErrorCode::CameraUnreachable,
     .status = 502,
     .message = "The camera refused the command"};
+inline constexpr ErrorDefinition CameraControlLocked{
+    .code = ErrorCode::CameraControlLocked,
+    .status = 503,
+    .message = "The camera locked its control login after failed attempts"};
+inline constexpr ErrorDefinition CameraControlRefused{
+    .code = ErrorCode::CameraControlRefused,
+    .status = 409,
+    .message = "The camera refused the saved control credentials"};
 inline constexpr ErrorDefinition TalkUnavailable{
     .code = ErrorCode::ValidationError,
     .status = 422,

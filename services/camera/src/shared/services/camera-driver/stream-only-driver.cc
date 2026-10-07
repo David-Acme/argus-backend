@@ -22,7 +22,7 @@ DriverResult StreamOnlyDriver::status()
 
 DriverResult StreamOnlyDriver::unsupported() const
 {
-  return DriverResult::failure(cameraDriverToString(camera_.driver) +
+  return DriverResult::failed(cameraDriverToString(camera_.driver) +
                                " cameras stream video only; this control is not available");
 }
 

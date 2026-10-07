@@ -94,6 +94,13 @@ inline constexpr std::string_view ADD_TLS_FINGERPRINT =
     "ALTER TABLE camera ADD COLUMN tls_fingerprint TEXT NOT NULL DEFAULT ''";
 inline constexpr std::string_view ADD_TAPO_SECURE =
     "ALTER TABLE camera ADD COLUMN tapo_secure INTEGER NOT NULL DEFAULT 0";
+inline constexpr std::string_view ADD_CONTROL_CREDENTIAL =
+    "ALTER TABLE camera ADD COLUMN control_credential TEXT NOT NULL DEFAULT ''";
+inline constexpr std::string_view ADD_CONTROL_CREDENTIAL_KEY =
+    "ALTER TABLE camera ADD COLUMN control_credential_key TEXT NOT NULL DEFAULT ''";
+inline constexpr std::string_view SAVE_CONTROL_CREDENTIAL =
+    "UPDATE camera SET control_credential = ?, control_credential_key = ? "
+    "WHERE id = ? AND deleted_at IS NULL";
 inline constexpr std::string_view PLAINTEXT_SECRETS =
     "SELECT id, password, cloud_password FROM camera "
     "WHERE (password != '' AND password NOT LIKE 'enc:v1:%') "
@@ -139,6 +146,13 @@ struct CameraTapoTrustInput
   std::string ip;
   std::string fingerprint;
   bool secure{false};
+};
+
+struct CameraControlCredentialInput
+{
+  int64_t cameraId{0};
+  std::string label;
+  std::string key;
 };
 
 struct CameraUpdateInput

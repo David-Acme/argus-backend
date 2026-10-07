@@ -41,9 +41,6 @@ drogon::Task<CameraControlResult> CameraControlFeatureService::onDevice(
   DriverResult result =
       co_await BlockingTask<DriverResult>([driver, work]() { return work(*driver); });
   result.attempted = true;
-
-  if (!result.ok)
-    CameraDriverRegistry::instance().forget(cameraId);
   co_return result;
 }
 
@@ -140,7 +137,7 @@ CameraControlFeatureService::speak(int64_t cameraId, const CameraTalkDto& body) 
         });
   }
   catch (const std::exception& e) {
-    co_return DriverResult::failure("Text-to-speech unavailable: " +
+    co_return DriverResult::failed("Text-to-speech unavailable: " +
                                     std::string(e.what()));
   }
 
@@ -157,7 +154,7 @@ CameraControlFeatureService::snapshot(int64_t cameraId) const
   if (!camera)
     co_return std::nullopt;
   if (!camera->isEnabled)
-    co_return DriverResult::failure("This camera is disabled");
+    co_return DriverResult::failed("This camera is disabled");
 
   CameraSnapshot picture;
   if (auto stored = SnapshotStore::instance().frame(cameraId);
@@ -168,7 +165,7 @@ CameraControlFeatureService::snapshot(int64_t cameraId) const
     const auto frame =
         co_await frames_.grab({.cameraId = cameraId, .cameraName = camera->name, .maxAgeMs = 0});
     if (!frame || frame->jpeg.empty())
-      co_return DriverResult::failure("The camera sent no picture");
+      co_return DriverResult::failed("The camera sent no picture");
     picture = {.jpeg = std::string(frame->jpeg.begin(), frame->jpeg.end()),
                .atMs = frame->capturedAtMs};
   }

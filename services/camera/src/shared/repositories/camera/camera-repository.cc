@@ -297,10 +297,14 @@ bool CameraRepository::acceptTapoTrust()
   const auto client = DbService::cameraClient();
   bool fingerprint = false;
   bool secure = false;
+  bool credential = false;
+  bool credentialKey = false;
   for (const auto& row : client->execSqlSync(std::string(TABLE_COLUMNS))) {
     const auto name = row["name"].as<std::string>();
     fingerprint = fingerprint || name == "tls_fingerprint";
     secure = secure || name == "tapo_secure";
+    credential = credential || name == "control_credential";
+    credentialKey = credentialKey || name == "control_credential_key";
   }
   if (!fingerprint)
     client->execSqlSync(std::string(ADD_TLS_FINGERPRINT));
@@ -308,7 +312,27 @@ bool CameraRepository::acceptTapoTrust()
     client->execSqlSync(std::string(ADD_TAPO_SECURE));
   if (!fingerprint || !secure)
     LOG_INFO << "Camera schema: camera rows carry their Tapo certificate pin";
+  if (!credential)
+    client->execSqlSync(std::string(ADD_CONTROL_CREDENTIAL));
+  if (!credentialKey)
+    client->execSqlSync(std::string(ADD_CONTROL_CREDENTIAL_KEY));
+  if (!credential || !credentialKey)
+    LOG_INFO << "Camera schema: camera rows remember the credential that controls them";
   return true;
+}
+
+void CameraRepository::saveControlCredential(const CameraControlCredentialInput& input)
+{
+  if (input.cameraId <= 0)
+    return;
+  DbService::cameraClient()->execSqlAsync(
+      std::string(SAVE_CONTROL_CREDENTIAL),
+      [](const drogon::orm::Result&) {},
+      [cameraId = input.cameraId](const drogon::orm::DrogonDbException& error) {
+        LOG_WARN << "Camera " << cameraId << ": control credential not saved ("
+                 << error.base().what() << ")";
+      },
+      input.label, input.key, input.cameraId);
 }
 
 int64_t CameraRepository::sealPlaintextSecrets()

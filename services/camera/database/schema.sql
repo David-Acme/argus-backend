@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS camera (
     is_online      INTEGER NOT NULL  DEFAULT 0,
     tls_fingerprint TEXT   NOT NULL  DEFAULT '',
     tapo_secure    INTEGER NOT NULL  DEFAULT 0,
+    control_credential TEXT NOT NULL DEFAULT '',
+    control_credential_key TEXT NOT NULL DEFAULT '',
     created_at     INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     updated_at     INTEGER,
     deleted_at     INTEGER

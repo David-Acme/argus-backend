@@ -61,15 +61,15 @@ struct StubActuator final : ICameraDriver
   std::condition_variable settingsCv;
 
   Json::Value capabilities() const override { return Json::Value(); }
-  DriverResult status() override { return DriverResult::failure("noop"); }
-  DriverResult presets() override { return DriverResult::failure("noop"); }
+  DriverResult status() override { return DriverResult::failed("noop"); }
+  DriverResult presets() override { return DriverResult::failed("noop"); }
   DriverResult move(const DriverMoveInput&) override
   {
-    return DriverResult::failure("noop");
+    return DriverResult::failed("noop");
   }
   DriverResult preset(const DriverPresetInput&) override
   {
-    return DriverResult::failure("noop");
+    return DriverResult::failed("noop");
   }
   DriverResult settings(const DriverSettingsInput& input) override
   {
@@ -193,6 +193,8 @@ void seedCameraDb()
       "is_online INTEGER NOT NULL DEFAULT 0, "
       "tls_fingerprint TEXT NOT NULL DEFAULT '', "
       "tapo_secure INTEGER NOT NULL DEFAULT 0, "
+      "control_credential TEXT NOT NULL DEFAULT '', "
+      "control_credential_key TEXT NOT NULL DEFAULT '', "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
   exec(db.get(), "INSERT INTO camera (id, name, ip, driver) "

@@ -14,8 +14,10 @@ struct DriverResult
   std::string error;
   Json::Value data;
   bool attempted{false};
+  std::string failure{};
+  int retryAfterSeconds{0};
 
-  static DriverResult failure(const std::string& message)
+  static DriverResult failed(const std::string& message)
   {
     return {.ok = false, .error = message, .data = Json::Value()};
   }
@@ -85,6 +87,7 @@ public:
   virtual DriverResult settings(const DriverSettingsInput& input) = 0;
   virtual DriverResult speak(const DriverSpeakInput& input) = 0;
   virtual TalkLineOpen talkLine();
+  [[nodiscard]] virtual Json::Value controlStatus() const;
 };
 
 class CameraDriverRegistry

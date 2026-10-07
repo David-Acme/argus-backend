@@ -29,6 +29,7 @@ public:
   static int64_t sealPlaintextSecrets();
   static int64_t unreadableSecrets();
   static void saveTapoTrust(const CameraTapoTrustInput& input);
+  static void saveControlCredential(const CameraControlCredentialInput& input);
 
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;

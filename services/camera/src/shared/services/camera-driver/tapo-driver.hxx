@@ -25,6 +25,7 @@ public:
   DriverResult settings(const DriverSettingsInput& input) override;
   DriverResult speak(const DriverSpeakInput& input) override;
   TalkLineOpen talkLine() override;
+  [[nodiscard]] Json::Value controlStatus() const override;
 
 private:
   DriverResult ensureConnected();
