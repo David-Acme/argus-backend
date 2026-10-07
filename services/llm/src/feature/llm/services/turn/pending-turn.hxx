@@ -8,6 +8,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace turn
 {
@@ -16,7 +17,9 @@ enum class Awaiting : unsigned char
 {
   Slot,
   Approval,
-  Choice
+  Choice,
+  Project,
+  NewProject
 };
 
 struct Pending
@@ -28,6 +31,8 @@ struct Pending
   std::string utterance{};
   int attempts{0};
   std::chrono::steady_clock::time_point at{};
+  std::vector<std::string> options{};
+  std::optional<Candidate> held{};
 };
 
 class PendingTurns

@@ -37,6 +37,10 @@ constexpr auto kEsOther = std::to_array<Phrase>({"la otra", "el otro", "lo otro"
                                                   "la segunda", "el segundo", "la ultima", "el ultimo",
                                                   "mejor la otra", "mejor el otro"});
 
+constexpr auto kEsNewOne = std::to_array<Phrase>({"ninguno", "ninguna", "ninguno de esos", "ninguna de esas", "ninguno de ellos",
+                                                   "crea uno", "crear uno", "creame uno", "crea uno nuevo", "uno nuevo", "una nueva",
+                                                   "un proyecto nuevo", "otro proyecto", "proyecto nuevo", "nuevo proyecto", "otro nuevo"});
+
 constexpr auto kEnClitic = std::to_array<Phrase>({"me", "us", "it"});
 constexpr auto kEnDeterminer = std::to_array<Phrase>({"a", "an", "the", "my", "your", "some", "this", "that"});
 constexpr auto kEnConnector = std::to_array<Phrase>({"to", "for", "about", "of"});
@@ -60,13 +64,17 @@ constexpr auto kEnModal = std::to_array<Phrase>({"can you", "could you", "would 
 constexpr auto kEnOther = std::to_array<Phrase>({"the other", "the other one", "the other option", "other one", "the second",
                                                   "the second one", "the latter", "the last one", "the other way"});
 
+constexpr auto kEnNewOne = std::to_array<Phrase>({"none", "none of them", "none of those", "create one", "create a new one", "a new one",
+                                                   "new one", "another one", "a new project", "new project", "make a new one",
+                                                   "make one", "neither"});
+
 constexpr std::array<Table, 2> kTables{{
     {.language = "es",
      .groups = {kEsClitic, kEsDeterminer, kEsConnector, kEsPreposition, kEsTimeAnchor, kEsTimeFiller, kEsNaming,
-                kEsAnswerPrefix, kEsModal, kEsOther}},
+                kEsAnswerPrefix, kEsModal, kEsOther, kEsNewOne}},
     {.language = "en",
      .groups = {kEnClitic, kEnDeterminer, kEnConnector, kEnPreposition, kEnTimeAnchor, kEnTimeFiller, kEnNaming,
-                kEnAnswerPrefix, kEnModal, kEnOther}},
+                kEnAnswerPrefix, kEnModal, kEnOther, kEnNewOne}},
 }};
 }
 

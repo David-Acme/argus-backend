@@ -116,6 +116,11 @@ private:
   [[nodiscard]] Verdict verdictOf(const Candidate& candidate) const;
   [[nodiscard]] bool needsSecondSignal(const Candidate& candidate) const;
   [[nodiscard]] bool supersedes(const Deciding& deciding) const;
+  [[nodiscard]] std::optional<Outcome> followUpProject(const TurnRequest& request, const Deciding& deciding, const Pending& pending);
+  [[nodiscard]] Outcome projectRefusal(const TurnRequest& request, const Candidate& candidate, Outcome outcome);
+  [[nodiscard]] Outcome askProjectAgain(const TurnRequest& request, const Pending& pending);
+  [[nodiscard]] Outcome offerProject(const TurnRequest& request, const Pending& pending, const std::string& name);
+  [[nodiscard]] Outcome confirmed(const TurnRequest& request, const Pending& pending);
   [[nodiscard]] Outcome proceed(const Move& move);
   [[nodiscard]] Outcome ask(const Move& move);
   [[nodiscard]] Outcome unactionable(const TurnRequest& request) const;

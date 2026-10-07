@@ -25,6 +25,11 @@ constexpr std::string_view kConfirmation = "confirmation";
 constexpr std::string_view kEnableTool = "modules.enable";
 constexpr std::string_view kRequestTool = "modules.request";
 constexpr std::string_view kInactive = "module_inactive";
+constexpr std::string_view kProjectNeeded = "project_needed";
+constexpr std::string_view kProjectAmbiguous = "ambiguous_project";
+constexpr std::string_view kProjectUnknown = "unknown_project";
+constexpr std::string_view kNoProjects = "no_projects";
+constexpr std::string_view kCreateProjectTool = "project.create";
 
 const tools::ToolDescriptor* handleOf(const std::vector<tools::ToolHandle>& offered, std::string_view name)
 {
@@ -282,7 +287,155 @@ Outcome TurnFlow::proceed(const Move& move)
 
   call.arguments = std::move(next.arguments);
   execute(request, std::move(call), outcome);
+  return projectRefusal(request, move.candidate, std::move(outcome));
+}
+
+Outcome TurnFlow::projectRefusal(const TurnRequest& request, const Candidate& candidate, Outcome outcome)
+{
+  if (outcome.steps.empty())
+    return outcome;
+  const tools::ToolResult& result = outcome.steps.back().result;
+  const bool listed = result.code == kProjectNeeded || result.code == kProjectAmbiguous || result.code == kProjectUnknown;
+  if (!listed && result.code != kNoProjects)
+    return outcome;
+  Candidate held = candidate;
+  held.arguments = outcome.steps.back().call.arguments;
+  held.arguments.removeMember("project");
+  held.arguments.removeMember("project_id");
+  std::vector<std::string> options;
+  for (const Json::Value& name : result.data["projects"])
+    if (name.isString())
+      options.push_back(name.asString());
+  if (listed && options.empty())
+    return outcome;
+  outcome.findings.pop_back();
+  const std::string_view lang = request.context.lang;
+  if (request.context.userId > 0)
+    pendings_.put(request.context.userId,
+                  {.awaiting = listed ? Awaiting::Project : Awaiting::NewProject,
+                   .candidate = held,
+                   .alternative = std::nullopt,
+                   .slot = "project",
+                   .utterance = std::string(request.utterance),
+                   .attempts = 1,
+                   .at = {},
+                   .options = options,
+                   .held = std::nullopt});
+  outcome.question = listed ? turn_texts::projectQuestion({.options = options, .lang = lang}) : turn_texts::newProjectQuestion(lang, true);
   return outcome;
+}
+
+Outcome TurnFlow::askProjectAgain(const TurnRequest& request, const Pending& pending)
+{
+  Outcome outcome;
+  outcome.source = pending.candidate.source;
+  const std::string_view lang = request.context.lang;
+  if (pending.attempts + 1 > kMaxAttempts) {
+    outcome.question = turn_texts::misunderstood(lang);
+    return outcome;
+  }
+  Pending next = pending;
+  next.attempts = pending.attempts + 1;
+  pendings_.put(request.context.userId, next);
+  outcome.question = pending.awaiting == Awaiting::Project ? turn_texts::projectQuestion({.options = pending.options, .lang = lang})
+                                                           : turn_texts::newProjectQuestion(lang, false);
+  return outcome;
+}
+
+Outcome TurnFlow::offerProject(const TurnRequest& request, const Pending& pending, const std::string& name)
+{
+  Outcome outcome;
+  outcome.source = pending.candidate.source;
+  const std::string_view lang = request.context.lang;
+  if (handleOf(request.offered, kCreateProjectTool) == nullptr) {
+    outcome.findings.push_back({.kind = FindingKind::Refused, .tool = std::string(kCreateProjectTool), .text = turn_texts::cannotCreateProject(lang)});
+    return outcome;
+  }
+  Candidate create{.tool = std::string(kCreateProjectTool),
+                   .arguments = Json::Value(Json::objectValue),
+                   .fill = {},
+                   .confidence = 1.0,
+                   .source = "project offer",
+                   .decider = pending.candidate.decider,
+                   .exact = true,
+                   .confident = true,
+                   .runnerUp = std::nullopt,
+                   .now = std::nullopt};
+  create.arguments["name"] = name;
+  pendings_.put(request.context.userId,
+                {.awaiting = Awaiting::Approval,
+                 .candidate = std::move(create),
+                 .alternative = std::nullopt,
+                 .slot = {},
+                 .utterance = pending.utterance,
+                 .attempts = 0,
+                 .at = {},
+                 .options = {},
+                 .held = pending.candidate});
+  outcome.question = turn_texts::createProjectQuestion({.name = name, .lang = lang});
+  return outcome;
+}
+
+Outcome TurnFlow::confirmed(const TurnRequest& request, const Pending& pending)
+{
+  Outcome first = proceed({.request = request,
+                           .candidate = pending.candidate,
+                           .slot = {},
+                           .attempts = 0,
+                           .answering = false,
+                           .utterance = pending.utterance});
+  if (!pending.held || !first.wrote)
+    return first;
+  Candidate task = *pending.held;
+  task.arguments["project"] = pending.candidate.arguments["name"];
+  Outcome second = proceed({.request = request, .candidate = std::move(task), .slot = {}, .attempts = 0, .answering = false, .utterance = pending.utterance});
+  first.toolMs += second.toolMs;
+  first.wrote = first.wrote || second.wrote;
+  first.question = std::move(second.question);
+  for (Step& step : second.steps)
+    first.steps.push_back(std::move(step));
+  for (Finding& finding : second.findings)
+    first.findings.push_back(std::move(finding));
+  return first;
+}
+
+std::optional<Outcome> TurnFlow::followUpProject(const TurnRequest& request, const Deciding& deciding, const Pending& pending)
+{
+  const int64_t userId = request.context.userId;
+  pendings_.forget(userId);
+  if (supersedes(deciding)) {
+    clearAll(userId);
+    return std::nullopt;
+  }
+  if (declining(request.utterance)) {
+    clearAll(userId);
+    return declined();
+  }
+  if (pending.awaiting == Awaiting::NewProject) {
+    const auto name = slots::nameGiven(request.utterance);
+    const auto given = name ? name : slots::answerText(request.utterance);
+    if (!given)
+      return askProjectAgain(request, pending);
+    return offerProject(request, pending, *given);
+  }
+  if (slots::namesNewOne(request.utterance)) {
+    if (const auto name = slots::nameGiven(request.utterance))
+      return offerProject(request, pending, *name);
+    Pending next = pending;
+    next.awaiting = Awaiting::NewProject;
+    next.attempts = 1;
+    pendings_.put(userId, next);
+    Outcome outcome;
+    outcome.source = pending.candidate.source;
+    outcome.question = turn_texts::newProjectQuestion(request.context.lang, false);
+    return outcome;
+  }
+  const slots::Choice choice = slots::choose(request.utterance, pending.options);
+  if (choice.kind != slots::ChoiceKind::Chosen)
+    return askProjectAgain(request, pending);
+  Candidate task = pending.candidate;
+  task.arguments["project"] = choice.name;
+  return proceed({.request = request, .candidate = std::move(task), .slot = {}, .attempts = 0, .answering = false, .utterance = pending.utterance});
 }
 
 Outcome TurnFlow::confirm(const TurnRequest& request, const Candidate& candidate)
@@ -421,6 +574,8 @@ std::optional<Outcome> TurnFlow::followUpOffer(const TurnRequest& request, const
 std::optional<Outcome> TurnFlow::followUpOwn(const TurnRequest& request, const Deciding& deciding, const Pending& pending)
 {
   const int64_t userId = request.context.userId;
+  if (pending.awaiting == Awaiting::Project || pending.awaiting == Awaiting::NewProject)
+    return followUpProject(request, deciding, pending);
   if (pending.awaiting == Awaiting::Choice) {
     pendings_.forget(userId);
     if (pending.alternative && slots::namesOther(request.utterance))
@@ -447,12 +602,7 @@ std::optional<Outcome> TurnFlow::followUpOwn(const TurnRequest& request, const D
   if (pending.awaiting == Awaiting::Approval) {
     pendings_.forget(userId);
     if (affirmed(request.utterance))
-      return proceed({.request = request,
-                      .candidate = pending.candidate,
-                      .slot = {},
-                      .attempts = 0,
-                      .answering = false,
-                      .utterance = pending.utterance});
+      return confirmed(request, pending);
     clearAll(userId);
     if (supersedes(deciding))
       return std::nullopt;

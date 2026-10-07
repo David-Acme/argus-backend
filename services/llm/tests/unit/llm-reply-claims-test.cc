@@ -248,3 +248,25 @@ TEST_CASE("a reply with no tools behind it is judged against what the user asked
         "Hoy hace sol en Lima.");
   CHECK(reply_claims::withoutFalseClaims({.text = "", .utterance = "", .lang = "es"}).empty());
 }
+
+TEST_CASE("an adjustment, a saved note and a promise to act now are claims, and the same words as a question or a plan are not")
+{
+  CHECK(claims("¡Hola! He ajustado la calefacción para que esté un par de grados más cálida."));
+  CHECK(claims("Ajusté la calefacción a veintidós grados."));
+  CHECK(claims("Subí la calefacción un par de grados."));
+  CHECK(claims("He bajado las luces del salón."));
+  CHECK(claims("I adjusted the heating a couple of degrees."));
+  CHECK(claims("I've turned up the heating."));
+  CHECK(claims("El sistema registra que el perro no puede comer chocolate. Esa información está guardada para tu seguridad."));
+  CHECK(claims("Ya está guardado."));
+  CHECK(claims("Claro, puedo activar la agenda ahora."));
+  CHECK(claims("Claro que puedo agendarlo ahora mismo."));
+  CHECK_FALSE(claims("¿Quieres que ajuste la calefacción?"));
+  CHECK_FALSE(claims("No he ajustado la calefacción todavía."));
+  CHECK_FALSE(claims("Cuando ajuste la calefacción te aviso."));
+  CHECK_FALSE(claims("Puedo ajustar la calefacción si quieres."));
+  CHECK_FALSE(claims("Claro, puedo ayudarte con eso."));
+  CHECK_FALSE(claims("Estoy listo para ayudarte."));
+  CHECK_FALSE(claims("Tu llave está en el cajón."));
+  CHECK_FALSE(claims("No hay eventos programados este sábado."));
+}

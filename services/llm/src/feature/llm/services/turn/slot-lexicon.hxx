@@ -20,6 +20,7 @@ enum class Group : std::uint8_t
   AnswerPrefix,
   Modal,
   Other,
+  NewOne,
   Count
 };
 

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace turn_texts
 {
@@ -51,6 +52,26 @@ struct ChooseQuestion
 };
 
 [[nodiscard]] std::string chooseQuestion(const ChooseQuestion& question);
+
+struct ProjectQuestion
+{
+  const std::vector<std::string>& options;
+  std::string_view lang;
+};
+
+[[nodiscard]] std::string projectQuestion(const ProjectQuestion& question);
+
+[[nodiscard]] std::string newProjectQuestion(std::string_view lang, bool noneYet);
+
+struct CreateProject
+{
+  std::string_view name;
+  std::string_view lang;
+};
+
+[[nodiscard]] std::string createProjectQuestion(const CreateProject& project);
+
+[[nodiscard]] std::string cannotCreateProject(std::string_view lang);
 
 struct WhenInput
 {

@@ -20,6 +20,7 @@
 #include "tool-stubs.hxx"
 
 #include <text/iso-time.hxx>
+#include <text/name-match.hxx>
 
 #include <algorithm>
 #include <cstdint>
@@ -104,6 +105,8 @@ struct World
   int64_t now{static_cast<int64_t>(std::time(nullptr))};
   bool createOk{true};
   std::string previous;
+  std::vector<std::string> projects{"Casa"};
+  bool listsProjects{true};
 
   explicit World(UserRole role = UserRole::Owner)
       : flow({.executor = executor, .decider = &rules, .text = &text, .policies = turn::PolicySet({.act = 0.90, .ask = 0.60, .margin = 0.10})})
@@ -158,12 +161,19 @@ struct World
                           .destructive = true}));
     add(tool_stubs::stub({.name = "task.create",
                           .capability = "projects.write",
+                          .handler = [this](const tools::ToolCall& call) { return createTask(call); },
+                          .module = "productivity",
+                          .schema = schema::object({{.name = "title", .schema = schema::text(), .required = true},
+                                                    {.name = "project", .schema = schema::text(), .required = false}})}));
+    add(tool_stubs::stub({.name = "project.create",
+                          .capability = "projects.write",
                           .handler = [this](const tools::ToolCall& call) {
                             ran.push_back(call);
-                            return tool_stubs::okResult("Anoté la tarea «" + call.arguments["title"].asString() + "».");
+                            projects.push_back(call.arguments["name"].asString());
+                            return tool_stubs::okResult("Proyecto creado: " + call.arguments["name"].asString() + ".");
                           },
                           .module = "productivity",
-                          .schema = schema::object({{.name = "title", .schema = schema::text(), .required = true}})}));
+                          .schema = schema::object({{.name = "name", .schema = schema::text(), .required = true}})}));
     auto list = tool_stubs::stub({.name = "task.list",
                                   .capability = "projects.read",
                                   .handler = [this](const tools::ToolCall& call) {
@@ -212,6 +222,33 @@ struct World
   }
 
   void add(tools::ToolDescriptor descriptor) { registry.registerTool(std::move(descriptor)); }
+
+  tools::ToolResult createTask(const tools::ToolCall& call)
+  {
+    ran.push_back(call);
+    const std::string title = call.arguments["title"].asString();
+    const std::string asked = call.arguments.get("project", "").asString();
+    const auto refuse = [&](const std::string& code, const std::string& text) {
+      tools::ToolResult result;
+      result.output = text;
+      result.code = code;
+      if (listsProjects)
+        for (const std::string& name : projects)
+          result.data["projects"].append(name);
+      return result;
+    };
+    if (!asked.empty()) {
+      const auto match = text_norm::matchName(projects, asked);
+      if (match.kind != text_norm::NameMatchKind::Exact)
+        return refuse("unknown_project", "No encuentro ese proyecto.");
+      return tool_stubs::okResult("Anoté la tarea «" + title + "» en " + projects.at(match.hits.front()) + ".");
+    }
+    if (projects.empty())
+      return refuse("no_projects", "Todavía no tienes proyectos.");
+    if (projects.size() > 1)
+      return refuse("project_needed", "¿En cuál proyecto va?");
+    return tool_stubs::okResult("Anoté la tarea «" + title + "».");
+  }
 
   void refresh() { offered = executor.offered(audience); }
 
@@ -1523,4 +1560,164 @@ TEST_CASE("changing the guard mode is a write that waits, whatever the tool says
   CHECK_FALSE(world.say("muéstrame la cámara").question.has_value());
   REQUIRE(actions.size() == 2);
   CHECK(actions.back() == "app.show_camera");
+}
+
+namespace
+{
+std::vector<std::string> toolsRun(const World& world)
+{
+  std::vector<std::string> names;
+  names.reserve(world.ran.size());
+  for (const auto& call : world.ran)
+    names.push_back(call.name);
+  return names;
+}
+}
+
+TEST_CASE("a task with several projects asks which one, reads the answer for that slot only and completes the held task")
+{
+  World world;
+  world.projects = {"Casa", "Trabajo", "Viaje"};
+  const auto asked = world.say("anota una tarea: llamar al dentista");
+  CHECK(said(asked) == "¿En cuál proyecto va? Casa, Trabajo o Viaje.");
+  CHECK_FALSE(asked.wrote);
+  CHECK(asked.findings.empty());
+  CHECK(world.ran.size() == 1);
+
+  const auto done = world.say("el de la casa");
+  REQUIRE(world.ran.size() == 2);
+  CHECK(world.ran.back().name == "task.create");
+  CHECK(world.ran.back().arguments["project"].asString() == "Casa");
+  CHECK(world.ran.back().arguments["title"].asString() == "Llamar al dentista");
+  CHECK(done.wrote);
+  CHECK(world.say("el de la casa").steps.empty());
+}
+
+TEST_CASE("with no project the system offers to create one by its name, and only on a yes")
+{
+  World world;
+  world.projects.clear();
+  CHECK(said(world.say("anota una tarea: llamar al dentista")) ==
+        "Todavía no tienes proyectos. ¿Cómo quieres llamar al proyecto nuevo para esta tarea?");
+  CHECK(said(world.say("Hogar")) == "¿Creo el proyecto «Hogar» y anoto la tarea ahí?");
+  CHECK(toolsRun(world) == std::vector<std::string>{"task.create"});
+
+  const auto yes = world.say("sí");
+  CHECK(toolsRun(world) == std::vector<std::string>{"task.create", "project.create", "task.create"});
+  CHECK(world.ran[1].arguments["name"].asString() == "Hogar");
+  CHECK(world.ran[2].arguments["project"].asString() == "Hogar");
+  CHECK(world.ran[2].arguments["title"].asString() == "Llamar al dentista");
+  CHECK(yes.wrote);
+  CHECK(yes.findings.size() == 2);
+}
+
+TEST_CASE("none of the projects, or create one, leads to the same offer and never creates silently")
+{
+  World none;
+  none.projects = {"Casa", "Trabajo"};
+  REQUIRE(none.say("anota una tarea: llamar al dentista").question.has_value());
+  CHECK(said(none.say("ninguno")) == "¿Cómo se llama el proyecto nuevo?");
+  CHECK(said(none.say("se llama Hogar")) == "¿Creo el proyecto «Hogar» y anoto la tarea ahí?");
+  CHECK(findingOf(none.say("no, déjalo"), turn::FindingKind::Declined) != nullptr);
+  CHECK(toolsRun(none) == std::vector<std::string>{"task.create"});
+  CHECK(none.say("sí").steps.empty());
+
+  World named;
+  named.projects = {"Casa", "Trabajo"};
+  REQUIRE(named.say("anota una tarea: llamar al dentista").question.has_value());
+  CHECK(said(named.say("crea uno llamado Hogar")) == "¿Creo el proyecto «Hogar» y anoto la tarea ahí?");
+  CHECK(toolsRun(named) == std::vector<std::string>{"task.create"});
+  named.say("sí");
+  CHECK(toolsRun(named) == std::vector<std::string>{"task.create", "project.create", "task.create"});
+  CHECK(named.ran.back().arguments["project"].asString() == "Hogar");
+}
+
+TEST_CASE("an answer that names no project is asked again once, and a no drops the held task")
+{
+  World world;
+  world.projects = {"Casa", "Trabajo"};
+  REQUIRE(world.say("anota una tarea: llamar al dentista").question.has_value());
+  CHECK(said(world.say("ese")) == "¿En cuál proyecto va? Casa o Trabajo.");
+  CHECK(said(world.say("ese")) == turn_texts::misunderstood("es"));
+  CHECK(world.ran.size() == 1);
+  CHECK(world.say("el de la casa").steps.empty());
+
+  World dropped;
+  dropped.projects = {"Casa", "Trabajo"};
+  REQUIRE(dropped.say("anota una tarea: llamar al dentista").question.has_value());
+  CHECK(findingOf(dropped.say("no"), turn::FindingKind::Declined) != nullptr);
+  CHECK(dropped.say("el de la casa").steps.empty());
+  CHECK(dropped.ran.size() == 1);
+}
+
+TEST_CASE("a new command while a project is asked for replaces the question")
+{
+  World world;
+  world.projects = {"Casa", "Trabajo"};
+  REQUIRE(world.say("anota una tarea: llamar al dentista").question.has_value());
+  const auto fresh = world.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
+  CHECK_FALSE(fresh.question.has_value());
+  CHECK(world.ran.back().name == "calendar.create_event");
+}
+
+TEST_CASE("the same project question is asked and answered in English")
+{
+  World world;
+  world.context.lang = "en";
+  world.projects = {"Home", "Work"};
+  CHECK(said(world.say("add a task: call the dentist")) == "Which project is it for? Home or Work.");
+  const auto done = world.say("the home one");
+  REQUIRE(world.ran.size() == 2);
+  CHECK(world.ran.back().arguments["project"].asString() == "Home");
+  CHECK(done.wrote);
+
+  World none;
+  none.context.lang = "en";
+  none.projects.clear();
+  CHECK(said(none.say("add a task: call the dentist")) == "You have no projects yet. What should I call the new project for this task?");
+  CHECK(said(none.say("Garden")) == "Shall I create the project “Garden” and add the task there?");
+  none.say("yes");
+  CHECK(toolsRun(none) == std::vector<std::string>{"task.create", "project.create", "task.create"});
+  CHECK(none.ran.back().arguments["project"].asString() == "Garden");
+
+  World another;
+  another.context.lang = "en";
+  another.projects = {"Home", "Work"};
+  REQUIRE(another.say("add a task: call the dentist").question.has_value());
+  CHECK(said(another.say("none of them")) == "What is the new project called?");
+  CHECK(said(another.say("call it Garden")) == "Shall I create the project “Garden” and add the task there?");
+}
+
+TEST_CASE("when no decider found anything and no write ran, a claim of work done is cut on every path")
+{
+  Spoken sync;
+  sync.script.replies = {"¡Hola! He ajustado la calefacción para que esté un par de grados más cálida."};
+  CHECK(sync.sync("sube la calefacción un par de grados").reply == reply_claims::honest("es"));
+  CHECK(sync.world.ran.empty());
+
+  Spoken streamed;
+  streamed.script.chunk = 6;
+  streamed.script.replies = {"Esa información está guardada para tu seguridad."};
+  streamed.stream("o sea el perro no puede comer chocolate nunca");
+  CHECK(streamed.heard == reply_claims::honest("es"));
+
+  Spoken offer;
+  offer.script.replies = {"Claro, puedo activar la agenda ahora."};
+  CHECK(offer.sync("quiero usar la agenda, ¿puedes activarla?").reply == reply_claims::honest("es"));
+
+  Spoken plain;
+  plain.script.replies = {"Estoy listo para ayudarte con lo que necesites."};
+  CHECK(plain.sync("hola Argus").reply == "Estoy listo para ayudarte con lo que necesites.");
+}
+
+TEST_CASE("a provider that names no projects leaves its own refusal to be said, and nothing is held")
+{
+  World world;
+  world.projects = {"Casa", "Trabajo"};
+  world.listsProjects = false;
+  const auto outcome = world.say("anota una tarea: llamar al dentista");
+  CHECK_FALSE(outcome.question.has_value());
+  REQUIRE(outcome.findings.size() == 1);
+  CHECK(outcome.findings.front().kind == turn::FindingKind::Refused);
+  CHECK(world.say("el de la casa").steps.empty());
 }

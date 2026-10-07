@@ -287,6 +287,60 @@ bool namesOther(std::string_view utterance)
   return false;
 }
 
+bool namesNewOne(std::string_view utterance)
+{
+  const Tokens tokens = split(utterance);
+  for (std::size_t at = 0; at < tokens.size(); ++at)
+    if (own(slot_lexicon::Group::NewOne, tokens, at) > 0)
+      return true;
+  return false;
+}
+
+Choice choose(std::string_view utterance, const std::vector<std::string>& options)
+{
+  const Tokens heard = split(utterance);
+  std::size_t best = 0;
+  std::vector<std::size_t> hits;
+  for (std::size_t index = 0; index < options.size(); ++index) {
+    const Tokens words = split(options[index]);
+    if (words.size() == 0)
+      continue;
+    const bool held = std::ranges::all_of(words.folded, [&heard](const std::string& word) {
+      return std::ranges::find(heard.folded, word) != heard.folded.end();
+    });
+    if (!held)
+      continue;
+    if (words.size() > best) {
+      best = words.size();
+      hits = {index};
+    }
+    else if (words.size() == best) {
+      hits.push_back(index);
+    }
+  }
+  if (hits.size() == 1)
+    return {.kind = ChoiceKind::Chosen, .name = options[hits.front()]};
+  return {.kind = hits.empty() ? ChoiceKind::Unknown : ChoiceKind::Ambiguous, .name = {}};
+}
+
+std::optional<std::string> nameGiven(std::string_view utterance)
+{
+  const Tokens tokens = split(utterance);
+  for (std::size_t at = 0; at < tokens.size(); ++at) {
+    std::size_t size = own(slot_lexicon::Group::Naming, tokens, at);
+    if (size == 0)
+      size = own(slot_lexicon::Group::AnswerPrefix, tokens, at);
+    if (size == 0)
+      continue;
+    std::vector<bool> dropped(tokens.size(), false);
+    const std::string name = withoutEdges(tokens, dropped, at + size);
+    if (name.empty() || name.size() > kLongestTitle)
+      return std::nullopt;
+    return capitalized(name);
+  }
+  return std::nullopt;
+}
+
 bool isDateTime(const argus::mcp::ToolSpec& spec, std::string_view field)
 {
   const Json::Value& property = spec.inputSchema["properties"][std::string(field)];

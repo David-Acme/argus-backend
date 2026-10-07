@@ -148,6 +148,26 @@ constexpr std::array<ByTool, 20> kAction{{
 
 constexpr Pair kGenericAction{.es = "que lo haga", .en = "do it"};
 
+constexpr Pair kWhichProject{.es = "¿En cuál proyecto va? ", .en = "Which project is it for? "};
+constexpr Pair kNoProjects{.es = "Todavía no tienes proyectos. ¿Cómo quieres llamar al proyecto nuevo para esta tarea?",
+                           .en = "You have no projects yet. What should I call the new project for this task?"};
+constexpr Pair kNewProjectName{.es = "¿Cómo se llama el proyecto nuevo?", .en = "What is the new project called?"};
+constexpr Pair kCreateProjectBefore{.es = "¿Creo el proyecto «", .en = "Shall I create the project “"};
+constexpr Pair kCreateProjectAfter{.es = "» y anoto la tarea ahí?", .en = "” and add the task there?"};
+constexpr Pair kCannotCreateProject{.es = "No puedo crear proyectos por ti, así que la tarea no se anotó.",
+                                    .en = "I cannot create projects for you, so the task was not added."};
+
+std::string listed(const std::vector<std::string>& items, std::string_view lang)
+{
+  std::string out;
+  for (std::size_t index = 0; index < items.size(); ++index) {
+    if (index > 0)
+      out += index + 1 == items.size() ? (lang == "en" ? " or " : " o ") : ", ";
+    out += items[index];
+  }
+  return out;
+}
+
 constexpr Pair kGenericTitle{.es = "¿Cómo lo llamo?", .en = "What should I call it?"};
 constexpr Pair kGenericTime{.es = "¿Para qué día y a qué hora?", .en = "For what day and time?"};
 constexpr Pair kGenericModule{.es = "¿De qué módulo hablas?", .en = "Which module do you mean?"};
@@ -223,6 +243,26 @@ std::string confirmQuestion(const ConfirmQuestion& question)
   if (const Pair* plain = find(kConfirm, question.tool))
     return std::string(pick(*plain, question.lang));
   return std::string(pick(kGenericConfirm, question.lang));
+}
+
+std::string projectQuestion(const ProjectQuestion& question)
+{
+  return std::string(pick(kWhichProject, question.lang)) + listed(question.options, question.lang) + ".";
+}
+
+std::string newProjectQuestion(std::string_view lang, bool noneYet)
+{
+  return std::string(pick(noneYet ? kNoProjects : kNewProjectName, lang));
+}
+
+std::string createProjectQuestion(const CreateProject& project)
+{
+  return std::string(pick(kCreateProjectBefore, project.lang)) + std::string(project.name) + std::string(pick(kCreateProjectAfter, project.lang));
+}
+
+std::string cannotCreateProject(std::string_view lang)
+{
+  return std::string(pick(kCannotCreateProject, lang));
 }
 
 std::string chooseQuestion(const ChooseQuestion& question)

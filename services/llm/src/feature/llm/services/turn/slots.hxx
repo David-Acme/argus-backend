@@ -66,6 +66,25 @@ struct Filled
 
 [[nodiscard]] bool namesOther(std::string_view utterance);
 
+[[nodiscard]] bool namesNewOne(std::string_view utterance);
+
+enum class ChoiceKind : std::uint8_t
+{
+  Chosen,
+  Ambiguous,
+  Unknown
+};
+
+struct Choice
+{
+  ChoiceKind kind{ChoiceKind::Unknown};
+  std::string name;
+};
+
+[[nodiscard]] Choice choose(std::string_view utterance, const std::vector<std::string>& options);
+
+[[nodiscard]] std::optional<std::string> nameGiven(std::string_view utterance);
+
 [[nodiscard]] bool isDateTime(const argus::mcp::ToolSpec& spec, std::string_view field);
 
 }
