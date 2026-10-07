@@ -341,6 +341,10 @@ void projectsAndTasksFollowTheirProject(Env& env)
   CHECK(needed.isError);
   CHECK(needed.structured["code"].asString() == "project_needed");
   CHECK(needed.text == "¿En cuál proyecto va? Trabajo y Casa nueva.");
+  REQUIRE(needed.structured["projects"].size() == 2);
+  CHECK(needed.structured["projects"][0].asString() == "Trabajo");
+  CHECK(needed.structured["projects"][1].asString() == "Casa nueva");
+  CHECK_FALSE(none.structured.isMember("projects"));
 
   const auto named = env.ana("task.create", args({{"title", "Enviar informe"}, {"project", "trabajo"}, {"due_at", "2030-03-08T00:00:00+00:00"}}));
   CHECK_FALSE(named.isError);

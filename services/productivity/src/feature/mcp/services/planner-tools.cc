@@ -51,6 +51,15 @@ std::vector<std::string> namesOf(const std::vector<ProjectSchema>& projects)
   return names;
 }
 
+argus::mcp::ToolOutcome withProjects(argus::mcp::ToolOutcome outcome, const std::vector<std::string>& names)
+{
+  Json::Value listed(Json::arrayValue);
+  for (const std::string& name : names)
+    listed.append(name);
+  outcome.structured["projects"] = std::move(listed);
+  return outcome;
+}
+
 struct ChosenProject
 {
   std::optional<ProjectSchema> project;
@@ -78,18 +87,20 @@ drogon::Task<ChosenProject> chooseProject(const argus::mcp::ToolInvocation& invo
       for (const size_t index : match.hits)
         options.push_back(projects.at(index).name);
       co_return ChosenProject{.project = std::nullopt,
-                              .failure = argus::mcp::speech::refuse({.invocation = invocation,
+                              .failure = withProjects(argus::mcp::speech::refuse({.invocation = invocation,
                                                   .spanish = "¿En cuál proyecto? " + argus::mcp::speech::joined(options, "es") + ".",
                                                   .english = "Which project? " + argus::mcp::speech::joined(options, "en") + "."},
-                                                 "ambiguous_project")};
+                                                 "ambiguous_project"),
+                                                      options)};
     }
     co_return ChosenProject{.project = std::nullopt,
-                            .failure = argus::mcp::speech::refuse({.invocation = invocation,
+                            .failure = withProjects(argus::mcp::speech::refuse({.invocation = invocation,
                                                 .spanish = "No encuentro un proyecto llamado " + asked + ". Tus proyectos son: " +
                                                            (names.empty() ? std::string("ninguno") : argus::mcp::speech::joined(names, "es")) + ".",
                                                 .english = "I cannot find a project called " + asked + ". Your projects are: " +
                                                            (names.empty() ? std::string("none") : argus::mcp::speech::joined(names, "en")) + "."},
-                                               "unknown_project")};
+                                               "unknown_project"),
+                                                    names)};
   }
   std::vector<ProjectSchema> open;
   std::ranges::copy_if(projects, std::back_inserter(open),
@@ -103,10 +114,11 @@ drogon::Task<ChosenProject> chooseProject(const argus::mcp::ToolInvocation& invo
                                                 .english = "You have no projects yet. Create one first and then I will add the task."},
                                                "no_projects")};
   co_return ChosenProject{.project = std::nullopt,
-                          .failure = argus::mcp::speech::refuse({.invocation = invocation,
+                          .failure = withProjects(argus::mcp::speech::refuse({.invocation = invocation,
                                               .spanish = "¿En cuál proyecto va? " + argus::mcp::speech::joined(namesOf(open), "es") + ".",
                                               .english = "Which project is it for? " + argus::mcp::speech::joined(namesOf(open), "en") + "."},
-                                             "project_needed")};
+                                             "project_needed"),
+                                                  namesOf(open))};
 }
 
 Json::Value projectSummary(const ProjectSchema& project)
