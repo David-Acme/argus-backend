@@ -624,7 +624,8 @@
       "z": 1.96,
       "pool": [
         "sealed",
-        "sealed2"
+        "sealed2",
+        "sealed3"
       ]
     },
     "metrics": {
@@ -676,6 +677,12 @@
     "file": "sealed2.jsonl",
     "sha256": "4403de5d49bcd08f6f46eecb3a4c047cfc2f91a701962e7f65c78a2a87b03e26",
     "cases": 4156,
+    "wrongActMax": 0.001
+  },
+  "sealed3": {
+    "file": "sealed3.jsonl",
+    "sha256": "299df59a372f3bdf53503e53aa24da5624f6f379796cee5cd517200cad6719b8",
+    "cases": 2689,
     "wrongActMax": 0.001
   }
 }

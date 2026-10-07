@@ -53,7 +53,7 @@ set_target_properties(eval-corpus-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME eval-corpus-test COMMAND eval-corpus-test)
 
-foreach(sealed_key sealed sealed2)
+foreach(sealed_key sealed sealed2 sealed3)
     add_test(NAME eval-${sealed_key}-hash
         COMMAND ${CMAKE_COMMAND}
             -DGATES=${CMAKE_CURRENT_SOURCE_DIR}/gates.json

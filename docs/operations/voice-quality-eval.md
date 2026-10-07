@@ -20,7 +20,7 @@ python3 -I services/llm/tests/eval/decider-eval.py --decider '<command>' \
     --select-negatives <real-negatives.txt> \
     --traffic services/llm/tests/fixtures/intent/eval-production.tsv \
     [--cache <file>] [--errors <file>] \
-    [--sealed services/llm/tests/fixtures/eval/sealed.jsonl --sealed2 services/llm/tests/fixtures/eval/sealed2.jsonl --final]
+    [--sealed services/llm/tests/fixtures/eval/sealed.jsonl --sealed2 services/llm/tests/fixtures/eval/sealed2.jsonl --sealed3 services/llm/tests/fixtures/eval/sealed3.jsonl --final]
 python3 -I services/llm/tests/eval/perf-eval.py --decider '<command>' --artifact <model files> \
     --gates services/llm/tests/eval/gates.json
 python3 -I services/llm/tests/eval/slot-eval.py --cases services/llm/tests/fixtures/eval/slots.jsonl \
@@ -73,6 +73,7 @@ resident nineteen, an owner twenty-one.
 | `intent-training/data/eval/holdout.jsonl` | 185 | fresh cases written without reading any rule tier's vocabulary, used to choose an operating point |
 | `fixtures/eval/sealed.jsonl` | 2,482 | the sealed held-out set: judges whichever decider wins, read once per frozen decider |
 | `fixtures/eval/sealed2.jsonl` | 4,156 | SEALED-2: 3,311 near-miss negatives, 700 positives, 145 ambiguous utterances by three authors who never saw the training data; certifies the 0.1% wrong-ACT ceiling that 363 near-misses cannot |
+| `fixtures/eval/sealed3.jsonl` | 2,689 | SEALED-3: 2,399 near-miss negatives (calendar 899, task, project and modules 1,000, reminders, memory, app and camera 500) and 290 positives by three fresh-context authors who never saw the training data, SEALED-2, the selection set or each other; sized so the pooled near-miss pool tolerates one wrong ACT at the 0.1% ceiling |
 | `intent-training/build/laya/selection.jsonl` | 7,523 | the held-out selection set of the round-1 corpus (the group-disjoint test split), where the policy and the calibration are fitted |
 | `fixtures/eval/slots.jsonl` | 100 | utterance, tool, reference clock; expected arguments or the slot that must be reported missing |
 | `fixtures/eval/conversation.jsonl` | 127 | a turn's facts (done, listing, empty, failed, refused, module-off offer, destructive preview, clarifying question, plain chat, undecided action) and what the reply must and must not say |
@@ -157,8 +158,9 @@ and one error anywhere in the pool fails it. The harness pools the stratum it co
 authored positives of the families outside the modules, and prints the count it needs beside the count it
 has. The pool is sized for one error: 6,000 pooled near-misses give an upper bound of 0.064% at zero
 errors and 0.094% at one, 6,500 give 0.087% at one and 0.112% at two (`decider-eval-test.py` pins these
-figures), which is why a third sealed set of about 2,400 further near-misses, by authors who never saw
-the training data, SEALED-2 or each other, joins the pool.
+figures), which is why a third sealed set of 2,399 further near-misses, by authors who never saw
+the training data, SEALED-2 or each other, joins the pool: 363 + 3,311 + 2,399 = 6,073 negatives give 0.063% at zero errors,
+0.093% at one (passes) and 0.120% at two (fails).
 
 Baseline: the fastText classifier with twenty classes (the six of the memory router plus fourteen
 for the module families, `intent-training` `CONTEXT.md`), adapter `scripts/decider_fasttext.py`,
