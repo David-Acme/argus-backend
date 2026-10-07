@@ -11,6 +11,8 @@ import time
 import unicodedata
 
 SKIP = 77
+HERE = pathlib.Path(__file__).resolve().parent
+READ_ONLY = set(json.loads((HERE.parents[1] / "src/feature/llm/services/turn/tool-effects.json").read_text())["readOnly"])
 WRITE_KINDS = {"done", "executed"}
 READ_KINDS = {"listing", "empty"}
 ES_WORDS = {"el", "la", "los", "las", "de", "que", "y", "en", "un", "una", "es", "no", "para", "con", "por",
@@ -50,7 +52,7 @@ def matches_any(patterns, sentence):
 
 def claims_done(reply, kind, tool, scoring, claims):
     app_ran = kind in WRITE_KINDS and (tool or "").startswith("app.")
-    written = kind in WRITE_KINDS and (tool in scoring["writeTools"] or app_ran)
+    written = kind in WRITE_KINDS and bool(tool) and tool not in READ_ONLY
     any_ran = kind in WRITE_KINDS or kind in READ_KINDS
     for sentence in sentences_of(fold(reply)):
         if contains_any(sentence, scoring["notAClaimMarkers"]):
