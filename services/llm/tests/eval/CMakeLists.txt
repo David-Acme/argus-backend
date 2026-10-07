@@ -32,6 +32,14 @@ target_compile_options(production-decider PRIVATE -Wall -Wextra)
 
 set_target_properties(production-decider PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
+add_executable(call-time-cli call-time-cli.cc)
+
+target_link_libraries(call-time-cli PRIVATE argus::memory)
+
+target_compile_options(call-time-cli PRIVATE -Wall -Wextra)
+
+set_target_properties(call-time-cli PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
 add_executable(eval-corpus-test eval-corpus-test.cc)
 
 target_compile_definitions(eval-corpus-test PRIVATE
@@ -88,6 +96,11 @@ if(ARGUS_PYTHON3)
     add_test(NAME slot-eval-test
         COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/slot-eval-test.py)
     set_tests_properties(slot-eval-test PROPERTIES LABELS eval)
+
+    add_test(NAME call-time-cli-test
+        COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/call-time-cli-test.py)
+    set_tests_properties(call-time-cli-test PROPERTIES LABELS eval
+        ENVIRONMENT CALL_TIME_CLI=$<TARGET_FILE:call-time-cli>)
 endif()
 
 add_executable(eval-score-test eval-score-test.cc)

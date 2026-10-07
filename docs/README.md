@@ -43,6 +43,11 @@ order below.
   corpus, the fast-tier, LLM-tier and speech-recogniser gates and their
   measured baselines.
 
+## Proposals
+
+- [Opt-in capture of real turns for training](architecture/real-turn-capture-proposal.md) — consent, storage, retention
+  and the path into the split-by-group pipeline; no code yet.
+
 ## History and traceability
 
 - [Timeline](history/timeline.md) — every arc from the first build to today,
