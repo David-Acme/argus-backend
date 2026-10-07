@@ -73,6 +73,17 @@ class RoundReportTest(unittest.TestCase):
         self.assertIn("#### Reliability of now", result.stdout)
         self.assertIn("| 0.8-0.9 | 25 | 0.850 | 0.970 |  |  |  |", result.stdout)
 
+    def test_a_round_fitted_below_the_gate_says_so(self):
+        rows = [{"ceiling": 0.0005, "policy": {}, "summary": summary(0.5)}, {"ceiling": 0.001, "policy": {}, "summary": summary(0.62)}]
+        name = self.write_round("joint", rows, True)
+        path = self.directory / "joint"
+        data = json.loads((path / "calibrated.json").read_text())
+        data["limits"] = {"wrongAct": 0.001, "fitWrongAct": 0.0005}
+        (path / "calibrated.json").write_text(json.dumps(data))
+        result = self.run_report(name)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("at the 0.05% fit ceiling (the gate is 0.10%; the margin is for the final read)", result.stdout)
+
     def test_a_round_that_meets_the_gate_is_reported_as_the_gate(self):
         rows = [{"ceiling": 0.001, "policy": {}, "summary": summary(0.62)},
                 {"ceiling": 0.01, "policy": {}, "summary": summary(0.7)}]

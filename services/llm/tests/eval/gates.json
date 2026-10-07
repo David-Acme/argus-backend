@@ -616,9 +616,10 @@
   },
   "decider": {
     "wrongActMax": 0.001,
+    "fitWrongActMax": 0.0005,
     "askRateClearMax": 0.1,
     "wrongToolActMax": 0.01,
-    "minStratum": 300,
+    "minStratum": 600,
     "certification": {
       "z": 1.96,
       "pool": [

@@ -1289,7 +1289,7 @@ sweep, an operating point chosen on the selection sets and then one reading of t
 sealed set `fixtures/eval/sealed.jsonl` is pinned by sha256 in `gates.json`, never opened by whoever
 tunes a decider and never reported utterance by utterance; its ceiling for module-family false routes
 (0.5%) is judged pooled, per family and on the authored near-miss stratum. The operating point is fitted on
-the selection sets against point rates, with a floor of `decider.minStratum` negatives per stratum; a Wilson
+the selection sets against point rates at `decider.fitWrongActMax` (half the gate), with a floor of `decider.minStratum` negatives per stratum; a Wilson
 upper bound is taken only at the final read, over the near-miss stratum pooled across the sealed set and SEALED-2
 (`decider.certification`), and `decider-eval-test.py` fails if the fit ever reads a bound or if the bound is
 computed anywhere but the report and that certification. A process that cannot

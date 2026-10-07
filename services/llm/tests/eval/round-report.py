@@ -72,7 +72,12 @@ def decider_section(name, report, ceiling, baseline, beside):
     if summary is None:
         out += ["No policy keeps every wrong-ACT rate at or below any ceiling that was searched.", ""]
         return out, None
-    label = "the 0.1% gate" if at_gate else f"the {used:.2%} ceiling (NOT the gate: information)"
+    limits = report.get("limits", {})
+    fit, gate = limits.get("fitWrongAct"), limits.get("wrongAct")
+    if at_gate and fit is not None and gate is not None and fit < gate:
+        label = f"the {fit:.2%} fit ceiling (the gate is {gate:.2%}; the margin is for the final read)"
+    else:
+        label = "the 0.1% gate" if at_gate else f"the {used:.2%} ceiling (NOT the gate: information)"
     pooled = summary["moduleFamilies"]
     out += [f"Operating point chosen on the selection set at {label}: {policy_line(summary)}.", "",
             f"Selection cases {summary['cases']}; coverage {pooled['coverage']:.3f} (bar {baseline}; {beside}), ACT coverage "

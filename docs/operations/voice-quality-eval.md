@@ -115,12 +115,15 @@ app.open and app.show_camera; app.set_guard_mode changes the house's security st
 ACTs only when the second signal `now` also passes `nowMin`, otherwise it is an ASK. The policy
 (`act`, `ask`, `margin`, `nowMin`) is chosen on the selection sets as the one with the most coverage
 (a correct ACT, or an ASK that names the right tool, over the clear commands) such that the wrong-ACT
-rate on the negatives, the point estimate and never an upper bound, is at or below `decider.wrongActMax`
-(0.1%) pooled, per family and on the authored near-miss stratum, at most `askRateClearMax` (10%) of the
-clear commands are asked about and at most 1% are acted on with the wrong tool. A stratum with fewer
-than `decider.minStratum` (300) negatives cannot pass by having no errors, it is unmeasured and no
-policy is feasible while one exists: 300 is 3 / (10 x 0.1%), the size at which zero errors rule out, at
-95% (the rule of three), a true wrong-ACT rate ten times the ceiling; `decider-eval-test.py` ties the
+rate on the negatives, the point estimate and never an upper bound, is at or below
+`decider.fitWrongActMax` (0.05%, half the gate) pooled, per family and on the authored near-miss
+stratum, at most `askRateClearMax` (10%) of the clear commands are asked about and at most 1% are acted
+on with the wrong tool. The gate, `decider.wrongActMax` (0.1%), is judged at the final read; the factor
+of two between them is the room the sealed sets need for a policy that was chosen at the edge of what
+the selection set allowed (a test keeps the fit ceiling at or below half the gate). A stratum with fewer
+than `decider.minStratum` (600) negatives cannot pass by having no errors, it is unmeasured and no
+policy is feasible while one exists: 600 is 3 / (10 x 0.05%), the size at which zero errors rule out, at
+95% (the rule of three), a true wrong-ACT rate ten times the fit ceiling; `decider-eval-test.py` ties the
 number to the ceiling. Every stratum of the round-1 selection set is at least 2,522 deep, so the floor
 does not bind there.
 
@@ -152,7 +155,10 @@ bound of about 1%); 3,311 of SEALED-2 give 0.12%; the 3,674 near-miss negatives 
 above 0.1%: at `z` 1.96 the ceiling needs 3,838 error-free near-misses (2,704 at a one-sided 95%, `z` 1.645),
 and one error anywhere in the pool fails it. The harness pools the stratum it counts, which also holds the
 authored positives of the families outside the modules, and prints the count it needs beside the count it
-has.
+has. The pool is sized for one error: 6,000 pooled near-misses give an upper bound of 0.064% at zero
+errors and 0.094% at one, 6,500 give 0.087% at one and 0.112% at two (`decider-eval-test.py` pins these
+figures), which is why a third sealed set of about 2,400 further near-misses, by authors who never saw
+the training data, SEALED-2 or each other, joins the pool.
 
 Baseline: the fastText classifier with twenty classes (the six of the memory router plus fourteen
 for the module families, `intent-training` `CONTEXT.md`), adapter `scripts/decider_fasttext.py`,

@@ -41,7 +41,8 @@ ACTS = (0.5, 0.6, 0.7, 0.8, 0.85, 0.88, 0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96,
 ASKS = (0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9)
 MARGINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
 RELAXATIONS = ("askClear", "nearMiss", "wrongActFamily", "wrongActPooled", "wrongTool", "thinStratum")
-CEILINGS = (0.0025, 0.005, 0.01, 0.02)
+JOINT_RELAXATIONS = {"wrongActAll": ("wrongActPooled", "wrongActFamily", "nearMiss")}
+CEILINGS = (0.001, 0.0025, 0.005, 0.01, 0.02)
 CACHE_BATCH = 250
 RANK_PRESERVING = ("temperature", "platt")
 DEFAULT_WRONG_ACT = 0.001
@@ -400,7 +401,7 @@ def summarise_pooled(cases, decisions, policy, limits):
 
 def price_table(cases, decisions, all_limits, found):
     rows = []
-    print("\nprice of the wrong-ACT ceiling on the selection set (the gate is the first row; the others are "
+    print("\nprice of the wrong-ACT ceiling on the selection set (the first row is the fit ceiling; the others are "
           "information, never a pass)")
     print(f"  {'ceiling':>8s}{'cover':>8s}{'act':>8s}{'askClr':>8s}{'prec':>8s}  policy")
     for limits, best in zip(all_limits, found):
@@ -423,11 +424,13 @@ def relaxed_limits(limits):
 
 
 def binding_limits(limits):
-    return [dict(limits, relax=(name,)) for name in RELAXATIONS] + [dict(limits, secondSignalOff=True)]
+    singles = [dict(limits, relax=(name,)) for name in RELAXATIONS]
+    joint = [dict(limits, relax=names) for names in JOINT_RELAXATIONS.values()]
+    return singles + joint + [dict(limits, secondSignalOff=True)]
 
 
 def binding_table(cases, decisions, found):
-    names = ("nothing relaxed", *RELAXATIONS, "second signal off")
+    names = ("nothing relaxed", *RELAXATIONS, *JOINT_RELAXATIONS, "second signal off")
     print("\nwhich constraint binds: the best policy with one constraint relaxed at a time (the first row is the gate)")
     print(f"  {'relaxed':18s}{'cover':>8s}{'act':>8s}{'askClr':>8s}{'prec':>8s}{'wrongA':>8s}{'near-miss':>10s}  policy")
     rows = []
@@ -544,7 +547,9 @@ def print_reliability(name, reliability):
 
 def limits_of(gates):
     section = gates.get("decider", {})
-    return {"wrongAct": section.get("wrongActMax", gates.get("sealed", {}).get("falseRouteMax", DEFAULT_WRONG_ACT)),
+    gate = section.get("wrongActMax", gates.get("sealed", {}).get("falseRouteMax", DEFAULT_WRONG_ACT))
+    return {"wrongAct": gate,
+            "fitWrongAct": section.get("fitWrongActMax", gate),
             "askClear": section.get("askRateClearMax", DEFAULT_ASK_CLEAR),
             "wrongTool": section.get("wrongToolActMax", DEFAULT_WRONG_TOOL),
             "minStratum": section.get("minStratum", DEFAULT_MIN_STRATUM)}
@@ -739,6 +744,7 @@ def main():
     parser.add_argument("--traffic", nargs="*", default=[])
     parser.add_argument("--sealed")
     parser.add_argument("--sealed2")
+    parser.add_argument("--sealed3")
     parser.add_argument("--final", action="store_true")
     parser.add_argument("--act-only", action="store_true")
     parser.add_argument("--latency", type=int, default=200)
@@ -754,6 +760,7 @@ def main():
 
     gates = json.loads(pathlib.Path(args.gates).read_text())
     limits = limits_of(gates)
+    fit = dict(limits, wrongAct=limits["fitWrongAct"])
     decider = Decider(args.decider)
 
     selection = load_cases(args.select)
@@ -795,14 +802,14 @@ def main():
         print_sweep("selection sweep (cases, holdout, real negatives; chooses the operating point)",
                     selection, chosen_decisions)
         if args.act_only:
-            options = [p for p in act_only_policies() if summarise_pooled(selection, chosen_decisions, p, limits)]
-            policy = max(options, key=lambda p: summarise_pooled(selection, chosen_decisions, p, limits)["coverage"],
+            options = [p for p in act_only_policies() if summarise_pooled(selection, chosen_decisions, p, fit)]
+            policy = max(options, key=lambda p: summarise_pooled(selection, chosen_decisions, p, fit)["coverage"],
                          default=None)
         else:
             scopes = {"both": (1, 0), "all": (1,), "low-risk-open": (0,)}[args.guard_scope]
-            relaxed = relaxed_limits(limits)
-            priced = [limits] + relaxed
-            searched = best_per_limit(selection, chosen_decisions, priced + binding_limits(limits), scopes)
+            relaxed = relaxed_limits(fit)
+            priced = [fit] + relaxed
+            searched = best_per_limit(selection, chosen_decisions, priced + binding_limits(fit), scopes)
             found = searched[:len(priced)]
             per_scope = found[0]
             policy = policy_of(per_scope)
@@ -821,20 +828,20 @@ def main():
                                                          "now": policy[3] if len(policy) > 3 else 0.0,
                                                          "guardMemory": bool(policy[4]) if len(policy) > 4 else True}
         if policy is None:
-            print(f"\nno ACT / ASK policy keeps every wrong-ACT rate at or below {limits['wrongAct']:.2%} "
-                  f"with at most {limits['askClear']:.0%} asks on clear commands on the selection set")
+            print(f"\nno ACT / ASK policy keeps every wrong-ACT rate at or below {fit['wrongAct']:.2%} "
+                  f"with at most {fit['askClear']:.0%} asks on clear commands on the selection set")
             report["selectionPassed"] = False
         else:
             print(f"\npolicy chosen on the selection set: ACT >= {policy[0]}, ASK >= {policy[1]}, margin {policy[2]}, "
                   f"second signal >= {policy[3] if len(policy) > 3 else 0.0} on write tools "
                   f"(maximum coverage with every wrong-ACT rate, pooled, per family and on the near-miss stratum, "
-                  f"at or below {limits['wrongAct']:.2%} and at most {limits['askClear']:.0%} asks on clear commands)")
+                  f"at or below {fit['wrongAct']:.2%} and at most {fit['askClear']:.0%} asks on clear commands)")
             report["selectionPassed"] = True
             report["selection"] = summarise(selection, chosen_decisions, policy)
             print_families("selection", report["selection"])
             print_bar(gates, "selection", report["selection"])
         for row in report.get("priceOfCeiling", []):
-            if policy is None and row["policy"] is not None and row["ceiling"] > limits["wrongAct"]:
+            if policy is None and row["policy"] is not None and row["ceiling"] > fit["wrongAct"]:
                 print_families(f"selection at the {row['ceiling']:.2%} ceiling (NOT the gate: information)",
                                row["summary"])
                 break
@@ -867,7 +874,7 @@ def main():
             print(f"\ndecision latency over {len(times)} sequential requests: "
                   f"p50 {report['latencyMs']['p50']:.2f} ms, p95 {report['latencyMs']['p95']:.2f} ms")
         if args.final:
-            for section, path in (("sealed", args.sealed), ("sealed2", args.sealed2)):
+            for section, path in (("sealed", args.sealed), ("sealed2", args.sealed2), ("sealed3", args.sealed3)):
                 if not path:
                     continue
                 sealed, actual = read_sealed(path, section, gates)
