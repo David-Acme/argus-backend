@@ -409,7 +409,6 @@ std::shared_ptr<argus::mcp::McpServer> moduleToolServer(const ModuleToolsInput& 
                       .description = "Lista los módulos de Argus y si están activos, apagados o próximamente",
                       .inputSchema = schema::emptyObject(),
                       .annotations = {.readOnly = true},
-                      .module = "",
                       .capability = "modules.read"}),
               withLoop(input, [desk](const argus::mcp::ToolInvocation& invocation) { return listModules(desk, invocation); }));
   server->add(specOf({.name = "modules.explain",
@@ -417,7 +416,6 @@ std::shared_ptr<argus::mcp::McpServer> moduleToolServer(const ModuleToolsInput& 
                       .description = "Explica qué es un módulo de Argus, con ejemplos, y si está activo",
                       .inputSchema = schema::object({{.name = "module", .schema = moduleProperty(), .required = true}}),
                       .annotations = {.readOnly = true},
-                      .module = "",
                       .capability = "modules.read"}),
               withLoop(input, [desk](const argus::mcp::ToolInvocation& invocation) { return explainModule(desk, invocation); }));
   server->add(specOf({.name = "modules.request",
@@ -425,7 +423,6 @@ std::shared_ptr<argus::mcp::McpServer> moduleToolServer(const ModuleToolsInput& 
                       .description = "Pide al dueño de la casa que active un módulo apagado; solo con el sí del usuario",
                       .inputSchema = schema::object({{.name = "module", .schema = moduleProperty(), .required = true}}),
                       .annotations = {},
-                      .module = "",
                       .capability = "modules.request"}),
               withLoop(input, [desk](const argus::mcp::ToolInvocation& invocation) { return requestModule(desk, invocation); }));
   server->add(specOf({.name = "modules.enable",
@@ -433,7 +430,6 @@ std::shared_ptr<argus::mcp::McpServer> moduleToolServer(const ModuleToolsInput& 
                       .description = "Activa un módulo apagado (el dueño); solo con el sí del usuario",
                       .inputSchema = schema::object({{.name = "module", .schema = moduleProperty(), .required = true}}),
                       .annotations = {.idempotent = true},
-                      .module = "",
                       .capability = "modules.manage"}),
               withLoop(input, [desk](const argus::mcp::ToolInvocation& invocation) { return enableModule(desk, invocation); }));
   server->add(specOf({.name = "modules.disable",
@@ -443,7 +439,6 @@ std::shared_ptr<argus::mcp::McpServer> moduleToolServer(const ModuleToolsInput& 
                       .inputSchema = schema::object({{.name = "module", .schema = moduleProperty(), .required = true},
                                                      {.name = "confirmation", .schema = schema::text(), .required = false}}),
                       .annotations = {.destructive = true},
-                      .module = "",
                       .capability = "modules.manage"}),
               withLoop(input, [desk, ledger](const argus::mcp::ToolInvocation& invocation) {
                 return disableModule(desk, ledger, invocation);
@@ -454,7 +449,6 @@ std::shared_ptr<argus::mcp::McpServer> moduleToolServer(const ModuleToolsInput& 
                                      "nunca se borran datos",
                       .inputSchema = schema::object({{.name = "module", .schema = moduleProperty(), .required = true}}),
                       .annotations = {},
-                      .module = "",
                       .capability = "modules.manage"}),
               withLoop(input, [desk](const argus::mcp::ToolInvocation& invocation) { return openPurgeScreen(desk, invocation); }));
   server->setGate(tool_gate::capabilities());

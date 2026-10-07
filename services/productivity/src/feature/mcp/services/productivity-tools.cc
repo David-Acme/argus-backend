@@ -60,7 +60,6 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                                                    {.name = "to", .schema = moment(kIsoHint), .required = false},
                                                    {.name = "limit", .schema = schema::integer({.description = "", .minimum = 1, .maximum = 20}), .required = false}}),
                     .annotations = {.readOnly = true},
-                    .module = "",
                     .capability = "agenda.read"}),
               withLoop(input, listEvents));
   server->add(spec({.name = "calendar.create_event",
@@ -74,7 +73,6 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                                                    {.name = "description", .schema = schema::text(), .required = false},
                                                    {.name = "all_day", .schema = schema::boolean(), .required = false}}),
                     .annotations = {},
-                    .module = "",
                     .capability = "agenda.write"}),
               withLoop(input, createEvent));
   server->add(spec({.name = "calendar.cancel_event",
@@ -85,7 +83,6 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                                                    {.name = "title", .schema = schema::text(), .required = false},
                                                    {.name = "confirmation", .schema = schema::text(), .required = false}}),
                     .annotations = {.destructive = true},
-                    .module = "",
                     .capability = "agenda.write"}),
               withLoop(input, [ledger](const argus::mcp::ToolInvocation& invocation) {
                 return cancelEvent({.invocation = invocation, .ledger = ledger});
@@ -97,7 +94,6 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                         {{.name = "status", .schema = schema::choice({"planned", "active", "paused", "done", "canceled"}), .required = false},
                          {.name = "limit", .schema = schema::integer({.description = "", .minimum = 1, .maximum = 20}), .required = false}}),
                     .annotations = {.readOnly = true},
-                    .module = "",
                     .capability = "projects.read"}),
               withLoop(input, listProjects));
   server->add(spec({.name = "project.create",
@@ -107,7 +103,6 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                                                    {.name = "description", .schema = schema::text(), .required = false},
                                                    {.name = "target_at", .schema = moment(kIsoHint), .required = false}}),
                     .annotations = {},
-                    .module = "",
                     .capability = "projects.write"}),
               withLoop(input, createProject));
   server->add(spec({.name = "task.list",
@@ -117,7 +112,6 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                                                    {.name = "project_id", .schema = schema::integer(), .required = false},
                                                    {.name = "limit", .schema = schema::integer({.description = "", .minimum = 1, .maximum = 20}), .required = false}}),
                     .annotations = {.readOnly = true},
-                    .module = "",
                     .capability = "projects.read"}),
               withLoop(input, listTasks));
   server->add(spec({.name = "task.create",
@@ -131,7 +125,6 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                          {.name = "priority", .schema = schema::choice({"none", "low", "medium", "high", "urgent"}), .required = false},
                          {.name = "due_at", .schema = moment(kIsoHint), .required = false}}),
                     .annotations = {},
-                    .module = "",
                     .capability = "projects.write"}),
               withLoop(input, createTask));
   server->add(spec({.name = "task.complete",
@@ -140,7 +133,6 @@ std::shared_ptr<argus::mcp::McpServer> productivityToolServer(const Productivity
                     .inputSchema = schema::object({{.name = "task_id", .schema = schema::integer(), .required = false},
                                                    {.name = "title", .schema = schema::text(), .required = false}}),
                     .annotations = {.idempotent = true},
-                    .module = "",
                     .capability = "projects.write"}),
               withLoop(input, completeTask));
   server->setGate(tool_gate::capabilities());

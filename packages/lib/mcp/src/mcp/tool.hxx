@@ -36,7 +36,7 @@ struct ToolSpec
   std::string description;
   Json::Value inputSchema{Json::objectValue};
   ToolAnnotations annotations;
-  std::string module;
+  std::string module{};
   std::string capability;
 };
 

@@ -99,7 +99,7 @@ argus::mcp::ToolSpec appOpenSpec()
           .description = "Abre una sección de la app del usuario",
           .inputSchema = schema::object({{.name = "screen", .schema = schema::choice(screenNames()), .required = true},
                                          {.name = "module", .schema = schema::text(), .required = false}}),
-          .annotations = {},
+          .annotations = {.readOnly = true},
           .module = "core",
           .capability = "notifications.read"};
 }
