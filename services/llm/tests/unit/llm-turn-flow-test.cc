@@ -1724,33 +1724,66 @@ TEST_CASE("a provider that names no projects leaves its own refusal to be said, 
 
 TEST_CASE("the notifications panel opens by an app command in both languages, for every role, with a module off")
 {
-  const auto opened = [](UserRole role, const std::string& lang, const std::string& utterance) {
-    Spoken spoken(role);
+  struct Opening
+  {
+    UserRole role;
+    std::string lang;
+    std::string utterance;
+  };
+  const auto opened = [](const Opening& opening) {
+    Spoken spoken(opening.role);
     spoken.world.add(tool_stubs::appAction({.name = "app.open", .capability = "notifications.read", .module = "core"}));
     spoken.world.productivityOff();
-    spoken.world.context.lang = lang;
+    spoken.world.context.lang = opening.lang;
     std::vector<std::pair<std::string, Json::Value>> actions;
     spoken.world.context.emitAction = [&actions](const std::string& name, const Json::Value& arguments) {
       actions.emplace_back(name, arguments);
     };
-    spoken.script.replies = {lang == "en" ? "Here they are." : "Aquí están."};
-    const auto output = spoken.sync(utterance);
+    spoken.script.replies = {opening.lang == "en" ? "Here they are." : "Aquí están."};
+    const auto output = spoken.sync(opening.utterance);
     return std::make_pair(actions, output.reply);
   };
   for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
-    const auto [spanish, spoken] = opened(role, "es", "abre las notificaciones");
+    const auto [spanish, spoken] = opened({.role = role, .lang = "es", .utterance = "abre las notificaciones"});
     REQUIRE(spanish.size() == 1);
     CHECK(spanish.front().first == "app.open");
     CHECK(spanish.front().second["screen"].asString() == "notifications");
     CHECK_FALSE(spanish.front().second.isMember("module"));
     CHECK(spoken == "Aquí están.");
   }
-  const auto novedades = opened(UserRole::Resident, "es", "muéstrame las novedades");
+  const auto novedades = opened({.role = UserRole::Resident, .lang = "es", .utterance = "muéstrame las novedades"});
   REQUIRE(novedades.first.size() == 1);
   CHECK(novedades.first.front().second["screen"].asString() == "notifications");
-  const auto english = opened(UserRole::Guest, "en", "open my notifications");
+  const auto english = opened({.role = UserRole::Guest, .lang = "en", .utterance = "open my notifications"});
   REQUIRE(english.first.size() == 1);
   CHECK(english.first.front().second["screen"].asString() == "notifications");
   CHECK(english.second == "Here they are.");
-  CHECK(opened(UserRole::Owner, "es", "tengo muchas notificaciones sin leer").first.empty());
+  CHECK(opened({.role = UserRole::Owner, .lang = "es", .utterance = "tengo muchas notificaciones sin leer"}).first.empty());
+}
+
+TEST_CASE("a turn that only opened a screen may say it opened it, and a state change claimed after it is cut")
+{
+  const auto turn = [](const std::string& reply, bool stream) {
+    Spoken spoken;
+    spoken.world.add(tool_stubs::appAction({.name = "app.open", .capability = "notifications.read", .module = "core"}));
+    spoken.world.add(tool_stubs::appAction({.name = "app.set_guard_mode", .capability = "guard.mode.set", .module = "surveillance"}));
+    spoken.script.replies = {reply};
+    if (stream) {
+      spoken.script.chunk = 5;
+      static_cast<void>(spoken.stream("abre las cámaras"));
+      return spoken.heard;
+    }
+    return spoken.sync("abre las cámaras").reply;
+  };
+  CHECK(turn("Listo, abrí las cámaras.", false) == "Listo, abrí las cámaras.");
+  CHECK(turn("Aquí tienes las cámaras activadas.", false) == reply_claims::honest("es"));
+  CHECK(turn("Activé las cámaras para ti.", false) == reply_claims::honest("es"));
+  CHECK(turn("Tus cámaras están activadas, aquí están.", false) == "Tus cámaras están activadas, aquí están.");
+  CHECK(turn("Listo, abrí las cámaras.", true) == "Listo, abrí las cámaras.");
+  CHECK(turn("Aquí tienes las cámaras activadas.", true) == reply_claims::honest("es"));
+
+  Spoken guard;
+  guard.world.add(tool_stubs::appAction({.name = "app.set_guard_mode", .capability = "guard.mode.set", .module = "surveillance"}));
+  guard.script.replies = {"Activé el modo noche."};
+  CHECK(guard.sync("Pon la vigilancia en modo noche.").reply == "Activé el modo noche.");
 }

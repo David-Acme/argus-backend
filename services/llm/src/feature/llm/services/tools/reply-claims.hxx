@@ -13,6 +13,8 @@ struct Reply
 {
   std::string_view text;
   bool asked{false};
+  bool appOnly{false};
+  std::string_view lang{};
 };
 
 [[nodiscard]] bool claimsDone(const Reply& reply);
@@ -38,6 +40,7 @@ struct GateInput
   std::string lang;
   bool asked{false};
   std::function<bool()> legitimate;
+  bool appOnly{false};
 };
 
 class ClaimGate

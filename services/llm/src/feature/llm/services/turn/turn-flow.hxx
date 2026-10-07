@@ -49,6 +49,7 @@ struct Outcome
   std::vector<Finding> findings;
   std::optional<std::string> question;
   bool wrote{false};
+  bool opened{false};
   int64_t toolMs{0};
   std::string source;
 };

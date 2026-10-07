@@ -171,16 +171,41 @@ bool performativeAt(const Probe& probe)
   return verb && probe.at + 1 < probe.words.size() && inDeterminers(probe.lexicon, probe.words[probe.at + 1]);
 }
 
-bool claimedIn(const Sentence& sentence, const Lexicon& lexicon, bool asked)
+bool describedAt(const Probe& probe)
+{
+  const std::size_t from = probe.at > 2 ? probe.at - 2 : 0;
+  for (std::size_t index = from; index < probe.at; ++index)
+    if (anyAt(probe.words, index, probe.lexicon.copulas))
+      return true;
+  return false;
+}
+
+bool stateChangeAt(const Probe& probe)
+{
+  return std::ranges::any_of(probe.lexicon.states, [&](std::string_view phrase) {
+    if (!matchesAt(probe.words, probe.at, phrase))
+      return false;
+    return phrase.starts_with("ya ") || phrase.starts_with("quedo ") || !describedAt(probe);
+  });
+}
+
+struct Mode
+{
+  bool asked{false};
+  bool appOnly{false};
+};
+
+bool claimedIn(const Sentence& sentence, const Lexicon& lexicon, const Mode& mode)
 {
   if (sentence.question)
     return false;
   const Words& words = sentence.words;
   for (std::size_t at = 0; at < words.size(); ++at) {
     const Probe probe{.words = words, .at = at, .lexicon = lexicon};
-    const bool strong = performedAt(probe) || performativeAt(probe);
-    const bool weak = asked && anyAt(words, at, lexicon.markers);
-    if (!strong && !weak)
+    const bool strong = (performedAt(probe) || performativeAt(probe)) && !(mode.appOnly && anyAt(words, at, lexicon.opening));
+    const bool weak = mode.asked && !mode.appOnly && anyAt(words, at, lexicon.markers);
+    const bool state = mode.asked && stateChangeAt(probe);
+    if (!strong && !weak && !state)
       continue;
     if (negated(words, at, lexicon) || anyBefore(words, at, lexicon.hedges))
       continue;
@@ -211,7 +236,10 @@ bool claimsDone(const Reply& reply)
 {
   const std::vector<Sentence> sentences = sentencesOf(reply.text);
   return std::ranges::any_of(sentences, [&](const Sentence& sentence) {
-    return std::ranges::any_of(lexicons(), [&](const Lexicon& lexicon) { return claimedIn(sentence, lexicon, reply.asked); });
+    return std::ranges::any_of(lexicons(), [&](const Lexicon& lexicon) {
+      return (reply.lang.empty() || lexicon.language == reply.lang) &&
+             claimedIn(sentence, lexicon, {.asked = reply.asked, .appOnly = reply.appOnly});
+    });
   });
 }
 
@@ -223,7 +251,7 @@ bool asksForAction(std::string_view utterance)
 
 std::string withoutFalseClaims(Plain plain)
 {
-  if (!claimsDone({.text = plain.text, .asked = asksForAction(plain.utterance)}))
+  if (!claimsDone({.text = plain.text, .asked = asksForAction(plain.utterance), .appOnly = false, .lang = plain.lang}))
     return std::move(plain.text);
   return honest(plain.lang);
 }
@@ -259,7 +287,7 @@ void ClaimGate::release(const std::string& sentence)
   if (cut_ || sentence.empty())
     return;
   const bool legitimate = input_.legitimate && input_.legitimate();
-  if (legitimate || !claimsDone({.text = sentence, .asked = input_.asked})) {
+  if (legitimate || !claimsDone({.text = sentence, .asked = input_.asked, .appOnly = input_.appOnly, .lang = input_.lang})) {
     spoken_ += sentence;
     if (input_.sink)
       input_.sink(sentence, false);

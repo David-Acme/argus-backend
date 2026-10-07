@@ -47,12 +47,6 @@ TurnState turnOf(const std::string& utterance, const std::vector<tools::ToolHand
   return {.asked = appAsked || reply_claims::asksForAction(utterance), .appAsked = appAsked, .wrote = false};
 }
 
-bool claimedWithoutTool(const std::string& reply, const TurnState& state)
-{
-  return !state.wrote && (reply_claims::claimsDone({.text = reply, .asked = state.asked}) ||
-                          (state.appAsked && claimsAppAction(reply)));
-}
-
 }
 
 LfmAdapter::LfmAdapter(LlmService& llm, const IntentRouter* router)
@@ -174,6 +168,8 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
 
   TurnState state = turnOf(utterance, input.tools);
   state.wrote = outcome.wrote;
+  state.opened = outcome.opened;
+  state.lang = input.context.lang;
   req.messages = speakMessages(args, turn::TurnFlow::notes(outcome, input.context.lang));
 
   const auto started = std::chrono::steady_clock::now();
@@ -181,7 +177,8 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
     reply_claims::ClaimGate gate({.sink = *args.onToken,
                                   .lang = input.context.lang,
                                   .asked = state.asked,
-                                  .legitimate = [&state] { return state.wrote; }});
+                                  .legitimate = [&state] { return state.wrote; },
+                                  .appOnly = state.opened});
     const TokenCallback guarded = gate.callback();
     std::string spoken;
     engine_.chatStream(req, [&spoken, &guarded](const std::string& token, bool done) {

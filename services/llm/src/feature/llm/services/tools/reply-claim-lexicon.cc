@@ -66,6 +66,23 @@ constexpr auto kSpanishRequests = std::to_array<Phrase>({
 
 constexpr auto kSpanishLeadingRequests = std::to_array<Phrase>({"agenda", "programa", "avisa", "pide"});
 
+constexpr auto kSpanishOpening = std::to_array<Phrase>({
+    "abri", "he abierto", "mostre", "he mostrado", "te muestro", "muestro", "mostrando", "estoy abriendo", "estoy mostrando",
+    "abro", "abriendo"});
+
+constexpr auto kSpanishStates = std::to_array<Phrase>({
+    "activado", "activada", "activados", "activadas", "desactivado", "desactivada", "desactivados", "desactivadas",
+    "encendido", "encendida", "encendidos", "encendidas", "apagado", "apagada", "apagados", "apagadas", "cambiado",
+    "cambiada", "cambiados", "cambiadas", "configurado", "configurada", "configurados", "configuradas",
+    "ya esta activado", "ya esta activada", "ya esta activados", "ya esta activadas", "ya esta desactivado",
+    "ya esta desactivada", "ya esta encendido", "ya esta encendida", "ya esta apagado", "ya esta apagada",
+    "ya quedo activado", "ya quedo activada", "quedo activado", "quedo activada", "quedo encendido", "quedo encendida",
+    "quedo apagado", "quedo apagada", "quedo desactivado", "quedo desactivada"});
+
+constexpr auto kSpanishCopulas = std::to_array<Phrase>({
+    "esta", "estan", "estaba", "estaban", "estara", "estaran", "es", "son", "era", "eran", "sigue", "siguen", "queda",
+    "quedan", "permanece", "permanecen"});
+
 constexpr auto kEnglishPerformed = std::to_array<Phrase>({
     "i scheduled", "i have scheduled", "ive scheduled", "i created", "i have created", "ive created", "i added",
     "i have added", "ive added", "i saved", "i have saved", "ive saved", "i set", "i have set", "ive set",
@@ -79,6 +96,14 @@ constexpr auto kEnglishPerformed = std::to_array<Phrase>({
     "i configured", "ive configured", "that information is saved", "its saved for you"});
 
 constexpr std::array<Phrase, 0> kNoPhrases{};
+
+constexpr auto kEnglishOpening = std::to_array<Phrase>({"i opened", "ive opened", "i showed", "ive shown", "im showing", "im opening"});
+
+constexpr auto kEnglishStates = std::to_array<Phrase>({
+    "activated", "deactivated", "enabled", "disabled", "switched", "turned on", "turned off", "switched on", "switched off",
+    "changed", "configured"});
+
+constexpr auto kEnglishCopulas = std::to_array<Phrase>({"is", "are", "was", "were", "remain", "remains", "stay", "stays", "currently"});
 
 constexpr auto kEnglishMarkers = std::to_array<Phrase>({
     "done", "all set", "confirmed", "scheduled", "created", "saved", "added", "booked", "noted", "its set",
@@ -117,6 +142,9 @@ constexpr std::array<Lexicon, 2> kLexicons{{
      .hedges = kSpanishHedges,
      .requests = kSpanishRequests,
      .leadingRequests = kSpanishLeadingRequests,
+     .opening = kSpanishOpening,
+     .states = kSpanishStates,
+     .copulas = kSpanishCopulas,
      .honest = kSpanishHonest,
      .nudge = kSpanishNudge},
     {.language = "en",
@@ -128,6 +156,9 @@ constexpr std::array<Lexicon, 2> kLexicons{{
      .hedges = kEnglishHedges,
      .requests = kEnglishRequests,
      .leadingRequests = kNoPhrases,
+     .opening = kEnglishOpening,
+     .states = kEnglishStates,
+     .copulas = kEnglishCopulas,
      .honest = kEnglishHonest,
      .nudge = kEnglishNudge},
 }};

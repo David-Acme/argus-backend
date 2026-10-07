@@ -672,7 +672,23 @@ session to lose on a restart.
   lo agende?", "voy a agendar", "no lo agendé", "cuando lo agende te aviso",
   "creo que mañana llueve") are not claims. A claim is legitimate when a tool
   that writes (not read-only, or an app action) succeeded in the turn; a failed
-  tool or a read-only success does not make it true. Where it applies: in the speak
+  tool or a read-only success does not make it true. The read-only list is
+  `turn/tool-effects.json`, so a turn whose only successful actions are reads
+  (a listing, `app.open`, `app.show_camera`) may say what the read did and
+  nothing more: after a screen was opened or a camera shown ("abrí la agenda",
+  "te muestro la cámara", "I opened the agenda") the opening phrases and the
+  bare markers ("listo", "done") stay allowed, and a claim of a state change
+  is cut: a participle of "activado", "desactivado", "encendido", "apagado",
+  "cambiado", "configurado" (also "turned on", "switched off", "enabled",
+  "changed", "configured", ...) with no copula before it, or a phrase that
+  says it just happened ("ya está activado", "quedó activado"). A description
+  is left alone ("las cámaras que están activas", "your cameras are online",
+  "la alarma sigue activada"): a copula within two words before the
+  participle ("está", "están", "sigue", "queda", "is", "are", "remain") makes
+  it a state, not an act. A state-change word is judged only when the user's
+  own words asked for something, and each reply is judged only against the
+  lexicon of the turn's own language, so an English "active", "quite" or
+  "complete" is not read as a Spanish performative. Where it applies: in the speak
   stage (`LfmAdapter::chatTurn`) every streamed reply passes `ClaimGate`, which
   lets a sentence through only when it has ended and judges it first, so a clean
   reply still arrives sentence by sentence and a claim is replaced by the honest
@@ -693,7 +709,8 @@ session to lose on a restart.
 `tests/unit/llm-tool-runtime-test.cc`, `llm-turn-flow-test.cc` (the turn and the
 claim guard on its sync and streaming paths), `llm-reply-claims-test.cc` (the
 phrase tables against claims and non-claims in es, Peruvian es and en, the
-request detector, `ClaimGate`, `withoutFalseClaims`), `llm-app-command-test.cc`,
+request detector, the opened-screen mode, state changes against descriptions,
+the language restriction, `ClaimGate`, `withoutFalseClaims`), `llm-app-command-test.cc`,
 `llm-tool-providers-test.cc` (provider aggregation, per-turn filtering,
 unreachable providers, the core server acting for the declared caller),
 `llm-spoken-intent-test.cc` and `llm-time-arguments-test.cc` pin the above;

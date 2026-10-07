@@ -242,7 +242,7 @@ TEST_CASE("a reply with no tools behind it is judged against what the user asked
   CHECK(reply_claims::withoutFalseClaims({.text = "Confirmado.", .utterance = "Agéndame una cita", .lang = "es"}) ==
         "No pude hacerlo. ¿Lo intento de nuevo?");
   CHECK(reply_claims::withoutFalseClaims({.text = "Confirmado.", .utterance = "gracias", .lang = "es"}) == "Confirmado.");
-  CHECK(reply_claims::withoutFalseClaims({.text = "Guardé tu nota.", .utterance = "gracias", .lang = "en"}) ==
+  CHECK(reply_claims::withoutFalseClaims({.text = "I saved your note.", .utterance = "thanks", .lang = "en"}) ==
         "I could not do it. Shall I try again?");
   CHECK(reply_claims::withoutFalseClaims({.text = "Hoy hace sol en Lima.", .utterance = "¿qué tiempo hace?", .lang = "es"}) ==
         "Hoy hace sol en Lima.");
@@ -269,4 +269,80 @@ TEST_CASE("an adjustment, a saved note and a promise to act now are claims, and 
   CHECK_FALSE(claims("Estoy listo para ayudarte."));
   CHECK_FALSE(claims("Tu llave está en el cajón."));
   CHECK_FALSE(claims("No hay eventos programados este sábado."));
+}
+
+namespace
+{
+bool shown(const std::string& text)
+{
+  return reply_claims::claimsDone({.text = text, .asked = true, .appOnly = true});
+}
+}
+
+TEST_CASE("after a screen was only opened, a claim of a state change is a claim and a description or the opening itself is not")
+{
+  CHECK(shown("Estoy listo para ayudarte, aquí tienes las cámaras activadas."));
+  CHECK(shown("Activé las cámaras y las abrí."));
+  CHECK(shown("Encendí la sala y te la muestro."));
+  CHECK(shown("Apagué la alarma."));
+  CHECK(shown("Desactivé la vigilancia."));
+  CHECK(shown("Cambié el modo a noche."));
+  CHECK(shown("Puse la vigilancia en modo noche."));
+  CHECK(shown("Aquí tienes las luces apagadas."));
+  CHECK(shown("Listo pues, ya quedó activado."));
+  CHECK(shown("Ya está activada la alarma pe."));
+  CHECK(shown("I turned on the cameras and opened them."));
+  CHECK(shown("I've enabled the cameras."));
+  CHECK(shown("Here are your cameras, activated."));
+  CHECK(shown("I switched the lights off."));
+
+  CHECK_FALSE(shown("Abrí las cámaras."));
+  CHECK_FALSE(shown("Te muestro las cámaras."));
+  CHECK_FALSE(shown("Estoy mostrando la cámara del garaje."));
+  CHECK_FALSE(shown("Listo, aquí tienes las cámaras."));
+  CHECK_FALSE(shown("Ya te abrí las cámaras pe."));
+  CHECK_FALSE(shown("Ahí tienes tus cámaras, causa."));
+  CHECK_FALSE(shown("Las cámaras que están activas son el garaje y la puerta."));
+  CHECK_FALSE(shown("Tus cámaras están activadas."));
+  CHECK_FALSE(shown("Las cámaras siguen encendidas."));
+  CHECK_FALSE(shown("La alarma está desactivada desde anoche."));
+  CHECK_FALSE(shown("¿Quieres que active las cámaras?"));
+  CHECK_FALSE(shown("No activé nada todavía."));
+  CHECK_FALSE(shown("Voy a activarlas si quieres."));
+  CHECK_FALSE(shown("I opened the notifications."));
+  CHECK_FALSE(shown("Here are your cameras."));
+  CHECK_FALSE(shown("Your cameras are online."));
+  CHECK_FALSE(shown("Your cameras are enabled and the garage one is on."));
+  CHECK_FALSE(shown("The alarm remains turned off."));
+  CHECK_FALSE(shown("I'm showing the garage camera."));
+}
+
+TEST_CASE("the same state words are claims when nothing ran and the user asked, and descriptions never are")
+{
+  CHECK(claims("Aquí tienes las cámaras activadas.", true));
+  CHECK(claims("Ya está activado el modo noche.", true));
+  CHECK_FALSE(claims("Aquí tienes las cámaras activadas.", false));
+  CHECK_FALSE(claims("Tus cámaras están activadas.", true));
+  CHECK_FALSE(claims("The cameras are enabled.", true));
+  CHECK_FALSE(claims("Las luces siguen apagadas.", true));
+}
+
+TEST_CASE("a turn's language reads the reply with that language's phrases only, so an English adjective is not a Spanish verb")
+{
+  const auto english = [](const std::string& text, bool appOnly) {
+    return reply_claims::claimsDone({.text = text, .asked = true, .appOnly = appOnly, .lang = "en"});
+  };
+  const auto spanish = [](const std::string& text, bool appOnly) {
+    return reply_claims::claimsDone({.text = text, .asked = true, .appOnly = appOnly, .lang = "es"});
+  };
+  CHECK_FALSE(english("The screens show the garage, door, and yard cameras active.", true));
+  CHECK_FALSE(english("Your cameras are active.", false));
+  CHECK(claims("Your cameras are active.", true));
+  CHECK(english("I've scheduled the meeting with Andrea.", false));
+  CHECK(english("I turned on the cameras.", true));
+  CHECK(spanish("Activé las cámaras.", true));
+  CHECK(spanish("Agendé la reunión con Andrea.", false));
+  CHECK(reply_claims::claimsDone({.text = "Agendé la reunión.", .asked = false, .appOnly = false, .lang = ""}));
+  CHECK_FALSE(english("That is quite a lot of events, and the setup is complete.", false));
+  CHECK_FALSE(english("Your configuration is complete and I can reserve a table if you like.", false));
 }

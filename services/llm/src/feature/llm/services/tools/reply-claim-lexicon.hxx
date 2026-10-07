@@ -17,6 +17,9 @@ struct Lexicon
   std::span<const std::string_view> hedges;
   std::span<const std::string_view> requests;
   std::span<const std::string_view> leadingRequests;
+  std::span<const std::string_view> opening;
+  std::span<const std::string_view> states;
+  std::span<const std::string_view> copulas;
   std::string_view honest;
   std::string_view nudge;
 };

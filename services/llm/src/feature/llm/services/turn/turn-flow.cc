@@ -47,6 +47,16 @@ bool performed(const tools::ToolResult& result, const tools::ToolDescriptor& too
   return result.ok && !previewed(result) && (!tool.spec.annotations.readOnly || isAppTool(result.tool));
 }
 
+bool changes(const tools::ToolResult& result, const tools::ToolDescriptor& tool)
+{
+  return performed(result, tool) && !isReadOnlyTool(result.tool);
+}
+
+bool shows(const tools::ToolResult& result, const tools::ToolDescriptor& tool)
+{
+  return performed(result, tool) && isReadOnlyTool(result.tool) && isAppTool(result.tool);
+}
+
 bool present(const Json::Value& arguments, const std::string& field)
 {
   const Json::Value& value = arguments[field];
@@ -229,7 +239,8 @@ void TurnFlow::execute(const TurnRequest& request, tools::ToolCall call, Outcome
   else
     LOG_WARN << "TurnFlow: '" << call.name << "' not done (" << result.code << "): " << result.output;
   const tools::ToolDescriptor* tool = handleOf(request.offered, call.name);
-  outcome.wrote = outcome.wrote || (tool != nullptr && performed(result, *tool));
+  outcome.wrote = outcome.wrote || (tool != nullptr && changes(result, *tool));
+  outcome.opened = outcome.opened || (tool != nullptr && shows(result, *tool));
   outcome.findings.push_back(findingOf(result));
   outcome.steps.push_back({.call = std::move(call), .result = std::move(result)});
 }

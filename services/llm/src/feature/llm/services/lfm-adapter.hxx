@@ -4,6 +4,7 @@
 #include <shared/vocabulary/tool-contracts.hxx>
 #include <feature/intent/services/intent-router.hxx>
 #include <llm/llm-service.hxx>
+#include <feature/llm/services/tools/claim-check.hxx>
 #include <feature/llm/services/tools/tool-access.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
 #include <feature/llm/services/turn/deciders.hxx>
@@ -34,13 +35,6 @@ struct ToolChatOutput
   bool emitted = false;
   int64_t generateMs = 0;
   int64_t toolMs = 0;
-};
-
-struct TurnState
-{
-  bool asked{false};
-  bool appAsked{false};
-  bool wrote{false};
 };
 
 struct ChatWithToolsStreamInput
