@@ -1127,13 +1127,60 @@ comes from the user's words, not the model's arguments; the recipient is the
 speaking user; the topic is the grounded reminder text with the time phrase
 cut out ("llamar al dentista"); the command id is
 `memory-remind:<factId>:<fireAt>`, so a repeated tool call schedules once.
-The parser reads es/en clock times ("a las 9:30", "a las nueve y media de la
-noche", "at 7 pm", "at noon"), named days ("mañana", "pasado mañana", "el
-lunes", "tomorrow", "on friday") and relative times ("en 20 minutos",
-"dentro de una hora", "in half an hour"). A bare hour that has already
-passed today is read as its evening hour when that is still ahead ("a las
-nueve" at 15:20 is 21:00), otherwise as tomorrow; a vague time ("mañana por
-la mañana") schedules nothing. Whether the scheduled call rings, is only a
+The parser (`call_time::read` in `call-time.{hxx,cc}`, word tables in
+`call-time-words.{hxx,cc}`) reads es (Peruvian included) and en in the host's
+local clock, which is Lima's in production, and answers with an instant, or
+with nothing, or with a `DayConflict`. A phrase needs a clock part; a day part
+and a part-of-day marker are optional and may stand before or after it. Only
+the first clock and the first date are read.
+
+| Clock part | Reading |
+|---|---|
+| 24-hour or colon form with hour 0 or 13-23, or a leading zero ("18:30", "07:30", "00:30") | as written, any qualifier ignored |
+| hour 1-12 + "a. m.", "a.m.", "am", "AM", "4am" | 12 is 00:00, otherwise the hour |
+| hour 1-12 + "p. m.", "p.m.", "pm", "PM", "4pm" | 12 is 12:00, otherwise hour + 12 |
+| "de/en/por la mañana", "in the morning", "esta mañana" | the hour (12 is noon) |
+| "de la madrugada" | the hour (12 is 00:00) |
+| "de/en/por la tarde", "in the afternoon", "in the evening", "esta tarde" | hour + 12 (12 is noon) |
+| "de/en/por la noche", "at night", "tonight", "esta noche", "tomorrow night" | 1 to 5 the hour (small hours), 6 to 11 hour + 12, 12 midnight |
+| no qualifier | 1 to 6 hour + 12 (the afternoon), 7 to 11 the hour (the morning), 12 noon |
+| "mediodía", "noon", "midday" | 12:00 |
+| "medianoche", "midnight" | 00:00 at the end of the named day (the next 00:00 when no day is named) |
+
+An explicit qualifier always wins over the bare-hour reading. Minutes keep
+their value in every spelling: "y media", "y cuarto", "y 10", "menos cuarto",
+"menos 10", "en punto", "5:30", and in English "half past five", "quarter to
+six", "ten past five", "eleven fifteen", "five forty five", "five oh five",
+"5 o'clock". "menos" takes the minutes off the hour as spoken, so "a las 6
+menos cuarto" is 17:45 and "a las 8 menos cuarto" 07:45.
+
+| Day part | Reading |
+|---|---|
+| none | today when the instant is still ahead, otherwise tomorrow |
+| "hoy", "today", "esta tarde/noche/mañana", "tonight", "this evening" | today; a time already past resolves nothing |
+| "mañana", "tomorrow", "pasado mañana", "day after tomorrow" | +1, +2 days |
+| a weekday ("el viernes", "on Friday") | the next one strictly after today, unless "hoy" is said |
+| a day of the month, no month ("el 15", "el quince", "the 15th") | the next occurrence: this month while the instant is still ahead, otherwise the next month that has that day |
+| a day and a month ("el 15 de octubre", "october 15th", "15th of October") | this year, or next year when it has passed |
+| a weekday and a day of the month that agree ("el viernes 9") | that date |
+| a weekday and a day of the month that disagree ("el lunes 9" on a Friday 9th) | nothing is resolved; `read` reports the two candidates in `conflict` and the turn asks which one |
+
+Relative phrases ("en 20 minutos", "in half an hour") are capped at 30 days,
+explicit dates at 12 months from now; the call itself is still only
+scheduled within `[notifications]`' own horizon, so a farther reminder is
+saved as a reminder row without a call.
+
+Judgement calls the rules left open, kept as they stand until the owner
+decides (each is one line in `call-time.cc`): "12 de la mañana" is noon;
+"las 2 de la noche" is 02:00 (the small hours) and "las 5 de la noche" too;
+"mañana a medianoche" is the 00:00 that ends tomorrow while "12 a. m." on a
+named day is that day's 00:00; a bare 7 to 11 whose morning reading has
+passed today is tomorrow's morning ("a las nueve" at 15:20 is tomorrow 09:00;
+before the rules it was 21:00 today); "next friday" is the coming Friday; a
+weekday that disagrees with "hoy" or "mañana" resolves nothing and asks
+nothing; a year in the text is not read.
+
+Whether the scheduled call rings, is only a
 notification or is spoken into a live call is the user's call preference
 (`assistant`), decided by the notification service. The descriptor no longer
 says "no suena ninguna alarma".

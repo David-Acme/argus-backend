@@ -7,6 +7,7 @@ argus_module(NAME memory
         services/embedding/embedding-service.cc
         services/embedding/unigram-tokenizer.cc
         services/extract/call-time.cc
+        services/extract/call-time-words.cc
         services/extract/extraction-service.cc
         services/extract/lexicon-extractor.cc
         services/extract/temporal-resolver.cc

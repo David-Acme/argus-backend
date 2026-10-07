@@ -20,9 +20,23 @@ struct CallTime
   std::size_t phraseEnd{0};
 };
 
+struct DayConflict
+{
+  int64_t byWeekday{0};
+  int64_t byDate{0};
+};
+
+struct CallReading
+{
+  std::optional<CallTime> time{};
+  std::optional<DayConflict> conflict{};
+};
+
 namespace call_time
 {
-std::optional<CallTime> resolve(const CallTimeInput& input);
+[[nodiscard]] CallReading read(const CallTimeInput& input);
 
-std::string withoutPhrase(std::string_view text, const CallTime& time);
+[[nodiscard]] std::optional<CallTime> resolve(const CallTimeInput& input);
+
+[[nodiscard]] std::string withoutPhrase(std::string_view text, const CallTime& time);
 }

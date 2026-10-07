@@ -1,265 +1,386 @@
 #include "call-time.hxx"
 
+#include "call-time-words.hxx"
+
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <ctime>
-#include <vector>
+#include <limits>
+
+namespace call_time
+{
 
 namespace
 {
 constexpr int64_t kMinuteS = 60;
 constexpr int64_t kHourS = 3600;
-constexpr int64_t kMaxAheadS = int64_t{30} * 24 * kHourS;
+constexpr int64_t kRelativeAheadS = int64_t{30} * 24 * kHourS;
+constexpr int kMonthsAhead = 12;
+constexpr int kMonthsInYear = 12;
+constexpr int kNoon = 12;
+constexpr int kEndOfDay = 24;
+constexpr int kSmallHours = 5;
+constexpr int kAfternoonHours = 6;
+constexpr int kWeekDays = 7;
 
-struct Folded
+enum class Period : unsigned char
 {
-  std::string text;
-  std::vector<std::size_t> origin;
+  None,
+  Am,
+  Pm,
+  Morning,
+  Afternoon,
+  Night,
+  Dawn
 };
 
-Folded fold(std::string_view source)
+struct Marker
 {
-  static constexpr std::array<std::pair<std::string_view, char>, 14> kFold{{
-      {"á", 'a'}, {"é", 'e'}, {"í", 'i'}, {"ó", 'o'}, {"ú", 'u'},
-      {"ü", 'u'}, {"ñ", 'n'}, {"Á", 'a'}, {"É", 'e'}, {"Í", 'i'},
-      {"Ó", 'o'}, {"Ú", 'u'}, {"Ü", 'u'}, {"Ñ", 'n'}}};
-  Folded folded;
-  folded.text.reserve(source.size());
-  folded.origin.reserve(source.size() + 1);
-  std::size_t index = 0;
-  while (index < source.size()) {
-    bool matched = false;
-    for (const auto& [from, to] : kFold) {
-      if (source.substr(index, from.size()) == from) {
-        folded.text.push_back(to);
-        folded.origin.push_back(index);
-        index += from.size();
-        matched = true;
-        break;
-      }
-    }
-    if (matched)
-      continue;
-    folded.text.push_back(static_cast<char>(
-        std::tolower(static_cast<unsigned char>(source[index]))));
-    folded.origin.push_back(index);
-    ++index;
-  }
-  folded.origin.push_back(source.size());
-  return folded;
-}
-
-struct Token
-{
-  std::string text;
-  std::size_t begin{0};
-  std::size_t end{0};
+  Period period{Period::None};
+  std::size_t length{0};
+  bool today{false};
 };
-
-std::vector<Token> tokenize(const std::string& text)
-{
-  std::vector<Token> tokens;
-  std::size_t index = 0;
-  while (index < text.size()) {
-    const auto c = static_cast<unsigned char>(text[index]);
-    if (!std::isalnum(c)) {
-      ++index;
-      continue;
-    }
-    const std::size_t begin = index;
-    while (index < text.size()) {
-      const auto d = static_cast<unsigned char>(text[index]);
-      if (std::isalnum(d) ||
-          (d == ':' && index + 1 < text.size() &&
-           std::isdigit(static_cast<unsigned char>(text[index + 1])) &&
-           index > begin &&
-           std::isdigit(static_cast<unsigned char>(text[index - 1]))))
-        ++index;
-      else
-        break;
-    }
-    tokens.push_back({.text = text.substr(begin, index - begin),
-                      .begin = begin,
-                      .end = index});
-  }
-  return tokens;
-}
-
-int smallNumber(const std::string& token)
-{
-  static constexpr std::array<std::pair<std::string_view, int>, 32> kWords{{
-      {"un", 1},     {"una", 1},     {"uno", 1},    {"dos", 2},
-      {"tres", 3},   {"cuatro", 4},  {"cinco", 5},  {"seis", 6},
-      {"siete", 7},  {"ocho", 8},    {"nueve", 9},  {"diez", 10},
-      {"once", 11},  {"doce", 12},   {"quince", 15}, {"veinte", 20},
-      {"treinta", 30}, {"a", 1},     {"an", 1},     {"one", 1},
-      {"two", 2},    {"three", 3},   {"four", 4},   {"five", 5},
-      {"six", 6},    {"seven", 7},   {"eight", 8},  {"nine", 9},
-      {"ten", 10},   {"eleven", 11}, {"twelve", 12}, {"fifteen", 15}}};
-  for (const auto& [word, value] : kWords) {
-    if (token == word)
-      return value;
-  }
-  if (!token.empty() && token.size() <= 3 &&
-      std::ranges::all_of(token, [](unsigned char c) { return std::isdigit(c); }))
-    return std::stoi(token);
-  return -1;
-}
 
 struct ClockReading
 {
-  int hour{-1};
+  int hour{0};
   int minute{0};
-  std::size_t endToken{0};
-  bool halfKnown{false};
+  int minus{0};
+  Period period{Period::None};
+  bool literal{false};
+  bool midday{false};
+  bool midnight{false};
+  std::size_t last{0};
 };
 
-std::optional<ClockReading> clockAt(const std::vector<Token>& tokens,
-                                    std::size_t index)
+struct DateHit
 {
-  if (index >= tokens.size())
-    return std::nullopt;
-  const std::string& head = tokens[index].text;
-  ClockReading reading;
-  reading.endToken = index;
-  if (const auto colon = head.find(':'); colon != std::string::npos) {
-    const int hour = smallNumber(head.substr(0, colon));
-    const int minute = smallNumber(head.substr(colon + 1));
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59)
-      return std::nullopt;
-    reading.hour = hour;
-    reading.minute = minute;
+  int day{0};
+  int month{0};
+};
+
+struct Parsed
+{
+  int offset{-1};
+  bool today{false};
+  int weekday{-1};
+  std::optional<DateHit> date;
+  std::optional<ClockReading> clock;
+  Period context{Period::None};
+  std::size_t first{std::numeric_limits<std::size_t>::max()};
+  std::size_t last{0};
+};
+
+struct Civil
+{
+  int year{0};
+  int month{0};
+  int day{0};
+};
+
+int daysInMonth(const Civil& civil)
+{
+  constexpr std::array<int, 12> kDays{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  const bool leap = (civil.year % 4 == 0 && civil.year % 100 != 0) || civil.year % 400 == 0;
+  return kDays.at(static_cast<std::size_t>(civil.month - 1)) + (civil.month == 2 && leap ? 1 : 0);
+}
+
+bool isValid(const Civil& civil)
+{
+  return civil.month >= 1 && civil.month <= kMonthsInYear && civil.day >= 1 && civil.day <= daysInMonth(civil);
+}
+
+Civil civilOf(int64_t epoch)
+{
+  const auto seconds = static_cast<std::time_t>(epoch);
+  std::tm local{};
+  localtime_r(&seconds, &local);
+  return {.year = local.tm_year + 1900, .month = local.tm_mon + 1, .day = local.tm_mday};
+}
+
+std::tm noonOf(const Civil& civil, int days)
+{
+  std::tm local{};
+  local.tm_year = civil.year - 1900;
+  local.tm_mon = civil.month - 1;
+  local.tm_mday = civil.day + days;
+  local.tm_hour = kNoon;
+  local.tm_isdst = -1;
+  std::mktime(&local);
+  return local;
+}
+
+Civil shifted(const Civil& civil, int days)
+{
+  const std::tm local = noonOf(civil, days);
+  return {.year = local.tm_year + 1900, .month = local.tm_mon + 1, .day = local.tm_mday};
+}
+
+int weekdayIndex(const Civil& civil)
+{
+  return noonOf(civil, 0).tm_wday;
+}
+
+int hour24(const ClockReading& reading)
+{
+  if (reading.midday)
+    return kNoon;
+  if (reading.midnight)
+    return kEndOfDay;
+  if (reading.literal)
+    return reading.hour;
+  const int hour = reading.hour;
+  switch (reading.period) {
+    case Period::Am:
+    case Period::Dawn:
+      return hour % kNoon;
+    case Period::Pm:
+    case Period::Afternoon:
+      return hour % kNoon + kNoon;
+    case Period::Morning:
+      return hour;
+    case Period::Night:
+      if (hour == kNoon)
+        return kEndOfDay;
+      return hour <= kSmallHours ? hour : hour + kNoon;
+    case Period::None:
+      break;
   }
-  else if (head == "mediodia" || head == "noon") {
-    reading.hour = 12;
+  if (hour == kNoon)
+    return kNoon;
+  return hour <= kAfternoonHours ? hour + kNoon : hour;
+}
+
+int64_t instantOf(const Civil& civil, const ClockReading& reading)
+{
+  std::tm local{};
+  local.tm_year = civil.year - 1900;
+  local.tm_mon = civil.month - 1;
+  local.tm_mday = civil.day;
+  local.tm_hour = hour24(reading);
+  local.tm_isdst = -1;
+  return static_cast<int64_t>(std::mktime(&local)) + (reading.minute - reading.minus) * kMinuteS;
+}
+
+int64_t yearAfter(int64_t epoch)
+{
+  const auto seconds = static_cast<std::time_t>(epoch);
+  std::tm local{};
+  localtime_r(&seconds, &local);
+  local.tm_year += 1;
+  local.tm_isdst = -1;
+  return static_cast<int64_t>(std::mktime(&local));
+}
+
+bool onlyDigits(const std::string& text)
+{
+  return !text.empty() && std::ranges::all_of(text, [](unsigned char c) { return c >= '0' && c <= '9'; });
+}
+
+Period spanishPart(const Tokens& tokens, std::size_t at)
+{
+  if (wordAt(tokens, at, "manana"))
+    return Period::Morning;
+  if (wordAt(tokens, at, "tarde"))
+    return Period::Afternoon;
+  if (wordAt(tokens, at, "noche"))
+    return Period::Night;
+  if (wordAt(tokens, at, "madrugada"))
+    return Period::Dawn;
+  return Period::None;
+}
+
+Period englishPart(const Tokens& tokens, std::size_t at)
+{
+  if (wordAt(tokens, at, "morning"))
+    return Period::Morning;
+  if (anyWordAt(tokens, at, {"afternoon", "evening"}))
+    return Period::Afternoon;
+  if (wordAt(tokens, at, "night"))
+    return Period::Night;
+  return Period::None;
+}
+
+std::optional<Marker> strictMarkerAt(const Tokens& tokens, std::size_t at)
+{
+  if (wordAt(tokens, at, "am"))
+    return Marker{.period = Period::Am, .length = 1, .today = false};
+  if (wordAt(tokens, at, "pm"))
+    return Marker{.period = Period::Pm, .length = 1, .today = false};
+  if (wordAt(tokens, at, "a") && wordAt(tokens, at + 1, "m"))
+    return Marker{.period = Period::Am, .length = 2, .today = false};
+  if (wordAt(tokens, at, "p") && wordAt(tokens, at + 1, "m"))
+    return Marker{.period = Period::Pm, .length = 2, .today = false};
+  return std::nullopt;
+}
+
+std::optional<Marker> phraseMarkerAt(const Tokens& tokens, std::size_t at)
+{
+  if (anyWordAt(tokens, at, {"de", "en", "por"}) && wordAt(tokens, at + 1, "la")) {
+    if (const Period period = spanishPart(tokens, at + 2); period != Period::None)
+      return Marker{.period = period, .length = 3, .today = false};
+  }
+  if (wordAt(tokens, at, "esta")) {
+    if (const Period period = spanishPart(tokens, at + 1); period != Period::None)
+      return Marker{.period = period, .length = 2, .today = true};
+  }
+  if (wordAt(tokens, at, "del") && wordAt(tokens, at + 1, "mediodia"))
+    return Marker{.period = Period::Afternoon, .length = 2, .today = false};
+  if (wordAt(tokens, at, "in") && wordAt(tokens, at + 1, "the")) {
+    if (const Period period = englishPart(tokens, at + 2); period != Period::None)
+      return Marker{.period = period, .length = 3, .today = false};
+  }
+  if (wordAt(tokens, at, "at") && wordAt(tokens, at + 1, "night"))
+    return Marker{.period = Period::Night, .length = 2, .today = false};
+  if (wordAt(tokens, at, "this")) {
+    if (const Period period = englishPart(tokens, at + 1); period != Period::None)
+      return Marker{.period = period, .length = 2, .today = true};
+  }
+  if (wordAt(tokens, at, "tonight"))
+    return Marker{.period = Period::Night, .length = 1, .today = true};
+  if (const Period period = englishPart(tokens, at); period != Period::None)
+    return Marker{.period = period, .length = 1, .today = false};
+  return std::nullopt;
+}
+
+bool clockMarkerAt(const Tokens& tokens, std::size_t at)
+{
+  return strictMarkerAt(tokens, at) || phraseMarkerAt(tokens, at) || anyWordAt(tokens, at, {"y", "menos"}) ||
+         (wordAt(tokens, at, "en") && wordAt(tokens, at + 1, "punto"));
+}
+
+std::optional<ClockReading> clockAt(const Tokens& tokens, std::size_t at)
+{
+  if (at >= tokens.size())
+    return std::nullopt;
+  const std::string& head = tokens[at].text;
+  ClockReading reading;
+  bool spelled = false;
+  if (const auto colon = head.find(':'); colon != std::string::npos) {
+    const std::string hours = head.substr(0, colon);
+    const std::string minutes = head.substr(colon + 1);
+    if (hours.size() > 2 || minutes.size() != 2)
+      return std::nullopt;
+    reading.hour = std::stoi(hours);
+    reading.minute = std::stoi(minutes);
+    if (reading.hour > 23 || reading.minute > 59)
+      return std::nullopt;
+    reading.literal = reading.hour == 0 || reading.hour >= kNoon + 1 || (hours.size() == 2 && hours.front() == '0');
+  }
+  else if (head == "mediodia" || head == "noon" || head == "midday") {
+    reading.midday = true;
+    reading.hour = kNoon;
+  }
+  else if (head == "medianoche" || head == "midnight") {
+    reading.midnight = true;
   }
   else {
     const int hour = smallNumber(head);
     if (hour < 0 || hour > 23 || head == "a" || head == "an" || head == "un")
       return std::nullopt;
     reading.hour = hour;
+    spelled = !onlyDigits(head);
+    reading.literal = hour == 0 || hour >= kNoon + 1 || (onlyDigits(head) && head.size() == 2 && head.front() == '0');
   }
-  std::size_t next = index + 1;
-  const auto word = [&tokens](std::size_t at) {
-    return at < tokens.size() ? tokens[at].text : std::string{};
-  };
-  if (word(next) == "y" && word(next + 1) == "media") {
-    reading.minute = 30;
+  std::size_t next = at + 1;
+  if (!reading.midday && !reading.midnight) {
+    if (wordAt(tokens, next, "y")) {
+      if (const auto minutes = minutesAt(tokens, next + 1)) {
+        reading.minute = minutes->value;
+        next += 1 + minutes->length;
+      }
+    }
+    else if (wordAt(tokens, next, "menos")) {
+      if (const auto minutes = minutesAt(tokens, next + 1); minutes && minutes->value != 30) {
+        reading.minus = minutes->value;
+        next += 1 + minutes->length;
+      }
+    }
+    else if (spelled) {
+      if (const auto minutes = englishMinutesAt(tokens, next)) {
+        reading.minute = minutes->value;
+        next += minutes->length;
+      }
+    }
+  }
+  if ((wordAt(tokens, next, "o") && wordAt(tokens, next + 1, "clock")) || (wordAt(tokens, next, "en") && wordAt(tokens, next + 1, "punto")))
     next += 2;
+  else if (wordAt(tokens, next, "sharp"))
+    next += 1;
+  if (const auto strict = strictMarkerAt(tokens, next)) {
+    reading.period = strict->period;
+    next += strict->length;
   }
-  else if (word(next) == "y" && word(next + 1) == "cuarto") {
-    reading.minute = 15;
-    next += 2;
+  else if (const auto phrase = phraseMarkerAt(tokens, next)) {
+    reading.period = phrase->period;
+    next += phrase->length;
   }
-  else if (word(next) == "menos" && word(next + 1) == "cuarto") {
-    reading.minute = 45;
-    reading.hour = (reading.hour + 23) % 24;
-    next += 2;
-  }
-  const std::string suffix = word(next);
-  const bool afternoon = suffix == "pm" ||
-                         (suffix == "de" && (word(next + 2) == "tarde" ||
-                                             word(next + 2) == "noche"));
-  const bool morning = suffix == "am" ||
-                       (suffix == "de" && word(next + 2) == "manana");
-  reading.halfKnown = afternoon || morning || reading.hour == 0 ||
-                      reading.hour >= 12;
-  if (afternoon && reading.hour < 12)
-    reading.hour += 12;
-  if (morning && reading.hour == 12)
-    reading.hour = 0;
-  if (suffix == "pm" || suffix == "am")
-    ++next;
-  else if (afternoon || morning)
-    next += 3;
-  reading.endToken = next - 1;
+  reading.last = next - 1;
   return reading;
 }
 
-struct LocalTimeInput
+std::optional<ClockReading> pastAt(const Tokens& tokens, std::size_t at)
 {
-  int64_t now{0};
-  int dayOffset{0};
-  int hour{0};
-  int minute{0};
-};
-
-int64_t atLocal(const LocalTimeInput& input)
-{
-  const auto seconds = static_cast<std::time_t>(input.now);
-  std::tm local{};
-  localtime_r(&seconds, &local);
-  local.tm_mday += input.dayOffset;
-  local.tm_hour = input.hour;
-  local.tm_min = input.minute;
-  local.tm_sec = 0;
-  local.tm_isdst = -1;
-  return static_cast<int64_t>(std::mktime(&local));
-}
-
-int weekdayToday(int64_t now)
-{
-  const auto seconds = static_cast<std::time_t>(now);
-  std::tm local{};
-  localtime_r(&seconds, &local);
-  return local.tm_wday;
-}
-
-int weekdayOf(const std::string& token)
-{
-  static constexpr std::array<std::string_view, 7> kEs{
-      "domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"};
-  static constexpr std::array<std::string_view, 7> kEn{
-      "sunday", "monday", "tuesday", "wednesday", "thursday", "friday",
-      "saturday"};
-  for (std::size_t day = 0; day < kEs.size(); ++day) {
-    if (token == kEs[day] || token == kEn[day])
-      return static_cast<int>(day);
+  int minutes = 0;
+  std::size_t next = at;
+  if (wordAt(tokens, at, "half")) {
+    minutes = 30;
+    next = at + 1;
   }
-  return -1;
+  else if (wordAt(tokens, at, "quarter")) {
+    minutes = 15;
+    next = at + 1;
+  }
+  else if (const auto spoken = englishMinutesAt(tokens, at); spoken && spoken->value <= 25) {
+    minutes = spoken->value;
+    next = at + spoken->length;
+  }
+  else {
+    return std::nullopt;
+  }
+  const bool past = wordAt(tokens, next, "past");
+  if (!past && !wordAt(tokens, next, "to"))
+    return std::nullopt;
+  auto reading = clockAt(tokens, next + 1);
+  if (!reading || reading->literal)
+    return std::nullopt;
+  if (past)
+    reading->minute += minutes;
+  else
+    reading->minus += minutes;
+  return reading;
 }
 
-struct Span
+std::optional<Counted> relativeAmountAt(const Tokens& tokens, std::size_t at)
 {
-  std::size_t begin{0};
-  std::size_t end{0};
-};
-
-Span spanOf(const std::vector<Token>& tokens, std::size_t first, std::size_t last)
-{
-  return {.begin = tokens[first].begin, .end = tokens[last].end};
+  if (wordAt(tokens, at, "media") && wordAt(tokens, at + 1, "hora"))
+    return Counted{.value = 30, .length = 2};
+  if (wordAt(tokens, at, "half") && wordAt(tokens, at + 1, "an") && wordAt(tokens, at + 2, "hour"))
+    return Counted{.value = 30, .length = 3};
+  return std::nullopt;
 }
 
-struct Found
+struct Relative
 {
   int64_t fireAt{0};
-  Span span;
+  std::size_t first{0};
+  std::size_t last{0};
 };
 
-std::optional<Found> relative(const std::vector<Token>& tokens, int64_t now)
+std::optional<Relative> relative(const Tokens& tokens, int64_t now)
 {
   for (std::size_t index = 0; index < tokens.size(); ++index) {
-    const std::string& word = tokens[index].text;
-    std::size_t start = index;
     std::size_t at = index;
-    if (word == "dentro" && index + 1 < tokens.size() &&
-        tokens[index + 1].text == "de")
+    if (wordAt(tokens, index, "dentro") && wordAt(tokens, index + 1, "de"))
       at = index + 2;
-    else if (word == "en" || word == "in")
+    else if (anyWordAt(tokens, index, {"en", "in"}))
       at = index + 1;
     else
       continue;
     if (at >= tokens.size())
       continue;
-    if (tokens[at].text == "media" && at + 1 < tokens.size() &&
-        tokens[at + 1].text == "hora")
-      return Found{.fireAt = now + 30 * kMinuteS,
-                   .span = spanOf(tokens, start, at + 1)};
-    if (tokens[at].text == "half" && at + 2 < tokens.size() &&
-        tokens[at + 1].text == "an" && tokens[at + 2].text == "hour")
-      return Found{.fireAt = now + 30 * kMinuteS,
-                   .span = spanOf(tokens, start, at + 2)};
+    if (const auto half = relativeAmountAt(tokens, at))
+      return Relative{.fireAt = now + half->value * kMinuteS, .first = index, .last = at + half->length - 1};
     const int amount = smallNumber(tokens[at].text);
     if (amount <= 0 || at + 1 >= tokens.size())
       continue;
@@ -271,116 +392,343 @@ std::optional<Found> relative(const std::vector<Token>& tokens, int64_t now)
       step = kHourS;
     if (step == 0)
       continue;
-    return Found{.fireAt = now + amount * step,
-                 .span = spanOf(tokens, start, at + 1)};
+    return Relative{.fireAt = now + amount * step, .first = index, .last = at + 1};
   }
   return std::nullopt;
 }
-}
 
-std::optional<CallTime> call_time::resolve(const CallTimeInput& input)
+class Scanner
 {
-  const Folded folded = fold(input.text);
-  const auto tokens = tokenize(folded.text);
-  if (tokens.empty())
-    return std::nullopt;
-  const auto toCallTime = [&folded](const Found& found) {
-    return CallTime{.fireAt = found.fireAt,
-                    .phraseBegin = folded.origin[found.span.begin],
-                    .phraseEnd = folded.origin[found.span.end]};
-  };
-  if (const auto found = relative(tokens, input.now)) {
-    if (found->fireAt - input.now <= kMaxAheadS)
-      return toCallTime(*found);
-    return std::nullopt;
+public:
+  explicit Scanner(const Tokens& tokens) : tokens_(tokens) {}
+
+  [[nodiscard]] Parsed run()
+  {
+    std::size_t index = 0;
+    while (index < tokens_.size()) {
+      std::size_t used = marker(index);
+      if (used == 0)
+        used = day(index);
+      if (used == 0)
+        used = weekday(index);
+      if (used == 0)
+        used = date(index);
+      if (used == 0)
+        used = clock(index);
+      index += std::max<std::size_t>(used, 1);
+    }
+    return parsed_;
   }
 
-  int dayOffset = 0;
-  bool dayGiven = false;
-  std::size_t phraseFirst = tokens.size();
-  std::size_t phraseLast = 0;
-  const auto widen = [&phraseFirst, &phraseLast](std::size_t first,
-                                                 std::size_t last) {
-    phraseFirst = std::min(phraseFirst, first);
-    phraseLast = std::max(phraseLast, last);
-  };
-  std::optional<ClockReading> clock;
-  for (std::size_t index = 0; index < tokens.size(); ++index) {
-    const std::string& word = tokens[index].text;
-    if (word == "pasado" && index + 1 < tokens.size() &&
-        tokens[index + 1].text == "manana") {
-      dayOffset = 2;
-      dayGiven = true;
-      widen(index, index + 1);
-      ++index;
-      continue;
+private:
+  void widen(std::size_t first, std::size_t last)
+  {
+    parsed_.first = std::min(parsed_.first, first);
+    parsed_.last = std::max(parsed_.last, last);
+  }
+
+  std::size_t marker(std::size_t at)
+  {
+    const auto found = phraseMarkerAt(tokens_, at);
+    if (!found)
+      return 0;
+    if (parsed_.context == Period::None)
+      parsed_.context = found->period;
+    if (found->today) {
+      parsed_.today = true;
+      if (parsed_.offset < 0)
+        parsed_.offset = 0;
     }
-    const bool partOfDay = index > 0 && tokens[index - 1].text == "la" &&
-                           index > 1 && tokens[index - 2].text == "de";
-    if ((word == "manana" && !partOfDay) || word == "tomorrow") {
-      dayOffset = 1;
-      dayGiven = true;
-      widen(index, index);
-      continue;
+    widen(at, at + found->length - 1);
+    return found->length;
+  }
+
+  std::size_t day(std::size_t at)
+  {
+    std::size_t length = 0;
+    int offset = 0;
+    bool today = false;
+    if (wordAt(tokens_, at, "pasado") && wordAt(tokens_, at + 1, "manana")) {
+      offset = 2;
+      length = 2;
     }
-    if (word == "hoy" || word == "today" || word == "tonight") {
-      dayOffset = 0;
-      dayGiven = true;
-      widen(index, index);
-      continue;
+    else if (wordAt(tokens_, at, "day") && wordAt(tokens_, at + 1, "after") && wordAt(tokens_, at + 2, "tomorrow")) {
+      offset = 2;
+      length = 3;
     }
-    if (const int weekday = weekdayOf(word); weekday >= 0) {
-      const int today = weekdayToday(input.now);
-      dayOffset = (weekday - today + 7) % 7;
-      if (dayOffset == 0)
-        dayOffset = 7;
-      dayGiven = true;
-      const bool article = index > 0 && (tokens[index - 1].text == "el" ||
-                                         tokens[index - 1].text == "on");
-      widen(article ? index - 1 : index, index);
-      continue;
+    else if (anyWordAt(tokens_, at, {"manana", "tomorrow"})) {
+      offset = 1;
+      length = 1;
     }
-    const bool spanishClock =
-        (word == "las" || word == "la") && index > 0 && tokens[index - 1].text == "a";
-    if ((spanishClock || word == "at") && !clock) {
-      if (auto reading = clockAt(tokens, index + 1)) {
-        clock = reading;
-        widen(spanishClock ? index - 1 : index, reading->endToken);
-        index = reading->endToken;
+    else if (anyWordAt(tokens_, at, {"hoy", "today"})) {
+      today = true;
+      length = 1;
+    }
+    if (length == 0)
+      return 0;
+    if (parsed_.offset < 0)
+      parsed_.offset = offset;
+    parsed_.today = parsed_.today || today;
+    widen(at, at + length - 1);
+    return length;
+  }
+
+  std::optional<DateHit> monthAfter(std::size_t at, DateHit hit, std::size_t& end) const
+  {
+    std::size_t next = at;
+    if (anyWordAt(tokens_, next, {"de", "del", "of"}))
+      ++next;
+    if (next < tokens_.size()) {
+      if (const int month = monthOf(tokens_[next].text); month > 0) {
+        hit.month = month;
+        end = next;
+        return hit;
       }
     }
-  }
-  if (!clock)
     return std::nullopt;
-  int64_t fireAt = atLocal({.now = input.now,
-                            .dayOffset = dayOffset,
-                            .hour = clock->hour,
-                            .minute = clock->minute});
-  if (fireAt <= input.now && !dayGiven && !clock->halfKnown) {
-    const int64_t evening =
-        atLocal({.now = input.now,
-                 .dayOffset = 0,
-                 .hour = clock->hour + 12,
-                 .minute = clock->minute});
-    if (evening > input.now)
-      fireAt = evening;
   }
-  if (fireAt <= input.now) {
-    if (dayGiven)
-      return std::nullopt;
-    fireAt = atLocal({.now = input.now,
-                      .dayOffset = 1,
-                      .hour = clock->hour,
-                      .minute = clock->minute});
+
+  std::size_t weekday(std::size_t at)
+  {
+    const int found = weekdayOf(tokens_[at].text);
+    if (found < 0)
+      return 0;
+    parsed_.weekday = found;
+    const bool article = at > 0 && anyWordAt(tokens_, at - 1, {"el", "on"});
+    widen(article ? at - 1 : at, at);
+    std::size_t next = at + 1;
+    if (wordAt(tokens_, next, "the"))
+      ++next;
+    const auto number = dayNumberAt(tokens_, next);
+    if (!number || parsed_.date)
+      return 1;
+    const std::size_t after = next + number->length;
+    if (strictMarkerAt(tokens_, after) || clockMarkerAt(tokens_, after))
+      return 1;
+    DateHit hit{.day = number->value, .month = 0};
+    std::size_t end = after - 1;
+    if (const auto withMonth = monthAfter(after, hit, end))
+      hit = *withMonth;
+    parsed_.date = hit;
+    widen(at, end);
+    return end - at + 1;
   }
-  if (fireAt - input.now > kMaxAheadS)
+
+  std::size_t date(std::size_t at)
+  {
+    if (parsed_.date)
+      return 0;
+    const bool spanish = wordAt(tokens_, at, "el");
+    const bool english = wordAt(tokens_, at, "the");
+    if (spanish || english) {
+      std::size_t next = at + 1;
+      if (spanish && wordAt(tokens_, next, "dia"))
+        ++next;
+      const auto number = dayNumberAt(tokens_, next);
+      if (!number || (english && !number->ordinal))
+        return 0;
+      const std::size_t after = next + number->length;
+      if (strictMarkerAt(tokens_, after) || clockMarkerAt(tokens_, after))
+        return 0;
+      DateHit hit{.day = number->value, .month = 0};
+      std::size_t end = after - 1;
+      if (const auto withMonth = monthAfter(after, hit, end))
+        hit = *withMonth;
+      parsed_.date = hit;
+      const bool lead = at > 0 && wordAt(tokens_, at - 1, "on");
+      widen(lead ? at - 1 : at, end);
+      return end - at + 1;
+    }
+    if (const int month = monthOf(tokens_[at].text); month > 0) {
+      const auto number = dayNumberAt(tokens_, at + 1);
+      if (!number || (!onlyDigits(tokens_[at + 1].text) && !number->ordinal))
+        return 0;
+      if (strictMarkerAt(tokens_, at + 1 + number->length))
+        return 0;
+      parsed_.date = DateHit{.day = number->value, .month = month};
+      widen(at, at + number->length);
+      return number->length + 1;
+    }
+    if (const auto number = dayNumberAt(tokens_, at)) {
+      std::size_t end = at + number->length - 1;
+      DateHit hit{.day = number->value, .month = 0};
+      if (const auto withMonth = monthAfter(at + number->length, hit, end)) {
+        parsed_.date = *withMonth;
+        widen(at, end);
+        return end - at + 1;
+      }
+    }
+    return 0;
+  }
+
+  void take(const ClockReading& reading, std::size_t first)
+  {
+    parsed_.clock = reading;
+    widen(first, reading.last);
+  }
+
+  std::size_t clock(std::size_t at)
+  {
+    if (parsed_.clock)
+      return 0;
+    const bool introduced = (anyWordAt(tokens_, at, {"las", "la"}) && at > 0 && anyWordAt(tokens_, at - 1, {"a", "para", "hacia", "sobre"})) ||
+                            (wordAt(tokens_, at, "las") && at > 1 && wordAt(tokens_, at - 1, "de") && wordAt(tokens_, at - 2, "eso"));
+    if (introduced) {
+      if (const auto reading = clockAt(tokens_, at + 1)) {
+        take(*reading, at - 1);
+        return reading->last - at + 1;
+      }
+      return 0;
+    }
+    if (wordAt(tokens_, at, "at")) {
+      if (const auto reading = pastAt(tokens_, at + 1)) {
+        take(*reading, at);
+        return reading->last - at + 1;
+      }
+      if (const auto reading = clockAt(tokens_, at + 1)) {
+        take(*reading, at);
+        return reading->last - at + 1;
+      }
+      return 0;
+    }
+    if (const auto reading = pastAt(tokens_, at)) {
+      take(*reading, at);
+      return reading->last - at + 1;
+    }
+    const std::string& head = tokens_[at].text;
+    const bool keyword = anyWordAt(tokens_, at, {"mediodia", "noon", "midday", "medianoche", "midnight"});
+    const bool colon = head.find(':') != std::string::npos;
+    const bool strict = (smallNumber(head) >= 0 && head != "a" && head != "an" && head != "un") &&
+                        (strictMarkerAt(tokens_, at + 1) || (wordAt(tokens_, at + 1, "o") && wordAt(tokens_, at + 2, "clock")));
+    if (!keyword && !colon && !strict)
+      return 0;
+    if (const auto reading = clockAt(tokens_, at)) {
+      const bool lead = keyword && at > 0 && anyWordAt(tokens_, at - 1, {"a", "al", "at", "del"});
+      take(*reading, lead ? at - 1 : at);
+      return reading->last - at + 1;
+    }
+    return 0;
+  }
+
+  const Tokens& tokens_;
+  Parsed parsed_;
+};
+
+std::optional<Civil> upcomingDate(const DateHit& hit, const Civil& today, const ClockReading& clock, int64_t now)
+{
+  const auto ahead = [&](const Civil& civil) { return isValid(civil) && instantOf(civil, clock) > now; };
+  if (hit.month > 0) {
+    for (int year = today.year; year <= today.year + 1; ++year)
+      if (const Civil civil{.year = year, .month = hit.month, .day = hit.day}; ahead(civil))
+        return civil;
     return std::nullopt;
-  return toCallTime(
-      Found{.fireAt = fireAt, .span = spanOf(tokens, phraseFirst, phraseLast)});
+  }
+  for (int step = 0; step <= kMonthsAhead; ++step) {
+    const int index = today.month - 1 + step;
+    const Civil civil{.year = today.year + index / kMonthsInYear, .month = index % kMonthsInYear + 1, .day = hit.day};
+    if (ahead(civil))
+      return civil;
+  }
+  return std::nullopt;
 }
 
-std::string call_time::withoutPhrase(std::string_view text,
-                                     const CallTime& time)
+struct Resolved
+{
+  std::optional<int64_t> fireAt;
+  std::optional<DayConflict> conflict;
+};
+
+struct Disagreement
+{
+  Civil date;
+  int weekday{0};
+  const ClockReading& clock;
+  int64_t now{0};
+};
+
+DayConflict conflictOf(const Disagreement& input)
+{
+  const int forward = (input.weekday - weekdayIndex(input.date) + kWeekDays) % kWeekDays;
+  const int backward = kWeekDays - forward;
+  Civil day = shifted(input.date, forward <= backward ? forward : -backward);
+  if (instantOf(day, input.clock) <= input.now)
+    day = shifted(day, kWeekDays);
+  return {.byWeekday = instantOf(day, input.clock), .byDate = instantOf(input.date, input.clock)};
+}
+
+Resolved instantFor(const Parsed& parsed, ClockReading clock, int64_t now)
+{
+  if (clock.period == Period::None)
+    clock.period = parsed.context;
+  const Civil today = civilOf(now);
+  if (parsed.date) {
+    const auto date = upcomingDate(*parsed.date, today, clock, now);
+    if (!date)
+      return {};
+    if (parsed.weekday >= 0 && weekdayIndex(*date) != parsed.weekday) {
+      return {.fireAt = std::nullopt, .conflict = conflictOf({.date = *date, .weekday = parsed.weekday, .clock = clock, .now = now})};
+    }
+    return {.fireAt = instantOf(*date, clock), .conflict = std::nullopt};
+  }
+  if (parsed.weekday >= 0) {
+    int ahead = parsed.offset >= 0 ? parsed.offset : (parsed.weekday - weekdayIndex(today) + kWeekDays) % kWeekDays;
+    if (parsed.offset < 0 && ahead == 0)
+      ahead = kWeekDays;
+    const Civil day = shifted(today, ahead);
+    if (weekdayIndex(day) != parsed.weekday)
+      return {};
+    const int64_t fireAt = instantOf(day, clock);
+    if (fireAt <= now)
+      return {};
+    return {.fireAt = fireAt, .conflict = std::nullopt};
+  }
+  if (parsed.offset > 0)
+    return {.fireAt = instantOf(shifted(today, parsed.offset), clock), .conflict = std::nullopt};
+  int64_t fireAt = instantOf(today, clock);
+  if (fireAt > now)
+    return {.fireAt = fireAt, .conflict = std::nullopt};
+  if (parsed.offset == 0 || parsed.today)
+    return {};
+  fireAt = instantOf(shifted(today, 1), clock);
+  return {.fireAt = fireAt, .conflict = std::nullopt};
+}
+}
+
+CallReading read(const CallTimeInput& input)
+{
+  const Folded folded = fold(input.text);
+  const Tokens tokens = tokenize(folded.text);
+  if (tokens.empty())
+    return {};
+  const auto timeOf = [&](int64_t fireAt, std::size_t first, std::size_t last) {
+    return CallTime{.fireAt = fireAt, .phraseBegin = folded.origin[tokens[first].begin], .phraseEnd = folded.origin[tokens[last].end]};
+  };
+  if (const auto found = relative(tokens, input.now)) {
+    if (found->fireAt - input.now > kRelativeAheadS)
+      return {};
+    return {.time = timeOf(found->fireAt, found->first, found->last), .conflict = std::nullopt};
+  }
+  const Parsed parsed = Scanner(tokens).run();
+  if (!parsed.clock)
+    return {};
+  const Resolved result = instantFor(parsed, *parsed.clock, input.now);
+  const int64_t limit = yearAfter(input.now);
+  if (result.conflict) {
+    if (std::max(result.conflict->byWeekday, result.conflict->byDate) > limit)
+      return {};
+    return {.time = std::nullopt, .conflict = result.conflict};
+  }
+  if (!result.fireAt || *result.fireAt > limit)
+    return {};
+  return {.time = timeOf(*result.fireAt, parsed.first, parsed.last), .conflict = std::nullopt};
+}
+
+std::optional<CallTime> resolve(const CallTimeInput& input)
+{
+  return read(input).time;
+}
+
+std::string withoutPhrase(std::string_view text, const CallTime& time)
 {
   if (time.phraseEnd <= time.phraseBegin || time.phraseEnd > text.size())
     return std::string(text);
@@ -399,8 +747,9 @@ std::string call_time::withoutPhrase(std::string_view text,
     space = false;
     compact.push_back(c);
   }
-  while (!compact.empty() &&
-         (compact.back() == ',' || compact.back() == '.' || compact.back() == ' '))
+  while (!compact.empty() && (compact.back() == ',' || compact.back() == '.' || compact.back() == ' '))
     compact.pop_back();
   return compact;
+}
+
 }
