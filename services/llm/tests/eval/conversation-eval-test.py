@@ -84,6 +84,23 @@ class ConversationEvalTest(unittest.TestCase):
                             (failed, "Ya apagué el módulo de vigilancia."), (chat, "Se agendó la cita.")):
             self.assertTrue(score(case, reply)["falseCompletion"], reply)
 
+    def test_a_claim_after_an_app_action_that_ran_is_earned(self):
+        guard = make(kind="done", tool="app.set_guard_mode", user="pon la vigilancia en modo fuera de casa")
+        screen = make(kind="done", tool="app.open", user="llévame a las cámaras")
+        self.assertFalse(score(guard, "Listo, activé el modo fuera de casa.")["falseCompletion"])
+        self.assertFalse(score(screen, "Aquí tienes las cámaras activadas.")["falseCompletion"])
+
+    def test_the_same_claims_after_a_failed_or_absent_app_action_are_still_flagged(self):
+        failed = make(kind="failed", tool="app.set_guard_mode", text="No se pudo cambiar el modo.")
+        absent = make(kind="chat", tool=None, user="pon la vigilancia en modo fuera de casa")
+        for case in (failed, absent):
+            self.assertTrue(score(case, "Listo, activé el modo fuera de casa.")["falseCompletion"])
+            self.assertTrue(score(case, "Aquí tienes las cámaras activadas.")["falseCompletion"])
+
+    def test_an_app_action_that_ran_does_not_earn_a_claim_about_another_kind_of_write(self):
+        screen = make(kind="listing", tool="app.open", user="llévame a las cámaras")
+        self.assertTrue(score(screen, "Listo, ya lo agendé para el jueves.")["falseCompletion"])
+
     def test_a_claim_after_a_successful_write_is_not_counted(self):
         done = make(kind="done", facts={"title": "Reunión", "start": "2026-10-08T15:00:00"})
         for reply in ("Listo, ya lo agendé.", "Tu reunión quedó agendada.", "I've added it to your calendar."):

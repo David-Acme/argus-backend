@@ -49,8 +49,8 @@ def matches_any(patterns, sentence):
 
 
 def claims_done(reply, kind, tool, scoring, claims):
-    written = kind in WRITE_KINDS and tool in scoring["writeTools"]
     app_ran = kind in WRITE_KINDS and (tool or "").startswith("app.")
+    written = kind in WRITE_KINDS and (tool in scoring["writeTools"] or app_ran)
     any_ran = kind in WRITE_KINDS or kind in READ_KINDS
     for sentence in sentences_of(fold(reply)):
         if contains_any(sentence, scoring["notAClaimMarkers"]):
