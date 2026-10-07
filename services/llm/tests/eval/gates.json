@@ -618,6 +618,14 @@
     "wrongActMax": 0.001,
     "askRateClearMax": 0.1,
     "wrongToolActMax": 0.01,
+    "minStratum": 300,
+    "certification": {
+      "z": 1.96,
+      "pool": [
+        "sealed",
+        "sealed2"
+      ]
+    },
     "metrics": {
       "moduleFamilies.coverage": {
         "min": 0.456

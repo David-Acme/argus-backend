@@ -33,19 +33,21 @@ HERE = pathlib.Path(__file__).resolve().parent
 VISIBILITY = json.loads((HERE / "tool-visibility.json").read_text())
 READ_TOOLS = set(json.loads((HERE.parents[1] / "src/feature/llm/services/turn/tool-effects.json").read_text())["readOnly"])
 LOW_RISK_WRITES = {"memory.remember", "memory.remind"}
-NOWS = (0.0, 0.5, 0.8, 0.9, 0.95)
-GUARD_ACTS = (0.7, 0.8, 0.9, 0.93, 0.95, 0.97, 0.98, 0.99)
-GUARD_ASKS = (0.5, 0.7, 0.85, 0.93)
+NOWS = (0.0, 0.5, 0.7, 0.8, 0.9)
+SEARCH_ACTS = tuple(round(0.50 + 0.01 * step, 2) for step in range(50)) + (0.995,)
+GUARD_ASKS = (0.5, 0.7, 0.85)
 GUARD_MARGINS = (0.0, 0.1, 0.3)
 ACTS = (0.5, 0.6, 0.7, 0.8, 0.85, 0.88, 0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99, 0.995)
-ASKS = (0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95)
+ASKS = (0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9)
 MARGINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
+RELAXATIONS = ("askClear", "nearMiss", "wrongActFamily", "wrongActPooled", "wrongTool", "thinStratum")
 CEILINGS = (0.0025, 0.005, 0.01, 0.02)
 CACHE_BATCH = 250
 RANK_PRESERVING = ("temperature", "platt")
 DEFAULT_WRONG_ACT = 0.001
 DEFAULT_ASK_CLEAR = 0.10
 DEFAULT_WRONG_TOOL = 0.01
+DEFAULT_MIN_STRATUM = 300
 FALLBACK_POLICY = (0.9, 0.9, 0.0)
 
 
@@ -293,6 +295,7 @@ def digest(entry):
         "wrongAct": entry["wrongAct"], "others": entry["others"],
         "wrongActRate": rate(entry["wrongAct"], entry["others"]),
         "wrongActUpper": wilson(entry["wrongAct"], entry["others"])[1],
+        "authoredWrongAct": entry["authoredWrongAct"],
         "authoredWrongActRate": rate(entry["authoredWrongAct"], entry["authoredOthers"]),
         "authoredWrongActUpper": wilson(entry["authoredWrongAct"], entry["authoredOthers"])[1],
         "authoredOthers": entry["authoredOthers"],
@@ -317,18 +320,11 @@ def summarise(cases, decisions, policy):
     return out
 
 
-def feasible(summary, limits):
-    rows = [summary["moduleFamilies"]] + [summary["families"][f] for f in MODULE_FAMILIES]
-    if any(r["wrongActRate"] > limits["wrongAct"] or r["authoredWrongActRate"] > limits["wrongAct"] for r in rows):
-        return False
-    pooled = summary["moduleFamilies"]
-    return pooled["askRateClear"] <= limits["askClear"] and pooled["wrongToolRate"] <= limits["wrongTool"]
-
-
 def policies(guard, scopes=(1,)):
-    acts, asks, margins, nows = (GUARD_ACTS, GUARD_ASKS, GUARD_MARGINS, NOWS) if guard else (ACTS, ASKS, MARGINS, (0.0,))
-    for act in acts:
-        for ask in (a for a in asks if a <= act):
+    margins, nows = (GUARD_MARGINS, NOWS) if guard else (MARGINS, (0.0,))
+    asks = GUARD_ASKS if guard else ASKS
+    for act in SEARCH_ACTS:
+        for ask in sorted({act, *(a for a in asks if a < act)}):
             for margin in margins:
                 for now in nows:
                     for scope in (scopes if now > 0.0 else (1,)):
@@ -340,14 +336,20 @@ def act_only_policies():
         yield (act, act, 0.0)
 
 
+def rank_key(pooled, policy):
+    return (pooled["coverage"], -pooled["askRateClear"], -pooled["askRateOther"], -policy[0])
+
+
 def best_per_limit(cases, decisions, all_limits, scopes=(1,)):
     best = [{} for _ in all_limits]
     guard = any(len(d) > 4 and d[4] is not None for d in decisions)
     for policy in policies(guard, scopes):
         rows, pooled = pooled_rows(cases, decisions, policy)
-        key = (pooled["coverage"], -pooled["askRateClear"], -pooled["askRateOther"], -policy[0])
+        key = rank_key(pooled, policy)
         scope = policy[4] if len(policy) > 4 else 1
         for slot, limits in zip(best, all_limits):
+            if limits.get("secondSignalOff") and policy[3] > 0.0:
+                continue
             if within(rows, pooled, limits) and (scope not in slot or key > slot[scope][1]):
                 slot[scope] = (policy, key)
     return best
@@ -370,11 +372,25 @@ def pooled_rows(cases, decisions, policy):
     return rows, rows["moduleFamilies"]
 
 
+def violations(rows, pooled, limits):
+    ceiling = limits["wrongAct"]
+    found = set()
+    for name, row in rows.items():
+        if row["others"] < limits["minStratum"] or row["authoredOthers"] < limits["minStratum"]:
+            found.add("thinStratum")
+        if row["wrongActRate"] > ceiling:
+            found.add("wrongActPooled" if name == "moduleFamilies" else "wrongActFamily")
+        if row["authoredWrongActRate"] > ceiling:
+            found.add("nearMiss")
+    if pooled["askRateClear"] > limits["askClear"]:
+        found.add("askClear")
+    if pooled["wrongToolRate"] > limits["wrongTool"]:
+        found.add("wrongTool")
+    return found
+
+
 def within(rows, pooled, limits):
-    if any(r["wrongActRate"] > limits["wrongAct"] or r["authoredWrongActRate"] > limits["wrongAct"]
-           for r in rows.values()):
-        return False
-    return pooled["askRateClear"] <= limits["askClear"] and pooled["wrongToolRate"] <= limits["wrongTool"]
+    return not violations(rows, pooled, limits) - set(limits.get("relax", ()))
 
 
 def summarise_pooled(cases, decisions, policy, limits):
@@ -404,6 +420,42 @@ def price_table(cases, decisions, all_limits, found):
 
 def relaxed_limits(limits):
     return [dict(limits, wrongAct=ceiling) for ceiling in CEILINGS if ceiling > limits["wrongAct"]]
+
+
+def binding_limits(limits):
+    return [dict(limits, relax=(name,)) for name in RELAXATIONS] + [dict(limits, secondSignalOff=True)]
+
+
+def binding_table(cases, decisions, found):
+    names = ("nothing relaxed", *RELAXATIONS, "second signal off")
+    print("\nwhich constraint binds: the best policy with one constraint relaxed at a time (the first row is the gate)")
+    print(f"  {'relaxed':18s}{'cover':>8s}{'act':>8s}{'askClr':>8s}{'prec':>8s}{'wrongA':>8s}{'near-miss':>10s}  policy")
+    rows = []
+    for name, best in zip(names, found):
+        policy = policy_of(best)
+        if policy is None:
+            print(f"  {name:18s}  no policy")
+            rows.append({"relaxed": name, "policy": None, "summary": None})
+            continue
+        summary = summarise(cases, decisions, policy)
+        pooled = summary["moduleFamilies"]
+        print(f"  {name:18s}{pooled['coverage']:8.3f}{pooled['actCoverage']:8.3f}{pooled['askRateClear']:8.3f}"
+              f"{pooled['precision']:8.3f}{pooled['wrongActRate']:8.3%}{pooled['authoredWrongActRate']:10.3%}  "
+              f"ACT >= {policy[0]} ASK >= {policy[1]} margin {policy[2]} now >= {policy[3]}")
+        rows.append({"relaxed": name, "policy": summary["policy"], "summary": summary})
+    return rows
+
+
+def error_free_needed(ceiling, z):
+    return math.ceil(z * z * (1 - ceiling) / ceiling)
+
+
+def certify(readings, ceiling, z):
+    errors = sum(reading["authoredWrongAct"] for reading in readings.values())
+    others = sum(reading["authoredOthers"] for reading in readings.values())
+    upper = wilson(errors, others, z)[1]
+    return {"sets": sorted(readings), "errors": errors, "others": others, "upper": upper, "ceiling": ceiling, "z": z,
+            "errorFreeNeeded": error_free_needed(ceiling, z), "passed": others > 0 and upper <= ceiling}
 
 
 def policy_of(best):
@@ -482,11 +534,20 @@ def print_slices(slices, policy):
                   f"{k['precision']:7.3f}{k['wrongAct']:7d}")
 
 
+def print_reliability(name, reliability):
+    for when in ("before", "after"):
+        print(f"  reliability of {name}, {when} (all pairs, ten equal bins)")
+        print(f"    {'bin':>10s}{'n':>7s}{'mean conf':>11s}{'accuracy':>10s}")
+        for row in reliability[when]:
+            print(f"    {row['low']:4.1f}-{row['high']:4.1f}{row['count']:7d}{row['confidence']:11.3f}{row['accuracy']:10.3f}")
+
+
 def limits_of(gates):
     section = gates.get("decider", {})
     return {"wrongAct": section.get("wrongActMax", gates.get("sealed", {}).get("falseRouteMax", DEFAULT_WRONG_ACT)),
             "askClear": section.get("askRateClearMax", DEFAULT_ASK_CLEAR),
-            "wrongTool": section.get("wrongToolActMax", DEFAULT_WRONG_TOOL)}
+            "wrongTool": section.get("wrongToolActMax", DEFAULT_WRONG_TOOL),
+            "minStratum": section.get("minStratum", DEFAULT_MIN_STRATUM)}
 
 
 def check_gates(gates, summary, limits, label):
@@ -512,6 +573,26 @@ def check_gates(gates, summary, limits, label):
         if "min" in bound and values[name] < bound["min"]:
             failures.append(f"{label} {name}: {values[name]:.4f} below {bound['min']}")
     return failures
+
+
+def certification(gates, report, limits):
+    rule = gates.get("decider", {}).get("certification")
+    if not rule:
+        return []
+    missing = [name for name in rule["pool"] if name not in report]
+    if missing:
+        return [f"certification needs the final read of {', '.join(rule['pool'])}; not read: {', '.join(missing)}"]
+    if limits["wrongAct"] <= 0.0:
+        return ["certification: a ceiling of zero cannot be certified by an upper bound"]
+    result = certify({name: report[name]["moduleFamilies"] for name in rule["pool"]}, limits["wrongAct"], rule["z"])
+    report["certification"] = result
+    print(f"\nCERTIFICATION of the near-miss stratum, pooled over {', '.join(result['sets'])}: {result['errors']} wrong ACT "
+          f"in {result['others']}, Wilson upper bound (z {result['z']}) {result['upper']:.4%} against the ceiling "
+          f"{result['ceiling']:.2%}; error-free near-misses needed at this ceiling: {result['errorFreeNeeded']}")
+    if result["passed"]:
+        return []
+    return [f"certification: the near-miss upper bound {result['upper']:.4%} is above {result['ceiling']:.2%} "
+            f"({result['errors']} errors in {result['others']}; {result['errorFreeNeeded']} error-free needed)"]
 
 
 ROUTE_TOOL = {"memory_save": "memory.remember", "memory_recall": "memory.recall",
@@ -600,7 +681,10 @@ def fit_calibration(cases, decisions):
             if kind in RANK_PRESERVING and rows[kind] < best_ece:
                 best_kind, best_ece = kind, rows[kind]
         out[name] = calibration.fit(pairs, best_kind) if best_kind != "identity" else {"type": "identity"}
-        out["report"][name] = {"pairs": len(pairs), "heldOutEce": rows, "chosen": best_kind}
+        after = [(calibration.apply(out[name], confidence), correct) for confidence, correct in pairs]
+        out["report"][name] = {"pairs": len(pairs), "heldOutEce": rows, "chosen": best_kind,
+                               "reliability": {"before": calibration.reliability(pairs),
+                                               "after": calibration.reliability(after)}}
     return out
 
 
@@ -704,6 +788,7 @@ def main():
             for name, row in fitted["report"].items():
                 print(f"\ncalibration of {name} on {row['pairs']} decisions, held-out expected calibration error: "
                       + ", ".join(f"{k} {v:.4f}" for k, v in row["heldOutEce"].items()) + f" -> {row['chosen']}")
+                print_reliability(name, row["reliability"])
         if args.calibration:
             chosen_decisions = apply_calibration(chosen_decisions, json.loads(pathlib.Path(args.calibration).read_text()))
             print(f"\nconfidences calibrated by {args.calibration}")
@@ -716,10 +801,13 @@ def main():
         else:
             scopes = {"both": (1, 0), "all": (1,), "low-risk-open": (0,)}[args.guard_scope]
             relaxed = relaxed_limits(limits)
-            found = best_per_limit(selection, chosen_decisions, [limits] + relaxed, scopes)
+            priced = [limits] + relaxed
+            searched = best_per_limit(selection, chosen_decisions, priced + binding_limits(limits), scopes)
+            found = searched[:len(priced)]
             per_scope = found[0]
             policy = policy_of(per_scope)
-            report["priceOfCeiling"] = price_table(selection, chosen_decisions, [limits] + relaxed, found)
+            report["priceOfCeiling"] = price_table(selection, chosen_decisions, priced, found)
+            report["binding"] = binding_table(selection, chosen_decisions, [found[0]] + searched[len(priced):])
             if args.guard_scope == "both":
                 for scope, name in ((1, "every write guarded"), (0, "memory writes not guarded")):
                     one = per_scope.get(scope, (None,))[0]
@@ -798,6 +886,8 @@ def main():
                 print_families(section, final)
                 print_bar(gates, section, final)
                 failures += check_gates(gates, final, limits, section)
+            if policy is not None:
+                failures += certification(gates, report, limits)
     finally:
         decider.close()
     report["offeredViolations"] = decider.violations

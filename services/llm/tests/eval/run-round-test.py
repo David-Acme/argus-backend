@@ -8,7 +8,7 @@ import unittest
 HERE = pathlib.Path(__file__).resolve().parent
 RUN = HERE / "run-round.py"
 STUB = HERE / "stub-decider.py"
-GATES = {"decider": {"wrongActMax": 0.0, "metrics": {}}}
+GATES = {"decider": {"wrongActMax": 0.0, "minStratum": 0, "metrics": {}}}
 
 
 def case(identifier, text, tools=None, variant="neutral"):

@@ -1,6 +1,8 @@
+import ast
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import pathlib
 import subprocess
@@ -83,7 +85,7 @@ class SecondSignalTest(unittest.TestCase):
         guarded = harness.summarise(cases, decisions, (0.9, 0.9, 0.0, 0.8))["moduleFamilies"]
         self.assertEqual(guarded["wrongAct"], 0)
         self.assertAlmostEqual(guarded["actCoverage"], 1.0)
-        limits = {"wrongAct": 0.0, "askClear": 0.1, "wrongTool": 0.01}
+        limits = {"wrongAct": 0.0, "askClear": 0.1, "wrongTool": 0.01, "minStratum": 0}
         self.assertEqual(harness.choose_policy(cases, decisions, limits)[3] > 0, True)
 
 
@@ -101,7 +103,7 @@ class GuardScopeTest(unittest.TestCase):
         self.assertAlmostEqual(guarded["actCoverage"], 1.0)
 
     def test_the_policy_search_reports_the_best_policy_of_each_scope(self):
-        limits = {"wrongAct": 0.5, "askClear": 1.0, "wrongTool": 1.0}
+        limits = {"wrongAct": 0.5, "askClear": 1.0, "wrongTool": 1.0, "minStratum": 0}
         best = harness.choose_policies(self.cases, self.decisions, limits, (1, 0))
         self.assertEqual(set(best), {1, 0})
 
@@ -124,6 +126,11 @@ class CalibrationHarnessTest(unittest.TestCase):
         mapped = harness.apply_calibration(decisions, fitted)
         self.assertEqual(len(mapped), len(decisions))
         self.assertNotEqual([m[1] for m in mapped], [d[1] for d in decisions])
+        reliability = fitted["report"]["confidence"]["reliability"]
+        self.assertEqual(sum(r["count"] for r in reliability["before"]), 400)
+        self.assertEqual(sum(r["count"] for r in reliability["after"]), 400)
+        gap = lambda rows: sum(r["count"] * abs(r["confidence"] - r["accuracy"]) for r in rows)
+        self.assertLess(gap(reliability["after"]), gap(reliability["before"]))
 
 
     def test_isotonic_is_reported_but_never_chosen_because_its_plateaus_erase_the_ranking(self):
@@ -190,11 +197,143 @@ class ScoreTest(unittest.TestCase):
         records = [case("n", "una agenda")] + [case(f"r{i}", f"frase {i}", variant="real") for i in range(2000)]
         cases = loaded(records)
         decisions = [("calendar.create_event", 0.95, None, 0.0)] + [(None, 0.0, None, 0.0)] * 2000
-        limits = {"wrongAct": 0.001, "askClear": 0.1, "wrongTool": 0.01}
+        limits = {"wrongAct": 0.001, "askClear": 0.1, "wrongTool": 0.01, "minStratum": 0}
         pooled = harness.summarise(cases, decisions, (0.9, 0.9, 0.0))["moduleFamilies"]
         self.assertLessEqual(pooled["wrongActRate"], limits["wrongAct"])
         self.assertAlmostEqual(pooled["authoredWrongActRate"], 1.0)
         self.assertIsNone(harness.summarise_pooled(cases, decisions, (0.9, 0.9, 0.0), limits))
+
+
+def near_misses(count, confident):
+    cases = loaded([case(f"n{i}", f"una agenda {i}") for i in range(count)])
+    tool = "calendar.create_event"
+    decisions = [(tool, 0.95, None, 0.0)] * confident + [(None, 0.0, None, 0.0)] * (count - confident)
+    return cases, decisions
+
+
+class SearchGridTest(unittest.TestCase):
+    def setUp(self):
+        positives = [case(f"p{i}", f"pon una agenda {i}", ["calendar.create_event"]) for i in range(5)]
+        negatives = [case(f"n{i}", f"ayer agendé {i}") for i in range(5)]
+        self.cases = loaded(positives + negatives)
+        tool = "calendar.create_event"
+        self.decisions = [(tool, 0.86, None, 0.0)] * 5 + [(tool, 0.8, None, 0.0)] * 5
+        self.limits = {"wrongAct": 0.0, "askClear": 0.1, "wrongTool": 0.01, "minStratum": 0}
+
+    def test_the_search_reaches_an_act_between_the_old_hand_picked_values(self):
+        policy = harness.choose_policy(self.cases, self.decisions, self.limits)
+        self.assertGreater(policy[0], 0.8)
+        self.assertLessEqual(policy[0], 0.86)
+        self.assertAlmostEqual(harness.summarise(self.cases, self.decisions, policy)["moduleFamilies"]["coverage"], 1.0)
+
+    def test_every_act_may_have_an_empty_ask_band(self):
+        for guard in (False, True):
+            candidates = {(p[0], p[1]) for p in harness.policies(guard)}
+            self.assertTrue(all((act, act) in candidates for act in harness.SEARCH_ACTS))
+
+    def test_the_search_grid_reaches_the_top_of_a_calibrated_range_and_the_sweep_points(self):
+        self.assertLessEqual(min(harness.SEARCH_ACTS), 0.5)
+        self.assertGreaterEqual(max(harness.SEARCH_ACTS), 0.99)
+        self.assertTrue({0.85, 0.88} <= set(harness.SEARCH_ACTS))
+        steps = [b - a for a, b in zip(harness.SEARCH_ACTS[:-2], harness.SEARCH_ACTS[1:-1])]
+        self.assertLessEqual(max(steps), 0.0101)
+
+
+class ConstraintTest(unittest.TestCase):
+    limits = {"wrongAct": 0.001, "askClear": 0.1, "wrongTool": 0.01, "minStratum": 300}
+
+    def rows_of(self, cases, decisions):
+        return harness.pooled_rows(cases, decisions, (0.9, 0.9, 0.0))
+
+    def test_the_policy_fit_judges_point_rates_and_never_an_upper_bound(self):
+        cases, decisions = near_misses(2522, 0)
+        rows, pooled = self.rows_of(cases, decisions)
+        self.assertGreater(pooled["authoredWrongActUpper"], 0.001)
+        self.assertEqual(pooled["authoredWrongActRate"], 0.0)
+        self.assertTrue(harness.within(rows, pooled, self.limits))
+        self.assertEqual(harness.violations(rows, pooled, self.limits), set())
+
+    def test_no_function_of_the_policy_fit_reads_an_upper_bound(self):
+        tree = ast.parse(HARNESS.read_text())
+        fit = {"policies", "rank_key", "best_per_limit", "choose_policies", "choose_policy", "pooled_rows", "violations",
+               "within", "summarise_pooled", "binding_limits", "relaxed_limits", "tally"}
+        found = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name in fit}
+        self.assertEqual(found, fit)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name in fit:
+                source = ast.get_source_segment(HARNESS.read_text(), node)
+                self.assertNotIn("Upper", source, node.name)
+                self.assertNotIn("wilson", source, node.name)
+
+    def test_the_wilson_bound_is_computed_only_by_the_report_and_the_final_certification(self):
+        tree = ast.parse(HARNESS.read_text())
+        callers = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+                   and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "wilson"
+                           for call in ast.walk(node))}
+        self.assertEqual(callers, {"digest", "certify"})
+
+    def test_the_final_gate_check_reads_point_rates_and_leaves_the_bound_to_the_certification(self):
+        tree = ast.parse(HARNESS.read_text())
+        source = next(ast.get_source_segment(HARNESS.read_text(), n) for n in ast.walk(tree)
+                      if isinstance(n, ast.FunctionDef) and n.name == "check_gates")
+        self.assertNotIn("Upper", source)
+
+    def test_a_stratum_below_the_minimum_cannot_pass_by_having_no_errors(self):
+        cases, decisions = near_misses(50, 0)
+        rows, pooled = self.rows_of(cases, decisions)
+        self.assertEqual(harness.violations(rows, pooled, self.limits), {"thinStratum"})
+        self.assertFalse(harness.within(rows, pooled, self.limits))
+        self.assertTrue(harness.within(rows, pooled, dict(self.limits, minStratum=50)))
+
+    def test_a_thin_stratum_with_an_error_still_fails_at_a_small_minimum(self):
+        cases, decisions = near_misses(50, 1)
+        rows, pooled = self.rows_of(cases, decisions)
+        self.assertIn("nearMiss", harness.violations(rows, pooled, dict(self.limits, minStratum=50)))
+
+    def test_the_repository_gates_keep_the_minimum_stratum_ten_ceilings_deep(self):
+        gates = json.loads((HERE / "gates.json").read_text())["decider"]
+        self.assertGreaterEqual(gates["minStratum"], math.ceil(3 / (10 * gates["wrongActMax"])))
+
+    def test_each_relaxation_names_the_constraint_it_lifts(self):
+        tool = "calendar.create_event"
+        cases = loaded([case(f"p{i}", f"pon una agenda {i}", [tool]) for i in range(4)]
+                       + [case(f"n{i}", f"ayer agendé {i}") for i in range(4)])
+        decisions = [(tool, 0.8, None, 0.0)] * 4 + [(tool, 0.9, None, 0.0)] * 4
+        limits = {"wrongAct": 0.0, "askClear": 0.1, "wrongTool": 0.01, "minStratum": 0}
+        found = harness.best_per_limit(cases, decisions, [limits] + harness.binding_limits(limits))
+        coverage = {name: harness.summarise(cases, decisions, harness.policy_of(best))["moduleFamilies"]["coverage"]
+                    for name, best in zip(("gate", *harness.RELAXATIONS, "secondSignalOff"), found)}
+        self.assertEqual(coverage["gate"], 0.0)
+        self.assertEqual(coverage["askClear"], 1.0)
+        self.assertEqual(coverage["secondSignalOff"], 0.0)
+        self.assertEqual(coverage["nearMiss"], 0.0)
+
+
+class CertificationTest(unittest.TestCase):
+    def test_the_error_free_count_is_the_smallest_stratum_whose_upper_bound_meets_the_ceiling(self):
+        for ceiling, z in ((0.001, 1.96), (0.001, 1.645), (0.005, 1.96)):
+            needed = harness.error_free_needed(ceiling, z)
+            self.assertLessEqual(harness.wilson(0, needed, z)[1], ceiling)
+            self.assertGreater(harness.wilson(0, needed - 1, z)[1], ceiling)
+
+    def test_the_pooled_near_misses_of_both_sealed_sets_fall_short_at_two_sided_95(self):
+        short = {"authoredWrongAct": 0, "authoredOthers": 3674}
+        result = harness.certify({"sealed": short}, 0.001, 1.96)
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["errorFreeNeeded"], 3838)
+        self.assertTrue(harness.certify({"sealed": short}, 0.001, 1.645)["passed"])
+
+    def test_the_readings_are_pooled_before_the_bound_is_taken(self):
+        half = {"authoredWrongAct": 0, "authoredOthers": 2000}
+        self.assertFalse(harness.certify({"sealed": half}, 0.001, 1.96)["passed"])
+        self.assertTrue(harness.certify({"sealed": half, "sealed2": half}, 0.001, 1.96)["passed"])
+
+    def test_one_error_in_a_pool_of_thousands_fails_the_ceiling(self):
+        reading = {"authoredWrongAct": 1, "authoredOthers": 5000}
+        self.assertFalse(harness.certify({"sealed": reading}, 0.001, 1.96)["passed"])
+
+    def test_an_empty_pool_is_never_certified(self):
+        self.assertFalse(harness.certify({"sealed": {"authoredWrongAct": 0, "authoredOthers": 0}}, 0.001, 1.96)["passed"])
 
 
 class CacheTest(unittest.TestCase):
@@ -255,7 +394,7 @@ class RunTest(unittest.TestCase):
     def write_gates(self, digest, ceiling, metrics=None):
         self.gates.write_text(json.dumps({
             "sealed": {"file": "sealed.jsonl", "sha256": digest},
-            "decider": {"wrongActMax": ceiling, "metrics": metrics or {}}}))
+            "decider": {"wrongActMax": ceiling, "minStratum": 0, "metrics": metrics or {}}}))
 
     def run_harness(self, *extra):
         report = self.directory / "report.json"
@@ -269,7 +408,8 @@ class RunTest(unittest.TestCase):
     def test_the_policy_is_the_one_with_the_most_coverage_and_no_wrong_act(self):
         result, data = self.run_harness()
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertEqual(data["policy"]["act"], 0.6)
+        self.assertEqual(data["policy"]["act"], 0.56)
+        self.assertAlmostEqual(data["selection"]["moduleFamilies"]["coverage"], 1.0)
         self.assertTrue(data["selectionPassed"])
         self.assertEqual(data["selection"]["moduleFamilies"]["wrongAct"], 0)
 
@@ -326,7 +466,7 @@ class RunTest(unittest.TestCase):
     def test_the_gate_obeying_baseline_is_printed_beside_the_bar(self):
         self.gates.write_text(json.dumps({
             "sealed": {"file": "sealed.jsonl", "sha256": hashlib.sha256(self.sealed.read_bytes()).hexdigest()},
-            "decider": {"wrongActMax": 0.0, "metrics": {"moduleFamilies.coverage": {"min": 0.456}},
+            "decider": {"wrongActMax": 0.0, "minStratum": 0, "metrics": {"moduleFamilies.coverage": {"min": 0.456}},
                         "gateObeyingFastText": {
                             "selection": {"coverage": 0.154, "label": "at the 0.1% ceiling after calibration"},
                             "sealed": {"coverage": 0.101, "label": "at confidence >= 0.995 under the older 0.5% gate"}}}}))
@@ -364,10 +504,60 @@ class RunTest(unittest.TestCase):
         self.gates.write_text(json.dumps({
             "sealed": {"file": "sealed.jsonl", "sha256": hashlib.sha256(self.sealed.read_bytes()).hexdigest()},
             "sealed2": {"file": "sealed2.jsonl", "sha256": "0" * 64},
-            "decider": {"wrongActMax": 0.0}}))
+            "decider": {"wrongActMax": 0.0, "minStratum": 0}}))
         result, _ = self.run_harness("--final", "--sealed", str(self.sealed), "--sealed2", str(second))
         self.assertEqual(result.returncode, 1)
         self.assertIn("the sealed2 set changed", result.stdout)
+
+    def pooled_gates(self, second, z, pool=("sealed", "sealed2")):
+        self.gates.write_text(json.dumps({
+            "sealed": {"file": "sealed.jsonl", "sha256": hashlib.sha256(self.sealed.read_bytes()).hexdigest()},
+            "sealed2": {"file": "sealed2.jsonl", "sha256": hashlib.sha256(second.read_bytes()).hexdigest()},
+            "decider": {"wrongActMax": 0.001, "minStratum": 0, "certification": {"z": z, "pool": list(pool)}}}))
+
+    def second_set(self):
+        second = self.directory / "sealed2.jsonl"
+        write(second, [case("t1", "agenda para el jueves", ["calendar.create_event"]), case("t2", "dudoso otra vez")])
+        return second
+
+    def test_the_binding_table_is_printed_and_reported_row_by_row(self):
+        result, data = self.run_harness()
+        self.assertIn("which constraint binds", result.stdout)
+        self.assertEqual([row["relaxed"] for row in data["binding"]],
+                         ["nothing relaxed", *harness.RELAXATIONS, "second signal off"])
+        self.assertEqual(data["binding"][0]["policy"], data["policy"])
+
+    def test_the_final_read_certifies_the_pooled_near_misses_with_the_wilson_bound(self):
+        second = self.second_set()
+        self.pooled_gates(second, 0.01)
+        result, data = self.run_harness("--final", "--sealed", str(self.sealed), "--sealed2", str(second))
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("CERTIFICATION", result.stdout)
+        self.assertEqual(data["certification"]["sets"], ["sealed", "sealed2"])
+        self.assertEqual(data["certification"]["errors"], 0)
+        self.assertTrue(data["certification"]["passed"])
+
+    def test_the_final_read_refuses_a_certification_the_pooled_count_cannot_reach(self):
+        second = self.second_set()
+        self.pooled_gates(second, 1.96)
+        result, data = self.run_harness("--final", "--sealed", str(self.sealed), "--sealed2", str(second))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("certification: the near-miss upper bound", result.stdout)
+        self.assertIn("error-free needed", result.stdout)
+        self.assertFalse(data["certification"]["passed"])
+
+    def test_a_certification_needs_every_set_it_pools_to_have_been_read(self):
+        second = self.second_set()
+        self.pooled_gates(second, 0.01)
+        result, _ = self.run_harness("--final", "--sealed", str(self.sealed))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("not read: sealed2", result.stdout)
+
+    def test_the_selection_fit_does_not_wait_for_the_certification_bound(self):
+        self.pooled_gates(self.second_set(), 1.96)
+        result, data = self.run_harness()
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertTrue(data["selectionPassed"])
 
     def test_a_missing_decider_is_a_visible_skip(self):
         result = subprocess.run(

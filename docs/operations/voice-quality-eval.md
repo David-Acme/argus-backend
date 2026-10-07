@@ -114,10 +114,25 @@ calendar.list_events, task.list, project.list, modules.list/explain, reminder.li
 app.open and app.show_camera; app.set_guard_mode changes the house's security state and is a write)
 ACTs only when the second signal `now` also passes `nowMin`, otherwise it is an ASK. The policy
 (`act`, `ask`, `margin`, `nowMin`) is chosen on the selection sets as the one with the most coverage
-(a correct ACT, or an ASK that names the right tool, over the clear commands) such that the wrong-ACT rate
-on the negatives is at or below `decider.wrongActMax` (0.1%) pooled, per family and on the authored
-near-miss stratum, at most `askRateClearMax` (10%) of the clear commands are asked about and at most 1%
-are acted on with the wrong tool. Ambiguous cases (`expect.ambiguous.tools`) are scored apart: asking is
+(a correct ACT, or an ASK that names the right tool, over the clear commands) such that the wrong-ACT
+rate on the negatives, the point estimate and never an upper bound, is at or below `decider.wrongActMax`
+(0.1%) pooled, per family and on the authored near-miss stratum, at most `askRateClearMax` (10%) of the
+clear commands are asked about and at most 1% are acted on with the wrong tool. A stratum with fewer
+than `decider.minStratum` (300) negatives cannot pass by having no errors, it is unmeasured and no
+policy is feasible while one exists: 300 is 3 / (10 x 0.1%), the size at which zero errors rule out, at
+95% (the rule of three), a true wrong-ACT rate ten times the ceiling; `decider-eval-test.py` ties the
+number to the ceiling. Every stratum of the round-1 selection set is at least 2,522 deep, so the floor
+does not bind there.
+
+The search walks every ACT from 0.50 to 0.99 in steps of 0.01 (and 0.995), and under each ACT every
+ASK threshold of a short list below it plus the empty band (ASK equal to ACT), every margin and every
+`nowMin` of 0, 0.5, 0.7, 0.8 and 0.9. The first version walked eight hand-picked ACT values
+(0.7, 0.8, 0.9, 0.93 and up) and ASK values that were never equal to an ACT below 0.93; the calibrated
+confidence of round 1 tops out at 0.92, so every ACT from 0.93 up fired nothing, 0.9 asked about too many
+clear commands through its band, and the one feasible policy the grid held was the one that does nothing
+(coverage 0.000 at every ceiling). The grid, not the ceilings, was the constraint that bound
+(`--report` carries a `binding` table, and every round report prints it: the best policy with each
+constraint lifted in turn, and with the second signal off). Ambiguous cases (`expect.ambiguous.tools`) are scored apart: asking is
 right, acting is wrong. `--final` then reads the sealed set and SEALED-2, each pinned by sha256, at that
 policy and prints each sealed sweep as information only; `--errors` writes the selection-set errors
 (never the sealed ones) for `intent-training/scripts/error_analysis.py`.
@@ -126,8 +141,18 @@ What is counted, per family (calendar, task, project, modules, reminder list, me
 *coverage*, *precision* of the ACTs and the *wrong-ACT rate*: a negative, or a positive of another family,
 acted on with that family's tools. A pooled rate over easy real utterances is diluted, which is why the
 authored near-miss stratum is gated on its own: a router that sends 2.3% of the near-misses to a
-calendar tool still shows 0.49% pooled. 0.1% cannot be certified on 363 near-misses (zero errors still
-leaves a Wilson upper bound of about 1%); 3,311 of SEALED-2 give 0.12%.
+calendar tool still shows 0.49% pooled.
+
+Fitting is not certifying. The policy fit judges point rates on the selection set, so its answer does not
+depend on how many near-misses the set holds. The Wilson upper bound is taken once, at the final read, over
+the near-miss stratum pooled across the sealed set and SEALED-2 (`decider.certification` in `gates.json`:
+`z` 1.96 and the two sets to pool), and `--final` fails when the pooled bound is above the ceiling or when a
+set of the pool was not read. 0.1% cannot be certified on 363 near-misses (zero errors still leave an upper
+bound of about 1%); 3,311 of SEALED-2 give 0.12%; the 3,674 near-miss negatives of both give 0.1045%, still
+above 0.1%: at `z` 1.96 the ceiling needs 3,838 error-free near-misses (2,704 at a one-sided 95%, `z` 1.645),
+and one error anywhere in the pool fails it. The harness pools the stratum it counts, which also holds the
+authored positives of the families outside the modules, and prints the count it needs beside the count it
+has.
 
 Baseline: the fastText classifier with twenty classes (the six of the memory router plus fourteen
 for the module families, `intent-training` `CONTEXT.md`), adapter `scripts/decider_fasttext.py`,

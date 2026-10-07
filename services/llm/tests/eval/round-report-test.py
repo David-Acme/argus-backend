@@ -50,6 +50,29 @@ class RoundReportTest(unittest.TestCase):
         return subprocess.run([sys.executable, "-I", str(REPORT), *[a for r in rounds for a in ("--round", r)], *extra],
                               capture_output=True, text=True, timeout=60)
 
+    def test_the_constraint_that_binds_and_the_reliability_of_each_output_are_tabulated(self):
+        rows = [{"ceiling": 0.001, "policy": {}, "summary": summary(0.62)}]
+        name = self.write_round("joint", rows, True)
+        path = self.directory / "joint"
+        data = json.loads((path / "calibrated.json").read_text())
+        data["binding"] = [{"relaxed": "nothing relaxed", "policy": summary(0.62)["policy"], "summary": summary(0.62)},
+                           {"relaxed": "askClear", "policy": summary(0.9)["policy"], "summary": summary(0.9)},
+                           {"relaxed": "nearMiss", "policy": None, "summary": None}]
+        (path / "calibrated.json").write_text(json.dumps(data))
+        bins = [{"low": 0.0, "high": 0.1, "count": 40, "confidence": 0.04, "accuracy": 0.02},
+                {"low": 0.8, "high": 0.9, "count": 25, "confidence": 0.85, "accuracy": 0.97}]
+        later = [{"low": 0.0, "high": 0.1, "count": 40, "confidence": 0.03, "accuracy": 0.02}]
+        (path / "calibration.json").write_text(json.dumps({"report": {"now": {
+            "pairs": 65, "chosen": "platt", "heldOutEce": {"before": 0.1, "temperature": 0.11, "platt": 0.02, "isotonic": 0.01},
+            "reliability": {"before": bins, "after": later}}}}))
+        result = self.run_report(name)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("### Which constraint binds, joint", result.stdout)
+        self.assertIn("| askClear | 0.900 |", result.stdout)
+        self.assertIn("| nearMiss | no policy |", result.stdout)
+        self.assertIn("#### Reliability of now", result.stdout)
+        self.assertIn("| 0.8-0.9 | 25 | 0.850 | 0.970 |  |  |  |", result.stdout)
+
     def test_a_round_that_meets_the_gate_is_reported_as_the_gate(self):
         rows = [{"ceiling": 0.001, "policy": {}, "summary": summary(0.62)},
                 {"ceiling": 0.01, "policy": {}, "summary": summary(0.7)}]

@@ -78,9 +78,9 @@ def decider_section(name, report, ceiling, baseline, beside):
             f"Selection cases {summary['cases']}; coverage {pooled['coverage']:.3f} (bar {baseline}; {beside}), ACT coverage "
             f"{pooled['actCoverage']:.3f}, precision {pooled['precision']:.3f}, ASK on clear commands "
             f"{pooled['askRateClear']:.3f}, wrong ACT {pooled['wrongAct']} of {pooled['others']} "
-            f"({percent(pooled['wrongActRate'])}, upper 95% {percent(pooled['wrongActUpper'])}), near-miss stratum "
+            f"({percent(pooled['wrongActRate'])}, upper 95% {percent(pooled['wrongActUpper'])}, information), near-miss stratum "
             f"{percent(pooled['authoredWrongActRate'])} of {pooled['authoredOthers']} (upper 95% "
-            f"{percent(pooled['authoredWrongActUpper'])}), wrong tool {percent(pooled['wrongToolRate'])}.", ""]
+            f"{percent(pooled['authoredWrongActUpper'])}, information), wrong tool {percent(pooled['wrongToolRate'])}.", ""]
     latency = report.get("latencyMs")
     if latency:
         out += [f"Decision latency over {latency['n']} sequential requests: p50 {latency['p50']:.1f} ms, p95 "
@@ -109,6 +109,24 @@ def price_section(name, report):
     return out + [""]
 
 
+def binding_section(name, report):
+    rows = report.get("binding")
+    if not rows:
+        return []
+    out = [f"### Which constraint binds, {name}", "",
+           "| relaxed | coverage | ACT | ASK on clear | precision | wrong ACT | near-miss | policy |", "|---|---|---|---|---|---|---|---|"]
+    for row in rows:
+        if row["summary"] is None:
+            out.append(f"| {row['relaxed']} | no policy | | | | | | |")
+            continue
+        pooled, policy = row["summary"]["moduleFamilies"], row["policy"]
+        out.append(f"| {row['relaxed']} | {pooled['coverage']:.3f} | {pooled['actCoverage']:.3f} | {pooled['askRateClear']:.3f} | "
+                   f"{pooled['precision']:.3f} | {percent(pooled['wrongActRate'])} | {percent(pooled['authoredWrongActRate'])} | "
+                   f"ACT >= {policy['act']}, ASK >= {policy['ask']}, margin {policy['margin']}, now >= {policy['now']} |")
+    return out + ["", "Each row is the best policy with that one constraint lifted and the others kept; the first row is the gate. "
+                  "The policy fit judges point rates against the ceilings; a Wilson bound is taken only at the final read.", ""]
+
+
 def slices_section(name, report):
     slices = report.get("slices")
     if not slices:
@@ -134,7 +152,22 @@ def calibration_section(name, calibration):
         ece = row["heldOutEce"]
         out.append(f"| {output} | {row['pairs']} | {ece['before']:.4f} | {ece['temperature']:.4f} | {ece['platt']:.4f} | "
                    f"{ece['isotonic']:.4f} | {row['chosen']} |")
-    return out + ["", "The numbers are the expected calibration error on the held-out half of the selection pairs.", ""]
+    out += ["", "The numbers are the expected calibration error on the held-out half of the selection pairs.", ""]
+    for output, row in calibration["report"].items():
+        reliability = row.get("reliability")
+        if not reliability:
+            continue
+        out += [f"#### Reliability of {output}", "", "| bin | n before | confidence before | accuracy before | n after | "
+                "confidence after | accuracy after |", "|---|---|---|---|---|---|---|"]
+        after = {r["low"]: r for r in reliability["after"]}
+        for before in reliability["before"]:
+            later = after.get(before["low"])
+            cells = ("", "", "") if later is None else (later["count"], f"{later['confidence']:.3f}", f"{later['accuracy']:.3f}")
+            out.append(f"| {before['low']:.1f}-{before['high']:.1f} | {before['count']} | {before['confidence']:.3f} | "
+                       f"{before['accuracy']:.3f} | " + " | ".join(str(c) for c in cells) + " |")
+        out.append("")
+    return out + ["Bins are ten equal widths over all the pairs; the same pairs the fit saw, so the table shows the shape and "
+                  "the held-out error above is the honest number.", ""]
 
 
 def traffic_section(name, report):
@@ -195,6 +228,7 @@ def main():
         body, _ = decider_section(name, report, args.ceiling, args.baseline, beside_text(args.gates))
         sections += body
         sections += price_section(name, report)
+        sections += binding_section(name, report)
         sections += slices_section(name, report)
         sections += calibration_section(name, load(pathlib.Path(directory) / "calibration.json"))
         sections += traffic_section(name, report)
