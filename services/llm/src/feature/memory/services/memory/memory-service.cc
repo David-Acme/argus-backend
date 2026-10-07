@@ -1224,30 +1224,37 @@ MemoryService::scheduleReminder(const ReminderCallInput& input) const
     return std::nullopt;
   const auto now = static_cast<int64_t>(std::time(nullptr));
   const std::string& utterance = call.context.utterance.empty() ? input.text : call.context.utterance;
-  const auto when = call_time::resolve({.text = utterance, .lang = call.context.lang, .now = now});
-  if (!when)
+  std::optional<int64_t> fireAt = call.context.heardAt;
+  if (!fireAt) {
+    if (const auto when = call_time::resolve({.text = utterance, .lang = call.context.lang, .now = now}))
+      fireAt = when->fireAt;
+  }
+  if (!fireAt)
     return std::nullopt;
   std::string topic = input.text;
-  if (const auto inText = call_time::resolve({.text = input.text, .lang = call.context.lang, .now = now}))
-    topic = call_time::withoutPhrase(input.text, *inText);
+  const CallReading inText = call_time::read({.text = input.text, .lang = call.context.lang, .now = now});
+  if (inText.time)
+    topic = call_time::withoutPhrase(input.text, *inText.time);
+  else if (inText.conflict)
+    topic = call_time::withoutPhrase(input.text, {.fireAt = 0, .phraseBegin = inText.conflict->phraseBegin, .phraseEnd = inText.conflict->phraseEnd});
   if (topic.empty())
     topic = input.text;
   const std::string commandId =
-      "memory-remind:" + std::to_string(input.factId) + ":" + std::to_string(when->fireAt);
+      "memory-remind:" + std::to_string(input.factId) + ":" + std::to_string(*fireAt);
   ReminderScheduled scheduled;
+  scheduled.fireAt = *fireAt;
   scheduled.called = reminderCalls_ && reminderCalls_->schedule({.userId = call.context.userId,
-                                                                 .fireAt = when->fireAt,
+                                                                 .fireAt = *fireAt,
                                                                  .topic = topic,
                                                                  .lang = call.context.lang,
                                                                  .commandId = commandId});
   scheduled.listed = reminderRows_ && reminderRows_->create({.userId = call.context.userId,
                                                              .role = userRoleToString(call.context.role),
                                                              .title = topic,
-                                                             .scheduledAt = when->fireAt,
+                                                             .scheduledAt = *fireAt,
                                                              .commandId = commandId});
   if (!scheduled.called && !scheduled.listed)
     return std::nullopt;
-  scheduled.fireAt = when->fireAt;
   return scheduled;
 }
 

@@ -9,6 +9,7 @@
 #include <feature/llm/services/tools/spoken-intent.hxx>
 #include <feature/llm/services/turn/tool-effects.hxx>
 
+#include <text/iso-time.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
@@ -30,6 +31,8 @@ constexpr std::string_view kProjectAmbiguous = "ambiguous_project";
 constexpr std::string_view kProjectUnknown = "unknown_project";
 constexpr std::string_view kNoProjects = "no_projects";
 constexpr std::string_view kCreateProjectTool = "project.create";
+constexpr std::string_view kRemindTool = "memory.remind";
+constexpr std::string_view kHeardField = "when";
 
 const tools::ToolDescriptor* handleOf(const std::vector<tools::ToolHandle>& offered, std::string_view name)
 {
@@ -196,6 +199,7 @@ struct TurnFlow::Move
   int attempts{0};
   bool answering{false};
   std::string utterance{};
+  std::optional<int64_t> heardAt{};
 };
 
 TurnFlow::TurnFlow(FlowDeps deps)
@@ -228,8 +232,10 @@ Outcome TurnFlow::unactionable(const TurnRequest& request) const
 void TurnFlow::execute(const TurnRequest& request, tools::ToolCall call, Outcome& outcome)
 {
   const std::string spoken = call.context.utterance.empty() ? std::string(request.utterance) : call.context.utterance;
+  const std::optional<int64_t> heard = call.context.heardAt;
   call.context = request.context;
   call.context.utterance = spoken;
+  call.context.heardAt = heard;
   call.context.decided = true;
   const auto started = std::chrono::steady_clock::now();
   tools::ToolResult result = executor_.execute(call, request.audience);
@@ -278,6 +284,10 @@ Outcome TurnFlow::proceed(const Move& move)
 
   tools::ToolCall call{.name = move.candidate.tool, .arguments = move.candidate.arguments, .context = request.context};
   call.context.utterance = move.utterance.empty() ? std::string(request.utterance) : move.utterance;
+  call.context.heardAt = move.heardAt;
+  if (!move.answering && !move.heardAt && move.candidate.tool == kRemindTool)
+    if (const auto conflict = slots::dayConflict({.utterance = call.context.utterance, .lang = request.context.lang, .now = request.now}))
+      return askDay(move, move.candidate, {.field = std::string(kHeardField), .conflict = *conflict});
   const std::vector<std::string> fields =
       move.answering ? std::vector<std::string>{move.slot} : missingFields(tool->spec, move.candidate, move.candidate.arguments);
   const slots::Filled filled = slots::fill({.spec = tool->spec,
@@ -290,6 +300,8 @@ Outcome TurnFlow::proceed(const Move& move)
                                             .answering = move.answering});
   Candidate next = move.candidate;
   next.arguments = filled.arguments;
+  if (filled.dispute)
+    return askDay(move, next, *filled.dispute);
   if (!filled.missing.empty())
     return ask({.request = request, .candidate = std::move(next), .slot = filled.missing.front(), .attempts = move.attempts + 1, .answering = false});
   if (move.answering)
@@ -334,6 +346,67 @@ Outcome TurnFlow::projectRefusal(const TurnRequest& request, const Candidate& ca
                    .held = std::nullopt});
   outcome.question = listed ? turn_texts::projectQuestion({.options = options, .lang = lang}) : turn_texts::newProjectQuestion(lang, true);
   return outcome;
+}
+
+Outcome TurnFlow::askDay(const Move& move, const Candidate& candidate, const slots::Dispute& dispute)
+{
+  const TurnRequest& request = move.request;
+  Outcome outcome;
+  outcome.source = candidate.source;
+  const std::string_view lang = request.context.lang;
+  const int attempts = move.attempts + 1;
+  if (attempts > kMaxAttempts) {
+    outcome.question = turn_texts::misunderstood(lang);
+    return outcome;
+  }
+  if (request.context.userId > 0)
+    pendings_.put(request.context.userId,
+                  {.awaiting = Awaiting::Day,
+                   .candidate = candidate,
+                   .alternative = std::nullopt,
+                   .slot = dispute.field,
+                   .utterance = move.utterance.empty() ? std::string(request.utterance) : move.utterance,
+                   .attempts = attempts,
+                   .at = {},
+                   .options = {},
+                   .held = std::nullopt,
+                   .values = {iso_time::format(dispute.conflict.byWeekday), iso_time::format(dispute.conflict.byDate)}});
+  outcome.question = turn_texts::dayQuestion(
+      {.first = dispute.conflict.byWeekday, .second = dispute.conflict.byDate, .now = request.now, .lang = lang});
+  return outcome;
+}
+
+std::optional<Outcome> TurnFlow::followUpDay(const TurnRequest& request, const Deciding& deciding, const Pending& pending)
+{
+  const int64_t userId = request.context.userId;
+  pendings_.forget(userId);
+  if (supersedes(deciding)) {
+    clearAll(userId);
+    return std::nullopt;
+  }
+  if (declining(request.utterance)) {
+    clearAll(userId);
+    return declined();
+  }
+  const auto picked = slots::chooseDay(request.utterance, pending.values);
+  if (!picked) {
+    const Move again{.request = request, .candidate = pending.candidate, .slot = pending.slot, .attempts = pending.attempts, .answering = false, .utterance = pending.utterance};
+    const auto at = [&pending](std::size_t index) { return iso_time::parse(pending.values.at(index)).value_or(0); };
+    return askDay(again, pending.candidate, {.field = pending.slot, .conflict = {.byWeekday = at(0), .byDate = at(1), .phraseBegin = 0, .phraseEnd = 0}});
+  }
+  Candidate next = pending.candidate;
+  std::optional<int64_t> heard;
+  if (pending.slot == kHeardField)
+    heard = iso_time::parse(pending.values.at(*picked));
+  else
+    next.arguments[pending.slot] = pending.values.at(*picked);
+  return proceed({.request = request,
+                  .candidate = std::move(next),
+                  .slot = {},
+                  .attempts = 0,
+                  .answering = false,
+                  .utterance = pending.utterance,
+                  .heardAt = heard});
 }
 
 Outcome TurnFlow::askProjectAgain(const TurnRequest& request, const Pending& pending)
@@ -587,6 +660,8 @@ std::optional<Outcome> TurnFlow::followUpOwn(const TurnRequest& request, const D
   const int64_t userId = request.context.userId;
   if (pending.awaiting == Awaiting::Project || pending.awaiting == Awaiting::NewProject)
     return followUpProject(request, deciding, pending);
+  if (pending.awaiting == Awaiting::Day)
+    return followUpDay(request, deciding, pending);
   if (pending.awaiting == Awaiting::Choice) {
     pendings_.forget(userId);
     if (pending.alternative && slots::namesOther(request.utterance))

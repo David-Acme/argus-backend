@@ -245,6 +245,16 @@ std::string confirmQuestion(const ConfirmQuestion& question)
   return std::string(pick(kGenericConfirm, question.lang));
 }
 
+std::string dayQuestion(const DayQuestion& question)
+{
+  const auto named = [&question](int64_t epoch) {
+    return spoken_time::weekdayDate({.epoch = epoch, .now = question.now, .lang = question.lang});
+  };
+  if (question.lang == "en")
+    return "Do you mean " + named(question.first) + " or " + named(question.second) + "?";
+  return "¿El " + named(question.first) + " o el " + named(question.second) + "?";
+}
+
 std::string projectQuestion(const ProjectQuestion& question)
 {
   return std::string(pick(kWhichProject, question.lang)) + listed(question.options, question.lang) + ".";

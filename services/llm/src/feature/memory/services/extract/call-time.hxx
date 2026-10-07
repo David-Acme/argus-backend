@@ -24,6 +24,8 @@ struct DayConflict
 {
   int64_t byWeekday{0};
   int64_t byDate{0};
+  std::size_t phraseBegin{0};
+  std::size_t phraseEnd{0};
 };
 
 struct CallReading

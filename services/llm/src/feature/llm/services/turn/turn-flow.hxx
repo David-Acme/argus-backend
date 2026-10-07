@@ -119,6 +119,8 @@ private:
   [[nodiscard]] bool supersedes(const Deciding& deciding) const;
   [[nodiscard]] std::optional<Outcome> followUpProject(const TurnRequest& request, const Deciding& deciding, const Pending& pending);
   [[nodiscard]] Outcome projectRefusal(const TurnRequest& request, const Candidate& candidate, Outcome outcome);
+  [[nodiscard]] std::optional<Outcome> followUpDay(const TurnRequest& request, const Deciding& deciding, const Pending& pending);
+  [[nodiscard]] Outcome askDay(const Move& move, const Candidate& candidate, const slots::Dispute& dispute);
   [[nodiscard]] Outcome askProjectAgain(const TurnRequest& request, const Pending& pending);
   [[nodiscard]] Outcome offerProject(const TurnRequest& request, const Pending& pending, const std::string& name);
   [[nodiscard]] Outcome confirmed(const TurnRequest& request, const Pending& pending);

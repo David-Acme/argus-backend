@@ -1180,6 +1180,21 @@ before the rules it was 21:00 today); "next friday" is the coming Friday; a
 weekday that disagrees with "hoy" or "mañana" resolves nothing and asks
 nothing; a year in the text is not read.
 
+A weekday that disagrees with the day of the month is a clarifying question,
+never a guess. `slots::fill` (for a date-time slot) and the turn before
+`memory.remind` runs ask `call_time::read` for a `DayConflict`; the turn then
+says "¿El lunes 12 o el viernes 9?" / "Do you mean Monday the 12th or Friday
+the 9th?" (the weekday's nearest occurrence first, then the number with its
+real weekday) and keeps a pending (`Awaiting::Day`, the two candidate instants
+as ISO in `Pending.values`, the original words for grounding). The answer is
+read for that question only (`slots::chooseDay`: a weekday name, a day number
+or "el primero/segundo", "first/second"); a date-time slot takes the chosen ISO
+and the call goes on with the other slots read again from the original words,
+while `memory.remind`, whose time is its user's words, is run with
+`ToolContext::heardAt` set to the chosen instant, which `scheduleReminder`
+prefers over resolving the words. An answer that names neither is asked once
+more and then given up; a new command or a no replaces the question.
+
 Every created event and reminder is read back with the day and the time it
 resolved to, in words, from the tool's own result and not from the model:
 `calendar.create_event` says "Agendado: «Reunión con Pedro», el jueves 8 a las

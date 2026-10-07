@@ -660,7 +660,7 @@ DayConflict conflictOf(const Disagreement& input)
   Civil day = shifted(input.date, forward <= backward ? forward : -backward);
   if (instantOf(day, input.clock) <= input.now)
     day = shifted(day, kWeekDays);
-  return {.byWeekday = instantOf(day, input.clock), .byDate = instantOf(input.date, input.clock)};
+  return {.byWeekday = instantOf(day, input.clock), .byDate = instantOf(input.date, input.clock), .phraseBegin = 0, .phraseEnd = 0};
 }
 
 Resolved instantFor(const Parsed& parsed, ClockReading clock, int64_t now)
@@ -723,7 +723,10 @@ CallReading read(const CallTimeInput& input)
   if (result.conflict) {
     if (std::max(result.conflict->byWeekday, result.conflict->byDate) > limit)
       return {};
-    return {.time = std::nullopt, .conflict = result.conflict};
+    DayConflict conflict = *result.conflict;
+    conflict.phraseBegin = folded.origin[tokens[parsed.first].begin];
+    conflict.phraseEnd = folded.origin[tokens[parsed.last].end];
+    return {.time = std::nullopt, .conflict = conflict};
   }
   if (!result.fireAt || *result.fireAt > limit)
     return {};

@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <ctime>
 #include <deque>
 #include <optional>
@@ -1720,6 +1721,165 @@ TEST_CASE("a provider that names no projects leaves its own refusal to be said, 
   REQUIRE(outcome.findings.size() == 1);
   CHECK(outcome.findings.front().kind == turn::FindingKind::Refused);
   CHECK(world.say("el de la casa").steps.empty());
+}
+
+namespace
+{
+class UtcZone
+{
+public:
+  UtcZone()
+  {
+    if (const char* zone = std::getenv("TZ"))
+      previous_ = zone;
+    setenv("TZ", "UTC", 1);
+    tzset();
+  }
+
+  UtcZone(const UtcZone&) = delete;
+  UtcZone& operator=(const UtcZone&) = delete;
+
+  ~UtcZone()
+  {
+    if (previous_)
+      setenv("TZ", previous_->c_str(), 1);
+    else
+      unsetenv("TZ");
+    tzset();
+  }
+
+private:
+  std::optional<std::string> previous_;
+};
+
+}
+
+TEST_CASE("a weekday that disagrees with the day of the month is a question naming both days, and the answer completes the call")
+{
+  const UtcZone zone;
+  World world;
+  world.now = at({.day = 7, .hour = 15, .minute = 20});
+  const auto first = world.say("agenda una reunión con Andrea el lunes 9 a las 5");
+  CHECK(said(first) == "¿El lunes 12 o el viernes 9?");
+  CHECK(world.ran.empty());
+  CHECK_FALSE(first.wrote);
+  const auto second = world.say("el lunes");
+  REQUIRE(world.ran.size() == 1);
+  CHECK(world.ran.front().arguments["title"].asString() == "Reunión con Andrea");
+  CHECK(world.ran.front().arguments["starts_at"].asString() == "2026-10-12T17:00:00+00:00");
+  CHECK(second.wrote);
+  CHECK_FALSE(second.question.has_value());
+
+  World byDate;
+  byDate.now = at({.day = 7, .hour = 15, .minute = 20});
+  REQUIRE(byDate.say("agenda una reunión con Andrea el lunes 9 a las 5").question.has_value());
+  byDate.say("el 9");
+  REQUIRE(byDate.ran.size() == 1);
+  CHECK(byDate.ran.front().arguments["starts_at"].asString() == "2026-10-09T17:00:00+00:00");
+
+  World ordinal;
+  ordinal.now = at({.day = 7, .hour = 15, .minute = 20});
+  REQUIRE(ordinal.say("agenda una reunión con Andrea el lunes 9 a las 5").question.has_value());
+  ordinal.say("el segundo");
+  REQUIRE(ordinal.ran.size() == 1);
+  CHECK(ordinal.ran.front().arguments["starts_at"].asString() == "2026-10-09T17:00:00+00:00");
+
+  World agreeing;
+  agreeing.now = at({.day = 7, .hour = 15, .minute = 20});
+  const auto direct = agreeing.say("agenda una reunión con Andrea el viernes 9 a las 5");
+  CHECK_FALSE(direct.question.has_value());
+  REQUIRE(agreeing.ran.size() == 1);
+  CHECK(agreeing.ran.front().arguments["starts_at"].asString() == "2026-10-09T17:00:00+00:00");
+}
+
+TEST_CASE("the day question is asked and answered in English, asked again once, and a new command replaces it")
+{
+  const UtcZone zone;
+  World world;
+  world.now = at({.day = 7, .hour = 15, .minute = 20});
+  world.context.lang = "en";
+  world.flow.useDecider(world.scripted);
+  turn::Candidate meeting = candidate("calendar.create_event", 0.95);
+  meeting.fill = {"title", "starts_at"};
+  world.scripted.next = meeting;
+  CHECK(said(world.say("schedule a meeting with Andrea on Monday the 9th at 5 pm")) == "Do you mean Monday the 12th or Friday the 9th?");
+  world.scripted.next.reset();
+  CHECK(said(world.say("hmm")) == "Do you mean Monday the 12th or Friday the 9th?");
+  CHECK(said(world.say("hmm")) == turn_texts::misunderstood("en"));
+  CHECK(world.ran.empty());
+
+  World answered;
+  answered.now = at({.day = 7, .hour = 15, .minute = 20});
+  answered.context.lang = "en";
+  answered.flow.useDecider(answered.scripted);
+  answered.scripted.next = meeting;
+  REQUIRE(answered.say("schedule a meeting with Andrea on Monday the 9th at 5 pm").question.has_value());
+  answered.scripted.next.reset();
+  const auto done = answered.say("Friday");
+  REQUIRE(answered.ran.size() == 1);
+  CHECK(answered.ran.front().arguments["starts_at"].asString() == "2026-10-09T17:00:00+00:00");
+  CHECK(done.wrote);
+
+  World replaced;
+  replaced.now = at({.day = 7, .hour = 15, .minute = 20});
+  REQUIRE(replaced.say("agenda una reunión con Andrea el lunes 9 a las 5").question.has_value());
+  const auto fresh = replaced.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
+  CHECK_FALSE(fresh.question.has_value());
+  REQUIRE(replaced.ran.size() == 1);
+  CHECK(replaced.ran.front().arguments["starts_at"].asString() == "2026-10-08T17:00:00+00:00");
+
+  World declined;
+  declined.now = at({.day = 7, .hour = 15, .minute = 20});
+  REQUIRE(declined.say("agenda una reunión con Andrea el lunes 9 a las 5").question.has_value());
+  CHECK(findingOf(declined.say("no"), turn::FindingKind::Declined) != nullptr);
+  CHECK(declined.ran.empty());
+}
+
+TEST_CASE("a reminder whose weekday disagrees with its day asks which one and the answer is the time the tool is given")
+{
+  const UtcZone zone;
+  World world;
+  world.now = at({.day = 7, .hour = 15, .minute = 20});
+  world.add(tool_stubs::stub({.name = "memory.remind",
+                              .capability = "reminders.write",
+                              .handler = [&world](const tools::ToolCall& call) {
+                                world.ran.push_back(call);
+                                return tool_stubs::okResult("Recordatorio guardado.");
+                              },
+                              .module = "core",
+                              .schema = schema::object({{.name = "text", .schema = schema::text(), .required = false}})}));
+  world.refresh();
+  world.flow.useDecider(world.scripted);
+  turn::Candidate remind = candidate("memory.remind", 0.95);
+  remind.arguments["text"] = "recuérdame el lunes 9 a las 5 llamar a Juan";
+  world.scripted.next = remind;
+  CHECK(said(world.say("recuérdame el lunes 9 a las 5 llamar a Juan")) == "¿El lunes 12 o el viernes 9?");
+  CHECK(world.ran.empty());
+  world.scripted.next.reset();
+  const auto done = world.say("el viernes");
+  REQUIRE(world.ran.size() == 1);
+  REQUIRE(world.ran.front().context.heardAt.has_value());
+  CHECK(world.ran.front().context.heardAt.value_or(0) == at({.day = 9, .hour = 17}));
+  CHECK(world.ran.front().context.utterance == "recuérdame el lunes 9 a las 5 llamar a Juan");
+  CHECK(done.wrote);
+
+  World agreeing;
+  agreeing.now = at({.day = 7, .hour = 15, .minute = 20});
+  agreeing.add(tool_stubs::stub({.name = "memory.remind",
+                                 .capability = "reminders.write",
+                                 .handler = [&agreeing](const tools::ToolCall& call) {
+                                   agreeing.ran.push_back(call);
+                                   return tool_stubs::okResult("Recordatorio guardado.");
+                                 },
+                                 .module = "core",
+                                 .schema = schema::object({{.name = "text", .schema = schema::text(), .required = false}})}));
+  agreeing.refresh();
+  agreeing.flow.useDecider(agreeing.scripted);
+  remind.arguments["text"] = "recuérdame el viernes 9 a las 5 llamar a Juan";
+  agreeing.scripted.next = remind;
+  CHECK_FALSE(agreeing.say("recuérdame el viernes 9 a las 5 llamar a Juan").question.has_value());
+  REQUIRE(agreeing.ran.size() == 1);
+  CHECK_FALSE(agreeing.ran.front().context.heardAt.has_value());
 }
 
 TEST_CASE("the notifications panel opens by an app command in both languages, for every role, with a module off")

@@ -587,6 +587,26 @@ TEST_CASE("a timed reminder is written once, for the speaker, through the remind
   CHECK(rows->created.back().userId == kOtherUser);
   CHECK(std::ranges::none_of(rows->created, [](const ReminderRowRequest& row) { return row.userId != kSpeaker && row.userId != kOtherUser; }));
 
+  const std::time_t nowSeconds = std::time(nullptr);
+  std::tm tomorrow{};
+  localtime_r(&nowSeconds, &tomorrow);
+  tomorrow.tm_mday += 1;
+  tomorrow.tm_isdst = -1;
+  std::mktime(&tomorrow);
+  const std::string disagreeing = "Recuérdame el " + weekdayName((tomorrow.tm_wday + 2) % 7) + " " + std::to_string(tomorrow.tm_mday) +
+                                  " a las 5 llamar a Juan.";
+  auto disputed = remindCall(kSpeaker, disagreeing);
+  const size_t calledBefore = calls->scheduled.size();
+  REQUIRE(run(disputed).ok);
+  CHECK(calls->scheduled.size() == calledBefore);
+  const int64_t heard = static_cast<int64_t>(nowSeconds) + 7200;
+  disputed.context.heardAt = heard;
+  REQUIRE(run(disputed).ok);
+  REQUIRE(calls->scheduled.size() == calledBefore + 1);
+  CHECK(calls->scheduled.back().fireAt == heard);
+  CHECK(calls->scheduled.back().topic.find("Juan") != std::string::npos);
+  CHECK(calls->scheduled.back().topic.find(weekdayName((tomorrow.tm_wday + 2) % 7)) == std::string::npos);
+
   const size_t before = rows->created.size();
   const auto timeless = run(remindCall(kSpeaker, "Recuérdame que mi cita con el dentista es el lunes."));
   CHECK(timeless.ok);

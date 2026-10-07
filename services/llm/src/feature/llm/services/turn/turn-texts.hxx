@@ -53,6 +53,16 @@ struct ChooseQuestion
 
 [[nodiscard]] std::string chooseQuestion(const ChooseQuestion& question);
 
+struct DayQuestion
+{
+  int64_t first{0};
+  int64_t second{0};
+  int64_t now{0};
+  std::string_view lang;
+};
+
+[[nodiscard]] std::string dayQuestion(const DayQuestion& question);
+
 struct ProjectQuestion
 {
   const std::vector<std::string>& options;

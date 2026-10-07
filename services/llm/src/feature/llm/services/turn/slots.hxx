@@ -1,6 +1,7 @@
 #pragma once
 
 #include <auth/module-snapshot.hxx>
+#include <feature/memory/services/extract/call-time.hxx>
 #include <shared/vocabulary/tool-contracts.hxx>
 
 #include <json/value.h>
@@ -52,10 +53,17 @@ struct FillInput
   bool answering{false};
 };
 
+struct Dispute
+{
+  std::string field;
+  DayConflict conflict;
+};
+
 struct Filled
 {
   Json::Value arguments;
   std::vector<std::string> missing;
+  std::optional<Dispute> dispute{};
 };
 
 [[nodiscard]] Filled fill(const FillInput& input);
@@ -86,5 +94,16 @@ struct Choice
 [[nodiscard]] std::optional<std::string> nameGiven(std::string_view utterance);
 
 [[nodiscard]] bool isDateTime(const argus::mcp::ToolSpec& spec, std::string_view field);
+
+struct DayHeard
+{
+  std::string_view utterance;
+  std::string_view lang;
+  int64_t now{0};
+};
+
+[[nodiscard]] std::optional<DayConflict> dayConflict(const DayHeard& heard);
+
+[[nodiscard]] std::optional<std::size_t> chooseDay(std::string_view utterance, const std::vector<std::string>& values);
 
 }

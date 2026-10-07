@@ -355,6 +355,9 @@ TEST_CASE("a weekday that agrees with the date is resolved, one that contradicts
         Conflict{.byWeekday = utc({.day = 12, .hour = 17}), .byDate = utc({.day = 9, .hour = 17})});
   CHECK_FALSE(conflictOf("el viernes 9 a las 5"));
   CHECK_FALSE(conflictOf("a las 5"));
+  const std::string text = "llamar a Juan el lunes 9 a las 5";
+  const DayConflict conflict = call_time::read({.text = text, .lang = "es", .now = now()}).conflict.value_or(DayConflict{});
+  CHECK(call_time::withoutPhrase(text, {.fireAt = 0, .phraseBegin = conflict.phraseBegin, .phraseEnd = conflict.phraseEnd}) == "llamar a Juan");
 }
 
 TEST_CASE("the local clock decides, so Lima time reads the same words at its own hours")

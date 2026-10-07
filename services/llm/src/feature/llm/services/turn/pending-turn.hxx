@@ -19,7 +19,8 @@ enum class Awaiting : unsigned char
   Approval,
   Choice,
   Project,
-  NewProject
+  NewProject,
+  Day
 };
 
 struct Pending
@@ -33,6 +34,7 @@ struct Pending
   std::chrono::steady_clock::time_point at{};
   std::vector<std::string> options{};
   std::optional<Candidate> held{};
+  std::vector<std::string> values{};
 };
 
 class PendingTurns

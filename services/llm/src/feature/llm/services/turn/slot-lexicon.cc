@@ -24,7 +24,8 @@ constexpr auto kEsTimeFiller = std::to_array<Phrase>({
     "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince",
     "veinte", "veintiuno", "veintidos", "veintitres", "veinticuatro", "veinticinco", "treinta", "cuarenta",
     "cincuenta", "dia", "semana", "mes", "hoy", "pasado", "am", "pm", "lunes", "martes", "miercoles", "jueves",
-    "viernes", "sabado", "domingo", "todo", "para"});
+    "viernes", "sabado", "domingo", "todo", "para", "p", "m", "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "setiembre", "octubre", "noviembre", "diciembre", "primero"});
 constexpr auto kEsNaming = std::to_array<Phrase>({"llamado", "llamada", "titulado", "titulada", "denominado"});
 constexpr auto kEsAnswerPrefix = std::to_array<Phrase>({"se llama", "llamalo", "llamala", "ponle", "que se llame",
                                                          "el titulo es", "el nombre es", "es", "sera", "pues"});
@@ -53,7 +54,12 @@ constexpr auto kEnTimeFiller = std::to_array<Phrase>({
     "afternoon", "evening", "night", "day", "after", "am", "pm", "a", "m", "p", "one", "two", "three", "four", "five",
     "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "twenty", "thirty",
     "fortyfive", "forty", "fifty", "week", "month", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
-    "sunday", "tomorrow", "today", "tonight", "noon", "fifteenth", "first", "second", "third", "for"});
+    "sunday", "tomorrow", "today", "tonight", "noon", "fifteenth", "first", "second", "third", "for", "hundred", "hours",
+    "sharp", "midday", "st", "nd", "rd", "th", "sixteen", "seventeen", "eighteen", "nineteen", "fourth", "fifth", "sixth",
+    "seventh", "eighth", "ninth", "tenth", "eleventh", "twelfth", "thirteenth", "fourteenth", "sixteenth", "seventeenth",
+    "eighteenth", "nineteenth", "twentieth", "thirtieth", "january", "february", "march", "april", "may", "june", "july",
+    "august", "september", "october", "november", "december", "jan", "feb", "apr", "jun", "jul", "aug", "sep", "sept", "oct",
+    "nov", "dec"});
 constexpr auto kEnNaming = std::to_array<Phrase>({"called", "named", "titled", "entitled"});
 constexpr auto kEnAnswerPrefix = std::to_array<Phrase>({"call it", "name it", "its called", "it is called", "the title is",
                                                          "the name is", "its", "it is"});

@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <json/value.h>
 #include <memory>
 #include <string>
@@ -24,6 +25,7 @@ struct ToolContext
   bool decided = false;
   int64_t turn = 0;
   std::function<void(const std::string& name, const Json::Value& arguments)> emitAction = {};
+  std::optional<int64_t> heardAt = std::nullopt;
 };
 
 struct ToolCall

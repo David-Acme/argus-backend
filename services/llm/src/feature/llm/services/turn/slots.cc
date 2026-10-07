@@ -4,6 +4,7 @@
 
 #include <feature/llm/services/tools/module-command.hxx>
 #include <feature/llm/services/tools/time-arguments.hxx>
+#include <feature/memory/services/extract/call-time-words.hxx>
 
 #include <text/iso-time.hxx>
 #include <text/text-norm.hxx>
@@ -12,6 +13,7 @@
 #include <array>
 #include <cctype>
 #include <cstddef>
+#include <ctime>
 
 namespace slots
 {
@@ -341,6 +343,60 @@ std::optional<std::string> nameGiven(std::string_view utterance)
   return std::nullopt;
 }
 
+std::optional<DayConflict> dayConflict(const DayHeard& heard)
+{
+  return call_time::read({.text = heard.utterance, .lang = heard.lang, .now = heard.now}).conflict;
+}
+
+std::optional<std::size_t> chooseDay(std::string_view utterance, const std::vector<std::string>& values)
+{
+  const call_time::Tokens heard = call_time::tokenize(call_time::fold(utterance).text);
+  std::vector<std::tm> days;
+  for (const std::string& value : values) {
+    const auto at = iso_time::parse(value);
+    if (!at)
+      return std::nullopt;
+    const auto seconds = static_cast<std::time_t>(*at);
+    std::tm local{};
+    localtime_r(&seconds, &local);
+    days.push_back(local);
+  }
+  const auto pick = [&days](const std::vector<bool>& hit) -> std::optional<std::size_t> {
+    std::optional<std::size_t> only;
+    for (std::size_t index = 0; index < days.size(); ++index) {
+      if (!hit[index])
+        continue;
+      if (only)
+        return std::nullopt;
+      only = index;
+    }
+    return only;
+  };
+  std::vector<bool> byWeekday(days.size(), false);
+  std::vector<bool> byNumber(days.size(), false);
+  std::vector<bool> byOrdinal(days.size(), false);
+  for (std::size_t at = 0; at < heard.size(); ++at) {
+    const int weekday = call_time::weekdayOf(heard[at].text);
+    const auto number = call_time::dayNumberAt(heard, at);
+    for (std::size_t index = 0; index < days.size(); ++index) {
+      byWeekday[index] = byWeekday[index] || (weekday >= 0 && days[index].tm_wday == weekday);
+      byNumber[index] = byNumber[index] || (number && days[index].tm_mday == number->value);
+    }
+    if (!byOrdinal.empty() && call_time::wordAt(heard, at, "primero"))
+      byOrdinal.front() = true;
+    if (!byOrdinal.empty() && call_time::anyWordAt(heard, at, {"primera", "first"}))
+      byOrdinal.front() = true;
+    if (byOrdinal.size() > 1 && call_time::anyWordAt(heard, at, {"segundo", "segunda", "second"}))
+      byOrdinal[1] = true;
+  }
+  const bool saidWeekday = std::ranges::any_of(byWeekday, [](bool hit) { return hit; });
+  if (saidWeekday)
+    return pick(byWeekday);
+  if (std::ranges::any_of(byNumber, [](bool hit) { return hit; }))
+    return pick(byNumber);
+  return pick(byOrdinal);
+}
+
 bool isDateTime(const argus::mcp::ToolSpec& spec, std::string_view field)
 {
   const Json::Value& property = spec.inputSchema["properties"][std::string(field)];
@@ -364,10 +420,14 @@ Filled fill(const FillInput& input)
       continue;
     if (isDateTime(input.spec, field)) {
       const Json::Value& value = call.arguments[field];
-      if (value.isString() && iso_time::parse(value.asString()))
+      if (value.isString() && iso_time::parse(value.asString())) {
         filled.arguments[field] = value;
-      else
-        filled.missing.push_back(field);
+        continue;
+      }
+      if (!filled.dispute)
+        if (const auto conflict = dayConflict({.utterance = input.context.utterance, .lang = input.context.lang, .now = input.now}))
+          filled.dispute = Dispute{.field = field, .conflict = *conflict};
+      filled.missing.push_back(field);
       continue;
     }
     if (field == "module") {
