@@ -45,3 +45,5 @@ routers, starts its IO loops and enters the main loop, and `quit()` does nothing
 the main loop is not running: a quit inside that window is dropped for good and the
 join after it never returns. The guard is `drogon::app().getLoop()->isRunning()`, which
 is what the helper waits for.
+
+The rule matches the literal shape `if (drogon::app().isRunning()) { ... drogon::app().quit()`: a compound condition, or the flag read into a variable first, escapes it (failing every `quit()` in a test outside test-support would be the robust form, and would convert about 49 healthy sites).
