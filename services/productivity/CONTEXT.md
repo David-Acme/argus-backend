@@ -584,9 +584,12 @@ slot layer fills its arguments and the model only speaks about the result, so a
 tool's text is spoken material (facts, in the user's language) and a preview's
 one-use code travels as `structured.confirmation`, never inside the text.
 
-`task.create` without a project does not invent one: it answers with the
-caller's projects and asks which (open decision, "DECISION NEEDED MCP" on the
-BOARD; the alternative is a default "Tareas" project). Date-time arguments
+`task.create` without a project does not invent one (decided: never a default
+"Tareas" project): with several open projects it refuses with `project_needed`,
+with a project it cannot find `unknown_project`, with a name that fits several
+`ambiguous_project`, and each of those carries the user's project names as
+`structured.projects`; with none it refuses with `no_projects`. argus-llm holds
+the task and asks which project ("The turn: decide, fill, run, speak"). Date-time arguments
 carry `format: "date-time"`, so argus-llm normalizes natural phrases and the
 service only parses ISO (`iso_time::parse`). Answers are spoken in the
 caller's language (`argus::mcp::speech`), dates written out ("el miércoles 7 de

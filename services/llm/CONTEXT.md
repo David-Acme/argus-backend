@@ -663,8 +663,10 @@ session to lose on a restart.
   (`reply-claims.cc`, phrase tables in `reply-claim-lexicon.cc`, one table per
   language: Spanish with its Peruvian colloquialisms, English). A claim is a
   first-person completion ("agendé", "he guardado", "ya te lo anoté", "I've
-  scheduled"), a present-tense performative with an object ("creo una reunión",
-  "agendo la cita"), a "quedó agendada", and, only when the user's own words
+  scheduled", "he ajustado", "ajusté la calefacción"), a present-tense performative with an
+  object ("creo una reunión", "agendo la cita"), a "quedó agendada", a saved-note
+  statement ("esa información está guardada"), a promise to act now ("claro, puedo
+  activar la agenda ahora"), and, only when the user's own words
   asked for something, a bare marker ("listo", "confirmado", "hecho", "done",
   "all set"). Questions, offers, plans, conditions and negations ("¿quieres que
   lo agende?", "voy a agendar", "no lo agendé", "cuando lo agende te aviso",
@@ -776,6 +778,19 @@ runs the runner-up of a choice; a no drops everything and the speaker is told so
 the pending and is decided as a new utterance. A caller with no user id keeps no pending. The preview's
 code reaches the grounding as
 structured data (`data.confirmation`), never in the text the speaker reads.
+
+**A task that needs a project** is held, not lost. When `task.create` (or any tool) refuses with
+`project_needed`, `ambiguous_project` or `unknown_project` and names the user's projects in
+`data.projects`, the turn drops the refusal, keeps a `Project` pending with the task as it was
+(arguments included) and asks "¿En cuál proyecto va? Casa, Trabajo o Viaje." itself. The next
+utterance is read for that slot only: the project whose every word was said wins (the longest if
+several), so "el de la casa" completes the held task in Casa; an answer that names none or several
+asks again once and then gives up; "no" drops the task. "Ninguno", "crea uno" or "none of them" never
+creates anything silently: with a name given ("crea uno llamado Hogar", "se llama Hogar") or asked
+("¿Cómo se llama el proyecto nuevo?") the turn offers "¿Creo el proyecto «Hogar» y anoto la tarea
+ahí?", and only on a yes runs `project.create` and then the held task with that project. With no
+project at all (`no_projects`) the first question is the name of the new project. There is no
+default project, and a provider that does not name the projects leaves its own refusal to be said.
 
 Questions the system asks itself are `turn_texts::confirmQuestion` (the held arguments are spoken
 back: "¿Quieres que agende «Reunión con Andrea» para mañana a las 5 de la tarde?"),
