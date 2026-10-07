@@ -108,15 +108,20 @@ private:
   std::thread runner_;
 };
 
+bool loopIsRunning()
+{
+  return drogon::app().isRunning() && drogon::app().getLoop()->isRunning();
+}
+
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (std::chrono::steady_clock::now() < deadline) {
-    if (drogon::app().isRunning())
+    if (loopIsRunning())
       return true;
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
-  return drogon::app().isRunning();
+  return loopIsRunning();
 }
 
 bool waitUntil(const std::function<bool()>& ready,
