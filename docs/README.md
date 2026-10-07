@@ -45,8 +45,7 @@ order below.
 
 ## Proposals
 
-- [Opt-in capture of real turns for training](architecture/real-turn-capture-proposal.md) — consent, storage, retention
-  and the path into the split-by-group pipeline; no code yet.
+- [Opt-in capture of real turns for training](architecture/real-turn-capture-proposal.md) — shelved by the owner on 2026-10-07; not to be implemented.
 
 ## History and traceability
 
