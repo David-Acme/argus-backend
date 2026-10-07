@@ -634,6 +634,22 @@
       }
     }
   },
+  "extractor": {
+    "performance": {
+      "idleBusyMax": 0.2,
+      "metrics": {
+        "cpuMsPerCall": {
+          "max": 400
+        },
+        "latencyP95Ms": {
+          "max": 150
+        },
+        "residentMb": {
+          "max": 600
+        }
+      }
+    }
+  },
   "performance": {
     "metrics": {
       "cpuMsPerCall": {
