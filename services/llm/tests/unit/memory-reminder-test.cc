@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -415,10 +416,10 @@ namespace
 class RecordingReminderCalls final : public ReminderCallScheduler
 {
 public:
-  [[nodiscard]] bool schedule(const ReminderCallRequest& request) const override
+  [[nodiscard]] ReminderCallOutcome schedule(const ReminderCallRequest& request) const override
   {
     requests.push_back(request);
-    return true;
+    return ReminderCallOutcome::Scheduled;
   }
 
   mutable std::vector<ReminderCallRequest> requests;
@@ -514,14 +515,64 @@ public:
 class RecordingCalls final : public ReminderCallScheduler
 {
 public:
-  [[nodiscard]] bool schedule(const ReminderCallRequest& request) const override
+  [[nodiscard]] ReminderCallOutcome schedule(const ReminderCallRequest& request) const override
   {
     scheduled.push_back(request);
-    return true;
+    return ReminderCallOutcome::Scheduled;
   }
 
   mutable std::vector<ReminderCallRequest> scheduled;
 };
+
+class RefusingCalls final : public ReminderCallScheduler
+{
+public:
+  [[nodiscard]] ReminderCallOutcome schedule(const ReminderCallRequest&) const override
+  {
+    ++attempts;
+    return ReminderCallOutcome::Refused;
+  }
+
+  mutable int attempts{0};
+};
+
+class HorizonCalls final : public ReminderCallScheduler
+{
+public:
+  static constexpr int64_t kHorizonS = int64_t{30} * 24 * 3600;
+
+  [[nodiscard]] ReminderCallOutcome schedule(const ReminderCallRequest& request) const override
+  {
+    if (request.fireAt - static_cast<int64_t>(std::time(nullptr)) > kHorizonS)
+      return ReminderCallOutcome::TooFar;
+    scheduled.push_back(request);
+    return ReminderCallOutcome::Scheduled;
+  }
+
+  mutable std::vector<ReminderCallRequest> scheduled;
+};
+
+class TimingOutCalls final : public ReminderCallScheduler
+{
+public:
+  [[nodiscard]] ReminderCallOutcome schedule(const ReminderCallRequest&) const override
+  {
+    ++attempts;
+    throw std::runtime_error("deadline exceeded");
+  }
+
+  mutable int attempts{0};
+};
+
+std::string spokenDate(int daysAhead)
+{
+  constexpr std::array<const char*, 12> kMonths{"enero", "febrero", "marzo", "abril", "mayo", "junio",
+                                                 "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
+  std::time_t at = std::time(nullptr) + int64_t{daysAhead} * 24 * 3600;
+  std::tm local{};
+  localtime_r(&at, &local);
+  return "el " + std::to_string(local.tm_mday) + " de " + kMonths.at(static_cast<std::size_t>(local.tm_mon));
+}
 
 tools::ToolCall remindCall(int64_t userId, const std::string& utterance)
 {
@@ -714,6 +765,85 @@ TEST_CASE("the reminders list is the caller's own and says so when it cannot be 
 
   auto nobody = callFor("reminder.list", 0);
   CHECK_FALSE(run(nobody).ok);
+
+  service.shutdown();
+  std::remove(kScratchConfig);
+}
+
+TEST_CASE("a call the notification service did not confirm is never said to be set, whatever the reason")
+{
+  std::filesystem::create_directories(kScratchDir);
+  writeConfig("calls-failing.db");
+  ConfigService::load(kScratchConfig);
+  std::filesystem::remove(std::string(kScratchDir) + "/calls-failing.db");
+
+  SilentChat chat;
+  MemoryService service(VecDb::instance(), chat);
+  service.init({});
+  REQUIRE(service.isLoaded());
+  const auto rows = std::make_shared<RecordingRows>();
+  service.setReminderRows(rows);
+
+  const auto descriptors = service.toolDescriptors();
+  const auto run = [&descriptors](const tools::ToolCall& call) {
+    for (const auto& descriptor : descriptors)
+      if (descriptor.spec.name == call.name)
+        return descriptor.handler(call);
+    return tools::ToolResult{};
+  };
+  const std::string saidAloud = "Lo guardé en tus recordatorios, pero no pude programar la llamada.";
+
+  const auto refusing = std::make_shared<RefusingCalls>();
+  service.setReminderCalls(refusing);
+  const auto failed = run(remindCall(kSpeaker, "Recuérdame mañana a las nueve llamar al dentista."));
+  REQUIRE(failed.ok);
+  CHECK(refusing->attempts == 1);
+  CHECK(failed.output.find(saidAloud) != std::string::npos);
+  CHECK(failed.output.find("Te llamaré") == std::string::npos);
+  CHECK(failed.output.find(" Era para el ") != std::string::npos);
+  CHECK(failed.data["callScheduled"].isBool());
+  CHECK_FALSE(failed.data["callScheduled"].asBool());
+  CHECK(rows->created.size() == 1);
+
+  const auto horizon = std::make_shared<HorizonCalls>();
+  service.setReminderCalls(horizon);
+  const auto near = run(remindCall(kSpeaker, "Recuérdame mañana a las diez comprar pan."));
+  REQUIRE(near.ok);
+  CHECK(near.output.find("Te llamaré el ") != std::string::npos);
+  CHECK(near.data["callScheduled"].asBool());
+  CHECK(horizon->scheduled.size() == 1);
+  const auto beyond = run(remindCall(kSpeaker, "Recuérdame " + spokenDate(45) + " a las 5 llamar a Juan."));
+  REQUIRE(beyond.ok);
+  CHECK(horizon->scheduled.size() == 1);
+  CHECK(beyond.output.find(saidAloud) != std::string::npos);
+  CHECK(beyond.output.find(" Solo puedo llamarte hasta dentro de 12 meses. Era para el ") != std::string::npos);
+  CHECK(beyond.output.find("Te llamaré") == std::string::npos);
+  CHECK_FALSE(beyond.data["callScheduled"].asBool());
+  CHECK(rows->created.size() == 3);
+
+  const auto timeout = std::make_shared<TimingOutCalls>();
+  service.setReminderCalls(timeout);
+  const auto timedOut = run(remindCall(kSpeaker, "Recuérdame mañana a las once pagar la luz."));
+  REQUIRE(timedOut.ok);
+  CHECK(timeout->attempts == 1);
+  CHECK(timedOut.output.find(saidAloud) != std::string::npos);
+  CHECK(timedOut.output.find(" El servicio de llamadas no responde ahora.") != std::string::npos);
+  CHECK(timedOut.output.find("Te llamaré") == std::string::npos);
+  CHECK_FALSE(timedOut.data["callScheduled"].asBool());
+
+  rows->accepts = false;
+  const auto unsaved = run(remindCall(kSpeaker, "Recuérdame mañana a las doce y media sacar la basura."));
+  REQUIRE(unsaved.ok);
+  CHECK(unsaved.output.find("Lo guardé, pero no pude programar la llamada.") != std::string::npos);
+  CHECK(unsaved.output.find("en tus recordatorios") == std::string::npos);
+
+  auto english = remindCall(kSpeaker, "Remind me tomorrow at 5 pm to call the dentist.");
+  english.context.lang = "en";
+  const auto spokenEnglish = run(english);
+  if (spokenEnglish.ok) {
+    CHECK(spokenEnglish.output.find("I will call you") == std::string::npos);
+    CHECK(spokenEnglish.output.find("could not schedule the call") != std::string::npos);
+  }
 
   service.shutdown();
   std::remove(kScratchConfig);

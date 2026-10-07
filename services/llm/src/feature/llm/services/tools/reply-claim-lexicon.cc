@@ -122,6 +122,21 @@ constexpr auto kEnglishRequests = std::to_array<Phrase>({
     "deactivate", "cancel", "delete", "remove", "mark", "complete", "turn", "switch", "put", "arrange",
     "reschedule", "move", "change", "register", "reserve", "notify", "make", "update", "organize", "plan", "track", "record", "pin", "store"});
 
+constexpr auto kSpanishCalls = std::to_array<Phrase>({
+    "te llamare", "te voy a llamar", "te estare llamando", "te marcare", "te hare una llamada", "te llamo a las",
+    "te llamo manana", "te llamo hoy", "te llamo en", "te llamo cuando", "te llamare a las"});
+
+constexpr auto kSpanishCallOffers = std::to_array<Phrase>({
+    "si", "quieres", "quiere", "prefieres", "deseas", "puedo", "podria", "podrias", "gustaria", "quisieras"});
+
+constexpr auto kEnglishCalls = std::to_array<Phrase>({
+    "i will call you", "ill call you", "i am going to call you", "im going to call you", "i will ring you", "ill ring you",
+    "i will phone you", "ill phone you", "i will give you a call", "ill give you a call", "i will be calling you",
+    "ill be calling you"});
+
+constexpr auto kEnglishCallOffers = std::to_array<Phrase>({
+    "if", "want", "wants", "would", "could", "can", "shall", "should", "may", "might"});
+
 constexpr std::string_view kSpanishHonest = "No pude hacerlo. ¿Lo intento de nuevo?";
 constexpr std::string_view kEnglishHonest = "I could not do it. Shall I try again?";
 
@@ -145,6 +160,8 @@ constexpr std::array<Lexicon, 2> kLexicons{{
      .opening = kSpanishOpening,
      .states = kSpanishStates,
      .copulas = kSpanishCopulas,
+     .calls = kSpanishCalls,
+     .callOffers = kSpanishCallOffers,
      .honest = kSpanishHonest,
      .nudge = kSpanishNudge},
     {.language = "en",
@@ -159,6 +176,8 @@ constexpr std::array<Lexicon, 2> kLexicons{{
      .opening = kEnglishOpening,
      .states = kEnglishStates,
      .copulas = kEnglishCopulas,
+     .calls = kEnglishCalls,
+     .callOffers = kEnglishCallOffers,
      .honest = kEnglishHonest,
      .nudge = kEnglishNudge},
 }};

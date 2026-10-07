@@ -22,6 +22,8 @@ struct When
   bool bare{false};
 };
 
+[[nodiscard]] std::string weekdayName(const When& when);
+
 [[nodiscard]] std::string weekdayDate(const When& when);
 
 [[nodiscard]] std::string day(const When& when);

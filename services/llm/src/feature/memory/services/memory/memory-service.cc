@@ -1208,12 +1208,39 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
               .episode = false});
   result.output = (english(call) ? "Reminder saved: " : "Recordatorio guardado: ") +
                   spoken(formed->canonical);
-  if (const auto when = scheduleReminder({.call = call, .text = text, .factId = formed->factId}))
-    result.output += reminder_readback::sentence({.fireAt = when->fireAt,
-                                                  .now = static_cast<int64_t>(std::time(nullptr)),
-                                                  .lang = call.context.lang,
-                                                  .called = when->called});
+  if (const auto when = scheduleReminder({.call = call, .text = text, .factId = formed->factId})) {
+    const reminder_readback::Spoken spoken{.fireAt = when->fireAt,
+                                           .now = static_cast<int64_t>(std::time(nullptr)),
+                                           .lang = call.context.lang,
+                                           .call = when->called      ? reminder_readback::Call::Scheduled
+                                                   : when->attempted ? reminder_readback::Call::Failed
+                                                                     : reminder_readback::Call::NotAttempted,
+                                           .listed = when->listed,
+                                           .why = when->why};
+    const std::string sentence = reminder_readback::sentence(spoken);
+    result.output += sentence;
+    result.data["callScheduled"] = when->called;
+    result.data["readback"] = reminder_readback::moment(spoken);
+    result.data["readbackSentence"] = sentence.substr(sentence.find_first_not_of(' '));
+  }
   return result;
+}
+
+namespace
+{
+ReminderCallOutcome callScheduled(const ReminderCallScheduler& scheduler, const ReminderCallRequest& request)
+{
+  try {
+    return scheduler.schedule(request);
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "MemoryService: scheduling the call " << request.commandId << " failed: " << error.what();
+  }
+  catch (...) {
+    LOG_WARN << "MemoryService: scheduling the call " << request.commandId << " failed";
+  }
+  return ReminderCallOutcome::Unavailable;
+}
 }
 
 std::optional<MemoryService::ReminderScheduled>
@@ -1243,17 +1270,21 @@ MemoryService::scheduleReminder(const ReminderCallInput& input) const
       "memory-remind:" + std::to_string(input.factId) + ":" + std::to_string(*fireAt);
   ReminderScheduled scheduled;
   scheduled.fireAt = *fireAt;
-  scheduled.called = reminderCalls_ && reminderCalls_->schedule({.userId = call.context.userId,
-                                                                 .fireAt = *fireAt,
-                                                                 .topic = topic,
-                                                                 .lang = call.context.lang,
-                                                                 .commandId = commandId});
+  scheduled.attempted = reminderCalls_ != nullptr;
+  if (reminderCalls_) {
+    scheduled.why = callScheduled(*reminderCalls_, {.userId = call.context.userId,
+                                                    .fireAt = *fireAt,
+                                                    .topic = topic,
+                                                    .lang = call.context.lang,
+                                                    .commandId = commandId});
+    scheduled.called = scheduled.why == ReminderCallOutcome::Scheduled;
+  }
   scheduled.listed = reminderRows_ && reminderRows_->create({.userId = call.context.userId,
                                                              .role = userRoleToString(call.context.role),
                                                              .title = topic,
                                                              .scheduledAt = *fireAt,
                                                              .commandId = commandId});
-  if (!scheduled.called && !scheduled.listed)
+  if (!scheduled.called && !scheduled.listed && !scheduled.attempted)
     return std::nullopt;
   return scheduled;
 }

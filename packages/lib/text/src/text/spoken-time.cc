@@ -63,6 +63,12 @@ std::string_view esPeriod(int hour)
 }
 }
 
+std::string weekdayName(const When& when)
+{
+  const auto weekday = static_cast<std::size_t>(localOf(when.epoch).tm_wday);
+  return std::string(when.lang == "en" ? kEnDays.at(weekday) : kEsDays.at(weekday));
+}
+
 std::string weekdayDate(const When& when)
 {
   const std::tm then = localOf(when.epoch);

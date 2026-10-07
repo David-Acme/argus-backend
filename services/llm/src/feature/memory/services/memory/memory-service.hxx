@@ -235,8 +235,10 @@ private:
   struct ReminderScheduled
   {
     int64_t fireAt{0};
+    bool attempted{false};
     bool called{false};
     bool listed{false};
+    ReminderCallOutcome why{ReminderCallOutcome::Refused};
   };
 
   std::optional<ReminderScheduled> scheduleReminder(const ReminderCallInput& input) const;

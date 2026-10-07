@@ -5,6 +5,8 @@
 
 bool claimedWithoutTool(const std::string& reply, const TurnState& state)
 {
+  if (!state.called && reply_claims::claimsCall({.text = reply, .lang = state.lang}))
+    return true;
   if (state.wrote)
     return false;
   if (state.opened)

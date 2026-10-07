@@ -20,6 +20,8 @@ struct Lexicon
   std::span<const std::string_view> opening;
   std::span<const std::string_view> states;
   std::span<const std::string_view> copulas;
+  std::span<const std::string_view> calls;
+  std::span<const std::string_view> callOffers;
   std::string_view honest;
   std::string_view nudge;
 };

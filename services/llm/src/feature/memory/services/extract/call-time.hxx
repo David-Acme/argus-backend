@@ -26,12 +26,14 @@ struct DayConflict
   int64_t byDate{0};
   std::size_t phraseBegin{0};
   std::size_t phraseEnd{0};
+  int relative{-1};
 };
 
 struct CallReading
 {
   std::optional<CallTime> time{};
   std::optional<DayConflict> conflict{};
+  bool farAway{false};
 };
 
 namespace call_time

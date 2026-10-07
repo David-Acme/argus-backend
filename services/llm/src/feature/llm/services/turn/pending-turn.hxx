@@ -35,6 +35,7 @@ struct Pending
   std::vector<std::string> options{};
   std::optional<Candidate> held{};
   std::vector<std::string> values{};
+  int relative{-1};
 };
 
 class PendingTurns

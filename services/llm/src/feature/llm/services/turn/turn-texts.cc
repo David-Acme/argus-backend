@@ -3,6 +3,7 @@
 #include <text/iso-time.hxx>
 #include <text/spoken-time.hxx>
 
+#include <algorithm>
 #include <array>
 
 namespace turn_texts
@@ -168,6 +169,9 @@ std::string listed(const std::vector<std::string>& items, std::string_view lang)
   return out;
 }
 
+constexpr Pair kFarAway{.es = "Esa fecha queda fuera de lo que puedo agendar: llego hasta dentro de 12 meses. ¿Para qué día y a qué hora?",
+                        .en = "That date is beyond what I can schedule: I reach 12 months ahead. For what day and time?"};
+
 constexpr Pair kGenericTitle{.es = "¿Cómo lo llamo?", .en = "What should I call it?"};
 constexpr Pair kGenericTime{.es = "¿Para qué día y a qué hora?", .en = "For what day and time?"};
 constexpr Pair kGenericModule{.es = "¿De qué módulo hablas?", .en = "Which module do you mean?"};
@@ -250,9 +254,23 @@ std::string dayQuestion(const DayQuestion& question)
   const auto named = [&question](int64_t epoch) {
     return spoken_time::weekdayDate({.epoch = epoch, .now = question.now, .lang = question.lang});
   };
-  if (question.lang == "en")
-    return "Do you mean " + named(question.first) + " or " + named(question.second) + "?";
-  return "¿El " + named(question.first) + " o el " + named(question.second) + "?";
+  const bool english = question.lang == "en";
+  if (question.relative < 0)
+    return english ? "Do you mean " + named(question.byWeekday) + " or " + named(question.byDate) + "?"
+                   : "¿El " + named(question.byWeekday) + " o el " + named(question.byDate) + "?";
+  constexpr std::array<std::string_view, 3> kEsRelative{"Hoy", "Mañana", "Pasado mañana"};
+  constexpr std::array<std::string_view, 3> kEnRelative{"today", "tomorrow", "the day after tomorrow"};
+  const auto offset = static_cast<std::size_t>(std::min(question.relative, 2));
+  const std::string weekday = spoken_time::weekdayName({.epoch = question.byDate, .now = question.now, .lang = question.lang});
+  if (english)
+    return "Do you mean " + std::string(kEnRelative.at(offset)) + ", which is a " + weekday + ", or " + named(question.byWeekday) + "?";
+  return "¿" + std::string(kEsRelative.at(offset)) + " " + weekday + " o " +
+         spoken_time::day({.epoch = question.byWeekday, .now = question.now, .lang = question.lang, .day = spoken_time::Day::Weekday}) + "?";
+}
+
+std::string farQuestion(std::string_view lang)
+{
+  return std::string(pick(kFarAway, lang));
 }
 
 std::string projectQuestion(const ProjectQuestion& question)

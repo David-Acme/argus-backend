@@ -19,6 +19,14 @@ struct Reply
 
 [[nodiscard]] bool claimsDone(const Reply& reply);
 
+struct CallReply
+{
+  std::string_view text;
+  std::string_view lang{};
+};
+
+[[nodiscard]] bool claimsCall(const CallReply& reply);
+
 [[nodiscard]] bool asksForAction(std::string_view utterance);
 
 struct Plain
@@ -41,6 +49,7 @@ struct GateInput
   bool asked{false};
   std::function<bool()> legitimate;
   bool appOnly{false};
+  bool callsConfirmed{false};
 };
 
 class ClaimGate

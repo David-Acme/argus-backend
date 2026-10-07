@@ -83,14 +83,14 @@ TEST_CASE("a bare hour from 1 to 6 is the afternoon, 7 to 11 the morning, 12 noo
   CHECK(fireAt("a las tres") == utc(tomorrow(15)));
   CHECK(fireAt("a las dos") == utc(tomorrow(14)));
   CHECK(fireAt("a la una") == utc(tomorrow(13)));
-  CHECK(fireAt("a las siete") == utc(tomorrow(7)));
-  CHECK(fireAt("a las nueve") == utc(tomorrow(9)));
-  CHECK(fireAt("a las diez") == utc(tomorrow(10)));
-  CHECK(fireAt("a las once") == utc(tomorrow(11)));
+  CHECK(fireAt("a las siete") == utc(today(19)));
+  CHECK(fireAt("a las nueve") == utc(today(21)));
+  CHECK(fireAt("a las diez") == utc(today(22)));
+  CHECK(fireAt("a las once") == utc(today(23)));
   CHECK(fireAt("a las doce") == utc(tomorrow(12)));
   CHECK(fireAt("at five", "en") == utc(today(17)));
   CHECK(fireAt("at 2", "en") == utc(tomorrow(14)));
-  CHECK(fireAt("at 9", "en") == utc(tomorrow(9)));
+  CHECK(fireAt("at 9", "en") == utc(today(21)));
   CHECK(fireAt("at 12", "en") == utc(tomorrow(12)));
   CHECK(fireAt("at 5 o'clock", "en") == utc(today(17)));
   CHECK(fireAt("at 3 o'clock", "en") == utc(tomorrow(15)));
@@ -179,19 +179,19 @@ TEST_CASE("minutes keep their value in every spelling")
   CHECK(fireAt("a las 10 y media de la noche") == utc(today(22, 30)));
   CHECK(fireAt("a las cinco y media de la tarde") == utc(today(17, 30)));
   CHECK(fireAt("a las 9 y cuarto de la mañana") == utc(tomorrow(9, 15)));
-  CHECK(fireAt("a las 9 y media") == utc(tomorrow(9, 30)));
-  CHECK(fireAt("a las ocho menos cuarto") == utc(tomorrow(7, 45)));
+  CHECK(fireAt("a las 9 y media") == utc(today(21, 30)));
+  CHECK(fireAt("a las ocho menos cuarto") == utc(today(19, 45)));
   CHECK(fireAt("a las cinco en punto") == utc(today(17)));
   CHECK(fireAt("a las 5:30") == utc(today(17, 30)));
   CHECK(fireAt("a las 5:30 pm") == utc(today(17, 30)));
   CHECK(fireAt("a las 5:45 de la tarde") == utc(today(17, 45)));
   CHECK(fireAt("a las 5:30 de la mañana") == utc(tomorrow(5, 30)));
-  CHECK(fireAt("a las 7:45") == utc(tomorrow(7, 45)));
+  CHECK(fireAt("a las 7:45") == utc(today(19, 45)));
   CHECK(fireAt("a las 7:05 pm") == utc(today(19, 5)));
-  CHECK(fireAt("a las 11:15") == utc(tomorrow(11, 15)));
+  CHECK(fireAt("a las 11:15") == utc(today(23, 15)));
   CHECK(fireAt("a las 11:15 pm") == utc(today(23, 15)));
   CHECK(fireAt("a las 12:30") == utc(tomorrow(12, 30)));
-  CHECK(fireAt("at eleven fifteen", "en") == utc(tomorrow(11, 15)));
+  CHECK(fireAt("at eleven fifteen", "en") == utc(today(23, 15)));
   CHECK(fireAt("at eleven fifteen pm", "en") == utc(today(23, 15)));
   CHECK(fireAt("at five thirty", "en") == utc(today(17, 30)));
   CHECK(fireAt("at five forty five", "en") == utc(today(17, 45)));
@@ -201,15 +201,15 @@ TEST_CASE("minutes keep their value in every spelling")
   CHECK(fireAt("at half past five", "en") == utc(today(17, 30)));
   CHECK(fireAt("call me half past five", "en") == utc(today(17, 30)));
   CHECK(fireAt("at half past five pm", "en") == utc(today(17, 30)));
-  CHECK(fireAt("at half past eleven", "en") == utc(tomorrow(11, 30)));
+  CHECK(fireAt("at half past eleven", "en") == utc(today(23, 30)));
   CHECK(fireAt("at quarter to six", "en") == utc(today(17, 45)));
-  CHECK(fireAt("at quarter past nine", "en") == utc(tomorrow(9, 15)));
+  CHECK(fireAt("at quarter past nine", "en") == utc(today(21, 15)));
   CHECK(fireAt("at ten past five", "en") == utc(today(17, 10)));
   CHECK(fireAt("at twenty five to six", "en") == utc(today(17, 35)));
   CHECK(fireAt("at 5:30", "en") == utc(today(17, 30)));
   CHECK(fireAt("at 5:30 pm", "en") == utc(today(17, 30)));
   CHECK(fireAt("at 11:15 am", "en") == utc(tomorrow(11, 15)));
-  CHECK(fireAt("at 9:15", "en") == utc(tomorrow(9, 15)));
+  CHECK(fireAt("at 9:15", "en") == utc(today(21, 15)));
 }
 
 TEST_CASE("a 24-hour time is taken as written")
@@ -360,6 +360,63 @@ TEST_CASE("a weekday that agrees with the date is resolved, one that contradicts
   CHECK(call_time::withoutPhrase(text, {.fireAt = 0, .phraseBegin = conflict.phraseBegin, .phraseEnd = conflict.phraseEnd}) == "llamar a Juan");
 }
 
+TEST_CASE("a bare 7 to 11 whose morning has passed is tonight when no day is named, and the morning after when tonight has passed too")
+{
+  CHECK(fireAt("a las nueve") == utc(today(21)));
+  CHECK(fireAt("a las ocho menos cuarto") == utc(today(19, 45)));
+  CHECK(fireAt("at 9:15", "en") == utc(today(21, 15)));
+  CHECK(fireAt("a las 9 de la mañana") == utc(tomorrow(9)));
+  CHECK(fireAt("mañana a las nueve") == utc(tomorrow(9)));
+  CHECK(fireAt("el viernes a las nueve") == utc({.day = 9, .hour = 9}));
+  CHECK_FALSE(fireAt("hoy a las nueve"));
+  const auto late = [](const std::string& text) {
+    const auto found = call_time::resolve({.text = text, .lang = "es", .now = utc({.day = 7, .hour = 23, .minute = 40})});
+    return found ? std::optional<int64_t>(found->fireAt) : std::nullopt;
+  };
+  CHECK(late("a las nueve") == utc(tomorrow(9)));
+  CHECK(late("a las 7:30") == utc(tomorrow(7, 30)));
+  CHECK(late("a las cinco") == utc(tomorrow(17)));
+}
+
+TEST_CASE("a weekday that disagrees with today, tomorrow or the day after is a question naming both days")
+{
+  CHECK(fireAt("mañana jueves a las 5") == utc(tomorrow(17)));
+  CHECK(fireAt("hoy miércoles a las 5") == utc(today(17)));
+  CHECK(fireAt("pasado mañana viernes a las 3") == utc({.day = 9, .hour = 15}));
+  CHECK(fireAt("tomorrow Thursday at 5", "en") == utc(tomorrow(17)));
+  CHECK_FALSE(fireAt("mañana lunes a las 5"));
+  CHECK(conflictOf("mañana lunes a las 5") == Conflict{.byWeekday = utc({.day = 12, .hour = 17}), .byDate = utc(tomorrow(17))});
+  CHECK(call_time::read({.text = "mañana lunes a las 5", .lang = "es", .now = now()}).conflict.value_or(DayConflict{}).relative == 1);
+  CHECK(conflictOf("hoy lunes a las 5") == Conflict{.byWeekday = utc({.day = 12, .hour = 17}), .byDate = utc(today(17))});
+  CHECK(call_time::read({.text = "hoy lunes a las 5", .lang = "es", .now = now()}).conflict.value_or(DayConflict{}).relative == 0);
+  CHECK(conflictOf("pasado mañana lunes a las 5") == Conflict{.byWeekday = utc({.day = 12, .hour = 17}), .byDate = utc({.day = 9, .hour = 17})});
+  CHECK(conflictOf("tomorrow Monday at 5 pm", "en") == Conflict{.byWeekday = utc({.day = 12, .hour = 17}), .byDate = utc(tomorrow(17))});
+  CHECK(call_time::read({.text = "el lunes 9 a las 5", .lang = "es", .now = now()}).conflict.value_or(DayConflict{}).relative == -1);
+}
+
+TEST_CASE("an explicit year inside the twelve months is read, one outside is not resolved and says so")
+{
+  const auto far = [](const std::string& text, const std::string& lang = "es") {
+    const CallReading reading = call_time::read({.text = text, .lang = lang, .now = now()});
+    return reading.farAway && !reading.time && !reading.conflict;
+  };
+  CHECK(fireAt("el 15 de octubre de 2026 a las 5") == utc({.day = 15, .hour = 17}));
+  CHECK(fireAt("el 3 de marzo de 2027 a las 10 de la mañana") == utc({.year = 2027, .month = 3, .day = 3, .hour = 10}));
+  CHECK(fireAt("el 5 de octubre del 2027 a las 9") == utc({.year = 2027, .month = 10, .day = 5, .hour = 9}));
+  CHECK(fireAt("October 15, 2026 at 5 pm", "en") == utc({.day = 15, .hour = 17}));
+  CHECK(fireAt("march 3rd 2027 at 10 am", "en") == utc({.year = 2027, .month = 3, .day = 3, .hour = 10}));
+  CHECK(fireAt("el viernes 9 de octubre de 2026 a las 5") == utc({.day = 9, .hour = 17}));
+  CHECK(far("el 15 de octubre de 2027 a las 5"));
+  CHECK(far("el 3 de marzo de 2029 a las 10 de la mañana"));
+  CHECK(far("el 3 de marzo de 2025 a las 10 de la mañana"));
+  CHECK(far("march 3rd 2029 at 9 am", "en"));
+  CHECK(far("el 7 de octubre de 2026 a las 9 de la mañana"));
+  CHECK_FALSE(far("en 900 horas"));
+  CHECK_FALSE(far("el 31 de noviembre de 2026 a las 9"));
+  CHECK_FALSE(far("el 15 de octubre"));
+  CHECK(conflictOf("el lunes 9 de octubre de 2026 a las 5").has_value());
+}
+
 TEST_CASE("the local clock decides, so Lima time reads the same words at its own hours")
 {
   setenv("TZ", "<-05>5", 1);
@@ -370,7 +427,7 @@ TEST_CASE("the local clock decides, so Lima time reads the same words at its own
     return found ? std::optional<int64_t>(found->fireAt) : std::nullopt;
   };
   CHECK(at("a las cinco") == utc({.day = 7, .hour = 22}));
-  CHECK(at("a las nueve") == utc({.day = 8, .hour = 14}));
+  CHECK(at("a las nueve") == utc({.day = 8, .hour = 2}));
   CHECK(at("mañana a las 3 de la tarde") == utc({.day = 8, .hour = 20}));
   CHECK(at("el viernes a las cinco") == utc({.day = 9, .hour = 22}));
   CHECK(at("a las 11 de la noche") == utc({.day = 8, .hour = 4}));

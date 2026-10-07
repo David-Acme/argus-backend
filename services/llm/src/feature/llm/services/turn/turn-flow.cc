@@ -92,7 +92,12 @@ Finding findingOf(const tools::ToolResult& result)
             .text = result.data["facts"].isString() ? result.data["facts"].asString() : result.output};
   if (result.ok && previewed(result))
     return {.kind = FindingKind::Preview, .tool = result.tool, .text = result.output};
-  return {.kind = result.ok ? FindingKind::Done : FindingKind::Refused, .tool = result.tool, .text = result.output};
+  Finding finding{.kind = result.ok ? FindingKind::Done : FindingKind::Refused, .tool = result.tool, .text = result.output};
+  if (result.ok && result.data["readback"].isString() && result.data["readbackSentence"].isString()) {
+    finding.readback = result.data["readback"].asString();
+    finding.readbackSentence = result.data["readbackSentence"].asString();
+  }
+  return finding;
 }
 
 std::string noteOf(const Finding& finding, std::string_view lang)
@@ -247,6 +252,7 @@ void TurnFlow::execute(const TurnRequest& request, tools::ToolCall call, Outcome
   const tools::ToolDescriptor* tool = handleOf(request.offered, call.name);
   outcome.wrote = outcome.wrote || (tool != nullptr && changes(result, *tool));
   outcome.opened = outcome.opened || (tool != nullptr && shows(result, *tool));
+  outcome.called = outcome.called || (result.ok && result.data["callScheduled"].isBool() && result.data["callScheduled"].asBool());
   outcome.findings.push_back(findingOf(result));
   outcome.steps.push_back({.call = std::move(call), .result = std::move(result)});
 }
@@ -285,9 +291,13 @@ Outcome TurnFlow::proceed(const Move& move)
   tools::ToolCall call{.name = move.candidate.tool, .arguments = move.candidate.arguments, .context = request.context};
   call.context.utterance = move.utterance.empty() ? std::string(request.utterance) : move.utterance;
   call.context.heardAt = move.heardAt;
-  if (!move.answering && !move.heardAt && move.candidate.tool == kRemindTool)
-    if (const auto conflict = slots::dayConflict({.utterance = call.context.utterance, .lang = request.context.lang, .now = request.now}))
-      return askDay(move, move.candidate, {.field = std::string(kHeardField), .conflict = *conflict});
+  if (!move.answering && !move.heardAt && move.candidate.tool == kRemindTool) {
+    const CallReading reading = slots::dayReading({.utterance = call.context.utterance, .lang = request.context.lang, .now = request.now});
+    if (reading.conflict)
+      return askDay(move, move.candidate, {.field = std::string(kHeardField), .conflict = *reading.conflict});
+    if (reading.farAway)
+      return askFar(move, move.candidate, std::string(kHeardField));
+  }
   const std::vector<std::string> fields =
       move.answering ? std::vector<std::string>{move.slot} : missingFields(tool->spec, move.candidate, move.candidate.arguments);
   const slots::Filled filled = slots::fill({.spec = tool->spec,
@@ -302,6 +312,8 @@ Outcome TurnFlow::proceed(const Move& move)
   next.arguments = filled.arguments;
   if (filled.dispute)
     return askDay(move, next, *filled.dispute);
+  if (filled.farField)
+    return askFar(move, next, *filled.farField);
   if (!filled.missing.empty())
     return ask({.request = request, .candidate = std::move(next), .slot = filled.missing.front(), .attempts = move.attempts + 1, .answering = false});
   if (move.answering)
@@ -370,9 +382,40 @@ Outcome TurnFlow::askDay(const Move& move, const Candidate& candidate, const slo
                    .at = {},
                    .options = {},
                    .held = std::nullopt,
-                   .values = {iso_time::format(dispute.conflict.byWeekday), iso_time::format(dispute.conflict.byDate)}});
-  outcome.question = turn_texts::dayQuestion(
-      {.first = dispute.conflict.byWeekday, .second = dispute.conflict.byDate, .now = request.now, .lang = lang});
+                   .values = {iso_time::format(dispute.conflict.byWeekday), iso_time::format(dispute.conflict.byDate)},
+                   .relative = dispute.conflict.relative});
+  outcome.question = turn_texts::dayQuestion({.byWeekday = dispute.conflict.byWeekday,
+                                              .byDate = dispute.conflict.byDate,
+                                              .relative = dispute.conflict.relative,
+                                              .now = request.now,
+                                              .lang = lang});
+  return outcome;
+}
+
+Outcome TurnFlow::askFar(const Move& move, const Candidate& candidate, const std::string& field)
+{
+  const TurnRequest& request = move.request;
+  Outcome outcome;
+  outcome.source = candidate.source;
+  const int attempts = move.attempts + 1;
+  if (attempts > kMaxAttempts) {
+    outcome.question = turn_texts::misunderstood(request.context.lang);
+    return outcome;
+  }
+  if (request.context.userId > 0)
+    pendings_.put(request.context.userId,
+                  {.awaiting = Awaiting::Day,
+                   .candidate = candidate,
+                   .alternative = std::nullopt,
+                   .slot = field,
+                   .utterance = move.utterance.empty() ? std::string(request.utterance) : move.utterance,
+                   .attempts = attempts,
+                   .at = {},
+                   .options = {},
+                   .held = std::nullopt,
+                   .values = {},
+                   .relative = -1});
+  outcome.question = turn_texts::farQuestion(request.context.lang);
   return outcome;
 }
 
@@ -388,18 +431,35 @@ std::optional<Outcome> TurnFlow::followUpDay(const TurnRequest& request, const D
     clearAll(userId);
     return declined();
   }
-  const auto picked = slots::chooseDay(request.utterance, pending.values);
-  if (!picked) {
-    const Move again{.request = request, .candidate = pending.candidate, .slot = pending.slot, .attempts = pending.attempts, .answering = false, .utterance = pending.utterance};
-    const auto at = [&pending](std::size_t index) { return iso_time::parse(pending.values.at(index)).value_or(0); };
-    return askDay(again, pending.candidate, {.field = pending.slot, .conflict = {.byWeekday = at(0), .byDate = at(1), .phraseBegin = 0, .phraseEnd = 0}});
+  const Move again{.request = request,
+                   .candidate = pending.candidate,
+                   .slot = pending.slot,
+                   .attempts = pending.attempts,
+                   .answering = false,
+                   .utterance = pending.utterance};
+  std::optional<std::string> chosen;
+  if (pending.values.empty()) {
+    const CallReading reading = slots::dayReading({.utterance = request.utterance, .lang = request.context.lang, .now = request.now});
+    if (reading.conflict)
+      return askDay(again, pending.candidate, {.field = pending.slot, .conflict = *reading.conflict});
+    if (!reading.time)
+      return askFar(again, pending.candidate, pending.slot);
+    chosen = iso_time::format(reading.time->fireAt);
+  }
+  else {
+    const auto picked = slots::chooseDay({.utterance = request.utterance, .values = pending.values, .relative = pending.relative});
+    if (!picked) {
+      const auto at = [&pending](std::size_t index) { return iso_time::parse(pending.values.at(index)).value_or(0); };
+      return askDay(again, pending.candidate, {.field = pending.slot, .conflict = {.byWeekday = at(0), .byDate = at(1), .phraseBegin = 0, .phraseEnd = 0, .relative = pending.relative}});
+    }
+    chosen = pending.values.at(*picked);
   }
   Candidate next = pending.candidate;
   std::optional<int64_t> heard;
   if (pending.slot == kHeardField)
-    heard = iso_time::parse(pending.values.at(*picked));
+    heard = iso_time::parse(*chosen);
   else
-    next.arguments[pending.slot] = pending.values.at(*picked);
+    next.arguments[pending.slot] = *chosen;
   return proceed({.request = request,
                   .candidate = std::move(next),
                   .slot = {},

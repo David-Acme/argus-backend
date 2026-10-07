@@ -8,6 +8,7 @@ struct TurnState
   bool appAsked{false};
   bool wrote{false};
   bool opened{false};
+  bool called{false};
   std::string lang{};
 };
 

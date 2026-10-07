@@ -64,6 +64,7 @@ struct Filled
   Json::Value arguments;
   std::vector<std::string> missing;
   std::optional<Dispute> dispute{};
+  std::optional<std::string> farField{};
 };
 
 [[nodiscard]] Filled fill(const FillInput& input);
@@ -102,8 +103,15 @@ struct DayHeard
   int64_t now{0};
 };
 
-[[nodiscard]] std::optional<DayConflict> dayConflict(const DayHeard& heard);
+[[nodiscard]] CallReading dayReading(const DayHeard& heard);
 
-[[nodiscard]] std::optional<std::size_t> chooseDay(std::string_view utterance, const std::vector<std::string>& values);
+struct DayAnswer
+{
+  std::string_view utterance;
+  const std::vector<std::string>& values;
+  int relative{-1};
+};
+
+[[nodiscard]] std::optional<std::size_t> chooseDay(const DayAnswer& answer);
 
 }

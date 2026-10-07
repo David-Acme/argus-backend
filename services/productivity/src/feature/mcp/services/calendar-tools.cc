@@ -33,7 +33,7 @@ std::string describe(const CalendarEventSchema& event, const argus::mcp::ToolInv
   return "«" + event.title + "», " + spokenWhen({.epoch = event.startsAt, .allDay = event.isAllDay}, lang(invocation));
 }
 
-std::string readBack(const CalendarEventSchema& event, const argus::mcp::ToolInvocation& invocation)
+std::string spokenStart(const CalendarEventSchema& event, const argus::mcp::ToolInvocation& invocation)
 {
   const std::string language = lang(invocation);
   const spoken_time::When when{.epoch = event.startsAt,
@@ -41,7 +41,7 @@ std::string readBack(const CalendarEventSchema& event, const argus::mcp::ToolInv
                                .lang = language,
                                .day = spoken_time::Day::Weekday,
                                .bare = false};
-  return "«" + event.title + "», " + (event.isAllDay ? spoken_time::day(when) : spoken_time::moment(when));
+  return event.isAllDay ? spoken_time::day(when) : spoken_time::moment(when);
 }
 
 Json::Value summary(const CalendarEventSchema& event)
@@ -149,8 +149,11 @@ drogon::Task<argus::mcp::ToolOutcome> createEvent(argus::mcp::ToolInvocation inv
     co_return invalid(error, invocation);
   }
   argus::mcp::ToolOutcome outcome;
-  outcome.text = (argus::mcp::speech::inEnglish(invocation) ? "Scheduled: " : "Agendado: ") + readBack(row, invocation) + ".";
+  const std::string start = spokenStart(row, invocation);
+  outcome.text = (argus::mcp::speech::inEnglish(invocation) ? "Scheduled: " : "Agendado: ") + ("«" + row.title + "», " + start) + ".";
   outcome.structured = summary(row);
+  outcome.structured["readback"] = start;
+  outcome.structured["readbackSentence"] = outcome.text;
   co_return outcome;
 }
 

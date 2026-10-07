@@ -3,6 +3,16 @@
 #include <cstdint>
 #include <string>
 
+enum class ReminderCallOutcome : unsigned char
+{
+  Scheduled,
+  TooFar,
+  InThePast,
+  TooMany,
+  Unavailable,
+  Refused
+};
+
 struct ReminderCallRequest
 {
   int64_t userId{0};
@@ -17,5 +27,5 @@ class ReminderCallScheduler
 public:
   virtual ~ReminderCallScheduler() = default;
 
-  [[nodiscard]] virtual bool schedule(const ReminderCallRequest& request) const = 0;
+  [[nodiscard]] virtual ReminderCallOutcome schedule(const ReminderCallRequest& request) const = 0;
 };

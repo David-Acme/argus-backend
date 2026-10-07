@@ -214,6 +214,21 @@ bool claimedIn(const Sentence& sentence, const Lexicon& lexicon, const Mode& mod
   return false;
 }
 
+bool callClaimedIn(const Sentence& sentence, const Lexicon& lexicon)
+{
+  if (sentence.question)
+    return false;
+  const Words& words = sentence.words;
+  for (std::size_t at = 0; at < words.size(); ++at) {
+    if (!anyAt(words, at, lexicon.calls))
+      continue;
+    if (negated(words, at, lexicon) || anyBefore(words, at, lexicon.callOffers))
+      continue;
+    return true;
+  }
+  return false;
+}
+
 bool requestedIn(const Words& words, const Lexicon& lexicon)
 {
   for (std::size_t at = 0; at < words.size(); ++at) {
@@ -243,6 +258,16 @@ bool claimsDone(const Reply& reply)
   });
 }
 
+bool claimsCall(const CallReply& reply)
+{
+  const std::vector<Sentence> sentences = sentencesOf(reply.text);
+  return std::ranges::any_of(sentences, [&](const Sentence& sentence) {
+    return std::ranges::any_of(lexicons(), [&](const Lexicon& lexicon) {
+      return (reply.lang.empty() || lexicon.language == reply.lang) && callClaimedIn(sentence, lexicon);
+    });
+  });
+}
+
 bool asksForAction(std::string_view utterance)
 {
   const Words words = wordsOf(std::string(utterance));
@@ -251,7 +276,8 @@ bool asksForAction(std::string_view utterance)
 
 std::string withoutFalseClaims(Plain plain)
 {
-  if (!claimsDone({.text = plain.text, .asked = asksForAction(plain.utterance), .appOnly = false, .lang = plain.lang}))
+  if (!claimsCall({.text = plain.text, .lang = plain.lang}) &&
+      !claimsDone({.text = plain.text, .asked = asksForAction(plain.utterance), .appOnly = false, .lang = plain.lang}))
     return std::move(plain.text);
   return honest(plain.lang);
 }
@@ -287,7 +313,8 @@ void ClaimGate::release(const std::string& sentence)
   if (cut_ || sentence.empty())
     return;
   const bool legitimate = input_.legitimate && input_.legitimate();
-  if (legitimate || !claimsDone({.text = sentence, .asked = input_.asked, .appOnly = input_.appOnly, .lang = input_.lang})) {
+  const bool unconfirmedCall = !input_.callsConfirmed && claimsCall({.text = sentence, .lang = input_.lang});
+  if (!unconfirmedCall && (legitimate || !claimsDone({.text = sentence, .asked = input_.asked, .appOnly = input_.appOnly, .lang = input_.lang}))) {
     spoken_ += sentence;
     if (input_.sink)
       input_.sink(sentence, false);

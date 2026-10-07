@@ -57,6 +57,13 @@ struct DateHit
 {
   int day{0};
   int month{0};
+  int year{0};
+};
+
+struct YearHit
+{
+  int value{0};
+  std::size_t last{0};
 };
 
 struct Parsed
@@ -402,6 +409,19 @@ std::optional<Relative> relative(const Tokens& tokens, int64_t now)
   return std::nullopt;
 }
 
+std::optional<YearHit> explicitYearAt(const Tokens& tokens, std::size_t at)
+{
+  std::size_t next = at;
+  if (anyWordAt(tokens, next, {"de", "del", "of"}))
+    ++next;
+  if (next >= tokens.size() || tokens[next].text.size() != 4 || !onlyDigits(tokens[next].text))
+    return std::nullopt;
+  const int value = std::stoi(tokens[next].text);
+  if (value < 2000 || value > 2199)
+    return std::nullopt;
+  return YearHit{.value = value, .last = next};
+}
+
 class Scanner
 {
 public:
@@ -487,6 +507,10 @@ private:
       if (const int month = monthOf(tokens_[next].text); month > 0) {
         hit.month = month;
         end = next;
+        if (const auto year = explicitYearAt(tokens_, next + 1)) {
+          hit.year = year->value;
+          end = year->last;
+        }
         return hit;
       }
     }
@@ -552,9 +576,15 @@ private:
         return 0;
       if (strictMarkerAt(tokens_, at + 1 + number->length))
         return 0;
-      parsed_.date = DateHit{.day = number->value, .month = month};
-      widen(at, at + number->length);
-      return number->length + 1;
+      DateHit hit{.day = number->value, .month = month};
+      std::size_t end = at + number->length;
+      if (const auto year = explicitYearAt(tokens_, end + 1)) {
+        hit.year = year->value;
+        end = year->last;
+      }
+      parsed_.date = hit;
+      widen(at, end);
+      return end - at + 1;
     }
     if (const auto number = dayNumberAt(tokens_, at)) {
       std::size_t end = at + number->length - 1;
@@ -621,29 +651,47 @@ private:
   Parsed parsed_;
 };
 
-std::optional<Civil> upcomingDate(const DateHit& hit, const Civil& today, const ClockReading& clock, int64_t now)
+struct Upcoming
+{
+  std::optional<Civil> date;
+  bool far{false};
+};
+
+Upcoming upcomingDate(const DateHit& hit, const Civil& today, const ClockReading& clock, int64_t now)
 {
   const auto ahead = [&](const Civil& civil) { return isValid(civil) && instantOf(civil, clock) > now; };
+  if (hit.year > 0) {
+    const Civil civil{.year = hit.year, .month = hit.month, .day = hit.day};
+    if (!isValid(civil))
+      return {};
+    return ahead(civil) ? Upcoming{.date = civil, .far = false} : Upcoming{.date = std::nullopt, .far = true};
+  }
   if (hit.month > 0) {
     for (int year = today.year; year <= today.year + 1; ++year)
       if (const Civil civil{.year = year, .month = hit.month, .day = hit.day}; ahead(civil))
-        return civil;
-    return std::nullopt;
+        return {.date = civil, .far = false};
+    return {};
   }
   for (int step = 0; step <= kMonthsAhead; ++step) {
     const int index = today.month - 1 + step;
     const Civil civil{.year = today.year + index / kMonthsInYear, .month = index % kMonthsInYear + 1, .day = hit.day};
     if (ahead(civil))
-      return civil;
+      return {.date = civil, .far = false};
   }
-  return std::nullopt;
+  return {};
 }
 
 struct Resolved
 {
   std::optional<int64_t> fireAt;
   std::optional<DayConflict> conflict;
+  bool far{false};
 };
+
+bool bareMorning(const ClockReading& clock)
+{
+  return clock.period == Period::None && !clock.literal && !clock.midday && !clock.midnight && clock.hour >= 7 && clock.hour <= 11;
+}
 
 struct Disagreement
 {
@@ -669,35 +717,52 @@ Resolved instantFor(const Parsed& parsed, ClockReading clock, int64_t now)
     clock.period = parsed.context;
   const Civil today = civilOf(now);
   if (parsed.date) {
-    const auto date = upcomingDate(*parsed.date, today, clock, now);
-    if (!date)
-      return {};
-    if (parsed.weekday >= 0 && weekdayIndex(*date) != parsed.weekday) {
-      return {.fireAt = std::nullopt, .conflict = conflictOf({.date = *date, .weekday = parsed.weekday, .clock = clock, .now = now})};
-    }
-    return {.fireAt = instantOf(*date, clock), .conflict = std::nullopt};
+    const Upcoming upcoming = upcomingDate(*parsed.date, today, clock, now);
+    if (!upcoming.date)
+      return {.fireAt = std::nullopt, .conflict = std::nullopt, .far = upcoming.far};
+    const Civil date = *upcoming.date;
+    if (parsed.weekday >= 0 && weekdayIndex(date) != parsed.weekday)
+      return {.fireAt = std::nullopt,
+              .conflict = conflictOf({.date = date, .weekday = parsed.weekday, .clock = clock, .now = now}),
+              .far = false};
+    return {.fireAt = instantOf(date, clock), .conflict = std::nullopt, .far = false};
   }
   if (parsed.weekday >= 0) {
-    int ahead = parsed.offset >= 0 ? parsed.offset : (parsed.weekday - weekdayIndex(today) + kWeekDays) % kWeekDays;
-    if (parsed.offset < 0 && ahead == 0)
+    int ahead = (parsed.weekday - weekdayIndex(today) + kWeekDays) % kWeekDays;
+    if (ahead == 0)
       ahead = kWeekDays;
-    const Civil day = shifted(today, ahead);
-    if (weekdayIndex(day) != parsed.weekday)
-      return {};
-    const int64_t fireAt = instantOf(day, clock);
+    if (parsed.offset >= 0) {
+      const Civil named = shifted(today, parsed.offset);
+      if (weekdayIndex(named) != parsed.weekday) {
+        DayConflict conflict{.byWeekday = instantOf(shifted(today, ahead), clock),
+                             .byDate = instantOf(named, clock),
+                             .phraseBegin = 0,
+                             .phraseEnd = 0,
+                             .relative = parsed.offset};
+        return {.fireAt = std::nullopt, .conflict = conflict, .far = false};
+      }
+      ahead = parsed.offset;
+    }
+    const int64_t fireAt = instantOf(shifted(today, ahead), clock);
     if (fireAt <= now)
       return {};
-    return {.fireAt = fireAt, .conflict = std::nullopt};
+    return {.fireAt = fireAt, .conflict = std::nullopt, .far = false};
   }
   if (parsed.offset > 0)
-    return {.fireAt = instantOf(shifted(today, parsed.offset), clock), .conflict = std::nullopt};
+    return {.fireAt = instantOf(shifted(today, parsed.offset), clock), .conflict = std::nullopt, .far = false};
   int64_t fireAt = instantOf(today, clock);
   if (fireAt > now)
     return {.fireAt = fireAt, .conflict = std::nullopt};
   if (parsed.offset == 0 || parsed.today)
     return {};
+  if (bareMorning(clock)) {
+    ClockReading evening = clock;
+    evening.period = Period::Pm;
+    if (const int64_t tonight = instantOf(today, evening); tonight > now)
+      return {.fireAt = tonight, .conflict = std::nullopt, .far = false};
+  }
   fireAt = instantOf(shifted(today, 1), clock);
-  return {.fireAt = fireAt, .conflict = std::nullopt};
+  return {.fireAt = fireAt, .conflict = std::nullopt, .far = false};
 }
 }
 
@@ -713,7 +778,7 @@ CallReading read(const CallTimeInput& input)
   if (const auto found = relative(tokens, input.now)) {
     if (found->fireAt - input.now > kRelativeAheadS)
       return {};
-    return {.time = timeOf(found->fireAt, found->first, found->last), .conflict = std::nullopt};
+    return {.time = timeOf(found->fireAt, found->first, found->last), .conflict = std::nullopt, .farAway = false};
   }
   const Parsed parsed = Scanner(tokens).run();
   if (!parsed.clock)
@@ -722,15 +787,17 @@ CallReading read(const CallTimeInput& input)
   const int64_t limit = yearAfter(input.now);
   if (result.conflict) {
     if (std::max(result.conflict->byWeekday, result.conflict->byDate) > limit)
-      return {};
+      return {.time = std::nullopt, .conflict = std::nullopt, .farAway = true};
     DayConflict conflict = *result.conflict;
     conflict.phraseBegin = folded.origin[tokens[parsed.first].begin];
     conflict.phraseEnd = folded.origin[tokens[parsed.last].end];
-    return {.time = std::nullopt, .conflict = conflict};
+    return {.time = std::nullopt, .conflict = conflict, .farAway = false};
   }
+  if (result.far || (result.fireAt && *result.fireAt > limit && parsed.date))
+    return {.time = std::nullopt, .conflict = std::nullopt, .farAway = true};
   if (!result.fireAt || *result.fireAt > limit)
     return {};
-  return {.time = timeOf(*result.fireAt, parsed.first, parsed.last), .conflict = std::nullopt};
+  return {.time = timeOf(*result.fireAt, parsed.first, parsed.last), .conflict = std::nullopt, .farAway = false};
 }
 
 std::optional<CallTime> resolve(const CallTimeInput& input)

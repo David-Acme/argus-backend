@@ -35,6 +35,8 @@ struct Finding
   FindingKind kind{FindingKind::Done};
   std::string tool;
   std::string text;
+  std::string readback{};
+  std::string readbackSentence{};
 };
 
 struct Step
@@ -50,6 +52,7 @@ struct Outcome
   std::optional<std::string> question;
   bool wrote{false};
   bool opened{false};
+  bool called{false};
   int64_t toolMs{0};
   std::string source;
 };
@@ -121,6 +124,7 @@ private:
   [[nodiscard]] Outcome projectRefusal(const TurnRequest& request, const Candidate& candidate, Outcome outcome);
   [[nodiscard]] std::optional<Outcome> followUpDay(const TurnRequest& request, const Deciding& deciding, const Pending& pending);
   [[nodiscard]] Outcome askDay(const Move& move, const Candidate& candidate, const slots::Dispute& dispute);
+  [[nodiscard]] Outcome askFar(const Move& move, const Candidate& candidate, const std::string& field);
   [[nodiscard]] Outcome askProjectAgain(const TurnRequest& request, const Pending& pending);
   [[nodiscard]] Outcome offerProject(const TurnRequest& request, const Pending& pending, const std::string& name);
   [[nodiscard]] Outcome confirmed(const TurnRequest& request, const Pending& pending);

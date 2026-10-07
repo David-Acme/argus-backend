@@ -343,16 +343,16 @@ std::optional<std::string> nameGiven(std::string_view utterance)
   return std::nullopt;
 }
 
-std::optional<DayConflict> dayConflict(const DayHeard& heard)
+CallReading dayReading(const DayHeard& heard)
 {
-  return call_time::read({.text = heard.utterance, .lang = heard.lang, .now = heard.now}).conflict;
+  return call_time::read({.text = heard.utterance, .lang = heard.lang, .now = heard.now});
 }
 
-std::optional<std::size_t> chooseDay(std::string_view utterance, const std::vector<std::string>& values)
+std::optional<std::size_t> chooseDay(const DayAnswer& answer)
 {
-  const call_time::Tokens heard = call_time::tokenize(call_time::fold(utterance).text);
+  const call_time::Tokens heard = call_time::tokenize(call_time::fold(answer.utterance).text);
   std::vector<std::tm> days;
-  for (const std::string& value : values) {
+  for (const std::string& value : answer.values) {
     const auto at = iso_time::parse(value);
     if (!at)
       return std::nullopt;
@@ -375,7 +375,14 @@ std::optional<std::size_t> chooseDay(std::string_view utterance, const std::vect
   std::vector<bool> byWeekday(days.size(), false);
   std::vector<bool> byNumber(days.size(), false);
   std::vector<bool> byOrdinal(days.size(), false);
+  std::vector<bool> byRelative(days.size(), false);
+  const std::array<std::vector<std::string_view>, 3> relativeWords{{{"hoy", "today", "tonight"}, {"manana", "tomorrow"}, {"pasado", "after"}}};
   for (std::size_t at = 0; at < heard.size(); ++at) {
+    if (answer.relative >= 0 && answer.relative < 3 && days.size() > 1) {
+      const auto& words = relativeWords.at(static_cast<std::size_t>(answer.relative));
+      if (std::ranges::any_of(words, [&](std::string_view word) { return call_time::wordAt(heard, at, word); }))
+        byRelative[1] = true;
+    }
     const int weekday = call_time::weekdayOf(heard[at].text);
     const auto number = call_time::dayNumberAt(heard, at);
     for (std::size_t index = 0; index < days.size(); ++index) {
@@ -392,6 +399,8 @@ std::optional<std::size_t> chooseDay(std::string_view utterance, const std::vect
   const bool saidWeekday = std::ranges::any_of(byWeekday, [](bool hit) { return hit; });
   if (saidWeekday)
     return pick(byWeekday);
+  if (std::ranges::any_of(byRelative, [](bool hit) { return hit; }))
+    return pick(byRelative);
   if (std::ranges::any_of(byNumber, [](bool hit) { return hit; }))
     return pick(byNumber);
   return pick(byOrdinal);
@@ -424,9 +433,13 @@ Filled fill(const FillInput& input)
         filled.arguments[field] = value;
         continue;
       }
-      if (!filled.dispute)
-        if (const auto conflict = dayConflict({.utterance = input.context.utterance, .lang = input.context.lang, .now = input.now}))
-          filled.dispute = Dispute{.field = field, .conflict = *conflict};
+      if (!filled.dispute && !filled.farField) {
+        const CallReading reading = dayReading({.utterance = input.context.utterance, .lang = input.context.lang, .now = input.now});
+        if (reading.conflict)
+          filled.dispute = Dispute{.field = field, .conflict = *reading.conflict};
+        else if (reading.farAway)
+          filled.farField = field;
+      }
       filled.missing.push_back(field);
       continue;
     }

@@ -108,6 +108,8 @@ struct World
   std::string previous;
   std::vector<std::string> projects{"Casa"};
   bool listsProjects{true};
+  std::string readback;
+  std::string readbackSentence;
 
   explicit World(UserRole role = UserRole::Owner)
       : flow({.executor = executor, .decider = &rules, .text = &text, .policies = turn::PolicySet({.act = 0.90, .ask = 0.60, .margin = 0.10})})
@@ -131,8 +133,13 @@ struct World
                               failed.output = "No pude agendar.";
                               return failed;
                             }
-                            return tool_stubs::okResult("Agendé «" + call.arguments["title"].asString() + "» para " +
-                                                        call.arguments["starts_at"].asString() + ".");
+                            auto result = tool_stubs::okResult("Agendé «" + call.arguments["title"].asString() + "» para " +
+                                                               call.arguments["starts_at"].asString() + ".");
+                            if (!readback.empty()) {
+                              result.data["readback"] = readback;
+                              result.data["readbackSentence"] = readbackSentence;
+                            }
+                            return result;
                           },
                           .module = "productivity",
                           .schema = schema::object({{.name = "title", .schema = schema::text(), .required = true},
@@ -1880,6 +1887,237 @@ TEST_CASE("a reminder whose weekday disagrees with its day asks which one and th
   CHECK_FALSE(agreeing.say("recuérdame el viernes 9 a las 5 llamar a Juan").question.has_value());
   REQUIRE(agreeing.ran.size() == 1);
   CHECK_FALSE(agreeing.ran.front().context.heardAt.has_value());
+}
+
+TEST_CASE("a weekday that disagrees with tomorrow or today asks which of the two days is meant, in both languages")
+{
+  const UtcZone zone;
+  World world;
+  world.now = at({.day = 7, .hour = 15, .minute = 20});
+  CHECK(said(world.say("agenda una reunión con Andrea mañana lunes a las 5")) == "¿Mañana jueves o el lunes 12?");
+  CHECK(world.ran.empty());
+  const auto done = world.say("mañana");
+  REQUIRE(world.ran.size() == 1);
+  CHECK(world.ran.front().arguments["title"].asString() == "Reunión con Andrea");
+  CHECK(world.ran.front().arguments["starts_at"].asString() == "2026-10-08T17:00:00+00:00");
+  CHECK(done.wrote);
+
+  World weekday;
+  weekday.now = at({.day = 7, .hour = 15, .minute = 20});
+  REQUIRE(weekday.say("agenda una reunión con Andrea mañana lunes a las 5").question.has_value());
+  weekday.say("el lunes");
+  REQUIRE(weekday.ran.size() == 1);
+  CHECK(weekday.ran.front().arguments["starts_at"].asString() == "2026-10-12T17:00:00+00:00");
+
+  World today;
+  today.now = at({.day = 7, .hour = 15, .minute = 20});
+  CHECK(said(today.say("agenda una reunión con Andrea hoy lunes a las 5")) == "¿Hoy miércoles o el lunes 12?");
+
+  World english;
+  english.now = at({.day = 7, .hour = 15, .minute = 20});
+  english.context.lang = "en";
+  english.flow.useDecider(english.scripted);
+  turn::Candidate meeting = candidate("calendar.create_event", 0.95);
+  meeting.fill = {"title", "starts_at"};
+  english.scripted.next = meeting;
+  CHECK(said(english.say("schedule a meeting with Andrea tomorrow Monday at 5 pm")) == "Do you mean tomorrow, which is a Thursday, or Monday the 12th?");
+  english.scripted.next.reset();
+  english.say("Monday");
+  REQUIRE(english.ran.size() == 1);
+  CHECK(english.ran.front().arguments["starts_at"].asString() == "2026-10-12T17:00:00+00:00");
+
+  World agreeing;
+  agreeing.now = at({.day = 7, .hour = 15, .minute = 20});
+  CHECK_FALSE(agreeing.say("agenda una reunión con Andrea mañana jueves a las 5").question.has_value());
+  REQUIRE(agreeing.ran.size() == 1);
+  CHECK(agreeing.ran.front().arguments["starts_at"].asString() == "2026-10-08T17:00:00+00:00");
+}
+
+TEST_CASE("a date beyond the twelve months is asked about, never dropped, and the answer completes the call")
+{
+  const UtcZone zone;
+  World world;
+  world.now = at({.day = 7, .hour = 15, .minute = 20});
+  const std::string far = turn_texts::farQuestion("es");
+  CHECK(said(world.say("agenda una reunión con Andrea el 3 de marzo de 2029 a las 10 de la mañana")) == far);
+  CHECK(world.ran.empty());
+  CHECK(said(world.say("mmm")) == far);
+  const auto done = world.say("el 3 de marzo de 2027 a las 10 de la mañana");
+  REQUIRE(world.ran.size() == 1);
+  CHECK(world.ran.front().arguments["title"].asString() == "Reunión con Andrea");
+  CHECK(world.ran.front().arguments["starts_at"].asString() == "2027-03-03T10:00:00+00:00");
+  CHECK(done.wrote);
+
+  World gaveUp;
+  gaveUp.now = at({.day = 7, .hour = 15, .minute = 20});
+  REQUIRE(gaveUp.say("agenda una reunión con Andrea el 3 de marzo de 2029 a las 10 de la mañana").question.has_value());
+  REQUIRE(gaveUp.say("mmm").question.has_value());
+  CHECK(said(gaveUp.say("mmm")) == turn_texts::misunderstood("es"));
+  CHECK(gaveUp.ran.empty());
+
+  World english;
+  english.now = at({.day = 7, .hour = 15, .minute = 20});
+  english.context.lang = "en";
+  english.flow.useDecider(english.scripted);
+  turn::Candidate meeting = candidate("calendar.create_event", 0.95);
+  meeting.fill = {"title", "starts_at"};
+  english.scripted.next = meeting;
+  CHECK(said(english.say("schedule a meeting with Andrea on march 3rd 2029 at 9 am")) == turn_texts::farQuestion("en"));
+  english.scripted.next.reset();
+  english.say("tomorrow at 9 am");
+  REQUIRE(english.ran.size() == 1);
+  CHECK(english.ran.front().arguments["starts_at"].asString() == "2026-10-08T09:00:00+00:00");
+
+  World reminder;
+  reminder.now = at({.day = 7, .hour = 15, .minute = 20});
+  reminder.add(tool_stubs::stub({.name = "memory.remind",
+                                 .capability = "reminders.write",
+                                 .handler = [&reminder](const tools::ToolCall& call) {
+                                   reminder.ran.push_back(call);
+                                   return tool_stubs::okResult("Recordatorio guardado.");
+                                 },
+                                 .module = "core",
+                                 .schema = schema::object({{.name = "text", .schema = schema::text(), .required = false}})}));
+  reminder.refresh();
+  reminder.flow.useDecider(reminder.scripted);
+  turn::Candidate remind = candidate("memory.remind", 0.95);
+  remind.arguments["text"] = "recuérdame el 3 de marzo de 2029 a las 5 llamar a Juan";
+  reminder.scripted.next = remind;
+  CHECK(said(reminder.say("recuérdame el 3 de marzo de 2029 a las 5 llamar a Juan")) == far);
+  reminder.scripted.next.reset();
+  reminder.say("mañana a las 9 de la mañana");
+  REQUIRE(reminder.ran.size() == 1);
+  CHECK(reminder.ran.front().context.heardAt.value_or(0) == at({.day = 8, .hour = 9}));
+  CHECK(reminder.ran.front().context.utterance == "recuérdame el 3 de marzo de 2029 a las 5 llamar a Juan");
+}
+
+namespace
+{
+tools::ToolDescriptor remindStub(World& world, bool scheduled)
+{
+  return tool_stubs::stub({.name = "memory.remind",
+                           .capability = "reminders.write",
+                           .handler = [&world, scheduled](const tools::ToolCall& call) {
+                             world.ran.push_back(call);
+                             auto result = tool_stubs::okResult("Recordatorio guardado.");
+                             result.data["callScheduled"] = scheduled;
+                             return result;
+                           },
+                           .module = "core",
+                           .schema = schema::object({{.name = "text", .schema = schema::text(), .required = false}})});
+}
+}
+
+TEST_CASE("the read-back of a created event is appended when the spoken reply leaves it out, and not said twice when it has it")
+{
+  const std::string sentence = "Agendado: «Reunión con Andrea», el jueves 8 a las 5 de la tarde.";
+  const std::string utterance = "agéndame una reunión con Andrea mañana a las 5 de la tarde";
+
+  Spoken omitted;
+  omitted.world.readback = "el jueves 8 a las 5 de la tarde";
+  omitted.world.readbackSentence = sentence;
+  omitted.script.replies = {"Listo, ya quedó agendada tu reunión."};
+  CHECK(omitted.sync(utterance).reply == "Listo, ya quedó agendada tu reunión. " + sentence);
+
+  Spoken streamed;
+  streamed.world.readback = "el jueves 8 a las 5 de la tarde";
+  streamed.world.readbackSentence = sentence;
+  streamed.script.chunk = 5;
+  streamed.script.replies = {"Listo, ya quedó agendada tu reunión."};
+  const auto output = streamed.stream(utterance);
+  CHECK(output.reply == "Listo, ya quedó agendada tu reunión. " + sentence);
+  CHECK(streamed.heard == output.reply);
+
+  Spoken said;
+  said.world.readback = "el jueves 8 a las 5 de la tarde";
+  said.world.readbackSentence = sentence;
+  said.script.replies = {"Listo, agendé «Reunión con Andrea» para el jueves 8 a las 5 de la tarde."};
+  CHECK(said.sync(utterance).reply == "Listo, agendé «Reunión con Andrea» para el jueves 8 a las 5 de la tarde.");
+
+  Spoken withoutArticle;
+  withoutArticle.world.readback = "el jueves 8 a las 5 de la tarde";
+  withoutArticle.world.readbackSentence = sentence;
+  withoutArticle.script.replies = {"Quedó para jueves 8 a las 5 de la tarde, con Andrea."};
+  CHECK(withoutArticle.sync(utterance).reply == "Quedó para jueves 8 a las 5 de la tarde, con Andrea.");
+
+  Spoken saidStreamed;
+  saidStreamed.world.readback = "el jueves 8 a las 5 de la tarde";
+  saidStreamed.world.readbackSentence = sentence;
+  saidStreamed.script.chunk = 7;
+  saidStreamed.script.replies = {"Listo, agendé «Reunión con Andrea» para el jueves 8 a las 5 de la tarde."};
+  const auto kept = saidStreamed.stream(utterance);
+  CHECK(kept.reply == "Listo, agendé «Reunión con Andrea» para el jueves 8 a las 5 de la tarde.");
+  CHECK(saidStreamed.heard == kept.reply);
+
+  Spoken english;
+  english.world.context.lang = "en";
+  english.world.readback = "on Thursday the 8th at 5 PM";
+  english.world.readbackSentence = "Scheduled: “Meeting with Andrea”, on Thursday the 8th at 5 PM.";
+  english.adapter.flow().useDecider(english.world.scripted);
+  turn::Candidate meeting = candidate("calendar.create_event", 0.95);
+  meeting.fill = {"title", "starts_at"};
+  english.world.scripted.next = meeting;
+  english.script.replies = {"Done, it is all set."};
+  CHECK(english.sync("schedule a meeting with Andrea tomorrow at 5 pm").reply ==
+        "Done, it is all set. Scheduled: “Meeting with Andrea”, on Thursday the 8th at 5 PM.");
+
+  Spoken failed;
+  failed.world.readback = "el jueves 8 a las 5 de la tarde";
+  failed.world.readbackSentence = sentence;
+  failed.world.createOk = false;
+  failed.script.replies = {"No pude agendarla."};
+  CHECK(failed.sync(utterance).reply == "No pude agendarla.");
+}
+
+TEST_CASE("a promise to call is spoken only when the tool confirmed the schedule, and is cut otherwise on every path")
+{
+  const auto remind = [](Spoken& spoken, bool scheduled) {
+    spoken.world.add(remindStub(spoken.world, scheduled));
+    spoken.adapter.flow().useDecider(spoken.world.scripted);
+    spoken.world.scripted.next = candidate("memory.remind", 0.95);
+    spoken.world.scripted.next->arguments["text"] = "recuérdame mañana a las 5 llamar a Juan";
+  };
+  const std::string promise = "Listo, te llamaré mañana a las 5 de la tarde.";
+  const std::string utterance = "recuérdame mañana a las 5 llamar a Juan";
+
+  Spoken confirmed;
+  remind(confirmed, true);
+  confirmed.script.replies = {promise};
+  CHECK(confirmed.sync(utterance).reply == promise);
+
+  Spoken unconfirmed;
+  remind(unconfirmed, false);
+  unconfirmed.script.replies = {promise};
+  CHECK(unconfirmed.sync(utterance).reply == reply_claims::honest("es"));
+
+  Spoken streamedConfirmed;
+  remind(streamedConfirmed, true);
+  streamedConfirmed.script.chunk = 6;
+  streamedConfirmed.script.replies = {promise};
+  CHECK(streamedConfirmed.stream(utterance).reply == promise);
+
+  Spoken streamedUnconfirmed;
+  remind(streamedUnconfirmed, false);
+  streamedUnconfirmed.script.chunk = 6;
+  streamedUnconfirmed.script.replies = {promise};
+  const auto cut = streamedUnconfirmed.stream(utterance);
+  CHECK(cut.reply == reply_claims::honest("es"));
+  CHECK(streamedUnconfirmed.heard == cut.reply);
+
+  Spoken honestAboutIt;
+  remind(honestAboutIt, false);
+  honestAboutIt.script.replies = {"Lo guardé en tus recordatorios, pero no pude programar la llamada."};
+  CHECK(honestAboutIt.sync(utterance).reply == "Lo guardé en tus recordatorios, pero no pude programar la llamada.");
+
+  Spoken english;
+  english.world.context.lang = "en";
+  remind(english, false);
+  english.script.replies = {"Done, I'll call you tomorrow at 5 PM."};
+  CHECK(english.sync("remind me tomorrow at 5 to call John").reply == reply_claims::honest("en"));
+
+  Spoken none;
+  none.script.replies = {"Claro, te llamaré a las cinco."};
+  CHECK(none.sync("llámame a las cinco").reply == reply_claims::honest("es"));
 }
 
 TEST_CASE("the notifications panel opens by an app command in both languages, for every role, with a module off")

@@ -5,6 +5,7 @@
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/llm/services/turn/turn-texts.hxx>
 
+#include <text/name-match.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
@@ -37,6 +38,23 @@ std::string lastUserMessage(const std::vector<ChatMessage>& history)
     if (message.role == "user")
       return LfmAdapter::spokenText(message.content);
   return {};
+}
+
+std::string missingReadbacks(const turn::Outcome& outcome, const std::string& reply)
+{
+  const std::string heard = text_norm::folded(reply);
+  std::string extra;
+  for (const turn::Finding& finding : outcome.findings) {
+    if (finding.kind != turn::FindingKind::Done || finding.readback.empty())
+      continue;
+    std::string core = text_norm::folded(finding.readback);
+    for (const std::string_view lead : {"el ", "on "})
+      if (core.starts_with(lead))
+        core.erase(0, lead.size());
+    if (heard.find(core) == std::string::npos)
+      extra += " " + finding.readbackSentence;
+  }
+  return extra;
 }
 
 TurnState turnOf(const std::string& utterance, const std::vector<tools::ToolHandle>& tools)
@@ -169,6 +187,7 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
   TurnState state = turnOf(utterance, input.tools);
   state.wrote = outcome.wrote;
   state.opened = outcome.opened;
+  state.called = outcome.called;
   state.lang = input.context.lang;
   req.messages = speakMessages(args, turn::TurnFlow::notes(outcome, input.context.lang));
 
@@ -178,11 +197,17 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
                                   .lang = input.context.lang,
                                   .asked = state.asked,
                                   .legitimate = [&state] { return state.wrote; },
-                                  .appOnly = state.opened});
+                                  .appOnly = state.opened,
+                                  .callsConfirmed = state.called});
     const TokenCallback guarded = gate.callback();
     std::string spoken;
-    engine_.chatStream(req, [&spoken, &guarded](const std::string& token, bool done) {
+    engine_.chatStream(req, [&](const std::string& token, bool done) {
       spoken += token;
+      if (done && !gate.cut())
+        if (const std::string extra = missingReadbacks(outcome, spoken); !extra.empty()) {
+          spoken += extra;
+          guarded(extra, false);
+        }
       guarded(token, done);
     });
     output.emitted = true;
@@ -195,6 +220,9 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
     if (claimedWithoutTool(output.reply, state)) {
       LOG_WARN << "LfmAdapter: the reply claims something no tool did; answering honestly";
       output.reply = reply_claims::honest(input.context.lang);
+    }
+    else {
+      output.reply += missingReadbacks(outcome, output.reply);
     }
   }
   output.generateMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();

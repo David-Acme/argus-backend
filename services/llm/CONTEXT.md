@@ -1163,22 +1163,31 @@ menos cuarto" is 17:45 and "a las 8 menos cuarto" 07:45.
 | a day of the month, no month ("el 15", "el quince", "the 15th") | the next occurrence: this month while the instant is still ahead, otherwise the next month that has that day |
 | a day and a month ("el 15 de octubre", "october 15th", "15th of October") | this year, or next year when it has passed |
 | a weekday and a day of the month that agree ("el viernes 9") | that date |
+| a day, a month and a 4-digit year ("el 15 de octubre de 2027", "October 15, 2027") | that date when it falls inside the 12 months; outside them (or already past) nothing is resolved and the turn asks again |
 | a weekday and a day of the month that disagree ("el lunes 9" on a Friday 9th) | nothing is resolved; `read` reports the two candidates in `conflict` and the turn asks which one |
+| a weekday and "hoy", "mañana" or "pasado mañana" that disagree ("mañana lunes" when tomorrow is Thursday) | the same: `conflict` carries both days and `relative`, and the turn asks "¿Mañana jueves o el lunes 12?" |
 
-Relative phrases ("en 20 minutos", "in half an hour") are capped at 30 days,
-explicit dates at 12 months from now; the call itself is still only
-scheduled within `[notifications]`' own horizon, so a farther reminder is
-saved as a reminder row without a call.
+With no day named, a bare 7 to 11 whose morning has already passed today is
+tonight's reading when that is still ahead ("a las nueve" at 15:20 is 21:00,
+"a las ocho menos cuarto" 19:45, "at 9:15" 21:15) and tomorrow morning when
+it is not; with a day named (or "hoy") it is that day's morning, and a bare
+1 to 6 is always the afternoon.
+
+Relative phrases ("en 20 minutos", "in half an hour") are capped at 30 days;
+explicit dates are accepted up to 12 months from now (`read` answers
+`farAway` past that, and the turn says "Esa fecha queda fuera de lo que puedo
+agendar: llego hasta dentro de 12 meses. ¿Para qué día y a qué hora?" and
+reads the answer for that question). The call itself is set by
+argus-notification, whose horizon is the same 12 months; a call it refuses or
+cannot confirm is never claimed (below).
 
 Judgement calls the rules left open, kept as they stand until the owner
 decides (each is one line in `call-time.cc`): "12 de la mañana" is noon;
 "las 2 de la noche" is 02:00 (the small hours) and "las 5 de la noche" too;
 "mañana a medianoche" is the 00:00 that ends tomorrow while "12 a. m." on a
-named day is that day's 00:00; a bare 7 to 11 whose morning reading has
-passed today is tomorrow's morning ("a las nueve" at 15:20 is tomorrow 09:00;
-before the rules it was 21:00 today); "next friday" is the coming Friday; a
-weekday that disagrees with "hoy" or "mañana" resolves nothing and asks
-nothing; a year in the text is not read.
+named day is that day's 00:00; "next friday" is the coming Friday; "hoy a las
+nueve" with the morning gone resolves nothing (an explicit today has no
+evening fallback); a year is read only as four digits after a month.
 
 A weekday that disagrees with the day of the month is a clarifying question,
 never a guess. `slots::fill` (for a date-time slot) and the turn before
@@ -1189,8 +1198,10 @@ real weekday) and keeps a pending (`Awaiting::Day`, the two candidate instants
 as ISO in `Pending.values`, the original words for grounding). The answer is
 read for that question only (`slots::chooseDay`: a weekday name, a day number
 or "el primero/segundo", "first/second"); a date-time slot takes the chosen ISO
-and the call goes on with the other slots read again from the original words,
-while `memory.remind`, whose time is its user's words, is run with
+and the call goes on with the other slots read again from the original words
+(a conflict against today or tomorrow is asked the same way, the relative
+day first, and `slots::chooseDay` also reads "mañana", "hoy" or "tomorrow"
+for it), while `memory.remind`, whose time is its user's words, is run with
 `ToolContext::heardAt` set to the chosen instant, which `scheduleReminder`
 prefers over resolving the words. An answer that names neither is asked once
 more and then given up; a new command or a no replaces the question.
@@ -1207,6 +1218,30 @@ and is built to be said back: the resolver reads "a las 3 de la tarde", "a
 mediodía" and "a las 12 de la madrugada" (00:00) as the same instants
 (`call-time-test`'s round trip over every hour and quarter). The month is named
 only when it is not the current one.
+
+The read-back is guaranteed, not left to the model: the tool puts the moment
+(`readback`) and the sentence (`readbackSentence`) in its result data, the turn
+keeps them on the finding, and `LfmAdapter::chatTurn` appends the sentence to
+the spoken reply, sync or streamed, when the reply does not already carry the
+moment (compared folded, without a leading "el"/"on"), so it is never said
+twice and never left out; a reply the claim guard cut is not appended to.
+
+A call is claimed only when argus-notification confirmed it. `memory.remind`
+asks the scheduler for a `ReminderCallOutcome` (`Scheduled`, `TooFar`,
+`InThePast`, `TooMany`, `Unavailable`, `Refused`, mapped from the call
+service's codes by `NotificationReminderCalls`; any exception from the
+scheduler is `Unavailable`) and sets `callScheduled` in its result. A call
+that was not confirmed says "Lo guardé en tus recordatorios, pero no pude
+programar la llamada." / "I saved it in your reminders, but I could not
+schedule the call.", then the reason when there is one ("Solo puedo llamarte
+hasta dentro de 12 meses.", "El servicio de llamadas no responde ahora.") and
+"Era para el jueves 8 a las 3 de la tarde."; without the reminder row it says
+"Lo guardé, pero …". The reply guard treats "te llamaré", "te voy a llamar",
+"te llamo a las…", "I will call you", "I'll call you" (not questions, offers
+with "si quieres"/"if you want", or negations) as a claim that needs
+`callScheduled`: without it the sentence is cut like any false completion, on
+the sync path, the stream and a plain reply (`claimsCall`, `TurnState::called`,
+`GateInput::callsConfirmed`).
 
 Whether the scheduled call rings, is only a
 notification or is spoken into a live call is the user's call preference

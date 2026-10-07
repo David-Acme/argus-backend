@@ -55,13 +55,16 @@ struct ChooseQuestion
 
 struct DayQuestion
 {
-  int64_t first{0};
-  int64_t second{0};
+  int64_t byWeekday{0};
+  int64_t byDate{0};
+  int relative{-1};
   int64_t now{0};
   std::string_view lang;
 };
 
 [[nodiscard]] std::string dayQuestion(const DayQuestion& question);
+
+[[nodiscard]] std::string farQuestion(std::string_view lang);
 
 struct ProjectQuestion
 {

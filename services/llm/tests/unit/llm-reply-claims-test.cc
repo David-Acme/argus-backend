@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <feature/llm/services/tools/claim-check.hxx>
 #include <feature/llm/services/tools/reply-claims.hxx>
 
 #include <string>
@@ -11,6 +12,11 @@ namespace
 bool claims(const std::string& text, bool asked = false)
 {
   return reply_claims::claimsDone({.text = text, .asked = asked});
+}
+
+bool callClaim(const std::string& text, const std::string& lang = "")
+{
+  return reply_claims::claimsCall({.text = text, .lang = lang});
 }
 
 struct Spoken
@@ -345,4 +351,76 @@ TEST_CASE("a turn's language reads the reply with that language's phrases only, 
   CHECK(reply_claims::claimsDone({.text = "Agendé la reunión.", .asked = false, .appOnly = false, .lang = ""}));
   CHECK_FALSE(english("That is quite a lot of events, and the setup is complete.", false));
   CHECK_FALSE(english("Your configuration is complete and I can reserve a table if you like.", false));
+}
+
+TEST_CASE("a promise to call the user is a claim in Spanish, Peruvian Spanish and English")
+{
+  CHECK(callClaim("Listo, te llamaré a las 3 de la tarde.", "es"));
+  CHECK(callClaim("Te llamaré el jueves 8 a las 3 de la tarde."));
+  CHECK(callClaim("Ya pues, te llamo mañana a las cinco."));
+  CHECK(callClaim("Te voy a llamar a las nueve."));
+  CHECK(callClaim("Te estaré llamando a esa hora."));
+  CHECK(callClaim("I will call you on Thursday at 3 PM.", "en"));
+  CHECK(callClaim("Sure, I'll call you tomorrow."));
+  CHECK(callClaim("I'm going to call you at five."));
+  CHECK(callClaim("I will give you a call at nine."));
+}
+
+TEST_CASE("an offer, a question or a negation about a call is not a claim")
+{
+  CHECK_FALSE(callClaim("¿Quieres que te llame mañana?"));
+  CHECK_FALSE(callClaim("Si quieres, te llamaré a las cinco."));
+  CHECK_FALSE(callClaim("No te llamaré hasta que me lo pidas."));
+  CHECK_FALSE(callClaim("Puedo llamarte si lo prefieres."));
+  CHECK_FALSE(callClaim("Shall I call you tomorrow?"));
+  CHECK_FALSE(callClaim("If you want, I will call you at five."));
+  CHECK_FALSE(callClaim("I will not call you."));
+  CHECK_FALSE(callClaim("I can call you if you like."));
+  CHECK_FALSE(callClaim("Te llamaré", "en"));
+  CHECK_FALSE(callClaim("I will call you", "es"));
+  CHECK_FALSE(callClaim("Quedó en tus recordatorios para el jueves 8 a las 3 de la tarde."));
+  CHECK_FALSE(callClaim("Lo guardé en tus recordatorios, pero no pude programar la llamada."));
+}
+
+TEST_CASE("a call claim without a confirmed schedule is a false completion even after a write that worked")
+{
+  const TurnState unconfirmed{.asked = true, .wrote = true, .called = false, .lang = "es"};
+  CHECK(claimedWithoutTool("Listo, te llamaré a las 3.", unconfirmed));
+  CHECK(claimedWithoutTool("Listo, lo anoté.", {.asked = true, .wrote = false, .lang = "es"}));
+  CHECK_FALSE(claimedWithoutTool("Listo, lo anoté.", unconfirmed));
+  const TurnState confirmed{.asked = true, .wrote = true, .called = true, .lang = "es"};
+  CHECK_FALSE(claimedWithoutTool("Listo, te llamaré a las 3.", confirmed));
+  CHECK(claimedWithoutTool("I will call you at 3.", {.asked = true, .wrote = true, .called = false, .lang = "en"}));
+  CHECK_FALSE(claimedWithoutTool("I will call you at 3.", {.asked = true, .wrote = true, .called = true, .lang = "en"}));
+  CHECK(claimedWithoutTool("Te llamaré mañana.", {.asked = false, .wrote = false, .called = false, .lang = "es"}));
+}
+
+TEST_CASE("the gate cuts a call promise until the schedule is confirmed, and lets it through once it is")
+{
+  std::string heard;
+  reply_claims::ClaimGate unconfirmed({.sink = [&](const std::string& token, bool) { heard += token; },
+                                       .lang = "es",
+                                       .asked = true,
+                                       .legitimate = [] { return true; },
+                                       .appOnly = false,
+                                       .callsConfirmed = false});
+  CHECK(run(unconfirmed, {"Lo anoté. ", "Te llamaré a las tres."}) == "Lo anoté. No pude hacerlo. ¿Lo intento de nuevo?");
+  CHECK(unconfirmed.cut());
+
+  std::string confirmedHeard;
+  reply_claims::ClaimGate confirmed({.sink = [&](const std::string& token, bool) { confirmedHeard += token; },
+                                     .lang = "es",
+                                     .asked = true,
+                                     .legitimate = [] { return true; },
+                                     .appOnly = false,
+                                     .callsConfirmed = true});
+  CHECK(run(confirmed, {"Lo anoté. ", "Te llamaré a las tres."}) == "Lo anoté. Te llamaré a las tres.");
+  CHECK_FALSE(confirmed.cut());
+}
+
+TEST_CASE("a plain reply with no tools never promises a call")
+{
+  CHECK(reply_claims::withoutFalseClaims({.text = "Claro, te llamaré a las cinco.", .utterance = "llámame a las cinco", .lang = "es"}) ==
+        "No pude hacerlo. ¿Lo intento de nuevo?");
+  CHECK(reply_claims::withoutFalseClaims({.text = "Hace sol hoy.", .utterance = "qué tiempo hace", .lang = "es"}) == "Hace sol hoy.");
 }
