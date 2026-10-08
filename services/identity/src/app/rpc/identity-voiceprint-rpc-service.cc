@@ -5,6 +5,7 @@
 #include <ctime>
 #include <drogon/drogon.h>
 #include <grpc/grpc-server-identity.hxx>
+#include <optional>
 #include <utility>
 
 namespace
@@ -34,6 +35,21 @@ v1::VoiceprintOutcome wireOutcome(VoiceprintOutcome outcome)
   return v1::VOICEPRINT_OUTCOME_UNSPECIFIED;
 }
 
+v1::VoiceprintVerdict wireVerdict(VoiceprintVerdict verdict)
+{
+  switch (verdict) {
+    case VoiceprintVerdict::Unknown:
+      return v1::VOICEPRINT_VERDICT_UNSPECIFIED;
+    case VoiceprintVerdict::Holder:
+      return v1::VOICEPRINT_VERDICT_HOLDER;
+    case VoiceprintVerdict::OtherKnown:
+      return v1::VOICEPRINT_VERDICT_OTHER_KNOWN;
+    case VoiceprintVerdict::Unfamiliar:
+      return v1::VOICEPRINT_VERDICT_UNFAMILIAR;
+  }
+  return v1::VOICEPRINT_VERDICT_UNSPECIFIED;
+}
+
 EncodedVoice pcmOf(const v1::VoiceClip& clip)
 {
   return {.bytes = clip.pcm16(),
@@ -52,6 +68,13 @@ bool turnContextUsable(const v1::ObserveVoiceTurnRequest& request)
          request.device_hash().size() <= kMaxDeviceHashLength &&
          !request.call_key().empty() &&
          request.call_key().size() <= kMaxCallKeyLength;
+}
+
+std::optional<int64_t> holderOf(const v1::ObserveVoiceTurnRequest& request)
+{
+  if (request.user_id() <= 0)
+    return std::nullopt;
+  return request.user_id();
 }
 
 }
@@ -105,9 +128,9 @@ IdentityVoiceprintRpcService::dispatch(grpc::CallbackServerContext* context,
 }
 
 drogon::Task<grpc::Status> IdentityVoiceprintRpcService::answerIdentify(
-    const v1::VoiceClip& clip, v1::IdentifyVoiceResponse* response) const
+    VoiceprintObserveInput input, v1::IdentifyVoiceResponse* response) const
 {
-  const auto result = co_await service_.identify(pcmOf(clip));
+  const auto result = co_await service_.identify(std::move(input));
   response->set_outcome(wireOutcome(result.outcome));
   response->set_matched(result.matched);
   response->set_score(result.score);
@@ -120,6 +143,12 @@ drogon::Task<grpc::Status> IdentityVoiceprintRpcService::answerIdentify(
     if (result.personId)
       response->set_person_id(*result.personId);
   }
+  if (result.holderScore.has_value())
+    response->set_holder_score(*result.holderScore);
+  if (result.holderProfile.has_value())
+    response->set_holder_profile(*result.holderProfile);
+  if (result.verdict.has_value())
+    response->set_verdict(wireVerdict(*result.verdict));
   co_return grpc::Status::OK;
 }
 
@@ -135,8 +164,10 @@ IdentityVoiceprintRpcService::Identify(grpc::CallbackServerContext* context,
                                         "sample is required"));
   return dispatch(context,
                   [this, request, response]() -> drogon::Task<grpc::Status> {
-                    co_return co_await answerIdentify(request->sample(),
-                                                      response);
+                    co_return co_await answerIdentify(
+                        {.sample = pcmOf(request->sample()),
+                         .holderId = std::nullopt},
+                        response);
                   });
 }
 
@@ -161,8 +192,10 @@ grpc::ServerUnaryReactor* IdentityVoiceprintRpcService::ObserveTurn(
       context,
       [this, request, response,
        turn = std::move(turn)]() mutable -> drogon::Task<grpc::Status> {
-        const grpc::Status status =
-            co_await answerIdentify(request->sample(), response);
+        const grpc::Status status = co_await answerIdentify(
+            {.sample = pcmOf(request->sample()),
+             .holderId = holderOf(*request)},
+            response);
         if (turn && admitLearning())
           drogon::async_run(
               [this, learn = std::move(*turn)]() mutable -> drogon::Task<void> {

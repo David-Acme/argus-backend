@@ -470,8 +470,13 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them" *
                  std::to_string(userId));
   };
   const auto identifies = [&](const char* clip) {
-    const auto found = drogon::sync_wait(service.identify(pcmOf(turnSamples(
-        {.clip = clip, .offsetSeconds = 0.0F, .seconds = 2.9F, .seed = 99, .repeats = 1}))));
+    const auto found = drogon::sync_wait(service.identify(
+        {.sample = pcmOf(turnSamples({.clip = clip,
+                                      .offsetSeconds = 0.0F,
+                                      .seconds = 2.9F,
+                                      .seed = 99,
+                                      .repeats = 1})),
+         .holderId = std::nullopt}));
     return found.matched ? found.userId : int64_t{0};
   };
 

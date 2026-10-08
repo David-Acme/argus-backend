@@ -180,6 +180,25 @@ target_compile_options(identity-voiceprint-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-voiceprint-test)
 add_test(NAME identity-voiceprint-test COMMAND identity-voiceprint-test)
 
+add_executable(identity-voiceprint-verdict-test
+    unit/identity-voiceprint-verdict-test.cc)
+target_link_libraries(identity-voiceprint-verdict-test PRIVATE argus::lib::test-support)
+target_compile_definitions(identity-voiceprint-verdict-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql"
+    ARGUS_TEST_SPEAKER_MODEL="${CMAKE_CURRENT_SOURCE_DIR}/../../../models/speaker/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx"
+    ARGUS_TEST_VOICE_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/voiceprint")
+target_link_libraries(identity-voiceprint-verdict-test PRIVATE
+    argus::identity-rpc
+    argus::identity-voiceprint
+    argus::clients::identity
+    argus::lib::sqlite
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-voiceprint-verdict-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-voiceprint-verdict-test)
+add_test(NAME identity-voiceprint-verdict-test
+         COMMAND identity-voiceprint-verdict-test)
+
 add_executable(identity-face-embedding-test
     unit/identity-face-embedding-test.cc)
 target_link_libraries(identity-face-embedding-test PRIVATE argus::lib::test-support)

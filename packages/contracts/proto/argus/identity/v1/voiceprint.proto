@@ -21,6 +21,14 @@ enum VoiceprintOutcome
   reserved 9 to 17;
 }
 
+enum VoiceprintVerdict
+{
+  VOICEPRINT_VERDICT_UNSPECIFIED = 0;
+  VOICEPRINT_VERDICT_HOLDER = 1;
+  VOICEPRINT_VERDICT_OTHER_KNOWN = 2;
+  VOICEPRINT_VERDICT_UNFAMILIAR = 3;
+}
+
 message IdentifyVoiceRequest
 {
   VoiceClip sample = 1;
@@ -36,6 +44,9 @@ message IdentifyVoiceResponse
   optional int64 person_id = 6;
   optional string name = 7;
   optional string role = 8;
+  optional float holder_score = 9;
+  optional bool holder_profile = 10;
+  optional VoiceprintVerdict verdict = 11;
 }
 
 message ObserveVoiceTurnRequest

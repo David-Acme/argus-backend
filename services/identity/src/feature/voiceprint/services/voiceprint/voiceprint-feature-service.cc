@@ -3,6 +3,7 @@
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
 #include <feature/voiceprint/services/embedding/speaker-embedding-service.hxx>
+#include <feature/voiceprint/services/embedding/voice-vector.hxx>
 #include <feature/voiceprint/services/index/voiceprint-index.hxx>
 #include <feature/voiceprint/services/voiceprint/voiceprint-audit.hxx>
 #include <identity/identity-errors.hxx>
@@ -63,7 +64,7 @@ VoiceprintFeatureService::activeModel(const IdentityVoiceprintConfig& config)
 }
 
 drogon::Task<VoiceprintIdentifyResult>
-VoiceprintFeatureService::identify(EncodedVoice sample) const
+VoiceprintFeatureService::identify(VoiceprintObserveInput input) const
 {
   VoiceprintIdentifyResult result{.outcome = VoiceprintOutcome::Ok,
                                   .matched = false,
@@ -72,7 +73,10 @@ VoiceprintFeatureService::identify(EncodedVoice sample) const
                                   .threshold = config_.identifyThreshold,
                                   .personId = std::nullopt,
                                   .name = {},
-                                  .role = std::nullopt};
+                                  .role = std::nullopt,
+                                  .holderScore = std::nullopt,
+                                  .holderProfile = std::nullopt,
+                                  .verdict = std::nullopt};
   if (!SpeakerEmbeddingService::instance().isLoaded()) {
     result.outcome = VoiceprintOutcome::Unavailable;
     co_return result;
@@ -80,8 +84,8 @@ VoiceprintFeatureService::identify(EncodedVoice sample) const
   if (VoiceprintIndex::instance().size() == 0 ||
       !(co_await privacyGate_.household()).allowed.voiceLearning)
     co_return result;
-  auto input = std::make_shared<const VoiceAnalysisInput>(
-      VoiceAnalysisInput{.voice = std::move(sample),
+  auto analysis = std::make_shared<const VoiceAnalysisInput>(
+      VoiceAnalysisInput{.voice = std::move(input.sample),
                          .requirement = {.minSpeechSeconds =
                                              config_.minVerifySpeechSeconds,
                                          .minSnrDb = config_.minSnrDb,
@@ -89,9 +93,9 @@ VoiceprintFeatureService::identify(EncodedVoice sample) const
                                              speech_quality::kMaxClippedRatio},
                          .extractEmbedding = true,
                          .halvesMinSeconds = std::nullopt});
-  const auto search = co_await BlockingTask<IdentifySearch>([input]() {
+  const auto search = co_await BlockingTask<IdentifySearch>([analysis]() {
     IdentifySearch found;
-    found.analysis = SpeakerEmbeddingService::instance().analyze(*input);
+    found.analysis = SpeakerEmbeddingService::instance().analyze(*analysis);
     if (found.analysis.status == VoiceAnalysisStatus::Ok)
       found.nearest =
           VoiceprintIndex::instance().nearest(found.analysis.embedding,
@@ -106,23 +110,54 @@ VoiceprintFeatureService::identify(EncodedVoice sample) const
   const float runnerUp =
       search.nearest.size() > 1 ? search.nearest[1].similarity : -1.0F;
   result.score = best.similarity;
-  if (best.similarity < config_.identifyThreshold ||
-      best.similarity - runnerUp < config_.identifyMargin)
-    co_return result;
-
-  const auto user = co_await userRepository_.findById(best.userId);
-  if (!user || !user->isActive)
-    co_return result;
-  if (!(co_await privacyGate_.effectiveFor(best.userId)).voiceLearning)
-    co_return result;
-  const auto persons = co_await personRepository_.findByUser(best.userId);
-  result.matched = true;
-  result.userId = best.userId;
-  result.name = user->name;
-  result.role = user->role;
-  if (!persons.empty())
-    result.personId = persons.front().id;
+  if (best.similarity >= config_.identifyThreshold &&
+      best.similarity - runnerUp >= config_.identifyMargin) {
+    const auto user = co_await userRepository_.findById(best.userId);
+    if (user && user->isActive &&
+        (co_await privacyGate_.effectiveFor(best.userId)).voiceLearning) {
+      const auto persons = co_await personRepository_.findByUser(best.userId);
+      result.matched = true;
+      result.userId = best.userId;
+      result.name = user->name;
+      result.role = user->role;
+      if (!persons.empty())
+        result.personId = persons.front().id;
+    }
+  }
+  co_await applyHolderVerdict(
+      {.embedding = search.analysis.embedding, .holderId = input.holderId},
+      result);
   co_return result;
+}
+
+drogon::Task<void> VoiceprintFeatureService::applyHolderVerdict(
+    const VoiceprintHolderCheck& check, VoiceprintIdentifyResult& result) const
+{
+  if (!check.holderId ||
+      !(co_await privacyGate_.effectiveFor(*check.holderId)).voiceLearning)
+    co_return;
+  const auto profile = co_await profileRepository_.findByUser(*check.holderId);
+  const bool profiled =
+      profile.has_value() && profile->model == activeModel(config_);
+  result.holderProfile = profiled;
+  if (!profiled) {
+    result.verdict = VoiceprintVerdict::Unknown;
+    co_return;
+  }
+  const float holderScore =
+      voice_vector::cosine(check.embedding, profile->embedding);
+  result.holderScore = holderScore;
+  if (result.matched)
+    result.verdict = result.userId == *check.holderId
+                         ? VoiceprintVerdict::Holder
+                         : VoiceprintVerdict::OtherKnown;
+  else if (holderScore >= config_.identifyThreshold)
+    result.verdict = VoiceprintVerdict::Holder;
+  else if (holderScore < config_.unfamiliarCeiling)
+    result.verdict = VoiceprintVerdict::Unfamiliar;
+  else
+    result.verdict = VoiceprintVerdict::Unknown;
+  co_return;
 }
 
 drogon::Task<VoiceprintDirectory> VoiceprintFeatureService::directory() const

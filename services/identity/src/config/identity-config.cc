@@ -117,6 +117,9 @@ IdentityVoiceprintConfig IdentityConfig::resolveVoiceprint()
                  .fallback = config.identifyThreshold});
   config.identifyMargin = unitScore(
       {.key = "voiceprint.identify_margin", .fallback = config.identifyMargin});
+  config.unfamiliarCeiling =
+      unitScore({.key = "voiceprint.unfamiliar_ceiling",
+                 .fallback = config.unfamiliarCeiling});
   config.minVerifySpeechSeconds = nonNegative(
       "voiceprint.min_verify_speech_seconds", config.minVerifySpeechSeconds);
   config.minSnrDb = nonNegative("voiceprint.min_snr_db", config.minSnrDb);

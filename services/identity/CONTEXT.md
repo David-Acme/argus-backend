@@ -624,6 +624,45 @@ or a score). Nothing about voices enters the sync stream.
 - The biometric stays on the host: the RPCs answer scores and ids, never
   vectors, and request bodies are not logged.
 
+### The per-turn verdict (U11)
+
+`ObserveTurn` answers the same `IdentifyVoiceResponse` as `Identify` and, when it
+knows the holder, adds three optional fields: `holder_score` (the cosine against
+the holder's own canonical profile row), `holder_profile` (whether the holder has
+a profile for the active model) and `verdict`, a `VoiceprintVerdict` in
+{holder, other known, unfamiliar, unknown}. `Identify` never fills them — it has
+no holder, and a holder-specific similarity must not travel to a caller who is
+only asking who is speaking. The fields ride the existing message, so an older
+caller ignores them and reads absence as unknown.
+
+The arms are decided here, where the thresholds and the profile live, from one
+profile read and the embedding the 1:N search already extracted:
+
+- `HOLDER`: the confident match is the holder, or the holder's own score reaches
+  `voiceprint.identify_threshold` — the fallback for a holder blurred by a
+  second enrolled voice inside the runner-up margin, where the 1:N search
+  abstains.
+- `OTHER_KNOWN(name)`: the confident 1:N match names another account. A positive
+  identification outranks the holder's fallback, so that arm is only ever
+  reached when the 1:N search has not named anyone else.
+- `UNFAMILIAR`: the holder has a profile for the active model, their consent is
+  effective, nobody matched, and their own score stays under
+  `voiceprint.unfamiliar_ceiling` (0.40, a placeholder to calibrate on real
+  calls).
+- `UNKNOWN`: everything else — no profile, the grey band `[ceiling, threshold)`,
+  a profile written for another model, or an analysis that is not `Ok`. Nothing
+  defaults to the holder: unknown is the conservative arm, and voice says
+  nothing on it.
+
+The verdict lives in memory for the response only. Nothing is persisted, no
+score reaches a log, no audit or sync row is written, `voice_profile`,
+`voice_sample` and `voice_device` are untouched, and the fields are filled only
+while the holder's own consent and the household switch are effective — the same
+`effectiveFor` gate that already refuses a match to a person without consent. A
+missing profile, model or engine degrades to `UNKNOWN` with the rest of the
+answer intact: the outcome, the threshold and the 1:N match are unaffected. The
+holder leg costs one extra profile read per probed turn.
+
 ### Residual risks, by design
 
 - A person who uses somebody else's account on that account's own phone for
@@ -676,6 +715,17 @@ accounts use (nothing linked), three later calls adopted and refreshing in one
 batch, the gRPC `ObserveTurn`/`CloseCall` path with the fleet secret, and the
 owner's forget (404 after). Without the model on disk the model-backed half
 reports itself skipped.
+
+`identity-voiceprint-verdict-test` (the same live setup, one behaviour per
+case): the holder's own voice is `HOLDER` with its score over the threshold,
+another enrolled voice is `OTHER_KNOWN` and names them, a stranger is
+`UNFAMILIAR` under the ceiling, a holder who never enrolled is `UNKNOWN` and
+never `UNFAMILIAR`, a holder score in the grey band is `UNKNOWN` (the holder's
+profile is posed at a chosen cosine against the probe, so the band is reached
+without relying on how the fixtures happen to score), consent off and the
+household switch off answer without a verdict, an unusable clip answers
+`SAMPLE_TOO_SHORT` with the rest of the response intact, and the wire: `Identify`
+omits the three fields while `ObserveTurn` fills them over gRPC.
 
 ## The face pipeline fed the recognizer garbage (2026-10, STRANGERS)
 

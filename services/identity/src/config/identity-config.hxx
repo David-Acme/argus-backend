@@ -98,6 +98,7 @@ struct IdentityVoiceprintConfig
       "models/speaker/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx"};
   float identifyThreshold{0.55F};
   float identifyMargin{0.05F};
+  float unfamiliarCeiling{0.40F};
   float minVerifySpeechSeconds{0.8F};
   float minSnrDb{12.0F};
   PassiveVoiceConfig passive;

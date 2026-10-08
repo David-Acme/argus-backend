@@ -93,6 +93,7 @@ enabled = true
 model = "models/speaker/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx"
 identify_threshold = 0.55
 identify_margin = 0.05
+unfamiliar_ceiling = 0.40
 min_verify_speech_seconds = 0.8
 min_snr_db = 12.0
 passive_enabled = true

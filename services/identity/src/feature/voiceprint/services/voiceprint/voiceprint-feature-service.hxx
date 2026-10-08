@@ -9,13 +9,21 @@
 #include <feature/voiceprint/repositories/voice-sample/voice-sample-repository.hxx>
 #include <feature/voiceprint/services/audio/voice-audio.hxx>
 #include <feature/voiceprint/vocabulary/voiceprint-outcome.hxx>
+#include <feature/voiceprint/vocabulary/voiceprint-verdict.hxx>
 #include <optional>
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/services/privacy/privacy-gate.hxx>
 #include <shared/repositories/user/user-repository.hxx>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
+
+struct VoiceprintObserveInput
+{
+  EncodedVoice sample;
+  std::optional<int64_t> holderId;
+};
 
 struct VoiceprintIdentifyResult
 {
@@ -27,6 +35,9 @@ struct VoiceprintIdentifyResult
   std::optional<int64_t> personId;
   std::string name;
   std::optional<UserRole> role;
+  std::optional<float> holderScore;
+  std::optional<bool> holderProfile;
+  std::optional<VoiceprintVerdict> verdict;
 };
 
 struct VoiceprintDirectoryEntry
@@ -72,6 +83,12 @@ struct VoiceprintForgetResult
   size_t samples{0};
 };
 
+struct VoiceprintHolderCheck
+{
+  std::span<const float> embedding;
+  std::optional<int64_t> holderId;
+};
+
 class VoiceprintFeatureService
 {
 public:
@@ -79,7 +96,7 @@ public:
   explicit VoiceprintFeatureService(IdentityVoiceprintConfig config);
 
   [[nodiscard]] drogon::Task<VoiceprintIdentifyResult>
-  identify(EncodedVoice sample) const;
+  identify(VoiceprintObserveInput input) const;
 
   [[nodiscard]] drogon::Task<VoiceprintDirectory> directory() const;
 
@@ -99,6 +116,10 @@ public:
   [[nodiscard]] static std::string activeModel(const IdentityVoiceprintConfig& config);
 
 private:
+  [[nodiscard]] drogon::Task<void>
+  applyHolderVerdict(const VoiceprintHolderCheck& check,
+                     VoiceprintIdentifyResult& result) const;
+
   IdentityVoiceprintConfig config_;
   VoiceProfileRepository profileRepository_;
   VoiceSampleRepository sampleRepository_;

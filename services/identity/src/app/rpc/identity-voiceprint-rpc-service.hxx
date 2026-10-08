@@ -62,7 +62,7 @@ private:
   [[nodiscard]] bool admitLearning() const;
 
   [[nodiscard]] drogon::Task<grpc::Status>
-  answerIdentify(const argus::identity::v1::VoiceClip& clip,
+  answerIdentify(VoiceprintObserveInput input,
                  argus::identity::v1::IdentifyVoiceResponse* response) const;
 
   static constexpr int kMaxLearningInFlight = 8;

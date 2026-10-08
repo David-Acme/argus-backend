@@ -127,7 +127,8 @@ argus-identity/
                         passive/ (PassivePolicy gates, VoiceCallTracker,
                         PassiveEnrollmentService), voiceprint/
                         (VoiceprintFeatureService, the journal helper)
-    vocabulary/         VoiceProfileSource, VoiceSampleState, VoiceprintOutcome
+    vocabulary/         VoiceProfileSource, VoiceSampleState, VoiceprintOutcome,
+                        VoiceprintVerdict
   src/feature/user/
     controllers/        the /user routes (incl. DELETE /user/{id}/biometrics)
                         and /portrait-preview
