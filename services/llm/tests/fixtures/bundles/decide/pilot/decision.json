@@ -1,0 +1,19 @@
+{
+ "act": 0.84,
+ "ask": 0.84,
+ "margin": 0.0,
+ "now": 0.7,
+ "guardMemory": false,
+ "calibration": {
+  "confidence": {
+   "type": "identity"
+  },
+  "now": {
+   "type": "identity"
+  }
+ },
+ "source": {
+  "fitOn": "calibration",
+  "note": "pilot placeholder until a trained bundle lands"
+ }
+}

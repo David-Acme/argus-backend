@@ -1087,7 +1087,7 @@ TEST_CASE("the choice is asked in English too and a sentence that answers neithe
   world.context.lang = "en";
   world.flow.useDecider(world.scripted);
   turn::Candidate close = candidate("task.create", 0.95);
-  close.runnerUp = turn::Pick{.tool = "calendar.create_event", .arguments = Json::Value(Json::objectValue), .fill = {}, .confidence = 0.92};
+  close.runnerUp = turn::Pick{.tool = "calendar.create_event", .arguments = Json::Value(Json::objectValue), .fill = {}, .confidence = 0.92, .source = {}};
   world.scripted.next = close;
   const auto asked = world.say("call the dentist tomorrow");
   CHECK(said(asked) == "Do you want me to add it as a task or schedule it?");

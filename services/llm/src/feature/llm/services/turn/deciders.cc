@@ -81,7 +81,8 @@ std::optional<Candidate> RouterDecider::decide(const DecideInput& input) const
       second = Pick{.tool = other->name,
                     .arguments = other->arguments,
                     .fill = {},
-                    .confidence = static_cast<double>(decision.runnerUpScore)};
+                    .confidence = static_cast<double>(decision.runnerUpScore),
+                    .source = std::string(intent::toolIntentToString(decision.runnerUp)) + ", model"};
   return Candidate{.tool = call->name,
                    .arguments = call->arguments,
                    .fill = {},

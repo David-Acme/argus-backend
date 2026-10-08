@@ -4,6 +4,10 @@ if(NOT TARGET Drogon::Drogon)
     find_package(Drogon CONFIG REQUIRED)
 endif()
 
+if(NOT TARGET utf8proc::utf8proc)
+    find_package(utf8proc CONFIG REQUIRED)
+endif()
+
 argus_lib(NAME text
     SOURCES
         src/text/base64.cc
@@ -22,7 +26,8 @@ argus_lib(NAME text
         src/text/text-norm.cc
         src/text/text-norm.hxx
     INCLUDES src
-    DEPENDS Drogon::Drogon)
+    DEPENDS Drogon::Drogon
+        utf8proc::utf8proc)
 
 target_compile_options(argus_lib_text PRIVATE -Wall -Wextra)
 
@@ -48,6 +53,11 @@ add_executable(name-match-test tests/unit/name-match-test.cc)
 target_link_libraries(name-match-test PRIVATE argus::lib::text doctest::doctest)
 target_compile_options(name-match-test PRIVATE -Wall -Wextra)
 add_test(NAME name-match-test COMMAND name-match-test)
+
+add_executable(text-norm-test tests/unit/text-norm-test.cc)
+target_link_libraries(text-norm-test PRIVATE argus::lib::text doctest::doctest)
+target_compile_options(text-norm-test PRIVATE -Wall -Wextra)
+add_test(NAME text-norm-test COMMAND text-norm-test)
 
 add_executable(spoken-time-test tests/unit/spoken-time-test.cc)
 target_link_libraries(spoken-time-test PRIVATE argus::lib::text doctest::doctest)

@@ -434,7 +434,14 @@ Filled fill(const FillInput& input)
         continue;
       }
       if (!filled.dispute && !filled.farField && !filled.passed) {
-        const CallReading reading = dayReading({.utterance = input.context.utterance, .lang = input.context.lang, .now = input.now});
+        const auto span = input.text.extract(
+            {.tool = input.spec.name, .field = field, .utterance = input.context.utterance, .lang = input.context.lang});
+        const std::string_view phrase = span ? std::string_view(*span) : input.context.utterance;
+        const CallReading reading = dayReading({.utterance = phrase, .lang = input.context.lang, .now = input.now});
+        if (span && reading.time) {
+          filled.arguments[field] = iso_time::format(reading.time->fireAt);
+          continue;
+        }
         if (reading.conflict)
           filled.dispute = Dispute{.field = field, .conflict = *reading.conflict};
         else if (reading.farAway)

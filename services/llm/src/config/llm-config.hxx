@@ -37,6 +37,21 @@ struct LlmDecisionConfig
   double nowMin{0.0};
 };
 
+struct LlmEngineConfig
+{
+  std::string engine;
+  std::string bundleDir;
+  std::string pin;
+};
+
+struct LlmOnnxConfig
+{
+  int threads{0};
+  bool cpuArena{false};
+  bool prepacking{false};
+  bool mmap{true};
+};
+
 struct LlmNotificationConfig
 {
   std::string target;
@@ -69,6 +84,12 @@ public:
   [[nodiscard]] static std::optional<LlmDecisionConfig> resolveDecision(std::string_view decider = {});
 
   [[nodiscard]] static bool resolveWitnessOnly(std::string_view decider);
+
+  [[nodiscard]] static LlmEngineConfig resolveDecisionEngine();
+
+  [[nodiscard]] static LlmEngineConfig resolveExtractEngine();
+
+  [[nodiscard]] static LlmOnnxConfig resolveOnnx(std::string_view section);
 
   [[nodiscard]] static LlmNotificationConfig resolveNotifications();
 

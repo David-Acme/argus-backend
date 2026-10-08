@@ -1,5 +1,7 @@
 #include "text-norm.hxx"
 
+#include <utf8proc.h>
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -8,6 +10,25 @@
 
 namespace text_norm
 {
+
+std::string nfc(std::string_view text)
+{
+  if (text.empty())
+    return {};
+  utf8proc_uint8_t* normalized = nullptr;
+  const utf8proc_ssize_t size = utf8proc_map(reinterpret_cast<const utf8proc_uint8_t*>(text.data()),
+                                             static_cast<utf8proc_ssize_t>(text.size()),
+                                             &normalized,
+                                             static_cast<utf8proc_option_t>(UTF8PROC_STABLE | UTF8PROC_COMPOSE));
+  if (size < 0 || normalized == nullptr) {
+    if (normalized != nullptr)
+      utf8proc_free(normalized);
+    return std::string(text);
+  }
+  std::string out(reinterpret_cast<const char*>(normalized), static_cast<std::size_t>(size));
+  utf8proc_free(normalized);
+  return out;
+}
 
 std::vector<std::string> words(const std::string& text, int minAlnum)
 {

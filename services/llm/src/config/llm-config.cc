@@ -49,8 +49,7 @@ LlmMemoryConfig LlmConfig::resolveMemory()
               ConfigService::getBool("memory.observe_camera_events")};
 }
 
-std::optional<LlmDecisionConfig> LlmConfig::resolveDecision(std::string_view decider)
-{
+std::optional<LlmDecisionConfig> LlmConfig::resolveDecision(std::string_view decider){
   const std::string section = decider.empty() ? std::string("decide") : "decide." + std::string(decider);
   if (!ConfigService::hasKey(section + ".act") || !ConfigService::hasKey(section + ".ask"))
     return std::nullopt;
@@ -68,6 +67,35 @@ bool LlmConfig::resolveWitnessOnly(std::string_view decider)
 {
   const std::string key = "decide." + std::string(decider) + ".witness_only";
   return ConfigService::hasKey(key) && ConfigService::getBool(key);
+}
+
+LlmEngineConfig LlmConfig::resolveDecisionEngine()
+{
+  return {.engine = ConfigService::getString("decide.engine"),
+          .bundleDir = ConfigService::getString("decide.laya.bundle_dir"),
+          .pin = ConfigService::getString("decide.laya.sha256")};
+}
+
+LlmEngineConfig LlmConfig::resolveExtractEngine()
+{
+  return {.engine = ConfigService::getString("extract.engine"),
+          .bundleDir = ConfigService::getString("extract.gliner.bundle_dir"),
+          .pin = ConfigService::getString("extract.gliner.sha256")};
+}
+
+LlmOnnxConfig LlmConfig::resolveOnnx(std::string_view section)
+{
+  const std::string prefix(section);
+  LlmOnnxConfig config;
+  if (ConfigService::hasKey(prefix + ".threads"))
+    config.threads = ConfigService::getInt(prefix + ".threads");
+  if (ConfigService::hasKey(prefix + ".cpu_arena"))
+    config.cpuArena = ConfigService::getBool(prefix + ".cpu_arena");
+  if (ConfigService::hasKey(prefix + ".prepacking"))
+    config.prepacking = ConfigService::getBool(prefix + ".prepacking");
+  if (ConfigService::hasKey(prefix + ".mmap"))
+    config.mmap = ConfigService::getBool(prefix + ".mmap");
+  return config;
 }
 
 LlmNotificationConfig LlmConfig::resolveNotifications()

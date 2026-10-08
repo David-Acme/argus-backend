@@ -1,0 +1,34 @@
+{
+ "tool": {
+  "type": "choice",
+  "instructions": "Which Argus action does the user ask for?",
+  "criteria": [
+   "memory_save",
+   "memory_recall",
+   "memory_forget",
+   "reminder_set",
+   "reminder_list",
+   "calendar_create",
+   "calendar_list",
+   "calendar_cancel",
+   "task_create",
+   "task_list",
+   "task_complete",
+   "project_create",
+   "project_list",
+   "modules_list",
+   "modules_explain",
+   "modules_enable",
+   "modules_disable",
+   "modules_purge",
+   "app_open",
+   "app_guard_mode",
+   "camera",
+   "none"
+  ]
+ },
+ "now": {
+  "type": "noul",
+  "instructions": "The user asks Argus to do something right now"
+ }
+}

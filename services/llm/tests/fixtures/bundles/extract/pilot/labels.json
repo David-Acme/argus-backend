@@ -1,0 +1,10 @@
+{
+ "labels": [
+  "title",
+  "name",
+  "project",
+  "people",
+  "when",
+  "due_at"
+ ]
+}

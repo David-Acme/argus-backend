@@ -1,0 +1,105 @@
+{
+ "pairs": [
+  {
+   "nfc": "café",
+   "nfd": "café",
+   "idsNfc": [
+    18688
+   ],
+   "idsNfd": [
+    18772,
+    236703
+   ],
+   "pythonAgrees": false
+  },
+  {
+   "nfc": "mañana",
+   "nfd": "mañana",
+   "idsNfc": [
+    36946
+   ],
+   "idsNfd": [
+    916,
+    238970,
+    1577
+   ],
+   "pythonAgrees": false
+  },
+  {
+   "nfc": "cigüeña",
+   "nfd": "cigüeña",
+   "idsNfc": [
+    37499,
+    105199,
+    5890
+   ],
+   "idsNfd": [
+    498,
+    19760,
+    238784,
+    479,
+    238970,
+    235250
+   ],
+   "pythonAgrees": false
+  },
+  {
+   "nfc": "PINGÜINO",
+   "nfd": "PINGÜINO",
+   "idsNfc": [
+    596,
+    1786,
+    236069,
+    20892
+   ],
+   "idsNfd": [
+    596,
+    1786,
+    235327,
+    238784,
+    20892
+   ],
+   "pythonAgrees": false
+  },
+  {
+   "nfc": "¿qué tengo en la agenda?",
+   "nfd": "¿qué tengo en la agenda?",
+   "idsNfc": [
+    6742,
+    14419,
+    32218,
+    659,
+    683,
+    23770,
+    235336
+   ],
+   "idsNfd": [
+    6742,
+    1114,
+    236703,
+    32218,
+    659,
+    683,
+    23770,
+    235336
+   ],
+   "pythonAgrees": false
+  },
+  {
+   "nfc": "el año pasado",
+   "nfd": "el año pasado",
+   "idsNfc": [
+    822,
+    12265,
+    23494
+   ],
+   "idsNfd": [
+    822,
+    671,
+    229459,
+    23494
+   ],
+   "pythonAgrees": false
+  }
+ ]
+}

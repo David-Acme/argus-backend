@@ -1,0 +1,81 @@
+#pragma once
+
+#include "calibration.hxx"
+
+#include <filesystem>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace turn
+{
+
+struct BundlePolicy
+{
+  double act{0.0};
+  double ask{0.0};
+  double margin{0.0};
+  double now{0.0};
+  bool guardMemory{false};
+  bool present{false};
+};
+
+struct BundleThresholds
+{
+  double threshold{0.0};
+  int maxSpanWidth{0};
+  bool present{false};
+};
+
+struct BundleLocation
+{
+  std::filesystem::path dir;
+  std::string pin;
+};
+
+class BundleLoader
+{
+public:
+  explicit BundleLoader(BundleLocation location);
+
+  [[nodiscard]] bool valid() const { return valid_; }
+
+  [[nodiscard]] const std::string& error() const { return error_; }
+
+  [[nodiscard]] const std::filesystem::path& dir() const { return dir_; }
+
+  [[nodiscard]] std::filesystem::path modelPath() const { return dir_ / "model.onnx"; }
+
+  [[nodiscard]] std::filesystem::path tokenizerJson() const { return dir_ / "tokenizer" / "tokenizer.json"; }
+
+  [[nodiscard]] int maxLen() const { return maxLen_; }
+
+  [[nodiscard]] const std::vector<std::string>& labels() const { return labels_; }
+
+  [[nodiscard]] const BundlePolicy& policy() const { return policy_; }
+
+  [[nodiscard]] const BundleThresholds& thresholds() const { return thresholds_; }
+
+  [[nodiscard]] const CalibrationModel& confidenceCalibration() const { return confidenceCalibration_; }
+
+  [[nodiscard]] const CalibrationModel& nowCalibration() const { return nowCalibration_; }
+
+  [[nodiscard]] const std::string& fitSplit() const { return fitSplit_; }
+
+private:
+  void load();
+
+  std::filesystem::path dir_;
+  std::string pin_;
+  bool valid_{false};
+  std::string error_;
+  int maxLen_{0};
+  std::vector<std::string> labels_;
+  BundlePolicy policy_;
+  BundleThresholds thresholds_;
+  CalibrationModel confidenceCalibration_;
+  CalibrationModel nowCalibration_;
+  std::string fitSplit_;
+};
+
+}

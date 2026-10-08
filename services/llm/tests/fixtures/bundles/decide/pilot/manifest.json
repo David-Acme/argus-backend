@@ -1,0 +1,19 @@
+{
+ "model": "laya",
+ "pilot": true,
+ "artefact": "pilot placeholder",
+ "corpus": "pilot",
+ "corpusCommit": "pilot",
+ "seed": 0,
+ "calibration": {
+  "fitOn": "calibration",
+  "decision": "calibration"
+ },
+ "maxLen": 512,
+ "labels": 22,
+ "tokenizerFiles": [],
+ "modelOnnx": {
+  "bytes": 55,
+  "sha256": "fb11eeefe63091ced4542eada66d8988d3f01ea37f435acfa25c6cb6dcc9c31a"
+ }
+}

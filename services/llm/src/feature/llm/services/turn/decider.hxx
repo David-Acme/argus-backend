@@ -14,7 +14,7 @@
 namespace turn
 {
 
-inline constexpr std::array<std::string_view, 2> kDeciderIds{"rules", "router"};
+inline constexpr std::array<std::string_view, 3> kDeciderIds{"rules", "router", "laya"};
 
 struct Pick
 {
@@ -22,6 +22,7 @@ struct Pick
   Json::Value arguments{Json::objectValue};
   std::vector<std::string> fill;
   double confidence{0.0};
+  std::string source;
 };
 
 struct Candidate
@@ -74,7 +75,7 @@ public:
           .arguments = pick.arguments,
           .fill = pick.fill,
           .confidence = pick.confidence,
-          .source = from.source,
+          .source = pick.source.empty() ? from.source : pick.source,
           .decider = from.decider,
           .exact = false,
           .confident = true,

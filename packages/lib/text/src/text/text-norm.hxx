@@ -14,6 +14,8 @@ std::unordered_set<std::string> wordSet(const std::string& text,
 
 std::string whitespace(const std::string& text, bool toLower = true);
 
+std::string nfc(std::string_view text);
+
 std::string stripAccents(std::string text);
 
 std::string intent(const std::string& text);

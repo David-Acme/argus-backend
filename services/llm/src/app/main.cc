@@ -35,6 +35,10 @@
 #include <sqlite/db-service.hxx>
 #include <sqlite/vec-db.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
+#include <feature/llm/services/turn/bundle-loader.hxx>
+#include <feature/llm/services/turn/deciders.hxx>
+#include <feature/llm/services/turn/gliner-extractor.hxx>
+#include <feature/llm/services/turn/laya-decider.hxx>
 #include <runtime/blocking-task.hxx>
 #include <runtime/log-output.hxx>
 #include <runtime/shutdown-signal.hxx>
@@ -149,7 +153,7 @@ CatalogReplica::Snapshot fetchCatalogSnapshotWithRetry()
   return CatalogReplica::Snapshot{};
 }
 
-turn::PolicySet configuredPolicies()
+turn::PolicySet configuredPolicies(const turn::BundlePolicy* laya)
 {
   const auto policyOf = [](const LlmDecisionConfig& decision) {
     return turn::DecisionPolicy{.act = decision.act, .ask = decision.ask, .margin = decision.margin, .nowMin = decision.nowMin};
@@ -166,7 +170,68 @@ turn::PolicySet configuredPolicies()
     policy.witnessOnly = witnessOnly;
     policies.set(std::string(id), policy);
   }
+  if (laya != nullptr && laya->present)
+    policies.set(std::string(turn::kDeciderIds[2]),
+                 turn::DecisionPolicy{.act = laya->act, .ask = laya->ask, .margin = laya->margin, .nowMin = laya->now});
   return policies;
+}
+
+struct TurnEngines
+{
+  std::unique_ptr<turn::FirstOf> stack;
+  std::unique_ptr<turn::LayaDecider> laya;
+  std::unique_ptr<turn::GlinerExtractor> gliner;
+};
+
+turn::OnnxOptions onnxOptions(const LlmOnnxConfig& config)
+{
+  return {.threads = config.threads, .cpuArena = config.cpuArena, .prepacking = config.prepacking, .mmap = config.mmap};
+}
+
+void configureDecider(LlmController& llm, TurnEngines& engines)
+{
+  const LlmEngineConfig engine = LlmConfig::resolveDecisionEngine();
+  if (engine.engine != "laya")
+    return;
+  const turn::BundleLoader bundle({.dir = engine.bundleDir, .pin = engine.pin});
+  if (!bundle.valid()) {
+    LOG_WARN << "argus-llm: the Laya decider is off: " << bundle.error()
+             << "; the turn runs on rules and the router";
+    return;
+  }
+  if (const std::optional<std::string> stray = turn::unknownLayaLabel(bundle.labels(), ToolRegistry::instance())) {
+    LOG_WARN << "argus-llm: the Laya bundle " << engine.bundleDir << " names the label '" << *stray
+             << "', which no tool serves; the turn runs on rules and the router";
+    return;
+  }
+  engines.laya = std::make_unique<turn::LayaDecider>(turn::LayaDeciderInput{
+      .model = turn::openLayaModel(bundle, onnxOptions(LlmConfig::resolveOnnx("decide.laya"))),
+      .fallback = &llm.adapter().routerDecider(),
+      .policy = bundle.policy(),
+      .confidence = bundle.confidenceCalibration(),
+      .now = bundle.nowCalibration()});
+  engines.stack = std::make_unique<turn::FirstOf>(
+      std::vector<const turn::Decider*>{&llm.adapter().ruleDecider(), engines.laya.get()});
+  llm.adapter().flow().useDecider(*engines.stack);
+  llm.adapter().flow().useWitnesses({&llm.adapter().ruleDecider(), engines.laya.get()});
+}
+
+void configureText(LlmController& llm, TurnEngines& engines, const slots::TextSlots& fallback)
+{
+  const LlmEngineConfig engine = LlmConfig::resolveExtractEngine();
+  if (engine.engine != "gliner")
+    return;
+  const turn::BundleLoader bundle({.dir = engine.bundleDir, .pin = engine.pin});
+  if (!bundle.valid()) {
+    LOG_WARN << "argus-llm: the GLiNER extractor is off: " << bundle.error()
+             << "; the turn runs on NuExtract";
+    return;
+  }
+  engines.gliner = std::make_unique<turn::GlinerExtractor>(turn::GlinerExtractorInput{
+      .model = turn::openGlinerModel(bundle, onnxOptions(LlmConfig::resolveOnnx("extract.gliner"))),
+      .fallback = &fallback,
+      .thresholds = bundle.thresholds()});
+  llm.adapter().flow().useText(*engines.gliner);
 }
 
 }
@@ -181,7 +246,7 @@ int main()
   drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-llm", .extras = {}}));
   const auto llm = std::make_shared<LlmController>();
   drogon::app().registerController(llm);
-  llm->adapter().flow().usePolicies(configuredPolicies());
+  TurnEngines engines;
 
   drogon::app().loadConfigJson(drogonConfig(listener));
 
@@ -215,6 +280,7 @@ int main()
   }
   const turn::ModelText modelText(memory.extraction());
   llm->adapter().flow().useText(modelText);
+  configureText(*llm, engines, modelText);
   std::shared_ptr<NotificationClient> notificationClient;
   if (const LlmNotificationConfig notifications = LlmConfig::resolveNotifications();
       !notifications.target.empty() && !notifications.credential.empty()) {
@@ -259,6 +325,8 @@ int main()
     }
   }
   tools.refresh("llm");
+  configureDecider(*llm, engines);
+  llm->adapter().flow().usePolicies(configuredPolicies(engines.laya ? &engines.laya->policy() : nullptr));
   ToolDirectory toolDirectory(tools, {});
   toolDirectory.start();
 

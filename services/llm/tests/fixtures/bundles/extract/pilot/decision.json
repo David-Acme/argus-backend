@@ -1,0 +1,8 @@
+{
+ "threshold": 0.5,
+ "maxSpanWidth": 12,
+ "source": {
+  "fitOn": "calibration",
+  "note": "pilot placeholder until a trained bundle lands"
+ }
+}
