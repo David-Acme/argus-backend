@@ -1018,15 +1018,11 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
 {
   const std::vector<float>& samples = heard.samples;
   LOG_DEBUG << "Voice: turn of " << samples.size() << " samples";
-  TurnClock clock{.detected = std::chrono::steady_clock::now(),
-                  .transcribed = {},
-                  .firstToken = {},
-                  .firstAudio = {},
-                  .requested = {},
-                  .firstSentence = {},
-                  .firstChunk = {}};
+  const std::chrono::steady_clock::time_point detected = std::chrono::steady_clock::now();
+  TurnClock& clock = session.turnClock;
+  clock.reset(detected);
   const auto traceBase = heard.detected == std::chrono::steady_clock::time_point{}
-                             ? clock.detected
+                             ? detected
                              : heard.detected;
   std::stop_token cancellation;
   {
@@ -1040,14 +1036,14 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
   struct TurnClockScope
   {
     Session& session;
-    TurnClockScope(Session& active, TurnClock* turnClock) : session(active)
+    explicit TurnClockScope(Session& active) : session(active)
     {
-      session.activeClock.store(turnClock);
+      session.turnClockLive.store(true);
     }
-    ~TurnClockScope() { session.activeClock.store(nullptr); }
+    ~TurnClockScope() { session.turnClockLive.store(false); }
     TurnClockScope(const TurnClockScope&) = delete;
     TurnClockScope& operator=(const TurnClockScope&) = delete;
-  } clockScope{session, &clock};
+  } clockScope{session};
 
   applyNotes(session);
   const auto speakerProbe = probeSpeaker(session, samples);
@@ -1066,7 +1062,7 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
     emitReaction(session, sttFailed);
     return;
   }
-  clock.transcribed = std::chrono::steady_clock::now();
+  clock.transcribed.store(std::chrono::steady_clock::now());
   if (userText.empty()) {
     LOG_WARN << "Voice: STT returned empty for a VAD turn";
     emitReaction(session, sttFailed);
@@ -1097,7 +1093,8 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
   session.history.addTone(ReactionEngine::toneNote(reaction, lang));
 
   if (answerOffer(session, userText)) {
-    LOG_INFO << "Voice: turn latency stt_ms=" << elapsedMs(clock.detected, clock.transcribed)
+    LOG_INFO << "Voice: turn latency stt_ms="
+             << elapsedMs(clock.detected.load(), clock.transcribed.load())
              << " answered_offer";
     return;
   }
@@ -1114,8 +1111,7 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
     const SpeakOutcome outcome = speak(session, text);
     if (!outcome.audible)
       return;
-    if (clock.firstAudio == std::chrono::steady_clock::time_point{})
-      clock.firstAudio = outcome.firstAudioAt;
+    TurnClock::stamp(clock.firstAudio, outcome.firstAudioAt);
     spoken += text;
   };
 
@@ -1124,8 +1120,8 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
       return;
     if (session.interrupt.load())
       return;
-    if (clock.firstToken == std::chrono::steady_clock::time_point{} && !token.empty())
-      clock.firstToken = std::chrono::steady_clock::now();
+    if (!token.empty())
+      TurnClock::stamp(clock.firstToken, std::chrono::steady_clock::now());
 
     full += token;
     pending += token;
@@ -1140,8 +1136,7 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
         break;
       const std::string sentence = pending.substr(0, cut);
       pending.erase(0, cut);
-      if (clock.firstSentence == std::chrono::steady_clock::time_point{})
-        clock.firstSentence = std::chrono::steady_clock::now();
+      TurnClock::stamp(clock.firstSentence, std::chrono::steady_clock::now());
       firstSentenceSent = true;
       say(sentence);
       if (session.interrupt.load()) {
@@ -1150,8 +1145,7 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
       }
     }
   };
-  if (clock.requested == std::chrono::steady_clock::time_point{})
-    clock.requested = std::chrono::steady_clock::now();
+  TurnClock::stamp(clock.requested, std::chrono::steady_clock::now());
   try {
     llm_.chatStream({.request = req,
                      .onToken = onToken,
@@ -1193,20 +1187,20 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
   const bool trimmed = session.history.trim();
   session.speaking = false;
 
-  LOG_INFO << "Voice: turn latency stt_ms=" << elapsedMs(clock.detected, clock.transcribed)
+  LOG_INFO << "Voice: turn latency stt_ms=" << elapsedMs(clock.detected.load(), clock.transcribed.load())
            << (streamed ? " stt=stream" : " stt=unary")
-           << " llm_first_token_ms=" << elapsedMs(clock.transcribed, clock.firstToken)
-           << " tts_first_audio_ms=" << elapsedMs(clock.firstToken, clock.firstAudio)
-           << " total_ms=" << elapsedMs(clock.detected, clock.firstAudio)
+           << " llm_first_token_ms=" << elapsedMs(clock.transcribed.load(), clock.firstToken.load())
+           << " tts_first_audio_ms=" << elapsedMs(clock.firstToken.load(), clock.firstAudio.load())
+           << " total_ms=" << elapsedMs(clock.detected.load(), clock.firstAudio.load())
            << (interrupted ? " interrupted" : "");
   if (session.traceLatency)
     LOG_INFO << "Voice: turn trace heard_bytes=" << userText.size()
-             << " endpoint_stt_ms=" << elapsedMs(traceBase, clock.transcribed)
-             << " endpoint_request_ms=" << elapsedMs(traceBase, clock.requested)
-             << " endpoint_first_token_ms=" << elapsedMs(traceBase, clock.firstToken)
-             << " endpoint_sentence_ms=" << elapsedMs(traceBase, clock.firstSentence)
-             << " endpoint_chunk_ms=" << elapsedMs(traceBase, clock.firstChunk)
-             << " endpoint_frame_ms=" << elapsedMs(traceBase, clock.firstAudio)
+             << " endpoint_stt_ms=" << elapsedMs(traceBase, clock.transcribed.load())
+             << " endpoint_request_ms=" << elapsedMs(traceBase, clock.requested.load())
+             << " endpoint_first_token_ms=" << elapsedMs(traceBase, clock.firstToken.load())
+             << " endpoint_sentence_ms=" << elapsedMs(traceBase, clock.firstSentence.load())
+             << " endpoint_chunk_ms=" << elapsedMs(traceBase, clock.firstChunk.load())
+             << " endpoint_frame_ms=" << elapsedMs(traceBase, clock.firstAudio.load())
              << (streamed ? " stt=stream" : " stt=unary")
              << (interrupted ? " interrupted" : "");
 
@@ -1415,7 +1409,8 @@ VoiceSessionService::SpeakOutcome VoiceSessionService::speak(Session& session,
        .targetRate = kTargetRate});
 
   SpeakingGuard speakingGuard(session.speaking);
-  TurnClock* const clock = session.activeClock.load();
+  TurnClock& clock = session.turnClock;
+  const bool stamping = session.turnClockLive.load();
   const auto markAudible = [&outcome] {
     if (outcome.audible)
       return;
@@ -1431,8 +1426,8 @@ VoiceSessionService::SpeakOutcome VoiceSessionService::speak(Session& session,
         return;
       if (session.interrupt.load())
         return;
-      if (clock != nullptr && clock->firstChunk == std::chrono::steady_clock::time_point{})
-        clock->firstChunk = std::chrono::steady_clock::now();
+      if (stamping)
+        TurnClock::stamp(clock.firstChunk, std::chrono::steady_clock::now());
       const auto raw = floatToInt16(chunk);
       const std::vector<int16_t> resampled =
           resampler.process(raw.data(), raw.size());

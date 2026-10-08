@@ -156,7 +156,8 @@ int main()
   VoiceRpcService voiceRpc({.sessions = &sessions,
                             .syncCallerSecret = VoiceConfig::resolveSyncCallerSecret(),
                             .notificationCallerSecret = VoiceConfig::resolveNotificationCallerSecret(),
-                            .rooms = rtc.get()});
+                            .rooms = rtc.get(),
+                            .dispatchCleanup = {}});
   HealthRpcService healthRpc;
   SettingsRegistry settings(voiceSettingsCatalog());
   std::unique_ptr<SettingsRpcService> settingsRpc;

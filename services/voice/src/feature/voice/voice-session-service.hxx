@@ -24,6 +24,7 @@
 #include <stop_token>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 #include <voice/voice-lang.hxx>
@@ -120,13 +121,37 @@ private:
 
   struct TurnClock
   {
-    std::chrono::steady_clock::time_point detected{};
-    std::chrono::steady_clock::time_point transcribed{};
-    std::chrono::steady_clock::time_point firstToken{};
-    std::chrono::steady_clock::time_point firstAudio{};
-    std::chrono::steady_clock::time_point requested{};
-    std::chrono::steady_clock::time_point firstSentence{};
-    std::chrono::steady_clock::time_point firstChunk{};
+    using Stamp = std::atomic<std::chrono::steady_clock::time_point>;
+
+    static constexpr std::chrono::steady_clock::time_point none()
+    {
+      return std::chrono::steady_clock::time_point{};
+    }
+
+    void reset(std::chrono::steady_clock::time_point detectedAt)
+    {
+      detected.store(detectedAt);
+      transcribed.store(none());
+      firstToken.store(none());
+      firstAudio.store(none());
+      requested.store(none());
+      firstSentence.store(none());
+      firstChunk.store(none());
+    }
+
+    static void stamp(Stamp& mark, std::chrono::steady_clock::time_point now)
+    {
+      auto expected = none();
+      std::ignore = mark.compare_exchange_strong(expected, now, std::memory_order_relaxed);
+    }
+
+    Stamp detected{none()};
+    Stamp transcribed{none()};
+    Stamp firstToken{none()};
+    Stamp firstAudio{none()};
+    Stamp requested{none()};
+    Stamp firstSentence{none()};
+    Stamp firstChunk{none()};
   };
 
   struct DuplexTurn
@@ -192,7 +217,8 @@ private:
     SampleRing pcmRing{kPcmRingSamples};
     bool duplex{false};
     bool traceLatency{false};
-    std::atomic<TurnClock*> activeClock{nullptr};
+    TurnClock turnClock;
+    std::atomic<bool> turnClockLive{false};
     std::chrono::milliseconds bargeGuard{300};
     std::thread turnThread;
     std::mutex duplexMutex;

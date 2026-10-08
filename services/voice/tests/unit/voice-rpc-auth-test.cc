@@ -97,7 +97,8 @@ TEST_CASE("voice answers only the argus-sync caller credential")
   VoiceRpcService service({.sessions = &sessions,
                            .syncCallerSecret = kSyncSecret,
                            .notificationCallerSecret = kNotificationSecret,
-                           .rooms = nullptr});
+                           .rooms = nullptr,
+                           .dispatchCleanup = {}});
   int port = 0;
   grpc::ServerBuilder builder;
   builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(),
@@ -123,7 +124,8 @@ TEST_CASE("JoinRoom answers only argus-sync, Announce only argus-notification")
   VoiceRpcService service({.sessions = &sessions,
                            .syncCallerSecret = kSyncSecret,
                            .notificationCallerSecret = kNotificationSecret,
-                           .rooms = &joiner});
+                           .rooms = &joiner,
+                           .dispatchCleanup = {}});
   int port = 0;
   grpc::ServerBuilder builder;
   builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
@@ -174,7 +176,8 @@ TEST_CASE("JoinRoom without realtime calls configured is UNAVAILABLE")
   VoiceRpcService service({.sessions = &sessions,
                            .syncCallerSecret = kSyncSecret,
                            .notificationCallerSecret = "",
-                           .rooms = nullptr});
+                           .rooms = nullptr,
+                           .dispatchCleanup = {}});
   int port = 0;
   grpc::ServerBuilder builder;
   builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);

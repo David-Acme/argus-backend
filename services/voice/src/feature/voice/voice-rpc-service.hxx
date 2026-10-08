@@ -6,6 +6,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -21,12 +22,15 @@ public:
   virtual void farewellRoom(const argus::voice::v1::RtcFarewell& farewell, std::function<void(bool)> done) = 0;
 };
 
+using VoiceCleanupDispatch = std::function<void(std::function<void()>)>;
+
 struct VoiceRpcInput
 {
   VoiceSessionService* sessions{nullptr};
   std::string syncCallerSecret;
   std::string notificationCallerSecret;
   VoiceRoomJoiner* rooms{nullptr};
+  VoiceCleanupDispatch dispatchCleanup;
 };
 
 class VoiceRpcService final
@@ -54,9 +58,14 @@ public:
   [[nodiscard]] bool idle() const { return live_->load() == 0; }
 
 private:
+  struct Streams;
+
   VoiceSessionService& sessions_;
   std::vector<argus::client::CallerCredential> syncCallers_;
   std::vector<argus::client::CallerCredential> notificationCallers_;
   VoiceRoomJoiner* rooms_;
   std::shared_ptr<std::atomic<int>> live_{std::make_shared<std::atomic<int>>(0)};
+  std::atomic<std::uint64_t> nextStreamId_{1};
+  std::shared_ptr<Streams> streams_;
+  VoiceCleanupDispatch dispatchCleanup_;
 };

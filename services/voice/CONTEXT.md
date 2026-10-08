@@ -972,10 +972,41 @@ cannot change settings. An empty `caller_settings`, or one equal to
   reply can quote recalled memories, and the deploy keeps info logs.
 - A second `VoiceStart` on a live stream is ignored; it used to replace the
   session and orphan the first one's worker thread for good.
-- No gRPC callback blocks: the end of a stream (stop the session, which
-  joins its threads, drain the writes for up to 2 s, `Finish`) runs on the
-  stream's own closer thread, and `OnDone` hands the final stop and the
-  `delete` to the Light blocking lane after joining that thread.
+- Lifetime invariant (2026-10-08): `VoiceSessionService sessions` must be
+  declared before `VoiceRpcService voiceRpc` in `main.cc`, so it outlives it.
+  A stream's cleanup (`VoiceSessionStream::finish`) calls `sessions_.stop()`
+  from whichever thread runs it, including a `Light`-lane job that `OnDone`
+  handed over, and `~Streams` swaps the registry out and finishes every stream
+  still registered before it returns, so no reactor survives the service. A
+  cleanup job that is still in flight holds a `shared_ptr` to its own reactor
+  and its `retire_` is a `weak_ptr`, so once the registry is gone it reaches
+  only `sessions_`. `main.cc`'s declaration order is load-bearing and must not
+  flip: `sessions` before `voiceRpc` so the session outlives the cleanup calls,
+  and `voiceRpc` before the gRPC `server` so the server — and every in-flight
+  callback that would reach the service — is destroyed first.
+- No hand-owned reactor: `Connect` registers each `VoiceSessionStream` in the
+  service's id-keyed registry (`shared_ptr`, erased by id when the cleanup
+  ends), the cleanup job holds `shared_from_this()` so it cannot run under a
+  freed reactor, and a `blocking_pool::submit` that throws runs the cleanup
+  inline on the completion thread instead of escaping `OnDone` (gRPC's
+  `CallOnDone` has no try/catch). Nothing reads the `CallbackServerContext`
+  after `OnDone` returns: `connected()` reads three atomics, and `OnDone`
+  closes the write path under `writeMutex_` before it returns, so a session
+  thread can never reach gRPC's freed stream object either.
+- Every terminal path completes the RPC exactly once. `endSession` finishes
+  after stopping the session and draining the writes, and finishes even when
+  the call was cancelled: gRPC only calls `OnDone` once the application has
+  finished the RPC, so skipping `Finish` on a cancel left the call (and its
+  reactor) alive for the life of the process. `finishing_` under `writeMutex_`
+  is what makes it exactly once — a second `Finish` would abort the process.
+- No gRPC callback blocks on the deferred path: the end of a stream (stop the
+  session, which joins its threads, drain the writes, `Finish`) runs on the
+  stream's own closer thread, and `OnDone` hands the final teardown (`finish()`,
+  which joins that thread and stops the session) to the Light blocking lane.
+  Only when that enqueue throws does `OnDone` run the teardown inline on the
+  completion thread — bounded, and better than a job that never runs. The one
+  2 s wait is `drain()` on the closer thread, before `Finish`; `finish()` never
+  drains and its joins are near-no-ops by the time it runs.
   `finished_` is atomic because `connected()` reads it from the session's
   threads.
 - Shutdown: `main.cc` registers the gRPC server as a `shutdown_signal`

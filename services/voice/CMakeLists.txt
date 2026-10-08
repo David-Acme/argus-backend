@@ -218,6 +218,19 @@ set_target_properties(voice-rpc-auth-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-rpc-auth-test COMMAND voice-rpc-auth-test)
 
+add_executable(voice-reactor-lifetime-test tests/unit/voice-reactor-lifetime-test.cc)
+
+target_link_libraries(voice-reactor-lifetime-test PRIVATE argus::voice-core
+    doctest::doctest)
+
+target_compile_options(voice-reactor-lifetime-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-reactor-lifetime-test)
+
+set_target_properties(voice-reactor-lifetime-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-reactor-lifetime-test COMMAND voice-reactor-lifetime-test)
+
 add_executable(voice-tts-remote-test tests/unit/voice-tts-remote-test.cc)
 
 target_include_directories(voice-tts-remote-test PRIVATE

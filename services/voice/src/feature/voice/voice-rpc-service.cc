@@ -4,9 +4,14 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <drogon/drogon.h>
+#include <memory>
+#include <stdexcept>
 #include <thread>
+#include <unordered_map>
+#include <utility>
 
 namespace
 {
@@ -14,7 +19,8 @@ namespace
 class VoiceSessionStream final
     : public grpc::ServerBidiReactor<argus::voice::v1::ClientFrame,
                                      argus::voice::v1::ServerFrame>,
-      public VoiceSessionSink
+      public VoiceSessionSink,
+      public std::enable_shared_from_this<VoiceSessionStream>
 {
 public:
   struct Input
@@ -23,13 +29,23 @@ public:
     grpc::CallbackServerContext* context;
     const std::vector<argus::client::CallerCredential>& callers;
     std::shared_ptr<std::atomic<int>> live;
+    std::uint64_t id{0};
+    std::function<void(std::uint64_t)> retire;
+    VoiceCleanupDispatch dispatchCleanup;
   };
 
   explicit VoiceSessionStream(const Input& input)
       : sessions_(input.sessions), context_(input.context), callers_(input.callers),
-        live_(input.live)
+        live_(input.live), id_(input.id), retire_(input.retire),
+        dispatchCleanup_(input.dispatchCleanup)
   {
     live_->fetch_add(1);
+  }
+
+  ~VoiceSessionStream() override
+  {
+    if (!cleaningUp_.exchange(true))
+      live_->fetch_sub(1);
   }
 
   void begin()
@@ -71,21 +87,35 @@ public:
     drainCv_.notify_all();
   }
 
+  void OnCancel() override { cancelled_.store(true); }
+
   void OnDone() override
   {
-    blocking_pool::submit(BlockingLane::Light, [this] {
-      if (closer_.joinable())
-        closer_.join();
-      sessions_.stop(*this);
-      const auto live = live_;
-      delete this;
-      live->fetch_sub(1);
-    });
+    done_.store(true);
+    {
+      std::scoped_lock lock(writeMutex_);
+      finished_.store(true);
+      queue_.clear();
+    }
+    const auto self = shared_from_this();
+    const std::function<void()> cleanup = [self] { self->finish(); };
+    try {
+      dispatchCleanup_(cleanup);
+    }
+    catch (const std::exception& e) {
+      LOG_WARN << "Voice: stream cleanup could not be queued (" << e.what()
+               << "), running it on the completion thread";
+      finish();
+    }
+    catch (...) {
+      LOG_WARN << "Voice: stream cleanup could not be queued, running it on the completion thread";
+      finish();
+    }
   }
 
   bool connected() const override
   {
-    return !finished_.load() && !context_->IsCancelled();
+    return !finished_.load() && !cancelled_.load() && !done_.load();
   }
 
   void sendServerFrame(argus::voice::v1::ServerFrame frame) override
@@ -99,6 +129,25 @@ public:
     }
     queue_.push_back(std::move(frame));
     pumpLocked();
+  }
+
+  void finish()
+  {
+    if (cleaningUp_.exchange(true))
+      return;
+    try {
+      if (closer_.joinable())
+        closer_.join();
+      sessions_.stop(*this);
+    }
+    catch (const std::exception& e) {
+      LOG_WARN << "Voice: stream teardown failed: " << e.what();
+    }
+    catch (...) {
+      LOG_WARN << "Voice: stream teardown failed";
+    }
+    live_->fetch_sub(1);
+    retire_(id_);
   }
 
 private:
@@ -157,7 +206,7 @@ private:
     sessions_.stop(*this);
     drain();
     std::scoped_lock lock(writeMutex_);
-    if (finishing_ || context_->IsCancelled())
+    if (finishing_ || done_.load())
       return;
     finishing_ = true;
     Finish(grpc::Status::OK);
@@ -189,11 +238,60 @@ private:
   std::deque<argus::voice::v1::ServerFrame> queue_;
   bool writing_{false};
   std::atomic<bool> finished_{false};
+  std::atomic<bool> cancelled_{false};
+  std::atomic<bool> done_{false};
+  std::atomic<bool> cleaningUp_{false};
   bool finishing_{false};
   argus::voice::v1::ClientFrame read_;
   std::shared_ptr<std::atomic<int>> live_;
+  std::uint64_t id_{0};
+  std::function<void(std::uint64_t)> retire_;
+  VoiceCleanupDispatch dispatchCleanup_;
   std::jthread closer_;
 };
+
+}
+
+struct VoiceRpcService::Streams
+{
+  ~Streams()
+  {
+    std::unordered_map<std::uint64_t, std::shared_ptr<VoiceSessionStream>> doomed;
+    {
+      std::scoped_lock lock(mutex);
+      doomed.swap(live);
+    }
+    for (const auto& [id, stream] : doomed)
+      stream->finish();
+  }
+
+  void add(std::uint64_t id, std::shared_ptr<VoiceSessionStream> stream)
+  {
+    std::scoped_lock lock(mutex);
+    live.emplace(id, std::move(stream));
+  }
+
+  void retire(std::uint64_t id)
+  {
+    std::scoped_lock lock(mutex);
+    live.erase(id);
+  }
+
+  std::mutex mutex;
+  std::unordered_map<std::uint64_t, std::shared_ptr<VoiceSessionStream>> live;
+};
+
+namespace
+{
+
+VoiceCleanupDispatch cleanupDispatchOf(const VoiceCleanupDispatch& dispatch)
+{
+  if (dispatch)
+    return dispatch;
+  return [](std::function<void()> job) {
+    blocking_pool::submit(BlockingLane::Light, std::move(job));
+  };
+}
 
 }
 
@@ -203,7 +301,9 @@ VoiceRpcService::VoiceRpcService(VoiceRpcInput input)
           .service = "argus-sync", .secret = std::move(input.syncCallerSecret)}}),
       notificationCallers_({argus::client::CallerCredential{
           .service = "argus-notification", .secret = std::move(input.notificationCallerSecret)}}),
-      rooms_(input.rooms)
+      rooms_(input.rooms),
+      streams_(std::make_shared<Streams>()),
+      dispatchCleanup_(cleanupDispatchOf(input.dispatchCleanup))
 {
 }
 
@@ -211,10 +311,27 @@ grpc::ServerBidiReactor<argus::voice::v1::ClientFrame,
                         argus::voice::v1::ServerFrame>*
 VoiceRpcService::Connect(grpc::CallbackServerContext* context)
 {
-  auto* reactor = new VoiceSessionStream(
-      {.sessions = sessions_, .context = context, .callers = syncCallers_, .live = live_});
-  reactor->begin();
-  return reactor;
+  const std::uint64_t id = nextStreamId_.fetch_add(1);
+  auto stream = std::make_shared<VoiceSessionStream>(VoiceSessionStream::Input{
+      .sessions = sessions_,
+      .context = context,
+      .callers = syncCallers_,
+      .live = live_,
+      .id = id,
+      .retire = [registry = std::weak_ptr<Streams>(streams_)](std::uint64_t streamId) {
+        if (const auto streams = registry.lock())
+          streams->retire(streamId);
+      },
+      .dispatchCleanup = dispatchCleanup_});
+  streams_->add(id, stream);
+  try {
+    stream->begin();
+  }
+  catch (...) {
+    streams_->retire(id);
+    throw;
+  }
+  return stream.get();
 }
 
 grpc::ServerUnaryReactor* VoiceRpcService::JoinRoom(grpc::CallbackServerContext* context,
