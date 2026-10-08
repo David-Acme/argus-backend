@@ -1496,3 +1496,229 @@ the backend declares, or when a tool annotated read-only is missing from `turn/t
 harness reads its read-only list from that file, which is what the turn flow compiles). The test needs
 no build. `tests/eval/eval-tools.cc` (for `llm-tier-eval`) is still a hand mirror of the providers' tool
 specs; a snapshot of every provider's `tools/list` that both sides test against would remove it.
+
+## The gear swap: Laya and GLiNER behind the turn's own seams
+
+The turn's deciders and the slot layer's text engine are seams, and both new
+engines ride them; nothing in the MCP path, the tool runtime, the pendings or
+the audit changes. `turn::kDeciderIds` gains a third id, `"laya"`; with
+`decide.engine = "laya"` the judge arbitrates **rules + laya** and the fastText
+router leaves the arbitration entirely, so it is a two-decider judge
+(`llm-turn-engines-test`, "with engine laya the judge arbitrates rules and
+laya, and the router never proposes"). With `decide.engine = "router"`, the
+default, nothing changes. `extract.engine = "gliner"` puts
+`turn::GlinerExtractor` behind `slots::TextSlots`; `"nuextract"` keeps
+`turn::ModelText`. Both defaults stay on today's path until a measured
+promotion; shipping defaults flip in the change that also removes the engine
+they replace.
+
+### Config keys, and their allowed values
+
+| key | values | meaning |
+|---|---|---|
+| `decide.engine` | `router` (default) \| `laya` | which second decider the judge arbitrates against `rules` |
+| `decide.laya.bundle_dir` | a path | the decided bundle the loader opens |
+| `decide.laya.sha256` | 64 hex | the sha256 **of the bundle's own `sha256` file**, which pins every file transitively |
+| `decide.laya.threads` | `0` (default) \| n | intra-op threads; `0` means `ThreadBudget::lightThreads()` |
+| `decide.laya.cpu_arena` | `false` (default) \| `true` | the ORT CPU memory arena |
+| `decide.laya.prepacking` | `false` (default) \| `true` | `session.use_prepacking` |
+| `decide.laya.mmap` | `true` (default) \| `false` | hand ORT the path (mmap) instead of a read buffer |
+| `extract.engine` | `nuextract` (default) \| `gliner` | which text engine the slot layer asks |
+| `extract.gliner.bundle_dir` | a path | the extractor bundle |
+| `extract.gliner.sha256` | 64 hex | the sha256 of that bundle's `sha256` file |
+| `extract.gliner.threads` / `.cpu_arena` / `.prepacking` / `.mmap` | as above | the same four session options |
+
+The template carries keys and values only; the allowed values are here, never
+in `config.toml.example`.
+
+### The bundle contract
+
+`scripts/install-model-bundle.sh <laya|gliner> <bundle-dir>` writes the two keys
+from a verified bundle, and `--rollback` restores the previous one. The bundle
+is `model.onnx`, `tokenizer/`, `labels.json`, `decision.json`, `max_len`,
+`model-card.md`, `sha256` and `manifest.json` (the layout
+`intent-training/scripts/kit_bundle.py` writes). The loader verifies the
+configured pin **first** — it is the sha256 of the `sha256` file — then every
+file the `sha256` file lists, and refuses an unlisted file or a missing one
+(`llm-bundle-loader-test`, one refusal per case). The artefact may be INT8 or
+fp32: the loader takes the file it is given and pins it, and never assumes a
+quantisation.
+
+`decision.json` carries the thresholds, and **never config**: Laya's
+`act`/`ask`/`margin`/`now` (with a `calibration` block, `platt` or `isotonic`,
+applied to the raw score before the judge reads it —
+`turn::CalibrationModel`), and GLiNER's `threshold`/`maxSpanWidth`. They are
+fit on the **calibration** split only, and `manifest.json` records which split
+(`calibration.fitOn`). The loader surfaces that split (`BundleLoader::fitSplit`)
+from the manifest, never re-derives it, and a bundle whose thresholds were fit
+on dev, OOT, IND, CH or a sealed split is refused by Unit A's gate.
+
+`labels.json`'s `labels` may be an **array** (the order is the model's logit
+order, and it is preserved) or an object (the loader keeps every name but the
+order is the JSON library's, not the model's); `kit_bundle.py` writes it as a
+sorted object today, so the array is the spelling a bundle that must map logits
+to labels should use.
+
+### The label set is the only coupling
+
+`turn::layaLabels()` is the one map from a model label to the tool it names,
+pinned beside the code as `tools/laya-labels.tsv` and asserted equal to it by
+`llm-turn-engines-test`. `turn::unknownLayaLabel(labels, registry)` answers the
+first label no tool serves (checked against the live `ToolRegistry` when it has
+tools), and the composition refuses the whole bundle on one log line rather
+than routing to a tool that does not exist. A future bundle that renames or
+adds a label is therefore a config change with no code change — and a bad one
+is a visible fallback, not a misroute.
+
+### Degradation is a contract
+
+A bundle that is missing, unreadable or off its pin — and a model that opens but
+cannot run — costs **one log line naming the artefact and the mismatch**, and
+the turn continues on today's path: rules + router for Laya, NuExtract for
+GLiNER. Nothing fails the turn. `Candidate.source` (and `Pick.source`) carry the
+engine and label that actually spoke, so a fallback is visible in the trace and
+in the eval instead of inferred. The pin is verified **once at load and
+latched**; there is no re-hash per turn.
+
+### The tokenizers, named
+
+- **Laya**: the checkpoint's own `tokenizer/tokenizer.json` — a Hugging Face
+  `tokenizers` **BPE** with a SentencePiece Metaspace normalizer (space becomes
+  `▁`, prepended), `byte_fallback`, `ignore_merges`, **256,000** pieces and
+  580,604 merges, `<bos>`/`<eos>` added tokens, and the `PreTrainedTokenizerFast`
+  for `convaiinnovations/laya-multilingual` (mmBERT-base). The fixture's
+  `tokens` are `encode_text(..., add_special_tokens=False)`.
+- **GLiNER**: the backbone's own tokenizer, `microsoft/mdeberta-v3-base` — a
+  SentencePiece **Unigram** vocabulary, applied to lowercased words (the
+  pruning pool in `EXTRACTOR-MODEL.md` is built the same way).
+
+### Train/serve parity, and its provenance
+
+The frozen Laya fixture is `tests/fixtures/laya/parity-r1.json`, written by
+`tests/eval/laya-parity.py`. Provenance: the **round-1 pilot checkpoint**
+`~/.cache/argus-laya/r1/ck-pilot` (its `tokenizer/tokenizer.json` sha256
+`dbba919c…`, `model.safetensors` sha256 `610fa983…`), generated from the
+`intent-training` project at commit `fbaafcf8`, fixture sha256 `3417767622…`.
+Re-tokenizing the fixture's texts with that checkpoint's tokenizer reproduces
+its `tokens` row for row (verified 2026-10-08). The fixture carries, per case,
+the text, the token ids, the per-question sequences (ids and markers), the tool
+label probabilities and the `now` score — the two sides a parity harness
+compares. GLiNER's pair is `tests/eval/gliner-parity.py`, the same shape over
+the extractor's encoder and span decoder. **The C++ half of both harnesses is
+not written**: `turn::LayaModel` and `turn::GlinerModel` are ports, and their
+in-service adapters open the bundle's ONNX with the four session options above
+and report `Unavailable` until the sequence renderer (Laya) and the span head
+(GLiNER) are exported or written, which is why the composition degrades to
+today's path. The port is what makes the artefact a file swap.
+
+### Precision, then latency and CPU, then memory (David, 2026-10-08)
+
+"It's not free rein to consume what it wants — the main focus is speed and
+precision." The priority order is **precision, then latency and CPU, then
+memory**, and memory has a ceiling again, measured where it is spent:
+
+- **The gate is 1 GB of warm RSS delta per model, measured inside a serving
+  process — through this loader**, never in Python. `turn::OnnxSession` records
+  `residentBytes()` immediately before and after `Ort::Session` is built and
+  keeps the difference (`warmRssDeltaBytes()`), logs it once, and the
+  call-faithfulness eval prints it per engine (`laya_rss_mb`, `gliner_rss_mb`)
+  with their sum beside the process RSS. 600 MB is the **target reported beside
+  the gate**, not the gate.
+- The free runtime savings are how the ceiling is met without touching the
+  model, and they matter more now: CPU arena off, prepacking off, mmap load,
+  intra-op threads from `ThreadBudget` — the four keys above, applied by default
+  **when the parity harness shows identical outputs**.
+- The loader loads INT8 or fp32 without caring which; Unit A's quality gates
+  choose (INT8 ships within 0.5 pp of fp32 on dev, OOT, IND and CH with parity
+  passing; fp32 only if INT8 costs precision and fp32 still fits the 1 GB
+  ceiling and the latency gate).
+- Vocabulary pruning is dropped.
+
+This replaces the earlier "memory is reported, not gated" wording of the same
+day.
+
+### The C++ tokenizer, and what parity has shown so far
+
+Neither model's tokenizer is covered by the memory feature's `UnigramTokenizer`:
+that class hardcodes a whitespace-collapse normalizer, ignores the file's own
+`normalizer`/`pre_tokenizer`, has no byte fallback and no `ignore_merges`. What
+covers both is `turn::SpTokenizer` (`services/turn/sp-tokenizer.cc`), driven by
+the bundle's own `tokenizer.json`:
+
+- **Laya** — `convaiinnovations/laya-multilingual` at the pilot checkpoint: a
+  Hugging Face `tokenizers` **BPE** (SentencePiece-style), a `Replace` normalizer
+  (" " → "▁"), a `Metaspace` pre-tokenizer, `byte_fallback`, `ignore_merges`
+  false, `fuse_unk`, 256,000 pieces and 580,604 merges, `<bos>`/`<eos>`/`<mask>`.
+- **GLiNER** — the mDeBERTa-v3 backbone: a **Unigram** model, 250,101 pieces, a
+  `Sequence` normalizer (whitespace collapse, NFC, right strip) and a
+  `Metaspace` pre-tokenizer. `SpTokenizer` reads both families from the same
+  file; NFC is currently a no-op, which is the one documented gap.
+
+`turn::layaBuildSequence` (`services/turn/laya-sequence.cc`) is the pure
+renderer: `layaOptions` renders the criteria, the head is
+`"<type> question: <instructions>"`, each option becomes `[MASK]` + its tokens
+capped at 48 and then at `max(4, (head_max_len - 16) / options)` when the option
+block does not fit, the head is capped at `max(8, head_max_len - option tokens)`,
+and the state is appended and clamped to `max_len`. `turn::glinerDecode`
+(`services/turn/gliner-decoder.cc`) is the pure decoder: sigmoid, per-query
+threshold, `max_width`, flat/longest/allow overlap resolution and the
+half-open token→character mapping.
+
+Against the frozen fixture (`parity-r1.json`, ck-pilot's tokenizer and
+`max_len` 1024 / `head_max_len` 256):
+
+- **token ids: identical to Python's, row for row (18 of 18)** — the first
+  parity harness passes.
+- **sequences: length and marker counts identical on all 36; the token content
+  differs in the head and option positions.** The fixture's question set is
+  `intent-training/scripts/laya_questions.py`'s (a criteria *list*, so options are
+  the bare labels), not the checkpoint's own `questions.json`; both were checked
+  against the reference, which reproduces the fixture with `laya_questions` (0
+  mismatches) and not with the checkpoint's file (36). Fed that question set,
+  `SpTokenizer`/`layaBuildSequence` reproduce every length and every marker, so
+  what is left is a token-content divergence in the BPE of the head/option
+  strings, not a structural one.
+
+### Two corrections of record (2026-10-08)
+
+**The parity statement, said exactly.** Two different artefacts were being
+described in one breath. The **tokenizer's ids** are `encode_text(text)` over the
+state text, and against the frozen fixture they are **identical to Python's, 18
+rows of 18**. The **sequences** are `build_sequence`'s output, and those are
+**failing**: every length and every marker count matches Python's, but the token
+content of the assembled head and option segments does not. The reference was
+checked directly — `laya.common.build_sequence` with the same question set
+reproduces the fixture exactly (0 of 36 mismatches), so the reference is settled
+and the divergence is in `turn::layaBuildSequence`/`turn::SpTokenizer` on the
+head and option strings, not in the reference. The status is **sequence parity
+failing**, and the fix is in the renderer's segment assembly.
+
+**NFC is not a gap in `SpTokenizer`; it is missing from the model itself.** The
+checkpoint's `tokenizer.json` normalises nothing but the marker
+(`Replace` " " → "▁"), so the frozen reference gives **different ids for NFD and
+NFC spellings of the same word** — `café`, `mañana`, `cigüeña`, `PINGÜINO`, `el
+año pasado` and `¿qué tengo en la agenda?` all differ between the two spellings
+under Python. `SpTokenizer` mirrors the file, so it is parity-faithful; putting
+NFC inside it would make it *disagree* with the reference. The normalisation
+therefore belongs to the serving pipeline **before** tokenisation, and the
+parity target is `C++ NFC(nfd) == Python(nfc)`. `tests/fixtures/laya/nfc-pairs.json`
+records both spellings and Python's ids for each, and
+`llm-sp-tokenizer-test` compares the C++ against both.
+
+**Nothing in the tree provides NFC.** `lib/text` has no normaliser, no Conan
+package carries one, and what `argus-llm` already links is protobuf's and
+abseil's UTF-8 *validators* (`libutf8_validity`, `libabsl_utf8_for_code_point`) —
+validation, not normalisation. The system does have `libicuuc.so.78` and
+`utf8proc`, but neither is the tree's to link. **Proposal, not a change:**
+`utf8proc` (MIT, ~100 KB, one call — `utf8proc_NFC`) as a tier-1 Conan package in
+`packages/lib/text`, with ICU (`icu/*`, ~30 MB, the full normaliser) as the
+alternative if a Conan recipe for `utf8proc` does not exist. Awaiting the word
+before anything is added.
+
+**The question set is a defect to report, not a choice.** The frozen fixture is
+reproduced by `intent-training/scripts/laya_questions.py`'s `QUESTIONS` (criteria
+as a list) and **not** by the pilot checkpoint's own `questions.json` (36
+mismatches against the same reference). Two files that should be one disagree.
+Unit A's export must write the training run's own question file, record its
+hash in `manifest.json`, and have the training code read that same file, so they
+cannot diverge; this one is flagged rather than picked.

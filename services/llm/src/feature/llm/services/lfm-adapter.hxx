@@ -119,6 +119,10 @@ public:
 
   turn::TurnFlow& flow() { return flow_; }
 
+  [[nodiscard]] const turn::RuleDecider& ruleDecider() const { return ruleDecider_; }
+
+  [[nodiscard]] const turn::RouterDecider& routerDecider() const { return routerDecider_; }
+
 private:
   ToolChatOutput chatTurn(const SpeakInput& args);
 

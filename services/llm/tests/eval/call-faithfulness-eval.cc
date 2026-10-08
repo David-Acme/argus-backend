@@ -10,6 +10,11 @@
 #include <feature/llm/services/tools/claim-check.hxx>
 #include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
+#include <feature/llm/services/turn/bundle-loader.hxx>
+#include <feature/llm/services/turn/deciders.hxx>
+#include <feature/llm/services/turn/gliner-extractor.hxx>
+#include <feature/llm/services/turn/laya-decider.hxx>
+#include <feature/llm/services/turn/onnx-session.hxx>
 #include <feature/llm/services/turn/tool-effects.hxx>
 
 #include <json/reader.h>
@@ -17,6 +22,7 @@
 #include <json/writer.h>
 #include <llm/llm-service.hxx>
 #include <mcp/confirmation.hxx>
+#include <text/sha256.hxx>
 
 #include <llama.h>
 
@@ -66,6 +72,10 @@ struct Options
   std::string dump;
   std::string ttft;
   std::string filter;
+  std::string decide;
+  std::string decideBundle;
+  std::string extract;
+  std::string extractBundle;
   std::vector<std::string> dropFacets;
   float temperature{0.0F};
   uint32_t seed{42};
@@ -103,6 +113,14 @@ Options parseOptions(int argc, char** argv)
       options.ttft = argv[++i];
     else if (arg == "--filter" && hasValue)
       options.filter = argv[++i];
+    else if (arg == "--decide" && hasValue)
+      options.decide = argv[++i];
+    else if (arg == "--decide-bundle" && hasValue)
+      options.decideBundle = argv[++i];
+    else if (arg == "--extract" && hasValue)
+      options.extract = argv[++i];
+    else if (arg == "--extract-bundle" && hasValue)
+      options.extractBundle = argv[++i];
     else if (arg == "--drop-facets" && hasValue)
       options.dropFacets.push_back(argv[++i]);
     else if (arg == "--temperature" && hasValue)
@@ -785,6 +803,76 @@ bool runTtft(const TtftInput& input)
   return static_cast<bool>(out);
 }
 
+struct Engines
+{
+  std::unique_ptr<turn::FirstOf> stack;
+  std::unique_ptr<turn::LayaDecider> laya;
+  std::unique_ptr<turn::GlinerExtractor> gliner;
+  std::string active;
+};
+
+std::string bundlePin(const std::string& dir)
+{
+  if (dir.empty())
+    return {};
+  const FileBytes bytes = readFile((std::filesystem::path(dir) / "sha256").string());
+  return bytes.error.empty() ? argus::hash::sha256Hex(bytes.bytes) : std::string{};
+}
+
+Engines setupEngines(LlmController& controller, const Options& options)
+{
+  Engines engines;
+  if (!options.decide.empty())
+    ConfigService::setRuntimeString("decide.engine", options.decide);
+  if (!options.decideBundle.empty())
+    ConfigService::setRuntimeString("decide.laya.bundle_dir", options.decideBundle);
+  if (!options.extract.empty())
+    ConfigService::setRuntimeString("extract.engine", options.extract);
+  if (!options.extractBundle.empty())
+    ConfigService::setRuntimeString("extract.gliner.bundle_dir", options.extractBundle);
+  if (options.decide == "laya") {
+    const turn::BundleLoader bundle({.dir = options.decideBundle, .pin = bundlePin(options.decideBundle)});
+    if (bundle.valid() && !turn::unknownLayaLabel(bundle.labels(), ToolRegistry::instance())) {
+      engines.laya = std::make_unique<turn::LayaDecider>(turn::LayaDeciderInput{
+          .model = turn::openLayaModel(bundle, {}),
+          .fallback = &controller.adapter().routerDecider(),
+          .policy = bundle.policy(),
+          .confidence = bundle.confidenceCalibration(),
+          .now = bundle.nowCalibration()});
+      engines.stack = std::make_unique<turn::FirstOf>(
+          std::vector<const turn::Decider*>{&controller.adapter().ruleDecider(), engines.laya.get()});
+      controller.adapter().flow().useDecider(*engines.stack);
+      turn::PolicySet policies;
+      policies.set(std::string(turn::kDeciderIds[2]),
+                   turn::DecisionPolicy{.act = bundle.policy().act,
+                                        .ask = bundle.policy().ask,
+                                        .margin = bundle.policy().margin,
+                                        .nowMin = bundle.policy().now});
+      controller.adapter().flow().usePolicies(std::move(policies));
+      engines.active = "laya";
+    }
+    else {
+      std::cout << std::format("[WARN] the Laya bundle is off: {}\n", bundle.error());
+    }
+  }
+  if (options.extract == "gliner") {
+    const turn::BundleLoader bundle({.dir = options.extractBundle, .pin = bundlePin(options.extractBundle)});
+    if (bundle.valid()) {
+      engines.gliner = std::make_unique<turn::GlinerExtractor>(turn::GlinerExtractorInput{
+          .model = turn::openGlinerModel(bundle, {}), .fallback = nullptr, .thresholds = bundle.thresholds()});
+      controller.adapter().flow().useText(*engines.gliner);
+      engines.active += (engines.active.empty() ? "" : "+");
+      engines.active += "gliner";
+    }
+    else {
+      std::cout << std::format("[WARN] the GLiNER bundle is off: {}\n", bundle.error());
+    }
+  }
+  if (engines.active.empty())
+    engines.active = "rules+router+nuextract";
+  return engines;
+}
+
 struct FinishInput
 {
   const Options& options;
@@ -928,6 +1016,8 @@ int main(int argc, char** argv)
   moduleGate().apply(catalog);
   const std::vector<tools::ToolHandle> offered =
       controller.adapter().executor().offered({.role = UserRole::Owner, .modules = moduleGate().snapshot()});
+  const Engines engines = setupEngines(controller, options);
+  std::cout << std::format("pipeline: {}\n", engines.active);
 
   const std::vector<CallCase> cases = selected(loaded.cases, options);
   std::cout << std::format("call faithfulness: {} cases of {}\n", cases.size(), loaded.cases.size());
@@ -949,8 +1039,15 @@ int main(int argc, char** argv)
       std::cout << describe(runs.back()) << "\n";
   }
 
-  if (!options.dump.empty() && !writeDump({.path = options.dump, .service = controller.service(), .runs = runs})) {
-    std::cout << "[ERROR] cannot write " << options.dump << "\n";
+  const int64_t layaRss = engines.laya != nullptr ? engines.laya->warmRssBytes() : 0;
+  const int64_t glinerRss = engines.gliner != nullptr ? engines.gliner->warmRssBytes() : 0;
+  std::cout << std::format("consumption: laya_rss_mb={} gliner_rss_mb={} models_rss_mb={} process_rss_mb={} pipeline={}\n",
+                           static_cast<double>(layaRss) / (1024.0 * 1024.0),
+                           static_cast<double>(glinerRss) / (1024.0 * 1024.0),
+                           static_cast<double>(layaRss + glinerRss) / (1024.0 * 1024.0),
+                           static_cast<double>(turn::residentBytes()) / (1024.0 * 1024.0),
+                           engines.active);
+  if (!options.dump.empty() && !writeDump({.path = options.dump, .service = controller.service(), .runs = runs})) {    std::cout << "[ERROR] cannot write " << options.dump << "\n";
     controller.shutdownEngine();
     llama_backend_free();
     return 1;

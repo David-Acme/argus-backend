@@ -56,14 +56,22 @@ argus_module(NAME llm
         services/tools/tool-executor.cc
         services/tools/tool-grounding.cc
         services/tools/tool-registry.cc
-        services/turn/deciders.cc
+        services/turn/bundle-loader.cc
+        services/turn/calibration.cc
         services/turn/context-selector.cc
+        services/turn/deciders.cc
         services/turn/decision-tally.cc
         services/turn/facet-lexicon.cc
+        services/turn/gliner-decoder.cc
+        services/turn/gliner-extractor.cc
+        services/turn/laya-decider.cc
+        services/turn/laya-sequence.cc
         services/turn/model-text.cc
+        services/turn/onnx-session.cc
         services/turn/pending-turn.cc
         services/turn/slot-lexicon.cc
         services/turn/slots.cc
+        services/turn/sp-tokenizer.cc
         services/turn/turn-flow.cc
         services/turn/turn-texts.cc
     INCLUDES
@@ -85,6 +93,7 @@ argus_module(NAME llm
         Drogon::Drogon
         nlohmann_json::nlohmann_json
         argus::contracts::auth
+        onnxruntime::onnxruntime
         llama)
 
 target_include_directories(argus_llm PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/generated)

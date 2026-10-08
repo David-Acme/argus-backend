@@ -326,6 +326,54 @@ set_target_properties(llm-context-selector-test PROPERTIES EXCLUDE_FROM_ALL FALS
 
 add_test(NAME llm-context-selector-test COMMAND llm-context-selector-test)
 
+add_executable(llm-bundle-loader-test tests/unit/llm-bundle-loader-test.cc)
+
+target_link_libraries(llm-bundle-loader-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-bundle-loader-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-bundle-loader-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-bundle-loader-test COMMAND llm-bundle-loader-test)
+
+add_executable(llm-turn-engines-test tests/unit/llm-turn-engines-test.cc)
+
+target_compile_definitions(llm-turn-engines-test PRIVATE
+    ARGUS_TEST_BUNDLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/bundles"
+    ARGUS_TEST_LAYA_LABELS="${CMAKE_CURRENT_SOURCE_DIR}/tools/laya-labels.tsv")
+
+target_link_libraries(llm-turn-engines-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-turn-engines-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-turn-engines-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-turn-engines-test COMMAND llm-turn-engines-test)
+
+add_executable(llm-sp-tokenizer-test tests/unit/llm-sp-tokenizer-test.cc)
+
+target_compile_definitions(llm-sp-tokenizer-test PRIVATE
+    ARGUS_TEST_LAYA_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/parity-r1.json"
+    ARGUS_TEST_NFC_PAIRS="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/nfc-pairs.json")
+
+target_link_libraries(llm-sp-tokenizer-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-sp-tokenizer-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-sp-tokenizer-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-sp-tokenizer-test COMMAND llm-sp-tokenizer-test)
+
+add_executable(llm-gliner-decoder-test tests/unit/llm-gliner-decoder-test.cc)
+
+target_link_libraries(llm-gliner-decoder-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-gliner-decoder-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-gliner-decoder-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-gliner-decoder-test COMMAND llm-gliner-decoder-test)
+
 add_executable(llm-spoken-intent-test tests/unit/llm-spoken-intent-test.cc)
 
 target_link_libraries(llm-spoken-intent-test PRIVATE argus::llm doctest::doctest)

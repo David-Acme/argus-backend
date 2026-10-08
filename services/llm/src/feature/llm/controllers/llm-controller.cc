@@ -12,6 +12,7 @@
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <runtime/blocking-pool.hxx>
 #include <runtime/blocking-task.hxx>
+#include <text/text-norm.hxx>
 
 #include <drogon/drogon.h>
 
@@ -200,6 +201,10 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
 
 ChatRequest boundToCaller(ChatRequest request, std::string_view caller)
 {
+  for (ChatMessage& message : request.messages)
+    message.content = text_norm::nfc(message.content);
+  for (ContextFact& fact : request.contextFacts)
+    fact.text = text_norm::nfc(fact.text);
   if (caller == kIdentityCaller)
     return request;
   request.userId = 0;

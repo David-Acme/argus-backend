@@ -10,7 +10,7 @@
     18772,
     236703
    ],
-   "pythonAgrees": false
+   "pythonAgrees": true
   },
   {
    "nfc": "mañana",
@@ -23,7 +23,7 @@
     238970,
     1577
    ],
-   "pythonAgrees": false
+   "pythonAgrees": true
   },
   {
    "nfc": "cigüeña",
@@ -41,7 +41,7 @@
     238970,
     235250
    ],
-   "pythonAgrees": false
+   "pythonAgrees": true
   },
   {
    "nfc": "PINGÜINO",
@@ -59,7 +59,7 @@
     238784,
     20892
    ],
-   "pythonAgrees": false
+   "pythonAgrees": true
   },
   {
    "nfc": "¿qué tengo en la agenda?",
@@ -83,7 +83,7 @@
     23770,
     235336
    ],
-   "pythonAgrees": false
+   "pythonAgrees": true
   },
   {
    "nfc": "el año pasado",
@@ -99,7 +99,7 @@
     229459,
     23494
    ],
-   "pythonAgrees": false
+   "pythonAgrees": true
   }
  ]
 }
