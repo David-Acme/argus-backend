@@ -728,7 +728,7 @@ TEST_CASE("The history trims in whole turns and keeps the system prompt")
   CHECK(sess->history.userTurns() == 6);
   const auto& entries = sess->history.entries();
   CHECK(entries[0].message.role == "system");
-  CHECK(entries[0].message.content.find("Earlier in this call") != std::string::npos);
+  CHECK(entries[0].message.content.find("Antes en esta llamada") != std::string::npos);
   CHECK(entries[1].message.role == "user");
   CHECK(entries.back().message.role == "assistant");
 
@@ -1226,7 +1226,7 @@ TEST_CASE("A note after the first answer joins the end of the prompt and leaves 
   CHECK(second[0].content == first[0].content);
   CHECK(std::ranges::any_of(second, [](const ChatMessage& message) {
     return message.role == "system" &&
-           message.content == "Modo de vigilancia: fuera.\nAgenda de hoy: 18:00 cena.";
+           message.content.ends_with("Modo de vigilancia: fuera.\nAgenda de hoy: 18:00 cena.");
   }));
   CHECK(std::ranges::none_of(second, [](const ChatMessage& message) {
     return message.role == "user" && message.content != "hola argus";

@@ -4,6 +4,8 @@
 #include <feature/voice/call-history.hxx>
 
 #include <algorithm>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -26,6 +28,12 @@ bool startsWith(const std::vector<ChatMessage>& longer, const std::vector<ChatMe
   return std::equal(prefix.begin(), prefix.end(), longer.begin(), [](const ChatMessage& a, const ChatMessage& b) {
     return a.role == b.role && a.content == b.content;
   });
+}
+
+std::string readFile(const char* path)
+{
+  std::ifstream in(path, std::ios::binary);
+  return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 }
 
 struct Exchange
@@ -67,6 +75,10 @@ TEST_CASE("Notes before the first request fold into the prompt; later ones appen
   CHECK(history.size() == 2);
   CHECK(history.entries().front().message.content.find("Cámaras de la casa: Entrada, Patio.") != std::string::npos);
   CHECK(history.entries().front().message.content.find("Modo de vigilancia: en casa.") != std::string::npos);
+  CHECK(history.entries().front().message.content.find("Lo que sabes ahora mismo por la app") != std::string::npos);
+  const std::string firstRequest = readFile(ARGUS_CALL_PROMPT_ES) + "\n" + readFile(ARGUS_CALL_KNOWN_ES) + "\n" +
+                                   "Cámaras de la casa: Entrada, Patio." + "\n" + "Modo de vigilancia: en casa.";
+  CHECK(history.entries().front().message.content == firstRequest);
 
   turn(history, {.said = "hola", .answer = "Hola, ¿qué tal?"});
   const auto first = history.request();
@@ -81,8 +93,9 @@ TEST_CASE("Notes before the first request fold into the prompt; later ones appen
   CHECK(startsWith(second, first));
   REQUIRE(second.size() == first.size() + 2);
   CHECK(second[first.size()].role == "system");
-  CHECK(second[first.size()].content == "Modo de vigilancia: fuera.");
-  CHECK(second[first.size() + 1].content == "El usuario está en el coche.");
+  CHECK(second[first.size()].content == "Nota de la app (menciónala solo si viene al caso): Modo de vigilancia: fuera.");
+  CHECK(second[first.size() + 1].content ==
+        "Nota de la app (menciónala solo si viene al caso): El usuario está en el coche.");
 }
 
 TEST_CASE("Every turn extends the previous prompt until the history trims")
@@ -123,9 +136,9 @@ TEST_CASE("A trim keeps five whole turns and a digest of what it dropped")
   const std::string& prompt = entries[0].message.content;
   CHECK(prompt.find("Cámaras de la casa: Entrada.") != std::string::npos);
   CHECK(prompt.find("Modo de vigilancia: noche.") != std::string::npos);
-  CHECK(prompt.find("Earlier in this call") != std::string::npos);
-  CHECK(prompt.find("- User: pregunta 4") != std::string::npos);
-  CHECK(prompt.find("- You: respuesta 4") != std::string::npos);
+  CHECK(prompt.find("Antes en esta llamada") != std::string::npos);
+  CHECK(prompt.find("- Usuario: pregunta 4") != std::string::npos);
+  CHECK(prompt.find("- Tú: respuesta 4") != std::string::npos);
   CHECK(prompt.find("- App: The app could not complete app.show_camera.") != std::string::npos);
   CHECK(prompt.find("(Tono") == std::string::npos);
 }
@@ -151,4 +164,20 @@ TEST_CASE("Sanitizing keeps whole UTF-8 characters")
   CHECK(utf8Prefix(text, 11) == text);
   CHECK(sanitizedLine(" uno\ndos\t ", 50) == "uno dos");
   CHECK(sanitizedBlock(" uno\ndos\t \n", 50) == "uno\ndos");
+}
+
+TEST_CASE("The prompt speaks the call's language and states what Argus cannot see or claim")
+{
+  const std::string spanish = callSystemPrompt(VoiceLang::Es);
+  CHECK(spanish.starts_with("Eres Argus"));
+  CHECK(spanish.find("No ves la imagen de las cámaras") != std::string::npos);
+  CHECK(spanish.find("Nunca digas que hiciste, revisaste o cambiaste algo") != std::string::npos);
+  CHECK(spanish.find("You are") == std::string::npos);
+
+  const std::string english = callSystemPrompt(VoiceLang::En);
+  CHECK(english.starts_with("You are Argus"));
+  CHECK(english.find("You cannot see the camera images") != std::string::npos);
+
+  CHECK(callSystemPrompt(VoiceLang::Es) == readFile(ARGUS_CALL_PROMPT_ES));
+  CHECK(callSystemPrompt(VoiceLang::En) == readFile(ARGUS_CALL_PROMPT_EN));
 }

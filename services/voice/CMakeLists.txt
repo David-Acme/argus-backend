@@ -174,6 +174,12 @@ add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
 
 add_executable(voice-call-history-test tests/unit/voice-call-history-test.cc)
 
+target_compile_definitions(voice-call-history-test PRIVATE
+    ARGUS_CALL_PROMPT_ES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/call-prompt-es.txt"
+    ARGUS_CALL_PROMPT_EN="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/call-prompt-en.txt"
+    ARGUS_CALL_KNOWN_ES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/call-known-es.txt"
+    ARGUS_CALL_KNOWN_EN="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/call-known-en.txt")
+
 target_link_libraries(voice-call-history-test PRIVATE argus::voice-core
     doctest::doctest)
 

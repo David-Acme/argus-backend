@@ -66,10 +66,10 @@ const std::unordered_map<VoiceLang, Greeting>& greetings()
 {
   static const std::unordered_map<VoiceLang, Greeting> map = {
       {VoiceLang::Es,
-       {.withName = "Hola {name}, soy Argus, tu asistente. ¿En qué puedo ayudarte?",
+       {.withName = "Hola {name}, soy Argus. ¿Qué tal tu día?",
         .askName = "Hola, soy Argus, tu asistente local. ¿Cómo te llamas?"}},
       {VoiceLang::En,
-       {.withName = "Hi {name}, I'm Argus, your assistant. How can I help you?",
+       {.withName = "Hi {name}, it's Argus. How's your day going?",
         .askName = "Hi, I'm Argus, your local assistant. What's your name?"}},
   };
   return map;
