@@ -282,6 +282,31 @@ unlabelled, 136 clips) and OpenSLR 73 Peruvian Spanish (CC-BY-SA-4.0, 80 clips).
 Voice 5.98%, Peruvian 5.50%. `services/stt/CONTEXT.md` has the table and the caveats; the model is
 unchanged.
 
+## The call prompt's temperature (measured 2026-10-07)
+
+The call prompt's temperature is a measured choice, not a feel: the shipped prompt (reply-claim
+strip and clock gate included) was run through `call-faithfulness-eval` in the prod build at
+0.3, 0.45 and 0.6, five seeds each (42, 7, 1234, 11, 99), 15 runs, on the 20-case / 22-turn
+corpus. Every run passed the pinned gates, and the hard dimensions (`claims`, `rawClaims`,
+`recital`, `roleConfusion`, `clockRestraint`, `language`, `parrot`, `genericOffer`) scored 0 on
+every run at every temperature; the whole discrimination is `casePass`, paired by seed:
+
+| seed | 0.3 | 0.45 | 0.6 |
+|---|---|---|---|
+| 42 | 16 | 13 | 14 |
+| 7 | 17 | 15 | 16 |
+| 1234 | 15 | 16 | 16 |
+| 11 | 17 | 16 | 16 |
+| 99 | 15 | 14 | 12 |
+| **mean** | **16.00** | **14.80** | **14.80** |
+| **min** | **15** | **13** | **12** |
+
+0.3 takes the best mean and the best worst case and wins four of the five paired seeds, so the
+default is 0.3. Temperature 0 stays the pinned CI run (`gates.json`), where the corpus must
+still score its deterministic numbers. The soft misses that survive at every temperature are
+not sampling noise: the same one name-ask case and two-to-three greeting cases miss at 0.3,
+0.45 and 0.6 alike — prompt or corpus work, not a temperature, and tracked as its own item.
+
 ## What these numbers do not say
 
 - The judges are short, written utterances. Nothing here is a recording of a household through a

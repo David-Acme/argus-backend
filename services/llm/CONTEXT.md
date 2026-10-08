@@ -255,7 +255,7 @@ and copied once per generation. `main.cc` registers
 generation samples with it: the request in flight keeps the values it started
 with, the following turn reads the new ones. `resolveSampling()`
 (`feature/llm/services/sampling-config.cc`) is the one reader. An absent key
-takes the catalog's fallback (0.85, 256, 20, 0.8, 0, 64, 1.1, 0, 0, random
+takes the catalog's fallback (0.3, 256, 20, 0.8, 0, 64, 1.1, 0, 0, random
 seed), so the fallback the app shows is what runs; before, an absent
 `llm.temperature` ran at 0 and an absent `llm.max_tokens` at 16. A
 hand-edited value is clamped to a sane range instead of reaching llama.cpp:

@@ -87,7 +87,7 @@ struct GenerateInput
 struct LlmSampling
 {
   int32_t maxTokens{256};
-  float temperature{0.85F};
+  float temperature{0.3F};
   int32_t topK{20};
   float topP{0.8F};
   float minP{0.0F};

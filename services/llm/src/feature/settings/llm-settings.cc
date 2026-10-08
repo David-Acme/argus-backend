@@ -67,7 +67,7 @@ std::vector<SettingSpec> llmSettingsCatalog()
                .level = SettingLevel::Basic,
                .apply = sampling,
                .range = {.min = 0, .max = 2, .step = 0.05},
-               .fallback = "0.85",
+               .fallback = "0.3",
                .unit = ""}),
       numeric({.key = "llm.max_tokens",
                .group = "sampling",
