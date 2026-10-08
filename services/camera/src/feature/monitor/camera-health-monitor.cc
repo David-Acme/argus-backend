@@ -205,7 +205,10 @@ HealthMetrics CameraHealthMonitor::measure(const TickInput& input,
     state.newSceneSinceMs = 0;
   };
 
-  if (CameraSceneLog::instance().sceneOf(input.camera.id).aimedAtMs > state.referenceAtMs)
+  const CameraScene scene = CameraSceneLog::instance().sceneOf(input.camera.id);
+  const bool settling = scene.aimedAtMs > 0 &&
+                        input.capturedAtMs < scene.aimedAtMs + 2 * config_.intervalMs;
+  if (settling || scene.aimedAtMs > state.referenceAtMs)
     state.reference.clear();
 
   if (state.reference.size() != input.rgb.size()) {
@@ -321,12 +324,13 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
           Sample measured{.status = CameraHealthState::Unreachable,
                           .metrics = {},
                           .capturedAt = capturedAt,
-                          .reachable = true,
+                          .reachable = false,
                           .frameWidth = 0,
                           .frameHeight = 0};
           const cv::Mat raw = cv::imdecode(jpeg, cv::IMREAD_COLOR);
           if (raw.empty())
             return measured;
+          measured.reachable = true;
           measured.frameWidth = raw.cols;
           measured.frameHeight = raw.rows;
           cv::Mat small;
@@ -351,7 +355,7 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
     else
       sample = measureFrame();
   }
-  const CameraHealthState status = sample.status;
+  CameraHealthState status = sample.status;
   const HealthMetrics& metrics = sample.metrics;
   const int64_t capturedAt = sample.capturedAt;
   const bool reachable = sample.reachable;
@@ -365,7 +369,12 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
     CameraState& state = states_[camera.id];
     state.sampledAtMs = capturedAt;
     state.sampled = true;
-    if (state.lastStatus != status) {
+    state.misses = reachable ? 0 : state.misses + 1;
+    const bool held = !reachable && state.misses < kMissesBeforeOffline && state.published;
+    if (held) {
+      status = state.lastStatus;
+    }
+    else if (state.lastStatus != status) {
       state.lastStatus = status;
       transitioned = true;
     }

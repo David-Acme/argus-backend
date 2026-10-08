@@ -31,11 +31,14 @@ public:
   grab(const FrameGrabRequest&) override
   {
     ++calls;
+    if (!answering)
+      co_return std::nullopt;
     co_return frame;
   }
 
   CameraFrame frame;
   int calls{0};
+  bool answering{true};
 };
 
 class RecordingHealthSink final : public IHealthEventSink
@@ -85,6 +88,62 @@ TEST_CASE("Round15 healthy first tick and periodic ticks publish")
   CHECK(sink.events[2].detectedAtMs == firstStamp + 2000);
 }
 
+
+TEST_CASE("one missed sample keeps the health state and two make the camera unreachable")
+{
+  SyntheticHealthSource source;
+  RecordingHealthSink sink;
+  CameraHealthMonitor monitor({.source = &source, .sink = &sink},
+                              {.enabled = true,
+                               .intervalMs = 1000,
+                               .thresholds = {},
+                               .rebaselineAfterMs = 900000});
+  drogon::sync_wait(monitor.tick({.id = 7, .name = "Synthetic"}));
+  REQUIRE(sink.events.size() == 1);
+  CHECK(sink.events.back().status == CameraHealthState::Ok);
+
+  source.answering = false;
+  source.frame.capturedAtMs = 2000;
+  drogon::sync_wait(monitor.tick({.id = 7, .name = "Synthetic"}));
+  CHECK(sink.events.size() == 1);
+
+  source.frame.capturedAtMs = 3000;
+  drogon::sync_wait(monitor.tick({.id = 7, .name = "Synthetic"}));
+  REQUIRE(sink.events.size() == 2);
+  CHECK(sink.events.back().status == CameraHealthState::Unreachable);
+
+  source.answering = true;
+  source.frame.capturedAtMs = 4000;
+  drogon::sync_wait(monitor.tick({.id = 7, .name = "Synthetic"}));
+  REQUIRE(sink.events.size() == 3);
+  CHECK(sink.events.back().status == CameraHealthState::Ok);
+  CHECK(source.calls == 4);
+}
+
+TEST_CASE("a frame that does not decode is a miss, not a first strike")
+{
+  SyntheticHealthSource source;
+  RecordingHealthSink sink;
+  CameraHealthMonitor monitor({.source = &source, .sink = &sink},
+                              {.enabled = true,
+                               .intervalMs = 1000,
+                               .thresholds = {},
+                               .rebaselineAfterMs = 900000});
+  drogon::sync_wait(monitor.tick({.id = 8, .name = "Synthetic"}));
+  REQUIRE(sink.events.size() == 1);
+  CHECK(sink.events.back().status == CameraHealthState::Ok);
+
+  source.frame.jpeg = {0x01, 0x02, 0x03};
+  source.frame.capturedAtMs = 2000;
+  drogon::sync_wait(monitor.tick({.id = 8, .name = "Synthetic"}));
+  CHECK(sink.events.size() == 1);
+
+  source.answering = false;
+  source.frame.capturedAtMs = 3000;
+  drogon::sync_wait(monitor.tick({.id = 8, .name = "Synthetic"}));
+  REQUIRE(sink.events.size() == 2);
+  CHECK(sink.events.back().status == CameraHealthState::Unreachable);
+}
 
 namespace
 {
@@ -336,7 +395,7 @@ TEST_CASE("a view Argus aimed is the reference at once")
   CHECK(run.show(texturedJpeg({.seed = 21, .gain = 1.0, .offset = 0.0}), 1000) == CameraHealthState::Ok);
   CameraSceneLog::instance().noteAimed(103, 1500);
   CHECK(run.show(texturedJpeg({.seed = 22, .gain = 1.0, .offset = 0.0}), 2000) == CameraHealthState::Ok);
-  CHECK(run.show(texturedJpeg({.seed = 21, .gain = 1.0, .offset = 0.0}), 3000) == CameraHealthState::Moved);
+  CHECK(run.show(texturedJpeg({.seed = 21, .gain = 1.0, .offset = 0.0}), 4000) == CameraHealthState::Moved);
   CameraSceneLog::instance().forget(103);
 }
 
@@ -352,4 +411,40 @@ TEST_CASE("a camera in privacy mode is not checked")
   drogon::sync_wait(run.monitor.tick({.id = 104, .name = "Scene"}));
   CHECK(run.source.calls == 1);
   CameraSceneLog::instance().forget(104);
+}
+
+TEST_CASE("a preset that settles between samples is not moved")
+{
+  const auto before = texturedJpeg({.seed = 41, .gain = 1.0, .offset = 0.0});
+  const auto moving = texturedJpeg({.seed = 42, .gain = 1.0, .offset = 0.0});
+  const auto settled = texturedJpeg({.seed = 43, .gain = 1.0, .offset = 0.0});
+  SceneRun run({.cameraId = 105, .rebaselineAfterMs = 900000});
+  CHECK(run.show(before, 1000) == CameraHealthState::Ok);
+  CameraSceneLog::instance().noteAimed(105, 1400);
+
+  run.source.frame.jpeg = moving;
+  run.source.frame.capturedAtMs = 1500;
+  drogon::sync_wait(run.monitor.tick({.id = 105, .name = "Scene"}));
+
+  run.source.frame.jpeg = settled;
+  run.source.frame.capturedAtMs = 2400;
+  drogon::sync_wait(run.monitor.tick({.id = 105, .name = "Scene"}));
+  REQUIRE(run.sink.events.size() == 2);
+  CHECK(run.sink.events.back().status == CameraHealthState::Ok);
+
+  CHECK(run.show(settled, 4000) == CameraHealthState::Ok);
+  CHECK(run.show(moving, 5000) == CameraHealthState::Moved);
+  CameraSceneLog::instance().forget(105);
+}
+
+TEST_CASE("a view nothing aimed still reads moved at the same samples")
+{
+  const auto before = texturedJpeg({.seed = 51, .gain = 1.0, .offset = 0.0});
+  const auto moved = texturedJpeg({.seed = 52, .gain = 1.0, .offset = 0.0});
+  SceneRun run({.cameraId = 106, .rebaselineAfterMs = 900000});
+  CHECK(run.show(before, 1000) == CameraHealthState::Ok);
+  CHECK(run.show(moved, 1500) == CameraHealthState::Moved);
+  CHECK(run.show(moved, 2500) == CameraHealthState::Moved);
+  CHECK(run.show(texturedJpeg({.seed = 53, .gain = 1.0, .offset = 0.0}), 3500) ==
+        CameraHealthState::Moved);
 }

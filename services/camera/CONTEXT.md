@@ -381,6 +381,36 @@ the sync RPC service is its only reader), so `argus_camera-sync` carries
   day/night change, privacy off, a new address) re-baselines at once through
   `CameraSceneLog`, and a camera Argus put in privacy mode is not sampled.
   What Argus did not do (the vendor app, auto-tracking) waits out the window.
+- **The aimed re-baseline is a window, not one frame.** A sample taken while
+  the camera is still moving can pass the sane test (motion blur does not
+  always drop the Laplacian variance below the blur threshold), and taking
+  that mid-motion frame as the reference left the settled view reading
+  `moved` until the 15-minute rebaseline. The monitor therefore adopts every
+  sane frame while `capturedAtMs < aimedAtMs + 2 * interval_ms`: two sampling
+  intervals always contain a sample taken after a move that settles in 1-2 s,
+  so the first settled post-move frame becomes the reference and a preset that
+  settles between two samples is not a moved camera. The suppression is scoped
+  to the window — a view nothing aimed still reads `moved` at the first sample
+  after it changed, which two tests pin side by side.
+- **One missed sample is not an unreachable camera.** The monitor counts
+  consecutive misses per camera and publishes `unreachable` on the second one
+  only (`kMissesBeforeOffline`, the presence recorder's own rule); a
+  successful sample clears the count and leaves `unreachable` at once. A
+  missed sample is either shape the monitor cannot see: a grab that failed, or
+  bytes go2rtc answered with that do not decode — both leave `reachable`
+  false, so neither publishes a transition nor clears the count. A sample
+  inside the debounce publishes nothing at all — no transition, no heartbeat,
+  so no log line — and the live board keeps the status the app last saw. The
+  frame source backs off too: `GrabBackoff` refuses to touch go2rtc while a
+  doubling window (1 s to 30 s) is open after a failure and logs one
+  `frame grab failed` line per failure episode instead of one per attempt, so
+  a camera that left the LAN is not polled at the operator's frame rate.
+  Replaying the demo's log (5 h 17 m, one camera, one uninterrupted go2rtc)
+  through the debounce projects the 37 flapping `unreachable` transitions down
+  to at most the 19 real offline episodes — the 18 single-frame drops are held
+  — and the 118 grab warnings down to one line per failure episode; the counts
+  are the root cause's reading of the old run, the reduction is the policy's,
+  not a re-measurement.
 - The `insect` state was dropped (Round 14): whole-frame
   variance-of-Laplacian cannot separate an insect on the lens from a sharp
   static background, so the state fired on every healthy camera. Tape,

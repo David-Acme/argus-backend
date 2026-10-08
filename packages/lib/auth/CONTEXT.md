@@ -233,7 +233,12 @@ rule 5 is unchanged and `scripts/check-routes.sh` needs no new row.
 1. **The boot read** (`settingsBootRead`): `argus.settings.v1.Modules/
    ModuleStates` on `[modules] target` with `[modules] credential`, retried
    every 5 s up to 12 times off the event loop, so a service that boots before
-   argus-settings still learns the set within a minute.
+   argus-settings still learns the set within a minute. The closure reports its
+   first failed or unsettled attempt once, at INFO, and says nothing again
+   until an answer arrives; the boot-read loop stops as soon as the durable has
+   subscribed (`bootAttempts = 0`), so the budget is never spent on a feed that
+   already works, and the "keeping the last known state" WARN is reserved for
+   the case nothing ever answered (`version_ == 0 && epoch_.empty()`).
 2. **The durable feed**: each service binds its own durable
    (`argus-<service>-modules`, deliver-all at creation, ordered) on
    `argus.settings.v1.module`. A message whose top level carries
@@ -271,7 +276,12 @@ rule 5 is unchanged and `scripts/check-routes.sh` needs no new row.
    whose configuration conflicts keeps failing loudly and is never deleted
    (the outbox feeds, encounter_closed and the identity changes carry work that
    must not be dropped). A subscription that fails is retried with a backoff
-   that doubles from `retrySeconds` to five minutes, logging each step.
+   that doubles from `retrySeconds` to five minutes, logging the first failure
+   of an episode and staying quiet through its retries. This feed, and only
+   this feed, asks the bus for a `quiet` durable: the feed's own
+   subscribe-retry line already names the durable, the subject and the delay,
+   so the bus's per-attempt "is not ready" line (with the broker's reason) is
+   what every other consumer keeps and this one does not duplicate.
 3. **The last known state**: every applied set is written atomically
    (`.part` then rename) to `[modules] state_file`, default
    `database/module-state.json` in the service's working directory, and read

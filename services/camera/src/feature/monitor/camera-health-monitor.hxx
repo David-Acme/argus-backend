@@ -60,6 +60,7 @@ private:
     bool published{false};
     int64_t sampledAtMs{0};
     bool sampled{false};
+    int misses{0};
   };
 
   struct TickInput
@@ -77,6 +78,8 @@ private:
   [[nodiscard]] bool dueForSample(int64_t cameraId);
 
   HealthMetrics measure(const TickInput& input, CameraState& state) const;
+
+  static constexpr int kMissesBeforeOffline = CameraPresenceRecorder::kMissesBeforeOffline;
 
   Dependencies dependencies_;
   CameraHealthConfig config_;

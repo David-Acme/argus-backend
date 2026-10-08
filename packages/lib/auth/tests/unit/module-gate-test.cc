@@ -6,21 +6,26 @@
 #include <auth/request-context.hxx>
 #include <auth/role-access.hxx>
 #include <auth/role-filter.hxx>
+#include <config/config-service.hxx>
 #include <doctest/doctest.h>
 #include <drogon/HttpRequest.h>
 #include <drogon/utils/coroutine.h>
 #include <errors/response-exception.hxx>
 #include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
+#include <trantor/utils/Logger.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -94,6 +99,57 @@ ModuleFeed::Config feedConfig(const std::string& stateFile)
           .retrySeconds = 0.01,
           .bootAttempts = 3};
 }
+
+class LogCapture
+{
+public:
+  LogCapture()
+  {
+    trantor::Logger::setOutputFunction(
+        [this](const char* message, uint64_t length) {
+          {
+            std::scoped_lock lock(mutex_);
+            lines_.emplace_back(message, static_cast<size_t>(length));
+          }
+          std::fwrite(message, 1, static_cast<size_t>(length), stdout);
+          std::fflush(stdout);
+        },
+        [] {});
+  }
+
+  ~LogCapture()
+  {
+    trantor::Logger::setOutputFunction(
+        [](const char* message, uint64_t length) {
+          std::fwrite(message, 1, static_cast<size_t>(length), stdout);
+        },
+        [] { std::fflush(stdout); });
+  }
+
+  LogCapture(const LogCapture&) = delete;
+  LogCapture& operator=(const LogCapture&) = delete;
+
+  [[nodiscard]] int count(std::string_view needle) const
+  {
+    std::scoped_lock lock(mutex_);
+    return static_cast<int>(std::ranges::count_if(lines_, [needle](const std::string& line) {
+      return line.find(needle) != std::string::npos;
+    }));
+  }
+
+  [[nodiscard]] bool warnedAbout(std::string_view needle) const
+  {
+    std::scoped_lock lock(mutex_);
+    return std::ranges::any_of(lines_, [needle](const std::string& line) {
+      return line.find("WARN") != std::string::npos &&
+             line.find(needle) != std::string::npos;
+    });
+  }
+
+private:
+  mutable std::mutex mutex_;
+  std::vector<std::string> lines_;
+};
 }
 
 TEST_CASE("every gated prefix names its module, and core routes are never gated")
@@ -371,6 +427,53 @@ TEST_CASE("a feed whose durable the previous build made under another delivery p
   std::filesystem::remove(file);
 }
 
+TEST_CASE("the module feed logs one line per failed episode and stops the boot read once subscribed" *
+          doctest::skip(live_broker::skipped()))
+{
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  NatsBus::Options options;
+  options.url = broker;
+  auto bus = std::make_shared<NatsBus>();
+  REQUIRE(bus->connect(options));
+
+  const std::string stream = "argus-test-module-noise-" + std::to_string(::getpid());
+  const std::string subject = stream + ".module";
+  ModuleGate gate;
+  const std::string file = tempPath("feed-noise.json");
+  std::atomic<int> reads{0};
+  auto config = feedConfig(file);
+  config.stream = stream;
+  config.subject = subject;
+  config.retrySeconds = 0.05;
+  config.bootAttempts = 1000;
+  ModuleFeed feed({.bus = bus,
+                   .gate = &gate,
+                   .bootRead = [&reads]() -> std::optional<ModuleFeed::Snapshot> {
+                     reads.fetch_add(1);
+                     return std::nullopt;
+                   }},
+                  config);
+  const LogCapture capture;
+  feed.start();
+  REQUIRE(waitUntil([&capture] { return capture.count("is not ready") > 0; }));
+  CHECK(capture.count("is not ready") == 1);
+  REQUIRE(bus->ensureStream({.name = stream,
+                             .subjects = {subject},
+                             .maxAgeNs = 60LL * 1000000000,
+                             .duplicatesNs = 60LL * 1000000000}));
+  CHECK(waitUntil([&feed] { return feed.drained(); }));
+  CHECK(capture.count("is not ready") == 1);
+  CHECK(capture.count("connected on " + subject) == 1);
+  CHECK(capture.count("keeping the last known state") == 0);
+  const int readsAtConnect = reads.load();
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  CHECK(reads.load() == readsAtConnect);
+  feed.requestStop();
+  bus->drain();
+  std::filesystem::remove(file);
+}
+
 TEST_CASE("a lower version under a new epoch applies, under the same epoch it is ignored")
 {
   ModuleGate gate;
@@ -587,6 +690,58 @@ TEST_CASE("a boot read that never answers leaves the last known state in force")
   CHECK_FALSE(gate.enabled(kProductivity));
   CHECK(gate.enabled(kSurveillance));
   std::filesystem::remove(file);
+}
+
+namespace
+{
+int fallbackWarnings(bool answered)
+{
+  ModuleGate gate;
+  const std::string file = tempPath(answered ? "fallback-answered.json" : "fallback-silent.json");
+  ModuleFeed feed({.bus = nullptr,
+                   .gate = &gate,
+                   .bootRead = []() -> std::optional<ModuleFeed::Snapshot> {
+                     return std::nullopt;
+                   }},
+                  feedConfig(file));
+  if (answered)
+    REQUIRE(feed.handle(enabledEvent(false, 4, "1000-a")) == ModuleFeedDisposition::Applied);
+  const LogCapture capture;
+  feed.start();
+  CHECK(waitUntil([&feed] { return feed.drained(); }));
+  std::filesystem::remove(file);
+  return capture.count("keeping the last known state");
+}
+}
+
+TEST_CASE("the boot read's fallback warning fires only while nothing has answered")
+{
+  CHECK(fallbackWarnings(false) == 1);
+  CHECK(fallbackWarnings(true) == 0);
+}
+
+TEST_CASE("the boot read reports its first failure once and stays quiet until it answers")
+{
+  const std::string config = tempPath("boot-read.toml");
+  const std::string cleared = tempPath("boot-read-cleared.toml");
+  {
+    std::ofstream out(config);
+    out << "[modules]\ntarget = \"127.0.0.1:1\"\ncredential = \"test\"\n";
+  }
+  {
+    std::ofstream out(cleared);
+  }
+  ConfigService::load(config);
+  const auto read = module_gate::settingsBootRead();
+  REQUIRE(read);
+  const LogCapture capture;
+  CHECK_FALSE(read().has_value());
+  CHECK_FALSE(read().has_value());
+  CHECK(capture.count("settings did not answer the enabled set") == 1);
+  CHECK_FALSE(capture.warnedAbout("settings did not answer the enabled set"));
+  ConfigService::load(cleared);
+  std::filesystem::remove(config);
+  std::filesystem::remove(cleared);
 }
 
 TEST_CASE("the enabled set carries the roles, texts and lifecycle of each module and reads them back")

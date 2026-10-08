@@ -5,6 +5,7 @@
 
 #include <trantor/utils/Logger.h>
 
+#include <atomic>
 #include <exception>
 #include <memory>
 
@@ -59,12 +60,20 @@ ModuleFeed::BootRead settingsBootRead()
     LOG_WARN << "Modules: the [modules] target is unusable (" << error.what() << ")";
     return {};
   }
-  return [client]() -> std::optional<ModuleFeed::Snapshot> {
+  return [client, reported = std::make_shared<std::atomic<bool>>(false)]() -> std::optional<ModuleFeed::Snapshot> {
     try {
-      return snapshotOf(client->moduleStates());
+      if (auto snapshot = snapshotOf(client->moduleStates())) {
+        reported->store(false, std::memory_order_relaxed);
+        return snapshot;
+      }
+      if (!reported->exchange(true, std::memory_order_relaxed))
+        LOG_INFO << "Modules: settings has not settled the enabled set yet";
+      return std::nullopt;
     }
     catch (const std::exception& error) {
-      LOG_WARN << "Modules: settings did not answer the enabled set (" << error.what() << ")";
+      if (!reported->exchange(true, std::memory_order_relaxed))
+        LOG_INFO << "Modules: settings did not answer the enabled set ("
+                 << error.what() << ")";
       return std::nullopt;
     }
   };

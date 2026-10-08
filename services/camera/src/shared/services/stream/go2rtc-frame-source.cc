@@ -14,6 +14,10 @@ Go2rtcFrameSource::grab(const FrameGrabRequest& request)
   const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                        std::chrono::system_clock::now().time_since_epoch())
                        .count();
+  const GrabPoint point{.cameraId = request.cameraId, .nowMs = now};
+  const GrabAttempt attempt = backoff_.begin(point);
+  if (!attempt.attempt)
+    co_return std::nullopt;
 
   auto frameRequest = drogon::HttpRequest::newHttpRequest();
   frameRequest->setMethod(drogon::Get);
@@ -33,22 +37,14 @@ Go2rtcFrameSource::grab(const FrameGrabRequest& request)
   }
   if (!response || response->getStatusCode() != drogon::k200OK ||
       response->getBody().empty()) {
-    const bool wasOk = [&] {
-      std::scoped_lock lock(mutex_);
-      const bool ok = lastOkByCamera_[request.cameraId];
-      lastOkByCamera_[request.cameraId] = false;
-      return ok;
-    }();
-    if (wasOk)
+    backoff_.noteFailure(point);
+    if (attempt.firstFailure)
       LOG_WARN << "Camera operator: frame grab failed for camera "
-               << request.cameraId;
+               << request.cameraId << "; retrying in "
+               << attempt.retryDelayMs / 1000 << " s";
     co_return std::nullopt;
   }
-
-  {
-    std::scoped_lock lock(mutex_);
-    lastOkByCamera_[request.cameraId] = true;
-  }
+  backoff_.noteSuccess(request.cameraId);
 
   CameraFrame frame;
   const auto& body = response->getBody();

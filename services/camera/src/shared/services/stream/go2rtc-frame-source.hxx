@@ -1,10 +1,7 @@
 #pragma once
 
 #include <shared/services/stream/frame-source.hxx>
-
-#include <mutex>
-#include <string>
-#include <unordered_map>
+#include <shared/services/stream/grab-backoff.hxx>
 
 class Go2rtcFrameSource final : public IFrameSource
 {
@@ -13,6 +10,5 @@ public:
   grab(const FrameGrabRequest& request) override;
 
 private:
-  std::mutex mutex_;
-  std::unordered_map<int64_t, bool> lastOkByCamera_;
+  GrabBackoff backoff_;
 };

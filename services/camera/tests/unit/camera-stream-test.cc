@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <shared/services/stream/gop-cache.hxx>
+#include <shared/services/stream/grab-backoff.hxx>
 #include <shared/services/stream/upstream-http.hxx>
 
 #include <algorithm>
@@ -300,4 +301,49 @@ TEST_CASE("opening an upstream gives up at once when its stream is stopping")
       {.host = "10.255.255.1", .port = 9, .path = "/", .timeoutSec = 10, .cancel = &stopping});
   CHECK_FALSE(up.ok);
   CHECK(up.fd == -1);
+}
+
+TEST_CASE("a failing camera backs off, reports the first failure of the episode and starts over on a frame")
+{
+  GrabBackoff backoff;
+  const GrabAttempt first = backoff.begin({.cameraId = 9, .nowMs = 1000});
+  CHECK(first.attempt);
+  CHECK(first.firstFailure);
+  CHECK(first.retryDelayMs == 1000);
+  backoff.noteFailure({.cameraId = 9, .nowMs = 1000});
+
+  const GrabAttempt held = backoff.begin({.cameraId = 9, .nowMs = 1500});
+  CHECK_FALSE(held.attempt);
+  CHECK_FALSE(held.firstFailure);
+
+  const GrabAttempt retry = backoff.begin({.cameraId = 9, .nowMs = 2000});
+  CHECK(retry.attempt);
+  CHECK_FALSE(retry.firstFailure);
+  CHECK(retry.retryDelayMs == 2000);
+  backoff.noteFailure({.cameraId = 9, .nowMs = 2000});
+
+  CHECK_FALSE(backoff.begin({.cameraId = 9, .nowMs = 3000}).attempt);
+  const GrabAttempt third = backoff.begin({.cameraId = 9, .nowMs = 4000});
+  CHECK(third.attempt);
+  CHECK(third.retryDelayMs == 4000);
+  backoff.noteFailure({.cameraId = 9, .nowMs = 4000});
+
+  backoff.noteSuccess(9);
+  const GrabAttempt recovered = backoff.begin({.cameraId = 9, .nowMs = 5000});
+  CHECK(recovered.attempt);
+  CHECK(recovered.firstFailure);
+  CHECK(recovered.retryDelayMs == 1000);
+}
+
+TEST_CASE("the camera backoff doubles to half a minute")
+{
+  GrabBackoff backoff;
+  int64_t now = 0;
+  for (const int64_t expected : {1000, 2000, 4000, 8000, 16000, 30000, 30000}) {
+    const GrabAttempt step = backoff.begin({.cameraId = 3, .nowMs = now});
+    REQUIRE(step.attempt);
+    CHECK(step.retryDelayMs == expected);
+    backoff.noteFailure({.cameraId = 3, .nowMs = now});
+    now += expected;
+  }
 }

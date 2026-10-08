@@ -166,20 +166,25 @@ void ModuleFeed::run(const std::stop_token& stop)
         applyAuthoritative(*snapshot);
         bootAttempts = 0;
       }
-      else if (--bootAttempts == 0) {
+      else if (--bootAttempts == 0 && version() == 0 && epoch().empty()) {
         LOG_WARN << "Modules: settings did not answer the enabled set; keeping the last known state";
       }
     }
     if (!subscribed && std::chrono::steady_clock::now() >= nextSubscribe) {
       subscribed = subscribe();
-      if (!subscribed) {
+      if (subscribed) {
+        bootAttempts = 0;
+      }
+      else {
         const double delay = std::min(config_.retrySeconds * std::pow(2.0, std::min(subscribeFailures, kMaxBackoffDoublings)),
                                       kMaxSubscribeRetrySeconds);
-        ++subscribeFailures;
         nextSubscribe = std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                                               std::chrono::duration<double>(delay));
-        LOG_WARN << "Modules: durable " << config_.durable << " on " << config_.subject << " is not ready; retrying in "
-                 << delay << " s";
+        if (subscribeFailures == 0) {
+          LOG_WARN << "Modules: durable " << config_.durable << " on " << config_.subject
+                   << " is not ready; retrying in " << delay << " s";
+        }
+        ++subscribeFailures;
       }
     }
     if (subscribed && bootAttempts == 0)
@@ -202,6 +207,7 @@ bool ModuleFeed::subscribe()
        .deliverAll = false,
        .deliverLastPerSubject = true,
        .recreateOnPolicyChange = true,
+       .quiet = true,
        .maxDeliver = config_.maxDeliver,
        .maxAckPending = NatsBus::kOrderedMaxAckPending,
        .handler = [this](const NatsBus::DurableMessage& message,
