@@ -353,7 +353,7 @@ int finish(const Options& options, const std::vector<eval::CaseRun>& runs)
   const eval::Metrics metrics = eval::aggregate(runs, scoring);
   const eval::Verdict verdict = eval::check(gates.gates, metrics);
   eval::printMetrics(metrics);
-  if (!options.report.empty() && !eval::writeReport(options.report, {.section = options.section, .metrics = metrics, .verdict = verdict}))
+  if (!options.report.empty() && !eval::writeReport(options.report, {.section = options.section, .metrics = metrics, .verdict = verdict, .pinned = true}))
     std::printf("[ERROR] cannot write %s\n", options.report.c_str());
   std::fflush(stdout);
   if (!verdict.passed()) {

@@ -87,6 +87,7 @@ bool writeReport(const std::string& path, const ReportInput& input)
   for (const auto& failure : input.verdict.failures)
     failures.append(failure);
   root["passed"] = input.verdict.passed();
+  root["pinned"] = input.pinned;
   root["failures"] = std::move(failures);
   std::ofstream out(path);
   if (!out)

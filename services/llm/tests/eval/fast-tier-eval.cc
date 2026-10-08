@@ -281,7 +281,7 @@ int main(int argc, char** argv)
   std::printf("fast tier: %zu distinct utterances from %zu cases\n", cases.size(), loaded.cases.size());
   eval::printMetrics(metrics);
   if (!options.report.empty() &&
-      !eval::writeReport(options.report, {.section = "fast", .metrics = metrics, .verdict = verdict})) {
+      !eval::writeReport(options.report, {.section = "fast", .metrics = metrics, .verdict = verdict, .pinned = true})) {
     std::printf("[ERROR] cannot write %s\n", options.report.c_str());
     return 1;
   }

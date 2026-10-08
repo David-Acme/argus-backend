@@ -282,6 +282,95 @@ unlabelled, 136 clips) and OpenSLR 73 Peruvian Spanish (CC-BY-SA-4.0, 80 clips).
 Voice 5.98%, Peruvian 5.50%. `services/stt/CONTEXT.md` has the table and the caveats; the model is
 unchanged.
 
+## The call prompt (call-faithfulness)
+
+`call-faithfulness-eval` measures what the spoken call prompt does on the shipped path, not on
+a rehearsal of it: every case runs through `LlmController::chatSync`, so the controller builds
+the clock line itself and `LfmAdapter` inserts it as its own system note before the last user
+message, exactly as a live call does. The first request is assembled the way
+`CallHistory::rebuildPrompt` assembles it (the prompt, then the framed known-header, then each
+note on its own line), and the corpus has grown with it
+(`services/llm/tests/fixtures/eval/call-faithfulness.jsonl`, 20 cases es+en, 22 turns).
+
+Thirteen deterministic dimensions, no model as judge: `claims` (the product's own claim gate,
+`claim-check`/`reply-claims`, applied to the returned text — a nonzero count means the shipped
+pipeline let a claim through), `rawClaims` (the same gate applied to the model's text BEFORE
+the gate substitutes its honest line, re-generated through `controller.service().chat` with the
+controller's clock note — this is the dimension that measures the prompt itself),
+`clockRestraint` (no weekday, month or clock reading on a turn that did not ask for one),
+`recital` (no verbatim note text), `language`, `roleConfusion`, `genericOffer`, `parrot` and
+`nameAskRepeated` (all pinned at zero), plus the soft bounds `sentences` (at most two),
+`missedNameAsk`, `relevance` and `unpromptedGreeting`.
+
+The original A/B that chose the rewrite, measured 2026-10-07 at 9 cases / 10 turns,
+temperature 0.0, seed 42, debug build with `--force` — before the controller-side clock gate
+existed:
+
+| dimension | old prompt (HEAD) | shipped prompt |
+|---|---|---|
+| `clockRestraint` | 1 | 0 |
+| `casePass` | 5/9 | 6/9 |
+| `claims`, `rawClaims`, `recital`, `language`, `roleConfusion` | 0 | 0 |
+| `sentences` | 3 | 3 |
+
+The one violation the old prompt produced was the failure the rewrite was about: on an
+unrelated turn it volunteered "Hoy es miércoles 7 de octubre de 2026 y son las 17:30" before
+answering.
+
+Re-run on the final 20-case corpus at the shipping temperature (0.3, five seeds), the
+comparison inverts: the clock gate now protects any prompt — the old one's violation cannot
+fire any more — and the pre-rewrite prompt still scores higher:
+
+| seed | old prompt | shipped prompt |
+|---|---|---|
+| 42 | 17 | 16 |
+| 7 | 17 | 17 |
+| 1234 | 18 | 15 |
+| 11 | 17 | 17 |
+| 99 | 18 | 15 |
+| **mean** | **17.40** | 16.00 |
+| **min** | **17** | 15 |
+
+Hard dimensions scored 0 on every run for both prompts; the old prompt's remaining misses are
+sentence counts (two to three runs), the shipped one's are the name ask and the greeting
+opener — two of the three prompt items tracked as U19. The prompt question is therefore
+reopened there rather than settled by this table; the machinery this section documents (the
+eval, the strip, the clock gate) is prompt-independent.
+
+The gates live under `callFaithfulness` in `gates.json`, pinned against the shipped
+configuration at the shipping temperature with a fixed seed (`--temperature 0.3 --seed 42`,
+reproducible across builds): `cases >= 20` and `turns >= 22` keep a shrunk corpus from passing
+vacuously, every hard dimension is pinned at 0 (`claims`, `rawClaims`, `recital`,
+`roleConfusion`, `clockRestraint`, `language`, `genericOffer`, `parrot`, `nameAskRepeated`),
+and the soft dimensions are pinned at the pinned run's measured values (`missedNameAsk <= 1`,
+`relevance <= 1`, `sentences <= 1`, `unpromptedGreeting <= 3`). The ctest smoke uses its own
+small pin (`gates-smoke.json`, three cases) so it stays a plumbing check.
+
+Running it:
+
+```
+services/llm/build/dev/tests/eval/call-faithfulness-eval \
+  --cases services/llm/tests/fixtures/eval/call-faithfulness.jsonl \
+  --gates services/llm/tests/eval/gates.json \
+  --llm-model models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf \
+  --prompt-es services/voice/tests/fixtures/call-prompt-es.txt \
+  --prompt-en services/voice/tests/fixtures/call-prompt-en.txt \
+  --report <path>
+```
+
+Add `--force` on a debug build and `--temperature 0.3 --seed 42` for the pinned invocation
+(any other temperature or seed is a measurement, not the gate); it is a heavy job (big lane,
+cap 3), and it skips 77 without the model or while the gates are unpinned. The prompt text's
+single source of truth stays `services/voice/src/feature/voice/call-history.cc`:
+`call-prompt-*.txt` and `call-known-*.txt` are generated copies pinned byte-for-byte by the
+voice test, and the eval derives the known fixture as a sibling of the prompt file, so a
+missing fixture is an error, not a silent pass.
+Two caveats: the `rawClaims` probe re-generates rather than intercepting, so its text is a
+greedy proxy (it samples at 0.0 while the shipped call samples at 0.3), and the sentence
+counter is punctuation-based. Three fidelity deltas are known and accepted: the eval asks for
+160 max tokens where the live call asks 256, it drives the non-streaming `chatSync` while the
+live call streams, and it asserts nothing about whether the tool loop was taken.
+
 ## The call prompt's temperature (measured 2026-10-07)
 
 The call prompt's temperature is a measured choice, not a feel: the shipped prompt (reply-claim
@@ -302,8 +391,11 @@ every run at every temperature; the whole discrimination is `casePass`, paired b
 | **min** | **15** | **13** | **12** |
 
 0.3 takes the best mean and the best worst case and wins four of the five paired seeds, so the
-default is 0.3. Temperature 0 stays the pinned CI run (`gates.json`), where the corpus must
-still score its deterministic numbers. The soft misses that survive at every temperature are
+default is 0.3, and the CI gate pins this loop's cell — `--temperature 0.3 --seed 42` in
+`gates.json` — which reproduces exactly across rebuilds. Temperature 0 is not a gate: greedy
+decoding produces text the strip does not meet (a mid-reply generic offer, deterministic on
+the es-greeting cases), so its numbers are a diagnostic, not a product measure. The soft
+misses that survive at every temperature are
 not sampling noise: the same one name-ask case and two-to-three greeting cases miss at 0.3,
 0.45 and 0.6 alike — prompt or corpus work, not a temperature, and tracked as its own item.
 

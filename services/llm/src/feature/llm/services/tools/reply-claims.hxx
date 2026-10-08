@@ -42,6 +42,61 @@ struct Plain
 
 [[nodiscard]] std::string nudge(std::string_view lang);
 
+struct OfferContext
+{
+  std::string_view lang{};
+  bool asked{false};
+};
+
+struct StrippedReply
+{
+  std::string text;
+  bool stripped{false};
+};
+
+struct OfferQuery
+{
+  std::string_view text;
+  std::string_view lang;
+};
+
+[[nodiscard]] bool genericOffer(OfferQuery query);
+
+[[nodiscard]] StrippedReply withoutTrailingOffer(std::string text, const OfferContext& context);
+
+struct OfferStripInput
+{
+  TokenCallback sink;
+  std::string lang;
+  bool asked{false};
+};
+
+class OfferStripGate
+{
+public:
+  explicit OfferStripGate(OfferStripInput input);
+
+  OfferStripGate(const OfferStripGate&) = delete;
+  OfferStripGate& operator=(const OfferStripGate&) = delete;
+
+  [[nodiscard]] TokenCallback callback();
+
+  [[nodiscard]] std::size_t stripped() const noexcept { return stripped_; }
+  [[nodiscard]] const std::string& spoken() const noexcept { return spoken_; }
+
+private:
+  void accept(const std::string& token, bool done);
+  void release(std::string_view sentence);
+  void decide();
+
+  OfferStripInput input_;
+  std::string pending_;
+  std::string held_;
+  std::string spoken_;
+  std::size_t stripped_{0};
+  bool finished_{false};
+};
+
 struct GateInput
 {
   TokenCallback sink;

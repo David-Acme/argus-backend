@@ -33,6 +33,15 @@ std::string run(reply_claims::ClaimGate& gate, const std::vector<std::string>& t
   callback("", true);
   return gate.spoken();
 }
+
+std::string runStrip(reply_claims::OfferStripGate& gate, const std::vector<std::string>& tokens)
+{
+  const TokenCallback callback = gate.callback();
+  for (const auto& token : tokens)
+    callback(token, false);
+  callback("", true);
+  return gate.spoken();
+}
 }
 
 TEST_CASE("a first-person completion is a claim in Spanish, Peruvian Spanish and English")
@@ -423,4 +432,74 @@ TEST_CASE("a plain reply with no tools never promises a call")
   CHECK(reply_claims::withoutFalseClaims({.text = "Claro, te llamaré a las cinco.", .utterance = "llámame a las cinco", .lang = "es"}) ==
         "No pude hacerlo. ¿Lo intento de nuevo?");
   CHECK(reply_claims::withoutFalseClaims({.text = "Hace sol hoy.", .utterance = "qué tiempo hace", .lang = "es"}) == "Hace sol hoy.");
+}
+
+TEST_CASE("a generic help offer is caught in either language")
+{
+  CHECK(reply_claims::genericOffer({.text = "¡Hola! Estoy bien, gracias. ¿En qué puedo ayudarte hoy?", .lang = "es"}));
+  CHECK(reply_claims::genericOffer({.text = "Estoy bien, ¿en qué te puedo ayudar?", .lang = "es"}));
+  CHECK(reply_claims::genericOffer({.text = "Claro, ¿en qué puedo servirte?", .lang = "es"}));
+  CHECK(reply_claims::genericOffer({.text = "¿En qué puedo asistirte?", .lang = "es"}));
+  CHECK(reply_claims::genericOffer({.text = "Dime, ¿qué puedo hacer por ti?", .lang = "es"}));
+  CHECK(reply_claims::genericOffer({.text = "¿Necesitas algo más?", .lang = "es"}));
+  CHECK(reply_claims::genericOffer({.text = "Hello! How can I help you today?", .lang = "en"}));
+  CHECK(reply_claims::genericOffer({.text = "Is there something I can do? What can I do for you?", .lang = "en"}));
+  CHECK(reply_claims::genericOffer({.text = "Do you need anything else?", .lang = "en"}));
+  CHECK_FALSE(reply_claims::genericOffer({.text = "¿Te muestro la cámara?", .lang = "es"}));
+  CHECK_FALSE(reply_claims::genericOffer({.text = "Claro, te la muestro en la app.", .lang = "es"}));
+  CHECK_FALSE(reply_claims::genericOffer({.text = "I can show it to you in the app.", .lang = "en"}));
+}
+
+TEST_CASE("a plain reply keeps its final sentence when a trailing generic offer is dropped")
+{
+  const reply_claims::OfferContext unasked{.lang = "es", .asked = false};
+  const reply_claims::OfferContext asked{.lang = "es", .asked = true};
+
+  const reply_claims::StrippedReply dropped =
+      reply_claims::withoutTrailingOffer("Hoy es miércoles 7 de octubre. ¿Necesitas algo más?", unasked);
+  CHECK(dropped.text == "Hoy es miércoles 7 de octubre.");
+  CHECK(dropped.stripped);
+
+  const reply_claims::StrippedReply kept =
+      reply_claims::withoutTrailingOffer("Hoy es miércoles 7 de octubre. ¿Necesitas algo más?", asked);
+  CHECK(kept.text == "Hoy es miércoles 7 de octubre. ¿Necesitas algo más?");
+  CHECK_FALSE(kept.stripped);
+
+  const reply_claims::StrippedReply alone = reply_claims::withoutTrailingOffer("¿Necesitas algo más?", unasked);
+  CHECK(alone.text == "¿Necesitas algo más?");
+  CHECK_FALSE(alone.stripped);
+
+  const reply_claims::StrippedReply plain = reply_claims::withoutTrailingOffer("Mañana llueve. Lleva paraguas.", unasked);
+  CHECK(plain.text == "Mañana llueve. Lleva paraguas.");
+  CHECK_FALSE(plain.stripped);
+
+  const reply_claims::OfferContext english{.lang = "en", .asked = false};
+  CHECK(reply_claims::withoutTrailingOffer("It is 6 pm. Do you need anything else?", english).text == "It is 6 pm.");
+}
+
+TEST_CASE("the streaming gate drops the same trailing offer and never the whole reply")
+{
+  std::string heard;
+  reply_claims::OfferStripGate unasked({.sink = [&heard](const std::string& token, bool) { heard += token; },
+                                        .lang = "es",
+                                        .asked = false});
+  CHECK(runStrip(unasked, {"Hoy es miércoles 7 de octubre. ", "¿Necesitas ", "algo más?"}) == "Hoy es miércoles 7 de octubre.");
+  CHECK(unasked.stripped() == 1);
+  CHECK(heard == "Hoy es miércoles 7 de octubre.");
+
+  std::string heardAsked;
+  reply_claims::OfferStripGate asked({.sink = [&heardAsked](const std::string& token, bool) { heardAsked += token; },
+                                      .lang = "es",
+                                      .asked = true});
+  CHECK(runStrip(asked, {"Hoy es miércoles. ", "¿Necesitas algo más?"}) == "Hoy es miércoles. ¿Necesitas algo más?");
+  CHECK(asked.stripped() == 0);
+  CHECK(heardAsked == "Hoy es miércoles. ¿Necesitas algo más?");
+
+  std::string heardAlone;
+  reply_claims::OfferStripGate alone({.sink = [&heardAlone](const std::string& token, bool) { heardAlone += token; },
+                                      .lang = "es",
+                                      .asked = false});
+  CHECK(runStrip(alone, {"¿Necesitas algo más?"}) == "¿Necesitas algo más?");
+  CHECK(alone.stripped() == 0);
+  CHECK(heardAlone == "¿Necesitas algo más?");
 }

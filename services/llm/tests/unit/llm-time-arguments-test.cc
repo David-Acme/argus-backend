@@ -74,19 +74,13 @@ tools::ToolCall callWith(const EventCall& event)
 }
 }
 
-TEST_CASE("a tool with a date-time argument asks for the clock line and others do not")
+TEST_CASE("the clock line states the reference in the call's language")
 {
-  CHECK(time_arguments::needsClock(eventSpec()));
-  CHECK_FALSE(time_arguments::needsClock({.name = "x",
-                                          .title = "",
-                                          .description = "",
-                                          .inputSchema = schema::emptyObject(),
-                                          .annotations = {},
-                                          .module = "",
-                                          .capability = ""}));
   now();
-  CHECK(time_arguments::clockLine(utc({.day = 7, .hour = 15, .minute = 20}), "es") == "(Fecha y hora actuales: 2026-10-07T15:20:00+00:00, miércoles)");
-  CHECK(time_arguments::clockLine(utc({.day = 7, .hour = 15, .minute = 20}), "en") == "(Current date and time: 2026-10-07T15:20:00+00:00, Wednesday)");
+  CHECK(time_arguments::clockLine(utc({.day = 7, .hour = 15, .minute = 20}), "es") ==
+        "Referencia, menciónala solo si te preguntan la fecha o la hora: hoy es miércoles 7 de octubre de 2026 y son las 15:20.");
+  CHECK(time_arguments::clockLine(utc({.day = 7, .hour = 15, .minute = 20}), "en") ==
+        "Reference, mention it only if asked for the date or time: today is Wednesday, October 7, 2026, and it is 15:20.");
 }
 
 TEST_CASE("the time the user said wins over the one the model wrote")
@@ -128,4 +122,17 @@ TEST_CASE("an optional time is never invented, and a time that cannot be underst
   auto optional = callWith({.startsAt = "2026-10-08T09:00", .utterance = "reunión mañana a las nueve"});
   time_arguments::normalize({.call = optional, .spec = spec, .now = now()});
   CHECK_FALSE(optional.arguments.isMember("ends_at"));
+}
+
+TEST_CASE("only a turn that asks about the time or the date carries the clock note")
+{
+  CHECK(time_arguments::asksAboutTime("¿Qué hora es?"));
+  CHECK(time_arguments::asksAboutTime("Oye, ¿qué día es hoy?"));
+  CHECK(time_arguments::asksAboutTime("¿Es tarde ya?"));
+  CHECK(time_arguments::asksAboutTime("What time is it?"));
+  CHECK(time_arguments::asksAboutTime("What day is today?"));
+  CHECK_FALSE(time_arguments::asksAboutTime("Hola, Argus, ¿cómo estás?"));
+  CHECK_FALSE(time_arguments::asksAboutTime("Cuéntame un chiste corto."));
+  CHECK_FALSE(time_arguments::asksAboutTime("¿Qué tengo pendiente hoy?"));
+  CHECK_FALSE(time_arguments::asksAboutTime("Hello, how are you?"));
 }

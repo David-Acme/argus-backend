@@ -47,6 +47,8 @@ message ChatRequest {
   bool client_actions = 11;
   string session_id = 12;
   bool prefill_only = 13;
+  reserved 14, 15, 16;
+  reserved "turn_speaker", "holder_name", "context_facts";
 }
 
 message ChatResponse {

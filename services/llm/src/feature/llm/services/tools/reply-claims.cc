@@ -245,6 +245,29 @@ bool endsSentence(char c)
 {
   return c == '.' || c == '!' || c == '?' || c == '\n' || c == ';';
 }
+
+bool blank(std::string_view text)
+{
+  return text.find_first_not_of(" \t\r\n") == std::string_view::npos;
+}
+
+std::vector<std::string_view> rawSentences(std::string_view text)
+{
+  std::vector<std::string_view> out;
+  std::size_t start = 0;
+  for (std::size_t at = 0; at < text.size(); ++at) {
+    if (!endsSentence(text[at]))
+      continue;
+    const std::string_view sentence = text.substr(start, at + 1 - start);
+    if (!blank(sentence))
+      out.push_back(sentence);
+    start = at + 1;
+  }
+  const std::string_view tail = text.substr(start);
+  if (!blank(tail))
+    out.push_back(tail);
+  return out;
+}
 }
 
 bool claimsDone(const Reply& reply)
@@ -352,6 +375,99 @@ void ClaimGate::accept(const std::string& token, bool done)
     pending_.clear();
     finish();
   }
+}
+
+bool genericOffer(OfferQuery query)
+{
+  const std::string folded = text_norm::folded(std::string(query.text));
+  return std::ranges::any_of(lexiconFor(query.lang).genericOffers, [&folded](std::string_view phrase) {
+    return folded.find(phrase) != std::string::npos;
+  });
+}
+
+StrippedReply withoutTrailingOffer(std::string text, const OfferContext& context)
+{
+  StrippedReply out{.text = std::move(text), .stripped = false};
+  if (context.asked)
+    return out;
+  const std::vector<std::string_view> sentences = rawSentences(out.text);
+  if (sentences.size() < 2)
+    return out;
+  const std::string_view last = sentences.back();
+  if (!genericOffer({.text = last, .lang = context.lang}))
+    return out;
+  out.text.erase(static_cast<std::size_t>(last.data() - out.text.data()));
+  while (!out.text.empty() && std::isspace(static_cast<unsigned char>(out.text.back())) != 0)
+    out.text.pop_back();
+  out.stripped = true;
+  return out;
+}
+
+OfferStripGate::OfferStripGate(OfferStripInput input) : input_(std::move(input)) {}
+
+TokenCallback OfferStripGate::callback()
+{
+  return [this](const std::string& token, bool done) { accept(token, done); };
+}
+
+void OfferStripGate::release(std::string_view sentence)
+{
+  if (sentence.empty())
+    return;
+  spoken_ += sentence;
+  if (input_.sink)
+    input_.sink(std::string(sentence), false);
+}
+
+void OfferStripGate::decide()
+{
+  const bool tailBlank = blank(pending_);
+  if (!tailBlank) {
+    release(held_);
+    held_.clear();
+    if (!input_.asked && genericOffer({.text = pending_, .lang = input_.lang}) && !spoken_.empty())
+      ++stripped_;
+    else
+      release(pending_);
+  }
+  else if (!input_.asked && genericOffer({.text = held_, .lang = input_.lang}) && !spoken_.empty()) {
+    ++stripped_;
+  }
+  else {
+    release(held_);
+  }
+  pending_.clear();
+  held_.clear();
+}
+
+void OfferStripGate::accept(const std::string& token, bool done)
+{
+  if (finished_) {
+    if (done && input_.sink)
+      input_.sink("", true);
+    return;
+  }
+  pending_ += token;
+  std::size_t at = 0;
+  while (at < pending_.size()) {
+    if (!endsSentence(pending_[at])) {
+      ++at;
+      continue;
+    }
+    const std::string_view sentence{pending_.data(), at + 1};
+    if (!blank(sentence)) {
+      release(held_);
+      held_.assign(sentence);
+    }
+    pending_.erase(0, at + 1);
+    at = 0;
+  }
+  if (!done)
+    return;
+  finished_ = true;
+  decide();
+  if (input_.sink)
+    input_.sink("", true);
 }
 
 }

@@ -52,6 +52,7 @@ struct ReportInput
   std::string section;
   Metrics metrics;
   Verdict verdict;
+  bool pinned{true};
 };
 
 bool writeReport(const std::string& path, const ReportInput& input);

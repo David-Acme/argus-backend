@@ -18,7 +18,7 @@ struct NormalizeInput
   int64_t now{0};
 };
 
-[[nodiscard]] bool needsClock(const argus::mcp::ToolSpec& spec);
+[[nodiscard]] bool asksAboutTime(std::string_view utterance);
 
 [[nodiscard]] std::string clockLine(int64_t now, const std::string& lang);
 

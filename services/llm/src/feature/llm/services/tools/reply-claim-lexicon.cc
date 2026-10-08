@@ -137,6 +137,13 @@ constexpr auto kEnglishCalls = std::to_array<Phrase>({
 constexpr auto kEnglishCallOffers = std::to_array<Phrase>({
     "if", "want", "wants", "would", "could", "can", "shall", "should", "may", "might"});
 
+constexpr std::array<Phrase, 7> kGenericOffersEs{"en que puedo ayudarte", "en que te puedo ayudar", "como puedo ayudarte",
+                                                 "en que puedo servirte", "en que puedo asistirte", "que puedo hacer por ti",
+                                                 "necesitas algo"};
+
+constexpr std::array<Phrase, 5> kGenericOffersEn{"how can i help", "how may i help", "what can i do for you",
+                                                 "how can i assist", "do you need anything"};
+
 constexpr std::string_view kSpanishHonest = "No pude hacerlo. ¿Lo intento de nuevo?";
 constexpr std::string_view kEnglishHonest = "I could not do it. Shall I try again?";
 
@@ -162,6 +169,7 @@ constexpr std::array<Lexicon, 2> kLexicons{{
      .copulas = kSpanishCopulas,
      .calls = kSpanishCalls,
      .callOffers = kSpanishCallOffers,
+     .genericOffers = kGenericOffersEs,
      .honest = kSpanishHonest,
      .nudge = kSpanishNudge},
     {.language = "en",
@@ -178,6 +186,7 @@ constexpr std::array<Lexicon, 2> kLexicons{{
      .copulas = kEnglishCopulas,
      .calls = kEnglishCalls,
      .callOffers = kEnglishCallOffers,
+     .genericOffers = kGenericOffersEn,
      .honest = kEnglishHonest,
      .nudge = kEnglishNudge},
 }};

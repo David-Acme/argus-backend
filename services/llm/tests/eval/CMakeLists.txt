@@ -45,7 +45,7 @@ add_executable(eval-corpus-test eval-corpus-test.cc)
 target_compile_definitions(eval-corpus-test PRIVATE
     ARGUS_EVAL_CASES="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/cases.jsonl")
 
-target_link_libraries(eval-corpus-test PRIVATE llm-eval-core doctest::doctest)
+target_link_libraries(eval-corpus-test PRIVATE llm-eval-core argus::lib::text doctest::doctest)
 
 target_compile_options(eval-corpus-test PRIVATE -Wall -Wextra)
 
@@ -138,3 +138,38 @@ add_test(NAME llm-tier-eval
 
 set_tests_properties(llm-tier-smoke PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 1200)
 set_tests_properties(llm-tier-eval PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 7200)
+
+add_executable(call-faithfulness-eval call-faithfulness-eval.cc eval-tools.cc)
+
+target_link_libraries(call-faithfulness-eval PRIVATE llm-eval-core argus::llm)
+
+target_compile_options(call-faithfulness-eval PRIVATE -Wall -Wextra)
+
+set_target_properties(call-faithfulness-eval PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+set(CALL_FAITHFULNESS_ARGS
+    --cases ${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/call-faithfulness.jsonl
+    --gates ${CMAKE_CURRENT_SOURCE_DIR}/gates.json
+    --llm-model ${CMAKE_CURRENT_SOURCE_DIR}/../../../../models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf
+    --prompt-es ${CMAKE_CURRENT_SOURCE_DIR}/../../../voice/tests/fixtures/call-prompt-es.txt
+    --prompt-en ${CMAKE_CURRENT_SOURCE_DIR}/../../../voice/tests/fixtures/call-prompt-en.txt
+    --temperature 0.3 --seed 42)
+
+set(CALL_FAITHFULNESS_SMOKE_ARGS
+    --cases ${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/call-faithfulness.jsonl
+    --gates ${CMAKE_CURRENT_SOURCE_DIR}/gates-smoke.json
+    --llm-model ${CMAKE_CURRENT_SOURCE_DIR}/../../../../models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf
+    --prompt-es ${CMAKE_CURRENT_SOURCE_DIR}/../../../voice/tests/fixtures/call-prompt-es.txt
+    --prompt-en ${CMAKE_CURRENT_SOURCE_DIR}/../../../voice/tests/fixtures/call-prompt-en.txt
+    --temperature 0.3 --seed 42)
+
+add_test(NAME call-faithfulness-smoke
+    COMMAND call-faithfulness-eval ${CALL_FAITHFULNESS_SMOKE_ARGS} --limit 3
+        --report ${CMAKE_CURRENT_BINARY_DIR}/call-faithfulness-smoke-report.json)
+
+add_test(NAME call-faithfulness-eval
+    COMMAND call-faithfulness-eval ${CALL_FAITHFULNESS_ARGS}
+        --report ${CMAKE_CURRENT_BINARY_DIR}/call-faithfulness-report.json)
+
+set_tests_properties(call-faithfulness-smoke PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 1800)
+set_tests_properties(call-faithfulness-eval PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 7200)

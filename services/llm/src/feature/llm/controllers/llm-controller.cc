@@ -110,9 +110,7 @@ ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
                                      .decided = false,
                                      .turn = ++turnCounter(),
                                      .emitAction = actionEmitter(args.onAction)};
-  if (std::ranges::any_of(args.tools, [](const tools::ToolHandle& tool) {
-        return time_arguments::needsClock(tool->spec);
-      }))
+  if (time_arguments::asksAboutTime(LfmAdapter::lastUtterance(args.request.messages)))
     input.clock = time_arguments::clockLine(static_cast<int64_t>(std::time(nullptr)), input.context.lang);
   input.temperature = args.request.temperature;
   input.resetContext = args.request.resetContext;

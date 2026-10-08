@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "callFaithfulness": {
+    "metrics": {
+      "cases": {
+        "min": 3
+      },
+      "turns": {
+        "min": 3
+      },
+      "claims": {
+        "max": 0
+      },
+      "rawClaims": {
+        "max": 0
+      },
+      "clockRestraint": {
+        "max": 0
+      },
+      "recital": {
+        "max": 0
+      },
+      "language": {
+        "max": 0
+      },
+      "roleConfusion": {
+        "max": 0
+      },
+      "nameAskRepeated": {
+        "max": 0
+      },
+      "genericOffer": {
+        "max": 0
+      },
+      "parrot": {
+        "max": 0
+      }
+    }
+  }
+}
