@@ -1,8 +1,10 @@
 #include "identity-config.hxx"
 
 #include <algorithm>
+#include <cmath>
 #include <config/config-service.hxx>
 #include <cstdint>
+#include <trantor/utils/Logger.h>
 
 namespace
 {
@@ -27,6 +29,17 @@ float unitScore(const UnitScoreInput& input)
     return input.fallback;
   return std::clamp(static_cast<float>(ConfigService::getDouble(input.key)),
                     0.0F, 1.0F);
+}
+
+float unitScoreBelow(const UnitScoreInput& input, float bound)
+{
+  const float value = unitScore(input);
+  if (value < bound)
+    return value;
+  const float clamped = std::nextafter(bound, 0.0F);
+  LOG_WARN << "identity: " << input.key << " " << value << " must stay below "
+           << bound << "; clamping to " << clamped;
+  return clamped;
 }
 
 float nonNegative(const char* key, float fallback)
@@ -118,8 +131,9 @@ IdentityVoiceprintConfig IdentityConfig::resolveVoiceprint()
   config.identifyMargin = unitScore(
       {.key = "voiceprint.identify_margin", .fallback = config.identifyMargin});
   config.unfamiliarCeiling =
-      unitScore({.key = "voiceprint.unfamiliar_ceiling",
-                 .fallback = config.unfamiliarCeiling});
+      unitScoreBelow({.key = "voiceprint.unfamiliar_ceiling",
+                      .fallback = config.unfamiliarCeiling},
+                     config.identifyThreshold);
   config.minVerifySpeechSeconds = nonNegative(
       "voiceprint.min_verify_speech_seconds", config.minVerifySpeechSeconds);
   config.minSnrDb = nonNegative("voiceprint.min_snr_db", config.minSnrDb);

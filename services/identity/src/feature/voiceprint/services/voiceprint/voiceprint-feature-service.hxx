@@ -87,6 +87,7 @@ struct VoiceprintHolderCheck
 {
   std::span<const float> embedding;
   std::optional<int64_t> holderId;
+  std::optional<int64_t> confidentUserId;
 };
 
 class VoiceprintFeatureService

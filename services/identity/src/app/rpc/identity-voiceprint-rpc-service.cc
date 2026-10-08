@@ -39,7 +39,7 @@ v1::VoiceprintVerdict wireVerdict(VoiceprintVerdict verdict)
 {
   switch (verdict) {
     case VoiceprintVerdict::Unknown:
-      return v1::VOICEPRINT_VERDICT_UNSPECIFIED;
+      return v1::VOICEPRINT_VERDICT_UNKNOWN;
     case VoiceprintVerdict::Holder:
       return v1::VOICEPRINT_VERDICT_HOLDER;
     case VoiceprintVerdict::OtherKnown:

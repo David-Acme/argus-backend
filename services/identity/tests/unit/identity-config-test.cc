@@ -135,6 +135,39 @@ TEST_CASE("identity peer and face config resolve from their sections")
   CHECK(IdentityConfig::resolveFace().enabled);
 }
 
+TEST_CASE("a ceiling that crosses the identify threshold is clamped below it")
+{
+  {
+    const TempConfig config("identity-config-test-ceiling-default.toml",
+                            "[voiceprint]\n");
+    const IdentityVoiceprintConfig voiceprint =
+        IdentityConfig::resolveVoiceprint();
+    CHECK(voiceprint.identifyThreshold == 0.55F);
+    CHECK(voiceprint.unfamiliarCeiling == 0.40F);
+    CHECK(voiceprint.unfamiliarCeiling < voiceprint.identifyThreshold);
+  }
+  {
+    const TempConfig config("identity-config-test-ceiling-crossed.toml",
+                            "[voiceprint]\n"
+                            "identify_threshold = 0.50\n"
+                            "unfamiliar_ceiling = 0.80\n");
+    const IdentityVoiceprintConfig voiceprint =
+        IdentityConfig::resolveVoiceprint();
+    CHECK(voiceprint.identifyThreshold == 0.50F);
+    CHECK(voiceprint.unfamiliarCeiling < voiceprint.identifyThreshold);
+  }
+  {
+    const TempConfig config("identity-config-test-ceiling-kept.toml",
+                            "[voiceprint]\n"
+                            "identify_threshold = 0.60\n"
+                            "unfamiliar_ceiling = 0.30\n");
+    const IdentityVoiceprintConfig voiceprint =
+        IdentityConfig::resolveVoiceprint();
+    CHECK(voiceprint.unfamiliarCeiling == 0.30F);
+    CHECK(voiceprint.unfamiliarCeiling < voiceprint.identifyThreshold);
+  }
+}
+
 TEST_CASE("an invitation lives thirty minutes unless the key says otherwise, "
           "within a minute and a day")
 {

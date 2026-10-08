@@ -1,5 +1,6 @@
 #include "voiceprint-feature-service.hxx"
 
+#include <cmath>
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
 #include <feature/voiceprint/services/embedding/speaker-embedding-service.hxx>
@@ -9,6 +10,7 @@
 #include <identity/identity-errors.hxx>
 #include <json/value.h>
 #include <memory>
+#include <numeric>
 #include <runtime/blocking-task.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
@@ -18,6 +20,17 @@ namespace
 {
 
 constexpr int kIdentifyCandidates = 2;
+constexpr float kProfileNormFloor = 1e-6F;
+
+bool profileUsable(std::span<const float> profile, size_t dims)
+{
+  if (dims == 0 || profile.size() != dims)
+    return false;
+  const float norm =
+      std::sqrt(std::inner_product(profile.begin(), profile.end(),
+                                   profile.begin(), 0.0F));
+  return norm > kProfileNormFloor;
+}
 
 VoiceprintOutcome outcomeOf(VoiceAnalysisStatus status)
 {
@@ -110,8 +123,9 @@ VoiceprintFeatureService::identify(VoiceprintObserveInput input) const
   const float runnerUp =
       search.nearest.size() > 1 ? search.nearest[1].similarity : -1.0F;
   result.score = best.similarity;
-  if (best.similarity >= config_.identifyThreshold &&
-      best.similarity - runnerUp >= config_.identifyMargin) {
+  const bool confident = best.similarity >= config_.identifyThreshold &&
+                         best.similarity - runnerUp >= config_.identifyMargin;
+  if (confident) {
     const auto user = co_await userRepository_.findById(best.userId);
     if (user && user->isActive &&
         (co_await privacyGate_.effectiveFor(best.userId)).voiceLearning) {
@@ -124,9 +138,12 @@ VoiceprintFeatureService::identify(VoiceprintObserveInput input) const
         result.personId = persons.front().id;
     }
   }
-  co_await applyHolderVerdict(
-      {.embedding = search.analysis.embedding, .holderId = input.holderId},
-      result);
+  co_await applyHolderVerdict({.embedding = search.analysis.embedding,
+                               .holderId = input.holderId,
+                               .confidentUserId =
+                                   confident ? std::make_optional(best.userId)
+                                             : std::nullopt},
+                              result);
   co_return result;
 }
 
@@ -140,18 +157,21 @@ drogon::Task<void> VoiceprintFeatureService::applyHolderVerdict(
   const bool profiled =
       profile.has_value() && profile->model == activeModel(config_);
   result.holderProfile = profiled;
-  if (!profiled) {
+  if (!profiled || !profileUsable(profile->embedding, check.embedding.size())) {
     result.verdict = VoiceprintVerdict::Unknown;
     co_return;
   }
   const float holderScore =
       voice_vector::cosine(check.embedding, profile->embedding);
   result.holderScore = holderScore;
-  if (result.matched)
-    result.verdict = result.userId == *check.holderId
+  if (check.confidentUserId) {
+    result.verdict = *check.confidentUserId == *check.holderId
                          ? VoiceprintVerdict::Holder
-                         : VoiceprintVerdict::OtherKnown;
-  else if (holderScore >= config_.identifyThreshold)
+                         : (result.matched ? VoiceprintVerdict::OtherKnown
+                                           : VoiceprintVerdict::Unknown);
+    co_return;
+  }
+  if (holderScore >= config_.identifyThreshold)
     result.verdict = VoiceprintVerdict::Holder;
   else if (holderScore < config_.unfamiliarCeiling)
     result.verdict = VoiceprintVerdict::Unfamiliar;

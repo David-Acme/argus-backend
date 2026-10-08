@@ -222,18 +222,23 @@ void reindex()
       {.dims = engine.dims(), .model = engine.modelId()}));
 }
 
-void putProfile(int64_t userId, std::span<const float> embedding)
+void putRawProfile(int64_t userId, std::vector<char> blob)
 {
   const auto now = static_cast<int64_t>(std::time(nullptr));
   static_cast<void>(drogon::sync_wait(VoiceProfileRepository().upsert(
       {.userId = userId,
        .model = SpeakerEmbeddingService::instance().modelId(),
-       .embedding = voice_vector::toBlob(embedding),
+       .embedding = std::move(blob),
        .sampleCount = 3,
        .speechSeconds = 9.0,
        .source = VoiceProfileSource::Enrolled,
        .linkedAt = now,
        .refreshedAt = now})));
+}
+
+void putProfile(int64_t userId, std::span<const float> embedding)
+{
+  putRawProfile(userId, voice_vector::toBlob(embedding));
 }
 
 struct FixtureProfiles
@@ -266,6 +271,7 @@ void freshWorld()
 {
   REQUIRE(loaded());
   auto client = DbService::identityClient();
+  client->execSqlSync("UPDATE user SET is_active = 1");
   client->execSqlSync("UPDATE user_privacy SET voice_learning = 1");
   client->execSqlSync(
       "UPDATE household_privacy SET voice_learning = 1 WHERE id = 1");
@@ -304,6 +310,20 @@ std::vector<float> profileAt(std::span<const float> probe, float target)
 void shapeHolder(float score, std::span<const float> probe)
 {
   putProfile(kRita, profileAt(probe, score));
+  reindex();
+}
+
+struct PosedProfiles
+{
+  std::span<const float> probe;
+  float other{0.0F};
+  float holder{0.0F};
+};
+
+void poseProfiles(const PosedProfiles& posed)
+{
+  putProfile(kGil, profileAt(posed.probe, posed.other));
+  putProfile(kRita, profileAt(posed.probe, posed.holder));
   reindex();
 }
 
@@ -473,6 +493,122 @@ TEST_CASE("a score in the grey band is UNKNOWN, never a guess" *
   CHECK(*found.verdict == VoiceprintVerdict::Unknown);
 }
 
+TEST_CASE("another enrolled voice outranks a holder score over the threshold" *
+          doctest::skip(!std::filesystem::exists(ARGUS_TEST_SPEAKER_MODEL)))
+{
+  boot();
+  freshWorld();
+  const auto probe = gilSpeaking();
+  const auto embedding = embeddingOf(probe);
+  poseProfiles({.probe = embedding, .other = 0.80F, .holder = 0.60F});
+
+  const auto found = identifyAs(kRita, probe);
+  REQUIRE(found.matched);
+  CHECK(found.userId == kGil);
+  CHECK(found.name == "Gil");
+  REQUIRE(found.holderScore.has_value());
+  MESSAGE("holder score behind a confident other voice " << *found.holderScore);
+  CHECK(*found.holderScore >= testConfig().identifyThreshold);
+  REQUIRE(found.verdict.has_value());
+  CHECK(*found.verdict == VoiceprintVerdict::OtherKnown);
+}
+
+TEST_CASE("a 1:N pair inside the margin leaves the holder's own score to "
+          "decide" *
+          doctest::skip(!std::filesystem::exists(ARGUS_TEST_SPEAKER_MODEL)))
+{
+  boot();
+  freshWorld();
+  const auto probe = gilSpeaking();
+  const auto embedding = embeddingOf(probe);
+  poseProfiles({.probe = embedding, .other = 0.70F, .holder = 0.68F});
+
+  const auto found = identifyAs(kRita, probe);
+  CHECK_FALSE(found.matched);
+  REQUIRE(found.holderScore.has_value());
+  MESSAGE("holder score inside the runner-up margin " << *found.holderScore);
+  CHECK(*found.holderScore >= testConfig().identifyThreshold);
+  REQUIRE(found.verdict.has_value());
+  CHECK(*found.verdict == VoiceprintVerdict::Holder);
+}
+
+TEST_CASE("a confident best the gates suppressed is UNKNOWN, never HOLDER, "
+          "and names nobody" *
+          doctest::skip(!std::filesystem::exists(ARGUS_TEST_SPEAKER_MODEL)))
+{
+  boot();
+  freshWorld();
+  const auto probe = gilSpeaking();
+  const auto embedding = embeddingOf(probe);
+  poseProfiles({.probe = embedding, .other = 0.80F, .holder = 0.60F});
+  DbService::identityClient()
+      ->execSqlSync("UPDATE user SET is_active = 0 WHERE id = ?", kGil);
+
+  const auto found = identifyAs(kRita, probe);
+  CHECK_FALSE(found.matched);
+  CHECK(found.userId == 0);
+  CHECK(found.name.empty());
+  REQUIRE(found.holderScore.has_value());
+  MESSAGE("holder score behind a suppressed confident best "
+          << *found.holderScore);
+  CHECK(*found.holderScore >= testConfig().identifyThreshold);
+  REQUIRE(found.verdict.has_value());
+  CHECK(*found.verdict == VoiceprintVerdict::Unknown);
+}
+
+TEST_CASE("a holder profile written for another model is UNKNOWN" *
+          doctest::skip(!std::filesystem::exists(ARGUS_TEST_SPEAKER_MODEL)))
+{
+  boot();
+  freshWorld();
+  DbService::identityClient()
+      ->execSqlSync("UPDATE voice_profile SET model = ? WHERE user_id = ?",
+                    std::string("stale-model"), kRita);
+
+  const auto found = identifyAs(kRita, strangerSpeaking());
+  CHECK_FALSE(found.matched);
+  REQUIRE(found.holderProfile.has_value());
+  CHECK_FALSE(*found.holderProfile);
+  CHECK_FALSE(found.holderScore.has_value());
+  REQUIRE(found.verdict.has_value());
+  CHECK(*found.verdict == VoiceprintVerdict::Unknown);
+}
+
+TEST_CASE("a truncated holder profile is UNKNOWN, never UNFAMILIAR" *
+          doctest::skip(!std::filesystem::exists(ARGUS_TEST_SPEAKER_MODEL)))
+{
+  boot();
+  freshWorld();
+  putRawProfile(kRita, std::vector<char>(sizeof(float), 0));
+
+  const auto found = identifyAs(kRita, strangerSpeaking());
+  CHECK_FALSE(found.matched);
+  REQUIRE(found.holderProfile.has_value());
+  CHECK(*found.holderProfile);
+  CHECK_FALSE(found.holderScore.has_value());
+  REQUIRE(found.verdict.has_value());
+  CHECK(*found.verdict == VoiceprintVerdict::Unknown);
+}
+
+TEST_CASE("a holder profile with a zero norm is UNKNOWN, never UNFAMILIAR" *
+          doctest::skip(!std::filesystem::exists(ARGUS_TEST_SPEAKER_MODEL)))
+{
+  boot();
+  freshWorld();
+  const std::vector<float>
+      zeros(static_cast<size_t>(SpeakerEmbeddingService::instance().dims()),
+            0.0F);
+  putRawProfile(kRita, voice_vector::toBlob(zeros));
+
+  const auto found = identifyAs(kRita, strangerSpeaking());
+  CHECK_FALSE(found.matched);
+  REQUIRE(found.holderProfile.has_value());
+  CHECK(*found.holderProfile);
+  CHECK_FALSE(found.holderScore.has_value());
+  REQUIRE(found.verdict.has_value());
+  CHECK(*found.verdict == VoiceprintVerdict::Unknown);
+}
+
 TEST_CASE("Identify omits the holder fields and ObserveTurn fills them" *
           doctest::skip(!std::filesystem::exists(ARGUS_TEST_SPEAKER_MODEL)))
 {
@@ -510,6 +646,42 @@ TEST_CASE("Identify omits the holder fields and ObserveTurn fills them" *
   CHECK(turn->holder_profile());
   REQUIRE(turn->has_verdict());
   CHECK(turn->verdict() == argus::identity::v1::VOICEPRINT_VERDICT_HOLDER);
+  CHECK(fleet.service.passive().openCalls() == 0);
+}
+
+TEST_CASE("the wire carries an explicit UNKNOWN, apart from an absent "
+          "verdict" *
+          doctest::skip(!std::filesystem::exists(ARGUS_TEST_SPEAKER_MODEL)))
+{
+  boot();
+  freshWorld();
+
+  Fleet fleet;
+  REQUIRE(fleet.server);
+  const VoiceprintClient client(
+      {.target = fleet.target, .fleetSecret = kFleetSecret});
+  const auto clip = strangerSpeaking();
+  const VoiceClipView view{.samples = clip, .sampleRate = kRate};
+
+  CHECK(static_cast<int>(argus::identity::v1::VOICEPRINT_VERDICT_UNSPECIFIED) ==
+        0);
+  CHECK(static_cast<int>(argus::identity::v1::VOICEPRINT_VERDICT_UNKNOWN) == 4);
+
+  const auto turn = client.observeTurn({.sample = view,
+                                        .userId = kAda,
+                                        .deviceHash = "ada-phone",
+                                        .callKey = "unknown-call",
+                                        .timeoutMs = 5000});
+  REQUIRE(turn.has_value());
+  REQUIRE(turn->has_verdict());
+  CHECK(turn->verdict() == argus::identity::v1::VOICEPRINT_VERDICT_UNKNOWN);
+  REQUIRE(turn->has_holder_profile());
+  CHECK_FALSE(turn->holder_profile());
+  CHECK_FALSE(turn->has_holder_score());
+
+  const auto spoken = client.identify(view);
+  REQUIRE(spoken.has_value());
+  CHECK_FALSE(spoken->has_verdict());
   CHECK(fleet.service.passive().openCalls() == 0);
 }
 
@@ -561,4 +733,3 @@ TEST_CASE("an unusable clip answers UNKNOWN with the rest of the response "
   CHECK_FALSE(found.holderProfile.has_value());
   CHECK(found.threshold == testConfig().identifyThreshold);
 }
-

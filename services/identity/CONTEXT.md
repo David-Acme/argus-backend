@@ -633,7 +633,9 @@ a profile for the active model) and `verdict`, a `VoiceprintVerdict` in
 {holder, other known, unfamiliar, unknown}. `Identify` never fills them — it has
 no holder, and a holder-specific similarity must not travel to a caller who is
 only asking who is speaking. The fields ride the existing message, so an older
-caller ignores them and reads absence as unknown.
+caller ignores them and reads absence as unknown; `verdict` carries
+`VOICEPRINT_VERDICT_UNKNOWN = 4` explicitly, and absence and `UNSPECIFIED` mean
+the verdict was not computed at all, never that the speaker is unknown.
 
 The arms are decided here, where the thresholds and the profile live, from one
 profile read and the embedding the 1:N search already extracted:
@@ -648,11 +650,16 @@ profile read and the embedding the 1:N search already extracted:
 - `UNFAMILIAR`: the holder has a profile for the active model, their consent is
   effective, nobody matched, and their own score stays under
   `voiceprint.unfamiliar_ceiling` (0.40, a placeholder to calibrate on real
-  calls).
-- `UNKNOWN`: everything else — no profile, the grey band `[ceiling, threshold)`,
-  a profile written for another model, or an analysis that is not `Ok`. Nothing
-  defaults to the holder: unknown is the conservative arm, and voice says
-  nothing on it.
+  calls; a ceiling at or above `voiceprint.identify_threshold` is warned about at
+  load and clamped below it, so the grey band always exists).
+- `UNKNOWN`: everything else — no profile, a profile row whose embedding cannot
+  be compared (the wrong size for the active model or a zero norm: a bad row
+  answers unknown, never a cosine of zero read as `UNFAMILIAR`), the grey band
+  `[ceiling, threshold)`, a profile written for another model, an analysis that
+  is not `Ok`, or a confident 1:N best that the activity and consent gates
+  suppressed — that last one never falls through to the holder's own score, and
+  it names nobody. Nothing defaults to the holder: unknown is the conservative
+  arm, and voice says nothing on it.
 
 The verdict lives in memory for the response only. Nothing is persisted, no
 score reaches a log, no audit or sync row is written, `voice_profile`,
@@ -661,7 +668,10 @@ while the holder's own consent and the household switch are effective — the sa
 `effectiveFor` gate that already refuses a match to a person without consent. A
 missing profile, model or engine degrades to `UNKNOWN` with the rest of the
 answer intact: the outcome, the threshold and the 1:N match are unaffected. The
-holder leg costs one extra profile read per probed turn.
+holder leg is skipped when there is no holder id or when the holder's consent is
+not effective; when it runs it costs up to three point reads per probed turn —
+`effectiveFor` reads `user_privacy` and `household_privacy`, then `findByUser`
+reads `voice_profile`.
 
 ### Residual risks, by design
 
@@ -718,14 +728,19 @@ reports itself skipped.
 
 `identity-voiceprint-verdict-test` (the same live setup, one behaviour per
 case): the holder's own voice is `HOLDER` with its score over the threshold,
-another enrolled voice is `OTHER_KNOWN` and names them, a stranger is
+another enrolled voice is `OTHER_KNOWN` and names them even when the holder's
+own posed score clears the threshold, a 1:N pair inside the runner-up margin
+leaves the holder's own score to decide, a confident best that the activity or
+consent gates suppressed is `UNKNOWN` and names nobody, a stranger is
 `UNFAMILIAR` under the ceiling, a holder who never enrolled is `UNKNOWN` and
-never `UNFAMILIAR`, a holder score in the grey band is `UNKNOWN` (the holder's
-profile is posed at a chosen cosine against the probe, so the band is reached
-without relying on how the fixtures happen to score), consent off and the
-household switch off answer without a verdict, an unusable clip answers
-`SAMPLE_TOO_SHORT` with the rest of the response intact, and the wire: `Identify`
-omits the three fields while `ObserveTurn` fills them over gRPC.
+never `UNFAMILIAR`, a holder profile written for another model and one whose
+embedding is truncated or zero-norm are both `UNKNOWN`, a holder score in the
+grey band is `UNKNOWN` (the holder's profile is posed at a chosen cosine against
+the probe, so the band is reached without relying on how the fixtures happen to
+score), consent off and the household switch off answer without a verdict, an
+unusable clip answers `SAMPLE_TOO_SHORT` with the rest of the response intact,
+and the wire: `Identify` omits the three fields while `ObserveTurn` fills them
+over gRPC, with `UNKNOWN` an explicit `4` apart from the absent verdict.
 
 ## The face pipeline fed the recognizer garbage (2026-10, STRANGERS)
 
