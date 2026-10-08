@@ -1,3 +1,4 @@
 /build/
 go2rtc.yaml
 __pycache__/
+voice-test-config.toml
