@@ -26,6 +26,18 @@ public:
     frames_.push_back(std::move(frame));
   }
 
+  void duckPlayout(bool ducked) override
+  {
+    std::scoped_lock lock(mutex_);
+    ducks_.push_back(ducked);
+  }
+
+  std::vector<bool> duckTransitions() const
+  {
+    std::scoped_lock lock(mutex_);
+    return ducks_;
+  }
+
   void close()
   {
     std::scoped_lock lock(mutex_);
@@ -79,6 +91,7 @@ private:
   mutable std::mutex mutex_;
   bool open_{true};
   std::vector<argus::voice::v1::ServerFrame> frames_;
+  std::vector<bool> ducks_;
 };
 
 struct FakeIdentity final : IVoiceIdentity

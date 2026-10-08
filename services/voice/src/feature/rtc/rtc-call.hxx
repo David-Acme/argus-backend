@@ -1,6 +1,7 @@
 #pragma once
 
 #include <argus/voice/v1/voice.pb.h>
+#include <feature/rtc/playout-gain.hxx>
 #include <feature/rtc/rtc-wire.hxx>
 #include <feature/voice/voice-session-service.hxx>
 #include <shared/wrapper/audio/sample-ring.hxx>
@@ -17,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -70,6 +72,7 @@ public:
 
   bool connected() const override;
   void sendServerFrame(argus::voice::v1::ServerFrame frame) override;
+  void duckPlayout(bool ducked) override;
 
   void onTrackSubscribed(livekit::Room& room, const livekit::TrackSubscribedEvent& event) override;
   void onTrackUnsubscribed(livekit::Room& room, const livekit::TrackUnsubscribedEvent& event) override;
@@ -80,7 +83,8 @@ public:
 
   static constexpr int kSampleRate = 16000;
   static constexpr int kFrameSamples = kSampleRate / 100;
-  static constexpr int kSourceQueueMs = 100;
+  static constexpr int kSourceQueueMs = 40;
+  static constexpr size_t kFadeSamples = static_cast<size_t>(kSampleRate) * 60 / 1000;
   static constexpr size_t kPlayoutCapacity = static_cast<size_t>(kSampleRate) * 120;
   static constexpr size_t kMaxOutboundMessages = 256;
   static constexpr auto kFarewellBound = std::chrono::milliseconds(2300);
@@ -111,6 +115,7 @@ private:
   void feedAudio(const livekit::AudioFrame& frame);
   void pushPlayout(const std::string& pcm);
   void flushPlayout();
+  void captureFade(std::span<const int16_t> fading);
   [[nodiscard]] std::optional<rtc_wire::DoneReason> endReason(std::chrono::steady_clock::time_point now) const;
 
   VoiceSessionService& sessions_;
@@ -155,6 +160,8 @@ private:
   std::condition_variable playoutCv_;
   BasicSampleRing<int16_t> playout_{kPlayoutCapacity};
   std::vector<int16_t> chunk_;
+  std::vector<int16_t> fadeTail_;
+  PlayoutGain gain_;
   bool flushPending_{false};
   bool audible_{false};
   std::chrono::steady_clock::time_point lastChunkAt_{};

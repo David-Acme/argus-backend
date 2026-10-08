@@ -50,3 +50,6 @@ denoise_gate_rms = 0.0035
 barge_threshold = 0.7
 barge_min_frames = 8
 barge_guard_ms = 300
+duck_threshold = 0.5
+duck_min_frames = 3
+duck_release_frames = 10

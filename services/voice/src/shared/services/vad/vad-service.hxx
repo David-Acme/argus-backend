@@ -21,6 +21,9 @@ struct VadConfig
   float minMeanProb{0.35F};
   float bargeThreshold{0.7F};
   int bargeMinFrames{8};
+  float duckThreshold{0.5F};
+  int duckMinFrames{3};
+  int duckReleaseFrames{10};
 };
 
 [[nodiscard]] VadConfig resolveVadConfig();
@@ -42,6 +45,12 @@ struct VadListenInput
 {
   const float* samples;
   int count{0};
+  bool armed{false};
+};
+
+struct DuckSample
+{
+  float prob{0.0F};
   bool armed{false};
 };
 
@@ -72,6 +81,8 @@ public:
 
   void endListening();
 
+  [[nodiscard]] bool ducking() const;
+
   [[nodiscard]] bool inSpeech() const;
 
   [[nodiscard]] std::span<const float> utterance() const;
@@ -89,6 +100,8 @@ public:
 private:
   float nextWindow();
   void keepPreRoll(int frames);
+  void trackDuck(const DuckSample& sample);
+  void clearDuck();
 
   VadConfig cfg_;
   std::unique_ptr<VadModel> model_;
@@ -100,6 +113,9 @@ private:
   bool speech_{false};
   int bargeCounter_{0};
   float bargeProbSum_{0.0F};
+  int duckCounter_{0};
+  int duckQuietCounter_{0};
+  bool ducking_{false};
   int startCounter_{0};
   int silenceCounter_{0};
   int frameCounter_{0};

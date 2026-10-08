@@ -288,6 +288,67 @@ The VAD model is a seam (`VadModel`, created through `IVoiceVad` in
 `VoiceEngineSeam`, Silero by default) so the suites drive barge-in with
 scripted probabilities instead of the ONNX model.
 
+## Two-stage interruption: duck, then barge (2026-10-07)
+
+Android's hardware AEC treated the phone's own playback as the near-end
+signal and suppressed the microphone while Argus spoke, so in an RTC call the
+user's voice never reached the VAD and no barge-in ever fired. The frontend
+now builds the WebRTC ADM with a software AEC, which hands the near-end
+speech through during playback. That makes an interruption a two-stage
+reaction on the server, because for the first frames a user who is only
+thinking out loud looks exactly like one who means to take the turn:
+
+- **Duck.** While a duplex call is listening, `VadService` counts windows at
+  or above `[vad] duck_threshold` (0.5) and, after `[vad] duck_min_frames`
+  (3 windows, about 96 ms), reports `ducking()`. The duplex loop forwards
+  every change of that state to the sink
+  (`VoiceSessionSink::duckPlayout(bool)`), and the RTC call's `PlayoutGain`
+  ramps the outgoing audio down to 30 % over `duckFrames` 12 frames (about
+  120 ms) and back up over `releaseFrames` 30 (about 300 ms). The ramp is
+  applied per played 10 ms frame and each frame starts at the gain the
+  previous one ended with, so it is continuous. When the user stops before
+  `[vad] barge_threshold`, `[vad] duck_release_frames` (10 quiet windows,
+  about 320 ms) lift the duck and the turn goes on. The duck belongs to
+  armed calls only (the barge guard has elapsed), and it never survives the
+  end of the microphone feed: every path that stops feeding mic audio
+  (mute, a VAD reset, a stalled reader) releases it within one 150 ms idle
+  cycle, because the empty-batch path of the duplex loop syncs the sink too,
+  and a session teardown (`stop()`) releases it on the loop's exit before the
+  join returns.
+  `VadService::reset()` forgets a live duck with the rest of its state, so
+  unmuting cannot re-duck for a few hundred milliseconds with nobody
+  speaking.
+- **Barge.** Eight armed windows at or above `[vad] barge_threshold` (0.7)
+  still end the turn exactly as before: the LLM stream and the TTS call are
+  cancelled, `voice:interrupted` carries the interrupted turn's id, and the
+  call flushes what it has queued. What is already in the `AudioSource`
+  (up to its 40 ms queue) plays out; the head of the ring (up to 60 ms) is
+  sent as a tail whose first sample is scaled by the gain that was current
+  when the flush arrived and whose last is silence, so the waveform
+  continues instead of jumping at the cut; the rest of the ring is dropped
+  and the gain returns to unity for whatever plays next. Bound on the tail
+  after the decision: 40 ms of queue plus 60 ms of fade (the phone check is
+  the measurement). The source
+  keeps the buffered LiveKit mode — the SDK header names it for agents that
+  generate audio independently of real time, which is what TTS does — and
+  the queue is 40 ms rather than the default 100 ms; queue 0 is real-time
+  mode and would need the producer to be paced by a real-time media source,
+  which the ring-fed playout thread is not. The phone check must listen for
+  underrun or crackle at 40 ms; the next step would be 60 ms, never 0.
+  Because the blocking `AudioSource::captureFrame` cannot run without a
+  LiveKit room, the fade capture itself is verified on the phone, not in a
+  unit test; the gain math (including that the first faded sample continues
+  at the current gain), the ramp continuity and the duck lifecycle are
+  unit-tested (`voice-playout-gain-test`, `voice-session-seam-test`).
+
+Two known differences are parked on purpose. `voice:skip` neither flushes
+nor fades, so a skip keeps playing the queued speech (pre-existing,
+app-initiated, and audibly a different scope from an interruption). And a
+flush resets the sink's gain to unity without updating `session.ducked`, so
+the session and the sink can disagree about a duck until the next
+transition; no practical impact at the current call sites, where a barge-in
+releases the duck anyway and a farewell ends the call.
+
 ## The call's context
 
 `CallHistory` owns the message list a turn sends to argus-llm and keeps one
@@ -593,18 +654,19 @@ transports. Per call:
   shares);
 - a playout thread takes TTS from a 120 s `BasicSampleRing<int16_t>` (the
   ring became a template) in 10 ms frames into a `livekit::AudioSource` with
-  a 100 ms queue. `sendServerFrame` only copies a chunk into the ring, so the
+  a 40 ms queue. `sendServerFrame` only copies a chunk into the ring, so the
   session's turn thread never blocks on the network while it holds
   `duplexMutex`; each chunk goes out as soon as it is synthesized, which is
   the lowest latency the TTS allows. A tail shorter than one frame is padded
   after 40 ms without new audio.
 
-Barge-in is the session's own (duplex VAD listening, `voice:interrupted`):
-on the interrupted frame the call clears the ring and the source's queue
-(`AudioSource::clearQueue`), so at most one 10 ms frame and the queue's
-100 ms are already on their way when Argus stops. The session's playback
-estimate still advances per chunk; it is a little early here (the source
-paces in real time) which only makes the barge-in window shorter.
+Barge-in is the session's own (duplex VAD listening, `voice:interrupted`;
+the duck-and-fade staging is "Two-stage interruption" above): on the
+interrupted frame the call keeps the queue playing and fades the ring head
+into silence, so at most the source queue (40 ms) plus the ~60 ms fade are
+heard after the decision. The session's playback estimate still advances per
+chunk; it is a little early here (the source paces in real time) which only
+makes the barge-in window shorter.
 
 Data messages replace the `voice:*` text frames one for one (topics
 `argus.stt`, `argus.assistant`, `argus.turn`, `argus.interrupted`,

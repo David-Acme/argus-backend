@@ -692,8 +692,10 @@ void VoiceSessionService::resetListening(Session& session)
 void VoiceSessionService::workerLoop(const std::shared_ptr<Session>& session)
 {
   while (session->active.load()) {
-    if (!nextBatch(*session))
+    if (!nextBatch(*session)) {
+      followDuck(*session, false);
       break;
+    }
     if (session->vadResetPending.exchange(false)) {
       resetListening(*session);
       followUtterance(*session);
@@ -735,6 +737,10 @@ void VoiceSessionService::workerLoop(const std::shared_ptr<Session>& session)
       }
       offset += chunk;
     }
+    if (!session->active.load()) {
+      followDuck(*session, false);
+      break;
+    }
   }
 }
 
@@ -762,8 +768,10 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
 {
   bool wasListening = false;
   while (session->active.load()) {
-    if (!nextBatch(*session))
+    if (!nextBatch(*session)) {
+      followDuck(*session, false);
       break;
+    }
     if (session->vadResetPending.exchange(false)) {
       resetListening(*session);
       followUtterance(*session);
@@ -777,8 +785,10 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
         });
     }
 
-    if (session->batch.empty())
+    if (session->batch.empty()) {
+      followDuck(*session, false);
       continue;
+    }
 
     const std::span<const float> clean = cleanBatch(*session);
 
@@ -794,6 +804,7 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
           wasListening = false;
           bargeIn(*session);
         }
+        followDuck(*session, session->vad.ducking());
         followUtterance(*session);
       }
       else {
@@ -801,6 +812,7 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
           session->vad.endListening();
           wasListening = false;
         }
+        followDuck(*session, false);
         auto turn = session->vad.process({.samples = clean.data() + offset,
                                           .count = static_cast<int>(chunk)});
         if (!turn)
@@ -813,6 +825,10 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
         }
       }
       offset += chunk;
+    }
+    if (!session->active.load()) {
+      followDuck(*session, false);
+      break;
     }
   }
 }
@@ -853,6 +869,15 @@ VoiceSessionService::listenState(Session& session)
   const DuplexTurn& turn = session.turn;
   return {.listening = !turn.barged && (turn.running || now < turn.playbackEnd),
           .armed = turn.announced && now >= turn.firstAudioAt + session.bargeGuard};
+}
+
+void VoiceSessionService::followDuck(Session& session, bool ducked) const
+{
+  if (session.ducked == ducked)
+    return;
+  session.ducked = ducked;
+  if (session.sink != nullptr)
+    session.sink->duckPlayout(ducked);
 }
 
 void VoiceSessionService::bargeIn(Session& session)

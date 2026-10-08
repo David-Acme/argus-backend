@@ -292,6 +292,19 @@ set_target_properties(voice-rtc-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-rtc-wire-test COMMAND voice-rtc-wire-test)
 
+add_executable(voice-playout-gain-test tests/unit/voice-playout-gain-test.cc)
+
+target_link_libraries(voice-playout-gain-test PRIVATE argus::voice-rtc-wire
+    doctest::doctest)
+
+target_compile_options(voice-playout-gain-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-playout-gain-test)
+
+set_target_properties(voice-playout-gain-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-playout-gain-test COMMAND voice-playout-gain-test)
+
 add_executable(voice-farewell-test tests/unit/voice-farewell-test.cc)
 
 target_link_libraries(voice-farewell-test PRIVATE argus::voice-core

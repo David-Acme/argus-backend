@@ -16,6 +16,7 @@ constexpr auto kPlayoutTick = std::chrono::milliseconds(10);
 constexpr auto kTailFlushAfter = std::chrono::milliseconds(40);
 constexpr auto kDrainedAfter = std::chrono::milliseconds(600);
 constexpr int kCaptureTimeoutMs = 1000;
+constexpr int kFadeCaptureTimeoutMs = 100;
 constexpr size_t kMaxEarlyClientMessages = 16;
 constexpr size_t kStreamCapacityFrames = 50;
 
@@ -441,6 +442,13 @@ void RtcCall::flushPlayout()
 {
   {
     std::scoped_lock lock(playoutMutex_);
+    if (fadeTail_.empty()) {
+      const size_t fading = std::min(playout_.size(), kFadeSamples);
+      fadeTail_.resize(fading);
+      if (fading > 0)
+        playout_.pop(fadeTail_.data(), fading);
+      gain_.fadeOut(fadeTail_);
+    }
     playout_.clear();
     flushPending_ = true;
     audible_ = false;
@@ -448,10 +456,35 @@ void RtcCall::flushPlayout()
   playoutCv_.notify_one();
 }
 
+void RtcCall::captureFade(std::span<const int16_t> fading)
+{
+  livekit::AudioFrame frame(std::vector<int16_t>(static_cast<size_t>(kFrameSamples), int16_t{0}),
+                            kSampleRate, 1, kFrameSamples);
+  for (size_t offset = 0; offset < fading.size(); offset += static_cast<size_t>(kFrameSamples)) {
+    const size_t count = std::min(static_cast<size_t>(kFrameSamples), fading.size() - offset);
+    std::fill(frame.data().begin(), frame.data().end(), int16_t{0});
+    std::copy_n(fading.begin() + static_cast<std::ptrdiff_t>(offset), count, frame.data().begin());
+    try {
+      source_->captureFrame(frame, kFadeCaptureTimeoutMs);
+    }
+    catch (const std::exception& error) {
+      LOG_WARN << "Voice: RTC fade in " << join_.room() << " failed: " << error.what();
+      return;
+    }
+  }
+}
+
+void RtcCall::duckPlayout(bool ducked)
+{
+  std::scoped_lock lock(playoutMutex_);
+  gain_.duck(ducked);
+}
+
 void RtcCall::playoutLoop()
 {
   livekit::AudioFrame frame(std::vector<int16_t>(kFrameSamples, 0), kSampleRate, 1, kFrameSamples);
   auto* samples = frame.data().data();
+  std::vector<int16_t> fading;
   while (!stopping_.load()) {
     bool flush = false;
     bool have = false;
@@ -464,24 +497,30 @@ void RtcCall::playoutLoop()
       if (stopping_.load())
         break;
       flush = std::exchange(flushPending_, false);
+      if (flush)
+        fading.swap(fadeTail_);
       const auto now = std::chrono::steady_clock::now();
-      if (playout_.size() >= static_cast<size_t>(kFrameSamples)) {
+      if (!flush && playout_.size() >= static_cast<size_t>(kFrameSamples)) {
         playout_.pop(samples, kFrameSamples);
+        gain_.apply({samples, static_cast<size_t>(kFrameSamples)});
         have = true;
       }
-      else if (playout_.size() > 0 && now - lastChunkAt_ > kTailFlushAfter) {
+      else if (!flush && playout_.size() > 0 && now - lastChunkAt_ > kTailFlushAfter) {
         const size_t tail = playout_.size();
         playout_.pop(samples, tail);
         std::fill(samples + tail, samples + kFrameSamples, int16_t{0});
+        gain_.apply({samples, static_cast<size_t>(kFrameSamples)});
         have = true;
       }
-      else if (audible_ && playout_.size() == 0 && now - lastChunkAt_ > kDrainedAfter) {
+      else if (!flush && audible_ && playout_.size() == 0 && now - lastChunkAt_ > kDrainedAfter) {
         audible_ = false;
         drained = true;
       }
     }
-    if (flush)
-      source_->clearQueue();
+    if (flush) {
+      captureFade(fading);
+      fading.clear();
+    }
     if (have) {
       try {
         source_->captureFrame(frame, kCaptureTimeoutMs);

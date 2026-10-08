@@ -129,6 +129,12 @@ VadConfig resolveVadConfig()
     cfg.bargeThreshold = static_cast<float>(v);
   if (const int v = ConfigService::getInt("vad.barge_min_frames"); v > 0)
     cfg.bargeMinFrames = v;
+  if (const double v = ConfigService::getDouble("vad.duck_threshold"); v > 0.0)
+    cfg.duckThreshold = static_cast<float>(v);
+  if (const int v = ConfigService::getInt("vad.duck_min_frames"); v > 0)
+    cfg.duckMinFrames = v;
+  if (const int v = ConfigService::getInt("vad.duck_release_frames"); v > 0)
+    cfg.duckReleaseFrames = v;
   return cfg;
 }
 
@@ -258,6 +264,7 @@ bool VadService::listen(const VadListenInput& input)
       bargeCounter_ = 0;
       bargeProbSum_ = 0.0F;
     }
+    trackDuck({.prob = prob, .armed = input.armed});
 
     if (bargeCounter_ >= cfg_.bargeMinFrames) {
       speech_ = true;
@@ -269,14 +276,42 @@ bool VadService::listen(const VadListenInput& input)
       speechProbSum_ = bargeProbSum_;
       bargeCounter_ = 0;
       bargeProbSum_ = 0.0F;
+      clearDuck();
       return true;
     }
   }
   return false;
 }
 
+void VadService::trackDuck(const DuckSample& sample)
+{
+  if (sample.armed && sample.prob >= cfg_.duckThreshold) {
+    ++duckCounter_;
+    duckQuietCounter_ = 0;
+    if (duckCounter_ >= cfg_.duckMinFrames)
+      ducking_ = true;
+    return;
+  }
+  duckCounter_ = 0;
+  if (ducking_ && ++duckQuietCounter_ >= cfg_.duckReleaseFrames)
+    clearDuck();
+}
+
+void VadService::clearDuck()
+{
+  ducking_ = false;
+  duckCounter_ = 0;
+  duckQuietCounter_ = 0;
+}
+
+bool VadService::ducking() const
+{
+  return ducking_;
+}
+
 void VadService::endListening()
 {
+  clearDuck();
   bargeCounter_ = 0;
   bargeProbSum_ = 0.0F;
   startCounter_ = 0;
@@ -328,5 +363,6 @@ void VadService::reset()
   preRoll_.clear();
   bargeCounter_ = 0;
   bargeProbSum_ = 0.0F;
+  clearDuck();
   lastProb_ = 0.0F;
 }

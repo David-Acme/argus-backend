@@ -53,6 +53,7 @@ set(ARGUS_LIVEKIT_SDK_LIBS
 argus_module(NAME voice-rtc-wire
     SOURCES
         rtc-wire.cc
+        playout-gain.cc
     INCLUDES
         ../..
     DEPENDS

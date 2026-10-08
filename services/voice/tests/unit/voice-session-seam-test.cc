@@ -6,6 +6,7 @@
 #include <config/config-service.hxx>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <atomic>
 #include <chrono>
@@ -344,6 +345,38 @@ void feed(const FeedInput& input)
   for (int i = 0; i < input.windows * kWindow; ++i) {
     pcm.push_back(low);
     pcm.push_back(high);
+  }
+  input.service.feedPcm(input.sink, {.data = pcm.data(), .size = pcm.size()});
+}
+
+struct BurstPart
+{
+  float prob{0.0F};
+  int windows{0};
+};
+
+struct BurstInput
+{
+  VoiceSessionService& service;
+  VoiceSessionSink& sink;
+  std::span<const BurstPart> parts;
+};
+
+void feedBurst(const BurstInput& input)
+{
+  size_t total = 0;
+  for (const auto& part : input.parts)
+    total += static_cast<size_t>(part.windows) * kWindow;
+  std::string pcm;
+  pcm.reserve(total * 2);
+  for (const auto& part : input.parts) {
+    const auto value = static_cast<int16_t>(part.prob * 32767.0F);
+    const auto low = static_cast<char>(static_cast<uint16_t>(value) & 0xFFU);
+    const auto high = static_cast<char>((static_cast<uint16_t>(value) >> 8U) & 0xFFU);
+    for (int i = 0; i < part.windows * kWindow; ++i) {
+      pcm.push_back(low);
+      pcm.push_back(high);
+    }
   }
   input.service.feedPcm(input.sink, {.data = pcm.data(), .size = pcm.size()});
 }
@@ -1004,6 +1037,106 @@ TEST_CASE("Nothing interrupts the assistant before the barge-in guard elapses")
   service.stop(sink);
 }
 
+TEST_CASE("A murmur ducks the call's playout, the release lifts it, and a barge-in takes the turn")
+{
+  DuplexConfig config(100);
+  StreamingTts tts;
+  RecordingStt stt;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  service.start(sink, duplexStart());
+  CHECK(waitFor([&] { return sink.hasType("voice:turn"); }, 1000));
+  CHECK(waitFor([&] { return VoiceSessionTestAccess::armed(service, sink); }, 2000));
+
+  const std::array<BurstPart, 3> murmurThenQuiet{{
+      {.prob = 0.0F, .windows = 4},
+      {.prob = 0.6F, .windows = 6},
+      {.prob = 0.0F, .windows = 12},
+  }};
+  feedBurst({.service = service, .sink = sink, .parts = murmurThenQuiet});
+  REQUIRE(waitFor([&] {
+    const auto ducks = sink.duckTransitions();
+    return std::ranges::any_of(ducks, [](bool ducked) { return ducked; }) && !ducks.back();
+  }, 2000));
+  CHECK(sink.duckTransitions() == std::vector<bool>{true, false});
+
+  feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 12});
+  CHECK(waitFor([&] { return sink.hasType("voice:interrupted"); }, 2000));
+  CHECK(waitFor([&] {
+    const auto ducks = sink.duckTransitions();
+    return ducks.size() >= 4 && !ducks.back();
+  }, 2000));
+  CHECK(sink.duckTransitions() == std::vector<bool>{true, false, true, false});
+
+  service.stop(sink);
+}
+
+TEST_CASE("Muting the microphone releases the call's duck and the reset forgets it")
+{
+  DuplexConfig config(100);
+  StreamingTts tts;
+  RecordingStt stt;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  service.start(sink, duplexStart());
+  CHECK(waitFor([&] { return sink.hasType("voice:turn"); }, 1000));
+  CHECK(waitFor([&] { return VoiceSessionTestAccess::armed(service, sink); }, 2000));
+
+  feed({.service = service, .sink = sink, .prob = 0.6F, .windows = 6});
+  REQUIRE(waitFor([&] {
+    const auto ducks = sink.duckTransitions();
+    return std::ranges::any_of(ducks, [](bool ducked) { return ducked; });
+  }, 2000));
+
+  service.mute(sink, true);
+  REQUIRE(waitFor([&] {
+    const auto ducks = sink.duckTransitions();
+    return !ducks.empty() && !ducks.back();
+  }, 2000));
+
+  service.mute(sink, false);
+  const int before = vad.windows->load();
+  feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 14});
+  REQUIRE(waitFor([&] { return vad.windows->load() >= before + 14; }, 2000));
+  const auto ducks = sink.duckTransitions();
+  CHECK(std::ranges::count_if(ducks, [](bool ducked) { return ducked; }) == 1);
+  CHECK_FALSE(ducks.back());
+
+  service.stop(sink);
+}
+
+TEST_CASE("Stopping a call while the duck is active releases it")
+{
+  DuplexConfig config(100);
+  StreamingTts tts;
+  RecordingStt stt;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+  FakeVoiceSink sink;
+  service.start(sink, duplexStart());
+  CHECK(waitFor([&] { return sink.hasType("voice:turn"); }, 1000));
+  CHECK(waitFor([&] { return VoiceSessionTestAccess::armed(service, sink); }, 2000));
+
+  feed({.service = service, .sink = sink, .prob = 0.6F, .windows = 6});
+  REQUIRE(waitFor([&] {
+    const auto ducks = sink.duckTransitions();
+    return std::ranges::any_of(ducks, [](bool ducked) { return ducked; });
+  }, 2000));
+
+  service.stop(sink);
+  const auto ducks = sink.duckTransitions();
+  REQUIRE_FALSE(ducks.empty());
+  CHECK_FALSE(ducks.back());
+}
+
 TEST_CASE("voice:turn precedes the first audio of every duplex turn")
 {
   DuplexConfig config(300);
@@ -1655,6 +1788,45 @@ TEST_CASE("Speech that starts while Argus is finishing keeps its first syllables
   const VadTurn found = turn.value_or(VadTurn{});
   REQUIRE(found.samples.size() == static_cast<size_t>(kWindow) * 38);
   CHECK(found.samples.front() == doctest::Approx(0.96F));
+}
+
+TEST_CASE("Speech under Argus ducks him at once, a passing noise lets him back up, and a real interruption takes the turn")
+{
+  DuplexConfig config(300);
+  VadService vad(std::make_unique<ScriptedVadModel>(std::make_shared<std::atomic<int>>(0),
+                                                    std::make_shared<std::atomic<int>>(0)));
+  const std::vector<float> murmur(kWindow, 0.6F);
+  const std::vector<float> speech(kWindow, 0.95F);
+  const std::vector<float> silence(kWindow, 0.0F);
+
+  CHECK_FALSE(vad.listen({.samples = murmur.data(), .count = kWindow, .armed = false}));
+  CHECK_FALSE(vad.ducking());
+  for (int i = 0; i < 2; ++i)
+    CHECK_FALSE(vad.listen({.samples = murmur.data(), .count = kWindow, .armed = true}));
+  CHECK_FALSE(vad.ducking());
+  CHECK_FALSE(vad.listen({.samples = murmur.data(), .count = kWindow, .armed = true}));
+  CHECK(vad.ducking());
+
+  for (int i = 0; i < 9; ++i)
+    CHECK_FALSE(vad.listen({.samples = silence.data(), .count = kWindow, .armed = true}));
+  CHECK(vad.ducking());
+  CHECK_FALSE(vad.listen({.samples = silence.data(), .count = kWindow, .armed = true}));
+  CHECK_FALSE(vad.ducking());
+
+  bool barged = false;
+  for (int i = 0; i < 8 && !barged; ++i) {
+    barged = vad.listen({.samples = speech.data(), .count = kWindow, .armed = true});
+    if (!barged && i >= 2)
+      CHECK(vad.ducking());
+  }
+  CHECK(barged);
+  CHECK_FALSE(vad.ducking());
+
+  for (int i = 0; i < 3; ++i)
+    CHECK_FALSE(vad.listen({.samples = murmur.data(), .count = kWindow, .armed = true}));
+  CHECK(vad.ducking());
+  vad.reset();
+  CHECK_FALSE(vad.ducking());
 }
 
 namespace

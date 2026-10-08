@@ -37,6 +37,7 @@ public:
 
   virtual bool connected() const = 0;
   virtual void sendServerFrame(argus::voice::v1::ServerFrame frame) = 0;
+  virtual void duckPlayout(bool) {}
 };
 
 struct PcmFrame
@@ -171,6 +172,7 @@ private:
     std::string role;
     bool nameKnown{false};
     std::atomic<bool> speaking{false};
+    bool ducked{false};
     std::atomic<bool> interrupt{false};
     std::atomic<bool> active{true};
     std::atomic<bool> muted{false};
@@ -224,6 +226,7 @@ private:
                   std::function<void(Session&)> body);
   ListenState listenState(Session& session);
   void bargeIn(Session& session);
+  void followDuck(Session& session, bool ducked) const;
   bool sendDuplexChunk(Session& session, argus::voice::v1::ServerFrame frame);
   bool sendDuplexAssistant(Session& session, argus::voice::v1::ServerFrame frame);
   void processTurn(Session& session, const std::vector<float>& samples);
