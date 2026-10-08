@@ -909,9 +909,21 @@ changes.
 `argus.guard.v1.known_seen` is read through a durable JetStream consumer
 (`notification-known-seen` on guard's `ARGUS_GUARD` stream, ordered, ack after
 `CallEngine::arrival` returns, nak on failure) instead of a core subscription
-that lost every sighting published while this service restarted. If the
-stream does not exist yet (guard not started) the subscription is retried
-every 5 s. A replayed sighting still updates `call_arrival_seen`, but one
+that lost every sighting published while this service restarted. The guard
+ensures that stream at boot, and the feed keeps `subscribeDurable`: the
+ensuring `subscribeDurableFeed` requires the consumer subject to be spelled
+inside the stream's own subject list (`covered`, an exact string comparison),
+so the call feed would have to create `ARGUS_GUARD` carrying only
+`argus.guard.v1.known_seen` — and guard's own `ensureGuardStream` then refuses
+that stream for ever ("carries different subjects; refusing to repurpose
+it"). If the stream is missing anyway (guard not started) the
+subscription is retried by a self-owning chain (`KnownSeenRetry`, one strong
+reference per pending timer, released on the attach or on the stop) with a
+backoff (5 s doubling to 60 s, the durable attach marked `quiet` so the bus
+does not log the same missing stream on every attempt, while a durable
+policy conflict still logs its reason), one `WARN` when the feed goes
+unavailable and one `INFO` when it connects. A replayed sighting still
+updates `call_arrival_seen`, but one
 older than `call_engine::kArrivalStaleS` (10 minutes) never calls anybody:
 "Marta has arrived" an hour late is noise.
 

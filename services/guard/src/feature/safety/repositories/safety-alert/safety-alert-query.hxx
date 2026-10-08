@@ -23,8 +23,8 @@ inline constexpr std::string_view COUNT_SINCE =
 
 inline constexpr std::string_view PENDING_ALERTS =
     "SELECT id, kind, user_id, environment_id, created_at, notify_sequence, escalated_at, "
-    "actor_name "
-    "FROM guard_safety_alert WHERE notified_at = 0 ORDER BY id DESC LIMIT 200";
+    "actor_name, closed_at "
+    "FROM guard_safety_alert WHERE notified_at = 0 AND closed_at = 0 ORDER BY id DESC LIMIT 200";
 
 inline constexpr std::string_view ADVANCE_SEQUENCE =
     "UPDATE guard_safety_alert SET notify_sequence = notify_sequence + 1 "
@@ -33,11 +33,14 @@ inline constexpr std::string_view ADVANCE_SEQUENCE =
 inline constexpr std::string_view MARK_ESCALATED =
     "UPDATE guard_safety_alert SET escalated_at = ? WHERE id = ? AND escalated_at = 0";
 
+inline constexpr std::string_view MARK_CLOSED =
+    "UPDATE guard_safety_alert SET closed_at = ? WHERE id = ? AND closed_at = 0";
+
 inline constexpr std::string_view MARK_NOTIFIED =
     "UPDATE guard_safety_alert SET notified_at = ? WHERE id = ?";
 
 inline constexpr std::string_view PURGE_BEFORE =
-    "DELETE FROM guard_safety_alert WHERE created_at < ? AND notified_at > 0";
+    "DELETE FROM guard_safety_alert WHERE created_at < ? AND (notified_at > 0 OR closed_at > 0)";
 
 }
 
@@ -59,6 +62,7 @@ struct SafetyAlertRow
   int64_t createdAt{0};
   int64_t sequence{1};
   int64_t escalatedAt{0};
+  int64_t closedAt{0};
   std::string actorName;
 };
 

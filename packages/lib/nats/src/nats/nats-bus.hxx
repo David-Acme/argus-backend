@@ -105,6 +105,7 @@ public:
     bool deliverAll{false};
     bool deliverLastPerSubject{false};
     bool recreateOnPolicyChange{false};
+    bool quiet{false};
     int maxDeliver{5};
     int maxAckPending{kDefaultMaxAckPending};
     DurableHandler handler;

@@ -352,10 +352,12 @@ drogon::Task<PanicResult> SafetyService::panic(const PanicInput& input) const
                                  .environmentId = input.environmentId.value_or(0),
                                  .now = at,
                                  .sequence = 1};
-  const bool sent = co_await deliver(notice);
-  if (dependencies_.actor)
+  const SafetyDelivery delivery = co_await deliver(notice);
+  if (dependencies_.actor && delivery != SafetyDelivery::NoRecipients)
     static_cast<void>(co_await dependencies_.actor->confirmPanic(notice));
-  co_return PanicResult{.alertId = alertId, .sent = sent, .repeated = false};
+  co_return PanicResult{.alertId = alertId,
+                        .sent = delivery == SafetyDelivery::Sent,
+                        .repeated = false};
 }
 
 int64_t SafetyService::retryDelay(int failures) const
@@ -380,21 +382,26 @@ void SafetyService::recordOutcome(int64_t alertId, bool sent) const
   retry.nextAt = at + retryDelay(retry.failures);
 }
 
-drogon::Task<bool> SafetyService::deliver(const SafetyAlertNotice& notice) const
+drogon::Task<SafetyDelivery> SafetyService::deliver(const SafetyAlertNotice& notice) const
 {
   if (!dependencies_.sink)
-    co_return false;
+    co_return SafetyDelivery::Pending;
   {
     std::scoped_lock lock(runtime_->mutex);
     if (!runtime_->delivering.insert(notice.alertId).second)
-      co_return false;
+      co_return SafetyDelivery::Pending;
   }
-  bool sent = false;
+  SafetyDelivery delivery = SafetyDelivery::Pending;
   try {
-    const SafetyDelivery delivery = co_await dependencies_.sink->raise(notice);
-    sent = delivery == SafetyDelivery::Sent;
-    if (sent)
+    delivery = co_await dependencies_.sink->raise(notice);
+    if (delivery == SafetyDelivery::Sent)
       co_await alertRepository_.markNotified(notice.alertId, now());
+    else if (delivery == SafetyDelivery::NoRecipients) {
+      LOG_INFO << "Guard safety: alert " << notice.alertId
+               << " has nobody left to alert; it is closed and will not be retried";
+      if (!co_await alertRepository_.markClosed(notice.alertId, now()))
+        delivery = SafetyDelivery::Pending;
+    }
     else if (delivery == SafetyDelivery::Refused) {
       LOG_ERROR << "Guard safety: alert " << notice.alertId << " attempt " << notice.sequence
                 << " was refused; the next attempt resolves the recipients again";
@@ -405,10 +412,11 @@ drogon::Task<bool> SafetyService::deliver(const SafetyAlertNotice& notice) const
   catch (const std::exception& error) {
     LOG_WARN << "Guard safety: alert " << notice.alertId
              << " delivery attempt failed: " << error.what();
-    sent = false;
+    delivery = SafetyDelivery::Pending;
   }
-  recordOutcome(notice.alertId, sent);
-  co_return sent;
+  recordOutcome(notice.alertId, delivery != SafetyDelivery::Pending &&
+                                    delivery != SafetyDelivery::Refused);
+  co_return delivery;
 }
 
 drogon::Task<void> SafetyService::escalate(const SafetyAlertRow& alert) const
@@ -439,7 +447,7 @@ drogon::Task<size_t> SafetyService::sweepPending() const
                           .actorName = alert.actorName,
                           .environmentId = alert.environmentId,
                           .now = alert.createdAt,
-                          .sequence = alert.sequence}))
+                          .sequence = alert.sequence}) == SafetyDelivery::Sent)
       ++delivered;
   }
   co_return delivered;

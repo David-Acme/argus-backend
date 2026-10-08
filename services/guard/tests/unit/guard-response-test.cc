@@ -7,6 +7,7 @@
 #include <feature/guard/dtos/update-duty-dto.hxx>
 #include <feature/guard/dtos/update-response-dto.hxx>
 #include <feature/guard/guard-policy.hxx>
+#include <feature/guard/guard-service.hxx>
 #include <feature/guard/repositories/response/response-repository.hxx>
 #include <feature/guard/services/response-plan.hxx>
 #include <feature/guard/services/response-verdict-feed.hxx>
@@ -383,6 +384,18 @@ TEST_CASE("panic and duress reach everyone at once and never the person who "
     CHECK(plan.stepCount == 1);
     CHECK(response_plan::stepUsers(plan, 0) == std::vector<int64_t>{1, 4, 3});
   }
+  const std::vector<ResponseMember> alone{
+      {.userId = 2,
+       .role = UserRole::Resident,
+       .name = "Luis",
+       .mode = RecipientMode::Call,
+       .step = 0,
+       .onDuty = false,
+       .customized = false}};
+  const std::vector<int64_t> actor{2};
+  const std::vector<int64_t> nobody;
+  CHECK(response_plan::audience({.members = alone, .excluded = actor}).empty());
+  CHECK_FALSE(response_plan::audience({.members = alone, .excluded = nobody}).empty());
   const auto escalation = planFor({.members = defaultMembers(),
                                    .presence = {},
                                    .excluded = {},
@@ -403,6 +416,56 @@ TEST_CASE("panic and duress reach everyone at once and never the person who "
                .clearThreat = false,
                .staffedNow = false});
   CHECK(tamper.strategy == ResponseStrategy::Ordered);
+}
+
+TEST_CASE("an emptied audience is terminal while a directory failure stays retryable")
+{
+  boot();
+  guard_test::RecordingNotifications notifications;
+  guard_test::QuietCameraActions camera;
+  GuardService::Config config;
+  config.retryBaseMs = 1;
+  config.retryMaxMs = 1;
+
+  guard_test::RosterIdentity lone({{1, "es"}});
+  GuardService emptied({.bus = nullptr,
+                        .identity = &lone,
+                        .notifications = &notifications,
+                        .actions = &camera,
+                        .assessment = nullptr,
+                        .directory = {}},
+                       config);
+  const GuardService::SafetyAlertOutcome alone = drogon::sync_wait(
+      emptied.raiseSafetyAlert({.duress = false,
+                                .alertId = 41,
+                                .actorUserId = 1,
+                                .actorName = "Ana",
+                                .environmentId = 0,
+                                .now = 1000,
+                                .sequence = 1}));
+  CHECK_FALSE(alone.accepted);
+  CHECK(alone.terminal);
+  CHECK(alone.unattended);
+
+  guard_test::UnavailableIdentity blind;
+  auto missing = std::make_shared<guard_test::UnavailableDirectory>();
+  GuardService unreachable({.bus = nullptr,
+                            .identity = &blind,
+                            .notifications = &notifications,
+                            .actions = &camera,
+                            .assessment = nullptr,
+                            .directory = missing},
+                           config);
+  const GuardService::SafetyAlertOutcome dropped = drogon::sync_wait(
+      unreachable.raiseSafetyAlert({.duress = true,
+                                    .alertId = 42,
+                                    .actorUserId = 2,
+                                    .actorName = "Luis",
+                                    .environmentId = 0,
+                                    .now = 1000,
+                                    .sequence = 1}));
+  CHECK_FALSE(dropped.accepted);
+  CHECK_FALSE(dropped.terminal);
 }
 
 TEST_CASE("the siren is offered only when everyone is positively away")

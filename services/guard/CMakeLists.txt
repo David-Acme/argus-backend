@@ -244,6 +244,23 @@ target_compile_definitions(guard-dlq-service-live-test PRIVATE
 target_compile_options(guard-dlq-service-live-test PRIVATE -Wall -Wextra)
 add_test(NAME guard-dlq-service-live-test COMMAND guard-dlq-service-live-test)
 
+add_executable(guard-module-lifecycle-live-test
+    tests/unit/guard-module-lifecycle-live-test.cc)
+set_target_properties(guard-module-lifecycle-live-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(guard-module-lifecycle-live-test PRIVATE
+    argus::guard
+    argus::lib::nats
+    argus::lib::sqlite
+    doctest::doctest)
+target_include_directories(guard-module-lifecycle-live-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+target_compile_definitions(guard-module-lifecycle-live-test PRIVATE
+    ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(guard-module-lifecycle-live-test PRIVATE -Wall -Wextra)
+add_test(NAME guard-module-lifecycle-live-test
+         COMMAND guard-module-lifecycle-live-test)
+
 add_executable(guard-encounter-drain-live-test
     tests/unit/guard-encounter-drain-live-test.cc)
 set_target_properties(guard-encounter-drain-live-test PROPERTIES

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <auth/role-access.hxx>
 #include <camera/camera-action-client.hxx>
 #include <camera/zone-type.hxx>
 #include <feature/guard/vocabulary/decision-mode.hxx>
@@ -44,6 +45,9 @@ public:
   void start(std::function<void()> tick)
   {
     tick_ = std::move(tick);
+    stopping_.store(false, std::memory_order_release);
+    if (started_.exchange(true))
+      return;
     const std::weak_ptr<ObservationRetryPump> weak = shared_from_this();
     drogon::app().getLoop()->runEvery(kRetryReconcileSeconds, [weak]() {
       if (const auto self = weak.lock())
@@ -68,6 +72,7 @@ public:
 private:
   std::function<void()> tick_;
   std::atomic<bool> stopping_{false};
+  std::atomic<bool> started_{false};
 };
 
 namespace
@@ -617,7 +622,13 @@ void GuardService::stopTimers()
 void GuardService::start()
 {
   const auto config = currentConfig();
+  if (dependencies_.bus)
+    static_cast<void>(ensureGuardStream());
   if (!config->enabled)
+    return;
+  if (dependencies_.active && !dependencies_.active())
+    return;
+  if (subscribed_.load(std::memory_order_acquire))
     return;
 
   startSweeps();
@@ -661,26 +672,81 @@ void GuardService::start()
            << config->consumerDurable << ")";
 }
 
+void GuardService::stop()
+{
+  if (dependencies_.bus) {
+    if (durableSubscription_.has_value()) {
+      dependencies_.bus->unsubscribe(*durableSubscription_);
+      durableSubscription_.reset();
+    }
+    if (advisorySubscription_.has_value()) {
+      dependencies_.bus->unsubscribe(*advisorySubscription_);
+      advisorySubscription_.reset();
+    }
+    if (healthSubscription_.has_value()) {
+      dependencies_.bus->unsubscribe(*healthSubscription_);
+      healthSubscription_.reset();
+    }
+  }
+  if (drogon::app().isRunning()) {
+    if (subscribeRetryTimer_.has_value())
+      drogon::app().getLoop()->invalidateTimer(*subscribeRetryTimer_);
+    for (const uint64_t id : heartbeatTimers_)
+      drogon::app().getLoop()->invalidateTimer(id);
+  }
+  subscribeRetryTimer_.reset();
+  heartbeatTimers_.clear();
+  if (retryPump_)
+    retryPump_->stop();
+  subscribed_.store(false, std::memory_order_release);
+  advisoriesSubscribed_ = false;
+  healthSubscribed_ = false;
+  heartbeatStarted_ = false;
+  subscribeAttempts_ = 0;
+  encounterStreamReady_.store(false, std::memory_order_release);
+}
+
+bool GuardService::watching() const
+{
+  return subscribed_.load(std::memory_order_acquire);
+}
+
+void GuardService::applyModuleChange(const ModuleChange& change)
+{
+  if (change.id != role_access::kSurveillanceModule)
+    return;
+  drogon::app().getLoop()->queueInLoop([this, enabled = change.enabled]() {
+    if (enabled)
+      start();
+    else
+      stop();
+  });
+}
+
 void GuardService::startHeartbeat()
 {
   const auto config = currentConfig();
   if (heartbeatStarted_)
     return;
   heartbeatStarted_ = true;
-  trackTimer(drogon::app().getLoop()->runEvery(
+  const uint64_t keepaliveTimer = drogon::app().getLoop()->runEvery(
       kDeliveryKeepaliveS, [keepalive = keepalive_, lifecycle = lifecycle_]() {
         const LifecycleGuard guard(lifecycle);
         if (guard.alive())
           keepalive->touch();
-      }));
-  trackTimer(drogon::app().getLoop()->runEvery(
+      });
+  heartbeatTimers_.push_back(keepaliveTimer);
+  trackTimer(keepaliveTimer);
+  const uint64_t beatTimer = drogon::app().getLoop()->runEvery(
       static_cast<double>(std::max(1, config->heartbeatS)),
       [this, lifecycle = lifecycle_]() {
         const LifecycleGuard guard(lifecycle);
         if (!guard.alive())
           return;
         publishHeartbeat();
-      }));
+      });
+  heartbeatTimers_.push_back(beatTimer);
+  trackTimer(beatTimer);
 }
 
 drogon::Task<void> GuardService::reconcileObservations()
@@ -752,7 +818,7 @@ bool GuardService::trySubscribe()
   if (!subscription)
     return false;
   durableSubscription_ = *subscription;
-  subscribed_ = true;
+  subscribed_.store(true, std::memory_order_release);
   subscribeAdvisories();
   subscribeHealth();
   return true;
@@ -1161,22 +1227,27 @@ GuardService::computeHolds(const HoldInput& input)
 
 void GuardService::scheduleSubscribeRetry()
 {
-  trackTimer(drogon::app().getLoop()->runEvery(5.0, [this, lifecycle = lifecycle_]() {
-    const LifecycleGuard guard(lifecycle);
-    if (!guard.alive() || subscribed_)
-      return;
-    if (trySubscribe()) {
-      LOG_INFO << "Guard service: durable consumer connected (attempt "
-               << subscribeAttempts_ + 1 << ")";
-      startHeartbeat();
-      publishHeartbeat();
-      startSweeps();
-      return;
-    }
-    if (++subscribeAttempts_ == 60)
-      LOG_WARN << "Guard service: still without a durable consumer; camera "
-                  "events will replay once the stream is available";
-  }));
+  if (drogon::app().isRunning() && subscribeRetryTimer_.has_value())
+    drogon::app().getLoop()->invalidateTimer(*subscribeRetryTimer_);
+  const uint64_t timer =
+      drogon::app().getLoop()->runEvery(5.0, [this, lifecycle = lifecycle_]() {
+        const LifecycleGuard guard(lifecycle);
+        if (!guard.alive() || subscribed_.load(std::memory_order_acquire))
+          return;
+        if (trySubscribe()) {
+          LOG_INFO << "Guard service: durable consumer connected (attempt "
+                   << subscribeAttempts_ + 1 << ")";
+          startHeartbeat();
+          publishHeartbeat();
+          startSweeps();
+          return;
+        }
+        if (++subscribeAttempts_ == 60)
+          LOG_WARN << "Guard service: still without a durable consumer; camera "
+                      "events will replay once the stream is available";
+      });
+  subscribeRetryTimer_ = timer;
+  trackTimer(timer);
 }
 
 void GuardService::startSweeps()
@@ -3423,6 +3494,7 @@ GuardService::performEffect(const EffectInput& input)
       result.speechDetected = response.get("speechDetected", false).asBool();
       result.heard = response.get("heard", "").asString();
       result.detail = response.get("detail", "").asString();
+      result.unattended = response.get("unattended", false).asBool();
     }
     if (result.detail.empty())
       result.detail = !intent->detail.empty()
@@ -3529,6 +3601,11 @@ GuardService::performEffect(const EffectInput& input)
             result.pending = true;
             result.detail = "notification_failed";
             break;
+          case EffectStatus::NoRecipients:
+            result.status = GuardIntentStatus::Rejected;
+            result.unattended = true;
+            result.detail = "no_recipients";
+            break;
         }
         break;
       }
@@ -3624,6 +3701,7 @@ GuardService::performEffect(const EffectInput& input)
   response["pending"] = result.pending;
   response["indeterminate"] = result.indeterminate;
   response["executed"] = result.executed;
+  response["unattended"] = result.unattended;
   response["detail"] = result.detail;
   response["speechDetected"] = result.speechDetected;
   response["heard"] = result.heard;
@@ -3881,25 +3959,33 @@ std::string GuardService::userLang(int64_t userId)
   return lang;
 }
 
-drogon::Task<std::optional<GuardService::RecipientResolution>>
+drogon::Task<GuardService::RecipientResolution>
 GuardService::legacyRecipients(const RecipientQuery& query)
 {
   if (!dependencies_.identity) {
     LOG_WARN << "Guard service: identity SDK unavailable";
-    co_return std::nullopt;
+    co_return RecipientResolution{
+        .outcome = RecipientOutcome::Unavailable, .batches = {}, .plan = Json::Value()};
   }
   const bool redacted = visitorPresent(query.data);
-  co_return co_await BlockingTask<std::optional<RecipientResolution>>(
-      [this, excluded = query.excluded, redacted]() -> std::optional<RecipientResolution> {
+  co_return co_await BlockingTask<RecipientResolution>(
+      [this, excluded = query.excluded, redacted]() -> RecipientResolution {
         const auto users = dependencies_.identity->listNotifiableUsers();
         if (!users || users->empty())
-          return std::nullopt;
+          return RecipientResolution{.outcome = RecipientOutcome::Unavailable,
+                                     .batches = {},
+                                     .plan = Json::Value()};
         std::map<std::string, std::vector<int64_t>> byLang;
         for (const int64_t userId : *users) {
           if (std::ranges::find(excluded, userId) == excluded.end())
             byLang[userLang(userId)].push_back(userId);
         }
-        RecipientResolution resolution{.batches = {}, .plan = Json::Value()};
+        RecipientResolution resolution;
+        if (byLang.empty()) {
+          resolution.outcome = RecipientOutcome::Empty;
+          return resolution;
+        }
+        resolution.outcome = RecipientOutcome::Planned;
         resolution.batches.reserve(byLang.size());
         for (auto& [lang, ids] : byLang)
           resolution.batches.push_back(
@@ -3983,11 +4069,14 @@ GuardService::planRecipients(const PlanQuery& query)
   };
 
   const auto trigger = responseTriggerOf(data);
-  if (!trigger)
+  if (!trigger) {
+    std::vector<RecipientBatch> batches = batchesOf(response_plan::audience(
+        {.members = members, .excluded = query.excluded}));
     co_return RecipientResolution{
-        .batches = batchesOf(response_plan::audience(
-            {.members = members, .excluded = query.excluded})),
+        .outcome = batches.empty() ? RecipientOutcome::Empty : RecipientOutcome::Planned,
+        .batches = std::move(batches),
         .plan = Json::Value()};
+  }
 
   std::vector<int64_t> memberIds;
   memberIds.reserve(members.size());
@@ -4035,8 +4124,12 @@ GuardService::planRecipients(const PlanQuery& query)
        .stepSeconds = rows.setting.stepSeconds,
        .emergencyNumber = rows.setting.emergencyNumber,
        .contacts = rows.contacts});
-  co_return RecipientResolution{.batches = batchesOf(response_plan::stepUsers(plan, 0)),
-                                .plan = response_plan::toJson(plan)};
+  std::vector<RecipientBatch> batches =
+      batchesOf(response_plan::stepUsers(plan, 0));
+  co_return RecipientResolution{
+      .outcome = batches.empty() ? RecipientOutcome::Empty : RecipientOutcome::Planned,
+      .batches = std::move(batches),
+      .plan = response_plan::toJson(plan)};
 }
 
 drogon::Task<std::optional<std::vector<ResponseUser>>> GuardService::directoryUsers()
@@ -4079,7 +4172,7 @@ drogon::Task<std::optional<std::vector<ResponseUser>>> GuardService::directoryUs
   co_return std::nullopt;
 }
 
-drogon::Task<std::optional<GuardService::RecipientResolution>>
+drogon::Task<GuardService::RecipientResolution>
 GuardService::recipientsFor(const RecipientQuery& query)
 {
   if (!dependencies_.directory)
@@ -4089,11 +4182,8 @@ GuardService::recipientsFor(const RecipientQuery& query)
     LOG_WARN << "Guard service: user directory unavailable; using the fallback roster";
     co_return co_await legacyRecipients(query);
   }
-  RecipientResolution resolution = co_await planRecipients(
+  co_return co_await planRecipients(
       {.data = query.data, .excluded = query.excluded, .users = *users, .now = query.now});
-  if (resolution.batches.empty())
-    co_return std::nullopt;
-  co_return resolution;
 }
 
 drogon::Task<bool> GuardService::familyInside(int64_t environmentId)
@@ -4109,6 +4199,78 @@ drogon::Task<bool> GuardService::familyInside(int64_t environmentId)
     LOG_WARN << "Guard service: presence read failed: " << error.what();
   }
   co_return false;
+}
+
+drogon::Task<GuardService::EmptyAudience>
+GuardService::emptyAudience(const NotifyInput& input,
+                            const RecipientResolution& resolution)
+{
+  const int64_t actorUserId = input.content.excludeUserIds.empty()
+                                  ? 0
+                                  : input.content.excludeUserIds.front();
+  const bool panic = input.content.notice.kind == NoticeKind::Panic;
+  std::vector<GuardContact> contacts;
+  if (resolution.plan["contacts"].isArray()) {
+    for (const auto& contact : resolution.plan["contacts"])
+      contacts.push_back({.name = contact.get("name", "").asString(),
+                          .phone = contact.get("phone", "").asString()});
+  }
+  if (panic && actorUserId > 0 && !contacts.empty()) {
+    const std::string lang = co_await BlockingTask<std::string>(
+        [this, actorUserId]() { return userLang(actorUserId); });
+    co_return EmptyAudience{.status = EffectStatus::Succeeded,
+                            .batches = {{.lang = lang,
+                                         .userIds = {actorUserId},
+                                         .redacted = false}},
+                            .contacts = std::move(contacts)};
+  }
+  if (panic && actorUserId > 0) {
+    if (!co_await notifyUnattended(input, actorUserId))
+      co_return EmptyAudience{
+          .status = EffectStatus::RetryableFailed, .batches = {}, .contacts = {}};
+  }
+  LOG_ERROR << "Guard service: nobody can be alerted by policy; notification "
+            << input.commandId << " is not retried";
+  co_return EmptyAudience{};
+}
+
+drogon::Task<bool>
+GuardService::notifyUnattended(const NotifyInput& input, int64_t actorUserId)
+{
+  if (!dependencies_.notifications)
+    co_return false;
+  const int64_t alertId = input.content.data.get("alertId", 0).asInt64();
+  const std::string reference =
+      alertId > 0 ? std::to_string(alertId) : input.eventId;
+  const std::string lang = co_await BlockingTask<std::string>(
+      [this, actorUserId]() { return userLang(actorUserId); });
+  const NoticeText text = guard_copy::unattended(lang);
+  Json::Value data(Json::objectValue);
+  data["kind"] = "guard_panic_unattended";
+  data["urgency"] = "critical";
+  data["silent"] = true;
+  data["threadKey"] = "guard:panic:" + reference;
+  data["alertId"] = static_cast<Json::Int64>(alertId);
+  data["cameraId"] = 0;
+  data["lang"] = lang;
+  const auto result = co_await BlockingTask<NotificationCreateResult>(
+      [this, actorUserId, reference, text, data]() {
+        argus::notification::v1::CreateNotificationsRequest request;
+        request.add_user_ids(actorUserId);
+        request.set_command_id("panic:" + reference + ":unattended");
+        request.set_type("camera");
+        request.set_title(text.title);
+        request.set_body(text.body);
+        request.set_data(json_util::toString(data));
+        return dependencies_.notifications->createNotifications(
+            request, {.userId = 0, .role = "system", .device = "argus-guard"});
+      });
+  if (result.outcome != NotificationRpcOutcome::Success) {
+    LOG_WARN << "Guard service: the unattended-panic notice for alert "
+             << reference << " was not delivered";
+    co_return false;
+  }
+  co_return true;
 }
 
 drogon::Task<GuardService::EffectStatus>
@@ -4168,18 +4330,26 @@ GuardService::notify(const NotifyInput& input)
   }
 
   if (deliveries.empty()) {
-    const auto resolution = co_await recipientsFor(
+    const RecipientResolution resolution = co_await recipientsFor(
         {.data = input.content.data,
          .excluded = input.content.excludeUserIds,
          .now = input.now});
-    if (!resolution) {
+    if (resolution.outcome == RecipientOutcome::Unavailable) {
       LOG_WARN << "Guard service: no notifiable users; notification dropped";
       co_return EffectStatus::RetryableFailed;
     }
-    const std::vector<RecipientBatch>& batches = resolution->batches;
+    std::vector<RecipientBatch> batches = resolution.batches;
+    std::vector<GuardContact> contacts;
+    if (resolution.outcome == RecipientOutcome::Empty) {
+      EmptyAudience fallback = co_await emptyAudience(input, resolution);
+      if (fallback.status != EffectStatus::Succeeded)
+        co_return fallback.status;
+      batches = std::move(fallback.batches);
+      contacts = std::move(fallback.contacts);
+    }
     data = input.content.data;
-    if (resolution->plan.isObject() && data.isObject())
-      data["response"] = resolution->plan;
+    if (resolution.plan.isObject() && data.isObject())
+      data["response"] = resolution.plan;
     Json::Value payload(Json::objectValue);
     payload["type"] = "camera";
     payload["data"] = data;
@@ -4188,7 +4358,11 @@ GuardService::notify(const NotifyInput& input)
       GuardNotice notice = input.content.notice;
       if (batch.redacted)
         notice.visitor = {};
-      const NoticeText text = guard_copy::render(notice, batch.lang);
+      const NoticeText text =
+          contacts.empty()
+              ? guard_copy::render(notice, batch.lang)
+              : guard_copy::panicContacts(
+                    {.notice = notice, .contacts = contacts, .lang = batch.lang});
       deliveries.push_back({.lang = batch.lang,
                             .userIds = batch.userIds,
                             .title = text.title,
@@ -4354,5 +4528,6 @@ GuardService::raiseSafetyAlert(const SafetyAlertInput& input)
                          .excludeUserIds = {input.actorUserId}}});
   co_return SafetyAlertOutcome{
       .accepted = sent.accepted,
-      .terminal = !sent.accepted && guardIntentStatusIsTerminal(sent.status)};
+      .terminal = !sent.accepted && guardIntentStatusIsTerminal(sent.status),
+      .unattended = sent.unattended};
 }

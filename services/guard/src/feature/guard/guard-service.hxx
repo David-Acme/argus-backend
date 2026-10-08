@@ -18,6 +18,7 @@
 #include <shared/repositories/presence/presence-repository.hxx>
 
 #include <atomic>
+#include <auth/module-gate.hxx>
 #include <config/guard-config.hxx>
 #include <cstdint>
 #include <ctime>
@@ -61,6 +62,7 @@ public:
   {
     bool accepted{false};
     bool terminal{false};
+    bool unattended{false};
   };
 
   [[nodiscard]] drogon::Task<SafetyAlertOutcome> raiseSafetyAlert(const SafetyAlertInput& input);
@@ -82,6 +84,12 @@ public:
   ~GuardService();
 
   void start();
+
+  void stop();
+
+  void applyModuleChange(const ModuleChange& change);
+
+  [[nodiscard]] bool watching() const;
 
   [[nodiscard]] std::shared_ptr<const Config> currentConfig() const;
 
@@ -185,16 +193,24 @@ private:
     int64_t now{0};
   };
 
+  enum class RecipientOutcome : uint8_t
+  {
+    Planned = 0,
+    Empty,
+    Unavailable
+  };
+
   struct RecipientResolution
   {
+    RecipientOutcome outcome{RecipientOutcome::Unavailable};
     std::vector<RecipientBatch> batches;
     Json::Value plan;
   };
 
-  drogon::Task<std::optional<RecipientResolution>>
+  [[nodiscard]] drogon::Task<RecipientResolution>
   recipientsFor(const RecipientQuery& query);
 
-  drogon::Task<std::optional<RecipientResolution>>
+  [[nodiscard]] drogon::Task<RecipientResolution>
   legacyRecipients(const RecipientQuery& query);
 
   struct PlanQuery
@@ -238,7 +254,8 @@ private:
     InFlight,
     Indeterminate,
     Rejected,
-    RetryableFailed
+    RetryableFailed,
+    NoRecipients
   };
 
   struct EffectResult
@@ -250,11 +267,25 @@ private:
     bool indeterminate{false};
     bool resumable{false};
     bool speechDetected{false};
+    bool unattended{false};
     std::string detail;
     std::string heard;
     GuardIntentStatus status{GuardIntentStatus::Pending};
     int64_t retryAt{0};
   };
+
+  struct EmptyAudience
+  {
+    EffectStatus status{EffectStatus::NoRecipients};
+    std::vector<RecipientBatch> batches;
+    std::vector<GuardContact> contacts;
+  };
+
+  [[nodiscard]] drogon::Task<EmptyAudience>
+  emptyAudience(const NotifyInput& input, const RecipientResolution& resolution);
+
+  [[nodiscard]] drogon::Task<bool>
+  notifyUnattended(const NotifyInput& input, int64_t actorUserId);
 
   struct ObservationResult
   {
@@ -598,13 +629,15 @@ private:
   std::atomic<bool> encounterSweepRunning_{false};
   std::mutex directoryMutex_;
   std::optional<std::vector<ResponseUser>> lastDirectory_;
-  bool subscribed_{false};
+  std::atomic<bool> subscribed_{false};
   std::atomic<bool> encounterStreamReady_{false};
   bool advisoriesSubscribed_{false};
   bool healthSubscribed_{false};
   bool sweepsStarted_{false};
   bool heartbeatStarted_{false};
   int subscribeAttempts_{0};
+  std::optional<uint64_t> subscribeRetryTimer_;
+  std::vector<uint64_t> heartbeatTimers_;
   std::shared_ptr<ObservationRetryPump> retryPump_;
   std::optional<uint64_t> durableSubscription_;
   std::optional<uint64_t> advisorySubscription_;

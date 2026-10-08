@@ -16,5 +16,7 @@ drogon::Task<SafetyDelivery> GuardAlertSink::raise(const SafetyAlertNotice& noti
                                         .sequence = notice.sequence});
   if (outcome.accepted)
     co_return SafetyDelivery::Sent;
+  if (outcome.unattended)
+    co_return SafetyDelivery::NoRecipients;
   co_return outcome.terminal ? SafetyDelivery::Refused : SafetyDelivery::Pending;
 }

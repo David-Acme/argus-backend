@@ -8,6 +8,7 @@
 #include <chrono>
 #include <drogon/drogon.h>
 #include <feature/guard/guard-schema.hxx>
+#include <feature/guard/services/response-plan.hxx>
 #include <identity/identity-client.hxx>
 #include <map>
 #include <mutex>
@@ -213,6 +214,48 @@ struct SentNotification
   std::string body;
   std::string data;
   int recipients{0};
+};
+
+class UnavailableIdentity final : public IdentityClient
+{
+public:
+  UnavailableIdentity() : IdentityClient("127.0.0.1:1", "fleet") {}
+
+  std::optional<std::vector<int64_t>> listNotifiableUsers() const override
+  {
+    return std::nullopt;
+  }
+
+  std::optional<argus::identity::v1::GetUserResponse> getUser(int64_t) const override
+  {
+    return std::nullopt;
+  }
+};
+
+class RosterDirectory final : public ResponseDirectory
+{
+public:
+  explicit RosterDirectory(std::vector<ResponseUser> users)
+      : users_(std::move(users))
+  {
+  }
+
+  [[nodiscard]] std::optional<std::vector<ResponseUser>> users() const override
+  {
+    return users_;
+  }
+
+private:
+  std::vector<ResponseUser> users_;
+};
+
+class UnavailableDirectory final : public ResponseDirectory
+{
+public:
+  [[nodiscard]] std::optional<std::vector<ResponseUser>> users() const override
+  {
+    return std::nullopt;
+  }
 };
 
 class RecordingNotifications final : public NotificationClient

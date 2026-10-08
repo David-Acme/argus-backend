@@ -21,7 +21,8 @@ enum class SafetyDelivery : uint8_t
 {
   Sent,
   Pending,
-  Refused
+  Refused,
+  NoRecipients
 };
 
 class SafetyAlertSink

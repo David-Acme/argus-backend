@@ -49,6 +49,7 @@ drogon::Task<std::vector<SafetyAlertRow>> SafetyAlertRepository::pending() const
                       .createdAt = row["created_at"].as<int64_t>(),
                       .sequence = row["notify_sequence"].as<int64_t>(),
                       .escalatedAt = row["escalated_at"].as<int64_t>(),
+                      .closedAt = row["closed_at"].as<int64_t>(),
                       .actorName = row["actor_name"].as<std::string>()});
   }
   co_return alerts;
@@ -65,6 +66,13 @@ drogon::Task<bool> SafetyAlertRepository::markEscalated(int64_t id, int64_t now)
 {
   const auto result =
       co_await DbService::client()->execSqlCoro(std::string(MARK_ESCALATED), now, id);
+  co_return result.affectedRows() > 0;
+}
+
+drogon::Task<bool> SafetyAlertRepository::markClosed(int64_t id, int64_t now) const
+{
+  const auto result =
+      co_await DbService::client()->execSqlCoro(std::string(MARK_CLOSED), now, id);
   co_return result.affectedRows() > 0;
 }
 

@@ -283,7 +283,11 @@ int main()
   drogon::app().registerController(std::make_shared<CallPreferenceController>());
   drogon::app().registerController(std::make_shared<CallResponseController>(callEngine));
   if (natsBus) {
-    call_feed::subscribe({.bus = natsBus, .engine = callEngine, .tasks = tasks});
+    call_feed::subscribe({.bus = natsBus,
+                          .engine = callEngine,
+                          .tasks = tasks,
+                          .attempt = {},
+                          .delay = {}});
     token_revocation::subscribe(
         {.bus = natsBus,
          .service = std::make_shared<const TokenRevocationService>(),

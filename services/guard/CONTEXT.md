@@ -183,7 +183,11 @@ through the identity SDK, and incidents are stored locally.
 
 ## Flags
 
-`[guard] enabled`, `profile`, `default_mode`, `notify_level`,
+`[guard] enabled` is the one boot-bound kill-switch (default on): with it off
+the service never watches, whatever the module says. The service lifecycle
+otherwise comes from the surveillance module (see "Surveillance as a
+selectable module"): the guard follows it, and `ARGUS_GUARD` is ensured at
+boot either way. The remaining flags: `profile`, `default_mode`, `notify_level`,
 `announce_level`, `alarm_level`, `announce_text`, `announce_lang`,
 `alarm_seconds`, `arm_siren`, `siren_seconds`, `veto_scope`,
 `action_cooldown_s`, `repeat_window_s`, `max_actions_per_hour`,
@@ -1111,8 +1115,9 @@ people see are those of an ordinary disarm. Raising the mode never asks. Switchi
   hash slows that down rather than prevents it; online guessing is capped by
   the lockout. A lockout is per user and in memory, so a restart resets it;
   that is an accepted gap.
-- *Not covered:* a household with a single member has nobody to alert (the
-  external emergency contacts of RESPONSE are the only fallback); a duress
+- *Not covered:* a household with a single member has nobody else to alert;
+  a panic there falls back to the environment's emergency contacts or, with
+  none configured, ends terminal (below). A duress
   phrase over voice is not built (an STT transcript cannot be matched
   against a hash reliably, and the voice tool cannot disarm a user who has
   codes, it gets `PIN_REQUIRED`); an attacker who knows the household uses
@@ -1137,7 +1142,9 @@ people see are those of an ordinary disarm. Raising the mode never asks. Switchi
   attempt runs inline; on failure the safety sweep (every 5 s, started by
   `SafetyService::start`, a `shutdown_signal` drain named `guard-safety`)
   re-delivers every pending alert, whatever its age, with a bounded backoff
-  (2 s doubling to 60 s) and no attempt limit until it is notified. A refusal
+  (2 s doubling to 60 s) and no attempt limit until it is notified — unless
+  the policy leaves nobody to alert at all (below), which is terminal and
+  closes the row. A refusal
   the outbox would replay forever (argus-notification answering `INTERNAL`,
   `PERMISSION_DENIED`, a command conflict) advances the alert's
   `notify_sequence`: the next attempt runs under the fresh correlation
@@ -1157,6 +1164,36 @@ people see are those of an ordinary disarm. Raising the mode never asks. Switchi
 - *Trace.* Both kinds of alert use the opaque correlation `safety:<alertId>`
   for their command ids, and the safety log lines say "alert", never which
   kind.
+
+**A panic with nobody left.** An empty recipient list is a policy fact, not
+a transport failure, and the two are told apart where the plan is built
+(`GuardService::RecipientResolution`: planned, empty, unavailable). Only
+"unavailable" (identity or the fallback roster unreachable) keeps retrying
+with the backoff above. "Empty" after the actor's exclusion means the plan
+left no one, and it is terminal: the alert is closed (`closed_at`), the
+notify intent settles `rejected` with detail `no_recipients` — the one
+`guard_action` row that records the outcome — and one `LOG_ERROR` names it.
+A panic still reaches someone if the environment has emergency contacts
+(`guard_response_contact`): Argus cannot dial, so the contacts are listed in
+the actor's notice itself (name and phone, in the actor's language) and the
+plan `data.response` carries them structured too; that is what marks the
+alert notified. Listing them reads the actor's identity directory; on the
+legacy roster path (no `ResponseDirectory`, which production always wires)
+the window stays empty. A
+panic with no contacts at all sends the actor one urgent
+`guard_panic_unattended` notice ("No hay nadie más a quién avisar. Configura
+contactos de emergencia en Vigilancia." / its en twin), and the alert is only
+closed once that notice is in: a failed send leaves it pending so the safety
+sweep retries with the backoff above, and the notice's fixed command id
+(`panic:<alertId>:unattended`) keeps the retries to exactly one message.
+The single `LOG_ERROR` of a terminal decision is the guard's own line, at
+the moment the outcome is final; `SafetyService` logs the closed row at
+`INFO`. Duress is the exception in both directions: the actor's phone
+must not change, so an empty duress plan goes terminal with the log and the
+audit row and no actor notice, and the contacts do not change that (there is
+no one to hand them to without the coerced phone). `SafetyService::deliver`
+carries the terminal verdict as `SafetyDelivery::NoRecipients`, which stops
+the sweep instead of minting the fresh correlation a refusal takes.
 
 Code: `src/feature/safety/` (controller, DTOs, `SafetyService` as the
 `DisarmGate` that `GuardFeatureService::setMode` consults, `pin-hash`,
@@ -1400,10 +1437,24 @@ The cloud audit (`docs/history/reports/cloud-audit-2026-10-05.md`, findings
 `main.cc` installs the module gate (durable `argus-guard-modules`,
 `packages/lib/auth/CONTEXT.md`, "Module gating"): every `/guard` route
 answers 403 `MODULE_DISABLED` while surveillance is not `active` (the panic
-and safety routes included, as the plan lists `/guard` whole), and
-`GuardService` stops evaluating: an object event that arrives is acked
-without a decision and the tamper sweep and the daily and quiet-day summaries
-skip, through `Dependencies::active`. Encounters already open still close on
+and safety routes included, as the plan lists `/guard` whole).
+
+**The service follows the module.** `GuardService::start()` first ensures
+`ARGUS_GUARD` idempotently — guard-owned infrastructure, ahead of every early
+return, so a fresh install, a turned-off module or the `enabled` kill-switch
+all still leave the stream the notification call feed and the llm encounter
+consumer read. With the kill-switch on and the module active it then
+subscribes, starts its sweeps and its retry pump; with the module inactive it
+does nothing. The module feed's `onChange` calls
+`GuardService::applyModuleChange`, which marshals to the event loop and
+calls `start()` on an enable and `stop()` on a disable; `stop()` unsubscribes
+the camera, advisory and health subscriptions, drops the consumer retry timer
+and the heartbeat, and stops the retry pump, without touching the process
+lifecycle. The encounter sweep keeps running, so the paragraph below holds,
+and the safety sweep was never the module's (panic is core and never stops).
+An object event that arrives is acked without a decision while the module is
+off, and the tamper sweep and the daily and quiet-day summaries skip, through
+`Dependencies::active`. Encounters already open still close on
 their timeout and the encounter outbox still drains, so nothing is lost or
 half written; no data is deleted. Evaluation resumes with the next event after
 the enable.

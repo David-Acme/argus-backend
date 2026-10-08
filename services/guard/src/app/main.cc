@@ -322,9 +322,12 @@ int main()
       });
     });
   };
-  moduleGate().onChange([windDown](const ModuleChange& change) {
-    if (change.id == role_access::kSurveillanceModule && !change.enabled)
+  moduleGate().onChange([&guardService, windDown](const ModuleChange& change) {
+    if (change.id != role_access::kSurveillanceModule)
+      return;
+    if (!change.enabled)
       windDown();
+    guardService.applyModuleChange(change);
   });
   const GuardAlertSink safetySink(guardService);
   const NotificationActorNotifier safetyActor(

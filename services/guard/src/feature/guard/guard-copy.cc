@@ -542,6 +542,42 @@ NoticeText guard_copy::render(const GuardNotice& notice, std::string_view lang)
   return renderEpisode(notice, english);
 }
 
+NoticeText guard_copy::unattended(std::string_view lang)
+{
+  const bool english =
+      normalizeLang({.requested = lang, .fallback = "es"}) == "en";
+  if (english)
+    return {.title = "Nobody else to warn",
+            .body = "There is nobody else to warn. Add emergency contacts in Security."};
+  return {.title = "Nadie más a quien avisar",
+          .body = "No hay nadie más a quién avisar. Configura contactos de emergencia en Vigilancia."};
+}
+
+NoticeText guard_copy::panicContacts(const PanicContactsInput& input)
+{
+  NoticeText text = render(input.notice, input.lang);
+  std::string list;
+  for (const GuardContact& contact : input.contacts) {
+    if (contact.name.empty() && contact.phone.empty())
+      continue;
+    if (!list.empty())
+      list += ", ";
+    list += contact.name;
+    if (!contact.phone.empty())
+      list += " (" + contact.phone + ")";
+  }
+  if (list.empty())
+    return text;
+  const bool english =
+      normalizeLang({.requested = input.lang, .fallback = "es"}) == "en";
+  text.body = english
+                  ? "There is nobody else to warn. Call your emergency contacts: " +
+                        list + "."
+                  : "No hay nadie más a quién avisar. Llama a tus contactos de "
+                    "emergencia: " + list + ".";
+  return text;
+}
+
 std::string guard_copy::urgency(const GuardNotice& notice)
 {
   switch (notice.kind) {

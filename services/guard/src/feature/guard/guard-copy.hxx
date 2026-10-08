@@ -6,6 +6,7 @@
 #include <feature/guard/vocabulary/guard-reason.hxx>
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -91,6 +92,12 @@ struct NoticeText
   std::string body;
 };
 
+struct GuardContact
+{
+  std::string name;
+  std::string phone;
+};
+
 namespace guard_copy
 {
 
@@ -103,6 +110,17 @@ struct LangPreference
 std::string normalizeLang(const LangPreference& preference);
 
 NoticeText render(const GuardNotice& notice, std::string_view lang);
+
+NoticeText unattended(std::string_view lang);
+
+struct PanicContactsInput
+{
+  const GuardNotice& notice;
+  std::span<const GuardContact> contacts;
+  std::string_view lang;
+};
+
+NoticeText panicContacts(const PanicContactsInput& input);
 
 std::string urgency(const GuardNotice& notice);
 

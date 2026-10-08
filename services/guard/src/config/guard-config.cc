@@ -193,7 +193,7 @@ GuardAssessmentConfig GuardConfig::resolveAssessment()
 GuardServiceConfig GuardConfig::resolveService()
 {
   GuardServiceConfig config;
-  config.enabled = ConfigService::getBool("guard.enabled");
+  config.enabled = configBoolOr("guard.enabled", true);
   config.profile = configOr({.key = "guard.profile", .fallback = "home"});
   config.defaultMode =
       guardModeFromString(configOr({.key = "guard.default_mode", .fallback = "home"}));

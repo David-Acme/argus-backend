@@ -449,12 +449,15 @@ bool NatsBus::ensureDurable(const DurableInput& input)
       return true;
   }
 
-  LOG_WARN << "NATS durable consumer " << input.durable << " on "
-           << input.stream << " is not ready: " << natsStatus_GetText(status)
-           << " (err " << errorCode << ": " << lastErrorText() << ")"
-           << (reason.find(kImmutableConfigText) != std::string::npos && !input.recreateOnPolicyChange
-                   ? "; the existing durable is left as it is"
-                   : "");
+  const bool conflict =
+      reason.find(kImmutableConfigText) != std::string::npos;
+  if (!input.quiet || conflict)
+    LOG_WARN << "NATS durable consumer " << input.durable << " on "
+             << input.stream << " is not ready: " << natsStatus_GetText(status)
+             << " (err " << errorCode << ": " << lastErrorText() << ")"
+             << (conflict && !input.recreateOnPolicyChange
+                     ? "; the existing durable is left as it is"
+                     : "");
   return false;
 }
 
@@ -480,9 +483,10 @@ bool NatsBus::attachDurable(const DurableInput& input, uint64_t id)
       js_Subscribe(&rawSub, js_.get(), input.subject.c_str(), onDurableMessage,
                    this, &options, &subOptions, &errorCode);
   if (status != NATS_OK || rawSub == nullptr) {
-    LOG_WARN << "NATS durable subscribe to " << input.subject
-             << " failed: " << natsStatus_GetText(status) << " (err "
-             << errorCode << ": " << lastErrorText() << ")";
+    if (!input.quiet)
+      LOG_WARN << "NATS durable subscribe to " << input.subject
+               << " failed: " << natsStatus_GetText(status) << " (err "
+               << errorCode << ": " << lastErrorText() << ")";
     return false;
   }
   durable_.emplace(

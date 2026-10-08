@@ -27,6 +27,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using guard_test::GuardBoot;
@@ -122,9 +123,32 @@ GuardService::Config quickRetries()
   return config;
 }
 
+std::shared_ptr<const ResponseDirectory> singleMemberDirectory()
+{
+  return std::make_shared<guard_test::RosterDirectory>(
+      std::vector<ResponseUser>{{.userId = 1,
+                                 .role = UserRole::Owner,
+                                 .active = true,
+                                 .name = "Ana",
+                                 .lang = "es"}});
+}
+
 struct SafetyRig
 {
-  RosterIdentity identity{{{1, "es"}, {2, "es"}, {3, "en"}}};
+  explicit SafetyRig(
+      std::map<int64_t, std::string> langs = {{1, "es"}, {2, "es"}, {3, "en"}},
+      std::shared_ptr<const ResponseDirectory> directory = {})
+      : identity(std::move(langs)), directory(std::move(directory))
+  {
+    scalar("DELETE FROM guard_user_pin");
+    scalar("DELETE FROM guard_safety_setting");
+    scalar("DELETE FROM guard_safety_alert");
+    scalar("DELETE FROM guard_response_contact");
+    scalar("UPDATE guard_environment SET mode = 'away'");
+  }
+
+  RosterIdentity identity;
+  std::shared_ptr<const ResponseDirectory> directory;
   AddressedNotifications notifications;
   QuietCameraActions camera;
   GuardService guard{GuardService::Dependencies{.bus = nullptr,
@@ -132,7 +156,7 @@ struct SafetyRig
                                                 .notifications = &notifications,
                                                 .actions = &camera,
                                                 .assessment = nullptr,
-                                                .directory = {}},
+                                                .directory = directory},
                      quickRetries()};
   GuardAlertSink sink{guard};
   NotificationActorNotifier actor{
@@ -152,14 +176,6 @@ struct SafetyRig
                                              .retentionS = 30LL * 86400,
                                              .attempts = {.maxFailures = 3, .windowSeconds = 900}}};
   GuardFeatureService feature{GuardFeatureDependencies{.identity = &identity, .disarm = &safety}};
-
-  SafetyRig()
-  {
-    scalar("DELETE FROM guard_user_pin");
-    scalar("DELETE FROM guard_safety_setting");
-    scalar("DELETE FROM guard_safety_alert");
-    scalar("UPDATE guard_environment SET mode = 'away'");
-  }
 
   [[nodiscard]] std::vector<Delivered> ofKind(const std::string& kind) const
   {
@@ -426,6 +442,105 @@ TEST_CASE("panic alerts the household critically, never rings the actor, and con
   CHECK(rig.ofKind("guard_panic").size() == alerts.size());
 }
 
+TEST_CASE("a single-member panic falls back to the emergency contacts instead of dying silently")
+{
+  boot();
+  SafetyRig rig(std::map<int64_t, std::string>{{1, "es"}}, singleMemberDirectory());
+  scalar("INSERT INTO guard_response_contact (environment_id, position, name, phone, note, "
+         "updated_at) SELECT id, 0, 'Vecina Ana', '+51987654321', '', 0 "
+         "FROM guard_environment WHERE is_default = 1");
+  const PanicResult result = drogon::sync_wait(
+      rig.safety.panic({.userId = 1, .userName = "Ana", .environmentId = std::nullopt}));
+  CHECK(result.sent);
+  const auto alerts = rig.ofKind("guard_panic");
+  REQUIRE(alerts.size() == 1);
+  CHECK(alerts[0].userIds == std::vector<int64_t>{1});
+  REQUIRE(alerts[0].data["response"]["contacts"].isArray());
+  REQUIRE(alerts[0].data["response"]["contacts"].size() == 1);
+  CHECK(alerts[0].data["response"]["contacts"][0]["name"].asString() == "Vecina Ana");
+  CHECK(alerts[0].body.find("No hay nadie más a quién avisar") != std::string::npos);
+  CHECK(alerts[0].body.find("Vecina Ana") != std::string::npos);
+  CHECK(alerts[0].body.find("+51987654321") != std::string::npos);
+  const std::string alertId = std::to_string(result.alertId);
+  CHECK(scalar("SELECT notified_at > 0 FROM guard_safety_alert WHERE id = " + alertId) == "1");
+  CHECK(scalar("SELECT closed_at FROM guard_safety_alert WHERE id = " + alertId) == "0");
+  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+}
+
+TEST_CASE("a single-member panic with nobody at all is terminal and tells the actor once")
+{
+  boot();
+  SafetyRig rig(std::map<int64_t, std::string>{{1, "es"}}, singleMemberDirectory());
+  const PanicResult result = drogon::sync_wait(
+      rig.safety.panic({.userId = 1, .userName = "Ana", .environmentId = std::nullopt}));
+  CHECK_FALSE(result.sent);
+  const std::string alertId = std::to_string(result.alertId);
+  const auto notices = rig.ofKind("guard_panic_unattended");
+  REQUIRE(notices.size() == 1);
+  CHECK(notices[0].userIds == std::vector<int64_t>{1});
+  CHECK(notices[0].body.find("No hay nadie más a quién avisar") != std::string::npos);
+  CHECK(notices[0].data["urgency"].asString() == "critical");
+  CHECK(notices[0].data["silent"].asBool());
+  CHECK(rig.ofKind("guard_panic").empty());
+  CHECK(rig.ofKind("guard_panic_sent").empty());
+  CHECK(scalar("SELECT closed_at > 0 FROM guard_safety_alert WHERE id = " + alertId) == "1");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_action WHERE command_id = 'safety:" + alertId +
+               ":notify:1'") == "1");
+  CHECK(scalar("SELECT status FROM guard_action WHERE command_id = 'safety:" + alertId +
+               ":notify:1'") == "rejected");
+  CHECK(scalar("SELECT detail FROM guard_action WHERE command_id = 'safety:" + alertId +
+               ":notify:1'") == "no_recipients");
+  rig.clock += 600;
+  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+  CHECK(rig.ofKind("guard_panic_unattended").size() == 1);
+}
+
+TEST_CASE("an unattended panic stays open until the actor notice is delivered")
+{
+  boot();
+  SafetyRig rig(std::map<int64_t, std::string>{{1, "es"}}, singleMemberDirectory());
+  rig.notifications.failNext(1);
+  const PanicResult result = drogon::sync_wait(
+      rig.safety.panic({.userId = 1, .userName = "Ana", .environmentId = std::nullopt}));
+  CHECK_FALSE(result.sent);
+  const std::string alertId = std::to_string(result.alertId);
+  CHECK(rig.ofKind("guard_panic_unattended").empty());
+  CHECK(scalar("SELECT closed_at FROM guard_safety_alert WHERE id = " + alertId) == "0");
+  rig.clock += 10;
+  static_cast<void>(drogon::sync_wait(rig.safety.sweepPending()));
+  rig.clock += 10;
+  static_cast<void>(drogon::sync_wait(rig.safety.sweepPending()));
+  const auto notices = rig.ofKind("guard_panic_unattended");
+  REQUIRE(notices.size() == 1);
+  CHECK(notices[0].body.find("No hay nadie más a quién avisar") != std::string::npos);
+  CHECK(scalar("SELECT closed_at > 0 FROM guard_safety_alert WHERE id = " + alertId) == "1");
+  rig.clock += 60;
+  static_cast<void>(drogon::sync_wait(rig.safety.sweepPending()));
+  CHECK(rig.ofKind("guard_panic_unattended").size() == 1);
+}
+
+TEST_CASE("a duress alert with nobody to tell closes silently")
+{
+  boot();
+  SafetyRig rig(std::map<int64_t, std::string>{{1, "es"}}, singleMemberDirectory());
+  scalar("INSERT INTO guard_safety_alert (kind, user_id, environment_id, created_at, actor_name) "
+         "VALUES ('duress', 1, 0, " + std::to_string(rig.clock) + ", 'Ana')");
+  const int64_t alertId = std::stoll(scalar(
+      "SELECT id FROM guard_safety_alert ORDER BY id DESC LIMIT 1"));
+  const SafetyDelivery delivery = drogon::sync_wait(
+      rig.safety.deliver({.kind = SafetyAlertKind::Duress,
+                          .alertId = alertId,
+                          .actorUserId = 1,
+                          .actorName = "Ana",
+                          .environmentId = 0,
+                          .now = rig.clock,
+                          .sequence = 1}));
+  CHECK(delivery == SafetyDelivery::NoRecipients);
+  CHECK(rig.notifications.sent().empty());
+  CHECK(scalar("SELECT closed_at > 0 FROM guard_safety_alert WHERE id = " +
+               std::to_string(alertId)) == "1");
+}
+
 TEST_CASE("a panic the notification service missed is swept with backoff until delivered")
 {
   boot();
@@ -444,6 +559,8 @@ TEST_CASE("a panic the notification service missed is swept with backoff until d
   CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 1);
   CHECK_FALSE(rig.ofKind("guard_panic").empty());
   CHECK(scalar(notified) == "1");
+  CHECK(scalar("SELECT closed_at FROM guard_safety_alert WHERE id = " +
+               std::to_string(result.alertId)) == "0");
   CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
 
   const PanicResult again = drogon::sync_wait(

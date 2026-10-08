@@ -117,7 +117,7 @@ public:
   [[nodiscard]] drogon::Task<OwnerPinOutcome> verifyOwnerPin(DisarmRequest request) const;
   void duress(const DisarmRequest& request) const override;
 
-  [[nodiscard]] drogon::Task<bool> deliver(const SafetyAlertNotice& notice) const;
+  [[nodiscard]] drogon::Task<SafetyDelivery> deliver(const SafetyAlertNotice& notice) const;
   [[nodiscard]] drogon::Task<size_t> sweepPending() const;
   [[nodiscard]] drogon::Task<int64_t> purgeExpired() const;
   [[nodiscard]] drogon::Task<void> forgetUser(int64_t userId) const;

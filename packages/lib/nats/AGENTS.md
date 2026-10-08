@@ -79,7 +79,10 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
   attempt and the existing durable is left as it is. One durable has one bound subscriber: a second
   process's bind is refused ("consumer is already bound to a subscription")
   until the first has left, and its retry then resumes from the shared cursor.
-  Both refusals reach the log with the broker's own reason.
+  Both refusals reach the log with the broker's own reason;
+  `DurableInput::quiet` (default false) silences the not-ready warning for a
+  feed that reports the condition on its own terms, but a policy conflict is
+  logged whatever `quiet` says.
 - A durable says how many unacknowledged messages it holds
   (`DurableInput::maxAckPending`, editable, so a change reaches an existing
   consumer on its next attach). `kDefaultMaxAckPending` (256) is for a feed

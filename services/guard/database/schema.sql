@@ -433,6 +433,7 @@ CREATE TABLE IF NOT EXISTS guard_safety_alert (
     notified_at     INTEGER NOT NULL DEFAULT 0,
     notify_sequence INTEGER NOT NULL DEFAULT 1,
     escalated_at    INTEGER NOT NULL DEFAULT 0,
+    closed_at       INTEGER NOT NULL DEFAULT 0,
     actor_name      TEXT    NOT NULL DEFAULT ''
 );
 

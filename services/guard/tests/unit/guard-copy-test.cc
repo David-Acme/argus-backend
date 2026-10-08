@@ -3,6 +3,7 @@
 #include <feature/guard/guard-copy.hxx>
 
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -190,6 +191,32 @@ TEST_CASE("languages normalize to es or en with a fallback")
   CHECK(guard_copy::normalizeLang({.requested = "fr", .fallback = "en"}) ==
         "en");
   CHECK(guard_copy::normalizeLang({.requested = "", .fallback = "pt"}) == "es");
+}
+
+TEST_CASE("a panic with nobody left lists the emergency contacts to call")
+{
+  GuardNotice notice = episode();
+  notice.kind = NoticeKind::Panic;
+  notice.actorName = "Ana";
+  notice.cameraName = {};
+  notice.role = CameraRole::Other;
+  notice.environmentName = {};
+  const std::vector<GuardContact> contacts{
+      {.name = "Vecina Ana", .phone = "+51987654321"},
+      {.name = "Tío Luis", .phone = "+51999888777"}};
+  const NoticeText spanish =
+      guard_copy::panicContacts({.notice = notice, .contacts = contacts, .lang = "es"});
+  CHECK(spanish.title == "Botón de pánico · Ana");
+  CHECK(spanish.body ==
+        "No hay nadie más a quién avisar. Llama a tus contactos de emergencia: "
+        "Vecina Ana (+51987654321), Tío Luis (+51999888777).");
+  const NoticeText english =
+      guard_copy::panicContacts({.notice = notice, .contacts = contacts, .lang = "en"});
+  CHECK(english.body ==
+        "There is nobody else to warn. Call your emergency contacts: "
+        "Vecina Ana (+51987654321), Tío Luis (+51999888777).");
+  CHECK(guard_copy::panicContacts({.notice = notice, .contacts = {}, .lang = "es"}).body ==
+        guard_copy::render(notice, "es").body);
 }
 
 TEST_CASE("with several environments the notice names the place")

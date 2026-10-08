@@ -5,7 +5,9 @@
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <algorithm>
 #include <atomic>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -13,7 +15,8 @@
 namespace
 {
 constexpr double kSweepPeriodS = 1.0;
-constexpr double kSubscribeRetryS = 5.0;
+constexpr int kSubscribeRetryBaseS = 5;
+constexpr int kSubscribeRetryMaxS = 60;
 constexpr int kMaxDeliver = 5;
 
 std::string text(const Json::Value& data, const char* key)
@@ -81,6 +84,7 @@ bool trySubscribe(const call_feed::FeedInput& input)
            .durable = call_feed::kKnownSeenDurable,
            .subject = nats_subject::kGuardKnownSeen,
            .deliverAll = false,
+           .quiet = true,
            .maxDeliver = kMaxDeliver,
            .maxAckPending = NatsBus::kOrderedMaxAckPending,
            .handler =
@@ -109,28 +113,58 @@ std::optional<KnownSeenEvent> call_feed::knownSeenFrom(const Json::Value& payloa
   return event;
 }
 
+namespace
+{
+class KnownSeenRetry : public std::enable_shared_from_this<KnownSeenRetry>
+{
+public:
+  explicit KnownSeenRetry(call_feed::FeedInput input)
+      : input_(std::move(input))
+  {
+  }
+
+  void start() { attempt(); }
+
+private:
+  void attempt()
+  {
+    if (input_.tasks && input_.tasks->stopping())
+      return;
+    const bool attached = input_.attempt ? input_.attempt() : trySubscribe(input_);
+    if (attached) {
+      LOG_INFO << "Call engine: durable " << call_feed::kKnownSeenDurable
+               << " on " << nats_subject::kGuardKnownSeen;
+      return;
+    }
+    const int failures = ++attempts_;
+    if (failures == 1)
+      LOG_WARN << "Call engine: " << nats_subject::kGuardKnownSeen
+               << " durable unavailable; retrying with backoff up to "
+               << kSubscribeRetryMaxS << " s";
+    const int delay = input_.delay ? input_.delay(failures)
+                                   : call_feed::retryDelaySeconds(failures);
+    const std::shared_ptr<KnownSeenRetry> self = shared_from_this();
+    drogon::app().getLoop()->runAfter(static_cast<double>(delay),
+                                      [self]() { self->attempt(); });
+  }
+
+  call_feed::FeedInput input_;
+  int attempts_{0};
+};
+}
+
 void call_feed::subscribe(const FeedInput& input)
 {
   if (!input.bus || !input.engine)
     return;
-  if (trySubscribe(input)) {
-    LOG_INFO << "Call engine: durable " << kKnownSeenDurable << " on "
-             << nats_subject::kGuardKnownSeen;
-    return;
-  }
-  LOG_WARN << "Call engine: " << nats_subject::kGuardKnownSeen
-           << " durable unavailable; retrying every " << kSubscribeRetryS << " s";
-  auto timer = std::make_shared<std::optional<trantor::TimerId>>();
-  *timer = drogon::app().getLoop()->runEvery(
-      kSubscribeRetryS, [input, timer]() {
-        if (!timer->has_value() || (input.tasks && input.tasks->stopping()) ||
-            !trySubscribe(input))
-          return;
-        drogon::app().getLoop()->invalidateTimer(**timer);
-        timer->reset();
-        LOG_INFO << "Call engine: durable " << kKnownSeenDurable << " on "
-                 << nats_subject::kGuardKnownSeen;
-      });
+  std::make_shared<KnownSeenRetry>(input)->start();
+}
+
+int call_feed::retryDelaySeconds(int failures)
+{
+  const int step = std::clamp(failures - 1, 0, 16);
+  const int64_t delay = static_cast<int64_t>(kSubscribeRetryBaseS) << step;
+  return static_cast<int>(std::min<int64_t>(delay, kSubscribeRetryMaxS));
 }
 
 void call_feed::startSweep(const SweepInput& input)

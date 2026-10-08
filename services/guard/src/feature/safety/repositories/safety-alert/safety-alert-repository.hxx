@@ -23,6 +23,8 @@ public:
 
   [[nodiscard]] drogon::Task<bool> markEscalated(int64_t id, int64_t now) const;
 
+  [[nodiscard]] drogon::Task<bool> markClosed(int64_t id, int64_t now) const;
+
   drogon::Task<void> markNotified(int64_t id, int64_t now) const;
 
   [[nodiscard]] drogon::Task<int64_t> purgeBefore(int64_t createdBefore) const;

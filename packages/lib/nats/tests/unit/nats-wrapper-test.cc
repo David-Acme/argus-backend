@@ -7,15 +7,21 @@
 
 #include <json/json.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <iostream>
 #include <mutex>
 #include <optional>
+#include <ranges>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unistd.h>
 #include <vector>
+
+#include <trantor/utils/Logger.h>
 
 namespace
 {
@@ -685,5 +691,120 @@ TEST_CASE("a durable feed turns core publishes into a backlog that survives the 
   }
   REQUIRE(reattached.has_value());
   CHECK(awaitPayloads(resumed, 1) == std::vector<std::string>{"while-away"});
+  bus.drain();
+}
+
+namespace
+{
+struct CapturedLog
+{
+  std::mutex mutex;
+  std::vector<std::string> lines;
+};
+
+CapturedLog& capturedLog()
+{
+  static CapturedLog captured;
+  return captured;
+}
+
+class LogCapture
+{
+public:
+  LogCapture()
+  {
+    trantor::Logger::setOutputFunction(
+        [](const char* message, const uint64_t length) {
+          {
+            std::scoped_lock lock(capturedLog().mutex);
+            capturedLog().lines.emplace_back(message, static_cast<size_t>(length));
+          }
+          std::cout.write(message, static_cast<std::streamsize>(length));
+        },
+        [] { std::cout << std::flush; });
+  }
+
+  ~LogCapture()
+  {
+    trantor::Logger::setOutputFunction(
+        [](const char* message, const uint64_t length) {
+          std::cout.write(message, static_cast<std::streamsize>(length));
+        },
+        [] { std::cout << std::flush; });
+  }
+
+  LogCapture(const LogCapture&) = delete;
+  LogCapture& operator=(const LogCapture&) = delete;
+};
+
+int logLinesMatching(std::string_view needle)
+{
+  std::scoped_lock lock(capturedLog().mutex);
+  return static_cast<int>(std::ranges::count_if(
+      capturedLog().lines, [needle](const std::string& line) {
+        return line.find(needle) != std::string::npos;
+      }));
+}
+}
+
+TEST_CASE("a quiet durable stays silent while every failed attempt of its peer is logged" *
+          doctest::skip(live_broker::skipped()))
+{
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+
+  NatsBus bus;
+  NatsBus::Options options;
+  options.url = broker;
+  options.reconnectWaitMs = 200;
+  options.maxReconnects = 5;
+  REQUIRE(bus.connect(options));
+
+  {
+    const LogCapture capture;
+    const std::string missing = isolatedStream();
+    CHECK_FALSE(bus
+                    .subscribeDurable({.stream = missing,
+                                       .durable = "quiet-durable",
+                                       .subject = isolatedSubject(missing),
+                                       .deliverAll = false,
+                                       .quiet = true,
+                                       .maxDeliver = 5,
+                                       .maxAckPending = NatsBus::kDefaultMaxAckPending,
+                                       .handler = {}})
+                    .has_value());
+    CHECK(logLinesMatching("is not ready") == 0);
+
+    CHECK_FALSE(bus
+                    .subscribeDurable({.stream = missing,
+                                       .durable = "loud-durable",
+                                       .subject = isolatedSubject(missing),
+                                       .deliverAll = false,
+                                       .maxDeliver = 5,
+                                       .maxAckPending = NatsBus::kDefaultMaxAckPending,
+                                       .handler = {}})
+                    .has_value());
+    CHECK(logLinesMatching("is not ready") == 1);
+  }
+
+  const std::string ensured = isolatedStream();
+  const std::string subject = isolatedSubject(ensured);
+  const auto feed = bus.subscribeDurableFeed(
+      {.stream = {.name = ensured,
+                  .subjects = {subject},
+                  .maxAgeNs = 60LL * 1000000000,
+                  .duplicatesNs = 0},
+       .consumer = {.stream = ensured,
+                    .durable = "ensured-durable",
+                    .subject = subject,
+                    .deliverAll = false,
+                    .maxDeliver = 5,
+                    .maxAckPending = NatsBus::kDefaultMaxAckPending,
+                    .handler = {}}});
+  REQUIRE(feed.has_value());
+  const auto created = bus.streamInfo(ensured);
+  REQUIRE(created.has_value());
+  CHECK(created->subjects == std::vector<std::string>{subject});
+  CHECK(bus.unsubscribe(*feed));
   bus.drain();
 }

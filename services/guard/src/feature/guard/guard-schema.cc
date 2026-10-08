@@ -757,6 +757,10 @@ bool migrateSafetyAlertColumns()
       !exec("ALTER TABLE guard_safety_alert ADD COLUMN escalated_at "
             "INTEGER NOT NULL DEFAULT 0"))
     return false;
+  if (!columnExists("guard_safety_alert", "closed_at") &&
+      !exec("ALTER TABLE guard_safety_alert ADD COLUMN closed_at "
+            "INTEGER NOT NULL DEFAULT 0"))
+    return false;
   if (!columnExists("guard_safety_alert", "actor_name") &&
       !exec("ALTER TABLE guard_safety_alert ADD COLUMN actor_name TEXT "
             "NOT NULL DEFAULT ''"))

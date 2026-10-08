@@ -660,6 +660,39 @@ TEST_CASE("an arrival calls only those who asked, once per absence")
   CHECK_FALSE(call_feed::knownSeenFrom(Json::Value(Json::objectValue)));
 }
 
+TEST_CASE("the call feed retries with backoff instead of every 5 s")
+{
+  CHECK(call_feed::retryDelaySeconds(1) == 5);
+  CHECK(call_feed::retryDelaySeconds(2) == 10);
+  CHECK(call_feed::retryDelaySeconds(3) == 20);
+  CHECK(call_feed::retryDelaySeconds(4) == 40);
+  CHECK(call_feed::retryDelaySeconds(5) == 60);
+  CHECK(call_feed::retryDelaySeconds(6) == 60);
+  CHECK(call_feed::retryDelaySeconds(40) == 60);
+}
+
+TEST_CASE("the call feed keeps retrying until the durable is bound")
+{
+  boot();
+  Harness harness;
+  auto attempts = std::make_shared<std::atomic<int>>(0);
+  const std::shared_ptr<const CallEngine> engine(&harness.engine,
+                                                 [](const CallEngine*) {});
+  call_feed::subscribe({.bus = std::make_shared<NatsBus>(),
+                        .engine = engine,
+                        .tasks = nullptr,
+                        .attempt =
+                            [attempts]() {
+                              return attempts->fetch_add(1, std::memory_order_relaxed) + 1 >= 3;
+                            },
+                        .delay = [](int) { return 1; }});
+  for (int tick = 0; tick < 250 && attempts->load() < 3; ++tick)
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  CHECK(attempts->load() == 3);
+  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  CHECK(attempts->load() == 3);
+}
+
 TEST_CASE("scheduled calls: validated, idempotent, rung on time, noted when late")
 {
   Harness harness;
