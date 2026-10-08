@@ -1,9 +1,10 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
 #include "fake-stt-server.hxx"
 
 #include <test-support/fake-voice-sink.hxx>
+#include <test-support/voice-test-config.hxx>
 #include <config/config-service.hxx>
 
 #include <stdexcept>
@@ -197,4 +198,11 @@ TEST_CASE("An unreachable argus-stt degrades the turn, not the session")
 
   session.stop(sink);
   pointAt("");
+}
+
+int main(int argc, char** argv)
+{
+  const SuiteOpeningConfig suiteOpening;
+  doctest::Context context(argc, argv);
+  return context.run();
 }

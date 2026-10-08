@@ -173,3 +173,11 @@ TEST_CASE("agent states use LiveKit's agent vocabulary")
   CHECK(rtc_wire::agentStateToString(rtc_wire::AgentState::Thinking) == "thinking");
   CHECK(rtc_wire::agentStateToString(rtc_wire::AgentState::Speaking) == "speaking");
 }
+
+TEST_CASE("a call with nothing to say starts listening, one with an opening starts thinking")
+{
+  CHECK(rtc_wire::agentStateForOpening(true) == rtc_wire::AgentState::Thinking);
+  CHECK(rtc_wire::agentStateForOpening(false) == rtc_wire::AgentState::Listening);
+  CHECK(rtc_wire::agentStateToString(rtc_wire::agentStateForOpening(true)) == "thinking");
+  CHECK(rtc_wire::agentStateToString(rtc_wire::agentStateForOpening(false)) == "listening");
+}

@@ -8,6 +8,9 @@ caller_sync = ""
 caller_settings = ""
 caller_notification = ""
 
+[voice]
+opening = "none"
+
 [identity]
 target = "127.0.0.1:7040"
 credential = ""

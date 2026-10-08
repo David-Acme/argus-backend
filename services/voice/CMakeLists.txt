@@ -115,6 +115,7 @@ argus_module(NAME voice-core
         argus::lib::phrase
         argus::contracts::voice
         argus::lib::config
+        argus::voice-config
         argus::lib::http
         argus::lib::runtime
     SYSTEM_DEPENDS

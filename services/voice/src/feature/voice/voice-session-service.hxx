@@ -62,6 +62,7 @@ public:
   void warmFarewells();
   [[nodiscard]] FarewellAudio farewellAudio(const FarewellKey& key) const;
   [[nodiscard]] static VoiceLang langOf(const argus::voice::v1::VoiceIdentity& identity);
+  [[nodiscard]] static bool openingWillBeSpoken(const argus::voice::v1::VoiceStart& request);
   void stop(VoiceSessionSink& sink);
   void skip(VoiceSessionSink& sink);
   void context(VoiceSessionSink& sink, const argus::voice::v1::VoiceContext& context);

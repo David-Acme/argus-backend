@@ -3,8 +3,37 @@
 #include <grpc/grpc-server-identity.hxx>
 #include <http/listener-config.hxx>
 #include <chrono>
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
+
+enum class VoiceOpening : uint8_t
+{
+  None = 0,
+  Spoken
+};
+
+[[nodiscard]] inline std::string_view voiceOpeningToString(VoiceOpening opening)
+{
+  switch (opening) {
+    case VoiceOpening::None:
+      return "none";
+    case VoiceOpening::Spoken:
+      return "spoken";
+  }
+  return "none";
+}
+
+[[nodiscard]] inline std::optional<VoiceOpening> voiceOpeningFromString(std::string_view value)
+{
+  if (value == "none")
+    return VoiceOpening::None;
+  if (value == "spoken")
+    return VoiceOpening::Spoken;
+  return std::nullopt;
+}
 
 struct VoiceRtcConfig
 {
@@ -34,6 +63,8 @@ public:
   [[nodiscard]] static std::string resolveNotificationCallerSecret();
 
   [[nodiscard]] static VoiceRtcConfig resolveRtc();
+
+  [[nodiscard]] static VoiceOpening resolveOpening();
 
   [[nodiscard]] static VoiceNotificationConfig resolveNotification();
 };

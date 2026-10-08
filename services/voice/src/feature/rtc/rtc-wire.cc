@@ -87,6 +87,11 @@ std::string agentStateToString(AgentState state)
   return "initializing";
 }
 
+AgentState agentStateForOpening(bool openingWillBeSpoken)
+{
+  return openingWillBeSpoken ? AgentState::Thinking : AgentState::Listening;
+}
+
 std::string doneReasonToString(DoneReason reason)
 {
   switch (reason) {

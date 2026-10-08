@@ -94,6 +94,7 @@ struct ClientPacket
 };
 
 [[nodiscard]] std::string agentStateToString(AgentState state);
+[[nodiscard]] AgentState agentStateForOpening(bool openingWillBeSpoken);
 [[nodiscard]] std::string doneReasonToString(DoneReason reason);
 [[nodiscard]] std::optional<DataMessage> dataMessageOf(const argus::voice::v1::ServerFrame& frame);
 [[nodiscard]] DataMessage doneMessage(DoneReason reason);

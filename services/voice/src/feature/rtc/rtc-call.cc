@@ -329,9 +329,11 @@ void RtcCall::startSession()
     sessionStarted_ = true;
     early.swap(earlyClient_);
   }
+  const bool speaksOpening = VoiceSessionService::openingWillBeSpoken(start);
   LOG_INFO << "Voice: RTC session started in " << join_.room() << " resume=" << join_.resume()
-           << " opening=" << !join_.opening_line().empty() << " early=" << early.size();
-  wantState(join_.resume() ? rtc_wire::AgentState::Listening : rtc_wire::AgentState::Thinking);
+           << " speaks_opening=" << speaksOpening << " carried=" << !join_.opening_line().empty()
+           << " early=" << early.size();
+  wantState(rtc_wire::agentStateForOpening(speaksOpening));
   for (const auto& message : early)
     dispatch(message);
 }

@@ -349,6 +349,73 @@ the session and the sink can disagree about a duck until the next
 transition; no practical impact at the current call sites, where a barge-in
 releases the duck anyway and a farewell ends the call.
 
+## The spoken opening is opt-in (`[voice] opening`, 2026-10-07)
+
+David: the greeting Argus spoke the moment a call was accepted was slow, heavy
+and often unnecessary. It ran a TTS round trip before anything else, it held
+the call in the assistant's speaking state for the seconds its audio lasted,
+and the app now marks connect and disconnect with its own local earcons, so a
+user no longer learns that the call is up from Argus's voice. The name question
+moved into the conversation: a user who volunteers a name is still persisted
+through `IdentityService.UpdateUser` and the call prompt asks for the name when
+it needs it.
+
+`[voice] opening` is `"none"` by default — in `config.toml.example`, in the
+deploy template and in the code (`VoiceConfig::resolveOpening()`): an absent or
+unrecognised value is `none` with a `LOG_WARN`, never a boot refusal. It is read
+once per session start and is not a catalog key: the owner edits `config.toml`
+and the next call reads it.
+
+What the flag gates is the **default greeting**, never a line the caller asked
+for. The one rule (`openingLineFor`, read by `start` and by
+`VoiceSessionService::openingWillBeSpoken`) is:
+
+- a resumed call says nothing at start, whatever the mode and whatever the join
+  carried;
+- else an explicit `VoiceStart.opening_line` is spoken, in *both* modes: it is
+  the reason for the call, and a claimed proactive call (argus-notification's
+  `call-<id>`, whose line argus-sync puts on the join) must not go silent — a
+  panic or alert call that says nothing is a safety regression. argus-notification
+  is the other half of that path: a proactive call nobody heard is reported
+  `declined` and pushes its missed-call notification (`call-engine.cc`);
+  argus-voice's half is that the line is spoken and that its playout drain marks
+  `openingSpoken`, which is what `callOutcomeOf` turns into `completed`;
+- else `opening = "spoken"` speaks the greeting for the call's language and the
+  known name, once, added to the history — today's behaviour, byte for byte;
+- else (the shipped `none`, no line) the session speaks nothing at all: no
+  `history.addAssistant`, no `speak`, and the worker goes straight to `primeLlm`
+  + `duplexLoop`/`workerLoop`, listening from the first batch.
+
+**Upgrade note.** An installation whose `config.toml` has no `[voice]` section —
+every install before this change — gets the silent default greeting on the next
+call and needs `[voice] opening = "spoken"` to keep it. Nothing else about the
+call changes: the earcons the app plays, the notes, the situation, barge-in, the
+offers and the farewell lines are all unaffected.
+
+`RtcCall` asks `openingWillBeSpoken` for its first `lk.agent.state`
+(`rtc_wire::agentStateForOpening`) — `listening` when nothing will be spoken,
+instead of sitting in `thinking` until `thinkingTimeout` (20 s) or the first
+turn. The session start log line carries the mode (`opening=none|spoken`) and
+the RTC line the decision under its own key (`speaks_opening=0|1`), beside
+`carried=` for the line the join brought.
+
+Time from the session accepting the call to the session listening, measured
+2026-10-07 on the call of 18:10 UTC in `~/argus-demo/logs/` (duplex over WebRTC,
+greeting spoken, `prod` argus-tts with Pocket): the greeting's stream in
+`tts.log` is `chunks=71 bytes=988548`, 247137 float samples at the 48 kHz the
+client announces, **5.15 s** of audio (the same log's cached farewell lines
+cross-check the rate: `353508` bytes are cached as `es, 1792 ms`). The duplex
+loop leaves the barge-in listener when the playback estimate ends, 5.15 s after
+the first chunk, and nothing in the log contradicts it: the first `barge-in`
+line is the *second* turn's, and the user's first words (the turn of 22528
+samples that closed at 18:11:06.179, so 18:11:04.4–05.8) went to normal turn
+detection, which needs the estimate over. The first answer's audio came at
+18:11:06.902, 9.30 s after the session start, 3.55 s of it the user's own turn
+and 1.65 s the silence before they spoke. With `opening = "none"` the same
+session is listening before its first batch: the seam suite measures 22.7 ms
+from `start()` to the first mic window the VAD processes (asserted under
+500 ms), and the greeting's 5.15 s of audio and its TTS round trip are gone.
+
 ## The call's context
 
 `CallHistory` owns the message list a turn sends to argus-llm and keeps one
@@ -796,6 +863,23 @@ owner disables the account: `argus.done` at 160-225 ms (identity's update
 first), line to 2.2 s, room deleted at 2.37 s; PCM call: line frames at
 195 ms, `sessionRevoked` and the close at 2.54 s.
 
+**Which ends speak (2026-10-07).** All three `FarewellReason` values are ends
+the server decided, not the user, and each keeps its short cached line:
+`SessionClosed` (a logout, a refresh-token reuse, anything else argus-sync
+names as a cause), `ClosedByOwner` (`revokedByOwner`: the owner closed the
+session from another device) and `AccountDisabled` (the owner disabled the
+account). The line is the cheapest honest way to end a call that is being torn
+down: it is warmed at boot, so it costs no TTS round trip, and it reaches the
+user on the call they are already listening to — an on-screen notice would need
+the app to be showing the right surface at that instant, and it is not what a
+call's client shows. A normal hang-up is not a farewell at all: the app's
+`voice:stop` and `argus.hangup` go to `stop()`, which sends `voice:done` and
+says nothing, because the user decided and does not need to be told. The
+timeout ends speak nothing either — `timeout` while nobody joined, or after
+`rejoin_grace_ms` for a user whose connection died — since there is no live
+listener left to hear them. Every line the cache warms is therefore still
+spoken by some path, and `FarewellCache` keeps warming all six.
+
 ## Owner settings
 
 `src/feature/settings/voice-settings.cc` (`argus::voice-settings`) is the
@@ -822,7 +906,9 @@ A fallback is the value the service runs with when the key is absent, so
 the code defaults match `config.toml.example`: `VadConfig` holds
 `min_turn_ms` 240 and `min_mean_prob` 0.35, and an absent `vad.denoise`
 means on. `voice-settings-test` pins every fallback against the resolution
-functions.
+functions. `voice.opening` is the one voice key outside the catalog (the app
+does not offer it): `VoiceConfig::resolveOpening()` reads it per session start
+and its fallback is `none`.
 
 `[grpc] caller_settings` is the only credential the settings service
 accepts (service name `settings`), and `VoiceService.Connect` accepts only

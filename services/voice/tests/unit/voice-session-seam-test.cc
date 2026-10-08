@@ -1,7 +1,8 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
 #include <test-support/fake-voice-sink.hxx>
+#include <test-support/voice-test-config.hxx>
 
 #include <config/config-service.hxx>
 
@@ -290,32 +291,37 @@ struct RecordingStt final : IVoiceStt
 class DuplexConfig
 {
 public:
-  explicit DuplexConfig(int guardMs)
-  {
-    std::ofstream file(kPath);
-    file << "[vad]\n"
-         << "threshold = 0.45\n"
-         << "neg_threshold = 0.25\n"
-         << "min_speech_frames = 5\n"
-         << "min_silence_frames = 12\n"
-         << "pre_roll_frames = 10\n"
-         << "min_turn_ms = 240\n"
-         << "min_mean_prob = 0.35\n"
-         << "denoise = false\n"
-         << "barge_threshold = 0.7\n"
-         << "barge_min_frames = 8\n"
-         << "barge_guard_ms = " << guardMs << "\n";
-    file.close();
-    ConfigService::load(kPath);
-  }
-
-  ~DuplexConfig()
+  explicit DuplexConfig(int guardMs, VoiceOpening opening = VoiceOpening::Spoken)
+      : previous_(voice_test_config::currentOpening())
   {
     {
       std::ofstream file(kPath);
+      file << "[vad]\n"
+           << "threshold = 0.45\n"
+           << "neg_threshold = 0.25\n"
+           << "min_speech_frames = 5\n"
+           << "min_silence_frames = 12\n"
+           << "pre_roll_frames = 10\n"
+           << "min_turn_ms = 240\n"
+           << "min_mean_prob = 0.35\n"
+           << "denoise = false\n"
+           << "barge_threshold = 0.7\n"
+           << "barge_min_frames = 8\n"
+           << "barge_guard_ms = " << guardMs << "\n"
+           << "[voice]\n"
+           << "opening = \"" << voiceOpeningToString(opening) << "\"\n";
+      if (!file)
+        throw std::runtime_error(std::string("voice-test-config: cannot write ") + kPath);
     }
     ConfigService::load(kPath);
+    if (voice_test_config::currentOpening() != voiceOpeningToString(opening))
+      throw std::runtime_error("voice-test-config: the duplex config did not take");
+  }
+
+  ~DuplexConfig() noexcept(false)
+  {
     std::remove(kPath);
+    voice_test_config::restoreOpening(previous_);
   }
 
   DuplexConfig(const DuplexConfig&) = delete;
@@ -323,6 +329,7 @@ public:
 
 private:
   static constexpr const char* kPath = "voice-duplex-test-config.toml";
+  std::string previous_;
 };
 
 constexpr int kWindow = 512;
@@ -491,6 +498,7 @@ TEST_CASE("VoiceSessionService default-constructs on the remote seam")
 
 TEST_CASE("Voice session start speaks the greeting through the injected seam")
 {
+  OpeningConfig opening("spoken");
   FakeStt stt;
   FakeTts tts;
   FakeLlm llm;
@@ -503,12 +511,15 @@ TEST_CASE("Voice session start speaks the greeting through the injected seam")
   voiceIdentity.set_user_id(7);
   voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
   voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
-  session.start(sink, voiceIdentity);
+  argus::voice::v1::VoiceStart start;
+  *start.mutable_identity() = voiceIdentity;
+  CHECK(VoiceSessionService::openingWillBeSpoken(start));
+  session.start(sink, start);
 
   CHECK(waitFor([&] {
     return sink.hasType("voice:assistant");
   }));
-  CHECK(tts.synthesizeCalls > 0);
+  CHECK(tts.synthesizeCalls == 1);
   CHECK(tts.lastText.find("Argus") != std::string::npos);
   CHECK_FALSE(sink.of(true).empty());
   for (const auto& frame : sink.snapshot())
@@ -519,8 +530,120 @@ TEST_CASE("Voice session start speaks the greeting through the injected seam")
     if (frame.has_assistant())
       CHECK(frame.assistant().turn_id() == 0);
 
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(sess->history.entries().back().message.role == "assistant");
+  CHECK(sess->history.entries().back().message.content == tts.lastText);
+
   session.stop(sink);
   CHECK(sink.hasType("voice:done"));
+}
+
+TEST_CASE("The opening key falls back to none and an unknown value degrades to none")
+{
+  CHECK(voiceOpeningToString(VoiceOpening::None) == "none");
+  CHECK(voiceOpeningToString(VoiceOpening::Spoken) == "spoken");
+  CHECK(voiceOpeningFromString("none") == VoiceOpening::None);
+  CHECK(voiceOpeningFromString("spoken") == VoiceOpening::Spoken);
+  CHECK_FALSE(voiceOpeningFromString("").has_value());
+  CHECK_FALSE(voiceOpeningFromString("shouting").has_value());
+
+  {
+    ClearedVoiceConfig cleared;
+    CHECK(VoiceConfig::resolveOpening() == VoiceOpening::None);
+  }
+  {
+    OpeningConfig none("none");
+    CHECK(VoiceConfig::resolveOpening() == VoiceOpening::None);
+  }
+  {
+    OpeningConfig spoken("spoken");
+    CHECK(VoiceConfig::resolveOpening() == VoiceOpening::Spoken);
+  }
+  {
+    OpeningConfig unknown("shouting");
+    CHECK(VoiceConfig::resolveOpening() == VoiceOpening::None);
+  }
+}
+
+TEST_CASE("With opening = none a claimed call still speaks its line and stays up")
+{
+  OpeningConfig opening("none");
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceStart start = duplexStart();
+  start.set_mode(argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  start.set_opening_line("Hay alguien en el patio.");
+  CHECK(VoiceSessionService::openingWillBeSpoken(start));
+
+  service.start(sink, start);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant"); }));
+  CHECK(tts.synthesizeCalls == 1);
+  CHECK(tts.lastText == "Hay alguien en el patio.");
+
+  auto sess = VoiceSessionTestAccess::sessionOf(service, sink);
+  CHECK(waitFor([&] {
+    return !sess->speaking.load() && llm.primeCalls.load() >= 1;
+  }, 2000));
+  CHECK(sess->active.load());
+  CHECK_FALSE(sink.hasType("voice:done"));
+  CHECK(sess->history.entries().back().message.role == "assistant");
+  CHECK(sess->history.entries().back().message.content == "Hay alguien en el patio.");
+
+  feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 1});
+  CHECK(waitFor([&] { return vad.windows->load() >= 1; }, 2000));
+
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = service, .session = *sess, .samples = samples});
+  CHECK(tts.synthesizeCalls == 2);
+  CHECK(tts.lastText == "Hola de nuevo.");
+
+  service.stop(sink);
+  CHECK(sink.hasType("voice:done"));
+}
+
+TEST_CASE("With opening = none a default call listens at once and speaks nothing")
+{
+  OpeningConfig opening("none");
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceStart start = duplexStart();
+  start.set_mode(argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  CHECK_FALSE(VoiceSessionService::openingWillBeSpoken(start));
+
+  const auto started = std::chrono::steady_clock::now();
+  service.start(sink, start);
+  feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 1});
+  REQUIRE(waitFor([&] { return vad.windows->load() >= 1; }, 2000));
+  const auto listened = std::chrono::steady_clock::now() - started;
+  CHECK(listened < std::chrono::milliseconds(500));
+
+  auto sess = VoiceSessionTestAccess::sessionOf(service, sink);
+  CHECK(waitFor([&] { return llm.primeCalls.load() >= 1; }, 2000));
+  CHECK(tts.synthesizeCalls == 0);
+  CHECK(sink.of(true).empty());
+  CHECK_FALSE(sink.hasType("voice:assistant"));
+  for (const auto& entry : sess->history.entries())
+    CHECK(entry.message.role != "assistant");
+
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = service, .session = *sess, .samples = samples});
+  CHECK(tts.synthesizeCalls == 1);
+  CHECK(tts.lastText == "Hola de nuevo.");
+  CHECK(sess->history.userTurns() == 1);
+
+  service.stop(sink);
 }
 
 TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
@@ -1702,6 +1825,8 @@ TEST_CASE("A resumed call does not greet again and still primes the LLM")
   argus::voice::v1::VoiceStart start;
   *start.mutable_identity() = residentIdentity();
   start.set_resume(true);
+  start.set_opening_line("Hay alguien en el patio.");
+  CHECK_FALSE(VoiceSessionService::openingWillBeSpoken(start));
   session.start(sink, start);
   CHECK(waitFor([&] { return llm.primeCalls.load() == 1; }));
   CHECK_FALSE(sink.hasType("voice:assistant"));
@@ -2135,6 +2260,50 @@ TEST_CASE("A farewell drops the call's input and plays only the cached line")
   session.stop(sink);
 }
 
+TEST_CASE("A normal hang-up says nothing and a revoked session hears the cached line once")
+{
+  OpeningConfig opening("none");
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad};
+  VoiceSessionService service(seam);
+  const FarewellKey closed{.lang = VoiceLang::Es, .reason = FarewellReason::SessionClosed};
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  service.start(sink, voiceIdentity);
+  feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 1});
+  REQUIRE(waitFor([&] { return vad.windows->load() >= 1; }, 2000));
+
+  service.warmFarewells();
+  REQUIRE(waitFor([&] { return service.farewellAudio(closed).pcm != nullptr; }));
+  const int warmedCalls = tts.synthesizeCalls;
+
+  service.stop(sink);
+  CHECK(sink.hasType("voice:done"));
+  CHECK(tts.synthesizeCalls == warmedCalls);
+  CHECK(sink.of(true).empty());
+  CHECK_FALSE(sink.hasType("voice:assistant"));
+
+  FakeVoiceSink revoked;
+  service.start(revoked, voiceIdentity);
+  const size_t before = revoked.size();
+  CHECK(service.farewell(revoked, FarewellReason::SessionClosed));
+  const auto frames = revoked.snapshot();
+  REQUIRE(frames.size() > before + 1);
+  CHECK(frames.back().has_assistant());
+  CHECK(frames.back().assistant().text() == "Tu sesión se ha cerrado, cuelgo.");
+  for (size_t i = before; i + 1 < frames.size(); ++i)
+    CHECK(frames[i].has_tts_chunk());
+  CHECK(tts.synthesizeCalls == warmedCalls);
+  service.stop(revoked);
+}
+
 TEST_CASE("A proactive call opens with its claimed line instead of the greeting")
 {
   FakeStt stt;
@@ -2173,4 +2342,11 @@ TEST_CASE("An announcement reaches every live call of that user and nobody else"
   CHECK(session.announce(7, "Ha llegado alguien al patio."));
   CHECK(waitFor([&] { return tts.lastText == "Ha llegado alguien al patio."; }));
   session.stop(sink);
+}
+
+int main(int argc, char** argv)
+{
+  const SuiteOpeningConfig suiteOpening;
+  doctest::Context context(argc, argv);
+  return context.run();
 }

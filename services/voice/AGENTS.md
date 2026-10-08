@@ -75,10 +75,15 @@ argus-voice/
                         hashes and its NOTICE
   src/shared/services/  vad
   src/shared/wrapper/   the ring the voice paths carry samples in
-  src/test-support/     the fake voice sink the suites drive
+  src/test-support/     the fake voice sink the suites drive, and
+                        voice-test-config: the suites that start a session
+                        install `[voice] opening = "spoken"` in main — the
+                        shipped default is `none`, so the greeting paths stay
+                        covered; a test that needs another mode, or none at
+                        all, uses OpeningConfig / ClearedVoiceConfig
   config.toml.example   [server], [grpc] (caller_sync, caller_settings,
-                        caller_notification), [identity], [rtc],
-                        [notification], [stt], [tts], [llm], [vad]
+                        caller_notification), [voice] (opening), [identity],
+                        [rtc], [notification], [stt], [tts], [llm], [vad]
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 

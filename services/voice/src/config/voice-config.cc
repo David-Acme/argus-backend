@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <settings/settings-rpc.hxx>
+#include <trantor/utils/Logger.h>
 
 ListenerConfig VoiceConfig::resolveHealthListener()
 {
@@ -47,6 +48,17 @@ VoiceRtcConfig VoiceConfig::resolveRtc()
     config.firstJoinWait =
         std::chrono::milliseconds(std::max(5000, ConfigService::getInt("rtc.first_join_wait_ms")));
   return config;
+}
+
+VoiceOpening VoiceConfig::resolveOpening()
+{
+  const std::string name = ConfigService::getString("voice.opening");
+  if (name.empty())
+    return VoiceOpening::None;
+  if (const auto opening = voiceOpeningFromString(name))
+    return *opening;
+  LOG_WARN << "Voice: unknown voice.opening '" << name << "'; using none";
+  return VoiceOpening::None;
 }
 
 VoiceNotificationConfig VoiceConfig::resolveNotification()

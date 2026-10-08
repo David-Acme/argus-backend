@@ -13,6 +13,7 @@
 #include <auth/role-access.hxx>
 #include <auth/user-role.hxx>
 #include <config/config-service.hxx>
+#include <config/voice-config.hxx>
 #include <feature/voice/offer-reply.hxx>
 #include <json/json.h>
 
@@ -89,6 +90,26 @@ std::string greetingFor(VoiceLang lang, const std::string& name)
       text.replace(pos, 7, name);
   }
   return text;
+}
+
+struct OpeningInput
+{
+  std::string_view requested;
+  VoiceOpening opening{VoiceOpening::None};
+  VoiceLang lang{VoiceLang::System};
+  std::string_view name;
+  bool resume{false};
+};
+
+[[nodiscard]] std::string openingLineFor(const OpeningInput& input)
+{
+  if (input.resume)
+    return {};
+  if (!input.requested.empty())
+    return std::string(input.requested);
+  if (input.opening != VoiceOpening::Spoken)
+    return {};
+  return greetingFor(input.lang, std::string(input.name));
 }
 
 std::string unansweredLine(VoiceLang lang)
@@ -432,6 +453,17 @@ VoiceLang VoiceSessionService::langOf(const argus::voice::v1::VoiceIdentity& ide
   return lang == VoiceLang::System ? voiceSystemLang() : lang;
 }
 
+bool VoiceSessionService::openingWillBeSpoken(const argus::voice::v1::VoiceStart& request)
+{
+  const std::string requested = sanitizedLine(request.opening_line(), kMaxAnnouncementChars);
+  return !openingLineFor({.requested = requested,
+                          .opening = VoiceConfig::resolveOpening(),
+                          .lang = langOf(request.identity()),
+                          .name = request.identity().name(),
+                          .resume = request.resume()})
+              .empty();
+}
+
 bool VoiceSessionService::farewell(VoiceSessionSink& sink, FarewellReason reason)
 {
   const auto session = sessionOf(sink);
@@ -511,10 +543,12 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
     lang = voiceSystemLang();
 
   const std::string& userName = identity.name();
+  const VoiceOpening opening = VoiceConfig::resolveOpening();
   LOG_INFO << "Voice: session start user=" << identity.user_id()
            << " lang=" << voiceLangToString(lang)
            << " nameKnown=" << (userName.size() >= 2)
-           << " duplex=" << duplex << " resume=" << resume;
+           << " duplex=" << duplex << " resume=" << resume
+           << " opening=" << voiceOpeningToString(opening);
 
   auto session = std::make_shared<Session>(SessionInit{.model = vad_.createModel(), .lang = lang});
   session->sink = &sink;
@@ -534,10 +568,12 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   session->duplex = duplex;
   session->bargeGuard = listening.bargeGuard;
 
-  const std::string opening = sanitizedLine(request.opening_line(), kMaxAnnouncementChars);
-  const std::string greeting = resume            ? std::string()
-                               : !opening.empty() ? opening
-                                                  : greetingFor(session->lang, userName);
+  const std::string requestedLine = sanitizedLine(request.opening_line(), kMaxAnnouncementChars);
+  const std::string greeting = openingLineFor({.requested = requestedLine,
+                                               .opening = opening,
+                                               .lang = session->lang,
+                                               .name = userName,
+                                               .resume = resume});
   if (!greeting.empty())
     session->history.addAssistant(greeting);
 

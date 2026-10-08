@@ -8,6 +8,9 @@ caller_sync = "CHANGE_ME_SYNC_VOICE"
 caller_settings = "CHANGE_ME_SETTINGS_VOICE"
 caller_notification = "CHANGE_ME_NOTIFICATION_VOICE"
 
+[voice]
+opening = "none"
+
 [identity]
 target = "argus-identity:7040"
 credential = "CHANGE_ME_VOICE_IDENTITY"
