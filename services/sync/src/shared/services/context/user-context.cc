@@ -155,16 +155,11 @@ drogon::Task<Json::Value> UserContextService::ownerCatalogFor(UserRole role) con
   co_return catalog.isArray() ? catalog : Json::Value(Json::nullValue);
 }
 
-drogon::Task<Json::Value> UserContextService::contextFor(int64_t userId, UserRole role) const
-{
-  const Json::Value catalog = co_await ownerCatalogFor(role);
-  const ModuleSnapshot modules = moduleGate().snapshot();
-  co_return user_context::build({.userId = userId, .role = role, .modules = modules, .ownerCatalog = catalog});
-}
-
 void UserContextService::deliverLocal(const Conn& conn, const ContextDelivery& delivery) const
 {
   if (!conn || !conn->hasContext() || !conn->connected())
+    return;
+  if (!moduleGate().settled())
     return;
   const auto& ctx = conn->getContextRef<JwtContext>();
   RoomManager{}.reconcileRoleRooms(conn, {.role = ctx.role, .modules = delivery.modules});

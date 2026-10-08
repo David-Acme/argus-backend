@@ -160,6 +160,7 @@ SyncService::handleConnect(const drogon::HttpRequestPtr& req,
   const Json::Value ownerCatalog = co_await userContext().ownerCatalogFor(ctx.role);
   if (!conn->connected())
     co_return;
+  const bool settled = moduleGate().settled();
   const ModuleSnapshot modules = moduleGate().snapshot();
   const UserRole role = conn->getContextRef<JwtContext>().role;
 
@@ -172,8 +173,9 @@ SyncService::handleConnect(const drogon::HttpRequestPtr& req,
   user["id"] = ctx.sub;
   user["role"] = userRoleToString(role);
   user["isActive"] = ctx.isActive;
-  user["context"] = user_context::build(
-      {.userId = ctx.sub, .role = role, .modules = modules, .ownerCatalog = ownerCatalog});
+  if (settled)
+    user["context"] = user_context::build(
+        {.userId = ctx.sub, .role = role, .modules = modules, .ownerCatalog = ownerCatalog});
 
   SocketEmitDto response;
   response.operation = SyncOperation::InitialInfo;

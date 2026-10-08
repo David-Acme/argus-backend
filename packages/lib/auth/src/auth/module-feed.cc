@@ -74,7 +74,7 @@ void ModuleFeed::restore()
   if (dependencies_.gate == nullptr)
     return;
   if (const auto flags = module_gate::loadStateFile(config_.stateFile))
-    dependencies_.gate->apply(*flags);
+    dependencies_.gate->remember(*flags);
 }
 
 bool ModuleFeed::applyAuthoritative(const Snapshot& snapshot)
@@ -156,24 +156,29 @@ void ModuleFeed::start()
 
 void ModuleFeed::run(const std::stop_token& stop)
 {
-  int bootAttempts = dependencies_.bootRead ? config_.bootAttempts : 0;
+  const bool canRead = dependencies_.bootRead != nullptr;
+  int bootAttempts = canRead ? config_.bootAttempts : 0;
+  bool answered = !canRead;
+  bool refresh = false;
   bool subscribed = !dependencies_.bus;
   int subscribeFailures = 0;
   auto nextSubscribe = std::chrono::steady_clock::now();
   while (!stop.stop_requested()) {
-    if (bootAttempts > 0) {
+    if (!answered || refresh) {
       if (const auto snapshot = dependencies_.bootRead()) {
         applyAuthoritative(*snapshot);
+        answered = true;
         bootAttempts = 0;
       }
-      else if (--bootAttempts == 0 && version() == 0 && epoch().empty()) {
+      else if (bootAttempts > 0 && --bootAttempts == 0 && version() == 0 && epoch().empty()) {
         LOG_WARN << "Modules: settings did not answer the enabled set; keeping the last known state";
       }
+      refresh = false;
     }
     if (!subscribed && std::chrono::steady_clock::now() >= nextSubscribe) {
       subscribed = subscribe();
       if (subscribed) {
-        bootAttempts = 0;
+        refresh = canRead && subscribeFailures > 0;
       }
       else {
         const double delay = std::min(config_.retrySeconds * std::pow(2.0, std::min(subscribeFailures, kMaxBackoffDoublings)),
@@ -187,7 +192,9 @@ void ModuleFeed::run(const std::stop_token& stop)
         ++subscribeFailures;
       }
     }
-    if (subscribed && bootAttempts == 0)
+    const bool known = dependencies_.gate != nullptr ? dependencies_.gate->settled()
+                                                     : (answered || !canRead);
+    if (subscribed && known && !refresh)
       break;
     std::unique_lock lock(mutex_);
     wake_.wait_for(lock, stop, std::chrono::duration<double>(config_.retrySeconds),

@@ -31,19 +31,24 @@ public:
   [[nodiscard]] std::optional<std::string> disabledModuleOf(std::string_view path,
                                                             drogon::HttpMethod method) const;
   [[nodiscard]] bool roleActive(UserRole role) const;
+  [[nodiscard]] bool settled() const;
   [[nodiscard]] ModuleFlags known() const;
   [[nodiscard]] ModuleSnapshot snapshot() const;
   [[nodiscard]] std::shared_ptr<const ModuleSnapshot> current() const;
 
   std::vector<ModuleChange> apply(const ModuleFlags& flags);
+  std::vector<ModuleChange> remember(const ModuleFlags& flags);
   void onChange(Listener listener);
   void onStateChange(StateListener listener);
   void reset();
 
 private:
+  std::vector<ModuleChange> store(const ModuleFlags& flags, bool settles);
+
   mutable std::mutex mutex_;
   std::unordered_map<std::string, ModuleFlag> states_;
   std::shared_ptr<const ModuleSnapshot> current_{std::make_shared<const ModuleSnapshot>()};
+  bool settled_{false};
   std::vector<Listener> listeners_;
   std::vector<StateListener> stateListeners_;
 };

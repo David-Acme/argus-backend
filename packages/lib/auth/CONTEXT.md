@@ -232,13 +232,21 @@ rule 5 is unchanged and `scripts/check-routes.sh` needs no new row.
 
 1. **The boot read** (`settingsBootRead`): `argus.settings.v1.Modules/
    ModuleStates` on `[modules] target` with `[modules] credential`, retried
-   every 5 s up to 12 times off the event loop, so a service that boots before
-   argus-settings still learns the set within a minute. The closure reports its
-   first failed or unsettled attempt once, at INFO, and says nothing again
-   until an answer arrives; the boot-read loop stops as soon as the durable has
-   subscribed (`bootAttempts = 0`), so the budget is never spent on a feed that
-   already works, and the "keeping the last known state" WARN is reserved for
-   the case nothing ever answered (`version_ == 0 && epoch_.empty()`).
+   every 5 s off the event loop until it answers, so a service that boots before
+   argus-settings still learns the set. The closure reports its first failed or
+   unsettled attempt once, at INFO, and says nothing again until an answer
+   arrives; the 12-attempt budget no longer ends the read, it only quiets the
+   "keeping the last known state" WARN, which is reserved for the case nothing
+   ever answered (`version_ == 0 && epoch_.empty()`). The read is retried
+   whatever the durable does: a durable on the stream says nothing about the
+   set — it attaches while argus-settings is down (the stream outlives the
+   process) and its last message per subject is not the set — so the loop stops
+   only when the durable is subscribed **and** the set is known. A subscribe
+   that follows a failed one (the feed's own reconnect) re-arms one read, so a
+   set that moved while the feed was down is corrected by the authority rather
+   than by the next change event. A transport-level NATS reconnect is the bus's
+   own business: it re-attaches the durable and JetStream redelivers what was
+   not acked.
 2. **The durable feed**: each service binds its own durable
    (`argus-<service>-modules`, deliver-all at creation, ordered) on
    `argus.settings.v1.module`. A message whose top level carries
@@ -303,6 +311,23 @@ its file.
 No repository, no schema and no `DbService` call came with it: the state file
 is a cache this package can rebuild from the feed at any time, which is what
 the package's no-database rule protects.
+
+### Settled: the set, versus the last known state
+
+The gate knows two things that look alike and are not:
+`ModuleGate::settled()` is true once an **authority** has answered — the boot
+read's settled reply, or a settled enabled set from the feed — and
+`apply(flags)` is what carries that answer. `remember(flags)` is the third way
+in, the file read back at install, and it deliberately does **not** settle the
+gate: the file is the last known state, and a host that never answered has no
+set to advertise (a file written by an older build, or by a run that only ever
+saw one module, would otherwise pass a partial list off as the whole set).
+Routing does not care — an unknown module is enabled either way — but anything
+that *publishes* the enabled set does: argus-sync builds `InitialInfo.context`
+from it only while the gate is settled (`services/sync/CONTEXT.md`, "Live user
+context"). Settling also tells the state listeners, once, even when the flags
+themselves do not change, because that transition is the only news a socket
+that connected while the gate was unknown will ever get.
 
 ### What a service does with it
 

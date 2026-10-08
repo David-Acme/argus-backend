@@ -427,7 +427,7 @@ TEST_CASE("a feed whose durable the previous build made under another delivery p
   std::filesystem::remove(file);
 }
 
-TEST_CASE("the module feed logs one line per failed episode and stops the boot read once subscribed" *
+TEST_CASE("the module feed logs one line per failed episode and keeps reading while the durable is up" *
           doctest::skip(live_broker::skipped()))
 {
   const auto broker = live_broker::url();
@@ -442,16 +442,22 @@ TEST_CASE("the module feed logs one line per failed episode and stops the boot r
   ModuleGate gate;
   const std::string file = tempPath("feed-noise.json");
   std::atomic<int> reads{0};
+  std::atomic<bool> answer{false};
   auto config = feedConfig(file);
   config.stream = stream;
   config.subject = subject;
   config.retrySeconds = 0.05;
-  config.bootAttempts = 1000;
+  config.bootAttempts = 3;
   ModuleFeed feed({.bus = bus,
                    .gate = &gate,
-                   .bootRead = [&reads]() -> std::optional<ModuleFeed::Snapshot> {
+                   .bootRead = [&reads, &answer]() -> std::optional<ModuleFeed::Snapshot> {
                      reads.fetch_add(1);
-                     return std::nullopt;
+                     if (!answer.load())
+                       return std::nullopt;
+                     return ModuleFeed::Snapshot{
+                         .flags = {{.id = "core", .enabled = true},
+                                   {.id = "surveillance", .enabled = true}},
+                         .version = 3};
                    }},
                   config);
   const LogCapture capture;
@@ -462,16 +468,133 @@ TEST_CASE("the module feed logs one line per failed episode and stops the boot r
                              .subjects = {subject},
                              .maxAgeNs = 60LL * 1000000000,
                              .duplicatesNs = 60LL * 1000000000}));
-  CHECK(waitUntil([&feed] { return feed.drained(); }));
+  CHECK(waitUntil([&capture, &subject] { return capture.count("connected on " + subject) == 1; }));
   CHECK(capture.count("is not ready") == 1);
-  CHECK(capture.count("connected on " + subject) == 1);
-  CHECK(capture.count("keeping the last known state") == 0);
+  CHECK(waitUntil([&capture] { return capture.count("keeping the last known state") == 1; }));
+
   const int readsAtConnect = reads.load();
+  CHECK(waitUntil([&reads, readsAtConnect] { return reads.load() > readsAtConnect; }));
+  CHECK_FALSE(feed.drained());
+  CHECK(gate.known().empty());
+
+  answer.store(true);
+  CHECK(waitUntil([&feed, &gate] { return feed.drained() && gate.known().size() == 2; }));
+  CHECK(feed.version() == 3);
+  const int readsAtAnswer = reads.load();
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  CHECK(reads.load() == readsAtConnect);
+  CHECK(reads.load() == readsAtAnswer);
   feed.requestStop();
   bus->drain();
   std::filesystem::remove(file);
+}
+
+TEST_CASE("the module feed re-reads the enabled set once when the durable had to reconnect" *
+          doctest::skip(live_broker::skipped()))
+{
+  const auto broker = live_broker::url();
+  REQUIRE_MESSAGE(!broker.empty(), live_broker::kMissingUrl);
+  NatsBus::Options options;
+  options.url = broker;
+  auto bus = std::make_shared<NatsBus>();
+  REQUIRE(bus->connect(options));
+
+  const std::string stream = "argus-test-module-reconnect-" + std::to_string(::getpid());
+  const std::string subject = stream + ".module";
+  ModuleGate gate;
+  const std::string file = tempPath("feed-reconnect.json");
+  std::atomic<int> reads{0};
+  auto config = feedConfig(file);
+  config.stream = stream;
+  config.subject = subject;
+  config.retrySeconds = 0.05;
+  config.bootAttempts = 3;
+  ModuleFeed feed({.bus = bus,
+                   .gate = &gate,
+                   .bootRead = [&reads]() -> std::optional<ModuleFeed::Snapshot> {
+                     reads.fetch_add(1);
+                     return ModuleFeed::Snapshot{
+                         .flags = {{.id = "core", .enabled = true},
+                                   {.id = "productivity", .enabled = true}},
+                         .version = 2};
+                   }},
+                  config);
+  const LogCapture capture;
+  feed.start();
+  REQUIRE(waitUntil([&capture] { return capture.count("is not ready") > 0; }));
+  CHECK(capture.count("keeping the last known state") == 0);
+  const int readsBeforeReconnect = reads.load();
+  REQUIRE(readsBeforeReconnect == 1);
+
+  REQUIRE(bus->ensureStream({.name = stream,
+                             .subjects = {subject},
+                             .maxAgeNs = 60LL * 1000000000,
+                             .duplicatesNs = 60LL * 1000000000}));
+  CHECK(waitUntil([&feed] { return feed.drained(); }));
+  CHECK(reads.load() == readsBeforeReconnect + 1);
+  CHECK(gate.known().size() == 2);
+  CHECK(feed.version() == 2);
+  feed.requestStop();
+  bus->drain();
+  std::filesystem::remove(file);
+}
+
+TEST_CASE("a service that boots before settings keeps reading the enabled set until it answers")
+{
+  ModuleGate gate;
+  const std::string file = tempPath("keeps-reading.json");
+  constexpr int kAnswerOn = 6;
+  std::atomic<int> reads{0};
+  ModuleFeed feed({.bus = nullptr,
+                   .gate = &gate,
+                   .bootRead = [&reads]() -> std::optional<ModuleFeed::Snapshot> {
+                     if (reads.fetch_add(1) + 1 < kAnswerOn)
+                       return std::nullopt;
+                     return ModuleFeed::Snapshot{
+                         .flags = {{.id = "core", .enabled = true},
+                                   {.id = "surveillance", .enabled = true}},
+                         .version = 7,
+                         .epoch = "1000-aa"};
+                   }},
+                  feedConfig(file));
+  feed.start();
+  CHECK(waitUntil([&feed] { return feed.drained(); }));
+  CHECK(reads.load() == kAnswerOn);
+  CHECK(feed.version() == 7);
+  CHECK(feed.epoch() == "1000-aa");
+  CHECK(gate.known().size() == 2);
+  CHECK(gate.enabled(kSurveillance));
+
+  const auto persisted = module_gate::loadStateFile(file);
+  REQUIRE(persisted.has_value());
+  CHECK(persisted.value_or(ModuleFlags{}).size() == 2);
+  std::filesystem::remove(file);
+}
+
+TEST_CASE("the last known state does not settle the gate, the first answer does and tells the listeners")
+{
+  ModuleGate gate;
+  const ModuleFlags flags = {{.id = "core", .enabled = true},
+                             {.id = "surveillance", .enabled = true}};
+  int told = 0;
+  gate.onStateChange([&told] { ++told; });
+
+  CHECK_FALSE(gate.settled());
+  gate.remember(flags);
+  CHECK_FALSE(gate.settled());
+  CHECK(told == 1);
+
+  gate.remember(flags);
+  CHECK(told == 1);
+
+  gate.apply(flags);
+  CHECK(gate.settled());
+  CHECK(told == 2);
+  gate.apply(flags);
+  CHECK(told == 2);
+
+  gate.reset();
+  CHECK_FALSE(gate.settled());
+  CHECK(gate.known().empty());
 }
 
 TEST_CASE("a lower version under a new epoch applies, under the same epoch it is ignored")
@@ -685,10 +808,15 @@ TEST_CASE("a boot read that never answers leaves the last known state in force")
                    }},
                   feedConfig(file));
   feed.restore();
+  CHECK_FALSE(gate.settled());
   feed.start();
-  CHECK(waitUntil([&feed, &calls] { return feed.drained() && calls.load() == 3; }));
+  CHECK(waitUntil([&calls] { return calls.load() >= 3; }));
+  CHECK_FALSE(feed.drained());
+  CHECK_FALSE(gate.settled());
   CHECK_FALSE(gate.enabled(kProductivity));
   CHECK(gate.enabled(kSurveillance));
+  feed.requestStop();
+  CHECK(waitUntil([&feed] { return feed.drained(); }));
   std::filesystem::remove(file);
 }
 
@@ -708,7 +836,14 @@ int fallbackWarnings(bool answered)
     REQUIRE(feed.handle(enabledEvent(false, 4, "1000-a")) == ModuleFeedDisposition::Applied);
   const LogCapture capture;
   feed.start();
-  CHECK(waitUntil([&feed] { return feed.drained(); }));
+  if (answered) {
+    CHECK(waitUntil([&feed] { return feed.drained(); }));
+  }
+  else {
+    CHECK(waitUntil([&capture] { return capture.count("keeping the last known state") > 0; }));
+    feed.requestStop();
+    CHECK(waitUntil([&feed] { return feed.drained(); }));
+  }
   std::filesystem::remove(file);
   return capture.count("keeping the last known state");
 }

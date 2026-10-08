@@ -291,6 +291,71 @@ TEST_CASE("the first frame of a socket is InitialInfo with the whole context, an
   moduleGate().reset();
 }
 
+TEST_CASE("a socket connecting before the enabled set is known gets no context, never a module list from an unknown gate")
+{
+  moduleGate().reset();
+  SyncService service;
+
+  const auto resident = connect(service, 61, UserRole::Resident);
+  REQUIRE_FALSE(resident->messages.empty());
+  const Json::Value first = json_util::fromString(resident->messages.front());
+  CHECK(first["operation"] == 0);
+  CHECK(first["info"]["id"] == 61);
+  CHECK(first["info"]["role"] == "resident");
+  CHECK(first["info"]["isActive"] == true);
+  CHECK_FALSE(first["info"].isMember("context"));
+  leave(resident);
+
+  const auto owner = connect(service, 62, UserRole::Owner);
+  CHECK_FALSE(json_util::fromString(owner->messages.front())["info"].isMember("context"));
+  leave(owner);
+
+  const Json::Value none;
+  const Json::Value unknown = user_context::build(
+      {.userId = 61, .role = UserRole::Resident, .modules = moduleGate().snapshot(), .ownerCatalog = none});
+  CHECK(unknown["modules"].empty());
+  CHECK_FALSE(unknown["capabilities"].empty());
+
+  moduleGate().apply(snapshotWith(true, true).modules());
+  const auto late = connect(service, 63, UserRole::Resident);
+  const Json::Value known = json_util::fromString(late->messages.front());
+  REQUIRE(known["info"]["context"].isObject());
+  CHECK(known["info"]["context"]["userId"] == 63);
+  CHECK(contains(known["info"]["context"]["capabilities"], "agenda.read"));
+  const Json::Value& modules = known["info"]["context"]["modules"];
+  REQUIRE(modules.size() == 3);
+  CHECK(std::ranges::any_of(modules, [](const Json::Value& module) {
+    return module["id"] == "productivity" && module["enabled"] == true;
+  }));
+  leave(late);
+  moduleGate().reset();
+}
+
+TEST_CASE("a socket that connected while the set was unknown is told by the context update and moves its rooms")
+{
+  moduleGate().reset();
+  SyncService service;
+  const auto resident = connect(service, 71, UserRole::Resident);
+  CHECK_FALSE(json_util::fromString(resident->messages.front())["info"].isMember("context"));
+  resident->messages.clear();
+
+  const auto modules = snapshotWith(true, true);
+  const Json::Value none;
+  moduleGate().apply(modules.modules());
+  userContext().deliverLocal(resident, {.modules = modules, .ownerCatalog = none});
+
+  REQUIRE(resident->messages.size() == 1);
+  const Json::Value update = resident->last();
+  CHECK(update["operation"] == 13);
+  CHECK(update["info"]["userId"] == 71);
+  REQUIRE(update["info"]["modules"].size() == 3);
+  CHECK(contains(update["info"]["capabilities"], "camera.view"));
+  CHECK(RoomManager{}.isOnline(moduleRoom(TableName::Camera)));
+  CHECK(RoomManager{}.isOnline(moduleRoom(TableName::Project)));
+  leave(resident);
+  moduleGate().reset();
+}
+
 TEST_CASE("the Owner's InitialInfo carries the owner catalog when settings answers and goes without it when not")
 {
   setGate(true, true);

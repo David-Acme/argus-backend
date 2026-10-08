@@ -41,7 +41,6 @@ public:
   void setCatalogFetch(CatalogFetch fetch);
 
   [[nodiscard]] drogon::Task<Json::Value> ownerCatalogFor(UserRole role) const;
-  [[nodiscard]] drogon::Task<Json::Value> contextFor(int64_t userId, UserRole role) const;
 
   void deliverLocal(const Conn& conn, const ContextDelivery& delivery) const;
   void modulesChanged() const;

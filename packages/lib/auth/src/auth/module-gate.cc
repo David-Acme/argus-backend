@@ -178,6 +178,12 @@ std::shared_ptr<const ModuleSnapshot> ModuleGate::current() const
   return current_;
 }
 
+bool ModuleGate::settled() const
+{
+  std::scoped_lock lock(mutex_);
+  return settled_;
+}
+
 bool ModuleGate::roleActive(UserRole role) const
 {
   return current()->roleActive(role);
@@ -185,12 +191,24 @@ bool ModuleGate::roleActive(UserRole role) const
 
 std::vector<ModuleChange> ModuleGate::apply(const ModuleFlags& flags)
 {
+  return store(flags, true);
+}
+
+std::vector<ModuleChange> ModuleGate::remember(const ModuleFlags& flags)
+{
+  return store(flags, false);
+}
+
+std::vector<ModuleChange> ModuleGate::store(const ModuleFlags& flags, bool settles)
+{
   std::vector<ModuleChange> changes;
   std::vector<Listener> listeners;
   std::vector<StateListener> stateListeners;
   bool stateChanged = false;
   {
     std::scoped_lock lock(mutex_);
+    const bool becameSettled = settles && !settled_;
+    settled_ = settled_ || settles;
     for (const auto& flag : flags) {
       const auto found = states_.find(flag.id);
       const bool previous = found == states_.end() || found->second.enabled;
@@ -204,7 +222,7 @@ std::vector<ModuleChange> ModuleGate::apply(const ModuleFlags& flags)
       current_ = std::make_shared<const ModuleSnapshot>(sortedFlags(states_));
     if (!changes.empty())
       listeners = listeners_;
-    if (stateChanged)
+    if (stateChanged || becameSettled)
       stateListeners = stateListeners_;
   }
   for (const auto& change : changes) {
@@ -234,6 +252,7 @@ void ModuleGate::reset()
   std::scoped_lock lock(mutex_);
   states_.clear();
   current_ = std::make_shared<const ModuleSnapshot>();
+  settled_ = false;
   listeners_.clear();
   stateListeners_.clear();
 }

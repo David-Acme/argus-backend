@@ -1018,7 +1018,25 @@ user's role.
   "ownerCatalog": [ ...the Owner's module JSON, only for the Owner... ] }
 ```
 
-`InitialInfo` carries it as `info.context` beside `id`, `role` and `isActive`;
+`InitialInfo` carries it as `info.context` beside `id`, `role` and `isActive`,
+**only while the module gate is settled** (`ModuleGate::settled()`): a service
+that booted before argus-settings answered holds no enabled set, and an
+unknown gate would either look like "no modules at all" or hand over a partial
+last known state — either way the app's module list comes from this one field,
+so advertising it would hide the screens of modules that are on (the fresh
+device loses Agenda, Proyectos and the cameras while an install that already
+had them keeps them from its cache). Until the gate settles the frame goes
+without `context` and the app keeps the access it already has; the moment it
+settles, the gate tells its state listeners, `modulesChanged()` reaches every
+connected socket and `ContextUpdate = 13` carries the set — so the deferred
+context arrives by the update leg, and so does every later change. There is no
+polling in between and no dependence on the durable feed having delivered
+anything: the feed carries the set only when argus-settings publishes one, the
+boot read is what a fresh start relies on (`packages/lib/auth/CONTEXT.md`,
+"Settled"). `UserContextService::deliverLocal` refuses to build a context while
+the gate is unsettled for the same reason, so a role change (`userChanged`) on a
+service that has not read the set yet tells the socket nothing instead of
+telling it "no modules".
 `ContextUpdate` (`context_update`, `{operation: 13, option: "user", info}`) sends
 the bare context. Texts come in both languages so the app picks one without a
 round trip and a cached context paints in either. `kind` (`core`, `available` or
