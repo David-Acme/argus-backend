@@ -411,6 +411,20 @@ the sync RPC service is its only reader), so `argus_camera-sync` carries
   — and the 118 grab warnings down to one line per failure episode; the counts
   are the root cause's reading of the old run, the reduction is the policy's,
   not a re-measurement.
+- **Two follow-ups are recorded here, not fixed.** The rebaseline's stability
+  test compares the current frame with `state.previous`, which only a
+  successful sample updates, so a missed sample leaves `previous` stale, the
+  frame after it can differ by more than `threshold/2` and resets
+  `newSceneSinceMs`, and on a flaky stream the 15-minute window almost never
+  completes (the demo log's one completed rebaseline took 5 h 17 m). A fix
+  would count stable *samples* and treat a missing sample as neutral. And
+  health and the operator share one frame source, so they share one
+  `GrabBackoff`: an operator grab that failed just before a health tick makes
+  that tick return no frame without trying, and the health log then reads
+  `unreachable` for an attempt it never made. The miss is still real evidence
+  of a failure, so the status is right — the attribution is not. Give the skip
+  its own outcome, or let health bypass the backoff, when that file is next
+  touched.
 - The `insect` state was dropped (Round 14): whole-frame
   variance-of-Laplacian cannot separate an insect on the lens from a sharp
   static background, so the state fired on every healthy camera. Tape,
