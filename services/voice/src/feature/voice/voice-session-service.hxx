@@ -124,6 +124,9 @@ private:
     std::chrono::steady_clock::time_point transcribed{};
     std::chrono::steady_clock::time_point firstToken{};
     std::chrono::steady_clock::time_point firstAudio{};
+    std::chrono::steady_clock::time_point requested{};
+    std::chrono::steady_clock::time_point firstSentence{};
+    std::chrono::steady_clock::time_point firstChunk{};
   };
 
   struct DuplexTurn
@@ -188,6 +191,8 @@ private:
     std::condition_variable pcmCv;
     SampleRing pcmRing{kPcmRingSamples};
     bool duplex{false};
+    bool traceLatency{false};
+    std::atomic<TurnClock*> activeClock{nullptr};
     std::chrono::milliseconds bargeGuard{300};
     std::thread turnThread;
     std::mutex duplexMutex;
@@ -218,6 +223,7 @@ private:
   {
     const std::vector<float>& samples;
     std::shared_ptr<TurnTranscript> transcript;
+    std::chrono::steady_clock::time_point detected{};
   };
 
   std::shared_ptr<Session> sessionOf(VoiceSessionSink& sink) const;

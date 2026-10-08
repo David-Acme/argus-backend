@@ -6,6 +6,8 @@
 
 #include <config/config-service.hxx>
 
+#include <trantor/utils/Logger.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -21,6 +23,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -288,6 +291,22 @@ struct RecordingStt final : IVoiceStt
   }
 };
 
+void writeDuplexVadBlock(std::ofstream& file, int guardMs)
+{
+  file << "[vad]\n"
+       << "threshold = 0.45\n"
+       << "neg_threshold = 0.25\n"
+       << "min_speech_frames = 5\n"
+       << "min_silence_frames = 12\n"
+       << "pre_roll_frames = 10\n"
+       << "min_turn_ms = 240\n"
+       << "min_mean_prob = 0.35\n"
+       << "denoise = false\n"
+       << "barge_threshold = 0.7\n"
+       << "barge_min_frames = 8\n"
+       << "barge_guard_ms = " << guardMs << "\n";
+}
+
 class DuplexConfig
 {
 public:
@@ -296,19 +315,8 @@ public:
   {
     {
       std::ofstream file(kPath);
-      file << "[vad]\n"
-           << "threshold = 0.45\n"
-           << "neg_threshold = 0.25\n"
-           << "min_speech_frames = 5\n"
-           << "min_silence_frames = 12\n"
-           << "pre_roll_frames = 10\n"
-           << "min_turn_ms = 240\n"
-           << "min_mean_prob = 0.35\n"
-           << "denoise = false\n"
-           << "barge_threshold = 0.7\n"
-           << "barge_min_frames = 8\n"
-           << "barge_guard_ms = " << guardMs << "\n"
-           << "[voice]\n"
+      writeDuplexVadBlock(file, guardMs);
+      file << "[voice]\n"
            << "opening = \"" << voiceOpeningToString(opening) << "\"\n";
       if (!file)
         throw std::runtime_error(std::string("voice-test-config: cannot write ") + kPath);
@@ -330,6 +338,87 @@ public:
 private:
   static constexpr const char* kPath = "voice-duplex-test-config.toml";
   std::string previous_;
+};
+
+class LatencyTraceConfig
+{
+public:
+  LatencyTraceConfig(bool enabled, std::string_view opening)
+      : previous_(voice_test_config::currentOpening())
+  {
+    write(enabled, opening);
+  }
+
+  ~LatencyTraceConfig() noexcept(false)
+  {
+    std::remove(kPath);
+    voice_test_config::restoreOpening(previous_);
+  }
+
+  void write(bool enabled, std::string_view opening)
+  {
+    {
+      std::ofstream file(kPath);
+      writeDuplexVadBlock(file, 300);
+      file << "[voice]\n"
+           << "opening = \"" << opening << "\"\n"
+           << "trace_latency = " << (enabled ? "true" : "false") << "\n";
+      if (!file)
+        throw std::runtime_error(std::string("voice-test-config: cannot write ") + kPath);
+    }
+    ConfigService::load(kPath);
+    if (VoiceConfig::resolveLatencyTrace() != enabled)
+      throw std::runtime_error("voice-test-config: the trace key did not take");
+  }
+
+  LatencyTraceConfig(const LatencyTraceConfig&) = delete;
+  LatencyTraceConfig& operator=(const LatencyTraceConfig&) = delete;
+
+private:
+  static constexpr const char* kPath = "voice-trace-test.toml";
+  std::string previous_;
+};
+
+class LogCapture
+{
+public:
+  LogCapture()
+  {
+    trantor::Logger::setOutputFunction(
+        [this](const char* message, uint64_t length) {
+          {
+            std::scoped_lock lock(mutex_);
+            lines_.emplace_back(message, static_cast<size_t>(length));
+          }
+          std::fwrite(message, 1, static_cast<size_t>(length), stdout);
+          std::fflush(stdout);
+        },
+        [] {});
+  }
+
+  ~LogCapture()
+  {
+    trantor::Logger::setOutputFunction(
+        [](const char* message, uint64_t length) {
+          std::fwrite(message, 1, static_cast<size_t>(length), stdout);
+        },
+        [] { std::fflush(stdout); });
+  }
+
+  LogCapture(const LogCapture&) = delete;
+  LogCapture& operator=(const LogCapture&) = delete;
+
+  [[nodiscard]] int count(std::string_view needle) const
+  {
+    std::scoped_lock lock(mutex_);
+    return static_cast<int>(std::ranges::count_if(lines_, [needle](const std::string& line) {
+      return line.find(needle) != std::string::npos;
+    }));
+  }
+
+private:
+  mutable std::mutex mutex_;
+  std::vector<std::string> lines_;
 };
 
 constexpr int kWindow = 512;
@@ -420,6 +509,14 @@ std::vector<int64_t> interruptedIds(const FakeVoiceSink& sink)
     if (frame.has_interrupted())
       ids.push_back(frame.interrupted().id());
   return ids;
+}
+
+std::vector<std::string> serializedFrames(const FakeVoiceSink& sink)
+{
+  std::vector<std::string> out;
+  for (const auto& frame : sink.snapshot())
+    out.push_back(frame.SerializeAsString());
+  return out;
 }
 
 }
@@ -562,6 +659,22 @@ TEST_CASE("The opening key falls back to none and an unknown value degrades to n
   {
     OpeningConfig unknown("shouting");
     CHECK(VoiceConfig::resolveOpening() == VoiceOpening::None);
+  }
+}
+
+TEST_CASE("The latency trace key resolves and defaults off")
+{
+  {
+    ClearedVoiceConfig cleared;
+    CHECK_FALSE(VoiceConfig::resolveLatencyTrace());
+  }
+  {
+    LatencyTraceConfig trace(false, "none");
+    CHECK_FALSE(VoiceConfig::resolveLatencyTrace());
+  }
+  {
+    LatencyTraceConfig trace(true, "none");
+    CHECK(VoiceConfig::resolveLatencyTrace());
   }
 }
 
@@ -712,6 +825,90 @@ TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
   CHECK(sess->history.userTurns() == 1);
 
   session.stop(sink);
+}
+
+TEST_CASE("Turning the latency trace on changes nothing the sink sees")
+{
+  LogCapture capture;
+  LatencyTraceConfig trace(false, "none");
+  argus::voice::v1::VoiceIdentity identity;
+  identity.set_user_id(7);
+  identity.set_role(argus::voice::v1::VOICE_ROLE_RESIDENT);
+  identity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  identity.set_name("Ana");
+
+  std::vector<std::string> quietFrames;
+  std::vector<std::string> tracedFrames;
+  int quietTraces = 0;
+  int tracedTraces = 0;
+  for (const bool traced : {false, true}) {
+    trace.write(traced, "none");
+    const int tracesBefore = capture.count("Voice: turn trace");
+    FakeStt stt;
+    FakeTts tts;
+    FakeLlm llm;
+    FakeIdentity identitySeam;
+    VoiceSessionService session({.stt = stt,
+                                 .tts = tts,
+                                 .llm = llm,
+                                 .identity = identitySeam,
+                                 .vad = voiceVad()});
+    FakeVoiceSink sink;
+    session.start(sink, identity);
+    auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+    REQUIRE(waitFor([&] { return llm.primeCalls.load() >= 1; }));
+
+    const std::vector<float> samples(1600, 0.1F);
+    VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+    CHECK(tts.synthesizeCalls == 1);
+    CHECK(tts.lastText == "Hola de nuevo.");
+    if (traced) {
+      tracedFrames = serializedFrames(sink);
+      tracedTraces = capture.count("Voice: turn trace") - tracesBefore;
+    }
+    else {
+      quietFrames = serializedFrames(sink);
+      quietTraces = capture.count("Voice: turn trace") - tracesBefore;
+    }
+    session.stop(sink);
+  }
+
+  CHECK(quietTraces == 0);
+  CHECK(tracedTraces == 1);
+  CHECK_FALSE(quietFrames.empty());
+  CHECK(quietFrames == tracedFrames);
+
+  trace.write(true, "spoken");
+  StreamingTts duckTts;
+  RecordingStt duckStt;
+  FakeLlm duckLlm;
+  FakeIdentity duckIdentity;
+  ScriptedVad duckVad;
+  VoiceSessionService ducking({.stt = duckStt,
+                               .tts = duckTts,
+                               .llm = duckLlm,
+                               .identity = duckIdentity,
+                               .vad = duckVad});
+  FakeVoiceSink duckSink;
+  ducking.start(duckSink, duplexStart());
+  auto duckSession = VoiceSessionTestAccess::sessionOf(ducking, duckSink);
+  REQUIRE(waitFor([&] {
+    return duckTts.calls.load() > 0 && duckSession->speaking.load() &&
+           VoiceSessionTestAccess::armed(ducking, duckSink);
+  }, 3000));
+  const int duckTracesBefore = capture.count("Voice: turn trace");
+  feed({.service = ducking, .sink = duckSink, .prob = 0.6F, .windows = 6});
+  REQUIRE(waitFor([&] {
+    const auto ducks = duckSink.duckTransitions();
+    return !ducks.empty() && ducks.front();
+  }, 3000));
+  feed({.service = ducking, .sink = duckSink, .prob = 0.0F, .windows = 14});
+  REQUIRE(waitFor([&] {
+    const auto ducks = duckSink.duckTransitions();
+    return !ducks.empty() && !ducks.back();
+  }, 3000));
+  ducking.stop(duckSink);
+  CHECK(capture.count("Voice: turn trace") == duckTracesBefore);
 }
 
 TEST_CASE("Skip and stop cancel blocked voice synthesis")

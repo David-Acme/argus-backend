@@ -10,6 +10,7 @@ caller_notification = ""
 
 [voice]
 opening = "none"
+trace_latency = false
 
 [identity]
 target = "127.0.0.1:7040"

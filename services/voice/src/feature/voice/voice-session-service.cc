@@ -567,6 +567,7 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   session->denoise = listening.denoise;
   session->denoiseGateRms = listening.denoiseGateRms;
   session->duplex = duplex;
+  session->traceLatency = VoiceConfig::resolveLatencyTrace();
   session->bargeGuard = listening.bargeGuard;
 
   const std::string requestedLine = sanitizedLine(request.opening_line(), kMaxAnnouncementChars);
@@ -754,10 +755,12 @@ void VoiceSessionService::workerLoop(const std::shared_ptr<Session>& session)
       if (const auto turn = session->vad.process(
               {.samples = clean.data() + offset,
                .count = static_cast<int>(chunk)})) {
+        const auto detected = std::chrono::steady_clock::now();
         auto heard = takeTranscript(*session);
         if (!turn->samples.empty()) {
           try {
-            processTurn(*session, {.samples = turn->samples, .transcript = std::move(heard)});
+            processTurn(*session,
+                        {.samples = turn->samples, .transcript = std::move(heard), .detected = detected});
           }
           catch (const std::exception& e) {
             LOG_WARN << "Voice: turn failed: " << e.what();
@@ -855,9 +858,11 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
         if (!turn)
           followUtterance(*session);
         else if (auto heard = takeTranscript(*session); !turn->samples.empty()) {
+          const auto detected = std::chrono::steady_clock::now();
           launchTurn(session,
-                     [this, samples = std::move(turn->samples), heard = std::move(heard)](Session& active) {
-                       processTurn(active, {.samples = samples, .transcript = heard});
+                     [this, samples = std::move(turn->samples), heard = std::move(heard), detected](
+                         Session& active) {
+                       processTurn(active, {.samples = samples, .transcript = heard, .detected = detected});
                      });
         }
       }
@@ -1003,7 +1008,10 @@ VoiceSessionService::Transcript VoiceSessionService::transcribe(Session& session
 void VoiceSessionService::processTurn(Session& session,
                                       const std::vector<float>& samples)
 {
-  processTurn(session, {.samples = samples, .transcript = nullptr});
+  processTurn(session,
+              {.samples = samples,
+               .transcript = nullptr,
+               .detected = std::chrono::steady_clock::now()});
 }
 
 void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
@@ -1013,7 +1021,13 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
   TurnClock clock{.detected = std::chrono::steady_clock::now(),
                   .transcribed = {},
                   .firstToken = {},
-                  .firstAudio = {}};
+                  .firstAudio = {},
+                  .requested = {},
+                  .firstSentence = {},
+                  .firstChunk = {}};
+  const auto traceBase = heard.detected == std::chrono::steady_clock::time_point{}
+                             ? clock.detected
+                             : heard.detected;
   std::stop_token cancellation;
   {
     std::scoped_lock lock(session.turnMutex);
@@ -1023,6 +1037,17 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
     session.turnStop = std::stop_source{};
     cancellation = session.turnStop.get_token();
   }
+  struct TurnClockScope
+  {
+    Session& session;
+    TurnClockScope(Session& active, TurnClock* turnClock) : session(active)
+    {
+      session.activeClock.store(turnClock);
+    }
+    ~TurnClockScope() { session.activeClock.store(nullptr); }
+    TurnClockScope(const TurnClockScope&) = delete;
+    TurnClockScope& operator=(const TurnClockScope&) = delete;
+  } clockScope{session, &clock};
 
   applyNotes(session);
   const auto speakerProbe = probeSpeaker(session, samples);
@@ -1115,6 +1140,8 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
         break;
       const std::string sentence = pending.substr(0, cut);
       pending.erase(0, cut);
+      if (clock.firstSentence == std::chrono::steady_clock::time_point{})
+        clock.firstSentence = std::chrono::steady_clock::now();
       firstSentenceSent = true;
       say(sentence);
       if (session.interrupt.load()) {
@@ -1123,6 +1150,8 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
       }
     }
   };
+  if (clock.requested == std::chrono::steady_clock::time_point{})
+    clock.requested = std::chrono::steady_clock::now();
   try {
     llm_.chatStream({.request = req,
                      .onToken = onToken,
@@ -1170,6 +1199,16 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
            << " tts_first_audio_ms=" << elapsedMs(clock.firstToken, clock.firstAudio)
            << " total_ms=" << elapsedMs(clock.detected, clock.firstAudio)
            << (interrupted ? " interrupted" : "");
+  if (session.traceLatency)
+    LOG_INFO << "Voice: turn trace heard_bytes=" << userText.size()
+             << " endpoint_stt_ms=" << elapsedMs(traceBase, clock.transcribed)
+             << " endpoint_request_ms=" << elapsedMs(traceBase, clock.requested)
+             << " endpoint_first_token_ms=" << elapsedMs(traceBase, clock.firstToken)
+             << " endpoint_sentence_ms=" << elapsedMs(traceBase, clock.firstSentence)
+             << " endpoint_chunk_ms=" << elapsedMs(traceBase, clock.firstChunk)
+             << " endpoint_frame_ms=" << elapsedMs(traceBase, clock.firstAudio)
+             << (streamed ? " stt=stream" : " stt=unary")
+             << (interrupted ? " interrupted" : "");
 
   if (!session.duplex)
     session.vad.reset();
@@ -1376,6 +1415,7 @@ VoiceSessionService::SpeakOutcome VoiceSessionService::speak(Session& session,
        .targetRate = kTargetRate});
 
   SpeakingGuard speakingGuard(session.speaking);
+  TurnClock* const clock = session.activeClock.load();
   const auto markAudible = [&outcome] {
     if (outcome.audible)
       return;
@@ -1391,6 +1431,8 @@ VoiceSessionService::SpeakOutcome VoiceSessionService::speak(Session& session,
         return;
       if (session.interrupt.load())
         return;
+      if (clock != nullptr && clock->firstChunk == std::chrono::steady_clock::time_point{})
+        clock->firstChunk = std::chrono::steady_clock::now();
       const auto raw = floatToInt16(chunk);
       const std::vector<int16_t> resampled =
           resampler.process(raw.data(), raw.size());

@@ -61,6 +61,11 @@ VoiceOpening VoiceConfig::resolveOpening()
   return VoiceOpening::None;
 }
 
+bool VoiceConfig::resolveLatencyTrace()
+{
+  return ConfigService::hasKey("voice.trace_latency") && ConfigService::getBool("voice.trace_latency");
+}
+
 VoiceNotificationConfig VoiceConfig::resolveNotification()
 {
   return {.target = ConfigService::getString("notification.target"),

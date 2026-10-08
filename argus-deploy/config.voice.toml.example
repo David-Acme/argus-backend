@@ -10,6 +10,7 @@ caller_notification = "CHANGE_ME_NOTIFICATION_VOICE"
 
 [voice]
 opening = "none"
+trace_latency = false
 
 [identity]
 target = "argus-identity:7040"

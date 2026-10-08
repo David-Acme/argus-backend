@@ -66,5 +66,7 @@ public:
 
   [[nodiscard]] static VoiceOpening resolveOpening();
 
+  [[nodiscard]] static bool resolveLatencyTrace();
+
   [[nodiscard]] static VoiceNotificationConfig resolveNotification();
 };
