@@ -730,16 +730,16 @@
         "max": 0
       },
       "missedNameAsk": {
-        "max": 1
+        "max": 0
       },
       "relevance": {
-        "max": 1
+        "max": 0
       },
       "sentences": {
-        "max": 1
+        "max": 2
       },
       "unpromptedGreeting": {
-        "max": 3
+        "max": 1
       }
     }
   }

@@ -332,18 +332,20 @@ fire any more — and the pre-rewrite prompt still scores higher:
 | **min** | **17** | 15 |
 
 Hard dimensions scored 0 on every run for both prompts; the old prompt's remaining misses are
-sentence counts (two to three runs), the shipped one's are the name ask and the greeting
-opener — two of the three prompt items tracked as U19. The prompt question is therefore
-reopened there rather than settled by this table; the machinery this section documents (the
-eval, the strip, the clock gate) is prompt-independent.
+sentence counts (two to three runs) and, on some seeds, the name ask, while the shipped one's
+are the name ask and the greeting opener — the prompt items tracked as U19. The prompt question
+was settled by this table: the body reverted to the old one (the eval, the strip and the clock
+gate are unaffected and were re-pinned against the reverted prompt), and U19 starts from it.
+A Spanish-body variant stays a candidate that needs its own five seeds.
 
 The gates live under `callFaithfulness` in `gates.json`, pinned against the shipped
 configuration at the shipping temperature with a fixed seed (`--temperature 0.3 --seed 42`,
 reproducible across builds): `cases >= 20` and `turns >= 22` keep a shrunk corpus from passing
 vacuously, every hard dimension is pinned at 0 (`claims`, `rawClaims`, `recital`,
 `roleConfusion`, `clockRestraint`, `language`, `genericOffer`, `parrot`, `nameAskRepeated`),
-and the soft dimensions are pinned at the pinned run's measured values (`missedNameAsk <= 1`,
-`relevance <= 1`, `sentences <= 1`, `unpromptedGreeting <= 3`). The ctest smoke uses its own
+and the soft dimensions are pinned at the pinned run's measured values (`missedNameAsk <= 0`,
+`relevance <= 0`, `sentences <= 2`, `unpromptedGreeting <= 1` — the reverted prompt's cell).
+The ctest smoke uses its own
 small pin (`gates-smoke.json`, three cases) so it stays a plumbing check.
 
 Running it:

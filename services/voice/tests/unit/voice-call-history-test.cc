@@ -166,17 +166,16 @@ TEST_CASE("Sanitizing keeps whole UTF-8 characters")
   CHECK(sanitizedBlock(" uno\ndos\t \n", 50) == "uno\ndos");
 }
 
-TEST_CASE("The prompt speaks the call's language and states what Argus cannot see or claim")
+TEST_CASE("The prompt states the call's language and is pinned to its fixtures")
 {
   const std::string spanish = callSystemPrompt(VoiceLang::Es);
-  CHECK(spanish.starts_with("Eres Argus"));
-  CHECK(spanish.find("No ves la imagen de las cámaras") != std::string::npos);
-  CHECK(spanish.find("Nunca digas que hiciste, revisaste o cambiaste algo") != std::string::npos);
-  CHECK(spanish.find("You are") == std::string::npos);
+  CHECK(spanish.starts_with("You are Argus"));
+  CHECK(spanish.find("Reply strictly in Spanish") != std::string::npos);
+  CHECK(spanish.find("Reply strictly in English") == std::string::npos);
 
   const std::string english = callSystemPrompt(VoiceLang::En);
-  CHECK(english.starts_with("You are Argus"));
-  CHECK(english.find("You cannot see the camera images") != std::string::npos);
+  CHECK(english.find("Reply strictly in English") != std::string::npos);
+  CHECK(english.find("Reply strictly in Spanish") == std::string::npos);
 
   CHECK(callSystemPrompt(VoiceLang::Es) == readFile(ARGUS_CALL_PROMPT_ES));
   CHECK(callSystemPrompt(VoiceLang::En) == readFile(ARGUS_CALL_PROMPT_EN));
