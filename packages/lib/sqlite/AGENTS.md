@@ -61,6 +61,16 @@ own.
   declaration, explicit source lists, never `file(GLOB)`. The include root is
   `src/`, so consumers write `<sqlite/db-service.hxx>` and
   `<sqlite/sqlite-stmt.hxx>`.
+- The vendored `sqlite-vec` tree carries one local patch, recorded beside it
+  (`third_party/sqlite-vec/argus-patches/README.md`,
+  `0001-vec0-free-the-metadata-chunk-shadow-names.patch`): upstream
+  `vec0_free()` frees every shadow table name `vec0_init()` allocates except
+  `shadowMetadataChunksNames[]`, so every `vec0` table creation leaked two
+  allocations of 40 bytes. `vec-db-test` is the measurement — its two tables
+  (`memory_vec`, `face_vec`) are the leak, and under LeakSanitizer it exits
+  non-zero on that leak alone while doctest reports all 8 assertions passed.
+  A re-vendor that copies upstream files over `third_party/sqlite-vec/` drops
+  the fix silently; nothing pins the tree, since its sources are tracked here.
 - A schema is applied, never invented here: `runSchemaFile` takes the path the
   service resolved, and the DDL of a domain lives in that domain's
   `database/schema.sql` (rule 26). The one exception is the vec0 tables, whose
