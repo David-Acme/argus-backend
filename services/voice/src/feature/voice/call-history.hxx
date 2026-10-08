@@ -1,5 +1,6 @@
 #pragma once
 
+#include <feature/voice/speaker-verdict.hxx>
 #include <llm/llm-service.hxx>
 #include <voice/voice-lang.hxx>
 
@@ -18,7 +19,15 @@ enum class CallEntryKind : uint8_t
   User,
   Tone,
   Assistant,
-  Notice
+  Notice,
+  Speaker
+};
+
+struct CallSpeakerNote
+{
+  VoiceSpeakerVerdict verdict{VoiceSpeakerVerdict::Unknown};
+  std::string who;
+  std::string holder;
 };
 
 struct CallEntry
@@ -47,6 +56,7 @@ public:
   void addTone(const std::string& tone);
   void addAssistant(const std::string& text);
   void addNotice(const std::string& spoken);
+  void addSpeakerNote(const CallSpeakerNote& note);
   void rollbackUser();
   bool trim();
 

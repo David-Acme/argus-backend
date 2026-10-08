@@ -2,6 +2,7 @@
 
 #include <argus/voice/v1/voice.pb.h>
 #include <chrono>
+#include <feature/voice/speaker-verdict.hxx>
 #include <identity/identity-client.hxx>
 #include <identity/voiceprint-client.hxx>
 #include <memory>
@@ -103,7 +104,14 @@ struct VoiceSpeaker
   int64_t userId{0};
   std::string name;
   float score{0.0F};
+  VoiceSpeakerVerdict verdict{VoiceSpeakerVerdict::Unknown};
 };
+
+[[nodiscard]] VoiceSpeakerVerdict
+voiceSpeakerVerdictOf(const argus::identity::v1::IdentifyVoiceResponse& response);
+
+[[nodiscard]] std::optional<VoiceSpeaker>
+voiceSpeakerOf(const argus::identity::v1::IdentifyVoiceResponse& response);
 
 class IVoiceSpeaker
 {

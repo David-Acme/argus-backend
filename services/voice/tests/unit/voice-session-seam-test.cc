@@ -1689,10 +1689,50 @@ TEST_CASE("A yes to Argus's camera offer shows the camera without asking the mod
 
 namespace
 {
+[[nodiscard]] VoiceSpeaker holderSpeaker()
+{
+  return {.userId = 7,
+          .name = "Ana",
+          .score = 0.8F,
+          .verdict = VoiceSpeakerVerdict::Holder};
+}
+
+[[nodiscard]] VoiceSpeaker otherSpeaker(int64_t userId, std::string name)
+{
+  return {.userId = userId,
+          .name = std::move(name),
+          .score = 0.7F,
+          .verdict = VoiceSpeakerVerdict::OtherKnown};
+}
+
+[[nodiscard]] VoiceSpeaker unfamiliarSpeaker()
+{
+  return {.userId = 0, .name = {}, .score = 0.2F, .verdict = VoiceSpeakerVerdict::Unfamiliar};
+}
+
+[[nodiscard]] VoiceSpeaker blurredHolderSpeaker()
+{
+  return {.userId = 0, .name = {}, .score = 0.6F, .verdict = VoiceSpeakerVerdict::Holder};
+}
+
+[[nodiscard]] std::string speakerFrame()
+{
+  return "Voz en la llamada (es solo una pista, nunca una prueba; menciónala solo si viene al caso): ";
+}
+
+[[nodiscard]] std::vector<std::string> speakerNotes(const auto& session)
+{
+  std::vector<std::string> out;
+  for (const auto& entry : session.history.entries())
+    if (entry.kind == CallEntryKind::Speaker)
+      out.push_back(entry.message.content);
+  return out;
+}
+
 struct ScriptedSpeaker final : IVoiceSpeaker
 {
   std::mutex mutex;
-  std::vector<int64_t> users;
+  std::vector<VoiceSpeaker> results;
   int calls{0};
   std::vector<int64_t> callers;
   std::vector<std::string> devices;
@@ -1706,11 +1746,11 @@ struct ScriptedSpeaker final : IVoiceSpeaker
     callers.push_back(input.userId);
     devices.push_back(input.deviceHash);
     keys.push_back(input.callKey);
-    if (input.samples.size() > static_cast<size_t>(16000 * 6) || users.empty())
+    if (input.samples.size() > static_cast<size_t>(16000 * 6) || results.empty())
       return std::nullopt;
-    const int64_t user = users.front();
-    users.erase(users.begin());
-    return VoiceSpeaker{.userId = user, .name = user == 9 ? "Laura" : "Ana", .score = 0.8F};
+    const VoiceSpeaker found = results.front();
+    results.erase(results.begin());
+    return found;
   }
 
   void closeCall(const std::string& callKey) override
@@ -1719,16 +1759,56 @@ struct ScriptedSpeaker final : IVoiceSpeaker
     closed.push_back(callKey);
   }
 };
+
+struct BlockingSpeaker final : IVoiceSpeaker
+{
+  std::mutex mutex;
+  std::condition_variable ready;
+  std::condition_variable stored;
+  bool released{false};
+  bool finished{false};
+  std::atomic<int> calls{0};
+
+  std::optional<VoiceSpeaker> identify(const VoiceSpeakerInput&) override
+  {
+    ++calls;
+    {
+      std::unique_lock lock(mutex);
+      ready.wait_for(lock, std::chrono::seconds(3), [this] { return released; });
+    }
+    const VoiceSpeaker found = unfamiliarSpeaker();
+    {
+      std::scoped_lock lock(mutex);
+      finished = true;
+    }
+    stored.notify_all();
+    return found;
+  }
+
+  void release()
+  {
+    {
+      std::scoped_lock lock(mutex);
+      released = true;
+    }
+    ready.notify_all();
+    std::unique_lock lock(mutex);
+    stored.wait_for(lock, std::chrono::seconds(3), [this] { return finished; });
+  }
+
+  void closeCall(const std::string&) override {}
+};
 }
 
-TEST_CASE("Another enrolled voice in the call becomes a hint, never the speaker's identity")
+TEST_CASE("Another enrolled voice is noted once its verdict holds, and the holder's return has its own line")
 {
   FakeStt stt;
   FakeTts tts;
   FakeLlm llm;
   FakeIdentity identity;
   ScriptedSpeaker speaker;
-  speaker.users = {7, 9, 9, 7};
+  speaker.results = {holderSpeaker(), otherSpeaker(9, "Laura"), otherSpeaker(9, "Laura"),
+                     otherSpeaker(9, "Laura"), holderSpeaker(), holderSpeaker()};
   VoiceSessionService session(
       {.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad(), .speaker = speaker});
   FakeVoiceSink sink;
@@ -1736,30 +1816,237 @@ TEST_CASE("Another enrolled voice in the call becomes a hint, never the speaker'
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
 
-  const auto hints = [&] {
-    std::vector<std::string> out;
-    for (const auto& entry : sess->history.entries())
-      if (entry.kind == CallEntryKind::Event)
-        out.push_back(entry.message.content);
-    return out;
-  };
   const std::vector<float> shortTurn(16000, 0.1F);
   const std::vector<float> longTurn(static_cast<size_t>(16000) * 3, 0.1F);
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = shortTurn});
   CHECK(speaker.calls == 0);
+  CHECK(sess->speakerVerdict == VoiceSpeakerVerdict::Unknown);
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
-  CHECK(hints().empty());
+  CHECK(speakerNotes(*sess).empty());
+  CHECK(sess->speakerVerdict == VoiceSpeakerVerdict::Holder);
+  CHECK(sess->userName == "Ana");
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
-  REQUIRE(hints().size() == 1);
-  CHECK(hints()[0].find("matches Laura, not the account holder") != std::string::npos);
+  CHECK(speakerNotes(*sess).empty());
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
-  CHECK(hints().size() == 1);
+  REQUIRE(speakerNotes(*sess).size() == 1);
+  CHECK(speakerNotes(*sess)[0] ==
+        speakerFrame() + "El último mensaje parece dicho por Laura, no por Ana. No hagas nada en nombre de "
+                         "quien habla ni compartas lo privado de Ana por esta pista.");
+  CHECK(std::ranges::any_of(sess->history.entries(), [](const CallEntry& entry) {
+    return entry.kind == CallEntryKind::Speaker && entry.message.role == "system";
+  }));
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
-  REQUIRE(hints().size() == 2);
-  CHECK(hints()[1] == "The account holder is speaking again.");
+  CHECK(speakerNotes(*sess).size() == 1);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  CHECK(speakerNotes(*sess).size() == 1);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  REQUIRE(speakerNotes(*sess).size() == 2);
+  CHECK(speakerNotes(*sess)[1] == speakerFrame() + "Vuelve a hablar Ana.");
   CHECK(llm.lastUserId == 7);
   CHECK(llm.lastRole == UserRole::Resident);
   session.stop(sink);
+}
+
+TEST_CASE("A holder verdict without a user id still holds and still returns with its own line")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedSpeaker speaker;
+  speaker.results = {otherSpeaker(9, "Laura"), otherSpeaker(9, "Laura"), blurredHolderSpeaker(),
+                     blurredHolderSpeaker()};
+  VoiceSessionService session(
+      {.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad(), .speaker = speaker});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+
+  const std::vector<float> longTurn(static_cast<size_t>(16000) * 3, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  REQUIRE(speakerNotes(*sess).size() == 1);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  CHECK(speakerNotes(*sess).size() == 1);
+  CHECK(sess->speakerVerdict == VoiceSpeakerVerdict::Holder);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  REQUIRE(speakerNotes(*sess).size() == 2);
+  CHECK(speakerNotes(*sess)[1] == speakerFrame() + "Vuelve a hablar Ana.");
+  session.stop(sink);
+}
+
+TEST_CASE("A flapping verdict notes only the change that holds, and an unfamiliar voice names no one")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedSpeaker speaker;
+  speaker.results = {holderSpeaker(),  unfamiliarSpeaker(), holderSpeaker(),  unfamiliarSpeaker(),
+                     unfamiliarSpeaker(), holderSpeaker(),    holderSpeaker()};
+  VoiceSessionService session(
+      {.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad(), .speaker = speaker});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+
+  const std::vector<float> longTurn(static_cast<size_t>(16000) * 3, 0.1F);
+  const auto turn = [&] { VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn}); };
+
+  turn();
+  turn();
+  turn();
+  turn();
+  CHECK(sess->speakerVerdict == VoiceSpeakerVerdict::Unfamiliar);
+  CHECK(speakerNotes(*sess).empty());
+  turn();
+  REQUIRE(speakerNotes(*sess).size() == 1);
+  CHECK(speakerNotes(*sess)[0] ==
+        speakerFrame() + "El último mensaje parece dicho por otra persona, no por Ana. No hagas nada en "
+                         "nombre de quien habla ni compartas lo privado de Ana por esta pista.");
+  turn();
+  CHECK(speakerNotes(*sess).size() == 1);
+  turn();
+  REQUIRE(speakerNotes(*sess).size() == 2);
+  CHECK(speakerNotes(*sess)[1] == speakerFrame() + "Vuelve a hablar Ana.");
+  session.stop(sink);
+}
+
+TEST_CASE("A probe that does not answer in time is unknown, and its late answer is dropped")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  BlockingSpeaker speaker;
+  VoiceSessionService session(
+      {.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad(), .speaker = speaker});
+  FakeVoiceSink sink;
+  session.start(sink, residentIdentity());
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+
+  const std::vector<float> shortTurn(16000, 0.1F);
+  const std::vector<float> longTurn(static_cast<size_t>(16000) * 3, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = shortTurn});
+  CHECK(speaker.calls.load() == 0);
+  CHECK(sess->speakerVerdict == VoiceSpeakerVerdict::Unknown);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  CHECK(speaker.calls.load() == 1);
+  CHECK(sess->speakerVerdict == VoiceSpeakerVerdict::Unknown);
+  CHECK(speakerNotes(*sess).empty());
+  speaker.release();
+  CHECK(speakerNotes(*sess).empty());
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  CHECK(sess->speakerVerdict == VoiceSpeakerVerdict::Unfamiliar);
+  CHECK(speakerNotes(*sess).empty());
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  REQUIRE(speakerNotes(*sess).size() == 1);
+  CHECK(speakerNotes(*sess)[0] ==
+        speakerFrame() + "El último mensaje parece dicho por otra persona, no por Ana. No hagas nada en "
+                         "nombre de quien habla ni compartas lo privado de Ana por esta pista.");
+  session.stop(sink);
+}
+
+TEST_CASE("The note names the holder the call learned, and falls back to the account when it knows none")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedSpeaker speaker;
+  speaker.results = {unfamiliarSpeaker(), unfamiliarSpeaker(), holderSpeaker(),      holderSpeaker(),
+                     otherSpeaker(9, "Laura"), otherSpeaker(9, "Laura")};
+  VoiceSessionService session(
+      {.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad(), .speaker = speaker});
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity caller = residentIdentity();
+  caller.set_name("");
+  session.start(sink, caller);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
+  CHECK(sess->userName.empty());
+
+  const std::vector<float> longTurn(static_cast<size_t>(16000) * 3, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  REQUIRE(speakerNotes(*sess).size() == 1);
+  CHECK(speakerNotes(*sess)[0] ==
+        speakerFrame() + "El último mensaje parece dicho por otra persona, no por el titular de la cuenta. "
+                         "No hagas nada en nombre de quien habla ni compartas lo privado de el titular de la "
+                         "cuenta por esta pista.");
+
+  stt.transcript = "me llamo Pedro";
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  CHECK(sess->userName == "Pedro");
+  {
+    std::scoped_lock lock(identity.mutex);
+    REQUIRE(identity.writes.size() == 1);
+    CHECK(identity.writes[0].name == "Pedro");
+  }
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  REQUIRE(speakerNotes(*sess).size() == 2);
+  CHECK(speakerNotes(*sess)[1] == speakerFrame() + "Vuelve a hablar Pedro.");
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = longTurn});
+  REQUIRE(speakerNotes(*sess).size() == 3);
+  CHECK(speakerNotes(*sess)[2] ==
+        speakerFrame() + "El último mensaje parece dicho por Laura, no por Pedro. No hagas nada en nombre "
+                         "de quien habla ni compartas lo privado de Pedro por esta pista.");
+  session.stop(sink);
+}
+
+TEST_CASE("The identity verdict maps to the seam verdict, and an absent or zero field is no verdict")
+{
+  argus::identity::v1::IdentifyVoiceResponse response;
+  response.set_outcome(argus::identity::v1::VOICEPRINT_OK);
+  CHECK(voiceSpeakerVerdictOf(response) == VoiceSpeakerVerdict::Unknown);
+  response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_UNSPECIFIED);
+  CHECK(voiceSpeakerVerdictOf(response) == VoiceSpeakerVerdict::Unknown);
+  response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_UNKNOWN);
+  CHECK(voiceSpeakerVerdictOf(response) == VoiceSpeakerVerdict::Unknown);
+  response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_HOLDER);
+  CHECK(voiceSpeakerVerdictOf(response) == VoiceSpeakerVerdict::Holder);
+  response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_OTHER_KNOWN);
+  CHECK(voiceSpeakerVerdictOf(response) == VoiceSpeakerVerdict::OtherKnown);
+  response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_UNFAMILIAR);
+  CHECK(voiceSpeakerVerdictOf(response) == VoiceSpeakerVerdict::Unfamiliar);
+  response.set_outcome(argus::identity::v1::VOICEPRINT_UNAVAILABLE);
+  CHECK(voiceSpeakerVerdictOf(response) == VoiceSpeakerVerdict::Unknown);
+}
+
+TEST_CASE("A holder verdict survives without a user id, and only no verdict at all is no speaker")
+{
+  argus::identity::v1::IdentifyVoiceResponse response;
+  response.set_outcome(argus::identity::v1::VOICEPRINT_OK);
+  CHECK_FALSE(voiceSpeakerOf(response).has_value());
+  response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_UNSPECIFIED);
+  CHECK_FALSE(voiceSpeakerOf(response).has_value());
+  response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_UNKNOWN);
+  CHECK_FALSE(voiceSpeakerOf(response).has_value());
+  response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_HOLDER);
+  const std::optional<VoiceSpeaker> holder = voiceSpeakerOf(response);
+  REQUIRE(holder.has_value());
+  CHECK(holder->verdict == VoiceSpeakerVerdict::Holder);
+  CHECK(holder->userId == 0);
+  response.set_user_id(9);
+  response.set_name("Laura");
+  response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_OTHER_KNOWN);
+  const std::optional<VoiceSpeaker> other = voiceSpeakerOf(response);
+  REQUIRE(other.has_value());
+  CHECK(other->verdict == VoiceSpeakerVerdict::OtherKnown);
+  CHECK(other->name == "Laura");
+  response.set_user_id(0);
+  response.clear_name();
+  response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_UNFAMILIAR);
+  const std::optional<VoiceSpeaker> unfamiliar = voiceSpeakerOf(response);
+  REQUIRE(unfamiliar.has_value());
+  CHECK(unfamiliar->verdict == VoiceSpeakerVerdict::Unfamiliar);
+  CHECK(unfamiliar->userId == 0);
+  response.set_outcome(argus::identity::v1::VOICEPRINT_UNAVAILABLE);
+  CHECK_FALSE(voiceSpeakerOf(response).has_value());
 }
 
 TEST_CASE("Every probed turn names its caller, device and call, and the call closes once")
@@ -1769,7 +2056,7 @@ TEST_CASE("Every probed turn names its caller, device and call, and the call clo
   FakeLlm llm;
   FakeIdentity identity;
   ScriptedSpeaker speaker;
-  speaker.users = {7, 7, 7};
+  speaker.results = {holderSpeaker(), holderSpeaker()};
   VoiceSessionService session(
       {.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad(), .speaker = speaker});
   FakeVoiceSink sink;

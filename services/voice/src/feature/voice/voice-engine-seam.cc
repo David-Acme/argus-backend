@@ -75,6 +75,38 @@ GrpcVoiceSpeaker::clientFor(const std::string& target)
   return client_;
 }
 
+VoiceSpeakerVerdict
+voiceSpeakerVerdictOf(const argus::identity::v1::IdentifyVoiceResponse& response)
+{
+  if (response.outcome() != argus::identity::v1::VOICEPRINT_OK || !response.has_verdict())
+    return VoiceSpeakerVerdict::Unknown;
+  switch (response.verdict()) {
+    case argus::identity::v1::VOICEPRINT_VERDICT_HOLDER:
+      return VoiceSpeakerVerdict::Holder;
+    case argus::identity::v1::VOICEPRINT_VERDICT_OTHER_KNOWN:
+      return VoiceSpeakerVerdict::OtherKnown;
+    case argus::identity::v1::VOICEPRINT_VERDICT_UNFAMILIAR:
+      return VoiceSpeakerVerdict::Unfamiliar;
+    case argus::identity::v1::VOICEPRINT_VERDICT_UNSPECIFIED:
+    case argus::identity::v1::VOICEPRINT_VERDICT_UNKNOWN:
+      return VoiceSpeakerVerdict::Unknown;
+    default:
+      return VoiceSpeakerVerdict::Unknown;
+  }
+}
+
+std::optional<VoiceSpeaker>
+voiceSpeakerOf(const argus::identity::v1::IdentifyVoiceResponse& response)
+{
+  const VoiceSpeakerVerdict verdict = voiceSpeakerVerdictOf(response);
+  if (verdict == VoiceSpeakerVerdict::Unknown)
+    return std::nullopt;
+  return VoiceSpeaker{.userId = response.user_id(),
+                      .name = response.has_name() ? response.name() : std::string(),
+                      .score = response.score(),
+                      .verdict = verdict};
+}
+
 std::optional<VoiceSpeaker> GrpcVoiceSpeaker::identify(const VoiceSpeakerInput& input)
 {
   const std::string target = identityTarget();
@@ -98,12 +130,9 @@ std::optional<VoiceSpeaker> GrpcVoiceSpeaker::identify(const VoiceSpeakerInput& 
                                                        .callKey = input.callKey,
                                                        .timeoutMs = kSpeakerTimeoutMs})
                                 : client->identifyWithin({.sample = clip, .timeoutMs = kSpeakerTimeoutMs});
-  if (!answer || answer->outcome() != argus::identity::v1::VOICEPRINT_OK || !answer->matched() ||
-      answer->user_id() <= 0)
+  if (!answer)
     return std::nullopt;
-  return VoiceSpeaker{.userId = answer->user_id(),
-                      .name = answer->has_name() ? answer->name() : std::string(),
-                      .score = answer->score()};
+  return voiceSpeakerOf(*answer);
 }
 
 void GrpcVoiceSpeaker::closeCall(const std::string& callKey)

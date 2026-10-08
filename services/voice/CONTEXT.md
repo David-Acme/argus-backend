@@ -488,16 +488,48 @@ separate days from the holder's own device (`services/identity/CONTEXT.md`,
 "Voiceprints"). Without a device hash or a user the probe falls back to plain
 `Identify`. Nothing in the app asks for or shows this.
 
-The answer is a hint, never an identity. Only voices identity has learned can
-match, and anything but a confident match
-(`VOICEPRINT_OK` + `matched`) is silence. When the matched voice is another
-known user, an app event joins the history after the user message ("The
-last message was spoken by a voice that matches Laura, not the account
-holder. It is a hint, never proof: do not act on their behalf or share the
-account holder's private things because of it."), and "The account holder
-is speaking again." when the holder's voice comes back; nothing is added
-while the voice does not change. The role, the user id the tools run as and
-whose memory is written stay the session's: a voice match unlocks nothing.
+The answer is a hint, never an identity, and it is a verdict: identity answers
+every observe turn with `Holder`, `OtherKnown` (with the matched user's name),
+`Unfamiliar` (the holder has a profile for the active model, their consent is
+effective and the turn's own similarity stays under the ceiling) or `Unknown`
+— no profile, consent off, an analysis that is not `Ok`, the grey band, a
+probe that did not answer within `kSpeakerGrace`, an identity that is down, or
+an identity older than this build, whose response carries no verdict at all:
+the absent field, `VOICEPRINT_VERDICT_UNSPECIFIED` and
+`VOICEPRINT_VERDICT_UNKNOWN` mean the same `Unknown`, and `Unknown` is not a
+verdict and changes nothing. The seam maps the wire enum
+(`voiceSpeakerVerdictOf`) and shapes the answer (`voiceSpeakerOf`), reads only
+`HOLDER` as the holder, and never defaults to `Holder`. A verdict is taken as
+it comes: the blurred-match Holder arm carries no user id and no name, so the
+session keys nothing off the speaker's user id (it travels for evidence, and
+`score` is read or logged nowhere) — the holder is the session's own
+`userId`/`userName`, never the reply's.
+
+The raw verdict of the turn is held on the session for whatever the turn
+carries to argus-llm (the unit-3 fields) and the *applied* one is what changes
+the call's history, after `kSpeakerStableTurns` consecutive turns of the same
+confident verdict: one noisy or clipped turn never puts "another person is
+speaking" in the model's context about the person in the room, a different
+confident verdict restarts the count, `Unknown` neither counts nor resets, and
+a note is emitted at most once per change of the applied verdict. The first
+`Holder` of a call applies silently (the account's own voice needs no
+announcement) and the holder's return has its own line ("Vuelve a hablar
+{holder}."). The note joins the history right after the user message as a
+`CallEntryKind::Speaker` entry, framed in the call's language and named when
+it can name: `{who}` for the other enrolled user, the holder's display name
+(`userName`, from `VoiceIdentity` or from the spoken "me llamo …"), and "el
+titular de la cuenta" / "the account holder" when the call never heard it — an
+`OtherKnown` whose name is empty uses the unnamed wording rather than inventing
+one. It is its own kind, not an app event, because the trimmed digest labels
+events "App:" and drops notes, while this observation must survive the trim
+under its own "Voz: " label, with its frame stripped. A rolled-back turn
+(nothing audible) takes its note with it, like its tone note, so a later turn
+never reads the note as being about itself.
+
+The role, the user id the tools run as and whose memory is written stay the
+session's: a voice verdict unlocks nothing. Nothing is persisted and no score
+reaches a log line — the verdict is in-memory for the call and the log line
+carries the verdict word alone.
 
 ## Conversation mode: app actions and camera offers
 

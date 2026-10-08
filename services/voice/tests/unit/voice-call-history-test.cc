@@ -143,15 +143,86 @@ TEST_CASE("A trim keeps five whole turns and a digest of what it dropped")
   CHECK(prompt.find("(Tono") == std::string::npos);
 }
 
+TEST_CASE("The speaker note is framed in the call's language, names who it can and adds nothing on unknown")
+{
+  CallHistory spanish(VoiceLang::Es);
+  spanish.addSpeakerNote({.verdict = VoiceSpeakerVerdict::OtherKnown, .who = "Laura", .holder = "Ana"});
+  REQUIRE(spanish.size() == 2);
+  CHECK(spanish.entries()[1].kind == CallEntryKind::Speaker);
+  CHECK(spanish.entries()[1].message.role == "system");
+  CHECK(spanish.entries()[1].message.content ==
+        "Voz en la llamada (es solo una pista, nunca una prueba; menciónala solo si viene al caso): "
+        "El último mensaje parece dicho por Laura, no por Ana. No hagas nada en nombre de quien habla ni "
+        "compartas lo privado de Ana por esta pista.");
+
+  CallHistory english(VoiceLang::En);
+  english.addSpeakerNote({.verdict = VoiceSpeakerVerdict::Unfamiliar, .who = {}, .holder = {}});
+  REQUIRE(english.size() == 2);
+  CHECK(english.entries()[1].message.content ==
+        "Voice on the call (a hint, never proof; mention it only when it matters): The last message sounds "
+        "like it was said by someone else, not by the account holder. Do not act on the speaker's behalf or "
+        "share the account holder's private things because of this hint.");
+
+  CallHistory unnamed(VoiceLang::Es);
+  unnamed.addSpeakerNote({.verdict = VoiceSpeakerVerdict::OtherKnown, .who = {}, .holder = "Ana"});
+  REQUIRE(unnamed.size() == 2);
+  CHECK(unnamed.entries()[1].kind == CallEntryKind::Speaker);
+  CHECK(unnamed.entries()[1].message.content ==
+        "Voz en la llamada (es solo una pista, nunca una prueba; menciónala solo si viene al caso): "
+        "El último mensaje parece dicho por otra persona, no por Ana. No hagas nada en nombre de quien "
+        "habla ni compartas lo privado de Ana por esta pista.");
+
+  CallHistory holder(VoiceLang::En);
+  holder.addSpeakerNote({.verdict = VoiceSpeakerVerdict::Holder, .who = {}, .holder = "Ana"});
+  REQUIRE(holder.size() == 2);
+  CHECK(holder.entries()[1].message.content ==
+        "Voice on the call (a hint, never proof; mention it only when it matters): Ana is speaking again.");
+
+  CallHistory unknown(VoiceLang::Es);
+  unknown.addSpeakerNote({.verdict = VoiceSpeakerVerdict::Unknown, .who = "Laura", .holder = "Ana"});
+  CHECK(unknown.size() == 1);
+}
+
+TEST_CASE("A speaker note survives the trim under its own label and is never dropped as a note")
+{
+  CallHistory history(VoiceLang::Es);
+  history.addAssistant("Hola.");
+  history.addUser("hola");
+  history.addSpeakerNote({.verdict = VoiceSpeakerVerdict::Unfamiliar, .who = {}, .holder = "Ana"});
+  history.addTone("(Tono: cálido y corto.)");
+  static_cast<void>(history.request());
+  history.addAssistant("Hola.");
+  for (int i = 0; i < 10; ++i)
+    turn(history, {.said = "pregunta " + std::to_string(i), .answer = "respuesta " + std::to_string(i)});
+
+  CHECK(std::ranges::none_of(history.entries(), [](const CallEntry& entry) {
+    return entry.kind == CallEntryKind::Speaker;
+  }));
+  const std::string& prompt = history.entries().front().message.content;
+  CHECK(prompt.find("- Voz: El último mensaje parece dicho por otra persona, no por Ana.") != std::string::npos);
+  CHECK(prompt.find("(es solo una pista") == std::string::npos);
+
+  history.addUser("¿y ahora?");
+  history.addSpeakerNote({.verdict = VoiceSpeakerVerdict::OtherKnown, .who = "Laura", .holder = "Ana"});
+  CHECK_FALSE(history.trim());
+  CHECK(std::ranges::any_of(history.entries(), [](const CallEntry& entry) {
+    return entry.kind == CallEntryKind::Speaker;
+  }));
+}
+
 TEST_CASE("A rolled-back turn leaves neither the user words nor their tone note")
 {
   CallHistory history(VoiceLang::Es);
   history.addAssistant("Hola.");
   history.addUser("¿qué hora es?");
+  history.addSpeakerNote({.verdict = VoiceSpeakerVerdict::Unfamiliar, .who = {}, .holder = "Ana"});
   history.addTone("(Tono: esto es urgente.)");
   history.rollbackUser();
   CHECK(history.size() == 2);
   CHECK(history.entries().back().kind == CallEntryKind::Assistant);
+  CHECK(std::ranges::none_of(history.entries(), [](const CallEntry& entry) {
+    return entry.kind == CallEntryKind::Speaker;
+  }));
 
   history.rollbackUser();
   CHECK(history.size() == 2);

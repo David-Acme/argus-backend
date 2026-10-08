@@ -205,6 +205,7 @@ constexpr auto kOfferAnswerWindow = std::chrono::seconds(45);
 constexpr size_t kSpeakerMinSamples = static_cast<size_t>(kTargetRate) * 2;
 constexpr size_t kSpeakerMaxSamples = static_cast<size_t>(kTargetRate) * 6;
 constexpr auto kSpeakerGrace = std::chrono::milliseconds(300);
+constexpr int kSpeakerStableTurns = 2;
 
 std::string offerSummary(const std::string& summary)
 {
@@ -546,7 +547,6 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   const VoiceOpening opening = VoiceConfig::resolveOpening();
   LOG_INFO << "Voice: session start user=" << identity.user_id()
            << " lang=" << voiceLangToString(lang)
-           << " nameKnown=" << (userName.size() >= 2)
            << " duplex=" << duplex << " resume=" << resume
            << " opening=" << voiceOpeningToString(opening);
 
@@ -557,7 +557,8 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   session->callKey = mintCallKey();
   session->role = identity.has_role() ? voiceRoleToString(identity.role())
                                       : userRoleToString(UserRole::Unknown);
-  session->nameKnown = userName.size() >= 2;
+  if (userName.size() >= 2)
+    session->userName = userName;
   session->callId = "voice-" + std::to_string(identity.user_id()) + "-" +
                     std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
                                        std::chrono::system_clock::now().time_since_epoch())
@@ -1055,14 +1056,14 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
   sendFrame(session, std::move(sttFrame));
 
   session.history.addUser(userText);
-  noteSpeaker(session, awaitSpeaker(speakerProbe));
+  observeSpeaker(session, awaitSpeaker(speakerProbe));
 
-  if (session.userId > 0 && !session.nameKnown) {
+  if (session.userId > 0 && session.userName.empty()) {
     if (const auto name = extractName(userText)) {
       identity_.updateUserName({.userId = session.userId,
                                 .role = session.role,
                                 .name = *name});
-      session.nameKnown = true;
+      session.userName = *name;
     }
   }
 
@@ -1225,24 +1226,27 @@ std::optional<VoiceSpeaker> VoiceSessionService::awaitSpeaker(const std::shared_
   return probe->speaker;
 }
 
-void VoiceSessionService::noteSpeaker(Session& session, const std::optional<VoiceSpeaker>& speaker)
+void VoiceSessionService::observeSpeaker(Session& session, const std::optional<VoiceSpeaker>& speaker)
 {
-  if (!speaker || speaker->userId == session.lastSpeakerId)
+  const VoiceSpeakerVerdict verdict = speaker ? speaker->verdict : VoiceSpeakerVerdict::Unknown;
+  session.speakerVerdict = verdict;
+  if (verdict == VoiceSpeakerVerdict::Unknown)
     return;
-  const bool holder = speaker->userId == session.userId;
-  const bool first = session.lastSpeakerId == 0;
-  session.lastSpeakerId = speaker->userId;
-  if (holder && first)
-    return;
-  LOG_INFO << "Voice: the voice of this turn is " << (holder ? "the account holder's" : "another enrolled user's");
-  if (holder) {
-    session.history.addEvent("The account holder is speaking again.");
-    return;
+  if (verdict == session.speakerStreakVerdict)
+    ++session.speakerStreak;
+  else {
+    session.speakerStreakVerdict = verdict;
+    session.speakerStreak = 1;
   }
-  const std::string who = speaker->name.empty() ? std::string("another member of the household") : speaker->name;
-  session.history.addEvent("The last message was spoken by a voice that matches " + who +
-                           ", not the account holder. It is a hint, never proof: do not act on their behalf "
-                           "or share the account holder's private things because of it.");
+  if (session.speakerStreak < kSpeakerStableTurns || verdict == session.appliedSpeakerVerdict)
+    return;
+  const VoiceSpeakerVerdict previous = std::exchange(session.appliedSpeakerVerdict, verdict);
+  if (verdict == VoiceSpeakerVerdict::Holder && previous == VoiceSpeakerVerdict::Unknown)
+    return;
+  LOG_INFO << "Voice: the turn's speaker verdict is " << voiceSpeakerVerdictToString(verdict);
+  session.history.addSpeakerNote({.verdict = verdict,
+                                  .who = speaker ? speaker->name : std::string(),
+                                  .holder = session.userName});
 }
 
 bool VoiceSessionService::answerOffer(Session& session, const std::string& userText)

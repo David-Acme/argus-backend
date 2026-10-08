@@ -171,7 +171,7 @@ private:
     std::string callId;
     int64_t userId{0};
     std::string role;
-    bool nameKnown{false};
+    std::string userName;
     std::atomic<bool> speaking{false};
     bool ducked{false};
     std::atomic<bool> interrupt{false};
@@ -204,7 +204,10 @@ private:
     std::optional<CameraOffer> offer;
     std::shared_ptr<SpeakerProbe> speakerProbe;
     std::thread speakerThread;
-    int64_t lastSpeakerId{0};
+    VoiceSpeakerVerdict speakerVerdict{VoiceSpeakerVerdict::Unknown};
+    VoiceSpeakerVerdict speakerStreakVerdict{VoiceSpeakerVerdict::Unknown};
+    VoiceSpeakerVerdict appliedSpeakerVerdict{VoiceSpeakerVerdict::Unknown};
+    int speakerStreak{0};
     std::string deviceHash;
     std::string callKey;
     bool speakerHeard{false};
@@ -244,7 +247,7 @@ private:
   bool answerOffer(Session& session, const std::string& userText);
   std::shared_ptr<SpeakerProbe> probeSpeaker(Session& session, const std::vector<float>& samples);
   static std::optional<VoiceSpeaker> awaitSpeaker(const std::shared_ptr<SpeakerProbe>& probe);
-  static void noteSpeaker(Session& session, const std::optional<VoiceSpeaker>& speaker);
+  static void observeSpeaker(Session& session, const std::optional<VoiceSpeaker>& speaker);
   void primeLlm(Session& session);
   void applyNotes(Session& session);
   std::optional<Notice> takeNotice(Session& session);
