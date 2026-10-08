@@ -282,6 +282,16 @@ set_target_properties(llm-reply-claims-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-reply-claims-test COMMAND llm-reply-claims-test)
 
+add_executable(llm-plain-turn-test tests/unit/llm-plain-turn-test.cc)
+
+target_link_libraries(llm-plain-turn-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-plain-turn-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-plain-turn-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-plain-turn-test COMMAND llm-plain-turn-test)
+
 add_executable(llm-module-command-test tests/unit/llm-module-command-test.cc)
 
 target_link_libraries(llm-module-command-test PRIVATE argus::llm doctest::doctest)

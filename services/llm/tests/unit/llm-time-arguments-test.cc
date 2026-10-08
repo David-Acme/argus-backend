@@ -129,10 +129,25 @@ TEST_CASE("only a turn that asks about the time or the date carries the clock no
   CHECK(time_arguments::asksAboutTime("¿Qué hora es?"));
   CHECK(time_arguments::asksAboutTime("Oye, ¿qué día es hoy?"));
   CHECK(time_arguments::asksAboutTime("¿Es tarde ya?"));
+  CHECK(time_arguments::asksAboutTime("¿En qué año estamos?"));
+  CHECK(time_arguments::asksAboutTime("¿Qué año es?"));
   CHECK(time_arguments::asksAboutTime("What time is it?"));
   CHECK(time_arguments::asksAboutTime("What day is today?"));
+  CHECK(time_arguments::asksAboutTime("What year is it?"));
+  CHECK(time_arguments::asksAboutTime("What year are we in?"));
+  CHECK(time_arguments::asksAboutTime("What's the year?"));
   CHECK_FALSE(time_arguments::asksAboutTime("Hola, Argus, ¿cómo estás?"));
   CHECK_FALSE(time_arguments::asksAboutTime("Cuéntame un chiste corto."));
   CHECK_FALSE(time_arguments::asksAboutTime("¿Qué tengo pendiente hoy?"));
   CHECK_FALSE(time_arguments::asksAboutTime("Hello, how are you?"));
+}
+
+TEST_CASE("a clock phrase only matches on whole words")
+{
+  CHECK_FALSE(time_arguments::asksAboutTime("Vienes tarde a casa."));
+  CHECK_FALSE(time_arguments::asksAboutTime("Vienes temprano al trabajo."));
+  CHECK_FALSE(time_arguments::asksAboutTime("That joke is somewhat dated."));
+  CHECK(time_arguments::asksAboutTime("¿Es tarde ya?"));
+  CHECK(time_arguments::asksAboutTime("¿Me dices qué hora es?"));
+  CHECK(time_arguments::asksAboutTime("Is it late?"));
 }

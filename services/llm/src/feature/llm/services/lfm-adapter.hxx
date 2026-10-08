@@ -30,11 +30,31 @@ struct ToolChatInput
 struct ToolChatOutput
 {
   std::string reply;
+  std::string rawReply;
   std::vector<tools::ToolCall> executed;
   int hops = 0;
   bool emitted = false;
   int64_t generateMs = 0;
   int64_t toolMs = 0;
+};
+
+struct SpokenMessagesInput
+{
+  const std::vector<ChatMessage>& history;
+  std::string_view clock;
+  std::string_view notes;
+};
+
+struct PlainChatInput
+{
+  const ChatRequest& request;
+  const TokenCallback* onToken{nullptr};
+};
+
+struct PlainChatStreamInput
+{
+  const ChatRequest& request;
+  const TokenCallback& onToken;
 };
 
 struct ChatWithToolsStreamInput
@@ -78,9 +98,19 @@ public:
 
   static std::string lastUtterance(const std::vector<ChatMessage>& history);
 
+  static std::string replyLang(const ChatRequest& request);
+
+  static std::string clockNote(const std::vector<ChatMessage>& history, std::string_view lang);
+
+  static std::vector<ChatMessage> spokenMessages(const SpokenMessagesInput& input);
+
   ToolChatOutput chatWithTools(const ToolChatInput& input, std::vector<ChatMessage>& history);
 
   ToolChatOutput chatWithToolsStream(const ChatWithToolsStreamInput& args);
+
+  ToolChatOutput chatPlain(const ChatRequest& request);
+
+  ToolChatOutput chatPlainStream(const PlainChatStreamInput& input);
 
   ToolExecutor& executor() { return executor_; }
 
@@ -88,6 +118,8 @@ public:
 
 private:
   ToolChatOutput chatTurn(const SpeakInput& args);
+
+  ToolChatOutput chatPlainTurn(const PlainChatInput& input);
 
   [[nodiscard]] std::vector<ChatMessage> speakMessages(const SpeakInput& args, const std::string& notes) const;
 

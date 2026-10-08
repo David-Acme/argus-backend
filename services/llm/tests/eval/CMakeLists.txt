@@ -101,6 +101,11 @@ if(ARGUS_PYTHON3)
         COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/call-time-cli-test.py)
     set_tests_properties(call-time-cli-test PROPERTIES LABELS eval
         ENVIRONMENT CALL_TIME_CLI=$<TARGET_FILE:call-time-cli>)
+
+    add_test(NAME call-faithfulness-pin-eval-test
+        COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/call-faithfulness-pin-eval-test.py)
+    set_tests_properties(call-faithfulness-pin-eval-test PROPERTIES LABELS eval
+        ENVIRONMENT "CALL_FAITHFULNESS_EVAL=$<TARGET_FILE:call-faithfulness-eval>;CALL_FAITHFULNESS_GATES=${CMAKE_CURRENT_SOURCE_DIR}/gates.json;CALL_FAITHFULNESS_SMOKE_GATES=${CMAKE_CURRENT_SOURCE_DIR}/gates-smoke.json;CALL_FAITHFULNESS_MISSING_MODEL=${CMAKE_CURRENT_BINARY_DIR}/no-such-llm.gguf")
 endif()
 
 add_executable(eval-score-test eval-score-test.cc)

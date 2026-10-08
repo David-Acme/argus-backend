@@ -6,8 +6,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <format>
 #include <ctime>
+#include <string>
+#include <vector>
 
 namespace time_arguments
 {
@@ -15,6 +18,40 @@ namespace time_arguments
 namespace
 {
 constexpr std::string_view kDateTime = "date-time";
+
+using Words = std::vector<std::string>;
+
+Words wordsOf(std::string_view text)
+{
+  const std::string folded = text_norm::folded(std::string(text));
+  Words words;
+  std::size_t at = 0;
+  while (at < folded.size()) {
+    const std::size_t end = std::min(folded.find(' ', at), folded.size());
+    if (end > at)
+      words.push_back(folded.substr(at, end - at));
+    at = end + 1;
+  }
+  return words;
+}
+
+bool containsPhrase(const Words& words, std::string_view phrase)
+{
+  for (std::size_t at = 0; at < words.size(); ++at) {
+    std::size_t index = at;
+    std::size_t begin = 0;
+    while (begin <= phrase.size()) {
+      const std::size_t end = std::min(phrase.find(' ', begin), phrase.size());
+      if (index >= words.size() || words[index] != phrase.substr(begin, end - begin))
+        break;
+      ++index;
+      begin = end + 1;
+    }
+    if (begin > phrase.size())
+      return true;
+  }
+  return false;
+}
 
 std::optional<int64_t> resolved(const std::string& text, const std::string& lang, int64_t now)
 {
@@ -54,17 +91,19 @@ std::optional<int64_t> chosen(const Json::Value& given, const std::optional<int6
 
 bool asksAboutTime(std::string_view utterance)
 {
-  constexpr std::array<std::string_view, 10> kQuestionsEs{"que hora es", "que hora tienes", "que horas son",
+  constexpr std::array<std::string_view, 13> kQuestionsEs{"que hora es", "que hora tienes", "que horas son",
                                                           "a que hora", "dime la hora", "que dia es",
-                                                          "que dia estamos", "que fecha es", "es tarde", "es temprano"};
-  constexpr std::array<std::string_view, 11> kQuestionsEn{"what time", "what s the time", "the time is it",
+                                                          "que dia estamos", "que fecha es", "es tarde", "es temprano",
+                                                          "en que ano estamos", "que ano es", "que ano estamos"};
+  constexpr std::array<std::string_view, 14> kQuestionsEn{"what time", "what s the time", "the time is it",
                                                            "do you have the time", "tell me the time", "what day is",
                                                            "what s the day", "what date", "what s the date", "is it late",
-                                                           "is it early"};
-  const std::string folded = text_norm::folded(std::string(utterance));
-  const auto asked = [&folded](const auto& questions) {
-    return std::ranges::any_of(questions, [&folded](std::string_view question) {
-      return folded.find(question) != std::string::npos;
+                                                           "is it early", "what year is it", "what year are we in",
+                                                           "what s the year"};
+  const Words words = wordsOf(utterance);
+  const auto asked = [&words](const auto& questions) {
+    return std::ranges::any_of(questions, [&words](std::string_view question) {
+      return containsPhrase(words, question);
     });
   };
   return asked(kQuestionsEs) || asked(kQuestionsEn);

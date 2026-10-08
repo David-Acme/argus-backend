@@ -1,6 +1,10 @@
 {
   "version": 1,
   "callFaithfulness": {
+    "pinnedArgs": {
+      "temperature": 0.3,
+      "seed": 42
+    },
     "metrics": {
       "cases": {
         "min": 3

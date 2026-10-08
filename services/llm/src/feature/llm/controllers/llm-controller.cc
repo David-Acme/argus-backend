@@ -2,8 +2,6 @@
 
 #include <auth/module-gate.hxx>
 #include <feature/llm/services/tools/app-command.hxx>
-#include <feature/llm/services/tools/reply-claims.hxx>
-#include <feature/llm/services/tools/time-arguments.hxx>
 
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
@@ -20,7 +18,6 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <ctime>
 #include <exception>
 #include <memory>
 #include <string>
@@ -41,8 +38,6 @@ drogon::HttpResponsePtr badRequest()
   throw ResponseException(LlmErrors::BodyNotJsonObject);
 }
 
-constexpr std::string_view kDefaultToolLang = "es";
-
 ToolAudience audienceOf(const ChatRequest& request)
 {
   return {.role = request.role, .modules = moduleGate().snapshot()};
@@ -56,17 +51,6 @@ std::vector<tools::ToolHandle> requestTools(const ToolExecutor& executor, const 
   if (!request.clientActions)
     std::erase_if(tools, [](const tools::ToolHandle& tool) { return isAppTool(tool->spec.name); });
   return tools;
-}
-
-std::string langOf(const ChatRequest& request)
-{
-  return request.lang.empty() ? std::string(kDefaultToolLang) : request.lang;
-}
-
-std::string withoutFalseClaims(std::string text, const ChatRequest& request)
-{
-  return reply_claims::withoutFalseClaims(
-      {.text = std::move(text), .utterance = LfmAdapter::lastUtterance(request.messages), .lang = langOf(request)});
 }
 
 std::atomic<int64_t>& turnCounter()
@@ -101,17 +85,14 @@ ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
   input.audience = audienceOf(args.request);
   input.context = tools::ToolContext{.userId = args.request.userId,
                                      .role = args.request.role,
-                                     .lang = args.request.lang.empty()
-                                                 ? std::string(kDefaultToolLang)
-                                                 : args.request.lang,
+                                     .lang = LfmAdapter::replyLang(args.request),
                                      .sessionId = args.request.sessionId,
                                      .channel = "tool_result",
                                      .utterance = {},
                                      .decided = false,
                                      .turn = ++turnCounter(),
                                      .emitAction = actionEmitter(args.onAction)};
-  if (time_arguments::asksAboutTime(LfmAdapter::lastUtterance(args.request.messages)))
-    input.clock = time_arguments::clockLine(static_cast<int64_t>(std::time(nullptr)), input.context.lang);
+  input.clock = LfmAdapter::clockNote(args.request.messages, input.context.lang);
   input.temperature = args.request.temperature;
   input.resetContext = args.request.resetContext;
   input.answerMaxTokens = args.request.maxTokens > 0 ? args.request.maxTokens
@@ -251,9 +232,10 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
   LlmChatOutcome outcome;
   const auto tools = requestTools(adapter_.executor(), request);
   if (tools.empty()) {
-    outcome.text = service_.chat(request);
-    if (request.toolsEnabled)
-      outcome.text = withoutFalseClaims(std::move(outcome.text), request);
+    const ToolChatOutput plain = adapter_.chatPlain(request);
+    outcome.text = plain.reply;
+    outcome.rawReply = plain.rawReply;
+    outcome.generateMs = plain.generateMs;
     return outcome;
   }
   const ToolChatInput loop = toolLoopInput(
@@ -261,6 +243,7 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
   std::vector<ChatMessage> history = request.messages;
   const ToolChatOutput output = adapter_.chatWithTools(loop, history);
   outcome.text = output.reply;
+  outcome.rawReply = output.rawReply;
   outcome.hops = output.hops;
   outcome.toolCalls = output.executed.size();
   outcome.attempted = output.executed;
@@ -281,15 +264,7 @@ void LlmController::chatStreamSync(const LlmStreamInput& input)
   };
   const auto tools = requestTools(adapter_.executor(), input.request);
   if (tools.empty()) {
-    if (!input.request.toolsEnabled) {
-      service_.chatStream(input.request, emit);
-      return;
-    }
-    reply_claims::ClaimGate gate({.sink = emit,
-                                  .lang = langOf(input.request),
-                                  .asked = reply_claims::asksForAction(LfmAdapter::lastUtterance(input.request.messages)),
-                                  .legitimate = [] { return false; }});
-    service_.chatStream(input.request, gate.callback());
+    adapter_.chatPlainStream({.request = input.request, .onToken = emit});
     return;
   }
   const ToolChatInput loop = toolLoopInput({.tools = tools,

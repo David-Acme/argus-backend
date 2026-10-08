@@ -629,9 +629,13 @@ session to lose on a restart.
   the model's ISO string (`iso_time::parse`) or natural phrase ("mañana a las
   tres") is used; the result is ISO with the host's offset, the only form the
   providers parse. When nothing resolves the schema check refuses the missing
-  argument. The turn carries a clock line ("Fecha y hora actuales: ...") that is
-  appended to the last user message, never to the persona, so the cached prefix
-  stays byte-identical.
+  argument. `LfmAdapter::clockNote` is the one place `asksAboutTime` is consulted:
+  a turn that asks for the date or the time carries the reference line
+  ("Referencia, menciónala solo si te preguntan la fecha o la hora: ..."),
+  inserted as its own system note before the last user message, never into the
+  persona, so the cached prefix stays byte-identical. The tool turn
+  (`ToolChatInput::clock`, framed by `LfmAdapter::spokenMessages`) and the
+  tool-less turn (`LfmAdapter::chatPlain`) both read it from there.
 - **Reminders.** `memory.remind` keeps scheduling the call exactly as before
   and, for a reminder with a time, also writes the user's row through
   `ProductivityReminderClient` (`infra/productivity-reminder-rows.cc`): the
@@ -694,10 +698,25 @@ session to lose on a restart.
   reply still arrives sentence by sentence and a claim is replaced by the honest
   reply mid-stream (what was already spoken stays), and a synchronous reply is
   judged whole; what counts as a write is what the turn really performed (a
-  destructive tool's preview is not a write); for an assistant turn with no tools
-  offered at all (`toolsEnabled` but the role holds none) the controller applies
-  the same check (`withoutFalseClaims`, `ClaimGate`). Requests that did not
-  enable tools (summaries, extraction) are never touched. The app-action claim check that
+  destructive tool's preview is not a write); a trailing generic offer is
+  dropped by `withoutTrailingOffer` beside the streaming `OfferStripGate`, and
+  both fire only on a sentence that *is* the offer (`standaloneOffer`: after one
+  leading interjection the sentence must begin with an offer phrase and every
+  word after it must be a conversational particle — "más", "hoy", "ahora" /
+  "else", "you", "today", "now", "further"; `kOfferPaddingEs`/`kOfferPaddingEn`,
+  the offer phrases themselves untouched), so a sentence that merely carries an
+  offer behind a comma ("Apunté la leche, ¿necesitas algo más?"), or follows it
+  with a content word ("¿En qué puedo ayudarte con la cámara?", "Do you need
+  anything for the trip?"), keeps every word; the streaming gate releases every
+  sentence as soon as it
+  completes and holds only one that could still be the trailing offer. An
+  assistant turn with no tools offered at all (`toolsEnabled` but the role holds
+  none) runs the same composition through `LfmAdapter::chatPlain`/
+  `chatPlainStream`, the controller's path whenever `requestTools` comes back
+  empty: the clock note, the same check (`withoutFalseClaims`, `ClaimGate`) and
+  the same strip. Requests that did not
+  enable tools (summaries, extraction) still get the clock note and the strip
+  but are never judged for claims. The app-action claim check that
   existed before (`claimsAppAction`) still runs for turns that ask for an app
   action.
 - **The router is one decider.** fastText still decides explicit commands and

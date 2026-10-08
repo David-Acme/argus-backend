@@ -4,11 +4,69 @@
 #include <feature/llm/services/tools/claim-check.hxx>
 #include <feature/llm/services/tools/reply-claims.hxx>
 
+#include <chrono>
+#include <cstddef>
+#include <format>
+#include <iostream>
+#include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
 {
+
+std::string joined(const std::vector<std::string>& tokens)
+{
+  std::string out;
+  for (const std::string& token : tokens)
+    out += token;
+  return out;
+}
+
+struct StreamScript
+{
+  const std::vector<std::string>& tokens;
+  std::chrono::milliseconds perToken{2};
+};
+
+struct ReleaseTiming
+{
+  std::string heard;
+  std::size_t releasedAt{0};
+  int64_t releasedMs{0};
+  std::size_t stripped{0};
+};
+
+ReleaseTiming pump(const StreamScript& script)
+{
+  ReleaseTiming out;
+  std::size_t fed = 0;
+  std::optional<std::chrono::steady_clock::time_point> released;
+  reply_claims::OfferStripGate gate({.sink =
+                                         [&](const std::string& token, bool) {
+                                           if (!token.empty() && !released) {
+                                             released = std::chrono::steady_clock::now();
+                                             out.releasedAt = fed;
+                                           }
+                                           out.heard += token;
+                                         },
+                                     .lang = "es",
+                                     .asked = false});
+  const TokenCallback callback = gate.callback();
+  const auto started = std::chrono::steady_clock::now();
+  for (const std::string& token : script.tokens) {
+    ++fed;
+    callback(token, false);
+    std::this_thread::sleep_for(script.perToken);
+  }
+  callback("", true);
+  out.stripped = gate.stripped();
+  if (released)
+    out.releasedMs = std::chrono::duration_cast<std::chrono::milliseconds>(*released - started).count();
+  return out;
+}
+
 bool claims(const std::string& text, bool asked = false)
 {
   return reply_claims::claimsDone({.text = text, .asked = asked});
@@ -475,6 +533,137 @@ TEST_CASE("a plain reply keeps its final sentence when a trailing generic offer 
 
   const reply_claims::OfferContext english{.lang = "en", .asked = false};
   CHECK(reply_claims::withoutTrailingOffer("It is 6 pm. Do you need anything else?", english).text == "It is 6 pm.");
+}
+
+TEST_CASE("a sentence that only ends in an offer keeps the content that comes before it")
+{
+  const reply_claims::OfferContext spanish{.lang = "es", .asked = false};
+  const reply_claims::StrippedReply comma =
+      reply_claims::withoutTrailingOffer("Listo. Apunté la leche, ¿necesitas algo más?", spanish);
+  CHECK(comma.text == "Listo. Apunté la leche, ¿necesitas algo más?");
+  CHECK_FALSE(comma.stripped);
+
+  const reply_claims::StrippedReply reminder =
+      reply_claims::withoutTrailingOffer("Hecho. Recuerda que el lunes necesitas algo de efectivo.", spanish);
+  CHECK(reminder.text == "Hecho. Recuerda que el lunes necesitas algo de efectivo.");
+  CHECK_FALSE(reminder.stripped);
+
+  const reply_claims::OfferContext english{.lang = "en", .asked = false};
+  const reply_claims::StrippedReply added =
+      reply_claims::withoutTrailingOffer("Done. I added the milk, do you need anything else?", english);
+  CHECK(added.text == "Done. I added the milk, do you need anything else?");
+  CHECK_FALSE(added.stripped);
+
+  const reply_claims::StrippedReply cash =
+      reply_claims::withoutTrailingOffer("Done. Remember you need some cash on Monday, do you need anything else?", english);
+  CHECK(cash.text == "Done. Remember you need some cash on Monday, do you need anything else?");
+  CHECK_FALSE(cash.stripped);
+
+  std::string heard;
+  reply_claims::OfferStripGate gate({.sink = [&heard](const std::string& token, bool) { heard += token; },
+                                     .lang = "es",
+                                     .asked = false});
+  CHECK(runStrip(gate, {"Listo. ", "Apunté la leche, ", "¿necesitas algo más?"}) ==
+        "Listo. Apunté la leche, ¿necesitas algo más?");
+  CHECK(gate.stripped() == 0);
+  CHECK(heard == "Listo. Apunté la leche, ¿necesitas algo más?");
+}
+
+TEST_CASE("an offer padded with an interjection or a trailing particle is still the offer")
+{
+  const reply_claims::OfferContext spanish{.lang = "es", .asked = false};
+  const reply_claims::StrippedReply padded =
+      reply_claims::withoutTrailingOffer("Hoy es miércoles. Oye, ¿necesitas algo más?", spanish);
+  CHECK(padded.text == "Hoy es miércoles.");
+  CHECK(padded.stripped);
+
+  const reply_claims::StrippedReply paddedToday =
+      reply_claims::withoutTrailingOffer("Hola, David. Todo está bien. ¿En qué puedo ayudarte hoy?", spanish);
+  CHECK(paddedToday.text == "Hola, David. Todo está bien.");
+  CHECK(paddedToday.stripped);
+
+  const reply_claims::StrippedReply paddedNow =
+      reply_claims::withoutTrailingOffer("Hoy es miércoles. ¿Necesitas algo ahora?", spanish);
+  CHECK(paddedNow.stripped);
+
+  const reply_claims::OfferContext english{.lang = "en", .asked = false};
+  const reply_claims::StrippedReply paddedEn =
+      reply_claims::withoutTrailingOffer("It is 6 pm. Hey, do you need anything else?", english);
+  CHECK(paddedEn.text == "It is 6 pm.");
+  CHECK(paddedEn.stripped);
+
+  const reply_claims::StrippedReply paddedFurther =
+      reply_claims::withoutTrailingOffer("Hi David, it's good to connect. How can I assist you further?", english);
+  CHECK(paddedFurther.text == "Hi David, it's good to connect.");
+  CHECK(paddedFurther.stripped);
+
+  std::string heard;
+  reply_claims::OfferStripGate gate({.sink = [&heard](const std::string& token, bool) { heard += token; },
+                                     .lang = "es",
+                                     .asked = false});
+  CHECK(runStrip(gate, {"Hoy es miércoles. ", "Oye, ", "¿Necesitas algo más?"}) == "Hoy es miércoles.");
+  CHECK(gate.stripped() == 1);
+  CHECK(heard == "Hoy es miércoles.");
+}
+
+TEST_CASE("an offer keeps its sentence when a content word follows it")
+{
+  const reply_claims::OfferContext spanish{.lang = "es", .asked = false};
+  const reply_claims::StrippedReply cash =
+      reply_claims::withoutTrailingOffer("Hecho. Necesitas algo de efectivo.", spanish);
+  CHECK(cash.text == "Hecho. Necesitas algo de efectivo.");
+  CHECK_FALSE(cash.stripped);
+
+  const reply_claims::StrippedReply camera =
+      reply_claims::withoutTrailingOffer("Hoy es miércoles. ¿En qué puedo ayudarte con la cámara?", spanish);
+  CHECK(camera.text == "Hoy es miércoles. ¿En qué puedo ayudarte con la cámara?");
+  CHECK_FALSE(camera.stripped);
+
+  const reply_claims::OfferContext english{.lang = "en", .asked = false};
+  const reply_claims::StrippedReply trip =
+      reply_claims::withoutTrailingOffer("It is 6 pm. Do you need anything for the trip?", english);
+  CHECK(trip.text == "It is 6 pm. Do you need anything for the trip?");
+  CHECK_FALSE(trip.stripped);
+}
+
+TEST_CASE("the streaming gate keeps the blank line between two sentences")
+{
+  std::string heard;
+  reply_claims::OfferStripGate gate({.sink = [&heard](const std::string& token, bool) { heard += token; },
+                                     .lang = "es",
+                                     .asked = false});
+  CHECK(runStrip(gate, {"Hoy es miércoles.\n", "\n", "Mañana llueve."}) == "Hoy es miércoles.\n\nMañana llueve.");
+  CHECK(gate.stripped() == 0);
+
+  std::string offerHeard;
+  reply_claims::OfferStripGate offer({.sink = [&offerHeard](const std::string& token, bool) { offerHeard += token; },
+                                      .lang = "es",
+                                      .asked = false});
+  CHECK(runStrip(offer, {"Hoy es miércoles.\n", "\n", "¿Necesitas algo más?"}) == "Hoy es miércoles.");
+  CHECK(offer.stripped() == 1);
+}
+
+TEST_CASE("a sentence that cannot be a trailing offer reaches the sink the moment it completes")
+{
+  std::vector<std::string> quiet{"Hoy es miércoles. "};
+  for (int index = 0; index < 40; ++index)
+    quiet.emplace_back("palabra ");
+  quiet.emplace_back("¿Qué te preocupa?");
+  std::vector<std::string> offer = quiet;
+  offer.back() = "¿Qué te preocupa? ";
+  offer.emplace_back("¿Necesitas algo más?");
+
+  const ReleaseTiming quietTail = pump({.tokens = quiet});
+  const ReleaseTiming offerTail = pump({.tokens = offer});
+  std::cout << std::format("strip gate: first sentence out after {} tokens at {} ms of {} queued behind it; "
+                           "offer tail after {} tokens at {} ms, {} dropped\n",
+                           quietTail.releasedAt, quietTail.releasedMs, quiet.size(),
+                           offerTail.releasedAt, offerTail.releasedMs, offerTail.stripped);
+  CHECK(quietTail.releasedAt == 1);
+  CHECK(quietTail.heard == joined(quiet));
+  CHECK(offerTail.releasedAt == 1);
+  CHECK(offerTail.heard == joined(quiet));
+  CHECK(offerTail.stripped == 1);
 }
 
 TEST_CASE("the streaming gate drops the same trailing offer and never the whole reply")

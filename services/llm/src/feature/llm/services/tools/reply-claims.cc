@@ -22,6 +22,8 @@ using Words = std::vector<std::string>;
 constexpr std::size_t kNegationReach = 3;
 constexpr std::string_view kInvertedQuestion = "\xC2\xBF";
 constexpr std::array<std::string_view, 6> kLeadingFillers{"por", "oye", "argus", "hey", "ok", "porfa"};
+constexpr std::array<std::string_view, 3> kOfferPaddingEs{"mas", "hoy", "ahora"};
+constexpr std::array<std::string_view, 5> kOfferPaddingEn{"else", "you", "today", "now", "further"};
 
 struct Sentence
 {
@@ -251,6 +253,15 @@ bool blank(std::string_view text)
   return text.find_first_not_of(" \t\r\n") == std::string_view::npos;
 }
 
+std::size_t wordCount(std::string_view phrase)
+{
+  std::size_t count = 1;
+  for (const char c : phrase)
+    if (c == ' ')
+      ++count;
+  return count;
+}
+
 std::vector<std::string_view> rawSentences(std::string_view text)
 {
   std::vector<std::string_view> out;
@@ -385,6 +396,25 @@ bool genericOffer(OfferQuery query)
   });
 }
 
+bool standaloneOffer(OfferQuery query)
+{
+  const Words words = wordsOf(std::string(query.text));
+  if (words.empty())
+    return false;
+  const std::size_t from =
+      std::ranges::find(kLeadingFillers, std::string_view(words.front())) != kLeadingFillers.end() ? 1 : 0;
+  const std::span<const std::string_view> padding =
+      query.lang == "en" ? std::span<const std::string_view>(kOfferPaddingEn)
+                         : std::span<const std::string_view>(kOfferPaddingEs);
+  return std::ranges::any_of(lexiconFor(query.lang).genericOffers, [&](std::string_view phrase) {
+    if (!matchesAt(words, from, phrase))
+      return false;
+    return std::ranges::all_of(std::span(words).subspan(from + wordCount(phrase)), [&padding](const std::string& word) {
+      return std::ranges::find(padding, std::string_view(word)) != padding.end();
+    });
+  });
+}
+
 StrippedReply withoutTrailingOffer(std::string text, const OfferContext& context)
 {
   StrippedReply out{.text = std::move(text), .stripped = false};
@@ -394,7 +424,7 @@ StrippedReply withoutTrailingOffer(std::string text, const OfferContext& context
   if (sentences.size() < 2)
     return out;
   const std::string_view last = sentences.back();
-  if (!genericOffer({.text = last, .lang = context.lang}))
+  if (!standaloneOffer({.text = last, .lang = context.lang}))
     return out;
   out.text.erase(static_cast<std::size_t>(last.data() - out.text.data()));
   while (!out.text.empty() && std::isspace(static_cast<unsigned char>(out.text.back())) != 0)
@@ -419,18 +449,29 @@ void OfferStripGate::release(std::string_view sentence)
     input_.sink(std::string(sentence), false);
 }
 
+void OfferStripGate::settle(std::string_view sentence)
+{
+  if (!input_.asked && standaloneOffer({.text = sentence, .lang = input_.lang})) {
+    release(held_);
+    held_.assign(sentence);
+    return;
+  }
+  release(held_);
+  held_.clear();
+  release(sentence);
+}
+
 void OfferStripGate::decide()
 {
-  const bool tailBlank = blank(pending_);
-  if (!tailBlank) {
+  if (!blank(pending_)) {
     release(held_);
     held_.clear();
-    if (!input_.asked && genericOffer({.text = pending_, .lang = input_.lang}) && !spoken_.empty())
+    if (!input_.asked && standaloneOffer({.text = pending_, .lang = input_.lang}) && !spoken_.empty())
       ++stripped_;
     else
       release(pending_);
   }
-  else if (!input_.asked && genericOffer({.text = held_, .lang = input_.lang}) && !spoken_.empty()) {
+  else if (!input_.asked && !held_.empty() && !spoken_.empty()) {
     ++stripped_;
   }
   else {
@@ -455,10 +496,11 @@ void OfferStripGate::accept(const std::string& token, bool done)
       continue;
     }
     const std::string_view sentence{pending_.data(), at + 1};
-    if (!blank(sentence)) {
-      release(held_);
-      held_.assign(sentence);
+    if (blank(sentence)) {
+      ++at;
+      continue;
     }
+    settle(sentence);
     pending_.erase(0, at + 1);
     at = 0;
   }

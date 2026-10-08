@@ -9,7 +9,6 @@
 #include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/claim-check.hxx>
 #include <feature/llm/services/tools/reply-claims.hxx>
-#include <feature/llm/services/tools/time-arguments.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/llm/services/turn/tool-effects.hxx>
 
@@ -203,6 +202,9 @@ LoadedCallCases loadCallCases(const std::string& path)
 struct GatesState
 {
   bool pinned{false};
+  bool argsPinned{false};
+  float temperature{0.0F};
+  uint32_t seed{0};
   std::string error;
 };
 
@@ -210,13 +212,32 @@ GatesState readGates(const std::string& path)
 {
   std::ifstream in(path);
   if (!in)
-    return {.pinned = false, .error = "cannot open " + path};
+    return {.pinned = false, .argsPinned = false, .temperature = 0.0F, .seed = 0, .error = "cannot open " + path};
   Json::Value root;
   std::string errors;
   Json::CharReaderBuilder builder;
   if (!Json::parseFromStream(builder, in, &root, &errors))
-    return {.pinned = false, .error = path + ": " + errors};
-  return {.pinned = root["callFaithfulness"]["metrics"].isObject(), .error = {}};
+    return {.pinned = false, .argsPinned = false, .temperature = 0.0F, .seed = 0, .error = path + ": " + errors};
+  const Json::Value& section = root["callFaithfulness"];
+  GatesState state{.pinned = section["metrics"].isObject(),
+                   .argsPinned = false,
+                   .temperature = 0.0F,
+                   .seed = 0,
+                   .error = {}};
+  const Json::Value& args = section["pinnedArgs"];
+  if (args.isObject() && args["temperature"].isNumeric() && args["seed"].isNumeric()) {
+    state.argsPinned = true;
+    state.temperature = static_cast<float>(args["temperature"].asDouble());
+    state.seed = args["seed"].asUInt();
+  }
+  if (state.pinned && !state.argsPinned)
+    state.error = path + " pins callFaithfulness without the temperature and seed it was measured at";
+  return state;
+}
+
+bool pinnedFor(const GatesState& gates, const Options& options)
+{
+  return gates.temperature == options.temperature && gates.seed == options.seed;
 }
 
 ModuleText textOf(const Json::Value& node)
@@ -447,37 +468,6 @@ struct CaseRecord
   std::vector<TurnRecord> turns;
 };
 
-struct RawReplyInput
-{
-  LlmService& service;
-  const std::vector<ChatMessage>& messages;
-  const std::string& clock;
-  const std::string& lang;
-  float temperature{0.0F};
-  int64_t userId{0};
-};
-
-std::string rawReplyOf(const RawReplyInput& input)
-{
-  std::vector<ChatMessage> messages = input.messages;
-  if (!input.clock.empty()) {
-    const auto lastUser = std::ranges::find_if(std::views::reverse(messages),
-                                               [](const ChatMessage& message) { return message.role == "user"; });
-    if (lastUser != std::views::reverse(messages).end())
-      messages.insert(std::prev(lastUser.base()), {.role = "system", .content = input.clock});
-  }
-  ChatRequest request;
-  request.messages = std::move(messages);
-  request.maxTokens = kMaxTokens;
-  request.temperature = input.temperature;
-  request.userId = input.userId;
-  request.role = UserRole::Owner;
-  request.lang = input.lang;
-  request.clientActions = true;
-  request.toolCallsAllowed = false;
-  return input.service.chat(request);
-}
-
 struct CaseInput
 {
   LlmController& controller;
@@ -520,18 +510,10 @@ CaseRecord runCase(const CaseInput& input)
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
     TurnRecord turn;
     turn.reply = outcome.text;
+    turn.rawReply = outcome.rawReply;
     turn.executed = input.stubs.recorder->executed();
     turn.ms = elapsed.count();
     turn.state = stateFor({.utterance = utterance, .offered = input.offered, .executed = turn.executed, .lang = input.item.lang});
-    const std::string clock = time_arguments::asksAboutTime(LfmAdapter::spokenText(utterance))
-                                  ? time_arguments::clockLine(static_cast<int64_t>(std::time(nullptr)), input.item.lang)
-                                  : std::string();
-    turn.rawReply = rawReplyOf({.service = input.controller.service(),
-                                .messages = request.messages,
-                                .clock = clock,
-                                .lang = input.item.lang,
-                                .temperature = input.temperature,
-                                .userId = kEvalUser});
     turn.verdict = scoreTurn({.reply = turn.reply,
                               .rawReply = turn.rawReply,
                               .item = input.item,
@@ -611,7 +593,7 @@ std::string describe(const CaseRecord& run)
     for (const auto& call : turn.executed)
       calls += call.tool + " ";
     out += std::format("\n  {}ms | {} | called: {} | {}", turn.ms, violationsOf(turn.verdict), calls.empty() ? "-" : calls, turn.reply);
-    if (turn.verdict.rawClaims)
+    if (turn.verdict.rawClaims || turn.verdict.genericOffer)
       out += std::format("\n    raw: {}", turn.rawReply);
   }
   return out;
@@ -669,6 +651,17 @@ int main(int argc, char** argv)
     return kSkipped;
   }
 #endif
+  const GatesState gates = readGates(options.gates);
+  if (!gates.error.empty()) {
+    std::cout << "[ERROR] " << gates.error << "\n";
+    return 1;
+  }
+  if (gates.pinned && !pinnedFor(gates, options)) {
+    std::cout << std::format("[SKIPPED] gates pinned for different args: {} pinned at --temperature {} --seed {}, "
+                             "this run --temperature {} --seed {}\n",
+                             options.gates, gates.temperature, gates.seed, options.temperature, options.seed);
+    return kSkipped;
+  }
   if (!std::filesystem::exists(options.llmModel)) {
     std::cout << "[SKIPPED] no LLM weights at " << options.llmModel << "; the call-faithfulness gate did not run\n";
     return kSkipped;
@@ -714,11 +707,6 @@ int main(int argc, char** argv)
   const LoadedCallCases loaded = loadCallCases(options.cases);
   if (!loaded.error.empty()) {
     std::cout << "[ERROR] " << loaded.error << "\n";
-    return 1;
-  }
-  const GatesState gates = readGates(options.gates);
-  if (!gates.error.empty()) {
-    std::cout << "[ERROR] " << gates.error << "\n";
     return 1;
   }
   const std::string catalogPath = catalogPathFor(options.cases);

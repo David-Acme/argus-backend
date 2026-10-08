@@ -62,6 +62,8 @@ struct OfferQuery
 
 [[nodiscard]] bool genericOffer(OfferQuery query);
 
+[[nodiscard]] bool standaloneOffer(OfferQuery query);
+
 [[nodiscard]] StrippedReply withoutTrailingOffer(std::string text, const OfferContext& context);
 
 struct OfferStripInput
@@ -87,6 +89,7 @@ public:
 private:
   void accept(const std::string& token, bool done);
   void release(std::string_view sentence);
+  void settle(std::string_view sentence);
   void decide();
 
   OfferStripInput input_;

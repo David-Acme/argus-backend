@@ -2,6 +2,7 @@
 
 #include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/reply-claims.hxx>
+#include <feature/llm/services/tools/time-arguments.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/llm/services/turn/turn-texts.hxx>
 
@@ -18,6 +19,8 @@
 
 namespace
 {
+
+constexpr std::string_view kDefaultLang = "es";
 
 std::string previousAssistantMessage(const std::vector<ChatMessage>& history)
 {
@@ -118,18 +121,35 @@ std::string LfmAdapter::lastUtterance(const std::vector<ChatMessage>& history)
   return lastUserMessage(history);
 }
 
+std::string LfmAdapter::replyLang(const ChatRequest& request)
+{
+  return request.lang.empty() ? std::string(kDefaultLang) : request.lang;
+}
+
+std::string LfmAdapter::clockNote(const std::vector<ChatMessage>& history, std::string_view lang)
+{
+  if (!time_arguments::asksAboutTime(lastUtterance(history)))
+    return {};
+  return time_arguments::clockLine(static_cast<int64_t>(std::time(nullptr)), std::string(lang));
+}
+
+std::vector<ChatMessage> LfmAdapter::spokenMessages(const SpokenMessagesInput& input)
+{
+  std::vector<ChatMessage> messages = input.history;
+  if (!input.clock.empty()) {
+    const auto lastUser = std::ranges::find_if(std::views::reverse(messages),
+                                               [](const ChatMessage& message) { return message.role == "user"; });
+    if (lastUser != std::views::reverse(messages).end())
+      messages.insert(std::prev(lastUser.base()), {.role = "system", .content = std::string(input.clock)});
+  }
+  if (!input.notes.empty())
+    messages.push_back({.role = "system", .content = std::string(input.notes)});
+  return messages;
+}
+
 std::vector<ChatMessage> LfmAdapter::speakMessages(const SpeakInput& args, const std::string& notes) const
 {
-  std::vector<ChatMessage> msgs = args.history;
-  if (!args.input.clock.empty()) {
-    const auto lastUser = std::ranges::find_if(std::views::reverse(msgs),
-                                               [](const ChatMessage& message) { return message.role == "user"; });
-    if (lastUser != std::views::reverse(msgs).end())
-      msgs.insert(std::prev(lastUser.base()), {.role = "system", .content = args.input.clock});
-  }
-  if (!notes.empty())
-    msgs.push_back({.role = "system", .content = notes});
-  return msgs;
+  return spokenMessages({.history = args.history, .clock = args.input.clock, .notes = notes});
 }
 
 ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
@@ -201,7 +221,9 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
                                   .callsConfirmed = state.called});
     const TokenCallback guarded = gate.callback();
     std::string spoken;
+    std::string raw;
     engine_.chatStream(req, [&](const std::string& token, bool done) {
+      raw += token;
       spoken += token;
       if (done && !gate.cut())
         if (const std::string extra = missingReadbacks(outcome, spoken); !extra.empty()) {
@@ -211,6 +233,7 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
       guarded(token, done);
     });
     output.emitted = true;
+    output.rawReply = std::move(raw);
     output.reply = offers.spoken();
     if (gate.cut())
       LOG_WARN << "LfmAdapter: a streamed reply claimed something no tool did; it was cut";
@@ -219,6 +242,7 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
   }
   else {
     output.reply = engine_.chat(req);
+    output.rawReply = output.reply;
     if (claimedWithoutTool(output.reply, state)) {
       LOG_WARN << "LfmAdapter: the reply claims something no tool did; answering honestly";
       output.reply = reply_claims::honest(input.context.lang);
@@ -236,6 +260,78 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
   output.generateMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
   history.push_back({.role = "assistant", .content = output.reply});
   return output;
+}
+
+ToolChatOutput LfmAdapter::chatPlainTurn(const PlainChatInput& input)
+{
+  const ChatRequest& request = input.request;
+  const std::string lang = replyLang(request);
+  const std::string utterance = lastUtterance(request.messages);
+  const bool asked = reply_claims::asksForAction(utterance);
+  ToolChatOutput output;
+  ChatRequest req = request;
+  req.messages = spokenMessages({.history = request.messages,
+                                 .clock = clockNote(request.messages, lang),
+                                 .notes = {}});
+
+  const auto started = std::chrono::steady_clock::now();
+  if (request.prefillOnly) {
+    if (input.onToken != nullptr) {
+      engine_.chatStream(req, *input.onToken);
+      output.emitted = true;
+    }
+    else {
+      engine_.chat(req);
+    }
+    return output;
+  }
+
+  if (input.onToken != nullptr) {
+    reply_claims::OfferStripGate offers({.sink = *input.onToken, .lang = lang, .asked = asked});
+    reply_claims::ClaimGate gate({.sink = offers.callback(),
+                                  .lang = lang,
+                                  .asked = asked,
+                                  .legitimate = [] { return false; },
+                                  .appOnly = false,
+                                  .callsConfirmed = false});
+    const TokenCallback sink = request.toolsEnabled ? gate.callback() : offers.callback();
+    std::string raw;
+    engine_.chatStream(req, [&](const std::string& token, bool done) {
+      raw += token;
+      sink(token, done);
+    });
+    output.emitted = true;
+    output.rawReply = std::move(raw);
+    output.reply = offers.spoken();
+    if (request.toolsEnabled && gate.cut())
+      LOG_WARN << "LfmAdapter: a streamed reply claimed something no tool did; it was cut";
+    if (offers.stripped() > 0)
+      LOG_INFO << "LfmAdapter: a trailing generic offer was dropped from the streamed reply";
+  }
+  else {
+    output.rawReply = engine_.chat(req);
+    output.reply = output.rawReply;
+    if (request.toolsEnabled)
+      output.reply = reply_claims::withoutFalseClaims(
+          {.text = std::move(output.reply), .utterance = utterance, .lang = lang});
+    reply_claims::StrippedReply stripped =
+        reply_claims::withoutTrailingOffer(std::move(output.reply), {.lang = lang, .asked = asked});
+    output.reply = std::move(stripped.text);
+    if (stripped.stripped)
+      LOG_INFO << "LfmAdapter: a trailing generic offer was dropped from the reply";
+  }
+  output.generateMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+  return output;
+}
+
+ToolChatOutput LfmAdapter::chatPlain(const ChatRequest& request)
+{
+  return chatPlainTurn({.request = request, .onToken = nullptr});
+}
+
+ToolChatOutput LfmAdapter::chatPlainStream(const PlainChatStreamInput& input)
+{
+  return chatPlainTurn({.request = input.request, .onToken = &input.onToken});
 }
 
 ToolChatOutput LfmAdapter::chatWithTools(const ToolChatInput& input, std::vector<ChatMessage>& history)

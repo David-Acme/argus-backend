@@ -285,22 +285,31 @@ unchanged.
 ## The call prompt (call-faithfulness)
 
 `call-faithfulness-eval` measures what the spoken call prompt does on the shipped path, not on
-a rehearsal of it: every case runs through `LlmController::chatSync`, so the controller builds
-the clock line itself and `LfmAdapter` inserts it as its own system note before the last user
-message, exactly as a live call does. The first request is assembled the way
-`CallHistory::rebuildPrompt` assembles it (the prompt, then the framed known-header, then each
-note on its own line), and the corpus has grown with it
+a rehearsal of it: every case runs through `LlmController::chatSync`, so `LfmAdapter` decides the
+clock note itself (`LfmAdapter::clockNote`, the one place `asksAboutTime` is consulted) and
+inserts it as its own system note before the last user message, exactly as a live call does. The
+same adapter path carries the tool-less turn (a role that holds no tool, a call without tools),
+so the clock note and the offer strip are measured there too. The first request is assembled the
+way `CallHistory::rebuildPrompt` assembles it (the prompt, then the framed known-header, then
+each note on its own line), and the corpus has grown with it
 (`services/llm/tests/fixtures/eval/call-faithfulness.jsonl`, 20 cases es+en, 22 turns).
 
 Thirteen deterministic dimensions, no model as judge: `claims` (the product's own claim gate,
 `claim-check`/`reply-claims`, applied to the returned text — a nonzero count means the shipped
 pipeline let a claim through), `rawClaims` (the same gate applied to the model's text BEFORE
-the gate substitutes its honest line, re-generated through `controller.service().chat` with the
-controller's clock note — this is the dimension that measures the prompt itself),
+the gate substitutes its honest line — read from the adapter's own `ToolChatOutput::rawReply` /
+`LlmChatOutcome::rawReply`, i.e. the exact generation this turn shipped, not a second one; this
+is the dimension that measures the prompt itself),
 `clockRestraint` (no weekday, month or clock reading on a turn that did not ask for one),
 `recital` (no verbatim note text), `language`, `roleConfusion`, `genericOffer`, `parrot` and
 `nameAskRepeated` (all pinned at zero), plus the soft bounds `sentences` (at most two),
-`missedNameAsk`, `relevance` and `unpromptedGreeting`.
+`missedNameAsk`, `relevance` and `unpromptedGreeting`. `genericOffer` is the drifted measure —
+it fires on a generic offer anywhere in the reply — while the strip only ever drops a sentence
+that *is* the offer (`reply_claims::standaloneOffer`: after one leading interjection the sentence
+must begin with an offer phrase and everything after it must be a conversational particle —
+"más", "hoy", "ahora" / "else", "you", "today", "now", "further" — the offer phrases themselves
+untouched), so a sentence that carries an offer behind a comma, or follows it with a content
+word, is reported and never cut.
 
 The original A/B that chose the rewrite, measured 2026-10-07 at 9 cases / 10 turns,
 temperature 0.0, seed 42, debug build with `--force` — before the controller-side clock gate
@@ -345,8 +354,15 @@ vacuously, every hard dimension is pinned at 0 (`claims`, `rawClaims`, `recital`
 `roleConfusion`, `clockRestraint`, `language`, `genericOffer`, `parrot`, `nameAskRepeated`),
 and the soft dimensions are pinned at the pinned run's measured values (`missedNameAsk <= 0`,
 `relevance <= 0`, `sentences <= 2`, `unpromptedGreeting <= 1` — the reverted prompt's cell).
-The ctest smoke uses its own
-small pin (`gates-smoke.json`, three cases) so it stays a plumbing check.
+The pin carries its own args (`callFaithfulness.pinnedArgs`: `temperature 0.3`, `seed 42`), so
+the pin pins itself: a run whose `--temperature`/`--seed` differ from the recorded pair stops
+with `[SKIPPED] gates pinned for different args` and exit 77 before the model is touched, and a
+metrics pin without that pair is an error (exit 1). `call-faithfulness-pin-eval-test` checks all
+three model-free. The ctest smoke uses its own small pin (`gates-smoke.json`, three cases, its
+own `pinnedArgs`) so it stays a plumbing check: it carries only the zero-invariant dimensions
+and the corpus floor for its own subset. The four soft dimensions are budgets of the measured
+20-case corpus, and a three-case subset cannot meaningfully budget them — they are deliberately
+omitted from the smoke rather than guessed from three cases.
 
 Running it:
 
@@ -361,15 +377,16 @@ services/llm/build/dev/tests/eval/call-faithfulness-eval \
 ```
 
 Add `--force` on a debug build and `--temperature 0.3 --seed 42` for the pinned invocation
-(any other temperature or seed is a measurement, not the gate); it is a heavy job (big lane,
-cap 3), and it skips 77 without the model or while the gates are unpinned. The prompt text's
+(any other temperature or seed is a measurement, not the gate: the eval refuses it); it is a
+heavy job (big lane, cap 3), and it skips 77 without the model or while the gates are unpinned.
+The prompt text's
 single source of truth stays `services/voice/src/feature/voice/call-history.cc`:
 `call-prompt-*.txt` and `call-known-*.txt` are generated copies pinned byte-for-byte by the
 voice test, and the eval derives the known fixture as a sibling of the prompt file, so a
 missing fixture is an error, not a silent pass.
-Two caveats: the `rawClaims` probe re-generates rather than intercepting, so its text is a
-greedy proxy (it samples at 0.0 while the shipped call samples at 0.3), and the sentence
-counter is punctuation-based. Three fidelity deltas are known and accepted: the eval asks for
+Two caveats: the sentence counter is punctuation-based, and the corpus' first request carries
+the harness's own `person`/`roles` slots beside the prompt/known/notes skeleton. Three fidelity
+deltas are known and accepted: the eval asks for
 160 max tokens where the live call asks 256, it drives the non-streaming `chatSync` while the
 live call streams, and it asserts nothing about whether the tool loop was taken.
 

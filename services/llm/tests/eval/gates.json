@@ -692,6 +692,10 @@
     "wrongActMax": 0.001
   },
   "callFaithfulness": {
+    "pinnedArgs": {
+      "temperature": 0.3,
+      "seed": 42
+    },
     "metrics": {
       "cases": {
         "min": 20
