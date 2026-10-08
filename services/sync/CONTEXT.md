@@ -1060,6 +1060,13 @@ module that goes off stops its live frames and one that comes back resumes
 them. `ModuleUpdate = 12` is unchanged and keeps carrying install progress to
 the Owner.
 
+One recorded follow-up, found at review and left in place: the boot read's
+exit fallback (`answered || !canRead`) is only reachable when a gate exists, so
+a deployment with no `[modules] target` — which every shipped config sets —
+would keep its read loop polling instead of falling through. The thread idles
+and drains with the rest, and nothing in production has that shape; whoever
+next touches the read loop closes the condition.
+
 **The Owner's catalog** is not kept here: argus-sync asks `Modules/OwnerCatalog`
 (1.5 s) when an Owner connects and once per change, and leaves `ownerCatalog`
 out when settings does not answer; the app keeps its last one.
