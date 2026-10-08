@@ -236,6 +236,18 @@ void BundleLoader::load()
     confidenceCalibration_ = *confidence;
   if (const std::optional<CalibrationModel> now = calibrationFromJson((*decision)["calibration"]["now"]))
     nowCalibration_ = *now;
+  if (const Json::Value& headMaxLen = (*decision)["head_max_len"]; headMaxLen.isInt() && headMaxLen.asInt() > 0)
+    decode_.headMaxLen = headMaxLen.asInt();
+  if (const Json::Value& temperature = (*decision)["temperature"]; temperature.isArray() && temperature.size() == decode_.temperature.size()) {
+    std::array<double, 3> values{};
+    bool numeric = true;
+    for (Json::ArrayIndex index = 0; index < values.size(); ++index) {
+      numeric = numeric && temperature[index].isNumeric();
+      values[index] = numeric ? temperature[index].asDouble() : 1.0;
+    }
+    if (numeric)
+      decode_.temperature = values;
+  }
   const std::optional<Json::Value> labels = readJson(dir_ / "labels.json");
   if (!labels) {
     error_ = dir_.string() + ": labels.json cannot be read";

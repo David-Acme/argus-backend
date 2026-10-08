@@ -55,8 +55,10 @@ witness_only = false
 [decide.laya]
 bundle_dir = ""
 sha256 = ""
+agent_config = ""
 threads = 0
 cpu_arena = false
+mem_pattern = false
 prepacking = false
 mmap = true
 
@@ -131,6 +133,7 @@ bundle_dir = ""
 sha256 = ""
 threads = 0
 cpu_arena = false
+mem_pattern = false
 prepacking = false
 mmap = true
 

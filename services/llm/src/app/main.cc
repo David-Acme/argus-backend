@@ -185,7 +185,11 @@ struct TurnEngines
 
 turn::OnnxOptions onnxOptions(const LlmOnnxConfig& config)
 {
-  return {.threads = config.threads, .cpuArena = config.cpuArena, .prepacking = config.prepacking, .mmap = config.mmap};
+  return {.threads = config.threads,
+          .cpuArena = config.cpuArena,
+          .memPattern = config.memPattern,
+          .prepacking = config.prepacking,
+          .mmap = config.mmap};
 }
 
 void configureDecider(LlmController& llm, TurnEngines& engines)
@@ -205,7 +209,9 @@ void configureDecider(LlmController& llm, TurnEngines& engines)
     return;
   }
   engines.laya = std::make_unique<turn::LayaDecider>(turn::LayaDeciderInput{
-      .model = turn::openLayaModel(bundle, onnxOptions(LlmConfig::resolveOnnx("decide.laya"))),
+      .model = turn::openLayaModel({.bundle = bundle,
+                                    .options = onnxOptions(LlmConfig::resolveOnnx("decide.laya")),
+                                    .decode = turn::layaDecodeFromAgentConfig(engine.agentConfig).value_or(bundle.decode())}),
       .fallback = &llm.adapter().routerDecider(),
       .policy = bundle.policy(),
       .confidence = bundle.confidenceCalibration(),

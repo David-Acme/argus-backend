@@ -73,14 +73,16 @@ LlmEngineConfig LlmConfig::resolveDecisionEngine()
 {
   return {.engine = ConfigService::getString("decide.engine"),
           .bundleDir = ConfigService::getString("decide.laya.bundle_dir"),
-          .pin = ConfigService::getString("decide.laya.sha256")};
+          .pin = ConfigService::getString("decide.laya.sha256"),
+          .agentConfig = ConfigService::getString("decide.laya.agent_config")};
 }
 
 LlmEngineConfig LlmConfig::resolveExtractEngine()
 {
   return {.engine = ConfigService::getString("extract.engine"),
           .bundleDir = ConfigService::getString("extract.gliner.bundle_dir"),
-          .pin = ConfigService::getString("extract.gliner.sha256")};
+          .pin = ConfigService::getString("extract.gliner.sha256"),
+          .agentConfig = {}};
 }
 
 LlmOnnxConfig LlmConfig::resolveOnnx(std::string_view section)
@@ -91,6 +93,8 @@ LlmOnnxConfig LlmConfig::resolveOnnx(std::string_view section)
     config.threads = ConfigService::getInt(prefix + ".threads");
   if (ConfigService::hasKey(prefix + ".cpu_arena"))
     config.cpuArena = ConfigService::getBool(prefix + ".cpu_arena");
+  if (ConfigService::hasKey(prefix + ".mem_pattern"))
+    config.memPattern = ConfigService::getBool(prefix + ".mem_pattern");
   if (ConfigService::hasKey(prefix + ".prepacking"))
     config.prepacking = ConfigService::getBool(prefix + ".prepacking");
   if (ConfigService::hasKey(prefix + ".mmap"))

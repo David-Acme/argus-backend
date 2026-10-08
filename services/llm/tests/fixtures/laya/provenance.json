@@ -10,7 +10,7 @@
  "fixture": "parity-r1.json",
  "fixtureSha256": "3417767622b0aa216a20657da5622de1d8e779c6b252a1205cd913be4d799351",
  "cases": 18,
- "cppHalf": "partial: turn::SpTokenizer and turn::layaBuildSequence reproduce the token ids exactly and the sequence lengths and marker counts exactly; the token content of the head and option strings still differs",
+ "cppHalf": "token ids and sequences complete: turn::SpTokenizer and turn::layaBuildSequence reproduce the fixture's token ids and its sequences (lengths, marker counts and content) for all 18 cases, checked by llm-sp-tokenizer-test; the r1 weights these probabilities came from were not kept, so the score half is NOT RUN",
  "questionSet": {
   "file": "questions-r1.json",
   "source": "intent-training/scripts/laya_questions.py",

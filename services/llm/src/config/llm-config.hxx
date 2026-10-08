@@ -42,12 +42,14 @@ struct LlmEngineConfig
   std::string engine;
   std::string bundleDir;
   std::string pin;
+  std::string agentConfig;
 };
 
 struct LlmOnnxConfig
 {
   int threads{0};
   bool cpuArena{false};
+  bool memPattern{false};
   bool prepacking{false};
   bool mmap{true};
 };

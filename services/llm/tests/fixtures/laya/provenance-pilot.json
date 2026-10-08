@@ -1,0 +1,23 @@
+{
+ "exporter": "services/llm/tests/eval/laya-pilot-parity.py",
+ "backend": "laya 0.3.28 ONNXAgent",
+ "bundle": "bundle-laya-pilot",
+ "bundlePin": "9e74075cd6fcf23d6055a9e1fd931cac765dbbc68e63fead33b9dcfe966549f3",
+ "modelSha256": "a2cbc29f62ed75632263dd975a40c1a6fd19f087b6300b2f685b17040eadb0da",
+ "questionsSha256": "1ce9e1a2ca112f525036b280447f786d2753954a76fc169914152ed60f3520c7",
+ "labelsSha256": "68912a7d54df62057ea8b11591382d5844f5ed9a79bdde80d9b63e6118c101b5",
+ "agentConfig": "the pilot checkpoint's own rl_agent_config.json, temperature [3.003499746322632, 1.0, 5.0] and head_max_len 256",
+ "parameters": {
+  "maxLen": 1024,
+  "headMaxLen": 256,
+  "temperature": [
+   3.003499746322632,
+   1.0,
+   5.0
+  ]
+ },
+ "fixture": "parity-pilot.json",
+ "fixtureSha256": "fd128980e53ca81cb65fd05023f5793ad276ae99e58125cea9af90804fd63911",
+ "cases": 18,
+ "cppHalf": "complete: turn::SpTokenizer, turn::layaBuildSequence and the ONNX decode in turn::LayaBundleModel reproduce the reference token ids, the per-option probabilities and the noul reading; services/llm/tests/unit/llm-laya-runtime-test.cc holds the comparison"
+}

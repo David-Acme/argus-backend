@@ -364,6 +364,19 @@ set_target_properties(llm-sp-tokenizer-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-sp-tokenizer-test COMMAND llm-sp-tokenizer-test)
 
+add_executable(llm-laya-runtime-test tests/unit/llm-laya-runtime-test.cc)
+
+target_compile_definitions(llm-laya-runtime-test PRIVATE
+    ARGUS_TEST_LAYA_PILOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/parity-pilot.json")
+
+target_link_libraries(llm-laya-runtime-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-laya-runtime-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-laya-runtime-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-laya-runtime-test COMMAND llm-laya-runtime-test)
+
 add_executable(llm-gliner-decoder-test tests/unit/llm-gliner-decoder-test.cc)
 
 target_link_libraries(llm-gliner-decoder-test PRIVATE argus::llm doctest::doctest)

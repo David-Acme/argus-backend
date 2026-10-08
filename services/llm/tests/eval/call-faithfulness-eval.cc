@@ -74,6 +74,7 @@ struct Options
   std::string filter;
   std::string decide;
   std::string decideBundle;
+  std::string layaAgentConfig;
   std::string extract;
   std::string extractBundle;
   std::vector<std::string> dropFacets;
@@ -117,6 +118,8 @@ Options parseOptions(int argc, char** argv)
       options.decide = argv[++i];
     else if (arg == "--decide-bundle" && hasValue)
       options.decideBundle = argv[++i];
+    else if (arg == "--laya-agent-config" && hasValue)
+      options.layaAgentConfig = argv[++i];
     else if (arg == "--extract" && hasValue)
       options.extract = argv[++i];
     else if (arg == "--extract-bundle" && hasValue)
@@ -826,6 +829,8 @@ Engines setupEngines(LlmController& controller, const Options& options)
     ConfigService::setRuntimeString("decide.engine", options.decide);
   if (!options.decideBundle.empty())
     ConfigService::setRuntimeString("decide.laya.bundle_dir", options.decideBundle);
+  if (!options.layaAgentConfig.empty())
+    ConfigService::setRuntimeString("decide.laya.agent_config", options.layaAgentConfig);
   if (!options.extract.empty())
     ConfigService::setRuntimeString("extract.engine", options.extract);
   if (!options.extractBundle.empty())
@@ -834,7 +839,11 @@ Engines setupEngines(LlmController& controller, const Options& options)
     const turn::BundleLoader bundle({.dir = options.decideBundle, .pin = bundlePin(options.decideBundle)});
     if (bundle.valid() && !turn::unknownLayaLabel(bundle.labels(), ToolRegistry::instance())) {
       engines.laya = std::make_unique<turn::LayaDecider>(turn::LayaDeciderInput{
-          .model = turn::openLayaModel(bundle, {}),
+          .model = turn::openLayaModel(
+              {.bundle = bundle,
+               .options = {},
+               .decode = turn::layaDecodeFromAgentConfig(ConfigService::getString("decide.laya.agent_config"))
+                              .value_or(bundle.decode())}),
           .fallback = &controller.adapter().routerDecider(),
           .policy = bundle.policy(),
           .confidence = bundle.confidenceCalibration(),

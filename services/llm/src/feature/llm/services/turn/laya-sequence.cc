@@ -2,6 +2,8 @@
 
 #include "sp-tokenizer.hxx"
 
+#include <json/writer.h>
+
 #include <algorithm>
 #include <string>
 #include <utility>
@@ -25,6 +27,65 @@ std::string withoutMask(std::string text, const std::string& mask)
   }
   return text;
 }
+
+std::string compact(const Json::Value& value)
+{
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, value);
+}
+}
+
+std::string layaCriterionText(const Json::Value& value)
+{
+  if (value.isString())
+    return value.asString();
+  if (value.isNull())
+    return {};
+  if (value.isBool())
+    return value.asBool() ? "true" : "false";
+  if (value.isInt64() || value.isUInt64())
+    return std::to_string(value.asInt64());
+  return compact(value);
+}
+
+std::optional<LayaQuestion> layaQuestionFromJson(const Json::Value& definition)
+{
+  if (!definition.isObject())
+    return std::nullopt;
+  LayaQuestion question;
+  const std::string type = definition.get("type", "choice").asString();
+  if (type == "choice")
+    question.kind = QuestionKind::Choice;
+  else if (type == "score")
+    question.kind = QuestionKind::Score;
+  else if (type == "noul")
+    question.kind = QuestionKind::Noul;
+  else
+    return std::nullopt;
+  const Json::Value& instructions = definition["instructions"];
+  question.instructions = instructions.isString() ? instructions.asString() : compact(instructions);
+  const Json::Value& criteria = definition["criteria"];
+  if (criteria.isArray()) {
+    for (const Json::Value& entry : criteria) {
+      if (question.kind == QuestionKind::Score)
+        question.criteria.push_back({std::string(), layaCriterionText(entry)});
+      else
+        question.criteria.push_back({entry.isString() ? entry.asString() : compact(entry), std::string()});
+    }
+  }
+  else if (criteria.isObject()) {
+    for (const std::string& key : criteria.getMemberNames()) {
+      const Json::Value& entry = criteria[key];
+      const std::string text = entry.isNull() || (entry.isString() && entry.asString().empty()) ? std::string() : layaCriterionText(entry);
+      question.criteria.push_back({key, text});
+    }
+  }
+  if (definition.isMember("labels") && definition["labels"].isObject()) {
+    question.falseLabel = definition["labels"].get("false", "false").asString();
+    question.trueLabel = definition["labels"].get("true", "true").asString();
+  }
+  return question;
 }
 
 std::vector<std::string> layaOptions(const LayaQuestion& question)
@@ -37,8 +98,8 @@ std::vector<std::string> layaOptions(const LayaQuestion& question)
   }
   if (question.kind == QuestionKind::Score) {
     std::size_t index = 0;
-    for (const auto& [description, unused] : question.criteria)
-      options.push_back("level " + std::to_string(index++) + ": " + description);
+    for (const auto& entry : question.criteria)
+      options.push_back("level " + std::to_string(index++) + ": " + entry.second);
     return options;
   }
   const std::string falseText = question.criteria.empty() || question.criteria.front().second.empty()

@@ -8,6 +8,8 @@
 
 #include <unistd.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <fstream>
 #include <iterator>
 #include <utility>
@@ -47,6 +49,8 @@ bool OnnxSession::open(const std::filesystem::path& modelPath, const OnnxOptions
     sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
     if (!options.cpuArena)
       sessionOptions.DisableCpuMemArena();
+    if (!options.memPattern)
+      sessionOptions.DisableMemPattern();
     sessionOptions.AddConfigEntry("session.use_prepacking", options.prepacking ? "1" : "0");
     if (options.mmap) {
       session_ = std::make_unique<Ort::Session>(*env_, modelPath.c_str(), sessionOptions);
@@ -65,7 +69,8 @@ bool OnnxSession::open(const std::filesystem::path& modelPath, const OnnxOptions
     warmRssDelta_ = after - before;
     const double deltaMb = static_cast<double>(warmRssDelta_) / (1024.0 * 1024.0);
     LOG_INFO << "OnnxSession: opened " << modelPath.filename().string() << " threads=" << threads
-             << " cpu_arena=" << options.cpuArena << " prepacking=" << options.prepacking
+             << " cpu_arena=" << options.cpuArena << " mem_pattern=" << options.memPattern
+             << " prepacking=" << options.prepacking
              << " mmap=" << options.mmap << " warm_rss_delta_mb=" << deltaMb;
     return true;
   }
@@ -86,15 +91,29 @@ std::optional<std::vector<OnnxTensor>> OnnxSession::run(const OnnxCall& call)
     const Ort::AllocatorWithDefaultOptions allocator;
     std::vector<const char*> inputNames;
     std::vector<Ort::Value> inputValues;
+    std::vector<std::vector<std::uint8_t>> flags;
     inputNames.reserve(call.inputs.size());
     inputValues.reserve(call.inputs.size());
+    flags.reserve(call.inputs.size());
     for (const OnnxInput& input : call.inputs) {
       inputNames.push_back(input.name.c_str());
-      inputValues.push_back(Ort::Value::CreateTensor<std::int64_t>(memory,
-                                                                   const_cast<std::int64_t*>(input.values.data()),
-                                                                   input.values.size(),
-                                                                   input.shape.data(),
-                                                                   input.shape.size()));
+      if (input.boolean) {
+        std::vector<std::uint8_t>& buffer = flags.emplace_back(input.values.size());
+        std::ranges::transform(input.values, buffer.begin(), [](std::int64_t value) { return static_cast<std::uint8_t>(value != 0); });
+        inputValues.push_back(Ort::Value::CreateTensor(memory,
+                                                       buffer.data(),
+                                                       buffer.size(),
+                                                       input.shape.data(),
+                                                       input.shape.size(),
+                                                       ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL));
+        continue;
+      }
+      inputValues.push_back(Ort::Value::CreateTensor(memory,
+                                                     const_cast<std::int64_t*>(input.values.data()),
+                                                     input.values.size() * sizeof(std::int64_t),
+                                                     input.shape.data(),
+                                                     input.shape.size(),
+                                                     ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64));
     }
     std::vector<const char*> outputNames;
     outputNames.reserve(call.outputs.size());

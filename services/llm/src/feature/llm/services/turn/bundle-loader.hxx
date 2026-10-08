@@ -2,6 +2,7 @@
 
 #include "calibration.hxx"
 
+#include <array>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -9,6 +10,12 @@
 
 namespace turn
 {
+
+struct BundleDecode
+{
+  int headMaxLen{192};
+  std::array<double, 3> temperature{1.0, 1.0, 1.0};
+};
 
 struct BundlePolicy
 {
@@ -48,7 +55,11 @@ public:
 
   [[nodiscard]] std::filesystem::path tokenizerJson() const { return dir_ / "tokenizer" / "tokenizer.json"; }
 
+  [[nodiscard]] std::filesystem::path questionsJson() const { return dir_ / "questions.json"; }
+
   [[nodiscard]] int maxLen() const { return maxLen_; }
+
+  [[nodiscard]] const BundleDecode& decode() const { return decode_; }
 
   [[nodiscard]] const std::vector<std::string>& labels() const { return labels_; }
 
@@ -70,6 +81,7 @@ private:
   bool valid_{false};
   std::string error_;
   int maxLen_{0};
+  BundleDecode decode_;
   std::vector<std::string> labels_;
   BundlePolicy policy_;
   BundleThresholds thresholds_;

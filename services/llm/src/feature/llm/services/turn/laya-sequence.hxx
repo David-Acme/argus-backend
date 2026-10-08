@@ -1,7 +1,10 @@
 #pragma once
 
+#include <json/value.h>
+
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -41,6 +44,10 @@ struct LayaSequenceInput
   int maxLen{512};
   int headMaxLen{192};
 };
+
+[[nodiscard]] std::optional<LayaQuestion> layaQuestionFromJson(const Json::Value& definition);
+
+[[nodiscard]] std::string layaCriterionText(const Json::Value& value);
 
 [[nodiscard]] std::vector<std::string> layaOptions(const LayaQuestion& question);
 

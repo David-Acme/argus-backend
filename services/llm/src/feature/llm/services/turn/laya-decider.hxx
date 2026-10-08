@@ -3,6 +3,7 @@
 #include "bundle-loader.hxx"
 #include "calibration.hxx"
 #include "decider.hxx"
+#include "laya-sequence.hxx"
 #include "onnx-session.hxx"
 
 #include <memory>
@@ -49,6 +50,13 @@ struct LayaDeciderInput
   CalibrationModel now;
 };
 
+struct LayaModelInput
+{
+  const BundleLoader& bundle;
+  OnnxOptions options;
+  BundleDecode decode;
+};
+
 class LayaDecider final : public Decider
 {
 public:
@@ -57,6 +65,10 @@ public:
   [[nodiscard]] std::string_view id() const override { return kDeciderIds[2]; }
 
   [[nodiscard]] std::optional<Candidate> decide(const DecideInput& input) const override;
+
+  [[nodiscard]] std::optional<LayaReading> read(std::string_view text, std::string_view lang) const;
+
+  [[nodiscard]] bool model_ready() const { return model_ != nullptr && model_->status() == EngineStatus::Ready; }
 
   [[nodiscard]] const BundlePolicy& policy() const { return policy_; }
 
@@ -82,6 +94,8 @@ struct LayaLabel
 
 [[nodiscard]] std::optional<std::string> unknownLayaLabel(const std::vector<std::string>& labels, const ToolRegistry& registry);
 
-[[nodiscard]] std::unique_ptr<LayaModel> openLayaModel(const BundleLoader& bundle, const OnnxOptions& options);
+[[nodiscard]] std::optional<BundleDecode> layaDecodeFromAgentConfig(const std::filesystem::path& path);
+
+[[nodiscard]] std::unique_ptr<LayaModel> openLayaModel(LayaModelInput input);
 
 }

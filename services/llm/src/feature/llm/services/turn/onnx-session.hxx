@@ -26,6 +26,7 @@ struct OnnxOptions
 {
   int threads{0};
   bool cpuArena{false};
+  bool memPattern{false};
   bool prepacking{false};
   bool mmap{true};
 };
@@ -35,6 +36,7 @@ struct OnnxInput
   std::string name;
   std::vector<int64_t> shape;
   std::vector<int64_t> values;
+  bool boolean{false};
 };
 
 struct OnnxTensor

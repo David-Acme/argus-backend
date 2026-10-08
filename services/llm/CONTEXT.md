@@ -1519,14 +1519,16 @@ they replace.
 | `decide.engine` | `router` (default) \| `laya` | which second decider the judge arbitrates against `rules` |
 | `decide.laya.bundle_dir` | a path | the decided bundle the loader opens |
 | `decide.laya.sha256` | 64 hex | the sha256 **of the bundle's own `sha256` file**, which pins every file transitively |
+| `decide.laya.agent_config` | a path \| empty (default) | the checkpoint's own `rl_agent_config.json`, which supplies `head_max_len` and `temperature` for a bundle whose `decision.json` declares neither |
 | `decide.laya.threads` | `0` (default) \| n | intra-op threads; `0` means `ThreadBudget::lightThreads()` |
 | `decide.laya.cpu_arena` | `false` (default) \| `true` | the ORT CPU memory arena |
+| `decide.laya.mem_pattern` | `false` (default) \| `true` | the ORT memory-pattern planner |
 | `decide.laya.prepacking` | `false` (default) \| `true` | `session.use_prepacking` |
 | `decide.laya.mmap` | `true` (default) \| `false` | hand ORT the path (mmap) instead of a read buffer |
 | `extract.engine` | `nuextract` (default) \| `gliner` | which text engine the slot layer asks |
 | `extract.gliner.bundle_dir` | a path | the extractor bundle |
 | `extract.gliner.sha256` | 64 hex | the sha256 of that bundle's `sha256` file |
-| `extract.gliner.threads` / `.cpu_arena` / `.prepacking` / `.mmap` | as above | the same four session options |
+| `extract.gliner.threads` / `.cpu_arena` / `.mem_pattern` / `.prepacking` / `.mmap` | as above | the same five session options |
 
 The template carries keys and values only; the allowed values are here, never
 in `config.toml.example`.
@@ -1535,8 +1537,8 @@ in `config.toml.example`.
 
 `scripts/install-model-bundle.sh <laya|gliner> <bundle-dir>` writes the two keys
 from a verified bundle, and `--rollback` restores the previous one. The bundle
-is `model.onnx`, `tokenizer/`, `labels.json`, `decision.json`, `max_len`,
-`model-card.md`, `sha256` and `manifest.json` (the layout
+is `model.onnx`, `tokenizer/`, `labels.json`, `questions.json`, `decision.json`,
+`max_len`, `model-card.md`, `sha256` and `manifest.json` (the layout
 `intent-training/scripts/kit_bundle.py` writes). The loader verifies the
 configured pin **first** — it is the sha256 of the `sha256` file — then every
 file the `sha256` file lists, and refuses an unlisted file or a missing one
@@ -1604,12 +1606,37 @@ its `tokens` row for row (verified 2026-10-08). The fixture carries, per case,
 the text, the token ids, the per-question sequences (ids and markers), the tool
 label probabilities and the `now` score — the two sides a parity harness
 compares. GLiNER's pair is `tests/eval/gliner-parity.py`, the same shape over
-the extractor's encoder and span decoder. **The C++ half of both harnesses is
-not written**: `turn::LayaModel` and `turn::GlinerModel` are ports, and their
-in-service adapters open the bundle's ONNX with the four session options above
-and report `Unavailable` until the sequence renderer (Laya) and the span head
-(GLiNER) are exported or written, which is why the composition degrades to
-today's path. The port is what makes the artefact a file swap.
+the extractor's encoder and span decoder. **GLiNER's C++ half is not written**:
+`turn::GlinerModel` is a port whose in-service adapter opens the bundle's ONNX
+and reports `Unavailable` until the span head is exported or written, which is
+why the composition degrades to NuExtract. The port is what makes the artefact
+a file swap.
+
+### The Laya decode, and what a bundle must declare
+
+`turn::LayaBundleModel` (`laya-decider.cc`) is the runtime behind
+`turn::LayaModel`: it loads `questions.json` from the bundle, renders each
+question with `turn::layaBuildSequence`, and runs the graph once per question.
+The pilot's `tool` question is a `choice` and `now` is a `noul`; `qtype` is
+`QuestionKind`'s own value (`Choice` 0, `Score` 1, `Noul` 2), which is the
+number the checkpoint trained with. The five graph inputs are `input_ids`,
+`attention_mask`, `marker_pos`, `marker_mask` (the graph's only bool tensor,
+which is why `turn::OnnxInput` carries a `boolean` flag) and `qtype`; the output
+is `logits`, one score per option, and `marker_mask` is all true for the single
+row a turn sends.
+
+The probabilities are `softmax(logits[:k] / temperature[qtype])`, exactly
+laya's own arithmetic, and the `calibration` block of `decision.json` then maps
+the maximum to the confidence the judge reads (`turn::CalibrationModel`), and
+`p[1]` of the `noul` row to `Candidate.now`. `temperature` is a property of the
+weights — the checkpoint's `rl_agent_config.json` carries
+`[3.0035, 1.0, 5.0]` for the pilot — and a bundle that does not declare it runs
+at the identity default, which sharpens the softmax so hard that the
+calibration saturates and every turn acts. `BundleDecode` therefore reads
+`head_max_len` and `temperature` from `decision.json` when a bundle carries
+them, and `decide.laya.agent_config` names the checkpoint's own
+`rl_agent_config.json` when it does not; the shipped pilot bundle declares
+neither and needs the config key to reproduce its calibration.
 
 ### Precision, then latency and CPU, then memory (David, 2026-10-08)
 
@@ -1625,13 +1652,27 @@ memory**, and memory has a ceiling again, measured where it is spent:
   with their sum beside the process RSS. 600 MB is the **target reported beside
   the gate**, not the gate.
 - The free runtime savings are how the ceiling is met without touching the
-  model, and they matter more now: CPU arena off, prepacking off, mmap load,
-  intra-op threads from `ThreadBudget` — the four keys above, applied by default
-  **when the parity harness shows identical outputs**.
+  model, and they matter more now: **CPU arena off and memory pattern off are
+  the loader's defaults for both engines** (the five keys above), with
+  prepacking off, mmap load and intra-op threads from `ThreadBudget`, applied by
+  default **when the parity harness shows identical outputs**. On GLiNER the
+  pattern-off change alone took the same measurement from 1.61 GB to 0.93 GB.
 - The loader loads INT8 or fp32 without caring which; Unit A's quality gates
   choose (INT8 ships within 0.5 pp of fp32 on dev, OOT, IND and CH with parity
   passing; fp32 only if INT8 costs precision and fp32 still fits the 1 GB
   ceiling and the latency gate).
+- **The Laya reading, first measured 2026-10-08 on the pilot bundle** (`bundle-laya-pilot`,
+  pin `9e74075c…`, fp32, `model.onnx` 1230.6 MiB), single load in a fresh
+  process with arena off, pattern off, prepacking off and mmap on: **session
+  load delta 1330.1 MB, process warm delta 1522.2 MB**. The same run in service
+  (call-faithfulness, `--decide laya`) prints `laya_rss_mb=1313.3`,
+  `process_rss_mb=2435.5`. Turn the arena and the pattern **on** and the same
+  reading is 1318.9 / 1513.3 MB — the two options barely move Laya, because the
+  cost is the fp32 weights themselves and not the runtime's planning. The same
+  measurement taken as a third load in one process reads 918.6 MB; that is
+  glibc reusing what the previous session freed, not a property of the model.
+  **fp32 therefore fails the 1 GB gate** and the embedding-only quantisation is
+  not avoidable on this pair; see the unit's report.
 - Vocabulary pruning is dropped.
 
 This replaces the earlier "memory is reported, not gated" wording of the same
