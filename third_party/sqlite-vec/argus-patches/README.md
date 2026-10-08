@@ -2,10 +2,15 @@
 
 Upstream tree: `sqlite-vec` `v0.1.10-alpha.4` (`sqlite-vec.h`,
 `SQLITE_VEC_VERSION`), vendored in-tree at `third_party/sqlite-vec/` and
-declared by `third_party/sqlite-vec/CMakeLists.txt`. There is no pin file and
-no downloaded archive for this tree: the sources are tracked in this
-repository, so a re-vendor is a copy of upstream files over this folder and it
-drops every patch here.
+declared by `third_party/sqlite-vec/CMakeLists.txt`. There is no downloaded
+archive for this tree: the sources are tracked in this repository, so a
+re-vendor is a copy of upstream files over this folder and it drops every
+patch here. `sqlite-vec.c.sha256` records the patched file in `sha256sum`
+format, and `scripts/check-vendored.sh` (run by `scripts/build-all.sh` before
+anything is built, over every `third_party` tree that carries an
+`argus-patches` directory, this one included) reverse-checks each patch here
+against the tree and verifies that pin, so a re-vendor fails the gate until the
+patch is applied again or the pin is updated deliberately.
 
 | Patch | What it fixes |
 |---|---|

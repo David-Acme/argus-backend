@@ -68,9 +68,21 @@ own.
   `shadowMetadataChunksNames[]`, so every `vec0` table creation leaked two
   allocations of 40 bytes. `vec-db-test` is the measurement — its two tables
   (`memory_vec`, `face_vec`) are the leak, and under LeakSanitizer it exits
-  non-zero on that leak alone while doctest reports all 8 assertions passed.
+  non-zero on that leak alone while doctest reports every assertion passed.
   A re-vendor that copies upstream files over `third_party/sqlite-vec/` drops
-  the fix silently; nothing pins the tree, since its sources are tracked here.
+  the fix silently, which `scripts/check-vendored.sh` (run by `build-all.sh`
+  before anything is built, over every `third_party` tree that carries an
+  `argus-patches` directory) makes loud: it reverse-applies each
+  `argus-patches/*.patch` against the tree and verifies the `sha256sum`-format
+  pin `argus-patches/sqlite-vec.c.sha256`, which records the vendored file byte
+  for byte, so a re-vendor fails the gate until the patch is applied again or
+  the pin is updated deliberately. `vec-db-test` also covers the teardown error
+  path the `= NULL` is load-bearing for: a `vec0` DROP whose rowids shadow drop
+  a test authorizer denies fails inside `vec0Destroy()` after `vec0_init()` has
+  allocated the metadata chunk names, so SQLite runs the teardown twice —
+  directly, then through `vec0Disconnect()` — and the second run must be a
+  no-op (AddressSanitizer reports a double free without the NULL, LeakSanitizer
+  reports the leak on the pre-patch file).
 - A schema is applied, never invented here: `runSchemaFile` takes the path the
   service resolved, and the DDL of a domain lives in that domain's
   `database/schema.sql` (rule 26). The one exception is the vec0 tables, whose

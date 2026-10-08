@@ -154,6 +154,9 @@ log "=== dependencies (section 2.4) ==="
 log "=== routes ==="
 "$ROOT/scripts/check-routes.sh"
 
+log "=== vendored patches ==="
+"$ROOT/scripts/check-vendored.sh"
+
 CONAN_OUT="$ROOT/build/$PROFILE"
 GENERATORS="$CONAN_OUT/build/$BUILD_TYPE/generators"
 
