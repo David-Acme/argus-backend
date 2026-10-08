@@ -28,6 +28,14 @@ struct Fact
 
 [[nodiscard]] std::string misunderstood(std::string_view lang);
 
+struct ContextBlockInput
+{
+  std::string_view lang;
+  const std::vector<std::string>& facts;
+};
+
+[[nodiscard]] std::string contextBlock(const ContextBlockInput& input);
+
 struct Details
 {
   std::string title{};

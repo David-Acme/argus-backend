@@ -214,6 +214,13 @@ LlmPrefillStats LlmService::lastPrefillStats()
   return lastStats_.load();
 }
 
+int32_t LlmService::countTokens(const std::string& text)
+{
+  if (!loaded_.load() || model_ == nullptr)
+    return 0;
+  return static_cast<int32_t>(tokenize(text, false).size());
+}
+
 std::vector<int32_t> LlmService::tokenize(const std::string& text,
                                           bool addSpecial)
 {

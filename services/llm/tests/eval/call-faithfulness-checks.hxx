@@ -30,8 +30,8 @@ struct StaticPromptInput
   const std::string& rolesDefault;
   const std::string& prompt;
   const std::string& person;
-  const std::string& known;
-  const std::vector<std::string>& notes;
+  const std::string& known{};
+  const std::vector<std::string>& facts{};
 };
 
 inline std::string staticPrompt(const StaticPromptInput& input)
@@ -47,12 +47,12 @@ inline std::string staticPrompt(const StaticPromptInput& input)
     content += "\n\n";
     content += input.person;
   }
-  if (!input.notes.empty()) {
+  if (!input.facts.empty()) {
     content += '\n';
     content += input.known;
-    for (const auto& note : input.notes) {
+    for (const auto& fact : input.facts) {
       content += '\n';
-      content += note;
+      content += fact;
     }
   }
   return content;

@@ -55,6 +55,7 @@ struct Outcome
   bool called{false};
   int64_t toolMs{0};
   std::string source;
+  std::string decidedTool;
 };
 
 struct TurnRequest

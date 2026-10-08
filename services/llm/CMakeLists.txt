@@ -316,6 +316,16 @@ set_target_properties(llm-turn-flow-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-turn-flow-test COMMAND llm-turn-flow-test)
 
+add_executable(llm-context-selector-test tests/unit/llm-context-selector-test.cc)
+
+target_link_libraries(llm-context-selector-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-context-selector-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-context-selector-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-context-selector-test COMMAND llm-context-selector-test)
+
 add_executable(llm-spoken-intent-test tests/unit/llm-spoken-intent-test.cc)
 
 target_link_libraries(llm-spoken-intent-test PRIVATE argus::llm doctest::doctest)

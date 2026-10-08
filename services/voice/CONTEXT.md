@@ -123,6 +123,19 @@ exact JSON/binary the app expects is argus-sync's
   the turn (the endpoint silence, `min_silence_frames` × 32 ms, comes before
   that), so the budget of a slow answer is visible in the deploy's info log
   without a transcript.
+- `[voice] trace_latency` (default false, `VoiceConfig::resolveLatencyTrace`)
+  adds a second, opt-in INFO line per turn whose base is the endpoint, not the
+  turn start: `Voice: turn trace heard_bytes=… endpoint_stt_ms=…
+  endpoint_request_ms=… endpoint_first_token_ms=… endpoint_sentence_ms=…
+  endpoint_chunk_ms=… endpoint_frame_ms=… stt=stream|unary`. `endpoint_request_ms`
+  is the moment the turn leaves for argus-llm, so `endpoint_request_ms →
+  endpoint_first_token_ms` is the first-token gap a context or prefill change
+  is judged on (U23's column), and `endpoint_frame_ms` is the first frame at the
+  sink. Every stamp is a `steady_clock` time point taken on the turn thread; the
+  clock is attached through an RAII scope in `processTurn` and read once per
+  `speak`, so an off-the-turn greeting or notice path stamps nothing. With the
+  switch off only the time points are taken and nothing is printed, and the
+  sink sees byte-identical frames either way (the seam test measures both).
 - `RemoteVoiceTts` caches argus-tts's speed and sample rate for 10 s. Each
   sentence used to ask for both before synthesizing, two round trips per
   sentence on the path to first audio; the owner's speed setting still

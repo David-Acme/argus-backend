@@ -14,6 +14,7 @@
 
 #include <json/reader.h>
 #include <json/value.h>
+#include <json/writer.h>
 #include <llm/llm-service.hxx>
 #include <mcp/confirmation.hxx>
 
@@ -62,12 +63,16 @@ struct Options
   std::string rolesEs;
   std::string rolesEn;
   std::string report;
+  std::string dump;
+  std::string ttft;
   std::string filter;
+  std::vector<std::string> dropFacets;
   float temperature{0.0F};
   uint32_t seed{42};
   int limit{0};
   bool verbose{false};
   bool force{false};
+  bool legacyContext{false};
 };
 
 Options parseOptions(int argc, char** argv)
@@ -92,8 +97,14 @@ Options parseOptions(int argc, char** argv)
       options.rolesEn = argv[++i];
     else if (arg == "--report" && hasValue)
       options.report = argv[++i];
+    else if (arg == "--dump" && hasValue)
+      options.dump = argv[++i];
+    else if (arg == "--ttft" && hasValue)
+      options.ttft = argv[++i];
     else if (arg == "--filter" && hasValue)
       options.filter = argv[++i];
+    else if (arg == "--drop-facets" && hasValue)
+      options.dropFacets.push_back(argv[++i]);
     else if (arg == "--temperature" && hasValue)
       options.temperature = std::strtof(argv[++i], nullptr);
     else if (arg == "--seed" && hasValue)
@@ -104,6 +115,8 @@ Options parseOptions(int argc, char** argv)
       options.verbose = true;
     else if (arg == "--force")
       options.force = true;
+    else if (arg == "--legacy-context")
+      options.legacyContext = true;
   }
   return options;
 }
@@ -131,10 +144,13 @@ struct CallCase
 {
   std::string id;
   std::string lang;
+  std::vector<ContextFact> facts;
   std::vector<std::string> notes;
   std::vector<std::string> script;
   std::vector<std::string> noEcho;
   std::vector<std::string> expectAny;
+  std::vector<std::string> expectFacts;
+  std::vector<std::string> forbidFacts;
   std::string person;
   std::optional<std::string> roles;
   bool asksClock{false};
@@ -183,10 +199,17 @@ LoadedCallCases loadCallCases(const std::string& path)
     CallCase item;
     item.id = node["id"].asString();
     item.lang = node.get("lang", "es").asString();
-    item.notes = stringList(node["notes"]);
+    for (const auto& fact : node["facts"]) {
+      if (fact.isObject())
+        item.facts.push_back({.facet = fact.get("facet", "").asString(), .text = fact.get("text", "").asString()});
+    }
+    for (const auto& fact : item.facts)
+      item.notes.push_back(fact.text);
     item.script = stringList(node["script"]);
     item.noEcho = stringList(node["noEcho"]);
     item.expectAny = stringList(node["expectAny"]);
+    item.expectFacts = stringList(node["expectFacts"]);
+    item.forbidFacts = stringList(node["forbidFacts"]);
     item.person = node.get("person", "").asString();
     if (node.isMember("roles"))
       item.roles = node["roles"].asString();
@@ -369,6 +392,8 @@ struct TurnVerdict
   bool unpromptedGreeting{false};
   bool missedNameAsk{false};
   bool nameAskRepeated{false};
+  bool missedFact{false};
+  bool leakedFact{false};
 };
 
 struct DimensionField
@@ -377,7 +402,7 @@ struct DimensionField
   bool TurnVerdict::*flag;
 };
 
-constexpr std::array<DimensionField, 13> kDimensions{{
+constexpr std::array<DimensionField, 15> kDimensions{{
     {.name = "claims", .flag = &TurnVerdict::claims},
     {.name = "rawClaims", .flag = &TurnVerdict::rawClaims},
     {.name = "clockRestraint", .flag = &TurnVerdict::clockRestraint},
@@ -391,7 +416,26 @@ constexpr std::array<DimensionField, 13> kDimensions{{
     {.name = "unpromptedGreeting", .flag = &TurnVerdict::unpromptedGreeting},
     {.name = "missedNameAsk", .flag = &TurnVerdict::missedNameAsk},
     {.name = "nameAskRepeated", .flag = &TurnVerdict::nameAskRepeated},
+    {.name = "missedFact", .flag = &TurnVerdict::missedFact},
+    {.name = "leakedFact", .flag = &TurnVerdict::leakedFact},
 }};
+
+struct FactPresence
+{
+  const CallCase& item;
+  std::string_view facet;
+  const std::string& contextBlock;
+};
+
+bool facetPresent(const FactPresence& input)
+{
+  if (input.contextBlock.empty())
+    return false;
+  return std::ranges::any_of(input.item.facts, [&](const ContextFact& fact) {
+    return fact.facet == input.facet && !fact.text.empty() &&
+           input.contextBlock.find(fact.text) != std::string::npos;
+  });
+}
 
 struct TurnStateInput
 {
@@ -427,9 +471,11 @@ struct TurnScoreInput
 {
   const std::string& reply;
   const std::string& rawReply;
+  const std::string& contextBlock;
   const CallCase& item;
   const TurnState& state;
   bool firstTurn{false};
+  bool checkFacts{false};
 };
 
 TurnVerdict scoreTurn(const TurnScoreInput& input)
@@ -449,6 +495,15 @@ TurnVerdict scoreTurn(const TurnScoreInput& input)
   verdict.missedNameAsk = call_checks::missedNameAsk(
       {.reply = input.reply, .nameUnknown = input.item.nameUnknown, .firstTurn = input.firstTurn});
   verdict.nameAskRepeated = call_checks::nameAskRepeated({.reply = input.reply, .firstTurn = input.firstTurn});
+  if (input.checkFacts) {
+    const auto present = [&](std::string_view facet) {
+      return facetPresent({.item = input.item, .facet = facet, .contextBlock = input.contextBlock});
+    };
+    verdict.missedFact = std::ranges::any_of(
+        input.item.expectFacts, [&](const std::string& facet) { return !present(facet); });
+    verdict.leakedFact = std::ranges::any_of(
+        input.item.forbidFacts, [&](const std::string& facet) { return present(facet); });
+  }
   return verdict;
 }
 
@@ -456,15 +511,19 @@ struct TurnRecord
 {
   std::string reply;
   std::string rawReply;
+  std::string contextBlock;
   std::vector<eval::RecordedCall> executed;
   TurnState state;
   TurnVerdict verdict;
   int64_t ms{0};
+  int32_t promptTokens{0};
+  int32_t decodedTokens{0};
 };
 
 struct CaseRecord
 {
   CallCase item;
+  std::string staticPrefix;
   std::vector<TurnRecord> turns;
 };
 
@@ -477,26 +536,42 @@ struct CaseInput
   const std::string& prompt;
   const std::string& known;
   const std::string& roles;
+  const std::vector<std::string>& dropped;
   float temperature{0.0F};
+  bool legacyContext{false};
 };
+
+std::vector<ContextFact> offeredFacts(const CallCase& item, const std::vector<std::string>& dropped)
+{
+  std::vector<ContextFact> facts;
+  for (const ContextFact& fact : item.facts)
+    if (std::ranges::find(dropped, fact.facet) == dropped.end())
+      facts.push_back(fact);
+  return facts;
+}
 
 CaseRecord runCase(const CaseInput& input)
 {
-  CaseRecord run{.item = input.item, .turns = {}};
+  CaseRecord run{.item = input.item, .staticPrefix = {}, .turns = {}};
   std::vector<ChatMessage> history;
-  history.push_back({.role = "system",
-                     .content = call_checks::staticPrompt({.roles = input.item.roles,
-                                                           .rolesDefault = input.roles,
-                                                           .prompt = input.prompt,
-                                                           .person = input.item.person,
-                                                           .known = input.known,
-                                                           .notes = input.item.notes})});
+  std::vector<std::string> legacyFacts;
+  if (input.legacyContext)
+    for (const ContextFact& fact : input.item.facts)
+      legacyFacts.push_back(fact.text);
+  run.staticPrefix = call_checks::staticPrompt({.roles = input.item.roles,
+                                                .rolesDefault = input.roles,
+                                                .prompt = input.prompt,
+                                                .person = input.item.person,
+                                                .known = input.known,
+                                                .facts = legacyFacts});
+  history.push_back({.role = "system", .content = run.staticPrefix});
   bool firstTurn = true;
   for (const auto& utterance : input.item.script) {
     history.push_back({.role = "user", .content = utterance});
     input.stubs.recorder->clear();
     ChatRequest request;
     request.messages = history;
+    request.contextFacts = input.legacyContext ? std::vector<ContextFact>{} : offeredFacts(input.item, input.dropped);
     request.maxTokens = kMaxTokens;
     request.temperature = input.temperature;
     request.resetContext = firstTurn;
@@ -505,20 +580,27 @@ CaseRecord runCase(const CaseInput& input)
     request.lang = input.item.lang;
     request.clientActions = true;
     request.sessionId = "call-faithfulness-" + input.item.id;
+    const bool lastTurn = &utterance == &input.item.script.back();
     const auto started = std::chrono::steady_clock::now();
     const LlmChatOutcome outcome = input.controller.chatSync(request);
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
+    const LlmPrefillStats prefill = input.controller.service().lastPrefillStats();
     TurnRecord turn;
     turn.reply = outcome.text;
     turn.rawReply = outcome.rawReply;
+    turn.contextBlock = outcome.contextBlock;
     turn.executed = input.stubs.recorder->executed();
     turn.ms = elapsed.count();
+    turn.promptTokens = prefill.promptTokens;
+    turn.decodedTokens = prefill.decodedTokens;
     turn.state = stateFor({.utterance = utterance, .offered = input.offered, .executed = turn.executed, .lang = input.item.lang});
     turn.verdict = scoreTurn({.reply = turn.reply,
                               .rawReply = turn.rawReply,
+                              .contextBlock = turn.contextBlock,
                               .item = input.item,
                               .state = turn.state,
-                              .firstTurn = firstTurn});
+                              .firstTurn = firstTurn,
+                              .checkFacts = lastTurn && !input.legacyContext});
     history.push_back({.role = "assistant", .content = outcome.text});
     run.turns.push_back(std::move(turn));
     firstTurn = false;
@@ -597,6 +679,110 @@ std::string describe(const CaseRecord& run)
       out += std::format("\n    raw: {}", turn.rawReply);
   }
   return out;
+}
+
+struct DumpInput
+{
+  const std::string& path;
+  LlmService& service;
+  const std::vector<CaseRecord>& runs;
+};
+
+bool writeDump(const DumpInput& input)
+{
+  std::ofstream out(input.path);
+  if (!out)
+    return false;
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  for (const CaseRecord& run : input.runs) {
+    const int32_t prefixTokens = input.service.countTokens(run.staticPrefix);
+    for (std::size_t index = 0; index < run.turns.size(); ++index) {
+      const TurnRecord& turn = run.turns[index];
+      Json::Value row(Json::objectValue);
+      row["id"] = run.item.id;
+      row["lang"] = run.item.lang;
+      row["turn"] = static_cast<int>(index);
+      row["prefixTokens"] = prefixTokens;
+      row["contextTokens"] = input.service.countTokens(turn.contextBlock);
+      row["promptTokens"] = turn.promptTokens;
+      row["decodedTokens"] = turn.decodedTokens;
+      row["ms"] = Json::Value::Int64(turn.ms);
+      row["facts"] = Json::Value(Json::arrayValue);
+      for (const ContextFact& fact : run.item.facts)
+        row["facts"].append(fact.facet);
+      row["contextBlock"] = turn.contextBlock;
+      out << Json::writeString(builder, row) << "\n";
+    }
+  }
+  return static_cast<bool>(out);
+}
+
+struct TtftInput
+{
+  LlmController& controller;
+  const std::vector<CallCase>& cases;
+  const std::vector<std::string>& dropped;
+  float temperature{0.0F};
+  std::string path;
+};
+
+bool runTtft(const TtftInput& input)
+{
+  std::ofstream out(input.path);
+  if (!out)
+    return false;
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  for (const CallCase& item : input.cases) {
+    std::vector<ChatMessage> history;
+    history.push_back({.role = "system", .content = "persona"});
+    int turn = 0;
+    for (const auto& utterance : item.script) {
+      history.push_back({.role = "user", .content = utterance});
+      ChatRequest request;
+      request.messages = history;
+      request.contextFacts = offeredFacts(item, input.dropped);
+      request.maxTokens = kMaxTokens;
+      request.temperature = input.temperature;
+      request.resetContext = turn == 0;
+      request.userId = kEvalUser;
+      request.role = UserRole::Owner;
+      request.lang = item.lang;
+      request.clientActions = true;
+      request.sessionId = "call-faithfulness-" + item.id;
+      LlmPrefillStats stats;
+      std::chrono::steady_clock::time_point first{};
+      std::string reply;
+      const auto started = std::chrono::steady_clock::now();
+      input.controller.chatStreamSync(
+          {.request = request,
+           .onToken = [&](const std::string& token, bool done) {
+             if (done)
+               return;
+             if (first == std::chrono::steady_clock::time_point{})
+               first = std::chrono::steady_clock::now();
+             reply += token;
+           },
+           .stats = &stats,
+           .cancellation = {},
+           .onAction = {}});
+      const int64_t firstMs = first == std::chrono::steady_clock::time_point{}
+                                  ? -1
+                                  : std::chrono::duration_cast<std::chrono::milliseconds>(first - started).count();
+      Json::Value row(Json::objectValue);
+      row["id"] = item.id;
+      row["lang"] = item.lang;
+      row["turn"] = turn;
+      row["firstTokenMs"] = Json::Value::Int64(firstMs);
+      row["promptTokens"] = stats.promptTokens;
+      row["decodedTokens"] = stats.decodedTokens;
+      out << Json::writeString(builder, row) << "\n";
+      history.push_back({.role = "assistant", .content = reply});
+      ++turn;
+    }
+  }
+  return static_cast<bool>(out);
 }
 
 struct FinishInput
@@ -756,9 +942,30 @@ int main(int argc, char** argv)
                             .prompt = englishCase ? english.bytes : spanish.bytes,
                             .known = englishCase ? knownEn.bytes : knownEs.bytes,
                             .roles = englishCase ? rolesEn : rolesEs,
-                            .temperature = options.temperature}));
+                            .dropped = options.dropFacets,
+                            .temperature = options.temperature,
+                            .legacyContext = options.legacyContext}));
     if (options.verbose)
       std::cout << describe(runs.back()) << "\n";
+  }
+
+  if (!options.dump.empty() && !writeDump({.path = options.dump, .service = controller.service(), .runs = runs})) {
+    std::cout << "[ERROR] cannot write " << options.dump << "\n";
+    controller.shutdownEngine();
+    llama_backend_free();
+    return 1;
+  }
+
+  if (!options.ttft.empty() &&
+      !runTtft({.controller = controller,
+                .cases = cases,
+                .dropped = options.dropFacets,
+                .temperature = options.temperature,
+                .path = options.ttft})) {
+    std::cout << "[ERROR] cannot write " << options.ttft << "\n";
+    controller.shutdownEngine();
+    llama_backend_free();
+    return 1;
   }
 
   controller.shutdownEngine();

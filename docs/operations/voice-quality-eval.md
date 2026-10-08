@@ -418,6 +418,40 @@ misses that survive at every temperature are
 not sampling noise: the same one name-ask case and two-to-three greeting cases miss at 0.3,
 0.45 and 0.6 alike — prompt or corpus work, not a temperature, and tracked as its own item.
 
+## The call context, gated per turn (measured 2026-10-08)
+
+The call used to carry every app-state fact (the camera list, the guard mode, the agenda)
+in the static prefix on every turn. The per-turn context selector (`argus-llm`'s
+`turn::ContextSelector`) now keeps only the facts the turn's own decision names — the
+decided tool's family, unioned with the facet words and phrases the utterance itself says
+— and composes them into one framed tail note, marked as data and never instructions. The
+call-faithfulness corpus gained the facet tagging and five cases (needed-fact-only and
+misleading-block); the two arms are the same binary, `--legacy-context` putting the facts
+back in the prefix, so the comparison is paired. All runs prod, `taskset -c 8-15`
+(8 effective CPUs), `--temperature 0.3`, 25 cases / 27 turns.
+
+| seed | gated | legacy |
+|---|---|---|
+| 42 | 24 | 22 |
+| 7 | 23 | 21 |
+| 1234 | 22 | 23 |
+| 11 | 22 | 21 |
+| 99 | 23 | 21 |
+| **mean** | **22.80** | **21.60** |
+| × 20/25 | **18.24** | **17.28** |
+
+The legacy arm on the 20-case corpus reproduces the reverted pin exactly (17/20, all hard
+dims 0). On the grown corpus the gated arm keeps every hard dim at 0 except `missedNameAsk`
+on `es-name-unknown` (4 seeds gated, 3 legacy — the pre-existing U19 name-ask item) and
+scores 0 for `claims`, `rawClaims`, `recital`, `language`, `roleConfusion`, `parrot`,
+`missedFact` and `leakedFact` on every run. Prefill falls 7.4 % of the model's own
+`decodedTokens` (10,089 vs 10,895 over 27 turns) and 8.6 % of the block sum, not the 30 %
+target: the corpus's context blocks are only about 8 % of its prompt, and the production
+context the target presumes (situation blob, recall block, tool results) is not in it.
+Time to first token is flat (p50 727 vs 734 ms, one run). Ablation confirms each family is
+used: dropping the camera facts costs a case, the agenda facts three, the guard facts one.
+Details and the per-seed table: `docs/history/project-log.md` and the unit's report.
+
 ## What these numbers do not say
 
 - The judges are short, written utterances. Nothing here is a recording of a household through a

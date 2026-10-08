@@ -7,6 +7,7 @@
 #include <feature/llm/services/tools/claim-check.hxx>
 #include <feature/llm/services/tools/tool-access.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
+#include <feature/llm/services/turn/context-selector.hxx>
 #include <feature/llm/services/turn/deciders.hxx>
 #include <feature/llm/services/turn/decision-policy.hxx>
 #include <feature/llm/services/turn/slots.hxx>
@@ -20,6 +21,7 @@ struct ToolChatInput
   std::vector<tools::ToolHandle> tools;
   ToolAudience audience;
   tools::ToolContext context;
+  std::vector<ContextFact> contextFacts;
   std::string clock{};
   float temperature = -1.0F;
   bool resetContext = false;
@@ -31,6 +33,7 @@ struct ToolChatOutput
 {
   std::string reply;
   std::string rawReply;
+  std::string contextBlock;
   std::vector<tools::ToolCall> executed;
   int hops = 0;
   bool emitted = false;
@@ -128,6 +131,7 @@ private:
   turn::RuleDecider ruleDecider_;
   turn::RouterDecider routerDecider_;
   turn::FirstOf stack_;
+  turn::ContextSelector contextSelector_;
   slots::RuleText ruleText_;
   turn::TurnFlow flow_;
 };

@@ -69,6 +69,21 @@ TurnState turnOf(const std::string& utterance, const std::vector<tools::ToolHand
   return {.asked = appAsked || reply_claims::asksForAction(utterance), .appAsked = appAsked, .wrote = false};
 }
 
+struct ContextTailInput
+{
+  const turn::ContextSelector& selector;
+  turn::ContextInput input;
+  const std::vector<ContextFact>& facts;
+};
+
+std::string contextTail(const ContextTailInput& args)
+{
+  std::vector<std::string> texts;
+  for (const ContextFact& fact : turn::selectedFacts(args.facts, args.selector.select(args.input)))
+    texts.push_back(fact.text);
+  return turn_texts::contextBlock({.lang = args.input.lang, .facts = texts});
+}
+
 }
 
 LfmAdapter::LfmAdapter(LlmService& llm, const IntentRouter* router)
@@ -207,7 +222,16 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
   state.opened = outcome.opened;
   state.called = outcome.called;
   state.lang = input.context.lang;
-  req.messages = speakMessages(args, turn::TurnFlow::notes(outcome, input.context.lang));
+  std::string tail = turn::TurnFlow::notes(outcome, input.context.lang);
+  const std::string context = contextTail({.selector = contextSelector_,
+                                           .input = {.utterance = utterance,
+                                                     .lang = input.context.lang,
+                                                     .tool = outcome.decidedTool},
+                                           .facts = input.contextFacts});
+  output.contextBlock = context;
+  if (!context.empty())
+    tail += (tail.empty() ? std::string() : std::string("\n")) + context;
+  req.messages = speakMessages(args, tail);
 
   const auto started = std::chrono::steady_clock::now();
   if (args.onToken != nullptr) {
@@ -270,9 +294,14 @@ ToolChatOutput LfmAdapter::chatPlainTurn(const PlainChatInput& input)
   const bool asked = reply_claims::asksForAction(utterance);
   ToolChatOutput output;
   ChatRequest req = request;
+  output.contextBlock = request.prefillOnly
+                            ? std::string()
+                            : contextTail({.selector = contextSelector_,
+                                           .input = {.utterance = utterance, .lang = lang},
+                                           .facts = request.contextFacts});
   req.messages = spokenMessages({.history = request.messages,
                                  .clock = clockNote(request.messages, lang),
-                                 .notes = {}});
+                                 .notes = output.contextBlock});
 
   const auto started = std::chrono::steady_clock::now();
   if (request.prefillOnly) {

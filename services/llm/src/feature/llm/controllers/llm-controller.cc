@@ -83,6 +83,7 @@ ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
   ToolChatInput input;
   input.tools = args.tools;
   input.audience = audienceOf(args.request);
+  input.contextFacts = args.request.contextFacts;
   input.context = tools::ToolContext{.userId = args.request.userId,
                                      .role = args.request.role,
                                      .lang = LfmAdapter::replyLang(args.request),
@@ -235,6 +236,7 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
     const ToolChatOutput plain = adapter_.chatPlain(request);
     outcome.text = plain.reply;
     outcome.rawReply = plain.rawReply;
+    outcome.contextBlock = plain.contextBlock;
     outcome.generateMs = plain.generateMs;
     return outcome;
   }
@@ -244,6 +246,7 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
   const ToolChatOutput output = adapter_.chatWithTools(loop, history);
   outcome.text = output.reply;
   outcome.rawReply = output.rawReply;
+  outcome.contextBlock = output.contextBlock;
   outcome.hops = output.hops;
   outcome.toolCalls = output.executed.size();
   outcome.attempted = output.executed;

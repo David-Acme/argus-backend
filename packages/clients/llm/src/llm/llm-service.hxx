@@ -23,6 +23,12 @@ struct ChatMessage
   std::string content;
 };
 
+struct ContextFact
+{
+  std::string facet;
+  std::string text;
+};
+
 inline constexpr char kStreamSentinelMark = '\x1e';
 inline constexpr const char* kCallerCredentialHeader = "x-argus-credential";
 
@@ -43,6 +49,7 @@ struct ChatRequest
   std::string sessionId{};
   bool toolCallsAllowed{true};
   bool prefillOnly{false};
+  std::vector<ContextFact> contextFacts{};
 };
 
 using TokenCallback = std::function<void(const std::string& token, bool done)>;
@@ -128,6 +135,8 @@ public:
   bool isLoaded();
   bool isBusy();
   LlmPrefillStats lastPrefillStats();
+
+  int32_t countTokens(const std::string& text);
 
   void refreshSampling();
   [[nodiscard]] LlmSampling sampling() const;

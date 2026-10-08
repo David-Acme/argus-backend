@@ -698,10 +698,10 @@
     },
     "metrics": {
       "cases": {
-        "min": 20
+        "min": 25
       },
       "turns": {
-        "min": 22
+        "min": 27
       },
       "casePass": {
         "min": 16
@@ -744,6 +744,12 @@
       },
       "unpromptedGreeting": {
         "max": 1
+      },
+      "missedFact": {
+        "max": 0
+      },
+      "leakedFact": {
+        "max": 0
       }
     }
   }

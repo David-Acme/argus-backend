@@ -152,13 +152,13 @@ TEST_CASE("the roles line leads the static prompt and a per-case override wins")
   const std::optional<std::string> suppressed = std::string();
 
   const call_checks::StaticPromptInput flagged{
-      .roles = std::nullopt, .rolesDefault = roles, .prompt = prompt, .person = {}, .known = known, .notes = notes};
+      .roles = std::nullopt, .rolesDefault = roles, .prompt = prompt, .person = {}, .known = known, .facts = notes};
   const call_checks::StaticPromptInput overridden{
-      .roles = perCase, .rolesDefault = roles, .prompt = prompt, .person = {}, .known = known, .notes = notes};
+      .roles = perCase, .rolesDefault = roles, .prompt = prompt, .person = {}, .known = known, .facts = notes};
   const call_checks::StaticPromptInput silenced{
-      .roles = suppressed, .rolesDefault = roles, .prompt = prompt, .person = {}, .known = known, .notes = notes};
+      .roles = suppressed, .rolesDefault = roles, .prompt = prompt, .person = {}, .known = known, .facts = notes};
   const call_checks::StaticPromptInput plain{
-      .roles = std::nullopt, .rolesDefault = {}, .prompt = prompt, .person = person, .known = known, .notes = notes};
+      .roles = std::nullopt, .rolesDefault = {}, .prompt = prompt, .person = person, .known = known, .facts = notes};
 
   CHECK(call_checks::staticPrompt(flagged) ==
         joined({roles, "\n\n", prompt, "\n", known, "\n", "Agenda de hoy: libre."}));

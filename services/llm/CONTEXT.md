@@ -848,6 +848,42 @@ streamed), the claim guard after a failed tool, a preview and a read, and the pr
 `llm-module-command-test.cc` pins the rule tier (tuning numbers, not a held-out result); the sealed
 set is judged by `tests/eval/decider-eval.py`.
 
+## The per-turn context block (2026-10-08)
+
+A call used to hand the model every fact the app carried — the camera list,
+the guard mode, the agenda — on every turn, baked into `history[0]`.
+On a greeting, a joke or a question nothing has an answer for, that is noise
+the 1.2B model recites or is distracted by, and it is prefill every turn pays
+for.
+
+`turn::ContextSelector` (`services/turn/context-selector.{hxx,cc}`) decides,
+per turn, which context facets that turn may see. The facets are
+`ContextFacet` (`facet-lexicon.hxx`): `Camera`, `Agenda`, `Guard`,
+`Reminders`, `Memory`, `Modules`. The decision is one the turn already made:
+the decided tool's facet (`facetForTool`: `calendar.*` → agenda,
+`memory.remind`/`reminder.list` → reminders, `memory.*` → memory,
+`modules.*` → modules, `app.show_camera` → camera, `app.set_guard_mode` →
+guard; `task.*`/`project.*`/`app.open` imply nothing) unioned with the facet
+words and phrases the utterance itself names (`facetsInText`, es and en), so
+an agenda turn keeps the agenda fact and a greeting keeps none.
+
+The facts travel per turn, not in the history: `ChatRequest::contextFacts`
+(a `std::vector<ContextFact>{facet, text}`, additive). `LfmAdapter::chatTurn`
+and `chatPlainTurn` select the facts the turn's facets cover, drop the rest
+(never blanked into empty headers), order them most-relevant-first, and compose
+them into one framed tail system note beside the findings — a frame that marks
+the text as data written by others, never instructions
+(`turn_texts::contextBlock`, es and en). A fact whose facet the build does not
+know is dropped rather than injected. The profile and the name stay in the
+static prefix and are always present; the clock note stays where it is, before
+the last user message. The composed block is what `LlmChatOutcome::contextBlock`
+returns, so the eval scores `missedFact`/`leakedFact` against the exact prompt
+the turn sent.
+
+Degradation: a turn that selects nothing composes no block, which is exactly a
+plain chat and shares the cached prefix. The Laya facet pass (one `noul`
+question per unsure facet) is U24's; nothing links it here.
+
 ## Pending intents (2026-10, context plan section 5)
 
 A request for a tool of a module that is off is not lost. `ToolExecutor` hands

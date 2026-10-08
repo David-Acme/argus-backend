@@ -57,7 +57,9 @@ argus_module(NAME llm
         services/tools/tool-grounding.cc
         services/tools/tool-registry.cc
         services/turn/deciders.cc
+        services/turn/context-selector.cc
         services/turn/decision-tally.cc
+        services/turn/facet-lexicon.cc
         services/turn/model-text.cc
         services/turn/pending-turn.cc
         services/turn/slot-lexicon.cc

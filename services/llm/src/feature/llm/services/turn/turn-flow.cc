@@ -849,17 +849,22 @@ Outcome TurnFlow::decided(const TurnRequest& request, const Deciding& deciding)
                .tool = candidate->tool,
                .lang = request.context.lang,
                .verdict = named});
+  Outcome outcome;
   switch (verdict) {
     case Verdict::Act:
-      return proceed({.request = request, .candidate = *candidate, .slot = {}, .attempts = 0, .answering = false});
-    case Verdict::Ask:
-      return confirm(request, *candidate);
-    case Verdict::Choose:
-      return choose(request, *candidate);
-    case Verdict::Pass:
+      outcome = proceed({.request = request, .candidate = *candidate, .slot = {}, .attempts = 0, .answering = false});
       break;
+    case Verdict::Ask:
+      outcome = confirm(request, *candidate);
+      break;
+    case Verdict::Choose:
+      outcome = choose(request, *candidate);
+      break;
+    case Verdict::Pass:
+      return unactionable(request);
   }
-  return unactionable(request);
+  outcome.decidedTool = candidate->tool;
+  return outcome;
 }
 
 Outcome TurnFlow::run(const TurnRequest& request)
