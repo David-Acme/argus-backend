@@ -44,7 +44,12 @@
 namespace
 {
 
-constexpr const char* kDb = "identity-voiceprint-verdict-test.db";
+const std::string& dbPath()
+{
+  static const std::string path =
+      (std::filesystem::temp_directory_path() / "identity-voiceprint-verdict-test.db").string();
+  return path;
+}
 constexpr const char* kFleetSecret = "voiceprint-verdict-secret";
 constexpr int64_t kAda = 1;
 constexpr int64_t kRita = 7;
@@ -83,13 +88,13 @@ void boot()
 {
   static const auto runner = [] {
     for (const char* suffix : {"", "-wal", "-shm"})
-      std::remove((std::string(kDb) + suffix).c_str());
+      std::remove((dbPath() + suffix).c_str());
     drogon::app().setLogLevel(trantor::Logger::kWarn);
     drogon::app().addDbClient(drogon::orm::Sqlite3Config{.connectionNumber = 1,
-                                                         .filename = kDb,
+                                                         .filename = dbPath(),
                                                          .name = "default",
                                                          .timeout = -1});
-    VecDb::instance().setDbFile(kDb);
+    VecDb::instance().setDbFile(dbPath());
     return std::make_unique<AppRunner>();
   }();
   REQUIRE(runner != nullptr);
