@@ -61,6 +61,7 @@ namespace
 constexpr int kSkipped = 77;
 constexpr int64_t kEvalUser = 7;
 constexpr int kMaxTokens = 160;
+constexpr int64_t kRenderNow = 1791700000;
 constexpr int kMaxSentences = 2;
 
 struct Options
@@ -90,6 +91,7 @@ struct Options
   bool force{false};
   bool legacyContext{false};
   bool renderActs{false};
+  int64_t now{0};
 };
 
 Options parseOptions(int argc, char** argv)
@@ -142,6 +144,8 @@ Options parseOptions(int argc, char** argv)
       options.seed = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
     else if (arg == "--limit" && hasValue)
       options.limit = static_cast<int>(std::strtol(argv[++i], nullptr, 10));
+    else if (arg == "--now" && hasValue)
+      options.now = static_cast<int64_t>(std::strtoll(argv[++i], nullptr, 10));
     else if (arg == "--verbose")
       options.verbose = true;
     else if (arg == "--force")
@@ -1198,6 +1202,7 @@ struct RenderRunInput
   const std::vector<RenderCase>& cases;
   const std::string& prompt;
   int64_t now{0};
+  float temperature{0.0F};
 };
 
 RenderRecord renderOne(const RenderRunInput& input, const RenderCase& item)
@@ -1216,7 +1221,7 @@ RenderRecord renderOne(const RenderRunInput& input, const RenderCase& item)
                   .decided = false,
                   .turn = 1,
                   .emitAction = {}};
-  loop.temperature = -1.0F;
+  loop.temperature = input.temperature;
   loop.resetContext = false;
   loop.answerMaxTokens = kMaxTokens;
   std::vector<ChatMessage> history;
@@ -1310,7 +1315,8 @@ int runRendering(const RenderRunCli& input)
     runs.push_back(renderOne({.adapter = input.adapter,
                               .cases = cases,
                               .prompt = item.lang == "en" ? input.promptEn : input.promptEs,
-                              .now = input.now},
+                              .now = input.now,
+                              .temperature = input.options.temperature},
                              item));
     const RenderRecord& run = runs.back();
     if (input.options.verbose)
@@ -1518,7 +1524,7 @@ int main(int argc, char** argv)
                                      .adapter = controller.adapter(),
                                      .promptEs = spanish.bytes,
                                      .promptEn = english.bytes,
-                                     .now = static_cast<int64_t>(std::time(nullptr))});
+                                     .now = options.now > 0 ? options.now : kRenderNow});
     controller.shutdownEngine();
     llama_backend_free();
     return result;
