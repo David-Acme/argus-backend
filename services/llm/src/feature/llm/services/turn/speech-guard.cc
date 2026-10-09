@@ -181,6 +181,53 @@ GuardVerdict checkOffer(const Offer& offer, const Words& words)
   return !offer.name.empty() && !phraseIn(words, offer.name) ? GuardVerdict::SlotNotAsked : GuardVerdict::Pass;
 }
 
+void collectIdentifiers(const Act& act, std::vector<std::string>& out)
+{
+  std::visit(
+      [&out](const auto& value) {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<T, AskSlot>) {
+          out.push_back(value.slot);
+          out.push_back(value.tool);
+          for (const std::string& key : value.knownArgs.getMemberNames())
+            out.push_back(key);
+        }
+        else if constexpr (std::is_same_v<T, Confirm>) {
+          out.push_back(value.action);
+          for (const std::string& key : value.args.getMemberNames())
+            out.push_back(key);
+        }
+        else if constexpr (std::is_same_v<T, Done>)
+          out.push_back(value.tool);
+        else if constexpr (std::is_same_v<T, Refused>)
+          out.push_back(value.tool);
+      },
+      act);
+}
+
+bool identifierShaped(std::string_view token)
+{
+  const auto alnum = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; };
+  for (std::size_t at = 0; at < token.size(); ++at)
+    if ((token[at] == '.' || token[at] == '_') && at > 0 && at + 1 < token.size() &&
+        alnum(token[at - 1]) && alnum(token[at + 1]))
+      return true;
+  return false;
+}
+
+bool leakedIdentifier(std::string_view reply, const Speech& speech)
+{
+  const Words words = wordsOf(reply);
+  for (const Act& act : speech.acts) {
+    std::vector<std::string> ids;
+    collectIdentifiers(act, ids);
+    for (const std::string& id : ids)
+      if (!id.empty() && identifierShaped(id) && phraseIn(words, id))
+        return true;
+  }
+  return false;
+}
+
 }
 
 std::string_view firstSentenceOf(std::string_view text)
@@ -199,6 +246,24 @@ std::string_view firstSentenceOf(std::string_view text)
   return text;
 }
 
+bool hardFailure(GuardVerdict verdict, const Speech& speech)
+{
+  switch (verdict) {
+    case GuardVerdict::ClaimedWithoutTool:
+    case GuardVerdict::IdentifierLeaked:
+      return true;
+    case GuardVerdict::NotYesOrNo:
+      return std::ranges::any_of(speech.acts, [](const Act& act) {
+        const auto* confirm = std::get_if<Confirm>(&act);
+        return confirm != nullptr && confirm->irreversible;
+      });
+    case GuardVerdict::OptionsIncomplete:
+      return std::ranges::any_of(speech.acts, [](const Act& act) { return std::holds_alternative<Choose>(act); });
+    default:
+      return false;
+  }
+}
+
 GuardVerdict check(const GuardInput& input)
 {
   if (!input.callsConfirmed && reply_claims::claimsCall({.text = input.reply, .lang = input.speech.lang}))
@@ -207,6 +272,8 @@ GuardVerdict check(const GuardInput& input)
       reply_claims::claimsDone(
           {.text = input.reply, .asked = input.asked, .appOnly = input.opened, .lang = input.speech.lang}))
     return GuardVerdict::ClaimedWithoutTool;
+  if (leakedIdentifier(input.reply, input.speech))
+    return GuardVerdict::IdentifierLeaked;
   const std::string_view scope = input.sentenceOnly ? firstSentenceOf(input.reply) : input.reply;
   const Words words = wordsOf(scope);
   const bool question = asks(scope);
@@ -262,6 +329,8 @@ std::string_view verdictName(GuardVerdict verdict)
       return "not_yes_or_no";
     case GuardVerdict::ClaimedWithoutTool:
       return "claimed_without_tool";
+    case GuardVerdict::IdentifierLeaked:
+      return "identifier_leaked";
   }
   return "pass";
 }
@@ -294,6 +363,9 @@ std::string_view feedback(GuardVerdict verdict, std::string_view lang)
     case GuardVerdict::ClaimedWithoutTool:
       return english ? "You said something was done that was not done. Correct it without saying it was done."
                      : "Dijiste que se hizo algo que no se hizo. Corrígelo sin decir que se hizo.";
+    case GuardVerdict::IdentifierLeaked:
+      return english ? "You used internal technical words. Say it again in plain words only."
+                     : "Usaste palabras técnicas internas. Dilo otra vez solo con palabras normales.";
     case GuardVerdict::Pass:
       break;
   }

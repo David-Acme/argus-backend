@@ -25,9 +25,11 @@ struct LlmChatOutcome
   std::string guardVerdict{};
   std::string firstGuardVerdict{};
   std::string firstRejected{};
+  std::string softVerdict{};
   int attempts{0};
   int hops{0};
   size_t toolCalls{0};
+  bool softRelease{false};
   std::vector<tools::ToolCall> attempted{};
   int64_t generateMs{0};
   int64_t toolMs{0};

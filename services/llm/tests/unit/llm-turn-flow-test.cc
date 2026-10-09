@@ -895,7 +895,7 @@ TEST_CASE("a question is rendered by the model, sync and streamed, and the act r
   CHECK(asked.emitted);
 }
 
-TEST_CASE("a reply that does not ask the slot is asked for once more, and twice it stays silent")
+TEST_CASE("a reply that does not ask the slot is asked for once more, and twice the better attempt is spoken")
 {
   Spoken retried;
   retried.script.replies = {"Lo agendo enseguida.", "¿Para cuándo lo agendo?"};
@@ -905,12 +905,19 @@ TEST_CASE("a reply that does not ask the slot is asked for once more, and twice 
   CHECK(output.speech.empty());
   CHECK(retried.script.requests.back().messages.back().content.find("no era una pregunta") != std::string::npos);
 
-  Spoken silent;
-  silent.script.replies = {"Lo agendo enseguida.", "Vale, lo agendo ya."};
-  const auto refused = silent.sync("agéndame una reunión con Andrea");
-  REQUIRE(silent.script.requests.size() == 2);
-  CHECK(refused.reply.empty());
-  CHECK(refused.speech == "unavailable");
+  Spoken released;
+  released.script.replies = {"Lo agendo enseguida.", "Vale, lo agendo ya."};
+  const auto soft = released.sync("agéndame una reunión con Andrea");
+  REQUIRE(released.script.requests.size() == 2);
+  CHECK(soft.reply == "Vale, lo agendo ya.");
+  CHECK(soft.speech.empty());
+
+  Spoken claimed;
+  claimed.script.replies = {"Ya lo agendé.", "Listo, ya quedó."};
+  const auto hard = claimed.sync("agéndame una reunión con Andrea");
+  REQUIRE(claimed.script.requests.size() == 2);
+  CHECK(hard.reply.empty());
+  CHECK(hard.speech == "unavailable");
 }
 
 TEST_CASE("a plain conversation turn runs nothing and the reply is untouched")
@@ -2254,13 +2261,13 @@ TEST_CASE("a done act carries its read-back, and a reply that leaves it out is a
   CHECK(retried.script.requests.back().messages.back().content.find("un dato de los que se indican") !=
         std::string::npos);
 
-  Spoken silent;
-  silent.world.readback = readback;
-  silent.script.replies = {"Listo, ya quedó agendada tu reunión.", "Vale, quedó agendada."};
-  const auto nothing = silent.sync(utterance);
-  REQUIRE(silent.script.requests.size() == 2);
-  CHECK(nothing.reply.empty());
-  CHECK(nothing.speech == "unavailable");
+  Spoken released;
+  released.world.readback = readback;
+  released.script.replies = {"Listo, ya quedó agendada tu reunión.", "Vale, quedó agendada."};
+  const auto nothing = released.sync(utterance);
+  REQUIRE(released.script.requests.size() == 2);
+  CHECK(nothing.reply == "Vale, quedó agendada.");
+  CHECK(nothing.speech.empty());
 
   Spoken failed;
   failed.world.createOk = false;

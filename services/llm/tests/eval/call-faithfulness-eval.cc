@@ -555,6 +555,7 @@ struct TurnRecord
   std::string guardVerdict;
   std::string firstGuardVerdict;
   std::string firstRejected;
+  std::string softVerdict;
   int attempts{0};
   std::vector<eval::RecordedCall> executed;
   TurnState state;
@@ -562,6 +563,7 @@ struct TurnRecord
   int64_t ms{0};
   int32_t promptTokens{0};
   int32_t decodedTokens{0};
+  bool softRelease{false};
 };
 
 struct CaseRecord
@@ -639,7 +641,9 @@ CaseRecord runCase(const CaseInput& input)
     turn.guardVerdict = outcome.guardVerdict;
     turn.firstGuardVerdict = outcome.firstGuardVerdict;
     turn.firstRejected = outcome.firstRejected;
+    turn.softVerdict = outcome.softVerdict;
     turn.attempts = outcome.attempts;
+    turn.softRelease = outcome.softRelease;
     turn.executed = input.stubs.recorder->executed();
     turn.ms = elapsed.count();
     turn.promptTokens = prefill.promptTokens;
@@ -680,6 +684,7 @@ struct SpeechTally
   int actTurns{0};
   int retried{0};
   int unavailable{0};
+  int softReleased{0};
 };
 
 SpeechTally speechTally(const std::vector<CaseRecord>& runs)
@@ -694,6 +699,8 @@ SpeechTally speechTally(const std::vector<CaseRecord>& runs)
         ++tally.retried;
       if (turn.speech == "unavailable")
         ++tally.unavailable;
+      if (turn.softRelease)
+        ++tally.softReleased;
     }
   }
   return tally;
@@ -712,7 +719,8 @@ eval::Metrics metricsOf(const std::vector<CaseRecord>& runs)
                                                    turn::speech::GuardVerdict::ActionUnnamed,
                                                    turn::speech::GuardVerdict::ArgumentMissing,
                                                    turn::speech::GuardVerdict::NotYesOrNo,
-                                                   turn::speech::GuardVerdict::ClaimedWithoutTool})
+                                                   turn::speech::GuardVerdict::ClaimedWithoutTool,
+                                                   turn::speech::GuardVerdict::IdentifierLeaked})
     verdictCounts[std::string(turn::speech::verdictName(verdict))] = 0;
   int turns = 0;
   int passedCases = 0;
@@ -748,9 +756,12 @@ eval::Metrics metricsOf(const std::vector<CaseRecord>& runs)
   metrics["speechTurns"] = static_cast<double>(tally.actTurns);
   metrics["retriedTurns"] = static_cast<double>(tally.retried);
   metrics["guardedTurns"] = static_cast<double>(tally.unavailable);
+  metrics["softReleasedTurns"] = static_cast<double>(tally.softReleased);
   metrics["retryShare"] = tally.actTurns == 0 ? 0.0 : static_cast<double>(tally.retried) / static_cast<double>(tally.actTurns);
   metrics["unavailableShare"] =
       tally.actTurns == 0 ? 0.0 : static_cast<double>(tally.unavailable) / static_cast<double>(tally.actTurns);
+  metrics["softReleaseShare"] =
+      tally.actTurns == 0 ? 0.0 : static_cast<double>(tally.softReleased) / static_cast<double>(tally.actTurns);
   for (const auto& [name, count] : verdictCounts)
     metrics["guard." + name] = static_cast<double>(count);
   return metrics;
@@ -1173,10 +1184,12 @@ struct RenderRecord
 {
   RenderCase item;
   std::string reply;
+  std::string speech;
   std::string finalVerdict;
   std::string firstVerdict;
   std::string firstRejected;
   int attempts{0};
+  bool softRelease{false};
 };
 
 struct RenderRunInput
@@ -1222,10 +1235,12 @@ RenderRecord renderOne(const RenderRunInput& input, const RenderCase& item)
                          output);
   return {.item = item,
           .reply = output.reply,
+          .speech = output.speech,
           .finalVerdict = output.guardVerdict,
           .firstVerdict = output.firstGuardVerdict,
           .firstRejected = output.firstRejected,
-          .attempts = output.attempts};
+          .attempts = output.attempts,
+          .softRelease = output.softRelease};
 }
 
 eval::Metrics renderMetrics(const std::vector<RenderRecord>& runs)
@@ -1234,6 +1249,7 @@ eval::Metrics renderMetrics(const std::vector<RenderRecord>& runs)
   int passed = 0;
   int rejectedFirst = 0;
   int unavailable = 0;
+  int softReleased = 0;
   std::map<std::string, int> verdictCounts;
   std::map<std::string, int> actCounts;
   for (const turn::speech::GuardVerdict verdict : {turn::speech::GuardVerdict::Pass,
@@ -1244,15 +1260,18 @@ eval::Metrics renderMetrics(const std::vector<RenderRecord>& runs)
                                                    turn::speech::GuardVerdict::ActionUnnamed,
                                                    turn::speech::GuardVerdict::ArgumentMissing,
                                                    turn::speech::GuardVerdict::NotYesOrNo,
-                                                   turn::speech::GuardVerdict::ClaimedWithoutTool})
+                                                   turn::speech::GuardVerdict::ClaimedWithoutTool,
+                                                   turn::speech::GuardVerdict::IdentifierLeaked})
     verdictCounts[std::string(turn::speech::verdictName(verdict))] = 0;
   for (const auto& run : runs) {
-    const bool ok = run.finalVerdict == "pass";
+    const bool ok = run.finalVerdict == "pass" || run.softRelease;
     passed += ok ? 1 : 0;
     if (!run.firstVerdict.empty() && run.firstVerdict != "pass")
       ++rejectedFirst;
-    if (!ok)
+    if (run.speech == "unavailable")
       ++unavailable;
+    if (run.softRelease)
+      ++softReleased;
     ++verdictCounts[run.finalVerdict];
     const std::string act(turn::speech::actName(run.item.act));
     ++actCounts[act];
@@ -1263,6 +1282,8 @@ eval::Metrics renderMetrics(const std::vector<RenderRecord>& runs)
   metrics["retryShare"] = runs.empty() ? 0.0 : static_cast<double>(rejectedFirst) / static_cast<double>(runs.size());
   metrics["unavailable"] = static_cast<double>(unavailable);
   metrics["unavailableShare"] = runs.empty() ? 0.0 : static_cast<double>(unavailable) / static_cast<double>(runs.size());
+  metrics["softRelease"] = static_cast<double>(softReleased);
+  metrics["softReleaseShare"] = runs.empty() ? 0.0 : static_cast<double>(softReleased) / static_cast<double>(runs.size());
   for (const auto& [name, count] : verdictCounts)
     metrics["verdict." + name] = static_cast<double>(count);
   for (const auto& [name, count] : actCounts)

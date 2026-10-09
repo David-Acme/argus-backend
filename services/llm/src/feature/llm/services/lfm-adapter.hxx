@@ -40,10 +40,12 @@ struct ToolChatOutput
   std::string guardVerdict;
   std::string firstGuardVerdict;
   std::string firstRejected;
+  std::string softVerdict;
   std::vector<tools::ToolCall> executed;
   int attempts = 0;
   int hops = 0;
   bool emitted = false;
+  bool softRelease = false;
   int64_t generateMs = 0;
   int64_t toolMs = 0;
 };

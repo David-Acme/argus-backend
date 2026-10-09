@@ -65,7 +65,8 @@ TEST_CASE("every verdict has a name and a feedback line of its own in both langu
                                            GuardVerdict::ActionUnnamed,
                                            GuardVerdict::ArgumentMissing,
                                            GuardVerdict::NotYesOrNo,
-                                           GuardVerdict::ClaimedWithoutTool};
+                                           GuardVerdict::ClaimedWithoutTool,
+                                           GuardVerdict::IdentifierLeaked};
   std::string names;
   for (const GuardVerdict verdict : verdicts) {
     CHECK_FALSE(verdictName(verdict).empty());
@@ -255,4 +256,56 @@ TEST_CASE("the first sentence is the release unit for a question act")
   CHECK(check({.speech = speech, .reply = "¿Para cuándo lo agendo? Cuando quieras.", .asked = true, .sentenceOnly = true}) ==
         GuardVerdict::Pass);
   CHECK(check({.speech = speech, .reply = "¿Lo agendo? Solo dime algo.", .asked = true}) == GuardVerdict::SlotNotAsked);
+}
+
+TEST_CASE("a leaked identifier is refused on any act")
+{
+  const Speech askSpeech{.acts = {ask("starts_at")}, .lang = "es", .now = kNow};
+  CHECK(check({.speech = askSpeech, .reply = "Dime el starts_at, por favor.", .asked = true}) ==
+        GuardVerdict::IdentifierLeaked);
+  CHECK(check({.speech = askSpeech, .reply = "¿Para cuándo lo agendo?", .asked = true}) == GuardVerdict::Pass);
+  const Speech cancelSpeech{.acts = {Confirm{.action = "calendar.cancel_event",
+                                             .args = Json::Value(Json::objectValue),
+                                             .irreversible = true,
+                                             .toolPreview = {},
+                                             .module = {}}},
+                            .lang = "es",
+                            .now = kNow};
+  CHECK(check({.speech = cancelSpeech, .reply = "¿Cancelo la cita con calendar.cancel_event?", .asked = true}) ==
+        GuardVerdict::IdentifierLeaked);
+}
+
+TEST_CASE("hard failures are fatal and soft ones are not")
+{
+  const Speech askSpeech{.acts = {ask("starts_at")}, .lang = "es", .now = kNow};
+  CHECK(hardFailure(GuardVerdict::ClaimedWithoutTool, askSpeech));
+  CHECK(hardFailure(GuardVerdict::IdentifierLeaked, askSpeech));
+  CHECK_FALSE(hardFailure(GuardVerdict::SlotNotAsked, askSpeech));
+  CHECK_FALSE(hardFailure(GuardVerdict::SlotReasked, askSpeech));
+  CHECK_FALSE(hardFailure(GuardVerdict::NotAQuestion, askSpeech));
+  CHECK_FALSE(hardFailure(GuardVerdict::ArgumentMissing, askSpeech));
+
+  Json::Value args(Json::objectValue);
+  args["title"] = "Cita";
+  const Speech hardConfirm{.acts = {Confirm{.action = "calendar.cancel_event",
+                                             .args = args,
+                                             .irreversible = true,
+                                             .toolPreview = {},
+                                             .module = {}}},
+                            .lang = "es",
+                            .now = kNow};
+  CHECK(hardFailure(GuardVerdict::NotYesOrNo, hardConfirm));
+  const Speech softConfirm{.acts = {Confirm{.action = "calendar.create_event",
+                                            .args = args,
+                                            .irreversible = false,
+                                            .toolPreview = {},
+                                            .module = {}}},
+                           .lang = "es",
+                           .now = kNow};
+  CHECK_FALSE(hardFailure(GuardVerdict::NotYesOrNo, softConfirm));
+
+  const Speech choose{.acts = {Choose{.options = {"task.create", "memory.remind"}}}, .lang = "es", .now = kNow};
+  CHECK(hardFailure(GuardVerdict::OptionsIncomplete, choose));
+  const Speech askOptions{.acts = {ask("project", {}, {"Casa", "Trabajo"})}, .lang = "es", .now = kNow};
+  CHECK_FALSE(hardFailure(GuardVerdict::OptionsIncomplete, askOptions));
 }

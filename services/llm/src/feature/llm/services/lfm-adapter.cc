@@ -158,6 +158,9 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
   const bool streaming = input.onToken != nullptr;
   const bool question = turn::speech::isQuestion(input.speech.acts.back());
   turn::speech::GuardVerdict verdict = turn::speech::GuardVerdict::Pass;
+  std::string bestReply;
+  turn::speech::GuardVerdict bestVerdict = turn::speech::GuardVerdict::Pass;
+  bool haveBest = false;
   for (int attempt = 0; attempt < 2; ++attempt) {
     ChatRequest req;
     req.maxTokens = input.input.answerMaxTokens > 0 ? input.input.answerMaxTokens : 512;
@@ -276,6 +279,27 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
     }
     LOG_WARN << "LfmAdapter: the act " << std::string(turn::speech::actName(input.speech.acts.back()))
              << " failed its guard (" << std::string(turn::speech::verdictName(verdict)) << ")";
+    if (!haveBest || !turn::speech::hardFailure(verdict, input.speech)) {
+      bestReply = reply;
+      bestVerdict = verdict;
+      haveBest = true;
+    }
+  }
+  if (haveBest && !turn::speech::hardFailure(bestVerdict, input.speech)) {
+    output.reply = bestReply;
+    output.rawReply = bestReply;
+    output.softVerdict = std::string(turn::speech::verdictName(bestVerdict));
+    output.guardVerdict = output.softVerdict;
+    output.softRelease = true;
+    if (streaming) {
+      (*input.onToken)(bestReply, false);
+      (*input.onToken)("", true);
+      output.emitted = true;
+    }
+    input.history.push_back({.role = "assistant", .content = bestReply});
+    LOG_WARN << "LfmAdapter: the act " << output.act << " was released on its better attempt despite the guard ("
+             << output.softVerdict << ")";
+    return;
   }
   output.speech = "unavailable";
   output.reply.clear();

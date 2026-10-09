@@ -18,7 +18,8 @@ enum class GuardVerdict : unsigned char
   ActionUnnamed,
   ArgumentMissing,
   NotYesOrNo,
-  ClaimedWithoutTool
+  ClaimedWithoutTool,
+  IdentifierLeaked
 };
 
 struct GuardInput
@@ -39,5 +40,7 @@ struct GuardInput
 [[nodiscard]] std::string_view verdictName(GuardVerdict verdict);
 
 [[nodiscard]] std::string_view firstSentenceOf(std::string_view text);
+
+[[nodiscard]] bool hardFailure(GuardVerdict verdict, const Speech& speech);
 
 }

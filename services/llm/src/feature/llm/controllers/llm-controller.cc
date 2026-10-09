@@ -274,10 +274,12 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
   outcome.guardVerdict = output.guardVerdict;
   outcome.firstGuardVerdict = output.firstGuardVerdict;
   outcome.firstRejected = output.firstRejected;
+  outcome.softVerdict = output.softVerdict;
   outcome.attempts = output.attempts;
   outcome.hops = output.hops;
   outcome.toolCalls = output.executed.size();
   outcome.attempted = output.executed;
+  outcome.softRelease = output.softRelease;
   outcome.generateMs = output.generateMs;
   outcome.toolMs = output.toolMs;
   return outcome;
