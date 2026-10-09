@@ -510,6 +510,7 @@ if grep -Fq '[ ! -d ".git" ]' "$ROOT/scripts/setup.sh"; then
 fi
 
 run_script_test measure-guard-test.sh
+run_script_test build-pool-test.sh
 run_script_test privacy-consent-test.sh
 run_script_test pki-test.sh
 run_script_test rpc-credentials-test.sh

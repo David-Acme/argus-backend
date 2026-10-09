@@ -49,6 +49,35 @@ the container's limit. The same count is handed to `conan install` as
 That line is from a `heavy-gate.sh 13` run: the host had 20021 MiB free and the
 scope allowed 13307 MiB, so the scope set the count.
 
+## Link pool
+
+`<jobs>` bounds the whole build, but a build's tail runs nothing but links, and
+a link is much larger than the average compile. The shared helper
+`cmake/argus-module.cmake`, which every project includes before its first
+target, sets `CMAKE_JOB_POOLS "link=N"` and `CMAKE_JOB_POOL_LINK`, so ninja runs
+at most `N` link steps at once while compilation keeps the full `-j <jobs>`.
+
+```
+N = max(1, floor(cap_mb / 3072))
+```
+
+`cap_mb` is read in order from the `ARGUS_BUILD_MEMORY_CAP_MB` variable or
+environment, the process's own cgroup v2 `memory.max` (what a capped
+`systemd-run` scope or a `docker run --memory` sets), then `/proc/meminfo`'s
+`MemTotal` — the same order the orchestrator's job count uses. A 14336 MiB cap
+gives `N = 4`. `ARGUS_LINK_POOLS` overrides `N`, and an already-set
+`CMAKE_JOB_POOLS` is left alone. The configure prints it:
+
+```
+-- argus link pool: link=4 (memory cap 14336 MiB)
+```
+
+The generated `build.ninja` then binds `pool = link` on every link edge and on
+no compile edge, with the depth in `CMakeFiles/rules.ninja`. A pool exists only
+for the Ninja generator, so the helper sets it only when `CMAKE_GENERATOR`
+matches `Ninja`. `scripts/build-pool-test.sh` configures a probe through the
+helper and fails unless the generated file carries the pool on its link edges.
+
 ## Working inside one project
 
 The root graph has to exist first; `--install-only` is just that step.
