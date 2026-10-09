@@ -44,7 +44,13 @@ controller.
   session's bidirectional `Connect` and the camera's `Subscribe` also stream —
   and it
   sits at the package root, not under the group's shared `proto/` root, so the
-  function passes this directory as the single `PROTO_ROOT`.
+  function passes this directory as the single `PROTO_ROOT`. `ChatToken.speech`
+  (field 8) is additive and backend-internal: it carries the same
+  `speech_unavailable` marker the HTTP sentinel's `speech` key carries, and
+  `services/voice` reads it there instead of inferring the marker from an empty
+  reply. No app-facing client reads it — the app never speaks this wire — and it
+  is dormant while no in-tree config sets the gRPC pair (`rpc.address` and
+  `[rpc.callers]` are empty everywhere).
 - `CMakeLists.txt` — the vocabulary declaration and `argus_llm_rpc_contract()`,
   defined here because the wire belongs to the package that owns the schema.
 

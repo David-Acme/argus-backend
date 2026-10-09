@@ -95,6 +95,13 @@ TEST_CASE("a reply carrying a cue for the act's slot is accepted, and one carryi
   CHECK(asks("module", "es", "¿Qué pantalla abro?") == GuardVerdict::SlotNotAsked);
 }
 
+TEST_CASE("the English title list carries the noun and both call phrasings, each accepting its own reply")
+{
+  CHECK(asks("title", "en", "What's the title?") == GuardVerdict::Pass);
+  CHECK(asks("title", "en", "What's it called?") == GuardVerdict::Pass);
+  CHECK(asks("title", "en", "What should I call it?") == GuardVerdict::Pass);
+}
+
 TEST_CASE("a cue for a slot the act already knows is a re-ask, whichever slot it names")
 {
   Json::Value known(Json::objectValue);

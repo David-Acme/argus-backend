@@ -10,7 +10,11 @@ namespace
 {
 
 constexpr std::array<std::string_view, 3> kTitleEs{"como se llama", "como lo llamo", "titulo"};
-constexpr std::array<std::string_view, 2> kTitleEn{"what is it called", "what should i call"};
+constexpr std::array<std::string_view, 5> kTitleEn{"what is it called",
+                                                  "what's it called",
+                                                  "what should i call",
+                                                  "what should i call it",
+                                                  "title"};
 constexpr std::array<std::string_view, 3> kNameEs{"como se llama", "nombre", "como lo llamo"};
 constexpr std::array<std::string_view, 2> kNameEn{"what is it called", "name"};
 constexpr std::array<std::string_view, 3> kTextEs{"que guardo", "que anoto", "que recuerdo"};
