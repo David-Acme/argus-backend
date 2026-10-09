@@ -706,6 +706,15 @@
       "casePass": {
         "min": 16
       },
+      "actWrong": {
+        "max": 0
+      },
+      "retryShare": {
+        "max": 0.05
+      },
+      "unavailableShare": {
+        "max": 0.005
+      },
       "claims": {
         "max": 0
       },
@@ -750,6 +759,32 @@
       },
       "leakedFact": {
         "max": 0
+      }
+    }
+  },
+  "speechActs": {
+    "metrics": {
+      "cases": {
+        "min": 30
+      },
+      "retryShare": {
+        "max": 0.05
+      },
+      "unavailableShare": {
+        "max": 0.005
+      }
+    }
+  },
+  "speechTtft": {
+    "metrics": {
+      "addedP95Ms": {
+        "max": 700
+      },
+      "addedMeanMs": {
+        "max": 400
+      },
+      "actP95Ms": {
+        "max": 1200
       }
     }
   }

@@ -110,6 +110,11 @@ if(ARGUS_PYTHON3)
     add_test(NAME laya-parity-test
         COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/laya-parity-test.py)
     set_tests_properties(laya-parity-test PROPERTIES LABELS eval)
+
+    add_test(NAME speech-ttft-eval
+        COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/speech-ttft-eval.py
+            --url http://127.0.0.1:1/llm/v1/chat-stream --requests 1 --warmup 0)
+    set_tests_properties(speech-ttft-eval PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm")
 endif()
 
 add_executable(eval-score-test eval-score-test.cc)

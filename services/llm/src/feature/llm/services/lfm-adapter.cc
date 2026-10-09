@@ -189,6 +189,12 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
                                    .opened = input.opened,
                                    .asked = input.asked,
                                    .callsConfirmed = input.callsConfirmed});
+    ++output.attempts;
+    output.guardVerdict = std::string(turn::speech::verdictName(verdict));
+    if (attempt == 0) {
+      output.firstGuardVerdict = output.guardVerdict;
+      output.firstRejected = reply;
+    }
     if (verdict != turn::speech::GuardVerdict::Pass) {
       LOG_WARN << "LfmAdapter: the act " << std::string(turn::speech::actName(input.speech.acts.front()))
                << " failed its guard (" << std::string(turn::speech::verdictName(verdict)) << ")";

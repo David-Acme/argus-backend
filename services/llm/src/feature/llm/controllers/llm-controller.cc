@@ -270,6 +270,11 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
   outcome.rawReply = output.rawReply;
   outcome.contextBlock = output.contextBlock;
   outcome.speech = output.speech;
+  outcome.act = output.act;
+  outcome.guardVerdict = output.guardVerdict;
+  outcome.firstGuardVerdict = output.firstGuardVerdict;
+  outcome.firstRejected = output.firstRejected;
+  outcome.attempts = output.attempts;
   outcome.hops = output.hops;
   outcome.toolCalls = output.executed.size();
   outcome.attempted = output.executed;

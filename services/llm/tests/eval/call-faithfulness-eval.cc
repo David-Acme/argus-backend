@@ -15,6 +15,9 @@
 #include <feature/llm/services/turn/gliner-extractor.hxx>
 #include <feature/llm/services/turn/laya-decider.hxx>
 #include <feature/llm/services/turn/onnx-session.hxx>
+#include <feature/llm/services/turn/speech-acts.hxx>
+#include <feature/llm/services/turn/speech-guard.hxx>
+#include <feature/llm/services/turn/speech-render.hxx>
 #include <feature/llm/services/turn/tool-effects.hxx>
 
 #include <json/reader.h>
@@ -22,6 +25,7 @@
 #include <json/writer.h>
 #include <llm/llm-service.hxx>
 #include <mcp/confirmation.hxx>
+#include <text/iso-time.hxx>
 #include <text/sha256.hxx>
 
 #include <llama.h>
@@ -77,6 +81,7 @@ struct Options
   std::string layaAgentConfig;
   std::string extract;
   std::string extractBundle;
+  std::string rejectSample;
   std::vector<std::string> dropFacets;
   float temperature{0.0F};
   uint32_t seed{42};
@@ -84,6 +89,7 @@ struct Options
   bool verbose{false};
   bool force{false};
   bool legacyContext{false};
+  bool renderActs{false};
 };
 
 Options parseOptions(int argc, char** argv)
@@ -124,6 +130,10 @@ Options parseOptions(int argc, char** argv)
       options.extract = argv[++i];
     else if (arg == "--extract-bundle" && hasValue)
       options.extractBundle = argv[++i];
+    else if (arg == "--reject-sample" && hasValue)
+      options.rejectSample = argv[++i];
+    else if (arg == "--render-acts")
+      options.renderActs = true;
     else if (arg == "--drop-facets" && hasValue)
       options.dropFacets.push_back(argv[++i]);
     else if (arg == "--temperature" && hasValue)
@@ -172,6 +182,7 @@ struct CallCase
   std::vector<std::string> expectAny;
   std::vector<std::string> expectFacts;
   std::vector<std::string> forbidFacts;
+  std::vector<std::string> acts;
   std::string person;
   std::optional<std::string> roles;
   bool asksClock{false};
@@ -231,6 +242,7 @@ LoadedCallCases loadCallCases(const std::string& path)
     item.expectAny = stringList(node["expectAny"]);
     item.expectFacts = stringList(node["expectFacts"]);
     item.forbidFacts = stringList(node["forbidFacts"]);
+    item.acts = stringList(node["acts"]);
     item.person = node.get("person", "").asString();
     if (node.isMember("roles"))
       item.roles = node["roles"].asString();
@@ -415,6 +427,7 @@ struct TurnVerdict
   bool nameAskRepeated{false};
   bool missedFact{false};
   bool leakedFact{false};
+  bool actWrong{false};
 };
 
 struct DimensionField
@@ -423,7 +436,7 @@ struct DimensionField
   bool TurnVerdict::*flag;
 };
 
-constexpr std::array<DimensionField, 15> kDimensions{{
+constexpr std::array<DimensionField, 16> kDimensions{{
     {.name = "claims", .flag = &TurnVerdict::claims},
     {.name = "rawClaims", .flag = &TurnVerdict::rawClaims},
     {.name = "clockRestraint", .flag = &TurnVerdict::clockRestraint},
@@ -439,6 +452,7 @@ constexpr std::array<DimensionField, 15> kDimensions{{
     {.name = "nameAskRepeated", .flag = &TurnVerdict::nameAskRepeated},
     {.name = "missedFact", .flag = &TurnVerdict::missedFact},
     {.name = "leakedFact", .flag = &TurnVerdict::leakedFact},
+    {.name = "actWrong", .flag = &TurnVerdict::actWrong},
 }};
 
 struct FactPresence
@@ -495,6 +509,8 @@ struct TurnScoreInput
   const std::string& contextBlock;
   const CallCase& item;
   const TurnState& state;
+  const std::string& expectedAct;
+  const std::string& emittedAct;
   bool firstTurn{false};
   bool checkFacts{false};
 };
@@ -516,6 +532,7 @@ TurnVerdict scoreTurn(const TurnScoreInput& input)
   verdict.missedNameAsk = call_checks::missedNameAsk(
       {.reply = input.reply, .nameUnknown = input.item.nameUnknown, .firstTurn = input.firstTurn});
   verdict.nameAskRepeated = call_checks::nameAskRepeated({.reply = input.reply, .firstTurn = input.firstTurn});
+  verdict.actWrong = !input.expectedAct.empty() && input.emittedAct != input.expectedAct;
   if (input.checkFacts) {
     const auto present = [&](std::string_view facet) {
       return facetPresent({.item = input.item, .facet = facet, .contextBlock = input.contextBlock});
@@ -533,6 +550,12 @@ struct TurnRecord
   std::string reply;
   std::string rawReply;
   std::string contextBlock;
+  std::string act;
+  std::string speech;
+  std::string guardVerdict;
+  std::string firstGuardVerdict;
+  std::string firstRejected;
+  int attempts{0};
   std::vector<eval::RecordedCall> executed;
   TurnState state;
   TurnVerdict verdict;
@@ -587,7 +610,8 @@ CaseRecord runCase(const CaseInput& input)
                                                 .facts = legacyFacts});
   history.push_back({.role = "system", .content = run.staticPrefix});
   bool firstTurn = true;
-  for (const auto& utterance : input.item.script) {
+  for (std::size_t index = 0; index < input.item.script.size(); ++index) {
+    const std::string& utterance = input.item.script[index];
     history.push_back({.role = "user", .content = utterance});
     input.stubs.recorder->clear();
     ChatRequest request;
@@ -610,16 +634,25 @@ CaseRecord runCase(const CaseInput& input)
     turn.reply = outcome.text;
     turn.rawReply = outcome.rawReply;
     turn.contextBlock = outcome.contextBlock;
+    turn.act = outcome.act;
+    turn.speech = outcome.speech;
+    turn.guardVerdict = outcome.guardVerdict;
+    turn.firstGuardVerdict = outcome.firstGuardVerdict;
+    turn.firstRejected = outcome.firstRejected;
+    turn.attempts = outcome.attempts;
     turn.executed = input.stubs.recorder->executed();
     turn.ms = elapsed.count();
     turn.promptTokens = prefill.promptTokens;
     turn.decodedTokens = prefill.decodedTokens;
     turn.state = stateFor({.utterance = utterance, .offered = input.offered, .executed = turn.executed, .lang = input.item.lang});
+    const std::string expectedAct = index < input.item.acts.size() ? input.item.acts[index] : std::string{};
     turn.verdict = scoreTurn({.reply = turn.reply,
                               .rawReply = turn.rawReply,
                               .contextBlock = turn.contextBlock,
                               .item = input.item,
                               .state = turn.state,
+                              .expectedAct = expectedAct,
+                              .emittedAct = turn.act,
                               .firstTurn = firstTurn,
                               .checkFacts = lastTurn && !input.legacyContext});
     history.push_back({.role = "assistant", .content = outcome.text});
@@ -642,16 +675,53 @@ std::vector<CallCase> selected(const std::vector<CallCase>& cases, const Options
   return out;
 }
 
+struct SpeechTally
+{
+  int actTurns{0};
+  int retried{0};
+  int unavailable{0};
+};
+
+SpeechTally speechTally(const std::vector<CaseRecord>& runs)
+{
+  SpeechTally tally;
+  for (const auto& run : runs) {
+    for (const auto& turn : run.turns) {
+      if (turn.act.empty())
+        continue;
+      ++tally.actTurns;
+      if (!turn.firstGuardVerdict.empty() && turn.firstGuardVerdict != "pass")
+        ++tally.retried;
+      if (turn.speech == "unavailable")
+        ++tally.unavailable;
+    }
+  }
+  return tally;
+}
+
 eval::Metrics metricsOf(const std::vector<CaseRecord>& runs)
 {
   std::map<std::string_view, int> violatingTurns;
   std::map<std::string_view, int> violatingCases;
+  std::map<std::string, int> verdictCounts;
+  for (const turn::speech::GuardVerdict verdict : {turn::speech::GuardVerdict::Pass,
+                                                   turn::speech::GuardVerdict::NotAQuestion,
+                                                   turn::speech::GuardVerdict::SlotNotAsked,
+                                                   turn::speech::GuardVerdict::SlotReasked,
+                                                   turn::speech::GuardVerdict::OptionsIncomplete,
+                                                   turn::speech::GuardVerdict::ActionUnnamed,
+                                                   turn::speech::GuardVerdict::ArgumentMissing,
+                                                   turn::speech::GuardVerdict::NotYesOrNo,
+                                                   turn::speech::GuardVerdict::ClaimedWithoutTool})
+    verdictCounts[std::string(turn::speech::verdictName(verdict))] = 0;
   int turns = 0;
   int passedCases = 0;
   for (const auto& run : runs) {
     std::vector<std::string_view> violated;
     for (const auto& turn : run.turns) {
       ++turns;
+      if (!turn.guardVerdict.empty())
+        ++verdictCounts[turn.guardVerdict];
       for (const DimensionField& dimension : kDimensions) {
         if (!(turn.verdict.*(dimension.flag)))
           continue;
@@ -674,7 +744,48 @@ eval::Metrics metricsOf(const std::vector<CaseRecord>& runs)
     metrics[std::string(dimension.name)] = static_cast<double>(violatingTurns[dimension.name]);
     metrics[std::string(dimension.name) + ".cases"] = static_cast<double>(violatingCases[dimension.name]);
   }
+  const SpeechTally tally = speechTally(runs);
+  metrics["speechTurns"] = static_cast<double>(tally.actTurns);
+  metrics["retriedTurns"] = static_cast<double>(tally.retried);
+  metrics["guardedTurns"] = static_cast<double>(tally.unavailable);
+  metrics["retryShare"] = tally.actTurns == 0 ? 0.0 : static_cast<double>(tally.retried) / static_cast<double>(tally.actTurns);
+  metrics["unavailableShare"] =
+      tally.actTurns == 0 ? 0.0 : static_cast<double>(tally.unavailable) / static_cast<double>(tally.actTurns);
+  for (const auto& [name, count] : verdictCounts)
+    metrics["guard." + name] = static_cast<double>(count);
   return metrics;
+}
+
+struct RejectSampleInput
+{
+  const std::string& path;
+  const std::vector<CaseRecord>& runs;
+};
+
+bool writeRejectSample(const RejectSampleInput& input)
+{
+  std::ofstream out(input.path);
+  if (!out)
+    return false;
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  builder["emitUTF8"] = true;
+  for (const CaseRecord& run : input.runs) {
+    for (std::size_t index = 0; index < run.turns.size(); ++index) {
+      const TurnRecord& turn = run.turns[index];
+      if (turn.firstGuardVerdict.empty() || turn.firstGuardVerdict == "pass")
+        continue;
+      Json::Value row(Json::objectValue);
+      row["id"] = run.item.id;
+      row["lang"] = run.item.lang;
+      row["turn"] = static_cast<int>(index);
+      row["act"] = turn.act;
+      row["verdict"] = turn.firstGuardVerdict;
+      row["reply"] = turn.firstRejected;
+      out << Json::writeString(builder, row) << "\n";
+    }
+  }
+  return static_cast<bool>(out);
 }
 
 std::string violationsOf(const TurnVerdict& verdict)
@@ -884,6 +995,356 @@ Engines setupEngines(LlmController& controller, const Options& options)
   return engines;
 }
 
+struct RenderCase
+{
+  std::string id;
+  std::string lang;
+  std::string variant;
+  std::string utterance;
+  turn::speech::Act act;
+  bool wrote{false};
+};
+
+turn::speech::AskSlot askSlotOf(std::string slot, std::string tool, turn::speech::AskReason reason)
+{
+  turn::speech::AskSlot ask;
+  ask.slot = std::move(slot);
+  ask.tool = std::move(tool);
+  ask.reason = reason;
+  return ask;
+}
+
+std::string isoOf(int64_t epoch)
+{
+  return iso_time::format(epoch);
+}
+
+std::vector<RenderCase> renderCases(int64_t now)
+{
+  using turn::speech::Act;
+  using turn::speech::AskReason;
+  using turn::speech::AskSlot;
+  using turn::speech::Choose;
+  using turn::speech::Confirm;
+  using turn::speech::DateKind;
+  using turn::speech::DatePart;
+  using turn::speech::Declined;
+  using turn::speech::Done;
+  using turn::speech::Misunderstood;
+  using turn::speech::Offer;
+  using turn::speech::Refused;
+  using turn::speech::Unactionable;
+
+  const int64_t nextWeekEpoch = now + 7 * 86400;
+  std::vector<RenderCase> out;
+  const auto add = [&out](std::string id, std::string lang, std::string variant, std::string utterance, Act act) {
+    out.push_back({.id = std::move(id),
+                   .lang = std::move(lang),
+                   .variant = std::move(variant),
+                   .utterance = std::move(utterance),
+                   .act = std::move(act)});
+  };
+
+  const auto addDone = [&out](std::string id, std::string lang, std::string variant, Done done) {
+    const std::string utterance = lang == "en" ? "schedule a meeting with Andrea tomorrow at five"
+                                                : "agéndame una reunión con Andrea mañana a las cinco";
+    out.push_back({.id = std::move(id),
+                   .lang = std::move(lang),
+                   .variant = std::move(variant),
+                   .utterance = utterance,
+                   .act = std::move(done),
+                   .wrote = true});
+  };
+
+  {
+    AskSlot ask = askSlotOf("title", "task.create", AskReason::Missing);
+    add("es-ask-title", "es", "neutral", "anota una tarea", ask);
+    add("en-ask-title", "en", "en", "note a task", ask);
+  }
+  {
+    AskSlot ask = askSlotOf("starts_at", "calendar.create_event", AskReason::Missing);
+    add("es-ask-starts-at", "es", "neutral", "agéndame una reunión con Andrea", ask);
+    add("en-ask-starts-at", "en", "en", "schedule a meeting with Andrea", ask);
+  }
+  {
+    AskSlot ask = askSlotOf("starts_at", "calendar.create_event", AskReason::AmbiguousDate);
+    ask.dates = {DatePart{.kind = DateKind::Weekday, .epoch = nextWeekEpoch},
+                 DatePart{.kind = DateKind::CalendarDate, .epoch = now}};
+    add("es-ask-ambiguous", "es", "neutral", "agéndame la reunión el jueves", ask);
+    add("en-ask-ambiguous", "en", "en", "schedule the meeting on Thursday", ask);
+  }
+  {
+    AskSlot ask = askSlotOf("project", "task.create", AskReason::ProjectChoice);
+    ask.options = {"casa", "trabajo", "gimnasio"};
+    add("es-ask-project", "es", "neutral", "anota una tarea en el proyecto casa", ask);
+    AskSlot askEn = askSlotOf("project", "task.create", AskReason::ProjectChoice);
+    askEn.options = {"home", "work", "gym"};
+    add("en-ask-project", "en", "en", "note a task in the project home", askEn);
+  }
+  {
+    Confirm confirm;
+    confirm.action = "calendar.cancel_event";
+    confirm.args["title"] = "Cita con el dentista";
+    confirm.irreversible = true;
+    confirm.toolPreview = "Esto cancelaría «Cita con el dentista».";
+    add("es-command-cancel", "es", "neutral", "cancela la cita con el dentista", confirm);
+    Confirm confirmEn;
+    confirmEn.action = "calendar.cancel_event";
+    confirmEn.args["title"] = "Dentist appointment";
+    confirmEn.irreversible = true;
+    confirmEn.toolPreview = "This would cancel \"Dentist appointment\".";
+    add("en-command-cancel", "en", "en", "cancel the dentist appointment", confirmEn);
+  }
+  {
+    Choose choose;
+    choose.options = {"calendar.create_event", "task.create"};
+    add("es-command-choose", "es", "neutral", "apunta la reunión con Andrea", choose);
+    add("en-command-choose", "en", "en", "note the meeting with Andrea", choose);
+  }
+  {
+    Done es;
+    es.tool = "calendar.create_event";
+    es.fact = "Agendé «Reunión con Andrea» para " + isoOf(now + 86400) + ".";
+    es.readback = "Reunión con Andrea";
+    addDone("es-command-done", "es", "neutral", es);
+    Done en;
+    en.tool = "calendar.create_event";
+    en.fact = "Scheduled \"Meeting with Andrea\" for " + isoOf(now + 86400) + ".";
+    en.readback = "Meeting with Andrea";
+    addDone("en-command-done", "en", "en", en);
+  }
+  {
+    Refused refused{.tool = "calendar.cancel_event", .reason = "not_found"};
+    add("es-command-refused", "es", "neutral", "cancela la reunión del dentista", refused);
+    add("en-command-refused", "en", "en", "cancel the dentist meeting", refused);
+  }
+  {
+    Offer offer;
+    offer.module = "productivity";
+    offer.name = "Productividad";
+    offer.facts = "Productividad lleva tus proyectos y tus tareas.";
+    offer.pendingIntent = "anotar una tarea";
+    add("es-command-offer", "es", "neutral", "anota una tarea en productividad", offer);
+    Offer offerEn;
+    offerEn.module = "productivity";
+    offerEn.name = "Productivity";
+    offerEn.facts = "Productivity keeps your projects and your tasks.";
+    offerEn.pendingIntent = "note a task";
+    add("en-command-offer", "en", "en", "note a task in productivity", offerEn);
+  }
+  add("es-command-declined", "es", "neutral", "no, déjalo", Declined{});
+  add("en-command-declined", "en", "en", "no, leave it", Declined{});
+  add("es-command-unactionable", "es", "neutral", "cuéntame un chiste", Unactionable{.reason = "no_matching_action"});
+  add("en-command-unactionable", "en", "en", "tell me a joke", Unactionable{.reason = "no_matching_action"});
+  add("es-command-misunderstood", "es", "neutral", "eh", Misunderstood{});
+  add("en-command-misunderstood", "en", "en", "uh", Misunderstood{});
+  {
+    AskSlot twin = askSlotOf("event_id", "calendar.cancel_event", AskReason::Missing);
+    twin.knownArgs["task_id"] = 12;
+    add("es-twin-event-task", "es", "neutral", "cancela la reunión con el dentista, no la tarea", twin);
+    add("en-twin-event-task", "en", "en", "cancel the meeting with the dentist, not the task", twin);
+  }
+  {
+    AskSlot twin = askSlotOf("environment", "app.set_guard_mode", AskReason::Missing);
+    twin.knownArgs["location"] = "casa";
+    add("es-twin-place", "es", "neutral", "pon la vigilancia en modo noche en la casa", twin);
+    AskSlot twinEn = askSlotOf("environment", "app.set_guard_mode", AskReason::Missing);
+    twinEn.knownArgs["location"] = "home";
+    add("en-twin-place", "en", "en", "set the guard to night mode at home", twinEn);
+  }
+  {
+    AskSlot ask = askSlotOf("when", "memory.remind", AskReason::Missing);
+    add("pe-ask-when", "es", "pe", "recuérdame llamar a mi mamá pe", ask);
+    Confirm confirm;
+    confirm.action = "calendar.cancel_event";
+    confirm.args["title"] = "Cita con el dentista";
+    confirm.irreversible = true;
+    confirm.toolPreview = "Esto cancelaría «Cita con el dentista».";
+    add("pe-command-cancel", "es", "pe", "cancela la cita con el dentista pe", confirm);
+    Choose choose;
+    choose.options = {"calendar.create_event", "task.create"};
+    add("pe-command-choose", "es", "pe", "apunta la reunión con Andrea pe", choose);
+  }
+
+  return out;
+}
+
+struct RenderRecord
+{
+  RenderCase item;
+  std::string reply;
+  std::string finalVerdict;
+  std::string firstVerdict;
+  std::string firstRejected;
+  int attempts{0};
+};
+
+struct RenderRunInput
+{
+  LfmAdapter& adapter;
+  const std::vector<RenderCase>& cases;
+  const std::string& prompt;
+  int64_t now{0};
+};
+
+RenderRecord renderOne(const RenderRunInput& input, const RenderCase& item)
+{
+  using turn::speech::Speech;
+  Speech speech{.acts = {item.act}, .lang = item.lang, .now = input.now};
+  const std::string tail = turn::speech::actTail({.speech = speech, .contextBlock = {}});
+  ToolChatInput loop;
+  loop.audience = {.role = UserRole::Owner, .modules = {}};
+  loop.context = {.userId = kEvalUser,
+                  .role = UserRole::Owner,
+                  .lang = item.lang,
+                  .sessionId = "speech-acts-" + item.id,
+                  .channel = "tool_result",
+                  .utterance = item.utterance,
+                  .decided = false,
+                  .turn = 1,
+                  .emitAction = {}};
+  loop.temperature = -1.0F;
+  loop.resetContext = false;
+  loop.answerMaxTokens = kMaxTokens;
+  std::vector<ChatMessage> history;
+  history.push_back({.role = "system", .content = input.prompt});
+  history.push_back({.role = "user", .content = item.utterance});
+  ToolChatOutput output;
+  input.adapter.speakAct({.input = loop,
+                          .history = history,
+                          .onToken = nullptr,
+                          .speech = speech,
+                          .tail = tail,
+                          .asked = false,
+                          .wrote = item.wrote,
+                          .opened = false,
+                          .callsConfirmed = false},
+                         output);
+  return {.item = item,
+          .reply = output.reply,
+          .finalVerdict = output.guardVerdict,
+          .firstVerdict = output.firstGuardVerdict,
+          .firstRejected = output.firstRejected,
+          .attempts = output.attempts};
+}
+
+eval::Metrics renderMetrics(const std::vector<RenderRecord>& runs)
+{
+  eval::Metrics metrics;
+  int passed = 0;
+  int rejectedFirst = 0;
+  int unavailable = 0;
+  std::map<std::string, int> verdictCounts;
+  std::map<std::string, int> actCounts;
+  for (const turn::speech::GuardVerdict verdict : {turn::speech::GuardVerdict::Pass,
+                                                   turn::speech::GuardVerdict::NotAQuestion,
+                                                   turn::speech::GuardVerdict::SlotNotAsked,
+                                                   turn::speech::GuardVerdict::SlotReasked,
+                                                   turn::speech::GuardVerdict::OptionsIncomplete,
+                                                   turn::speech::GuardVerdict::ActionUnnamed,
+                                                   turn::speech::GuardVerdict::ArgumentMissing,
+                                                   turn::speech::GuardVerdict::NotYesOrNo,
+                                                   turn::speech::GuardVerdict::ClaimedWithoutTool})
+    verdictCounts[std::string(turn::speech::verdictName(verdict))] = 0;
+  for (const auto& run : runs) {
+    const bool ok = run.finalVerdict == "pass";
+    passed += ok ? 1 : 0;
+    if (!run.firstVerdict.empty() && run.firstVerdict != "pass")
+      ++rejectedFirst;
+    if (!ok)
+      ++unavailable;
+    ++verdictCounts[run.finalVerdict];
+    const std::string act(turn::speech::actName(run.item.act));
+    ++actCounts[act];
+  }
+  metrics["cases"] = static_cast<double>(runs.size());
+  metrics["pass"] = static_cast<double>(passed);
+  metrics["rejectedFirst"] = static_cast<double>(rejectedFirst);
+  metrics["retryShare"] = runs.empty() ? 0.0 : static_cast<double>(rejectedFirst) / static_cast<double>(runs.size());
+  metrics["unavailable"] = static_cast<double>(unavailable);
+  metrics["unavailableShare"] = runs.empty() ? 0.0 : static_cast<double>(unavailable) / static_cast<double>(runs.size());
+  for (const auto& [name, count] : verdictCounts)
+    metrics["verdict." + name] = static_cast<double>(count);
+  for (const auto& [name, count] : actCounts)
+    metrics["act." + name] = static_cast<double>(count);
+  return metrics;
+}
+
+struct RenderRunCli
+{
+  const Options& options;
+  const GatesState& gates;
+  LfmAdapter& adapter;
+  const std::string& promptEs;
+  const std::string& promptEn;
+  int64_t now{0};
+};
+
+int runRendering(const RenderRunCli& input)
+{
+  const std::vector<RenderCase> cases = renderCases(input.now);
+  std::vector<RenderRecord> runs;
+  runs.reserve(cases.size());
+  for (const RenderCase& item : cases) {
+    runs.push_back(renderOne({.adapter = input.adapter,
+                              .cases = cases,
+                              .prompt = item.lang == "en" ? input.promptEn : input.promptEs,
+                              .now = input.now},
+                             item));
+    const RenderRecord& run = runs.back();
+    if (input.options.verbose)
+      std::cout << std::format("{} [{}] {} attempts={} first={} final={} | {}\n",
+                               run.item.id,
+                               run.item.lang,
+                               run.item.variant,
+                               run.attempts,
+                               run.firstVerdict,
+                               run.finalVerdict,
+                               run.reply);
+  }
+  const eval::Metrics metrics = renderMetrics(runs);
+  std::cout << std::format("speech acts: {} rendering cases\n", runs.size());
+  eval::printMetrics(metrics);
+  if (!input.options.rejectSample.empty()) {
+    std::ofstream out(input.options.rejectSample);
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "";
+    builder["emitUTF8"] = true;
+    for (const RenderRecord& run : runs) {
+      if (run.firstVerdict.empty() || run.firstVerdict == "pass")
+        continue;
+      Json::Value row(Json::objectValue);
+      row["id"] = run.item.id;
+      row["lang"] = run.item.lang;
+      row["variant"] = run.item.variant;
+      row["act"] = std::string(turn::speech::actName(run.item.act));
+      row["verdict"] = run.firstVerdict;
+      row["reply"] = run.firstRejected;
+      out << Json::writeString(builder, row) << "\n";
+    }
+  }
+  const eval::LoadedGates gates = eval::loadGates(input.options.gates, "speechActs");
+  if (!gates.error.empty()) {
+    std::cout << "[ERROR] " << gates.error << "\n";
+    return 1;
+  }
+  const eval::Verdict verdict = eval::check(gates.gates, metrics);
+  if (!input.options.report.empty() &&
+      !eval::writeReport(input.options.report,
+                         {.section = "speechActs", .metrics = metrics, .verdict = verdict, .pinned = input.gates.pinned})) {
+    std::cout << "[ERROR] cannot write " << input.options.report << "\n";
+    return 1;
+  }
+  if (!verdict.passed()) {
+    std::cout << "GATE FAILED\n";
+    for (const auto& failure : verdict.failures)
+      std::cout << "  " << failure << "\n";
+    return 1;
+  }
+  std::cout << "GATE PASSED\n";
+  return 0;
+}
+
 struct FinishInput
 {
   const Options& options;
@@ -1030,6 +1491,18 @@ int main(int argc, char** argv)
   const Engines engines = setupEngines(controller, options);
   std::cout << std::format("pipeline: {}\n", engines.active);
 
+  if (options.renderActs) {
+    const int result = runRendering({.options = options,
+                                     .gates = gates,
+                                     .adapter = controller.adapter(),
+                                     .promptEs = spanish.bytes,
+                                     .promptEn = english.bytes,
+                                     .now = static_cast<int64_t>(std::time(nullptr))});
+    controller.shutdownEngine();
+    llama_backend_free();
+    return result;
+  }
+
   const std::vector<CallCase> cases = selected(loaded.cases, options);
   std::cout << std::format("call faithfulness: {} cases of {}\n", cases.size(), loaded.cases.size());
   std::vector<CaseRecord> runs;
@@ -1071,6 +1544,13 @@ int main(int argc, char** argv)
                 .temperature = options.temperature,
                 .path = options.ttft})) {
     std::cout << "[ERROR] cannot write " << options.ttft << "\n";
+    controller.shutdownEngine();
+    llama_backend_free();
+    return 1;
+  }
+
+  if (!options.rejectSample.empty() && !writeRejectSample({.path = options.rejectSample, .runs = runs})) {
+    std::cout << "[ERROR] cannot write " << options.rejectSample << "\n";
     controller.shutdownEngine();
     llama_backend_free();
     return 1;

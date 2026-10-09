@@ -21,6 +21,11 @@ struct LlmChatOutcome
   std::string rawReply{};
   std::string contextBlock{};
   std::string speech{};
+  std::string act{};
+  std::string guardVerdict{};
+  std::string firstGuardVerdict{};
+  std::string firstRejected{};
+  int attempts{0};
   int hops{0};
   size_t toolCalls{0};
   std::vector<tools::ToolCall> attempted{};

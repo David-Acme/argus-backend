@@ -37,7 +37,11 @@ struct ToolChatOutput
   std::string contextBlock;
   std::string speech;
   std::string act;
+  std::string guardVerdict;
+  std::string firstGuardVerdict;
+  std::string firstRejected;
   std::vector<tools::ToolCall> executed;
+  int attempts = 0;
   int hops = 0;
   bool emitted = false;
   int64_t generateMs = 0;
@@ -127,6 +131,8 @@ public:
 
   ToolChatOutput chatWithToolsStream(const ChatWithToolsStreamInput& args);
 
+  void speakAct(const ActSpeakInput& input, ToolChatOutput& output);
+
   ToolChatOutput chatPlain(const ChatRequest& request);
 
   ToolChatOutput chatPlainStream(const PlainChatStreamInput& input);
@@ -145,8 +151,6 @@ private:
   ToolChatOutput chatPlainTurn(const PlainChatInput& input);
 
   [[nodiscard]] std::vector<ChatMessage> speakMessages(const SpeakInput& args, const std::string& notes) const;
-
-  void speakAct(const ActSpeakInput& input, ToolChatOutput& output);
 
   ChatEngine engine_;
   ToolExecutor executor_;
