@@ -45,7 +45,7 @@ std::optional<Pilot> pilotBundle()
   return Pilot{.dir = fs::path(dir), .pin = pin};
 }
 
-Json::Value readJson(const char* path)
+Json::Value readJson(const std::filesystem::path& path)
 {
   std::ifstream in(path);
   Json::Value root;
@@ -53,6 +53,13 @@ Json::Value readJson(const char* path)
   std::string errors;
   Json::parseFromStream(builder, in, &root, &errors);
   return root;
+}
+
+fs::path onnxReferencePath()
+{
+  fs::path path(ARGUS_TEST_GLINER_PARITY);
+  path.replace_filename("parity-onnx.json");
+  return path;
 }
 
 std::vector<std::string> stringsOf(const Json::Value& node)
@@ -225,14 +232,20 @@ TEST_CASE("the real GLiNER bundle decodes the spans the reference holds")
   const std::unique_ptr<turn::GlinerModel> model = turn::openGlinerModel(bundle, turn::OnnxOptions{});
   REQUIRE(model->status() == turn::EngineStatus::Ready);
   const Json::Value fixture = readJson(ARGUS_TEST_GLINER_PARITY);
+  const Json::Value reference = readJson(onnxReferencePath());
+  REQUIRE(reference["cases"].size() == fixture["cases"].size());
+  CHECK(reference["provenance"]["bundlePin"].asString() == pilot->pin);
   std::size_t rows = 0;
   std::size_t mismatches = 0;
   double worst = 0.0;
-  for (const Json::Value& item : fixture["cases"]) {
+  for (Json::ArrayIndex index = 0; index < fixture["cases"].size(); ++index) {
+    const Json::Value& item = fixture["cases"][index];
+    const Json::Value& held = reference["cases"][index];
+    REQUIRE(held["id"].asString() == item["id"].asString());
     const std::vector<turn::GlinerSpan> spans = spansOf(*model, item);
     for (const std::string& field : stringsOf(item["fields"])) {
       const std::vector<const turn::GlinerSpan*> got = fieldSpans(spans, field);
-      const Json::Value& expected = item["reference"][field];
+      const Json::Value& expected = held["reference"][field];
       if (got.size() != expected.size()) {
         ++mismatches;
         continue;
@@ -247,7 +260,9 @@ TEST_CASE("the real GLiNER bundle decodes the spans the reference holds")
     }
     ++rows;
   }
-  MESSAGE("gliner spans: " << rows << " rows, " << mismatches << " fields differing, worst confidence gap " << worst);
+  MESSAGE("gliner spans vs " << reference["provenance"]["runtime"].asString() << " on "
+                             << reference["provenance"]["model"].asString() << ": " << rows << " rows, " << mismatches
+                             << " fields differing, worst confidence gap " << worst);
   CHECK(rows == static_cast<std::size_t>(fixture["cases"].size()));
   CHECK(mismatches == 0);
   CHECK(worst <= 2e-3);

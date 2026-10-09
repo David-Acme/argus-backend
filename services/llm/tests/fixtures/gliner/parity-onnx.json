@@ -1,0 +1,922 @@
+{
+ "provenance": {
+  "reference": "python onnxruntime over the shipped bundle's own model.onnx on the frozen rows",
+  "runtime": "onnxruntime 1.30.0",
+  "decoder": "gliner2.inference.overlap.resolve_overlaps policy=flat",
+  "model": "model.onnx",
+  "modelSha256": "bd5841bb119100f7fe801ca047426949d2ef3d79c36667dc27a173e48566e60c",
+  "bundlePin": "13f547cf728765ace23d40dbde46ff00cb5fae0718e27f151822b651f9cc0b74",
+  "rows": "parity-pilot.json",
+  "rowsCases": 38,
+  "pairThreshold": 0.1,
+  "maxSpanWords": 16,
+  "sigmoid": "1/(1+exp(-logit)) in python float from the graph's float32 pair_logits"
+ },
+ "cases": [
+  {
+   "id": "massive-es-ES-8244",
+   "reference": {
+    "title": [
+     {
+      "text": "misa",
+      "confidence": 0.9899882396670628,
+      "start": 36,
+      "end": 40
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-7b76c81efc",
+   "reference": {
+    "subject": [
+     {
+      "text": "El seguro del departamento",
+      "confidence": 0.9985911335988833,
+      "start": 0,
+      "end": 26
+     }
+    ],
+    "relation": [
+     {
+      "text": "vence",
+      "confidence": 0.9381034870199415,
+      "start": 27,
+      "end": 32
+     }
+    ],
+    "object": [
+     {
+      "text": "el 30 de septiembre",
+      "confidence": 0.9932272152987316,
+      "start": 33,
+      "end": 52
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-ca4bc5223d",
+   "reference": {
+    "subject": [
+     {
+      "text": "El concierto de mi banda favorita",
+      "confidence": 0.9994110867881543,
+      "start": 0,
+      "end": 33
+     }
+    ],
+    "relation": [
+     {
+      "text": "es",
+      "confidence": 0.9953337302540223,
+      "start": 34,
+      "end": 36
+     }
+    ],
+    "object": [
+     {
+      "text": "el 19 de agosto a las ocho de la noche",
+      "confidence": 0.9995687372148485,
+      "start": 37,
+      "end": 75
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-aef0b8d313",
+   "reference": {
+    "title": [
+     {
+      "text": "la reunión",
+      "confidence": 0.5893703218890594,
+      "start": 20,
+      "end": 30
+     }
+    ],
+    "people": [
+     {
+      "text": "Laura",
+      "confidence": 0.9959015132414081,
+      "start": 35,
+      "end": 40
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-7559d5ad02",
+   "reference": {
+    "subject": [
+     {
+      "text": "Mi sobrina",
+      "confidence": 0.9957983547184466,
+      "start": 0,
+      "end": 10
+     }
+    ],
+    "relation": [
+     {
+      "text": "se llama",
+      "confidence": 0.6320145732788902,
+      "start": 11,
+      "end": 19
+     }
+    ],
+    "object": [
+     {
+      "text": "Camila",
+      "confidence": 0.9943350712274208,
+      "start": 20,
+      "end": 26
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-59cdcc4686",
+   "reference": {
+    "subject": [
+     {
+      "text": "The wifi password",
+      "confidence": 0.9917303693585349,
+      "start": 0,
+      "end": 17
+     }
+    ],
+    "relation": [
+     {
+      "text": "is",
+      "confidence": 0.32135511543718953,
+      "start": 18,
+      "end": 20
+     }
+    ],
+    "object": [
+     {
+      "text": "sunnyday2024",
+      "confidence": 0.9813843844189093,
+      "start": 21,
+      "end": 33
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-01602773d4",
+   "reference": {
+    "subject": [
+     {
+      "text": "el fontanero",
+      "confidence": 0.9967376326131078,
+      "start": 3,
+      "end": 15
+     }
+    ],
+    "relation": [
+     {
+      "text": "se llama",
+      "confidence": 0.5995454448678661,
+      "start": 16,
+      "end": 24
+     }
+    ],
+    "object": [
+     {
+      "text": "josé luis",
+      "confidence": 0.9913367839734526,
+      "start": 25,
+      "end": 34
+     }
+    ]
+   }
+  },
+  {
+   "id": "e2a-d-0437",
+   "reference": {
+    "name": [
+     {
+      "text": "el matrimonio de mi pata Julio",
+      "confidence": 0.9984489299799494,
+      "start": 26,
+      "end": 56
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-a90d76e40d",
+   "reference": {
+    "subject": [
+     {
+      "text": "My insurance policy number",
+      "confidence": 0.9684114997038937,
+      "start": 0,
+      "end": 26
+     }
+    ],
+    "relation": [
+     {
+      "text": "is",
+      "confidence": 0.4161177819279877,
+      "start": 27,
+      "end": 29
+     }
+    ],
+    "object": [
+     {
+      "text": "HX-3391",
+      "confidence": 0.9839937898879995,
+      "start": 30,
+      "end": 37
+     }
+    ]
+   }
+  },
+  {
+   "id": "e2b-01046",
+   "reference": {
+    "text": [
+     {
+      "text": "doy la comida a Chispa",
+      "confidence": 0.996560884750679,
+      "start": 37,
+      "end": 59
+     }
+    ]
+   }
+  },
+  {
+   "id": "e2f2-0093",
+   "reference": {
+    "subject": [
+     {
+      "text": "mi primo San Martín",
+      "confidence": 0.999021602419581,
+      "start": 11,
+      "end": 30
+     }
+    ],
+    "relation": [
+     {
+      "text": "vive",
+      "confidence": 0.9971547088483006,
+      "start": 31,
+      "end": 35
+     }
+    ],
+    "object": [
+     {
+      "text": "en la calle Los Olivos",
+      "confidence": 0.9942387211716673,
+      "start": 36,
+      "end": 58
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-5632ddc0d5",
+   "reference": {
+    "title": [
+     {
+      "text": "cena con juan y carmen",
+      "confidence": 0.41233550273179104,
+      "start": 17,
+      "end": 39
+     }
+    ],
+    "people": [
+     {
+      "text": "juan",
+      "confidence": 0.9944023433096607,
+      "start": 26,
+      "end": 30
+     },
+     {
+      "text": "carmen",
+      "confidence": 0.993640555630194,
+      "start": 33,
+      "end": 39
+     }
+    ],
+    "place": [
+     {
+      "text": "el restaurante nuevo",
+      "confidence": 0.9551932370985329,
+      "start": 74,
+      "end": 94
+     }
+    ]
+   }
+  },
+  {
+   "id": "e2f2-0814",
+   "reference": {
+    "subject": [
+     {
+      "text": "mi amigo luis",
+      "confidence": 0.9987356183995061,
+      "start": 5,
+      "end": 18
+     }
+    ],
+    "relation": [
+     {
+      "text": "es alérgico",
+      "confidence": 0.9909479443400344,
+      "start": 19,
+      "end": 30
+     }
+    ],
+    "object": [
+     {
+      "text": "a las nueces",
+      "confidence": 0.9856510646674344,
+      "start": 31,
+      "end": 43
+     }
+    ]
+   }
+  },
+  {
+   "id": "e2f1-0514",
+   "reference": {
+    "subject": [
+     {
+      "text": "el panel solar",
+      "confidence": 0.9992178554233468,
+      "start": 0,
+      "end": 14
+     }
+    ],
+    "relation": [
+     {
+      "text": "rinde",
+      "confidence": 0.9930848770363891,
+      "start": 15,
+      "end": 20
+     }
+    ],
+    "object": [
+     {
+      "text": "menos en invierno",
+      "confidence": 0.9939368855854117,
+      "start": 21,
+      "end": 38
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-ffc0476c58",
+   "reference": {
+    "title": [
+     {
+      "text": "el control del chibolo",
+      "confidence": 0.6289638612709189,
+      "start": 15,
+      "end": 37
+     }
+    ],
+    "place": [
+     {
+      "text": "el dentista",
+      "confidence": 0.8594181337123088,
+      "start": 41,
+      "end": 52
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-7e94689afe",
+   "reference": {}
+  },
+  {
+   "id": "e2f1-0167",
+   "reference": {
+    "subject": [
+     {
+      "text": "la pediatra",
+      "confidence": 0.9974932898921193,
+      "start": 3,
+      "end": 14
+     }
+    ],
+    "relation": [
+     {
+      "text": "se llama",
+      "confidence": 0.8823636374498142,
+      "start": 15,
+      "end": 23
+     }
+    ],
+    "object": [
+     {
+      "text": "andrea vidal",
+      "confidence": 0.9919483891704154,
+      "start": 24,
+      "end": 36
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-ff537a4bbe",
+   "reference": {
+    "title": [
+     {
+      "text": "fire drill",
+      "confidence": 0.6262543217922565,
+      "start": 20,
+      "end": 30
+     }
+    ],
+    "place": [
+     {
+      "text": "the main office",
+      "confidence": 0.9470506844648751,
+      "start": 76,
+      "end": 91
+     }
+    ]
+   }
+  },
+  {
+   "id": "e2b-d-0339",
+   "reference": {
+    "text": [
+     {
+      "text": "comprar pan y 2 kilos de papa",
+      "confidence": 0.9997678598456482,
+      "start": 25,
+      "end": 54
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-d7b1d95c70",
+   "reference": {
+    "text": [
+     {
+      "text": "hacer la compra semanal",
+      "confidence": 0.9992496109567162,
+      "start": 39,
+      "end": 62
+     }
+    ]
+   }
+  },
+  {
+   "id": "e2f1-0924",
+   "reference": {
+    "subject": [
+     {
+      "text": "mi hijo",
+      "confidence": 0.9987238517937456,
+      "start": 2,
+      "end": 9
+     }
+    ],
+    "relation": [
+     {
+      "text": "le cuesta",
+      "confidence": 0.9954813702939217,
+      "start": 10,
+      "end": 19
+     }
+    ],
+    "object": [
+     {
+      "text": "madrugar los lunes",
+      "confidence": 0.9961362913869806,
+      "start": 20,
+      "end": 38
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-5e32fa0dc7",
+   "reference": {
+    "title": [
+     {
+      "text": "Descongelé el pollo",
+      "confidence": 0.9225601534416966,
+      "start": 0,
+      "end": 19
+     }
+    ]
+   }
+  },
+  {
+   "id": "massive-en-US-7736",
+   "reference": {
+    "title": [
+     {
+      "text": "meeting",
+      "confidence": 0.9967585243419035,
+      "start": 8,
+      "end": 15
+     }
+    ],
+    "people": [
+     {
+      "text": "jack",
+      "confidence": 0.9941339359083381,
+      "start": 21,
+      "end": 25
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-f0a6a38663",
+   "reference": {
+    "title": [
+     {
+      "text": "reunión con Carlos",
+      "confidence": 0.7959314799282419,
+      "start": 10,
+      "end": 28
+     }
+    ],
+    "people": [
+     {
+      "text": "Carlos",
+      "confidence": 0.9997894209506533,
+      "start": 109,
+      "end": 115
+     },
+     {
+      "text": "Carlos",
+      "confidence": 0.9977425383212508,
+      "start": 22,
+      "end": 28
+     }
+    ],
+    "place": [
+     {
+      "text": "la oficina de San Isidro",
+      "confidence": 0.9328951321922773,
+      "start": 71,
+      "end": 95
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-0cf146674e",
+   "reference": {
+    "subject": [
+     {
+      "text": "the plumber",
+      "confidence": 0.9986557440786339,
+      "start": 34,
+      "end": 45
+     }
+    ],
+    "relation": [
+     {
+      "text": "comes",
+      "confidence": 0.9961134841183935,
+      "start": 46,
+      "end": 51
+     }
+    ],
+    "object": [
+     {
+      "text": "on Thursday",
+      "confidence": 0.9909580459744115,
+      "start": 52,
+      "end": 63
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-30354e3e8b",
+   "reference": {
+    "title": [
+     {
+      "text": "site walkthrough",
+      "confidence": 0.8789849329371787,
+      "start": 44,
+      "end": 60
+     }
+    ],
+    "people": [
+     {
+      "text": "Tom",
+      "confidence": 0.9971858647986598,
+      "start": 66,
+      "end": 69
+     }
+    ]
+   }
+  },
+  {
+   "id": "e2a-00888",
+   "reference": {
+    "title": [
+     {
+      "text": "examen de conducir",
+      "confidence": 0.9942449316954766,
+      "start": 11,
+      "end": 29
+     }
+    ]
+   }
+  },
+  {
+   "id": "massive-en-US-7194",
+   "reference": {
+    "title": [
+     {
+      "text": "meeting",
+      "confidence": 0.9899277914609281,
+      "start": 14,
+      "end": 21
+     }
+    ]
+   }
+  },
+  {
+   "id": "e2f1-0324",
+   "reference": {
+    "subject": [
+     {
+      "text": "mi suegro",
+      "confidence": 0.998859556575493,
+      "start": 2,
+      "end": 11
+     }
+    ],
+    "relation": [
+     {
+      "text": "le molesta",
+      "confidence": 0.997267231311703,
+      "start": 12,
+      "end": 22
+     }
+    ],
+    "object": [
+     {
+      "text": "que cierren la puerta con fuerza",
+      "confidence": 0.9987464088967791,
+      "start": 23,
+      "end": 55
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-91ed3ad10a",
+   "reference": {
+    "subject": [
+     {
+      "text": "la pastilla azul",
+      "confidence": 0.9986533619717941,
+      "start": 25,
+      "end": 41
+     }
+    ],
+    "relation": [
+     {
+      "text": "se toma",
+      "confidence": 0.9836403932656794,
+      "start": 42,
+      "end": 49
+     }
+    ],
+    "object": [
+     {
+      "text": "cada doce horas",
+      "confidence": 0.9891171176877921,
+      "start": 50,
+      "end": 65
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-4b4f11c054",
+   "reference": {
+    "subject": [
+     {
+      "text": "Grandpa's medication",
+      "confidence": 0.996809394948082,
+      "start": 0,
+      "end": 20
+     }
+    ],
+    "relation": [
+     {
+      "text": "is",
+      "confidence": 0.9927626878304772,
+      "start": 21,
+      "end": 23
+     }
+    ],
+    "object": [
+     {
+      "text": "in the kitchen cabinet above the kettle",
+      "confidence": 0.9980428889909817,
+      "start": 24,
+      "end": 63
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-46543f5d99",
+   "reference": {
+    "subject": [
+     {
+      "text": "Nana's birthday",
+      "confidence": 0.9844955079861933,
+      "start": 0,
+      "end": 15
+     }
+    ],
+    "relation": [
+     {
+      "text": "is",
+      "confidence": 0.8531002173122672,
+      "start": 16,
+      "end": 18
+     }
+    ],
+    "object": [
+     {
+      "text": "February 29th",
+      "confidence": 0.9905368003898575,
+      "start": 19,
+      "end": 32
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-ee22038d06",
+   "reference": {
+    "subject": [
+     {
+      "text": "Mi pata Rosa",
+      "confidence": 0.998939196441361,
+      "start": 0,
+      "end": 12
+     }
+    ],
+    "relation": [
+     {
+      "text": "viene de viaje",
+      "confidence": 0.9809559963931007,
+      "start": 13,
+      "end": 27
+     }
+    ],
+    "object": [
+     {
+      "text": "el 28 de diciembre",
+      "confidence": 0.9920258682268044,
+      "start": 28,
+      "end": 46
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-bbe658551f",
+   "reference": {
+    "subject": [
+     {
+      "text": "La reunión con el banco",
+      "confidence": 0.9995681028221131,
+      "start": 0,
+      "end": 23
+     }
+    ],
+    "relation": [
+     {
+      "text": "quedó",
+      "confidence": 0.9921924046540392,
+      "start": 24,
+      "end": 29
+     }
+    ],
+    "object": [
+     {
+      "text": "para el jueves a las cuatro de la tarde",
+      "confidence": 0.9995365525177741,
+      "start": 30,
+      "end": 69
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-28fdd8171c",
+   "reference": {
+    "title": [
+     {
+      "text": "cambiar la llave de la cochera",
+      "confidence": 0.995126361074105,
+      "start": 18,
+      "end": 48
+     }
+    ]
+   }
+  },
+  {
+   "id": "e3-99fb0a7985",
+   "reference": {
+    "subject": [
+     {
+      "text": "El nombre de la señora que limpia los sábados",
+      "confidence": 0.9986821029982451,
+      "start": 0,
+      "end": 45
+     }
+    ],
+    "relation": [
+     {
+      "text": "es",
+      "confidence": 0.33761662330901715,
+      "start": 46,
+      "end": 48
+     }
+    ],
+    "object": [
+     {
+      "text": "Domitila",
+      "confidence": 0.9911034870674551,
+      "start": 49,
+      "end": 57
+     }
+    ]
+   }
+  },
+  {
+   "id": "e2f2-0339",
+   "reference": {
+    "subject": [
+     {
+      "text": "Dad",
+      "confidence": 0.9986400488437549,
+      "start": 0,
+      "end": 3
+     }
+    ],
+    "relation": [
+     {
+      "text": "can't drive",
+      "confidence": 0.990476286451104,
+      "start": 4,
+      "end": 15
+     }
+    ],
+    "object": [
+     {
+      "text": "for six weeks after the operation",
+      "confidence": 0.997732771721592,
+      "start": 16,
+      "end": 49
+     }
+    ]
+   }
+  },
+  {
+   "id": "e2f1-0424",
+   "reference": {
+    "subject": [
+     {
+      "text": "mi hijo",
+      "confidence": 0.9995642224138068,
+      "start": 0,
+      "end": 7
+     }
+    ],
+    "relation": [
+     {
+      "text": "se queda a dormir",
+      "confidence": 0.9940255970713152,
+      "start": 8,
+      "end": 25
+     }
+    ],
+    "object": [
+     {
+      "text": "en casa de su amigo los viernes",
+      "confidence": 0.9977871885289303,
+      "start": 26,
+      "end": 57
+     }
+    ]
+   }
+  }
+ ]
+}
