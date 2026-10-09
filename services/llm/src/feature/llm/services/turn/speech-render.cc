@@ -57,55 +57,55 @@ struct ExampleSet
 
 constexpr ExampleSet kExampleAskSlot{
     {ExampleLine{"ponme un recordatorio", "¿Para cuándo quieres que te lo recuerde?"},
-     ExampleLine{"ponme un recordatorio pe", "¿Para cuándo lo quieres, pe?"}},
+     ExampleLine{"anótame una cita", "¿Para qué día la quieres?"}},
     {ExampleLine{"set a reminder", "When should I remind you?"},
      ExampleLine{"jot a thought down", "What should I write in the note?"}}};
 
 constexpr ExampleSet kExampleConfirm{
     {ExampleLine{"borra la nota de la compra", "¿Quieres que borre «Nota de la compra»?"},
-     ExampleLine{"borra la nota pe", "¿Seguro que quieres que borre «Nota de la compra»?"}},
+     ExampleLine{"elimina la nota de la compra", "¿Confirmas que borre «Nota de la compra»?"}},
     {ExampleLine{"delete the shopping note", "Shall I delete “Shopping note”?"},
      ExampleLine{"cancel my dentist visit", "Do you want me to cancel “Dentist visit”?"}}};
 
 constexpr ExampleSet kExampleChoose{
     {ExampleLine{"guarda esto", "¿Quieres un evento en el calendario o una tarea?"},
-     ExampleLine{"guarda esto pe", "¿Lo pongo como evento o como tarea, pe?"}},
+     ExampleLine{"anota esta idea", "¿Lo quieres como evento o como tarea?"}},
     {ExampleLine{"save this", "Should I add an event on the calendar or a task?"},
      ExampleLine{"keep this", "Would you like an event on the calendar or a task?"}}};
 
 constexpr ExampleSet kExampleDone{
     {ExampleLine{"agenda la reunión", "Listo, quedó para el jueves a las cinco."},
-     ExampleLine{"agenda la reunión pe", "Listo, ya quedó, pe."}},
+     ExampleLine{"agenda la reunión mañana", "Listo, ya quedó agendada."}},
     {ExampleLine{"schedule the meeting", "Done, it is set for Thursday at five."},
      ExampleLine{"note the task", "Done, I jotted it down."}}};
 
 constexpr ExampleSet kExampleRefused{
     {ExampleLine{"cancela la cita vieja", "No encontré esa cita, así que no la cancelé. ¿Quieres que la busque de otra forma?"},
-     ExampleLine{"cancela la cita pe", "No la encontré, pe, no la pude cancelar."}},
+     ExampleLine{"cancela la cita del lunes", "No encontré esa cita, así que no la cancelé."}},
     {ExampleLine{"cancel the old meeting", "I could not find that meeting, so I did not cancel it. Want me to look another way?"},
      ExampleLine{"delete that", "That was not there, so nothing was deleted."}}};
 
 constexpr ExampleSet kExampleOffer{
     {ExampleLine{"apunta una idea en tareas", "El módulo de tareas está apagado. ¿Quieres que lo active?"},
-     ExampleLine{"apunta una idea pe", "Ese módulo está apagado, pe. ¿Lo activo?"}},
+     ExampleLine{"guarda una idea en tareas", "El módulo de tareas está apagado. ¿Quieres que lo active?"}},
     {ExampleLine{"keep an idea in tasks", "The tasks module is off. Shall I turn it on?"},
      ExampleLine{"remind me to call", "That module is off. Do you want me to switch it on?"}}};
 
 constexpr ExampleSet kExampleDeclined{
     {ExampleLine{"no gracias", "Vale, lo dejo así."},
-     ExampleLine{"no gracias pe", "Ya, lo dejo, pe."}},
+     ExampleLine{"mejor lo dejamos", "Entendido, lo dejo así."}},
     {ExampleLine{"no thanks", "Alright, I will leave it."},
      ExampleLine{"never mind that", "No problem, I will not touch it."}}};
 
 constexpr ExampleSet kExampleUnactionable{
     {ExampleLine{"ponme música", "Eso no lo puedo hacer, pero puedo ponerte un recordatorio."},
-     ExampleLine{"ponme música pe", "Eso no lo puedo hacer, pe."}},
+     ExampleLine{"traduce este texto", "Eso no lo puedo hacer."}},
     {ExampleLine{"play me some music", "I cannot do that, but I can set a reminder for you."},
      ExampleLine{"sing me a song", "That is not something I can do."}}};
 
 constexpr ExampleSet kExampleMisunderstood{
     {ExampleLine{"mmm", "No te entendí. ¿Me lo repites?"},
-     ExampleLine{"mmm pe", "No te entendí, pe. ¿Otra vez?"}},
+     ExampleLine{"este...", "No te entendí. ¿Otra vez?"}},
     {ExampleLine{"er", "I did not catch that. Could you say it again?"},
      ExampleLine{"hrm", "Sorry, I missed that. Say it once more?"}}};
 

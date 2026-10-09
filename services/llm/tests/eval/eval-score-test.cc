@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include "eval-score.hxx"
+#include "call-faithfulness-checks.hxx"
 
 #include <string>
 #include <vector>
@@ -229,4 +230,12 @@ TEST_CASE("the false-completion rate counts every turn and every variant")
   CHECK(metrics.at("falseCompletionRate") == doctest::Approx(2.0 / 3.0));
   CHECK(metrics.at("variant.neutral.falseCompletionRate") == doctest::Approx(0.5));
   CHECK(metrics.at("variant.pe.falseCompletionRate") == doctest::Approx(1.0));
+}
+
+TEST_CASE("the render instant is pinned whenever the caller does not ask for one")
+{
+  CHECK(call_checks::renderInstant(0) == 1791700000);
+  CHECK(call_checks::renderInstant(-1) == 1791700000);
+  CHECK(call_checks::renderInstant(1791700000) == 1791700000);
+  CHECK(call_checks::renderInstant(12345) == 12345);
 }

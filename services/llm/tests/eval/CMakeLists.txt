@@ -123,11 +123,15 @@ if(ARGUS_PYTHON3)
     add_test(NAME speech-examples-test
         COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/speech-examples-test.py)
     set_tests_properties(speech-examples-test PROPERTIES LABELS eval)
+
+    add_test(NAME peruvian-markers-test
+        COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/peruvian-markers-test.py)
+    set_tests_properties(peruvian-markers-test PROPERTIES LABELS eval)
 endif()
 
 add_executable(eval-score-test eval-score-test.cc)
 
-target_link_libraries(eval-score-test PRIVATE llm-eval-core doctest::doctest)
+target_link_libraries(eval-score-test PRIVATE llm-eval-core argus::lib::text doctest::doctest)
 
 target_compile_options(eval-score-test PRIVATE -Wall -Wextra)
 
@@ -175,6 +179,7 @@ set(CALL_FAITHFULNESS_ARGS
     --llm-model ${CMAKE_CURRENT_SOURCE_DIR}/../../../../models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf
     --prompt-es ${CMAKE_CURRENT_SOURCE_DIR}/../../../voice/tests/fixtures/call-prompt-es.txt
     --prompt-en ${CMAKE_CURRENT_SOURCE_DIR}/../../../voice/tests/fixtures/call-prompt-en.txt
+    --regionalism-markers ${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/peruvian-markers.txt
     --temperature 0.3 --seed 42)
 
 set(CALL_FAITHFULNESS_SMOKE_ARGS
@@ -183,6 +188,7 @@ set(CALL_FAITHFULNESS_SMOKE_ARGS
     --llm-model ${CMAKE_CURRENT_SOURCE_DIR}/../../../../models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf
     --prompt-es ${CMAKE_CURRENT_SOURCE_DIR}/../../../voice/tests/fixtures/call-prompt-es.txt
     --prompt-en ${CMAKE_CURRENT_SOURCE_DIR}/../../../voice/tests/fixtures/call-prompt-en.txt
+    --regionalism-markers ${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/peruvian-markers.txt
     --temperature 0.3 --seed 42)
 
 add_test(NAME call-faithfulness-smoke

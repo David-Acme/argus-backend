@@ -136,13 +136,14 @@ def measure(args):
         for index in range(min(args.warmup, len(turns))):
             lang, text = turns[index % len(turns)]
             one(lang, text, True, kind, index)
-    for index in range(args.warmup // 4 + 1):
-        lang, text = PLAIN_TURNS[index % len(PLAIN_TURNS)]
-        one(lang, text, False, "plain", index)
 
     refusal = engines_up(args.server_log, args.require_engine)
     if refusal is not None:
         return refusal
+
+    for index in range(args.warmup // 4 + 1):
+        lang, text = PLAIN_TURNS[index % len(PLAIN_TURNS)]
+        one(lang, text, False, "plain", index)
 
     per_kind = {}
     for kind, turns in ACT_TURNS.items():

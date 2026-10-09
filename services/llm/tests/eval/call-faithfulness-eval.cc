@@ -27,6 +27,7 @@
 #include <mcp/confirmation.hxx>
 #include <text/iso-time.hxx>
 #include <text/sha256.hxx>
+#include <text/text-norm.hxx>
 
 #include <llama.h>
 
@@ -61,7 +62,6 @@ namespace
 constexpr int kSkipped = 77;
 constexpr int64_t kEvalUser = 7;
 constexpr int kMaxTokens = 160;
-constexpr int64_t kRenderNow = 1791700000;
 constexpr int kMaxSentences = 2;
 
 struct Options
@@ -83,6 +83,7 @@ struct Options
   std::string extract;
   std::string extractBundle;
   std::string rejectSample;
+  std::string regionalismMarkers;
   std::vector<std::string> dropFacets;
   float temperature{0.0F};
   uint32_t seed{42};
@@ -134,6 +135,8 @@ Options parseOptions(int argc, char** argv)
       options.extractBundle = argv[++i];
     else if (arg == "--reject-sample" && hasValue)
       options.rejectSample = argv[++i];
+    else if (arg == "--regionalism-markers" && hasValue)
+      options.regionalismMarkers = argv[++i];
     else if (arg == "--render-acts")
       options.renderActs = true;
     else if (arg == "--drop-facets" && hasValue)
@@ -407,6 +410,48 @@ bool speaksForeignTokens(const std::string& reply, std::string_view lang)
   const std::span<const std::string_view> banned =
       lang == "en" ? std::span<const std::string_view>(kSpanishTokens) : std::span<const std::string_view>(kEnglishTokens);
   return std::ranges::any_of(banned, [&words](std::string_view token) { return call_checks::hasWord(words, token); });
+}
+
+std::vector<std::string> loadRegionalismMarkers(const std::string& path)
+{
+  std::ifstream in(path);
+  if (!in)
+    return {};
+  std::vector<std::string> markers;
+  std::string line;
+  while (std::getline(in, line)) {
+    const std::string folded = text_norm::folded(line);
+    const std::size_t first = folded.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos)
+      continue;
+    const std::size_t last = folded.find_last_not_of(" \t\r\n");
+    markers.push_back(folded.substr(first, last - first + 1));
+  }
+  return markers;
+}
+
+bool containsPhrase(const std::vector<std::string>& words, const std::vector<std::string>& needle)
+{
+  if (needle.empty() || needle.size() > words.size())
+    return false;
+  for (std::size_t at = 0; at + needle.size() <= words.size(); ++at) {
+    bool hit = true;
+    for (std::size_t index = 0; index < needle.size() && hit; ++index)
+      hit = words.at(at + index) == needle.at(index);
+    if (hit)
+      return true;
+  }
+  return false;
+}
+
+bool speaksRegionalism(const std::string& reply, const std::vector<std::string>& markers)
+{
+  if (markers.empty())
+    return false;
+  const std::vector<std::string> words = call_checks::wordsOf(reply);
+  return std::ranges::any_of(markers, [&words](const std::string& marker) {
+    return containsPhrase(words, call_checks::wordsOf(marker));
+  });
 }
 
 bool confusesRoles(const std::string& reply)
@@ -710,7 +755,7 @@ SpeechTally speechTally(const std::vector<CaseRecord>& runs)
   return tally;
 }
 
-eval::Metrics metricsOf(const std::vector<CaseRecord>& runs)
+eval::Metrics metricsOf(const std::vector<CaseRecord>& runs, const std::vector<std::string>& markers)
 {
   std::map<std::string_view, int> violatingTurns;
   std::map<std::string_view, int> violatingCases;
@@ -766,6 +811,20 @@ eval::Metrics metricsOf(const std::vector<CaseRecord>& runs)
       tally.actTurns == 0 ? 0.0 : static_cast<double>(tally.unavailable) / static_cast<double>(tally.actTurns);
   metrics["softReleaseShare"] =
       tally.actTurns == 0 ? 0.0 : static_cast<double>(tally.softReleased) / static_cast<double>(tally.actTurns);
+  int regionalTurns = 0;
+  int regionalCases = 0;
+  for (const auto& run : runs) {
+    bool hit = false;
+    for (const auto& turn : run.turns)
+      if (speaksRegionalism(turn.reply, markers)) {
+        hit = true;
+        ++regionalTurns;
+      }
+    if (hit)
+      ++regionalCases;
+  }
+  metrics["regionalism"] = static_cast<double>(regionalTurns);
+  metrics["regionalism.cases"] = static_cast<double>(regionalCases);
   for (const auto& [name, count] : verdictCounts)
     metrics["guard." + name] = static_cast<double>(count);
   return metrics;
@@ -1248,7 +1307,7 @@ RenderRecord renderOne(const RenderRunInput& input, const RenderCase& item)
           .softRelease = output.softRelease};
 }
 
-eval::Metrics renderMetrics(const std::vector<RenderRecord>& runs)
+eval::Metrics renderMetrics(const std::vector<RenderRecord>& runs, const std::vector<std::string>& markers)
 {
   eval::Metrics metrics;
   int passed = 0;
@@ -1289,6 +1348,12 @@ eval::Metrics renderMetrics(const std::vector<RenderRecord>& runs)
   metrics["unavailableShare"] = runs.empty() ? 0.0 : static_cast<double>(unavailable) / static_cast<double>(runs.size());
   metrics["softRelease"] = static_cast<double>(softReleased);
   metrics["softReleaseShare"] = runs.empty() ? 0.0 : static_cast<double>(softReleased) / static_cast<double>(runs.size());
+  int regional = 0;
+  for (const auto& run : runs)
+    if (speaksRegionalism(run.reply, markers))
+      ++regional;
+  metrics["regionalism"] = static_cast<double>(regional);
+  metrics["regionalism.cases"] = static_cast<double>(regional);
   for (const auto& [name, count] : verdictCounts)
     metrics["verdict." + name] = static_cast<double>(count);
   for (const auto& [name, count] : actCounts)
@@ -1303,6 +1368,7 @@ struct RenderRunCli
   LfmAdapter& adapter;
   const std::string& promptEs;
   const std::string& promptEn;
+  const std::vector<std::string>& markers;
   int64_t now{0};
 };
 
@@ -1329,7 +1395,8 @@ int runRendering(const RenderRunCli& input)
                                run.finalVerdict,
                                run.reply);
   }
-  const eval::Metrics metrics = renderMetrics(runs);
+  eval::Metrics metrics = renderMetrics(runs, input.markers);
+  metrics["now"] = static_cast<double>(input.now);
   std::cout << std::format("speech acts: {} rendering cases\n", runs.size());
   eval::printMetrics(metrics);
   if (!input.options.rejectSample.empty()) {
@@ -1377,6 +1444,7 @@ struct FinishInput
   const Options& options;
   const GatesState& gates;
   const std::vector<CaseRecord>& runs;
+  const std::vector<std::string>& markers;
 };
 
 int finish(const FinishInput& input)
@@ -1385,7 +1453,7 @@ int finish(const FinishInput& input)
     std::cout << "[SKIPPED] no callFaithfulness gates pinned\n";
     return kSkipped;
   }
-  const eval::Metrics metrics = metricsOf(input.runs);
+  const eval::Metrics metrics = metricsOf(input.runs, input.markers);
   eval::Verdict verdict;
   {
     const eval::LoadedGates gates = eval::loadGates(input.options.gates, "callFaithfulness");
@@ -1434,6 +1502,13 @@ int main(int argc, char** argv)
                              "this run --temperature {} --seed {}\n",
                              options.gates, gates.temperature, gates.seed, options.temperature, options.seed);
     return kSkipped;
+  }
+  const std::vector<std::string> markers = options.regionalismMarkers.empty()
+                                               ? std::vector<std::string>{}
+                                               : loadRegionalismMarkers(options.regionalismMarkers);
+  if (!options.regionalismMarkers.empty() && markers.empty()) {
+    std::cout << "[ERROR] no regionalism markers in " << options.regionalismMarkers << "\n";
+    return 1;
   }
   if (!std::filesystem::exists(options.llmModel)) {
     std::cout << "[SKIPPED] no LLM weights at " << options.llmModel << "; the call-faithfulness gate did not run\n";
@@ -1530,7 +1605,8 @@ int main(int argc, char** argv)
                                      .adapter = controller.adapter(),
                                      .promptEs = spanish.bytes,
                                      .promptEn = english.bytes,
-                                     .now = options.now > 0 ? options.now : kRenderNow});
+                                     .markers = markers,
+                                     .now = call_checks::renderInstant(options.now)});
     controller.shutdownEngine();
     llama_backend_free();
     return result;
@@ -1591,5 +1667,5 @@ int main(int argc, char** argv)
 
   controller.shutdownEngine();
   llama_backend_free();
-  return finish({.options = options, .gates = gates, .runs = runs});
+  return finish({.options = options, .gates = gates, .runs = runs, .markers = markers});
 }

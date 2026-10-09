@@ -327,7 +327,7 @@ set_target_properties(llm-speech-acts-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME llm-speech-acts-test COMMAND llm-speech-acts-test)
 
 set_tests_properties(llm-speech-acts-test PROPERTIES
-    ENVIRONMENT "ARGUS_TEST_SPEECH_EXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/eval/speech-examples.jsonl")
+    ENVIRONMENT "ARGUS_TEST_SPEECH_EXAMPLES=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/eval/speech-examples.jsonl;ARGUS_TEST_CALL_PROMPT_ES=${CMAKE_CURRENT_SOURCE_DIR}/../voice/tests/fixtures/call-prompt-es.txt;ARGUS_TEST_CALL_PROMPT_EN=${CMAKE_CURRENT_SOURCE_DIR}/../voice/tests/fixtures/call-prompt-en.txt")
 
 add_executable(llm-speech-cues-test tests/unit/llm-speech-cues-test.cc)
 

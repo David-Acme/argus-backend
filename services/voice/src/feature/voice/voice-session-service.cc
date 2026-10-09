@@ -264,7 +264,8 @@ std::string actionFailureLine(const ActionFailureText& failure)
 
 std::string actionFailureEvent(const ActionFailureText& failure)
 {
-  std::string event = "The app could not complete ";
+  const bool en = failure.lang == VoiceLang::En;
+  std::string event = en ? "The app could not complete " : "La app no pudo completar ";
   event += failure.name;
   if (!failure.detail.empty()) {
     event += ": ";
@@ -1276,7 +1277,8 @@ bool VoiceSessionService::answerOffer(Session& session, const std::string& userT
     Json::Value arguments(Json::objectValue);
     arguments["camera"] = offer->camera;
     rememberAction(session, {.name = "app.show_camera", .arguments = compactJson(arguments)});
-    session.history.addEvent("The app is showing the " + offer->camera + " camera.");
+    session.history.addEvent(en ? "The app is showing the " + offer->camera + " camera."
+                                : "La app está mostrando la cámara " + offer->camera + ".");
     line = en ? "Here it is." : "Aquí la tienes.";
   }
   else {

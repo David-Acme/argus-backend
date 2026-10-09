@@ -14,6 +14,13 @@
 namespace call_checks
 {
 
+inline constexpr int64_t kRenderInstant = 1791700000;
+
+inline int64_t renderInstant(int64_t requested)
+{
+  return requested > 0 ? requested : kRenderInstant;
+}
+
 inline constexpr std::array<std::string_view, 7> kWeekdaysEs{"lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"};
 inline constexpr std::array<std::string_view, 12> kMonthsEs{"enero", "febrero", "marzo", "abril", "mayo", "junio",
                                                             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};

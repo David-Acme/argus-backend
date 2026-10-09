@@ -759,6 +759,12 @@
       },
       "leakedFact": {
         "max": 0
+      },
+      "regionalism": {
+        "max": 0
+      },
+      "regionalism.cases": {
+        "max": 0
       }
     }
   },
@@ -772,6 +778,9 @@
       },
       "unavailableShare": {
         "max": 0.005
+      },
+      "regionalism": {
+        "max": 0
       }
     }
   },

@@ -5,12 +5,15 @@
 #include <feature/llm/services/turn/speech-render.hxx>
 
 #include <text/iso-time.hxx>
+#include <text/name-match.hxx>
 
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <json/json.h>
 #include <optional>
 #include <sstream>
@@ -324,4 +327,88 @@ TEST_CASE("the few-shot examples are pinned as a fixture and match it act by act
     ++rows;
   }
   CHECK(rows == 36);
+}
+
+TEST_CASE("every act's rendered prompt carries no fixed text of the other language")
+{
+  const char* esPath = std::getenv("ARGUS_TEST_CALL_PROMPT_ES");
+  const char* enPath = std::getenv("ARGUS_TEST_CALL_PROMPT_EN");
+  REQUIRE_MESSAGE(esPath != nullptr, "ARGUS_TEST_CALL_PROMPT_ES is not set");
+  REQUIRE_MESSAGE(enPath != nullptr, "ARGUS_TEST_CALL_PROMPT_EN is not set");
+  const auto readFile = [](const char* path) {
+    std::ifstream in(path);
+    REQUIRE_MESSAGE(in.good(), "cannot open " << path);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+  };
+  const std::string personaEs = readFile(esPath);
+  const std::string personaEn = readFile(enPath);
+
+  const auto wordsOf = [](std::string_view text) {
+    const std::string folded = text_norm::folded(std::string(text));
+    std::vector<std::string> words;
+    std::size_t at = 0;
+    while (at < folded.size()) {
+      const std::size_t end = std::min(folded.find(' ', at), folded.size());
+      if (end > at)
+        words.push_back(folded.substr(at, end - at));
+      at = end + 1;
+    }
+    return words;
+  };
+  const auto contains = [](const std::vector<std::string>& hay, const std::vector<std::string>& needle) {
+    if (needle.empty() || needle.size() > hay.size())
+      return false;
+    for (std::size_t at = 0; at + needle.size() <= hay.size(); ++at) {
+      bool hit = true;
+      for (std::size_t index = 0; index < needle.size() && hit; ++index)
+        hit = hay.at(at + index) == needle.at(index);
+      if (hit)
+        return true;
+    }
+    return false;
+  };
+  const auto lines = [](const std::string& text) {
+    std::vector<std::string> out;
+    std::size_t at = 0;
+    while (at <= text.size()) {
+      const std::size_t end = text.find('\n', at);
+      const std::string line = text.substr(at, end == std::string::npos ? std::string::npos : end - at);
+      if (!line.empty())
+        out.push_back(line);
+      if (end == std::string::npos)
+        break;
+      at = end + 1;
+    }
+    return out;
+  };
+
+  for (const Act& act : everyAct()) {
+    for (const char* lang : {"es", "en"}) {
+      const bool english = std::string_view(lang) == "en";
+      const std::string& persona = english ? personaEn : personaEs;
+      const std::string_view other = english ? "es" : "en";
+      const Speech speech{.acts = {act}, .lang = lang, .now = kNow};
+      const std::string prompt = persona + "\n" + actTail({.speech = speech, .contextBlock = {}});
+      const std::vector<std::string> promptWords = wordsOf(prompt);
+
+      std::vector<std::string> foreign = lines(english ? personaEs : personaEn);
+      for (const Act& sample : everyAct()) {
+        foreign.emplace_back(instructionLine(sample, other));
+        for (const ExampleLine& line : exampleLines(sample, other)) {
+          foreign.emplace_back(line.first);
+          foreign.emplace_back(line.second);
+        }
+      }
+      std::size_t leaked = 0;
+      for (const std::string& phrase : foreign)
+        if (contains(promptWords, wordsOf(phrase)))
+          ++leaked;
+      CHECK_MESSAGE(leaked == 0,
+                    std::string(actName(act)) << " [" << lang << "] leaks " << leaked << " fixed phrases of " << other);
+
+      const std::vector<std::string> own = lines(persona);
+      REQUIRE_MESSAGE(!own.empty(), "the persona fixture for " << lang << " is empty");
+      CHECK(contains(promptWords, wordsOf(own.front())));
+    }
+  }
 }

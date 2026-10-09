@@ -1594,10 +1594,11 @@ was silent to every gate: the render and corpus evals printed `pipeline:
 laya+gliner` from the flag rather than from a load, and the TTFT eval drove
 whatever the server happened to serve. A gate harness now asserts its engines
 are up before it measures. `speech-ttft-eval.py` takes `--server-log` and
-`--require-engine` (repeatable) and, after its warm-up and before any measured
-request, returns non-zero unless each required engine's ready line (`the Laya
-decider is ready on`, `the GLiNER extractor opened`) is in the log — the line is
-written on first use, so the check follows the turn that loads the engine.
+`--require-engine` (repeatable) and, once the warm-up turns that load the
+engines have run and before any measured request, returns non-zero unless each
+required engine's ready line (`the Laya decider is ready on`, `the GLiNER
+extractor opened`) is in the log — the line is written on first use, so the
+check follows the act warm-up that loads the engine.
 `call-faithfulness-eval` exits with `[REFUSED]` after `setupEngines` when a run
 asked for `--decide laya` or `--extract gliner` and that engine did not build. A
 number taken on a fallback is therefore never compared against a previous

@@ -240,13 +240,18 @@ TEST_CASE("Sanitizing keeps whole UTF-8 characters")
 TEST_CASE("The prompt states the call's language and is pinned to its fixtures")
 {
   const std::string spanish = callSystemPrompt(VoiceLang::Es);
-  CHECK(spanish.starts_with("You are Argus"));
-  CHECK(spanish.find("Reply strictly in Spanish") != std::string::npos);
+  CHECK(spanish.starts_with("Eres Argus"));
+  CHECK(spanish.find("español neutro") != std::string::npos);
+  CHECK(spanish.find("No cambies nunca a otro idioma") != std::string::npos);
+  CHECK(spanish.find("Guidelines:") == std::string::npos);
   CHECK(spanish.find("Reply strictly in English") == std::string::npos);
 
   const std::string english = callSystemPrompt(VoiceLang::En);
+  CHECK(english.starts_with("You are Argus"));
   CHECK(english.find("Reply strictly in English") != std::string::npos);
   CHECK(english.find("Reply strictly in Spanish") == std::string::npos);
+  CHECK(english.find("tú") == std::string::npos);
+  CHECK(english.find("usted") == std::string::npos);
 
   CHECK(callSystemPrompt(VoiceLang::Es) == readFile(ARGUS_CALL_PROMPT_ES));
   CHECK(callSystemPrompt(VoiceLang::En) == readFile(ARGUS_CALL_PROMPT_EN));
