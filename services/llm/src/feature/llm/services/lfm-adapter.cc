@@ -346,6 +346,7 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
     output.executed.push_back(step.call);
   output.toolMs = outcome.toolMs;
   output.hops = outcome.steps.empty() ? 0 : 1;
+  output.decider = outcome.decider;
 
   TurnState state = turnOf(utterance, input.tools);
   state.wrote = outcome.wrote;

@@ -156,8 +156,7 @@ TEST_CASE("the pilot decide bundle loads and its labels all serve a tool")
   REQUIRE(bundle.valid());
   CHECK(bundle.labels().size() == 22);
   CHECK(bundle.fitSplit() == "calibration");
-  World world;
-  CHECK_FALSE(turn::unknownLayaLabel(bundle.labels(), world.registry).has_value());
+  CHECK_FALSE(turn::unknownLayaLabel(bundle.labels()).has_value());
 }
 
 TEST_CASE("the label set the server serves is the pinned tsv, and the pilot bundle is inside it")
@@ -190,9 +189,8 @@ TEST_CASE("the label set the server serves is the pinned tsv, and the pilot bund
 
 TEST_CASE("a label no tool serves is refused rather than routed")
 {
-  World world;
   const std::vector<std::string> labels{"memory_save", "holiday_planning"};
-  const std::optional<std::string> stray = turn::unknownLayaLabel(labels, world.registry);
+  const std::optional<std::string> stray = turn::unknownLayaLabel(labels);
   REQUIRE(stray.has_value());
   CHECK(*stray == "holiday_planning");
 }

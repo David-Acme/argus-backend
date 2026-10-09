@@ -314,6 +314,7 @@ TEST_CASE("one turn runs the whole pipeline on both pilot bundles, from the norm
 
   REQUIRE(turn.executed.size() == 1);
   CHECK(turn.executed.front().name == "calendar.create_event");
+  CHECK(turn.decider == "laya");
   CHECK(world.probe.calls == 1);
   CHECK(world.probe.caller.role == "owner");
   CHECK(world.probe.caller.userId == 7);

@@ -1572,12 +1572,20 @@ what the decode indexes by (`BundleLoader::typeFields`, beside `labels`).
 
 `turn::layaLabels()` is the one map from a model label to the tool it names,
 pinned beside the code as `tools/laya-labels.tsv` and asserted equal to it by
-`llm-turn-engines-test`. `turn::unknownLayaLabel(labels, registry)` answers the
-first label no tool serves (checked against the live `ToolRegistry` when it has
-tools), and the composition refuses the whole bundle on one log line rather
-than routing to a tool that does not exist. A future bundle that renames or
-adds a label is therefore a config change with no code change — and a bad one
-is a visible fallback, not a misroute.
+`llm-turn-engines-test`. `turn::unknownLayaLabel(labels)` answers the first
+label with no entry in that map, and the composition refuses the whole bundle on
+one log line rather than routing to a tool that does not exist. The check reads
+the map, **never the live `ToolRegistry`**: at boot the registry holds only the
+core provider (`tools.refresh("llm")`), while a module's tools — `productivity`'s
+`calendar.create_event`, `camera`/`guard`'s `app.show_camera` — arrive later
+through `ToolDirectory`, and only while their module is active; a boot check
+against the registry turned the whole decider off on the first module-served
+label (`calendar_create`), a silent fallback. A module-served label whose tool is
+not offered at a
+given turn is already dropped by `isOffered` in `LayaDecider::decide`, so the
+label map is the whole coupling and the per-turn offer is the rest. A future
+bundle that renames or adds a label is therefore a config change with no code
+change — and a bad one is a visible fallback, not a misroute.
 
 ### Degradation is a contract
 

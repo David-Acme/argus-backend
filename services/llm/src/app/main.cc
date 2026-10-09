@@ -203,7 +203,7 @@ void configureDecider(LlmController& llm, TurnEngines& engines)
              << "; the turn runs on rules and the router";
     return;
   }
-  if (const std::optional<std::string> stray = turn::unknownLayaLabel(bundle.labels(), ToolRegistry::instance())) {
+  if (const std::optional<std::string> stray = turn::unknownLayaLabel(bundle.labels())) {
     LOG_WARN << "argus-llm: the Laya bundle " << engine.bundleDir << " names the label '" << *stray
              << "', which no tool serves; the turn runs on rules and the router";
     return;

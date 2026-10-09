@@ -14,8 +14,6 @@
 #include <utility>
 #include <vector>
 
-class ToolRegistry;
-
 namespace turn
 {
 
@@ -92,7 +90,7 @@ struct LayaLabel
 
 [[nodiscard]] std::span<const LayaLabel> layaLabels();
 
-[[nodiscard]] std::optional<std::string> unknownLayaLabel(const std::vector<std::string>& labels, const ToolRegistry& registry);
+[[nodiscard]] std::optional<std::string> unknownLayaLabel(std::span<const std::string> labels);
 
 [[nodiscard]] std::optional<BundleDecode> layaDecodeFromAgentConfig(const std::filesystem::path& path);
 

@@ -963,7 +963,7 @@ Engines setupEngines(LlmController& controller, const Options& options)
     ConfigService::setRuntimeString("extract.gliner.bundle_dir", options.extractBundle);
   if (options.decide == "laya") {
     const turn::BundleLoader bundle({.dir = options.decideBundle, .pin = bundlePin(options.decideBundle)});
-    if (bundle.valid() && !turn::unknownLayaLabel(bundle.labels(), ToolRegistry::instance())) {
+    if (bundle.valid() && !turn::unknownLayaLabel(bundle.labels())) {
       engines.laya = std::make_unique<turn::LayaDecider>(turn::LayaDeciderInput{
           .model = turn::openLayaModel(
               {.bundle = bundle,

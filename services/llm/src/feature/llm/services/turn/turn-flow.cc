@@ -910,6 +910,7 @@ Outcome TurnFlow::decided(const TurnRequest& request, const Deciding& deciding)
       return unactionable(request);
   }
   outcome.decidedTool = candidate->tool;
+  outcome.decider = candidate->decider;
   return outcome;
 }
 

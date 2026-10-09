@@ -37,6 +37,7 @@ struct ToolChatOutput
   std::string contextBlock;
   std::string speech;
   std::string act;
+  std::string decider;
   std::string guardVerdict;
   std::string firstGuardVerdict;
   std::string firstRejected;

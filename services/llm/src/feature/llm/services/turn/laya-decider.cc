@@ -2,8 +2,6 @@
 
 #include "sp-tokenizer.hxx"
 
-#include <feature/llm/services/tools/tool-registry.hxx>
-
 #include <json/reader.h>
 #include <json/value.h>
 #include <trantor/utils/Logger.h>
@@ -214,14 +212,12 @@ std::span<const LayaLabel> layaLabels()
   return kLabelTools;
 }
 
-std::optional<std::string> unknownLayaLabel(const std::vector<std::string>& labels, const ToolRegistry& registry)
+std::optional<std::string> unknownLayaLabel(std::span<const std::string> labels)
 {
-  const bool listed = !registry.names().empty();
   for (const std::string& label : labels) {
     if (label == kNoneLabel || label == kAskLabel)
       continue;
-    const std::string_view tool = layaToolFor(label);
-    if (tool.empty() || (listed && !registry.find(std::string(tool))))
+    if (layaToolFor(label).empty())
       return label;
   }
   return std::nullopt;
