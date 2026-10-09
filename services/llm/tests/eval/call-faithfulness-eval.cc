@@ -376,7 +376,7 @@ std::string writeScratchConfig(const ScratchConfigInput& input)
       << "context_size = 8192\nmax_tokens = " << kMaxTokens << "\ntemperature = " << tomlFloat(input.temperature) << "\n"
       << "top_k = 20\ntop_p = 0.8\nmin_p = 0.0\npenalty_last_n = 64\npenalty_repeat = 1.10\n"
       << "seed = " << input.seed << "\nchat_template = \"chatml\"\ngpu_layers = -1\nn_batch = 1024\nn_ubatch = 512\n"
-      << "kv_type = \"auto\"\nflash_attn = \"auto\"\nthreads = 0\nbatch_threads = 0\n"
+      << "kv_type = \"auto\"\nflash_attn = \"auto\"\nthreads = 4\nbatch_threads = 8\n"
       << "[drogon.app]\nnumber_of_threads = 2\n";
   return path;
 }
