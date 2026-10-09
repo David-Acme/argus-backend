@@ -118,7 +118,7 @@ Head parseHead(const std::string& wire)
   return head;
 }
 
-bool parseSentinel(const std::string& line, LlmPrefillStats* stats)
+bool parseSentinel(const std::string& line, const LlmStreamInput& input)
 {
   Json::Value json;
   Json::Reader reader;
@@ -126,11 +126,13 @@ bool parseSentinel(const std::string& line, LlmPrefillStats* stats)
     return false;
   if (!json.isMember("done") || !json["done"].asBool())
     return false;
-  if (stats) {
-    stats->promptTokens = json.get("prompt_tokens", 0).asInt();
-    stats->reusedTokens = json.get("reused_tokens", 0).asInt();
-    stats->decodedTokens = json.get("decoded_tokens", 0).asInt();
+  if (input.stats) {
+    input.stats->promptTokens = json.get("prompt_tokens", 0).asInt();
+    input.stats->reusedTokens = json.get("reused_tokens", 0).asInt();
+    input.stats->decodedTokens = json.get("decoded_tokens", 0).asInt();
   }
+  if (input.speech)
+    *input.speech = json.get("speech", "").asString();
   return true;
 }
 
@@ -380,7 +382,7 @@ void LlmHttpClient::chatStream(const LlmStreamInput& input) const
       std::string candidate = chunk.substr(mark + 1);
       if (!candidate.empty() && candidate.back() == '\n')
         candidate.pop_back();
-      if (!parseSentinel(candidate, input.stats))
+      if (!parseSentinel(candidate, input))
         throw std::runtime_error("argus-llm malformed stream sentinel");
       if (mark > 0)
         input.onToken(chunk.substr(0, mark), false);

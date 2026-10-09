@@ -10,13 +10,13 @@ namespace
 {
 
 constexpr std::array<std::string_view, 3> kTitleEs{"como se llama", "como lo llamo", "titulo"};
-constexpr std::array<std::string_view, 3> kTitleEn{"what", "what is it called", "what should i call"};
+constexpr std::array<std::string_view, 2> kTitleEn{"what is it called", "what should i call"};
 constexpr std::array<std::string_view, 3> kNameEs{"como se llama", "nombre", "como lo llamo"};
-constexpr std::array<std::string_view, 3> kNameEn{"what", "what is it called", "name"};
+constexpr std::array<std::string_view, 2> kNameEn{"what is it called", "name"};
 constexpr std::array<std::string_view, 3> kTextEs{"que guardo", "que anoto", "que recuerdo"};
 constexpr std::array<std::string_view, 3> kTextEn{"what should i save", "what do i note", "what do i remember"};
 constexpr std::array<std::string_view, 3> kQueryEs{"que busco", "que quieres que busque", "de que"};
-constexpr std::array<std::string_view, 3> kQueryEn{"what should i look for", "what", "which one"};
+constexpr std::array<std::string_view, 2> kQueryEn{"what should i look for", "which one"};
 constexpr std::array<std::string_view, 3> kSubjectEs{"quien", "de quien", "con quien"};
 constexpr std::array<std::string_view, 3> kSubjectEn{"who", "whose", "with whom"};
 constexpr std::array<std::string_view, 3> kWhenEs{"cuando", "que dia", "a que hora"};

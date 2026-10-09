@@ -123,6 +123,7 @@ struct ConfigBlockingTts final : IVoiceTts
 struct FakeLlm final : IVoiceLlm
 {
   bool silent{false};
+  std::string speech;
   int chatStreamCalls{0};
   size_t lastPromptMessages{0};
   std::vector<ChatMessage> lastMessages;
@@ -150,6 +151,8 @@ struct FakeLlm final : IVoiceLlm
     lastRole = input.request.role;
     lastLang = input.request.lang;
     if (silent) {
+      if (input.speech)
+        *input.speech = speech;
       input.onToken("", true);
       return;
     }
@@ -2702,6 +2705,47 @@ TEST_CASE("A blip the VAD discards closes its stream without a transcription")
 TEST_CASE("A turn the model could not answer reaches the app as an empty, marked assistant frame")
 {
   OpeningConfig opening("none");
+  LogCapture capture;
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  llm.silent = true;
+  llm.speech = "unavailable";
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceStart start = duplexStart();
+  start.set_mode(argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  service.start(sink, start);
+  feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 1});
+  REQUIRE(waitFor([&] { return vad.windows->load() >= 1; }, 2000));
+
+  auto sess = VoiceSessionTestAccess::sessionOf(service, sink);
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = service, .session = *sess, .samples = samples});
+
+  CHECK(llm.chatStreamCalls == 1);
+  CHECK(tts.synthesizeCalls == 0);
+  size_t marked = 0;
+  for (const auto& frame : sink.snapshot()) {
+    CHECK_FALSE(frame.has_tts_chunk());
+    if (frame.has_assistant()) {
+      ++marked;
+      CHECK(frame.assistant().text().empty());
+      CHECK(frame.assistant().speech() == "unavailable");
+    }
+  }
+  CHECK(marked == 1);
+  CHECK(capture.count("no unavailable marker") == 0);
+  service.stop(sink);
+}
+
+TEST_CASE("An empty reply with no unavailable marker is logged as a cut turn and reaches the app the same way")
+{
+  OpeningConfig opening("none");
+  LogCapture capture;
   FakeStt stt;
   FakeTts tts;
   FakeLlm llm;
@@ -2733,6 +2777,7 @@ TEST_CASE("A turn the model could not answer reaches the app as an empty, marked
     }
   }
   CHECK(marked == 1);
+  CHECK(capture.count("no unavailable marker") == 1);
   service.stop(sink);
 }
 

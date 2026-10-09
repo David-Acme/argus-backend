@@ -1113,6 +1113,7 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
     }
   };
   TurnClock::stamp(clock.requested, std::chrono::steady_clock::now());
+  std::string speechMarker;
   try {
     llm_.chatStream({.request = req,
                      .onToken = onToken,
@@ -1120,7 +1121,8 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
                      .cancellation = cancellation,
                      .onAction = [this, &session](const ClientAction& action) {
                        rememberAction(session, action);
-                     }});
+                     },
+                     .speech = &speechMarker});
   }
   catch (const std::exception& e) {
     if (cancellation.stop_requested())
@@ -1139,6 +1141,8 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
   if (full.empty()) {
     session.history.rollbackUser();
     if (!interrupted) {
+      if (speechMarker != kSpeechUnavailable)
+        LOG_WARN << "Voice: empty LLM reply with no unavailable marker; the stream was cut or the turn crashed";
       argus::voice::v1::ServerFrame unavailable;
       unavailable.mutable_assistant()->set_speech(std::string(kSpeechUnavailable));
       if (session.duplex)

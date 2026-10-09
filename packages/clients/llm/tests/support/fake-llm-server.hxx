@@ -27,6 +27,7 @@ struct FakeLlmOptions
   bool coalesce{false};
   bool truncated{false};
   int tokenDelayMs{0};
+  std::string speech{};
 };
 
 class FakeLlmServer
@@ -147,10 +148,14 @@ private:
     return frame;
   }
 
-  static std::string sentinelLine()
+  static std::string sentinelLine(const std::string& speech)
   {
-    return "{\"done\":true,\"prompt_tokens\":7,\"reused_tokens\":0,"
-           "\"decoded_tokens\":7}";
+    std::string line = "{\"done\":true,\"prompt_tokens\":7,\"reused_tokens\":0,"
+                       "\"decoded_tokens\":7";
+    if (!speech.empty())
+      line += ",\"speech\":\"" + speech + "\"";
+    line += "}";
+    return line;
   }
 
   void serve()
@@ -208,7 +213,7 @@ private:
           ::close(fd);
           continue;
         }
-        const std::string sentinel = kStreamSentinelMark + sentinelLine() + "\n";
+        const std::string sentinel = kStreamSentinelMark + sentinelLine(options_.speech) + "\n";
         if (options_.coalesce) {
           std::string everything;
           for (const auto& token : options_.tokens)

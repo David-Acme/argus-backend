@@ -55,6 +55,7 @@ struct StreamQueue
   bool stopped{false};
   grpc::Status status;
   LlmPrefillStats stats;
+  std::string speech;
 };
 
 ResponseException stoppedError(const grpc::ServerContext& context)
@@ -279,7 +280,8 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
              .onToken = emit,
              .stats = &queue.stats,
              .cancellation = {},
-             .onAction = act});
+             .onAction = act,
+             .speech = &queue.speech});
       }
       catch (const ResponseException& error) {
         std::scoped_lock lock(queue.mutex);
@@ -342,6 +344,7 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
     final.set_prompt_tokens(queue.stats.promptTokens);
     final.set_reused_tokens(queue.stats.reusedTokens);
     final.set_decoded_tokens(queue.stats.decodedTokens);
+    final.set_speech(queue.speech);
     if (!writer->Write(final))
       return argus::response::toRpcStatus(stoppedError(*context));
     return grpc::Status::OK;

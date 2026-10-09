@@ -145,6 +145,28 @@ TEST_CASE("The llm http client chats and streams over the argus-llm wire")
   CHECK(stats.decodedTokens == 7);
   CHECK(server.requests().at("POST /llm/v1/chat-stream") == 1);
 
+  FakeLlmServer marked({.tokens = {}, .speech = "unavailable"});
+  const std::string markedUrl =
+      "http://127.0.0.1:" + std::to_string(marked.port());
+  const LlmHttpClient markedClient(markedUrl, config.timeoutMs);
+  std::string marker;
+  std::vector<std::string> markedTokens;
+  bool markedDone = false;
+  LlmStreamInput markedInput;
+  markedInput.request = greeting();
+  markedInput.speech = &marker;
+  markedInput.onToken = [&](const std::string& token, bool atEnd) {
+    if (atEnd)
+      markedDone = true;
+    else
+      markedTokens.push_back(token);
+  };
+  markedClient.chatStream(markedInput);
+  CHECK(markedDone);
+  CHECK(markedTokens.empty());
+  CHECK(marker == "unavailable");
+  CHECK(marked.requests().at("POST /llm/v1/chat-stream") == 1);
+
   FakeLlmServer coalesced({.tokens = tokens, .coalesce = true});
   const std::string coalescedUrl =
       "http://127.0.0.1:" + std::to_string(coalesced.port());

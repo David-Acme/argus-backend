@@ -68,4 +68,5 @@ message ChatToken {
   int32 reused_tokens = 5;
   int32 decoded_tokens = 6;
   ClientAction action = 7;
+  string speech = 8;
 }

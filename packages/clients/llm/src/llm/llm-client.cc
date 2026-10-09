@@ -216,6 +216,8 @@ void Client::chatStream(const LlmStreamInput& input) const
       input.stats->reusedTokens = token.reused_tokens();
       input.stats->decodedTokens = token.decoded_tokens();
     }
+    if (input.speech)
+      *input.speech = token.speech();
     input.onToken("", true);
     sentinel = true;
   }
