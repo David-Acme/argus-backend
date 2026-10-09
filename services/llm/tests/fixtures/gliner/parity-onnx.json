@@ -1,7 +1,7 @@
 {
  "provenance": {
   "reference": "python onnxruntime over the shipped bundle's own model.onnx on the frozen rows",
-  "runtime": "onnxruntime 1.30.0",
+  "runtime": "onnxruntime 1.24.4",
   "decoder": "gliner2.inference.overlap.resolve_overlaps policy=flat",
   "model": "model.onnx",
   "modelSha256": "bd5841bb119100f7fe801ca047426949d2ef3d79c36667dc27a173e48566e60c",
@@ -19,7 +19,7 @@
     "title": [
      {
       "text": "misa",
-      "confidence": 0.9899882396670628,
+      "confidence": 0.9899881545954037,
       "start": 36,
       "end": 40
      }
@@ -32,7 +32,7 @@
     "subject": [
      {
       "text": "El seguro del departamento",
-      "confidence": 0.9985911335988833,
+      "confidence": 0.9985911302446124,
       "start": 0,
       "end": 26
      }
@@ -40,7 +40,7 @@
     "relation": [
      {
       "text": "vence",
-      "confidence": 0.9381034870199415,
+      "confidence": 0.9381036393021671,
       "start": 27,
       "end": 32
      }
@@ -48,7 +48,7 @@
     "object": [
      {
       "text": "el 30 de septiembre",
-      "confidence": 0.9932272152987316,
+      "confidence": 0.993227256997958,
       "start": 33,
       "end": 52
      }
@@ -61,7 +61,7 @@
     "subject": [
      {
       "text": "El concierto de mi banda favorita",
-      "confidence": 0.9994110867881543,
+      "confidence": 0.9994110794912006,
       "start": 0,
       "end": 33
      }
@@ -69,7 +69,7 @@
     "relation": [
      {
       "text": "es",
-      "confidence": 0.9953337302540223,
+      "confidence": 0.9953337236100133,
       "start": 34,
       "end": 36
      }
@@ -77,7 +77,7 @@
     "object": [
      {
       "text": "el 19 de agosto a las ocho de la noche",
-      "confidence": 0.9995687372148485,
+      "confidence": 0.999568735775972,
       "start": 37,
       "end": 75
      }
@@ -90,7 +90,7 @@
     "title": [
      {
       "text": "la reunión",
-      "confidence": 0.5893703218890594,
+      "confidence": 0.5893747648112304,
       "start": 20,
       "end": 30
      }
@@ -98,7 +98,7 @@
     "people": [
      {
       "text": "Laura",
-      "confidence": 0.9959015132414081,
+      "confidence": 0.9959015833076501,
       "start": 35,
       "end": 40
      }
@@ -111,7 +111,7 @@
     "subject": [
      {
       "text": "Mi sobrina",
-      "confidence": 0.9957983547184466,
+      "confidence": 0.9957983347675734,
       "start": 0,
       "end": 10
      }
@@ -119,7 +119,7 @@
     "relation": [
      {
       "text": "se llama",
-      "confidence": 0.6320145732788902,
+      "confidence": 0.6320168467063635,
       "start": 11,
       "end": 19
      }
@@ -127,7 +127,7 @@
     "object": [
      {
       "text": "Camila",
-      "confidence": 0.9943350712274208,
+      "confidence": 0.9943352001513779,
       "start": 20,
       "end": 26
      }
@@ -140,7 +140,7 @@
     "subject": [
      {
       "text": "The wifi password",
-      "confidence": 0.9917303693585349,
+      "confidence": 0.9917303654478762,
       "start": 0,
       "end": 17
      }
@@ -148,7 +148,7 @@
     "relation": [
      {
       "text": "is",
-      "confidence": 0.32135511543718953,
+      "confidence": 0.3213530096127249,
       "start": 18,
       "end": 20
      }
@@ -156,7 +156,7 @@
     "object": [
      {
       "text": "sunnyday2024",
-      "confidence": 0.9813843844189093,
+      "confidence": 0.9813842014791833,
       "start": 21,
       "end": 33
      }
@@ -169,7 +169,7 @@
     "subject": [
      {
       "text": "el fontanero",
-      "confidence": 0.9967376326131078,
+      "confidence": 0.9967376109054339,
       "start": 3,
       "end": 15
      }
@@ -177,7 +177,7 @@
     "relation": [
      {
       "text": "se llama",
-      "confidence": 0.5995454448678661,
+      "confidence": 0.5995447293415963,
       "start": 16,
       "end": 24
      }
@@ -185,7 +185,7 @@
     "object": [
      {
       "text": "josé luis",
-      "confidence": 0.9913367839734526,
+      "confidence": 0.9913368617810712,
       "start": 25,
       "end": 34
      }
@@ -198,7 +198,7 @@
     "name": [
      {
       "text": "el matrimonio de mi pata Julio",
-      "confidence": 0.9984489299799494,
+      "confidence": 0.9984489683794281,
       "start": 26,
       "end": 56
      }
@@ -211,7 +211,7 @@
     "subject": [
      {
       "text": "My insurance policy number",
-      "confidence": 0.9684114997038937,
+      "confidence": 0.9684116018111008,
       "start": 0,
       "end": 26
      }
@@ -219,7 +219,7 @@
     "relation": [
      {
       "text": "is",
-      "confidence": 0.4161177819279877,
+      "confidence": 0.4161172895479114,
       "start": 27,
       "end": 29
      }
@@ -227,7 +227,7 @@
     "object": [
      {
       "text": "HX-3391",
-      "confidence": 0.9839937898879995,
+      "confidence": 0.9839937072756927,
       "start": 30,
       "end": 37
      }
@@ -240,7 +240,7 @@
     "text": [
      {
       "text": "doy la comida a Chispa",
-      "confidence": 0.996560884750679,
+      "confidence": 0.9965608259168843,
       "start": 37,
       "end": 59
      }
@@ -253,7 +253,7 @@
     "subject": [
      {
       "text": "mi primo San Martín",
-      "confidence": 0.999021602419581,
+      "confidence": 0.9990215930979395,
       "start": 11,
       "end": 30
      }
@@ -261,7 +261,7 @@
     "relation": [
      {
       "text": "vive",
-      "confidence": 0.9971547088483006,
+      "confidence": 0.9971546696145043,
       "start": 31,
       "end": 35
      }
@@ -269,7 +269,7 @@
     "object": [
      {
       "text": "en la calle Los Olivos",
-      "confidence": 0.9942387211716673,
+      "confidence": 0.9942387266343936,
       "start": 36,
       "end": 58
      }
@@ -282,7 +282,7 @@
     "title": [
      {
       "text": "cena con juan y carmen",
-      "confidence": 0.41233550273179104,
+      "confidence": 0.41233509832517123,
       "start": 17,
       "end": 39
      }
@@ -290,13 +290,13 @@
     "people": [
      {
       "text": "juan",
-      "confidence": 0.9944023433096607,
+      "confidence": 0.9944022769535296,
       "start": 26,
       "end": 30
      },
      {
       "text": "carmen",
-      "confidence": 0.993640555630194,
+      "confidence": 0.993640546590783,
       "start": 33,
       "end": 39
      }
@@ -304,7 +304,7 @@
     "place": [
      {
       "text": "el restaurante nuevo",
-      "confidence": 0.9551932370985329,
+      "confidence": 0.9551935024045048,
       "start": 74,
       "end": 94
      }
@@ -317,7 +317,7 @@
     "subject": [
      {
       "text": "mi amigo luis",
-      "confidence": 0.9987356183995061,
+      "confidence": 0.9987356165930794,
       "start": 5,
       "end": 18
      }
@@ -325,7 +325,7 @@
     "relation": [
      {
       "text": "es alérgico",
-      "confidence": 0.9909479443400344,
+      "confidence": 0.9909478416846272,
       "start": 19,
       "end": 30
      }
@@ -333,7 +333,7 @@
     "object": [
      {
       "text": "a las nueces",
-      "confidence": 0.9856510646674344,
+      "confidence": 0.9856509904840307,
       "start": 31,
       "end": 43
      }
@@ -346,7 +346,7 @@
     "subject": [
      {
       "text": "el panel solar",
-      "confidence": 0.9992178554233468,
+      "confidence": 0.9992178513240334,
       "start": 0,
       "end": 14
      }
@@ -354,7 +354,7 @@
     "relation": [
      {
       "text": "rinde",
-      "confidence": 0.9930848770363891,
+      "confidence": 0.9930849556260034,
       "start": 15,
       "end": 20
      }
@@ -362,7 +362,7 @@
     "object": [
      {
       "text": "menos en invierno",
-      "confidence": 0.9939368855854117,
+      "confidence": 0.993936891332587,
       "start": 21,
       "end": 38
      }
@@ -375,7 +375,7 @@
     "title": [
      {
       "text": "el control del chibolo",
-      "confidence": 0.6289638612709189,
+      "confidence": 0.628962637204526,
       "start": 15,
       "end": 37
      }
@@ -383,7 +383,7 @@
     "place": [
      {
       "text": "el dentista",
-      "confidence": 0.8594181337123088,
+      "confidence": 0.8594174423812829,
       "start": 41,
       "end": 52
      }
@@ -400,7 +400,7 @@
     "subject": [
      {
       "text": "la pediatra",
-      "confidence": 0.9974932898921193,
+      "confidence": 0.997493280353731,
       "start": 3,
       "end": 14
      }
@@ -408,7 +408,7 @@
     "relation": [
      {
       "text": "se llama",
-      "confidence": 0.8823636374498142,
+      "confidence": 0.8823647510774941,
       "start": 15,
       "end": 23
      }
@@ -416,7 +416,7 @@
     "object": [
      {
       "text": "andrea vidal",
-      "confidence": 0.9919483891704154,
+      "confidence": 0.9919484843797224,
       "start": 24,
       "end": 36
      }
@@ -429,7 +429,7 @@
     "title": [
      {
       "text": "fire drill",
-      "confidence": 0.6262543217922565,
+      "confidence": 0.6262566655663638,
       "start": 20,
       "end": 30
      }
@@ -437,7 +437,7 @@
     "place": [
      {
       "text": "the main office",
-      "confidence": 0.9470506844648751,
+      "confidence": 0.9470505888194887,
       "start": 76,
       "end": 91
      }
@@ -450,7 +450,7 @@
     "text": [
      {
       "text": "comprar pan y 2 kilos de papa",
-      "confidence": 0.9997678598456482,
+      "confidence": 0.9997678591816431,
       "start": 25,
       "end": 54
      }
@@ -463,7 +463,7 @@
     "text": [
      {
       "text": "hacer la compra semanal",
-      "confidence": 0.9992496109567162,
+      "confidence": 0.999249610241626,
       "start": 39,
       "end": 62
      }
@@ -476,7 +476,7 @@
     "subject": [
      {
       "text": "mi hijo",
-      "confidence": 0.9987238517937456,
+      "confidence": 0.9987238505782684,
       "start": 2,
       "end": 9
      }
@@ -484,7 +484,7 @@
     "relation": [
      {
       "text": "le cuesta",
-      "confidence": 0.9954813702939217,
+      "confidence": 0.9954813273954295,
       "start": 10,
       "end": 19
      }
@@ -492,7 +492,7 @@
     "object": [
      {
       "text": "madrugar los lunes",
-      "confidence": 0.9961362913869806,
+      "confidence": 0.9961362822107621,
       "start": 20,
       "end": 38
      }
@@ -505,7 +505,7 @@
     "title": [
      {
       "text": "Descongelé el pollo",
-      "confidence": 0.9225601534416966,
+      "confidence": 0.9225600001416895,
       "start": 0,
       "end": 19
      }
@@ -518,7 +518,7 @@
     "title": [
      {
       "text": "meeting",
-      "confidence": 0.9967585243419035,
+      "confidence": 0.9967585443702378,
       "start": 8,
       "end": 15
      }
@@ -526,7 +526,7 @@
     "people": [
      {
       "text": "jack",
-      "confidence": 0.9941339359083381,
+      "confidence": 0.994133891416186,
       "start": 21,
       "end": 25
      }
@@ -539,7 +539,7 @@
     "title": [
      {
       "text": "reunión con Carlos",
-      "confidence": 0.7959314799282419,
+      "confidence": 0.7959297760215172,
       "start": 10,
       "end": 28
      }
@@ -547,13 +547,13 @@
     "people": [
      {
       "text": "Carlos",
-      "confidence": 0.9997894209506533,
+      "confidence": 0.9997894197459606,
       "start": 109,
       "end": 115
      },
      {
       "text": "Carlos",
-      "confidence": 0.9977425383212508,
+      "confidence": 0.9977424180287556,
       "start": 22,
       "end": 28
      }
@@ -561,7 +561,7 @@
     "place": [
      {
       "text": "la oficina de San Isidro",
-      "confidence": 0.9328951321922773,
+      "confidence": 0.9328954008495773,
       "start": 71,
       "end": 95
      }
@@ -574,7 +574,7 @@
     "subject": [
      {
       "text": "the plumber",
-      "confidence": 0.9986557440786339,
+      "confidence": 0.9986557447187632,
       "start": 34,
       "end": 45
      }
@@ -582,7 +582,7 @@
     "relation": [
      {
       "text": "comes",
-      "confidence": 0.9961134841183935,
+      "confidence": 0.9961134564278067,
       "start": 46,
       "end": 51
      }
@@ -590,7 +590,7 @@
     "object": [
      {
       "text": "on Thursday",
-      "confidence": 0.9909580459744115,
+      "confidence": 0.9909580417018555,
       "start": 52,
       "end": 63
      }
@@ -603,7 +603,7 @@
     "title": [
      {
       "text": "site walkthrough",
-      "confidence": 0.8789849329371787,
+      "confidence": 0.8789864292095899,
       "start": 44,
       "end": 60
      }
@@ -611,7 +611,7 @@
     "people": [
      {
       "text": "Tom",
-      "confidence": 0.9971858647986598,
+      "confidence": 0.9971858862083063,
       "start": 66,
       "end": 69
      }
@@ -624,7 +624,7 @@
     "title": [
      {
       "text": "examen de conducir",
-      "confidence": 0.9942449316954766,
+      "confidence": 0.9942449808071375,
       "start": 11,
       "end": 29
      }
@@ -637,7 +637,7 @@
     "title": [
      {
       "text": "meeting",
-      "confidence": 0.9899277914609281,
+      "confidence": 0.9899278152330426,
       "start": 14,
       "end": 21
      }
@@ -650,7 +650,7 @@
     "subject": [
      {
       "text": "mi suegro",
-      "confidence": 0.998859556575493,
+      "confidence": 0.9988595478844899,
       "start": 2,
       "end": 11
      }
@@ -658,7 +658,7 @@
     "relation": [
      {
       "text": "le molesta",
-      "confidence": 0.997267231311703,
+      "confidence": 0.9972672547030464,
       "start": 12,
       "end": 22
      }
@@ -666,7 +666,7 @@
     "object": [
      {
       "text": "que cierren la puerta con fuerza",
-      "confidence": 0.9987464088967791,
+      "confidence": 0.9987464178518892,
       "start": 23,
       "end": 55
      }
@@ -679,7 +679,7 @@
     "subject": [
      {
       "text": "la pastilla azul",
-      "confidence": 0.9986533619717941,
+      "confidence": 0.9986533594067423,
       "start": 25,
       "end": 41
      }
@@ -687,7 +687,7 @@
     "relation": [
      {
       "text": "se toma",
-      "confidence": 0.9836403932656794,
+      "confidence": 0.9836402397999867,
       "start": 42,
       "end": 49
      }
@@ -695,7 +695,7 @@
     "object": [
      {
       "text": "cada doce horas",
-      "confidence": 0.9891171176877921,
+      "confidence": 0.9891171484850738,
       "start": 50,
       "end": 65
      }
@@ -708,7 +708,7 @@
     "subject": [
      {
       "text": "Grandpa's medication",
-      "confidence": 0.996809394948082,
+      "confidence": 0.9968093843322504,
       "start": 0,
       "end": 20
      }
@@ -716,7 +716,7 @@
     "relation": [
      {
       "text": "is",
-      "confidence": 0.9927626878304772,
+      "confidence": 0.9927627666290465,
       "start": 21,
       "end": 23
      }
@@ -724,7 +724,7 @@
     "object": [
      {
       "text": "in the kitchen cabinet above the kettle",
-      "confidence": 0.9980428889909817,
+      "confidence": 0.9980428945793548,
       "start": 24,
       "end": 63
      }
@@ -745,7 +745,7 @@
     "relation": [
      {
       "text": "is",
-      "confidence": 0.8531002173122672,
+      "confidence": 0.8531009642775131,
       "start": 16,
       "end": 18
      }
@@ -753,7 +753,7 @@
     "object": [
      {
       "text": "February 29th",
-      "confidence": 0.9905368003898575,
+      "confidence": 0.9905368495564687,
       "start": 19,
       "end": 32
      }
@@ -766,7 +766,7 @@
     "subject": [
      {
       "text": "Mi pata Rosa",
-      "confidence": 0.998939196441361,
+      "confidence": 0.9989391989678279,
       "start": 0,
       "end": 12
      }
@@ -774,7 +774,7 @@
     "relation": [
      {
       "text": "viene de viaje",
-      "confidence": 0.9809559963931007,
+      "confidence": 0.9809560320248762,
       "start": 13,
       "end": 27
      }
@@ -782,7 +782,7 @@
     "object": [
      {
       "text": "el 28 de diciembre",
-      "confidence": 0.9920258682268044,
+      "confidence": 0.9920257588368481,
       "start": 28,
       "end": 46
      }
@@ -795,7 +795,7 @@
     "subject": [
      {
       "text": "La reunión con el banco",
-      "confidence": 0.9995681028221131,
+      "confidence": 0.9995681063216454,
       "start": 0,
       "end": 23
      }
@@ -803,7 +803,7 @@
     "relation": [
      {
       "text": "quedó",
-      "confidence": 0.9921924046540392,
+      "confidence": 0.9921923049185317,
       "start": 24,
       "end": 29
      }
@@ -811,7 +811,7 @@
     "object": [
      {
       "text": "para el jueves a las cuatro de la tarde",
-      "confidence": 0.9995365525177741,
+      "confidence": 0.999536554505749,
       "start": 30,
       "end": 69
      }
@@ -824,7 +824,7 @@
     "title": [
      {
       "text": "cambiar la llave de la cochera",
-      "confidence": 0.995126361074105,
+      "confidence": 0.9951263217596428,
       "start": 18,
       "end": 48
      }
@@ -837,7 +837,7 @@
     "subject": [
      {
       "text": "El nombre de la señora que limpia los sábados",
-      "confidence": 0.9986821029982451,
+      "confidence": 0.9986820885635025,
       "start": 0,
       "end": 45
      }
@@ -845,7 +845,7 @@
     "relation": [
      {
       "text": "es",
-      "confidence": 0.33761662330901715,
+      "confidence": 0.3376132109694654,
       "start": 46,
       "end": 48
      }
@@ -853,7 +853,7 @@
     "object": [
      {
       "text": "Domitila",
-      "confidence": 0.9911034870674551,
+      "confidence": 0.9911035333162558,
       "start": 49,
       "end": 57
      }
@@ -866,7 +866,7 @@
     "subject": [
      {
       "text": "Dad",
-      "confidence": 0.9986400488437549,
+      "confidence": 0.9986400598527974,
       "start": 0,
       "end": 3
      }
@@ -874,7 +874,7 @@
     "relation": [
      {
       "text": "can't drive",
-      "confidence": 0.990476286451104,
+      "confidence": 0.9904762189807046,
       "start": 4,
       "end": 15
      }
@@ -882,7 +882,7 @@
     "object": [
      {
       "text": "for six weeks after the operation",
-      "confidence": 0.997732771721592,
+      "confidence": 0.9977327781934684,
       "start": 16,
       "end": 49
      }
@@ -895,7 +895,7 @@
     "subject": [
      {
       "text": "mi hijo",
-      "confidence": 0.9995642224138068,
+      "confidence": 0.9995642203367578,
       "start": 0,
       "end": 7
      }
@@ -903,7 +903,7 @@
     "relation": [
      {
       "text": "se queda a dormir",
-      "confidence": 0.9940255970713152,
+      "confidence": 0.9940255744168938,
       "start": 8,
       "end": 25
      }
@@ -911,7 +911,7 @@
     "object": [
      {
       "text": "en casa de su amigo los viernes",
-      "confidence": 0.9977871885289303,
+      "confidence": 0.9977871937930033,
       "start": 26,
       "end": 57
      }

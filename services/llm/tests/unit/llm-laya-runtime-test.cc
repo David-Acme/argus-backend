@@ -222,6 +222,7 @@ TEST_CASE("the Laya scores the bundle produces match the Python reference")
   REQUIRE(reference["cases"].size() == fixture["cases"].size());
   CHECK(reference["bundlePin"].asString() == pilot->pin);
   CHECK(reference["modelSha256"].isString());
+  CHECK(reference["onnxruntime"].isString());
   const turn::BundleLoader bundle({.dir = pilot->dir, .pin = pilot->pin});
   REQUIRE(bundle.valid());
   turn::LayaDecider laya({.model = turn::openLayaModel({.bundle = bundle, .options = {}, .decode = decodeOf(fixture["parameters"])}),
@@ -258,9 +259,10 @@ TEST_CASE("the Laya scores the bundle produces match the Python reference")
     worstNow = std::max(worstNow, std::abs(reading->now - held["now"].asDouble()));
     ++rows;
   }
-  MESSAGE("laya parity vs " << reference["backend"].asString() << " on " << reference["modelSha256"].asString().substr(0, 12)
-                            << ": " << rows << " rows, worst probability gap " << worstProbability << ", worst now gap "
-                            << worstNow << ", " << decisionMismatches << " decisions differing");
+  MESSAGE("laya parity vs " << reference["backend"].asString() << " on onnxruntime " << reference["onnxruntime"].asString()
+                            << " over " << reference["modelSha256"].asString().substr(0, 12) << ": " << rows
+                            << " rows, worst probability gap " << worstProbability << ", worst now gap " << worstNow << ", "
+                            << decisionMismatches << " decisions differing");
   CHECK(rows == static_cast<std::size_t>(fixture["cases"].size()));
   CHECK(worstProbability <= 2e-3);
   CHECK(worstNow <= 2e-3);

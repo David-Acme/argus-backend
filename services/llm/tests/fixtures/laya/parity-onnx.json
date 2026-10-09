@@ -4,6 +4,7 @@
  "bundle": "/home/acme/.cache/argus-laya/pilot-bundle/bundle-laya-pilot",
  "bundlePin": "29b1cfaed940561e19f3649151976aaacebdc2d75bbc0601aefef480f9a946f5",
  "modelSha256": "d9932dc32e742a99e38eb485c1f9cdf92e0edfdbc135b04ba7ef2b6fbeb09439",
+ "onnxruntime": "1.24.4",
  "questionsSha256": "1ce9e1a2ca112f525036b280447f786d2753954a76fc169914152ed60f3520c7",
  "labelsSha256": "68912a7d54df62057ea8b11591382d5844f5ed9a79bdde80d9b63e6118c101b5",
  "agentConfig": "/home/acme/.cache/argus-laya/r2/ck-r2/rl_agent_config.json",
@@ -209,7 +210,7 @@
     "none": 0.0314
    },
    "choice": "app_guard_mode",
-   "now": 0.2714
+   "now": 0.2715
   },
   {
    "text": "mi hermana se llama Lucía",

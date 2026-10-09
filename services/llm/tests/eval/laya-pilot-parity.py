@@ -6,6 +6,9 @@ import pathlib
 import shutil
 import sys
 import tempfile
+import tomllib
+
+import onnxruntime
 
 TEXTS = [
     "recuérdame comprar pan mañana a las ocho",
@@ -29,6 +32,12 @@ TEXTS = [
 ]
 
 
+def pinned_onnxruntime():
+    lock = pathlib.Path(__file__).resolve().parent / "parity-references.lock.toml"
+    with lock.open("rb") as handle:
+        return tomllib.load(handle)["onnxruntime"]
+
+
 def sha256_of(path):
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
@@ -38,6 +47,9 @@ def sha256_of(path):
 
 
 def main():
+    pin = pinned_onnxruntime()
+    if onnxruntime.__version__ != pin:
+        raise SystemExit(f"onnxruntime {onnxruntime.__version__} does not match the pinned {pin}")
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle", required=True)
     parser.add_argument("--agent-config", required=True)
@@ -75,6 +87,7 @@ def main():
             "bundle": str(bundle),
             "bundlePin": hashlib.sha256((bundle / "sha256").read_bytes()).hexdigest(),
             "modelSha256": sha256_of(bundle / "model.onnx"),
+            "onnxruntime": onnxruntime.__version__,
             "questionsSha256": sha256_of(bundle / "questions.json"),
             "labelsSha256": sha256_of(bundle / "labels.json"),
             "agentConfig": str(agent_config),
