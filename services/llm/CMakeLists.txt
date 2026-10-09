@@ -404,6 +404,16 @@ set_target_properties(llm-gliner-runtime-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-gliner-runtime-test COMMAND llm-gliner-runtime-test)
 
+add_executable(llm-e2e-turn-test tests/unit/llm-e2e-turn-test.cc)
+
+target_link_libraries(llm-e2e-turn-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-e2e-turn-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-e2e-turn-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-e2e-turn-test COMMAND llm-e2e-turn-test)
+
 add_executable(llm-spoken-intent-test tests/unit/llm-spoken-intent-test.cc)
 
 target_link_libraries(llm-spoken-intent-test PRIVATE argus::llm doctest::doctest)
