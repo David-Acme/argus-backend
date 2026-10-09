@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstddef>
 #include <span>
 #include <string>
@@ -182,6 +183,22 @@ GuardVerdict checkOffer(const Offer& offer, const Words& words)
 
 }
 
+std::string_view firstSentenceOf(std::string_view text)
+{
+  for (std::size_t at = 0; at < text.size(); ++at) {
+    const char c = text[at];
+    if (c == '?' || c == '!' || c == '\n')
+      return text.substr(0, at + 1);
+    if (c == '.') {
+      std::size_t end = at;
+      while (end + 1 < text.size() && text[end + 1] == '.')
+        ++end;
+      return text.substr(0, end + 1);
+    }
+  }
+  return text;
+}
+
 GuardVerdict check(const GuardInput& input)
 {
   if (!input.callsConfirmed && reply_claims::claimsCall({.text = input.reply, .lang = input.speech.lang}))
@@ -190,8 +207,9 @@ GuardVerdict check(const GuardInput& input)
       reply_claims::claimsDone(
           {.text = input.reply, .asked = input.asked, .appOnly = input.opened, .lang = input.speech.lang}))
     return GuardVerdict::ClaimedWithoutTool;
-  const Words words = wordsOf(input.reply);
-  const bool question = asks(input.reply);
+  const std::string_view scope = input.sentenceOnly ? firstSentenceOf(input.reply) : input.reply;
+  const Words words = wordsOf(scope);
+  const bool question = asks(scope);
   const bool request = requests(words, input.speech.lang);
   for (const Act& act : input.speech.acts) {
     GuardVerdict verdict = GuardVerdict::Pass;

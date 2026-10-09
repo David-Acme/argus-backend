@@ -240,3 +240,19 @@ TEST_CASE("a refusal is kept and a claim of work that never ran is not, on every
   CHECK(guarded(Offer{.module = "productivity", .name = "Productividad", .facts = {}, .pendingIntent = {}}, "es",
                 "¿Activo el módulo Productividad? Ya lo activé.") == GuardVerdict::ClaimedWithoutTool);
 }
+
+TEST_CASE("the first sentence is the release unit for a question act")
+{
+  CHECK(firstSentenceOf("¿Qué día? Puedo agendarlo cuando quieras.") == "¿Qué día?");
+  CHECK(firstSentenceOf("Listo.") == "Listo.");
+  CHECK(firstSentenceOf("Muy bien... sigo.") == "Muy bien...");
+  CHECK(firstSentenceOf("¿Qué día y a qué hora") == "¿Qué día y a qué hora");
+  CHECK(firstSentenceOf("") == "");
+
+  const Speech speech{.acts = {ask("starts_at")}, .lang = "es", .now = kNow};
+  CHECK(check({.speech = speech, .reply = "Lo haré. ¿Para cuándo lo agendo?", .asked = true, .sentenceOnly = true}) ==
+        GuardVerdict::NotAQuestion);
+  CHECK(check({.speech = speech, .reply = "¿Para cuándo lo agendo? Cuando quieras.", .asked = true, .sentenceOnly = true}) ==
+        GuardVerdict::Pass);
+  CHECK(check({.speech = speech, .reply = "¿Lo agendo? Solo dime algo.", .asked = true}) == GuardVerdict::SlotNotAsked);
+}

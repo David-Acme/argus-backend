@@ -155,6 +155,8 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
 {
   const std::string& lang = input.speech.lang;
   const SpeakInput args{.input = input.input, .history = input.history, .onToken = input.onToken};
+  const bool streaming = input.onToken != nullptr;
+  const bool question = turn::speech::isQuestion(input.speech.acts.back());
   turn::speech::GuardVerdict verdict = turn::speech::GuardVerdict::Pass;
   for (int attempt = 0; attempt < 2; ++attempt) {
     ChatRequest req;
@@ -169,17 +171,83 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
     req.messages = speakMessages(args, notes);
 
     std::string raw;
+    bool released = false;
+    bool threw = false;
     try {
-      if (input.onToken != nullptr)
-        engine_.chatStream(req, [&raw](const std::string& token, bool) { raw += token; });
-      else
+      if (!streaming) {
         raw = engine_.chat(req);
+      }
+      else if (!question) {
+        engine_.chatStream(req, [&raw](const std::string& token, bool) { raw += token; });
+      }
+      else {
+        const TokenCallback sink = *input.onToken;
+        reply_claims::ClaimGate rest({.sink = sink,
+                                      .lang = lang,
+                                      .asked = input.asked,
+                                      .legitimate = [&input] { return input.wrote; },
+                                      .appOnly = input.opened,
+                                      .callsConfirmed = input.callsConfirmed});
+        std::size_t forwarded = 0;
+        bool failed = false;
+        engine_.chatStream(req, [&](const std::string& token, bool done) {
+          if (!token.empty())
+            raw += token;
+          if (!failed && !released) {
+            const std::string_view first = turn::speech::firstSentenceOf(raw);
+            const bool complete = !first.empty() &&
+                                  (first.back() == '.' || first.back() == '?' || first.back() == '!' ||
+                                   first.back() == '\n');
+            if (complete || done) {
+              const turn::speech::GuardVerdict firstVerdict =
+                  turn::speech::check({.speech = input.speech,
+                                       .reply = raw,
+                                       .wrote = input.wrote,
+                                       .opened = input.opened,
+                                       .asked = input.asked,
+                                       .callsConfirmed = input.callsConfirmed,
+                                       .sentenceOnly = true});
+              if (firstVerdict == turn::speech::GuardVerdict::Pass) {
+                sink(std::string(first), false);
+                released = true;
+                forwarded = first.size();
+              }
+              else {
+                failed = true;
+                verdict = firstVerdict;
+              }
+            }
+          }
+          if (released) {
+            const std::string_view tailPart = std::string_view(raw).substr(forwarded);
+            if (!tailPart.empty()) {
+              rest.callback()(std::string(tailPart), false);
+              forwarded = raw.size();
+            }
+          }
+          if (done && released)
+            rest.callback()("", true);
+        });
+      }
     }
     catch (const std::exception& e) {
       LOG_WARN << "LfmAdapter: the act could not be spoken: " << e.what();
-      break;
+      threw = true;
     }
-    output.rawReply = raw;
+    ++output.attempts;
+    if (released) {
+      output.reply = raw;
+      output.rawReply = raw;
+      output.guardVerdict = std::string(turn::speech::verdictName(turn::speech::GuardVerdict::Pass));
+      if (attempt == 0)
+        output.firstGuardVerdict = output.guardVerdict;
+      output.emitted = streaming;
+      input.history.push_back({.role = "assistant", .content = raw});
+      return;
+    }
+    if (threw)
+      break;
+
     reply_claims::StrippedReply stripped =
         reply_claims::withoutTrailingOffer(std::move(raw), {.lang = lang, .asked = input.asked});
     const std::string reply = std::move(stripped.text);
@@ -188,26 +256,26 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
                                    .wrote = input.wrote,
                                    .opened = input.opened,
                                    .asked = input.asked,
-                                   .callsConfirmed = input.callsConfirmed});
-    ++output.attempts;
+                                   .callsConfirmed = input.callsConfirmed,
+                                   .sentenceOnly = question});
     output.guardVerdict = std::string(turn::speech::verdictName(verdict));
     if (attempt == 0) {
       output.firstGuardVerdict = output.guardVerdict;
       output.firstRejected = reply;
     }
-    if (verdict != turn::speech::GuardVerdict::Pass) {
-      LOG_WARN << "LfmAdapter: the act " << std::string(turn::speech::actName(input.speech.acts.front()))
-               << " failed its guard (" << std::string(turn::speech::verdictName(verdict)) << ")";
-      continue;
+    if (verdict == turn::speech::GuardVerdict::Pass) {
+      output.reply = reply;
+      output.rawReply = reply;
+      if (streaming) {
+        (*input.onToken)(reply, false);
+        (*input.onToken)("", true);
+        output.emitted = true;
+      }
+      input.history.push_back({.role = "assistant", .content = reply});
+      return;
     }
-    output.reply = reply;
-    if (input.onToken != nullptr) {
-      (*input.onToken)(reply, false);
-      (*input.onToken)("", true);
-      output.emitted = true;
-    }
-    input.history.push_back({.role = "assistant", .content = reply});
-    return;
+    LOG_WARN << "LfmAdapter: the act " << std::string(turn::speech::actName(input.speech.acts.back()))
+             << " failed its guard (" << std::string(turn::speech::verdictName(verdict)) << ")";
   }
   output.speech = "unavailable";
   output.reply.clear();
