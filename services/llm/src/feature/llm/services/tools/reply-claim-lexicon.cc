@@ -147,13 +147,6 @@ constexpr std::array<Phrase, 5> kGenericOffersEn{"how can i help", "how may i he
 constexpr std::string_view kSpanishHonest = "No pude hacerlo. ¿Lo intento de nuevo?";
 constexpr std::string_view kEnglishHonest = "I could not do it. Shall I try again?";
 
-constexpr std::string_view kSpanishNudge =
-    "Todavía no has usado ninguna herramienta con éxito. Si el usuario pidió algo (agendar, guardar, activar, "
-    "cancelar...), llama ahora a su herramienta; si no puedes, díselo. No digas que lo hiciste.";
-constexpr std::string_view kEnglishNudge =
-    "You have not used any tool successfully yet. If the user asked for something (to schedule, save, enable, "
-    "cancel...), call its tool now; if you cannot, say so. Do not say you did it.";
-
 constexpr std::array<Lexicon, 2> kLexicons{{
     {.language = "es",
      .performed = kSpanishPerformed,
@@ -170,8 +163,7 @@ constexpr std::array<Lexicon, 2> kLexicons{{
      .calls = kSpanishCalls,
      .callOffers = kSpanishCallOffers,
      .genericOffers = kGenericOffersEs,
-     .honest = kSpanishHonest,
-     .nudge = kSpanishNudge},
+     .honest = kSpanishHonest},
     {.language = "en",
      .performed = kEnglishPerformed,
      .performative = kNoPhrases,
@@ -187,8 +179,7 @@ constexpr std::array<Lexicon, 2> kLexicons{{
      .calls = kEnglishCalls,
      .callOffers = kEnglishCallOffers,
      .genericOffers = kGenericOffersEn,
-     .honest = kEnglishHonest,
-     .nudge = kEnglishNudge},
+     .honest = kEnglishHonest},
 }};
 }
 

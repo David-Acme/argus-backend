@@ -200,7 +200,6 @@ void creatingAnEventBelongsToTheCaller(Env& env)
   CHECK(ownerOfEvent("Reunión con Pedro") == kAna);
   CHECK(created.structured["title"].asString() == "Reunión con Pedro");
   CHECK(created.structured["readback"].asString() == "el miércoles 6 de marzo a las 3 de la tarde");
-  CHECK(created.structured["readbackSentence"].asString() == created.text);
   REQUIRE(env.sink.operations.size() == 1);
   CHECK(env.sink.operations.front() == SyncOperation::Add);
   CHECK(env.sink.tables.front() == TableName::CalendarEvent);

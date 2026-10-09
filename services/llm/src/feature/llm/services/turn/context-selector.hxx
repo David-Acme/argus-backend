@@ -4,6 +4,7 @@
 
 #include <llm/llm-service.hxx>
 
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -30,5 +31,13 @@ public:
 
 [[nodiscard]] std::vector<ContextFact> selectedFacts(const std::vector<ContextFact>& facts,
                                                      const ContextChoice& choice);
+
+struct ContextBlockInput
+{
+  std::string_view lang;
+  const std::vector<std::string>& facts;
+};
+
+[[nodiscard]] std::string contextBlock(const ContextBlockInput& input);
 
 }

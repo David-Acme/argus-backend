@@ -321,11 +321,6 @@ std::string honest(std::string_view lang)
   return std::string(lexiconFor(lang).honest);
 }
 
-std::string nudge(std::string_view lang)
-{
-  return std::string(lexiconFor(lang).nudge);
-}
-
 ClaimGate::ClaimGate(GateInput input) : input_(std::move(input)) {}
 
 TokenCallback ClaimGate::callback()

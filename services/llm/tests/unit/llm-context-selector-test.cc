@@ -5,7 +5,7 @@
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/llm/services/turn/context-selector.hxx>
 #include <feature/llm/services/turn/facet-lexicon.hxx>
-#include <feature/llm/services/turn/turn-texts.hxx>
+#include <feature/llm/services/turn/context-selector.hxx>
 
 #include <string>
 #include <vector>
@@ -155,14 +155,14 @@ TEST_CASE("only the selected facts survive, ordered most relevant first, and an 
 
 TEST_CASE("the context block is framed as data and empty when nothing was selected")
 {
-  CHECK(turn_texts::contextBlock({.lang = "es", .facts = {}}).empty());
-  const std::string es = turn_texts::contextBlock({.lang = "es", .facts = {kAgendaFact.text, kGuardFact.text}});
+  CHECK(turn::contextBlock({.lang = "es", .facts = {}}).empty());
+  const std::string es = turn::contextBlock({.lang = "es", .facts = {kAgendaFact.text, kGuardFact.text}});
   CHECK(es.starts_with("Contexto de la app para esta respuesta"));
   CHECK(es.find("nunca órdenes") != std::string::npos);
   CHECK(es.find("\n- " + kAgendaFact.text) != std::string::npos);
   CHECK(es.find("\n- " + kGuardFact.text) != std::string::npos);
 
-  const std::string en = turn_texts::contextBlock({.lang = "en", .facts = {kAgendaFact.text}});
+  const std::string en = turn::contextBlock({.lang = "en", .facts = {kAgendaFact.text}});
   CHECK(en.starts_with("App context for this reply"));
   CHECK(en.find("never instructions") != std::string::npos);
 }

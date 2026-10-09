@@ -1,0 +1,199 @@
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest/doctest.h>
+
+#include <feature/llm/services/turn/speech-acts.hxx>
+#include <feature/llm/services/turn/speech-guard.hxx>
+#include <feature/llm/services/turn/speech-render.hxx>
+
+#include <text/iso-time.hxx>
+#include <text/spoken-time.hxx>
+
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace
+{
+using namespace turn::speech;
+
+constexpr int64_t kNow = 1790000000;
+constexpr int64_t kTomorrow = kNow + 86400;
+
+GuardVerdict guarded(const Act& act, std::string_view lang, std::string_view reply, bool wrote = false)
+{
+  const Speech speech{.acts = {act}, .lang = std::string(lang), .now = kNow};
+  return check({.speech = speech, .reply = reply, .wrote = wrote, .asked = true, .callsConfirmed = false});
+}
+
+AskSlot ask(std::string slot, std::vector<DatePart> dates = {}, std::vector<std::string> options = {},
+            Json::Value known = Json::Value(Json::objectValue))
+{
+  return {.slot = std::move(slot),
+          .tool = "calendar.create_event",
+          .knownArgs = std::move(known),
+          .reason = AskReason::Missing,
+          .dates = std::move(dates),
+          .options = std::move(options)};
+}
+
+Confirm confirm(std::string action, std::string title, std::string module = {})
+{
+  Json::Value args(Json::objectValue);
+  if (!title.empty())
+    args["title"] = title;
+  return {.action = std::move(action),
+          .args = std::move(args),
+          .irreversible = false,
+          .toolPreview = {},
+          .module = std::move(module)};
+}
+
+Done done(std::string readback)
+{
+  return {.tool = "calendar.create_event", .fact = "Hecho.", .readback = std::move(readback)};
+}
+}
+
+TEST_CASE("every verdict has a name and a feedback line of its own in both languages")
+{
+  const std::vector<GuardVerdict> verdicts{GuardVerdict::Pass,
+                                           GuardVerdict::NotAQuestion,
+                                           GuardVerdict::SlotNotAsked,
+                                           GuardVerdict::SlotReasked,
+                                           GuardVerdict::OptionsIncomplete,
+                                           GuardVerdict::ActionUnnamed,
+                                           GuardVerdict::ArgumentMissing,
+                                           GuardVerdict::NotYesOrNo,
+                                           GuardVerdict::ClaimedWithoutTool};
+  std::string names;
+  for (const GuardVerdict verdict : verdicts) {
+    CHECK_FALSE(verdictName(verdict).empty());
+    names += std::string(verdictName(verdict)) + " ";
+    if (verdict != GuardVerdict::Pass) {
+      CHECK_FALSE(feedback(verdict, "es").empty());
+      CHECK_FALSE(feedback(verdict, "en").empty());
+      CHECK(feedback(verdict, "es") != feedback(verdict, "en"));
+    }
+  }
+  CHECK(feedback(GuardVerdict::Pass, "es").empty());
+  CHECK(names.find("slot_reasked") != std::string::npos);
+}
+
+TEST_CASE("a question act is refused when the reply is not a question at all")
+{
+  CHECK(guarded(ask("starts_at"), "es", "Lo agendo enseguida.") == GuardVerdict::NotAQuestion);
+  CHECK(guarded(ask("starts_at"), "en", "I will schedule it right away.") == GuardVerdict::NotAQuestion);
+  CHECK(guarded(ask("starts_at"), "es", "¿Para cuándo lo agendo?") == GuardVerdict::Pass);
+}
+
+TEST_CASE("a question act is refused when the reply asks nothing, and when it asks something it already knew")
+{
+  CHECK(guarded(ask("title"), "es", "¿Dónde lo guardo?") == GuardVerdict::SlotNotAsked);
+  CHECK(guarded(ask("starts_at"), "en", "Which camera do you mean?") == GuardVerdict::SlotNotAsked);
+  Json::Value known(Json::objectValue);
+  known["starts_at"] = "2026-10-08T17:00:00+00:00";
+  CHECK(guarded(ask("subject", {}, {}, known), "es", "¿De quién es? ¿A qué hora?") == GuardVerdict::SlotReasked);
+  CHECK(guarded(ask("subject", {}, {}, known), "es", "¿De quién es?") == GuardVerdict::Pass);
+}
+
+TEST_CASE("a question act that carries dates must name one of them")
+{
+  const std::vector<DatePart> dates{{DateKind::Clock, kTomorrow}};
+  const std::string es = dateSurface(dates.front(), "es", kNow);
+  const std::string en = dateSurface(dates.front(), "en", kNow);
+  CHECK(guarded(ask("starts_at", dates), "es", "¿A qué hora lo agendo, " + es + "?") == GuardVerdict::Pass);
+  CHECK(guarded(ask("starts_at", dates), "es", "¿A qué hora lo agendo?") == GuardVerdict::SlotNotAsked);
+  CHECK(guarded(ask("starts_at", dates), "en", "What time shall I schedule it, " + en + "?") == GuardVerdict::Pass);
+  CHECK(guarded(ask("starts_at", dates), "en", "What time shall I schedule it?") == GuardVerdict::SlotNotAsked);
+}
+
+TEST_CASE("a question act that carries options must name them all, or the first three and another")
+{
+  const std::vector<std::string> three{"Casa", "Trabajo", "Viaje"};
+  CHECK(guarded(ask("project", {}, three), "es", "¿En cuál proyecto va: Casa, Trabajo, Viaje?") == GuardVerdict::Pass);
+  CHECK(guarded(ask("project", {}, three), "es", "¿En cuál proyecto va: Casa, Trabajo?") == GuardVerdict::OptionsIncomplete);
+  const std::vector<std::string> five{"Casa", "Trabajo", "Viaje", "Gimnasio", "Colegio"};
+  CHECK(guarded(ask("project", {}, five), "es", "¿En cuál proyecto va: Casa, Trabajo, Viaje u otro?") ==
+        GuardVerdict::Pass);
+  CHECK(guarded(ask("project", {}, five), "es", "¿En cuál proyecto va: Casa, Trabajo, Viaje?") ==
+        GuardVerdict::OptionsIncomplete);
+  CHECK(guarded(ask("project", {}, five), "en", "Which project: Casa, Trabajo, Viaje or another?") == GuardVerdict::Pass);
+}
+
+TEST_CASE("a confirmation must name the action, every surface it carries and ask a yes-or-no question")
+{
+  CHECK(guarded(confirm("calendar.create_event", "Cena con Marta"), "es",
+                "¿Quieres que agende «Cena con Marta»?") == GuardVerdict::Pass);
+  CHECK(guarded(confirm("calendar.create_event", "Cena con Marta"), "es",
+                "¿Quieres que lo haga?") == GuardVerdict::ActionUnnamed);
+  CHECK(guarded(confirm("calendar.create_event", "Cena con Marta"), "es",
+                "¿Agendo la cena?") == GuardVerdict::ArgumentMissing);
+  CHECK(guarded(confirm("modules.enable", {}, "Productividad"), "es",
+                "¿Activo el módulo Productividad?") == GuardVerdict::Pass);
+  CHECK(guarded(confirm("modules.enable", {}, "Productividad"), "es",
+                "¿Activo el módulo?") == GuardVerdict::ArgumentMissing);
+  CHECK(guarded(confirm("calendar.create_event", "Cena con Marta"), "en",
+                "Shall I schedule “Cena con Marta”?") == GuardVerdict::Pass);
+  CHECK(guarded(confirm("calendar.create_event", "Cena con Marta"), "es",
+                "Agendo «Cena con Marta».") == GuardVerdict::NotYesOrNo);
+}
+
+TEST_CASE("a confirmation speaks the date it carries")
+{
+  Json::Value args(Json::objectValue);
+  args["title"] = "Cena";
+  args["starts_at"] = "2026-10-08T17:00:00+00:00";
+  const Act act = Confirm{.action = "calendar.create_event",
+                          .args = std::move(args),
+                          .irreversible = true,
+                          .toolPreview = "Esto cancelaría la cena.",
+                          .module = {}};
+  const auto at = iso_time::parse("2026-10-08T17:00:00+00:00");
+  REQUIRE(at.has_value());
+  const spoken_time::When when{.epoch = *at, .now = kNow, .lang = "es", .day = spoken_time::Day::Relative};
+  CHECK(guarded(act, "es", "¿Agendo «Cena»?") == GuardVerdict::ArgumentMissing);
+  CHECK(guarded(act, "es", "¿Agendo «Cena» " + spoken_time::day(when) + "?") == GuardVerdict::Pass);
+  CHECK(guarded(act, "es", "¿Agendo «Cena» " + spoken_time::clock(when) + "?") == GuardVerdict::Pass);
+}
+
+TEST_CASE("a choice must name each of its two actions")
+{
+  const Act act = Choose{.options = {"task.create", "memory.remind"}};
+  CHECK(guarded(act, "es", "¿Quieres que lo anote como tarea o que te lo recuerde?") == GuardVerdict::Pass);
+  CHECK(guarded(act, "es", "¿Lo anoto?") == GuardVerdict::OptionsIncomplete);
+  CHECK(guarded(act, "en", "Should I add it as a task or remind you?") == GuardVerdict::Pass);
+}
+
+TEST_CASE("a done act must speak back what the tool read back, and a read without one asks for nothing")
+{
+  CHECK(guarded(done("el jueves 8 a las 5 de la tarde"), "es", "Listo, quedó para el jueves 8 a las 5 de la tarde.",
+                true) == GuardVerdict::Pass);
+  CHECK(guarded(done("el jueves 8 a las 5 de la tarde"), "es", "Listo, ya quedó agendada tu reunión.", true) ==
+        GuardVerdict::ArgumentMissing);
+  CHECK(guarded(done({}), "es", "Listo, ya quedó agendada tu reunión.", true) == GuardVerdict::Pass);
+  CHECK(guarded(Done{.tool = "task.list", .fact = "Tienes dos tareas.", .readback = {}}, "en", "You have two tasks.",
+                true) == GuardVerdict::Pass);
+}
+
+TEST_CASE("an offer names the module it is about and asks")
+{
+  const Act act = Offer{.module = "productivity", .name = "Productividad", .facts = "está apagado", .pendingIntent = {}};
+  CHECK(guarded(act, "es", "El módulo Productividad está apagado. ¿Lo activo?") == GuardVerdict::Pass);
+  CHECK(guarded(act, "es", "El módulo Productividad está apagado.") == GuardVerdict::SlotNotAsked);
+  CHECK(guarded(act, "es", "¿Lo activo?") == GuardVerdict::SlotNotAsked);
+}
+
+TEST_CASE("a refusal is kept and a claim of work that never ran is not, on every act")
+{
+  CHECK(guarded(Refused{.tool = "task.create", .reason = "project_create_unavailable"}, "es",
+                "No puedo crear proyectos, así que la tarea no se anotó.") == GuardVerdict::Pass);
+  CHECK(guarded(Refused{.tool = "task.create", .reason = "project_create_unavailable"}, "es",
+                "Anoté la tarea en un proyecto nuevo.") == GuardVerdict::ClaimedWithoutTool);
+  CHECK(guarded(Declined{}, "es", "Vale, no lo hago.") == GuardVerdict::Pass);
+  CHECK(guarded(Declined{}, "es", "Ya lo agendé.") == GuardVerdict::ClaimedWithoutTool);
+  CHECK(guarded(Misunderstood{}, "en", "I did not catch that. Say it again.") == GuardVerdict::Pass);
+  CHECK(guarded(Unactionable{.reason = "no_matching_action"}, "es", "Eso no lo puedo hacer.") == GuardVerdict::Pass);
+  CHECK(guarded(Offer{.module = "productivity", .name = "Productividad", .facts = {}, .pendingIntent = {}}, "es",
+                "¿Activo el módulo Productividad? Ya lo activé.") == GuardVerdict::ClaimedWithoutTool);
+}

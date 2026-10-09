@@ -316,6 +316,36 @@ set_target_properties(llm-turn-flow-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-turn-flow-test COMMAND llm-turn-flow-test)
 
+add_executable(llm-speech-acts-test tests/unit/llm-speech-acts-test.cc)
+
+target_link_libraries(llm-speech-acts-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-speech-acts-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-speech-acts-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-speech-acts-test COMMAND llm-speech-acts-test)
+
+add_executable(llm-speech-cues-test tests/unit/llm-speech-cues-test.cc)
+
+target_link_libraries(llm-speech-cues-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-speech-cues-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-speech-cues-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-speech-cues-test COMMAND llm-speech-cues-test)
+
+add_executable(llm-speech-guard-test tests/unit/llm-speech-guard-test.cc)
+
+target_link_libraries(llm-speech-guard-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-speech-guard-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-speech-guard-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-speech-guard-test COMMAND llm-speech-guard-test)
+
 add_executable(llm-context-selector-test tests/unit/llm-context-selector-test.cc)
 
 target_link_libraries(llm-context-selector-test PRIVATE argus::llm doctest::doctest)

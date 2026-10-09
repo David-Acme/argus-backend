@@ -153,7 +153,6 @@ drogon::Task<argus::mcp::ToolOutcome> createEvent(argus::mcp::ToolInvocation inv
   outcome.text = (argus::mcp::speech::inEnglish(invocation) ? "Scheduled: " : "Agendado: ") + ("«" + row.title + "», " + start) + ".";
   outcome.structured = summary(row);
   outcome.structured["readback"] = start;
-  outcome.structured["readbackSentence"] = outcome.text;
   co_return outcome;
 }
 

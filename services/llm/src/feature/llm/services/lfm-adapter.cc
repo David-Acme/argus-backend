@@ -4,7 +4,8 @@
 #include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/llm/services/tools/time-arguments.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
-#include <feature/llm/services/turn/turn-texts.hxx>
+#include <feature/llm/services/turn/speech-guard.hxx>
+#include <feature/llm/services/turn/speech-render.hxx>
 
 #include <text/name-match.hxx>
 #include <trantor/utils/Logger.h>
@@ -44,23 +45,6 @@ std::string lastUserMessage(const std::vector<ChatMessage>& history)
   return {};
 }
 
-std::string missingReadbacks(const turn::Outcome& outcome, const std::string& reply)
-{
-  const std::string heard = text_norm::folded(reply);
-  std::string extra;
-  for (const turn::Finding& finding : outcome.findings) {
-    if (finding.kind != turn::FindingKind::Done || finding.readback.empty())
-      continue;
-    std::string core = text_norm::folded(finding.readback);
-    for (const std::string_view lead : {"el ", "on "})
-      if (core.starts_with(lead))
-        core.erase(0, lead.size());
-    if (heard.find(core) == std::string::npos)
-      extra += " " + finding.readbackSentence;
-  }
-  return extra;
-}
-
 TurnState turnOf(const std::string& utterance, const std::vector<tools::ToolHandle>& tools)
 {
   const bool appOffered = std::ranges::any_of(
@@ -81,7 +65,7 @@ std::string contextTail(const ContextTailInput& args)
   std::vector<std::string> texts;
   for (const ContextFact& fact : turn::selectedFacts(args.facts, args.selector.select(args.input)))
     texts.push_back(fact.text);
-  return turn_texts::contextBlock({.lang = args.input.lang, .facts = texts});
+  return turn::contextBlock({.lang = args.input.lang, .facts = texts});
 }
 
 }
@@ -167,6 +151,65 @@ std::vector<ChatMessage> LfmAdapter::speakMessages(const SpeakInput& args, const
   return spokenMessages({.history = args.history, .clock = args.input.clock, .notes = notes});
 }
 
+void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
+{
+  const std::string& lang = input.speech.lang;
+  const SpeakInput args{.input = input.input, .history = input.history, .onToken = input.onToken};
+  turn::speech::GuardVerdict verdict = turn::speech::GuardVerdict::Pass;
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    ChatRequest req;
+    req.maxTokens = input.input.answerMaxTokens > 0 ? input.input.answerMaxTokens : 512;
+    req.temperature = input.input.temperature;
+    req.resetContext = input.input.resetContext;
+    req.stop = {};
+    req.toolCallsAllowed = false;
+    const std::string notes =
+        attempt == 0 ? input.tail
+                     : input.tail + "\n" + std::string(turn::speech::feedback(verdict, lang));
+    req.messages = speakMessages(args, notes);
+
+    std::string raw;
+    try {
+      if (input.onToken != nullptr)
+        engine_.chatStream(req, [&raw](const std::string& token, bool) { raw += token; });
+      else
+        raw = engine_.chat(req);
+    }
+    catch (const std::exception& e) {
+      LOG_WARN << "LfmAdapter: the act could not be spoken: " << e.what();
+      break;
+    }
+    output.rawReply = raw;
+    reply_claims::StrippedReply stripped =
+        reply_claims::withoutTrailingOffer(std::move(raw), {.lang = lang, .asked = input.asked});
+    const std::string reply = std::move(stripped.text);
+    verdict = turn::speech::check({.speech = input.speech,
+                                   .reply = reply,
+                                   .wrote = input.wrote,
+                                   .opened = input.opened,
+                                   .asked = input.asked,
+                                   .callsConfirmed = input.callsConfirmed});
+    if (verdict != turn::speech::GuardVerdict::Pass) {
+      LOG_WARN << "LfmAdapter: the act " << std::string(turn::speech::actName(input.speech.acts.front()))
+               << " failed its guard (" << std::string(turn::speech::verdictName(verdict)) << ")";
+      continue;
+    }
+    output.reply = reply;
+    if (input.onToken != nullptr) {
+      (*input.onToken)(reply, false);
+      (*input.onToken)("", true);
+      output.emitted = true;
+    }
+    input.history.push_back({.role = "assistant", .content = reply});
+    return;
+  }
+  output.speech = "unavailable";
+  output.reply.clear();
+  output.rawReply.clear();
+  LOG_WARN << "LfmAdapter: no rendering passed the guard for the act " << output.act << " ("
+           << std::string(turn::speech::verdictName(verdict)) << "); the turn stays silent";
+}
+
 ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
 {
   const ToolChatInput& input = args.input;
@@ -206,23 +249,41 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
   output.toolMs = outcome.toolMs;
   output.hops = outcome.steps.empty() ? 0 : 1;
 
-  if (outcome.question) {
-    output.reply = *outcome.question;
-    if (args.onToken != nullptr) {
-      (*args.onToken)(output.reply, false);
-      (*args.onToken)("", true);
-      output.emitted = true;
-    }
-    history.push_back({.role = "assistant", .content = output.reply});
-    return output;
-  }
-
   TurnState state = turnOf(utterance, input.tools);
   state.wrote = outcome.wrote;
   state.opened = outcome.opened;
   state.called = outcome.called;
   state.lang = input.context.lang;
-  std::string tail = turn::TurnFlow::notes(outcome, input.context.lang);
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  if (const auto spoken = turn::speechOf(outcome, input.context.lang, now)) {
+    output.act = std::string(turn::speech::actName(spoken->acts.front()));
+    if (!turn::speech::isQuestion(spoken->acts.front())) {
+      output.contextBlock = contextTail({.selector = contextSelector_,
+                                         .input = {.utterance = utterance,
+                                                   .lang = input.context.lang,
+                                                   .tool = outcome.decidedTool},
+                                         .facts = input.contextFacts});
+    }
+    const std::string tail =
+        turn::speech::actTail({.speech = *spoken, .contextBlock = output.contextBlock});
+    const auto started = std::chrono::steady_clock::now();
+    speakAct({.input = input,
+              .history = history,
+              .onToken = args.onToken,
+              .speech = *spoken,
+              .tail = tail,
+              .asked = state.asked,
+              .wrote = state.wrote,
+              .opened = state.opened,
+              .callsConfirmed = state.called},
+             output);
+    output.generateMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - started)
+                            .count();
+    return output;
+  }
+
+  std::string tail;
   const std::string context = contextTail({.selector = contextSelector_,
                                            .input = {.utterance = utterance,
                                                      .lang = input.context.lang,
@@ -244,16 +305,9 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
                                   .appOnly = state.opened,
                                   .callsConfirmed = state.called});
     const TokenCallback guarded = gate.callback();
-    std::string spoken;
     std::string raw;
     engine_.chatStream(req, [&](const std::string& token, bool done) {
       raw += token;
-      spoken += token;
-      if (done && !gate.cut())
-        if (const std::string extra = missingReadbacks(outcome, spoken); !extra.empty()) {
-          spoken += extra;
-          guarded(extra, false);
-        }
       guarded(token, done);
     });
     output.emitted = true;
@@ -270,9 +324,6 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
     if (claimedWithoutTool(output.reply, state)) {
       LOG_WARN << "LfmAdapter: the reply claims something no tool did; answering honestly";
       output.reply = reply_claims::honest(input.context.lang);
-    }
-    else {
-      output.reply += missingReadbacks(outcome, output.reply);
     }
     reply_claims::StrippedReply stripped =
         reply_claims::withoutTrailingOffer(std::move(output.reply),

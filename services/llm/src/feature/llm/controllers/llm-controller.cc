@@ -114,6 +114,9 @@ struct ChatStreamJob
   ChatRequest request;
   std::unique_ptr<drogon::ResponseStream> stream;
   LlmPrefillStats stats;
+  std::string speech;
+  std::string act;
+  bool terminated{false};
   size_t tokenCount{0};
   size_t charCount{0};
 };
@@ -140,13 +143,17 @@ std::string withoutSentinelMark(std::string token)
   return token;
 }
 
-std::string sentinelLine(const LlmPrefillStats& stats)
+std::string sentinelLine(const ChatStreamJob& job)
 {
   Json::Value sentinel(Json::objectValue);
   sentinel["done"] = true;
-  sentinel["prompt_tokens"] = stats.promptTokens;
-  sentinel["reused_tokens"] = stats.reusedTokens;
-  sentinel["decoded_tokens"] = stats.decodedTokens;
+  sentinel["prompt_tokens"] = job.stats.promptTokens;
+  sentinel["reused_tokens"] = job.stats.reusedTokens;
+  sentinel["decoded_tokens"] = job.stats.decodedTokens;
+  if (!job.speech.empty())
+    sentinel["speech"] = job.speech;
+  if (!job.act.empty())
+    sentinel["act"] = job.act;
   Json::StreamWriterBuilder builder;
   builder["indentation"] = "";
   return Json::writeString(builder, sentinel) + "\n";
@@ -167,22 +174,32 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
       job->charCount += token.size();
       return;
     }
-    const std::string line = kStreamSentinelMark + sentinelLine(job->stats);
+    job->terminated = true;
+    const std::string line = kStreamSentinelMark + sentinelLine(*job);
     if (!job->stream->send(line))
       job->stream.reset();
   };
+  bool generated = false;
   try {
     job->owner->chatStreamSync(
         {.request = job->request,
          .onToken = send,
          .stats = &job->stats,
-         .cancellation = {}});
+         .cancellation = {},
+         .speech = &job->speech,
+         .act = &job->act});
+    generated = true;
   }
   catch (const ClientGone&) {
     LOG_INFO << "LLM stream: client left, generation stopped";
   }
   catch (const std::exception& e) {
     LOG_ERROR << "LLM stream generation failed: " << e.what();
+  }
+  if (generated && job->stream && !job->terminated) {
+    const std::string line = kStreamSentinelMark + sentinelLine(*job);
+    if (!job->stream->send(line))
+      job->stream.reset();
   }
   if (job->stream) {
     job->stream->close();
@@ -252,6 +269,7 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
   outcome.text = output.reply;
   outcome.rawReply = output.rawReply;
   outcome.contextBlock = output.contextBlock;
+  outcome.speech = output.speech;
   outcome.hops = output.hops;
   outcome.toolCalls = output.executed.size();
   outcome.attempted = output.executed;
@@ -283,6 +301,10 @@ void LlmController::chatStreamSync(const LlmStreamInput& input)
   std::vector<ChatMessage> history = input.request.messages;
   const ToolChatOutput output = adapter_.chatWithToolsStream(
       {.input = loop, .history = history, .onToken = emit});
+  if (input.speech != nullptr)
+    *input.speech = output.speech;
+  if (input.act != nullptr)
+    *input.act = output.act;
   LOG_INFO << "LLM stream loop: hops=" << output.hops
            << " tools=" << output.executed.size()
            << " gen_ms=" << output.generateMs << " tool_ms=" << output.toolMs;
@@ -325,6 +347,8 @@ LlmController::chat(drogon::HttpRequestPtr req)
 
   Json::Value info(Json::objectValue);
   info["text"] = outcome.text;
+  if (!outcome.speech.empty())
+    info["speech"] = outcome.speech;
   co_return ApiResponse::ok(info);
 }
 
@@ -349,6 +373,9 @@ LlmController::chatStream(drogon::HttpRequestPtr req)
                                     .expected = identityCredential_}),
       .stream = nullptr,
       .stats = {},
+      .speech = {},
+      .act = {},
+      .terminated = false,
       .tokenCount = 0,
       .charCount = 0});
 

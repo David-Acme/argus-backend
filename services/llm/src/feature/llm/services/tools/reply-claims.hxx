@@ -40,8 +40,6 @@ struct Plain
 
 [[nodiscard]] std::string honest(std::string_view lang);
 
-[[nodiscard]] std::string nudge(std::string_view lang);
-
 struct OfferContext
 {
   std::string_view lang{};

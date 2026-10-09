@@ -76,6 +76,8 @@ struct LlmStreamInput
   LlmPrefillStats* stats{nullptr};
   std::stop_token cancellation{};
   ActionCallback onAction{};
+  std::string* speech{nullptr};
+  std::string* act{nullptr};
 };
 
 struct GenerateInput

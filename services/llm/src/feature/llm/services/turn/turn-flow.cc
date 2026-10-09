@@ -1,7 +1,5 @@
 #include "turn-flow.hxx"
 
-#include "turn-texts.hxx"
-
 #include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/module-command.hxx>
 #include <feature/llm/services/tools/module-offer.hxx>
@@ -84,70 +82,68 @@ std::vector<std::string> missingFields(const argus::mcp::ToolSpec& spec, const C
   return fields;
 }
 
-Finding findingOf(const tools::ToolResult& result)
+std::string moduleDisplayName(const ToolAudience& audience, const std::string& id, std::string_view lang)
 {
-  if (result.code == kInactive)
-    return {.kind = FindingKind::Offer,
-            .tool = result.tool,
-            .text = result.data["facts"].isString() ? result.data["facts"].asString() : result.output};
+  const ModuleFlag* module = moduleNamed(audience.modules, id);
+  if (module == nullptr)
+    return id;
+  const std::string& name = lang == "en" ? module->name.en : module->name.es;
+  return name.empty() ? id : name;
+}
+
+Json::Value knownArgsOf(const Json::Value& arguments)
+{
+  Json::Value known(Json::objectValue);
+  if (!arguments.isObject())
+    return known;
+  for (const std::string& name : arguments.getMemberNames())
+    if (present(arguments, name))
+      known[name] = arguments[name];
+  return known;
+}
+
+std::string moduleArgument(const Json::Value& arguments, const ToolAudience& audience, std::string_view lang)
+{
+  const Json::Value& value = arguments["module"];
+  return value.isString() && !value.asString().empty() ? moduleDisplayName(audience, value.asString(), lang)
+                                                       : std::string();
+}
+
+std::optional<speech::Act> actOf(const tools::ToolResult& result,
+                                 const ToolAudience& audience,
+                                 std::string_view lang,
+                                 const Json::Value& arguments,
+                                 std::string_view utterance)
+{
+  if (result.code == kInactive) {
+    const std::string id = result.data["module"].isString() ? result.data["module"].asString() : result.tool;
+    const ModuleOfferInput offer{.audience = audience, .module = id, .lang = std::string(lang)};
+    return speech::Offer{.module = id,
+                         .name = moduleDisplayName(audience, id, lang),
+                         .facts = moduleOfferFacts(offer),
+                         .pendingIntent = std::string(utterance)};
+  }
   if (result.ok && previewed(result))
-    return {.kind = FindingKind::Preview, .tool = result.tool, .text = result.output};
-  Finding finding{.kind = result.ok ? FindingKind::Done : FindingKind::Refused, .tool = result.tool, .text = result.output};
-  if (result.ok && result.data["readback"].isString() && result.data["readbackSentence"].isString()) {
-    finding.readback = result.data["readback"].asString();
-    finding.readbackSentence = result.data["readbackSentence"].asString();
-  }
-  return finding;
+    return speech::Confirm{.action = result.tool,
+                           .args = arguments,
+                           .irreversible = true,
+                           .toolPreview = result.output,
+                           .module = moduleArgument(arguments, audience, lang)};
+  if (result.ok)
+    return speech::Done{.tool = result.tool,
+                        .fact = result.output,
+                        .readback = result.data["readback"].isString() ? result.data["readback"].asString()
+                                                                       : std::string()};
+  return speech::Refused{.tool = result.tool, .reason = result.output};
 }
 
-std::string noteOf(const Finding& finding, std::string_view lang)
+speech::DateKind relativeKind(int relative)
 {
-  const turn_texts::Fact fact{.tool = finding.tool, .result = finding.text};
-  switch (finding.kind) {
-    case FindingKind::Done:
-      return turn_texts::done(lang, fact);
-    case FindingKind::Refused:
-      return turn_texts::refused(lang, fact);
-    case FindingKind::Preview:
-      return turn_texts::preview(lang, finding.text);
-    case FindingKind::Offer:
-      return turn_texts::offer(lang, finding.text);
-    case FindingKind::Declined:
-      return turn_texts::declined(lang);
-    case FindingKind::Unactionable:
-      return turn_texts::unactionable(lang);
-  }
-  return {};
-}
-
-turn_texts::Details detailsOf(const Candidate& candidate, const TurnRequest& request)
-{
-  constexpr std::size_t kLongestSpoken = 60;
-  const Json::Value& arguments = candidate.arguments;
-  turn_texts::Details details;
-  for (const char* key : {"title", "name", "text", "query"}) {
-    const Json::Value& value = arguments[key];
-    if (value.isString() && !value.asString().empty() && value.asString().size() <= kLongestSpoken) {
-      details.title = value.asString();
-      break;
-    }
-  }
-  for (const char* key : {"starts_at", "due_at"}) {
-    const Json::Value& value = arguments[key];
-    if (value.isString()) {
-      details.when = turn_texts::spokenWhen({.iso = value.asString(), .now = request.now, .lang = request.context.lang});
-      break;
-    }
-  }
-  if (arguments["module"].isString()) {
-    const std::string id = arguments["module"].asString();
-    const ModuleFlag* module = moduleNamed(request.audience.modules, id);
-    const bool english = request.context.lang == "en";
-    details.module = module != nullptr && !(english ? module->name.en : module->name.es).empty()
-                         ? (english ? module->name.en : module->name.es)
-                         : id;
-  }
-  return details;
+  if (relative <= 0)
+    return speech::DateKind::Today;
+  if (relative == 1)
+    return speech::DateKind::Tomorrow;
+  return speech::DateKind::DayAfterTomorrow;
 }
 
 std::string_view verdictName(Verdict verdict)
@@ -222,7 +218,7 @@ Outcome TurnFlow::declined() const
 {
   Outcome outcome;
   outcome.source = "declined";
-  outcome.findings.push_back({.kind = FindingKind::Declined, .tool = {}, .text = {}});
+  outcome.acts.emplace_back(speech::Declined{});
   return outcome;
 }
 
@@ -230,7 +226,7 @@ Outcome TurnFlow::unactionable(const TurnRequest& request) const
 {
   Outcome outcome;
   if (reply_claims::asksForAction(request.utterance))
-    outcome.findings.push_back({.kind = FindingKind::Unactionable, .tool = {}, .text = {}});
+    outcome.acts.emplace_back(speech::Unactionable{.reason = "no_matching_action"});
   return outcome;
 }
 
@@ -254,7 +250,8 @@ void TurnFlow::execute(const TurnRequest& request, tools::ToolCall call, Outcome
   outcome.wrote = outcome.wrote || (tool != nullptr && changes(result, *tool));
   outcome.opened = outcome.opened || (tool != nullptr && shows(result, *tool));
   outcome.called = outcome.called || (result.ok && result.data["callScheduled"].isBool() && result.data["callScheduled"].asBool());
-  outcome.findings.push_back(findingOf(result));
+  if (auto act = actOf(result, request.audience, request.context.lang, call.arguments, spoken))
+    outcome.acts.emplace_back(std::move(*act));
   outcome.steps.push_back({.call = std::move(call), .result = std::move(result)});
 }
 
@@ -262,9 +259,8 @@ Outcome TurnFlow::ask(const Move& move)
 {
   Outcome outcome;
   outcome.source = move.candidate.source;
-  const std::string_view lang = move.request.context.lang;
   if (move.attempts > kMaxAttempts) {
-    outcome.question = turn_texts::misunderstood(lang);
+    outcome.acts.emplace_back(speech::Misunderstood{});
     return outcome;
   }
   if (move.request.context.userId > 0)
@@ -276,7 +272,12 @@ Outcome TurnFlow::ask(const Move& move)
                    .utterance = {},
                    .attempts = move.attempts,
                    .at = {}});
-  outcome.question = turn_texts::slotQuestion({.tool = move.candidate.tool, .slot = move.slot, .lang = lang});
+  outcome.acts.emplace_back(speech::AskSlot{.slot = move.slot,
+                                         .tool = move.candidate.tool,
+                                         .knownArgs = knownArgsOf(move.candidate.arguments),
+                                         .reason = speech::AskReason::Missing,
+                                         .dates = {},
+                                         .options = {}});
   return outcome;
 }
 
@@ -348,8 +349,7 @@ Outcome TurnFlow::projectRefusal(const TurnRequest& request, const Candidate& ca
       options.push_back(name.asString());
   if (listed && options.empty())
     return outcome;
-  outcome.findings.pop_back();
-  const std::string_view lang = request.context.lang;
+  outcome.acts.pop_back();
   if (request.context.userId > 0)
     pendings_.put(request.context.userId,
                   {.awaiting = listed ? Awaiting::Project : Awaiting::NewProject,
@@ -361,7 +361,13 @@ Outcome TurnFlow::projectRefusal(const TurnRequest& request, const Candidate& ca
                    .at = {},
                    .options = options,
                    .held = std::nullopt});
-  outcome.question = listed ? turn_texts::projectQuestion({.options = options, .lang = lang}) : turn_texts::newProjectQuestion(lang, true);
+  outcome.acts.emplace_back(speech::AskSlot{.slot = "project",
+                                         .tool = candidate.tool,
+                                         .knownArgs = knownArgsOf(held.arguments),
+                                         .reason = listed ? speech::AskReason::ProjectChoice
+                                                          : speech::AskReason::ProjectNoneYet,
+                                         .dates = {},
+                                         .options = options});
   return outcome;
 }
 
@@ -370,10 +376,9 @@ Outcome TurnFlow::askDay(const Move& move, const Candidate& candidate, const slo
   const TurnRequest& request = move.request;
   Outcome outcome;
   outcome.source = candidate.source;
-  const std::string_view lang = request.context.lang;
   const int attempts = move.attempts + 1;
   if (attempts > kMaxAttempts) {
-    outcome.question = turn_texts::misunderstood(lang);
+    outcome.acts.emplace_back(speech::Misunderstood{});
     return outcome;
   }
   if (request.context.userId > 0)
@@ -389,11 +394,19 @@ Outcome TurnFlow::askDay(const Move& move, const Candidate& candidate, const slo
                    .held = std::nullopt,
                    .values = {iso_time::format(dispute.conflict.byWeekday), iso_time::format(dispute.conflict.byDate)},
                    .relative = dispute.conflict.relative});
-  outcome.question = turn_texts::dayQuestion({.byWeekday = dispute.conflict.byWeekday,
-                                              .byDate = dispute.conflict.byDate,
-                                              .relative = dispute.conflict.relative,
-                                              .now = request.now,
-                                              .lang = lang});
+  speech::AskSlot ask{.slot = dispute.field,
+                      .tool = candidate.tool,
+                      .knownArgs = knownArgsOf(candidate.arguments),
+                      .reason = speech::AskReason::AmbiguousDate,
+                      .dates = {},
+                      .options = {}};
+  if (dispute.conflict.relative < 0)
+    ask.dates = {speech::DatePart{.kind = speech::DateKind::Weekday, .epoch = dispute.conflict.byWeekday},
+                 speech::DatePart{.kind = speech::DateKind::CalendarDate, .epoch = dispute.conflict.byDate}};
+  else
+    ask.dates = {speech::DatePart{.kind = relativeKind(dispute.conflict.relative), .epoch = dispute.conflict.byDate},
+                 speech::DatePart{.kind = speech::DateKind::Weekday, .epoch = dispute.conflict.byWeekday}};
+  outcome.acts.emplace_back(std::move(ask));
   return outcome;
 }
 
@@ -404,7 +417,7 @@ Outcome TurnFlow::askPassed(const Move& move, const Candidate& candidate, const 
   outcome.source = candidate.source;
   const int attempts = move.attempts + 1;
   if (attempts > kMaxAttempts) {
-    outcome.question = turn_texts::misunderstood(request.context.lang);
+    outcome.acts.emplace_back(speech::Misunderstood{});
     return outcome;
   }
   if (request.context.userId > 0)
@@ -420,7 +433,13 @@ Outcome TurnFlow::askPassed(const Move& move, const Candidate& candidate, const 
                    .held = std::nullopt,
                    .values = {iso_time::format(passed.tomorrowAt)},
                    .relative = -1});
-  outcome.question = turn_texts::passedQuestion({.tomorrowAt = passed.tomorrowAt, .now = request.now, .lang = request.context.lang});
+  outcome.acts.emplace_back(speech::AskSlot{.slot = passed.field,
+                                         .tool = candidate.tool,
+                                         .knownArgs = knownArgsOf(candidate.arguments),
+                                         .reason = speech::AskReason::DatePassed,
+                                         .dates = {speech::DatePart{.kind = speech::DateKind::Clock,
+                                                                    .epoch = passed.tomorrowAt}},
+                                         .options = {}});
   return outcome;
 }
 
@@ -431,7 +450,7 @@ Outcome TurnFlow::askFar(const Move& move, const Candidate& candidate, const std
   outcome.source = candidate.source;
   const int attempts = move.attempts + 1;
   if (attempts > kMaxAttempts) {
-    outcome.question = turn_texts::misunderstood(request.context.lang);
+    outcome.acts.emplace_back(speech::Misunderstood{});
     return outcome;
   }
   if (request.context.userId > 0)
@@ -447,7 +466,12 @@ Outcome TurnFlow::askFar(const Move& move, const Candidate& candidate, const std
                    .held = std::nullopt,
                    .values = {},
                    .relative = -1});
-  outcome.question = turn_texts::farQuestion(request.context.lang);
+  outcome.acts.emplace_back(speech::AskSlot{.slot = field,
+                                         .tool = candidate.tool,
+                                         .knownArgs = knownArgsOf(candidate.arguments),
+                                         .reason = speech::AskReason::BeyondRange,
+                                         .dates = {},
+                                         .options = {}});
   return outcome;
 }
 
@@ -514,16 +538,21 @@ Outcome TurnFlow::askProjectAgain(const TurnRequest& request, const Pending& pen
 {
   Outcome outcome;
   outcome.source = pending.candidate.source;
-  const std::string_view lang = request.context.lang;
   if (pending.attempts + 1 > kMaxAttempts) {
-    outcome.question = turn_texts::misunderstood(lang);
+    outcome.acts.emplace_back(speech::Misunderstood{});
     return outcome;
   }
   Pending next = pending;
   next.attempts = pending.attempts + 1;
   pendings_.put(request.context.userId, next);
-  outcome.question = pending.awaiting == Awaiting::Project ? turn_texts::projectQuestion({.options = pending.options, .lang = lang})
-                                                           : turn_texts::newProjectQuestion(lang, false);
+  outcome.acts.emplace_back(speech::AskSlot{.slot = "project",
+                                         .tool = pending.candidate.tool,
+                                         .knownArgs = knownArgsOf(pending.candidate.arguments),
+                                         .reason = pending.awaiting == Awaiting::Project
+                                                       ? speech::AskReason::ProjectChoice
+                                                       : speech::AskReason::ProjectName,
+                                         .dates = {},
+                                         .options = pending.options});
   return outcome;
 }
 
@@ -531,9 +560,9 @@ Outcome TurnFlow::offerProject(const TurnRequest& request, const Pending& pendin
 {
   Outcome outcome;
   outcome.source = pending.candidate.source;
-  const std::string_view lang = request.context.lang;
   if (handleOf(request.offered, kCreateProjectTool) == nullptr) {
-    outcome.findings.push_back({.kind = FindingKind::Refused, .tool = std::string(kCreateProjectTool), .text = turn_texts::cannotCreateProject(lang)});
+    outcome.acts.emplace_back(
+        speech::Refused{.tool = std::string(kCreateProjectTool), .reason = "project_create_unavailable"});
     return outcome;
   }
   Candidate create{.tool = std::string(kCreateProjectTool),
@@ -557,7 +586,13 @@ Outcome TurnFlow::offerProject(const TurnRequest& request, const Pending& pendin
                  .at = {},
                  .options = {},
                  .held = pending.candidate});
-  outcome.question = turn_texts::createProjectQuestion({.name = name, .lang = lang});
+  Json::Value arguments(Json::objectValue);
+  arguments["name"] = name;
+  outcome.acts.emplace_back(speech::Confirm{.action = std::string(kCreateProjectTool),
+                                         .args = std::move(arguments),
+                                         .irreversible = false,
+                                         .toolPreview = {},
+                                         .module = {}});
   return outcome;
 }
 
@@ -576,11 +611,13 @@ Outcome TurnFlow::confirmed(const TurnRequest& request, const Pending& pending)
   Outcome second = proceed({.request = request, .candidate = std::move(task), .slot = {}, .attempts = 0, .answering = false, .utterance = pending.utterance});
   first.toolMs += second.toolMs;
   first.wrote = first.wrote || second.wrote;
-  first.question = std::move(second.question);
+  if (!second.acts.empty() && speech::isQuestion(second.acts.front()))
+    first.acts = std::move(second.acts);
+  else
+    for (speech::Act& act : second.acts)
+      first.acts.push_back(std::move(act));
   for (Step& step : second.steps)
     first.steps.push_back(std::move(step));
-  for (Finding& finding : second.findings)
-    first.findings.push_back(std::move(finding));
   return first;
 }
 
@@ -612,7 +649,12 @@ std::optional<Outcome> TurnFlow::followUpProject(const TurnRequest& request, con
     pendings_.put(userId, next);
     Outcome outcome;
     outcome.source = pending.candidate.source;
-    outcome.question = turn_texts::newProjectQuestion(request.context.lang, false);
+    outcome.acts.emplace_back(speech::AskSlot{.slot = "project",
+                                           .tool = pending.candidate.tool,
+                                           .knownArgs = knownArgsOf(pending.candidate.arguments),
+                                           .reason = speech::AskReason::ProjectName,
+                                           .dates = {},
+                                           .options = {}});
     return outcome;
   }
   const slots::Choice choice = slots::choose(request.utterance, pending.options);
@@ -652,8 +694,12 @@ Outcome TurnFlow::confirm(const TurnRequest& request, const Candidate& candidate
                    .utterance = std::string(request.utterance),
                    .attempts = 0,
                    .at = {}});
-  outcome.question = turn_texts::confirmQuestion(
-      {.tool = held.tool, .lang = request.context.lang, .details = detailsOf(held, request)});
+  outcome.acts.emplace_back(speech::Confirm{.action = held.tool,
+                                         .args = held.arguments,
+                                         .irreversible = false,
+                                         .toolPreview = {},
+                                         .module = moduleArgument(held.arguments, request.audience,
+                                                                  request.context.lang)});
   return outcome;
 }
 
@@ -672,7 +718,7 @@ Outcome TurnFlow::choose(const TurnRequest& request, const Candidate& candidate)
                    .utterance = std::string(request.utterance),
                    .attempts = 0,
                    .at = {}});
-  outcome.question = turn_texts::chooseQuestion({.first = candidate.tool, .second = candidate.runnerUp->tool, .lang = request.context.lang});
+  outcome.acts.emplace_back(speech::Choose{.options = {candidate.tool, candidate.runnerUp->tool}});
   return outcome;
 }
 
@@ -881,15 +927,11 @@ Outcome TurnFlow::run(const TurnRequest& request)
   return decided(request, deciding);
 }
 
-std::string TurnFlow::notes(const Outcome& outcome, std::string_view lang)
+std::optional<speech::Speech> speechOf(const Outcome& outcome, std::string_view lang, int64_t now)
 {
-  std::string out;
-  for (const Finding& finding : outcome.findings) {
-    if (!out.empty())
-      out += '\n';
-    out += noteOf(finding, lang);
-  }
-  return out;
+  if (outcome.acts.empty())
+    return std::nullopt;
+  return speech::Speech{.acts = outcome.acts, .lang = std::string(lang), .now = now};
 }
 
 }

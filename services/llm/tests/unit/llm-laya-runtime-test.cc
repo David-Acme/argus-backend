@@ -197,7 +197,7 @@ TEST_CASE("the real Laya bundle decides, and the turn runs the tool it chose")
                                             .previousAssistant = {}});
     if (!outcome.decidedTool.empty())
       CHECK(outcome.decidedTool == *expected);
-    if (!outcome.decidedTool.empty() || outcome.question.has_value() || !outcome.steps.empty())
+    if (!outcome.decidedTool.empty() || !outcome.acts.empty() || !outcome.steps.empty())
       ++engaged;
     for (const turn::Step& step : outcome.steps) {
       CHECK(step.call.name == *expected);

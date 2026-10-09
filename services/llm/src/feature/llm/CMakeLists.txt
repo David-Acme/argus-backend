@@ -72,8 +72,11 @@ argus_module(NAME llm
         services/turn/slot-lexicon.cc
         services/turn/slots.cc
         services/turn/sp-tokenizer.cc
+        services/turn/speech-acts.cc
+        services/turn/speech-cues.cc
+        services/turn/speech-guard.cc
+        services/turn/speech-render.cc
         services/turn/turn-flow.cc
-        services/turn/turn-texts.cc
     INCLUDES
         ../..
     DEPENDS

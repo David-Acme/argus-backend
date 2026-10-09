@@ -13,7 +13,7 @@
 #include <feature/llm/services/turn/slots.hxx>
 #include <feature/llm/services/turn/tool-effects.hxx>
 #include <feature/llm/services/turn/turn-flow.hxx>
-#include <feature/llm/services/turn/turn-texts.hxx>
+#include <feature/llm/services/turn/speech-acts.hxx>
 #include <feature/memory/services/extract/extraction-service.hxx>
 #include <mcp/schema.hxx>
 #include <phrase/phrase-catalog.hxx>
@@ -21,6 +21,7 @@
 
 #include <text/iso-time.hxx>
 #include <text/name-match.hxx>
+#include <text/spoken-time.hxx>
 
 #include <algorithm>
 #include <cstdint>
@@ -109,7 +110,6 @@ struct World
   std::vector<std::string> projects{"Casa"};
   bool listsProjects{true};
   std::string readback;
-  std::string readbackSentence;
 
   explicit World(UserRole role = UserRole::Owner)
       : flow({.executor = executor, .decider = &rules, .text = &text, .policies = turn::PolicySet({.act = 0.90, .ask = 0.60, .margin = 0.10})})
@@ -135,10 +135,8 @@ struct World
                             }
                             auto result = tool_stubs::okResult("Agendé «" + call.arguments["title"].asString() + "» para " +
                                                                call.arguments["starts_at"].asString() + ".");
-                            if (!readback.empty()) {
+                            if (!readback.empty())
                               result.data["readback"] = readback;
-                              result.data["readbackSentence"] = readbackSentence;
-                            }
                             return result;
                           },
                           .module = "productivity",
@@ -288,24 +286,75 @@ turn::Candidate must(const std::optional<turn::Candidate>& value)
   return value.value_or(turn::Candidate{});
 }
 
-std::string said(const turn::Outcome& outcome)
+using ActList = std::vector<turn::speech::Act>;
+
+const turn::speech::Act* firstAct(const turn::Outcome& outcome)
 {
-  REQUIRE(outcome.question.has_value());
-  return outcome.question.value_or(std::string());
+  return outcome.acts.empty() ? nullptr : &outcome.acts.front();
+}
+
+template <typename T>
+const T* actAs(const turn::Outcome& outcome)
+{
+  const turn::speech::Act* act = firstAct(outcome);
+  return act == nullptr ? nullptr : std::get_if<T>(act);
+}
+
+bool saidAct(const turn::Outcome& outcome, const turn::speech::Act& act)
+{
+  return outcome.acts.size() == 1 && outcome.acts.front() == act;
+}
+
+bool ranAct(const turn::Outcome& outcome, const turn::speech::Act& act)
+{
+  return std::ranges::find(outcome.acts, act) != outcome.acts.end();
+}
+
+turn::speech::AskSlot asksSlot(std::string slot, std::string tool)
+{
+  return {.slot = std::move(slot),
+          .tool = std::move(tool),
+          .knownArgs = Json::Value(Json::objectValue),
+          .reason = turn::speech::AskReason::Missing,
+          .dates = {},
+          .options = {}};
+}
+
+bool asksDay(const turn::Outcome& outcome, std::string_view slot, std::string_view tool)
+{
+  const auto* ask = actAs<turn::speech::AskSlot>(outcome);
+  return ask != nullptr && ask->slot == slot && ask->tool == tool &&
+         ask->reason == turn::speech::AskReason::AmbiguousDate && ask->dates.size() == 2;
+}
+
+bool asksPassed(const turn::Outcome& outcome, std::string_view slot, std::string_view tool)
+{
+  const auto* ask = actAs<turn::speech::AskSlot>(outcome);
+  return ask != nullptr && ask->slot == slot && ask->tool == tool &&
+         ask->reason == turn::speech::AskReason::DatePassed && ask->dates.size() == 1 &&
+         ask->dates.front().kind == turn::speech::DateKind::Clock;
+}
+
+bool asksBeyondRange(const turn::Outcome& outcome, std::string_view slot, std::string_view tool)
+{
+  const auto* ask = actAs<turn::speech::AskSlot>(outcome);
+  return ask != nullptr && ask->slot == slot && ask->tool == tool &&
+         ask->reason == turn::speech::AskReason::BeyondRange && ask->dates.empty();
+}
+
+turn::speech::Confirm confirms(std::string action)
+{
+  return {.action = std::move(action),
+          .args = Json::Value(Json::objectValue),
+          .irreversible = false,
+          .toolPreview = {},
+          .module = {}};
 }
 
 std::string titled(const std::optional<std::string>& title)
 {
   REQUIRE(title.has_value());
   return title.value_or(std::string());
-}
-
-const turn::Finding* findingOf(const turn::Outcome& outcome, turn::FindingKind kind)
-{
-  for (const auto& finding : outcome.findings)
-    if (finding.kind == kind)
-      return &finding;
-  return nullptr;
 }
 
 class SilentClassifier final : public intent::IIntentClassifier
@@ -537,13 +586,9 @@ TEST_CASE("a request with its title and time is decided, filled and run, and wha
   CHECK(world.ran.front().context.utterance == "agéndame una reunión con Andrea mañana a las 5 de la tarde");
   REQUIRE(outcome.steps.size() == 1);
   CHECK(outcome.wrote);
-  CHECK_FALSE(outcome.question.has_value());
-  const auto* done = findingOf(outcome, turn::FindingKind::Done);
+  const auto* done = actAs<turn::speech::Done>(outcome);
   REQUIRE(done != nullptr);
-  CHECK(done->text == "Agendé «Reunión con Andrea» para " + startsAt + ".");
-  const std::string notes = turn::TurnFlow::notes(outcome, "es");
-  CHECK(notes.find("Agendé «Reunión con Andrea» para " + startsAt) != std::string::npos);
-  CHECK(notes.find("List of tools") == std::string::npos);
+  CHECK(done->fact == "Agendé «Reunión con Andrea» para " + startsAt + ".");
 }
 
 TEST_CASE("a missing time becomes a question and the answer completes the call")
@@ -551,7 +596,7 @@ TEST_CASE("a missing time becomes a question and the answer completes the call")
   World world;
   const auto first = world.say("agéndame una reunión con Andrea");
   CHECK(world.ran.empty());
-  CHECK(said(first) == turn_texts::slotQuestion({.tool = "calendar.create_event", .slot = "starts_at", .lang = "es"}));
+  CHECK(saidAct(first, asksSlot("starts_at", "calendar.create_event")));
   CHECK_FALSE(first.wrote);
 
   const auto second = world.say("mañana a las 5 de la tarde");
@@ -559,7 +604,6 @@ TEST_CASE("a missing time becomes a question and the answer completes the call")
   CHECK(world.ran.front().arguments["title"].asString() == "Reunión con Andrea");
   CHECK(world.ran.front().arguments["starts_at"].asString().starts_with(tomorrowAtFive()));
   CHECK(second.wrote);
-  CHECK_FALSE(second.question.has_value());
 }
 
 TEST_CASE("a missing title is asked for and the answer becomes the title")
@@ -567,7 +611,7 @@ TEST_CASE("a missing title is asked for and the answer becomes the title")
   World world;
   const auto first = world.say("anota una tarea");
   CHECK(world.ran.empty());
-  CHECK(said(first) == turn_texts::slotQuestion({.tool = "task.create", .slot = "title", .lang = "es"}));
+  CHECK(saidAct(first, asksSlot("title", "task.create")));
 
   const auto second = world.say("llamar al dentista");
   REQUIRE(world.ran.size() == 1);
@@ -578,21 +622,21 @@ TEST_CASE("a missing title is asked for and the answer becomes the title")
 TEST_CASE("an answer that is not an answer is asked for again once and then given up on")
 {
   World world;
-  REQUIRE(world.say("anota una tarea").question.has_value());
+  REQUIRE_FALSE(world.say("anota una tarea").acts.empty());
   const auto again = world.say("...");
-  CHECK(said(again) == turn_texts::slotQuestion({.tool = "task.create", .slot = "title", .lang = "es"}));
+  CHECK(saidAct(again, asksSlot("title", "task.create")));
   const auto gaveUp = world.say("...");
-  CHECK(said(gaveUp) == turn_texts::misunderstood("es"));
+  CHECK(saidAct(gaveUp, turn::speech::Misunderstood{}));
   CHECK(world.ran.empty());
-  CHECK_FALSE(world.say("...").question.has_value());
+  CHECK(world.say("...").acts.empty());
 }
 
 TEST_CASE("a new command while a question is open replaces the question")
 {
   World world;
-  REQUIRE(world.say("anota una tarea").question.has_value());
+  REQUIRE_FALSE(world.say("anota una tarea").acts.empty());
   const auto fresh = world.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
-  CHECK_FALSE(fresh.question.has_value());
+  CHECK_FALSE(fresh.acts.empty());
   REQUIRE(world.ran.size() == 1);
   CHECK(world.ran.front().name == "calendar.create_event");
   CHECK(world.say("llamar al dentista").steps.empty());
@@ -608,8 +652,10 @@ TEST_CASE("a confidence between the two thresholds is asked about, and yes runs 
 
   const auto asked = world.say("mi hermana viene los domingos");
   CHECK(world.ran.empty());
-  CHECK(said(asked) == turn_texts::confirmQuestion(
-                           {.tool = "memory.remember", .lang = "es", .details = {.title = "mi hermana viene los domingos", .when = {}, .module = {}}}));
+  const auto* confirm = actAs<turn::speech::Confirm>(asked);
+  REQUIRE(confirm != nullptr);
+  CHECK(confirm->action == "memory.remember");
+  CHECK(confirm->args["text"].asString() == "mi hermana viene los domingos");
 
   world.scripted.next.reset();
   const auto yes = world.say("sí");
@@ -623,12 +669,11 @@ TEST_CASE("no to a question runs nothing, is said so, and the question is forgot
   World world;
   world.flow.useDecider(world.scripted);
   world.scripted.next = candidate("task.list", 0.70);
-  REQUIRE(world.say("hay tareas").question.has_value());
+  REQUIRE_FALSE(world.say("hay tareas").acts.empty());
   world.scripted.next.reset();
   const auto no = world.say("no, gracias");
   CHECK(world.ran.empty());
-  CHECK(findingOf(no, turn::FindingKind::Declined) != nullptr);
-  CHECK(turn::TurnFlow::notes(no, "es") == turn_texts::declined("es"));
+  CHECK(saidAct(no, turn::speech::Declined{}));
   const auto later = world.say("sí");
   CHECK(later.steps.empty());
   CHECK(world.ran.empty());
@@ -639,7 +684,7 @@ TEST_CASE("another sentence instead of an answer drops the question and is decid
   World world;
   world.flow.useDecider(world.scripted);
   world.scripted.next = candidate("task.list", 0.70);
-  REQUIRE(world.say("hay tareas").question.has_value());
+  REQUIRE_FALSE(world.say("hay tareas").acts.empty());
   world.scripted.next = candidate("task.list", 1.0);
   const auto fresh = world.say("más bien dime qué tareas tengo");
   REQUIRE(world.ran.size() == 1);
@@ -654,14 +699,12 @@ TEST_CASE("a confidence below the lower threshold is no tool, and only an asked 
   world.scripted.next = candidate("task.list", 0.30);
   const auto plain = world.say("hola qué tal");
   CHECK(plain.steps.empty());
-  CHECK(plain.findings.empty());
-  CHECK_FALSE(plain.question.has_value());
+  CHECK(plain.acts.empty());
 
   const auto asked = world.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
   CHECK(asked.steps.empty());
   CHECK(world.ran.empty());
-  REQUIRE(findingOf(asked, turn::FindingKind::Unactionable) != nullptr);
-  CHECK(turn::TurnFlow::notes(asked, "es") == turn_texts::unactionable("es"));
+  CHECK(saidAct(asked, turn::speech::Unactionable{.reason = "no_matching_action"}));
 }
 
 TEST_CASE("a destructive call is previewed, the code never reaches the notes, and yes confirms with the stored code")
@@ -675,12 +718,10 @@ TEST_CASE("a destructive call is previewed, the code never reaches the notes, an
   const auto preview = world.say("cancela la cena con Marta");
   REQUIRE(preview.steps.size() == 1);
   CHECK_FALSE(preview.wrote);
-  const auto* pending = findingOf(preview, turn::FindingKind::Preview);
+  const auto* pending = actAs<turn::speech::Confirm>(preview);
   REQUIRE(pending != nullptr);
-  CHECK(pending->text == "Esto cancelaría «Cena con Marta».");
-  const std::string notes = turn::TurnFlow::notes(preview, "es");
-  CHECK(notes.find(std::string(kCode)) == std::string::npos);
-  CHECK(notes.find("Esto cancelaría «Cena con Marta».") != std::string::npos);
+  CHECK(pending->irreversible);
+  CHECK(pending->toolPreview == "Esto cancelaría «Cena con Marta».");
 
   world.scripted.next.reset();
   const auto confirmed = world.say("sí, cancélala");
@@ -688,9 +729,9 @@ TEST_CASE("a destructive call is previewed, the code never reaches the notes, an
   CHECK(world.ran.back().arguments["confirmation"].asString() == kCode);
   CHECK(world.ran.back().arguments["title"].asString() == "Cena con Marta");
   CHECK(confirmed.wrote);
-  const auto* done = findingOf(confirmed, turn::FindingKind::Done);
+  const auto* done = actAs<turn::speech::Done>(confirmed);
   REQUIRE(done != nullptr);
-  CHECK(done->text == "Cancelado: «Cena con Marta».");
+  CHECK(done->fact == "Cancelado: «Cena con Marta».");
 
   const auto again = world.say("sí");
   CHECK(again.steps.empty());
@@ -708,7 +749,7 @@ TEST_CASE("a no that brings a new command is the new command and not a refusal")
 
   world.flow.useDecider(world.rules);
   const auto fresh = world.say("no, mejor agéndame una reunión con Andrea mañana a las 5 de la tarde");
-  CHECK(findingOf(fresh, turn::FindingKind::Declined) == nullptr);
+  CHECK_FALSE(ranAct(fresh, turn::speech::Declined{}));
   REQUIRE(world.ran.size() == 2);
   CHECK(world.ran.back().name == "calendar.create_event");
   CHECK(world.say("sí").steps.empty());
@@ -724,7 +765,7 @@ TEST_CASE("no to a preview cancels it, and a later yes does not resurrect it")
   REQUIRE(world.say("cancela la cena con Marta").steps.size() == 1);
   world.scripted.next.reset();
   const auto no = world.say("no, déjala");
-  CHECK(findingOf(no, turn::FindingKind::Declined) != nullptr);
+  CHECK(ranAct(no, turn::speech::Declined{}));
   CHECK(world.say("sí").steps.empty());
   CHECK(world.ran.size() == 1);
 }
@@ -739,11 +780,13 @@ TEST_CASE("a module that is off is offered, and yes turns it on for the owner an
   REQUIRE(offer.steps.size() == 1);
   CHECK(offer.steps.front().result.code == "module_inactive");
   CHECK_FALSE(offer.wrote);
-  const auto* offered = findingOf(offer, turn::FindingKind::Offer);
+  const auto* offered = actAs<turn::speech::Offer>(offer);
   REQUIRE(offered != nullptr);
-  CHECK(offered->text.find("Productividad") != std::string::npos);
-  CHECK(offered->text.find("modules.enable") == std::string::npos);
-  CHECK(offered->text.find("llama a") == std::string::npos);
+  CHECK(offered->module == "productivity");
+  CHECK(offered->name == "Productividad");
+  CHECK(offered->facts.find("Productividad") != std::string::npos);
+  CHECK(offered->facts.find("modules.enable") == std::string::npos);
+  CHECK(offered->facts.find("llama a") == std::string::npos);
   CHECK(owner.ran.empty());
 
   owner.scripted.next.reset();
@@ -773,7 +816,7 @@ TEST_CASE("saying no to an offer drops it, and a yes that was not asked for does
   world.scripted.next = candidate("task.list", 1.0);
   REQUIRE(world.say("qué tareas tengo").steps.size() == 1);
   world.scripted.next.reset();
-  CHECK(findingOf(world.say("no, así está bien"), turn::FindingKind::Declined) != nullptr);
+  CHECK(ranAct(world.say("no, así está bien"), turn::speech::Declined{}));
   CHECK(world.say("sí").steps.empty());
   CHECK(world.ran.empty());
 
@@ -803,7 +846,7 @@ TEST_CASE("an anonymous caller keeps no questions and no confirmations between t
 {
   World world;
   world.context.userId = 0;
-  REQUIRE(world.say("anota una tarea").question.has_value());
+  REQUIRE_FALSE(world.say("anota una tarea").acts.empty());
   const auto next = world.say("llamar al dentista");
   CHECK(world.ran.empty());
   CHECK(next.steps.empty());
@@ -833,19 +876,41 @@ TEST_CASE("the voice is told what was done and nothing else is added, with no to
   }
 }
 
-TEST_CASE("a question is answered by the system itself, without a generation, sync and streamed")
+TEST_CASE("a question is rendered by the model, sync and streamed, and the act reaches the prompt")
 {
   Spoken sync;
+  sync.script.replies = {"¿Para cuándo la agendo?"};
   const auto output = sync.sync("agéndame una reunión con Andrea");
-  CHECK(sync.script.requests.empty());
-  CHECK(output.reply == turn_texts::slotQuestion({.tool = "calendar.create_event", .slot = "starts_at", .lang = "es"}));
-  CHECK(output.generateMs == 0);
+  REQUIRE(sync.script.requests.size() == 1);
+  CHECK(output.reply == "¿Para cuándo la agendo?");
+  CHECK(output.act == "ask_slot");
+  CHECK(sync.script.requests.front().messages.back().content.find("\"kind\":\"ask_slot\"") != std::string::npos);
+  CHECK(sync.script.requests.front().messages.back().content.find("starts_at") != std::string::npos);
 
   Spoken streamed;
+  streamed.script.replies = {"¿Para cuándo la agendo?"};
   const auto asked = streamed.stream("agéndame una reunión con Andrea");
-  CHECK(streamed.script.requests.empty());
+  REQUIRE(streamed.script.requests.size() == 1);
   CHECK(streamed.heard == asked.reply);
   CHECK(asked.emitted);
+}
+
+TEST_CASE("a reply that does not ask the slot is asked for once more, and twice it stays silent")
+{
+  Spoken retried;
+  retried.script.replies = {"Lo agendo enseguida.", "¿Para cuándo lo agendo?"};
+  const auto output = retried.sync("agéndame una reunión con Andrea");
+  REQUIRE(retried.script.requests.size() == 2);
+  CHECK(output.reply == "¿Para cuándo lo agendo?");
+  CHECK(output.speech.empty());
+  CHECK(retried.script.requests.back().messages.back().content.find("no era una pregunta") != std::string::npos);
+
+  Spoken silent;
+  silent.script.replies = {"Lo agendo enseguida.", "Vale, lo agendo ya."};
+  const auto refused = silent.sync("agéndame una reunión con Andrea");
+  REQUIRE(silent.script.requests.size() == 2);
+  CHECK(refused.reply.empty());
+  CHECK(refused.speech == "unavailable");
 }
 
 TEST_CASE("a plain conversation turn runs nothing and the reply is untouched")
@@ -885,17 +950,20 @@ TEST_CASE("a preview is not a deed, so a claim of it is cut, and a tool that onl
   turn::Candidate cancel = candidate("calendar.cancel_event", 1.0);
   cancel.arguments["title"] = "Cena con Marta";
   preview.world.scripted.next = cancel;
-  preview.script.replies = {"Listo, cancelé la cena con Marta."};
+  preview.script.replies = {"Listo, cancelé la cena con Marta.", "Listo, cancelé la cena con Marta."};
   const auto output = preview.sync("cancela la cena con Marta");
-  CHECK(output.reply == reply_claims::honest("es"));
-  REQUIRE(preview.script.requests.size() == 1);
+  CHECK(output.reply.empty());
+  CHECK(output.speech == "unavailable");
+  REQUIRE(preview.script.requests.size() == 2);
   CHECK(preview.script.requests.front().messages.back().content.find(std::string(kCode)) == std::string::npos);
 
   Spoken reading;
   reading.adapter.flow().useDecider(reading.world.scripted);
   reading.world.scripted.next = candidate("task.list", 1.0);
-  reading.script.replies = {"Agendé la reunión con Andrea."};
-  CHECK(reading.sync("¿Qué tengo mañana en la agenda?").reply == reply_claims::honest("es"));
+  reading.script.replies = {"Agendé la reunión con Andrea.", "Agendé la reunión con Andrea."};
+  const auto notTrue = reading.sync("¿Qué tengo mañana en la agenda?");
+  CHECK(notTrue.reply.empty());
+  CHECK(notTrue.speech == "unavailable");
   CHECK(reading.world.ran.size() == 1);
 }
 
@@ -1062,7 +1130,7 @@ TEST_CASE("two tools that are close are asked about in one question, and the ans
   world.flow.useDecider(decider);
   const auto asked = world.say(utterance);
   CHECK(world.ran.empty());
-  CHECK(said(asked) == turn_texts::chooseQuestion({.first = "memory.remember", .second = "memory.recall", .lang = "es"}));
+  CHECK(saidAct(asked, turn::speech::Choose{.options = {"memory.remember", "memory.recall"}}));
 
   const auto other = world.say("la otra");
   REQUIRE(world.ran.size() == 1);
@@ -1070,14 +1138,14 @@ TEST_CASE("two tools that are close are asked about in one question, and the ans
   CHECK(world.ran.front().arguments["query"].asString() == utterance);
   CHECK_FALSE(other.wrote);
 
-  REQUIRE(world.say(utterance).question.has_value());
+  REQUIRE(actAs<turn::speech::Choose>(world.say(utterance)) != nullptr);
   const auto yes = world.say("sí");
   REQUIRE(world.ran.size() == 2);
   CHECK(world.ran.back().name == "memory.remember");
   CHECK(yes.wrote);
 
-  REQUIRE(world.say(utterance).question.has_value());
-  CHECK(findingOf(world.say("no, ninguna"), turn::FindingKind::Declined) != nullptr);
+  REQUIRE(actAs<turn::speech::Choose>(world.say(utterance)) != nullptr);
+  CHECK(ranAct(world.say("no, ninguna"), turn::speech::Declined{}));
   CHECK(world.ran.size() == 2);
 }
 
@@ -1090,7 +1158,7 @@ TEST_CASE("the choice is asked in English too and a sentence that answers neithe
   close.runnerUp = turn::Pick{.tool = "calendar.create_event", .arguments = Json::Value(Json::objectValue), .fill = {}, .confidence = 0.92, .source = {}};
   world.scripted.next = close;
   const auto asked = world.say("call the dentist tomorrow");
-  CHECK(said(asked) == "Do you want me to add it as a task or schedule it?");
+  CHECK(saidAct(asked, turn::speech::Choose{.options = {"task.create", "calendar.create_event"}}));
   world.scripted.next.reset();
   const auto neither = world.say("what is the weather like");
   CHECK(neither.steps.empty());
@@ -1113,7 +1181,10 @@ TEST_CASE("a write that only one decider believes is asked about, and a second s
 
   const auto asked = world.say("llamar al dentista");
   CHECK(world.ran.empty());
-  CHECK(said(asked) == turn_texts::confirmQuestion({.tool = "task.create", .lang = "es", .details = {.title = "llamar al dentista", .when = {}, .module = {}}}));
+  const auto* confirm = actAs<turn::speech::Confirm>(asked);
+  REQUIRE(confirm != nullptr);
+  CHECK(confirm->action == "task.create");
+  CHECK(confirm->args["title"].asString() == "llamar al dentista");
   const auto yes = world.say("sí");
   REQUIRE(world.ran.size() == 1);
   CHECK(yes.wrote);
@@ -1121,21 +1192,21 @@ TEST_CASE("a write that only one decider believes is asked about, and a second s
 
   world.flow.useWitnesses({&witness});
   witness.next = candidate("task.list", 1.0);
-  CHECK(world.say("llamar al dentista").question.has_value());
+  CHECK(actAs<turn::speech::Confirm>(world.say("llamar al dentista")) != nullptr);
   CHECK(world.ran.size() == 1);
   world.say("no");
 
   witness.next = candidate("task.create", 1.0);
   const auto agreed = world.say("llamar al dentista");
-  CHECK_FALSE(agreed.question.has_value());
+  CHECK(actAs<turn::speech::Done>(agreed) != nullptr);
   CHECK(world.ran.size() == 2);
 
   world.flow.useWitnesses({});
   world.flow.useSecondSignal([](const turn::SecondOpinion& opinion) { return opinion.candidate.tool == "task.create"; });
-  CHECK_FALSE(world.say("llamar al dentista").question.has_value());
+  CHECK(actAs<turn::speech::Done>(world.say("llamar al dentista")) != nullptr);
   CHECK(world.ran.size() == 3);
   world.flow.useSecondSignal([](const turn::SecondOpinion&) { return false; });
-  CHECK(world.say("llamar al dentista").question.has_value());
+  CHECK(actAs<turn::speech::Confirm>(world.say("llamar al dentista")) != nullptr);
   CHECK(world.ran.size() == 3);
 }
 
@@ -1148,13 +1219,13 @@ TEST_CASE("a read needs no second signal, but a decider that doubts itself is as
   read.decider = "laya";
   read.exact = false;
   world.scripted.next = read;
-  CHECK_FALSE(world.say("qué tareas tengo").question.has_value());
+  CHECK_FALSE(world.say("qué tareas tengo").acts.empty());
   REQUIRE(world.ran.size() == 1);
 
   read.confident = false;
   world.scripted.next = read;
   const auto doubtful = world.say("qué tareas tengo");
-  CHECK(said(doubtful) == turn_texts::confirmQuestion({.tool = "task.list", .lang = "es"}));
+  CHECK(saidAct(doubtful, confirms("task.list")));
   CHECK(world.ran.size() == 1);
 }
 
@@ -1169,15 +1240,15 @@ TEST_CASE("the thresholds of the decider that spoke are the ones that count")
   turn::Candidate read = candidate("task.list", 0.95);
   read.decider = "laya";
   world.scripted.next = read;
-  CHECK_FALSE(world.say("qué tareas tengo").question.has_value());
+  CHECK(world.say("qué tareas tengo").acts.empty());
   CHECK(world.ran.empty());
 
   read.confidence = 0.98;
   world.scripted.next = read;
-  CHECK(world.say("qué tareas tengo").question.has_value());
+  CHECK(actAs<turn::speech::Confirm>(world.say("qué tareas tengo")) != nullptr);
   read.confidence = 1.0;
   world.scripted.next = read;
-  CHECK_FALSE(world.say("qué tareas tengo").question.has_value());
+  CHECK_FALSE(world.say("qué tareas tengo").acts.empty());
   CHECK(world.ran.size() == 1);
 }
 
@@ -1189,7 +1260,11 @@ TEST_CASE("a question says what it is about, with the time spoken the way it is 
   maybe.fill = {"title", "starts_at"};
   world.scripted.next = maybe;
   const auto asked = world.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
-  CHECK(said(asked) == "¿Quieres que agende «Reunión con Andrea» para mañana a las 5 de la tarde?");
+  const auto* confirm = actAs<turn::speech::Confirm>(asked);
+  REQUIRE(confirm != nullptr);
+  CHECK(confirm->action == "calendar.create_event");
+  CHECK(confirm->args["title"].asString() == "Reunión con Andrea");
+  CHECK(confirm->args["starts_at"].asString().starts_with(tomorrowAtFive()));
   CHECK(world.ran.empty());
   world.scripted.next.reset();
   const auto yes = world.say("sí");
@@ -1203,7 +1278,7 @@ TEST_CASE("a time is spoken as today, tomorrow or the weekday, in the 12-hour cl
 {
   const std::int64_t now = at({.day = 6, .hour = 10, .minute = 0});
   const auto when = [now](std::int64_t moment, std::string_view lang) {
-    return turn_texts::spokenWhen({.iso = iso_time::format(moment), .now = now, .lang = lang});
+    return spoken_time::moment({.epoch = moment, .now = now, .lang = lang, .day = spoken_time::Day::Relative});
   };
   CHECK(when(at({.day = 6, .hour = 15, .minute = 30}), "es") == "hoy a las 3:30 de la tarde");
   CHECK(when(at({.day = 6, .hour = 15, .minute = 30}), "en") == "today at 3:30 PM");
@@ -1212,18 +1287,7 @@ TEST_CASE("a time is spoken as today, tomorrow or the weekday, in the 12-hour cl
   CHECK(when(at({.day = 9, .hour = 13, .minute = 0}), "es") == "el viernes 9 a la 1 de la tarde");
   CHECK(when(at({.day = 9, .hour = 13, .minute = 0}), "en") == "on Friday the 9th at 1 PM");
   CHECK(when(at({.day = 6, .hour = 21, .minute = 5}), "es") == "hoy a las 9:05 de la noche");
-  CHECK(turn_texts::spokenWhen({.iso = "not a time", .now = now, .lang = "es"}).empty());
-}
-
-TEST_CASE("a question falls back to the plain one when what it would say is missing")
-{
-  CHECK(turn_texts::confirmQuestion({.tool = "calendar.create_event", .lang = "es", .details = {.title = "Cena", .when = {}, .module = {}}}) ==
-        "¿Quieres que agende un evento?");
-  CHECK(turn_texts::confirmQuestion({.tool = "modules.enable", .lang = "en", .details = {.title = {}, .when = {}, .module = "Productivity"}}) ==
-        "Shall I turn on the Productivity module?");
-  CHECK(turn_texts::confirmQuestion({.tool = "tool.unknown", .lang = "es"}) == "¿Quieres que lo haga?");
-  CHECK(turn_texts::chooseQuestion({.first = "task.create", .second = "memory.remind", .lang = "es"}) ==
-        "¿Quieres que lo anote como tarea o que te lo recuerde?");
+  CHECK_FALSE(iso_time::parse("not a time").has_value());
 }
 
 TEST_CASE("the other one is a phrase of the language and nothing else is")
@@ -1290,19 +1354,21 @@ TEST_CASE("a tool that failed does not make a later claim true, and what it said
 {
   Spoken failed;
   failed.world.createOk = false;
-  failed.script.replies = {"Listo, ya lo agendé."};
+  failed.script.replies = {"Listo, ya lo agendé.", "Listo, ya lo agendé."};
   const auto output = failed.sync("agéndame una reunión con Andrea mañana a las 5 de la tarde");
   CHECK(failed.world.ran.size() == 1);
-  CHECK(output.reply == reply_claims::honest("es"));
   CHECK(output.executed.size() == 1);
-  REQUIRE(failed.script.requests.size() == 1);
+  CHECK(output.reply.empty());
+  CHECK(output.speech == "unavailable");
+  REQUIRE(failed.script.requests.size() == 2);
   CHECK(failed.script.requests.front().messages.back().content.find("No pude agendar.") != std::string::npos);
 
-  Spoken english;
-  english.world.context.lang = "en";
-  english.script.replies = {"Done, I've scheduled it."};
-  const auto spoken = english.sync("Schedule a meeting with Andrea tomorrow at 5 pm");
-  CHECK(spoken.reply == "Done, I've scheduled it.");
+  Spoken honest;
+  honest.world.createOk = false;
+  honest.script.replies = {"No pude agendarla, lo siento."};
+  const auto spoken = honest.sync("agéndame una reunión con Andrea mañana a las 5 de la tarde");
+  CHECK(spoken.reply == "No pude agendarla, lo siento.");
+  CHECK(spoken.speech.empty());
 }
 
 namespace
@@ -1330,7 +1396,10 @@ TEST_CASE("a decider marked witness-only asks for every write, whatever its conf
   world.flow.usePolicies(witnessOnlyRules());
   const auto asked = world.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
   CHECK(world.ran.empty());
-  CHECK(said(asked) == "¿Quieres que agende «Reunión con Andrea» para mañana a las 5 de la tarde?");
+  const auto* confirm = actAs<turn::speech::Confirm>(asked);
+  REQUIRE(confirm != nullptr);
+  CHECK(confirm->action == "calendar.create_event");
+  CHECK(confirm->args["title"].asString() == "Reunión con Andrea");
   CHECK_FALSE(asked.wrote);
   const auto yes = world.say("sí");
   REQUIRE(world.ran.size() == 1);
@@ -1340,12 +1409,12 @@ TEST_CASE("a decider marked witness-only asks for every write, whatever its conf
   world.scripted.name = "rules";
   world.scripted.next = candidate("task.list", 1.0);
   world.scripted.next->decider = "rules";
-  CHECK_FALSE(world.say("qué tareas tengo").question.has_value());
+  CHECK_FALSE(world.say("qué tareas tengo").acts.empty());
   CHECK(world.ran.size() == 2);
   world.scripted.next = candidate("task.create", 1.0);
   world.scripted.next->decider = "rules";
   world.scripted.next->arguments["title"] = "llamar al dentista";
-  CHECK(world.say("anota llamar al dentista").question.has_value());
+  CHECK(actAs<turn::speech::Confirm>(world.say("anota llamar al dentista")) != nullptr);
   CHECK(world.ran.size() == 2);
 }
 
@@ -1353,14 +1422,14 @@ TEST_CASE("the same decider acts alone on a write when it is not marked, and the
 {
   World plain;
   const auto acted = plain.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
-  CHECK_FALSE(acted.question.has_value());
+  CHECK(actAs<turn::speech::Done>(acted) != nullptr);
   CHECK(plain.ran.size() == 1);
 
   World other;
   turn::PolicySet policies({.act = 0.90, .ask = 0.60, .margin = 0.10});
   policies.set("router", {.act = 0.90, .ask = 0.60, .margin = 0.10, .witnessOnly = true});
   other.flow.usePolicies(policies);
-  CHECK_FALSE(other.say("agéndame una reunión con Andrea mañana a las 5 de la tarde").question.has_value());
+  CHECK(actAs<turn::speech::Done>(other.say("agéndame una reunión con Andrea mañana a las 5 de la tarde")) != nullptr);
   CHECK(other.ran.size() == 1);
 }
 
@@ -1378,12 +1447,12 @@ TEST_CASE("a witness-only decider is the second signal another decider's write n
   world.scripted.next = write;
 
   const auto agreed = world.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
-  CHECK_FALSE(agreed.question.has_value());
+  CHECK(actAs<turn::speech::Done>(agreed) != nullptr);
   REQUIRE(world.ran.size() == 1);
   CHECK(world.ran.front().arguments["title"].asString() == "Reunión con Andrea");
 
   const auto alone = world.say("una reunión con Andrea mañana a las 5 de la tarde");
-  CHECK(alone.question.has_value());
+  CHECK(actAs<turn::speech::Confirm>(alone) != nullptr);
   CHECK(world.ran.size() == 1);
 }
 
@@ -1497,17 +1566,17 @@ TEST_CASE("the guard of a learned decider is the question it answers itself, now
   };
 
   world.scripted.next = write(0.92);
-  CHECK_FALSE(world.say("llamar al dentista").question.has_value());
+  CHECK(actAs<turn::speech::Done>(world.say("llamar al dentista")) != nullptr);
   CHECK(world.ran.size() == 1);
 
   world.scripted.next = write(0.50);
-  CHECK(world.say("llamar al dentista").question.has_value());
+  CHECK(actAs<turn::speech::Confirm>(world.say("llamar al dentista")) != nullptr);
   CHECK(world.ran.size() == 1);
   world.scripted.next.reset();
   world.say("no");
 
   world.scripted.next = write(std::nullopt);
-  CHECK(world.say("llamar al dentista").question.has_value());
+  CHECK(actAs<turn::speech::Confirm>(world.say("llamar al dentista")) != nullptr);
   CHECK(world.ran.size() == 1);
   world.scripted.next.reset();
   world.say("no");
@@ -1517,7 +1586,7 @@ TEST_CASE("the guard of a learned decider is the question it answers itself, now
   witness.next = candidate("task.create", 1.0);
   world.flow.useWitnesses({&witness});
   world.scripted.next = write(0.50);
-  CHECK(world.say("llamar al dentista").question.has_value());
+  CHECK(actAs<turn::speech::Confirm>(world.say("llamar al dentista")) != nullptr);
   CHECK(world.ran.size() == 1);
   world.scripted.next.reset();
   world.say("no");
@@ -1526,7 +1595,7 @@ TEST_CASE("the guard of a learned decider is the question it answers itself, now
   read.decider = "laya";
   read.exact = false;
   world.scripted.next = read;
-  CHECK_FALSE(world.say("qué tareas tengo").question.has_value());
+  CHECK_FALSE(world.say("qué tareas tengo").acts.empty());
   CHECK(world.ran.size() == 2);
 
   const auto counts = world.flow.decisions();
@@ -1554,7 +1623,10 @@ TEST_CASE("changing the guard mode is a write that waits, whatever the tool says
   mode.arguments["mode"] = "night";
   world.scripted.next = mode;
   const auto asked = world.say("pon la vigilancia en modo noche");
-  CHECK(said(asked) == turn_texts::confirmQuestion({.tool = "app.set_guard_mode", .lang = "es"}));
+  const auto* confirm = actAs<turn::speech::Confirm>(asked);
+  REQUIRE(confirm != nullptr);
+  CHECK(confirm->action == "app.set_guard_mode");
+  CHECK(confirm->args["mode"].asString() == "night");
   CHECK(actions.empty());
   world.scripted.next.reset();
   const auto yes = world.say("sí");
@@ -1565,7 +1637,7 @@ TEST_CASE("changing the guard mode is a write that waits, whatever the tool says
   camera.decider = "laya";
   camera.exact = false;
   world.scripted.next = camera;
-  CHECK_FALSE(world.say("muéstrame la cámara").question.has_value());
+  CHECK_FALSE(world.say("muéstrame la cámara").acts.empty());
   REQUIRE(actions.size() == 2);
   CHECK(actions.back() == "app.show_camera");
 }
@@ -1587,9 +1659,13 @@ TEST_CASE("a task with several projects asks which one, reads the answer for tha
   World world;
   world.projects = {"Casa", "Trabajo", "Viaje"};
   const auto asked = world.say("anota una tarea: llamar al dentista");
-  CHECK(said(asked) == "¿En cuál proyecto va? Casa, Trabajo o Viaje.");
+  const auto* question = actAs<turn::speech::AskSlot>(asked);
+  REQUIRE(question != nullptr);
+  CHECK(question->slot == "project");
+  CHECK(question->tool == "task.create");
+  CHECK(question->reason == turn::speech::AskReason::ProjectChoice);
+  CHECK(question->options == std::vector<std::string>{"Casa", "Trabajo", "Viaje"});
   CHECK_FALSE(asked.wrote);
-  CHECK(asked.findings.empty());
   CHECK(world.ran.size() == 1);
 
   const auto done = world.say("el de la casa");
@@ -1605,9 +1681,18 @@ TEST_CASE("with no project the system offers to create one by its name, and only
 {
   World world;
   world.projects.clear();
-  CHECK(said(world.say("anota una tarea: llamar al dentista")) ==
-        "Todavía no tienes proyectos. ¿Cómo quieres llamar al proyecto nuevo para esta tarea?");
-  CHECK(said(world.say("Hogar")) == "¿Creo el proyecto «Hogar» y anoto la tarea ahí?");
+  CHECK(saidAct(world.say("anota una tarea: llamar al dentista"),
+                turn::speech::AskSlot{.slot = "project",
+                                      .tool = "task.create",
+                                      .knownArgs = Json::Value(Json::objectValue),
+                                      .reason = turn::speech::AskReason::ProjectNoneYet,
+                                      .dates = {},
+                                      .options = {}}));
+  const turn::Outcome offered = world.say("Hogar");
+  const auto* offer = actAs<turn::speech::Confirm>(offered);
+  REQUIRE(offer != nullptr);
+  CHECK(offer->action == "project.create");
+  CHECK(offer->args["name"].asString() == "Hogar");
   CHECK(toolsRun(world) == std::vector<std::string>{"task.create"});
 
   const auto yes = world.say("sí");
@@ -1616,24 +1701,38 @@ TEST_CASE("with no project the system offers to create one by its name, and only
   CHECK(world.ran[2].arguments["project"].asString() == "Hogar");
   CHECK(world.ran[2].arguments["title"].asString() == "Llamar al dentista");
   CHECK(yes.wrote);
-  CHECK(yes.findings.size() == 2);
+  CHECK(yes.acts.size() == 2);
 }
 
 TEST_CASE("none of the projects, or create one, leads to the same offer and never creates silently")
 {
   World none;
   none.projects = {"Casa", "Trabajo"};
-  REQUIRE(none.say("anota una tarea: llamar al dentista").question.has_value());
-  CHECK(said(none.say("ninguno")) == "¿Cómo se llama el proyecto nuevo?");
-  CHECK(said(none.say("se llama Hogar")) == "¿Creo el proyecto «Hogar» y anoto la tarea ahí?");
-  CHECK(findingOf(none.say("no, déjalo"), turn::FindingKind::Declined) != nullptr);
+  REQUIRE_FALSE(none.say("anota una tarea: llamar al dentista").acts.empty());
+  CHECK(saidAct(none.say("ninguno"),
+                turn::speech::AskSlot{.slot = "project",
+                                      .tool = "task.create",
+                                      .knownArgs = Json::Value(Json::objectValue),
+                                      .reason = turn::speech::AskReason::ProjectName,
+                                      .dates = {},
+                                      .options = {}}));
+  const turn::Outcome namedOfferOutcome = none.say("se llama Hogar");
+  const auto* namedOffer = actAs<turn::speech::Confirm>(namedOfferOutcome);
+  REQUIRE(namedOffer != nullptr);
+  CHECK(namedOffer->action == "project.create");
+  CHECK(namedOffer->args["name"].asString() == "Hogar");
+  CHECK(ranAct(none.say("no, déjalo"), turn::speech::Declined{}));
   CHECK(toolsRun(none) == std::vector<std::string>{"task.create"});
   CHECK(none.say("sí").steps.empty());
 
   World named;
   named.projects = {"Casa", "Trabajo"};
-  REQUIRE(named.say("anota una tarea: llamar al dentista").question.has_value());
-  CHECK(said(named.say("crea uno llamado Hogar")) == "¿Creo el proyecto «Hogar» y anoto la tarea ahí?");
+  REQUIRE_FALSE(named.say("anota una tarea: llamar al dentista").acts.empty());
+  const turn::Outcome createdOutcome = named.say("crea uno llamado Hogar");
+  const auto* created = actAs<turn::speech::Confirm>(createdOutcome);
+  REQUIRE(created != nullptr);
+  CHECK(created->action == "project.create");
+  CHECK(created->args["name"].asString() == "Hogar");
   CHECK(toolsRun(named) == std::vector<std::string>{"task.create"});
   named.say("sí");
   CHECK(toolsRun(named) == std::vector<std::string>{"task.create", "project.create", "task.create"});
@@ -1644,16 +1743,22 @@ TEST_CASE("an answer that names no project is asked again once, and a no drops t
 {
   World world;
   world.projects = {"Casa", "Trabajo"};
-  REQUIRE(world.say("anota una tarea: llamar al dentista").question.has_value());
-  CHECK(said(world.say("ese")) == "¿En cuál proyecto va? Casa o Trabajo.");
-  CHECK(said(world.say("ese")) == turn_texts::misunderstood("es"));
+  REQUIRE_FALSE(world.say("anota una tarea: llamar al dentista").acts.empty());
+  CHECK(saidAct(world.say("ese"),
+                turn::speech::AskSlot{.slot = "project",
+                                      .tool = "task.create",
+                                      .knownArgs = Json::Value(Json::objectValue),
+                                      .reason = turn::speech::AskReason::ProjectChoice,
+                                      .dates = {},
+                                      .options = {"Casa", "Trabajo"}}));
+  CHECK(saidAct(world.say("ese"), turn::speech::Misunderstood{}));
   CHECK(world.ran.size() == 1);
   CHECK(world.say("el de la casa").steps.empty());
 
   World dropped;
   dropped.projects = {"Casa", "Trabajo"};
-  REQUIRE(dropped.say("anota una tarea: llamar al dentista").question.has_value());
-  CHECK(findingOf(dropped.say("no"), turn::FindingKind::Declined) != nullptr);
+  REQUIRE_FALSE(dropped.say("anota una tarea: llamar al dentista").acts.empty());
+  CHECK(ranAct(dropped.say("no"), turn::speech::Declined{}));
   CHECK(dropped.say("el de la casa").steps.empty());
   CHECK(dropped.ran.size() == 1);
 }
@@ -1662,9 +1767,9 @@ TEST_CASE("a new command while a project is asked for replaces the question")
 {
   World world;
   world.projects = {"Casa", "Trabajo"};
-  REQUIRE(world.say("anota una tarea: llamar al dentista").question.has_value());
+  REQUIRE_FALSE(world.say("anota una tarea: llamar al dentista").acts.empty());
   const auto fresh = world.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
-  CHECK_FALSE(fresh.question.has_value());
+  CHECK_FALSE(fresh.acts.empty());
   CHECK(world.ran.back().name == "calendar.create_event");
 }
 
@@ -1673,7 +1778,13 @@ TEST_CASE("the same project question is asked and answered in English")
   World world;
   world.context.lang = "en";
   world.projects = {"Home", "Work"};
-  CHECK(said(world.say("add a task: call the dentist")) == "Which project is it for? Home or Work.");
+  CHECK(saidAct(world.say("add a task: call the dentist"),
+                turn::speech::AskSlot{.slot = "project",
+                                      .tool = "task.create",
+                                      .knownArgs = Json::Value(Json::objectValue),
+                                      .reason = turn::speech::AskReason::ProjectChoice,
+                                      .dates = {},
+                                      .options = {"Home", "Work"}}));
   const auto done = world.say("the home one");
   REQUIRE(world.ran.size() == 2);
   CHECK(world.ran.back().arguments["project"].asString() == "Home");
@@ -1682,8 +1793,18 @@ TEST_CASE("the same project question is asked and answered in English")
   World none;
   none.context.lang = "en";
   none.projects.clear();
-  CHECK(said(none.say("add a task: call the dentist")) == "You have no projects yet. What should I call the new project for this task?");
-  CHECK(said(none.say("Garden")) == "Shall I create the project “Garden” and add the task there?");
+  CHECK(saidAct(none.say("add a task: call the dentist"),
+                turn::speech::AskSlot{.slot = "project",
+                                      .tool = "task.create",
+                                      .knownArgs = Json::Value(Json::objectValue),
+                                      .reason = turn::speech::AskReason::ProjectNoneYet,
+                                      .dates = {},
+                                      .options = {}}));
+  const turn::Outcome gardenOutcome = none.say("Garden");
+  const auto* garden = actAs<turn::speech::Confirm>(gardenOutcome);
+  REQUIRE(garden != nullptr);
+  CHECK(garden->action == "project.create");
+  CHECK(garden->args["name"].asString() == "Garden");
   none.say("yes");
   CHECK(toolsRun(none) == std::vector<std::string>{"task.create", "project.create", "task.create"});
   CHECK(none.ran.back().arguments["project"].asString() == "Garden");
@@ -1691,9 +1812,19 @@ TEST_CASE("the same project question is asked and answered in English")
   World another;
   another.context.lang = "en";
   another.projects = {"Home", "Work"};
-  REQUIRE(another.say("add a task: call the dentist").question.has_value());
-  CHECK(said(another.say("none of them")) == "What is the new project called?");
-  CHECK(said(another.say("call it Garden")) == "Shall I create the project “Garden” and add the task there?");
+  REQUIRE_FALSE(another.say("add a task: call the dentist").acts.empty());
+  CHECK(saidAct(another.say("none of them"),
+                turn::speech::AskSlot{.slot = "project",
+                                      .tool = "task.create",
+                                      .knownArgs = Json::Value(Json::objectValue),
+                                      .reason = turn::speech::AskReason::ProjectName,
+                                      .dates = {},
+                                      .options = {}}));
+  const turn::Outcome otherOutcome = another.say("call it Garden");
+  const auto* other = actAs<turn::speech::Confirm>(otherOutcome);
+  REQUIRE(other != nullptr);
+  CHECK(other->action == "project.create");
+  CHECK(other->args["name"].asString() == "Garden");
 }
 
 TEST_CASE("when no decider found anything and no write ran, a claim of work done is cut on every path")
@@ -1724,9 +1855,10 @@ TEST_CASE("a provider that names no projects leaves its own refusal to be said, 
   world.projects = {"Casa", "Trabajo"};
   world.listsProjects = false;
   const auto outcome = world.say("anota una tarea: llamar al dentista");
-  CHECK_FALSE(outcome.question.has_value());
-  REQUIRE(outcome.findings.size() == 1);
-  CHECK(outcome.findings.front().kind == turn::FindingKind::Refused);
+  REQUIRE(outcome.acts.size() == 1);
+  const auto* refused = actAs<turn::speech::Refused>(outcome);
+  REQUIRE(refused != nullptr);
+  CHECK(refused->tool == "task.create");
   CHECK(world.say("el de la casa").steps.empty());
 }
 
@@ -1767,7 +1899,7 @@ TEST_CASE("a weekday that disagrees with the day of the month is a question nami
   World world;
   world.now = at({.day = 7, .hour = 15, .minute = 20});
   const auto first = world.say("agenda una reunión con Andrea el lunes 9 a las 5");
-  CHECK(said(first) == "¿El lunes 12 o el viernes 9?");
+  CHECK(asksDay(first, "starts_at", "calendar.create_event"));
   CHECK(world.ran.empty());
   CHECK_FALSE(first.wrote);
   const auto second = world.say("el lunes");
@@ -1775,18 +1907,17 @@ TEST_CASE("a weekday that disagrees with the day of the month is a question nami
   CHECK(world.ran.front().arguments["title"].asString() == "Reunión con Andrea");
   CHECK(world.ran.front().arguments["starts_at"].asString() == "2026-10-12T17:00:00+00:00");
   CHECK(second.wrote);
-  CHECK_FALSE(second.question.has_value());
 
   World byDate;
   byDate.now = at({.day = 7, .hour = 15, .minute = 20});
-  REQUIRE(byDate.say("agenda una reunión con Andrea el lunes 9 a las 5").question.has_value());
+  REQUIRE(asksDay(byDate.say("agenda una reunión con Andrea el lunes 9 a las 5"), "starts_at", "calendar.create_event"));
   byDate.say("el 9");
   REQUIRE(byDate.ran.size() == 1);
   CHECK(byDate.ran.front().arguments["starts_at"].asString() == "2026-10-09T17:00:00+00:00");
 
   World ordinal;
   ordinal.now = at({.day = 7, .hour = 15, .minute = 20});
-  REQUIRE(ordinal.say("agenda una reunión con Andrea el lunes 9 a las 5").question.has_value());
+  REQUIRE(asksDay(ordinal.say("agenda una reunión con Andrea el lunes 9 a las 5"), "starts_at", "calendar.create_event"));
   ordinal.say("el segundo");
   REQUIRE(ordinal.ran.size() == 1);
   CHECK(ordinal.ran.front().arguments["starts_at"].asString() == "2026-10-09T17:00:00+00:00");
@@ -1794,7 +1925,7 @@ TEST_CASE("a weekday that disagrees with the day of the month is a question nami
   World agreeing;
   agreeing.now = at({.day = 7, .hour = 15, .minute = 20});
   const auto direct = agreeing.say("agenda una reunión con Andrea el viernes 9 a las 5");
-  CHECK_FALSE(direct.question.has_value());
+  CHECK(actAs<turn::speech::Done>(direct) != nullptr);
   REQUIRE(agreeing.ran.size() == 1);
   CHECK(agreeing.ran.front().arguments["starts_at"].asString() == "2026-10-09T17:00:00+00:00");
 }
@@ -1809,10 +1940,10 @@ TEST_CASE("the day question is asked and answered in English, asked again once, 
   turn::Candidate meeting = candidate("calendar.create_event", 0.95);
   meeting.fill = {"title", "starts_at"};
   world.scripted.next = meeting;
-  CHECK(said(world.say("schedule a meeting with Andrea on Monday the 9th at 5 pm")) == "Do you mean Monday the 12th or Friday the 9th?");
+  CHECK(asksDay(world.say("schedule a meeting with Andrea on Monday the 9th at 5 pm"), "starts_at", "calendar.create_event"));
   world.scripted.next.reset();
-  CHECK(said(world.say("hmm")) == "Do you mean Monday the 12th or Friday the 9th?");
-  CHECK(said(world.say("hmm")) == turn_texts::misunderstood("en"));
+  CHECK(asksDay(world.say("hmm"), "starts_at", "calendar.create_event"));
+  CHECK(saidAct(world.say("hmm"), turn::speech::Misunderstood{}));
   CHECK(world.ran.empty());
 
   World answered;
@@ -1820,7 +1951,7 @@ TEST_CASE("the day question is asked and answered in English, asked again once, 
   answered.context.lang = "en";
   answered.flow.useDecider(answered.scripted);
   answered.scripted.next = meeting;
-  REQUIRE(answered.say("schedule a meeting with Andrea on Monday the 9th at 5 pm").question.has_value());
+  REQUIRE(asksDay(answered.say("schedule a meeting with Andrea on Monday the 9th at 5 pm"), "starts_at", "calendar.create_event"));
   answered.scripted.next.reset();
   const auto done = answered.say("Friday");
   REQUIRE(answered.ran.size() == 1);
@@ -1829,16 +1960,16 @@ TEST_CASE("the day question is asked and answered in English, asked again once, 
 
   World replaced;
   replaced.now = at({.day = 7, .hour = 15, .minute = 20});
-  REQUIRE(replaced.say("agenda una reunión con Andrea el lunes 9 a las 5").question.has_value());
+  REQUIRE(asksDay(replaced.say("agenda una reunión con Andrea el lunes 9 a las 5"), "starts_at", "calendar.create_event"));
   const auto fresh = replaced.say("agéndame una reunión con Andrea mañana a las 5 de la tarde");
-  CHECK_FALSE(fresh.question.has_value());
+  CHECK(actAs<turn::speech::Done>(fresh) != nullptr);
   REQUIRE(replaced.ran.size() == 1);
   CHECK(replaced.ran.front().arguments["starts_at"].asString() == "2026-10-08T17:00:00+00:00");
 
   World declined;
   declined.now = at({.day = 7, .hour = 15, .minute = 20});
-  REQUIRE(declined.say("agenda una reunión con Andrea el lunes 9 a las 5").question.has_value());
-  CHECK(findingOf(declined.say("no"), turn::FindingKind::Declined) != nullptr);
+  REQUIRE(asksDay(declined.say("agenda una reunión con Andrea el lunes 9 a las 5"), "starts_at", "calendar.create_event"));
+  CHECK(ranAct(declined.say("no"), turn::speech::Declined{}));
   CHECK(declined.ran.empty());
 }
 
@@ -1860,7 +1991,7 @@ TEST_CASE("a reminder whose weekday disagrees with its day asks which one and th
   turn::Candidate remind = candidate("memory.remind", 0.95);
   remind.arguments["text"] = "recuérdame el lunes 9 a las 5 llamar a Juan";
   world.scripted.next = remind;
-  CHECK(said(world.say("recuérdame el lunes 9 a las 5 llamar a Juan")) == "¿El lunes 12 o el viernes 9?");
+  CHECK(asksDay(world.say("recuérdame el lunes 9 a las 5 llamar a Juan"), "when", "memory.remind"));
   CHECK(world.ran.empty());
   world.scripted.next.reset();
   const auto done = world.say("el viernes");
@@ -1884,7 +2015,7 @@ TEST_CASE("a reminder whose weekday disagrees with its day asks which one and th
   agreeing.flow.useDecider(agreeing.scripted);
   remind.arguments["text"] = "recuérdame el viernes 9 a las 5 llamar a Juan";
   agreeing.scripted.next = remind;
-  CHECK_FALSE(agreeing.say("recuérdame el viernes 9 a las 5 llamar a Juan").question.has_value());
+  CHECK_FALSE(agreeing.say("recuérdame el viernes 9 a las 5 llamar a Juan").acts.empty());
   REQUIRE(agreeing.ran.size() == 1);
   CHECK_FALSE(agreeing.ran.front().context.heardAt.has_value());
 }
@@ -1894,7 +2025,7 @@ TEST_CASE("a weekday that disagrees with tomorrow or today asks which of the two
   const UtcZone zone;
   World world;
   world.now = at({.day = 7, .hour = 15, .minute = 20});
-  CHECK(said(world.say("agenda una reunión con Andrea mañana lunes a las 5")) == "¿Mañana jueves o el lunes 12?");
+  CHECK(asksDay(world.say("agenda una reunión con Andrea mañana lunes a las 5"), "starts_at", "calendar.create_event"));
   CHECK(world.ran.empty());
   const auto done = world.say("mañana");
   REQUIRE(world.ran.size() == 1);
@@ -1904,14 +2035,14 @@ TEST_CASE("a weekday that disagrees with tomorrow or today asks which of the two
 
   World weekday;
   weekday.now = at({.day = 7, .hour = 15, .minute = 20});
-  REQUIRE(weekday.say("agenda una reunión con Andrea mañana lunes a las 5").question.has_value());
+  REQUIRE(asksDay(weekday.say("agenda una reunión con Andrea mañana lunes a las 5"), "starts_at", "calendar.create_event"));
   weekday.say("el lunes");
   REQUIRE(weekday.ran.size() == 1);
   CHECK(weekday.ran.front().arguments["starts_at"].asString() == "2026-10-12T17:00:00+00:00");
 
   World today;
   today.now = at({.day = 7, .hour = 15, .minute = 20});
-  CHECK(said(today.say("agenda una reunión con Andrea hoy lunes a las 5")) == "¿Hoy miércoles o el lunes 12?");
+  CHECK(asksDay(today.say("agenda una reunión con Andrea hoy lunes a las 5"), "starts_at", "calendar.create_event"));
 
   World english;
   english.now = at({.day = 7, .hour = 15, .minute = 20});
@@ -1920,7 +2051,7 @@ TEST_CASE("a weekday that disagrees with tomorrow or today asks which of the two
   turn::Candidate meeting = candidate("calendar.create_event", 0.95);
   meeting.fill = {"title", "starts_at"};
   english.scripted.next = meeting;
-  CHECK(said(english.say("schedule a meeting with Andrea tomorrow Monday at 5 pm")) == "Do you mean tomorrow, which is a Thursday, or Monday the 12th?");
+  CHECK(asksDay(english.say("schedule a meeting with Andrea tomorrow Monday at 5 pm"), "starts_at", "calendar.create_event"));
   english.scripted.next.reset();
   english.say("Monday");
   REQUIRE(english.ran.size() == 1);
@@ -1928,7 +2059,7 @@ TEST_CASE("a weekday that disagrees with tomorrow or today asks which of the two
 
   World agreeing;
   agreeing.now = at({.day = 7, .hour = 15, .minute = 20});
-  CHECK_FALSE(agreeing.say("agenda una reunión con Andrea mañana jueves a las 5").question.has_value());
+  CHECK_FALSE(agreeing.say("agenda una reunión con Andrea mañana jueves a las 5").acts.empty());
   REQUIRE(agreeing.ran.size() == 1);
   CHECK(agreeing.ran.front().arguments["starts_at"].asString() == "2026-10-08T17:00:00+00:00");
 }
@@ -1938,13 +2069,13 @@ TEST_CASE("an explicit today takes the evening reading of a bare 7 to 11, and as
   const UtcZone zone;
   World evening;
   evening.now = at({.day = 7, .hour = 15, .minute = 20});
-  CHECK_FALSE(evening.say("agenda una reunión con Andrea hoy a las nueve").question.has_value());
+  CHECK_FALSE(evening.say("agenda una reunión con Andrea hoy a las nueve").acts.empty());
   REQUIRE(evening.ran.size() == 1);
   CHECK(evening.ran.front().arguments["starts_at"].asString() == "2026-10-07T21:00:00+00:00");
 
   World late;
   late.now = at({.day = 7, .hour = 21, .minute = 30});
-  CHECK(said(late.say("agenda una reunión con Andrea hoy a las ocho")) == "Esa hora ya pasó hoy. ¿Mañana a las 8 de la mañana?");
+  CHECK(asksPassed(late.say("agenda una reunión con Andrea hoy a las ocho"), "starts_at", "calendar.create_event"));
   CHECK(late.ran.empty());
   const auto done = late.say("sí");
   REQUIRE(late.ran.size() == 1);
@@ -1954,28 +2085,27 @@ TEST_CASE("an explicit today takes the evening reading of a bare 7 to 11, and as
 
   World another;
   another.now = at({.day = 7, .hour = 21, .minute = 30});
-  REQUIRE(another.say("agenda una reunión con Andrea hoy a las ocho").question.has_value());
+  REQUIRE_FALSE(another.say("agenda una reunión con Andrea hoy a las ocho").acts.empty());
   another.say("mañana a las 9 de la noche");
   REQUIRE(another.ran.size() == 1);
   CHECK(another.ran.front().arguments["starts_at"].asString() == "2026-10-08T21:00:00+00:00");
 
   World refused;
   refused.now = at({.day = 7, .hour = 21, .minute = 30});
-  REQUIRE(refused.say("agenda una reunión con Andrea hoy a las ocho").question.has_value());
-  CHECK(findingOf(refused.say("no"), turn::FindingKind::Declined) != nullptr);
+  REQUIRE_FALSE(refused.say("agenda una reunión con Andrea hoy a las ocho").acts.empty());
+  CHECK(ranAct(refused.say("no"), turn::speech::Declined{}));
   CHECK(refused.ran.empty());
 
   World lost;
   lost.now = at({.day = 7, .hour = 21, .minute = 30});
-  const std::string asked = "Esa hora ya pasó hoy. ¿Mañana a las 8 de la mañana?";
-  CHECK(said(lost.say("agenda una reunión con Andrea hoy a las ocho")) == asked);
-  CHECK(said(lost.say("mmm")) == asked);
-  CHECK(said(lost.say("mmm")) == turn_texts::misunderstood("es"));
+  CHECK(asksPassed(lost.say("agenda una reunión con Andrea hoy a las ocho"), "starts_at", "calendar.create_event"));
+  CHECK(asksPassed(lost.say("mmm"), "starts_at", "calendar.create_event"));
+  CHECK(saidAct(lost.say("mmm"), turn::speech::Misunderstood{}));
   CHECK(lost.ran.empty());
 
   World noDay;
   noDay.now = at({.day = 7, .hour = 21, .minute = 30});
-  CHECK_FALSE(noDay.say("agenda una reunión con Andrea a las ocho").question.has_value());
+  CHECK_FALSE(noDay.say("agenda una reunión con Andrea a las ocho").acts.empty());
   REQUIRE(noDay.ran.size() == 1);
   CHECK(noDay.ran.front().arguments["starts_at"].asString() == "2026-10-08T08:00:00+00:00");
 
@@ -1986,7 +2116,7 @@ TEST_CASE("an explicit today takes the evening reading of a bare 7 to 11, and as
   turn::Candidate meeting = candidate("calendar.create_event", 0.95);
   meeting.fill = {"title", "starts_at"};
   english.scripted.next = meeting;
-  CHECK(said(english.say("schedule a meeting with Andrea today at eight")) == "That time has already passed today. Do you want tomorrow at 8 AM?");
+  CHECK(asksPassed(english.say("schedule a meeting with Andrea today at eight"), "starts_at", "calendar.create_event"));
   english.scripted.next.reset();
   english.say("yes");
   REQUIRE(english.ran.size() == 1);
@@ -2007,7 +2137,7 @@ TEST_CASE("an explicit today takes the evening reading of a bare 7 to 11, and as
   turn::Candidate remind = candidate("memory.remind", 0.95);
   remind.arguments["text"] = "recuérdame hoy a las ocho llamar a Juan";
   reminder.scripted.next = remind;
-  CHECK(said(reminder.say("recuérdame hoy a las ocho llamar a Juan")) == asked);
+  CHECK(asksPassed(reminder.say("recuérdame hoy a las ocho llamar a Juan"), "when", "memory.remind"));
   CHECK(reminder.ran.empty());
   reminder.scripted.next.reset();
   reminder.say("sí");
@@ -2021,10 +2151,10 @@ TEST_CASE("a date beyond the twelve months is asked about, never dropped, and th
   const UtcZone zone;
   World world;
   world.now = at({.day = 7, .hour = 15, .minute = 20});
-  const std::string far = turn_texts::farQuestion("es");
-  CHECK(said(world.say("agenda una reunión con Andrea el 3 de marzo de 2029 a las 10 de la mañana")) == far);
+  CHECK(asksBeyondRange(world.say("agenda una reunión con Andrea el 3 de marzo de 2029 a las 10 de la mañana"), "starts_at",
+                        "calendar.create_event"));
   CHECK(world.ran.empty());
-  CHECK(said(world.say("mmm")) == far);
+  CHECK(asksBeyondRange(world.say("mmm"), "starts_at", "calendar.create_event"));
   const auto done = world.say("el 3 de marzo de 2027 a las 10 de la mañana");
   REQUIRE(world.ran.size() == 1);
   CHECK(world.ran.front().arguments["title"].asString() == "Reunión con Andrea");
@@ -2033,9 +2163,9 @@ TEST_CASE("a date beyond the twelve months is asked about, never dropped, and th
 
   World gaveUp;
   gaveUp.now = at({.day = 7, .hour = 15, .minute = 20});
-  REQUIRE(gaveUp.say("agenda una reunión con Andrea el 3 de marzo de 2029 a las 10 de la mañana").question.has_value());
-  REQUIRE(gaveUp.say("mmm").question.has_value());
-  CHECK(said(gaveUp.say("mmm")) == turn_texts::misunderstood("es"));
+  REQUIRE_FALSE(gaveUp.say("agenda una reunión con Andrea el 3 de marzo de 2029 a las 10 de la mañana").acts.empty());
+  REQUIRE_FALSE(gaveUp.say("mmm").acts.empty());
+  CHECK(saidAct(gaveUp.say("mmm"), turn::speech::Misunderstood{}));
   CHECK(gaveUp.ran.empty());
 
   World english;
@@ -2045,7 +2175,8 @@ TEST_CASE("a date beyond the twelve months is asked about, never dropped, and th
   turn::Candidate meeting = candidate("calendar.create_event", 0.95);
   meeting.fill = {"title", "starts_at"};
   english.scripted.next = meeting;
-  CHECK(said(english.say("schedule a meeting with Andrea on march 3rd 2029 at 9 am")) == turn_texts::farQuestion("en"));
+  CHECK(asksBeyondRange(english.say("schedule a meeting with Andrea on march 3rd 2029 at 9 am"), "starts_at",
+                        "calendar.create_event"));
   english.scripted.next.reset();
   english.say("tomorrow at 9 am");
   REQUIRE(english.ran.size() == 1);
@@ -2066,7 +2197,7 @@ TEST_CASE("a date beyond the twelve months is asked about, never dropped, and th
   turn::Candidate remind = candidate("memory.remind", 0.95);
   remind.arguments["text"] = "recuérdame el 3 de marzo de 2029 a las 5 llamar a Juan";
   reminder.scripted.next = remind;
-  CHECK(said(reminder.say("recuérdame el 3 de marzo de 2029 a las 5 llamar a Juan")) == far);
+  CHECK(asksBeyondRange(reminder.say("recuérdame el 3 de marzo de 2029 a las 5 llamar a Juan"), "when", "memory.remind"));
   reminder.scripted.next.reset();
   reminder.say("mañana a las 9 de la mañana");
   REQUIRE(reminder.ran.size() == 1);
@@ -2091,62 +2222,47 @@ tools::ToolDescriptor remindStub(World& world, bool scheduled)
 }
 }
 
-TEST_CASE("the read-back of a created event is appended when the spoken reply leaves it out, and not said twice when it has it")
+TEST_CASE("a done act carries its read-back, and a reply that leaves it out is asked for once more")
 {
-  const std::string sentence = "Agendado: «Reunión con Andrea», el jueves 8 a las 5 de la tarde.";
   const std::string utterance = "agéndame una reunión con Andrea mañana a las 5 de la tarde";
+  const std::string readback = "el jueves 8 a las 5 de la tarde";
 
-  Spoken omitted;
-  omitted.world.readback = "el jueves 8 a las 5 de la tarde";
-  omitted.world.readbackSentence = sentence;
-  omitted.script.replies = {"Listo, ya quedó agendada tu reunión."};
-  CHECK(omitted.sync(utterance).reply == "Listo, ya quedó agendada tu reunión. " + sentence);
+  Spoken kept;
+  kept.world.readback = readback;
+  kept.script.replies = {"Listo, agendé «Reunión con Andrea» para el jueves 8 a las 5 de la tarde."};
+  CHECK(kept.sync(utterance).reply == "Listo, agendé «Reunión con Andrea» para el jueves 8 a las 5 de la tarde.");
+  REQUIRE(kept.script.requests.size() == 1);
+  CHECK(kept.script.requests.front().messages.back().content.find("\"readback\":\"" + readback + "\"") !=
+        std::string::npos);
 
   Spoken streamed;
-  streamed.world.readback = "el jueves 8 a las 5 de la tarde";
-  streamed.world.readbackSentence = sentence;
+  streamed.world.readback = readback;
   streamed.script.chunk = 5;
-  streamed.script.replies = {"Listo, ya quedó agendada tu reunión."};
+  streamed.script.replies = {"Quedó para el jueves 8 a las 5 de la tarde, con Andrea."};
   const auto output = streamed.stream(utterance);
-  CHECK(output.reply == "Listo, ya quedó agendada tu reunión. " + sentence);
+  CHECK(output.reply == "Quedó para el jueves 8 a las 5 de la tarde, con Andrea.");
   CHECK(streamed.heard == output.reply);
 
-  Spoken said;
-  said.world.readback = "el jueves 8 a las 5 de la tarde";
-  said.world.readbackSentence = sentence;
-  said.script.replies = {"Listo, agendé «Reunión con Andrea» para el jueves 8 a las 5 de la tarde."};
-  CHECK(said.sync(utterance).reply == "Listo, agendé «Reunión con Andrea» para el jueves 8 a las 5 de la tarde.");
+  Spoken retried;
+  retried.world.readback = readback;
+  retried.script.replies = {"Listo, ya quedó agendada tu reunión.",
+                            "Quedó para el jueves 8 a las 5 de la tarde, con Andrea."};
+  const auto second = retried.sync(utterance);
+  REQUIRE(retried.script.requests.size() == 2);
+  CHECK(second.reply == "Quedó para el jueves 8 a las 5 de la tarde, con Andrea.");
+  CHECK(second.speech.empty());
+  CHECK(retried.script.requests.back().messages.back().content.find("un dato de los que se indican") !=
+        std::string::npos);
 
-  Spoken withoutArticle;
-  withoutArticle.world.readback = "el jueves 8 a las 5 de la tarde";
-  withoutArticle.world.readbackSentence = sentence;
-  withoutArticle.script.replies = {"Quedó para jueves 8 a las 5 de la tarde, con Andrea."};
-  CHECK(withoutArticle.sync(utterance).reply == "Quedó para jueves 8 a las 5 de la tarde, con Andrea.");
-
-  Spoken saidStreamed;
-  saidStreamed.world.readback = "el jueves 8 a las 5 de la tarde";
-  saidStreamed.world.readbackSentence = sentence;
-  saidStreamed.script.chunk = 7;
-  saidStreamed.script.replies = {"Listo, agendé «Reunión con Andrea» para el jueves 8 a las 5 de la tarde."};
-  const auto kept = saidStreamed.stream(utterance);
-  CHECK(kept.reply == "Listo, agendé «Reunión con Andrea» para el jueves 8 a las 5 de la tarde.");
-  CHECK(saidStreamed.heard == kept.reply);
-
-  Spoken english;
-  english.world.context.lang = "en";
-  english.world.readback = "on Thursday the 8th at 5 PM";
-  english.world.readbackSentence = "Scheduled: “Meeting with Andrea”, on Thursday the 8th at 5 PM.";
-  english.adapter.flow().useDecider(english.world.scripted);
-  turn::Candidate meeting = candidate("calendar.create_event", 0.95);
-  meeting.fill = {"title", "starts_at"};
-  english.world.scripted.next = meeting;
-  english.script.replies = {"Done, it is all set."};
-  CHECK(english.sync("schedule a meeting with Andrea tomorrow at 5 pm").reply ==
-        "Done, it is all set. Scheduled: “Meeting with Andrea”, on Thursday the 8th at 5 PM.");
+  Spoken silent;
+  silent.world.readback = readback;
+  silent.script.replies = {"Listo, ya quedó agendada tu reunión.", "Vale, quedó agendada."};
+  const auto nothing = silent.sync(utterance);
+  REQUIRE(silent.script.requests.size() == 2);
+  CHECK(nothing.reply.empty());
+  CHECK(nothing.speech == "unavailable");
 
   Spoken failed;
-  failed.world.readback = "el jueves 8 a las 5 de la tarde";
-  failed.world.readbackSentence = sentence;
   failed.world.createOk = false;
   failed.script.replies = {"No pude agendarla."};
   CHECK(failed.sync(utterance).reply == "No pude agendarla.");
@@ -2170,8 +2286,10 @@ TEST_CASE("a promise to call is spoken only when the tool confirmed the schedule
 
   Spoken unconfirmed;
   remind(unconfirmed, false);
-  unconfirmed.script.replies = {promise};
-  CHECK(unconfirmed.sync(utterance).reply == reply_claims::honest("es"));
+  unconfirmed.script.replies = {promise, promise};
+  const auto silent = unconfirmed.sync(utterance);
+  CHECK(silent.reply.empty());
+  CHECK(silent.speech == "unavailable");
 
   Spoken streamedConfirmed;
   remind(streamedConfirmed, true);
@@ -2182,10 +2300,11 @@ TEST_CASE("a promise to call is spoken only when the tool confirmed the schedule
   Spoken streamedUnconfirmed;
   remind(streamedUnconfirmed, false);
   streamedUnconfirmed.script.chunk = 6;
-  streamedUnconfirmed.script.replies = {promise};
+  streamedUnconfirmed.script.replies = {promise, promise};
   const auto cut = streamedUnconfirmed.stream(utterance);
-  CHECK(cut.reply == reply_claims::honest("es"));
-  CHECK(streamedUnconfirmed.heard == cut.reply);
+  CHECK(cut.reply.empty());
+  CHECK(cut.speech == "unavailable");
+  CHECK(streamedUnconfirmed.heard.empty());
 
   Spoken honestAboutIt;
   remind(honestAboutIt, false);
@@ -2195,8 +2314,10 @@ TEST_CASE("a promise to call is spoken only when the tool confirmed the schedule
   Spoken english;
   english.world.context.lang = "en";
   remind(english, false);
-  english.script.replies = {"Done, I'll call you tomorrow at 5 PM."};
-  CHECK(english.sync("remind me tomorrow at 5 to call John").reply == reply_claims::honest("en"));
+  english.script.replies = {"Done, I'll call you tomorrow at 5 PM.", "Done, I'll call you tomorrow at 5 PM."};
+  const auto englishSilent = english.sync("remind me tomorrow at 5 to call John");
+  CHECK(englishSilent.reply.empty());
+  CHECK(englishSilent.speech == "unavailable");
 
   Spoken none;
   none.script.replies = {"Claro, te llamaré a las cinco."};
@@ -2248,20 +2369,19 @@ TEST_CASE("a turn that only opened a screen may say it opened it, and a state ch
     Spoken spoken;
     spoken.world.add(tool_stubs::appAction({.name = "app.open", .capability = "notifications.read", .module = "core"}));
     spoken.world.add(tool_stubs::appAction({.name = "app.set_guard_mode", .capability = "guard.mode.set", .module = "surveillance"}));
-    spoken.script.replies = {reply};
+    spoken.script.replies = {reply, reply};
     if (stream) {
       spoken.script.chunk = 5;
-      static_cast<void>(spoken.stream("abre las cámaras"));
-      return spoken.heard;
+      return spoken.stream("abre las cámaras").reply;
     }
     return spoken.sync("abre las cámaras").reply;
   };
   CHECK(turn("Listo, abrí las cámaras.", false) == "Listo, abrí las cámaras.");
-  CHECK(turn("Aquí tienes las cámaras activadas.", false) == reply_claims::honest("es"));
-  CHECK(turn("Activé las cámaras para ti.", false) == reply_claims::honest("es"));
+  CHECK(turn("Aquí tienes las cámaras activadas.", false).empty());
+  CHECK(turn("Activé las cámaras para ti.", false).empty());
   CHECK(turn("Tus cámaras están activadas, aquí están.", false) == "Tus cámaras están activadas, aquí están.");
   CHECK(turn("Listo, abrí las cámaras.", true) == "Listo, abrí las cámaras.");
-  CHECK(turn("Aquí tienes las cámaras activadas.", true) == reply_claims::honest("es"));
+  CHECK(turn("Aquí tienes las cámaras activadas.", true).empty());
 
   Spoken guard;
   guard.world.add(tool_stubs::appAction({.name = "app.set_guard_mode", .capability = "guard.mode.set", .module = "surveillance"}));

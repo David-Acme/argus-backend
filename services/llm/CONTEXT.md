@@ -828,10 +828,11 @@ ahí?", and only on a yes runs `project.create` and then the held task with that
 project at all (`no_projects`) the first question is the name of the new project. There is no
 default project, and a provider that does not name the projects leaves its own refusal to be said.
 
-Questions the system asks itself are `turn_texts::confirmQuestion` (the held arguments are spoken
-back: "¿Quieres que agende «Reunión con Andrea» para mañana a las 5 de la tarde?"),
-`chooseQuestion` ("¿Quieres que lo agende o que te lo recuerde?") and `slotQuestion`; the findings
-and the questions are the only texts the turn adds besides what a tool says.
+The questions and the notes are one thing now: the acts. `speech-render.cc` composes one instruction
+line per act per language — the only copy the backend owns, and the user never receives it — one line
+of act JSON (a `DatePart` is resolved to its spoken surface against `now` at render time) and the
+context block. `speechOf` places the act on the outcome, so a unit test asserts the exact act a path
+reaches and never a sentence. `turn-texts.{hxx,cc}` is gone.
 
 Configuration (`config.toml.example`, deploy template): `[decide]`, `[decide.router]` and `[decide.rules]` with `act`,
 `ask`, `margin` and `witness_only`. Absent or invalid keys leave the default policy (`act = ask = 0.90`, no margin),
@@ -871,9 +872,9 @@ The facts travel per turn, not in the history: `ChatRequest::contextFacts`
 (a `std::vector<ContextFact>{facet, text}`, additive). `LfmAdapter::chatTurn`
 and `chatPlainTurn` select the facts the turn's facets cover, drop the rest
 (never blanked into empty headers), order them most-relevant-first, and compose
-them into one framed tail system note beside the findings — a frame that marks
+them into one framed tail system note beside the act — a frame that marks
 the text as data written by others, never instructions
-(`turn_texts::contextBlock`, es and en). A fact whose facet the build does not
+(`turn::contextBlock`, es and en, in `context-selector.cc`, its only consumer). A fact whose facet the build does not
 know is dropped rather than injected. The profile and the name stay in the
 static prefix and are always present; the clock note stays where it is, before
 the last user message. The composed block is what `LlmChatOutcome::contextBlock`

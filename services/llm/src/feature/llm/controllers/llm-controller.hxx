@@ -20,6 +20,7 @@ struct LlmChatOutcome
   std::string text;
   std::string rawReply{};
   std::string contextBlock{};
+  std::string speech{};
   int hops{0};
   size_t toolCalls{0};
   std::vector<tools::ToolCall> attempted{};

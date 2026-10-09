@@ -1221,7 +1221,6 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
     result.output += sentence;
     result.data["callScheduled"] = when->called;
     result.data["readback"] = reminder_readback::moment(spoken);
-    result.data["readbackSentence"] = sentence.substr(sentence.find_first_not_of(' '));
   }
   return result;
 }

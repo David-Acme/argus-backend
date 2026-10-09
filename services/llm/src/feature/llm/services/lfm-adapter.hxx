@@ -11,6 +11,7 @@
 #include <feature/llm/services/turn/deciders.hxx>
 #include <feature/llm/services/turn/decision-policy.hxx>
 #include <feature/llm/services/turn/slots.hxx>
+#include <feature/llm/services/turn/speech-acts.hxx>
 #include <feature/llm/services/turn/turn-flow.hxx>
 #include <functional>
 #include <string>
@@ -34,11 +35,26 @@ struct ToolChatOutput
   std::string reply;
   std::string rawReply;
   std::string contextBlock;
+  std::string speech;
+  std::string act;
   std::vector<tools::ToolCall> executed;
   int hops = 0;
   bool emitted = false;
   int64_t generateMs = 0;
   int64_t toolMs = 0;
+};
+
+struct ActSpeakInput
+{
+  const ToolChatInput& input;
+  std::vector<ChatMessage>& history;
+  const TokenCallback* onToken{nullptr};
+  const turn::speech::Speech& speech;
+  std::string tail;
+  bool asked{false};
+  bool wrote{false};
+  bool opened{false};
+  bool callsConfirmed{false};
 };
 
 struct SpokenMessagesInput
@@ -129,6 +145,8 @@ private:
   ToolChatOutput chatPlainTurn(const PlainChatInput& input);
 
   [[nodiscard]] std::vector<ChatMessage> speakMessages(const SpeakInput& args, const std::string& notes) const;
+
+  void speakAct(const ActSpeakInput& input, ToolChatOutput& output);
 
   ChatEngine engine_;
   ToolExecutor executor_;

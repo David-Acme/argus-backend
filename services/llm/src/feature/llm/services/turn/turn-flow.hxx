@@ -5,6 +5,7 @@
 #include "decision-tally.hxx"
 #include "pending-turn.hxx"
 #include "slots.hxx"
+#include "speech-acts.hxx"
 
 #include <feature/llm/services/tools/tool-access.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
@@ -20,25 +21,6 @@
 namespace turn
 {
 
-enum class FindingKind : unsigned char
-{
-  Done,
-  Refused,
-  Preview,
-  Offer,
-  Declined,
-  Unactionable
-};
-
-struct Finding
-{
-  FindingKind kind{FindingKind::Done};
-  std::string tool;
-  std::string text;
-  std::string readback{};
-  std::string readbackSentence{};
-};
-
 struct Step
 {
   tools::ToolCall call;
@@ -48,8 +30,7 @@ struct Step
 struct Outcome
 {
   std::vector<Step> steps;
-  std::vector<Finding> findings;
-  std::optional<std::string> question;
+  std::vector<speech::Act> acts;
   bool wrote{false};
   bool opened{false};
   bool called{false};
@@ -101,8 +82,6 @@ public:
 
   [[nodiscard]] Outcome run(const TurnRequest& request);
 
-  [[nodiscard]] static std::string notes(const Outcome& outcome, std::string_view lang);
-
   [[nodiscard]] std::vector<DecisionCount> decisions() const { return tally_.snapshot(); }
 
 private:
@@ -146,5 +125,7 @@ private:
   PendingTurns pendings_;
   DecisionTally tally_;
 };
+
+[[nodiscard]] std::optional<speech::Speech> speechOf(const Outcome& outcome, std::string_view lang, int64_t now);
 
 }
