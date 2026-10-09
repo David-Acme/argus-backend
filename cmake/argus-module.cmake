@@ -14,7 +14,7 @@ else()
 endif()
 
 if(CMAKE_GENERATOR MATCHES "Ninja" AND NOT CMAKE_JOB_POOLS)
-  set(argus_reserve_mb 6144)
+  set(argus_reserve_mb 4096)
   set(argus_cap_mb 0)
   set(argus_cap_source "")
   set(argus_link_pool 0)

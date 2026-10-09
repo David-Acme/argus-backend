@@ -24,10 +24,10 @@ The script resolves the root graph once — `conan install <root>
 free at start:
 
 ```
-jobs = clamp(min(MemAvailable - 6 GiB, cgroup headroom) / 4 GiB, 1, nproc)
+jobs = clamp(min(MemAvailable - 4 GiB, cgroup headroom) / 4 GiB, 1, nproc)
 ```
 
-The 6 GiB reserve is the floor the build gate enforces before it admits a
+The 4 GiB reserve is the floor the build gate enforces before it admits a
 capped job, and it applies to the host's figure. The 4 GiB per job is the
 worst job measured in this tree: the `dev` `argus-llm` link at 3349 MiB (the
 heaviest compile measured is `ggml-vulkan.cpp` at 1799 MiB). The budget is
@@ -43,7 +43,7 @@ the container's limit. The same count is handed to `conan install` as
 `nproc` either. The script prints what it chose before it builds:
 
 ```
-[setup] build jobs: 3 (memory-derived: MemAvailable 20021 MiB - reserve 6144 MiB, cgroup headroom 13307 MiB, over 4096 MiB per job, 16 cpus)
+[setup] build jobs: 3 (memory-derived: MemAvailable 20021 MiB - reserve 4096 MiB, cgroup headroom 13307 MiB, over 4096 MiB per job, 16 cpus)
 ```
 
 That line is from a `heavy-gate.sh 13` run: the host had 20021 MiB free and the
@@ -58,25 +58,30 @@ target, sets `CMAKE_JOB_POOLS "link=N"` and `CMAKE_JOB_POOL_LINK`, so ninja runs
 at most `N` link steps at once while compilation keeps the full `-j <jobs>`.
 
 ```
-N = max(1, floor(cap_mb / 4096))
+N = max(1, floor(cap_mb / budget_mb))
 ```
 
-The 4096 MiB budget is the tree's own per-job figure — the same
-`MEM_PER_JOB_MB` the orchestrator uses, set by the heaviest `argus-llm` link.
-`cap_mb` is read in order from the `ARGUS_BUILD_MEMORY_CAP_MB` variable or
+The budget follows the linker the helper picked: 3072 MiB where mold is in use
+and 4096 MiB for the default linker. It is the per-link anonymous peak of the
+tree's heaviest binary, `argus-identity`, rounded up — 2764 MiB under mold and
+3455 MiB under `ld` (the orchestrator's `MEM_PER_JOB_MB` stays 4096, a compile
+being a different job). `cap_mb` is read in order from the
+`ARGUS_BUILD_MEMORY_CAP_MB` variable or
 environment, the process's own cgroup v2 `memory.max` (what a capped
 `systemd-run` scope or a `docker run --memory` sets), then, with no cap at all,
-`MemAvailable` minus the same 6 GiB reserve the orchestrator holds back.
+`MemAvailable` minus the same 4 GiB reserve the orchestrator holds back.
 `MemTotal` is never used: on a 30 GiB host it would allow ten links, and ten GNU
 `ld` beside eight compile workers is the shape that froze the machine on
-2026-10-03. A 16384 MiB cap gives `N = 4`, a 14336 MiB cap `N = 3`, and a quiet
-laptop with about 22 GiB available gives 4 as well. `ARGUS_LINK_POOLS` overrides
+2026-10-03. A 18432 MiB cap gives `N = 6` with mold and 4 without, a 16384 MiB
+cap 5 and 4, a 14336 MiB cap 4 and 3.
+`ARGUS_LINK_POOLS` overrides
 `N`, and an already-set `CMAKE_JOB_POOLS` is left alone. The configure prints
 what it chose and from where:
 
 ```
--- argus link pool: link=4 (memory cap 16384 MiB)
--- argus link pool: link=3 (MemAvailable 20767 MiB - reserve 6144 MiB)
+-- argus linker: mold (/usr/bin/mold), link budget 3072 MiB
+-- argus link pool: link=6 (memory cap 18432 MiB)
+-- argus link pool: link=5 (MemAvailable 20746 MiB - reserve 4096 MiB)
 ```
 
 The generated `build.ninja` then binds `pool = link` on every link edge and on
