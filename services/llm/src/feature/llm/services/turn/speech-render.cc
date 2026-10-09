@@ -1,5 +1,7 @@
 #include "speech-render.hxx"
 
+#include "speech-cues.hxx"
+
 #include <text/iso-time.hxx>
 #include <text/spoken-time.hxx>
 
@@ -21,8 +23,8 @@ struct Pair
 constexpr Pair kAskSlot{
     .es = "Formula UNA pregunta, en tus palabras, para pedirle al usuario el dato que falta. No digas que hiciste "
           "nada. No repitas una pregunta que ya hiciste.",
-    .en = "Ask ONE question, in your own words, for the missing value. Do not claim anything was done. Do not repeat "
-          "a question you already asked."};
+    .en = "Ask ONE question, in your own words, for the detail you still need. Do not claim anything was done. Do not "
+          "repeat a question you already asked."};
 constexpr Pair kConfirm{
     .es = "Pregúntale al usuario, en una frase, si confirma la acción que se indica. Di qué acción y con qué datos. "
           "No digas que ya se hizo.",
@@ -50,44 +52,66 @@ std::string_view pick(const Pair& pair, std::string_view lang)
   return lang == "en" ? pair.en : pair.es;
 }
 
-std::string_view reasonText(AskReason reason)
+std::string_view reasonText(AskReason reason, std::string_view lang)
 {
+  const bool english = lang == "en";
   switch (reason) {
     case AskReason::Missing:
-      return "missing";
+      return english ? "it is still needed" : "hay que pedirlo";
     case AskReason::AmbiguousDate:
-      return "ambiguous_date";
+      return english ? "there are two possible dates" : "hay dos fechas posibles";
     case AskReason::DatePassed:
-      return "date_passed";
+      return english ? "that time already passed today" : "esa hora ya pasó hoy";
     case AskReason::BeyondRange:
-      return "beyond_range";
+      return english ? "that date is too far away" : "esa fecha queda muy lejos";
     case AskReason::ProjectChoice:
-      return "project_choice";
+      return english ? "a project must be chosen" : "hay que elegir un proyecto";
     case AskReason::ProjectName:
-      return "project_name";
+      return english ? "the project needs a name" : "hay que ponerle nombre al proyecto";
     case AskReason::ProjectNoneYet:
-      return "project_none_yet";
+      return english ? "there are no projects yet" : "todavía no hay proyectos";
   }
-  return "missing";
+  return english ? "it is still needed" : "hay que pedirlo";
 }
 
-std::string_view dateKindName(DateKind kind)
+std::string_view kindWord(const Act& act, std::string_view lang)
 {
-  switch (kind) {
-    case DateKind::Today:
-      return "today";
-    case DateKind::Tomorrow:
-      return "tomorrow";
-    case DateKind::DayAfterTomorrow:
-      return "day_after_tomorrow";
-    case DateKind::Weekday:
-      return "weekday";
-    case DateKind::CalendarDate:
-      return "calendar_date";
-    case DateKind::Clock:
-      return "clock";
-  }
-  return "calendar_date";
+  const bool english = lang == "en";
+  return std::visit(
+      [english](const auto& value) -> std::string_view {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<T, AskSlot>)
+          return english ? "question" : "pregunta";
+        else if constexpr (std::is_same_v<T, Confirm>)
+          return english ? "confirmation" : "confirmación";
+        else if constexpr (std::is_same_v<T, Choose>)
+          return english ? "choice" : "elección";
+        else if constexpr (std::is_same_v<T, Done>)
+          return english ? "result" : "resultado";
+        else if constexpr (std::is_same_v<T, Refused>)
+          return english ? "refusal" : "no se pudo";
+        else if constexpr (std::is_same_v<T, Offer>)
+          return english ? "offer" : "oferta";
+        else if constexpr (std::is_same_v<T, Declined>)
+          return english ? "the user said no" : "el usuario dijo que no";
+        else if constexpr (std::is_same_v<T, Unactionable>)
+          return english ? "no action applies" : "sin acción";
+        else
+          return english ? "not understood" : "no entendido";
+      },
+      act);
+}
+
+std::string_view reasonCodeText(std::string_view code, std::string_view lang)
+{
+  const bool english = lang == "en";
+  if (code == "not_found")
+    return english ? "not found" : "no lo encontré";
+  if (code == "project_create_unavailable")
+    return english ? "cannot create projects" : "no puedo crear proyectos";
+  if (code == "no_matching_action")
+    return english ? "no matching action" : "no hay una acción que corresponda";
+  return {};
 }
 
 std::string_view relativeWord(DateKind kind, std::string_view lang)
@@ -113,33 +137,66 @@ std::string oneLine(const Json::Value& value)
   return Json::writeString(builder, value);
 }
 
+std::string slotLabelOf(std::string_view slot, std::string_view lang)
+{
+  return std::string(slotLabel({.key = slot, .lang = lang}));
+}
+
+std::string optionNameOf(std::string_view option, std::string_view lang)
+{
+  const std::string_view label = optionLabel({.key = option, .lang = lang});
+  return label.empty() ? std::string(option) : std::string(label);
+}
+
+std::string argValue(const Json::Value& value, std::string_view lang, int64_t now)
+{
+  if (value.isString()) {
+    const auto at = iso_time::parse(value.asString());
+    if (at)
+      return dateSurface({.kind = DateKind::CalendarDate, .epoch = *at}, lang, now);
+    return value.asString();
+  }
+  if (value.isBool())
+    return value.asBool() ? (lang == "en" ? "yes" : "sí") : (lang == "en" ? "no" : "no");
+  if (value.isInt64())
+    return std::to_string(value.asInt64());
+  return {};
+}
+
 Json::Value actJson(const Act& act, std::string_view lang, int64_t now)
 {
   Json::Value out(Json::objectValue);
-  out["kind"] = std::string(actName(act));
+  out["kind"] = std::string(kindWord(act, lang));
   if (const auto* ask = std::get_if<AskSlot>(&act)) {
-    out["slot"] = ask->slot;
-    out["tool"] = ask->tool;
-    out["reason"] = std::string(reasonText(ask->reason));
-    if (!ask->knownArgs.isNull() && ask->knownArgs.isObject() && ask->knownArgs.size() > 0)
-      out["known"] = ask->knownArgs;
-    for (const DatePart& part : ask->dates) {
-      Json::Value date(Json::objectValue);
-      date["kind"] = std::string(dateKindName(part.kind));
-      date["iso"] = iso_time::format(part.epoch);
-      date["surface"] = dateSurface(part, lang, now);
-      out["dates"].append(std::move(date));
-    }
+    out["about"] = slotLabelOf(ask->slot, lang);
+    if (ask->reason != AskReason::Missing)
+      out["because"] = std::string(reasonText(ask->reason, lang));
+    if (ask->knownArgs.isObject())
+      for (const std::string& key : ask->knownArgs.getMemberNames()) {
+        const std::string label = slotLabelOf(key, lang);
+        if (!label.empty())
+          out["known"].append(label);
+      }
+    for (const DatePart& part : ask->dates)
+      out["dates"].append(dateSurface(part, lang, now));
     for (const std::string& option : ask->options)
-      out["options"].append(option);
+      out["options"].append(optionNameOf(option, lang));
     return out;
   }
   if (const auto* confirm = std::get_if<Confirm>(&act)) {
-    out["action"] = confirm->action;
+    out["action"] = std::string(slotActionName({.tool = confirm->action, .lang = lang}));
     Json::Value args = confirm->args;
     args.removeMember("confirmation");
-    out["args"] = std::move(args);
-    out["irreversible"] = confirm->irreversible;
+    for (const std::string& key : args.getMemberNames()) {
+      const std::string label = slotLabelOf(key, lang);
+      if (label.empty())
+        continue;
+      std::string value = argValue(args[key], lang, now);
+      if (!value.empty())
+        out["details"][label] = std::move(value);
+    }
+    if (confirm->irreversible)
+      out["irreversible"] = true;
     if (!confirm->toolPreview.empty())
       out["preview"] = confirm->toolPreview;
     if (!confirm->module.empty())
@@ -148,32 +205,39 @@ Json::Value actJson(const Act& act, std::string_view lang, int64_t now)
   }
   if (const auto* choose = std::get_if<Choose>(&act)) {
     for (const std::string& option : choose->options)
-      out["options"].append(option);
+      out["options"].append(optionNameOf(option, lang));
     return out;
   }
   if (const auto* done = std::get_if<Done>(&act)) {
-    out["tool"] = done->tool;
+    out["action"] = std::string(slotActionName({.tool = done->tool, .lang = lang}));
     out["fact"] = done->fact;
     if (!done->readback.empty())
       out["readback"] = done->readback;
     return out;
   }
   if (const auto* refused = std::get_if<Refused>(&act)) {
-    out["tool"] = refused->tool;
-    out["reason"] = refused->reason;
+    out["action"] = std::string(slotActionName({.tool = refused->tool, .lang = lang}));
+    const std::string_view reason = reasonCodeText(refused->reason, lang);
+    if (!reason.empty())
+      out["because"] = std::string(reason);
+    else if (!refused->reason.empty())
+      out["because"] = refused->reason;
     return out;
   }
   if (const auto* offer = std::get_if<Offer>(&act)) {
-    out["module"] = offer->module;
-    out["name"] = offer->name;
+    if (!offer->name.empty())
+      out["about"] = offer->name;
     if (!offer->facts.empty())
-      out["facts"] = offer->facts;
+      out["details"] = offer->facts;
     if (!offer->pendingIntent.empty())
-      out["pending_intent"] = offer->pendingIntent;
+      out["pending"] = offer->pendingIntent;
     return out;
   }
-  if (const auto* unactionable = std::get_if<Unactionable>(&act))
-    out["reason"] = unactionable->reason;
+  if (const auto* unactionable = std::get_if<Unactionable>(&act)) {
+    const std::string_view reason = reasonCodeText(unactionable->reason, lang);
+    if (!reason.empty())
+      out["because"] = std::string(reason);
+  }
   return out;
 }
 

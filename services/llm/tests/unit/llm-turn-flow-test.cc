@@ -884,8 +884,8 @@ TEST_CASE("a question is rendered by the model, sync and streamed, and the act r
   REQUIRE(sync.script.requests.size() == 1);
   CHECK(output.reply == "¿Para cuándo la agendo?");
   CHECK(output.act == "ask_slot");
-  CHECK(sync.script.requests.front().messages.back().content.find("\"kind\":\"ask_slot\"") != std::string::npos);
-  CHECK(sync.script.requests.front().messages.back().content.find("starts_at") != std::string::npos);
+  CHECK(sync.script.requests.front().messages.back().content.find("\"kind\":\"pregunta\"") != std::string::npos);
+  CHECK(sync.script.requests.front().messages.back().content.find("la fecha y hora") != std::string::npos);
 
   Spoken streamed;
   streamed.script.replies = {"¿Para cuándo la agendo?"};

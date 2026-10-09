@@ -17,16 +17,17 @@ constexpr std::array<std::string_view, 5> kTitleEn{"what is it called",
                                                   "title"};
 constexpr std::array<std::string_view, 3> kNameEs{"como se llama", "nombre", "como lo llamo"};
 constexpr std::array<std::string_view, 2> kNameEn{"what is it called", "name"};
-constexpr std::array<std::string_view, 3> kTextEs{"que guardo", "que anoto", "que recuerdo"};
-constexpr std::array<std::string_view, 3> kTextEn{"what should i save", "what do i note", "what do i remember"};
+constexpr std::array<std::string_view, 4> kTextEs{"que guardo", "que anoto", "que recuerdo", "que quieres que recuerde"};
+constexpr std::array<std::string_view, 4> kTextEn{"what should i save", "what do i note", "what do i remember",
+                                                  "what should i remember"};
 constexpr std::array<std::string_view, 3> kQueryEs{"que busco", "que quieres que busque", "de que"};
 constexpr std::array<std::string_view, 2> kQueryEn{"what should i look for", "which one"};
 constexpr std::array<std::string_view, 3> kSubjectEs{"quien", "de quien", "con quien"};
 constexpr std::array<std::string_view, 3> kSubjectEn{"who", "whose", "with whom"};
-constexpr std::array<std::string_view, 3> kWhenEs{"cuando", "que dia", "a que hora"};
-constexpr std::array<std::string_view, 3> kWhenEn{"when", "what day", "what time"};
-constexpr std::array<std::string_view, 4> kStartsAtEs{"cuando", "que dia", "a que hora", "fecha"};
-constexpr std::array<std::string_view, 4> kStartsAtEn{"when", "what day", "what time", "date"};
+constexpr std::array<std::string_view, 6> kWhenEs{"cuando", "que dia", "a que hora", "que fecha", "fecha", "hora"};
+constexpr std::array<std::string_view, 6> kWhenEn{"when", "what day", "what time", "what date", "date", "time"};
+constexpr std::array<std::string_view, 6> kStartsAtEs{"cuando", "que dia", "a que hora", "que fecha", "fecha", "hora"};
+constexpr std::array<std::string_view, 6> kStartsAtEn{"when", "what day", "what time", "what date", "date", "time"};
 constexpr std::array<std::string_view, 3> kDueAtEs{"para cuando", "cuando vence", "fecha limite"};
 constexpr std::array<std::string_view, 3> kDueAtEn{"when is it due", "when does it fall due", "deadline"};
 constexpr std::array<std::string_view, 3> kRangeEs{"desde cuando", "hasta cuando", "de que dia a que dia"};
@@ -45,7 +46,7 @@ constexpr std::array<std::string_view, 2> kLocationEs{"donde", "en que lugar"};
 constexpr std::array<std::string_view, 2> kLocationEn{"where", "in which place"};
 constexpr std::array<std::string_view, 3> kProjectEs{"proyecto", "en cual", "para cual"};
 constexpr std::array<std::string_view, 3> kProjectEn{"project", "which project", "for which"};
-constexpr std::array<std::string_view, 2> kEventEs{"que evento", "cual"};
+constexpr std::array<std::string_view, 3> kEventEs{"que evento", "cual evento", "cual"};
 constexpr std::array<std::string_view, 2> kEventEn{"which event", "which one"};
 constexpr std::array<std::string_view, 2> kTaskEs{"que tarea", "cual"};
 constexpr std::array<std::string_view, 2> kTaskEn{"which task", "which one"};
@@ -244,6 +245,72 @@ const ActionRow* actionRow(std::string_view tool)
   return nullptr;
 }
 
+struct LabelRow
+{
+  std::string_view key;
+  std::string_view labelEs;
+  std::string_view labelEn;
+};
+
+constexpr std::array<LabelRow, 19> kSlotLabels{{
+    {.key = "title", .labelEs = "el nombre de la tarea", .labelEn = "the task name"},
+    {.key = "name", .labelEs = "el nombre del proyecto", .labelEn = "the project name"},
+    {.key = "text", .labelEs = "lo que debo recordar", .labelEn = "what to remember"},
+    {.key = "query", .labelEs = "lo que debo buscar", .labelEn = "what to look up"},
+    {.key = "subject", .labelEs = "la persona", .labelEn = "the person"},
+    {.key = "when", .labelEs = "la fecha y hora", .labelEn = "the date and time"},
+    {.key = "starts_at", .labelEs = "la fecha y hora", .labelEn = "the date and time"},
+    {.key = "due_at", .labelEs = "la fecha límite", .labelEn = "the due date"},
+    {.key = "from", .labelEs = "la primera fecha", .labelEn = "the first date"},
+    {.key = "to", .labelEs = "la última fecha", .labelEn = "the last date"},
+    {.key = "screen", .labelEs = "la pantalla", .labelEn = "the screen"},
+    {.key = "module", .labelEs = "el módulo", .labelEn = "the module"},
+    {.key = "mode", .labelEs = "el modo", .labelEn = "the mode"},
+    {.key = "environment", .labelEs = "el ambiente", .labelEn = "the environment"},
+    {.key = "camera", .labelEs = "la cámara", .labelEn = "the camera"},
+    {.key = "location", .labelEs = "el lugar", .labelEn = "the place"},
+    {.key = "project", .labelEs = "el proyecto", .labelEn = "the project"},
+    {.key = "event_id", .labelEs = "el evento", .labelEn = "the event"},
+    {.key = "task_id", .labelEs = "la tarea", .labelEn = "the task"},
+}};
+
+constexpr std::array<LabelRow, 20> kOptionLabels{{
+    {.key = "calendar.create_event", .labelEs = "un evento en el calendario", .labelEn = "an event on the calendar"},
+    {.key = "calendar.list_events", .labelEs = "ver la agenda", .labelEn = "see the agenda"},
+    {.key = "calendar.cancel_event", .labelEs = "cancelar un evento", .labelEn = "cancel an event"},
+    {.key = "task.create", .labelEs = "una tarea", .labelEn = "a task"},
+    {.key = "task.list", .labelEs = "ver las tareas", .labelEn = "see the tasks"},
+    {.key = "task.complete", .labelEs = "marcar una tarea como hecha", .labelEn = "mark a task as done"},
+    {.key = "project.create", .labelEs = "crear un proyecto", .labelEn = "create a project"},
+    {.key = "project.list", .labelEs = "ver los proyectos", .labelEn = "see the projects"},
+    {.key = "modules.list", .labelEs = "ver los módulos", .labelEn = "see the modules"},
+    {.key = "modules.explain", .labelEs = "explicar un módulo", .labelEn = "explain a module"},
+    {.key = "modules.enable", .labelEs = "activar un módulo", .labelEn = "turn a module on"},
+    {.key = "modules.disable", .labelEs = "apagar un módulo", .labelEn = "turn a module off"},
+    {.key = "modules.request", .labelEs = "pedirle un módulo al dueño", .labelEn = "ask the owner for a module"},
+    {.key = "modules.open_purge_screen", .labelEs = "abrir la pantalla de datos", .labelEn = "open the data screen"},
+    {.key = "memory.remember", .labelEs = "recordarlo en tu memoria", .labelEn = "remember it"},
+    {.key = "memory.recall", .labelEs = "buscarlo en tu memoria", .labelEn = "look it up in your memory"},
+    {.key = "memory.remind", .labelEs = "un recordatorio", .labelEn = "a reminder"},
+    {.key = "memory.forget", .labelEs = "olvidarlo", .labelEn = "forget it"},
+    {.key = "app.show_camera", .labelEs = "mostrar una cámara", .labelEn = "show a camera"},
+    {.key = "app.set_guard_mode", .labelEs = "cambiar la vigilancia", .labelEn = "change the guard mode"},
+}};
+
+constexpr std::array<std::string_view, 9> kAllRequestsEs{
+    "dime", "indícame", "necesito que me digas", "me dices", "podrías decirme", "por favor dime", "quiero que me digas",
+    "me puedes decir", "necesito saber"};
+constexpr std::array<std::string_view, 5> kAllRequestsEn{"tell me", "i need", "let me know", "please give me",
+                                                         "i would like you to tell me"};
+
+const LabelRow* labelRow(std::span<const LabelRow> rows, std::string_view key)
+{
+  for (const LabelRow& row : rows)
+    if (row.key == key)
+      return &row;
+  return nullptr;
+}
+
 }
 
 std::span<const CueRow> cueRows()
@@ -274,6 +341,28 @@ std::string_view slotActionName(const ActionQuery& query)
   if (row == nullptr)
     return query.lang == "en" ? std::string_view("do it") : std::string_view("que lo haga");
   return query.lang == "en" ? row->labelEn : row->labelEs;
+}
+
+std::string_view slotLabel(const LabelQuery& query)
+{
+  const LabelRow* row = labelRow(kSlotLabels, query.key);
+  if (row == nullptr)
+    return {};
+  return query.lang == "en" ? row->labelEn : row->labelEs;
+}
+
+std::string_view optionLabel(const LabelQuery& query)
+{
+  const LabelRow* row = labelRow(kOptionLabels, query.key);
+  if (row == nullptr)
+    return {};
+  return query.lang == "en" ? row->labelEn : row->labelEs;
+}
+
+std::span<const std::string_view> requestCues(std::string_view lang)
+{
+  return lang == "en" ? std::span<const std::string_view>(kAllRequestsEn)
+                      : std::span<const std::string_view>(kAllRequestsEs);
 }
 
 }

@@ -155,3 +155,94 @@ TEST_CASE("a marker is a stem, so the model's own inflection still names the act
   CHECK(chooseOf("en", "Should I schedule it or forget it?") == GuardVerdict::Pass);
   CHECK(chooseOf("es", "¿Lo agendo o lo guardo?") == GuardVerdict::OptionsIncomplete);
 }
+
+TEST_CASE("every time cue the slot family carries is accepted, one per cue")
+{
+  CHECK(asks("when", "es", "¿Cuándo lo hago?") == GuardVerdict::Pass);
+  CHECK(asks("when", "es", "¿Qué día lo hago?") == GuardVerdict::Pass);
+  CHECK(asks("when", "es", "¿A qué hora lo hago?") == GuardVerdict::Pass);
+  CHECK(asks("when", "es", "¿Qué fecha te sirve?") == GuardVerdict::Pass);
+  CHECK(asks("when", "es", "¿Qué hora te sirve?") == GuardVerdict::Pass);
+  CHECK(asks("when", "en", "When should I do it?") == GuardVerdict::Pass);
+  CHECK(asks("when", "en", "What day should I do it?") == GuardVerdict::Pass);
+  CHECK(asks("when", "en", "What time should I do it?") == GuardVerdict::Pass);
+  CHECK(asks("when", "en", "What date should I use?") == GuardVerdict::Pass);
+  CHECK(asks("when", "en", "Does the time matter?") == GuardVerdict::Pass);
+
+  CHECK(asks("starts_at", "es", "¿Qué fecha lo agendo?") == GuardVerdict::Pass);
+  CHECK(asks("starts_at", "es", "¿A qué hora lo agendo?") == GuardVerdict::Pass);
+  CHECK(asks("starts_at", "es", "¿Qué día y a qué hora?") == GuardVerdict::Pass);
+  CHECK(asks("starts_at", "en", "What date should I schedule it?") == GuardVerdict::Pass);
+  CHECK(asks("starts_at", "en", "What day and time?") == GuardVerdict::Pass);
+}
+
+TEST_CASE("the event and the memory text cues the briefing named are accepted, one per cue")
+{
+  CHECK(asks("event_id", "es", "¿Qué evento cancelo?") == GuardVerdict::Pass);
+  CHECK(asks("event_id", "es", "¿Cuál evento cancelo?") == GuardVerdict::Pass);
+  CHECK(asks("event_id", "en", "Which event should I cancel?") == GuardVerdict::Pass);
+  CHECK(asks("text", "es", "¿Qué quieres que recuerde?") == GuardVerdict::Pass);
+  CHECK(asks("text", "en", "What should I remember?") == GuardVerdict::Pass);
+}
+
+TEST_CASE("a slot's own display label is accepted as its cue, and another slot's is not")
+{
+  CHECK(asks("title", "es", "¿Cuál es el nombre de la tarea?") == GuardVerdict::Pass);
+  CHECK(asks("title", "en", "What is the task name?") == GuardVerdict::Pass);
+  CHECK(asks("starts_at", "es", "¿Me dices la fecha y hora?") == GuardVerdict::Pass);
+  CHECK(asks("starts_at", "en", "Tell me the date and time.") == GuardVerdict::Pass);
+  CHECK(asks("event_id", "es", "¿Cuál es el evento?") == GuardVerdict::Pass);
+  CHECK(asks("title", "es", "¿Dónde lo guardo?") == GuardVerdict::SlotNotAsked);
+}
+
+TEST_CASE("every slot the lexicon covers has a human label of its own in both languages")
+{
+  std::vector<std::string_view> slots;
+  for (const CueRow& row : cueRows())
+    if (std::ranges::find(slots, row.slot) == slots.end())
+      slots.push_back(row.slot);
+  for (const std::string_view slot : slots) {
+    const std::string_view es = slotLabel({.key = slot, .lang = "es"});
+    const std::string_view en = slotLabel({.key = slot, .lang = "en"});
+    CHECK_FALSE(es.empty());
+    CHECK_FALSE(en.empty());
+    CHECK(es != en);
+    CHECK(es.find('.') == std::string_view::npos);
+    CHECK(es.find('_') == std::string_view::npos);
+    CHECK(en.find('.') == std::string_view::npos);
+    CHECK(en.find('_') == std::string_view::npos);
+  }
+}
+
+TEST_CASE("every option a choice can name has a display label of its own in both languages")
+{
+  const std::vector<std::string_view> tools{"calendar.create_event",
+                                            "calendar.cancel_event",
+                                            "calendar.list_events",
+                                            "task.create",
+                                            "task.complete",
+                                            "memory.remember",
+                                            "memory.remind",
+                                            "memory.forget",
+                                            "app.show_camera",
+                                            "app.set_guard_mode"};
+  for (const std::string_view tool : tools) {
+    const std::string_view es = optionLabel({.key = tool, .lang = "es"});
+    const std::string_view en = optionLabel({.key = tool, .lang = "en"});
+    CHECK_FALSE(es.empty());
+    CHECK_FALSE(en.empty());
+    CHECK(es != en);
+    CHECK(es.find('.') == std::string_view::npos);
+    CHECK(es.find('_') == std::string_view::npos);
+    CHECK(en.find('.') == std::string_view::npos);
+    CHECK(en.find('_') == std::string_view::npos);
+  }
+  CHECK(optionLabel({.key = "tool.unknown", .lang = "es"}).empty());
+}
+
+TEST_CASE("a request cue exists per language and never a question mark")
+{
+  CHECK_FALSE(requestCues("es").empty());
+  CHECK_FALSE(requestCues("en").empty());
+  CHECK(requestCues("es").front() != requestCues("en").front());
+}

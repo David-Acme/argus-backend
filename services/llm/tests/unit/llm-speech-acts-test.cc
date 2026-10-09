@@ -6,8 +6,11 @@
 
 #include <text/iso-time.hxx>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -76,6 +79,32 @@ std::vector<Act> everyAct()
 {
   return {askSlot(), confirm(), choose(), done(), refused(), offer(), declined(), unactionable(), misunderstood()};
 }
+
+bool identifierShaped(std::string_view token)
+{
+  const auto alnum = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; };
+  for (std::size_t at = 0; at < token.size(); ++at) {
+    if (token[at] != '.' && token[at] != '_')
+      continue;
+    if (at == 0 || at + 1 >= token.size())
+      continue;
+    if (alnum(token[at - 1]) && alnum(token[at + 1]))
+      return true;
+  }
+  return false;
+}
+
+bool hasIdentifierToken(std::string_view text)
+{
+  std::size_t at = 0;
+  while (at < text.size()) {
+    const std::size_t end = std::min(text.find_first_of(" \n\t,:", at), text.size());
+    if (end > at && identifierShaped(text.substr(at, end - at)))
+      return true;
+    at = end + 1;
+  }
+  return false;
+}
 }
 
 TEST_CASE("every act has its own name and its own question shape")
@@ -131,12 +160,40 @@ TEST_CASE("every act renders an instruction in both languages and never one for 
   CHECK(instructionLine(misunderstood(), "es").find("No lo has entendido") != std::string_view::npos);
 }
 
+TEST_CASE("the rendered prompt of every act carries no identifier-shaped token and never says missing value")
+{
+  for (const Act& act : everyAct())
+    for (const char* lang : {"es", "en"}) {
+      const std::string tail =
+          actTail({.speech = Speech{.acts = {act}, .lang = lang, .now = kNow}, .contextBlock = {}});
+      CHECK_FALSE(hasIdentifierToken(tail));
+      std::string lowered = tail;
+      for (char& c : lowered)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+      CHECK(lowered.find("missing value") == std::string::npos);
+      CHECK(tail.find("ask_slot") == std::string::npos);
+      CHECK(tail.find("calendar.") == std::string::npos);
+      CHECK(tail.find("_") == std::string::npos);
+    }
+}
+
+TEST_CASE("the slot is rendered as a human label, never as its name or its tool")
+{
+  const auto tailOf = [](const Act& act, std::string_view lang) {
+    return actTail({.speech = Speech{.acts = {act}, .lang = std::string(lang), .now = kNow}, .contextBlock = {}});
+  };
+  CHECK(tailOf(askSlot(), "es").find("la fecha y hora") != std::string::npos);
+  CHECK(tailOf(askSlot(), "en").find("the date and time") != std::string::npos);
+  CHECK(tailOf(askSlot(), "es").find("starts_at") == std::string::npos);
+  CHECK(tailOf(askSlot(), "en").find("calendar.create_event") == std::string::npos);
+}
+
 TEST_CASE("the tail carries the instructions, one line of act JSON and the context block, in that order")
 {
   const Speech speech{.acts = {askSlot()}, .lang = "es", .now = kNow};
   const std::string tail = actTail({.speech = speech, .contextBlock = "Contexto de la app"});
   const std::size_t instruction = tail.find("Formula UNA pregunta");
-  const std::size_t act = tail.find("\"kind\":\"ask_slot\"");
+  const std::size_t act = tail.find("\"kind\":\"pregunta\"");
   const std::size_t context = tail.find("Contexto de la app");
   REQUIRE(instruction != std::string::npos);
   REQUIRE(act != std::string::npos);
@@ -152,19 +209,33 @@ TEST_CASE("each act renders its own fields and nothing of another act's")
   const auto tailOf = [](const Act& act, std::string_view lang) {
     return actTail({.speech = Speech{.acts = {act}, .lang = std::string(lang), .now = kNow}, .contextBlock = {}});
   };
-  CHECK(tailOf(askSlot(), "es").find("\"slot\":\"starts_at\"") != std::string::npos);
-  CHECK(tailOf(askSlot(), "es").find("\"tool\":\"calendar.create_event\"") != std::string::npos);
-  CHECK(tailOf(confirm(), "es").find("\"title\":\"Cena con Marta\"") != std::string::npos);
-  CHECK(tailOf(confirm(), "es").find("\"irreversible\":false") != std::string::npos);
-  CHECK(tailOf(choose(), "es").find("\"options\":[\"task.create\",\"memory.remind\"]") != std::string::npos);
+  CHECK(tailOf(askSlot(), "es").find("\"about\":\"la fecha y hora\"") != std::string::npos);
+  CHECK(tailOf(confirm(), "es").find("\"el nombre de la tarea\":\"Cena con Marta\"") != std::string::npos);
+  CHECK(tailOf(choose(), "es").find("\"options\":[\"una tarea\",\"un recordatorio\"]") != std::string::npos);
   CHECK(tailOf(done(), "es").find("\"readback\":\"el jueves 8 a las 5\"") != std::string::npos);
-  CHECK(tailOf(refused(), "es").find("\"reason\":\"project_create_unavailable\"") != std::string::npos);
-  CHECK(tailOf(offer(), "es").find("\"name\":\"Productividad\"") != std::string::npos);
-  CHECK(tailOf(unactionable(), "es").find("\"reason\":\"no_matching_action\"") != std::string::npos);
-  CHECK(tailOf(declined(), "es").find("\"kind\":\"declined\"") != std::string::npos);
-  CHECK(tailOf(misunderstood(), "en").find("\"kind\":\"misunderstood\"") != std::string::npos);
-  CHECK(tailOf(done(), "es").find("\"slot\"") == std::string::npos);
+  CHECK(tailOf(refused(), "es").find("\"because\":\"no puedo crear proyectos\"") != std::string::npos);
+  CHECK(tailOf(offer(), "es").find("\"about\":\"Productividad\"") != std::string::npos);
+  CHECK(tailOf(unactionable(), "es").find("\"kind\":\"sin acción\"") != std::string::npos);
+  CHECK(tailOf(declined(), "es").find("\"kind\":\"el usuario dijo que no\"") != std::string::npos);
+  CHECK(tailOf(misunderstood(), "en").find("\"kind\":\"not understood\"") != std::string::npos);
+  CHECK(tailOf(done(), "es").find("\"about\"") == std::string::npos);
   CHECK(tailOf(choose(), "es").find("\"readback\"") == std::string::npos);
+}
+
+TEST_CASE("an ask act that already knows a value lists it by its human label")
+{
+  Json::Value known(Json::objectValue);
+  known["title"] = "Cena";
+  const Act ask = AskSlot{.slot = "starts_at",
+                          .tool = "calendar.create_event",
+                          .knownArgs = std::move(known),
+                          .reason = AskReason::Missing,
+                          .dates = {},
+                          .options = {}};
+  const std::string tail =
+      actTail({.speech = Speech{.acts = {ask}, .lang = "es", .now = kNow}, .contextBlock = {}});
+  CHECK(tail.find("\"known\":[\"el nombre de la tarea\"]") != std::string::npos);
+  CHECK(tail.find("\"title\"") == std::string::npos);
 }
 
 TEST_CASE("a date part is carried as data and resolved against now when the tail is built")
@@ -178,8 +249,8 @@ TEST_CASE("a date part is carried as data and resolved against now when the tail
                       .lang = "es",
                       .now = kNow};
   const std::string tail = actTail({.speech = speech, .contextBlock = {}});
-  CHECK(tail.find("\"kind\":\"clock\"") != std::string::npos);
-  CHECK(tail.find(iso_time::format(kNow)) != std::string::npos);
+  CHECK(tail.find(dateSurface(DatePart{.kind = DateKind::Clock, .epoch = kNow}, "es", kNow)) != std::string::npos);
+  CHECK(tail.find("\"because\":\"esa hora ya pasó hoy\"") != std::string::npos);
   CHECK(dateSurface(DatePart{.kind = DateKind::Clock, .epoch = kNow}, "es", kNow).starts_with("a l"));
   CHECK(dateSurface(DatePart{.kind = DateKind::Clock, .epoch = kNow}, "en", kNow).starts_with("at "));
   CHECK(dateSurface(DatePart{.kind = DateKind::Today, .epoch = kNow}, "es", kNow).starts_with("hoy "));

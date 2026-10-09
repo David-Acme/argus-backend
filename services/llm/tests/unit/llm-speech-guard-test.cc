@@ -87,6 +87,23 @@ TEST_CASE("a question act is refused when the reply is not a question at all")
   CHECK(guarded(ask("starts_at"), "es", "¿Para cuándo lo agendo?") == GuardVerdict::Pass);
 }
 
+TEST_CASE("a slot act accepts a request, not only an interrogative, when the slot's cue is present")
+{
+  CHECK(guarded(ask("starts_at"), "es", "Claro, necesito que me digas la fecha y hora.") == GuardVerdict::Pass);
+  CHECK(guarded(ask("starts_at"), "es", "Dime a qué hora lo agendo.") == GuardVerdict::Pass);
+  CHECK(guarded(ask("starts_at"), "es", "Me dices la fecha, por favor.") == GuardVerdict::Pass);
+  CHECK(guarded(ask("title"), "es", "Dime cómo se llama la tarea.") == GuardVerdict::Pass);
+  CHECK(guarded(ask("starts_at"), "en", "Tell me the date and the time.") == GuardVerdict::Pass);
+  CHECK(guarded(ask("starts_at"), "en", "I need the date and time.") == GuardVerdict::Pass);
+  CHECK(guarded(ask("starts_at"), "en", "Let me know what time works.") == GuardVerdict::Pass);
+
+  CHECK(guarded(ask("starts_at"), "es", "Lo agendo enseguida.") == GuardVerdict::NotAQuestion);
+  CHECK(guarded(ask("starts_at"), "es", "La fecha y hora es lo que falta.") == GuardVerdict::NotAQuestion);
+  CHECK(guarded(ask("starts_at"), "es", "Dime algo.") == GuardVerdict::SlotNotAsked);
+  CHECK(guarded(ask("starts_at"), "en", "Tell me something.") == GuardVerdict::SlotNotAsked);
+  CHECK(guarded(ask("starts_at"), "en", "I need your help.") == GuardVerdict::SlotNotAsked);
+}
+
 TEST_CASE("a question act is refused when the reply asks nothing, and when it asks something it already knew")
 {
   CHECK(guarded(ask("title"), "es", "¿Dónde lo guardo?") == GuardVerdict::SlotNotAsked);
@@ -163,6 +180,32 @@ TEST_CASE("a choice must name each of its two actions")
   CHECK(guarded(act, "es", "¿Quieres que lo anote como tarea o que te lo recuerde?") == GuardVerdict::Pass);
   CHECK(guarded(act, "es", "¿Lo anoto?") == GuardVerdict::OptionsIncomplete);
   CHECK(guarded(act, "en", "Should I add it as a task or remind you?") == GuardVerdict::Pass);
+}
+
+TEST_CASE("a choice matches the options' display labels")
+{
+  const Act act = Choose{.options = {"calendar.create_event", "task.create"}};
+  CHECK(guarded(act, "es", "¿Quieres que cree un evento en el calendario o una tarea?") == GuardVerdict::Pass);
+  CHECK(guarded(act, "es", "¿Quieres que organice un evento en el calendario o anote una tarea?") == GuardVerdict::Pass);
+  CHECK(guarded(act, "en", "Should I add an event on the calendar or a task?") == GuardVerdict::Pass);
+  CHECK(guarded(act, "es", "¿Quieres que lo haga?") == GuardVerdict::OptionsIncomplete);
+  CHECK(guarded(act, "en", "Should I do something?") == GuardVerdict::OptionsIncomplete);
+}
+
+TEST_CASE("a confirmation accepts a yes-or-no request and refuses a bare statement")
+{
+  CHECK(guarded(confirm("calendar.create_event", "Cena con Marta"), "es",
+                "¿Quieres que agende «Cena con Marta»?") == GuardVerdict::Pass);
+  CHECK(guarded(confirm("calendar.create_event", "Cena con Marta"), "es",
+                "Por favor, dime si quieres que agende «Cena con Marta».") == GuardVerdict::Pass);
+  CHECK(guarded(confirm("calendar.cancel_event", "Dentist appointment"), "en",
+                "Do you want me to cancel the dentist appointment?") == GuardVerdict::Pass);
+  CHECK(guarded(confirm("calendar.cancel_event", "Dentist appointment"), "en",
+                "Please let me know if you want me to cancel the dentist appointment.") == GuardVerdict::Pass);
+  CHECK(guarded(confirm("calendar.cancel_event", "Dentist appointment"), "en",
+                "Let me confirm the appointment for you.") == GuardVerdict::NotYesOrNo);
+  CHECK(guarded(confirm("calendar.create_event", "Cena con Marta"), "es",
+                "Agendo «Cena con Marta».") == GuardVerdict::NotYesOrNo);
 }
 
 TEST_CASE("a done act must speak back what the tool read back, and a read without one asks for nothing")

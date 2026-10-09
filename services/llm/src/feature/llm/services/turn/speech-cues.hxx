@@ -25,6 +25,12 @@ struct ActionQuery
   std::string_view lang;
 };
 
+struct LabelQuery
+{
+  std::string_view key;
+  std::string_view lang;
+};
+
 [[nodiscard]] std::span<const CueRow> cueRows();
 
 [[nodiscard]] std::span<const std::string_view> cuesFor(const CueQuery& query);
@@ -32,5 +38,11 @@ struct ActionQuery
 [[nodiscard]] std::span<const std::string_view> actionMarkers(const ActionQuery& query);
 
 [[nodiscard]] std::string_view slotActionName(const ActionQuery& query);
+
+[[nodiscard]] std::string_view slotLabel(const LabelQuery& query);
+
+[[nodiscard]] std::string_view optionLabel(const LabelQuery& query);
+
+[[nodiscard]] std::span<const std::string_view> requestCues(std::string_view lang);
 
 }

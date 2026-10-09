@@ -73,6 +73,19 @@ bool asks(std::string_view text)
   return text.find(kInvertedQuestion) != std::string_view::npos || text.find('?') != std::string_view::npos;
 }
 
+bool requests(const Words& words, std::string_view lang)
+{
+  return std::ranges::any_of(requestCues(lang), [&words](std::string_view cue) { return phraseIn(words, cue); });
+}
+
+bool namesOption(const Words& words, std::string_view option, std::string_view lang)
+{
+  const std::string_view label = optionLabel({.key = option, .lang = lang});
+  if (!label.empty() && phraseIn(words, label))
+    return true;
+  return stemIn(words, actionMarkers({.tool = option, .lang = lang}));
+}
+
 std::string subjectSurface(const Json::Value& args)
 {
   for (const char* key : {"title", "name", "text", "query"}) {
@@ -83,10 +96,19 @@ std::string subjectSurface(const Json::Value& args)
   return {};
 }
 
+bool carriesSlot(const Words& words, std::string_view slot, std::string_view lang)
+{
+  if (std::ranges::any_of(cuesFor({.slot = slot, .lang = lang}),
+                          [&words](std::string_view cue) { return phraseIn(words, cue); }))
+    return true;
+  const std::string_view label = slotLabel({.key = slot, .lang = lang});
+  return !label.empty() && phraseIn(words, label);
+}
+
 GuardVerdict checkAsk(const AskSlot& ask, const Words& words, std::string_view lang, int64_t now)
 {
   const std::span<const std::string_view> cues = cuesFor({.slot = ask.slot, .lang = lang});
-  if (!cues.empty() && !std::ranges::any_of(cues, [&words](std::string_view cue) { return phraseIn(words, cue); }))
+  if (!cues.empty() && !carriesSlot(words, ask.slot, lang))
     return GuardVerdict::SlotNotAsked;
   for (const std::string& known : ask.knownArgs.getMemberNames())
     if (std::ranges::any_of(cuesFor({.slot = known, .lang = lang}),
@@ -137,7 +159,7 @@ GuardVerdict checkConfirm(const Confirm& confirm, const Words& words, std::strin
 GuardVerdict checkChoose(const Choose& choose, const Words& words, std::string_view lang)
 {
   for (const std::string& option : choose.options)
-    if (!stemIn(words, actionMarkers({.tool = option, .lang = lang})))
+    if (!namesOption(words, option, lang))
       return GuardVerdict::OptionsIncomplete;
   return GuardVerdict::Pass;
 }
@@ -170,15 +192,16 @@ GuardVerdict check(const GuardInput& input)
     return GuardVerdict::ClaimedWithoutTool;
   const Words words = wordsOf(input.reply);
   const bool question = asks(input.reply);
+  const bool request = requests(words, input.speech.lang);
   for (const Act& act : input.speech.acts) {
     GuardVerdict verdict = GuardVerdict::Pass;
     if (const auto* ask = std::get_if<AskSlot>(&act)) {
-      if (!question)
+      if (!question && !request)
         return GuardVerdict::NotAQuestion;
       verdict = checkAsk(*ask, words, input.speech.lang, input.speech.now);
     }
     else if (const auto* confirm = std::get_if<Confirm>(&act)) {
-      if (!question)
+      if (!question && !request)
         return GuardVerdict::NotYesOrNo;
       verdict = checkConfirm(*confirm, words, input.speech.lang, input.speech.now);
     }
@@ -233,7 +256,7 @@ std::string_view feedback(GuardVerdict verdict, std::string_view lang)
       return english ? "Your reply was not a question. Ask it, in your own words."
                      : "Tu respuesta no era una pregunta. Hazla pregunta, en tus palabras.";
     case GuardVerdict::SlotNotAsked:
-      return english ? "Your reply did not ask for the missing value. Ask for it now, with a question."
+      return english ? "Your reply did not ask for the detail you need. Ask for it now, with a question."
                      : "Tu respuesta no pedía el dato que falta. Pídelo ahora, con una pregunta.";
     case GuardVerdict::SlotReasked:
       return english ? "You already knew that value; do not ask it again. Ask only for what is missing."
