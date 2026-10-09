@@ -2,17 +2,19 @@ include_guard(GLOBAL)
 
 set(ARGUS_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR})
 
+set(argus_link_budget_mb 4096)
 find_program(ARGUS_MOLD_EXECUTABLE NAMES mold)
 if(ARGUS_MOLD_EXECUTABLE AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.29)
   set(CMAKE_LINKER_TYPE MOLD)
-  message(STATUS "argus linker: mold (${ARGUS_MOLD_EXECUTABLE})")
+  set(argus_link_budget_mb 3072)
+  message(STATUS
+          "argus linker: mold (${ARGUS_MOLD_EXECUTABLE}), link budget ${argus_link_budget_mb} MiB")
 else()
-  message(STATUS "argus linker: default")
+  message(STATUS "argus linker: default, link budget ${argus_link_budget_mb} MiB")
 endif()
 
 if(CMAKE_GENERATOR MATCHES "Ninja" AND NOT CMAKE_JOB_POOLS)
   set(argus_reserve_mb 6144)
-  set(argus_link_budget_mb 4096)
   set(argus_cap_mb 0)
   set(argus_cap_source "")
   set(argus_link_pool 0)
