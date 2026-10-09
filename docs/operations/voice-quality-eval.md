@@ -33,6 +33,19 @@ python3 scripts/stt-eval-data.py
 ctest --test-dir services/stt/build/dev -R stt-wer-eval --output-on-failure
 ```
 
+A number that is reported goes through `scripts/measure-guard.sh`, which refuses to start the run
+when the tree that built it has uncommitted changes or when the build predates `HEAD`, and prints
+the key the number is filed under — `commit`, `build_type`, `profile` and `config`. `--profile`
+defaults to `prod`, so a dev build is reachable only by passing `--profile dev` and the key says so.
+A measurement is therefore always a commit, a build type and a configuration together, and two
+numbers taken under different keys are never compared:
+
+```
+scripts/measure-guard.sh --build services/llm/build/dev --profile dev \
+    --config 'gates.json --temperature 0.3 --seed 42 --render-acts' \
+    -- services/llm/build/dev/tests/eval/call-faithfulness-eval <args>
+```
+
 A decider, a filler and a speaker are processes that read one JSON request per line on stdin and
 write one JSON answer per line on stdout, so the rule tier, the fastText families, a fine-tuned
 model and the pipeline's own stages are scored by the same code and the same numbers. A command that
