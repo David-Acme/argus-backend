@@ -34,12 +34,11 @@ configure() {
 }
 
 edge_has_pool() {
-  local ninja_file="$1" target="$2"
-  awk -v target="$target" '
+  awk -v target="$2" '
     /^build / { t=$2; sub(/:$/, "", t); active=(t == target) }
     active && $1 == "pool" && $2 == "=" && $3 == "link" { hit=1 }
     END { exit !hit }
-  ' "$ninja_file"
+  ' "$1"
 }
 
 compile_edge_pooled() {
@@ -55,41 +54,89 @@ depth_of() {
   awk '$1 == "depth" { print $3 }' "$1/CMakeFiles/rules.ninja"
 }
 
-configure "$TMP/build14" -DARGUS_BUILD_MEMORY_CAP_MB=14336
-if ! edge_has_pool "$TMP/build14/build.ninja" argus-probe; then
+meminfo_mb() {
+  awk -v key="$1:" '$1 == key { printf "%d", $2 / 1024 }' /proc/meminfo
+}
+
+cgroup_memory_max() {
+  local rel
+  rel="$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup 2>/dev/null)"
+  cat "/sys/fs/cgroup${rel%/}/memory.max" 2>/dev/null
+}
+
+expect_depth() {
+  local build="$1" want="$2"
+  local got
+  got="$(depth_of "$build")"
+  if [ "$got" != "$want" ]; then
+    echo "build-pool-test: $3 gave link depth $got, not $want" >&2
+    exit 1
+  fi
+}
+
+configure "$TMP/build16" -DARGUS_BUILD_MEMORY_CAP_MB=16384
+if ! edge_has_pool "$TMP/build16/build.ninja" argus-probe; then
   echo "build-pool-test: the executable link edge carries no pool = link" >&2
   exit 1
 fi
-if compile_edge_pooled "$TMP/build14/build.ninja"; then
+if compile_edge_pooled "$TMP/build16/build.ninja"; then
   echo "build-pool-test: a compile edge carries the link pool" >&2
   exit 1
 fi
-if ! grep -q '^  pool = link$' "$TMP/build14/build.ninja"; then
+if ! grep -q '^  pool = link$' "$TMP/build16/build.ninja"; then
   echo "build-pool-test: no pool = link binding in build.ninja" >&2
   exit 1
 fi
-depth="$(depth_of "$TMP/build14")"
-if [ "$depth" != 4 ]; then
-  echo "build-pool-test: a 14336 MiB cap gave link depth $depth, not 4" >&2
-  exit 1
-fi
+expect_depth "$TMP/build16" 4 "a 16384 MiB cap"
+
+configure "$TMP/build14" -DARGUS_BUILD_MEMORY_CAP_MB=14336
+expect_depth "$TMP/build14" 3 "a 14336 MiB cap"
 
 configure "$TMP/build2" -DARGUS_LINK_POOLS=2
-test "$(depth_of "$TMP/build2")" = 2
+expect_depth "$TMP/build2" 2 "ARGUS_LINK_POOLS=2"
 
 configure "$TMP/build1" -DARGUS_BUILD_MEMORY_CAP_MB=1000
-test "$(depth_of "$TMP/build1")" = 1
+expect_depth "$TMP/build1" 1 "a 1000 MiB cap"
 
-configure "$TMP/builddefault"
-if ! edge_has_pool "$TMP/builddefault/build.ninja" argus-probe; then
-  echo "build-pool-test: the default configure carries no pool = link" >&2
-  exit 1
+neutralised=1
+if systemd-run --user --scope --quiet -p MemoryMax=infinity -- true >/dev/null 2>&1; then
+  configure_unscoped() {
+    local build="$1"; shift
+    systemd-run --user --scope --quiet -p MemoryMax=infinity -- \
+      cmake -S "$PROJ" -B "$build" -G Ninja "$@" > "$build.configure.log" 2>&1
+  }
+else
+  configure_unscoped() {
+    local build="$1"; shift
+    cmake -S "$PROJ" -B "$build" -G Ninja "$@" > "$build.configure.log" 2>&1
+  }
+  cgmax="$(cgroup_memory_max)"
+  if [ -n "$cgmax" ] && [ "$cgmax" != "max" ]; then
+    neutralised=0
+  fi
 fi
-default_depth="$(depth_of "$TMP/builddefault")"
-case "$default_depth" in
-  ""|*[!0-9]*) echo "build-pool-test: the default configure has no link depth" >&2
-               exit 1 ;;
-esac
-test "$default_depth" -ge 1
 
-echo "build-pool-test: pool = link on link edges (cap 14336 MiB -> depth 4, override 2, floor 1)"
+if [ "$neutralised" -eq 1 ]; then
+  avail_before="$(meminfo_mb MemAvailable)"
+  configure_unscoped "$TMP/buildfallback"
+  avail_after="$(meminfo_mb MemAvailable)"
+  lo="$avail_before"; [ "$avail_after" -lt "$lo" ] && lo="$avail_after"
+  hi="$avail_before"; [ "$avail_after" -gt "$hi" ] && hi="$avail_after"
+  want_lo=$(( (lo - 6144) / 4096 )); [ "$want_lo" -lt 1 ] && want_lo=1
+  want_hi=$(( (hi - 6144) / 4096 )); [ "$want_hi" -lt 1 ] && want_hi=1
+  got="$(depth_of "$TMP/buildfallback")"
+  if [ "$got" -lt "$want_lo" ] || [ "$got" -gt "$want_hi" ]; then
+    echo "build-pool-test: no-cap fallback depth $got is outside the MemAvailable range $want_lo..$want_hi" >&2
+    exit 1
+  fi
+  total_mb="$(meminfo_mb MemTotal)"
+  want_total=$(( (total_mb - 6144) / 4096 )); [ "$want_total" -lt 1 ] && want_total=1
+  if [ "$want_total" -ne "$want_lo" ] && [ "$want_total" -ne "$want_hi" ] && [ "$got" -eq "$want_total" ]; then
+    echo "build-pool-test: the no-cap fallback used MemTotal, not MemAvailable (depth $got)" >&2
+    exit 1
+  fi
+else
+  echo "build-pool-test: no-cap fallback not exercised (cgroup capped, systemd-run unavailable)" >&2
+fi
+
+echo "build-pool-test: pool = link on link edges (16384 -> 4, 14336 -> 3, override 2, 1000 -> 1, fallback from MemAvailable)"

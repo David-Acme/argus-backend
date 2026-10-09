@@ -58,18 +58,25 @@ target, sets `CMAKE_JOB_POOLS "link=N"` and `CMAKE_JOB_POOL_LINK`, so ninja runs
 at most `N` link steps at once while compilation keeps the full `-j <jobs>`.
 
 ```
-N = max(1, floor(cap_mb / 3072))
+N = max(1, floor(cap_mb / 4096))
 ```
 
+The 4096 MiB budget is the tree's own per-job figure — the same
+`MEM_PER_JOB_MB` the orchestrator uses, set by the heaviest `argus-llm` link.
 `cap_mb` is read in order from the `ARGUS_BUILD_MEMORY_CAP_MB` variable or
 environment, the process's own cgroup v2 `memory.max` (what a capped
-`systemd-run` scope or a `docker run --memory` sets), then `/proc/meminfo`'s
-`MemTotal` — the same order the orchestrator's job count uses. A 14336 MiB cap
-gives `N = 4`. `ARGUS_LINK_POOLS` overrides `N`, and an already-set
-`CMAKE_JOB_POOLS` is left alone. The configure prints it:
+`systemd-run` scope or a `docker run --memory` sets), then, with no cap at all,
+`MemAvailable` minus the same 6 GiB reserve the orchestrator holds back.
+`MemTotal` is never used: on a 30 GiB host it would allow ten links, and ten GNU
+`ld` beside eight compile workers is the shape that froze the machine on
+2026-10-03. A 16384 MiB cap gives `N = 4`, a 14336 MiB cap `N = 3`, and a quiet
+laptop with about 22 GiB available gives 4 as well. `ARGUS_LINK_POOLS` overrides
+`N`, and an already-set `CMAKE_JOB_POOLS` is left alone. The configure prints
+what it chose and from where:
 
 ```
--- argus link pool: link=4 (memory cap 14336 MiB)
+-- argus link pool: link=4 (memory cap 16384 MiB)
+-- argus link pool: link=3 (MemAvailable 20767 MiB - reserve 6144 MiB)
 ```
 
 The generated `build.ninja` then binds `pool = link` on every link edge and on
