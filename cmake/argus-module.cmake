@@ -37,6 +37,9 @@ else()
   message(STATUS "argus compiler launcher: none")
 endif()
 
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+message(STATUS "argus C++20 module scanning: off")
+
 if(CMAKE_GENERATOR MATCHES "Ninja" AND NOT CMAKE_JOB_POOLS)
   set(argus_reserve_mb 4096)
   set(argus_cap_mb 0)
