@@ -175,6 +175,8 @@ bool SpTokenizer::load(const std::filesystem::path& jsonPath)
       for (const json& token : root["added_tokens"]) {
         const std::string content = token.value("content", "");
         const std::int32_t id = token.value("id", 0);
+        if (!content.empty())
+          added_[content] = id;
         if (content == "<bos>") {
           cls_ = id;
           sawCls = true;
@@ -216,6 +218,14 @@ bool SpTokenizer::load(const std::filesystem::path& jsonPath)
 const std::string& SpTokenizer::maskToken() const
 {
   return maskToken_;
+}
+
+std::optional<std::int32_t> SpTokenizer::addedToken(std::string_view text) const
+{
+  const auto found = added_.find(std::string(text));
+  if (found == added_.end())
+    return std::nullopt;
+  return found->second;
 }
 
 std::string SpTokenizer::normalize(std::string_view text) const{

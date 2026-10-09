@@ -43,6 +43,8 @@ struct OnnxTensor
 {
   std::vector<int64_t> shape;
   std::vector<float> values;
+  std::vector<int64_t> whole;
+  bool integral{false};
 };
 
 struct OnnxCall

@@ -86,9 +86,10 @@ Built built(const std::string& name)
   const fs::path root = scratch(name);
   write(root / "model.onnx", "weights");
   write(root / "tokenizer" / "tokenizer.json", "{}");
-  write(root / "labels.json", R"({"labels": {"memory_save": "x", "camera": "y"}, "skew": 0.1})");
+  write(root / "labels.json", R"({"labels": ["memory_save", "camera"], "skew": 0.1})");
   write(root / "decision.json",
         R"({"act": 0.84, "ask": 0.84, "margin": 0.1, "now": 0.7, "guardMemory": false,
+            "head_max_len": 256, "temperature": [3.0, 1.0, 5.0],
             "calibration": {"confidence": {"type": "platt", "scale": 2.0, "shift": -0.5}},
             "source": {"fitOn": "calibration"}})");
   write(root / "max_len", "512\n");
@@ -117,6 +118,47 @@ TEST_CASE("a complete bundle loads its pin, its labels and its policy")
   CHECK(loader.confidenceCalibration().apply(0.5) ==
         doctest::Approx(turn::sigmoidOf(2.0 * turn::logitOf(0.5) - 0.5)));
   CHECK(loader.tokenizerJson() == bundle.dir / "tokenizer" / "tokenizer.json");
+}
+
+TEST_CASE("a decider bundle reads the head_max_len and temperature it declares")
+{
+  const Built bundle = built("decode-ok");
+  const turn::BundleLoader loader({.dir = bundle.dir, .pin = bundle.pin});
+  CHECK(loader.valid());
+  CHECK(loader.error().empty());
+  CHECK(loader.decode().headMaxLen == 256);
+  CHECK(loader.decode().temperature[0] == doctest::Approx(3.0));
+  CHECK(loader.decode().temperature[1] == doctest::Approx(1.0));
+  CHECK(loader.decode().temperature[2] == doctest::Approx(5.0));
+}
+
+TEST_CASE("a decider bundle that declares neither head_max_len nor temperature is refused")
+{
+  const Built bundle = built("decode-absent");
+  write(bundle.dir / "decision.json",
+        R"({"act": 0.84, "ask": 0.84, "margin": 0.1, "now": 0.7, "guardMemory": false,
+            "calibration": {"confidence": {"type": "platt", "scale": 2.0, "shift": -0.5}},
+            "source": {"fitOn": "calibration"}})");
+  seal(bundle.dir);
+  const turn::BundleLoader loader({.dir = bundle.dir,
+                                    .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  CHECK_FALSE(loader.valid());
+  CHECK(loader.error().find("declares neither head_max_len nor temperature") != std::string::npos);
+}
+
+TEST_CASE("a decider bundle that declares only one of head_max_len and temperature is refused")
+{
+  const Built bundle = built("decode-partial");
+  write(bundle.dir / "decision.json",
+        R"({"act": 0.84, "ask": 0.84, "margin": 0.1, "now": 0.7, "guardMemory": false,
+            "head_max_len": 256,
+            "calibration": {"confidence": {"type": "platt", "scale": 2.0, "shift": -0.5}},
+            "source": {"fitOn": "calibration"}})");
+  seal(bundle.dir);
+  const turn::BundleLoader loader({.dir = bundle.dir,
+                                    .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  CHECK_FALSE(loader.valid());
+  CHECK(loader.error().find("declares only one of them") != std::string::npos);
 }
 
 TEST_CASE("the pin is the hash of the sha256 file, and nothing else")
@@ -148,7 +190,7 @@ TEST_CASE("a file the bundle holds but the sha256 file does not name is refused"
 TEST_CASE("a file that does not match its line is refused")
 {
   const Built bundle = built("changed");
-  write(bundle.dir / "labels.json", R"({"labels": {"camera": "y"}})");
+  write(bundle.dir / "labels.json", R"({"labels": ["camera"]})");
   const turn::BundleLoader loader({.dir = bundle.dir, .pin = bundle.pin});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("does not match") != std::string::npos);
@@ -159,7 +201,7 @@ TEST_CASE("a bundle missing a layout file is refused")
   const fs::path root = scratch("incomplete");
   write(root / "model.onnx", "weights");
   write(root / "tokenizer" / "tokenizer.json", "{}");
-  write(root / "labels.json", R"({"labels": {"camera": "y"}})");
+  write(root / "labels.json", R"({"labels": ["camera"]})");
   write(root / "decision.json", R"({"source": {"fitOn": "calibration"}})");
   write(root / "model-card.md", "# card\n");
   write(root / "manifest.json", "{}");
@@ -203,7 +245,7 @@ TEST_CASE("an unknown calibration kind is refused rather than applied as identit
   CHECK_FALSE(turn::calibrationFromJson(node).has_value());
 }
 
-TEST_CASE("a label array keeps its order, and an object keeps its declaration order")
+TEST_CASE("a decider bundle's label array keeps its declaration order")
 {
   const Built bundle = built("labels");
   write(bundle.dir / "labels.json", R"({"labels": ["zebra", "alpha", "middle"]})");
@@ -211,4 +253,53 @@ TEST_CASE("a label array keeps its order, and an object keeps its declaration or
   const turn::BundleLoader loader({.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
   CHECK(loader.valid());
   CHECK(loader.labels() == std::vector<std::string>{"zebra", "alpha", "middle"});
+}
+
+TEST_CASE("an extractor bundle's logit order is the type-keyed map, each type a field array")
+{
+  const Built bundle = built("extractor");
+  write(bundle.dir / "labels.json",
+        R"({"model": "gliner", "logitOrder": "perType",
+            "types": {"event": ["title", "people"], "project": ["name"]}})");
+  write(bundle.dir / "decision.json", R"({"pairThreshold": 0.3, "maxSpanWords": 11, "source": {"fitOn": "calibration"}})");
+  seal(bundle.dir);
+  const turn::BundleLoader loader(
+      {.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256")), .kind = turn::BundleKind::Extractor});
+  CHECK(loader.valid());
+  REQUIRE(loader.typeFields().size() == 2);
+  CHECK(loader.typeFields().at("event") == std::vector<std::string>{"title", "people"});
+  CHECK(loader.typeFields().at("project") == std::vector<std::string>{"name"});
+  CHECK(loader.labels().empty());
+  CHECK(loader.thresholds().present);
+  CHECK(loader.thresholds().threshold == doctest::Approx(0.3));
+  CHECK(loader.thresholds().maxSpanWidth == 11);
+}
+
+TEST_CASE("an extractor bundle that carries a label array instead of the type map is refused")
+{
+  const Built bundle = built("extractor-array");
+  const turn::BundleLoader loader(
+      {.dir = bundle.dir, .pin = bundle.pin, .kind = turn::BundleKind::Extractor});
+  CHECK_FALSE(loader.valid());
+  CHECK(loader.error().find("type-keyed object form") != std::string::npos);
+}
+
+TEST_CASE("a decider bundle that carries the type-keyed map instead of a label array is refused")
+{
+  const Built bundle = built("decider-object");
+  write(bundle.dir / "labels.json", R"({"model": "gliner", "types": {"event": ["title"]}})");
+  seal(bundle.dir);
+  const turn::BundleLoader loader({.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  CHECK_FALSE(loader.valid());
+  CHECK(loader.error().find("label array form") != std::string::npos);
+}
+
+TEST_CASE("a decider bundle that carries an object of labels instead of an array is refused")
+{
+  const Built bundle = built("decider-descriptions");
+  write(bundle.dir / "labels.json", R"({"labels": {"memory_save": "a fact", "camera": "a camera"}})");
+  seal(bundle.dir);
+  const turn::BundleLoader loader({.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  CHECK_FALSE(loader.valid());
+  CHECK(loader.error().find("label array form") != std::string::npos);
 }

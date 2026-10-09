@@ -1,10 +1,26 @@
 {
- "labels": [
-  "title",
-  "name",
-  "project",
-  "people",
-  "when",
-  "due_at"
- ]
+ "model": "gliner",
+ "logitOrder": "perType",
+ "types": {
+  "event": [
+   "title",
+   "people",
+   "place"
+  ],
+  "fact": [
+   "subject",
+   "relation",
+   "object"
+  ],
+  "project": [
+   "name"
+  ],
+  "reminder": [
+   "text"
+  ],
+  "task": [
+   "title",
+   "project"
+  ]
+ }
 }

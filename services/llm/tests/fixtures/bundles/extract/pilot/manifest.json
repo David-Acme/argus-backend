@@ -10,7 +10,7 @@
   "decision": "calibration"
  },
  "maxLen": 256,
- "labels": 6,
+ "labels": 5,
  "tokenizerFiles": [],
  "modelOnnx": {
   "bytes": 55,

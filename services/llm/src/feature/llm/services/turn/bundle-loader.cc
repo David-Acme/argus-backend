@@ -132,25 +132,43 @@ std::optional<std::map<std::string, std::string>> listBundleFiles(const std::fil
   return files;
 }
 
-std::vector<std::string> readLabels(const Json::Value& root)
+std::optional<std::vector<std::string>> readDeciderLabels(const Json::Value& root)
 {
-  std::vector<std::string> labels;
   const Json::Value& node = root["labels"];
-  if (node.isArray()) {
-    for (const Json::Value& item : node)
-      if (item.isString())
-        labels.push_back(item.asString());
-  }
-  else if (node.isObject()) {
-    for (const auto& key : node.getMemberNames())
-      labels.push_back(key);
+  if (!node.isArray())
+    return std::nullopt;
+  std::vector<std::string> labels;
+  for (const Json::Value& item : node) {
+    if (!item.isString())
+      return std::nullopt;
+    labels.push_back(item.asString());
   }
   return labels;
+}
+
+std::optional<std::map<std::string, std::vector<std::string>>> readExtractorFields(const Json::Value& root)
+{
+  const Json::Value& node = root["types"];
+  if (!node.isObject())
+    return std::nullopt;
+  std::map<std::string, std::vector<std::string>> fields;
+  for (const std::string& type : node.getMemberNames()) {
+    const Json::Value& order = node[type];
+    if (!order.isArray())
+      return std::nullopt;
+    std::vector<std::string>& names = fields[type];
+    for (const Json::Value& item : order) {
+      if (!item.isString())
+        return std::nullopt;
+      names.push_back(item.asString());
+    }
+  }
+  return fields;
 }
 }
 
 BundleLoader::BundleLoader(BundleLocation location)
-    : dir_(std::move(location.dir)), pin_(lowered(trimmed(location.pin)))
+    : dir_(std::move(location.dir)), pin_(lowered(trimmed(location.pin))), kind_(location.kind)
 {
   load();
 }
@@ -227,7 +245,12 @@ void BundleLoader::load()
     policy_.guardMemory = (*decision).get("guardMemory", false).asBool();
     policy_.present = true;
   }
-  if ((*decision).isMember("threshold") || (*decision).isMember("maxSpanWidth")) {
+  if (kind_ == BundleKind::Extractor && ((*decision).isMember("pairThreshold") || (*decision).isMember("maxSpanWords"))) {
+    thresholds_.threshold = (*decision).get("pairThreshold", 0.0).asDouble();
+    thresholds_.maxSpanWidth = (*decision).get("maxSpanWords", 0).asInt();
+    thresholds_.present = true;
+  }
+  if (kind_ == BundleKind::Decider && ((*decision).isMember("threshold") || (*decision).isMember("maxSpanWidth"))) {
     thresholds_.threshold = (*decision).get("threshold", 0.0).asDouble();
     thresholds_.maxSpanWidth = (*decision).get("maxSpanWidth", 0).asInt();
     thresholds_.present = true;
@@ -236,6 +259,14 @@ void BundleLoader::load()
     confidenceCalibration_ = *confidence;
   if (const std::optional<CalibrationModel> now = calibrationFromJson((*decision)["calibration"]["now"]))
     nowCalibration_ = *now;
+  const bool declaresHeadMaxLen = (*decision).isMember("head_max_len");
+  const bool declaresTemperature = (*decision).isMember("temperature");
+  if (kind_ == BundleKind::Decider && !(declaresHeadMaxLen && declaresTemperature)) {
+    error_ = dir_.string() + ": a decider bundle's decision.json must declare both head_max_len and temperature, and this one " +
+             (declaresHeadMaxLen || declaresTemperature ? "declares only one of them"
+                                                        : "declares neither head_max_len nor temperature");
+    return;
+  }
   if (const Json::Value& headMaxLen = (*decision)["head_max_len"]; headMaxLen.isInt() && headMaxLen.asInt() > 0)
     decode_.headMaxLen = headMaxLen.asInt();
   if (const Json::Value& temperature = (*decision)["temperature"]; temperature.isArray() && temperature.size() == decode_.temperature.size()) {
@@ -253,10 +284,35 @@ void BundleLoader::load()
     error_ = dir_.string() + ": labels.json cannot be read";
     return;
   }
-  labels_ = readLabels(*labels);
-  if (labels_.empty()) {
-    error_ = dir_.string() + ": labels.json names no label";
-    return;
+  if (kind_ == BundleKind::Extractor) {
+    const std::optional<std::map<std::string, std::vector<std::string>>> types = readExtractorFields(*labels);
+    if (!types) {
+      error_ = dir_.string() + ": an extractor bundle's labels.json is the type-keyed object form, and this one is not";
+      return;
+    }
+    if (types->empty()) {
+      error_ = dir_.string() + ": labels.json names no type";
+      return;
+    }
+    for (const auto& [type, order] : *types) {
+      if (order.empty()) {
+        error_ = dir_.string() + ": labels.json names the type '" + type + "' with no field";
+        return;
+      }
+    }
+    typeFields_ = *types;
+  }
+  else {
+    const std::optional<std::vector<std::string>> names = readDeciderLabels(*labels);
+    if (!names) {
+      error_ = dir_.string() + ": a decider bundle's labels.json is the label array form, and this one is not";
+      return;
+    }
+    labels_ = *names;
+    if (labels_.empty()) {
+      error_ = dir_.string() + ": labels.json names no label";
+      return;
+    }
   }
   const std::optional<std::string> maxLen = readFile(dir_ / "max_len");
   if (!maxLen) {

@@ -4,12 +4,19 @@
 
 #include <array>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace turn
 {
+
+enum class BundleKind : unsigned char
+{
+  Decider,
+  Extractor
+};
 
 struct BundleDecode
 {
@@ -38,6 +45,7 @@ struct BundleLocation
 {
   std::filesystem::path dir;
   std::string pin;
+  BundleKind kind{BundleKind::Decider};
 };
 
 class BundleLoader
@@ -63,6 +71,8 @@ public:
 
   [[nodiscard]] const std::vector<std::string>& labels() const { return labels_; }
 
+  [[nodiscard]] const std::map<std::string, std::vector<std::string>>& typeFields() const { return typeFields_; }
+
   [[nodiscard]] const BundlePolicy& policy() const { return policy_; }
 
   [[nodiscard]] const BundleThresholds& thresholds() const { return thresholds_; }
@@ -78,11 +88,13 @@ private:
 
   std::filesystem::path dir_;
   std::string pin_;
+  BundleKind kind_{BundleKind::Decider};
   bool valid_{false};
   std::string error_;
   int maxLen_{0};
   BundleDecode decode_;
   std::vector<std::string> labels_;
+  std::map<std::string, std::vector<std::string>> typeFields_;
   BundlePolicy policy_;
   BundleThresholds thresholds_;
   CalibrationModel confidenceCalibration_;

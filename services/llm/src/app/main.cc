@@ -227,7 +227,8 @@ void configureText(LlmController& llm, TurnEngines& engines, const slots::TextSl
   const LlmEngineConfig engine = LlmConfig::resolveExtractEngine();
   if (engine.engine != "gliner")
     return;
-  const turn::BundleLoader bundle({.dir = engine.bundleDir, .pin = engine.pin});
+  const turn::BundleLoader bundle(
+      {.dir = engine.bundleDir, .pin = engine.pin, .kind = turn::BundleKind::Extractor});
   if (!bundle.valid()) {
     LOG_WARN << "argus-llm: the GLiNER extractor is off: " << bundle.error()
              << "; the turn runs on NuExtract";

@@ -15,5 +15,11 @@
  "source": {
   "fitOn": "calibration",
   "note": "pilot placeholder until a trained bundle lands"
- }
+ },
+ "head_max_len": 256,
+ "temperature": [
+  3.0035,
+  1.0,
+  5.0
+ ]
 }

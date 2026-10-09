@@ -865,7 +865,9 @@ Engines setupEngines(LlmController& controller, const Options& options)
     }
   }
   if (options.extract == "gliner") {
-    const turn::BundleLoader bundle({.dir = options.extractBundle, .pin = bundlePin(options.extractBundle)});
+    const turn::BundleLoader bundle({.dir = options.extractBundle,
+                                     .pin = bundlePin(options.extractBundle),
+                                     .kind = turn::BundleKind::Extractor});
     if (bundle.valid()) {
       engines.gliner = std::make_unique<turn::GlinerExtractor>(turn::GlinerExtractorInput{
           .model = turn::openGlinerModel(bundle, {}), .fallback = nullptr, .thresholds = bundle.thresholds()});

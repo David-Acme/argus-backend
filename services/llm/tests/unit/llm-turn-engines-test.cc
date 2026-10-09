@@ -62,7 +62,7 @@ public:
 
   [[nodiscard]] turn::EngineStatus status() override { return status_; }
 
-  [[nodiscard]] std::vector<turn::GlinerSpan> spans(std::string_view, std::string_view) override
+  [[nodiscard]] std::vector<turn::GlinerSpan> spans(const turn::GlinerRequest&) override
   {
     return status_ == turn::EngineStatus::Ready ? spans_ : std::vector<turn::GlinerSpan>{};
   }
@@ -152,7 +152,7 @@ turn::DecideInput inputFor(World& world, std::string_view utterance)
 
 TEST_CASE("the pilot decide bundle loads and its labels all serve a tool")
 {
-  const turn::BundleLoader bundle({.dir = pilotBundle("decide"), .pin = std::string(R"(c317216d5b1ba04a9aa9c171a7ab4cfa1fc72891e8ff64e7eaff7e3b0e67bcdf)")});
+  const turn::BundleLoader bundle({.dir = pilotBundle("decide"), .pin = std::string(R"(c43268a720b6a25f2c9c402cfc1b2a631846d861aab80cd3d621841b6b855217)")});
   REQUIRE(bundle.valid());
   CHECK(bundle.labels().size() == 22);
   CHECK(bundle.fitSplit() == "calibration");
@@ -182,7 +182,7 @@ TEST_CASE("the label set the server serves is the pinned tsv, and the pilot bund
   for (const auto& row : rows)
     server.insert(row.first);
   server.insert("none");
-  const turn::BundleLoader bundle({.dir = pilotBundle("decide"), .pin = std::string(R"(c317216d5b1ba04a9aa9c171a7ab4cfa1fc72891e8ff64e7eaff7e3b0e67bcdf)")});
+  const turn::BundleLoader bundle({.dir = pilotBundle("decide"), .pin = std::string(R"(c43268a720b6a25f2c9c402cfc1b2a631846d861aab80cd3d621841b6b855217)")});
   REQUIRE(bundle.valid());
   for (const std::string& label : bundle.labels())
     CHECK(server.contains(label));
@@ -271,7 +271,7 @@ TEST_CASE("the whole new pipeline runs on the pilot bundles: laya decides, gline
 {
   World world;
   world.now = 0;
-  const turn::BundleLoader bundle({.dir = pilotBundle("decide"), .pin = std::string(R"(c317216d5b1ba04a9aa9c171a7ab4cfa1fc72891e8ff64e7eaff7e3b0e67bcdf)")});
+  const turn::BundleLoader bundle({.dir = pilotBundle("decide"), .pin = std::string(R"(c43268a720b6a25f2c9c402cfc1b2a631846d861aab80cd3d621841b6b855217)")});
   REQUIRE(bundle.valid());
   turn::LayaDecider laya({.model = std::make_unique<StubLayaModel>(turn::EngineStatus::Ready,
                                                                    std::vector<std::pair<std::string, double>>{{"memory_save", 0.96}, {"none", 0.02}},

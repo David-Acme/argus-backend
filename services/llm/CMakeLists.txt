@@ -379,6 +379,10 @@ add_test(NAME llm-laya-runtime-test COMMAND llm-laya-runtime-test)
 
 add_executable(llm-gliner-decoder-test tests/unit/llm-gliner-decoder-test.cc)
 
+target_compile_definitions(llm-gliner-decoder-test PRIVATE
+    ARGUS_TEST_GLINER_OVERLAP="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/gliner/overlap.json"
+    ARGUS_TEST_GLINER_RANDOM="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/gliner/random-overlap.json")
+
 target_link_libraries(llm-gliner-decoder-test PRIVATE argus::llm doctest::doctest)
 
 target_compile_options(llm-gliner-decoder-test PRIVATE -Wall -Wextra)
@@ -386,6 +390,19 @@ target_compile_options(llm-gliner-decoder-test PRIVATE -Wall -Wextra)
 set_target_properties(llm-gliner-decoder-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-gliner-decoder-test COMMAND llm-gliner-decoder-test)
+
+add_executable(llm-gliner-runtime-test tests/unit/llm-gliner-runtime-test.cc)
+
+target_compile_definitions(llm-gliner-runtime-test PRIVATE
+    ARGUS_TEST_GLINER_PARITY="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/gliner/parity-pilot.json")
+
+target_link_libraries(llm-gliner-runtime-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-gliner-runtime-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-gliner-runtime-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-gliner-runtime-test COMMAND llm-gliner-runtime-test)
 
 add_executable(llm-spoken-intent-test tests/unit/llm-spoken-intent-test.cc)
 

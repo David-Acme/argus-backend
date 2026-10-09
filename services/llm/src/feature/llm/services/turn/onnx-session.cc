@@ -130,12 +130,19 @@ std::optional<std::vector<OnnxTensor>> OnnxSession::run(const OnnxCall& call)
     for (Ort::Value& value : outputs) {
       const auto info = value.GetTensorTypeAndShapeInfo();
       const std::vector<std::int64_t> shape = info.GetShape();
-      const float* data = value.GetTensorData<float>();
-      OnnxTensor tensor{.shape = shape, .values = {}};
+      OnnxTensor tensor{.shape = shape, .values = {}, .whole = {}, .integral = false};
       std::size_t size = 1;
       for (const std::int64_t dim : shape)
         size *= static_cast<std::size_t>(dim > 0 ? dim : 0);
-      tensor.values.assign(data, data + size);
+      if (info.GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+        tensor.integral = true;
+        const std::int64_t* data = value.GetTensorData<std::int64_t>();
+        tensor.whole.assign(data, data + size);
+      }
+      else {
+        const float* data = value.GetTensorData<float>();
+        tensor.values.assign(data, data + size);
+      }
       out.push_back(std::move(tensor));
     }
     return out;

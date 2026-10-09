@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -27,6 +28,8 @@ public:
   [[nodiscard]] SpModel model() const { return model_; }
 
   [[nodiscard]] std::vector<std::int32_t> encode(std::string_view text, bool addSpecialTokens = false) const;
+
+  [[nodiscard]] std::optional<std::int32_t> addedToken(std::string_view text) const;
 
   [[nodiscard]] std::int32_t clsId() const { return cls_; }
   [[nodiscard]] std::int32_t sepId() const { return sep_; }
@@ -57,6 +60,7 @@ private:
   std::unordered_map<std::string, std::int32_t> vocab_;
   std::unordered_map<std::string, std::int32_t> merges_;
   std::unordered_map<std::string, float> scores_;
+  std::unordered_map<std::string, std::int32_t> added_;
   std::int32_t unk_{0};
   std::int32_t cls_{0};
   std::int32_t sep_{0};
