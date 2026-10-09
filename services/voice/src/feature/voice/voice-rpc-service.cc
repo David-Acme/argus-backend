@@ -188,7 +188,7 @@ private:
         sessions_.mute(*this, frame.mute().muted());
         break;
       case argus::voice::v1::ClientFrame::kFarewell:
-        sessions_.farewell(*this, farewellReasonOf(frame.farewell().reason()));
+        sessions_.farewell(*this);
         break;
       case argus::voice::v1::ClientFrame::kPcm:
         sessions_.feedPcm(*this, {.data = frame.pcm().data(),
@@ -356,7 +356,7 @@ grpc::ServerUnaryReactor* VoiceRpcService::JoinRoom(grpc::CallbackServerContext*
 
 grpc::ServerUnaryReactor* VoiceRpcService::Farewell(grpc::CallbackServerContext* context,
                                                     const argus::voice::v1::RtcFarewell* request,
-                                                    argus::voice::v1::RtcFarewellDone* reply)
+                                                    argus::voice::v1::RtcFarewellDone*)
 {
   auto* reactor = context->DefaultReactor();
   if (!argus::client::authorizeCaller(context, syncCallers_).has_value()) {
@@ -367,10 +367,7 @@ grpc::ServerUnaryReactor* VoiceRpcService::Farewell(grpc::CallbackServerContext*
     reactor->Finish({grpc::StatusCode::UNAVAILABLE, "realtime calls are not configured"});
     return reactor;
   }
-  rooms_->farewellRoom(*request, [reactor, reply](bool played) {
-    reply->set_played(played);
-    reactor->Finish(grpc::Status::OK);
-  });
+  rooms_->farewellRoom(*request, [reactor] { reactor->Finish(grpc::Status::OK); });
   return reactor;
 }
 

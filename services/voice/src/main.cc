@@ -129,7 +129,6 @@ int main()
   const GrpcListenerConfig grpcListener = VoiceConfig::resolveGrpcListener();
 
   VoiceSessionService sessions;
-  sessions.warmFarewells();
   const VoiceNotificationConfig notificationConfig = VoiceConfig::resolveNotification();
   std::unique_ptr<NotificationClient> notifications;
   if (!notificationConfig.target.empty())

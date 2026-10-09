@@ -29,10 +29,10 @@ public:
     done(grpc::Status::OK, joined);
   }
 
-  void farewellRoom(const argus::voice::v1::RtcFarewell& farewell, std::function<void(bool)> done) override
+  void farewellRoom(const argus::voice::v1::RtcFarewell& farewell, std::function<void()> done) override
   {
     farewells.push_back(farewell.room() + "/" + farewell.reason());
-    done(true);
+    done();
   }
 
   std::vector<std::string> rooms;
@@ -157,7 +157,6 @@ TEST_CASE("JoinRoom answers only argus-sync, Announce only argus-notification")
     grpc::ClientContext accepted;
     argus::client::addCallerCredential(accepted, kSyncSecret);
     REQUIRE(stub->Farewell(&accepted, farewell, &done).ok());
-    CHECK(done.played());
     CHECK(joiner.farewells == std::vector<std::string>{"u7.rtc-00/accountDisabled"});
   }
 

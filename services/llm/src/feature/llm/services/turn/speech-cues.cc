@@ -9,7 +9,7 @@ namespace turn::speech
 namespace
 {
 
-constexpr std::array<std::string_view, 4> kTitleEs{"que", "como se llama", "como lo llamo", "titulo"};
+constexpr std::array<std::string_view, 3> kTitleEs{"como se llama", "como lo llamo", "titulo"};
 constexpr std::array<std::string_view, 3> kTitleEn{"what", "what is it called", "what should i call"};
 constexpr std::array<std::string_view, 3> kNameEs{"como se llama", "nombre", "como lo llamo"};
 constexpr std::array<std::string_view, 3> kNameEn{"what", "what is it called", "name"};

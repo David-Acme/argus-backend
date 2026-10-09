@@ -64,73 +64,35 @@ void RtcCall::requestStop(rtc_wire::DoneReason reason)
   cv_.notify_all();
 }
 
-void RtcCall::farewell(const argus::voice::v1::RtcFarewell& request, std::function<void(bool)> done)
+void RtcCall::farewell(const argus::voice::v1::RtcFarewell& request, std::function<void()> done)
 {
   if (!request.user_identity().empty() && request.user_identity() != join_.user_identity()) {
-    done(false);
+    done();
     return;
   }
   {
     std::unique_lock lock(mutex_);
-    if (revoked_.exchange(true)) {
-      if (!farewellFinished_) {
-        farewellWaiters_.push_back(std::move(done));
-        return;
-      }
+    if (revoked_.exchange(true) || stopReason_) {
       lock.unlock();
-      done(true);
+      done();
       return;
     }
-    if (stopReason_) {
-      farewellFinished_ = true;
-      lock.unlock();
-      done(false);
-      return;
-    }
-    farewell_ = FarewellRequest{.cause = request.reason(),
-                                .done = std::move(done),
-                                .deadline = std::chrono::steady_clock::now() + kFarewellBound};
+    farewell_ = FarewellRequest{.cause = request.reason(), .done = std::move(done)};
   }
   cv_.notify_all();
 }
 
 void RtcCall::sayFarewell(const FarewellRequest& request)
 {
-  LOG_INFO << "Voice: RTC call " << join_.room() << " says goodbye (" << request.cause << ")";
+  LOG_INFO << "Voice: RTC call " << join_.room() << " closes on a revoke or a disable ("
+           << request.cause << ")";
   flushPlayout();
   publish(rtc_wire::revokedMessage(request.cause));
-  const bool played = sessions_.farewell(*this, farewellReasonOf(request.cause));
+  sessions_.farewell(*this);
   publishPending();
-  wantState(played ? rtc_wire::AgentState::Speaking : rtc_wire::AgentState::Listening);
+  wantState(rtc_wire::AgentState::Listening);
   applyState();
-  if (played) {
-    constexpr auto kTail = std::chrono::milliseconds(kSourceQueueMs + 120);
-    std::optional<std::chrono::steady_clock::time_point> emptiedAt;
-    for (;;) {
-      const auto now = std::chrono::steady_clock::now();
-      if (now >= request.deadline)
-        break;
-      bool empty = false;
-      {
-        std::scoped_lock lock(playoutMutex_);
-        empty = playout_.size() == 0;
-      }
-      if (empty && !emptiedAt)
-        emptiedAt = now;
-      if (emptiedAt && now - *emptiedAt >= kTail)
-        break;
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-  }
-  std::vector<std::function<void(bool)>> waiters;
-  {
-    std::scoped_lock lock(mutex_);
-    farewellFinished_ = true;
-    waiters.swap(farewellWaiters_);
-  }
-  request.done(played);
-  for (const auto& waiter : waiters)
-    waiter(played);
+  request.done();
 }
 
 void RtcCall::waitEnded()
@@ -342,17 +304,15 @@ void RtcCall::finish(rtc_wire::DoneReason reason)
 {
   LOG_INFO << "Voice: RTC call " << join_.room() << " ends ("
            << rtc_wire::doneReasonToString(reason) << ")";
-  std::vector<std::function<void(bool)>> waiters;
+  std::function<void()> farewellDone;
   {
     std::scoped_lock lock(mutex_);
-    farewellFinished_ = true;
-    waiters.swap(farewellWaiters_);
     if (farewell_)
-      waiters.push_back(std::move(farewell_->done));
+      farewellDone = std::move(farewell_->done);
     farewell_.reset();
   }
-  for (const auto& waiter : waiters)
-    waiter(false);
+  if (farewellDone)
+    farewellDone();
   sessions_.stop(*this);
   publishPending();
   if (roomUp_.load() && reason != rtc_wire::DoneReason::Revoked)

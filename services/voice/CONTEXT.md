@@ -403,7 +403,7 @@ for. The one rule (`openingLineFor`, read by `start` and by
 every install before this change — gets the silent default greeting on the next
 call and needs `[voice] opening = "spoken"` to keep it. Nothing else about the
 call changes: the earcons the app plays, the notes, the situation, barge-in, the
-offers and the farewell lines are all unaffected.
+offers and the way a session ends are all unaffected.
 
 `RtcCall` asks `openingWillBeSpoken` for its first `lk.agent.state`
 (`rtc_wire::agentStateForOpening`) — `listening` when nothing will be spoken,
@@ -867,63 +867,48 @@ answer produced `argus.interrupted` 542-1191 ms after the clip's onset (the
 VAD's 8 windows over 0.7 plus the clip's own lead-in), and Argus's audio
 stopped 45-70 ms after that at the client (ring and source queue flushed).
 
-## A revoked session hears why the call ends (2026-10-04)
+## A revoked session is closed, not spoken to (2026-10-09)
 
-David's request: when a session is revoked or closed, or the owner disables
-the account, during a live call, Argus says a short line in the call's
-language and then hangs up. Lines (`src/feature/voice/farewell-lines.cc`):
-"Tu sesión se ha cerrado, cuelgo." / "Your session was closed, I'm hanging
-up." (logout, refresh-token reuse, any other cause), "Han cerrado esta
-sesión, cuelgo." / "This session was closed, I'm hanging up."
-(`revokedByOwner`), "Tu cuenta está desactivada, cuelgo." / "Your account
-was disabled, I'm hanging up." (`accountDisabled`). The first draft ("...,
-voy a colgar.") measured 2.3-3.2 s in Spanish with Pocket and did not fit the
-budget; the current ones measure 1.5-2.0 s.
+**Decided by David, 2026-10-08.** The farewell that used to play when a
+session was revoked or an account was disabled is removed: no LLM farewell,
+no cached PCM, no idle generation, no tone. This service owns no line for the
+end of a session. This supersedes the 2026-10-04/2026-10-07 design ("A revoked
+session hears why the call ends"), whose `FarewellReason`, `FarewellKey`,
+`FarewellAudio`, `FarewellCache` and `src/feature/voice/farewell-lines.{hxx,cc}`
+are deleted, along with the boot-time warming and the PCM playback loop.
 
-- **No TTS wait.** `FarewellCache` synthesizes the six lines at boot on its
-  own thread (`warmFarewells()` in `main.cc`), at 1.12x the voice's speed,
-  trims leading and trailing silence (40 ms kept) and keeps them as 16 kHz
-  PCM; with argus-tts down it retries every 15 s. A farewell asked before a
-  line is cached plays nothing and the call is cut at once.
-- **WebRTC** (`VoiceService.Farewell`, `caller_sync`): the call drops the
-  user's audio and data from that instant, flushes whatever Argus was
-  saying, publishes `argus.done {reason: "revoked", cause}`, and
-  `VoiceSessionService::farewell` stops the turn (the LLM and TTS calls are
-  cancelled), mutes the session, blocks every later frame of it and pushes
-  the cached line (with its `argus.assistant`) into the playout ring. The RPC
-  answers once the line has played out plus the source queue (120 ms tail),
-  never later than 2.3 s. A second Farewell for the same call (a disabled
-  account produces the user disconnect and then each session's revocation)
-  waits for the first instead of cutting it. argus-sync has already revoked
-  the participant's publish permissions and removes it right after the
-  answer (`services/sync/CONTEXT.md`).
-- **PCM over `/sync`**: a new `VoiceFarewell` client frame does the same on
-  the gRPC stream: the line goes out as `tts_chunk` frames and a
-  `voice:assistant`, the session ignores everything after it.
+The *reason* a session ends is still carried; it is simply not spoken.
+argus-sync's revoker tells this service over `VoiceService.Farewell`
+(`caller_sync`, built by `rtc-session-revoker.cc` and carried by
+`voice-room-joiner.cc`), and the call is **closed**: the RTC path drops the
+user's audio from that instant, flushes whatever Argus was saying, publishes
+`argus.done {reason: "revoked", cause}`, stops the turn (the LLM and TTS calls
+are cancelled) through `VoiceSessionService::farewell`, and answers the RPC at
+once, so argus-sync removes the participant right after. `RtcFarewellDone` no
+longer carries a `played` field, because nothing plays. A `VoiceFarewell`
+client frame on the gRPC stream reaches the same `VoiceSessionService::farewell`
+and closes the session the same way, silently.
 
-Measured on the sandbox with throwaway users (2026-10-04, scratch argus-voice,
-prod argus-tts): logout mid-call: `argus.done` 46-52 ms after the request,
-the line audible from then to 1.74-1.83 s, participant removed at 1.86-2.0 s;
-owner disables the account: `argus.done` at 160-225 ms (identity's update
-first), line to 2.2 s, room deleted at 2.37 s; PCM call: line frames at
-195 ms, `sessionRevoked` and the close at 2.54 s.
-
-**Which ends speak (2026-10-07).** All three `FarewellReason` values are ends
-the server decided, not the user, and each keeps its short cached line:
-`SessionClosed` (a logout, a refresh-token reuse, anything else argus-sync
-names as a cause), `ClosedByOwner` (`revokedByOwner`: the owner closed the
-session from another device) and `AccountDisabled` (the owner disabled the
-account). The line is the cheapest honest way to end a call that is being torn
-down: it is warmed at boot, so it costs no TTS round trip, and it reaches the
-user on the call they are already listening to — an on-screen notice would need
-the app to be showing the right surface at that instant, and it is not what a
-call's client shows. A normal hang-up is not a farewell at all: the app's
+A normal hang-up never played anything and still does not: the app's
 `voice:stop` and `argus.hangup` go to `stop()`, which sends `voice:done` and
 says nothing, because the user decided and does not need to be told. The
-timeout ends speak nothing either — `timeout` while nobody joined, or after
+timeout ends say nothing either — `timeout` while nobody joined, or after
 `rejoin_grace_ms` for a user whose connection died — since there is no live
-listener left to hear them. Every line the cache warms is therefore still
-spoken by some path, and `FarewellCache` keeps warming all six.
+listener left to hear them.
+
+## The turn's failed speech reaches the app as silence (2026-10-09)
+
+When argus-llm answers with `speech_unavailable` — the LLM is unreachable or
+the guard rejected both renderings — the turn has nothing to say. This
+service forwards that status on the app's own wire as an additive field on
+`ServerFrame.assistant` (`VoiceAssistant.speech = "unavailable"`, `text`
+empty), and on the RTC leg through the `argus.assistant` data message's
+`speech` key; it is **never** a `voice:error`. Nothing is spoken: an app that
+does not know the field renders the empty text as nothing between the request
+and the sentinel, and there is no audible fallback. The `unansweredLine`
+("Perdona, ahora mismo no he podido responder.") that used to be spoken here
+is deleted in the same change, so there is never a build in which a failed
+turn is silent on a call.
 
 ## Owner settings
 

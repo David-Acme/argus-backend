@@ -7,7 +7,6 @@
 #include <deque>
 #include <functional>
 #include <feature/voice/call-history.hxx>
-#include <feature/voice/farewell-lines.hxx>
 #include <feature/voice/turn-transcript.hxx>
 #include <feature/voice/voice-engine-seam.hxx>
 #include <memory>
@@ -59,9 +58,7 @@ public:
   void feedPcm(VoiceSessionSink& sink, const PcmFrame& frame);
   void feedSamples(VoiceSessionSink& sink, std::span<const float> samples);
   bool announce(int64_t userId, const std::string& text);
-  bool farewell(VoiceSessionSink& sink, FarewellReason reason);
-  void warmFarewells();
-  [[nodiscard]] FarewellAudio farewellAudio(const FarewellKey& key) const;
+  void farewell(VoiceSessionSink& sink);
   [[nodiscard]] static VoiceLang langOf(const argus::voice::v1::VoiceIdentity& identity);
   [[nodiscard]] static bool openingWillBeSpoken(const argus::voice::v1::VoiceStart& request);
   void stop(VoiceSessionSink& sink);
@@ -206,7 +203,6 @@ private:
     std::atomic<bool> active{true};
     std::atomic<bool> muted{false};
     std::atomic<bool> vadResetPending{false};
-    std::atomic<bool> farewell{false};
     std::mutex turnMutex;
     std::stop_source turnStop;
     std::stop_source callStop;
@@ -298,7 +294,6 @@ private:
   IVoiceIdentity& identity_;
   IVoiceVad& vad_;
   IVoiceSpeaker& speaker_;
-  FarewellCache farewells_;
 
   friend struct VoiceSessionTestAccess;
 };

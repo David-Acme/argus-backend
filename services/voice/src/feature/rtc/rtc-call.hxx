@@ -63,7 +63,7 @@ public:
 
   void run();
   void requestStop(rtc_wire::DoneReason reason);
-  void farewell(const argus::voice::v1::RtcFarewell& request, std::function<void(bool)> done);
+  void farewell(const argus::voice::v1::RtcFarewell& request, std::function<void()> done);
   void waitEnded();
 
   [[nodiscard]] const std::string& room() const { return join_.room(); }
@@ -87,14 +87,12 @@ public:
   static constexpr size_t kFadeSamples = static_cast<size_t>(kSampleRate) * 60 / 1000;
   static constexpr size_t kPlayoutCapacity = static_cast<size_t>(kSampleRate) * 120;
   static constexpr size_t kMaxOutboundMessages = 256;
-  static constexpr auto kFarewellBound = std::chrono::milliseconds(2300);
 
 private:
   struct FarewellRequest
   {
     std::string cause;
-    std::function<void(bool)> done;
-    std::chrono::steady_clock::time_point deadline{};
+    std::function<void()> done;
   };
 
   void sayFarewell(const FarewellRequest& request);
@@ -140,8 +138,6 @@ private:
   std::deque<rtc_wire::DataMessage> outbound_;
   std::deque<rtc_wire::ClientMessage> earlyClient_;
   std::optional<FarewellRequest> farewell_;
-  std::vector<std::function<void(bool)>> farewellWaiters_;
-  bool farewellFinished_{false};
   rtc_wire::AgentState wanted_{rtc_wire::AgentState::Initializing};
   rtc_wire::AgentState applied_{rtc_wire::AgentState::Initializing};
   std::chrono::steady_clock::time_point thinkingSince_{};

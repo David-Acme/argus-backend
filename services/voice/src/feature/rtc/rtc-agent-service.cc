@@ -96,7 +96,7 @@ void RtcAgentService::joinRoom(const argus::voice::v1::RtcJoin& join,
 }
 
 void RtcAgentService::farewellRoom(const argus::voice::v1::RtcFarewell& farewell,
-                                   std::function<void(bool)> done)
+                                   std::function<void()> done)
 {
   std::shared_ptr<RtcCall> call;
   {
@@ -106,7 +106,7 @@ void RtcAgentService::farewellRoom(const argus::voice::v1::RtcFarewell& farewell
       call = it->second;
   }
   if (!call) {
-    done(false);
+    done();
     return;
   }
   call->farewell(farewell, std::move(done));

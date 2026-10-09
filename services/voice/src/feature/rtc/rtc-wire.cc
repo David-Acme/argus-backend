@@ -119,6 +119,8 @@ std::optional<DataMessage> dataMessageOf(const argus::voice::v1::ServerFrame& fr
       payload["text"] = frame.assistant().text();
       if (frame.assistant().turn_id() != 0)
         payload["turnId"] = static_cast<Json::Int64>(frame.assistant().turn_id());
+      if (!frame.assistant().speech().empty())
+        payload["speech"] = frame.assistant().speech();
       return messageOf(kTopicAssistant, payload);
     case argus::voice::v1::ServerFrame::kTurn:
       payload["id"] = static_cast<Json::Int64>(frame.turn().id());

@@ -22,6 +22,7 @@ namespace
 
 constexpr int kTargetRate = 16000;
 constexpr auto kIdleTick = std::chrono::milliseconds(150);
+constexpr std::string_view kSpeechUnavailable = "unavailable";
 
 std::string mintCallKey()
 {
@@ -110,12 +111,6 @@ struct OpeningInput
   if (input.opening != VoiceOpening::Spoken)
     return {};
   return greetingFor(input.lang, std::string(input.name));
-}
-
-std::string unansweredLine(VoiceLang lang)
-{
-  return lang == VoiceLang::En ? "Sorry, I couldn't answer that right now."
-                               : "Perdona, ahora mismo no he podido responder.";
 }
 
 std::string langCode(VoiceLang lang)
@@ -432,20 +427,9 @@ VoiceListeningConfig resolveVoiceListeningConfig()
 
 VoiceSessionService::VoiceSessionService(const VoiceEngineSeam& engines)
     : stt_(engines.stt), tts_(engines.tts), llm_(engines.llm),
-      identity_(engines.identity), vad_(engines.vad), speaker_(engines.speaker),
-      farewells_(engines.tts)
+      identity_(engines.identity), vad_(engines.vad), speaker_(engines.speaker)
 {
   reactions_.init();
-}
-
-void VoiceSessionService::warmFarewells()
-{
-  farewells_.startWarming();
-}
-
-FarewellAudio VoiceSessionService::farewellAudio(const FarewellKey& key) const
-{
-  return farewells_.audio(key);
 }
 
 VoiceLang VoiceSessionService::langOf(const argus::voice::v1::VoiceIdentity& identity)
@@ -465,11 +449,11 @@ bool VoiceSessionService::openingWillBeSpoken(const argus::voice::v1::VoiceStart
               .empty();
 }
 
-bool VoiceSessionService::farewell(VoiceSessionSink& sink, FarewellReason reason)
+void VoiceSessionService::farewell(VoiceSessionSink& sink)
 {
   const auto session = sessionOf(sink);
   if (!session)
-    return false;
+    return;
   session->muted.store(true);
   {
     std::scoped_lock lock(session->pcmMutex);
@@ -479,28 +463,11 @@ bool VoiceSessionService::farewell(VoiceSessionSink& sink, FarewellReason reason
   {
     std::scoped_lock lock(session->turnMutex);
     session->interrupt.store(true);
-    session->farewell.store(true);
     cancellation = session->turnStop;
   }
   cancellation.request_stop();
   session->callStop.request_stop();
-  const FarewellAudio audio = farewells_.audio({.lang = session->lang, .reason = reason});
-  LOG_INFO << "Voice: farewell (" << (audio.pcm ? "cached line" : "no line cached, cut") << ")";
-  if (!audio.pcm || !sink.connected())
-    return false;
-  constexpr std::size_t kChunkSamples = FarewellCache::kSampleRate / 5;
-  const std::vector<int16_t>& pcm = *audio.pcm;
-  for (std::size_t offset = 0; offset < pcm.size(); offset += kChunkSamples) {
-    const std::size_t count = std::min(kChunkSamples, pcm.size() - offset);
-    argus::voice::v1::ServerFrame chunk;
-    chunk.mutable_tts_chunk()->set_pcm(reinterpret_cast<const char*>(pcm.data() + offset),
-                                       count * sizeof(int16_t));
-    sink.sendServerFrame(std::move(chunk));
-  }
-  argus::voice::v1::ServerFrame assistant;
-  assistant.mutable_assistant()->set_text(audio.text);
-  sink.sendServerFrame(std::move(assistant));
-  return true;
+  LOG_INFO << "Voice: the session is closed by a revoke or a disable, in silence";
 }
 
 Reaction VoiceSessionService::emitReaction(Session& session,
@@ -1171,8 +1138,14 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
   const bool interrupted = session.interrupt.load();
   if (full.empty()) {
     session.history.rollbackUser();
-    if (!interrupted)
-      speak(session, unansweredLine(session.lang));
+    if (!interrupted) {
+      argus::voice::v1::ServerFrame unavailable;
+      unavailable.mutable_assistant()->set_speech(std::string(kSpeechUnavailable));
+      if (session.duplex)
+        std::ignore = sendDuplexAssistant(session, std::move(unavailable));
+      else
+        sendFrame(session, std::move(unavailable));
+    }
   }
   else if (interrupted) {
     const std::string heard = sanitizedBlock(spoken, spoken.size());
@@ -1635,7 +1608,7 @@ void VoiceSessionService::deliverNotice(Session& session, const Notice& notice)
 void VoiceSessionService::sendFrame(Session& session,
                                     argus::voice::v1::ServerFrame frame) const
 {
-  if (!session.sink || !session.sink->connected() || session.farewell.load())
+  if (!session.sink || !session.sink->connected())
     return;
   session.sink->sendServerFrame(std::move(frame));
 }

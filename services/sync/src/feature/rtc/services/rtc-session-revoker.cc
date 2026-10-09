@@ -5,6 +5,7 @@
 #include <drogon/drogon.h>
 
 #include <algorithm>
+#include <tuple>
 #include <utility>
 
 namespace
@@ -100,7 +101,6 @@ drogon::Task<int> RtcSessionRevoker::revoke(RtcRevokeInput input)
   const std::string prefix = rtc_naming::roomPrefixOf(end.userId);
   const std::string userPrefix = rtc_naming::userIdentityPrefixOf(end.userId);
   int removed = 0;
-  bool spoke = false;
   for (const auto& room : *names) {
     if (!room.starts_with(prefix))
       continue;
@@ -109,10 +109,9 @@ drogon::Task<int> RtcSessionRevoker::revoke(RtcRevokeInput input)
       if (!co_await input.rooms->silenceParticipant({.room = room, .identity = identity}))
         continue;
       if (input.voice)
-        spoke = co_await input.voice->farewell(
-                    {.request = farewellOf({.room = room, .identity = identity, .cause = end.cause}),
-                     .deadline = remainingOf(deadline)}) ||
-                spoke;
+        std::ignore = co_await input.voice->farewell(
+            {.request = farewellOf({.room = room, .identity = identity, .cause = end.cause}),
+             .deadline = remainingOf(deadline)});
       if (co_await onlyHumanIn({.rooms = *input.rooms, .room = room, .identity = identity})) {
         if (co_await input.rooms->deleteRoom(room))
           ++removed;
@@ -128,10 +127,9 @@ drogon::Task<int> RtcSessionRevoker::revoke(RtcRevokeInput input)
           co_await input.rooms->silenceParticipant({.room = room, .identity = identity});
     }
     if (input.voice)
-      spoke = co_await input.voice->farewell(
-                  {.request = farewellOf({.room = room, .identity = std::string(), .cause = end.cause}),
-                   .deadline = remainingOf(deadline)}) ||
-              spoke;
+      std::ignore = co_await input.voice->farewell(
+          {.request = farewellOf({.room = room, .identity = std::string(), .cause = end.cause}),
+           .deadline = remainingOf(deadline)});
     if (co_await input.rooms->deleteRoom(room))
       ++removed;
   }
@@ -139,6 +137,6 @@ drogon::Task<int> RtcSessionRevoker::revoke(RtcRevokeInput input)
     LOG_INFO << "RTC: removed user " << end.userId << (end.sessionId ? " session" : " (all sessions)")
              << " from " << removed << " call(s) after "
              << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count()
-             << " ms" << (spoke ? " (Argus said goodbye)" : "");
+             << " ms";
   co_return removed;
 }

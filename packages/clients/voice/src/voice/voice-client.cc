@@ -252,7 +252,7 @@ bool VoiceClient::farewell(const argus::voice::v1::RtcFarewell& farewell, int de
   argus::client::addCallerCredential(context, credential_);
   context.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(deadlineMs));
   argus::voice::v1::RtcFarewellDone reply;
-  return stub_->Farewell(&context, farewell, &reply).ok() && reply.played();
+  return stub_->Farewell(&context, farewell, &reply).ok();
 }
 
 std::optional<bool> VoiceClient::announce(const VoiceAnnounceInput& input) const

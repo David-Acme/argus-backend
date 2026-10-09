@@ -88,6 +88,7 @@ TEST_CASE("a reply carrying a cue for the act's slot is accepted, and one carryi
 
   CHECK(asks("subject", "es", "¿Dónde lo guardo?") == GuardVerdict::SlotNotAsked);
   CHECK(asks("title", "en", "Which camera do you mean?") == GuardVerdict::SlotNotAsked);
+  CHECK(asks("title", "es", "¿Qué hora es?") == GuardVerdict::SlotNotAsked);
   CHECK(asks("module", "es", "¿Qué pantalla abro?") == GuardVerdict::SlotNotAsked);
 }
 

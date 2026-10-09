@@ -19,7 +19,7 @@ public:
 
   virtual void joinRoom(const argus::voice::v1::RtcJoin& join,
                         std::function<void(grpc::Status, argus::voice::v1::RtcJoined)> done) = 0;
-  virtual void farewellRoom(const argus::voice::v1::RtcFarewell& farewell, std::function<void(bool)> done) = 0;
+  virtual void farewellRoom(const argus::voice::v1::RtcFarewell& farewell, std::function<void()> done) = 0;
 };
 
 using VoiceCleanupDispatch = std::function<void(std::function<void()>)>;

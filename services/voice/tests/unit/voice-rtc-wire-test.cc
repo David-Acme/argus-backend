@@ -58,6 +58,14 @@ TEST_CASE("server frames become the data messages the app already understands")
   v1::ServerFrame halfDuplex;
   halfDuplex.mutable_assistant()->set_text("Hola.");
   CHECK_FALSE(parsed(messageOf(halfDuplex).payload).isMember("turnId"));
+  CHECK_FALSE(parsed(messageOf(halfDuplex).payload).isMember("speech"));
+
+  v1::ServerFrame unavailable;
+  unavailable.mutable_assistant()->set_speech("unavailable");
+  const auto unavailableMessage = messageOf(unavailable);
+  CHECK(unavailableMessage.topic == "argus.assistant");
+  CHECK(parsed(unavailableMessage.payload)["text"].asString().empty());
+  CHECK(parsed(unavailableMessage.payload)["speech"].asString() == "unavailable");
 
   v1::ServerFrame turn;
   turn.mutable_turn()->set_id(4);

@@ -51,7 +51,7 @@ public:
   void joinCall(const argus::voice::v1::RtcJoin& join, const std::function<void(RtcJoinOutcome)>& done);
   void joinRoom(const argus::voice::v1::RtcJoin& join,
                 std::function<void(grpc::Status, argus::voice::v1::RtcJoined)> done) override;
-  void farewellRoom(const argus::voice::v1::RtcFarewell& farewell, std::function<void(bool)> done) override;
+  void farewellRoom(const argus::voice::v1::RtcFarewell& farewell, std::function<void()> done) override;
   [[nodiscard]] size_t activeCalls() const;
   void shutdown();
 

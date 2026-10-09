@@ -109,6 +109,17 @@ TEST_CASE("A half-duplex assistant frame keeps the frozen payload")
         std::vector<std::string>{"text"});
 }
 
+TEST_CASE("An unavailable assistant frame reaches the app with an empty text and the marker")
+{
+  argus::voice::v1::ServerFrame assistant;
+  assistant.mutable_assistant()->set_speech("unavailable");
+  const Json::Value assistantJson = json_util::fromString(
+      json_util::toString(VoiceGrpcRelay::renderServerFrame(assistant)));
+  CHECK(assistantJson["type"] == "voice:assistant");
+  CHECK(assistantJson["payload"]["text"] == "");
+  CHECK(assistantJson["payload"]["speech"] == "unavailable");
+}
+
 TEST_CASE("voice:start selects the duplex mode only when it asks for it")
 {
   const auto modeOf = [](const std::string& raw) {

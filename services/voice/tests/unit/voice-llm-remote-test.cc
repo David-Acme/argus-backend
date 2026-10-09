@@ -271,9 +271,9 @@ TEST_CASE("An unreachable argus-llm degrades the turn, not the session")
 
   const auto degraded = assistantFrames(sink);
   REQUIRE(degraded.size() == assistantBefore + 1);
-  CHECK(degraded.back().assistant().text() ==
-        "Perdona, ahora mismo no he podido responder.");
-  CHECK(sink.of(true).size() > chunksBefore);
+  CHECK(degraded.back().assistant().text().empty());
+  CHECK(degraded.back().assistant().speech() == "unavailable");
+  CHECK(sink.of(true).size() == chunksBefore);
   CHECK(sess->history.entries().back().message.role == "assistant");
 
   FakeLlmServer llmServer({.tokens = {"Recuperado", "."}});

@@ -122,6 +122,8 @@ Json::Value VoiceGrpcRelay::renderServerFrame(
     payload["text"] = frame.assistant().text();
     if (frame.assistant().turn_id() != 0)
       payload["turnId"] = static_cast<Json::Int64>(frame.assistant().turn_id());
+    if (!frame.assistant().speech().empty())
+      payload["speech"] = frame.assistant().speech();
   }
   else if (frame.has_event()) {
     msg["type"] = "voice:event";

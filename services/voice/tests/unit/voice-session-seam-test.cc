@@ -122,6 +122,7 @@ struct ConfigBlockingTts final : IVoiceTts
 
 struct FakeLlm final : IVoiceLlm
 {
+  bool silent{false};
   int chatStreamCalls{0};
   size_t lastPromptMessages{0};
   std::vector<ChatMessage> lastMessages;
@@ -148,6 +149,10 @@ struct FakeLlm final : IVoiceLlm
     lastUserId = input.request.userId;
     lastRole = input.request.role;
     lastLang = input.request.lang;
+    if (silent) {
+      input.onToken("", true);
+      return;
+    }
     input.onToken("Hola de nuevo.", false);
     input.onToken("", true);
   }
@@ -1024,7 +1029,7 @@ TEST_CASE("The spoken name is written once through the identity seam")
   session.stop(sink);
 }
 
-TEST_CASE("A failed answer rolls the user turn back and says so")
+TEST_CASE("A failed answer rolls the user turn back and leaves the assistant with nothing to say")
 {
   FakeStt stt;
   FakeTts tts;
@@ -1043,12 +1048,18 @@ TEST_CASE("A failed answer rolls the user turn back and says so")
   CHECK(waitFor([&] { return tts.synthesizeCalls > 0 && !sess->speaking.load(); }));
 
   const std::vector<float> samples(1600, 0.1F);
+  const size_t chunksBefore = sink.of(true).size();
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
 
   CHECK(sess->history.size() == 2);
   CHECK(sess->history.entries().back().message.role == "assistant");
-  CHECK(tts.synthesizeCalls == 2);
-  CHECK(tts.lastText == "Perdona, ahora mismo no he podido responder.");
+  CHECK(tts.synthesizeCalls == 1);
+  CHECK(sink.of(true).size() == chunksBefore);
+  size_t marked = 0;
+  for (const auto& frame : sink.snapshot())
+    if (frame.has_assistant() && frame.assistant().speech() == "unavailable")
+      ++marked;
+  CHECK(marked == 1);
 
   session.stop(sink);
 }
@@ -2688,104 +2699,99 @@ TEST_CASE("A blip the VAD discards closes its stream without a transcription")
   CHECK(call.stt.log.finished == 0);
 }
 
-TEST_CASE("A farewell drops the call's input and plays only the cached line")
+TEST_CASE("A turn the model could not answer reaches the app as an empty, marked assistant frame")
 {
+  OpeningConfig opening("none");
   FakeStt stt;
   FakeTts tts;
   FakeLlm llm;
+  llm.silent = true;
   FakeIdentity identity;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
-  VoiceSessionService session(seam);
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
 
   FakeVoiceSink sink;
-  argus::voice::v1::VoiceIdentity voiceIdentity;
-  voiceIdentity.set_user_id(7);
-  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
-  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
-  CHECK_FALSE(session.farewell(sink, FarewellReason::SessionClosed));
-  session.start(sink, voiceIdentity);
-  REQUIRE(waitFor([&] { return sink.hasType("voice:assistant"); }));
-  REQUIRE(waitFor([&] { return !VoiceSessionTestAccess::sessionOf(session, sink)->speaking.load(); }));
+  argus::voice::v1::VoiceStart start = duplexStart();
+  start.set_mode(argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  service.start(sink, start);
+  feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 1});
+  REQUIRE(waitFor([&] { return vad.windows->load() >= 1; }, 2000));
 
-  CHECK_FALSE(session.farewell(sink, FarewellReason::AccountDisabled));
-  auto state = VoiceSessionTestAccess::sessionOf(session, sink);
-  CHECK(state->muted.load());
-  CHECK(state->farewell.load());
+  auto sess = VoiceSessionTestAccess::sessionOf(service, sink);
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = service, .session = *sess, .samples = samples});
 
-  VoiceSessionService warmed(seam);
-  warmed.warmFarewells();
-  REQUIRE(waitFor([&] {
-    return warmed.farewellAudio({.lang = VoiceLang::Es, .reason = FarewellReason::AccountDisabled}).pcm != nullptr &&
-           warmed.farewellAudio({.lang = VoiceLang::En, .reason = FarewellReason::SessionClosed}).pcm != nullptr;
-  }));
-  FakeVoiceSink second;
-  warmed.start(second, voiceIdentity);
-  REQUIRE(waitFor([&] { return second.hasType("voice:assistant"); }));
-  REQUIRE(waitFor([&] { return !VoiceSessionTestAccess::sessionOf(warmed, second)->speaking.load(); }));
-  const size_t before = second.size();
-  CHECK(warmed.farewell(second, FarewellReason::AccountDisabled));
-  const auto frames = second.snapshot();
-  REQUIRE(frames.size() > before + 1);
-  CHECK(frames.back().has_assistant());
-  CHECK(frames.back().assistant().text() == "Tu cuenta está desactivada, cuelgo.");
-  for (size_t i = before; i + 1 < frames.size(); ++i)
-    CHECK(frames[i].has_tts_chunk());
-
-  const size_t after = second.size();
-  std::vector<char> pcm(3200, 0);
-  warmed.feedPcm(second, {.data = pcm.data(), .size = pcm.size()});
-  warmed.context(second, [] {
-    argus::voice::v1::VoiceContext note;
-    note.set_text("nota");
-    return note;
-  }());
-  warmed.stop(second);
-  CHECK(second.size() == after);
-  session.stop(sink);
+  CHECK(llm.chatStreamCalls == 1);
+  CHECK(tts.synthesizeCalls == 0);
+  size_t marked = 0;
+  for (const auto& frame : sink.snapshot()) {
+    CHECK_FALSE(frame.has_tts_chunk());
+    if (frame.has_assistant()) {
+      ++marked;
+      CHECK(frame.assistant().text().empty());
+      CHECK(frame.assistant().speech() == "unavailable");
+    }
+  }
+  CHECK(marked == 1);
+  service.stop(sink);
 }
 
-TEST_CASE("A normal hang-up says nothing and a revoked session hears the cached line once")
+TEST_CASE("A revoke, a disable and a user hang-up all end the call in silence")
 {
   OpeningConfig opening("none");
   FakeStt stt;
   FakeTts tts;
   FakeLlm llm;
   FakeIdentity identity;
-  ScriptedVad vad;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad};
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
   VoiceSessionService service(seam);
-  const FarewellKey closed{.lang = VoiceLang::Es, .reason = FarewellReason::SessionClosed};
-  FakeVoiceSink sink;
+
   argus::voice::v1::VoiceIdentity voiceIdentity;
   voiceIdentity.set_user_id(7);
   voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
   voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
-  service.start(sink, voiceIdentity);
-  feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 1});
-  REQUIRE(waitFor([&] { return vad.windows->load() >= 1; }, 2000));
 
-  service.warmFarewells();
-  REQUIRE(waitFor([&] { return service.farewellAudio(closed).pcm != nullptr; }));
-  const int warmedCalls = tts.synthesizeCalls;
+  {
+    FakeVoiceSink revoked;
+    service.start(revoked, voiceIdentity);
+    const auto session = VoiceSessionTestAccess::sessionOf(service, revoked);
+    REQUIRE(session != nullptr);
+    const size_t before = revoked.size();
+    service.farewell(revoked);
+    CHECK(revoked.size() == before);
+    CHECK(tts.synthesizeCalls == 0);
+    CHECK(session->muted.load());
+    CHECK(session->callStop.stop_requested());
+    CHECK(revoked.of(true).empty());
+    CHECK_FALSE(revoked.hasType("voice:assistant"));
+    service.stop(revoked);
+    CHECK(revoked.of(true).empty());
+    CHECK_FALSE(revoked.hasType("voice:assistant"));
+  }
 
-  service.stop(sink);
-  CHECK(sink.hasType("voice:done"));
-  CHECK(tts.synthesizeCalls == warmedCalls);
-  CHECK(sink.of(true).empty());
-  CHECK_FALSE(sink.hasType("voice:assistant"));
+  {
+    FakeVoiceSink disabled;
+    service.start(disabled, voiceIdentity);
+    REQUIRE(VoiceSessionTestAccess::sessionOf(service, disabled) != nullptr);
+    const size_t before = disabled.size();
+    service.farewell(disabled);
+    CHECK(disabled.size() == before);
+    CHECK(disabled.of(true).empty());
+    CHECK_FALSE(disabled.hasType("voice:assistant"));
+    service.stop(disabled);
+    CHECK(disabled.of(true).empty());
+    CHECK_FALSE(disabled.hasType("voice:assistant"));
+  }
 
-  FakeVoiceSink revoked;
-  service.start(revoked, voiceIdentity);
-  const size_t before = revoked.size();
-  CHECK(service.farewell(revoked, FarewellReason::SessionClosed));
-  const auto frames = revoked.snapshot();
-  REQUIRE(frames.size() > before + 1);
-  CHECK(frames.back().has_assistant());
-  CHECK(frames.back().assistant().text() == "Tu sesión se ha cerrado, cuelgo.");
-  for (size_t i = before; i + 1 < frames.size(); ++i)
-    CHECK(frames[i].has_tts_chunk());
-  CHECK(tts.synthesizeCalls == warmedCalls);
-  service.stop(revoked);
+  {
+    FakeVoiceSink hungUp;
+    service.start(hungUp, voiceIdentity);
+    REQUIRE(VoiceSessionTestAccess::sessionOf(service, hungUp) != nullptr);
+    service.stop(hungUp);
+    CHECK(hungUp.of(true).empty());
+    CHECK_FALSE(hungUp.hasType("voice:assistant"));
+    CHECK(tts.synthesizeCalls == 0);
+  }
 }
 
 TEST_CASE("A proactive call opens with its claimed line instead of the greeting")
