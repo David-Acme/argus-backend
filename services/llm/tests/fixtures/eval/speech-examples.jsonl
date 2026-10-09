@@ -1,0 +1,36 @@
+{"act":"ask_slot","lang":"es","index":0,"variant":"neutral","user":"ponme un recordatorio","reply":"¿Para cuándo quieres que te lo recuerde?"}
+{"act":"ask_slot","lang":"es","index":1,"variant":"pe","user":"ponme un recordatorio pe","reply":"¿Para cuándo lo quieres, pe?"}
+{"act":"ask_slot","lang":"en","index":0,"variant":"neutral","user":"set a reminder","reply":"When should I remind you?"}
+{"act":"ask_slot","lang":"en","index":1,"variant":"neutral","user":"jot a thought down","reply":"What should I write in the note?"}
+{"act":"confirm","lang":"es","index":0,"variant":"neutral","user":"borra la nota de la compra","reply":"¿Quieres que borre «Nota de la compra»?"}
+{"act":"confirm","lang":"es","index":1,"variant":"pe","user":"borra la nota pe","reply":"¿Seguro que quieres que borre «Nota de la compra»?"}
+{"act":"confirm","lang":"en","index":0,"variant":"neutral","user":"delete the shopping note","reply":"Shall I delete “Shopping note”?"}
+{"act":"confirm","lang":"en","index":1,"variant":"neutral","user":"cancel my dentist visit","reply":"Do you want me to cancel “Dentist visit”?"}
+{"act":"choose","lang":"es","index":0,"variant":"neutral","user":"guarda esto","reply":"¿Quieres un evento en el calendario o una tarea?"}
+{"act":"choose","lang":"es","index":1,"variant":"pe","user":"guarda esto pe","reply":"¿Lo pongo como evento o como tarea, pe?"}
+{"act":"choose","lang":"en","index":0,"variant":"neutral","user":"save this","reply":"Should I add an event on the calendar or a task?"}
+{"act":"choose","lang":"en","index":1,"variant":"neutral","user":"keep this","reply":"Would you like an event on the calendar or a task?"}
+{"act":"done","lang":"es","index":0,"variant":"neutral","user":"agenda la reunión","reply":"Listo, quedó para el jueves a las cinco."}
+{"act":"done","lang":"es","index":1,"variant":"pe","user":"agenda la reunión pe","reply":"Listo, ya quedó, pe."}
+{"act":"done","lang":"en","index":0,"variant":"neutral","user":"schedule the meeting","reply":"Done, it is set for Thursday at five."}
+{"act":"done","lang":"en","index":1,"variant":"neutral","user":"note the task","reply":"Done, I jotted it down."}
+{"act":"refused","lang":"es","index":0,"variant":"neutral","user":"cancela la cita vieja","reply":"No encontré esa cita, así que no la cancelé. ¿Quieres que la busque de otra forma?"}
+{"act":"refused","lang":"es","index":1,"variant":"pe","user":"cancela la cita pe","reply":"No la encontré, pe, no la pude cancelar."}
+{"act":"refused","lang":"en","index":0,"variant":"neutral","user":"cancel the old meeting","reply":"I could not find that meeting, so I did not cancel it. Want me to look another way?"}
+{"act":"refused","lang":"en","index":1,"variant":"neutral","user":"delete that","reply":"That was not there, so nothing was deleted."}
+{"act":"offer","lang":"es","index":0,"variant":"neutral","user":"apunta una idea en tareas","reply":"El módulo de tareas está apagado. ¿Quieres que lo active?"}
+{"act":"offer","lang":"es","index":1,"variant":"pe","user":"apunta una idea pe","reply":"Ese módulo está apagado, pe. ¿Lo activo?"}
+{"act":"offer","lang":"en","index":0,"variant":"neutral","user":"keep an idea in tasks","reply":"The tasks module is off. Shall I turn it on?"}
+{"act":"offer","lang":"en","index":1,"variant":"neutral","user":"remind me to call","reply":"That module is off. Do you want me to switch it on?"}
+{"act":"declined","lang":"es","index":0,"variant":"neutral","user":"no gracias","reply":"Vale, lo dejo así."}
+{"act":"declined","lang":"es","index":1,"variant":"pe","user":"no gracias pe","reply":"Ya, lo dejo, pe."}
+{"act":"declined","lang":"en","index":0,"variant":"neutral","user":"no thanks","reply":"Alright, I will leave it."}
+{"act":"declined","lang":"en","index":1,"variant":"neutral","user":"never mind that","reply":"No problem, I will not touch it."}
+{"act":"unactionable","lang":"es","index":0,"variant":"neutral","user":"ponme música","reply":"Eso no lo puedo hacer, pero puedo ponerte un recordatorio."}
+{"act":"unactionable","lang":"es","index":1,"variant":"pe","user":"ponme música pe","reply":"Eso no lo puedo hacer, pe."}
+{"act":"unactionable","lang":"en","index":0,"variant":"neutral","user":"play me some music","reply":"I cannot do that, but I can set a reminder for you."}
+{"act":"unactionable","lang":"en","index":1,"variant":"neutral","user":"sing me a song","reply":"That is not something I can do."}
+{"act":"misunderstood","lang":"es","index":0,"variant":"neutral","user":"mmm","reply":"No te entendí. ¿Me lo repites?"}
+{"act":"misunderstood","lang":"es","index":1,"variant":"pe","user":"mmm pe","reply":"No te entendí, pe. ¿Otra vez?"}
+{"act":"misunderstood","lang":"en","index":0,"variant":"neutral","user":"er","reply":"I did not catch that. Could you say it again?"}
+{"act":"misunderstood","lang":"en","index":1,"variant":"neutral","user":"hrm","reply":"Sorry, I missed that. Say it once more?"}

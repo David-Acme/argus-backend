@@ -9,6 +9,11 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
+#include <fstream>
+#include <json/json.h>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -269,4 +274,54 @@ TEST_CASE("several acts of one turn render as several JSON lines under one instr
   CHECK(tail.find("\"fact\":\"Proyecto creado.\"") != std::string::npos);
   CHECK(tail.find("\"fact\":\"Tarea anotada.\"") != std::string::npos);
   CHECK(tail.find("Tell the user") != std::string::npos);
+}
+
+TEST_CASE("every act carries two few-shot examples per language, each free of an identifier")
+{
+  for (const Act& act : everyAct())
+    for (const char* lang : {"es", "en"}) {
+      const std::span<const ExampleLine> lines = exampleLines(act, lang);
+      REQUIRE(lines.size() == 2);
+      for (const ExampleLine& line : lines) {
+        CHECK_FALSE(line.first.empty());
+        CHECK_FALSE(line.second.empty());
+        CHECK_FALSE(hasIdentifierToken(line.first));
+        CHECK_FALSE(hasIdentifierToken(line.second));
+      }
+    }
+}
+
+TEST_CASE("the few-shot examples are pinned as a fixture and match it act by act")
+{
+  const char* path = std::getenv("ARGUS_TEST_SPEECH_EXAMPLES");
+  REQUIRE_MESSAGE(path != nullptr, "ARGUS_TEST_SPEECH_EXAMPLES is not set");
+  std::ifstream in(path);
+  REQUIRE_MESSAGE(in.good(), "cannot open " << path);
+  int rows = 0;
+  std::string line;
+  Json::CharReaderBuilder builder;
+  while (std::getline(in, line)) {
+    if (line.empty())
+      continue;
+    Json::Value node;
+    std::string errors;
+    std::istringstream stream(line);
+    const bool parsed = Json::parseFromStream(builder, stream, &node, &errors);
+    REQUIRE_MESSAGE(parsed, "cannot parse " << line << ": " << errors);
+    const std::string actName = node["act"].asString();
+    const std::string lang = node["lang"].asString();
+    const int index = node["index"].asInt();
+    std::optional<Act> found;
+    for (const Act& act : everyAct())
+      if (std::string(turn::speech::actName(act)) == actName)
+        found = act;
+    REQUIRE_MESSAGE(found.has_value(), "no act named " << actName);
+    const std::span<const ExampleLine> lines = exampleLines(*found, lang);
+    REQUIRE(index >= 0);
+    REQUIRE(static_cast<std::size_t>(index) < lines.size());
+    CHECK(lines[static_cast<std::size_t>(index)].first == node["user"].asString());
+    CHECK(lines[static_cast<std::size_t>(index)].second == node["reply"].asString());
+    ++rows;
+  }
+  CHECK(rows == 36);
 }
