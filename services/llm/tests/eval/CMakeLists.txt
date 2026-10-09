@@ -116,6 +116,10 @@ if(ARGUS_PYTHON3)
             --url http://127.0.0.1:1/llm/v1/chat-stream --requests 1 --warmup 0)
     set_tests_properties(speech-ttft-eval PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm")
 
+    add_test(NAME speech-ttft-guard-test
+        COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/speech-ttft-guard-test.py)
+    set_tests_properties(speech-ttft-guard-test PROPERTIES LABELS eval)
+
     add_test(NAME speech-examples-test
         COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/speech-examples-test.py)
     set_tests_properties(speech-examples-test PROPERTIES LABELS eval)

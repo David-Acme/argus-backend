@@ -12,6 +12,11 @@ import urllib.parse
 SKIP = 77
 SENTINEL = "\x1e"
 
+READY_MARKERS = {
+    "laya": "the Laya decider is ready on",
+    "gliner": "the GLiNER extractor opened",
+}
+
 SYSTEM_ES = (
     "Eres Argus, el asistente de una casa. Hablas en español, en frases cortas y naturales. "
     "No eliges herramientas: solo dices lo que ocurre."
@@ -135,6 +140,10 @@ def measure(args):
         lang, text = PLAIN_TURNS[index % len(PLAIN_TURNS)]
         one(lang, text, False, "plain", index)
 
+    refusal = engines_up(args.server_log, args.require_engine)
+    if refusal is not None:
+        return refusal
+
     per_kind = {}
     for kind, turns in ACT_TURNS.items():
         times = []
@@ -186,6 +195,24 @@ def check(gates, values):
     return failures
 
 
+def engines_up(server_log, required):
+    if not required:
+        return None
+    if not server_log:
+        return "an engine is required but no --server-log was given"
+    try:
+        text = pathlib.Path(server_log).read_text(errors="replace")
+    except OSError as error:
+        return f"the server log cannot be read: {error}"
+    for name in required:
+        marker = READY_MARKERS.get(name)
+        if marker is None:
+            return f"an unknown engine was required: {name}"
+        if marker not in text:
+            return f"the {name} engine is not up: no '{marker}' ready line in {server_log}"
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://127.0.0.1:7932/llm/v1/chat-stream")
@@ -197,6 +224,8 @@ def main():
     parser.add_argument("--allow-busy", action="store_true")
     parser.add_argument("--label", default="speech-ttft")
     parser.add_argument("--report")
+    parser.add_argument("--server-log")
+    parser.add_argument("--require-engine", action="append", default=[])
     args = parser.parse_args()
 
     busy = busy_fraction(3.0)
@@ -210,6 +239,9 @@ def main():
     except (OSError, RuntimeError, http.client.HTTPException) as error:
         print(f"speech-ttft-eval: cannot drive {args.url}: {error}")
         return SKIP
+    if isinstance(values, str):
+        print(f"speech-ttft-eval: refused, {values}; no gate is reported")
+        return 1
     values["idle"] = 1 if idle else 0
     print(f"{args.label}: " + ("idle machine" if idle else f"BUSY machine (cpu {busy:.0%}, load {load:.1f}): NOT REPORTABLE"))
     for name in ("actP50Ms", "actP95Ms", "actMaxMs", "actMeanMs", "plainP50Ms", "plainP95Ms", "plainMeanMs",

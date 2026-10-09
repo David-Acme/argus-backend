@@ -1517,6 +1517,12 @@ int main(int argc, char** argv)
       controller.adapter().executor().offered({.role = UserRole::Owner, .modules = moduleGate().snapshot()});
   const Engines engines = setupEngines(controller, options);
   std::cout << std::format("pipeline: {}\n", engines.active);
+  if ((options.decide == "laya" && engines.laya == nullptr) || (options.extract == "gliner" && engines.gliner == nullptr)) {
+    std::cout << "[REFUSED] an engine the run asked for is not up; no gate is reported\n";
+    controller.shutdownEngine();
+    llama_backend_free();
+    return 1;
+  }
 
   if (options.renderActs) {
     const int result = runRendering({.options = options,
