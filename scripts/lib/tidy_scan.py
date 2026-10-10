@@ -12,7 +12,8 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
 FINDING = re.compile(
-    r"^(.+?):(\d+):(\d+): (warning|error): (.*) \[([A-Za-z0-9_.\-]+)\]$")
+    r"^(.+?):(\d+):(\d+): (warning|error): (.*) "
+    r"\[([A-Za-z0-9_.\-]+(?:, *[A-Za-z0-9_.\-]+)*)\]$")
 VERSION = re.compile(r"version (\d+)\.(\d+)\.(\d+)")
 
 
@@ -97,8 +98,9 @@ def tidy(job, checks, header_filter, tool):
     for line in (done.stdout + done.stderr).splitlines():
         match = FINDING.match(line)
         if match:
-            findings.append((match.group(1), int(match.group(2)),
-                             match.group(6), match.group(5)))
+            for check in match.group(6).split(","):
+                findings.append((match.group(1), int(match.group(2)),
+                                 check.strip(), match.group(5)))
     if not findings and done.returncode != 0:
         tail = (done.stderr or done.stdout).strip().splitlines()
         return path, [], tail[-1] if tail else f"exit {done.returncode}"

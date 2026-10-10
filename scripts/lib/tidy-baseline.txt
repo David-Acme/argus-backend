@@ -24,6 +24,8 @@ modernize-use-string-view 22
 performance-enum-size 22
 bugprone-unused-return-value 20
 modernize-raw-string-literal 19
+performance-faster-string-find 20
+performance-prefer-single-char-overloads 20
 performance-unnecessary-copy-initialization 20
 performance-inefficient-string-concatenation 18
 modernize-use-integer-sign-comparison 15
