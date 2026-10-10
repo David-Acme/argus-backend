@@ -21,8 +21,9 @@ Decisions and traps live here.
 
 Every microservice owns `services/<name>/Dockerfile`: a Debian + Conan
 2.21.0 build stage runs `scripts/build-all.sh prod --no-tests --only
-argus-<name>` from the repo root, and a slim runtime stage carries only that
-service's binaries. Packages are reusable libraries compiled into the service
+<name>` from the repo root, a `test` stage runs that service's ctest with
+tests on, and a slim runtime stage carries only that service's binaries.
+Packages are reusable libraries compiled into the service
 images — no package has an image of its own. The identity image carries
 `argus-migrate-identity` (identity is its owner, since Phase 3c-1) and the
 argus-sync image carries `argus-migrate-sync` (the Phase 3c-2 split of the five
@@ -33,14 +34,29 @@ client and the relay. The argus-memory binary is gone since f8-b3, and its
 package dissolved into argus-llm at Phase 4 step 7: the whole stack is one of
 its features now.
 
-Build all images from the repository root, sequentially:
+Build all images from the repository root, one at a time, through the capped
+wrapper:
 
-    COMPOSE_PARALLEL_LIMIT=1 docker compose \
-      -f argus-deploy/docker-compose.yml \
-      --profile tunnel --profile identity-init build
+    ./scripts/build-images.sh [--only <project>] [--memory <gb>]
 
-Parallel builds collide in the shared Conan package cache ("Reference ...
-already exists"), so builds run one at a time. The Dockerfile-specific
+It builds each image with `docker buildx build` against a `docker-container`
+builder whose own container carries a hard cgroup memory limit (12 GiB by
+default), refuses a tree with uncommitted changes, refuses to run beside
+another series, and refuses to build at all when the builder's limit cannot be
+confirmed. `docker build --memory` does nothing under BuildKit and `docker
+compose build` accepts no memory limit, so the limit has to live on the
+builder's container: the uncapped path is what let a runaway build step reach
+a global kernel OOM on a 30 GiB host. Parallel builds also collide in the
+shared Conan package cache ("Reference ... already exists"), which is the
+second reason the images build one at a time. Per image the `test` stage runs
+first and the shipped `runtime` stage is tagged only when it is green; the
+runtime stage copies service binaries, migration tools and shared libraries by
+name, so no test binary is in a shipped image. Each run records the commit,
+both stages' seconds and exit statuses, the image id and the image size in
+`build/images/build-times.tsv`, with one build log and one ctest summary per
+image beside it.
+
+The Dockerfile-specific
 ignores next to each Dockerfile (`services/*/Dockerfile.dockerignore`)
 keep the nested build trees out of the context. Each project resolves its own
 Conan dependency set. The memory stack needs no
