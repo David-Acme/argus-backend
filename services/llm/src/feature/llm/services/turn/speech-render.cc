@@ -238,22 +238,8 @@ std::string askSituation(const AskSlot& ask, std::string_view lang, int64_t now)
     line += (english ? " (one of: " : " (uno de: ") + joinNamed(ask.options, lang, ", ") + ")";
   else if (ask.reason != AskReason::Missing)
     line += " (" + std::string(reasonText(ask.reason, lang)) + ")";
-  line += '.';
-  std::string known;
-  if (ask.knownArgs.isObject())
-    for (const std::string& key : ask.knownArgs.getMemberNames()) {
-      const std::string label = slotLabelOf(key, lang);
-      const std::string value = argValue(ask.knownArgs[key], lang, now);
-      if (label.empty() || value.empty())
-        continue;
-      if (!known.empty())
-        known += ", ";
-      known += label + ": " + value;
-    }
-  if (!known.empty())
-    line += (english ? " (known: " : " (ya tienes: ") + known + ")";
   if (!ask.dates.empty()) {
-    line += english ? " Dates: " : " Fechas: ";
+    line += english ? ", it could be " : ", puede ser ";
     bool first = true;
     for (const DatePart& part : ask.dates) {
       if (!first)
@@ -262,6 +248,14 @@ std::string askSituation(const AskSlot& ask, std::string_view lang, int64_t now)
       first = false;
     }
   }
+  line += "; ";
+  if (!ask.options.empty()) {
+    line += english ? "ask which one, naming: " : "pregunta cuál quiere, nombrando: ";
+    line += joinNamed(ask.options, lang, english ? " or " : " o ");
+  } else {
+    line += english ? "ask for it in one short question" : "pregunta solo por eso en una sola pregunta corta";
+  }
+  line += '.';
   return line;
 }
 
@@ -299,13 +293,17 @@ std::string confirmSituation(const Confirm& confirm, std::string_view lang, int6
     line += " " + extra + ".";
   if (!confirm.module.empty())
     line += (english ? " Module: " : " Módulo: ") + confirm.module + ".";
+  line += english ? " Ask whether to " : " Pregunta si ";
+  line += actionPhrase(confirm.action, lang);
+  line += english ? ", yes or no." : ", sí o no.";
   return line;
 }
 
 std::string chooseSituation(const Choose& choose, std::string_view lang)
 {
   const bool english = lang == "en";
-  std::string line = english ? "the user must still choose between " : "falta que el usuario elija entre ";
+  std::string line = english ? "the user must still choose; ask which one, naming: "
+                             : "falta que el usuario elija; pregunta cuál quiere, nombrando: ";
   line += joinNamed(choose.options, lang, english ? " or " : " o ");
   line += '.';
   return line;
@@ -382,6 +380,8 @@ std::string offerSituation(const Offer& offer, std::string_view lang)
     line += " " + offer.facts;
   if (!offer.pendingIntent.empty())
     line += (english ? " Pending: " : " Pendiente: ") + offer.pendingIntent + ".";
+  line += english ? " Offer to turn it on and wait for their answer."
+                  : " Ofrécele activarlo y espera su respuesta.";
   return line;
 }
 

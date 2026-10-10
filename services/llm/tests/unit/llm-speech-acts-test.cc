@@ -181,17 +181,19 @@ TEST_CASE("every act renders a situation in both languages, without a command or
   }
 }
 
-TEST_CASE("the ask situation is a labelled fact and never the user's own words")
+TEST_CASE("the ask situation is the missing fact plus the one thing to do")
 {
-  CHECK(tailOf(askSlot(), "es") == "Nota de la app: falta la fecha y hora.");
-  CHECK(tailOf(askSlot(), "en") == "App note: missing the date and time.");
+  CHECK(tailOf(askSlot(), "es") ==
+        "Nota de la app: falta la fecha y hora; pregunta solo por eso en una sola pregunta corta.");
+  CHECK(tailOf(askSlot(), "en") == "App note: missing the date and time; ask for it in one short question.");
   const Act title = AskSlot{.slot = "title",
                             .tool = "task.create",
                             .knownArgs = Json::Value(Json::objectValue),
                             .reason = AskReason::Missing,
                             .dates = {},
                             .options = {}};
-  CHECK(tailOf(title, "es") == "Nota de la app: falta el nombre de la tarea.");
+  CHECK(tailOf(title, "es") ==
+        "Nota de la app: falta el nombre de la tarea; pregunta solo por eso en una sola pregunta corta.");
 }
 
 TEST_CASE("the slot is rendered as a human label, never as its name or its tool")
@@ -263,7 +265,7 @@ TEST_CASE("a note renders the tool's own read-back in place of a raw stamp, and 
   CHECK(tailOf(unstamped, "es") == "Nota de la app: Agendé «Reunión con Andrea» para 2026-10-15T17:00:00-05:00.");
 }
 
-TEST_CASE("an ask act that already knows a value names it by its human label")
+TEST_CASE("an ask act that already knows a value does not repeat it back")
 {
   Json::Value known(Json::objectValue);
   known["title"] = "Cena";
@@ -274,7 +276,9 @@ TEST_CASE("an ask act that already knows a value names it by its human label")
                           .dates = {},
                           .options = {}};
   const std::string tail = tailOf(ask, "es");
-  CHECK(tail.find("el nombre de la tarea: Cena") != std::string::npos);
+  CHECK(tail.find("Cena") == std::string::npos);
+  CHECK(tail.find("el nombre de la tarea") == std::string::npos);
+  CHECK(tail.find("ya tienes") == std::string::npos);
   CHECK(tail.find("\"title\"") == std::string::npos);
 }
 

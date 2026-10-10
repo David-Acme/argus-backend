@@ -828,13 +828,16 @@ ahí?", and only on a yes runs `project.create` and then the held task with that
 project at all (`no_projects`) the first question is the name of the new project. There is no
 default project, and a provider that does not name the projects leaves its own refusal to be said.
 
-The questions and the notes are one thing now: the acts. `speech-render.cc` composes one
-plain-fact line per act per language — the only copy the backend owns, and the user never
-receives it — prefixed with `Nota de la app:` / `App note:`, then the context block. It is the
+The questions and the notes are one thing now: the acts. `speech-render.cc` composes one short
+line per act per language — the only copy the backend owns, and the user never receives it —
+prefixed with `Nota de la app:` / `App note:`, then the context block. Each line is the fact
+plus the one thing to do with it ("falta la fecha y hora; pregunta solo por eso en una sola
+pregunta corta."), because the 1.2B model follows the nearest cue and a bare fact never says
+what to do; the known-slot parenthetical and the `label: value` shape are gone. It is the
 situation the turn's last user message carries after the user's words (a `DatePart` is resolved
-to its spoken surface against `now` at render time); no imperative and no act JSON survive.
-`speechOf` places the act on the outcome, so a unit test asserts the exact act a path
-reaches and never a sentence. `turn-texts.{hxx,cc}` is gone.
+to its spoken surface against `now` at render time); no act JSON survives. `speechOf` places the
+act on the outcome, so a unit test asserts the exact act a path reaches and never a sentence.
+`turn-texts.{hxx,cc}` is gone.
 
 Configuration (`config.toml.example`, deploy template): `[decide]`, `[decide.router]` and `[decide.rules]` with `act`,
 `ask`, `margin` and `witness_only`. Absent or invalid keys leave the default policy (`act = ask = 0.90`, no margin),
