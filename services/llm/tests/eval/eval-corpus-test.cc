@@ -236,6 +236,24 @@ TEST_CASE("reciting a system or person block header is caught, a natural mention
   CHECK(call_checks::recitesNotes("Agenda de hoy: libre.", notes));
 }
 
+TEST_CASE("a reply that writes an app note or invents a camera or guard state is fabricated")
+{
+  const auto fired = [](const std::string& reply, bool notePresent, bool cameraKnown, bool guardKnown) {
+    return call_checks::fabricatedNote(
+        {.reply = reply, .notePresent = notePresent, .cameraKnown = cameraKnown, .guardKnown = guardKnown});
+  };
+  CHECK(fired("Nota de la app: las cámaras están activas y el modo de vigilancia está configurado correctamente.", false, true, true));
+  CHECK(fired("App note: the cameras are active and the guard mode is set correctly.", false, true, true));
+  CHECK(fired("Nota de la app: se informó que David está bien atento a su entorno.", true, true, true));
+  CHECK(fired("La cámara está en funcionamiento.", false, false, false));
+  CHECK(fired("Cameras are online.", false, false, false));
+  CHECK(fired("El modo de vigilancia está activo.", false, true, false));
+  CHECK_FALSE(fired("La cámara de la cocina muestra actividad.", false, true, false));
+  CHECK_FALSE(fired("Yes, the guard mode is active at home.", false, false, true));
+  CHECK_FALSE(fired("¿Cuál es el nombre de la tarea que necesitas anotar?", false, true, true));
+  CHECK_FALSE(fired("Claro, aquí tienes un chiste.", false, false, false));
+}
+
 TEST_CASE("the name-ask checks flag a missing first-turn question or a repeated one")
 {
   CHECK(call_checks::asksName("¿Cómo te llamas?"));

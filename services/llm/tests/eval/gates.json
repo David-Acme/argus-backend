@@ -727,6 +727,9 @@
       "recital": {
         "max": 0
       },
+      "fabricatedNote": {
+        "max": 0
+      },
       "language": {
         "max": 0
       },

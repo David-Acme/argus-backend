@@ -246,4 +246,58 @@ inline bool recitesNotes(const std::string& reply, const std::vector<std::string
   });
 }
 
+inline constexpr std::array<std::string_view, 2> kAppNoteLabels{"nota de la app", "app note"};
+inline constexpr std::array<std::string_view, 4> kCameraWords{"camara", "camaras", "camera", "cameras"};
+inline constexpr std::array<std::string_view, 4> kGuardWords{"vigilancia", "guard mode", "guard is", "armed"};
+
+inline bool phraseIn(const std::vector<std::string>& words, const std::vector<std::string>& needle)
+{
+  if (needle.empty() || needle.size() > words.size())
+    return false;
+  for (std::size_t at = 0; at + needle.size() <= words.size(); ++at) {
+    bool hit = true;
+    for (std::size_t index = 0; index < needle.size() && hit; ++index)
+      hit = words[at + index] == needle[index];
+    if (hit)
+      return true;
+  }
+  return false;
+}
+
+inline bool mentionsAny(const std::string& reply, std::span<const std::string_view> markers)
+{
+  const std::vector<std::string> words = wordsOf(reply);
+  return std::ranges::any_of(markers, [&words](std::string_view marker) {
+    const std::vector<std::string> needle = wordsOf(std::string(marker));
+    return needle.size() == 1 ? hasWord(words, marker) : phraseIn(words, needle);
+  });
+}
+
+inline bool writesAppNote(const std::string& reply)
+{
+  const std::string heard = text_norm::folded(reply);
+  return std::ranges::any_of(kAppNoteLabels, [&heard](std::string_view label) {
+    return heard.find(label) != std::string::npos;
+  });
+}
+
+struct FabricatedNoteInput
+{
+  const std::string& reply;
+  bool notePresent{false};
+  bool cameraKnown{false};
+  bool guardKnown{false};
+};
+
+inline bool fabricatedNote(const FabricatedNoteInput& input)
+{
+  if (writesAppNote(input.reply))
+    return true;
+  if (input.notePresent)
+    return false;
+  const bool cameraUnsaid = !input.cameraKnown && mentionsAny(input.reply, kCameraWords);
+  const bool guardUnsaid = !input.guardKnown && mentionsAny(input.reply, kGuardWords);
+  return cameraUnsaid || guardUnsaid;
+}
+
 }

@@ -488,6 +488,7 @@ struct TurnVerdict
   bool rawClaims{false};
   bool clockRestraint{false};
   bool recital{false};
+  bool fabricatedNote{false};
   bool sentences{false};
   bool language{false};
   bool roleConfusion{false};
@@ -508,11 +509,12 @@ struct DimensionField
   bool TurnVerdict::*flag;
 };
 
-constexpr std::array<DimensionField, 16> kDimensions{{
+constexpr std::array<DimensionField, 17> kDimensions{{
     {.name = "claims", .flag = &TurnVerdict::claims},
     {.name = "rawClaims", .flag = &TurnVerdict::rawClaims},
     {.name = "clockRestraint", .flag = &TurnVerdict::clockRestraint},
     {.name = "recital", .flag = &TurnVerdict::recital},
+    {.name = "fabricatedNote", .flag = &TurnVerdict::fabricatedNote},
     {.name = "sentences", .flag = &TurnVerdict::sentences},
     {.name = "language", .flag = &TurnVerdict::language},
     {.name = "roleConfusion", .flag = &TurnVerdict::roleConfusion},
@@ -541,6 +543,13 @@ bool facetPresent(const FactPresence& input)
   return std::ranges::any_of(input.item.facts, [&](const ContextFact& fact) {
     return fact.facet == input.facet && !fact.text.empty() &&
            input.contextBlock.find(fact.text) != std::string::npos;
+  });
+}
+
+bool facetOffered(const CallCase& item, std::string_view facet)
+{
+  return std::ranges::any_of(item.facts, [facet](const ContextFact& fact) {
+    return fact.facet == facet && !fact.text.empty();
   });
 }
 
@@ -594,6 +603,10 @@ TurnVerdict scoreTurn(const TurnScoreInput& input)
   verdict.rawClaims = claimedWithoutTool(input.rawReply, input.state);
   verdict.clockRestraint = !input.item.asksClock && (call_checks::namesADate(input.reply) || namesATime(input.reply));
   verdict.recital = call_checks::recitesNotes(input.reply, input.item.notes);
+  verdict.fabricatedNote = call_checks::fabricatedNote({.reply = input.reply,
+                                                        .notePresent = !input.emittedAct.empty(),
+                                                        .cameraKnown = facetOffered(input.item, "camera"),
+                                                        .guardKnown = facetOffered(input.item, "guard")});
   verdict.sentences = call_checks::sentenceCount(input.reply) > kMaxSentences;
   verdict.language = speaksForeignTokens(input.reply, input.item.lang);
   verdict.roleConfusion = confusesRoles(input.reply);
