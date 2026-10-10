@@ -271,8 +271,6 @@ bool hardFailure(GuardVerdict verdict, const Speech& speech)
         const auto* confirm = std::get_if<Confirm>(&act);
         return confirm != nullptr && confirm->irreversible;
       });
-    case GuardVerdict::OptionsIncomplete:
-      return std::ranges::any_of(speech.acts, [](const Act& act) { return std::holds_alternative<Choose>(act); });
     default:
       return false;
   }

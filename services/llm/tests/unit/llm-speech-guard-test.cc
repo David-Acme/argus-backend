@@ -1,6 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <feature/llm/services/lfm-adapter.hxx>
+#include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/llm/services/turn/speech-acts.hxx>
 #include <feature/llm/services/turn/speech-guard.hxx>
 #include <feature/llm/services/turn/speech-render.hxx>
@@ -57,6 +59,25 @@ Done done(std::string readback)
 {
   return {.tool = "calendar.create_event", .fact = "Hecho.", .readback = std::move(readback)};
 }
+
+struct ScriptedChat
+{
+  std::vector<std::string> replies;
+  std::size_t index{0};
+
+  ChatEngine engine()
+  {
+    return {.chat =
+                [this](const ChatRequest&) {
+                  if (replies.empty())
+                    return std::string{};
+                  const std::size_t at = index < replies.size() ? index : replies.size() - 1;
+                  ++index;
+                  return replies.at(at);
+                },
+            .chatStream = {}};
+  }
+};
 }
 
 TEST_CASE("every verdict has a name and a feedback line of its own in both languages")
@@ -386,7 +407,54 @@ TEST_CASE("hard failures are fatal and soft ones are not")
   CHECK_FALSE(hardFailure(GuardVerdict::NotYesOrNo, softConfirm));
 
   const Speech choose{.acts = {Choose{.options = {"task.create", "memory.remind"}}}, .lang = "es", .now = kNow};
-  CHECK(hardFailure(GuardVerdict::OptionsIncomplete, choose));
+  CHECK_FALSE(hardFailure(GuardVerdict::OptionsIncomplete, choose));
   const Speech askOptions{.acts = {ask("project", {}, {"Casa", "Trabajo"})}, .lang = "es", .now = kNow};
   CHECK_FALSE(hardFailure(GuardVerdict::OptionsIncomplete, askOptions));
+}
+
+TEST_CASE("a choose whose options are incomplete is released on its last attempt and the verdict is kept")
+{
+  const Speech speech{.acts = {Choose{.options = {"calendar.create_event", "task.create"}}}, .lang = "es", .now = kNow};
+  CHECK(check({.speech = speech, .reply = "¿Quieres que lo haga?", .asked = true}) == GuardVerdict::OptionsIncomplete);
+  CHECK(check({.speech = speech, .reply = "¿Qué prefieres?", .asked = true}) == GuardVerdict::OptionsIncomplete);
+
+  ScriptedChat chat;
+  chat.replies = {"¿Quieres que lo haga?", "¿Qué prefieres?"};
+  ToolRegistry& registry = ToolRegistry::instance();
+  LfmAdapter adapter({.engine = chat.engine(),
+                      .registry = registry,
+                      .router = nullptr,
+                      .decider = nullptr,
+                      .text = nullptr,
+                      .policies = turn::PolicySet{}});
+  std::vector<ChatMessage> history;
+  history.push_back({.role = "system", .content = "persona"});
+  history.push_back({.role = "user", .content = "apunta la reunión con Andrea pe"});
+  ToolChatInput loop;
+  loop.audience = {.role = UserRole::Owner, .modules = {}};
+  loop.context = {.userId = 7,
+                  .role = UserRole::Owner,
+                  .lang = "es",
+                  .sessionId = "guard-choose",
+                  .channel = "tool_result",
+                  .utterance = "apunta la reunión con Andrea pe",
+                  .decided = false,
+                  .turn = 1,
+                  .emitAction = {}};
+  loop.answerMaxTokens = 64;
+  ToolChatOutput output;
+  adapter.speakAct({.input = loop,
+                    .history = history,
+                    .onToken = nullptr,
+                    .speech = speech,
+                    .tail = turn::speech::actTail({.speech = speech, .contextBlock = {}}),
+                    .asked = false,
+                    .wrote = false,
+                    .opened = false,
+                    .callsConfirmed = false},
+                   output);
+  CHECK(output.attempts == 2);
+  CHECK(output.softRelease);
+  CHECK(output.softVerdict == "options_incomplete");
+  CHECK(output.reply == "¿Qué prefieres?");
 }
