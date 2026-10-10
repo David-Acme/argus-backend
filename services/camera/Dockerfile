@@ -3,6 +3,7 @@
 FROM debian:trixie-slim AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV ARGUS_SYSTEM_PROTOBUF=ON
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential ca-certificates cmake git libssl-dev ninja-build \

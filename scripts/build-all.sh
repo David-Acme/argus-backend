@@ -192,7 +192,8 @@ for dir in "${PROJECTS[@]}"; do
       -DCMAKE_TOOLCHAIN_FILE="$GENERATORS/conan_toolchain.cmake" \
       -DCMAKE_PREFIX_PATH="$GENERATORS" \
       -DCMAKE_CXX_STANDARD=20 \
-      -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+      -DARGUS_SYSTEM_PROTOBUF="${ARGUS_SYSTEM_PROTOBUF:-OFF}"
     cmake --build "build/$PROFILE" -j "$JOBS"
     if [ "${#extra_targets[@]}" -gt 0 ]; then
       cmake --build "build/$PROFILE" -j "$JOBS" --target "${extra_targets[@]}"
