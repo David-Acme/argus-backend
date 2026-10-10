@@ -880,7 +880,7 @@ TEST_CASE("the voice is told what was done and nothing else is added, with no to
   CHECK_FALSE(request.toolCallsAllowed);
   REQUIRE(request.messages.size() == 2);
   CHECK(request.messages.front().role == "system");
-  CHECK(request.messages.front().content == "persona");
+  CHECK(request.messages.front().content == "Responde en español.\npersona");
   CHECK(request.messages.back().role == "user");
   CHECK(request.messages.back().content.find("Agendé «Reunión con Andrea» para " + tomorrowAtFive()) != std::string::npos);
   for (const auto& message : request.messages) {

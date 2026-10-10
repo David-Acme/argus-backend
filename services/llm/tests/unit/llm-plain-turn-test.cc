@@ -55,7 +55,7 @@ struct PlainTurn
 };
 }
 
-TEST_CASE("a tool-less turn carries the clock note the adapter puts at the head of the last user message")
+TEST_CASE("a tool-less turn states the language at the head of the system message and carries the clock note at the head of the last user message")
 {
   PlainTurn turn;
   turn.engine.reply = "Son las tres.";
@@ -65,7 +65,8 @@ TEST_CASE("a tool-less turn carries the clock note the adapter puts at the head 
   REQUIRE(sent.size() == 2);
   CHECK(sent[0].role == "system");
   CHECK(sent[1].role == "user");
-  CHECK(sent[1].content.starts_with("Responde en español.\nReferencia, menciónala solo si te preguntan la fecha o la hora: hoy es "));
+  CHECK(sent[0].content == "Responde en español.\npersona");
+  CHECK(sent[1].content.starts_with("Referencia, menciónala solo si te preguntan la fecha o la hora: hoy es "));
   CHECK(sent[1].content.find("¿Qué hora es?") != std::string::npos);
   CHECK(asked.reply == "Son las tres.");
 

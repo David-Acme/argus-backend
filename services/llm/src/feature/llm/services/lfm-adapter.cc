@@ -153,12 +153,17 @@ std::string_view languageDirective(std::string_view lang)
 std::vector<ChatMessage> LfmAdapter::spokenMessages(const SpokenMessagesInput& input)
 {
   std::vector<ChatMessage> messages = input.history;
+  if (!messages.empty() && messages.front().role == "system") {
+    std::string head(languageDirective(input.lang));
+    head += "\n";
+    head += messages.front().content;
+    messages.front().content = std::move(head);
+  }
   const auto lastUser = std::ranges::find_if(std::views::reverse(messages),
                                             [](const ChatMessage& message) { return message.role == "user"; });
   if (lastUser == std::views::reverse(messages).end())
     return messages;
-  std::string content(languageDirective(input.lang));
-  content += "\n";
+  std::string content;
   if (!input.clock.empty()) {
     content += input.clock;
     content += "\n";

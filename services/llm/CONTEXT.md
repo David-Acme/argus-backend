@@ -890,6 +890,32 @@ Degradation: a turn that selects nothing composes no block, which is exactly a
 plain chat and shares the cached prefix. The Laya facet pass (one `noul`
 question per unsure facet) is U24's; nothing links it here.
 
+## The prompt is a prefix (2026-10-10)
+
+`LlmService::prefill` reuses the KV cache across calls: it rewinds the cached
+sequence to the longest common token prefix of the new prompt and decodes only
+what follows. That prefix is the prompt the previous call built, so it is
+reproducible from the next turn's request only if the request re-sends the
+turns it already sent, byte for byte.
+
+**Nothing rewrites a past turn's text.** A turn the model has already seen
+comes back from the caller exactly as it was first sent. A rewrite of an
+earlier turn moves the divergence to that turn, and every turn after it
+re-decodes the whole call — even a single line prepended to the first user
+message, which is how a language directive on the user turn took the wire
+test's reuse from 12 of 33 tokens to 0 of 38 on every turn after the first.
+
+**Anything per-turn the model needs travels with the turn that needs it.** The
+clock note sits at the head of that turn's last user message and the selected
+situation block after the user's words; both are part of the turn when it is
+first sent. A per-turn fact the caller keeps — an app note — is a message of
+the caller's own history, so the caller re-sends it unchanged.
+
+**The session's language is not per-turn.** It is a fact of the call, stated
+once at the head of the system message — the prompt's prefix-stable part — and
+never again on a user turn. `LfmAdapter::spokenMessages` composes that head and
+is the only writer of it.
+
 ## Pending intents (2026-10, context plan section 5)
 
 A request for a tool of a module that is off is not lost. `ToolExecutor` hands
