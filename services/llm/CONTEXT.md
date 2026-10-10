@@ -1843,3 +1843,35 @@ mismatches against the same reference). Two files that should be one disagree.
 Unit A's export must write the training run's own question file, record its
 hash in `manifest.json`, and have the training code read that same file, so they
 cannot diverge; this one is flagged rather than picked.
+
+## The fresh-tree Vulkan shader cost (2026-10-09)
+
+The vendored `third_party/llama.cpp` turns `GGML_VULKAN` on when Vulkan, glslc and
+SPIRV-Headers are present, and its `vulkan-shaders-gen` ExternalProject then pays a
+fixed cost in every fresh build tree: a wave of 137 shader-generation edges and
+1922 glslc runs, **about 425 s of edge time** (425.9 s cold; 429.5 s, 424.2 s and
+427.3 s in the later samples), beside the ~200 s the rest of a ccache-warm
+`./scripts/build-all.sh dev --only llm` takes. This is **a known cost of a fresh
+tree, not a defect.** It is paid in every fresh tree, patched or not; it does not
+recur on an incremental or no-op build; and `services/vlm` pays its own copy,
+because the two projects do not share a build tree. The shader block itself is
+recorded in `docs/operations/build-and-test.md`.
+
+**`BUILD_ALWAYS TRUE` is not the cause of it, and cannot be.** At
+`third_party/llama.cpp/ggml/src/ggml-vulkan/CMakeLists.txt:177-195` the generator
+is declared `ExternalProject_Add(… BUILD_ALWAYS TRUE)`, which re-runs only the
+external project's own build, install, done and complete steps — five `.ninja_log`
+entries, 47 ms on a second build. The 137 generation edges consume the generator
+binary, and CMake emits a dependency on a custom *target* as an **order-only**
+dependency: `|| … llama-build/ggml/src/ggml-vulkan/vulkan-shaders-gen` at
+`services/llm/build/dev/build.ninja:11492` and `:11501`. Re-dirtying the external
+project's stamps therefore cannot reach the generation edges, which is why
+`BUILD_ALWAYS` is not — and cannot be — what regenerates a shader.
+
+A patch that sets `BUILD_ALWAYS FALSE` and adds
+`ExternalProject_Add_StepDependencies` is proven, and saves exactly the four
+external-project edges (5 entries becomes 1, 35-100 ms on a second build) without
+removing any of the 425 s. It lives outside the repository, at
+`~/.cache/argus-scratch-backup/backend13/shaders/candidate-patch.patch`, because
+the tree has no durable mechanism for a submodule patch; it is recorded here so
+the cost is known rather than fought.
