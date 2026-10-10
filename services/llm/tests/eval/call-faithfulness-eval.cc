@@ -63,7 +63,7 @@ constexpr int kSkipped = 77;
 constexpr int64_t kEvalUser = 7;
 constexpr int kContextSize = 8192;
 constexpr int kMaxTokens = 160;
-constexpr int kMaxSentences = 2;
+constexpr int kMaxSentences = 3;
 
 struct Options
 {
