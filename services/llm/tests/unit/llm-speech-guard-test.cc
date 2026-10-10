@@ -453,8 +453,11 @@ TEST_CASE("a choose whose options are incomplete is released on its last attempt
                     .opened = false,
                     .callsConfirmed = false},
                    output);
-  CHECK(output.attempts == 2);
+  CHECK(output.attempts.size() == 2);
   CHECK(output.softRelease);
   CHECK(output.softVerdict == "options_incomplete");
   CHECK(output.reply == "¿Qué prefieres?");
+  CHECK(output.reply == output.attempts.back().reply);
+  CHECK(output.attempts.back().verdict == "options_incomplete");
+  CHECK_FALSE(output.attempts.back().prompt.empty());
 }

@@ -30,6 +30,13 @@ struct ToolChatInput
   bool prefillOnly = false;
 };
 
+struct SpeechAttempt
+{
+  std::string prompt;
+  std::string reply;
+  std::string verdict;
+};
+
 struct ToolChatOutput
 {
   std::string reply;
@@ -43,7 +50,7 @@ struct ToolChatOutput
   std::string firstRejected;
   std::string softVerdict;
   std::vector<tools::ToolCall> executed;
-  int attempts = 0;
+  std::vector<SpeechAttempt> attempts;
   int hops = 0;
   bool emitted = false;
   bool softRelease = false;

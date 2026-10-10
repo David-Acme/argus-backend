@@ -61,6 +61,7 @@ namespace
 
 constexpr int kSkipped = 77;
 constexpr int64_t kEvalUser = 7;
+constexpr int kContextSize = 8192;
 constexpr int kMaxTokens = 160;
 constexpr int kMaxSentences = 2;
 
@@ -75,6 +76,7 @@ struct Options
   std::string rolesEn;
   std::string report;
   std::string dump;
+  std::string trace;
   std::string ttft;
   std::string filter;
   std::string decide;
@@ -92,6 +94,7 @@ struct Options
   bool force{false};
   bool legacyContext{false};
   bool renderActs{false};
+  bool printConfig{false};
   int64_t now{0};
 };
 
@@ -119,6 +122,8 @@ Options parseOptions(int argc, char** argv)
       options.report = argv[++i];
     else if (arg == "--dump" && hasValue)
       options.dump = argv[++i];
+    else if (arg == "--trace" && hasValue)
+      options.trace = argv[++i];
     else if (arg == "--ttft" && hasValue)
       options.ttft = argv[++i];
     else if (arg == "--filter" && hasValue)
@@ -139,6 +144,8 @@ Options parseOptions(int argc, char** argv)
       options.regionalismMarkers = argv[++i];
     else if (arg == "--render-acts")
       options.renderActs = true;
+    else if (arg == "--print-config")
+      options.printConfig = true;
     else if (arg == "--drop-facets" && hasValue)
       options.dropFacets.emplace_back(argv[++i]);
     else if (arg == "--temperature" && hasValue)
@@ -361,6 +368,22 @@ std::string tomlFloat(float value)
   if (out.find_first_of(".eEnN") == std::string::npos)
     out += ".0";
   return out;
+}
+
+std::string configKey(const Options& options)
+{
+  const std::string decideBundle = std::filesystem::path(options.decideBundle).filename().string();
+  const std::string extractBundle = std::filesystem::path(options.extractBundle).filename().string();
+  return std::format("eval:context_size={},max_tokens={},temp={},seed={},now=renderInstant({}),decide={}+{},extract={}+{}",
+                     kContextSize,
+                     kMaxTokens,
+                     tomlFloat(options.temperature),
+                     options.seed,
+                     options.now,
+                     options.decide,
+                     decideBundle,
+                     options.extract,
+                     extractBundle);
 }
 
 struct ScratchConfigInput
@@ -605,7 +628,7 @@ struct TurnRecord
   std::string firstGuardVerdict;
   std::string firstRejected;
   std::string softVerdict;
-  int attempts{0};
+  std::vector<SpeechAttempt> attempts;
   std::vector<eval::RecordedCall> executed;
   TurnState state;
   TurnVerdict verdict;
@@ -918,6 +941,48 @@ bool writeDump(const DumpInput& input)
       for (const ContextFact& fact : run.item.facts)
         row["facts"].append(fact.facet);
       row["contextBlock"] = turn.contextBlock;
+      out << Json::writeString(builder, row) << "\n";
+    }
+  }
+  return static_cast<bool>(out);
+}
+
+struct TraceInput
+{
+  const std::string& path;
+  const std::vector<CaseRecord>& runs;
+};
+
+bool writeTrace(const TraceInput& input)
+{
+  std::ofstream out(input.path);
+  if (!out)
+    return false;
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  builder["emitUTF8"] = true;
+  for (const CaseRecord& run : input.runs) {
+    for (std::size_t index = 0; index < run.turns.size(); ++index) {
+      const TurnRecord& turn = run.turns[index];
+      Json::Value row(Json::objectValue);
+      row["id"] = run.item.id;
+      row["lang"] = run.item.lang;
+      row["turn"] = static_cast<int>(index);
+      row["act"] = turn.act;
+      row["speech"] = turn.speech;
+      row["reply"] = turn.reply;
+      row["guardVerdict"] = turn.guardVerdict;
+      row["softVerdict"] = turn.softVerdict;
+      row["softRelease"] = turn.softRelease;
+      Json::Value attempts(Json::arrayValue);
+      for (const SpeechAttempt& attempt : turn.attempts) {
+        Json::Value item(Json::objectValue);
+        item["prompt"] = attempt.prompt;
+        item["reply"] = attempt.reply;
+        item["verdict"] = attempt.verdict;
+        attempts.append(item);
+      }
+      row["attempts"] = attempts;
       out << Json::writeString(builder, row) << "\n";
     }
   }
@@ -1251,7 +1316,7 @@ struct RenderRecord
   std::string finalVerdict;
   std::string firstVerdict;
   std::string firstRejected;
-  int attempts{0};
+  std::vector<SpeechAttempt> attempts;
   bool softRelease{false};
 };
 
@@ -1390,7 +1455,7 @@ int runRendering(const RenderRunCli& input)
                                run.item.id,
                                run.item.lang,
                                run.item.variant,
-                               run.attempts,
+                               run.attempts.size(),
                                run.firstVerdict,
                                run.finalVerdict,
                                run.reply);
@@ -1486,6 +1551,10 @@ int finish(const FinishInput& input)
 int main(int argc, char** argv)
 {
   const Options options = parseOptions(argc, argv);
+  if (options.printConfig) {
+    std::cout << configKey(options) << "\n";
+    return 0;
+  }
 #ifndef NDEBUG
   if (!options.force) {
     std::cout << "[SKIPPED] a debug build decodes about twenty times slower; run the prod build or pass --force\n";
@@ -1660,6 +1729,13 @@ int main(int argc, char** argv)
 
   if (!options.rejectSample.empty() && !writeRejectSample({.path = options.rejectSample, .runs = runs})) {
     std::cout << "[ERROR] cannot write " << options.rejectSample << "\n";
+    controller.shutdownEngine();
+    llama_backend_free();
+    return 1;
+  }
+
+  if (!options.trace.empty() && !writeTrace({.path = options.trace, .runs = runs})) {
+    std::cout << "[ERROR] cannot write " << options.trace << "\n";
     controller.shutdownEngine();
     llama_backend_free();
     return 1;

@@ -45,6 +45,19 @@ std::string lastUserMessage(const std::vector<ChatMessage>& history)
   return {};
 }
 
+std::string renderedPrompt(const std::vector<ChatMessage>& messages)
+{
+  std::string out;
+  for (const ChatMessage& message : messages) {
+    if (!out.empty())
+      out += '\n';
+    out += message.role;
+    out += ": ";
+    out += message.content;
+  }
+  return out;
+}
+
 TurnState turnOf(const std::string& utterance, const std::vector<tools::ToolHandle>& tools)
 {
   const bool appOffered = std::ranges::any_of(
@@ -234,19 +247,21 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
       LOG_WARN << "LfmAdapter: the act could not be spoken: " << e.what();
       threw = true;
     }
-    ++output.attempts;
     if (released) {
       output.reply = raw;
       output.rawReply = raw;
       output.guardVerdict = std::string(turn::speech::verdictName(turn::speech::GuardVerdict::Pass));
+      output.attempts.push_back({.prompt = renderedPrompt(req.messages), .reply = raw, .verdict = output.guardVerdict});
       if (attempt == 0)
         output.firstGuardVerdict = output.guardVerdict;
       output.emitted = streaming;
       input.history.push_back({.role = "assistant", .content = raw});
       return;
     }
-    if (threw)
+    if (threw) {
+      output.attempts.push_back({.prompt = renderedPrompt(req.messages), .reply = raw, .verdict = "error"});
       break;
+    }
 
     reply_claims::StrippedReply stripped =
         reply_claims::withoutTrailingOffer(std::move(raw), {.lang = lang, .asked = input.asked});
@@ -259,6 +274,7 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
                                    .callsConfirmed = input.callsConfirmed,
                                    .sentenceOnly = question});
     output.guardVerdict = std::string(turn::speech::verdictName(verdict));
+    output.attempts.push_back({.prompt = renderedPrompt(req.messages), .reply = reply, .verdict = output.guardVerdict});
     if (attempt == 0) {
       output.firstGuardVerdict = output.guardVerdict;
       output.firstRejected = reply;
