@@ -304,7 +304,8 @@ TEST_CASE("a Tapo certificate is pinned on first use and a secure camera never f
   TapoClientConfig config;
   config.host = "192.0.2.1";
   config.transport = TapoTransportPreference::LegacyStok;
-  config.candidates.push_back({.label = "camera_account", .username = "u", .password = "p"});
+  config.candidates.push_back({.label = "camera_account", .username = "u", .password = "p",
+                               .memoryKey = ""});
   config.trust = std::make_shared<TapoTrust>(TapoTrustState{.fingerprint = "aa11", .secure = true},
                                              TapoTrust::Persist{});
   TapoClient client(config);
