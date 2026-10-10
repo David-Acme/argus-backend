@@ -585,8 +585,9 @@ Raw pointers only for non-owning access (`.get()`).
   survive a restart otherwise.
 - SQLite uses 4 connections (`config.toml`) — the JwtFilter issues 2 queries
   per authenticated request.
-- Release builds are machine-tuned: `-march=native` + `-flto=auto` on the app
-  target only. `-Wall -Wextra` are always on; third-party includes are SYSTEM.
+- Release builds use CMake's default `-O3 -DNDEBUG` and nothing else: the tree
+  carries no `-march=native` and no `-flto`. `-Wall -Wextra` are always on;
+  third-party includes are SYSTEM.
 
 ### 17b. Local deployment
 
