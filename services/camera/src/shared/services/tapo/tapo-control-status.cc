@@ -19,7 +19,7 @@ Json::Value tapo_control::toJson(const TapoControlStatus& status, int64_t nowMs)
   json["state"] = tapoControlStateToString(status.state);
   json["credential"] = status.credential;
   json["retryAfterSeconds"] = scheduled ? retryAfterSeconds(status, nowMs) : 0;
-  json["retryAt"] = Json::Int64(scheduled ? status.retryAtMs : 0);
+  json["retryAt"] = static_cast<Json::Int64>(scheduled ? status.retryAtMs : 0);
   json["code"] = status.code;
   json["message"] = status.message;
   return json;

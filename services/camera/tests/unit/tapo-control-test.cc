@@ -9,6 +9,16 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <optional>
+#include <stdexcept>
+
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
 
 namespace
 {
@@ -66,9 +76,9 @@ public:
   }
 
   TapoResult request(const Json::Value&) override { return TapoResult::success(Json::Value()); }
-  TapoTransportKind kind() const override { return request_.kind; }
-  Json::Value state() const override { return Json::Value(Json::objectValue); }
-  bool isAuthenticated() const override { return authenticated_; }
+  [[nodiscard]] TapoTransportKind kind() const override { return request_.kind; }
+  [[nodiscard]] Json::Value state() const override { return {Json::objectValue}; }
+  [[nodiscard]] bool isAuthenticated() const override { return authenticated_; }
 
 private:
   std::shared_ptr<Ledger> ledger_;
@@ -100,7 +110,7 @@ struct Bench
   }
 
   void advance(int seconds) { ledger->nowMs += static_cast<int64_t>(seconds) * 1000; }
-  std::size_t logins() const { return ledger->logins.size(); }
+  [[nodiscard]] std::size_t logins() const { return ledger->logins.size(); }
 };
 }
 
@@ -234,8 +244,8 @@ TEST_CASE("a lockout reading is parsed from the camera's own reply shapes")
   nested["result"]["data"]["sec_left"] = 1650;
   const auto reading = tapo_lockout::of(nested);
   REQUIRE(reading.has_value());
-  CHECK(reading->secLeft == 1650);
-  CHECK(reading->code == -40404);
+  CHECK(requireValue(reading).secLeft == 1650);
+  CHECK(requireValue(reading).code == -40404);
 
   Json::Value flat(Json::objectValue);
   flat["data"]["code"] = -40404;
@@ -243,7 +253,7 @@ TEST_CASE("a lockout reading is parsed from the camera's own reply shapes")
   flat["error_code"] = -40401;
   const auto flatReading = tapo_lockout::of(flat);
   REQUIRE(flatReading.has_value());
-  CHECK(flatReading->secLeft == 68);
+  CHECK(requireValue(flatReading).secLeft == 68);
 
   Json::Value refused(Json::objectValue);
   refused["error_code"] = -40401;

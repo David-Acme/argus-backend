@@ -72,7 +72,7 @@ TapoClient::TapoClient(TapoClientConfig config)
         candidate.memoryKey == config_.remembered.key) {
       winner_ = index;
       persistedLabel_ = candidate.label;
-      std::lock_guard<std::mutex> statusGuard(statusMutex_);
+      std::scoped_lock statusGuard(statusMutex_);
       published_.credential = candidate.label;
     }
   }
@@ -132,13 +132,13 @@ std::vector<std::size_t> TapoClient::order() const
 
 TapoResult TapoClient::connect()
 {
-  const std::lock_guard<std::mutex> guard(mutex_);
+  const std::scoped_lock guard(mutex_);
   return connectLocked(std::nullopt);
 }
 
 TapoResult TapoClient::ensureConnected()
 {
-  const std::lock_guard<std::mutex> guard(mutex_);
+  const std::scoped_lock guard(mutex_);
   if (transport_ && transport_->isAuthenticated())
     return TapoResult::success(Json::Value());
   return connectLocked(std::nullopt);
@@ -312,7 +312,7 @@ void TapoClient::publish(const TapoControlState state, const TapoResult& cause)
       break;
   }
   {
-    std::lock_guard<std::mutex> statusGuard(statusMutex_);
+    std::scoped_lock statusGuard(statusMutex_);
     published_ = next;
   }
 
@@ -344,7 +344,7 @@ void TapoClient::publish(const TapoControlState state, const TapoResult& cause)
 
 TapoResult TapoClient::invoke(const Json::Value& request)
 {
-  const std::lock_guard<std::mutex> guard(mutex_);
+  const std::scoped_lock guard(mutex_);
   if (!transport_ || !transport_->isAuthenticated()) {
     const auto ready = connectLocked(std::nullopt);
     if (!ready.ok)
@@ -352,7 +352,7 @@ TapoResult TapoClient::invoke(const Json::Value& request)
   }
 
   const auto activeKind = transport_->kind();
-  const auto result = transport_->request(request);
+  auto result = transport_->request(request);
   if (result.ok)
     return result;
 
@@ -417,7 +417,7 @@ TapoResult TapoClient::batch(const std::vector<Json::Value>& requests)
 
 bool TapoClient::isConnected() const
 {
-  const std::lock_guard<std::mutex> guard(mutex_);
+  const std::scoped_lock guard(mutex_);
   return transport_ && transport_->isAuthenticated();
 }
 
@@ -464,7 +464,7 @@ Json::Value TapoClient::state() const
 {
   Json::Value value(Json::objectValue);
   {
-    const std::lock_guard<std::mutex> guard(mutex_);
+    const std::scoped_lock guard(mutex_);
     value["host"] = config_.host;
     value["port"] = config_.port;
     value["connected"] = transport_ && transport_->isAuthenticated();
@@ -481,13 +481,13 @@ Json::Value TapoClient::state() const
 
 std::string TapoClient::credentialLabel() const
 {
-  const std::lock_guard<std::mutex> guard(mutex_);
+  const std::scoped_lock guard(mutex_);
   return credentialLabel_;
 }
 
 TapoControlStatus TapoClient::status() const
 {
-  const std::lock_guard<std::mutex> statusGuard(statusMutex_);
+  const std::scoped_lock statusGuard(statusMutex_);
   return published_;
 }
 

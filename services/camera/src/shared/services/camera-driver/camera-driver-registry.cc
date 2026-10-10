@@ -34,7 +34,7 @@ TalkLineOpen ICameraDriver::talkLine()
 
 Json::Value ICameraDriver::controlStatus() const
 {
-  return Json::Value();
+  return {};
 }
 
 CameraDriverRegistry& CameraDriverRegistry::instance()

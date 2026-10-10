@@ -10,6 +10,7 @@
 #include <feature/talk/camera-talk-service.hxx>
 #include <memory>
 #include <mutex>
+#include <ranges>
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
@@ -139,9 +140,9 @@ public:
   [[nodiscard]] std::string lastClosedReason() const
   {
     const std::scoped_lock lock(mutex);
-    for (auto frame = frames.rbegin(); frame != frames.rend(); ++frame)
-      if ((*frame)["type"].asString() == "camera:talk:closed")
-        return (*frame)["payload"]["reason"].asString();
+    for (const auto& frame : std::ranges::reverse_view(frames))
+      if (frame["type"].asString() == "camera:talk:closed")
+        return frame["payload"]["reason"].asString();
     return {};
   }
 
