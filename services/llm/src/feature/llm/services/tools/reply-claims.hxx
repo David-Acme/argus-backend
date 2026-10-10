@@ -29,6 +29,8 @@ struct CallReply
 
 [[nodiscard]] bool asksForAction(std::string_view utterance);
 
+[[nodiscard]] bool asksCapabilities(std::string_view utterance);
+
 struct Plain
 {
   std::string text;

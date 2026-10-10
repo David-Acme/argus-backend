@@ -216,6 +216,18 @@ TEST_CASE("a request to act is recognized by its verb in both languages")
   CHECK_FALSE(reply_claims::asksForAction("How is the weather?"));
 }
 
+TEST_CASE("a question about what Argus can do is recognized in both languages")
+{
+  CHECK(reply_claims::asksCapabilities("¿Qué puedes hacer?"));
+  CHECK(reply_claims::asksCapabilities("Argus, ¿qué sabes hacer?"));
+  CHECK(reply_claims::asksCapabilities("¿En qué puedes ayudar?"));
+  CHECK(reply_claims::asksCapabilities("What can you do?"));
+  CHECK(reply_claims::asksCapabilities("How can you help me?"));
+  CHECK_FALSE(reply_claims::asksCapabilities("¿Qué tengo en mi agenda?"));
+  CHECK_FALSE(reply_claims::asksCapabilities("¿Me puedes ayudar con la cena?"));
+  CHECK_FALSE(reply_claims::asksCapabilities("Gracias"));
+}
+
 TEST_CASE("the honest reply comes in the user's language")
 {
   CHECK(reply_claims::honest("es") == "No pude hacerlo. ¿Lo intento de nuevo?");

@@ -366,15 +366,6 @@ std::string catalogPathFor(const std::string& casesPath)
   return derived.lexically_normal().string();
 }
 
-std::string withCapabilities(const std::string& persona, std::string_view lang, UserRole role)
-{
-  const std::string capabilities =
-      role_access::capabilitySentence({.lang = lang, .role = role, .modules = moduleGate().snapshot()});
-  if (capabilities.empty())
-    return persona;
-  return persona + "\n" + capabilities;
-}
-
 std::string withSpeaker(const std::string& persona, std::string_view lang, UserRole role, std::string_view name)
 {
   const std::string line =
@@ -1719,8 +1710,8 @@ int main(int argc, char** argv)
     ToolRegistry::instance().registerTool(std::move(descriptor));
 
   moduleGate().apply(catalog);
-  const std::string personaEs = withCapabilities(spanish.bytes, "es", kEvalRole);
-  const std::string personaEn = withCapabilities(english.bytes, "en", kEvalRole);
+  const std::string personaEs = spanish.bytes;
+  const std::string personaEn = english.bytes;
   const std::string renderEs = withSpeaker(personaEs, "es", kEvalRole, {});
   const std::string renderEn = withSpeaker(personaEn, "en", kEvalRole, {});
   const std::vector<tools::ToolHandle> offered =

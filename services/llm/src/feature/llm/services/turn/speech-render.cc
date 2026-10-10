@@ -402,6 +402,8 @@ std::string situationFor(const Act& act, std::string_view lang, int64_t now)
           return refusedSituation(value, lang);
         else if constexpr (std::is_same_v<T, Offer>)
           return offerSituation(value, lang);
+        else if constexpr (std::is_same_v<T, Capability>)
+          return value.fact;
         else if constexpr (std::is_same_v<T, Declined>)
           return lang == "en" ? "the user said no." : "el usuario dijo que no.";
         else if constexpr (std::is_same_v<T, Unactionable>)

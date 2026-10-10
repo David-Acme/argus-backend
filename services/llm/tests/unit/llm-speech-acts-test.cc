@@ -86,9 +86,15 @@ Act misunderstood()
   return Misunderstood{};
 }
 
+Act capability()
+{
+  return Capability{.fact = "puedes ayudar con la agenda y las tareas."};
+}
+
 std::vector<Act> everyAct()
 {
-  return {askSlot(), confirm(), choose(), done(), refused(), offer(), declined(), unactionable(), misunderstood()};
+  return {askSlot(), confirm(), choose(), done(), refused(), offer(), declined(), unactionable(), capability(),
+          misunderstood()};
 }
 
 std::string tailOf(const Act& act, std::string_view lang)
@@ -133,6 +139,7 @@ TEST_CASE("every act has its own name and its own question shape")
   CHECK(actName(offer()) == "offer");
   CHECK(actName(declined()) == "declined");
   CHECK(actName(unactionable()) == "unactionable");
+  CHECK(actName(capability()) == "capability");
   CHECK(actName(misunderstood()) == "misunderstood");
 
   CHECK(isQuestion(askSlot()));
@@ -143,6 +150,7 @@ TEST_CASE("every act has its own name and its own question shape")
   CHECK_FALSE(isQuestion(offer()));
   CHECK_FALSE(isQuestion(declined()));
   CHECK_FALSE(isQuestion(unactionable()));
+  CHECK_FALSE(isQuestion(capability()));
   CHECK_FALSE(isQuestion(misunderstood()));
 }
 
@@ -231,6 +239,8 @@ TEST_CASE("each act renders its own fields and nothing of another act's")
   CHECK(tailOf(refused(), "es").find("anotar la tarea") != std::string::npos);
   CHECK(tailOf(offer(), "es").find("Productividad") != std::string::npos);
   CHECK(tailOf(unactionable(), "es").find("acción de Argus") != std::string::npos);
+  CHECK(tailOf(capability(), "es") == "Nota de la app: puedes ayudar con la agenda y las tareas.");
+  CHECK(tailOf(capability(), "en") == "App note: puedes ayudar con la agenda y las tareas.");
   CHECK(tailOf(declined(), "es").find("el usuario dijo que no.") != std::string::npos);
   CHECK(tailOf(misunderstood(), "en").find("the user was not understood.") != std::string::npos);
   CHECK(tailOf(done(), "es").find("el nombre de la tarea") == std::string::npos);

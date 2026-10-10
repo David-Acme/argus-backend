@@ -26,6 +26,8 @@ std::string_view actName(const Act& act)
           return "declined";
         else if constexpr (std::is_same_v<T, Unactionable>)
           return "unactionable";
+        else if constexpr (std::is_same_v<T, Capability>)
+          return "capability";
         else
           return "misunderstood";
       },

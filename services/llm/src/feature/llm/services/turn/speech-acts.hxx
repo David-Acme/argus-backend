@@ -124,6 +124,13 @@ struct Unactionable
   bool operator==(const Unactionable& other) const { return reason == other.reason; }
 };
 
+struct Capability
+{
+  std::string fact;
+
+  bool operator==(const Capability& other) const { return fact == other.fact; }
+};
+
 struct Misunderstood
 {
   bool operator==(const Misunderstood&) const { return true; }
@@ -137,6 +144,7 @@ using Act = std::variant<AskSlot,
                          Offer,
                          Declined,
                          Unactionable,
+                         Capability,
                          Misunderstood>;
 
 struct Speech

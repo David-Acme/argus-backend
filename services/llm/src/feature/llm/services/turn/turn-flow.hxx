@@ -94,6 +94,7 @@ private:
   [[nodiscard]] std::optional<Outcome> followUpPreview(const TurnRequest& request, const Deciding& deciding, const PendingPreview& preview);
   [[nodiscard]] std::optional<Outcome> followUpOffer(const TurnRequest& request, const Deciding& deciding, const PendingOffer& offer);
   [[nodiscard]] Outcome decided(const TurnRequest& request, const Deciding& deciding);
+  [[nodiscard]] Outcome capability(const TurnRequest& request);
   [[nodiscard]] Outcome confirm(const TurnRequest& request, const Candidate& candidate);
   [[nodiscard]] Outcome choose(const TurnRequest& request, const Candidate& candidate);
   [[nodiscard]] bool corroborated(const SecondOpinion& opinion) const;

@@ -707,6 +707,20 @@ TEST_CASE("a confidence below the lower threshold is no tool, and only an asked 
   CHECK(saidAct(asked, turn::speech::Unactionable{.reason = "no_matching_action"}));
 }
 
+TEST_CASE("a question about what Argus can do carries the capability note on that turn alone")
+{
+  World world;
+  world.flow.useDecider(world.scripted);
+  const auto asked = world.say("¿qué puedes hacer?");
+  const auto* capability = actAs<turn::speech::Capability>(asked);
+  REQUIRE(capability != nullptr);
+  CHECK(capability->fact == "puedes ayudar con la agenda y las tareas, los recordatorios y la seguridad de la casa.");
+  CHECK(world.ran.empty());
+
+  const auto other = world.say("qué hora es");
+  CHECK_FALSE(saidAct(other, *capability));
+}
+
 TEST_CASE("a destructive call is previewed, the code never reaches the notes, and yes confirms with the stored code")
 {
   World world;

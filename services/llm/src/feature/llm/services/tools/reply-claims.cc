@@ -24,6 +24,14 @@ constexpr std::string_view kInvertedQuestion = "\xC2\xBF";
 constexpr std::array<std::string_view, 6> kLeadingFillers{"por", "oye", "argus", "hey", "ok", "porfa"};
 constexpr std::array<std::string_view, 3> kOfferPaddingEs{"mas", "hoy", "ahora"};
 constexpr std::array<std::string_view, 5> kOfferPaddingEn{"else", "you", "today", "now", "further"};
+constexpr std::array<std::string_view, 8> kCapabilityAsks{"que puedes hacer",
+                                                          "que sabes hacer",
+                                                          "en que puedes ayudar",
+                                                          "para que sirves",
+                                                          "what can you do",
+                                                          "how can you help",
+                                                          "what can you help with",
+                                                          "what are you able to do"};
 
 struct Sentence
 {
@@ -306,6 +314,20 @@ bool asksForAction(std::string_view utterance)
 {
   const Words words = wordsOf(std::string(utterance));
   return std::ranges::any_of(lexicons(), [&](const Lexicon& lexicon) { return requestedIn(words, lexicon); });
+}
+
+bool asksCapabilities(std::string_view utterance)
+{
+  const Words words = wordsOf(std::string(utterance));
+  return std::ranges::any_of(kCapabilityAsks, [&words](std::string_view phrase) {
+    const Words needle = wordsOf(std::string(phrase));
+    if (needle.empty() || needle.size() > words.size())
+      return false;
+    for (std::size_t at = 0; at + needle.size() <= words.size(); ++at)
+      if (std::equal(needle.begin(), needle.end(), words.begin() + static_cast<std::ptrdiff_t>(at)))
+        return true;
+    return false;
+  });
 }
 
 std::string withoutFalseClaims(Plain plain)

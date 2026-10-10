@@ -74,7 +74,7 @@ inline std::string capabilitySentence(const CapabilitySpeechInput& input)
       parts.push_back(english ? family.en : family.es);
   if (parts.empty())
     return {};
-  return joinPhrases(english ? "You can help with " : "Puedes ayudar con ", parts, english);
+  return joinPhrases(english ? "you can help with " : "puedes ayudar con ", parts, english);
 }
 
 struct SpeakerLineInput

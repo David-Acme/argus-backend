@@ -1,5 +1,6 @@
 #include "turn-flow.hxx"
 
+#include <auth/capability-speech.hxx>
 #include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/module-command.hxx>
 #include <feature/llm/services/tools/module-offer.hxx>
@@ -875,6 +876,19 @@ std::optional<Outcome> TurnFlow::followUp(const TurnRequest& request, const Deci
   return std::nullopt;
 }
 
+Outcome TurnFlow::capability(const TurnRequest& request)
+{
+  if (request.context.userId > 0)
+    clearAll(request.context.userId);
+  Outcome outcome;
+  outcome.source = "capability";
+  const std::string fact = role_access::capabilitySentence(
+      {.lang = request.context.lang, .role = request.audience.role, .modules = request.audience.modules});
+  if (!fact.empty())
+    outcome.acts.emplace_back(speech::Capability{.fact = fact});
+  return outcome;
+}
+
 Outcome TurnFlow::decided(const TurnRequest& request, const Deciding& deciding)
 {
   const auto& candidate = deciding.get();
@@ -918,6 +932,8 @@ Outcome TurnFlow::run(const TurnRequest& request)
 {
   if (request.utterance.empty())
     return {};
+  if (reply_claims::asksCapabilities(request.utterance))
+    return capability(request);
   const Deciding deciding(*decider_, {.utterance = request.utterance,
                                       .lang = request.context.lang,
                                       .offered = request.offered,

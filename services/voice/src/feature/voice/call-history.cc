@@ -118,8 +118,8 @@ struct CallTexts
 
 constexpr CallTexts kSpanish{
     .prompt =
-        "Eres Argus, el asistente de voz de esta casa; al presentarte dices «Soy Argus, tu "
-        "asistente».\n"
+        "Eres Argus, el asistente de voz de esta casa; si te preguntan quién eres, responde «Soy "
+        "Argus, tu asistente».\n"
         "Pautas:\n"
         "- Responde siempre en español neutro, sin dejo regional. No cambies nunca a otro "
         "idioma.\n"
@@ -156,8 +156,8 @@ constexpr CallTexts kSpanish{
 
 constexpr CallTexts kEnglish{
     .prompt =
-        "You are Argus, this home's voice assistant; when you introduce yourself you say \"I'm "
-        "Argus, your assistant\".\n"
+        "You are Argus, this home's voice assistant; if asked who you are, say \"I'm Argus, your "
+        "assistant\".\n"
         "Guidelines:\n"
         "- Reply strictly in English. Never switch to another language.\n"
         "- Speak like a person, not a help desk: warm, direct and informal.\n"
@@ -199,12 +199,6 @@ std::string systemPrompt(VoiceLang lang, const CallSpeaker& speaker)
 {
   std::string prompt(textsOf(lang).prompt);
   const std::string_view code = lang == VoiceLang::En ? "en" : "es";
-  const std::string capabilities = role_access::capabilitySentence(
-      {.lang = code, .role = speaker.role, .modules = moduleGate().snapshot()});
-  if (!capabilities.empty()) {
-    prompt += "\n";
-    prompt += capabilities;
-  }
   const std::string speakerLine = role_access::speakerLine(
       {.lang = code, .role = speaker.role, .name = speaker.name, .voiceCall = speaker.voiceCall});
   if (!speakerLine.empty()) {
