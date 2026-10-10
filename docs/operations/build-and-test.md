@@ -90,6 +90,43 @@ for the Ninja generator, so the helper sets it only when `CMAKE_GENERATOR`
 matches `Ninja`. `scripts/build-pool-test.sh` configures a probe through the
 helper and fails unless the generated file carries the pool on its link edges.
 
+## Clean-build costs
+
+A build in a fresh tree (no `build/dev`) carries one block that no incremental
+build pays: llama.cpp's Vulkan shader generation.
+`ggml/src/ggml-vulkan/CMakeLists.txt` declares `vulkan-shaders-gen` as an
+`ExternalProject_Add`, so the generator is configured and built in a nested
+project and then run once per shader source; in `dev --only llm --no-tests`
+that is 137 custom edges compiling 1922 shader variants through glslc, 425 s of
+summed edge duration inside a 1178-edge build whose log sums to 3659 s — the
+largest single block, and one the 136 generated `*.comp.cpp` objects add almost
+nothing to (2.5 s of it). It runs once per tree, not once per build: the
+generated `ggml-vulkan-shaders.hpp`, the 136 `*.comp.cpp` and the 1922 `*.spv`
+are ordinary build outputs, and a second `ninja` in the same tree re-runs 5
+edges — the glob re-check and four external-project steps — in about a tenth of
+a second.
+
+The external project is declared `BUILD_ALWAYS TRUE`, which is what leaves its
+build, install, done and complete steps without an output stamp and so re-runs
+them on every invocation. Measured: those four edges, 35–100 ms, and not the
+shader generation — the generation edges depend on the external project only
+through an order-only dependency (`||` in `build.ninja`), so a re-dirtied stamp
+cannot reach them. Turning the flag off and adding the generator sources as step
+dependencies removes the four edges exactly (a second build goes from 5 edges to
+1) and changes no produced artefact — the `dev --only llm` `argus-llm` binary is
+byte-identical with and without it — but it cannot remove the shader generation,
+which is the block above. The vendored llama.cpp at tag `b10305` offers no
+variable for a prebuilt generator or prebuilt shader output:
+`GGML_VULKAN_SHADERS_GEN_TOOLCHAIN` is a cross-compile toolchain file, not a
+cache. Unit report: the `unit-shaders-report.md` of the 2026-10-09 build-speed
+series.
+
+All figures above are at `eef1fc2dd5bb8f2d08f833b2663f1d1808de0afe`, measured
+through `heavy-gate.sh --latency 18` with ccache on: **463 s** from a cold
+ccache and **199 s** warm for the same 1178-edge build. That gap is the reason a
+clean-build figure is comparable across units by its edge counts and not by its
+wall clock.
+
 ## Working inside one project
 
 The root graph has to exist first; `--install-only` is just that step.
