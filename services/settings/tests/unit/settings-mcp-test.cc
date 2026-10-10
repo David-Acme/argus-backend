@@ -153,6 +153,63 @@ std::string codeIn(const argus::mcp::ToolOutcome& preview)
   CHECK(preview.text.find("confirmation") == std::string::npos);
   return code;
 }
+
+struct DisableExpectation
+{
+  const char* lang;
+  const char* previewPrefix;
+  const char* holders;
+  const char* invitations;
+  const char* nothingDeleted;
+  const char* done;
+};
+
+constexpr DisableExpectation kSpanishDisable{
+    .lang = "es",
+    .previewPrefix = "Apagar Vigilancia detendría las imágenes en vivo, las guardias en curso (2) y something new.",
+    .holders = "Su rol quedaría inactivo para: Ana (guard).",
+    .invitations = "Invitaciones pendientes que se revocarían: 1.",
+    .nothingDeleted = "No se borra nada",
+    .done = "Listo, apagué Vigilancia. Sus datos siguen guardados."};
+
+constexpr DisableExpectation kEnglishDisable{
+    .lang = "en",
+    .previewPrefix = "Turning off Vigilancia would stop live views, guard duty in progress (2) and something new.",
+    .holders = "Their role would become inactive for: Ana (guard).",
+    .invitations = "Pending invitations that would be revoked: 1.",
+    .nothingDeleted = "Nothing is deleted",
+    .done = "Done, I turned off Vigilancia. Its data is still kept."};
+
+void disablingPreviewsAndNeedsTheOneUseCode(const DisableExpectation& expected)
+{
+  Harness harness;
+  const auto preview = harness.call("modules.disable", module("surveillance"), "owner", expected.lang, 1);
+  CHECK_FALSE(preview.isError);
+  CHECK(preview.structured["needsConfirmation"].asBool());
+  CHECK(preview.text.find(expected.previewPrefix) == 0);
+  CHECK(preview.text.find(expected.holders) != std::string::npos);
+  CHECK(preview.text.find(expected.invitations) != std::string::npos);
+  CHECK(preview.text.find(expected.nothingDeleted) != std::string::npos);
+  CHECK(harness.desk->disabled.empty());
+  const std::string code = codeIn(preview);
+
+  const auto wrong = harness.call("modules.disable", confirmed({.id = "surveillance", .confirmation = "000000"}), "owner", expected.lang, 1);
+  CHECK(wrong.isError);
+  CHECK(wrong.structured["code"].asString() == "confirmation_invalid");
+  CHECK(harness.desk->disabled.empty());
+
+  const auto elsewhere = harness.call("modules.disable", confirmed({.id = "productivity", .confirmation = code}), "owner", expected.lang, 1);
+  CHECK(elsewhere.isError);
+
+  const auto done = harness.call("modules.disable", confirmed({.id = "surveillance", .confirmation = code}), "owner", expected.lang, 1);
+  CHECK_FALSE(done.isError);
+  CHECK(done.text == expected.done);
+  CHECK(harness.desk->disabled == std::vector<std::string>{"surveillance"});
+
+  const auto again = harness.call("modules.disable", confirmed({.id = "surveillance", .confirmation = code}), "owner", expected.lang, 1);
+  CHECK(again.isError);
+  CHECK(harness.desk->disabled.size() == 1);
+}
 }
 
 TEST_CASE("every module tool is core, names the capability the access table knows and says if it destroys")
@@ -257,33 +314,8 @@ TEST_CASE("only the owner enables a module and every answer is spoken")
 
 TEST_CASE("turning a module off previews what stops and who is affected, then needs the one-use code")
 {
-  Harness harness;
-  const auto preview = harness.call("modules.disable", module("surveillance"), "owner", "es", 1);
-  CHECK_FALSE(preview.isError);
-  CHECK(preview.structured["needsConfirmation"].asBool());
-  CHECK(preview.text.find("Apagar Vigilancia detendría las imágenes en vivo, las guardias en curso (2) y something new.") == 0);
-  CHECK(preview.text.find("Su rol quedaría inactivo para: Ana (guard).") != std::string::npos);
-  CHECK(preview.text.find("Invitaciones pendientes que se revocarían: 1.") != std::string::npos);
-  CHECK(preview.text.find("No se borra nada") != std::string::npos);
-  CHECK(harness.desk->disabled.empty());
-  const std::string code = codeIn(preview);
-
-  const auto wrong = harness.call("modules.disable", confirmed({.id = "surveillance", .confirmation = "000000"}), "owner", "es", 1);
-  CHECK(wrong.isError);
-  CHECK(wrong.structured["code"].asString() == "confirmation_invalid");
-  CHECK(harness.desk->disabled.empty());
-
-  const auto elsewhere = harness.call("modules.disable", confirmed({.id = "productivity", .confirmation = code}), "owner", "es", 1);
-  CHECK(elsewhere.isError);
-
-  const auto done = harness.call("modules.disable", confirmed({.id = "surveillance", .confirmation = code}), "owner", "es", 1);
-  CHECK_FALSE(done.isError);
-  CHECK(done.text == "Listo, apagué Vigilancia. Sus datos siguen guardados.");
-  CHECK(harness.desk->disabled == std::vector<std::string>{"surveillance"});
-
-  const auto again = harness.call("modules.disable", confirmed({.id = "surveillance", .confirmation = code}), "owner", "es", 1);
-  CHECK(again.isError);
-  CHECK(harness.desk->disabled.size() == 1);
+  disablingPreviewsAndNeedsTheOneUseCode(kSpanishDisable);
+  disablingPreviewsAndNeedsTheOneUseCode(kEnglishDisable);
 }
 
 TEST_CASE("another person cannot spend the owner's code, and the preview is spoken in English on request")
