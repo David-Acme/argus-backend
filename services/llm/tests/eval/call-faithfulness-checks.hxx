@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <fstream>
 #include <optional>
 #include <span>
 #include <string>
@@ -298,6 +299,73 @@ inline bool fabricatedNote(const FabricatedNoteInput& input)
   const bool cameraUnsaid = !input.cameraKnown && mentionsAny(input.reply, kCameraWords);
   const bool guardUnsaid = !input.guardKnown && mentionsAny(input.reply, kGuardWords);
   return cameraUnsaid || guardUnsaid;
+}
+
+struct SlangContext
+{
+  std::string_view marker;
+  std::span<const std::string_view> phrases;
+};
+
+inline constexpr std::array<std::string_view, 1> kPataSlangPhrases{"mi pata"};
+inline constexpr std::array<SlangContext, 1> kSlangContexts{
+    SlangContext{.marker = "pata", .phrases = kPataSlangPhrases}};
+
+inline std::vector<std::string> markersFromFile(const std::string& path)
+{
+  std::ifstream in(path);
+  if (!in)
+    return {};
+  std::vector<std::string> markers;
+  std::string line;
+  while (std::getline(in, line)) {
+    const std::string folded = text_norm::folded(line);
+    const std::size_t first = folded.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos)
+      continue;
+    const std::size_t last = folded.find_last_not_of(" \t\r\n");
+    markers.push_back(folded.substr(first, last - first + 1));
+  }
+  return markers;
+}
+
+inline bool addressedWithComma(const std::string& reply, std::string_view marker)
+{
+  std::string lowered(reply);
+  for (char& c : lowered)
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  std::size_t at = lowered.find(marker);
+  while (at != std::string::npos) {
+    const std::size_t end = at + marker.size();
+    const bool leftFree = at == 0 || std::isalnum(static_cast<unsigned char>(lowered[at - 1])) == 0;
+    if (leftFree && end < lowered.size() && lowered[end] == ',')
+      return true;
+    at = lowered.find(marker, at + 1);
+  }
+  return false;
+}
+
+inline bool inSlangContext(const std::string& reply, const std::vector<std::string>& words, const SlangContext& entry)
+{
+  if (addressedWithComma(reply, entry.marker))
+    return true;
+  return std::ranges::any_of(entry.phrases, [&words](std::string_view phrase) {
+    return phraseIn(words, wordsOf(std::string(phrase)));
+  });
+}
+
+inline bool speaksRegionalism(const std::string& reply, const std::vector<std::string>& markers)
+{
+  if (markers.empty())
+    return false;
+  const std::vector<std::string> words = wordsOf(reply);
+  return std::ranges::any_of(markers, [&reply, &words](const std::string& marker) {
+    const auto entry = std::ranges::find_if(
+        kSlangContexts, [&marker](const SlangContext& candidate) { return candidate.marker == marker; });
+    if (entry != kSlangContexts.end())
+      return inSlangContext(reply, words, *entry);
+    return phraseIn(words, wordsOf(marker));
+  });
 }
 
 }

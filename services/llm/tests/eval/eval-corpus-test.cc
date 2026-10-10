@@ -210,6 +210,20 @@ TEST_CASE("a reply that opens with a greeting is caught when the user did not gr
   CHECK_FALSE(call_checks::opensWithGreeting(""));
 }
 
+TEST_CASE("a marker that is also an ordinary word counts only in its slang shape")
+{
+  const std::vector<std::string> markers{"pata", "causa", "al toque"};
+  CHECK(call_checks::speaksRegionalism("Gracias, pata, nos vemos.", markers));
+  CHECK(call_checks::speaksRegionalism("Mi pata me lo contó.", markers));
+  CHECK(call_checks::speaksRegionalism("Llegó al toque.", markers));
+  CHECK(call_checks::speaksRegionalism("¿Qué tal, causa?", markers));
+  CHECK_FALSE(call_checks::speaksRegionalism("Los gatos llegaban con la pata.", markers));
+  CHECK_FALSE(call_checks::speaksRegionalism("Se lastimó la pata y el brazo.", markers));
+  CHECK_FALSE(call_checks::speaksRegionalism("La cámara está en línea.", markers));
+  const std::vector<std::string> none;
+  CHECK_FALSE(call_checks::speaksRegionalism("Los gatos llegaban con la pata.", none));
+}
+
 TEST_CASE("the clock-restraint date check names Spanish and English dates without tripping on modal verbs")
 {
   CHECK(call_checks::namesADate("Hoy es miércoles."));

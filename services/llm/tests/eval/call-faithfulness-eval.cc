@@ -457,48 +457,6 @@ bool speaksForeignTokens(const std::string& reply, std::string_view lang)
   return std::ranges::any_of(banned, [&words](std::string_view token) { return call_checks::hasWord(words, token); });
 }
 
-std::vector<std::string> loadRegionalismMarkers(const std::string& path)
-{
-  std::ifstream in(path);
-  if (!in)
-    return {};
-  std::vector<std::string> markers;
-  std::string line;
-  while (std::getline(in, line)) {
-    const std::string folded = text_norm::folded(line);
-    const std::size_t first = folded.find_first_not_of(" \t\r\n");
-    if (first == std::string::npos)
-      continue;
-    const std::size_t last = folded.find_last_not_of(" \t\r\n");
-    markers.push_back(folded.substr(first, last - first + 1));
-  }
-  return markers;
-}
-
-bool containsPhrase(const std::vector<std::string>& words, const std::vector<std::string>& needle)
-{
-  if (needle.empty() || needle.size() > words.size())
-    return false;
-  for (std::size_t at = 0; at + needle.size() <= words.size(); ++at) {
-    bool hit = true;
-    for (std::size_t index = 0; index < needle.size() && hit; ++index)
-      hit = words.at(at + index) == needle.at(index);
-    if (hit)
-      return true;
-  }
-  return false;
-}
-
-bool speaksRegionalism(const std::string& reply, const std::vector<std::string>& markers)
-{
-  if (markers.empty())
-    return false;
-  const std::vector<std::string> words = call_checks::wordsOf(reply);
-  return std::ranges::any_of(markers, [&words](const std::string& marker) {
-    return containsPhrase(words, call_checks::wordsOf(marker));
-  });
-}
-
 bool confusesRoles(const std::string& reply)
 {
   return std::ranges::any_of(kRoleLabels, [&reply](std::string_view label) { return reply.find(label) != std::string::npos; });
@@ -874,7 +832,7 @@ eval::Metrics metricsOf(const std::vector<CaseRecord>& runs, const std::vector<s
   for (const auto& run : runs) {
     bool hit = false;
     for (const auto& turn : run.turns)
-      if (speaksRegionalism(turn.reply, markers)) {
+      if (call_checks::speaksRegionalism(turn.reply, markers)) {
         hit = true;
         ++regionalTurns;
       }
@@ -1482,7 +1440,7 @@ eval::Metrics renderMetrics(const std::vector<RenderRecord>& runs, const std::ve
   metrics["softReleaseShare"] = runs.empty() ? 0.0 : static_cast<double>(softReleased) / static_cast<double>(runs.size());
   int regional = 0;
   for (const auto& run : runs)
-    if (speaksRegionalism(run.reply, markers))
+    if (call_checks::speaksRegionalism(run.reply, markers))
       ++regional;
   metrics["regionalism"] = static_cast<double>(regional);
   metrics["regionalism.cases"] = static_cast<double>(regional);
@@ -1678,7 +1636,7 @@ int main(int argc, char** argv)
   }
   const std::vector<std::string> markers = options.regionalismMarkers.empty()
                                                ? std::vector<std::string>{}
-                                               : loadRegionalismMarkers(options.regionalismMarkers);
+                                               : call_checks::markersFromFile(options.regionalismMarkers);
   if (!options.regionalismMarkers.empty() && markers.empty()) {
     std::cout << "[ERROR] no regionalism markers in " << options.regionalismMarkers << "\n";
     return 1;
