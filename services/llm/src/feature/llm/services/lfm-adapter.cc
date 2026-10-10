@@ -197,11 +197,8 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
           if (!token.empty())
             raw += token;
           if (!failed && !released) {
-            const std::string_view first = turn::speech::firstSentenceOf(raw);
-            const bool complete = !first.empty() &&
-                                  (first.back() == '.' || first.back() == '?' || first.back() == '!' ||
-                                   first.back() == '\n');
-            if (complete || done) {
+            const turn::speech::ReleaseWindow window = turn::speech::releaseWindowOf(raw);
+            if (window.settled || done) {
               const turn::speech::GuardVerdict firstVerdict =
                   turn::speech::check({.speech = input.speech,
                                        .reply = raw,
@@ -211,9 +208,9 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
                                        .callsConfirmed = input.callsConfirmed,
                                        .sentenceOnly = true});
               if (firstVerdict == turn::speech::GuardVerdict::Pass) {
-                sink(std::string(first), false);
+                sink(std::string(window.text), false);
                 released = true;
-                forwarded = first.size();
+                forwarded = window.text.size();
               }
               else {
                 failed = true;

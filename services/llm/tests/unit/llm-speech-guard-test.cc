@@ -246,20 +246,97 @@ TEST_CASE("a refusal is kept and a claim of work that never ran is not, on every
                 "¿Activo el módulo Productividad? Ya lo activé.") == GuardVerdict::ClaimedWithoutTool);
 }
 
-TEST_CASE("the first sentence is the release unit for a question act")
+TEST_CASE("the release window opens through the first question or two sentences, whichever comes first")
 {
-  CHECK(firstSentenceOf("¿Qué día? Puedo agendarlo cuando quieras.") == "¿Qué día?");
-  CHECK(firstSentenceOf("Listo.") == "Listo.");
-  CHECK(firstSentenceOf("Muy bien... sigo.") == "Muy bien...");
-  CHECK(firstSentenceOf("¿Qué día y a qué hora") == "¿Qué día y a qué hora");
-  CHECK(firstSentenceOf("") == "");
+  CHECK(releaseWindowOf("¿Qué día? Puedo agendarlo cuando quieras.").text == "¿Qué día?");
+  CHECK(releaseWindowOf("¿Qué día? Puedo agendarlo cuando quieras.").settled);
+  CHECK(releaseWindowOf("Listo.").text == "Listo.");
+  CHECK_FALSE(releaseWindowOf("Listo.").settled);
+  CHECK(releaseWindowOf("Muy bien... sigo.").text == "Muy bien... sigo.");
+  CHECK(releaseWindowOf("Muy bien... sigo.").settled);
+  CHECK(releaseWindowOf("Uno. Dos. ¿Qué día?").text == "Uno. Dos.");
+  CHECK(releaseWindowOf("Uno. Dos. ¿Qué día?").settled);
+  CHECK(releaseWindowOf("¿Qué día y a qué hora").text == "¿Qué día y a qué hora");
+  CHECK_FALSE(releaseWindowOf("¿Qué día y a qué hora").settled);
+  CHECK(releaseWindowOf("").text.empty());
+  CHECK_FALSE(releaseWindowOf("").settled);
+  CHECK(releaseWindowOf("Recuerda, necesito el nombre.\n¿Para qué día?").text ==
+        "Recuerda, necesito el nombre.\n¿Para qué día?");
+  CHECK(releaseWindowOf("Recuerda, necesito el nombre.\n¿Para qué día?").settled);
+  CHECK(releaseWindowOf("Recuerda, necesito el nombre.  \n¿Para qué día?").text ==
+        "Recuerda, necesito el nombre.  \n¿Para qué día?");
+  CHECK(releaseWindowOf("Recuerda, necesito el nombre.  \n¿Para qué día?").settled);
+  CHECK(releaseWindowOf("Recuerda, necesito el nombre!\n¿Para qué día?").text ==
+        "Recuerda, necesito el nombre!\n¿Para qué día?");
+  CHECK(releaseWindowOf("Recuerda, necesito el nombre!\n¿Para qué día?").settled);
+  CHECK(releaseWindowOf("Listo.  \nLo agendo enseguida.").text == "Listo.  \nLo agendo enseguida.");
+  CHECK(releaseWindowOf("Uno. Dos.\n¿Qué día?").text == "Uno. Dos.");
+  CHECK(releaseWindowOf("Uno. Dos.\n¿Qué día?").settled);
+}
 
+TEST_CASE("a question act is released at its first question, capped at two sentences")
+{
   const Speech speech{.acts = {ask("starts_at")}, .lang = "es", .now = kNow};
-  CHECK(check({.speech = speech, .reply = "Lo haré. ¿Para cuándo lo agendo?", .asked = true, .sentenceOnly = true}) ==
+  CHECK(check({.speech = speech,
+               .reply = "Entendido, necesito que me indiques la fecha y hora. ¿Para cuándo quieres que te lo recuerde?",
+               .asked = true,
+               .sentenceOnly = true}) == GuardVerdict::Pass);
+  CHECK(check({.speech = speech,
+               .reply = "Entendido, necesito que me indiques la fecha y hora.\n¿Para cuándo quieres que te lo recuerde?",
+               .asked = true,
+               .sentenceOnly = true}) == GuardVerdict::Pass);
+  CHECK(check({.speech = speech,
+               .reply = "Entendido, necesito que me indiques la fecha y hora.  \n¿Para cuándo quieres que te lo recuerde?",
+               .asked = true,
+               .sentenceOnly = true}) == GuardVerdict::Pass);
+  CHECK(check({.speech = speech,
+               .reply = "Entendido, necesito que me indiques la fecha y hora!\n¿Para cuándo quieres que te lo recuerde?",
+               .asked = true,
+               .sentenceOnly = true}) == GuardVerdict::Pass);
+  CHECK(check({.speech = speech,
+               .reply = "Entendido, necesito la fecha.\nLo agendo enseguida.",
+               .asked = true,
+               .sentenceOnly = true}) == GuardVerdict::NotAQuestion);
+  CHECK(check({.speech = speech,
+               .reply = "Claro.\nDe acuerdo.\n¿Para cuándo lo agendo?",
+               .asked = true,
+               .sentenceOnly = true}) == GuardVerdict::NotAQuestion);
+  CHECK(check({.speech = speech, .reply = "Lo haré enseguida. Eso es todo.", .asked = true, .sentenceOnly = true}) ==
         GuardVerdict::NotAQuestion);
+  CHECK(check({.speech = speech, .reply = "Claro. De acuerdo. ¿Para cuándo lo agendo?", .asked = true, .sentenceOnly = true}) ==
+        GuardVerdict::NotAQuestion);
+  CHECK(check({.speech = speech, .reply = "Lo haré. ¿Para cuándo lo agendo?", .asked = true, .sentenceOnly = true}) ==
+        GuardVerdict::Pass);
   CHECK(check({.speech = speech, .reply = "¿Para cuándo lo agendo? Cuando quieras.", .asked = true, .sentenceOnly = true}) ==
         GuardVerdict::Pass);
   CHECK(check({.speech = speech, .reply = "¿Lo agendo? Solo dime algo.", .asked = true}) == GuardVerdict::SlotNotAsked);
+}
+
+TEST_CASE("a slot act released at its first question still names every option it carries")
+{
+  const std::vector<std::string> three{"Casa", "Trabajo", "Viaje"};
+  const Speech speech{.acts = {ask("project", {}, three)}, .lang = "es", .now = kNow};
+  CHECK(check({.speech = speech,
+               .reply = "Entendido. ¿En cuál proyecto va: Casa, Trabajo, Viaje?",
+               .asked = true,
+               .sentenceOnly = true}) == GuardVerdict::Pass);
+  CHECK(check({.speech = speech,
+               .reply = "Entendido. ¿En cuál proyecto va: Casa, Trabajo?",
+               .asked = true,
+               .sentenceOnly = true}) == GuardVerdict::OptionsIncomplete);
+}
+
+TEST_CASE("a confirmation released at its first question keeps refusing a reply that never asks yes or no")
+{
+  const Speech speech{.acts = {confirm("calendar.create_event", "Cena con Marta")}, .lang = "es", .now = kNow};
+  CHECK(check({.speech = speech,
+               .reply = "Voy a agendar «Cena con Marta». ¿Quieres que lo agende?",
+               .asked = true,
+               .sentenceOnly = true}) == GuardVerdict::Pass);
+  CHECK(check({.speech = speech,
+               .reply = "Voy a agendar «Cena con Marta». Lo agendo ya.",
+               .asked = true,
+               .sentenceOnly = true}) == GuardVerdict::NotYesOrNo);
 }
 
 TEST_CASE("a leaked identifier is refused on any act")

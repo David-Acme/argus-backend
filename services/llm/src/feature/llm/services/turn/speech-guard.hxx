@@ -33,13 +33,19 @@ struct GuardInput
   bool sentenceOnly{false};
 };
 
+struct ReleaseWindow
+{
+  std::string_view text;
+  bool settled{false};
+};
+
 [[nodiscard]] GuardVerdict check(const GuardInput& input);
 
 [[nodiscard]] std::string_view feedback(GuardVerdict verdict, std::string_view lang);
 
 [[nodiscard]] std::string_view verdictName(GuardVerdict verdict);
 
-[[nodiscard]] std::string_view firstSentenceOf(std::string_view text);
+[[nodiscard]] ReleaseWindow releaseWindowOf(std::string_view text);
 
 [[nodiscard]] bool hardFailure(GuardVerdict verdict, const Speech& speech);
 

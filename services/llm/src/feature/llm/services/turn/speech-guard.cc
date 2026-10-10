@@ -27,6 +27,7 @@ using Words = std::vector<std::string>;
 
 constexpr std::size_t kLongestSpoken = 60;
 constexpr std::size_t kMaxNamedOptions = 3;
+constexpr std::size_t kMaxReleaseSentences = 2;
 constexpr std::string_view kInvertedQuestion = "\xC2\xBF";
 constexpr std::array<std::string_view, 2> kMoreEs{"o otro", "u otro"};
 constexpr std::array<std::string_view, 2> kMoreEn{"or another", "or other"};
@@ -228,20 +229,35 @@ bool leakedIdentifier(std::string_view reply, const Speech& speech)
 
 }
 
-std::string_view firstSentenceOf(std::string_view text)
+ReleaseWindow releaseWindowOf(std::string_view text)
 {
-  for (std::size_t at = 0; at < text.size(); ++at) {
+  std::size_t boundary = 0;
+  std::size_t sentences = 0;
+  std::size_t at = 0;
+  while (at < text.size() && sentences < kMaxReleaseSentences) {
     const char c = text[at];
-    if (c == '?' || c == '!' || c == '\n')
-      return text.substr(0, at + 1);
-    if (c == '.') {
-      std::size_t end = at;
-      while (end + 1 < text.size() && text[end + 1] == '.')
-        ++end;
-      return text.substr(0, end + 1);
+    if (c == '?')
+      return {.text = text.substr(0, at + 1), .settled = true};
+    if (c == '!') {
+      boundary = at + 1;
+      ++sentences;
+      ++at;
+      continue;
     }
+    if (c == '.') {
+      std::size_t last = at;
+      while (last + 1 < text.size() && text[last + 1] == '.')
+        ++last;
+      boundary = last + 1;
+      ++sentences;
+      at = last + 1;
+      continue;
+    }
+    ++at;
   }
-  return text;
+  if (sentences >= kMaxReleaseSentences)
+    return {.text = text.substr(0, boundary), .settled = true};
+  return {.text = text, .settled = false};
 }
 
 bool hardFailure(GuardVerdict verdict, const Speech& speech)
@@ -272,7 +288,7 @@ GuardVerdict check(const GuardInput& input)
     return GuardVerdict::ClaimedWithoutTool;
   if (leakedIdentifier(input.reply, input.speech))
     return GuardVerdict::IdentifierLeaked;
-  const std::string_view scope = input.sentenceOnly ? firstSentenceOf(input.reply) : input.reply;
+  const std::string_view scope = input.sentenceOnly ? releaseWindowOf(input.reply).text : input.reply;
   const Words words = wordsOf(scope);
   const bool question = asks(scope);
   const bool request = requests(words, input.speech.lang);
