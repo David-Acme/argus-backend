@@ -114,12 +114,11 @@ ensure_builder() {
 
 ctest_summary() {
   local log="$1" out="$2"
-  if grep -aE "tests passed|tests failed|The following tests did not run|Skipped" \
+  if grep -aE "tests passed|tests failed|The following tests did not run|\(Skipped\)|\*\*\*Skipped" \
       "$log" > "$out" 2>/dev/null; then
     return 0
   fi
-  printf 'no ctest output in the log for this stage: the test stage was served from the build cache\n' \
-    > "$out"
+  printf 'no ctest summary line in the log for this stage\n' > "$out"
 }
 
 main() {
