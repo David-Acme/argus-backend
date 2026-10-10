@@ -87,9 +87,6 @@ voiceSpeakerVerdictOf(const argus::identity::v1::IdentifyVoiceResponse& response
       return VoiceSpeakerVerdict::OtherKnown;
     case argus::identity::v1::VOICEPRINT_VERDICT_UNFAMILIAR:
       return VoiceSpeakerVerdict::Unfamiliar;
-    case argus::identity::v1::VOICEPRINT_VERDICT_UNSPECIFIED:
-    case argus::identity::v1::VOICEPRINT_VERDICT_UNKNOWN:
-      return VoiceSpeakerVerdict::Unknown;
     default:
       return VoiceSpeakerVerdict::Unknown;
   }

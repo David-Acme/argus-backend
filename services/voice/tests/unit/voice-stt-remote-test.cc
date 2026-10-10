@@ -7,6 +7,8 @@
 #include <test-support/voice-test-config.hxx>
 #include <config/config-service.hxx>
 
+#include <cstdio>
+#include <exception>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -202,7 +204,12 @@ TEST_CASE("An unreachable argus-stt degrades the turn, not the session")
 
 int main(int argc, char** argv)
 {
-  const SuiteOpeningConfig suiteOpening;
-  doctest::Context context(argc, argv);
-  return context.run();
+  try {
+    const SuiteOpeningConfig suiteOpening;
+    doctest::Context context(argc, argv);
+    return context.run();
+  } catch (const std::exception& failure) {
+    std::fprintf(stderr, "voice-stt-remote-test: %s\n", failure.what());
+    return 1;
+  }
 }

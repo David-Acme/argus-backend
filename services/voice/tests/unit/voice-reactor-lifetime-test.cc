@@ -9,6 +9,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <memory>
@@ -114,7 +116,14 @@ public:
     voice_test_config::writeOpening(voiceOpeningToString(VoiceOpening::None));
   }
 
-  ~OpeningNone() noexcept(false) { voice_test_config::restoreOpening(previous_); }
+  ~OpeningNone()
+  {
+    try {
+      voice_test_config::restoreOpening(previous_);
+    } catch (...) {
+      std::fprintf(stderr, "voice-test: could not restore the opening\n");
+    }
+  }
 
   OpeningNone(const OpeningNone&) = delete;
   OpeningNone& operator=(const OpeningNone&) = delete;
@@ -126,14 +135,15 @@ private:
 class GuardedContextAllocator final : public grpc::ContextAllocator
 {
 public:
-  static constexpr size_t kArena = 64 * 1024;
+  static constexpr std::size_t kArena = std::size_t{64} * 1024;
 
   grpc::CallbackServerContext* NewCallbackServerContext() override
   {
     void* block = ::mmap(nullptr, kArena, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (block == MAP_FAILED)
       return nullptr;
-    auto* context = new (block) grpc::CallbackServerContext();
+    void* placed = new (block) grpc::CallbackServerContext();
+    auto* context = static_cast<grpc::CallbackServerContext*>(placed);
     {
       std::scoped_lock lock(mutex);
       spans.emplace(context, block);
@@ -244,7 +254,7 @@ bool announce(const ClientCall::Input& input, int64_t userId)
 
 VoiceCleanupDispatch throwingDispatch(std::atomic<int>& calls)
 {
-  return [&calls](std::function<void()>) {
+  return [&calls](const std::function<void()>&) {
     ++calls;
     throw std::system_error(std::make_error_code(std::errc::resource_unavailable_try_again),
                             "voice-test: the pool cannot start a worker");
@@ -367,7 +377,8 @@ TEST_CASE("A cancel racing a clean end completes the call exactly once")
   RunningServer server = startServer(service, allocator.release());
   REQUIRE(server.server);
 
-  std::mt19937 rng(20261008);
+  std::seed_seq seed{20261008u};
+  std::mt19937 rng(seed);
   for (int round = 0; round < 40; ++round) {
     const int chunksBefore = tts.chunks.load();
     ClientCall call({.target = server.target, .secret = kSyncSecret});
@@ -410,7 +421,8 @@ TEST_CASE("Two hundred calls dropped at random points leave no live voice stream
   RunningServer server = startServer(service, nullptr);
   REQUIRE(server.server);
 
-  std::mt19937 rng(4242);
+  std::seed_seq seed{4242u};
+  std::mt19937 rng(seed);
   const auto oneRound = [&](int round) {
     CHECK_MESSAGE(waitFor([&] { return service.idle(); }, 1000),
                   "round ", round, " still had a live stream before it started");

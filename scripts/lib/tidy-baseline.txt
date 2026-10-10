@@ -20,7 +20,7 @@ bugprone-throwing-static-initialization 33
 modernize-use-emplace 31
 bugprone-optional-value-conversion 30
 modernize-use-starts-ends-with 29
-modernize-use-string-view 28
+modernize-use-string-view 22
 performance-enum-size 22
 bugprone-unused-return-value 20
 modernize-raw-string-literal 20

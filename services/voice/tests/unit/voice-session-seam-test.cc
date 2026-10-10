@@ -28,6 +28,14 @@
 #include <utility>
 #include <vector>
 
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
+
 namespace
 {
 
@@ -334,10 +342,14 @@ public:
       throw std::runtime_error("voice-test-config: the duplex config did not take");
   }
 
-  ~DuplexConfig() noexcept(false)
+  ~DuplexConfig()
   {
     std::remove(kPath);
-    voice_test_config::restoreOpening(previous_);
+    try {
+      voice_test_config::restoreOpening(previous_);
+    } catch (...) {
+      std::fprintf(stderr, "voice-test: could not restore the opening\n");
+    }
   }
 
   DuplexConfig(const DuplexConfig&) = delete;
@@ -357,10 +369,14 @@ public:
     write(enabled, opening);
   }
 
-  ~LatencyTraceConfig() noexcept(false)
+  ~LatencyTraceConfig()
   {
     std::remove(kPath);
-    voice_test_config::restoreOpening(previous_);
+    try {
+      voice_test_config::restoreOpening(previous_);
+    } catch (...) {
+      std::fprintf(stderr, "voice-test: could not restore the opening\n");
+    }
   }
 
   void write(bool enabled, std::string_view opening)
@@ -476,7 +492,7 @@ void feedBurst(const BurstInput& input)
   for (const auto& part : input.parts) {
     const auto value = static_cast<int16_t>(part.prob * 32767.0F);
     const auto low = static_cast<char>(static_cast<uint16_t>(value) & 0xFFU);
-    const auto high = static_cast<char>((static_cast<uint16_t>(value) >> 8U) & 0xFFU);
+    const auto high = static_cast<char>((static_cast<uint32_t>(value) >> 8U) & 0xFFU);
     for (int i = 0; i < part.windows * kWindow; ++i) {
       pcm.push_back(low);
       pcm.push_back(high);
@@ -1980,9 +1996,11 @@ namespace
   return {.userId = 0, .name = {}, .score = 0.6F, .verdict = VoiceSpeakerVerdict::Holder};
 }
 
-[[nodiscard]] std::string speakerFrame()
+[[nodiscard]] const std::string& speakerFrame()
 {
-  return "Voz en la llamada (es solo una pista, nunca una prueba; menciónala solo si viene al caso): ";
+  static const std::string frame =
+      "Voz en la llamada (es solo una pista, nunca una prueba; menciónala solo si viene al caso): ";
+  return frame;
 }
 
 [[nodiscard]] std::vector<std::string> speakerNotes(const auto& session)
@@ -2013,7 +2031,7 @@ struct ScriptedSpeaker final : IVoiceSpeaker
     keys.push_back(input.callKey);
     if (input.samples.size() > static_cast<size_t>(16000 * 6) || results.empty())
       return std::nullopt;
-    const VoiceSpeaker found = results.front();
+    VoiceSpeaker found = results.front();
     results.erase(results.begin());
     return found;
   }
@@ -2041,7 +2059,7 @@ struct BlockingSpeaker final : IVoiceSpeaker
       std::unique_lock lock(mutex);
       ready.wait_for(lock, std::chrono::seconds(3), [this] { return released; });
     }
-    const VoiceSpeaker found = unfamiliarSpeaker();
+    VoiceSpeaker found = unfamiliarSpeaker();
     {
       std::scoped_lock lock(mutex);
       finished = true;
@@ -2294,22 +2312,22 @@ TEST_CASE("A holder verdict survives without a user id, and only no verdict at a
   response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_HOLDER);
   const std::optional<VoiceSpeaker> holder = voiceSpeakerOf(response);
   REQUIRE(holder.has_value());
-  CHECK(holder->verdict == VoiceSpeakerVerdict::Holder);
-  CHECK(holder->userId == 0);
+  CHECK(requireValue(holder).verdict == VoiceSpeakerVerdict::Holder);
+  CHECK(requireValue(holder).userId == 0);
   response.set_user_id(9);
   response.set_name("Laura");
   response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_OTHER_KNOWN);
   const std::optional<VoiceSpeaker> other = voiceSpeakerOf(response);
   REQUIRE(other.has_value());
-  CHECK(other->verdict == VoiceSpeakerVerdict::OtherKnown);
-  CHECK(other->name == "Laura");
+  CHECK(requireValue(other).verdict == VoiceSpeakerVerdict::OtherKnown);
+  CHECK(requireValue(other).name == "Laura");
   response.set_user_id(0);
   response.clear_name();
   response.set_verdict(argus::identity::v1::VOICEPRINT_VERDICT_UNFAMILIAR);
   const std::optional<VoiceSpeaker> unfamiliar = voiceSpeakerOf(response);
   REQUIRE(unfamiliar.has_value());
-  CHECK(unfamiliar->verdict == VoiceSpeakerVerdict::Unfamiliar);
-  CHECK(unfamiliar->userId == 0);
+  CHECK(requireValue(unfamiliar).verdict == VoiceSpeakerVerdict::Unfamiliar);
+  CHECK(requireValue(unfamiliar).userId == 0);
   response.set_outcome(argus::identity::v1::VOICEPRINT_UNAVAILABLE);
   CHECK_FALSE(voiceSpeakerOf(response).has_value());
 }
@@ -2935,7 +2953,12 @@ TEST_CASE("An announcement reaches every live call of that user and nobody else"
 
 int main(int argc, char** argv)
 {
-  const SuiteOpeningConfig suiteOpening;
-  doctest::Context context(argc, argv);
-  return context.run();
+  try {
+    const SuiteOpeningConfig suiteOpening;
+    doctest::Context context(argc, argv);
+    return context.run();
+  } catch (const std::exception& failure) {
+    std::fprintf(stderr, "voice-session-seam-test: %s\n", failure.what());
+    return 1;
+  }
 }

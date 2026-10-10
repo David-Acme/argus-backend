@@ -88,7 +88,14 @@ public:
     voice_test_config::writeOpening(opening);
   }
 
-  ~OpeningConfig() noexcept(false) { voice_test_config::restoreOpening(previous_); }
+  ~OpeningConfig()
+  {
+    try {
+      voice_test_config::restoreOpening(previous_);
+    } catch (...) {
+      std::fprintf(stderr, "voice-test-config: could not restore the opening\n");
+    }
+  }
 
   OpeningConfig(const OpeningConfig&) = delete;
   OpeningConfig& operator=(const OpeningConfig&) = delete;
@@ -107,7 +114,14 @@ public:
     voice_test_config::clearConfig();
   }
 
-  ~ClearedVoiceConfig() noexcept(false) { voice_test_config::restoreOpening(previous_); }
+  ~ClearedVoiceConfig()
+  {
+    try {
+      voice_test_config::restoreOpening(previous_);
+    } catch (...) {
+      std::fprintf(stderr, "voice-test-config: could not restore the opening\n");
+    }
+  }
 
   ClearedVoiceConfig(const ClearedVoiceConfig&) = delete;
   ClearedVoiceConfig& operator=(const ClearedVoiceConfig&) = delete;
