@@ -139,6 +139,16 @@ set_target_properties(eval-score-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME eval-score-test COMMAND eval-score-test)
 
+add_executable(eval-tools-test eval-tools-test.cc eval-tools.cc)
+
+target_link_libraries(eval-tools-test PRIVATE llm-eval-core argus::llm doctest::doctest)
+
+target_compile_options(eval-tools-test PRIVATE -Wall -Wextra)
+
+set_target_properties(eval-tools-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME eval-tools-test COMMAND eval-tools-test)
+
 add_executable(llm-tier-eval llm-tier-eval.cc eval-tools.cc)
 
 target_link_libraries(llm-tier-eval PRIVATE llm-eval-core argus::llm)

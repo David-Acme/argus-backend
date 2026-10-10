@@ -203,17 +203,20 @@ std::string targetOf(const tools::ToolCall& call)
   return {};
 }
 
-std::string_view outputFor(const std::string& tool)
+std::string_view outputFor(const tools::ToolCall& call)
 {
+  const bool english = call.context.lang == "en";
+  const std::string& tool = call.name;
   if (tool == "memory.recall")
-    return "No tengo nada guardado sobre eso.";
+    return english ? "I have nothing saved about that." : "No tengo nada guardado sobre eso.";
   if (tool == "reminder.list" || tool == "calendar.list_events" || tool == "task.list" || tool == "project.list")
-    return "No hay nada pendiente.";
+    return english ? "There is nothing pending." : "No hay nada pendiente.";
   if (tool == "modules.list")
-    return "core activo; productivity y surveillance activos.";
+    return english ? "core active; productivity and surveillance active."
+                   : "core activo; productivity y surveillance activos.";
   if (tool == "modules.explain")
-    return "Es un módulo de Argus; está activo.";
-  return "Hecho.";
+    return english ? "It is an Argus module; it is active." : "Es un módulo de Argus; está activo.";
+  return english ? "Done." : "Hecho.";
 }
 
 std::function<tools::ToolResult(const tools::ToolCall&)> handlerFor(const ToolSpec& spec, const StubInput& input)
@@ -225,7 +228,7 @@ std::function<tools::ToolResult(const tools::ToolCall&)> handlerFor(const ToolSp
     if (!destructive) {
       input.recorder->ran({.tool = call.name, .arguments = call.arguments});
       result.ok = true;
-      result.output = std::string(outputFor(call.name));
+      result.output = outputFor(call);
       return result;
     }
     const argus::mcp::ConfirmationKey key{.userId = call.context.userId, .tool = call.name, .target = targetOf(call)};
@@ -234,20 +237,23 @@ std::function<tools::ToolResult(const tools::ToolCall&)> handlerFor(const ToolSp
       const std::string code = input.ledger->issue(key);
       input.recorder->previewed(call.name);
       result.ok = true;
-      result.output = "Esto detendría o cancelaría «" + key.target + "».";
+      result.output = (call.context.lang == "en" ? "This would stop or cancel «" : "Esto detendría o cancelaría «") +
+                      key.target + "».";
       result.data["needsConfirmation"] = true;
       result.data["confirmation"] = code;
       return result;
     }
     if (!input.ledger->consume(key, token)) {
       result.code = "confirmation_invalid";
-      result.output = "Ese código no vale (ya se usó, venció o es de otro objetivo). Vuelve a pedirle la confirmación al usuario.";
+      result.output = call.context.lang == "en"
+                          ? "That code is not valid (used, expired or for another target). Ask the user to confirm again."
+                          : "Ese código no vale (ya se usó, venció o es de otro objetivo). Vuelve a pedirle la confirmación al usuario.";
       return result;
     }
     input.recorder->confirmed(call.name);
     input.recorder->ran({.tool = call.name, .arguments = call.arguments});
     result.ok = true;
-    result.output = "Hecho.";
+    result.output = call.context.lang == "en" ? "Done." : "Hecho.";
     return result;
   };
 }
