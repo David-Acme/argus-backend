@@ -195,7 +195,7 @@ void creatingAnEventBelongsToTheCaller(Env& env)
   reset(env);
   const auto created = env.ana("calendar.create_event", args({{"title", "Reunión con Pedro"}, {"starts_at", kStart}, {"location", "Oficina"}}));
   CHECK_FALSE(created.isError);
-  CHECK(created.text == "Agendado: «Reunión con Pedro», el miércoles 6 de marzo a las 3 de la tarde.");
+  CHECK(created.text == "Quedó agendado «Reunión con Pedro» para el miércoles 6 de marzo a las 3 de la tarde.");
   CHECK(liveEvents("Reunión con Pedro") == 1);
   CHECK(ownerOfEvent("Reunión con Pedro") == kAna);
   CHECK(created.structured["title"].asString() == "Reunión con Pedro");
@@ -210,7 +210,7 @@ void creatingAnEventBelongsToTheCaller(Env& env)
   CHECK(again.structured["id"].asInt64() == created.structured["id"].asInt64());
 
   const auto english = env.call("calendar.create_event", args({{"title", "Dentist"}, {"starts_at", "2030-03-07T09:30:00+00:00"}}), {.userId = kAna, .role = "owner", .lang = "en"});
-  CHECK(english.text == "Scheduled: «Dentist», on Thursday, March 7th at 9:30 AM.");
+  CHECK(english.text == "«Dentist» is scheduled for Thursday, March 7th at 9:30 AM.");
 }
 
 void theReadBackNamesTheDayAndTheTimeInWords(Env& env)
@@ -229,11 +229,11 @@ void theReadBackNamesTheDayAndTheTimeInWords(Env& env)
   const auto weekday = static_cast<std::size_t>(today.tm_wday);
   const std::string iso = iso_time::format(startsAt);
   const auto spanish = env.ana("calendar.create_event", args({{"title", "Café"}, {"starts_at", iso}}));
-  CHECK(spanish.text == std::string("Agendado: «Café», el ") + days.at(weekday) + " " + std::to_string(today.tm_mday) + " a las 5 de la tarde.");
+  CHECK(spanish.text == std::string("Quedó agendado «Café» para el ") + days.at(weekday) + " " + std::to_string(today.tm_mday) + " a las 5 de la tarde.");
   const auto english = env.call("calendar.create_event", args({{"title", "Coffee"}, {"starts_at", iso}}), {.userId = kAna, .role = "owner", .lang = "en"});
   const int day = today.tm_mday;
   const std::string suffix = day % 10 == 1 && day != 11 ? "st" : (day % 10 == 2 && day != 12 ? "nd" : (day % 10 == 3 && day != 13 ? "rd" : "th"));
-  CHECK(english.text == std::string("Scheduled: «Coffee», on ") + englishDays.at(weekday) + " the " + std::to_string(day) + suffix + " at 5 PM.");
+  CHECK(english.text == std::string("«Coffee» is scheduled for ") + englishDays.at(weekday) + " the " + std::to_string(day) + suffix + " at 5 PM.");
 }
 
 void anEventNeedsAUnderstandableStart(Env& env)
@@ -359,7 +359,7 @@ void projectsAndTasksFollowTheirProject(Env& env)
 
   const auto lone = env.ana("task.create", args({{"title", "Llamar al dentista"}, {"priority", "high"}}));
   CHECK_FALSE(lone.isError);
-  CHECK(lone.text == "Tarea agregada: «Llamar al dentista» (Casa nueva).");
+  CHECK(lone.text == "Quedó agregada la tarea «Llamar al dentista» (Casa nueva).");
   CHECK(lone.structured["priority"].asString() == "high");
 
   env.ana("project.create", args({{"name", "Trabajo"}}));
@@ -374,7 +374,7 @@ void projectsAndTasksFollowTheirProject(Env& env)
 
   const auto named = env.ana("task.create", args({{"title", "Enviar informe"}, {"project", "trabajo"}, {"due_at", "2030-03-08T00:00:00+00:00"}}));
   CHECK_FALSE(named.isError);
-  CHECK(named.text == "Tarea agregada: «Enviar informe» (Trabajo), para el viernes 8 de marzo.");
+  CHECK(named.text == "Quedó agregada la tarea «Enviar informe» (Trabajo), para el viernes 8 de marzo.");
 
   const auto unknown = env.ana("task.create", args({{"title", "x"}, {"project", "jardín"}}));
   CHECK(unknown.isError);

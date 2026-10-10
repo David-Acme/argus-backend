@@ -270,7 +270,8 @@ drogon::Task<argus::mcp::ToolOutcome> createTask(argus::mcp::ToolInvocation invo
                        .english = "You cannot add tasks to that project."},
                       "forbidden");
   argus::mcp::ToolOutcome outcome;
-  outcome.text = (argus::mcp::speech::inEnglish(invocation) ? "Task added: " : "Tarea agregada: ") + describeTask(*row, chosen.project->name, invocation) + ".";
+  outcome.text = (argus::mcp::speech::inEnglish(invocation) ? "The task " : "Quedó agregada la tarea ") + describeTask(*row, chosen.project->name, invocation) +
+                 (argus::mcp::speech::inEnglish(invocation) ? " was added." : ".");
   outcome.structured = taskSummary(*row, chosen.project->name);
   co_return outcome;
 }

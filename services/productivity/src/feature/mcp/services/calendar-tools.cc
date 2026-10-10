@@ -40,7 +40,7 @@ std::string spokenStart(const CalendarEventSchema& event, const argus::mcp::Tool
                                .now = static_cast<int64_t>(std::time(nullptr)),
                                .lang = language,
                                .day = spoken_time::Day::Weekday,
-                               .bare = false};
+                               .bare = true};
   return event.isAllDay ? spoken_time::day(when) : spoken_time::moment(when);
 }
 
@@ -150,7 +150,9 @@ drogon::Task<argus::mcp::ToolOutcome> createEvent(argus::mcp::ToolInvocation inv
   }
   argus::mcp::ToolOutcome outcome;
   const std::string start = spokenStart(row, invocation);
-  outcome.text = (argus::mcp::speech::inEnglish(invocation) ? "Scheduled: " : "Agendado: ") + ("«" + row.title + "», " + start) + ".";
+  outcome.text = argus::mcp::speech::inEnglish(invocation)
+                     ? "«" + row.title + "» is scheduled for " + start + "."
+                     : "Quedó agendado «" + row.title + "» para " + start + ".";
   outcome.structured = summary(row);
   outcome.structured["readback"] = start;
   co_return outcome;
