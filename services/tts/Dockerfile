@@ -27,6 +27,12 @@ RUN --mount=type=cache,target=/root/.conan2/p \
     --mount=type=cache,target=/root/.conan2/b \
     ./scripts/build-all.sh prod --no-tests --only tts
 
+FROM build AS test
+
+RUN --mount=type=cache,target=/root/.conan2/p \
+    --mount=type=cache,target=/root/.conan2/b \
+    ./scripts/build-all.sh prod --only tts
+
 FROM debian:trixie-slim AS runtime
 
 ARG ARGUS_UID=1000
