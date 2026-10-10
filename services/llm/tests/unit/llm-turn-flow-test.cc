@@ -864,11 +864,10 @@ TEST_CASE("the voice is told what was done and nothing else is added, with no to
   REQUIRE(spoken.script.requests.size() == 1);
   const ChatRequest& request = spoken.script.requests.front();
   CHECK_FALSE(request.toolCallsAllowed);
-  REQUIRE(request.messages.size() == 3);
+  REQUIRE(request.messages.size() == 2);
   CHECK(request.messages.front().role == "system");
   CHECK(request.messages.front().content == "persona");
-  CHECK(request.messages[1].role == "user");
-  CHECK(request.messages.back().role == "system");
+  CHECK(request.messages.back().role == "user");
   CHECK(request.messages.back().content.find("Agendé «Reunión con Andrea» para " + tomorrowAtFive()) != std::string::npos);
   for (const auto& message : request.messages) {
     CHECK(message.content.find("List of tools") == std::string::npos);
@@ -884,8 +883,8 @@ TEST_CASE("a question is rendered by the model, sync and streamed, and the act r
   REQUIRE(sync.script.requests.size() == 1);
   CHECK(output.reply == "¿Para cuándo la agendo?");
   CHECK(output.act == "ask_slot");
-  CHECK(sync.script.requests.front().messages.back().content.find("\"kind\":\"pregunta\"") != std::string::npos);
-  CHECK(sync.script.requests.front().messages.back().content.find("la fecha y hora") != std::string::npos);
+  CHECK(sync.script.requests.front().messages.back().role == "user");
+  CHECK(sync.script.requests.front().messages.back().content.find("Nota de la app: falta la fecha y hora.") != std::string::npos);
 
   Spoken streamed;
   streamed.script.replies = {"¿Para cuándo la agendo?"};
@@ -2239,8 +2238,7 @@ TEST_CASE("a done act carries its read-back, and a reply that leaves it out is a
   kept.script.replies = {"Listo, agendé «Reunión con Andrea» para el jueves 8 a las 5 de la tarde."};
   CHECK(kept.sync(utterance).reply == "Listo, agendé «Reunión con Andrea» para el jueves 8 a las 5 de la tarde.");
   REQUIRE(kept.script.requests.size() == 1);
-  CHECK(kept.script.requests.front().messages.back().content.find("\"readback\":\"" + readback + "\"") !=
-        std::string::npos);
+  CHECK(kept.script.requests.front().messages.back().content.find(readback) != std::string::npos);
 
   Spoken streamed;
   streamed.world.readback = readback;

@@ -828,10 +828,12 @@ ahí?", and only on a yes runs `project.create` and then the held task with that
 project at all (`no_projects`) the first question is the name of the new project. There is no
 default project, and a provider that does not name the projects leaves its own refusal to be said.
 
-The questions and the notes are one thing now: the acts. `speech-render.cc` composes one instruction
-line per act per language — the only copy the backend owns, and the user never receives it — one line
-of act JSON (a `DatePart` is resolved to its spoken surface against `now` at render time) and the
-context block. `speechOf` places the act on the outcome, so a unit test asserts the exact act a path
+The questions and the notes are one thing now: the acts. `speech-render.cc` composes one
+plain-fact line per act per language — the only copy the backend owns, and the user never
+receives it — prefixed with `Nota de la app:` / `App note:`, then the context block. It is the
+situation the turn's last user message carries after the user's words (a `DatePart` is resolved
+to its spoken surface against `now` at render time); no imperative and no act JSON survive.
+`speechOf` places the act on the outcome, so a unit test asserts the exact act a path
 reaches and never a sentence. `turn-texts.{hxx,cc}` is gone.
 
 Configuration (`config.toml.example`, deploy template): `[decide]`, `[decide.router]` and `[decide.rules]` with `act`,
@@ -872,12 +874,12 @@ The facts travel per turn, not in the history: `ChatRequest::contextFacts`
 (a `std::vector<ContextFact>{facet, text}`, additive). `LfmAdapter::chatTurn`
 and `chatPlainTurn` select the facts the turn's facets cover, drop the rest
 (never blanked into empty headers), order them most-relevant-first, and compose
-them into one framed tail system note beside the act — a frame that marks
+them into one framed block — a frame that marks
 the text as data written by others, never instructions
 (`turn::contextBlock`, es and en, in `context-selector.cc`, its only consumer). A fact whose facet the build does not
 know is dropped rather than injected. The profile and the name stay in the
-static prefix and are always present; the clock note stays where it is, before
-the last user message. The composed block is what `LlmChatOutcome::contextBlock`
+static prefix and are always present; the clock note and the situation ride in the last user
+message, the clock at its head and the situation after the user's words. The composed block is what `LlmChatOutcome::contextBlock`
 returns, so the eval scores `missedFact`/`leakedFact` against the exact prompt
 the turn sent.
 
@@ -1267,11 +1269,15 @@ more and then given up; a new command or a no replaces the question.
 
 Every created event and reminder is read back with the day and the time it
 resolved to, in words, from the tool's own result and not from the model:
-`calendar.create_event` says "Agendado: «Reunión con Pedro», el jueves 8 a las
-3 de la tarde." (and "Scheduled: «Dentist», on Thursday the 8th at 3 PM."),
+`calendar.create_event` says "Quedó agendado «Reunión con Pedro» para el jueves
+8 a las 3 de la tarde." (and "«Dentist» is scheduled for Thursday the 8th at
+3 PM."), `task.create` says "Quedó agregada la tarea «…» (Proyecto), para el
+viernes 8 de marzo.", and
 `memory.remind` appends "Te llamaré el jueves 8 a las 3 de la tarde." or, when
 only a reminder row was saved, "Quedó en tus recordatorios para el jueves 8 a
-las 3 de la tarde." (`reminder-readback.{hxx,cc}`). The wording is
+las 3 de la tarde." (`reminder-readback.{hxx,cc}`). The facts are plain
+sentences because the turn renders each as a plain fact under a label
+(`Nota de la app:`) that already ends in a colon. The wording is
 `spoken_time` (`packages/lib/text`), shared with the confirmation question,
 and is built to be said back: the resolver reads "a las 3 de la tarde", "a
 mediodía" and "a las 12 de la madrugada" (00:00) as the same instants

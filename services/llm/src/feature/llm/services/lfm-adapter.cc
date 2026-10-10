@@ -148,14 +148,19 @@ std::string LfmAdapter::clockNote(const std::vector<ChatMessage>& history, std::
 std::vector<ChatMessage> LfmAdapter::spokenMessages(const SpokenMessagesInput& input)
 {
   std::vector<ChatMessage> messages = input.history;
-  if (!input.clock.empty()) {
-    const auto lastUser = std::ranges::find_if(std::views::reverse(messages),
-                                               [](const ChatMessage& message) { return message.role == "user"; });
-    if (lastUser != std::views::reverse(messages).end())
-      messages.insert(std::prev(lastUser.base()), {.role = "system", .content = std::string(input.clock)});
+  const auto lastUser = std::ranges::find_if(std::views::reverse(messages),
+                                            [](const ChatMessage& message) { return message.role == "user"; });
+  if (lastUser == std::views::reverse(messages).end())
+    return messages;
+  std::string content = std::string(input.clock);
+  if (!content.empty())
+    content += "\n";
+  content += lastUser->content;
+  if (!input.notes.empty()) {
+    content += "\n";
+    content += input.notes;
   }
-  if (!input.notes.empty())
-    messages.push_back({.role = "system", .content = std::string(input.notes)});
+  lastUser->content = std::move(content);
   return messages;
 }
 
@@ -170,6 +175,10 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
   const SpeakInput args{.input = input.input, .history = input.history, .onToken = input.onToken};
   const bool streaming = input.onToken != nullptr;
   const bool question = turn::speech::isQuestion(input.speech.acts.back());
+  const std::string situation =
+      input.tail.empty()
+          ? turn::speech::actTail({.speech = input.speech, .contextBlock = input.contextBlock})
+          : std::string(input.tail);
   turn::speech::GuardVerdict verdict = turn::speech::GuardVerdict::Pass;
   std::string bestReply;
   turn::speech::GuardVerdict bestVerdict = turn::speech::GuardVerdict::Pass;
@@ -182,8 +191,8 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
     req.stop = {};
     req.toolCallsAllowed = false;
     const std::string notes =
-        attempt == 0 ? input.tail
-                     : input.tail + "\n" + std::string(turn::speech::feedback(verdict, lang));
+        attempt == 0 ? situation
+                     : situation + "\n" + std::string(turn::speech::feedback(verdict, lang));
     req.messages = speakMessages(args, notes);
 
     std::string raw;
@@ -376,14 +385,13 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
                                                    .tool = outcome.decidedTool},
                                          .facts = input.contextFacts});
     }
-    const std::string tail =
-        turn::speech::actTail({.speech = *spoken, .contextBlock = output.contextBlock});
     const auto started = std::chrono::steady_clock::now();
     speakAct({.input = input,
               .history = history,
               .onToken = args.onToken,
               .speech = *spoken,
-              .tail = tail,
+              .contextBlock = output.contextBlock,
+              .tail = turn::speech::actTail({.speech = *spoken, .contextBlock = output.contextBlock}),
               .asked = state.asked,
               .wrote = state.wrote,
               .opened = state.opened,

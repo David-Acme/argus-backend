@@ -55,18 +55,18 @@ struct PlainTurn
 };
 }
 
-TEST_CASE("a tool-less turn carries the clock note the adapter inserts before the last user message")
+TEST_CASE("a tool-less turn carries the clock note the adapter puts at the head of the last user message")
 {
   PlainTurn turn;
   turn.engine.reply = "Son las tres.";
   const ToolChatOutput asked = turn.adapter.chatPlain(turn.request("¿Qué hora es?"));
   REQUIRE(turn.engine.requests.size() == 1);
   const std::vector<ChatMessage>& sent = turn.engine.requests.front().messages;
-  REQUIRE(sent.size() == 3);
+  REQUIRE(sent.size() == 2);
   CHECK(sent[0].role == "system");
-  CHECK(sent[1].role == "system");
+  CHECK(sent[1].role == "user");
   CHECK(sent[1].content.starts_with("Referencia, menciónala solo si te preguntan la fecha o la hora: hoy es "));
-  CHECK(sent[2].role == "user");
+  CHECK(sent[1].content.find("¿Qué hora es?") != std::string::npos);
   CHECK(asked.reply == "Son las tres.");
 
   turn.engine.requests.clear();

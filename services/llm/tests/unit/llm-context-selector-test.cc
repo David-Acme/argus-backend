@@ -185,7 +185,7 @@ TEST_CASE("a tool-less turn appends the selected facts and drops the rest")
   REQUIRE(turn.engine.requests.size() == 1);
   const std::vector<ChatMessage>& sent = turn.engine.requests.front().messages;
   const std::string tail = sent.back().content;
-  CHECK(sent.back().role == "system");
+  CHECK(sent.back().role == "user");
   CHECK(tail.find(sampleFacts().camera.text) != std::string::npos);
   CHECK(tail.find(sampleFacts().agenda.text) == std::string::npos);
   CHECK(asked.contextBlock.find(sampleFacts().camera.text) != std::string::npos);

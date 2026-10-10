@@ -91,6 +91,11 @@ std::vector<Act> everyAct()
   return {askSlot(), confirm(), choose(), done(), refused(), offer(), declined(), unactionable(), misunderstood()};
 }
 
+std::string tailOf(const Act& act, std::string_view lang)
+{
+  return actTail({.speech = Speech{.acts = {act}, .lang = std::string(lang), .now = kNow}, .contextBlock = {}});
+}
+
 bool identifierShaped(std::string_view token)
 {
   const auto alnum = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; };
@@ -155,85 +160,110 @@ TEST_CASE("only the slot act names a slot, and every reason has a name")
   CHECK(reasonName(AskReason::ProjectNoneYet) == "project_none_yet");
 }
 
-TEST_CASE("every act renders an instruction in both languages and never one for the other's act")
+TEST_CASE("every act renders a situation in both languages, without a command or an identifier")
 {
   for (const Act& act : everyAct()) {
-    const std::string_view es = instructionLine(act, "es");
-    const std::string_view en = instructionLine(act, "en");
-    CHECK_FALSE(es.empty());
-    CHECK_FALSE(en.empty());
-    CHECK(es != en);
-  }
-  CHECK(instructionLine(askSlot(), "es").find("UNA pregunta") != std::string_view::npos);
-  CHECK(instructionLine(askSlot(), "en").find("Ask ONE question") != std::string_view::npos);
-  CHECK(instructionLine(confirm(), "es").find("si confirma") != std::string_view::npos);
-  CHECK(instructionLine(done(), "en").find("what was done") != std::string_view::npos);
-  CHECK(instructionLine(misunderstood(), "es").find("No lo has entendido") != std::string_view::npos);
-}
-
-TEST_CASE("the rendered prompt of every act carries no identifier-shaped token and never says missing value")
-{
-  for (const Act& act : everyAct())
     for (const char* lang : {"es", "en"}) {
-      const std::string tail =
-          actTail({.speech = Speech{.acts = {act}, .lang = lang, .now = kNow}, .contextBlock = {}});
+      const std::string tail = tailOf(act, lang);
+      CHECK_FALSE(tail.empty());
+      CHECK(tail.find(" -> ") == std::string::npos);
+      CHECK(tail.find('{') == std::string::npos);
+      CHECK(tail.find('}') == std::string::npos);
+      CHECK(tail.find("\"kind\"") == std::string::npos);
       CHECK_FALSE(hasIdentifierToken(tail));
-      std::string lowered = tail;
-      for (char& c : lowered)
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-      CHECK(lowered.find("missing value") == std::string::npos);
       CHECK(tail.find("ask_slot") == std::string::npos);
       CHECK(tail.find("calendar.") == std::string::npos);
       CHECK(tail.find("_") == std::string::npos);
+      CHECK(tail.find("Formula UNA") == std::string::npos);
+      CHECK(tail.find("Ask ONE") == std::string::npos);
     }
+    CHECK(tailOf(act, "es") != tailOf(act, "en"));
+  }
+}
+
+TEST_CASE("the ask situation is a labelled fact and never the user's own words")
+{
+  CHECK(tailOf(askSlot(), "es") == "Nota de la app: falta la fecha y hora.");
+  CHECK(tailOf(askSlot(), "en") == "App note: missing the date and time.");
+  const Act title = AskSlot{.slot = "title",
+                            .tool = "task.create",
+                            .knownArgs = Json::Value(Json::objectValue),
+                            .reason = AskReason::Missing,
+                            .dates = {},
+                            .options = {}};
+  CHECK(tailOf(title, "es") == "Nota de la app: falta el nombre de la tarea.");
 }
 
 TEST_CASE("the slot is rendered as a human label, never as its name or its tool")
 {
-  const auto tailOf = [](const Act& act, std::string_view lang) {
-    return actTail({.speech = Speech{.acts = {act}, .lang = std::string(lang), .now = kNow}, .contextBlock = {}});
-  };
   CHECK(tailOf(askSlot(), "es").find("la fecha y hora") != std::string::npos);
   CHECK(tailOf(askSlot(), "en").find("the date and time") != std::string::npos);
   CHECK(tailOf(askSlot(), "es").find("starts_at") == std::string::npos);
   CHECK(tailOf(askSlot(), "en").find("calendar.create_event") == std::string::npos);
 }
 
-TEST_CASE("the tail carries the instructions, one line of act JSON and the context block, in that order")
+TEST_CASE("the situation comes first and the context block last, with no trailing system command")
 {
   const Speech speech{.acts = {askSlot()}, .lang = "es", .now = kNow};
   const std::string tail = actTail({.speech = speech, .contextBlock = "Contexto de la app"});
-  const std::size_t instruction = tail.find("Formula UNA pregunta");
-  const std::size_t act = tail.find(R"("kind":"pregunta")");
+  const std::size_t situation = tail.find("Nota de la app:");
   const std::size_t context = tail.find("Contexto de la app");
-  REQUIRE(instruction != std::string::npos);
-  REQUIRE(act != std::string::npos);
+  REQUIRE(situation != std::string::npos);
   REQUIRE(context != std::string::npos);
-  CHECK(instruction < act);
-  CHECK(act < context);
+  CHECK(situation < context);
+  CHECK(tail.find("\"kind\"") == std::string::npos);
 
   CHECK(actTail({.speech = Speech{.acts = {}, .lang = "es", .now = kNow}, .contextBlock = {}}).empty());
 }
 
 TEST_CASE("each act renders its own fields and nothing of another act's")
 {
-  const auto tailOf = [](const Act& act, std::string_view lang) {
-    return actTail({.speech = Speech{.acts = {act}, .lang = std::string(lang), .now = kNow}, .contextBlock = {}});
-  };
-  CHECK(tailOf(askSlot(), "es").find("\"about\":\"la fecha y hora\"") != std::string::npos);
-  CHECK(tailOf(confirm(), "es").find("\"el nombre de la tarea\":\"Cena con Marta\"") != std::string::npos);
-  CHECK(tailOf(choose(), "es").find("\"options\":[\"una tarea\",\"un recordatorio\"]") != std::string::npos);
-  CHECK(tailOf(done(), "es").find("\"readback\":\"el jueves 8 a las 5\"") != std::string::npos);
-  CHECK(tailOf(refused(), "es").find("\"because\":\"no puedo crear proyectos\"") != std::string::npos);
-  CHECK(tailOf(offer(), "es").find("\"about\":\"Productividad\"") != std::string::npos);
-  CHECK(tailOf(unactionable(), "es").find("\"kind\":\"sin acción\"") != std::string::npos);
-  CHECK(tailOf(declined(), "es").find("\"kind\":\"el usuario dijo que no\"") != std::string::npos);
-  CHECK(tailOf(misunderstood(), "en").find("\"kind\":\"not understood\"") != std::string::npos);
-  CHECK(tailOf(done(), "es").find("\"about\"") == std::string::npos);
-  CHECK(tailOf(choose(), "es").find("\"readback\"") == std::string::npos);
+  CHECK(tailOf(askSlot(), "es").find("la fecha y hora") != std::string::npos);
+  CHECK(tailOf(confirm(), "es").find("Cena con Marta") != std::string::npos);
+  CHECK(tailOf(confirm(), "es").find("agendar el evento") != std::string::npos);
+  CHECK(tailOf(confirm(), "es").find("falta la confirmación del usuario") != std::string::npos);
+  CHECK(tailOf(choose(), "es").find("una tarea") != std::string::npos);
+  CHECK(tailOf(choose(), "es").find("un recordatorio") != std::string::npos);
+  CHECK(tailOf(done(), "es").find("Agendé la cena.") != std::string::npos);
+  CHECK(tailOf(refused(), "es").find("no puedo crear proyectos") != std::string::npos);
+  CHECK(tailOf(refused(), "es").find("anotar la tarea") != std::string::npos);
+  CHECK(tailOf(offer(), "es").find("Productividad") != std::string::npos);
+  CHECK(tailOf(unactionable(), "es").find("acción de Argus") != std::string::npos);
+  CHECK(tailOf(declined(), "es").find("el usuario dijo que no.") != std::string::npos);
+  CHECK(tailOf(misunderstood(), "en").find("the user was not understood.") != std::string::npos);
+  CHECK(tailOf(done(), "es").find("el nombre de la tarea") == std::string::npos);
+  CHECK(tailOf(choose(), "es").find("Agendé") == std::string::npos);
 }
 
-TEST_CASE("an ask act that already knows a value lists it by its human label")
+TEST_CASE("a note renders the tool's own read-back in place of a raw stamp, and never rewrites a fact it cannot improve")
+{
+  const auto hasIso = [](const std::string& text) {
+    for (std::size_t at = 0; at + 16 <= text.size(); ++at) {
+      bool ok = text[at + 4] == '-' && text[at + 7] == '-' && text[at + 10] == 'T' && text[at + 13] == ':';
+      for (const std::size_t index : {0U, 1U, 2U, 3U, 5U, 6U, 8U, 9U, 11U, 12U, 14U, 15U})
+        ok = ok && std::isdigit(static_cast<unsigned char>(text[at + index])) != 0;
+      if (ok)
+        return true;
+    }
+    return false;
+  };
+  const Done spoken{.tool = "calendar.create_event",
+                     .fact = "Quedó agendado «Reunión con Andrea» para el jueves 15 a las cinco de la tarde.",
+                     .readback = "el jueves 15 a las cinco de la tarde"};
+  CHECK_FALSE(hasIso(tailOf(spoken, "es")));
+  CHECK(tailOf(spoken, "es").find("jueves 15") != std::string::npos);
+  const Done stamped{.tool = "calendar.create_event",
+                      .fact = "Agendé «Reunión con Andrea» para 2026-10-15T17:00:00-05:00.",
+                      .readback = "el jueves 15 a las cinco de la tarde"};
+  CHECK_FALSE(hasIso(tailOf(stamped, "es")));
+  CHECK(tailOf(stamped, "es").find("jueves 15") != std::string::npos);
+  const Done unstamped{.tool = "calendar.create_event",
+                       .fact = "Agendé «Reunión con Andrea» para 2026-10-15T17:00:00-05:00.",
+                       .readback = {}};
+  CHECK(tailOf(unstamped, "es") == "Nota de la app: Agendé «Reunión con Andrea» para 2026-10-15T17:00:00-05:00.");
+}
+
+TEST_CASE("an ask act that already knows a value names it by its human label")
 {
   Json::Value known(Json::objectValue);
   known["title"] = "Cena";
@@ -243,13 +273,12 @@ TEST_CASE("an ask act that already knows a value lists it by its human label")
                           .reason = AskReason::Missing,
                           .dates = {},
                           .options = {}};
-  const std::string tail =
-      actTail({.speech = Speech{.acts = {ask}, .lang = "es", .now = kNow}, .contextBlock = {}});
-  CHECK(tail.find("\"known\":[\"el nombre de la tarea\"]") != std::string::npos);
+  const std::string tail = tailOf(ask, "es");
+  CHECK(tail.find("el nombre de la tarea: Cena") != std::string::npos);
   CHECK(tail.find("\"title\"") == std::string::npos);
 }
 
-TEST_CASE("a date part is carried as data and resolved against now when the tail is built")
+TEST_CASE("a date part is carried as data and resolved against now when the situation is built")
 {
   const Speech speech{.acts = {AskSlot{.slot = "starts_at",
                                        .tool = "calendar.create_event",
@@ -261,7 +290,7 @@ TEST_CASE("a date part is carried as data and resolved against now when the tail
                       .now = kNow};
   const std::string tail = actTail({.speech = speech, .contextBlock = {}});
   CHECK(tail.find(dateSurface(DatePart{.kind = DateKind::Clock, .epoch = kNow}, "es", kNow)) != std::string::npos);
-  CHECK(tail.find("\"because\":\"esa hora ya pasó hoy\"") != std::string::npos);
+  CHECK(tail.find("esa hora ya pasó hoy") != std::string::npos);
   CHECK(dateSurface(DatePart{.kind = DateKind::Clock, .epoch = kNow}, "es", kNow).starts_with("a l"));
   CHECK(dateSurface(DatePart{.kind = DateKind::Clock, .epoch = kNow}, "en", kNow).starts_with("at "));
   CHECK(dateSurface(DatePart{.kind = DateKind::Today, .epoch = kNow}, "es", kNow).starts_with("hoy "));
@@ -270,16 +299,17 @@ TEST_CASE("a date part is carried as data and resolved against now when the tail
   CHECK(dateSurface(DatePart{.kind = DateKind::CalendarDate, .epoch = later}, "en", kNow).starts_with("on "));
 }
 
-TEST_CASE("several acts of one turn render as several JSON lines under one instruction")
+TEST_CASE("several acts of one turn render as several situation lines")
 {
   const Speech speech{.acts = {Done{.tool = "project.create", .fact = "Proyecto creado.", .readback = {}},
                                Done{.tool = "task.create", .fact = "Tarea anotada.", .readback = {}}},
                       .lang = "en",
                       .now = kNow};
   const std::string tail = actTail({.speech = speech, .contextBlock = {}});
-  CHECK(tail.find("\"fact\":\"Proyecto creado.\"") != std::string::npos);
-  CHECK(tail.find("\"fact\":\"Tarea anotada.\"") != std::string::npos);
-  CHECK(tail.find("Tell the user") != std::string::npos);
+  CHECK(tail.find("Proyecto creado.") != std::string::npos);
+  CHECK(tail.find("Tarea anotada.") != std::string::npos);
+  CHECK(tail.find("App note: ") != std::string::npos);
+  CHECK(tail.find('\n') != std::string::npos);
 }
 
 TEST_CASE("every act carries two few-shot examples per language, each free of an identifier")
@@ -295,6 +325,20 @@ TEST_CASE("every act carries two few-shot examples per language, each free of an
         CHECK_FALSE(hasIdentifierToken(line.second));
       }
     }
+}
+
+TEST_CASE("the examples are the comparison, not the main variant, and are off unless asked for")
+{
+  const Speech speech{.acts = {askSlot()}, .lang = "es", .now = kNow};
+  const std::string without = actTail({.speech = speech, .contextBlock = {}});
+  const std::string with = actTail({.speech = speech, .contextBlock = {}, .examples = true});
+  CHECK(without.find(" -> ") == std::string::npos);
+  REQUIRE(with.find(" -> ") != std::string::npos);
+  const std::span<const ExampleLine> lines = exampleLines(askSlot(), "es");
+  for (const ExampleLine& line : lines) {
+    CHECK(with.find(line.first) != std::string::npos);
+    CHECK(with.find(line.second) != std::string::npos);
+  }
 }
 
 TEST_CASE("the few-shot examples are pinned as a fixture and match it act by act")
@@ -390,18 +434,12 @@ TEST_CASE("every act's rendered prompt carries no fixed text of the other langua
       const bool english = std::string_view(lang) == "en";
       const std::string& persona = english ? personaEn : personaEs;
       const std::string_view other = english ? "es" : "en";
-      const Speech speech{.acts = {act}, .lang = lang, .now = kNow};
-      const std::string prompt = persona + "\n" + actTail({.speech = speech, .contextBlock = {}});
+      const std::string prompt = persona + "\n" + tailOf(act, lang);
       const std::vector<std::string> promptWords = wordsOf(prompt);
 
       std::vector<std::string> foreign = lines(english ? personaEs : personaEn);
-      for (const Act& sample : everyAct()) {
-        foreign.emplace_back(instructionLine(sample, other));
-        for (const ExampleLine& line : exampleLines(sample, other)) {
-          foreign.emplace_back(line.first);
-          foreign.emplace_back(line.second);
-        }
-      }
+      for (const Act& sample : everyAct())
+        foreign.emplace_back(tailOf(sample, other));
       std::size_t leaked = 0;
       for (const std::string& phrase : foreign)
         if (contains(promptWords, wordsOf(phrase)))
