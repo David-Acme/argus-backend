@@ -77,6 +77,7 @@ struct SpokenMessagesInput
   const std::vector<ChatMessage>& history;
   std::string_view clock;
   std::string_view notes;
+  std::string_view lang;
 };
 
 struct PlainChatInput

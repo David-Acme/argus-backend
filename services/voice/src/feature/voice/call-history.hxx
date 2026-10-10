@@ -1,5 +1,6 @@
 #pragma once
 
+#include <auth/user-role.hxx>
 #include <feature/voice/speaker-verdict.hxx>
 #include <llm/llm-service.hxx>
 #include <voice/voice-lang.hxx>
@@ -30,6 +31,13 @@ struct CallSpeakerNote
   std::string holder;
 };
 
+struct CallSpeaker
+{
+  UserRole role{UserRole::Unknown};
+  std::string name;
+  bool voiceCall{true};
+};
+
 struct CallEntry
 {
   CallEntryKind kind{CallEntryKind::Prompt};
@@ -51,6 +59,7 @@ public:
 
   void addNote(const std::string& note);
   void setSituation(const std::string& situation);
+  void setSpeaker(const CallSpeaker& speaker);
   void addEvent(const std::string& event);
   void addUser(const std::string& text);
   void addTone(const std::string& tone);
@@ -71,6 +80,7 @@ private:
 
   VoiceLang lang_;
   CallHistoryLimits limits_;
+  CallSpeaker speaker_;
   std::vector<CallEntry> entries_;
   std::vector<std::string> notes_;
   std::string situation_;

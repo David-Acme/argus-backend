@@ -527,6 +527,7 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
                                       : userRoleToString(UserRole::Unknown);
   if (userName.size() >= 2)
     session->userName = userName;
+  session->history.setSpeaker({.role = userRoleFromString(session->role), .name = session->userName});
   session->callId = "voice-" + std::to_string(identity.user_id()) + "-" +
                     std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
                                        std::chrono::system_clock::now().time_since_epoch())

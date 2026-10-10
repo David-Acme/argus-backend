@@ -145,6 +145,11 @@ std::string LfmAdapter::clockNote(const std::vector<ChatMessage>& history, std::
   return time_arguments::clockLine(static_cast<int64_t>(std::time(nullptr)), std::string(lang));
 }
 
+std::string_view languageDirective(std::string_view lang)
+{
+  return lang == "en" ? "Reply in English." : "Responde en español.";
+}
+
 std::vector<ChatMessage> LfmAdapter::spokenMessages(const SpokenMessagesInput& input)
 {
   std::vector<ChatMessage> messages = input.history;
@@ -152,9 +157,12 @@ std::vector<ChatMessage> LfmAdapter::spokenMessages(const SpokenMessagesInput& i
                                             [](const ChatMessage& message) { return message.role == "user"; });
   if (lastUser == std::views::reverse(messages).end())
     return messages;
-  std::string content = std::string(input.clock);
-  if (!content.empty())
+  std::string content(languageDirective(input.lang));
+  content += "\n";
+  if (!input.clock.empty()) {
+    content += input.clock;
     content += "\n";
+  }
   content += lastUser->content;
   if (!input.notes.empty()) {
     content += "\n";
@@ -166,7 +174,8 @@ std::vector<ChatMessage> LfmAdapter::spokenMessages(const SpokenMessagesInput& i
 
 std::vector<ChatMessage> LfmAdapter::speakMessages(const SpeakInput& args, const std::string& notes) const
 {
-  return spokenMessages({.history = args.history, .clock = args.input.clock, .notes = notes});
+  return spokenMessages(
+      {.history = args.history, .clock = args.input.clock, .notes = notes, .lang = args.input.context.lang});
 }
 
 void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
@@ -472,7 +481,8 @@ ToolChatOutput LfmAdapter::chatPlainTurn(const PlainChatInput& input)
                                            .facts = request.contextFacts});
   req.messages = spokenMessages({.history = request.messages,
                                  .clock = clockNote(request.messages, lang),
-                                 .notes = output.contextBlock});
+                                 .notes = output.contextBlock,
+                                 .lang = lang});
 
   const auto started = std::chrono::steady_clock::now();
   if (request.prefillOnly) {

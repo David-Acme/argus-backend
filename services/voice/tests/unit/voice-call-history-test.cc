@@ -3,6 +3,9 @@
 
 #include <feature/voice/call-history.hxx>
 
+#include <auth/capability-speech.hxx>
+#include <auth/module-gate.hxx>
+
 #include <algorithm>
 #include <fstream>
 #include <iterator>
@@ -69,6 +72,7 @@ TEST_CASE("The user message carries only what was heard and the tone note follow
 TEST_CASE("Notes before the first request fold into the prompt; later ones append")
 {
   CallHistory history(VoiceLang::Es);
+  history.setSpeaker({.role = UserRole::Owner, .name = "David"});
   history.addAssistant("Hola.");
   history.addNote("Cámaras de la casa: Entrada, Patio.");
   history.setSituation("Modo de vigilancia: en casa.");
@@ -76,7 +80,12 @@ TEST_CASE("Notes before the first request fold into the prompt; later ones appen
   CHECK(history.entries().front().message.content.find("Cámaras de la casa: Entrada, Patio.") != std::string::npos);
   CHECK(history.entries().front().message.content.find("Modo de vigilancia: en casa.") != std::string::npos);
   CHECK(history.entries().front().message.content.find("Lo que sabes ahora mismo por la app") != std::string::npos);
-  const std::string firstRequest = readFile(ARGUS_CALL_PROMPT_ES) + "\n" + readFile(ARGUS_CALL_KNOWN_ES) + "\n" +
+  const std::string capabilities =
+      role_access::capabilitySentence({.lang = "es", .role = UserRole::Owner, .modules = moduleGate().snapshot()});
+  const std::string speaker =
+      role_access::speakerLine({.lang = "es", .role = UserRole::Owner, .name = "David", .voiceCall = true});
+  const std::string firstRequest = readFile(ARGUS_CALL_PROMPT_ES) + "\n" + capabilities + "\n" + speaker + "\n" +
+                                   readFile(ARGUS_CALL_KNOWN_ES) + "\n" +
                                    "Cámaras de la casa: Entrada, Patio." + "\n" + "Modo de vigilancia: en casa.";
   CHECK(history.entries().front().message.content == firstRequest);
 

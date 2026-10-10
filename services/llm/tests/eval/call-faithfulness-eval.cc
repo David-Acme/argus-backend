@@ -3,6 +3,7 @@
 #include "eval-score.hxx"
 #include "eval-tools.hxx"
 
+#include <auth/capability-speech.hxx>
 #include <auth/module-gate.hxx>
 #include <config/config-service.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
@@ -64,6 +65,7 @@ constexpr int64_t kEvalUser = 7;
 constexpr int kContextSize = 8192;
 constexpr int kMaxTokens = 160;
 constexpr int kMaxSentences = 3;
+constexpr UserRole kEvalRole = UserRole::Owner;
 
 struct Options
 {
@@ -189,6 +191,7 @@ struct CallCase
 {
   std::string id;
   std::string lang;
+  std::string name;
   std::vector<ContextFact> facts;
   std::vector<std::string> notes;
   std::vector<std::string> script;
@@ -245,6 +248,7 @@ LoadedCallCases loadCallCases(const std::string& path)
     CallCase item;
     item.id = node["id"].asString();
     item.lang = node.get("lang", "es").asString();
+    item.name = node.get("name", "").asString();
     for (const auto& fact : node["facts"]) {
       if (fact.isObject())
         item.facts.push_back({.facet = fact.get("facet", "").asString(), .text = fact.get("text", "").asString()});
@@ -360,6 +364,24 @@ std::string catalogPathFor(const std::string& casesPath)
   if (std::filesystem::exists(local))
     return local.string();
   return derived.lexically_normal().string();
+}
+
+std::string withCapabilities(const std::string& persona, std::string_view lang, UserRole role)
+{
+  const std::string capabilities =
+      role_access::capabilitySentence({.lang = lang, .role = role, .modules = moduleGate().snapshot()});
+  if (capabilities.empty())
+    return persona;
+  return persona + "\n" + capabilities;
+}
+
+std::string withSpeaker(const std::string& persona, std::string_view lang, UserRole role, std::string_view name)
+{
+  const std::string line =
+      role_access::speakerLine({.lang = lang, .role = role, .name = name, .voiceCall = true});
+  if (line.empty())
+    return persona;
+  return persona + "\n" + line;
 }
 
 std::string tomlFloat(float value)
@@ -691,7 +713,7 @@ CaseRecord runCase(const CaseInput& input)
       legacyFacts.push_back(fact.text);
   run.staticPrefix = call_checks::staticPrompt({.roles = input.item.roles,
                                                 .rolesDefault = input.roles,
-                                                .prompt = input.prompt,
+                                                .prompt = withSpeaker(input.prompt, input.item.lang, kEvalRole, input.item.name),
                                                 .person = input.item.person,
                                                 .known = input.known,
                                                 .facts = legacyFacts});
@@ -1739,6 +1761,10 @@ int main(int argc, char** argv)
     ToolRegistry::instance().registerTool(std::move(descriptor));
 
   moduleGate().apply(catalog);
+  const std::string personaEs = withCapabilities(spanish.bytes, "es", kEvalRole);
+  const std::string personaEn = withCapabilities(english.bytes, "en", kEvalRole);
+  const std::string renderEs = withSpeaker(personaEs, "es", kEvalRole, {});
+  const std::string renderEn = withSpeaker(personaEn, "en", kEvalRole, {});
   const std::vector<tools::ToolHandle> offered =
       controller.adapter().executor().offered({.role = UserRole::Owner, .modules = moduleGate().snapshot()});
   const Engines engines = setupEngines(controller, options);
@@ -1754,8 +1780,8 @@ int main(int argc, char** argv)
     const int result = runRendering({.options = options,
                                      .gates = gates,
                                      .adapter = controller.adapter(),
-                                     .promptEs = spanish.bytes,
-                                     .promptEn = english.bytes,
+                                     .promptEs = renderEs,
+                                     .promptEn = renderEn,
                                      .markers = markers,
                                      .now = call_checks::renderInstant(options.now)});
     controller.shutdownEngine();
@@ -1773,7 +1799,7 @@ int main(int argc, char** argv)
                             .item = item,
                             .stubs = stubs,
                             .offered = offered,
-                            .prompt = englishCase ? english.bytes : spanish.bytes,
+                            .prompt = englishCase ? personaEn : personaEs,
                             .known = englishCase ? knownEn.bytes : knownEs.bytes,
                             .roles = englishCase ? rolesEn : rolesEs,
                             .dropped = options.dropFacets,
