@@ -33,6 +33,11 @@ configure() {
   cmake -S "$PROJ" -B "$build" -G Ninja "$@" > "$build.configure.log" 2>&1
 }
 
+configure_env_pools() {
+  local build="$1" pools="$2"; shift 2
+  ARGUS_LINK_POOLS="$pools" cmake -S "$PROJ" -B "$build" -G Ninja "$@" > "$build.configure.log" 2>&1
+}
+
 edge_has_pool() {
   awk -v target="$2" '
     /^build / { t=$2; sub(/:$/, "", t); active=(t == target) }
@@ -121,6 +126,12 @@ expect_depth "$TMP/build18" "$want18" "a 18432 MiB cap"
 configure "$TMP/build2" -DARGUS_LINK_POOLS=2
 expect_depth "$TMP/build2" 2 "ARGUS_LINK_POOLS=2"
 
+configure_env_pools "$TMP/buildEnv" 2 -DARGUS_BUILD_MEMORY_CAP_MB=14336
+expect_depth "$TMP/buildEnv" 2 "ARGUS_LINK_POOLS=2 in the environment (a 14336 MiB cap derives $want14)"
+
+configure_env_pools "$TMP/buildEnvVar" 2 -DARGUS_BUILD_MEMORY_CAP_MB=18432 -DARGUS_LINK_POOLS=3
+expect_depth "$TMP/buildEnvVar" 3 "the CMake variable outranks the environment"
+
 configure "$TMP/build1" -DARGUS_BUILD_MEMORY_CAP_MB=1000
 expect_depth "$TMP/build1" 1 "a 1000 MiB cap"
 
@@ -165,4 +176,4 @@ else
   echo "build-pool-test: no-cap fallback not exercised (cgroup capped, systemd-run unavailable)" >&2
 fi
 
-echo "build-pool-test: pool = link on link edges (budget ${budget} MiB: 16384 -> $want16, 14336 -> $want14, 18432 -> $want18, override 2, 1000 -> 1, fallback from MemAvailable)"
+echo "build-pool-test: pool = link on link edges (budget ${budget} MiB: 16384 -> $want16, 14336 -> $want14, 18432 -> $want18, override 2, override 2 via the environment, variable 3 over environment 2, 1000 -> 1, fallback from MemAvailable)"
