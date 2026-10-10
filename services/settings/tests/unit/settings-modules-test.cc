@@ -15,6 +15,16 @@
 #include <fstream>
 #include <set>
 #include <string>
+#include <optional>
+#include <stdexcept>
+
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
 
 namespace
 {
@@ -191,7 +201,7 @@ TEST_CASE("the catalog refuses a role the owner owns, a role two modules bring a
   root["modules"][1].removeMember("intro");
   const auto parsed = parseModuleCatalog(root);
   REQUIRE(parsed.catalog.has_value());
-  const auto& stripped = parsed.catalog.value();
+  const auto& stripped = requireValue(parsed.catalog);
   CHECK(stripped.module("surveillance")->roles.empty());
   CHECK(stripped.module("surveillance")->intro.es.what.empty());
 }

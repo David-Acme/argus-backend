@@ -17,6 +17,15 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+#include <stdexcept>
+
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
 
 using guard_test::GuardBoot;
 
@@ -71,7 +80,7 @@ TEST_CASE("a disabled guard still ensures ARGUS_GUARD at boot" *
 
   const auto status = bus.streamInfo("ARGUS_GUARD");
   REQUIRE(status.has_value());
-  CHECK(status->subjects == std::vector<std::string>{"argus.guard.v1.>"});
+  CHECK(requireValue(status).subjects == std::vector<std::string>{"argus.guard.v1.>"});
   CHECK_FALSE(service.watching());
 }
 

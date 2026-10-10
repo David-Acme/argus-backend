@@ -162,8 +162,8 @@ void call_feed::subscribe(const FeedInput& input)
 
 int call_feed::retryDelaySeconds(int failures)
 {
-  const int step = std::clamp(failures - 1, 0, 16);
-  const int64_t delay = static_cast<int64_t>(kSubscribeRetryBaseS) << step;
+  const auto step = static_cast<unsigned>(std::clamp(failures - 1, 0, 16));
+  const auto delay = static_cast<int64_t>(static_cast<std::uint64_t>(kSubscribeRetryBaseS) << step);
   return static_cast<int>(std::min<int64_t>(delay, kSubscribeRetryMaxS));
 }
 

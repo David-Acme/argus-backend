@@ -153,7 +153,7 @@ private:
     std::string line = "{\"done\":true,\"prompt_tokens\":7,\"reused_tokens\":0,"
                        "\"decoded_tokens\":7";
     if (!speech.empty())
-      line += ",\"speech\":\"" + speech + "\"";
+      line += R"(,"speech":")" + speech + "\"";
     line += "}";
     return line;
   }

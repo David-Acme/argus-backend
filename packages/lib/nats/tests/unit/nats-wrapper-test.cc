@@ -22,6 +22,15 @@
 #include <vector>
 
 #include <trantor/utils/Logger.h>
+#include <stdexcept>
+
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
 
 namespace
 {
@@ -804,7 +813,7 @@ TEST_CASE("a quiet durable stays silent while every failed attempt of its peer i
   REQUIRE(feed.has_value());
   const auto created = bus.streamInfo(ensured);
   REQUIRE(created.has_value());
-  CHECK(created->subjects == std::vector<std::string>{subject});
-  CHECK(bus.unsubscribe(*feed));
+  CHECK(requireValue(created).subjects == std::vector<std::string>{subject});
+  CHECK(bus.unsubscribe(requireValue(feed)));
   bus.drain();
 }

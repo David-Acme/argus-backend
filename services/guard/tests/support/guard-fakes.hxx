@@ -167,7 +167,7 @@ public:
   {
   }
 
-  std::optional<std::vector<int64_t>> listNotifiableUsers() const override
+  [[nodiscard]] std::optional<std::vector<int64_t>> listNotifiableUsers() const override
   {
     std::vector<int64_t> ids;
     ids.reserve(langs_.size());
@@ -221,12 +221,12 @@ class UnavailableIdentity final : public IdentityClient
 public:
   UnavailableIdentity() : IdentityClient("127.0.0.1:1", "fleet") {}
 
-  std::optional<std::vector<int64_t>> listNotifiableUsers() const override
+  [[nodiscard]] std::optional<std::vector<int64_t>> listNotifiableUsers() const override
   {
     return std::nullopt;
   }
 
-  std::optional<argus::identity::v1::GetUserResponse> getUser(int64_t) const override
+  [[nodiscard]] std::optional<argus::identity::v1::GetUserResponse> getUser(int64_t) const override
   {
     return std::nullopt;
   }

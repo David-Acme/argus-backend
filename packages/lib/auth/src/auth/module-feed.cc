@@ -170,8 +170,10 @@ void ModuleFeed::run(const std::stop_token& stop)
         answered = true;
         bootAttempts = 0;
       }
-      else if (bootAttempts > 0 && --bootAttempts == 0 && version() == 0 && epoch().empty()) {
-        LOG_WARN << "Modules: settings did not answer the enabled set; keeping the last known state";
+      else if (bootAttempts > 0) {
+        --bootAttempts;
+        if (bootAttempts == 0 && version() == 0 && epoch().empty())
+          LOG_WARN << "Modules: settings did not answer the enabled set; keeping the last known state";
       }
       refresh = false;
     }

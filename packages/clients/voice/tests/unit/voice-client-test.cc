@@ -184,7 +184,7 @@ TEST_CASE("a stream whose identity names no role presents the unknown role, neve
   VoiceClient client(
       {.target = "127.0.0.1:" + std::to_string(port), .credential = ""});
   CHECK(client.waitConnected(5000));
-  CallCleanup cleanup{service, *server};
+  CallCleanup cleanup{.service = service, .server = *server};
 
   const auto observer = std::make_shared<CollectingObserver>();
   v1::VoiceIdentity connectIdentity;
@@ -207,7 +207,7 @@ TEST_CASE("a stream its owner let go of lives until the call is done")
   VoiceClient client(
       {.target = "127.0.0.1:" + std::to_string(port), .credential = ""});
   CHECK(client.waitConnected(5000));
-  CallCleanup cleanup{service, *server};
+  CallCleanup cleanup{.service = service, .server = *server};
 
   const auto observer = std::make_shared<CollectingObserver>();
   v1::VoiceIdentity connectIdentity;
@@ -248,7 +248,7 @@ TEST_CASE("one stream carries the connect identity and the frames in order")
   VoiceClient client(
       {.target = "127.0.0.1:" + std::to_string(port), .credential = ""});
   CHECK(client.waitConnected(5000));
-  CallCleanup cleanup{service, *server};
+  CallCleanup cleanup{.service = service, .server = *server};
 
   const auto observer = std::make_shared<CollectingObserver>();
 
@@ -307,7 +307,7 @@ TEST_CASE("joinRoom carries the whole join and the caller credential, and report
   auto server = startServer(service, port);
   REQUIRE(server);
   VoiceClient client({.target = "127.0.0.1:" + std::to_string(port), .credential = "sync-secret"});
-  CallCleanup cleanup{service, *server};
+  CallCleanup cleanup{.service = service, .server = *server};
 
   v1::RtcJoin join;
   join.set_room("u7.rtc-0123");
@@ -340,7 +340,7 @@ TEST_CASE("announce answers delivered, not delivered, or nothing when the call f
   auto server = startServer(service, port);
   REQUIRE(server);
   VoiceClient client({.target = "127.0.0.1:" + std::to_string(port), .credential = "n-secret"});
-  CallCleanup cleanup{service, *server};
+  CallCleanup cleanup{.service = service, .server = *server};
 
   CHECK(client.announce({.userId = 7, .text = "Ha llegado alguien.", .kind = "guard_episode", .callId = "call-3"}) == true);
   CHECK(client.announce({.userId = 8, .text = "x", .kind = "agenda", .callId = "call-4"}) == false);

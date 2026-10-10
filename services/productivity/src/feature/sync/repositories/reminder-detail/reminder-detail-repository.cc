@@ -162,7 +162,7 @@ ReminderDetailRepository::findLast(const SyncFilter& filter) const
 {
   auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(
-      FIND_LAST.data(), filter.userId.value_or(0));
+      std::string(FIND_LAST), filter.userId.value_or(0));
   if (result.empty())
     co_return std::nullopt;
   co_return ReminderDetailSchema(result.front()).toJson();
@@ -173,7 +173,7 @@ ReminderDetailRepository::findLastDeleted(const SyncFilter& filter) const
 {
   auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(
-      FIND_LAST_DELETED.data(), filter.userId.value_or(0));
+      std::string(FIND_LAST_DELETED), filter.userId.value_or(0));
   if (result.empty())
     co_return std::nullopt;
   co_return ReminderDetailSchema(result.front()).toJson();
