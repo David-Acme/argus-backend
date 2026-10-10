@@ -1701,7 +1701,41 @@ TEST_CASE("A note after the first answer joins the end of the prompt and leaves 
   session.stop(sink);
 }
 
-TEST_CASE("A failed app action is corrected aloud and joins the history")
+namespace
+{
+struct SeamLanguageExpectation
+{
+  argus::voice::v1::VoiceLanguage language{argus::voice::v1::VOICE_LANGUAGE_ES};
+  const char* failureLine{};
+  const char* failureEvent{};
+  const char* acceptTranscript{};
+  const char* offerFragment{};
+  const char* offerAcceptLine{};
+  const char* cameraEvent{};
+  const char* cameraFragment{};
+};
+
+constexpr SeamLanguageExpectation kSpanishSeamExpectation{
+    .language = argus::voice::v1::VOICE_LANGUAGE_ES,
+    .failureLine = "No he podido mostrarte la cámara: sin conexión.",
+    .failureEvent = "La app no pudo completar app.show_camera: sin conexión.",
+    .acceptTranscript = "Sí, muéstramela.",
+    .offerFragment = "cámara Entrada: de noche, en la entrada. ¿Quieres",
+    .offerAcceptLine = "Aquí la tienes.",
+    .cameraEvent = "La app está mostrando la cámara Entrada.",
+    .cameraFragment = "cámara Entrada"};
+
+constexpr SeamLanguageExpectation kEnglishSeamExpectation{
+    .language = argus::voice::v1::VOICE_LANGUAGE_EN,
+    .failureLine = "I couldn't show you the camera: sin conexión.",
+    .failureEvent = "The app could not complete app.show_camera: sin conexión.",
+    .acceptTranscript = "Yes, show me.",
+    .offerFragment = "Entrada camera: de noche, en la entrada. Want",
+    .offerAcceptLine = "Here it is.",
+    .cameraEvent = "The app is showing the Entrada camera.",
+    .cameraFragment = "Entrada camera"};
+
+void checkFailedAppAction(const SeamLanguageExpectation& expected)
 {
   FakeStt stt;
   FakeTts tts;
@@ -1709,7 +1743,9 @@ TEST_CASE("A failed app action is corrected aloud and joins the history")
   FakeIdentity identity;
   VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
   FakeVoiceSink sink;
-  session.start(sink, residentIdentity());
+  argus::voice::v1::VoiceIdentity caller = residentIdentity();
+  caller.set_language(expected.language);
+  session.start(sink, caller);
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
 
@@ -1719,20 +1755,26 @@ TEST_CASE("A failed app action is corrected aloud and joins the history")
 
   session.actionResult(sink, failedResult(99, "no existe"));
   session.actionResult(sink, failedResult(1, "sin conexión"));
-  CHECK(waitFor([&] { return spokeText(sink, "No he podido mostrarte la cámara: sin conexión."); }));
+  CHECK(waitFor([&] { return spokeText(sink, expected.failureLine); }));
   CHECK_FALSE(spokeText(sink, "no existe"));
   CHECK(waitFor([&] { return !sess->speaking.load(); }));
 
   const auto& entries = sess->history.entries();
-  CHECK(std::ranges::any_of(entries, [](const CallEntry& entry) {
-    return entry.kind == CallEntryKind::Event &&
-           entry.message.content == "The app could not complete app.show_camera: sin conexión.";
+  CHECK(std::ranges::any_of(entries, [&](const CallEntry& entry) {
+    return entry.kind == CallEntryKind::Event && entry.message.content == expected.failureEvent;
   }));
   CHECK(entries.back().kind == CallEntryKind::Notice);
   CHECK(entries.back().message.role == "system");
-  CHECK(entries.back().message.content.find("\"No he podido mostrarte la cámara: sin conexión.\"") !=
+  CHECK(entries.back().message.content.find(std::string("\"") + expected.failureLine + "\"") !=
         std::string::npos);
   session.stop(sink);
+}
+}
+
+TEST_CASE("A failed app action is corrected aloud and joins the history")
+{
+  checkFailedAppAction(kSpanishSeamExpectation);
+  checkFailedAppAction(kEnglishSeamExpectation);
 }
 
 TEST_CASE("An interrupted answer keeps in the history only what was spoken")
@@ -1855,47 +1897,59 @@ TEST_CASE("The LLM is primed after the greeting with the prompt the first turn e
   session.stop(sink);
 }
 
-TEST_CASE("A yes to Argus's camera offer shows the camera without asking the model")
+namespace
+{
+void checkCameraOfferShowsCamera(const SeamLanguageExpectation& expected)
 {
   DuplexConfig config(300);
   FakeStt stt;
-  stt.transcript = "Sí, muéstramela.";
+  stt.transcript = expected.acceptTranscript;
   FakeTts tts;
   FakeLlm llm;
   FakeIdentity identity;
   ScriptedVad vad;
   VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
   FakeVoiceSink sink;
-  session.start(sink, residentIdentity());
+  argus::voice::v1::VoiceIdentity caller = residentIdentity();
+  caller.set_language(expected.language);
+  session.start(sink, caller);
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   CHECK(waitFor([&] { return sink.hasType("voice:assistant") && !sess->speaking.load(); }));
 
   argus::voice::v1::VoiceContext event = cameraEvent("Entrada");
   event.set_text("De noche, en la entrada.");
   session.context(sink, event);
-  CHECK(waitFor([&] { return spokeText(sink, "cámara Entrada: de noche, en la entrada. ¿Quieres"); }));
+  CHECK(waitFor([&] { return spokeText(sink, expected.offerFragment); }));
   CHECK(waitFor([&] { return !sess->speaking.load(); }));
 
   feed({.service = session, .sink = sink, .prob = 0.95F, .windows = 20});
   feed({.service = session, .sink = sink, .prob = 0.0F, .windows = 14});
-  CHECK(waitFor([&] { return spokeText(sink, "Aquí la tienes."); }, 3000));
+  CHECK(waitFor([&] { return spokeText(sink, expected.offerAcceptLine); }, 3000));
   CHECK(llm.chatStreamCalls == 0);
   bool shown = false;
   for (const auto& frame : sink.snapshot())
     shown = shown || (frame.has_action() && frame.action().name() == "app.show_camera" &&
                       frame.action().arguments() == R"({"camera":"Entrada"})");
   CHECK(shown);
-  CHECK(std::ranges::any_of(sess->history.entries(), [](const CallEntry& entry) {
-    return entry.kind == CallEntryKind::Event && entry.message.content == "The app is showing the Entrada camera.";
+  CHECK(std::ranges::any_of(sess->history.entries(), [&](const CallEntry& entry) {
+    return entry.kind == CallEntryKind::Event && entry.message.content == expected.cameraEvent;
   }));
-  CHECK(std::ranges::any_of(sess->history.entries(), [](const CallEntry& entry) {
+  CHECK(std::ranges::any_of(sess->history.entries(), [&](const CallEntry& entry) {
     return entry.kind == CallEntryKind::Notice && entry.message.role == "system" &&
-           entry.message.content.find("cámara Entrada") != std::string::npos;
+           entry.message.content.find(expected.cameraFragment) != std::string::npos;
   }));
-  CHECK_FALSE(std::ranges::any_of(sess->history.entries(), [](const CallEntry& entry) {
-    return entry.message.role == "assistant" && entry.message.content.find("cámara Entrada") != std::string::npos;
+  CHECK_FALSE(std::ranges::any_of(sess->history.entries(), [&](const CallEntry& entry) {
+    return entry.message.role == "assistant" &&
+           entry.message.content.find(expected.cameraFragment) != std::string::npos;
   }));
   session.stop(sink);
+}
+}
+
+TEST_CASE("A yes to Argus's camera offer shows the camera without asking the model")
+{
+  checkCameraOfferShowsCamera(kSpanishSeamExpectation);
+  checkCameraOfferShowsCamera(kEnglishSeamExpectation);
 }
 
 namespace
