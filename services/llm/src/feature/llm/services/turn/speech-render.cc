@@ -8,46 +8,15 @@
 #include <array>
 #include <json/json.h>
 #include <span>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace turn::speech
 {
 
 namespace
 {
-
-struct Pair
-{
-  std::string_view es;
-  std::string_view en;
-};
-
-constexpr Pair kAskSlot{
-    .es = "Formula UNA pregunta, en tus palabras, para pedirle al usuario el dato que falta. No digas que hiciste "
-          "nada. No repitas una pregunta que ya hiciste.",
-    .en = "Ask ONE question, in your own words, for the detail you still need. Do not claim anything was done. Do not "
-          "repeat a question you already asked."};
-constexpr Pair kConfirm{
-    .es = "Pregúntale al usuario, en una frase, si confirma la acción que se indica. Di qué acción y con qué datos. "
-          "No digas que ya se hizo.",
-    .en = "Ask the user, in one sentence, whether they confirm the action. Name the action and its arguments. Do not "
-          "say it was done."};
-constexpr Pair kChoose{.es = "Pregúntale en tus palabras cuál de las opciones quiere. Nombra las opciones.",
-                       .en = "Ask, in your own words, which option they want. Name the options."};
-constexpr Pair kDone{.es = "Dile al usuario en una o dos frases cortas lo que se hizo, usando solo estos datos.",
-                     .en = "Tell the user in one or two short sentences what was done, using only this."};
-constexpr Pair kRefused{
-    .es = "Dile al usuario con naturalidad que no se hizo; si hay forma de seguir, ofrécela. No digas que se hizo.",
-    .en = "Tell the user naturally that it was not done; if there is a way forward, offer it. Do not say it was done."};
-constexpr Pair kOffer{.es = "Dile que está apagado y ofrécele lo que se indica; espera su respuesta.",
-                      .en = "Say it is off and offer what is described; wait for their answer."};
-constexpr Pair kDeclined{.es = "El usuario dijo que no. Acéptalo con naturalidad en una frase corta.",
-                         .en = "The user said no. Accept it naturally in one short sentence."};
-constexpr Pair kUnactionable{
-    .es = "No hay acción de Argus que corresponda. Díselo y, si puedes, ofrece otra forma.",
-    .en = "No Argus action matches. Say so and, if you can, offer another way."};
-constexpr Pair kMisunderstood{.es = "No lo has entendido. Pide que lo repita, una vez, en tus palabras.",
-                              .en = "You did not catch that. Ask them to repeat once, in your own words."};
 
 struct ExampleSet
 {
@@ -130,9 +99,36 @@ const ExampleSet& examplesOf(const Act& act)
   return kExampleMisunderstood;
 }
 
-std::string_view pick(const Pair& pair, std::string_view lang)
+struct ActionPhrase
 {
-  return lang == "en" ? pair.en : pair.es;
+  std::string_view tool;
+  std::string_view es;
+  std::string_view en;
+};
+
+constexpr std::array<ActionPhrase, 9> kActionPhrases{{
+    {.tool = "calendar.create_event", .es = "agendar el evento", .en = "schedule the event"},
+    {.tool = "calendar.cancel_event", .es = "cancelar el evento", .en = "cancel the event"},
+    {.tool = "task.create", .es = "anotar la tarea", .en = "add the task"},
+    {.tool = "task.complete", .es = "marcar la tarea como hecha", .en = "mark the task as done"},
+    {.tool = "project.create", .es = "crear el proyecto", .en = "create the project"},
+    {.tool = "memory.remind", .es = "poner el recordatorio", .en = "set the reminder"},
+    {.tool = "memory.remember", .es = "guardarlo en la memoria", .en = "save it to memory"},
+    {.tool = "app.show_camera", .es = "mostrar la cámara", .en = "show the camera"},
+    {.tool = "app.set_guard_mode", .es = "cambiar la vigilancia", .en = "change the guard mode"},
+}};
+
+std::string_view actionPhrase(std::string_view tool, std::string_view lang)
+{
+  for (const ActionPhrase& phrase : kActionPhrases)
+    if (phrase.tool == tool)
+      return lang == "en" ? phrase.en : phrase.es;
+  return slotActionName({.tool = tool, .lang = lang});
+}
+
+std::string_view appNote(std::string_view lang)
+{
+  return lang == "en" ? "App note:" : "Nota de la app:";
 }
 
 std::string_view reasonText(AskReason reason, std::string_view lang)
@@ -155,34 +151,6 @@ std::string_view reasonText(AskReason reason, std::string_view lang)
       return english ? "there are no projects yet" : "todavía no hay proyectos";
   }
   return english ? "it is still needed" : "hay que pedirlo";
-}
-
-std::string_view kindWord(const Act& act, std::string_view lang)
-{
-  const bool english = lang == "en";
-  return std::visit(
-      [english](const auto& value) -> std::string_view {
-        using T = std::decay_t<decltype(value)>;
-        if constexpr (std::is_same_v<T, AskSlot>)
-          return english ? "question" : "pregunta";
-        else if constexpr (std::is_same_v<T, Confirm>)
-          return english ? "confirmation" : "confirmación";
-        else if constexpr (std::is_same_v<T, Choose>)
-          return english ? "choice" : "elección";
-        else if constexpr (std::is_same_v<T, Done>)
-          return english ? "result" : "resultado";
-        else if constexpr (std::is_same_v<T, Refused>)
-          return english ? "refusal" : "no se pudo";
-        else if constexpr (std::is_same_v<T, Offer>)
-          return english ? "offer" : "oferta";
-        else if constexpr (std::is_same_v<T, Declined>)
-          return english ? "the user said no" : "el usuario dijo que no";
-        else if constexpr (std::is_same_v<T, Unactionable>)
-          return english ? "no action applies" : "sin acción";
-        else
-          return english ? "not understood" : "no entendido";
-      },
-      act);
 }
 
 struct ReasonCode
@@ -219,14 +187,6 @@ std::string_view relativeWord(DateKind kind, std::string_view lang)
   }
 }
 
-std::string oneLine(const Json::Value& value)
-{
-  Json::StreamWriterBuilder builder;
-  builder["indentation"] = "";
-  builder["emitUTF8"] = true;
-  return Json::writeString(builder, value);
-}
-
 std::string slotLabelOf(std::string_view slot, std::string_view lang)
 {
   return std::string(slotLabel({.key = slot, .lang = lang}));
@@ -253,82 +213,204 @@ std::string argValue(const Json::Value& value, std::string_view lang, int64_t no
   return {};
 }
 
-Json::Value actJson(const Act& act, std::string_view lang, int64_t now)
+std::string joinNamed(const std::vector<std::string>& keys, std::string_view lang, std::string_view sep)
 {
-  Json::Value out(Json::objectValue);
-  out["kind"] = std::string(kindWord(act, lang));
-  if (const auto* ask = std::get_if<AskSlot>(&act)) {
-    out["about"] = slotLabelOf(ask->slot, lang);
-    if (ask->reason != AskReason::Missing)
-      out["because"] = std::string(reasonText(ask->reason, lang));
-    if (ask->knownArgs.isObject())
-      for (const std::string& key : ask->knownArgs.getMemberNames()) {
-        const std::string label = slotLabelOf(key, lang);
-        if (!label.empty())
-          out["known"].append(label);
-      }
-    for (const DatePart& part : ask->dates)
-      out["dates"].append(dateSurface(part, lang, now));
-    for (const std::string& option : ask->options)
-      out["options"].append(optionNameOf(option, lang));
-    return out;
-  }
-  if (const auto* confirm = std::get_if<Confirm>(&act)) {
-    out["action"] = std::string(slotActionName({.tool = confirm->action, .lang = lang}));
-    Json::Value args = confirm->args;
-    args.removeMember("confirmation");
-    for (const std::string& key : args.getMemberNames()) {
-      const std::string label = slotLabelOf(key, lang);
-      if (label.empty())
-        continue;
-      std::string value = argValue(args[key], lang, now);
-      if (!value.empty())
-        out["details"][label] = value;
-    }
-    if (confirm->irreversible)
-      out["irreversible"] = true;
-    if (!confirm->toolPreview.empty())
-      out["preview"] = confirm->toolPreview;
-    if (!confirm->module.empty())
-      out["module"] = confirm->module;
-    return out;
-  }
-  if (const auto* choose = std::get_if<Choose>(&act)) {
-    for (const std::string& option : choose->options)
-      out["options"].append(optionNameOf(option, lang));
-    return out;
-  }
-  if (const auto* done = std::get_if<Done>(&act)) {
-    out["action"] = std::string(slotActionName({.tool = done->tool, .lang = lang}));
-    out["fact"] = done->fact;
-    if (!done->readback.empty())
-      out["readback"] = done->readback;
-    return out;
-  }
-  if (const auto* refused = std::get_if<Refused>(&act)) {
-    out["action"] = std::string(slotActionName({.tool = refused->tool, .lang = lang}));
-    const std::string_view reason = reasonCodeText({.code = refused->reason, .lang = lang});
-    if (!reason.empty())
-      out["because"] = std::string(reason);
-    else if (!refused->reason.empty())
-      out["because"] = refused->reason;
-    return out;
-  }
-  if (const auto* offer = std::get_if<Offer>(&act)) {
-    if (!offer->name.empty())
-      out["about"] = offer->name;
-    if (!offer->facts.empty())
-      out["details"] = offer->facts;
-    if (!offer->pendingIntent.empty())
-      out["pending"] = offer->pendingIntent;
-    return out;
-  }
-  if (const auto* unactionable = std::get_if<Unactionable>(&act)) {
-    const std::string_view reason = reasonCodeText({.code = unactionable->reason, .lang = lang});
-    if (!reason.empty())
-      out["because"] = std::string(reason);
+  std::string out;
+  for (const std::string& key : keys) {
+    if (!out.empty())
+      out += sep;
+    out += optionNameOf(key, lang);
   }
   return out;
+}
+
+std::string quoted(const std::string& value, std::string_view lang)
+{
+  return lang == "en" ? "\"" + value + "\"" : "«" + value + "»";
+}
+
+std::string askSituation(const AskSlot& ask, std::string_view lang, int64_t now)
+{
+  const bool english = lang == "en";
+  std::string line = english ? "missing " : "falta ";
+  line += slotLabelOf(ask.slot, lang);
+  if (!ask.options.empty())
+    line += (english ? " (one of: " : " (uno de: ") + joinNamed(ask.options, lang, ", ") + ")";
+  else if (ask.reason != AskReason::Missing)
+    line += " (" + std::string(reasonText(ask.reason, lang)) + ")";
+  if (!ask.dates.empty()) {
+    line += english ? ", it could be " : ", puede ser ";
+    bool first = true;
+    for (const DatePart& part : ask.dates) {
+      if (!first)
+        line += english ? " or " : " o ";
+      line += dateSurface(part, lang, now);
+      first = false;
+    }
+  }
+  line += "; ";
+  if (!ask.options.empty()) {
+    line += english ? "ask which one, naming: " : "pregunta cuál quiere, nombrando: ";
+    line += joinNamed(ask.options, lang, english ? " or " : " o ");
+  } else {
+    line += english ? "ask for it in one short question" : "pregunta solo por eso en una sola pregunta corta";
+  }
+  line += '.';
+  return line;
+}
+
+std::string confirmSituation(const Confirm& confirm, std::string_view lang, int64_t now)
+{
+  const bool english = lang == "en";
+  Json::Value args = confirm.args;
+  args.removeMember("confirmation");
+  std::string primary;
+  std::string extra;
+  for (const std::string& key : args.getMemberNames()) {
+    const std::string value = argValue(args[key], lang, now);
+    if (value.empty())
+      continue;
+    if (primary.empty()) {
+      primary = value;
+      continue;
+    }
+    const std::string label = slotLabelOf(key, lang);
+    if (label.empty())
+      continue;
+    if (!extra.empty())
+      extra += "; ";
+    extra += label + ": " + value;
+  }
+  std::string line = english ? "to " : "para ";
+  line += actionPhrase(confirm.action, lang);
+  if (!primary.empty())
+    line += " " + quoted(primary, lang);
+  line += english ? " the user must still confirm" : " falta la confirmación del usuario";
+  if (confirm.irreversible)
+    line += english ? "; it cannot be undone" : "; no se puede deshacer";
+  line += '.';
+  if (!extra.empty())
+    line += " " + extra + ".";
+  if (!confirm.module.empty())
+    line += (english ? " Module: " : " Módulo: ") + confirm.module + ".";
+  line += english ? " Ask whether to " : " Pregunta si ";
+  line += actionPhrase(confirm.action, lang);
+  line += english ? ", yes or no." : ", sí o no.";
+  return line;
+}
+
+std::string chooseSituation(const Choose& choose, std::string_view lang)
+{
+  const bool english = lang == "en";
+  std::string line = english ? "the user must still choose; ask which one, naming: "
+                             : "falta que el usuario elija; pregunta cuál quiere, nombrando: ";
+  line += joinNamed(choose.options, lang, english ? " or " : " o ");
+  line += '.';
+  return line;
+}
+
+bool isDigitAt(std::string_view text, std::size_t at)
+{
+  return at < text.size() && text[at] >= '0' && text[at] <= '9';
+}
+
+bool isoStampAt(std::string_view text, std::size_t at)
+{
+  if (at + 16 > text.size())
+    return false;
+  for (const std::size_t index : {0U, 1U, 2U, 3U, 5U, 6U, 8U, 9U, 11U, 12U, 14U, 15U})
+    if (!isDigitAt(text, at + index))
+      return false;
+  return text[at + 4] == '-' && text[at + 7] == '-' && text[at + 10] == 'T' && text[at + 13] == ':';
+}
+
+std::size_t isoStampEnd(std::string_view text, std::size_t at)
+{
+  std::size_t end = at + 16;
+  if (end + 2 < text.size() && text[end] == ':' && isDigitAt(text, end + 1) && isDigitAt(text, end + 2))
+    end += 3;
+  if (end + 1 < text.size() && text[end] == '.' && isDigitAt(text, end + 1))
+    while (isDigitAt(text, end + 1))
+      ++end;
+  if (end < text.size() && text[end] == 'Z')
+    return end + 1;
+  if (end + 5 < text.size() && (text[end] == '+' || text[end] == '-') && isDigitAt(text, end + 1) &&
+      isDigitAt(text, end + 2) && text[end + 3] == ':' && isDigitAt(text, end + 4) && isDigitAt(text, end + 5))
+    return end + 6;
+  return end;
+}
+
+std::string withoutIsoStamp(std::string text, std::string_view replacement)
+{
+  for (std::size_t at = 0; at + 16 <= text.size(); ++at)
+    if (isoStampAt(text, at)) {
+      text.replace(at, isoStampEnd(text, at) - at, replacement);
+      break;
+    }
+  return text;
+}
+
+std::string doneSituation(const Done& done)
+{
+  if (done.readback.empty())
+    return std::string(done.fact);
+  return withoutIsoStamp(std::string(done.fact), done.readback);
+}
+
+std::string refusedSituation(const Refused& refused, std::string_view lang)
+{
+  const bool english = lang == "en";
+  std::string line = english ? "it was not done: " : "no se hizo: ";
+  line += actionPhrase(refused.tool, lang);
+  const std::string_view reason = reasonCodeText({.code = refused.reason, .lang = lang});
+  if (!reason.empty())
+    line += " (" + std::string(reason) + ")";
+  else if (!refused.reason.empty())
+    line += " (" + refused.reason + ")";
+  line += '.';
+  return line;
+}
+
+std::string offerSituation(const Offer& offer, std::string_view lang)
+{
+  const bool english = lang == "en";
+  const std::string name = offer.name.empty() ? (english ? "that module" : "ese módulo") : offer.name;
+  std::string line = english ? "the " + name + " module is off." : "el módulo " + name + " está apagado.";
+  if (!offer.facts.empty())
+    line += " " + offer.facts;
+  if (!offer.pendingIntent.empty())
+    line += (english ? " Pending: " : " Pendiente: ") + offer.pendingIntent + ".";
+  line += english ? " Offer to turn it on and wait for their answer."
+                  : " Ofrécele activarlo y espera su respuesta.";
+  return line;
+}
+
+std::string situationFor(const Act& act, std::string_view lang, int64_t now)
+{
+  const std::string body = std::visit(
+      [&](const auto& value) -> std::string {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<T, AskSlot>)
+          return askSituation(value, lang, now);
+        else if constexpr (std::is_same_v<T, Confirm>)
+          return confirmSituation(value, lang, now);
+        else if constexpr (std::is_same_v<T, Choose>)
+          return chooseSituation(value, lang);
+        else if constexpr (std::is_same_v<T, Done>)
+          return doneSituation(value);
+        else if constexpr (std::is_same_v<T, Refused>)
+          return refusedSituation(value, lang);
+        else if constexpr (std::is_same_v<T, Offer>)
+          return offerSituation(value, lang);
+        else if constexpr (std::is_same_v<T, Declined>)
+          return lang == "en" ? "the user said no." : "el usuario dijo que no.";
+        else if constexpr (std::is_same_v<T, Unactionable>)
+          return lang == "en" ? "no Argus action applies." : "no hay una acción de Argus que corresponda.";
+        else
+          return lang == "en" ? "the user was not understood." : "no se entendió al usuario.";
+      },
+      act);
+  return std::string(appNote(lang)) + " " + body;
 }
 
 }
@@ -357,48 +439,23 @@ std::string dateSurface(const DatePart& part, std::string_view lang, int64_t now
   return {};
 }
 
-std::string_view instructionLine(const Act& act, std::string_view lang)
-{
-  return std::visit(
-      [lang](const auto& value) -> std::string_view {
-        using T = std::decay_t<decltype(value)>;
-        if constexpr (std::is_same_v<T, AskSlot>)
-          return pick(kAskSlot, lang);
-        else if constexpr (std::is_same_v<T, Confirm>)
-          return pick(kConfirm, lang);
-        else if constexpr (std::is_same_v<T, Choose>)
-          return pick(kChoose, lang);
-        else if constexpr (std::is_same_v<T, Done>)
-          return pick(kDone, lang);
-        else if constexpr (std::is_same_v<T, Refused>)
-          return pick(kRefused, lang);
-        else if constexpr (std::is_same_v<T, Offer>)
-          return pick(kOffer, lang);
-        else if constexpr (std::is_same_v<T, Declined>)
-          return pick(kDeclined, lang);
-        else if constexpr (std::is_same_v<T, Unactionable>)
-          return pick(kUnactionable, lang);
-        else
-          return pick(kMisunderstood, lang);
-      },
-      act);
-}
-
 std::string actTail(const RenderInput& input)
 {
   if (input.speech.acts.empty())
     return {};
-  std::string tail(instructionLine(input.speech.acts.back(), input.speech.lang));
-  for (const ExampleLine& line : exampleLines(input.speech.acts.back(), input.speech.lang)) {
-    tail += "\n";
-    tail += line.first;
-    tail += " -> ";
-    tail += line.second;
-  }
+  std::string tail;
   for (const Act& act : input.speech.acts) {
-    tail += '\n';
-    tail += oneLine(actJson(act, input.speech.lang, input.speech.now));
+    if (!tail.empty())
+      tail += '\n';
+    tail += situationFor(act, input.speech.lang, input.speech.now);
   }
+  if (input.examples)
+    for (const ExampleLine& line : exampleLines(input.speech.acts.back(), input.speech.lang)) {
+      tail += "\n";
+      tail += line.first;
+      tail += " -> ";
+      tail += line.second;
+    }
   if (!input.contextBlock.empty()) {
     tail += '\n';
     tail += input.contextBlock;

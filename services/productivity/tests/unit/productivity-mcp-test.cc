@@ -277,42 +277,59 @@ void listingShowsOnlyTheCallersEvents(Env& env)
   CHECK(none.text.find("No tienes eventos entre") == 0);
 }
 
-void cancellingNeedsTheConfirmationCodeAndTheOwner(Env& env)
+struct CancelExpectation
 {
+  const char* lang;
+  const char* previewPrefix;
+  const char* donePrefix;
+};
+
+constexpr CancelExpectation kSpanishCancel{.lang = "es",
+                                           .previewPrefix = "Esto cancelaría «Cena con Marta»",
+                                           .donePrefix = "Cancelado: «Cena con Marta»"};
+
+constexpr CancelExpectation kEnglishCancel{.lang = "en",
+                                           .previewPrefix = "This would cancel «Cena con Marta»",
+                                           .donePrefix = "Cancelled: «Cena con Marta»"};
+
+void cancellingNeedsTheConfirmationCodeAndTheOwner(Env& env, const CancelExpectation& expected)
+{
+  const Caller ana{.userId = kAna, .role = "resident", .lang = expected.lang};
+  const Caller luis{.userId = kLuis, .role = "resident", .lang = expected.lang};
   reset(env);
-  env.ana("calendar.create_event", args({{"title", "Cena con Marta"}, {"starts_at", kStart}}));
-  env.luis("calendar.create_event", args({{"title", "Cena con Marta"}, {"starts_at", kStart}}));
+  env.call("calendar.create_event", args({{"title", "Cena con Marta"}, {"starts_at", kStart}}), ana);
+  env.call("calendar.create_event", args({{"title", "Cena con Marta"}, {"starts_at", kStart}}), luis);
   REQUIRE(liveEvents("Cena con Marta") == 2);
   env.sink.clear();
 
-  const auto preview = env.ana("calendar.cancel_event", args({{"title", "cena con marta"}}));
+  const auto preview = env.call("calendar.cancel_event", args({{"title", "cena con marta"}}), ana);
   CHECK_FALSE(preview.isError);
   CHECK(preview.structured["needsConfirmation"].asBool());
-  CHECK(preview.text.find("Esto cancelaría «Cena con Marta»") == 0);
+  CHECK(preview.text.find(expected.previewPrefix) == 0);
   CHECK(preview.text.find("confirmation") == std::string::npos);
   const std::string code = preview.structured["confirmation"].asString();
   REQUIRE(code.size() == 6);
   CHECK(liveEvents("Cena con Marta") == 2);
   CHECK(env.sink.operations.empty());
 
-  const auto wrong = env.ana("calendar.cancel_event", args({{"title", "cena con marta"}, {"confirmation", "000000"}}));
+  const auto wrong = env.call("calendar.cancel_event", args({{"title", "cena con marta"}, {"confirmation", "000000"}}), ana);
   CHECK(wrong.isError);
   CHECK(wrong.structured["code"].asString() == "confirmation_invalid");
   CHECK(liveEvents("Cena con Marta") == 2);
 
-  const auto stolen = env.luis("calendar.cancel_event", args({{"title", "cena con marta"}, {"confirmation", code}}));
+  const auto stolen = env.call("calendar.cancel_event", args({{"title", "cena con marta"}, {"confirmation", code}}), luis);
   CHECK(stolen.isError);
   CHECK(liveEvents("Cena con Marta") == 2);
 
-  const auto done = env.ana("calendar.cancel_event", args({{"title", "cena con marta"}, {"confirmation", code}}));
+  const auto done = env.call("calendar.cancel_event", args({{"title", "cena con marta"}, {"confirmation", code}}), ana);
   CHECK_FALSE(done.isError);
-  CHECK(done.text.find("Cancelado: «Cena con Marta»") == 0);
+  CHECK(done.text.find(expected.donePrefix) == 0);
   CHECK(liveEvents("Cena con Marta") == 1);
   CHECK(ownerOfEvent("Cena con Marta") == kLuis);
   REQUIRE(env.sink.operations.size() == 1);
   CHECK(env.sink.operations.front() == SyncOperation::Delete);
 
-  const auto reused = env.ana("calendar.cancel_event", args({{"title", "cena con marta"}, {"confirmation", code}}));
+  const auto reused = env.call("calendar.cancel_event", args({{"title", "cena con marta"}, {"confirmation", code}}), ana);
   CHECK(reused.isError);
   CHECK(liveEvents("Cena con Marta") == 1);
 }
@@ -468,7 +485,8 @@ TEST_CASE("the productivity tools act for the caller on the caller's own rows")
   theReadBackNamesTheDayAndTheTimeInWords(env);
   anEventNeedsAUnderstandableStart(env);
   listingShowsOnlyTheCallersEvents(env);
-  cancellingNeedsTheConfirmationCodeAndTheOwner(env);
+  cancellingNeedsTheConfirmationCodeAndTheOwner(env, kSpanishCancel);
+  cancellingNeedsTheConfirmationCodeAndTheOwner(env, kEnglishCancel);
   anotherUsersEventCannotBeNamedOrCancelled(env);
   twoEventsWithTheSameWordsAskWhich(env);
   projectsAndTasksFollowTheirProject(env);

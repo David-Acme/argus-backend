@@ -64,7 +64,8 @@ struct ActSpeakInput
   std::vector<ChatMessage>& history;
   const TokenCallback* onToken{nullptr};
   const turn::speech::Speech& speech;
-  std::string tail;
+  std::string_view contextBlock{};
+  std::string tail{};
   bool asked{false};
   bool wrote{false};
   bool opened{false};

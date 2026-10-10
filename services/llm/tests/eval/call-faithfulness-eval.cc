@@ -960,6 +960,46 @@ bool writeDump(const DumpInput& input)
   return static_cast<bool>(out);
 }
 
+struct TraceRowInput
+{
+  std::ostream& out;
+  Json::StreamWriterBuilder& builder;
+  const std::string& id;
+  const std::string& lang;
+  int turn{0};
+  const std::string& act;
+  const std::string& speech;
+  const std::string& reply;
+  const std::string& guardVerdict;
+  const std::string& softVerdict;
+  bool softRelease{false};
+  const std::vector<SpeechAttempt>& attempts;
+};
+
+void appendTraceRow(const TraceRowInput& input)
+{
+  Json::Value row(Json::objectValue);
+  row["id"] = input.id;
+  row["lang"] = input.lang;
+  row["turn"] = input.turn;
+  row["act"] = input.act;
+  row["speech"] = input.speech;
+  row["reply"] = input.reply;
+  row["guardVerdict"] = input.guardVerdict;
+  row["softVerdict"] = input.softVerdict;
+  row["softRelease"] = input.softRelease;
+  Json::Value attempts(Json::arrayValue);
+  for (const SpeechAttempt& attempt : input.attempts) {
+    Json::Value item(Json::objectValue);
+    item["prompt"] = attempt.prompt;
+    item["reply"] = attempt.reply;
+    item["verdict"] = attempt.verdict;
+    attempts.append(item);
+  }
+  row["attempts"] = attempts;
+  input.out << Json::writeString(input.builder, row) << "\n";
+}
+
 struct TraceInput
 {
   const std::string& path;
@@ -977,26 +1017,18 @@ bool writeTrace(const TraceInput& input)
   for (const CaseRecord& run : input.runs) {
     for (std::size_t index = 0; index < run.turns.size(); ++index) {
       const TurnRecord& turn = run.turns[index];
-      Json::Value row(Json::objectValue);
-      row["id"] = run.item.id;
-      row["lang"] = run.item.lang;
-      row["turn"] = static_cast<int>(index);
-      row["act"] = turn.act;
-      row["speech"] = turn.speech;
-      row["reply"] = turn.reply;
-      row["guardVerdict"] = turn.guardVerdict;
-      row["softVerdict"] = turn.softVerdict;
-      row["softRelease"] = turn.softRelease;
-      Json::Value attempts(Json::arrayValue);
-      for (const SpeechAttempt& attempt : turn.attempts) {
-        Json::Value item(Json::objectValue);
-        item["prompt"] = attempt.prompt;
-        item["reply"] = attempt.reply;
-        item["verdict"] = attempt.verdict;
-        attempts.append(item);
-      }
-      row["attempts"] = attempts;
-      out << Json::writeString(builder, row) << "\n";
+      appendTraceRow({.out = out,
+                      .builder = builder,
+                      .id = run.item.id,
+                      .lang = run.item.lang,
+                      .turn = static_cast<int>(index),
+                      .act = turn.act,
+                      .speech = turn.speech,
+                      .reply = turn.reply,
+                      .guardVerdict = turn.guardVerdict,
+                      .softVerdict = turn.softVerdict,
+                      .softRelease = turn.softRelease,
+                      .attempts = turn.attempts});
     }
   }
   return static_cast<bool>(out);
@@ -1439,6 +1471,39 @@ eval::Metrics renderMetrics(const std::vector<RenderRecord>& runs, const std::ve
   return metrics;
 }
 
+struct RenderTraceInput
+{
+  const std::string& path;
+  const std::vector<RenderRecord>& runs;
+};
+
+bool writeRenderTrace(const RenderTraceInput& input)
+{
+  std::ofstream out(input.path);
+  if (!out)
+    return false;
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  builder["emitUTF8"] = true;
+  const std::string absent;
+  for (const RenderRecord& run : input.runs) {
+    const std::string act(turn::speech::actName(run.item.act));
+    appendTraceRow({.out = out,
+                    .builder = builder,
+                    .id = run.item.id,
+                    .lang = run.item.lang,
+                    .turn = 0,
+                    .act = act,
+                    .speech = run.speech,
+                    .reply = run.reply,
+                    .guardVerdict = run.finalVerdict,
+                    .softVerdict = absent,
+                    .softRelease = run.softRelease,
+                    .attempts = run.attempts});
+  }
+  return static_cast<bool>(out);
+}
+
 struct RenderRunCli
 {
   const Options& options;
@@ -1494,6 +1559,10 @@ int runRendering(const RenderRunCli& input)
       row["reply"] = run.firstRejected;
       out << Json::writeString(builder, row) << "\n";
     }
+  }
+  if (!input.options.trace.empty() && !writeRenderTrace({.path = input.options.trace, .runs = runs})) {
+    std::cout << "[ERROR] cannot write " << input.options.trace << "\n";
+    return 1;
   }
   const eval::LoadedGates gates = eval::loadGates(input.options.gates, "speechActs");
   if (!gates.error.empty()) {
