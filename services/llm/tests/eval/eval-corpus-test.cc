@@ -205,6 +205,8 @@ TEST_CASE("a reply that opens with a greeting is caught when the user did not gr
   CHECK(call_checks::opensWithGreeting("¡Hola! Estoy bien, gracias."));
   CHECK(call_checks::opensWithGreeting("Hello, how are you?"));
   CHECK(call_checks::opensWithGreeting("Buenas noches."));
+  CHECK(call_checks::opensWithGreeting("Hello David, nice to hear from you."));
+  CHECK_FALSE(call_checks::opensWithGreeting("Hey, do you have the name of the task you're referring to?"));
   CHECK_FALSE(call_checks::opensWithGreeting("La cámara de la cocina está en línea."));
   CHECK_FALSE(call_checks::opensWithGreeting("Gracias por avisar."));
   CHECK_FALSE(call_checks::opensWithGreeting(""));

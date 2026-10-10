@@ -31,7 +31,7 @@ inline constexpr std::array<std::string_view, 12> kMonthsEn{"January", "February
 
 inline constexpr std::array<std::string_view, 10> kInterjections{"hola", "buenas", "hey", "hi", "hello",
                                                                  "claro", "vale", "ok", "gracias", "good"};
-inline constexpr std::array<std::string_view, 6> kGreetingTokens{"hola", "buenas", "hey", "hi", "hello", "good"};
+inline constexpr std::array<std::string_view, 5> kGreetingTokens{"hola", "buenas", "hi", "hello", "good"};
 struct StaticPromptInput
 {
   const std::optional<std::string>& roles;
