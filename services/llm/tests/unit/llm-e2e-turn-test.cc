@@ -28,6 +28,15 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <stdexcept>
+
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
 
 namespace
 {
@@ -189,7 +198,7 @@ struct ScriptedEngine
   ChatEngine engine()
   {
     return {.chat = [this](const ChatRequest& request) { return answered(request); },
-            .chatStream = [this](const ChatRequest& request, TokenCallback onToken) {
+            .chatStream = [this](const ChatRequest& request, const TokenCallback& onToken) {
               requests.push_back(request);
               onToken(reply, false);
               onToken(std::string(), true);
@@ -323,7 +332,7 @@ TEST_CASE("one turn runs the whole pipeline on both pilot bundles, from the norm
   CHECK_FALSE(world.probe.arguments["title"].asString().empty());
   const std::optional<std::int64_t> startsAt = iso_time::parse(world.probe.arguments["starts_at"].asString());
   REQUIRE(startsAt.has_value());
-  CHECK(*startsAt > 0);
+  CHECK(requireValue(startsAt) > 0);
   CHECK(turn.contextBlock.find("Agenda de hoy") != std::string::npos);
   CHECK(turn.contextBlock.find("Cámaras de la casa") == std::string::npos);
   CHECK_FALSE(turn.reply.empty());
@@ -350,14 +359,14 @@ TEST_CASE("one turn runs the whole pipeline on both pilot bundles, from the norm
       {.tool = "calendar.create_event", .field = "title", .utterance = utterance, .lang = "es"});
   const double glinerMs = since(glinerStart);
   REQUIRE(title.has_value());
-  CHECK_FALSE(title->empty());
+  CHECK_FALSE(requireValue(title).empty());
 
   const auto fillStart = std::chrono::steady_clock::now();
   const slots::Filled filled = slots::fill({.spec = calendar->spec,
                                             .fields = {"title", "starts_at"},
                                             .arguments = Json::Value(Json::objectValue),
                                             .context = turnInput.context,
-                                            .now = *startsAt,
+                                            .now = requireValue(startsAt),
                                             .text = gliner,
                                             .modules = {},
                                             .answering = false});

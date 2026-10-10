@@ -14,7 +14,7 @@ namespace
 
 constexpr std::string_view kModelFlag = "--model";
 
-std::string memoryTool(intent::ToolIntent value)
+std::string_view memoryTool(intent::ToolIntent value)
 {
   using intent::ToolIntent;
   switch (value) {
@@ -31,7 +31,7 @@ std::string memoryTool(intent::ToolIntent value)
   }
 }
 
-bool offered(const Json::Value& tools, const std::string& name)
+bool offered(const Json::Value& tools, std::string_view name)
 {
   for (const auto& tool : tools)
     if (tool.asString() == name)
@@ -78,9 +78,9 @@ int main(int argc, char** argv)
       answer["confidence"] = 1.0;
     } else {
       const auto decision = gate.router().decide(text, request["lang"].asString());
-      const std::string tool = decision.confident ? memoryTool(decision.intent) : "";
+      const std::string_view tool = decision.confident ? memoryTool(decision.intent) : std::string_view{};
       if (!tool.empty() && offered(request["tools"], tool)) {
-        answer["tool"] = tool;
+        answer["tool"] = std::string(tool);
         answer["confidence"] = decision.fromRules ? 1.0 : static_cast<double>(decision.score);
       }
     }

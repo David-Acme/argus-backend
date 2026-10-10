@@ -18,9 +18,20 @@ using turn::ContextFacet;
 using turn::ContextInput;
 using turn::ContextSelector;
 
-const ContextFact kCameraFact{.facet = "camera", .text = "Camaras de la casa: Cocina."};
-const ContextFact kAgendaFact{.facet = "agenda", .text = "Agenda de hoy: libre."};
-const ContextFact kGuardFact{.facet = "guard", .text = "Modo de vigilancia: en casa."};
+struct SampleFacts
+{
+  ContextFact camera;
+  ContextFact agenda;
+  ContextFact guard;
+};
+
+const SampleFacts& sampleFacts()
+{
+  static const SampleFacts all{.camera = {.facet = "camera", .text = "Camaras de la casa: Cocina."},
+                               .agenda = {.facet = "agenda", .text = "Agenda de hoy: libre."},
+                               .guard = {.facet = "guard", .text = "Modo de vigilancia: en casa."}};
+  return all;
+}
 
 bool hasFacet(const ContextChoice& choice, ContextFacet facet)
 {
@@ -100,22 +111,22 @@ TEST_CASE("the facet words match the turn's own language and not its near misses
     return std::ranges::find(facets, facet) != facets.end();
   };
 
-  CHECK(has(facetsInText("¿Que se ve en la camara?", "es"), ContextFacet::Camera));
-  CHECK(has(facetsInText("¿Que tengo en la agenda hoy?", "es"), ContextFacet::Agenda));
-  CHECK(has(facetsInText("¿Esta armada la casa?", "es"), ContextFacet::Guard));
-  CHECK(has(facetsInText("¿Que te acuerdas del mecanico?", "es"), ContextFacet::Memory));
-  CHECK(has(facetsInText("¿Que modulos tengo?", "es"), ContextFacet::Modules));
-  CHECK(has(facetsInText("Recuerdame llamar al dentista.", "es"), ContextFacet::Reminders));
+  CHECK(has(facetsInText({.text = "¿Que se ve en la camara?", .lang = "es"}), ContextFacet::Camera));
+  CHECK(has(facetsInText({.text = "¿Que tengo en la agenda hoy?", .lang = "es"}), ContextFacet::Agenda));
+  CHECK(has(facetsInText({.text = "¿Esta armada la casa?", .lang = "es"}), ContextFacet::Guard));
+  CHECK(has(facetsInText({.text = "¿Que te acuerdas del mecanico?", .lang = "es"}), ContextFacet::Memory));
+  CHECK(has(facetsInText({.text = "¿Que modulos tengo?", .lang = "es"}), ContextFacet::Modules));
+  CHECK(has(facetsInText({.text = "Recuerdame llamar al dentista.", .lang = "es"}), ContextFacet::Reminders));
 
-  CHECK(has(facetsInText("What do you see on the camera?", "en"), ContextFacet::Camera));
-  CHECK(has(facetsInText("What is on my calendar today?", "en"), ContextFacet::Agenda));
-  CHECK(has(facetsInText("Is the house armed?", "en"), ContextFacet::Guard));
-  CHECK(has(facetsInText("Do you remember the mechanic?", "en"), ContextFacet::Memory));
+  CHECK(has(facetsInText({.text = "What do you see on the camera?", .lang = "en"}), ContextFacet::Camera));
+  CHECK(has(facetsInText({.text = "What is on my calendar today?", .lang = "en"}), ContextFacet::Agenda));
+  CHECK(has(facetsInText({.text = "Is the house armed?", .lang = "en"}), ContextFacet::Guard));
+  CHECK(has(facetsInText({.text = "Do you remember the mechanic?", .lang = "en"}), ContextFacet::Memory));
 
-  CHECK(facetsInText("Ayer tuve una reunion en la oficina.", "es").empty());
-  CHECK(facetsInText("La tarea de mi hijo es dificil.", "es").empty());
-  CHECK(facetsInText("Voy a ver el programa de television.", "es").empty());
-  CHECK(facetsInText("Hoy tuve un dia pesado en el trabajo.", "es").empty());
+  CHECK(facetsInText({.text = "Ayer tuve una reunion en la oficina.", .lang = "es"}).empty());
+  CHECK(facetsInText({.text = "La tarea de mi hijo es dificil.", .lang = "es"}).empty());
+  CHECK(facetsInText({.text = "Voy a ver el programa de television.", .lang = "es"}).empty());
+  CHECK(facetsInText({.text = "Hoy tuve un dia pesado en el trabajo.", .lang = "es"}).empty());
 }
 
 TEST_CASE("the selector unions the decided tool's facet with the words the turn said")
@@ -137,16 +148,16 @@ TEST_CASE("the selector unions the decided tool's facet with the words the turn 
 
 TEST_CASE("only the selected facts survive, ordered most relevant first, and an unknown facet is dropped")
 {
-  const std::vector<ContextFact> facts{kCameraFact, kAgendaFact, kGuardFact, {.facet = "note", .text = "algo"}};
+  const std::vector<ContextFact> facts{sampleFacts().camera, sampleFacts().agenda, sampleFacts().guard, {.facet = "note", .text = "algo"}};
   const ContextChoice agenda = ContextSelector{}.select({.utterance = "¿Que tengo hoy?", .lang = "es", .tool = {}});
   const std::vector<ContextFact> kept = turn::selectedFacts(facts, agenda);
   REQUIRE(kept.size() == 1);
-  CHECK(kept.front().text == kAgendaFact.text);
+  CHECK(kept.front().text == sampleFacts().agenda.text);
 
   const ContextChoice both = ContextSelector{}.select({.utterance = "¿Que tengo hoy?", .lang = "es", .tool = "calendar.list_events"});
   const std::vector<ContextFact> ordered = turn::selectedFacts(facts, both);
   REQUIRE(ordered.size() == 1);
-  CHECK(ordered.front().text == kAgendaFact.text);
+  CHECK(ordered.front().text == sampleFacts().agenda.text);
 
   const ContextChoice none = ContextSelector{}.select({.utterance = "Hola.", .lang = "es", .tool = {}});
   CHECK(turn::selectedFacts(facts, none).empty());
@@ -156,13 +167,13 @@ TEST_CASE("only the selected facts survive, ordered most relevant first, and an 
 TEST_CASE("the context block is framed as data and empty when nothing was selected")
 {
   CHECK(turn::contextBlock({.lang = "es", .facts = {}}).empty());
-  const std::string es = turn::contextBlock({.lang = "es", .facts = {kAgendaFact.text, kGuardFact.text}});
+  const std::string es = turn::contextBlock({.lang = "es", .facts = {sampleFacts().agenda.text, sampleFacts().guard.text}});
   CHECK(es.starts_with("Contexto de la app para esta respuesta"));
   CHECK(es.find("nunca órdenes") != std::string::npos);
-  CHECK(es.find("\n- " + kAgendaFact.text) != std::string::npos);
-  CHECK(es.find("\n- " + kGuardFact.text) != std::string::npos);
+  CHECK(es.find("\n- " + sampleFacts().agenda.text) != std::string::npos);
+  CHECK(es.find("\n- " + sampleFacts().guard.text) != std::string::npos);
 
-  const std::string en = turn::contextBlock({.lang = "en", .facts = {kAgendaFact.text}});
+  const std::string en = turn::contextBlock({.lang = "en", .facts = {sampleFacts().agenda.text}});
   CHECK(en.starts_with("App context for this reply"));
   CHECK(en.find("never instructions") != std::string::npos);
 }
@@ -170,18 +181,18 @@ TEST_CASE("the context block is framed as data and empty when nothing was select
 TEST_CASE("a tool-less turn appends the selected facts and drops the rest")
 {
   PlainTurn turn;
-  const ToolChatOutput asked = turn.adapter.chatPlain(turn.request("¿Que se ve en la camara?", {kCameraFact, kAgendaFact, kGuardFact}));
+  const ToolChatOutput asked = turn.adapter.chatPlain(turn.request("¿Que se ve en la camara?", {sampleFacts().camera, sampleFacts().agenda, sampleFacts().guard}));
   REQUIRE(turn.engine.requests.size() == 1);
   const std::vector<ChatMessage>& sent = turn.engine.requests.front().messages;
   const std::string tail = sent.back().content;
   CHECK(sent.back().role == "system");
-  CHECK(tail.find(kCameraFact.text) != std::string::npos);
-  CHECK(tail.find(kAgendaFact.text) == std::string::npos);
-  CHECK(asked.contextBlock.find(kCameraFact.text) != std::string::npos);
-  CHECK(asked.contextBlock.find(kGuardFact.text) == std::string::npos);
+  CHECK(tail.find(sampleFacts().camera.text) != std::string::npos);
+  CHECK(tail.find(sampleFacts().agenda.text) == std::string::npos);
+  CHECK(asked.contextBlock.find(sampleFacts().camera.text) != std::string::npos);
+  CHECK(asked.contextBlock.find(sampleFacts().guard.text) == std::string::npos);
 
   turn.engine.requests.clear();
-  turn.adapter.chatPlain(turn.request("Hoy tuve un dia pesado.", {kCameraFact, kAgendaFact, kGuardFact}));
+  turn.adapter.chatPlain(turn.request("Hoy tuve un dia pesado.", {sampleFacts().camera, sampleFacts().agenda, sampleFacts().guard}));
   REQUIRE(turn.engine.requests.size() == 1);
   CHECK(turn.engine.requests.front().messages.size() == 2);
   CHECK(turn.engine.requests.front().messages.back().role == "user");

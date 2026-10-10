@@ -12,6 +12,16 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <optional>
+#include <stdexcept>
+
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
 
 namespace
 {
@@ -20,9 +30,9 @@ using namespace turn::speech;
 constexpr int64_t kNow = 1790000000;
 constexpr int64_t kTomorrow = kNow + 86400;
 
-GuardVerdict guarded(const Act& act, std::string_view lang, std::string_view reply, bool wrote = false)
+GuardVerdict guarded(const Act& act, std::string lang, std::string_view reply, bool wrote = false)
 {
-  const Speech speech{.acts = {act}, .lang = std::string(lang), .now = kNow};
+  const Speech speech{.acts = {act}, .lang = std::move(lang), .now = kNow};
   return check({.speech = speech, .reply = reply, .wrote = wrote, .asked = true, .callsConfirmed = false});
 }
 
@@ -37,11 +47,11 @@ AskSlot ask(std::string slot, std::vector<DatePart> dates = {}, std::vector<std:
           .options = std::move(options)};
 }
 
-Confirm confirm(std::string action, std::string title, std::string module = {})
+Confirm confirm(std::string action, std::string_view title, std::string module = {})
 {
   Json::Value args(Json::objectValue);
   if (!title.empty())
-    args["title"] = title;
+    args["title"] = std::string(title);
   return {.action = std::move(action),
           .args = std::move(args),
           .irreversible = false,
@@ -117,7 +127,7 @@ TEST_CASE("a question act is refused when the reply asks nothing, and when it as
 
 TEST_CASE("a question act that carries dates must name one of them")
 {
-  const std::vector<DatePart> dates{{DateKind::Clock, kTomorrow}};
+  const std::vector<DatePart> dates{{.kind = DateKind::Clock, .epoch = kTomorrow}};
   const std::string es = dateSurface(dates.front(), "es", kNow);
   const std::string en = dateSurface(dates.front(), "en", kNow);
   CHECK(guarded(ask("starts_at", dates), "es", "¿A qué hora lo agendo, " + es + "?") == GuardVerdict::Pass);
@@ -169,7 +179,7 @@ TEST_CASE("a confirmation speaks the date it carries")
                           .module = {}};
   const auto at = iso_time::parse("2026-10-08T17:00:00+00:00");
   REQUIRE(at.has_value());
-  const spoken_time::When when{.epoch = *at, .now = kNow, .lang = "es", .day = spoken_time::Day::Relative};
+  const spoken_time::When when{.epoch = requireValue(at), .now = kNow, .lang = "es", .day = spoken_time::Day::Relative};
   CHECK(guarded(act, "es", "¿Agendo «Cena»?") == GuardVerdict::ArgumentMissing);
   CHECK(guarded(act, "es", "¿Agendo «Cena» " + spoken_time::day(when) + "?") == GuardVerdict::Pass);
   CHECK(guarded(act, "es", "¿Agendo «Cena» " + spoken_time::clock(when) + "?") == GuardVerdict::Pass);

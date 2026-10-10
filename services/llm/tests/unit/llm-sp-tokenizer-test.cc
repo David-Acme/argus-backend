@@ -169,12 +169,12 @@ turn::LayaQuestion questionOf(const nlohmann::ordered_json& definition){
     if (criteria.is_object()) {
       for (auto entry = criteria.begin(); entry != criteria.end(); ++entry) {
         const nlohmann::ordered_json& value = entry.value();
-        question.criteria.push_back({entry.key(), value.is_null() ? std::string() : value.is_string() ? value.get<std::string>() : value.dump()});
+        question.criteria.emplace_back(entry.key(), value.is_null() ? std::string() : value.is_string() ? value.get<std::string>() : value.dump());
       }
     }
     else if (criteria.is_array()) {
       for (const nlohmann::ordered_json& value : criteria)
-        question.criteria.push_back({value.is_string() ? value.get<std::string>() : value.dump(), ""});
+        question.criteria.emplace_back(value.is_string() ? value.get<std::string>() : value.dump(), "");
     }
   }
   if (definition.contains("labels")) {

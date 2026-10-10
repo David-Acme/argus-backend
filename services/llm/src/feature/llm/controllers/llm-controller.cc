@@ -421,7 +421,7 @@ LlmController::engine(drogon::HttpRequestPtr)
     row["family"] = tally.key.family;
     row["lang"] = tally.key.lang;
     row["verdict"] = tally.key.verdict;
-    row["count"] = Json::Value::UInt64(tally.count);
+    row["count"] = static_cast<Json::Value::UInt64>(tally.count);
     decisions.append(std::move(row));
   }
   info["decisions"] = std::move(decisions);

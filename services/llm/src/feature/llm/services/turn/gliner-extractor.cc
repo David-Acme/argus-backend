@@ -76,7 +76,7 @@ std::vector<Codepoint> codepointsOf(std::string_view text)
   out.reserve(text.size());
   std::size_t at = 0;
   while (at < text.size()) {
-    const unsigned char lead = static_cast<unsigned char>(text[at]);
+    const auto lead = static_cast<unsigned char>(text[at]);
     std::size_t size = 1;
     if ((lead & 0xE0U) == 0xC0U)
       size = 2;
@@ -223,13 +223,13 @@ std::string lowered(std::string_view text)
   std::string out;
   out.reserve(text.size());
   for (const Codepoint& point : points) {
-    utf8proc_uint8_t buffer[4] = {};
+    std::array<utf8proc_uint8_t, 4> buffer{};
     const utf8proc_ssize_t written =
-        utf8proc_encode_char(utf8proc_tolower(static_cast<utf8proc_int32_t>(point.value)), buffer);
+        utf8proc_encode_char(utf8proc_tolower(static_cast<utf8proc_int32_t>(point.value)), buffer.data());
     if (written <= 0)
       out.append(text.substr(point.begin, point.end - point.begin));
     else
-      out.append(reinterpret_cast<const char*>(buffer), static_cast<std::size_t>(written));
+      out.append(reinterpret_cast<const char*>(buffer.data()), static_cast<std::size_t>(written));
   }
   return out;
 }
@@ -324,7 +324,7 @@ class GlinerBundleModel final : public GlinerModel
 public:
   GlinerBundleModel(const BundleLoader& bundle, OnnxOptions options)
       : modelPath_(bundle.modelPath()), tokenizerPath_(bundle.tokenizerJson()), types_(bundle.typeFields()),
-        options_(std::move(options)),
+        options_(options),
         threshold_(bundle.thresholds().present ? bundle.thresholds().threshold : kDefaultPairThreshold),
         maxSpanWords_(bundle.thresholds().present ? bundle.thresholds().maxSpanWidth : kDefaultMaxSpanWords)
   {
@@ -398,8 +398,8 @@ private:
     const OnnxTensor& logits = run.outputs[2];
     if (indices.shape.size() != 4 || mask.shape.size() != 3 || logits.shape.size() != 3)
       return {};
-    const std::size_t queries = static_cast<std::size_t>(indices.shape[1]);
-    const std::size_t pool = static_cast<std::size_t>(indices.shape[2]);
+    const auto queries = static_cast<std::size_t>(indices.shape[1]);
+    const auto pool = static_cast<std::size_t>(indices.shape[2]);
     std::vector<GlinerCandidate> candidates;
     candidates.reserve(queries * pool);
     for (std::size_t query = 0; query < queries; ++query) {
@@ -435,7 +435,7 @@ private:
       if (offsets.end <= offsets.begin || static_cast<std::size_t>(offsets.begin) >= points.size())
         continue;
       const std::size_t last = std::min(static_cast<std::size_t>(offsets.end), points.size());
-      if (last <= static_cast<std::size_t>(offsets.begin))
+      if (std::cmp_less_equal(last, offsets.begin))
         continue;
       std::string surface = trimmed(run.request.text.substr(points[static_cast<std::size_t>(offsets.begin)].begin,
                                                              points[last - 1].end - points[static_cast<std::size_t>(offsets.begin)].begin));

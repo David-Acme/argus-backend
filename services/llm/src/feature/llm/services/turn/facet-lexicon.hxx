@@ -37,7 +37,13 @@ struct FacetTable
 
 [[nodiscard]] std::span<const FacetTable> facetTables();
 
-[[nodiscard]] std::vector<ContextFacet> facetsInText(std::string_view text, std::string_view lang);
+struct FacetQuery
+{
+  std::string_view text;
+  std::string_view lang;
+};
+
+[[nodiscard]] std::vector<ContextFacet> facetsInText(FacetQuery query);
 
 [[nodiscard]] std::optional<ContextFacet> facetForTool(std::string_view tool);
 

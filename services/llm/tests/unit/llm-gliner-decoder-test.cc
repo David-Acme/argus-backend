@@ -74,7 +74,7 @@ turn::GlinerDecodeInput unfiltered(std::span<const turn::GlinerCandidate> candid
   return {.candidates = candidates,
           .queryThresholds = {},
           .defaultThreshold = 0.0F,
-          .maxWidth = 1 << 20,
+          .maxWidth = 1U << 20U,
           .overlap = turn::GlinerOverlap::Flat};
 }
 }

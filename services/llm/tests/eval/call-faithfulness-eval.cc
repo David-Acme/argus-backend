@@ -140,7 +140,7 @@ Options parseOptions(int argc, char** argv)
     else if (arg == "--render-acts")
       options.renderActs = true;
     else if (arg == "--drop-facets" && hasValue)
-      options.dropFacets.push_back(argv[++i]);
+      options.dropFacets.emplace_back(argv[++i]);
     else if (arg == "--temperature" && hasValue)
       options.temperature = std::strtof(argv[++i], nullptr);
     else if (arg == "--seed" && hasValue)
@@ -913,7 +913,7 @@ bool writeDump(const DumpInput& input)
       row["contextTokens"] = input.service.countTokens(turn.contextBlock);
       row["promptTokens"] = turn.promptTokens;
       row["decodedTokens"] = turn.decodedTokens;
-      row["ms"] = Json::Value::Int64(turn.ms);
+      row["ms"] = static_cast<Json::Value::Int64>(turn.ms);
       row["facts"] = Json::Value(Json::arrayValue);
       for (const ContextFact& fact : run.item.facts)
         row["facts"].append(fact.facet);
@@ -980,7 +980,7 @@ bool runTtft(const TtftInput& input)
       row["id"] = item.id;
       row["lang"] = item.lang;
       row["turn"] = turn;
-      row["firstTokenMs"] = Json::Value::Int64(firstMs);
+      row["firstTokenMs"] = static_cast<Json::Value::Int64>(firstMs);
       row["promptTokens"] = stats.promptTokens;
       row["decodedTokens"] = stats.decodedTokens;
       out << Json::writeString(builder, row) << "\n";
@@ -1109,7 +1109,7 @@ std::vector<RenderCase> renderCases(int64_t now)
   using turn::speech::Refused;
   using turn::speech::Unactionable;
 
-  const int64_t nextWeekEpoch = now + 7 * 86400;
+  const int64_t nextWeekEpoch = now + 7LL * 86400;
   std::vector<RenderCase> out;
   const auto add = [&out](std::string id, std::string lang, std::string variant, std::string utterance, Act act) {
     out.push_back({.id = std::move(id),

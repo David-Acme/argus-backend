@@ -197,9 +197,7 @@ void collectIdentifiers(const Act& act, std::vector<std::string>& out)
           for (const std::string& key : value.args.getMemberNames())
             out.push_back(key);
         }
-        else if constexpr (std::is_same_v<T, Done>)
-          out.push_back(value.tool);
-        else if constexpr (std::is_same_v<T, Refused>)
+        else if constexpr (std::is_same_v<T, Done> || std::is_same_v<T, Refused>)
           out.push_back(value.tool);
       },
       act);

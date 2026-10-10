@@ -115,10 +115,10 @@ std::span<const FacetTable> facetTables()
   return kTables;
 }
 
-std::vector<ContextFacet> facetsInText(std::string_view text, std::string_view lang)
+std::vector<ContextFacet> facetsInText(FacetQuery query)
 {
-  const FacetTable& table = tableFor(lang);
-  const std::string folded = text_norm::whitespace(text_norm::stripAccents(std::string(text)), true);
+  const FacetTable& table = tableFor(query.lang);
+  const std::string folded = text_norm::whitespace(text_norm::stripAccents(std::string(query.text)), true);
   const std::vector<std::string> tokens = text_norm::words(folded, 3);
   std::vector<ContextFacet> facets;
   for (std::size_t index = 0; index < kFacetCount; ++index)

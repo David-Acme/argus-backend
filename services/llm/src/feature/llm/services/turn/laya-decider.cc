@@ -93,7 +93,7 @@ class LayaBundleModel final : public LayaModel
 public:
   explicit LayaBundleModel(LayaModelInput input)
       : modelPath_(input.bundle.modelPath()), tokenizerJson_(input.bundle.tokenizerJson()), questionsJson_(input.bundle.questionsJson()),
-        maxLen_(input.bundle.maxLen()), decode_(input.decode), options_(std::move(input.options))
+        maxLen_(input.bundle.maxLen()), decode_(input.decode), options_(input.options)
   {
   }
 
@@ -108,16 +108,18 @@ public:
   {
     if (!ready_ || !tool_ || !now_)
       return std::nullopt;
-    const std::optional<std::vector<float>> toolLogits = logitsOf(*tool_, text);
-    if (!toolLogits || toolLogits->size() < tool_->criteria.size())
+    const LayaQuestion& tool = *tool_;
+    const LayaQuestion& now = *now_;
+    const std::optional<std::vector<float>> toolLogits = logitsOf(tool, text);
+    if (!toolLogits || toolLogits->size() < tool.criteria.size())
       return std::nullopt;
     const std::vector<double> toolProbs =
-        softmax(std::span(*toolLogits).first(tool_->criteria.size()), decode_.temperature[0]);
+        softmax(std::span(*toolLogits).first(tool.criteria.size()), decode_.temperature[0]);
     std::vector<std::pair<std::string, double>> probabilities;
-    probabilities.reserve(tool_->criteria.size());
-    for (std::size_t index = 0; index < tool_->criteria.size(); ++index)
-      probabilities.push_back({tool_->criteria[index].first, toolProbs[index]});
-    const std::optional<std::vector<float>> nowLogits = logitsOf(*now_, text);
+    probabilities.reserve(tool.criteria.size());
+    for (std::size_t index = 0; index < tool.criteria.size(); ++index)
+      probabilities.emplace_back(tool.criteria[index].first, toolProbs[index]);
+    const std::optional<std::vector<float>> nowLogits = logitsOf(now, text);
     if (!nowLogits || nowLogits->size() < 2)
       return std::nullopt;
     const std::vector<double> nowProbs = softmax(std::span(*nowLogits).first(2), decode_.temperature[2]);
@@ -164,8 +166,8 @@ private:
         layaBuildSequence({.tokenizer = tokenizer_, .state = text, .maxLen = maxLen_, .headMaxLen = decode_.headMaxLen}, question);
     if (sequence.ids.empty() || sequence.markers.empty())
       return std::nullopt;
-    const std::int64_t length = static_cast<std::int64_t>(sequence.ids.size());
-    const std::int64_t markers = static_cast<std::int64_t>(sequence.markers.size());
+    const auto length = static_cast<std::int64_t>(sequence.ids.size());
+    const auto markers = static_cast<std::int64_t>(sequence.markers.size());
     std::vector<std::int64_t> ids(sequence.ids.begin(), sequence.ids.end());
     std::vector<std::int64_t> attention(sequence.ids.size(), 1);
     std::vector<std::int64_t> positions(sequence.markers.begin(), sequence.markers.end());
@@ -299,7 +301,7 @@ std::optional<BundleDecode> layaDecodeFromAgentConfig(const std::filesystem::pat
 
 std::unique_ptr<LayaModel> openLayaModel(LayaModelInput input)
 {
-  return std::make_unique<LayaBundleModel>(std::move(input));
+  return std::make_unique<LayaBundleModel>(input);
 }
 
 }

@@ -27,7 +27,7 @@ ContextChoice ContextSelector::select(const ContextInput& input) const
   ContextChoice choice;
   if (const auto implied = facetForTool(input.tool))
     choice.facets.push_back(*implied);
-  for (const ContextFacet facet : facetsInText(input.utterance, input.lang))
+  for (const ContextFacet facet : facetsInText({.text = input.utterance, .lang = input.lang}))
     if (std::ranges::find(choice.facets, facet) == choice.facets.end())
       choice.facets.push_back(facet);
   return choice;

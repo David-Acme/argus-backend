@@ -22,7 +22,7 @@ namespace turn
 
 namespace
 {
-constexpr std::size_t kHashBlock = 1U << 22;
+constexpr std::size_t kHashBlock = 1U << 22U;
 
 constexpr std::array<std::string_view, 8> kLayout{
     "model.onnx", "tokenizer", "labels.json", "decision.json", "max_len", "model-card.md", "sha256", "manifest.json"};

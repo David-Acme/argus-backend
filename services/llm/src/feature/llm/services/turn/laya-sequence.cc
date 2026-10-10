@@ -69,16 +69,16 @@ std::optional<LayaQuestion> layaQuestionFromJson(const Json::Value& definition)
   if (criteria.isArray()) {
     for (const Json::Value& entry : criteria) {
       if (question.kind == QuestionKind::Score)
-        question.criteria.push_back({std::string(), layaCriterionText(entry)});
+        question.criteria.emplace_back(std::string(), layaCriterionText(entry));
       else
-        question.criteria.push_back({entry.isString() ? entry.asString() : compact(entry), std::string()});
+        question.criteria.emplace_back(entry.isString() ? entry.asString() : compact(entry), std::string());
     }
   }
   else if (criteria.isObject()) {
     for (const std::string& key : criteria.getMemberNames()) {
       const Json::Value& entry = criteria[key];
       const std::string text = entry.isNull() || (entry.isString() && entry.asString().empty()) ? std::string() : layaCriterionText(entry);
-      question.criteria.push_back({key, text});
+      question.criteria.emplace_back(key, text);
     }
   }
   if (definition.isMember("labels") && definition["labels"].isObject()) {
@@ -92,8 +92,14 @@ std::vector<std::string> layaOptions(const LayaQuestion& question)
 {
   std::vector<std::string> options;
   if (question.kind == QuestionKind::Choice) {
-    for (const auto& [label, description] : question.criteria)
-      options.push_back(description.empty() ? label : label + ": " + description);
+    for (const auto& [label, description] : question.criteria) {
+      std::string option = label;
+      if (!description.empty()) {
+        option += ": ";
+        option += description;
+      }
+      options.push_back(std::move(option));
+    }
     return options;
   }
   if (question.kind == QuestionKind::Score) {
@@ -162,7 +168,7 @@ LayaSequence layaBuildSequence(const LayaSequenceInput& input, const LayaQuestio
   const std::int64_t room =
       std::max<std::int64_t>(0, static_cast<std::int64_t>(input.maxLen) - static_cast<std::int64_t>(ids.size()) - 1);
   std::vector<std::int32_t> state = tokenizer.encode(withoutMask(std::string(input.state), mask), false);
-  if (static_cast<std::int64_t>(state.size()) > room)
+  if (std::cmp_greater(state.size(), room))
     state.resize(static_cast<std::size_t>(room));
   ids.insert(ids.end(), state.begin(), state.end());
   ids.push_back(tokenizer.sepId());

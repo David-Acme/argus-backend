@@ -136,11 +136,11 @@ std::optional<std::vector<OnnxTensor>> OnnxSession::run(const OnnxCall& call)
         size *= static_cast<std::size_t>(dim > 0 ? dim : 0);
       if (info.GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
         tensor.integral = true;
-        const std::int64_t* data = value.GetTensorData<std::int64_t>();
+        const auto* data = value.GetTensorData<std::int64_t>();
         tensor.whole.assign(data, data + size);
       }
       else {
-        const float* data = value.GetTensorData<float>();
+        const auto* data = value.GetTensorData<float>();
         tensor.values.assign(data, data + size);
       }
       out.push_back(std::move(tensor));

@@ -23,6 +23,15 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <stdexcept>
+
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
 
 namespace
 {
@@ -179,8 +188,8 @@ TEST_CASE("the real Laya bundle decides, and the turn runs the tool it chose")
                                   .previousAssistant = {}};
     const std::optional<turn::Candidate> candidate = laya.decide(input);
     REQUIRE(candidate.has_value());
-    CHECK(candidate->tool == *expected);
-    CHECK(candidate->decider == "laya");
+    CHECK(requireValue(candidate).tool == requireValue(expected));
+    CHECK(requireValue(candidate).decider == "laya");
     ++decided;
     turn::TurnFlow flow({.executor = world.executor,
                          .decider = &laya,
@@ -196,11 +205,11 @@ TEST_CASE("the real Laya bundle decides, and the turn runs the tool it chose")
                                             .now = 0,
                                             .previousAssistant = {}});
     if (!outcome.decidedTool.empty())
-      CHECK(outcome.decidedTool == *expected);
+      CHECK(outcome.decidedTool == requireValue(expected));
     if (!outcome.decidedTool.empty() || !outcome.acts.empty() || !outcome.steps.empty())
       ++engaged;
     for (const turn::Step& step : outcome.steps) {
-      CHECK(step.call.name == *expected);
+      CHECK(step.call.name == requireValue(expected));
       ++acted;
     }
   }
@@ -245,18 +254,18 @@ TEST_CASE("the Laya scores the bundle produces match the Python reference")
     double total = 0.0;
     for (const std::string& label : expected.getMemberNames()) {
       const auto found =
-          std::ranges::find(reading->probabilities, label, &std::pair<std::string, double>::first);
-      REQUIRE(found != reading->probabilities.end());
+          std::ranges::find(requireValue(reading).probabilities, label, &std::pair<std::string, double>::first);
+      REQUIRE(found != requireValue(reading).probabilities.end());
       const double gap = std::abs(found->second - expected[label].asDouble());
       worstProbability = std::max(worstProbability, gap);
       total += found->second;
     }
     CHECK(total == doctest::Approx(1.0).epsilon(0.001));
-    const auto best = std::ranges::max_element(reading->probabilities, {}, &std::pair<std::string, double>::second);
-    REQUIRE(best != reading->probabilities.end());
+    const auto best = std::ranges::max_element(requireValue(reading).probabilities, {}, &std::pair<std::string, double>::second);
+    REQUIRE(best != requireValue(reading).probabilities.end());
     if (best->first != held["choice"].asString())
       ++decisionMismatches;
-    worstNow = std::max(worstNow, std::abs(reading->now - held["now"].asDouble()));
+    worstNow = std::max(worstNow, std::abs(requireValue(reading).now - held["now"].asDouble()));
     ++rows;
   }
   MESSAGE("laya parity vs " << reference["backend"].asString() << " on onnxruntime " << reference["onnxruntime"].asString()
@@ -297,7 +306,7 @@ TEST_CASE("the Laya decode reproduces the reference token ids and sequences")
   REQUIRE(question.has_value());
   const turn::LayaSequence sequence =
       turn::layaBuildSequence({.tokenizer = tokenizer, .state = "recuérdame comprar pan mañana a las ocho", .maxLen = 1024, .headMaxLen = headMaxLen},
-                              *question);
+                              requireValue(question));
   CHECK(sequence.markers.size() == 22);
   CHECK(sequence.ids.size() <= 1024);
 }

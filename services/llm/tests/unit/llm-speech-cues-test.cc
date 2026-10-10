@@ -17,7 +17,7 @@ using namespace turn::speech;
 
 constexpr int64_t kNow = 1791700000;
 
-GuardVerdict asks(std::string_view slot, std::string_view lang, std::string_view reply,
+GuardVerdict asks(std::string_view slot, std::string lang, std::string_view reply,
                   Json::Value known = Json::Value(Json::objectValue))
 {
   const Speech speech{.acts = {AskSlot{.slot = std::string(slot),
@@ -26,15 +26,15 @@ GuardVerdict asks(std::string_view slot, std::string_view lang, std::string_view
                                        .reason = AskReason::Missing,
                                        .dates = {},
                                        .options = {}}},
-                      .lang = std::string(lang),
+                      .lang = std::move(lang),
                       .now = kNow};
   return check({.speech = speech, .reply = reply, .wrote = false, .asked = true, .callsConfirmed = false});
 }
 
-GuardVerdict chooseOf(std::string_view lang, std::string_view reply)
+GuardVerdict chooseOf(std::string lang, std::string_view reply)
 {
   const Speech speech{.acts = {Choose{.options = {"calendar.create_event", "memory.forget"}}},
-                      .lang = std::string(lang),
+                      .lang = std::move(lang),
                       .now = kNow};
   return check({.speech = speech, .reply = reply, .wrote = false, .asked = true, .callsConfirmed = false});
 }

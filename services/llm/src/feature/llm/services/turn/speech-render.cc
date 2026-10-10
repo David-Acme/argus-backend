@@ -56,58 +56,58 @@ struct ExampleSet
 };
 
 constexpr ExampleSet kExampleAskSlot{
-    {ExampleLine{"ponme un recordatorio", "¿Para cuándo quieres que te lo recuerde?"},
-     ExampleLine{"anótame una cita", "¿Para qué día la quieres?"}},
-    {ExampleLine{"set a reminder", "When should I remind you?"},
-     ExampleLine{"jot a thought down", "What should I write in the note?"}}};
+    .es = {ExampleLine{"ponme un recordatorio", "¿Para cuándo quieres que te lo recuerde?"},
+           ExampleLine{"anótame una cita", "¿Para qué día la quieres?"}},
+    .en = {ExampleLine{"set a reminder", "When should I remind you?"},
+           ExampleLine{"jot a thought down", "What should I write in the note?"}}};
 
 constexpr ExampleSet kExampleConfirm{
-    {ExampleLine{"borra la nota de la compra", "¿Quieres que borre «Nota de la compra»?"},
-     ExampleLine{"elimina la nota de la compra", "¿Confirmas que borre «Nota de la compra»?"}},
-    {ExampleLine{"delete the shopping note", "Shall I delete “Shopping note”?"},
-     ExampleLine{"cancel my dentist visit", "Do you want me to cancel “Dentist visit”?"}}};
+    .es = {ExampleLine{"borra la nota de la compra", "¿Quieres que borre «Nota de la compra»?"},
+           ExampleLine{"elimina la nota de la compra", "¿Confirmas que borre «Nota de la compra»?"}},
+    .en = {ExampleLine{"delete the shopping note", "Shall I delete “Shopping note”?"},
+           ExampleLine{"cancel my dentist visit", "Do you want me to cancel “Dentist visit”?"}}};
 
 constexpr ExampleSet kExampleChoose{
-    {ExampleLine{"guarda esto", "¿Quieres un evento en el calendario o una tarea?"},
-     ExampleLine{"anota esta idea", "¿Lo quieres como evento o como tarea?"}},
-    {ExampleLine{"save this", "Should I add an event on the calendar or a task?"},
-     ExampleLine{"keep this", "Would you like an event on the calendar or a task?"}}};
+    .es = {ExampleLine{"guarda esto", "¿Quieres un evento en el calendario o una tarea?"},
+           ExampleLine{"anota esta idea", "¿Lo quieres como evento o como tarea?"}},
+    .en = {ExampleLine{"save this", "Should I add an event on the calendar or a task?"},
+           ExampleLine{"keep this", "Would you like an event on the calendar or a task?"}}};
 
 constexpr ExampleSet kExampleDone{
-    {ExampleLine{"agenda la reunión", "Listo, quedó para el jueves a las cinco."},
-     ExampleLine{"agenda la reunión mañana", "Listo, ya quedó agendada."}},
-    {ExampleLine{"schedule the meeting", "Done, it is set for Thursday at five."},
-     ExampleLine{"note the task", "Done, I jotted it down."}}};
+    .es = {ExampleLine{"agenda la reunión", "Listo, quedó para el jueves a las cinco."},
+           ExampleLine{"agenda la reunión mañana", "Listo, ya quedó agendada."}},
+    .en = {ExampleLine{"schedule the meeting", "Done, it is set for Thursday at five."},
+           ExampleLine{"note the task", "Done, I jotted it down."}}};
 
 constexpr ExampleSet kExampleRefused{
-    {ExampleLine{"cancela la cita vieja", "No encontré esa cita, así que no la cancelé. ¿Quieres que la busque de otra forma?"},
-     ExampleLine{"cancela la cita del lunes", "No encontré esa cita, así que no la cancelé."}},
-    {ExampleLine{"cancel the old meeting", "I could not find that meeting, so I did not cancel it. Want me to look another way?"},
-     ExampleLine{"delete that", "That was not there, so nothing was deleted."}}};
+    .es = {ExampleLine{"cancela la cita vieja", "No encontré esa cita, así que no la cancelé. ¿Quieres que la busque de otra forma?"},
+           ExampleLine{"cancela la cita del lunes", "No encontré esa cita, así que no la cancelé."}},
+    .en = {ExampleLine{"cancel the old meeting", "I could not find that meeting, so I did not cancel it. Want me to look another way?"},
+           ExampleLine{"delete that", "That was not there, so nothing was deleted."}}};
 
 constexpr ExampleSet kExampleOffer{
-    {ExampleLine{"apunta una idea en tareas", "El módulo de tareas está apagado. ¿Quieres que lo active?"},
-     ExampleLine{"guarda una idea en tareas", "El módulo de tareas está apagado. ¿Quieres que lo active?"}},
-    {ExampleLine{"keep an idea in tasks", "The tasks module is off. Shall I turn it on?"},
-     ExampleLine{"remind me to call", "That module is off. Do you want me to switch it on?"}}};
+    .es = {ExampleLine{"apunta una idea en tareas", "El módulo de tareas está apagado. ¿Quieres que lo active?"},
+           ExampleLine{"guarda una idea en tareas", "El módulo de tareas está apagado. ¿Quieres que lo active?"}},
+    .en = {ExampleLine{"keep an idea in tasks", "The tasks module is off. Shall I turn it on?"},
+           ExampleLine{"remind me to call", "That module is off. Do you want me to switch it on?"}}};
 
 constexpr ExampleSet kExampleDeclined{
-    {ExampleLine{"no gracias", "Vale, lo dejo así."},
-     ExampleLine{"mejor lo dejamos", "Entendido, lo dejo así."}},
-    {ExampleLine{"no thanks", "Alright, I will leave it."},
-     ExampleLine{"never mind that", "No problem, I will not touch it."}}};
+    .es = {ExampleLine{"no gracias", "Vale, lo dejo así."},
+           ExampleLine{"mejor lo dejamos", "Entendido, lo dejo así."}},
+    .en = {ExampleLine{"no thanks", "Alright, I will leave it."},
+           ExampleLine{"never mind that", "No problem, I will not touch it."}}};
 
 constexpr ExampleSet kExampleUnactionable{
-    {ExampleLine{"ponme música", "Eso no lo puedo hacer, pero puedo ponerte un recordatorio."},
-     ExampleLine{"traduce este texto", "Eso no lo puedo hacer."}},
-    {ExampleLine{"play me some music", "I cannot do that, but I can set a reminder for you."},
-     ExampleLine{"sing me a song", "That is not something I can do."}}};
+    .es = {ExampleLine{"ponme música", "Eso no lo puedo hacer, pero puedo ponerte un recordatorio."},
+           ExampleLine{"traduce este texto", "Eso no lo puedo hacer."}},
+    .en = {ExampleLine{"play me some music", "I cannot do that, but I can set a reminder for you."},
+           ExampleLine{"sing me a song", "That is not something I can do."}}};
 
 constexpr ExampleSet kExampleMisunderstood{
-    {ExampleLine{"mmm", "No te entendí. ¿Me lo repites?"},
-     ExampleLine{"este...", "No te entendí. ¿Otra vez?"}},
-    {ExampleLine{"er", "I did not catch that. Could you say it again?"},
-     ExampleLine{"hrm", "Sorry, I missed that. Say it once more?"}}};
+    .es = {ExampleLine{"mmm", "No te entendí. ¿Me lo repites?"},
+           ExampleLine{"este...", "No te entendí. ¿Otra vez?"}},
+    .en = {ExampleLine{"er", "I did not catch that. Could you say it again?"},
+           ExampleLine{"hrm", "Sorry, I missed that. Say it once more?"}}};
 
 const ExampleSet& examplesOf(const Act& act)
 {
@@ -185,9 +185,16 @@ std::string_view kindWord(const Act& act, std::string_view lang)
       act);
 }
 
-std::string_view reasonCodeText(std::string_view code, std::string_view lang)
+struct ReasonCode
 {
-  const bool english = lang == "en";
+  std::string_view code;
+  std::string_view lang;
+};
+
+std::string_view reasonCodeText(ReasonCode input)
+{
+  const std::string_view code = input.code;
+  const bool english = input.lang == "en";
   if (code == "not_found")
     return english ? "not found" : "no lo encontré";
   if (code == "project_create_unavailable")
@@ -240,7 +247,7 @@ std::string argValue(const Json::Value& value, std::string_view lang, int64_t no
     return value.asString();
   }
   if (value.isBool())
-    return value.asBool() ? (lang == "en" ? "yes" : "sí") : (lang == "en" ? "no" : "no");
+    return value.asBool() ? (lang == "en" ? "yes" : "sí") : "no";
   if (value.isInt64())
     return std::to_string(value.asInt64());
   return {};
@@ -276,7 +283,7 @@ Json::Value actJson(const Act& act, std::string_view lang, int64_t now)
         continue;
       std::string value = argValue(args[key], lang, now);
       if (!value.empty())
-        out["details"][label] = std::move(value);
+        out["details"][label] = value;
     }
     if (confirm->irreversible)
       out["irreversible"] = true;
@@ -300,7 +307,7 @@ Json::Value actJson(const Act& act, std::string_view lang, int64_t now)
   }
   if (const auto* refused = std::get_if<Refused>(&act)) {
     out["action"] = std::string(slotActionName({.tool = refused->tool, .lang = lang}));
-    const std::string_view reason = reasonCodeText(refused->reason, lang);
+    const std::string_view reason = reasonCodeText({.code = refused->reason, .lang = lang});
     if (!reason.empty())
       out["because"] = std::string(reason);
     else if (!refused->reason.empty())
@@ -317,7 +324,7 @@ Json::Value actJson(const Act& act, std::string_view lang, int64_t now)
     return out;
   }
   if (const auto* unactionable = std::get_if<Unactionable>(&act)) {
-    const std::string_view reason = reasonCodeText(unactionable->reason, lang);
+    const std::string_view reason = reasonCodeText({.code = unactionable->reason, .lang = lang});
     if (!reason.empty())
       out["because"] = std::string(reason);
   }

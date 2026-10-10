@@ -20,11 +20,17 @@ using json = nlohmann::json;
 constexpr char kPairSeparator = '\x01';
 constexpr float kUnknownScore = -100.0F;
 
-std::string pairKey(const std::string& left, const std::string& right)
+struct PairKey
 {
-  std::string key = left;
+  const std::string& left;
+  const std::string& right;
+};
+
+std::string pairKey(const PairKey& input)
+{
+  std::string key = input.left;
   key += kPairSeparator;
-  key += right;
+  key += input.right;
   return key;
 }
 
@@ -32,7 +38,7 @@ std::vector<std::string> codePoints(const std::string& text)
 {
   std::vector<std::string> out;
   for (std::size_t at = 0; at < text.size();) {
-    const unsigned char lead = static_cast<unsigned char>(text[at]);
+    const auto lead = static_cast<unsigned char>(text[at]);
     std::size_t size = 1;
     if ((lead & 0xE0U) == 0xC0U)
       size = 2;
@@ -52,7 +58,7 @@ std::string byteToken(unsigned char value)
 {
   static const char* digits = "0123456789ABCDEF";
   std::string token = "<0x";
-  token += digits[value >> 4];
+  token += digits[static_cast<unsigned>(value) >> 4U];
   token += digits[value & 0x0FU];
   token += '>';
   return token;
@@ -166,7 +172,7 @@ bool SpTokenizer::load(const std::filesystem::path& jsonPath)
         else {
           continue;
         }
-        merges_.emplace(pairKey(left, right), static_cast<std::int32_t>(rank));
+        merges_.emplace(pairKey({.left = left, .right = right}), static_cast<std::int32_t>(rank));
       }
     }
     if (root.contains("added_tokens")) {
@@ -322,7 +328,7 @@ std::vector<std::int32_t> SpTokenizer::bpe(const std::string& piece) const
     std::int32_t bestRank = std::numeric_limits<std::int32_t>::max();
     std::size_t bestAt = symbols.size();
     for (std::size_t at = 0; at + 1 < symbols.size(); ++at) {
-      const auto found = merges_.find(pairKey(symbols[at], symbols[at + 1]));
+      const auto found = merges_.find(pairKey({.left = symbols[at], .right = symbols[at + 1]}));
       if (found != merges_.end() && found->second < bestRank) {
         bestRank = found->second;
         bestAt = at;
@@ -394,7 +400,7 @@ std::vector<std::int32_t> SpTokenizer::unigram(const std::string& piece) const
   std::vector<std::int32_t> ids;
   for (std::size_t at = size; at > 0; at = from[at]) {
     if (id[at] == unk_ && byteFallback_) {
-      const std::string symbol = chars[at - 1];
+      const std::string& symbol = chars[at - 1];
       const auto whole = vocab_.find(symbol);
       if (whole == vocab_.end()) {
         const std::vector<std::int32_t> bytes = bytesOf(symbol);
@@ -406,7 +412,7 @@ std::vector<std::int32_t> SpTokenizer::unigram(const std::string& piece) const
     }
     ids.push_back(id[at]);
   }
-  std::reverse(ids.begin(), ids.end());
+  std::ranges::reverse(ids);
   return fuse(ids);
 }
 

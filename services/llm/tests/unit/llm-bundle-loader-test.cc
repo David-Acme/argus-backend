@@ -15,6 +15,16 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <optional>
+#include <stdexcept>
+
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
 
 namespace
 {
@@ -36,7 +46,7 @@ void write(const fs::path& path, const std::string& bytes)
 std::string readText(const fs::path& path)
 {
   std::ifstream in(path, std::ios::binary);
-  return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+  return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 }
 
 std::vector<std::string> collect(const fs::path& dir)
@@ -233,10 +243,10 @@ TEST_CASE("an isotonic calibration is piecewise linear, as the harness fits it")
                                          "upper": [0.4, 0.7, 1.0], "value": [0.1, 0.6, 0.9]})");
   const std::optional<turn::CalibrationModel> model = turn::calibrationFromJson(node);
   REQUIRE(model.has_value());
-  CHECK(model->apply(0.2) == doctest::Approx(0.1));
-  CHECK(model->apply(0.6) == doctest::Approx(0.6));
-  CHECK(model->apply(0.95) == doctest::Approx(0.9));
-  CHECK(model->apply(0.75) == doctest::Approx(0.75));
+  CHECK(requireValue(model).apply(0.2) == doctest::Approx(0.1));
+  CHECK(requireValue(model).apply(0.6) == doctest::Approx(0.6));
+  CHECK(requireValue(model).apply(0.95) == doctest::Approx(0.9));
+  CHECK(requireValue(model).apply(0.75) == doctest::Approx(0.75));
 }
 
 TEST_CASE("an unknown calibration kind is refused rather than applied as identity")

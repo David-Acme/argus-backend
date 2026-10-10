@@ -20,6 +20,15 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <stdexcept>
+
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
 
 namespace
 {
@@ -201,7 +210,7 @@ TEST_CASE("the tail carries the instructions, one line of act JSON and the conte
   const Speech speech{.acts = {askSlot()}, .lang = "es", .now = kNow};
   const std::string tail = actTail({.speech = speech, .contextBlock = "Contexto de la app"});
   const std::size_t instruction = tail.find("Formula UNA pregunta");
-  const std::size_t act = tail.find("\"kind\":\"pregunta\"");
+  const std::size_t act = tail.find(R"("kind":"pregunta")");
   const std::size_t context = tail.find("Contexto de la app");
   REQUIRE(instruction != std::string::npos);
   REQUIRE(act != std::string::npos);
@@ -252,7 +261,7 @@ TEST_CASE("a date part is carried as data and resolved against now when the tail
                                        .tool = "calendar.create_event",
                                        .knownArgs = Json::Value(Json::objectValue),
                                        .reason = AskReason::DatePassed,
-                                       .dates = {{DateKind::Clock, kNow}},
+                                       .dates = {{.kind = DateKind::Clock, .epoch = kNow}},
                                        .options = {}}},
                       .lang = "es",
                       .now = kNow};
@@ -262,7 +271,7 @@ TEST_CASE("a date part is carried as data and resolved against now when the tail
   CHECK(dateSurface(DatePart{.kind = DateKind::Clock, .epoch = kNow}, "es", kNow).starts_with("a l"));
   CHECK(dateSurface(DatePart{.kind = DateKind::Clock, .epoch = kNow}, "en", kNow).starts_with("at "));
   CHECK(dateSurface(DatePart{.kind = DateKind::Today, .epoch = kNow}, "es", kNow).starts_with("hoy "));
-  const int64_t later = kNow + 10 * 86400;
+  const int64_t later = kNow + 10LL * 86400;
   CHECK(dateSurface(DatePart{.kind = DateKind::CalendarDate, .epoch = later}, "es", kNow).starts_with("el "));
   CHECK(dateSurface(DatePart{.kind = DateKind::CalendarDate, .epoch = later}, "en", kNow).starts_with("on "));
 }
@@ -319,7 +328,7 @@ TEST_CASE("the few-shot examples are pinned as a fixture and match it act by act
       if (std::string(turn::speech::actName(act)) == actName)
         found = act;
     REQUIRE_MESSAGE(found.has_value(), "no act named " << actName);
-    const std::span<const ExampleLine> lines = exampleLines(*found, lang);
+    const std::span<const ExampleLine> lines = exampleLines(requireValue(found), lang);
     REQUIRE(index >= 0);
     REQUIRE(static_cast<std::size_t>(index) < lines.size());
     CHECK(lines[static_cast<std::size_t>(index)].first == node["user"].asString());

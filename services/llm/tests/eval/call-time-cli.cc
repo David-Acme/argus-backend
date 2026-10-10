@@ -45,7 +45,7 @@ int main()
       std::cerr << "call-time-cli: " << errors << '\n';
       return 1;
     }
-    std::cout << Json::writeString(writer, answerFor(request)) << std::endl;
+    std::cout << Json::writeString(writer, answerFor(request)) << '\n';
   }
   return 0;
 }

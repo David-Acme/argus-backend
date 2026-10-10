@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <utility>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
@@ -25,6 +26,15 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <stdexcept>
+
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
 
 namespace
 {
@@ -78,14 +88,21 @@ std::vector<std::int64_t> integersOf(const Json::Value& node)
   return out;
 }
 
-int64_t utc(int day, int hour, int minute = 0)
+struct Moment
+{
+  int day;
+  int hour;
+  int minute = 0;
+};
+
+int64_t utc(Moment moment)
 {
   std::tm at{};
   at.tm_year = 2026 - 1900;
   at.tm_mon = 10 - 1;
-  at.tm_mday = day;
-  at.tm_hour = hour;
-  at.tm_min = minute;
+  at.tm_mday = moment.day;
+  at.tm_hour = moment.hour;
+  at.tm_min = moment.minute;
   return static_cast<int64_t>(timegm(&at));
 }
 
@@ -93,7 +110,7 @@ int64_t fixedNow()
 {
   setenv("TZ", "UTC", 1);
   tzset();
-  return utc(7, 15, 20);
+  return utc({.day = 7, .hour = 15, .minute = 20});
 }
 
 struct World
@@ -109,14 +126,14 @@ struct World
     Json::Value start(Json::objectValue);
     start["type"] = "string";
     start["format"] = "date-time";
-    properties["starts_at"] = start;
+    properties["starts_at"] = std::move(start);
     Json::Value schema(Json::objectValue);
     schema["type"] = "object";
-    schema["properties"] = properties;
+    schema["properties"] = std::move(properties);
     Json::Value required(Json::arrayValue);
     required.append("title");
     required.append("starts_at");
-    schema["required"] = required;
+    schema["required"] = std::move(required);
     spec = {.name = "calendar.create_event",
             .title = "",
             .description = "probe",
@@ -170,7 +187,7 @@ TEST_CASE("the GLiNER word split is gliner2's on every frozen case, terminator i
       continue;
     }
     for (std::size_t at = 0; at < split.size(); ++at) {
-      if (split[at].begin != static_cast<std::size_t>(starts[at]) || split[at].end != static_cast<std::size_t>(ends[at])) {
+      if (std::cmp_not_equal(split[at].begin, starts[at]) || std::cmp_not_equal(split[at].end, ends[at])) {
         ++mismatches;
         break;
       }
@@ -301,8 +318,8 @@ TEST_CASE("the GLiNER extractor fills a tool call whose date the resolver reads"
   CHECK(filled.missing.empty());
   const std::optional<std::int64_t> at = iso_time::parse(filled.arguments["starts_at"].asString());
   REQUIRE(at.has_value());
-  CHECK(*at == resolved->fireAt);
-  CHECK(*at == utc(8, 17));
+  CHECK(requireValue(at) == requireValue(resolved).fireAt);
+  CHECK(requireValue(at) == utc({.day = 8, .hour = 17}));
   CHECK(filled.arguments["title"].isString());
   CHECK_FALSE(filled.arguments["title"].asString().empty());
   CHECK(utterance.find(filled.arguments["title"].asString()) != std::string::npos);

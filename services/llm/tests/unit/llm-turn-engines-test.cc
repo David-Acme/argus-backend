@@ -19,6 +19,15 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <stdexcept>
+
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
 
 namespace
 {
@@ -169,7 +178,7 @@ TEST_CASE("the label set the server serves is the pinned tsv, and the pilot bund
     const std::size_t tab = line.find('\t');
     if (tab == std::string::npos)
       continue;
-    rows.push_back({line.substr(0, tab), line.substr(tab + 1)});
+    rows.emplace_back(line.substr(0, tab), line.substr(tab + 1));
   }
   const std::span<const turn::LayaLabel> labels = turn::layaLabels();
   REQUIRE(rows.size() == labels.size());
@@ -192,7 +201,7 @@ TEST_CASE("a label no tool serves is refused rather than routed")
   const std::vector<std::string> labels{"memory_save", "holiday_planning"};
   const std::optional<std::string> stray = turn::unknownLayaLabel(labels);
   REQUIRE(stray.has_value());
-  CHECK(*stray == "holiday_planning");
+  CHECK(requireValue(stray) == "holiday_planning");
 }
 
 TEST_CASE("with engine laya the judge arbitrates rules and laya, and the router never proposes")
@@ -211,9 +220,9 @@ TEST_CASE("with engine laya the judge arbitrates rules and laya, and the router 
   const turn::DecideInput input = inputFor(world, "recuerda que el codigo es AB12CD");
   const std::optional<turn::Candidate> candidate = laya.decide(input);
   REQUIRE(candidate.has_value());
-  CHECK(candidate->tool == "memory.remember");
-  CHECK(candidate->decider == "laya");
-  CHECK(candidate->source == "laya, memory_save");
+  CHECK(requireValue(candidate).tool == "memory.remember");
+  CHECK(requireValue(candidate).decider == "laya");
+  CHECK(requireValue(candidate).source == "laya, memory_save");
   CHECK(probe->reads_ == 1);
   CHECK(router.asked == 0);
 }
@@ -228,7 +237,7 @@ TEST_CASE("with engine router the router proposes and laya is never consulted")
   turn::LayaDecider laya({.model = std::move(model), .fallback = &router, .policy = {}, .confidence = {}, .now = {}});
   const std::optional<turn::Candidate> candidate = router.decide(inputFor(world, "recuerda que el codigo es AB12CD"));
   REQUIRE(candidate.has_value());
-  CHECK(candidate->decider == "router");
+  CHECK(requireValue(candidate).decider == "router");
   CHECK(router.asked == 1);
   CHECK(probe->reads_ == 0);
   CHECK(laya.decide(inputFor(world, "otra")).value_or(fromRouter).decider != "laya");
@@ -245,7 +254,7 @@ TEST_CASE("a laya model that cannot load forwards the turn to the router")
                           .now = {}});
   const std::optional<turn::Candidate> candidate = laya.decide(inputFor(world, "recuerda que el codigo es AB12CD"));
   REQUIRE(candidate.has_value());
-  CHECK(candidate->decider == "router");
+  CHECK(requireValue(candidate).decider == "router");
   CHECK(router.asked == 1);
 }
 

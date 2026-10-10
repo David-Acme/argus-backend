@@ -122,18 +122,14 @@ std::vector<Ranked> heaviestRun(const std::vector<Ranked>& distinct)
     Best with = best[static_cast<std::size_t>(predecessors[at] + 1)];
     with.score += static_cast<double>(byEnd[at].score);
     with.selection.push_back(at);
-    if (with.score > best[at].score)
-      best.push_back(std::move(with));
-    else if (with.score < best[at].score)
-      best.push_back(best[at]);
-    else if (with.selection.size() > best[at].selection.size())
-      best.push_back(std::move(with));
-    else if (with.selection.size() < best[at].selection.size())
-      best.push_back(best[at]);
-    else
-      best.push_back(keyBefore(selectionKey(byEnd, with.selection), selectionKey(byEnd, best[at].selection))
-                         ? std::move(with)
-                         : best[at]);
+    const bool sameScore = !(with.score > best[at].score) && !(with.score < best[at].score);
+    const bool sameSelection = with.selection.size() == best[at].selection.size();
+    const bool withWins = sameScore
+                              ? (sameSelection
+                                     ? keyBefore(selectionKey(byEnd, with.selection), selectionKey(byEnd, best[at].selection))
+                                     : with.selection.size() > best[at].selection.size())
+                              : with.score > best[at].score;
+    best.push_back(withWins ? std::move(with) : best[at]);
   }
   std::vector<Ranked> selected;
   selected.reserve(best.back().selection.size());
@@ -145,7 +141,7 @@ std::vector<Ranked> heaviestRun(const std::vector<Ranked>& distinct)
 
 std::vector<Ranked> resolve(const std::vector<Ranked>& candidates, GlinerOverlap overlap)
 {
-  const std::vector<Ranked> distinct = collapse(candidates);
+  std::vector<Ranked> distinct = collapse(candidates);
   if (overlap == GlinerOverlap::Allow)
     return distinct;
   if (overlap == GlinerOverlap::Longest)
