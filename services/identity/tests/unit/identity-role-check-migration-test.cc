@@ -375,7 +375,7 @@ TEST_CASE("the boot entry point takes a free backup name beside an earlier backu
   REQUIRE(role_check_migration::applyToFile(path));
   std::vector<std::string> first;
   for (const auto& entry : fs::directory_iterator(scratch.directory))
-    if (entry.path().filename().string().find("identity.db.role-rebuild-") == 0 &&
+    if (entry.path().filename().string().starts_with("identity.db.role-rebuild-") &&
         entry.path().string() != taken && entry.path().string() != taken + "-1")
       first.push_back(entry.path().string());
   REQUIRE(first.size() == 1);
@@ -391,7 +391,7 @@ TEST_CASE("the boot entry point takes a free backup name beside an earlier backu
   REQUIRE(role_check_migration::applyToFile(path));
   std::size_t backups = 0;
   for (const auto& entry : fs::directory_iterator(scratch.directory))
-    if (entry.path().filename().string().find("identity.db.role-rebuild-") == 0 &&
+    if (entry.path().filename().string().starts_with("identity.db.role-rebuild-") &&
         entry.path().string() != taken && entry.path().string() != taken + "-1")
       ++backups;
   CHECK(backups == 2);

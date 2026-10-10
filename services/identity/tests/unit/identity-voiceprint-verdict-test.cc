@@ -21,10 +21,12 @@
 #include <identity/voiceprint-client.hxx>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <random>
 #include <span>
 #include <sqlite/db-service.hxx>
 #include <sqlite/vec-db.hxx>
+#include <stdexcept>
 #include <string>
 #include <test-support/app-runner.hxx>
 #include <thread>
@@ -57,6 +59,14 @@ constexpr int64_t kGil = 8;
 constexpr int kRate = 16000;
 
 using test_support::AppRunner;
+
+template <typename T>
+const T& requireValue(const std::optional<T>& value)
+{
+  if (!value)
+    throw std::runtime_error("test: expected a value");
+  return *value;
+}
 
 IdentityVoiceprintConfig testConfig()
 {
@@ -153,7 +163,7 @@ std::vector<int16_t> fixture(const std::string& name)
   for (size_t index = 0; index + 1 < bytes.size(); index += 2)
     samples.push_back(std::bit_cast<int16_t>(
         static_cast<uint16_t>(static_cast<uint8_t>(bytes[index]) |
-                              (static_cast<uint8_t>(bytes[index + 1]) << 8U))));
+                              (static_cast<uint32_t>(static_cast<uint8_t>(bytes[index + 1])) << 8U))));
   return samples;
 }
 
@@ -194,7 +204,7 @@ EncodedVoice pcmOf(const std::vector<int16_t>& samples)
   for (const int16_t sample : samples) {
     const auto word = std::bit_cast<uint16_t>(sample);
     bytes.push_back(static_cast<char>(word & 0xFFU));
-    bytes.push_back(static_cast<char>((word >> 8U) & 0xFFU));
+    bytes.push_back(static_cast<char>((static_cast<uint32_t>(word) >> 8U) & 0xFFU));
   }
   return {.bytes = std::move(bytes),
           .encoding = VoiceEncoding::Pcm16,
@@ -421,12 +431,12 @@ TEST_CASE("the holder's own voice is HOLDER, and the holder score says so" *
 
   const auto found = identifyAs(kRita, ritaSpeaking());
   REQUIRE(found.holderScore.has_value());
-  MESSAGE("holder score " << *found.holderScore);
+  MESSAGE("holder score " << requireValue(found.holderScore));
   CHECK(found.verdict.has_value());
-  CHECK(*found.verdict == VoiceprintVerdict::Holder);
-  CHECK(*found.holderScore >= testConfig().identifyThreshold);
+  CHECK(requireValue(found.verdict) == VoiceprintVerdict::Holder);
+  CHECK(requireValue(found.holderScore) >= testConfig().identifyThreshold);
   REQUIRE(found.holderProfile.has_value());
-  CHECK(*found.holderProfile);
+  CHECK(requireValue(found.holderProfile));
   CHECK(found.matched);
   CHECK(found.userId == kRita);
 }
@@ -440,12 +450,12 @@ TEST_CASE("another enrolled voice is OTHER_KNOWN and names the person who "
 
   const auto found = identifyAs(kRita, gilSpeaking());
   REQUIRE(found.holderScore.has_value());
-  MESSAGE("holder score of another voice " << *found.holderScore);
+  MESSAGE("holder score of another voice " << requireValue(found.holderScore));
   CHECK(found.matched);
   CHECK(found.userId == kGil);
   CHECK(found.name == "Gil");
   CHECK(found.verdict.has_value());
-  CHECK(*found.verdict == VoiceprintVerdict::OtherKnown);
+  CHECK(requireValue(found.verdict) == VoiceprintVerdict::OtherKnown);
 }
 
 TEST_CASE("a voice nobody enrolled is UNFAMILIAR, below the ceiling" *
@@ -457,12 +467,12 @@ TEST_CASE("a voice nobody enrolled is UNFAMILIAR, below the ceiling" *
   const auto found = identifyAs(kRita, strangerSpeaking());
   CHECK_FALSE(found.matched);
   REQUIRE(found.holderScore.has_value());
-  MESSAGE("holder score of a stranger " << *found.holderScore);
+  MESSAGE("holder score of a stranger " << requireValue(found.holderScore));
   REQUIRE(found.holderProfile.has_value());
-  CHECK(*found.holderProfile);
+  CHECK(requireValue(found.holderProfile));
   CHECK(found.verdict.has_value());
-  CHECK(*found.verdict == VoiceprintVerdict::Unfamiliar);
-  CHECK(*found.holderScore < testConfig().unfamiliarCeiling);
+  CHECK(requireValue(found.verdict) == VoiceprintVerdict::Unfamiliar);
+  CHECK(requireValue(found.holderScore) < testConfig().unfamiliarCeiling);
 }
 
 TEST_CASE("a holder who never enrolled is UNKNOWN, never UNFAMILIAR" *
@@ -474,10 +484,10 @@ TEST_CASE("a holder who never enrolled is UNKNOWN, never UNFAMILIAR" *
   const auto found = identifyAs(kAda, strangerSpeaking());
   CHECK_FALSE(found.matched);
   REQUIRE(found.holderProfile.has_value());
-  CHECK_FALSE(*found.holderProfile);
+  CHECK_FALSE(requireValue(found.holderProfile));
   CHECK_FALSE(found.holderScore.has_value());
   CHECK(found.verdict.has_value());
-  CHECK(*found.verdict == VoiceprintVerdict::Unknown);
+  CHECK(requireValue(found.verdict) == VoiceprintVerdict::Unknown);
 }
 
 TEST_CASE("a score in the grey band is UNKNOWN, never a guess" *
@@ -491,11 +501,11 @@ TEST_CASE("a score in the grey band is UNKNOWN, never a guess" *
   const auto found = identifyAs(kRita, probe);
   CHECK_FALSE(found.matched);
   REQUIRE(found.holderScore.has_value());
-  MESSAGE("grey-band holder score " << *found.holderScore);
-  CHECK(*found.holderScore >= testConfig().unfamiliarCeiling);
-  CHECK(*found.holderScore < testConfig().identifyThreshold);
+  MESSAGE("grey-band holder score " << requireValue(found.holderScore));
+  CHECK(requireValue(found.holderScore) >= testConfig().unfamiliarCeiling);
+  CHECK(requireValue(found.holderScore) < testConfig().identifyThreshold);
   CHECK(found.verdict.has_value());
-  CHECK(*found.verdict == VoiceprintVerdict::Unknown);
+  CHECK(requireValue(found.verdict) == VoiceprintVerdict::Unknown);
 }
 
 TEST_CASE("another enrolled voice outranks a holder score over the threshold" *
@@ -512,10 +522,10 @@ TEST_CASE("another enrolled voice outranks a holder score over the threshold" *
   CHECK(found.userId == kGil);
   CHECK(found.name == "Gil");
   REQUIRE(found.holderScore.has_value());
-  MESSAGE("holder score behind a confident other voice " << *found.holderScore);
-  CHECK(*found.holderScore >= testConfig().identifyThreshold);
+  MESSAGE("holder score behind a confident other voice " << requireValue(found.holderScore));
+  CHECK(requireValue(found.holderScore) >= testConfig().identifyThreshold);
   REQUIRE(found.verdict.has_value());
-  CHECK(*found.verdict == VoiceprintVerdict::OtherKnown);
+  CHECK(requireValue(found.verdict) == VoiceprintVerdict::OtherKnown);
 }
 
 TEST_CASE("a 1:N pair inside the margin leaves the holder's own score to "
@@ -531,10 +541,10 @@ TEST_CASE("a 1:N pair inside the margin leaves the holder's own score to "
   const auto found = identifyAs(kRita, probe);
   CHECK_FALSE(found.matched);
   REQUIRE(found.holderScore.has_value());
-  MESSAGE("holder score inside the runner-up margin " << *found.holderScore);
-  CHECK(*found.holderScore >= testConfig().identifyThreshold);
+  MESSAGE("holder score inside the runner-up margin " << requireValue(found.holderScore));
+  CHECK(requireValue(found.holderScore) >= testConfig().identifyThreshold);
   REQUIRE(found.verdict.has_value());
-  CHECK(*found.verdict == VoiceprintVerdict::Holder);
+  CHECK(requireValue(found.verdict) == VoiceprintVerdict::Holder);
 }
 
 TEST_CASE("a confident best the gates suppressed is UNKNOWN, never HOLDER, "
@@ -555,10 +565,10 @@ TEST_CASE("a confident best the gates suppressed is UNKNOWN, never HOLDER, "
   CHECK(found.name.empty());
   REQUIRE(found.holderScore.has_value());
   MESSAGE("holder score behind a suppressed confident best "
-          << *found.holderScore);
-  CHECK(*found.holderScore >= testConfig().identifyThreshold);
+          << requireValue(found.holderScore));
+  CHECK(requireValue(found.holderScore) >= testConfig().identifyThreshold);
   REQUIRE(found.verdict.has_value());
-  CHECK(*found.verdict == VoiceprintVerdict::Unknown);
+  CHECK(requireValue(found.verdict) == VoiceprintVerdict::Unknown);
 }
 
 TEST_CASE("a holder profile written for another model is UNKNOWN" *
@@ -573,10 +583,10 @@ TEST_CASE("a holder profile written for another model is UNKNOWN" *
   const auto found = identifyAs(kRita, strangerSpeaking());
   CHECK_FALSE(found.matched);
   REQUIRE(found.holderProfile.has_value());
-  CHECK_FALSE(*found.holderProfile);
+  CHECK_FALSE(requireValue(found.holderProfile));
   CHECK_FALSE(found.holderScore.has_value());
   REQUIRE(found.verdict.has_value());
-  CHECK(*found.verdict == VoiceprintVerdict::Unknown);
+  CHECK(requireValue(found.verdict) == VoiceprintVerdict::Unknown);
 }
 
 TEST_CASE("a truncated holder profile is UNKNOWN, never UNFAMILIAR" *
@@ -589,10 +599,10 @@ TEST_CASE("a truncated holder profile is UNKNOWN, never UNFAMILIAR" *
   const auto found = identifyAs(kRita, strangerSpeaking());
   CHECK_FALSE(found.matched);
   REQUIRE(found.holderProfile.has_value());
-  CHECK(*found.holderProfile);
+  CHECK(requireValue(found.holderProfile));
   CHECK_FALSE(found.holderScore.has_value());
   REQUIRE(found.verdict.has_value());
-  CHECK(*found.verdict == VoiceprintVerdict::Unknown);
+  CHECK(requireValue(found.verdict) == VoiceprintVerdict::Unknown);
 }
 
 TEST_CASE("a holder profile with a zero norm is UNKNOWN, never UNFAMILIAR" *
@@ -608,10 +618,10 @@ TEST_CASE("a holder profile with a zero norm is UNKNOWN, never UNFAMILIAR" *
   const auto found = identifyAs(kRita, strangerSpeaking());
   CHECK_FALSE(found.matched);
   REQUIRE(found.holderProfile.has_value());
-  CHECK(*found.holderProfile);
+  CHECK(requireValue(found.holderProfile));
   CHECK_FALSE(found.holderScore.has_value());
   REQUIRE(found.verdict.has_value());
-  CHECK(*found.verdict == VoiceprintVerdict::Unknown);
+  CHECK(requireValue(found.verdict) == VoiceprintVerdict::Unknown);
 }
 
 TEST_CASE("Identify omits the holder fields and ObserveTurn fills them" *
@@ -630,11 +640,11 @@ TEST_CASE("Identify omits the holder fields and ObserveTurn fills them" *
 
   const auto spoken = client.identify(view);
   REQUIRE(spoken.has_value());
-  CHECK(spoken->matched());
-  CHECK(spoken->user_id() == kRita);
-  CHECK_FALSE(spoken->has_holder_score());
-  CHECK_FALSE(spoken->has_holder_profile());
-  CHECK_FALSE(spoken->has_verdict());
+  CHECK(requireValue(spoken).matched());
+  CHECK(requireValue(spoken).user_id() == kRita);
+  CHECK_FALSE(requireValue(spoken).has_holder_score());
+  CHECK_FALSE(requireValue(spoken).has_holder_profile());
+  CHECK_FALSE(requireValue(spoken).has_verdict());
 
   const auto turn = client.observeTurn({.sample = view,
                                         .userId = kRita,
@@ -642,15 +652,15 @@ TEST_CASE("Identify omits the holder fields and ObserveTurn fills them" *
                                         .callKey = "verdict-call",
                                         .timeoutMs = 5000});
   REQUIRE(turn.has_value());
-  CHECK(turn->matched());
-  CHECK(turn->user_id() == kRita);
-  REQUIRE(turn->has_holder_score());
-  MESSAGE("holder score on the wire " << turn->holder_score());
-  CHECK(turn->holder_score() >= testConfig().identifyThreshold);
-  REQUIRE(turn->has_holder_profile());
-  CHECK(turn->holder_profile());
-  REQUIRE(turn->has_verdict());
-  CHECK(turn->verdict() == argus::identity::v1::VOICEPRINT_VERDICT_HOLDER);
+  CHECK(requireValue(turn).matched());
+  CHECK(requireValue(turn).user_id() == kRita);
+  REQUIRE(requireValue(turn).has_holder_score());
+  MESSAGE("holder score on the wire " << requireValue(turn).holder_score());
+  CHECK(requireValue(turn).holder_score() >= testConfig().identifyThreshold);
+  REQUIRE(requireValue(turn).has_holder_profile());
+  CHECK(requireValue(turn).holder_profile());
+  REQUIRE(requireValue(turn).has_verdict());
+  CHECK(requireValue(turn).verdict() == argus::identity::v1::VOICEPRINT_VERDICT_HOLDER);
   CHECK(fleet.service.passive().openCalls() == 0);
 }
 
@@ -678,15 +688,15 @@ TEST_CASE("the wire carries an explicit UNKNOWN, apart from an absent "
                                         .callKey = "unknown-call",
                                         .timeoutMs = 5000});
   REQUIRE(turn.has_value());
-  REQUIRE(turn->has_verdict());
-  CHECK(turn->verdict() == argus::identity::v1::VOICEPRINT_VERDICT_UNKNOWN);
-  REQUIRE(turn->has_holder_profile());
-  CHECK_FALSE(turn->holder_profile());
-  CHECK_FALSE(turn->has_holder_score());
+  REQUIRE(requireValue(turn).has_verdict());
+  CHECK(requireValue(turn).verdict() == argus::identity::v1::VOICEPRINT_VERDICT_UNKNOWN);
+  REQUIRE(requireValue(turn).has_holder_profile());
+  CHECK_FALSE(requireValue(turn).holder_profile());
+  CHECK_FALSE(requireValue(turn).has_holder_score());
 
   const auto spoken = client.identify(view);
   REQUIRE(spoken.has_value());
-  CHECK_FALSE(spoken->has_verdict());
+  CHECK_FALSE(requireValue(spoken).has_verdict());
   CHECK(fleet.service.passive().openCalls() == 0);
 }
 
