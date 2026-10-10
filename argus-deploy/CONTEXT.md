@@ -100,6 +100,31 @@ Model artifacts (GGUF, ncnn blobs) are NOT baked in: `models/` is
 dockerignored out of the build context and bind-mounted read-only; provision
 with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 
+### gRPC and protobuf: an image and a native dev build do not resolve the same pair
+
+This is the surprise to prevent, and it is the reason the test stage exists.
+
+- **An image builds and runs against the system gRPC 1.51 and the system
+  protobuf.** Trixie's `libgrpc++-dev` + `libprotobuf-dev` are what the build
+  stage installs, `argus_contracts_substrate()` takes its system branch
+  (`pkg-config grpc++`, apt's `protoc`, `grpc_cpp_plugin`) and the runtime
+  stage carries `libgrpc++1.51t64` + `libgrpc29t64`, so the binary links the
+  same 1.51 it was compiled against.
+- **A native `dev` build uses the hand-built gRPC 1.82.1** at
+  `~/.local/argus-thirdparty/grpc`. That host has no system gRPC, so
+  `find_package(gRPC CONFIG QUIET)` fails and
+  `cmake/argus-module.cmake` falls back to that prefix.
+- **The flag that selects it is `ARGUS_SYSTEM_PROTOBUF`**, passed to cmake by
+  `scripts/build-all.sh` as `-DARGUS_SYSTEM_PROTOBUF=${ARGUS_SYSTEM_PROTOBUF:-OFF}`.
+  `OFF` is the dev default; the build stage of every service Dockerfile sets
+  `ENV ARGUS_SYSTEM_PROTOBUF=ON`, which the `test` stage inherits. Turning it
+  ON is what removes the second abseil flavor and with it the CQ bridge
+  (`argus_grpc_absl_bridge()` returns early), which is the single-abseil
+  design.
+- **Consequence for a change that touches gRPC:** a patch that compiles
+  natively proves the 1.82.1 side only. The image's `test` stage is the 1.51
+  side, and it is the only place that leg is exercised.
+
 ## Network shape
 
 Every service is on the `internal` bridge network. There is no gateway and no
