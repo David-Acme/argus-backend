@@ -131,7 +131,8 @@ ensure_builder() {
     docker buildx rm --keep-state "$BUILDER" >/dev/null 2>&1 || true
   fi
   docker buildx create --name "$BUILDER" --driver docker-container \
-    --driver-opt "memory=${CAP_GB}g" --driver-opt "memory-swap=${CAP_GB}g" >/dev/null
+    --driver-opt "memory=${CAP_GB}g" --driver-opt "memory-swap=${CAP_GB}g" \
+    --buildkitd-config "$ROOT/argus-deploy/buildkitd.toml" >/dev/null
   docker buildx inspect --bootstrap "$BUILDER" >/dev/null
   have="$(builder_memory_bytes)"
   if [ "$have" != "$want" ]; then
