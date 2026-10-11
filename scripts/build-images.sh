@@ -26,6 +26,8 @@ BUILDER="${ARGUS_BUILD_BUILDER:-argus-build}"
 CAP_GB="${ARGUS_BUILD_MEMORY_GB:-12}"
 OUT="${ARGUS_BUILD_OUT:-$ROOT/build/images}"
 ONLY=""
+JOBS="${ARGUS_BUILD_JOBS:-}"
+LINK_POOLS="${ARGUS_BUILD_LINK_POOLS:-}"
 
 usage() {
   cat <<'EOF'
@@ -40,6 +42,11 @@ green.
 --only <project>  one project by its Dockerfile's --only name (auth, identity,
                   camera, productivity, notification, sync, guard, settings,
                   tts, stt, vlm, llm, voice, tunnel); default all fourteen
+--jobs <n>        CMAKE_BUILD_PARALLEL_LEVEL handed to the in-image
+                  build-all; empty keeps build-all's own derivation
+                  ($ARGUS_BUILD_JOBS)
+--link-pools <n>  ARGUS_LINK_POOLS handed to the in-image build-all; empty
+                  keeps the tree's own default ($ARGUS_BUILD_LINK_POOLS)
 --memory <gb>     the builder container's memory and memory-swap limit
                   (default 12, $ARGUS_BUILD_MEMORY_GB)
 --output <dir>    where the per-image build logs, the per-image ctest summary
@@ -66,6 +73,8 @@ EOF
 while [ $# -gt 0 ]; do
   case "$1" in
     --only)    [ $# -ge 2 ] || { usage; exit 1; }; ONLY="$2"; shift ;;
+    --jobs)    [ $# -ge 2 ] || { usage; exit 1; }; JOBS="$2"; shift ;;
+    --link-pools) [ $# -ge 2 ] || { usage; exit 1; }; LINK_POOLS="$2"; shift ;;
     --memory)  [ $# -ge 2 ] || { usage; exit 1; }; CAP_GB="$2"; shift ;;
     --output)  [ $# -ge 2 ] || { usage; exit 1; }; OUT="$2"; shift ;;
     --builder) [ $# -ge 2 ] || { usage; exit 1; }; BUILDER="$2"; shift ;;
@@ -79,6 +88,18 @@ case "$CAP_GB" in
   ""|*[!0-9]*) printf 'build-images: --memory takes a whole number of GiB\n' >&2; exit 1 ;;
 esac
 [ "$CAP_GB" -ge 1 ] || { printf 'build-images: --memory must be at least 1\n' >&2; exit 1; }
+case "$JOBS" in *[!0-9]*) printf 'build-images: --jobs takes a whole number\n' >&2; exit 1 ;; esac
+[ -z "$JOBS" ] || [ "$JOBS" -ge 1 ] || { printf 'build-images: --jobs must be at least 1\n' >&2; exit 1; }
+case "$LINK_POOLS" in *[!0-9]*) printf 'build-images: --link-pools takes a whole number\n' >&2; exit 1 ;; esac
+[ -z "$LINK_POOLS" ] || [ "$LINK_POOLS" -ge 1 ] || { printf 'build-images: --link-pools must be at least 1\n' >&2; exit 1; }
+
+EXTRA_ARGS=()
+if [ -n "$JOBS" ]; then
+  EXTRA_ARGS+=(--build-arg "CMAKE_BUILD_PARALLEL_LEVEL=$JOBS")
+fi
+if [ -n "$LINK_POOLS" ]; then
+  EXTRA_ARGS+=(--build-arg "ARGUS_LINK_POOLS=$LINK_POOLS")
+fi
 
 builder_memory_bytes() {
   docker inspect --format '{{.HostConfig.Memory}}' "buildx_buildkit_${BUILDER}0" 2>/dev/null
@@ -97,9 +118,17 @@ ensure_builder() {
     if [ "$have" = "$want" ]; then
       return 0
     fi
-    printf 'build-images: builder %s carries memory %s, wanted %s; recreating it\n' \
+    printf 'build-images: builder %s carries memory %s, wanted %s; raising it in place\n' \
       "$BUILDER" "${have:-unreadable}" "$want" >&2
-    docker buildx rm "$BUILDER" >/dev/null 2>&1 || true
+    docker update --memory "${CAP_GB}g" --memory-swap "${CAP_GB}g" \
+      "buildx_buildkit_${BUILDER}0" >/dev/null 2>&1 || true
+    have="$(builder_memory_bytes)"
+    if [ "$have" = "$want" ]; then
+      return 0
+    fi
+    printf 'build-images: the in-place update did not take; recreating %s with --keep-state\n' \
+      "$BUILDER" >&2
+    docker buildx rm --keep-state "$BUILDER" >/dev/null 2>&1 || true
   fi
   docker buildx create --name "$BUILDER" --driver docker-container \
     --driver-opt "memory=${CAP_GB}g" --driver-opt "memory-swap=${CAP_GB}g" >/dev/null
@@ -166,7 +195,7 @@ main() {
     test_start="$(date +%s)"
     set +e
     docker buildx build --builder "$BUILDER" --file "$dockerfile" --target test \
-      --output type=cacheonly "$ROOT" > "$log" 2>&1
+      --output type=cacheonly "${EXTRA_ARGS[@]}" "$ROOT" > "$log" 2>&1
     test_rc=$?
     set -e
     test_seconds=$(( $(date +%s) - test_start ))
@@ -184,7 +213,7 @@ main() {
     build_start="$(date +%s)"
     set +e
     docker buildx build --builder "$BUILDER" --file "$dockerfile" --target runtime \
-      --load --tag "$image" "$ROOT" >> "$log" 2>&1
+      --load --tag "$image" "${EXTRA_ARGS[@]}" "$ROOT" >> "$log" 2>&1
     build_rc=$?
     set -e
     build_seconds=$(( $(date +%s) - build_start ))

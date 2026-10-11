@@ -23,12 +23,16 @@ RUN conan profile detect --force \
     && printf '\n[replace_requires]\nprotobuf/*: protobuf/3.21.12\n' \
       >> /root/.conan2/profiles/default
 
+ARG CMAKE_BUILD_PARALLEL_LEVEL
+ARG ARGUS_LINK_POOLS
 RUN --mount=type=cache,target=/root/.conan2/p \
     --mount=type=cache,target=/root/.conan2/b \
     ./scripts/build-all.sh prod --no-tests --only voice
 
 FROM build AS test
 
+ARG CMAKE_BUILD_PARALLEL_LEVEL
+ARG ARGUS_LINK_POOLS
 RUN --mount=type=cache,target=/root/.conan2/p \
     --mount=type=cache,target=/root/.conan2/b \
     ./scripts/build-all.sh prod --only voice
