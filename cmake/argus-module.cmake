@@ -297,15 +297,15 @@ function(argus_contracts_substrate)
                  PATHS "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}"
                  NO_DEFAULT_PATH REQUIRED)
     find_program(system_protoc protoc REQUIRED)
-    add_executable(gRPC::grpc_cpp_plugin IMPORTED)
+    add_executable(gRPC::grpc_cpp_plugin IMPORTED GLOBAL)
     set_target_properties(gRPC::grpc_cpp_plugin PROPERTIES
                           IMPORTED_LOCATION "${system_grpc_plugin}")
-    add_library(argus_system_grpc++ UNKNOWN IMPORTED)
+    add_library(argus_system_grpc++ UNKNOWN IMPORTED GLOBAL)
     set_target_properties(argus_system_grpc++ PROPERTIES
         IMPORTED_LOCATION "${system_grpcpp_lib}"
         INTERFACE_INCLUDE_DIRECTORIES "/usr/include"
         INTERFACE_LINK_LIBRARIES "${system_grpc_items}")
-    add_library(argus_system_protobuf UNKNOWN IMPORTED)
+    add_library(argus_system_protobuf UNKNOWN IMPORTED GLOBAL)
     set_target_properties(argus_system_protobuf PROPERTIES
         IMPORTED_LOCATION "${system_protobuf_lib}"
         INTERFACE_INCLUDE_DIRECTORIES "/usr/include")
