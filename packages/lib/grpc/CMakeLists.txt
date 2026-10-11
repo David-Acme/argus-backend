@@ -4,10 +4,12 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 argus_contracts_substrate()
 
-find_package(gRPC CONFIG QUIET)
-if(NOT gRPC_FOUND)
-  list(APPEND CMAKE_PREFIX_PATH "$ENV{HOME}/.local/argus-thirdparty/grpc")
-  find_package(gRPC CONFIG REQUIRED)
+if(NOT ARGUS_SYSTEM_PROTOBUF AND NOT TARGET gRPC::grpc++)
+  find_package(gRPC CONFIG QUIET)
+  if(NOT gRPC_FOUND)
+    list(APPEND CMAKE_PREFIX_PATH "$ENV{HOME}/.local/argus-thirdparty/grpc")
+    find_package(gRPC CONFIG REQUIRED)
+  endif()
 endif()
 
 if(NOT TARGET argus_client_grpc_base)
