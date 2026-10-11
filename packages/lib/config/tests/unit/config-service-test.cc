@@ -249,7 +249,7 @@ paired = false
 
 TEST_CASE("a setter whose write fails keeps serving the value on disk")
 {
-  char dirTemplate[] = "/tmp/config-service-locked-XXXXXX";
+  char dirTemplate[] = "/tmp/config-service-writefail-XXXXXX";
   const std::string dir = ::mkdtemp(dirTemplate);
   const std::string path = dir + "/config.toml";
   {
@@ -257,14 +257,14 @@ TEST_CASE("a setter whose write fails keeps serving the value on disk")
     out << "[llm]\ntemperature = 0.5\n";
   }
   ConfigService::load(path);
-  REQUIRE(::chmod(path.c_str(), 0400) == 0);
-  REQUIRE(::chmod(dir.c_str(), 0500) == 0);
+  REQUIRE(std::remove(path.c_str()) == 0);
+  REQUIRE(::mkdir(path.c_str(), 0700) == 0);
 
   CHECK_FALSE(ConfigService::setDouble("llm.temperature", 0.9));
   CHECK(ConfigService::getDouble("llm.temperature") == doctest::Approx(0.5));
 
-  REQUIRE(::chmod(dir.c_str(), 0700) == 0);
-  std::remove(path.c_str());
+  REQUIRE(::rmdir(path.c_str()) == 0);
+  std::remove((path + ".tmp").c_str());
   ::rmdir(dir.c_str());
 }
 
