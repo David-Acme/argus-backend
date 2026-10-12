@@ -72,7 +72,7 @@ struct PlainTurn
   ScriptedEngine engine;
   LfmAdapter adapter;
 
-  PlainTurn() : adapter({.engine = engine.engine(), .registry = registry, .router = nullptr}) {}
+  PlainTurn() : adapter({.engine = engine.engine(), .registry = registry}) {}
 
   ChatRequest request(const std::string& utterance, std::vector<ContextFact> facts)
   {

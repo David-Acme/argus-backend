@@ -237,7 +237,7 @@ ChatRequest boundToCaller(ChatRequest request, std::string_view caller)
 }
 
 LlmController::LlmController()
-    : adapter_(service_, &intentGate_.router()), streams_(streamCapacity())
+    : adapter_(service_), streams_(streamCapacity())
 {
 }
 

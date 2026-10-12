@@ -92,8 +92,6 @@ struct LayaLabel
 
 [[nodiscard]] std::optional<std::string> unknownLayaLabel(std::span<const std::string> labels);
 
-[[nodiscard]] std::optional<BundleDecode> layaDecodeFromAgentConfig(const std::filesystem::path& path);
-
 [[nodiscard]] std::unique_ptr<LayaModel> openLayaModel(LayaModelInput input);
 
 }

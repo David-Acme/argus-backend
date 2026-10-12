@@ -819,8 +819,8 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${ARGUS_MODELS_DIR:-../models}/intent
-        target: /opt/argus/models/intent
+        source: ${ARGUS_MODELS_DIR:-../models}/decide
+        target: /opt/argus/models/decide
         read_only: true
         bind:
           create_host_path: false

@@ -1,22 +1,17 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <feature/intent/services/intent-contracts.hxx>
-#include <feature/intent/services/intent-router.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
 #include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/llm/services/turn/deciders.hxx>
-#include <feature/llm/services/turn/model-text.hxx>
 #include <feature/llm/services/turn/decision-policy.hxx>
 #include <feature/llm/services/turn/slots.hxx>
 #include <feature/llm/services/turn/tool-effects.hxx>
 #include <feature/llm/services/turn/turn-flow.hxx>
 #include <feature/llm/services/turn/speech-acts.hxx>
-#include <feature/memory/services/extract/extraction-service.hxx>
 #include <mcp/schema.hxx>
-#include <phrase/phrase-catalog.hxx>
 #include "tool-stubs.hxx"
 
 #include <text/iso-time.hxx>
@@ -357,23 +352,6 @@ std::string titled(const std::optional<std::string>& title)
   return title.value_or(std::string());
 }
 
-class SilentClassifier final : public intent::IIntentClassifier
-{
-public:
-  [[nodiscard]] bool isLoaded() const override { return false; }
-  [[nodiscard]] std::vector<intent::IntentHit> score(const std::string&) const override { return {}; }
-};
-
-class ForgetClassifier final : public intent::IIntentClassifier
-{
-public:
-  [[nodiscard]] bool isLoaded() const override { return true; }
-  [[nodiscard]] std::vector<intent::IntentHit> score(const std::string&) const override
-  {
-    return {{.intent = intent::ToolIntent::MemoryForget, .score = 0.97F}, {.intent = intent::ToolIntent::None, .score = 0.01F}};
-  }
-};
-
 struct ScriptedEngine
 {
   std::deque<std::string> replies;
@@ -420,7 +398,6 @@ struct Spoken
       : world(role),
         adapter({.engine = script.engine(),
                  .registry = world.registry,
-                 .router = nullptr,
                  .decider = &world.rules,
                  .text = &world.text,
                  .policies = turn::PolicySet({.act = 0.90, .ask = 0.60, .margin = 0.10})})
@@ -480,8 +457,8 @@ TEST_CASE("each decider has its own policy and the others fall back to the defau
   turn::PolicySet policies({.act = 0.90, .ask = 0.60, .margin = 0.10});
   policies.set("laya", {.act = 0.97, .ask = 0.80, .margin = 0.05});
   CHECK(policies.of("laya").act == doctest::Approx(0.97));
-  CHECK(policies.of("router").act == doctest::Approx(0.90));
-  CHECK(policies.of("router").margin == doctest::Approx(0.10));
+  CHECK(policies.of("triggers").act == doctest::Approx(0.90));
+  CHECK(policies.of("triggers").margin == doctest::Approx(0.10));
 }
 
 TEST_CASE("deciders stack in order and a decider that abstains hands the turn on")
@@ -537,40 +514,39 @@ TEST_CASE("an explicit agenda command is the agenda's, and the app grammar keeps
   CHECK(toolOf("hola qué tal").empty());
 }
 
-TEST_CASE("the router decider names a memory tool with the words as its argument and never carries a code")
+TEST_CASE("the trigger decider routes only an explicit trigger, with the words as its argument")
 {
   World world;
-  PhraseCatalog catalog;
-  catalog.build();
-  const SilentClassifier silent;
-  const IntentRouter byRules({.catalog = catalog, .model = silent, .recurrent = {}});
-  const turn::RouterDecider remembers(&byRules);
+  world.add(tool_stubs::stub({.name = "memory.remind",
+                              .capability = "memory.manage",
+                              .handler = [](const tools::ToolCall&) { return tool_stubs::okResult("Te lo recuerdo."); },
+                              .module = "core",
+                              .schema = schema::object({{.name = "text", .schema = schema::text(), .required = true}})}));
+  world.refresh();
+  const turn::TriggerDecider triggers;
+  const auto decide = [&](const std::string& utterance, const std::string& lang) {
+    return triggers.decide({.utterance = utterance, .lang = lang, .offered = world.offered, .modules = world.audience.modules});
+  };
   const std::string statement = "recuerda que mi hermana viene los domingos";
-  const turn::Candidate saved =
-      must(remembers.decide({.utterance = statement, .lang = "es", .offered = world.offered, .modules = world.audience.modules}));
+  const turn::Candidate saved = must(decide(statement, "es"));
   CHECK(saved.tool == "memory.remember");
   CHECK(saved.arguments["text"].asString() == statement);
   CHECK(saved.confidence == doctest::Approx(1.0));
+  CHECK(saved.exact);
+  CHECK(saved.decider == "triggers");
+  CHECK_FALSE(saved.runnerUp.has_value());
 
-  const ForgetClassifier forgets;
-  const IntentRouter byModel({.catalog = catalog, .model = forgets, .recurrent = {}});
-  const turn::RouterDecider forgetter(&byModel);
-  ToolRegistry registry;
-  registry.registerTool(tool_stubs::stub({.name = "memory.forget",
-                                          .capability = "memory.manage",
-                                          .handler = [](const tools::ToolCall&) { return tool_stubs::okResult("Olvidado."); },
-                                          .module = "core",
-                                          .schema = schema::object({{.name = "query", .schema = schema::text(), .required = true},
-                                                                    {.name = "confirmation", .schema = schema::text(), .required = false}}),
-                                          .destructive = true}));
-  const std::vector<tools::ToolHandle> offered{registry.find("memory.forget")};
-  const turn::Candidate forget =
-      must(forgetter.decide({.utterance = "olvida lo del dentista", .lang = "es", .offered = offered, .modules = world.audience.modules}));
-  CHECK(forget.tool == "memory.forget");
-  CHECK_FALSE(forget.arguments.isMember("confirmation"));
-  CHECK(forget.confidence >= 0.90);
+  CHECK(must(decide("recuerdame que el mecanico llega el martes", "es")).tool == "memory.remind");
+  CHECK(must(decide("apunta que el mecanico llega el martes", "es")).tool == "memory.remember");
+  CHECK(must(decide("ten en cuenta que la vecina cuida del gato el sabado", "es")).tool == "memory.remember");
+  CHECK(must(decide("don't forget that the dog eats at 7", "en")).tool == "memory.remember");
 
-  CHECK_FALSE(turn::RouterDecider(nullptr).decide({.utterance = statement, .lang = "es", .offered = world.offered, .modules = world.audience.modules}).has_value());
+  CHECK_FALSE(decide("olvida lo del dentista", "es").has_value());
+  CHECK_FALSE(decide("el sofá del salón es nuevo", "es").has_value());
+  CHECK_FALSE(decide("hola qué tal", "es").has_value());
+
+  const std::vector<tools::ToolHandle> recallOnly{world.registry.find("memory.recall")};
+  CHECK_FALSE(triggers.decide({.utterance = statement, .lang = "es", .offered = recallOnly, .modules = world.audience.modules}).has_value());
 }
 
 TEST_CASE("a request with its title and time is decided, filled and run, and what is said carries what was stored")
@@ -1083,31 +1059,8 @@ TEST_CASE("a module slot is filled from the names the snapshot carries and asked
   CHECK(unheard.missing.front() == "module");
 }
 
-TEST_CASE("the model slot falls back to the rules and never loads the model inside a turn")
-{
-  ExtractionService extraction;
-  const turn::ModelText text(extraction);
-  const auto title =
-      text.extract({.tool = "task.create", .field = "title", .utterance = "anota una tarea: llamar al dentista", .lang = "es"});
-  CHECK(titled(title) == "Llamar al dentista");
-  CHECK_FALSE(text.extract({.tool = "task.create", .field = "title", .utterance = "anota una tarea", .lang = "es"}).has_value());
-  CHECK_FALSE(extraction.isLoaded());
-}
-
 namespace
 {
-class RankedClassifier final : public intent::IIntentClassifier
-{
-public:
-  explicit RankedClassifier(std::vector<intent::IntentHit> hits) : hits_(std::move(hits)) {}
-
-  [[nodiscard]] bool isLoaded() const override { return true; }
-  [[nodiscard]] std::vector<intent::IntentHit> score(const std::string&) const override { return hits_; }
-
-private:
-  std::vector<intent::IntentHit> hits_;
-};
-
 struct Moment
 {
   int day{0};
@@ -1133,23 +1086,16 @@ constexpr std::string_view kBetween = "el sofá del salón es nuevo";
 TEST_CASE("two tools that are close are asked about in one question, and the answer picks one")
 {
   World world;
-  PhraseCatalog catalog;
-  catalog.build();
-  const RankedClassifier classifier({{.intent = intent::ToolIntent::MemorySave, .score = 0.70F},
-                                     {.intent = intent::ToolIntent::MemoryRecall, .score = 0.62F},
-                                     {.intent = intent::ToolIntent::None, .score = 0.01F}});
-  const IntentRouter router({.catalog = catalog, .model = classifier, .recurrent = {}});
-  const turn::RouterDecider decider(&router);
   const std::string utterance(kBetween);
-  const auto decision = must(decider.decide({.utterance = utterance, .lang = "es", .offered = world.offered, .modules = world.audience.modules}));
-  CHECK(decision.tool == "memory.remember");
-  CHECK_FALSE(decision.confident);
-  CHECK_FALSE(decision.exact);
-  REQUIRE(decision.runnerUp.has_value());
-  CHECK(decision.runnerUp.value_or(turn::Pick{}).tool == "memory.recall");
-  CHECK(decision.runnerUp.value_or(turn::Pick{}).confidence == doctest::Approx(0.62).epsilon(0.001));
-
-  world.flow.useDecider(decider);
+  turn::Candidate close = candidate("memory.remember", 0.70);
+  close.arguments["text"] = utterance;
+  close.exact = false;
+  close.confident = false;
+  Json::Value query(Json::objectValue);
+  query["query"] = utterance;
+  close.runnerUp = turn::Pick{.tool = "memory.recall", .arguments = query, .fill = {}, .confidence = 0.62, .source = "script"};
+  world.scripted.next = close;
+  world.flow.useDecider(world.scripted);
   const auto asked = world.say(utterance);
   CHECK(world.ran.empty());
   CHECK(saidAct(asked, turn::speech::Choose{.options = {"memory.remember", "memory.recall"}}));
@@ -1449,7 +1395,7 @@ TEST_CASE("the same decider acts alone on a write when it is not marked, and the
 
   World other;
   turn::PolicySet policies({.act = 0.90, .ask = 0.60, .margin = 0.10});
-  policies.set("router", {.act = 0.90, .ask = 0.60, .margin = 0.10, .witnessOnly = true});
+  policies.set("triggers", {.act = 0.90, .ask = 0.60, .margin = 0.10, .witnessOnly = true});
   other.flow.usePolicies(policies);
   CHECK(actAs<turn::speech::Done>(other.say("agéndame una reunión con Andrea mañana a las 5 de la tarde")) != nullptr);
   CHECK(other.ran.size() == 1);

@@ -302,7 +302,6 @@ TEST_CASE("one turn runs the whole pipeline on both pilot bundles, from the norm
   ScriptedEngine engine;
   LfmAdapter adapter({.engine = engine.engine(),
                       .registry = world.registry,
-                      .router = nullptr,
                       .decider = &laya,
                       .text = &gliner,
                       .policies = policies});

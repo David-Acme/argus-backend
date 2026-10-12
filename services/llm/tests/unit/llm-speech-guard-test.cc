@@ -423,7 +423,6 @@ TEST_CASE("a choose whose options are incomplete is released on its last attempt
   ToolRegistry& registry = ToolRegistry::instance();
   LfmAdapter adapter({.engine = chat.engine(),
                       .registry = registry,
-                      .router = nullptr,
                       .decider = nullptr,
                       .text = nullptr,
                       .policies = turn::PolicySet{}});

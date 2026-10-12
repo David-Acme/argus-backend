@@ -79,9 +79,7 @@ void writeConfig(const std::string& dbFile, int queueBound)
          << "/model.onnx\"\n"
          << "embedding_tokenizer = \"" << ARGUS_TEST_MEMORY_MODELS_DIR
          << "/tokenizer.json\"\n"
-         << "embedding_preload = true\n"
-         << "[extract]\n"
-         << "model_path = \"/tmp/f46-memory-backpressure/none.gguf\"\n";
+         << "embedding_preload = true\n";
 }
 
 }

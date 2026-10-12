@@ -243,7 +243,6 @@ bool LexiconExtractor::extract(const extract::ExtractInput& input,
   else
     fact.factType = "attribute";
   fact.confidence = 0.9F;
-  fact.tier = extract::ExtractTier::Lexicon;
   out.push_back(std::move(fact));
   return true;
 }

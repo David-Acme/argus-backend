@@ -69,33 +69,31 @@ chunk_chars = 400
 flush_timeout_ms = 60000
 compact_wait_ms = 15000
 compact_max_tokens = 256
-extract_wait_ms = 15000
-
-[intent]
-model_file = "models/intent/intent.bin"
 
 [decide]
+bundle_dir = "models/decide/bundle-laya-pilot"
+sha256 = "29b1cfaed940561e19f3649151976aaacebdc2d75bbc0601aefef480f9a946f5"
 act = 0.90
 ask = 0.60
 margin = 0.10
-
-[decide.router]
-act = 0.90
-ask = 0.60
-margin = 0.10
-witness_only = false
+threads = 0
+cpu_arena = false
+mem_pattern = false
+prepacking = false
+mmap = true
 
 [decide.rules]
 witness_only = false
 
 [extract]
-model_path = "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"
-prompt_format = "v1.5"
-gpu_layers = -1
+bundle_dir = "models/extract/pilot-bundle"
+sha256 = "13f547cf728765ace23d40dbde46ff00cb5fae0718e27f151822b651f9cc0b74"
 lexicon_min_coverage = 0.6
 threads = 0
-n_ctx = 2048
-max_tokens = 512
+cpu_arena = false
+mem_pattern = false
+prepacking = false
+mmap = true
 
 [identity]
 target = "tls:argus-identity:7240"

@@ -4,7 +4,6 @@
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <drogon/utils/coroutine.h>
-#include <feature/llm/services/intent-gate.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
 #include <llm/llm-service.hxx>
 #include <runtime/stream-slots.hxx>
@@ -80,8 +79,6 @@ public:
 
   LfmAdapter& adapter() { return adapter_; }
 
-  const IntentRouter& router() const { return intentGate_.router(); }
-
   void useScreen(const turn::UtteranceScreen& screen);
 
   [[nodiscard]] std::string screenText(const ChatRequest& request) const;
@@ -96,7 +93,6 @@ public:
 
 private:
   LlmService service_;
-  IntentGate intentGate_;
   LfmAdapter adapter_;
   StreamSlots streams_;
   std::string identityCredential_;

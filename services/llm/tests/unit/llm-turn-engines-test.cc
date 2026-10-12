@@ -1,7 +1,9 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <feature/llm/services/lfm-adapter.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
+#include <feature/llm/services/turn-engines.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/llm/services/turn/bundle-loader.hxx>
 #include <feature/llm/services/turn/gliner-extractor.hxx>
@@ -198,74 +200,72 @@ TEST_CASE("a label no tool serves is refused rather than routed")
   CHECK(requireValue(stray) == "holiday_planning");
 }
 
-TEST_CASE("with engine laya the judge arbitrates rules and laya, and the router never proposes")
+TEST_CASE("a ready laya decides, and the explicit triggers are never asked")
 {
   World world;
-  CountingDecider router("router", std::nullopt);
+  CountingDecider triggers("triggers", std::nullopt);
   auto model = std::make_unique<StubLayaModel>(turn::EngineStatus::Ready,
                                                std::vector<std::pair<std::string, double>>{{"memory_save", 0.95}, {"none", 0.03}},
                                                0.9);
   StubLayaModel* probe = model.get();
-  turn::LayaDecider laya({.model = std::move(model),
-                          .fallback = &router,
-                          .policy = {},
-                          .confidence = {},
-                          .now = {}});
-  const turn::DecideInput input = inputFor(world, "recuerda que el codigo es AB12CD");
-  const std::optional<turn::Candidate> candidate = laya.decide(input);
+  turn::LayaDecider laya({.model = std::move(model), .fallback = &triggers, .policy = {}, .confidence = {}, .now = {}});
+  const std::optional<turn::Candidate> candidate = laya.decide(inputFor(world, "recuerda que el codigo es AB12CD"));
   REQUIRE(candidate.has_value());
   CHECK(requireValue(candidate).tool == "memory.remember");
   CHECK(requireValue(candidate).decider == "laya");
   CHECK(requireValue(candidate).source == "laya, memory_save");
   CHECK(probe->reads_ == 1);
-  CHECK(router.asked == 0);
+  CHECK(triggers.asked == 0);
 }
 
-TEST_CASE("with engine router the router proposes and laya is never consulted")
+TEST_CASE("a laya model that cannot load hands the turn to the explicit triggers")
 {
   World world;
-  const turn::Candidate fromRouter = candidate("memory.remember", "router", 0.95);
-  CountingDecider router("router", fromRouter);
-  auto model = std::make_unique<StubLayaModel>(turn::EngineStatus::Ready, std::vector<std::pair<std::string, double>>{}, 0.0);
-  StubLayaModel* probe = model.get();
-  turn::LayaDecider laya({.model = std::move(model), .fallback = &router, .policy = {}, .confidence = {}, .now = {}});
-  const std::optional<turn::Candidate> candidate = router.decide(inputFor(world, "recuerda que el codigo es AB12CD"));
-  REQUIRE(candidate.has_value());
-  CHECK(requireValue(candidate).decider == "router");
-  CHECK(router.asked == 1);
-  CHECK(probe->reads_ == 0);
-  CHECK(laya.decide(inputFor(world, "otra")).value_or(fromRouter).decider != "laya");
-}
-
-TEST_CASE("a laya model that cannot load forwards the turn to the router")
-{
-  World world;
-  CountingDecider router("router", candidate("memory.remember", "router", 0.95));
+  CountingDecider triggers("triggers", candidate("memory.remember", "triggers", 1.0));
   turn::LayaDecider laya({.model = std::make_unique<StubLayaModel>(turn::EngineStatus::Unavailable, std::vector<std::pair<std::string, double>>{}, 0.0),
-                          .fallback = &router,
+                          .fallback = &triggers,
                           .policy = {},
                           .confidence = {},
                           .now = {}});
   const std::optional<turn::Candidate> candidate = laya.decide(inputFor(world, "recuerda que el codigo es AB12CD"));
   REQUIRE(candidate.has_value());
-  CHECK(requireValue(candidate).decider == "router");
-  CHECK(router.asked == 1);
+  CHECK(requireValue(candidate).decider == "triggers");
+  CHECK(triggers.asked == 1);
 }
 
-TEST_CASE("the gliner extractor answers a span, and falls back to nuextract when it cannot load")
+TEST_CASE("the gliner extractor answers a span, and the rule tier answers when it cannot load")
 {
   World world;
-  const slots::TextRequest request{.tool = "calendar.create_event", .field = "title", .utterance = "agenda una cita con el dentista", .lang = "es"};
+  const slots::TextRequest request{.tool = "task.create", .field = "title", .utterance = "anota una tarea: llamar al dentista", .lang = "es"};
   turn::GlinerExtractor gliner({.model = std::make_unique<StubGlinerModel>(
                                     turn::EngineStatus::Ready,
-                                    std::vector<turn::GlinerSpan>{{.field = "title", .text = "cita con el dentista", .score = 0.9, .begin = 0, .end = 10}}),
-                                .fallback = nullptr,
+                                    std::vector<turn::GlinerSpan>{{.field = "title", .text = "llamar al dentista", .score = 0.9, .begin = 0, .end = 10}}),
+                                .fallback = &world.text,
                                 .thresholds = {.threshold = 0.5, .maxSpanWidth = 12, .present = true}});
-  CHECK(gliner.extract(request) == std::optional<std::string>("cita con el dentista"));
+  CHECK(gliner.extract(request) == std::optional<std::string>("llamar al dentista"));
   turn::GlinerExtractor off({.model = std::make_unique<StubGlinerModel>(turn::EngineStatus::Unavailable, std::vector<turn::GlinerSpan>{}),
-                             .fallback = nullptr,
+                             .fallback = &world.text,
                              .thresholds = {}});
-  CHECK_FALSE(off.extract(request).has_value());
+  REQUIRE(world.text.extract(request).has_value());
+  CHECK(off.extract(request) == world.text.extract(request));
+}
+
+TEST_CASE("without bundles the turn runs on rules, explicit triggers and the rule tier, and says why")
+{
+  ToolRegistry registry;
+  LfmAdapter adapter({.engine = {.chat = [](const ChatRequest&) { return std::string("Listo."); }, .chatStream = {}},
+                      .registry = registry,
+                      .decider = nullptr,
+                      .text = nullptr,
+                      .policies = {}});
+  const TurnEngines engines = installTurnEngines({.adapter = adapter,
+                                                  .decide = {.dir = pilotBundle("decide") / "absent", .pin = {}, .options = {}},
+                                                  .extract = {.dir = pilotBundle("extract") / "absent", .pin = {}, .options = {}}});
+  CHECK(engines.laya == nullptr);
+  CHECK(engines.gliner == nullptr);
+  CHECK(engines.decideError.find("absent") != std::string::npos);
+  CHECK(engines.extractError.find("absent") != std::string::npos);
+  CHECK(engines.pipeline() == "rules+triggers+rule-text");
 }
 
 TEST_CASE("the whole new pipeline runs on the pilot bundles: laya decides, gliner fills, the tool runs")

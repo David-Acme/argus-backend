@@ -34,77 +34,6 @@ std::string factTypeFromMemoryType(const std::string& type)
   return "attribute";
 }
 
-struct FoldedView
-{
-  std::string folded;
-  std::vector<size_t> boundary;
-};
-
-FoldedView foldClause(std::string_view source)
-{
-  static constexpr std::array<std::pair<std::string_view, char>, 23> kFold{{
-      {"á", 'a'}, {"é", 'e'},
-      {"í", 'i'}, {"ó", 'o'}, {"ú", 'u'}, {"ü", 'u'}, {"ñ", 'n'},
-      {"à", 'a'}, {"è", 'e'}, {"ì", 'i'}, {"ò", 'o'}, {"ù", 'u'},
-      {"â", 'a'}, {"ê", 'e'}, {"î", 'i'}, {"ô", 'o'}, {"û", 'u'},
-      {"ä", 'a'}, {"ë", 'e'}, {"ï", 'i'}, {"ö", 'o'}, {"ÿ", 'y'},
-      {"ç", 'c'}}};
-  FoldedView out;
-  out.boundary.push_back(0);
-  size_t i = 0;
-  bool pendingSpace = false;
-  while (i < source.size()) {
-    const unsigned char c = static_cast<unsigned char>(source[i]);
-    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
-      pendingSpace = true;
-      ++i;
-      continue;
-    }
-    if (pendingSpace && !out.folded.empty()) {
-      out.folded.push_back(' ');
-      out.boundary.push_back(i);
-      pendingSpace = false;
-    }
-    pendingSpace = false;
-    bool foldedChar = false;
-    for (const auto& [from, to] : kFold) {
-      if (i + from.size() <= source.size() && source.substr(i, from.size()) == from) {
-        out.folded.push_back(to);
-        i += from.size();
-        out.boundary.push_back(i);
-        foldedChar = true;
-        break;
-      }
-    }
-    if (!foldedChar) {
-      out.folded.push_back(static_cast<char>(std::tolower(c)));
-      ++i;
-      out.boundary.push_back(i);
-    }
-  }
-  return out;
-}
-
-std::optional<std::pair<size_t, size_t>>
-findSpanInClause(const FoldedView& view, const std::string& needle)
-{
-  if (needle.empty())
-    return std::nullopt;
-  const auto atWord = [&](size_t at, size_t len) {
-    const bool leftOk = at == 0 || view.folded[at - 1] == ' ';
-    const size_t end = at + len;
-    const bool rightOk = end >= view.folded.size() || view.folded[end] == ' ';
-    return leftOk && rightOk;
-  };
-  for (size_t at = view.folded.find(needle); at != std::string::npos;
-       at = view.folded.find(needle, at + 1)) {
-    if (!atWord(at, needle.size()))
-      continue;
-    return std::pair{view.boundary[at], view.boundary[at + needle.size()]};
-  }
-  return std::nullopt;
-}
-
 struct TimeProbe
 {
   const std::string& text;
@@ -222,7 +151,7 @@ MemoryFormation::observe(const Observation& obs,
         parsed
             ? std::nullopt
             : ruleParser_.parseStatement({.text = obs.text, .lang = obs.lang});
-    if (!parsed && !statement && !obs.salient && !obs.decided)
+    if (!parsed && !statement && !obs.decided)
       return std::nullopt;
 
     const RuleParseResult salientGate{.type = MemoryType::Persona,
@@ -246,12 +175,10 @@ MemoryFormation::observe(const Observation& obs,
       return std::nullopt;
 
     std::vector<extract::ExtractedFact> extracted;
-    if (extractor_)
+    if (extractor_ && explicitTrigger)
       extractor_->extract({.clause = clause,
                            .lang = obs.lang,
-                           .userId = obs.userId,
-                           .requireModel = !explicitTrigger || obs.refines > 0,
-                           .allowModel = obs.allowModel},
+                           .userId = obs.userId},
                           extracted);
 
     const bool usable = !extracted.empty() && [&] {
@@ -271,13 +198,11 @@ MemoryFormation::observe(const Observation& obs,
                      : first.factType;
       confidence = first.confidence;
       priority = gate.priority;
-      result.source =
-          first.tier == extract::ExtractTier::Lexicon ? "lexicon" : "model";
+      result.source = "lexicon";
     }
     else {
-      if (obs.refines > 0 || (extractor_ && !explicitTrigger))
+      if (extractor_ && !explicitTrigger)
         return std::nullopt;
-      extracted.clear();
       value = clause;
       predicate = std::string(kNotePredicate);
       factType = factTypeFromMemoryType(memoryTypeToString(gate.type));
@@ -291,63 +216,7 @@ MemoryFormation::observe(const Observation& obs,
         }
       }
     }
-    if (explicitTrigger || result.source == "rule") {
-      naturalClause = clause;
-    }
-    else {
-      const FoldedView view = foldClause(clause);
-      const auto span = [&](const std::string& part) {
-        return findSpanInClause(view, TemporalResolver::normalize(part));
-      };
-
-      const auto subjectSpan = span(subjectSurface);
-      const auto valueSpan = span(value);
-      const auto whenSpan = [&]() -> std::optional<std::pair<size_t, size_t>> {
-        if (!extracted.empty() && !extracted.front().when.surface.empty() &&
-            value != extracted.front().when.surface)
-          return span(extracted.front().when.surface);
-        return std::nullopt;
-      }();
-
-      size_t begin = subjectSpan ? subjectSpan->first : 0;
-      size_t end = subjectSpan ? subjectSpan->second : 0;
-      if (valueSpan && valueSpan->second > end)
-        end = valueSpan->second;
-      if (whenSpan && whenSpan->second > end)
-        end = whenSpan->second;
-
-      if (end > begin)
-        naturalClause =
-            text_norm::whitespace(clause.substr(begin, end - begin));
-
-      if (naturalClause.empty()) {
-        naturalClause = subjectSurface + " " + predicate;
-        if (!value.empty())
-          naturalClause += " " + value;
-        if (!extracted.empty() && !extracted.front().when.surface.empty() &&
-            value != extracted.front().when.surface)
-          naturalClause += " " + extracted.front().when.surface;
-      }
-
-      const std::string lowered = text_norm::whitespace(clause);
-      const std::string needle = text_norm::whitespace(naturalClause);
-      const size_t at = lowered.find(needle);
-      if (at != std::string::npos) {
-        static constexpr std::array<std::string_view, 16> kMarkers{
-            "a mi ", "a tu ", "a la ", "mis ", "mi ", "tus ", "tu ",
-            "sus ", "su ", "my ", "your ", "his ", "her ", "the ",
-            "al ", "a "};
-        for (const auto marker : kMarkers) {
-          if (at < marker.size())
-            continue;
-          if (lowered.compare(at - marker.size(), marker.size(), marker) != 0)
-            continue;
-          naturalClause =
-              lowered.substr(at - marker.size(), marker.size() + needle.size());
-          break;
-        }
-      }
-    }
+    naturalClause = clause;
   }
 
   if (!obs.typeHint.empty())
@@ -394,15 +263,6 @@ MemoryFormation::observe(const Observation& obs,
   }();
   if (factId == 0)
     return std::nullopt;
-  if (obs.refines > 0) {
-    std::scoped_lock lock(graph_.mutex());
-    if (!graph_.closeFact({.factId = obs.refines, .refId = obs.userId, .at = obs.at})) {
-      graph_.closeFact({.factId = factId, .refId = obs.userId, .at = obs.at});
-      return std::nullopt;
-    }
-    result.refined = true;
-  }
-
   result.factId = factId;
   result.subjectEntityId = entityId;
   result.predicate = predicate;
