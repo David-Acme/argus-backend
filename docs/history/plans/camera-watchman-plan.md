@@ -197,6 +197,33 @@ worse than a missed one, so when in doubt Argus stays silent.
 - It speaks about what it sees only when asked ("¿cómo me veo?") or when it is relevant to the
   conversation, and never comments on other people in frame.
 
+## 4e. A resident and a stranger in front of the same camera
+
+Argus's voice comes out of the camera's speaker, so everyone in the room hears what it says to the
+resident. The owner's rulings (2026-10-12):
+
+- **Every turn has its speaker.** The resident's turns continue the resident's conversation; a stranger
+  who speaks to Argus gets a visitor conversation of their own (parallel-conversations-plan), at the
+  visitor capability set, and neither feeds the other. A stranger asking about the resident ("¿qué
+  tiene David en su agenda?") gets nothing personal, even with the resident present.
+- **The resident can open the door.** "Argus, puedes hablar con ella", "preséntate", "respóndele lo que
+  te pregunte": for that conversation the stranger may use what the resident delegates (a
+  presentation, a demo, help with something of the resident's), until the resident ends it, leaves, or
+  the conversation closes. The floor never moves: a camera conversation still never disarms, changes
+  settings or roles, or reads another member's private data, whoever authorised it.
+- **Introductions.** "Argus, él es Juan, mi primo" registers Juan as a named visitor with his relation
+  to the resident (when `visitor_recognition` is on), and Argus greets him by name next time.
+- **Discreet, not tense.** When an unknown person is present and nobody opened the door, Argus does not
+  announce a mode and does not go quiet. It keeps the conversation natural and simply leaves the
+  personal details out of what it says aloud, the way a discreet assistant would: "Mañana tienes dos
+  cosas; te paso los detalles al celular", or, when the detail is what was asked, "¿te lo digo aquí o
+  te lo mando?". General answers, the home's shared matters and small talk flow as usual. People the
+  resident has introduced or trusted before, and named household visitors the Owner marked as trusted,
+  do not make it discreet. It learns from the resident: if they keep answering "dilo aquí", it stops
+  asking with that person present.
+- **When the resident leaves** and the stranger stays, the resident's conversation ends at that camera
+  (or continues on their phone, section 5b) and Argus stays with the stranger at the visitor set.
+
 ## 5. Conversation, echo and hand-off
 
 - **Half duplex first.** While a camera speaks, plus its measured return delay plus 300 ms, its ear
