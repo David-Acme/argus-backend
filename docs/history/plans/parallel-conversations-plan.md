@@ -1,6 +1,6 @@
 # Parallel conversations, one per person, and Argus as messenger
 
-Status: design written on 2026-10-12 for the owner's approval; not started. It details F8 and F9 of
+Status: design written on 2026-10-12; the owner ruled on section 8 the same day; not started. It details F8 and F9 of
 `realtime-and-backlog-plan.md` and is taken up with `camera-watchman-plan.md` once every point of the
 real-time plan is finished. Facts about the current code come from an inventory of 2026-10-12; external
 claims come from web research the same day (sources in section 9).
@@ -79,14 +79,19 @@ claims come from web research the same day (sources in section 9).
 - **TTS.** Synthesis is already split into sentence chunks; chunks are served round-robin per
   conversation through a fair queue, so a person's first audio waits at most one chunk of someone
   else's.
-- **One budget.** The LLM's lanes, STT and TTS share one CPU; their thread budgets are planned together
-  (`ThreadBudget`), and the number of simultaneous conversations is a measured limit, not a guess. Past
-  it, a new conversation hears a short "un momento" and waits in a fair queue instead of a 429.
+- **One budget, no product limit.** The LLM's lanes, STT and TTS share one machine; their thread
+  budgets are planned together (`ThreadBudget`). The number of parallel sequences follows the hardware
+  (`n_seq_max` from the machine, not a constant), and there is no product cap on conversations. When a
+  machine is saturated, a new turn hears a short "un momento" and waits in a fair queue, never a 429.
 
 ## 4. Several people in the same room
 
 - **Phone and laptop legs** are authenticated and near the mouth: what they capture belongs to that
-  account. Speech on such a leg that is far (low level against the user's own running level) and
+  account. A voice that does not match the stored one on such a leg is not a rejection (a new
+  microphone, a cold, a noisy room all change a voice): Argus keeps the person's identity, takes the
+  device and its surroundings into account, learns the new conditions gradually, and at most asks,
+  rarely and lightly, the way a person would ("¿estás resfriado? te escucho distinto"). It never asks
+  twice in a short time and never makes the person prove who they are. Speech on such a leg that is far (low level against the user's own running level) and
   correlated with a louder copy on another leg is not theirs, and is dropped there.
 - **Camera legs** do not know who speaks. Every turn of about 2 s or more is checked with the voice
   embedding (and the face, with the watchman); a short turn ("sí", "para") inherits the last verified
@@ -131,9 +136,15 @@ claims come from web research the same day (sources in section 9).
 - **Privacy.** Only what the sender said travels, nothing from the sender's memory. Presence chooses the
   channel but is never revealed to the sender: Ana hears "se lo dije" or "no contestó, le dejé el
   mensaje", never where David is.
-- **Who may relay to whom** is a capability in `role-access.hxx`: household members relay to each other;
-  a visitor leaves a message and never rings a resident; quiet hours and the recipient's own "no
-  molestar" turn a call into a notification.
+- **Never a ringing call for a message** (owner, 2026-10-12): a relayed message must not disturb. It
+  arrives as a notification; if a camera sees the recipient, Argus says it there; if the recipient is
+  already in a conversation or a call with Argus, the message is passed inside it ("Ana te manda decir
+  que vengas a comer"). The call engine is never used to ring someone for a message.
+- **Who may relay to whom** is a capability in `role-access.hxx`: every registered household member may
+  send a message to another.
+- **Strangers** (a visitor at a camera, the watchman's section 4c) may ask for someone ("¿está David?").
+  Argus gives no information (not whether anyone is home, not where anyone is); it asks the visitor what
+  they need, and notifies the resident that someone is asking for them, with the visitor's answer.
 
 ## 7. Measure first
 
@@ -150,14 +161,17 @@ Order: P1–P2, the conversation store and the switch note (section 2), parallel
 and TTS, memory scopes (section 5), the messenger (section 6), then P3–P4 and co-located handling
 (section 4) together with the watchman.
 
-Decisions for the owner:
-1. A second device of the same person **takes over** the conversation (proposed), rather than asking.
-2. Two people sharing one account at the same time cannot be told apart cleanly: each person should
-   have their own account (proposed).
-3. The memory scope rule of section 5: personal by default, household when about the home or said for
-   everyone.
-4. The messenger's permissions and quiet hours (section 6).
-5. The number of simultaneous conversations is set by measurement (P1, P5), not promised in advance.
+Owner decisions (2026-10-12):
+1. A second device of the same person **takes over** the conversation by itself.
+2. **Every registered person has their own account** and talks to Argus through it. A voice that
+   sounds different on the person's own device is handled gently (section 4), never as an intruder.
+3. Memory scope (section 5): personal by default, household when about the home or said for everyone
+   — proposed, awaiting the owner's word.
+4. Messages never ring: notification, the camera that sees the recipient, or inside an open
+   conversation (section 6). Strangers get no information; the resident is notified.
+5. **No product limit on simultaneous conversations.** Capacity follows the hardware (a more powerful
+   computer is planned; 4–5 users is the expected household); past it, the fair queue of section 3
+   applies, never a refusal.
 
 ## 9. Research consulted (2026-10-12)
 
