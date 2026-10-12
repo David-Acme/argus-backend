@@ -1,0 +1,226 @@
+#define DOCTEST_CONFIG_IMPLEMENT
+#include <doctest/doctest.h>
+
+#include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
+#include <feature/camera-control/dtos/camera-preset-dto.hxx>
+#include <feature/camera-control/dtos/camera-settings-dto.hxx>
+#include <feature/camera-control/services/camera-control-feature-service.hxx>
+#include <shared/services/camera-driver/camera-driver.hxx>
+#include <sqlite/db-service.hxx>
+#include <sync/camera-change-sink.hxx>
+#include <sync/resource-change.hxx>
+
+#include <chrono>
+#include <cstdio>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <unistd.h>
+#include <vector>
+
+namespace
+{
+const std::string kAnnounceDb = "camera-status-announce-test.db";
+
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
+
+bool waitForBoot(std::chrono::milliseconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (drogon::app().isRunning())
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return drogon::app().isRunning();
+}
+
+class SettingsDriver final : public ICameraDriver
+{
+public:
+  [[nodiscard]] Json::Value capabilities() const override { return {}; }
+  DriverResult status() override { return {.ok = true, .error = {}, .data = Json::Value()}; }
+  DriverResult presets() override { return {.ok = true, .error = {}, .data = Json::Value()}; }
+  DriverResult move(const DriverMoveInput&) override { return {.ok = true}; }
+  DriverResult preset(const DriverPresetInput&) override
+  {
+    if (refuse_)
+      return DriverResult::failed("refused");
+    return {.ok = true};
+  }
+
+  DriverResult settings(const DriverSettingsInput&) override
+  {
+    if (refuse_)
+      return DriverResult::failed("refused");
+    return {.ok = true};
+  }
+
+  DriverResult speak(const DriverSpeakInput&) override { return {.ok = true}; }
+
+  void refuse(bool value) { refuse_ = value; }
+
+private:
+  bool refuse_{false};
+};
+
+class RecordingSink final : public CameraChangeSink
+{
+public:
+  [[nodiscard]] drogon::Task<void> emitModule(const ModuleEmitInput&) const override
+  {
+    co_return;
+  }
+  [[nodiscard]] drogon::Task<void> publishAudit(const ModuleAuditInput&) const override
+  {
+    co_return;
+  }
+  [[nodiscard]] drogon::Task<void>
+  publishResource(const CameraResourceChange& input) const override
+  {
+    notices.push_back(input);
+    co_return;
+  }
+
+  mutable std::vector<CameraResourceChange> notices;
+};
+
+struct Rig
+{
+  explicit Rig(const char* stem)
+      : path(stem), fake(std::make_shared<SettingsDriver>())
+  {
+    drogon::app().setLogLevel(trantor::Logger::kWarn);
+    drogon::app().addDbClient(
+        drogon::orm::Sqlite3Config{1, path, "default", -1});
+    runner.emplace();
+    if (!waitForBoot(std::chrono::seconds(30)))
+      throw std::runtime_error("drogon loop did not boot");
+    if (!DbService::runScriptFile(ARGUS_CAMERA_SCHEMA_PATH))
+      throw std::runtime_error("camera schema apply failed");
+    const auto rows = DbService::cameraClient()->execSqlSync(
+        "INSERT INTO camera (name, ip, driver) VALUES ('Fake cam', '127.0.0.1', "
+        "'rtsp') RETURNING id");
+    cameraId = rows.front()["id"].as<int64_t>();
+    CameraDriverTestAccess::install(cameraId, fake);
+    camera_change::setSink(&sink);
+  }
+
+  ~Rig()
+  {
+    CameraDriverRegistry::instance().forget(cameraId);
+    std::remove(path.c_str());
+    std::remove((path + "-wal").c_str());
+    std::remove((path + "-shm").c_str());
+  }
+
+  std::string path;
+  std::optional<AppRunner> runner;
+  std::shared_ptr<SettingsDriver> fake;
+  RecordingSink sink;
+  int64_t cameraId{0};
+};
+}
+
+Rig* g_rig = nullptr;
+
+Rig& sharedRig()
+{
+  return *g_rig;
+}
+
+TEST_CASE("a settings write announces the camera, and a refused one announces nothing")
+{
+  Rig& rig = sharedRig();
+  rig.sink.notices.clear();
+  rig.fake->refuse(false);
+  const CameraControlFeatureService service;
+
+  const auto applied = drogon::sync_wait(service.settings(
+      rig.cameraId, CameraSettingsDto{.privacy = std::nullopt,
+                                      .led = std::nullopt,
+                                      .dayNight = std::nullopt,
+                                      .motion = std::nullopt,
+                                      .motionSensitivity = std::nullopt,
+                                      .autoTrack = std::nullopt,
+                                      .alarm = true,
+                                      .alarmVolume = 100}));
+  REQUIRE(applied.has_value());
+  REQUIRE(rig.sink.notices.size() == 1);
+  CHECK(rig.sink.notices.front().scope == ResourceScope::Status);
+  REQUIRE(rig.sink.notices.front().ids.size() == 1);
+  CHECK(rig.sink.notices.front().ids.front() == rig.cameraId);
+
+  rig.fake->refuse(true);
+  const auto refused = drogon::sync_wait(service.settings(
+      rig.cameraId, CameraSettingsDto{.privacy = std::nullopt,
+                                      .led = std::nullopt,
+                                      .dayNight = std::nullopt,
+                                      .motion = std::nullopt,
+                                      .motionSensitivity = std::nullopt,
+                                      .autoTrack = std::nullopt,
+                                      .alarm = false,
+                                      .alarmVolume = std::nullopt}));
+  REQUIRE(refused.has_value());
+  CHECK_FALSE(refused->ok);
+  CHECK(rig.sink.notices.size() == 1);
+}
+
+TEST_CASE("saving or deleting a preset announces, and moving to one does not")
+{
+  Rig& rig = sharedRig();
+  rig.sink.notices.clear();
+  rig.fake->refuse(false);
+  const CameraControlFeatureService service;
+
+  const auto saved = drogon::sync_wait(service.preset(
+      rig.cameraId, CameraPresetDto{.action = "save", .id = "", .name = "Gate"}));
+  REQUIRE(saved.has_value());
+  CHECK(rig.sink.notices.size() == 1);
+
+  const auto moved = drogon::sync_wait(service.preset(
+      rig.cameraId, CameraPresetDto{.action = "goto", .id = "1", .name = ""}));
+  REQUIRE(moved.has_value());
+  CHECK(rig.sink.notices.size() == 1);
+
+  const auto removed = drogon::sync_wait(service.preset(
+      rig.cameraId, CameraPresetDto{.action = "delete", .id = "1", .name = ""}));
+  REQUIRE(removed.has_value());
+  REQUIRE(rig.sink.notices.size() == 2);
+  CHECK(rig.sink.notices.back().ids.front() == rig.cameraId);
+}
+
+int main(int argc, char** argv)
+{
+  Rig rig("camera-status-announce-test.db");
+  g_rig = &rig;
+  doctest::Context context(argc, argv);
+  return context.run();
+}

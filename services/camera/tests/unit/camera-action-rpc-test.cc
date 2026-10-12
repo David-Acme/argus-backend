@@ -15,6 +15,8 @@
 #include <drogon/drogon.h>
 #include <feature/actions/audio-capture.hxx>
 #include <feature/actions/camera-action-rpc-service.hxx>
+#include <sync/camera-change-sink.hxx>
+#include <sync/resource-change.hxx>
 #include <fstream>
 #include <functional>
 #include <grpcpp/grpcpp.h>
@@ -115,6 +117,27 @@ struct StubActuator final : ICameraDriver
     }
     speakCv.notify_all();
   }
+};
+
+class RecordingResourceSink final : public CameraChangeSink
+{
+public:
+  [[nodiscard]] drogon::Task<void> emitModule(const ModuleEmitInput&) const override
+  {
+    co_return;
+  }
+  [[nodiscard]] drogon::Task<void> publishAudit(const ModuleAuditInput&) const override
+  {
+    co_return;
+  }
+  [[nodiscard]] drogon::Task<void>
+  publishResource(const CameraResourceChange& input) const override
+  {
+    notices.push_back(input);
+    co_return;
+  }
+
+  mutable std::vector<CameraResourceChange> notices;
 };
 
 int freePort()
@@ -391,6 +414,8 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
   CHECK(actuator->speakCalls == 2);
   CHECK(actuator->lastSamples == 32000);
 
+  RecordingResourceSink resourceSink;
+  camera_change::setSink(&resourceSink);
   const auto siren = client.setSiren({.cameraId = 1,
                                       .enabled = true,
                                       .commandId = "cmd-siren-1",
@@ -403,6 +428,10 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
   CHECK(actuator->sounding == true);
   REQUIRE(actuator->alarmVolume);
   CHECK(*actuator->alarmVolume == 100);
+  REQUIRE(resourceSink.notices.size() == 1);
+  CHECK(resourceSink.notices.front().scope == ResourceScope::Status);
+  REQUIRE(resourceSink.notices.front().ids.size() == 1);
+  CHECK(resourceSink.notices.front().ids.front() == 1);
 
   CameraActionClient badClient(
       {.target = "127.0.0.1:" + std::to_string(port), .credential = "wrong"});

@@ -451,6 +451,19 @@ set_target_properties(camera-action-migration-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 add_test(NAME camera-action-migration-test COMMAND camera-action-migration-test)
 
+add_executable(camera-status-announce-test
+    tests/unit/camera-status-announce-test.cc)
+target_link_libraries(camera-status-announce-test PRIVATE
+    argus::camera-control
+    argus::lib::test-support
+    doctest::doctest)
+target_compile_definitions(camera-status-announce-test PRIVATE
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(camera-status-announce-test PRIVATE -Wall -Wextra)
+set_target_properties(camera-status-announce-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+add_test(NAME camera-status-announce-test COMMAND camera-status-announce-test)
+
 add_executable(detection-change-gate-test
     tests/unit/detection-change-gate-test.cc)
 target_link_libraries(detection-change-gate-test PRIVATE
