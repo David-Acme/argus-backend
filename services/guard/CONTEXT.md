@@ -1025,7 +1025,8 @@ guard was down). An unreachable identity stores nothing: fail closed.
   source, since, overall}` on every state change. `overall` folds the
   environments: home anywhere is home, away everywhere is away, otherwise
   unknown.
-- The app: `GET /guard/presence` (owner only, by `kGuardAccess` omission) gives
+- The app: `GET /guard/presence` (Owner only, by `kGuardAccess` omission; the owner decided on
+  2026-10-12 that who is home is the Owner's alone, Guard included, for now) gives
   `{people: [{userId, state, since, environments: [{environmentId, state,
   since}]}]}`: the coarse "en casa / fuera" of the people view, with no source.
 

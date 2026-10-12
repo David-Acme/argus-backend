@@ -210,7 +210,9 @@ environments and their response lists, sets their mode (one or all), reads
 incidents and episodes, manages expected visits and keeps its own safety PINs
 (`PUT`/`DELETE /guard/safety/pin`); Guard reads the environments and their
 response lists, incidents, episodes and expected visits, and goes on duty in
-an environment (`POST /guard/environments/{id}/duty`); every role presses
+an environment (`POST /guard/environments/{id}/duty`); household presence
+(`GET /guard/presence`, who is home and who is not) is the Owner's alone, and
+no Guard, Resident or Guest reads it (owner decision, 2026-10-12); every role presses
 panic (`POST /guard/panic`) and reads its safety state (`GET /guard/safety`),
 and those two are the only guard routes a Guest has; creating, editing and
 removing environments, episode detail and review, camera context, decision

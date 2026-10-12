@@ -105,7 +105,10 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - R15 Voiceprints learned, forgotten or erased on consent withdrawal (`voiceprint-audit.cc`,
   `passive-enrollment-service.cc`).
 - R16 Household presence: `Heartbeat` reaches only the user's own room (`heartbeat-feed.cc`); the
-  Users screen chips freeze. Send presence changes to Owner/Guard rooms too.
+  Users screen chips freeze. Guard announces `{guard, presence}` on every presence change and the
+  screen re-reads `GET /guard/presence`; `Heartbeat` stays the user's own frame. Who is home is the
+  **Owner's alone** (owner decision, 2026-10-12): Guard, Resident and Guest do not read household
+  presence, for now.
 - R17 Role-change robustness: if the best-effort `AuthContextChanged{resync}` RPC fails, the 60 s
   revalidation sends only `ContextUpdate`; have it also resync, or have the client resync when the
   context role differs from the stored role.

@@ -3439,3 +3439,10 @@ is finished.
   Developer Program yearly for iOS) and the VPS the owner already plans for the tunnel.
 - **Order.** Both programmes wait until the real-time plan's points are done; the owner will decide
   then which comes first.
+
+## Household presence is the Owner's alone (2026-10-12)
+
+The owner decided that who is home and who is not is visible to the Owner only. Guards do not read
+household presence for now, nor do Residents or Guests. `GET /guard/presence` stays out of
+`kGuardAccess`, and R16's `{guard, presence}` notice therefore reaches the Owner role room alone.
+Widening it later is a change to `kGuardAccess` and needs the owner's word.
