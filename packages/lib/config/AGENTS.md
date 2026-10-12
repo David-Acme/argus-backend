@@ -50,7 +50,11 @@ not a local choice.
   own mode), is fsynced and renamed over the file, so a crash can no longer
   leave a truncated `config.toml` holding the installation's secrets; when
   the file is a single-file bind mount (`rename` answers `EBUSY`/`EXDEV`, as
-  in the deploy compose) it falls back to an fsynced in-place rewrite.
+  in the deploy compose) it falls back to an fsynced in-place rewrite. A
+  config path that cannot be read back at all — the file replaced by a
+  directory, an EIO — answers `false` from the setter and never throws: the
+  rewrite reproduces the file it read, so an unreadable file is a failed
+  write, never an exception and never a file holding only the patched key.
 - `load` refuses a file in which any string still contains `CHANGE_ME` (it
   throws, the same way a parse error does) and names the keys: a deploy
   template's placeholder is a publicly known secret, and `sync.control_secret`

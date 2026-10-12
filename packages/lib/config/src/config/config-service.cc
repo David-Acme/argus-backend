@@ -271,8 +271,14 @@ bool applyValue(const std::string& keyPath, const std::string& literal)
   std::ifstream in(gConfigPath);
   if (!in.is_open())
     return false;
-  const std::string content((std::istreambuf_iterator<char>(in)),
-                            std::istreambuf_iterator<char>());
+  std::string content;
+  try {
+    content.assign(std::istreambuf_iterator<char>(in),
+                   std::istreambuf_iterator<char>());
+  }
+  catch (const std::ios_base::failure&) {
+    return false;
+  }
 
   const auto [section, key] = splitSectionKey(keyPath);
   const std::string patched = patchContent({.content = content,
