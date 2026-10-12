@@ -16,7 +16,8 @@ enum class ResourceDomain : std::uint8_t
   Camera = 0,
   Guard,
   Productivity,
-  Identity
+  Identity,
+  Settings
 };
 
 enum class ResourceScope : std::uint8_t
@@ -36,7 +37,8 @@ enum class ResourceScope : std::uint8_t
   Calendar,
   PrivacyHousehold,
   PrivacyChoice,
-  Visitors
+  Visitors,
+  Values
 };
 
 
@@ -48,7 +50,7 @@ struct ResourceRoute
   drogon::HttpMethod method;
 };
 
-inline constexpr std::array<ResourceRoute, 16> kResourceRoutes{{
+inline constexpr std::array<ResourceRoute, 17> kResourceRoutes{{
     {.domain = ResourceDomain::Camera,
      .scope = ResourceScope::Device,
      .path = "/camera",
@@ -113,6 +115,10 @@ inline constexpr std::array<ResourceRoute, 16> kResourceRoutes{{
      .scope = ResourceScope::Visitors,
      .path = "/visitor",
      .method = drogon::Get},
+    {.domain = ResourceDomain::Settings,
+     .scope = ResourceScope::Values,
+     .path = "/settings",
+     .method = drogon::Get},
 }};
 
 static_assert(std::ranges::all_of(kResourceRoutes,
@@ -131,6 +137,8 @@ inline std::string resourceDomainToString(ResourceDomain domain)
       return "productivity";
     case ResourceDomain::Identity:
       return "identity";
+    case ResourceDomain::Settings:
+      return "settings";
   }
   return "camera";
 }
@@ -145,6 +153,8 @@ inline std::optional<ResourceDomain> resourceDomainFromString(std::string_view n
     return ResourceDomain::Productivity;
   if (name == "identity")
     return ResourceDomain::Identity;
+  if (name == "settings")
+    return ResourceDomain::Settings;
   return std::nullopt;
 }
 
@@ -183,6 +193,8 @@ inline std::string resourceScopeToString(ResourceScope scope)
       return "privacy_choice";
     case ResourceScope::Visitors:
       return "visitors";
+    case ResourceScope::Values:
+      return "values";
   }
   return "device";
 }
@@ -221,6 +233,8 @@ inline std::optional<ResourceScope> resourceScopeFromString(std::string_view nam
     return ResourceScope::PrivacyChoice;
   if (name == "visitors")
     return ResourceScope::Visitors;
+  if (name == "values")
+    return ResourceScope::Values;
   return std::nullopt;
 }
 

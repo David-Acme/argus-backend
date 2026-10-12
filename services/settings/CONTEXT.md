@@ -85,6 +85,20 @@ errors}` envelope. The profile routes are described in "Profiles" below.
   unavailable and logged with its real status.
 - **Logging.** One line per applied update: user id, owner, applied keys.
   Values are never logged.
+- **A change is announced once the owner says it applied** (R12, 2026-10-12).
+  The gateway publishes `{kind:"resource", domain:"settings", scope:"values"}`
+  through this service's own outbox — `change_outbox` in `settings.db`, relayed
+  to `argus.settings.v1.change` on the `ARGUS_SETTINGS_CHANGE` stream, drained
+  by `argus-sync-settings` — and only when the reply carries at least one
+  applied key, so a partial write announces the part that landed and a refusal
+  announces nothing. The row is written after that reply and in no transaction
+  of ours: the fact being announced is the owner's own commit, which this
+  process never sees. The cost, accepted as rare: an owner that committed and a
+  settings process that died before its row leaves the notice lost, and only a
+  screen's own read (a mount, a focus, a reconnect) shows the new value.
+  `ARGUS_SETTINGS_CHANGE` is a stream of its own because the module feed's
+  `ARGUS_SETTINGS_MODULE` carries an explicit subject list, which
+  `reconcileStream` refuses to widen.
 
 ## Profiles
 

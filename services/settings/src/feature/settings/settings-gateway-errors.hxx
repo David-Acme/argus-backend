@@ -21,4 +21,8 @@ inline constexpr ErrorDefinition ProfilesUnavailable{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,
     .message = "Settings profiles are not available"};
+inline constexpr ErrorDefinition ChangeNotRecorded{
+    .code = ErrorCode::InternalError,
+    .status = 500,
+    .message = "The change could not be recorded"};
 }

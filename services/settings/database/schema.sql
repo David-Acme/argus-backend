@@ -67,3 +67,18 @@ CREATE TABLE IF NOT EXISTS module_journal (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   published_through INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS change_outbox (
+    event_id    TEXT    NOT NULL  PRIMARY KEY,
+    fingerprint TEXT    NOT NULL  DEFAULT '',
+    payload     TEXT    NOT NULL,
+    status      TEXT    NOT NULL  DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'sent')),
+    attempts    INTEGER NOT NULL  DEFAULT 0,
+    created_at  INTEGER NOT NULL  DEFAULT 0,
+    sent_at     INTEGER NOT NULL  DEFAULT 0,
+    subject     TEXT    NOT NULL  DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_settings_change_outbox_status
+    ON change_outbox (status, created_at);

@@ -260,6 +260,54 @@ TEST_CASE("a refused change is a validation error per key and applies nothing")
   std::filesystem::remove(configPath());
 }
 
+TEST_CASE("the change notice follows the owner's reply, not the request")
+{
+  loadConfig();
+  const Owner tts("tts", ttsSpecs());
+  const Owner voice("voice", voiceSpecs());
+  int notices = 0;
+  const SettingsGatewayService gateway(
+      {.owners = {{.name = "tts", .target = tts.target(), .credential = kSecret},
+                  {.name = "voice", .target = voice.target(), .credential = kSecret},
+                  {.name = "stt", .target = "127.0.0.1:1", .credential = kSecret}},
+       .timeouts = {.list = 1500ms, .update = 1500ms},
+       .notice = [&notices] { ++notices; }});
+
+  const auto applied =
+      gateway.update({.owner = "tts", .changes = {{.key = "tts.speed", .value = "1.5"}}, .userId = 1});
+  CHECK(applied.applied == std::vector<std::string>{"tts.speed"});
+  CHECK(notices == 1);
+
+  CHECK(statusOf([&gateway] {
+          (void)gateway.update({.owner = "stt", .changes = {{.key = "stt.language", .value = "es"}}, .userId = 1});
+        }) == 503);
+  CHECK(statusOf([&gateway] {
+          (void)gateway.update({.owner = "vlm", .changes = {{.key = "vlm.x", .value = "1"}}, .userId = 1});
+        }) == 404);
+  CHECK(notices == 1);
+
+  const auto refused = rejectionsOf([&gateway] {
+    (void)gateway.update({.owner = "tts",
+                          .changes = {{.key = "tts.speed", .value = "9"}, {.key = "tts.nope", .value = "1"}},
+                          .userId = 1});
+  });
+  CHECK_FALSE(refused.empty());
+  CHECK(notices == 1);
+
+  const auto mixed = gateway.write({{.owner = "tts", .changes = {{.key = "tts.speed", .value = "1.6"}}},
+                                     {.owner = "voice", .changes = {{.key = "voice.language", .value = "fr"}}}});
+  REQUIRE(mixed.size() == 2);
+  CHECK(mixed[0].applied == std::vector<std::string>{"tts.speed"});
+  CHECK(mixed[1].applied.empty());
+  CHECK(notices == 2);
+
+  const auto nothing = gateway.write({{.owner = "voice", .changes = {{.key = "voice.language", .value = "fr"}}}});
+  REQUIRE(nothing.size() == 1);
+  CHECK(nothing[0].applied.empty());
+  CHECK(notices == 2);
+  std::filesystem::remove(configPath());
+}
+
 TEST_CASE("an owner that cannot persist a change is a server failure, not a validation error")
 {
   loadConfig();

@@ -38,7 +38,8 @@ bool OwnerCatalog::can(const std::string& capability) const
   return std::ranges::find(capabilities, capability) != capabilities.end();
 }
 
-SettingsGatewayService::SettingsGatewayService(const SettingsGatewayInput& input) : unconfigured_(input.unconfigured)
+SettingsGatewayService::SettingsGatewayService(const SettingsGatewayInput& input)
+    : unconfigured_(input.unconfigured), notice_(input.notice)
 {
   owners_.reserve(input.owners.size());
   for (const auto& owner : input.owners)
@@ -103,7 +104,15 @@ std::vector<OwnerWriteResult> SettingsGatewayService::write(const std::vector<Ow
     for (const auto index : std::views::iota(std::size_t{0}, writes.size()))
       workers.emplace_back([this, &writes, index, &results] { results[index] = send(writes[index]); });
   }
+  if (std::ranges::any_of(results, [](const OwnerWriteResult& result) { return !result.applied.empty(); }))
+    announce();
   return results;
+}
+
+void SettingsGatewayService::announce() const
+{
+  if (notice_)
+    notice_();
 }
 
 OwnerWriteResult SettingsGatewayService::send(const OwnerWrite& write) const
@@ -152,8 +161,10 @@ SettingsUpdateOutcome SettingsGatewayService::update(const SettingsUpdateInput& 
     throw ResponseException(SettingsErrors::Unavailable);
   }
 
-  if (!reply.applied.empty())
+  if (!reply.applied.empty()) {
     LOG_INFO << "User " << input.userId << " changed " << owner->name << " settings: " << joined(reply.applied);
+    announce();
+  }
 
   if (std::ranges::any_of(reply.rejected, writeFailed)) {
     std::vector<std::string> failed;

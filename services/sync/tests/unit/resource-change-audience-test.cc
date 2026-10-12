@@ -89,6 +89,7 @@ productivity/calendar -> owner,resident
 identity/privacy_household -> owner
 identity/privacy_choice -> owner,resident,guard,guest
 identity/visitors -> owner,guard
+settings/values -> owner
 )");
 }
 
@@ -111,6 +112,7 @@ productivity/calendar -> owner,resident
 identity/privacy_household -> owner
 identity/privacy_choice -> owner,resident,guard,guest
 identity/visitors ->
+settings/values -> owner
 )");
 }
 

@@ -87,8 +87,13 @@ protocol could not regress by accident in the commit that changed the endpoint.
   `argus-sync-notification`, `argus-sync-productivity`, `argus-sync-identity`
   and `argus-sync-identity-action`, the last two both on
   `ARGUS_IDENTITY_CHANGE`, `argus-sync-auth-action` on
-  `ARGUS_AUTH_CHANGE` and `argus-sync-auth-session` on
-  `ARGUS_AUTH_SESSION`), plus the delivery consumer. Each attaches with
+  `ARGUS_AUTH_CHANGE`, `argus-sync-auth-session` on
+  `ARGUS_AUTH_SESSION`, `argus-sync-settings-module` on
+  `ARGUS_SETTINGS_MODULE` and `argus-sync-settings-action` on
+  `ARGUS_SETTINGS_ACTION`, `argus-sync-guard` on `ARGUS_GUARD`, and
+  `argus-sync-settings` on `ARGUS_SETTINGS_CHANGE`), plus the delivery
+  consumer. `change-feed-consumer-test` pins the list row by row and the
+  uniqueness of every durable. Each attaches with
   `deliverAll = false` — deliver-new, so the first boot after this landed
   cannot replay a week of already-recorded changes into duplicate audit rows —
   settles `durable_delivery`'s three dispositions (ack, nak on a throw, term on
@@ -1097,8 +1102,12 @@ the durable this service already holds for that feed drains it, and
 `{operation:14, option:"user", info:{domain, scope, ids?}}` — the `option` is
 the neutral `TableName::User` placeholder the other non-table frames
 (`ModuleUpdate`, `ContextUpdate`) carry, and the operation is what the client
-dispatches on. A pair whose producer is not built yet (guard's and settings'
-rows, R1 and R12) simply never publishes.
+dispatches on. Every registered pair has a producer: camera, guard,
+productivity and identity publish from their own outboxes on their own change
+subjects, and settings publishes `{settings, values}` from its outbox on
+`argus.settings.v1.change` (stream `ARGUS_SETTINGS_CHANGE`, durable
+`argus-sync-settings`), which is a stream of its own because the module feed's
+carries an explicit subject list that `reconcileStream` refuses to widen.
 
 The audience is derived, never declared. The contract registry
 (`packages/contracts/sync/src/sync/resource-change.hxx`) pairs every

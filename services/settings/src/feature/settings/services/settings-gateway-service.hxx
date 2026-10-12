@@ -6,16 +6,20 @@
 #include <settings/settings-client.hxx>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
+
+using SettingsChangeNotice = std::function<void()>;
 
 struct SettingsGatewayInput
 {
   std::vector<SettingsOwnerConfig> owners;
   SettingsTimeouts timeouts;
   std::vector<std::string> unconfigured{};
+  SettingsChangeNotice notice{};
 };
 
 struct OwnerCatalog
@@ -90,7 +94,9 @@ private:
   [[nodiscard]] OwnerWriteResult send(const OwnerWrite& write) const;
   [[nodiscard]] static std::vector<OwnerCatalog> fetchAll(const std::vector<const OwnerLink*>& links);
   [[nodiscard]] const OwnerLink* find(const std::string& name) const;
+  void announce() const;
 
   std::vector<OwnerLink> owners_;
   std::vector<std::string> unconfigured_;
+  SettingsChangeNotice notice_;
 };

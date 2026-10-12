@@ -190,7 +190,7 @@ Json::Value cameraEmit()
 TEST_CASE("every producer stream carries the durable the change feed holds")
 {
   const auto& feeds = change_feed::defaults();
-  REQUIRE(feeds.size() == 10);
+  REQUIRE(feeds.size() == 11);
 
   CHECK(feeds[0].stream == std::string(nats_subject::kCameraStream));
   CHECK(feeds[0].subject == std::string(nats_subject::kCameraChange));
@@ -238,10 +238,15 @@ TEST_CASE("every producer stream carries the durable the change feed holds")
   CHECK(feeds[8].durable == "argus-sync-settings-action");
   CHECK(feeds[8].maxAckPending == NatsBus::kDefaultMaxAckPending);
 
-  CHECK(feeds[9].stream == std::string(nats_subject::kGuardStream));
-  CHECK(feeds[9].subject == std::string(nats_subject::kGuardChange));
-  CHECK(feeds[9].durable == "argus-sync-guard");
+  CHECK(feeds[9].stream == std::string(nats_subject::kSettingsChangeStream));
+  CHECK(feeds[9].subject == std::string(nats_subject::kSettingsChange));
+  CHECK(feeds[9].durable == "argus-sync-settings");
   CHECK(feeds[9].maxAckPending == NatsBus::kOrderedMaxAckPending);
+
+  CHECK(feeds[10].stream == std::string(nats_subject::kGuardStream));
+  CHECK(feeds[10].subject == std::string(nats_subject::kGuardChange));
+  CHECK(feeds[10].durable == "argus-sync-guard");
+  CHECK(feeds[10].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
   std::unordered_set<std::string> durables;
   for (const auto& feed : feeds) {

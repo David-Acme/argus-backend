@@ -20,6 +20,7 @@
 #include <feature/settings/controllers/settings-controller.hxx>
 #include <feature/settings/infra/hardware-facts.hxx>
 #include <feature/settings/infra/profile-file.hxx>
+#include <feature/settings/infra/resource-change-outbox.hxx>
 #include <feature/settings/services/first-run-service.hxx>
 #include <http/certificate-reload.hxx>
 #include <http/cors.hxx>
@@ -127,29 +128,34 @@ int main()
 
   const ListenerConfig listener = SettingsConfig::resolveListener();
   const auto owners = SettingsConfig::resolveOwners();
-  const SettingsGatewayInput gateway{.owners = owners,
-                                     .timeouts = SettingsConfig::resolveTimeouts(),
-                                     .unconfigured = SettingsConfig::unconfiguredOwners(owners)};
+  SettingsGatewayInput gateway{.owners = owners,
+                               .timeouts = SettingsConfig::resolveTimeouts(),
+                               .unconfigured = SettingsConfig::unconfiguredOwners(owners)};
   const auto profiles = loadProfileFile(SettingsConfig::resolveProfilesPath());
   const auto hardware = probeHardwareFacts();
   const auto modules = SettingsConfig::resolveModules();
 
-  NatsBus natsBus;
-  if (!natsBus.connect())
+  auto natsBus = std::make_shared<NatsBus>();
+  if (!natsBus->connect())
     LOG_WARN << "Modules: NATS is not reachable yet; module events are published once it is";
-  NatsModuleEventSink moduleEvents(natsBus);
+  NatsModuleEventSink moduleEvents(*natsBus);
   if (!moduleEvents.ensureStream())
     LOG_WARN << "Modules: the " << nats_subject::kSettingsModuleStream << " stream is not confirmed yet";
   auto moduleOwners = owners;
   for (auto& owner : SettingsConfig::resolveDataOwners())
     moduleOwners.push_back(std::move(owner));
   const SettingsComponentOwners componentOwners({.owners = moduleOwners, .timeout = gateway.timeouts.update});
+  const auto settingsDb = openModulesDb(modules);
+  SettingsChangeOutbox settingsChanges(natsBus, [settingsDb] { return settingsDb; });
+  if (settingsDb)
+    gateway.notice = [&settingsChanges] { settingsChanges.recordDetached(); };
+
   std::unique_ptr<ModuleEngine> moduleEngine;
   if (auto catalog = loadModuleCatalog(modules.catalogPath)) {
-    if (auto db = openModulesDb(modules))
+    if (settingsDb)
       moduleEngine = std::make_unique<ModuleEngine>(ModuleEngineInput{
           .catalog = std::move(*catalog),
-          .db = std::move(db),
+          .db = settingsDb,
           .owners = componentOwners,
           .events = &moduleEvents,
           .host =
@@ -162,7 +168,7 @@ int main()
           .timing = modules});
   }
 
-  NatsModuleActionSink moduleActions(natsBus);
+  NatsModuleActionSink moduleActions(*natsBus);
   std::unique_ptr<ModuleJournal> moduleJournal;
   if (moduleEngine) {
     if (auto journalDb = openJournalDb(modules))
@@ -223,6 +229,8 @@ int main()
     shutdown_signal::onStop(shutdown_signal::drainOf(*moduleEngine, "settings-modules"));
   if (moduleJournal)
     shutdown_signal::onStop(shutdown_signal::drainOf(*moduleJournal, "settings-modules-journal"));
+  if (settingsDb)
+    shutdown_signal::onStop(shutdown_signal::drainOf(settingsChanges, "settings-changes"));
 
   const SettingsGatewayService firstRunGateway(gateway);
   FirstRunService firstRun(
@@ -262,6 +270,15 @@ int main()
     mdnsService->initialize();
   });
 
+  drogon::app().registerBeginningAdvice([&settingsChanges, settingsDb]() {
+    if (!settingsDb)
+      return;
+    if (!settingsChanges.migrate()) {
+      LOG_FATAL << "Settings change outbox migration failed — aborting startup";
+      _exit(1);
+    }
+    settingsChanges.reconcile();
+  });
   drogon::app().registerBeginningAdvice([&firstRun]() { firstRun.start(); });
   drogon::app().registerBeginningAdvice([&moduleEngine, &moduleJournal]() {
     if (moduleEngine)
@@ -276,6 +293,6 @@ int main()
     moduleEngine->requestStop();
   if (moduleJournal)
     moduleJournal->requestStop();
-  natsBus.drain();
+  natsBus->drain();
   return 0;
 }

@@ -10,6 +10,7 @@ argus_module(NAME settings-gateway
         dtos/update-settings-dto.cc
         infra/hardware-facts.cc
         infra/profile-file.cc
+        infra/resource-change-outbox.cc
         services/owner-visibility.cc
         services/profile-planner.cc
         services/first-run-service.cc
@@ -22,11 +23,14 @@ argus_module(NAME settings-gateway
         argus::clients::settings
         argus::contracts::auth
         argus::contracts::settings
+        argus::contracts::sync
         argus::settings-config
         argus::lib::auth
         argus::lib::config
         argus::lib::errors
         argus::lib::http
+        argus::lib::nats
+        argus::lib::outbox
         argus::lib::runtime
         argus::lib::validation
         argus::hardware-profile
