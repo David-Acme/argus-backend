@@ -158,8 +158,18 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - F2 Talking to Argus through the cameras: superseded on 2026-10-12 by the owner's wider goal, the
   always-listening watchman, designed in `camera-watchman-plan.md` (wake word, identity, hand-off,
   echo, privacy, measurements first).
-- F3 Native calls: CallKit/PushKit on iOS, ConnectionService and a microphone foreground service on
-  Android, APNs/FCM push (no device push leg exists).
+- F3 Argus calls you like a messaging app (owner, 2026-10-12): a native incoming-call screen on the
+  locked phone, rung by a push that wakes the app, the conversation over the existing LiveKit call.
+  Android: ConnectionService (self-managed) + a full-screen-intent call notification and a
+  `phoneCall`/`microphone` foreground service, declared for Play's full-screen-intent policy. iOS:
+  CallKit + PushKit; Apple requires every VoIP push to report a call to CallKit at once. Push: the app
+  registers its token; the owner's own push relay (`argus-relay`, on the same server as the future
+  private tunnel) holds the Firebase and APNs credentials and forwards the engine's generic
+  "Argus te está llamando" intent; Android through FCM (free), iOS VoIP through APNs directly (FCM
+  cannot carry PushKit pushes). Media stays between the phone and the house's LiveKit: on the LAN at
+  home, through the owner's tunnel outside (a self-hosted TURN on that server where a direct path
+  fails). No per-call third-party service: fixed costs only (Google Play account once, Apple
+  Developer Program yearly for iOS, the relay/tunnel server).
 - F4 Guard: a voice duress phrase, a persistent PIN lockout (in memory today), the single-member
   household case.
 - F5 App siren button with its consent setting (owner decision).
