@@ -186,8 +186,8 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   dile que venga a comer". The router picks a `relay` tool (the LLM never picks tools), the slots are
   the recipient (`text_norm::matchName` over the household) and the message in the speaker's words;
   Argus delivers it through the best channel the recipient has right now (an open conversation, the
-  camera that sees them once the watchman exists, a call through the call engine with the message as
-  its opening line, "Te llama Ana: dice que vengas a comer", else a notification), and carries the
+  camera that sees them once the watchman exists, otherwise a notification; never a ringing call, so a
+  message does not disturb, owner's ruling of 2026-10-12), and carries the
   answer back ("dile que ya voy") to the sender's open conversation or as a notification. It relays
   only what the sender said: nothing from the sender's private memory travels with it. Who may relay
   to whom is a capability in `role-access.hxx` (a visitor leaves a message, never rings a resident);
