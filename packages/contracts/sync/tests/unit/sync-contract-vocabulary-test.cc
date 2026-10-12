@@ -113,3 +113,24 @@ TEST_CASE("unknown strings fall back to documented defaults")
     CHECK(userActionFromString("bogus") == UserAction::Create);
     CHECK(tableNameFromString("bogus") == TableName::User);
 }
+
+TEST_CASE("every table name keeps the number it was given")
+{
+    const std::vector<std::pair<TableName, int>> pinned = {
+        {TableName::User, 0},              {TableName::UserInvitation, 1},
+        {TableName::Person, 2},           {TableName::PersonEvent, 3},
+        {TableName::Event, 4},            {TableName::Reminder, 5},
+        {TableName::ReminderDetail, 6},   {TableName::CalendarEvent, 7},
+        {TableName::CalendarEventShare, 8}, {TableName::Project, 9},
+        {TableName::ProjectMember, 10},   {TableName::ProjectTask, 11},
+        {TableName::ContextNote, 12},     {TableName::Camera, 13},
+        {TableName::CameraStream, 14},    {TableName::Zone, 15},
+        {TableName::AuditLog, 16},        {TableName::UserAuditLog, 17},
+        {TableName::Notification, 18},    {TableName::NotificationToken, 19},
+        {TableName::UserActionLog, 20},   {TableName::RefreshToken, 21},
+        {TableName::FaceEmbedding, 22},   {TableName::Memory, 23},
+    };
+    for (const auto& [table, number] : pinned)
+        CHECK(static_cast<int>(table) == number);
+    CHECK(static_cast<int>(kLastTableName) == 23);
+}
