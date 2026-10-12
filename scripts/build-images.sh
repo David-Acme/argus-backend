@@ -24,6 +24,7 @@ SERVICES=(
 
 BUILDER="${ARGUS_BUILD_BUILDER:-argus-build}"
 CAP_GB="${ARGUS_BUILD_MEMORY_GB:-12}"
+CACHE_GB="${ARGUS_BUILD_CACHE_GB:-40}"
 OUT="${ARGUS_BUILD_OUT:-$ROOT/build/images}"
 ONLY=""
 JOBS="${ARGUS_BUILD_JOBS:-}"
@@ -31,7 +32,7 @@ LINK_POOLS="${ARGUS_BUILD_LINK_POOLS:-}"
 
 usage() {
   cat <<'EOF'
-usage: build-images.sh [--only <project>] [--memory <gb>] [--output <dir>] [--builder <name>]
+usage: build-images.sh [--only <project>] [--memory <gb>] [--cache <gb>] [--output <dir>] [--builder <name>]
 
 Builds the service images one at a time, each inside a buildx builder whose
 own container carries a hard cgroup memory limit, so a runaway build step dies
@@ -49,6 +50,10 @@ green.
                   keeps the tree's own default ($ARGUS_BUILD_LINK_POOLS)
 --memory <gb>     the builder container's memory and memory-swap limit
                   (default 12, $ARGUS_BUILD_MEMORY_GB)
+--cache <gb>      the builder's cache budget: every series prunes it back to
+                  this many GiB first, because the builder runs with gc = false
+                  (argus-deploy/buildkitd.toml) and would otherwise grow
+                  without bound (default 40, $ARGUS_BUILD_CACHE_GB)
 --output <dir>    where the per-image build logs, the per-image ctest summary
                   and build-times.tsv are written (default build/images,
                   $ARGUS_BUILD_OUT)
@@ -76,6 +81,7 @@ while [ $# -gt 0 ]; do
     --jobs)    [ $# -ge 2 ] || { usage; exit 1; }; JOBS="$2"; shift ;;
     --link-pools) [ $# -ge 2 ] || { usage; exit 1; }; LINK_POOLS="$2"; shift ;;
     --memory)  [ $# -ge 2 ] || { usage; exit 1; }; CAP_GB="$2"; shift ;;
+    --cache)   [ $# -ge 2 ] || { usage; exit 1; }; CACHE_GB="$2"; shift ;;
     --output)  [ $# -ge 2 ] || { usage; exit 1; }; OUT="$2"; shift ;;
     --builder) [ $# -ge 2 ] || { usage; exit 1; }; BUILDER="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -88,6 +94,10 @@ case "$CAP_GB" in
   ""|*[!0-9]*) printf 'build-images: --memory takes a whole number of GiB\n' >&2; exit 1 ;;
 esac
 [ "$CAP_GB" -ge 1 ] || { printf 'build-images: --memory must be at least 1\n' >&2; exit 1; }
+case "$CACHE_GB" in
+  ""|*[!0-9]*) printf 'build-images: --cache takes a whole number of GiB\n' >&2; exit 1 ;;
+esac
+[ "$CACHE_GB" -ge 1 ] || { printf 'build-images: --cache must be at least 1\n' >&2; exit 1; }
 case "$JOBS" in *[!0-9]*) printf 'build-images: --jobs takes a whole number\n' >&2; exit 1 ;; esac
 [ -z "$JOBS" ] || [ "$JOBS" -ge 1 ] || { printf 'build-images: --jobs must be at least 1\n' >&2; exit 1; }
 case "$LINK_POOLS" in *[!0-9]*) printf 'build-images: --link-pools takes a whole number\n' >&2; exit 1 ;; esac
@@ -142,6 +152,13 @@ ensure_builder() {
   fi
 }
 
+prune_cache() {
+  local reclaimed
+  reclaimed="$(docker buildx prune --builder "$BUILDER" --force \
+    --max-used-space "${CACHE_GB}g" | tail -n 1)"
+  printf 'build-images: builder %s cache budget %s GiB; %s\n' "$BUILDER" "$CACHE_GB" "$reclaimed"
+}
+
 ctest_summary() {
   local log="$1" out="$2"
   if grep -aE "tests passed|tests failed|The following tests did not run|\(Skipped\)|\*\*\*Skipped" \
@@ -169,6 +186,7 @@ main() {
   fi
   commit="$(git rev-parse HEAD)"
   ensure_builder
+  prune_cache
   printf '%s\n' "$commit" > "$OUT/built-commit.txt"
   printf 'project\tservice\timage\ttest_seconds\ttest_rc\tbuild_seconds\tbuild_rc\tcommit\timage_id\tsize\n' \
     > "$OUT/build-times.tsv"
