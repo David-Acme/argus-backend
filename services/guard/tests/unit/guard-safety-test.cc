@@ -709,6 +709,11 @@ TEST_CASE("an alert undelivered past the resume window is escalated and still re
   CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
   CHECK(scalar("SELECT escalated_at > 0 FROM guard_safety_alert WHERE id = " + id) == "1");
   CHECK(scalar("SELECT notified_at FROM guard_safety_alert WHERE id = " + id) == "0");
+  CHECK(scalar("SELECT notify_sequence FROM guard_safety_alert WHERE id = " + id) == "1");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_action WHERE command_id = 'safety:" + id +
+               ":notify:1'") == "1");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_action WHERE command_id LIKE 'safety:" + id +
+               ":r%'") == "0");
   rig.clock += 2;
   CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 1);
   const auto alerts = rig.ofKind("guard_panic");
