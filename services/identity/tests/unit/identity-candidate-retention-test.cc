@@ -72,10 +72,18 @@ public:
     co_return;
   }
 
+  [[nodiscard]] drogon::Task<void>
+  publishResource(const IdentityResourceInput& input) const override
+  {
+    resources_.push_back(input);
+    co_return;
+  }
+
   [[nodiscard]] const std::vector<Json::Value>& emitted() const { return emitted_; }
 
 private:
   mutable std::vector<Json::Value> emitted_;
+  mutable std::vector<IdentityResourceInput> resources_;
 };
 
 struct PersonSeed

@@ -88,6 +88,15 @@ public:
     co_return;
   }
 
+  [[nodiscard]] drogon::Task<void>
+  publishResource(const IdentityResourceInput& input) const override
+  {
+    const std::scoped_lock lock(mutex_);
+    resources_.push_back(input);
+    transactional_ = transactional_ && input.client != nullptr;
+    co_return;
+  }
+
   [[nodiscard]] std::vector<Json::Value> catalog() const
   {
     const std::scoped_lock lock(mutex_);
@@ -100,6 +109,12 @@ public:
     return actions_;
   }
 
+  [[nodiscard]] std::vector<IdentityResourceInput> resources() const
+  {
+    const std::scoped_lock lock(mutex_);
+    return resources_;
+  }
+
   [[nodiscard]] bool transactional() const
   {
     const std::scoped_lock lock(mutex_);
@@ -110,12 +125,14 @@ public:
   {
     const std::scoped_lock lock(mutex_);
     catalog_.clear();
+    resources_.clear();
     actions_.clear();
   }
 
 private:
   mutable std::mutex mutex_;
   mutable std::vector<Json::Value> catalog_;
+  mutable std::vector<IdentityResourceInput> resources_;
   mutable std::vector<UserActionEvent> actions_;
   mutable bool transactional_{true};
 };
@@ -343,6 +360,13 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
     CHECK(actions.front().newData["first"].asBool());
     CHECK(actions.front().ipAddress.empty());
     CHECK(sink.transactional());
+
+    const auto notices = sink.resources();
+    REQUIRE(notices.size() == 1);
+    CHECK(notices.front().scope == ResourceScope::PrivacyChoice);
+    CHECK(notices.front().user == 7);
+    CHECK(notices.front().ids.empty());
+    CHECK(notices.front().client != nullptr);
   }
 
   {
@@ -416,8 +440,28 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
     CHECK(inactive["users"] == active["users"]);
     CHECK_FALSE(drogon::sync_wait(gate.effectiveFor(7)).faceCameras);
     CHECK(drogon::sync_wait(gate.stateFor(7)).choices.faceCameras);
+
+    const auto notices = sink.resources();
+    REQUIRE(notices.size() == 2);
+    CHECK(notices[0].scope == ResourceScope::PrivacyHousehold);
+    CHECK(notices[0].user == 0);
+    CHECK(notices[0].ids.empty());
+    CHECK(notices[0].client != nullptr);
+    CHECK(notices[1].scope == ResourceScope::PrivacyChoice);
+    CHECK(notices[1].user == 0);
+
     CHECK(sink.catalog().size() == 3);
     CHECK(hasJournalEvent(sink.actions(), "household_privacy"));
+
+    sink.clear();
+    drogon::sync_wait(service.updateHousehold(
+        {.actorId = 1,
+         .presence = std::nullopt,
+         .faceCameras = false,
+         .voiceLearning = std::nullopt,
+         .cameraAudio = std::nullopt,
+         .visitorRecognition = std::nullopt}));
+    CHECK(sink.resources().empty());
 
     const auto unnamed = present(client.getPerson(1));
     CHECK_FALSE(unnamed.userId.has_value());

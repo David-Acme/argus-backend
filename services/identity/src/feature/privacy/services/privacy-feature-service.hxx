@@ -8,6 +8,7 @@
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/privacy/privacy-gate.hxx>
 #include <shared/vocabulary/privacy-choices.hxx>
+#include <sync/identity-change-sink.hxx>
 #include <vector>
 
 struct PrivacyView
@@ -72,6 +73,8 @@ private:
   };
 
   [[nodiscard]] static drogon::Task<void> publishCatalog(PublishInput input);
+  [[nodiscard]] static drogon::Task<void>
+  announce(const IdentityResourceInput& input);
 
   PrivacyRepository repository_;
   UserRepository userRepository_;

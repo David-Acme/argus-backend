@@ -122,12 +122,19 @@ public:
     co_return;
   }
 
+  [[nodiscard]] drogon::Task<void> publishResource(const IdentityResourceInput& input) const override
+  {
+    resources_.push_back(input);
+    co_return;
+  }
+
   [[nodiscard]] const std::vector<int64_t>& moduleAudits() const { return moduleAudits_; }
   [[nodiscard]] const std::vector<int64_t>& actions() const { return actions_; }
   [[nodiscard]] int moduleFrames() const { return moduleFrames_; }
 
 private:
   mutable std::vector<int64_t> moduleAudits_;
+  mutable std::vector<IdentityResourceInput> resources_;
   mutable std::vector<int64_t> actions_;
   mutable int moduleFrames_{0};
 };

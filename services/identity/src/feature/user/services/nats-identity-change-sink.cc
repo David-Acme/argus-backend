@@ -9,6 +9,7 @@
 #include <sqlite/db-service.hxx>
 #include <sync/module-audit-event.hxx>
 #include <sync/stream-retention.hxx>
+#include <sync/resource-change.hxx>
 #include <sync/sync-change.hxx>
 #include <sync/user-audit-event.hxx>
 #include <text/json-diff.hxx>
@@ -174,6 +175,17 @@ NatsIdentityChangeSink::publishAction(const ActionPublishInput& input) const
                            .subject = actionSubject_,
                            .payload = json_util::toString(input.event.toJson()),
                            .client = input.client});
+}
+
+drogon::Task<void>
+NatsIdentityChangeSink::publishResource(const IdentityResourceInput& input) const
+{
+  co_await outbox_.append(
+      {.idPrefix = kResourceIdPrefix,
+       .subject = changeSubject_,
+       .payload = json_util::toString(resource_change::payload(
+           ResourceDomain::Identity, input.scope, input.ids, input.user)),
+       .client = input.client});
 }
 
 drogon::Task<void> NatsIdentityChangeSink::record(RecordInput input) const

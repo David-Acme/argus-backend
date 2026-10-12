@@ -46,7 +46,14 @@ public:
     co_return;
   }
 
+  [[nodiscard]] drogon::Task<void> publishResource(const IdentityResourceInput& input) const override
+  {
+    resources.push_back(input);
+    co_return;
+  }
+
   mutable std::vector<UserActionEvent> actions;
+  mutable std::vector<IdentityResourceInput> resources;
 };
 
 struct Database

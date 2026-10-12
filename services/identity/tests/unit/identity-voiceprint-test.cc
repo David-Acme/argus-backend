@@ -104,6 +104,15 @@ public:
     co_return;
   }
 
+  [[nodiscard]] drogon::Task<void>
+  publishResource(const IdentityResourceInput& input) const override
+  {
+    const std::scoped_lock lock(mutex_);
+    resources_.push_back(input);
+    transactional_ = transactional_ && input.client != nullptr;
+    co_return;
+  }
+
   [[nodiscard]] std::vector<UserActionEvent> actions() const
   {
     const std::scoped_lock lock(mutex_);
@@ -119,6 +128,7 @@ public:
 private:
   mutable std::mutex mutex_;
   mutable std::vector<UserActionEvent> actions_;
+  mutable std::vector<IdentityResourceInput> resources_;
   mutable bool transactional_{true};
 };
 

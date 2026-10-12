@@ -6,10 +6,12 @@
 #include <json/value.h>
 #include <sync/module-audit-event.hxx>
 #include <sync/module-emit.hxx>
+#include <sync/resource-change.hxx>
 #include <sync/socket-emit-dto.hxx>
 #include <sync/table-name.hxx>
 #include <sync/user-action-event.hxx>
 #include <sync/user-change-sink.hxx>
+#include <vector>
 
 struct IdentityCatalogInput
 {
@@ -23,6 +25,14 @@ struct IdentityCatalogInput
 struct ActionPublishInput
 {
   UserActionEvent event;
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct IdentityResourceInput
+{
+  ResourceScope scope{ResourceScope::PrivacyHousehold};
+  std::vector<int64_t> ids{};
+  int64_t user{0};
   drogon::orm::DbClient* client{nullptr};
 };
 
@@ -44,6 +54,9 @@ public:
 
   virtual drogon::Task<void>
   publishAction(const ActionPublishInput& input) const = 0;
+
+  virtual drogon::Task<void>
+  publishResource(const IdentityResourceInput& input) const = 0;
 };
 
 namespace identity_change

@@ -100,6 +100,15 @@ public:
     co_return;
   }
 
+  [[nodiscard]] drogon::Task<void>
+  publishResource(const IdentityResourceInput& input) const override
+  {
+    note(input.client);
+    if (refuse_)
+      throw std::runtime_error("the change sink refused the resource");
+    co_return;
+  }
+
   void refuse(bool value) const { refuse_ = value; }
   void refuseCatalog(bool value) const { refuseCatalog_ = value; }
   [[nodiscard]] int calls() const { return calls_; }

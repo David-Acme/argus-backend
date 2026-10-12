@@ -40,6 +40,8 @@ public:
   publishUsersAudit(const UserAuditInput& input) const override;
   [[nodiscard]] drogon::Task<void>
   publishAction(const ActionPublishInput& input) const override;
+  [[nodiscard]] drogon::Task<void>
+  publishResource(const IdentityResourceInput& input) const override;
 
   void reconcile();
   void requestStop();
@@ -48,6 +50,7 @@ public:
   static constexpr std::size_t kMaxPayloadBytes = outbox::kMaxPayloadBytes;
   static constexpr std::string_view kEventIdPrefix = "identity-change:";
   static constexpr std::string_view kActionIdPrefix = "identity-action:";
+  static constexpr std::string_view kResourceIdPrefix = "identity-resource:";
 
   [[nodiscard]] static outbox::OutboxRepository repository();
 

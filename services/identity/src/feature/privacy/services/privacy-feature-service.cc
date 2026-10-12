@@ -66,6 +66,15 @@ drogon::Task<void> PrivacyFeatureService::publishCatalog(PublishInput input)
                                  .client = input.client});
 }
 
+drogon::Task<void>
+PrivacyFeatureService::announce(const IdentityResourceInput& input)
+{
+  const auto* sink = identity_change::getSink();
+  if (sink == nullptr)
+    co_return;
+  co_await sink->publishResource(input);
+}
+
 drogon::Task<PrivacyView> PrivacyFeatureService::me(int64_t userId) const
 {
   if (!co_await userRepository_.findById(userId))
@@ -111,6 +120,9 @@ PrivacyFeatureService::decide(const PrivacyDecisionInput& input) const
 
     co_await publishCatalog(
         {.user = *user, .state = view.state, .client = transaction.get()});
+    co_await announce({.scope = ResourceScope::PrivacyChoice,
+                       .user = input.userId,
+                       .client = transaction.get()});
 
     Json::Value data = input.choices.toJson();
     data["event"] = "privacy_consent";
@@ -191,6 +203,11 @@ PrivacyFeatureService::updateHousehold(const HouseholdPrivacyChange& change) con
         co_await publishCatalog(
             {.user = user, .state = state, .client = transaction.get()});
       }
+
+      co_await announce({.scope = ResourceScope::PrivacyHousehold,
+                         .client = transaction.get()});
+      co_await announce({.scope = ResourceScope::PrivacyChoice,
+                         .client = transaction.get()});
 
       Json::Value data = after.allowed.toJson();
       data["event"] = "household_privacy";

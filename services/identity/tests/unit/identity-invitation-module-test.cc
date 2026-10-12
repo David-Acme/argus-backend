@@ -120,11 +120,18 @@ public:
     co_return;
   }
 
+  [[nodiscard]] drogon::Task<void> publishResource(const IdentityResourceInput& input) const override
+  {
+    resources_.push_back(input);
+    co_return;
+  }
+
   [[nodiscard]] const std::vector<Published>& audits() const { return audits_; }
   [[nodiscard]] const std::vector<Published>& actions() const { return actions_; }
 
 private:
   mutable std::vector<Published> audits_;
+  mutable std::vector<IdentityResourceInput> resources_;
   mutable std::vector<Published> actions_;
 };
 
