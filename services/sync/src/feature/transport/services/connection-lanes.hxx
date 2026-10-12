@@ -53,6 +53,7 @@ public:
   [[nodiscard]] std::vector<int64_t> connectedUsers() const;
 
   void startRevalidation(LaneRevalidationConfig config);
+  drogon::Task<void> revalidateAll();
   void requestStop();
   [[nodiscard]] bool drained() const;
 
@@ -63,7 +64,6 @@ private:
     std::shared_ptr<FrameLane> lane;
   };
 
-  drogon::Task<void> revalidateAll();
   void pruneExpired();
   void startDrain(const drogon::WebSocketConnectionPtr& conn,
                   const std::shared_ptr<FrameLane>& lane) const;

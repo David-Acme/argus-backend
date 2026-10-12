@@ -1,8 +1,11 @@
 #include "connection-lanes.hxx"
 
 #include <algorithm>
+#include <auth/user-directory.hxx>
 #include <drogon/drogon.h>
 #include <exception>
+#include <shared/services/context/user-context.hxx>
+#include <shared/services/room/room-manager.hxx>
 #include <trantor/utils/Logger.h>
 #include <utility>
 
@@ -117,6 +120,21 @@ drogon::Task<void> ConnectionLanes::revalidateAll()
         const auto found = co_await directory_->lookup(userId);
         if (found.status == DirectoryLookupStatus::Unavailable)
           continue;
+        if (found.status == DirectoryLookupStatus::Found && found.user) {
+          const std::optional<UserRole> served = userContext().roleOf(userId);
+          const UserRole role = found.user->role;
+          if (served && *served != role) {
+            LOG_WARN << "Sync: user " << userId << " is " << userRoleToString(role)
+                     << " now, not " << userRoleToString(*served)
+                     << "; moving the sockets and re-sending the context";
+            if (drogon::app().isRunning()) {
+              RoomManager{}.replaceRoleRooms(
+                  {.userId = userId, .oldRole = *served, .newRole = role});
+            }
+            userContext().userChanged(userId, role);
+            continue;
+          }
+        }
       }
       catch (const std::exception& error) {
         LOG_WARN << "Sync: revalidating user " << userId

@@ -15,6 +15,7 @@
 #include <feature/transport/services/sync-service.hxx>
 #include <feature/transport/services/synchronized-service.hxx>
 #include <nats/nats-subject.hxx>
+#include <shared/services/context/user-context.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
@@ -457,6 +458,30 @@ TEST_CASE("revalidation reaches every socket of one user, once while one is pend
   lanes.close(firstConn);
   CHECK(lanes.find(firstConn) == nullptr);
   CHECK(lanes.revalidateUser(7) == 1);
+}
+
+TEST_CASE("a role the revalidation finds moved is applied to the sockets, not only to the context")
+{
+  ConnectionLanes lanes;
+  std::vector<int64_t> started;
+  lanes.setDrainStarter([&started](const drogon::WebSocketConnectionPtr&,
+                                   const std::shared_ptr<FrameLane>& lane) {
+    started.push_back(lane->userId());
+  });
+  const auto directory = std::make_shared<CountingDirectory>();
+  directory->role = UserRole::Guest;
+  lanes.startRevalidation({.intervalSeconds = 3600, .directory = directory});
+
+  const auto conn = std::make_shared<ClosingConnection>();
+  const drogon::WebSocketConnectionPtr handle = conn;
+  lanes.open({.conn = handle, .userId = 7, .loop = nullptr});
+  userContext().remember(7, UserRole::Resident);
+
+  drogon::sync_wait(lanes.revalidateAll());
+
+  CHECK(userContext().roleOf(7).value_or(UserRole::Unknown) == UserRole::Guest);
+  CHECK(started.empty());
+  userContext().remember(7, UserRole::Unknown);
 }
 
 TEST_CASE("once the lanes are asked to stop, no socket can hold the drain open with new frames")
