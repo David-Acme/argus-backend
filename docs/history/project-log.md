@@ -3446,3 +3446,13 @@ The owner decided that who is home and who is not is visible to the Owner only. 
 household presence for now, nor do Residents or Guests. `GET /guard/presence` stays out of
 `kGuardAccess`, and R16's `{guard, presence}` notice therefore reaches the Owner role room alone.
 Widening it later is a change to `kGuardAccess` and needs the owner's word.
+
+## Parallel conversations, private memory and Argus as messenger (2026-10-12)
+
+The owner wants Argus to hold one conversation per person in parallel (phone, camera, laptop, other
+accounts, all at once), each with its own context, every conversation feeding one shared memory and
+one global context for the system. He decided that **what a person tells Argus privately is never used
+in another person's conversation**, and that Argus must act as the household's messenger ("Argus, llama
+a David y dile que venga a comer"): it calls or notifies the recipient with the message, relays the
+answer back, and carries only what the sender said. Recorded as F8 and F9 in
+`realtime-and-backlog-plan.md`; the design lands in `camera-watchman-plan.md`.

@@ -182,6 +182,24 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   active-project count (`archived` is not a backend status), the assistant's `calendar.list_events`
   including shared events.
 - F7 The `agronomy` module (`coming_soon`).
+- F8 Argus as the household's messenger (owner, 2026-10-12, wanted for sure): "Argus, llama a David y
+  dile que venga a comer". The router picks a `relay` tool (the LLM never picks tools), the slots are
+  the recipient (`text_norm::matchName` over the household) and the message in the speaker's words;
+  Argus delivers it through the best channel the recipient has right now (an open conversation, the
+  camera that sees them once the watchman exists, a call through the call engine with the message as
+  its opening line, "Te llama Ana: dice que vengas a comer", else a notification), and carries the
+  answer back ("dile que ya voy") to the sender's open conversation or as a notification. It relays
+  only what the sender said: nothing from the sender's private memory travels with it. Who may relay
+  to whom is a capability in `role-access.hxx` (a visitor leaves a message, never rings a resident);
+  presence decides the channel but is never revealed to the sender (the sender hears "se lo dije" or
+  "no contestó, le dejé el mensaje", not where the person is).
+- F9 Parallel conversations, one per person (owner, 2026-10-12): Argus holds a separate conversation
+  with each user at the same time, on any device, each with its own hot context; one conversation per
+  account that follows the person between camera, phone and laptop; everything extracted from every
+  conversation feeds the one shared memory, and **what a person tells Argus privately is never used in
+  another person's conversation** (household facts are shared, personal ones stay the person's). Needs
+  a per-user conversation store, parallel LLM sequences, fair STT/TTS scheduling and co-located device
+  coordination; designed in `camera-watchman-plan.md` once the research of 2026-10-12 is in.
 
 ## 5. Security and deployment hardening
 
