@@ -102,6 +102,37 @@ inline std::string scalar(const std::string& sql)
   return rows.front()[0].as<std::string>();
 }
 
+inline int64_t changeRows()
+{
+  return std::stoll(scalar("SELECT COUNT(*) FROM change_outbox"));
+}
+
+inline void clearChangeOutbox()
+{
+  DbService::client()->execSqlSync("DELETE FROM change_outbox");
+}
+
+inline std::string lastPayload()
+{
+  const auto rows = DbService::client()->execSqlSync(
+      "SELECT payload FROM change_outbox ORDER BY rowid DESC LIMIT 1");
+  return rows.empty() ? std::string{} : rows[0][0].as<std::string>();
+}
+
+inline std::string idsOf(std::initializer_list<int64_t> ids)
+{
+  std::string text = "\"ids\":[";
+  bool first = true;
+  for (const auto id : ids) {
+    if (!first)
+      text += ",";
+    first = false;
+    text += std::to_string(id);
+  }
+  return text + "]";
+}
+
+
 inline CameraCommandResult okCommand(std::string detail)
 {
   CameraCommandResult result;

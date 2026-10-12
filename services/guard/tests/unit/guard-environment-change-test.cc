@@ -17,11 +17,14 @@
 #include <string>
 #include <test-support/app-runner.hxx>
 
-#include "temp-db.hxx"
-#include "wait-for-boot.hxx"
+#include "guard-fakes.hxx"
 
 using guard_test::TempDb;
 using guard_test::waitForBoot;
+using guard_test::changeRows;
+using guard_test::clearChangeOutbox;
+using guard_test::idsOf;
+using guard_test::lastPayload;
 using test_support::AppRunner;
 
 namespace
@@ -64,7 +67,7 @@ SharedBoot& sharedBoot()
 
 void clearGuardTables()
 {
-  DbService::client()->execSqlSync("DELETE FROM change_outbox");
+  clearChangeOutbox();
   DbService::client()->execSqlSync("DELETE FROM guard_state");
   DbService::client()->execSqlSync("DELETE FROM guard_camera_context");
   DbService::client()->execSqlSync("DELETE FROM guard_expected_guest");
@@ -78,18 +81,6 @@ int64_t insertDefaultEnvironment()
       "schedule_enabled, asleep_hours, closed_mode) VALUES ('Default house', "
       "'home', 1, 'home', 0, '', 'away')");
   return scalarCount("SELECT id FROM guard_environment WHERE is_default = 1");
-}
-
-int64_t changeRows()
-{
-  return scalarCount("SELECT COUNT(*) FROM change_outbox");
-}
-
-std::string lastPayload()
-{
-  const auto rows = DbService::client()->execSqlSync(
-      "SELECT payload FROM change_outbox ORDER BY rowid DESC LIMIT 1");
-  return rows.empty() ? std::string{} : rows[0][0].as<std::string>();
 }
 
 Json::Value createEnvironment(const GuardFeatureService& service,
@@ -118,18 +109,6 @@ int64_t postureRow(int64_t environmentId)
                      guard_schedule::stateKey(environmentId) + "'");
 }
 
-std::string idsOf(std::initializer_list<int64_t> ids)
-{
-  std::string text = "\"ids\":[";
-  bool first = true;
-  for (const auto id : ids) {
-    if (!first)
-      text += ",";
-    first = false;
-    text += std::to_string(id);
-  }
-  return text + "]";
-}
 }
 
 TEST_CASE("creating an environment announces it and stores its posture")

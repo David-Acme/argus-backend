@@ -1,6 +1,7 @@
 #pragma once
 
 #include <config/guard-config.hxx>
+#include <feature/guard/infra/resource-change-outbox.hxx>
 #include <feature/presence/services/presence-engine.hxx>
 #include <feature/presence/services/presence-ports.hxx>
 #include <shared/repositories/presence/presence-repository.hxx>
@@ -43,6 +44,7 @@ public:
     NatsBus* bus{nullptr};
     const PresenceDirectory* directory{nullptr};
     PresencePublisher* publisher{nullptr};
+    ResourceChangeOutbox* changes{nullptr};
     std::function<drogon::Task<void>(int64_t)> onAccountDisabled{};
   };
 

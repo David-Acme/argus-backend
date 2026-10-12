@@ -332,11 +332,15 @@ drogon::Task<void> PresenceService::forget(int64_t userId)
 
 drogon::Task<void> PresenceService::announce(PresenceRow row)
 {
-  if (dependencies_.publisher == nullptr)
+  if (dependencies_.publisher == nullptr && dependencies_.changes == nullptr)
     co_return;
   const auto rows = co_await repository_.forUser(row.userId);
-  dependencies_.publisher->publish(
-      {.row = row, .overall = presence::overall(rows)});
+  if (dependencies_.publisher != nullptr)
+    dependencies_.publisher->publish(
+        {.row = row, .overall = presence::overall(rows)});
+  if (dependencies_.changes != nullptr)
+    co_await dependencies_.changes->record({.scope = ResourceScope::Presence,
+                                            .ids = {row.userId}});
 }
 
 drogon::Task<void> PresenceService::sweep(int64_t now)

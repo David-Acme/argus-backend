@@ -37,8 +37,7 @@ outbox::OutboxConfig outboxConfig()
                         .purgeEveryMs = stream_retention::kSettledPurgeIntervalMs,
                         .purgeRetryMs = stream_retention::kSettledPurgeRetryMs}};
 }
-
-
+}
 
 ResourceChangeRow resourceChangeRow(const ResourceChangeInput& input)
 {

@@ -16,6 +16,7 @@ argus_module(NAME guard-presence
         argus::contracts::sync
         argus::lib::http
         argus::lib::nats
+        argus::lib::outbox
         argus::lib::runtime
         argus::lib::sqlite
         argus::lib::text

@@ -4,7 +4,9 @@
 #include <feature/presence/dtos/response-presence-dto.hxx>
 #include <feature/presence/services/presence-engine.hxx>
 #include <feature/presence/services/presence-service.hxx>
+#include <feature/guard/infra/resource-change-outbox.hxx>
 #include <guard/guard-presence-client.hxx>
+#include <nats/nats-bus.hxx>
 #include <sync/sync-change.hxx>
 
 #include <map>
@@ -13,7 +15,11 @@
 
 #include "guard-fakes.hxx"
 
+using guard_test::changeRows;
+using guard_test::clearChangeOutbox;
 using guard_test::GuardBoot;
+using guard_test::idsOf;
+using guard_test::lastPayload;
 using guard_test::scalar;
 
 namespace
@@ -119,9 +125,12 @@ struct Harness
   FakeDirectory directory;
   RecordingPublisher publisher;
   std::vector<int64_t> disabled;
+  std::shared_ptr<NatsBus> bus = std::make_shared<NatsBus>();
+  ResourceChangeOutbox changes{bus};
   PresenceService service{{.bus = nullptr,
                            .directory = &directory,
                            .publisher = &publisher,
+                           .changes = &changes,
                            .onAccountDisabled = [this](int64_t userId) -> drogon::Task<void> {
                              disabled.push_back(userId);
                              co_return;
@@ -551,4 +560,30 @@ TEST_CASE("the presence RPC answers only its callers, in the wire's terms")
   CHECK(response.users(0).environments(0).source() ==
         argus::guard::v1::PRESENCE_SOURCE_LAN_SESSION);
   server->Shutdown();
+}
+
+TEST_CASE("a presence transition reaches the screens that list everyone, once")
+{
+  prepare();
+  clearChangeOutbox();
+  Harness harness;
+  harness.directory.consenting.insert(73);
+
+  drogon::sync_wait(harness.service.onSessionSignal(
+      sessionEvent({.userId = 73, .origin = "lan", .platform = "android", .at = kStart})));
+  const int64_t announced = changeRows();
+  CHECK(announced > 0);
+  CHECK(lastPayload().find("\"domain\":\"guard\"") != std::string::npos);
+  CHECK(lastPayload().find("\"scope\":\"presence\"") != std::string::npos);
+  CHECK(lastPayload().find(idsOf({73})) != std::string::npos);
+
+  drogon::sync_wait(harness.service.onSessionSignal(
+      sessionEvent({.userId = 73, .origin = "lan", .platform = "ios", .at = kStart + 30})));
+  CHECK(changeRows() == announced);
+
+  drogon::sync_wait(harness.service.onSessionSignal(
+      sessionEvent({.userId = 73, .origin = "tunnel", .platform = "ios", .at = kStart + 600})));
+  CHECK(changeRows() > announced);
+  CHECK(lastPayload().find("\"scope\":\"presence\"") != std::string::npos);
+  CHECK(lastPayload().find(idsOf({73})) != std::string::npos);
 }

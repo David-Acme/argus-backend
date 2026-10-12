@@ -358,6 +358,7 @@ int main()
       {.bus = natsBus.get(),
        .directory = &presenceDirectory,
        .publisher = &presencePublisher,
+       .changes = &resourceChanges,
        .onAccountDisabled = [safety](int64_t userId) -> drogon::Task<void> {
          co_await safety->forgetUser(userId);
        }},
