@@ -119,6 +119,12 @@ public:
     return actions_;
   }
 
+  [[nodiscard]] std::vector<IdentityResourceInput> resources() const
+  {
+    const std::scoped_lock lock(mutex_);
+    return resources_;
+  }
+
   [[nodiscard]] bool transactional() const
   {
     const std::scoped_lock lock(mutex_);
@@ -512,12 +518,20 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them" *
     CHECK(profileOf(kRita) == 0);
     CHECK(identifies("alpha-4") == 0);
 
+    const std::size_t noticesBefore = sink.resources().size();
     CHECK(runCall(passive, {.userId = kRita,
                             .device = "rita-phone",
                             .key = "rita-3",
                             .turns = callOf("alpha", 3),
                             .at = localTime({.day = 1, .hour = 10})})
               .outcome == PassiveCallOutcome::Linked);
+    {
+      INFO("a learned voice announces the user it belongs to");
+      const auto notices = sink.resources();
+      REQUIRE(notices.size() == noticesBefore + 1);
+      CHECK(notices.back().scope == ResourceScope::Voiceprints);
+      CHECK(notices.back().ids == std::vector<int64_t>{kRita});
+    }
     CHECK(profileOf(kRita) == 1);
     CHECK(identifies("alpha-4") == kRita);
     CHECK(identifies("bravo-4") == 0);
@@ -740,6 +754,7 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them" *
 
   {
     INFO("the owner makes Argus forget a voice, and it is gone");
+    const std::size_t noticesBefore = sink.resources().size();
     const auto forgotten =
         drogon::sync_wait(service.forget({.actorId = kOwner, .subjectId = kRita}));
     CHECK(forgotten.hadProfile);
@@ -770,6 +785,13 @@ TEST_CASE("a voice is learned from its owner's own calls, and only from them" *
     };
     CHECK(refusal(kRita) == 404);
     CHECK(refusal(4040) == 404);
+    {
+      INFO("forgetting a voice announces it once, and a refused forget nothing");
+      const auto notices = sink.resources();
+      REQUIRE(notices.size() == noticesBefore + 1);
+      CHECK(notices.back().scope == ResourceScope::Voiceprints);
+      CHECK(notices.back().ids == std::vector<int64_t>{kRita});
+    }
     CHECK(samplesOf(kGil) > 0);
   }
 }

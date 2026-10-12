@@ -38,7 +38,9 @@ enum class ResourceScope : std::uint8_t
   PrivacyHousehold,
   PrivacyChoice,
   Visitors,
-  Values
+  Values,
+  Voiceprints,
+  Presence
 };
 
 
@@ -50,7 +52,7 @@ struct ResourceRoute
   drogon::HttpMethod method;
 };
 
-inline constexpr std::array<ResourceRoute, 17> kResourceRoutes{{
+inline constexpr std::array<ResourceRoute, 19> kResourceRoutes{{
     {.domain = ResourceDomain::Camera,
      .scope = ResourceScope::Device,
      .path = "/camera",
@@ -118,6 +120,14 @@ inline constexpr std::array<ResourceRoute, 17> kResourceRoutes{{
     {.domain = ResourceDomain::Settings,
      .scope = ResourceScope::Values,
      .path = "/settings",
+     .method = drogon::Get},
+    {.domain = ResourceDomain::Identity,
+     .scope = ResourceScope::Voiceprints,
+     .path = "/voiceprint/users",
+     .method = drogon::Get},
+    {.domain = ResourceDomain::Guard,
+     .scope = ResourceScope::Presence,
+     .path = "/guard/presence",
      .method = drogon::Get},
 }};
 
@@ -195,6 +205,10 @@ inline std::string resourceScopeToString(ResourceScope scope)
       return "visitors";
     case ResourceScope::Values:
       return "values";
+    case ResourceScope::Voiceprints:
+      return "voiceprints";
+    case ResourceScope::Presence:
+      return "presence";
   }
   return "device";
 }
@@ -235,6 +249,10 @@ inline std::optional<ResourceScope> resourceScopeFromString(std::string_view nam
     return ResourceScope::Visitors;
   if (name == "values")
     return ResourceScope::Values;
+  if (name == "voiceprints")
+    return ResourceScope::Voiceprints;
+  if (name == "presence")
+    return ResourceScope::Presence;
   return std::nullopt;
 }
 

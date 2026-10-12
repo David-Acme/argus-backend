@@ -19,6 +19,9 @@ drogon::Task<void> publish(const VoiceprintAuditInput& input)
                                              .ipAddress = ""},
                                    .client = input.client};
   co_await sink->publishAction(publish);
+  co_await sink->publishResource({.scope = ResourceScope::Voiceprints,
+                                  .ids = {input.subjectId},
+                                  .client = input.client});
 }
 
 }

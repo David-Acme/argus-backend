@@ -393,6 +393,13 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
     CHECK(consent->action == UserAction::Update);
     REQUIRE(consent->newData["changed"].size() == 1);
     CHECK(consent->newData["changed"][0].asString() == "voiceLearning");
+
+    const auto notices = sink.resources();
+    REQUIRE(notices.size() == 2);
+    CHECK(notices[0].scope == ResourceScope::Voiceprints);
+    CHECK(notices[0].ids == std::vector<int64_t>{7});
+    CHECK(notices[1].scope == ResourceScope::PrivacyChoice);
+    CHECK(notices[1].user == 7);
   }
 
   {
