@@ -1082,3 +1082,52 @@ never get a module room or a global audit page for any role, the Owner
 included: a reminder change reaches the target's own room only.
 `tests/unit/sync-context-test.cc` pins the context, the frames, the room moves,
 the pulls and the refusal.
+
+### Resource changes (2026-10-12, the real-time plan's 2.2)
+
+State a screen re-reads over HTTP — camera device settings, guard environments,
+incidents and responses, presets, visitors, privacy — stayed frozen until the
+screen was reopened: the synced tables carry rows, and this state is served by
+the owner's own GET route. `ResourceChanged = 14` (`resource_changed`,
+additive) is the single notification for all of it. A producer writes
+`{kind:"resource", domain, scope, ids?}` into its `change_outbox` in the same
+transaction as the change, its outbox relays it to the owner's change subject,
+the durable this service already holds for that feed drains it, and
+`sync_fan_out::handleResourcePayload` fans it out as
+`{operation:14, option:"user", info:{domain, scope, ids?}}` — the `option` is
+the neutral `TableName::User` placeholder the other non-table frames
+(`ModuleUpdate`, `ContextUpdate`) carry, and the operation is what the client
+dispatches on. A pair whose producer is not built yet (guard's and settings'
+rows, R1 and R12) simply never publishes.
+
+The audience is derived, never declared. The contract registry
+(`packages/contracts/sync/src/sync/resource-change.hxx`) pairs every
+`(domain, scope)` with the read route that serves it, and the audience is the
+role rooms of every role for which
+`role_access::routeVerdict({role, path, method, moduleGate().snapshot()})`
+answers `Allowed`. One oracle decides three things at once: a role that may
+not read the route is out; a module that is off makes the verdict
+`ModuleDisabled` for every role, so the frame names no room and reaches
+nobody without any second drop path; and a role whose module went off is
+`RoleInactive` and out as well. A role room is the only room kind a resource
+frame addresses, and every socket sits in its own role's room — `roleRoomsOf`
+always appends it and a module switch reconciles the socket's rooms without
+dropping it — so it is the verdict, never the membership, that keeps an
+inactive role out. A payload that carries `user` targets one person: the frame
+goes to that user's room **instead of** the role rooms, and only after the same
+verdict passes for that user's role, which is the role this service remembered
+for them at connect and at every revalidation (`UserContextService::roleOf`,
+fed by `remember`/`userChanged`).
+
+The frame carries no rows, so `ids` reaches everyone in the audience — which is
+exactly the set of people allowed to read those rows, which is why a
+notification is enough and no data ever travels with it. It is never persisted
+and never replayed: a device that was offline missed it and catches up by
+reloading every mounted scope on reconnect. The client coalesces per domain and
+scope on a trailing edge (about 300 ms, one reload in flight, at most one
+follow-up) so a burst of frames — an episode touched repeatedly, a module job —
+costs one HTTP read per device.
+
+`tests/unit/resource-change-audience-test.cc` pins the audience table: every
+registered pair against every role with the modules on and again with
+surveillance off, plus the payload refusals and the scoped-pull bound.

@@ -12,6 +12,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 namespace user_context
 {
@@ -42,15 +43,19 @@ public:
 
   [[nodiscard]] drogon::Task<Json::Value> ownerCatalogFor(UserRole role) const;
 
+  void remember(int64_t userId, UserRole role) const;
   void deliverLocal(const Conn& conn, const ContextDelivery& delivery) const;
   void modulesChanged() const;
   void userChanged(int64_t userId, UserRole role) const;
+
+  [[nodiscard]] std::optional<UserRole> roleOf(int64_t userId) const;
 
 private:
   [[nodiscard]] std::shared_ptr<const CatalogFetch> fetch() const;
 
   mutable std::mutex mutex_;
   std::shared_ptr<const CatalogFetch> fetch_;
+  mutable std::unordered_map<int64_t, UserRole> roles_;
 };
 
 UserContextService& userContext();

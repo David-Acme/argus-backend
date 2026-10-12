@@ -642,6 +642,8 @@ Raw pointers only for non-owning access (`.get()`).
   user's devices and `CallCancel=9` stops the ring, both emitted by
   argus-notification's call engine through `SyncControlService.EmitToUser`
   (`services/notification/CONTEXT.md`, "Argus calls you").
+  `ResponseUpdate=10` (additive) carries one call response to each member who
+  was reached, its `info` the response row plus that member's own state.
   `Heartbeat=11` (additive, the dead man's switch) answers a client's
   `{type:"heartbeat"}`, follows `InitialInfo` on connect and is pushed to a
   user's room when their presence changes: `info {at, intervalSeconds,
@@ -663,6 +665,15 @@ Raw pointers only for non-owning access (`.get()`).
   sockets whenever their role, a module or their capabilities change; argus-sync
   builds both from its module gate and refuses the operation on every feed
   (`services/sync/CONTEXT.md`, "Live user context").
+  `ResourceChanged=14` (additive, `resource_changed`) is the one notification
+  for state a screen re-reads over HTTP: `info {domain, scope, ids?}`, a
+  `(domain, scope)` pair registered in
+  `packages/contracts/sync/src/sync/resource-change.hxx` with the read route
+  that serves it. The audience is derived from that route — the role rooms of
+  every role `role_access::routeVerdict` answers `Allowed` for it under the
+  module gate, or only the target's room when the payload carries `user`. The
+  frame is never persisted and never replayed: the client reloads on it and
+  catches up on reconnect (`services/sync/CONTEXT.md`, "Resource changes").
 - **Normal rows are creation-only after bootstrap**: `Synchronize` pages by
   `created_at`; do not switch it to `updated_at`/`syncAt` to represent an
   update. Every persisted update/revocation must instead publish a granular

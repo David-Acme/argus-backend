@@ -92,6 +92,17 @@ target_compile_options(change-feed-consumer-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(change-feed-consumer-test)
 add_test(NAME change-feed-consumer-test COMMAND change-feed-consumer-test)
 
+add_executable(resource-change-audience-test
+               unit/resource-change-audience-test.cc)
+target_link_libraries(resource-change-audience-test PRIVATE
+    argus::sync-fanout
+    argus::lib::text
+    argus::contracts::sync
+    doctest::doctest)
+target_compile_options(resource-change-audience-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(resource-change-audience-test)
+add_test(NAME resource-change-audience-test COMMAND resource-change-audience-test)
+
 add_executable(voice-leg-test unit/voice-leg-test.cc)
 target_link_libraries(voice-leg-test PRIVATE
     argus::sync-transport

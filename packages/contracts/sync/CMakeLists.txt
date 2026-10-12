@@ -75,6 +75,12 @@ target_link_libraries(sync-contract-catalog-test PRIVATE
 target_compile_options(sync-contract-catalog-test PRIVATE -Wall -Wextra)
 add_test(NAME sync-contract-catalog-test COMMAND sync-contract-catalog-test)
 
+add_executable(resource-change-test tests/unit/resource-change-test.cc)
+target_link_libraries(resource-change-test PRIVATE
+    argus::contracts::sync doctest::doctest)
+target_compile_options(resource-change-test PRIVATE -Wall -Wextra)
+add_test(NAME resource-change-test COMMAND resource-change-test)
+
 add_executable(sync-change-test tests/unit/sync-change-test.cc)
 target_link_libraries(sync-change-test PRIVATE
     argus::contracts::sync

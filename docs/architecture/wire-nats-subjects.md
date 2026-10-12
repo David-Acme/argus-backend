@@ -435,3 +435,43 @@ service's own `sync.db`. The catalog feed keeps
   (`packages/contracts/sync/src/sync/user-action-event.hxx`) accepts an event
   only when `user_id`, `record_id`, `table_name` and `action` are present and
   typed; the two snapshot keys and the address default when absent.
+
+## Payload of a resource change (`kind: "resource"`)
+
+Published on an owner's own change subject — `argus.camera.v1.change`,
+`argus.productivity.v1.change` and `argus.identity.v1.change` today; guard's
+`argus.guard.v1.change` and settings' own subject arrive with R1 and R12 of the
+real-time plan, and their rows are already registered below — beside the emit
+and audit kinds those subjects already carry. The durable argus-sync holds for
+the feed drains it like the rest. It is the one notification for state the app
+re-reads over HTTP rather than state a synced table carries.
+
+```json
+{
+  "kind": "resource",
+  "domain": "guard",
+  "scope": "environments",
+  "ids": [3, 7],
+  "user": 42
+}
+```
+
+- `domain` and `scope` name a pair registered in
+  `packages/contracts/sync/src/sync/resource-change.hxx`, whose row also
+  carries the read route that serves it. argus-sync terminates a payload whose
+  pair is not registered, so a producer typo is visible in the log instead of
+  silently reaching nobody.
+- `ids` is optional: the records that changed, positive integers, at most
+  `SyncLimits::kMaxScopeIds` (50). Nothing reads it yet; it is the difference
+  between reloading a scope and reloading a row.
+- `user` is optional and singular: the change concerns one person, and the
+  frame then goes to that person's room instead of the role rooms, and only if
+  their role reads the scope's route.
+- The audience is the role rooms of every role that
+  `role_access::routeVerdict` answers `Allowed` for the scope's read route
+  under the current module gate — one oracle covering route permission, module
+  gating (`ModuleDisabled` for every role, so the frame names no room at all)
+  and inactive roles. The frame carries no rows, so `ids` reaches exactly the
+  people allowed to read those rows.
+- The frame is never persisted for a client and never replayed: the client
+  reloads the scope on the frame and catches up on reconnect.

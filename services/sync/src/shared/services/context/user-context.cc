@@ -181,8 +181,26 @@ void UserContextService::modulesChanged() const
   });
 }
 
+void UserContextService::remember(int64_t userId, UserRole role) const
+{
+  if (userId <= 0)
+    return;
+  std::scoped_lock lock(mutex_);
+  roles_[userId] = role;
+}
+
+std::optional<UserRole> UserContextService::roleOf(int64_t userId) const
+{
+  std::scoped_lock lock(mutex_);
+  const auto found = roles_.find(userId);
+  if (found == roles_.end())
+    return std::nullopt;
+  return found->second;
+}
+
 void UserContextService::userChanged(int64_t userId, UserRole role) const
 {
+  remember(userId, role);
   if (!drogon::app().isRunning())
     return;
   drogon::async_run([this, userId, role]() -> drogon::Task<> {

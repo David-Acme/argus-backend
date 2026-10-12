@@ -13,6 +13,7 @@
 #include <shared/services/room/room-manager.hxx>
 #include <string>
 #include <string_view>
+#include <sync/resource-change.hxx>
 #include <sync/socket-emit-dto.hxx>
 #include <sync/table-name.hxx>
 #include <vector>
@@ -112,6 +113,19 @@ struct ChangePayloadInput
 };
 
 drogon::Task<DurableDisposition> handleChangePayload(ChangePayloadInput input);
+
+struct ResourcePayload
+{
+  const ResourceRoute* route{nullptr};
+  Json::Value info;
+  std::optional<int64_t> user;
+};
+
+[[nodiscard]] std::optional<ResourcePayload> parseResourcePayload(const Json::Value& json);
+[[nodiscard]] std::vector<RoomId> resourceAudience(const ResourceRoute& route,
+                                                   const ModuleSnapshot& modules);
+DurableDisposition handleResourcePayload(const Json::Value& json);
+
 struct ActionPayloadInput
 {
   const Json::Value& json;

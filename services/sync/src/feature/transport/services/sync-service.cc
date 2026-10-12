@@ -168,6 +168,7 @@ SyncService::handleConnect(const drogon::HttpRequestPtr& req,
   rooms.push_back(userRoom(ctx.sub));
   rooms.push_back(kConnectedRoom);
   roomManager_.joinMany(rooms, conn);
+  userContext().remember(ctx.sub, role);
 
   Json::Value user;
   user["id"] = ctx.sub;

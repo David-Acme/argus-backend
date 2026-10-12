@@ -1,12 +1,16 @@
 #include "sync-fan-out.hxx"
 
+#include <auth/module-gate.hxx>
+#include <auth/role-access.hxx>
 #include <camera/camera-row-projection.hxx>
 #include <feature/fanout/services/audit-fan-out.hxx>
 #include <shared/services/context/user-context.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <string>
 #include <string_view>
+#include <sync/resource-change.hxx>
 #include <sync/sync-change.hxx>
+#include <sync/sync-limits.hxx>
 #include <json/value.h>
 #include <nats/nats-subject.hxx>
 #include <sync/sync-operation.hxx>
@@ -109,6 +113,26 @@ std::string kindOf(const Json::Value& json)
 {
   return json.isObject() ? json.get(sync_change::kKindField, "").asString()
                          : std::string{};
+}
+
+constexpr std::array<UserRole, 4> kAudienceRoles{UserRole::Owner,
+                                                 UserRole::Resident,
+                                                 UserRole::Guard,
+                                                 UserRole::Guest};
+
+DurableDisposition refuseResource(const char* why)
+{
+  LOG_WARN << "Sync fan-out: resource frame refused: " << why;
+  return DurableDisposition::Term;
+}
+
+std::string resourceChangedMessage(const Json::Value& info)
+{
+  SocketEmitDto frame;
+  frame.operation = SyncOperation::ResourceChanged;
+  frame.option = TableName::User;
+  frame.obj = info;
+  return json_util::toString(frame.toJson());
 }
 }
 
@@ -351,6 +375,8 @@ drogon::Task<DurableDisposition> handleChangePayload(ChangePayloadInput input)
         noticeIdentityChange(json);
       co_return DurableDisposition::Ack;
     }
+    if (kind == sync_change::kKindResource)
+      co_return handleResourcePayload(json);
     if (kind == sync_change::kKindAudit)
       co_return co_await input.auditFanOut.handleAuditChange(json)
                     ? DurableDisposition::Ack
@@ -385,5 +411,100 @@ drogon::Task<DurableDisposition> handleActionPayload(ActionPayloadInput input)
              << error.what();
     co_return DurableDisposition::Term;
   }
+}
+
+std::optional<ResourcePayload> parseResourcePayload(const Json::Value& json)
+{
+  if (!json.isObject())
+    return std::nullopt;
+  const Json::Value& domainField = json[sync_change::kDomainField];
+  const Json::Value& scopeField = json[sync_change::kScopeField];
+  if (!domainField.isString() || !scopeField.isString())
+    return std::nullopt;
+  const auto domain = resourceDomainFromString(domainField.asString());
+  const auto scope = resourceScopeFromString(scopeField.asString());
+  if (!domain.has_value() || !scope.has_value())
+    return std::nullopt;
+  const ResourceRoute* route = resourceRouteOf(*domain, *scope);
+  if (route == nullptr)
+    return std::nullopt;
+
+  Json::Value info(Json::objectValue);
+  info[sync_change::kDomainField] = resourceDomainToString(*domain);
+  info[sync_change::kScopeField] = resourceScopeToString(*scope);
+
+  const Json::Value& ids = json[sync_change::kIdsField];
+  if (ids.isArray()) {
+    if (ids.size() > SyncLimits::kMaxScopeIds)
+      return std::nullopt;
+    Json::Value list(Json::arrayValue);
+    for (const auto& id : ids) {
+      if (!id.isInt64() || id.asInt64() <= 0)
+        return std::nullopt;
+      list.append(id);
+    }
+    info[sync_change::kIdsField] = std::move(list);
+  } else if (json.isMember(sync_change::kIdsField) && !ids.isNull()) {
+    return std::nullopt;
+  }
+
+  const Json::Value& target = json[sync_change::kUserField];
+  std::optional<int64_t> user;
+  if (json.isMember(sync_change::kUserField) && !target.isNull()) {
+    if (!target.isInt64() || target.asInt64() <= 0)
+      return std::nullopt;
+    user = target.asInt64();
+  }
+
+  return ResourcePayload{.route = route, .info = std::move(info), .user = user};
+}
+
+std::vector<RoomId> resourceAudience(const ResourceRoute& route,
+                                     const ModuleSnapshot& modules)
+{
+  std::vector<RoomId> rooms;
+  for (const UserRole role : kAudienceRoles) {
+    const role_access::RouteVerdict verdict =
+        role_access::routeVerdict({.role = role,
+                                   .path = route.path,
+                                   .method = route.method,
+                                   .modules = modules});
+    if (verdict != role_access::RouteVerdict::Allowed)
+      continue;
+    rooms.push_back(roleRoom(role));
+  }
+  return rooms;
+}
+
+DurableDisposition handleResourcePayload(const Json::Value& json)
+{
+  const auto parsed = parseResourcePayload(json);
+  if (!parsed.has_value())
+    return refuseResource(
+        "a domain and scope that are not registered, or invalid ids or target");
+  const ModuleSnapshot modules = moduleGate().snapshot();
+  const std::string message = resourceChangedMessage(parsed->info);
+  if (parsed->user.has_value()) {
+    const auto role = userContext().roleOf(*parsed->user);
+    const bool mayRead =
+        role.has_value() &&
+        role_access::routeVerdict({.role = *role,
+                                   .path = parsed->route->path,
+                                   .method = parsed->route->method,
+                                   .modules = modules}) ==
+            role_access::RouteVerdict::Allowed;
+    if (!mayRead) {
+      LOG_WARN << "Sync fan-out: resource frame for user " << *parsed->user
+               << " refused; the target does not read "
+               << std::string(parsed->route->path);
+      return DurableDisposition::Term;
+    }
+    roomManager.emit(userRoom(*parsed->user), message);
+    return DurableDisposition::Ack;
+  }
+  const std::vector<RoomId> rooms = resourceAudience(*parsed->route, modules);
+  if (!rooms.empty())
+    roomManager.emitMany(rooms, message);
+  return DurableDisposition::Ack;
 }
 }
