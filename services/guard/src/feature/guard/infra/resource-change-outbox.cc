@@ -14,11 +14,11 @@
 
 namespace
 {
-outbox::OutboxConfig outboxConfig(const std::string& subject)
+outbox::OutboxConfig outboxConfig()
 {
   return {.label = "Guard resource changes",
           .client = [] { return DbService::client(); },
-          .defaultSubject = subject,
+          .defaultSubject = std::string(nats_subject::kGuardChange),
           .legacyIdPrefix = std::string(ResourceChangeOutbox::kEventIdPrefix),
           .refusal = GuardErrors::ChangeNotRecorded,
           .ensureStreams =
@@ -55,12 +55,24 @@ Json::Value resourcePayload(const ResourceChangeInput& input)
 }
 }
 
-ResourceChangeOutbox::ResourceChangeOutbox(const std::shared_ptr<NatsBus>& bus,
-                                           const Config& config)
-    : subject_(config.subject.empty()
-                   ? std::string(nats_subject::kGuardChange)
-                   : config.subject),
-      outbox_(bus, outboxConfig(subject_))
+ResourceChangeRow resourceChangeRow(const ResourceChangeInput& input, int64_t at)
+{
+  std::string eventId(ResourceChangeOutbox::kEventIdPrefix);
+  eventId += "-";
+  eventId += resourceScopeToString(input.scope);
+  for (const auto id : input.ids) {
+    eventId += "-";
+    eventId += std::to_string(id);
+  }
+  eventId += "-";
+  eventId += std::to_string(at);
+  return {.subject = std::string(nats_subject::kGuardChange),
+          .eventId = std::move(eventId),
+          .payload = json_util::toString(resourcePayload(input))};
+}
+
+ResourceChangeOutbox::ResourceChangeOutbox(const std::shared_ptr<NatsBus>& bus)
+    : outbox_(bus, outboxConfig())
 {
 }
 
@@ -68,7 +80,7 @@ drogon::Task<void>
 ResourceChangeOutbox::record(const ResourceChangeInput& input) const
 {
   co_await outbox_.append({.idPrefix = kEventIdPrefix,
-                           .subject = subject_,
+                           .subject = std::string(nats_subject::kGuardChange),
                            .payload = json_util::toString(resourcePayload(input)),
                            .client = input.client});
 }

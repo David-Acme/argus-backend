@@ -1941,6 +1941,13 @@ GuardService::applyObservation(const ObservationInput& input)
     }
     state.encounterId = encounterPhase.encounterId;
     checkpoint.encounterChecks = encounterPhase.encounterChecks;
+    if (encounterPhase.encounterId > 0 &&
+        dependencies_.episodeChanges != nullptr) {
+      if (encounterPhase.created)
+        dependencies_.episodeChanges->published(encounterPhase.encounterId);
+      else
+        co_await dependencies_.episodeChanges->touch(encounterPhase.encounterId);
+    }
     for (const auto& encounter : encounterPhase.closed)
       publishEncounterClosed(encounter, now);
     if (signals.hasKnown && !signals.hasUnknown && signals.personId > 0)

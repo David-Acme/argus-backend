@@ -32,4 +32,12 @@ public:
 
   [[nodiscard]] drogon::Task<std::vector<DigestRow>>
   digest(const DigestWindowInput& input) const;
+private:
+  [[nodiscard]] drogon::Task<bool>
+  reviewOn(const EpisodeReviewInput& input,
+           drogon::orm::DbClient* client) const;
+
+  [[nodiscard]] drogon::Task<bool>
+  retainOn(const EpisodeRetainInput& input,
+           drogon::orm::DbClient* client) const;
 };

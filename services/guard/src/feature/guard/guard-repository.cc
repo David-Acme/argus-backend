@@ -1,5 +1,6 @@
 #include "guard-repository.hxx"
 #include "guard-policy.hxx"
+#include <feature/guard/infra/resource-change-outbox.hxx>
 #include <feature/guard/vocabulary/feedback-label.hxx>
 #include <feature/guard/vocabulary/guard-action-kind.hxx>
 #include <feature/guard/vocabulary/guard-danger.hxx>
@@ -442,16 +443,29 @@ GuardRepository::transitionEncounter(const GuardTransitionInput& input) const
   if (from == encounterStateToString(EncounterState::Closed))
     co_return false;
   const int64_t revision = current.front()["revision"].as<int64_t>() + 1;
-  const auto updated =
-      co_await client->execSqlCoro(UPDATE_ENCOUNTER_STATE_REVISION.data(),
-                                   input.grade,
-                                   encounterStateToString(input.toState),
-                                   input.encounterId);
-  if (updated.affectedRows() <= 0)
+  auto transaction = co_await db_transaction::begin(client);
+  try {
+    const auto updated = co_await transaction->execSqlCoro(
+        UPDATE_ENCOUNTER_STATE_REVISION.data(), input.grade,
+        encounterStateToString(input.toState), input.encounterId);
+    if (updated.affectedRows() <= 0) {
+      db_transaction::rollback(transaction);
+      co_return false;
+    }
+    co_await transaction->execSqlCoro(INSERT_TRANSITION.data(), input.encounterId,
+                                      from, encounterStateToString(input.toState),
+                                      input.reason, revision, input.at);
+    co_await recordResource({.scope = ResourceScope::Episodes,
+                             .ids = {input.encounterId},
+                             .at = input.at,
+                             .client = transaction.get()});
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  if (!co_await db_transaction::Commit(std::move(transaction)))
     co_return false;
-  co_await client->execSqlCoro(INSERT_TRANSITION.data(), input.encounterId,
-                               from, encounterStateToString(input.toState),
-                               input.reason, revision, input.at);
   co_return true;
 }
 
@@ -685,6 +699,7 @@ drogon::Task<GuardEncounterPhaseResult> GuardRepository::commitEncounterPhase(
             spec.bestScore, spec.now, spec.now);
         result.encounterId = inserted.insertId();
         result.encounterChecks = 1;
+        result.created = true;
       }
     }
     else if (input.create) {
@@ -698,6 +713,7 @@ drogon::Task<GuardEncounterPhaseResult> GuardRepository::commitEncounterPhase(
                                             input.createInput.at);
       result.encounterId = inserted.insertId();
       result.encounterChecks = 1;
+      result.created = true;
     }
     else if (input.encounterIdToTouch > 0) {
       const auto touched =
@@ -739,6 +755,17 @@ drogon::Task<GuardEncounterPhaseResult> GuardRepository::commitEncounterPhase(
                                       result.encounterId, input.advance.danger,
                                       json_util::toString(checkpoint),
                                       input.advance.at, input.advance.eventId);
+    std::vector<int64_t> announced;
+    if (result.created && result.encounterId > 0)
+      announced.push_back(result.encounterId);
+    for (const auto& encounter : result.closed)
+      announced.push_back(encounter.id);
+    if (!announced.empty()) {
+      co_await recordResource({.scope = ResourceScope::Episodes,
+                               .ids = std::move(announced),
+                               .at = input.advance.at,
+                               .client = transaction.get()});
+    }
   }
   catch (const std::exception& e) {
     transaction->rollback();
@@ -909,6 +936,21 @@ GuardRepository::setOutboxPayload(const GuardOutboxPayloadInput& input) const
       co_await client->execSqlCoro(SET_OUTBOX_PAYLOAD.data(), input.payload,
                                    input.at, input.commandId, input.payload);
   co_return result.affectedRows() > 0;
+}
+
+drogon::Task<void>
+GuardRepository::recordResource(const GuardResourceWrite& input) const
+{
+  const ResourceChangeRow row =
+      resourceChangeRow({.scope = input.scope, .ids = input.ids}, input.at);
+  const outbox::OutboxRepository repository(
+      [] { return DbService::client(); });
+  co_await repository.insert({.eventId = row.eventId,
+                              .subject = row.subject,
+                              .fingerprint = {},
+                              .payload = row.payload,
+                              .at = input.at * 1000,
+                              .client = input.client});
 }
 
 drogon::Task<outbox::OutboxDisposition>
@@ -1393,6 +1435,12 @@ GuardRepository::purgeHistory(const GuardHistoryPurgeInput& input) const
       const auto result = co_await transaction->execSqlCoro(std::string(sql), before);
       removed += static_cast<int64_t>(result.affectedRows());
     }
+    if (removed > 0) {
+      co_await recordResource({.scope = ResourceScope::Episodes,
+                               .ids = {},
+                               .at = input.historyBefore,
+                               .client = transaction.get()});
+    }
   }
   catch (...) {
     db_transaction::rollback(transaction);
@@ -1513,6 +1561,8 @@ drogon::Task<bool> GuardRepository::closeStaleEncounters(
     const auto closed =
         co_await transaction->execSqlCoro(CLOSE_STALE_ENCOUNTERS.data(),
                                           input.olderThan);
+    std::vector<int64_t> announced;
+    announced.reserve(closed.size());
     for (const auto& row : closed) {
       GuardEncounter encounter;
       encounter.id = row["id"].as<int64_t>();
@@ -1521,6 +1571,7 @@ drogon::Task<bool> GuardRepository::closeStaleEncounters(
       encounter.bestCameraId = row["best_camera_id"].as<int64_t>();
       encounter.firstSeen = row["first_seen"].as<int64_t>();
       encounter.lastSeen = row["last_seen"].as<int64_t>();
+      announced.push_back(encounter.id);
       static_cast<void>(co_await enqueueEncounterClosed(
           {.eventId = encounterClosedEventId(encounter, input.closedAt),
            .payload = encounterClosedPayload(encounter, input.closedAt),
@@ -1535,6 +1586,12 @@ drogon::Task<bool> GuardRepository::closeStaleEncounters(
           decisionSuppressionToString(DecisionSuppression::LegacySilent),
           "[]", "[]", 0.0, 0, 0, 0, 0, row["environment_id"].as<int64_t>(),
           input.closedAt);
+    }
+    if (!announced.empty()) {
+      co_await recordResource({.scope = ResourceScope::Episodes,
+                               .ids = std::move(announced),
+                               .at = input.closedAt,
+                               .client = transaction.get()});
     }
   }
   catch (const std::exception& e) {

@@ -111,7 +111,7 @@ TEST_CASE("a scheduled transition is announced without touching the manual mode"
   sharedBoot();
   const int64_t environmentId = insertEnvironment("Posture house", "home");
   const auto bus = std::make_shared<NatsBus>();
-  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const ResourceChangeOutbox outbox(bus);
   int64_t at = 1780000000;
   std::tm local = localAt(23, 0);
   const PostureWatch watch(
@@ -145,7 +145,7 @@ TEST_CASE("a mode change announces every targeted environment in its own row")
 {
   sharedBoot();
   const auto bus = std::make_shared<NatsBus>();
-  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const ResourceChangeOutbox outbox(bus);
   const GuardFeatureService service(
       {.identity = nullptr, .disarm = nullptr, .changes = &outbox});
   const int64_t first = insertEnvironment("Mode house", "away");
@@ -189,7 +189,7 @@ TEST_CASE("the first evaluation after a restart reconciles, and only when the po
   insertUnscheduledEnvironment("Recon shop", "home");
 
   const auto bus = std::make_shared<NatsBus>();
-  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const ResourceChangeOutbox outbox(bus);
   int64_t at = 1780000000;
   std::tm local = localAt(23, 0);
   const PostureWatch watch(
@@ -225,7 +225,7 @@ TEST_CASE("a manual change followed by a tick announces exactly once")
   const int64_t environmentId =
       insertUnscheduledEnvironment("Manual shop", "away");
   const auto bus = std::make_shared<NatsBus>();
-  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const ResourceChangeOutbox outbox(bus);
   const GuardFeatureService service(
       {.identity = nullptr, .disarm = nullptr, .changes = &outbox});
   const PostureWatch watch({.changes = &outbox}, {.intervalSeconds = 30});

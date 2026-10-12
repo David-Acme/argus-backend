@@ -137,7 +137,7 @@ TEST_CASE("creating an environment announces it and stores its posture")
   sharedBoot();
   clearGuardTables();
   const auto bus = std::make_shared<NatsBus>();
-  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const ResourceChangeOutbox outbox(bus);
   const GuardFeatureService service(
       {.identity = nullptr, .disarm = nullptr, .changes = &outbox});
 
@@ -155,7 +155,7 @@ TEST_CASE("editing an environment announces it and leaves its mode alone")
   sharedBoot();
   clearGuardTables();
   const auto bus = std::make_shared<NatsBus>();
-  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const ResourceChangeOutbox outbox(bus);
   const GuardFeatureService service(
       {.identity = nullptr, .disarm = nullptr, .changes = &outbox});
 
@@ -190,7 +190,7 @@ TEST_CASE("removing an environment announces it and hands its cameras away")
   sharedBoot();
   clearGuardTables();
   const auto bus = std::make_shared<NatsBus>();
-  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const ResourceChangeOutbox outbox(bus);
   const GuardFeatureService service(
       {.identity = nullptr, .disarm = nullptr, .changes = &outbox});
 
@@ -245,7 +245,7 @@ TEST_CASE("an expected visit is announced when it is created and when it goes")
   sharedBoot();
   clearGuardTables();
   const auto bus = std::make_shared<NatsBus>();
-  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const ResourceChangeOutbox outbox(bus);
   const GuardFeatureService service(
       {.identity = nullptr, .disarm = nullptr, .changes = &outbox});
   const int64_t environmentId =
@@ -284,7 +284,7 @@ TEST_CASE("placing a camera announces it, and a move announces both sides")
   sharedBoot();
   clearGuardTables();
   const auto bus = std::make_shared<NatsBus>();
-  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const ResourceChangeOutbox outbox(bus);
   const GuardFeatureService service(
       {.identity = nullptr, .disarm = nullptr, .changes = &outbox});
 
@@ -330,7 +330,7 @@ TEST_CASE("a camera without an environment lands in the default one")
   sharedBoot();
   clearGuardTables();
   const auto bus = std::make_shared<NatsBus>();
-  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const ResourceChangeOutbox outbox(bus);
   const GuardFeatureService service(
       {.identity = nullptr, .disarm = nullptr, .changes = &outbox});
 

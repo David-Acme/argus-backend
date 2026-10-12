@@ -106,6 +106,7 @@ struct GuardServiceConfig
   int64_t encounterTimeoutS{300};
   int heartbeatS{10};
   int postureIntervalS{30};
+  int episodeTouchPublishS{15};
   int maxDialogueTurns{3};
   int maxObservationAttempts{5};
   int retryBaseMs{1000};

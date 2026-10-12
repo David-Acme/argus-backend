@@ -300,6 +300,12 @@ int main()
 
   const std::shared_ptr<const ResponseDirectory> responseDirectory =
       identity ? std::make_shared<IdentityResponseDirectory>(identity.get()) : nullptr;
+  ResourceChangeOutbox resourceChanges(natsBus);
+  EpisodeChangeGate episodeChanges(
+      resourceChanges,
+      {.publishSeconds =
+           static_cast<double>(guardConfig.episodeTouchPublishS),
+       .clock = {}});
   GuardService guardService(
       {.bus = natsBus.get(),
        .identity = identity.get(),
@@ -307,7 +313,8 @@ int main()
        .actions = actions.get(),
        .assessment = &assessment,
        .directory = responseDirectory,
-       .active = [] { return moduleGate().enabled(role_access::kSurveillanceModule); }},
+       .active = [] { return moduleGate().enabled(role_access::kSurveillanceModule); },
+       .episodeChanges = &episodeChanges},
       guardConfig);
   const auto modules = module_gate::install({.service = "guard", .bus = natsBus});
   const GuardModuleWindDown surveillanceWindDown;
@@ -358,7 +365,6 @@ int main()
     guardService.refresh(GuardConfig::resolveService());
     presence.refresh(GuardConfig::resolvePresence());
   });
-  ResourceChangeOutbox resourceChanges(natsBus, ResourceChangeOutbox::Config{});
   PostureWatch postureWatch(
       {.changes = &resourceChanges},
       {.intervalSeconds = static_cast<double>(
@@ -435,10 +441,11 @@ int main()
            << listener.certPath << "); guard database " << db.dbPath;
 
   drogon::app().registerBeginningAdvice(
-      [&guardService, &presence, &postureWatch, windDown]() {
+      [&guardService, &presence, &postureWatch, &episodeChanges, windDown]() {
         guardService.start();
         presence.start();
         postureWatch.start();
+        episodeChanges.start();
         if (!moduleGate().enabled(role_access::kSurveillanceModule))
           windDown();
       });
@@ -453,6 +460,7 @@ int main()
   shutdown_signal::onStop(shutdown_signal::drainOf(*safety, "guard-safety"));
   shutdown_signal::onStop(shutdown_signal::drainOf(resourceChanges, "guard-changes"));
   shutdown_signal::onStop(shutdown_signal::drainOf(postureWatch, "guard-posture"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(episodeChanges, "guard-episode-changes"));
   shutdown_signal::onStop(shutdown_signal::drainOf(guardService, "guard"));
 
   std::unique_ptr<MdnsService> mdnsService;

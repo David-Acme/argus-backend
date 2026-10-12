@@ -960,11 +960,28 @@ GuardFeatureService::episode(int64_t id) const
 drogon::Task<std::optional<Json::Value>>
 GuardFeatureService::reviewEpisode(const ReviewInput& input) const
 {
-  if (!co_await episodeRepository_.review(
-          {.encounterId = input.episodeId,
-           .label = input.label,
-           .at = static_cast<int64_t>(std::time(nullptr))}))
-    co_return std::nullopt;
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    if (!co_await episodeRepository_.review(
+            {.encounterId = input.episodeId,
+             .label = input.label,
+             .at = static_cast<int64_t>(std::time(nullptr)),
+             .client = transaction.get()})) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+    if (changes_ != nullptr) {
+      co_await changes_->record({.scope = ResourceScope::Episodes,
+                                 .ids = {input.episodeId},
+                                 .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   const auto row = co_await episodeRepository_.find(input.episodeId);
   if (!row)
     co_return std::nullopt;
@@ -983,11 +1000,28 @@ GuardFeatureService::retainEpisode(const RetainInput& input) const
     co_return std::nullopt;
   const int64_t marked = days("guard.marked_retention_days", 120, 30, 120);
   const int64_t standard = days("guard.journal_retention_days", 30, 1, 60);
-  if (!co_await episodeRepository_.retain(
-          {.encounterId = input.episodeId,
-           .retainUntil = input.retain ? row->firstSeen + marked * 86400 : 0,
-           .standardExpiry = row->firstSeen + standard * 86400}))
-    co_return std::nullopt;
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    if (!co_await episodeRepository_.retain(
+            {.encounterId = input.episodeId,
+             .retainUntil = input.retain ? row->firstSeen + marked * 86400 : 0,
+             .standardExpiry = row->firstSeen + standard * 86400,
+             .client = transaction.get()})) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+    if (changes_ != nullptr) {
+      co_await changes_->record({.scope = ResourceScope::Episodes,
+                                 .ids = {input.episodeId},
+                                 .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   const auto updated = co_await episodeRepository_.find(input.episodeId);
   if (!updated)
     co_return std::nullopt;

@@ -67,6 +67,13 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - R4 Episodes and incidents opened, touched, closed, reviewed, retained (`guard-service.cc` encounter
   paths, `guard-feature-service.cc:804-835`); the Security list and its ongoing / pending-review
   counts follow. The episode timeline follows too.
+  - Episodes ship now with `{guard, episodes}` (create, transition, close, review, retain and the
+    retention purge; touches behind the leading+trailing `guard.episode_touch_publish_s` gate).
+  - **Incidents publish nothing yet:** `GET /guard/incidents` has no reader in the app, so its writes
+    stay unrung. The registry row stays as the contract. When a screen reads it, incident writes
+    publish `{guard, incidents}` with the ids of the inserted or re-graded incident, behind the same
+    leading+trailing gate, and the Security summary counts are already answered by the episodes read
+    (`security-screen.tsx:39-40`), so no other scope is involved.
 - R5 Expected guests add/remove and one-time consumption on arrival (`:309-361`,
   `guard-repository.cc:292`).
 - R6 Response lists and on-duty (`response-feature-service.cc:98,134`).

@@ -14,6 +14,7 @@
 #include <feature/guard/repositories/environment/environment-repository.hxx>
 #include <feature/guard/repositories/response/response-repository.hxx>
 #include <feature/guard/services/delivery-keepalive.hxx>
+#include <feature/guard/services/episode-change-gate.hxx>
 #include <feature/guard/services/response-plan.hxx>
 #include <shared/repositories/presence/presence-repository.hxx>
 
@@ -76,6 +77,7 @@ public:
     GuardAssessment* assessment{nullptr};
     std::shared_ptr<const ResponseDirectory> directory{};
     std::function<bool()> active{};
+    EpisodeChangeGate* episodeChanges{nullptr};
   };
 
   using Config = GuardServiceConfig;

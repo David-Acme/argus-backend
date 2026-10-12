@@ -108,6 +108,8 @@ public:
   drogon::Task<outbox::OutboxDisposition>
   enqueueEncounterClosed(const EncounterOutboxInput& input) const;
 
+  drogon::Task<void> recordResource(const GuardResourceWrite& input) const;
+
   drogon::Task<int64_t> purgeHistory(const GuardHistoryPurgeInput& input) const;
 
   drogon::Task<bool> insertDeadLetter(const GuardDeadLetterInput& input) const;

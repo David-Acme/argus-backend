@@ -7,6 +7,7 @@
 #include <text/json-util.hxx>
 #include <string>
 #include <string_view>
+#include <sync/resource-change.hxx>
 #include <vector>
 #include <feature/guard/vocabulary/decision-suppression.hxx>
 #include <feature/guard/vocabulary/encounter-state.hxx>
@@ -959,6 +960,7 @@ struct GuardEncounterPhaseResult
   int64_t encounterId{0};
   int encounterChecks{0};
   std::vector<GuardEncounter> closed;
+  bool created{false};
   bool committed{false};
 };
 
@@ -1092,5 +1094,13 @@ struct GuardHistoryPurgeInput
 {
   int64_t historyBefore{0};
   int64_t inboxBefore{0};
+};
+
+struct GuardResourceWrite
+{
+  ResourceScope scope{ResourceScope::Episodes};
+  std::vector<int64_t> ids;
+  int64_t at{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 

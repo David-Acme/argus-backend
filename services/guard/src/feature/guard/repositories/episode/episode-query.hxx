@@ -3,6 +3,7 @@
 #include <feature/guard/vocabulary/feedback-label.hxx>
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <string>
 #include <string_view>
 
@@ -144,6 +145,7 @@ struct EpisodeRetainInput
   int64_t encounterId{0};
   int64_t retainUntil{0};
   int64_t standardExpiry{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct EpisodeListInput
@@ -178,6 +180,7 @@ struct EpisodeReviewInput
   int64_t encounterId{0};
   FeedbackLabel label{FeedbackLabel::Useful};
   int64_t at{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct CameraNotificationLookupInput

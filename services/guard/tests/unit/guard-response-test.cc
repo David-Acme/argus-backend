@@ -738,7 +738,7 @@ TEST_CASE("editing the response list and going on duty announce the environment"
 {
   (void)boot();
   const auto bus = std::make_shared<NatsBus>();
-  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const ResourceChangeOutbox outbox(bus);
   const ResponseFeatureService service(
       {.directory = std::make_shared<guard_test::RosterDirectory>(household()),
        .clock = {},

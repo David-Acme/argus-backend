@@ -18,16 +18,20 @@ struct ResourceChangeInput
   drogon::orm::DbClient* client{nullptr};
 };
 
+struct ResourceChangeRow
+{
+  std::string subject;
+  std::string eventId;
+  std::string payload;
+};
+
+[[nodiscard]] ResourceChangeRow
+resourceChangeRow(const ResourceChangeInput& input, int64_t at);
+
 class ResourceChangeOutbox
 {
 public:
-  struct Config
-  {
-    std::string subject;
-  };
-
-  ResourceChangeOutbox(const std::shared_ptr<NatsBus>& bus,
-                       const Config& config);
+  explicit ResourceChangeOutbox(const std::shared_ptr<NatsBus>& bus);
 
   [[nodiscard]] drogon::Task<void>
   record(const ResourceChangeInput& input) const;
@@ -40,6 +44,5 @@ public:
   static constexpr const char* kEventIdPrefix = "guard-resource";
 
 private:
-  std::string subject_;
   outbox::TransactionalOutbox outbox_;
 };

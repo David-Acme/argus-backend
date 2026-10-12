@@ -141,8 +141,23 @@ drogon::Task<bool> EpisodeRepository::linkGroup(int64_t encounterId,
   co_return result.affectedRows() > 0;
 }
 
+drogon::Task<bool> EpisodeRepository::reviewOn(const EpisodeReviewInput& input,
+                                               drogon::orm::DbClient* client) const
+{
+  const std::string label = feedbackLabelToString(input.label);
+  const auto updated = co_await client->execSqlCoro(
+      std::string(REVIEW_EPISODE), label, input.at, input.encounterId);
+  if (updated.affectedRows() == 0)
+    co_return false;
+  co_await client->execSqlCoro(std::string(REVIEW_DECISIONS), label, input.at,
+                               input.encounterId);
+  co_return true;
+}
+
 drogon::Task<bool> EpisodeRepository::review(const EpisodeReviewInput& input) const
 {
+  if (input.client != nullptr)
+    co_return co_await reviewOn(input, input.client);
   std::shared_ptr<drogon::orm::Transaction> transaction;
   try {
     transaction = co_await db_transaction::begin(DbService::client());
@@ -152,21 +167,46 @@ drogon::Task<bool> EpisodeRepository::review(const EpisodeReviewInput& input) co
              << error.what();
     co_return false;
   }
-  const std::string label = feedbackLabelToString(input.label);
   try {
-    const auto updated = co_await transaction->execSqlCoro(
-        std::string(REVIEW_EPISODE), label, input.at, input.encounterId);
-    if (updated.affectedRows() == 0) {
+    if (!co_await reviewOn(input, transaction.get())) {
       transaction->rollback();
       co_return false;
     }
-    co_await transaction->execSqlCoro(std::string(REVIEW_DECISIONS), label, input.at,
-                                      input.encounterId);
   }
   catch (const std::exception& error) {
     transaction->rollback();
     LOG_WARN << "Guard episode review failed: " << error.what();
     co_return false;
+  }
+  co_return co_await db_transaction::Commit(std::move(transaction));
+}
+
+drogon::Task<bool> EpisodeRepository::retainOn(const EpisodeRetainInput& input,
+                                               drogon::orm::DbClient* client) const
+{
+  const auto updated = co_await client->execSqlCoro(
+      std::string(RETAIN_EPISODE), input.retainUntil, input.encounterId);
+  if (updated.affectedRows() == 0)
+    co_return false;
+  co_await client->execSqlCoro(std::string(RETAIN_EVIDENCE), input.retainUntil,
+                               input.standardExpiry, input.encounterId);
+  co_return true;
+}
+
+drogon::Task<bool> EpisodeRepository::retain(const EpisodeRetainInput& input) const
+{
+  if (input.client != nullptr)
+    co_return co_await retainOn(input, input.client);
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    if (!co_await retainOn(input, transaction.get())) {
+      transaction->rollback();
+      co_return false;
+    }
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
   }
   co_return co_await db_transaction::Commit(std::move(transaction));
 }
@@ -201,22 +241,3 @@ EpisodeRepository::digest(const DigestWindowInput& input) const
   co_return lines;
 }
 
-drogon::Task<bool> EpisodeRepository::retain(const EpisodeRetainInput& input) const
-{
-  auto transaction = co_await db_transaction::begin(DbService::client());
-  try {
-    const auto updated = co_await transaction->execSqlCoro(
-        std::string(RETAIN_EPISODE), input.retainUntil, input.encounterId);
-    if (updated.affectedRows() == 0) {
-      transaction->rollback();
-      co_return false;
-    }
-    co_await transaction->execSqlCoro(std::string(RETAIN_EVIDENCE), input.retainUntil,
-                                      input.standardExpiry, input.encounterId);
-  }
-  catch (...) {
-    db_transaction::rollback(transaction);
-    throw;
-  }
-  co_return co_await db_transaction::Commit(std::move(transaction));
-}

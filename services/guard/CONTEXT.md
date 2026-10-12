@@ -1649,3 +1649,47 @@ consumer captures exactly once per receipt", and `encounter-closed-live-test.cc`
 "encounter fan-out captures exactly once with inbox dedup"). Guard's side of that
 promise is the test that the event id, the payload and the subject survive the
 migration and the rewrite unchanged.
+
+## Episodes and the resource notices (2026-10, real time)
+
+`{guard, episodes}` (read by `GET /guard/episodes` and the episode detail) is
+the one scope guard publishes from its observation path. The rule it follows,
+and the rule every later item in this wave follows, is that **a write records
+every scope whose read it changes**, not only the scope of its own route.
+
+Unconditional, inside the transaction that does the work: an episode's
+creation and every close (the person leg of an observation phase, and the
+stale sweep, whose ids travel together in one row), its creation and its
+transitions (`transitionEncounter` now commits the state, the transition row
+and the notice together), a review and a retain on the two Owner routes, and
+the retention purge. The purge deletes rows by the thousand, so its row names
+no ids at all — it means "re-read this scope" — and `matchesResourceMatch` on
+the client takes an ids-less notice for every match of that pair.
+
+A touch — every observation that matches an open encounter — is the one write
+that repeats without bound, so it is gated at the source by
+`EpisodeChangeGate`, whose window is `[guard] episode_touch_publish_s`
+(default 15, Owner-editable as `guard.episode_touch_publish_s`). The gate is
+**leading plus trailing**: the first touch of a window writes its row in its
+own minimal transaction and opens the window; every touch after it is
+suppressed and marks the episode dirty; a tick (5 s) writes one row for every
+dirty episode whose window has elapsed. Without the trailing half a burst
+that ends just after a suppression would leave the episode silent until its
+close, five minutes later (`encounter_timeout_s`), and the promise below would
+be false.
+
+The promise, stated for the client: a device showing the episodes list may lag
+an open episode's `lastSeen` and `checks` by at most one window plus one tick;
+it converges at that point, at any transition, at the close, and on reconnect
+regardless. Neither the leading row nor the trailing one shares the touch's
+transaction — the touch has already committed — so a crash between them loses
+the notice and nothing else: the data is stored, and reconnect reloads every
+mounted resource. Duplicates are harmless by the same reasoning that lets the
+posture watch re-publish: an episode notice carries no state, it asks for a
+read.
+
+Two writes deliberately record nothing. `markEvidenceDeleted` changes no read
+— evidence never appears in the episode JSON — and incidents publish nothing
+at all yet: `GET /guard/incidents` has no consumer in the app, the registry row
+stays as the contract, and wiring it is a line in the plan tied to the screen
+that will read it (rule 24: no structure ahead of its consumer).
