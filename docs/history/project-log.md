@@ -3409,3 +3409,33 @@ Verified: `build-all.sh dev --only camera` — 56/56 ctest cases including the
 talk suite (5 cases, 36 assertions), 0 errors 0 warnings. The live camera was
 offline by the end of the pass; the two-cycle audible test (speak, stop,
 speak again with no reboot) is pending it coming back.
+
+## Owner decisions after the demo: the watchman and the calls (2026-10-12)
+
+Recorded at the owner's request, to be taken up once every point of the real-time and backlog plan
+is finished.
+
+- **The watchman** (`docs/history/plans/camera-watchman-plan.md`, `93c85dbe`, `163f6e02`). Argus
+  listens and speaks through the cameras: woken by its name and close variants, identifying the
+  speaker by face first and voice as a soft signal, following the person between cameras, half
+  duplex before echo cancellation, measurements M1–M5 before any engine code. The owner's rulings:
+  as human as possible without ever claiming to be human; anyone may wake it, strangers are
+  registered as visitors and never told who is home; context, not keywords, decides whether Argus
+  is being spoken *to* ("yo he implementado Argus", said to someone else, must not engage, and
+  uncertain means quiet); a camera conversation never authorises a sensitive action; compliance with
+  the law belongs to whoever installs and operates Argus, which the documentation and the first-run
+  acknowledgement will state.
+- **Argus calls you like a messaging app** (F3 of `realtime-and-backlog-plan.md`, `6d962548`). The
+  call engine already exists in argus-notification (triggers, ring, claim, missed-call note, the
+  generic push intent); what is missing is the native incoming-call screen (Android
+  ConnectionService with a full-screen call notification, iOS CallKit with PushKit), the app's push
+  token registration, and the owner's own push relay holding the Firebase and APNs credentials on
+  the same server as his future private tunnel. Android rings through FCM, iOS VoIP pushes go to
+  APNs directly (FCM cannot carry them); the voice stays between the phone and the house's LiveKit,
+  on the LAN at home and through the tunnel outside, with a self-hosted TURN on that server where a
+  direct path fails.
+- **Cost.** No per-call or per-message third-party service: FCM, APNs, CallKit, ConnectionService,
+  LiveKit and coturn are free. The only costs are the store accounts (Google Play once, the Apple
+  Developer Program yearly for iOS) and the VPS the owner already plans for the tunnel.
+- **Order.** Both programmes wait until the real-time plan's points are done; the owner will decide
+  then which comes first.
