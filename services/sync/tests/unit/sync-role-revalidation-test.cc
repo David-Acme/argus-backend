@@ -302,7 +302,10 @@ TEST_CASE("a role the revalidation finds moved takes the socket and re-sends its
   const auto lane = fixture.lanes.find(handle);
   REQUIRE(lane);
   const auto verdict = lane->next();
-  REQUIRE(verdict.has_value());
+  if (!verdict) {
+    FAIL("expected the lane to hold the revalidation");
+    return;
+  }
   CHECK(verdict->kind == FrameJobKind::Revalidate);
   CHECK_FALSE(lane->next().has_value());
 
@@ -373,10 +376,16 @@ TEST_CASE("a role the revalidation finds unchanged moves nothing and sends nothi
 
 int main(int argc, char** argv)
 {
-  Rig rig;
-  g_rig = &rig;
-  doctest::Context context(argc, argv);
-  const int status = context.run();
-  g_rig = nullptr;
-  return status;
+  try {
+    Rig rig;
+    g_rig = &rig;
+    doctest::Context context(argc, argv);
+    const int status = context.run();
+    g_rig = nullptr;
+    return status;
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << "the fixture did not start: " << error.what();
+    return 1;
+  }
 }

@@ -4126,7 +4126,7 @@ drogon::Task<std::optional<std::vector<ResponseUser>>> GuardService::directoryUs
   }
   try {
     co_return directoryFromSnapshot(
-        co_await repository_.state(std::string(kDirectorySnapshotKey), ""));
+        co_await repository_.state(kDirectorySnapshotKey, ""));
   }
   catch (const std::exception& error) {
     LOG_WARN << "Guard service: directory snapshot unreadable: " << error.what();

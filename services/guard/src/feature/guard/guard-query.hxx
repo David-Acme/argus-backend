@@ -634,12 +634,12 @@ inline std::string encounterClosedPayload(const GuardEncounter& encounter,
                                : 0;
   Json::Value payload(Json::objectValue);
   payload["eventId"] = encounterClosedEventId(encounter, at);
-  payload["encounterId"] = Json::Int64(encounter.id);
-  payload["cameraId"] = Json::Int64(encounter.bestCameraId);
-  payload["personId"] = Json::Int64(encounter.personId);
+  payload["encounterId"] = static_cast<Json::Int64>(encounter.id);
+  payload["cameraId"] = static_cast<Json::Int64>(encounter.bestCameraId);
+  payload["personId"] = static_cast<Json::Int64>(encounter.personId);
   payload["grade"] = encounter.grade;
-  payload["durationS"] = Json::Int64(duration);
-  payload["closedAt"] = Json::Int64(at);
+  payload["durationS"] = static_cast<Json::Int64>(duration);
+  payload["closedAt"] = static_cast<Json::Int64>(at);
   return json_util::toString(payload);
 }
 

@@ -42,7 +42,7 @@ std::string roomNames(const std::vector<RoomId>& rooms)
     if (std::ranges::find(rooms, roleRoom(role)) == rooms.end())
       continue;
     if (!names.empty())
-      names += ",";
+      names += ',';
     names += userRoleToString(role);
   }
   return names;
@@ -53,15 +53,15 @@ std::string audienceTable(const ModuleSnapshot& modules)
   std::string table;
   for (const auto& route : kResourceRoutes) {
     table += resourceDomainToString(route.domain);
-    table += "/";
+    table += '/';
     table += resourceScopeToString(route.scope);
     table += " ->";
     const std::string names = roomNames(sync_fan_out::resourceAudience(route, modules));
     if (!names.empty()) {
-      table += " ";
+      table += ' ';
       table += names;
     }
-    table += "\n";
+    table += '\n';
   }
   return table;
 }
@@ -127,7 +127,10 @@ TEST_CASE("a resource payload parses only when the pair is registered")
   };
 
   const auto plain = parse(R"({"domain":"guard","scope":"environments"})");
-  REQUIRE(plain.has_value());
+  if (!plain) {
+    FAIL("expected a value in plain");
+    return;
+  }
   CHECK(plain->route == resourceRouteOf(ResourceDomain::Guard, ResourceScope::Environments));
   CHECK(plain->info["domain"] == "guard");
   CHECK(plain->info["scope"] == "environments");
@@ -135,11 +138,17 @@ TEST_CASE("a resource payload parses only when the pair is registered")
   CHECK_FALSE(plain->user.has_value());
 
   const auto withIds = parse(R"({"domain":"camera","scope":"device","ids":[2,5]})");
-  REQUIRE(withIds.has_value());
+  if (!withIds) {
+    FAIL("expected a value in withIds");
+    return;
+  }
   CHECK(withIds->info[sync_change::kIdsField].size() == 2);
 
   const auto targeted = parse(R"({"domain":"guard","scope":"safety_pin","user":42})");
-  REQUIRE(targeted.has_value());
+  if (!targeted) {
+    FAIL("expected a value in targeted");
+    return;
+  }
   CHECK(targeted->user == 42);
 
   CHECK_FALSE(parse(R"(["not an object"])").has_value());
@@ -159,7 +168,7 @@ TEST_CASE("the ids of a resource payload stay under the scoped-pull bound")
   std::string over = R"({"domain":"camera","scope":"device","ids":[)";
   for (std::size_t index = 0; index <= SyncLimits::kMaxScopeIds; ++index) {
     if (index > 0)
-      over += ",";
+      over += ',';
     over += std::to_string(index + 1);
   }
   over += "]}";

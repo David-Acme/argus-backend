@@ -58,7 +58,7 @@ std::string idsOf(std::initializer_list<int64_t> ids)
   bool first = true;
   for (const auto id : ids) {
     if (!first)
-      text += ",";
+      text += ',';
     first = false;
     text += std::to_string(id);
   }
@@ -263,14 +263,14 @@ TEST_CASE("an observation announces its episode, and the gate quiets the rest")
     Json::Value event(Json::objectValue);
     event["schemaVersion"] = 3;
     event["eventId"] = eventId;
-    event["cameraId"] = Json::Int64(1);
+    event["cameraId"] = static_cast<Json::Int64>(1);
     event["cameraName"] = "Entrada";
     event["rule"] = "person";
     event["severity"] = "medium";
     event["escalated"] = false;
     event["night"] = false;
-    event["trackId"] = Json::Int64(trackId);
-    event["publishedAt"] = Json::Int64(1'700'000'000'000);
+    event["trackId"] = static_cast<Json::Int64>(trackId);
+    event["publishedAt"] = static_cast<Json::Int64>(1'700'000'000'000);
     Json::Value object(Json::objectValue);
     object["class"] = "person";
     object["confidence"] = 0.9;
@@ -281,15 +281,15 @@ TEST_CASE("an observation announces its episode, and the gate quiets the rest")
     object["zoneWindows"] = 3;
     object["trackWindows"] = 4;
     object["areaSpread"] = 1.2;
-    object["trackId"] = Json::Int64(trackId);
-    object["firstSeenMs"] = Json::Int64(1'699'999'982'000);
-    object["lastSeenMs"] = Json::Int64(1'700'000'000'000);
-    object["dwellMs"] = Json::Int64(18'000);
+    object["trackId"] = static_cast<Json::Int64>(trackId);
+    object["firstSeenMs"] = static_cast<Json::Int64>(1'699'999'982'000);
+    object["lastSeenMs"] = static_cast<Json::Int64>(1'700'000'000'000);
+    object["dwellMs"] = static_cast<Json::Int64>(18'000);
     object["observationId"] = "1:" + std::to_string(trackId) + ":1";
     object["bbox"] = Json::Value(Json::objectValue);
     Json::Value objects(Json::arrayValue);
     objects.append(object);
-    event["objects"] = objects;
+    event["objects"] = std::move(objects);
     return event;
   };
 

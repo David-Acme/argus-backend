@@ -56,8 +56,8 @@ public:
   explicit GuardBoot(const char* stem) : db_(stem)
   {
     drogon::app().setLogLevel(trantor::Logger::kWarn);
-    drogon::app().addDbClient(
-        drogon::orm::Sqlite3Config{1, db_.path(), "default", -1});
+    drogon::app().addDbClient(drogon::orm::Sqlite3Config{
+        .connectionNumber = 1, .filename = db_.path(), .name = "default", .timeout = -1});
     runner_.emplace();
     if (!waitForBoot(std::chrono::seconds(30)))
       throw std::runtime_error("drogon loop did not boot");
@@ -125,7 +125,7 @@ inline std::string idsOf(std::initializer_list<int64_t> ids)
   bool first = true;
   for (const auto id : ids) {
     if (!first)
-      text += ",";
+      text += ',';
     first = false;
     text += std::to_string(id);
   }

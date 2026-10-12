@@ -50,7 +50,7 @@ std::string pytapoJson(const Json::Value& value)
         out += ", ";
       out += "\"" + it.name() + "\": " + pytapoJson(*it);
     }
-    out += "}";
+    out += '}';
     return out;
   }
   if (value.isArray()) {
@@ -60,7 +60,7 @@ std::string pytapoJson(const Json::Value& value)
         out += ", ";
       out += pytapoJson(element);
     }
-    out += "]";
+    out += ']';
     return out;
   }
   if (value.isString()) {
@@ -73,7 +73,7 @@ std::string pytapoJson(const Json::Value& value)
       else
         out += c;
     }
-    out += "\"";
+    out += '"';
     return out;
   }
   if (value.isBool())

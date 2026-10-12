@@ -78,11 +78,17 @@ inline std::optional<double> parseCgroupV2CpuMax(std::string_view text)
   return quotaRatio(*quotaValue, *periodValue);
 }
 
-inline std::optional<double> parseCgroupV1Quota(std::string_view quota,
-                                                std::string_view period)
+struct CgroupQuotaReadings
 {
-  const auto quotaValue = parseInteger(quota);
-  const auto periodValue = parseInteger(period);
+  std::string_view quota;
+  std::string_view period;
+};
+
+inline std::optional<double>
+parseCgroupV1Quota(const CgroupQuotaReadings& readings)
+{
+  const auto quotaValue = parseInteger(readings.quota);
+  const auto periodValue = parseInteger(readings.period);
   if (!quotaValue || !periodValue)
     return std::nullopt;
   return quotaRatio(*quotaValue, *periodValue);
@@ -143,21 +149,29 @@ inline std::optional<double> v2Quota(const CgroupQuotaInput& input,
   return quota;
 }
 
-inline std::optional<double> v1Quota(const CgroupQuotaInput& input,
-                                     std::string_view controllers,
-                                     std::string_view path)
+struct CgroupControllerLocation
 {
-  const std::vector<std::string> mounts = {std::string(controllers), "cpu",
-                                           "cpu,cpuacct", "cpuacct,cpu"};
+  std::string_view controllers;
+  std::string_view path;
+};
+
+inline std::optional<double> v1Quota(const CgroupQuotaInput& input,
+                                     const CgroupControllerLocation& location)
+{
+  const std::vector<std::string> mounts = {std::string(location.controllers),
+                                           "cpu", "cpu,cpuacct",
+                                           "cpuacct,cpu"};
   std::optional<double> quota;
   for (const auto& mount : mounts) {
     const std::string base = std::string(input.mountRoot) + "/" + mount;
-    for (const auto& ancestor : ancestorsOf(path)) {
+    for (const auto& ancestor : ancestorsOf(location.path)) {
       const auto quotaText = input.readFile(base + ancestor + "/cpu.cfs_quota_us");
       const auto periodText =
           input.readFile(base + ancestor + "/cpu.cfs_period_us");
       if (quotaText && periodText)
-        quota = tighter(quota, parseCgroupV1Quota(*quotaText, *periodText));
+        quota = tighter(quota,
+                        parseCgroupV1Quota({.quota = *quotaText,
+                                            .period = *periodText}));
     }
   }
   return quota;
@@ -180,7 +194,8 @@ inline std::optional<double> cgroupQuota(const CgroupQuotaInput& input)
     if (view.substr(0, first) == "0" && controllers.empty())
       quota = tighter(quota, v2Quota(input, path));
     else if (listsController(controllers, "cpu"))
-      quota = tighter(quota, v1Quota(input, controllers, path));
+      quota = tighter(
+          quota, v1Quota(input, {.controllers = controllers, .path = path}));
   }
   return quota;
 }

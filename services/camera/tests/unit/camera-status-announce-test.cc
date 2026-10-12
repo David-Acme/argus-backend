@@ -23,8 +23,6 @@
 
 namespace
 {
-const std::string kAnnounceDb = "camera-status-announce-test.db";
-
 class AppRunner
 {
 public:
@@ -188,7 +186,10 @@ TEST_CASE("a settings write announces the camera, and a refused one announces no
                                       .autoTrack = std::nullopt,
                                       .alarm = false,
                                       .alarmVolume = std::nullopt}));
-  REQUIRE(refused.has_value());
+  if (!refused) {
+    FAIL("expected the control service to answer");
+    return;
+  }
   CHECK_FALSE(refused->ok);
   CHECK(rig.sink.notices.size() == 1);
 }
@@ -219,8 +220,14 @@ TEST_CASE("saving or deleting a preset announces, and moving to one does not")
 
 int main(int argc, char** argv)
 {
-  Rig rig("camera-status-announce-test.db");
-  g_rig = &rig;
-  doctest::Context context(argc, argv);
-  return context.run();
+  try {
+    Rig rig("camera-status-announce-test.db");
+    g_rig = &rig;
+    doctest::Context context(argc, argv);
+    return context.run();
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << "the fixture did not start: " << error.what();
+    return 1;
+  }
 }

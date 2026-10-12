@@ -53,7 +53,7 @@ bool columnExists(const std::string& table, const std::string& column)
 }
 
 std::vector<std::string> schemaStatements(const std::string& schemaPath,
-                                          const std::string& needle)
+                                          std::string_view needle)
 {
   std::ifstream file(schemaPath);
   std::vector<std::string> statements;

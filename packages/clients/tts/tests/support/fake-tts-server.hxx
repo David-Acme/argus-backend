@@ -150,7 +150,10 @@ private:
 
       {
         std::lock_guard lock(mutex_);
-        requests_[method + " " + path]++;
+        std::string key = method;
+        key += ' ';
+        key += path;
+        requests_[std::move(key)]++;
       }
 
       std::string response;
@@ -194,8 +197,13 @@ private:
             "X-Argus-Sample-Rate: 22050\r\nTransfer-Encoding: chunked\r\n"
             "Connection: close\r\n\r\n";
         if (streamChunks_.empty()) {
-          std::string body = "100\r\n" + chunkData + "\r\n100\r\n" + chunkData + "\r\n0\r\n\r\n";
-          std::string response = header + body;
+          std::string body = "100\r\n";
+          body += chunkData;
+          body += "\r\n100\r\n";
+          body += chunkData;
+          body += "\r\n0\r\n\r\n";
+          std::string response = header;
+          response += body;
           size_t sent = 0;
           while (sent < response.size()) {
             const auto n = ::send(fd, response.data() + sent,

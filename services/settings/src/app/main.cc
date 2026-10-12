@@ -145,7 +145,7 @@ int main()
   for (auto& owner : SettingsConfig::resolveDataOwners())
     moduleOwners.push_back(std::move(owner));
   const SettingsComponentOwners componentOwners({.owners = moduleOwners, .timeout = gateway.timeouts.update});
-  const auto settingsDb = openModulesDb(modules);
+  auto settingsDb = openModulesDb(modules);
   SettingsChangeOutbox settingsChanges(natsBus, [settingsDb] { return settingsDb; });
   if (settingsDb)
     gateway.notice = [&settingsChanges] { settingsChanges.recordDetached(); };

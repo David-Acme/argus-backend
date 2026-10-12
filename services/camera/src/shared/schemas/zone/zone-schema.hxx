@@ -37,7 +37,7 @@ inline SocketEmitDto zoneBody(SyncOperation operation, const ZoneSchema& row)
     Json::Value tombstone;
     tombstone["id"] = row.id;
     tombstone["deletedAt"] = row.deletedAt.value_or(std::time(nullptr));
-    body.obj = tombstone;
+    body.obj = std::move(tombstone);
   }
   else {
     body.obj = row.toJson();

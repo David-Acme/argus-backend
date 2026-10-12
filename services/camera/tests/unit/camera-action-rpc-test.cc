@@ -62,7 +62,7 @@ struct StubActuator final : ICameraDriver
   std::mutex settingsMutex;
   std::condition_variable settingsCv;
 
-  Json::Value capabilities() const override { return Json::Value(); }
+  Json::Value capabilities() const override { return {}; }
   DriverResult status() override { return DriverResult::failed("noop"); }
   DriverResult presets() override { return DriverResult::failed("noop"); }
   DriverResult move(const DriverMoveInput&) override
@@ -347,7 +347,10 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
 
   const auto crop =
       client.personCrop({.cameraId = 1, .trackId = 7, .firstSeenMs = 0});
-  REQUIRE(crop);
+  if (!crop) {
+    FAIL("expected the client to answer a crop");
+    return;
+  }
   CHECK(crop->jpeg == "jpeg-bytes");
   CHECK(crop->capturedAt == 1234);
   CHECK_FALSE(
@@ -426,7 +429,10 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
   CHECK(actuator->settingsCalled);
   CHECK(actuator->alarm == true);
   CHECK(actuator->sounding == true);
-  REQUIRE(actuator->alarmVolume);
+  if (!actuator->alarmVolume) {
+    FAIL("expected the driver to record the volume");
+    return;
+  }
   CHECK(*actuator->alarmVolume == 100);
   REQUIRE(resourceSink.notices.size() == 1);
   CHECK(resourceSink.notices.front().scope == ResourceScope::Status);

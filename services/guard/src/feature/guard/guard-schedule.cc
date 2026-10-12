@@ -237,7 +237,7 @@ GuardSchedule guard_schedule::fromEnvironment(const GuardEnvironment& environmen
 std::string guard_schedule::fingerprint(const GuardPosture& posture)
 {
   std::string text = guardModeToString(posture.mode);
-  text += "|";
+  text += '|';
   text += posture.occupancy;
   text += posture.publicPresent ? "|1" : "|0";
   text += posture.staffOnly ? "|1" : "|0";

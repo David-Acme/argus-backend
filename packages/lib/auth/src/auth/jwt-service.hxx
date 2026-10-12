@@ -18,6 +18,12 @@ struct JwtGenerateInput
   int64_t expiresInSeconds;
 };
 
+struct JwtVerifyInput
+{
+  const std::string& token;
+  const std::string& secret;
+};
+
 class JwtService
 {
 public:
@@ -26,8 +32,7 @@ public:
 
   std::string generate(const JwtGenerateInput& input) const;
 
-  std::map<std::string, std::string> verify(const std::string& token,
-                                            const std::string& secret) const;
+  std::map<std::string, std::string> verify(const JwtVerifyInput& input) const;
 
   std::string
   generateAccess(const std::map<std::string, std::string>& claims) const;

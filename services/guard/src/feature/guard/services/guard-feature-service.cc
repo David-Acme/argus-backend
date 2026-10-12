@@ -142,7 +142,7 @@ std::string decisionSummaryText(const DecisionJournalRow& row)
         text += ", ";
       text += reasons[index];
     }
-    text += ")";
+    text += ')';
   }
   text += ". Score " + std::to_string(row.beliefScore) + " vs threshold " +
           std::to_string(row.beliefThreshold) + " — " +

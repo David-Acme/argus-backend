@@ -127,7 +127,10 @@ private:
 
       {
         std::lock_guard lock(mutex_);
-        requests_[method + " " + path]++;
+        std::string key = method;
+        key += ' ';
+        key += path;
+        requests_[std::move(key)]++;
         if (bodyStart != std::string::npos)
           lastBodySize_ = request.size() - bodyStart - 4;
       }

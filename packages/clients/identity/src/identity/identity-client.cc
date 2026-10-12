@@ -181,27 +181,6 @@ IdentityClient::enrollPerson(const EnrollPersonInput& input) const
   return response;
 }
 
-bool IdentityClient::touchPerson(int64_t personId, int64_t at) const
-{
-  if (personId <= 0)
-    return false;
-
-  grpc::ClientContext context;
-  argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addPeerCredential(context, credential_);
-
-  argus::identity::v1::TouchPersonRequest request;
-  request.set_person_id(personId);
-  request.set_at(at);
-
-  argus::identity::v1::TouchPersonResponse response;
-  if (const grpc::Status status =
-          stub_->TouchPerson(&context, request, &response);
-      !status.ok())
-    return false;
-  return response.updated();
-}
-
 bool IdentityClient::promotePerson(const PromotePersonInput& input) const
 {
   if (input.personId <= 0 || input.accessToken.empty())

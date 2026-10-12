@@ -206,7 +206,7 @@ drogon::Task<int64_t> GuardRepository::effectsSince(int64_t cameraId,
 }
 
 drogon::Task<std::string>
-GuardRepository::state(const std::string& key,
+GuardRepository::state(std::string_view key,
                        const std::string& fallback) const
 {
   auto client = DbService::client();
@@ -250,14 +250,14 @@ GuardRepository::recentIncidents(int limit) const
   incidents.reserve(result.size());
   for (const auto& row : result) {
     Json::Value incident;
-    incident["cameraId"] = Json::Int64(row["camera_id"].as<int64_t>());
+    incident["cameraId"] = static_cast<Json::Int64>(row["camera_id"].as<int64_t>());
     incident["cameraName"] = row["camera_name"].as<std::string>();
     incident["rule"] = row["rule"].as<std::string>();
     incident["danger"] = row["danger"].as<std::string>();
     incident["severity"] = row["severity"].as<std::string>();
-    incident["personId"] = Json::Int64(row["person_id"].as<int64_t>());
+    incident["personId"] = static_cast<Json::Int64>(row["person_id"].as<int64_t>());
     incident["identity"] = row["identity"].as<std::string>();
-    incident["createdAt"] = Json::Int64(row["created_at"].as<int64_t>());
+    incident["createdAt"] = static_cast<Json::Int64>(row["created_at"].as<int64_t>());
     incidents.push_back(std::move(incident));
   }
   co_return incidents;
@@ -1227,7 +1227,7 @@ drogon::Task<DecisionsPage> GuardRepository::listDecisionsFiltered(
         sql += " AND ";
       sql += clauses[index];
     }
-    sql += " ";
+    sql += ' ';
   }
   sql += DECISIONS_ORDER_CURSOR;
   args.push_back(std::to_string(limit + 1));

@@ -32,7 +32,7 @@ public:
 
   drogon::Task<int64_t> effectsSince(int64_t cameraId, int64_t since) const;
 
-  drogon::Task<std::string> state(const std::string& key,
+  drogon::Task<std::string> state(std::string_view key,
                                   const std::string& fallback) const;
 
   drogon::Task<bool> setState(const GuardStateInput& input) const;

@@ -271,7 +271,10 @@ TEST_CASE("an identity write and its change are one unit of work")
   sink.refuseCatalog(false);
   const auto renamedProfile =
       drogon::sync_wait(users.rename({.userId = kUserId, .name = "Ana Perez"}));
-  REQUIRE(renamedProfile.has_value());
+  if (!renamedProfile) {
+    FAIL("expected the rename to answer a user");
+    return;
+  }
   CHECK(renamedProfile->name == "Ana Perez");
   CHECK(storedName(kUserId) == "Ana Perez");
   CHECK(sink.transactional());
@@ -314,7 +317,10 @@ TEST_CASE("an identity write and its change are one unit of work")
 
   const auto renamedAgain =
       drogon::sync_wait(users.rename({.userId = kUserId, .name = "Ana Solis"}));
-  REQUIRE(renamedAgain.has_value());
+  if (!renamedAgain) {
+    FAIL("expected the rename to answer a user");
+    return;
+  }
   CHECK(renamedAgain->name == "Ana Solis");
   {
     const auto pending = outbox.pendingBatch(10);
@@ -322,7 +328,7 @@ TEST_CASE("an identity write and its change are one unit of work")
     CHECK(countSubject(pending, nats_subject::kIdentityChange) == 2);
     const auto catalog = std::ranges::find_if(
         pending, [](const outbox::OutboxRow& row) {
-          return row.payload.find("\"kind\":\"identity\"") != std::string::npos;
+          return row.payload.find(R"("kind":"identity")") != std::string::npos;
         });
     REQUIRE(catalog != pending.end());
     CHECK(catalog->payload.find("\"table\":\"user\"") != std::string::npos);

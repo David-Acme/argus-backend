@@ -42,12 +42,13 @@ int64_t DetectionChangeGate::now() const
   return config_.clock();
 }
 
-bool DetectionChangeGate::dueLocked(int64_t cameraId, int64_t at) const
+bool DetectionChangeGate::dueLocked(const DueInput& input) const
 {
-  const auto published = publishedAt_.find(cameraId);
+  const auto published = publishedAt_.find(input.cameraId);
   if (published == publishedAt_.end())
     return true;
-  return static_cast<double>(at - published->second) >= config_.publishSeconds;
+  return static_cast<double>(input.at - published->second) >=
+         config_.publishSeconds;
 }
 
 drogon::Task<void> DetectionChangeGate::detected(int64_t cameraId)
@@ -57,7 +58,7 @@ drogon::Task<void> DetectionChangeGate::detected(int64_t cameraId)
   const int64_t at = now();
   {
     std::scoped_lock lock(mutex_);
-    if (!dueLocked(cameraId, at)) {
+    if (!dueLocked({.cameraId = cameraId, .at = at})) {
       dirty_.insert(cameraId);
       co_return;
     }
@@ -81,7 +82,7 @@ drogon::Task<void> DetectionChangeGate::flush()
   {
     std::scoped_lock lock(mutex_);
     for (const auto cameraId : dirty_) {
-      if (dueLocked(cameraId, at))
+      if (dueLocked({.cameraId = cameraId, .at = at}))
         ready.push_back(cameraId);
     }
   }

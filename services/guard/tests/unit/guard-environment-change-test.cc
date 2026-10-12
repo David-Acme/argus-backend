@@ -49,8 +49,8 @@ struct SharedBoot
   SharedBoot()
   {
     drogon::app().setLogLevel(trantor::Logger::kWarn);
-    drogon::app().addDbClient(
-        drogon::orm::Sqlite3Config{1, db.path(), "default", -1});
+    drogon::app().addDbClient(drogon::orm::Sqlite3Config{
+        .connectionNumber = 1, .filename = db.path(), .name = "default", .timeout = -1});
     runner.emplace();
     if (!waitForBoot(std::chrono::seconds(30)))
       throw std::runtime_error("drogon loop did not boot");

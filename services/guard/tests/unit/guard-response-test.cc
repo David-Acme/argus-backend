@@ -98,7 +98,7 @@ std::string idsOf(std::initializer_list<int64_t> ids)
   bool first = true;
   for (const auto id : ids) {
     if (!first)
-      text += ",";
+      text += ',';
     first = false;
     text += std::to_string(id);
   }

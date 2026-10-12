@@ -11,8 +11,8 @@
 struct DriverResult
 {
   bool ok{false};
-  std::string error;
-  Json::Value data;
+  std::string error{};
+  Json::Value data{};
   bool attempted{false};
   std::string failure{};
   int retryAfterSeconds{0};

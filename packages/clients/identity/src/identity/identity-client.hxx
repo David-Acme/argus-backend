@@ -108,8 +108,6 @@ public:
   virtual std::optional<argus::identity::v1::EnrollPersonResponse>
   enrollPerson(const EnrollPersonInput& input) const;
 
-  virtual bool touchPerson(int64_t personId, int64_t at) const;
-
   virtual bool promotePerson(const PromotePersonInput& input) const;
 
   virtual bool tagPerson(const TagPersonInput& input) const;

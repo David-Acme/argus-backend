@@ -30,7 +30,13 @@ public:
   [[nodiscard]] bool drained() const;
 
 private:
-  [[nodiscard]] bool dueLocked(int64_t cameraId, int64_t at) const;
+  struct DueInput
+  {
+    int64_t cameraId{0};
+    int64_t at{0};
+  };
+
+  [[nodiscard]] bool dueLocked(const DueInput& input) const;
   [[nodiscard]] int64_t now() const;
   void schedule();
 

@@ -37,7 +37,7 @@ inline bool isValid(const std::string& raw)
 inline Json::Value fromString(const std::string& raw)
 {
   if (raw.empty())
-    return Json::Value();
+    return {};
   std::istringstream in(raw);
   Json::Value value;
   Json::CharReaderBuilder builder;

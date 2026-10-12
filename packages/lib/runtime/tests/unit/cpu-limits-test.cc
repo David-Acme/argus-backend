@@ -36,10 +36,14 @@ TEST_CASE("cgroup v2 cpu.max parses a quota and ignores max")
 
 TEST_CASE("cgroup v1 cfs quota treats -1 as unlimited")
 {
-  CHECK(cpu_limits::parseCgroupV1Quota("200000\n", "100000\n") ==
+  CHECK(cpu_limits::parseCgroupV1Quota({.quota = "200000\n",
+                                        .period = "100000\n"}) ==
         doctest::Approx(2.0));
-  CHECK_FALSE(cpu_limits::parseCgroupV1Quota("-1\n", "100000\n").has_value());
-  CHECK_FALSE(cpu_limits::parseCgroupV1Quota("50000", "0").has_value());
+  CHECK_FALSE(cpu_limits::parseCgroupV1Quota({.quota = "-1\n",
+                                              .period = "100000\n"})
+                  .has_value());
+  CHECK_FALSE(cpu_limits::parseCgroupV1Quota({.quota = "50000", .period = "0"})
+                  .has_value());
 }
 
 TEST_CASE("the effective thread count is the tightest of online, affinity and quota")

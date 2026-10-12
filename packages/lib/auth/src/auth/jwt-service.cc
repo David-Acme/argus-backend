@@ -73,13 +73,13 @@ std::string JwtService::generate(const JwtGenerateInput& input) const
   return builder.sign(jwt::algorithm::hs256{secret});
 }
 std::map<std::string, std::string>
-JwtService::verify(const std::string& token, const std::string& secret) const
+JwtService::verify(const JwtVerifyInput& input) const
 {
   try {
-    auto decoded = jwt::decode(token);
+    auto decoded = jwt::decode(input.token);
 
     auto verifier = jwt::verify()
-                        .allow_algorithm(jwt::algorithm::hs256{secret})
+                        .allow_algorithm(jwt::algorithm::hs256{input.secret})
                         .with_issuer("argus");
     verifier.verify(decoded);
 
@@ -127,7 +127,7 @@ std::string JwtService::generateRefresh(
 std::map<std::string, std::string>
 JwtService::verifyAccess(const std::string& token) const
 {
-  auto claims = verify(token, accessSecret_);
+  auto claims = verify({.token = token, .secret = accessSecret_});
   const auto type = claims.find(std::string(kTypeClaim));
   if (type == claims.end() || type->second != kAccessType)
     return {};
@@ -139,7 +139,7 @@ JwtService::verifyRefresh(const std::string& token) const
 {
   if (refreshSecret_.empty())
     return {};
-  auto claims = verify(token, refreshSecret_);
+  auto claims = verify({.token = token, .secret = refreshSecret_});
   const auto type = claims.find(std::string(kTypeClaim));
   if (type != claims.end() && type->second != kRefreshType)
     return {};
