@@ -3,6 +3,7 @@
 #include <feature/guard/vocabulary/camera-role.hxx>
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <string>
 #include <string_view>
 
@@ -51,4 +52,5 @@ struct CameraContextUpsertInput
   std::string activeHours;
   int64_t environmentId{0};
   int64_t updatedAt{0};
+  drogon::orm::DbClient* client{nullptr};
 };

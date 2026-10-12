@@ -37,7 +37,8 @@ public:
 
   drogon::Task<bool> setState(const GuardStateInput& input) const;
 
-  drogon::Task<bool> clearState(const std::string& key) const;
+  drogon::Task<bool> clearState(const std::string& key,
+                                drogon::orm::DbClient* client = nullptr) const;
 
   drogon::Task<std::vector<Json::Value>> recentIncidents(int limit) const;
 

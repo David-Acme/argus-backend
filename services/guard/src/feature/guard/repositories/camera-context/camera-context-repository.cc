@@ -55,7 +55,10 @@ CameraContextRepository::list() const
 drogon::Task<GuardCameraContext>
 CameraContextRepository::upsert(const CameraContextUpsertInput& input) const
 {
-  const auto rows = co_await DbService::client()->execSqlCoro(
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* client =
+      input.client != nullptr ? input.client : owned.get();
+  const auto rows = co_await client->execSqlCoro(
       std::string(UPSERT_CONTEXT), input.cameraId,
       cameraRoleToString(input.role), input.outdoor ? 1 : 0,
       input.publicArea ? 1 : 0, input.activeHours, input.environmentId,

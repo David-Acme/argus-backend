@@ -167,7 +167,8 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
         guard-vocabulary-test guard-schedule-test guard-scenario-test
         guard-episode-test guard-copy-test guard-context-test
         guard-presence-repository-test guard-response-test
-        guard-module-wind-down-test posture-watch-test)
+        guard-module-wind-down-test guard-environment-change-test
+        posture-watch-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
 
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
@@ -192,6 +193,7 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
        OR TEST_NAME STREQUAL "guard-presence-repository-test"
        OR TEST_NAME STREQUAL "guard-response-test"
        OR TEST_NAME STREQUAL "guard-module-wind-down-test"
+       OR TEST_NAME STREQUAL "guard-environment-change-test"
        OR TEST_NAME STREQUAL "posture-watch-test")
         target_compile_definitions(${TEST_NAME} PRIVATE
             ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")

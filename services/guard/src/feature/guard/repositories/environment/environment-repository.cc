@@ -58,10 +58,12 @@ drogon::Task<std::vector<GuardEnvironment>> EnvironmentRepository::list() const
 }
 
 drogon::Task<std::optional<GuardEnvironment>>
-EnvironmentRepository::find(int64_t id) const
+EnvironmentRepository::find(int64_t id, drogon::orm::DbClient* client) const
 {
-  const auto rows = co_await DbService::client()->execSqlCoro(
-      std::string(FIND_ENVIRONMENT), id);
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* db = client != nullptr ? client : owned.get();
+  const auto rows =
+      co_await db->execSqlCoro(std::string(FIND_ENVIRONMENT), id);
   if (rows.empty())
     co_return std::nullopt;
   co_return fromRow(rows.front());
@@ -86,17 +88,22 @@ drogon::Task<int64_t> EnvironmentRepository::count() const
   co_return rows.empty() ? 0 : rows.front()["total"].as<int64_t>();
 }
 
-drogon::Task<int64_t> EnvironmentRepository::defaultId() const
+drogon::Task<int64_t>
+EnvironmentRepository::defaultId(drogon::orm::DbClient* client) const
 {
-  const auto rows =
-      co_await DbService::client()->execSqlCoro(std::string(DEFAULT_ID));
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* db = client != nullptr ? client : owned.get();
+  const auto rows = co_await db->execSqlCoro(std::string(DEFAULT_ID));
   co_return rows.empty() ? 0 : rows.front()["id"].as<int64_t>();
 }
 
 drogon::Task<GuardEnvironment>
 EnvironmentRepository::create(const EnvironmentCreateInput& input) const
 {
-  const auto rows = co_await DbService::client()->execSqlCoro(
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* client =
+      input.client != nullptr ? input.client : owned.get();
+  const auto rows = co_await client->execSqlCoro(
       std::string(INSERT_ENVIRONMENT), input.name,
       environmentKindToString(input.kind), guardModeToString(input.mode),
       input.at, input.scheduleEnabled ? 1 : 0, input.asleep, input.open,
@@ -105,7 +112,7 @@ EnvironmentRepository::create(const EnvironmentCreateInput& input) const
       input.quietEndHour, input.lanPresence ? 1 : 0, input.at, input.at);
   if (rows.empty())
     throw std::runtime_error("environment insert returned no row");
-  const auto created = co_await find(rows.front()["id"].as<int64_t>());
+  const auto created = co_await find(rows.front()["id"].as<int64_t>(), client);
   if (!created)
     throw std::runtime_error("environment insert lost its row");
   co_return *created;
@@ -148,10 +155,13 @@ EnvironmentRepository::update(const EnvironmentUpdateInput& input) const
   sql += UPDATE_ENVIRONMENT_SUFFIX;
   args.push_back(std::to_string(input.id));
   const auto& argsRef = args;
-  const auto result = co_await DbService::client()->execSqlCoro(sql, argsRef);
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* client =
+      input.client != nullptr ? input.client : owned.get();
+  const auto result = co_await client->execSqlCoro(sql, argsRef);
   if (result.affectedRows() == 0)
     co_return std::nullopt;
-  co_return co_await find(input.id);
+  co_return co_await find(input.id, client);
 }
 
 drogon::Task<int64_t>
@@ -174,14 +184,27 @@ EnvironmentRepository::setMode(const EnvironmentModeInput& input) const
 drogon::Task<EnvironmentRemoval>
 EnvironmentRepository::remove(const EnvironmentRemoveInput& input) const
 {
-  const auto target = co_await find(input.id);
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* client =
+      input.client != nullptr ? input.client : owned.get();
+  const auto target = co_await find(input.id, client);
   if (!target)
     co_return EnvironmentRemoval::NotFound;
   if (target->isDefault)
     co_return EnvironmentRemoval::IsDefault;
-  const int64_t fallback = co_await defaultId();
+  const int64_t fallback = co_await defaultId(client);
+  if (input.client != nullptr) {
+    co_await client->execSqlCoro(std::string(MOVE_CAMERAS), fallback,
+                                 input.at, input.id);
+    co_await client->execSqlCoro(std::string(RETIRE_GUESTS), input.at,
+                                 input.id);
+    const auto deleted =
+        co_await client->execSqlCoro(std::string(DELETE_ENVIRONMENT), input.id);
+    co_return deleted.affectedRows() == 0 ? EnvironmentRemoval::NotFound
+                                          : EnvironmentRemoval::Removed;
+  }
   std::shared_ptr<drogon::orm::Transaction> transaction =
-      co_await db_transaction::begin(DbService::client());
+      co_await db_transaction::begin(owned);
   try {
     co_await transaction->execSqlCoro(std::string(MOVE_CAMERAS), fallback,
                                       input.at, input.id);

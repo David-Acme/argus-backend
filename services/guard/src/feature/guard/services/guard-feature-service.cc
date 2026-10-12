@@ -614,6 +614,21 @@ drogon::Task<int64_t> GuardFeatureService::resolveEnvironment(int64_t id) const
   co_return co_await environmentRepository_.defaultId();
 }
 
+drogon::Task<void> GuardFeatureService::rememberPosture(
+    const GuardEnvironment& environment,
+    drogon::orm::DbClient* client) const
+{
+  const GuardPosture posture = guard_schedule::resolve(
+      {.schedule = guard_schedule::fromEnvironment(environment),
+       .manual = environment.mode,
+       .local = localNow()});
+  co_await guardRepository_.setState(
+      {.key = guard_schedule::stateKey(environment.id),
+       .value = guard_schedule::fingerprint(posture),
+       .updatedAt = environment.updatedAt,
+       .client = client});
+}
+
 drogon::Task<Json::Value>
 GuardFeatureService::createEnvironment(const CreateEnvironmentDto& input) const
 {
@@ -621,22 +636,39 @@ GuardFeatureService::createEnvironment(const CreateEnvironmentDto& input) const
   co_await requireNameFree(fields.name.value_or(""), 0);
   const EnvironmentKind kind = environmentKindFromString(fields.kind.value_or(""))
                                    .value_or(EnvironmentKind::Home);
-  const GuardEnvironment created = co_await environmentRepository_.create(
-      {.name = fields.name.value_or(""),
-       .kind = kind,
-       .mode = guardModeFromString(input.mode.value_or("home")),
-       .scheduleEnabled = fields.scheduleEnabled.value_or(false),
-       .asleep = fields.asleep.value_or(""),
-       .open = fields.open.value_or(""),
-       .staffed = fields.staffed.value_or(""),
-       .closedMode = guardModeFromString(fields.closedMode.value_or("away")),
-       .digestHour = fields.digestHour.value_or(21),
-       .quietPolicy = quietPolicyFromString(fields.quietPolicy.value_or(""))
-                          .value_or(QuietPolicy::Inherit),
-       .quietStartHour = fields.quietStartHour.value_or(22),
-       .quietEndHour = fields.quietEndHour.value_or(7),
-       .lanPresence = fields.lanPresence.value_or(false),
-       .at = static_cast<int64_t>(std::time(nullptr))});
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  GuardEnvironment created;
+  try {
+    created = co_await environmentRepository_.create(
+        {.name = fields.name.value_or(""),
+         .kind = kind,
+         .mode = guardModeFromString(input.mode.value_or("home")),
+         .scheduleEnabled = fields.scheduleEnabled.value_or(false),
+         .asleep = fields.asleep.value_or(""),
+         .open = fields.open.value_or(""),
+         .staffed = fields.staffed.value_or(""),
+         .closedMode = guardModeFromString(fields.closedMode.value_or("away")),
+         .digestHour = fields.digestHour.value_or(21),
+         .quietPolicy = quietPolicyFromString(fields.quietPolicy.value_or(""))
+                            .value_or(QuietPolicy::Inherit),
+         .quietStartHour = fields.quietStartHour.value_or(22),
+         .quietEndHour = fields.quietEndHour.value_or(7),
+         .lanPresence = fields.lanPresence.value_or(false),
+         .at = static_cast<int64_t>(std::time(nullptr)),
+         .client = transaction.get()});
+    co_await rememberPosture(created, transaction.get());
+    if (changes_ != nullptr) {
+      co_await changes_->record({.scope = ResourceScope::Environments,
+                                 .ids = {created.id},
+                                 .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   co_return environmentJson(
       {.environment = created, .cameraIds = {}, .local = localNow()});
 }
@@ -665,10 +697,29 @@ GuardFeatureService::updateEnvironment(const EnvironmentPatchInput& input) const
        .quietStartHour = patch.quietStartHour,
        .quietEndHour = patch.quietEndHour,
        .lanPresence = patch.lanPresence,
-       .at = static_cast<int64_t>(std::time(nullptr))};
-  const auto updated = co_await environmentRepository_.update(update);
-  if (!updated)
-    throw ResponseException(GuardErrors::EnvironmentNotFound);
+       .at = static_cast<int64_t>(std::time(nullptr)),
+       .client = nullptr};
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  std::optional<GuardEnvironment> updated;
+  try {
+    EnvironmentUpdateInput scoped = update;
+    scoped.client = transaction.get();
+    updated = co_await environmentRepository_.update(scoped);
+    if (!updated)
+      throw ResponseException(GuardErrors::EnvironmentNotFound);
+    co_await rememberPosture(*updated, transaction.get());
+    if (changes_ != nullptr) {
+      co_await changes_->record({.scope = ResourceScope::Environments,
+                                 .ids = {updated->id},
+                                 .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   std::vector<int64_t> cameraIds;
   for (const auto& assignment : co_await environmentRepository_.cameraAssignments()) {
     if (assignment.environmentId == updated->id)
@@ -680,12 +731,30 @@ GuardFeatureService::updateEnvironment(const EnvironmentPatchInput& input) const
 
 drogon::Task<Json::Value> GuardFeatureService::removeEnvironment(int64_t id) const
 {
-  const EnvironmentRemoval removal = co_await environmentRepository_.remove(
-      {.id = id, .at = static_cast<int64_t>(std::time(nullptr))});
-  if (removal == EnvironmentRemoval::NotFound)
-    throw ResponseException(GuardErrors::EnvironmentNotFound);
-  if (removal == EnvironmentRemoval::IsDefault)
-    throw ResponseException(GuardErrors::DefaultEnvironmentKept);
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    const EnvironmentRemoval removal = co_await environmentRepository_.remove(
+        {.id = id,
+         .at = static_cast<int64_t>(std::time(nullptr)),
+         .client = transaction.get()});
+    if (removal == EnvironmentRemoval::NotFound)
+      throw ResponseException(GuardErrors::EnvironmentNotFound);
+    if (removal == EnvironmentRemoval::IsDefault)
+      throw ResponseException(GuardErrors::DefaultEnvironmentKept);
+    co_await guardRepository_.clearState(guard_schedule::stateKey(id),
+                                         transaction.get());
+    if (changes_ != nullptr) {
+      co_await changes_->record({.scope = ResourceScope::Environments,
+                                 .ids = {id},
+                                 .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   co_return co_await environments();
 }
 
@@ -723,18 +792,10 @@ GuardFeatureService::setMode(const GuardModeChange& input) const
          .client = transaction.get()});
     if (body.environmentId && changed == 0)
       throw ResponseException(GuardErrors::EnvironmentNotFound);
-    const int64_t at = static_cast<int64_t>(std::time(nullptr));
-    const std::tm local = localNow();
     for (const auto& environment : targeted) {
-      const GuardPosture posture = guard_schedule::resolve(
-          {.schedule = guard_schedule::fromEnvironment(environment),
-           .manual = mode,
-           .local = local});
-      co_await guardRepository_.setState(
-          {.key = guard_schedule::stateKey(environment.id),
-           .value = guard_schedule::fingerprint(posture),
-           .updatedAt = at,
-           .client = transaction.get()});
+      GuardEnvironment current = environment;
+      current.mode = mode;
+      co_await rememberPosture(current, transaction.get());
       if (changes_ != nullptr) {
         co_await changes_->record({.scope = ResourceScope::Environments,
                                    .ids = {environment.id},
@@ -770,28 +831,48 @@ drogon::Task<Json::Value> GuardFeatureService::cameras() const
 drogon::Task<Json::Value>
 GuardFeatureService::setCamera(const CameraContextInput& input) const
 {
+  const GuardCameraContext previous =
+      co_await cameraContextRepository_.find(input.cameraId);
   int64_t environmentId = 0;
   if (input.context.environmentId) {
     environmentId = co_await resolveEnvironment(*input.context.environmentId);
   }
-  else {
-    const GuardCameraContext current =
-        co_await cameraContextRepository_.find(input.cameraId);
-    if (current.configured && current.environmentId > 0 &&
-        (co_await environmentRepository_.find(current.environmentId)))
-      environmentId = current.environmentId;
-    else
-      environmentId = co_await environmentRepository_.defaultId();
+  else if (previous.configured && previous.environmentId > 0 &&
+           (co_await environmentRepository_.find(previous.environmentId))) {
+    environmentId = previous.environmentId;
   }
-  const GuardCameraContext saved = co_await cameraContextRepository_.upsert(
-      {.cameraId = input.cameraId,
-       .role = cameraRoleFromString(input.context.role)
-                   .value_or(CameraRole::Other),
-       .outdoor = input.context.outdoor,
-       .publicArea = input.context.publicArea,
-       .activeHours = input.context.activeHours,
-       .environmentId = environmentId,
-       .updatedAt = static_cast<int64_t>(std::time(nullptr))});
+  else {
+    environmentId = co_await environmentRepository_.defaultId();
+  }
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  GuardCameraContext saved;
+  try {
+    saved = co_await cameraContextRepository_.upsert(
+        {.cameraId = input.cameraId,
+         .role = cameraRoleFromString(input.context.role)
+                     .value_or(CameraRole::Other),
+         .outdoor = input.context.outdoor,
+         .publicArea = input.context.publicArea,
+         .activeHours = input.context.activeHours,
+         .environmentId = environmentId,
+         .updatedAt = static_cast<int64_t>(std::time(nullptr)),
+         .client = transaction.get()});
+    if (changes_ != nullptr) {
+      std::vector<int64_t> ids{environmentId};
+      if (previous.configured && previous.environmentId > 0 &&
+          previous.environmentId != environmentId)
+        ids.push_back(previous.environmentId);
+      co_await changes_->record({.scope = ResourceScope::Environments,
+                                 .ids = std::move(ids),
+                                 .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   co_return cameraJson(saved);
 }
 

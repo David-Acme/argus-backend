@@ -140,6 +140,7 @@ struct EnvironmentCreateInput
   int quietEndHour{7};
   bool lanPresence{false};
   int64_t at{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct EnvironmentUpdateInput
@@ -158,6 +159,7 @@ struct EnvironmentUpdateInput
   std::optional<int> quietEndHour;
   std::optional<bool> lanPresence;
   int64_t at{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct EnvironmentModeInput
@@ -172,6 +174,7 @@ struct EnvironmentRemoveInput
 {
   int64_t id{0};
   int64_t at{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 enum class EnvironmentRemoval : uint8_t

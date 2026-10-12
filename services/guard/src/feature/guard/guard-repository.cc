@@ -224,13 +224,14 @@ drogon::Task<bool> GuardRepository::setState(const GuardStateInput& input) const
 }
 
 drogon::Task<bool>
-GuardRepository::clearState(const std::string& key) const
+GuardRepository::clearState(const std::string& key,
+                            drogon::orm::DbClient* client) const
 {
   if (key.empty())
     co_return false;
-  auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(DELETE_STATE.data(), key);
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* db = client != nullptr ? client : owned.get();
+  const auto result = co_await db->execSqlCoro(DELETE_STATE.data(), key);
   co_return result.affectedRows() > 0;
 }
 

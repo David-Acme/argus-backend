@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/guard/dtos/create-environment-dto.hxx>
 #include <feature/guard/dtos/create-expected-guest-dto.hxx>
@@ -137,6 +138,9 @@ private:
   IdentityClient* identity_{nullptr};
   const DisarmGate* disarm_{nullptr};
   const ResourceChangeOutbox* changes_{nullptr};
+  drogon::Task<void> rememberPosture(const GuardEnvironment& environment,
+                                     drogon::orm::DbClient* client) const;
+
   GuardRepository guardRepository_;
   EnvironmentRepository environmentRepository_;
   CameraContextRepository cameraContextRepository_;
