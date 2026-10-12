@@ -8,6 +8,8 @@
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/llm/services/tools/tool-access.hxx>
+#include <feature/llm/services/turn-engines.hxx>
+#include <text/sha256.hxx>
 
 #include <json/reader.h>
 #include <json/writer.h>
@@ -50,7 +52,8 @@ struct Options
   std::string cases;
   std::string gates;
   std::string llmModel;
-  std::string intentModel;
+  std::string decideBundle;
+  std::string extractBundle;
   std::string catalog;
   std::string report;
   std::string dump;
@@ -65,8 +68,17 @@ struct Options
   bool smoke = false;
   bool verbose = false;
   bool force = false;
-  bool noFastTier = false;
+  bool noEngines = false;
 };
+
+std::string bundlePin(const std::filesystem::path& dir)
+{
+  std::ifstream in(dir / "sha256", std::ios::binary);
+  if (!in.is_open())
+    return {};
+  const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  return argus::hash::sha256Hex(bytes);
+}
 
 Options parseOptions(int argc, char** argv)
 {
@@ -80,8 +92,10 @@ Options parseOptions(int argc, char** argv)
       options.gates = argv[++i];
     else if (arg == "--llm-model" && hasValue)
       options.llmModel = argv[++i];
-    else if (arg == "--intent-model" && hasValue)
-      options.intentModel = argv[++i];
+    else if (arg == "--decide-bundle" && hasValue)
+      options.decideBundle = argv[++i];
+    else if (arg == "--extract-bundle" && hasValue)
+      options.extractBundle = argv[++i];
     else if (arg == "--catalog" && hasValue)
       options.catalog = argv[++i];
     else if (arg == "--report" && hasValue)
@@ -110,9 +124,14 @@ Options parseOptions(int argc, char** argv)
       options.verbose = true;
     else if (arg == "--force")
       options.force = true;
-    else if (arg == "--no-fast-tier")
-      options.noFastTier = true;
+    else if (arg == "--no-engines")
+      options.noEngines = true;
   }
+  const std::filesystem::path models = std::filesystem::path(options.llmModel).parent_path().parent_path();
+  if (options.decideBundle.empty())
+    options.decideBundle = (models / "decide" / "bundle-laya-pilot").string();
+  if (options.extractBundle.empty())
+    options.extractBundle = (models / "extract" / "pilot-bundle").string();
   return options;
 }
 
@@ -387,8 +406,9 @@ int main(int argc, char** argv)
     std::printf("[SKIPPED] no LLM weights at %s; the LLM-tier gate did not run\n", options.llmModel.c_str());
     return kSkipped;
   }
-  if (!options.noFastTier && !std::filesystem::exists(options.intentModel)) {
-    std::printf("[SKIPPED] no intent model at %s; the system tier cannot be measured\n", options.intentModel.c_str());
+  if (!options.noEngines && (!std::filesystem::exists(options.decideBundle) || !std::filesystem::exists(options.extractBundle))) {
+    std::printf("[SKIPPED] no decider bundle at %s or no extractor bundle at %s; the system tier cannot be measured\n",
+                options.decideBundle.c_str(), options.extractBundle.c_str());
     return kSkipped;
   }
   const auto loaded = eval::loadCases(options.cases);
@@ -405,7 +425,6 @@ int main(int argc, char** argv)
   const std::string scratch = writeScratchConfig(options.llmModel);
   ConfigService::load(scratch);
   std::filesystem::remove(scratch);
-  ConfigService::setRuntimeString("intent.model_file", options.noFastTier ? "/nonexistent/intent.bin" : options.intentModel);
   llama_backend_init();
 
   LlmController controller;
@@ -414,6 +433,28 @@ int main(int argc, char** argv)
     std::printf("[ERROR] the LLM did not load from %s\n", options.llmModel.c_str());
     return 1;
   }
+
+  TurnEngines engines;
+  if (!options.noEngines) {
+    engines = installTurnEngines({.adapter = controller.adapter(),
+                                  .decide = {.dir = options.decideBundle, .pin = bundlePin(options.decideBundle), .options = {}},
+                                  .extract = {.dir = options.extractBundle, .pin = bundlePin(options.extractBundle), .options = {}}});
+    if (engines.laya == nullptr || engines.gliner == nullptr) {
+      std::printf("[REFUSED] the shipped pipeline is not up (%s%s); no gate is reported\n", engines.decideError.c_str(),
+                  engines.extractError.c_str());
+      controller.shutdownEngine();
+      llama_backend_free();
+      return 1;
+    }
+    turn::PolicySet policies;
+    policies.set(std::string(turn::kDeciderIds[2]),
+                 turn::DecisionPolicy{.act = engines.laya->policy().act,
+                                      .ask = engines.laya->policy().ask,
+                                      .margin = engines.laya->policy().margin,
+                                      .nowMin = engines.laya->policy().now});
+    controller.adapter().flow().usePolicies(std::move(policies));
+  }
+  std::printf("pipeline: %s\n", engines.pipeline().c_str());
 
   const eval::StubInput stubs{.recorder = std::make_shared<eval::Recorder>(),
                               .ledger = std::make_shared<argus::mcp::ConfirmationLedger>()};

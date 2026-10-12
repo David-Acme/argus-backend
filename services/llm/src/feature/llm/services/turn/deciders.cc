@@ -2,8 +2,14 @@
 
 #include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/module-command.hxx>
+#include <feature/memory/services/extract/temporal-resolver.hxx>
+#include <phrase/rule-parser.hxx>
+#include <text/text-norm.hxx>
 
+#include <algorithm>
+#include <array>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace turn
@@ -13,31 +19,26 @@ namespace
 {
 constexpr double kRuleConfidence = 1.0;
 
-std::optional<tools::ToolCall> memoryCall(intent::ToolIntent decided, const std::string& utterance)
+constexpr std::array<std::string_view, 21> kReminderAsks{
+    "recuerdame", "recuerdanos", "me recuerdas", "me recuerdes", "me recordaras",
+    "acuerdame", "avisame", "me avises", "me avisas", "me avisaras",
+    "despiertame", "alarma", "temporizador", "remind me", "remind us",
+    "let me know", "wake me", "alarm", "timer", "ping me", "tell me when"};
+
+bool asksToBeReminded(std::string_view utterance)
 {
-  tools::ToolCall call;
-  call.arguments = Json::Value(Json::objectValue);
-  switch (decided) {
-    case intent::ToolIntent::MemorySave:
-      call.name = "memory.remember";
-      call.arguments["text"] = utterance;
-      break;
-    case intent::ToolIntent::MemoryRecall:
-      call.name = "memory.recall";
-      call.arguments["query"] = utterance;
-      break;
-    case intent::ToolIntent::ReminderSet:
-      call.name = "memory.remind";
-      call.arguments["text"] = utterance;
-      break;
-    case intent::ToolIntent::MemoryForget:
-      call.name = "memory.forget";
-      call.arguments["query"] = utterance;
-      break;
-    default:
-      return std::nullopt;
-  }
-  return call;
+  const std::string folded =
+      text_norm::whitespace(text_norm::stripAccents(text_norm::intent(std::string(utterance))), true);
+  return std::ranges::any_of(kReminderAsks,
+                             [&folded](std::string_view ask) { return folded.find(ask) != std::string::npos; });
+}
+
+bool namesOneInstant(std::string_view utterance, std::string_view lang)
+{
+  static const TemporalResolver resolver;
+  const extract::TemporalValue when =
+      resolver.resolve({.lang = lang.empty() ? std::string_view("es") : lang, .normalized = TemporalResolver::normalize(utterance)});
+  return when.kind != extract::TemporalKind::None && when.recur == extract::Recurrence::None;
 }
 }
 
@@ -66,33 +67,32 @@ std::optional<Candidate> RuleDecider::decide(const DecideInput& input) const
   return std::nullopt;
 }
 
-std::optional<Candidate> RouterDecider::decide(const DecideInput& input) const
+TriggerDecider::TriggerDecider()
 {
-  if (router_ == nullptr)
-    return std::nullopt;
+  catalog_.build();
+}
+
+std::optional<Candidate> TriggerDecider::decide(const DecideInput& input) const
+{
   const std::string utterance(input.utterance);
-  const intent::IntentDecision decision = router_->decide(utterance, std::string(input.lang));
-  auto call = memoryCall(decision.intent, utterance);
-  if (!call || !isOffered(input, call->name))
+  const std::string lang(input.lang);
+  if (!RuleParser(catalog_).parse({.text = utterance, .lang = lang}).has_value())
     return std::nullopt;
-  std::optional<Pick> second;
-  if (!decision.fromRules)
-    if (auto other = memoryCall(decision.runnerUp, utterance); other && isOffered(input, other->name))
-      second = Pick{.tool = other->name,
-                    .arguments = other->arguments,
-                    .fill = {},
-                    .confidence = static_cast<double>(decision.runnerUpScore),
-                    .source = std::string(intent::toolIntentToString(decision.runnerUp)) + ", model"};
-  return Candidate{.tool = call->name,
-                   .arguments = call->arguments,
+  const bool reminder = asksToBeReminded(utterance) && namesOneInstant(utterance, lang);
+  const std::string tool = reminder ? "memory.remind" : "memory.remember";
+  if (!isOffered(input, tool))
+    return std::nullopt;
+  Json::Value arguments(Json::objectValue);
+  arguments["text"] = utterance;
+  return Candidate{.tool = tool,
+                   .arguments = std::move(arguments),
                    .fill = {},
-                   .confidence = decision.fromRules ? kRuleConfidence : static_cast<double>(decision.score),
-                   .source = std::string(intent::toolIntentToString(decision.intent)) +
-                             (decision.fromRules ? ", rules" : ", model"),
+                   .confidence = kRuleConfidence,
+                   .source = reminder ? "reminder_set, trigger" : "memory_save, trigger",
                    .decider = std::string(id()),
-                   .exact = decision.fromRules,
-                   .confident = decision.confident,
-                   .runnerUp = std::move(second)};
+                   .exact = true,
+                   .confident = true,
+                   .runnerUp = std::nullopt};
 }
 
 std::optional<Candidate> FirstOf::decide(const DecideInput& input) const

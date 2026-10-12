@@ -40,8 +40,6 @@
 namespace
 {
 
-constexpr int kExtractBusyWaitMs = 2000;
-
 std::string memoryDbFile()
 {
   std::string file = ConfigService::getString("memory.db_file");
@@ -211,46 +209,6 @@ void MemoryService::waitForIdle(int waitMs)
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
 
-void MemoryService::processExtract(const MemoryJob& job)
-{
-  const int waitMs = ConfigService::getInt("memory.extract_wait_ms");
-  waitForIdle(job.preferIdle ? (waitMs > 0 ? waitMs : 15000) : kExtractBusyWaitMs);
-  if (chat_.busy()) {
-    if (!stop_.load())
-      enqueueJob(job);
-    return;
-  }
-  const auto formed = formation_.observe({.channel = "user_turn",
-                                          .text = job.text,
-                                          .actor = {},
-                                          .at = std::time(nullptr),
-                                          .userId = job.userId,
-                                          .lang = job.lang,
-                                          .sessionId = {},
-                                          .entitiesHint = {},
-                                          .allowModel = true,
-                                          .salient = job.salient,
-                                          .decided = false,
-                                          .typeHint = {},
-                                          .refines = job.memoryId});
-  if (!formed) {
-    if (job.memoryId > 0)
-      LOG_INFO << "MemoryService: note " << job.memoryId << " kept; the model found no fact in it";
-    return;
-  }
-  LOG_INFO << "MemoryService: deferred extraction stored fact "
-           << formed->factId << " (" << formed->source << ")"
-           << (formed->refined ? " in place of note " + std::to_string(job.memoryId) : std::string());
-  enqueueJob({.kind = MemoryJob::Kind::Embed,
-              .memoryId = formed->factId,
-              .userId = 0,
-              .text = {},
-              .lang = {},
-              .preferIdle = false,
-              .salient = false,
-              .episode = false});
-}
-
 void MemoryService::processCompact(const MemoryJob& job)
 {
   if (job.preferIdle) {
@@ -304,7 +262,6 @@ void MemoryService::processCompact(const MemoryJob& job)
                 .text = {},
                 .lang = {},
                 .preferIdle = false,
-                .salient = false,
                 .episode = true});
 }
 
@@ -319,9 +276,6 @@ void MemoryService::processJob(const MemoryJob& job)
       break;
     case MemoryJob::Kind::Rebuild:
       rebuildAll();
-      break;
-    case MemoryJob::Kind::Extract:
-      processExtract(job);
       break;
     case MemoryJob::Kind::Profile:
       processProfile(job);
@@ -395,20 +349,9 @@ void MemoryService::enqueueJob(MemoryJob job)
   {
     std::lock_guard<std::mutex> lock(queueMutex_);
     if (queue_.size() >= queueBound_) {
-      if (job.kind != MemoryJob::Kind::Extract) {
-        LOG_WARN << "MemoryService queue full (" << queue_.size()
-                 << "); dropped " << static_cast<int>(job.kind) << " job";
-        return;
-      }
-      const auto derived = std::find_if(
-          queue_.begin(), queue_.end(), [](const MemoryJob& queued) {
-            return queued.kind != MemoryJob::Kind::Extract;
-          });
-      if (derived == queue_.end()) {
-        LOG_WARN << "MemoryService queue full of extracts; dropped one";
-        return;
-      }
-      queue_.erase(derived);
+      LOG_WARN << "MemoryService queue full (" << queue_.size()
+               << "); dropped " << static_cast<int>(job.kind) << " job";
+      return;
     }
     queue_.push_back(std::move(job));
   }
@@ -452,7 +395,6 @@ void MemoryService::openStore()
                 .text = {},
                 .lang = {},
                 .preferIdle = false,
-                .salient = false,
                 .episode = false});
   }
 }
@@ -473,112 +415,9 @@ bool MemoryService::isLoaded() const
   return embedding_.isLoaded();
 }
 
-int64_t MemoryService::captureInline(const InlineCapture& capture)
-{
-  const auto formed = formation_.observe({.channel = capture.channel,
-                                          .text = capture.text,
-                                          .actor = {},
-                                          .at = std::time(nullptr),
-                                          .userId = capture.userId,
-                                          .lang = capture.lang,
-                                          .sessionId = {},
-                                          .entitiesHint = {},
-                                          .allowModel = false,
-                                          .salient = capture.salient,
-                                          .decided = false,
-                                          .typeHint = {},
-                                          .refines = 0});
-  if (!formed)
-    return 0;
-  enqueueJob({.kind = MemoryJob::Kind::Embed,
-              .memoryId = formed->factId,
-              .userId = 0,
-              .text = {},
-              .lang = {},
-              .preferIdle = false,
-              .salient = false,
-              .episode = false});
-  return formed->factId;
-}
-
-void MemoryService::deferCapture(const InlineCapture& capture)
-{
-  {
-    std::lock_guard<std::mutex> lock(queueMutex_);
-    for (const auto& job : queue_)
-      if (job.kind == MemoryJob::Kind::Extract && job.userId == capture.userId &&
-          job.text == capture.text)
-        return;
-  }
-  enqueueJob({.kind = MemoryJob::Kind::Extract,
-              .memoryId = 0,
-              .userId = capture.userId,
-              .text = capture.text,
-              .lang = capture.lang,
-              .preferIdle = capture.preferIdle,
-              .salient = capture.salient,
-              .episode = false});
-}
-
-void MemoryService::refineLater(const NoteRefinement& refinement)
-{
-  if (refinement.note.source != "rule" || refinement.note.factId <= 0 || refinement.userId <= 0)
-    return;
-  enqueueJob({.kind = MemoryJob::Kind::Extract,
-              .memoryId = refinement.note.factId,
-              .userId = refinement.userId,
-              .text = refinement.text,
-              .lang = refinement.lang,
-              .preferIdle = true,
-              .salient = false,
-              .episode = false});
-}
-
 bool MemoryService::hasUserScope(int64_t userId)
 {
   return userId > 0;
-}
-
-CaptureResult MemoryService::captureExplicit(const CaptureInput& input)
-{
-  const RuleParseInput parsed{.text = input.text, .lang = input.lang};
-  if (!hasUserScope(input.userId) || ruleParser_.isCancellation(parsed) ||
-      ruleParser_.isVacuous(parsed))
-    return {};
-
-  if (!ruleParser_.parse(parsed)) {
-    if (ruleParser_.isQuestion(parsed) || !ruleParser_.parseStatement(parsed))
-      return {};
-  }
-
-  const InlineCapture capture{.channel = "user_turn",
-                              .text = input.text,
-                              .lang = input.lang,
-                              .userId = input.userId,
-                              .salient = false,
-                              .preferIdle = false};
-  const int64_t id = captureInline(capture);
-  if (id > 0)
-    return {.outcome = CaptureOutcome::Stored, .factId = id};
-
-  deferCapture(capture);
-  return {.outcome = CaptureOutcome::Deferred, .factId = 0};
-}
-
-CaptureResult MemoryService::captureImplicit(const CaptureInput& input)
-{
-  const RuleParseInput parsed{.text = input.text, .lang = input.lang};
-  if (!hasUserScope(input.userId) || ruleParser_.isQuestion(parsed) ||
-      ruleParser_.isCancellation(parsed) || ruleParser_.isVacuous(parsed))
-    return {};
-
-  deferCapture({.channel = "user_turn",
-                .text = input.text,
-                .lang = input.lang,
-                .userId = input.userId,
-                .salient = true,
-                .preferIdle = true});
-  return {.outcome = CaptureOutcome::Deferred, .factId = 0};
 }
 
 RecallContext MemoryService::recall(const RecallInput& input)
@@ -657,7 +496,6 @@ void MemoryService::enqueueSummary(const TranscriptJobInput& input)
               .text = durable,
               .lang = input.lang,
               .preferIdle = false,
-              .salient = false,
               .episode = false});
 }
 
@@ -678,7 +516,6 @@ void MemoryService::enqueueCompaction(const TranscriptJobInput& input)
               .text = durable,
               .lang = input.lang,
               .preferIdle = true,
-              .salient = false,
               .episode = false});
 }
 
@@ -754,7 +591,6 @@ std::string MemoryService::profileFor(int64_t userId, const std::string& lang)
                 .text = {},
                 .lang = lang,
                 .preferIdle = true,
-                .salient = false,
                 .episode = false});
   }
   return built;
@@ -1124,11 +960,8 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
                                .lang = call.context.lang,
                                .sessionId = call.context.sessionId,
                                .entitiesHint = {},
-                               .allowModel = false,
-                               .salient = false,
                                .decided = call.context.decided,
-                               .typeHint = {},
-                               .refines = 0},
+                               .typeHint = {}},
                               grounded);
   };
   auto formed = observe(text);
@@ -1151,9 +984,7 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
               .text = {},
               .lang = {},
               .preferIdle = false,
-              .salient = false,
               .episode = false});
-  refineLater({.note = *formed, .userId = call.context.userId, .text = text, .lang = call.context.lang});
   result.output = (english(call) ? "Saved: " : "Guardado: ") + spoken(formed->canonical);
   return result;
 }
@@ -1182,11 +1013,8 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
                                           .lang = call.context.lang,
                                           .sessionId = call.context.sessionId,
                                           .entitiesHint = {},
-                                          .allowModel = false,
-                                          .salient = false,
                                           .decided = call.context.decided,
-                                          .typeHint = "schedule",
-                                          .refines = 0},
+                                          .typeHint = "schedule"},
                                          grounded);
   if (!formed) {
     result.output = english(call) ? "I could not save the reminder."
@@ -1204,7 +1032,6 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
               .text = {},
               .lang = {},
               .preferIdle = false,
-              .salient = false,
               .episode = false});
   result.output = (english(call) ? "Reminder saved: " : "Recordatorio guardado: ") +
                   spoken(formed->canonical);

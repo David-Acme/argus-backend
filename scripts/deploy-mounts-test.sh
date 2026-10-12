@@ -26,7 +26,7 @@ missing_mounts() {
   block="$(service_block "$compose" argus-llm)"
   [ -n "$block" ] || { echo argus-llm; return; }
   referenced="$(grep -Eo '"models/[a-z0-9_-]+/' "$config" | sed -E 's#"models/([a-z0-9_-]+)/#\1#' | sort -u)"
-  for dir in $(printf '%s\n' $referenced intent | sort -u); do
+  for dir in $(printf '%s\n' $referenced decide extract | sort -u); do
     grep -Eq "^[[:space:]]+target: /opt/argus/models/$dir\$" <<<"$block" || echo "$dir"
   done
 }
@@ -34,11 +34,15 @@ missing_mounts() {
 [ -z "$(missing_mounts "$COMPOSE" "$CONFIG")" ] \
   || fail "argus-llm does not mount: $(missing_mounts "$COMPOSE" "$CONFIG" | tr '\n' ' ')"
 
-grep -Eq '^model_file = "models/intent/intent.bin"$' "$CONFIG" \
-  || fail "$CONFIG does not name the intent model"
+grep -Eq '^bundle_dir = "models/decide/[A-Za-z0-9_.-]+"$' "$CONFIG" \
+  || fail "$CONFIG does not name the decider bundle"
+grep -Eq '^bundle_dir = "models/extract/[A-Za-z0-9_.-]+"$' "$CONFIG" \
+  || fail "$CONFIG does not name the extractor bundle"
+! grep -Eq '^\[intent\]|^engine = ' "$CONFIG" \
+  || fail "$CONFIG still selects an engine"
 
-grep -v 'target: /opt/argus/models/intent' "$COMPOSE" > "$TEST_TMP/compose.yml"
-[ "$(missing_mounts "$TEST_TMP/compose.yml" "$CONFIG")" = "intent" ] \
-  || fail "a compose file without the intent mount was not reported"
+grep -v 'target: /opt/argus/models/decide' "$COMPOSE" > "$TEST_TMP/compose.yml"
+[ "$(missing_mounts "$TEST_TMP/compose.yml" "$CONFIG")" = "decide" ] \
+  || fail "a compose file without the decider bundle mount was not reported"
 
 printf 'deploy-mounts-test: ok\n'

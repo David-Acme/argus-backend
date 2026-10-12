@@ -457,10 +457,12 @@ main() {
     ensure_object_store
   fi
 
-  install -d -m 0755 "$MODELS_DIR/vision" "$MODELS_DIR/intent"
-  if [ ! -f "$MODELS_DIR/intent/intent.bin" ] && [ -f "$ROOT/models/intent/intent.bin" ]; then
-    install -m 0644 "$ROOT/models/intent/intent.bin" "$MODELS_DIR/intent/intent.bin"
-  fi
+  install -d -m 0755 "$MODELS_DIR/vision" "$MODELS_DIR/decide" "$MODELS_DIR/extract"
+  for bundle in decide/bundle-laya-pilot extract/pilot-bundle; do
+    if [ ! -d "$MODELS_DIR/$bundle" ] && [ -d "$ROOT/models/$bundle" ]; then
+      cp -a "$ROOT/models/$bundle" "$MODELS_DIR/$bundle"
+    fi
+  done
   if [ "$WITH_MODELS" -eq 1 ]; then
     provision_models
   elif [ ! -d "$MODELS_DIR/llm" ] || [ ! -d "$MODELS_DIR/stt" ]; then

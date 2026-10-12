@@ -72,27 +72,6 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
-    if(NOT TARGET fasttext)
-        set(FASTTEXT_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/fastText/src)
-        add_library(fasttext STATIC
-            ${FASTTEXT_SRC}/args.cc
-            ${FASTTEXT_SRC}/autotune.cc
-            ${FASTTEXT_SRC}/densematrix.cc
-            ${FASTTEXT_SRC}/dictionary.cc
-            ${FASTTEXT_SRC}/fasttext.cc
-            ${FASTTEXT_SRC}/loss.cc
-            ${FASTTEXT_SRC}/matrix.cc
-            ${FASTTEXT_SRC}/meter.cc
-            ${FASTTEXT_SRC}/model.cc
-            ${FASTTEXT_SRC}/productquantizer.cc
-            ${FASTTEXT_SRC}/quantmatrix.cc
-            ${FASTTEXT_SRC}/utils.cc
-            ${FASTTEXT_SRC}/vector.cc)
-        target_include_directories(fasttext SYSTEM PUBLIC ${FASTTEXT_SRC})
-        find_package(Threads REQUIRED)
-        target_link_libraries(fasttext PUBLIC Threads::Threads)
-        target_compile_options(fasttext PRIVATE -w)
-    endif()
     if(NOT TARGET argus::lib::mcp)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/mcp
                          ${CMAKE_BINARY_DIR}/mcp)
@@ -562,8 +541,7 @@ target_link_libraries(memory-reminder-test PRIVATE argus::memory
 
 target_compile_definitions(memory-reminder-test PRIVATE
     ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
-    ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/memory"
-    ARGUS_TEST_EXTRACT_MODEL="${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf")
+    ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/memory")
 
 target_compile_options(memory-reminder-test PRIVATE -Wall -Wextra)
 
@@ -657,17 +635,6 @@ target_compile_options(extract-tier-split-test PRIVATE -Wall -Wextra)
 set_target_properties(extract-tier-split-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME extract-tier-split-test COMMAND extract-tier-split-test)
-
-foreach(TEST_NAME IN ITEMS intent-router-test intent-accuracy-test)
-    add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
-    target_compile_definitions(${TEST_NAME} PRIVATE
-        ARGUS_TEST_INTENT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/intent"
-        ARGUS_TEST_INTENT_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/intent")
-    target_link_libraries(${TEST_NAME} PRIVATE argus::intent doctest::doctest)
-    target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
-    set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
-    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
-endforeach()
 
 add_subdirectory(tests/eval)
 

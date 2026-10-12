@@ -14,7 +14,7 @@
 namespace turn
 {
 
-inline constexpr std::array<std::string_view, 3> kDeciderIds{"rules", "router", "laya"};
+inline constexpr std::array<std::string_view, 3> kDeciderIds{"rules", "triggers", "laya"};
 
 struct Pick
 {

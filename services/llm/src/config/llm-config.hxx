@@ -37,12 +37,10 @@ struct LlmDecisionConfig
   double nowMin{0.0};
 };
 
-struct LlmEngineConfig
+struct LlmBundleConfig
 {
-  std::string engine;
-  std::string bundleDir;
+  std::filesystem::path dir;
   std::string pin;
-  std::string agentConfig;
 };
 
 struct LlmOnnxConfig
@@ -87,9 +85,9 @@ public:
 
   [[nodiscard]] static bool resolveWitnessOnly(std::string_view decider);
 
-  [[nodiscard]] static LlmEngineConfig resolveDecisionEngine();
+  [[nodiscard]] static LlmBundleConfig resolveDecideBundle();
 
-  [[nodiscard]] static LlmEngineConfig resolveExtractEngine();
+  [[nodiscard]] static LlmBundleConfig resolveExtractBundle();
 
   [[nodiscard]] static LlmOnnxConfig resolveOnnx(std::string_view section);
 

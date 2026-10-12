@@ -131,13 +131,13 @@ private:
     opened_ = true;
     if (!tokenizer_.load(tokenizerJson_)) {
       LOG_WARN << "argus-llm: the Laya decider is off: " << tokenizerJson_.string()
-               << " is not a tokenizer; the turn continues on rules and the router";
+               << " is not a tokenizer; the turn continues on rules and explicit triggers";
       return;
     }
     const std::optional<nlohmann::ordered_json> questions = readOrderedJson(questionsJson_);
     if (!questions || !questions->is_object()) {
       LOG_WARN << "argus-llm: the Laya decider is off: " << questionsJson_.string()
-               << " cannot be read; the turn continues on rules and the router";
+               << " cannot be read; the turn continues on rules and explicit triggers";
       return;
     }
     if (questions->contains(kToolQuestion))
@@ -146,12 +146,12 @@ private:
       now_ = layaQuestionFromJson(questions->at(kNowQuestion));
     if (!tool_ || tool_->kind != QuestionKind::Choice || tool_->labels.empty() || !now_ || now_->kind != QuestionKind::Noul) {
       LOG_WARN << "argus-llm: the Laya decider is off: " << questionsJson_.string()
-               << " has no choice 'tool' and noul 'now' question; the turn continues on rules and the router";
+               << " has no choice 'tool' and noul 'now' question; the turn continues on rules and explicit triggers";
       return;
     }
     if (!session_.open(modelPath_, options_)) {
       LOG_WARN << "argus-llm: the Laya decider could not open " << modelPath_.filename().string() << ": " << session_.error()
-               << "; the turn continues on rules and the router";
+               << "; the turn continues on rules and explicit triggers";
       return;
     }
     LOG_INFO << "argus-llm: the Laya decider is ready on " << modelPath_.filename().string() << " with " << tool_->labels.size()
@@ -272,30 +272,6 @@ std::optional<Candidate> LayaDecider::decide(const DecideInput& input) const
                    .confident = top >= policy_.ask,
                    .runnerUp = std::move(runnerUp),
                    .now = now_.apply(reading->now)};
-}
-
-std::optional<BundleDecode> layaDecodeFromAgentConfig(const std::filesystem::path& path)
-{
-  if (path.empty())
-    return std::nullopt;
-  const std::optional<nlohmann::ordered_json> root = readOrderedJson(path);
-  if (!root || !root->is_object())
-    return std::nullopt;
-  BundleDecode decode;
-  if (const auto headMaxLen = root->find("head_max_len"); headMaxLen != root->end() && headMaxLen->is_number_integer() &&
-                                                         headMaxLen->get<int>() > 0)
-    decode.headMaxLen = headMaxLen->get<int>();
-  if (const auto temperature = root->find("temperature"); temperature != root->end() && temperature->is_array() &&
-                                                          temperature->size() == decode.temperature.size()) {
-    std::array<double, 3> values{};
-    for (std::size_t index = 0; index < values.size(); ++index) {
-      if (!(*temperature)[index].is_number())
-        return std::nullopt;
-      values[index] = (*temperature)[index].get<double>();
-    }
-    decode.temperature = values;
-  }
-  return decode;
 }
 
 std::unique_ptr<LayaModel> openLayaModel(LayaModelInput input)

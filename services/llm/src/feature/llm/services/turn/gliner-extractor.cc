@@ -366,7 +366,7 @@ public:
       return {};
     if (!(*outputs)[0].integral || !(*outputs)[1].integral) {
       LOG_WARN << "argus-llm: the GLiNER graph returned a candidate tensor that is not an integer one; "
-                  "the turn continues on NuExtract";
+                  "the turn fills its text slots with the rule tier";
       return {};
     }
     return decode({.request = request, .fields = type->second, .prompt = prompt, .outputs = *outputs});
@@ -378,12 +378,12 @@ private:
     opened_ = true;
     if (!tokenizer_.load(tokenizerPath_)) {
       LOG_WARN << "argus-llm: the GLiNER extractor could not read " << tokenizerPath_.string()
-               << "; the turn continues on NuExtract";
+               << "; the turn fills its text slots with the rule tier";
       return;
     }
     if (!session_.open(modelPath_, options_)) {
       LOG_WARN << "argus-llm: the GLiNER extractor could not open " << modelPath_.string() << ": " << session_.error()
-               << "; the turn continues on NuExtract";
+               << "; the turn fills its text slots with the rule tier";
       return;
     }
     ready_ = true;

@@ -11,11 +11,7 @@
 #include <feature/llm/services/tools/claim-check.hxx>
 #include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
-#include <feature/llm/services/turn/bundle-loader.hxx>
-#include <feature/llm/services/turn/deciders.hxx>
-#include <feature/llm/services/turn/gliner-extractor.hxx>
-#include <feature/llm/services/turn/laya-decider.hxx>
-#include <feature/llm/services/turn/onnx-session.hxx>
+#include <feature/llm/services/turn-engines.hxx>
 #include <feature/llm/services/turn/speech-acts.hxx>
 #include <feature/llm/services/turn/speech-guard.hxx>
 #include <feature/llm/services/turn/speech-render.hxx>
@@ -81,10 +77,7 @@ struct Options
   std::string trace;
   std::string ttft;
   std::string filter;
-  std::string decide;
   std::string decideBundle;
-  std::string layaAgentConfig;
-  std::string extract;
   std::string extractBundle;
   std::string rejectSample;
   std::string regionalismMarkers;
@@ -130,14 +123,8 @@ Options parseOptions(int argc, char** argv)
       options.ttft = argv[++i];
     else if (arg == "--filter" && hasValue)
       options.filter = argv[++i];
-    else if (arg == "--decide" && hasValue)
-      options.decide = argv[++i];
     else if (arg == "--decide-bundle" && hasValue)
       options.decideBundle = argv[++i];
-    else if (arg == "--laya-agent-config" && hasValue)
-      options.layaAgentConfig = argv[++i];
-    else if (arg == "--extract" && hasValue)
-      options.extract = argv[++i];
     else if (arg == "--extract-bundle" && hasValue)
       options.extractBundle = argv[++i];
     else if (arg == "--reject-sample" && hasValue)
@@ -165,6 +152,11 @@ Options parseOptions(int argc, char** argv)
     else if (arg == "--legacy-context")
       options.legacyContext = true;
   }
+  const std::filesystem::path models = std::filesystem::path(options.llmModel).parent_path().parent_path();
+  if (options.decideBundle.empty())
+    options.decideBundle = (models / "decide" / "bundle-laya-pilot").string();
+  if (options.extractBundle.empty())
+    options.extractBundle = (models / "extract" / "pilot-bundle").string();
   return options;
 }
 
@@ -387,15 +379,13 @@ std::string configKey(const Options& options)
 {
   const std::string decideBundle = std::filesystem::path(options.decideBundle).filename().string();
   const std::string extractBundle = std::filesystem::path(options.extractBundle).filename().string();
-  return std::format("eval:context_size={},max_tokens={},temp={},seed={},now=renderInstant({}),decide={}+{},extract={}+{}",
+  return std::format("eval:context_size={},max_tokens={},temp={},seed={},now=renderInstant({}),decide={},extract={}",
                      kContextSize,
                      kMaxTokens,
                      tomlFloat(options.temperature),
                      options.seed,
                      options.now,
-                     options.decide,
                      decideBundle,
-                     options.extract,
                      extractBundle);
 }
 
@@ -1072,81 +1062,26 @@ bool runTtft(const TtftInput& input)
   return static_cast<bool>(out);
 }
 
-struct Engines
+std::string bundlePin(const std::filesystem::path& dir)
 {
-  std::unique_ptr<turn::FirstOf> stack;
-  std::unique_ptr<turn::LayaDecider> laya;
-  std::unique_ptr<turn::GlinerExtractor> gliner;
-  std::string active;
-};
-
-std::string bundlePin(const std::string& dir)
-{
-  if (dir.empty())
-    return {};
-  const FileBytes bytes = readFile((std::filesystem::path(dir) / "sha256").string());
+  const FileBytes bytes = readFile((dir / "sha256").string());
   return bytes.error.empty() ? argus::hash::sha256Hex(bytes.bytes) : std::string{};
 }
 
-Engines setupEngines(LlmController& controller, const Options& options)
+TurnEngines setupEngines(LlmController& controller, const Options& options)
 {
-  Engines engines;
-  if (!options.decide.empty())
-    ConfigService::setRuntimeString("decide.engine", options.decide);
-  if (!options.decideBundle.empty())
-    ConfigService::setRuntimeString("decide.laya.bundle_dir", options.decideBundle);
-  if (!options.layaAgentConfig.empty())
-    ConfigService::setRuntimeString("decide.laya.agent_config", options.layaAgentConfig);
-  if (!options.extract.empty())
-    ConfigService::setRuntimeString("extract.engine", options.extract);
-  if (!options.extractBundle.empty())
-    ConfigService::setRuntimeString("extract.gliner.bundle_dir", options.extractBundle);
-  if (options.decide == "laya") {
-    const turn::BundleLoader bundle({.dir = options.decideBundle, .pin = bundlePin(options.decideBundle)});
-    if (bundle.valid() && !turn::unknownLayaLabel(bundle.labels())) {
-      engines.laya = std::make_unique<turn::LayaDecider>(turn::LayaDeciderInput{
-          .model = turn::openLayaModel(
-              {.bundle = bundle,
-               .options = {},
-               .decode = turn::layaDecodeFromAgentConfig(ConfigService::getString("decide.laya.agent_config"))
-                              .value_or(bundle.decode())}),
-          .fallback = &controller.adapter().routerDecider(),
-          .policy = bundle.policy(),
-          .confidence = bundle.confidenceCalibration(),
-          .now = bundle.nowCalibration()});
-      engines.stack = std::make_unique<turn::FirstOf>(
-          std::vector<const turn::Decider*>{&controller.adapter().ruleDecider(), engines.laya.get()});
-      controller.adapter().flow().useDecider(*engines.stack);
-      turn::PolicySet policies;
-      policies.set(std::string(turn::kDeciderIds[2]),
-                   turn::DecisionPolicy{.act = bundle.policy().act,
-                                        .ask = bundle.policy().ask,
-                                        .margin = bundle.policy().margin,
-                                        .nowMin = bundle.policy().now});
-      controller.adapter().flow().usePolicies(std::move(policies));
-      engines.active = "laya";
-    }
-    else {
-      std::cout << std::format("[WARN] the Laya bundle is off: {}\n", bundle.error());
-    }
+  TurnEngines engines = installTurnEngines({.adapter = controller.adapter(),
+                                            .decide = {.dir = options.decideBundle, .pin = bundlePin(options.decideBundle), .options = {}},
+                                            .extract = {.dir = options.extractBundle, .pin = bundlePin(options.extractBundle), .options = {}}});
+  if (engines.laya != nullptr) {
+    turn::PolicySet policies;
+    policies.set(std::string(turn::kDeciderIds[2]),
+                 turn::DecisionPolicy{.act = engines.laya->policy().act,
+                                      .ask = engines.laya->policy().ask,
+                                      .margin = engines.laya->policy().margin,
+                                      .nowMin = engines.laya->policy().now});
+    controller.adapter().flow().usePolicies(std::move(policies));
   }
-  if (options.extract == "gliner") {
-    const turn::BundleLoader bundle({.dir = options.extractBundle,
-                                     .pin = bundlePin(options.extractBundle),
-                                     .kind = turn::BundleKind::Extractor});
-    if (bundle.valid()) {
-      engines.gliner = std::make_unique<turn::GlinerExtractor>(turn::GlinerExtractorInput{
-          .model = turn::openGlinerModel(bundle, {}), .fallback = nullptr, .thresholds = bundle.thresholds()});
-      controller.adapter().flow().useText(*engines.gliner);
-      engines.active += (engines.active.empty() ? "" : "+");
-      engines.active += "gliner";
-    }
-    else {
-      std::cout << std::format("[WARN] the GLiNER bundle is off: {}\n", bundle.error());
-    }
-  }
-  if (engines.active.empty())
-    engines.active = "rules+router+nuextract";
   return engines;
 }
 
@@ -1690,10 +1625,6 @@ int main(int argc, char** argv)
       writeScratchConfig({.model = options.llmModel, .temperature = options.temperature, .seed = options.seed});
   ConfigService::load(scratch);
   std::filesystem::remove(scratch);
-  const std::filesystem::path intentModel =
-      std::filesystem::path(options.llmModel).parent_path().parent_path() / "intent" / "intent.bin";
-  if (std::filesystem::exists(intentModel))
-    ConfigService::setRuntimeString("intent.model_file", intentModel.string());
   llama_backend_init();
 
   LlmController controller;
@@ -1716,10 +1647,10 @@ int main(int argc, char** argv)
   const std::string renderEn = withSpeaker(personaEn, "en", kEvalRole, {});
   const std::vector<tools::ToolHandle> offered =
       controller.adapter().executor().offered({.role = UserRole::Owner, .modules = moduleGate().snapshot()});
-  const Engines engines = setupEngines(controller, options);
-  std::cout << std::format("pipeline: {}\n", engines.active);
-  if ((options.decide == "laya" && engines.laya == nullptr) || (options.extract == "gliner" && engines.gliner == nullptr)) {
-    std::cout << "[REFUSED] an engine the run asked for is not up; no gate is reported\n";
+  const TurnEngines engines = setupEngines(controller, options);
+  std::cout << std::format("pipeline: {}\n", engines.pipeline());
+  if (engines.laya == nullptr || engines.gliner == nullptr) {
+    std::cout << "[REFUSED] the shipped pipeline is not up (" << engines.decideError << engines.extractError << "); no gate is reported\n";
     controller.shutdownEngine();
     llama_backend_free();
     return 1;
@@ -1765,7 +1696,7 @@ int main(int argc, char** argv)
                            static_cast<double>(glinerRss) / (1024.0 * 1024.0),
                            static_cast<double>(layaRss + glinerRss) / (1024.0 * 1024.0),
                            static_cast<double>(turn::residentBytes()) / (1024.0 * 1024.0),
-                           engines.active);
+                           engines.pipeline());
   if (!options.dump.empty() && !writeDump({.path = options.dump, .service = controller.service(), .runs = runs})) {    std::cout << "[ERROR] cannot write " << options.dump << "\n";
     controller.shutdownEngine();
     llama_backend_free();

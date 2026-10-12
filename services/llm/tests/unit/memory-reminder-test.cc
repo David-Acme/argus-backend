@@ -1,7 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <llama.h>
 #include <shared/vocabulary/tool-contracts.hxx>
 #include <sqlite3.h>
 #include <config/config-service.hxx>
@@ -32,9 +31,6 @@ namespace
 #ifndef ARGUS_TEST_MEMORY_MODELS_DIR
 #define ARGUS_TEST_MEMORY_MODELS_DIR "models/memory"
 #endif
-#ifndef ARGUS_TEST_EXTRACT_MODEL
-#define ARGUS_TEST_EXTRACT_MODEL "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"
-#endif
 
 constexpr const char* kScratchConfig = "memory-reminder-test.toml";
 constexpr const char* kScratchDir = "/tmp/f9-memory-reminder";
@@ -49,8 +45,7 @@ public:
   [[nodiscard]] std::string chat(const ChatRequest&) const override { return {}; }
 };
 
-void writeConfig(const std::string& database = "reminder.db",
-                 const std::string& extractModel = std::string(kScratchDir) + "/none.gguf")
+void writeConfig(const std::string& database = "reminder.db")
 {
   std::remove(kScratchConfig);
   std::ofstream config(kScratchConfig);
@@ -66,9 +61,7 @@ void writeConfig(const std::string& database = "reminder.db",
          << "/model.onnx\"\n"
          << "embedding_tokenizer = \"" << ARGUS_TEST_MEMORY_MODELS_DIR
          << "/tokenizer.json\"\n"
-         << "embedding_preload = true\n"
-         << "[extract]\n"
-         << "model_path = \"" << extractModel << "\"\n";
+         << "embedding_preload = true\n";
 }
 
 std::string weekdayName(int weekday)
@@ -299,67 +292,6 @@ std::vector<OpenFact> openFacts(const std::string& database)
   sqlite3_close(db);
   return facts;
 }
-}
-
-TEST_CASE("an explicit request kept as a note is refined off the turn by the extraction model")
-{
-  std::filesystem::create_directories(kScratchDir);
-  writeConfig("refine.db", ARGUS_TEST_EXTRACT_MODEL);
-  ConfigService::load(kScratchConfig);
-  const std::string database = std::string(kScratchDir) + "/refine.db";
-  std::filesystem::remove(database);
-  llama_backend_init();
-  {
-    SilentChat chat;
-    MemoryService service(VecDb::instance(), chat);
-    service.init({});
-    REQUIRE(service.isLoaded());
-    const auto descriptors = service.toolDescriptors();
-    const auto run = [&descriptors](const tools::ToolCall& call) {
-      for (const auto& descriptor : descriptors)
-        if (descriptor.spec.name == call.name)
-          return descriptor.handler(call);
-      return tools::ToolResult{};
-    };
-
-    auto gate = callFor("memory.remember", kSpeaker);
-    gate.context.utterance = "guarda que el código del portón es 1234";
-    gate.arguments["text"] = gate.context.utterance;
-    gate.context.decided = true;
-    const auto saved = run(gate);
-    INFO("gate output: " << saved.output);
-    REQUIRE(saved.ok);
-    CHECK(saved.output.find("1234") != std::string::npos);
-
-    auto parcel = callFor("memory.remember", kSpeaker);
-    parcel.context.utterance = "anota que llegó el paquete";
-    parcel.arguments["text"] = parcel.context.utterance;
-    parcel.context.decided = true;
-    REQUIRE(run(parcel).ok);
-
-    REQUIRE(service.flushPending(180000));
-    const auto facts = openFacts(database);
-    const auto holding = [&facts](const std::string& needle) {
-      return std::ranges::count_if(facts, [&needle](const OpenFact& fact) {
-        return fact.canonical.find(needle) != std::string::npos;
-      });
-    };
-    for (const auto& fact : facts)
-      MESSAGE("open fact: " << fact.predicate << " | " << fact.canonical);
-    CHECK(holding("1234") == 1);
-    CHECK(holding("paquete") == 1);
-    const bool gateRefined = std::ranges::any_of(facts, [](const OpenFact& fact) {
-      return fact.canonical.find("1234") != std::string::npos && fact.predicate != "nota";
-    });
-    CHECK(gateRefined);
-
-    auto recall = callFor("memory.recall", kSpeaker);
-    recall.arguments["query"] = "código del portón";
-    CHECK(run(recall).output.find("1234") != std::string::npos);
-    service.shutdown();
-  }
-  llama_backend_free();
-  std::remove(kScratchConfig);
 }
 
 TEST_CASE("a newer value of the same fact closes the older one, and notes never close each other")

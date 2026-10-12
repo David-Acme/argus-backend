@@ -11,7 +11,7 @@
 #include <shared/vocabulary/tool-contracts.hxx>
 #include <feature/memory/repositories/memory-graph/memory-graph-repository.hxx>
 #include <feature/memory/services/embedding/embedding-service.hxx>
-#include <feature/memory/services/extract/tiered-extractor.hxx>
+#include <feature/memory/services/extract/covered-lexicon-extractor.hxx>
 #include <feature/memory/services/memory/graph-recall.hxx>
 #include <feature/memory/services/memory/memory-chat.hxx>
 #include <feature/memory/services/memory/memory-formation.hxx>
@@ -24,13 +24,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-struct CaptureInput
-{
-  int64_t userId;
-  std::string lang;
-  std::string text;
-};
 
 struct TranscriptJobInput
 {
@@ -48,19 +41,6 @@ struct SystemEventInput
   int64_t userId;
   std::string lang;
   std::vector<int64_t> entitiesHint;
-};
-
-enum class CaptureOutcome
-{
-  Rejected,
-  Deferred,
-  Stored,
-};
-
-struct CaptureResult
-{
-  CaptureOutcome outcome = CaptureOutcome::Rejected;
-  int64_t factId = 0;
 };
 
 struct MemoryInitOptions
@@ -85,8 +65,6 @@ public:
   void requestStop();
   [[nodiscard]] bool drained() const;
 
-  CaptureResult captureExplicit(const CaptureInput& input);
-  CaptureResult captureImplicit(const CaptureInput& input);
   RecallContext recall(const RecallInput& input);
   void bumpHitCount(const std::vector<int64_t>& ids);
   void bumpEpisodeHits(const std::vector<int64_t>& ids);
@@ -109,7 +87,6 @@ public:
   void setReminderCalls(std::shared_ptr<const ReminderCallScheduler> scheduler);
   void setReminderRows(std::shared_ptr<const ReminderRowWriter> writer);
 
-  ExtractionService& extraction() { return extractModel_; }
   SemanticGraph& graph() { return *graph_; }
   MemoryFormation& formation() { return formation_; }
   GraphRecall& graphRecall() { return graphRecall_; }
@@ -123,7 +100,6 @@ private:
       Embed,
       Compact,
       Rebuild,
-      Extract,
       Profile,
     };
     Kind kind;
@@ -132,26 +108,7 @@ private:
     std::string text;
     std::string lang;
     bool preferIdle = false;
-    bool salient = false;
     bool episode = false;
-  };
-
-  struct InlineCapture
-  {
-    std::string channel;
-    std::string text;
-    std::string lang;
-    int64_t userId = 0;
-    bool salient = false;
-    bool preferIdle = false;
-  };
-
-  struct NoteRefinement
-  {
-    const FormationResult& note;
-    int64_t userId = 0;
-    std::string text;
-    std::string lang;
   };
 
   VecDb& vecDb_;
@@ -164,8 +121,7 @@ private:
   EmbeddingService embedding_;
   PhraseCatalog phrases_;
   RuleParser ruleParser_{phrases_};
-  ExtractionService extractModel_;
-  TieredExtractor extractor_{extractModel_};
+  CoveredLexiconExtractor extractor_;
   MemoryFormation formation_{MemoryFormationDeps{.graph = *graph_,
                                                  .resolver = resolver_,
                                                  .ruleParser = ruleParser_}};
@@ -203,12 +159,8 @@ private:
   void enqueueJob(MemoryJob job);
   void processJob(const MemoryJob& job);
   void processCompact(const MemoryJob& job);
-  void processExtract(const MemoryJob& job);
   void processProfile(const MemoryJob& job);
   std::string buildProfile(int64_t userId, const std::string& lang);
-  int64_t captureInline(const InlineCapture& capture);
-  void deferCapture(const InlineCapture& capture);
-  void refineLater(const NoteRefinement& refinement);
   struct EmbedRequest
   {
     int64_t id{0};

@@ -6,7 +6,14 @@
 
 #include <algorithm>
 #include <array>
+#include <string_view>
 #include <utility>
+
+namespace
+{
+constexpr std::string_view kDecideBundle = "models/decide/bundle-laya-pilot";
+constexpr std::string_view kExtractBundle = "models/extract/pilot-bundle";
+}
 
 ListenerConfig LlmConfig::resolveListener()
 {
@@ -69,20 +76,18 @@ bool LlmConfig::resolveWitnessOnly(std::string_view decider)
   return ConfigService::hasKey(key) && ConfigService::getBool(key);
 }
 
-LlmEngineConfig LlmConfig::resolveDecisionEngine()
+LlmBundleConfig LlmConfig::resolveDecideBundle()
 {
-  return {.engine = ConfigService::getString("decide.engine"),
-          .bundleDir = ConfigService::getString("decide.laya.bundle_dir"),
-          .pin = ConfigService::getString("decide.laya.sha256"),
-          .agentConfig = ConfigService::getString("decide.laya.agent_config")};
+  const std::string dir = ConfigService::getString("decide.bundle_dir");
+  return {.dir = dir.empty() ? std::filesystem::path(kDecideBundle) : std::filesystem::path(dir),
+          .pin = ConfigService::getString("decide.sha256")};
 }
 
-LlmEngineConfig LlmConfig::resolveExtractEngine()
+LlmBundleConfig LlmConfig::resolveExtractBundle()
 {
-  return {.engine = ConfigService::getString("extract.engine"),
-          .bundleDir = ConfigService::getString("extract.gliner.bundle_dir"),
-          .pin = ConfigService::getString("extract.gliner.sha256"),
-          .agentConfig = {}};
+  const std::string dir = ConfigService::getString("extract.bundle_dir");
+  return {.dir = dir.empty() ? std::filesystem::path(kExtractBundle) : std::filesystem::path(dir),
+          .pin = ConfigService::getString("extract.sha256")};
 }
 
 LlmOnnxConfig LlmConfig::resolveOnnx(std::string_view section)

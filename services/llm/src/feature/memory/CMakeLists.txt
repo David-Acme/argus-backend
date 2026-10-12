@@ -8,10 +8,9 @@ argus_module(NAME memory
         services/embedding/unigram-tokenizer.cc
         services/extract/call-time.cc
         services/extract/call-time-words.cc
-        services/extract/extraction-service.cc
+        services/extract/covered-lexicon-extractor.cc
         services/extract/lexicon-extractor.cc
         services/extract/temporal-resolver.cc
-        services/extract/tiered-extractor.cc
         services/memory/entity-resolver.cc
         services/memory/graph-recall.cc
         services/memory/memory-formation.cc
@@ -34,10 +33,8 @@ argus_module(NAME memory
         argus::clients::llm
         argus::clients::notification
         argus::clients::productivity
-        argus::hardware-profile
         Drogon::Drogon
         nlohmann_json::nlohmann_json
-        llama
         onnxruntime::onnxruntime
         sqlite-vec)
 

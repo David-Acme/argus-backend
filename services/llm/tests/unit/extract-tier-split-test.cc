@@ -70,9 +70,7 @@ TEST_CASE("the lexicon tier carries most real memory_save turns")
     std::vector<extract::ExtractedFact> facts;
     lexicon.extract({.clause = clause,
                      .lang = "es",
-                     .userId = 0,
-                     .requireModel = false,
-                     .allowModel = false},
+                     .userId = 0},
                     facts);
     if (!facts.empty())
       ++lexiconHits;

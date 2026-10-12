@@ -36,10 +36,10 @@ argus_module(NAME llm
     SOURCES
         controllers/llm-controller.cc
         dtos/chat-dto.cc
-        services/intent-gate.cc
         services/lfm-adapter.cc
         services/llm-service.cc
         services/sampling-config.cc
+        services/turn-engines.cc
         services/tools/app-command.cc
         services/tools/claim-check.cc
         services/tools/core-tools.cc
@@ -66,7 +66,6 @@ argus_module(NAME llm
         services/turn/gliner-extractor.cc
         services/turn/laya-decider.cc
         services/turn/laya-sequence.cc
-        services/turn/model-text.cc
         services/turn/onnx-session.cc
         services/turn/pending-turn.cc
         services/turn/slot-lexicon.cc
@@ -91,7 +90,6 @@ argus_module(NAME llm
         argus::lib::validation
         argus::lib::http
         argus::clients::llm
-        argus::intent
         argus::memory
         Drogon::Drogon
         nlohmann_json::nlohmann_json

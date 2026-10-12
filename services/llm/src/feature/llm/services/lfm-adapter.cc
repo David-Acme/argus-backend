@@ -83,27 +83,26 @@ std::string contextTail(const ContextTailInput& args)
 
 }
 
-LfmAdapter::LfmAdapter(LlmService& llm, const IntentRouter* router)
+LfmAdapter::LfmAdapter(LlmService& llm)
     : LfmAdapter(LfmAdapterInput{
           .engine = {.chat = [&llm](const ChatRequest& request) { return llm.chat(request); },
                      .chatStream =
                          [&llm](const ChatRequest& request, TokenCallback onToken) {
                            llm.chatStream(request, std::move(onToken));
                          }},
-          .registry = ToolRegistry::instance(),
-          .router = router})
+          .registry = ToolRegistry::instance()})
 {
 }
 
 LfmAdapter::LfmAdapter(LfmAdapterInput input)
     : engine_(std::move(input.engine)), executor_(input.registry),
-      routerDecider_(input.router), stack_({&ruleDecider_, &routerDecider_}),
+      stack_({&ruleDecider_, &triggerDecider_}),
       flow_({.executor = executor_,
              .decider = input.decider != nullptr ? input.decider : &stack_,
              .text = input.text != nullptr ? input.text : &ruleText_,
              .policies = std::move(input.policies)})
 {
-  flow_.useWitnesses({&ruleDecider_, &routerDecider_});
+  flow_.useWitnesses({&ruleDecider_, &triggerDecider_});
 }
 
 std::string LfmAdapter::spokenText(const std::string& content)

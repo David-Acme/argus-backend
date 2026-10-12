@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <shared/vocabulary/tool-contracts.hxx>
-#include <feature/intent/services/intent-router.hxx>
 #include <llm/llm-service.hxx>
 #include <feature/llm/services/tools/claim-check.hxx>
 #include <feature/llm/services/tools/tool-access.hxx>
@@ -109,7 +108,6 @@ struct LfmAdapterInput
 {
   ChatEngine engine;
   ToolRegistry& registry;
-  const IntentRouter* router{nullptr};
   const turn::Decider* decider{nullptr};
   const slots::TextSlots* text{nullptr};
   turn::PolicySet policies{};
@@ -125,7 +123,7 @@ struct SpeakInput
 class LfmAdapter
 {
 public:
-  explicit LfmAdapter(LlmService& llm, const IntentRouter* router = nullptr);
+  explicit LfmAdapter(LlmService& llm);
 
   explicit LfmAdapter(LfmAdapterInput input);
 
@@ -155,7 +153,9 @@ public:
 
   [[nodiscard]] const turn::RuleDecider& ruleDecider() const { return ruleDecider_; }
 
-  [[nodiscard]] const turn::RouterDecider& routerDecider() const { return routerDecider_; }
+  [[nodiscard]] const turn::TriggerDecider& triggerDecider() const { return triggerDecider_; }
+
+  [[nodiscard]] const slots::RuleText& ruleText() const { return ruleText_; }
 
 private:
   ToolChatOutput chatTurn(const SpeakInput& args);
@@ -167,7 +167,7 @@ private:
   ChatEngine engine_;
   ToolExecutor executor_;
   turn::RuleDecider ruleDecider_;
-  turn::RouterDecider routerDecider_;
+  turn::TriggerDecider triggerDecider_;
   turn::FirstOf stack_;
   turn::ContextSelector contextSelector_;
   slots::RuleText ruleText_;

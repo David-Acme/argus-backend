@@ -56,9 +56,7 @@ void writeConfig()
          << "create_face_vec = false\n"
          << "embedding_model = \"" << ARGUS_TEST_MEMORY_MODELS_DIR << "/model.onnx\"\n"
          << "embedding_tokenizer = \"" << ARGUS_TEST_MEMORY_MODELS_DIR << "/tokenizer.json\"\n"
-         << "embedding_preload = true\n"
-         << "[extract]\n"
-         << "model_path = \"" << kScratchDir << "/none.gguf\"\n";
+         << "embedding_preload = true\n";
 }
 
 int64_t scalar(sqlite3* db, const std::string& sql)

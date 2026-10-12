@@ -2,7 +2,7 @@
 
 #include "decider.hxx"
 
-#include <feature/intent/services/intent-router.hxx>
+#include <phrase/phrase-catalog.hxx>
 
 #include <vector>
 
@@ -17,17 +17,17 @@ public:
   [[nodiscard]] std::optional<Candidate> decide(const DecideInput& input) const override;
 };
 
-class RouterDecider final : public Decider
+class TriggerDecider final : public Decider
 {
 public:
-  explicit RouterDecider(const IntentRouter* router) : router_(router) {}
+  TriggerDecider();
 
   [[nodiscard]] std::string_view id() const override { return kDeciderIds[1]; }
 
   [[nodiscard]] std::optional<Candidate> decide(const DecideInput& input) const override;
 
 private:
-  const IntentRouter* router_;
+  PhraseCatalog catalog_;
 };
 
 class FirstOf final : public Decider
