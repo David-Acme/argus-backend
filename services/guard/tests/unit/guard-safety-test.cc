@@ -17,6 +17,8 @@
 #include <feature/safety/services/pin-attempts.hxx>
 #include <feature/safety/services/pin-hash.hxx>
 #include <feature/safety/services/safety-service.hxx>
+#include <feature/guard/infra/resource-change-outbox.hxx>
+#include <nats/nats-bus.hxx>
 #include <text/json-util.hxx>
 
 #include <algorithm>
@@ -144,6 +146,7 @@ struct SafetyRig
     scalar("DELETE FROM guard_safety_setting");
     scalar("DELETE FROM guard_safety_alert");
     scalar("DELETE FROM guard_response_contact");
+    scalar("DELETE FROM change_outbox");
     scalar("UPDATE guard_environment SET mode = 'away'");
   }
 
@@ -151,6 +154,8 @@ struct SafetyRig
   std::shared_ptr<const ResponseDirectory> directory;
   AddressedNotifications notifications;
   QuietCameraActions camera;
+  std::shared_ptr<NatsBus> bus{std::make_shared<NatsBus>()};
+  ResourceChangeOutbox changes{bus};
   GuardService guard{GuardService::Dependencies{.bus = nullptr,
                                                 .identity = &identity,
                                                 .notifications = &notifications,
@@ -164,6 +169,7 @@ struct SafetyRig
   int64_t clock{1'700'000'000};
   SafetyService safety{SafetyService::Dependencies{.sink = &sink,
                                                    .actor = &actor,
+                                                   .changes = &changes,
                                                    .clock = [this] { return clock; }},
                        SafetyService::Config{.pinIterations = 1000,
                                              .panicRepeatWindowS = 60,
@@ -216,6 +222,20 @@ struct SafetyRig
                                                        .currentPin = std::nullopt})));
   }
 };
+
+std::string lastPayload()
+{
+  const auto rows = DbService::client()->execSqlSync(
+      "SELECT payload FROM change_outbox ORDER BY rowid DESC LIMIT 1");
+  return rows.empty() ? std::string{} : rows[0][0].as<std::string>();
+}
+
+int64_t changeRows()
+{
+  const auto rows =
+      DbService::client()->execSqlSync("SELECT COUNT(*) FROM change_outbox");
+  return rows.empty() ? 0 : rows[0][0].as<int64_t>();
+}
 
 bool contains(const std::vector<int64_t>& ids, int64_t id)
 {
@@ -774,6 +794,93 @@ TEST_CASE("a disabled account loses its PINs and old alerts are purged")
          std::to_string(rig.clock - 86400) + ", 1)");
   CHECK(drogon::sync_wait(rig.safety.purgeExpired()) == 1);
   CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert") == "1");
+}
+
+TEST_CASE("a PIN set or removed announces the user whose read it changes")
+{
+  boot();
+  SafetyRig rig;
+  rig.armPins();
+  const int64_t before = changeRows();
+
+  CHECK(drogon::sync_wait(rig.safety.setPin({.userId = 2,
+                                             .userName = "Laura",
+                                             .disarmPin = "3333",
+                                             .duressPin = "4444",
+                                             .currentPin = std::string("1111")}))
+            .hasPin);
+  CHECK(changeRows() == before + 1);
+  CHECK(lastPayload().find("\"scope\":\"safety_pin\"") != std::string::npos);
+  CHECK(lastPayload().find("\"user\":2") != std::string::npos);
+  CHECK(lastPayload().find("\"ids\"") == std::string::npos);
+
+  CHECK_FALSE(drogon::sync_wait(rig.safety.removePin({.userId = 2,
+                                                      .userName = "Laura",
+                                                      .currentPin = std::string("3333")}))
+                  .hasPin);
+  CHECK(changeRows() == before + 2);
+  CHECK(lastPayload().find("\"scope\":\"safety_pin\"") != std::string::npos);
+  CHECK(lastPayload().find("\"user\":2") != std::string::npos);
+}
+
+TEST_CASE("a refused PIN write announces nothing")
+{
+  boot();
+  SafetyRig rig;
+  rig.armPins();
+  const int64_t before = changeRows();
+  CHECK(refusalOf([&] {
+          static_cast<void>(drogon::sync_wait(rig.safety.removePin(
+              {.userId = 2, .userName = "Laura", .currentPin = std::string("9999")})));
+        }) == 403);
+  CHECK(changeRows() == before);
+}
+
+TEST_CASE("switching duress off announces the scope every role reads")
+{
+  boot();
+  SafetyRig rig;
+  rig.armPins();
+  const int64_t before = changeRows();
+
+  const SafetySetting setting = drogon::sync_wait(rig.safety.toggle(
+      {.duressEnabled = false,
+       .actorUserId = 1,
+       .actorName = "Ana",
+       .currentPin = std::string("1111")}));
+  CHECK_FALSE(setting.duressEnabled);
+  CHECK(changeRows() == before + 1);
+  CHECK(lastPayload().find("\"scope\":\"duress\"") != std::string::npos);
+  CHECK(lastPayload().find("\"user\"") == std::string::npos);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_user_pin") == "0");
+}
+
+TEST_CASE("a duress event leaves the change feed alone and disarms like the real PIN")
+{
+  boot();
+  SafetyRig rig;
+  rig.armPins();
+  scalar("UPDATE guard_environment SET mode = 'armed'");
+  const int64_t before = changeRows();
+
+  const Json::Value disarmed = rig.setMode("away", std::string("2222"), 2);
+  rig.waitForKind("guard_duress", 1);
+  CHECK_FALSE(rig.ofKind("guard_duress").empty());
+  CHECK(changeRows() == before);
+  REQUIRE(disarmed.size() == 1);
+  CHECK(disarmed[0]["mode"].asString() == "away");
+}
+
+TEST_CASE("a disabled account announces the PIN it lost")
+{
+  boot();
+  SafetyRig rig;
+  rig.armPins();
+  const int64_t before = changeRows();
+  drogon::sync_wait(rig.safety.forgetUser(2));
+  CHECK(changeRows() == before + 1);
+  CHECK(lastPayload().find("\"scope\":\"safety_pin\"") != std::string::npos);
+  CHECK(lastPayload().find("\"user\":2") != std::string::npos);
 }
 
 TEST_CASE("safety notices render in both languages")

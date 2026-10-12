@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <string_view>
 
 namespace safety_setting_query
@@ -30,4 +31,5 @@ struct SafetySettingUpdateInput
   bool duressEnabled{false};
   int64_t updatedBy{0};
   int64_t now{0};
+  drogon::orm::DbClient* client{nullptr};
 };

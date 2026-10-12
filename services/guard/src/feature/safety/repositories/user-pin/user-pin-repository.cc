@@ -21,17 +21,26 @@ drogon::Task<std::optional<UserPinRow>> UserPinRepository::find(int64_t userId) 
 
 drogon::Task<void> UserPinRepository::upsert(const UserPinUpsertInput& input) const
 {
-  co_await DbService::client()->execSqlCoro(std::string(UPSERT_PIN), input.userId,
-                                            input.disarmHash, input.duressHash,
-                                            input.now, input.now);
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* client =
+      input.client != nullptr ? input.client : owned.get();
+  co_await client->execSqlCoro(std::string(UPSERT_PIN), input.userId,
+                               input.disarmHash, input.duressHash, input.now,
+                               input.now);
 }
 
-drogon::Task<void> UserPinRepository::remove(int64_t userId) const
+drogon::Task<void> UserPinRepository::remove(
+    int64_t userId, drogon::orm::DbClient* client) const
 {
-  co_await DbService::client()->execSqlCoro(std::string(DELETE_PIN), userId);
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* db = client != nullptr ? client : owned.get();
+  co_await db->execSqlCoro(std::string(DELETE_PIN), userId);
 }
 
-drogon::Task<void> UserPinRepository::removeAll() const
+drogon::Task<void>
+UserPinRepository::removeAll(drogon::orm::DbClient* client) const
 {
-  co_await DbService::client()->execSqlCoro(std::string(DELETE_ALL_PINS));
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* db = client != nullptr ? client : owned.get();
+  co_await db->execSqlCoro(std::string(DELETE_ALL_PINS));
 }

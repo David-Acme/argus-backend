@@ -945,7 +945,7 @@ drogon::Task<void>
 GuardRepository::recordResource(const GuardResourceWrite& input) const
 {
   const ResourceChangeRow row = resourceChangeRow(
-      {.scope = input.scope, .ids = input.ids, .client = nullptr});
+      {.scope = input.scope, .ids = input.ids, .user = 0, .client = nullptr});
   const auto entropy = outbox::drawEntropy();
   if (!entropy)
     throw ResponseException(GuardErrors::ChangeNotRecorded);

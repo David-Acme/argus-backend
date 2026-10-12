@@ -107,7 +107,7 @@ drogon::Task<void> PostureWatch::evaluate() const
         if (dependencies_.changes != nullptr) {
           co_await dependencies_.changes->record(
               {.scope = ResourceScope::Environments,
-               .ids = {environment.id},
+               .ids = {environment.id}, .user = 0,
                .client = transaction.get()});
         }
         if (!co_await db_transaction::Commit(std::move(transaction)))

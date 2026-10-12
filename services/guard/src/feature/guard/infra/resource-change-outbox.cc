@@ -45,6 +45,8 @@ Json::Value resourcePayload(const ResourceChangeInput& input)
   payload[sync_change::kDomainField] =
       resourceDomainToString(ResourceDomain::Guard);
   payload[sync_change::kScopeField] = resourceScopeToString(input.scope);
+  if (input.user > 0)
+    payload[sync_change::kUserField] = static_cast<Json::Int64>(input.user);
   if (!input.ids.empty()) {
     Json::Value ids(Json::arrayValue);
     for (const auto id : input.ids)

@@ -4,7 +4,10 @@
 #include <feature/safety/services/pin-hash.hxx>
 
 #include <errors/response-exception.hxx>
+#include <feature/guard/controllers/guard-errors.hxx>
 #include <runtime/blocking-task.hxx>
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
@@ -210,10 +213,27 @@ drogon::Task<SafetyStatus> SafetyService::setPin(const PinSetInput& input) const
                          pin_hash::make({.pin = duress, .iterations = iterations})};
       },
       BlockingLane::Heavy};
-  co_await pinRepository_.upsert({.userId = input.userId,
-                                  .disarmHash = hashes.first,
-                                  .duressHash = hashes.second,
-                                  .now = now()});
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    co_await pinRepository_.upsert({.userId = input.userId,
+                                    .disarmHash = hashes.first,
+                                    .duressHash = hashes.second,
+                                    .now = now(),
+                                    .client = transaction.get()});
+    if (dependencies_.changes != nullptr) {
+      co_await dependencies_.changes->record(
+          {.scope = ResourceScope::SafetyPin,
+           .ids = {},
+           .user = input.userId,
+           .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   attempts_->clear(input.userId);
   co_return SafetyStatus{.duressEnabled = true, .hasPin = true};
 }
@@ -225,7 +245,23 @@ drogon::Task<SafetyStatus> SafetyService::removePin(const PinRemoveInput& input)
                               .pin = input.currentPin,
                               .environmentId = std::nullopt};
   co_await requireCurrentPin(request);
-  co_await pinRepository_.remove(input.userId);
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    co_await pinRepository_.remove(input.userId, transaction.get());
+    if (dependencies_.changes != nullptr) {
+      co_await dependencies_.changes->record(
+          {.scope = ResourceScope::SafetyPin,
+           .ids = {},
+           .user = input.userId,
+           .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   attempts_->clear(input.userId);
   const SafetySetting setting = co_await settingRepository_.find();
   co_return SafetyStatus{.duressEnabled = setting.duressEnabled, .hasPin = false};
@@ -233,7 +269,22 @@ drogon::Task<SafetyStatus> SafetyService::removePin(const PinRemoveInput& input)
 
 drogon::Task<void> SafetyService::forgetUser(int64_t userId) const
 {
-  co_await pinRepository_.remove(userId);
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    co_await pinRepository_.remove(userId, transaction.get());
+    if (dependencies_.changes != nullptr) {
+      co_await dependencies_.changes->record({.scope = ResourceScope::SafetyPin,
+                                              .ids = {},
+                                              .user = userId,
+                                              .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   attempts_->clear(userId);
 }
 
@@ -250,10 +301,26 @@ drogon::Task<SafetySetting> SafetyService::toggle(const SafetyToggleInput& input
                                 .pin = input.currentPin,
                                 .environmentId = std::nullopt});
   const int64_t at = now();
-  co_await settingRepository_.update(
-      {.duressEnabled = input.duressEnabled, .updatedBy = input.actorUserId, .now = at});
-  if (!input.duressEnabled)
-    co_await pinRepository_.removeAll();
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    co_await settingRepository_.update({.duressEnabled = input.duressEnabled,
+                                        .updatedBy = input.actorUserId,
+                                        .now = at,
+                                        .client = transaction.get()});
+    if (!input.duressEnabled)
+      co_await pinRepository_.removeAll(transaction.get());
+    if (dependencies_.changes != nullptr) {
+      co_await dependencies_.changes->record({.scope = ResourceScope::Duress,
+                                              .ids = {},
+                                              .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   co_return SafetySetting{
       .duressEnabled = input.duressEnabled, .updatedAt = at, .updatedBy = input.actorUserId};
 }

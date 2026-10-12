@@ -1,5 +1,6 @@
 #pragma once
 
+#include <feature/guard/infra/resource-change-outbox.hxx>
 #include <feature/guard/services/disarm-gate.hxx>
 #include <feature/safety/infra/safety-ports.hxx>
 #include <feature/safety/repositories/safety-alert/safety-alert-repository.hxx>
@@ -78,6 +79,7 @@ public:
   {
     const SafetyAlertSink* sink{nullptr};
     const SafetyActorNotifier* actor{nullptr};
+    const ResourceChangeOutbox* changes{nullptr};
     Clock clock;
   };
 

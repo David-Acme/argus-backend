@@ -21,7 +21,10 @@ drogon::Task<SafetySetting> SafetySettingRepository::find() const
 drogon::Task<void>
 SafetySettingRepository::update(const SafetySettingUpdateInput& input) const
 {
-  co_await DbService::client()->execSqlCoro(std::string(UPSERT_SETTING),
-                                            input.duressEnabled ? 1 : 0, input.now,
-                                            input.updatedBy);
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* client =
+      input.client != nullptr ? input.client : owned.get();
+  co_await client->execSqlCoro(std::string(UPSERT_SETTING),
+                               input.duressEnabled ? 1 : 0, input.now,
+                               input.updatedBy);
 }

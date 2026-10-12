@@ -344,7 +344,7 @@ GuardFeatureService::createGuest(const ExpectedGuestCreation& input) const
          .client = transaction.get()});
     if (changes_ != nullptr) {
       co_await changes_->record({.scope = ResourceScope::ExpectedVisits,
-                                 .ids = {guestId},
+                                 .ids = {guestId}, .user = 0,
                                  .client = transaction.get()});
     }
     if (!co_await db_transaction::Commit(std::move(transaction)))
@@ -385,7 +385,7 @@ drogon::Task<bool> GuardFeatureService::removeGuest(int64_t id) const
     removed = co_await guardRepository_.removeGuest(id, transaction.get());
     if (removed && changes_ != nullptr) {
       co_await changes_->record({.scope = ResourceScope::ExpectedVisits,
-                                 .ids = {id},
+                                 .ids = {id}, .user = 0,
                                  .client = transaction.get()});
     }
     if (!co_await db_transaction::Commit(std::move(transaction)))
@@ -692,7 +692,7 @@ GuardFeatureService::createEnvironment(const CreateEnvironmentDto& input) const
     co_await rememberPosture(created, transaction.get());
     if (changes_ != nullptr) {
       co_await changes_->record({.scope = ResourceScope::Environments,
-                                 .ids = {created.id},
+                                 .ids = {created.id}, .user = 0,
                                  .client = transaction.get()});
     }
     if (!co_await db_transaction::Commit(std::move(transaction)))
@@ -743,7 +743,7 @@ GuardFeatureService::updateEnvironment(const EnvironmentPatchInput& input) const
     co_await rememberPosture(*updated, transaction.get());
     if (changes_ != nullptr) {
       co_await changes_->record({.scope = ResourceScope::Environments,
-                                 .ids = {updated->id},
+                                 .ids = {updated->id}, .user = 0,
                                  .client = transaction.get()});
     }
     if (!co_await db_transaction::Commit(std::move(transaction)))
@@ -778,11 +778,11 @@ drogon::Task<Json::Value> GuardFeatureService::removeEnvironment(int64_t id) con
                                          transaction.get());
     if (changes_ != nullptr) {
       co_await changes_->record({.scope = ResourceScope::Environments,
-                                 .ids = {id},
+                                 .ids = {id}, .user = 0,
                                  .client = transaction.get()});
       if (!removal.retiredGuestIds.empty()) {
         co_await changes_->record({.scope = ResourceScope::ExpectedVisits,
-                                   .ids = removal.retiredGuestIds,
+                                   .ids = removal.retiredGuestIds, .user = 0,
                                    .client = transaction.get()});
       }
     }
@@ -836,7 +836,7 @@ GuardFeatureService::setMode(const GuardModeChange& input) const
       co_await rememberPosture(current, transaction.get());
       if (changes_ != nullptr) {
         co_await changes_->record({.scope = ResourceScope::Environments,
-                                   .ids = {environment.id},
+                                   .ids = {environment.id}, .user = 0,
                                    .client = transaction.get()});
       }
     }
@@ -901,7 +901,7 @@ GuardFeatureService::setCamera(const CameraContextInput& input) const
           previous.environmentId != environmentId)
         ids.push_back(previous.environmentId);
       co_await changes_->record({.scope = ResourceScope::Environments,
-                                 .ids = std::move(ids),
+                                 .ids = std::move(ids), .user = 0,
                                  .client = transaction.get()});
     }
     if (!co_await db_transaction::Commit(std::move(transaction)))
@@ -972,7 +972,7 @@ GuardFeatureService::reviewEpisode(const ReviewInput& input) const
     }
     if (changes_ != nullptr) {
       co_await changes_->record({.scope = ResourceScope::Episodes,
-                                 .ids = {input.episodeId},
+                                 .ids = {input.episodeId}, .user = 0,
                                  .client = transaction.get()});
     }
     if (!co_await db_transaction::Commit(std::move(transaction)))
@@ -1012,7 +1012,7 @@ GuardFeatureService::retainEpisode(const RetainInput& input) const
     }
     if (changes_ != nullptr) {
       co_await changes_->record({.scope = ResourceScope::Episodes,
-                                 .ids = {input.episodeId},
+                                 .ids = {input.episodeId}, .user = 0,
                                  .client = transaction.get()});
     }
     if (!co_await db_transaction::Commit(std::move(transaction)))

@@ -344,7 +344,10 @@ int main()
   SafetyService::Config safetyConfig{};
   safetyConfig.retentionS = static_cast<int64_t>(guardConfig.journalRetentionDays) * 86400;
   const auto safety = std::make_shared<SafetyService>(
-      SafetyService::Dependencies{.sink = &safetySink, .actor = &safetyActor, .clock = {}},
+      SafetyService::Dependencies{.sink = &safetySink,
+                                  .actor = &safetyActor,
+                                  .changes = &resourceChanges,
+                                  .clock = {}},
       safetyConfig);
   ResponseVerdictFeed verdictFeed(natsBus.get());
   verdictFeed.start();

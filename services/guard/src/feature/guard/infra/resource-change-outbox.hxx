@@ -15,6 +15,7 @@ struct ResourceChangeInput
 {
   ResourceScope scope{ResourceScope::Environments};
   std::vector<int64_t> ids;
+  int64_t user{0};
   drogon::orm::DbClient* client{nullptr};
 };
 

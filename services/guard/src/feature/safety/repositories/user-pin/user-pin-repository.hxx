@@ -13,7 +13,9 @@ public:
 
   drogon::Task<void> upsert(const UserPinUpsertInput& input) const;
 
-  drogon::Task<void> remove(int64_t userId) const;
+  drogon::Task<void> remove(int64_t userId,
+                            drogon::orm::DbClient* client = nullptr) const;
 
-  drogon::Task<void> removeAll() const;
+  drogon::Task<void>
+  removeAll(drogon::orm::DbClient* client = nullptr) const;
 };

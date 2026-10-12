@@ -62,7 +62,7 @@ drogon::Task<void> EpisodeChangeGate::touch(int64_t encounterId)
     }
   }
   co_await changes_->record({.scope = ResourceScope::Episodes,
-                             .ids = {encounterId},
+                             .ids = {encounterId}, .user = 0,
                              .client = nullptr});
   std::scoped_lock lock(mutex_);
   publishedAt_[encounterId] = at;
@@ -94,8 +94,10 @@ drogon::Task<void> EpisodeChangeGate::flush()
   if (ready.empty())
     co_return;
   try {
-    co_await changes_->record(
-        {.scope = ResourceScope::Episodes, .ids = ready, .client = nullptr});
+    co_await changes_->record({.scope = ResourceScope::Episodes,
+                               .ids = ready,
+                               .user = 0,
+                               .client = nullptr});
   }
   catch (const std::exception& error) {
     LOG_WARN << "Guard episodes: the trailing changes for " << ready.size()
