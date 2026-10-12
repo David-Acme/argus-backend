@@ -402,7 +402,8 @@ add_test(NAME llm-turn-engines-test COMMAND llm-turn-engines-test)
 add_executable(llm-sp-tokenizer-test tests/unit/llm-sp-tokenizer-test.cc)
 
 target_compile_definitions(llm-sp-tokenizer-test PRIVATE
-    ARGUS_TEST_LAYA_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/parity-r1.json"
+    ARGUS_TEST_LAYA_SEQUENCES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/sequence-parity.json"
+    ARGUS_TEST_LAYA_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-pilot"
     ARGUS_TEST_NFC_PAIRS="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/nfc-pairs.json")
 
 target_link_libraries(llm-sp-tokenizer-test PRIVATE argus::llm doctest::doctest)

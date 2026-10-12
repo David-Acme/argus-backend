@@ -1,13 +1,12 @@
 #pragma once
 
-#include <json/value.h>
+#include <nlohmann/json.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 namespace turn
@@ -26,9 +25,8 @@ struct LayaQuestion
 {
   QuestionKind kind{QuestionKind::Choice};
   std::string instructions;
-  std::vector<std::pair<std::string, std::string>> criteria;
-  std::string falseLabel{"false"};
-  std::string trueLabel{"true"};
+  std::vector<std::string> labels;
+  std::vector<std::string> options;
 };
 
 struct LayaSequence
@@ -45,11 +43,9 @@ struct LayaSequenceInput
   int headMaxLen{192};
 };
 
-[[nodiscard]] std::optional<LayaQuestion> layaQuestionFromJson(const Json::Value& definition);
+[[nodiscard]] std::optional<LayaQuestion> layaQuestionFromJson(const nlohmann::ordered_json& definition);
 
-[[nodiscard]] std::string layaCriterionText(const Json::Value& value);
-
-[[nodiscard]] std::vector<std::string> layaOptions(const LayaQuestion& question);
+[[nodiscard]] std::string layaPythonJson(const nlohmann::ordered_json& value);
 
 [[nodiscard]] LayaSequence layaBuildSequence(const LayaSequenceInput& input, const LayaQuestion& question);
 

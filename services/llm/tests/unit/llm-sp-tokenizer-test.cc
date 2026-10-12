@@ -8,15 +8,18 @@
 #include <json/value.h>
 #include <nlohmann/json.hpp>
 
-#include <ranges>
+#include <text/sha256.hxx>
 #include <text/text-norm.hxx>
 
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <sstream>
+#include <iterator>
+#include <optional>
 #include <string>
 #include <vector>
+
+#include "support/require-value.hxx"
 
 namespace
 {
@@ -90,30 +93,40 @@ const char* kByteLevelS = R"({
  "model": {"type": "Unigram", "unk_id": 3, "vocab": [["<pad>", 0.0], ["<eos>", 0.0], ["<bos>", 0.0], ["<unk>", 0.0], ["<mask>", 0.0]]}
 })";
 
-struct Fixture
+struct Parity
 {
-  std::vector<std::string> texts;
-  std::vector<std::vector<std::int32_t>> tokens;
+  nlohmann::ordered_json root;
+  fs::path tokenizer;
 };
 
-bool loadFixture(const fs::path& path, Fixture& fixture)
+std::optional<std::string> fileSha256(const fs::path& path)
 {
-  std::ifstream in(path);
+  std::ifstream in(path, std::ios::binary);
   if (!in.is_open())
-    return false;
-  Json::Value root;
-  Json::CharReaderBuilder builder;
-  std::string errors;
-  if (!Json::parseFromStream(builder, in, &root, &errors))
-    return false;
-  for (const Json::Value& item : root["cases"]) {
-    fixture.texts.push_back(item["text"].asString());
-    std::vector<std::int32_t> ids;
-    for (const Json::Value& token : item["tokens"])
-      ids.push_back(token.asInt());
-    fixture.tokens.push_back(std::move(ids));
+    return std::nullopt;
+  const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  return argus::hash::sha256Hex(bytes);
+}
+
+std::optional<Parity> parityFixture()
+{
+  const char* chosen = std::getenv("ARGUS_LAYA_BUNDLE");
+  const fs::path bundle = chosen != nullptr ? fs::path(chosen) : fs::path(ARGUS_TEST_LAYA_BUNDLE);
+  const fs::path tokenizer = bundle / "tokenizer" / "tokenizer.json";
+  std::ifstream in(ARGUS_TEST_LAYA_SEQUENCES);
+  REQUIRE(in.is_open());
+  Parity parity{.root = nlohmann::ordered_json::parse(in), .tokenizer = tokenizer};
+  const std::optional<std::string> digest = fileSha256(tokenizer);
+  if (!digest) {
+    MESSAGE("no Laya bundle tokenizer at " << tokenizer.string() << "; the Laya parity did not run");
+    return std::nullopt;
   }
-  return true;
+  if (*digest != parity.root.at("tokenizerSha256").get<std::string>()) {
+    MESSAGE("the tokenizer at " << tokenizer.string()
+                                << " is not the one the parity fixture was frozen from; regenerate it with tests/eval/laya-parity.py");
+    return std::nullopt;
+  }
+  return parity;
 }
 
 template <typename Range>
@@ -141,47 +154,6 @@ std::string around(const Range& values, std::size_t at)
     ++index;
   }
   return out;
-}
-
-template <typename Range>
-std::string last(const Range& values)
-{
-  std::string out;
-  std::size_t index = 0;
-  const std::size_t size = std::ranges::distance(values);
-  for (const auto& value : values) {
-    if (index + 8 >= size)
-      out += std::to_string(value) + " ";
-    ++index;
-  }
-  return out;
-}
-
-turn::LayaQuestion questionOf(const nlohmann::ordered_json& definition){
-  turn::LayaQuestion question;
-  const std::string type = definition.value("type", "");
-  question.kind = type == "score"    ? turn::QuestionKind::Score
-                  : type == "noul" ? turn::QuestionKind::Noul
-                                   : turn::QuestionKind::Choice;
-  question.instructions = definition.value("instructions", "");
-  if (definition.contains("criteria")) {
-    const nlohmann::ordered_json& criteria = definition["criteria"];
-    if (criteria.is_object()) {
-      for (auto entry = criteria.begin(); entry != criteria.end(); ++entry) {
-        const nlohmann::ordered_json& value = entry.value();
-        question.criteria.emplace_back(entry.key(), value.is_null() ? std::string() : value.is_string() ? value.get<std::string>() : value.dump());
-      }
-    }
-    else if (criteria.is_array()) {
-      for (const nlohmann::ordered_json& value : criteria)
-        question.criteria.emplace_back(value.is_string() ? value.get<std::string>() : value.dump(), "");
-    }
-  }
-  if (definition.contains("labels")) {
-    question.falseLabel = definition["labels"].value("false", "false");
-    question.trueLabel = definition["labels"].value("true", "true");
-  }
-  return question;
 }
 }
 
@@ -233,77 +205,108 @@ TEST_CASE("a tokenizer file that is not a sentencepiece model is refused")
   CHECK(tokenizer.encode("hola", false).empty());
 }
 
-TEST_CASE("the frozen Laya fixture's token ids and sequences are reproduced row for row")
+TEST_CASE("python's json.dumps is what a structured criterion renders as")
 {
-  const char* checkpoint = std::getenv("ARGUS_LAYA_CHECKPOINT");
-  const fs::path tokenizerPath = checkpoint != nullptr ? fs::path(checkpoint) / "tokenizer" / "tokenizer.json" : fs::path();
-  if (checkpoint == nullptr || !fs::exists(tokenizerPath)) {
-    MESSAGE("no Laya checkpoint at ARGUS_LAYA_CHECKPOINT; the Laya parity did not run");
+  CHECK(turn::layaPythonJson(nlohmann::ordered_json::parse(R"({"b": 1, "a": [true, null, 2.5]})")) == R"({"b": 1, "a": [true, null, 2.5]})");
+  CHECK(turn::layaPythonJson(nlohmann::ordered_json::parse(R"(["ñ", "\"q\"", "\u0001"])")) == R"(["ñ", "\"q\"", "\u0001"])");
+  CHECK(turn::layaPythonJson(nlohmann::ordered_json::parse("1.0")) == "1.0");
+  CHECK(turn::layaPythonJson(nlohmann::ordered_json::parse("1e-05")) == "1e-05");
+  CHECK(turn::layaPythonJson(nlohmann::ordered_json::parse("0.0001")) == "0.0001");
+  CHECK(turn::layaPythonJson(nlohmann::ordered_json::parse("1e16")) == "1e+16");
+  CHECK(turn::layaPythonJson(nlohmann::ordered_json::parse("1e15")) == "1000000000000000.0");
+  CHECK(turn::layaPythonJson(nlohmann::ordered_json::parse("-2.25")) == "-2.25");
+  CHECK(turn::layaPythonJson(nlohmann::ordered_json::parse("{}")) == "{}");
+}
+
+TEST_CASE("a question laya would refuse is refused, never rendered another way")
+{
+  CHECK_FALSE(turn::layaQuestionFromJson(nlohmann::ordered_json::parse(R"({"type": "choice", "instructions": "x", "criteria": []})")));
+  CHECK_FALSE(turn::layaQuestionFromJson(nlohmann::ordered_json::parse(R"({"type": "choice", "instructions": "x", "criteria": ["a", "a"]})")));
+  CHECK_FALSE(turn::layaQuestionFromJson(nlohmann::ordered_json::parse(R"({"type": "choice", "instructions": " ", "criteria": ["a"]})")));
+  CHECK_FALSE(turn::layaQuestionFromJson(nlohmann::ordered_json::parse(R"({"type": "choice", "instructions": "x", "criteria": ["a"], "labels": {}})")));
+  CHECK_FALSE(turn::layaQuestionFromJson(nlohmann::ordered_json::parse(R"({"type": "score", "instructions": "x", "criteria": ["a", null]})")));
+  CHECK_FALSE(turn::layaQuestionFromJson(nlohmann::ordered_json::parse(R"({"type": "noul", "instructions": "x", "criteria": {"maybe": "y"}})")));
+  CHECK_FALSE(turn::layaQuestionFromJson(nlohmann::ordered_json::parse(R"({"type": "noul", "instructions": "x", "labels": {"false": "s", "true": " s "}})")));
+  CHECK_FALSE(turn::layaQuestionFromJson(nlohmann::ordered_json::parse(R"({"type": "rank", "instructions": "x", "criteria": ["a"]})")));
+  const std::optional<turn::LayaQuestion> noul =
+      turn::layaQuestionFromJson(nlohmann::ordered_json::parse(R"({"type": "noul", "instructions": "x", "criteria": {"TRUE": "y"}})"));
+  REQUIRE(noul.has_value());
+  CHECK(requireValue(noul).options == std::vector<std::string>{"false: no, the statement does not hold", "true: y"});
+  const std::optional<turn::LayaQuestion> choice =
+      turn::layaQuestionFromJson(nlohmann::ordered_json::parse(R"({"type": "choice", "instructions": "x", "criteria": {"z": null, "a": "d"}})"));
+  REQUIRE(choice.has_value());
+  CHECK(requireValue(choice).labels == std::vector<std::string>{"z", "a"});
+  CHECK(requireValue(choice).options == std::vector<std::string>{"z", "a: d"});
+}
+
+TEST_CASE("the Laya sequences are the training renderer's, id for id and marker for marker")
+{
+  const std::optional<Parity> parity = parityFixture();
+  if (!parity)
     return;
-  }
-  Fixture fixture;
-  REQUIRE(loadFixture(ARGUS_TEST_LAYA_FIXTURE, fixture));
   turn::SpTokenizer tokenizer;
-  REQUIRE(tokenizer.load(tokenizerPath));
-  nlohmann::ordered_json questions =
-      nlohmann::ordered_json::parse(std::ifstream(fs::path(checkpoint) / (std::getenv("ARGUS_LAYA_QUESTIONS") != nullptr ? std::getenv("ARGUS_LAYA_QUESTIONS")
-                                                                                                                      : "questions.json")));
-  nlohmann::ordered_json config = nlohmann::ordered_json::parse(std::ifstream(fs::path(checkpoint) / "rl_agent_config.json"));
-  const int maxLen = config.value("max_len", 512);
-  const int headMaxLen = config.value("head_max_len", 192);
-  Json::Value root;
-  Json::CharReaderBuilder builder;
-  std::string errors;
-  {
-    std::ifstream in(ARGUS_TEST_LAYA_FIXTURE);
-    REQUIRE(Json::parseFromStream(builder, in, &root, &errors));
-  }
+  REQUIRE(tokenizer.load(requireValue(parity).tokenizer));
+  const nlohmann::ordered_json& root = requireValue(parity).root;
   std::size_t tokenMismatches = 0;
-  std::size_t sequenceMismatches = 0;
-  for (std::size_t row = 0; row < fixture.texts.size(); ++row) {
-    if (tokenizer.encode(fixture.texts[row], false) != fixture.tokens[row]) {
+  for (const nlohmann::ordered_json& state : root.at("states")) {
+    const auto expected = state.at("tokens").get<std::vector<std::int32_t>>();
+    std::string text = state.at("text").get<std::string>();
+    for (std::size_t at = text.find(tokenizer.maskToken()); at != std::string::npos; at = text.find(tokenizer.maskToken(), at + 1))
+      text.replace(at, tokenizer.maskToken().size(), " ");
+    if (tokenizer.encode(text, false) != expected) {
       ++tokenMismatches;
-      MESSAGE("row " << row << ": the token ids differ");
-    }
-    const Json::Value& sequences = root["cases"][static_cast<Json::ArrayIndex>(row)]["sequences"];
-    for (const std::string& qid : sequences.getMemberNames()) {
-      const turn::LayaQuestion question = questionOf(questions.at(qid));
-      const turn::LayaSequence built =
-          turn::layaBuildSequence({.tokenizer = tokenizer, .state = fixture.texts[row], .maxLen = maxLen, .headMaxLen = headMaxLen}, question);
-      const Json::Value& expected = sequences[qid];
-      std::vector<std::int32_t> expectedIds;
-      for (const Json::Value& id : expected["ids"])
-        expectedIds.push_back(id.asInt());
-      std::vector<std::size_t> expectedMarkers;
-      for (const Json::Value& marker : expected["markers"])
-        expectedMarkers.push_back(static_cast<std::size_t>(marker.asUInt()));
-      if (built.ids != expectedIds || built.markers != expectedMarkers) {
-        ++sequenceMismatches;
-        std::size_t at = 0;
-        while (at < built.ids.size() && at < expectedIds.size() && built.ids[at] == expectedIds[at])
-          ++at;
-        MESSAGE("row " << row << " question " << qid << ": " << built.ids.size() << " ids against " << expectedIds.size()
-                        << ", " << built.markers.size() << " markers against " << expectedMarkers.size() << ", first difference at "
-                        << at << " built=" << (at < built.ids.size() ? built.ids[at] : -1)
-                        << " expected=" << (at < expectedIds.size() ? expectedIds[at] : -1));
-        MESSAGE("  built   : " << first(built.ids) << " | " << around(built.ids, at) << " | " << last(built.ids));
-        MESSAGE("  expected: " << first(expectedIds) << " | " << around(expectedIds, at) << " | " << last(expectedIds));
-        MESSAGE("  markers : " << first(built.markers) << " | " << first(expectedMarkers));
-      }
+      MESSAGE("state '" << state.at("text").get<std::string>().substr(0, 40) << "': the token ids differ");
     }
   }
+  std::size_t sequences = 0;
+  std::size_t sequenceMismatches = 0;
+  const nlohmann::ordered_json& questions = root.at("questions");
+  for (const nlohmann::ordered_json& item : root.at("cases")) {
+    const auto qid = item.at("question").get<std::string>();
+    const std::optional<turn::LayaQuestion> question = turn::layaQuestionFromJson(questions.at(qid));
+    REQUIRE_MESSAGE(question.has_value(), qid);
+    const turn::LayaSequence built = turn::layaBuildSequence({.tokenizer = tokenizer,
+                                                              .state = item.at("state").get<std::string>(),
+                                                              .maxLen = item.at("maxLen").get<int>(),
+                                                              .headMaxLen = item.at("headMaxLen").get<int>()},
+                                                             requireValue(question));
+    const auto expectedIds = item.at("ids").get<std::vector<std::int32_t>>();
+    const auto expectedMarkers = item.at("markers").get<std::vector<std::size_t>>();
+    ++sequences;
+    if (built.ids == expectedIds && built.markers == expectedMarkers)
+      continue;
+    ++sequenceMismatches;
+    std::size_t at = 0;
+    while (at < built.ids.size() && at < expectedIds.size() && built.ids[at] == expectedIds[at])
+      ++at;
+    MESSAGE(qid << " max_len=" << item.at("maxLen").get<int>() << " head_max_len=" << item.at("headMaxLen").get<int>() << ": "
+                << built.ids.size() << " ids against " << expectedIds.size() << ", first difference at " << at);
+    MESSAGE("  built   : " << around(built.ids, at) << "| markers " << first(built.markers));
+    MESSAGE("  expected: " << around(expectedIds, at) << "| markers " << first(expectedMarkers));
+  }
+  MESSAGE("laya sequence parity: " << sequences << " sequences, " << sequenceMismatches << " differing, " << tokenMismatches
+                                   << " state tokenizations differing");
+  CHECK(sequences == root.at("cases").size());
   CHECK(tokenMismatches == 0);
   CHECK(sequenceMismatches == 0);
 }
 
+TEST_CASE("the shipped question set is the one the parity fixture renders")
+{
+  const std::optional<Parity> parity = parityFixture();
+  if (!parity)
+    return;
+  const fs::path questions = requireValue(parity).tokenizer.parent_path().parent_path() / "questions.json";
+  const std::optional<std::string> digest = fileSha256(questions);
+  REQUIRE(digest.has_value());
+  CHECK(requireValue(digest) == requireValue(parity).root.at("questionsSha256").get<std::string>());
+}
+
 TEST_CASE("the pipeline's NFC puts a decomposed spelling on the same ids as its composed twin")
 {
-  const char* checkpoint = std::getenv("ARGUS_LAYA_CHECKPOINT");
-  const fs::path tokenizerPath = checkpoint != nullptr ? fs::path(checkpoint) / "tokenizer" / "tokenizer.json" : fs::path();
-  if (checkpoint == nullptr || !fs::exists(tokenizerPath)) {
-    MESSAGE("no Laya checkpoint at ARGUS_LAYA_CHECKPOINT; the NFC pair parity did not run");
+  const std::optional<Parity> parity = parityFixture();
+  if (!parity)
     return;
-  }
   std::ifstream in(ARGUS_TEST_NFC_PAIRS);
   REQUIRE(in.is_open());
   Json::Value root;
@@ -311,7 +314,7 @@ TEST_CASE("the pipeline's NFC puts a decomposed spelling on the same ids as its 
   std::string errors;
   REQUIRE(Json::parseFromStream(builder, in, &root, &errors));
   turn::SpTokenizer tokenizer;
-  REQUIRE(tokenizer.load(tokenizerPath));
+  REQUIRE(tokenizer.load(requireValue(parity).tokenizer));
   std::size_t mismatches = 0;
   for (const Json::Value& pair : root["pairs"]) {
     std::vector<std::int32_t> composed;

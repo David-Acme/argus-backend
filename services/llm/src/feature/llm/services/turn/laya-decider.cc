@@ -2,8 +2,7 @@
 
 #include "sp-tokenizer.hxx"
 
-#include <json/reader.h>
-#include <json/value.h>
+#include <nlohmann/json.hpp>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
@@ -22,8 +21,8 @@ namespace
 {
 constexpr std::string_view kNoneLabel = "none";
 constexpr std::string_view kAskLabel = "ask";
-constexpr std::string_view kToolQuestion = "tool";
-constexpr std::string_view kNowQuestion = "now";
+constexpr const char* kToolQuestion = "tool";
+constexpr const char* kNowQuestion = "now";
 
 struct LayaRank
 {
@@ -32,15 +31,13 @@ struct LayaRank
   double score{0.0};
 };
 
-std::optional<Json::Value> readJsonFile(const std::filesystem::path& path)
+std::optional<nlohmann::ordered_json> readOrderedJson(const std::filesystem::path& path)
 {
   std::ifstream in(path, std::ios::binary);
   if (!in.is_open())
     return std::nullopt;
-  Json::Value root;
-  Json::CharReaderBuilder builder;
-  std::string errors;
-  if (!Json::parseFromStream(builder, in, &root, &errors))
+  nlohmann::ordered_json root = nlohmann::ordered_json::parse(in, nullptr, false);
+  if (root.is_discarded())
     return std::nullopt;
   return root;
 }
@@ -111,14 +108,14 @@ public:
     const LayaQuestion& tool = *tool_;
     const LayaQuestion& now = *now_;
     const std::optional<std::vector<float>> toolLogits = logitsOf(tool, text);
-    if (!toolLogits || toolLogits->size() < tool.criteria.size())
+    if (!toolLogits || toolLogits->size() < tool.labels.size())
       return std::nullopt;
     const std::vector<double> toolProbs =
-        softmax(std::span(*toolLogits).first(tool.criteria.size()), decode_.temperature[0]);
+        softmax(std::span(*toolLogits).first(tool.labels.size()), decode_.temperature[0]);
     std::vector<std::pair<std::string, double>> probabilities;
-    probabilities.reserve(tool.criteria.size());
-    for (std::size_t index = 0; index < tool.criteria.size(); ++index)
-      probabilities.emplace_back(tool.criteria[index].first, toolProbs[index]);
+    probabilities.reserve(tool.labels.size());
+    for (std::size_t index = 0; index < tool.labels.size(); ++index)
+      probabilities.emplace_back(tool.labels[index], toolProbs[index]);
     const std::optional<std::vector<float>> nowLogits = logitsOf(now, text);
     if (!nowLogits || nowLogits->size() < 2)
       return std::nullopt;
@@ -137,15 +134,17 @@ private:
                << " is not a tokenizer; the turn continues on rules and the router";
       return;
     }
-    const std::optional<Json::Value> questions = readJsonFile(questionsJson_);
-    if (!questions) {
+    const std::optional<nlohmann::ordered_json> questions = readOrderedJson(questionsJson_);
+    if (!questions || !questions->is_object()) {
       LOG_WARN << "argus-llm: the Laya decider is off: " << questionsJson_.string()
                << " cannot be read; the turn continues on rules and the router";
       return;
     }
-    tool_ = layaQuestionFromJson((*questions)[std::string(kToolQuestion)]);
-    now_ = layaQuestionFromJson((*questions)[std::string(kNowQuestion)]);
-    if (!tool_ || tool_->kind != QuestionKind::Choice || tool_->criteria.empty() || !now_ || now_->kind != QuestionKind::Noul) {
+    if (questions->contains(kToolQuestion))
+      tool_ = layaQuestionFromJson(questions->at(kToolQuestion));
+    if (questions->contains(kNowQuestion))
+      now_ = layaQuestionFromJson(questions->at(kNowQuestion));
+    if (!tool_ || tool_->kind != QuestionKind::Choice || tool_->labels.empty() || !now_ || now_->kind != QuestionKind::Noul) {
       LOG_WARN << "argus-llm: the Laya decider is off: " << questionsJson_.string()
                << " has no choice 'tool' and noul 'now' question; the turn continues on rules and the router";
       return;
@@ -155,7 +154,7 @@ private:
                << "; the turn continues on rules and the router";
       return;
     }
-    LOG_INFO << "argus-llm: the Laya decider is ready on " << modelPath_.filename().string() << " with " << tool_->criteria.size()
+    LOG_INFO << "argus-llm: the Laya decider is ready on " << modelPath_.filename().string() << " with " << tool_->labels.size()
              << " options, max_len=" << maxLen_ << " head_max_len=" << decode_.headMaxLen;
     ready_ = true;
   }
@@ -279,21 +278,21 @@ std::optional<BundleDecode> layaDecodeFromAgentConfig(const std::filesystem::pat
 {
   if (path.empty())
     return std::nullopt;
-  const std::optional<Json::Value> root = readJsonFile(path);
-  if (!root)
+  const std::optional<nlohmann::ordered_json> root = readOrderedJson(path);
+  if (!root || !root->is_object())
     return std::nullopt;
   BundleDecode decode;
-  if (const Json::Value& headMaxLen = (*root)["head_max_len"]; headMaxLen.isInt() && headMaxLen.asInt() > 0)
-    decode.headMaxLen = headMaxLen.asInt();
-  if (const Json::Value& temperature = (*root)["temperature"]; temperature.isArray() && temperature.size() == decode.temperature.size()) {
+  if (const auto headMaxLen = root->find("head_max_len"); headMaxLen != root->end() && headMaxLen->is_number_integer() &&
+                                                         headMaxLen->get<int>() > 0)
+    decode.headMaxLen = headMaxLen->get<int>();
+  if (const auto temperature = root->find("temperature"); temperature != root->end() && temperature->is_array() &&
+                                                          temperature->size() == decode.temperature.size()) {
     std::array<double, 3> values{};
-    bool numeric = true;
-    for (Json::ArrayIndex index = 0; index < values.size(); ++index) {
-      numeric = numeric && temperature[index].isNumeric();
-      values[index] = numeric ? temperature[index].asDouble() : 1.0;
+    for (std::size_t index = 0; index < values.size(); ++index) {
+      if (!(*temperature)[index].is_number())
+        return std::nullopt;
+      values[index] = (*temperature)[index].get<double>();
     }
-    if (!numeric)
-      return std::nullopt;
     decode.temperature = values;
   }
   return decode;
