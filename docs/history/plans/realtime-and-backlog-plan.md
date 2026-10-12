@@ -148,11 +148,9 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - F1 Camera: Argus-side recording (`record_mode` is stored, nothing records), snapshot to file, SD
   recordings with a timeline, patrol and preset rename/delete, mute live audio on the native player,
   ONVIF control for generic cameras, TURN relay for remote WebRTC.
-- F2 Talking to Argus through a camera, variant A: a call the Owner opens from the app, bound to the
-  Owner's identity, half duplex, time-boxed — a bridge in argus-camera over `argus::clients::voice`
-  (`voice.Connect` + RTSP mic + `SendTalk`). Validated live on the C225 on 2026-08-09 in the
-  monolith; removed in the split. Always-listening with a wake word (variant B) needs a privacy and
-  identity design first.
+- F2 Talking to Argus through the cameras: superseded on 2026-10-12 by the owner's wider goal, the
+  always-listening watchman, designed in `camera-watchman-plan.md` (wake word, identity, hand-off,
+  echo, privacy, measurements first).
 - F3 Native calls: CallKit/PushKit on iOS, ConnectionService and a microphone foreground service on
   Android, APNs/FCM push (no device push leg exists).
 - F4 Guard: a voice duress phrase, a persistent PIN lockout (in memory today), the single-member
