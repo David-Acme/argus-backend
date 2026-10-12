@@ -398,13 +398,23 @@ drogon::Task<DurableDisposition> handleChangePayload(ChangePayloadInput input)
   }
 }
 
+DurableDisposition handleResourcePayload(const Json::Value& json);
+
 drogon::Task<DurableDisposition> handleActionPayload(ActionPayloadInput input)
 {
   try {
-    co_return co_await input.auditFanOut.handleActionJournal(input.json,
-                                                             input.msgId)
-                  ? DurableDisposition::Ack
-                  : DurableDisposition::Term;
+    const auto outcome = co_await input.auditFanOut.handleActionJournal(
+        input.json, input.msgId);
+    if (outcome == ActionJournalOutcome::Refused)
+      co_return DurableDisposition::Term;
+    if (outcome == ActionJournalOutcome::Acknowledged) {
+      const DurableDisposition announced = handleResourcePayload(
+          resource_change::payload(ResourceDomain::Activity,
+                                   ResourceScope::Entries, {}, 0));
+      if (announced != DurableDisposition::Ack)
+        LOG_WARN << "Action journal: the entries scope was not announced";
+    }
+    co_return DurableDisposition::Ack;
   }
   catch (const Json::Exception& error) {
     LOG_WARN << "Action journal: event with a malformed field refused: "

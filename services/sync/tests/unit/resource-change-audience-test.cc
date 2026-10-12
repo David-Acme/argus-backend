@@ -92,6 +92,7 @@ identity/visitors -> owner,guard
 settings/values -> owner
 identity/voiceprints -> owner
 guard/presence -> owner
+activity/entries -> owner
 )");
 }
 
@@ -117,6 +118,7 @@ identity/visitors ->
 settings/values -> owner
 identity/voiceprints -> owner
 guard/presence ->
+activity/entries -> owner
 )");
 }
 

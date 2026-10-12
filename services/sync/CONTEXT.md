@@ -1140,3 +1140,25 @@ costs one HTTP read per device.
 `tests/unit/resource-change-audience-test.cc` pins the audience table: every
 registered pair against every role with the modules on and again with
 surveillance off, plus the payload refusals and the scoped-pull bound.
+
+The activity feed is the one pair with no producer outbox of its own. Its row
+is written here, in this service, by the action-journal leg of the fan-out
+(`AuditFanOut::insertAction`) — the only writer of `user_action_log` anywhere —
+so `{activity, entries}` is announced where the row is inserted, by the same
+handler that acknowledges the durable message: one frame per inserted row,
+through the same `handleResourcePayload` the wire-fed pairs take, which is what
+keeps the audience derivation and the frame builder single. A redelivery of a
+message this service already recorded inserts nothing and announces nothing,
+which is why `handleActionJournal` answers whether the row was inserted
+(`Acknowledged`, `Duplicate`, `Refused`) and only the acknowledged case emits;
+a refused message is still terminated, as it always was. The audience is the
+Owner's role room, because `GET /sync/activity` is not in `kSyncAccess` and
+every `/sync/*` path that table does not name is the Owner's. Three
+consequences worth stating: the frame costs no NATS hop and no second table;
+the burst answer is one frame per inserted row, not one per batch, because the
+durable delivers one action per message and a batch would need batching that
+does not exist here — the client's trailing-edge coalescer is what folds a
+burst into a single reload; and the restart story is short, because a process
+that dies between the insert and the emit dropped every socket with it, and a
+device that reconnects re-reads what it mounts, so the missed frame costs
+nothing.

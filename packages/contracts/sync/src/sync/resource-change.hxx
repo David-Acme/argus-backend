@@ -17,7 +17,8 @@ enum class ResourceDomain : std::uint8_t
   Guard,
   Productivity,
   Identity,
-  Settings
+  Settings,
+  Activity
 };
 
 enum class ResourceScope : std::uint8_t
@@ -40,7 +41,8 @@ enum class ResourceScope : std::uint8_t
   Visitors,
   Values,
   Voiceprints,
-  Presence
+  Presence,
+  Entries
 };
 
 
@@ -52,7 +54,7 @@ struct ResourceRoute
   drogon::HttpMethod method;
 };
 
-inline constexpr std::array<ResourceRoute, 19> kResourceRoutes{{
+inline constexpr std::array<ResourceRoute, 20> kResourceRoutes{{
     {.domain = ResourceDomain::Camera,
      .scope = ResourceScope::Device,
      .path = "/camera",
@@ -129,6 +131,10 @@ inline constexpr std::array<ResourceRoute, 19> kResourceRoutes{{
      .scope = ResourceScope::Presence,
      .path = "/guard/presence",
      .method = drogon::Get},
+    {.domain = ResourceDomain::Activity,
+     .scope = ResourceScope::Entries,
+     .path = "/sync/activity",
+     .method = drogon::Get},
 }};
 
 static_assert(std::ranges::all_of(kResourceRoutes,
@@ -149,6 +155,8 @@ inline std::string resourceDomainToString(ResourceDomain domain)
       return "identity";
     case ResourceDomain::Settings:
       return "settings";
+    case ResourceDomain::Activity:
+      return "activity";
   }
   return "camera";
 }
@@ -165,6 +173,8 @@ inline std::optional<ResourceDomain> resourceDomainFromString(std::string_view n
     return ResourceDomain::Identity;
   if (name == "settings")
     return ResourceDomain::Settings;
+  if (name == "activity")
+    return ResourceDomain::Activity;
   return std::nullopt;
 }
 
@@ -209,6 +219,8 @@ inline std::string resourceScopeToString(ResourceScope scope)
       return "voiceprints";
     case ResourceScope::Presence:
       return "presence";
+    case ResourceScope::Entries:
+      return "entries";
   }
   return "device";
 }
@@ -253,6 +265,8 @@ inline std::optional<ResourceScope> resourceScopeFromString(std::string_view nam
     return ResourceScope::Voiceprints;
   if (name == "presence")
     return ResourceScope::Presence;
+  if (name == "entries")
+    return ResourceScope::Entries;
   return std::nullopt;
 }
 

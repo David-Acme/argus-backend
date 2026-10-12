@@ -11,7 +11,9 @@
 #include <feature/activity/controllers/activity-controller.hxx>
 #include <feature/activity/services/activity-feature-service.hxx>
 #include <feature/fanout/services/audit-fan-out.hxx>
+#include <feature/fanout/services/sync-fan-out.hxx>
 #include <shared/repositories/user-action-log/user-action-log-repository.hxx>
+#include <shared/services/room/room-manager.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/user-action-event.hxx>
 #include <text/json-util.hxx>
@@ -19,7 +21,10 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <functional>
+#include <future>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <thread>
@@ -225,7 +230,9 @@ void legacyRowsGetTheirModule()
   DbService::client()->execSqlSync("DELETE FROM user_action_log");
 }
 
-drogon::Task<bool> journal(AuditFanOut& fanOut, const UserActionEvent& event, const std::string& msgId)
+drogon::Task<ActionJournalOutcome> journal(AuditFanOut& fanOut,
+                                           const UserActionEvent& event,
+                                           const std::string& msgId)
 {
   co_return co_await fanOut.handleActionJournal(event.toJson(), msgId);
 }
@@ -239,7 +246,8 @@ void journaledEventsCarryTheirModule()
   camera.recordId = 9;
   camera.tableName = TableName::Camera;
   camera.action = UserAction::Update;
-  REQUIRE(drogon::sync_wait(journal(fanOut, camera, "identity:1")));
+  REQUIRE(drogon::sync_wait(journal(fanOut, camera, "identity:1")) ==
+          ActionJournalOutcome::Acknowledged);
   CHECK(scalar("SELECT module FROM user_action_log WHERE msg_id = 'identity:1'") == "surveillance");
   CHECK(scalar("SELECT table_name FROM user_action_log WHERE msg_id = 'identity:1'") == "camera");
 
@@ -248,7 +256,8 @@ void journaledEventsCarryTheirModule()
   event.recordId = 4;
   event.tableName = TableName::User;
   event.action = UserAction::Update;
-  REQUIRE(drogon::sync_wait(journal(fanOut, event, "identity:2")));
+  REQUIRE(drogon::sync_wait(journal(fanOut, event, "identity:2")) ==
+          ActionJournalOutcome::Acknowledged);
   CHECK(scalar("SELECT module FROM user_action_log WHERE msg_id = 'identity:2'") == "core");
 
   UserActionEvent moduleAction;
@@ -259,20 +268,162 @@ void journaledEventsCarryTheirModule()
   moduleAction.action = UserAction::Update;
   moduleAction.oldData["lifecycle"] = "active";
   moduleAction.newData["lifecycle"] = "disabled";
-  REQUIRE(drogon::sync_wait(journal(fanOut, moduleAction, "settings:7")));
+  REQUIRE(drogon::sync_wait(journal(fanOut, moduleAction, "settings:7")) ==
+          ActionJournalOutcome::Acknowledged);
   CHECK(scalar("SELECT table_name FROM user_action_log WHERE msg_id = 'settings:7'") == "module");
   CHECK(scalar("SELECT module FROM user_action_log WHERE msg_id = 'settings:7'") == "productivity");
   CHECK(scalar("SELECT json_extract(new_data, '$.lifecycle') FROM user_action_log WHERE msg_id = 'settings:7'") ==
         "disabled");
 
-  REQUIRE(drogon::sync_wait(journal(fanOut, moduleAction, "settings:7")));
+  CHECK(drogon::sync_wait(journal(fanOut, moduleAction, "settings:7")) ==
+        ActionJournalOutcome::Duplicate);
   CHECK(scalar("SELECT COUNT(*) FROM user_action_log WHERE msg_id = 'settings:7'") == "1");
 
   Json::Value unknown = moduleAction.toJson();
   unknown["table_name"] = "no_such_table";
-  CHECK_FALSE(drogon::sync_wait(fanOut.handleActionJournal(unknown, "settings:8")));
+  CHECK(drogon::sync_wait(fanOut.handleActionJournal(unknown, "settings:8")) ==
+        ActionJournalOutcome::Refused);
   CHECK(scalar("SELECT COUNT(*) FROM user_action_log WHERE msg_id = 'settings:8'") == "0");
 
+  DbService::client()->execSqlSync("DELETE FROM user_action_log");
+}
+
+class RecordingConnection final : public drogon::WebSocketConnection
+{
+public:
+  void send(const char* msg, uint64_t len,
+            const drogon::WebSocketMessageType) override
+  {
+    messages.emplace_back(msg, len);
+  }
+  void send(std::string_view msg, const drogon::WebSocketMessageType) override
+  {
+    messages.emplace_back(msg);
+  }
+  void sendJson(const Json::Value& json,
+                const drogon::WebSocketMessageType) override
+  {
+    messages.push_back(json_util::toString(json));
+  }
+  [[nodiscard]] const trantor::InetAddress& localAddr() const override
+  {
+    return addr_;
+  }
+  [[nodiscard]] const trantor::InetAddress& peerAddr() const override
+  {
+    return addr_;
+  }
+  [[nodiscard]] bool connected() const override { return closeReason.empty(); }
+  [[nodiscard]] bool disconnected() const override
+  {
+    return !closeReason.empty();
+  }
+  void shutdown(const drogon::CloseCode, const std::string& reason) override
+  {
+    closeReason = reason;
+  }
+  void forceClose() override { closeReason = "forced"; }
+  void setPingMessage(const std::string&,
+                      const std::chrono::duration<double>&) override
+  {
+  }
+  void disablePing() override {}
+
+  std::vector<std::string> messages;
+  std::string closeReason;
+
+private:
+  trantor::InetAddress addr_{"127.0.0.1", 0};
+};
+
+bool runOnLoop(const std::function<void()>& action)
+{
+  auto* loop = drogon::app().getIOLoop(0);
+  if (loop == nullptr)
+    return false;
+  auto done = std::make_shared<std::promise<void>>();
+  auto finished = done->get_future();
+  loop->runInLoop([&action, done]() {
+    action();
+    done->set_value();
+  });
+  return finished.wait_for(std::chrono::seconds(10)) == std::future_status::ready;
+}
+
+bool settlesOnLoop(const std::function<bool()>& settled)
+{
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  for (;;) {
+    bool answered = false;
+    if (!runOnLoop([&settled, &answered]() { answered = settled(); }))
+      return false;
+    if (answered)
+      return true;
+    if (std::chrono::steady_clock::now() >= deadline)
+      return false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+}
+
+int activityFrames(const std::vector<std::string>& messages, std::string& scope)
+{
+  int count = 0;
+  scope.clear();
+  for (const auto& message : messages) {
+    const Json::Value frame = json_util::fromString(message);
+    if (frame["operation"].asInt() !=
+        static_cast<int>(SyncOperation::ResourceChanged))
+      continue;
+    ++count;
+    scope = frame["info"]["scope"].asString();
+  }
+  return count;
+}
+
+void anInsertedActionReachesTheActivityScreen()
+{
+  const auto conn = std::make_shared<RecordingConnection>();
+  const drogon::WebSocketConnectionPtr handle = conn;
+  REQUIRE(runOnLoop([&handle]() {
+    RoomManager{}.join(roleRoom(UserRole::Owner), handle);
+  }));
+
+  AuditFanOut fanOut;
+  UserActionEvent event;
+  event.userId = 4;
+  event.recordId = 12;
+  event.tableName = TableName::Reminder;
+  event.action = UserAction::Update;
+  const Json::Value json = event.toJson();
+  const std::string firstId = "activity-notice:1";
+
+  CHECK(drogon::sync_wait(sync_fan_out::handleActionPayload(
+            {.json = json, .msgId = firstId, .auditFanOut = fanOut})) ==
+        DurableDisposition::Ack);
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log WHERE msg_id = "
+               "'activity-notice:1'") == "1");
+
+  std::string scope;
+  REQUIRE(settlesOnLoop([&]() { return activityFrames(conn->messages, scope) == 1; }));
+  CHECK(scope == "entries");
+
+  const std::string replayId = "activity-notice:1";
+  CHECK(drogon::sync_wait(sync_fan_out::handleActionPayload(
+            {.json = json, .msgId = replayId, .auditFanOut = fanOut})) ==
+        DurableDisposition::Ack);
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log WHERE msg_id = "
+               "'activity-notice:1'") == "1");
+
+  bool stayedOne = false;
+  REQUIRE(settlesOnLoop([&]() {
+    stayedOne = activityFrames(conn->messages, scope) == 1;
+    return stayedOne;
+  }));
+  CHECK(stayedOne);
+  CHECK(scope == "entries");
+  CHECK(activityFrames(conn->messages, scope) == 1);
+
+  REQUIRE(runOnLoop([&handle]() { RoomManager{}.leaveAll(handle); }));
   DbService::client()->execSqlSync("DELETE FROM user_action_log");
 }
 
@@ -424,6 +575,7 @@ TEST_CASE("the activity history is journaled with its module and read with filte
 
   legacyRowsGetTheirModule();
   journaledEventsCarryTheirModule();
+  anInsertedActionReachesTheActivityScreen();
 
   ConfigService::setRuntimeString("jwt.secret", "sync-activity-test-secret-0123456789abcdef");
   ConfigService::setRuntimeString("jwt.refresh_secret", "sync-activity-test-refresh-0123456789abc");

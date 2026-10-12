@@ -92,8 +92,8 @@ drogon::Task<void> AuditFanOut::insertUsersAudit(const UserAuditEvent& event)
   }
 }
 
-drogon::Task<void> AuditFanOut::insertAction(const UserActionEvent& event,
-                                             std::string_view msgId)
+drogon::Task<bool> AuditFanOut::insertAction(const UserActionEvent& event,
+                                            std::string_view msgId)
 {
   const std::string module = event.module.empty()
                                   ? std::string(module_tables::moduleOf(event.tableName))
@@ -111,6 +111,7 @@ drogon::Task<void> AuditFanOut::insertAction(const UserActionEvent& event,
   if (!inserted)
     LOG_INFO << "Action journal: " << msgId
              << " is already recorded; the redelivery is ignored";
+  co_return inserted.has_value();
 }
 
 drogon::Task<bool> AuditFanOut::handleAuditChange(const Json::Value& json)
@@ -134,14 +135,15 @@ drogon::Task<bool> AuditFanOut::handleAuditChange(const Json::Value& json)
   co_return true;
 }
 
-drogon::Task<bool> AuditFanOut::handleActionJournal(const Json::Value& json,
-                                                    std::string_view msgId)
+drogon::Task<ActionJournalOutcome>
+AuditFanOut::handleActionJournal(const Json::Value& json, std::string_view msgId)
 {
   const auto event = UserActionEvent::fromJson(json);
   if (!event) {
     LOG_WARN << "Action journal: malformed event refused";
-    co_return false;
+    co_return ActionJournalOutcome::Refused;
   }
-  co_await insertAction(*event, msgId);
-  co_return true;
+  const bool inserted = co_await insertAction(*event, msgId);
+  co_return inserted ? ActionJournalOutcome::Acknowledged
+                     : ActionJournalOutcome::Duplicate;
 }

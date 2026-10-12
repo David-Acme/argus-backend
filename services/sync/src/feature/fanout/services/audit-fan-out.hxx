@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <feature/fanout/services/audit-log-service.hxx>
 #include <feature/fanout/services/user-audit-log-service.hxx>
@@ -10,6 +11,13 @@
 #include <sync/user-action-event.hxx>
 #include <sync/user-audit-event.hxx>
 
+enum class ActionJournalOutcome : std::uint8_t
+{
+  Acknowledged = 0,
+  Duplicate,
+  Refused
+};
+
 class AuditFanOut
 {
 public:
@@ -17,13 +25,13 @@ public:
   [[nodiscard]] bool backfillActivityModules() const;
 
   drogon::Task<bool> handleAuditChange(const Json::Value& json);
-  drogon::Task<bool> handleActionJournal(const Json::Value& json,
-                                         std::string_view msgId);
+  drogon::Task<ActionJournalOutcome> handleActionJournal(const Json::Value& json,
+                                                          std::string_view msgId);
 
 private:
   drogon::Task<void> insertModuleAudit(const ModuleAuditEvent& event);
   drogon::Task<void> insertUsersAudit(const UserAuditEvent& event);
-  drogon::Task<void> insertAction(const UserActionEvent& event,
+  drogon::Task<bool> insertAction(const UserActionEvent& event,
                                   std::string_view msgId);
 
   AuditLogService auditLogService_;
