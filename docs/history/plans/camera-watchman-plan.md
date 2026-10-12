@@ -223,6 +223,68 @@ worse than a missed one, so when in doubt Argus stays silent.
 - **Ending.** The conversation closes after a silence timeout or "gracias, Argus"; a maximum length
   applies, as for live talk today.
 
+## 5b. Continuing on the person's own phone or laptop
+
+The owner's goal (2026-10-12): if the camera sees the person pick up their phone or open their
+laptop, or loses them from every camera, the conversation continues on that device as a call, with
+the context of what was being said, so it feels like one conversation and not a new one.
+
+**What the industry does (research 2026-10-12).** No assistant moves a live voice session on its
+own. Teams, Zoom and FaceTime transfer a live call when the user *pulls* it from the new device
+("Transfer to this device", "Switch", "Move call to this Mac"); the new leg goes live before the old
+one leaves, and Teams mutes the second device's mic during the overlap. HomePod moves a call when an
+iPhone is held next to it (deliberate proximity, UWB on newer models). Alexa+ keeps the conversation
+thread across devices, but the live session does not move. That is the pattern Argus follows:
+make-before-break, the same account on both legs, never two live microphones at once.
+
+**Signals, strongest first.**
+1. An explicit request ("pásalo al celular") or tapping "Continuar aquí" in the app. Always wins.
+2. The Argus app in the foreground on an unlocked phone or the desktop, while a camera conversation
+   of the same user is open. A first-party signal, and the only state in which a phone may open its
+   microphone without a prompt.
+3. The camera sees the person using a phone or laptop: a "cell phone"/"laptop" box overlapping a
+   wrist plus a pose cue (hand at the ear, or wrists in front of the torso with the head down), held
+   for a few seconds. A weak, cheap signal that only counts together with 2; never alone. Pose comes
+   from a small CPU model (RTMPose-class, a few ms per person); the vision model may confirm one crop
+   on demand, never in a loop. Detector weights must be permissively licensed (Ultralytics YOLO is
+   AGPL-3.0; YOLOX and RF-DETR Nano–Large are Apache-2.0), and phone detection at 3–5 m on our cameras
+   is measured before it gets any weight (M6).
+4. The person is lost from every camera while the conversation is unfinished and their phone is on
+   the home network. A blind spot looks the same as leaving, so this only *offers* (rings), never
+   joins silently.
+Signals fuse in a per-conversation state machine (camera → offering → bridging → device, and back)
+with hysteresis: enter after about 2–3 s above the threshold, leave only below a lower one for
+5–10 s, and no second switch within about 15 s.
+
+**The hand-off itself.** One LiveKit room per conversation, one identity per leg
+(`user:<id>/cam:<id>`, `user:<id>/phone:<device>`): self-hosted LiveKit has no MoveParticipant, and a
+second join with the same identity drops the first. The device joins with its microphone muted; the
+agent finishes or pauses its sentence on the camera; the camera speaker is muted; the device
+microphone opens and the agent listens to it; the camera returns to wake-word-only listening.
+- *Silent continuation* only to the same user's own device, already in the foreground and unlocked.
+- *Otherwise it rings*, through the existing call engine (argus-notification, F3): the call carries
+  an opening line, which is exactly the "pre-context". Android forbids starting a background
+  microphone service without a user action, and iOS requires every VoIP push to show CallKit, so a
+  one-tap answer is the rule, not a limitation to work around.
+- If the device leg is not live within about 10 s, the camera leg stays; if the person has left, the
+  conversation stays resumable for a few minutes and opening the app resumes it.
+
+**The context packet**, built inside argus-llm and never sent to the device: the conversation id,
+the legs and the reason, the last 4–6 turns, a running summary of about 60 words in the user's
+language, the open pendings (slot question, confirmation, choice) with their arguments, the active
+entities of working memory and the sentence the assistant was in the middle of. The same LLM session
+continues; nothing restarts. The opening line is short and in the person's language ("Seguimos aquí.
+Me decías lo de la cena: ¿a qué hora?"); an open confirmation is asked again, never assumed.
+
+**Identity first.** A hand-off goes only to a device bound to the same authenticated user (JWT `sub`
+and device binding). When identity is weak (a shared tablet, a voice that disagrees), the new leg
+gets only the offer ("¿Seguimos con lo de antes?"), not the content. A conversation never moves back
+to a camera that sees a different face.
+
+**The other direction** (phone back to a camera when the person walks into a room and puts the phone
+down) is offered by voice ("¿Sigo por la cámara?") or happens when the person hangs up in front of a
+camera that sees them; never automatically.
+
 ## 6. Privacy, the law and who answers for it
 
 - **The installer is responsible.** Argus is self-hosted: the person who installs and operates it
@@ -266,6 +328,8 @@ the owner's consent for the recordings:
 - **M4** Voiceprint on camera audio: score distributions for the household at 8 kHz, against the
   app's 16 kHz.
 - **M5** CPU and memory with N cameras listening (the budget rule: memory capped at 1 GB per model).
+- **M6** Phone and laptop use seen from each camera at 1–5 m: detection and pose-cue precision and
+  recall on household footage, before the signal of section 5b may count.
 
 ## 8. Owner decisions (resolved 2026-10-12)
 
@@ -280,6 +344,11 @@ the owner's consent for the recordings:
    `argus-ai` and never shipped.
 7. Order: after section 2 (real time) of `realtime-and-backlog-plan.md`, unless the owner reorders.
 
+Open for the owner when the programme starts (section 5b): whether the phone-to-camera direction is
+wanted beyond the voice offer; how long an interrupted conversation stays resumable; whether a laptop
+merely open on a desk counts as "using" it; which permissively licensed detector the camera pipeline
+standardises on.
+
 ## 9. Order and research notes
 
 **Order:** W0 the privacy switches, the camera and visitor capability sets, the legal and privacy
@@ -288,7 +357,8 @@ M1–M5, W1 the camera microphone feed and streaming speaker RPCs, W2 the ear (V
 W3 stage 2 and self-trigger guard, W4 arbitration, W5 the session bridge and half-duplex
 conversation (the first owner-visible milestone: say "Argus" to one camera and talk), W6 identity
 fusion, the addressee decision (section 4b) and visitor registration (section 4c), W7 hand-off between cameras, W8 the phone-call rule, W9 vision
-("¿cómo me veo?", head pose, active speaker), W10 echo cancellation for barge-in. Each unit follows
+("¿cómo me veo?", head pose, active speaker), W10 echo cancellation for barge-in, W11 continuing on the person's own device (section 5b), after W8
+and F3's native call screen. Each unit follows
 the implementation protocol and the review protocol of the real-time plan.
 
 **Research consulted (2026-10-12):** sherpa-onnx KWS docs and pretrained model list;
