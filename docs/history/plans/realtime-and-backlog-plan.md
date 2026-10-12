@@ -199,7 +199,7 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   conversation feeds the one shared memory, and **what a person tells Argus privately is never used in
   another person's conversation** (household facts are shared, personal ones stay the person's). Needs
   a per-user conversation store, parallel LLM sequences, fair STT/TTS scheduling and co-located device
-  coordination; designed in `camera-watchman-plan.md` once the research of 2026-10-12 is in.
+  coordination; designed in `parallel-conversations-plan.md`.
 
 ## 5. Security and deployment hardening
 
