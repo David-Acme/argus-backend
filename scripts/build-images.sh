@@ -53,7 +53,11 @@ green.
 --cache <gb>      the builder's cache budget: every series prunes it back to
                   this many GiB first, because the builder runs with gc = false
                   (argus-deploy/buildkitd.toml) and would otherwise grow
-                  without bound (default 40, $ARGUS_BUILD_CACHE_GB)
+                  without bound (default 40, $ARGUS_BUILD_CACHE_GB). Cache
+                  mounts are never pruned (the prune carries
+                  type!=exec.cachemount): the conan package cache lives in
+                  one, and evicting it would rebuild every package from
+                  source on the next series.
 --output <dir>    where the per-image build logs, the per-image ctest summary
                   and build-times.tsv are written (default build/images,
                   $ARGUS_BUILD_OUT)
@@ -155,7 +159,7 @@ ensure_builder() {
 prune_cache() {
   local reclaimed
   reclaimed="$(docker buildx prune --builder "$BUILDER" --force \
-    --max-used-space "${CACHE_GB}g" | tail -n 1)"
+    --max-used-space "${CACHE_GB}g" --filter 'type!=exec.cachemount' | tail -n 1)"
   printf 'build-images: builder %s cache budget %s GiB; %s\n' "$BUILDER" "$CACHE_GB" "$reclaimed"
 }
 
