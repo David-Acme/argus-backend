@@ -7,6 +7,8 @@
 
 #include <chrono>
 #include <ctime>
+#include <nats/nats-subject.hxx>
+#include <outbox/outbox-query.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
 #include <string>
@@ -711,12 +713,11 @@ drogon::Task<GuardEncounterPhaseResult> GuardRepository::commitEncounterPhase(
       for (const auto& row : rows) {
         const GuardEncounter encounter = encounterFromRow(row);
         result.closed.push_back(encounter);
-        co_await transaction->execSqlCoro(INSERT_ENCOUNTER_OUTBOX.data(),
-                                          encounterClosedEventId(encounter,
-                                                                 input.closeAt),
-                                          encounterClosedPayload(encounter,
-                                                                 input.closeAt),
-                                          input.closeAt, input.closeAt);
+        static_cast<void>(co_await enqueueEncounterClosed(
+            {.eventId = encounterClosedEventId(encounter, input.closeAt),
+             .payload = encounterClosedPayload(encounter, input.closeAt),
+             .at = input.closeAt,
+             .client = transaction.get()}));
       }
       co_await transaction->execSqlCoro(CLOSE_PERSON_TRANSITIONS.data(),
                                         input.closeAt, input.closePersonId);
@@ -905,51 +906,20 @@ GuardRepository::setOutboxPayload(const GuardOutboxPayloadInput& input) const
   co_return result.affectedRows() > 0;
 }
 
-drogon::Task<bool>
+drogon::Task<outbox::OutboxDisposition>
 GuardRepository::enqueueEncounterClosed(const EncounterOutboxInput& input) const
 {
-  if (input.eventId.empty())
-    co_return false;
-  auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(INSERT_ENCOUNTER_OUTBOX.data(),
-                                   input.eventId, input.payload, input.at,
-                                   input.at);
-  co_return result.affectedRows() > 0;
-}
-
-drogon::Task<std::vector<EncounterOutboxRow>>
-GuardRepository::pendingEncounterClosed() const
-{
-  auto client = DbService::client();
-  const auto rows =
-      co_await client->execSqlCoro(PENDING_ENCOUNTER_OUTBOX.data());
-  std::vector<EncounterOutboxRow> pending;
-  pending.reserve(rows.size());
-  for (const auto& row : rows)
-    pending.push_back({.eventId = row["event_id"].as<std::string>(),
-                       .payload = row["payload"].as<std::string>()});
-  co_return pending;
-}
-
-drogon::Task<bool>
-GuardRepository::markEncounterSent(const std::string& eventId, int64_t at) const
-{
-  if (eventId.empty())
-    co_return false;
-  auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(MARK_ENCOUNTER_SENT.data(), at, eventId);
-  co_return result.affectedRows() > 0;
-}
-
-drogon::Task<int64_t>
-GuardRepository::purgeSettledEncounterOutbox(int64_t olderThan) const
-{
-  auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(
-      std::string(PURGE_ENCOUNTER_OUTBOX), olderThan);
-  co_return static_cast<int64_t>(result.affectedRows());
+  if (input.eventId.empty() || input.payload.empty())
+    co_return outbox::OutboxDisposition::Conflict;
+  const outbox::OutboxRepository repository(
+      [] { return DbService::client(); });
+  co_return co_await repository.insert(
+      {.eventId = input.eventId,
+       .subject = std::string(nats_subject::kGuardEncounterClosed),
+       .fingerprint = {},
+       .payload = input.payload,
+       .at = input.at * 1000,
+       .client = input.client});
 }
 
 drogon::Task<bool> GuardRepository::insertDecisionJournal(
@@ -1437,19 +1407,6 @@ drogon::Task<int64_t> GuardRepository::purgeDecisions(int64_t olderThan) const
 }
 
 drogon::Task<bool>
-GuardRepository::recordEncounterAttempt(const std::string& eventId,
-                                        int64_t at) const
-{
-  if (eventId.empty())
-    co_return false;
-  auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(RECORD_ENCOUNTER_ATTEMPT.data(), at,
-                                   eventId);
-  co_return result.affectedRows() > 0;
-}
-
-drogon::Task<bool>
 GuardRepository::updateOutbox(const GuardOutboxUpdateInput& input) const
 {
   auto client = DbService::client();
@@ -1559,14 +1516,12 @@ drogon::Task<bool> GuardRepository::closeStaleEncounters(
       encounter.bestCameraId = row["best_camera_id"].as<int64_t>();
       encounter.firstSeen = row["first_seen"].as<int64_t>();
       encounter.lastSeen = row["last_seen"].as<int64_t>();
-      co_await transaction->execSqlCoro(INSERT_ENCOUNTER_OUTBOX.data(),
-                                        encounterClosedEventId(encounter,
-                                                               input.closedAt),
-                                        encounterClosedPayload(encounter,
-                                                               input.closedAt),
-                                        input.closedAt, input.closedAt);
-      const GuardDanger grade =
-          guardDangerFromString(encounter.grade);
+      static_cast<void>(co_await enqueueEncounterClosed(
+          {.eventId = encounterClosedEventId(encounter, input.closedAt),
+           .payload = encounterClosedPayload(encounter, input.closedAt),
+           .at = input.closedAt,
+           .client = transaction.get()}));
+      const GuardDanger grade = guardDangerFromString(encounter.grade);
       co_await transaction->execSqlCoro(
           INSERT_DECISION_JOURNAL.data(),
           encounterClosedEventId(encounter, input.closedAt), encounter.id, 0,

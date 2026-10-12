@@ -1618,3 +1618,34 @@ evaluation after a restart is a reconciliation — it publishes exactly when the
 posture moved while guard was down, and a duplicate frame is harmless because
 the frame is a notification. Convergence is the property; there is no cursor,
 no delivery ledger and no exactly-once machinery to get wrong.
+
+### The encounter feed moves onto the change outbox (2026-10-12, R1's migration)
+
+`guard_encounter_outbox` and its flush loop are gone: an encounter close now
+writes a `change_outbox` row (the same explicit event id, the same subject
+`argus.guard.v1.encounter_closed`, the same payload, a borrowed client inside the
+close's transaction) and lib/outbox's relay publishes it with the event id as the
+msg id, settling only on PubAck. The old table is no longer created and no longer
+read or written; a database that already has it keeps it, unread, and a boot step
+of `guard_schema::migrate` copies its pending rows across, idempotently, so a row
+that was never published is not lost. Dropping the table is a named cleanup for
+the plan's debt list, not a side effect of this build.
+
+Two units meet in that copy, and the conversion is explicit: the old table stored
+`created_at` in seconds (`strftime('%s')`) and the change outbox stores it in
+milliseconds (lib/outbox writes `nowMs()` and its relay reads the column that
+way), so the migration multiplies by 1000 and the close path writes
+`at * 1000`. `attempts` and `status` carry over as they are; a row that was already
+`sent` does not cross, because it is done; and the old table's rows stay where
+they are, so the copy is a copy and not a move.
+
+Where a duplicate is really absorbed: **argus-llm's `encounter_closed_inbox`,
+keyed by the event id**. The stream's two-minute duplicate window only covers a
+re-send inside that window, and a row whose PubAck was lost before the upgrade can
+be resent hours later, long past it — what makes that harmless is the consumer's
+capture-once receipt, which its own suites pin
+(`services/llm/tests/unit/encounter-closed-consumer-test.cc`, "the encounter
+consumer captures exactly once per receipt", and `encounter-closed-live-test.cc`,
+"encounter fan-out captures exactly once with inbox dedup"). Guard's side of that
+promise is the test that the event id, the payload and the subject survive the
+migration and the rewrite unchanged.

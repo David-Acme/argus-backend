@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <fstream>
+#include <nats/nats-subject.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
 #include <string_view>
@@ -532,17 +533,19 @@ bool ensureDeadLetterTable()
               "ON guard_dead_letter (event_id) WHERE event_id != ''");
 }
 
-bool ensureEncounterOutboxTable()
+bool migrateEncounterOutbox()
 {
-  return exec("CREATE TABLE IF NOT EXISTS guard_encounter_outbox ("
-              "event_id TEXT NOT NULL PRIMARY KEY, payload TEXT NOT NULL "
-              "DEFAULT '{}', "
-              "status TEXT NOT NULL DEFAULT 'pending', "
-              "attempts INTEGER NOT NULL DEFAULT 0, "
-              "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
-              "updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))") &&
-         exec("CREATE INDEX IF NOT EXISTS idx_guard_encounter_outbox_status "
-              "ON guard_encounter_outbox (status, created_at ASC)");
+  if (!tableExists("guard_encounter_outbox") ||
+      !tableExists("change_outbox"))
+    return true;
+  const std::string sql =
+      std::string("INSERT OR IGNORE INTO change_outbox (event_id, subject, "
+                  "fingerprint, payload, status, attempts, created_at, "
+                  "sent_at) SELECT event_id, '") +
+      nats_subject::kGuardEncounterClosed +
+      "', '', payload, 'pending', attempts, created_at * 1000, 0 FROM "
+      "guard_encounter_outbox WHERE status = 'pending'";
+  return exec(sql);
 }
 
 bool ensureEvidenceIndex()
@@ -791,7 +794,7 @@ bool guard_schema::migrate(const std::string& schemaPath)
       !migrateJournalDispatchColumn() || !migrateJournalRound11Columns() ||
       !migrateJournalReasonsColumn() || !migrateOutboxColumns() ||
       !ensureDeadLetterTable() || !ensureBaselineTables() ||
-      !ensureEncounterOutboxTable() || !ensureEvidenceIndex())
+      !migrateEncounterOutbox() || !ensureEvidenceIndex())
     return false;
   if (!encounterTableIsCurrent() && !rebuildEncounterTable(schemaPath))
     return false;

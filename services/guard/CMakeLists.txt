@@ -266,23 +266,6 @@ target_compile_options(guard-module-lifecycle-live-test PRIVATE -Wall -Wextra)
 add_test(NAME guard-module-lifecycle-live-test
          COMMAND guard-module-lifecycle-live-test)
 
-add_executable(guard-encounter-drain-live-test
-    tests/unit/guard-encounter-drain-live-test.cc)
-set_target_properties(guard-encounter-drain-live-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
-target_link_libraries(guard-encounter-drain-live-test PRIVATE
-    argus::guard
-    argus::lib::nats
-    argus::lib::sqlite
-    doctest::doctest)
-target_include_directories(guard-encounter-drain-live-test PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
-target_compile_definitions(guard-encounter-drain-live-test PRIVATE
-    ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
-target_compile_options(guard-encounter-drain-live-test PRIVATE -Wall -Wextra)
-add_test(NAME guard-encounter-drain-live-test
-         COMMAND guard-encounter-drain-live-test)
-
 add_executable(guard-verdict-live-test tests/unit/guard-verdict-live-test.cc)
 set_target_properties(guard-verdict-live-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-verdict-live-test PRIVATE

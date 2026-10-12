@@ -130,8 +130,6 @@ public:
 
   drogon::Task<void> checkTamperSweep(int64_t now);
 
-  drogon::Task<void> flushEncounterOutbox();
-
   drogon::Task<void> maybeSendDigests(int64_t now);
 
 private:
@@ -630,7 +628,6 @@ private:
   std::mutex directoryMutex_;
   std::optional<std::vector<ResponseUser>> lastDirectory_;
   std::atomic<bool> subscribed_{false};
-  std::atomic<bool> encounterStreamReady_{false};
   bool advisoriesSubscribed_{false};
   bool healthSubscribed_{false};
   bool sweepsStarted_{false};

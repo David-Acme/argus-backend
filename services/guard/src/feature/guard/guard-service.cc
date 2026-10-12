@@ -703,7 +703,6 @@ void GuardService::stop()
   healthSubscribed_ = false;
   heartbeatStarted_ = false;
   subscribeAttempts_ = 0;
-  encounterStreamReady_.store(false, std::memory_order_release);
 }
 
 bool GuardService::watching() const
@@ -1404,7 +1403,6 @@ void GuardService::scheduleEncounterSweep()
                .closedAt = now,
                .decisionMode = config->decisionMode});
         }
-        co_await flushEncounterOutbox();
         co_await checkTamperSweep(now);
         co_await maybeSendDigests(now);
       }
@@ -1432,8 +1430,7 @@ void GuardService::publishEncounterClosed(const GuardEncounter& encounter,
     if (!guard.alive())
       co_return;
     try {
-      co_await repository_.enqueueEncounterClosed(input);
-      co_await flushEncounterOutbox();
+      static_cast<void>(co_await repository_.enqueueEncounterClosed(input));
     }
     catch (const std::exception& error) {
       LOG_WARN << "Guard service: encounter close publish failed: "
@@ -1445,43 +1442,6 @@ void GuardService::publishEncounterClosed(const GuardEncounter& encounter,
     }
     co_return;
   });
-}
-
-drogon::Task<void> GuardService::flushEncounterOutbox()
-{
-  const auto config = currentConfig();
-  if (!dependencies_.bus)
-    co_return;
-  if (!encounterStreamReady_.load(std::memory_order_acquire))
-    encounterStreamReady_.store(
-        co_await BlockingTask<bool>([this]() { return ensureGuardStream(); }),
-        std::memory_order_release);
-  const std::string subject = config->guardEncounterSubject.empty()
-                                  ? std::string(nats_subject::kGuardEncounterClosed)
-                                  : config->guardEncounterSubject;
-  const auto pending = co_await repository_.pendingEncounterClosed();
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
-  int refused = 0;
-  for (const auto& row : pending) {
-    const bool published = co_await BlockingTask<bool>(
-        [bus = dependencies_.bus, subject, payload = row.payload, msgId = row.eventId]() {
-          return bus->publishWithMsgId({.subject = subject, .payload = payload, .msgId = msgId});
-        });
-    if (!published) {
-      encounterStreamReady_.store(false, std::memory_order_relaxed);
-      co_await repository_.recordEncounterAttempt(row.eventId, now);
-      ++refused;
-      continue;
-    }
-    if (!co_await repository_.markEncounterSent(row.eventId, now))
-      LOG_WARN << "Guard encounter outbox: " << row.eventId
-               << " was stored but could not be marked sent; it stays pending";
-  }
-  if (refused > 0)
-    LOG_WARN << "Guard encounter outbox: " << refused
-             << " closed encounter(s) could not be published; they stay "
-                "pending for the next pass";
-  co_return;
 }
 
 drogon::Task<bool> GuardService::handle(const Json::Value& event, int delivered)
@@ -3371,11 +3331,6 @@ drogon::Task<void> GuardService::runRetentionSweep()
       LOG_INFO << "Guard retention: purged " << purged
                << " history row(s) past the retention window";
   }
-  const int64_t settled = co_await repository_.purgeSettledEncounterOutbox(
-      now - stream_retention::kRetentionSeconds);
-  if (settled > 0)
-    LOG_INFO << "Guard encounter outbox: purged " << settled
-             << " settled row(s) past the stream's retention";
   if (!storage_.isConfigured()) {
     LOG_INFO << "Guard retention: object storage not configured; skipped";
     co_return;

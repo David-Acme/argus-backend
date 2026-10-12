@@ -211,18 +211,6 @@ CREATE TABLE IF NOT EXISTS guard_action_outbox (
 CREATE INDEX IF NOT EXISTS idx_guard_outbox_status
     ON guard_action_outbox (status, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS guard_encounter_outbox (
-    event_id   TEXT    NOT NULL PRIMARY KEY,
-    payload    TEXT    NOT NULL DEFAULT '{}',
-    status     TEXT    NOT NULL DEFAULT 'pending',
-    attempts   INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_guard_encounter_outbox_status
-    ON guard_encounter_outbox (status, created_at ASC);
-
 CREATE TABLE IF NOT EXISTS guard_evidence (
     id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     incident_id     INTEGER NOT NULL  DEFAULT 0,

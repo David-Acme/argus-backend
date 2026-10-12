@@ -10,7 +10,9 @@
 #include <feature/guard/guard-service.hxx>
 #include <identity/identity-client.hxx>
 #include <json/value.h>
+#include <nats/nats-subject.hxx>
 #include <notification/notification-client.hxx>
+#include <outbox/transactional-outbox.hxx>
 #include <unistd.h>
 #include <optional>
 #include <text/json-util.hxx>
@@ -649,34 +651,32 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
     REQUIRE(closed.closed.size() == 1);
     const std::string eventId =
         encounterClosedEventId(closed.closed.front(), 800);
-    CHECK(scalar(
-              "SELECT COUNT(*) FROM guard_encounter_outbox WHERE event_id = '" +
-              eventId + "'") == "1");
+    CHECK(scalar("SELECT COUNT(*) FROM change_outbox WHERE event_id = '" +
+                 eventId + "'") == "1");
+    CHECK(scalar("SELECT subject FROM change_outbox WHERE event_id = '" +
+                 eventId + "'") == nats_subject::kGuardEncounterClosed);
+    CHECK(scalar("SELECT status FROM change_outbox WHERE event_id = '" +
+                 eventId + "'") == "pending");
+    CHECK(scalar("SELECT created_at FROM change_outbox WHERE event_id = '" +
+                 eventId + "'") == "800000");
     CHECK(
-        scalar("SELECT status FROM guard_encounter_outbox WHERE event_id = '" +
-               eventId + "'") == "pending");
-    CHECK(
-        scalar("SELECT payload FROM guard_encounter_outbox WHERE event_id = '" +
+        scalar("SELECT payload FROM change_outbox WHERE event_id = '" +
                eventId + "'")
             .find("\"personId\":42") != std::string::npos);
-    CHECK(drogon::sync_wait(repository.markEncounterSent(eventId, 900)));
-    CHECK(drogon::sync_wait(repository.purgeSettledEncounterOutbox(899)) == 0);
-    CHECK(scalar("SELECT status FROM guard_encounter_outbox WHERE event_id = '" +
-                 eventId + "'") == "sent");
-    CHECK(drogon::sync_wait(repository.purgeSettledEncounterOutbox(900)) == 1);
-    CHECK(scalar("SELECT COUNT(*) FROM guard_encounter_outbox WHERE event_id = '" +
-                 eventId + "'") == "0");
   }
 
   {
     const EncounterOutboxInput kept = {
         .eventId = "enc:kept",
         .payload = "{}",
-        .at = 1000};
-    CHECK(drogon::sync_wait(repository.enqueueEncounterClosed(kept)));
-    CHECK(drogon::sync_wait(repository.purgeSettledEncounterOutbox(99999)) == 0);
-    CHECK(scalar("SELECT status FROM guard_encounter_outbox WHERE event_id = "
-                 "'enc:kept'") == "pending");
+        .at = 1000,
+        .client = nullptr};
+    CHECK(drogon::sync_wait(repository.enqueueEncounterClosed(kept)) ==
+          outbox::OutboxDisposition::Enqueued);
+    CHECK(drogon::sync_wait(repository.enqueueEncounterClosed(kept)) ==
+          outbox::OutboxDisposition::Replay);
+    CHECK(scalar("SELECT COUNT(*) FROM change_outbox WHERE event_id = "
+                 "'enc:kept'") == "1");
   }
 
   {

@@ -6,6 +6,7 @@
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>
+#include <outbox/transactional-outbox.hxx>
 #include <string>
 #include <vector>
 
@@ -102,18 +103,8 @@ public:
   drogon::Task<bool>
   setOutboxPayload(const GuardOutboxPayloadInput& input) const;
 
-  drogon::Task<bool>
+  drogon::Task<outbox::OutboxDisposition>
   enqueueEncounterClosed(const EncounterOutboxInput& input) const;
-
-  drogon::Task<std::vector<EncounterOutboxRow>> pendingEncounterClosed() const;
-
-  drogon::Task<bool> markEncounterSent(const std::string& eventId,
-                                       int64_t at) const;
-
-  drogon::Task<bool> recordEncounterAttempt(const std::string& eventId,
-                                            int64_t at) const;
-
-  drogon::Task<int64_t> purgeSettledEncounterOutbox(int64_t olderThan) const;
 
   drogon::Task<int64_t> purgeHistory(const GuardHistoryPurgeInput& input) const;
 

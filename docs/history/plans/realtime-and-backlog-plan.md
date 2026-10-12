@@ -196,6 +196,10 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - D6 Stale docs: `AGENTS.md:1086` (steps 2b-2d are done), `services/sync/CONTEXT.md:437` (the outbox
   landed), `tool-calling-reduction-plan.md` (superseded by the decider + slots design),
   `frontend/CONTEXT.md:305` and `:541`.
+- D7 Named cleanup from the encounter-outbox migration (2026-10-12): drop `guard_encounter_outbox`
+  once every installation has booted a build that carries the copy into `change_outbox`. It is no
+  longer created and no longer read or written, but deleting it is a data removal and needs an
+  explicit owner reset or a later release, never a side effect of a feature build.
 
 ## 8. Decisions awaiting the owner
 

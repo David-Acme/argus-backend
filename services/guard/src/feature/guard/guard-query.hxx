@@ -158,26 +158,6 @@ inline constexpr std::string_view TOUCH_ENCOUNTER =
 inline constexpr std::string_view MARK_ENCOUNTER_ACTION =
     "UPDATE guard_encounter SET last_action_at = ? WHERE id = ?";
 
-inline constexpr std::string_view INSERT_ENCOUNTER_OUTBOX =
-    "INSERT OR IGNORE INTO guard_encounter_outbox (event_id, payload, "
-    "created_at, updated_at) VALUES (?, ?, ?, ?)";
-
-inline constexpr std::string_view PENDING_ENCOUNTER_OUTBOX =
-    "SELECT event_id, payload FROM guard_encounter_outbox WHERE status = "
-    "'pending' ORDER BY created_at ASC LIMIT 100";
-
-inline constexpr std::string_view MARK_ENCOUNTER_SENT =
-    "UPDATE guard_encounter_outbox SET status = 'sent', updated_at = ? "
-    "WHERE event_id = ?";
-
-inline constexpr std::string_view RECORD_ENCOUNTER_ATTEMPT =
-    "UPDATE guard_encounter_outbox SET attempts = attempts + 1, updated_at = ? "
-    "WHERE event_id = ?";
-
-inline constexpr std::string_view PURGE_ENCOUNTER_OUTBOX =
-    "DELETE FROM guard_encounter_outbox WHERE status = 'sent' "
-    "AND updated_at <= ?";
-
 inline constexpr std::string_view CLOSE_STALE_TRANSITIONS =
     "INSERT INTO guard_encounter_transition (encounter_id, from_state, "
     "to_state, reason, revision, occurred_at) "
@@ -666,12 +646,7 @@ struct EncounterOutboxInput
   std::string eventId;
   std::string payload;
   int64_t at{0};
-};
-
-struct EncounterOutboxRow
-{
-  std::string eventId;
-  std::string payload;
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct GuardEncounterCreateInput

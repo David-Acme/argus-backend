@@ -26,7 +26,7 @@ inline constexpr std::string_view SUMMARY =
     "(SELECT COALESCE(SUM(?1 + length(checkpoint) + length(payload)), 0) FROM guard_observation_inbox) + "
     "(SELECT COALESCE(SUM(?1 + length(payload)), 0) FROM guard_dead_letter) + "
     "(SELECT COALESCE(SUM(?1 + length(payload) + length(response)), 0) FROM guard_action_outbox) + "
-    "(SELECT COALESCE(SUM(?1 + length(payload)), 0) FROM guard_encounter_outbox) + "
+    "(SELECT COALESCE(SUM(?1 + length(payload)), 0) FROM change_outbox) + "
     "(SELECT COALESCE(SUM(?1 + length(object_key)), 0) FROM guard_evidence) + "
     "(SELECT COUNT(*) * ?1 FROM guard_hourly_baseline) + "
     "(SELECT COALESCE(SUM(?1 + length(signature)), 0) FROM guard_signature_visit) + "
@@ -46,7 +46,7 @@ inline constexpr std::array<std::string_view, 22> PURGE{
     "DELETE FROM guard_observation_inbox",
     "DELETE FROM guard_dead_letter",
     "DELETE FROM guard_action_outbox",
-    "DELETE FROM guard_encounter_outbox",
+    "DELETE FROM change_outbox",
     "DELETE FROM guard_hourly_baseline",
     "DELETE FROM guard_signature_visit",
     "DELETE FROM guard_decision_journal",

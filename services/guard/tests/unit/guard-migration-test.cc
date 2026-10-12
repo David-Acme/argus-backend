@@ -4,6 +4,7 @@
 #include <drogon/drogon.h>
 #include <feature/guard/guard-repository.hxx>
 #include <feature/guard/guard-schema.hxx>
+#include <nats/nats-subject.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite3.h>
 
@@ -497,4 +498,34 @@ TEST_CASE("a legacy guard database migrates in place without data loss")
   DbService::client()->execSqlSync(
       "UPDATE guard_encounter SET state = 'closed' WHERE id = 1");
   CHECK(scalar("SELECT state FROM guard_encounter WHERE id = 1") == "closed");
+
+  DbService::client()->execSqlSync(
+      "CREATE TABLE guard_encounter_outbox (event_id TEXT NOT NULL PRIMARY KEY, "
+      "payload TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT "
+      "'pending', attempts INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT "
+      "NULL DEFAULT (strftime('%s', 'now')), updated_at INTEGER NOT NULL "
+      "DEFAULT (strftime('%s', 'now')))");
+  DbService::client()->execSqlSync(
+      "INSERT INTO guard_encounter_outbox (event_id, payload, status, attempts, "
+      "created_at, updated_at) VALUES ('enc:pending', '{\"a\":1}', 'pending', "
+      "3, 800, 800), ('enc:sent', '{\"b\":2}', 'sent', 1, 900, 900)");
+
+  REQUIRE(guard_schema::migrate(ARGUS_GUARD_SCHEMA_PATH));
+  REQUIRE(guard_schema::migrate(ARGUS_GUARD_SCHEMA_PATH));
+
+  CHECK(scalar("SELECT COUNT(*) FROM change_outbox WHERE event_id = "
+               "'enc:pending'") == "1");
+  CHECK(scalar("SELECT subject FROM change_outbox WHERE event_id = "
+               "'enc:pending'") == nats_subject::kGuardEncounterClosed);
+  CHECK(scalar("SELECT created_at FROM change_outbox WHERE event_id = "
+               "'enc:pending'") == "800000");
+  CHECK(scalar("SELECT attempts FROM change_outbox WHERE event_id = "
+               "'enc:pending'") == "3");
+  CHECK(scalar("SELECT payload FROM change_outbox WHERE event_id = "
+               "'enc:pending'") == "{\"a\":1}");
+  CHECK(scalar("SELECT COUNT(*) FROM change_outbox WHERE event_id = "
+               "'enc:sent'") == "0");
+  CHECK(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND "
+               "name = 'guard_encounter_outbox'") == "1");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_encounter_outbox") == "2");
 }

@@ -38,7 +38,7 @@ void seed()
   scalar("INSERT INTO guard_observation_inbox (event_id, payload) VALUES ('ev1', '{}')");
   scalar("INSERT INTO guard_dead_letter (event_id, payload) VALUES ('ev2', '{}')");
   scalar("INSERT INTO guard_action_outbox (command_id, payload) VALUES ('cmd1', '{}')");
-  scalar("INSERT INTO guard_encounter_outbox (event_id, payload) VALUES ('enc1', '{}')");
+  scalar("INSERT INTO change_outbox (event_id, payload) VALUES ('enc1', '{}')");
   scalar("INSERT INTO guard_evidence (encounter_id, object_key, expires_at, deleted_at) VALUES "
          "(7, 'guard/incidents/7/a.jpg', 9999999999, 0), (7, 'guard/incidents/7/b.jpg', 1, 3)");
   scalar("INSERT INTO guard_hourly_baseline (camera_id, dow_hour) VALUES (1, 5)");
@@ -103,7 +103,7 @@ TEST_CASE("argus-guard purges what surveillance observed and keeps the household
   CHECK(withoutStorage.reason == "storage_unavailable");
   for (const auto* table :
        {"guard_incident", "guard_action", "guard_assessment", "guard_encounter", "guard_encounter_transition",
-        "guard_observation_inbox", "guard_dead_letter", "guard_action_outbox", "guard_encounter_outbox",
+        "guard_observation_inbox", "guard_dead_letter", "guard_action_outbox", "change_outbox",
         "guard_hourly_baseline", "guard_signature_visit", "guard_decision_journal", "guard_expected_guest",
         "guard_camera_context"})
     CHECK(scalar(std::string("SELECT COUNT(*) FROM ") + table) == "0");
