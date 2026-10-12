@@ -106,6 +106,7 @@ dwell_alert_ms = 400
 dwell_monitor_ms = 12000
 dwell_night_ms = 800
 cooldown_ms = 30000
+detection_publish_s = 15
 night_start = 22
 night_end = 6
 presence_escalation_frames = 3

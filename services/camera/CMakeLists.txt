@@ -451,6 +451,16 @@ set_target_properties(camera-action-migration-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 add_test(NAME camera-action-migration-test COMMAND camera-action-migration-test)
 
+add_executable(detection-change-gate-test
+    tests/unit/detection-change-gate-test.cc)
+target_link_libraries(detection-change-gate-test PRIVATE
+    argus::camera-operator
+    doctest::doctest)
+target_compile_options(detection-change-gate-test PRIVATE -Wall -Wextra)
+set_target_properties(detection-change-gate-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+add_test(NAME detection-change-gate-test COMMAND detection-change-gate-test)
+
 add_executable(object-event-outbox-test
     tests/unit/object-event-outbox-test.cc)
 target_link_libraries(object-event-outbox-test PRIVATE

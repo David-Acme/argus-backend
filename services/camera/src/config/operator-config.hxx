@@ -32,6 +32,7 @@ struct OperatorConfig
   bool zonesFromDb{true};
   int64_t zonesRefreshMs{30000};
   int64_t cameraRescanMs{15000};
+  int64_t detectionPublishS{15};
   bool motionGate{false};
   double motionMinRatio{0.002};
   bool ignoreStaticPersons{false};

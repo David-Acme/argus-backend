@@ -96,6 +96,8 @@ OperatorConfig operator_config::resolveOperator()
     return value >= 0 ? value : fallback;
   };
   config.cooldownMs = configuredAtLeastZero("operator.cooldown_ms", 30000);
+  config.detectionPublishS =
+      configuredAtLeastZero("operator.detection_publish_s", 15);
   config.nightStartHour = configuredAtLeastZero("operator.night_start", 22);
   config.nightEndHour = configuredAtLeastZero("operator.night_end", 6);
   config.presenceEscalationFrames =

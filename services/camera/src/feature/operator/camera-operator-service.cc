@@ -993,6 +993,10 @@ void CameraOperatorService::publishPersonPending(
     if (track != input.state.personTracks.end())
       track->second.lastEmitMs = input.nowMs;
     EvidenceUploader::instance().uploadDetection(input.cameraId, input.nowMs);
+    if (inputs_.dependencies.detections != nullptr)
+      drogon::async_run([this, cameraId = input.cameraId]() -> drogon::Task<void> {
+        co_await inputs_.dependencies.detections->detected(cameraId);
+      });
   }
 }
 
@@ -1018,6 +1022,12 @@ void CameraOperatorService::publishOtherPending(const PublishOtherInput& input)
     return;
   }
   input.state.pendingOther.reset();
+  if (result == ObjectEventPublishResult::Recorded &&
+      inputs_.dependencies.detections != nullptr) {
+    drogon::async_run([this, cameraId = input.cameraId]() -> drogon::Task<void> {
+      co_await inputs_.dependencies.detections->detected(cameraId);
+    });
+  }
   input.state.pendingOtherStartMs = 0;
   if (result == ObjectEventPublishResult::Recorded)
     EvidenceUploader::instance().uploadDetection(input.cameraId, input.nowMs);

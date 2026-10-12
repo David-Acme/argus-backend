@@ -1,5 +1,6 @@
 argus_module(NAME camera-operator
     SOURCES
+        services/detection-change-gate.cc
         camera-operator-service.cc
         event-intelligence.cc
         identity-known-person-matcher.cc

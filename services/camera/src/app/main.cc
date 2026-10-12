@@ -284,6 +284,12 @@ int main()
   std::shared_ptr<NatsCameraChangeSink> changeSink;
   std::shared_ptr<NatsBus> natsBus;
   std::unique_ptr<NatsObjectEventSink> objectSink;
+  DetectionChangeGate detectionChanges(
+      {.publishSeconds = static_cast<double>(
+           ConfigService::getInt("operator.detection_publish_s") > 0
+               ? ConfigService::getInt("operator.detection_publish_s")
+               : 15),
+       .clock = {}});
   const std::string natsUrl = ConfigService::getString("nats.url");
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; camera change funnel disabled";
@@ -381,6 +387,7 @@ int main()
       else {
         inputs.dependencies.matcher = &noKnownPersonMatcher;
       }
+      inputs.dependencies.detections = &detectionChanges;
       inputs.dependencies.active = surveillanceActive;
       inputs.objects = objectsConfig;
       inputs.operator_ = operator_config::resolveOperator();
@@ -421,7 +428,7 @@ int main()
 
   drogon::app().registerBeginningAdvice(
       [&cameraDb, &operatorService, &healthMonitor, &cameraActionRpc,
-       &objectSink, &changeSink, keyCreated]() {
+       &objectSink, &changeSink, &detectionChanges, keyCreated]() {
     DbService::installExtensions();
 
     if (!DbService::runScriptFile(cameraDb.schemaPath)) {
@@ -469,6 +476,7 @@ int main()
     Go2rtcManager::instance().configure();
     StreamHub::instance().init();
 
+    detectionChanges.start();
     drogon::async_run([operator_ = operatorService.get(),
                        monitor = healthMonitor.get()]() {
       return startAfterSources(operator_, monitor);
@@ -485,6 +493,8 @@ int main()
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*changeSink, "camera-change"));
   }
+  shutdown_signal::onStop(
+      shutdown_signal::drainOf(detectionChanges, "camera-detections"));
   if (operatorService) {
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*operatorService, "camera-operator"));

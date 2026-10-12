@@ -4,6 +4,7 @@
 #include <feature/operator/event-intelligence.hxx>
 #include <shared/services/stream/frame-source.hxx>
 #include <feature/operator/object-event-sink.hxx>
+#include <feature/operator/services/detection-change-gate.hxx>
 #include <config/operator-config.hxx>
 #include <feature/operator/zone-source.hxx>
 #include <shared/utils/in-flight/in-flight.hxx>
@@ -40,6 +41,7 @@ public:
     IObjectEventSink* sink{nullptr};
     const IKnownPersonMatcher* matcher{nullptr};
     IZoneSource* zones{nullptr};
+    DetectionChangeGate* detections{nullptr};
     std::function<bool()> active{};
   };
 
