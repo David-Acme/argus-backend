@@ -24,6 +24,7 @@ enum class ResourceScope : std::uint8_t
   Device = 0,
   Zones,
   Status,
+  Overview,
   Environments,
   Incidents,
   Episodes,
@@ -47,7 +48,7 @@ struct ResourceRoute
   drogon::HttpMethod method;
 };
 
-inline constexpr std::array<ResourceRoute, 15> kResourceRoutes{{
+inline constexpr std::array<ResourceRoute, 16> kResourceRoutes{{
     {.domain = ResourceDomain::Camera,
      .scope = ResourceScope::Device,
      .path = "/camera",
@@ -59,6 +60,10 @@ inline constexpr std::array<ResourceRoute, 15> kResourceRoutes{{
     {.domain = ResourceDomain::Camera,
      .scope = ResourceScope::Status,
      .path = "/camera/0/status",
+     .method = drogon::Get},
+    {.domain = ResourceDomain::Camera,
+     .scope = ResourceScope::Overview,
+     .path = "/camera/overview",
      .method = drogon::Get},
     {.domain = ResourceDomain::Guard,
      .scope = ResourceScope::Environments,
@@ -152,6 +157,8 @@ inline std::string resourceScopeToString(ResourceScope scope)
       return "zones";
     case ResourceScope::Status:
       return "status";
+    case ResourceScope::Overview:
+      return "overview";
     case ResourceScope::Environments:
       return "environments";
     case ResourceScope::Incidents:
@@ -188,6 +195,8 @@ inline std::optional<ResourceScope> resourceScopeFromString(std::string_view nam
     return ResourceScope::Zones;
   if (name == "status")
     return ResourceScope::Status;
+  if (name == "overview")
+    return ResourceScope::Overview;
   if (name == "environments")
     return ResourceScope::Environments;
   if (name == "incidents")
