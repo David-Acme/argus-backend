@@ -7,6 +7,7 @@
 #include <feature/visitor/services/visitor-recognition-service.hxx>
 #include <shared/services/face/face-service.hxx>
 #include <shared/vocabulary/face-model.hxx>
+#include <sync/identity-change-sink.hxx>
 
 #include <chrono>
 #include <cstdio>
@@ -112,6 +113,54 @@ bool faceModelsProvisioned()
 }
 }
 
+class VisitorSink final : public IdentityChangeSink
+{
+public:
+  [[nodiscard]] drogon::Task<void>
+  publishCatalog(const IdentityCatalogInput&) const override
+  {
+    co_return;
+  }
+  [[nodiscard]] drogon::Task<void>
+  emitModule(const ModuleEmitInput&) const override
+  {
+    co_return;
+  }
+  [[nodiscard]] drogon::Task<void>
+  publishModuleAudit(const ModuleAuditInput&) const override
+  {
+    co_return;
+  }
+  [[nodiscard]] drogon::Task<void>
+  publishUsersAudit(const UserAuditInput&) const override
+  {
+    co_return;
+  }
+  [[nodiscard]] drogon::Task<void>
+  publishAction(const ActionPublishInput&) const override
+  {
+    co_return;
+  }
+  [[nodiscard]] drogon::Task<void>
+  publishResource(const IdentityResourceInput& input) const override
+  {
+    resources_.push_back(input);
+    co_return;
+  }
+
+  [[nodiscard]] std::vector<IdentityResourceInput> take() const
+  {
+    std::vector<IdentityResourceInput> taken = std::move(resources_);
+    resources_.clear();
+    return taken;
+  }
+
+  void drain() const { resources_.clear(); }
+
+private:
+  mutable std::vector<IdentityResourceInput> resources_;
+};
+
 TEST_CASE("recurring unknown faces become numbered visitors, the household never "
           "does, and the Owner can name, merge, split and delete them" *
           doctest::skip(!faceModelsProvisioned()))
@@ -133,6 +182,9 @@ TEST_CASE("recurring unknown faces become numbered visitors, the household never
   REQUIRE(DbService::runScriptFile(ARGUS_IDENTITY_SCHEMA));
   enrollHousehold("meir-a.jpg");
 
+  VisitorSink sink;
+  identity_change::setSink(&sink);
+
   VisitorRecognitionService recognition;
   const int64_t t0 = 1'790'000'000;
 
@@ -150,6 +202,15 @@ TEST_CASE("recurring unknown faces become numbered visitors, the household never
   CHECK(first.newVisit);
   REQUIRE(first.visitorNumber.has_value());
   const int64_t barratt = first.decision.personId;
+
+  {
+    INFO("a recorded sighting announces the visitor it landed on");
+    const auto notices = sink.take();
+    REQUIRE(notices.size() == 1);
+    CHECK(notices.front().scope == ResourceScope::Visitors);
+    CHECK(notices.front().ids == std::vector<int64_t>{barratt});
+    CHECK(notices.front().user == 0);
+  }
 
   const auto again = observe(recognition, "barratt-b.jpg", t0 + 120);
   CHECK(again.decision.outcome == SightingOutcome::Visitor);
@@ -208,6 +269,7 @@ TEST_CASE("recurring unknown faces become numbered visitors, the household never
   CHECK(drogon::sync_wait(gallery.list({.requester = guardActor, .namedOnly = false, .page = {}}))
             .visitors.empty());
 
+  sink.drain();
   const auto named = drogon::sync_wait(gallery.update(
       {.requester = ownerActor,
        .personId = barratt,
@@ -219,6 +281,12 @@ TEST_CASE("recurring unknown faces become numbered visitors, the household never
   CHECK(named.visitor.category == PersonCategory::Neighbor);
   CHECK(named.visitor.visitCount == 2);
   CHECK(named.visits.size() == 2);
+  {
+    INFO("naming a visitor announces it");
+    const auto notices = sink.take();
+    REQUIRE(notices.size() == 1);
+    CHECK(notices.front().ids == std::vector<int64_t>{barratt});
+  }
   const auto search = [&](VisitorListFilter filter, std::string term) {
     return drogon::sync_wait(gallery.list(
         {.requester = ownerActor,
@@ -239,11 +307,18 @@ TEST_CASE("recurring unknown faces become numbered visitors, the household never
   CHECK(trusted.known);
   CHECK(trusted.category == PersonCategory::Neighbor);
 
+  sink.drain();
   const auto merged = drogon::sync_wait(gallery.merge(
       {.requester = ownerActor,
        .personId = barratt,
        .body = {.sourceIds = {menon.decision.personId}}}));
   CHECK(merged.visitor.visitCount == 4);
+  {
+    INFO("a merge announces the visitor that absorbed the other");
+    const auto notices = sink.take();
+    REQUIRE(notices.size() == 1);
+    CHECK(notices.front().ids == std::vector<int64_t>{barratt});
+  }
   CHECK(count("SELECT COUNT(*) AS n FROM person WHERE user_id IS NULL") == 2);
   CHECK_THROWS(drogon::sync_wait(gallery.merge(
       {.requester = ownerActor, .personId = barratt, .body = {.sourceIds = {1}}})));
@@ -253,15 +328,29 @@ TEST_CASE("recurring unknown faces become numbered visitors, the household never
       "f.person_id WHERE f.person_id = ? ORDER BY f.id DESC LIMIT 1",
       barratt);
   REQUIRE_FALSE(menonRows.empty());
+  sink.drain();
   const auto split = drogon::sync_wait(gallery.split(
       {.requester = ownerActor,
        .personId = barratt,
        .body = {.sampleIds = {menonRows.front()["id"].as<int64_t>()}}}));
   CHECK(split.visitor.id != barratt);
   CHECK(split.samples.size() == 1);
+  {
+    INFO("a split announces the visitor it split from");
+    const auto notices = sink.take();
+    REQUIRE(notices.size() == 1);
+    CHECK(notices.front().ids == std::vector<int64_t>{barratt});
+  }
   CHECK(count("SELECT COUNT(*) AS n FROM person WHERE user_id IS NULL") == 3);
 
+  sink.drain();
   drogon::sync_wait(gallery.remove({.requester = ownerActor, .personId = split.visitor.id}));
+  {
+    INFO("forgetting a visitor announces the one that went");
+    const auto notices = sink.take();
+    REQUIRE(notices.size() == 1);
+    CHECK(notices.front().ids == std::vector<int64_t>{split.visitor.id});
+  }
   CHECK(count("SELECT COUNT(*) AS n FROM person WHERE user_id IS NULL") == 2);
   CHECK(count("SELECT COUNT(*) AS n FROM face_embedding f LEFT JOIN person p ON "
               "p.id = f.person_id WHERE p.id IS NULL") == 0);
@@ -279,4 +368,6 @@ TEST_CASE("recurring unknown faces become numbered visitors, the household never
               "deleted_at IS NULL") == 1);
   const auto ignored = observe(recognition, "barratt-b.jpg", t0 + 100100);
   CHECK(ignored.decision.outcome == SightingOutcome::Disabled);
+
+  identity_change::setSink(nullptr);
 }

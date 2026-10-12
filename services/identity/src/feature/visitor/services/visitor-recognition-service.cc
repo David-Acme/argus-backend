@@ -1,6 +1,7 @@
 #include "visitor-recognition-service.hxx"
 
 #include <feature/visitor/repositories/sighting/sighting-repository.hxx>
+#include <sync/identity-change-sink.hxx>
 #include <array>
 #include <runtime/blocking-task.hxx>
 #include <sqlite/db-service.hxx>
@@ -99,6 +100,15 @@ drogon::Task<SightingResult> VisitorRecognitionService::observe(SightingInput in
     co_await cropStore_.remove(crop);
   if (!recorded.householdEchoes.empty())
     co_await forgetEchoes(std::move(recorded.householdEchoes));
+  if ((recorded.result.decision.outcome == SightingOutcome::Visitor ||
+       recorded.result.decision.outcome == SightingOutcome::NewVisitor) &&
+      recorded.result.decision.personId > 0) {
+    if (const auto* sink = identity_change::getSink())
+      co_await sink->publishResource(
+          {.scope = ResourceScope::Visitors,
+           .ids = {recorded.result.decision.personId},
+           .client = nullptr});
+  }
   co_return recorded.result;
 }
 

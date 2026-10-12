@@ -131,6 +131,11 @@ drogon::Task<void> VisitorFeatureService::journal(const JournalInput& input) con
                                           .newData = data,
                                           .ipAddress = ""},
                                 .client = nullptr});
+  std::vector<int64_t> ids;
+  if (input.personId > 0)
+    ids.push_back(input.personId);
+  co_await sink->publishResource(
+      {.scope = ResourceScope::Visitors, .ids = std::move(ids), .client = nullptr});
 }
 
 drogon::Task<ResponseVisitorListDto>
@@ -334,6 +339,10 @@ VisitorFeatureService::removeSample(const VisitorSampleRequest& request) const
   co_await repository_.deleteSamples(ids);
   co_await unindex({request.sampleId});
   co_await cropStore_.remove(owners.front().cropKey);
+  if (const auto* sink = identity_change::getSink())
+    co_await sink->publishResource({.scope = ResourceScope::Visitors,
+                                    .ids = {owners.front().personId},
+                                    .client = nullptr});
 }
 
 drogon::Task<ResponseVisitorCropCapabilityDto>
