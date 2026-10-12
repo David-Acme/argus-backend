@@ -460,7 +460,7 @@ TEST_CASE("revalidation reaches every socket of one user, once while one is pend
   CHECK(lanes.revalidateUser(7) == 1);
 }
 
-TEST_CASE("a role the revalidation finds moved is applied to the sockets, not only to the context")
+TEST_CASE("a role the revalidation finds moved is applied, and the verdict is still re-checked")
 {
   ConnectionLanes lanes;
   std::vector<int64_t> started;
@@ -480,7 +480,7 @@ TEST_CASE("a role the revalidation finds moved is applied to the sockets, not on
   drogon::sync_wait(lanes.revalidateAll());
 
   CHECK(userContext().roleOf(7).value_or(UserRole::Unknown) == UserRole::Guest);
-  CHECK(started.empty());
+  CHECK(started == std::vector<int64_t>{7});
   userContext().remember(7, UserRole::Unknown);
 }
 

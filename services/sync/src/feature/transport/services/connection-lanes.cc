@@ -132,7 +132,6 @@ drogon::Task<void> ConnectionLanes::revalidateAll()
                   {.userId = userId, .oldRole = *served, .newRole = role});
             }
             userContext().userChanged(userId, role);
-            continue;
           }
         }
       }
