@@ -309,6 +309,19 @@ serves. Each one takes a ticket right after its commit and waits for its turn
 in that order, or the socket ends up in both B's and C's rooms while the
 database says C.
 
+## Every write that changes a name publishes the catalog row (R18, 2026-10-12)
+
+`argus-auth` and `argus-sync` keep a 10-30 s user cache and refresh it from the
+catalog row the change feed carries, so a write that changes any of the fields
+that row holds must publish it in the same transaction — not after it, and not
+instead of it. `update` always did. `rename`, the RPC the profile screen renames
+through, published only the directory audit, so both caches served the old name
+until their window expired and nothing on the wire said why. Both paths now
+publish the catalog row with the transaction's own client, which is also what
+makes the row unlosable: a sink that refuses it rolls the name back with it.
+The directory audit is a different leg for a different audience — it feeds the
+per-recipient audit stream, not the caches.
+
 ## Accounts the owner turns off (2026-10)
 
 Deactivation is `PATCH /user/{id}` with `isActive:false` (or `DELETE

@@ -213,6 +213,14 @@ UserFeatureService::rename(const UserRenameInput& input) const
     }
     co_await publishDirectoryAudit(
         {.before = *before, .after = user, .client = transaction.get()});
+    if (const auto* sink = identity_change::getSink()) {
+      const IdentityCatalogInput catalog{.table = TableName::User,
+                                         .id = user.id,
+                                         .deleted = false,
+                                         .row = user.toJson(),
+                                         .client = transaction.get()};
+      co_await sink->publishCatalog(catalog);
+    }
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(IdentityErrors::ChangeNotRecorded);
     renamed = user;

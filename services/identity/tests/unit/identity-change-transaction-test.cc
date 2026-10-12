@@ -16,6 +16,7 @@
 #include <sync/module-emit.hxx>
 #include <sync/user-audit-event.hxx>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <ctime>
@@ -58,7 +59,7 @@ public:
   publishCatalog(const IdentityCatalogInput& input) const override
   {
     note(input.client);
-    if (refuse_)
+    if (refuse_ || refuseCatalog_)
       throw std::runtime_error("the change sink refused the catalog row");
     co_return;
   }
@@ -100,6 +101,7 @@ public:
   }
 
   void refuse(bool value) const { refuse_ = value; }
+  void refuseCatalog(bool value) const { refuseCatalog_ = value; }
   [[nodiscard]] int calls() const { return calls_; }
   [[nodiscard]] bool sawClient() const { return sawClient_; }
   [[nodiscard]] bool transactional() const { return transactional_; }
@@ -113,6 +115,7 @@ private:
   }
 
   mutable bool refuse_{false};
+  mutable bool refuseCatalog_{false};
   mutable int calls_{0};
   mutable bool sawClient_{false};
   mutable bool transactional_{false};
@@ -250,6 +253,20 @@ TEST_CASE("an identity write and its change are one unit of work")
   CHECK(storedRole(kUserId) == "resident");
   CHECK(sink.transactional());
 
+  sink.refuseCatalog(true);
+  CHECK_THROWS_AS(
+      drogon::sync_wait(users.rename({.userId = kUserId, .name = "Ana Perez"})),
+      std::runtime_error);
+  CHECK(storedName(kUserId) == "Ana");
+
+  sink.refuseCatalog(false);
+  const auto renamedProfile =
+      drogon::sync_wait(users.rename({.userId = kUserId, .name = "Ana Perez"}));
+  REQUIRE(renamedProfile.has_value());
+  CHECK(renamedProfile->name == "Ana Perez");
+  CHECK(storedName(kUserId) == "Ana Perez");
+  CHECK(sink.transactional());
+
   sink.refuse(true);
   CHECK_THROWS_AS(
       drogon::sync_wait(invitations.revoke(created.invitation.id, kUserId)),
@@ -283,6 +300,25 @@ TEST_CASE("an identity write and its change are one unit of work")
         std::to_string(durable.invitation.id);
     for (const auto& row : pending)
       CHECK(row.payload.find(invitationId) != std::string::npos);
+  }
+  CHECK(drainOutbox(outbox) == 2);
+
+  const auto renamedAgain =
+      drogon::sync_wait(users.rename({.userId = kUserId, .name = "Ana Solis"}));
+  REQUIRE(renamedAgain.has_value());
+  CHECK(renamedAgain->name == "Ana Solis");
+  {
+    const auto pending = outbox.pendingBatch(10);
+    REQUIRE(pending.size() == 2);
+    CHECK(countSubject(pending, nats_subject::kIdentityChange) == 2);
+    const auto catalog = std::ranges::find_if(
+        pending, [](const outbox::OutboxRow& row) {
+          return row.payload.find("\"kind\":\"identity\"") != std::string::npos;
+        });
+    REQUIRE(catalog != pending.end());
+    CHECK(catalog->payload.find("\"table\":\"user\"") != std::string::npos);
+    CHECK(catalog->payload.find("\"deleted\":false") != std::string::npos);
+    CHECK(catalog->payload.find("\"name\":\"Ana Solis\"") != std::string::npos);
   }
   CHECK(drainOutbox(outbox) == 2);
 
