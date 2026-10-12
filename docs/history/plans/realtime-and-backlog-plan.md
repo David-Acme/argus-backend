@@ -213,6 +213,12 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - D6 Stale docs: `AGENTS.md:1086` (steps 2b-2d are done), `services/sync/CONTEXT.md:437` (the outbox
   landed), `tool-calling-reduction-plan.md` (superseded by the decider + slots design),
   `frontend/CONTEXT.md:305` and `:541`.
+- D8 Named cleanup from the `event` retirement (2026-10-12): stop serving `event` in
+  `SynchronizedService` and drop it from the pull list, once no supported client asks for it. The new
+  client no longer pulls it and ignores a frame for it, but an installed app still does, so the server
+  keeps its empty answer (`emptyTableNode`, the `{"event", ...}` pull row, the DTO field) until the
+  supported client set has moved. The enumerator itself stays for ever: `TableName`'s values are on the
+  wire and `sync-contract-vocabulary-test` pins every one of them.
 - D7 Named cleanup from the encounter-outbox migration (2026-10-12): drop `guard_encounter_outbox`
   once every installation has booted a build that carries the copy into `change_outbox`. It is no
   longer created and no longer read or written, but deleting it is a data removal and needs an
