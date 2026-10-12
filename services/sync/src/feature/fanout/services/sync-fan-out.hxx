@@ -124,6 +124,16 @@ struct ResourcePayload
 [[nodiscard]] std::optional<ResourcePayload> parseResourcePayload(const Json::Value& json);
 [[nodiscard]] std::vector<RoomId> resourceAudience(const ResourceRoute& route,
                                                    const ModuleSnapshot& modules);
+
+struct ResourceDelivery
+{
+  std::vector<RoomId> rooms;
+  bool refused{false};
+};
+
+[[nodiscard]] ResourceDelivery resourceDelivery(const ResourceRoute& route,
+                                                const ModuleSnapshot& modules,
+                                                std::optional<int64_t> user);
 DurableDisposition handleResourcePayload(const Json::Value& json);
 
 struct ActionPayloadInput

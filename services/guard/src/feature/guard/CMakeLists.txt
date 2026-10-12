@@ -15,6 +15,7 @@ argus_module(NAME guard
         controllers/guard-controller.cc
         controllers/response-controller.cc
         infra/identity-response-directory.cc
+        infra/resource-change-outbox.cc
         dtos/create-environment-dto.cc
         dtos/create-expected-guest-dto.cc
         dtos/feedback-decision-dto.cc
@@ -36,6 +37,7 @@ argus_module(NAME guard
         repositories/response/response-repository.cc
         repositories/wind-down/wind-down-repository.cc
         services/guard-feature-service.cc
+        services/posture-watch.cc
         services/guard-module-impact.cc
         services/guard-module-wind-down.cc
         services/response-feature-service.cc
@@ -58,6 +60,7 @@ argus_module(NAME guard
         argus::lib::config
         argus::lib::http
         argus::lib::nats
+        argus::lib::outbox
         argus::lib::runtime
         argus::lib::sqlite
         argus::lib::storage

@@ -476,6 +476,24 @@ std::vector<RoomId> resourceAudience(const ResourceRoute& route,
   return rooms;
 }
 
+ResourceDelivery resourceDelivery(const ResourceRoute& route,
+                                  const ModuleSnapshot& modules,
+                                  std::optional<int64_t> user)
+{
+  if (!user.has_value())
+    return {.rooms = resourceAudience(route, modules), .refused = false};
+  const auto role = userContext().roleOf(*user);
+  if (!role.has_value())
+    return {.rooms = {}, .refused = false};
+  if (role_access::routeVerdict({.role = *role,
+                                 .path = route.path,
+                                 .method = route.method,
+                                 .modules = modules}) !=
+      role_access::RouteVerdict::Allowed)
+    return {.rooms = {}, .refused = true};
+  return {.rooms = {userRoom(*user)}, .refused = false};
+}
+
 DurableDisposition handleResourcePayload(const Json::Value& json)
 {
   const auto parsed = parseResourcePayload(json);
@@ -483,28 +501,23 @@ DurableDisposition handleResourcePayload(const Json::Value& json)
     return refuseResource(
         "a domain and scope that are not registered, or invalid ids or target");
   const ModuleSnapshot modules = moduleGate().snapshot();
-  const std::string message = resourceChangedMessage(parsed->info);
-  if (parsed->user.has_value()) {
-    const auto role = userContext().roleOf(*parsed->user);
-    const bool mayRead =
-        role.has_value() &&
-        role_access::routeVerdict({.role = *role,
-                                   .path = parsed->route->path,
-                                   .method = parsed->route->method,
-                                   .modules = modules}) ==
-            role_access::RouteVerdict::Allowed;
-    if (!mayRead) {
-      LOG_WARN << "Sync fan-out: resource frame for user " << *parsed->user
-               << " refused; the target does not read "
-               << std::string(parsed->route->path);
-      return DurableDisposition::Term;
-    }
-    roomManager.emit(userRoom(*parsed->user), message);
+  const ResourceDelivery delivery =
+      resourceDelivery(*parsed->route, modules, parsed->user);
+  if (delivery.refused) {
+    LOG_WARN << "Sync fan-out: resource frame for a role that does not read "
+             << std::string(parsed->route->path) << " refused";
+    return DurableDisposition::Term;
+  }
+  if (delivery.rooms.empty()) {
+    LOG_DEBUG << "Sync fan-out: resource frame for "
+              << std::string(parsed->route->path) << " has no room to reach";
     return DurableDisposition::Ack;
   }
-  const std::vector<RoomId> rooms = resourceAudience(*parsed->route, modules);
-  if (!rooms.empty())
-    roomManager.emitMany(rooms, message);
+  const std::string message = resourceChangedMessage(parsed->info);
+  if (parsed->user.has_value())
+    roomManager.emit(delivery.rooms.front(), message);
+  else
+    roomManager.emitMany(delivery.rooms, message);
   return DurableDisposition::Ack;
 }
 }

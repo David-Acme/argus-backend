@@ -8,8 +8,10 @@
 #include <feature/guard/controllers/guard-controller.hxx>
 #include <feature/guard/controllers/response-controller.hxx>
 #include <feature/guard/infra/identity-response-directory.hxx>
+#include <feature/guard/infra/resource-change-outbox.hxx>
 #include <feature/guard/services/guard-module-impact.hxx>
 #include <feature/guard/services/guard-module-wind-down.hxx>
+#include <feature/guard/services/posture-watch.hxx>
 #include <feature/guard/services/response-verdict-feed.hxx>
 #include <feature/guard/guard-assessment.hxx>
 #include <feature/guard/guard-repository.hxx>
@@ -356,6 +358,11 @@ int main()
     guardService.refresh(GuardConfig::resolveService());
     presence.refresh(GuardConfig::resolvePresence());
   });
+  ResourceChangeOutbox resourceChanges(natsBus, ResourceChangeOutbox::Config{});
+  PostureWatch postureWatch(
+      {.changes = &resourceChanges},
+      {.intervalSeconds = static_cast<double>(
+           GuardConfig::resolveService().postureIntervalS)});
   GuardModuleData moduleData;
   const GuardModuleImpact moduleImpact;
   GuardOwnerPin ownerPin(safety);
@@ -378,7 +385,9 @@ int main()
   drogon::app().registerFilter(std::make_shared<JwtFilter>());
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
   drogon::app().registerController(std::make_shared<GuardController>(
-      GuardFeatureDependencies{.identity = identity.get(), .disarm = safety.get()}));
+      GuardFeatureDependencies{.identity = identity.get(),
+                               .disarm = safety.get(),
+                               .changes = &resourceChanges}));
   drogon::app().registerController(std::make_shared<SafetyController>(safety));
   drogon::app().registerController(
       std::make_shared<PresenceController>(&presence));
@@ -396,13 +405,17 @@ int main()
       drogonConfig({.dbPath = db.dbPath, .listener = listener}));
   certificate_reload::watch(listener);
 
-  drogon::app().registerBeginningAdvice([&db, &guardConfig]() {
+  drogon::app().registerBeginningAdvice([&db, &guardConfig, &resourceChanges]() {
     if (!guard_schema::migrate(db.schemaPath)) {
       LOG_FATAL << "Guard database migration failed — aborting startup";
       _exit(1);
     }
     if (!DbService::runScriptFile(db.schemaPath)) {
       LOG_FATAL << "Guard database schema failed to apply — aborting startup";
+      _exit(1);
+    }
+    if (!ResourceChangeOutbox::repository().migrateSchema()) {
+      LOG_FATAL << "Guard change outbox migration failed — aborting startup";
       _exit(1);
     }
     if (!guard_schema::seedEnvironments(
@@ -412,18 +425,21 @@ int main()
       _exit(1);
     }
     DbService::applyPragmas();
+    resourceChanges.reconcile();
   });
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
            << (listener.tls ? " (TLS" : " (plain") << ", cert "
            << listener.certPath << "); guard database " << db.dbPath;
 
-  drogon::app().registerBeginningAdvice([&guardService, &presence, windDown]() {
-    guardService.start();
-    presence.start();
-    if (!moduleGate().enabled(role_access::kSurveillanceModule))
-      windDown();
-  });
+  drogon::app().registerBeginningAdvice(
+      [&guardService, &presence, &postureWatch, windDown]() {
+        guardService.start();
+        presence.start();
+        postureWatch.start();
+        if (!moduleGate().enabled(role_access::kSurveillanceModule))
+          windDown();
+      });
   drogon::app().registerBeginningAdvice([safety]() { safety->start(); });
 
   shutdown_signal::onQuit(
@@ -433,6 +449,8 @@ int main()
   shutdown_signal::onStop(shutdown_signal::drainOf(verdictFeed, "guard-verdicts"));
   shutdown_signal::onStop(shutdown_signal::drainOf(presence, "guard-presence"));
   shutdown_signal::onStop(shutdown_signal::drainOf(*safety, "guard-safety"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(resourceChanges, "guard-changes"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(postureWatch, "guard-posture"));
   shutdown_signal::onStop(shutdown_signal::drainOf(guardService, "guard"));
 
   std::unique_ptr<MdnsService> mdnsService;

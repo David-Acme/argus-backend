@@ -130,7 +130,7 @@ TEST_CASE("the guard catalog builds through the registry")
 {
   const auto catalog = guardSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{guardSettingsCatalog()});
-  CHECK(catalog.size() == 42);
+  CHECK(catalog.size() == 43);
   CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) ==
         12);
   for (const auto& spec : catalog) {

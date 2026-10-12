@@ -439,3 +439,18 @@ CREATE TABLE IF NOT EXISTS guard_safety_alert (
 
 CREATE INDEX IF NOT EXISTS idx_guard_safety_alert_user_kind
     ON guard_safety_alert(user_id, kind, created_at);
+
+CREATE TABLE IF NOT EXISTS change_outbox (
+    event_id    TEXT    NOT NULL  PRIMARY KEY,
+    fingerprint TEXT    NOT NULL  DEFAULT '',
+    payload     TEXT    NOT NULL,
+    status      TEXT    NOT NULL  DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'sent')),
+    attempts    INTEGER NOT NULL  DEFAULT 0,
+    created_at  INTEGER NOT NULL  DEFAULT 0,
+    sent_at     INTEGER NOT NULL  DEFAULT 0,
+    subject     TEXT    NOT NULL  DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_guard_change_outbox_status
+    ON change_outbox (status, created_at);

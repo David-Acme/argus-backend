@@ -212,7 +212,9 @@ GuardRepository::state(const std::string& key,
 
 drogon::Task<bool> GuardRepository::setState(const GuardStateInput& input) const
 {
-  auto client = DbService::client();
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* client =
+      input.client != nullptr ? input.client : owned.get();
   const auto result =
       co_await client->execSqlCoro(UPSERT_STATE.data(), input.key, input.value,
                                    input.updatedAt);

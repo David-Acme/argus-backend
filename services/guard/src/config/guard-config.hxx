@@ -105,6 +105,7 @@ struct GuardServiceConfig
   bool stagingEnabled{true};
   int64_t encounterTimeoutS{300};
   int heartbeatS{10};
+  int postureIntervalS{30};
   int maxDialogueTurns{3};
   int maxObservationAttempts{5};
   int retryBaseMs{1000};

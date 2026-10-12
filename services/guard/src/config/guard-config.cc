@@ -242,6 +242,7 @@ GuardServiceConfig GuardConfig::resolveService()
   config.stagingEnabled = configBoolOr("guard.staging", true);
   config.encounterTimeoutS = configInt64Or("guard.encounter_timeout_s", 300);
   config.heartbeatS = configIntOr("guard.heartbeat_s", 10);
+  config.postureIntervalS = configIntOr("guard.posture_interval_s", 30);
   config.maxDialogueTurns = configIntOr("guard.max_dialogue_turns", 3);
   config.maxObservationAttempts =
       configIntOr("guard.max_observation_attempts", 5);

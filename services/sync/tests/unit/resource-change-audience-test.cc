@@ -5,6 +5,7 @@
 #include <auth/role-access.hxx>
 #include <auth/user-role.hxx>
 #include <feature/fanout/services/sync-fan-out.hxx>
+#include <shared/services/context/user-context.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <sync/resource-change.hxx>
 #include <sync/sync-change.hxx>
@@ -153,4 +154,29 @@ TEST_CASE("the ids of a resource payload stay under the scoped-pull bound")
   }
   over += "]}";
   CHECK_FALSE(sync_fan_out::parseResourcePayload(json_util::fromString(over)).has_value());
+}
+
+TEST_CASE("a user-targeted resource frame answers for the role this process knows")
+{
+  const ResourceRoute* pin =
+      resourceRouteOf(ResourceDomain::Guard, ResourceScope::SafetyPin);
+  const ResourceRoute* household = resourceRouteOf(
+      ResourceDomain::Identity, ResourceScope::PrivacyHousehold);
+  REQUIRE(pin != nullptr);
+  REQUIRE(household != nullptr);
+  const ModuleSnapshot modules = everyModuleEnabled();
+
+  const auto unknown = sync_fan_out::resourceDelivery(*pin, modules, 771);
+  CHECK(unknown.rooms.empty());
+  CHECK_FALSE(unknown.refused);
+
+  userContext().remember(772, UserRole::Guard);
+  const auto allowed = sync_fan_out::resourceDelivery(*pin, modules, 772);
+  CHECK(allowed.rooms == std::vector<RoomId>{userRoom(772)});
+  CHECK_FALSE(allowed.refused);
+
+  userContext().remember(773, UserRole::Guard);
+  const auto denied = sync_fan_out::resourceDelivery(*household, modules, 773);
+  CHECK(denied.rooms.empty());
+  CHECK(denied.refused);
 }

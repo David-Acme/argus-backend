@@ -41,6 +41,10 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/nats
                          ${CMAKE_BINARY_DIR}/nats)
     endif()
+    if(NOT TARGET argus::lib::outbox)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/outbox
+                         ${CMAKE_BINARY_DIR}/outbox)
+    endif()
     if(NOT TARGET argus::lib::validation)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/validation
                          ${CMAKE_BINARY_DIR}/validation)
@@ -163,7 +167,7 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
         guard-vocabulary-test guard-schedule-test guard-scenario-test
         guard-episode-test guard-copy-test guard-context-test
         guard-presence-repository-test guard-response-test
-        guard-module-wind-down-test)
+        guard-module-wind-down-test posture-watch-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
 
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
@@ -187,7 +191,8 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
        OR TEST_NAME STREQUAL "guard-episode-test"
        OR TEST_NAME STREQUAL "guard-presence-repository-test"
        OR TEST_NAME STREQUAL "guard-response-test"
-       OR TEST_NAME STREQUAL "guard-module-wind-down-test")
+       OR TEST_NAME STREQUAL "guard-module-wind-down-test"
+       OR TEST_NAME STREQUAL "posture-watch-test")
         target_compile_definitions(${TEST_NAME} PRIVATE
             ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
     endif()

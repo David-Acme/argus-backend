@@ -157,7 +157,9 @@ EnvironmentRepository::update(const EnvironmentUpdateInput& input) const
 drogon::Task<int64_t>
 EnvironmentRepository::setMode(const EnvironmentModeInput& input) const
 {
-  const auto client = DbService::client();
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* client =
+      input.client != nullptr ? input.client : owned.get();
   const std::string mode = guardModeToString(input.mode);
   if (input.environmentId) {
     const auto result = co_await client->execSqlCoro(

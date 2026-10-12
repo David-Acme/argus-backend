@@ -5,6 +5,7 @@
 #include <shared/vocabulary/guard-mode.hxx>
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -164,6 +165,7 @@ struct EnvironmentModeInput
   std::optional<int64_t> environmentId;
   GuardMode mode{GuardMode::Home};
   int64_t at{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct EnvironmentRemoveInput

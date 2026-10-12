@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <functional>
 #include <json/value.h>
 #include <optional>
@@ -571,6 +572,7 @@ struct GuardStateInput
   std::string key;
   std::string value;
   int64_t updatedAt{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct GuardGuestInput

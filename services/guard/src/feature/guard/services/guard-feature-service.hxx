@@ -22,11 +22,13 @@
 #include <string>
 
 class IdentityClient;
+class ResourceChangeOutbox;
 
 struct GuardFeatureDependencies
 {
   IdentityClient* identity{nullptr};
   const DisarmGate* disarm{nullptr};
+  const ResourceChangeOutbox* changes{nullptr};
 };
 
 struct ExpectedGuestCreation
@@ -134,6 +136,7 @@ private:
 
   IdentityClient* identity_{nullptr};
   const DisarmGate* disarm_{nullptr};
+  const ResourceChangeOutbox* changes_{nullptr};
   GuardRepository guardRepository_;
   EnvironmentRepository environmentRepository_;
   CameraContextRepository cameraContextRepository_;

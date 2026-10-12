@@ -61,4 +61,8 @@ inline constexpr ErrorDefinition DutyForGuardsOnly{
     .code = ErrorCode::Forbidden,
     .status = 403,
     .message = "Only a guard goes on duty"};
+inline constexpr ErrorDefinition ChangeNotRecorded{
+    .code = ErrorCode::InternalError,
+    .status = 500,
+    .message = "The change could not be recorded"};
 }

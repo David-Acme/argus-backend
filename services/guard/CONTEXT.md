@@ -1582,3 +1582,39 @@ caller `llm` only (`[rpc.callers] llm`; `GuardConfig::resolveRpc` reads it as
 `tests/unit/guard-mcp-test.cc` pins the descriptor (module, capability), every
 mode in both languages, the environment resolution and its three refusals, the
 gate for each role and the unpaired case.
+
+### Three relays, and why only one of them is new (2026-10-12, R1/R2 of the real-time plan)
+
+Guard writes to the bus through three different mechanisms, and the difference
+is deliberate:
+- `guard_action_outbox` is a command queue, not a change feed. It is keyed by
+  `command_id`, carries the correlation, the kind and a per-command status,
+  retries with a backoff, and an inbox acknowledges the camera's answer
+  (`planIntent`/`COMPLETE_INBOX`). `lib/outbox` does not model "the effect was
+  acknowledged", so this one stays as it is.
+- `guard_encounter_outbox` IS a change feed — one durable consumer, event ids,
+  the LLM's receipt in `encounter_closed_inbox` — with a hand-rolled flush loop.
+  Its table already has `change_outbox`'s shape, so migrating it onto
+  `lib/outbox` is the direction the shared relay points, and it is queued as its
+  own unit (it changes a live feed the LLM receipts, so it gets its own design
+  and a test that the inbox contract is untouched).
+- `change_outbox` is the resource-change feed this unit added: the mode write
+  and, later, every guard scope that a screen re-reads over HTTP publish through
+  `ResourceChangeOutbox`, on `argus.guard.v1.change`, in the same transaction as
+  the state change. It rides the stream guard already owns (`ARGUS_GUARD`,
+  filter `argus.guard.v1.>`), so no broker change was needed.
+
+`PostureWatch` is the scheduler's only voice: it evaluates
+`guard_schedule::resolve` per environment at `[guard] posture_interval_s`, and
+where the effective posture differs from the fingerprint it last published (in
+`guard_state`, key `posture.<id>`) it writes that fingerprint and the outbox row
+in ONE transaction and announces it. It never writes `mode` or
+`mode_updated_at` — those are the human's override, and a scheduled transition
+that overwrote them would be indistinguishable from a manual one, after which
+the schedule could no longer take the environment back. `GET /guard/environments`
+already computes the effective posture at read time (`effectiveMode` beside the
+stored `mode`), so the frame only has to say WHEN to re-read; the first
+evaluation after a restart is a reconciliation — it publishes exactly when the
+posture moved while guard was down, and a duplicate frame is harmless because
+the frame is a notification. Convergence is the property; there is no cursor,
+no delivery ledger and no exactly-once machinery to get wrong.

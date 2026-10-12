@@ -7,6 +7,7 @@
 #include <ctime>
 #include <errors/response-exception.hxx>
 #include <feature/guard/controllers/guard-errors.hxx>
+#include <feature/guard/infra/resource-change-outbox.hxx>
 #include <fstream>
 #include <map>
 #include <unordered_set>
@@ -15,6 +16,8 @@
 #include <identity/identity-client.hxx>
 #include <text/json-util.hxx>
 #include <runtime/blocking-task.hxx>
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 #include <feature/guard/vocabulary/feedback-label.hxx>
 
 namespace
@@ -39,7 +42,9 @@ int modeRank(GuardMode mode)
 
 GuardFeatureService::GuardFeatureService(
     const GuardFeatureDependencies& dependencies)
-    : identity_(dependencies.identity), disarm_(dependencies.disarm)
+    : identity_(dependencies.identity),
+      disarm_(dependencies.disarm),
+      changes_(dependencies.changes)
 {
 }
 
@@ -694,9 +699,12 @@ GuardFeatureService::setMode(const GuardModeChange& input) const
                               .pin = body.pin,
                               .environmentId = body.environmentId};
   bool lowers = mode == GuardMode::Home;
+  std::vector<int64_t> targeted;
   for (const auto& environment : co_await environmentRepository_.list()) {
-    const bool targeted = !body.environmentId || environment.id == *body.environmentId;
-    if (targeted && modeRank(mode) < modeRank(environment.mode))
+    if (body.environmentId && environment.id != *body.environmentId)
+      continue;
+    targeted.push_back(environment.id);
+    if (modeRank(mode) < modeRank(environment.mode))
       lowers = true;
   }
   DisarmVerdict verdict = DisarmVerdict::Allowed;
@@ -704,12 +712,31 @@ GuardFeatureService::setMode(const GuardModeChange& input) const
     verdict = co_await disarm_->authorize(request);
   if (verdict == DisarmVerdict::Duress)
     disarm_->duress(request);
-  const int64_t changed = co_await environmentRepository_.setMode(
-      {.environmentId = body.environmentId,
-       .mode = mode,
-       .at = static_cast<int64_t>(std::time(nullptr))});
-  if (body.environmentId && changed == 0)
-    throw ResponseException(GuardErrors::EnvironmentNotFound);
+
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  int64_t changed = 0;
+  try {
+    changed = co_await environmentRepository_.setMode(
+        {.environmentId = body.environmentId,
+         .mode = mode,
+         .at = static_cast<int64_t>(std::time(nullptr)),
+         .client = transaction.get()});
+    if (body.environmentId && changed == 0)
+      throw ResponseException(GuardErrors::EnvironmentNotFound);
+    if (changes_ != nullptr) {
+      for (const int64_t environmentId : targeted) {
+        co_await changes_->record({.scope = ResourceScope::Environments,
+                                   .ids = {environmentId},
+                                   .client = transaction.get()});
+      }
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   co_return co_await environments();
 }
 

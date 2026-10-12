@@ -50,6 +50,10 @@ const std::vector<Feed>& defaults()
        .subject = nats_subject::kSettingsUserAction,
        .durable = "argus-sync-settings-action",
        .maxAckPending = NatsBus::kDefaultMaxAckPending},
+      {.stream = nats_subject::kGuardStream,
+       .subject = nats_subject::kGuardChange,
+       .durable = "argus-sync-guard",
+       .maxAckPending = NatsBus::kOrderedMaxAckPending},
   };
   return feeds;
 }
