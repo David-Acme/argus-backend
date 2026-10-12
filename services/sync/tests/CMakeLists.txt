@@ -211,6 +211,21 @@ target_compile_options(sync-control-callers-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-control-callers-test)
 add_test(NAME sync-control-callers-test COMMAND sync-control-callers-test)
 
+add_executable(sync-role-revalidation-test
+               unit/sync-role-revalidation-test.cc)
+target_link_libraries(sync-role-revalidation-test PRIVATE
+    argus::sync-transport
+    argus::sync-services
+    argus::lib::auth
+    argus::lib::text
+    argus::contracts::auth
+    argus::contracts::sync
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(sync-role-revalidation-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(sync-role-revalidation-test)
+add_test(NAME sync-role-revalidation-test COMMAND sync-role-revalidation-test)
+
 add_executable(sync-module-data-test unit/sync-module-data-test.cc)
 target_compile_definitions(sync-module-data-test PRIVATE
     ARGUS_SYNC_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
