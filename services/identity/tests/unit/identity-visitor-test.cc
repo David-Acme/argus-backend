@@ -370,4 +370,6 @@ TEST_CASE("recurring unknown faces become numbered visitors, the household never
   CHECK(ignored.decision.outcome == SightingOutcome::Disabled);
 
   identity_change::setSink(nullptr);
+  for (const char* suffix : {"", "-wal", "-shm"})
+    std::remove((std::string(kDb) + suffix).c_str());
 }
