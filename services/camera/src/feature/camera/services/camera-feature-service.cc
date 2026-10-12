@@ -242,6 +242,14 @@ drogon::Task<bool> CameraFeatureService::remove(int64_t id) const
     co_await emit({.table = TableName::Camera,
                    .body = cameraBody(SyncOperation::Delete, before),
                    .client = transaction.get()});
+    for (const auto& zone :
+         co_await zoneRepository_.findByCamera(id, transaction.get())) {
+      if (co_await zoneRepository_.remove(zone.id, transaction.get())) {
+        co_await emit({.table = TableName::Zone,
+                       .body = zoneBody(SyncOperation::Delete, zone),
+                       .client = transaction.get()});
+      }
+    }
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(CameraErrors::ChangeNotRecorded);
   }

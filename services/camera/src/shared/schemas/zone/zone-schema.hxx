@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <ctime>
 #include <drogon/orm/Field.h>
 #include <drogon/orm/Row.h>
 #include <json/value.h>
 #include <optional>
 #include <string>
+#include <sync/socket-emit-dto.hxx>
 #include <camera/zone-type.hxx>
 
 struct ZoneSchema
@@ -25,3 +27,20 @@ struct ZoneSchema
   explicit ZoneSchema(const drogon::orm::Row& row);
   Json::Value toJson() const;
 };
+
+inline SocketEmitDto zoneBody(SyncOperation operation, const ZoneSchema& row)
+{
+  SocketEmitDto body;
+  body.operation = operation;
+  body.option = TableName::Zone;
+  if (operation == SyncOperation::Delete) {
+    Json::Value tombstone;
+    tombstone["id"] = row.id;
+    tombstone["deletedAt"] = row.deletedAt.value_or(std::time(nullptr));
+    body.obj = tombstone;
+  }
+  else {
+    body.obj = row.toJson();
+  }
+  return body;
+}

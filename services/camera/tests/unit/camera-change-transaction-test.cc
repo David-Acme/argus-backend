@@ -74,6 +74,15 @@ public:
   }
 
   [[nodiscard]] drogon::Task<void>
+  publishResource(const CameraResourceChange& input) const override
+  {
+    note(input.client);
+    if (refuse_)
+      throw std::runtime_error("the change sink refused the resource");
+    co_return;
+  }
+
+  [[nodiscard]] drogon::Task<void>
   publishAudit(const ModuleAuditInput& input) const override
   {
     note(input.client);
@@ -117,6 +126,12 @@ CreateCameraDto cameraBody(const std::string& name)
   dto.recordMode = "continuous";
   dto.retentionDays = 7;
   return dto;
+}
+
+int64_t scalar(const std::string& sql)
+{
+  const auto rows = DbService::cameraClient()->execSqlSync(sql);
+  return rows.empty() ? 0 : rows.front()[0].as<int64_t>();
 }
 
 int64_t liveCameras(const std::string& name)
@@ -194,8 +209,18 @@ TEST_CASE("a camera write and its change are one unit of work")
   CHECK(liveCameras("Renamed Cam") == 1);
 
   sink.refuse(false);
+  DbService::cameraClient()->execSqlSync(
+      "INSERT INTO zone (camera_id, name, points) VALUES (" +
+      std::to_string(created.id) + ", 'puerta', '[]')");
+  DbService::cameraClient()->execSqlSync(
+      "INSERT INTO zone (camera_id, name, points) VALUES (" +
+      std::to_string(created.id) + ", 'patio', '[]')");
+  const int beforeRemove = sink.calls();
   CHECK(drogon::sync_wait(cameras.remove(created.id)));
   CHECK(liveCameras("Renamed Cam") == 0);
+  CHECK(sink.calls() == beforeRemove + 3);
+  CHECK(scalar("SELECT COUNT(*) FROM zone WHERE camera_id = " +
+               std::to_string(created.id) + " AND deleted_at IS NOT NULL") == 2);
 
   NatsCameraChangeSink durableSink(
       nullptr, NatsCameraChangeSink::Config{.retryMs = 20,

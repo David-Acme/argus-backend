@@ -1,5 +1,7 @@
 #include "camera-action-rpc-service.hxx"
 
+#include <sync/camera-change-sink.hxx>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -683,6 +685,14 @@ CameraActionRpcService::SetSiren(grpc::CallbackServerContext* context,
           LOG_ERROR << "Camera action: siren lease delete failed for "
                        "camera "
                     << cameraId;
+        if (result.ok) {
+          const CameraChangeSink* sink = camera_change::getSink();
+          if (sink != nullptr)
+            co_await sink->publishResource({.scope = ResourceScope::Status,
+                                            .ids = {cameraId},
+                                            .user = 0,
+                                            .client = nullptr});
+        }
         const auto fence = co_await settleFenced(
             {.commandId = commandId,
              .generation = verdict.generation,

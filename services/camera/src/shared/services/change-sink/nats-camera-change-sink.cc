@@ -102,6 +102,17 @@ NatsCameraChangeSink::publishAudit(const ModuleAuditInput& input) const
                    .client = input.client});
 }
 
+drogon::Task<void> NatsCameraChangeSink::publishResource(
+    const CameraResourceChange& input) const
+{
+  const Json::Value body = resource_change::payload(
+      ResourceDomain::Camera, input.scope, input.ids, input.user);
+  co_await outbox_.append({.idPrefix = kEventIdPrefix,
+                           .subject = subject_,
+                           .payload = json_util::toString(body),
+                           .client = input.client});
+}
+
 drogon::Task<void> NatsCameraChangeSink::record(RecordInput input) const
 {
   std::string eventId =

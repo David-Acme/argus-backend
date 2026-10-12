@@ -75,6 +75,7 @@ TEST_CASE("the resource audience table with every module enabled")
   CHECK(audienceTable(everyModuleEnabled()) ==
         R"(camera/device -> owner,resident,guard,guest
 camera/zones -> owner,resident,guard
+camera/status -> owner,resident,guard,guest
 guard/environments -> owner,resident,guard
 guard/incidents -> owner,resident,guard
 guard/episodes -> owner,resident,guard
@@ -95,6 +96,7 @@ TEST_CASE("the resource audience table with surveillance disabled")
   CHECK(audienceTable(surveillanceDisabled()) ==
         R"(camera/device ->
 camera/zones ->
+camera/status ->
 guard/environments ->
 guard/incidents ->
 guard/episodes ->

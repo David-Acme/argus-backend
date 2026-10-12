@@ -442,6 +442,35 @@ TEST_CASE("a live change sink publishes, heals its stream and strands a bad row"
              .discriminator = json_util::toString(attic.toJson())}));
 }
 
+TEST_CASE("a resource notice rides the same outbox and mints its own id")
+{
+  DbService::client()->execSqlSync("DELETE FROM change_outbox");
+  NatsCameraChangeSink sink(nullptr, NatsCameraChangeSink::Config{});
+
+  const int64_t watermark = outboxWatermark();
+  drogon::sync_wait(sink.publishResource({.scope = ResourceScope::Status,
+                                          .ids = {7},
+                                          .user = 0,
+                                          .client = nullptr}));
+  drogon::sync_wait(sink.publishResource({.scope = ResourceScope::Status,
+                                          .ids = {7},
+                                          .user = 0,
+                                          .client = nullptr}));
+  CHECK(rowsAfter(watermark) == 2);
+  CHECK(firstInteger(DbService::client()->execSqlSync(
+            "SELECT COUNT(DISTINCT event_id) FROM change_outbox")) == 2);
+
+  const auto rows = DbService::client()->execSqlSync(
+      "SELECT payload FROM change_outbox ORDER BY rowid DESC LIMIT 1");
+  REQUIRE(!rows.empty());
+  const std::string payload = rows.front()[0].as<std::string>();
+  CHECK(payload.find("\"kind\":\"resource\"") != std::string::npos);
+  CHECK(payload.find("\"domain\":\"camera\"") != std::string::npos);
+  CHECK(payload.find("\"scope\":\"status\"") != std::string::npos);
+  CHECK(payload.find("\"ids\":[7]") != std::string::npos);
+  CHECK(payload.find("\"user\"") == std::string::npos);
+}
+
 int main(int argc, char** argv)
 {
   const Host host;

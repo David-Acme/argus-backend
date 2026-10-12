@@ -8,6 +8,7 @@
 #include <sync/camera-change-sink.hxx>
 #include <sync/module-emit.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
+#include <shared/repositories/zone/zone-repository.hxx>
 #include <shared/schemas/camera/camera-schema.hxx>
 
 class CameraFeatureService
@@ -23,4 +24,5 @@ private:
   [[nodiscard]] drogon::Task<void> emit(const ModuleEmitInput& input) const;
 
   CameraRepository repository_;
+  ZoneRepository zoneRepository_;
 };

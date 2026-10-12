@@ -18,7 +18,9 @@ public:
 
   drogon::Task<std::optional<ZoneSchema>>
   findById(int64_t id, drogon::orm::DbClient* client = nullptr) const;
-  drogon::Task<std::vector<ZoneSchema>> findByCamera(int64_t cameraId) const;
+  drogon::Task<std::vector<ZoneSchema>>
+  findByCamera(int64_t cameraId,
+               drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<ZoneSchema> create(const ZoneCreateInput& input) const;
   drogon::Task<ZoneSchema> update(int64_t id,
                                   const ZoneUpdateInput& input) const;

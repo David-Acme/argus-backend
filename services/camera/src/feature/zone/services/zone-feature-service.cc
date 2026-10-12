@@ -7,25 +7,6 @@
 #include <sqlite/transaction.hxx>
 #include <trantor/utils/Logger.h>
 
-namespace
-{
-SocketEmitDto zoneBody(SyncOperation operation, const ZoneSchema& row)
-{
-  SocketEmitDto body;
-  body.operation = operation;
-  body.option = TableName::Zone;
-  if (operation == SyncOperation::Delete) {
-    Json::Value tombstone;
-    tombstone["id"] = row.id;
-    tombstone["deletedAt"] = row.deletedAt.value_or(std::time(nullptr));
-    body.obj = tombstone;
-  }
-  else {
-    body.obj = row.toJson();
-  }
-  return body;
-}
-}
 
 drogon::Task<void>
 ZoneFeatureService::emit(const ModuleEmitInput& input) const

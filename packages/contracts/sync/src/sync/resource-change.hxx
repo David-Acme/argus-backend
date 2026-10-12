@@ -4,9 +4,12 @@
 #include <array>
 #include <cstdint>
 #include <drogon/HttpTypes.h>
+#include <json/value.h>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <sync/sync-change.hxx>
+#include <vector>
 
 enum class ResourceDomain : std::uint8_t
 {
@@ -20,6 +23,7 @@ enum class ResourceScope : std::uint8_t
 {
   Device = 0,
   Zones,
+  Status,
   Environments,
   Incidents,
   Episodes,
@@ -34,6 +38,7 @@ enum class ResourceScope : std::uint8_t
   Visitors
 };
 
+
 struct ResourceRoute
 {
   ResourceDomain domain;
@@ -42,7 +47,7 @@ struct ResourceRoute
   drogon::HttpMethod method;
 };
 
-inline constexpr std::array<ResourceRoute, 14> kResourceRoutes{{
+inline constexpr std::array<ResourceRoute, 15> kResourceRoutes{{
     {.domain = ResourceDomain::Camera,
      .scope = ResourceScope::Device,
      .path = "/camera",
@@ -50,6 +55,10 @@ inline constexpr std::array<ResourceRoute, 14> kResourceRoutes{{
     {.domain = ResourceDomain::Camera,
      .scope = ResourceScope::Zones,
      .path = "/zone",
+     .method = drogon::Get},
+    {.domain = ResourceDomain::Camera,
+     .scope = ResourceScope::Status,
+     .path = "/camera/0/status",
      .method = drogon::Get},
     {.domain = ResourceDomain::Guard,
      .scope = ResourceScope::Environments,
@@ -141,6 +150,8 @@ inline std::string resourceScopeToString(ResourceScope scope)
       return "device";
     case ResourceScope::Zones:
       return "zones";
+    case ResourceScope::Status:
+      return "status";
     case ResourceScope::Environments:
       return "environments";
     case ResourceScope::Incidents:
@@ -175,6 +186,8 @@ inline std::optional<ResourceScope> resourceScopeFromString(std::string_view nam
     return ResourceScope::Device;
   if (name == "zones")
     return ResourceScope::Zones;
+  if (name == "status")
+    return ResourceScope::Status;
   if (name == "environments")
     return ResourceScope::Environments;
   if (name == "incidents")
@@ -210,4 +223,25 @@ inline const ResourceRoute* resourceRouteOf(ResourceDomain domain,
         return route.domain == domain && route.scope == scope;
       });
   return found == kResourceRoutes.end() ? nullptr : &*found;
+}
+
+namespace resource_change
+{
+inline Json::Value payload(ResourceDomain domain, ResourceScope scope,
+                           const std::vector<int64_t>& ids, int64_t user = 0)
+{
+  Json::Value body(Json::objectValue);
+  body[sync_change::kKindField] = sync_change::kKindResource;
+  body[sync_change::kDomainField] = resourceDomainToString(domain);
+  body[sync_change::kScopeField] = resourceScopeToString(scope);
+  if (user > 0)
+    body[sync_change::kUserField] = static_cast<Json::Int64>(user);
+  if (!ids.empty()) {
+    Json::Value list(Json::arrayValue);
+    for (const auto id : ids)
+      list.append(static_cast<Json::Int64>(id));
+    body[sync_change::kIdsField] = std::move(list);
+  }
+  return body;
+}
 }

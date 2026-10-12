@@ -38,29 +38,13 @@ outbox::OutboxConfig outboxConfig()
                         .purgeRetryMs = stream_retention::kSettledPurgeRetryMs}};
 }
 
-Json::Value resourcePayload(const ResourceChangeInput& input)
-{
-  Json::Value payload(Json::objectValue);
-  payload[sync_change::kKindField] = sync_change::kKindResource;
-  payload[sync_change::kDomainField] =
-      resourceDomainToString(ResourceDomain::Guard);
-  payload[sync_change::kScopeField] = resourceScopeToString(input.scope);
-  if (input.user > 0)
-    payload[sync_change::kUserField] = static_cast<Json::Int64>(input.user);
-  if (!input.ids.empty()) {
-    Json::Value ids(Json::arrayValue);
-    for (const auto id : input.ids)
-      ids.append(static_cast<Json::Int64>(id));
-    payload[sync_change::kIdsField] = std::move(ids);
-  }
-  return payload;
-}
-}
+
 
 ResourceChangeRow resourceChangeRow(const ResourceChangeInput& input)
 {
   return {.subject = std::string(nats_subject::kGuardChange),
-          .payload = json_util::toString(resourcePayload(input))};
+          .payload = json_util::toString(resource_change::payload(
+              ResourceDomain::Guard, input.scope, input.ids, input.user))};
 }
 
 ResourceChangeOutbox::ResourceChangeOutbox(const std::shared_ptr<NatsBus>& bus)

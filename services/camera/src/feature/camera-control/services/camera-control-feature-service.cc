@@ -3,6 +3,7 @@
 #include <drogon/utils/Utilities.h>
 #include <runtime/blocking-task.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <sync/camera-change-sink.hxx>
 #include <shared/services/camera-driver/stream-only-driver.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 
@@ -77,6 +78,18 @@ CameraControlFeatureService::move(int64_t cameraId, const CameraPtzDto& body) co
   co_return result;
 }
 
+drogon::Task<void>
+CameraControlFeatureService::announceStatus(int64_t cameraId) const
+{
+  const CameraChangeSink* sink = camera_change::getSink();
+  if (sink == nullptr)
+    co_return;
+  co_await sink->publishResource({.scope = ResourceScope::Status,
+                                  .ids = {cameraId},
+                                  .user = 0,
+                                  .client = nullptr});
+}
+
 drogon::Task<CameraControlResult>
 CameraControlFeatureService::preset(int64_t cameraId, const CameraPresetDto& body) const
 {
@@ -85,6 +98,8 @@ CameraControlFeatureService::preset(int64_t cameraId, const CameraPresetDto& bod
   });
   if (succeeded(result) && body.action != "save" && body.action != "delete")
     CameraSceneLog::instance().noteAimed(cameraId, nowMs());
+  if (succeeded(result) && (body.action == "save" || body.action == "delete"))
+    co_await announceStatus(cameraId);
   co_return result;
 }
 
@@ -109,6 +124,7 @@ CameraControlFeatureService::settings(int64_t cameraId, const CameraSettingsDto&
     scenes.notePrivacy(cameraId, *body.privacy);
   if ((body.privacy && !*body.privacy) || body.dayNight)
     scenes.noteAimed(cameraId, nowMs());
+  co_await announceStatus(cameraId);
   co_return result;
 }
 

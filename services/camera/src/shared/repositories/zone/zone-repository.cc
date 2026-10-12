@@ -22,11 +22,12 @@ ZoneRepository::findById(int64_t id, drogon::orm::DbClient* client) const
 }
 
 drogon::Task<std::vector<ZoneSchema>>
-ZoneRepository::findByCamera(int64_t cameraId) const
+ZoneRepository::findByCamera(int64_t cameraId,
+                             drogon::orm::DbClient* client) const
 {
-  auto client = DbService::cameraClient();
-  const auto result =
-      co_await client->execSqlCoro(FIND_BY_CAMERA.data(), cameraId);
+  const auto owned = DbService::cameraClient();
+  drogon::orm::DbClient* db = client != nullptr ? client : owned.get();
+  const auto result = co_await db->execSqlCoro(FIND_BY_CAMERA.data(), cameraId);
 
   std::vector<ZoneSchema> data;
   for (const auto& row : result)

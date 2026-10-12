@@ -36,6 +36,8 @@ private:
   onDevice(int64_t cameraId,
            const std::function<DriverResult(ICameraDriver&)>& work) const;
 
+  drogon::Task<void> announceStatus(int64_t cameraId) const;
+
   CameraRepository repository_;
   TtsClient tts_;
   mutable Go2rtcFrameSource frames_;

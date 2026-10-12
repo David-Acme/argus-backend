@@ -34,6 +34,9 @@ public:
   [[nodiscard]] drogon::Task<void>
   publishAudit(const ModuleAuditInput& input) const override;
 
+  [[nodiscard]] drogon::Task<void>
+  publishResource(const CameraResourceChange& input) const override;
+
   void reconcile();
   void requestStop();
   [[nodiscard]] bool drained() const;
