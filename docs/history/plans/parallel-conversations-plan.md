@@ -165,8 +165,8 @@ Owner decisions (2026-10-12):
 1. A second device of the same person **takes over** the conversation by itself.
 2. **Every registered person has their own account** and talks to Argus through it. A voice that
    sounds different on the person's own device is handled gently (section 4), never as an intruder.
-3. Memory scope (section 5): personal by default, household when about the home or said for everyone
-   — proposed, awaiting the owner's word.
+3. Memory scope (section 5): **personal by default**, household when about the home or shared
+   entities, or when the person says it is for everyone.
 4. Messages never ring: notification, the camera that sees the recipient, or inside an open
    conversation (section 6). Strangers get no information; the resident is notified.
 5. **No product limit on simultaneous conversations.** Capacity follows the hardware (a more powerful
