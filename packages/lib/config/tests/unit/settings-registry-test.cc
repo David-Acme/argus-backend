@@ -153,6 +153,52 @@ TEST_CASE("decimal and integer parsing refuse partial and non-finite input")
   std::remove(path.c_str());
 }
 
+TEST_CASE("a value off the spec's step is refused like an out-of-range one")
+{
+  const auto path = writeConfig("[tts]\n\n[llm]\n");
+  ConfigService::load(path);
+  const auto speed = SettingSpec{.key = "tts.speed",
+                                 .group = "voice",
+                                 .type = SettingType::Decimal,
+                                 .level = SettingLevel::Basic,
+                                 .apply = SettingApply::Live,
+                                 .range = {.min = 0.7, .max = 2.0, .step = 0.05},
+                                 .choices = {},
+                                 .fallback = "1",
+                                 .unit = {}};
+  const auto tokens = SettingSpec{.key = "llm.max_tokens",
+                                  .group = "sampling",
+                                  .type = SettingType::Integer,
+                                  .level = SettingLevel::Advanced,
+                                  .apply = SettingApply::Live,
+                                  .range = {.min = 16, .max = 4096, .step = 16},
+                                  .choices = {},
+                                  .fallback = "256",
+                                  .unit = {}};
+  SettingsRegistry registry({speed, tokens});
+
+  const auto onGrid = registry.update({{.key = "tts.speed", .value = "1.6"}});
+  CHECK(onGrid.rejected.empty());
+  CHECK(ConfigService::getDouble("tts.speed") == doctest::Approx(1.6));
+
+  const auto offGrid = registry.update({{.key = "tts.speed", .value = "1.63"}});
+  REQUIRE(offGrid.rejected.size() == 1);
+  CHECK(offGrid.rejected[0].reason == SettingRejectionReason::OutOfRange);
+  CHECK(ConfigService::getDouble("tts.speed") == doctest::Approx(1.6));
+
+  const auto integerOnGrid =
+      registry.update({{.key = "llm.max_tokens", .value = "1024"}});
+  CHECK(integerOnGrid.rejected.empty());
+  CHECK(ConfigService::getDouble("llm.max_tokens") == doctest::Approx(1024));
+
+  const auto integerOffGrid =
+      registry.update({{.key = "llm.max_tokens", .value = "1000"}});
+  REQUIRE(integerOffGrid.rejected.size() == 1);
+  CHECK(integerOffGrid.rejected[0].reason == SettingRejectionReason::OutOfRange);
+  CHECK(ConfigService::getDouble("llm.max_tokens") == doctest::Approx(1024));
+  std::remove(path.c_str());
+}
+
 TEST_CASE("a catalog with a duplicate key, a bare key or a bad fallback is refused")
 {
   auto duplicate = llmSpecs();

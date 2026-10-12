@@ -16,6 +16,7 @@
 namespace
 {
 constexpr std::size_t kMaxTextLength = 512;
+constexpr double kStepTolerance = 1e-6;
 constexpr const char* kMarkerId = "settings_profile.id";
 constexpr const char* kMarkerOrigin = "settings_profile.origin";
 constexpr const char* kMarkerAppliedAt = "settings_profile.applied_at";
@@ -109,11 +110,19 @@ std::optional<long long> parseInteger(const std::string& text)
   return value;
 }
 
+bool onStep(const SettingRange& range, double value)
+{
+  if (range.step <= 0.0)
+    return true;
+  const double steps = (value - range.min) / range.step;
+  return std::abs(steps - std::round(steps)) <= kStepTolerance;
+}
+
 bool withinRange(const SettingRange& range, double value)
 {
   if (range.min == 0 && range.max == 0)
     return true;
-  return value >= range.min && value <= range.max;
+  return value >= range.min && value <= range.max && onStep(range, value);
 }
 
 struct Validation
