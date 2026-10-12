@@ -57,6 +57,10 @@ GuardEnvironment environmentSeed(const GuardServiceConfig& config);
 
 GuardSchedule fromEnvironment(const GuardEnvironment& environment);
 
+std::string fingerprint(const GuardPosture& posture);
+
+std::string stateKey(int64_t environmentId);
+
 struct QuietWindow
 {
   bool enabled{false};

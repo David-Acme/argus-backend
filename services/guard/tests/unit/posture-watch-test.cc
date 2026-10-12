@@ -70,6 +70,24 @@ int64_t insertEnvironment(const std::string& name, const std::string& mode)
                      "'");
 }
 
+int64_t insertUnscheduledEnvironment(const std::string& name,
+                                     const std::string& mode)
+{
+  DbService::client()->execSqlSync(
+      "INSERT INTO guard_environment (name, kind, is_default, mode, "
+      "schedule_enabled, asleep_hours, closed_mode) VALUES ('" +
+      name + "', 'home', 0, '" + mode + "', 0, '', 'away')");
+  return scalarCount("SELECT id FROM guard_environment WHERE name = '" + name +
+                     "'");
+}
+
+void clearGuardTables()
+{
+  DbService::client()->execSqlSync("DELETE FROM change_outbox");
+  DbService::client()->execSqlSync("DELETE FROM guard_state");
+  DbService::client()->execSqlSync("DELETE FROM guard_environment");
+}
+
 std::tm localAt(int hour, int minute)
 {
   std::tm local{};
@@ -161,4 +179,65 @@ TEST_CASE("a mode change announces every targeted environment in its own row")
        .userId = 7,
        .userName = "Ana"}));
   CHECK(changeRows() == before + 2 + environments);
+}
+
+TEST_CASE("the first evaluation after a restart reconciles, and only when the posture moved")
+{
+  sharedBoot();
+  clearGuardTables();
+  const int64_t asleep = insertEnvironment("Recon house", "home");
+  insertUnscheduledEnvironment("Recon shop", "home");
+
+  const auto bus = std::make_shared<NatsBus>();
+  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  int64_t at = 1780000000;
+  std::tm local = localAt(23, 0);
+  const PostureWatch watch(
+      {.changes = &outbox},
+      {.intervalSeconds = 30,
+       .clock = {.now = [&at]() { return at; }, .local = [&local]() {
+                   return local;
+                 }}});
+
+  drogon::sync_wait(watch.evaluate());
+  CHECK(changeRows() == 2);
+  CHECK_FALSE(scalarText("SELECT value FROM guard_state WHERE key = '" +
+                         guard_schedule::stateKey(asleep) + "'")
+                  .empty());
+
+  drogon::sync_wait(watch.evaluate());
+  CHECK(changeRows() == 2);
+
+  DbService::client()->execSqlSync(
+      "UPDATE guard_state SET value = 'home|manual|0|0' WHERE key = '" +
+      guard_schedule::stateKey(asleep) + "'");
+  drogon::sync_wait(watch.evaluate());
+  CHECK(changeRows() == 3);
+  CHECK(scalarText("SELECT value FROM guard_state WHERE key = '" +
+                   guard_schedule::stateKey(asleep) + "'") !=
+        "home|manual|0|0");
+}
+
+TEST_CASE("a manual change followed by a tick announces exactly once")
+{
+  sharedBoot();
+  clearGuardTables();
+  const int64_t environmentId =
+      insertUnscheduledEnvironment("Manual shop", "away");
+  const auto bus = std::make_shared<NatsBus>();
+  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const GuardFeatureService service(
+      {.identity = nullptr, .disarm = nullptr, .changes = &outbox});
+  const PostureWatch watch({.changes = &outbox}, {.intervalSeconds = 30});
+
+  drogon::sync_wait(service.setMode(
+      {.body = UpdateGuardModeDto{.mode = "home",
+                                  .environmentId = environmentId,
+                                  .pin = std::nullopt},
+       .userId = 7,
+       .userName = "Ana"}));
+  CHECK(changeRows() == 1);
+
+  drogon::sync_wait(watch.evaluate());
+  CHECK(changeRows() == 1);
 }

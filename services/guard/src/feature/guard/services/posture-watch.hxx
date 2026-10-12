@@ -43,5 +43,6 @@ private:
   Dependencies dependencies_;
   Config config_;
   std::optional<trantor::TimerId> timer_;
+  std::atomic<bool> stopped_{false};
   std::atomic<int> pending_{0};
 };

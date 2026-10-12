@@ -16,27 +16,18 @@
 
 namespace
 {
+struct PendingGuard
+{
+  std::atomic<int>* pending;
+  ~PendingGuard() { pending->fetch_sub(1, std::memory_order_acq_rel); }
+};
+
 std::tm localClockNow()
 {
   const auto now = std::time(nullptr);
   std::tm local{};
   localtime_r(&now, &local);
   return local;
-}
-
-std::string postureFingerprint(const GuardPosture& posture)
-{
-  std::string text = guardModeToString(posture.mode);
-  text += "|";
-  text += posture.occupancy;
-  text += posture.publicPresent ? "|1" : "|0";
-  text += posture.staffOnly ? "|1" : "|0";
-  return text;
-}
-
-std::string postureKey(int64_t environmentId)
-{
-  return "posture." + std::to_string(environmentId);
 }
 }
 
@@ -62,6 +53,7 @@ void PostureWatch::start()
 
 void PostureWatch::requestStop()
 {
+  stopped_.store(true, std::memory_order_release);
   if (timer_.has_value() && drogon::app().isRunning())
     drogon::app().getLoop()->invalidateTimer(*timer_);
   timer_.reset();
@@ -74,10 +66,12 @@ bool PostureWatch::drained() const
 
 void PostureWatch::schedule()
 {
+  if (stopped_.load(std::memory_order_acquire))
+    return;
+  pending_.fetch_add(1, std::memory_order_acq_rel);
   drogon::async_run([this]() -> drogon::Task<void> {
-    pending_.fetch_add(1, std::memory_order_acq_rel);
+    const PendingGuard guard{&pending_};
     co_await evaluate();
-    pending_.fetch_sub(1, std::memory_order_acq_rel);
   });
 }
 
@@ -93,8 +87,8 @@ drogon::Task<void> PostureWatch::evaluate() const
           guard_schedule::fromEnvironment(environment);
       const GuardPosture posture = guard_schedule::resolve(
           {.schedule = schedule, .manual = environment.mode, .local = local});
-      const std::string fingerprint = postureFingerprint(posture);
-      const std::string key = postureKey(environment.id);
+      const std::string fingerprint = guard_schedule::fingerprint(posture);
+      const std::string key = guard_schedule::stateKey(environment.id);
       if (co_await repository.state(key, "") == fingerprint)
         continue;
 

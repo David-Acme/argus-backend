@@ -234,6 +234,21 @@ GuardSchedule guard_schedule::fromEnvironment(const GuardEnvironment& environmen
                                   : "away"});
 }
 
+std::string guard_schedule::fingerprint(const GuardPosture& posture)
+{
+  std::string text = guardModeToString(posture.mode);
+  text += "|";
+  text += posture.occupancy;
+  text += posture.publicPresent ? "|1" : "|0";
+  text += posture.staffOnly ? "|1" : "|0";
+  return text;
+}
+
+std::string guard_schedule::stateKey(int64_t environmentId)
+{
+  return "posture." + std::to_string(environmentId);
+}
+
 guard_schedule::QuietWindow
 guard_schedule::quietWindow(const QuietWindowInput& input)
 {

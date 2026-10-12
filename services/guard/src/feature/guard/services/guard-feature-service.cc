@@ -699,11 +699,11 @@ GuardFeatureService::setMode(const GuardModeChange& input) const
                               .pin = body.pin,
                               .environmentId = body.environmentId};
   bool lowers = mode == GuardMode::Home;
-  std::vector<int64_t> targeted;
+  std::vector<GuardEnvironment> targeted;
   for (const auto& environment : co_await environmentRepository_.list()) {
     if (body.environmentId && environment.id != *body.environmentId)
       continue;
-    targeted.push_back(environment.id);
+    targeted.push_back(environment);
     if (modeRank(mode) < modeRank(environment.mode))
       lowers = true;
   }
@@ -723,10 +723,21 @@ GuardFeatureService::setMode(const GuardModeChange& input) const
          .client = transaction.get()});
     if (body.environmentId && changed == 0)
       throw ResponseException(GuardErrors::EnvironmentNotFound);
-    if (changes_ != nullptr) {
-      for (const int64_t environmentId : targeted) {
+    const int64_t at = static_cast<int64_t>(std::time(nullptr));
+    const std::tm local = localNow();
+    for (const auto& environment : targeted) {
+      const GuardPosture posture = guard_schedule::resolve(
+          {.schedule = guard_schedule::fromEnvironment(environment),
+           .manual = mode,
+           .local = local});
+      co_await guardRepository_.setState(
+          {.key = guard_schedule::stateKey(environment.id),
+           .value = guard_schedule::fingerprint(posture),
+           .updatedAt = at,
+           .client = transaction.get()});
+      if (changes_ != nullptr) {
         co_await changes_->record({.scope = ResourceScope::Environments,
-                                   .ids = {environmentId},
+                                   .ids = {environment.id},
                                    .client = transaction.get()});
       }
     }
