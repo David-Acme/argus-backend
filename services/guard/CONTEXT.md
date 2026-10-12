@@ -1684,9 +1684,17 @@ it converges at that point, at any transition, at the close, and on reconnect
 regardless. Neither the leading row nor the trailing one shares the touch's
 transaction — the touch has already committed — so a crash between them loses
 the notice and nothing else: the data is stored, and reconnect reloads every
-mounted resource. Duplicates are harmless by the same reasoning that lets the
-posture watch re-publish: an episode notice carries no state, it asks for a
-read.
+mounted resource.
+
+Every notice carries its own **minted** event id (lib/outbox's `uniqueId`, the
+same minting the outbox service path uses), never one derived from the scope,
+the ids and the instant: two different changes to the same scope and ids inside
+the same second are two rows with two ids, and neither the row key nor the
+stream's duplicate window may swallow the second. A notice that *is* delivered
+twice is harmless by the reasoning that lets the posture watch re-publish — an
+episode notice carries no state, it asks for a read — but a notice that is
+never delivered is not: the device stays stale until something unrelated
+happens to touch the same scope, and nothing disconnected it.
 
 Two writes deliberately record nothing. `markEvidenceDeleted` changes no read
 — evidence never appears in the episode JSON — and incidents publish nothing

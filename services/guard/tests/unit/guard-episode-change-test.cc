@@ -311,6 +311,32 @@ TEST_CASE("an observation announces its episode, and the gate quiets the rest")
   CHECK(lastPayload().find("\"scope\":\"episodes\"") != std::string::npos);
 }
 
+TEST_CASE("two changes to one episode in the same instant get their own notice")
+{
+  sharedBoot();
+  clearGuardTables();
+  const auto bus = std::make_shared<NatsBus>();
+  const ResourceChangeOutbox outbox(bus);
+  const GuardRepository repository;
+  const int64_t encounter = insertEncounter(1000, 1000);
+
+  const int64_t before = changeRows();
+  CHECK(drogon::sync_wait(repository.transitionEncounter(
+      {.encounterId = encounter,
+       .toState = EncounterState::Verifying,
+       .reason = "loiter",
+       .grade = "medium",
+       .at = 1200})));
+  CHECK(drogon::sync_wait(repository.transitionEncounter(
+      {.encounterId = encounter,
+       .toState = EncounterState::Resolved,
+       .reason = "left",
+       .grade = "medium",
+       .at = 1200})));
+  CHECK(changeRows() == before + 2);
+  CHECK(scalarCount("SELECT COUNT(DISTINCT event_id) FROM change_outbox") == 2);
+}
+
 TEST_CASE("a purge announces the episodes scope without ids")
 {
   sharedBoot();

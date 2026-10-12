@@ -8,7 +8,10 @@
 
 #include <chrono>
 #include <ctime>
+#include <errors/response-exception.hxx>
+#include <feature/guard/controllers/guard-errors.hxx>
 #include <nats/nats-subject.hxx>
+#include <outbox/outbox-key.hxx>
 #include <outbox/outbox-query.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
@@ -941,16 +944,20 @@ GuardRepository::setOutboxPayload(const GuardOutboxPayloadInput& input) const
 drogon::Task<void>
 GuardRepository::recordResource(const GuardResourceWrite& input) const
 {
-  const ResourceChangeRow row =
-      resourceChangeRow({.scope = input.scope, .ids = input.ids}, input.at);
+  const ResourceChangeRow row = resourceChangeRow(
+      {.scope = input.scope, .ids = input.ids, .client = nullptr});
+  const auto entropy = outbox::drawEntropy();
+  if (!entropy)
+    throw ResponseException(GuardErrors::ChangeNotRecorded);
   const outbox::OutboxRepository repository(
       [] { return DbService::client(); });
-  co_await repository.insert({.eventId = row.eventId,
-                              .subject = row.subject,
-                              .fingerprint = {},
-                              .payload = row.payload,
-                              .at = input.at * 1000,
-                              .client = input.client});
+  co_await repository.insert(
+      {.eventId = outbox::uniqueId(ResourceChangeOutbox::kEventIdPrefix, *entropy),
+       .subject = row.subject,
+       .fingerprint = {},
+       .payload = row.payload,
+       .at = input.at * 1000,
+       .client = input.client});
 }
 
 drogon::Task<outbox::OutboxDisposition>

@@ -21,12 +21,11 @@ struct ResourceChangeInput
 struct ResourceChangeRow
 {
   std::string subject;
-  std::string eventId;
   std::string payload;
 };
 
 [[nodiscard]] ResourceChangeRow
-resourceChangeRow(const ResourceChangeInput& input, int64_t at);
+resourceChangeRow(const ResourceChangeInput& input);
 
 class ResourceChangeOutbox
 {

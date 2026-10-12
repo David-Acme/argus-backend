@@ -55,19 +55,9 @@ Json::Value resourcePayload(const ResourceChangeInput& input)
 }
 }
 
-ResourceChangeRow resourceChangeRow(const ResourceChangeInput& input, int64_t at)
+ResourceChangeRow resourceChangeRow(const ResourceChangeInput& input)
 {
-  std::string eventId(ResourceChangeOutbox::kEventIdPrefix);
-  eventId += "-";
-  eventId += resourceScopeToString(input.scope);
-  for (const auto id : input.ids) {
-    eventId += "-";
-    eventId += std::to_string(id);
-  }
-  eventId += "-";
-  eventId += std::to_string(at);
   return {.subject = std::string(nats_subject::kGuardChange),
-          .eventId = std::move(eventId),
           .payload = json_util::toString(resourcePayload(input))};
 }
 
@@ -79,9 +69,10 @@ ResourceChangeOutbox::ResourceChangeOutbox(const std::shared_ptr<NatsBus>& bus)
 drogon::Task<void>
 ResourceChangeOutbox::record(const ResourceChangeInput& input) const
 {
+  const ResourceChangeRow row = resourceChangeRow(input);
   co_await outbox_.append({.idPrefix = kEventIdPrefix,
-                           .subject = std::string(nats_subject::kGuardChange),
-                           .payload = json_util::toString(resourcePayload(input)),
+                           .subject = row.subject,
+                           .payload = row.payload,
                            .client = input.client});
 }
 
