@@ -18,8 +18,15 @@ namespace
 {
 struct PendingGuard
 {
-  std::atomic<int>* pending;
+  explicit PendingGuard(std::atomic<int>* pending) : pending(pending) {}
+
+  PendingGuard(const PendingGuard&) = delete;
+  PendingGuard& operator=(const PendingGuard&) = delete;
+  PendingGuard(PendingGuard&&) = delete;
+  PendingGuard& operator=(PendingGuard&&) = delete;
   ~PendingGuard() { pending->fetch_sub(1, std::memory_order_acq_rel); }
+
+  std::atomic<int>* pending;
 };
 
 std::tm localClockNow()
