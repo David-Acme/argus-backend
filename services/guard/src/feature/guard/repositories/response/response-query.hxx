@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <feature/guard/vocabulary/recipient-mode.hxx>
 #include <optional>
 #include <string>
@@ -119,6 +120,7 @@ struct ResponseReplaceInput
   std::vector<ResponseRecipientInput> recipients;
   std::vector<ResponseContactInput> contacts;
   int64_t at{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct ResponseDutyInput
@@ -127,4 +129,5 @@ struct ResponseDutyInput
   int64_t userId{0};
   bool onDuty{false};
   int64_t at{0};
+  drogon::orm::DbClient* client{nullptr};
 };

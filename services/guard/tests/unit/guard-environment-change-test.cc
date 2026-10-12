@@ -4,6 +4,7 @@
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
 #include <feature/guard/dtos/create-environment-dto.hxx>
+#include <feature/guard/dtos/create-expected-guest-dto.hxx>
 #include <feature/guard/dtos/update-camera-context-dto.hxx>
 #include <feature/guard/dtos/update-environment-dto.hxx>
 #include <feature/guard/infra/resource-change-outbox.hxx>
@@ -195,21 +196,33 @@ TEST_CASE("removing an environment announces it and hands its cameras away")
 
   const int64_t kept = insertDefaultEnvironment();
   const int64_t doomed = createEnvironment(service, "Doomed shop")["id"].asInt64();
-  DbService::client()->execSqlSync(
-      "INSERT INTO guard_camera_context (camera_id, role, environment_id) "
-      "VALUES (11, 'other', " +
-      std::to_string(doomed) + ")");
-  DbService::client()->execSqlSync(
-      "INSERT INTO guard_expected_guest (description, environment_id, "
-      "valid_from, valid_until) VALUES ('Visitor', " +
-      std::to_string(doomed) + ", 1, 2)");
+  const int64_t empty = createEnvironment(service, "Empty shop")["id"].asInt64();
+  drogon::sync_wait(service.setCamera(
+      {.cameraId = 11,
+       .context = UpdateCameraContextDto{.role = "other",
+                                         .outdoor = false,
+                                         .publicArea = false,
+                                         .activeHours = "",
+                                         .environmentId = doomed}}));
+  const int64_t guestId = drogon::sync_wait(service.createGuest(
+      {.body = CreateExpectedGuestDto{.description = "Visitor",
+                                      .cameraId = 0,
+                                      .environmentId = doomed,
+                                      .personId = 0,
+                                      .hostUserId = 0,
+                                      .oneTime = false,
+                                      .validFrom = 0,
+                                      .validUntil = 0,
+                                      .hours = 4},
+       .callerId = 1,
+       .callerRole = UserRole::Owner}));
   const int64_t before = changeRows();
 
   const Json::Value remaining = drogon::sync_wait(service.removeEnvironment(doomed));
-  CHECK(changeRows() == before + 1);
-  CHECK(lastPayload().find(idsOf({doomed})) != std::string::npos);
-  CHECK(remaining.size() == 1);
-  CHECK(remaining[0]["id"].asInt64() == kept);
+  CHECK(changeRows() == before + 2);
+  CHECK(lastPayload().find("\"scope\":\"expected_visits\"") != std::string::npos);
+  CHECK(lastPayload().find(idsOf({guestId})) != std::string::npos);
+  CHECK(remaining.size() == 2);
   CHECK(scalarCount("SELECT COUNT(*) FROM guard_environment WHERE id = " +
                     std::to_string(doomed)) == 0);
   CHECK(scalarCount("SELECT COUNT(*) FROM guard_camera_context WHERE camera_id "
@@ -220,6 +233,50 @@ TEST_CASE("removing an environment announces it and hands its cameras away")
                     std::to_string(doomed) +
                     " AND deleted_at IS NOT NULL") == 1);
   CHECK(postureRow(doomed) == 0);
+
+  const int64_t after = changeRows();
+  drogon::sync_wait(service.removeEnvironment(empty));
+  CHECK(changeRows() == after + 1);
+  CHECK(lastPayload().find("\"scope\":\"environments\"") != std::string::npos);
+}
+
+TEST_CASE("an expected visit is announced when it is created and when it goes")
+{
+  sharedBoot();
+  clearGuardTables();
+  const auto bus = std::make_shared<NatsBus>();
+  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const GuardFeatureService service(
+      {.identity = nullptr, .disarm = nullptr, .changes = &outbox});
+  const int64_t environmentId =
+      createEnvironment(service, "Visit house")["id"].asInt64();
+  const int64_t before = changeRows();
+
+  const int64_t guestId = drogon::sync_wait(service.createGuest(
+      {.body = CreateExpectedGuestDto{.description = "Ines",
+                                      .cameraId = 0,
+                                      .environmentId = environmentId,
+                                      .personId = 0,
+                                      .hostUserId = 0,
+                                      .oneTime = true,
+                                      .validFrom = 0,
+                                      .validUntil = 0,
+                                      .hours = 4},
+       .callerId = 1,
+       .callerRole = UserRole::Owner}));
+  CHECK(guestId > 0);
+  CHECK(changeRows() == before + 1);
+  CHECK(lastPayload().find("\"domain\":\"guard\"") != std::string::npos);
+  CHECK(lastPayload().find("\"scope\":\"expected_visits\"") != std::string::npos);
+  CHECK(lastPayload().find(idsOf({guestId})) != std::string::npos);
+
+  CHECK(drogon::sync_wait(service.removeGuest(guestId)));
+  CHECK(changeRows() == before + 2);
+  CHECK(lastPayload().find("\"scope\":\"expected_visits\"") != std::string::npos);
+  CHECK(lastPayload().find(idsOf({guestId})) != std::string::npos);
+
+  CHECK_FALSE(drogon::sync_wait(service.removeGuest(guestId)));
+  CHECK(changeRows() == before + 2);
 }
 
 TEST_CASE("placing a camera announces it, and a move announces both sides")

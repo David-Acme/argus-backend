@@ -565,6 +565,7 @@ struct GuardGuestInput
   int64_t validFrom{0};
   int64_t validUntil{0};
   int64_t environmentId{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct GuardGuest

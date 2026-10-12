@@ -32,7 +32,7 @@ public:
   [[nodiscard]] drogon::Task<int64_t>
   setMode(const EnvironmentModeInput& input) const;
 
-  [[nodiscard]] drogon::Task<EnvironmentRemoval>
+  [[nodiscard]] drogon::Task<EnvironmentRemovalResult>
   remove(const EnvironmentRemoveInput& input) const;
 
   [[nodiscard]] drogon::Task<std::vector<CameraAssignment>>

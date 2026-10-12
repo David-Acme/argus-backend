@@ -392,7 +392,9 @@ int main()
   drogon::app().registerController(
       std::make_shared<PresenceController>(&presence));
   drogon::app().registerController(std::make_shared<ResponseController>(
-      ResponseFeatureDependencies{.directory = responseDirectory, .clock = {}}));
+      ResponseFeatureDependencies{.directory = responseDirectory,
+                                  .clock = {},
+                                  .changes = &resourceChanges}));
 
   drogon::app().setExceptionHandler(ErrorHandler::handleException);
 

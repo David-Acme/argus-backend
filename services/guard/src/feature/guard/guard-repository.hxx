@@ -51,7 +51,8 @@ public:
 
   drogon::Task<std::vector<GuardGuest>> listGuests() const;
 
-  drogon::Task<bool> removeGuest(int64_t id) const;
+  drogon::Task<bool> removeGuest(int64_t id,
+                                 drogon::orm::DbClient* client = nullptr) const;
 
   drogon::Task<int64_t>
   insertAssessment(const GuardAssessmentRowInput& input) const;

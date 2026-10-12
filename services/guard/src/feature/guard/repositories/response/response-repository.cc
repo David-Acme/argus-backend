@@ -69,7 +69,8 @@ ResponseRepository::forEnvironment(int64_t environmentId) const
 }
 
 drogon::Task<void>
-ResponseRepository::replace(const ResponseReplaceInput& input) const
+ResponseRepository::writeReplace(const ResponseReplaceInput& input,
+                                 drogon::orm::DbClient* client) const
 {
   const std::string at = std::to_string(input.at);
   const std::string environment = std::to_string(input.environmentId);
@@ -103,21 +104,30 @@ ResponseRepository::replace(const ResponseReplaceInput& input) const
       joinedRows(INSERT_CONTACT_HEAD, INSERT_CONTACT_ROW,
                  input.contacts.size());
 
+  co_await client->execSqlCoro(std::string(DELETE_RECIPIENTS),
+                               input.environmentId);
+  co_await client->execSqlCoro(std::string(DELETE_CONTACTS),
+                               input.environmentId);
+  if (!input.recipients.empty())
+    co_await client->execSqlCoro(recipientSql, recipientArgsRef);
+  if (!input.contacts.empty())
+    co_await client->execSqlCoro(contactSql, contactArgsRef);
+  co_await client->execSqlCoro(std::string(UPSERT_SETTING),
+                               input.environmentId, input.emergencyNumber,
+                               input.stepSeconds, input.at);
+}
+
+drogon::Task<void>
+ResponseRepository::replace(const ResponseReplaceInput& input) const
+{
+  if (input.client != nullptr) {
+    co_await writeReplace(input, input.client);
+    co_return;
+  }
   std::shared_ptr<drogon::orm::Transaction> transaction =
       co_await db_transaction::begin(DbService::client());
   try {
-    co_await transaction->execSqlCoro(std::string(DELETE_RECIPIENTS),
-                                      input.environmentId);
-    co_await transaction->execSqlCoro(std::string(DELETE_CONTACTS),
-                                      input.environmentId);
-    if (!input.recipients.empty())
-      co_await transaction->execSqlCoro(recipientSql, recipientArgsRef);
-    if (!input.contacts.empty())
-      co_await transaction->execSqlCoro(contactSql, contactArgsRef);
-    co_await transaction->execSqlCoro(std::string(UPSERT_SETTING),
-                                      input.environmentId,
-                                      input.emergencyNumber, input.stepSeconds,
-                                      input.at);
+    co_await writeReplace(input, transaction.get());
   }
   catch (const std::exception& error) {
     transaction->rollback();
@@ -131,7 +141,9 @@ ResponseRepository::replace(const ResponseReplaceInput& input) const
 drogon::Task<void>
 ResponseRepository::setDuty(const ResponseDutyInput& input) const
 {
-  co_await DbService::client()->execSqlCoro(std::string(UPSERT_DUTY),
-                                            input.environmentId, input.userId,
-                                            input.onDuty ? 1 : 0, input.at);
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* client =
+      input.client != nullptr ? input.client : owned.get();
+  co_await client->execSqlCoro(std::string(UPSERT_DUTY), input.environmentId,
+                               input.userId, input.onDuty ? 1 : 0, input.at);
 }

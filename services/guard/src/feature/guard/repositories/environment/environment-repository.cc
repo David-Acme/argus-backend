@@ -1,5 +1,6 @@
 #include "environment-repository.hxx"
 
+#include <drogon/orm/Result.h>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 #include <trantor/utils/Logger.h>
@@ -43,6 +44,15 @@ GuardEnvironment fromRow(const drogon::orm::Row& row)
 std::string closedModeName(GuardMode mode)
 {
   return mode == GuardMode::Armed ? "armed" : "away";
+}
+
+std::vector<int64_t> retiredIds(const drogon::orm::Result& rows)
+{
+  std::vector<int64_t> ids;
+  ids.reserve(rows.size());
+  for (const auto& row : rows)
+    ids.push_back(row["id"].as<int64_t>());
+  return ids;
 }
 }
 
@@ -181,7 +191,7 @@ EnvironmentRepository::setMode(const EnvironmentModeInput& input) const
   co_return static_cast<int64_t>(result.affectedRows());
 }
 
-drogon::Task<EnvironmentRemoval>
+drogon::Task<EnvironmentRemovalResult>
 EnvironmentRepository::remove(const EnvironmentRemoveInput& input) const
 {
   const auto owned = DbService::client();
@@ -189,32 +199,40 @@ EnvironmentRepository::remove(const EnvironmentRemoveInput& input) const
       input.client != nullptr ? input.client : owned.get();
   const auto target = co_await find(input.id, client);
   if (!target)
-    co_return EnvironmentRemoval::NotFound;
+    co_return EnvironmentRemovalResult{.outcome = EnvironmentRemoval::NotFound,
+                                       .retiredGuestIds = {}};
   if (target->isDefault)
-    co_return EnvironmentRemoval::IsDefault;
+    co_return EnvironmentRemovalResult{
+        .outcome = EnvironmentRemoval::IsDefault, .retiredGuestIds = {}};
   const int64_t fallback = co_await defaultId(client);
   if (input.client != nullptr) {
     co_await client->execSqlCoro(std::string(MOVE_CAMERAS), fallback,
                                  input.at, input.id);
-    co_await client->execSqlCoro(std::string(RETIRE_GUESTS), input.at,
-                                 input.id);
+    const auto retired = co_await client->execSqlCoro(
+        std::string(RETIRE_GUESTS), input.at, input.id);
     const auto deleted =
         co_await client->execSqlCoro(std::string(DELETE_ENVIRONMENT), input.id);
-    co_return deleted.affectedRows() == 0 ? EnvironmentRemoval::NotFound
-                                          : EnvironmentRemoval::Removed;
+    co_return EnvironmentRemovalResult{
+        .outcome = deleted.affectedRows() == 0 ? EnvironmentRemoval::NotFound
+                                              : EnvironmentRemoval::Removed,
+        .retiredGuestIds = retiredIds(retired)};
   }
   std::shared_ptr<drogon::orm::Transaction> transaction =
       co_await db_transaction::begin(owned);
+  EnvironmentRemovalResult result;
   try {
     co_await transaction->execSqlCoro(std::string(MOVE_CAMERAS), fallback,
                                       input.at, input.id);
-    co_await transaction->execSqlCoro(std::string(RETIRE_GUESTS), input.at,
-                                      input.id);
+    const auto retired = co_await transaction->execSqlCoro(
+        std::string(RETIRE_GUESTS), input.at, input.id);
+    result.retiredGuestIds = retiredIds(retired);
     const auto deleted = co_await transaction->execSqlCoro(
         std::string(DELETE_ENVIRONMENT), input.id);
     if (deleted.affectedRows() == 0) {
       transaction->rollback();
-      co_return EnvironmentRemoval::NotFound;
+      co_return EnvironmentRemovalResult{.outcome =
+                                             EnvironmentRemoval::NotFound,
+                                         .retiredGuestIds = {}};
     }
   }
   catch (const std::exception& error) {
@@ -224,7 +242,8 @@ EnvironmentRepository::remove(const EnvironmentRemoveInput& input) const
   }
   if (!co_await db_transaction::Commit(std::move(transaction)))
     throw std::runtime_error("environment removal did not commit");
-  co_return EnvironmentRemoval::Removed;
+  result.outcome = EnvironmentRemoval::Removed;
+  co_return result;
 }
 
 drogon::Task<std::vector<CameraAssignment>>

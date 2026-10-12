@@ -6,6 +6,8 @@
 #include <feature/guard/controllers/guard-errors.hxx>
 #include <feature/guard/guard-schedule.hxx>
 #include <runtime/blocking-task.hxx>
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 #include <utility>
 
 namespace
@@ -119,12 +121,29 @@ ResponseFeatureService::replace(const ReplaceInput& input) const
   for (const auto& contact : input.body.contacts)
     contacts.push_back(
         {.name = contact.name, .phone = contact.phone, .note = contact.note});
-  co_await repository_.replace({.environmentId = input.environmentId,
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    ResponseReplaceInput scoped{.environmentId = input.environmentId,
                                 .emergencyNumber = input.body.emergencyNumber,
                                 .stepSeconds = input.body.stepSeconds,
                                 .recipients = std::move(recipients),
                                 .contacts = std::move(contacts),
-                                .at = now()});
+                                .at = now(),
+                                .client = transaction.get()};
+    co_await repository_.replace(scoped);
+    if (dependencies_.changes != nullptr) {
+      co_await dependencies_.changes->record(
+          {.scope = ResourceScope::Responses,
+           .ids = {input.environmentId},
+           .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   co_return co_await view({.environmentId = input.environmentId,
                            .userId = input.userId,
                            .role = UserRole::Owner});
@@ -140,10 +159,28 @@ ResponseFeatureService::setDuty(const DutyInput& input) const
       std::ranges::find(everyone, input.userId, &ResponseUser::userId);
   if (user == everyone.end() || user->role != UserRole::Guard)
     throw ResponseException(GuardErrors::DutyForGuardsOnly);
-  co_await repository_.setDuty({.environmentId = input.environmentId,
-                                .userId = input.userId,
-                                .onDuty = input.onDuty,
-                                .at = now()});
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    ResponseDutyInput duty{.environmentId = input.environmentId,
+                           .userId = input.userId,
+                           .onDuty = input.onDuty,
+                           .at = now(),
+                           .client = nullptr};
+    duty.client = transaction.get();
+    co_await repository_.setDuty(duty);
+    if (dependencies_.changes != nullptr) {
+      co_await dependencies_.changes->record(
+          {.scope = ResourceScope::Responses,
+           .ids = {input.environmentId},
+           .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   co_return co_await view({.environmentId = input.environmentId,
                            .userId = input.userId,
                            .role = input.role});

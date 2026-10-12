@@ -262,7 +262,9 @@ GuardRepository::recentIncidents(int limit) const
 drogon::Task<int64_t>
 GuardRepository::insertGuest(const GuardGuestInput& input) const
 {
-  auto client = DbService::client();
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* client =
+      input.client != nullptr ? input.client : owned.get();
   const auto result =
       co_await client->execSqlCoro(INSERT_GUEST.data(), input.description,
                                    input.cameraId, input.personId,
@@ -322,10 +324,12 @@ drogon::Task<std::vector<GuardGuest>> GuardRepository::listGuests() const
   co_return guests;
 }
 
-drogon::Task<bool> GuardRepository::removeGuest(int64_t id) const
+drogon::Task<bool> GuardRepository::removeGuest(
+    int64_t id, drogon::orm::DbClient* client) const
 {
-  auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(DELETE_GUEST.data(), id);
+  const auto owned = DbService::client();
+  drogon::orm::DbClient* db = client != nullptr ? client : owned.get();
+  const auto result = co_await db->execSqlCoro(DELETE_GUEST.data(), id);
   co_return result.affectedRows() > 0;
 }
 

@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace environment_query
 {
@@ -84,7 +85,7 @@ inline constexpr std::string_view MOVE_CAMERAS =
 
 inline constexpr std::string_view RETIRE_GUESTS =
     "UPDATE guard_expected_guest SET deleted_at = ? WHERE environment_id = ? "
-    "AND deleted_at IS NULL";
+    "AND deleted_at IS NULL RETURNING id";
 
 inline constexpr std::string_view DELETE_ENVIRONMENT =
     "DELETE FROM guard_environment WHERE id = ? AND is_default = 0";
@@ -182,6 +183,12 @@ enum class EnvironmentRemoval : uint8_t
   Removed = 0,
   NotFound,
   IsDefault
+};
+
+struct EnvironmentRemovalResult
+{
+  EnvironmentRemoval outcome{EnvironmentRemoval::Removed};
+  std::vector<int64_t> retiredGuestIds;
 };
 
 struct CameraAssignment

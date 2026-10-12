@@ -3,6 +3,7 @@
 #include "response-query.hxx"
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 
 class ResponseRepository
@@ -16,4 +17,9 @@ public:
 
   [[nodiscard]] drogon::Task<void>
   setDuty(const ResponseDutyInput& input) const;
+
+private:
+  [[nodiscard]] drogon::Task<void>
+  writeReplace(const ResponseReplaceInput& input,
+               drogon::orm::DbClient* client) const;
 };

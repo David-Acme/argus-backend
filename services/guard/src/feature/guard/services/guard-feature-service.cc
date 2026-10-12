@@ -329,15 +329,32 @@ GuardFeatureService::createGuest(const ExpectedGuestCreation& input) const
                                  : validFrom + static_cast<int64_t>(body.hours) * 3600;
   if (validUntil - validFrom > kMaxGuestWindowS)
     throw ResponseException(GuardErrors::GuestWindowTooLong);
-  co_return co_await guardRepository_.insertGuest(
-      {.description = body.description,
-       .cameraId = body.cameraId,
-       .personId = body.personId,
-       .hostUserId = body.hostUserId > 0 ? body.hostUserId : input.callerId,
-       .oneTime = body.oneTime,
-       .validFrom = validFrom,
-       .validUntil = validUntil,
-       .environmentId = body.environmentId});
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  int64_t guestId = 0;
+  try {
+    guestId = co_await guardRepository_.insertGuest(
+        {.description = body.description,
+         .cameraId = body.cameraId,
+         .personId = body.personId,
+         .hostUserId = body.hostUserId > 0 ? body.hostUserId : input.callerId,
+         .oneTime = body.oneTime,
+         .validFrom = validFrom,
+         .validUntil = validUntil,
+         .environmentId = body.environmentId,
+         .client = transaction.get()});
+    if (changes_ != nullptr) {
+      co_await changes_->record({.scope = ResourceScope::ExpectedVisits,
+                                 .ids = {guestId},
+                                 .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return guestId;
 }
 
 drogon::Task<Json::Value> GuardFeatureService::guests() const
@@ -362,7 +379,23 @@ drogon::Task<Json::Value> GuardFeatureService::guests() const
 
 drogon::Task<bool> GuardFeatureService::removeGuest(int64_t id) const
 {
-  co_return co_await guardRepository_.removeGuest(id);
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  bool removed = false;
+  try {
+    removed = co_await guardRepository_.removeGuest(id, transaction.get());
+    if (removed && changes_ != nullptr) {
+      co_await changes_->record({.scope = ResourceScope::ExpectedVisits,
+                                 .ids = {id},
+                                 .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(GuardErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return removed;
 }
 
 namespace
@@ -733,13 +766,13 @@ drogon::Task<Json::Value> GuardFeatureService::removeEnvironment(int64_t id) con
 {
   auto transaction = co_await db_transaction::begin(DbService::client());
   try {
-    const EnvironmentRemoval removal = co_await environmentRepository_.remove(
+    const EnvironmentRemovalResult removal = co_await environmentRepository_.remove(
         {.id = id,
          .at = static_cast<int64_t>(std::time(nullptr)),
          .client = transaction.get()});
-    if (removal == EnvironmentRemoval::NotFound)
+    if (removal.outcome == EnvironmentRemoval::NotFound)
       throw ResponseException(GuardErrors::EnvironmentNotFound);
-    if (removal == EnvironmentRemoval::IsDefault)
+    if (removal.outcome == EnvironmentRemoval::IsDefault)
       throw ResponseException(GuardErrors::DefaultEnvironmentKept);
     co_await guardRepository_.clearState(guard_schedule::stateKey(id),
                                          transaction.get());
@@ -747,6 +780,11 @@ drogon::Task<Json::Value> GuardFeatureService::removeEnvironment(int64_t id) con
       co_await changes_->record({.scope = ResourceScope::Environments,
                                  .ids = {id},
                                  .client = transaction.get()});
+      if (!removal.retiredGuestIds.empty()) {
+        co_await changes_->record({.scope = ResourceScope::ExpectedVisits,
+                                   .ids = removal.retiredGuestIds,
+                                   .client = transaction.get()});
+      }
     }
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(GuardErrors::ChangeNotRecorded);

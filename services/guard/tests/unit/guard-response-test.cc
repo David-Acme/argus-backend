@@ -8,9 +8,13 @@
 #include <feature/guard/dtos/update-response-dto.hxx>
 #include <feature/guard/guard-policy.hxx>
 #include <feature/guard/guard-service.hxx>
+#include <feature/guard/infra/resource-change-outbox.hxx>
 #include <feature/guard/repositories/response/response-repository.hxx>
+#include <feature/guard/services/response-feature-service.hxx>
 #include <feature/guard/services/response-plan.hxx>
 #include <feature/guard/services/response-verdict-feed.hxx>
+#include <memory>
+#include <nats/nats-bus.hxx>
 #include <text/json-util.hxx>
 #include <vector>
 
@@ -76,6 +80,29 @@ PresenceRow presenceRow(int64_t userId, PresenceState state,
           .since = 100,
           .lastHomeAt = state == PresenceState::Home ? 100 : 0,
           .lastSignalAt = 100};
+}
+
+int64_t changeRows()
+{
+  return std::stoll(scalar("SELECT COUNT(*) FROM change_outbox"));
+}
+
+std::string lastPayload()
+{
+  return scalar("SELECT payload FROM change_outbox ORDER BY rowid DESC LIMIT 1");
+}
+
+std::string idsOf(std::initializer_list<int64_t> ids)
+{
+  std::string text = "\"ids\":[";
+  bool first = true;
+  for (const auto id : ids) {
+    if (!first)
+      text += ",";
+    first = false;
+    text += std::to_string(id);
+  }
+  return text + "]";
 }
 
 struct PlanCase
@@ -705,6 +732,46 @@ TEST_CASE("the repository replaces a list in one go and keeps duty apart")
   CHECK(config.recipients.empty());
   CHECK(config.contacts.empty());
   CHECK(drogon::sync_wait(repository.forEnvironment(99999)).recipients.empty());
+}
+
+TEST_CASE("editing the response list and going on duty announce the environment")
+{
+  (void)boot();
+  const auto bus = std::make_shared<NatsBus>();
+  const ResourceChangeOutbox outbox(bus, ResourceChangeOutbox::Config{});
+  const ResponseFeatureService service(
+      {.directory = std::make_shared<guard_test::RosterDirectory>(household()),
+       .clock = {},
+       .changes = &outbox});
+  const int64_t home = homeId();
+  const int64_t before = changeRows();
+
+  const UpdateResponseDto body{.emergencyNumber = "105",
+                               .stepSeconds = 30,
+                               .recipients = {{.userId = 4,
+                                               .mode = "call",
+                                               .step = 0,
+                                               .onDuty = true}},
+                               .contacts = {},
+                               .recipientsError = "",
+                               .contactsError = "",
+                               .typeError = ""};
+  const Json::Value replaced = drogon::sync_wait(
+      service.replace({.environmentId = home, .userId = 1, .body = body}));
+  CHECK(replaced["emergencyNumber"].asString() == "105");
+  CHECK(changeRows() == before + 1);
+  CHECK(lastPayload().find("\"scope\":\"responses\"") != std::string::npos);
+  CHECK(lastPayload().find(idsOf({home})) != std::string::npos);
+
+  const Json::Value duty = drogon::sync_wait(
+      service.setDuty({.environmentId = home,
+                       .userId = 4,
+                       .role = UserRole::Guard,
+                       .onDuty = false}));
+  CHECK_FALSE(duty["recipients"][0]["onDuty"].asBool());
+  CHECK(changeRows() == before + 2);
+  CHECK(lastPayload().find("\"scope\":\"responses\"") != std::string::npos);
+  CHECK(lastPayload().find(idsOf({home})) != std::string::npos);
 }
 
 TEST_CASE("a watchlist face is a clear threat even below critical")

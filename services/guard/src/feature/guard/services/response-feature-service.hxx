@@ -2,8 +2,10 @@
 
 #include <auth/user-role.hxx>
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/guard/dtos/update-response-dto.hxx>
+#include <feature/guard/infra/resource-change-outbox.hxx>
 #include <feature/guard/repositories/environment/environment-repository.hxx>
 #include <feature/guard/repositories/response/response-repository.hxx>
 #include <feature/guard/services/response-plan.hxx>
@@ -15,6 +17,7 @@ struct ResponseFeatureDependencies
 {
   std::shared_ptr<const ResponseDirectory> directory;
   std::function<int64_t()> clock;
+  const ResourceChangeOutbox* changes{nullptr};
 };
 
 class ResponseFeatureService
