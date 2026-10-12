@@ -27,6 +27,8 @@ constexpr std::size_t kHashBlock = 1U << 22U;
 constexpr std::array<std::string_view, 8> kLayout{
     "model.onnx", "tokenizer", "labels.json", "decision.json", "max_len", "model-card.md", "sha256", "manifest.json"};
 
+constexpr std::string_view kQuestionsFile = "questions.json";
+
 std::string lowered(std::string text)
 {
   for (char& c : text)
@@ -228,6 +230,19 @@ void BundleLoader::load()
   if (!manifest) {
     error_ = dir_.string() + ": manifest.json cannot be read";
     return;
+  }
+  if (kind_ == BundleKind::Decider) {
+    const auto listedQuestions = digests.byName.find(std::string(kQuestionsFile));
+    if (listedQuestions == digests.byName.end()) {
+      error_ = dir_.string() + ": a decider bundle carries its question set in questions.json, and this one does not";
+      return;
+    }
+    const Json::Value& recorded = (*manifest)["questions"];
+    if (!recorded.isObject() || recorded.get("file", "").asString() != kQuestionsFile ||
+        lowered(recorded.get("sha256", "").asString()) != listedQuestions->second) {
+      error_ = dir_.string() + ": manifest.json does not record the hash of the questions.json this bundle carries";
+      return;
+    }
   }
   fitSplit_ = (*manifest)["calibration"].get("fitOn", "").asString();
   const std::optional<Json::Value> decision = readJson(dir_ / "decision.json");

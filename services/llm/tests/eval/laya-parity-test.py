@@ -4,7 +4,6 @@ import pathlib
 import sys
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures" / "laya"
-FIELDS = ("text", "tokens", "sequences", "tool", "now")
 PILOT_FIELDS = ("text", "tokens", "tool", "choice", "now")
 
 
@@ -31,27 +30,49 @@ def check(problems, record, fields):
                 problems.append(f"{fixture} case {index} has no {field}")
         if len(case["tokens"]) and not all(isinstance(token, int) for token in case["tokens"]):
             problems.append(f"{fixture} case {index} tokens are not integers")
-        for qid, sequence in case.get("sequences", {}).items():
-            if "ids" not in sequence or "markers" not in sequence:
-                problems.append(f"{fixture} case {index} question {qid} has no ids or markers")
-        if fields is PILOT_FIELDS:
-            for label, probability in case["tool"].items():
-                if not isinstance(probability, float) or not 0.0 <= probability <= 1.0:
-                    problems.append(f"{fixture} case {index} label {label} is not a probability")
+        for label, probability in case["tool"].items():
+            if not isinstance(probability, float) or not 0.0 <= probability <= 1.0:
+                problems.append(f"{fixture} case {index} label {label} is not a probability")
+
+
+def check_sequences(problems):
+    fixture = FIXTURES / "sequence-parity.json"
+    if not fixture.exists():
+        problems.append(f"no frozen Laya sequence fixture at {fixture}")
+        return
+    root = json.loads(fixture.read_text())
+    for key in ("exporter", "reference", "tokenizerSha256", "questionsSha256", "trainingRepoCommit"):
+        if not root.get(key):
+            problems.append(f"{fixture} records no {key}")
+    questions = root.get("questions", {})
+    if "tool" not in questions or "now" not in questions:
+        problems.append(f"{fixture} does not render the shipped tool and now questions")
+    for index, state in enumerate(root.get("states", [])):
+        if not all(isinstance(token, int) for token in state.get("tokens", [])):
+            problems.append(f"{fixture} state {index} tokens are not integers")
+    cases = root.get("cases", [])
+    if not cases:
+        problems.append(f"{fixture} holds no sequence")
+    for index, case in enumerate(cases):
+        ids = case.get("ids", [])
+        if case.get("question") not in questions:
+            problems.append(f"{fixture} case {index} names a question the fixture does not hold")
+        if not ids or not all(isinstance(token, int) for token in ids):
+            problems.append(f"{fixture} case {index} has no integer ids")
+        if len(ids) > case.get("maxLen", 0):
+            problems.append(f"{fixture} case {index} is longer than its max_len")
+        if not all(isinstance(marker, int) and marker < len(ids) for marker in case.get("markers", [])):
+            problems.append(f"{fixture} case {index} has a marker outside its ids")
 
 
 def main():
     problems = []
-    rounds = json.loads((FIXTURES / "provenance.json").read_text())
-    if rounds.get("fixture"):
-        if not rounds.get("trainingRepoCommit") or not rounds.get("questionSet", {}).get("sha256"):
-            problems.append("the provenance record names no training-repo commit or question set")
-        check(problems, rounds, FIELDS)
+    check_sequences(problems)
     pilot_path = FIXTURES / "provenance-pilot.json"
     if pilot_path.exists():
         pilot = json.loads(pilot_path.read_text())
-        if not pilot.get("bundlePin") or not pilot.get("parameters", {}).get("temperature"):
-            problems.append("the pilot provenance record names no bundle pin or temperature")
+        if not pilot.get("parameters", {}).get("temperature"):
+            problems.append("the pilot provenance record names no temperature")
         check(problems, pilot, PILOT_FIELDS)
     if problems:
         for problem in problems:

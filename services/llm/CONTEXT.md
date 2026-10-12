@@ -1667,27 +1667,80 @@ latched**; there is no re-hash per turn.
 
 ### Train/serve parity, and its provenance
 
-The frozen Laya fixture is `tests/fixtures/laya/parity-r1.json`, written by
-`tests/eval/laya-parity.py`. Provenance: the **round-1 pilot checkpoint**
-`~/.cache/argus-laya/r1/ck-pilot` (its `tokenizer/tokenizer.json` sha256
-`dbba919c…`, `model.safetensors` sha256 `610fa983…`), generated from the
-`intent-training` project at commit `fbaafcf8`, fixture sha256 `3417767622…`.
-Re-tokenizing the fixture's texts with that checkpoint's tokenizer reproduces
-its `tokens` row for row (verified 2026-10-08). The fixture carries, per case,
-the text, the token ids, the per-question sequences (ids and markers), the tool
-label probabilities and the `now` score — the two sides a parity harness
-compares.
+**The Laya sequence is the training renderer's, byte for byte (I1, 2026-10-12).**
+The reference is `laya.common.build_sequence` with the question normalised by
+`laya.agent.Agent._to_internal`; the port is `turn::layaQuestionFromJson` plus
+`turn::layaBuildSequence` (`services/turn/laya-sequence.cc`). The frozen fixture
+is `tests/fixtures/laya/sequence-parity.json`, written by
+`tests/eval/laya-parity.py --bundle <bundle> --training <intent-training>` with
+laya 0.3.28, transformers 5.19.0 and tokenizers 0.23.2 against the shipped
+`bundle-laya-pilot` (tokenizer sha256 `dbba919c…`, `questions.json` sha256
+`1ce9e1a2…`), `intent-training` at `028309b`. It renders the bundle's own `tool`
+and `now` questions and six authored ones that reach every branch of the
+renderer — choice criteria as an object in file order with null, empty, integer,
+boolean, float, nested and escaped values; a list of labels and instructions that
+carry the mask token; thirty long options; a score question; two noul questions
+with keyed criteria, custom labels and structured instructions — each at three
+shapes (the bundle's `max_len` 1024 / `head_max_len` 256, then 64 / 24 and
+40 / 8, which reach the per-option cap, the head cap and the dropped marker),
+over fifteen states (Spanish, English, runs of whitespace, emoji, the mask token,
+the empty string and a ~1,300-token text): **360 sequences, all reproduced id for
+id and marker for marker**, and the fifteen state tokenizations with them
+(`llm-sp-tokenizer-test`). The test reads the tokenizer of the installed bundle
+(`models/decide/bundle-laya-pilot`, or `ARGUS_LAYA_BUNDLE`) and says so and skips
+when none is installed or when the installed tokenizer is not the one the
+fixture was frozen from; a new bundle with a new tokenizer regenerates the
+fixture with the same command.
+
+What the port changed, measured on the same fixture with the previous renderer:
+the shipped `tool` question was already identical in all 45 of its renderings,
+but the others were not (`choice-object` 0 of 45, the two noul questions 0 of 45,
+`score` 15, `now`, `choice-mask` and `choice-long` 30 each). jsoncpp sorts object
+keys, so a choice question with descriptions lost its file order and with it the
+logit order; structured criteria and non-string instructions were written as
+jsoncpp's compact JSON rather than Python's `json.dumps` (`", "` and `": "`,
+non-ASCII kept, `repr` floats such as `1e-05` and `1e+16` — `turn::layaPythonJson`);
+noul criteria were read by position rather than by their `true`/`false` keys and
+noul labels were not stripped; and a `head_max_len` under 16 wrapped the
+per-option budget in unsigned arithmetic, so the cap never applied. The question
+file is now read with an insertion-ordered JSON (`nlohmann::ordered_json`), and
+every shape laya's own `_check_question` refuses is refused here too, never
+rendered another way. One narrowing is deliberate: a choice label must be a
+string, because laya prints a number or a bool with Python's `str`.
+
+**One question set (I2).** The bundle carries the training run's own
+`questions.json`, `intent-training/scripts/kit_bundle.py` records its sha256 in
+`manifest.json` (`questions: {file, sha256}`), and the training-side decider
+reads the same file from the checkpoint. The loader refuses a decider bundle
+that carries no `questions.json` or whose manifest records another hash
+(`llm-bundle-loader-test`), so the question set a model was trained on is the
+one it is served with. The defect of record — the r1 fixture reproduced by
+`laya_questions.py` and not by the checkpoint's own file — is closed with that
+fixture: `parity-r1.json`, its question file and its provenance are gone.
+
+**NFC before tokenization (I3).** Neither tokenizer normalises Unicode: Laya's
+`tokenizer.json` replaces nothing but the space marker, so the reference gives
+different ids for NFD and NFC spellings of one word. Normalisation therefore
+belongs to the serving pipeline, before tokenization: `utf8proc` 2.12.0 (Conan,
+tier-1 `lib/text`, `text_norm::nfc`) composes every message and context fact in
+`boundToCaller`, which both the loopback HTTP leg and the gRPC leg run before
+the turn reads anything, and GLiNER's word pieces are composed again where they
+are tokenized. `tests/fixtures/laya/nfc-pairs.json` freezes Python's ids for
+both spellings, and the test checks C++ NFC(nfd) and NFC(nfc) against Python's
+NFC ids.
+
+**Scores.** `tests/fixtures/laya/parity-onnx.json` is the ONNX reference over
+the shipped graph (laya's `ONNXAgent`, onnxruntime 1.24.4, model sha256
+`d9932dc3…`), and `parity-pilot.json` carries its texts and decode;
+`llm-laya-runtime-test` compares the C++ probabilities and the noul reading with
+it.
 
 GLiNER's frozen fixture is `tests/fixtures/gliner/parity-pilot.json` (38 cases,
 five types, the pair scorer's own decode), generated by
 `intent-training/scripts/gliner_bundle.py fixture` against the fp32 pilot
-bundle whose `sha256` file pinned to
-`4f4808d95899e2af90456a08996a4a77c718d323731447d42d77a1ad19177799`. The shipped
-GLiNER bundle is now the embedding-only INT8 artefact, its `sha256` file
-pinning to
-`13f547cf728765ace23d40dbde46ff00cb5fae0718e27f151822b651f9cc0b74`
-(`model.onnx` 540,153,983 B), and a reference frozen from it with Python
-`onnxruntime` sits beside the fixture. The pilot fixture carries,
+bundle; the shipped GLiNER bundle is the embedding-only INT8 artefact
+(`model.onnx` 540,153,983 B, sha256 `bd5841bb…`), and a reference frozen from it
+with Python `onnxruntime` sits beside the fixture. The pilot fixture carries,
 per case, the text, the type and its field order, the six input tensors (ids,
 attention mask, word indices and mask, query indices and mask), the splitter's
 word offsets, the decode and the reference's own prediction, so the C++ port is
@@ -1784,7 +1837,7 @@ memory**, and memory has a ceiling again, measured where it is spent:
 This replaces the earlier "memory is reported, not gated" wording of the same
 day.
 
-### The C++ tokenizer, and what parity has shown so far
+### The C++ tokenizer and the GLiNER decode
 
 Neither model's tokenizer is covered by the memory feature's `UnigramTokenizer`:
 that class hardcodes a whitespace-collapse normalizer, ignores the file's own
@@ -1799,85 +1852,20 @@ the bundle's own `tokenizer.json`:
 - **GLiNER** — the mDeBERTa-v3 backbone: a **Unigram** model, 250,101 pieces, a
   `Sequence` normalizer (whitespace collapse, NFC, right strip) and a
   `Metaspace` pre-tokenizer. `SpTokenizer` reads both families from the same
-  file; NFC is currently a no-op, which is the one documented gap.
+  file; its NFC step is a no-op, because composition runs before it (I3 above).
 
-`turn::layaBuildSequence` (`services/turn/laya-sequence.cc`) is the pure
-renderer: `layaOptions` renders the criteria, the head is
-`"<type> question: <instructions>"`, each option becomes `[MASK]` + its tokens
-capped at 48 and then at `max(4, (head_max_len - 16) / options)` when the option
-block does not fit, the head is capped at `max(8, head_max_len - option tokens)`,
-and the state is appended and clamped to `max_len`. `turn::glinerDecode`
-(`services/turn/gliner-decoder.cc`) is the pure decoder: sigmoid, per-query
-threshold, `max_width`, the three overlap policies and the half-open
-token→character mapping. **`Flat` is gliner2's `flat`, which normalises to
-`disallow`: weighted interval scheduling, not greedy first-wins.** The DP is
-the reference's own — exact-boundary duplicates collapsed to their highest
-ranked representative, a predecessor table over the spans sorted by
+`turn::glinerDecode` (`services/turn/gliner-decoder.cc`) is the pure decoder:
+sigmoid, per-query threshold, `max_width`, the three overlap policies and the
+half-open token→character mapping. **`Flat` is gliner2's `flat`, which
+normalises to `disallow`: weighted interval scheduling, not greedy first-wins.**
+The DP is the reference's own — exact-boundary duplicates collapsed to their
+highest ranked representative, a predecessor table over the spans sorted by
 `(end, start, -score)`, and the tie-break chain score, then set size, then the
 best-ranked selection — and `Longest` is the reference's other policy (a span
 strictly contained by another is dropped). `llm-gliner-decoder-test` holds it to
 the eight frozen rows where greedy and the reference disagree
 (`tests/fixtures/gliner/overlap.json`) and to 400 random interval sets
 (`random-overlap.json`).
-
-Against the frozen fixture (`parity-r1.json`, ck-pilot's tokenizer and
-`max_len` 1024 / `head_max_len` 256):
-
-- **token ids: identical to Python's, row for row (18 of 18)** — the first
-  parity harness passes.
-- **sequences: length and marker counts identical on all 36; the token content
-  differs in the head and option positions.** The fixture's question set is
-  `intent-training/scripts/laya_questions.py`'s (a criteria *list*, so options are
-  the bare labels), not the checkpoint's own `questions.json`; both were checked
-  against the reference, which reproduces the fixture with `laya_questions` (0
-  mismatches) and not with the checkpoint's file (36). Fed that question set,
-  `SpTokenizer`/`layaBuildSequence` reproduce every length and every marker, so
-  what is left is a token-content divergence in the BPE of the head/option
-  strings, not a structural one.
-
-### Two corrections of record (2026-10-08)
-
-**The parity statement, said exactly.** Two different artefacts were being
-described in one breath. The **tokenizer's ids** are `encode_text(text)` over the
-state text, and against the frozen fixture they are **identical to Python's, 18
-rows of 18**. The **sequences** are `build_sequence`'s output, and those are
-**failing**: every length and every marker count matches Python's, but the token
-content of the assembled head and option segments does not. The reference was
-checked directly — `laya.common.build_sequence` with the same question set
-reproduces the fixture exactly (0 of 36 mismatches), so the reference is settled
-and the divergence is in `turn::layaBuildSequence`/`turn::SpTokenizer` on the
-head and option strings, not in the reference. The status is **sequence parity
-failing**, and the fix is in the renderer's segment assembly.
-
-**NFC is not a gap in `SpTokenizer`; it is missing from the model itself.** The
-checkpoint's `tokenizer.json` normalises nothing but the marker
-(`Replace` " " → "▁"), so the frozen reference gives **different ids for NFD and
-NFC spellings of the same word** — `café`, `mañana`, `cigüeña`, `PINGÜINO`, `el
-año pasado` and `¿qué tengo en la agenda?` all differ between the two spellings
-under Python. `SpTokenizer` mirrors the file, so it is parity-faithful; putting
-NFC inside it would make it *disagree* with the reference. The normalisation
-therefore belongs to the serving pipeline **before** tokenisation, and the
-parity target is `C++ NFC(nfd) == Python(nfc)`. `tests/fixtures/laya/nfc-pairs.json`
-records both spellings and Python's ids for each, and
-`llm-sp-tokenizer-test` compares the C++ against both.
-
-**Nothing in the tree provides NFC.** `lib/text` has no normaliser, no Conan
-package carries one, and what `argus-llm` already links is protobuf's and
-abseil's UTF-8 *validators* (`libutf8_validity`, `libabsl_utf8_for_code_point`) —
-validation, not normalisation. The system does have `libicuuc.so.78` and
-`utf8proc`, but neither is the tree's to link. **Proposal, not a change:**
-`utf8proc` (MIT, ~100 KB, one call — `utf8proc_NFC`) as a tier-1 Conan package in
-`packages/lib/text`, with ICU (`icu/*`, ~30 MB, the full normaliser) as the
-alternative if a Conan recipe for `utf8proc` does not exist. Awaiting the word
-before anything is added.
-
-**The question set is a defect to report, not a choice.** The frozen fixture is
-reproduced by `intent-training/scripts/laya_questions.py`'s `QUESTIONS` (criteria
-as a list) and **not** by the pilot checkpoint's own `questions.json` (36
-mismatches against the same reference). Two files that should be one disagree.
-Unit A's export must write the training run's own question file, record its
-hash in `manifest.json`, and have the training code read that same file, so they
-cannot diverge; this one is flagged rather than picked.
 
 ## The fresh-tree Vulkan shader cost (2026-10-09)
 

@@ -98,7 +98,9 @@ Built built(const std::string& name)
             "source": {"fitOn": "calibration"}})");
   write(root / "max_len", "512\n");
   write(root / "model-card.md", "# card\n");
-  write(root / "manifest.json", R"({"calibration": {"fitOn": "calibration"}, "labels": 2})");
+  write(root / "questions.json", R"({"tool": {"type": "choice", "instructions": "which", "criteria": ["memory_save", "camera"]}})");
+  write(root / "manifest.json", R"({"calibration": {"fitOn": "calibration"}, "labels": 2, "questions": {"file": "questions.json", "sha256": ")" +
+                                    argus::hash::sha256Hex(readText(root / "questions.json")) + R"("}})");
   seal(root);
   return {.dir = root, .pin = argus::hash::sha256Hex(readText(root / "sha256"))};
 }
@@ -306,4 +308,24 @@ TEST_CASE("a decider bundle that carries an object of labels instead of an array
   const turn::BundleLoader loader({.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("label array form") != std::string::npos);
+}
+
+TEST_CASE("a decider bundle without its question set is refused")
+{
+  const Built bundle = built("no-questions");
+  fs::remove(bundle.dir / "questions.json");
+  seal(bundle.dir);
+  const turn::BundleLoader loader({.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  CHECK_FALSE(loader.valid());
+  CHECK(loader.error().find("questions.json") != std::string::npos);
+}
+
+TEST_CASE("a decider bundle whose manifest records another question set is refused")
+{
+  const Built bundle = built("other-questions");
+  write(bundle.dir / "questions.json", R"({"tool": {"type": "choice", "instructions": "which", "criteria": ["camera", "memory_save"]}})");
+  seal(bundle.dir);
+  const turn::BundleLoader loader({.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  CHECK_FALSE(loader.valid());
+  CHECK(loader.error().find("does not record the hash of the questions.json") != std::string::npos);
 }

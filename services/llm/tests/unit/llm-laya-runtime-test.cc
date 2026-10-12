@@ -12,6 +12,7 @@
 
 #include <json/reader.h>
 #include <json/value.h>
+#include <nlohmann/json.hpp>
 
 #include <cstdlib>
 #include <algorithm>
@@ -282,7 +283,8 @@ TEST_CASE("the Laya decode reproduces the reference token ids and sequences")
   const Json::Value fixture = readJson(ARGUS_TEST_LAYA_PILOT);
   turn::SpTokenizer tokenizer;
   REQUIRE(tokenizer.load(pilot->dir / "tokenizer" / "tokenizer.json"));
-  const Json::Value questions = readJson(pilot->dir / "questions.json");
+  std::ifstream questionsFile(pilot->dir / "questions.json");
+  const nlohmann::ordered_json questions = nlohmann::ordered_json::parse(questionsFile);
   const int headMaxLen = fixture["parameters"]["headMaxLen"].asInt();
   std::size_t rows = 0;
   std::size_t mismatches = 0;
@@ -296,7 +298,7 @@ TEST_CASE("the Laya decode reproduces the reference token ids and sequences")
   }
   CHECK(rows == static_cast<std::size_t>(fixture["cases"].size()));
   CHECK(mismatches == 0);
-  const std::optional<turn::LayaQuestion> question = turn::layaQuestionFromJson(questions["tool"]);
+  const std::optional<turn::LayaQuestion> question = turn::layaQuestionFromJson(questions.at("tool"));
   REQUIRE(question.has_value());
   const turn::LayaSequence sequence =
       turn::layaBuildSequence({.tokenizer = tokenizer, .state = "recuérdame comprar pan mañana a las ocho", .maxLen = 1024, .headMaxLen = headMaxLen},
