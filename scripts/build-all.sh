@@ -203,8 +203,7 @@ for dir in "${PROJECTS[@]}"; do
       cmake --build "build/$PROFILE" -j "$JOBS" --target "${extra_targets[@]}"
     fi
     if [ "$NO_TESTS" -eq 0 ]; then
-      cd "build/$PROFILE"
-      ctest --output-on-failure
+      ctest --test-dir "build/$PROFILE" --output-on-failure
     fi
   )
 done
