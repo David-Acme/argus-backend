@@ -300,3 +300,53 @@ TEST_CASE("the whole new pipeline runs on the pilot bundles: laya decides, gline
   CHECK(outcome.decidedTool == "memory.remember");
   CHECK(outcome.steps.size() == 1);
 }
+
+TEST_CASE("the production order is rules, then the explicit triggers, then Laya, on the real traffic")
+{
+  World world;
+  ToolRegistry registry;
+  LfmAdapter adapter({.engine = {.chat = [](const ChatRequest&) { return std::string("Listo."); }, .chatStream = {}},
+                      .registry = registry,
+                      .decider = nullptr,
+                      .text = nullptr,
+                      .policies = {}});
+  turn::LayaDecider laya({.model = std::make_unique<StubLayaModel>(turn::EngineStatus::Ready,
+                                                                   std::vector<std::pair<std::string, double>>{{"memory_recall", 0.9}, {"none", 0.1}},
+                                                                   0.9),
+                          .fallback = nullptr,
+                          .policy = {},
+                          .confidence = {},
+                          .now = {}});
+  const std::vector<const turn::Decider*> order = productionOrder(adapter, laya);
+  REQUIRE(order.size() == 3);
+  CHECK(order[0]->id() == "rules");
+  CHECK(order[1]->id() == "triggers");
+  CHECK(order[2]->id() == "laya");
+  const turn::FirstOf stack(order);
+  std::ifstream traffic(ARGUS_TEST_PRODUCTION_TRAFFIC);
+  REQUIRE(traffic.is_open());
+  std::size_t byTriggers = 0;
+  std::size_t byLaya = 0;
+  std::string line;
+  while (std::getline(traffic, line)) {
+    const std::size_t last = line.rfind('\t');
+    if (line.empty() || last == std::string::npos)
+      continue;
+    const std::string text = line.substr(last + 1);
+    const std::optional<turn::Candidate> trigger = adapter.triggerDecider().decide(inputFor(world, text));
+    const std::optional<turn::Candidate> decided = stack.decide(inputFor(world, text));
+    REQUIRE(decided.has_value());
+    if (trigger) {
+      CHECK(requireValue(decided).decider == "triggers");
+      CHECK(requireValue(decided).tool == requireValue(trigger).tool);
+      CHECK(requireValue(decided).exact);
+      ++byTriggers;
+    }
+    else {
+      CHECK(requireValue(decided).decider == "laya");
+      ++byLaya;
+    }
+  }
+  CHECK(byTriggers == 35);
+  CHECK(byLaya == 26);
+}

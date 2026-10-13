@@ -2,13 +2,18 @@
 
 #include <feature/llm/services/lfm-adapter.hxx>
 
+#include <runtime/thread-budget.hxx>
 #include <trantor/utils/Logger.h>
+
+#include <algorithm>
 
 #include <optional>
 #include <vector>
 
 namespace
 {
+constexpr int kLayaThreads = 4;
+
 void installDecider(const TurnEngineInput& input, TurnEngines& engines)
 {
   const turn::BundleLoader bundle({.dir = input.decide.dir});
@@ -24,15 +29,18 @@ void installDecider(const TurnEngineInput& input, TurnEngines& engines)
     return;
   }
   LfmAdapter& adapter = input.adapter;
+  turn::OnnxOptions options = input.decide.options;
+  options.threads = layaSessionThreads(options.threads);
   engines.laya = std::make_unique<turn::LayaDecider>(turn::LayaDeciderInput{
-      .model = turn::openLayaModel({.bundle = bundle, .options = input.decide.options, .decode = bundle.decode()}),
-      .fallback = &adapter.triggerDecider(),
+      .model = turn::openLayaModel({.bundle = bundle, .options = options, .decode = bundle.decode()}),
+      .fallback = nullptr,
       .policy = bundle.policy(),
       .confidence = bundle.confidenceCalibration(),
       .now = bundle.nowCalibration()});
-  engines.stack = std::make_unique<turn::FirstOf>(std::vector<const turn::Decider*>{&adapter.ruleDecider(), engines.laya.get()});
+  const std::vector<const turn::Decider*> order = productionOrder(adapter, *engines.laya);
+  engines.stack = std::make_unique<turn::FirstOf>(order);
   adapter.flow().useDecider(*engines.stack);
-  adapter.flow().useWitnesses({&adapter.ruleDecider(), engines.laya.get()});
+  adapter.flow().useWitnesses(order);
 }
 
 void installExtractor(const TurnEngineInput& input, TurnEngines& engines)
@@ -52,9 +60,21 @@ void installExtractor(const TurnEngineInput& input, TurnEngines& engines)
 }
 }
 
+std::vector<const turn::Decider*> productionOrder(const LfmAdapter& adapter, const turn::Decider& laya)
+{
+  return {&adapter.ruleDecider(), &adapter.triggerDecider(), &laya};
+}
+
+int layaSessionThreads(int configured)
+{
+  if (configured > 0)
+    return configured;
+  return std::clamp(kLayaThreads, 1, std::max(1, ThreadBudget::hardwareThreads()));
+}
+
 std::string TurnEngines::pipeline() const
 {
-  std::string out = laya != nullptr ? "rules+laya" : "rules+triggers";
+  std::string out = laya != nullptr ? "rules+triggers+laya" : "rules+triggers";
   out += gliner != nullptr ? "+gliner" : "+rule-text";
   return out;
 }

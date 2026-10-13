@@ -506,29 +506,44 @@ receipt captures exactly one owner-scoped episode through `observeSystemEvent`
 
 `turn::kDeciderIds` is `{"rules", "triggers", "laya"}`
 (`src/feature/llm/services/turn/decider.hxx`). The turn decides with
-`FirstOf{RuleDecider, LayaDecider}`:
+`FirstOf{RuleDecider, TriggerDecider, LayaDecider}` (`productionOrder`, ruled
+2026-10-12):
 
 1. `RuleDecider` runs first: the module commands (`tools/module-command.cc`)
    and the app commands (`appCommandFor`), exact by construction.
-2. `LayaDecider` runs next: the Laya model reads the utterance against its
-   bundle's own questions and proposes one offered tool with a calibrated
-   confidence, a runner-up and `now` ("Laya and GLiNER: the turn's engines").
-3. `TriggerDecider` (`deciders.{hxx,cc}`) is Laya's fallback. It runs
+2. `TriggerDecider` (`deciders.{hxx,cc}`) runs second. It runs
    `RuleParser::parse` over the phrase catalog ("recuerda que", "remind me
    that", ...) and routes `memory.remember`, or `memory.remind` when the
    utterance asks to be reminded (`recuérdame`, `avísame`, `remind me`, an
    alarm or a timer) **and** names one non-recurring instant
    (`TemporalResolver`); "apunta que el mecánico llega el martes" is a fact.
    Its candidate is exact, at confidence 1.0, with the source
-   `memory_save, trigger` or `reminder_set, trigger`.
+   `memory_save, trigger` or `reminder_set, trigger`, so it acts without a
+   second signal.
+3. `LayaDecider` runs last: the Laya model reads the utterance against its
+   bundle's own questions and proposes one offered tool with a calibrated
+   confidence, a runner-up and `now` ("Laya and GLiNER: the turn's engines").
+   It acts at its bundle's operating point (the pilot: 0.77) and, on a write,
+   only with `now` at or above the bundle's `now` (0.5); below the act
+   threshold the verdict is Pass and the LLM only speaks.
+
+Why the triggers come before Laya. With Laya first, Laya answered every turn it
+read, so an explicit "recuerda que…" that the pilot scored 0.55–0.74 was passed
+over and never reached the triggers: on `tests/fixtures/intent/eval-production.tsv`
+(61 real turns, 58 of them memory) the shipped order acted on 0%, and the prod
+`llm-tier-eval` scored 0 precision and 0 recall on every memory tool. Triggers
+first, the 35 explicit-trigger turns route through them (0 wrong ACT) and the
+other 26 reach Laya (`llm-turn-engines-test`, "the production order…"). The
+act threshold stays the bundle's calibrated one; lowering it to 0.70 was
+measured (traffic 9.8% ACT with one wrong ACT) and rejected.
 
 `installTurnEngines` (`services/turn-engines.{hxx,cc}`) composes the stack, and
 `main.cc` and the evals call the same function. When the Laya bundle loads, the
-stack is `{rules, laya}` and the write guard's witnesses are `{rules, laya}`;
-when no Laya bundle loads, the adapter's default stack stays `{rules, triggers}`
-with witnesses `{rules, triggers}`. A Laya model whose bundle validated but whose
-session is not ready (it failed to open or cannot run) hands every turn to the
-same `TriggerDecider`.
+stack and the write guard's witnesses are `{rules, triggers, laya}`; when no
+Laya bundle loads, the adapter's default stack stays `{rules, triggers}` with
+witnesses `{rules, triggers}`. A Laya model whose bundle validated but whose
+session is not ready (it failed to open or cannot run) abstains, and the turn
+has already heard the rules and the triggers.
 
 **Degradation is a contract.** No decider bundle on disk, a bundle that fails
 validation, a label no tool serves, or a model that does not open: one log line
@@ -738,9 +753,8 @@ session to lose on a restart.
   but are never judged for claims. The app-action claim check that
   existed before (`claimsAppAction`) still runs for turns that ask for an app
   action.
-- **The decider stack is one seam.** Rules, then Laya, with the explicit
-  triggers as Laya's fallback ("The decider: rules, Laya and explicit
-  triggers"); a decision reaches the turn as a candidate the turn judges with
+- **The decider stack is one seam.** Rules, then the explicit triggers, then
+  Laya ("The decider: rules, Laya and explicit triggers"); a decision reaches the turn as a candidate the turn judges with
   its own thresholds, and a decided call goes through the same executor, so
   permissions, the module check and grounding apply to it as to any other.
 
@@ -1752,7 +1766,7 @@ runtime, the pendings or the audit knows they exist. `installTurnEngines`
 and by the evals:
 
 - **The decider.** `turn::LayaDecider` behind `RuleDecider` in a `FirstOf`, with
-  `TriggerDecider` as its fallback ("The decider: rules, Laya and explicit
+  `TriggerDecider` ahead of it ("The decider: rules, Laya and explicit
   triggers").
 - **The extractor.** `turn::GlinerExtractor` is the slot layer's text engine,
   behind `slots::TextSlots`. When its bundle does not load, its model cannot
@@ -1762,7 +1776,7 @@ and by the evals:
   llama.cpp) are gone; the memory feature's capture is the lexicon tier with its
   coverage floor (`CoveredLexiconExtractor`, `extract.lexicon_min_coverage`).
 
-`TurnEngines::pipeline()` names what is up: `rules+laya` or `rules+triggers`,
+`TurnEngines::pipeline()` names what is up: `rules+triggers+laya` or `rules+triggers`,
 then `+gliner` or `+rule-text`.
 
 ### Config keys, and their allowed values
@@ -1771,7 +1785,7 @@ then `+gliner` or `+rule-text`.
 |---|---|---|
 | `decide.bundle_dir` | a path (default `models/decide/bundle-laya-pilot`) | the decider bundle the loader opens |
 | `decide.act` / `.ask` / `.margin` | 0..1 (template 0.90 / 0.60 / 0.10) | the policy of a decider whose bundle declares none; Laya's thresholds come from its bundle |
-| `decide.threads` | `0` (default) \| n | intra-op threads; `0` means `ThreadBudget::lightThreads()` |
+| `decide.threads` | `0` (default) \| n | Laya's intra-op threads; `0` means 4, clamped to the host's hardware threads (`layaSessionThreads`) |
 | `decide.cpu_arena` | `false` (default) \| `true` | the ORT CPU memory arena |
 | `decide.mem_pattern` | `false` (default) \| `true` | the ORT memory-pattern planner |
 | `decide.prepacking` | `false` (default) \| `true` | `session.use_prepacking` |
@@ -2188,6 +2202,40 @@ memory**, and memory has a ceiling again, measured where it is spent:
 
 This replaces the earlier "memory is reported, not gated" wording of the same
 day.
+
+### Decide latency: the pilot's recorded gap (2026-10-12)
+
+The budget is p95 150 ms per decide (`gates.json`, `performance`). Measured on
+the development machine (Ryzen 7 5725U), idle, 200 sequential requests from
+`cases.jsonl` through `production-decider`, pinned to eight logical CPUs:
+
+| build | run | threads | p50 | p95 | RSS |
+|---|---|---|---|---|---|
+| dev | batched | 2 | 1188 ms | 1251 ms | 1004 MB |
+| prod | one run per question (before) | 2 | 221 ms | 233 ms | 969 MB |
+| prod | batched | 2 | 297 ms | 311 ms | 985 MB |
+| prod | batched | 4 | 195 ms | 205 ms | 981 MB |
+| prod | batched | 8 | 200 ms | 209 ms | 975 MB |
+
+The time is the ONNX run: Python onnxruntime 1.24.4 alone gives the same
+numbers, the sequence build is negligible in a release build, and the pilot's
+fp32 `MatMul`s are 67% of kernel time (only its embedding table is INT8). Graph
+optimisation is already `ORT_ENABLE_ALL`, prepacking does not move it and more
+than four threads do not help, so the production default is four threads
+(`decide.threads = 0`), clamped to the host. **The pilot ships at about 205 ms
+p95, over budget: a recorded, temporary gap** — the owner made the pilot the
+default now, and his INT8 encoder is the fix. Batching costs the fp32 pilot
+about 6% at four threads (35% at two) and is kept, because it is the
+reference's behaviour and what INT8 parity needs.
+
+Expected of an INT8 Laya of the same architecture, to verify when the bundle
+arrives (expectations, not results): about 1.5–2× faster per decide and about
+half the model on disk and in memory, rather than the textbook 4×, because the
+pilot's 197M-parameter embedding table is already INT8 and only the encoder
+shrinks. A fully quantized copy of the pilot, made for this measurement and not
+shipped, read 116 ms p50 / 124 ms p95 and 563 MB at four threads — but its
+decisions are not the pilot's, so only a model calibrated as INT8, with its own
+golden vectors, can ship that way.
 
 ### The C++ tokenizer and the GLiNER decode
 
