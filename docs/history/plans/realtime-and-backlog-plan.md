@@ -238,6 +238,11 @@ user shares the user room. Nothing here is to be changed except where a gap belo
       services/llm. That service is frozen behind the parked Laya branch, so this lands after the cutover merge.
     - F6b Editing one occurrence of a series (the RFC 5545 exception). Out of scope until the series
       model is settled; the occurrence entry id `${eventId}@${occurrenceStartIso}` is already in place for it.
+    - F6c Agenda paging. The agenda's window is cumulative, so each "load more" recomputes every occurrence
+      from the first day. Measured on 2026-10-13: a two-year window with 20 daily series costs 49.7 ms in a
+      second household zone, over the 16 ms bar; 8.8 ms in the device's own zone. The fix comes first as a
+      cache of zone offset changes per window (about 40 lines in `recurrence.ts`), and paging only if the
+      daily same-zone case grows past a frame.
 - F7 The `agronomy` module (`coming_soon`).
 - F8 Argus as the household's messenger (owner, 2026-10-12, wanted for sure): "Argus, llama a David y
   dile que venga a comer". The router picks a `relay` tool (the LLM never picks tools), the slots are
