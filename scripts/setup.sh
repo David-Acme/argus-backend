@@ -3,6 +3,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/pki.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/internal-pki.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/tunnel-pki.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/docker.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/privacy.sh"
 
@@ -337,8 +338,12 @@ main() {
   need_cmd git
   need_cmd cmake
   setup_submodules
-  ensure_instance_certs "$ROOT" "$ROOT/certs" "$ROOT/services/identity/config.toml"
+  ARGUS_CA_EXTRA_DNS="${ARGUS_CA_EXTRA_DNS:-} $(tunnel_pki_ca_names "$ROOT/services/tunnel/config.toml")" \
+    ensure_instance_certs "$ROOT" "$ROOT/certs" "$ROOT/services/identity/config.toml"
   ensure_internal_pki "${ARGUS_DATA_DIR:-$ROOT/argus-deploy/data}/certs/internal"
+  ensure_tunnel_pki "$ROOT/certs/tunnel" "$ROOT/certs/ca.pem" "$ROOT/certs/ca.key" \
+    "$ROOT/services/tunnel/config.toml"
+  tunnel_pki_configure_native "$ROOT" "$ROOT/certs/tunnel"
   provision_tts
   "$ROOT/services/llm/scripts/provision.sh"
   "$ROOT/services/vlm/scripts/provision.sh"

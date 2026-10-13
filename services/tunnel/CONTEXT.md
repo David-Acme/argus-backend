@@ -58,10 +58,36 @@ this repository holds its second implementation, under `src/link/`.
   `gateway_host`. With no `[link.services]` at all, every stream dials the
   gateway as soon as it opens, as it always did, so an instance config written
   before this step keeps working unchanged; `config.toml.example` lists the two
-  services that have a remote listener today, auth (7142) and identity (7144).
-  The other six reach the relay only once each has a remote listener of its
-  own; the deploy templates stay as they are until the per-service
-  certificates land.
+  services whose remote listener has a port today, auth (7142) and identity
+  (7144).
+- **Every service's remote listener follows one rule** (2026-10-13): it is
+  classified Tunnel by port, gated like auth's, and it is never open. Sync,
+  camera, productivity, notification, guard and settings each open one on
+  `[remote] tunnel_port` (`packages/lib/auth/CONTEXT.md`, the sealed
+  `RemoteGate`). Their ports, the compose publish on `127.0.0.1` and the
+  certificate mounts are the deploy track's wiring, so the native templates
+  keep `tunnel_port = 0` and `[link.services]` gains them once their ports are
+  fixed.
+- **Device-name certificates** (`scripts/lib/tunnel-pki.sh`): provisioning
+  issues one certificate per service whose one SAN is
+  `<service>--<home-id>.argus-tunnel.lynk.page`, the name the app dials. The
+  home id is `[link] home_id`. The subject is `CN=Argus tunnel <service>`,
+  not the name, because a common name holds at most 64 characters and five of
+  the eight names are longer. Clients verify the SAN. Each is signed by the instance CA the app
+  already pins, with ECDSA P-256 and `serverAuth` only, valid for 730 days and
+  re-issued under 60 or when its key, its name or its CA changed.
+  `provision-host.sh` writes them under `${ARGUS_DATA_DIR}/certs/tunnel/<service>/`
+  (`cert.pem` is the leaf followed by the CA, `key.pem` is 0600). `setup.sh`
+  writes them under `certs/tunnel/` and names them in each native config's
+  `[remote] tunnel_cert` and `tunnel_key`. A CA created from now on, once the
+  home has its id, permits exactly this home's eight names (through
+  `ARGUS_CA_EXTRA_DNS`), so a stolen CA key still cannot sign another home's
+  names. A CA made before carries the constraints it was made with: if they
+  leave the names out, issuance refuses with a warning and writes nothing, and
+  those listeners keep the instance certificate until the owner chooses a new
+  CA and a re-pair. A CA from before constraints existed signs them as it is.
+  `scripts/tunnel-pki-test.sh` checks all of it, and a TLS handshake that
+  verifies the dialled name.
 - **Closes are told, never answered** (spec §4.1): every close the client
   decides reaches the node as CLOSE — a home service that hangs up gets
   `normal` once the bytes it sent are framed, a failed one `error` — and a

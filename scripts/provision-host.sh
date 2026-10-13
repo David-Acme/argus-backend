@@ -3,6 +3,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/pki.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/internal-pki.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/tunnel-pki.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/docker.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/privacy.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/nats-users.sh"
@@ -517,9 +518,14 @@ main() {
     warn "No LAN address detected; set ARGUS_MDNS_ADDRESS and re-run, or the"
     warn "containers announce their own bridge interface and stay undiscoverable"
   fi
-  ensure_instance_certs "$ROOT" "$CERTS_DIR" "$DEPLOY_DIR/config.identity.toml" \
+  ARGUS_CA_EXTRA_DNS="${ARGUS_CA_EXTRA_DNS:-} $(tunnel_pki_ca_names "$DEPLOY_DIR/config.tunnel.toml")" \
+    ensure_instance_certs "$ROOT" "$CERTS_DIR" "$DEPLOY_DIR/config.identity.toml" \
     "$CA_DIR" "$lan_address"
   ensure_internal_pki "$DATA_DIR/certs/internal"
+  if [ "$WITH_TUNNEL" -eq 1 ]; then
+    ensure_tunnel_pki "$DATA_DIR/certs/tunnel" "$CERTS_DIR/ca.pem" "$CA_DIR/ca.key" \
+      "$DEPLOY_DIR/config.tunnel.toml"
+  fi
   if [ "$WITH_S3" -eq 1 ]; then
     ensure_object_store
   fi
