@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <doctest/doctest.h>
 #include <llm/llm-errors.hxx>
+#include <llm/llm-speech.hxx>
 #include <string>
 
 struct CatalogEntry
@@ -100,6 +101,13 @@ TEST_CASE("every llm entry is legal on the wire")
       return byte >= 0x21 && byte <= 0x7e;
     }));
   }
+}
+
+TEST_CASE("the withheld placeholder and the unheard marker keep their wire spellings")
+{
+  CHECK(llm_speech::kWithheldUtterance == "…");
+  CHECK(llm_speech::kWithheldUtterance.size() == 3);
+  CHECK(llm_speech::kUnheard == "unheard");
 }
 
 TEST_CASE("no two llm entries say the same thing")

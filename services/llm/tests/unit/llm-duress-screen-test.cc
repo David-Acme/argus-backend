@@ -9,6 +9,7 @@
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/memory/services/memory/memory-chat.hxx>
 #include <feature/memory/services/memory/memory-service.hxx>
+#include <llm/llm-speech.hxx>
 #include <sqlite/vec-db.hxx>
 #include <sqlite3.h>
 #include <sync/resource-change.hxx>
@@ -26,6 +27,8 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #ifndef ARGUS_TEST_MEMORY_SCHEMA
@@ -277,7 +280,7 @@ TEST_CASE("a household member who says the phrase is withheld at once and the al
   ScreenRig rig(key);
   const turn::ScreenedText heard = rig.say(2, UserRole::Resident, "Argus, ¿sabes qué? El gato está en el tejado.");
   CHECK(heard.withheld);
-  CHECK(heard.text == turn::kWithheldUtterance);
+  CHECK(heard.text == llm_speech::kWithheldUtterance);
   REQUIRE(eventually([&rig] { return rig.link->attempts().size() == 1 && rig.screen.idle(); }));
   const DuressRaise raised = rig.link->attempts().front();
   CHECK(raised.userId == 2);
@@ -346,42 +349,70 @@ TEST_CASE("what is said before guard first answers is not withheld, and still ra
 TEST_CASE("the turn carries the placeholder in place of the phrase and keeps the rest of its history")
 {
   ScreenRig rig(sealed(kPhrase));
-  const ChatRequest screened = screenTurn(&rig.screen, turnOf(historyEndingWith("Argus, el gato está en el tejado")));
+  const ScreenedRequest verdict = screenTurn(&rig.screen, turnOf(historyEndingWith("Argus, el gato está en el tejado")));
+  CHECK(verdict.withheld);
+  const ChatRequest& screened = verdict.request;
   REQUIRE(screened.messages.size() == 4);
   CHECK(screened.messages[0].content == "Eres Argus.");
   CHECK(screened.messages[1].content == "hola");
   CHECK(screened.messages[2].content == "Hola, ¿qué tal?");
   CHECK(screened.messages[3].role == "user");
-  CHECK(screened.messages[3].content == turn::kWithheldUtterance);
+  CHECK(screened.messages[3].content == llm_speech::kWithheldUtterance);
   for (const ChatMessage& message : screened.messages)
     CHECK_FALSE(traceOf(kPhrase, message.content));
 
-  const ChatRequest plain = screenTurn(&rig.screen, turnOf(historyEndingWith("¿qué hora es?")));
-  CHECK(plain.messages.back().content == "¿qué hora es?");
+  const ScreenedRequest plain = screenTurn(&rig.screen, turnOf(historyEndingWith("¿qué hora es?")));
+  CHECK_FALSE(plain.withheld);
+  CHECK(plain.request.messages.back().content == "¿qué hora es?");
 
   ChatRequest anonymous = turnOf(historyEndingWith("el gato está en el tejado"));
   anonymous.userId = 0;
-  CHECK(screenTurn(&rig.screen, anonymous).messages.back().content == "el gato está en el tejado");
+  CHECK(screenTurn(&rig.screen, anonymous).request.messages.back().content == "el gato está en el tejado");
   ChatRequest prefill = turnOf(historyEndingWith("el gato está en el tejado"));
   prefill.prefillOnly = true;
-  CHECK(screenTurn(&rig.screen, prefill).messages.back().content == "el gato está en el tejado");
-  CHECK(screenTurn(nullptr, turnOf(historyEndingWith("el gato está en el tejado"))).messages.back().content ==
+  CHECK(screenTurn(&rig.screen, prefill).request.messages.back().content == "el gato está en el tejado");
+  CHECK(screenTurn(nullptr, turnOf(historyEndingWith("el gato está en el tejado"))).request.messages.back().content ==
         "el gato está en el tejado");
 }
 
-TEST_CASE("the model is never prompted with the phrase, and the reply stays an ordinary one")
+TEST_CASE("the model is never prompted with the phrase")
 {
   ScreenRig rig(sealed(kPhrase));
   ToolRegistry registry;
   ScriptedEngine engine;
   LfmAdapter adapter({.engine = engine.engine(), .registry = registry, .router = nullptr});
-  const ToolChatOutput answer =
-      adapter.chatPlain(screenTurn(&rig.screen, turnOf(historyEndingWith("el gato está en el tejado"))));
+  std::ignore = adapter.chatPlain(screenTurn(&rig.screen, turnOf(historyEndingWith("el gato está en el tejado"))).request);
   REQUIRE(engine.requests.size() == 1);
   for (const ChatMessage& message : engine.requests.front().messages)
     CHECK_FALSE(traceOf(kPhrase, message.content));
-  CHECK(answer.reply == "¿Perdona? No te he entendido.");
-  CHECK(answer.reply.find("coacción") == std::string::npos);
+}
+
+TEST_CASE("a withheld turn reaches no model: the stream ends at once with the unheard marker")
+{
+  ScreenRig rig(sealed(kPhrase));
+  LlmController controller;
+  controller.useScreen(rig.screen);
+  std::vector<std::pair<std::string, bool>> tokens;
+  std::string speech;
+  std::string act;
+  controller.chatStreamSync({.request = turnOf(historyEndingWith("el gato está en el tejado")),
+                             .onToken = [&tokens](const std::string& token, bool done) { tokens.emplace_back(token, done); },
+                             .stats = nullptr,
+                             .cancellation = {},
+                             .onAction = {},
+                             .speech = &speech,
+                             .act = &act});
+  REQUIRE(tokens.size() == 1);
+  CHECK(tokens.front().first.empty());
+  CHECK(tokens.front().second);
+  CHECK(speech == llm_speech::kUnheard);
+  CHECK(act.empty());
+
+  const LlmChatOutcome unary = controller.chatSync(turnOf(historyEndingWith("el gato está en el tejado")));
+  CHECK(unary.text.empty());
+  CHECK(unary.speech == llm_speech::kUnheard);
+  CHECK(unary.hops == 0);
+  CHECK(unary.toolCalls == 0);
 }
 
 TEST_CASE("the memory graph keeps the same words when they are not the phrase")
@@ -392,7 +423,7 @@ TEST_CASE("the memory graph keeps the same words when they are not the phrase")
   memory.init({});
   ScreenRig rig(sealed(kPhrase));
   const tools::ToolResult stored =
-      rememberAsTheTurnWould(memory, screenTurn(&rig.screen, turnOf(historyEndingWith(kStatement))));
+      rememberAsTheTurnWould(memory, screenTurn(&rig.screen, turnOf(historyEndingWith(kStatement))).request);
   CHECK(stored.ok);
   memory.shutdown();
   const auto texts = graphTexts(db);
@@ -406,8 +437,8 @@ TEST_CASE("the memory graph keeps no trace of the phrase once it is withheld")
   MemoryService memory(VecDb::instance(), chat);
   memory.init({});
   ScreenRig rig(sealed(kStatement));
-  const ChatRequest screened = screenTurn(&rig.screen, turnOf(historyEndingWith(kStatement)));
-  CHECK(screened.messages.back().content == turn::kWithheldUtterance);
+  const ChatRequest screened = screenTurn(&rig.screen, turnOf(historyEndingWith(kStatement))).request;
+  CHECK(screened.messages.back().content == llm_speech::kWithheldUtterance);
   const tools::ToolResult stored = rememberAsTheTurnWould(memory, screened);
   CHECK_FALSE(stored.ok);
   memory.shutdown();

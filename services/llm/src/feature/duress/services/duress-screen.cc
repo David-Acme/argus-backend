@@ -1,5 +1,6 @@
 #include "duress-screen.hxx"
 
+#include <llm/llm-speech.hxx>
 #include <text/secret-phrase.hxx>
 #include <text/sha256.hxx>
 #include <trantor/utils/Logger.h>
@@ -225,7 +226,7 @@ turn::ScreenedText DuressScreen::screen(const turn::ScreenedUtterance& utterance
     queueRaise(*state_, {.userId = utterance.userId, .role = utterance.role, .key = encoded});
   }
   state_->wake.notify_one();
-  return {.text = std::string(turn::kWithheldUtterance), .withheld = true};
+  return {.text = std::string(llm_speech::kWithheldUtterance), .withheld = true};
 }
 
 void DuressScreen::requestRefresh() const

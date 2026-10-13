@@ -9,8 +9,6 @@
 namespace turn
 {
 
-inline constexpr std::string_view kWithheldUtterance = "…";
-
 struct ScreenedUtterance
 {
   int64_t userId{0};

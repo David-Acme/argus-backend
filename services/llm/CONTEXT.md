@@ -865,13 +865,17 @@ it is declared.
 
 **A matched utterance never travels on as heard (the reviewer's F4 gap, closed
 2026-10-13).** The words are replaced by a neutral placeholder, `…`
-(`turn::kWithheldUtterance`), before anything downstream sees them: the
-history the call keeps, the frame the app shows, the logs, the turn's
+(`llm_speech::kWithheldUtterance`, `packages/contracts/llm/src/llm/llm-speech.hxx`,
+the one spelling llm and voice share), before anything downstream sees them:
+the history the call keeps, the frame the app shows, the logs, the turn's
 decision, its tools, the memory graph and the model's prompt. The placeholder
 is whole, never a sentence with words cut out of it, so nothing around the
-phrase hints at what was removed. The model answers "…" the way it answers any
-utterance it could not make out ("¿Perdona?"), so the reply stays ordinary and
-never names the alert.
+phrase hints at what was removed. **No model answers a withheld turn** (the
+reviewer's ruling on the reply, 2026-10-13): voice answers it through the one
+path it takes for every turn without words, a "didn't catch that" line from a
+small per-language set rotated by the call's seed
+(`services/voice/CONTEXT.md`, "One reply for every turn without words"), so a
+withheld turn and an unintelligible one cannot be told apart.
 
 - **Voice asks first.** `services/voice` calls `POST /llm/v1/screen` (gRPC
   `argus.llm.v1.Chat/Screen`, the SDK's `LlmClient::screen`) the moment STT
@@ -885,11 +889,19 @@ never names the alert.
   them.
 - **The turn screens again.** `LlmController::chatSync` and `chatStreamSync`,
   the entry both legs share, pass the request through `screenTurn` before
-  anything is decided. It replaces the last user message (as
-  `LfmAdapter::spokenText` reads it) with the placeholder when the screen
-  withholds it, and returns every other message untouched. Prefill requests,
-  callers without a user id or a known role, and a process with no screen
-  installed pass through as they are.
+  anything is decided. It answers `ScreenedRequest {request, withheld}`: the
+  last user message (as `LfmAdapter::spokenText` reads it) replaced by the
+  placeholder when the screen withholds it, every other message untouched.
+  Prefill requests, callers without a user id or a known role, and a process
+  with no screen installed pass through as they are.
+- **A withheld turn ends at once.** When `screenTurn` withholds, the turn
+  decides nothing, runs no tool and prompts no model: `chatStreamSync` sets
+  the `speech` marker `unheard` (`llm_speech::kUnheard`) and ends the stream
+  with its sentinel alone, and `chatSync` answers an empty text with the same
+  marker. The marker reaches voice on the HTTP sentinel's `speech` key and on
+  `ChatToken.speech`, and voice answers the turn as unheard. Voice only
+  meets this when its own screen did not answer, or when the key changed
+  between the two screens.
 - **Who.** `DuressScreen` (`feature/duress`, module `argus::duress`) screens
   only a speaker who holds `safety.duress` under the current module snapshot
   (Owner, Resident, surveillance on). Guard checks again.
@@ -936,7 +948,9 @@ never names the alert.
 - what is said before guard first answers still raises;
 - the turn carries the placeholder and the rest of its history unchanged, and
   the turn hook's caller rules hold;
-- the model's prompt holds no trace of the phrase, and the reply stays ordinary;
+- the model's prompt holds no trace of the phrase;
+- a withheld turn reaches no model: the stream ends at once with the
+  `unheard` marker, and the unary chat answers the same marker with no text;
 - the memory graph keeps the same words when they are not the phrase, and
   keeps no trace of them once withheld;
 - the change notice that asks for a refresh.

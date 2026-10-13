@@ -16,6 +16,7 @@
 #include <config/voice-config.hxx>
 #include <feature/voice/offer-reply.hxx>
 #include <json/json.h>
+#include <llm/llm-speech.hxx>
 
 namespace
 {
@@ -518,7 +519,8 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
            << " duplex=" << duplex << " resume=" << resume
            << " opening=" << voiceOpeningToString(opening);
 
-  auto session = std::make_shared<Session>(SessionInit{.model = vad_.createModel(), .lang = lang});
+  auto session = std::make_shared<Session>(
+      SessionInit{.model = vad_.createModel(), .lang = lang, .unheardSeed = std::random_device{}()});
   session->sink = &sink;
   session->userId = identity.user_id();
   session->deviceHash = identity.device_hash();
@@ -1032,14 +1034,13 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
     return;
   }
   clock.transcribed.store(std::chrono::steady_clock::now());
-  if (userText.empty()) {
-    LOG_WARN << "Voice: STT returned empty for a VAD turn";
-    emitReaction(session, sttFailed);
-    return;
-  }
-  if (session.userId > 0)
+  if (session.userId > 0 && carriesWords(userText))
     userText = llm_.screen(
         {.userId = session.userId, .role = userRoleFromString(session.role), .text = userText});
+  if (!carriesWords(userText)) {
+    answerUnheard(session, UnheardTranscript::Send);
+    return;
+  }
   LOG_INFO << "Voice: STT turn of " << userText.size() << " bytes";
 
   argus::voice::v1::ServerFrame sttFrame;
@@ -1142,6 +1143,11 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
     say(pending);
 
   const bool interrupted = session.interrupt.load();
+  if (full.empty() && !interrupted && speechMarker == llm_speech::kUnheard) {
+    session.history.rollbackUser();
+    answerUnheard(session, UnheardTranscript::Correct);
+    return;
+  }
   if (full.empty()) {
     session.history.rollbackUser();
     if (!interrupted) {
@@ -1296,6 +1302,30 @@ bool VoiceSessionService::answerOffer(Session& session, const std::string& userT
   if (session.history.trim())
     primeLlm(session);
   return true;
+}
+
+void VoiceSessionService::answerUnheard(Session& session, UnheardTranscript transcript)
+{
+  LOG_INFO << "Voice: the turn carried no words to answer; Argus asks again";
+  const std::string placeholder(llm_speech::kWithheldUtterance);
+  if (transcript == UnheardTranscript::Send) {
+    argus::voice::v1::ServerFrame heard;
+    heard.mutable_stt()->set_text(placeholder);
+    heard.mutable_stt()->set_final(true);
+    sendFrame(session, std::move(heard));
+  }
+  session.history.addUser(placeholder);
+  emitReaction(session, {.text = {}, .lang = langCode(session.lang), .sttFailed = true});
+  const std::string line(session.unheard.next(session.lang));
+  if (speak(session, line).audible)
+    session.history.addAssistant(line);
+  else
+    session.history.rollbackUser();
+  session.speaking = false;
+  if (!session.duplex)
+    session.vad.reset();
+  if (session.history.trim())
+    primeLlm(session);
 }
 
 ChatRequest VoiceSessionService::turnRequest(Session& session)

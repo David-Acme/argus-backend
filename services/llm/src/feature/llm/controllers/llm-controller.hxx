@@ -48,7 +48,13 @@ struct CallerCredential
 
 [[nodiscard]] ChatRequest boundToCredential(ChatRequest request, const CallerCredential& credential);
 
-[[nodiscard]] ChatRequest screenTurn(const turn::UtteranceScreen* screen, ChatRequest request);
+struct ScreenedRequest
+{
+  ChatRequest request;
+  bool withheld{false};
+};
+
+[[nodiscard]] ScreenedRequest screenTurn(const turn::UtteranceScreen* screen, ChatRequest request);
 
 class LlmController : public drogon::HttpController<LlmController, false>
 {

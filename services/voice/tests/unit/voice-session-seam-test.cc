@@ -171,28 +171,48 @@ struct FakeLlm final : IVoiceLlm
 
 struct ScreeningLlm final : IVoiceLlm
 {
+  bool withhold{true};
+  std::string marker;
   std::vector<UtteranceScreenRequest> screened;
   std::vector<ChatMessage> lastMessages;
   int chatStreamCalls{0};
+  std::atomic<int> primeCalls{0};
 
   [[nodiscard]] std::string screen(const UtteranceScreenRequest& request) override
   {
     screened.push_back(request);
-    return "\u2026";
+    return withhold ? std::string("\u2026") : request.text;
   }
 
   void chatStream(LlmStreamInput input) override
   {
     if (input.request.prefillOnly) {
+      ++primeCalls;
       input.onToken("", true);
       return;
     }
     ++chatStreamCalls;
     lastMessages = input.request.messages;
-    input.onToken("¿Perdona?", false);
+    if (!marker.empty()) {
+      if (input.speech != nullptr)
+        *input.speech = marker;
+      input.onToken("", true);
+      return;
+    }
+    input.onToken("Hola de nuevo.", false);
     input.onToken("", true);
   }
 };
+
+constexpr std::array<std::string_view, 3> kSpanishUnheard{
+    "Perdona, no te entendí. ¿Me lo repites?",
+    "No te escuché bien. ¿Puedes repetirlo?",
+    "Disculpa, no te entendí. ¿Otra vez?"};
+
+bool isUnheardLine(std::string_view text)
+{
+  return std::ranges::find(kSpanishUnheard, text) != kSpanishUnheard.end();
+}
 
 struct ActingLlm final : IVoiceLlm
 {
@@ -876,52 +896,212 @@ TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
   session.stop(sink);
 }
 
-TEST_CASE("A withheld transcript reaches no frame, no history and no turn as it was heard")
+namespace
+{
+
+struct HeardTurnInput
+{
+  std::string transcript;
+  bool withhold{false};
+  std::string marker;
+  uint64_t seed{0};
+  int turns{1};
+};
+
+struct HeardTurnOutcome
+{
+  std::vector<argus::voice::v1::ServerFrame> frames;
+  std::vector<std::string> serialized;
+  std::vector<std::pair<CallEntryKind, std::string>> history;
+  std::vector<UtteranceScreenRequest> screened;
+  int chatStreamCalls{0};
+};
+
+HeardTurnOutcome heardTurn(const HeardTurnInput& input)
 {
   FakeStt stt;
+  stt.transcript = input.transcript;
   FakeTts tts;
   ScreeningLlm llm;
+  llm.withhold = input.withhold;
+  llm.marker = input.marker;
   FakeIdentity identity;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
-  VoiceSessionService session(seam);
-
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()});
   FakeVoiceSink sink;
   argus::voice::v1::VoiceIdentity voiceIdentity;
   voiceIdentity.set_user_id(7);
   voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_RESIDENT);
   voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
   voiceIdentity.set_name("Ana");
-  session.start(sink, voiceIdentity);
-  CHECK(waitFor([&] {
-    auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
-    return tts.synthesizeCalls > 0 && !sess->speaking.load();
-  }));
-
+  service.start(sink, voiceIdentity);
+  auto sess = VoiceSessionTestAccess::sessionOf(service, sink);
+  REQUIRE(waitFor([&] { return llm.primeCalls.load() >= 1 && !sess->speaking.load(); }));
+  sess->unheard = UnheardRotation(input.seed);
   const std::vector<float> samples(1600, 0.1F);
-  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
-  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+  for (int turn = 0; turn < input.turns; ++turn)
+    VoiceSessionTestAccess::runTurn({.service = service, .session = *sess, .samples = samples});
+  HeardTurnOutcome outcome;
+  outcome.frames = sink.snapshot();
+  outcome.serialized = serializedFrames(sink);
+  for (const CallEntry& entry : sess->history.entries())
+    outcome.history.emplace_back(entry.kind, entry.message.content);
+  outcome.screened = llm.screened;
+  outcome.chatStreamCalls = llm.chatStreamCalls;
+  service.stop(sink);
+  return outcome;
+}
 
-  REQUIRE(llm.screened.size() == 1);
-  CHECK(llm.screened[0].userId == 7);
-  CHECK(llm.screened[0].role == UserRole::Resident);
-  CHECK(llm.screened[0].text == "hola argus");
+std::vector<std::string> spokenLines(const HeardTurnOutcome& outcome)
+{
+  std::vector<std::string> lines;
+  for (const auto& frame : outcome.frames)
+    if (frame.has_assistant())
+      lines.push_back(frame.assistant().text());
+  return lines;
+}
+
+bool carriesText(const HeardTurnOutcome& outcome, std::string_view text)
+{
+  const bool inFrames = std::ranges::any_of(
+      outcome.serialized, [text](const std::string& frame) { return frame.find(text) != std::string::npos; });
+  const bool inHistory = std::ranges::any_of(outcome.history, [text](const auto& entry) {
+    return entry.second.find(text) != std::string::npos;
+  });
+  return inFrames || inHistory;
+}
+
+}
+
+TEST_CASE("A transcript carries words only when the screen could read one")
+{
+  CHECK_FALSE(carriesWords(""));
+  CHECK_FALSE(carriesWords("…"));
+  CHECK_FALSE(carriesWords("¿?"));
+  CHECK_FALSE(carriesWords(" . , ! "));
+  CHECK(carriesWords("hola"));
+  CHECK(carriesWords("ñu"));
+  CHECK(carriesWords("3"));
+  CHECK(carriesWords("mmm"));
+}
+
+TEST_CASE("Unheard lines rotate through the language's set from the session's seed")
+{
+  UnheardRotation spanish(0);
+  std::array<std::string_view, 4> said{};
+  std::ranges::generate(said, [&spanish] { return spanish.next(VoiceLang::Es); });
+  CHECK(said[0] == kSpanishUnheard[0]);
+  CHECK(said[1] == kSpanishUnheard[1]);
+  CHECK(said[2] == kSpanishUnheard[2]);
+  CHECK(said[3] == said[0]);
+  UnheardRotation shifted(1);
+  CHECK(shifted.next(VoiceLang::Es) == said[1]);
+  UnheardRotation english(0);
+  const std::string_view first = english.next(VoiceLang::En);
+  CHECK_FALSE(isUnheardLine(first));
+  CHECK_FALSE(first.empty());
+}
+
+TEST_CASE("A withheld transcript is answered as unheard and reaches no frame, no history and no turn as it was heard")
+{
+  const HeardTurnOutcome withheld = heardTurn({.transcript = "hola argus", .withhold = true, .marker = {}, .seed = 4, .turns = 1});
+
+  REQUIRE(withheld.screened.size() == 1);
+  CHECK(withheld.screened[0].userId == 7);
+  CHECK(withheld.screened[0].role == UserRole::Resident);
+  CHECK(withheld.screened[0].text == "hola argus");
+  CHECK(withheld.chatStreamCalls == 0);
+  CHECK_FALSE(carriesText(withheld, "hola argus"));
 
   argus::voice::v1::ServerFrame sttFrame;
-  for (const auto& frame : sink.snapshot())
+  bool confused = false;
+  for (const auto& frame : withheld.frames) {
     if (frame.has_stt())
       sttFrame = frame;
-  CHECK(sttFrame.stt().text() == "\u2026");
-  for (const auto& frame : sink.snapshot())
-    CHECK(frame.SerializeAsString().find("hola argus") == std::string::npos);
+    if (frame.has_event() && frame.event().reaction() == argus::voice::v1::REACTION_CONFUSED &&
+        frame.event().because() == "stt_failed")
+      confused = true;
+  }
+  CHECK(sttFrame.stt().text() == "…");
+  CHECK(sttFrame.stt().final());
+  CHECK(confused);
+  const auto lines = spokenLines(withheld);
+  REQUIRE_FALSE(lines.empty());
+  CHECK(isUnheardLine(lines.back()));
 
-  CHECK(llm.chatStreamCalls == 1);
-  for (const ChatMessage& message : llm.lastMessages)
-    CHECK(message.content.find("hola argus") == std::string::npos);
-  for (const CallEntry& entry : sess->history.entries())
-    CHECK(entry.message.content.find("hola argus") == std::string::npos);
-  CHECK(sess->history.userTurns() == 1);
+  REQUIRE(withheld.history.size() >= 2);
+  const auto& asked = withheld.history[withheld.history.size() - 2];
+  const auto& answered = withheld.history.back();
+  CHECK(asked.first == CallEntryKind::User);
+  CHECK(asked.second == "…");
+  CHECK(answered.first == CallEntryKind::Assistant);
+  CHECK(answered.second == lines.back());
+}
 
-  session.stop(sink);
+TEST_CASE("Under the same seed a withheld turn and an unintelligible turn get the same reply, byte for byte")
+{
+  const HeardTurnOutcome withheld = heardTurn({.transcript = "el gato está en el tejado", .withhold = true, .marker = {}, .seed = 9, .turns = 2});
+  const HeardTurnOutcome empty = heardTurn({.transcript = "", .withhold = false, .marker = {}, .seed = 9, .turns = 2});
+  const HeardTurnOutcome garbled = heardTurn({.transcript = "¿?…", .withhold = false, .marker = {}, .seed = 9, .turns = 2});
+
+  CHECK(withheld.screened.size() == 2);
+  CHECK(empty.screened.empty());
+  CHECK(garbled.screened.empty());
+  CHECK(withheld.chatStreamCalls == 0);
+  CHECK(empty.chatStreamCalls == 0);
+  CHECK(garbled.chatStreamCalls == 0);
+
+  CHECK_FALSE(withheld.serialized.empty());
+  CHECK(withheld.serialized == empty.serialized);
+  CHECK(withheld.serialized == garbled.serialized);
+  CHECK(withheld.history == empty.history);
+  CHECK(withheld.history == garbled.history);
+
+  const auto lines = spokenLines(withheld);
+  REQUIRE(lines.size() >= 2);
+  CHECK(isUnheardLine(lines[lines.size() - 2]));
+  CHECK(isUnheardLine(lines.back()));
+  CHECK(lines[lines.size() - 2] != lines.back());
+
+  const HeardTurnOutcome otherSeed = heardTurn({.transcript = "", .withhold = false, .marker = {}, .seed = 10, .turns = 2});
+  CHECK(otherSeed.serialized != empty.serialized);
+}
+
+TEST_CASE("Words argus-llm withholds after they were shown get the unheard reply, and no model speaks them")
+{
+  const HeardTurnOutcome late =
+      heardTurn({.transcript = "hola argus", .withhold = false, .marker = "unheard", .seed = 2, .turns = 1});
+  CHECK(late.screened.size() == 1);
+  CHECK(late.chatStreamCalls == 1);
+
+  std::optional<size_t> shown;
+  std::optional<size_t> confused;
+  for (size_t index = 0; index < late.frames.size(); ++index) {
+    const auto& frame = late.frames[index];
+    if (frame.has_stt() && frame.stt().text() == "hola argus")
+      shown = index;
+    if (frame.has_event() && frame.event().reaction() == argus::voice::v1::REACTION_CONFUSED)
+      confused = index;
+  }
+  REQUIRE(shown.has_value());
+  REQUIRE(confused.has_value());
+  CHECK(requireValue(shown) < requireValue(confused));
+  for (size_t index = requireValue(confused); index < late.frames.size(); ++index)
+    CHECK(late.serialized[index].find("hola argus") == std::string::npos);
+  for (const auto& entry : late.history)
+    CHECK(entry.second.find("hola argus") == std::string::npos);
+
+  const HeardTurnOutcome unheard = heardTurn({.transcript = "", .withhold = false, .marker = {}, .seed = 2, .turns = 1});
+  std::optional<size_t> asked;
+  for (size_t index = 0; index < unheard.frames.size(); ++index)
+    if (unheard.frames[index].has_event() && unheard.frames[index].event().reaction() == argus::voice::v1::REACTION_CONFUSED)
+      asked = index;
+  REQUIRE(asked.has_value());
+  const std::vector<std::string> lateTail(late.serialized.begin() + static_cast<std::ptrdiff_t>(requireValue(confused)),
+                                          late.serialized.end());
+  const std::vector<std::string> unheardTail(unheard.serialized.begin() + static_cast<std::ptrdiff_t>(requireValue(asked)),
+                                             unheard.serialized.end());
+  CHECK(lateTail == unheardTail);
+  CHECK(late.history == unheard.history);
 }
 
 TEST_CASE("Turning the latency trace on changes nothing the sink sees")

@@ -95,6 +95,7 @@ argus_module(NAME voice-core
         src/feature/voice/call-history.cc
         src/feature/voice/offer-reply.cc
         src/feature/voice/turn-transcript.cc
+        src/feature/voice/unheard-reply.cc
         src/feature/voice/voice-session-service.cc
         src/feature/voice/voice-engine-seam.cc
         src/feature/voice/voice-rpc-service.cc
@@ -111,7 +112,9 @@ argus_module(NAME voice-core
         argus::clients::tts
         argus::clients::llm
         argus::clients::stt
+        argus::contracts::llm
         argus::lib::phrase
+        argus::lib::text
         argus::contracts::voice
         argus::lib::config
         argus::voice-config

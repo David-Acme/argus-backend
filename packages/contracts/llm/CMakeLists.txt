@@ -11,6 +11,7 @@ argus_contracts(NAME llm
     INCLUDES src
     SOURCES
         src/llm/llm-errors.hxx
+        src/llm/llm-speech.hxx
     DEPENDS argus::lib::errors)
 
 if(NOT COMMAND argus_response_rpc_contract)

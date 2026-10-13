@@ -12,7 +12,8 @@ the header-only `argus::contracts::llm` vocabulary target it owns
 not link the wire target blind — it includes this package and calls the
 function, which first calls `argus_response_rpc_contract()` (the refusal
 envelope every gRPC answer here carries), then `lib/grpc`, then the proto. The
-include root is `src/`, so a consumer writes `<llm/llm-errors.hxx>`.
+include root is `src/`, so a consumer writes `<llm/llm-errors.hxx>` or
+`<llm/llm-speech.hxx>`.
 
 `packages/clients/llm` is where the module is established, for the gRPC client
 and the HTTP face argus-guard, argus-voice and `services/llm`'s memory feature
@@ -29,6 +30,12 @@ controller.
   `InvalidRequest` 400, `Unauthorized` 401, `Cancelled` 499,
   `DeadlineExceeded` 504, `Busy` 429, `InternalError` 500,
   `InvalidResponse` 502 and `Unavailable` 503.
+- `src/llm/llm-speech.hxx` — `llm_speech`, the two turn spellings both sides
+  of the wire read: `kWithheldUtterance` (`…`, the text `Screen` answers in
+  place of a duress phrase, and the transcript voice shows for any turn
+  without words) and `kUnheard` (`unheard`, the `speech` marker a withheld
+  turn ends with). `services/llm` and `services/voice` include it; neither
+  keeps a copy.
 - `llm.proto` — `package argus.llm.v1`: one `Chat` service with three **unary**
   RPCs and one **server-streaming** RPC — `Capabilities` (loaded, the engine's
   default token cap and temperature, the context size and the three last-prefill
@@ -48,7 +55,9 @@ controller.
   (field 8) is additive and backend-internal: it carries the same
   `speech_unavailable` marker the HTTP sentinel's `speech` key carries, and
   `services/voice` reads it there instead of inferring the marker from an empty
-  reply. `Screen` (additive, 2026-10-13) takes a transcript with the caller's
+  reply. The marker has a second value, `unheard`, for a turn whose last
+  utterance the duress screen withheld: no model ran and the text is empty,
+  and voice answers that turn as unheard. `Screen` (additive, 2026-10-13) takes a transcript with the caller's
   user id and role and answers the text the call may keep: the same words, or
   the neutral placeholder when they were the household's duress phrase
   (`services/llm/CONTEXT.md`, "The duress screen"); its HTTP twin is

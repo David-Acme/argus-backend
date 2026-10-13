@@ -6,6 +6,7 @@
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
 #include <llm/llm-errors.hxx>
+#include <llm/llm-speech.hxx>
 #include <feature/llm/dtos/chat-dto.hxx>
 #include <feature/llm/dtos/response-screen-dto.hxx>
 #include <feature/llm/dtos/screen-dto.hxx>
@@ -258,33 +259,38 @@ void LlmController::useScreen(const turn::UtteranceScreen& screen)
   screen_ = &screen;
 }
 
-ChatRequest screenTurn(const turn::UtteranceScreen* screen, ChatRequest request)
+ScreenedRequest screenTurn(const turn::UtteranceScreen* screen, ChatRequest request)
 {
   if (screen == nullptr || request.prefillOnly || request.userId <= 0 || !userRoleKnown(request.role))
-    return request;
+    return {.request = std::move(request), .withheld = false};
   const auto last = std::ranges::find(std::views::reverse(request.messages), std::string_view("user"),
                                       &ChatMessage::role);
   if (last == std::views::reverse(request.messages).end())
-    return request;
+    return {.request = std::move(request), .withheld = false};
   const std::string utterance = LfmAdapter::spokenText(last->content);
   if (utterance.empty())
-    return request;
+    return {.request = std::move(request), .withheld = false};
   turn::ScreenedText screened = screen->screen({.userId = request.userId, .role = request.role, .text = utterance});
   if (screened.withheld)
     last->content = std::move(screened.text);
-  return request;
+  return {.request = std::move(request), .withheld = screened.withheld};
 }
 
 std::string LlmController::screenText(const ChatRequest& request) const
 {
-  const ChatRequest screened = screenTurn(screen_, request);
-  return screened.messages.empty() ? std::string{} : screened.messages.back().content;
+  const ScreenedRequest screened = screenTurn(screen_, request);
+  return screened.request.messages.empty() ? std::string{} : screened.request.messages.back().content;
 }
 
 LlmChatOutcome LlmController::chatSync(const ChatRequest& unscreened)
 {
-  const ChatRequest request = screenTurn(screen_, unscreened);
+  const ScreenedRequest screened = screenTurn(screen_, unscreened);
   LlmChatOutcome outcome;
+  if (screened.withheld) {
+    outcome.speech = std::string(llm_speech::kUnheard);
+    return outcome;
+  }
+  const ChatRequest& request = screened.request;
   const auto tools = requestTools(adapter_.executor(), request);
   if (tools.empty()) {
     const ToolChatOutput plain = adapter_.chatPlain(request);
@@ -319,8 +325,15 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& unscreened)
 
 void LlmController::chatStreamSync(const LlmStreamInput& unscreened)
 {
+  ScreenedRequest screened = screenTurn(screen_, unscreened.request);
+  if (screened.withheld) {
+    if (unscreened.speech != nullptr)
+      *unscreened.speech = std::string(llm_speech::kUnheard);
+    unscreened.onToken("", true);
+    return;
+  }
   LlmStreamInput input = unscreened;
-  input.request = screenTurn(screen_, unscreened.request);
+  input.request = std::move(screened.request);
   LlmPrefillStats* stats = input.stats;
   const TokenCallback emit = [this, stats,
                               forward = input.onToken](const std::string& token,

@@ -8,6 +8,7 @@
 #include <functional>
 #include <feature/voice/call-history.hxx>
 #include <feature/voice/turn-transcript.hxx>
+#include <feature/voice/unheard-reply.hxx>
 #include <feature/voice/voice-engine-seam.hxx>
 #include <memory>
 #include <mutex>
@@ -171,12 +172,19 @@ private:
   {
     std::unique_ptr<VadModel> model;
     VoiceLang lang{VoiceLang::System};
+    uint64_t unheardSeed{0};
+  };
+
+  enum class UnheardTranscript : uint8_t
+  {
+    Send,
+    Correct
   };
 
   struct Session
   {
     explicit Session(SessionInit init)
-        : vad(std::move(init.model)), history(init.lang), lang(init.lang)
+        : vad(std::move(init.model)), history(init.lang), lang(init.lang), unheard(init.unheardSeed)
     {
     }
 
@@ -193,6 +201,7 @@ private:
     int denoiseLogCounter{0};
     CallHistory history;
     VoiceLang lang{VoiceLang::System};
+    UnheardRotation unheard;
     std::string callId;
     int64_t userId{0};
     std::string role;
@@ -273,6 +282,7 @@ private:
   Transcript transcribe(Session& session, const HeardTurn& heard);
   static ChatRequest turnRequest(Session& session);
   bool answerOffer(Session& session, const std::string& userText);
+  void answerUnheard(Session& session, UnheardTranscript transcript);
   std::shared_ptr<SpeakerProbe> probeSpeaker(Session& session, const std::vector<float>& samples);
   static std::optional<VoiceSpeaker> awaitSpeaker(const std::shared_ptr<SpeakerProbe>& probe);
   static void observeSpeaker(Session& session, const std::optional<VoiceSpeaker>& speaker);

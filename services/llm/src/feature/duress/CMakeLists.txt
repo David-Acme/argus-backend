@@ -9,6 +9,7 @@ argus_module(NAME duress
         argus::llm-shared
         argus::clients::guard
         argus::contracts::auth
+        argus::contracts::llm
         argus::contracts::sync
         argus::lib::text
         Drogon::Drogon)

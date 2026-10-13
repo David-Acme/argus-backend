@@ -915,39 +915,82 @@ turn is silent on a call.
 The household's duress phrase (`services/guard/CONTEXT.md`, "The duress
 phrase") must never travel on as heard. argus-llm owns the detection
 (`services/llm/CONTEXT.md`, "The duress screen"). This service applies the
-answer before it does anything else with a transcript.
+answer before it does anything else with a transcript, and answers a withheld
+turn exactly as it answers a turn it could not make out.
 
 - **Where.** `processTurn` asks `IVoiceLlm::screen` the moment STT answers,
-  for a caller with a user id. That call is `LlmClient::screen`:
-  `POST /llm/v1/screen`, or `argus.llm.v1.Chat/Screen` when the gRPC leg is
-  set.
-- **What the answer replaces.** The answer, the same words or the
-  placeholder `…`, is the transcript from then on: the `stt` frame the app
-  shows, the call history the next turns resend, the spoken-name extraction,
-  the reaction, the offer check and the turn itself.
+  for a caller with a user id and a transcript that carries words. That call
+  is `LlmClient::screen`: `POST /llm/v1/screen`, or
+  `argus.llm.v1.Chat/Screen` when the gRPC leg is set. The answer is the
+  transcript from then on: the same words, or the placeholder `…`
+  (`llm_speech::kWithheldUtterance`, `packages/contracts/llm`).
 - **No transcript in the logs.** The turn logs the transcript's size and never
-  its words, at any level. The debug line that printed them is gone: a screen
-  that failed cannot tell whether the words were the phrase, so no build
-  prints a transcript at all.
-- **Why the app shows `…`.** The person holding the phone sees it the way it
-  sees any utterance the recogniser could not make out. Argus answers the
-  placeholder like one too ("¿Perdona?"), so nothing on the screen or in the
-  reply names the alert.
+  its words, at any level. A screen that failed cannot tell whether the words
+  were the phrase, so no build prints a transcript at all.
 - **The seam's default** returns the words unchanged, so a fake that does not
   screen behaves as before.
-- **A screen that does not answer** leaves the words as heard. The call is
-  bounded at 5 s (`RemoteVoiceLlm::kScreenTimeoutMs`, its own client beside
-  the chat one), so a hung argus-llm delays the transcript by at most that.
-  The turn in argus-llm still withholds the words from its own decision,
-  tools, memory and prompt, but this call's in-memory history keeps them until
-  the call ends. That gap is logged as a warning that carries no words, and
-  nothing in it is written to disk by this service.
 
-`tests/unit/voice-session-seam-test.cc` ("A withheld transcript reaches no
-frame, no history and no turn as it was heard") pins it: the screen is asked
-with the speaker's id and role, the `stt` frame carries the placeholder, no
-frame carries the words, the request the turn sends holds no trace of them, and
-neither does the stored history.
+### One reply for every turn without words (reviewer ruling, 2026-10-13)
+
+Before this, a turn whose transcript came back empty drew a `Confused`
+reaction and silence, and nothing else had a path of its own. There was no
+reply to route a withheld turn through, so `answerUnheard` is that path, built
+once and taken by both.
+
+- **Which turns.** Every turn whose transcript carries no word the screen
+  could read (`carriesWords`, the same word split as
+  `secret_phrase::words`): STT answered nothing, STT answered only marks
+  (`"…"`, `"¿?"`), or the screen withheld the words. A turn too short for
+  the VAD's gate (`minTurnMs`, `minMeanProb`) never becomes a turn, so it
+  stays dropped without a reply. An STT that failed outright keeps its own
+  path (`stt_failed` reaction, no transcript, no line), because the user did
+  nothing wrong there and asking them to repeat would mislead.
+- **What it sends, in order.** The `stt` frame with the placeholder `…`
+  (`final: true`), the call history's user entry `…`, the `Confused`
+  reaction (`because: "stt_failed"`), then one line spoken and shown like any
+  other answer. The history keeps the line as Argus's reply when it was
+  heard. No model is asked, no name is extracted, no offer is answered.
+- **The line.** A small set per language (`unheard-reply.cc`), three each:
+  "Perdona, no te entendí. ¿Me lo repites?", "No te escuché bien. ¿Puedes
+  repetirlo?", "Disculpa, no te entendí. ¿Otra vez?" and their English
+  pair. `UnheardRotation` picks `(seed + spoken) mod 3`: the seed is drawn
+  once per call (`std::random_device`), and `spoken` counts the unheard
+  replies of that call whatever caused them. The same seed therefore gives a
+  withheld turn and an unintelligible turn the same line, frame for frame.
+- **Why the app shows `…`.** The person holding the phone sees it the way it
+  sees any utterance the recogniser could not make out, and hears the same
+  "didn't catch that". Nothing on the screen or in the reply names the alert.
+
+### When the words were shown before the screen answered
+
+A screen that does not answer (argus-llm down, or slower than 5 s,
+`RemoteVoiceLlm::kScreenTimeoutMs`, its own client beside the chat one)
+leaves the words as heard: the `stt` frame carries them and the turn goes on.
+argus-llm screens the turn again before it decides anything. When it withholds
+the words there, it asks no model and ends the stream at once with the
+`speech` marker `unheard` (`llm_speech::kUnheard`, on the HTTP sentinel and on
+`ChatToken.speech`). This service then drops the turn's user entry from the
+call history and answers through `answerUnheard` like any other turn without
+words, with no second transcript frame. A key that changed between voice's
+screen and the turn's takes the same path.
+
+What stays exposed in that degraded case: the app keeps showing the words it
+was sent, and a spoken name in them may already have reached identity.
+Nothing else keeps them.
+
+`tests/unit/voice-session-seam-test.cc` pins it:
+- "A withheld transcript is answered as unheard…": the screen is asked with
+  the speaker's id and role, no model turn runs, the `stt` frame carries `…`,
+  the `Confused` reaction and one of the lines follow, and no frame and no
+  history entry holds the words.
+- "Under the same seed a withheld turn and an unintelligible turn get the
+  same reply, byte for byte": two turns each of a withheld utterance, an empty
+  transcript and a marks-only transcript produce identical frames and history,
+  and another seed does not.
+- "Words argus-llm withholds after they were shown get the unheard reply…":
+  the turn reaches argus-llm once, the reply that follows the shown words equals
+  the unheard reply under the same seed, and nothing from the reply on holds
+  the words.
 
 ## Owner settings
 
